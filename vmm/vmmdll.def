@@ -1,0 +1,45 @@
+LIBRARY		VMM
+EXPORTS
+    VMMDLL_InitializeReserved
+    VMMDLL_InitializeFile
+    VMMDLL_InitializeFPGA
+    VMMDLL_InitializeTotalMeltdown
+    VMMDLL_Close
+
+    VMMDLL_ConfigGet
+    VMMDLL_ConfigSet
+
+    VMMDLL_VfsList
+    VMMDLL_VfsRead
+    VMMDLL_VfsWrite
+
+    VMMDLL_UtilVfsReadFile_FromPBYTE
+    VMMDLL_UtilVfsReadFile_FromQWORD
+    VMMDLL_UtilVfsReadFile_FromDWORD
+    VMMDLL_UtilVfsReadFile_FromBOOL
+    VMMDLL_UtilVfsWriteFile_BOOL
+    VMMDLL_UtilVfsWriteFile_DWORD
+
+    VMMDLL_VfsInitializePlugins
+
+    VMMDLL_MemReadScatter
+    VMMDLL_MemReadPage
+    VMMDLL_MemRead
+    VMMDLL_MemReadEx
+    VMMDLL_MemWrite
+    VMMDLL_MemVirt2Phys
+
+    VMMDLL_PidList
+    VMMDLL_PidGetFromName
+    VMMDLL_ProcessGetMemoryMap
+    VMMDLL_ProcessGetMemoryMapEntry
+    VMMDLL_ProcessGetModuleMap
+    VMMDLL_ProcessGetModuleFromName
+    VMMDLL_ProcessGetInformation
+
+    VMMDLL_ProcessGetDirectories
+    VMMDLL_ProcessGetSections
+    VMMDLL_ProcessGetEAT
+    VMMDLL_ProcessGetIAT
+
+    VMMDLL_UtilFillHexAscii

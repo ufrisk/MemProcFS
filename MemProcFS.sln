@@ -1,0 +1,109 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.28010.2050
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MemProcFS", "MemProcFS\MemProcFS.vcxproj", "{0EEC1AAA-D3BD-4DC1-8EAD-7629617A12A5}"
+	ProjectSection(ProjectDependencies) = postProject
+		{18BEBDF1-73F2-4ABB-BDBE-507ADAB32494} = {18BEBDF1-73F2-4ABB-BDBE-507ADAB32494}
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "vmm", "vmm\vmm.vcxproj", "{18BEBDF1-73F2-4ABB-BDBE-507ADAB32494}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "m_vmemd", "m_vmemd\m_vmemd.vcxproj", "{41D93156-9DCB-4F19-BF02-993CEC361A81}"
+	ProjectSection(ProjectDependencies) = postProject
+		{18BEBDF1-73F2-4ABB-BDBE-507ADAB32494} = {18BEBDF1-73F2-4ABB-BDBE-507ADAB32494}
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "vmmpyc", "vmmpyc\vmmpyc.vcxproj", "{8F227E6C-6156-4F7D-965F-BDB9B75FFB4E}"
+	ProjectSection(ProjectDependencies) = postProject
+		{18BEBDF1-73F2-4ABB-BDBE-507ADAB32494} = {18BEBDF1-73F2-4ABB-BDBE-507ADAB32494}
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "vmmpycplugin", "vmmpycplugin\vmmpycplugin.vcxproj", "{D32F2480-E640-4239-96DA-E31CCA2F13BA}"
+	ProjectSection(ProjectDependencies) = postProject
+		{18BEBDF1-73F2-4ABB-BDBE-507ADAB32494} = {18BEBDF1-73F2-4ABB-BDBE-507ADAB32494}
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "python", "python", "{0E07FB2B-5955-4CAC-AD31-E8352D7912A3}"
+	ProjectSection(SolutionItems) = preProject
+		files\vmmpy.py = files\vmmpy.py
+		files\vmmpy_example.py = files\vmmpy_example.py
+		files\vmmpyplugin.py = files\vmmpyplugin.py
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "vmm_example", "vmm_example\vmm_example.vcxproj", "{7B05E64E-569F-4EF5-8F37-FA5B39B64227}"
+	ProjectSection(ProjectDependencies) = postProject
+		{18BEBDF1-73F2-4ABB-BDBE-507ADAB32494} = {18BEBDF1-73F2-4ABB-BDBE-507ADAB32494}
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "dissect.cstruct", "dissect.cstruct", "{28BE8236-5D12-4D09-B87D-5AB79A85B54A}"
+	ProjectSection(SolutionItems) = preProject
+		files\dissect\cstruct\__init__.py = files\dissect\cstruct\__init__.py
+		files\dissect\cstruct\cstruct.py = files\dissect\cstruct\cstruct.py
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "plugins.pym_procstruct", "plugins.pym_procstruct", "{BF8E8135-E8FA-49CF-A3CB-DA35B0581A77}"
+	ProjectSection(SolutionItems) = preProject
+		files\plugins\pym_procstruct\__init__.py = files\plugins\pym_procstruct\__init__.py
+		files\plugins\pym_procstruct\pym_procstruct.py = files\plugins\pym_procstruct\pym_procstruct.py
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{0EEC1AAA-D3BD-4DC1-8EAD-7629617A12A5}.Debug|x64.ActiveCfg = Debug|x64
+		{0EEC1AAA-D3BD-4DC1-8EAD-7629617A12A5}.Debug|x64.Build.0 = Debug|x64
+		{0EEC1AAA-D3BD-4DC1-8EAD-7629617A12A5}.Debug|x86.ActiveCfg = Debug|x64
+		{0EEC1AAA-D3BD-4DC1-8EAD-7629617A12A5}.Release|x64.ActiveCfg = Release|x64
+		{0EEC1AAA-D3BD-4DC1-8EAD-7629617A12A5}.Release|x64.Build.0 = Release|x64
+		{0EEC1AAA-D3BD-4DC1-8EAD-7629617A12A5}.Release|x86.ActiveCfg = Release|x64
+		{18BEBDF1-73F2-4ABB-BDBE-507ADAB32494}.Debug|x64.ActiveCfg = Debug|x64
+		{18BEBDF1-73F2-4ABB-BDBE-507ADAB32494}.Debug|x64.Build.0 = Debug|x64
+		{18BEBDF1-73F2-4ABB-BDBE-507ADAB32494}.Debug|x86.ActiveCfg = Debug|x64
+		{18BEBDF1-73F2-4ABB-BDBE-507ADAB32494}.Release|x64.ActiveCfg = Release|x64
+		{18BEBDF1-73F2-4ABB-BDBE-507ADAB32494}.Release|x64.Build.0 = Release|x64
+		{18BEBDF1-73F2-4ABB-BDBE-507ADAB32494}.Release|x86.ActiveCfg = Release|x64
+		{41D93156-9DCB-4F19-BF02-993CEC361A81}.Debug|x64.ActiveCfg = Debug|x64
+		{41D93156-9DCB-4F19-BF02-993CEC361A81}.Debug|x64.Build.0 = Debug|x64
+		{41D93156-9DCB-4F19-BF02-993CEC361A81}.Debug|x86.ActiveCfg = Debug|x64
+		{41D93156-9DCB-4F19-BF02-993CEC361A81}.Release|x64.ActiveCfg = Release|x64
+		{41D93156-9DCB-4F19-BF02-993CEC361A81}.Release|x64.Build.0 = Release|x64
+		{41D93156-9DCB-4F19-BF02-993CEC361A81}.Release|x86.ActiveCfg = Release|x64
+		{8F227E6C-6156-4F7D-965F-BDB9B75FFB4E}.Debug|x64.ActiveCfg = Debug|x64
+		{8F227E6C-6156-4F7D-965F-BDB9B75FFB4E}.Debug|x64.Build.0 = Debug|x64
+		{8F227E6C-6156-4F7D-965F-BDB9B75FFB4E}.Debug|x86.ActiveCfg = Debug|x64
+		{8F227E6C-6156-4F7D-965F-BDB9B75FFB4E}.Release|x64.ActiveCfg = Release|x64
+		{8F227E6C-6156-4F7D-965F-BDB9B75FFB4E}.Release|x64.Build.0 = Release|x64
+		{8F227E6C-6156-4F7D-965F-BDB9B75FFB4E}.Release|x86.ActiveCfg = Release|x64
+		{D32F2480-E640-4239-96DA-E31CCA2F13BA}.Debug|x64.ActiveCfg = Debug|x64
+		{D32F2480-E640-4239-96DA-E31CCA2F13BA}.Debug|x64.Build.0 = Debug|x64
+		{D32F2480-E640-4239-96DA-E31CCA2F13BA}.Debug|x86.ActiveCfg = Debug|x64
+		{D32F2480-E640-4239-96DA-E31CCA2F13BA}.Release|x64.ActiveCfg = Release|x64
+		{D32F2480-E640-4239-96DA-E31CCA2F13BA}.Release|x64.Build.0 = Release|x64
+		{D32F2480-E640-4239-96DA-E31CCA2F13BA}.Release|x86.ActiveCfg = Release|x64
+		{7B05E64E-569F-4EF5-8F37-FA5B39B64227}.Debug|x64.ActiveCfg = Debug|x64
+		{7B05E64E-569F-4EF5-8F37-FA5B39B64227}.Debug|x64.Build.0 = Debug|x64
+		{7B05E64E-569F-4EF5-8F37-FA5B39B64227}.Debug|x86.ActiveCfg = Debug|Win32
+		{7B05E64E-569F-4EF5-8F37-FA5B39B64227}.Debug|x86.Build.0 = Debug|Win32
+		{7B05E64E-569F-4EF5-8F37-FA5B39B64227}.Release|x64.ActiveCfg = Release|x64
+		{7B05E64E-569F-4EF5-8F37-FA5B39B64227}.Release|x64.Build.0 = Release|x64
+		{7B05E64E-569F-4EF5-8F37-FA5B39B64227}.Release|x86.ActiveCfg = Release|Win32
+		{7B05E64E-569F-4EF5-8F37-FA5B39B64227}.Release|x86.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{28BE8236-5D12-4D09-B87D-5AB79A85B54A} = {0E07FB2B-5955-4CAC-AD31-E8352D7912A3}
+		{BF8E8135-E8FA-49CF-A3CB-DA35B0581A77} = {0E07FB2B-5955-4CAC-AD31-E8352D7912A3}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {25E47F6A-275C-46EB-9121-6EECCE1B8075}
+	EndGlobalSection
+EndGlobal
