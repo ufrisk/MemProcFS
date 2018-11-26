@@ -65,6 +65,9 @@
     <ClInclude Include="vmmvfs.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="vmmx64.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="device.c">
@@ -107,6 +110,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="vmmvfs.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmx64.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

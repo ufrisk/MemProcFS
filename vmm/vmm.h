@@ -54,7 +54,7 @@ typedef struct tdMEM_IO_SCATTER_HEADER {
 #define VMM_TARGET_WINDOWS_X64                  0x0002
 
 #define VMM_VERSION_MAJOR                       1
-#define VMM_VERSION_MINOR                       0
+#define VMM_VERSION_MINOR                       1
 #define VMM_VERSION_REVISION                    0
 
 typedef struct tdVMM_MEMMAP_ENTRY {
@@ -78,13 +78,6 @@ typedef struct tdVMM_MODULEMAP_ENTRY {
     DWORD cbDisplayBufferIAT;
     DWORD cbDisplayBufferSections;
 } VMM_MODULEMAP_ENTRY, *PVMM_MODULEMAP_ENTRY;
-
-typedef struct tdVMM_VIRT2PHYS_INFORMATION {
-    QWORD va;
-    QWORD pas[5];   // physical addresses of pagetable[PML]/page[0]
-    QWORD PTEs[5];  // PTEs[PML]
-    WORD  iPTEs[5]; // Index of PTE in page table
-} VMM_VIRT2PHYS_INFORMATION, *PVMM_VIRT2PHYS_INFORMATION;
 
 typedef struct tdVMM_PROCESS {
     DWORD dwPID;
@@ -149,6 +142,38 @@ typedef struct tdVMM_CACHE_TABLE {
     PVMM_CACHE_ENTRY S;
 } VMM_CACHE_TABLE, *PVMM_CACHE_TABLE;
 
+typedef enum tdVMM_MEMORYMODEL_TP {
+    NA = 0,
+    X64 = 1
+} tdVMM_MEMORYMODEL_TP;
+
+typedef struct tdVMM_VIRT2PHYS_INFORMATION {
+    tdVMM_MEMORYMODEL_TP tpMemoryModel;
+    QWORD va;
+    union {
+        struct {
+            QWORD pas[5];   // physical addresses of pagetable[PML]/page[0]
+            QWORD PTEs[5];  // PTEs[PML]
+            WORD  iPTEs[5]; // Index of PTE in page table
+        } x64;
+    };
+} VMM_VIRT2PHYS_INFORMATION, *PVMM_VIRT2PHYS_INFORMATION;
+
+typedef struct tdVMM_MEMORYMODEL {
+    tdVMM_MEMORYMODEL_TP tp;
+    VOID(*pfnInitialize)();
+    VOID(*pfnClose)();
+    BOOL(*pfnVirt2Phys)(_In_ PVMM_PROCESS pProcess, _In_ QWORD va, _Out_ PQWORD ppa);
+    BOOL(*pfnVirt2PhysEx)(_In_ BOOL fUserOnly, _In_ QWORD va, _In_ BYTE iPML, _In_reads_(4096) PBYTE pbPTEs, _Out_ PQWORD ppa);
+    VOID(*pfnVirt2PhysGetInformation)(_Inout_ PVMM_PROCESS pProcess, _Inout_ PVMM_VIRT2PHYS_INFORMATION pVirt2PhysInfo);
+    VOID(*pfnMapInitialize)(_In_ PVMM_PROCESS pProcess);
+    VOID(*pfnMapTag)(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaBase, _In_ QWORD vaLimit, _In_opt_ LPSTR szTag, _In_opt_ LPWSTR wszTag, _In_opt_ BOOL fWoW64);
+    PVMM_MEMMAP_ENTRY(*pfnMapGetEntry)(_In_ PVMM_PROCESS pProcess, _In_ QWORD va);
+    VOID(*pfnMapDisplayBufferGenerate)(_In_ PVMM_PROCESS pProcess);
+    VOID(*pfnTlbSpider)(_In_ QWORD paDTB, _In_ BOOL fUserOnly);
+    BOOL(*pfnTlbPageTableVerify)(_Inout_ PBYTE pb, _In_ QWORD pa, _In_ BOOL fSelfRefReq);
+} VMM_MEMORYMODEL;
+
 // ----------------------------------------------------------------------------
 // VMM general constants and struct definitions below: 
 // ----------------------------------------------------------------------------
@@ -205,6 +230,7 @@ typedef struct tdVMM_CONTEXT {
     PVMM_CACHE_TABLE ptTLB;
     PVMM_CACHE_TABLE ptPHYS;
     BOOL fReadOnly;
+    VMM_MEMORYMODEL MemoryModel;
     // os specific below:
     DWORD fTargetSystem;
     DWORD flags;
@@ -219,6 +245,10 @@ typedef struct tdVMM_CONTEXT {
     } ThreadProcCache;
     VMM_STATISTICS stat;
     PVOID pVmmVfsModuleList;
+    struct {
+        QWORD paDTB;
+        QWORD vaBase;
+    } kernelinfo;
 } VMM_CONTEXT, *PVMM_CONTEXT;
 
 typedef struct tdVMM_MAIN_CONTEXT {
@@ -238,6 +268,13 @@ PVMM_MAIN_CONTEXT ctxMain;
 #define vmmprintfv(format, ...)    { if(ctxMain->cfg.fVerbose)          { printf(format, ##__VA_ARGS__); } }
 #define vmmprintfvv(format, ...)   { if(ctxMain->cfg.fVerboseExtra)     { printf(format, ##__VA_ARGS__); } }
 #define vmmprintfvvv(format, ...)  { if(ctxMain->cfg.fVerboseExtraTlp)  { printf(format, ##__VA_ARGS__); } }
+
+// ----------------------------------------------------------------------------
+// VMM reserved for memory model use only functions below:
+// ----------------------------------------------------------------------------
+PMEM_IO_SCATTER_HEADER VmmCacheGet(_In_ PVMM_CACHE_TABLE t, _In_ QWORD qwA);
+VOID VmmCachePut(_Inout_ PVMM_CACHE_TABLE t, _In_ PVMM_CACHE_ENTRY e);
+PVMM_CACHE_ENTRY VmmCacheReserve(_Inout_ PVMM_CACHE_TABLE t);
 
 // ----------------------------------------------------------------------------
 // VMM function definitions below:
@@ -350,36 +387,57 @@ VOID VmmReadScatterPhysical(_Inout_ PPMEM_IO_SCATTER_HEADER ppMEMsPhys, _In_ DWO
 BOOL VmmReadPhysicalPage(_In_ QWORD qwPA, _Inout_bytecount_(4096) PBYTE pbPage);
 
 /*
+* Retrieve a page table (0x1000 bytes) via the TLB cache.
+* -- pa
+* -- fCacheOnly = if set do not make a request to underlying device if not in cache.
+* -- return
+*/
+PBYTE VmmTlbGetPageTable(_In_ QWORD pa, _In_ BOOL fCacheOnly);
+
+/*
 * Translate a virtual address to a physical address by walking the page tables.
 * -- pProcess
-* -- qwVA
-* -- pqwPA
+* -- va
+* -- ppa
 * -- return
 */
 _Success_(return)
-BOOL VmmVirt2Phys(_In_ PVMM_PROCESS pProcess, _In_ QWORD qwVA, _Out_ PQWORD pqwPA);
+inline BOOL VmmVirt2Phys(_In_ PVMM_PROCESS pProcess, _In_ QWORD va, _Out_ PQWORD ppa)
+{
+    if(ctxVmm->MemoryModel.tp == NA) { return FALSE; }
+    return ctxVmm->MemoryModel.pfnVirt2Phys(pProcess, va, ppa);
+}
 
 /*
 * Translate a virtual address to a physical address given some extra parameters as
 * as compared to the standard recommended function VmmVirt2Phys.
 * -- fUserOnly
 * -- va
-* -- iPML
+* -- iPML = index of page table (-1 = topmost) (Example: PML4 = 4, PDPT = 3 .. in X64).
 * -- PTEs
 * -- ppa
 * -- return
 */
 _Success_(return)
-BOOL VmmVirt2PhysEx(_In_ BOOL fUserOnly, _In_ QWORD va, _In_ QWORD iPML, _In_ QWORD PTEs[512], _Out_ PQWORD ppa);
+inline BOOL VmmVirt2PhysEx(_In_ BOOL fUserOnly, _In_ QWORD va, _In_ BYTE iPML, _In_reads_(4096) PBYTE pbPTEs, _Out_ PQWORD ppa)
+{
+    if(ctxVmm->MemoryModel.tp == NA) { return FALSE; }
+    return ctxVmm->MemoryModel.pfnVirt2PhysEx(fUserOnly, va, iPML, pbPTEs, ppa);
+}
 
 /*
 * Spider the TLB (page table cache) to load all page table pages into the cache.
 * This is done to speed up various subsequent virtual memory accesses.
 * NB! pages may fall out of the cache if it's in heavy use or doe to timing.
-* -- qwPML4     = physical adderss of the Page Mapping Level 4 table to spider.
+* -- paDTB      = physical adderss of the Directory Table Base (DTB) to spider.
+                  (aka. Page Mapping Level 4 table in x64).
 * -- fUserOnly  = only spider user-mode (ring3) pages, no kernel pages.
 */
-VOID VmmTlbSpider(_In_ QWORD qwPML4, _In_ BOOL fUserOnly);
+inline VOID VmmTlbSpider(_In_ QWORD paDTB, _In_ BOOL fUserOnly)
+{
+    if(ctxVmm->MemoryModel.tp == NA) { return; }
+    ctxVmm->MemoryModel.pfnTlbSpider(paDTB, fUserOnly);
+}
 
 /*
 * Try verify that a supplied page table in pb is valid by analyzing it.
@@ -387,15 +445,11 @@ VOID VmmTlbSpider(_In_ QWORD qwPML4, _In_ BOOL fUserOnly);
 * -- pa = physical address if the page table page.
 * -- fSelfRefReq = is a self referential entry required to be in the map? (PML4 for Windows).
 */
-BOOL VmmTlbPageTableVerify(_Inout_ PBYTE pb, _In_ QWORD pa, _In_ BOOL fSelfRefReq);
-
-/*
-* Retrieve a page table (0x1000 bytes) via the TLB cache.
-* -- qwPA
-* -- fCacheOnly = if set do not make a request to underlying device if not in cache.
-* -- return
-*/
-PBYTE VmmTlbGetPageTable(_In_ QWORD qwPA, _In_ BOOL fCacheOnly);
+inline BOOL VmmTlbPageTableVerify(_Inout_ PBYTE pb, _In_ QWORD pa, _In_ BOOL fSelfRefReq)
+{
+    if(ctxVmm->MemoryModel.tp == NA) { return FALSE; }
+    return ctxVmm->MemoryModel.pfnTlbPageTableVerify(pb, pa, fSelfRefReq);
+}
 
 /*
 * Retrieve information of the virtual2physical address translation for the
@@ -404,14 +458,22 @@ PBYTE VmmTlbGetPageTable(_In_ QWORD qwPA, _In_ BOOL fCacheOnly);
 * -- pProcess
 * -- pVirt2PhysInfo
 */
-VOID VmmVirt2PhysGetInformation(_Inout_ PVMM_PROCESS pProcess, _Inout_ PVMM_VIRT2PHYS_INFORMATION pVirt2PhysInfo);
+inline VOID VmmVirt2PhysGetInformation(_Inout_ PVMM_PROCESS pProcess, _Inout_ PVMM_VIRT2PHYS_INFORMATION pVirt2PhysInfo)
+{
+    if(ctxVmm->MemoryModel.tp == NA) { return; }
+    ctxVmm->MemoryModel.pfnVirt2PhysGetInformation(pProcess, pVirt2PhysInfo);
+}
 
 /*
 * Initialize the memory map for a specific process. This may take some time
 * especially for kernel/system processes.
 * -- pProcess
 */
-VOID VmmMapInitialize(_In_ PVMM_PROCESS pProcess);
+inline VOID VmmMapInitialize(_In_ PVMM_PROCESS pProcess)
+{
+    if(ctxVmm->MemoryModel.tp == NA) { return; }
+    ctxVmm->MemoryModel.pfnMapInitialize(pProcess);
+}
 
 /*
 * Map a tag into the sorted memory map in O(log2) operations. Supply only one
@@ -423,7 +485,11 @@ VOID VmmMapInitialize(_In_ PVMM_PROCESS pProcess);
 * -- wszTag
 * -- fWoW64
 */
-VOID VmmMapTag(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaBase, _In_ QWORD vaLimit, _In_opt_ LPSTR szTag, _In_opt_ LPWSTR wszTag, _In_opt_ BOOL fWoW64);
+inline VOID VmmMapTag(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaBase, _In_ QWORD vaLimit, _In_opt_ LPSTR szTag, _In_opt_ LPWSTR wszTag, _In_opt_ BOOL fWoW64)
+{
+    if(ctxVmm->MemoryModel.tp == NA) { return; }
+    ctxVmm->MemoryModel.pfnMapTag(pProcess, vaBase, vaLimit, szTag, wszTag, fWoW64);
+}
 
 /*
 * Retrieve a memory map entry info given a specific address.
@@ -431,7 +497,11 @@ VOID VmmMapTag(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaBase, _In_ QWORD vaLimit
 * -- qwVA
 * -- return = the memory map entry or NULL if not found.
 */
-PVMM_MEMMAP_ENTRY VmmMapGetEntry(_In_ PVMM_PROCESS pProcess, _In_ QWORD qwVA);
+inline PVMM_MEMMAP_ENTRY VmmMapGetEntry(_In_ PVMM_PROCESS pProcess, _In_ QWORD va)
+{
+    if(ctxVmm->MemoryModel.tp == NA) { return NULL; }
+    return ctxVmm->MemoryModel.pfnMapGetEntry(pProcess, va);
+}
 
 /*
 * Generate the human-readable text byte-buffer representing an already existing
@@ -439,7 +509,11 @@ PVMM_MEMMAP_ENTRY VmmMapGetEntry(_In_ PVMM_PROCESS pProcess, _In_ QWORD qwVA);
 * separate call to VmmMapInitialize.
 * -- pProcess
 */
-VOID VmmMapDisplayBufferGenerate(_In_ PVMM_PROCESS pProcess);
+inline VOID VmmMapDisplayBufferGenerate(_In_ PVMM_PROCESS pProcess)
+{
+    if(ctxVmm->MemoryModel.tp == NA) { return; }
+    ctxVmm->MemoryModel.pfnMapDisplayBufferGenerate(pProcess);
+}
 
 
 /*

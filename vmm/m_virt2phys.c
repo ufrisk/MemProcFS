@@ -54,7 +54,7 @@ NTSTATUS Virt2Phys_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ LPVOID pb, _In_ D
         return Util_VfsReadFile_FromQWORD(pVirt2PhysInfo->va, pb, cb, pcbRead, cbOffset, FALSE);
     }
     if(!_stricmp(ctx->szPath, "phys")) {
-        return Util_VfsReadFile_FromQWORD(pVirt2PhysInfo->pas[0], pb, cb, pcbRead, cbOffset, FALSE);
+        return Util_VfsReadFile_FromQWORD(pVirt2PhysInfo->x64.pas[0], pb, cb, pcbRead, cbOffset, FALSE);
     }
     if(!_stricmp(ctx->szPath, "map")) {
         cbBuffer = snprintf(
@@ -65,11 +65,11 @@ NTSTATUS Virt2Phys_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ LPVOID pb, _In_ D
             "PD   %016llx +%03x %016llx\n" \
             "PT   %016llx +%03x %016llx\n" \
             "PAGE %016llx\n",
-            pVirt2PhysInfo->pas[4], pVirt2PhysInfo->iPTEs[4] << 3, pVirt2PhysInfo->PTEs[4],
-            pVirt2PhysInfo->pas[3], pVirt2PhysInfo->iPTEs[3] << 3, pVirt2PhysInfo->PTEs[3],
-            pVirt2PhysInfo->pas[2], pVirt2PhysInfo->iPTEs[2] << 3, pVirt2PhysInfo->PTEs[2],
-            pVirt2PhysInfo->pas[1], pVirt2PhysInfo->iPTEs[1] << 3, pVirt2PhysInfo->PTEs[1],
-            pVirt2PhysInfo->pas[0]
+            pVirt2PhysInfo->x64.pas[4], pVirt2PhysInfo->x64.iPTEs[4] << 3, pVirt2PhysInfo->x64.PTEs[4],
+            pVirt2PhysInfo->x64.pas[3], pVirt2PhysInfo->x64.iPTEs[3] << 3, pVirt2PhysInfo->x64.PTEs[3],
+            pVirt2PhysInfo->x64.pas[2], pVirt2PhysInfo->x64.iPTEs[2] << 3, pVirt2PhysInfo->x64.PTEs[2],
+            pVirt2PhysInfo->x64.pas[1], pVirt2PhysInfo->x64.iPTEs[1] << 3, pVirt2PhysInfo->x64.PTEs[1],
+            pVirt2PhysInfo->x64.pas[0]
         );
         return Util_VfsReadFile_FromPBYTE(pbBuffer, cbBuffer, pb, cb, pcbRead, cbOffset);
     }
@@ -80,11 +80,11 @@ NTSTATUS Virt2Phys_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ LPVOID pb, _In_ D
     if(!_stricmp(ctx->szPath, "pt_pt")) { iPML = 1; }
     ZeroMemory(pbBuffer, 0x1000);
     pbSourceData = pbBuffer;
-    if(iPML && (pVirt2PhysInfo->pas[iPML] & ~0xfff)) {
-        pbSourceData = VmmTlbGetPageTable(pVirt2PhysInfo->pas[iPML] & ~0xfff, FALSE);
+    if(iPML && (pVirt2PhysInfo->x64.pas[iPML] & ~0xfff)) {
+        pbSourceData = VmmTlbGetPageTable(pVirt2PhysInfo->x64.pas[iPML] & ~0xfff, FALSE);
     }
-    if(!_stricmp(ctx->szPath, "page") && (pVirt2PhysInfo->pas[0] & ~0xfff)) {
-        VmmReadPhysicalPage(pVirt2PhysInfo->pas[0] & ~0xfff, pbBuffer);
+    if(!_stricmp(ctx->szPath, "page") && (pVirt2PhysInfo->x64.pas[0] & ~0xfff)) {
+        VmmReadPhysicalPage(pVirt2PhysInfo->x64.pas[0] & ~0xfff, pbBuffer);
     }
     if(iPML || !_stricmp(ctx->szPath, "page")) {
         return Util_VfsReadFile_FromPBYTE(pbSourceData, 0x1000, pb, cb, pcbRead, cbOffset);
@@ -147,10 +147,10 @@ NTSTATUS Virt2Phys_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ LPVOID pb, _In_ D
     if(!_stricmp(ctx->szPath, "pt_pt")) { i = 1; }
     if(!_stricmp(ctx->szPath, "page")) { i = 0; }
     if(i > 4) { return VMMDLL_STATUS_FILE_INVALID; }
-    if(pVirt2PhysInfo->pas[i] < 0x1000) { return VMMDLL_STATUS_FILE_INVALID; }
+    if(pVirt2PhysInfo->x64.pas[i] < 0x1000) { return VMMDLL_STATUS_FILE_INVALID; }
     if(cbOffset > 0x1000) { return VMMDLL_STATUS_END_OF_FILE; }
     *pcbWrite = (DWORD)min(cb, 0x1000 - cbOffset);
-    VmmWritePhysical(pVirt2PhysInfo->pas[i] + cbOffset, pb, *pcbWrite);
+    VmmWritePhysical(pVirt2PhysInfo->x64.pas[i] + cbOffset, pb, *pcbWrite);
     return *pcbWrite ? VMMDLL_STATUS_SUCCESS : VMMDLL_STATUS_END_OF_FILE;
 }
 

@@ -110,6 +110,7 @@
     <ClInclude Include="vmmproc.h" />
     <ClInclude Include="vmmproc_windows.h" />
     <ClInclude Include="vmmvfs.h" />
+    <ClInclude Include="vmmx64.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="device.c" />
@@ -126,6 +127,7 @@
     <ClCompile Include="vmmproc.c" />
     <ClCompile Include="vmmproc_windows.c" />
     <ClCompile Include="vmmvfs.c" />
+    <ClCompile Include="vmmx64.c" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

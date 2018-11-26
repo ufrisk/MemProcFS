@@ -35,7 +35,7 @@ VOID LdrModule_CloseHandleModule(_Inout_opt_ PHANDLE phModulePrivate)
     if(!phModulePrivate || !*phModulePrivate) { return; }
     pCache = (PLDRMODULES_CACHE_ENTRY)*phModulePrivate;
     for(i = 0; i < LDRMODULES_NUM_CACHE; i++) {
-        if(pCache[i].pb) { LocalFree(pCache[i].pb); }
+        LocalFree(pCache[i].pb);
     }
     LocalFree(pCache);
     *phModulePrivate = NULL;
@@ -59,7 +59,7 @@ PLDRMODULES_CACHE_ENTRY LdrModule_GetCacheEntry(_In_ PVMMDLL_PLUGIN_CONTEXT ctx,
     // reserve and prepare new item
     i = (iEmpty < LDRMODULES_NUM_CACHE) ? iEmpty : iMin;
     e = pCache + i;
-    if(e->pb) { LocalFree(e->pb); }
+    LocalFree(e->pb);
     ZeroMemory(e, sizeof(LDRMODULES_CACHE_ENTRY));
     e->dwCounter = pCache[iMax].dwCounter + 1;
     e->dwPID = ctx->dwPID;

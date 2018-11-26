@@ -322,7 +322,8 @@ VOID VmmProcWindows_PE_SetSizeSectionIATEAT_DisplayBuffer(_In_ PVMM_PROCESS pPro
 //    PEB/LDR USER MODE PARSING CODE (64-bit and 32-bit)
 // ----------------------------------------------------------------------------
 
-typedef struct _LDR_MODULE {
+// more extensive definition of the Windows LDR_DATA_TABLE_ENTRY struct.
+typedef struct _VMMPROC_LDR_DATA_TABLE_ENTRY {
     LIST_ENTRY          InLoadOrderModuleList;
     LIST_ENTRY          InMemoryOrderModuleList;
     LIST_ENTRY          InInitializationOrderModuleList;
@@ -336,25 +337,35 @@ typedef struct _LDR_MODULE {
     SHORT               TlsIndex;
     LIST_ENTRY          HashTableEntry;
     ULONG               TimeDateStamp;
-} LDR_MODULE, *PLDR_MODULE;
+} VMMPROC_LDR_DATA_TABLE_ENTRY, *PVMMPROC_LDR_DATA_TABLE_ENTRY;
 
 QWORD VmmProcWindows_GetProcAddress(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModule, _In_ LPSTR lpProcName);
 
 VOID VmmProcWindows_ScanLdrModules64(_In_ PVMM_PROCESS pProcess, _Inout_ PVMM_MODULEMAP_ENTRY pModules, _Inout_ PDWORD pcModules, _In_ DWORD cModulesMax, _Out_ PBOOL fWow64)
 {
-    QWORD vaModuleLdrFirst, vaModuleLdr = 0;
-    BYTE pbPEB[sizeof(PEB)], pbPEBLdrData[sizeof(PEB_LDR_DATA)], pbLdrModule[sizeof(LDR_MODULE)];
+    QWORD vaPsLoadedModuleList, vaModuleLdrFirst, vaModuleLdr = 0;
+    BYTE pbPEB[sizeof(PEB)], pbPEBLdrData[sizeof(PEB_LDR_DATA)], pbLdrModule[sizeof(VMMPROC_LDR_DATA_TABLE_ENTRY)];
     PPEB pPEB = (PPEB)pbPEB;
     PPEB_LDR_DATA pPEBLdrData = (PPEB_LDR_DATA)pbPEBLdrData;
-    PLDR_MODULE pLdrModule = (PLDR_MODULE)pbLdrModule;
+    PVMMPROC_LDR_DATA_TABLE_ENTRY pLdrModule = (PVMMPROC_LDR_DATA_TABLE_ENTRY)pbLdrModule;
     PVMM_MODULEMAP_ENTRY pModule;
     *fWow64 = FALSE;
-    if(!pProcess->os.win.vaPEB) { return; }
-    if(!VmmRead(pProcess, pProcess->os.win.vaPEB, pbPEB, sizeof(PEB))) { return; }
-    if(!VmmRead(pProcess, (QWORD)pPEB->Ldr, pbPEBLdrData, sizeof(PEB_LDR_DATA))) { return; }
-    vaModuleLdr = vaModuleLdrFirst = (QWORD)pPEBLdrData->InMemoryOrderModuleList.Flink - 0x10; // InLoadOrderModuleList == InMemoryOrderModuleList - 0x10
+    if(pProcess->fUserOnly) {
+        // User mode process -> walk PEB LDR list to enumerate modules / .dlls.
+        if(!pProcess->os.win.vaPEB) { return; }
+        if(!VmmRead(pProcess, pProcess->os.win.vaPEB, pbPEB, sizeof(PEB))) { return; }
+        if(!VmmRead(pProcess, (QWORD)pPEB->Ldr, pbPEBLdrData, sizeof(PEB_LDR_DATA))) { return; }
+        vaModuleLdr = vaModuleLdrFirst = (QWORD)pPEBLdrData->InMemoryOrderModuleList.Flink - 0x10; // InLoadOrderModuleList == InMemoryOrderModuleList - 0x10
+    } else {
+        // Kernel mode process -> walk PsLoadedModuleList to enumerate drivers / .sys and .dlls.
+        vaPsLoadedModuleList = VmmProcWindows_GetProcAddress(pProcess, ctxVmm->kernelinfo.vaBase, "PsLoadedModuleList");
+        if(!vaPsLoadedModuleList) { return; }
+        if(!VmmRead(pProcess, vaPsLoadedModuleList, (PBYTE)&vaModuleLdrFirst, sizeof(QWORD)) || !vaModuleLdrFirst) { return; }
+        if(!VmmRead(pProcess, vaPsLoadedModuleList, pbPEBLdrData, sizeof(PEB_LDR_DATA))) { return; }
+        vaModuleLdr = vaModuleLdrFirst;
+    }
     do {
-        if(!VmmRead(pProcess, vaModuleLdr, pbLdrModule, sizeof(LDR_MODULE))) { break; }
+        if(!VmmRead(pProcess, vaModuleLdr, pbLdrModule, sizeof(VMMPROC_LDR_DATA_TABLE_ENTRY))) { break; }
         pModule = pModules + *pcModules;
         pModule->BaseAddress = (QWORD)pLdrModule->BaseAddress;
         pModule->EntryPoint = (QWORD)pLdrModule->EntryPoint;
@@ -362,7 +373,7 @@ VOID VmmProcWindows_ScanLdrModules64(_In_ PVMM_PROCESS pProcess, _Inout_ PVMM_MO
         pModule->fWoW64 = FALSE;
         if(!pLdrModule->BaseDllName.Length) { break; }
         if(!VmmReadString_Unicode2Ansi(pProcess, (QWORD)pLdrModule->BaseDllName.Buffer, pModule->szName, min(31, pLdrModule->BaseDllName.Length))) { break; }
-        *fWow64 = *fWow64 || !memcmp(pModule->szName, "wow64.dll", 10);
+        *fWow64 = pProcess->fUserOnly && (*fWow64 || !memcmp(pModule->szName, "wow64.dll", 10));
         vmmprintfvv("vmmproc.c!VmmProcWindows_ScanLdrModules: %016llx %016llx %016llx %08x %i %s\n", vaModuleLdr, pModule->BaseAddress, pModule->EntryPoint, pModule->SizeOfImage, (pModule->fWoW64 ? 1 : 0), pModule->szName);
         vaModuleLdr = (QWORD)pLdrModule->InLoadOrderModuleList.Flink;
         *pcModules = *pcModules + 1;
@@ -442,11 +453,9 @@ VOID VmmProcWindows_InitializeLdrModules(_In_ PVMM_PROCESS pProcess)
     DWORD i, o, cModules;
     BOOL result, fWow64;
     // clear out any previous data
-    if(pProcess->os.win.pbLdrModulesDisplayCache) {
-        LocalFree(pProcess->os.win.pbLdrModulesDisplayCache);
-        pProcess->os.win.pbLdrModulesDisplayCache = NULL;
-        pProcess->os.win.cbLdrModulesDisplayCache = 0;
-    }
+    LocalFree(pProcess->os.win.pbLdrModulesDisplayCache);
+    pProcess->os.win.pbLdrModulesDisplayCache = NULL;
+    pProcess->os.win.cbLdrModulesDisplayCache = 0;
     pProcess->os.win.vaENTRY = 0;
     // allocate and enumerate
     pModules = (PVMM_MODULEMAP_ENTRY)LocalAlloc(LMEM_ZEROINIT, 512 * sizeof(VMM_MODULEMAP_ENTRY));
@@ -793,7 +802,7 @@ BOOL VmmProcWindows_OffsetLocatorEPROCESS(_In_ PVMM_PROCESS pSystemProcess,
         if(!vaPEB || (*(PQWORD)(pb1 + i) & 0xffff800000000fff)) { continue; }
         // Verify potential PEB
         if(!VmmReadPhysicalPage(*(PQWORD)(pb1 + *pdwoPML4), pbPage)) { continue; }
-        if(!VmmVirt2PhysEx(TRUE, vaPEB, 4, (PQWORD)pbPage, &paPEB)) { continue; }
+        if(!VmmVirt2PhysEx(TRUE, vaPEB, -1, pbPage, &paPEB)) { continue; }
         if(!VmmReadPhysicalPage(paPEB, pbPage)) { continue; }
         if(*(PWORD)pbPage == 0x5a4d) { continue; }  // MZ header -> likely entry point or something not PEB ...
         *pdwoPEB = i;
@@ -999,6 +1008,8 @@ BOOL VmmProcWindows_TryInitialize(_In_opt_ QWORD paPML4Opt, _In_opt_ QWORD vaKer
         return FALSE;
     }
     ctxVmm->fTargetSystem = VMM_TARGET_WINDOWS_X64;
+    ctxVmm->kernelinfo.vaBase = vaKernelBase;
+    ctxVmm->kernelinfo.paDTB = paPML4;
     return TRUE;
 }
 

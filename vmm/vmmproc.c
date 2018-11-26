@@ -66,7 +66,7 @@ VOID VmmProcPHYS_ScanWindowsKernel_LargePages_PageTableWalk(_In_ QWORD paTable, 
 
 /*
 * Sometimes the PageDirectoryBase (PML4) is known, but the kernel location may
-* be unknown. This functions walks the page table in the area in which ntorkrnl
+* be unknown. This functions walks the page table in the area in which ntoskrnl
 * is loaded (0xFFFFF80000000000-0xFFFFF803FFFFFFFF) looking for 2MB large pages
 * If an area in 2MB pages are found it is scanned for the ntoskrnl.exe base.
 * -- paPML4

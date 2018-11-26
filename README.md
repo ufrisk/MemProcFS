@@ -105,3 +105,6 @@ Changelog:
 ===================
 v1.0
 * Initial Release.
+
+v1.1
+* Loaded kernel drivers in System process 'modules' sub-directory.
