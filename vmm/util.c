@@ -16,7 +16,13 @@ QWORD Util_GetNumeric(_In_ LPSTR sz)
 
 #define Util_2HexChar(x) (((((x) & 0xf) <= 9) ? '0' : ('a' - 10)) + ((x) & 0xf))
 
-BOOL Util_FillHexAscii(_In_ PBYTE pb, _In_ DWORD cb, _In_ DWORD cbInitialOffset, _Inout_opt_ LPSTR sz, _Inout_ PDWORD pcsz)
+#define UTIL_PRINTASCII \
+    "................................ !\"#$%&'()*+,-./0123456789:;<=>?" \
+    "@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz`{|}~" \
+    "................................................................" \
+    "................................................................" \
+
+BOOL Util_FillHexAscii(_In_ PBYTE pb, _In_ DWORD cb, _In_ DWORD cbInitialOffset, _Inout_opt_ LPSTR sz, _Out_ PDWORD pcsz)
 {
     DWORD i, j, o = 0, szMax, iMod;
     // checks
@@ -59,7 +65,7 @@ BOOL Util_FillHexAscii(_In_ PBYTE pb, _In_ DWORD cb, _In_ DWORD cbInitialOffset,
                 if(j >= cb) {
                     sz[o++] = ' ';
                 } else {
-                    sz[o++] = (isprint(pb[j]) ? (CHAR)pb[j] : '.');
+                    sz[o++] = UTIL_PRINTASCII[pb[j]];
                 }
             }
             sz[o++] = '\n';
@@ -84,7 +90,7 @@ VOID Util_PrintHexAscii(_In_ PBYTE pb, _In_ DWORD cb, _In_ DWORD cbInitialOffset
     LocalFree(sz);
 }
 
-VOID Util_PathSplit2(_In_ LPSTR sz, _Inout_ CHAR _szBuf[MAX_PATH], _Out_ LPSTR *psz1, _Out_ LPSTR *psz2)
+VOID Util_PathSplit2(_In_ LPSTR sz, _Out_writes_(MAX_PATH) PCHAR _szBuf, _Out_ LPSTR *psz1, _Out_ LPSTR *psz2)
 {
     DWORD i;
     strcpy_s(_szBuf, MAX_PATH, sz);
@@ -102,7 +108,7 @@ VOID Util_PathSplit2(_In_ LPSTR sz, _Inout_ CHAR _szBuf[MAX_PATH], _Out_ LPSTR *
     }
 }
 
-VOID Util_PathSplit2_WCHAR(_In_ LPWSTR wsz, _Inout_ CHAR _szBuf[MAX_PATH], _Out_ LPSTR *psz1, _Out_ LPSTR *psz2)
+VOID Util_PathSplit2_WCHAR(_In_ LPWSTR wsz, _Out_writes_(MAX_PATH) PCHAR _szBuf, _Out_ LPSTR *psz1, _Out_ LPSTR *psz2)
 {
     DWORD i;
     for(i = 0; i < MAX_PATH; i++) {
@@ -124,7 +130,7 @@ VOID Util_PathSplit2_WCHAR(_In_ LPWSTR wsz, _Inout_ CHAR _szBuf[MAX_PATH], _Out_
     }
 }
 
-VOID Util_GetPathDll(_Out_ CHAR szPath[MAX_PATH], _In_opt_ HMODULE hModule)
+VOID Util_GetPathDll(_Out_writes_(MAX_PATH) PCHAR szPath, _In_opt_ HMODULE hModule)
 {
     SIZE_T i;
     GetModuleFileNameA(hModule, szPath, MAX_PATH - 4);

@@ -77,7 +77,7 @@ PHANDLE PluginManager_ProcCacheGet(_Inout_ PPLUGIN_LISTENTRY pModule, _In_ DWORD
     return NULL;
 }
 
-VOID PluginManager_ContextInitialize(_Inout_ PVMMDLL_PLUGIN_CONTEXT ctx, PPLUGIN_LISTENTRY pModule, _In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR szPath, _In_ BOOL fDll)
+VOID PluginManager_ContextInitialize(_Out_ PVMMDLL_PLUGIN_CONTEXT ctx, PPLUGIN_LISTENTRY pModule, _In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR szPath, _In_ BOOL fDll)
 {
     ctx->magic = VMMDLL_PLUGIN_CONTEXT_MAGIC;
     ctx->wVersion = VMMDLL_PLUGIN_CONTEXT_VERSION;
@@ -289,14 +289,15 @@ VOID PluginManager_Close()
     }
 }
 
-VOID PluginManager_Initialize_RegInfoInit(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI, _In_opt_ HMODULE hDLL)
+VOID PluginManager_Initialize_RegInfoInit(_Out_ PVMMDLL_PLUGIN_REGINFO pRI, _In_opt_ HMODULE hDLL)
 {
     ZeroMemory(pRI, sizeof(VMMDLL_PLUGIN_REGINFO));
     pRI->magic = VMMDLL_PLUGIN_REGINFO_MAGIC;
     pRI->wVersion = VMMDLL_PLUGIN_REGINFO_VERSION;
     pRI->wSize = sizeof(VMMDLL_PLUGIN_REGINFO);
     pRI->hDLL = hDLL;
-    pRI->fTargetSystem = ctxVmm->fTargetSystem;
+    pRI->tpMemoryModel = ctxVmm->tpMemoryModel;
+    pRI->tpSystem = ctxVmm->tpSystem;
     pRI->pfnPluginManager_Register = PluginManager_Register;
 }
 

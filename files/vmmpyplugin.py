@@ -69,11 +69,13 @@ def VmmPyPlugin_InternalInitialize():
     global VmmPyPlugin_IsInitialized
     global VmmPyPlugin_RootDirectoryRoot
     global VmmPyPlugin_RootDirectoryProcess
-    global VmmPyPlugin_OsTarget
+    global VmmPyPlugin_TargetSystem
+    global VmmPyPlugin_TargetMemoryModel
     VmmPyPlugin_IsInitialized = True
     VmmPyPlugin_RootDirectoryRoot = {}
     VmmPyPlugin_RootDirectoryProcess = {}
-    VmmPyPlugin_OsTarget = VmmPy_ConfigGet(VMMPY_OPT_CORE_TARGET_SYSTEM)
+    VmmPyPlugin_TargetSystem = VmmPy_ConfigGet(VMMPY_OPT_CORE_SYSTEM)
+    VmmPyPlugin_TargetMemoryModel = VmmPy_ConfigGet(VMMPY_OPT_CORE_MEMORYMODEL)
     VmmPyPlugin_InternalSetVerbosity();
     VmmPyPlugin_InternalInitializePlugins()
     VMMPYCC_CallbackRegister(
@@ -102,7 +104,7 @@ def VmmPyPlugin_InternalInitializePlugins():
     for e in plugin_names:
         try:
             module = importlib.import_module(e)
-            module.Initialize(VmmPyPlugin_OsTarget)
+            module.Initialize(VmmPyPlugin_TargetSystem, VmmPyPlugin_TargetMemoryModel)
             VmmPyPlugin_PluginModules.append(module)
             if VmmPyPlugin_fPrintV:
                 print("VmmPyPlugin: Loaded '" + e + "'")

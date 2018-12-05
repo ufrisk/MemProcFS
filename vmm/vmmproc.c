@@ -5,116 +5,11 @@
 //
 
 #include "vmmproc.h"
-#include "vmmproc_windows.h"
+#include "vmmwin.h"
+#include "vmmwininit.h"
 #include "device.h"
 #include "statistics.h"
 #include "util.h"
-
-// ----------------------------------------------------------------------------
-// GENERIC PROCESS RELATED FUNCTIONALITY BELOW:
-// ----------------------------------------------------------------------------
-
-/*
-* see VmmProcPHYS_ScanWindowsKernel_LargePages for more information!
-* Scan a page table hierarchy between virtual addresses between vaMin and vaMax
-* for the first occurence of large 2MB pages. This is usually the ntoskrnl.exe
-* if the OS is Windows. Ntoskrnl.exe is loaded between the virtual addresses:
-* 0xFFFFF80000000000-0xFFFFF803FFFFFFFF
-* -- ctxVmm,
-* -- paTable = set to: physical address of PML4
-* -- vaBase = set to 0
-* -- vaMin = 0xFFFFF80000000000 (if windows kernel)
-* -- vaMax = 0xFFFFF803FFFFFFFF (if windows kernel)
-* -- cPML = set to 4
-* -- pvaBase
-* -- pcbSize
-*/
-VOID VmmProcPHYS_ScanWindowsKernel_LargePages_PageTableWalk(_In_ QWORD paTable, _In_ QWORD vaBase, _In_ QWORD vaMin, _In_ QWORD vaMax, _In_ BYTE cPML, _Inout_ PQWORD pvaBase, _Inout_ PQWORD pcbSize)
-{
-    const QWORD PML_REGION_SIZE[5] = { 0, 12, 21, 30, 39 };
-    QWORD i, pte, *ptes, vaCurrent, vaSizeRegion;
-    ptes = (PQWORD)VmmTlbGetPageTable(paTable, FALSE);
-    if(!ptes) { return; }
-    if(cPML == 4) {
-        *pvaBase = 0;
-        *pcbSize = 0;
-        if(!VmmTlbPageTableVerify((PBYTE)ptes, paTable, TRUE)) { return; }
-        vaBase = 0;
-    }
-    for(i = 0; i < 512; i++) {
-        // address in range
-        vaSizeRegion = 1ULL << PML_REGION_SIZE[cPML];
-        vaCurrent = vaBase + (i << PML_REGION_SIZE[cPML]);
-        vaCurrent |= (vaCurrent & 0x0000800000000000) ? 0xffff000000000000 : 0; // sign extend
-        if(*pvaBase && (vaCurrent >(*pvaBase + *pcbSize))) { return; }
-        if(vaCurrent < vaMin) { continue; }
-        if(vaCurrent > vaMax) { return; }
-        // check PTEs
-        pte = ptes[i];
-        if(!(pte & 0x01)) { continue; }     // NOT VALID
-        if(cPML == 2) {
-            if(!(pte & 0x80)) { continue; }
-            if(!*pvaBase) { *pvaBase = vaCurrent; }
-            *pcbSize += 0x200000;
-            continue;
-        } else {
-            if(pte & 0x80) { continue; }    // PS = 1
-            VmmProcPHYS_ScanWindowsKernel_LargePages_PageTableWalk(pte & 0x0000fffffffff000, vaCurrent, vaMin, vaMax, cPML - 1, pvaBase, pcbSize);
-        }
-    }
-}
-
-/*
-* Sometimes the PageDirectoryBase (PML4) is known, but the kernel location may
-* be unknown. This functions walks the page table in the area in which ntoskrnl
-* is loaded (0xFFFFF80000000000-0xFFFFF803FFFFFFFF) looking for 2MB large pages
-* If an area in 2MB pages are found it is scanned for the ntoskrnl.exe base.
-* -- paPML4
-* -- return = virtual address of ntoskrnl.exe base if successful, otherwise 0.
-*/
-QWORD VmmProcPHYS_ScanWindowsKernel_LargePages(_In_ QWORD paPML4)
-{
-    PBYTE pbBuffer;
-    QWORD p, o, vaCurrentMin, vaBase, cbSize;
-    PVMM_PROCESS pSystemProcess = NULL;
-    BOOL fINITKDBG, fPOOLCODE;
-    vaCurrentMin = 0xFFFFF80000000000;     // base of windows kernel possible location
-    while(TRUE) {
-        VmmProcPHYS_ScanWindowsKernel_LargePages_PageTableWalk(paPML4, 0, vaCurrentMin, 0xFFFFF803FFFFFFFF, 4, &vaBase, &cbSize);
-        if(!vaBase) { return 0; }
-        vaCurrentMin = vaBase + cbSize;
-        if(cbSize <= 0x00400000) { continue; }  // too small
-        if(cbSize >= 0x01000000) { continue; }  // too big
-        if(!pSystemProcess) {
-            pSystemProcess = VmmProcessCreateEntry(4, 0, paPML4, 0, "System", FALSE, FALSE);
-            if(!pSystemProcess) { return 0; }
-            VmmProcessCreateFinish();
-        }
-        // try locate ntoskrnl.exe base inside suggested area
-        pbBuffer = (PBYTE)LocalAlloc(0, cbSize);
-        if(!pbBuffer) { return 0; }
-        VmmReadEx(pSystemProcess, vaBase, pbBuffer, (DWORD)cbSize, NULL, 0);
-        for(p = 0; p < cbSize; p += 0x1000) {
-            if(*(PWORD)(pbBuffer + p) != 0x5a4d) { continue; }
-            // check if module header contains INITKDBG and POOLCODE
-            fINITKDBG = FALSE;
-            fPOOLCODE = FALSE;
-            for(o = 0; o < 0x1000; o += 8) {
-                if(*(PQWORD)(pbBuffer + p + o) == 0x4742444B54494E49) { // INITKDBG
-                    fINITKDBG = TRUE;
-                }
-                if(*(PQWORD)(pbBuffer + p + o) == 0x45444F434C4F4F50) { // POOLCODE
-                    fPOOLCODE = TRUE;
-                }
-                if(fINITKDBG && fPOOLCODE) {
-                    LocalFree(pbBuffer);
-                    return vaBase + p;
-                }
-            }
-        }
-        LocalFree(pbBuffer);
-    }
-}
 
 // ----------------------------------------------------------------------------
 // GENERIC PROCESS RELATED FUNCTIONALITY BELOW:
@@ -125,17 +20,61 @@ QWORD VmmProcPHYS_ScanWindowsKernel_LargePages(_In_ QWORD paPML4)
 * -- ctx
 * -- return
 */
-BOOL VmmProcUserCR3TryInitialize()
+BOOL VmmProcUserCR3TryInitialize64()
 {
     PVMM_PROCESS pProcess;
+    VmmInitializeMemoryModel(VMM_MEMORYMODEL_X64);
     pProcess = VmmProcessCreateEntry(0, 0, ctxMain->cfg.paCR3, 0, "unknown_process", FALSE, TRUE);
     VmmProcessCreateFinish();
     if(!pProcess) {
-        vmmprintfv("VmmProc: FAIL: Initialization of Process failed from user-defined CR3 %016llx. #4.\n", ctxMain->cfg.paCR3);
+        vmmprintfv("VmmProc: FAIL: Initialization of Process failed from user-defined CR3 %016llx.\n", ctxMain->cfg.paCR3);
+        VmmInitializeMemoryModel(VMM_MEMORYMODEL_NA);
         return FALSE;
     }
-    VmmTlbSpider(pProcess->paPML4, FALSE);
-    ctxVmm->fTargetSystem = VMM_TARGET_UNKNOWN_X64;
+    VmmTlbSpider(pProcess->paDTB, FALSE);
+    ctxVmm->tpSystem = VMM_SYSTEM_UNKNOWN_X64;
+    ctxVmm->kernel.paDTB = ctxMain->cfg.paCR3;
+    return TRUE;
+}
+
+BOOL VmmProc_Refresh(_In_ BOOL fProcessList, _In_ BOOL fProcessFull)
+{
+    PVMM_PROCESS pSystemProcess;
+    QWORD paSystemPML4, vaSystemEPROCESS;
+    if(fProcessList) {
+        ctxVmm->stat.cRefreshProcessPartial++;
+        // Windows OS
+        if((ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X64) || (ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X86)) {
+            pSystemProcess = VmmProcessGet(4);
+            if(pSystemProcess) {
+                VmmWin_EnumerateEPROCESS(pSystemProcess);
+                vmmprintfvv("VmmProc: vmmproc.c!VmmProcCacheUpdaterThread FlushProcessList\n");
+            }
+        }
+    }
+    if(fProcessFull) {
+        ctxVmm->stat.cRefreshProcessFull++;
+        // Windows OS
+        if((ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X64) || (ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X86)) {
+            pSystemProcess = VmmProcessGet(4);
+            if(pSystemProcess) {
+                paSystemPML4 = pSystemProcess->paDTB;
+                vaSystemEPROCESS = pSystemProcess->os.win.vaEPROCESS;
+                // spider TLB and set up initial system process and enumerate EPROCESS
+                VmmTlbSpider(paSystemPML4, FALSE);
+                pSystemProcess = VmmProcessCreateEntry(4, 0, paSystemPML4, 0, "System", FALSE, TRUE);
+                if(!pSystemProcess) { return FALSE; }
+                pSystemProcess->os.win.vaEPROCESS = vaSystemEPROCESS;
+                VmmWin_EnumerateEPROCESS(pSystemProcess);
+                vmmprintfvv("vmmproc.c!VmmProc_Refresh FlushProcessListAndBuffers\n");
+            }
+        }
+        // Single user-defined X64 process
+        if(ctxVmm->tpSystem == VMM_SYSTEM_UNKNOWN_X64) {
+            VmmProcessCreateTable();
+            VmmProcUserCR3TryInitialize64();
+        }
+    }
     return TRUE;
 }
 
@@ -149,8 +88,6 @@ DWORD VmmProcCacheUpdaterThread()
 {
     QWORD i = 0;
     BOOL fPHYS, fTLB, fProcList, fProcTotal;
-    PVMM_PROCESS pSystemProcess;
-    QWORD paSystemPML4, vaSystemEPROCESS;
     vmmprintfv("VmmProc: Start periodic cache flushing.\n");
     ctxVmm->ThreadProcCache.cMs_TickPeriod = VMMPROC_UPDATERTHREAD_PERIOD;
     ctxVmm->ThreadProcCache.cTick_Phys = VMMPROC_UPDATERTHREAD_PHYSCACHE;
@@ -173,44 +110,16 @@ DWORD VmmProcCacheUpdaterThread()
         }
         // refresh proc list
         if(fProcList) {
-            ctxVmm->stat.cRefreshProcessPartial++;
-            // Windows OS
-            if(ctxVmm->fTargetSystem & VMM_TARGET_WINDOWS_X64) {
-                pSystemProcess = VmmProcessGet(4);
-                if(pSystemProcess) {
-                    VmmProcWindows_EnumerateEPROCESS(pSystemProcess);
-                    vmmprintfvv("VmmProc: vmmproc.c!VmmProcCacheUpdaterThread FlushProcessList\n");
-                }
-            }
+            VmmProc_Refresh(TRUE, FALSE);
         }
         // total refresh of entire proc cache
         if(fProcTotal) {
-            ctxVmm->stat.cRefreshProcessFull++;
-            // Windows OS
-            if(ctxVmm->fTargetSystem & VMM_TARGET_WINDOWS_X64) {
-                pSystemProcess = VmmProcessGet(4);
-                if(pSystemProcess) {
-                    paSystemPML4 = pSystemProcess->paPML4;
-                    vaSystemEPROCESS = pSystemProcess->os.win.vaEPROCESS;
-                    // spider TLB and set up initial system process and enumerate EPROCESS
-                    VmmTlbSpider(paSystemPML4, FALSE);
-                    pSystemProcess = VmmProcessCreateEntry(4, 0, paSystemPML4, 0, "System", FALSE, TRUE);
-                    if(!pSystemProcess) {
-                        vmmprintf("VmmProc: Failed to refresh memory process file system - aborting.\n");
-                        VmmProcessCreateFinish();
-                        ctxVmm->ThreadProcCache.fEnabled = FALSE;
-                        LeaveCriticalSection(&ctxVmm->MasterLock);
-                        goto fail;
-                    }
-                    pSystemProcess->os.win.vaEPROCESS = vaSystemEPROCESS;
-                    VmmProcWindows_EnumerateEPROCESS(pSystemProcess);
-                    vmmprintfvv("VmmProc: vmmproc.c!VmmProcCacheUpdaterThread FlushProcessListAndBuffers\n");
-                }
-            }
-            // Single user-defined X64 process
-            if(ctxVmm->fTargetSystem & VMM_TARGET_UNKNOWN_X64) {
-                VmmProcessCreateTable();
-                VmmProcUserCR3TryInitialize(ctxVmm);
+            if(!VmmProc_Refresh(FALSE, TRUE)) {
+                vmmprintf("VmmProc: Failed to refresh memory process file system - aborting.\n");
+                VmmProcessCreateFinish();
+                ctxVmm->ThreadProcCache.fEnabled = FALSE;
+                LeaveCriticalSection(&ctxVmm->MasterLock);
+                goto fail;
             }
         }
         LeaveCriticalSection(&ctxVmm->MasterLock);
@@ -223,47 +132,27 @@ fail:
 
 VOID VmmProc_InitializeModuleNames(_In_ PVMM_PROCESS pProcess)
 {
-    if(ctxVmm->fTargetSystem & VMM_TARGET_WINDOWS_X64) {
-        VmmProcWindows_InitializeModuleNames(pProcess);
+    if((ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X64) || (ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X86)) {
+        VmmWin_InitializeModuleNames(pProcess);
     }
 }
 
 BOOL VmmProcInitialize()
 {
-    BOOL result;
-    QWORD vaKernelBase;
+    BOOL result = FALSE;
     if(!VmmInitialize()) { return FALSE; }
-    // user supplied a CR3 - use it!
-    if(ctxMain->cfg.paCR3) {
-        // if VmmProcPHYS_ScanWindowsKernel_LargePages returns a value this is a
-        // Windows system - initialize it, otherwise initialize the generic x64
-        // single process more basic mode.
-        result = FALSE;
-        vaKernelBase = VmmProcPHYS_ScanWindowsKernel_LargePages(ctxMain->cfg.paCR3);
-        if(vaKernelBase) {
-            result = VmmProcWindows_TryInitialize(ctxMain->cfg.paCR3, vaKernelBase);
-        }
-        if(!vaKernelBase) {
-            result = VmmProcUserCR3TryInitialize(ctxVmm);
-            if(!result) {
-                VmmInitialize(); // re-initialize VMM to clear state
-            }
-        }
-        if(!result) {
-            result = VmmProcUserCR3TryInitialize(ctxVmm);
-        }
-    } else {
-        // no page directory was found, so try initialize it by looking if the
-        // "low stub" exists on a Windows sytem and use it. Otherwise fail.
-        result = VmmProcWindows_TryInitialize(0, 0);
+    // 1: try initialize 'windows' with an optionally supplied CR3
+    result = VmmWinInit_TryInitialize(ctxMain->cfg.paCR3);
+    if(!result) {
+        result = ctxMain->cfg.paCR3 && VmmProcUserCR3TryInitialize64();
         if(!result) {
             vmmprintf(
                 "VmmProc: Unable to auto-identify operating system for PROC file system mount.   \n" \
-                "         Please specify PageDirectoryBase (CR3/PML4) in the -cr3 option if value\n" \
+                "         Please specify PageDirectoryBase (DTB/CR3) in the -cr3 option if value \n" \
                 "         is known. If unknown it may be recoverable with command 'identify'.    \n");
         }
     }
-    // set up cache mainenance in the form of a separate worker thread in case
+    // set up cache maintenance in the form of a separate worker thread in case
     // the backend is a writeable device (FPGA). File devices are read-only so
     // far so full caching is enabled since they are considered to be read-only.
     if(result && !ctxVmm->fReadOnly) {
@@ -308,34 +197,38 @@ _Success_(return)
 BOOL VmmProcPHYS_ScanForKernel(_Out_ PQWORD ppaPML4, _In_ QWORD paBase, _In_ QWORD paMax, _In_ LPSTR szDescription)
 {
     QWORD o, i, paCurrent;
-    PAGE_STATISTICS pageStat;
-    PBYTE pbBuffer8M;
+    PBYTE pbBuffer8M = NULL;
+    PPAGE_STATISTICS pPageStat = NULL;
     BOOL result;
     // initialize / allocate memory
-    if(!(pbBuffer8M = LocalAlloc(0, 0x800000))) { return FALSE; }
-    ZeroMemory(&pageStat, sizeof(PAGE_STATISTICS));
+    pbBuffer8M = LocalAlloc(0, 0x800000);
+    pPageStat = (PPAGE_STATISTICS)LocalAlloc(LMEM_ZEROINIT, sizeof(PAGE_STATISTICS));
+    if(!pbBuffer8M || !pPageStat) { goto fail; }
     paCurrent = paBase;
-    PageStatInitialize(&pageStat, paCurrent, paMax, szDescription, FALSE, FALSE);
+    PageStatInitialize(pPageStat, paCurrent, paMax, szDescription, FALSE, FALSE);
     // loop kmd-find
     for(; paCurrent < paMax; paCurrent += 0x00800000) {
-        if(!DeviceReadMEMEx(paCurrent, pbBuffer8M, 0x00800000, &pageStat)) { continue; }
+        if(!DeviceReadMEMEx(paCurrent, pbBuffer8M, 0x00800000, pPageStat)) { continue; }
         for(o = 0; o < 0x00800000; o += 0x1000) {
             // Scan for windows EPROCESS (to get DirectoryBase/PML4)
             for(i = 0; i < 0x1000; i += 8) {
                 if(*(PQWORD)(pbBuffer8M + o + i) == 0x00006D6574737953) {
                     result = VmmProcPHYS_VerifyWindowsEPROCESS(pbBuffer8M, 0x00800000, o + i, ppaPML4);
                     if(result) {
-                        pageStat.szAction = "Windows System PageDirectoryBase/PML4 located";
+                        pPageStat->szAction = "Windows System PageDirectoryBase/PML4 located";
+                        PageStatClose(pPageStat);
+                        LocalFree(pPageStat);
                         LocalFree(pbBuffer8M);
-                        PageStatClose(&pageStat);
                         return TRUE;
                     }
                 }
             }
         }
     }
+fail:
+    if(pPageStat) { PageStatClose(pPageStat); }
+    LocalFree(pPageStat);
     LocalFree(pbBuffer8M);
-    PageStatClose(&pageStat);
     *ppaPML4 = 0;
     return FALSE;
 }

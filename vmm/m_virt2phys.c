@@ -19,7 +19,7 @@
 * -- pDummy
 * -- return
 */
-PVMM_VIRT2PHYS_INFORMATION Virt2Phys_GetContext(_Inout_opt_ PHANDLE phProcessPrivate, _Inout_opt_ PVMM_VIRT2PHYS_INFORMATION pDummy)
+PVMM_VIRT2PHYS_INFORMATION Virt2Phys_GetContext(_Inout_ PHANDLE phProcessPrivate, _Out_opt_ PVMM_VIRT2PHYS_INFORMATION pDummy)
 {
     if(*phProcessPrivate) {
         return (PVMM_VIRT2PHYS_INFORMATION)*phProcessPrivate;
@@ -51,26 +51,64 @@ NTSTATUS Virt2Phys_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ LPVOID pb, _In_ D
     VMM_VIRT2PHYS_INFORMATION Virt2PhysInfo_Dummy, *pVirt2PhysInfo;
     pVirt2PhysInfo = Virt2Phys_GetContext(ctx->phProcessPrivate, &Virt2PhysInfo_Dummy);
     if(!_stricmp(ctx->szPath, "virt")) {
-        return Util_VfsReadFile_FromQWORD(pVirt2PhysInfo->va, pb, cb, pcbRead, cbOffset, FALSE);
+        switch(ctxVmm->tpMemoryModel) {
+            case VMM_MEMORYMODEL_X64:
+                return Util_VfsReadFile_FromQWORD(pVirt2PhysInfo->va, pb, cb, pcbRead, cbOffset, FALSE);
+                break;
+            case VMM_MEMORYMODEL_X86:
+            case VMM_MEMORYMODEL_X86PAE:
+                return Util_VfsReadFile_FromDWORD((DWORD)pVirt2PhysInfo->va, pb, cb, pcbRead, cbOffset, FALSE);
+                break;
+        }
     }
     if(!_stricmp(ctx->szPath, "phys")) {
-        return Util_VfsReadFile_FromQWORD(pVirt2PhysInfo->x64.pas[0], pb, cb, pcbRead, cbOffset, FALSE);
+        return Util_VfsReadFile_FromQWORD(pVirt2PhysInfo->pas[0], pb, cb, pcbRead, cbOffset, FALSE);
     }
     if(!_stricmp(ctx->szPath, "map")) {
-        cbBuffer = snprintf(
-            pbBuffer,
-            0x1000,
-            "PML4 %016llx +%03x %016llx\n" \
-            "PDPT %016llx +%03x %016llx\n" \
-            "PD   %016llx +%03x %016llx\n" \
-            "PT   %016llx +%03x %016llx\n" \
-            "PAGE %016llx\n",
-            pVirt2PhysInfo->x64.pas[4], pVirt2PhysInfo->x64.iPTEs[4] << 3, pVirt2PhysInfo->x64.PTEs[4],
-            pVirt2PhysInfo->x64.pas[3], pVirt2PhysInfo->x64.iPTEs[3] << 3, pVirt2PhysInfo->x64.PTEs[3],
-            pVirt2PhysInfo->x64.pas[2], pVirt2PhysInfo->x64.iPTEs[2] << 3, pVirt2PhysInfo->x64.PTEs[2],
-            pVirt2PhysInfo->x64.pas[1], pVirt2PhysInfo->x64.iPTEs[1] << 3, pVirt2PhysInfo->x64.PTEs[1],
-            pVirt2PhysInfo->x64.pas[0]
-        );
+        switch(ctxVmm->tpMemoryModel) {
+            case VMM_MEMORYMODEL_X64:
+                cbBuffer = snprintf(
+                    pbBuffer,
+                    0x1000,
+                    "PML4 %016llx +%03x %016llx\n" \
+                    "PDPT %016llx +%03x %016llx\n" \
+                    "PD   %016llx +%03x %016llx\n" \
+                    "PT   %016llx +%03x %016llx\n" \
+                    "PAGE %016llx\n",
+                    pVirt2PhysInfo->pas[4], pVirt2PhysInfo->iPTEs[4] << 3, pVirt2PhysInfo->PTEs[4],
+                    pVirt2PhysInfo->pas[3], pVirt2PhysInfo->iPTEs[3] << 3, pVirt2PhysInfo->PTEs[3],
+                    pVirt2PhysInfo->pas[2], pVirt2PhysInfo->iPTEs[2] << 3, pVirt2PhysInfo->PTEs[2],
+                    pVirt2PhysInfo->pas[1], pVirt2PhysInfo->iPTEs[1] << 3, pVirt2PhysInfo->PTEs[1],
+                    pVirt2PhysInfo->pas[0]
+                );
+                break;
+            case VMM_MEMORYMODEL_X86PAE:
+                cbBuffer = snprintf(
+                    pbBuffer,
+                    0x1000,
+                    "PDPT %016llx +%03x %016llx\n" \
+                    "PD   %016llx +%03x %016llx\n" \
+                    "PT   %016llx +%03x %016llx\n" \
+                    "PAGE %016llx\n",
+                    pVirt2PhysInfo->pas[3], pVirt2PhysInfo->iPTEs[3] << 3, pVirt2PhysInfo->PTEs[3],
+                    pVirt2PhysInfo->pas[2], pVirt2PhysInfo->iPTEs[2] << 3, pVirt2PhysInfo->PTEs[2],
+                    pVirt2PhysInfo->pas[1], pVirt2PhysInfo->iPTEs[1] << 3, pVirt2PhysInfo->PTEs[1],
+                    pVirt2PhysInfo->pas[0]
+                );
+                break;
+            case VMM_MEMORYMODEL_X86:
+                cbBuffer = snprintf(
+                    pbBuffer,
+                    0x1000,
+                    "PD   %016llx +%03x %08x\n" \
+                    "PT   %016llx +%03x %08x\n" \
+                    "PAGE %016llx\n",
+                    pVirt2PhysInfo->pas[2], pVirt2PhysInfo->iPTEs[2] << 2, (DWORD)pVirt2PhysInfo->PTEs[2],
+                    pVirt2PhysInfo->pas[1], pVirt2PhysInfo->iPTEs[1] << 2, (DWORD)pVirt2PhysInfo->PTEs[1],
+                    pVirt2PhysInfo->pas[0]
+                );
+                break;
+        }
         return Util_VfsReadFile_FromPBYTE(pbBuffer, cbBuffer, pb, cb, pcbRead, cbOffset);
     }
     // "page table" or data page
@@ -78,13 +116,15 @@ NTSTATUS Virt2Phys_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ LPVOID pb, _In_ D
     if(!_stricmp(ctx->szPath, "pt_pdpt")) { iPML = 3; }
     if(!_stricmp(ctx->szPath, "pt_pd")) { iPML = 2; }
     if(!_stricmp(ctx->szPath, "pt_pt")) { iPML = 1; }
+    if((ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_X86) && (iPML > 2)) { return VMMDLL_STATUS_FILE_INVALID; }
+    if((ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_X86PAE) && (iPML > 3)) { return VMMDLL_STATUS_FILE_INVALID; }
     ZeroMemory(pbBuffer, 0x1000);
     pbSourceData = pbBuffer;
-    if(iPML && (pVirt2PhysInfo->x64.pas[iPML] & ~0xfff)) {
-        pbSourceData = VmmTlbGetPageTable(pVirt2PhysInfo->x64.pas[iPML] & ~0xfff, FALSE);
+    if(iPML && (pVirt2PhysInfo->pas[iPML] & ~0xfff)) {
+        pbSourceData = VmmTlbGetPageTable(pVirt2PhysInfo->pas[iPML] & ~0xfff, FALSE);
     }
-    if(!_stricmp(ctx->szPath, "page") && (pVirt2PhysInfo->x64.pas[0] & ~0xfff)) {
-        VmmReadPhysicalPage(pVirt2PhysInfo->x64.pas[0] & ~0xfff, pbBuffer);
+    if(!_stricmp(ctx->szPath, "page") && (pVirt2PhysInfo->pas[0] & ~0xfff)) {
+        VmmReadPhysicalPage(pVirt2PhysInfo->pas[0] & ~0xfff, pbBuffer);
     }
     if(iPML || !_stricmp(ctx->szPath, "page")) {
         return Util_VfsReadFile_FromPBYTE(pbSourceData, 0x1000, pb, cb, pcbRead, cbOffset);
@@ -107,7 +147,8 @@ NTSTATUS Virt2Phys_WriteVA(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ LPVOID pb, _In_
     PVMM_PROCESS pProcess = (PVMM_PROCESS)ctx->pProcess;
     BYTE pbBuffer[17];
     PVMM_VIRT2PHYS_INFORMATION pVirt2PhysInfo;
-    if(cbOffset < 16) {
+    VMM_MEMORYMODEL_TP tp = ctxVmm->tpMemoryModel;
+    if((tp == VMM_MEMORYMODEL_X64) && (cbOffset < 16)) {
         pVirt2PhysInfo = Virt2Phys_GetContext(ctx->phProcessPrivate, NULL);
         *pcbWrite = cb;
         snprintf(pbBuffer, 17, "%016llx", pVirt2PhysInfo->va);
@@ -115,6 +156,15 @@ NTSTATUS Virt2Phys_WriteVA(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ LPVOID pb, _In_
         memcpy(pbBuffer + cbOffset, pb, cb);
         pbBuffer[16] = 0;
         pVirt2PhysInfo->va = strtoull(pbBuffer, NULL, 16);
+        VmmVirt2PhysGetInformation(pProcess, pVirt2PhysInfo);
+    } else if ((tp == VMM_MEMORYMODEL_X86) || (tp == VMM_MEMORYMODEL_X86PAE)) {
+        pVirt2PhysInfo = Virt2Phys_GetContext(ctx->phProcessPrivate, NULL);
+        *pcbWrite = cb;
+        snprintf(pbBuffer, 9, "%08x", (DWORD)pVirt2PhysInfo->va);
+        cb = (DWORD)min(8 - cbOffset, cb);
+        memcpy(pbBuffer + cbOffset, pb, cb);
+        pbBuffer[8] = 0;
+        pVirt2PhysInfo->va = strtoul(pbBuffer, NULL, 16);
         VmmVirt2PhysGetInformation(pProcess, pVirt2PhysInfo);
     } else {
         *pcbWrite = 0;
@@ -147,10 +197,10 @@ NTSTATUS Virt2Phys_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ LPVOID pb, _In_ D
     if(!_stricmp(ctx->szPath, "pt_pt")) { i = 1; }
     if(!_stricmp(ctx->szPath, "page")) { i = 0; }
     if(i > 4) { return VMMDLL_STATUS_FILE_INVALID; }
-    if(pVirt2PhysInfo->x64.pas[i] < 0x1000) { return VMMDLL_STATUS_FILE_INVALID; }
+    if(pVirt2PhysInfo->pas[i] < 0x1000) { return VMMDLL_STATUS_FILE_INVALID; }
     if(cbOffset > 0x1000) { return VMMDLL_STATUS_END_OF_FILE; }
     *pcbWrite = (DWORD)min(cb, 0x1000 - cbOffset);
-    VmmWritePhysical(pVirt2PhysInfo->x64.pas[i] + cbOffset, pb, *pcbWrite);
+    VmmWritePhysical(pVirt2PhysInfo->pas[i] + cbOffset, pb, *pcbWrite);
     return *pcbWrite ? VMMDLL_STATUS_SUCCESS : VMMDLL_STATUS_END_OF_FILE;
 }
 
@@ -169,14 +219,35 @@ BOOL Virt2Phys_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
         // not root directory == error for this module.
         return FALSE;
     }
-    VMMDLL_VfsList_AddFile(pFileList, "virt", 16);
-    VMMDLL_VfsList_AddFile(pFileList, "phys", 16);
-    VMMDLL_VfsList_AddFile(pFileList, "map", 198);
-    VMMDLL_VfsList_AddFile(pFileList, "page", 0x1000);
-    VMMDLL_VfsList_AddFile(pFileList, "pt_pml4", 0x1000);
-    VMMDLL_VfsList_AddFile(pFileList, "pt_pdpt", 0x1000);
-    VMMDLL_VfsList_AddFile(pFileList, "pt_pd", 0x1000);
-    VMMDLL_VfsList_AddFile(pFileList, "pt_pt", 0x1000);
+    switch(ctxVmm->tpMemoryModel) {
+        case VMM_MEMORYMODEL_X64:
+            VMMDLL_VfsList_AddFile(pFileList, "virt", 16);
+            VMMDLL_VfsList_AddFile(pFileList, "phys", 16);
+            VMMDLL_VfsList_AddFile(pFileList, "map", 198);
+            VMMDLL_VfsList_AddFile(pFileList, "pt_pml4", 0x1000);
+            VMMDLL_VfsList_AddFile(pFileList, "pt_pdpt", 0x1000);
+            VMMDLL_VfsList_AddFile(pFileList, "pt_pd", 0x1000);
+            VMMDLL_VfsList_AddFile(pFileList, "pt_pt", 0x1000);
+            VMMDLL_VfsList_AddFile(pFileList, "page", 0x1000);
+            break;
+        case VMM_MEMORYMODEL_X86PAE:
+            VMMDLL_VfsList_AddFile(pFileList, "virt", 8);
+            VMMDLL_VfsList_AddFile(pFileList, "phys", 16);
+            VMMDLL_VfsList_AddFile(pFileList, "map", 154);
+            VMMDLL_VfsList_AddFile(pFileList, "pt_pdpt", 0x1000);
+            VMMDLL_VfsList_AddFile(pFileList, "pt_pd", 0x1000);
+            VMMDLL_VfsList_AddFile(pFileList, "pt_pt", 0x1000);
+            VMMDLL_VfsList_AddFile(pFileList, "page", 0x1000);
+            break;
+        case VMM_MEMORYMODEL_X86:
+            VMMDLL_VfsList_AddFile(pFileList, "virt", 8);
+            VMMDLL_VfsList_AddFile(pFileList, "phys", 16);
+            VMMDLL_VfsList_AddFile(pFileList, "map", 94);
+            VMMDLL_VfsList_AddFile(pFileList, "pt_pd", 0x1000);
+            VMMDLL_VfsList_AddFile(pFileList, "pt_pt", 0x1000);
+            VMMDLL_VfsList_AddFile(pFileList, "page", 0x1000);
+            break;
+    }
     return TRUE;
 }
 
@@ -192,6 +263,7 @@ BOOL Virt2Phys_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 VOID Virt2Phys_CloseHandleProcess(_In_opt_ PHANDLE phModulePrivate, _Inout_ PHANDLE phProcessPrivate)
 {
     LocalFree(*phProcessPrivate);
+    *phProcessPrivate = 0;
 }
 
 /*
@@ -202,14 +274,15 @@ VOID Virt2Phys_CloseHandleProcess(_In_opt_ PHANDLE phModulePrivate, _Inout_ PHAN
 * operating system or architecture is unsupported.
 * -- pPluginRegInfo
 */
-VOID M_Virt2Phys_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo)
+VOID M_Virt2Phys_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
-    if(0 == (pPluginRegInfo->fTargetSystem & (VMM_TARGET_UNKNOWN_X64 | VMM_TARGET_WINDOWS_X64))) { return; }
-    strcpy_s(pPluginRegInfo->reg_info.szModuleName, 32, "virt2phys");               // module name
-    pPluginRegInfo->reg_info.fProcessModule = TRUE;                                 // module shows in process directory
-    pPluginRegInfo->reg_fn.pfnList = Virt2Phys_List;                                // List function supported
-    pPluginRegInfo->reg_fn.pfnRead = Virt2Phys_Read;                                // Read function supported
-    pPluginRegInfo->reg_fn.pfnWrite = Virt2Phys_Write;                              // Write function supported
-    pPluginRegInfo->reg_fn.pfnCloseHandleProcess = Virt2Phys_CloseHandleProcess;    // Close process module private handle supported
-    pPluginRegInfo->pfnPluginManager_Register(pPluginRegInfo);
+    if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
+    if(!((pRI->tpMemoryModel == VMM_MEMORYMODEL_X64) || (pRI->tpMemoryModel == VMM_MEMORYMODEL_X86) || (pRI->tpMemoryModel == VMM_MEMORYMODEL_X86PAE))) { return; }
+    strcpy_s(pRI->reg_info.szModuleName, 32, "virt2phys");               // module name
+    pRI->reg_info.fProcessModule = TRUE;                                 // module shows in process directory
+    pRI->reg_fn.pfnList = Virt2Phys_List;                                // List function supported
+    pRI->reg_fn.pfnRead = Virt2Phys_Read;                                // Read function supported
+    pRI->reg_fn.pfnWrite = Virt2Phys_Write;                              // Write function supported
+    pRI->reg_fn.pfnCloseHandleProcess = Virt2Phys_CloseHandleProcess;    // Close process module private handle supported
+    pRI->pfnPluginManager_Register(pRI);
 }

@@ -140,7 +140,7 @@ def IsProcessPeb6432(pid):
     if(procinfo['state'] != 0):
         result = False, False
     else:
-        result = procinfo['va-peb'] > 0, procinfo['va-peb32'] > 0
+        result = procinfo['va-peb'] > 0, ('va-peb32' in procinfo and procinfo['va-peb32'] > 0)
     procstruct_cache_proc_wow64[pid] = result
     return result
 
@@ -185,11 +185,11 @@ def Close():
 
 
 
-def Initialize(os_target):
-    # Check that the operating system is 64-bit Windows. If it's not then raise
-    # an exception to terminate loading of this module.
-    if os_target != VMMPY_TARGET_WINDOWS_X64:
-        raise RuntimeError("Only x64 Windows is supported by the pym_procstruct module.")
+def Initialize(target_system, target_memorymodel):
+    # Check that the operating system is 32-bit or 64-bit Windows. If it's not
+    # then raise an exception to terminate loading of this module.
+    if target_system != VMMPY_SYSTEM_WINDOWS_X64 and target_system != VMMPY_SYSTEM_WINDOWS_X86:
+        raise RuntimeError("Only Windows is supported by the pym_procstruct module.")
     # Calculate the size of the 'eprocess_size_hex' global variable. This is
     # only done once - at module instantiation to speed up the list operation.
     global procstruct_eprocess_size_hex

@@ -5,7 +5,9 @@
 //
 
 #include "vmm.h"
-#include "vmmx64.h"
+#include "mm_x86.h"
+#include "mm_x86pae.h"
+#include "mm_x64.h"
 #include "vmmproc.h"
 #include "pluginmanager.h"
 #include "device.h"
@@ -242,20 +244,24 @@ PVMM_PROCESS VmmProcessGet(_In_ DWORD dwPID)
     return VmmProcessGetEx(ctxVmm->ptPROC, dwPID);
 }
 
-PVMM_PROCESS VmmProcessCreateEntry(_In_ DWORD dwPID, _In_ DWORD dwState, _In_ QWORD paPML4, _In_ QWORD paPML4_UserOpt, _In_ CHAR szName[16], _In_ BOOL fUserOnly, _In_ BOOL fSpiderPageTableDone)
+PVMM_PROCESS VmmProcessCreateEntry(_In_ DWORD dwPID, _In_ DWORD dwState, _In_ QWORD paDTB, _In_ QWORD paDTB_UserOpt, _In_ CHAR szName[16], _In_ BOOL fUserOnly, _In_ BOOL fSpiderPageTableDone)
 {
     QWORD i, iStart, cEmpty = 0, cValid = 0;
     PVMM_PROCESS pNewProcess;
-    PBYTE pbPML4;
+    PBYTE pbDTB;
     // 1: Sanity check PML4
-    pbPML4 = VmmTlbGetPageTable(paPML4, FALSE);
-    if(!pbPML4) { return NULL; }
-    if(!VmmTlbPageTableVerify(pbPML4, paPML4, (ctxVmm->fTargetSystem & VMM_TARGET_WINDOWS_X64))) { return NULL; }
+    pbDTB = VmmTlbGetPageTable(paDTB, FALSE);
+    if(!pbDTB) { return NULL; }
+    if(!VmmTlbPageTableVerify(pbDTB, paDTB, (ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X64))) { return NULL; }
     // 2: Allocate new PID table (if not already existing)
     if(ctxVmm->ptPROC->ptNew == NULL) {
         if(!(ctxVmm->ptPROC->ptNew = LocalAlloc(LMEM_ZEROINIT, sizeof(VMM_PROCESS_TABLE)))) { return NULL; }
     }
-    // 3: Prepare existing item, or create new item, for new PID
+    // 3: Sanity check - process to create not already in 'new' table.
+    if(VmmProcessGetEx(ctxVmm->ptPROC->ptNew, dwPID)) {
+        return NULL;
+    }
+    // 4: Prepare existing item, or create new item, for new PID
     pNewProcess = VmmProcessGetEx(ctxVmm->ptPROC, dwPID);
     if(!pNewProcess) {
         if(!(pNewProcess = LocalAlloc(LMEM_ZEROINIT, sizeof(VMM_PROCESS)))) { return NULL; }
@@ -263,12 +269,12 @@ PVMM_PROCESS VmmProcessCreateEntry(_In_ DWORD dwPID, _In_ DWORD dwState, _In_ QW
     memcpy(pNewProcess->szName, szName, 16);
     pNewProcess->dwPID = dwPID;
     pNewProcess->dwState = dwState;
-    pNewProcess->paPML4 = paPML4;
-    pNewProcess->paPML4_UserOpt = paPML4_UserOpt;
+    pNewProcess->paDTB = paDTB;
+    pNewProcess->paDTB_UserOpt = paDTB_UserOpt;
     pNewProcess->fUserOnly = fUserOnly;
     pNewProcess->fSpiderPageTableDone = pNewProcess->fSpiderPageTableDone || fSpiderPageTableDone;
     pNewProcess->_i_fMigrated = TRUE;
-    // 4: Install new PID
+    // 5: Install new PID
     i = iStart = dwPID % VMM_PROCESSTABLE_ENTRIES_MAX;
     while(TRUE) {
         if(!ctxVmm->ptPROC->ptNew->M[i]) {
@@ -339,7 +345,7 @@ VOID VmmProcessCreateFinish()
     }
 }
 
-VOID VmmProcessListPIDs(_Out_ PDWORD pPIDs, _Inout_ PSIZE_T pcPIDs)
+VOID VmmProcessListPIDs(_Out_opt_ PDWORD pPIDs, _Inout_ PSIZE_T pcPIDs)
 {
     DWORD i = 0;
     WORD iProcess;
@@ -413,7 +419,7 @@ VOID VmmWriteScatterPhysical(_Inout_ PPMEM_IO_SCATTER_HEADER ppDMAsPhys, _In_ DW
     }
 }
 
-BOOL VmmWritePhysical(_In_ QWORD pa, _Out_ PBYTE pb, _In_ DWORD cb)
+BOOL VmmWritePhysical(_In_ QWORD pa, _In_ PBYTE pb, _In_ DWORD cb)
 {
     QWORD paPage;
     // 1: invalidate any physical pages from cache
@@ -573,8 +579,8 @@ VOID VmmClose()
         }
     }
     VmmProcessCloseTable(ctxVmm->ptPROC, TRUE);
-    if(ctxVmm->MemoryModel.pfnClose) {
-        ctxVmm->MemoryModel.pfnClose();
+    if(ctxVmm->fnMemoryModel.pfnClose) {
+        ctxVmm->fnMemoryModel.pfnClose();
     }
     VmmCacheClose(ctxVmm->ptTLB);
     VmmCacheClose(ctxVmm->ptPHYS);
@@ -583,7 +589,7 @@ VOID VmmClose()
     ctxVmm = NULL;
 }
 
-VOID VmmWriteEx(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwVA, _Out_ PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbWrite)
+VOID VmmWriteEx(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwVA, _In_ PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbWrite)
 {
     DWORD i = 0, oVA = 0, cbWrite = 0, cbP, cDMAs;
     PBYTE pbBuffer;
@@ -598,6 +604,7 @@ VOID VmmWriteEx(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwVA, _Out_ PBYTE pb,
     // prepare pages
     while(oVA < cb) {
         ppDMAs[i] = &pDMAs[i];
+        pDMAs[i].version = MEM_IO_SCATTER_HEADER_VERSION;
         pDMAs[i].qwA = qwVA + oVA;
         cbP = 0x1000 - ((qwVA + oVA) & 0xfff);
         cbP = min(cbP, cb - oVA);
@@ -621,14 +628,14 @@ VOID VmmWriteEx(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwVA, _Out_ PBYTE pb,
     LocalFree(pbBuffer);
 }
 
-BOOL VmmWrite(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwVA, _Out_ PBYTE pb, _In_ DWORD cb)
+BOOL VmmWrite(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwVA, _In_ PBYTE pb, _In_ DWORD cb)
 {
     DWORD cbWrite;
     VmmWriteEx(pProcess, qwVA, pb, cb, &cbWrite);
     return (cbWrite == cb);
 }
 
-VOID VmmReadEx(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwVA, _Inout_ PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbReadOpt, _In_ QWORD flags)
+VOID VmmReadEx(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwVA, _Out_ PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbReadOpt, _In_ QWORD flags)
 {
     DWORD cbP, cDMAs, cbRead = 0;
     PBYTE pbBuffer;
@@ -645,6 +652,7 @@ VOID VmmReadEx(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwVA, _Inout_ PBYTE pb
     // prepare "middle" pages
     for(i = 0; i < cDMAs; i++) {
         ppDMAs[i] = &pDMAs[i];
+        pDMAs[i].version = MEM_IO_SCATTER_HEADER_VERSION;
         pDMAs[i].qwA = qwVA - oVA + (i << 12);
         pDMAs[i].cbMax = 0x1000;
         pDMAs[i].pb = pb - oVA + (i << 12);
@@ -691,18 +699,21 @@ VOID VmmReadEx(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwVA, _Inout_ PBYTE pb
     LocalFree(pbBuffer);
 }
 
-BOOL VmmReadString_Unicode2Ansi(_In_ PVMM_PROCESS pProcess, _In_ QWORD qwVA, _Out_ LPSTR sz, _In_ DWORD cch)
+_Success_(return)
+BOOL VmmReadString_Unicode2Ansi(_In_ PVMM_PROCESS pProcess, _In_ QWORD qwVA, _Out_writes_(cch) LPSTR sz, _In_ DWORD cch)
 {
     DWORD i = 0;
     BOOL result;
     WCHAR wsz[0x1000];
-    if(cch > 0x1000) { return FALSE; }
+    if(cch) { sz[0] = 0; }
+    if(!cch || cch > 0x1000) { return FALSE; }
     result = VmmRead(pProcess, qwVA, (PBYTE)wsz, cch << 1);
     if(!result) { return FALSE; }
-    for(i = 0; i < cch; i++) {
-        sz[i] = ((WORD)wsz[i] <= 0xff) ? (CHAR)wsz[i] : '?';
+    for(i = 0; i < cch - 1; i++) {
+        sz[i] = (CHAR)(((WORD)wsz[i] <= 0xff) ? wsz[i] : '?');
         if(sz[i] == 0) { return TRUE; }
     }
+    sz[cch - 1] = 0;
     return TRUE;
 }
 
@@ -718,6 +729,25 @@ BOOL VmmReadPage(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Inout_bytecoun
     DWORD cb;
     VmmReadEx(pProcess, qwA, pbPage, 0x1000, &cb, 0);
     return cb == 0x1000;
+}
+
+VOID VmmInitializeMemoryModel(_In_ VMM_MEMORYMODEL_TP tp)
+{
+    switch(tp) {
+        case VMM_MEMORYMODEL_X64:
+            MmX64_Initialize();
+            break;
+        case VMM_MEMORYMODEL_X86PAE:
+            MmX86PAE_Initialize();
+            break;
+        case VMM_MEMORYMODEL_X86:
+            MmX86_Initialize();
+            break;
+        default:
+            if(ctxVmm->fnMemoryModel.pfnClose) {
+                ctxVmm->fnMemoryModel.pfnClose();
+            }
+    }
 }
 
 BOOL VmmInitialize()
@@ -738,8 +768,6 @@ BOOL VmmInitialize()
     // 5: OTHER INIT:
     ctxVmm->fReadOnly = (ctxMain->dev.tp == VMM_DEVICE_FILE);
     InitializeCriticalSection(&ctxVmm->MasterLock);
-    // 6: MEMORY MODEL INIT: (x64)
-    VmmX64_Initialize();
     return TRUE;
 fail:
     VmmClose();

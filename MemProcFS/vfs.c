@@ -30,7 +30,6 @@ typedef struct tdVFS_FILELIST {
 } VFS_FILELIST, *PVFS_FILELIST;
 
 BOOL VfsListVmmDirectory(_In_ LPWSTR wszDirectoryName);
-VOID Vfs_UtilSplitPathFile(_Out_ WCHAR wszPath[MAX_PATH], _Out_ LPWSTR *pwcsFile, _In_ LPCWSTR wcsFileName);
 
 //-------------------------------------------------------------------------------
 // FILELIST FUNCTIONALITY BELOW:
@@ -151,6 +150,7 @@ PWIN32_FIND_DATAW VfsFileList_FindSingle(_In_ PVFS_FILELIST pFileList, _In_ LPWS
 // (caching is used to cache vmmproc directory listings for performance reasons)
 //-------------------------------------------------------------------------------
 
+_Success_(return)
 BOOL VfsCacheDirectory_GetSingle2(_In_ LPWSTR wszPath, _In_ LPWSTR wszFile, _Out_ PWIN32_FIND_DATAW pFindData, _Out_ PBOOL pIsDirectoryExisting)
 {
     QWORD i, qwCurrentTickCount;
@@ -247,7 +247,7 @@ BOOL VfsListVmmDirectory(_In_ LPWSTR wszDirectoryName)
     return TRUE;
 }
 
-VOID Vfs_UtilSplitPathFile(_Out_ WCHAR wszPath[MAX_PATH], _Out_ LPWSTR *pwcsFile, _In_ LPCWSTR wcsFileName)
+VOID Vfs_UtilSplitPathFile(_Out_writes_(MAX_PATH) PWCHAR wszPath, _Out_ LPWSTR *pwcsFile, _In_ LPCWSTR wcsFileName)
 {
     DWORD i, iSplitFilePath = 0;
     wcsncpy_s(wszPath, MAX_PATH, wcsFileName, _TRUNCATE);
@@ -395,10 +395,8 @@ VOID VfsClose()
         VfsCacheDirectory_Close();
         DeleteCriticalSection(&ctxVfs->CacheDirectoryLock);
     }
-    if(ctxVfs) {
-        LocalFree(ctxVfs);
-        ctxVfs = NULL;
-    }
+    LocalFree(ctxVfs);
+    ctxVfs = NULL;
 }
 
 VOID VfsInitializeAndMount(_In_ CHAR chMountPoint, _In_ PVMMDLL_FUNCTIONS pVmmDll)
@@ -417,8 +415,13 @@ VOID VfsInitializeAndMount(_In_ CHAR chMountPoint, _In_ PVMMDLL_FUNCTIONS pVmmDl
     pVmmDll->ConfigGet(VMMDLL_OPT_CONFIG_VMM_VERSION_REVISION, &qwVersionRevision);
     // allocate
     hModuleDokan = LoadLibraryExA("dokan1.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    if(!hModuleDokan) {
+        printf("MOUNT: Failed. The required DOKANY file system library is not installed. \n");
+        printf("Please download from : https://github.com/dokan-dev/dokany/releases/latest\n");
+        goto fail; 
+    }
     fnDokanMain = (int(*)(PDOKAN_OPTIONS, PDOKAN_OPERATIONS))GetProcAddress(hModuleDokan, "DokanMain");
-    if(!hModuleDokan || !fnDokanMain) {
+    if(!fnDokanMain) {
         printf("MOUNT: Failed. The required DOKANY file system library is not installed. \n");
         printf("Please download from : https://github.com/dokan-dev/dokany/releases/latest\n");
         goto fail;
@@ -462,7 +465,7 @@ VOID VfsInitializeAndMount(_In_ CHAR chMountPoint, _In_ PVMMDLL_FUNCTIONS pVmmDl
         "a convenient process file system for analysis purposes.                        \n" \
         " - File system is read-only when dump files are used.                          \n" \
         " - File system is read-write when FPGA hardware acquisition devices are used.  \n" \
-        " - Full support exists for x64 Windows operating systems.                      \n" \
+        " - Full support exists for Windows XP to Windows 10 (x86 and x64).             \n" \
         " - Limited support for other x64 operating systems.                            \n" \
         " - Memory Process File System: https://github.com/ufrisk/MemProcFS             \n" \
         " - File system by: Ulf Frisk - pcileech@frizk.net - https://frizk.net          \n" \
@@ -476,7 +479,7 @@ VOID VfsInitializeAndMount(_In_ CHAR chMountPoint, _In_ PVMMDLL_FUNCTIONS pVmmDl
     printf("MOUNT: Failed. Status Code: %i\n", status);
 fail:
     if(hModuleDokan) { FreeLibrary(hModuleDokan); }
-    if(pDokanOptions) { LocalFree(pDokanOptions); }
-    if(pDokanOperations) { LocalFree(pDokanOperations); }
+    LocalFree(pDokanOptions);
+    LocalFree(pDokanOperations);
     VfsClose();
 }

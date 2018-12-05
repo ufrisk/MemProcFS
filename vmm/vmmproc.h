@@ -8,6 +8,14 @@
 #include "vmm.h"
 
 /*
+* Force a refresh of the process list.
+* -- fProcessList = partial refresh of processes should be done.
+* -- fProcessFull = full refresh of processes should be done.
+* -- return
+*/
+BOOL VmmProc_Refresh(_In_ BOOL fProcessList, _In_ BOOL fProcessFull);
+
+/*
 * Load operating system dependant module names, such as parsed from PE or ELF
 * into the proper display caches, and also into the memory map.
 */

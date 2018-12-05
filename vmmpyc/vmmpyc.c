@@ -96,8 +96,8 @@ VMMPYC_MemReadScatter(PyObject *self, PyObject *args)
 {
     PyObject *pyListSrc, *pyListItemSrc, *pyListDst, *pyDict;
     BOOL result;
-    DWORD dwPID, cMEMs, i, flags = 0;
-    ULONG64 qwA;
+    DWORD dwPID, cMEMs, flags = 0;
+    ULONG64 i, qwA;
     PVMMDLL_MEM_IO_SCATTER_HEADER pMEM, pMEMs;
     PPVMMDLL_MEM_IO_SCATTER_HEADER ppMEMs;
     PBYTE pb, pbDataBuffer;
@@ -243,7 +243,7 @@ VMMPYC_ProcessGetMemoryMap(PyObject *self, PyObject *args)
     PyObject *pyList, *pyDict;
     BOOL result, fIdentifyModules;
     DWORD dwPID, i;
-    ULONG64 cMemMapEntries;
+    ULONG64 cMemMapEntries = 0;
     PVMMDLL_MEMMAP_ENTRY pe, pMemMapEntries = NULL;
     CHAR sz[5];
     if(!PyArg_ParseTuple(args, "k|p", &dwPID, &fIdentifyModules)) { return NULL; }
@@ -323,7 +323,7 @@ VMMPYC_ProcessGetModuleMap(PyObject *self, PyObject *args)
     PyObject *pyList, *pyDict;
     BOOL result;
     DWORD dwPID;
-    ULONG64 i, cModuleEntries;
+    ULONG64 i, cModuleEntries = 0;
     PVMMDLL_MODULEMAP_ENTRY pe, pModuleEntries = NULL;
     if(!PyArg_ParseTuple(args, "k", &dwPID)) { return NULL; }
     if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
@@ -402,7 +402,7 @@ VMMPYC_PidList(PyObject *self, PyObject *args)
 {
     PyObject *pyList;
     BOOL result;
-    ULONG64 cPIDs;
+    ULONG64 cPIDs = 0;
     DWORD i, *pPIDs = NULL;
     if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
     Py_BEGIN_ALLOW_THREADS
@@ -445,18 +445,26 @@ VMMPYC_ProcessGetInformation(PyObject *self, PyObject *args)
         return PyErr_Format(PyExc_RuntimeError, "VMMPYC_ProcessGetInformation: Failed.");
     }
     PyDict_SetItemString(pyDict, "pid", PyLong_FromUnsignedLong(info.dwPID));
-    PyDict_SetItemString(pyDict, "pa-pml4", PyLong_FromUnsignedLongLong(info.paPML4));
-    PyDict_SetItemString(pyDict, "pa-pml4-user", PyLong_FromUnsignedLongLong(info.paPML4_UserOpt));
+    PyDict_SetItemString(pyDict, "pa-dtb", PyLong_FromUnsignedLongLong(info.paDTB));
+    PyDict_SetItemString(pyDict, "pa-dtb-user", PyLong_FromUnsignedLongLong(info.paDTB_UserOpt));
     PyDict_SetItemString(pyDict, "state", PyLong_FromUnsignedLong(info.dwState));
-    PyDict_SetItemString(pyDict, "target", PyLong_FromUnsignedLong(info.fTargetSystem));
+    PyDict_SetItemString(pyDict, "tp-memorymodel", PyLong_FromUnsignedLong(info.tpMemoryModel));
+    PyDict_SetItemString(pyDict, "tp-system", PyLong_FromUnsignedLong(info.tpSystem));
     PyDict_SetItemString(pyDict, "usermode", PyBool_FromLong(info.fUserOnly));
     PyDict_SetItemString(pyDict, "name", PyUnicode_FromString(info.szName));
-    if(info.fTargetSystem == VMMDLL_TARGET_WINDOWS_X64) {
-        PyDict_SetItemString(pyDict, "wow64", PyBool_FromLong((long)info.os.win.fWow64));
-        PyDict_SetItemString(pyDict, "va-entry", PyLong_FromUnsignedLongLong(info.os.win.vaENTRY));
-        PyDict_SetItemString(pyDict, "va-eprocess", PyLong_FromUnsignedLongLong(info.os.win.vaEPROCESS));
-        PyDict_SetItemString(pyDict, "va-peb", PyLong_FromUnsignedLongLong(info.os.win.vaPEB));
-        PyDict_SetItemString(pyDict, "va-peb32", PyLong_FromUnsignedLongLong(info.os.win.vaPEB32));
+    switch(info.tpSystem) {
+        case VMMDLL_SYSTEM_WINDOWS_X64:
+            PyDict_SetItemString(pyDict, "wow64", PyBool_FromLong((long)info.os.win.fWow64));
+            PyDict_SetItemString(pyDict, "va-entry", PyLong_FromUnsignedLongLong(info.os.win.vaENTRY));
+            PyDict_SetItemString(pyDict, "va-eprocess", PyLong_FromUnsignedLongLong(info.os.win.vaEPROCESS));
+            PyDict_SetItemString(pyDict, "va-peb", PyLong_FromUnsignedLongLong(info.os.win.vaPEB));
+            PyDict_SetItemString(pyDict, "va-peb32", PyLong_FromUnsignedLongLong(info.os.win.vaPEB32));
+            break;
+        case VMMDLL_SYSTEM_WINDOWS_X86:
+            PyDict_SetItemString(pyDict, "va-entry", PyLong_FromUnsignedLongLong(info.os.win.vaENTRY));
+            PyDict_SetItemString(pyDict, "va-eprocess", PyLong_FromUnsignedLongLong(info.os.win.vaEPROCESS));
+            PyDict_SetItemString(pyDict, "va-peb", PyLong_FromUnsignedLongLong(info.os.win.vaPEB));
+            break;
     }
     return pyDict;
 }

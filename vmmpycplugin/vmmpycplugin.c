@@ -56,7 +56,7 @@ PY2C_CallbackRegister(PyObject *self, PyObject *args)
     return Py_BuildValue("s", NULL);    // None returned on success.
 }
 
-BOOL PY2C_Util_TranslatePathDelimiter(_Inout_ CHAR dst[MAX_PATH], LPSTR src)
+BOOL PY2C_Util_TranslatePathDelimiter(_Out_writes_(MAX_PATH) PCHAR dst, LPSTR src)
 {
     DWORD i;
     for(i = 0; i < MAX_PATH; i++) {
@@ -248,7 +248,7 @@ void PY2C_InitializeModuleVMMPYCC()
 // CORE NATIVE MODULE FUNCTIONALITY BELOW:
 //-----------------------------------------------------------------------------
 
-VOID Util_GetPathDll(_Out_ WCHAR wszPath[MAX_PATH], _In_opt_ HMODULE hModule)
+VOID Util_GetPathDll(_Out_writes_(MAX_PATH) PWCHAR wszPath, _In_opt_ HMODULE hModule)
 {
     SIZE_T i;
     GetModuleFileNameW(hModule, wszPath, MAX_PATH - 4);
@@ -348,7 +348,7 @@ VOID PYTHON_Close(_Inout_ PHANDLE phModulePrivate)
 __declspec(dllexport)
 VOID InitializeVmmPlugin(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo)
 {
-    if(0 == (pRegInfo->fTargetSystem & (VMMDLL_TARGET_UNKNOWN_X64 | VMMDLL_TARGET_WINDOWS_X64))) { return; }
+    if((pRegInfo->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRegInfo->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if(VmmPyPlugin_PythonInitialize(pRegInfo->hReservedDll)) {
         strcpy_s(pRegInfo->reg_info.szModuleName, 32, "py");    // module name - 'py'.
         pRegInfo->reg_info.fRootModule = TRUE;                  // module shows in root directory.

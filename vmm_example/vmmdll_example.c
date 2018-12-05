@@ -194,8 +194,8 @@ int main(_In_ int argc, _In_ char* argv[])
     if(result) {
         printf("SUCCESS: VMMDLL_ProcessGetInformation\n");
         printf("         Name = %s\n", ProcessInformation.szName);
-        printf("         PageDirectoryBase = 0x%016llx\n", ProcessInformation.paPML4);
-        printf("         PageDirectoryBaseUser = 0x%016llx\n", ProcessInformation.paPML4_UserOpt);
+        printf("         PageDirectoryBase = 0x%016llx\n", ProcessInformation.paDTB);
+        printf("         PageDirectoryBaseUser = 0x%016llx\n", ProcessInformation.paDTB_UserOpt);
         printf("         ProcessState = 0x%08x\n", ProcessInformation.dwState);
     } else {
         printf("FAIL:    VMMDLL_ProcessGetInformation\n");

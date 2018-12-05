@@ -40,7 +40,7 @@ VOID DeviceReadScatterMEM(_Inout_ PPMEM_IO_SCATTER_HEADER ppMEMs, _In_ DWORD cpM
 * -- pPageStat = optional page statistics
 * -- return = the number of bytes successfully read.
 */
-DWORD DeviceReadMEMEx(_In_ QWORD qwAddr, _Out_ PBYTE pb, _In_ DWORD cb, _Inout_opt_ PPAGE_STATISTICS pPageStat);
+DWORD DeviceReadMEMEx(_In_ QWORD qwAddr, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb, _Inout_opt_ PPAGE_STATISTICS pPageStat);
 
 /*
 * Write data to the target system using DMA.
@@ -58,6 +58,7 @@ BOOL DeviceWriteMEM(_In_ QWORD qwAddr, _In_ PBYTE pb, _In_ DWORD cb);
 * -- pqwValue = pointer to QWORD to receive option value.
 * -- return
 */
+_Success_(return)
 BOOL DeviceGetOption(_In_ QWORD fOption, _Out_ PQWORD pqwValue);
 
 /*
@@ -67,6 +68,7 @@ BOOL DeviceGetOption(_In_ QWORD fOption, _Out_ PQWORD pqwValue);
 * -- qwValue
 * -- return
 */
+_Success_(return)
 BOOL DeviceSetOption(_In_ QWORD fOption, _In_ QWORD qwValue);
 
 #endif /* __DEVICE_H__ */

@@ -31,7 +31,10 @@ VOID DevicePCILeechDll_ReadScatterMEM(_Inout_ PPMEM_IO_SCATTER_HEADER ppMEMs, _I
 {
     DWORD cMEMsRead;
     PDEVICE_CONTEXT_PCILEECH_DLL ctxDll = (PDEVICE_CONTEXT_PCILEECH_DLL)ctxMain->dev.hDevice;
-    if(!ctxDll) { return; }
+    if(!ctxDll) { 
+        if(pcMEMsRead) { *pcMEMsRead = 0; }
+        return;
+    }
     cMEMsRead = ctxDll->PCILeech_DeviceReadScatterMEM(ppMEMs, cpMEMs);
     if(pcMEMsRead) {
         *pcMEMsRead = cMEMsRead;
@@ -41,7 +44,7 @@ VOID DevicePCILeechDll_ReadScatterMEM(_Inout_ PPMEM_IO_SCATTER_HEADER ppMEMs, _I
 BOOL DevicePCILeechDll_GetOption(_In_ QWORD fOption, _Out_ PQWORD pqwValue)
 {
     PDEVICE_CONTEXT_PCILEECH_DLL ctxDll = (PDEVICE_CONTEXT_PCILEECH_DLL)ctxMain->dev.hDevice;
-    if(!ctxDll) { return FALSE; }
+    if(!ctxDll) { *pqwValue = 0; return FALSE; }
     return ctxDll->PCIleech_DeviceConfigGet(fOption, pqwValue);
 }
 

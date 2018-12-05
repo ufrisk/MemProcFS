@@ -59,13 +59,28 @@
     <ClInclude Include="vmmproc.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="vmmproc_windows.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="vmmvfs.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="vmmx64.h">
+    <ClInclude Include="mm_x64.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="mm_x86.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="mm_x86pae.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pe.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="vmmdll.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="vmmwin.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="vmmwininit.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -106,13 +121,25 @@
     <ClCompile Include="vmmproc.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="vmmproc_windows.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="vmmvfs.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="vmmx64.c">
+    <ClCompile Include="mm_x64.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="mm_x86.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="mm_x86pae.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="pe.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmwin.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmwininit.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

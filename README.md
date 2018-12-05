@@ -77,11 +77,12 @@ Detailed build instructions may be found in the [Wiki](https://github.com/ufrisk
 
 Current Limitations & Future Development:
 =========================================
-The Memory Process File System is currently limited to analyzing Windows x64 memory dumps (other x64 dumps in a very limited way). Also, the Memory Process File System currently does not run on Linux.
+The Memory Process File System is currently limited to analyzing Windows (32-bit and 64-bit XP to 10) memory dumps (other x64 dumps in a very limited way). Also, the Memory Process File System currently does not run on Linux.
 
 Please find some ideas for possible future expansions of the memory process file system listed below. This is a list of ideas - not a list of features that will be implemented. Even though some items are put as prioritized there is no guarantee that they will be implemented in a timely fashion.
 
 ### Prioritized items:
+- Support for Microsoft crash dump format (full memory dump / DumpIt).
 - More/new plugins.
 - Linux support - .so files for easy and convenient Linux API access from both C/C++ and Python.
 - Additional core functionality (exported functions in .DLL). Please request in Issues section if ideas exist.
@@ -91,7 +92,7 @@ Please find some ideas for possible future expansions of the memory process file
 - Multithreading support in main library.
 - Linux support in mounted FUSE file system.
 - Support for analyzing x64 Linux, macOS and UEFI memory dumps.
-- Support for non-x64 memory models (such as x86 32-bit).
+- ~~Support for non-x64 memory models (such as x86 32-bit).~~
 - Hash lookup of executable memory pages in DB.
 
 Links:
@@ -107,4 +108,11 @@ v1.0
 * Initial Release.
 
 v1.1
-* Loaded kernel drivers in System process 'modules' sub-directory.
+* Loaded kernel drivers in System process 'modules' sub-directory (Windows 10).
+
+v1.2
+* Support for 32-bit Windows - XP to 10.
+* Support for 32-bit memory models (x86 and PAE).
+* Improved auto-identification of memory model and Windows.
+* Loaded kernel drivers in System process 'modules' sub-directory (all Windows versions).
+* PE (exe/dll/sys) Sections and Data Directories as files in 'modules' sub-directory.

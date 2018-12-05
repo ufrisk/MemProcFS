@@ -32,7 +32,7 @@ VOID Util_PrintHexAscii(_In_ PBYTE pb, _In_ DWORD cb, _In_ DWORD cbInitialOffset
 * -- sz = buffer to fill, NULL to retrieve size in pcsz parameter.
 * -- pcsz = ptr to size of buffer on entry, size of characters on exit.
 */
-BOOL Util_FillHexAscii(_In_ PBYTE pb, _In_ DWORD cb, _In_ DWORD cbInitialOffset, _Inout_opt_ LPSTR sz, _Inout_ PDWORD pcsz);
+BOOL Util_FillHexAscii(_In_ PBYTE pb, _In_ DWORD cb, _In_ DWORD cbInitialOffset, _Inout_opt_ LPSTR sz, _Out_ PDWORD pcsz);
 
 /*
 * Split a "path" string into two at the first '\' character. If no 2nd string
@@ -42,7 +42,7 @@ BOOL Util_FillHexAscii(_In_ PBYTE pb, _In_ DWORD cb, _In_ DWORD cbInitialOffset,
 * -- psz1
 * -- psz2
 */
-VOID Util_PathSplit2(_In_ LPSTR sz, _Inout_ CHAR _szBuf[MAX_PATH], _Out_ LPSTR *psz1, _Out_ LPSTR *psz2);
+VOID Util_PathSplit2(_In_ LPSTR sz, _Out_writes_(MAX_PATH) PCHAR _szBuf, _Out_ LPSTR *psz1, _Out_ LPSTR *psz2);
 
 /*
 * Split a "path" string into two at the first '\' character. If no 2nd string
@@ -52,14 +52,14 @@ VOID Util_PathSplit2(_In_ LPSTR sz, _Inout_ CHAR _szBuf[MAX_PATH], _Out_ LPSTR *
 * -- psz1
 * -- psz2
 */
-VOID Util_PathSplit2_WCHAR(_In_ LPWSTR wsz, _Inout_ CHAR _szBuf[MAX_PATH], _Out_ LPSTR *psz1, _Out_ LPSTR *psz2);
+VOID Util_PathSplit2_WCHAR(_In_ LPWSTR wsz, _Out_writes_(MAX_PATH) PCHAR _szBuf, _Out_ LPSTR *psz1, _Out_ LPSTR *psz2);
 
 /*
 * Return the path of the specified hModule (DLL) - ending with a backslash, or current Executable.
 * -- szPath
 * -- hModule = Optional, HMODULE handle for path to DLL, NULL for path to EXE.
 */
-VOID Util_GetPathDll(_Out_ CHAR szPath[MAX_PATH], _In_opt_ HMODULE hModule);
+VOID Util_GetPathDll(_Out_writes_(MAX_PATH) PCHAR szPath, _In_opt_ HMODULE hModule);
 
 /*
 * Utility functions for read/write towards different underlying data representations.

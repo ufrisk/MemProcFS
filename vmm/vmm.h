@@ -10,6 +10,8 @@
 
 typedef unsigned __int64                QWORD, *PQWORD;
 
+#define MEM_IO_SCATTER_HEADER_VERSION   2
+
 typedef struct tdMEM_IO_SCATTER_HEADER {
     ULONG64 qwA;            // base address (DWORD boundry).
     DWORD cbMax;            // bytes to read (DWORD boundry, max 0x1000); pbResult must have room for this.
@@ -17,6 +19,10 @@ typedef struct tdMEM_IO_SCATTER_HEADER {
     PBYTE pb;               // ptr to 0x1000 sized buffer to receive read bytes.
     PVOID pvReserved1;      // reserved for use by caller.
     PVOID pvReserved2;      // reserved for use by caller.
+    WORD version;           // version of struct 
+    WORD Future1;           // reserved for future use.
+    DWORD Future2;          // reserved for future use.
+    ULONG64 qwDeviceA;      // device-physical address (used by device layer).
     struct {
         PVOID pvReserved1;
         PVOID pvReserved2;
@@ -49,13 +55,27 @@ typedef struct tdMEM_IO_SCATTER_HEADER {
 
 #define VMM_FLAG_NOCACHE                        0x0001  // do not use the data cache (force reading from memory acquisition device)
 #define VMM_FLAG_ZEROPAD_ON_FAIL                0x0002  // zero pad failed physical memory reads and report success if read within range of physical memory.
-
-#define VMM_TARGET_UNKNOWN_X64                  0x0001
-#define VMM_TARGET_WINDOWS_X64                  0x0002
+#define VMM_FLAG_PROCESS_SHOW_TERMINATED        0x0004  // show terminated processes in the process list (if they can be found).
 
 #define VMM_VERSION_MAJOR                       1
-#define VMM_VERSION_MINOR                       1
+#define VMM_VERSION_MINOR                       2
 #define VMM_VERSION_REVISION                    0
+
+static const LPSTR VMM_MEMORYMODEL_TOSTRING[4] = { "N/A", "X86", "X86PAE", "X64" };
+
+typedef enum tdVMM_MEMORYMODEL_TP {
+    VMM_MEMORYMODEL_NA      = 0,
+    VMM_MEMORYMODEL_X86     = 1,
+    VMM_MEMORYMODEL_X86PAE  = 2,
+    VMM_MEMORYMODEL_X64     = 3
+} VMM_MEMORYMODEL_TP;
+
+typedef enum tdVMM_SYSTEM_TP {
+    VMM_SYSTEM_UNKNOWN_X64  = 1,
+    VMM_SYSTEM_WINDOWS_X64  = 2,
+    VMM_SYSTEM_UNKNOWN_X86  = 3,
+    VMM_SYSTEM_WINDOWS_X86  = 4
+} VMM_SYSTEM_TP;
 
 typedef struct tdVMM_MEMMAP_ENTRY {
     QWORD AddrBase;
@@ -82,8 +102,8 @@ typedef struct tdVMM_MODULEMAP_ENTRY {
 typedef struct tdVMM_PROCESS {
     DWORD dwPID;
     DWORD dwState;          // state of process, 0 = running
-    QWORD paPML4;
-    QWORD paPML4_UserOpt;
+    QWORD paDTB;
+    QWORD paDTB_UserOpt;
     CHAR szName[16];
     BOOL _i_fMigrated;
     BOOL fUserOnly;
@@ -142,29 +162,18 @@ typedef struct tdVMM_CACHE_TABLE {
     PVMM_CACHE_ENTRY S;
 } VMM_CACHE_TABLE, *PVMM_CACHE_TABLE;
 
-typedef enum tdVMM_MEMORYMODEL_TP {
-    NA = 0,
-    X64 = 1
-} tdVMM_MEMORYMODEL_TP;
-
 typedef struct tdVMM_VIRT2PHYS_INFORMATION {
-    tdVMM_MEMORYMODEL_TP tpMemoryModel;
+    VMM_MEMORYMODEL_TP tpMemoryModel;
     QWORD va;
-    union {
-        struct {
-            QWORD pas[5];   // physical addresses of pagetable[PML]/page[0]
-            QWORD PTEs[5];  // PTEs[PML]
-            WORD  iPTEs[5]; // Index of PTE in page table
-        } x64;
-    };
+    QWORD pas[5];   // physical addresses of pagetable[PML]/page[0]
+    QWORD PTEs[5];  // PTEs[PML]
+    WORD  iPTEs[5]; // Index of PTE in page table
 } VMM_VIRT2PHYS_INFORMATION, *PVMM_VIRT2PHYS_INFORMATION;
 
-typedef struct tdVMM_MEMORYMODEL {
-    tdVMM_MEMORYMODEL_TP tp;
+typedef struct tdVMM_MEMORYMODEL_FUNCTIONS {
     VOID(*pfnInitialize)();
     VOID(*pfnClose)();
-    BOOL(*pfnVirt2Phys)(_In_ PVMM_PROCESS pProcess, _In_ QWORD va, _Out_ PQWORD ppa);
-    BOOL(*pfnVirt2PhysEx)(_In_ BOOL fUserOnly, _In_ QWORD va, _In_ BYTE iPML, _In_reads_(4096) PBYTE pbPTEs, _Out_ PQWORD ppa);
+    BOOL(*pfnVirt2Phys)(_In_ QWORD paDTB, _In_ BOOL fUserOnly, _In_ BYTE iPML, _In_ QWORD va, _Out_ PQWORD ppa);
     VOID(*pfnVirt2PhysGetInformation)(_Inout_ PVMM_PROCESS pProcess, _Inout_ PVMM_VIRT2PHYS_INFORMATION pVirt2PhysInfo);
     VOID(*pfnMapInitialize)(_In_ PVMM_PROCESS pProcess);
     VOID(*pfnMapTag)(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaBase, _In_ QWORD vaLimit, _In_opt_ LPSTR szTag, _In_opt_ LPWSTR wszTag, _In_opt_ BOOL fWoW64);
@@ -172,7 +181,7 @@ typedef struct tdVMM_MEMORYMODEL {
     VOID(*pfnMapDisplayBufferGenerate)(_In_ PVMM_PROCESS pProcess);
     VOID(*pfnTlbSpider)(_In_ QWORD paDTB, _In_ BOOL fUserOnly);
     BOOL(*pfnTlbPageTableVerify)(_Inout_ PBYTE pb, _In_ QWORD pa, _In_ BOOL fSelfRefReq);
-} VMM_MEMORYMODEL;
+} VMM_MEMORYMODEL_FUNCTIONS;
 
 // ----------------------------------------------------------------------------
 // VMM general constants and struct definitions below: 
@@ -192,17 +201,17 @@ typedef struct tdVmmConfig {
     BOOL fVerboseExtraTlp;
 } VMMCONFIG, *PVMMCONFIG;
 
-typedef enum tdMPFS_DEVICE_TYPE {
+typedef enum tdVMM_DEVICE_TYPE {
     VMM_DEVICE_NA,
     VMM_DEVICE_FILE,
     VMM_DEVICE_PCILEECH_DLL,
-} MPFS_DEVICE_TYPE;
+} VMM_DEVICE_TYPE;
 
 typedef struct tdVmmDeviceConfig {
     HANDLE hDevice;
     QWORD paAddrMaxNative;
     QWORD qwMaxSizeMemIo;
-    MPFS_DEVICE_TYPE tp;
+    VMM_DEVICE_TYPE tp;
     VOID(*pfnReadScatterMEM)(_Inout_ PPMEM_IO_SCATTER_HEADER ppDMAs, _In_ DWORD cpDMAs, _Out_opt_ PDWORD pcpDMAsRead);
     BOOL(*pfnWriteMEM)(_In_ QWORD qwAddr, _In_ PBYTE pb, _In_ DWORD cb);
     VOID(*pfnClose)();
@@ -224,16 +233,27 @@ typedef struct tdVMM_STATISTICS {
     QWORD cRefreshProcessFull;
 } VMM_STATISTICS, *PVMM_STATISTICS;
 
+typedef struct tdVMM_KERNELINFO {
+    QWORD paDTB;
+    QWORD vaBase;
+    QWORD cbSize;
+    // optional non-required values below
+    QWORD vaEntry;
+    QWORD vaPsLoadedModuleList;
+    QWORD vaKDBG;
+} VMM_KERNELINFO;
+
 typedef struct tdVMM_CONTEXT {
     CRITICAL_SECTION MasterLock;
     PVMM_PROCESS_TABLE ptPROC;
     PVMM_CACHE_TABLE ptTLB;
     PVMM_CACHE_TABLE ptPHYS;
     BOOL fReadOnly;
-    VMM_MEMORYMODEL MemoryModel;
-    // os specific below:
-    DWORD fTargetSystem;
-    DWORD flags;
+    VMM_MEMORYMODEL_FUNCTIONS fnMemoryModel;
+    VMM_MEMORYMODEL_TP tpMemoryModel;
+    BOOL f32;
+    VMM_SYSTEM_TP tpSystem;
+    DWORD flags;    // VMM_FLAG_*
     struct {
         BOOL fEnabled;
         HANDLE hThread;
@@ -244,11 +264,8 @@ typedef struct tdVMM_CONTEXT {
         DWORD cTick_ProcTotal;
     } ThreadProcCache;
     VMM_STATISTICS stat;
+    VMM_KERNELINFO kernel;
     PVOID pVmmVfsModuleList;
-    struct {
-        QWORD paDTB;
-        QWORD vaBase;
-    } kernelinfo;
 } VMM_CONTEXT, *PVMM_CONTEXT;
 
 typedef struct tdVMM_MAIN_CONTEXT {
@@ -301,7 +318,7 @@ VOID VmmLockRelease();
 * -- cb
 * -- return = TRUE on success, FALSE on partial or zero write.
 */
-BOOL VmmWrite(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwVA, _Out_ PBYTE pb, _In_ DWORD cb);
+BOOL VmmWrite(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwVA, _In_ PBYTE pb, _In_ DWORD cb);
 
 /*
 * Write physical memory and clear any VMM caches that may contain data.
@@ -310,19 +327,20 @@ BOOL VmmWrite(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwVA, _Out_ PBYTE pb, _
 * -- cb
 * -- return
 */
-BOOL VmmWritePhysical(_In_ QWORD pa, _Out_ PBYTE pb, _In_ DWORD cb);
+BOOL VmmWritePhysical(_In_ QWORD pa, _In_ PBYTE pb, _In_ DWORD cb);
 
 /*
 * Read a virtually contigious arbitrary amount of memory containing cch number of
 * unicode characters and convert them into ansi characters. Characters > 0xff are
-* converted into '?'.
+* converted into '?'. The result is guaranteed to be zero-terminated.
 * -- pProcess
 * -- qwVA
 * -- sz
 * -- cch
 * -- return
 */
-BOOL VmmReadString_Unicode2Ansi(_In_ PVMM_PROCESS pProcess, _In_ QWORD qwVA, _Out_ LPSTR sz, _In_ DWORD cch);
+_Success_(return)
+BOOL VmmReadString_Unicode2Ansi(_In_ PVMM_PROCESS pProcess, _In_ QWORD qwVA, _Out_writes_(cch) LPSTR sz, _In_ DWORD cch);
 
 /*
 * Read a contigious arbitrary amount of memory, virtual or physical.
@@ -348,7 +366,7 @@ BOOL VmmRead(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Out_ PBYTE pb, _In
 * -- pcbRead
 * -- flags = flags as in VMM_FLAG_*
 */
-VOID VmmReadEx(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Inout_ PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbReadOpt, _In_ QWORD flags);
+VOID VmmReadEx(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Out_ PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbReadOpt, _In_ QWORD flags);
 
 /*
 * Read a single 4096-byte page of memory, virtual or physical.
@@ -396,6 +414,21 @@ PBYTE VmmTlbGetPageTable(_In_ QWORD pa, _In_ BOOL fCacheOnly);
 
 /*
 * Translate a virtual address to a physical address by walking the page tables.
+* -- paDTB
+* -- fUserOnly
+* -- va
+* -- ppa
+* -- return
+*/
+_Success_(return)
+inline BOOL VmmVirt2PhysEx(_In_ QWORD paDTB, _In_ BOOL fUserOnly, _In_ QWORD va, _Out_ PQWORD ppa)
+{
+    if(ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_NA) { return FALSE; }
+    return ctxVmm->fnMemoryModel.pfnVirt2Phys(paDTB, fUserOnly, -1, va, ppa);
+}
+
+/*
+* Translate a virtual address to a physical address by walking the page tables.
 * -- pProcess
 * -- va
 * -- ppa
@@ -404,25 +437,8 @@ PBYTE VmmTlbGetPageTable(_In_ QWORD pa, _In_ BOOL fCacheOnly);
 _Success_(return)
 inline BOOL VmmVirt2Phys(_In_ PVMM_PROCESS pProcess, _In_ QWORD va, _Out_ PQWORD ppa)
 {
-    if(ctxVmm->MemoryModel.tp == NA) { return FALSE; }
-    return ctxVmm->MemoryModel.pfnVirt2Phys(pProcess, va, ppa);
-}
-
-/*
-* Translate a virtual address to a physical address given some extra parameters as
-* as compared to the standard recommended function VmmVirt2Phys.
-* -- fUserOnly
-* -- va
-* -- iPML = index of page table (-1 = topmost) (Example: PML4 = 4, PDPT = 3 .. in X64).
-* -- PTEs
-* -- ppa
-* -- return
-*/
-_Success_(return)
-inline BOOL VmmVirt2PhysEx(_In_ BOOL fUserOnly, _In_ QWORD va, _In_ BYTE iPML, _In_reads_(4096) PBYTE pbPTEs, _Out_ PQWORD ppa)
-{
-    if(ctxVmm->MemoryModel.tp == NA) { return FALSE; }
-    return ctxVmm->MemoryModel.pfnVirt2PhysEx(fUserOnly, va, iPML, pbPTEs, ppa);
+    if(ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_NA) { return FALSE; }
+    return ctxVmm->fnMemoryModel.pfnVirt2Phys(pProcess->paDTB, pProcess->fUserOnly, -1, va, ppa);
 }
 
 /*
@@ -435,8 +451,8 @@ inline BOOL VmmVirt2PhysEx(_In_ BOOL fUserOnly, _In_ QWORD va, _In_ BYTE iPML, _
 */
 inline VOID VmmTlbSpider(_In_ QWORD paDTB, _In_ BOOL fUserOnly)
 {
-    if(ctxVmm->MemoryModel.tp == NA) { return; }
-    ctxVmm->MemoryModel.pfnTlbSpider(paDTB, fUserOnly);
+    if(ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_NA) { return; }
+    ctxVmm->fnMemoryModel.pfnTlbSpider(paDTB, fUserOnly);
 }
 
 /*
@@ -447,8 +463,8 @@ inline VOID VmmTlbSpider(_In_ QWORD paDTB, _In_ BOOL fUserOnly)
 */
 inline BOOL VmmTlbPageTableVerify(_Inout_ PBYTE pb, _In_ QWORD pa, _In_ BOOL fSelfRefReq)
 {
-    if(ctxVmm->MemoryModel.tp == NA) { return FALSE; }
-    return ctxVmm->MemoryModel.pfnTlbPageTableVerify(pb, pa, fSelfRefReq);
+    if(ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_NA) { return FALSE; }
+    return ctxVmm->fnMemoryModel.pfnTlbPageTableVerify(pb, pa, fSelfRefReq);
 }
 
 /*
@@ -460,8 +476,8 @@ inline BOOL VmmTlbPageTableVerify(_Inout_ PBYTE pb, _In_ QWORD pa, _In_ BOOL fSe
 */
 inline VOID VmmVirt2PhysGetInformation(_Inout_ PVMM_PROCESS pProcess, _Inout_ PVMM_VIRT2PHYS_INFORMATION pVirt2PhysInfo)
 {
-    if(ctxVmm->MemoryModel.tp == NA) { return; }
-    ctxVmm->MemoryModel.pfnVirt2PhysGetInformation(pProcess, pVirt2PhysInfo);
+    if(ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_NA) { return; }
+    ctxVmm->fnMemoryModel.pfnVirt2PhysGetInformation(pProcess, pVirt2PhysInfo);
 }
 
 /*
@@ -471,8 +487,8 @@ inline VOID VmmVirt2PhysGetInformation(_Inout_ PVMM_PROCESS pProcess, _Inout_ PV
 */
 inline VOID VmmMapInitialize(_In_ PVMM_PROCESS pProcess)
 {
-    if(ctxVmm->MemoryModel.tp == NA) { return; }
-    ctxVmm->MemoryModel.pfnMapInitialize(pProcess);
+    if(ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_NA) { return; }
+    ctxVmm->fnMemoryModel.pfnMapInitialize(pProcess);
 }
 
 /*
@@ -487,8 +503,8 @@ inline VOID VmmMapInitialize(_In_ PVMM_PROCESS pProcess)
 */
 inline VOID VmmMapTag(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaBase, _In_ QWORD vaLimit, _In_opt_ LPSTR szTag, _In_opt_ LPWSTR wszTag, _In_opt_ BOOL fWoW64)
 {
-    if(ctxVmm->MemoryModel.tp == NA) { return; }
-    ctxVmm->MemoryModel.pfnMapTag(pProcess, vaBase, vaLimit, szTag, wszTag, fWoW64);
+    if(ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_NA) { return; }
+    ctxVmm->fnMemoryModel.pfnMapTag(pProcess, vaBase, vaLimit, szTag, wszTag, fWoW64);
 }
 
 /*
@@ -499,8 +515,8 @@ inline VOID VmmMapTag(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaBase, _In_ QWORD 
 */
 inline PVMM_MEMMAP_ENTRY VmmMapGetEntry(_In_ PVMM_PROCESS pProcess, _In_ QWORD va)
 {
-    if(ctxVmm->MemoryModel.tp == NA) { return NULL; }
-    return ctxVmm->MemoryModel.pfnMapGetEntry(pProcess, va);
+    if(ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_NA) { return NULL; }
+    return ctxVmm->fnMemoryModel.pfnMapGetEntry(pProcess, va);
 }
 
 /*
@@ -511,10 +527,9 @@ inline PVMM_MEMMAP_ENTRY VmmMapGetEntry(_In_ PVMM_PROCESS pProcess, _In_ QWORD v
 */
 inline VOID VmmMapDisplayBufferGenerate(_In_ PVMM_PROCESS pProcess)
 {
-    if(ctxVmm->MemoryModel.tp == NA) { return; }
-    ctxVmm->MemoryModel.pfnMapDisplayBufferGenerate(pProcess);
+    if(ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_NA) { return; }
+    ctxVmm->fnMemoryModel.pfnMapDisplayBufferGenerate(pProcess);
 }
-
 
 /*
 * Create or re-create the entire process table. This will clean the complete and
@@ -535,7 +550,7 @@ PVMM_PROCESS VmmProcessGet(_In_ DWORD dwPID);
 * structure and won't become visible to the "Process" functions until after the
 * VmmProcessCreateFinish have been called.
 */
-PVMM_PROCESS VmmProcessCreateEntry(_In_ DWORD dwPID, _In_ DWORD dwState, _In_ QWORD paPML4, _In_ QWORD paPML4_UserOpt, _In_ CHAR szName[16], _In_ BOOL fUserOnly, _In_ BOOL fSpiderPageTableDone);
+PVMM_PROCESS VmmProcessCreateEntry(_In_ DWORD dwPID, _In_ DWORD dwState, _In_ QWORD paDTB, _In_ QWORD paDTB_UserOpt, _In_ CHAR szName[16], _In_ BOOL fUserOnly, _In_ BOOL fSpiderPageTableDone);
 
 /*
 * Activate the pending, not yet active, processes added by VmmProcessCreateEntry.
@@ -548,7 +563,7 @@ VOID VmmProcessCreateFinish();
 * -- pPIDs = user allocated DWORD array to receive result, or NULL.
 * -- pcPIDs = ptr to number of DWORDs in pPIDs on entry - number of PIDs in system on exit.
 */
-VOID VmmProcessListPIDs(_Out_ PDWORD pPIDs, _Inout_ PSIZE_T pcPIDs);
+VOID VmmProcessListPIDs(_Out_opt_ PDWORD pPIDs, _Inout_ PSIZE_T pcPIDs);
 
 /*
 * Clear the specified cache from all entries.
@@ -562,6 +577,13 @@ VOID VmmCacheClear( _In_ BOOL fTLB, _In_ BOOL fPHYS);
 * -- pa
 */
 VOID VmmCacheInvalidate( _In_ QWORD pa);
+
+/*
+* Initialize the memory model specified and discard any previous memory models
+* that may be in action.
+* -- tp
+*/
+VOID VmmInitializeMemoryModel(_In_ VMM_MEMORYMODEL_TP tp);
 
 /*
 * Initialize a new VMM context. This must always be done before calling any

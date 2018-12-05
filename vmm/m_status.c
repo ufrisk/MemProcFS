@@ -20,6 +20,7 @@
 #include "pluginmanager.h"
 #include "util.h"
 #include "vmm.h"
+#include "vmmproc.h"
 #include "vmmvfs.h"
 #include "statistics.h"
 
@@ -49,6 +50,9 @@ NTSTATUS MStatus_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ LPVOID pb, _In_ DWO
     }
     // "ROOT"
     if(!pProcess) {
+        if(!_stricmp(ctx->szPath, "config_process_show_terminated")) {
+            return Util_VfsReadFile_FromBOOL(ctxVmm->flags & VMM_FLAG_PROCESS_SHOW_TERMINATED, pb, cb, pcbRead, cbOffset);
+        }
         if(!_stricmp(ctx->szPath, "config_cache_enable")) {
             return Util_VfsReadFile_FromBOOL(!(ctxVmm->flags & VMM_FLAG_NOCACHE), pb, cb, pcbRead, cbOffset);
         }
@@ -162,6 +166,16 @@ NTSTATUS MStatus_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ LPVOID pb, _In_ DWO
     }
     // "ROOT"
     if(!pProcess) {
+
+        if(!_stricmp(ctx->szPath, "config_process_show_terminated")) {
+            nt = Util_VfsWriteFile_BOOL(&fEnable, pb, cb, pcbWrite, cbOffset);
+            if(nt == VMMDLL_STATUS_SUCCESS) {
+                ctxVmm->flags &= ~VMM_FLAG_PROCESS_SHOW_TERMINATED;
+                ctxVmm->flags |= fEnable ? VMM_FLAG_PROCESS_SHOW_TERMINATED : 0;
+                VmmProc_Refresh(FALSE, TRUE);
+            }
+            return nt;
+        }
         if(!_stricmp(ctx->szPath, "config_cache_enable")) {
             nt = Util_VfsWriteFile_BOOL(&fEnable, pb, cb, pcbWrite, cbOffset);
             if(nt == VMMDLL_STATUS_SUCCESS) {
@@ -241,6 +255,7 @@ BOOL MStatus_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
         VMMDLL_VfsList_AddFile(pFileList, "config_printf_v", 1);
         VMMDLL_VfsList_AddFile(pFileList, "config_printf_vv", 1);
         VMMDLL_VfsList_AddFile(pFileList, "config_printf_vvv", 1);
+        VMMDLL_VfsList_AddFile(pFileList, "config_process_show_terminated", 1);
         VMMDLL_VfsList_AddFile(pFileList, "native_max_address", 16);
         VMMDLL_VfsList_AddFile(pFileList, "native_max_iosize", 16);
         Statistics_CallToString(NULL, 0, &cbCallStatistics);
@@ -261,14 +276,15 @@ BOOL MStatus_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 * operating system or architecture is unsupported.
 * -- pPluginRegInfo
 */
-VOID M_Status_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo)
+VOID M_Status_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
-    if(0 == (pPluginRegInfo->fTargetSystem & (VMM_TARGET_UNKNOWN_X64 | VMM_TARGET_WINDOWS_X64))) { return; }
-    strcpy_s(pPluginRegInfo->reg_info.szModuleName, 32, ".status"); // module name
-    pPluginRegInfo->reg_info.fRootModule = TRUE;                    // module shows in root directory
-    pPluginRegInfo->reg_info.fProcessModule = TRUE;                 // module shows in process directory
-    pPluginRegInfo->reg_fn.pfnList = MStatus_List;                  // List function supported
-    pPluginRegInfo->reg_fn.pfnRead = MStatus_Read;                  // Read function supported
-    pPluginRegInfo->reg_fn.pfnWrite = MStatus_Write;                // Write function supported
-    pPluginRegInfo->pfnPluginManager_Register(pPluginRegInfo);
+    if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
+    // .status module is always valid - no check against pPluginRegInfo->tpMemoryModel, tpSystem
+    strcpy_s(pRI->reg_info.szModuleName, 32, ".status"); // module name
+    pRI->reg_info.fRootModule = TRUE;                    // module shows in root directory
+    pRI->reg_info.fProcessModule = TRUE;                 // module shows in process directory
+    pRI->reg_fn.pfnList = MStatus_List;                  // List function supported
+    pRI->reg_fn.pfnRead = MStatus_Read;                  // Read function supported
+    pRI->reg_fn.pfnWrite = MStatus_Write;                // Write function supported
+    pRI->pfnPluginManager_Register(pRI);
 }

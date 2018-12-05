@@ -27,10 +27,19 @@ VMMPY_STATUS_UNSUCCESSFUL =             0xC0000001
 VMMPY_STATUS_END_OF_FILE =              0xC0000011
 VMMPY_STATUS_FILE_INVALID =             0xC0000098
 
-# TARGET SYSTEM values - used to determine if a plugin is supported or not for
+# SYSTEM values - used to determine if a plugin is supported or not for
 # the current system that is being analyzed.
-VMMPY_TARGET_UNKNOWN_X64 =              0x0001
-VMMPY_TARGET_WINDOWS_X64 =              0x0002
+VMMPY_SYSTEM_UNKNOWN_X64 =              0x0001
+VMMPY_SYSTEM_WINDOWS_X64 =              0x0002
+VMMPY_SYSTEM_UNKNOWN_X86 =              0x0003
+VMMPY_SYSTEM_WINDOWS_X86 =              0x0004
+
+# MEMORYMODEL values - used to determine if a plugin is supported or not
+# for a specific memory model.
+VMMPY_MEMORYMODEL_NA =                  0x0000
+VMMPY_MEMORYMODEL_X86 =                 0x0001
+VMMPY_MEMORYMODEL_X86PAE =              0x0002
+VMMPY_MEMORYMODEL_X64 =                 0x0003
 
 # EVENT values - received by the notify callback function for specific events
 # occuring in the native plugin manager / vmm / memory process file system.
@@ -154,7 +163,8 @@ VMMPY_OPT_CORE_VERBOSE_EXTRA                  = 0x80000003  # RW
 VMMPY_OPT_CORE_VERBOSE_EXTRA_TLP              = 0x80000004  # RW
 VMMPY_OPT_CORE_MAX_NATIVE_ADDRESS             = 0x80000005  # R
 VMMPY_OPT_CORE_MAX_NATIVE_IOSIZE              = 0x80000006  # R
-VMMPY_OPT_CORE_TARGET_SYSTEM                  = 0x80000007  # R
+VMMPY_OPT_CORE_SYSTEM                         = 0x80000007  # R
+VMMPY_OPT_CORE_MEMORYMODEL                    = 0x80000008  # R
 
 VMMPY_OPT_CONFIG_IS_REFRESH_ENABLED           = 0x40000001  # R - 1/0
 VMMPY_OPT_CONFIG_TICK_PERIOD                  = 0x40000002  # RW - base tick period in ms
@@ -383,7 +393,7 @@ def VmmPy_ProcessGetInformation(pid):
     return -- dict: of process information.
     
     Example:
-    VmmPy_ProcessGetInformation(332) --> {'pid': 8796, 'pa-pml4': 5798625280, 'pa-pml4-user': 6237978624, 'state': 0, 'target': 2, 'usermode': True, 'name': 'cmd.exe', 'wow64': False, 'va-entry': 140700131683072, 'va-eprocess': 18446635809067693440, 'va-peb': 708313505792, 'va-peb32': 0}
+    VmmPy_ProcessGetInformation(332) --> {'pid': 8796, 'pa-dtb': 5798625280, 'pa-dtb-user': 6237978624, 'state': 0, 'tp-system': 2, 'usermode': True, 'name': 'cmd.exe', 'wow64': False, 'va-entry': 140700131683072, 'va-eprocess': 18446635809067693440, 'va-peb': 708313505792, 'va-peb32': 0}
     """
     return VMMPYC_ProcessGetInformation(pid)
 
@@ -396,7 +406,7 @@ def VmmPy_ProcessListInformation():
     return -- dict: dict of process information with pid as key.
     
     Example:
-    VmmPy_ProcessListInformation() --> {4: {...}, ..., 322: {'pid': 8796, 'pa-pml4': 5798625280, 'pa-pml4-user': 6237978624, 'state': 0, 'target': 2, 'usermode': True, 'name': 'cmd.exe', 'wow64': False, 'va-entry': 140700131683072, 'va-eprocess': 18446635809067693440, 'va-peb': 708313505792, 'va-peb32': 0}
+    VmmPy_ProcessListInformation() --> {4: {...}, ..., 322: {'pid': 8796, 'pa-dtb': 5798625280, 'pa-dtb-user': 6237978624, 'state': 0, 'tp-system': 2, 'usermode': True, 'name': 'cmd.exe', 'wow64': False, 'va-entry': 140700131683072, 'va-eprocess': 18446635809067693440, 'va-peb': 708313505792, 'va-peb32': 0}
     """
     pids = VmmPy_PidList()
     result = {}

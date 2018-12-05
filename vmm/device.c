@@ -90,11 +90,13 @@ BOOL DeviceOpen()
     return result;
 }
 
+_Success_(return)
 BOOL DeviceGetOption(_In_ QWORD fOption, _Out_ PQWORD pqwValue)
 {
     return ctxMain->dev.pfnGetOption && ctxMain->dev.pfnGetOption(fOption, pqwValue);
 }
 
+_Success_(return)
 BOOL DeviceSetOption(_In_ QWORD fOption, _In_ QWORD qwValue)
 {
     return ctxMain->dev.pfnSetOption && ctxMain->dev.pfnSetOption(fOption, qwValue);
@@ -122,7 +124,7 @@ DWORD DeviceReadMEMEx_DoWork_Scatter(_In_ QWORD qwAddr, _Out_ PBYTE pb, _In_ DWO
             PageStatUpdate(pPageStat, pDMAs[i].qwA + 0x1000, 1, 0);
         } else {
             PageStatUpdate(pPageStat, pDMAs[i].qwA + 0x1000, 0, 1);
-            ZeroMemory(pDMAs[i].pb, 0x1000);
+            ZeroMemory(pDMAs[i].pb, pDMAs[i].cbMax);
         }
     }
     LocalFree(pbBuffer);
@@ -148,17 +150,17 @@ DWORD DeviceReadMEMEx_DoWork(_In_ QWORD qwAddr, _Out_ PBYTE pb, _In_ DWORD cb, _
     return cbSuccess;
 }
 
-DWORD DeviceReadMEMEx(_In_ QWORD qwAddr, _Out_ PBYTE pb, _In_ DWORD cb, _Inout_opt_ PPAGE_STATISTICS pPageStat)
+DWORD DeviceReadMEMEx(_In_ QWORD qwAddr, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb, _Inout_opt_ PPAGE_STATISTICS pPageStat)
 {
     BYTE pbWorkaround[4096];
     DWORD cbDataRead;
     // read memory (with strange workaround for 1-page reads...)
-    if(cb != 0x1000) {
+    if(cb > 0x1000) {
         cbDataRead = DeviceReadMEMEx_DoWork(qwAddr, pb, cb, pPageStat, (DWORD)ctxMain->dev.qwMaxSizeMemIo);
     } else {
         // why is this working ??? if not here console is screwed up... (threading issue?)
         cbDataRead = DeviceReadMEMEx_DoWork(qwAddr, pbWorkaround, 0x1000, pPageStat, (DWORD)ctxMain->dev.qwMaxSizeMemIo);
-        memcpy(pb, pbWorkaround, 0x1000);
+        memcpy(pb, pbWorkaround, cb);
     }
     return cbDataRead;
 }
