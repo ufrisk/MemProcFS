@@ -45,6 +45,7 @@ VOID MmX86_TlbSpider(_In_ QWORD paDTB, _In_ BOOL fUserOnly)
     PMMX86_TLB_SPIDER_STAGE_INTERNAL pTlbSpiderStage;
     if(!(pTlbSpiderStage = (PMMX86_TLB_SPIDER_STAGE_INTERNAL)LocalAlloc(LMEM_ZEROINIT, sizeof(MMX86_TLB_SPIDER_STAGE_INTERNAL)))) { return; }
     pbPD = VmmTlbGetPageTable(paDTB & 0xfffff000, FALSE);
+    if(!pbPD) { return; }
     for(i = 0; i < 0x1000; i += 8) {
         pte = *(PDWORD)(pbPD + i);
         if(!(pte & 0x01)) { continue; }                 // not valid

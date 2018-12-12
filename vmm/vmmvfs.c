@@ -320,7 +320,7 @@ BOOL VmmVfsListFilesProcess(_In_ PVMMVFS_PATH pPath, _Inout_ PHANDLE pFileList)
     if(!pProcess) { return FALSE; }
     if(!pProcess->pMemMap || !pProcess->cMemMap) {
         if(!pProcess->fSpiderPageTableDone) {
-            VmmTlbSpider(0, pProcess->fUserOnly);
+            VmmTlbSpider(pProcess->paDTB, pProcess->fUserOnly);
             pProcess->fSpiderPageTableDone = TRUE;
         }
         VmmMapInitialize(pProcess);

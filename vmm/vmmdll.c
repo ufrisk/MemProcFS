@@ -235,7 +235,7 @@ BOOL VMMDLL_InitializeFile(_In_ LPSTR szFileName, _In_opt_ LPSTR szPageTableBase
 _Success_(return)
 BOOL VMMDLL_InitializeFPGA(_In_opt_ LPSTR szMaxPhysicalAddressOpt, _In_opt_ LPSTR szPageTableBaseOpt)
 {
-    return VMMDLL_InitializeReserved(7, (LPSTR[]) { "", "-device", "fpga", "-cr3", (szPageTableBaseOpt ? szPageTableBaseOpt : "0", "-max", szMaxPhysicalAddressOpt) });
+    return VMMDLL_InitializeReserved(7, (LPSTR[]) { "", "-device", "fpga", "-cr3", (szPageTableBaseOpt ? szPageTableBaseOpt : "0"), "-max", (szMaxPhysicalAddressOpt ? szMaxPhysicalAddressOpt : "0") });
 }
 
 _Success_(return)

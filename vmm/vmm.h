@@ -59,7 +59,7 @@ typedef struct tdMEM_IO_SCATTER_HEADER {
 
 #define VMM_VERSION_MAJOR                       1
 #define VMM_VERSION_MINOR                       2
-#define VMM_VERSION_REVISION                    0
+#define VMM_VERSION_REVISION                    1
 
 static const LPSTR VMM_MEMORYMODEL_TOSTRING[4] = { "N/A", "X86", "X86PAE", "X64" };
 
