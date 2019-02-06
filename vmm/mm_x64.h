@@ -1,6 +1,6 @@
 // mm_x64.h : definitions related to the x64 / IA32e / long-mode paging / memory model.
 //
-// (c) Ulf Frisk, 2018
+// (c) Ulf Frisk, 2018-2019
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __MM_X64_H__

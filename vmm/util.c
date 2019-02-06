@@ -1,6 +1,6 @@
 // util.c : implementation of various utility functions.
 //
-// (c) Ulf Frisk, 2018
+// (c) Ulf Frisk, 2018-2019
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "util.h"
@@ -86,7 +86,7 @@ VOID Util_PrintHexAscii(_In_ PBYTE pb, _In_ DWORD cb, _In_ DWORD cbInitialOffset
     Util_FillHexAscii(pb, cb, cbInitialOffset, NULL, &szMax);
     if(!(sz = LocalAlloc(0, szMax))) { return; }
     Util_FillHexAscii(pb, cb, cbInitialOffset, sz, &szMax);
-    vmmprintf(sz);
+    vmmprintf("%s", sz);
     LocalFree(sz);
 }
 

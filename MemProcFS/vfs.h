@@ -14,7 +14,7 @@ typedef unsigned __int64                QWORD, *PQWORD;
 #define VMMVFS_CACHE_DIRECTORY_LIFETIME_PROC_MS 500
 
 typedef struct tdVMMDLL_FUNCTIONS {
-    BOOL(*InitializeReserved)(_In_ DWORD argc, _In_ LPSTR argv[]);
+    BOOL(*Initialize)(_In_ DWORD argc, _In_ LPSTR argv[]);
     BOOL(*VfsList)(_In_ LPCWSTR wcsPath, _Inout_ PVMMDLL_VFS_FILELIST pFileList);
     DWORD(*VfsRead)(LPCWSTR wcsFileName, _Out_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset);
     DWORD(*VfsWrite)(_In_ LPCWSTR wcsFileName, _In_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ ULONG64 cbOffset);

@@ -1,6 +1,6 @@
 // m_virt2phys.h : definitions related to the virt2phys built-in module.
 //
-// (c) Ulf Frisk, 2018
+// (c) Ulf Frisk, 2018-2019
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __M_VIRT2PHYS_H__

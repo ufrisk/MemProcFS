@@ -45,9 +45,9 @@ def VmmPy_Example(dump_file_name):
     print("--------------------------------------------------------------------")
     print("Initialize VmmPy with the dump file specified.                      ")
     input("Press Enter to continue...")
-    print("CALL: VmmPy_InitializeFile()")
-    VmmPy_InitializeFile(dump_file_name)
-    print("SUCCESS: VmmPy_InitializeFile()")
+    print("CALL: VmmPy_Initialize()")
+    VmmPy_Initialize(["-device", dump_file_name])
+    print("SUCCESS: VmmPy_Initialize()")
 
     # GET CONFIG
     print("--------------------------------------------------------------------")

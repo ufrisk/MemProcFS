@@ -1,6 +1,6 @@
 // pluginmanager.h : definitions for the plugin manager for memory process file system plugins.
 //
-// (c) Ulf Frisk, 2018
+// (c) Ulf Frisk, 2018-2019
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __PLUGINMANAGER_H__

@@ -8,6 +8,8 @@
 #include <stdio.h>
 #include "vmmdll.h"
 
+VMMDLL_MEMORYMODEL_TP g_VMemD_TpMemoryModel = VMMDLL_MEMORYMODEL_NA;
+
 ULONG64 VMemD_GetBaseFromFileName(LPSTR sz)
 {
     if((strlen(sz) < 15) || (sz[0] != '0') || (sz[1] != 'x')) { return (ULONG64)-1; }
@@ -100,20 +102,20 @@ BOOL VMemD_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
         return FALSE;
     }
     for(i = 0; i < cEntries; i++) {
-        if(32 == (ULONG64)*ctx->phModulePrivate) {
-            sprintf_s(
-                szBufferFileName,
-                MAX_PATH - 1,
-                "0x%08x%s%s.vmem",
-                (DWORD)pMemMap[i].AddrBase,
-                pMemMap[i].szTag[0] ? "-" : "",
-                pMemMap[i].szTag[0] ? pMemMap[i].szTag : "");
-        } else {
+        if(g_VMemD_TpMemoryModel == VMMDLL_MEMORYMODEL_X64) {
             sprintf_s(
                 szBufferFileName,
                 MAX_PATH - 1,
                 "0x%016llx%s%s.vmem",
                 pMemMap[i].AddrBase,
+                pMemMap[i].szTag[0] ? "-" : "",
+                pMemMap[i].szTag[0] ? pMemMap[i].szTag : "");
+        } else if((g_VMemD_TpMemoryModel == VMMDLL_MEMORYMODEL_X86) || (g_VMemD_TpMemoryModel == VMMDLL_MEMORYMODEL_X86PAE)) {
+            sprintf_s(
+                szBufferFileName,
+                MAX_PATH - 1,
+                "0x%08x%s%s.vmem",
+                (DWORD)pMemMap[i].AddrBase,
                 pMemMap[i].szTag[0] ? "-" : "",
                 pMemMap[i].szTag[0] ? pMemMap[i].szTag : "");
         }
@@ -139,11 +141,11 @@ VOID InitializeVmmPlugin(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo)
     // Ensure that the plugin support the memory model that is used. The plugin
     // currently supports the 64-bit x64 and 32-bit x86 and x86-pae memory models.
     if(!((pRegInfo->tpMemoryModel == VMMDLL_MEMORYMODEL_X64) || (pRegInfo->tpMemoryModel == VMMDLL_MEMORYMODEL_X86) || (pRegInfo->tpMemoryModel == VMMDLL_MEMORYMODEL_X86PAE))) { return; }
+    g_VMemD_TpMemoryModel = pRegInfo->tpMemoryModel;
     strcpy_s(pRegInfo->reg_info.szModuleName, 32, "vmemd");     // module name - 'vmemd'.
     pRegInfo->reg_info.fProcessModule = TRUE;                   // module shows in process directory.
     pRegInfo->reg_fn.pfnList = VMemD_List;                      // List function supported.
     pRegInfo->reg_fn.pfnRead = VMemD_Read;                      // Read function supported.
     pRegInfo->reg_fn.pfnWrite = VMemD_Write;                    // Write function supported.
-    pRegInfo->reg_info.hModulePrivate = (HANDLE)(ULONG64)((pRegInfo->tpMemoryModel == VMMDLL_MEMORYMODEL_X64) ? 64 : 32);  // use handle for "bitness".
     pRegInfo->pfnPluginManager_Register(pRegInfo);              // Register with the plugin maanger.
 }

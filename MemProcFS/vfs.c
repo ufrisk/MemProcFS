@@ -445,7 +445,7 @@ VOID VfsInitializeAndMount(_In_ CHAR chMountPoint, _In_ PVMMDLL_FUNCTIONS pVmmDl
     // set options
     pDokanOptions->Version = DOKAN_VERSION;
     pDokanOptions->Options |= DOKAN_OPTION_NETWORK;
-    pDokanOptions->UNCName = L"\\\\frizk.net\\MemoryProcessFileSystem";
+    pDokanOptions->UNCName = L"MemoryProcessFileSystem";
     wszMountPoint[0] = chMountPoint;
     pDokanOptions->MountPoint = wszMountPoint;
     pDokanOptions->Timeout = 60000;

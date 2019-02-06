@@ -1,6 +1,6 @@
 // m_status.h : definitions related to the .status built-in module.
 //
-// (c) Ulf Frisk, 2018
+// (c) Ulf Frisk, 2018-2019
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __M_STATUS_H__

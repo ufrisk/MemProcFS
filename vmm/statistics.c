@@ -1,6 +1,6 @@
 // statistics.c : implementation of statistics related functionality.
 //
-// (c) Ulf Frisk, 2016-2018
+// (c) Ulf Frisk, 2016-2019
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "statistics.h"
@@ -213,9 +213,7 @@ const LPSTR NAMES_VMM_STATISTICS_CALL[] = {
     "PluginManager_List",
     "PluginManager_Read",
     "PluginManager_Write",
-    "PluginManager_Notify",
-    "DeviceReadScatterMEM",
-    "DeviceWriteMEM"
+    "PluginManager_Notify"
 };
 
 typedef struct tdCALLSTAT {
@@ -256,18 +254,21 @@ VOID Statistics_CallEnd(_In_ DWORD fId, QWORD tmCallStart)
     if(fId > STATISTICS_ID_MAX) { return; }
     if(tmCallStart == 0) { return; }
     pStat = ((PCALLSTAT)ctxMain->pvStatistics) + fId;
-    pStat->c++;
+    InterlockedIncrement64(&pStat->c);
     QueryPerformanceCounter((PLARGE_INTEGER)&tmNow);
-    pStat->tm += tmNow - tmCallStart;
+    InterlockedAdd64(&pStat->tm, tmNow - tmCallStart);
 }
 
 VOID Statistics_CallToString(_In_opt_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcb)
 {
+    BOOL result;
     QWORD qwFreq, uS;
     DWORD i, o = 0;
     PCALLSTAT pStat;
+    LEECHCORE_STATISTICS LeechCoreStatistics = { 0 };
+    DWORD cbLeechCoreStatistics = sizeof(LEECHCORE_STATISTICS);
     if(!pb) { 
-        *pcb = 71 * (STATISTICS_ID_MAX + 5);
+        *pcb = 71 * (STATISTICS_ID_MAX + LEECHCORE_STATISTICS_ID_MAX + 6);
         return;
     }
     QueryPerformanceFrequency((PLARGE_INTEGER)&qwFreq);
@@ -280,6 +281,7 @@ VOID Statistics_CallToString(_In_opt_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcb)
         "======================================================================\n",
         ctxMain->pvStatistics ? "ENABLED " : "DISABLED"
         );
+    // statistics
     for(i = 0; i <= STATISTICS_ID_MAX; i++) {
         if(ctxMain->pvStatistics) {
             pStat = ((PCALLSTAT)ctxMain->pvStatistics) + i;
@@ -303,6 +305,31 @@ VOID Statistics_CallToString(_In_opt_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcb)
             "%-32.32s  %8i  %8i  %16lli\n",
             NAMES_VMM_STATISTICS_CALL[i],
             0, 0, 0ULL);
+    }
+    // leechcore statistics
+    result = LeechCore_CommandData(LEECHCORE_COMMANDDATA_STATISTICS_GET, NULL, 0, (PBYTE)&LeechCoreStatistics, cbLeechCoreStatistics, &cbLeechCoreStatistics);
+    if(result && (LeechCoreStatistics.magic == LEECHCORE_STATISTICS_MAGIC) && (LeechCoreStatistics.version == LEECHCORE_STATISTICS_VERSION) && LeechCoreStatistics.qwFreq) {
+        for(i = 0; i <= LEECHCORE_STATISTICS_ID_MAX; i++) {
+            if(LeechCoreStatistics.Call[i].c) {
+                uS = (LeechCoreStatistics.Call[i].tm * 1000000ULL) / LeechCoreStatistics.qwFreq;
+                o += snprintf(
+                    pb + o,
+                    cb - o,
+                    "%-32.32s  %8i  %8i  %16lli\n",
+                    LEECHCORE_STATISTICS_NAME[i],
+                    (DWORD)LeechCoreStatistics.Call[i].c,
+                    (DWORD)(uS / LeechCoreStatistics.Call[i].c),
+                    uS
+                );
+            } else {
+                o += snprintf(
+                    pb + o,
+                    cb - o,
+                    "%-32.32s  %8i  %8i  %16lli\n",
+                    LEECHCORE_STATISTICS_NAME[i],
+                    0, 0, 0ULL);
+            }
+        }
     }
     *pcb = o;
 }

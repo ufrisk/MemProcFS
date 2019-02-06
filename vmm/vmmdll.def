@@ -1,9 +1,6 @@
 LIBRARY		VMM
 EXPORTS
-    VMMDLL_InitializeReserved
-    VMMDLL_InitializeFile
-    VMMDLL_InitializeFPGA
-    VMMDLL_InitializeTotalMeltdown
+    VMMDLL_Initialize
     VMMDLL_Close
 
     VMMDLL_ConfigGet

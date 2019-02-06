@@ -1,6 +1,6 @@
 // vmmproc.h : definitions related to operating system and process parsing of virtual memory
 //
-// (c) Ulf Frisk, 2018
+// (c) Ulf Frisk, 2018-2019
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __VMMPROC_H__
@@ -9,17 +9,32 @@
 
 /*
 * Force a refresh of the process list.
-* -- fProcessList = partial refresh of processes should be done.
-* -- fProcessFull = full refresh of processes should be done.
+* -- fRefreshTotal = full refresh of processes should be done instead of partial.
 * -- return
 */
-BOOL VmmProc_Refresh(_In_ BOOL fProcessList, _In_ BOOL fProcessFull);
+BOOL VmmProc_Refresh(_In_ BOOL fRefreshTotal);
 
 /*
 * Load operating system dependant module names, such as parsed from PE or ELF
-* into the proper display caches, and also into the memory map.
+* into the modules map.
 */
-VOID VmmProc_InitializeModuleNames(_In_ PVMM_PROCESS pProcess);
+VOID VmmProc_ModuleMapInitialize(_In_ PVMM_PROCESS pProcess);
+
+/*
+* Retrieve the module map. Map is generated on-demand if not already existing.
+* CALLER DECREF: ppObModuleMap
+* -- pProcess
+* -- ppObModuleMap
+* -- return
+*/
+_Success_(return)
+BOOL VmmProc_ModuleMapGet(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MODULEMAP *ppObModuleMap);
+
+/*
+* Scan additional process information (not already in the initialized modulemap)
+* and put the result into the memory map.
+*/
+VOID VmmProc_ScanTagsMemMap(_In_ PVMM_PROCESS pProcess);
 
 /*
 * Tries to automatically identify the operating system given by the supplied

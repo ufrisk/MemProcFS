@@ -13,38 +13,12 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
-    <Filter Include="Header Files\pcileech">
-      <UniqueIdentifier>{bc9b7cdb-d6b1-4bb5-9c1a-6f105979cac4}</UniqueIdentifier>
+    <Filter Include="Header Files\leechcore">
+      <UniqueIdentifier>{aedb4365-6f4c-4a1b-b130-a1d3adc27bf6}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <None Include="vmmdll.def">
-      <Filter>Resource Files</Filter>
-    </None>
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="pcileech_dll.h">
-      <Filter>Header Files\pcileech</Filter>
-    </ClInclude>
-    <ClInclude Include="device.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="devicefile.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="devicepcileechdll.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="m_ldrmodules.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="m_status.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="m_virt2phys.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="pluginmanager.h">
+    <ClInclude Include="vmmdll.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="statistics.h">
@@ -62,6 +36,18 @@
     <ClInclude Include="vmmvfs.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="pluginmanager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="m_ldrmodules.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="m_status.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="m_virt2phys.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="mm_x64.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -74,36 +60,24 @@
     <ClInclude Include="pe.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="vmmdll.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="vmmwin.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="vmmwininit.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="leechcore.h">
+      <Filter>Header Files\leechcore</Filter>
+    </ClInclude>
+    <ClInclude Include="resource.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="version.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="device.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="devicefile.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="devicepcileechdll.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="m_ldrmodules.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="m_status.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="m_virt2phys.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="pluginmanager.c">
+    <ClCompile Include="vmmdll.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="statistics.c">
@@ -115,13 +89,22 @@
     <ClCompile Include="vmm.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="vmmdll.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="vmmproc.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="vmmvfs.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="m_virt2phys.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="m_ldrmodules.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="m_status.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="pluginmanager.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="mm_x64.c">
@@ -142,5 +125,15 @@
     <ClCompile Include="vmmwininit.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="vmmdll.def">
+      <Filter>Resource Files</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="vmm.rc">
+      <Filter>Resource Files</Filter>
+    </ResourceCompile>
   </ItemGroup>
 </Project>

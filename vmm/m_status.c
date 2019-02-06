@@ -1,6 +1,6 @@
 // m_status.c : implementation of the .status built-in module.
 //
-// (c) Ulf Frisk, 2018
+// (c) Ulf Frisk, 2018-2019
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -121,10 +121,10 @@ NTSTATUS MStatus_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ LPVOID pb, _In_ DWO
             return Util_VfsReadFile_FromBOOL(ctxMain->cfg.fVerboseExtraTlp, pb, cb, pcbRead, cbOffset);
         }
         if(!_stricmp(ctx->szPath, "native_max_address")) {
-            return Util_VfsReadFile_FromQWORD(ctxMain->dev.paAddrMaxNative, pb, cb, pcbRead, cbOffset, FALSE);
+            return Util_VfsReadFile_FromQWORD(ctxMain->dev.paMaxNative, pb, cb, pcbRead, cbOffset, FALSE);
         }
         if(!_stricmp(ctx->szPath, "native_max_iosize")) {
-            return Util_VfsReadFile_FromQWORD(ctxMain->dev.qwMaxSizeMemIo, pb, cb, pcbRead, cbOffset, FALSE);
+            return Util_VfsReadFile_FromQWORD(ctxMain->dev.cbMaxSizeMemIo, pb, cb, pcbRead, cbOffset, FALSE);
         }
     }
     return VMMDLL_STATUS_FILE_INVALID;
@@ -172,7 +172,7 @@ NTSTATUS MStatus_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ LPVOID pb, _In_ DWO
             if(nt == VMMDLL_STATUS_SUCCESS) {
                 ctxVmm->flags &= ~VMM_FLAG_PROCESS_SHOW_TERMINATED;
                 ctxVmm->flags |= fEnable ? VMM_FLAG_PROCESS_SHOW_TERMINATED : 0;
-                VmmProc_Refresh(FALSE, TRUE);
+                VmmProc_Refresh(TRUE);
             }
             return nt;
         }

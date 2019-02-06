@@ -2,12 +2,16 @@
 //        virtual address space. This may mostly (but not exclusively) be used
 //        by Windows functionality.
 //
-// (c) Ulf Frisk, 2018
+// (c) Ulf Frisk, 2018-2019
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __PE_H__
 #define __PE_H__
 #include "vmm.h"
+
+#define CONTAINING_RECORD32(address, type, field) ((DWORD)( \
+                                                  (DWORD)(QWORD)(address) - \
+                                                  (DWORD)(QWORD)(&((type *)0)->field)))
 
 static const LPCSTR PE_DATA_DIRECTORIES[16] = { "EXPORT", "IMPORT", "RESOURCE", "EXCEPTION", "SECURITY", "BASERELOC", "DEBUG", "ARCHITECTURE", "GLOBALPTR", "TLS", "LOAD_CONFIG", "BOUND_IMPORT", "IAT", "DELAY_IMPORT", "COM_DESCRIPTOR", "RESERVED" };
 
@@ -35,15 +39,16 @@ QWORD PE_GetProcAddress(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In
 * -- fOnFailDummyName
 * -- pbModuleHeaderOpt
 * -- szModuleName
+* -- cszModuleName
 * -- pdwSize
 * -- return
 */
 _Success_(return)
-BOOL PE_GetModuleNameEx(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ BOOL fOnFailDummyName, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt, _Out_writes_(MAX_PATH) PCHAR szModuleName, _Out_opt_ PDWORD pdwSize);
+BOOL PE_GetModuleNameEx(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ BOOL fOnFailDummyName, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt, _Out_writes_(cszModuleName) PCHAR szModuleName, _In_ DWORD cszModuleName, _Out_opt_ PDWORD pdwSize);
 _Success_(return)
-inline BOOL PE_GetModuleName(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _Out_writes_(MAX_PATH) PCHAR szModuleName)
+inline BOOL PE_GetModuleName(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _Out_writes_(cszModuleName) PCHAR szModuleName, _In_ DWORD cszModuleName)
 {
-    return PE_GetModuleNameEx(pProcess, vaModuleBase, FALSE, NULL, szModuleName, NULL);
+    return PE_GetModuleNameEx(pProcess, vaModuleBase, FALSE, NULL, szModuleName, cszModuleName, NULL);
 }
 
 /*

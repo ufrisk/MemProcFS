@@ -1,6 +1,6 @@
 // statistics.h : definitions of statistics related functionality.
 //
-// (c) Ulf Frisk, 2016-2018
+// (c) Ulf Frisk, 2016-2019
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __STATISTICS_H__
@@ -86,9 +86,7 @@ VOID PageStatUpdate(_Inout_opt_ PPAGE_STATISTICS ps, _In_ QWORD qwAddr, _In_ QWO
 #define STATISTICS_ID_PluginManager_Read                0x14
 #define STATISTICS_ID_PluginManager_Write               0x15
 #define STATISTICS_ID_PluginManager_Notify              0x16
-#define STATISTICS_ID_DeviceReadScatterMEM              0x17
-#define STATISTICS_ID_DeviceWriteMEM                    0x18
-#define STATISTICS_ID_MAX                               0x18
+#define STATISTICS_ID_MAX                               0x16
 #define STATISTICS_ID_NOLOG                       0xffffffff
 
 VOID Statistics_CallSetEnabled(_In_ BOOL fEnabled);

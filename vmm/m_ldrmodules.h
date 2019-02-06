@@ -1,6 +1,6 @@
 // m_ldrmodules.h : definitions related to the ldrmodules built-in module.
 //
-// (c) Ulf Frisk, 2018
+// (c) Ulf Frisk, 2018-2019
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __M_LDRMODULES_H__

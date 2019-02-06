@@ -18,7 +18,7 @@
 // Ensure only one is active below at one single time!
 // INITIALIZE_FROM_FILE contains file name to a raw memory dump.
 // ----------------------------------------------------------------------------
-#define _INITIALIZE_FROM_FILE    "z:\\media\\vm\\memdump\\WIN10-17134-48-1.raw"
+#define _INITIALIZE_FROM_FILE    "c:\\temp\\win10.raw"
 //#define _INITIALIZE_FROM_FPGA
 //#define _INITIALIZE_FROM_TOTALMELTDOWN
 
@@ -72,7 +72,7 @@ int main(_In_ int argc, _In_ char* argv[])
     printf("#01: Initialize from file:                                  \n");
     ShowKeyPress();
     printf("CALL:    VMMDLL_InitializeFile\n");
-    result = VMMDLL_InitializeFile(_INITIALIZE_FROM_FILE, NULL);
+    result = VMMDLL_Initialize(3, (LPSTR[]){ "", "-device", _INITIALIZE_FROM_FILE });
     if(result) {
         printf("SUCCESS: VMMDLL_InitializeFile\n");
     } else {
@@ -299,17 +299,17 @@ int main(_In_ int argc, _In_ char* argv[])
     }
 
 
-    // Retrieve the module of crypt32.dll by its name. Note it is also possible
+    // Retrieve the module of kernel32.dll by its name. Note it is also possible
     // to retrieve it by retrieving the complete module map (list) and iterate
     // over it. But if the name of the module is known this is more convenient.
     // This required that the PEB and LDR list in-process haven't been tampered
     // with ...
     printf("------------------------------------------------------------\n");
-    printf("#07: Get by name 'crypt32.dll' in 'explorer.exe'.           \n");
+    printf("#07: Get by name 'kernel32.dll' in 'explorer.exe'.          \n");
     ShowKeyPress();
     VMMDLL_MODULEMAP_ENTRY ModuleEntry;
     printf("CALL:    VMMDLL_ProcessGetModuleFromName\n");
-    result = VMMDLL_ProcessGetModuleFromName(dwPID, "crypt32.dll", &ModuleEntry);
+    result = VMMDLL_ProcessGetModuleFromName(dwPID, "kernel32.dll", &ModuleEntry);
     if(result) {
         printf("SUCCESS: VMMDLL_ProcessGetModuleFromName\n");
         printf("         MODULE_NAME                                 BASE             SIZE     ENTRY\n");
@@ -328,12 +328,12 @@ int main(_In_ int argc, _In_ char* argv[])
     }
 
 
-    // Retrieve the memory at the base of crypt32.dll previously fetched and
+    // Retrieve the memory at the base of kernel32.dll previously fetched and
     // display the first 0x200 bytes of it. This read is fetched from the cache
     // by default (if possible). If reads should be forced from the DMA device
     // please specify the flag: VMM_FLAG_NOCACHE
     printf("------------------------------------------------------------\n");
-    printf("#08: Read 0x200 bytes of 'crypt32.dll' in 'explorer.exe'.   \n");
+    printf("#08: Read 0x200 bytes of 'kernel32.dll' in 'explorer.exe'.  \n");
     ShowKeyPress();
     DWORD cRead;
     printf("CALL:    VMMDLL_MemReadEx\n");
@@ -348,14 +348,14 @@ int main(_In_ int argc, _In_ char* argv[])
     }
 
 
-    // List the sections from the module of crypt32.dll.
+    // List the sections from the module of kernel32.dll.
     printf("------------------------------------------------------------\n");
-    printf("#09: List sections of 'crypt32.dll' in 'explorer.exe'.      \n");
+    printf("#09: List sections of 'kernel32.dll' in 'explorer.exe'.     \n");
     ShowKeyPress();
     DWORD cSections;
     PIMAGE_SECTION_HEADER pSectionHeaders;
     printf("CALL:    VMMDLL_ProcessGetSections #1\n");
-    result = VMMDLL_ProcessGetSections(dwPID, "crypt32.dll", NULL, 0, &cSections);
+    result = VMMDLL_ProcessGetSections(dwPID, "kernel32.dll", NULL, 0, &cSections);
     if(result) {
         printf("SUCCESS: VMMDLL_ProcessGetSections #1\n");
         printf("         Count = %lli\n", cModules);
@@ -369,7 +369,7 @@ int main(_In_ int argc, _In_ char* argv[])
         return 1;
     }
     printf("CALL:    VMMDLL_ProcessGetSections #2\n");
-    result = VMMDLL_ProcessGetSections(dwPID, "crypt32.dll", pSectionHeaders, cSections, &cSections);
+    result = VMMDLL_ProcessGetSections(dwPID, "kernel32.dll", pSectionHeaders, cSections, &cSections);
     if(result) {
         printf("SUCCESS: VMMDLL_ProcessGetSections #2\n");
         printf("         #  NAME     OFFSET   SIZE     RWX\n");
@@ -392,17 +392,17 @@ int main(_In_ int argc, _In_ char* argv[])
     }
 
 
-    // Retrieve and display the data directories of crypt32.dll. The number of
+    // Retrieve and display the data directories of kernel32.dll. The number of
     // data directories in a PE is always 16 - so this can be used to simplify
     // calling the functionality somewhat.
     printf("------------------------------------------------------------\n");
-    printf("#10: List directories of 'crypt32.dll' in 'explorer.exe'.   \n");
+    printf("#10: List directories of 'kernel32.dll' in 'explorer.exe'.  \n");
     ShowKeyPress();
     LPCSTR DIRECTORIES[16] = { "EXPORT", "IMPORT", "RESOURCE", "EXCEPTION", "SECURITY", "BASERELOC", "DEBUG", "ARCHITECTURE", "GLOBALPTR", "TLS", "LOAD_CONFIG", "BOUND_IMPORT", "IAT", "DELAY_IMPORT", "COM_DESCRIPTOR", "RESERVED" };
     DWORD cDirectories;
     IMAGE_DATA_DIRECTORY pDirectories[16];
     printf("CALL:    VMMDLL_ProcessGetDirectories\n");
-    result = VMMDLL_ProcessGetDirectories(dwPID, "crypt32.dll", pDirectories, 16, &cDirectories);
+    result = VMMDLL_ProcessGetDirectories(dwPID, "kernel32.dll", pDirectories, 16, &cDirectories);
     if(result) {
         printf("SUCCESS: PCIleech_VmmProcess_GetDirectories\n");
         printf("         #  NAME             OFFSET   SIZE\n");
@@ -422,14 +422,14 @@ int main(_In_ int argc, _In_ char* argv[])
     }
 
 
-    // Retrieve the export address table (EAT) of crypt32.dll
+    // Retrieve the export address table (EAT) of kernel32.dll
     printf("------------------------------------------------------------\n");
-    printf("#11: exports of 'crypt32.dll' in 'explorer.exe'.            \n");
+    printf("#11: exports of 'kernel32.dll' in 'explorer.exe'.           \n");
     ShowKeyPress();
     DWORD cEATs;
     PVMMDLL_EAT_ENTRY pEATs;
     printf("CALL:    VMMDLL_ProcessGetEAT #1\n");
-    result = VMMDLL_ProcessGetEAT(dwPID, "crypt32.dll", NULL, 0, &cEATs);
+    result = VMMDLL_ProcessGetEAT(dwPID, "kernel32.dll", NULL, 0, &cEATs);
     if(result) {
         printf("SUCCESS: VMMDLL_ProcessGetEAT #1\n");
         printf("         Count = %i\n", cEATs);
@@ -443,7 +443,7 @@ int main(_In_ int argc, _In_ char* argv[])
         return 1;
     }
     printf("CALL:    VMMDLL_ProcessGetEAT #2\n");
-    result = VMMDLL_ProcessGetEAT(dwPID, "crypt32.dll", pEATs, cEATs, &cEATs);
+    result = VMMDLL_ProcessGetEAT(dwPID, "kernel32.dll", pEATs, cEATs, &cEATs);
     if(result) {
         printf("SUCCESS: VMMDLL_ProcessGetEAT #2\n");
         printf("         #    OFFSET   NAME\n");
@@ -462,14 +462,14 @@ int main(_In_ int argc, _In_ char* argv[])
     }
 
 
-    // Retrieve the import address table (IAT) of crypt32.dll
+    // Retrieve the import address table (IAT) of kernel32.dll
     printf("------------------------------------------------------------\n");
-    printf("#12: imports of 'crypt32.dll' in 'explorer.exe'.            \n");
+    printf("#12: imports of 'kernel32.dll' in 'explorer.exe'.           \n");
     ShowKeyPress();
     DWORD cIATs;
     PVMMDLL_IAT_ENTRY pIATs;
     printf("CALL:    VMMDLL_ProcessGetIAT #1\n");
-    result = VMMDLL_ProcessGetIAT(dwPID, "crypt32.dll", NULL, 0, &cIATs);
+    result = VMMDLL_ProcessGetIAT(dwPID, "kernel32.dll", NULL, 0, &cIATs);
     if(result) {
         printf("SUCCESS: VMMDLL_ProcessGetIAT #1\n");
         printf("         Count = %i\n", cIATs);
@@ -483,7 +483,7 @@ int main(_In_ int argc, _In_ char* argv[])
         return 1;
     }
     printf("CALL:    VMMDLL_ProcessGetIAT #2\n");
-    result = VMMDLL_ProcessGetIAT(dwPID, "crypt32.dll", pIATs, cIATs, &cIATs);
+    result = VMMDLL_ProcessGetIAT(dwPID, "kernel32.dll", pIATs, cIATs, &cIATs);
     if(result) {
         printf("SUCCESS: VMMDLL_ProcessGetIAT #2\n");
         printf("         #    VIRTUAL_ADDRESS    MODULE!NAME\n");

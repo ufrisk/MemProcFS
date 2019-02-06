@@ -62,26 +62,10 @@ def VmmPy_Close():
 
 
 
-def VmmPy_InternalInitializeReserved(args, is_printf = True, is_verbose = False, is_verbose_extra = False, is_verbose_tlp = False, page_table_base = 0):
-    """INTERNAL USE ONLY - DO NOT CALL DIRECTLY!
-    """
-    if page_table_base > 0:
-        args.append("-cr3")
-        args.append(str(page_table_base))
-    if is_printf:
-        args.append("-vdll")
-    if is_verbose:
-        args.append("-v")
-    if is_verbose_extra:
-        args.append("-vv")
-    if is_verbose_tlp:
-        args.append("-vvv")
-    VMMPYC_InitializeReserved(args)
-
-
-
-def VmmPy_InitializeFile(file_name, is_printf = True, is_verbose = False, is_verbose_extra = False, is_verbose_tlp = False, page_table_base = 0):
-    """Initialize VmmPy and the Virtual Memory Manager VMM.DLL from a memory dump file.
+def VmmPy_Initialize(args, is_printf = True, is_verbose = False, is_verbose_extra = False, is_verbose_tlp = False, page_table_base = 0):
+    """Initialize VmmPy and the Virtual Memory Manager VMM.DLL with arguments as
+       in the argument list args. Important is the -device option and optionally
+       -remote option as closer described in the MemProcFS and LeechCore projects.
 
     Keyword arguments:
     file_name -- str: memory dump file to load.
@@ -92,50 +76,21 @@ def VmmPy_InitializeFile(file_name, is_printf = True, is_verbose = False, is_ver
     page_table_base -- int: optional page directory base of the OS kernel or a x64 process.
     
     Example:
-    VmmPy_InitializeFile("c:\\temp\\dump.raw")
+    VmmPy_Initialize(['c:\\temp\\dump.raw'])
+    VmmPy_Initialize(['-device', 'dumpit','-remote', 'rpc://insecure:remote.example.com'])
     """
-    args = ["", "-device", file_name]
-    VmmPy_InternalInitializeReserved(args, is_printf, is_verbose, is_verbose_extra, is_verbose_tlp, page_table_base)
-
-
-
-def VmmPy_InitializeTotalMeltdown(is_printf = True, is_verbose = False, is_verbose_extra = False, is_verbose_tlp = False, page_table_base = 0):
-    """Initialize VmmPy and the Virtual Memory Manager VMM.DLL from the "Total Meltdown" CVE-2018-1038 vulnerability.
-    NB! Read/Write mode will be enabled.
-    NB! Required a linked pcileech.dll
-
-    Keyword arguments:
-    is_printf -- bool: console output from vmm.dll is enabled.
-    is_verbose -- bool: verbose level.
-    is_verbose_extra -- bool: extra verbose level.
-    is_verbose_tlp -- bool: show FPGA TLPs or similar - super verbose!
-    page_table_base -- int: optional page directory base of the OS kernel or a x64 process.
-    
-    Example:
-    VmmPy_InitializeFile("c:\\temp\\dump.raw")
-    """
-    args = ["", "-device", "totalmeltdown"]
-    VmmPy_InternalInitializeReserved(args, is_printf, is_verbose, is_verbose_extra, is_verbose_tlp, page_table_base)
-
-
-
-def VmmPy_InitializeFPGA(is_printf = True, is_verbose = False, is_verbose_extra = False, is_verbose_tlp = False, page_table_base = 0):
-    """Initialize VmmPy and the Virtual Memory Manager VMM.DLL from a supported FPGA device over USB.
-    NB! Read/Write mode will be enabled.
-    NB! Required a linked pcileech.dll
-
-    Keyword arguments:
-    is_printf -- bool: console output from vmm.dll is enabled.
-    is_verbose -- bool: verbose level.
-    is_verbose_extra -- bool: extra verbose level.
-    is_verbose_tlp -- bool: show FPGA TLPs or similar - super verbose!
-    page_table_base -- int: optional page directory base of the OS kernel or a x64 process.
-    
-    Example:
-    VmmPy_InitializeFile("c:\\temp\\dump.raw")
-    """
-    args = ["", "-device", "fpga"]
-    VmmPy_InternalInitializeReserved(args, is_printf, is_verbose, is_verbose_extra, is_verbose_tlp, page_table_base)
+    if page_table_base > 0:
+        args.append("-cr3")
+        args.append(str(page_table_base))
+    if is_printf:
+        args.append("-printf")
+    if is_verbose:
+        args.append("-v")
+    if is_verbose_extra:
+        args.append("-vv")
+    if is_verbose_tlp:
+        args.append("-vvv")
+    VMMPYC_Initialize(args)
 
 
 

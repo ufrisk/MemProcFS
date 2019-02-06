@@ -155,9 +155,9 @@ NTSTATUS PY2C_Callback_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ LPVOID pb, _I
     PyObject *args, *pyLong = NULL, *pyPid;
     PyGILState_STATE gstate;
     CHAR szPathBuffer[MAX_PATH];
-    if(!ctxPY2C->fInitialized) { return FALSE; }
-    if(!PY2C_Util_TranslatePathDelimiter(szPathBuffer, ctx->szPath)) { return FALSE; }
     *pcbWrite = 0;
+    if(!ctxPY2C->fInitialized) { return VMMDLL_STATUS_FILE_INVALID; }
+    if(!PY2C_Util_TranslatePathDelimiter(szPathBuffer, ctx->szPath)) { return VMMDLL_STATUS_FILE_INVALID; }
     gstate = PyGILState_Ensure();
     // pyPid is "consumed" by Py_BuildValue and does not need to be Py_DECREF'ed.
     if(ctx->dwPID == (DWORD)-1) {
@@ -185,7 +185,7 @@ fail:
     return nt;
 }
 
-VOID PY2C_Callback_Notify(_Inout_opt_ PHANDLE phModulePrivate, _In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent)
+VOID PY2C_Callback_Notify(_In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent)
 {
     PyObject *args, *pyResult = NULL;
     PyGILState_STATE gstate;
@@ -330,7 +330,7 @@ fail:
     return FALSE;
 }
 
-VOID PYTHON_Close(_Inout_ PHANDLE phModulePrivate)
+VOID PYTHON_Close()
 {
     PY2C_Callback_Close();
     Py_FinalizeEx();
@@ -357,7 +357,7 @@ VOID InitializeVmmPlugin(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo)
         pRegInfo->reg_fn.pfnRead = PY2C_Callback_Read;          // Read function supported.
         pRegInfo->reg_fn.pfnWrite = PY2C_Callback_Write;        // Write function supported.
         pRegInfo->reg_fn.pfnNotify = PY2C_Callback_Notify;      // Notify function supported.
-        pRegInfo->reg_fn.pfnCloseHandleModule = PYTHON_Close;   // Close module handle.
+        pRegInfo->reg_fn.pfnClose = PYTHON_Close;               // Close module handle.
         pRegInfo->pfnPluginManager_Register(pRegInfo);          // Register with the plugin maanger.
     }
 }

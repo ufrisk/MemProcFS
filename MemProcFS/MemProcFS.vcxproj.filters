@@ -14,13 +14,27 @@
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
     <Filter Include="Header Files\dokan">
-      <UniqueIdentifier>{48be56a3-760b-4123-bfa4-2df9018c3445}</UniqueIdentifier>
+      <UniqueIdentifier>{3df63be8-ffcd-417a-a1f9-c8d774863692}</UniqueIdentifier>
     </Filter>
     <Filter Include="Header Files\vmm">
-      <UniqueIdentifier>{bb78aad0-c3f0-457d-beb5-0a916ec07fd7}</UniqueIdentifier>
+      <UniqueIdentifier>{ef93cbf4-5326-46d3-a5e0-6fb6d61d08f0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\leechcore">
+      <UniqueIdentifier>{5c8e3ce6-1d2e-46ff-b5a6-a928f4c1569f}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="memprocfs.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="vfs.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="vfs.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="dokan.h">
       <Filter>Header Files\dokan</Filter>
     </ClInclude>
@@ -33,16 +47,16 @@
     <ClInclude Include="vmmdll.h">
       <Filter>Header Files\vmm</Filter>
     </ClInclude>
-    <ClInclude Include="vfs.h">
+    <ClInclude Include="leechcore.h">
+      <Filter>Header Files\leechcore</Filter>
+    </ClInclude>
+    <ClInclude Include="version.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="memprocfs.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="vfs.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
+    <ResourceCompile Include="MemProcFS.rc">
+      <Filter>Resource Files</Filter>
+    </ResourceCompile>
   </ItemGroup>
 </Project>

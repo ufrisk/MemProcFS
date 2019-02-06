@@ -55,7 +55,7 @@ extern "C" {
 /** @{ */
 
 /** The current Dokan version (ver 1.2.0). \ref DOKAN_OPTIONS.Version */
-#define DOKAN_VERSION 120
+#define DOKAN_VERSION 121
 /** Minimum Dokan version (ver 1.1.0) accepted. */
 #define DOKAN_MINIMUM_COMPATIBLE_VERSION 110
 /** Maximum number of dokan instances.*/
@@ -101,22 +101,22 @@ extern "C" {
  * \see DokanMain
  */
 typedef struct _DOKAN_OPTIONS {
-  /** Version of the Dokan features requested (version "123" is equal to Dokan version 1.2.3). */
+  /** Version of the Dokan features requested without dots (version "123" is equal to Dokan version 1.2.3). */
   USHORT Version;
-  /** Number of threads to be used internally by Dokan library. More threads will handle more events at the same time. */
+  /** Number of threads to be used by Dokan library internally. More threads will handle more events at the same time. */
   USHORT ThreadCount;
   /** Features enabled for the mount. See \ref DOKAN_OPTION. */
   ULONG Options;
   /** FileSystem can store anything here. */
   ULONG64 GlobalContext;
-  /** Mount point. Can be "M:\" (drive letter) or "C:\mount\dokan" (path in NTFS). */
+  /** Mount point. It can be a driver letter like "M:\" or a folder path "C:\mount\dokan" on a NTFS partition. */
   LPCWSTR MountPoint;
   /**
   * UNC Name for the Network Redirector
   * \see <a href="https://msdn.microsoft.com/en-us/library/windows/hardware/ff556761(v=vs.85).aspx">Support for UNC Naming</a>
   */
   LPCWSTR UNCName;
-  /** Max timeout in milliseconds of each request before Dokan gives up. */
+  /** Max timeout in milliseconds of each request before Dokan gives up to wait events to complete. */
   ULONG Timeout;
   /** Allocation Unit Size of the volume. This will affect the file size. */
   ULONG AllocationUnitSize;
@@ -741,7 +741,7 @@ int DOKANAPI DokanMain(PDOKAN_OPTIONS DokanOptions,
  * \brief Unmount a Dokan device from a driver letter.
  *
  * \param DriveLetter Dokan driver letter to unmount.
- * \return \c TRUE if device was unmounted or False in case of failure or device not found.
+ * \return \c TRUE if device was unmounted or \c FALSE in case of failure or device not found.
  */
 BOOL DOKANAPI DokanUnmount(WCHAR DriveLetter);
 
@@ -749,7 +749,7 @@ BOOL DOKANAPI DokanUnmount(WCHAR DriveLetter);
  * \brief Unmount a Dokan device from a mount point
  *
  * \param MountPoint Mount point to unmount ("Z", "Z:", "Z:\", "Z:\MyMountPoint").
- * \return \c TRUE if device was unmounted or False in case of failure or device not found.
+ * \return \c TRUE if device was unmounted or \c FALSE in case of failure or device not found.
  */
 BOOL DOKANAPI DokanRemoveMountPoint(LPCWSTR MountPoint);
 
@@ -764,7 +764,7 @@ BOOL DOKANAPI DokanRemoveMountPoint(LPCWSTR MountPoint);
  *
  * \param MountPoint Mount point to unmount ("Z", "Z:", "Z:\", "Z:\MyMountPoint").
  * \param Safe Process is not in DLL_PROCESS_DETACH state.
- * \return True if device was unmounted or False in case of failure or device not found.
+ * \return \c TRUE if device was unmounted or \c FALSE in case of failure or device not found.
  */
 BOOL DOKANAPI DokanRemoveMountPointEx(LPCWSTR MountPoint, BOOL Safe);
 

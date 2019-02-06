@@ -1,6 +1,6 @@
 // vmmvfs.h : definitions related to virtual memory management / virtual file system interfacing.
 //
-// (c) Ulf Frisk, 2018
+// (c) Ulf Frisk, 2018-2019
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __VMMVFS_H__

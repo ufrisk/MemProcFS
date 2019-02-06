@@ -1,4 +1,5 @@
 /.vs
+*.ilk
 *pycache*
 /files/vmm_example.exe
 /files/lib

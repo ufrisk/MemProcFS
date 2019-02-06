@@ -1,6 +1,6 @@
 // mm_x86pae.h : definitions related to the x86 PAE (Physical Address Extension) 32-bit protected mode memory model.
 //
-// (c) Ulf Frisk, 2018
+// (c) Ulf Frisk, 2018-2019
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __MM_X86PAE_H__

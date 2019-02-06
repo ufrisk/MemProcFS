@@ -14,17 +14,28 @@
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
     <Filter Include="Header Files\vmm">
-      <UniqueIdentifier>{b6c15f41-24a1-401e-8ad1-c4b158f9d770}</UniqueIdentifier>
+      <UniqueIdentifier>{e9dc36c3-ddaf-4793-bc7a-ca2ded590236}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="vmmdll.h">
       <Filter>Header Files\vmm</Filter>
     </ClInclude>
+    <ClInclude Include="leechcore.h">
+      <Filter>Header Files\vmm</Filter>
+    </ClInclude>
+    <ClInclude Include="version.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="vmmpyc.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="vmmpyc.rc">
+      <Filter>Resource Files</Filter>
+    </ResourceCompile>
   </ItemGroup>
 </Project>

@@ -2,7 +2,7 @@
 //        in virtual address space. This may mostly (but not exclusively) be
 //        used by Windows functionality.
 //
-// (c) Ulf Frisk, 2018
+// (c) Ulf Frisk, 2018-2019
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -47,7 +47,7 @@ QWORD PE_GetProcAddress(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In
     PIMAGE_NT_HEADERS64 ntHeader64;
     PDWORD pdwRVAAddrNames, pdwRVAAddrFunctions;
     PWORD pwNameOrdinals;
-    DWORD i, cbProcName, cbExportDirectoryOffset;
+    DWORD i, cbProcName, cbExportDirectoryOffset, cbRead = 0;
     LPSTR sz;
     QWORD vaFnPtr;
     QWORD vaExportDirectory;
@@ -66,7 +66,8 @@ QWORD PE_GetProcAddress(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In
     }
     if((cbExportDirectory < sizeof(IMAGE_EXPORT_DIRECTORY)) || (cbExportDirectory > 0x01000000) || (vaExportDirectory == vaModuleBase) || (vaExportDirectory > vaModuleBase + 0x80000000)) { goto cleanup; }
     if(!(pbExportDirectory = LocalAlloc(0, cbExportDirectory))) { goto cleanup; }
-    if(!VmmRead(pProcess, vaExportDirectory, pbExportDirectory, cbExportDirectory)) { goto cleanup; }
+    VmmReadEx(pProcess, vaExportDirectory, pbExportDirectory, cbExportDirectory, &cbRead, VMM_FLAG_ZEROPAD_ON_FAIL);
+    if(!cbRead) { goto cleanup; }
     PIMAGE_EXPORT_DIRECTORY exp = (PIMAGE_EXPORT_DIRECTORY)pbExportDirectory;
     if(!exp || !exp->NumberOfNames || !exp->AddressOfNames) { goto cleanup; }
     vaRVAAddrNames = vaModuleBase + exp->AddressOfNames;
@@ -177,7 +178,7 @@ DWORD PE_EatGetNumberOfEx(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _
 }
 
 _Success_(return)
-BOOL PE_GetModuleNameEx(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ BOOL fOnFailDummyName, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt, _Out_writes_(MAX_PATH) PCHAR szModuleName, _Out_opt_ PDWORD pdwSize)
+BOOL PE_GetModuleNameEx(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ BOOL fOnFailDummyName, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt, _Out_writes_(cszModuleName) PCHAR szModuleName, _In_ DWORD cszModuleName, _Out_opt_ PDWORD pdwSize)
 {
     BOOL f32;
     BYTE pbModuleHeader[0x1000] = { 0 };
@@ -209,8 +210,8 @@ BOOL PE_GetModuleNameEx(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In
     if(!VmmRead(pProcess, vaExportDirectory, pbExportDirectory, sizeof(IMAGE_EXPORT_DIRECTORY))) { goto fail; }
     exp = (PIMAGE_EXPORT_DIRECTORY)pbExportDirectory;
     if(!exp || !exp->Name || exp->Name > cbImageSize) { goto fail; }
-    szModuleName[MAX_PATH - 1] = 0;
-    if(!VmmRead(pProcess, vaModuleBase + exp->Name, szModuleName, MAX_PATH - 1)) { goto fail; }
+    szModuleName[cszModuleName - 1] = 0;
+    if(!VmmRead(pProcess, vaModuleBase + exp->Name, szModuleName, cszModuleName - 1)) { goto fail; }
     return TRUE;
 fail:
     if(fOnFailDummyName) {

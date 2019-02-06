@@ -15,7 +15,7 @@
 
 // [STR] -> None
 static PyObject*
-VMMPYC_InitializeReserved(PyObject *self, PyObject *args)
+VMMPYC_Initialize(PyObject *self, PyObject *args)
 {
     PyObject *pyList, *pyString;
     BOOL result;
@@ -25,7 +25,7 @@ VMMPYC_InitializeReserved(PyObject *self, PyObject *args)
     cDstArgs = (DWORD)PyList_Size(pyList);
     if(cDstArgs == 0) { 
         Py_DECREF(pyList);
-        return PyErr_Format(PyExc_RuntimeError, "VMMPYC_InitializeReserved: Required argument list is empty.");
+        return PyErr_Format(PyExc_RuntimeError, "VMMPYC_Initialize: Required argument list is empty.");
     }
     // allocate & initialize buffer+basic
     pszDstArgs = (LPSTR*)LocalAlloc(LMEM_ZEROINIT, sizeof(LPSTR) * cDstArgs);
@@ -38,13 +38,13 @@ VMMPYC_InitializeReserved(PyObject *self, PyObject *args)
         pyString = PyList_GetItem(pyList, i);   // borrowed reference
         if(!PyUnicode_Check(pyString)) { 
             Py_DECREF(pyList);
-            return PyErr_Format(PyExc_RuntimeError, "VMMPYC_InitializeReserved: Argument list contains non string item.");
+            return PyErr_Format(PyExc_RuntimeError, "VMMPYC_Initialize: Argument list contains non string item.");
         }
         pszDstArgs[i] = (char*)PyUnicode_1BYTE_DATA(pyString);
     }
     Py_DECREF(pyList);
-    result = VMMDLL_InitializeReserved(cDstArgs, pszDstArgs);
-    if(!result) { return PyErr_Format(PyExc_RuntimeError, "VMMPYC_InitializeReserved: Initialization of VMM failed."); }
+    result = VMMDLL_Initialize(cDstArgs, pszDstArgs);
+    if(!result) { return PyErr_Format(PyExc_RuntimeError, "VMMPYC_Initialize: Initialization of VMM failed."); }
     return Py_BuildValue("s", NULL);    // None returned on success.
 }
 
@@ -98,8 +98,8 @@ VMMPYC_MemReadScatter(PyObject *self, PyObject *args)
     BOOL result;
     DWORD dwPID, cMEMs, flags = 0;
     ULONG64 i, qwA;
-    PVMMDLL_MEM_IO_SCATTER_HEADER pMEM, pMEMs;
-    PPVMMDLL_MEM_IO_SCATTER_HEADER ppMEMs;
+    PMEM_IO_SCATTER_HEADER pMEM, pMEMs;
+    PPMEM_IO_SCATTER_HEADER ppMEMs;
     PBYTE pb, pbDataBuffer;
     if(!PyArg_ParseTuple(args, "kO!|k", &dwPID, &PyList_Type, &pyListSrc, &flags)) { return NULL; } // borrowed reference
     cMEMs = (DWORD)PyList_Size(pyListSrc);
@@ -108,14 +108,14 @@ VMMPYC_MemReadScatter(PyObject *self, PyObject *args)
         return PyList_New(0);
     }
     // allocate & initialize buffer+basic
-    pb = LocalAlloc(0, cMEMs * (sizeof(PVMMDLL_MEM_IO_SCATTER_HEADER) + sizeof(VMMDLL_MEM_IO_SCATTER_HEADER) + 0x1000));
+    pb = LocalAlloc(0, cMEMs * (sizeof(PMEM_IO_SCATTER_HEADER) + sizeof(MEM_IO_SCATTER_HEADER) + 0x1000));
     if(!pb) {
         Py_DECREF(pyListSrc);
         return PyErr_NoMemory();
     }
-    ppMEMs = (PPVMMDLL_MEM_IO_SCATTER_HEADER)pb;
-    pMEMs = (PVMMDLL_MEM_IO_SCATTER_HEADER)(pb + cMEMs * sizeof(PVMMDLL_MEM_IO_SCATTER_HEADER));
-    pbDataBuffer = pb + cMEMs * (sizeof(PVMMDLL_MEM_IO_SCATTER_HEADER) + sizeof(VMMDLL_MEM_IO_SCATTER_HEADER));
+    ppMEMs = (PPMEM_IO_SCATTER_HEADER)pb;
+    pMEMs = (PMEM_IO_SCATTER_HEADER)(pb + cMEMs * sizeof(PMEM_IO_SCATTER_HEADER));
+    pbDataBuffer = pb + cMEMs * (sizeof(PMEM_IO_SCATTER_HEADER) + sizeof(MEM_IO_SCATTER_HEADER));
     ZeroMemory(pb, pbDataBuffer - pb);
     // iterate over # entries and build scatter data structure
     for(i = 0; i < cMEMs; i++) {
@@ -824,7 +824,7 @@ VMMPYC_VfsList(PyObject *self, PyObject *args)
 //-----------------------------------------------------------------------------
 
 static PyMethodDef VMMPYC_EmbMethods[] = {
-    {"VMMPYC_InitializeReserved", VMMPYC_InitializeReserved, METH_VARARGS, "Initialize the VMM"},
+    {"VMMPYC_Initialize", VMMPYC_Initialize, METH_VARARGS, "Initialize the VMM"},
     {"VMMPYC_ConfigGet", VMMPYC_ConfigGet, METH_VARARGS, "Get a device specific option value."},
     {"VMMPYC_ConfigSet", VMMPYC_ConfigSet, METH_VARARGS, "Set a device specific option value."},
     {"VMMPYC_MemReadScatter", VMMPYC_MemReadScatter, METH_VARARGS, "Read multiple 4kB page sized and aligned chunks of memory given as an address list."},

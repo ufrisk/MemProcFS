@@ -2,21 +2,19 @@
 //                systems. Contains functions for detecting DTB and Memory Model
 //                as well as the Windows kernel base and core functionality.
 //
-// (c) Ulf Frisk, 2018
+// (c) Ulf Frisk, 2018-2019
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
 #include "vmm.h"
 #include "vmmwin.h"
-#include "device.h"
 #include "pe.h"
 #include "util.h"
 
 /*
 * Scan a page table hierarchy between virtual addresses between vaMin and vaMax
 * for the first occurence of large 2MB pages. This is usually 'ntoskrnl.exe' if
-* the OS is Windows. 'ntoskrnl.exe' is loaded between the virtual addresses:
-* 0xFFFFF80000000000-0xFFFFF803FFFFFFFF
+* the OS is Windows. 'ntoskrnl.exe'.
 * -- paTable = set to: physical address of PML4
 * -- vaBase = set to 0
 * -- vaMin = 0xFFFFF80000000000 (if windows kernel)
@@ -28,13 +26,14 @@
 VOID VmmWinInit_FindNtosScan64_LargePageWalk(_In_ QWORD paTable, _In_ QWORD vaBase, _In_ QWORD vaMin, _In_ QWORD vaMax, _In_ BYTE iPML, _Inout_ PQWORD pvaBase, _Inout_ PQWORD pcbSize)
 {
     const QWORD PML_REGION_SIZE[5] = { 0, 12, 21, 30, 39 };
-    QWORD i, pte, *ptes, vaCurrent, vaSizeRegion;
-    ptes = (PQWORD)VmmTlbGetPageTable(paTable, FALSE);
-    if(!ptes) { return; }
+    QWORD i, pte, vaCurrent, vaSizeRegion;
+    PVMMOB_MEM pObPTEs = NULL;
+    pObPTEs = VmmTlbGetPageTable(paTable, FALSE);
+    if(!pObPTEs) { return; }
     if(iPML == 4) {
         *pvaBase = 0;
         *pcbSize = 0;
-        if(!VmmTlbPageTableVerify((PBYTE)ptes, paTable, TRUE)) { return; }
+        if(!VmmTlbPageTableVerify(pObPTEs->pb, paTable, TRUE)) { goto finish; }
         vaBase = 0;
     }
     for(i = 0; i < 512; i++) {
@@ -42,11 +41,11 @@ VOID VmmWinInit_FindNtosScan64_LargePageWalk(_In_ QWORD paTable, _In_ QWORD vaBa
         vaSizeRegion = 1ULL << PML_REGION_SIZE[iPML];
         vaCurrent = vaBase + (i << PML_REGION_SIZE[iPML]);
         vaCurrent |= (vaCurrent & 0x0000800000000000) ? 0xffff000000000000 : 0; // sign extend
-        if(*pvaBase && (vaCurrent > (*pvaBase + *pcbSize))) { return; }
+        if(*pvaBase && (vaCurrent > (*pvaBase + *pcbSize))) { goto finish; }
         if(vaCurrent < vaMin) { continue; }
-        if(vaCurrent > vaMax) { return; }
+        if(vaCurrent > vaMax) { goto finish; }
         // check PTEs
-        pte = ptes[i];
+        pte = pObPTEs->pqw[i];
         if(!(pte & 0x01)) { continue; }     // NOT VALID
         if(iPML == 2) {
             if(!(pte & 0x80)) { continue; }
@@ -58,13 +57,15 @@ VOID VmmWinInit_FindNtosScan64_LargePageWalk(_In_ QWORD paTable, _In_ QWORD vaBa
             VmmWinInit_FindNtosScan64_LargePageWalk(pte & 0x0000fffffffff000, vaCurrent, vaMin, vaMax, iPML - 1, pvaBase, pcbSize);
         }
     }
+finish:
+    VmmOb_DECREF(pObPTEs);
 }
 
 /*
 * Sometimes the PageDirectoryBase (PML4) is known, but the kernel location may
 * be unknown. This functions walks the page table in the area in which ntoskrnl
-* is loaded (0xFFFFF80000000000-0xFFFFF803FFFFFFFF) looking for 2MB large pages
-* If an area in 2MB pages are found it is scanned for the ntoskrnl.exe base.
+* is loaded looking for 2MB large pages. If an area in 2MB pages are found it
+* is scanned for the ntoskrnl.exe base.
 * -- pSystemProcess
 * -- return = virtual address of ntoskrnl.exe base if successful, otherwise 0.
 */
@@ -77,7 +78,7 @@ QWORD VmmWinInit_FindNtosScan64(PVMM_PROCESS pSystemProcess)
     while(TRUE) {
         vaBase = 0;
         cbSize = 0;
-        VmmWinInit_FindNtosScan64_LargePageWalk(pSystemProcess->paDTB, 0, vaCurrentMin, 0xFFFFF803FFFFFFFF, 4, &vaBase, &cbSize);
+        VmmWinInit_FindNtosScan64_LargePageWalk(pSystemProcess->paDTB, 0, vaCurrentMin, 0xFFFFF807FFFFFFFF, 4, &vaBase, &cbSize);
         if(!vaBase) { return 0; }
         vaCurrentMin = vaBase + cbSize;
         if(cbSize >= 0x01000000) { continue; }  // too big
@@ -90,7 +91,7 @@ QWORD VmmWinInit_FindNtosScan64(PVMM_PROCESS pSystemProcess)
             if(*(PWORD)(pb + p) != 0x5a4d) { continue; } // MZ header
             for(o = 0; o < 0x1000; o += 8) {
                 if(*(PQWORD)(pb + p + o) == 0x45444F434C4F4F50) { // POOLCODE
-                    PE_GetModuleNameEx(pSystemProcess, vaBase + p, FALSE, pb + p, szModuleName, NULL);
+                    PE_GetModuleNameEx(pSystemProcess, vaBase + p, FALSE, pb + p, szModuleName, _countof(szModuleName), NULL);
                     if(!_stricmp(szModuleName, "ntoskrnl.exe")) {
                         LocalFree(pb);
                         return vaBase + p;
@@ -110,12 +111,11 @@ QWORD VmmWinInit_FindNtosScan64(PVMM_PROCESS pSystemProcess)
 * -- pSystemProcess
 * -- return = virtual address of ntoskrnl.exe base if successful, otherwise 0
 */
-QWORD VmmWinInit_FindNtosScanHint64(_In_ PVMM_PROCESS pSystemProcess)
+QWORD VmmWinInit_FindNtosScanHint64(_In_ PVMM_PROCESS pSystemProcess, _In_ QWORD vaHint)
 {
     PBYTE pb;
     QWORD vaBase, o, p, vaNtosBase = 0;
     DWORD cbRead;
-    QWORD vaHint = ctxVmm->kernel.vaEntry;
     CHAR szModuleName[MAX_PATH] = { 0 };
     pb = LocalAlloc(0, 0x00200000);
     if(!pb) { goto cleanup; }
@@ -131,7 +131,7 @@ QWORD VmmWinInit_FindNtosScanHint64(_In_ PVMM_PROCESS pSystemProcess)
             if(*(PWORD)(pb + p) != 0x5a4d) { continue; } // MZ header
             for(o = 0; o < 0x1000; o += 8) {
                 if(*(PQWORD)(pb + p + o) == 0x45444F434C4F4F50) { // POOLCODE
-                    PE_GetModuleNameEx(pSystemProcess, vaBase + p, FALSE, pb + p, szModuleName, NULL);
+                    PE_GetModuleNameEx(pSystemProcess, vaBase + p, FALSE, pb + p, szModuleName, _countof(szModuleName), NULL);
                     if(!_stricmp(szModuleName, "ntoskrnl.exe")) {
                         LocalFree(pb);
                         return vaBase + p;
@@ -168,7 +168,7 @@ DWORD VmmWinInit_FindNtosScan32(_In_ PVMM_PROCESS pSystemProcess)
         if(*(PWORD)(pb + p) != 0x5a4d) { continue; } // MZ header
         for(o = 0; o < 0x1000; o += 8) {
             if(*(PQWORD)(pb + p + o) == 0x45444F434C4F4F50) { // POOLCODE
-                PE_GetModuleNameEx(pSystemProcess, 0x80000000ULL + p, FALSE, pb + p, szModuleName, NULL);
+                PE_GetModuleNameEx(pSystemProcess, 0x80000000ULL + p, FALSE, pb + p, szModuleName, _countof(szModuleName), NULL);
                 if(!_stricmp(szModuleName, "ntoskrnl.exe")) {
                     LocalFree(pb);
                     return 0x80000000 + p;
@@ -182,39 +182,47 @@ DWORD VmmWinInit_FindNtosScan32(_In_ PVMM_PROCESS pSystemProcess)
 
 /*
 * Scan for the 'ntoskrnl.exe' by using the DTB and memory model information
-* from the ctxVmm.
-* -- ppSystemProcess = ptr to receive pSystemProcess upon success.
-* -- return
+* from the ctxVmm. Return the system process (if found).
+* CALLER DECREF: return
+* -- return = system process - NB! CALLER must DECREF!
 */
-BOOL VmmWinInit_FindNtosScan(_Out_ PVMM_PROCESS *ppSystemProcess)
+PVMM_PROCESS VmmWinInit_FindNtosScan()
 {
-    QWORD vaKernelBase = 0, cbKernelSize;
-    PVMM_PROCESS pSystemProcess;
-    *ppSystemProcess = NULL;
+    QWORD vaKernelBase = 0, cbKernelSize, vaKernelHint;
+    PVMM_PROCESS pObSystemProcess = NULL;
     // 1: Pre-initialize System PID (required by VMM)
-    pSystemProcess = VmmProcessCreateEntry(4, 0, ctxVmm->kernel.paDTB, 0, "System", FALSE, TRUE);
-    if(!pSystemProcess) { return FALSE; }
+    pObSystemProcess = VmmProcessCreateEntry(TRUE, 4, 0, ctxVmm->kernel.paDTB, 0, "System", FALSE);
+    if(!pObSystemProcess) { return NULL; }
     VmmProcessCreateFinish();
     // 2: Spider DTB to speed things up.
-    VmmTlbSpider(ctxVmm->kernel.paDTB, FALSE);
+    VmmTlbSpider(pObSystemProcess);
     // 3: Find the base of 'ntoskrnl.exe'
     if(VMM_MEMORYMODEL_X64 == ctxVmm->tpMemoryModel) {
-        if(ctxVmm->kernel.vaEntry) {
-            vaKernelBase = VmmWinInit_FindNtosScanHint64(pSystemProcess);
+        LeechCore_GetOption(LEECHCORE_OPT_MEMORYINFO_OS_KERNELBASE, &vaKernelBase);
+        if(!vaKernelBase) {
+            vaKernelHint = ctxVmm->kernel.vaEntry;
+            if(!vaKernelHint) { LeechCore_GetOption(LEECHCORE_OPT_MEMORYINFO_OS_KERNELHINT, &vaKernelHint); }
+            if(!vaKernelHint) { LeechCore_GetOption(LEECHCORE_OPT_MEMORYINFO_OS_PsActiveProcessHead, &vaKernelHint); }
+            if(!vaKernelHint) { LeechCore_GetOption(LEECHCORE_OPT_MEMORYINFO_OS_PsLoadedModuleList, &vaKernelHint); }
+            if(vaKernelHint) {
+                vaKernelBase = VmmWinInit_FindNtosScanHint64(pObSystemProcess, vaKernelHint);
+            }
         }
         if(!vaKernelBase) {
-            vaKernelBase = VmmWinInit_FindNtosScan64(pSystemProcess);
+            vaKernelBase = VmmWinInit_FindNtosScan64(pObSystemProcess);
         }
     } else {
-        vaKernelBase = VmmWinInit_FindNtosScan32(pSystemProcess);
+        vaKernelBase = VmmWinInit_FindNtosScan32(pObSystemProcess);
     }
-    if(!vaKernelBase) { return FALSE; }
-    cbKernelSize = PE_GetSize(pSystemProcess, vaKernelBase);
-    if(!cbKernelSize) { return FALSE; }
-    *ppSystemProcess = pSystemProcess;
+    if(!vaKernelBase) { goto fail; }
+    cbKernelSize = PE_GetSize(pObSystemProcess, vaKernelBase);
+    if(!cbKernelSize) { goto fail; }
     ctxVmm->kernel.vaBase = vaKernelBase;
     ctxVmm->kernel.cbSize = cbKernelSize;
-    return TRUE;
+    return pObSystemProcess;
+fail:
+    VmmOb_DECREF(pObSystemProcess);
+    return NULL;
 }
 
 /*
@@ -265,16 +273,16 @@ BOOL VmmWinInit_DTB_FindValidate_X64(_In_ QWORD pa, _In_reads_(0x1000) PBYTE pbP
     DWORD c, i;
     BOOL fSelfRef = FALSE;
     QWORD pte, paMax;
-    paMax = ctxMain->cfg.paAddrMax;
+    paMax = ctxMain->dev.paMax;
     // check for user-mode page table with PDPT below max physical address and not NX.
     pte = *(PQWORD)pbPage;
-    if(((pte & 0x8000000000000087) != 0x07) || ((pte & 0x0000fffffffff000) > paMax)) { return FALSE; }
+    if(((pte & 0x0000000000000087) != 0x07) || ((pte & 0x0000fffffffff000) > paMax)) { return FALSE; }
     for(c = 0, i = 0x800; i < 0x1000; i += 8) { // minimum number of supervisor entries above 0x800
         pte = *(PQWORD)(pbPage + i);
         // check for user-mode page table with PDPT below max physical address and not NX.
-        if(((pte & 0x8000ff0000000087) == 0x03) && ((pte & 0x0000fffffffff000) > paMax)) { c++; }
+        if(((pte & 0x8000ff0000000087) == 0x03) && ((pte & 0x0000fffffffff000) < paMax)) { c++; }
         // check for self-referential entry
-        if((*(PQWORD)(pbPage + i) & 0x8000fffffffff083) == pa + 0x03) { fSelfRef = TRUE; }
+        if((*(PQWORD)(pbPage + i) & 0x0000fffffffff083) == pa + 0x03) { fSelfRef = TRUE; }
     }
     return fSelfRef && (c >= 6);
 }
@@ -315,7 +323,7 @@ BOOL VmmWinInit_DTB_FindValidate()
     PBYTE pb16M;
     if(!(pb16M = LocalAlloc(LMEM_ZEROINIT, 0x01000000))) { return FALSE; }
     // 1: try locate DTB via X64 low stub in lower 1MB
-    DeviceReadMEMEx(0, pb16M, 0x00100000, NULL);
+    LeechCore_Read(0, pb16M, 0x00100000);
     if(VmmWinInit_DTB_FindValidate_X64_LowStub(pb16M)) {
         VmmInitializeMemoryModel(VMM_MEMORYMODEL_X64);
         paDTB = ctxVmm->kernel.paDTB;
@@ -325,7 +333,7 @@ BOOL VmmWinInit_DTB_FindValidate()
     if(!paDTB) {
         for(pa = 0; pa < 0x01000000; pa += 0x1000) {
             if(pa == 0x00100000) {
-                DeviceReadMEMEx(0x00100000, pb16M + 0x00100000, 0x00f00000, NULL);
+                LeechCore_Read(0x00100000, pb16M + 0x00100000, 0x00f00000);
             }
             if(VmmWinInit_DTB_FindValidate_X64(pa, pb16M + pa)) {
                 VmmInitializeMemoryModel(VMM_MEMORYMODEL_X64);
@@ -369,7 +377,8 @@ BOOL VmmWinInit_DTB_FindValidate()
 BOOL VmmWinInit_DTB_Validate(QWORD paDTB)
 {
     BYTE pb[0x1000];
-    DeviceReadMEMEx(0, pb, 0x1000, NULL);
+    paDTB = paDTB & ~0xfff;
+    if(!LeechCore_Read(paDTB, pb, 0x1000)) { return FALSE; }
     if(VmmWinInit_DTB_FindValidate_X64(paDTB, pb)) {
         VmmInitializeMemoryModel(VMM_MEMORYMODEL_X64);
         ctxVmm->kernel.paDTB = paDTB;
@@ -392,14 +401,26 @@ BOOL VmmWinInit_FindPsLoadedModuleListKDBG(_In_ PVMM_PROCESS pSystemProcess)
 {
     PBYTE pbData = NULL, pbKDBG;
     IMAGE_SECTION_HEADER SectionHeader;
-    DWORD o;
-    QWORD va;
-    // 1: Try locate 'PsLoadedModuleList' by exported kernel symbol. If this is
+    DWORD o, va32 = 0;
+    QWORD va, va64 = 0;
+    // 1: Try locate 'PsLoadedModuleList' by querying the microsoft crash dump
+    //    file used. This will fail if another memory acqusition device is used.
+    if(LeechCore_GetOption(LEECHCORE_OPT_MEMORYINFO_OS_PsLoadedModuleList, &va) && va) {
+        if(ctxVmm->f32 && VmmRead(pSystemProcess, va, (PBYTE)&va32, 4) && (va32 > 0x80000000)) {
+            ctxVmm->kernel.vaPsLoadedModuleList = va32;
+            return TRUE;
+        }
+        if(!ctxVmm->f32 && VmmRead(pSystemProcess, va, (PBYTE)&va64, 8) && (va64 > 0xffff800000000000)) {
+            ctxVmm->kernel.vaPsLoadedModuleList = va64;
+            return TRUE;
+        }
+    }
+    // 2: Try locate 'PsLoadedModuleList' by exported kernel symbol. If this is
     //    possible it's most probably Windows 10 and KDBG will be encrypted so
     //    no need to continue looking for it.
     ctxVmm->kernel.vaPsLoadedModuleList = PE_GetProcAddress(pSystemProcess, ctxVmm->kernel.vaBase, "PsLoadedModuleList");
     if(ctxVmm->kernel.vaPsLoadedModuleList) { return TRUE; }
-    // 2: Try locate 'KDBG' by looking in 'ntoskrnl.exe' '.text' section. This
+    // 3: Try locate 'KDBG' by looking in 'ntoskrnl.exe' '.text' section. This
     //    is the normal way of finding it on 64-bit Windows below Windows 10.
     //    This also works on 32-bit Windows versions - so use this method for
     //    simplicity rather than using a separate 32-bit method.
@@ -435,50 +456,57 @@ fail:
 */
 BOOL VmmWinInit_TryInitialize(_In_opt_ QWORD paDTBOpt)
 {
-    PVMM_PROCESS pSystemProcess = NULL;
+    PVMM_PROCESS pObSystemProcess = NULL;
     QWORD vaPsInitialSystemProcess, vaSystemEPROCESS;
     // Fetch Directory Base (DTB (PML4)) and initialize Memory Model.
     if(paDTBOpt) {
         if(!VmmWinInit_DTB_Validate(paDTBOpt)) {
-            vmmprintfv("VmmWinInit_TryInitialize: Initialization Failed. Unable to verify user-supplied DTB. #1\n");
+            vmmprintfv("VmmWinInit_TryInitialize: Initialization Failed. Unable to verify user-supplied (0x%016llx) DTB. #1\n", paDTBOpt);
             goto fail;
         }
-    } else {
+    } else if(LeechCore_GetOption(LEECHCORE_OPT_MEMORYINFO_OS_DTB, &paDTBOpt)) {
+        if(!VmmWinInit_DTB_Validate(paDTBOpt)) {
+            vmmprintfv("VmmWinInit_TryInitialize: Warning: Unable to verify crash-dump supplied DTB. (0x%016llx) #1\n", paDTBOpt);
+            goto fail;
+        }
+    } else if(!ctxVmm->kernel.paDTB) {
         if(!VmmWinInit_DTB_FindValidate()) {
             vmmprintfv("VmmWinInit_TryInitialize: Initialization Failed. Unable to locate valid DTB. #2\n");
             goto fail;
         }
     }
-    vmmprintfvv("VmmWinInit_TryInitialize: INFO: DTB  located at: %016llx. MemoryModel: %s\n", ctxVmm->kernel.paDTB, VMM_MEMORYMODEL_TOSTRING[ctxVmm->tpMemoryModel]);
+    vmmprintfvv_fn("INFO: DTB  located at: %016llx. MemoryModel: %s\n", ctxVmm->kernel.paDTB, VMM_MEMORYMODEL_TOSTRING[ctxVmm->tpMemoryModel]);
     // Fetch 'ntoskrnl.exe' base address
-    if(!VmmWinInit_FindNtosScan(&pSystemProcess)) {
+    if(!(pObSystemProcess = VmmWinInit_FindNtosScan())) {
         vmmprintfv("VmmWinInit_TryInitialize: Initialization Failed. Unable to locate ntoskrnl.exe. #3\n");
         goto fail;
     }
-    vmmprintfvv("VmmWinInit_TryInitialize: INFO: NTOS located at: %016llx.\n", ctxVmm->kernel.vaBase);
+    vmmprintfvv_fn("INFO: NTOS located at: %016llx.\n", ctxVmm->kernel.vaBase);
     // Locate System EPROCESS
-    vaPsInitialSystemProcess = PE_GetProcAddress(pSystemProcess, ctxVmm->kernel.vaBase, "PsInitialSystemProcess");
-    if(!VmmRead(pSystemProcess, vaPsInitialSystemProcess, (PBYTE)&vaSystemEPROCESS, 8)) {
+    vaPsInitialSystemProcess = PE_GetProcAddress(pObSystemProcess, ctxVmm->kernel.vaBase, "PsInitialSystemProcess");
+    if(!VmmRead(pObSystemProcess, vaPsInitialSystemProcess, (PBYTE)&vaSystemEPROCESS, 8)) {
         vmmprintfv("VmmWinInit_TryInitialize: Initialization Failed. Unable to locate EPROCESS. #4\n");
         goto fail;
     }
     if((VMM_MEMORYMODEL_X86 == ctxVmm->tpMemoryModel) || (VMM_MEMORYMODEL_X86PAE == ctxVmm->tpMemoryModel)) {
         vaSystemEPROCESS &= 0xffffffff;
     }
-    pSystemProcess->os.win.vaEPROCESS = vaSystemEPROCESS;
-    vmmprintfvv("VmmWinInit_TryInitialize: INFO: PsInitialSystemProcess located at %016llx.\n", vaPsInitialSystemProcess);
-    vmmprintfvv("VmmWinInit_TryInitialize: INFO: EPROCESS located at %016llx.\n", vaSystemEPROCESS);
+    pObSystemProcess->os.win.vaEPROCESS = vaSystemEPROCESS;
+    vmmprintfvv_fn("INFO: PsInitialSystemProcess located at %016llx.\n", vaPsInitialSystemProcess);
+    vmmprintfvv_fn("INFO: EPROCESS located at %016llx.\n", vaSystemEPROCESS);
     // Enumerate processes
-    if(!VmmWin_EnumerateEPROCESS(pSystemProcess)) {
+    if(!VmmWin_EnumerateEPROCESS(pObSystemProcess, TRUE)) {
         vmmprintfv("VmmWinInit: Initialization Failed. Unable to walk EPROCESS. #5\n");
         goto fail;
     }
     ctxVmm->tpSystem = (VMM_MEMORYMODEL_X64 == ctxVmm->tpMemoryModel) ? VMM_SYSTEM_WINDOWS_X64 : VMM_SYSTEM_WINDOWS_X86;
     // Optionally fetch PsLoadedModuleList / KDBG
-    VmmWinInit_FindPsLoadedModuleListKDBG(pSystemProcess);
+    VmmWinInit_FindPsLoadedModuleListKDBG(pObSystemProcess);
+    VmmOb_DECREF(pObSystemProcess);
     return TRUE;
 fail:
     VmmInitializeMemoryModel(VMM_MEMORYMODEL_NA); // clean memory model
     ZeroMemory(&ctxVmm->kernel, sizeof(VMM_KERNELINFO));
+    VmmOb_DECREF(pObSystemProcess);
     return FALSE;
 }
