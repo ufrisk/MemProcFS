@@ -68,13 +68,14 @@
 //           placed in same directory as the executable file.
 //
 // PMEM :    load the rekall winpmem driver into the kernel and connect to it
-//           to acquire memory. The driver file 'winpmem_x64.sys' is found in
-//           the Rekall directory after most recent version has been installed.
-//           Copy 'winpmem_x64.sys' to the directory of leechcore.dll and run
-//           executable as elevated admin using syntax below:
+//           to acquire memory. The signed driver `.sys` file may be found at:
+//           https://github.com/Velocidex/c-aff4/tree/master/tools/pmem/resources/winpmem
+//           Download the driver file `att_winpmem_64.sys` and copy it to the
+//           directory of leechcore.dll and run executable as elevated admin
+//           using syntax below:
 //           Syntax:
-//           PMEM              (use winpmem_x64.sys in directory of executable)
-//           PMEM://<non_default_path_to_file_winpmem_x64.sys>
+//           PMEM              (use att_winpmem_64.sys in directory of executable)
+//           PMEM://<non_default_path_to_file_winpmem_64.sys>
 //
 // TOTALMELTDOWN : read/write - requires a Windows 7 system vulnerable to the
 //           "Total Meltdown" vulnerability - CVE-2018-1038.
@@ -110,7 +111,7 @@
 // (c) Ulf Frisk, 2018-2019
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-// Header Version: 1.0
+// Header Version: 1.0.1
 //
 #ifndef __LEECHCORE_H__
 #define __LEECHCORE_H__
