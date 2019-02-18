@@ -80,6 +80,10 @@ Documentation:
 ==============
 For additional documentation please check out the [project wiki](https://github.com/ufrisk/MemProcFS/wiki) for in-depth detailed information about the file system itself, its API and its plugin modules! For additional information about memory acqusition methods check out the [LeechCore project](https://github.com/ufrisk/LeechCore/)
 
+Also check out my Microsoft BlueHatIL 2019 talk _Practical Uses for Hardware-assisted Memory Visualization_ about MemProcFS at Youtube below:
+
+<p align="center"><a href="https://www.youtube.com/watch?v=Da_9SV9FA34" alt="Microsoft BlueHatIL 2019 talk - Practical Uses for Hardware-assisted Memory Visualization" target="_new"><img src="http://img.youtube.com/vi/Da_9SV9FA34/0.jpg" height="250"/></a></p>
+
 Building:
 =========
 Pre-built binaries and other supporting files are found in the files folder. The Memory Process File System binaries are built with Visual Studio 2017. No binaries currently exists for Linux (future support - please see Current Limitations & Future Development below).
