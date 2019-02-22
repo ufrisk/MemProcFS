@@ -111,7 +111,7 @@
 // (c) Ulf Frisk, 2018-2019
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-// Header Version: 1.0.1
+// Header Version: 1.0.2
 //
 #ifndef __LEECHCORE_H__
 #define __LEECHCORE_H__
@@ -152,6 +152,7 @@ typedef long long unsigned int              QWORD, *PQWORD, ULONG64, *PULONG64;
 #define _Printf_format_string_
 #define _Inout_updates_bytes_(x)
 #define _In_reads_(cbDataIn)
+#define _Out_writes_opt_(x)
 #define _Success_(return)
 #endif /* LINUX */
 
@@ -456,9 +457,9 @@ DLLEXPORT BOOL LeechCore_CommandData(
     _In_ ULONG64 fOption,
     _In_reads_(cbDataIn) PBYTE pbDataIn,
     _In_ DWORD cbDataIn,
-    _Out_writes_(cbDataOut) PBYTE pbDataOut,
+    _Out_writes_opt_(cbDataOut) PBYTE pbDataOut,
     _In_ DWORD cbDataOut,
-    _Out_ PDWORD pcbDataOut
+    _Out_opt_ PDWORD pcbDataOut
 );
 
 #ifdef __cplusplus
