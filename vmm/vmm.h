@@ -299,7 +299,23 @@ typedef struct tdVMM_KERNELINFO {
     QWORD vaEntry;
     QWORD vaPsLoadedModuleList;
     QWORD vaKDBG;
+    DWORD dwPidMemCompression;
 } VMM_KERNELINFO;
+
+typedef NTSTATUS VMMFN_RtlDecompressBuffer(
+    USHORT CompressionFormat,
+    PUCHAR UncompressedBuffer,
+    ULONG  UncompressedBufferSize,
+    PUCHAR CompressedBuffer,
+    ULONG  CompressedBufferSize,
+    PULONG FinalUncompressedSize
+);
+
+typedef struct tdVMM_DYNAMIC_LOAD_FUNCTIONS {
+    // functions below may be loaded on startup
+    // NB! null checks are required before use!
+    VMMFN_RtlDecompressBuffer *RtlDecompressBuffer;     // ntdll.dll!RtlDecompressBuffer
+} VMM_DYNAMIC_LOAD_FUNCTIONS;
 
 typedef struct tdVMM_CONTEXT {
     CRITICAL_SECTION MasterLock;
@@ -320,6 +336,7 @@ typedef struct tdVMM_CONTEXT {
     } ThreadProcCache;
     VMM_STATISTICS stat;
     VMM_KERNELINFO kernel;
+    VMM_DYNAMIC_LOAD_FUNCTIONS fn;
     PVOID pVmmVfsModuleList;
     VMMOBCONTAINER ObCEPROCESSCachePrefetch;
     VMM_CACHE_TABLE PHYS;
@@ -763,7 +780,7 @@ VOID VmmCacheInvalidate(_In_ QWORD pa);
 * -- pProcess
 * -- pObPrefetchAddresses
 */
-VOID VmmCachePrefetch(_In_ PVMM_PROCESS pProcess, _In_opt_ PVMMOB_DATASET pObPrefetchAddresses);
+VOID VmmCachePrefetchPages(_In_opt_ PVMM_PROCESS pProcess, _In_opt_ PVMMOB_DATASET pObPrefetchAddresses);
 
 /*
 * Initialize the memory model specified and discard any previous memory models

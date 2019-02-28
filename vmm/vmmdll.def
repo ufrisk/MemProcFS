@@ -23,6 +23,7 @@ EXPORTS
     VMMDLL_MemReadPage
     VMMDLL_MemRead
     VMMDLL_MemReadEx
+	VMMDLL_MemPrefetchPages
     VMMDLL_MemWrite
     VMMDLL_MemVirt2Phys
 
@@ -38,5 +39,11 @@ EXPORTS
     VMMDLL_ProcessGetSections
     VMMDLL_ProcessGetEAT
     VMMDLL_ProcessGetIAT
+	VMMDLL_ProcessGetProcAddress
+	VMMDLL_ProcessGetModuleBase
+	VMMDLL_WinGetThunkInfoIAT
+	VMMDLL_WinGetThunkInfoEAT
+
+	VMMDLL_WinMemCompression_DecompressPage
 
     VMMDLL_UtilFillHexAscii

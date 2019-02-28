@@ -15,6 +15,23 @@
 
 static const LPCSTR PE_DATA_DIRECTORIES[16] = { "EXPORT", "IMPORT", "RESOURCE", "EXCEPTION", "SECURITY", "BASERELOC", "DEBUG", "ARCHITECTURE", "GLOBALPTR", "TLS", "LOAD_CONFIG", "BOUND_IMPORT", "IAT", "DELAY_IMPORT", "COM_DESCRIPTOR", "RESERVED" };
 
+typedef struct tdPE_THUNKINFO_IAT {
+    BOOL fValid;
+    BOOL f32;               // if TRUE fn is a 32-bit/4-byte entry, otherwise 64-bit/8-byte entry.
+    ULONG64 vaThunk;        // address of import address table 'thunk'.
+    ULONG64 vaFunction;     // value if import address table 'thunk' == address of imported function.
+    ULONG64 vaNameModule;   // address of name string for imported module.
+    ULONG64 vaNameFunction; // address of name string for imported function.
+} PE_THUNKINFO_IAT, *PPE_THUNKINFO_IAT;
+
+typedef struct tdPE_THUNKINFO_EAT {
+    BOOL fValid;
+    DWORD valueThunk;       // value of export address table 'thunk'.
+    ULONG64 vaThunk;        // address of import address table 'thunk'.
+    ULONG64 vaNameFunction; // address of name string for exported function.
+    ULONG64 vaFunction;     // address of exported function (module base + value parameter).
+} PE_THUNKINFO_EAT, *PPE_THUNKINFO_EAT;
+
 /*
 * Retrieve the size of the module given its base.
 * -- pProcess
@@ -31,6 +48,31 @@ QWORD PE_GetSize(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase);
 * -- return = success: virtual address of function / symbol. fail: 0.
 */
 QWORD PE_GetProcAddress(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ LPSTR lpProcName);
+
+/*
+* Lookup the virtual address of an exported function or symbol in the module supplied
+* among with additional information returned in the pThunkInfoEAT struct.
+* -- pProcess
+* -- vaModuleBase = PE module base address.
+* -- szProcName
+* -- pThunkInfoEAT
+* -- return
+*/
+_Success_(return)
+BOOL PE_GetThunkInfoEAT(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ LPSTR szProcName, _Out_ PPE_THUNKINFO_EAT pThunkInfoEAT);
+
+/*
+* Retrieve an import address table (IAT) entry for a specific function.
+* This may be useful for IAT patching functionality.
+* -- pProcess
+* -- vaModuleBase
+* -- szImportModuleName
+* -- szImportProcName
+* -- pThunkInfoIAT
+* -- return
+*/
+_Success_(return)
+BOOL PE_GetThunkInfoIAT(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ LPSTR szImportModuleName, _In_ LPSTR szImportProcName, _Out_ PPE_THUNKINFO_IAT pThunkInfoIAT);
 
 /*
 * Retrieve the module name and optionally the module size.

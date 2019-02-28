@@ -111,7 +111,7 @@
 // (c) Ulf Frisk, 2018-2019
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-// Header Version: 1.0.2
+// Header Version: 1.1.0
 //
 #ifndef __LEECHCORE_H__
 #define __LEECHCORE_H__
@@ -229,7 +229,10 @@ typedef struct tdLEECHCORE_PAGESTAT_MINIMAL {
 } LEECHCORE_PAGESTAT_MINIMAL, *PLEECHCORE_PAGESTAT_MINIMAL;
 
 /*
-* Open a connection to the target device.
+* Open a connection to the target device. The LeechCore initialization may fail
+* if the underlying device cannot be opened or if the LeechCore is already
+* initialized. If already initialized please connect with device EXISTING or
+* call LeechCore_Close() before opening a new device.
 * -- pInformation
 * -- result
 */

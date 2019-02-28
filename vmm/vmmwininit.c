@@ -456,7 +456,7 @@ fail:
 */
 BOOL VmmWinInit_TryInitialize(_In_opt_ QWORD paDTBOpt)
 {
-    PVMM_PROCESS pObSystemProcess = NULL;
+    PVMM_PROCESS pObSystemProcess = NULL, pObProcess = NULL;
     QWORD vaPsInitialSystemProcess, vaSystemEPROCESS;
     // Fetch Directory Base (DTB (PML4)) and initialize Memory Model.
     if(paDTBOpt) {
@@ -503,6 +503,14 @@ BOOL VmmWinInit_TryInitialize(_In_opt_ QWORD paDTBOpt)
     // Optionally fetch PsLoadedModuleList / KDBG
     VmmWinInit_FindPsLoadedModuleListKDBG(pObSystemProcess);
     VmmOb_DECREF(pObSystemProcess);
+    // Optionally retrieve PID of MemCompression process
+    while((pObProcess = VmmProcessGetNext(pObProcess))) {
+        if(memcmp("MemCompression", pObProcess->szName, 15)) { continue; }
+        ctxVmm->kernel.dwPidMemCompression = pObProcess->dwPID;
+        VmmOb_DECREF(pObProcess);
+        pObProcess = NULL;
+        break;
+    }
     return TRUE;
 fail:
     VmmInitializeMemoryModel(VMM_MEMORYMODEL_NA); // clean memory model

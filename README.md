@@ -137,3 +137,9 @@ v2.0
   * Support for Microsoft Crash Dumps - such as created by default by [Comae DumpIt](https://www.comae.com).
   * Hyper-V save files.
   * Remote capture via remotely installed LeechService.
+
+v2.1
+* New APIs:
+  * IAT/EAT hook functionality.
+  * Limited Windows 10 MemCompression support.
+* Bug fixes.

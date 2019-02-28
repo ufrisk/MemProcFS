@@ -64,6 +64,8 @@ int main(_In_ int argc, _In_ char* argv[])
     BOOL result;
     NTSTATUS nt;
     DWORD i, dwPID;
+    DWORD dw = 0;
+    QWORD va;
     BYTE pbPage1[0x1000], pbPage2[0x1000];
 
 #ifdef _INITIALIZE_FROM_FILE
@@ -86,12 +88,12 @@ int main(_In_ int argc, _In_ char* argv[])
     printf("------------------------------------------------------------\n");
     printf("#01: Initialize from TotalMeltdown:                         \n");
     ShowKeyPress();
-    printf("CALL:    VMMDLL_InitializeTotalMeltdown\n");
-    result = VMMDLL_InitializeTotalMeltdown();
+    printf("CALL:    VMMDLL_Initialize\n");
+    result = result = VMMDLL_Initialize(3, (LPSTR[]) { "", "-device", "totalmeltdown" });
     if(result) {
-        printf("SUCCESS: VMMDLL_InitializeTotalMeltdown\n");
+        printf("SUCCESS: VMMDLL_Initialize\n");
     } else {
-        printf("FAIL:    VMMDLL_InitializeTotalMeltdown\n");
+        printf("FAIL:    VMMDLL_Initialize\n");
         return 1;
     }
 #endif /* _INITIALIZE_FROM_TOTALMELTDOWN */
@@ -101,12 +103,12 @@ int main(_In_ int argc, _In_ char* argv[])
     printf("------------------------------------------------------------\n");
     printf("#01: Initialize from FPGA:                                  \n");
     ShowKeyPress();
-    printf("CALL:    VMMDLL_InitializeFPGA\n");
-    result = VMMDLL_InitializeFPGA(NULL, NULL);
+    printf("CALL:    VMMDLL_Initialize\n");
+    result = VMMDLL_Initialize(3, (LPSTR[]) { "", "-device", "fpga" });
     if(result) {
-        printf("SUCCESS: VMMDLL_InitializeFPGA\n");
+        printf("SUCCESS: VMMDLL_Initialize\n");
     } else {
-        printf("FAIL:    VMMDLL_InitializeFPGA\n");
+        printf("FAIL:    VMMDLL_Initialize\n");
         return 1;
     }
     // Retrieve the ID of the FPPA (SP605/PCIeScreamer/AC701 ...) and the bitstream version
@@ -570,6 +572,78 @@ int main(_In_ int argc, _In_ char* argv[])
         printf("FAIL:    VMMDLL_VfsRead\n");
         return 1;
     }
+
+
+    // Get base virtual address of ntoskrnl.exe
+    printf("------------------------------------------------------------\n");
+    printf("#17: get ntoskrnl.exe base virtual address                  \n");
+    ShowKeyPress();
+    printf("CALL:    VMMDLL_ProcessGetModuleBase\n");
+    va = VMMDLL_ProcessGetModuleBase(4, "ntoskrnl.exe");
+    if(va) {
+        printf("SUCCESS: VMMDLL_ProcessGetModuleBase\n");
+        printf("         %s = %016llx\n", "ntoskrnl.exe", va);
+    } else {
+        printf("FAIL:    VMMDLL_ProcessGetModuleBase\n");
+        return 1;
+    }
+
+
+    // GetProcAddress from ntoskrnl.exe
+    printf("------------------------------------------------------------\n");
+    printf("#18: get proc address for ntoskrnl.exe!KeGetCurrentIrql     \n");
+    ShowKeyPress();
+    printf("CALL:    VMMDLL_ProcessGetProcAddress\n");
+    va = VMMDLL_ProcessGetProcAddress(4, "ntoskrnl.exe", "KeGetCurrentIrql");
+    if(va) {
+        printf("SUCCESS: VMMDLL_ProcessGetProcAddress\n");
+        printf("         %s!%s = %016llx\n", "ntoskrnl.exe", "KeGetCurrentIrql", va);
+    } else {
+        printf("FAIL:    VMMDLL_ProcessGetProcAddress\n");
+        return 1;
+    }
+
+
+    // Get EAT Thunk from ntoskrnl.exe!KeGetCurrentIrql
+    printf("------------------------------------------------------------\n");
+    printf("#19: Address of EAT thunk for ntoskrnl.exe!KeGetCurrentIrql \n");
+    ShowKeyPress();
+    VMMDLL_WIN_THUNKINFO_EAT oThunkInfoEAT;
+    ZeroMemory(&oThunkInfoEAT, sizeof(VMMDLL_WIN_THUNKINFO_EAT));
+    printf("CALL:    VMMDLL_WinGetThunkInfoEAT\n");
+    result = VMMDLL_WinGetThunkInfoEAT(4, "ntoskrnl.exe", "KeGetCurrentIrql", &oThunkInfoEAT);
+    if(result) {
+        printf("SUCCESS: VMMDLL_WinGetThunkInfoEAT\n");
+        printf("         vaFunction:     %016llx\n", oThunkInfoEAT.vaFunction);
+        printf("         vaThunk:        %016llx\n", oThunkInfoEAT.vaThunk);
+        printf("         valueThunk:             %08x\n", oThunkInfoEAT.valueThunk);
+        printf("         vaNameFunc:     %016llx\n", oThunkInfoEAT.vaNameFunction);
+    } else {
+        printf("FAIL:    VMMDLL_WinGetThunkInfoEAT\n");
+        return 1;
+    }
+
+
+    // Get IAT Thunk ntoskrnl.exe -> hal.dll!HalSendNMI
+    printf("------------------------------------------------------------\n");
+    printf("#20: Address of IAT thunk for hal.dll!HalSendNMI in ntoskrnl\n");
+    ShowKeyPress();
+    VMMDLL_WIN_THUNKINFO_IAT oThunkInfoIAT;
+    ZeroMemory(&oThunkInfoIAT, sizeof(VMMDLL_WIN_THUNKINFO_IAT));
+    printf("CALL:    VMMDLL_WinGetThunkInfoIAT\n");
+    result = VMMDLL_WinGetThunkInfoIAT(4, "ntoskrnl.Exe", "hal.Dll", "HalSendNMI", &oThunkInfoIAT);
+    if(result) {
+        printf("SUCCESS: VMMDLL_WinGetThunkInfoIAT\n");
+        printf("         vaFunction:     %016llx\n", oThunkInfoIAT.vaFunction);
+        printf("         vaThunk:        %016llx\n", oThunkInfoIAT.vaThunk);
+        printf("         vaNameFunction: %016llx\n", oThunkInfoIAT.vaNameFunction);
+        printf("         vaNameModule:   %016llx\n", oThunkInfoIAT.vaNameModule);
+    }
+    else {
+        printf("FAIL:    VMMDLL_WinGetThunkInfoEAT\n");
+        return 1;
+    }
+
 
 
     // Finish everything and exit!

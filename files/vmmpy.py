@@ -9,7 +9,7 @@
 #
 # https://github.com/ufrisk/
 #
-# (c) Ulf Frisk, 2018
+# (c) Ulf Frisk, 2018-2019
 # Author: Ulf Frisk, pcileech@frizk.net
 #
 
@@ -56,7 +56,7 @@ def VmmPy_Close():
     N/A
     
     Example:
-    VmmPy_Close() --> True
+    VmmPy_Close()
     """
     VMMPYC_Close()
 
@@ -483,6 +483,58 @@ def VmmPy_VfsWrite(path_file, bytes_data, offset = 0):
     """
     path_file = path_file.replace('/', '\\')
     VmmPy_VfsWrite(path_file, bytes_data, offset)
+
+
+#------------------------------------------------------------------------------
+# VmmPy WINDOWS ONLY FUNCTIONALITY BELOW:
+#------------------------------------------------------------------------------
+
+def VmmPy_WinGetThunkInfoEAT(pid, module_name, exported_function):
+    """Retrieve information about a single export address table (EAT) entry. This may be useful for hooking.
+
+    Keyword arguments:
+    pid -- int: the process identifier (pid) when reading process virtual memory.
+    module_name -- str: name of the module to retrieve.
+    exported_function -- str: name of the exported function to retrieve.
+    return -- dict: information about the EAT entry.
+
+    Example:
+    VmmPy_WinGetThunkInfoEAT(4, 'ntoskrnl.exe', 'KeGetCurrentIrql') --> {'vaFunction': 18446735288139539584, 'valueThunk': 1479808, 'vaNameFunction': 18446735288147899428, 'vaThunk': 18446735288147849312}
+    """
+    return VMMPYC_WinGetThunkInfoEAT(pid, module_name, exported_function)
+
+
+
+def VmmPy_WinGetThunkInfoIAT(pid, module_name, imported_module_name, imported_module_function):
+    """Retrieve information about a single import address table (IAT) entry. This may be useful for hooking.
+
+    Keyword arguments:
+    pid -- int: the process identifier (pid) when reading process virtual memory.
+    module_name -- str: name of the module to retrieve.
+    imported_module_name -- str: name of the imported module to retrieve.
+    imported_module_function -- str: name of the imported function to retrieve.
+    return -- dict: information about the IAT entry.
+
+    Example:
+    VmmPy_WinGetThunkInfoIAT(4, 'ntoskrnl.exe', 'hal.dll', 'HalSendNMI') --> {'32': False, 'vaFunction': 18446735288149190896, 'vaNameFunction': 18446735288143568050, 'vaNameModule': 18446735288143568362, 'vaThunk': 18446735288143561136}
+    """
+    return VMMPYC_WinGetThunkInfoIAT(pid, module_name, imported_module_name, imported_module_function)
+
+
+
+def VmmPy_WinDecompressPage(va_compressed, len_compressed = 0):
+    """Decompress a page stored in the MemCompression process in Windows 10.
+
+    Keyword arguments:
+    va_compressed -- int: the virtual address inside 'MemCompression' where the compressed buffer starts.
+    len_compressed -- int: optional length of the compressed buffer (leave out for auto-detect).
+    return -- dict: containing decompressed data and size of compressed buffer.
+
+    Example:
+    VmmPy_WinDecompressPage(0x00000210bfb40000) --> {'c': 456, 'b': b'...'}
+    """
+    return VMMPYC_WinMemCompression_DecompressPage(va_compressed, len_compressed)
+
 
 
 #------------------------------------------------------------------------------

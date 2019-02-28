@@ -36,9 +36,12 @@ VOID VmmWin_PE_SetSizeSectionIATEAT_DisplayBuffer(_In_ PVMM_PROCESS pProcess, _I
 * -- pProcess
 * -- pModule
 * -- pEATs
-* -- pcEATs = number max items of pEATs on entry, number of actual items of pEATs on exit
+* -- cEATs
+* -- pcEATs = number of actual items of pEATs written.
+* -- return
 */
-VOID VmmWin_PE_LoadEAT_DisplayBuffer(_Inout_ PVMM_PROCESS pProcess, _Inout_ PVMM_MODULEMAP_ENTRY pModule, _Out_writes_opt_(*pcEATs) PVMMPROC_WINDOWS_EAT_ENTRY pEATs, _Inout_ PDWORD pcEATs);
+_Success_(return)
+BOOL VmmWin_PE_LoadEAT_DisplayBuffer(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MODULEMAP_ENTRY pModule, _Out_writes_opt_(cEATs) PVMMPROC_WINDOWS_EAT_ENTRY pEATs, _In_ DWORD cEATs, _Out_ PDWORD pcEATs);
 
 /*
 * Walk the import address table (IAT) from a given pProcess and store it in the
@@ -46,9 +49,10 @@ VOID VmmWin_PE_LoadEAT_DisplayBuffer(_Inout_ PVMM_PROCESS pProcess, _Inout_ PVMM
 * -- pProcess
 * -- pModule
 * -- pIATs
-* -- pcIATs = number max items of pIATs on entry, number of actual items of pIATs on exit
+* -- cIATs
+* -- pcIATs = number of actual items of pIATs on exit
 */
-VOID VmmWin_PE_LoadIAT_DisplayBuffer(_Inout_ PVMM_PROCESS pProcess, _Inout_ PVMM_MODULEMAP_ENTRY pModule, _Out_writes_(*pcIATs) PVMMWIN_IAT_ENTRY pIATs, _Inout_ PDWORD pcIATs);
+VOID VmmWin_PE_LoadIAT_DisplayBuffer(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MODULEMAP_ENTRY pModule, _Out_writes_(*pcIATs) PVMMWIN_IAT_ENTRY pIATs, _In_ DWORD cIATs, _Out_ PDWORD pcIATs);
 
 /*
 * Fill the pbDisplayBuffer with a human readable version of the data directories.

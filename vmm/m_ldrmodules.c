@@ -35,7 +35,7 @@ typedef struct tdOBLDRMODULES_CACHE_ENTRY {
 */
 POBLDRMODULES_CACHE_ENTRY LdrModule_GetEAT(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PVMM_MODULEMAP_ENTRY pModule)
 {
-    DWORD i, o, cEATs;
+    DWORD i, o, cEATs = 0;
     PVMMPROC_WINDOWS_EAT_ENTRY pEATs = NULL;
     POBLDRMODULES_CACHE_ENTRY pObCacheEntry = NULL;
     PVMM_PROCESS pProcess = (PVMM_PROCESS)ctx->pProcess;
@@ -47,10 +47,9 @@ POBLDRMODULES_CACHE_ENTRY LdrModule_GetEAT(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_
     VmmOb_DECREF(pObCacheEntry);
     pObCacheEntry = NULL;
     // 2: retrieve exported functions
-    cEATs = LDRMODULES_MAX_IATEAT;
     pEATs = LocalAlloc(0, LDRMODULES_MAX_IATEAT * sizeof(VMMPROC_WINDOWS_EAT_ENTRY));
     if(!pEATs) { goto fail; }
-    VmmWin_PE_LoadEAT_DisplayBuffer(ctx->pProcess, pModule, pEATs, &cEATs);
+    VmmWin_PE_LoadEAT_DisplayBuffer(ctx->pProcess, pModule, pEATs, LDRMODULES_MAX_IATEAT, &cEATs);
     if(!cEATs) { goto fail; }
     // 3: fill "display buffer"
     pObCacheEntry = VmmOb_Alloc('EA', LMEM_ZEROINIT, sizeof(OBLDRMODULES_CACHE_ENTRY) + (QWORD)cEATs * 64 + 1, NULL, NULL);
@@ -87,7 +86,7 @@ fail:
 */
 POBLDRMODULES_CACHE_ENTRY LdrModule_GetIAT(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PVMM_MODULEMAP_ENTRY pModule)
 {
-    DWORD i, o, cIATs;
+    DWORD i, o, cIATs = 0;
     PVMMWIN_IAT_ENTRY pIATs = NULL;
     POBLDRMODULES_CACHE_ENTRY pObCacheEntry = NULL;
     PVMM_PROCESS pProcess = (PVMM_PROCESS)ctx->pProcess;
@@ -99,10 +98,9 @@ POBLDRMODULES_CACHE_ENTRY LdrModule_GetIAT(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_
     VmmOb_DECREF(pObCacheEntry);
     pObCacheEntry = NULL;
     // 2: retrieve exported functions
-    cIATs = LDRMODULES_MAX_IATEAT;
     pIATs = LocalAlloc(0, LDRMODULES_MAX_IATEAT * sizeof(VMMWIN_IAT_ENTRY));
     if(!pIATs) { goto fail; }
-    VmmWin_PE_LoadIAT_DisplayBuffer(ctx->pProcess, pModule, pIATs, &cIATs);
+    VmmWin_PE_LoadIAT_DisplayBuffer(ctx->pProcess, pModule, pIATs, LDRMODULES_MAX_IATEAT, &cIATs);
     if(!cIATs) { goto fail; }
     // 3: fill "display buffer"
     pObCacheEntry = VmmOb_Alloc('IA', LMEM_ZEROINIT, sizeof(OBLDRMODULES_CACHE_ENTRY) + (QWORD)cIATs * 128 + 1, NULL, NULL);

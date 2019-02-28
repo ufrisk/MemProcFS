@@ -230,11 +230,9 @@ BOOL VmmProcPHYS_ScanForKernel(_Out_ PQWORD ppaPML4, _In_ QWORD paBase, _In_ QWO
     LEECHCORE_PAGESTAT_MINIMAL PageStatMinimal;
     BOOL result;
     // initialize / allocate memory
-    pbBuffer8M = LocalAlloc(0, 0x800000);
-    pPageStat = (PPAGE_STATISTICS)LocalAlloc(LMEM_ZEROINIT, sizeof(PAGE_STATISTICS));
-    if(!pbBuffer8M || !pPageStat) { goto fail; }
     paCurrent = paBase;
-    PageStatInitialize(pPageStat, paCurrent, paMax, szDescription, FALSE, FALSE);
+    if(!(pbBuffer8M = LocalAlloc(0, 0x800000))) { goto fail; }
+    if(!PageStatInitialize(&pPageStat, paCurrent, paMax, szDescription, FALSE, FALSE)) { goto fail; }
     PageStatMinimal.h = (HANDLE)pPageStat;
     PageStatMinimal.pfnPageStatUpdate = PageStatUpdate;
     // loop kmd-find
@@ -247,8 +245,7 @@ BOOL VmmProcPHYS_ScanForKernel(_Out_ PQWORD ppaPML4, _In_ QWORD paBase, _In_ QWO
                     result = VmmProcPHYS_VerifyWindowsEPROCESS(pbBuffer8M, 0x00800000, o + i, ppaPML4);
                     if(result) {
                         pPageStat->szAction = "Windows System PageDirectoryBase/PML4 located";
-                        PageStatClose(pPageStat);
-                        LocalFree(pPageStat);
+                        PageStatClose(&pPageStat);
                         LocalFree(pbBuffer8M);
                         return TRUE;
                     }
@@ -257,8 +254,7 @@ BOOL VmmProcPHYS_ScanForKernel(_Out_ PQWORD ppaPML4, _In_ QWORD paBase, _In_ QWO
         }
     }
 fail:
-    if(pPageStat) { PageStatClose(pPageStat); }
-    LocalFree(pPageStat);
+    PageStatClose(&pPageStat);
     LocalFree(pbBuffer8M);
     *ppaPML4 = 0;
     return FALSE;

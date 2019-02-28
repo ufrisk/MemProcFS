@@ -12,47 +12,34 @@
 
 VOID _PageStatPrintMemMap(_Inout_ PPAGE_STATISTICS ps)
 {
-    BOOL fIsLinePrinted = FALSE;
-    QWORD i, qwAddrBase, qwAddrEnd;
+    QWORD i, qwAddrEnd;
     if(!ps->i.fIsFirstPrintCompleted) {
-        vmmprintf(" Memory Map:                                     \n START              END               #PAGES   \n");
+        printf(" Memory Map:                                     \n START              END               #PAGES   \n");
     }
-    if(!ps->i.MemMapIdx && !ps->i.MemMap[0]) {
-        vmmprintf("                                                 \n                                                 \n");
+    if(!ps->i.MemMapIdx) {
+        printf("                                                 \n                                                 \n");
         return;
     }
-    if(ps->i.MemMapPrintCommitIdx >= PAGE_STATISTICS_MEM_MAP_MAX_ENTRY - 4) {
-        vmmprintf(" Maximum number of memory map entries reached.   \n                                                 \n");
+    if(ps->i.MemMapIdx >= PAGE_STATISTICS_MEM_MAP_MAX_ENTRY - 2) {
+        printf(" Maximum number of memory map entries reached.   \n                                                 \n");
         return;
     }
-    qwAddrBase = ps->i.qwAddrBase + ps->i.MemMapPrintCommitPages * 0x1000;
-    for(i = ps->i.MemMapPrintCommitIdx; i < PAGE_STATISTICS_MEM_MAP_MAX_ENTRY; i++) {
-        if(!ps->i.MemMap[i] && i == 0) {
-            continue;
-        }
-        if(!ps->i.MemMap[i] || (i == PAGE_STATISTICS_MEM_MAP_MAX_ENTRY - 1)) {
+    for(i = max(1, ps->i.MemMapPrintIdx); i <= ps->i.MemMapIdx; i++) {
+        if(!ps->i.MemMap[i].cPages) {
             break;
         }
-        qwAddrEnd = qwAddrBase + 0x1000 * (QWORD)ps->i.MemMap[i];
-        if((i % 2) == 0) {
-            fIsLinePrinted = TRUE;
-            vmmprintf(
-                " %016llx - %016llx  %08x   \n",
-                qwAddrBase,
-                qwAddrEnd - 1,
-                ps->i.MemMap[i]);
-            if(i >= ps->i.MemMapPrintCommitIdx + 2) {
-                ps->i.MemMapPrintCommitPages += ps->i.MemMap[ps->i.MemMapPrintCommitIdx++];
-                ps->i.MemMapPrintCommitPages += ps->i.MemMap[ps->i.MemMapPrintCommitIdx++];
-
-            }
-        }
-        qwAddrBase = qwAddrEnd;
+        qwAddrEnd = ps->i.MemMap[i].qwAddrBase + ((QWORD)ps->i.MemMap[i].cPages << 12);
+        printf(
+            " %016llx - %016llx  %08x   \n",
+            ps->i.MemMap[i].qwAddrBase,
+            qwAddrEnd - 1,
+            ps->i.MemMap[i].cPages);
     }
-    if(!fIsLinePrinted) { // print extra line for formatting reasons.
-        vmmprintf(" (No memory successfully read yet)               \n");
+    ps->i.MemMapPrintIdx = ps->i.MemMapIdx;
+    if(!ps->i.MemMap[1].cPages) { // print extra line for formatting reasons.
+        printf(" (No memory successfully read yet)               \n");
     }
-    vmmprintf("                                                 \n");
+    printf("                                                 \n");
 }
 
 VOID _PageStatShowUpdate(_Inout_ PPAGE_STATISTICS ps)
@@ -135,55 +122,54 @@ VOID _PageStatThreadLoop(_In_ PPAGE_STATISTICS ps)
     ExitThread(0);
 }
 
-VOID PageStatClose(_Inout_ PPAGE_STATISTICS ps)
+VOID PageStatClose(_In_opt_ PPAGE_STATISTICS *ppPageStat)
 {
     BOOL status;
     DWORD dwExitCode;
-    ps->i.fUpdate = TRUE;
-    ps->i.fThreadExit = TRUE;
-    while((status = GetExitCodeThread(ps->i.hThread, &dwExitCode)) && STILL_ACTIVE == dwExitCode) {
+    if(!ppPageStat || !*ppPageStat) { return; }
+    (*ppPageStat)->i.fUpdate = TRUE;
+    (*ppPageStat)->i.fThreadExit = TRUE;
+    while((status = GetExitCodeThread((*ppPageStat)->i.hThread, &dwExitCode)) && STILL_ACTIVE == dwExitCode) {
         SwitchToThread();
     }
     if(!status) {
         Sleep(200);
     }
+    LocalFree(*ppPageStat);
+    *ppPageStat = NULL;
 }
 
-VOID PageStatInitialize(_Inout_ PPAGE_STATISTICS ps, _In_ QWORD qwAddrBase, _In_ QWORD qwAddrMax, _In_ LPSTR szAction, _In_ BOOL fKMD, _In_ BOOL fMemMap)
+_Success_(return)
+BOOL PageStatInitialize(_Out_ PPAGE_STATISTICS *ppPageStat, _In_ QWORD qwAddrBase, _In_ QWORD qwAddrMax, _In_ LPSTR szAction, _In_ BOOL fKMD, _In_ BOOL fMemMap)
 {
-    memset(ps, 0, sizeof(PAGE_STATISTICS));
+    PPAGE_STATISTICS ps;
+    ps = *ppPageStat = LocalAlloc(LMEM_ZEROINIT, sizeof(PAGE_STATISTICS));
+    if(!ps) { return FALSE; }
     ps->qwAddr = qwAddrBase;
     ps->cPageTotal = (qwAddrMax - qwAddrBase + 1) / 4096;
     ps->szAction = szAction;
     ps->fKMD = fKMD;
     ps->i.fMemMap = fMemMap;
-    ps->i.qwAddrBase = qwAddrBase;
     ps->i.qwTickCountStart = GetTickCount64();
     ps->i.hThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)_PageStatThreadLoop, ps, 0, NULL);
+    return TRUE;
 }
 
-VOID PageStatUpdate(_Inout_opt_ PPAGE_STATISTICS ps, _In_ QWORD qwAddr, _In_ QWORD cPageSuccessAdd, _In_ QWORD cPageFailAdd)
+VOID PageStatUpdate(_In_opt_ PPAGE_STATISTICS pPageStat, _In_ QWORD qwAddr, _In_ QWORD cPageSuccessAdd, _In_ QWORD cPageFailAdd)
 {
-    if(!ps) { return; }
-    ps->qwAddr = qwAddr;
-    ps->cPageSuccess += cPageSuccessAdd;
-    ps->cPageFail += cPageFailAdd;
-    // add to memory map, even == success, odd = fail.
-    if(ps->i.MemMapIdx < PAGE_STATISTICS_MEM_MAP_MAX_ENTRY - 2) {
-        if(cPageSuccessAdd) {
-            if(ps->i.MemMapIdx % 2 == 1) {
-                ps->i.MemMapIdx++;
-            }
-            ps->i.MemMap[ps->i.MemMapIdx] += (DWORD)cPageSuccessAdd;
+    if(!pPageStat) { return; }
+    pPageStat->qwAddr = qwAddr;
+    pPageStat->cPageSuccess += cPageSuccessAdd;
+    pPageStat->cPageFail += cPageFailAdd;
+    // add to memory map
+    if(cPageSuccessAdd && (pPageStat->i.MemMapIdx < PAGE_STATISTICS_MEM_MAP_MAX_ENTRY - 1)) {
+        if(!pPageStat->i.MemMapIdx || (qwAddr - (cPageSuccessAdd << 12)) != (pPageStat->i.MemMap[pPageStat->i.MemMapIdx].qwAddrBase + ((QWORD)pPageStat->i.MemMap[pPageStat->i.MemMapIdx].cPages << 12))) {
+            pPageStat->i.MemMapIdx++;
+            pPageStat->i.MemMap[pPageStat->i.MemMapIdx].qwAddrBase = qwAddr - (cPageSuccessAdd << 12);
         }
-        if(cPageFailAdd) {
-            if(ps->i.MemMapIdx % 2 == 0) {
-                ps->i.MemMapIdx++;
-            }
-            ps->i.MemMap[ps->i.MemMapIdx] += (DWORD)cPageFailAdd;
-        }
+        pPageStat->i.MemMap[pPageStat->i.MemMapIdx].cPages += (DWORD)cPageSuccessAdd;
     }
-    ps->i.fUpdate = TRUE;
+    pPageStat->i.fUpdate = TRUE;
 }
 
 // ----------------------------------------------------------------------------
@@ -199,6 +185,7 @@ const LPSTR NAMES_VMM_STATISTICS_CALL[] = {
     "VMMDLL_MemReadEx",
     "VMMDLL_MemWrite",
     "VMMDLL_MemVirt2Phys",
+    "VMMDLL_MemPrefetchPages",
     "VMMDLL_PidList",
     "VMMDLL_PidGetFromName",
     "VMMDLL_ProcessGetInformation",
@@ -210,6 +197,11 @@ const LPSTR NAMES_VMM_STATISTICS_CALL[] = {
     "VMMDLL_ProcessGetSections",
     "VMMDLL_ProcessGetEAT",
     "VMMDLL_ProcessGetIAT",
+    "VMMDLL_ProcessGetProcAddress",
+    "VMMDLL_ProcessGetModuleBase",
+    "VMMDLL_WinGetThunkEAT",
+    "VMMDLL_WinGetThunkIAT",
+    "VMMDLL_WinMemCompression_DecompressPage",
     "PluginManager_List",
     "PluginManager_Read",
     "PluginManager_Write",
@@ -268,17 +260,17 @@ VOID Statistics_CallToString(_In_opt_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcb)
     LEECHCORE_STATISTICS LeechCoreStatistics = { 0 };
     DWORD cbLeechCoreStatistics = sizeof(LEECHCORE_STATISTICS);
     if(!pb) { 
-        *pcb = 71 * (STATISTICS_ID_MAX + LEECHCORE_STATISTICS_ID_MAX + 6);
+        *pcb = 79 * (STATISTICS_ID_MAX + LEECHCORE_STATISTICS_ID_MAX + 6);
         return;
     }
     QueryPerformanceFrequency((PLARGE_INTEGER)&qwFreq);
     o += snprintf(
         pb + o,
         cb - o,
-        "FUNCTION CALL STATISTICS:                                             \n" \
-        "VALUES IN DECIMAL, TIME IN MICROSECONDS uS, STATISTICS = %s     \n" \
-        "FUNCTION CALL NAME                   CALLS  TIME AVG        TIME TOTAL\n" \
-        "======================================================================\n",
+        "FUNCTION CALL STATISTICS:                                                     \n" \
+        "VALUES IN DECIMAL, TIME IN MICROSECONDS uS, STATISTICS = %s             \n" \
+        "FUNCTION CALL NAME                           CALLS  TIME AVG        TIME TOTAL\n" \
+        "==============================================================================\n",
         ctxMain->pvStatistics ? "ENABLED " : "DISABLED"
         );
     // statistics
@@ -290,7 +282,7 @@ VOID Statistics_CallToString(_In_opt_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcb)
                 o += snprintf(
                     pb + o,
                     cb - o,
-                    "%-32.32s  %8i  %8i  %16lli\n",
+                    "%-40.40s  %8i  %8i  %16lli\n",
                     NAMES_VMM_STATISTICS_CALL[i],
                     (DWORD)pStat->c,
                     (DWORD)(uS / pStat->c),
@@ -302,7 +294,7 @@ VOID Statistics_CallToString(_In_opt_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcb)
         o += snprintf(
             pb + o,
             cb - o,
-            "%-32.32s  %8i  %8i  %16lli\n",
+            "%-40.40s  %8i  %8i  %16lli\n",
             NAMES_VMM_STATISTICS_CALL[i],
             0, 0, 0ULL);
     }
@@ -315,7 +307,7 @@ VOID Statistics_CallToString(_In_opt_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcb)
                 o += snprintf(
                     pb + o,
                     cb - o,
-                    "%-32.32s  %8i  %8i  %16lli\n",
+                    "%-40.40s  %8i  %8i  %16lli\n",
                     LEECHCORE_STATISTICS_NAME[i],
                     (DWORD)LeechCoreStatistics.Call[i].c,
                     (DWORD)(uS / LeechCoreStatistics.Call[i].c),
@@ -325,11 +317,11 @@ VOID Statistics_CallToString(_In_opt_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcb)
                 o += snprintf(
                     pb + o,
                     cb - o,
-                    "%-32.32s  %8i  %8i  %16lli\n",
+                    "%-40.40s  %8i  %8i  %16lli\n",
                     LEECHCORE_STATISTICS_NAME[i],
                     0, 0, 0ULL);
             }
         }
     }
-    *pcb = o;
+    *pcb = o - 1;
 }

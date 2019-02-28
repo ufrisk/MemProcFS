@@ -5,8 +5,8 @@
 // (c) Ulf Frisk, 2018-2019
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-
 #include "vmm.h"
+#include "pe.h"
 
 PIMAGE_NT_HEADERS PE_HeaderGetVerify(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _Inout_ PBYTE pbModuleHeader, _Out_opt_ PBOOL pfHdr32)
 {
@@ -40,7 +40,102 @@ QWORD PE_GetSize(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase)
     return cbSize;
 }
 
-QWORD PE_GetProcAddress(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ LPSTR lpProcName)
+_Success_(return)
+BOOL PE_GetThunkInfoIAT(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ LPSTR szImportModuleName, _In_ LPSTR szImportProcName, _Out_ PPE_THUNKINFO_IAT pThunkInfoIAT)
+{
+    BYTE pbModuleHeader[0x1000] = { 0 };
+    PIMAGE_NT_HEADERS64 ntHeader64;
+    PIMAGE_NT_HEADERS32 ntHeader32;
+    QWORD i, oImportDirectory;
+    PIMAGE_IMPORT_DESCRIPTOR pIID;
+    PQWORD pIAT64, pHNA64;
+    PDWORD pIAT32, pHNA32;
+    DWORD cbModule, cbRead;
+    PBYTE pbModule = NULL;
+    BOOL f32, fFnName;
+    DWORD c, j;
+    LPSTR szNameFunction, szNameModule;
+    // load both 32/64 bit ntHeader (only one will be valid)
+    if(!(ntHeader64 = PE_HeaderGetVerify(pProcess, vaModuleBase, pbModuleHeader, &f32))) { goto fail; }
+    ntHeader32 = (PIMAGE_NT_HEADERS32)ntHeader64;
+    cbModule = f32 ?
+        ntHeader32->OptionalHeader.SizeOfImage :
+        ntHeader64->OptionalHeader.SizeOfImage;
+    if(cbModule > 0x02000000) { goto fail; }
+    oImportDirectory = f32 ?
+        ntHeader32->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress :
+        ntHeader64->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress;
+    if(!oImportDirectory || (oImportDirectory >= cbModule)) { goto fail;  }
+    if(!(pbModule = LocalAlloc(LMEM_ZEROINIT, cbModule))) { goto fail; }
+    VmmReadEx(pProcess, vaModuleBase, pbModule, cbModule, &cbRead, VMM_FLAG_ZEROPAD_ON_FAIL);
+    if(cbRead <= 0x2000) { goto fail; }
+    // Walk imported modules / functions
+    pIID = (PIMAGE_IMPORT_DESCRIPTOR)(pbModule + oImportDirectory);
+    i = 0, c = 0;
+    while((oImportDirectory + (i + 1) * sizeof(IMAGE_IMPORT_DESCRIPTOR) < cbModule) && pIID[i].FirstThunk) {
+        if(pIID[i].Name > cbModule - 64) { i++; continue; }
+        if(f32) {
+            // 32-bit PE
+            j = 0;
+            pIAT32 = (PDWORD)(pbModule + pIID[i].FirstThunk);
+            pHNA32 = (PDWORD)(pbModule + pIID[i].OriginalFirstThunk);
+            while(TRUE) {
+                if((QWORD)(pIAT32 + j) + sizeof(DWORD) - (QWORD)pbModule > cbModule) { break; }
+                if((QWORD)(pHNA32 + j) + sizeof(DWORD) - (QWORD)pbModule > cbModule) { break; }
+                if(!pIAT32[j]) { break; }
+                if(!pHNA32[j]) { break; }
+                fFnName = (pHNA32[j] < cbModule - 40);
+                szNameFunction = (LPSTR)(pbModule + pHNA32[j] + 2);
+                szNameModule = (LPSTR)(pbModule + pIID[i].Name);
+                if(fFnName && !strcmp(szNameFunction, szImportProcName) && !_stricmp(szNameModule, szImportModuleName)) {
+                    pThunkInfoIAT->fValid = TRUE;
+                    pThunkInfoIAT->f32 = TRUE;
+                    pThunkInfoIAT->vaThunk = vaModuleBase + pIID[i].FirstThunk + sizeof(DWORD) * j;
+                    pThunkInfoIAT->vaFunction = pIAT32[j];
+                    pThunkInfoIAT->vaNameFunction = vaModuleBase + pHNA32[j] + 2;
+                    pThunkInfoIAT->vaNameModule = vaModuleBase + pIID[i].Name;
+                    LocalFree(pbModule);
+                    return TRUE;
+                }
+                c++;
+                j++;
+            }
+        } else {
+            // 64-bit PE
+            j = 0;
+            pIAT64 = (PQWORD)(pbModule + pIID[i].FirstThunk);
+            pHNA64 = (PQWORD)(pbModule + pIID[i].OriginalFirstThunk);
+            while(TRUE) {
+                if((QWORD)(pIAT64 + j) + sizeof(QWORD) - (QWORD)pbModule > cbModule) { break; }
+                if((QWORD)(pHNA64 + j) + sizeof(QWORD) - (QWORD)pbModule > cbModule) { break; }
+                if(!pIAT64[j]) { break; }
+                if(!pHNA64[j]) { break; }
+                fFnName = (pHNA64[j] < cbModule - 40);
+                szNameFunction = (LPSTR)(pbModule + pHNA64[j] + 2);
+                szNameModule = (LPSTR)(pbModule + pIID[i].Name);
+                if(fFnName && !strcmp(szNameFunction, szImportProcName) && !_stricmp(szNameModule, szImportModuleName)) {
+                    pThunkInfoIAT->fValid = TRUE;
+                    pThunkInfoIAT->f32 = FALSE;
+                    pThunkInfoIAT->vaThunk = vaModuleBase + pIID[i].FirstThunk + sizeof(QWORD) * j;
+                    pThunkInfoIAT->vaFunction = pIAT64[j];
+                    pThunkInfoIAT->vaNameFunction = vaModuleBase + pHNA64[j] + 2;
+                    pThunkInfoIAT->vaNameModule = vaModuleBase + pIID[i].Name;
+                    LocalFree(pbModule);
+                    return TRUE;
+                }
+                c++;
+                j++;
+            }
+        }
+        i++;
+    }
+fail:
+    LocalFree(pbModule);
+    return FALSE;
+}
+
+_Success_(return)
+BOOL PE_GetThunkInfoEAT(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ LPSTR szProcName, _Out_ PPE_THUNKINFO_EAT pThunkInfoEAT)
 {
     BYTE pbModuleHeader[0x1000] = { 0 };
     PIMAGE_NT_HEADERS32 ntHeader32;
@@ -49,7 +144,6 @@ QWORD PE_GetProcAddress(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In
     PWORD pwNameOrdinals;
     DWORD i, cbProcName, cbExportDirectoryOffset, cbRead = 0;
     LPSTR sz;
-    QWORD vaFnPtr;
     QWORD vaExportDirectory;
     DWORD cbExportDirectory;
     PBYTE pbExportDirectory = NULL;
@@ -76,7 +170,7 @@ QWORD PE_GetProcAddress(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In
     if((vaRVAAddrNames < vaExportDirectory) || (vaRVAAddrNames > vaExportDirectory + cbExportDirectory - exp->NumberOfNames * sizeof(DWORD))) { goto cleanup; }
     if((vaNameOrdinals < vaExportDirectory) || (vaNameOrdinals > vaExportDirectory + cbExportDirectory - exp->NumberOfNames * sizeof(WORD))) { goto cleanup; }
     if((vaRVAAddrFunctions < vaExportDirectory) || (vaRVAAddrFunctions > vaExportDirectory + cbExportDirectory - exp->NumberOfNames * sizeof(DWORD))) { goto cleanup; }
-    cbProcName = (DWORD)strnlen_s(lpProcName, MAX_PATH) + 1;
+    cbProcName = (DWORD)strnlen_s(szProcName, MAX_PATH) + 1;
     cbExportDirectoryOffset = (DWORD)(vaExportDirectory - vaModuleBase);
     pdwRVAAddrNames = (PDWORD)(pbExportDirectory + exp->AddressOfNames - cbExportDirectoryOffset);
     pwNameOrdinals = (PWORD)(pbExportDirectory + exp->AddressOfNameOrdinals - cbExportDirectoryOffset);
@@ -84,16 +178,27 @@ QWORD PE_GetProcAddress(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In
     for(i = 0; i < exp->NumberOfNames; i++) {
         if(pdwRVAAddrNames[i] - cbExportDirectoryOffset + cbProcName > cbExportDirectory) { continue; }
         sz = (LPSTR)(pbExportDirectory + pdwRVAAddrNames[i] - cbExportDirectoryOffset);
-        if(0 == memcmp(sz, lpProcName, cbProcName)) {
+        if(0 == memcmp(sz, szProcName, cbProcName)) {
             if(pwNameOrdinals[i] >= exp->NumberOfFunctions) { goto cleanup; }
-            vaFnPtr = (QWORD)(vaModuleBase + pdwRVAAddrFunctions[pwNameOrdinals[i]]);
+            pThunkInfoEAT->fValid = TRUE;
+            pThunkInfoEAT->vaFunction = (QWORD)(vaModuleBase + pdwRVAAddrFunctions[pwNameOrdinals[i]]);
+            pThunkInfoEAT->valueThunk = pdwRVAAddrFunctions[pwNameOrdinals[i]];
+            pThunkInfoEAT->vaThunk = vaExportDirectory + exp->AddressOfFunctions - cbExportDirectoryOffset + sizeof(DWORD) * pwNameOrdinals[i];
+            pThunkInfoEAT->vaNameFunction = vaExportDirectory + pdwRVAAddrNames[i] - cbExportDirectoryOffset;
             LocalFree(pbExportDirectory);
-            return vaFnPtr;
+            return TRUE;
         }
     }
 cleanup:
     LocalFree(pbExportDirectory);
-    return 0;
+    return FALSE;
+}
+
+QWORD PE_GetProcAddress(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ LPSTR lpProcName)
+{
+    PE_THUNKINFO_EAT oThunkInfoEAT = { 0 };
+    PE_GetThunkInfoEAT(pProcess, vaModuleBase, lpProcName, &oThunkInfoEAT);
+    return oThunkInfoEAT.vaFunction;
 }
 
 WORD PE_SectionGetNumberOfEx(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt)

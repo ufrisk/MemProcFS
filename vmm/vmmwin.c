@@ -126,8 +126,8 @@ VOID VmmWin_PE_DIRECTORY_DisplayBuffer(
     }
 }
 
-
-VOID VmmWin_PE_LoadEAT_DisplayBuffer(_Inout_ PVMM_PROCESS pProcess, _Inout_ PVMM_MODULEMAP_ENTRY pModule, _Out_writes_opt_(*pcEATs) PVMMPROC_WINDOWS_EAT_ENTRY pEATs, _Inout_ PDWORD pcEATs)
+_Success_(return)
+BOOL VmmWin_PE_LoadEAT_DisplayBuffer(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MODULEMAP_ENTRY pModule, _Out_writes_opt_(cEATs) PVMMPROC_WINDOWS_EAT_ENTRY pEATs, _In_ DWORD cEATs, _Out_ PDWORD pcEATs)
 {
     BYTE pbModuleHeader[0x1000] = { 0 };
     PIMAGE_NT_HEADERS64 ntHeader64;
@@ -138,10 +138,9 @@ VOID VmmWin_PE_LoadEAT_DisplayBuffer(_Inout_ PVMM_PROCESS pProcess, _Inout_ PVMM
     QWORD i, oNameOrdinal, ooName, oName, oFunction, wOrdinalFnIdx;
     DWORD vaFunctionOffset;
     BOOL fHdr32;
-    DWORD cEATs = *pcEATs;
     *pcEATs = 0;
     // load both 32/64 bit ntHeader (only one will be valid)
-    if(!(ntHeader64 = VmmWin_GetVerifyHeaderPE(pProcess, pModule->BaseAddress, pbModuleHeader, &fHdr32))) { goto cleanup; }
+    if(!(ntHeader64 = VmmWin_GetVerifyHeaderPE(pProcess, pModule->BaseAddress, pbModuleHeader, &fHdr32))) { goto fail; }
     ntHeader32 = (PIMAGE_NT_HEADERS32)ntHeader64;
     // Load Export Address Table (EAT)
     oExportDirectory = fHdr32 ?
@@ -150,9 +149,9 @@ VOID VmmWin_PE_LoadEAT_DisplayBuffer(_Inout_ PVMM_PROCESS pProcess, _Inout_ PVMM
     cbExportDirectory = fHdr32 ?
         ntHeader32->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].Size :
         ntHeader64->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].Size;
-    if(!oExportDirectory || !cbExportDirectory || cbExportDirectory > 0x01000000) { goto cleanup; }
-    if(!(pbExportDirectory = LocalAlloc(0, cbExportDirectory))) { goto cleanup; }
-    if(!VmmRead(pProcess, pModule->BaseAddress + oExportDirectory, pbExportDirectory, (DWORD)cbExportDirectory)) { goto cleanup; }
+    if(!oExportDirectory || !cbExportDirectory || cbExportDirectory > 0x01000000) { goto fail; }
+    if(!(pbExportDirectory = LocalAlloc(0, cbExportDirectory))) { goto fail; }
+    if(!VmmRead(pProcess, pModule->BaseAddress + oExportDirectory, pbExportDirectory, (DWORD)cbExportDirectory)) { goto fail; }
     // Walk exported functions
     pExportDirectory = (PIMAGE_EXPORT_DIRECTORY)pbExportDirectory;
     for(i = 0; i < pExportDirectory->NumberOfNames && i < cEATs; i++) {
@@ -175,11 +174,14 @@ VOID VmmWin_PE_LoadEAT_DisplayBuffer(_Inout_ PVMM_PROCESS pProcess, _Inout_ PVMM
         strncpy_s(pEATs[i].szFunction, 40, (LPSTR)(pbExportDirectory - oExportDirectory + oName), _TRUNCATE);
     }
     *pcEATs = (DWORD)i;
-cleanup:
     LocalFree(pbExportDirectory);
+    return TRUE;
+fail:
+    LocalFree(pbExportDirectory);
+    return FALSE;
 }
 
-VOID VmmWin_PE_LoadIAT_DisplayBuffer(_Inout_ PVMM_PROCESS pProcess, _Inout_ PVMM_MODULEMAP_ENTRY pModule, _Out_writes_(*pcIATs) PVMMWIN_IAT_ENTRY pIATs, _Inout_ PDWORD pcIATs)
+VOID VmmWin_PE_LoadIAT_DisplayBuffer(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MODULEMAP_ENTRY pModule, _Out_writes_(*pcIATs) PVMMWIN_IAT_ENTRY pIATs, _In_ DWORD cIATs, _Out_ PDWORD pcIATs)
 {
     BYTE pbModuleHeader[0x1000] = { 0 };
     PIMAGE_NT_HEADERS64 ntHeader64;
@@ -191,7 +193,7 @@ VOID VmmWin_PE_LoadIAT_DisplayBuffer(_Inout_ PVMM_PROCESS pProcess, _Inout_ PVMM
     PBYTE pbModule;
     DWORD cbModule, cbRead;
     BOOL fHdr32, fFnName;
-    DWORD c, j, cIATs = *pcIATs;
+    DWORD c, j;
     *pcIATs = 0;
     // Load the module
     if(pModule->SizeOfImage > 0x02000000) { return; }
@@ -325,7 +327,7 @@ VOID VmmWin_ScanLdrModules64(_In_ PVMM_PROCESS pProcess, _Inout_ PVMM_MODULEMAP_
     DWORD iModuleLdr;
     // prefetch existing addresses (if any) & allocate new vaModuleLdr DataSet
     pObDataSet_vaModuleLdr = VmmObContainer_GetOb(&pProcess->pObProcessPersistent->ObCLdrModulesCachePrefetch64);
-    VmmCachePrefetch(pProcess, pObDataSet_vaModuleLdr);
+    VmmCachePrefetchPages(pProcess, pObDataSet_vaModuleLdr);
     VmmOb_DECREF(pObDataSet_vaModuleLdr);
     pObDataSet_vaModuleLdr = VmmObDataSet_Alloc(TRUE);
     if(!pObDataSet_vaModuleLdr) { goto fail; }
@@ -453,7 +455,7 @@ BOOL VmmWin_ScanLdrModules32(_In_ PVMM_PROCESS pProcess, _Inout_ PVMM_MODULEMAP_
     DWORD iModuleLdr;
     // prefetch existing addresses (if any) & allocate new vaModuleLdr DataSet
     pObDataSet_vaModuleLdr = VmmObContainer_GetOb(&pProcess->pObProcessPersistent->ObCLdrModulesCachePrefetch32);
-    VmmCachePrefetch(pProcess, pObDataSet_vaModuleLdr);
+    VmmCachePrefetchPages(pProcess, pObDataSet_vaModuleLdr);
     VmmOb_DECREF(pObDataSet_vaModuleLdr);
     pObDataSet_vaModuleLdr = VmmObDataSet_Alloc(TRUE);
     if(!pObDataSet_vaModuleLdr) { goto fail; }
@@ -955,15 +957,15 @@ VOID VmmWin_OffsetLocatorEPROCESS64(_In_ PVMM_PROCESS pSystemProcess)
     // find offset for PEB (in EPROCESS)
     for(i = 0x300, f = FALSE; i < 0x480; i += 8) {
         if(*(PQWORD)(pb0 + i)) { continue; }
-        vaPEB = *(PQWORD)(pb1 + i);
-        if(!vaPEB || (vaPEB & 0xffff800000000fff)) { continue; }
-        // Verify potential PEB
-        if(!VmmVirt2PhysEx(*(PQWORD)(pb1 + pOffsetEPROCESS->DTB), TRUE, vaPEB, &paPEB)) { continue; }
-        if(!VmmReadPhysicalPage(paPEB, pbPage)) { continue; }
-        if(*(PWORD)pbPage == 0x5a4d) { continue; }  // MZ header -> likely entry point or something not PEB ...
-        pOffsetEPROCESS->PEB = i;
-        f = TRUE;
-        break;
+vaPEB = *(PQWORD)(pb1 + i);
+if(!vaPEB || (vaPEB & 0xffff800000000fff)) { continue; }
+// Verify potential PEB
+if(!VmmVirt2PhysEx(*(PQWORD)(pb1 + pOffsetEPROCESS->DTB), TRUE, vaPEB, &paPEB)) { continue; }
+if(!VmmReadPhysicalPage(paPEB, pbPage)) { continue; }
+if(*(PWORD)pbPage == 0x5a4d) { continue; }  // MZ header -> likely entry point or something not PEB ...
+pOffsetEPROCESS->PEB = i;
+f = TRUE;
+break;
     }
     if(!f) { return; }
     // find "optional" offset for user cr3/pml4 (post meltdown only)
@@ -1016,7 +1018,7 @@ BOOL VmmWin_EnumerateEPROCESS64(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fTot
     PVMM_PROCESS pObProcess = NULL;
     QWORD vaSystemEPROCESS, vaEPROCESS, cNewProcessCollision = 0;
     DWORD iProc = 0;
-    BOOL fShowTerminated;
+    BOOL fShowTerminated, fUser;
     PVMM_WIN_EPROCESS_OFFSET pOffsetEPROCESS = &ctxVmm->kernel.OffsetEPROCESS;
     PVMMOB_DATASET pObSetAddressEPROCESS = NULL;
     fShowTerminated = ctxVmm->flags & VMM_FLAG_PROCESS_SHOW_TERMINATED;
@@ -1040,7 +1042,7 @@ BOOL VmmWin_EnumerateEPROCESS64(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fTot
     pqwPEB = (PQWORD)(pb + pOffsetEPROCESS->PEB);
     // prefetch pages into cache (if any)
     pObSetAddressEPROCESS = VmmObContainer_GetOb(&ctxVmm->ObCEPROCESSCachePrefetch);
-    VmmCachePrefetch(pSystemProcess, pObSetAddressEPROCESS);
+    VmmCachePrefetchPages(pSystemProcess, pObSetAddressEPROCESS);
     VmmOb_DECREF(pObSetAddressEPROCESS);
     // initialize address set
     if(!(pObSetAddressEPROCESS = VmmObDataSet_Alloc(TRUE))) { return FALSE; }
@@ -1054,6 +1056,9 @@ BOOL VmmWin_EnumerateEPROCESS64(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fTot
         VmmOb_DECREF(pObProcess);
         pObProcess = NULL;
         if(*pqwDTB && *(PQWORD)szName && (fShowTerminated || !*pdwState)) {
+            fUser = 
+                !((*pdwPID == 4) || ((*pdwState == 0) && (*pqwPEB == 0))) ||
+                (*(PQWORD)(szName + 0x00) == 0x72706d6f436d654d) && (*(PDWORD)(szName + 0x08) == 0x69737365);  // MemCompression "process"
             pObProcess = VmmProcessCreateEntry(
                 fTotalRefresh,
                 *pdwPID,
@@ -1061,7 +1066,7 @@ BOOL VmmWin_EnumerateEPROCESS64(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fTot
                 ~0xfff & *pqwDTB,
                 pOffsetEPROCESS->DTB_User ? (~0xfff & *pqwDTB_User) : 0,
                 szName,
-                !((*pdwPID == 4) || ((*pdwState == 0) && (*pqwPEB == 0))));
+                fUser);
             if(!pObProcess) {
                 vmmprintfv("VMM: WARNING: PID '%i' already exists.\n", *pdwPID);
                 if(++cNewProcessCollision >= 8) {
@@ -1233,7 +1238,7 @@ BOOL VmmWin_EnumerateEPROCESS32(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fTot
     PVMM_PROCESS pObProcess = NULL;
     DWORD vaSystemEPROCESS, vaEPROCESS, cPID = 0, cNewProcessCollision = 0;
     DWORD iProc = 0;
-    BOOL fShowTerminated;
+    BOOL fShowTerminated, fUser;
     PVMM_WIN_EPROCESS_OFFSET pOffsetEPROCESS = &ctxVmm->kernel.OffsetEPROCESS;
     PVMMOB_DATASET pObSetAddressEPROCESS = NULL;
     fShowTerminated = ctxVmm->flags & VMM_FLAG_PROCESS_SHOW_TERMINATED;
@@ -1257,7 +1262,7 @@ BOOL VmmWin_EnumerateEPROCESS32(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fTot
     pdwPEB = (PDWORD)(pb + pOffsetEPROCESS->PEB);
     // prefetch pages into cache (if any)
     pObSetAddressEPROCESS = VmmObContainer_GetOb(&ctxVmm->ObCEPROCESSCachePrefetch);
-    VmmCachePrefetch(pSystemProcess, pObSetAddressEPROCESS);
+    VmmCachePrefetchPages(pSystemProcess, pObSetAddressEPROCESS);
     VmmOb_DECREF(pObSetAddressEPROCESS);
     // initialize address set
     if(!(pObSetAddressEPROCESS = VmmObDataSet_Alloc(TRUE))) { return FALSE; }
@@ -1272,6 +1277,9 @@ BOOL VmmWin_EnumerateEPROCESS32(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fTot
         VmmOb_DECREF(pObProcess);
         pObProcess = NULL;
         if(*pdwDTB && *(PQWORD)szName && (fShowTerminated || !*pdwState)) {
+            fUser =
+                !((*pdwPID == 4) || ((*pdwState == 0) && (*pdwPEB == 0))) ||
+                ((*(PQWORD)(szName + 0x00) == 0x72706d6f436d654d) && (*(PDWORD)(szName + 0x08) == 0x69737365)); // MemCompression "process"
             pObProcess = VmmProcessCreateEntry(
                 fTotalRefresh,
                 *pdwPID,
@@ -1279,7 +1287,7 @@ BOOL VmmWin_EnumerateEPROCESS32(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fTot
                 *pdwDTB & 0xffffffe0,
                 pOffsetEPROCESS->DTB_User ? (~0xfff & *pdwDTB_User) : 0,
                 szName,
-                !((*pdwPID == 4) || ((*pdwState == 0) && (*pdwPEB == 0))));
+                fUser);
         }
         if(pObProcess) {
             pObProcess->os.win.vaEPROCESS = vaEPROCESS;

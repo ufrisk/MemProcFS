@@ -610,7 +610,7 @@ VOID VmmCache2Initialize(_In_ WORD wTblTag)
 * -- pProcess
 * -- pObPrefetchAddresses
 */
-VOID VmmCachePrefetch(_In_ PVMM_PROCESS pProcess, _In_opt_ PVMMOB_DATASET pObPrefetchAddresses)
+VOID VmmCachePrefetchPages(_In_opt_ PVMM_PROCESS pProcess, _In_opt_ PVMMOB_DATASET pObPrefetchAddresses)
 {
     QWORD va;
     DWORD i, c = 0;
@@ -624,7 +624,11 @@ VOID VmmCachePrefetch(_In_ PVMM_PROCESS pProcess, _In_opt_ PVMMOB_DATASET pObPre
             c++;
         }
     }
-    VmmReadScatterVirtual(pProcess, ppMEMs, c, 0);
+    if(pProcess) {
+        VmmReadScatterVirtual(pProcess, ppMEMs, c, 0);
+    } else {
+        VmmReadScatterPhysical(ppMEMs, c, 0);
+    }
     LocalFree(ppMEMs);
 }
 
@@ -860,6 +864,7 @@ PVMM_PROCESS VmmProcessCreateEntry(_In_ BOOL fTotalRefresh, _In_ DWORD dwPID, _I
         if(!pProcess) { goto fail; }
         InitializeCriticalSectionAndSpinCount(&pProcess->LockUpdate, 4096);
         memcpy(pProcess->szName, szName, 16);
+        pProcess->szName[15] = 0;
         pProcess->dwPID = dwPID;
         pProcess->dwState = dwState;
         pProcess->paDTB = paDTB;
@@ -1350,7 +1355,7 @@ BOOL VmmReadString_Unicode2Ansi(_In_ PVMM_PROCESS pProcess, _In_ QWORD qwVA, _Ou
     BOOL result;
     WCHAR wsz[0x1000];
     if(cch) { sz[0] = 0; }
-    if(!cch || cch > 0x1000) { return FALSE; }
+    if((cch < 2) || (cch > 0x1000)) { return FALSE; }
     result = VmmRead(pProcess, qwVA, (PBYTE)wsz, cch << 1);
     if(!result) { return FALSE; }
     for(i = 0; i < cch - 1; i++) {
@@ -1394,6 +1399,15 @@ VOID VmmInitializeMemoryModel(_In_ VMM_MEMORYMODEL_TP tp)
     }
 }
 
+VOID VmmInitializeFunctions()
+{
+    HMODULE hNtDll = NULL;
+    if((hNtDll = LoadLibraryA("ntdll.dll"))) {
+        ctxVmm->fn.RtlDecompressBuffer = (VMMFN_RtlDecompressBuffer*)GetProcAddress(hNtDll, "RtlDecompressBuffer");
+        FreeLibrary(hNtDll);
+    }
+}
+
 BOOL VmmInitialize()
 {
     // 1: allocate & initialize
@@ -1411,6 +1425,7 @@ BOOL VmmInitialize()
     // 5: OTHER INIT:
     VmmObContainer_Initialize(&ctxVmm->ObCEPROCESSCachePrefetch, NULL);
     InitializeCriticalSection(&ctxVmm->MasterLock);
+    VmmInitializeFunctions();
     return TRUE;
 fail:
     VmmClose();
