@@ -383,9 +383,21 @@ VOID VmmCacheClear(_In_ WORD wTblTag)
 {
     DWORD i;
     PVMM_CACHE_TABLE t;
+    PVMM_PROCESS pObProcess = NULL;
+    // 1: clear cache
     t = VmmCacheTableGet(wTblTag);
     for(i = 0; i < VMM_CACHE2_REGIONS; i++) {
         VmmCacheReclaim(t, i, TRUE);
+    }
+    // 2: if tlb cache clear -> update process 'is spider done' flag
+    if(wTblTag == VMM_CACHE_TAG_TLB) {
+        while((pObProcess = VmmProcessGetNext(pObProcess))) {
+            if(pObProcess->fTlbSpiderDone) {
+                EnterCriticalSection(&pObProcess->LockUpdate);
+                pObProcess->fTlbSpiderDone = FALSE;
+                LeaveCriticalSection(&pObProcess->LockUpdate);
+            }
+        }
     }
 }
 

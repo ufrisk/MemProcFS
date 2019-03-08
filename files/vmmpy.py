@@ -62,6 +62,19 @@ def VmmPy_Close():
 
 
 
+def VmmPy_Refresh():
+    """Force refresh the internal state of the VMM.DLL - refreshing process listings and internal caches. NB! function may take a long time to execute!
+
+    Keyword arguments:
+    N/A
+    
+    Example:
+    VmmPy_Refresh()
+    """
+    VMMPYC_Refresh(0)
+
+
+
 def VmmPy_Initialize(args, is_printf = True, is_verbose = False, is_verbose_extra = False, is_verbose_tlp = False, page_table_base = 0):
     """Initialize VmmPy and the Virtual Memory Manager VMM.DLL with arguments as
        in the argument list args. Important is the -device option and optionally

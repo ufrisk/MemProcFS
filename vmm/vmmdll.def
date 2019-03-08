@@ -2,6 +2,7 @@ LIBRARY		VMM
 EXPORTS
     VMMDLL_Initialize
     VMMDLL_Close
+	VMMDLL_Refresh
 
     VMMDLL_ConfigGet
     VMMDLL_ConfigSet

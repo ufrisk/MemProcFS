@@ -92,11 +92,12 @@ VOID PageStatUpdate(_In_opt_ PPAGE_STATISTICS pPageStat, _In_ QWORD qwAddr, _In_
 #define STATISTICS_ID_VMMDLL_WinGetThunkEAT                     0x16
 #define STATISTICS_ID_VMMDLL_WinGetThunkIAT                     0x17
 #define STATISTICS_ID_VMMDLL_WinMemCompression_DecompressPage   0x18
-#define STATISTICS_ID_PluginManager_List                        0x19
-#define STATISTICS_ID_PluginManager_Read                        0x1a
-#define STATISTICS_ID_PluginManager_Write                       0x1b
-#define STATISTICS_ID_PluginManager_Notify                      0x1c
-#define STATISTICS_ID_MAX                                       0x1c
+#define STATISTICS_ID_VMMDLL_Refresh                            0x19
+#define STATISTICS_ID_PluginManager_List                        0x1a
+#define STATISTICS_ID_PluginManager_Read                        0xab
+#define STATISTICS_ID_PluginManager_Write                       0x1c
+#define STATISTICS_ID_PluginManager_Notify                      0x1d
+#define STATISTICS_ID_MAX                                       0x1d
 #define STATISTICS_ID_NOLOG                                     0xffffffff
 
 VOID Statistics_CallSetEnabled(_In_ BOOL fEnabled);

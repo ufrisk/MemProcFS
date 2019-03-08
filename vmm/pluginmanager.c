@@ -305,6 +305,7 @@ BOOL PluginManager_Initialize()
     if(ctxVmm->pVmmVfsModuleList) { return FALSE; } // already initialized
     ZeroMemory(&ri, sizeof(VMMDLL_PLUGIN_REGINFO));
     // 1: process built-in modules
+    EnterCriticalSection(&ctxVmm->MasterLock);
     PluginManager_Initialize_RegInfoInit(&ri, NULL);
     M_Virt2Phys_Initialize(&ri);
     PluginManager_Initialize_RegInfoInit(&ri, NULL);
@@ -344,5 +345,6 @@ BOOL PluginManager_Initialize()
     }
     // 3: process 'special status' python plugin manager.
     PluginManager_Initialize_Python();
+    LeaveCriticalSection(&ctxVmm->MasterLock);
     return TRUE;
 }

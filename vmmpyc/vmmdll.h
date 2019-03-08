@@ -4,7 +4,7 @@
 // (c) Ulf Frisk, 2018-2019
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-// Header Version: 2.1
+// Header Version: 2.2
 //
 
 #include <windows.h>
@@ -50,6 +50,17 @@ BOOL VMMDLL_Initialize(_In_ DWORD argc, _In_ LPSTR argv[]);
 _Success_(return)
 BOOL VMMDLL_Close();
 
+/*
+* Perform a force refresh of all internal caches including:
+* - process listings
+* - memory cache
+* - page table cache
+* WARNING: function may take some time to execute!
+* -- dwReserved = reserved future use - must be zero
+* -- return = sucess/fail
+*/
+_Success_(return)
+BOOL VMMDLL_Refresh(_In_ DWORD dwReserved);
 
 
 //-----------------------------------------------------------------------------

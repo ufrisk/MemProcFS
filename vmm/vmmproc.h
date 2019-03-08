@@ -12,7 +12,7 @@
 * -- fRefreshTotal = full refresh of processes should be done instead of partial.
 * -- return
 */
-BOOL VmmProc_Refresh(_In_ BOOL fRefreshTotal);
+BOOL VmmProc_RefreshProcesses(_In_ BOOL fRefreshTotal);
 
 /*
 * Load operating system dependant module names, such as parsed from PE or ELF

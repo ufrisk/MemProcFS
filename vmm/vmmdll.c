@@ -491,6 +491,42 @@ BOOL VMMDLL_VfsInitializePlugins()
         PluginManager_Initialize())
 }
 
+
+
+//-----------------------------------------------------------------------------
+// REFRESH FUNCTIONALITY BELOW:
+//-----------------------------------------------------------------------------
+
+_Success_(return)
+BOOL VMMDLL_Refresh_Impl(_In_ DWORD dwReserved)
+{
+    ULONG64 paMax;
+    // enforce global lock even if 'multi thread' is enabled
+    // we wish to avoid parallel process refreshes ...
+    EnterCriticalSection(&ctxVmm->MasterLock);
+    VmmCacheClear(VMM_CACHE_TAG_PHYS);
+    VmmCacheClear(VMM_CACHE_TAG_TLB);
+    VmmProc_RefreshProcesses(TRUE);
+    // update max physical address (if volatile).
+    if(ctxMain->dev.fVolatileMaxAddress) {
+        if(LeechCore_GetOption(LEECHCORE_OPT_MEMORYINFO_ADDR_MAX, &paMax) && (paMax > 0x01000000)) {
+            ctxMain->dev.paMax = paMax;
+        }
+    }
+    LeaveCriticalSection(&ctxVmm->MasterLock);
+    return TRUE;
+}
+
+_Success_(return)
+BOOL VMMDLL_Refresh(_In_ DWORD dwReserved)
+{
+    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+        STATISTICS_ID_VMMDLL_Refresh,
+        VMMDLL_Refresh_Impl(dwReserved))
+}
+
+
+
 //-----------------------------------------------------------------------------
 // VMM CORE FUNCTIONALITY BELOW:
 //-----------------------------------------------------------------------------

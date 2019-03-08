@@ -172,7 +172,7 @@ NTSTATUS MStatus_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ LPVOID pb, _In_ DWO
             if(nt == VMMDLL_STATUS_SUCCESS) {
                 ctxVmm->flags &= ~VMM_FLAG_PROCESS_SHOW_TERMINATED;
                 ctxVmm->flags |= fEnable ? VMM_FLAG_PROCESS_SHOW_TERMINATED : 0;
-                VmmProc_Refresh(TRUE);
+                VmmProc_RefreshProcesses(TRUE);
             }
             return nt;
         }

@@ -143,3 +143,7 @@ v2.1
   * IAT/EAT hook functionality.
   * Limited Windows 10 MemCompression support.
 * Bug fixes.
+
+v2.2
+* New API:
+  * Force refresh of process list and caches.

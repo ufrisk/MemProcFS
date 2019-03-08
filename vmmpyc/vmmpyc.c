@@ -58,6 +58,20 @@ VMMPYC_Close(PyObject *self, PyObject *args)
     return Py_BuildValue("s", NULL);    // None returned on success.
 }
 
+// (DWORD) -> None
+static PyObject*
+VMMPYC_Refresh(PyObject *self, PyObject *args)
+{
+    BOOL result;
+    DWORD dwReserved = 0;
+    if(!PyArg_ParseTuple(args, "k", &dwReserved)) { return NULL; }
+    Py_BEGIN_ALLOW_THREADS;
+    result = VMMDLL_Refresh(dwReserved);
+    Py_END_ALLOW_THREADS;
+    if(!result) { return PyErr_Format(PyExc_RuntimeError, "VMMPYC_Refresh: Refresh failed."); }
+    return Py_BuildValue("s", NULL);    // None returned on success.
+}
+
 
 
 //-----------------------------------------------------------------------------
@@ -946,6 +960,7 @@ VMMPYC_VfsList(PyObject *self, PyObject *args)
 static PyMethodDef VMMPYC_EmbMethods[] = {
     {"VMMPYC_Initialize", VMMPYC_Initialize, METH_VARARGS, "Initialize the VMM"},
     {"VMMPYC_Close", VMMPYC_Close, METH_VARARGS, "Try close the VMM"},
+    {"VMMPYC_Refresh", VMMPYC_Refresh, METH_VARARGS, "Force refresh the VMM (process listings and caches)."},
     {"VMMPYC_ConfigGet", VMMPYC_ConfigGet, METH_VARARGS, "Get a device specific option value."},
     {"VMMPYC_ConfigSet", VMMPYC_ConfigSet, METH_VARARGS, "Set a device specific option value."},
     {"VMMPYC_MemReadScatter", VMMPYC_MemReadScatter, METH_VARARGS, "Read multiple 4kB page sized and aligned chunks of memory given as an address list."},

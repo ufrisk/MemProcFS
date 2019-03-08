@@ -37,7 +37,7 @@ BOOL VmmProcUserCR3TryInitialize64()
     return TRUE;
 }
 
-BOOL VmmProc_Refresh(_In_ BOOL fRefreshTotal)
+BOOL VmmProc_RefreshProcesses(_In_ BOOL fRefreshTotal)
 {
     BOOL result;
     PVMM_PROCESS pObProcessSystem;
@@ -116,7 +116,7 @@ DWORD VmmProcCacheUpdaterThread()
         }
         // refresh proc list
         if(fProcPartial || fProcTotal) {
-            if(!VmmProc_Refresh(fProcTotal)) {
+            if(!VmmProc_RefreshProcesses(fProcTotal)) {
                 vmmprintf("VmmProc: Failed to refresh memory process file system - aborting.\n");
                 LeaveCriticalSection(&ctxVmm->MasterLock);
                 goto fail;

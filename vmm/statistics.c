@@ -77,7 +77,7 @@ VOID _PageStatShowUpdate(_Inout_ PPAGE_STATISTICS ps)
             " Pages read:     %llu / %llu (%llu%%)           \n" \
             " Pages failed:   %llu (%llu%%)                  \n",
             ps->szAction,
-            ps->fKMD ? "KMD (kernel module assisted DMA)" : "DMA (hardware only)             ",
+            ps->fKMD ? "KMD (kernel module assisted DMA)" : "Normal                          ",
             (ps->cPageSuccess + ps->cPageFail) / 256,
             ps->cPageTotal / 256,
             qwPercentTotal,
@@ -99,7 +99,7 @@ VOID _PageStatShowUpdate(_Inout_ PPAGE_STATISTICS ps)
             " Pages read:     %llu                           \n" \
             " Pages failed:   %llu                           \n",
             ps->szAction,
-            ps->fKMD ? "KMD (kernel module assisted DMA)" : "DMA (hardware only)             ",
+            ps->fKMD ? "KMD (kernel module assisted DMA)" : "Normal                          ",
             (ps->cPageSuccess + ps->cPageFail) / 256,
             (isMBs ? qwSpeed >> 10 : qwSpeed),
             (isMBs ? "MB/s" : "kB/s"),
@@ -202,6 +202,7 @@ const LPSTR NAMES_VMM_STATISTICS_CALL[] = {
     "VMMDLL_WinGetThunkEAT",
     "VMMDLL_WinGetThunkIAT",
     "VMMDLL_WinMemCompression_DecompressPage",
+    "VMMDLL_Refresh",
     "PluginManager_List",
     "PluginManager_Read",
     "PluginManager_Write",
