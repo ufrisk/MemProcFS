@@ -279,7 +279,7 @@ VOID VmmPyPlugin_UpdateVerbosity()
 	}
 }
 
-#define PYTHON_PATH_MAX             4*MAX_PATH
+#define PYTHON_PATH_MAX             7*MAX_PATH
 #define PYTHON_PATH_DELIMITER       L";"
 BOOL VmmPyPlugin_PythonInitialize(_In_ HMODULE hDllPython)
 {
@@ -299,14 +299,26 @@ BOOL VmmPyPlugin_PythonInitialize(_In_ HMODULE hDllPython)
     wcscat_s(wszPathPython, PYTHON_PATH_MAX, PYTHON_PATH_DELIMITER);
     wcscat_s(wszPathPython, PYTHON_PATH_MAX, wszPathBasePython);
     wcscat_s(wszPathPython, PYTHON_PATH_MAX, L"python36.zip");
-    // 2.3:  python lib
+    // 2.3:  python dlls
+    wcscat_s(wszPathPython, PYTHON_PATH_MAX, PYTHON_PATH_DELIMITER);
+    wcscat_s(wszPathPython, PYTHON_PATH_MAX, wszPathBasePython);
+    wcscat_s(wszPathPython, PYTHON_PATH_MAX, L"DLLs\\");
+    // 2.4:  python lib
     wcscat_s(wszPathPython, PYTHON_PATH_MAX, PYTHON_PATH_DELIMITER);
     wcscat_s(wszPathPython, PYTHON_PATH_MAX, wszPathBasePython);
     wcscat_s(wszPathPython, PYTHON_PATH_MAX, L"Lib\\");
-    // 2.4: .exe location of this process
+    // 2.5:  python lib\site-packages (python pip)
+    wcscat_s(wszPathPython, PYTHON_PATH_MAX, PYTHON_PATH_DELIMITER);
+    wcscat_s(wszPathPython, PYTHON_PATH_MAX, wszPathBasePython);
+    wcscat_s(wszPathPython, PYTHON_PATH_MAX, L"Lib\\site-packages\\");
+    // 2.6: .exe location of this process
     wcscat_s(wszPathPython, PYTHON_PATH_MAX, PYTHON_PATH_DELIMITER);
     wcscat_s(wszPathPython, PYTHON_PATH_MAX, wszPathBaseExe);
-    // 3: Initialize Embedded Python.
+    // 2.7: pylib relative to this process
+    wcscat_s(wszPathPython, PYTHON_PATH_MAX, PYTHON_PATH_DELIMITER);
+    wcscat_s(wszPathPython, PYTHON_PATH_MAX, wszPathBaseExe);
+    wcscat_s(wszPathPython, PYTHON_PATH_MAX, L"pylib\\");
+    // 3: Initialize (Embedded) Python.
     Py_SetProgramName(L"VmmPyPluginManager");
     Py_SetPath(wszPathPython);
     if(ctxPY2C->fVerboseExtra) {
@@ -314,6 +326,7 @@ BOOL VmmPyPlugin_PythonInitialize(_In_ HMODULE hDllPython)
     }
     PY2C_InitializeModuleVMMPYCC();
     Py_Initialize();
+    PyEval_InitThreads();
     // 4: Import VmmPyPlugin library/file to start the python part of the plugin manager.
     pName = PyUnicode_DecodeFSDefault("vmmpyplugin");
     if(!pName) { goto fail; }
@@ -322,6 +335,7 @@ BOOL VmmPyPlugin_PythonInitialize(_In_ HMODULE hDllPython)
     // 5: Cleanups
     Py_DECREF(pName);
     Py_DECREF(pModule);
+    PyEval_ReleaseLock();
     return TRUE;
 fail:
     if(pName) { Py_DECREF(pName); }

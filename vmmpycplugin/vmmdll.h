@@ -4,7 +4,7 @@
 // (c) Ulf Frisk, 2018-2019
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-// Header Version: 2.0
+// Header Version: 2.2
 //
 
 #include <windows.h>
@@ -26,13 +26,15 @@ extern "C" {
 * about the parameters please see github wiki for Memory Process File System
 * and LeechCore. THIS IS THE PREFERED WAY OF INITIALIZING VMM.DLL
 * Important parameters are:
-*    -vdll = show printf style outputs)
+*    -printf = show printf style outputs)
 *    -v -vv -vvv = extra verbosity levels)
 *    -device = device as on format for LeechCore - please see leechcore.h or
 *              Github documentation for additional information. Some values
 *              are: <file>, fpga, usb3380, hvsavedstate, totalmeltdown, pmem
 *    -remote = remote LeechCore instance - please see leechcore.h or Github
 *              documentation for additional information.
+*    -norefresh = disable background refreshes (even if backing memory is
+*              volatile memory).
 * -- argc
 * -- argv
 * -- return = success/fail
@@ -48,6 +50,17 @@ BOOL VMMDLL_Initialize(_In_ DWORD argc, _In_ LPSTR argv[]);
 _Success_(return)
 BOOL VMMDLL_Close();
 
+/*
+* Perform a force refresh of all internal caches including:
+* - process listings
+* - memory cache
+* - page table cache
+* WARNING: function may take some time to execute!
+* -- dwReserved = reserved future use - must be zero
+* -- return = sucess/fail
+*/
+_Success_(return)
+BOOL VMMDLL_Refresh(_In_ DWORD dwReserved);
 
 
 //-----------------------------------------------------------------------------
@@ -289,7 +302,7 @@ typedef struct tdVMMDLL_PLUGIN_REGINFO {
 * -- ppMEMs = array of scatter read headers.
 * -- cpMEMs = count of ppDMAs.
 * -- pcpDMAsRead = optional count of number of successfully read ppDMAs.
-* -- flags = optional flags as given by VMM_FLAG_*
+* -- flags = optional flags as given by VMMDLL_FLAG_*
 * -- return = the number of successfully read items.
 */
 DWORD VMMDLL_MemReadScatter(_In_ DWORD dwPID, _Inout_ PPMEM_IO_SCATTER_HEADER ppMEMs, _In_ DWORD cpMEMs, _In_ DWORD flags);
@@ -322,12 +335,24 @@ BOOL VMMDLL_MemRead(_In_ DWORD dwPID, _In_ ULONG64 qwVA, _Out_ PBYTE pb, _In_ DW
 * -- pb
 * -- cb
 * -- pcbRead
-* -- flags = flags as in VMM_FLAG_*
+* -- flags = flags as in VMMDLL_FLAG_*
 * -- return = success/fail. NB! reads may report as success even if 0 bytes are
 *        read - it's recommended to verify pcbReadOpt parameter.
 */
 _Success_(return)
 BOOL VMMDLL_MemReadEx(_In_ DWORD dwPID, _In_ ULONG64 qwVA, _Out_ PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbReadOpt, _In_ ULONG64 flags);
+
+/*
+* Prefetch a number of addresses (specified in the pA array) into the memory
+* cache. This function is to be used to batch larger known reads into local
+* cache before making multiple smaller reads - which will then happen from
+* the cache. Function exists for performance reasons.
+* -- dwPID = PID of target process, (DWORD)-1 for physical memory.
+* -- pPrefetchAddresses = array of addresses to read into cache.
+* -- cPrefetchAddresses
+*/
+_Success_(return)
+BOOL VMMDLL_MemPrefetchPages(_In_ DWORD dwPID, _In_reads_(cPrefetchAddresses) PULONG64 pPrefetchAddresses, _In_ DWORD cPrefetchAddresses);
 
 /*
 * Write a contigious arbitrary amount of memory. Please note some virtual memory
@@ -527,6 +552,87 @@ BOOL VMMDLL_ProcessGetEAT(_In_ DWORD dwPID, _In_ LPSTR szModule, _Out_opt_ PVMMD
 _Success_(return)
 BOOL VMMDLL_ProcessGetIAT(_In_ DWORD dwPID, _In_ LPSTR szModule, _Out_opt_ PVMMDLL_IAT_ENTRY pData, _In_ DWORD cData, _Out_ PDWORD pcData);
 
+/*
+* Retrieve the virtual address of a given function inside a process/module.
+* -- dwPID
+* -- szModuleName
+* -- szFunctionName
+* -- return = virtual address of function, zero on fail.
+*/
+ULONG64 VMMDLL_ProcessGetProcAddress(_In_ DWORD dwPID, _In_ LPSTR szModuleName, _In_ LPSTR szFunctionName);
+
+/*
+* Retrieve the base address of a given module.
+* -- dwPID
+* -- szModuleName
+* -- return = virtual address of module base, zero on fail.
+*/
+ULONG64 VMMDLL_ProcessGetModuleBase(_In_ DWORD dwPID, _In_ LPSTR szModuleName);
+
+
+
+//-----------------------------------------------------------------------------
+// WINDOWS SPECIFIC UTILITY FUNCTIONS BELOW:
+//-----------------------------------------------------------------------------
+
+typedef struct tdVMMDLL_WIN_THUNKINFO_IAT {
+    BOOL fValid;
+    BOOL f32;               // if TRUE fn is a 32-bit/4-byte entry, otherwise 64-bit/8-byte entry.
+    ULONG64 vaThunk;        // address of import address table 'thunk'.
+    ULONG64 vaFunction;     // value if import address table 'thunk' == address of imported function.
+    ULONG64 vaNameModule;   // address of name string for imported module.
+    ULONG64 vaNameFunction; // address of name string for imported function.
+} VMMDLL_WIN_THUNKINFO_IAT, *PVMMDLL_WIN_THUNKINFO_IAT;
+
+typedef struct tdVMMDLL_WIN_THUNKINFO_EAT {
+    BOOL fValid;
+    DWORD valueThunk;       // value of export address table 'thunk'.
+    ULONG64 vaThunk;        // address of import address table 'thunk'.
+    ULONG64 vaNameFunction; // address of name string for exported function.
+    ULONG64 vaFunction;     // address of exported function (module base + value parameter).
+} VMMDLL_WIN_THUNKINFO_EAT, *PVMMDLL_WIN_THUNKINFO_EAT;
+
+/*
+* Retrieve information about the import address table IAT thunk for an imported
+* function. This includes the virtual address of the IAT thunk which is useful
+* for hooking.
+* -- dwPID
+* -- szModuleName
+* -- szImportModuleName
+* -- szImportFunctionName
+* -- pThunkIAT
+* -- return
+*/
+_Success_(return)
+BOOL VMMDLL_WinGetThunkInfoIAT(_In_ DWORD dwPID, _In_ LPSTR szModuleName, _In_ LPSTR szImportModuleName, _In_ LPSTR szImportFunctionName, _Out_ PVMMDLL_WIN_THUNKINFO_IAT pThunkInfoIAT);
+
+/*
+* Retrieve information about the export address table EAT thunk for an exported
+* function. This includes the virtual address of the EAT thunk which is useful
+* for hooking.
+* -- dwPID
+* -- szModuleName
+* -- pThunkEAT
+* -- return
+*/
+_Success_(return)
+BOOL VMMDLL_WinGetThunkInfoEAT(_In_ DWORD dwPID, _In_ LPSTR szModuleName, _In_ LPSTR szExportFunctionName, _Out_ PVMMDLL_WIN_THUNKINFO_EAT pThunkInfoEAT);
+
+/*
+* Decompress compressed memory page stored in the MemCompression process.
+* -- vaCompressedData = virtual address in 'MemCompression' to decompress.
+* -- cbCompressedData = length of compressed data in 'MemCompression' to decompress (or zero for auto-detect).
+* -- pbDecompressedPage
+* -- pcbCompressedData = optional ptr to receive length of compressed buffer.
+* -- return
+*/
+_Success_(return)
+BOOL VMMDLL_WinMemCompression_DecompressPage(
+    _In_ ULONG64 vaCompressedData,
+    _In_opt_ DWORD cbCompressedData,
+    _Out_writes_(4096) PBYTE pbDecompressedPage,
+    _Out_opt_ PDWORD pcbCompressedData
+);
 
 
 //-----------------------------------------------------------------------------
