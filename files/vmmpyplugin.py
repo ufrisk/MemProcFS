@@ -336,6 +336,7 @@ def VmmPyPlugin_FileRetrieve(pid, path):
             raise RuntimeError('VmmPyPlugin_FileRetrieve: not found.')
         if dir_entry[path_item]['list'] != None:
             dir_entry = dir_entry[path_item]['list'](pid, dir_path)
+            break
         else:
             dir_entry = dir_entry[path_item]['dirs']
     if entry in dir_entry:
