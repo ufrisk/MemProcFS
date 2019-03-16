@@ -68,13 +68,14 @@
 //           placed in same directory as the executable file.
 //
 // PMEM :    load the rekall winpmem driver into the kernel and connect to it
-//           to acquire memory. The driver file 'winpmem_x64.sys' is found in
-//           the Rekall directory after most recent version has been installed.
-//           Copy 'winpmem_x64.sys' to the directory of leechcore.dll and run
-//           executable as elevated admin using syntax below:
+//           to acquire memory. The signed driver `.sys` file may be found at:
+//           https://github.com/Velocidex/c-aff4/tree/master/tools/pmem/resources/winpmem
+//           Download the driver file `att_winpmem_64.sys` and copy it to the
+//           directory of leechcore.dll and run executable as elevated admin
+//           using syntax below:
 //           Syntax:
-//           PMEM              (use winpmem_x64.sys in directory of executable)
-//           PMEM://<non_default_path_to_file_winpmem_x64.sys>
+//           PMEM              (use att_winpmem_64.sys in directory of executable)
+//           PMEM://<non_default_path_to_file_winpmem_64.sys>
 //
 // TOTALMELTDOWN : read/write - requires a Windows 7 system vulnerable to the
 //           "Total Meltdown" vulnerability - CVE-2018-1038.
@@ -110,7 +111,7 @@
 // (c) Ulf Frisk, 2018-2019
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-// Header Version: 1.0
+// Header Version: 1.1.0
 //
 #ifndef __LEECHCORE_H__
 #define __LEECHCORE_H__
@@ -151,6 +152,7 @@ typedef long long unsigned int              QWORD, *PQWORD, ULONG64, *PULONG64;
 #define _Printf_format_string_
 #define _Inout_updates_bytes_(x)
 #define _In_reads_(cbDataIn)
+#define _Out_writes_opt_(x)
 #define _Success_(return)
 #endif /* LINUX */
 
@@ -227,7 +229,10 @@ typedef struct tdLEECHCORE_PAGESTAT_MINIMAL {
 } LEECHCORE_PAGESTAT_MINIMAL, *PLEECHCORE_PAGESTAT_MINIMAL;
 
 /*
-* Open a connection to the target device.
+* Open a connection to the target device. The LeechCore initialization may fail
+* if the underlying device cannot be opened or if the LeechCore is already
+* initialized. If already initialized please connect with device EXISTING or
+* call LeechCore_Close() before opening a new device.
 * -- pInformation
 * -- result
 */
@@ -455,9 +460,9 @@ DLLEXPORT BOOL LeechCore_CommandData(
     _In_ ULONG64 fOption,
     _In_reads_(cbDataIn) PBYTE pbDataIn,
     _In_ DWORD cbDataIn,
-    _Out_writes_(cbDataOut) PBYTE pbDataOut,
+    _Out_writes_opt_(cbDataOut) PBYTE pbDataOut,
     _In_ DWORD cbDataOut,
-    _Out_ PDWORD pcbDataOut
+    _Out_opt_ PDWORD pcbDataOut
 );
 
 #ifdef __cplusplus
