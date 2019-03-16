@@ -147,3 +147,6 @@ v2.1
 v2.2
 * New API:
   * Force refresh of process list and caches.
+
+Latest
+* Fix deadlock issue in Python plugin.
