@@ -110,25 +110,25 @@ class MemProcFsReader:
 	def get_sysinfo(self):
 		self.sysinfo = KatzSystemInfo()
 
-		print('[+] Getting BuildNumer')
+		#print('[+] Getting BuildNumer')
 		version = PEGetVersion(self.process_pid, self.process_name)
-		print(version)
+		#print(version)
 		self.sysinfo.buildnumber = int(version.split('.')[2]) #10.0.16299.755 == <major>.<minor>.<buildnumber>
-		print('[+] Found BuildNumber %s' % self.sysinfo.buildnumber)
+		#print('[+] Found BuildNumber %s' % self.sysinfo.buildnumber)
 		
-		print('[+] Getting msv_dll_timestamp')
+		#print('[+] Getting msv_dll_timestamp')
 		self.sysinfo.msv_dll_timestamp = int(PEGetFileTime(self.process_pid, self.process_name))
-		print('[+] Found msv_dll_timestamp %s' % self.sysinfo.msv_dll_timestamp)
+		#print('[+] Found msv_dll_timestamp %s' % self.sysinfo.msv_dll_timestamp)
 		
 		
-		print('[+] Getting arch')		
+		#print('[+] Getting arch')		
 		val = VmmPy_ConfigGet(VMMPY_OPT_CORE_SYSTEM)
 		if val == VMMPY_SYSTEM_WINDOWS_X64:
 			self.sysinfo.architecture = KatzSystemArchitecture.X64
 		else:
 			self.sysinfo.architecture = KatzSystemArchitecture.X86
 		
-		print('[+] Got arch %s' % self.sysinfo.architecture)
+		#print('[+] Got arch %s' % self.sysinfo.architecture)
 
 		
 	def setup(self):
@@ -137,13 +137,13 @@ class MemProcFsReader:
 			# if filename is specified we dont want to use the virtual FS, but then we need to init the vmmpy module
 			VmmPy_Initialize(["-device", self.filename,'-vv'])
 		
-		print('[+] Searching LSASS')
+		#print('[+] Searching LSASS')
 		self.process_pid = VmmPy_PidGetFromName(self.process_name)
-		print('[+] Found LSASS on PID %s' % self.process_pid)
+		#print('[+] Found LSASS on PID %s' % self.process_pid)
 		
 		self.get_sysinfo()
 		
-		print('[+] Getting modules info')
+		#print('[+] Getting modules info')
 		for moduleinfo in VmmPy_ProcessGetModuleMap(self.process_pid):
 			#print('moduleinfo: %s' % str(moduleinfo))
 			m = Module.parse(moduleinfo)
@@ -153,7 +153,7 @@ class MemProcFsReader:
 				
 			self.modules.append(m)
 				
-		print('[+] Got modules info')	
+		#print('[+] Got modules info')	
 			
 		
 	def get_module_by_name(self, module_name):

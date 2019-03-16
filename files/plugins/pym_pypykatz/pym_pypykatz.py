@@ -2,17 +2,7 @@ from vmmpy import *
 from vmmpyplugin import *
 import json
 import traceback
-
-try:
-	from pypykatz.pypykatz import pypykatz
-	from pypykatz.commons.common import UniversalEncoder
-	from plugins.pym_pypykatz.pypyreader import MemProcFsReader
-	
-except Exception as e:
-	traceback.print_exc()
-	print('Pypykatz import error, do you have it installed?')
-	raise
-
+import datetime
 
 # globals needed for FS
 lsass_pid = None
@@ -21,8 +11,56 @@ luids = {} #secrets per-luid (logon session) in txt format
 domains = {}
 kerberos = {}
 
-## TODO: kerberos tickets as file
+last_refresh_time = None
+refresh_needed = False
+refresh_interval = 30
+first_run = True
 
+import_failed = None
+parsing_failed = None
+
+import_error_text_template = """
+The imports for pypykatz plugin have failed at some point.
+Common causes:
+	1. You dont have pypykatz installed
+	2. Python runtime environment used by MemProcFs is not the same as you have installed pypykatz in.
+	3. You are not using the correct python version
+	
+Error traceback:
+%s
+"""
+
+parsing_error_template = """
+pypykatz plugin tried to parse the lsass.exe process in your memory dump but failed.
+This could be caused by multiple things:
+	1. The pypykatz's parser code is potato
+	2. MemProcFs could not fully parse the memory, usually this happens with incorrect memory dump files.
+		Check for error strings like "Could not load segment data"
+		
+In case you are cretain the problem is caused by the parser, 
+please submit an issue with the info below this line:
+%s
+
+%s
+"""
+
+import_error_text = None
+parsing_error_text = None
+
+try:
+	from pypykatz.pypykatz import pypykatz
+	from pypykatz.commons.common import UniversalEncoder
+	from plugins.pym_pypykatz.pypyreader import MemProcFsReader
+	
+	#this needs to be the last line!
+	import_failed = False
+	
+	
+except Exception as e:
+	import_failed = True
+	traceback.print_exc()
+	import_error_text = import_error_text_template % traceback.format_exc()
+	pass
 
 def process_lsass():
 	"""
@@ -34,23 +72,35 @@ def process_lsass():
 	global lsass_pid
 	global domains
 	global kerberos
+	global last_refresh_time
+	global parsing_error_text
+	global parsing_failed
 	
-	print('process_lsass!')
-	
+	basic_info = ''
 	try:
 		memreader = MemProcFsReader()
+		
+		basic_info =  '===== BASIC INFO. SUBMIT THIS IF THERE IS AN ISSUE =====\r\n'
+		basic_info += 'CPU arch: %s\r\n' % memreader.sysinfo.architecture.name
+		basic_info += 'OS: %s\r\n' % memreader.sysinfo.operating_system
+		basic_info += 'BuildNumber: %s\r\n' % memreader.sysinfo.buildnumber
+		basic_info += 'MajorVersion: %s\r\n' % memreader.sysinfo.major_version
+		basic_info += 'MSV timestamp: %s\r\n' % memreader.sysinfo.msv_dll_timestamp
+		
+		
 		lsass_pid = memreader.process_pid
-		print('lsass_pid %s' % lsass_pid)
+
 		mimi = pypykatz(memreader, memreader.sysinfo)
 		mimi.start()
 		
 		all_secrets = json.dumps(mimi, cls = UniversalEncoder, indent=4, sort_keys=True)
 		for luid in mimi.logon_sessions:
 			luids[str(luid)] = str(mimi.logon_sessions[luid])
-			kerberos[str(luid)] = []
 			for kc in mimi.logon_sessions[luid].kerberos_creds:
-				ticket = kc.ticket.to_asn1()
-				kerberos[str(luid)].append(ticket)
+				for ticket in kc.tickets:
+					if str(luid) not in kerberos:
+						kerberos[str(luid)] = []
+					kerberos[str(luid)].append(ticket.to_asn1().dump())
 			domain = mimi.logon_sessions[luid].domainname
 			user = mimi.logon_sessions[luid].username
 			
@@ -66,17 +116,15 @@ def process_lsass():
 				domains[domain][user] = {}
 				
 			domains[domain][user][str(luid)] = str(mimi.logon_sessions[luid])
-			
-			
-			
-		# comment out the following debug prints in the final version
-		print(all_secrets)
-		print('==== No more secrets ====')
+		
+		last_refresh_time = datetime.datetime.utcnow()
+		parsing_failed = False
 			
 	except Exception as e:
+		parsing_failed = True
 		traceback.print_exc()
-		print('pypykatz processing failed!')
-		raise
+		parsing_error_text = parsing_error_template % (basic_info, traceback.format_exc()) 
+		pass
 		
 	
 def ReadAllResults(pid, file_name, file_attr, bytes_length, bytes_offset):
@@ -95,17 +143,44 @@ def ReadLuid(pid, file_name, file_attr, bytes_length, bytes_offset):
 	try:
 		if pid != lsass_pid:
 			return None
-			
-		print('ReadLuid')
-		print(file_name)
+		
 		luid = file_name.rsplit('.', 1)[0]
 		if luid.find('_') != -1:
 			luid = luid.split('_')[1]
-		return luids[luid][bytes_offset:bytes_offset+bytes_length].encode()
+		return luids[luid].encode()[bytes_offset:bytes_offset+bytes_length]
 	
 	except Exception as e:
 		traceback.print_exc()
 		return None
+		
+def ReadKerberos(pid, file_name, file_attr, bytes_length, bytes_offset):
+	try:
+		if pid != lsass_pid:
+			return None
+		
+		t = file_name.rsplit('.', 1)[0]
+		luid, pos = t.split('_')
+		data = kerberos[luid][int(pos)]
+		
+		return data[bytes_offset:bytes_offset+bytes_length]
+		
+	except Exception as e:
+		traceback.print_exc()
+		return None
+		
+def ReadErrors(pid, file_name, file_attr, bytes_length, bytes_offset):
+	try:
+		if pid != lsass_pid:
+			return None
+			
+		if file_name == 'import_error.txt':
+			return import_error_text.encode()[bytes_offset:bytes_offset+bytes_length]
+		if file_name == 'parsing_error.txt':
+			return parsing_error_text.encode()[bytes_offset:bytes_offset+bytes_length]
+			
+	except Exception as e:
+		traceback.print_exc()
+		return None	
 
 def List(pid, path):
 	#
@@ -116,12 +191,36 @@ def List(pid, path):
 	#
 	# First check the directory to be listed. Only the module root directory is
 	# allowed. If it's not the module root directory return None.
+	global first_run
 	try:
+		
 		if pid != lsass_pid:
 			return None
 			
 		if path[:7] != 'secrets':
 			return None
+			
+		if first_run == True:
+			process_lsass()
+			first_run = False
+			
+		if import_failed == True:
+			print(import_failed)
+			result = {
+				'import_error.txt': {'size': len(import_error_text), 'read': ReadErrors, 'write': None},
+			}
+			return result
+		
+		if parsing_failed == True:
+			result = {
+				'parsing_error.txt': {'size': len(parsing_error_text), 'read': ReadErrors, 'write': None},
+			}
+			return result
+		
+
+		if (datetime.datetime.utcnow() - last_refresh_time).total_seconds() > refresh_interval and refresh_needed == True:
+			# invoking function that processes the lsass.exe
+			process_lsass()
 		
 		if path == 'secrets':
 			result = {
@@ -145,10 +244,8 @@ def List(pid, path):
 			return result
 		
 		if path.find('secrets/by_domain/') == 0:
-			print(path)
 			result = {}
 			domain = path.rsplit('/',1)[1]
-			print(domain)
 			for user in domains[domain]:
 				for luid in domains[domain][user]:
 					result['%s_%s.txt' % (user, luid)] = {'size': len(luids[luid]), 'read': ReadLuid, 'write': None}
@@ -183,13 +280,15 @@ def Close():
 
 
 def Initialize(target_system, target_memorymodel):
+	global lsass_pid
+	global refresh_needed
 	# Check that the operating system is 32-bit or 64-bit Windows. If it's not
 	# then raise an exception to terminate loading of this module.
 	if target_system != VMMPY_SYSTEM_WINDOWS_X64 and target_system != VMMPY_SYSTEM_WINDOWS_X86:
-		raise RuntimeError("Only Windows is supported by the pym_procstruct module.")
+		raise RuntimeError("Only Windows is supported by the pym_pypykatz module.")
 	
-	# invoking function that processes the lsass.exe
-	process_lsass()
+	lsass_pid = VmmPy_PidGetFromName('lsass.exe')
+	refresh_needed = bool(int(VmmPy_ConfigGet(VMMPY_OPT_CONFIG_IS_REFRESH_ENABLED)))
 	
 	VmmPyPlugin_FileRegisterDirectory(False, 'secrets', List)
 	
