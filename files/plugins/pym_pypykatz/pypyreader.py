@@ -5,6 +5,7 @@
 #
 
 from pypykatz.commons.common import KatzSystemArchitecture, KatzSystemInfo
+from .sysinfo_helpers import *
 
 from vmmpy import *
 import copy
@@ -34,14 +35,6 @@ class Module:
 		m.timestamp = timestamp
 		
 		return m
-		
-	
-		
-		"""
-			m.versioninfo = None
-			m.checksum = None
-			m.timestamp = None
-		"""
 		
 	def __str__(self):
 		return '%s %s %s %s %s' % (self.name, hex(self.baseaddress), hex(self.size), hex(self.endaddress), self.timestamp )
@@ -116,19 +109,25 @@ class MemProcFsReader:
 		
 	def get_sysinfo(self):
 		self.sysinfo = KatzSystemInfo()
-		
-		
+
 		print('[+] Getting BuildNumer')
-		self.sysinfo.buildnumber = 15063 #TODO: get author to give an api that retrieves the actual buildnumber!
+		version = PEGetVersion(self.process_pid, self.process_name)
+		print(version)
+		self.sysinfo.buildnumber = int(version.split('.')[2]) #10.0.16299.755 == <major>.<minor>.<buildnumber>
 		print('[+] Found BuildNumber %s' % self.sysinfo.buildnumber)
 		
 		print('[+] Getting msv_dll_timestamp')
-		self.sysinfo.msv_dll_timestamp = 1552469969#TODO: get author to give an api that retrieves the actual timestamp!
+		self.sysinfo.msv_dll_timestamp = int(PEGetFileTime(self.process_pid, self.process_name))
 		print('[+] Found msv_dll_timestamp %s' % self.sysinfo.msv_dll_timestamp)
 		
 		
-		print('[+] Getting arch')
-		self.sysinfo.architecture = KatzSystemArchitecture.X64 #TODO: ask author where I can poll this info from!
+		print('[+] Getting arch')		
+		val = VmmPy_ConfigGet(VMMPY_OPT_CORE_SYSTEM)
+		if val == VMMPY_SYSTEM_WINDOWS_X64:
+			self.sysinfo.architecture = KatzSystemArchitecture.X64
+		else:
+			self.sysinfo.architecture = KatzSystemArchitecture.X86
+		
 		print('[+] Got arch %s' % self.sysinfo.architecture)
 
 		
@@ -138,11 +137,11 @@ class MemProcFsReader:
 			# if filename is specified we dont want to use the virtual FS, but then we need to init the vmmpy module
 			VmmPy_Initialize(["-device", self.filename,'-vv'])
 		
-		self.get_sysinfo()
-		
 		print('[+] Searching LSASS')
 		self.process_pid = VmmPy_PidGetFromName(self.process_name)
 		print('[+] Found LSASS on PID %s' % self.process_pid)
+		
+		self.get_sysinfo()
 		
 		print('[+] Getting modules info')
 		for moduleinfo in VmmPy_ProcessGetModuleMap(self.process_pid):
