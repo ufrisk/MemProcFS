@@ -199,4 +199,4 @@ def Initialize(target_system, target_memorymodel):
     procstruct_peb_size_hex = len(VmmPy_UtilFillHexAscii(bytes(procstruct_peb_size_bin)))
     # Register a directory with the VmmPyPlugin plugin manager. The directory
     # is a non-root (i.e. a process) directory and have a custom List function.
-    VmmPyPlugin_FileRegisterDirectory(False, 'procstruct', List)
+    VmmPyPlugin_FileRegisterDirectory(True, 'procstruct', List)
