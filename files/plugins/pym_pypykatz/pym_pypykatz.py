@@ -1,3 +1,13 @@
+# pym_pypykatz.py
+#
+# Pypykatz plugin for MemProcFss
+#
+# https://github.com/skelsec/
+#
+# (c) Tamas Jos, 2019
+# Author: Tamas Jos (@skelsec), info@skelsec.com
+#
+
 from vmmpy import *
 from vmmpyplugin import *
 import json

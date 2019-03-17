@@ -1,7 +1,11 @@
-#!/usr/bin/env python3
+# pypyreader.py
 #
-# Author:
-#  Tamas Jos (@skelsec)
+# Pypykatz reader plugin for MemProcFss
+#
+# https://github.com/skelsec/
+#
+# (c) Tamas Jos, 2019
+# Author: Tamas Jos (@skelsec), info@skelsec.com
 #
 
 from pypykatz.commons.common import KatzSystemArchitecture, KatzSystemInfo

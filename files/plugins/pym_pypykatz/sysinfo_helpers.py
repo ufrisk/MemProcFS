@@ -1,3 +1,13 @@
+# sysinfo_helpers.py
+#
+# Helper functions to retrieve the file time and version information from a file.
+# NB! there are cleaner and better ways to do this, but this works ...
+#
+# https://github.com/ufrisk/
+#
+# (c) Ulf Frisk, 2019
+# Author: Ulf Frisk, pcileech@frizk.net
+#
 
 from io import BytesIO
 from dissect import cstruct
@@ -58,19 +68,30 @@ def PEGetFileTime(pid, module):
     struct_file_header = pestruct.IMAGE_FILE_HEADER(mz_stream)
     return struct_file_header.TimeDateStamp
 
-def PEGetVersion(pid, module):
+def PEGetVersionEx(pid, module):
     modinfo = VmmPy_ProcessGetModuleFromName(pid, module)
     moddir = VmmPy_ProcessGetDirectories(pid, module)[2]
     if moddir['size'] > 0x4000:
-        return ''
+        raise Exception('.rsrc size')
     data = VmmPy_MemRead(pid, modinfo['va'] + moddir['offset'], moddir['size'])
     i = data.find(bytes('VS_VERSION_INFO', 'utf-16le'))
     if i == -1:
-        return ''
+        raise Exception('.rsrc VS_VERSION_INFO')
     i = data.find(bytes('FileVersion', 'utf-16le'), i)
     if i == -1:
-        return ''
+        raise Exception('.rsrc FileVersion')
     for s in str(data[i+22:i+200], 'utf-16le').split(chr(0)):
         if len(s) > 0:
             return s.split()[0]
-    return ''
+    raise Exception('.rsrc FileVersion not found')
+
+def PEGetVersion(pid, module):
+    modules = ['kernel32.dll', 'msasn1.dll', 'bcrypt.dll']
+    modules.insert(0, module)
+	
+    for mod in modules:
+        try:
+            return PEGetVersionEx(pid, mod)
+        except:
+            pass
+    raise Exception('.rsrc FileVersion not found')
