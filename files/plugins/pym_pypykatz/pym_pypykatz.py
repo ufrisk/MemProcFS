@@ -5,7 +5,6 @@ import traceback
 import datetime
 
 # globals needed for FS
-lsass_pid = None
 all_secrets = '' #all secrets extracted from lsass in json format
 luids = {} #secrets per-luid (logon session) in txt format
 domains = {}
@@ -61,6 +60,16 @@ except Exception as e:
 	traceback.print_exc()
 	import_error_text = import_error_text_template % traceback.format_exc()
 	pass
+	
+class KerberosInfo:
+	def __init__(self, type, domain, user, data):
+		self.type = type.name
+		self.domain = domain
+		self.user = user
+		self.data = data
+		
+	def get_filename_base(self):
+		return '%s_%s_%s' % (self.type, self.domain, self.user)
 
 def process_lsass():
 	"""
@@ -69,7 +78,6 @@ def process_lsass():
 	"""
 	global all_secrets
 	global luids
-	global lsass_pid
 	global domains
 	global kerberos
 	global last_refresh_time
@@ -87,8 +95,6 @@ def process_lsass():
 		basic_info += 'MajorVersion: %s\r\n' % memreader.sysinfo.major_version
 		basic_info += 'MSV timestamp: %s\r\n' % memreader.sysinfo.msv_dll_timestamp
 		
-		
-		lsass_pid = memreader.process_pid
 
 		mimi = pypykatz(memreader, memreader.sysinfo)
 		mimi.start()
@@ -100,7 +106,9 @@ def process_lsass():
 				for ticket in kc.tickets:
 					if str(luid) not in kerberos:
 						kerberos[str(luid)] = []
-					kerberos[str(luid)].append(ticket.to_asn1().dump())
+						
+					ki = KerberosInfo(ticket.type, ticket.DomainName, '.'.join(ticket.EClientName), ticket.to_asn1().dump())
+					kerberos[str(luid)].append(ki)
 			domain = mimi.logon_sessions[luid].domainname
 			user = mimi.logon_sessions[luid].username
 			
@@ -131,8 +139,6 @@ def ReadAllResults(pid, file_name, file_attr, bytes_length, bytes_offset):
 	"""
 	reads the all_results data as file on the virtual FS
 	"""
-	if pid != lsass_pid:
-		return None
 	
 	return all_secrets[bytes_offset:bytes_offset+bytes_length].encode()
 
@@ -141,8 +147,6 @@ def ReadLuid(pid, file_name, file_attr, bytes_length, bytes_offset):
 	reads the secrets for a specific luid data as file on the virtual FS
 	"""
 	try:
-		if pid != lsass_pid:
-			return None
 		
 		luid = file_name.rsplit('.', 1)[0]
 		if luid.find('_') != -1:
@@ -155,12 +159,10 @@ def ReadLuid(pid, file_name, file_attr, bytes_length, bytes_offset):
 		
 def ReadKerberos(pid, file_name, file_attr, bytes_length, bytes_offset):
 	try:
-		if pid != lsass_pid:
-			return None
 		
 		t = file_name.rsplit('.', 1)[0]
-		luid, pos = t.split('_')
-		data = kerberos[luid][int(pos)]
+		t, luid, pos = t.rsplit('_', 2)
+		data = kerberos[luid][int(pos)].data
 		
 		return data[bytes_offset:bytes_offset+bytes_length]
 		
@@ -170,8 +172,6 @@ def ReadKerberos(pid, file_name, file_attr, bytes_length, bytes_offset):
 		
 def ReadErrors(pid, file_name, file_attr, bytes_length, bytes_offset):
 	try:
-		if pid != lsass_pid:
-			return None
 			
 		if file_name == 'import_error.txt':
 			return import_error_text.encode()[bytes_offset:bytes_offset+bytes_length]
@@ -193,9 +193,6 @@ def List(pid, path):
 	# allowed. If it's not the module root directory return None.
 	global first_run
 	try:
-		
-		if pid != lsass_pid:
-			return None
 			
 		if path[:7] != 'secrets':
 			return None
@@ -261,17 +258,14 @@ def List(pid, path):
 			
 			luid = path.rsplit('/',1)[1]
 			result = {}
-			for i, ticket in enumerate(kerberos[luid]):
-				result['%s_%s.kirbi' % (luid, i)] = {'size': len(ticket), 'read': ReadKerberos, 'write': None}
+			for i, ki in enumerate(kerberos[luid]):
+				result['%s_%s_%s.kirbi' % (ki.get_filename_base(), luid, i)] = {'size': len(ki.data), 'read': ReadKerberos, 'write': None}
 			
 			return result
 	
 	except Exception as e:
 		traceback.print_exc()
 		return None
-	
-	else:
-		return result
 
 
 def Close():
@@ -280,16 +274,13 @@ def Close():
 
 
 def Initialize(target_system, target_memorymodel):
-	global lsass_pid
 	global refresh_needed
 	# Check that the operating system is 32-bit or 64-bit Windows. If it's not
 	# then raise an exception to terminate loading of this module.
 	if target_system != VMMPY_SYSTEM_WINDOWS_X64 and target_system != VMMPY_SYSTEM_WINDOWS_X86:
 		raise RuntimeError("Only Windows is supported by the pym_pypykatz module.")
 	
-	lsass_pid = VmmPy_PidGetFromName('lsass.exe')
 	refresh_needed = bool(int(VmmPy_ConfigGet(VMMPY_OPT_CONFIG_IS_REFRESH_ENABLED)))
 	
-	VmmPyPlugin_FileRegisterDirectory(False, 'secrets', List)
-	
+	VmmPyPlugin_FileRegisterDirectory(None, 'secrets', List)
 	
