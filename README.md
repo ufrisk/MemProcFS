@@ -150,3 +150,4 @@ v2.2
 
 Latest
 * Fix deadlock issue in Python plugin.
+* Pypykatz for MemProcFs
