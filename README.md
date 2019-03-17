@@ -150,4 +150,5 @@ v2.2
 
 Latest
 * Fix deadlock issue in Python plugin.
-* Pypykatz wrapper for MemProcFs (NB! MemProcFS does not contain Pypykatz - Pypykatz is provided in separate PyPip package)
+* Additional plugins for download available from [MemProcFS-plugins](https://github.com/ufrisk/MemProcFS-plugins)
+* Pypykatz plugin for 'mimikatz' style functionality available as separate download from [MemProcFS-plugins](https://github.com/ufrisk/MemProcFS-plugins) project. Thanks to [@SkelSec](https://twitter.com/SkelSec) for the contribution.
