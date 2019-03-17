@@ -243,6 +243,12 @@ def List(pid, path):
 		if path.find('secrets/by_domain/') == 0:
 			result = {}
 			domain = path.rsplit('/',1)[1]
+			
+			if domain not in domains and domain.lower() == 'system32':
+				#this is a special case for an unknown behaviour coming from windows itself.
+				#for some reason it requests <path>/System32 and <path>/System32/System32 for reasons beyond science...
+				return None
+			
 			for user in domains[domain]:
 				for luid in domains[domain][user]:
 					result['%s_%s.txt' % (user, luid)] = {'size': len(luids[luid]), 'read': ReadLuid, 'write': None}

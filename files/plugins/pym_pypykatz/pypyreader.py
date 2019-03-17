@@ -147,11 +147,15 @@ class MemProcFsReader:
 		for moduleinfo in VmmPy_ProcessGetModuleMap(self.process_pid):
 			#print('moduleinfo: %s' % str(moduleinfo))
 			m = Module.parse(moduleinfo)
-			for pageinfo in VmmPy_ProcessGetSections(self.process_pid, m.name):
-				#print('pageinfo: %s' % str(pageinfo))
-				m.pages.append(Page.parse(pageinfo, m))
-				
-			self.modules.append(m)
+			try:
+				for pageinfo in VmmPy_ProcessGetSections(self.process_pid, m.name):
+					#print('pageinfo: %s' % str(pageinfo))
+					m.pages.append(Page.parse(pageinfo, m))
+					
+				self.modules.append(m)
+			except:
+				#module is paged out, hoping that it's not a module that is needed
+				pass
 				
 		#print('[+] Got modules info')	
 			
