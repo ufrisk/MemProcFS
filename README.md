@@ -150,4 +150,4 @@ v2.2
 
 Latest
 * Fix deadlock issue in Python plugin.
-* Pypykatz for MemProcFs
+* Pypykatz wrapper for MemProcFs (NB! MemProcFS does not contain Pypykatz - Pypykatz is provided in separate PyPip package)
