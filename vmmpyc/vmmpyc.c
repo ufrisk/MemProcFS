@@ -1,3 +1,4 @@
+#define Py_LIMITED_API 0x03060000
 #ifdef _DEBUG
 #undef _DEBUG
 #include <python.h>
@@ -17,7 +18,7 @@
 static PyObject*
 VMMPYC_Initialize(PyObject *self, PyObject *args)
 {
-    PyObject *pyList, *pyString;
+    PyObject *pyList, *pyString, **pyBytesDstArgs;
     BOOL result;
     DWORD i, cDstArgs;
     LPSTR *pszDstArgs;
@@ -29,7 +30,8 @@ VMMPYC_Initialize(PyObject *self, PyObject *args)
     }
     // allocate & initialize buffer+basic
     pszDstArgs = (LPSTR*)LocalAlloc(LMEM_ZEROINIT, sizeof(LPSTR) * cDstArgs);
-    if(!pszDstArgs) {
+    pyBytesDstArgs = (PyObject**)LocalAlloc(LMEM_ZEROINIT, sizeof(PyObject*) * cDstArgs);
+    if(!pszDstArgs || !pyBytesDstArgs) {
         Py_DECREF(pyList);
         return PyErr_NoMemory();
     }
@@ -40,10 +42,15 @@ VMMPYC_Initialize(PyObject *self, PyObject *args)
             Py_DECREF(pyList);
             return PyErr_Format(PyExc_RuntimeError, "VMMPYC_Initialize: Argument list contains non string item.");
         }
-        pszDstArgs[i] = (char*)PyUnicode_1BYTE_DATA(pyString);
+        pyBytesDstArgs[i] = PyUnicode_AsEncodedString(pyString, NULL, NULL);
+        pszDstArgs[i] = pyBytesDstArgs[i] ? PyBytes_AsString(pyBytesDstArgs[i]) : "";
+
     }
     Py_DECREF(pyList);
     result = VMMDLL_Initialize(cDstArgs, pszDstArgs);
+    for(i = 0; i < cDstArgs; i++) {
+        Py_XDECREF(pyBytesDstArgs[i]);
+    }
     if(!result) { return PyErr_Format(PyExc_RuntimeError, "VMMPYC_Initialize: Initialization of VMM failed."); }
     return Py_BuildValue("s", NULL);    // None returned on success.
 }
@@ -217,28 +224,22 @@ VMMPYC_MemRead(PyObject *self, PyObject *args)
 static PyObject*
 VMMPYC_MemWrite(PyObject *self, PyObject *args)
 {
-    Py_buffer pyBuffer;
     BOOL result;
-    int iResult;
     DWORD dwPID;
     ULONG64 va;
-    PBYTE pb;
-    SIZE_T cb;
-    if(!PyArg_ParseTuple(args, "kKy*", &dwPID, &va, &pyBuffer)) { return NULL; }
-    cb = pyBuffer.len;
+    PBYTE pb, pbPy;
+    DWORD cb;
+    if(!PyArg_ParseTuple(args, "kKy#", &dwPID, &va, &pbPy, &cb)) { return NULL; }
     if(cb == 0) {
-        PyBuffer_Release(&pyBuffer);
         return Py_BuildValue("s", NULL);    // zero-byte write is always successful.
     }
     pb = LocalAlloc(0, cb);
     if(!pb) {
-        PyBuffer_Release(&pyBuffer);
         return PyErr_NoMemory();
     }
-    iResult = PyBuffer_ToContiguous(pb, &pyBuffer, cb, 'C');
-    PyBuffer_Release(&pyBuffer);
+    memcpy(pb, pbPy, cb);
     Py_BEGIN_ALLOW_THREADS;
-    result = (iResult == 0) && VMMDLL_MemWrite(dwPID, va, pb, (DWORD)cb);
+    result = VMMDLL_MemWrite(dwPID, va, pb, (DWORD)cb);
     LocalFree(pb);
     Py_END_ALLOW_THREADS;
     if(!result) { return PyErr_Format(PyExc_RuntimeError, "VMMPYC_MemWrite: Failed."); }
@@ -655,28 +656,22 @@ VMMPYC_ProcessGetIAT(PyObject *self, PyObject *args)
 static PyObject*
 VMMPYC_UtilFillHexAscii(PyObject *self, PyObject *args)
 {
-    Py_buffer pyBuffer;
     PyObject *pyString;
-    DWORD cb, cbInitialOffset = 0, iResult, csz = 0;
-    PBYTE pb;
+    DWORD cb, cbInitialOffset = 0, csz = 0;
+    PBYTE pb, pbPy;
     LPSTR sz = NULL;
     BOOL result;
-    if(!PyArg_ParseTuple(args, "y*|k", &pyBuffer, &cbInitialOffset)) { return NULL; }
-    cb = (DWORD)pyBuffer.len;
+    if(!PyArg_ParseTuple(args, "y#|k", &pbPy, &cb, &cbInitialOffset)) { return NULL; }
     if(cb == 0) {
-        PyBuffer_Release(&pyBuffer);
         return PyUnicode_FromString("");
     }
     pb = LocalAlloc(0, cb);
     if(!pb) {
-        PyBuffer_Release(&pyBuffer);
         return PyErr_NoMemory();
     }
-    iResult = PyBuffer_ToContiguous(pb, &pyBuffer, cb, 'C');
-    PyBuffer_Release(&pyBuffer);
+    memcpy(pb, pbPy, cb);
     Py_BEGIN_ALLOW_THREADS;
     result =
-        (iResult == 0) &&
         VMMDLL_UtilFillHexAscii(pb, cb, cbInitialOffset, NULL, &csz) &&
         csz &&
         (sz = (LPSTR)LocalAlloc(0, csz)) &&
@@ -730,18 +725,14 @@ VMMPYC_VfsRead(PyObject *self, PyObject *args)
 static PyObject*
 VMMPYC_VfsWrite(PyObject *self, PyObject *args)
 {
-    Py_buffer pyBuffer;
     BOOL result;
-    int iResult;
     DWORD i, cb, cbWritten;
     ULONG64 cbOffset;
-    PBYTE pb;
+    PBYTE pb, pbPy;
     LPSTR szFileName;
     WCHAR wszFileName[MAX_PATH];
-    if(!PyArg_ParseTuple(args, "sy*|K", &szFileName, &pyBuffer, &cbOffset)) { return NULL; }
-    cb = (DWORD)pyBuffer.len;
+    if(!PyArg_ParseTuple(args, "sy#|K", &szFileName, &pbPy, &cb, &cbOffset)) { return NULL; }
     if(cb == 0) {
-        PyBuffer_Release(&pyBuffer);
         return Py_BuildValue("s", NULL);    // zero-byte write is always successful.
     }
     {   // char* -> wchar*
@@ -753,13 +744,11 @@ VMMPYC_VfsWrite(PyObject *self, PyObject *args)
     }
     pb = LocalAlloc(0, cb);
     if(!pb) {
-        PyBuffer_Release(&pyBuffer);
         return PyErr_NoMemory();
     }
-    iResult = PyBuffer_ToContiguous(pb, &pyBuffer, cb, 'C');
-    PyBuffer_Release(&pyBuffer);
+    memcpy(pb, pbPy, cb);
     Py_BEGIN_ALLOW_THREADS;
-    result = (iResult == 0) && (VMMDLL_STATUS_SUCCESS == VMMDLL_VfsWrite(wszFileName, pb, cb, &cbWritten, cbOffset));
+    result = (VMMDLL_STATUS_SUCCESS == VMMDLL_VfsWrite(wszFileName, pb, cb, &cbWritten, cbOffset));
     LocalFree(pb);
     Py_END_ALLOW_THREADS;
     if(!result) { return PyErr_Format(PyExc_RuntimeError, "VMMPYC_VfsWrite: Failed."); }
