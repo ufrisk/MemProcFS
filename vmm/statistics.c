@@ -183,6 +183,7 @@ const LPSTR NAMES_VMM_STATISTICS_CALL[] = {
     "VMMDLL_VfsWrite",
     "VMMDLL_VfsInitializePlugins",
     "VMMDLL_MemReadEx",
+    "VMMDLL_MemReadScatter",
     "VMMDLL_MemWrite",
     "VMMDLL_MemVirt2Phys",
     "VMMDLL_MemPrefetchPages",

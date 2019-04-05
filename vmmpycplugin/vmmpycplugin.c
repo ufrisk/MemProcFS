@@ -2,9 +2,10 @@
 // for the memory process file system. NB! this is a special plugin since it's
 // not residing in the plugin directory.
 //
-// (c) Ulf Frisk, 2018
+// (c) Ulf Frisk, 2018-2019
 // Author: Ulf Frisk, pcileech@frizk.net
 //
+#define Py_LIMITED_API 0x03060000
 #ifdef _DEBUG
 #undef _DEBUG
 #include <python.h>
@@ -71,6 +72,7 @@ BOOL PY2C_Callback_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileLi
     BOOL result = FALSE;
     PyObject *args, *pyList = NULL, *pyDict, *pyPid;
     PyObject *pyDict_Name, *pyDict_Size, *pyDict_IsDir;
+    PyObject *pyDict_Name_Bytes;
     PyGILState_STATE gstate;
     SIZE_T i, cList;
     CHAR szPathBuffer[MAX_PATH];
@@ -97,11 +99,15 @@ BOOL PY2C_Callback_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileLi
         pyDict_Size = PyDict_GetItemString(pyDict, "size");
         pyDict_IsDir = PyDict_GetItemString(pyDict, "f_isdir");
         if(!pyDict_Name || !PyUnicode_Check(pyDict_Name) || !pyDict_IsDir || !PyBool_Check(pyDict_IsDir)) { continue; }
-        if(pyDict_IsDir == Py_True) {
-            VMMDLL_VfsList_AddDirectory(pFileList, PyUnicode_AsUTF8AndSize(pyDict_Name, NULL));
-        } else {
-            if(!pyDict_Size || !PyLong_Check(pyDict_Size)) { continue; }
-            VMMDLL_VfsList_AddFile(pFileList, PyUnicode_AsUTF8AndSize(pyDict_Name, NULL), PyLong_AsUnsignedLongLong(pyDict_Size));
+        pyDict_Name_Bytes = PyUnicode_AsEncodedString(pyDict_Name, NULL, NULL);
+        if(pyDict_Name_Bytes) {
+            if(pyDict_IsDir == Py_True) {
+                VMMDLL_VfsList_AddDirectory(pFileList, PyBytes_AsString(pyDict_Name_Bytes));
+            } else {
+                if(!pyDict_Size || !PyLong_Check(pyDict_Size)) { continue; }
+                VMMDLL_VfsList_AddFile(pFileList, PyBytes_AsString(pyDict_Name_Bytes), PyLong_AsUnsignedLongLong(pyDict_Size));
+            }
+            Py_DECREF(pyDict_Name_Bytes);
         }
     }
     result = TRUE;
@@ -285,6 +291,10 @@ BOOL VmmPyPlugin_PythonInitialize(_In_ HMODULE hDllPython)
 {
     PyObject *pName = NULL, *pModule = NULL;
     WCHAR wszPathBaseExe[MAX_PATH], wszPathBasePython[MAX_PATH], wszPathPython[PYTHON_PATH_MAX];
+    WCHAR wszPythonLib[] = { L'p', L'y', L't', L'h', L'o', L'n', L'3', L'6', L'.', L'z', L'i', L'p', 0 };
+    // 0: fixup python zip version
+    wszPythonLib[6] = (WCHAR)Py_GetVersion()[0];
+    wszPythonLib[7] = (WCHAR)Py_GetVersion()[2];
     // 1: Allocate context (if required) and fetch verbosity settings
     if(!ctxPY2C && !(ctxPY2C = LocalAlloc(LMEM_ZEROINIT, sizeof(PY2C_CONTEXT)))) {
         return FALSE;
@@ -298,7 +308,7 @@ BOOL VmmPyPlugin_PythonInitialize(_In_ HMODULE hDllPython)
     // 2.2: python zip
     wcscat_s(wszPathPython, PYTHON_PATH_MAX, PYTHON_PATH_DELIMITER);
     wcscat_s(wszPathPython, PYTHON_PATH_MAX, wszPathBasePython);
-    wcscat_s(wszPathPython, PYTHON_PATH_MAX, L"python36.zip");
+    wcscat_s(wszPathPython, PYTHON_PATH_MAX, wszPythonLib);
     // 2.3:  python dlls
     wcscat_s(wszPathPython, PYTHON_PATH_MAX, PYTHON_PATH_DELIMITER);
     wcscat_s(wszPathPython, PYTHON_PATH_MAX, wszPathBasePython);
@@ -363,7 +373,7 @@ __declspec(dllexport)
 VOID InitializeVmmPlugin(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo)
 {
     if((pRegInfo->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRegInfo->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
-    if(VmmPyPlugin_PythonInitialize(pRegInfo->hReservedDll)) {
+    if(VmmPyPlugin_PythonInitialize(pRegInfo->hReservedDllPython3X)) {
         strcpy_s(pRegInfo->reg_info.szModuleName, 32, "py");    // module name - 'py'.
         pRegInfo->reg_info.fRootModule = TRUE;                  // module shows in root directory.
         pRegInfo->reg_info.fProcessModule = TRUE;               // module shows in process directory.

@@ -4,7 +4,7 @@
 // (c) Ulf Frisk, 2018-2019
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-// Header Version: 2.2
+// Header Version: 2.3
 //
 
 #include <windows.h>
@@ -254,9 +254,9 @@ typedef struct tdVMMDLL_PLUGIN_REGINFO {
     VMMDLL_MEMORYMODEL_TP tpMemoryModel;
     VMMDLL_SYSTEM_TP tpSystem;
     HMODULE hDLL;
-    HMODULE hReservedDll;   // not for general use (only used for python).
+    HMODULE hReservedDllPython3X;   // not for general use (only used for python).
     BOOL(*pfnPluginManager_Register)(struct tdVMMDLL_PLUGIN_REGINFO *pPluginRegInfo);
-    PVOID pvReserved1;
+    HMODULE hReservedDllPython3;   // not for general use (only used for python).
     PVOID pvReserved2;
     // general plugin registration info to be filled out by the plugin below:
     struct {

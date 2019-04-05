@@ -261,6 +261,7 @@ typedef struct tdVmmConfig {
     BOOL fVerboseExtra;
     BOOL fVerboseExtraTlp;
     BOOL fDisableBackgroundRefresh;
+    BOOL fDisableLeechCoreClose;    // when device 'existing'
 } VMMCONFIG, *PVMMCONFIG;
 
 typedef struct tdVMM_STATISTICS {

@@ -148,8 +148,10 @@ v2.2
 * New API:
   * Force refresh of process list and caches.
 
-Latest
-* Fix deadlock issue in Python plugin.
-* Additional plugins for download available from [MemProcFS-plugins](https://github.com/ufrisk/MemProcFS-plugins)
+v3.3
+* Project upgrade to Visual Studio 2019.
+* Bug fixes.
+* Additional plugins for download available from [MemProcFS-plugins](https://github.com/ufrisk/MemProcFS-plugins).
+* Python plugin updater - easy installs and updates from [MemProcFS-plugins](https://github.com/ufrisk/MemProcFS-plugins).
 * Pypykatz plugin for 'mimikatz' style functionality available as separate download from [MemProcFS-plugins](https://github.com/ufrisk/MemProcFS-plugins) project. Thanks to [@SkelSec](https://twitter.com/SkelSec) for the contribution.
-* Python API support for version 3.7 (NB! only API - not yet plugin functionality!)
+* Python API support for version >3.6 (i.e Python 3.7 now fully supported).

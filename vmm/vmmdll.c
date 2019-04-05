@@ -151,7 +151,7 @@ VOID VmmDll_PrintHelp()
         " PCILeech if pcileech.dll is placed in the application directory. For infor-   \n" \
         " mation about PCILeech please consult the separate PCILeech documentation.     \n" \
         " -----                                                                         \n" \
-        " The Memory Process File System (c) 2018 Ulf Frisk                             \n" \
+        " The Memory Process File System (c) 2018-2019 Ulf Frisk                        \n" \
         " License: GNU GENERAL PUBLIC LICENSE - Version 3, 29 June 2007                 \n" \
         " Contact information: pcileech@frizk.net                                       \n" \
         " The Memory Process File System: https://github.com/ufrisk/MemProcFS           \n" \
@@ -188,9 +188,9 @@ VOID VmmDll_PrintHelp()
         "   -cr3 : base address of kernel/process page table (PML4) / CR3 CPU register. \n" \
         "   -max : memory max address, valid range: 0x0 .. 0xffffffffffffffff           \n" \
         "          default: auto-detect (max supported by device / target system).      \n" \
-        "   -pythonpath : specify the path to a python 3.6 installation for Windows.    \n" \
-        "          The path given should be to the directory that contain: python36.dll \n" \
-        "          Example: -pythonpath \"C:\\Program Files\\Python36\"                 \n" \
+        "   -pythonpath : specify the path to a python 3 installation for Windows.      \n" \
+        "          The path given should be to the directory that contain: python.dll   \n" \
+        "          Example: -pythonpath \"C:\\Program Files\\Python37\"                 \n" \
         "   -mount : drive letter to mount The Memory Process File system at.           \n" \
         "          default: M   Example: -mount Q                                       \n" \
         "   -identify : scan memory for the operating system and the kernel page table. \n" \
@@ -208,7 +208,9 @@ VOID VmmDll_FreeContext()
     }
     if(ctxMain) {
         Statistics_CallSetEnabled(FALSE);
-        LeechCore_Close();
+        if(!ctxMain->cfg.fDisableLeechCoreClose) {
+            LeechCore_Close();
+        }
         LocalFree(ctxMain);
         ctxMain = NULL;
     }
@@ -228,6 +230,9 @@ BOOL VMMDLL_Initialize(_In_ DWORD argc, _In_ LPSTR argv[])
         return FALSE;
     }
     // ctxMain.cfg context is inintialized from here onwards - vmmprintf is working!
+    if(0 == _stricmp(ctxMain->dev.szDevice, "existing")) {
+        ctxMain->cfg.fDisableLeechCoreClose = TRUE;
+    }
     if(!LeechCore_Open(&ctxMain->dev)) {
         vmmprintf("MemProcFS: Failed to connect to memory acquisition device.\n");
         VmmDll_FreeContext();
@@ -531,7 +536,7 @@ BOOL VMMDLL_Refresh(_In_ DWORD dwReserved)
 // VMM CORE FUNCTIONALITY BELOW:
 //-----------------------------------------------------------------------------
 
-DWORD VMMDLL_MemReadScatter(_In_ DWORD dwPID, _Inout_ PPMEM_IO_SCATTER_HEADER ppMEMs, _In_ DWORD cpMEMs, _In_ DWORD flags)
+DWORD VMMDLL_MemReadScatter_Impl(_In_ DWORD dwPID, _Inout_ PPMEM_IO_SCATTER_HEADER ppMEMs, _In_ DWORD cpMEMs, _In_ DWORD flags)
 {
     DWORD i, cMEMs;
     PVMM_PROCESS pObProcess = NULL;
@@ -555,6 +560,15 @@ DWORD VMMDLL_MemReadScatter(_In_ DWORD dwPID, _Inout_ PPMEM_IO_SCATTER_HEADER pp
     }
     VmmLockRelease();
     return cMEMs;
+}
+
+DWORD VMMDLL_MemReadScatter(_In_ DWORD dwPID, _Inout_ PPMEM_IO_SCATTER_HEADER ppMEMs, _In_ DWORD cpMEMs, _In_ DWORD flags)
+{
+    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM_RETURN(
+        STATISTICS_ID_VMMDLL_MemReadScatter,
+        DWORD,
+        0,
+        VMMDLL_MemReadScatter_Impl(dwPID, ppMEMs, cpMEMs, flags))
 }
 
 _Success_(return)

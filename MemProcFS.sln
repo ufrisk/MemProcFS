@@ -54,11 +54,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "dissect.cstruct", "dissect.
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "leechcore", "..\LeechCore\leechcore\leechcore.vcxproj", "{3476ABD2-5DEA-43E6-A676-8BE25F74535A}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "leechsvc", "..\LeechCore\leechsvc\leechsvc.vcxproj", "{4FAF78C0-D61B-41CE-830E-62C38DACDD52}"
-	ProjectSection(ProjectDependencies) = postProject
-		{3476ABD2-5DEA-43E6-A676-8BE25F74535A} = {3476ABD2-5DEA-43E6-A676-8BE25F74535A}
-	EndProjectSection
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -93,10 +88,6 @@ Global
 		{3476ABD2-5DEA-43E6-A676-8BE25F74535A}.Debug|x64.Build.0 = Debug|x64
 		{3476ABD2-5DEA-43E6-A676-8BE25F74535A}.Release|x64.ActiveCfg = Release|x64
 		{3476ABD2-5DEA-43E6-A676-8BE25F74535A}.Release|x64.Build.0 = Release|x64
-		{4FAF78C0-D61B-41CE-830E-62C38DACDD52}.Debug|x64.ActiveCfg = Debug|x64
-		{4FAF78C0-D61B-41CE-830E-62C38DACDD52}.Debug|x64.Build.0 = Debug|x64
-		{4FAF78C0-D61B-41CE-830E-62C38DACDD52}.Release|x64.ActiveCfg = Release|x64
-		{4FAF78C0-D61B-41CE-830E-62C38DACDD52}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -1101,7 +1101,7 @@ BOOL VmmWin_EnumerateEPROCESS64(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fTot
         }
     }
     VmmObContainer_SetOb(&ctxVmm->ObCEPROCESSCachePrefetch, pObSetAddressEPROCESS);
-    VmmOb_DECREF(&pObSetAddressEPROCESS);
+    VmmOb_DECREF(pObSetAddressEPROCESS);
     VmmOb_DECREF(pObProcess);
     VmmProcessCreateFinish();
     return (iProc > 10);
@@ -1322,7 +1322,7 @@ BOOL VmmWin_EnumerateEPROCESS32(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fTot
         }
     }
     VmmObContainer_SetOb(&ctxVmm->ObCEPROCESSCachePrefetch, pObSetAddressEPROCESS);
-    VmmOb_DECREF(&pObSetAddressEPROCESS);
+    VmmOb_DECREF(pObSetAddressEPROCESS);
     VmmOb_DECREF(pObProcess);
     VmmProcessCreateFinish();
     return (iProc > 10);

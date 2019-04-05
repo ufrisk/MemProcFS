@@ -1,3 +1,8 @@
+// vmmpyc.c : implementation MemProcFS/VMM Python API
+//
+// (c) Ulf Frisk, 2018-2019
+// Author: Ulf Frisk, pcileech@frizk.net
+//
 #define Py_LIMITED_API 0x03060000
 #ifdef _DEBUG
 #undef _DEBUG
@@ -292,14 +297,14 @@ VMMPYC_ProcessGetMemoryMap(PyObject *self, PyObject *args)
             PyDict_SetItemString(pyDict, "size", PyLong_FromUnsignedLongLong(pe->cPages << 12));
             PyDict_SetItemString(pyDict, "pages", PyLong_FromUnsignedLongLong(pe->cPages));
             PyDict_SetItemString(pyDict, "wow64", PyBool_FromLong((long)pe->fWoW64));
-            PyDict_SetItemString(pyDict, "tag", PyUnicode_FromString(pe->szTag));
+            PyDict_SetItemString(pyDict, "tag", PyUnicode_FromFormat("%s", pe->szTag));
             PyDict_SetItemString(pyDict, "flags-pte", PyLong_FromUnsignedLongLong(pe->fPage));
             sz[0] = (pe->fPage & VMMDLL_MEMMAP_FLAG_PAGE_NS) ? '-' : 's';
             sz[1] = 'r';
             sz[2] = (pe->fPage & VMMDLL_MEMMAP_FLAG_PAGE_W) ? 'w' : '-';
             sz[3] = (pe->fPage & VMMDLL_MEMMAP_FLAG_PAGE_NX) ? '-' : 'x';
             sz[4] = 0;
-            PyDict_SetItemString(pyDict, "flags", PyUnicode_FromString(sz));
+            PyDict_SetItemString(pyDict, "flags", PyUnicode_FromFormat("%s", sz));
             PyList_Append(pyList, pyDict);
         }
     }
@@ -330,14 +335,14 @@ VMMPYC_ProcessGetMemoryMapEntry(PyObject *self, PyObject *args)
     PyDict_SetItemString(pyDict, "size", PyLong_FromUnsignedLongLong(e.cPages << 12));
     PyDict_SetItemString(pyDict, "pages", PyLong_FromUnsignedLongLong(e.cPages));
     PyDict_SetItemString(pyDict, "wow64", PyBool_FromLong((long)e.fWoW64));
-    PyDict_SetItemString(pyDict, "tag", PyUnicode_FromString(e.szTag));
+    PyDict_SetItemString(pyDict, "tag", PyUnicode_FromFormat("%s", e.szTag));
     PyDict_SetItemString(pyDict, "flags-pte", PyLong_FromUnsignedLongLong(e.fPage));
     sz[0] = (e.fPage & VMMDLL_MEMMAP_FLAG_PAGE_NS) ? '-' : 's';
     sz[1] = 'r';
     sz[2] = (e.fPage & VMMDLL_MEMMAP_FLAG_PAGE_W) ? 'w' : '-';
     sz[3] = (e.fPage & VMMDLL_MEMMAP_FLAG_PAGE_NX) ? '-' : 'x';
     sz[4] = 0;
-    PyDict_SetItemString(pyDict, "flags", PyUnicode_FromString(sz));
+    PyDict_SetItemString(pyDict, "flags", PyUnicode_FromFormat("%s", sz));
     return pyDict;
 }
 
@@ -371,7 +376,7 @@ VMMPYC_ProcessGetModuleMap(PyObject *self, PyObject *args)
             PyDict_SetItemString(pyDict, "va-entry", PyLong_FromUnsignedLongLong(pe->EntryPoint));
             PyDict_SetItemString(pyDict, "size", PyLong_FromUnsignedLong(pe->SizeOfImage));
             PyDict_SetItemString(pyDict, "wow64", PyBool_FromLong((long)pe->fWoW64));
-            PyDict_SetItemString(pyDict, "name", PyUnicode_FromString(pe->szName));
+            PyDict_SetItemString(pyDict, "name", PyUnicode_FromFormat("%s", pe->szName));
             PyList_Append(pyList, pyDict);
         }
     }
@@ -402,7 +407,7 @@ VMMPYC_ProcessGetModuleFromName(PyObject *self, PyObject *args)
     PyDict_SetItemString(pyDict, "va-entry", PyLong_FromUnsignedLongLong(e.EntryPoint));
     PyDict_SetItemString(pyDict, "wow64", PyBool_FromLong((long)e.fWoW64));
     PyDict_SetItemString(pyDict, "size", PyLong_FromUnsignedLong(e.SizeOfImage));
-    PyDict_SetItemString(pyDict, "name", PyUnicode_FromString(e.szName));
+    PyDict_SetItemString(pyDict, "name", PyUnicode_FromFormat("%s", e.szName));
     return pyDict;
 }
 
@@ -476,7 +481,7 @@ VMMPYC_ProcessGetInformation(PyObject *self, PyObject *args)
     PyDict_SetItemString(pyDict, "tp-memorymodel", PyLong_FromUnsignedLong(info.tpMemoryModel));
     PyDict_SetItemString(pyDict, "tp-system", PyLong_FromUnsignedLong(info.tpSystem));
     PyDict_SetItemString(pyDict, "usermode", PyBool_FromLong(info.fUserOnly));
-    PyDict_SetItemString(pyDict, "name", PyUnicode_FromString(info.szName));
+    PyDict_SetItemString(pyDict, "name", PyUnicode_FromFormat("%s", info.szName));
     switch(info.tpSystem) {
         case VMMDLL_SYSTEM_WINDOWS_X64:
             PyDict_SetItemString(pyDict, "wow64", PyBool_FromLong((long)info.os.win.fWow64));
@@ -522,7 +527,7 @@ VMMPYC_ProcessGetDirectories(PyObject *self, PyObject *args)
             PyDict_SetItemString(pyDict, "i", PyLong_FromUnsignedLong(i));
             PyDict_SetItemString(pyDict, "size", PyLong_FromUnsignedLong(pe->Size));
             PyDict_SetItemString(pyDict, "offset", PyLong_FromUnsignedLong(pe->VirtualAddress));
-            PyDict_SetItemString(pyDict, "name", PyUnicode_FromString(DIRECTORIES[i]));
+            PyDict_SetItemString(pyDict, "name", PyUnicode_FromFormat("%s", DIRECTORIES[i]));
             PyList_Append(pyList, pyDict);
         }
     }
@@ -563,7 +568,7 @@ VMMPYC_ProcessGetSections(PyObject *self, PyObject *args)
             PyDict_SetItemString(pyDict, "misc-PhysicalAddress", PyLong_FromUnsignedLong(pe->Misc.PhysicalAddress));
             PyDict_SetItemString(pyDict, "misc-VirtualSize", PyLong_FromUnsignedLong(pe->Misc.VirtualSize));
             *(PULONG64)szName = *(PULONG64)pe->Name;
-            PyDict_SetItemString(pyDict, "Name", PyUnicode_FromString(szName));
+            PyDict_SetItemString(pyDict, "Name", PyUnicode_FromFormat("%s", szName));
             PyDict_SetItemString(pyDict, "NumberOfLinenumbers", PyLong_FromUnsignedLong(pe->NumberOfLinenumbers));
             PyDict_SetItemString(pyDict, "NumberOfRelocations", PyLong_FromUnsignedLong(pe->NumberOfRelocations));
             PyDict_SetItemString(pyDict, "PointerToLinenumbers", PyLong_FromUnsignedLong(pe->PointerToLinenumbers));
@@ -607,7 +612,7 @@ VMMPYC_ProcessGetEAT(PyObject *self, PyObject *args)
             PyDict_SetItemString(pyDict, "i", PyLong_FromUnsignedLong(i));
             PyDict_SetItemString(pyDict, "va", PyLong_FromUnsignedLongLong(pe->vaFunction));
             PyDict_SetItemString(pyDict, "offset", PyLong_FromUnsignedLong(pe->vaFunctionOffset));
-            PyDict_SetItemString(pyDict, "fn", PyUnicode_FromString(pe->szFunction));
+            PyDict_SetItemString(pyDict, "fn", PyUnicode_FromFormat("%s", pe->szFunction));
             PyList_Append(pyList, pyDict);
         }
     }
@@ -643,8 +648,8 @@ VMMPYC_ProcessGetIAT(PyObject *self, PyObject *args)
             pe = pIATs + i;
             PyDict_SetItemString(pyDict, "i", PyLong_FromUnsignedLong(i));
             PyDict_SetItemString(pyDict, "va", PyLong_FromUnsignedLongLong(pe->vaFunction));
-            PyDict_SetItemString(pyDict, "fn", PyUnicode_FromString(pe->szFunction));
-            PyDict_SetItemString(pyDict, "dll", PyUnicode_FromString(pe->szModule));
+            PyDict_SetItemString(pyDict, "fn", PyUnicode_FromFormat("%s", pe->szFunction));
+            PyDict_SetItemString(pyDict, "dll", PyUnicode_FromFormat("%s", pe->szModule));
             PyList_Append(pyList, pyDict);
         }
     }
@@ -663,7 +668,7 @@ VMMPYC_UtilFillHexAscii(PyObject *self, PyObject *args)
     BOOL result;
     if(!PyArg_ParseTuple(args, "y#|k", &pbPy, &cb, &cbInitialOffset)) { return NULL; }
     if(cb == 0) {
-        return PyUnicode_FromString("");
+        return PyUnicode_FromFormat("%s", "");
     }
     pb = LocalAlloc(0, cb);
     if(!pb) {
@@ -682,7 +687,7 @@ VMMPYC_UtilFillHexAscii(PyObject *self, PyObject *args)
         LocalFree(sz);
         return PyErr_Format(PyExc_RuntimeError, "VMMPYC_UtilFillHexAscii: Failed.");
     }
-    pyString = PyUnicode_FromString(sz);
+    pyString = PyUnicode_FromFormat("%s", sz);
     LocalFree(sz);
     return pyString;
 }
