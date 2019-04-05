@@ -148,7 +148,7 @@ v2.2
 * New API:
   * Force refresh of process list and caches.
 
-v3.3
+v2.3
 * Project upgrade to Visual Studio 2019.
 * Bug fixes.
 * Additional plugins for download available from [MemProcFS-plugins](https://github.com/ufrisk/MemProcFS-plugins).
