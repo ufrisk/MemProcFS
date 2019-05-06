@@ -43,6 +43,7 @@ typedef unsigned __int64                QWORD, *PQWORD;
 #define VMM_FLAG_NOCACHE                        0x0001  // do not use the data cache (force reading from memory acquisition device)
 #define VMM_FLAG_ZEROPAD_ON_FAIL                0x0002  // zero pad failed physical memory reads and report success if read within range of physical memory.
 #define VMM_FLAG_PROCESS_SHOW_TERMINATED        0x0004  // show terminated processes in the process list (if they can be found).
+#define VMM_FLAG_FORCECACHE_READ                0x0008  // force use of cache - fail non-cached pages - only valid for reads, invalid with VMM_FLAG_NOCACHE/VMM_FLAG_ZEROPAD_ON_FAIL.
 
 #define PAGE_SIZE                               0x1000
 
@@ -82,6 +83,7 @@ typedef struct tdVMM_MODULEMAP_ENTRY {
     BOOL  fLoadedIAT;
     DWORD cbDisplayBufferIAT;
     DWORD cbDisplayBufferSections;
+    DWORD cbFileSizeRaw;
 } VMM_MODULEMAP_ENTRY, *PVMM_MODULEMAP_ENTRY;
 
 typedef struct tdVMMOB {
@@ -181,6 +183,7 @@ typedef struct tdVMM_PROCESS {
     } os;
     struct {
         VMMOBCONTAINER ObCLdrModulesDisplayCache;
+        VMMOBCONTAINER ObCPeDumpDirCache;
     } Plugin;
 } VMM_PROCESS, *PVMM_PROCESS;
 
@@ -527,16 +530,17 @@ BOOL VmmWritePhysical(_In_ QWORD pa, _In_ PBYTE pb, _In_ DWORD cb);
 
 /*
 * Read a virtually contigious arbitrary amount of memory containing cch number of
-* unicode characters and convert them into ansi characters. Characters > 0xff are
-* converted into '?'. The result is guaranteed to be zero-terminated.
+* unicode characters and convert them into ansi characters. If the default char
+* is used (no translation) the flag fDefaultChar will be set.
 * -- pProcess
 * -- qwVA
 * -- sz
 * -- cch
+* -- fDefaultChar = default char used in translation.
 * -- return
 */
 _Success_(return)
-BOOL VmmReadString_Unicode2Ansi(_In_ PVMM_PROCESS pProcess, _In_ QWORD qwVA, _Out_writes_(cch) LPSTR sz, _In_ DWORD cch);
+BOOL VmmReadString_Unicode2Ansi(_In_ PVMM_PROCESS pProcess, _In_ QWORD qwVA, _Out_writes_(cch) LPSTR sz, _In_ DWORD cch, _Out_opt_ PBOOL pfDefaultChar);
 
 /*
 * Read a contigious arbitrary amount of memory, virtual or physical.

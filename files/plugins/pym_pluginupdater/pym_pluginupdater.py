@@ -12,6 +12,7 @@
 #
 
 import os
+import time
 from vmmpy import *
 from vmmpyplugin import *
 from threading import Thread
@@ -177,15 +178,19 @@ def ReadFile(pid, file_name, file_attr, bytes_length, bytes_offset):
 
 
 def Initialize_Thread():
+    time.sleep(2)
     PluginsUpdateInfoInstalledAndVersion()
     for name in plugins:
-        p = plugins[name]
-        if p['upgrade']:
-            VmmPyPlugin_FileRegister(None, 'plugins/' + name + '-upgrade.txt', len(p['text_upgrade']), ReadFile, WriteFile)
-        if not p['installed']:
-            VmmPyPlugin_FileRegister(None, 'plugins/' + name + '-install.txt', len(p['text_install']), ReadFile, WriteFile)
-            for f in p['files_installinfo']:
-                VmmPyPlugin_FileRegister(p['pid'], f, len(p['text_install']), ReadFile, WriteFile)
+        try:
+            p = plugins[name]
+            if p['upgrade']:
+                VmmPyPlugin_FileRegister(None, 'plugins/' + name + '-upgrade.txt', len(p['text_upgrade']), ReadFile, WriteFile)
+            if not p['installed']:
+                VmmPyPlugin_FileRegister(None, 'plugins/' + name + '-install.txt', len(p['text_install']), ReadFile, WriteFile)
+                for f in p['files_installinfo']:
+                    VmmPyPlugin_FileRegister(p['pid'], f, len(p['text_install']), ReadFile, WriteFile)
+        except:
+            pass
 
 def Initialize(target_system, target_memorymodel):
     # Initialize the pluginupdater module.

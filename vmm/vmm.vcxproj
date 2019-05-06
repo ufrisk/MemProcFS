@@ -119,6 +119,7 @@ copy $(ProjectDir)\vmmdll.h $(SolutionDir)\files\ /y</Command>
     <ClInclude Include="mm_x64_winpaged.h" />
     <ClInclude Include="mm_x86.h" />
     <ClInclude Include="mm_x86pae.h" />
+    <ClInclude Include="m_pedump.h" />
     <ClInclude Include="m_status.h" />
     <ClInclude Include="pe.h" />
     <ClInclude Include="resource.h" />
@@ -140,6 +141,7 @@ copy $(ProjectDir)\vmmdll.h $(SolutionDir)\files\ /y</Command>
     <ClCompile Include="mm_x64_winpaged.c" />
     <ClCompile Include="mm_x86.c" />
     <ClCompile Include="mm_x86pae.c" />
+    <ClCompile Include="m_pedump.c" />
     <ClCompile Include="m_status.c" />
     <ClCompile Include="pe.c" />
     <ClCompile Include="statistics.c" />

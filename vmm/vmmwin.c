@@ -66,11 +66,11 @@ VOID VmmWin_PE_SECTION_DisplayBuffer(
     cSections = (DWORD)min(cSections, ntHeader64->FileHeader.NumberOfSections); // FileHeader are the same in both 32/64-bit versions of struct
     if(pbDisplayBufferOpt) {
         for(i = 0; i < cSections; i++) {
-            // 52 byte per line (indluding newline)
+            // 70 byte per line (including newline)
             *pcbDisplayBuffer += snprintf(
                 pbDisplayBufferOpt + *pcbDisplayBuffer,
                 cbDisplayBufferMax - *pcbDisplayBuffer,
-                "%02x %-8.8s  %016llx %08x %08x %c%c%c\n",
+                "%02x %-8.8s  %016llx %08x %08x %c%c%c %08x %08x\n",
                 i,
                 pSectionBase[i].Name,
                 pModule->BaseAddress + pSectionBase[i].VirtualAddress,
@@ -78,7 +78,9 @@ VOID VmmWin_PE_SECTION_DisplayBuffer(
                 pSectionBase[i].Misc.VirtualSize,
                 (pSectionBase[i].Characteristics & IMAGE_SCN_MEM_READ) ? 'r' : '-',
                 (pSectionBase[i].Characteristics & IMAGE_SCN_MEM_WRITE) ? 'w' : '-',
-                (pSectionBase[i].Characteristics & IMAGE_SCN_MEM_EXECUTE) ? 'x' : '-'
+                (pSectionBase[i].Characteristics & IMAGE_SCN_MEM_EXECUTE) ? 'x' : '-',
+                pSectionBase[i].PointerToRawData,
+                pSectionBase[i].SizeOfRawData
             );
         }
     }
@@ -277,8 +279,9 @@ VOID VmmWin_PE_SetSizeSectionIATEAT_DisplayBuffer(_In_ PVMM_PROCESS pProcess, _I
         LeaveCriticalSection(&pProcess->LockUpdate);
         return;
     }
-    // calculate display buffer size of: SECTIONS, EAT, IAT
-    pModule->cbDisplayBufferSections = PE_SectionGetNumberOfEx(pProcess, pModule->BaseAddress, pbModuleHeader) * 52;    // each display buffer human readable line == 52 bytes.
+    // calculate display buffer size of: SECTIONS, EAT, IAT, RawFileSize
+    pModule->cbFileSizeRaw = PE_FileRaw_Size(pProcess, pModule->BaseAddress, pbModuleHeader);
+    pModule->cbDisplayBufferSections = PE_SectionGetNumberOfEx(pProcess, pModule->BaseAddress, pbModuleHeader) * 70;    // each display buffer human readable line == 70 bytes.
     if(!pModule->fLoadedEAT) {
         pModule->cbDisplayBufferEAT = PE_EatGetNumberOfEx(pProcess, pModule->BaseAddress, pbModuleHeader) * 64;         // each display buffer human readable line == 64 bytes.
         pModule->fLoadedEAT = TRUE;
@@ -323,7 +326,7 @@ VOID VmmWin_ScanLdrModules64(_In_ PVMM_PROCESS pProcess, _Inout_ PVMM_MODULEMAP_
     PVMMPROC_LDR_DATA_TABLE_ENTRY pLdrModule = (PVMMPROC_LDR_DATA_TABLE_ENTRY)pbLdrModule;
     PVMM_MODULEMAP_ENTRY pModule;
     PVMMOB_DATASET pObDataSet_vaModuleLdr = NULL;
-    BOOL fNameRead;
+    BOOL fNameRead, fNameDefaultChar;
     DWORD iModuleLdr;
     // prefetch existing addresses (if any) & allocate new vaModuleLdr DataSet
     pObDataSet_vaModuleLdr = VmmObContainer_GetOb(&pProcess->pObProcessPersistent->ObCLdrModulesCachePrefetch64);
@@ -358,15 +361,16 @@ VOID VmmWin_ScanLdrModules64(_In_ PVMM_PROCESS pProcess, _Inout_ PVMM_MODULEMAP_
         pModule->SizeOfImage = (DWORD)pLdrModule->SizeOfImage;
         pModule->fWoW64 = FALSE;
         if(!pLdrModule->BaseDllName.Length) { continue; }
-        fNameRead = VmmReadString_Unicode2Ansi(pProcess, (QWORD)pLdrModule->BaseDllName.Buffer, pModule->szName, min(31, pLdrModule->BaseDllName.Length));
+        fNameRead = VmmReadString_Unicode2Ansi(pProcess, (QWORD)pLdrModule->BaseDllName.Buffer, pModule->szName, min(31, pLdrModule->BaseDllName.Length), &fNameDefaultChar) && !fNameDefaultChar;
         fNameRead = fNameRead || PE_GetModuleName(pProcess, pModule->BaseAddress, pModule->szName, 32);
         if(fNameRead) {
             *fWow64 = pProcess->fUserOnly && (*fWow64 || !memcmp(pModule->szName, "wow64.dll", 10));
             vmmprintfvv_fn("%016llx %016llx %016llx %08x %i %s\n", vaModuleLdr, pModule->BaseAddress, pModule->EntryPoint, pModule->SizeOfImage, (pModule->fWoW64 ? 1 : 0), pModule->szName);
-            *pcModules = *pcModules + 1;
         } else {
-            vmmprintfvv_fn("SKIP: Unable to get name - paged out? PID=%04i BASE=0x%016llx\n", pProcess->dwPID, pModule->BaseAddress);
+            snprintf(pModule->szName, 31, "_UNKNOWN-%llx.dll", pModule->BaseAddress);
+            vmmprintfvv_fn("INFO: Unable to get name - paged out? PID=%04i BASE=0x%016llx REPLACE='%s'\n", pProcess->dwPID, pModule->BaseAddress, pModule->szName);
         }
+        *pcModules = *pcModules + 1;
         // add FLink/BLink lists
         if(pLdrModule->InLoadOrderModuleList.Flink && !((QWORD)pLdrModule->InLoadOrderModuleList.Flink & 0x7)) {
             VmmObDataSet_Put(pObDataSet_vaModuleLdr, (QWORD)CONTAINING_RECORD(pLdrModule->InLoadOrderModuleList.Flink, VMMPROC_LDR_DATA_TABLE_ENTRY, InLoadOrderModuleList));
@@ -451,7 +455,7 @@ BOOL VmmWin_ScanLdrModules32(_In_ PVMM_PROCESS pProcess, _Inout_ PVMM_MODULEMAP_
     PLDR_MODULE32 pLdrModule32 = (PLDR_MODULE32)pbLdrModule32;
     PVMM_MODULEMAP_ENTRY pModule;
     PVMMOB_DATASET pObDataSet_vaModuleLdr = NULL;
-    BOOL fNameRead;
+    BOOL fNameRead, fNameDefaultChar;
     DWORD iModuleLdr;
     // prefetch existing addresses (if any) & allocate new vaModuleLdr DataSet
     pObDataSet_vaModuleLdr = VmmObContainer_GetOb(&pProcess->pObProcessPersistent->ObCLdrModulesCachePrefetch32);
@@ -486,14 +490,15 @@ BOOL VmmWin_ScanLdrModules32(_In_ PVMM_PROCESS pProcess, _Inout_ PVMM_MODULEMAP_
         pModule->SizeOfImage = (DWORD)pLdrModule32->SizeOfImage;
         pModule->fWoW64 = TRUE;
         if(!pLdrModule32->BaseDllName.Length) { continue; }
-        fNameRead = VmmReadString_Unicode2Ansi(pProcess, (QWORD)pLdrModule32->BaseDllName.Buffer, pModule->szName, min(31, pLdrModule32->BaseDllName.Length));
+        fNameRead = VmmReadString_Unicode2Ansi(pProcess, (QWORD)pLdrModule32->BaseDllName.Buffer, pModule->szName, min(31, pLdrModule32->BaseDllName.Length), &fNameDefaultChar) && !fNameDefaultChar;
         fNameRead = fNameRead || PE_GetModuleName(pProcess, pModule->BaseAddress, pModule->szName, 32);
         if(fNameRead) {
             vmmprintfvv_fn("%08x %08x %08x %08x %s\n", vaModuleLdr32, (DWORD)pModule->BaseAddress, (DWORD)pModule->EntryPoint, pModule->SizeOfImage, pModule->szName);
-            *pcModules = *pcModules + 1;
         } else {
-            vmmprintfvv_fn("SKIP: Unable to get name - paged out? PID=%04i BASE=0x%08x\n", pProcess->dwPID, (DWORD)pModule->BaseAddress);
+            snprintf(pModule->szName, 31, "_UNKNOWN-%llx.dll", pModule->BaseAddress);
+            vmmprintfvv_fn("INFO: Unable to get name - paged out? PID=%04i BASE=0x%08x REPLACE='%s'\n", pProcess->dwPID, (DWORD)pModule->BaseAddress, pModule->szName);
         }
+        *pcModules = *pcModules + 1;
         // add FLink/BLink lists
         if(pLdrModule32->InLoadOrderModuleList.Flink && !((DWORD)pLdrModule32->InLoadOrderModuleList.Flink & 0x3)) {
             VmmObDataSet_Put(pObDataSet_vaModuleLdr, (QWORD)CONTAINING_RECORD32(pLdrModule32->InLoadOrderModuleList.Flink, LDR_MODULE32, InLoadOrderModuleList));
@@ -955,17 +960,17 @@ VOID VmmWin_OffsetLocatorEPROCESS64(_In_ PVMM_PROCESS pSystemProcess)
         Util_PrintHexAscii(pb1, VMMPROC_EPROCESS_MAX_SIZE, 0);
     }
     // find offset for PEB (in EPROCESS)
-    for(i = 0x300, f = FALSE; i < 0x480; i += 8) {
+    for(i = 0x280, f = FALSE; i < 0x480; i += 8) {
         if(*(PQWORD)(pb0 + i)) { continue; }
-vaPEB = *(PQWORD)(pb1 + i);
-if(!vaPEB || (vaPEB & 0xffff800000000fff)) { continue; }
-// Verify potential PEB
-if(!VmmVirt2PhysEx(*(PQWORD)(pb1 + pOffsetEPROCESS->DTB), TRUE, vaPEB, &paPEB)) { continue; }
-if(!VmmReadPhysicalPage(paPEB, pbPage)) { continue; }
-if(*(PWORD)pbPage == 0x5a4d) { continue; }  // MZ header -> likely entry point or something not PEB ...
-pOffsetEPROCESS->PEB = i;
-f = TRUE;
-break;
+        vaPEB = *(PQWORD)(pb1 + i);
+        if(!vaPEB || (vaPEB & 0xffff800000000fff)) { continue; }
+        // Verify potential PEB
+        if(!VmmVirt2PhysEx(*(PQWORD)(pb1 + pOffsetEPROCESS->DTB), TRUE, vaPEB, &paPEB)) { continue; }
+        if(!VmmReadPhysicalPage(paPEB, pbPage)) { continue; }
+        if(*(PWORD)pbPage == 0x5a4d) { continue; }  // MZ header -> likely entry point or something not PEB ...
+        pOffsetEPROCESS->PEB = i;
+        f = TRUE;
+        break;
     }
     if(!f) { return; }
     // find "optional" offset for user cr3/pml4 (post meltdown only)
@@ -1058,7 +1063,8 @@ BOOL VmmWin_EnumerateEPROCESS64(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fTot
         if(*pqwDTB && *(PQWORD)szName && (fShowTerminated || !*pdwState)) {
             fUser = 
                 !((*pdwPID == 4) || ((*pdwState == 0) && (*pqwPEB == 0))) ||
-                (*(PQWORD)(szName + 0x00) == 0x72706d6f436d654d) && (*(PDWORD)(szName + 0x08) == 0x69737365);  // MemCompression "process"
+                ((*(PQWORD)(szName + 0x00) == 0x7972747369676552) && (*(PDWORD)(szName + 0x08) == 0x00000000)) ||   // Registry "process"
+                ((*(PQWORD)(szName + 0x00) == 0x72706d6f436d654d) && (*(PDWORD)(szName + 0x08) == 0x69737365));     // MemCompression "process"
             pObProcess = VmmProcessCreateEntry(
                 fTotalRefresh,
                 *pdwPID,

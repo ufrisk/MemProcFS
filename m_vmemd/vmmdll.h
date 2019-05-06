@@ -4,7 +4,7 @@
 // (c) Ulf Frisk, 2018-2019
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-// Header Version: 2.3
+// Header Version: 2.4
 //
 
 #include <windows.h>
@@ -234,6 +234,7 @@ BOOL VMMDLL_VfsInitializePlugins();
 #define VMMDLL_PLUGIN_REGINFO_VERSION           3
 
 #define VMMDLL_PLUGIN_EVENT_VERBOSITYCHANGE     0x01
+#define VMMDLL_PLUGIN_EVENT_TOTALREFRESH        0x02
 
 typedef struct tdVMMDLL_PLUGIN_CONTEXT {
     ULONG64 magic;
@@ -291,6 +292,7 @@ typedef struct tdVMMDLL_PLUGIN_REGINFO {
 // Cached page tables (used for translating virtual2physical) are still used.
 #define VMMDLL_FLAG_NOCACHE                        0x0001  // do not use the data cache (force reading from memory acquisition device)
 #define VMMDLL_FLAG_ZEROPAD_ON_FAIL                0x0002  // zero pad failed physical memory reads and report success if read within range of physical memory.
+#define VMMDLL_FLAG_FORCECACHE_READ                0x0008  // force use of cache - fail non-cached pages - only valid for reads, invalid with VMM_FLAG_NOCACHE/VMM_FLAG_ZEROPAD_ON_FAIL.
 
 /*
 * Read memory in various non-contigious locations specified by the pointers to

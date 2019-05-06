@@ -78,6 +78,9 @@
     <ClInclude Include="mm_x64_winpaged.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="m_pedump.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="vmmdll.c">
@@ -129,6 +132,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="mm_x64_winpaged.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="m_pedump.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

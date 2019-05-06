@@ -12,6 +12,8 @@
 # (c) Ulf Frisk, 2018-2019
 # Author: Ulf Frisk, pcileech@frizk.net
 #
+# Header Version: 2.4
+#
 
 from vmmpyc import *
 
@@ -44,6 +46,7 @@ VMMPY_MEMORYMODEL_X64 =                 0x0003
 # EVENT values - received by the notify callback function for specific events
 # occuring in the native plugin manager / vmm / memory process file system.
 VMMPY_PLUGIN_EVENT_VERBOSITYCHANGE =    0x01
+VMMPY_PLUGIN_EVENT_TOTALREFRESH =       0x02
 
 #------------------------------------------------------------------------------
 # VmmPy INITIALIZATION FUNCTIONALITY BELOW:
@@ -110,20 +113,6 @@ def VmmPy_Initialize(args, is_printf = True, is_verbose = False, is_verbose_extr
 #------------------------------------------------------------------------------
 # VmmPy CONFIGURATION FUNCTIONALITY BELOW:
 #------------------------------------------------------------------------------
-
-VMMPY_OPT_DEVICE_FPGA_PROBE_MAXPAGES          = 0x01        # RW
-VMMPY_OPT_DEVICE_FPGA_RX_FLUSH_LIMIT          = 0x02        # RW
-VMMPY_OPT_DEVICE_FPGA_MAX_SIZE_RX             = 0x03        # RW
-VMMPY_OPT_DEVICE_FPGA_MAX_SIZE_TX             = 0x04        # RW
-VMMPY_OPT_DEVICE_FPGA_DELAY_PROBE_READ        = 0x05        # RW - uS
-VMMPY_OPT_DEVICE_FPGA_DELAY_PROBE_WRITE       = 0x06        # RW - uS
-VMMPY_OPT_DEVICE_FPGA_DELAY_WRITE             = 0x07        # RW - uS
-VMMPY_OPT_DEVICE_FPGA_DELAY_READ              = 0x08        # RW - uS
-VMMPY_OPT_DEVICE_FPGA_RETRY_ON_ERROR          = 0x09        # RW
-VMMPY_OPT_DEVICE_FPGA_DEVICE_ID               = 0x80        # R
-VMMPY_OPT_DEVICE_FPGA_FPGA_ID                 = 0x81        # R
-VMMPY_OPT_DEVICE_FPGA_VERSION_MAJOR           = 0x82        # R
-VMMPY_OPT_DEVICE_FPGA_VERSION_MINOR           = 0x83        # R
 
 VMMPY_OPT_CORE_PRINTF_ENABLE                  = 0x80000001  # RW
 VMMPY_OPT_CORE_VERBOSE                        = 0x80000002  # RW
@@ -193,6 +182,7 @@ def VmmPy_GetVersion():
 
 VMMPY_FLAG_NOCACHE           = 0x0001      # do not use the data cache (force reading from memory acquisition device)
 VMMPY_FLAG_ZEROPAD_ON_FAIL   = 0x0002      # zero pad failed physical memory reads and report success if read within range of physical memory.
+VMMPY_FLAG_FORCECACHE_READ   = 0x0008      # force use of cache - fail non-cached pages - only valid for reads, invalid with VMM_FLAG_NOCACHE/VMM_FLAG_ZEROPAD_ON_FAIL.
 
 
 

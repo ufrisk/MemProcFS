@@ -18,6 +18,8 @@
 # (c) Ulf Frisk, 2018
 # Author: Ulf Frisk, pcileech@frizk.net
 #
+# Header Version: 2.4
+#
 
 from vmmpy import *
 from vmmpycc import *
@@ -234,6 +236,9 @@ def VmmPyPlugin_InternalCallback_Notify(fEvent, bytesData):
     """
     if fEvent == VMMPY_PLUGIN_EVENT_VERBOSITYCHANGE:
         VmmPyPlugin_InternalSetVerbosity()
+    for module in VmmPyPlugin_PluginModules:
+        if hasattr(module, 'Notify'):
+            module.Notify(fEvent, bytesData)
 
 
 

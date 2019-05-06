@@ -146,4 +146,60 @@ inline DWORD PE_IatGetNumberOf(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBa
     return PE_IatGetNumberOfEx(pProcess, vaModuleBase, NULL);
 }
 
+/*
+* Retrieve the raw size of the 'file' estimation that is possible to rebuild
+* using PE sections from memory.
+* -- pProcess
+* -- vaModuleBase = PE module base address (unless pbModuleHeaderOpt is specified)
+* -- pbModuleHaderOpt = Optional buffer containing module header (MZ) page.
+* -- return = success: size of file. fail: 0.
+*/
+DWORD PE_FileRaw_Size(
+    _In_ PVMM_PROCESS pProcess,
+    _In_opt_ QWORD vaModuleBase,
+    _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt
+);
+
+/*
+* Read part of a, from memory, best-effort re-constructed PE file.
+* -- pProcess
+* -- vaModuleBase = PE module base address.
+* -- pb
+* -- cb
+* -- pcbRead
+* -- cbOffset
+* -- return
+*/
+_Success_(return)
+BOOL PE_FileRaw_Read(
+    _In_ PVMM_PROCESS pProcess,
+    _In_ QWORD vaModuleBase,
+    _Out_ PBYTE pb,
+    _In_ DWORD cb,
+    _Out_ PDWORD pcbRead,
+    _In_ DWORD cbOffset
+);
+
+/*
+* Write to the underlying pages which supports this re-constructed PE file.
+* This is normally not recommended and will be very dangerous since it is most
+* likely to affect all instances - in all processes - of the PE file written to.
+* -- pProcess
+* -- vaModuleBase = PE module base address.
+* -- pb
+* -- cb
+* -- pcbWrite
+* -- cbOffset
+* -- return
+*/
+_Success_(return)
+BOOL PE_FileRaw_Write(
+    _In_ PVMM_PROCESS pProcess,
+    _In_ QWORD vaModuleBase,
+    _In_ PBYTE pb,
+    _In_ DWORD cb,
+    _Out_ PDWORD pcbWrite,
+    _In_ DWORD cbOffset
+);
+
 #endif /* __PE_H__ */

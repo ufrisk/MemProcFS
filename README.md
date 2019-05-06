@@ -155,3 +155,7 @@ v2.3
 * Python plugin updater - easy installs and updates from [MemProcFS-plugins](https://github.com/ufrisk/MemProcFS-plugins).
 * Pypykatz plugin for 'mimikatz' style functionality available as separate download from [MemProcFS-plugins](https://github.com/ufrisk/MemProcFS-plugins) project. Thanks to [@SkelSec](https://twitter.com/SkelSec) for the contribution.
 * Python API support for version >3.6 (i.e Python 3.7 now fully supported).
+
+v2.4
+* Bug fixes.
+* New module: [PEDump](https://github.com/ufrisk/MemProcFS/wiki/FS_Process_PEDump) - best-effort reconstructed PE modules (.exe, .dll and .sys files) in process pedump sub-folder.

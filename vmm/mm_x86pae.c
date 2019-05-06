@@ -333,7 +333,7 @@ BOOL MmX86PAE_MapGetDisplay(_In_ PVMM_PROCESS pProcess, _In_ DWORD flags, _Out_ 
                     }
                     o += snprintf(
                         pObDisplay->pbData + o,
-                        pObMemMap->cbDisplay - o - MMX86PAE_MEMMAP_DISPLAYBUFFER_LINE_LENGTH,
+                        pObMemMap->cbDisplay - o,
                         "%04x %8x %08x-%08x %sr%s%s %-32s\n",
                         i,
                         (DWORD)pObMemMap->pMap[i].cPages,
@@ -351,6 +351,7 @@ BOOL MmX86PAE_MapGetDisplay(_In_ PVMM_PROCESS pProcess, _In_ DWORD flags, _Out_ 
                     pObDisplay = NULL;
                     goto fail;
                 }
+                pObDisplay->pbData[o - 1] = '\n';
             }
         }
         pProcess->pObMemMap->pObDisplay = pObDisplay;

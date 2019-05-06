@@ -4,9 +4,11 @@
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
+#include "vmmdll.h"
 #include "vmmproc.h"
 #include "vmmwin.h"
 #include "vmmwininit.h"
+#include "pluginmanager.h"
 #include "statistics.h"
 #include "util.h"
 
@@ -127,6 +129,10 @@ DWORD VmmProcCacheUpdaterThread()
                     ctxMain->dev.paMax = paMax;
                 }
             }
+            // send notify
+            if(fProcTotal) {
+                PluginManager_Notify(VMMDLL_PLUGIN_EVENT_TOTALREFRESH, NULL, 0);
+            }
         }
         LeaveCriticalSection(&ctxVmm->MasterLock);
     }
@@ -154,6 +160,23 @@ BOOL VmmProc_ModuleMapGet(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MODULEMAP *pp
         *ppObModuleMap = VmmOb_INCREF(pProcess->pObModuleMap);
         return TRUE;
     }
+    return FALSE;
+}
+
+_Success_(return)
+BOOL VmmProc_ModuleMapGetSingleEntry(_In_ PVMM_PROCESS pProcess, _In_ LPSTR szModuleName, _Out_ PVMMOB_MODULEMAP *ppObModuleMap, _Out_ PVMM_MODULEMAP_ENTRY *ppModuleMapEntry)
+{
+    DWORD iModule;
+    PVMMOB_MODULEMAP pObModuleMap = NULL;
+    if(!VmmProc_ModuleMapGet(pProcess, &pObModuleMap)) { return FALSE; }
+    for(iModule = 0; iModule < pObModuleMap->cMap; iModule++) {
+        if(0 == strcmp(szModuleName, pObModuleMap->pMap[iModule].szName)) {
+            *ppObModuleMap = pObModuleMap;
+            *ppModuleMapEntry = pObModuleMap->pMap + iModule;
+            return TRUE;
+        }
+    }
+    VmmOb_DECREF(pObModuleMap);
     return FALSE;
 }
 

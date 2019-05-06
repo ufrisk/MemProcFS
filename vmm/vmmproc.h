@@ -31,6 +31,18 @@ _Success_(return)
 BOOL VmmProc_ModuleMapGet(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MODULEMAP *ppObModuleMap);
 
 /*
+* Retrieve a single module map entry and its backing module map (if found).
+* CALLER DECREF: ppObModuleMap
+* -- pProcess
+* -- szModuleName
+* -- ppObModuleMap
+* -- pModuleMapEntry
+* -- return
+*/
+_Success_(return)
+BOOL VmmProc_ModuleMapGetSingleEntry(_In_ PVMM_PROCESS pProcess, _In_ LPSTR szModuleName, _Out_ PVMMOB_MODULEMAP *ppObModuleMap, _Out_ PVMM_MODULEMAP_ENTRY *ppModuleMapEntry);
+
+/*
 * Scan additional process information (not already in the initialized modulemap)
 * and put the result into the memory map.
 */

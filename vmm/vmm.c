@@ -801,6 +801,7 @@ VOID VmmProcess_CloseObCallback(_In_ PVOID pVmmOb)
     VmmOb_DECREF(pProcess->pObProcessPersistent);
     // plugin cleanup below
     VmmObContainer_Close(&pProcess->Plugin.ObCLdrModulesDisplayCache);
+    VmmObContainer_Close(&pProcess->Plugin.ObCPeDumpDirCache);
     // delete lock
     DeleteCriticalSection(&pProcess->LockUpdate);
 }
@@ -884,6 +885,7 @@ PVMM_PROCESS VmmProcessCreateEntry(_In_ BOOL fTotalRefresh, _In_ DWORD dwPID, _I
         pProcess->fUserOnly = fUserOnly;
         pProcess->fTlbSpiderDone = pProcess->fTlbSpiderDone;
         VmmObContainer_Initialize(&pProcess->Plugin.ObCLdrModulesDisplayCache, NULL);
+        VmmObContainer_Initialize(&pProcess->Plugin.ObCPeDumpDirCache, NULL);
         // attach pre-existing static process info entry or create new
         pProcessOld = VmmProcessGet(dwPID);
         if(pProcessOld) {
@@ -1130,7 +1132,8 @@ VOID VmmReadScatterPhysical(_Inout_ PPMEM_IO_SCATTER_HEADER ppMEMsPhys, _In_ DWO
                 ppMEMsSpeculative[cSpeculative++] = pMEM;
             }
         }
-        if(c == cpMEMsPhys) { return; } // all found in cache -> return!
+        if(c == cpMEMsPhys) { return; }                     // all found in cache -> return!
+        if(VMM_FLAG_FORCECACHE_READ & flags) { return; }    // only cached reads allowed -> return!
     }
     // 2: speculative future read if negligible performance loss
     if(fCache && cSpeculative && (cSpeculative < 0x18)) {
@@ -1361,19 +1364,19 @@ VOID VmmReadEx(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwVA, _Out_ PBYTE pb, 
 }
 
 _Success_(return)
-BOOL VmmReadString_Unicode2Ansi(_In_ PVMM_PROCESS pProcess, _In_ QWORD qwVA, _Out_writes_(cch) LPSTR sz, _In_ DWORD cch)
+BOOL VmmReadString_Unicode2Ansi(_In_ PVMM_PROCESS pProcess, _In_ QWORD qwVA, _Out_writes_(cch) LPSTR sz, _In_ DWORD cch, _Out_opt_ PBOOL pfDefaultChar)
 {
     DWORD i = 0;
     BOOL result;
+    int iResult;
     WCHAR wsz[0x1000];
     if(cch) { sz[0] = 0; }
     if((cch < 2) || (cch > 0x1000)) { return FALSE; }
     result = VmmRead(pProcess, qwVA, (PBYTE)wsz, cch << 1);
     if(!result) { return FALSE; }
-    for(i = 0; i < cch - 1; i++) {
-        sz[i] = (CHAR)(((WORD)wsz[i] <= 0xff) ? wsz[i] : '?');
-        if(sz[i] == 0) { return TRUE; }
-    }
+    wsz[cch - 1] = 0;
+    iResult = WideCharToMultiByte(CP_ACP, 0, wsz, -1, sz, cch, NULL, pfDefaultChar);
+    if(!iResult) { return FALSE; }
     sz[cch - 1] = 0;
     return TRUE;
 }

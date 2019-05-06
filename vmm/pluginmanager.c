@@ -9,6 +9,7 @@
 #include "vmm.h"
 #include "vmmdll.h"
 #include "m_ldrmodules.h"
+#include "m_pedump.h"
 #include "m_status.h"
 #include "m_virt2phys.h"
 
@@ -332,6 +333,8 @@ BOOL PluginManager_Initialize()
     M_LdrModules_Initialize(&ri);
     PluginManager_Initialize_RegInfoInit(&ri, NULL);
     M_Status_Initialize(&ri);
+    PluginManager_Initialize_RegInfoInit(&ri, NULL);
+    M_PEDump_Initialize(&ri);
     // 2: process dll modules
     Util_GetPathDll(szPath, NULL);
     cchPathBase = (DWORD)strnlen(szPath, _countof(szPath) - 1);

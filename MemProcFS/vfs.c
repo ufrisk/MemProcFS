@@ -11,10 +11,15 @@
 #pragma warning( disable : 4005 )   
 #include "dokan.h"
 #pragma warning( pop )
-//#define dbg_GetTickCount64()        GetTickCount64()
-//#define dbg_wprintf(format, ...)    { wprintf(format, ##__VA_ARGS__); }
-#define dbg_wprintf(format, ...)    {}
-#define dbg_GetTickCount64()        0
+
+DWORD g_dbg_c = 0;
+
+//#define dbg_GetTickCount64()            GetTickCount64()
+//#define dbg_wprintf_init(format, ...)   { wprintf(format, ++g_dbg_c, ##__VA_ARGS__); }
+//#define dbg_wprintf(format, ...)        { wprintf(format, ++g_dbg_c, ##__VA_ARGS__); }
+#define dbg_wprintf_init(format, ...)   {}
+#define dbg_wprintf(format, ...)        {}
+#define dbg_GetTickCount64()            0
 
 //-------------------------------------------------------------------------------
 // DEFINES, TYPEDEFS AND FORWARD DECLARATIONS BELOW:
@@ -92,7 +97,7 @@ VOID VfsFileList_AddFile(_Inout_ HANDLE hFileList, _In_ LPSTR szName, _In_ QWORD
     if(pFileList2 && (pFileList2->magic == VFS_CONFIG_FILELIST_MAGIC)) {
         VfsFileList_AddDirectoryFileInternal(
             pFileList2,
-            FILE_ATTRIBUTE_NORMAL | FILE_ATTRIBUTE_NOT_CONTENT_INDEXED,
+            FILE_ATTRIBUTE_NOT_CONTENT_INDEXED,
             ctxVfs->ftDefaultTime,
             ctxVfs->ftDefaultTime,
             ctxVfs->ftDefaultTime,
@@ -177,13 +182,13 @@ BOOL VfsCacheDirectory_GetSingle2(_In_ LPWSTR wszPath, _In_ LPWSTR wszFile, _Out
     return FALSE;
 }
 
-BOOL VfsCacheDirectory_GetSingle(_In_ LPWSTR wszPath, _In_ LPWSTR wszFile, _Out_ PWIN32_FIND_DATAW pFindData)
+BOOL VfsCacheDirectory_GetSingle(_In_ LPWSTR wszPath, _In_ LPWSTR wszFile, _Out_ PWIN32_FIND_DATAW pFindData, _Out_ PBOOL pfIsDirectoryExisting)
 {
-    BOOL result, isDirectoryExisting;
-    result = VfsCacheDirectory_GetSingle2(wszPath, wszFile, pFindData, &isDirectoryExisting);
+    BOOL result;
+    result = VfsCacheDirectory_GetSingle2(wszPath, wszFile, pFindData, pfIsDirectoryExisting);
     if(result) { return TRUE; }
-    if(isDirectoryExisting) { return FALSE; }
-    return VfsListVmmDirectory(wszPath) && VfsCacheDirectory_GetSingle2(wszPath, wszFile, pFindData, &isDirectoryExisting);
+    if(*pfIsDirectoryExisting) { return FALSE; }
+    return VfsListVmmDirectory(wszPath) && VfsCacheDirectory_GetSingle2(wszPath, wszFile, pFindData, pfIsDirectoryExisting);
 }
 
 BOOL VfsCacheDirectory_DokanFillDirectory(_In_ LPCWSTR wcsPathFileName, _In_ PFillFindData FillFindData, _Inout_ PDOKAN_FILE_INFO DokanFileInfo)
@@ -267,46 +272,40 @@ VOID Vfs_UtilSplitPathFile(_Out_writes_(MAX_PATH) PWCHAR wszPath, _Out_ LPWSTR *
 // DOKAN CALLBACK FUNCTIONS BELOW:
 //-------------------------------------------------------------------------------
 
-NTSTATUS DOKAN_CALLBACK
-VfsCallback_CreateFile(LPCWSTR wcsFileName, PDOKAN_IO_SECURITY_CONTEXT SecurityContext, ACCESS_MASK DesiredAccess, ULONG FileAttributes, ULONG ShareAccess, ULONG CreateDisposition, ULONG CreateOptions, PDOKAN_FILE_INFO DokanFileInfo)
+NTSTATUS
+VfsCallback_CreateFile_Impl(LPCWSTR wcsFileName, PDOKAN_IO_SECURITY_CONTEXT SecurityContext, ACCESS_MASK DesiredAccess, ULONG FileAttributes, ULONG ShareAccess, ULONG CreateDisposition, ULONG CreateOptions, PDOKAN_FILE_INFO DokanFileInfo)
 {
     UINT64 tmStart = dbg_GetTickCount64();
-    NTSTATUS nt;
     BOOL result;
     WIN32_FIND_DATAW FindData;
     WCHAR wszPath[MAX_PATH];
     LPWSTR wszFile;
-    dbg_wprintf(L"DEBUG:: -------- VfsCallback_CreateFile:\t\t 0x%08x %s\n", 0, wcsFileName);
+    BOOL fIsDirectoryExisting = FALSE;
     UNREFERENCED_PARAMETER(SecurityContext);
     UNREFERENCED_PARAMETER(FileAttributes);
-    UNREFERENCED_PARAMETER(CreateOptions);
     // root directory
     if(!wcscmp(wcsFileName, L"\\")) {
-        if(CreateDisposition == CREATE_ALWAYS) {
-            nt = ctxVfs->DokanNtStatusFromWin32(ERROR_ACCESS_DENIED);
-            dbg_wprintf(L"DEBUG:: %8x VfsCallback_CreateFile:\t\t 0x%08x %s\n", (DWORD)(dbg_GetTickCount64() - tmStart), nt, wcsFileName);
-            return nt;
-        }
+        if(CreateDisposition == CREATE_ALWAYS) { return ctxVfs->DokanNtStatusFromWin32(ERROR_ACCESS_DENIED); }
         DokanFileInfo->IsDirectory = TRUE;
-        dbg_wprintf(L"DEBUG:: %8x VfsCallback_CreateFile:\t\t 0x%08x %s\n", (DWORD)(dbg_GetTickCount64() - tmStart), STATUS_SUCCESS, wcsFileName);
         return STATUS_SUCCESS;
     }
     // other files
-    if(CreateDisposition == CREATE_ALWAYS) {
-        nt = ctxVfs->DokanNtStatusFromWin32(ERROR_ACCESS_DENIED);
-        dbg_wprintf(L"DEBUG:: %8x VfsCallback_CreateFile:\t\t 0x%08x %s\n", (DWORD)(dbg_GetTickCount64() - tmStart), nt, wcsFileName);
-        return nt;
-    }
+    if(CreateDisposition == CREATE_ALWAYS) { return ctxVfs->DokanNtStatusFromWin32(ERROR_ACCESS_DENIED); }
     Vfs_UtilSplitPathFile(wszPath, &wszFile, wcsFileName);
-    result = VfsCacheDirectory_GetSingle(wszPath[0] ? wszPath : L"\\", wszFile, &FindData);
-    if(!result) {
-        dbg_wprintf(L"DEBUG:: %8x VfsCallback_CreateFile:\t\t 0x%08x %s\n", (DWORD)(dbg_GetTickCount64() - tmStart), STATUS_FILE_INVALID, wcsFileName);
-        return STATUS_FILE_INVALID;
-    }
+    result = VfsCacheDirectory_GetSingle(wszPath[0] ? wszPath : L"\\", wszFile, &FindData, &fIsDirectoryExisting);
+    if(!result) { return fIsDirectoryExisting ? STATUS_OBJECT_NAME_NOT_FOUND : STATUS_OBJECT_PATH_NOT_FOUND; }
     DokanFileInfo->IsDirectory = (FindData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ? TRUE : FALSE;
     DokanFileInfo->Nocache = TRUE;
-    nt = (CreateDisposition == OPEN_ALWAYS) ? STATUS_OBJECT_NAME_COLLISION : STATUS_SUCCESS;
-    dbg_wprintf(L"DEBUG:: %8x VfsCallback_CreateFile:\t\t 0x%08x %s\n", (DWORD)(dbg_GetTickCount64() - tmStart), nt, wcsFileName);
+    if(!DokanFileInfo->IsDirectory && (CreateOptions & FILE_DIRECTORY_FILE)) { return STATUS_NOT_A_DIRECTORY; }     // fail upon open normal file as directory
+    return (CreateDisposition == OPEN_ALWAYS) ? STATUS_OBJECT_NAME_COLLISION : STATUS_SUCCESS;
+}
+
+NTSTATUS DOKAN_CALLBACK
+VfsCallback_CreateFile(LPCWSTR FileName, PDOKAN_IO_SECURITY_CONTEXT SecurityContext, ACCESS_MASK DesiredAccess, ULONG FileAttributes, ULONG ShareAccess, ULONG CreateDisposition, ULONG CreateOptions, PDOKAN_FILE_INFO DokanFileInfo)
+{
+    UINT64 tmStart = dbg_GetTickCount64();
+    NTSTATUS nt = VfsCallback_CreateFile_Impl(FileName, SecurityContext, DesiredAccess, FileAttributes, ShareAccess, CreateDisposition, CreateOptions, DokanFileInfo);
+    dbg_wprintf(L"DEBUG::%08x %8x VfsCallback_CreateFile:\t\t 0x%08x %s [ %08x %08x %08x %08x ]\n", (DWORD)(dbg_GetTickCount64() - tmStart), nt, FileName, FileAttributes, ShareAccess, CreateDisposition, CreateOptions);
     return nt;
 }
 
@@ -318,7 +317,8 @@ VfsCallback_GetFileInformation(_In_ LPCWSTR wcsFileName, _Inout_ LPBY_HANDLE_FIL
     WIN32_FIND_DATAW FindData;
     WCHAR wszPath[MAX_PATH];
     LPWSTR wszFile;
-    dbg_wprintf(L"DEBUG:: -------- VfsCallback_GetFileInformation:\t 0x%08x %s\n", 0, wcsFileName);
+    BOOL fIsDirectoryExisting = FALSE;
+    dbg_wprintf_init(L"DEBUG::%08x -------- VfsCallback_GetFileInformation:\t 0x%08x %s\n", 0, wcsFileName);
     // matches: root directory
     if(!wcscmp(wcsFileName, L"\\")) {
         hfi->ftCreationTime = ctxVfs->ftDefaultTime;
@@ -327,13 +327,13 @@ VfsCallback_GetFileInformation(_In_ LPCWSTR wcsFileName, _Inout_ LPBY_HANDLE_FIL
         hfi->nFileSizeHigh = 0;
         hfi->nFileSizeLow = 0;
         hfi->dwFileAttributes = FILE_ATTRIBUTE_READONLY | FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_NOT_CONTENT_INDEXED;
-        dbg_wprintf(L"DEBUG:: %8x VfsCallback_GetFileInformation:\t 0x%08x %s\n", (DWORD)(dbg_GetTickCount64() - tmStart), STATUS_SUCCESS, wcsFileName);
+        dbg_wprintf(L"DEBUG::%08x %8x VfsCallback_GetFileInformation:\t 0x%08x %s\n", (DWORD)(dbg_GetTickCount64() - tmStart), STATUS_SUCCESS, wcsFileName);
         return STATUS_SUCCESS;
     }
     Vfs_UtilSplitPathFile(wszPath, &wszFile, wcsFileName);
-    result = VfsCacheDirectory_GetSingle((wszPath[0] ? wszPath : L"\\"), wszFile, &FindData);
+    result = VfsCacheDirectory_GetSingle((wszPath[0] ? wszPath : L"\\"), wszFile, &FindData, &fIsDirectoryExisting);
     if(!result) { 
-        dbg_wprintf(L"DEBUG:: %8x VfsCallback_GetFileInformation:\t 0x%08x %s\n", (DWORD)(dbg_GetTickCount64() - tmStart), STATUS_FILE_NOT_AVAILABLE, wcsFileName);
+        dbg_wprintf(L"DEBUG::%08x %8x VfsCallback_GetFileInformation:\t 0x%08x %s\n", (DWORD)(dbg_GetTickCount64() - tmStart), STATUS_FILE_NOT_AVAILABLE, wcsFileName);
         return STATUS_FILE_NOT_AVAILABLE;
     }
     hfi->dwFileAttributes = FindData.dwFileAttributes;
@@ -342,7 +342,16 @@ VfsCallback_GetFileInformation(_In_ LPCWSTR wcsFileName, _Inout_ LPBY_HANDLE_FIL
     hfi->ftLastWriteTime = FindData.ftLastWriteTime;
     hfi->nFileSizeHigh = FindData.nFileSizeHigh;
     hfi->nFileSizeLow = FindData.nFileSizeLow;
-    dbg_wprintf(L"DEBUG:: %8x VfsCallback_GetFileInformation:\t 0x%08x %s\n", (DWORD)(dbg_GetTickCount64() - tmStart), STATUS_SUCCESS, wcsFileName);
+    dbg_wprintf(L"DEBUG::%08x %8x VfsCallback_GetFileInformation:\t 0x%08x %s\t [ %08x %08x%08x %016llx %016llx %016llx ]\n",
+        (DWORD)(dbg_GetTickCount64() - tmStart),
+        STATUS_SUCCESS,
+        wcsFileName,
+        hfi->dwFileAttributes,
+        hfi->nFileSizeHigh, hfi->nFileSizeLow,
+        *(PQWORD)&hfi->ftCreationTime,
+        *(PQWORD)&hfi->ftLastAccessTime,
+        *(PQWORD)&hfi->ftLastWriteTime
+        );
     return STATUS_SUCCESS;
 }
 
@@ -351,15 +360,15 @@ VfsCallback_FindFiles(LPCWSTR wcsFileName, PFillFindData FillFindData, PDOKAN_FI
 {
     UINT64 tmStart = dbg_GetTickCount64();
     BOOL result;
-    dbg_wprintf(L"DEBUG:: -------- VfsCallback_FindFiles:\t\t\t 0x%08x %s\n", 0, wcsFileName);
+    dbg_wprintf_init(L"DEBUG::%08x -------- VfsCallback_FindFiles:\t\t\t 0x%08x %s\n", 0, wcsFileName);
     result = VfsCacheDirectory_DokanFillDirectory(wcsFileName, FillFindData, DokanFileInfo);
     if(result) {
-        dbg_wprintf(L"DEBUG:: %8x VfsCallback_FindFiles:\t\t\t 0x%08x %s\n", (DWORD)(dbg_GetTickCount64() - tmStart), STATUS_SUCCESS, wcsFileName);
+        dbg_wprintf(L"DEBUG::%08x %8x VfsCallback_FindFiles:\t\t\t 0x%08x %s\n", (DWORD)(dbg_GetTickCount64() - tmStart), STATUS_SUCCESS, wcsFileName);
         return STATUS_SUCCESS;
     }
     VfsListVmmDirectory((LPWSTR)wcsFileName);
     VfsCacheDirectory_DokanFillDirectory(wcsFileName, FillFindData, DokanFileInfo);
-    dbg_wprintf(L"DEBUG:: %8x VfsCallback_FindFiles:\t\t\t 0x%08x %s\n", (DWORD)(dbg_GetTickCount64() - tmStart), STATUS_SUCCESS, wcsFileName);
+    dbg_wprintf(L"DEBUG::%08x %8x VfsCallback_FindFiles:\t\t\t 0x%08x %s\n", (DWORD)(dbg_GetTickCount64() - tmStart), STATUS_SUCCESS, wcsFileName);
     return STATUS_SUCCESS;
 }
 
@@ -368,9 +377,9 @@ VfsCallback_ReadFile(LPCWSTR wcsFileName, LPVOID Buffer, DWORD BufferLength, LPD
 {
     UINT64 tmStart = dbg_GetTickCount64();
     NTSTATUS nt;
-    dbg_wprintf(L"DEBUG:: -------- VfsCallback_ReadFile:\t\t\t 0x%08x %s\n", 0, wcsFileName);
+    dbg_wprintf_init(L"DEBUG:: -------- VfsCallback_ReadFile:\t\t\t 0x%08x %s\n", 0, wcsFileName);
     nt = ctxVfs->pVmmDll->VfsRead(wcsFileName, Buffer, BufferLength, ReadLength, Offset);
-    dbg_wprintf(L"DEBUG:: %8x VfsCallback_ReadFile:\t\t\t 0x%08x %s\n", (DWORD)(dbg_GetTickCount64() - tmStart), nt, wcsFileName);
+    dbg_wprintf(L"DEBUG::%08x %8x VfsCallback_ReadFile:\t\t\t 0x%08x %s\t [ %016llx %08x %08x ]\n", (DWORD)(dbg_GetTickCount64() - tmStart), nt, wcsFileName, Offset, BufferLength, *ReadLength);
     return nt;
 }
 
@@ -379,9 +388,9 @@ VfsCallback_WriteFile(LPCWSTR wcsFileName, LPCVOID Buffer, DWORD NumberOfBytesTo
 {
     UINT64 tmStart = dbg_GetTickCount64();
     NTSTATUS nt;
-    dbg_wprintf(L"DEBUG:: -------- VfsCallback_WriteFile:\t\t\t 0x%08x %s\n", 0, wcsFileName);
+    dbg_wprintf_init(L"DEBUG:: -------- VfsCallback_WriteFile:\t\t\t 0x%08x %s\n", 0, wcsFileName);
     nt = ctxVfs->pVmmDll->VfsWrite(wcsFileName, (PBYTE)Buffer, NumberOfBytesToWrite, NumberOfBytesWritten, Offset);
-    dbg_wprintf(L"DEBUG:: %8x VfsCallback_WriteFile:\t\t\t 0x%08x %s\n", (DWORD)(dbg_GetTickCount64() - tmStart), nt, wcsFileName);
+    dbg_wprintf(L"DEBUG::%08x %8x VfsCallback_WriteFile:\t\t\t 0x%08x %s\t [ %016llx %08x %08x ]\n", (DWORD)(dbg_GetTickCount64() - tmStart), nt, wcsFileName, Offset, NumberOfBytesToWrite, *NumberOfBytesWritten);
     return nt;
 }
 
