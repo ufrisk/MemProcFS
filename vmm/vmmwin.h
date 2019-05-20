@@ -119,4 +119,60 @@ VOID VmmWin_ScanTagsMemMap(_In_ PVMM_PROCESS pProcess);
 */
 BOOL VmmWin_EnumerateEPROCESS(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fRefreshTotal);
 
+/*
+* Walk a windows linked list in an efficient way that minimize IO requests to
+* the the device. This is advantageous for latency reasons. The function return
+* a set of the addresses used - this may be used to prefetch pages in advance
+* if the list should be walked again at a later time.
+* The callback function must only return FALSE on severe errors when the list
+* should no longer be continued to be walked in the direction.
+* CALLER_DECREF: return
+* -- pProcess
+* -- ctx = ctx to pass along to callback function (if any)
+* -- vaDataStart
+* -- oListStart = offset (in bytes) to _LIST_ENTRY from vaDataStart
+* -- cbData
+* -- pfnCallback_Pre = optional callback function to gather additional addresses.
+* -- pfnCallback_Post = optional callback function called after all pages fetched into cache.
+* -- pContainerPrefetch = optional pointer to a PVMMOBCONTAINER containing a PVMMOB_DATASET of prefetch addresses to use/update.
+*/
+VOID VmmWin_ListTraversePrefetch64(
+    _In_ PVMM_PROCESS pProcess,
+    _In_opt_ PVOID ctx,
+    _In_ QWORD vaDataStart,
+    _In_ DWORD oListStart,
+    _In_ DWORD cbData,
+    _In_opt_ BOOL(*pfnCallback_Pre)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx, _In_ QWORD vaData, _In_ PBYTE pbData, _In_ DWORD cbData, _In_ PVMMOB_DATASET pSetAddress),
+    _In_opt_ BOOL(*pfnCallback_Post)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx, _In_ QWORD vaData, _In_ PBYTE pbData, _In_ DWORD cbData),
+    _In_opt_ PVMMOBCONTAINER pPrefetchAddressContainer
+);
+
+/*
+* Walk a windows linked list in an efficient way that minimize IO requests to
+* the the device. This is advantageous for latency reasons. The function return
+* a set of the addresses used - this may be used to prefetch pages in advance
+* if the list should be walked again at a later time.
+* The callback function must only return FALSE on severe errors when the list
+* should no longer be continued to be walked in the direction.
+* CALLER_DECREF: return
+* -- pProcess
+* -- ctx = ctx to pass along to callback function (if any)
+* -- vaDataStart
+* -- oListStart = offset (in bytes) to _LIST_ENTRY from vaDataStart
+* -- cbData
+* -- pfnCallback_Pre = optional callback function to gather additional addresses.
+* -- pfnCallback_Post = optional callback function called after all pages fetched into cache.
+* -- pContainerPrefetch = optional pointer to a PVMMOBCONTAINER containing a PVMMOB_DATASET of prefetch addresses to use/update.
+*/
+VOID VmmWin_ListTraversePrefetch32(
+    _In_ PVMM_PROCESS pProcess,
+    _In_opt_ PVOID ctx,
+    _In_ DWORD vaDataStart,
+    _In_ DWORD oListStart,
+    _In_ DWORD cbData,
+    _In_opt_ BOOL(*pfnCallback_Pre)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx, _In_ QWORD vaData, _In_ PBYTE pbData, _In_ DWORD cbData, _In_ PVMMOB_DATASET pSetAddress),
+    _In_opt_ BOOL(*pfnCallback_Post)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx, _In_ QWORD vaData, _In_ PBYTE pbData, _In_ DWORD cbData),
+    _In_opt_ PVMMOBCONTAINER pPrefetchAddressContainer
+);
+
 #endif /* __VMMWIN_H__ */

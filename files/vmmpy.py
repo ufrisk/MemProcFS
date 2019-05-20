@@ -12,7 +12,7 @@
 # (c) Ulf Frisk, 2018-2019
 # Author: Ulf Frisk, pcileech@frizk.net
 #
-# Header Version: 2.4
+# Header Version: 2.5
 #
 
 from vmmpyc import *
@@ -439,8 +439,60 @@ def VmmPy_ProcessGetSections(pid, module_name):
 
 
 #------------------------------------------------------------------------------
+# VmmPy Windows Registry FUNCTIONALITY BELOW:
+#------------------------------------------------------------------------------
+
+def VmmPy_WinReg_HiveList():
+    """Retrieve all registry hives and and return as list of dict.
+
+    Keyword arguments:
+    return -- list: of dict of registry hive information.
+    
+    Example:
+    VmmPy_WinReg_HiveList() --> [{'i': 0, 'va_hive': 18446631989106032640, 'va_baseblock': 18446631989106098176, 'name': '0xffff9a0f4505c000-SYSTEM-MACHINE_SYSTEM.reghive'},  ... ]
+    """
+    return VMMPYC_WinReg_HiveList()
+
+
+
+def VmmPy_WinReg_HiveRead(va_hive, address, length, flags = 0):
+    """Read from a registry hive raw memory space.
+    Note! The BaseBlock/regf header is not included in the memory space.
+
+    Keyword arguments:
+    va_hive -- int: the virtual address of the registry hive to write to.
+    address -- int: the raw registry address to read.
+    length -- int: the number of bytes to read.
+    flags -- int: optional flags as specified by VMMPY_FLAG* constants.
+    return -- bytes: memory.
+    
+    Example:
+    VmmPy_MemRead(0xfffff800acb0000, 0x1000, 4) --> b'hbin'
+    """
+    return VMMPYC_WinReg_HiveRead(va_hive, address, length, flags)
+
+
+
+def VmmPy_WinReg_HiveWrite(va_hive, address, bytes_data):
+    """Write to a registry hive raw memory space.
+    Note! The BaseBlock/regf header is not included in the memory space.
+
+    Keyword arguments:
+    va_hive -- int: the virtual address of the registry hive to write to.
+    address -- int: the raw registry address to write to.
+    bytes_data -- bytes: a bytes-like object.
+    
+    Example:
+    VmmPy_WinReg_HiveWrite(0xfffff800acb0000, 0x1000, b'\x00\x01\x02\x03')
+    """
+    VMMPYC_WinReg_HiveWrite(va_hive, address, bytes_data)
+
+
+
+#------------------------------------------------------------------------------
 # VmmPy VFS (Virtual File System) FUNCTIONALITY BELOW:
 #------------------------------------------------------------------------------
+
 def VmmPy_VfsList(path):
     """Retrieve a Virtual File System directory listing a path and return it.
 
@@ -486,6 +538,7 @@ def VmmPy_VfsWrite(path_file, bytes_data, offset = 0):
     """
     path_file = path_file.replace('/', '\\')
     VmmPy_VfsWrite(path_file, bytes_data, offset)
+
 
 
 #------------------------------------------------------------------------------

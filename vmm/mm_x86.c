@@ -7,6 +7,8 @@
 #include "vmmproc.h"
 
 #define MMX86_MEMMAP_DISPLAYBUFFER_LINE_LENGTH      70
+#define MMX86_PTE_IS_TRANSITION(pte, iPML)          (((pte & 0x0c01) == 0x0800) && (iPML == 1) && ctxVmm && (ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X86))
+#define MMX86_PTE_IS_VALID(pte, iPML)               ((pte & 0x01) || MMX86_PTE_IS_TRANSITION(pte, iPML))
 
 /*
 * Tries to verify that a loaded page table is correct. If just a bit strange
@@ -78,7 +80,7 @@ VOID MmX86_MapInitialize_Index(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MEMMAP_ENTR
     fUserOnly = pProcess->fUserOnly;
     for(i = 0; i < 1024; i++) {
         pte = PTEs[i];
-        if(!(pte & 0x01)) { continue; }
+        if(!MMX86_PTE_IS_VALID(pte, iPML)) { continue; }
         if((pte & 0xfffff000) > paMax) { continue; }
         if(fSupervisorPML) { pte = pte & 0xfffffffb; }
         if(fUserOnly && !(pte & 0x04)) { continue; }
@@ -322,8 +324,8 @@ BOOL MmX86_Virt2Phys(_In_ QWORD paPT, _In_ BOOL fUserOnly, _In_ BYTE iPML, _In_ 
     i = 0x3ff & (va >> MMX86_PAGETABLEMAP_PML_REGION_SIZE[iPML]);
     pte = pObPTEs->pdw[i];
     VmmOb_DECREF(pObPTEs);
-    if(!(pte & 0x01)) { return FALSE; }                 // NOT VALID
-    if(fUserOnly && !(pte & 0x04)) { return FALSE; }    // SUPERVISOR PAGE & USER MODE REQ
+    if(!MMX86_PTE_IS_VALID(pte, iPML)) { return FALSE; }    // NOT VALID
+    if(fUserOnly && !(pte & 0x04)) { return FALSE; }        // SUPERVISOR PAGE & USER MODE REQ
     if((iPML == 2) && !(pte & 0x80) /* PS */) {
         return MmX86_Virt2Phys(pte, fUserOnly, 1, va, ppa);
     }
@@ -332,7 +334,7 @@ BOOL MmX86_Virt2Phys(_In_ QWORD paPT, _In_ BOOL fUserOnly, _In_ BYTE iPML, _In_ 
         return TRUE;
     }
     // 4MB PAGE
-    if(pte & 0x003e0000) { return FALSE; }              // RESERVED
+    if(pte & 0x003e0000) { return FALSE; }                  // RESERVED
     *ppa = (((QWORD)(pte & 0x0001e000)) << (32 - 13)) + (pte & 0xffc00000) + (va & 0x003ff000);
     return TRUE;
 }
@@ -349,7 +351,7 @@ VOID MmX86_Virt2PhysGetInformation_DoWork(_Inout_ PVMM_PROCESS pProcess, _Inout_
     pVirt2PhysInfo->pas[iPML] = paPT;
     pVirt2PhysInfo->iPTEs[iPML] = (WORD)i;
     pVirt2PhysInfo->PTEs[iPML] = pte;
-    if(!(pte & 0x01)) { return; }                           // NOT VALID
+    if(!MMX86_PTE_IS_VALID(pte, iPML)) { return; }          // NOT VALID
     if(pProcess->fUserOnly && !(pte & 0x04)) { return; }    // SUPERVISOR PAGE & USER MODE REQ
     if(iPML == 1) {     // 4kB page
         pVirt2PhysInfo->pas[0] = pte & 0xfffff000;
@@ -360,7 +362,7 @@ VOID MmX86_Virt2PhysGetInformation_DoWork(_Inout_ PVMM_PROCESS pProcess, _Inout_
         pVirt2PhysInfo->pas[0] = (pte & 0xffc00000) + (((QWORD)(pte & 0x0001e000)) << (32 - 13));
         return;
     }
-    MmX86_Virt2PhysGetInformation_DoWork(pProcess, pVirt2PhysInfo, 1, pte & 0xffff000); // PDE
+    MmX86_Virt2PhysGetInformation_DoWork(pProcess, pVirt2PhysInfo, 1, pte & 0xfffff000); // PDE
 }
 
 VOID MmX86_Virt2PhysGetInformation(_Inout_ PVMM_PROCESS pProcess, _Inout_ PVMM_VIRT2PHYS_INFORMATION pVirt2PhysInfo)

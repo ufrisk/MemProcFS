@@ -178,6 +178,10 @@ VOID PageStatUpdate(_In_opt_ PPAGE_STATISTICS pPageStat, _In_ QWORD qwAddr, _In_
 
 const LPSTR NAMES_VMM_STATISTICS_CALL[] = {
     "INITIALIZE",
+	"PluginManager_List",
+	"PluginManager_Read",
+	"PluginManager_Write",
+	"PluginManager_Notify",
     "VMMDLL_VfsList",
     "VMMDLL_VfsRead",
     "VMMDLL_VfsWrite",
@@ -203,11 +207,11 @@ const LPSTR NAMES_VMM_STATISTICS_CALL[] = {
     "VMMDLL_WinGetThunkEAT",
     "VMMDLL_WinGetThunkIAT",
     "VMMDLL_WinMemCompression_DecompressPage",
+	"VMMDLL_WinRegHive_List",
+	"VMMDLL_WinRegHive_ReadEx",
+	"VMMDLL_WinRegHive_Write",
     "VMMDLL_Refresh",
-    "PluginManager_List",
-    "PluginManager_Read",
-    "PluginManager_Write",
-    "PluginManager_Notify"
+	"VMMDLL_UtilFillHexAscii",
 };
 
 typedef struct tdCALLSTAT {
@@ -240,17 +244,18 @@ QWORD Statistics_CallStart()
     return tmNow;
 }
 
-VOID Statistics_CallEnd(_In_ DWORD fId, QWORD tmCallStart)
+QWORD Statistics_CallEnd(_In_ DWORD fId, QWORD tmCallStart)
 {
     QWORD tmNow;
     PCALLSTAT pStat;
-    if(!ctxMain->pvStatistics) { return; }
-    if(fId > STATISTICS_ID_MAX) { return; }
-    if(tmCallStart == 0) { return; }
+    if(!ctxMain->pvStatistics) { return 0; }
+    if(fId > STATISTICS_ID_MAX) { return 0; }
+    if(tmCallStart == 0) { return 0; }
     pStat = ((PCALLSTAT)ctxMain->pvStatistics) + fId;
     InterlockedIncrement64(&pStat->c);
     QueryPerformanceCounter((PLARGE_INTEGER)&tmNow);
     InterlockedAdd64(&pStat->tm, tmNow - tmCallStart);
+    return tmNow - tmCallStart;
 }
 
 VOID Statistics_CallToString(_In_opt_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcb)

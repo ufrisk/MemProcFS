@@ -97,7 +97,7 @@ fail:
 * -- cbOffset
 * -- return
 */
-NTSTATUS M_PEDump_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS M_PEDump_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     BOOL result;
     PVMM_MODULEMAP_ENTRY pModule = NULL;
@@ -105,7 +105,7 @@ NTSTATUS M_PEDump_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ LPVOID pb, _In_ DW
     result =
         (cbOffset <= 0x02000000) &&
         VmmProc_ModuleMapGetSingleEntry((PVMM_PROCESS)ctx->pProcess, ctx->szPath, &pObModuleMap, &pModule) &&
-        PE_FileRaw_Read(ctx->pProcess, pModule->BaseAddress, (PBYTE)pb, cb, pcbRead, (DWORD)cbOffset);
+        PE_FileRaw_Read(ctx->pProcess, pModule->BaseAddress, pb, cb, pcbRead, (DWORD)cbOffset);
     VmmOb_DECREF(pObModuleMap);
     return result ? VMMDLL_STATUS_SUCCESS : VMMDLL_STATUS_FILE_INVALID;
 }
@@ -125,7 +125,7 @@ NTSTATUS M_PEDump_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ LPVOID pb, _In_ DW
 * -- cbOffset
 * -- return
 */
-NTSTATUS M_PEDump_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
+NTSTATUS M_PEDump_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
 {
     BOOL result;
     PVMM_MODULEMAP_ENTRY pModule = NULL;
@@ -133,7 +133,7 @@ NTSTATUS M_PEDump_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ LPVOID pb, _In_ DW
     result =
         (cbOffset <= 0x02000000) &&
         VmmProc_ModuleMapGetSingleEntry((PVMM_PROCESS)ctx->pProcess, ctx->szPath, &pObModuleMap, &pModule) &&
-        PE_FileRaw_Write(ctx->pProcess, pModule->BaseAddress, (PBYTE)pb, cb, pcbWrite, (DWORD)cbOffset);
+        PE_FileRaw_Write(ctx->pProcess, pModule->BaseAddress, pb, cb, pcbWrite, (DWORD)cbOffset);
     VmmOb_DECREF(pObModuleMap);
     return result ? VMMDLL_STATUS_SUCCESS : VMMDLL_STATUS_FILE_INVALID;
 }

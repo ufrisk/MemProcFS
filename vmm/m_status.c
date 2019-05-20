@@ -34,7 +34,7 @@
 * -- cbOffset
 * -- return
 */
-NTSTATUS MStatus_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MStatus_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     PVMM_PROCESS pProcess = (PVMM_PROCESS)ctx->pProcess;
     DWORD cchBuffer;
@@ -148,7 +148,7 @@ NTSTATUS MStatus_Write_NotifyVerbosityChange(_In_ NTSTATUS nt)
 * -- cbOffset
 * -- return
 */
-NTSTATUS MStatus_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
+NTSTATUS MStatus_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
 {
     PVMM_PROCESS pProcess = (PVMM_PROCESS)ctx->pProcess;
     NTSTATUS nt;

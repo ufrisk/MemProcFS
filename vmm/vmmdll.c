@@ -14,6 +14,7 @@
 #include "vmm.h"
 #include "vmmproc.h"
 #include "vmmwin.h"
+#include "vmmwinreg.h"
 #include "vmmvfs.h"
 #include "mm_x64_winpaged.h"
 
@@ -452,32 +453,32 @@ NTSTATUS VMMDLL_VfsWrite(_In_ LPCWSTR wcsFileName, _In_ LPVOID pb, _In_ DWORD cb
         VmmVfs_Write(wcsFileName, pb, cb, pcbWrite, cbOffset))
 }
 
-NTSTATUS VMMDLL_UtilVfsReadFile_FromPBYTE(_In_ PBYTE pbFile, _In_ ULONG64 cbFile, _Out_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset)
+NTSTATUS VMMDLL_UtilVfsReadFile_FromPBYTE(_In_ PBYTE pbFile, _In_ ULONG64 cbFile, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset)
 {
     return Util_VfsReadFile_FromPBYTE(pbFile, cbFile, pb, cb, pcbRead, cbOffset);
 }
 
-NTSTATUS VMMDLL_UtilVfsReadFile_FromQWORD(_In_ ULONG64 qwValue, _Out_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset, _In_ BOOL fPrefix)
+NTSTATUS VMMDLL_UtilVfsReadFile_FromQWORD(_In_ ULONG64 qwValue, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset, _In_ BOOL fPrefix)
 {
     return Util_VfsReadFile_FromQWORD(qwValue, pb, cb, pcbRead, cbOffset, fPrefix);
 }
 
-NTSTATUS VMMDLL_UtilVfsReadFile_FromDWORD(_In_ DWORD dwValue, _Out_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset, _In_ BOOL fPrefix)
+NTSTATUS VMMDLL_UtilVfsReadFile_FromDWORD(_In_ DWORD dwValue, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset, _In_ BOOL fPrefix)
 {
     return Util_VfsReadFile_FromDWORD(dwValue, pb, cb, pcbRead, cbOffset, fPrefix);
 }
 
-NTSTATUS VMMDLL_UtilVfsReadFile_FromBOOL(_In_ BOOL fValue, _Out_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset)
+NTSTATUS VMMDLL_UtilVfsReadFile_FromBOOL(_In_ BOOL fValue, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset)
 {
     return Util_VfsReadFile_FromBOOL(fValue, pb, cb, pcbRead, cbOffset);
 }
 
-NTSTATUS VMMDLL_UtilVfsWriteFile_BOOL(_Inout_ PBOOL pfTarget, _In_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ ULONG64 cbOffset)
+NTSTATUS VMMDLL_UtilVfsWriteFile_BOOL(_Inout_ PBOOL pfTarget, _In_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ ULONG64 cbOffset)
 {
     return Util_VfsWriteFile_BOOL(pfTarget, pb, cb, pcbWrite, cbOffset);
 }
 
-NTSTATUS VMMDLL_UtilVfsWriteFile_DWORD(_Inout_ PDWORD pdwTarget, _In_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ ULONG64 cbOffset, _In_ DWORD dwMinAllow)
+NTSTATUS VMMDLL_UtilVfsWriteFile_DWORD(_Inout_ PDWORD pdwTarget, _In_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ ULONG64 cbOffset, _In_ DWORD dwMinAllow)
 {
     return Util_VfsWriteFile_DWORD(pdwTarget, pb, cb, pcbWrite, cbOffset, dwMinAllow);
 }
@@ -1061,19 +1062,131 @@ ULONG64 VMMDLL_ProcessGetModuleBase(_In_ DWORD dwPID, _In_ LPSTR szModuleName)
         VMMDLL_ProcessGetModuleBase_Impl(dwPID, szModuleName))
 }
 
+
+
+//-----------------------------------------------------------------------------
+// WINDOWS SPECIFIC REGISTRY FUNCTIONALITY BELOW:
+//-----------------------------------------------------------------------------
+
+/*
+* Retrieve information about the registry hives in the target system.
+* -- pHives = buffer of cHives * sizeof(VMMDLL_REGISTRY_HIVE_INFORMATION) to receive information about all hives. NULL to receive # hives in pcHives.
+* -- cHives
+* -- pcHives = if pHives == NULL: # total hives. if pHives: # read hives.
+* -- return
+*/
+_Success_(return)
+BOOL VMMDLL_WinReg_HiveList_Impl(_Out_writes_(cHives) PVMMDLL_REGISTRY_HIVE_INFORMATION pHives, _In_ DWORD cHives, _Out_ PDWORD pcHives)
+{
+	BOOL fResult = TRUE;
+	PVMMOB_REGISTRY pObRegistry = NULL;
+	PVMMOB_REGISTRY_HIVE pObHive = NULL;
+	if(!(pObRegistry = VmmWinReg_RegistryGet())) { return FALSE; }
+	if(!pHives) {
+		*pcHives = pObRegistry->cHives;
+		goto cleanup;
+	}
+	*pcHives = 0;
+	while((pObHive = VmmWinReg_HiveGetNext(pObHive))) {
+		if(*pcHives == cHives) {
+			fResult = FALSE;
+			goto cleanup;
+		}
+		memcpy(pHives + *pcHives, pObHive, sizeof(VMMDLL_REGISTRY_HIVE_INFORMATION));
+		pHives->magic = VMMDLL_REGISTRY_HIVE_INFORMATION_MAGIC;
+		pHives->wVersion = VMMDLL_REGISTRY_HIVE_INFORMATION_VERSION;
+		pHives->wSize = sizeof(VMMDLL_REGISTRY_HIVE_INFORMATION);
+		*pcHives += 1;
+	}
+cleanup:
+	VmmOb_DECREF(pObRegistry);
+	VmmOb_DECREF(pObHive);
+	return fResult;
+}
+
+_Success_(return)
+BOOL VMMDLL_WinReg_HiveList(_Out_writes_(cHives) PVMMDLL_REGISTRY_HIVE_INFORMATION pHives, _In_ DWORD cHives, _Out_ PDWORD pcHives)
+{
+	CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+		STATISTICS_ID_VMMDLL_WinRegHive_List,
+		VMMDLL_WinReg_HiveList_Impl(pHives, cHives, pcHives))
+}
+
+/*
+* Read a contigious arbitrary amount of registry hive memory and report the
+* number of bytes read in pcbRead.
+* NB! Address space does not include regf registry hive file header!
+* -- vaCMHive
+* -- ra
+* -- pb
+* -- cb
+* -- pcbRead
+* -- flags = flags as in VMMDLL_FLAG_*
+*/
+_Success_(return)
+BOOL VMMDLL_WinReg_HiveReadEx_Impl(_In_ ULONG64 vaCMHive, _In_ DWORD ra, _Out_ PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbReadOpt, _In_ ULONG64 flags)
+{
+	PVMMOB_REGISTRY_HIVE pObHive = VmmWinReg_HiveGetByAddress(vaCMHive);
+	if(!pObHive) { return FALSE; }
+	VmmWinReg_HiveReadEx(pObHive, ra, pb, cb, pcbReadOpt, flags);
+	VmmOb_DECREF(pObHive);
+	return TRUE;
+}
+
+_Success_(return)
+BOOL VMMDLL_WinReg_HiveReadEx(_In_ ULONG64 vaCMHive, _In_ DWORD ra, _Out_ PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbReadOpt, _In_ ULONG64 flags)
+{
+	CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+		STATISTICS_ID_VMMDLL_WinRegHive_ReadEx,
+		VMMDLL_WinReg_HiveReadEx_Impl(vaCMHive, ra, pb, cb, pcbReadOpt, flags))
+}
+
+/*
+* Write a virtually contigious arbitrary amount of memory to a registry hive.
+* NB! Address space does not include regf registry hive file header!
+* -- vaCMHive
+* -- ra
+* -- pb
+* -- cb
+* -- return = TRUE on success, FALSE on partial or zero write.
+*/
+_Success_(return)
+BOOL VMMDLL_WinReg_HiveWrite_Impl(_In_ ULONG64 vaCMHive, _In_ DWORD ra, _In_ PBYTE pb, _In_ DWORD cb)
+{
+	BOOL f;
+	PVMMOB_REGISTRY_HIVE pObHive = VmmWinReg_HiveGetByAddress(vaCMHive);
+	if(!pObHive) { return FALSE; }
+	f = VmmWinReg_HiveWrite(pObHive, ra, pb, cb);
+	VmmOb_DECREF(pObHive);
+	return f;
+}
+
+_Success_(return)
+BOOL VMMDLL_WinReg_HiveWrite(_In_ ULONG64 vaCMHive, _In_ DWORD ra, _In_ PBYTE pb, _In_ DWORD cb)
+{
+	CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+		STATISTICS_ID_VMMDLL_WinRegHive_Write,
+		VMMDLL_WinReg_HiveWrite_Impl(vaCMHive, ra, pb, cb))
+}
+
+
+
+//-----------------------------------------------------------------------------
+// WINDOWS SPECIFIC UTILITY FUNCTIONS BELOW:
+//-----------------------------------------------------------------------------
+
 _Success_(return)
 BOOL VMMDLL_WinGetThunkInfoEAT_Impl(_In_ DWORD dwPID, _In_ LPSTR szModuleName, _In_ LPSTR szExportFunctionName, _Out_ PVMMDLL_WIN_THUNKINFO_EAT pThunkInfoEAT)
 {
-    BOOL result;
+    BOOL f;
     VMMDLL_MODULEMAP_ENTRY oModuleEntry = { 0 };
     PVMM_PROCESS pObProcess = NULL;
     pObProcess = VmmProcessGet(dwPID);
-    if(!pObProcess) { return 0; }
-    if(VMMDLL_ProcessGetModuleFromName_Impl(dwPID, szModuleName, &oModuleEntry)) {
-        result = PE_GetThunkInfoEAT(pObProcess, oModuleEntry.BaseAddress, szExportFunctionName, (PPE_THUNKINFO_EAT)pThunkInfoEAT);
-    }
+    if(!pObProcess) { return FALSE; }
+	f = VMMDLL_ProcessGetModuleFromName_Impl(dwPID, szModuleName, &oModuleEntry) &&
+		PE_GetThunkInfoEAT(pObProcess, oModuleEntry.BaseAddress, szExportFunctionName, (PPE_THUNKINFO_EAT)pThunkInfoEAT);
     VmmOb_DECREF(pObProcess);
-    return result;
+    return f;
 }
 
 _Success_(return)
@@ -1116,8 +1229,16 @@ BOOL VMMDLL_WinMemCompression_DecompressPage(_In_ ULONG64 vaCompressedData, _In_
         MmX64WinPaged_MemCompression_DecompressPage(vaCompressedData, cbCompressedData, pbDecompressedPage, pcbCompressedData))
 }
 
+
+
+//-----------------------------------------------------------------------------
+// VMM UTIL FUNCTIONALITY BELOW:
+//-----------------------------------------------------------------------------
+
 _Success_(return)
 BOOL VMMDLL_UtilFillHexAscii(_In_ PBYTE pb, _In_ DWORD cb, _In_ DWORD cbInitialOffset, _Inout_opt_ LPSTR sz, _Out_ PDWORD pcsz)
 {
-    return Util_FillHexAscii(pb, cb, cbInitialOffset, sz, pcsz);
+	CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+		STATISTICS_ID_VMMDLL_UtilFillHexAscii,
+		Util_FillHexAscii(pb, cb, cbInitialOffset, sz, pcsz))
 }

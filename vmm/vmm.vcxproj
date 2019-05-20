@@ -121,6 +121,7 @@ copy $(ProjectDir)\vmmdll.h $(SolutionDir)\files\ /y</Command>
     <ClInclude Include="mm_x86pae.h" />
     <ClInclude Include="m_pedump.h" />
     <ClInclude Include="m_status.h" />
+    <ClInclude Include="m_winreg.h" />
     <ClInclude Include="pe.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="statistics.h" />
@@ -135,6 +136,7 @@ copy $(ProjectDir)\vmmdll.h $(SolutionDir)\files\ /y</Command>
     <ClInclude Include="vmmvfs.h" />
     <ClInclude Include="m_virt2phys.h" />
     <ClInclude Include="vmmwininit.h" />
+    <ClInclude Include="vmmwinreg.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="mm_x64.c" />
@@ -143,6 +145,7 @@ copy $(ProjectDir)\vmmdll.h $(SolutionDir)\files\ /y</Command>
     <ClCompile Include="mm_x86pae.c" />
     <ClCompile Include="m_pedump.c" />
     <ClCompile Include="m_status.c" />
+    <ClCompile Include="m_winreg.c" />
     <ClCompile Include="pe.c" />
     <ClCompile Include="statistics.c" />
     <ClCompile Include="util.c" />
@@ -155,6 +158,7 @@ copy $(ProjectDir)\vmmdll.h $(SolutionDir)\files\ /y</Command>
     <ClCompile Include="pluginmanager.c" />
     <ClCompile Include="m_virt2phys.c" />
     <ClCompile Include="vmmwininit.c" />
+    <ClCompile Include="vmmwinreg.c" />
   </ItemGroup>
   <ItemGroup>
     <None Include="vmmdll.def" />

@@ -45,6 +45,10 @@ EXPORTS
 	VMMDLL_WinGetThunkInfoIAT
 	VMMDLL_WinGetThunkInfoEAT
 
+	VMMDLL_WinReg_HiveList
+	VMMDLL_WinReg_HiveReadEx
+	VMMDLL_WinReg_HiveWrite
+
 	VMMDLL_WinMemCompression_DecompressPage
 
     VMMDLL_UtilFillHexAscii

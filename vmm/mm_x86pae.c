@@ -7,6 +7,8 @@
 #include "vmmproc.h"
 
 #define MMX86PAE_MEMMAP_DISPLAYBUFFER_LINE_LENGTH      70
+#define MMX86PAE_PTE_IS_TRANSITION(pte, iPML)          (((pte & 0x0c01) == 0x0800) && (iPML == 1) && ctxVmm && (ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X86))
+#define MMX86PAE_PTE_IS_VALID(pte, iPML)               ((pte & 0x01) || MMX86PAE_PTE_IS_TRANSITION(pte, iPML))
 
 /*
 * Tries to verify that a loaded page table is correct. If just a bit strange
@@ -125,7 +127,7 @@ VOID MmX86PAE_MapInitialize_Index(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MEMMAP_E
     for(i = 0; i < 512; i++) {
         if((iPML == 3) && (i > 3)) { break; }                      // MAX 4 ENTRIES IN PDPT
         pte = PTEs[i];
-        if(!(pte & 0x01)) { continue; }
+        if(!MMX86PAE_PTE_IS_VALID(pte, iPML)) { continue; }
         if((pte & 0x0000fffffffff000) > paMax) { continue; }
         if(iPML == 3) {
             // PDPT: (iPML = 3)
@@ -379,28 +381,28 @@ BOOL MmX86PAE_Virt2Phys(_In_ QWORD paPT, _In_ BOOL fUserOnly, _In_ BYTE iPML, _I
     i = 0x1ff & (va >> MMX86PAE_PAGETABLEMAP_PML_REGION_SIZE[iPML]);
     if(iPML == 3) {
         // PDPT
-        if(i > 3) {                                     // MAX 4 ENTRIES IN PDPT
+        if(i > 3) {											// MAX 4 ENTRIES IN PDPT
             VmmOb_DECREF(pObPTEs);
             return FALSE;
         }                     
-        pbPTEs = pObPTEs->pb + (paPT & 0xfe0);          // ADJUST PDPT TO 32-BYTE BOUNDARY
+        pbPTEs = pObPTEs->pb + (paPT & 0xfe0);				// ADJUST PDPT TO 32-BYTE BOUNDARY
         pte = ((PQWORD)pbPTEs)[i];
         VmmOb_DECREF(pObPTEs);
-        if(!(pte & 0x01)) { return FALSE; }             // NOT VALID
-        if(pte & 0xffff0000000001e6) { return FALSE; }  // RESERVED BITS IN PDPTE
+        if(!(pte & 0x01)) { return FALSE; }					// NOT VALID
+        if(pte & 0xffff0000000001e6) { return FALSE; }		// RESERVED BITS IN PDPTE
         return MmX86PAE_Virt2Phys(pte, fUserOnly, 2, va, ppa);
     }
     // PT or PD
     pte = pObPTEs->pqw[i];
     VmmOb_DECREF(pObPTEs);
-    if(!(pte & 0x01)) { return FALSE; }                 // NOT VALID
-    if(fUserOnly && !(pte & 0x04)) { return FALSE; }    // SUPERVISOR PAGE & USER MODE REQ
-    if(pte & 0x000f000000000000) { return FALSE; }      // RESERVED
+    if(!MMX86PAE_PTE_IS_VALID(pte, iPML)) { return FALSE; }	// NOT VALID
+    if(fUserOnly && !(pte & 0x04)) { return FALSE; }		// SUPERVISOR PAGE & USER MODE REQ
+    if(pte & 0x000f000000000000) { return FALSE; }			// RESERVED
     if((iPML == 1) || (pte & 0x80) /* PS */) {
         qwMask = 0xffffffffffffffff << MMX86PAE_PAGETABLEMAP_PML_REGION_SIZE[iPML];
-        *ppa = pte & 0x0000fffffffff000 & qwMask;       // MASK AWAY BITS FOR 4kB/2MB/1GB PAGES
+        *ppa = pte & 0x0000fffffffff000 & qwMask;			// MASK AWAY BITS FOR 4kB/2MB/1GB PAGES
         qwMask = qwMask ^ 0xffffffffffffffff;
-        *ppa = *ppa | (qwMask & va);                    // FILL LOWER ADDRESS BITS
+        *ppa = *ppa | (qwMask & va);						// FILL LOWER ADDRESS BITS
         return TRUE;
     }
     return MmX86PAE_Virt2Phys(pte, fUserOnly, 1, va, ppa);
@@ -415,7 +417,7 @@ VOID MmX86PAE_Virt2PhysGetInformation_DoWork(_Inout_ PVMM_PROCESS pProcess, _Ino
     pte = PTEs[i];
     pVirt2PhysInfo->iPTEs[iPML] = (WORD)i;
     pVirt2PhysInfo->PTEs[iPML] = pte;
-    if(!(pte & 0x01)) { return; }                               // NOT VALID
+    if(!MMX86PAE_PTE_IS_VALID(pte, iPML)) { return; }           // NOT VALID
     if(iPML == 3) {
         // PDPT: (iPML = 3)
         if(pte & 0xffff0000000001e6) { return; }                // RESERVED BITS IN PDPTE

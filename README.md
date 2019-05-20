@@ -159,3 +159,8 @@ v2.3
 v2.4
 * Bug fixes.
 * New module: [PEDump](https://github.com/ufrisk/MemProcFS/wiki/FS_Process_PEDump) - best-effort reconstructed PE modules (.exe, .dll and .sys files) in process pedump sub-folder.
+
+v2.5
+* Performance optimizations.
+* Windows transition page support.
+* New module: [Registry](https://github.com/ufrisk/MemProcFS/wiki/FS_Registry) - best-effort reconstructed registry hives in the registry/hive_files/ sub-folder.

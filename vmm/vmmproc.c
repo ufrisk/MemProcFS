@@ -8,6 +8,7 @@
 #include "vmmproc.h"
 #include "vmmwin.h"
 #include "vmmwininit.h"
+#include "vmmwinreg.h"
 #include "pluginmanager.h"
 #include "statistics.h"
 #include "util.h"
@@ -62,6 +63,9 @@ BOOL VmmProc_RefreshProcesses(_In_ BOOL fRefreshTotal)
         }
         result = VmmWin_EnumerateEPROCESS(pObProcessSystem, fRefreshTotal);
         VmmOb_DECREF(pObProcessSystem);
+        if(fRefreshTotal) {
+            VmmWinReg_Refresh();
+        }
     }
     return TRUE;
 }

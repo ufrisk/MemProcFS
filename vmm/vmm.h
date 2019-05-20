@@ -86,8 +86,16 @@ typedef struct tdVMM_MODULEMAP_ENTRY {
     DWORD cbFileSizeRaw;
 } VMM_MODULEMAP_ENTRY, *PVMM_MODULEMAP_ENTRY;
 
+typedef struct tdVMMOB_RESERVED_HEADER {
+    DWORD magic;                        // magic value - VMMOB_HEADER_MAGIC
+    WORD count;                         // reference count
+    WORD tag;                           // tag - 2 chars, no null terminator
+    VOID(*pfnRef_0)(_In_ PVOID pVmmOb); // callback - object specific cleanup before free
+    VOID(*pfnRef_1)(_In_ PVOID pVmmOb); // callback - when object reach refcount 1 (not initial)
+} VMMOB_RESERVED_HEADER;
+
 typedef struct tdVMMOB {
-    BYTE Reserved[0x1c];
+    VMMOB_RESERVED_HEADER Reserved;
     DWORD cbData;
 } VMMOB, *PVMMOB;
 
@@ -102,7 +110,7 @@ typedef struct tdVMMDATALIST {
 } VMMDATALIST, *PVMMDATALIST;
 
 typedef struct tdVMMOB_DATA {
-    BYTE Reserved[0x1c];
+    VMMOB_RESERVED_HEADER Reserved;
     DWORD cbData;
     union {
         BYTE pbData[];
@@ -122,7 +130,7 @@ typedef struct tdVMMOB_DATASET {
 } VMMOB_DATASET, *PVMMOB_DATASET;
 
 typedef struct tdVMMOB_MEMMAP {
-    BYTE Reserved[0x1c];
+    VMMOB_RESERVED_HEADER Reserved;
     DWORD cbData;
     BOOL fValid;                // map is valid (did not fail initialization)
     BOOL fTagModules;           // map contains tags from modules.
@@ -134,7 +142,7 @@ typedef struct tdVMMOB_MEMMAP {
 } VMMOB_MEMMAP, *PVMMOB_MEMMAP;
 
 typedef struct tdVMMOB_MODULEMAP {
-    BYTE Reserved[0x1c];
+    VMMOB_RESERVED_HEADER Reserved;
     DWORD cbData;
     BOOL fValid;                // map is valid (did not fail initialization).
     DWORD cMap;                 // # map entries.
@@ -186,6 +194,29 @@ typedef struct tdVMM_PROCESS {
         VMMOBCONTAINER ObCPeDumpDirCache;
     } Plugin;
 } VMM_PROCESS, *PVMM_PROCESS;
+
+typedef struct td_VMMOB_REGISTRY_HIVE {
+    VMMOB ObHdr;
+    QWORD vaCMHIVE;
+    QWORD vaHBASE_BLOCK;
+    DWORD cbLength;
+	CHAR szName[136 + 1];
+	WCHAR wszNameShort[32 + 1];
+	WCHAR wszHiveRootPath[MAX_PATH];
+	QWORD _FutureReserved[0x10];
+    QWORD vaHMAP_DIRECTORY;
+    QWORD vaHMAP_TABLE_SmallDir;
+    struct td_VMMOB_REGISTRY_HIVE *FLink;
+} VMMOB_REGISTRY_HIVE, *PVMMOB_REGISTRY_HIVE;
+
+typedef struct td_VMMOB_REGISTRY {
+    VMMOB ObHdr;
+    BOOL fValid;
+    DWORD cHives;
+    PVMMOB_REGISTRY_HIVE pHiveList;
+    BOOL fRefreshRequired;
+    CRITICAL_SECTION LockRefresh;
+} VMMOB_REGISTRY, *PVMMOB_REGISTRY;
 
 #define VMM_CACHE2_REGIONS      17
 #define VMM_CACHE2_BUCKETS      2039
@@ -294,6 +325,34 @@ typedef struct tdVMM_WIN_EPROCESS_OFFSET {
     WORD DTB_User;
 } VMM_WIN_EPROCESS_OFFSET, *PVMM_WIN_EPROCESS_OFFSET;
 
+typedef struct tdVMMWIN_REGISTRY_OFFSET {
+    QWORD vaHintCMHIVE;
+    struct {
+        WORD Signature;
+        WORD FLink;
+        WORD Length;
+        WORD StorageMap;
+        WORD StorageSmallDir;
+        WORD BaseBlock;
+        WORD FileFullPathOpt;
+        WORD FileUserNameOpt;
+        WORD HiveRootPathOpt;
+        WORD _Size;
+    } CM;
+    struct {
+        WORD Signature;
+        WORD Length;
+        WORD Major;
+        WORD Minor;
+        WORD FileName;
+    } BB;
+    struct {
+        WORD BlkA;
+        WORD HBin;
+        WORD _Size;
+    } HE;
+} VMMWIN_REGISTRY_OFFSET, *PVMMWIN_REGISTRY_OFFSET;
+
 typedef struct tdVMM_KERNELINFO {
     QWORD paDTB;
     QWORD vaBase;
@@ -304,6 +363,7 @@ typedef struct tdVMM_KERNELINFO {
     QWORD vaPsLoadedModuleList;
     QWORD vaKDBG;
     DWORD dwPidMemCompression;
+    DWORD dwPidRegistry;
 } VMM_KERNELINFO;
 
 typedef NTSTATUS VMMFN_RtlDecompressBuffer(
@@ -340,9 +400,12 @@ typedef struct tdVMM_CONTEXT {
     } ThreadProcCache;
     VMM_STATISTICS stat;
     VMM_KERNELINFO kernel;
+    VMMOBCONTAINER ObCRegistry;
+    VMMWIN_REGISTRY_OFFSET RegistryOffset;
     VMM_DYNAMIC_LOAD_FUNCTIONS fn;
     PVOID pVmmVfsModuleList;
-    VMMOBCONTAINER ObCEPROCESSCachePrefetch;
+    VMMOBCONTAINER ObCCachePrefetchEPROCESS;
+    VMMOBCONTAINER ObCCachePrefetchRegistry;
     VMM_CACHE_TABLE PHYS;
     VMM_CACHE_TABLE TLB;
 } VMM_CONTEXT, *PVMM_CONTEXT;
@@ -449,6 +512,20 @@ PVOID VmmOb_INCREF(PVOID pVmmOb);
 VOID VmmOb_DECREF(PVOID pVmmOb);
 
 /*
+* Decrease the reference count of a vmm object manager object. If the reference
+* count reaches zero the object will be cleaned up.
+* Also set the incoming pointer to NULL.
+* -- pVmmOb
+*/
+inline VOID VmmOb_DECREF_NULL(PVOID *ppVmmOb)
+{
+    if(ppVmmOb) {
+        VmmOb_DECREF(*ppVmmOb);
+        *ppVmmOb = NULL;
+    }
+}
+
+/*
 * Retrieve an enclosed VmmOb from the given pVmmObContainer. Reference count
 * of the retrieved VmmOb must be decremented by caller after use is completed!
 */
@@ -469,12 +546,23 @@ PVMMOB_DATASET VmmObDataSet_Alloc(_In_ BOOL fUnique);
 
 /*
 * Insert a value into a VmmObDataSet.
-* This function is not meant to be called in a multi-threaded context.
+* NB! This function is NOT to be called in a multi-threaded context.
 * -- pDataSet
 * -- v
 * -- return = insertion was successful.
 */
 BOOL VmmObDataSet_Put(_In_ PVMMOB_DATASET pDataSet, _In_ QWORD v);
+
+/*
+* Insert a value representing an address into VmmObDataSet. If the length of
+* the data read from the start of the address a traverses page boundries all
+* the pages are inserted into the set.
+* NB! This function is NOT to be called in a multi-threaded context.
+* -- pDataSet
+* -- a
+* -- cb
+*/
+VOID VmmObDataSet_Put_AddressPageAlign(_In_ PVMMOB_DATASET pDataSet, _In_ QWORD a, _In_ DWORD cb);
 
 
 // ----------------------------------------------------------------------------
@@ -786,6 +874,15 @@ VOID VmmCacheInvalidate(_In_ QWORD pa);
 * -- pObPrefetchAddresses
 */
 VOID VmmCachePrefetchPages(_In_opt_ PVMM_PROCESS pProcess, _In_opt_ PVMMOB_DATASET pObPrefetchAddresses);
+
+/*
+* Prefetch a set of addresses. This is useful when reading data from somewhat
+* known addresses over higher latency connections.
+* -- pProcess
+* -- cAddresses
+* -- ... = varargs of total cAddresses of addresses of type QWORD.
+*/
+VOID VmmCachePrefetchPages2(_In_opt_ PVMM_PROCESS pProcess, _In_ DWORD cAddresses, ...);
 
 /*
 * Initialize the memory model specified and discard any previous memory models

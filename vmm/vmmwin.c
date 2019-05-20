@@ -903,7 +903,7 @@ VOID VmmWin_OffsetLocatorEPROCESS64(_In_ PVMM_PROCESS pSystemProcess)
     ZeroMemory(pOffsetEPROCESS, sizeof(VMM_WIN_EPROCESS_OFFSET));
     if(!VmmRead(pSystemProcess, pSystemProcess->os.win.vaEPROCESS, pb0, VMMPROC_EPROCESS_MAX_SIZE)) { return; }
     if(ctxMain->cfg.fVerboseExtra) {
-        vmmprintf_fn("%016llx %016llx\n", pSystemProcess->paDTB, pSystemProcess->os.win.vaEPROCESS);
+        vmmprintf_fn("SYSTEM DTB: %016llx EPROCESS: %016llx\n", pSystemProcess->paDTB, pSystemProcess->os.win.vaEPROCESS);
         Util_PrintHexAscii(pb0, VMMPROC_EPROCESS_MAX_SIZE, 0);
     }
     // find offset State (static for now)
@@ -995,7 +995,7 @@ VOID VmmWin_OffsetLocatorEPROCESS64(_In_ PVMM_PROCESS pSystemProcess)
         }
     }
     vmmprintfvv_fn(
-        "PID: %x STATE: %x DTB: %x DTB_User: %x NAME: %x PEB: %x FLink: %x\n",
+        "PID: %03x STATE: %03x DTB: %03x DTB_User: %03x NAME: %03x PEB: %03x FLink: %03x\n",
         pOffsetEPROCESS->PID,
         pOffsetEPROCESS->State,
         pOffsetEPROCESS->DTB,
@@ -1007,6 +1007,83 @@ VOID VmmWin_OffsetLocatorEPROCESS64(_In_ PVMM_PROCESS pSystemProcess)
     pOffsetEPROCESS->fValid = TRUE;
 }
 
+typedef struct tdVMMWIN_ENUMERATE_EPROCESS_CONTEXT {
+    DWORD cProc;
+    BOOL fTotalRefresh;
+    BOOL fShowTerminated;
+    DWORD cNewProcessCollision;
+    PVMMOB_DATASET pObSetPrefetchDTB;
+} VMMWIN_ENUMERATE_EPROCESS_CONTEXT, *PVMMWIN_ENUMERATE_EPROCESS_CONTEXT;
+
+BOOL VmmWin_EnumEPROCESS64_Pre(_In_ PVMM_PROCESS pProcessSystem, _In_opt_ PVMMWIN_ENUMERATE_EPROCESS_CONTEXT ctx, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb, _In_ PVMMOB_DATASET pSetAddress)
+{
+    if(!ctx || ((va & 0xffff8000'0000000f) != 0xffff8000'00000000)) { return FALSE; }
+    VmmObDataSet_Put(ctx->pObSetPrefetchDTB, *(PQWORD)(pb + ctxVmm->kernel.OffsetEPROCESS.DTB) & ~0xfff);
+    return TRUE;
+}
+
+BOOL VmmWin_EnumEPROCESS64_Post(_In_ PVMM_PROCESS pProcessSystem, _In_opt_ PVMMWIN_ENUMERATE_EPROCESS_CONTEXT ctx, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb)
+{
+    PVMM_WIN_EPROCESS_OFFSET po = &ctxVmm->kernel.OffsetEPROCESS;
+    PQWORD pqwDTB, pqwDTB_User, pqwPEB;
+    PDWORD pdwState, pdwPID;
+    LPSTR szName;
+    BOOL fUser;
+    PVMM_PROCESS pObProcess = NULL;
+    if(!ctx || ((va & 0xffff8000'0000000f) != 0xffff8000'00000000)) { return FALSE; }
+    pdwState = (PDWORD)(pb + po->State);
+    pdwPID = (PDWORD)(pb + po->PID);
+    pqwDTB = (PQWORD)(pb + po->DTB);
+    pqwDTB_User = (PQWORD)(pb + po->DTB_User);
+    szName = (LPSTR)(pb + po->Name);
+    pqwPEB = (PQWORD)(pb + po->PEB);
+    if(*pqwDTB & 0xffffff00'00000000) { return TRUE; }   // NB! Fail if target system have more than 1TB of memory (unlikely)
+    if(ctx->pObSetPrefetchDTB) {    // prefetch any physical pages in ctx->pObSetPrefetchDTB on 1st run only
+        VmmCachePrefetchPages(NULL, ctx->pObSetPrefetchDTB);
+        VmmOb_DECREF_NULL(&ctx->pObSetPrefetchDTB);
+    }
+    if(*pqwDTB && *(PQWORD)szName && (ctx->fShowTerminated || !*pdwState)) {
+        fUser =
+            !((*pdwPID == 4) || ((*pdwState == 0) && (*pqwPEB == 0))) ||
+            ((*(PQWORD)(szName + 0x00) == 0x72706d6f436d654d) && (*(PDWORD)(szName + 0x08) == 0x69737365));     // MemCompression "process"
+        pObProcess = VmmProcessCreateEntry(
+            ctx->fTotalRefresh,
+            *pdwPID,
+            *pdwState,
+            ~0xfff & *pqwDTB,
+            po->DTB_User ? (~0xfff & *pqwDTB_User) : 0,
+            szName,
+            fUser);
+        if(!pObProcess) {
+            vmmprintfv("VMM: WARNING: PID '%i' already exists.\n", *pdwPID);
+            if(++ctx->cNewProcessCollision >= 8) {
+                return TRUE;
+            }
+        }
+    }
+    if(pObProcess) {
+        pObProcess->os.win.vaEPROCESS = va;
+        if(*pqwPEB % PAGE_SIZE) {
+            vmmprintfv("VMM: WARNING: Bad PEB alignment for PID: '%i' (0x%016llx).\n", *pdwPID, *pqwPEB);
+        } else {
+            pObProcess->os.win.vaPEB = *pqwPEB;
+        }
+    } else {
+        szName[14] = 0; // in case of bad string data ...
+    }
+    vmmprintfvv_fn("%04i (%s) %08x %012llx %016llx %012llx %s\n",
+        ctx->cProc,
+        pObProcess ? "list" : "skip",
+        *pdwPID,
+        ~0xfff & *pqwDTB,
+        va,
+        *pqwPEB,
+        szName);
+    VmmOb_DECREF_NULL(&pObProcess);
+    ctx->cProc++;
+    return TRUE;
+}
+
 /*
 * Try walk the EPROCESS list in the Windows kernel to enumerate processes into
 * the VMM/PROC file system.
@@ -1014,103 +1091,38 @@ VOID VmmWin_OffsetLocatorEPROCESS64(_In_ PVMM_PROCESS pSystemProcess)
 * -- pSystemProcess
 * -- return
 */
-BOOL VmmWin_EnumerateEPROCESS64(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fTotalRefresh)
+BOOL VmmWin_EnumEPROCESS64(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fTotalRefresh)
 {
-    PQWORD pqwDTB, pqwDTB_User, pqwFLink, pqwBLink, pqwPEB;
-    PDWORD pdwState, pdwPID;
-    LPSTR szName;
-    BYTE pb[VMMPROC_EPROCESS_MAX_SIZE];
-    PVMM_PROCESS pObProcess = NULL;
-    QWORD vaSystemEPROCESS, vaEPROCESS, cNewProcessCollision = 0;
-    DWORD iProc = 0;
-    BOOL fShowTerminated, fUser;
-    PVMM_WIN_EPROCESS_OFFSET pOffsetEPROCESS = &ctxVmm->kernel.OffsetEPROCESS;
-    PVMMOB_DATASET pObSetAddressEPROCESS = NULL;
-    fShowTerminated = ctxVmm->flags & VMM_FLAG_PROCESS_SHOW_TERMINATED;
-    vaSystemEPROCESS = pSystemProcess->os.win.vaEPROCESS;
+    PVMM_WIN_EPROCESS_OFFSET po = &ctxVmm->kernel.OffsetEPROCESS;
+    VMMWIN_ENUMERATE_EPROCESS_CONTEXT ctx = { 0 };
     // retrieve offsets
-    if(!pOffsetEPROCESS->fValid) {
+    if(!po->fValid) {
         VmmWin_OffsetLocatorEPROCESS64(pSystemProcess);
-        if(!pOffsetEPROCESS->fValid) {
-            vmmprintf("VmmProc: Unable to locate EPROCESS offsets.\n");
+        if(!po->fValid) {
+            vmmprintf("VmmWin: Unable to locate EPROCESS offsets.\n");
             return FALSE;
         }
     }
-    vmmprintfvv_fn("%016llx %016llx\n", pSystemProcess->paDTB, vaSystemEPROCESS);
-    pdwState = (PDWORD)(pb + pOffsetEPROCESS->State);
-    pdwPID = (PDWORD)(pb + pOffsetEPROCESS->PID);
-    pqwDTB = (PQWORD)(pb + pOffsetEPROCESS->DTB);
-    pqwDTB_User = (PQWORD)(pb + pOffsetEPROCESS->DTB_User);
-    pqwFLink = (PQWORD)(pb + pOffsetEPROCESS->FLink);
-    pqwBLink = (PQWORD)(pb + pOffsetEPROCESS->BLink);
-    szName = (LPSTR)(pb + pOffsetEPROCESS->Name);
-    pqwPEB = (PQWORD)(pb + pOffsetEPROCESS->PEB);
-    // prefetch pages into cache (if any)
-    pObSetAddressEPROCESS = VmmObContainer_GetOb(&ctxVmm->ObCEPROCESSCachePrefetch);
-    VmmCachePrefetchPages(pSystemProcess, pObSetAddressEPROCESS);
-    VmmOb_DECREF(pObSetAddressEPROCESS);
-    // initialize address set
-    if(!(pObSetAddressEPROCESS = VmmObDataSet_Alloc(TRUE))) { return FALSE; }
-    VmmObDataSet_Put(pObSetAddressEPROCESS, vaSystemEPROCESS);
-    // loop!
-    vmmprintfvv_fn("   # STATE  PID      DTB          EPROCESS         PEB          NAME  \n");
-    for(iProc = 0; iProc < pObSetAddressEPROCESS->c; iProc++) {
-        vaEPROCESS = pObSetAddressEPROCESS->pObData->pList[iProc].Value;
-        if(!VmmRead(pSystemProcess, vaEPROCESS, pb, pOffsetEPROCESS->cbMaxOffset)) { continue; }
-        if(*pqwDTB & 0xffffff0000000000) { continue; }
-        VmmOb_DECREF(pObProcess);
-        pObProcess = NULL;
-        if(*pqwDTB && *(PQWORD)szName && (fShowTerminated || !*pdwState)) {
-            fUser = 
-                !((*pdwPID == 4) || ((*pdwState == 0) && (*pqwPEB == 0))) ||
-                ((*(PQWORD)(szName + 0x00) == 0x7972747369676552) && (*(PDWORD)(szName + 0x08) == 0x00000000)) ||   // Registry "process"
-                ((*(PQWORD)(szName + 0x00) == 0x72706d6f436d654d) && (*(PDWORD)(szName + 0x08) == 0x69737365));     // MemCompression "process"
-            pObProcess = VmmProcessCreateEntry(
-                fTotalRefresh,
-                *pdwPID,
-                *pdwState,
-                ~0xfff & *pqwDTB,
-                pOffsetEPROCESS->DTB_User ? (~0xfff & *pqwDTB_User) : 0,
-                szName,
-                fUser);
-            if(!pObProcess) {
-                vmmprintfv("VMM: WARNING: PID '%i' already exists.\n", *pdwPID);
-                if(++cNewProcessCollision >= 8) {
-                    continue;
-                }
-            }
-        }
-        if(pObProcess) {
-            pObProcess->os.win.vaEPROCESS = vaEPROCESS;
-            if(*pqwPEB % PAGE_SIZE) {
-                vmmprintfv("VMM: WARNING: Bad PEB alignment for PID: '%i' (0x%016llx).\n", *pdwPID, *pqwPEB);
-            } else {
-                pObProcess->os.win.vaPEB = *pqwPEB;
-            }
-        } else {
-            szName[14] = 0; // in case of bad string data ...
-        }
-        vmmprintfvv_fn("%04i (%s) %08x %012llx %016llx %012llx %s\n",
-            iProc,
-            pObProcess ? "list" : "skip",
-            *pdwPID,
-            ~0xfff & *pqwDTB,
-            vaEPROCESS,
-            *pqwPEB,
-            szName);
-        // Add FLink & BLink
-        if(0xffff800000000000 == (0xffff800000000007 & *pqwFLink)) {
-            VmmObDataSet_Put(pObSetAddressEPROCESS, *pqwFLink - pOffsetEPROCESS->FLink);
-        }
-        if(0xffff800000000000 == (0xffff800000000007 & *pqwBLink)) {
-            VmmObDataSet_Put(pObSetAddressEPROCESS, *pqwBLink - pOffsetEPROCESS->FLink);
-        }
-    }
-    VmmObContainer_SetOb(&ctxVmm->ObCEPROCESSCachePrefetch, pObSetAddressEPROCESS);
-    VmmOb_DECREF(pObSetAddressEPROCESS);
-    VmmOb_DECREF(pObProcess);
+    vmmprintfvv_fn("SYSTEM DTB: %016llx EPROCESS: %016llx\n", pSystemProcess->paDTB, pSystemProcess->os.win.vaEPROCESS);
+    // set up context
+    ctx.fTotalRefresh = fTotalRefresh;
+    ctx.fShowTerminated = ctxVmm->flags & VMM_FLAG_PROCESS_SHOW_TERMINATED;
+    if(!(ctx.pObSetPrefetchDTB = VmmObDataSet_Alloc(TRUE))) { return FALSE; }
+    // traverse EPROCESS linked list
+    vmmprintfvv_fn("        # STATE  PID      DTB          EPROCESS         PEB          NAME  \n");
+    VmmWin_ListTraversePrefetch64(
+        pSystemProcess,
+        &ctx,
+        pSystemProcess->os.win.vaEPROCESS,
+        ctxVmm->kernel.OffsetEPROCESS.FLink,
+        ctxVmm->kernel.OffsetEPROCESS.cbMaxOffset + 0x20,
+        VmmWin_EnumEPROCESS64_Pre,
+        VmmWin_EnumEPROCESS64_Post,
+        &ctxVmm->ObCCachePrefetchEPROCESS);
+    // set resulting prefetch cache
+    VmmOb_DECREF_NULL(&ctx.pObSetPrefetchDTB);
     VmmProcessCreateFinish();
-    return (iProc > 10);
+    return (ctx.cProc > 10);
 }
 
 /*
@@ -1129,7 +1141,7 @@ VOID VmmWin_OffsetLocatorEPROCESS32(_In_ PVMM_PROCESS pSystemProcess)
     //QWORD paMax, paDTB_0, paDTB_1;
     if(!VmmRead(pSystemProcess, pSystemProcess->os.win.vaEPROCESS, pb0, VMMPROC_EPROCESS_MAX_SIZE)) { return; }
     if(ctxMain->cfg.fVerboseExtra) {
-        vmmprintf("vmmwin.c!32_OffsetLocatorEPROCESS: %016llx %016llx\n", pSystemProcess->paDTB, pSystemProcess->os.win.vaEPROCESS);
+        vmmprintf_fn("SYSTEM DTB: %016llx EPROCESS: %016llx\n", pSystemProcess->paDTB, pSystemProcess->os.win.vaEPROCESS);
         Util_PrintHexAscii(pb0, VMMPROC_EPROCESS_MAX_SIZE, 0);
     }
     // find offset State (static for now)
@@ -1223,7 +1235,7 @@ VOID VmmWin_OffsetLocatorEPROCESS32(_In_ PVMM_PROCESS pSystemProcess)
     }
     */
     vmmprintfvv_fn(
-        "PID: %x STATE: %x DTB: %x DTB_User: %x NAME: %x PEB: %x FLink: %x\n", 
+        "PID: %03x STATE: %03x DTB: %03x DTB_User: %03x NAME: %03x PEB: %03x FLink: %03x\n", 
         pOffsetEPROCESS->PID, 
         pOffsetEPROCESS->State,
         pOffsetEPROCESS->DTB,
@@ -1235,103 +1247,106 @@ VOID VmmWin_OffsetLocatorEPROCESS32(_In_ PVMM_PROCESS pSystemProcess)
     pOffsetEPROCESS->fValid = TRUE;
 }
 
-BOOL VmmWin_EnumerateEPROCESS32(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fTotalRefresh)
+BOOL VmmWin_EnumEPROCESS32_Pre(_In_ PVMM_PROCESS pProcessSystem, _In_opt_ PVMMWIN_ENUMERATE_EPROCESS_CONTEXT ctx, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb, _In_ PVMMOB_DATASET pSetAddress)
 {
-    PDWORD pdwDTB, pdwDTB_User, pdwFLink, pdwBLink, pdwPEB;
+    if(!ctx || ((va & 0x80000007) != 0x80000000)) { return FALSE; }
+    VmmObDataSet_Put(ctx->pObSetPrefetchDTB, *(PDWORD)(pb + ctxVmm->kernel.OffsetEPROCESS.DTB) & ~0xfff);
+    return TRUE;
+}
+
+BOOL VmmWin_EnumEPROCESS32_Post(_In_ PVMM_PROCESS pProcessSystem, _In_opt_ PVMMWIN_ENUMERATE_EPROCESS_CONTEXT ctx, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb)
+{
+    PVMM_WIN_EPROCESS_OFFSET po = &ctxVmm->kernel.OffsetEPROCESS;
+    PDWORD pdwDTB, pdwDTB_User, pdwPEB;
     PDWORD pdwState, pdwPID;
     LPSTR szName;
-    BYTE pb[VMMPROC_EPROCESS_MAX_SIZE];
+    BOOL fUser;
     PVMM_PROCESS pObProcess = NULL;
-    DWORD vaSystemEPROCESS, vaEPROCESS, cPID = 0, cNewProcessCollision = 0;
-    DWORD iProc = 0;
-    BOOL fShowTerminated, fUser;
-    PVMM_WIN_EPROCESS_OFFSET pOffsetEPROCESS = &ctxVmm->kernel.OffsetEPROCESS;
-    PVMMOB_DATASET pObSetAddressEPROCESS = NULL;
-    fShowTerminated = ctxVmm->flags & VMM_FLAG_PROCESS_SHOW_TERMINATED;
-    vaSystemEPROCESS = (DWORD)pSystemProcess->os.win.vaEPROCESS;
+    if(!ctx || ((va & 0x80000007) != 0x80000000)) { return FALSE; }
+    pdwState = (PDWORD)(pb + po->State);
+    pdwPID = (PDWORD)(pb + po->PID);
+    pdwDTB = (PDWORD)(pb + po->DTB);
+    pdwDTB_User = (PDWORD)(pb + po->DTB_User);
+    szName = (LPSTR)(pb + po->Name);
+    pdwPEB = (PDWORD)(pb + po->PEB);
+    if(ctx->pObSetPrefetchDTB) {    // prefetch any physical pages in ctx->pObSetPrefetchDTB on 1st run only
+        VmmCachePrefetchPages(NULL, ctx->pObSetPrefetchDTB);
+        VmmOb_DECREF_NULL(&ctx->pObSetPrefetchDTB);
+    }
+    if(*pdwDTB && *(PQWORD)szName && (ctx->fShowTerminated || !*pdwState)) {
+        fUser =
+            !((*pdwPID == 4) || ((*pdwState == 0) && (*pdwPEB == 0))) ||
+            ((*(PQWORD)(szName + 0x00) == 0x72706d6f436d654d) && (*(PDWORD)(szName + 0x08) == 0x69737365)); // MemCompression "process"
+        pObProcess = VmmProcessCreateEntry(
+            ctx->fTotalRefresh,
+            *pdwPID,
+            *pdwState,
+            *pdwDTB & 0xffffffe0,
+            po->DTB_User ? (~0xfff & *pdwDTB_User) : 0,
+            szName,
+            fUser);
+        if(!pObProcess) {
+            vmmprintfv("VMM: WARNING: PID '%i' already exists.\n", *pdwPID);
+            if(++ctx->cNewProcessCollision >= 8) {
+                return TRUE;
+            }
+        }
+    }
+    if(pObProcess) {
+        pObProcess->os.win.vaEPROCESS = (DWORD)va;
+        if(*pdwPEB % PAGE_SIZE) {
+            vmmprintfv("VMM: WARNING: Bad PEB alignment for PID: '%i' (0x%08x).\n", *pdwPID, *pdwPEB);
+        } else {
+            pObProcess->os.win.vaPEB = *pdwPEB;
+        }
+    } else {
+        szName[14] = 0; // in case of bad string data ...
+    }
+    vmmprintfvv_fn("%04i (%s) %08x %08x %08x %08x %s\n",
+        ctx->cProc,
+        pObProcess ? "list" : "skip",
+        *pdwPID,
+        *pdwDTB & 0xffffffe0,
+        (DWORD)va,
+        *pdwPEB,
+        szName);
+    VmmOb_DECREF_NULL(&pObProcess);
+    ctx->cProc++;
+    return TRUE;
+}
+
+BOOL VmmWin_EnumEPROCESS32(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fTotalRefresh)
+{
+    PVMM_WIN_EPROCESS_OFFSET po = &ctxVmm->kernel.OffsetEPROCESS;
+    VMMWIN_ENUMERATE_EPROCESS_CONTEXT ctx = { 0 };
     // retrieve offsets
-    if(!pOffsetEPROCESS->fValid) {
+    if(!po->fValid) {
         VmmWin_OffsetLocatorEPROCESS32(pSystemProcess);
-        if(!pOffsetEPROCESS->fValid) {
-            vmmprintf("VmmProc: Unable to locate EPROCESS offsets.\n");
+        if(!po->fValid) {
+            vmmprintf("VmmWin: Unable to locate EPROCESS offsets.\n");
             return FALSE;
         }
     }
-    vmmprintfvv_fn("%016llx %08x\n", pSystemProcess->paDTB, vaSystemEPROCESS);
-    pdwState = (PDWORD)(pb + pOffsetEPROCESS->State);
-    pdwPID = (PDWORD)(pb + pOffsetEPROCESS->PID);
-    pdwDTB = (PDWORD)(pb + pOffsetEPROCESS->DTB);
-    pdwDTB_User = (PDWORD)(pb + pOffsetEPROCESS->DTB_User);
-    pdwFLink = (PDWORD)(pb + pOffsetEPROCESS->FLink);
-    pdwBLink = (PDWORD)(pb + pOffsetEPROCESS->BLink);
-    szName = (LPSTR)(pb + pOffsetEPROCESS->Name);
-    pdwPEB = (PDWORD)(pb + pOffsetEPROCESS->PEB);
-    // prefetch pages into cache (if any)
-    pObSetAddressEPROCESS = VmmObContainer_GetOb(&ctxVmm->ObCEPROCESSCachePrefetch);
-    VmmCachePrefetchPages(pSystemProcess, pObSetAddressEPROCESS);
-    VmmOb_DECREF(pObSetAddressEPROCESS);
-    // initialize address set
-    if(!(pObSetAddressEPROCESS = VmmObDataSet_Alloc(TRUE))) { return FALSE; }
-    VmmObDataSet_Put(pObSetAddressEPROCESS, vaSystemEPROCESS);
-    // loop!
-    vmmprintfvv_fn("   # STATE  PID      DTB      EPROCESS PEB      NAME  \n");
-
-    for(iProc = 0; iProc < pObSetAddressEPROCESS->c; iProc++) {
-        vaEPROCESS = (DWORD)pObSetAddressEPROCESS->pObData->pList[iProc].Value;
-        if(!VmmRead(pSystemProcess, vaEPROCESS, pb, pOffsetEPROCESS->cbMaxOffset)) { continue; }
-        if(*pdwDTB & 0x1f) { continue; }
-        VmmOb_DECREF(pObProcess);
-        pObProcess = NULL;
-        if(*pdwDTB && *(PQWORD)szName && (fShowTerminated || !*pdwState)) {
-            fUser =
-                !((*pdwPID == 4) || ((*pdwState == 0) && (*pdwPEB == 0))) ||
-                ((*(PQWORD)(szName + 0x00) == 0x72706d6f436d654d) && (*(PDWORD)(szName + 0x08) == 0x69737365)); // MemCompression "process"
-            pObProcess = VmmProcessCreateEntry(
-                fTotalRefresh,
-                *pdwPID,
-                *pdwState,
-                *pdwDTB & 0xffffffe0,
-                pOffsetEPROCESS->DTB_User ? (~0xfff & *pdwDTB_User) : 0,
-                szName,
-                fUser);
-        }
-        if(pObProcess) {
-            pObProcess->os.win.vaEPROCESS = vaEPROCESS;
-            if(*pdwPEB % PAGE_SIZE) {
-                vmmprintfv("VMM: WARNING: Bad PEB alignment for PID: '%i' (0x%08x).\n", *pdwPID, *pdwPEB);
-            } else {
-                pObProcess->os.win.vaPEB = *pdwPEB;
-            }
-            if(!pObProcess) {
-                vmmprintfv("VMM: WARNING: PID '%i' already exists.\n", *pdwPID);
-                if(++cNewProcessCollision >= 8) {
-                    break;
-                }
-            }
-        } else {
-            szName[14] = 0; // in case of bad string data ...
-        }
-        vmmprintfvv_fn("%04i (%s) %08x %08x %08x %08x %s\n",
-            iProc,
-            pObProcess ? "list" : "skip",
-            *pdwPID,
-            *pdwDTB & 0xffffffe0,
-            vaEPROCESS,
-            *pdwPEB,
-            szName);
-        // Add FLink & BLink
-        if(0x80000000 == (0x80000003 & *pdwFLink)) {
-            VmmObDataSet_Put(pObSetAddressEPROCESS, *pdwFLink - pOffsetEPROCESS->FLink);
-        }
-        if(0x80000000 == (0x80000003 & *pdwBLink)) {
-            VmmObDataSet_Put(pObSetAddressEPROCESS, *pdwBLink - pOffsetEPROCESS->FLink);
-        }
-    }
-    VmmObContainer_SetOb(&ctxVmm->ObCEPROCESSCachePrefetch, pObSetAddressEPROCESS);
-    VmmOb_DECREF(pObSetAddressEPROCESS);
-    VmmOb_DECREF(pObProcess);
+    vmmprintfvv_fn("SYSTEM DTB: %016llx EPROCESS: %08x\n", pSystemProcess->paDTB, (DWORD)pSystemProcess->os.win.vaEPROCESS);
+    // set up context
+    ctx.fTotalRefresh = fTotalRefresh;
+    ctx.fShowTerminated = ctxVmm->flags & VMM_FLAG_PROCESS_SHOW_TERMINATED;
+    if(!(ctx.pObSetPrefetchDTB = VmmObDataSet_Alloc(TRUE))) { return FALSE; }
+    // traverse EPROCESS linked list
+    vmmprintfvv_fn("        # STATE  PID      DTB      EPROCESS PEB      NAME\n");
+    VmmWin_ListTraversePrefetch32(
+        pSystemProcess,
+        &ctx,
+        (DWORD)pSystemProcess->os.win.vaEPROCESS,
+        ctxVmm->kernel.OffsetEPROCESS.FLink,
+        ctxVmm->kernel.OffsetEPROCESS.cbMaxOffset + 0x20,
+        VmmWin_EnumEPROCESS32_Pre,
+        VmmWin_EnumEPROCESS32_Post,
+        &ctxVmm->ObCCachePrefetchEPROCESS);
+    // set resulting prefetch cache
+    VmmOb_DECREF_NULL(&ctx.pObSetPrefetchDTB);
     VmmProcessCreateFinish();
-    return (iProc > 10);
+    return (ctx.cProc > 10);
 }
 
 BOOL VmmWin_EnumerateEPROCESS(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fRefreshTotal)
@@ -1340,10 +1355,10 @@ BOOL VmmWin_EnumerateEPROCESS(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fRefre
     VmmTlbSpider(pSystemProcess);
     switch(ctxVmm->tpMemoryModel) {
         case VMM_MEMORYMODEL_X64:
-            return VmmWin_EnumerateEPROCESS64(pSystemProcess, fRefreshTotal);
+            return VmmWin_EnumEPROCESS64(pSystemProcess, fRefreshTotal);
         case VMM_MEMORYMODEL_X86:
         case VMM_MEMORYMODEL_X86PAE:
-            return VmmWin_EnumerateEPROCESS32(pSystemProcess, fRefreshTotal);
+            return VmmWin_EnumEPROCESS32(pSystemProcess, fRefreshTotal);
     }
     return FALSE;
 }
@@ -1367,4 +1382,243 @@ VOID VmmWin_ScanTagsMemMap(_In_ PVMM_PROCESS pProcess)
     if(ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X86) {
         VmmWin_ScanPebHeap32(pProcess, FALSE);
     }
+}
+
+// ----------------------------------------------------------------------------
+// WINDOWS LIST WALKING FUNCTIONALITY BELOW:
+// Walk a Windows Linked List in an efficient way that minimizes the number of
+// IO requests to the LeechCore/Device sub-system. This is done by prefetching
+// as much as possible before the main functionality is performed. This is done
+// by first calling a callback to add additional memory addresses to prefetch
+// (pfnCallback_Pre). Then a prefetch into cache is done, and then a callback
+// into the main analysis functionality is done (pfnCallback_Post).
+// ----------------------------------------------------------------------------
+
+#define VMMWIN_LISTTRAVERSEPREFETCH_LOOPPROTECT_MAX         0x1000
+
+/*
+* Walk a windows linked list in an efficient way that minimize IO requests to
+* the the device. This is advantageous for latency reasons. The function return
+* a set of the addresses used - this may be used to prefetch pages in advance
+* if the list should be walked again at a later time.
+* The callback function must only return FALSE on severe errors when the list
+* should no longer be continued to be walked in the direction.
+* CALLER_DECREF: return
+* -- pProcess
+* -- ctx = ctx to pass along to callback function (if any)
+* -- vaDataStart
+* -- oListStart = offset (in bytes) to _LIST_ENTRY from vaDataStart
+* -- cbData
+* -- pfnCallback_Pre = optional callback function to gather additional addresses.
+* -- pfnCallback_Post = optional callback function called after all pages fetched into cache.
+* -- pContainerPrefetch = optional pointer to a PVMMOBCONTAINER containing a PVMMOB_DATASET of prefetch addresses to use/update.
+*/
+VOID VmmWin_ListTraversePrefetch64(
+    _In_ PVMM_PROCESS pProcess,
+    _In_opt_ PVOID ctx,
+    _In_ QWORD vaDataStart,
+    _In_ DWORD oListStart,
+    _In_ DWORD cbData,
+    _In_opt_ BOOL(*pfnCallback_Pre)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx, _In_ QWORD vaData, _In_ PBYTE pbData, _In_ DWORD cbData, _In_ PVMMOB_DATASET pSetAddress),
+    _In_opt_ BOOL(*pfnCallback_Post)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx, _In_ QWORD vaData, _In_ PBYTE pbData, _In_ DWORD cbData),
+    _In_opt_ PVMMOBCONTAINER pPrefetchAddressContainer)
+{
+    PBYTE pbData = NULL;
+    DWORD cbReadData, cLoopProtect = 0;
+    QWORD vaFLink, vaBLink, vaBLinkStart;
+    PQWORD pvaFLink, pvaBLink;
+    BOOL f, fFailFLink = FALSE, fFailBLink = FALSE, fFailAll = FALSE;
+    PVMMOB_DATASET pObSetAddress = NULL;
+    // 1: Prefetch any addresses stored in optional address container.
+    if(pPrefetchAddressContainer && (pObSetAddress = VmmObContainer_GetOb(pPrefetchAddressContainer))) {
+        VmmCachePrefetchPages(pProcess, pObSetAddress);
+        VmmOb_DECREF_NULL(&pObSetAddress);
+    }
+    // 2: Prepare Linked List 1st walk (gather addresses to prefetch).
+    if(!(pObSetAddress = VmmObDataSet_Alloc(TRUE))) { goto fail; }
+    if(!(pbData = LocalAlloc(0, cbData))) { goto fail; }
+    pvaFLink = (PQWORD)(pbData + oListStart);
+    pvaBLink = (PQWORD)(pbData + oListStart + sizeof(QWORD));
+    // NB! IDENTICAL CODE BASE BETWEEN 32/64 VERSIONS OF FUNCTION BELOW!
+    //     (DIFFERENT POINTER SIZES DECLARED ABOVE THOUGH ...)
+    f = VmmRead(pProcess, vaDataStart, pbData, cbData) &&
+        (!pfnCallback_Pre || pfnCallback_Pre(pProcess, ctx, vaDataStart, pbData, cbData, pObSetAddress));
+    if(!f) { goto fail; }
+    VmmObDataSet_Put_AddressPageAlign(pObSetAddress, vaDataStart, cbData);
+    vaFLink = *pvaFLink - oListStart;
+    vaBLinkStart = vaBLink = *pvaBLink - oListStart;
+    // 3: 1st linked list walk. Call into optional callback_pre function to gather
+    //    additional non-linked list addresses into prefetch pObSetAddress set.
+    while(!fFailAll && !(fFailFLink && fFailBLink) && (cLoopProtect < VMMWIN_LISTTRAVERSEPREFETCH_LOOPPROTECT_MAX)) {
+        // Pretetch _LIST_ENTRY FLink and BLink into cache
+        VmmCachePrefetchPages2(pProcess, 2, vaFLink, vaBLink);
+        fFailAll = TRUE;
+        // FLink List Traversal
+        while(!fFailFLink && (++cLoopProtect < VMMWIN_LISTTRAVERSEPREFETCH_LOOPPROTECT_MAX)) {
+            VmmReadEx(pProcess, vaFLink, pbData, cbData, &cbReadData, VMM_FLAG_FORCECACHE_READ);
+            if(cbReadData < cbData) { break; }
+            VmmObDataSet_Put_AddressPageAlign(pObSetAddress, vaFLink, cbData);
+            f = (!pfnCallback_Pre || pfnCallback_Pre(pProcess, ctx, vaFLink, pbData, cbData, pObSetAddress)) &&
+                (vaBLink != *pvaFLink - oListStart) &&
+                (vaFLink = *pvaFLink - oListStart) &&
+                (vaFLink != vaDataStart);
+            if(!f) { fFailFLink = TRUE; }
+            fFailAll = FALSE;
+        }
+        // BLink List Traversal
+        while(!fFailBLink && (++cLoopProtect < VMMWIN_LISTTRAVERSEPREFETCH_LOOPPROTECT_MAX)) {
+            VmmReadEx(pProcess, vaBLink, pbData, cbData, &cbReadData, VMM_FLAG_FORCECACHE_READ);
+            if(cbReadData < cbData) { break; }
+            VmmObDataSet_Put_AddressPageAlign(pObSetAddress, vaBLink, cbData);
+            f = (!pfnCallback_Pre || pfnCallback_Pre(pProcess, ctx, vaBLink, pbData, cbData, pObSetAddress)) &&
+                (vaFLink != *pvaBLink - oListStart) &&
+                (vaBLink = *pvaBLink - oListStart) &&
+                (vaBLink != vaDataStart);
+            if(!f) { fFailBLink = TRUE; }
+            fFailAll = FALSE;
+        }
+    }
+    // 4: Prefetch additional gathered addresses into cache.
+    VmmCachePrefetchPages(pProcess, pObSetAddress);
+    // 5: 2nd main list walk. Call into optional pfnCallback_Post to do the main
+    //    processing of the list items.
+    if(pfnCallback_Post) {
+        cLoopProtect = 0;
+        // FLink Traversal
+        vaFLink = vaDataStart;
+        f = TRUE;
+        while(f) {
+            f = (++cLoopProtect < VMMWIN_LISTTRAVERSEPREFETCH_LOOPPROTECT_MAX) &&
+                VmmRead(pProcess, vaFLink, pbData, cbData) &&
+                pfnCallback_Post(pProcess, ctx, vaFLink, pbData, cbData) &&
+                (vaFLink = *pvaFLink - oListStart) &&
+                (vaFLink != vaDataStart);
+        }
+        // BLink Traversal
+        if(vaFLink != vaDataStart) {
+            vaBLink = vaBLinkStart;
+            f = TRUE;
+            while(f) {
+                f = (++cLoopProtect < VMMWIN_LISTTRAVERSEPREFETCH_LOOPPROTECT_MAX) &&
+                    (vaBLink != vaDataStart) &&
+                    (vaBLink != vaFLink) &&
+                    VmmRead(pProcess, vaBLink, pbData, cbData) &&
+                    pfnCallback_Post(pProcess, ctx, vaBLink, pbData, cbData) &&
+                    (vaBLink = *pvaBLink - oListStart);
+            }
+        }
+    }
+    // 6: Store/Update the optional container with the newly prefetch addresses (if possible).
+    if(pPrefetchAddressContainer) {
+        VmmObContainer_SetOb(pPrefetchAddressContainer, pObSetAddress);   
+    }
+fail:
+    // 7: Cleanup
+    VmmOb_DECREF_NULL(&pObSetAddress);
+    LocalFree(pbData);
+}
+
+VOID VmmWin_ListTraversePrefetch32(
+    _In_ PVMM_PROCESS pProcess,
+    _In_opt_ PVOID ctx,
+    _In_ DWORD vaDataStart,
+    _In_ DWORD oListStart,
+    _In_ DWORD cbData,
+    _In_opt_ BOOL(*pfnCallback_Pre)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx, _In_ QWORD vaData, _In_ PBYTE pbData, _In_ DWORD cbData, _In_ PVMMOB_DATASET pSetAddress),
+    _In_opt_ BOOL(*pfnCallback_Post)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx, _In_ QWORD vaData, _In_ PBYTE pbData, _In_ DWORD cbData),
+    _In_opt_ PVMMOBCONTAINER pPrefetchAddressContainer)
+{
+    PBYTE pbData = NULL;
+    DWORD cbReadData, cLoopProtect = 0;
+    DWORD vaFLink, vaBLink, vaBLinkStart;
+    PDWORD pvaFLink, pvaBLink;
+    BOOL f, fFailFLink = FALSE, fFailBLink = FALSE, fFailAll = FALSE;
+    PVMMOB_DATASET pObSetAddress = NULL;
+    // 1: Prefetch any addresses stored in optional address container.
+    if(pPrefetchAddressContainer && (pObSetAddress = VmmObContainer_GetOb(pPrefetchAddressContainer))) {
+        VmmCachePrefetchPages(pProcess, pObSetAddress);
+        VmmOb_DECREF_NULL(&pObSetAddress);
+    }
+    // 2: Prepare Linked List 1st walk (gather addresses to prefetch).
+    if(!(pObSetAddress = VmmObDataSet_Alloc(TRUE))) { goto fail; }
+    if(!(pbData = LocalAlloc(0, cbData))) { goto fail; }
+    pvaFLink = (PDWORD)(pbData + oListStart);
+    pvaBLink = (PDWORD)(pbData + oListStart + sizeof(DWORD));
+    // NB! IDENTICAL CODE BASE BETWEEN 32/64 VERSIONS OF FUNCTION BELOW!
+    //     (DIFFERENT POINTER SIZES DECLARED ABOVE THOUGH ...)
+    f = VmmRead(pProcess, vaDataStart, pbData, cbData) &&
+        (!pfnCallback_Pre || pfnCallback_Pre(pProcess, ctx, vaDataStart, pbData, cbData, pObSetAddress));
+    if(!f) { goto fail; }
+    VmmObDataSet_Put_AddressPageAlign(pObSetAddress, vaDataStart, cbData);
+    vaFLink = *pvaFLink - oListStart;
+    vaBLinkStart = vaBLink = *pvaBLink - oListStart;
+    // 3: 1st linked list walk. Call into optional callback_pre function to gather
+    //    additional non-linked list addresses into prefetch pObSetAddress set.
+    while(!fFailAll && !(fFailFLink && fFailBLink) && (cLoopProtect < VMMWIN_LISTTRAVERSEPREFETCH_LOOPPROTECT_MAX)) {
+        // Pretetch _LIST_ENTRY FLink and BLink into cache
+        VmmCachePrefetchPages2(pProcess, 2, vaFLink, vaBLink);
+        fFailAll = TRUE;
+        // FLink List Traversal
+        while(!fFailFLink && (++cLoopProtect < VMMWIN_LISTTRAVERSEPREFETCH_LOOPPROTECT_MAX)) {
+            VmmReadEx(pProcess, vaFLink, pbData, cbData, &cbReadData, VMM_FLAG_FORCECACHE_READ);
+            if(cbReadData < cbData) { break; }
+            VmmObDataSet_Put_AddressPageAlign(pObSetAddress, vaFLink, cbData);
+            f = (!pfnCallback_Pre || pfnCallback_Pre(pProcess, ctx, vaFLink, pbData, cbData, pObSetAddress)) &&
+                (vaBLink != *pvaFLink - oListStart) &&
+                (vaFLink = *pvaFLink - oListStart) &&
+                (vaFLink != vaDataStart);
+            if(!f) { fFailFLink = TRUE; }
+            fFailAll = FALSE;
+        }
+        // BLink List Traversal
+        while(!fFailBLink && (++cLoopProtect < VMMWIN_LISTTRAVERSEPREFETCH_LOOPPROTECT_MAX)) {
+            VmmReadEx(pProcess, vaBLink, pbData, cbData, &cbReadData, VMM_FLAG_FORCECACHE_READ);
+            if(cbReadData < cbData) { break; }
+            VmmObDataSet_Put_AddressPageAlign(pObSetAddress, vaBLink, cbData);
+            f = (!pfnCallback_Pre || pfnCallback_Pre(pProcess, ctx, vaBLink, pbData, cbData, pObSetAddress)) &&
+                (vaFLink != *pvaBLink - oListStart) &&
+                (vaBLink = *pvaBLink - oListStart) &&
+                (vaBLink != vaDataStart);
+            if(!f) { fFailBLink = TRUE; }
+            fFailAll = FALSE;
+        }
+    }
+    // 4: Prefetch additional gathered addresses into cache.
+    VmmCachePrefetchPages(pProcess, pObSetAddress);
+    // 5: 2nd main list walk. Call into optional pfnCallback_Post to do the main
+    //    processing of the list items.
+    if(pfnCallback_Post) {
+        cLoopProtect = 0;
+        // FLink Traversal
+        vaFLink = vaDataStart;
+        f = TRUE;
+        while(f) {
+            f = (++cLoopProtect < VMMWIN_LISTTRAVERSEPREFETCH_LOOPPROTECT_MAX) &&
+                VmmRead(pProcess, vaFLink, pbData, cbData) &&
+                pfnCallback_Post(pProcess, ctx, vaFLink, pbData, cbData) &&
+                (vaFLink = *pvaFLink - oListStart) &&
+                (vaFLink != vaDataStart);
+        }
+        // BLink Traversal
+        if(vaFLink != vaDataStart) {
+            vaBLink = vaBLinkStart;
+            f = TRUE;
+            while(f) {
+                f = (++cLoopProtect < VMMWIN_LISTTRAVERSEPREFETCH_LOOPPROTECT_MAX) &&
+                    (vaBLink != vaDataStart) &&
+                    (vaBLink != vaFLink) &&
+                    VmmRead(pProcess, vaBLink, pbData, cbData) &&
+                    pfnCallback_Post(pProcess, ctx, vaBLink, pbData, cbData) &&
+                    (vaBLink = *pvaBLink - oListStart);
+            }
+        }
+    }
+    // 6: Store/Update the optional container with the newly prefetch addresses (if possible).
+    if(pPrefetchAddressContainer) {
+        VmmObContainer_SetOb(pPrefetchAddressContainer, pObSetAddress);
+    }
+fail:
+    // 7: Cleanup
+    VmmOb_DECREF_NULL(&pObSetAddress);
+    LocalFree(pbData);
 }

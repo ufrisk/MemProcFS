@@ -9,7 +9,7 @@
 #include "vmmdll.h"
 
 /*
-* Initialization function for the built-in virt2phys module.
+* Initialization function for the built-in status module.
 * -- pPluginRegInfo
 */
 VOID M_Status_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);

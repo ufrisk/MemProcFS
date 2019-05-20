@@ -20,7 +20,7 @@
 #
 # https://github.com/ufrisk/
 #
-# (c) Ulf Frisk, 2018
+# (c) Ulf Frisk, 2018-2019
 # Author: Ulf Frisk, pcileech@frizk.net
 #
 
@@ -213,6 +213,27 @@ def VmmPy_Example(dump_file_name):
     result = VmmPy_ProcessGetSections(pid, "kernel32.dll")
     print("SUCCESS: VmmPy_ProcessGetSections()")
     print(result)
+
+    # LIST REGISTRY HIVES
+    print("--------------------------------------------------------------------")
+    print("List the registry hives                                             ")
+    input("Press Enter to continue...")
+    print("CALL: VmmPy_WinReg_HiveList()")
+    result = VmmPy_WinReg_HiveList()
+    print("SUCCESS: VmmPy_WinReg_HiveList()")
+    print(result)
+
+    # READ REGISTRY RAW HIVE DATA
+    print("--------------------------------------------------------------------")
+    print("Read 0x100 bytes from registry hive memory space address 0x1000     ")
+    input("Press Enter to continue...")
+    if(len(result) > 0):
+        print("CALL: VmmPy_WinReg_HiveRead(%s, 0x1000, 0x100)" % (result[0]['va_hive']))
+        result = VmmPy_UtilFillHexAscii(VmmPy_WinReg_HiveRead(result[0]['va_hive'], 0x1000, 0x100))
+        print("SUCCESS: VmmPy_WinReg_HiveRead()")
+        print(result)
+    else:
+        print("FAIL: No registry hives read from VmmPy_WinReg_HiveList()")
 
     # VFS LIST /
     print("--------------------------------------------------------------------")

@@ -81,6 +81,12 @@
     <ClInclude Include="m_pedump.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="m_winreg.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="vmmwinreg.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="vmmdll.c">
@@ -135,6 +141,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="m_pedump.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="m_winreg.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmwinreg.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

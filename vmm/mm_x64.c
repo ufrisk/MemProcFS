@@ -7,6 +7,8 @@
 #include "vmmproc.h"
 
 #define MMX64_MEMMAP_DISPLAYBUFFER_LINE_LENGTH      89
+#define MMX64_PTE_IS_TRANSITION(pte, iPML)          (((pte & 0x0c01) == 0x0800) && (iPML == 1) && ctxVmm && (ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X64))
+#define MMX64_PTE_IS_VALID(pte, iPML)               ((pte & 0x01) || MMX64_PTE_IS_TRANSITION(pte, iPML))
 
 /*
 * Tries to verify that a loaded page table is correct. If just a bit strange
@@ -134,7 +136,7 @@ VOID MmX64_MapInitialize_Index(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MEMMAP_ENTR
     fUserOnly = pProcess->fUserOnly;
     for(i = 0; i < 512; i++) {
         pte = PTEs[i];
-        if(!(pte & 0x01)) { continue; }
+        if(!MMX64_PTE_IS_VALID(pte, iPML)) { continue; }
         if((pte & 0x0000fffffffff000) > paMax) { continue; }
         if(fSupervisorPML) { pte = pte & 0xfffffffffffffffb; }
         if(fUserOnly && !(pte & 0x04)) { continue; }
@@ -386,15 +388,15 @@ BOOL MmX64_Virt2Phys(_In_ QWORD paPT, _In_ BOOL fUserOnly, _In_ BYTE iPML, _In_ 
     i = 0x1ff & (va >> MMX64_PAGETABLEMAP_PML_REGION_SIZE[iPML]);
     pte = pObPTEs->pqw[i];
     VmmOb_DECREF(pObPTEs);
-    if(!(pte & 0x01)) { return FALSE; }                 // NOT VALID
-    if(fUserOnly && !(pte & 0x04)) { return FALSE; }    // SUPERVISOR PAGE & USER MODE REQ
-    if(pte & 0x000f000000000000) { return FALSE; }      // RESERVED
+    if(!MMX64_PTE_IS_VALID(pte, iPML)) { return FALSE; }	// NOT VALID
+    if(fUserOnly && !(pte & 0x04)) { return FALSE; }		// SUPERVISOR PAGE & USER MODE REQ
+    if(pte & 0x000f000000000000) { return FALSE; }			// RESERVED
     if((iPML == 1) || (pte & 0x80) /* PS */) {
-        if(iPML == 4) { return FALSE; }                 // NO SUPPORT IN PML4
+        if(iPML == 4) { return FALSE; }						// NO SUPPORT IN PML4
         qwMask = 0xffffffffffffffff << MMX64_PAGETABLEMAP_PML_REGION_SIZE[iPML];
-        *ppa = pte & 0x0000fffffffff000 & qwMask;       // MASK AWAY BITS FOR 4kB/2MB/1GB PAGES
+        *ppa = pte & 0x0000fffffffff000 & qwMask;			// MASK AWAY BITS FOR 4kB/2MB/1GB PAGES
         qwMask = qwMask ^ 0xffffffffffffffff;
-        *ppa = *ppa | (qwMask & va);                    // FILL LOWER ADDRESS BITS
+        *ppa = *ppa | (qwMask & va);						// FILL LOWER ADDRESS BITS
         return TRUE;
     }
     return MmX64_Virt2Phys(pte, fUserOnly, iPML - 1, va, ppa);
@@ -408,7 +410,7 @@ VOID MmX64_Virt2PhysGetInformation_DoWork(_Inout_ PVMM_PROCESS pProcess, _Inout_
     pte = PTEs[i];
     pVirt2PhysInfo->iPTEs[iPML] = (WORD)i;
     pVirt2PhysInfo->PTEs[iPML] = pte;
-    if(!(pte & 0x01)) { return; }                           // NOT VALID
+    if(!MMX64_PTE_IS_VALID(pte, iPML)) { return; }          // NOT VALID
     if(pProcess->fUserOnly && !(pte & 0x04)) { return; }    // SUPERVISOR PAGE & USER MODE REQ
     if(pte & 0x000f000000000000) { return; }                // RESERVED
     if((iPML == 1) || (pte & 0x80) /* PS */) {

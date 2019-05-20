@@ -48,7 +48,6 @@ typedef struct tdVMMOB_HEADER {
     WORD tag;                           // tag - 2 chars, no null terminator
     VOID(*pfnRef_0)(_In_ PVOID pVmmOb); // callback - object specific cleanup before free
     VOID(*pfnRef_1)(_In_ PVOID pVmmOb); // callback - when object reach refcount 1 (not initial)
-    DWORD dbg;
     DWORD cbData;
     BYTE pbData[];
 } VMMOB_HEADER, *PVMMOB_HEADER;
@@ -209,8 +208,8 @@ PVMMOB_DATASET VmmObDataSet_Alloc(_In_ BOOL fUnique)
 }
 
 /*
-* Insert a value into a VmmObDataSet. This function is not meant to be called
-* in a multi-threaded context.
+* Insert a value into a VmmObDataSet.
+* NB! This function is NOT to be called in a multi-threaded context.
 * -- pDataSet
 * -- v
 * -- return = insertion was successful.
@@ -264,6 +263,24 @@ BOOL VmmObDataSet_Put(_In_ PVMMOB_DATASET pDataSet, _In_ QWORD v)
     pDataCurrent->iNext = pDataSet->c;
     pDataSet->c++;
     return TRUE;
+}
+
+/*
+* Insert a value representing an address into VmmObDataSet. If the length of
+* the data read from the start of the address a traverses page boundries all
+* the pages are inserted into the set.
+* NB! This function is NOT to be called in a multi-threaded context.
+* -- pDataSet
+* -- a
+* -- cb
+*/
+VOID VmmObDataSet_Put_AddressPageAlign(_In_ PVMMOB_DATASET pDataSet, _In_ QWORD a, _In_ DWORD cb)
+{
+    QWORD qwA = a & ~0xfff;
+    while(qwA < a + cb) {
+        VmmObDataSet_Put(pDataSet, qwA);
+        qwA += 0x1000;
+    }
 }
 
 // ----------------------------------------------------------------------------
@@ -512,7 +529,7 @@ PVMMOB_MEM VmmCacheGet(_In_ WORD wTblTag, _In_ QWORD qwA)
     return pOb;
 }
 
-PVMMOB_MEM VmmCacheGet_FromDeviceOnMiss(_In_ WORD wTblTag, _In_ QWORD qwA)
+PVMMOB_MEM VmmCacheGet_FromDeviceOnMiss(_In_ WORD wTblTag, _In_ WORD wTblTagSecondaryOpt, _In_ QWORD qwA)
 {
     PVMMOB_MEM pObMEM, pObReservedMEM;
     PMEM_IO_SCATTER_HEADER pMEM;
@@ -522,7 +539,15 @@ PVMMOB_MEM VmmCacheGet_FromDeviceOnMiss(_In_ WORD wTblTag, _In_ QWORD qwA)
     if(pObReservedMEM) {
         pMEM = &pObReservedMEM->h;
         pMEM->qwA = qwA;
-        LeechCore_ReadScatter(&pMEM, 1);
+        if(wTblTagSecondaryOpt && (pObMEM = VmmCacheGet(wTblTagSecondaryOpt, qwA))) {
+            pMEM->cb = 0x1000;
+            memcpy(pMEM->pb, pObMEM->pb, 0x1000);
+            VmmOb_DECREF(pObMEM);
+            pObMEM = NULL;
+        }
+        if(pMEM->cb != 0x1000) {
+            LeechCore_ReadScatter(&pMEM, 1);
+        }
         if(pMEM->cb == 0x1000) {
             VmmOb_INCREF(pObReservedMEM);
             VmmCacheReserveReturn(pObReservedMEM);
@@ -559,7 +584,8 @@ PVMMOB_MEM VmmTlbGetPageTable(_In_ QWORD pa, _In_ BOOL fCacheOnly)
         return pObMEM;
     }
     if(fCacheOnly) { return NULL; }
-    pObMEM = VmmCacheGet_FromDeviceOnMiss(VMM_CACHE_TAG_TLB, pa);
+    // try retrieve from (1) TLB cache, (2) PHYS cache, (3) device
+    pObMEM = VmmCacheGet_FromDeviceOnMiss(VMM_CACHE_TAG_TLB, VMM_CACHE_TAG_PHYS, pa);
     if(!pObMEM) {
         InterlockedIncrement64(&ctxVmm->stat.cTlbReadFail);
         return NULL;
@@ -636,6 +662,37 @@ VOID VmmCachePrefetchPages(_In_opt_ PVMM_PROCESS pProcess, _In_opt_ PVMMOB_DATAS
             c++;
         }
     }
+    if(pProcess) {
+        VmmReadScatterVirtual(pProcess, ppMEMs, c, 0);
+    } else {
+        VmmReadScatterPhysical(ppMEMs, c, 0);
+    }
+    LocalFree(ppMEMs);
+}
+
+/*
+* Prefetch a set of addresses. This is useful when reading data from somewhat
+* known addresses over higher latency connections.
+* -- pProcess
+* -- cAddresses
+* -- ... = variable list of total cAddresses of addresses of type QWORD.
+*/
+VOID VmmCachePrefetchPages2(_In_opt_ PVMM_PROCESS pProcess, _In_ DWORD cAddresses, ...)
+{
+    QWORD va;
+    DWORD i, c = 0;
+    PPMEM_IO_SCATTER_HEADER ppMEMs = NULL;
+    va_list arguments;
+    if(!cAddresses || !LeechCore_AllocScatterEmpty(cAddresses, &ppMEMs)) { return; }
+    va_start(arguments, cAddresses);
+    for(i = 0; i < cAddresses; i++) {
+        va = va_arg(arguments, QWORD) & ~0xfff;
+        if(!(c && i && (ppMEMs[c]->qwA == va))) {
+            ppMEMs[c]->qwA = va;
+            c++;
+        }
+    }
+    va_end(arguments);
     if(pProcess) {
         VmmReadScatterVirtual(pProcess, ppMEMs, c, 0);
     } else {
@@ -850,7 +907,7 @@ PVMM_PROCESS VmmProcessCreateEntry(_In_ BOOL fTotalRefresh, _In_ DWORD dwPID, _I
     PVMMOB_MEM pObDTB = NULL;
     BOOL result;
     // 1: Sanity check DTB
-    pObDTB = VmmTlbGetPageTable(paDTB, FALSE);
+    pObDTB = VmmTlbGetPageTable(paDTB & ~0xfff, FALSE);
     if(!pObDTB) { goto fail; }
     result = VmmTlbPageTableVerify(pObDTB->h.pb, paDTB, (ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X64));
     VmmOb_DECREF(pObDTB);
@@ -1246,7 +1303,9 @@ VOID VmmClose()
     }
     VmmCache2Close(VMM_CACHE_TAG_PHYS);
     VmmCache2Close(VMM_CACHE_TAG_TLB);
-    VmmObContainer_Close(&ctxVmm->ObCEPROCESSCachePrefetch);
+    VmmObContainer_Close(&ctxVmm->ObCCachePrefetchEPROCESS);
+    VmmObContainer_Close(&ctxVmm->ObCCachePrefetchRegistry);
+    VmmObContainer_Close(&ctxVmm->ObCRegistry);
     DeleteCriticalSection(&ctxVmm->MasterLock);
     LocalFree(ctxVmm);
     ctxVmm = NULL;
@@ -1438,7 +1497,9 @@ BOOL VmmInitialize()
     VmmCache2Initialize(VMM_CACHE_TAG_PHYS);
     if(!ctxVmm->PHYS.fActive) { goto fail; }
     // 5: OTHER INIT:
-    VmmObContainer_Initialize(&ctxVmm->ObCEPROCESSCachePrefetch, NULL);
+    VmmObContainer_Initialize(&ctxVmm->ObCCachePrefetchEPROCESS, NULL);
+    VmmObContainer_Initialize(&ctxVmm->ObCCachePrefetchRegistry, NULL);
+    VmmObContainer_Initialize(&ctxVmm->ObCRegistry, NULL);
     InitializeCriticalSection(&ctxVmm->MasterLock);
     VmmInitializeFunctions();
     return TRUE;

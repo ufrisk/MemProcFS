@@ -132,7 +132,7 @@ fail:
 /*
 * Helper write function - Write to a virtual memory backed "file".
 */
-VOID LdrModules_Write_MemFile(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaMem, _In_ QWORD cbMem, _In_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ ULONG64 cbOffset)
+VOID LdrModules_Write_MemFile(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaMem, _In_ QWORD cbMem, _In_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ ULONG64 cbOffset)
 {
     if(cbMem <= cbOffset) { *pcbWrite = 0; return; }
     *pcbWrite = (DWORD)min(cb, cbMem - cbOffset);
@@ -142,7 +142,7 @@ VOID LdrModules_Write_MemFile(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaMem, _In_
 /*
 * Helper write function - Write to the requested data directory file.
 */
-VOID LdrModules_Write_DirectoriesD(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MODULEMAP_ENTRY pModule, _In_ LPSTR szDirectory, _In_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
+VOID LdrModules_Write_DirectoriesD(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MODULEMAP_ENTRY pModule, _In_ LPSTR szDirectory, _In_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
 {
     DWORD i;
     IMAGE_DATA_DIRECTORY pDataDirectories[16];
@@ -158,7 +158,7 @@ VOID LdrModules_Write_DirectoriesD(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MODULEM
 /*
 * Helper write function - Write to the requested section header file.
 */
-VOID LdrModules_Write_SectionsD(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MODULEMAP_ENTRY pModule, _In_ LPSTR szSection, _In_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
+VOID LdrModules_Write_SectionsD(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MODULEMAP_ENTRY pModule, _In_ LPSTR szSection, _In_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
 {
     IMAGE_SECTION_HEADER SectionHeader;
     if(!PE_SectionGetFromName(pProcess, pModule->BaseAddress, szSection, &SectionHeader)) { *pcbWrite = 0;  return; }
@@ -175,7 +175,7 @@ VOID LdrModules_Write_SectionsD(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MODULEMAP_
 * -- cbOffset
 * -- return
 */
-NTSTATUS LdrModules_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
+NTSTATUS LdrModules_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
 {
     CHAR _szBuf[MAX_PATH] = { 0 };
     PVMM_MODULEMAP_ENTRY pModule = NULL;
@@ -186,7 +186,7 @@ NTSTATUS LdrModules_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ LPVOID pb, _In_ 
     Util_PathSplit2(ctx->szPath, _szBuf, &szModuleName, &szModuleSubPath);
     if(szModuleName[0] && szModuleSubPath[0] && VmmProc_ModuleMapGetSingleEntry(pProcess, szModuleName, &pObModuleMap, &pModule)) {
         if(!_stricmp(szModuleSubPath, "pefile.dll")) {
-            PE_FileRaw_Write(pProcess, pModule->BaseAddress, (PBYTE)pb, cb, pcbWrite, (DWORD)cbOffset);
+            PE_FileRaw_Write(pProcess, pModule->BaseAddress, pb, cb, pcbWrite, (DWORD)cbOffset);
         }
         if(!_strnicmp(szModuleSubPath, "sectionsd\\", 10)) {
             LdrModules_Write_SectionsD(pProcess, pModule, szModuleSubPath + 10, pb, cb, pcbWrite, cbOffset);
@@ -202,17 +202,19 @@ NTSTATUS LdrModules_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ LPVOID pb, _In_ 
 /*
 * Helper read function - Read a virtual memory backed "file".
 */
-NTSTATUS LdrModules_Read_MemFile(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaMem, _In_ QWORD cbMem, _Out_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset)
+NTSTATUS LdrModules_Read_MemFile(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaMem, _In_ QWORD cbMem, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset)
 {
     if(cbMem <= cbOffset) { return VMM_STATUS_END_OF_FILE; }
-    VmmReadEx(pProcess, vaMem + cbOffset, pb, (DWORD)min(cb, cbMem - cbOffset), pcbRead, 0);
-    return *pcbRead ? VMMDLL_STATUS_SUCCESS : VMMDLL_STATUS_END_OF_FILE;
+    cb = (DWORD)min(cb, cbMem - cbOffset);
+    VmmReadEx(pProcess, vaMem + cbOffset, pb, cb, NULL, VMM_FLAG_ZEROPAD_ON_FAIL);
+    *pcbRead = cb;
+    return VMMDLL_STATUS_SUCCESS;
 }
 
 /*
 * Helper read function - Read the requested data directory file.
 */
-NTSTATUS LdrModules_Read_DirectoriesD(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MODULEMAP_ENTRY pModule, _In_ LPSTR szDirectory, _Out_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS LdrModules_Read_DirectoriesD(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MODULEMAP_ENTRY pModule, _In_ LPSTR szDirectory, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     DWORD i;
     IMAGE_DATA_DIRECTORY pDataDirectories[16];
@@ -228,14 +230,14 @@ NTSTATUS LdrModules_Read_DirectoriesD(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MODU
 /*
 * Helper read function - Read the requested section header file.
 */
-NTSTATUS LdrModules_Read_SectionsD(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MODULEMAP_ENTRY pModule, _In_ LPSTR szSection, _Out_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS LdrModules_Read_SectionsD(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MODULEMAP_ENTRY pModule, _In_ LPSTR szSection, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     IMAGE_SECTION_HEADER SectionHeader;
     if(!PE_SectionGetFromName(pProcess, pModule->BaseAddress, szSection, &SectionHeader)) { return VMMDLL_STATUS_FILE_INVALID; }
     return LdrModules_Read_MemFile(pProcess, pModule->BaseAddress + SectionHeader.VirtualAddress, SectionHeader.Misc.VirtualSize, pb, cb, pcbRead, cbOffset);
 }
 
-NTSTATUS LdrModules_Read_ModuleSubFile(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PVMM_MODULEMAP_ENTRY pModule, _In_ LPSTR szPath, _Out_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS LdrModules_Read_ModuleSubFile(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PVMM_MODULEMAP_ENTRY pModule, _In_ LPSTR szPath, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt;
     DWORD cbBuffer;
@@ -270,7 +272,7 @@ NTSTATUS LdrModules_Read_ModuleSubFile(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PVM
         return nt;
     }
     if(!_stricmp(szPath, "pefile.dll")) {
-        return PE_FileRaw_Read(pProcess, pModule->BaseAddress, (PBYTE)pb, cb, pcbRead, (DWORD)cbOffset) ? VMMDLL_STATUS_SUCCESS : VMMDLL_STATUS_FILE_INVALID;
+        return PE_FileRaw_Read(pProcess, pModule->BaseAddress, pb, cb, pcbRead, (DWORD)cbOffset) ? VMMDLL_STATUS_SUCCESS : VMMDLL_STATUS_FILE_INVALID;
     }
     if(!_stricmp(szPath, "sections")) {
         VmmWin_PE_SECTION_DisplayBuffer(ctx->pProcess, pModule, pbBuffer, 0x800, &cbBuffer, NULL, NULL);
@@ -295,7 +297,7 @@ NTSTATUS LdrModules_Read_ModuleSubFile(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PVM
 * -- cbOffset
 * -- return
 */
-NTSTATUS LdrModules_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS LdrModules_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt;
     CHAR _szBuf[MAX_PATH] = { 0 };

@@ -12,6 +12,7 @@
 #include "m_pedump.h"
 #include "m_status.h"
 #include "m_virt2phys.h"
+#include "m_winreg.h"
 
 //
 // This file contains functionality related to keeping track of plugins, both
@@ -42,8 +43,8 @@ typedef struct tdPLUGIN_LISTENTRY {
     BOOL fRootModule;
     BOOL fProcessModule;
     BOOL(*pfnList)(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList);
-    NTSTATUS(*pfnRead)(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
-    NTSTATUS(*pfnWrite)(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset);
+    NTSTATUS(*pfnRead)(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
+    NTSTATUS(*pfnWrite)(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset);
     VOID(*pfnNotify)(_In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent);
     VOID(*pfnClose)();
 } PLUGIN_LISTENTRY, *PPLUGIN_LISTENTRY;
@@ -97,7 +98,7 @@ BOOL PluginManager_List(_In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR szModule, _In
     return FALSE;
 }
 
-NTSTATUS PluginManager_Read(_In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR szModule, _In_ LPSTR szPath, _Out_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS PluginManager_Read(_In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR szModule, _In_ LPSTR szPath, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     QWORD tmStart = Statistics_CallStart();
     NTSTATUS nt;
@@ -120,7 +121,7 @@ NTSTATUS PluginManager_Read(_In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR szModule,
     return VMMDLL_STATUS_FILE_INVALID;
 }
 
-NTSTATUS PluginManager_Write(_In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR szModule, _In_ LPSTR szPath, _In_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
+NTSTATUS PluginManager_Write(_In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR szModule, _In_ LPSTR szPath, _In_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
 {
     QWORD tmStart = Statistics_CallStart();
     NTSTATUS nt;
@@ -333,6 +334,8 @@ BOOL PluginManager_Initialize()
     M_LdrModules_Initialize(&ri);
     PluginManager_Initialize_RegInfoInit(&ri, NULL);
     M_Status_Initialize(&ri);
+    PluginManager_Initialize_RegInfoInit(&ri, NULL);
+    M_WinReg_Initialize(&ri);
     PluginManager_Initialize_RegInfoInit(&ri, NULL);
     M_PEDump_Initialize(&ri);
     // 2: process dll modules
