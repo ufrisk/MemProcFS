@@ -56,7 +56,7 @@ BOOL MmX86PAE_TlbSpider_PD_PT(_In_ QWORD pa, _In_ BYTE iPML, _In_ BOOL fUserOnly
         return FALSE;
     }
     if(iPML == 1) {
-        VmmOb_DECREF(pObPT);
+        Ob_DECREF(pObPT);
         return TRUE;
     }
     // 2: walk trough all entries for PD
@@ -67,7 +67,7 @@ BOOL MmX86PAE_TlbSpider_PD_PT(_In_ QWORD pa, _In_ BYTE iPML, _In_ BOOL fUserOnly
         if(fUserOnly && !(pte & 0x04)) { continue; }    // supervisor page when fUserOnly -> not valid
         fSpiderComplete = MmX86PAE_TlbSpider_PD_PT(pte & 0x0000fffffffff000, 1, fUserOnly, pTlbSpiderStage) && fSpiderComplete;
     }
-    VmmOb_DECREF(pObPT);
+    Ob_DECREF(pObPT);
     return fSpiderComplete;
 }
 
@@ -88,7 +88,7 @@ BOOL MmX86PAE_TlbSpider_PDPT(_In_ QWORD paDTB, _In_ BOOL fUserOnly, PMMX86PAE_TL
         if(pte & 0xffff0000000001e6) { continue; }  // RESERVED BITS IN PDPTE
         fSpiderComplete = MmX86PAE_TlbSpider_PD_PT(pte & 0x0000fffffffff000, 2, fUserOnly, pTlbSpiderStage) && fSpiderComplete;
     }
-    VmmOb_DECREF(pObPDPT);
+    Ob_DECREF(pObPDPT);
     return fSpiderComplete;
 }
 
@@ -161,7 +161,7 @@ VOID MmX86PAE_MapInitialize_Index(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MEMMAP_E
         pObNextPT = VmmTlbGetPageTable(pte & 0x0000fffffffff000, FALSE);
         if(!pObNextPT) { continue; }
         MmX86PAE_MapInitialize_Index(pProcess, pMemMap, pcMemMap, va, iPML - 1, pObNextPT->pqw, fNextSupervisorPML, paMax);
-        VmmOb_DECREF(pObNextPT);
+        Ob_DECREF(pObNextPT);
         pMemMapEntry = pMemMap + *pcMemMap - 1;
     }
 }
@@ -170,7 +170,7 @@ VOID MmX86PAE_MapCloseObCallback(_In_ PVOID pVmmOb)
 {
     PVMMOB_MEMMAP pObMemMap = (PVMMOB_MEMMAP)pVmmOb;
     if(pObMemMap->pObDisplay) {
-        VmmOb_DECREF(pObMemMap->pObDisplay);
+        Ob_DECREF(pObMemMap->pObDisplay);
     }
 }
 
@@ -200,10 +200,10 @@ BOOL MmX86PAE_MapInitialize(_In_ PVMM_PROCESS pProcess)
             pbPDPT = pObPDPT->pb + (pProcess->paDTB & 0xfe0);     // ADJUST PDPT TO 32-BYTE BOUNDARY
             MmX86PAE_MapInitialize_Index(pProcess, pMemMap, &cMemMap, 0, 3, (PQWORD)pbPDPT, FALSE, ctxMain->dev.paMax);
         }
-        VmmOb_DECREF(pObPDPT);
+        Ob_DECREF(pObPDPT);
     }
     // allocate VmmOb depending on result
-    pObMemMap = VmmOb_Alloc('MM', 0, sizeof(VMMOB_MEMMAP) + cMemMap * sizeof(VMM_MEMMAP_ENTRY), MmX86PAE_MapCloseObCallback, NULL);
+    pObMemMap = Ob_Alloc('MM', 0, sizeof(VMMOB_MEMMAP) + cMemMap * sizeof(VMM_MEMMAP_ENTRY), MmX86PAE_MapCloseObCallback, NULL);
     if(!pObMemMap) {
         LeaveCriticalSection(&pProcess->LockUpdate);
         LocalFree(pMemMap);
@@ -295,7 +295,7 @@ BOOL MmX86PAE_MapGetEntries(_In_ PVMM_PROCESS pProcess, _In_ DWORD flags, _Out_ 
                     pModule = pObModuleMap->pMap + i;
                     MmX86PAE_MapTag(pProcess, pModule->BaseAddress, pModule->BaseAddress + pModule->SizeOfImage, pModule->szName, NULL, FALSE, FALSE);
                 }
-                VmmOb_DECREF(pObModuleMap);
+                Ob_DECREF(pObModuleMap);
             }
         }
         if(!pProcess->pObMemMap->fTagScan && (flags & VMM_MEMMAP_FLAG_SCAN)) {
@@ -304,7 +304,7 @@ BOOL MmX86PAE_MapGetEntries(_In_ PVMM_PROCESS pProcess, _In_ DWORD flags, _Out_ 
         }
         LeaveCriticalSection(&pProcess->LockUpdate);
     }
-    *ppObMemMap = VmmOb_INCREF(pProcess->pObMemMap);
+    *ppObMemMap = Ob_INCREF(pProcess->pObMemMap);
     return TRUE;
 }
 
@@ -317,19 +317,19 @@ BOOL MmX86PAE_MapGetDisplay(_In_ PVMM_PROCESS pProcess, _In_ DWORD flags, _Out_ 
     // memory map display data already exists
     if(!MmX86PAE_MapInitialize(pProcess)) { return FALSE; }
     if(pProcess->pObMemMap->pObDisplay) {
-        *ppObDisplay = VmmOb_INCREF(pProcess->pObMemMap->pObDisplay);
+        *ppObDisplay = Ob_INCREF(pProcess->pObMemMap->pObDisplay);
         return TRUE;
     }
     // create new memory map display data
     EnterCriticalSection(&pProcess->LockUpdate);
     if(!pProcess->pObMemMap->pObDisplay) {
         if(MmX86PAE_MapGetEntries(pProcess, flags, &pObMemMap)) {
-            pObDisplay = VmmOb_Alloc('MD', LMEM_ZEROINIT, pObMemMap->cbDisplay, NULL, NULL);
+            pObDisplay = Ob_Alloc('MD', LMEM_ZEROINIT, pObMemMap->cbDisplay, NULL, NULL);
             if(pObDisplay) {
                 for(i = 0; i < pObMemMap->cMap; i++) {
                     if(o + MMX86PAE_MEMMAP_DISPLAYBUFFER_LINE_LENGTH > pObMemMap->cbDisplay) {
                         vmmprintf_fn("ERROR: SHOULD NOT HAPPEN! LENGTH DIFFERS #1: %i %i\n", o + MMX86PAE_MEMMAP_DISPLAYBUFFER_LINE_LENGTH, pObMemMap->cbDisplay);
-                        VmmOb_DECREF(pObDisplay);
+                        Ob_DECREF(pObDisplay);
                         pObDisplay = NULL;
                         goto fail;
                     }
@@ -349,7 +349,7 @@ BOOL MmX86PAE_MapGetDisplay(_In_ PVMM_PROCESS pProcess, _In_ DWORD flags, _Out_ 
                 }
                 if(o != pObMemMap->cbDisplay) {
                     vmmprintf_fn("ERROR: SHOULD NOT HAPPEN! LENGTH DIFFERS #2: %i %i\n", o, pObMemMap->cbDisplay);
-                    VmmOb_DECREF(pObDisplay);
+                    Ob_DECREF(pObDisplay);
                     pObDisplay = NULL;
                     goto fail;
                 }
@@ -359,10 +359,10 @@ BOOL MmX86PAE_MapGetDisplay(_In_ PVMM_PROCESS pProcess, _In_ DWORD flags, _Out_ 
         pProcess->pObMemMap->pObDisplay = pObDisplay;
     }
 fail:
-    VmmOb_DECREF(pObMemMap);
+    Ob_DECREF(pObMemMap);
     LeaveCriticalSection(&pProcess->LockUpdate);
     if(pProcess->pObMemMap->pObDisplay) {
-        *ppObDisplay = VmmOb_INCREF(pProcess->pObMemMap->pObDisplay);
+        *ppObDisplay = Ob_INCREF(pProcess->pObMemMap->pObDisplay);
         return TRUE;
     }
     return FALSE;
@@ -381,28 +381,28 @@ BOOL MmX86PAE_Virt2Phys(_In_ QWORD paPT, _In_ BOOL fUserOnly, _In_ BYTE iPML, _I
     i = 0x1ff & (va >> MMX86PAE_PAGETABLEMAP_PML_REGION_SIZE[iPML]);
     if(iPML == 3) {
         // PDPT
-        if(i > 3) {											// MAX 4 ENTRIES IN PDPT
-            VmmOb_DECREF(pObPTEs);
+        if(i > 3) {                                         // MAX 4 ENTRIES IN PDPT
+            Ob_DECREF(pObPTEs);
             return FALSE;
         }                     
-        pbPTEs = pObPTEs->pb + (paPT & 0xfe0);				// ADJUST PDPT TO 32-BYTE BOUNDARY
+        pbPTEs = pObPTEs->pb + (paPT & 0xfe0);              // ADJUST PDPT TO 32-BYTE BOUNDARY
         pte = ((PQWORD)pbPTEs)[i];
-        VmmOb_DECREF(pObPTEs);
-        if(!(pte & 0x01)) { return FALSE; }					// NOT VALID
-        if(pte & 0xffff0000000001e6) { return FALSE; }		// RESERVED BITS IN PDPTE
+        Ob_DECREF(pObPTEs);
+        if(!(pte & 0x01)) { return FALSE; }                 // NOT VALID
+        if(pte & 0xffff0000000001e6) { return FALSE; }      // RESERVED BITS IN PDPTE
         return MmX86PAE_Virt2Phys(pte, fUserOnly, 2, va, ppa);
     }
     // PT or PD
     pte = pObPTEs->pqw[i];
-    VmmOb_DECREF(pObPTEs);
-    if(!MMX86PAE_PTE_IS_VALID(pte, iPML)) { return FALSE; }	// NOT VALID
-    if(fUserOnly && !(pte & 0x04)) { return FALSE; }		// SUPERVISOR PAGE & USER MODE REQ
-    if(pte & 0x000f000000000000) { return FALSE; }			// RESERVED
+    Ob_DECREF(pObPTEs);
+    if(!MMX86PAE_PTE_IS_VALID(pte, iPML)) { return FALSE; } // NOT VALID
+    if(fUserOnly && !(pte & 0x04)) { return FALSE; }        // SUPERVISOR PAGE & USER MODE REQ
+    if(pte & 0x000f000000000000) { return FALSE; }          // RESERVED
     if((iPML == 1) || (pte & 0x80) /* PS */) {
         qwMask = 0xffffffffffffffff << MMX86PAE_PAGETABLEMAP_PML_REGION_SIZE[iPML];
-        *ppa = pte & 0x0000fffffffff000 & qwMask;			// MASK AWAY BITS FOR 4kB/2MB/1GB PAGES
+        *ppa = pte & 0x0000fffffffff000 & qwMask;           // MASK AWAY BITS FOR 4kB/2MB/1GB PAGES
         qwMask = qwMask ^ 0xffffffffffffffff;
-        *ppa = *ppa | (qwMask & va);						// FILL LOWER ADDRESS BITS
+        *ppa = *ppa | (qwMask & va);                        // FILL LOWER ADDRESS BITS
         return TRUE;
     }
     return MmX86PAE_Virt2Phys(pte, fUserOnly, 1, va, ppa);
@@ -437,7 +437,7 @@ VOID MmX86PAE_Virt2PhysGetInformation_DoWork(_Inout_ PVMM_PROCESS pProcess, _Ino
     if(!pObNextPT) { return; }
     pVirt2PhysInfo->pas[iPML - 1] = pte & 0x0000fffffffff000;
     MmX86PAE_Virt2PhysGetInformation_DoWork(pProcess, pVirt2PhysInfo, iPML - 1, pObNextPT->pqw);
-    VmmOb_DECREF(pObNextPT);
+    Ob_DECREF(pObNextPT);
 }
 
 VOID MmX86PAE_Virt2PhysGetInformation(_Inout_ PVMM_PROCESS pProcess, _Inout_ PVMM_VIRT2PHYS_INFORMATION pVirt2PhysInfo)
@@ -453,7 +453,7 @@ VOID MmX86PAE_Virt2PhysGetInformation(_Inout_ PVMM_PROCESS pProcess, _Inout_ PVM
     pObPML4 = VmmTlbGetPageTable(pProcess->paDTB & 0xfffff000, FALSE);
     if(!pObPML4) { return; }
     MmX86PAE_Virt2PhysGetInformation_DoWork(pProcess, pVirt2PhysInfo, 3, (PQWORD)(pObPML4->pb + (pProcess->paDTB & 0xfe0)));
-    VmmOb_DECREF(pObPML4);
+    Ob_DECREF(pObPML4);
 }
 
 VOID MmX86PAE_Close()

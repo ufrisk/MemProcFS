@@ -12,7 +12,7 @@
 # (c) Ulf Frisk, 2018-2019
 # Author: Ulf Frisk, pcileech@frizk.net
 #
-# Header Version: 2.5
+# Header Version: 2.6
 #
 
 from vmmpyc import *
@@ -351,7 +351,7 @@ def VmmPy_ProcessGetInformation(pid):
     return -- dict: of process information.
     
     Example:
-    VmmPy_ProcessGetInformation(332) --> {'pid': 8796, 'pa-dtb': 5798625280, 'pa-dtb-user': 6237978624, 'state': 0, 'tp-system': 2, 'usermode': True, 'name': 'cmd.exe', 'wow64': False, 'va-entry': 140700131683072, 'va-eprocess': 18446635809067693440, 'va-peb': 708313505792, 'va-peb32': 0}
+    VmmPy_ProcessGetInformation(332) --> {'pid': 8796, 'pa-dtb': 5798625280, 'pa-dtb-user': 6237978624, 'state': 0, 'tp-system': 2, 'usermode': True, 'name': 'cmd.exe', 'name-long': 'cmd.exe', 'wow64': False, 'va-entry': 140700131683072, 'va-eprocess': 18446635809067693440, 'va-peb': 708313505792, 'va-peb32': 0, 'path-kernel': '', 'path-user': '', 'cmdline': ''}
     """
     return VMMPYC_ProcessGetInformation(pid)
 
@@ -364,7 +364,7 @@ def VmmPy_ProcessListInformation():
     return -- dict: dict of process information with pid as key.
     
     Example:
-    VmmPy_ProcessListInformation() --> {4: {...}, ..., 322: {'pid': 8796, 'pa-dtb': 5798625280, 'pa-dtb-user': 6237978624, 'state': 0, 'tp-system': 2, 'usermode': True, 'name': 'cmd.exe', 'wow64': False, 'va-entry': 140700131683072, 'va-eprocess': 18446635809067693440, 'va-peb': 708313505792, 'va-peb32': 0}
+    VmmPy_ProcessListInformation() --> {4: {...}, ..., 322: {'pid': 8796, 'ppid': 456, 'pa-dtb': 5798625280, 'pa-dtb-user': 6237978624, 'state': 0, 'tp-system': 2, 'usermode': True, 'name': 'cmd.exe', 'wow64': False, 'va-entry': 140700131683072, 'va-eprocess': 18446635809067693440, 'va-peb': 708313505792, 'va-peb32': 0}
     """
     pids = VmmPy_PidList()
     result = {}

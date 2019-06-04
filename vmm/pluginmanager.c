@@ -11,6 +11,7 @@
 #include "m_ldrmodules.h"
 #include "m_pedump.h"
 #include "m_status.h"
+#include "m_sysinfo.h"
 #include "m_virt2phys.h"
 #include "m_winreg.h"
 
@@ -170,7 +171,7 @@ BOOL PluginManager_ModuleExists(_In_opt_ HMODULE hDLL, _In_opt_ LPSTR szModule) 
 
 BOOL PluginManager_Register(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo)
 {
-    const LPSTR RESERVED_NAMES[] = { "name", "pid", "pmem", "map", "pml4", "vmem", "pml4-user", "win-eprocess", "win-entry", "win-peb", "win-peb32", "win-modules" };
+    const LPSTR RESERVED_NAMES[] = { "name", "pid", "ppid", "pmem", "map", "pml4", "vmem", "pml4-user", "win-eprocess", "win-entry", "win-peb", "win-peb32", "win-modules" };
     PPLUGIN_LISTENTRY pModule;
     DWORD i;
     // 1: tests if module is valid
@@ -338,6 +339,8 @@ BOOL PluginManager_Initialize()
     M_WinReg_Initialize(&ri);
     PluginManager_Initialize_RegInfoInit(&ri, NULL);
     M_PEDump_Initialize(&ri);
+    PluginManager_Initialize_RegInfoInit(&ri, NULL);
+    M_SysInfo_Initialize(&ri);
     // 2: process dll modules
     Util_GetPathDll(szPath, NULL);
     cchPathBase = (DWORD)strnlen(szPath, _countof(szPath) - 1);

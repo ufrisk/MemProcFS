@@ -115,7 +115,7 @@ BOOL VmmWinReg_Reg2Virt32(_In_ PVMM_PROCESS pProcessRegistry, _In_ PVMMOB_REGIST
 _Success_(return)
 BOOL VmmWinReg_Reg2Virt(_In_ PVMM_PROCESS pProcessRegistry, _In_ PVMMOB_REGISTRY_HIVE pRegistryHive, _In_ DWORD ra, _Out_ PQWORD pva)
 {
-	if(!pProcessRegistry || !pRegistryHive) { return FALSE; }
+    if(!pProcessRegistry || !pRegistryHive) { return FALSE; }
     return ctxVmm->f32 ?
         VmmWinReg_Reg2Virt32(pProcessRegistry, pRegistryHive, ra, pva) :
         VmmWinReg_Reg2Virt64(pProcessRegistry, pRegistryHive, ra, pva);
@@ -219,7 +219,7 @@ VOID VmmWinReg_HiveReadEx(_In_ PVMMOB_REGISTRY_HIVE pRegistryHive, _In_ DWORD ra
     pObProcessRegistry = VmmWinReg_GetRegistryProcess();
     if(pObProcessRegistry) {
         VmmWinReg_ReadScatter(pObProcessRegistry, pRegistryHive, ppMEMs, cMEMs, flags);
-        VmmOb_DECREF(pObProcessRegistry);
+        Ob_DECREF(pObProcessRegistry);
         pObProcessRegistry = NULL;
     }
     for(i = 0; i < cMEMs; i++) {
@@ -265,23 +265,23 @@ VOID VmmWinReg_HiveReadEx(_In_ PVMMOB_REGISTRY_HIVE pRegistryHive, _In_ DWORD ra
 _Success_(return)
 BOOL VmmWinReg_HiveWrite(_In_ PVMMOB_REGISTRY_HIVE pRegistryHive, _In_ DWORD ra, _In_ PBYTE pb, _In_ DWORD cb)
 {
-	QWORD vaWrite;
-	DWORD cbWrite;
-	BOOL fSuccess = TRUE;
-	PVMM_PROCESS pObProcessRegistry = NULL;
-	if(!cb || !(pObProcessRegistry = VmmWinReg_GetRegistryProcess())) { return FALSE; }
-	while(cb) {
-		cbWrite = 0x1000 - (ra & 0xfff);
-		if(VmmWinReg_Reg2Virt(pObProcessRegistry, pRegistryHive, ra, &vaWrite) && vaWrite) {
-			fSuccess = VmmWrite(pObProcessRegistry, vaWrite, pb, cbWrite) && fSuccess;
-		} else {
-			fSuccess = FALSE;
-		}
-		ra += cbWrite;
-		pb += cbWrite;
-	}
-	VmmOb_DECREF(pObProcessRegistry);
-	return fSuccess;
+    QWORD vaWrite;
+    DWORD cbWrite;
+    BOOL fSuccess = TRUE;
+    PVMM_PROCESS pObProcessRegistry = NULL;
+    if(!cb || !(pObProcessRegistry = VmmWinReg_GetRegistryProcess())) { return FALSE; }
+    while(cb) {
+        cbWrite = 0x1000 - (ra & 0xfff);
+        if(VmmWinReg_Reg2Virt(pObProcessRegistry, pRegistryHive, ra, &vaWrite) && vaWrite) {
+            fSuccess = VmmWrite(pObProcessRegistry, vaWrite, pb, cbWrite) && fSuccess;
+        } else {
+            fSuccess = FALSE;
+        }
+        ra += cbWrite;
+        pb += cbWrite;
+    }
+    Ob_DECREF(pObProcessRegistry);
+    return fSuccess;
 }
 
 
@@ -326,7 +326,7 @@ BOOL VmmWinReg_FuzzHiveOffsets64(_In_ PVMM_PROCESS pProcessSystem, _In_ QWORD va
     DWORD dw;
     QWORD qw, vaSmallDir;
     WCHAR wszBuffer[10];
-	QWORD qwHE[10];
+    QWORD qwHE[10];
     PVMMWIN_REGISTRY_OFFSET po;
     // _CMHIVE BASE
     if((*(PDWORD)(pbCMHIVE + 0x004) == 0x30314D43) || (*(PDWORD)(pbCMHIVE + 0x010) == 0xBEE0BEE0)) {
@@ -399,14 +399,14 @@ BOOL VmmWinReg_FuzzHiveOffsets64(_In_ PVMM_PROCESS pProcessSystem, _In_ QWORD va
     }
     if((vaSmallDir & 0xffff8000'00000fff) == 0xffff8000'00000000) {
         VmmRead(pProcessSystem, vaSmallDir, (PBYTE)qwHE, sizeof(qwHE));
-		f = _IS_HMAP_KDDR64(qwHE[0]) && _IS_HMAP_KDDR64(qwHE[1]) && _IS_HMAP_ZERO64(qwHE[2]) && _IS_HMAP_SIZE64(qwHE[3]) &&
-			_IS_HMAP_ZERO64(qwHE[4]) && _IS_HMAP_ZERO64(qwHE[5]) && _IS_HMAP_ZERO64(qwHE[6]) && _IS_HMAP_ZERO64(qwHE[7]);
-		if(f) { po->HE._Size = 0x20; }	// only 1 entry in table of length 0x20
-		f = _IS_HMAP_KDDR64(qwHE[5]);
-		if(f) { po->HE._Size = 0x20; }
-		f = _IS_HMAP_ZERO64(qwHE[0]) && _IS_HMAP_KDDR64(qwHE[1]) && _IS_HMAP_SIZE64(qwHE[4]) &&
-			_IS_HMAP_ZERO64(qwHE[5]) && _IS_HMAP_KDDR64(qwHE[6]) && _IS_HMAP_SIZE64(qwHE[9]);
-		if(f) { po->HE._Size = 0x28; }
+        f = _IS_HMAP_KDDR64(qwHE[0]) && _IS_HMAP_KDDR64(qwHE[1]) && _IS_HMAP_ZERO64(qwHE[2]) && _IS_HMAP_SIZE64(qwHE[3]) &&
+            _IS_HMAP_ZERO64(qwHE[4]) && _IS_HMAP_ZERO64(qwHE[5]) && _IS_HMAP_ZERO64(qwHE[6]) && _IS_HMAP_ZERO64(qwHE[7]);
+        if(f) { po->HE._Size = 0x20; }  // only 1 entry in table of length 0x20
+        f = _IS_HMAP_KDDR64(qwHE[5]);
+        if(f) { po->HE._Size = 0x20; }
+        f = _IS_HMAP_ZERO64(qwHE[0]) && _IS_HMAP_KDDR64(qwHE[1]) && _IS_HMAP_SIZE64(qwHE[4]) &&
+            _IS_HMAP_ZERO64(qwHE[5]) && _IS_HMAP_KDDR64(qwHE[6]) && _IS_HMAP_SIZE64(qwHE[9]);
+        if(f) { po->HE._Size = 0x28; }
     }
     // BaseBlock (regf) static offsets
     po->BB.Signature = 0x000;
@@ -461,7 +461,7 @@ BOOL VmmWinReg_FuzzHiveOffsets32(_In_ PVMM_PROCESS pProcessSystem, _In_ QWORD va
     po->CM.Length = o + 0x000;
     po->CM.StorageMap = o + 0x004;
     po->CM.StorageSmallDir = o + 0x008;
-    o += 2 * 0xdc;																				// sizeof(_DUAL) 0xdc on WinXP, 0x13c on Win7SP0, but grows to 0x19c on later versions, use the smaller value.
+    o += 2 * 0xdc;                                                                              // sizeof(_DUAL) 0xdc on WinXP, 0x13c on Win7SP0, but grows to 0x19c on later versions, use the smaller value.
     // _CMHIVE _LIST_ENTRY
     for(; o < 0x800; o += 4) {
         f = ((*(PDWORD)(pbCMHIVE + o) & 0x80000003) == 0x80000000) &&                                   // FLink
@@ -508,9 +508,9 @@ BOOL VmmWinReg_FuzzHiveOffsets32(_In_ PVMM_PROCESS pProcessSystem, _In_ QWORD va
         f = _IS_HMAP_ADDR32(dwHE[0]) && _IS_HMAP_ADDR32(dwHE[1]) && _IS_HMAP_SIZE32(dwHE[3]) &&
             _IS_HMAP_ADDR32(dwHE[4]) && _IS_HMAP_ADDR32(dwHE[5]) && _IS_HMAP_SIZE32(dwHE[7]);
         if(f) { po->HE._Size = 0x010; }
-		f = _IS_HMAP_KDDR32(dwHE[0]) && _IS_HMAP_KDDR32(dwHE[1]) && _IS_HMAP_SIZE32(dwHE[3]) &&
-			_IS_HMAP_ZERO32(dwHE[4]) && _IS_HMAP_ZERO32(dwHE[5]) && _IS_HMAP_ZERO32(dwHE[7]);
-		if(f) { po->HE._Size = 0x10; }	// only 1 entry in table of length 0x10
+        f = _IS_HMAP_KDDR32(dwHE[0]) && _IS_HMAP_KDDR32(dwHE[1]) && _IS_HMAP_SIZE32(dwHE[3]) &&
+            _IS_HMAP_ZERO32(dwHE[4]) && _IS_HMAP_ZERO32(dwHE[5]) && _IS_HMAP_ZERO32(dwHE[7]);
+        if(f) { po->HE._Size = 0x10; }    // only 1 entry in table of length 0x10
         f = _IS_HMAP_ZERO32(dwHE[0]) && _IS_HMAP_ZERO32(dwHE[5]) && _IS_HMAP_SIZE32(dwHE[4]) && _IS_HMAP_SIZE32(dwHE[9]) &&
             _IS_HMAP_SIZE32(dwHE[15]) && _IS_HMAP_ADDR32(dwHE[1]) && _IS_HMAP_ADDR32(dwHE[6]) && _IS_HMAP_ADDR32(dwHE[11]);
         if(f) { po->HE._Size = 0x014; }
@@ -535,7 +535,7 @@ BOOL VmmWinReg_FuzzHiveOffsets32(_In_ PVMM_PROCESS pProcessSystem, _In_ QWORD va
 * above technique fail then the lower memory is scanned (also fail sometimes).
 * -- return
 */
-#define MAX_NUM_POTENTIAL_HIVE_HINT		0x20
+#define MAX_NUM_POTENTIAL_HIVE_HINT        0x20
 BOOL VmmWinReg_LocateRegistryHive()
 {
     BOOL result = FALSE;
@@ -548,38 +548,38 @@ BOOL VmmWinReg_LocateRegistryHive()
     PPMEM_IO_SCATTER_HEADER ppMEMs = NULL;
     if(!VmmProcessGet(4) || !(pb = LocalAlloc(0, 0x01000000))) { goto cleanup; }
     // 1: Try locate registry by scanning ntoskrnl.exe .data section.
-	for(iSection = 0; iSection < 2; iSection++) {	// 1st check '.data' section, then PAGEDATA' for pointers.
-		if(!PE_SectionGetFromName(pObProcessSystem, ctxVmm->kernel.vaBase, iSection ? "PAGEDATA" : ".data", &SectionHeader)) { goto cleanup; }
-		cbSectionSize = min(0x01000000, SectionHeader.Misc.VirtualSize);
-		VmmReadEx(pObProcessSystem, ctxVmm->kernel.vaBase + SectionHeader.VirtualAddress, pb, min(0x01000000, SectionHeader.Misc.VirtualSize), NULL, VMM_FLAG_ZEROPAD_ON_FAIL);
-		cbPoolHdrMax = f32 ? 0x08 : 0x10;
-		for(cbPoolHdr = 0; cbPoolHdr <= cbPoolHdrMax; cbPoolHdr += cbPoolHdrMax) {
-			for(cPotentialHive = 0, o = 0; o < cbSectionSize && cPotentialHive < MAX_NUM_POTENTIAL_HIVE_HINT; o += (f32 ? 4 : 8)) {
-				if(f32) {
-					if((*(PDWORD)(pb + o) & 0x80000fff) == 0x80000000 + cbPoolHdr) {
-						vaPotentialHive[cPotentialHive++] = *(PDWORD)(pb + o);
-					}
-				} else {
-					if((*(PQWORD)(pb + o) & 0xffff8000'00000fff) == (0xffff8000'00000000 + cbPoolHdr)) {
-						vaPotentialHive[cPotentialHive++] = *(PQWORD)(pb + o);
-					}
-				}
-			}
-			if(!cPotentialHive) { continue; }
-			if(!LeechCore_AllocScatterEmpty(cPotentialHive, &ppMEMs)) { continue; }
-			for(i = 0; i < cPotentialHive; i++) {
-				ppMEMs[i]->qwA = vaPotentialHive[i] & ~0xfff;
-			}
-			VmmReadScatterVirtual(pObProcessSystem, ppMEMs, cPotentialHive, 0);
-			for(i = 0; i < cPotentialHive; i++) {
-				if(ppMEMs[i]->cb == 0x1000) {
-					if((result = f32 ? VmmWinReg_FuzzHiveOffsets32(pObProcessSystem, ppMEMs[i]->qwA, ppMEMs[i]->pb) : VmmWinReg_FuzzHiveOffsets64(pObProcessSystem, ppMEMs[i]->qwA, ppMEMs[i]->pb))) {
-						goto cleanup;
-					}
-				}
-			}
-		}
-	}
+    for(iSection = 0; iSection < 2; iSection++) {    // 1st check '.data' section, then PAGEDATA' for pointers.
+        if(!PE_SectionGetFromName(pObProcessSystem, ctxVmm->kernel.vaBase, iSection ? "PAGEDATA" : ".data", &SectionHeader)) { goto cleanup; }
+        cbSectionSize = min(0x01000000, SectionHeader.Misc.VirtualSize);
+        VmmReadEx(pObProcessSystem, ctxVmm->kernel.vaBase + SectionHeader.VirtualAddress, pb, min(0x01000000, SectionHeader.Misc.VirtualSize), NULL, VMM_FLAG_ZEROPAD_ON_FAIL);
+        cbPoolHdrMax = f32 ? 0x08 : 0x10;
+        for(cbPoolHdr = 0; cbPoolHdr <= cbPoolHdrMax; cbPoolHdr += cbPoolHdrMax) {
+            for(cPotentialHive = 0, o = 0; o < cbSectionSize && cPotentialHive < MAX_NUM_POTENTIAL_HIVE_HINT; o += (f32 ? 4 : 8)) {
+                if(f32) {
+                    if((*(PDWORD)(pb + o) & 0x80000fff) == 0x80000000 + cbPoolHdr) {
+                        vaPotentialHive[cPotentialHive++] = *(PDWORD)(pb + o);
+                    }
+                } else {
+                    if((*(PQWORD)(pb + o) & 0xffff8000'00000fff) == (0xffff8000'00000000 + cbPoolHdr)) {
+                        vaPotentialHive[cPotentialHive++] = *(PQWORD)(pb + o);
+                    }
+                }
+            }
+            if(!cPotentialHive) { continue; }
+            if(!LeechCore_AllocScatterEmpty(cPotentialHive, &ppMEMs)) { continue; }
+            for(i = 0; i < cPotentialHive; i++) {
+                ppMEMs[i]->qwA = vaPotentialHive[i] & ~0xfff;
+            }
+            VmmReadScatterVirtual(pObProcessSystem, ppMEMs, cPotentialHive, 0);
+            for(i = 0; i < cPotentialHive; i++) {
+                if(ppMEMs[i]->cb == 0x1000) {
+                    if((result = f32 ? VmmWinReg_FuzzHiveOffsets32(pObProcessSystem, ppMEMs[i]->qwA, ppMEMs[i]->pb) : VmmWinReg_FuzzHiveOffsets64(pObProcessSystem, ppMEMs[i]->qwA, ppMEMs[i]->pb))) {
+                        goto cleanup;
+                    }
+                }
+            }
+        }
+    }
     // 2: As a fallback - try locate registry by scanning lower physical memory.
     //    This is much slower, but will work sometimes when the above method fail.
     for(o = 0x00000000; o < 0x08000000; o += 0x01000000) {
@@ -593,7 +593,7 @@ BOOL VmmWinReg_LocateRegistryHive()
 cleanup:
     LocalFree(pb);
     LocalFree(ppMEMs);
-    VmmOb_DECREF(pObProcessSystem);
+    Ob_DECREF(pObProcessSystem);
     return result;
 }
 
@@ -611,42 +611,46 @@ cleanup:
 VOID VmmWinReg_CallbackCleanup_ObRegistry(PVMMOB_REGISTRY pOb)
 {
     DeleteCriticalSection(&pOb->LockRefresh);
-    VmmOb_DECREF(pOb->pHiveList);
+    Ob_DECREF(pOb->pHiveList);
 }
 
 VOID VmmWinReg_CallbackCleanup_ObRegistryHive(PVMMOB_REGISTRY_HIVE pOb)
 {
-    VmmOb_DECREF(pOb->FLink);
+    Ob_DECREF(pOb->FLink);
 }
 
 /*
 * Callback function from VmmWin_ListTraversePrefetch[32|64].
 * Gather referenced addresses into prefetch dataset.
 */
-BOOL VmmWinReg_EnumHive64_Pre(_In_ PVMM_PROCESS pProcess, _In_opt_ PVMMOB_REGISTRY pRegistry, _In_ QWORD vaData, _In_ PBYTE pbData, _In_ DWORD cbData, _In_ PVMMOB_DATASET pSetAddress)
+VOID VmmWinReg_EnumHive64_Pre(_In_ PVMM_PROCESS pProcess, _In_opt_ PVMMOB_REGISTRY pRegistry, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb, _In_ QWORD vaFLink, _In_ QWORD vaBLink, _In_ POB_VSET pVSetAddress, _Inout_ PBOOL pfValidEntry, _Inout_ PBOOL pfValidFLink, _Inout_ PBOOL pfValidBLink)
 {
     PVMMWIN_REGISTRY_OFFSET po = &ctxVmm->RegistryOffset;
-    if((vaData & 0xffff8000'00000000) != 0xffff8000'00000000) { return FALSE; } // not kernel address
-    if((*(PDWORD)(pbData + po->CM.Signature) == 0xBEE0BEE0) && ((*(PQWORD)(pbData + po->CM.BaseBlock) & 0xfff) == 0x000)) {
-        VmmObDataSet_Put(pSetAddress, *(PQWORD)(pbData + po->CM.BaseBlock));
-        if(po->CM.HiveRootPathOpt && *(PQWORD)(pbData + po->CM.HiveRootPathOpt)) {  // _CMHIVE.HiveRootPath
-            VmmObDataSet_Put(pSetAddress, *(PQWORD)(pbData + po->CM.HiveRootPathOpt + 8) & ~0xfff);
+    if((va & 0xffff8000'00000007) != 0xffff8000'00000000) { return; }               // not aligned kernel address
+    *pfValidFLink = ((vaFLink & 0xffff8000'00000007) == 0xffff8000'00000000);       // aligned kernel address
+    *pfValidBLink = ((vaBLink & 0xffff8000'00000007) == 0xffff8000'00000000);       // aligned kernel address
+    if(*pfValidFLink && *pfValidBLink && (*(PDWORD)(pb + po->CM.Signature) == 0xBEE0BEE0) && ((*(PQWORD)(pb + po->CM.BaseBlock) & 0xfff) == 0x000)) {
+        ObVSet_Put(pVSetAddress, *(PQWORD)(pb + po->CM.BaseBlock));
+        if(po->CM.HiveRootPathOpt && *(PQWORD)(pb + po->CM.HiveRootPathOpt)) {  // _CMHIVE.HiveRootPath
+            ObVSet_Put(pVSetAddress, *(PQWORD)(pb + po->CM.HiveRootPathOpt + 8) & ~0xfff);
         }
+        *pfValidEntry = TRUE;
     }
-    return TRUE;
 }
 
-BOOL VmmWinReg_EnumHive32_Pre(_In_ PVMM_PROCESS pProcess, _In_opt_ PVMMOB_REGISTRY pRegistry, _In_ QWORD vaData, _In_ PBYTE pbData, _In_ DWORD cbData, _In_ PVMMOB_DATASET pSetAddress)
+VOID VmmWinReg_EnumHive32_Pre(_In_ PVMM_PROCESS pProcess, _In_opt_ PVMMOB_REGISTRY pRegistry, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb, _In_ QWORD vaFLink, _In_ QWORD vaBLink, _In_ POB_VSET pVSetAddress, _Inout_ PBOOL pfValidEntry, _Inout_ PBOOL pfValidFLink, _Inout_ PBOOL pfValidBLink)
 {
     PVMMWIN_REGISTRY_OFFSET po = &ctxVmm->RegistryOffset;
-    if((vaData & 0x80000007) != 0x80000000) { return FALSE; } // not kernel address
-    if((*(PDWORD)(pbData + po->CM.Signature) == 0xBEE0BEE0) && ((*(PDWORD)(pbData + po->CM.BaseBlock) & 0xfff) == 0x000)) {
-        VmmObDataSet_Put(pSetAddress, *(PDWORD)(pbData + po->CM.BaseBlock));
-        if(po->CM.HiveRootPathOpt && *(PDWORD)(pbData + po->CM.HiveRootPathOpt)) {  // _CMHIVE.HiveRootPath
-            VmmObDataSet_Put_AddressPageAlign(pSetAddress, *(PDWORD)(pbData + po->CM.HiveRootPathOpt + 4), *(PWORD)(pbData + po->CM.HiveRootPathOpt));
+    if((va & 0x80000007) != 0x80000000) { return; }         // not aligned kernel address
+    *pfValidFLink = ((vaFLink & 0x80000003) == 0x80000000);       // aligned kernel address
+    *pfValidBLink = ((vaBLink & 0x80000003) == 0x80000000);       // aligned kernel address
+    if(*pfValidFLink && *pfValidBLink && (*(PDWORD)(pb + po->CM.Signature) == 0xBEE0BEE0) && ((*(PDWORD)(pb + po->CM.BaseBlock) & 0xfff) == 0x000)) {
+        ObVSet_Put(pVSetAddress, *(PDWORD)(pb + po->CM.BaseBlock));
+        if(po->CM.HiveRootPathOpt && *(PDWORD)(pb + po->CM.HiveRootPathOpt)) {  // _CMHIVE.HiveRootPath
+            ObVSet_Put(pVSetAddress, *(PDWORD)(pb + po->CM.HiveRootPathOpt + 4) & ~0xfff);
         }
+        *pfValidEntry = TRUE;
     }
-    return TRUE;
 }
 
 VOID VmmWinReg_ListTraversePrefetch_CallbackPost_GetShortName(_In_ LPWSTR wsz, _Out_writes_(32) LPSTR sz)
@@ -683,7 +687,7 @@ BOOL VmmWinReg_EnumHive64_Post(_In_ PVMM_PROCESS pProcess, _In_opt_ PVMMOB_REGIS
         (*(PDWORD)(pbData + po->CM.Length) <= 0x40000000);                      // Length < 1GB
     if(!f) { return TRUE; }
     // 2: Allocate and Initialize
-    if(!(pObHive = VmmOb_Alloc('re', LMEM_ZEROINIT, sizeof(VMMOB_REGISTRY_HIVE), VmmWinReg_CallbackCleanup_ObRegistryHive, NULL))) { return TRUE; }
+    if(!(pObHive = Ob_Alloc('re', LMEM_ZEROINIT, sizeof(VMMOB_REGISTRY_HIVE), VmmWinReg_CallbackCleanup_ObRegistryHive, NULL))) { return TRUE; }
     pObHive->vaCMHIVE = vaData;
     pObHive->vaHBASE_BLOCK = *(PQWORD)(pbData + po->CM.BaseBlock);
     pObHive->cbLength = *(PDWORD)(pbData + po->CM.Length);
@@ -736,7 +740,7 @@ BOOL VmmWinReg_EnumHive32_Post(_In_ PVMM_PROCESS pProcess, _In_opt_ PVMMOB_REGIS
         (*(PDWORD)(pbData + po->CM.Length) <= 0x40000000);                      // Length < 1GB
     if(!f) { return TRUE; }
     // 2: Allocate and Initialize
-    if(!(pObHive = VmmOb_Alloc('re', LMEM_ZEROINIT, sizeof(VMMOB_REGISTRY_HIVE), VmmWinReg_CallbackCleanup_ObRegistryHive, NULL))) { return TRUE; }
+    if(!(pObHive = Ob_Alloc('re', LMEM_ZEROINIT, sizeof(VMMOB_REGISTRY_HIVE), VmmWinReg_CallbackCleanup_ObRegistryHive, NULL))) { return TRUE; }
     pObHive->vaCMHIVE = vaData;
     pObHive->vaHBASE_BLOCK = *(PDWORD)(pbData + po->CM.BaseBlock);
     pObHive->cbLength = *(PDWORD)(pbData + po->CM.Length);
@@ -784,34 +788,23 @@ PVMMOB_REGISTRY VmmWinReg_EnumHive()
     PVMM_PROCESS pObProcessSystem = NULL;
     if(!(pObProcessSystem = VmmProcessGet(4))) { goto cleanup; }    
     if(!ctxVmm->RegistryOffset.vaHintCMHIVE && !VmmWinReg_LocateRegistryHive()) { goto cleanup; }
-    if(!(pObRegistry = VmmOb_Alloc('RE', LMEM_ZEROINIT, sizeof(VMMOB_REGISTRY), VmmWinReg_CallbackCleanup_ObRegistry, NULL))) { goto cleanup; }
+    if(!(pObRegistry = Ob_Alloc('RE', LMEM_ZEROINIT, sizeof(VMMOB_REGISTRY), VmmWinReg_CallbackCleanup_ObRegistry, NULL))) { goto cleanup; }
     InitializeCriticalSection(&pObRegistry->LockRefresh);
     // Traverse the CMHIVE linked list in an efficient way
-    if(f32) {
-        VmmWin_ListTraversePrefetch32(
-            pObProcessSystem,
-            pObRegistry,
-            (DWORD)ctxVmm->RegistryOffset.vaHintCMHIVE,
-            ctxVmm->RegistryOffset.CM.FLink,
-            ctxVmm->RegistryOffset.CM._Size,
-            VmmWinReg_EnumHive32_Pre,
-            VmmWinReg_EnumHive32_Post,
-            &ctxVmm->ObCCachePrefetchRegistry);
-    } else {
-        VmmWin_ListTraversePrefetch64(
-            pObProcessSystem,
-            pObRegistry,
-            ctxVmm->RegistryOffset.vaHintCMHIVE,
-            ctxVmm->RegistryOffset.CM.FLink,
-            ctxVmm->RegistryOffset.CM._Size,
-            VmmWinReg_EnumHive64_Pre,
-            VmmWinReg_EnumHive64_Post,
-            &ctxVmm->ObCCachePrefetchRegistry);
-    }
+    VmmWin_ListTraversePrefetch(
+        pObProcessSystem,
+        f32,
+        pObRegistry,
+        ctxVmm->RegistryOffset.vaHintCMHIVE,
+        ctxVmm->RegistryOffset.CM.FLink,
+        ctxVmm->RegistryOffset.CM._Size,
+        f32 ? VmmWinReg_EnumHive32_Pre : VmmWinReg_EnumHive64_Pre,
+        f32 ? VmmWinReg_EnumHive32_Post : VmmWinReg_EnumHive64_Post,
+        ctxVmm->pObCCachePrefetchRegistry);
     pObRegistry->fValid = TRUE;
-    VmmObContainer_SetOb(&ctxVmm->ObCRegistry, pObRegistry);
+    ObContainer_SetOb(ctxVmm->pObCRegistry, pObRegistry);
 cleanup:
-    VmmOb_DECREF(pObProcessSystem);
+    Ob_DECREF(pObProcessSystem);
     return pObRegistry;
 }
 
@@ -824,13 +817,13 @@ cleanup:
 PVMMOB_REGISTRY VmmWinReg_RegistryGet()
 {
     PVMMOB_REGISTRY pObRegistry, pObRegistryRefreshed;
-    pObRegistry = VmmObContainer_GetOb(&ctxVmm->ObCRegistry);
+    pObRegistry = ObContainer_GetOb(ctxVmm->pObCRegistry);
     if(!pObRegistry) {
         EnterCriticalSection(&ctxVmm->MasterLock);
-		pObRegistry = VmmObContainer_GetOb(&ctxVmm->ObCRegistry);
-		if(!pObRegistry) {
-			pObRegistry = VmmWinReg_EnumHive();
-		}
+        pObRegistry = ObContainer_GetOb(ctxVmm->pObCRegistry);
+        if(!pObRegistry) {
+            pObRegistry = VmmWinReg_EnumHive();
+        }
         LeaveCriticalSection(&ctxVmm->MasterLock);
     }
     if(pObRegistry && pObRegistry->fValid) {
@@ -839,12 +832,12 @@ PVMMOB_REGISTRY VmmWinReg_RegistryGet()
             // accessing registry during update will get the old copy.
             pObRegistryRefreshed = VmmWinReg_EnumHive();
             LeaveCriticalSection(&pObRegistry->LockRefresh);
-            VmmOb_DECREF(pObRegistry);
+            Ob_DECREF(pObRegistry);
             return pObRegistryRefreshed;
         }
         return pObRegistry;
     }
-    VmmOb_DECREF(pObRegistry);
+    Ob_DECREF(pObRegistry);
     return NULL;
 }
 
@@ -854,11 +847,11 @@ PVMMOB_REGISTRY VmmWinReg_RegistryGet()
 */
 VOID VmmWinReg_Refresh()
 {
-	PVMMOB_REGISTRY pObRegistry = VmmObContainer_GetOb(&ctxVmm->ObCRegistry);
-	if(pObRegistry) {
-		pObRegistry->fRefreshRequired = TRUE;
-		VmmOb_DECREF(pObRegistry);
-	}
+    PVMMOB_REGISTRY pObRegistry = ObContainer_GetOb(ctxVmm->pObCRegistry);
+    if(pObRegistry) {
+        pObRegistry->fRefreshRequired = TRUE;
+        Ob_DECREF(pObRegistry);
+    }
 }
 
 
@@ -872,15 +865,15 @@ PVMMOB_REGISTRY_HIVE VmmWinReg_HiveGetNext(_In_opt_ PVMMOB_REGISTRY_HIVE pObRegi
     PVMMOB_REGISTRY_HIVE pObRegistryHiveReturn;
     if(pObRegistryHive) {
         pObRegistryHiveReturn = pObRegistryHive->FLink;
-        VmmOb_INCREF(pObRegistryHiveReturn);
-        VmmOb_DECREF(pObRegistryHive);
+        Ob_INCREF(pObRegistryHiveReturn);
+        Ob_DECREF(pObRegistryHive);
         return pObRegistryHiveReturn;
     }
     pObRegistry = VmmWinReg_RegistryGet();
     if(!pObRegistry) { return NULL; }
     pObRegistryHiveReturn = pObRegistry->pHiveList;
-    VmmOb_INCREF(pObRegistryHiveReturn);
-    VmmOb_DECREF(pObRegistry);
+    Ob_INCREF(pObRegistryHiveReturn);
+    Ob_DECREF(pObRegistry);
     return pObRegistryHiveReturn;
 }
 

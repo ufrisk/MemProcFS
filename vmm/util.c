@@ -4,6 +4,15 @@
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "util.h"
+#include <math.h>
+
+/*
+* Calculate the number of digits of an integer number.
+*/
+DWORD Util_GetNumDigits(_In_ DWORD dwNumber)
+{
+    return (DWORD)max(1, floor(log10(dwNumber) + 1));
+}
 
 QWORD Util_GetNumeric(_In_ LPSTR sz)
 {
@@ -168,6 +177,14 @@ NTSTATUS Util_VfsReadFile_FromPBYTE(_In_ PBYTE pbFile, _In_ QWORD cbFile, _Out_ 
     return *pcbRead ? UTIL_NTSTATUS_SUCCESS : UTIL_NTSTATUS_END_OF_FILE;
 }
 
+NTSTATUS Util_VfsReadFile_FromNumber(_In_ QWORD qwValue, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+{
+    BYTE pbBuffer[32];
+    DWORD cbBuffer;
+    cbBuffer = snprintf(pbBuffer, 32, "%lli", qwValue);
+    return Util_VfsReadFile_FromPBYTE(pbBuffer, cbBuffer, pb, cb, pcbRead, cbOffset);
+}
+
 NTSTATUS Util_VfsReadFile_FromQWORD(_In_ QWORD qwValue, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset, _In_ BOOL fPrefix)
 {
     BYTE pbBuffer[32];
@@ -217,4 +234,17 @@ NTSTATUS Util_VfsWriteFile_DWORD(_Inout_ PDWORD pdwTarget, _In_ PBYTE pb, _In_ D
     }
     *pcbWrite = cb;
     return UTIL_NTSTATUS_SUCCESS;
+}
+
+LPSTR Util_StrDupA(_In_opt_ LPSTR sz)
+{
+    SIZE_T cch;
+    LPSTR szDup;
+    if(!sz) { return NULL; }
+    cch = 1 + strlen(sz);
+    szDup = LocalAlloc(0, cch);
+    if(szDup) {
+        memcpy(szDup, sz, cch);
+    }
+    return szDup;
 }

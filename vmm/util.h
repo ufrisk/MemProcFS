@@ -8,6 +8,11 @@
 #include "vmm.h"
 
 /*
+* Calculate the number of digits of an integer number.
+*/
+DWORD Util_GetNumDigits(_In_ DWORD dwNumber);
+
+/*
 * Parse a string returning the QWORD representing the string. The string may
 * consist of a decimal or hexadecimal integer string. Hexadecimals must begin
 * with 0x.
@@ -70,9 +75,18 @@ VOID Util_PathSplit2_WCHAR(_In_ LPWSTR wsz, _Out_writes_(MAX_PATH) PCHAR _szBuf,
 VOID Util_GetPathDll(_Out_writes_(MAX_PATH) PCHAR szPath, _In_opt_ HMODULE hModule);
 
 /*
+* Duplicates a string.
+* CALLER LocalFree return
+* -- sz
+* -- return fail: null, success: duplicated string - caller responsible for free with LocalFree()
+*/
+LPSTR Util_StrDupA(_In_opt_ LPSTR sz);
+
+/*
 * Utility functions for read/write towards different underlying data representations.
 */
 NTSTATUS Util_VfsReadFile_FromPBYTE(_In_ PBYTE pbFile, _In_ QWORD cbFile, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
+NTSTATUS Util_VfsReadFile_FromNumber(_In_ QWORD qwValue, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsReadFile_FromQWORD(_In_ QWORD qwValue, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset, _In_ BOOL fPrefix);
 NTSTATUS Util_VfsReadFile_FromDWORD(_In_ DWORD dwValue, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset, _In_ BOOL fPrefix);
 NTSTATUS Util_VfsReadFile_FromBOOL(_In_ BOOL fValue, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);

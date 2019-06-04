@@ -104,12 +104,12 @@ NTSTATUS Virt2Phys_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DW
         pObPT = VmmTlbGetPageTable(Virt2PhysInfo.pas[iPML] & ~0xfff, FALSE);
         if(pObPT) {
             memcpy(pbSourceData, pObPT->pb, 0x1000);
-            VmmOb_DECREF(pObPT);
+            Ob_DECREF(pObPT);
             pObPT = NULL;
         }
     }
     if(!_stricmp(ctx->szPath, "page") && (Virt2PhysInfo.pas[0] & ~0xfff)) {
-        VmmReadPhysicalPage(Virt2PhysInfo.pas[0] & ~0xfff, pbBuffer);
+        VmmReadPage(NULL, Virt2PhysInfo.pas[0] & ~0xfff, pbBuffer);
     }
     if(iPML || !_stricmp(ctx->szPath, "page")) {
         return Util_VfsReadFile_FromPBYTE(pbSourceData, 0x1000, pb, cb, pcbRead, cbOffset);
@@ -181,7 +181,7 @@ NTSTATUS Virt2Phys_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PBYTE pb, _In_ DW
     if(Virt2PhysInfo.pas[i] < 0x1000) { return VMMDLL_STATUS_FILE_INVALID; }
     if(cbOffset > 0x1000) { return VMMDLL_STATUS_END_OF_FILE; }
     *pcbWrite = (DWORD)min(cb, 0x1000 - cbOffset);
-    VmmWritePhysical(Virt2PhysInfo.pas[i] + cbOffset, pb, *pcbWrite);
+    VmmWrite(NULL, Virt2PhysInfo.pas[i] + cbOffset, pb, *pcbWrite);
     return *pcbWrite ? VMMDLL_STATUS_SUCCESS : VMMDLL_STATUS_END_OF_FILE;
 }
 

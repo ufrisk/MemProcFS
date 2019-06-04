@@ -33,13 +33,13 @@ BOOL MmX64WinPaged_MemCompression_DecompressPage(_In_ QWORD vaCompressedData, _I
             VmmRead(pObProcess, vaCompressedData, pbCompressed, cbCompressedData) &&
             (VMM_STATUS_SUCCESS == ctxVmm->fn.RtlDecompressBuffer(COMPRESS_ALGORITHM_XPRESS, pbDecompressedPage, 0x1000, pbCompressed, cbCompressedData, &cbDecompressed)) &&
             (cbDecompressed == 0x1000);
-        VmmOb_DECREF(pObProcess); pObProcess = NULL;
+        Ob_DECREF(pObProcess); pObProcess = NULL;
         if(pcbCompressedData) { *pcbCompressedData = cbCompressedData; }
         return result;
     }
     // buffer not specified - try auto-detect!
     VmmReadEx(pObProcess, vaCompressedData, pbCompressed, 0x1000, &cbReadCompressedData, VMM_FLAG_ZEROPAD_ON_FAIL);
-    VmmOb_DECREF(pObProcess); pObProcess = NULL;
+    Ob_DECREF(pObProcess); pObProcess = NULL;
     if(cbReadCompressedData < 0x10) { return FALSE; }
     for(i = 0x10; i < 0x1000; i++) {
         result =

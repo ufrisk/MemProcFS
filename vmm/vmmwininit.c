@@ -58,7 +58,7 @@ VOID VmmWinInit_FindNtosScan64_LargePageWalk(_In_ QWORD paTable, _In_ QWORD vaBa
         }
     }
 finish:
-    VmmOb_DECREF(pObPTEs);
+    Ob_DECREF(pObPTEs);
 }
 
 /*
@@ -191,7 +191,7 @@ PVMM_PROCESS VmmWinInit_FindNtosScan()
     QWORD vaKernelBase = 0, cbKernelSize, vaKernelHint;
     PVMM_PROCESS pObSystemProcess = NULL;
     // 1: Pre-initialize System PID (required by VMM)
-    pObSystemProcess = VmmProcessCreateEntry(TRUE, 4, 0, ctxVmm->kernel.paDTB, 0, "System", FALSE);
+    pObSystemProcess = VmmProcessCreateEntry(TRUE, 4, 0, 0, ctxVmm->kernel.paDTB, 0, "System", FALSE);
     if(!pObSystemProcess) { return NULL; }
     VmmProcessCreateFinish();
     // 2: Spider DTB to speed things up.
@@ -221,7 +221,7 @@ PVMM_PROCESS VmmWinInit_FindNtosScan()
     ctxVmm->kernel.cbSize = cbKernelSize;
     return pObSystemProcess;
 fail:
-    VmmOb_DECREF(pObSystemProcess);
+    Ob_DECREF(pObSystemProcess);
     return NULL;
 }
 
@@ -450,6 +450,28 @@ fail:
 }
 
 /*
+* Retrieve the operating system versioning information by looking at values in
+* the PEB of the process 'smss.exe'.
+* -- pProcessSMSS
+* -- return
+*/
+VOID VmmWinInit_VersionNumber(_In_ PVMM_PROCESS pProcessSMSS)
+{
+    BYTE pbPEB[0x130];
+    if(VmmRead(pProcessSMSS, pProcessSMSS->win.vaPEB, pbPEB, 0x130)) {
+        if(ctxVmm->f32) {
+            ctxVmm->kernel.dwVersionMajor = *(PDWORD)(pbPEB + 0x0a4);
+            ctxVmm->kernel.dwVersionMinor = *(PDWORD)(pbPEB + 0x0a8);
+            ctxVmm->kernel.dwVersionBuild = *(PWORD)(pbPEB + 0x0ac);
+        } else {
+            ctxVmm->kernel.dwVersionMajor = *(PDWORD)(pbPEB + 0x118);
+            ctxVmm->kernel.dwVersionMinor = *(PDWORD)(pbPEB + 0x11c);
+            ctxVmm->kernel.dwVersionBuild = *(PWORD)(pbPEB + 0x120);
+        }
+    }
+}
+
+/*
 * Try initialize the VMM from scratch with new WINDOWS support.
 * -- paDTBOpt
 * -- return
@@ -491,7 +513,7 @@ BOOL VmmWinInit_TryInitialize(_In_opt_ QWORD paDTBOpt)
     if((VMM_MEMORYMODEL_X86 == ctxVmm->tpMemoryModel) || (VMM_MEMORYMODEL_X86PAE == ctxVmm->tpMemoryModel)) {
         vaSystemEPROCESS &= 0xffffffff;
     }
-    pObSystemProcess->os.win.vaEPROCESS = vaSystemEPROCESS;
+    pObSystemProcess->win.vaEPROCESS = vaSystemEPROCESS;
     vmmprintfvv_fn("INFO: PsInitialSystemProcess located at %016llx.\n", vaPsInitialSystemProcess);
     vmmprintfvv_fn("INFO: EPROCESS located at %016llx.\n", vaSystemEPROCESS);
     // Enumerate processes
@@ -502,22 +524,33 @@ BOOL VmmWinInit_TryInitialize(_In_opt_ QWORD paDTBOpt)
     ctxVmm->tpSystem = (VMM_MEMORYMODEL_X64 == ctxVmm->tpMemoryModel) ? VMM_SYSTEM_WINDOWS_X64 : VMM_SYSTEM_WINDOWS_X86;
     // Optionally fetch PsLoadedModuleList / KDBG
     VmmWinInit_FindPsLoadedModuleListKDBG(pObSystemProcess);
-    VmmOb_DECREF(pObSystemProcess);
+    Ob_DECREF(pObSystemProcess);
+    // Retrieve operating system version information from 'smss.exe' process
     // Optionally retrieve PID of MemCompression and Registry process
-    while((pObProcess = VmmProcessGetNext(pObProcess))) {
-        if(!memcmp("MemCompression", pObProcess->szName, 15)) {
-            ctxVmm->kernel.dwPidMemCompression = pObProcess->dwPID;
-        }
-        if(!memcmp("Registry", pObProcess->szName, 9)) {
-            ctxVmm->kernel.dwPidRegistry = pObProcess->dwPID;
+    while((pObProcess = VmmProcessGetNext(pObProcess, 0))) {
+        if(pObProcess->dwPPID == 4) {
+            if(!memcmp("MemCompression", pObProcess->szName, 15)) {
+                ctxVmm->kernel.dwPidMemCompression = pObProcess->dwPID;
+            }
+            if(!memcmp("Registry", pObProcess->szName, 9)) {
+                ctxVmm->kernel.dwPidRegistry = pObProcess->dwPID;
+            }
+            if(!_stricmp("smss.exe", pObProcess->szName)) {
+                VmmWinInit_VersionNumber(pObProcess);
+            }
         }
     }
-    VmmOb_DECREF(pObProcess);
-    pObProcess = NULL;
+    // return
+    vmmprintf(
+        "Initialized %i-bit Windows %i.%i.%i\n",
+        (ctxVmm->f32 ? 32 : 64),
+        ctxVmm->kernel.dwVersionMajor,
+        ctxVmm->kernel.dwVersionMinor,
+        ctxVmm->kernel.dwVersionBuild);
     return TRUE;
 fail:
     VmmInitializeMemoryModel(VMM_MEMORYMODEL_NA); // clean memory model
     ZeroMemory(&ctxVmm->kernel, sizeof(VMM_KERNELINFO));
-    VmmOb_DECREF(pObSystemProcess);
+    Ob_DECREF(pObSystemProcess);
     return FALSE;
 }

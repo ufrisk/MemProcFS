@@ -18,7 +18,7 @@ typedef struct tdPEDUMP_FILENTRY {
 } PEDUMP_FILENTRY;
 
 typedef struct tdOBPEDUMP_MODULECACHE {
-    VMMOB ObHdr;
+    OB ObHdr;
     DWORD dwPID;
     DWORD cFiles;
     PEDUMP_FILENTRY File[];
@@ -39,24 +39,24 @@ BOOL M_PEDump_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
     DWORD iModule;
     PVMMOB_MODULEMAP pObModuleMap = NULL;
     POBPEDUMP_MODULECACHE pObCache = NULL;
-    PVMMOB_DATASET pObSetModuleBaseAddress = NULL;
+    POB_VSET pObVSet_ModuleBaseAddresses = NULL;
     PVMM_PROCESS pProcess = (PVMM_PROCESS)ctx->pProcess;
     DWORD cbPageRead;
     BYTE pbPage[0x1000];
     if(ctx->szPath[0]) { return FALSE; }
     // 1: get cached entries
-    pObCache = VmmObContainer_GetOb(&pProcess->Plugin.ObCPeDumpDirCache);
+    pObCache = ObContainer_GetOb(pProcess->Plugin.pObCPeDumpDirCache);
     // 2: set up cache (if needed)
     if(!pObCache) {
         if(!VmmProc_ModuleMapGet(pProcess, &pObModuleMap)) { return FALSE; }
-        pObCache = VmmOb_Alloc('MP', LMEM_ZEROINIT, sizeof(OBPEDUMP_MODULECACHE) + pObModuleMap->cMap * sizeof(PEDUMP_FILENTRY), NULL, NULL);
+        pObCache = Ob_Alloc('MP', LMEM_ZEROINIT, sizeof(OBPEDUMP_MODULECACHE) + pObModuleMap->cMap * sizeof(PEDUMP_FILENTRY), NULL, NULL);
         if(!pObCache) { goto fail; }
         // Load module bases (PE header) memory into cache with one single call.
-        if(!(pObSetModuleBaseAddress = VmmObDataSet_Alloc(TRUE))) { goto fail; }
+        if(!(pObVSet_ModuleBaseAddresses = ObVSet_New())) { goto fail; }
         for(iModule = 0; iModule < pObModuleMap->cMap; iModule++) {
-            VmmObDataSet_Put(pObSetModuleBaseAddress, pObModuleMap->pMap[iModule].BaseAddress);
+            ObVSet_Put(pObVSet_ModuleBaseAddresses, pObModuleMap->pMap[iModule].BaseAddress);
         }
-        VmmCachePrefetchPages(pProcess, pObSetModuleBaseAddress);
+        VmmCachePrefetchPages(pProcess, pObVSet_ModuleBaseAddresses);
         // Build file listing information cache (only from in-cache items).
         ZeroMemory(pbPage, 0x1000);
         for(iModule = 0; iModule < pObModuleMap->cMap; iModule++) {
@@ -73,7 +73,7 @@ BOOL M_PEDump_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
             memcpy(pObCache->File[pObCache->cFiles].szName, pObModuleMap->pMap[iModule].szName, 32);
             pObCache->cFiles++;
         }
-        VmmObContainer_SetOb(&pProcess->Plugin.ObCPeDumpDirCache, pObCache);
+        ObContainer_SetOb(pProcess->Plugin.pObCPeDumpDirCache, pObCache);
     }
     // 3: show results and return
     for(iModule = 0; iModule < pObCache->cFiles; iModule++) {
@@ -81,9 +81,9 @@ BOOL M_PEDump_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
     }
     result = TRUE;
 fail:
-    VmmOb_DECREF(pObCache);
-    VmmOb_DECREF(pObModuleMap);
-    VmmOb_DECREF(pObSetModuleBaseAddress);
+    Ob_DECREF(pObCache);
+    Ob_DECREF(pObModuleMap);
+    Ob_DECREF(pObVSet_ModuleBaseAddresses);
     return result;
 }
 
@@ -106,7 +106,7 @@ NTSTATUS M_PEDump_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWO
         (cbOffset <= 0x02000000) &&
         VmmProc_ModuleMapGetSingleEntry((PVMM_PROCESS)ctx->pProcess, ctx->szPath, &pObModuleMap, &pModule) &&
         PE_FileRaw_Read(ctx->pProcess, pModule->BaseAddress, pb, cb, pcbRead, (DWORD)cbOffset);
-    VmmOb_DECREF(pObModuleMap);
+    Ob_DECREF(pObModuleMap);
     return result ? VMMDLL_STATUS_SUCCESS : VMMDLL_STATUS_FILE_INVALID;
 }
 
@@ -134,7 +134,7 @@ NTSTATUS M_PEDump_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PBYTE pb, _In_ DWO
         (cbOffset <= 0x02000000) &&
         VmmProc_ModuleMapGetSingleEntry((PVMM_PROCESS)ctx->pProcess, ctx->szPath, &pObModuleMap, &pModule) &&
         PE_FileRaw_Write(ctx->pProcess, pModule->BaseAddress, pb, cb, pcbWrite, (DWORD)cbOffset);
-    VmmOb_DECREF(pObModuleMap);
+    Ob_DECREF(pObModuleMap);
     return result ? VMMDLL_STATUS_SUCCESS : VMMDLL_STATUS_FILE_INVALID;
 }
 

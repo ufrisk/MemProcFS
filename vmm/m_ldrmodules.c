@@ -16,7 +16,7 @@
 #define LDRMODULES_CACHE_TP_IAT     2
 #define LDRMODULES_NUM_CACHE        8
 typedef struct tdOBLDRMODULES_CACHE_ENTRY {
-    VMMOB ObHdr;
+    OB ObHdr;
     CHAR szDll[32];
     DWORD tp;
     DWORD cb;
@@ -40,11 +40,11 @@ POBLDRMODULES_CACHE_ENTRY LdrModule_GetEAT(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_
     POBLDRMODULES_CACHE_ENTRY pObCacheEntry = NULL;
     PVMM_PROCESS pProcess = (PVMM_PROCESS)ctx->pProcess;
     // 1: retrieve cache
-    pObCacheEntry = VmmObContainer_GetOb(&pProcess->Plugin.ObCLdrModulesDisplayCache);
+    pObCacheEntry = ObContainer_GetOb(pProcess->Plugin.pObCLdrModulesDisplayCache);
     if(pObCacheEntry && (pObCacheEntry->tp == LDRMODULES_CACHE_TP_EAT) && !_strnicmp(pObCacheEntry->szDll, pModule->szName, 32)) {
         return pObCacheEntry;
     }
-    VmmOb_DECREF(pObCacheEntry);
+    Ob_DECREF(pObCacheEntry);
     pObCacheEntry = NULL;
     // 2: retrieve exported functions
     pEATs = LocalAlloc(0, LDRMODULES_MAX_IATEAT * sizeof(VMMPROC_WINDOWS_EAT_ENTRY));
@@ -52,7 +52,7 @@ POBLDRMODULES_CACHE_ENTRY LdrModule_GetEAT(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_
     VmmWin_PE_LoadEAT_DisplayBuffer(ctx->pProcess, pModule, pEATs, LDRMODULES_MAX_IATEAT, &cEATs);
     if(!cEATs) { goto fail; }
     // 3: fill "display buffer"
-    pObCacheEntry = VmmOb_Alloc('EA', LMEM_ZEROINIT, sizeof(OBLDRMODULES_CACHE_ENTRY) + (QWORD)cEATs * 64 + 1, NULL, NULL);
+    pObCacheEntry = Ob_Alloc('EA', LMEM_ZEROINIT, sizeof(OBLDRMODULES_CACHE_ENTRY) + (QWORD)cEATs * 64 + 1, NULL, NULL);
     if(!pObCacheEntry) { goto fail; }
     pObCacheEntry->tp = LDRMODULES_CACHE_TP_EAT;
     pObCacheEntry->cb = cEATs * 64 + 1;
@@ -69,10 +69,10 @@ POBLDRMODULES_CACHE_ENTRY LdrModule_GetEAT(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_
     }
     pObCacheEntry->cb = o;
     LocalFree(pEATs);
-    VmmObContainer_SetOb(&pProcess->Plugin.ObCLdrModulesDisplayCache, pObCacheEntry);
+    ObContainer_SetOb(pProcess->Plugin.pObCLdrModulesDisplayCache, pObCacheEntry);
     return pObCacheEntry;
 fail:
-    VmmOb_DECREF(pObCacheEntry);
+    Ob_DECREF(pObCacheEntry);
     LocalFree(pEATs);
     return NULL;
 }
@@ -91,11 +91,11 @@ POBLDRMODULES_CACHE_ENTRY LdrModule_GetIAT(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_
     POBLDRMODULES_CACHE_ENTRY pObCacheEntry = NULL;
     PVMM_PROCESS pProcess = (PVMM_PROCESS)ctx->pProcess;
     // 1: retrieve cache
-    pObCacheEntry = VmmObContainer_GetOb(&pProcess->Plugin.ObCLdrModulesDisplayCache);
+    pObCacheEntry = ObContainer_GetOb(pProcess->Plugin.pObCLdrModulesDisplayCache);
     if(pObCacheEntry && (pObCacheEntry->tp == LDRMODULES_CACHE_TP_IAT) && !_strnicmp(pObCacheEntry->szDll, pModule->szName, 32)) {
         return pObCacheEntry;
     }
-    VmmOb_DECREF(pObCacheEntry);
+    Ob_DECREF(pObCacheEntry);
     pObCacheEntry = NULL;
     // 2: retrieve exported functions
     pIATs = LocalAlloc(0, LDRMODULES_MAX_IATEAT * sizeof(VMMWIN_IAT_ENTRY));
@@ -103,7 +103,7 @@ POBLDRMODULES_CACHE_ENTRY LdrModule_GetIAT(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_
     VmmWin_PE_LoadIAT_DisplayBuffer(ctx->pProcess, pModule, pIATs, LDRMODULES_MAX_IATEAT, &cIATs);
     if(!cIATs) { goto fail; }
     // 3: fill "display buffer"
-    pObCacheEntry = VmmOb_Alloc('IA', LMEM_ZEROINIT, sizeof(OBLDRMODULES_CACHE_ENTRY) + (QWORD)cIATs * 128 + 1, NULL, NULL);
+    pObCacheEntry = Ob_Alloc('IA', LMEM_ZEROINIT, sizeof(OBLDRMODULES_CACHE_ENTRY) + (QWORD)cIATs * 128 + 1, NULL, NULL);
     if(!pObCacheEntry) { goto fail; }
     pObCacheEntry->tp = LDRMODULES_CACHE_TP_IAT;
     pObCacheEntry->cb = cIATs * 128 + 1;
@@ -121,10 +121,10 @@ POBLDRMODULES_CACHE_ENTRY LdrModule_GetIAT(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_
     }
     pObCacheEntry->cb = o;
     LocalFree(pIATs);
-    VmmObContainer_SetOb(&pProcess->Plugin.ObCLdrModulesDisplayCache, pObCacheEntry);
+    ObContainer_SetOb(pProcess->Plugin.pObCLdrModulesDisplayCache, pObCacheEntry);
     return pObCacheEntry;
 fail:
-    VmmOb_DECREF(pObCacheEntry);
+    Ob_DECREF(pObCacheEntry);
     LocalFree(pIATs);
     return NULL;
 }
@@ -194,7 +194,7 @@ NTSTATUS LdrModules_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PBYTE pb, _In_ D
         if(!_strnicmp(szModuleSubPath, "directoriesd\\", 13)) {
             LdrModules_Write_DirectoriesD(pProcess, pModule, szModuleSubPath + 13, pb, cb, pcbWrite, cbOffset);
         }
-        VmmOb_DECREF(pObModuleMap);
+        Ob_DECREF(pObModuleMap);
     }
     return VMM_STATUS_SUCCESS;
 }
@@ -261,14 +261,14 @@ NTSTATUS LdrModules_Read_ModuleSubFile(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PVM
         pObCacheEntry = LdrModule_GetEAT(ctx, pModule);
         if(!pObCacheEntry) { return VMMDLL_STATUS_FILE_INVALID; }
         nt = Util_VfsReadFile_FromPBYTE(pObCacheEntry->pb, pObCacheEntry->cb, pb, cb, pcbRead, cbOffset);
-        VmmOb_DECREF(pObCacheEntry);
+        Ob_DECREF(pObCacheEntry);
         return nt;
     }
     if(!_stricmp(szPath, "import")) {
         pObCacheEntry = LdrModule_GetIAT(ctx, pModule);
         if(!pObCacheEntry) { return VMMDLL_STATUS_FILE_INVALID; }
         nt = Util_VfsReadFile_FromPBYTE(pObCacheEntry->pb, pObCacheEntry->cb, pb, cb, pcbRead, cbOffset);
-        VmmOb_DECREF(pObCacheEntry);
+        Ob_DECREF(pObCacheEntry);
         return nt;
     }
     if(!_stricmp(szPath, "pefile.dll")) {
@@ -308,7 +308,7 @@ NTSTATUS LdrModules_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ D
     *pcbRead = 0;
     if(szModuleName[0] && szModuleSubPath[0] && VmmProc_ModuleMapGetSingleEntry((PVMM_PROCESS)ctx->pProcess, szModuleName, &pObModuleMap, &pModule)) {
         nt = LdrModules_Read_ModuleSubFile(ctx, pModule, szModuleSubPath, pb, cb, pcbRead, cbOffset);
-        VmmOb_DECREF(pObModuleMap);
+        Ob_DECREF(pObModuleMap);
         return nt;
     }
     return VMMDLL_STATUS_FILE_INVALID;
@@ -387,10 +387,10 @@ BOOL LdrModules_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
         goto success;
     }
 fail:
-    VmmOb_DECREF(pObModuleMap);
+    Ob_DECREF(pObModuleMap);
     return FALSE;
 success:
-    VmmOb_DECREF(pObModuleMap);
+    Ob_DECREF(pObModuleMap);
     return TRUE;
 }
 

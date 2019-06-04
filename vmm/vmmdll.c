@@ -552,7 +552,7 @@ DWORD VMMDLL_MemReadScatter_Impl(_In_ DWORD dwPID, _Inout_ PPMEM_IO_SCATTER_HEAD
             return FALSE;
         }
         VmmReadScatterVirtual(pObProcess, ppMEMs, cpMEMs, flags);
-        VmmOb_DECREF(pObProcess);
+        Ob_DECREF(pObProcess);
     }
     for(i = 0, cMEMs = 0; i < cpMEMs; i++) {
         if(ppMEMs[i]->cb == ppMEMs[i]->cbMax) {
@@ -573,38 +573,38 @@ DWORD VMMDLL_MemReadScatter(_In_ DWORD dwPID, _Inout_ PPMEM_IO_SCATTER_HEADER pp
 }
 
 _Success_(return)
-BOOL VMMDLL_MemReadEx_Impl(_In_ DWORD dwPID, _In_ ULONG64 qwVA, _Out_ PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbReadOpt, _In_ ULONG64 flags)
+BOOL VMMDLL_MemReadEx_Impl(_In_ DWORD dwPID, _In_ ULONG64 qwA, _Out_ PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbReadOpt, _In_ ULONG64 flags)
 {
     PVMM_PROCESS pObProcess = NULL;
     if(dwPID != -1) {
         pObProcess = VmmProcessGet(dwPID);
         if(!pObProcess) { return FALSE; }
     }
-    VmmReadEx(pObProcess, qwVA, pb, cb, pcbReadOpt, flags);
-    VmmOb_DECREF(pObProcess);
+    VmmReadEx(pObProcess, qwA, pb, cb, pcbReadOpt, flags);
+    Ob_DECREF(pObProcess);
     return TRUE;
 }
 
 _Success_(return)
-BOOL VMMDLL_MemReadEx(_In_ DWORD dwPID, _In_ ULONG64 qwVA, _Out_ PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbReadOpt, _In_ ULONG64 flags)
+BOOL VMMDLL_MemReadEx(_In_ DWORD dwPID, _In_ ULONG64 qwA, _Out_ PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbReadOpt, _In_ ULONG64 flags)
 {
     CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_MemReadEx,
-        VMMDLL_MemReadEx_Impl(dwPID, qwVA, pb, cb, pcbReadOpt, flags))
+        VMMDLL_MemReadEx_Impl(dwPID, qwA, pb, cb, pcbReadOpt, flags))
 }
 
 _Success_(return)
-BOOL VMMDLL_MemRead(_In_ DWORD dwPID, _In_ ULONG64 qwVA, _Out_ PBYTE pb, _In_ DWORD cb)
+BOOL VMMDLL_MemRead(_In_ DWORD dwPID, _In_ ULONG64 qwA, _Out_ PBYTE pb, _In_ DWORD cb)
 {
     DWORD dwRead;
-    return VMMDLL_MemReadEx(dwPID, qwVA, pb, cb, &dwRead, 0) && (dwRead == cb);
+    return VMMDLL_MemReadEx(dwPID, qwA, pb, cb, &dwRead, 0) && (dwRead == cb);
 }
 
 _Success_(return)
-BOOL VMMDLL_MemReadPage(_In_ DWORD dwPID, _In_ ULONG64 qwVA, _Inout_bytecount_(4096) PBYTE pbPage)
+BOOL VMMDLL_MemReadPage(_In_ DWORD dwPID, _In_ ULONG64 qwA, _Inout_bytecount_(4096) PBYTE pbPage)
 {
     DWORD dwRead;
-    return VMMDLL_MemReadEx(dwPID, qwVA, pbPage, 4096, &dwRead, 0) && (dwRead == 4096);
+    return VMMDLL_MemReadEx(dwPID, qwA, pbPage, 4096, &dwRead, 0) && (dwRead == 4096);
 }
 
 _Success_(return)
@@ -613,21 +613,20 @@ BOOL VMMDLL_MemPrefetchPages_Impl(_In_ DWORD dwPID, _In_reads_(cPrefetchAddresse
     DWORD i;
     BOOL result = FALSE;
     PVMM_PROCESS pObProcess = NULL;
-    PVMMOB_DATASET pObPrefetchAddresses = NULL;
+    POB_VSET pObVSet_PrefetchAddresses = NULL;
     if(dwPID != (DWORD)-1) {
         pObProcess = VmmProcessGet(dwPID);
         if(!pObProcess) { goto fail; }
     }
-    pObPrefetchAddresses = VmmObDataSet_Alloc(TRUE);
-    if(!pObPrefetchAddresses) { goto fail; }
+    if(!(pObVSet_PrefetchAddresses = ObVSet_New())) { goto fail; }
     for(i = 0; i < cPrefetchAddresses; i++) {
-        VmmObDataSet_Put(pObPrefetchAddresses, pPrefetchAddresses[i] & ~0xfff);
+        ObVSet_Put(pObVSet_PrefetchAddresses, pPrefetchAddresses[i] & ~0xfff);
     }
-    VmmCachePrefetchPages(pObProcess, pObPrefetchAddresses);
+    VmmCachePrefetchPages(pObProcess, pObVSet_PrefetchAddresses);
     result = TRUE;
 fail:
-    VmmOb_DECREF(pObPrefetchAddresses);
-    VmmOb_DECREF(pObProcess);
+    Ob_DECREF(pObVSet_PrefetchAddresses);
+    Ob_DECREF(pObProcess);
     return result;
 }
 
@@ -640,7 +639,7 @@ BOOL VMMDLL_MemPrefetchPages(_In_ DWORD dwPID, _In_reads_(cPrefetchAddresses) PU
 }
 
 _Success_(return)
-BOOL VMMDLL_MemWrite_Impl(_In_ DWORD dwPID, _In_ ULONG64 qwVA, _In_ PBYTE pb, _In_ DWORD cb)
+BOOL VMMDLL_MemWrite_Impl(_In_ DWORD dwPID, _In_ ULONG64 qwA, _In_ PBYTE pb, _In_ DWORD cb)
 {
     BOOL result;
     PVMM_PROCESS pObProcess = NULL;
@@ -648,17 +647,17 @@ BOOL VMMDLL_MemWrite_Impl(_In_ DWORD dwPID, _In_ ULONG64 qwVA, _In_ PBYTE pb, _I
         pObProcess = VmmProcessGet(dwPID);
         if(!pObProcess) { return FALSE; }
     }
-    result = VmmWrite(pObProcess, qwVA, pb, cb);
-    VmmOb_DECREF(pObProcess);
+    result = VmmWrite(pObProcess, qwA, pb, cb);
+    Ob_DECREF(pObProcess);
     return result;
 }
 
 _Success_(return)
-BOOL VMMDLL_MemWrite(_In_ DWORD dwPID, _In_ ULONG64 qwVA, _In_ PBYTE pb, _In_ DWORD cb)
+BOOL VMMDLL_MemWrite(_In_ DWORD dwPID, _In_ ULONG64 qwA, _In_ PBYTE pb, _In_ DWORD cb)
 {
     CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_MemWrite,
-        VMMDLL_MemWrite_Impl(dwPID, qwVA, pb, cb))
+        VMMDLL_MemWrite_Impl(dwPID, qwA, pb, cb))
 }
 
 _Success_(return)
@@ -668,7 +667,7 @@ BOOL VMMDLL_MemVirt2Phys_Impl(_In_ DWORD dwPID, _In_ ULONG64 qwVA, _Out_ PULONG6
     PVMM_PROCESS pObProcess = VmmProcessGet(dwPID);
     if(!pObProcess) { return FALSE; }
     result = VmmVirt2Phys(pObProcess, qwVA, pqwPA);
-    VmmOb_DECREF(pObProcess);
+    Ob_DECREF(pObProcess);
     return result;
 }
 
@@ -699,12 +698,12 @@ BOOL VMMDLL_ProcessGetMemoryMap_Impl(_In_ DWORD dwPID, _Out_opt_ PVMMDLL_MEMMAP_
         memcpy(pMemMapEntries, pObMap->pMap, sizeof(VMMDLL_MEMMAP_ENTRY) * pObMap->cMap);
         *pcMemMapEntries = pObMap->cMap;
     }
-    VmmOb_DECREF(pObMap);
-    VmmOb_DECREF(pObProcess);
+    Ob_DECREF(pObMap);
+    Ob_DECREF(pObProcess);
     return TRUE;
 fail:
-    VmmOb_DECREF(pObMap);
-    VmmOb_DECREF(pObProcess);
+    Ob_DECREF(pObMap);
+    Ob_DECREF(pObProcess);
     return FALSE;
 }
 
@@ -730,14 +729,14 @@ BOOL VMMDLL_ProcessGetMemoryMapEntry_Impl(_In_ DWORD dwPID, _Out_ PVMMDLL_MEMMAP
         pe = pObMap->pMap + i;
         if((pe->AddrBase >= va) && (va <= pe->AddrBase + (pe->cPages << 12))) {
             memcpy(pMemMapEntry, pe, sizeof(VMM_MEMMAP_ENTRY));
-            VmmOb_DECREF(pObMap);
-            VmmOb_DECREF(pObProcess);
+            Ob_DECREF(pObMap);
+            Ob_DECREF(pObProcess);
             return TRUE;
         }
     }
 fail:
-    VmmOb_DECREF(pObMap);
-    VmmOb_DECREF(pObProcess);
+    Ob_DECREF(pObMap);
+    Ob_DECREF(pObProcess);
     return FALSE;
 }
 
@@ -763,8 +762,8 @@ BOOL VMMDLL_ProcessGetModuleMap_Impl(_In_ DWORD dwPID, _Out_writes_opt_(*pcModul
             *pcModuleEntries = pObModuleMap->cMap;
         } else {
             if(!pObModuleMap->pMap || (*pcModuleEntries < pObModuleMap->cMap)) {
-                VmmOb_DECREF(pObModuleMap);
-                VmmOb_DECREF(pObProcess);
+                Ob_DECREF(pObModuleMap);
+                Ob_DECREF(pObProcess);
                 return FALSE;
             }
             for(i = 0; i < pObModuleMap->cMap; i++) {
@@ -772,11 +771,11 @@ BOOL VMMDLL_ProcessGetModuleMap_Impl(_In_ DWORD dwPID, _Out_writes_opt_(*pcModul
             }
             *pcModuleEntries = pObModuleMap->cMap;
         }
-        VmmOb_DECREF(pObModuleMap);
+        Ob_DECREF(pObModuleMap);
     } else {
         *pcModuleEntries = 0;
     }
-    VmmOb_DECREF(pObProcess);
+    Ob_DECREF(pObProcess);
     return TRUE;
 }
 
@@ -823,7 +822,7 @@ BOOL VMMDLL_ProcessGetModuleFromName(_In_ DWORD dwPID, _In_ LPSTR szModuleName, 
 _Success_(return)
 BOOL VMMDLL_PidList_Impl(_Out_opt_ PDWORD pPIDs, _Inout_ PULONG64 pcPIDs)
 {
-    VmmProcessListPIDs(pPIDs, pcPIDs);
+    VmmProcessListPIDs(pPIDs, pcPIDs, 0);
     return TRUE;
 }
 
@@ -839,11 +838,20 @@ _Success_(return)
 BOOL VMMDLL_PidGetFromName_Impl(_In_ LPSTR szProcName, _Out_ PDWORD pdwPID)
 {
     PVMM_PROCESS pObProcess = NULL;
-    while((pObProcess = VmmProcessGetNext(pObProcess))) {
-        if(_strnicmp(szProcName, pObProcess->szName, 15)) { continue; }
+    // 1: try locate process using long (full) name
+    while((pObProcess = VmmProcessGetNext(pObProcess, 0))) {
         if(pObProcess->dwState) { continue; }
+        if(!pObProcess->pObProcessPersistent->szNameLong || _stricmp(szProcName, pObProcess->pObProcessPersistent->szNameLong)) { continue; }
         *pdwPID = pObProcess->dwPID;
-        VmmOb_DECREF(pObProcess);
+        Ob_DECREF(pObProcess);
+        return TRUE;
+    }
+    // 2: try locate process using short (eprocess) name
+    while((pObProcess = VmmProcessGetNext(pObProcess, 0))) {
+        if(pObProcess->dwState) { continue; }
+        if(_strnicmp(szProcName, pObProcess->szName, 15)) { continue; }
+        *pdwPID = pObProcess->dwPID;
+        Ob_DECREF(pObProcess);
         return TRUE;
     }
     return FALSE;
@@ -878,26 +886,28 @@ BOOL VMMDLL_ProcessGetInformation_Impl(_In_ DWORD dwPID, _Inout_opt_ PVMMDLL_PRO
     pInfo->tpSystem = ctxVmm->tpSystem;
     pInfo->fUserOnly = pObProcess->fUserOnly;
     pInfo->dwPID = dwPID;
+    pInfo->dwPPID = pObProcess->dwPPID;
     pInfo->dwState = pObProcess->dwState;
     pInfo->paDTB = pObProcess->paDTB;
     pInfo->paDTB_UserOpt = pObProcess->paDTB_UserOpt;
     memcpy(pInfo->szName, pObProcess->szName, sizeof(pInfo->szName));
+    strncpy_s(pInfo->szNameLong, sizeof(pInfo->szNameLong), pObProcess->pObProcessPersistent->szNameLong, _TRUNCATE);
     // set operating system specific parameters
     switch(ctxVmm->tpSystem) {
         case VMM_SYSTEM_WINDOWS_X64:
-            pInfo->os.win.fWow64 = pObProcess->os.win.fWow64;
-            pInfo->os.win.vaENTRY = pObProcess->os.win.vaENTRY;
-            pInfo->os.win.vaEPROCESS = pObProcess->os.win.vaEPROCESS;
-            pInfo->os.win.vaPEB = pObProcess->os.win.vaPEB;
-            pInfo->os.win.vaPEB32 = pObProcess->os.win.vaPEB32;
+            pInfo->os.win.fWow64 = pObProcess->win.fWow64;
+            pInfo->os.win.vaENTRY = pObProcess->win.vaENTRY;
+            pInfo->os.win.vaEPROCESS = pObProcess->win.vaEPROCESS;
+            pInfo->os.win.vaPEB = pObProcess->win.vaPEB;
+            pInfo->os.win.vaPEB32 = pObProcess->win.vaPEB32;
             break;
         case VMM_SYSTEM_WINDOWS_X86:
-            pInfo->os.win.vaENTRY = pObProcess->os.win.vaENTRY;
-            pInfo->os.win.vaEPROCESS = pObProcess->os.win.vaEPROCESS;
-            pInfo->os.win.vaPEB = pObProcess->os.win.vaPEB;
+            pInfo->os.win.vaENTRY = pObProcess->win.vaENTRY;
+            pInfo->os.win.vaEPROCESS = pObProcess->win.vaEPROCESS;
+            pInfo->os.win.vaPEB = pObProcess->win.vaPEB;
             break;
     }
-    VmmOb_DECREF(pObProcess);
+    Ob_DECREF(pObProcess);
     return TRUE;
 }
 
@@ -907,6 +917,53 @@ BOOL VMMDLL_ProcessGetInformation(_In_ DWORD dwPID, _Inout_opt_ PVMMDLL_PROCESS_
     CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_ProcessGetInformation,
         VMMDLL_ProcessGetInformation_Impl(dwPID, pProcessInformation, pcbProcessInformation))
+}
+
+BOOL VMMDLL_ProcessGetInformationString_Impl_CallbackCriteria(_In_ PVMM_PROCESS pProcess, _In_ PVOID ctx)
+{
+    return !pProcess->pObProcessPersistent->UserProcessParams.fProcessed;
+}
+
+VOID VMMDLL_ProcessGetInformationString_Impl_CallbackAction(_In_ PVMM_PROCESS pProcess, _In_ PVOID ctx)
+{
+    VmmWin_UserProcessParameters_Get(pProcess);
+}
+
+LPSTR VMMDLL_ProcessGetInformationString_Impl(_In_ DWORD dwPID, _In_ DWORD fOptionString)
+{
+    LPSTR sz = NULL, szStrDup = NULL;
+    PVMM_PROCESS pObProcess = NULL;
+    if(!(pObProcess = VmmProcessGet(dwPID))) { return FALSE; }
+    switch(fOptionString) {
+        case VMMDLL_PROCESS_INFORMATION_OPT_STRING_PATH_USER_IMAGE:
+        case VMMDLL_PROCESS_INFORMATION_OPT_STRING_CMDLINE:
+            if(!pObProcess->pObProcessPersistent->UserProcessParams.fProcessed) {
+                VmmProcessActionForeachParallel(NULL, 5, VMMDLL_ProcessGetInformationString_Impl_CallbackCriteria, VMMDLL_ProcessGetInformationString_Impl_CallbackAction);
+            }
+    }
+    switch(fOptionString) {
+        case VMMDLL_PROCESS_INFORMATION_OPT_STRING_PATH_KERNEL:
+            sz = pObProcess->pObProcessPersistent->szPathKernel;
+            break;
+        case VMMDLL_PROCESS_INFORMATION_OPT_STRING_PATH_USER_IMAGE:
+            sz = pObProcess->pObProcessPersistent->UserProcessParams.szImagePathName;
+            break;
+        case VMMDLL_PROCESS_INFORMATION_OPT_STRING_CMDLINE:
+            sz = pObProcess->pObProcessPersistent->UserProcessParams.szCommandLine;
+            break;
+    }
+    szStrDup = Util_StrDupA(sz);
+    Ob_DECREF(pObProcess);
+    return szStrDup;
+}
+
+LPSTR VMMDLL_ProcessGetInformationString(_In_ DWORD dwPID, _In_ DWORD fOptionString)
+{
+    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM_RETURN(
+        STATISTICS_ID_VMMDLL_ProcessGetInformationString,
+        LPSTR,
+        NULL,
+        VMMDLL_ProcessGetInformationString_Impl(dwPID, fOptionString))
 }
 
 _Success_(return)
@@ -975,12 +1032,12 @@ BOOL VMMDLL_ProcessGet_Directories_Sections_IAT_EAT_Impl(
         goto success;
     }
 fail:
-    VmmOb_DECREF(pObModuleMap);
-    VmmOb_DECREF(pObProcess);
+    Ob_DECREF(pObModuleMap);
+    Ob_DECREF(pObProcess);
     return FALSE;
 success:
-    VmmOb_DECREF(pObModuleMap);
-    VmmOb_DECREF(pObProcess);
+    Ob_DECREF(pObModuleMap);
+    Ob_DECREF(pObProcess);
     return TRUE;
 }
 
@@ -1026,7 +1083,7 @@ ULONG64 VMMDLL_ProcessGetProcAddress_Impl(_In_ DWORD dwPID, _In_ LPSTR szModuleN
     if(VMMDLL_ProcessGetModuleFromName_Impl(dwPID, szModuleName, &oModuleEntry)) {
         vaFn = PE_GetProcAddress(pObProcess, oModuleEntry.BaseAddress, szFunctionName);
     }
-    VmmOb_DECREF(pObProcess);
+    Ob_DECREF(pObProcess);
     return vaFn;
 }
 
@@ -1049,7 +1106,7 @@ ULONG64 VMMDLL_ProcessGetModuleBase_Impl(_In_ DWORD dwPID, _In_ LPSTR szModuleNa
     if(VMMDLL_ProcessGetModuleFromName_Impl(dwPID, szModuleName, &oModuleEntry)) {
         vaModuleBase = oModuleEntry.BaseAddress;
     }
-    VmmOb_DECREF(pObProcess);
+    Ob_DECREF(pObProcess);
     return vaModuleBase;
 }
 
@@ -1078,38 +1135,38 @@ ULONG64 VMMDLL_ProcessGetModuleBase(_In_ DWORD dwPID, _In_ LPSTR szModuleName)
 _Success_(return)
 BOOL VMMDLL_WinReg_HiveList_Impl(_Out_writes_(cHives) PVMMDLL_REGISTRY_HIVE_INFORMATION pHives, _In_ DWORD cHives, _Out_ PDWORD pcHives)
 {
-	BOOL fResult = TRUE;
-	PVMMOB_REGISTRY pObRegistry = NULL;
-	PVMMOB_REGISTRY_HIVE pObHive = NULL;
-	if(!(pObRegistry = VmmWinReg_RegistryGet())) { return FALSE; }
-	if(!pHives) {
-		*pcHives = pObRegistry->cHives;
-		goto cleanup;
-	}
-	*pcHives = 0;
-	while((pObHive = VmmWinReg_HiveGetNext(pObHive))) {
-		if(*pcHives == cHives) {
-			fResult = FALSE;
-			goto cleanup;
-		}
-		memcpy(pHives + *pcHives, pObHive, sizeof(VMMDLL_REGISTRY_HIVE_INFORMATION));
-		pHives->magic = VMMDLL_REGISTRY_HIVE_INFORMATION_MAGIC;
-		pHives->wVersion = VMMDLL_REGISTRY_HIVE_INFORMATION_VERSION;
-		pHives->wSize = sizeof(VMMDLL_REGISTRY_HIVE_INFORMATION);
-		*pcHives += 1;
-	}
+    BOOL fResult = TRUE;
+    PVMMOB_REGISTRY pObRegistry = NULL;
+    PVMMOB_REGISTRY_HIVE pObHive = NULL;
+    if(!(pObRegistry = VmmWinReg_RegistryGet())) { return FALSE; }
+    if(!pHives) {
+        *pcHives = pObRegistry->cHives;
+        goto cleanup;
+    }
+    *pcHives = 0;
+    while((pObHive = VmmWinReg_HiveGetNext(pObHive))) {
+        if(*pcHives == cHives) {
+            fResult = FALSE;
+            goto cleanup;
+        }
+        memcpy(pHives + *pcHives, pObHive, sizeof(VMMDLL_REGISTRY_HIVE_INFORMATION));
+        pHives->magic = VMMDLL_REGISTRY_HIVE_INFORMATION_MAGIC;
+        pHives->wVersion = VMMDLL_REGISTRY_HIVE_INFORMATION_VERSION;
+        pHives->wSize = sizeof(VMMDLL_REGISTRY_HIVE_INFORMATION);
+        *pcHives += 1;
+    }
 cleanup:
-	VmmOb_DECREF(pObRegistry);
-	VmmOb_DECREF(pObHive);
-	return fResult;
+    Ob_DECREF(pObRegistry);
+    Ob_DECREF(pObHive);
+    return fResult;
 }
 
 _Success_(return)
 BOOL VMMDLL_WinReg_HiveList(_Out_writes_(cHives) PVMMDLL_REGISTRY_HIVE_INFORMATION pHives, _In_ DWORD cHives, _Out_ PDWORD pcHives)
 {
-	CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
-		STATISTICS_ID_VMMDLL_WinRegHive_List,
-		VMMDLL_WinReg_HiveList_Impl(pHives, cHives, pcHives))
+    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+        STATISTICS_ID_VMMDLL_WinRegHive_List,
+        VMMDLL_WinReg_HiveList_Impl(pHives, cHives, pcHives))
 }
 
 /*
@@ -1126,19 +1183,19 @@ BOOL VMMDLL_WinReg_HiveList(_Out_writes_(cHives) PVMMDLL_REGISTRY_HIVE_INFORMATI
 _Success_(return)
 BOOL VMMDLL_WinReg_HiveReadEx_Impl(_In_ ULONG64 vaCMHive, _In_ DWORD ra, _Out_ PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbReadOpt, _In_ ULONG64 flags)
 {
-	PVMMOB_REGISTRY_HIVE pObHive = VmmWinReg_HiveGetByAddress(vaCMHive);
-	if(!pObHive) { return FALSE; }
-	VmmWinReg_HiveReadEx(pObHive, ra, pb, cb, pcbReadOpt, flags);
-	VmmOb_DECREF(pObHive);
-	return TRUE;
+    PVMMOB_REGISTRY_HIVE pObHive = VmmWinReg_HiveGetByAddress(vaCMHive);
+    if(!pObHive) { return FALSE; }
+    VmmWinReg_HiveReadEx(pObHive, ra, pb, cb, pcbReadOpt, flags);
+    Ob_DECREF(pObHive);
+    return TRUE;
 }
 
 _Success_(return)
 BOOL VMMDLL_WinReg_HiveReadEx(_In_ ULONG64 vaCMHive, _In_ DWORD ra, _Out_ PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbReadOpt, _In_ ULONG64 flags)
 {
-	CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
-		STATISTICS_ID_VMMDLL_WinRegHive_ReadEx,
-		VMMDLL_WinReg_HiveReadEx_Impl(vaCMHive, ra, pb, cb, pcbReadOpt, flags))
+    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+        STATISTICS_ID_VMMDLL_WinRegHive_ReadEx,
+        VMMDLL_WinReg_HiveReadEx_Impl(vaCMHive, ra, pb, cb, pcbReadOpt, flags))
 }
 
 /*
@@ -1153,20 +1210,20 @@ BOOL VMMDLL_WinReg_HiveReadEx(_In_ ULONG64 vaCMHive, _In_ DWORD ra, _Out_ PBYTE 
 _Success_(return)
 BOOL VMMDLL_WinReg_HiveWrite_Impl(_In_ ULONG64 vaCMHive, _In_ DWORD ra, _In_ PBYTE pb, _In_ DWORD cb)
 {
-	BOOL f;
-	PVMMOB_REGISTRY_HIVE pObHive = VmmWinReg_HiveGetByAddress(vaCMHive);
-	if(!pObHive) { return FALSE; }
-	f = VmmWinReg_HiveWrite(pObHive, ra, pb, cb);
-	VmmOb_DECREF(pObHive);
-	return f;
+    BOOL f;
+    PVMMOB_REGISTRY_HIVE pObHive = VmmWinReg_HiveGetByAddress(vaCMHive);
+    if(!pObHive) { return FALSE; }
+    f = VmmWinReg_HiveWrite(pObHive, ra, pb, cb);
+    Ob_DECREF(pObHive);
+    return f;
 }
 
 _Success_(return)
 BOOL VMMDLL_WinReg_HiveWrite(_In_ ULONG64 vaCMHive, _In_ DWORD ra, _In_ PBYTE pb, _In_ DWORD cb)
 {
-	CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
-		STATISTICS_ID_VMMDLL_WinRegHive_Write,
-		VMMDLL_WinReg_HiveWrite_Impl(vaCMHive, ra, pb, cb))
+    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+        STATISTICS_ID_VMMDLL_WinRegHive_Write,
+        VMMDLL_WinReg_HiveWrite_Impl(vaCMHive, ra, pb, cb))
 }
 
 
@@ -1183,9 +1240,9 @@ BOOL VMMDLL_WinGetThunkInfoEAT_Impl(_In_ DWORD dwPID, _In_ LPSTR szModuleName, _
     PVMM_PROCESS pObProcess = NULL;
     pObProcess = VmmProcessGet(dwPID);
     if(!pObProcess) { return FALSE; }
-	f = VMMDLL_ProcessGetModuleFromName_Impl(dwPID, szModuleName, &oModuleEntry) &&
-		PE_GetThunkInfoEAT(pObProcess, oModuleEntry.BaseAddress, szExportFunctionName, (PPE_THUNKINFO_EAT)pThunkInfoEAT);
-    VmmOb_DECREF(pObProcess);
+    f = VMMDLL_ProcessGetModuleFromName_Impl(dwPID, szModuleName, &oModuleEntry) &&
+        PE_GetThunkInfoEAT(pObProcess, oModuleEntry.BaseAddress, szExportFunctionName, (PPE_THUNKINFO_EAT)pThunkInfoEAT);
+    Ob_DECREF(pObProcess);
     return f;
 }
 
@@ -1209,7 +1266,7 @@ BOOL VMMDLL_WinGetThunkInfoIAT_Impl(_In_ DWORD dwPID, _In_ LPSTR szModuleName, _
     if(VMMDLL_ProcessGetModuleFromName_Impl(dwPID, szModuleName, &oModuleEntry)) {
         result = PE_GetThunkInfoIAT(pObProcess, oModuleEntry.BaseAddress, szImportModuleName, szImportFunctionName, (PPE_THUNKINFO_IAT)pThunkInfoIAT);
     }
-    VmmOb_DECREF(pObProcess);
+    Ob_DECREF(pObProcess);
     return result;
 }
 
@@ -1238,7 +1295,7 @@ BOOL VMMDLL_WinMemCompression_DecompressPage(_In_ ULONG64 vaCompressedData, _In_
 _Success_(return)
 BOOL VMMDLL_UtilFillHexAscii(_In_ PBYTE pb, _In_ DWORD cb, _In_ DWORD cbInitialOffset, _Inout_opt_ LPSTR sz, _Out_ PDWORD pcsz)
 {
-	CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
-		STATISTICS_ID_VMMDLL_UtilFillHexAscii,
-		Util_FillHexAscii(pb, cb, cbInitialOffset, sz, pcsz))
+    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+        STATISTICS_ID_VMMDLL_UtilFillHexAscii,
+        Util_FillHexAscii(pb, cb, cbInitialOffset, sz, pcsz))
 }

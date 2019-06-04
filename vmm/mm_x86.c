@@ -66,7 +66,7 @@ VOID MmX86_TlbSpider(_In_ PVMM_PROCESS pProcess)
     pProcess->fTlbSpiderDone = TRUE;
 fail:
     LocalFree(pTlbSpiderStage);
-    VmmOb_DECREF(pObPD);
+    Ob_DECREF(pObPD);
 }
 
 const QWORD MMX86_PAGETABLEMAP_PML_REGION_SIZE[3] = { 0, 12, 22 };
@@ -106,7 +106,7 @@ VOID MmX86_MapInitialize_Index(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MEMMAP_ENTR
         pObNextPT = VmmTlbGetPageTable(pte & 0xfffff000, FALSE);
         if(!pObNextPT) { continue; }
         MmX86_MapInitialize_Index(pProcess, pMemMap, pcMemMap, va, 1, pObNextPT->pdw, fNextSupervisorPML, paMax);
-        VmmOb_DECREF(pObNextPT);
+        Ob_DECREF(pObNextPT);
         pMemMapEntry = pMemMap + *pcMemMap - 1;
     }
 }
@@ -115,7 +115,7 @@ VOID MmX86_MapCloseObCallback(_In_ PVOID pVmmOb)
 {
     PVMMOB_MEMMAP pObMemMap = (PVMMOB_MEMMAP)pVmmOb;
     if(pObMemMap->pObDisplay) {
-        VmmOb_DECREF(pObMemMap->pObDisplay);
+        Ob_DECREF(pObMemMap->pObDisplay);
     }
 }
 
@@ -143,10 +143,10 @@ BOOL MmX86_MapInitialize(_In_ PVMM_PROCESS pProcess)
         if(pMemMap) {
             MmX86_MapInitialize_Index(pProcess, pMemMap, &cMemMap, 0, 2, pObPD->pdw, FALSE, ctxMain->dev.paMax);
         }
-        VmmOb_DECREF(pObPD);
+        Ob_DECREF(pObPD);
     }
     // allocate VmmOb depending on result
-    pObMemMap = VmmOb_Alloc('MM', 0, sizeof(VMMOB_MEMMAP) + cMemMap * sizeof(VMM_MEMMAP_ENTRY), MmX86_MapCloseObCallback, NULL);
+    pObMemMap = Ob_Alloc('MM', 0, sizeof(VMMOB_MEMMAP) + cMemMap * sizeof(VMM_MEMMAP_ENTRY), MmX86_MapCloseObCallback, NULL);
     if(!pObMemMap) {
         LeaveCriticalSection(&pProcess->LockUpdate);
         LocalFree(pMemMap);
@@ -238,7 +238,7 @@ BOOL MmX86_MapGetEntries(_In_ PVMM_PROCESS pProcess, _In_ DWORD flags, _Out_ PVM
                     pModule = pObModuleMap->pMap + i;
                     MmX86_MapTag(pProcess, pModule->BaseAddress, pModule->BaseAddress + pModule->SizeOfImage, pModule->szName, NULL, FALSE, FALSE);
                 }
-                VmmOb_DECREF(pObModuleMap);
+                Ob_DECREF(pObModuleMap);
             }
         }
         if(!pProcess->pObMemMap->fTagScan && (flags & VMM_MEMMAP_FLAG_SCAN)) {
@@ -247,7 +247,7 @@ BOOL MmX86_MapGetEntries(_In_ PVMM_PROCESS pProcess, _In_ DWORD flags, _Out_ PVM
         }
         LeaveCriticalSection(&pProcess->LockUpdate);
     }
-    *ppObMemMap = VmmOb_INCREF(pProcess->pObMemMap);
+    *ppObMemMap = Ob_INCREF(pProcess->pObMemMap);
     return TRUE;
 }
 
@@ -260,19 +260,19 @@ BOOL MmX86_MapGetDisplay(_In_ PVMM_PROCESS pProcess, _In_ DWORD flags, _Out_ PVM
     // memory map display data already exists
     if(!MmX86_MapInitialize(pProcess)) { return FALSE; }
     if(pProcess->pObMemMap->pObDisplay) {
-        *ppObDisplay = VmmOb_INCREF(pProcess->pObMemMap->pObDisplay);
+        *ppObDisplay = Ob_INCREF(pProcess->pObMemMap->pObDisplay);
         return TRUE;
     }
     // create new memory map display data
     EnterCriticalSection(&pProcess->LockUpdate);
     if(!pProcess->pObMemMap->pObDisplay) {
         if(MmX86_MapGetEntries(pProcess, flags, &pObMemMap)) {
-            pObDisplay = VmmOb_Alloc('MD', LMEM_ZEROINIT, pObMemMap->cbDisplay, NULL, NULL);
+            pObDisplay = Ob_Alloc('MD', LMEM_ZEROINIT, pObMemMap->cbDisplay, NULL, NULL);
             if(pObDisplay) {
                 for(i = 0; i < pObMemMap->cMap; i++) {
                     if(o + MMX86_MEMMAP_DISPLAYBUFFER_LINE_LENGTH > pObMemMap->cbDisplay) {
                         vmmprintf_fn("ERROR: SHOULD NOT HAPPEN! LENGTH DIFFERS #1: %i %i\n", o + MMX86_MEMMAP_DISPLAYBUFFER_LINE_LENGTH, pObMemMap->cbDisplay);
-                        VmmOb_DECREF(pObDisplay);
+                        Ob_DECREF(pObDisplay);
                         pObDisplay = NULL;
                         goto fail;
                     }
@@ -291,7 +291,7 @@ BOOL MmX86_MapGetDisplay(_In_ PVMM_PROCESS pProcess, _In_ DWORD flags, _Out_ PVM
                 }
                 if(o != pObMemMap->cbDisplay) {
                     vmmprintf_fn("ERROR: SHOULD NOT HAPPEN! LENGTH DIFFERS #2: %i %i\n", o, pObMemMap->cbDisplay);
-                    VmmOb_DECREF(pObDisplay);
+                    Ob_DECREF(pObDisplay);
                     pObDisplay = NULL;
                     goto fail;
                 }
@@ -301,10 +301,10 @@ BOOL MmX86_MapGetDisplay(_In_ PVMM_PROCESS pProcess, _In_ DWORD flags, _Out_ PVM
         pProcess->pObMemMap->pObDisplay = pObDisplay;
     }
 fail:
-    VmmOb_DECREF(pObMemMap);
+    Ob_DECREF(pObMemMap);
     LeaveCriticalSection(&pProcess->LockUpdate);
     if(pProcess->pObMemMap->pObDisplay) {
-        *ppObDisplay = VmmOb_INCREF(pProcess->pObMemMap->pObDisplay);
+        *ppObDisplay = Ob_INCREF(pProcess->pObMemMap->pObDisplay);
         return TRUE;
     }
     return FALSE;
@@ -323,7 +323,7 @@ BOOL MmX86_Virt2Phys(_In_ QWORD paPT, _In_ BOOL fUserOnly, _In_ BYTE iPML, _In_ 
     if(!pObPTEs) { return FALSE; }
     i = 0x3ff & (va >> MMX86_PAGETABLEMAP_PML_REGION_SIZE[iPML]);
     pte = pObPTEs->pdw[i];
-    VmmOb_DECREF(pObPTEs);
+    Ob_DECREF(pObPTEs);
     if(!MMX86_PTE_IS_VALID(pte, iPML)) { return FALSE; }    // NOT VALID
     if(fUserOnly && !(pte & 0x04)) { return FALSE; }        // SUPERVISOR PAGE & USER MODE REQ
     if((iPML == 2) && !(pte & 0x80) /* PS */) {
@@ -347,7 +347,7 @@ VOID MmX86_Virt2PhysGetInformation_DoWork(_Inout_ PVMM_PROCESS pProcess, _Inout_
     if(!pObPTEs) { return; }
     i = 0x3ff & (pVirt2PhysInfo->va >> MMX86_PAGETABLEMAP_PML_REGION_SIZE[iPML]);
     pte = pObPTEs->pdw[i];
-    VmmOb_DECREF(pObPTEs);
+    Ob_DECREF(pObPTEs);
     pVirt2PhysInfo->pas[iPML] = paPT;
     pVirt2PhysInfo->iPTEs[iPML] = (WORD)i;
     pVirt2PhysInfo->PTEs[iPML] = pte;

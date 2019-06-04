@@ -26,7 +26,7 @@ BOOL VmmProcUserCR3TryInitialize64()
 {
     PVMM_PROCESS pObProcess;
     VmmInitializeMemoryModel(VMM_MEMORYMODEL_X64);
-    pObProcess = VmmProcessCreateEntry(TRUE, 0, 0, ctxMain->cfg.paCR3, 0, "unknown_process", FALSE);
+    pObProcess = VmmProcessCreateEntry(TRUE, 0, 0, 0, ctxMain->cfg.paCR3, 0, "unknown_process", FALSE);
     VmmProcessCreateFinish();
     if(!pObProcess) {
         vmmprintfv("VmmProc: FAIL: Initialization of Process failed from user-defined CR3 %016llx.\n", ctxMain->cfg.paCR3);
@@ -34,7 +34,7 @@ BOOL VmmProcUserCR3TryInitialize64()
         return FALSE;
     }
     VmmTlbSpider(pObProcess);
-    VmmOb_DECREF(pObProcess);
+    Ob_DECREF(pObProcess);
     ctxVmm->tpSystem = VMM_SYSTEM_UNKNOWN_X64;
     ctxVmm->kernel.paDTB = ctxMain->cfg.paCR3;
     return TRUE;
@@ -62,7 +62,7 @@ BOOL VmmProc_RefreshProcesses(_In_ BOOL fRefreshTotal)
             return FALSE;
         }
         result = VmmWin_EnumerateEPROCESS(pObProcessSystem, fRefreshTotal);
-        VmmOb_DECREF(pObProcessSystem);
+        Ob_DECREF(pObProcessSystem);
         if(fRefreshTotal) {
             VmmWinReg_Refresh();
         }
@@ -161,7 +161,7 @@ BOOL VmmProc_ModuleMapGet(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MODULEMAP *pp
         VmmProc_ModuleMapInitialize(pProcess);
     }
     if(pProcess->pObModuleMap && pProcess->pObModuleMap->fValid) {
-        *ppObModuleMap = VmmOb_INCREF(pProcess->pObModuleMap);
+        *ppObModuleMap = Ob_INCREF(pProcess->pObModuleMap);
         return TRUE;
     }
     return FALSE;
@@ -180,7 +180,7 @@ BOOL VmmProc_ModuleMapGetSingleEntry(_In_ PVMM_PROCESS pProcess, _In_ LPSTR szMo
             return TRUE;
         }
     }
-    VmmOb_DECREF(pObModuleMap);
+    Ob_DECREF(pObModuleMap);
     return FALSE;
 }
 
@@ -215,6 +215,9 @@ BOOL VmmProcInitialize()
         ctxVmm->ThreadProcCache.hThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)VmmProcCacheUpdaterThread, ctxVmm, 0, NULL);
         if(!ctxVmm->ThreadProcCache.hThread) { ctxVmm->ThreadProcCache.fEnabled = FALSE; }
     }
+    // allow worker threads for various functions in other parts of the code
+    // NB! this only allows worker threads - it does not create them!
+    ctxVmm->ThreadWorkers.fEnabled = TRUE;
     return result;
 }
 
@@ -242,7 +245,7 @@ BOOL VmmProcPHYS_VerifyWindowsEPROCESS(_In_ PBYTE pb, _In_ QWORD cb, _In_ QWORD 
         if((*(PQWORD)(pb + i - 0x18) & 0xffff800000000000) != 0xffff800000000000) { continue; };    // PTR
         if((*(PQWORD)(pb + i - 0x20) & 0xffff800000000000) != 0xffff800000000000) { continue; };    // PTR
         if((*(PDWORD)(pb + i - 0x24) != 0x00000000)) { continue; };                                 // SignalState
-		*ppaPML4 = *(PQWORD)(pb + i - 0x00) & ~0xfff;
+        *ppaPML4 = *(PQWORD)(pb + i - 0x00) & ~0xfff;
         return TRUE;
     }
     return FALSE;

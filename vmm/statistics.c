@@ -178,10 +178,10 @@ VOID PageStatUpdate(_In_opt_ PPAGE_STATISTICS pPageStat, _In_ QWORD qwAddr, _In_
 
 const LPSTR NAMES_VMM_STATISTICS_CALL[] = {
     "INITIALIZE",
-	"PluginManager_List",
-	"PluginManager_Read",
-	"PluginManager_Write",
-	"PluginManager_Notify",
+    "PluginManager_List",
+    "PluginManager_Read",
+    "PluginManager_Write",
+    "PluginManager_Notify",
     "VMMDLL_VfsList",
     "VMMDLL_VfsRead",
     "VMMDLL_VfsWrite",
@@ -194,6 +194,7 @@ const LPSTR NAMES_VMM_STATISTICS_CALL[] = {
     "VMMDLL_PidList",
     "VMMDLL_PidGetFromName",
     "VMMDLL_ProcessGetInformation",
+    "STATISTICS_ID_VMMDLL_ProcessGetInformationString",
     "VMMDLL_ProcessGetMemoryMap",
     "VMMDLL_ProcessGetMemoryMapEntry",
     "VMMDLL_ProcessGetModuleMap",
@@ -207,11 +208,11 @@ const LPSTR NAMES_VMM_STATISTICS_CALL[] = {
     "VMMDLL_WinGetThunkEAT",
     "VMMDLL_WinGetThunkIAT",
     "VMMDLL_WinMemCompression_DecompressPage",
-	"VMMDLL_WinRegHive_List",
-	"VMMDLL_WinRegHive_ReadEx",
-	"VMMDLL_WinRegHive_Write",
+    "VMMDLL_WinRegHive_List",
+    "VMMDLL_WinRegHive_ReadEx",
+    "VMMDLL_WinRegHive_Write",
     "VMMDLL_Refresh",
-	"VMMDLL_UtilFillHexAscii",
+    "VMMDLL_UtilFillHexAscii",
 };
 
 typedef struct tdCALLSTAT {

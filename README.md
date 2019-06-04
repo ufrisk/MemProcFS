@@ -53,7 +53,7 @@ Mounting the file system requires the <b>Dokany file system library</b> to be in
 
 Python support requires Python 3.6. The user may specify the path to the Python 3.6 installation with the command line parameter `-pythonhome`, alternatively download [Python 3.6 - Windows x86-64 embeddable zip file](https://www.python.org/downloads/windows/) and unzip its contents into the `files/python36` folder when using Python modules in the file system. To use the Python API a normal Python 3.6 installation for Windows is required.
 
-To capture live memory (without PCILeech FPGA hardware) download [DumpIt](https://www.comae.com/) and start the Memory Process File System via the DumpIt /LIVEKD mode. Alternatively, get WinPMEM by downloading and installing the most recent version of [Rekall](https://github.com/google/rekall/releases) and copy the signed driver 'winpmem_x64.sys' from _C:\Program Files\Rekall\resources\WinPmem_ into the files folder. DumpIt is recommended over winpmem due to superior stability and lack of blue screens.
+To capture live memory (without PCILeech FPGA hardware) download [DumpIt](https://www.comae.com/) and start the Memory Process File System via the DumpIt /LIVEKD mode. Alternatively, get WinPMEM by downloading the most recent signed [WinPMEM driver](https://github.com/Velocidex/c-aff4/tree/master/tools/pmem/resources/winpmem) and place it alongside MemProcFS - detailed instructions in the [LeechCore Wiki](https://github.com/ufrisk/LeechCore/wiki/Device_WinPMEM).
 
 PCILeech FPGA will require hardware as well as _FTD3XX.dll_ to be dropped in the files folder. Please check out the [LeechCore](https://github.com/ufrisk/LeechCore) project for instructions.
 
@@ -164,3 +164,8 @@ v2.5
 * Performance optimizations.
 * Windows transition page support.
 * New module: [Registry](https://github.com/ufrisk/MemProcFS/wiki/FS_Registry) - best-effort reconstructed registry hives in the registry/hive_files/ sub-folder.
+
+v2.6
+* Additional performance optimizations.
+* Support for process long names (previously capped to 15 chars), image path and command line.
+* New module: [SysInfo](https://github.com/ufrisk/MemProcFS/wiki/FS_SysInfo) - system information including OS version number and process tree with command line.

@@ -40,18 +40,18 @@ CHAR GetMountPoint(_In_ DWORD argc, _In_ char* argv[])
 */
 VOID MemProcFsCtrlHandler_TryShutdownThread(PVOID pv)
 {
-	HMODULE hModuleVmm;
-	BOOL(*VMMDLL_Close)();
-	__try {
-		hModuleVmm = GetModuleHandleA("vmm.dll");
-		if(hModuleVmm) {
-			VMMDLL_Close = (BOOL(*)())GetProcAddress(hModuleVmm, "VMMDLL_Close");
-			if(VMMDLL_Close) {
-				VMMDLL_Close();
-			}
-		}
-	}
-	__except(EXCEPTION_EXECUTE_HANDLER) { ; }
+    HMODULE hModuleVmm;
+    BOOL(*VMMDLL_Close)();
+    __try {
+        hModuleVmm = GetModuleHandleA("vmm.dll");
+        if(hModuleVmm) {
+            VMMDLL_Close = (BOOL(*)())GetProcAddress(hModuleVmm, "VMMDLL_Close");
+            if(VMMDLL_Close) {
+                VMMDLL_Close();
+            }
+        }
+    }
+    __except(EXCEPTION_EXECUTE_HANDLER) { ; }
 }
 
 /*
@@ -63,16 +63,16 @@ VOID MemProcFsCtrlHandler_TryShutdownThread(PVOID pv)
 */
 BOOL WINAPI MemProcFsCtrlHandler(DWORD fdwCtrlType)
 {
-	if (fdwCtrlType == CTRL_C_EVENT) {
-		printf("CTRL+C detected - shutting down ...\n");
-		CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)MemProcFsCtrlHandler_TryShutdownThread, NULL, 0, NULL);
-		Sleep(500);
-		TerminateProcess(GetCurrentProcess(), 1);
-		Sleep(1000);
-		ExitProcess(1);
-		return TRUE;
-	}
-	return FALSE;
+    if (fdwCtrlType == CTRL_C_EVENT) {
+        printf("CTRL+C detected - shutting down ...\n");
+        CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)MemProcFsCtrlHandler_TryShutdownThread, NULL, 0, NULL);
+        Sleep(500);
+        TerminateProcess(GetCurrentProcess(), 1);
+        Sleep(1000);
+        ExitProcess(1);
+        return TRUE;
+    }
+    return FALSE;
 }
 
 /*
@@ -121,7 +121,7 @@ int main(_In_ int argc, _In_ char* argv[])
         printf("MemProcFS: Error file system plugins in vmm.dll!\n");
         return 1;
     }
-	SetConsoleCtrlHandler(MemProcFsCtrlHandler, TRUE);
+    SetConsoleCtrlHandler(MemProcFsCtrlHandler, TRUE);
     VfsInitializeAndMount(GetMountPoint(argc, argv), &VmmDll);
     ExitProcess(0);
     return 0;
