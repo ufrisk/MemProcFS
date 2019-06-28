@@ -83,6 +83,13 @@ VOID Util_GetPathDll(_Out_writes_(MAX_PATH) PCHAR szPath, _In_opt_ HMODULE hModu
 LPSTR Util_StrDupA(_In_opt_ LPSTR sz);
 
 /*
+* Convert a FILETIME into a human readable string.
+* -- pFileTime
+* -- szTime
+*/
+VOID Util_FileTime2String(_In_ PFILETIME pFileTime, _Out_writes_(MAX_PATH) LPSTR szTime);
+
+/*
 * Utility functions for read/write towards different underlying data representations.
 */
 NTSTATUS Util_VfsReadFile_FromPBYTE(_In_ PBYTE pbFile, _In_ QWORD cbFile, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);

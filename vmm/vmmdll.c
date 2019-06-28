@@ -15,6 +15,7 @@
 #include "vmmproc.h"
 #include "vmmwin.h"
 #include "vmmwinreg.h"
+#include "vmmwintcpip.h"
 #include "vmmvfs.h"
 #include "mm_x64_winpaged.h"
 
@@ -24,28 +25,24 @@
 // with internal VMM housekeeping functionality.
 // ----------------------------------------------------------------------------
 
-#define CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(id, fn) {                      \
-    QWORD tm;                                                               \
-    BOOL result;                                                            \
-    if(!ctxVmm) { return FALSE; }                                           \
-    tm = Statistics_CallStart();                                            \
-    VmmLockAcquire();                                                       \
-    result = fn;                                                            \
-    VmmLockRelease();                                                       \
-    Statistics_CallEnd(id, tm);                                             \
-    return result;                                                          \
+#define CALL_IMPLEMENTATION_VMM(id, fn) {                               \
+    QWORD tm;                                                           \
+    BOOL result;                                                        \
+    if(!ctxVmm) { return FALSE; }                                       \
+    tm = Statistics_CallStart();                                        \
+    result = fn;                                                        \
+    Statistics_CallEnd(id, tm);                                         \
+    return result;                                                      \
 }
 
-#define CALL_SYNCHRONIZED_IMPLEMENTATION_VMM_RETURN(id, RetTp, RetValFail, fn) { \
-    QWORD tm;                                                                    \
-    RetTp retVal;                                                                \
-    if(!ctxVmm) { return ((RetTp)RetValFail); } /* UNSUCCESSFUL */               \
-    tm = Statistics_CallStart();                                                 \
-    VmmLockAcquire();                                                            \
-    retVal = fn;                                                                 \
-    VmmLockRelease();                                                            \
-    Statistics_CallEnd(id, tm);                                                  \
-    return retVal;                                                               \
+#define CALL_IMPLEMENTATION_VMM_RETURN(id, RetTp, RetValFail, fn) {     \
+    QWORD tm;                                                           \
+    RetTp retVal;                                                       \
+    if(!ctxVmm) { return ((RetTp)RetValFail); } /* UNSUCCESSFUL */      \
+    tm = Statistics_CallStart();                                        \
+    retVal = fn;                                                        \
+    Statistics_CallEnd(id, tm);                                         \
+    return retVal;                                                      \
 }
 
 //-----------------------------------------------------------------------------
@@ -393,25 +390,25 @@ BOOL VMMDLL_ConfigSet(_In_ ULONG64 fOption, _In_ ULONG64 qwValue)
         switch(fOption) {
             case VMMDLL_OPT_CORE_PRINTF_ENABLE:
                 ctxMain->cfg.fVerboseDll = qwValue ? TRUE : FALSE;
-                CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+                CALL_IMPLEMENTATION_VMM(
                     STATISTICS_ID_NOLOG,
                     PluginManager_Notify(VMMDLL_PLUGIN_EVENT_VERBOSITYCHANGE, NULL, 0))
                 return TRUE;
             case VMMDLL_OPT_CORE_VERBOSE:
                 ctxMain->cfg.fVerbose = qwValue ? TRUE : FALSE;
-                CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+                CALL_IMPLEMENTATION_VMM(
                     STATISTICS_ID_NOLOG,
                     PluginManager_Notify(VMMDLL_PLUGIN_EVENT_VERBOSITYCHANGE, NULL, 0))
                 return TRUE;
             case VMMDLL_OPT_CORE_VERBOSE_EXTRA:
                 ctxMain->cfg.fVerboseExtra = qwValue ? TRUE : FALSE;
-                CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+                CALL_IMPLEMENTATION_VMM(
                     STATISTICS_ID_NOLOG,
                     PluginManager_Notify(VMMDLL_PLUGIN_EVENT_VERBOSITYCHANGE, NULL, 0))
                 return TRUE;
             case VMMDLL_OPT_CORE_VERBOSE_EXTRA_TLP:
                 ctxMain->cfg.fVerboseExtraTlp = qwValue ? TRUE : FALSE;
-                CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+                CALL_IMPLEMENTATION_VMM(
                     STATISTICS_ID_NOLOG,
                     PluginManager_Notify(VMMDLL_PLUGIN_EVENT_VERBOSITYCHANGE, NULL, 0))
                 return TRUE;
@@ -430,14 +427,14 @@ BOOL VMMDLL_ConfigSet(_In_ ULONG64 fOption, _In_ ULONG64 qwValue)
 _Success_(return)
 BOOL VMMDLL_VfsList(_In_ LPCWSTR wcsPath, _Inout_ PVMMDLL_VFS_FILELIST pFileList)
 {
-    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+    CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_VfsList,
         VmmVfs_List(wcsPath, (PHANDLE)pFileList))
 }
 
 NTSTATUS VMMDLL_VfsRead(_In_ LPCWSTR wcsFileName, _Out_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset)
 {
-    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM_RETURN(
+    CALL_IMPLEMENTATION_VMM_RETURN(
         STATISTICS_ID_VMMDLL_VfsRead,
         NTSTATUS,
         VMMDLL_STATUS_UNSUCCESSFUL,
@@ -446,7 +443,7 @@ NTSTATUS VMMDLL_VfsRead(_In_ LPCWSTR wcsFileName, _Out_ LPVOID pb, _In_ DWORD cb
 
 NTSTATUS VMMDLL_VfsWrite(_In_ LPCWSTR wcsFileName, _In_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ ULONG64 cbOffset)
 {
-    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM_RETURN(
+    CALL_IMPLEMENTATION_VMM_RETURN(
         STATISTICS_ID_VMMDLL_VfsWrite,
         NTSTATUS,
         VMMDLL_STATUS_UNSUCCESSFUL,
@@ -492,7 +489,7 @@ NTSTATUS VMMDLL_UtilVfsWriteFile_DWORD(_Inout_ PDWORD pdwTarget, _In_ PBYTE pb, 
 _Success_(return)
 BOOL VMMDLL_VfsInitializePlugins()
 {
-    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+    CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_VfsInitializePlugins,
         PluginManager_Initialize())
 }
@@ -526,7 +523,7 @@ BOOL VMMDLL_Refresh_Impl(_In_ DWORD dwReserved)
 _Success_(return)
 BOOL VMMDLL_Refresh(_In_ DWORD dwReserved)
 {
-    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+    CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_Refresh,
         VMMDLL_Refresh_Impl(dwReserved))
 }
@@ -542,15 +539,11 @@ DWORD VMMDLL_MemReadScatter_Impl(_In_ DWORD dwPID, _Inout_ PPMEM_IO_SCATTER_HEAD
     DWORD i, cMEMs;
     PVMM_PROCESS pObProcess = NULL;
     if(!ctxVmm) { return 0; }
-    VmmLockAcquire();
     if(dwPID == -1) {
         VmmReadScatterPhysical(ppMEMs, cpMEMs, flags);
     } else {
         pObProcess = VmmProcessGet(dwPID);
-        if(!pObProcess) {
-            VmmLockRelease();
-            return FALSE;
-        }
+        if(!pObProcess) { return FALSE; }
         VmmReadScatterVirtual(pObProcess, ppMEMs, cpMEMs, flags);
         Ob_DECREF(pObProcess);
     }
@@ -559,13 +552,12 @@ DWORD VMMDLL_MemReadScatter_Impl(_In_ DWORD dwPID, _Inout_ PPMEM_IO_SCATTER_HEAD
             cMEMs++;
         }
     }
-    VmmLockRelease();
     return cMEMs;
 }
 
 DWORD VMMDLL_MemReadScatter(_In_ DWORD dwPID, _Inout_ PPMEM_IO_SCATTER_HEADER ppMEMs, _In_ DWORD cpMEMs, _In_ DWORD flags)
 {
-    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM_RETURN(
+    CALL_IMPLEMENTATION_VMM_RETURN(
         STATISTICS_ID_VMMDLL_MemReadScatter,
         DWORD,
         0,
@@ -588,7 +580,7 @@ BOOL VMMDLL_MemReadEx_Impl(_In_ DWORD dwPID, _In_ ULONG64 qwA, _Out_ PBYTE pb, _
 _Success_(return)
 BOOL VMMDLL_MemReadEx(_In_ DWORD dwPID, _In_ ULONG64 qwA, _Out_ PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbReadOpt, _In_ ULONG64 flags)
 {
-    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+    CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_MemReadEx,
         VMMDLL_MemReadEx_Impl(dwPID, qwA, pb, cb, pcbReadOpt, flags))
 }
@@ -620,7 +612,7 @@ BOOL VMMDLL_MemPrefetchPages_Impl(_In_ DWORD dwPID, _In_reads_(cPrefetchAddresse
     }
     if(!(pObVSet_PrefetchAddresses = ObVSet_New())) { goto fail; }
     for(i = 0; i < cPrefetchAddresses; i++) {
-        ObVSet_Put(pObVSet_PrefetchAddresses, pPrefetchAddresses[i] & ~0xfff);
+        ObVSet_Push(pObVSet_PrefetchAddresses, pPrefetchAddresses[i] & ~0xfff);
     }
     VmmCachePrefetchPages(pObProcess, pObVSet_PrefetchAddresses);
     result = TRUE;
@@ -633,7 +625,7 @@ fail:
 _Success_(return)
 BOOL VMMDLL_MemPrefetchPages(_In_ DWORD dwPID, _In_reads_(cPrefetchAddresses) PULONG64 pPrefetchAddresses, _In_ DWORD cPrefetchAddresses)
 {
-    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+    CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_MemPrefetchPages,
         VMMDLL_MemPrefetchPages_Impl(dwPID, pPrefetchAddresses, cPrefetchAddresses))
 }
@@ -655,7 +647,7 @@ BOOL VMMDLL_MemWrite_Impl(_In_ DWORD dwPID, _In_ ULONG64 qwA, _In_ PBYTE pb, _In
 _Success_(return)
 BOOL VMMDLL_MemWrite(_In_ DWORD dwPID, _In_ ULONG64 qwA, _In_ PBYTE pb, _In_ DWORD cb)
 {
-    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+    CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_MemWrite,
         VMMDLL_MemWrite_Impl(dwPID, qwA, pb, cb))
 }
@@ -674,7 +666,7 @@ BOOL VMMDLL_MemVirt2Phys_Impl(_In_ DWORD dwPID, _In_ ULONG64 qwVA, _Out_ PULONG6
 _Success_(return)
 BOOL VMMDLL_MemVirt2Phys(_In_ DWORD dwPID, _In_ ULONG64 qwVA, _Out_ PULONG64 pqwPA)
 {
-    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+    CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_MemVirt2Phys,
         VMMDLL_MemVirt2Phys_Impl(dwPID, qwVA, pqwPA))
 }
@@ -710,7 +702,7 @@ fail:
 _Success_(return)
 BOOL VMMDLL_ProcessGetMemoryMap(_In_ DWORD dwPID, _Out_opt_ PVMMDLL_MEMMAP_ENTRY pMemMapEntries, _Inout_ PULONG64 pcMemMapEntries, _In_ BOOL fIdentifyModules)
 {
-    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+    CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_ProcessGetMemoryMap,
         VMMDLL_ProcessGetMemoryMap_Impl(dwPID, pMemMapEntries, pcMemMapEntries, fIdentifyModules))
 }
@@ -743,7 +735,7 @@ fail:
 _Success_(return)
 BOOL VMMDLL_ProcessGetMemoryMapEntry(_In_ DWORD dwPID, _Out_ PVMMDLL_MEMMAP_ENTRY pMemMapEntry, _In_ ULONG64 va, _In_ BOOL fIdentifyModules)
 {
-    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+    CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_ProcessGetMemoryMapEntry,
         VMMDLL_ProcessGetMemoryMapEntry_Impl(dwPID, pMemMapEntry, va, fIdentifyModules))
 }
@@ -782,7 +774,7 @@ BOOL VMMDLL_ProcessGetModuleMap_Impl(_In_ DWORD dwPID, _Out_writes_opt_(*pcModul
 _Success_(return)
 BOOL VMMDLL_ProcessGetModuleMap(_In_ DWORD dwPID, _Out_opt_ PVMMDLL_MODULEMAP_ENTRY pModuleEntries, _Inout_ PULONG64 pcModuleEntries)
 {
-    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+    CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_ProcessGetModuleMap,
         VMMDLL_ProcessGetModuleMap_Impl(dwPID, pModuleEntries, pcModuleEntries))
 }
@@ -814,7 +806,7 @@ BOOL VMMDLL_ProcessGetModuleFromName_Impl(_In_ DWORD dwPID, _In_ LPSTR szModuleN
 _Success_(return)
 BOOL VMMDLL_ProcessGetModuleFromName(_In_ DWORD dwPID, _In_ LPSTR szModuleName, _Out_ PVMMDLL_MODULEMAP_ENTRY pModuleEntry)
 {
-    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+    CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_ProcessGetModuleFromName,
         VMMDLL_ProcessGetModuleFromName_Impl(dwPID, szModuleName, pModuleEntry))
 }
@@ -829,7 +821,7 @@ BOOL VMMDLL_PidList_Impl(_Out_opt_ PDWORD pPIDs, _Inout_ PULONG64 pcPIDs)
 _Success_(return)
 BOOL VMMDLL_PidList(_Out_opt_ PDWORD pPIDs, _Inout_ PULONG64 pcPIDs)
 {
-    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+    CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_PidList,
         VMMDLL_PidList_Impl(pPIDs, pcPIDs))
 }
@@ -860,7 +852,7 @@ BOOL VMMDLL_PidGetFromName_Impl(_In_ LPSTR szProcName, _Out_ PDWORD pdwPID)
 _Success_(return)
 BOOL VMMDLL_PidGetFromName(_In_ LPSTR szProcName, _Out_ PDWORD pdwPID)
 {
-    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+    CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_PidGetFromName,
         VMMDLL_PidGetFromName_Impl(szProcName, pdwPID))
 }
@@ -914,7 +906,7 @@ BOOL VMMDLL_ProcessGetInformation_Impl(_In_ DWORD dwPID, _Inout_opt_ PVMMDLL_PRO
 _Success_(return)
 BOOL VMMDLL_ProcessGetInformation(_In_ DWORD dwPID, _Inout_opt_ PVMMDLL_PROCESS_INFORMATION pProcessInformation, _In_ PSIZE_T pcbProcessInformation)
 {
-    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+    CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_ProcessGetInformation,
         VMMDLL_ProcessGetInformation_Impl(dwPID, pProcessInformation, pcbProcessInformation))
 }
@@ -959,7 +951,7 @@ LPSTR VMMDLL_ProcessGetInformationString_Impl(_In_ DWORD dwPID, _In_ DWORD fOpti
 
 LPSTR VMMDLL_ProcessGetInformationString(_In_ DWORD dwPID, _In_ DWORD fOptionString)
 {
-    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM_RETURN(
+    CALL_IMPLEMENTATION_VMM_RETURN(
         STATISTICS_ID_VMMDLL_ProcessGetInformationString,
         LPSTR,
         NULL,
@@ -1044,7 +1036,7 @@ success:
 _Success_(return)
 BOOL VMMDLL_ProcessGetDirectories(_In_ DWORD dwPID, _In_ LPSTR szModule, _Out_writes_(16) PIMAGE_DATA_DIRECTORY pData, _In_ DWORD cData, _Out_ PDWORD pcData)
 {
-    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+    CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_ProcessGetDirectories,
         VMMDLL_ProcessGet_Directories_Sections_IAT_EAT_Impl(dwPID, szModule, cData, pcData, pData, NULL, NULL, NULL, TRUE, FALSE, FALSE, FALSE))
 }
@@ -1052,7 +1044,7 @@ BOOL VMMDLL_ProcessGetDirectories(_In_ DWORD dwPID, _In_ LPSTR szModule, _Out_wr
 _Success_(return)
 BOOL VMMDLL_ProcessGetSections(_In_ DWORD dwPID, _In_ LPSTR szModule, _Out_opt_ PIMAGE_SECTION_HEADER pData, _In_ DWORD cData, _Out_ PDWORD pcData)
 {
-    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+    CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_ProcessGetSections,
         VMMDLL_ProcessGet_Directories_Sections_IAT_EAT_Impl(dwPID, szModule, cData, pcData, NULL, pData, NULL, NULL, FALSE, TRUE, FALSE, FALSE))
 }
@@ -1060,7 +1052,7 @@ BOOL VMMDLL_ProcessGetSections(_In_ DWORD dwPID, _In_ LPSTR szModule, _Out_opt_ 
 _Success_(return)
 BOOL VMMDLL_ProcessGetEAT(_In_ DWORD dwPID, _In_ LPSTR szModule, _Out_opt_ PVMMDLL_EAT_ENTRY pData, _In_ DWORD cData, _Out_ PDWORD pcData)
 {
-    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+    CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_ProcessGetEAT,
         VMMDLL_ProcessGet_Directories_Sections_IAT_EAT_Impl(dwPID, szModule, cData, pcData, NULL, NULL, pData, NULL, FALSE, FALSE, TRUE, FALSE))
 }
@@ -1068,7 +1060,7 @@ BOOL VMMDLL_ProcessGetEAT(_In_ DWORD dwPID, _In_ LPSTR szModule, _Out_opt_ PVMMD
 _Success_(return)
 BOOL VMMDLL_ProcessGetIAT(_In_ DWORD dwPID, _In_ LPSTR szModule, _Out_opt_ PVMMDLL_IAT_ENTRY pData, _In_ DWORD cData, _Out_ PDWORD pcData)
 {
-    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+    CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_ProcessGetIAT,
         VMMDLL_ProcessGet_Directories_Sections_IAT_EAT_Impl(dwPID, szModule, cData, pcData, NULL, NULL, NULL, pData, FALSE, FALSE, FALSE, TRUE))
 }
@@ -1089,7 +1081,7 @@ ULONG64 VMMDLL_ProcessGetProcAddress_Impl(_In_ DWORD dwPID, _In_ LPSTR szModuleN
 
 ULONG64 VMMDLL_ProcessGetProcAddress(_In_ DWORD dwPID, _In_ LPSTR szModuleName, _In_ LPSTR szFunctionName)
 {
-    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM_RETURN(
+    CALL_IMPLEMENTATION_VMM_RETURN(
         STATISTICS_ID_VMMDLL_ProcessGetIAT,
         ULONG64,
         0,
@@ -1112,7 +1104,7 @@ ULONG64 VMMDLL_ProcessGetModuleBase_Impl(_In_ DWORD dwPID, _In_ LPSTR szModuleNa
 
 ULONG64 VMMDLL_ProcessGetModuleBase(_In_ DWORD dwPID, _In_ LPSTR szModuleName)
 {
-    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM_RETURN(
+    CALL_IMPLEMENTATION_VMM_RETURN(
         STATISTICS_ID_VMMDLL_ProcessGetModuleBase,
         ULONG64,
         0,
@@ -1164,7 +1156,7 @@ cleanup:
 _Success_(return)
 BOOL VMMDLL_WinReg_HiveList(_Out_writes_(cHives) PVMMDLL_REGISTRY_HIVE_INFORMATION pHives, _In_ DWORD cHives, _Out_ PDWORD pcHives)
 {
-    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+    CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_WinRegHive_List,
         VMMDLL_WinReg_HiveList_Impl(pHives, cHives, pcHives))
 }
@@ -1193,7 +1185,7 @@ BOOL VMMDLL_WinReg_HiveReadEx_Impl(_In_ ULONG64 vaCMHive, _In_ DWORD ra, _Out_ P
 _Success_(return)
 BOOL VMMDLL_WinReg_HiveReadEx(_In_ ULONG64 vaCMHive, _In_ DWORD ra, _Out_ PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbReadOpt, _In_ ULONG64 flags)
 {
-    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+    CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_WinRegHive_ReadEx,
         VMMDLL_WinReg_HiveReadEx_Impl(vaCMHive, ra, pb, cb, pcbReadOpt, flags))
 }
@@ -1221,9 +1213,50 @@ BOOL VMMDLL_WinReg_HiveWrite_Impl(_In_ ULONG64 vaCMHive, _In_ DWORD ra, _In_ PBY
 _Success_(return)
 BOOL VMMDLL_WinReg_HiveWrite(_In_ ULONG64 vaCMHive, _In_ DWORD ra, _In_ PBYTE pb, _In_ DWORD cb)
 {
-    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+    CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_WinRegHive_Write,
         VMMDLL_WinReg_HiveWrite_Impl(vaCMHive, ra, pb, cb))
+}
+
+
+
+//-----------------------------------------------------------------------------
+// WINDOWS SPECIFIC NETWORKING FUNCTIONALITY BELOW:
+//-----------------------------------------------------------------------------
+
+/*
+* Retrieve networking information about network connections related to Windows TCP/IP stack.
+* NB! CALLER IS RESPONSIBLE FOR LocalFree return value!
+* CALLER LocalFree: return
+* -- return - fail: NULL, success: a PVMMDLL_WIN_TCPIP struct scontaining the result - NB! Caller responsible for LocalFree!
+*/
+PVMMDLL_WIN_TCPIP VMMDLL_WinNet_Get_Impl()
+{
+    DWORD cTcpE;
+    PVMMDLL_WIN_TCPIP pWinTcpIp;
+    PVMMWIN_TCPIP_ENTRY pTcpE = NULL;
+    if(!VmmWinTcpIp_TcpE_Get(&pTcpE, &cTcpE)) {
+        return NULL;
+    }
+    if(!(pWinTcpIp = LocalAlloc(0, sizeof(VMMDLL_WIN_TCPIP) + cTcpE * sizeof(VMMDLL_WIN_TCPIP_ENTRY)))) {
+        LocalFree(pTcpE);
+        return NULL;
+    }
+    pWinTcpIp->magic = VMMDLL_WIN_TCPIP_MAGIC;
+    pWinTcpIp->dwVersion = VMMDLL_WIN_TCPIP_VERSION;
+    pWinTcpIp->cTcpE = cTcpE;
+    memcpy(pWinTcpIp->pTcpE, pTcpE, cTcpE * sizeof(VMMDLL_WIN_TCPIP_ENTRY));
+    LocalFree(pTcpE);
+    return pWinTcpIp;
+}
+
+PVMMDLL_WIN_TCPIP VMMDLL_WinNet_Get()
+{
+    CALL_IMPLEMENTATION_VMM_RETURN(
+        STATISTICS_ID_VMMDLL_WinNet_Get,
+        PVMMDLL_WIN_TCPIP,
+        NULL,
+        VMMDLL_WinNet_Get_Impl())
 }
 
 
@@ -1249,7 +1282,7 @@ BOOL VMMDLL_WinGetThunkInfoEAT_Impl(_In_ DWORD dwPID, _In_ LPSTR szModuleName, _
 _Success_(return)
 BOOL VMMDLL_WinGetThunkInfoEAT(_In_ DWORD dwPID, _In_ LPSTR szModuleName, _In_ LPSTR szExportFunctionName, _Out_ PVMMDLL_WIN_THUNKINFO_EAT pThunkInfoEAT)
 {
-    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+    CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_WinGetThunkEAT,
         VMMDLL_WinGetThunkInfoEAT_Impl(dwPID, szModuleName, szExportFunctionName, pThunkInfoEAT))
 }
@@ -1273,7 +1306,7 @@ BOOL VMMDLL_WinGetThunkInfoIAT_Impl(_In_ DWORD dwPID, _In_ LPSTR szModuleName, _
 _Success_(return)
 BOOL VMMDLL_WinGetThunkInfoIAT(_In_ DWORD dwPID, _In_ LPSTR szModuleName, _In_ LPSTR szImportModuleName, _In_ LPSTR szImportFunctionName, _Out_ PVMMDLL_WIN_THUNKINFO_IAT pThunkInfoIAT)
 {
-    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+    CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_WinGetThunkIAT,
         VMMDLL_WinGetThunkInfoIAT_Impl(dwPID, szModuleName, szImportModuleName, szImportFunctionName, pThunkInfoIAT))
 }
@@ -1281,7 +1314,7 @@ BOOL VMMDLL_WinGetThunkInfoIAT(_In_ DWORD dwPID, _In_ LPSTR szModuleName, _In_ L
 _Success_(return)
 BOOL VMMDLL_WinMemCompression_DecompressPage(_In_ ULONG64 vaCompressedData, _In_opt_ DWORD cbCompressedData, _Out_writes_(4096) PBYTE pbDecompressedPage, _Out_opt_ PDWORD pcbCompressedData)
 {
-    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+    CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_WinMemCompression_DecompressPage,
         MmX64WinPaged_MemCompression_DecompressPage(vaCompressedData, cbCompressedData, pbDecompressedPage, pcbCompressedData))
 }
@@ -1295,7 +1328,7 @@ BOOL VMMDLL_WinMemCompression_DecompressPage(_In_ ULONG64 vaCompressedData, _In_
 _Success_(return)
 BOOL VMMDLL_UtilFillHexAscii(_In_ PBYTE pb, _In_ DWORD cb, _In_ DWORD cbInitialOffset, _Inout_opt_ LPSTR sz, _Out_ PDWORD pcsz)
 {
-    CALL_SYNCHRONIZED_IMPLEMENTATION_VMM(
+    CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_UtilFillHexAscii,
         Util_FillHexAscii(pb, cb, cbInitialOffset, sz, pcsz))
 }

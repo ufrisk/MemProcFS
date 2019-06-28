@@ -1,6 +1,6 @@
 // vfs.c : implementation of functions related to virtual file system support.
 //
-// (c) Ulf Frisk, 2018
+// (c) Ulf Frisk, 2018-2019
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include <Windows.h>
@@ -398,9 +398,22 @@ VfsCallback_WriteFile(LPCWSTR wcsFileName, LPCVOID Buffer, DWORD NumberOfBytesTo
 // VFS INITIALIZATION FUNCTIONALITY BELOW:
 //-------------------------------------------------------------------------------
 
-VOID VfsClose()
+VOID VfsClose(_In_ CHAR chMountPoint)
 {
+    HMODULE hModuleDokan = NULL;
+    WCHAR wchMountPoint = chMountPoint;
+    BOOL(*pfnDokanUnmount)(WCHAR DriveLetter);
     if(ctxVfs && ctxVfs->fInitialized) {
+        if(wchMountPoint) {
+            hModuleDokan = LoadLibraryExA("dokan1.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+            if(hModuleDokan) {
+                pfnDokanUnmount = (BOOL(*)(WCHAR))GetProcAddress(hModuleDokan, "DokanUnmount");
+                if(pfnDokanUnmount) {
+                    pfnDokanUnmount(wchMountPoint);
+                }
+                FreeLibrary(hModuleDokan);
+            }
+        }
         VfsCacheDirectory_Close();
         DeleteCriticalSection(&ctxVfs->CacheDirectoryLock);
     }
@@ -490,5 +503,5 @@ fail:
     if(hModuleDokan) { FreeLibrary(hModuleDokan); }
     LocalFree(pDokanOptions);
     LocalFree(pDokanOperations);
-    VfsClose();
+    VfsClose(0);
 }

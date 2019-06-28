@@ -211,6 +211,7 @@ const LPSTR NAMES_VMM_STATISTICS_CALL[] = {
     "VMMDLL_WinRegHive_List",
     "VMMDLL_WinRegHive_ReadEx",
     "VMMDLL_WinRegHive_Write",
+    "VMMDLL_WinNet_Get",
     "VMMDLL_Refresh",
     "VMMDLL_UtilFillHexAscii",
 };

@@ -50,6 +50,8 @@ EXPORTS
     VMMDLL_WinReg_HiveReadEx
     VMMDLL_WinReg_HiveWrite
 
+	VMMDLL_WinNet_Get
+
     VMMDLL_WinMemCompression_DecompressPage
 
     VMMDLL_UtilFillHexAscii

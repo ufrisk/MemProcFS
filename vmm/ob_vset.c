@@ -358,7 +358,7 @@ BOOL _ObVSet_Put(_In_ POB_VSET pvs, _In_ QWORD value)
 *             exists or if the max capacity of the set is reached.
 */
 _Success_(return)
-BOOL ObVSet_Put(_In_opt_ POB_VSET pvs, _In_ QWORD value)
+BOOL ObVSet_Push(_In_opt_ POB_VSET pvs, _In_ QWORD value)
 {
     OB_VSET_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(pvs, BOOL, FALSE, _ObVSet_Put(pvs, value))
 }
@@ -371,13 +371,13 @@ BOOL ObVSet_Put(_In_opt_ POB_VSET pvs, _In_ QWORD value)
 * -- a
 * -- cb
 */
-VOID ObVSet_Put_PageAlign(_In_opt_ POB_VSET pvs, _In_ QWORD a, _In_ DWORD cb)
+VOID ObVSet_Push_PageAlign(_In_opt_ POB_VSET pvs, _In_ QWORD a, _In_ DWORD cb)
 {
     QWORD qwA;
     if(!OB_VSET_IS_VALID(pvs)) { return; }
     qwA = a & ~0xfff;
     while(qwA < a + cb) {
-        ObVSet_Put(pvs, qwA);
+        ObVSet_Push(pvs, qwA);
         qwA += 0x1000;
     }
 }

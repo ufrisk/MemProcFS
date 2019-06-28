@@ -1,13 +1,15 @@
 // memprocfs.h : implementation of core functionality for the Memory Process File System
 // This is just a thin loader for the virtual memory manager dll which contains the logic.
 //
-// (c) Ulf Frisk, 2018
+// (c) Ulf Frisk, 2018-2019
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include <Windows.h>
 #include <stdio.h>
 #include "vmmdll.h"
 #include "vfs.h"
+
+CHAR g_VfsMountPoint = 'M';
 
 /*
 * Retrieve the mount point from the command line arguments. If no '-mount'
@@ -43,6 +45,9 @@ VOID MemProcFsCtrlHandler_TryShutdownThread(PVOID pv)
     HMODULE hModuleVmm;
     BOOL(*VMMDLL_Close)();
     __try {
+        VfsClose(g_VfsMountPoint);
+    } __except(EXCEPTION_EXECUTE_HANDLER) { ; }
+    __try {
         hModuleVmm = GetModuleHandleA("vmm.dll");
         if(hModuleVmm) {
             VMMDLL_Close = (BOOL(*)())GetProcAddress(hModuleVmm, "VMMDLL_Close");
@@ -50,8 +55,7 @@ VOID MemProcFsCtrlHandler_TryShutdownThread(PVOID pv)
                 VMMDLL_Close();
             }
         }
-    }
-    __except(EXCEPTION_EXECUTE_HANDLER) { ; }
+    } __except(EXCEPTION_EXECUTE_HANDLER) { ; }
 }
 
 /*
@@ -122,7 +126,12 @@ int main(_In_ int argc, _In_ char* argv[])
         return 1;
     }
     SetConsoleCtrlHandler(MemProcFsCtrlHandler, TRUE);
-    VfsInitializeAndMount(GetMountPoint(argc, argv), &VmmDll);
-    ExitProcess(0);
+    g_VfsMountPoint = GetMountPoint(argc, argv);
+    VfsInitializeAndMount(g_VfsMountPoint, &VmmDll);
+    CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)MemProcFsCtrlHandler_TryShutdownThread, NULL, 0, NULL);
+    Sleep(250);
+    TerminateProcess(GetCurrentProcess(), 1);
+    Sleep(500);
+    ExitProcess(1);
     return 0;
 }

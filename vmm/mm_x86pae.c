@@ -19,45 +19,19 @@ BOOL MmX86PAE_TlbPageTableVerify(_Inout_ PBYTE pb, _In_ QWORD pa, _In_ BOOL fSel
     return TRUE;
 }
 
-#define VMMX64_TLB_SIZE_STAGEBUF   0x200
-
-typedef struct tdMMX86PAE_TLB_SPIDER_STAGE_INTERNAL {
-    QWORD c;
-    PMEM_IO_SCATTER_HEADER ppMEMs[VMMX64_TLB_SIZE_STAGEBUF];
-    PVMMOB_MEM ppObMEMs[VMMX64_TLB_SIZE_STAGEBUF];
-} MMX86PAE_TLB_SPIDER_STAGE_INTERNAL, *PMMX86PAE_TLB_SPIDER_STAGE_INTERNAL;
-
-VOID MmX86PAE_TlbSpider_ReadToCache(PMMX86PAE_TLB_SPIDER_STAGE_INTERNAL pTlbSpiderStage)
+VOID MmX86PAE_TlbSpider_PD_PT(_In_ QWORD pa, _In_ BYTE iPML, _In_ BOOL fUserOnly, _In_ POB_VSET pPageSet)
 {
-    QWORD i;
-    LeechCore_ReadScatter(pTlbSpiderStage->ppMEMs, (DWORD)pTlbSpiderStage->c);
-    for(i = 0; i < pTlbSpiderStage->c; i++) {
-        MmX86PAE_TlbPageTableVerify(pTlbSpiderStage->ppObMEMs[i]->h.pb, pTlbSpiderStage->ppObMEMs[i]->h.qwA, FALSE);
-        VmmCacheReserveReturn(pTlbSpiderStage->ppObMEMs[i]);
-    }
-    pTlbSpiderStage->c = 0;
-}
-
-BOOL MmX86PAE_TlbSpider_PD_PT(_In_ QWORD pa, _In_ BYTE iPML, _In_ BOOL fUserOnly, PMMX86PAE_TLB_SPIDER_STAGE_INTERNAL pTlbSpiderStage)
-{
-    BOOL fSpiderComplete = TRUE;
-    PVMMOB_MEM pObPT;
     QWORD i, pte;
+    PVMMOB_MEM pObPT = NULL;
     // 1: retrieve from cache, add to staging if not found
     pObPT = VmmCacheGet(VMM_CACHE_TAG_TLB, pa);
     if(!pObPT) {
-        pTlbSpiderStage->ppObMEMs[pTlbSpiderStage->c] = VmmCacheReserve(VMM_CACHE_TAG_TLB);
-        pTlbSpiderStage->ppMEMs[pTlbSpiderStage->c] = &pTlbSpiderStage->ppObMEMs[pTlbSpiderStage->c]->h;
-        pTlbSpiderStage->ppMEMs[pTlbSpiderStage->c]->qwA = pa;
-        pTlbSpiderStage->c++;
-        if(pTlbSpiderStage->c == VMMX64_TLB_SIZE_STAGEBUF) {
-            MmX86PAE_TlbSpider_ReadToCache(pTlbSpiderStage);
-        }
-        return FALSE;
+        ObVSet_Push(pPageSet, pa);
+        return;
     }
     if(iPML == 1) {
         Ob_DECREF(pObPT);
-        return TRUE;
+        return;
     }
     // 2: walk trough all entries for PD
     for(i = 0; i < 512; i++) {
@@ -65,13 +39,12 @@ BOOL MmX86PAE_TlbSpider_PD_PT(_In_ QWORD pa, _In_ BYTE iPML, _In_ BOOL fUserOnly
         if(!(pte & 0x01)) { continue; }                 // not valid
         if(pte & 0x80) { continue; }                    // not valid ptr to PT
         if(fUserOnly && !(pte & 0x04)) { continue; }    // supervisor page when fUserOnly -> not valid
-        fSpiderComplete = MmX86PAE_TlbSpider_PD_PT(pte & 0x0000fffffffff000, 1, fUserOnly, pTlbSpiderStage) && fSpiderComplete;
+        MmX86PAE_TlbSpider_PD_PT(pte & 0x0000fffffffff000, 1, fUserOnly, pPageSet);
     }
     Ob_DECREF(pObPT);
-    return fSpiderComplete;
 }
 
-BOOL MmX86PAE_TlbSpider_PDPT(_In_ QWORD paDTB, _In_ BOOL fUserOnly, PMMX86PAE_TLB_SPIDER_STAGE_INTERNAL pTlbSpiderStage)
+VOID MmX86PAE_TlbSpider_PDPT(_In_ QWORD paDTB, _In_ BOOL fUserOnly, _In_ POB_VSET pPageSet)
 {
     BOOL fSpiderComplete = TRUE;
     PVMMOB_MEM pObPDPT;
@@ -79,17 +52,16 @@ BOOL MmX86PAE_TlbSpider_PDPT(_In_ QWORD paDTB, _In_ BOOL fUserOnly, PMMX86PAE_TL
     QWORD i, pte;
     // 1: retrieve PDPT
     pObPDPT = VmmTlbGetPageTable(paDTB & 0xfffff000, FALSE);
-    if(!pObPDPT) { return FALSE; }
+    if(!pObPDPT) { return; }
     pbPDPT = pObPDPT->pb + (paDTB & 0xfe0);
     // 2: walk through all four (4) PDPTEs
     for(i = 0; i < 0x20; i += 8) {
         pte = *(PQWORD)(pbPDPT + i);
         if(!(pte & 0x01)) { continue; }             // not valid
         if(pte & 0xffff0000000001e6) { continue; }  // RESERVED BITS IN PDPTE
-        fSpiderComplete = MmX86PAE_TlbSpider_PD_PT(pte & 0x0000fffffffff000, 2, fUserOnly, pTlbSpiderStage) && fSpiderComplete;
+        MmX86PAE_TlbSpider_PD_PT(pte & 0x0000fffffffff000, 2, fUserOnly, pPageSet);
     }
     Ob_DECREF(pObPDPT);
-    return fSpiderComplete;
 }
 
 /*
@@ -98,23 +70,22 @@ BOOL MmX86PAE_TlbSpider_PDPT(_In_ QWORD paDTB, _In_ BOOL fUserOnly, PMMX86PAE_TL
 */
 VOID MmX86PAE_TlbSpider(_In_ PVMM_PROCESS pProcess)
 {
-    DWORD i = 0;
-    BOOL result = FALSE;
-    PMMX86PAE_TLB_SPIDER_STAGE_INTERNAL pTlbSpiderStage;
+    DWORD i;
+    POB_VSET pObPageSet = NULL;
     if(pProcess->fTlbSpiderDone) { return; }
-    if(!(pTlbSpiderStage = (PMMX86PAE_TLB_SPIDER_STAGE_INTERNAL)LocalAlloc(LMEM_ZEROINIT, sizeof(MMX86PAE_TLB_SPIDER_STAGE_INTERNAL)))) { return; }
-    while(!result && (i < 3)) {
-        result = MmX86PAE_TlbSpider_PDPT(pProcess->paDTB, pProcess->fUserOnly, pTlbSpiderStage);
-        if(pTlbSpiderStage->c) {
-            MmX86PAE_TlbSpider_ReadToCache(pTlbSpiderStage);
-        }
-        i++;
+    if(!(pObPageSet = ObVSet_New())) { return; }
+    for(i = 0; i < 3; i++) {
+        MmX86PAE_TlbSpider_PDPT(pProcess->paDTB, pProcess->fUserOnly, pObPageSet);
+        VmmTlbPrefetch(pObPageSet);
     }
-    LocalFree(pTlbSpiderStage);
     pProcess->fTlbSpiderDone = TRUE;
+    Ob_DECREF(pObPageSet);
 }
 
-const QWORD MMX86PAE_PAGETABLEMAP_PML_REGION_SIZE[4] = { 0, 12, 21, 30 };
+const DWORD MMX86PAE_PAGETABLEMAP_PML_REGION_SIZE[4] = { 0, 12, 21, 30 };
+const DWORD MMX86PAE_PAGETABLEMAP_PML_REGION_MASK_PG[4] = { 0, 0xfffff000, 0xffe00000, 0 };
+const DWORD MMX86PAE_PAGETABLEMAP_PML_REGION_MASK_AD[4] = { 0, 0xfff, 0x1fffff, 0 };
+
 
 VOID MmX86PAE_MapInitialize_Index(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MEMMAP_ENTRY pMemMap, _In_ PDWORD pcMemMap, _In_ DWORD vaBase, _In_ BYTE iPML, _In_ QWORD PTEs[512], _In_ BOOL fSupervisorPML, _In_ QWORD paMax)
 {
@@ -443,17 +414,71 @@ VOID MmX86PAE_Virt2PhysGetInformation_DoWork(_Inout_ PVMM_PROCESS pProcess, _Ino
 VOID MmX86PAE_Virt2PhysGetInformation(_Inout_ PVMM_PROCESS pProcess, _Inout_ PVMM_VIRT2PHYS_INFORMATION pVirt2PhysInfo)
 {
     QWORD va;
-    PVMMOB_MEM pObPML4;
+    PVMMOB_MEM pObPDPT;
     if(pVirt2PhysInfo->va > 0xffffffff) { return; }
     va = pVirt2PhysInfo->va;
     ZeroMemory(pVirt2PhysInfo, sizeof(VMM_VIRT2PHYS_INFORMATION));
     pVirt2PhysInfo->tpMemoryModel = VMM_MEMORYMODEL_X86PAE;
     pVirt2PhysInfo->va = va;
     pVirt2PhysInfo->pas[3] = pProcess->paDTB;
-    pObPML4 = VmmTlbGetPageTable(pProcess->paDTB & 0xfffff000, FALSE);
-    if(!pObPML4) { return; }
-    MmX86PAE_Virt2PhysGetInformation_DoWork(pProcess, pVirt2PhysInfo, 3, (PQWORD)(pObPML4->pb + (pProcess->paDTB & 0xfe0)));
-    Ob_DECREF(pObPML4);
+    pObPDPT = VmmTlbGetPageTable(pProcess->paDTB & 0xfffff000, FALSE);
+    if(!pObPDPT) { return; }
+    MmX86PAE_Virt2PhysGetInformation_DoWork(pProcess, pVirt2PhysInfo, 3, (PQWORD)(pObPDPT->pb + (pProcess->paDTB & 0xfe0)));
+    Ob_DECREF(pObPDPT);
+}
+
+VOID MmX86PAE_Phys2VirtGetInformation_Index(_In_ PVMM_PROCESS pProcess, _In_ DWORD vaBase, _In_ BYTE iPML, _In_ QWORD PTEs[512], _In_ QWORD paMax, _Inout_ PVMMOB_PHYS2VIRT_INFORMATION pP2V)
+{
+    BOOL fUserOnly;
+    QWORD pte;
+    DWORD i, va;
+    PVMMOB_MEM pObNextPT;
+    if(!pProcess->fTlbSpiderDone) {
+        VmmTlbSpider(pProcess);
+    }
+    fUserOnly = pProcess->fUserOnly;
+    for(i = 0; i < 512; i++) {
+        if((iPML == 3) && (i > 3)) { break; }                      // MAX 4 ENTRIES IN PDPT
+        pte = PTEs[i];
+        if(!MMX86PAE_PTE_IS_VALID(pte, iPML)) { continue; }
+        if((pte & 0x0000fffffffff000) > paMax) { continue; }
+        if(iPML == 3) {
+            // PDPT: (iPML = 3)
+            if(pte & 0xffff0000000001e6) { continue; }        // RESERVED BITS IN PDPTE
+            va = i * 0x40000000;
+        } else {
+            // PT or PD: (iPML = 1..2)
+            if(fUserOnly && !(pte & 0x04)) { continue; }
+            va = vaBase + (i << MMX86PAE_PAGETABLEMAP_PML_REGION_SIZE[iPML]);
+            // maps page
+            if((iPML == 1) || (pte & 0x80) /* PS */) {
+                if((pte & MMX86PAE_PAGETABLEMAP_PML_REGION_MASK_PG[iPML]) == (pP2V->paTarget & MMX86PAE_PAGETABLEMAP_PML_REGION_MASK_PG[iPML])) {
+                    va = vaBase + (i << MMX86PAE_PAGETABLEMAP_PML_REGION_SIZE[iPML]);
+                    pP2V->pvaList[pP2V->cvaList] = va | (pP2V->paTarget & MMX86PAE_PAGETABLEMAP_PML_REGION_MASK_AD[iPML]);
+                    pP2V->cvaList++;
+                    if(pP2V->cvaList == VMM_PHYS2VIRT_INFORMATION_MAX_PROCESS_RESULT) { return; }
+                }
+                continue;
+            }
+        }
+        // maps page table (PD, PT)
+        if((iPML != 3) && fUserOnly && !(pte & 0x04)) { continue; }    // do not go into supervisor pages if user-only adderss space
+        pObNextPT = VmmTlbGetPageTable(pte & 0x0000fffffffff000, FALSE);
+        if(!pObNextPT) { continue; }
+        MmX86PAE_Phys2VirtGetInformation_Index(pProcess, va, iPML - 1, pObNextPT->pqw, paMax, pP2V);
+        Ob_DECREF(pObNextPT);
+        if(pP2V->cvaList == VMM_PHYS2VIRT_INFORMATION_MAX_PROCESS_RESULT) { return; }
+    }
+}
+
+VOID MmX86PAE_Phys2VirtGetInformation(_In_ PVMM_PROCESS pProcess, _Inout_ PVMMOB_PHYS2VIRT_INFORMATION pP2V)
+{
+    PVMMOB_MEM pObPDPT;
+    if((pP2V->cvaList == VMM_PHYS2VIRT_INFORMATION_MAX_PROCESS_RESULT) || (pP2V->paTarget > ctxMain->dev.paMax)) { return; }
+    pObPDPT = VmmTlbGetPageTable(pProcess->paDTB & ~0xfff, FALSE);
+    if(!pObPDPT) { return; }
+    MmX86PAE_Phys2VirtGetInformation_Index(pProcess, 0, 3, (PQWORD)(pObPDPT->pb + (pProcess->paDTB & 0xfe0)), ctxMain->dev.paMax, pP2V);
+    Ob_DECREF(pObPDPT);
 }
 
 VOID MmX86PAE_Close()
@@ -471,6 +496,7 @@ VOID MmX86PAE_Initialize()
     ctxVmm->fnMemoryModel.pfnClose = MmX86PAE_Close;
     ctxVmm->fnMemoryModel.pfnVirt2Phys = MmX86PAE_Virt2Phys;
     ctxVmm->fnMemoryModel.pfnVirt2PhysGetInformation = MmX86PAE_Virt2PhysGetInformation;
+    ctxVmm->fnMemoryModel.pfnPhys2VirtGetInformation = MmX86PAE_Phys2VirtGetInformation;
     ctxVmm->fnMemoryModel.pfnMapInitialize = MmX86PAE_MapInitialize;
     ctxVmm->fnMemoryModel.pfnMapTag = MmX86PAE_MapTag;
     ctxVmm->fnMemoryModel.pfnMapGetEntries = MmX86PAE_MapGetEntries;

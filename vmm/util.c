@@ -248,3 +248,24 @@ LPSTR Util_StrDupA(_In_opt_ LPSTR sz)
     }
     return szDup;
 }
+
+VOID Util_FileTime2String(_In_ PFILETIME pFileTime, _Out_writes_(MAX_PATH) LPSTR szTime)
+{
+    SYSTEMTIME SystemTime;
+    if(!*(PQWORD)pFileTime) {
+        strcpy_s(szTime, MAX_PATH, "                    ***");
+        return;
+    }
+    FileTimeToSystemTime(pFileTime, &SystemTime);
+    sprintf_s(
+        szTime,
+        MAX_PATH,
+        "%04i-%02i-%02i %02i:%02i:%02i UTC",
+        SystemTime.wYear,
+        SystemTime.wMonth,
+        SystemTime.wDay,
+        SystemTime.wHour,
+        SystemTime.wMinute,
+        SystemTime.wSecond
+    );
+}

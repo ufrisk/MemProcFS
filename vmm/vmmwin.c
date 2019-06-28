@@ -320,8 +320,8 @@ typedef struct _VMMPROC_LDR_DATA_TABLE_ENTRY {
 VOID VmmWin_ScanLdrModules_VSetPutVA(_In_ POB_VSET pObVSet_vaAll, _In_ POB_VSET pObVSet_vaTry1, _In_ QWORD va)
 {
     if(!ObVSet_Exists(pObVSet_vaAll, va)) {
-        ObVSet_Put(pObVSet_vaAll, va);
-        ObVSet_Put(pObVSet_vaTry1, va);
+        ObVSet_Push(pObVSet_vaAll, va);
+        ObVSet_Push(pObVSet_vaTry1, va);
     }
 }
 
@@ -358,8 +358,8 @@ VOID VmmWin_ScanLdrModules64(_In_ PVMM_PROCESS pProcess, _Inout_ PVMM_MODULEMAP_
         if(!VmmRead(pProcess, ctxVmm->kernel.vaPsLoadedModuleList, (PBYTE)&vaModuleLdrFirst, sizeof(QWORD)) || !vaModuleLdrFirst) { goto fail; }
         if(!VmmRead(pProcess, ctxVmm->kernel.vaPsLoadedModuleList, pbPEBLdrData, sizeof(PEB_LDR_DATA))) { goto fail; }
     }
-    ObVSet_Put(pObVSet_vaAll, vaModuleLdrFirst);
-    ObVSet_Put(pObVSet_vaTry1, vaModuleLdrFirst);
+    ObVSet_Push(pObVSet_vaAll, vaModuleLdrFirst);
+    ObVSet_Push(pObVSet_vaTry1, vaModuleLdrFirst);
     // iterate over modules using all available linked lists in an efficient way.
     fTry1 = TRUE;
     vaModuleLdr = 0;
@@ -374,7 +374,7 @@ VOID VmmWin_ScanLdrModules64(_In_ PVMM_PROCESS pProcess, _Inout_ PVMM_MODULEMAP_
             }
             VmmReadEx(pProcess, vaModuleLdr, pbLdrModule, sizeof(VMMPROC_LDR_DATA_TABLE_ENTRY), &cbReadData, VMM_FLAG_FORCECACHE_READ);
             if(cbReadData != sizeof(VMMPROC_LDR_DATA_TABLE_ENTRY)) {
-                ObVSet_Put(pObVSet_vaTry2, vaModuleLdr);
+                ObVSet_Push(pObVSet_vaTry2, vaModuleLdr);
                 continue;
             }
         } else {
@@ -418,7 +418,7 @@ VOID VmmWin_ScanLdrModules64(_In_ PVMM_PROCESS pProcess, _Inout_ PVMM_MODULEMAP_
     }
     // fetch module names in an efficient way.
     for(i = 0; i < *pcModules; i++) {
-        ObVSet_Put_PageAlign(pObVSet_vaName, pModules[i].BaseDllName_Buffer, 32);
+        ObVSet_Push_PageAlign(pObVSet_vaName, pModules[i].BaseDllName_Buffer, 32);
     }
     VmmCachePrefetchPages(pProcess, pObVSet_vaName);
     for(i = 0; i < *pcModules; i++) {
@@ -523,8 +523,8 @@ BOOL VmmWin_ScanLdrModules32(_In_ PVMM_PROCESS pProcess, _Inout_ PVMM_MODULEMAP_
     } else {
         goto fail;
     }
-    ObVSet_Put(pObVSet_vaAll, vaModuleLdrFirst32);
-    ObVSet_Put(pObVSet_vaTry1, vaModuleLdrFirst32);
+    ObVSet_Push(pObVSet_vaAll, vaModuleLdrFirst32);
+    ObVSet_Push(pObVSet_vaTry1, vaModuleLdrFirst32);
     // iterate over modules using all available linked lists in an efficient way.
     fTry1 = TRUE;
     vaModuleLdr32 = 0;
@@ -539,7 +539,7 @@ BOOL VmmWin_ScanLdrModules32(_In_ PVMM_PROCESS pProcess, _Inout_ PVMM_MODULEMAP_
             }
             VmmReadEx(pProcess, vaModuleLdr32, pbLdrModule32, sizeof(LDR_MODULE32), &cbReadData, VMM_FLAG_FORCECACHE_READ);
             if(cbReadData != sizeof(VMMPROC_LDR_DATA_TABLE_ENTRY)) {
-                ObVSet_Put(pObVSet_vaTry2, vaModuleLdr32);
+                ObVSet_Push(pObVSet_vaTry2, vaModuleLdr32);
                 continue;
             }
         } else {
@@ -584,7 +584,7 @@ BOOL VmmWin_ScanLdrModules32(_In_ PVMM_PROCESS pProcess, _Inout_ PVMM_MODULEMAP_
     }
     // fetch module names in an efficient way.
     for(i = 0; i < *pcModules; i++) {
-        ObVSet_Put_PageAlign(pObVSet_vaName, pModules[i].BaseDllName_Buffer, 32);
+        ObVSet_Push_PageAlign(pObVSet_vaName, pModules[i].BaseDllName_Buffer, 32);
     }
     VmmCachePrefetchPages(pProcess, pObVSet_vaName);
     for(i = 0; i < *pcModules; i++) {
@@ -1173,7 +1173,7 @@ VOID VmmWin_EnumerateEPROCESS_PostProcessing(_In_ PVMM_PROCESS pSystemProcess)
     // 1: Iterate to gather memory locations of "SeAuditProcessCreationInfo" / "kernel path" for new processes
     while((pObProcess = VmmProcessGetNextEx(ptObNew, pObProcess, VMM_FLAG_PROCESS_SHOW_TERMINATED))) {
         if(!pObProcess->pObProcessPersistent->fIsPostProcessingComplete) {
-            ObVSet_Put_PageAlign(pObPrefetchAddr, pObProcess->win.vaSeAuditProcessCreationInfo, 540);
+            ObVSet_Push_PageAlign(pObPrefetchAddr, pObProcess->win.vaSeAuditProcessCreationInfo, 540);
         }
     }
     if(0 == ObVSet_Size(pObPrefetchAddr)) { goto fail; }
@@ -1229,7 +1229,7 @@ typedef struct tdVMMWIN_ENUMERATE_EPROCESS_CONTEXT {
 VOID VmmWin_EnumEPROCESS64_Pre(_In_ PVMM_PROCESS pProcess, _In_opt_ PVMMWIN_ENUMERATE_EPROCESS_CONTEXT ctx, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb, _In_ QWORD vaFLink, _In_ QWORD vaBLink, _In_ POB_VSET pVSetAddress, _Inout_ PBOOL pfValidEntry, _Inout_ PBOOL pfValidFLink, _Inout_ PBOOL pfValidBLink)
 {
     if(!ctx || ((va & 0xffff8000'0000000f) != 0xffff8000'00000000)) { return; }
-    ObVSet_Put(ctx->pObVSetPrefetchDTB, *(PQWORD)(pb + ctxVmm->kernel.OffsetEPROCESS.DTB) & ~0xfff);
+    ObVSet_Push(ctx->pObVSetPrefetchDTB, *(PQWORD)(pb + ctxVmm->kernel.OffsetEPROCESS.DTB) & ~0xfff);
     *pfValidFLink = ((vaFLink & 0xffff8000'00000007) == 0xffff8000'00000000);
     *pfValidBLink = ((vaBLink & 0xffff8000'00000007) == 0xffff8000'00000000);
     *pfValidEntry = *pfValidFLink || *pfValidBLink;
@@ -1470,7 +1470,7 @@ VOID VmmWin_OffsetLocatorEPROCESS32(_In_ PVMM_PROCESS pSystemProcess)
 VOID VmmWin_EnumEPROCESS32_Pre(_In_ PVMM_PROCESS pProcess, _In_opt_ PVMMWIN_ENUMERATE_EPROCESS_CONTEXT ctx, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb, _In_ QWORD vaFLink, _In_ QWORD vaBLink, _In_ POB_VSET pVSetAddress, _Inout_ PBOOL pfValidEntry, _Inout_ PBOOL pfValidFLink, _Inout_ PBOOL pfValidBLink)
 {
     if(!ctx || ((va & 0x80000007) != 0x80000000)) { return; }
-    ObVSet_Put(ctx->pObVSetPrefetchDTB, *(PDWORD)(pb + ctxVmm->kernel.OffsetEPROCESS.DTB) & ~0xfff);
+    ObVSet_Push(ctx->pObVSetPrefetchDTB, *(PDWORD)(pb + ctxVmm->kernel.OffsetEPROCESS.DTB) & ~0xfff);
     *pfValidFLink = ((vaFLink & 0x80000003) == 0x80000000);
     *pfValidBLink = ((vaBLink & 0x80000003) == 0x80000000);
     *pfValidEntry = *pfValidFLink || *pfValidBLink;
@@ -1670,8 +1670,8 @@ VOID VmmWin_ListTraversePrefetch(
     if(!(pObVSet_vaTry2 = ObVSet_New())) { goto fail; }
     if(!(pObVSet_vaValid = ObVSet_New())) { goto fail; }
     if(!(pbData = LocalAlloc(0, cbData))) { goto fail; }
-    ObVSet_Put(pObVSet_vaAll, vaDataStart);
-    ObVSet_Put(pObVSet_vaTry1, vaDataStart);
+    ObVSet_Push(pObVSet_vaAll, vaDataStart);
+    ObVSet_Push(pObVSet_vaTry1, vaDataStart);
     // 3: Initial list walk
     fTry1 = TRUE;
     while(TRUE) {
@@ -1685,7 +1685,7 @@ VOID VmmWin_ListTraversePrefetch(
             }
             VmmReadEx(pProcess, vaData, pbData, cbData, &cbReadData, VMM_FLAG_FORCECACHE_READ);
             if(cbReadData != cbData) {
-                ObVSet_Put(pObVSet_vaTry2, vaData);
+                ObVSet_Push(pObVSet_vaTry2, vaData);
                 continue;
             }
         } else {
@@ -1710,17 +1710,17 @@ VOID VmmWin_ListTraversePrefetch(
             fValidEntry = fValidFLink || fValidBLink;
         }
         if(fValidEntry) {
-            ObVSet_Put(pObVSet_vaValid, vaData);
+            ObVSet_Push(pObVSet_vaValid, vaData);
         }
         vaFLink -= oListStart;
         vaBLink -= oListStart;
         if(fValidFLink && !ObVSet_Exists(pObVSet_vaAll, vaFLink)) {
-            ObVSet_Put(pObVSet_vaAll, vaFLink);
-            ObVSet_Put(pObVSet_vaTry1, vaFLink);
+            ObVSet_Push(pObVSet_vaAll, vaFLink);
+            ObVSet_Push(pObVSet_vaTry1, vaFLink);
         }
         if(fValidBLink && !ObVSet_Exists(pObVSet_vaAll, vaBLink)) {
-            ObVSet_Put(pObVSet_vaAll, vaBLink);
-            ObVSet_Put(pObVSet_vaTry1, vaBLink);
+            ObVSet_Push(pObVSet_vaAll, vaBLink);
+            ObVSet_Push(pObVSet_vaTry1, vaBLink);
         }
     }
     // 4: Prefetch additional gathered addresses into cache.

@@ -54,7 +54,7 @@ BOOL M_PEDump_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
         // Load module bases (PE header) memory into cache with one single call.
         if(!(pObVSet_ModuleBaseAddresses = ObVSet_New())) { goto fail; }
         for(iModule = 0; iModule < pObModuleMap->cMap; iModule++) {
-            ObVSet_Put(pObVSet_ModuleBaseAddresses, pObModuleMap->pMap[iModule].BaseAddress);
+            ObVSet_Push(pObVSet_ModuleBaseAddresses, pObModuleMap->pMap[iModule].BaseAddress);
         }
         VmmCachePrefetchPages(pProcess, pObVSet_ModuleBaseAddresses);
         // Build file listing information cache (only from in-cache items).

@@ -12,9 +12,10 @@
 # (c) Ulf Frisk, 2018-2019
 # Author: Ulf Frisk, pcileech@frizk.net
 #
-# Header Version: 2.6
+# Header Version: 2.7
 #
 
+import atexit
 from vmmpyc import *
 
 #------------------------------------------------------------------------------
@@ -61,6 +62,7 @@ def VmmPy_Close():
     Example:
     VmmPy_Close()
     """
+    atexit.unregister(VmmPy_Close)
     VMMPYC_Close()
 
 
@@ -107,6 +109,7 @@ def VmmPy_Initialize(args, is_printf = True, is_verbose = False, is_verbose_extr
     if is_verbose_tlp:
         args.append("-vvv")
     VMMPYC_Initialize(args)
+    atexit.register(VmmPy_Close)
 
 
 
@@ -486,6 +489,23 @@ def VmmPy_WinReg_HiveWrite(va_hive, address, bytes_data):
     VmmPy_WinReg_HiveWrite(0xfffff800acb0000, 0x1000, b'\x00\x01\x02\x03')
     """
     VMMPYC_WinReg_HiveWrite(va_hive, address, bytes_data)
+
+
+
+#------------------------------------------------------------------------------
+# VmmPy NETWORK FUNCTIONALITY BELOW:
+#------------------------------------------------------------------------------
+
+def VmmPy_WinNet_Get():
+    """Retrieve networking information
+
+    Keyword arguments:
+    return -- dict with 'TcpE' list with dict for each TCP connection.
+    
+    Example:
+    VmmPy_WinReg_HiveList() --> {'TcpE': [{'ver': 4, 'pid': 612, 'state': 4, 'va': 18446690201099026448, 'time': 131983383869225588, 'time-str': '2019-03-29 13:06:26 UTC', 'src-ip': '127.0.0.1', 'src-port': 51734, 'dst-ip': '127.0.0.1', 'dst-port': 51733}, ...]}
+    """
+    return VMMPYC_WinNet_Get()
 
 
 

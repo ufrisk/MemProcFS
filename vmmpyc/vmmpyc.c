@@ -11,8 +11,36 @@
 #else
 #include <python.h>
 #endif
+#include <ws2tcpip.h>
 #include <Windows.h>
 #include "vmmdll.h"
+
+//-----------------------------------------------------------------------------
+// UTIL FUNCTIONS BELOW:
+//-----------------------------------------------------------------------------
+
+VOID Util_FileTime2String(_In_ PFILETIME pFileTime, _Out_writes_(MAX_PATH) LPSTR szTime)
+{
+    SYSTEMTIME SystemTime;
+    if(!*(PQWORD)pFileTime) {
+        strcpy_s(szTime, MAX_PATH, "                    ***");
+        return;
+    }
+    FileTimeToSystemTime(pFileTime, &SystemTime);
+    sprintf_s(
+        szTime,
+        MAX_PATH,
+        "%04i-%02i-%02i %02i:%02i:%02i UTC",
+        SystemTime.wYear,
+        SystemTime.wMonth,
+        SystemTime.wDay,
+        SystemTime.wHour,
+        SystemTime.wMinute,
+        SystemTime.wSecond
+    );
+}
+
+
 
 //-----------------------------------------------------------------------------
 // INITIALIZATION FUNCTIONALITY BELOW:
@@ -893,16 +921,12 @@ VMMPYC_WinReg_HiveList(PyObject *self, PyObject *args)
     PVMMDLL_REGISTRY_HIVE_INFORMATION pe, pHives = NULL;
     if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
     Py_BEGIN_ALLOW_THREADS;
-    printf("DEBUG-1");
     VMMDLL_WinReg_HiveList(NULL, 0, &cHives);
-    printf("DEBUG-2");
-
     result =
         VMMDLL_WinReg_HiveList(NULL, 0, &cHives) &&
         cHives &&
         (pHives = LocalAlloc(0, cHives * sizeof(VMMDLL_REGISTRY_HIVE_INFORMATION))) &&
         VMMDLL_WinReg_HiveList(pHives, cHives, &cHives);
-    printf("DEBUG-3");
     Py_END_ALLOW_THREADS;
     if(!result) {
         Py_DECREF(pyList);
@@ -972,6 +996,59 @@ VMMPYC_WinReg_HiveWrite(PyObject *self, PyObject *args)
     Py_END_ALLOW_THREADS;
     if(!result) { return PyErr_Format(PyExc_RuntimeError, "VMMPYC_WinRegHive_Write: Failed."); }
     return Py_BuildValue("s", NULL);    // None returned on success.
+}
+
+// () -> {'tcpe': [{...}]}
+static PyObject*
+VMMPYC_WinNet_Get(PyObject* self, PyObject* args)
+{
+    PyObject *pyDict, *pyListTcpE, *pyDictTcpE;
+    DWORD i, dwIpVersion;
+    PVMMDLL_WIN_TCPIP pNet = NULL;
+    PVMMDLL_WIN_TCPIP_ENTRY pE;
+    CHAR szSrc[64], szDst[64], szTime[MAX_PATH];
+    if(!(pyDict = PyDict_New())) { return PyErr_NoMemory(); }
+    if(!(pyListTcpE = PyList_New(0))) { return PyErr_NoMemory(); }
+    PyDict_SetItemString(pyDict, "TcpE", pyListTcpE);
+    Py_BEGIN_ALLOW_THREADS;
+    pNet = VMMDLL_WinNet_Get();
+    Py_END_ALLOW_THREADS;
+    if(!pNet || (pNet->magic != VMMDLL_WIN_TCPIP_MAGIC) || (pNet->dwVersion != VMMDLL_WIN_TCPIP_VERSION)) {
+        LocalFree(pNet);
+        Py_DECREF(pyDict);
+        return PyErr_Format(PyExc_RuntimeError, "VMMPYC_WinNet_Get: Failed.");
+    }
+    // add tcp endpoint entries to TcpE list
+    for(i = 0; i < pNet->cTcpE; i++) {
+        if((pyDictTcpE = PyDict_New())) {
+            pE = pNet->pTcpE + i;
+            dwIpVersion = (pE->AF.wAF == AF_INET) ? 4 : ((pE->AF.wAF == AF_INET6) ? 6 : 0);
+            // format src/dst addr
+            szSrc[0] = 0;
+            szDst[0] = 0;
+            if(pE->Src.fValid) {
+                InetNtopA(pE->AF.wAF, pE->Src.pbA, szSrc, sizeof(szSrc));
+            }
+            if(pE->Dst.fValid) {
+                InetNtopA(pE->AF.wAF, pE->Dst.pbA, szDst, sizeof(szDst));
+            }
+            // get time
+            Util_FileTime2String((PFILETIME)&pE->qwTime, szTime);
+            PyDict_SetItemString(pyDictTcpE, "ver", PyLong_FromUnsignedLong(dwIpVersion));
+            PyDict_SetItemString(pyDictTcpE, "pid", PyLong_FromUnsignedLong(pE->dwPID));
+            PyDict_SetItemString(pyDictTcpE, "state", PyLong_FromUnsignedLong(pE->dwState));
+            PyDict_SetItemString(pyDictTcpE, "va", PyLong_FromUnsignedLongLong(pE->vaTcpE));
+            PyDict_SetItemString(pyDictTcpE, "time", PyLong_FromUnsignedLongLong(pE->qwTime));
+            PyDict_SetItemString(pyDictTcpE, "time-str", PyUnicode_FromFormat("%s", szTime));
+            PyDict_SetItemString(pyDictTcpE, "src-ip", PyUnicode_FromFormat("%s", szSrc));
+            PyDict_SetItemString(pyDictTcpE, "src-port", PyLong_FromUnsignedLong(pE->Src.wPort));
+            PyDict_SetItemString(pyDictTcpE, "dst-ip", PyUnicode_FromFormat("%s", szDst));
+            PyDict_SetItemString(pyDictTcpE, "dst-port", PyLong_FromUnsignedLong(pE->Dst.wPort));
+            PyList_Append(pyListTcpE, pyDictTcpE);
+        }
+    }
+    LocalFree(pNet);
+    return pyDict;
 }
 
 
@@ -1084,6 +1161,7 @@ static PyMethodDef VMMPYC_EmbMethods[] = {
     {"VMMPYC_WinReg_HiveList", VMMPYC_WinReg_HiveList, METH_VARARGS, "List registry hives."},
     {"VMMPYC_WinReg_HiveRead", VMMPYC_WinReg_HiveRead, METH_VARARGS, "Read raw registry hive."},
     {"VMMPYC_WinReg_HiveWrite", VMMPYC_WinReg_HiveWrite, METH_VARARGS, "Write raw registry hive."},
+    {"VMMPYC_WinNet_Get", VMMPYC_WinNet_Get, METH_VARARGS, "Retrieve windows networking information."},
     {"VMMPYC_VfsRead", VMMPYC_VfsRead, METH_VARARGS, "Read from a file in the virtual file system."},
     {"VMMPYC_VfsWrite", VMMPYC_VfsWrite, METH_VARARGS, "Write to a file in the virtual file system."},
     {"VMMPYC_VfsList", VMMPYC_VfsList, METH_VARARGS, "List files and folder for a specific directory in the Virutal File System."},

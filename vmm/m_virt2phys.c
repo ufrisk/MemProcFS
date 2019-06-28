@@ -9,6 +9,17 @@
 #include "vmm.h"
 #include "vmmvfs.h"
 
+LPCSTR szMVIRT2PHYS_README =
+    "Information about the virt2phys module                                       \n" \
+    "======================================                                       \n" \
+    "Write a virtual address (in hex) to the file 'virt'. If the virtual address  \n" \
+    "is valid the other files in the directory will be populated as per below:    \n" \
+    "- virt - the virtual address                                   [read-write]  \n" \
+    "- map  - page map with info about paging structures            [read-only]   \n" \
+    "- pt_* - 4kB pages with binary data containing page tables     [read-write]  \n" \
+    "- page - the 4kB aligned virtual memory addressed by virt      [read-write]  \n" \
+    "For more information please visit : https://github.com/ufrisk/MemProcFS/wiki \n";
+
 /*
 * Read : function as specified by the module manager. The module manager will
 * call into this callback function whenever a read shall occur from a "file".
@@ -30,6 +41,9 @@ NTSTATUS Virt2Phys_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DW
     VMM_VIRT2PHYS_INFORMATION Virt2PhysInfo = { 0 };
     Virt2PhysInfo.va = pProcess->pObProcessPersistent->Plugin.vaVirt2Phys;
     VmmVirt2PhysGetInformation(pProcess, &Virt2PhysInfo);
+    if(!_stricmp(ctx->szPath, "readme")) {
+        return Util_VfsReadFile_FromPBYTE((PBYTE)szMVIRT2PHYS_README, strlen(szMVIRT2PHYS_README), pb, cb, pcbRead, cbOffset);
+    }
     if(!_stricmp(ctx->szPath, "virt")) {
         switch(ctxVmm->tpMemoryModel) {
             case VMM_MEMORYMODEL_X64:
@@ -229,6 +243,7 @@ BOOL Virt2Phys_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
             VMMDLL_VfsList_AddFile(pFileList, "page", 0x1000);
             break;
     }
+    VMMDLL_VfsList_AddFile(pFileList, "readme", strlen(szMVIRT2PHYS_README));
     return TRUE;
 }
 

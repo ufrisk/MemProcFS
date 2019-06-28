@@ -97,11 +97,9 @@ Please find some ideas for possible future expansions of the memory process file
 
 ### Prioritized items:
 - More/new plugins.
-- Additional core functionality (exported functions in .DLL). Please request in Issues section if ideas exist.
 
 ### Other items:
 - PFN support.
-- Linux support in mounted FUSE file system.
 - Support for analyzing x64 Linux, macOS and UEFI memory dumps.
 - Hash lookup of executable memory pages in DB.
 
@@ -118,15 +116,8 @@ Changelog:
 v1.0
 * Initial Release.
 
-v1.1
-* Loaded kernel drivers in System process 'modules' sub-directory (Windows 10).
-
-v1.2
-* Support for 32-bit Windows - XP to 10.
-* Support for 32-bit memory models (x86 and PAE).
-* Improved auto-identification of memory model and Windows.
-* Loaded kernel drivers in System process 'modules' sub-directory (all Windows versions).
-* PE (exe/dll/sys) Sections and Data Directories as files in 'modules' sub-directory.
+v1.1-v1.2
+* Various updates. please see individual relases for more information.
 
 v2.0
 * Major new release with multiple changes. Most noteworty are:
@@ -169,3 +160,8 @@ v2.6
 * Additional performance optimizations.
 * Support for process long names (previously capped to 15 chars), image path and command line.
 * New module: [SysInfo](https://github.com/ufrisk/MemProcFS/wiki/FS_SysInfo) - system information including OS version number and process tree with command line.
+
+v2.7
+* Bug fixes and optimizations.
+* Network support: TCP connections added to [SysInfo](https://github.com/ufrisk/MemProcFS/wiki/FS_SysInfo) module.
+* New module: [Phys2Virt](https://github.com/ufrisk/MemProcFS/wiki/FS_Phys2Virt) - search individual or all process address spaces for virtual addresses that map to specific physical address.

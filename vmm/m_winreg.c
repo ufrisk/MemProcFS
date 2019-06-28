@@ -9,7 +9,7 @@
 #include "util.h"
 
 _Success_(return)
-BOOL MWinReg_Read_HiveFile(PVMMOB_REGISTRY_HIVE pHive, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+BOOL MWinReg_Read_HiveFile(PVMMOB_REGISTRY_HIVE pHive, _Out_writes_(*pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     DWORD cbReadBaseBlock;
     BYTE pbBaseBlock[0x1000] = { 0 };

@@ -11,7 +11,6 @@
 #include "ob.h"
 
 typedef unsigned __int64                QWORD, *PQWORD;
-#define VMM_MULTITHREAD_ENABLE
 
 // ----------------------------------------------------------------------------
 // VMM configuration constants and struct definitions below:
@@ -46,6 +45,11 @@ typedef unsigned __int64                QWORD, *PQWORD;
 #define VMM_FLAG_FORCECACHE_READ                0x0008  // force use of cache - fail non-cached pages - only valid for reads, invalid with VMM_FLAG_NOCACHE/VMM_FLAG_ZEROPAD_ON_FAIL.
 
 #define PAGE_SIZE                               0x1000
+
+#define VMM_KADDR64(va)                         ((va & 0xffff8000'00000000) == 0xffff8000'00000000)
+#define VMM_KADDR64_8(va)                       ((va & 0xffff8000'00000007) == 0xffff8000'00000000)
+#define VMM_KADDR64_16(va)                      ((va & 0xffff8000'0000000f) == 0xffff8000'00000000)
+#define VMM_KADDR64_PAGE(va)                    ((va & 0xffff8000'00000fff) == 0xffff8000'00000000)
 
 static const LPSTR VMM_MEMORYMODEL_TOSTRING[4] = { "N/A", "X86", "X86PAE", "X64" };
 
@@ -134,6 +138,17 @@ typedef struct tdVMMWIN_USER_PROCESS_PARAMETERS {
     LPSTR szCommandLine;
 } VMMWIN_USER_PROCESS_PARAMETERS, *PVMMWIN_USER_PROCESS_PARAMETERS;
 
+#define VMM_PHYS2VIRT_INFORMATION_MAX_PROCESS_RESULT    4
+#define VMM_PHYS2VIRT_MAX_AGE_MS                        2000
+
+typedef struct tdVMMOB_PHYS2VIRT_INFORMATION {
+    OB ObHdr;
+    QWORD paTarget;
+    DWORD cvaList;
+    DWORD dwPID;
+    QWORD pvaList[VMM_PHYS2VIRT_INFORMATION_MAX_PROCESS_RESULT];
+} VMMOB_PHYS2VIRT_INFORMATION, *PVMMOB_PHYS2VIRT_INFORMATION;
+
 // 'static' process information that should be kept even in the ase of a total
 // process refresh. Only use for information that may never change or things
 // that may not affect analysis (like cache preload addresses that only may
@@ -154,6 +169,7 @@ typedef struct tdVMMOB_PROCESS_PERSISTENT {
     // plugin functionality below:
     struct {
         QWORD vaVirt2Phys;
+        QWORD paPhys2Virt;
     } Plugin;
 } VMMOB_PROCESS_PERSISTENT, *PVMMOB_PROCESS_PERSISTENT;
 
@@ -183,6 +199,7 @@ typedef struct tdVMM_PROCESS {
     struct {
         POB_CONTAINER pObCLdrModulesDisplayCache;
         POB_CONTAINER pObCPeDumpDirCache;
+        POB_CONTAINER pObCPhys2Virt;
     } Plugin;
 } VMM_PROCESS, *PVMM_PROCESS;
 
@@ -273,6 +290,7 @@ typedef struct tdVMM_MEMORYMODEL_FUNCTIONS {
     VOID(*pfnClose)();
     BOOL(*pfnVirt2Phys)(_In_ QWORD paDTB, _In_ BOOL fUserOnly, _In_ BYTE iPML, _In_ QWORD va, _Out_ PQWORD ppa);
     VOID(*pfnVirt2PhysGetInformation)(_Inout_ PVMM_PROCESS pProcess, _Inout_ PVMM_VIRT2PHYS_INFORMATION pVirt2PhysInfo);
+    VOID(*pfnPhys2VirtGetInformation)(_In_ PVMM_PROCESS pProcess, _Inout_ PVMMOB_PHYS2VIRT_INFORMATION pP2V);
     VOID(*pfnMapInitialize)(_In_ PVMM_PROCESS pProcess);
     VOID(*pfnMapTag)(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaBase, _In_ QWORD vaLimit, _In_opt_ LPSTR szTag, _In_opt_ LPWSTR wszTag, _In_ BOOL fWoW64, _In_ BOOL fOverwrite);
     BOOL(*pfnMapGetEntries)(_In_ PVMM_PROCESS pProcess, _In_ DWORD flags, _Out_ PVMMOB_MEMMAP *ppObMemMap);
@@ -356,6 +374,28 @@ typedef struct tdVMMWIN_REGISTRY_OFFSET {
     } HE;
 } VMMWIN_REGISTRY_OFFSET, *PVMMWIN_REGISTRY_OFFSET;
 
+typedef struct tdVMMWIN_TCPIP_OFFSET_TcpE {
+    BOOL _fValid;
+    BOOL _fProcessedTry;
+    WORD _Size;
+    WORD INET_AF;
+    WORD INET_AF_AF;
+    WORD INET_Addr;
+    WORD FLink;
+    WORD State;
+    WORD PortSrc;
+    WORD PortDst;
+    WORD EProcess;
+    WORD Time;
+} VMMWIN_TCPIP_OFFSET_TcpE, *PVMMWIN_TCPIP_OFFSET_TcpE;
+
+typedef struct tdVMMWIN_TCPIP_CONTEXT {
+    CRITICAL_SECTION LockUpdate;
+    BOOL fInitialized;
+    QWORD vaPartitionTable;
+    VMMWIN_TCPIP_OFFSET_TcpE OTcpE;
+} VMMWIN_TCPIP_CONTEXT, *PVMMWIN_TCPIP_CONTEXT;
+
 typedef struct tdVMM_KERNELINFO {
     QWORD paDTB;
     QWORD vaBase;
@@ -408,6 +448,8 @@ typedef struct tdVMM_CONTEXT {
     VMM_KERNELINFO kernel;
     POB_CONTAINER pObCRegistry;
     VMMWIN_REGISTRY_OFFSET RegistryOffset;
+    VMMWIN_TCPIP_CONTEXT TcpIp;
+    QWORD paPluginPhys2VirtRoot;
     VMM_DYNAMIC_LOAD_FUNCTIONS fn;
     PVOID pVmmVfsModuleList;
     POB_CONTAINER pObCCachePrefetchEPROCESS;
@@ -494,34 +536,6 @@ VOID VmmCacheReserveReturn(_In_opt_ PVMMOB_MEM pOb);
 // ----------------------------------------------------------------------------
 // VMM function definitions below:
 // ----------------------------------------------------------------------------
-
-#ifdef VMM_MULTITHREAD_ENABLE
-
-#define VmmLockAcquire()    // no need to acquire lock if multithreaded access is ok
-#define VmmLockRelease()    // no need to acquire lock if multithreaded access is ok
-
-#else /* VMM_MULTITHREAD_ENABLE */
-
-/*
-* Acquire the VMM master lock. Required if interoperating with the VMM from a
-* function that has not already acquired the lock. Lock must be relased in a
-* fairly short amount of time in order for the VMM to continue working.
-* !!! MUST NEVER BE ACQUIRED FOR LENGTHY AMOUNT OF TIMES !!!
-*/
-inline VOID VmmLockAcquire()
-{
-    EnterCriticalSection(&ctxVmm->MasterLock);
-}
-
-/*
-* Release VMM master lock that has previously been acquired by VmmLockAcquire.
-*/
-inline VOID VmmLockRelease()
-{
-    LeaveCriticalSection(&ctxVmm->MasterLock);
-}
-
-#endif /* VMM_MULTITHREAD_ENABLE */
 
 /*
 * Write a virtually contigious arbitrary amount of memory.
@@ -704,6 +718,13 @@ inline BOOL VmmTlbPageTableVerify(_Inout_ PBYTE pb, _In_ QWORD pa, _In_ BOOL fSe
 }
 
 /*
+* Prefetch a set of physical addresses contained in pTlbPrefetch into the TLB cache.
+* NB! pTlbPrefetch must not be updated/altered during the function call.
+* -- pTlbPrefetch = the page table addresses to prefetch (on entry) and empty set on exit.
+*/
+VOID VmmTlbPrefetch(_In_ POB_VSET pTlbPrefetch);
+
+/*
 * Retrieve information of the virtual2physical address translation for the
 * supplied process. The Virtual address must be supplied in pVirt2PhysInfo upon
 * entry.
@@ -715,6 +736,21 @@ inline VOID VmmVirt2PhysGetInformation(_Inout_ PVMM_PROCESS pProcess, _Inout_ PV
     if(ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_NA) { return; }
     ctxVmm->fnMemoryModel.pfnVirt2PhysGetInformation(pProcess, pVirt2PhysInfo);
 }
+
+/*
+* Retrieve information of the physical2virtual address translation for the
+* supplied process. This function may take time on larger address spaces -
+* such as the kernel adderss space due to extensive page walking. If a new
+* address is to be used please supply it in paTarget. If paTarget == 0 then
+* a previously stored address will be used.
+* It's not possible to use this function to retrieve multiple targeted
+* addresses in parallell.
+* -- CALLER DECREF: return
+* -- pProcess
+* -- paTarget = targeted physical address (or 0 if use previously saved).
+* -- return
+*/
+PVMMOB_PHYS2VIRT_INFORMATION VmmPhys2VirtGetInformation(_In_ PVMM_PROCESS pProcess, _In_ QWORD paTarget);
 
 /*
 * Map a tag into the sorted memory map in O(log2) operations. Supply only one
@@ -784,7 +820,7 @@ PVMM_PROCESS VmmProcessGet(_In_ DWORD dwPID);
 * -- flags = 0 (recommended) or VMM_FLAG_PROCESS_SHOW_TERMINATED (_only_ if default setting in ctxVmm->flags should be overridden)
 * -- return = a process struct, or NULL if not found.
 */
-PVMM_PROCESS VmmProcessGetNextEx(_In_ PVMMOB_PROCESS_TABLE pt, _In_opt_ PVMM_PROCESS pProcess, _In_ QWORD flags);
+PVMM_PROCESS VmmProcessGetNextEx(_In_opt_ PVMMOB_PROCESS_TABLE pt, _In_opt_ PVMM_PROCESS pProcess, _In_ QWORD flags);
 
 /*
 * Retrieve the next process given a process. This may be useful when iterating
@@ -797,7 +833,10 @@ PVMM_PROCESS VmmProcessGetNextEx(_In_ PVMMOB_PROCESS_TABLE pt, _In_opt_ PVMM_PRO
 * -- flags = 0 (recommended) or VMM_FLAG_PROCESS_SHOW_TERMINATED (_only_ if default setting in ctxVmm->flags should be overridden)
 * -- return = a process struct, or NULL if not found.
 */
-PVMM_PROCESS VmmProcessGetNext(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD flags);
+inline PVMM_PROCESS VmmProcessGetNext(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD flags)
+{
+    return VmmProcessGetNextEx(NULL, pProcess, flags);
+}
 
 /*
 * Create a new process object. New process object are created in a separate
@@ -840,18 +879,28 @@ VOID VmmProcessListPIDs(_Out_writes_opt_(*pcPIDs) PDWORD pPIDs, _Inout_ PSIZE_T 
 * The selected processes are forwarded to the callback function pfnAction in
 * parallel on multiple threads.
 * NB! Manipulation of ctx in pfnAction callback function must be thread-safe!
-* NB! For fast actions VmmProcessGetNext in single-threaded mode is recommended!
+* NB! For fast actions VmmProcessGetNext in single-threaded mode is recommended
+*     over the use of this function!
 * -- ctx = optional context forwarded to callback functions pfnCriteria / pfnAction.
-* -- dwThreadLoadFactor = max number of processed queued on each thread.
+* -- dwThreadLoadFactor = number of processed queued on each thread, or 0 for auto-select.
 * -- pfnCriteria = optional callback function selecting which processes to process.
 * -- pfnAction = processing function to be called in multi-threaded context.
 */
 VOID VmmProcessActionForeachParallel(
     _In_opt_ PVOID ctx,
-    _In_ DWORD dwThreadLoadFactor,
+    _In_opt_ DWORD dwThreadLoadFactor,
     _In_opt_ BOOL(*pfnCriteria)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx),
     _In_ VOID(*pfnAction)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx)
 );
+
+/*
+* Commonly used criteria - only process active processes instead of all processes
+* (which may include terminated processes as well).
+* -- pProcess
+* -- ctx
+* -- return
+*/
+BOOL VmmProcessActionForeachParallel_CriteriaActiveOnly(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx);
 
 /* 
 * Clear the specified cache from all entries.

@@ -197,14 +197,14 @@ DWORD ObVSet_Size(_In_opt_ POB_VSET pvs);
 BOOL ObVSet_Exists(_In_opt_ POB_VSET pvs, _In_ QWORD value);
 
 /*
-* Put / Insert a non-zero value into the ObVSet.
+* Push / Insert a non-zero value into the ObVSet.
 * -- pvs
 * -- value
 * -- return = TRUE on insertion, FALSE otherwise - i.e. if value already
 *             exists or if the max capacity of the set is reached.
 */
 _Success_(return)
-BOOL ObVSet_Put(_In_opt_ POB_VSET pvs, _In_ QWORD value);
+BOOL ObVSet_Push(_In_opt_ POB_VSET pvs, _In_ QWORD value);
 
 /*
 * Insert a value representing an address into the ObVSet. If the length of the
@@ -214,7 +214,7 @@ BOOL ObVSet_Put(_In_opt_ POB_VSET pvs, _In_ QWORD value);
 * -- a
 * -- cb
 */
-VOID ObVSet_Put_PageAlign(_In_opt_ POB_VSET pvs, _In_ QWORD a, _In_ DWORD cb);
+VOID ObVSet_Push_PageAlign(_In_opt_ POB_VSET pvs, _In_ QWORD a, _In_ DWORD cb);
 
 /*
 * Remove an existing value from the OBVSet.

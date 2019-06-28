@@ -13,6 +13,7 @@
 #include "m_status.h"
 #include "m_sysinfo.h"
 #include "m_virt2phys.h"
+#include "m_phys2virt.h"
 #include "m_winreg.h"
 
 //
@@ -331,6 +332,8 @@ BOOL PluginManager_Initialize()
     EnterCriticalSection(&ctxVmm->MasterLock);
     PluginManager_Initialize_RegInfoInit(&ri, NULL);
     M_Virt2Phys_Initialize(&ri);
+    PluginManager_Initialize_RegInfoInit(&ri, NULL);
+    M_Phys2Virt_Initialize(&ri);
     PluginManager_Initialize_RegInfoInit(&ri, NULL);
     M_LdrModules_Initialize(&ri);
     PluginManager_Initialize_RegInfoInit(&ri, NULL);

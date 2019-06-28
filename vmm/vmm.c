@@ -372,6 +372,40 @@ VOID VmmCache2Initialize(_In_ WORD wTblTag)
 }
 
 /*
+* Prefetch a set of physical addresses contained in pTlbPrefetch into the Tlb.
+* NB! pTlbPrefetch must not be updated/altered during the function call.
+* -- pProcess
+* -- pTlbPrefetch = the page table addresses to prefetch (on entry) and empty set on exit.
+*/
+VOID VmmTlbPrefetch(_In_ POB_VSET pTlbPrefetch)
+{
+    QWORD pbTlb = 0;
+    DWORD cTlbs, i = 0;
+    PPVMMOB_MEM ppObMEMs = NULL;
+    PPMEM_IO_SCATTER_HEADER ppMEMs = NULL;
+    if(!(cTlbs = ObVSet_Size(pTlbPrefetch))) { goto fail; }
+    if(!(ppMEMs = LocalAlloc(0, cTlbs * sizeof(PMEM_IO_SCATTER_HEADER)))) { goto fail; }
+    if(!(ppObMEMs = LocalAlloc(0, cTlbs * sizeof(PVMMOB_MEM)))) { goto fail; }
+    while((cTlbs = min(0x2000, ObVSet_Size(pTlbPrefetch)))) {   // protect cache bleed -> max 0x2000 pages/round
+        for(i = 0; i < cTlbs; i++) {
+            ppObMEMs[i] = VmmCacheReserve(VMM_CACHE_TAG_TLB);
+            ppMEMs[i] = &ppObMEMs[i]->h;
+            ppMEMs[i]->qwA = ObVSet_Pop(pTlbPrefetch);
+        }
+        LeechCore_ReadScatter(ppMEMs, cTlbs);
+        for(i = 0; i < cTlbs; i++) {
+            if((ppMEMs[i]->cb == 0x1000) && !VmmTlbPageTableVerify(ppMEMs[i]->pb, ppMEMs[i]->qwA, FALSE)) {
+                ppMEMs[i]->cb = 0;  // "fail" invalid page table read
+            }
+            VmmCacheReserveReturn(ppObMEMs[i]);
+        }
+    }
+fail:
+    LocalFree(ppMEMs);
+    LocalFree(ppObMEMs);
+}
+
+/*
 * Prefetch a set of addresses contained in pPrefetchPages into the cache. This
 * is useful when reading data from somewhat known addresses over higher latency
 * connections.
@@ -412,7 +446,7 @@ VOID VmmCachePrefetchPages2(_In_opt_ PVMM_PROCESS pProcess, _In_ DWORD cAddresse
     if(!cAddresses || !(pObVSet = ObVSet_New())) { return; }
     va_start(arguments, cAddresses);
     while(cAddresses) {
-        ObVSet_Put(pObVSet, va_arg(arguments, QWORD) & ~0xfff);
+        ObVSet_Push(pObVSet, va_arg(arguments, QWORD) & ~0xfff);
         cAddresses--;
     }
     va_end(arguments);
@@ -436,7 +470,7 @@ VOID VmmCachePrefetchPages3(_In_opt_ PVMM_PROCESS pProcess, _In_opt_ POB_VSET pP
     if(!cb || !pPrefetchPagesNonPageAligned) { return; }
     if(!(pObSetAlign = ObVSet_New())) { return; }
     while((qwA = ObVSet_GetNext(pPrefetchPagesNonPageAligned, qwA))) {
-        ObVSet_Put_PageAlign(pObSetAlign, qwA, cb);
+        ObVSet_Push_PageAlign(pObSetAlign, qwA, cb);
     }
     VmmCachePrefetchPages(pProcess, pObSetAlign);
     Ob_DECREF(pObSetAlign);
@@ -518,12 +552,18 @@ PVMM_PROCESS VmmProcessGet(_In_ DWORD dwPID)
 * -- flags = 0 (recommended) or VMM_FLAG_PROCESS_SHOW_TERMINATED (_only_ if default setting in ctxVmm->flags should be overridden)
 * -- return = a process struct, or NULL if not found.
 */
-PVMM_PROCESS VmmProcessGetNextEx(_In_ PVMMOB_PROCESS_TABLE pt, _In_opt_ PVMM_PROCESS pProcess, _In_ QWORD flags)
+PVMM_PROCESS VmmProcessGetNextEx(_In_opt_ PVMMOB_PROCESS_TABLE pt, _In_opt_ PVMM_PROCESS pProcess, _In_ QWORD flags)
 {
     BOOL fShowTerminated = ((flags | ctxVmm->flags) & VMM_FLAG_PROCESS_SHOW_TERMINATED);
     PVMM_PROCESS pProcessNew;
     DWORD i, iStart;
-    if(!pt) { goto fail; }
+    if(!pt) {
+        pt = (PVMMOB_PROCESS_TABLE)ObContainer_GetOb(ctxVmm->pObCPROC);
+        if(!pt) { goto fail; }
+        pProcessNew = VmmProcessGetNextEx(pt, pProcess, flags);
+        Ob_DECREF(pt);
+        return pProcessNew;
+    }
 restart:
     if(!pProcess) {
         i = pt->_iFLink;
@@ -553,27 +593,6 @@ restart:
 fail:
     Ob_DECREF(pProcess);
     return NULL;
-}
-
-/*
-* Retrieve the next process given a process. This may be useful when iterating
-* over a process list. NB! Listing of next item may fail prematurely if the
-* previous process is terminated while having a reference to it.
-* FUNCTION DECREF: pProcess
-* CALLER DECREF: return
-* -- pProcess = a process struct, or NULL if first.
-*    NB! function DECREF's  pProcess and must not be used after call!
-* -- flags = 0 (recommended) or VMM_FLAG_PROCESS_SHOW_TERMINATED (_only_ if default setting in ctxVmm->flags should be overridden)
-* -- return = a process struct, or NULL if not found.
-*/
-PVMM_PROCESS VmmProcessGetNext(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD flags)
-{
-    PVMM_PROCESS pObProcess;
-    PVMMOB_PROCESS_TABLE pObProcTable;
-    pObProcTable = (PVMMOB_PROCESS_TABLE)ObContainer_GetOb(ctxVmm->pObCPROC);
-    pObProcess = VmmProcessGetNextEx(pObProcTable, pProcess, flags);
-    Ob_DECREF(pObProcTable);
-    return pObProcess;
 }
 
 /*
@@ -619,6 +638,7 @@ VOID VmmProcess_CloseObCallback(_In_ PVOID pVmmOb)
     // plugin cleanup below
     Ob_DECREF(pProcess->Plugin.pObCLdrModulesDisplayCache);
     Ob_DECREF(pProcess->Plugin.pObCPeDumpDirCache);
+    Ob_DECREF(pProcess->Plugin.pObCPhys2Virt);
     // delete lock
     DeleteCriticalSection(&pProcess->LockUpdate);
 }
@@ -707,6 +727,7 @@ PVMM_PROCESS VmmProcessCreateEntry(_In_ BOOL fTotalRefresh, _In_ DWORD dwPID, _I
         pProcess->fTlbSpiderDone = pProcess->fTlbSpiderDone;
         pProcess->Plugin.pObCLdrModulesDisplayCache = ObContainer_New(NULL);
         pProcess->Plugin.pObCPeDumpDirCache = ObContainer_New(NULL);
+        pProcess->Plugin.pObCPhys2Virt = ObContainer_New(NULL);
         // attach pre-existing static process info entry or create new
         pProcessOld = VmmProcessGet(dwPID);
         if(pProcessOld) {
@@ -838,7 +859,6 @@ BOOL VmmProcessTableCreateInitial()
 // ----------------------------------------------------------------------------
 
 #define VMM_PROCESS_ACTION_FOREACH_THREADS_PARALLEL     0x00c
-#define VMM_PROCESS_ACTION_FOREACH_THREADS_MAX          0x200
 
 typedef struct tdVMMOB_PROCESS_ACTION_FOREACH {
     OB ObHdr;
@@ -870,34 +890,52 @@ VOID VmmProcessActionForeachParallel_CloseObCallback(_In_ PVMMOB_PROCESS_ACTION_
     }
 }
 
-VOID VmmProcessActionForeachParallel(_In_opt_ PVOID ctx, _In_ DWORD dwThreadLoadFactor, _In_opt_ BOOL(*pfnCriteria)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx), _In_ VOID(*pfnAction)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx))
+BOOL VmmProcessActionForeachParallel_CriteriaActiveOnly(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx)
+{
+    return pProcess->dwState == 0;
+}
+
+VOID VmmProcessActionForeachParallel(_In_opt_ PVOID ctx, _In_opt_ DWORD dwThreadLoadFactor, _In_opt_ BOOL(*pfnCriteria)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx), _In_ VOID(*pfnAction)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx))
 {
     HANDLE hSemaphore;
-    DWORD cThreads = 0;
-    HANDLE hThreads[VMM_PROCESS_ACTION_FOREACH_THREADS_MAX];
+    DWORD dwPID, cThreads = 0;
+    HANDLE hThreads[MAXIMUM_WAIT_OBJECTS];
     PVMMOB_PROCESS_ACTION_FOREACH ctxObForeach = NULL;
     PVMM_PROCESS pObProcess = NULL;
+    POB_VSET pObProcessSelectedSet = NULL;
     InterlockedIncrement(&ctxVmm->ThreadWorkers.c);
     hSemaphore = CreateSemaphore(NULL, VMM_PROCESS_ACTION_FOREACH_THREADS_PARALLEL, VMM_PROCESS_ACTION_FOREACH_THREADS_PARALLEL, NULL);
     if(!hSemaphore) { goto fail; }
-    while(ctxVmm->ThreadWorkers.fEnabled && (pObProcess = VmmProcessGetNext(pObProcess, VMM_FLAG_PROCESS_SHOW_TERMINATED))) {
-        if(pfnCriteria && !pfnCriteria(pObProcess, ctx)) { continue; }
-        if(!ctxObForeach) {
-            ctxObForeach = Ob_Alloc('ea', 0, sizeof(VMMOB_PROCESS_ACTION_FOREACH) + dwThreadLoadFactor * sizeof(PVMM_PROCESS), VmmProcessActionForeachParallel_CloseObCallback, NULL);
-            if(!ctxObForeach) { goto fail; }
-            ctxObForeach->ctx = ctx;
-            ctxObForeach->hSemaphore = hSemaphore;
-            ctxObForeach->pfnAction = pfnAction;
-            ctxObForeach->Reserved = cThreads;
-            ctxObForeach->cProcess = 0;
+    if(!(pObProcessSelectedSet = ObVSet_New())) { goto fail; }
+    // 1: select processes to queue using criteria function
+    while(pObProcess = VmmProcessGetNext(pObProcess, VMM_FLAG_PROCESS_SHOW_TERMINATED)) {
+        if(!pfnCriteria || pfnCriteria(pObProcess, ctx)) {
+            ObVSet_Push(pObProcessSelectedSet, pObProcess->dwPID);
         }
-        ctxObForeach->pProcesses[ctxObForeach->cProcess++] = (PVMM_PROCESS)Ob_INCREF(pObProcess);
-        if(ctxObForeach->cProcess == dwThreadLoadFactor) {
-            hThreads[cThreads] = CreateThread(NULL, 0, VmmProcessActionForeachParallel_ThreadProc, ctxObForeach, 0, NULL);
-            if(!hThreads[cThreads]) { goto fail; }
-            cThreads++;
-            ctxObForeach = NULL;    // object reference responsibility already passed on to CreateThread function call.
-            if(cThreads == VMM_PROCESS_ACTION_FOREACH_THREADS_MAX) { goto fail; }
+    }
+    if(!ObVSet_Size(pObProcessSelectedSet)) { goto fail; }
+    dwThreadLoadFactor = max(dwThreadLoadFactor, 1 + (ObVSet_Size(pObProcessSelectedSet) / MAXIMUM_WAIT_OBJECTS));
+    // 2: queue selected processes onto threads and start execute
+    while(ctxVmm->ThreadWorkers.fEnabled && (dwPID = (DWORD)ObVSet_Pop(pObProcessSelectedSet))) {
+        pObProcess = VmmProcessGet(dwPID);
+        if(pObProcess) {
+            if(!ctxObForeach) {
+                ctxObForeach = Ob_Alloc('ea', 0, sizeof(VMMOB_PROCESS_ACTION_FOREACH) + dwThreadLoadFactor * sizeof(PVMM_PROCESS), VmmProcessActionForeachParallel_CloseObCallback, NULL);
+                if(!ctxObForeach) { goto fail; }
+                ctxObForeach->ctx = ctx;
+                ctxObForeach->hSemaphore = hSemaphore;
+                ctxObForeach->pfnAction = pfnAction;
+                ctxObForeach->Reserved = cThreads;
+                ctxObForeach->cProcess = 0;
+            }
+            ctxObForeach->pProcesses[ctxObForeach->cProcess++] = pObProcess;
+            pObProcess = NULL;          // object reference responsibility already passed on to ctxObForeach object.
+            if(ctxObForeach->cProcess == dwThreadLoadFactor) {
+                hThreads[cThreads] = CreateThread(NULL, 0, VmmProcessActionForeachParallel_ThreadProc, ctxObForeach, 0, NULL);
+                if(!hThreads[cThreads]) { goto fail; }
+                cThreads++;
+                ctxObForeach = NULL;    // object reference responsibility already passed on to CreateThread function call.
+            }
         }
     }
     if(ctxObForeach) {          // process any remaining objects
@@ -910,6 +948,7 @@ fail:
     WaitForMultipleObjects(cThreads, hThreads, TRUE, INFINITE);
     if(hSemaphore) { CloseHandle(hSemaphore); }
     Ob_DECREF(pObProcess);
+    Ob_DECREF(pObProcessSelectedSet);
     Ob_DECREF(ctxObForeach);
     InterlockedDecrement(&ctxVmm->ThreadWorkers.c);
 }
@@ -1093,6 +1132,57 @@ VOID VmmReadScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_ PPMEM_IO_SCATTER_
     LocalFree(pbBufferLarge);
 }
 
+/*
+* Retrieve information of the physical2virtual address translation for the
+* supplied process. This function may take time on larger address spaces -
+* such as the kernel adderss space due to extensive page walking. If a new
+* address is to be used please supply it in paTarget. If paTarget == 0 then
+* a previously stored address will be used.
+* It's not possible to use this function to retrieve multiple targeted
+* addresses in parallell.
+* -- CALLER DECREF: return
+* -- pProcess
+* -- paTarget = targeted physical address (or 0 if use previously saved).
+* -- return
+*/
+PVMMOB_PHYS2VIRT_INFORMATION VmmPhys2VirtGetInformation(_In_ PVMM_PROCESS pProcess, _In_ QWORD paTarget)
+{
+    PVMMOB_PHYS2VIRT_INFORMATION pObP2V = NULL;
+    if(paTarget) {
+        pProcess->pObProcessPersistent->Plugin.paPhys2Virt = paTarget;
+    } else {
+        paTarget = pProcess->pObProcessPersistent->Plugin.paPhys2Virt;
+    }
+    pObP2V = ObContainer_GetOb(pProcess->Plugin.pObCPhys2Virt);
+    if(paTarget && (!pObP2V || (pObP2V->paTarget != paTarget))) {
+        Ob_DECREF_NULL(&pObP2V);
+        EnterCriticalSection(&pProcess->LockUpdate);
+        pObP2V = ObContainer_GetOb(pProcess->Plugin.pObCPhys2Virt);
+        if(paTarget && (!pObP2V || (pObP2V->paTarget != paTarget))) {
+            Ob_DECREF_NULL(&pObP2V);
+            pObP2V = Ob_Alloc('PV', LMEM_ZEROINIT, sizeof(VMMOB_PHYS2VIRT_INFORMATION), NULL, NULL);
+            pObP2V->paTarget = paTarget;
+            pObP2V->dwPID = pProcess->dwPID;
+            if(ctxVmm->fnMemoryModel.pfnPhys2VirtGetInformation) {
+                ctxVmm->fnMemoryModel.pfnPhys2VirtGetInformation(pProcess, pObP2V);
+                ObContainer_SetOb(pProcess->Plugin.pObCPhys2Virt, pObP2V);
+            }
+        }
+        LeaveCriticalSection(&pProcess->LockUpdate);
+    }
+    if(!pObP2V) {
+        EnterCriticalSection(&pProcess->LockUpdate);
+        pObP2V = ObContainer_GetOb(pProcess->Plugin.pObCPhys2Virt);
+        if(!pObP2V) {
+            pObP2V = Ob_Alloc('PV', LMEM_ZEROINIT, sizeof(VMMOB_PHYS2VIRT_INFORMATION), NULL, NULL);
+            pObP2V->dwPID = pProcess->dwPID;
+            ObContainer_SetOb(pProcess->Plugin.pObCPhys2Virt, pObP2V);
+        }
+        LeaveCriticalSection(&pProcess->LockUpdate);
+    }
+    return pObP2V;
+}
+
 // ----------------------------------------------------------------------------
 // PUBLICALLY VISIBLE FUNCTIONALITY RELATED TO VMMU.
 // ----------------------------------------------------------------------------
@@ -1120,6 +1210,7 @@ VOID VmmClose()
     Ob_DECREF_NULL(&ctxVmm->pObCCachePrefetchEPROCESS);
     Ob_DECREF_NULL(&ctxVmm->pObCCachePrefetchRegistry);
     Ob_DECREF_NULL(&ctxVmm->pObCRegistry);
+    DeleteCriticalSection(&ctxVmm->TcpIp.LockUpdate);
     DeleteCriticalSection(&ctxVmm->MasterLock);
     LocalFree(ctxVmm);
     ctxVmm = NULL;
@@ -1372,6 +1463,7 @@ BOOL VmmInitialize()
     ctxVmm->pObCCachePrefetchRegistry = ObContainer_New(NULL);
     ctxVmm->pObCRegistry = ObContainer_New(NULL);
     InitializeCriticalSection(&ctxVmm->MasterLock);
+    InitializeCriticalSection(&ctxVmm->TcpIp.LockUpdate);
     VmmInitializeFunctions();
     return TRUE;
 fail:

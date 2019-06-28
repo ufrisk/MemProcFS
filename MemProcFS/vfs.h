@@ -1,6 +1,6 @@
 // vfs.h : definitions related to virtual file system support.
 //
-// (c) Ulf Frisk, 2018
+// (c) Ulf Frisk, 2018-2019
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __VFS_H__
@@ -54,7 +54,8 @@ VOID VfsInitializeAndMount(_In_ CHAR chMountPoint, _In_ PVMMDLL_FUNCTIONS pVmmDl
 
 /*
 * Close a vfs sub-context in ctxVfs - if exists.
+* -- chMountPoint
 */
-VOID VfsClose();
+VOID VfsClose(_In_ CHAR chMountPoint);
 
 #endif /* __VFS_H__ */

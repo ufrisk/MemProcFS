@@ -630,9 +630,9 @@ VOID VmmWinReg_EnumHive64_Pre(_In_ PVMM_PROCESS pProcess, _In_opt_ PVMMOB_REGIST
     *pfValidFLink = ((vaFLink & 0xffff8000'00000007) == 0xffff8000'00000000);       // aligned kernel address
     *pfValidBLink = ((vaBLink & 0xffff8000'00000007) == 0xffff8000'00000000);       // aligned kernel address
     if(*pfValidFLink && *pfValidBLink && (*(PDWORD)(pb + po->CM.Signature) == 0xBEE0BEE0) && ((*(PQWORD)(pb + po->CM.BaseBlock) & 0xfff) == 0x000)) {
-        ObVSet_Put(pVSetAddress, *(PQWORD)(pb + po->CM.BaseBlock));
+        ObVSet_Push(pVSetAddress, *(PQWORD)(pb + po->CM.BaseBlock));
         if(po->CM.HiveRootPathOpt && *(PQWORD)(pb + po->CM.HiveRootPathOpt)) {  // _CMHIVE.HiveRootPath
-            ObVSet_Put(pVSetAddress, *(PQWORD)(pb + po->CM.HiveRootPathOpt + 8) & ~0xfff);
+            ObVSet_Push(pVSetAddress, *(PQWORD)(pb + po->CM.HiveRootPathOpt + 8) & ~0xfff);
         }
         *pfValidEntry = TRUE;
     }
@@ -645,9 +645,9 @@ VOID VmmWinReg_EnumHive32_Pre(_In_ PVMM_PROCESS pProcess, _In_opt_ PVMMOB_REGIST
     *pfValidFLink = ((vaFLink & 0x80000003) == 0x80000000);       // aligned kernel address
     *pfValidBLink = ((vaBLink & 0x80000003) == 0x80000000);       // aligned kernel address
     if(*pfValidFLink && *pfValidBLink && (*(PDWORD)(pb + po->CM.Signature) == 0xBEE0BEE0) && ((*(PDWORD)(pb + po->CM.BaseBlock) & 0xfff) == 0x000)) {
-        ObVSet_Put(pVSetAddress, *(PDWORD)(pb + po->CM.BaseBlock));
+        ObVSet_Push(pVSetAddress, *(PDWORD)(pb + po->CM.BaseBlock));
         if(po->CM.HiveRootPathOpt && *(PDWORD)(pb + po->CM.HiveRootPathOpt)) {  // _CMHIVE.HiveRootPath
-            ObVSet_Put(pVSetAddress, *(PDWORD)(pb + po->CM.HiveRootPathOpt + 4) & ~0xfff);
+            ObVSet_Push(pVSetAddress, *(PDWORD)(pb + po->CM.HiveRootPathOpt + 4) & ~0xfff);
         }
         *pfValidEntry = TRUE;
     }
