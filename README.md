@@ -165,3 +165,6 @@ v2.7
 * Bug fixes and optimizations.
 * Network support: TCP connections added to [SysInfo](https://github.com/ufrisk/MemProcFS/wiki/FS_SysInfo) module.
 * New module: [Phys2Virt](https://github.com/ufrisk/MemProcFS/wiki/FS_Phys2Virt) - search individual or all process address spaces for virtual addresses that map to specific physical address.
+
+Latest:
+* Bug fixes.

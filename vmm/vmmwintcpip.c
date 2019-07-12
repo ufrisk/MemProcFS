@@ -91,7 +91,8 @@ QWORD VmmWinTcpIp_GetPartitionTable64_PoolHdr(_In_ PVMM_PROCESS pSystemProcess, 
         VmmReadEx(pSystemProcess, va - 0x10, pb, 0x48, &cbRead, VMM_FLAG_FORCECACHE_READ);
         if((cbRead != 0x48) || (*(PDWORD)(pb + 0x04) != 'tPcT')) { continue; }  // TcPt pool header
         f = VMMWINTCPIP_PARTITIONTABLE_OFFSET20(pb + 0x10, va) ||
-            VMMWINTCPIP_PARTITIONTABLE_OFFSET18(pb + 0x10, va);
+            VMMWINTCPIP_PARTITIONTABLE_OFFSET18(pb + 0x10, va) ||
+            VMMWINTCPIP_PARTITIONTABLE_WIN10_1903(pb + 0x10);
         if(f) {
             Ob_DECREF(pObSet);
             return va;
