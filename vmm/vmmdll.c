@@ -285,7 +285,16 @@ BOOL VMMDLL_ConfigGet_VmmCore(_In_ ULONG64 fOption, _Out_ PULONG64 pqwValue)
             break;
         case VMMDLL_OPT_CONFIG_STATISTICS_FUNCTIONCALL:
             *pqwValue = Statistics_CallGetEnabled() ? 1 : 0;
-            return TRUE;
+            break;
+        case VMMDLL_OPT_WIN_VERSION_MAJOR:
+            *pqwValue = ctxVmm->kernel.dwVersionMajor;
+            break;
+        case VMMDLL_OPT_WIN_VERSION_MINOR:
+            *pqwValue = ctxVmm->kernel.dwVersionMinor;
+            break;
+        case VMMDLL_OPT_WIN_VERSION_BUILD:
+            *pqwValue = ctxVmm->kernel.dwVersionBuild;
+            break;
         default:
             return FALSE;
     }

@@ -4,7 +4,7 @@
 // (c) Ulf Frisk, 2018-2019
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-// Header Version: 2.7
+// Header Version: 2.7.2
 //
 
 #include <windows.h>
@@ -94,6 +94,10 @@ BOOL VMMDLL_Refresh(_In_ DWORD dwReserved);
 #define VMMDLL_OPT_CONFIG_VMM_VERSION_MINOR             0x40000008  // R
 #define VMMDLL_OPT_CONFIG_VMM_VERSION_REVISION          0x40000009  // R
 #define VMMDLL_OPT_CONFIG_STATISTICS_FUNCTIONCALL       0x4000000A  // RW - enable function call statistics (.status/statistics_fncall file)
+
+#define VMMDLL_OPT_WIN_VERSION_MAJOR                    0x40000101  // R
+#define VMMDLL_OPT_WIN_VERSION_MINOR                    0x40000102  // R
+#define VMMDLL_OPT_WIN_VERSION_BUILD                    0x40000103  // R
 
 static const LPSTR VMMDLL_MEMORYMODEL_TOSTRING[4] = { "N/A", "X86", "X86PAE", "X64" };
 
