@@ -26,7 +26,7 @@ BOOL VmmProcUserCR3TryInitialize64()
 {
     PVMM_PROCESS pObProcess;
     VmmInitializeMemoryModel(VMM_MEMORYMODEL_X64);
-    pObProcess = VmmProcessCreateEntry(TRUE, 0, 0, 0, ctxMain->cfg.paCR3, 0, "unknown_process", FALSE);
+    pObProcess = VmmProcessCreateEntry(TRUE, 1, 0, 0, ctxMain->cfg.paCR3, 0, "unknown_process", FALSE);
     VmmProcessCreateFinish();
     if(!pObProcess) {
         vmmprintfv("VmmProc: FAIL: Initialization of Process failed from user-defined CR3 %016llx.\n", ctxMain->cfg.paCR3);
@@ -45,8 +45,8 @@ BOOL VmmProc_RefreshProcesses(_In_ BOOL fRefreshTotal)
     BOOL result;
     PVMM_PROCESS pObProcessSystem;
     // statistic count
-    if(!fRefreshTotal) { InterlockedIncrement64(&ctxVmm->stat.cRefreshProcessPartial); }
-    if(fRefreshTotal) { InterlockedIncrement64(&ctxVmm->stat.cRefreshProcessFull); }
+    if(!fRefreshTotal) { InterlockedIncrement64(&ctxVmm->stat.cProcessRefreshPartial); }
+    if(fRefreshTotal) { InterlockedIncrement64(&ctxVmm->stat.cProcessRefreshFull); }
     // Single user-defined X64 process
     if(fRefreshTotal) {
         if(ctxVmm->tpSystem == VMM_SYSTEM_UNKNOWN_X64) {
@@ -114,11 +114,14 @@ DWORD VmmProcCacheUpdaterThread()
         // PHYS / TLB cache clear
         if(fPHYS) {
             VmmCacheClear(VMM_CACHE_TAG_PHYS);
-            InterlockedIncrement64(&ctxVmm->stat.cRefreshPhys);
+            InterlockedIncrement64(&ctxVmm->stat.cPhysRefreshCache);
+            VmmCacheClear(VMM_CACHE_TAG_PAGING);
+            InterlockedIncrement64(&ctxVmm->stat.cPageRefreshCache);
+            ObVSet_Clear(ctxVmm->Cache.PAGING_FAILED);
         }
         if(fTLB) {
             VmmCacheClear(VMM_CACHE_TAG_TLB);
-            InterlockedIncrement64(&ctxVmm->stat.cRefreshTlb);
+            InterlockedIncrement64(&ctxVmm->stat.cTlbRefreshCache);
         }
         // refresh proc list
         if(fProcPartial || fProcTotal) {

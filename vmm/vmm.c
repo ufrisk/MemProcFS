@@ -8,6 +8,7 @@
 #include "mm_x86.h"
 #include "mm_x86pae.h"
 #include "mm_x64.h"
+#include "mm_x64_page_win.h"
 #include "ob.h"
 #include "vmmproc.h"
 #include "pluginmanager.h"
@@ -25,9 +26,11 @@ PVMM_CACHE_TABLE VmmCacheTableGet(_In_ WORD wTblTag)
 {
     switch(wTblTag) {
         case VMM_CACHE_TAG_PHYS:
-            return &ctxVmm->PHYS;
+            return &ctxVmm->Cache.PHYS;
         case VMM_CACHE_TAG_TLB:
-            return &ctxVmm->TLB;
+            return &ctxVmm->Cache.TLB;
+        case VMM_CACHE_TAG_PAGING:
+            return &ctxVmm->Cache.PAGING;
         default:
             return NULL;
     }
@@ -1089,9 +1092,93 @@ VOID VmmReadScatterPhysical(_Inout_ PPMEM_IO_SCATTER_HEADER ppMEMsPhys, _In_ DWO
     }
 }
 
+/*
+* Scatter read paged virtual memory if possible and supported. Non contiguous 4096-byte pages.
+* -- pProcess
+* -- ppMEMsPaged
+* -- cpMEMsPaged
+*/
+VOID VmmReadScatterPaged(_In_ PVMM_PROCESS pProcess, _Inout_ PPMEM_IO_SCATTER_HEADER ppMEMsPaged, _In_ DWORD cpMEMsPaged, _In_ QWORD flags)
+{
+    BOOL fCache, fPaged;
+    DWORD c, i;
+    PVMMOB_MEM pObCacheEntry, pObReservedMEM;
+    PMEM_IO_SCATTER_HEADER pMEM;
+    fCache = !(VMM_FLAG_NOCACHE & (flags | ctxVmm->flags));
+    fPaged = !(VMM_FLAG_NOPAGING & (flags | ctxVmm->flags));
+    // 1: cache read
+    if(fCache && fPaged) {
+        c = 0;
+        for(i = 0; i < cpMEMsPaged; i++) {
+            pMEM = ppMEMsPaged[i];
+            pMEM->pvReserved2 = (PVOID)0;
+            if(pMEM->cb == pMEM->cbMax) {
+                // already valid -> skip
+                pMEM->pvReserved2 = (PVOID)1;  // 1 == already read
+                c++;
+                continue;
+            }
+            // retrieve from cache (if found)
+            if((pMEM->cbMax == 0x1000) && (pObCacheEntry = VmmCacheGet(VMM_CACHE_TAG_PAGING, pMEM->qwA))) {
+                // in cache - copy data into requester and set as completed!
+                pMEM->pvReserved2 = (PVOID)2;  // 2 == cache hit
+                pMEM->cb = 0x1000;
+                memcpy(pMEM->pb, pObCacheEntry->pb, 0x1000);
+                Ob_DECREF(pObCacheEntry);
+                InterlockedIncrement64(&ctxVmm->stat.cPageReadSuccessCacheHit);
+                c++;
+                continue;
+            }
+            // known failed page (with large overhead)
+            if(ObVSet_Exists(ctxVmm->Cache.PAGING_FAILED, pMEM->qwA)) {
+                pMEM->pvReserved2 = (PVOID)3;  // 2 == cache fail
+                InterlockedIncrement64(&ctxVmm->stat.cPageReadFailedCacheHit);
+                c++;
+                continue;
+            }
+        }
+        if(c == cpMEMsPaged) { return; }                    // all found in cache -> return!
+        if(VMM_FLAG_FORCECACHE_READ & flags) { return; }    // only cached reads allowed -> return!
+    }
+    // 2: read!
+    if(fCache && fPaged) {
+        if(ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X64) {
+            MmX64PageWin_ReadScatterPaged(pProcess, ppMEMsPaged, cpMEMsPaged);
+        }
+    }
+    // 3: read fail zero fixups (if required)
+    if(flags & VMM_FLAG_ZEROPAD_ON_FAIL) {
+        for(i = 0; i < cpMEMsPaged; i++) {
+            pMEM = ppMEMsPaged[i];
+            if(pMEM->cb != pMEM->cbMax) {
+                // fail
+                ZeroMemory(pMEM->pb, pMEM->cbMax);
+                pMEM->cb = pMEM->cbMax;
+            }
+        }
+    }
+    // 4: cache put
+    if(fCache && fPaged) {
+        for(i = 0; i < cpMEMsPaged; i++) {
+            pMEM = ppMEMsPaged[i];
+            if((0 == (QWORD)pMEM->pvReserved2) && (pMEM->cb == 0x1000)) { // 0 = default
+                pObReservedMEM = VmmCacheReserve(VMM_CACHE_TAG_PAGING);
+                pObReservedMEM->h.qwA = pMEM->qwA;
+                pObReservedMEM->h.cb = 0x1000;
+                memcpy(pObReservedMEM->h.pb, pMEM->pb, 0x1000);
+                VmmCacheReserveReturn(pObReservedMEM);
+            }
+        }
+    }
+}
+
 VOID VmmReadScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_ PPMEM_IO_SCATTER_HEADER ppMEMsVirt, _In_ DWORD cpMEMsVirt, _In_ QWORD flags)
 {
-    DWORD i = 0, iVA, iPA;
+    // NB! the buffers pIoPA / ppMEMsPhys are used for both:
+    //     - physical memory (grows from 0 upwards)
+    //     - paged memory (grows from top downwards).
+    BOOL fVirt2Phys;
+    DWORD i = 0, iVA, iPA, iPGA;
     QWORD qwPA;
     BYTE pbBufferSmall[0x20 * (sizeof(MEM_IO_SCATTER_HEADER) + sizeof(PMEM_IO_SCATTER_HEADER))];
     PBYTE pbBufferMEMs, pbBufferLarge = NULL;
@@ -1107,27 +1194,41 @@ VOID VmmReadScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_ PPMEM_IO_SCATTER_
         pbBufferMEMs = pbBufferLarge + cpMEMsVirt * sizeof(PMEM_IO_SCATTER_HEADER);
     }
     // 2: translate virt2phys
-    for(iVA = 0, iPA = 0; iVA < cpMEMsVirt; iVA++) {
+    for(iVA = 0, iPA = 0, iPGA = 0; iVA < cpMEMsVirt; iVA++) {
         pIoVA = ppMEMsVirt[iVA];
-        if(VmmVirt2Phys(pProcess, pIoVA->qwA, &qwPA)) {
+        fVirt2Phys = VmmVirt2Phys(pProcess, pIoVA->qwA, &qwPA);
+        if(fVirt2Phys) {    // PHYS transation = OK
             pIoPA = ppMEMsPhys[iPA] = (PMEM_IO_SCATTER_HEADER)pbBufferMEMs + iPA;
             iPA++;
-            pIoPA->magic = MEM_IO_SCATTER_HEADER_MAGIC;
-            pIoPA->version = MEM_IO_SCATTER_HEADER_VERSION;
-            pIoPA->qwA = qwPA;
-            pIoPA->cbMax = 0x1000;
-            pIoPA->cb = 0;
-            pIoPA->pb = pIoVA->pb;
-            pIoPA->pvReserved1 = (PVOID)pIoVA;
-        } else {
+        } else if(qwPA) {   // PAGED MEMORY (POTENTIALLY PAGED MEMORY)
+            iPGA++;
+            pIoPA = ppMEMsPhys[cpMEMsVirt - iPGA] = (PMEM_IO_SCATTER_HEADER)pbBufferMEMs + cpMEMsVirt - iPGA;
+        } else {            // NO TRANSLATION MEMORY
             pIoVA->cb = 0;
+            continue;
         }
+        pIoPA->magic = MEM_IO_SCATTER_HEADER_MAGIC;
+        pIoPA->version = MEM_IO_SCATTER_HEADER_VERSION;
+        pIoPA->qwA = qwPA;
+        pIoPA->cbMax = 0x1000;
+        pIoPA->cb = 0;
+        pIoPA->pb = pIoVA->pb;
+        pIoPA->pvReserved1 = (PVOID)pIoVA;
     }
     // 3: read and check result
-    VmmReadScatterPhysical(ppMEMsPhys, iPA, flags);
-    while(iPA > 0) {
-        iPA--;
-        ((PMEM_IO_SCATTER_HEADER)ppMEMsPhys[iPA]->pvReserved1)->cb = ppMEMsPhys[iPA]->cb;
+    if(iPA) {
+        VmmReadScatterPhysical(ppMEMsPhys, iPA, flags);
+        while(iPA > 0) {
+            iPA--;
+            ((PMEM_IO_SCATTER_HEADER)ppMEMsPhys[iPA]->pvReserved1)->cb = ppMEMsPhys[iPA]->cb;
+        }
+    }
+    if(iPGA) {
+        VmmReadScatterPaged(pProcess, ppMEMsPhys + cpMEMsVirt - iPGA, iPGA, flags);
+        while(iPGA > 0) {
+            ((PMEM_IO_SCATTER_HEADER)ppMEMsPhys[cpMEMsVirt - iPGA]->pvReserved1)->cb = ppMEMsPhys[cpMEMsVirt - iPGA]->cb;
+            iPGA--;
+        }
     }
     LocalFree(pbBufferLarge);
 }
@@ -1207,6 +1308,8 @@ VOID VmmClose()
     }
     VmmCache2Close(VMM_CACHE_TAG_PHYS);
     VmmCache2Close(VMM_CACHE_TAG_TLB);
+    VmmCache2Close(VMM_CACHE_TAG_PAGING);
+    Ob_DECREF_NULL(&ctxVmm->Cache.PAGING_FAILED);
     Ob_DECREF_NULL(&ctxVmm->pObCCachePrefetchEPROCESS);
     Ob_DECREF_NULL(&ctxVmm->pObCCachePrefetchRegistry);
     Ob_DECREF_NULL(&ctxVmm->pObCRegistry);
@@ -1348,13 +1451,14 @@ BOOL VmmRead_U2A_RawStr(_In_ PVMM_PROCESS pProcess, _In_ QWORD flags, _In_ QWORD
     BOOL fResult = FALSE;
     DWORD cbRead, cchWrite;
     BYTE pbBuffer[0x1000], *pbStr;
+    if(!cbStr) { return FALSE; }
     cbStr = (WORD)min(cbStr, (cch - 1) << 1);
     pbStr = (cbStr <= 0x1000) ? pbBuffer : LocalAlloc(0, cbStr);
     if(!pbStr) { goto fail; }
     VmmReadEx(pProcess, vaStr, pbStr, cbStr, &cbRead, flags);
     if(cbRead != cbStr) { goto fail; }
     cchWrite = WideCharToMultiByte(CP_ACP, 0, (LPWSTR)pbStr, cbStr >> 1, sz, cch - 1, NULL, pfDefaultChar);
-    if(!cchWrite) { goto fail; }
+    if(!cchWrite || !sz[0]) { goto fail; }
     sz[min(cchWrite, cch - 1)] = 0;
     if(pcch) { *pcch = cchWrite; }
     fResult = TRUE;
@@ -1402,6 +1506,7 @@ BOOL VmmRead_U2A_Alloc(_In_ PVMM_PROCESS pProcess, _In_ BOOL f32, _In_ QWORD fla
     return TRUE;
 }
 
+_Success_(return)
 BOOL VmmRead(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Out_ PBYTE pb, _In_ DWORD cb)
 {
     DWORD cbRead;
@@ -1409,6 +1514,7 @@ BOOL VmmRead(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Out_ PBYTE pb, _In
     return (cbRead == cb);
 }
 
+_Success_(return)
 BOOL VmmReadPage(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Inout_bytecount_(4096) PBYTE pbPage)
 {
     DWORD cb;
@@ -1454,11 +1560,15 @@ BOOL VmmInitialize()
     if(!VmmProcessTableCreateInitial()) { goto fail; }
     // 3: CACHE INIT: Translation Lookaside Buffer (TLB) Cache Table
     VmmCache2Initialize(VMM_CACHE_TAG_TLB);
-    if(!ctxVmm->TLB.fActive) { goto fail; }
+    if(!ctxVmm->Cache.TLB.fActive) { goto fail; }
     // 4: CACHE INIT: Physical Memory Cache Table
     VmmCache2Initialize(VMM_CACHE_TAG_PHYS);
-    if(!ctxVmm->PHYS.fActive) { goto fail; }
-    // 5: OTHER INIT:
+    if(!ctxVmm->Cache.PHYS.fActive) { goto fail; }
+    // 5: CACHE INIT: Paged Memory Cache Table
+    VmmCache2Initialize(VMM_CACHE_TAG_PAGING);
+    if(!ctxVmm->Cache.PAGING.fActive) { goto fail; }
+    if(!(ctxVmm->Cache.PAGING_FAILED = ObVSet_New())) { goto fail; }
+    // 6: OTHER INIT:
     ctxVmm->pObCCachePrefetchEPROCESS = ObContainer_New(NULL);
     ctxVmm->pObCCachePrefetchRegistry = ObContainer_New(NULL);
     ctxVmm->pObCRegistry = ObContainer_New(NULL);

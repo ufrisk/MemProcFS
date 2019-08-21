@@ -194,7 +194,7 @@ const LPSTR NAMES_VMM_STATISTICS_CALL[] = {
     "VMMDLL_PidList",
     "VMMDLL_PidGetFromName",
     "VMMDLL_ProcessGetInformation",
-    "STATISTICS_ID_VMMDLL_ProcessGetInformationString",
+    "VMMDLL_ProcessGetInformationString",
     "VMMDLL_ProcessGetMemoryMap",
     "VMMDLL_ProcessGetMemoryMapEntry",
     "VMMDLL_ProcessGetModuleMap",
@@ -214,6 +214,7 @@ const LPSTR NAMES_VMM_STATISTICS_CALL[] = {
     "VMMDLL_WinNet_Get",
     "VMMDLL_Refresh",
     "VMMDLL_UtilFillHexAscii",
+    "VMM_PagedCompressedMemory",
 };
 
 typedef struct tdCALLSTAT {
@@ -332,5 +333,6 @@ VOID Statistics_CallToString(_In_opt_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcb)
             }
         }
     }
-    *pcb = o - 1;
+    pb[o - 1] = '\n';
+    *pcb = o;
 }

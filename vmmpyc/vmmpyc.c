@@ -887,30 +887,6 @@ VMMPYC_WinGetThunkInfoIAT(PyObject *self, PyObject *args)
     return pyDict;
 }
 
-// (ULONG64, DWORD) -> {b: PBYTE, c: DWORD}
-static PyObject*
-VMMPYC_WinMemCompression_DecompressPage(PyObject *self, PyObject *args)
-{
-    PyObject *pyDict;
-    BOOL result;
-    DWORD cb, cbCompressed;
-    ULONG64 va;
-    BYTE pbDecompressed[0x1000] = { 0 };
-    if(!PyArg_ParseTuple(args, "Kk", &va, &cb)) { return NULL; }
-    Py_BEGIN_ALLOW_THREADS;
-    result = VMMDLL_WinMemCompression_DecompressPage(va, cb, pbDecompressed, &cbCompressed);
-    Py_END_ALLOW_THREADS;
-    if(!result) {
-        return PyErr_Format(PyExc_RuntimeError, "VMMPYC_WinMemCompression_DecompressPage: Failed.");
-    }
-    pyDict = PyDict_New();
-    if(pyDict) {
-        PyDict_SetItemString(pyDict, "c", PyLong_FromUnsignedLong(cbCompressed));
-        PyDict_SetItemString(pyDict, "b", PyBytes_FromStringAndSize(pbDecompressed, 0x1000));
-    }
-    return pyDict;
-}
-
 // () -> [{...}]
 static PyObject *
 VMMPYC_WinReg_HiveList(PyObject *self, PyObject *args)
@@ -1165,7 +1141,6 @@ static PyMethodDef VMMPYC_EmbMethods[] = {
     {"VMMPYC_VfsRead", VMMPYC_VfsRead, METH_VARARGS, "Read from a file in the virtual file system."},
     {"VMMPYC_VfsWrite", VMMPYC_VfsWrite, METH_VARARGS, "Write to a file in the virtual file system."},
     {"VMMPYC_VfsList", VMMPYC_VfsList, METH_VARARGS, "List files and folder for a specific directory in the Virutal File System."},
-    {"VMMPYC_WinMemCompression_DecompressPage", VMMPYC_WinMemCompression_DecompressPage, METH_VARARGS, "Decompress compressed memory in the MemCompression process (if any)."},
     {"VMMPYC_UtilFillHexAscii", VMMPYC_UtilFillHexAscii, METH_VARARGS, "Convert a bytes object into a human readable 'memory dump' style type of string."},
     {NULL, NULL, 0, NULL}
 };

@@ -270,6 +270,25 @@ BOOL ObVSet_Remove(_In_opt_ POB_VSET pvs, _In_ QWORD value)
     OB_VSET_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(pvs, BOOL, FALSE, _ObVSet_Remove(pvs, value))
 }
 
+/*
+* Clear the ObVSet by removing all values.
+* NB! underlying allocated memory will remain unchanged.
+* -- pvs
+*/
+VOID ObVSet_Clear(_In_opt_ POB_VSET pvs)
+{
+    if(!OB_VSET_IS_VALID(pvs) || (pvs->c <= 1)) { return; }
+    AcquireSRWLockExclusive(&pvs->LockSRW);
+    if(pvs->c <= 1) { return; }
+    if(pvs->fLargeMode) {
+        ZeroMemory(pvs->pHashMapLarge, pvs->cHashMax * sizeof(DWORD));
+    } else {
+        ZeroMemory(pvs->pHashMapSmall, sizeof(pvs->pHashMapSmall));
+    }
+    pvs->c = 1;     // item zero is reserved - hence the initialization of count to 1
+    ReleaseSRWLockExclusive(&pvs->LockSRW);
+}
+
 QWORD _ObVSet_Pop(_In_ POB_VSET pvs)
 {
     QWORD qwLastValue;

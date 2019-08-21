@@ -4,7 +4,7 @@
 // (c) Ulf Frisk, 2018-2019
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-// Header Version: 2.7.2
+// Header Version: 2.8
 //
 
 #include <windows.h>
@@ -94,6 +94,7 @@ BOOL VMMDLL_Refresh(_In_ DWORD dwReserved);
 #define VMMDLL_OPT_CONFIG_VMM_VERSION_MINOR             0x40000008  // R
 #define VMMDLL_OPT_CONFIG_VMM_VERSION_REVISION          0x40000009  // R
 #define VMMDLL_OPT_CONFIG_STATISTICS_FUNCTIONCALL       0x4000000A  // RW - enable function call statistics (.status/statistics_fncall file)
+#define VMMDLL_OPT_CONFIG_IS_PAGING_ENABLED             0x4000000B  // RW - 1/0
 
 #define VMMDLL_OPT_WIN_VERSION_MAJOR                    0x40000101  // R
 #define VMMDLL_OPT_WIN_VERSION_MINOR                    0x40000102  // R
@@ -297,6 +298,7 @@ typedef struct tdVMMDLL_PLUGIN_REGINFO {
 #define VMMDLL_FLAG_NOCACHE                        0x0001  // do not use the data cache (force reading from memory acquisition device)
 #define VMMDLL_FLAG_ZEROPAD_ON_FAIL                0x0002  // zero pad failed physical memory reads and report success if read within range of physical memory.
 #define VMMDLL_FLAG_FORCECACHE_READ                0x0008  // force use of cache - fail non-cached pages - only valid for reads, invalid with VMM_FLAG_NOCACHE/VMM_FLAG_ZEROPAD_ON_FAIL.
+#define VMMDLL_FLAG_NOPAGING                       0x0010  // do not try to retrieve memory from paged out memory from pagefile/compressed (even if possible)
 
 /*
 * Read memory in various non-contigious locations specified by the pointers to
@@ -750,22 +752,6 @@ BOOL VMMDLL_WinGetThunkInfoIAT(_In_ DWORD dwPID, _In_ LPSTR szModuleName, _In_ L
 */
 _Success_(return)
 BOOL VMMDLL_WinGetThunkInfoEAT(_In_ DWORD dwPID, _In_ LPSTR szModuleName, _In_ LPSTR szExportFunctionName, _Out_ PVMMDLL_WIN_THUNKINFO_EAT pThunkInfoEAT);
-
-/*
-* Decompress compressed memory page stored in the MemCompression process.
-* -- vaCompressedData = virtual address in 'MemCompression' to decompress.
-* -- cbCompressedData = length of compressed data in 'MemCompression' to decompress (or zero for auto-detect).
-* -- pbDecompressedPage
-* -- pcbCompressedData = optional ptr to receive length of compressed buffer.
-* -- return
-*/
-_Success_(return)
-BOOL VMMDLL_WinMemCompression_DecompressPage(
-    _In_ ULONG64 vaCompressedData,
-    _In_opt_ DWORD cbCompressedData,
-    _Out_writes_(4096) PBYTE pbDecompressedPage,
-    _Out_opt_ PDWORD pcbCompressedData
-);
 
 
 

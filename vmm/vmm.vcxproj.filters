@@ -78,7 +78,7 @@
     <ClInclude Include="version.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="mm_x64_winpaged.h">
+    <ClInclude Include="mm_x64_page_win.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="vmmwinreg.h">
@@ -152,7 +152,7 @@
     <ClCompile Include="vmmwininit.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="mm_x64_winpaged.c">
+    <ClCompile Include="mm_x64_page_win.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="vmmwinreg.c">

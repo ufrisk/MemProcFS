@@ -1,3 +1,9 @@
+// vmmwintcpip.h :  implementation of functionality related to the Windows networking.
+//
+// (c) Ulf Frisk, 2019
+// Author: Ulf Frisk, pcileech@frizk.net
+//
+
 #include "vmmwintcpip.h"
 #include "pe.h"
 #include "vmmproc.h"

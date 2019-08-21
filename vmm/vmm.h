@@ -43,6 +43,7 @@ typedef unsigned __int64                QWORD, *PQWORD;
 #define VMM_FLAG_ZEROPAD_ON_FAIL                0x0002  // zero pad failed physical memory reads and report success if read within range of physical memory.
 #define VMM_FLAG_PROCESS_SHOW_TERMINATED        0x0004  // show terminated processes in the process list (if they can be found).
 #define VMM_FLAG_FORCECACHE_READ                0x0008  // force use of cache - fail non-cached pages - only valid for reads, invalid with VMM_FLAG_NOCACHE/VMM_FLAG_ZEROPAD_ON_FAIL.
+#define VMM_FLAG_NOPAGING                       0x0010  // do not try to retrieve memory from paged out memory from pagefile/compressed (even if possible)
 
 #define PAGE_SIZE                               0x1000
 
@@ -241,6 +242,7 @@ typedef struct td_VMMOB_REGISTRY {
 #define VMM_CACHE2_MAX_ENTRIES  0x8000
 
 #define VMM_CACHE_TAG_PHYS      'Ph'
+#define VMM_CACHE_TAG_PAGING    'Pg'
 #define VMM_CACHE_TAG_TLB       'Tb'
 
 typedef struct tdVMMOB_MEM {
@@ -322,13 +324,20 @@ typedef struct tdVMM_STATISTICS {
     QWORD cPhysReadSuccess;
     QWORD cPhysReadFail;
     QWORD cPhysWrite;
+    QWORD cPhysRefreshCache;
+    QWORD cPageReadSuccessCacheHit;
+    QWORD cPageReadSuccessCompressed;
+    QWORD cPageReadSuccessDemandZero;
+    QWORD cPageReadFailedCacheHit;
+    QWORD cPageReadFailedCompressed;
+    QWORD cPageReadFailed;
+    QWORD cPageRefreshCache;
     QWORD cTlbCacheHit;
     QWORD cTlbReadSuccess;
     QWORD cTlbReadFail;
-    QWORD cRefreshPhys;
-    QWORD cRefreshTlb;
-    QWORD cRefreshProcessPartial;
-    QWORD cRefreshProcessFull;
+    QWORD cTlbRefreshCache;
+    QWORD cProcessRefreshPartial;
+    QWORD cProcessRefreshFull;
 } VMM_STATISTICS, *PVMM_STATISTICS;
 
 typedef struct tdVMM_WIN_EPROCESS_OFFSET {
@@ -396,6 +405,33 @@ typedef struct tdVMMWIN_TCPIP_CONTEXT {
     VMMWIN_TCPIP_OFFSET_TcpE OTcpE;
 } VMMWIN_TCPIP_CONTEXT, *PVMMWIN_TCPIP_CONTEXT;
 
+typedef struct tdVMMWIN_MEMCOMPRESS_OFFSET {
+    BOOL _fValid;
+    BOOL _fProcessedTry;
+    WORD _Size;
+    struct {
+        WORD PagesTree;
+        WORD SmkmStore;
+        WORD ChunkMetaData;
+        WORD RegionSizeMask;
+        WORD RegionIndexMask;
+        WORD CompressionAlgorithm;
+        WORD CompressedRegionPtrArray;
+        WORD OwnerProcess;
+    } SMKM_STORE;
+} VMMWIN_MEMCOMPRESS_OFFSET, *PVMMWIN_MEMCOMPRESS_OFFSET;
+
+typedef struct tdVMMWIN_MEMCOMPRESS_CONTEXT {
+    QWORD vaEPROCESS;
+    DWORD dwPid;
+    DWORD dwPageFileNumber;
+    BOOL fValid;
+    BOOL fInitialized;
+    QWORD vaSmGlobals;
+    QWORD vaKeyToStoreTree;
+    VMMWIN_MEMCOMPRESS_OFFSET O;
+} VMMWIN_MEMCOMPRESS_CONTEXT, *PVMMWIN_MEMCOMPRESS_CONTEXT;
+
 typedef struct tdVMM_KERNELINFO {
     QWORD paDTB;
     QWORD vaBase;
@@ -405,11 +441,11 @@ typedef struct tdVMM_KERNELINFO {
     QWORD vaEntry;
     QWORD vaPsLoadedModuleList;
     QWORD vaKDBG;
-    DWORD dwPidMemCompression;
     DWORD dwPidRegistry;
     DWORD dwVersionMajor;
     DWORD dwVersionMinor;
     DWORD dwVersionBuild;
+    VMMWIN_MEMCOMPRESS_CONTEXT MemCompress;
 } VMM_KERNELINFO;
 
 typedef NTSTATUS VMMFN_RtlDecompressBuffer(
@@ -454,8 +490,14 @@ typedef struct tdVMM_CONTEXT {
     PVOID pVmmVfsModuleList;
     POB_CONTAINER pObCCachePrefetchEPROCESS;
     POB_CONTAINER pObCCachePrefetchRegistry;
-    VMM_CACHE_TABLE PHYS;
-    VMM_CACHE_TABLE TLB;
+    // page caches
+    struct {
+        VMM_CACHE_TABLE PHYS;
+        VMM_CACHE_TABLE TLB;
+        VMM_CACHE_TABLE PAGING;
+        POB_VSET PAGING_FAILED;
+    } Cache;
+    // thread worker count
     struct {
         BOOL fEnabled;
         DWORD c;
@@ -598,7 +640,7 @@ BOOL VmmRead_U2A_Alloc(_In_ PVMM_PROCESS pProcess, _In_ BOOL f32, _In_ QWORD fla
 * Conversion from unicode characters to ascii-characters are done automatically
 * and some characters may be replaced with default characters.
 * -- pProcess
-* -- f32 = _UNICODE_STRING is 32-bit _UNICODE_STRING or 64-bit _UNICODE_STRING.
+* -- flags = flags as in VMM_FLAG_*
 * -- vaStr
 * -- cbStr
 * -- sz
@@ -620,6 +662,7 @@ BOOL VmmRead_U2A_RawStr(_In_ PVMM_PROCESS pProcess, _In_ QWORD flags, _In_ QWORD
 * -- cb
 * -- return
 */
+_Success_(return)
 BOOL VmmRead(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Out_ PBYTE pb, _In_ DWORD cb);
 
 /*
@@ -645,6 +688,7 @@ VOID VmmReadEx(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Out_ PBYTE pb, _
 * -- pbPage
 * -- return
 */
+_Success_(return)
 BOOL VmmReadPage(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Inout_bytecount_(4096) PBYTE pbPage);
 
 /*
@@ -666,6 +710,9 @@ VOID VmmReadScatterPhysical(_Inout_ PPMEM_IO_SCATTER_HEADER ppMEMsPhys, _In_ DWO
 
 /*
 * Translate a virtual address to a physical address by walking the page tables.
+* The successfully translated Physical Address (PA) is returned in ppa.
+* Upon fail the PTE will be returned in ppa (if possible) - which may be used
+* to further lookup virtual memory in case of PageFile or Win10 MemCompression.
 * -- paDTB
 * -- fUserOnly
 * -- va
@@ -675,12 +722,16 @@ VOID VmmReadScatterPhysical(_Inout_ PPMEM_IO_SCATTER_HEADER ppMEMsPhys, _In_ DWO
 _Success_(return)
 inline BOOL VmmVirt2PhysEx(_In_ QWORD paDTB, _In_ BOOL fUserOnly, _In_ QWORD va, _Out_ PQWORD ppa)
 {
+    *ppa = 0;
     if(ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_NA) { return FALSE; }
     return ctxVmm->fnMemoryModel.pfnVirt2Phys(paDTB, fUserOnly, -1, va, ppa);
 }
 
 /*
 * Translate a virtual address to a physical address by walking the page tables.
+* The successfully translated Physical Address (PA) is returned in ppa.
+* Upon fail the PTE will be returned in ppa (if possible) - which may be used
+* to further lookup virtual memory in case of PageFile or Win10 MemCompression.
 * -- pProcess
 * -- va
 * -- ppa
@@ -689,6 +740,7 @@ inline BOOL VmmVirt2PhysEx(_In_ QWORD paDTB, _In_ BOOL fUserOnly, _In_ QWORD va,
 _Success_(return)
 inline BOOL VmmVirt2Phys(_In_ PVMM_PROCESS pProcess, _In_ QWORD va, _Out_ PQWORD ppa)
 {
+    *ppa = 0;
     if(ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_NA) { return FALSE; }
     return ctxVmm->fnMemoryModel.pfnVirt2Phys(pProcess->paDTB, pProcess->fUserOnly, -1, va, ppa);
 }

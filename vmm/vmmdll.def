@@ -52,6 +52,4 @@ EXPORTS
 
 	VMMDLL_WinNet_Get
 
-    VMMDLL_WinMemCompression_DecompressPage
-
     VMMDLL_UtilFillHexAscii

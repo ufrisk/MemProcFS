@@ -530,7 +530,8 @@ BOOL VmmWinInit_TryInitialize(_In_opt_ QWORD paDTBOpt)
     while((pObProcess = VmmProcessGetNext(pObProcess, 0))) {
         if(pObProcess->dwPPID == 4) {
             if(!memcmp("MemCompression", pObProcess->szName, 15)) {
-                ctxVmm->kernel.dwPidMemCompression = pObProcess->dwPID;
+                ctxVmm->kernel.MemCompress.dwPid = pObProcess->dwPID;
+                ctxVmm->kernel.MemCompress.vaEPROCESS = pObProcess->win.vaEPROCESS;
             }
             if(!memcmp("Registry", pObProcess->szName, 9)) {
                 ctxVmm->kernel.dwPidRegistry = pObProcess->dwPID;

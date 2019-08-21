@@ -1,4 +1,4 @@
-// pluginmanager.h : implementation of the plugin manager for memory process file system plugins.
+// pluginmanager.c : implementation of the plugin manager for memory process file system plugins.
 //
 // (c) Ulf Frisk, 2018-2019
 // Author: Ulf Frisk, pcileech@frizk.net

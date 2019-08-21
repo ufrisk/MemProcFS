@@ -1,4 +1,4 @@
-// vmmdll.h : implementation of core dynamic link library (dll) functionality
+// vmmdll.c : implementation of core dynamic link library (dll) functionality
 // of the virtual memory manager (VMM) for The Memory Process File System.
 //
 // (c) Ulf Frisk, 2018-2019
@@ -17,7 +17,7 @@
 #include "vmmwinreg.h"
 #include "vmmwintcpip.h"
 #include "vmmvfs.h"
-#include "mm_x64_winpaged.h"
+#include "mm_x64_page_win.h"
 
 // ----------------------------------------------------------------------------
 // Synchronization macro below. The VMM isn't thread safe so it's important to
@@ -268,6 +268,9 @@ BOOL VMMDLL_ConfigGet_VmmCore(_In_ ULONG64 fOption, _Out_ PULONG64 pqwValue)
         case VMMDLL_OPT_CONFIG_IS_REFRESH_ENABLED:
             *pqwValue = ctxVmm->ThreadProcCache.fEnabled ? 1 : 0;
             break;
+        case VMMDLL_OPT_CONFIG_IS_PAGING_ENABLED:
+            *pqwValue = (ctxVmm->flags & VMM_FLAG_NOPAGING) ? 0 : 1;
+            break;
         case VMMDLL_OPT_CONFIG_TICK_PERIOD:
             *pqwValue = ctxVmm->ThreadProcCache.cMs_TickPeriod;
             break;
@@ -361,6 +364,9 @@ _Success_(return)
 BOOL VMMDLL_ConfigSet_VmmCore(_In_ ULONG64 fOption, _In_ ULONG64 qwValue)
 {
     switch(fOption) {
+        case VMMDLL_OPT_CONFIG_IS_PAGING_ENABLED:
+            ctxVmm->flags = (ctxVmm->flags & ~VMM_FLAG_NOPAGING) | (qwValue ? 0 : 1);
+            break;
         case VMMDLL_OPT_CONFIG_TICK_PERIOD:
             ctxVmm->ThreadProcCache.cMs_TickPeriod = (DWORD)qwValue;
             break;
@@ -1318,14 +1324,6 @@ BOOL VMMDLL_WinGetThunkInfoIAT(_In_ DWORD dwPID, _In_ LPSTR szModuleName, _In_ L
     CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_WinGetThunkIAT,
         VMMDLL_WinGetThunkInfoIAT_Impl(dwPID, szModuleName, szImportModuleName, szImportFunctionName, pThunkInfoIAT))
-}
-
-_Success_(return)
-BOOL VMMDLL_WinMemCompression_DecompressPage(_In_ ULONG64 vaCompressedData, _In_opt_ DWORD cbCompressedData, _Out_writes_(4096) PBYTE pbDecompressedPage, _Out_opt_ PDWORD pcbCompressedData)
-{
-    CALL_IMPLEMENTATION_VMM(
-        STATISTICS_ID_VMMDLL_WinMemCompression_DecompressPage,
-        MmX64WinPaged_MemCompression_DecompressPage(vaCompressedData, cbCompressedData, pbDecompressedPage, pcbCompressedData))
 }
 
 

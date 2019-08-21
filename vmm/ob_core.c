@@ -1,4 +1,4 @@
-// ob.c : implementation of object manager core functionality.
+// ob_core.c : implementation of object manager core functionality.
 //
 // The object manager is a minimal non-threaded way of allocating objects with
 // reference counts. When reference count reach zero the object is deallocated

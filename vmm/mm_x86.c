@@ -7,8 +7,8 @@
 #include "vmmproc.h"
 
 #define MMX86_MEMMAP_DISPLAYBUFFER_LINE_LENGTH      70
-#define MMX86_PTE_IS_TRANSITION(pte, iPML)          (((pte & 0x0c01) == 0x0800) && (iPML == 1) && ctxVmm && (ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X86))
-#define MMX86_PTE_IS_VALID(pte, iPML)               ((pte & 0x01) || MMX86_PTE_IS_TRANSITION(pte, iPML))
+#define MMX86_PTE_IS_TRANSITION(pte, iPML)          ((((pte & 0x0c01) == 0x0800) && (iPML == 1) && ctxVmm && (ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X86)) ? ((pte & 0xfffff000) | 0x005) : 0)
+#define MMX86_PTE_IS_VALID(pte, iPML)               (pte & 0x01)
 
 /*
 * Tries to verify that a loaded page table is correct. If just a bit strange
@@ -51,19 +51,26 @@ VOID MmX86_MapInitialize_Index(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MEMMAP_ENTR
 {
     PVMMOB_MEM pObNextPT;
     DWORD i, va, pte;
-    BOOL fUserOnly, fNextSupervisorPML;
+    BOOL fUserOnly, fNextSupervisorPML, fTransition = FALSE;
     PVMM_MEMMAP_ENTRY pMemMapEntry = pMemMap + *pcMemMap - 1;
     fUserOnly = pProcess->fUserOnly;
     for(i = 0; i < 1024; i++) {
         pte = PTEs[i];
-        if(!MMX86_PTE_IS_VALID(pte, iPML)) { continue; }
+        if(!MMX86_PTE_IS_VALID(pte, iPML)) {
+            if(pte && MMX86_PTE_IS_TRANSITION(pte, iPML)) {
+                pte = MMX86_PTE_IS_TRANSITION(pte, iPML);   // TRANSITION PAGE
+                fTransition = TRUE;
+            } else {
+                continue;                                   // INVALID
+            }
+        }
         if((pte & 0xfffff000) > paMax) { continue; }
         if(fSupervisorPML) { pte = pte & 0xfffffffb; }
         if(fUserOnly && !(pte & 0x04)) { continue; }
         va = vaBase + (i << MMX86_PAGETABLEMAP_PML_REGION_SIZE[iPML]);
         if((iPML == 1) || (pte & 0x80) /* PS */) {
             if((*pcMemMap == 0) ||
-                (pMemMapEntry->fPage != (pte & VMM_MEMMAP_PAGE_MASK)) ||
+                ((pMemMapEntry->fPage != (pte & VMM_MEMMAP_PAGE_MASK)) && !fTransition) ||
                 (va != pMemMapEntry->AddrBase + (pMemMapEntry->cPages << 12))) {
                 if(*pcMemMap + 1 >= VMM_MEMMAP_ENTRIES_MAX) { return; }
                 pMemMapEntry = pMemMap + *pcMemMap;
@@ -300,7 +307,14 @@ BOOL MmX86_Virt2Phys(_In_ QWORD paPT, _In_ BOOL fUserOnly, _In_ BYTE iPML, _In_ 
     i = 0x3ff & (va >> MMX86_PAGETABLEMAP_PML_REGION_SIZE[iPML]);
     pte = pObPTEs->pdw[i];
     Ob_DECREF(pObPTEs);
-    if(!MMX86_PTE_IS_VALID(pte, iPML)) { return FALSE; }    // NOT VALID
+    if(!MMX86_PTE_IS_VALID(pte, iPML)) {
+        if(pte && MMX86_PTE_IS_TRANSITION(pte, iPML)) {
+            pte = MMX86_PTE_IS_TRANSITION(pte, iPML);       // TRANSITION
+        } else {
+            if(iPML == 1) { *ppa = pte; }                   // NOT VALID
+            return FALSE;
+        }
+    }
     if(fUserOnly && !(pte & 0x04)) { return FALSE; }        // SUPERVISOR PAGE & USER MODE REQ
     if((iPML == 2) && !(pte & 0x80) /* PS */) {
         return MmX86_Virt2Phys(pte, fUserOnly, 1, va, ppa);

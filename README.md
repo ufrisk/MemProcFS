@@ -6,7 +6,7 @@ Easy trivial point and click memory analysis without the need for complicated co
 
 Analyze memory dump files, <b>live memory</b> via [DumpIt](https://www.comae.com/), loaded driver or even <b>live memory in read-write mode</b> via linked [PCILeech](https://github.com/ufrisk/pcileech/) and [PCILeech-FPGA](https://github.com/ufrisk/pcileech-fpga/) devices!
 
-It's even possible to connect to a remote LeechService memory acquisition service over a secured connection - allowing for remote live memory incident response - even over higher latency low band-width connections!
+It's even possible to connect to a remote LeechAgent memory acquisition agent over a secured connection - allowing for remote live memory incident response - even over higher latency low band-width connections!
 
 Use your favorite tools to analyze memory - use your favorite hex editors, your python and powershell scripts, your disassemblers - all will work trivally with the Memory Process File System by just reading and writing files!
 
@@ -166,5 +166,6 @@ v2.7
 * Network support: TCP connections added to [SysInfo](https://github.com/ufrisk/MemProcFS/wiki/FS_SysInfo) module.
 * New module: [Phys2Virt](https://github.com/ufrisk/MemProcFS/wiki/FS_Phys2Virt) - search individual or all process address spaces for virtual addresses that map to specific physical address.
 
-Latest:
+v2.8
 * Bug fixes.
+* Windows 10 Compressed Memory support.

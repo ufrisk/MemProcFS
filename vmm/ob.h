@@ -226,6 +226,14 @@ VOID ObVSet_Push_PageAlign(_In_opt_ POB_VSET pvs, _In_ QWORD a, _In_ DWORD cb);
 BOOL ObVSet_Remove(_In_opt_ POB_VSET pvs, _In_ QWORD value);
 
 /*
+* Clear the ObVSet by removing all values.
+* NB! underlying allocated memory will remain unchanged.
+* -- pvs
+* -- return = clear was successful - always true.
+*/
+VOID ObVSet_Clear(_In_opt_ POB_VSET pvs);
+
+/*
 * Remove the "last" value in a way that is safe for concurrent iterations of
 * values in the set.
 * -- pvs

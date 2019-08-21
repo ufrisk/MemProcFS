@@ -38,9 +38,10 @@ NTSTATUS MStatus_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWOR
 {
     PVMM_PROCESS pProcess = (PVMM_PROCESS)ctx->pProcess;
     DWORD cchBuffer;
-    CHAR szBuffer[0x400];
+    CHAR szBuffer[0x800];
     DWORD cbCallStatistics = 0;
     PBYTE pbCallStatistics = NULL;
+    QWORD cPageReadTotal, cPageFailTotal;
     NTSTATUS nt;
     // "PROCESS"
     if(pProcess) {
@@ -55,6 +56,9 @@ NTSTATUS MStatus_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWOR
         }
         if(!_stricmp(ctx->szPath, "config_cache_enable")) {
             return Util_VfsReadFile_FromBOOL(!(ctxVmm->flags & VMM_FLAG_NOCACHE), pb, cb, pcbRead, cbOffset);
+        }
+        if(!_stricmp(ctx->szPath, "config_paging_enable")) {
+            return Util_VfsReadFile_FromBOOL(!(ctxVmm->flags & VMM_FLAG_NOPAGING), pb, cb, pcbRead, cbOffset);
         }
         if(!_stricmp(ctx->szPath, "config_statistics_fncall")) {
             return Util_VfsReadFile_FromBOOL(Statistics_CallGetEnabled(), pb, cb, pcbRead, cbOffset);
@@ -78,24 +82,37 @@ NTSTATUS MStatus_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWOR
             return Util_VfsReadFile_FromDWORD(ctxVmm->ThreadProcCache.cTick_ProcTotal, pb, cb, pcbRead, cbOffset, FALSE);
         }
         if(!_stricmp(ctx->szPath, "statistics")) {
-            cchBuffer = snprintf(szBuffer, 0x400,
+            cPageReadTotal = ctxVmm->stat.cPageReadSuccessCacheHit + ctxVmm->stat.cPageReadSuccessCompressed + ctxVmm->stat.cPageReadSuccessDemandZero;
+            cPageFailTotal = ctxVmm->stat.cPageReadFailedCacheHit + ctxVmm->stat.cPageReadFailedCompressed + ctxVmm->stat.cPageReadFailed;
+            cchBuffer = snprintf(szBuffer, 0x800,
                 "VMM STATISTICS   (4kB PAGES / COUNTS - HEXADECIMAL)\n" \
                 "===================================================\n" \
-                "PHYSICAL MEMORY READ CACHE HIT: %16llx\n" \
-                "PHYSICAL MEMORY READ RETRIEVED: %16llx\n" \
-                "PHYSICAL MEMORY READ FAILED:    %16llx\n" \
-                "PHYSICAL MEMORY WRITE:          %16llx\n" \
-                "TLB CACHE HIT:                  %16llx\n" \
-                "TLB RETRIEVED:                  %16llx\n" \
-                "TLB FAILED:                     %16llx\n" \
+                "PHYSICAL MEMORY:                      \n" \
+                "  READ CACHE HIT:               %16llx\n" \
+                "  READ RETRIEVED:               %16llx\n" \
+                "  READ FAIL:                    %16llx\n" \
+                "  WRITE:                        %16llx\n" \
+                "PAGED VIRTUAL MEMORY:                 \n" \
+                "  READ SUCCESS:                 %16llx\n" \
+                "    Cache hit:                  %16llx\n" \
+                "    Compressed:                 %16llx\n" \
+                "    DemandZero:                 %16llx\n" \
+                "  READ FAIL:                    %16llx\n" \
+                "    Cache hit:                  %16llx\n" \
+                "    Compressed:                 %16llx\n" \
+                "TLB (PAGE TABLES):                    \n" \
+                "  CACHE HIT:                    %16llx\n" \
+                "  RETRIEVED:                    %16llx\n" \
+                "  FAILED:                       %16llx\n" \
                 "PHYSICAL MEMORY REFRESH:        %16llx\n" \
                 "TLB MEMORY REFRESH:             %16llx\n" \
                 "PROCESS PARTIAL REFRESH:        %16llx\n" \
                 "PROCESS FULL REFRESH:           %16llx\n",
-                ctxVmm->stat.cPhysCacheHit, ctxVmm->stat.cPhysReadSuccess, ctxVmm->stat.cPhysReadFail,
-                ctxVmm->stat.cPhysWrite,
+                ctxVmm->stat.cPhysCacheHit, ctxVmm->stat.cPhysReadSuccess, ctxVmm->stat.cPhysReadFail, ctxVmm->stat.cPhysWrite,
+                cPageReadTotal, ctxVmm->stat.cPageReadSuccessCacheHit, ctxVmm->stat.cPageReadSuccessCompressed, ctxVmm->stat.cPageReadSuccessDemandZero,
+                cPageFailTotal, ctxVmm->stat.cPageReadFailedCacheHit, ctxVmm->stat.cPageReadFailedCompressed,
                 ctxVmm->stat.cTlbCacheHit, ctxVmm->stat.cTlbReadSuccess, ctxVmm->stat.cTlbReadFail,
-                ctxVmm->stat.cRefreshPhys, ctxVmm->stat.cRefreshTlb, ctxVmm->stat.cRefreshProcessPartial, ctxVmm->stat.cRefreshProcessFull
+                ctxVmm->stat.cPhysRefreshCache, ctxVmm->stat.cTlbRefreshCache, ctxVmm->stat.cProcessRefreshPartial, ctxVmm->stat.cProcessRefreshFull
             );
             return Util_VfsReadFile_FromPBYTE(szBuffer, cchBuffer, pb, cb, pcbRead, cbOffset);
         }
@@ -183,6 +200,14 @@ NTSTATUS MStatus_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PBYTE pb, _In_ DWOR
             }
             return nt;
         }
+        if(!_stricmp(ctx->szPath, "config_paging_enable")) {
+            nt = Util_VfsWriteFile_BOOL(&fEnable, pb, cb, pcbWrite, cbOffset);
+            if(nt == VMMDLL_STATUS_SUCCESS) {
+                ctxVmm->flags &= ~VMM_FLAG_NOPAGING;
+                ctxVmm->flags |= fEnable ? 0 : VMM_FLAG_NOPAGING;
+            }
+            return nt;
+        }
         if(!_stricmp(ctx->szPath, "config_statistics_fncall")) {
             nt = Util_VfsWriteFile_BOOL(&fEnable, pb, cb, pcbWrite, cbOffset);
             if(nt == VMMDLL_STATUS_SUCCESS) {
@@ -242,6 +267,7 @@ BOOL MStatus_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
     // "root" view
     if(!ctx->pProcess) {
         VMMDLL_VfsList_AddFile(pFileList, "config_cache_enable", 1);
+        VMMDLL_VfsList_AddFile(pFileList, "config_paging_enable", 1);
         VMMDLL_VfsList_AddFile(pFileList, "config_statistics_fncall", 1);
         VMMDLL_VfsList_AddFile(pFileList, "config_refresh_enable", 1);
         VMMDLL_VfsList_AddFile(pFileList, "config_refresh_tick_period_ms", 8);

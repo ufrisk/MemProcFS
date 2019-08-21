@@ -12,7 +12,7 @@
 # (c) Ulf Frisk, 2018-2019
 # Author: Ulf Frisk, pcileech@frizk.net
 #
-# Header Version: 2.7.2
+# Header Version: 2.8
 #
 
 import atexit
@@ -599,21 +599,6 @@ def VmmPy_WinGetThunkInfoIAT(pid, module_name, imported_module_name, imported_mo
     VmmPy_WinGetThunkInfoIAT(4, 'ntoskrnl.exe', 'hal.dll', 'HalSendNMI') --> {'32': False, 'vaFunction': 18446735288149190896, 'vaNameFunction': 18446735288143568050, 'vaNameModule': 18446735288143568362, 'vaThunk': 18446735288143561136}
     """
     return VMMPYC_WinGetThunkInfoIAT(pid, module_name, imported_module_name, imported_module_function)
-
-
-
-def VmmPy_WinDecompressPage(va_compressed, len_compressed = 0):
-    """Decompress a page stored in the MemCompression process in Windows 10.
-
-    Keyword arguments:
-    va_compressed -- int: the virtual address inside 'MemCompression' where the compressed buffer starts.
-    len_compressed -- int: optional length of the compressed buffer (leave out for auto-detect).
-    return -- dict: containing decompressed data and size of compressed buffer.
-
-    Example:
-    VmmPy_WinDecompressPage(0x00000210bfb40000) --> {'c': 456, 'b': b'...'}
-    """
-    return VMMPYC_WinMemCompression_DecompressPage(va_compressed, len_compressed)
 
 
 
