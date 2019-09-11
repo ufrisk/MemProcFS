@@ -298,11 +298,11 @@ BOOL MmX64_MapGetEntries(_In_ PVMM_PROCESS pProcess, _In_ DWORD flags, _Out_ PVM
 }
 
 _Success_(return)
-BOOL MmX64_MapGetDisplay(_In_ PVMM_PROCESS pProcess, _In_ DWORD flags, _Out_ PVMMOB_PDATA *ppObDisplay)
+BOOL MmX64_MapGetDisplay(_In_ PVMM_PROCESS pProcess, _In_ DWORD flags, _Out_ PVMMOB_DATA *ppObDisplay)
 {
     DWORD i, o = 0;
     PVMMOB_MEMMAP pObMemMap = NULL;
-    PVMMOB_PDATA pObDisplay = NULL;
+    PVMMOB_DATA pObDisplay = NULL;
     // memory map display data already exists
     if(!MmX64_MapInitialize(pProcess)) { return FALSE; }
     if(pProcess->pObMemMap->pObDisplay) {
@@ -313,7 +313,7 @@ BOOL MmX64_MapGetDisplay(_In_ PVMM_PROCESS pProcess, _In_ DWORD flags, _Out_ PVM
     EnterCriticalSection(&pProcess->LockUpdate);
     if(!pProcess->pObMemMap->pObDisplay) {
         if(MmX64_MapGetEntries(pProcess, flags, &pObMemMap)) {
-            pObDisplay = Ob_Alloc('MD', LMEM_ZEROINIT, pObMemMap->cbDisplay, NULL, NULL);
+            pObDisplay = Ob_Alloc('MD', LMEM_ZEROINIT, sizeof(VMMOB_DATA) + pObMemMap->cbDisplay, NULL, NULL);
             if(pObDisplay) {
                 for(i = 0; i < pObMemMap->cMap; i++) {
                     if(o + MMX64_MEMMAP_DISPLAYBUFFER_LINE_LENGTH > pObMemMap->cbDisplay) {

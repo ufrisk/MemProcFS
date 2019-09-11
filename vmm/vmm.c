@@ -11,6 +11,7 @@
 #include "mm_x64_page_win.h"
 #include "ob.h"
 #include "vmmproc.h"
+#include "vmmwinreg.h"
 #include "pluginmanager.h"
 #include "util.h"
 
@@ -154,9 +155,9 @@ VOID VmmCacheClear(_In_ WORD wTblTag)
 VOID VmmCache_CallbackRefCount1(PVMMOB_MEM pOb)
 {
     PVMM_CACHE_TABLE t;
-    t = VmmCacheTableGet(((POB)pOb)->Reserved.tag);
+    t = VmmCacheTableGet(((POB)pOb)->_tag);
     if(!t) {
-        vmmprintf_fn("ERROR - SHOULD NOT HAPPEN - INVALID OBJECT TAG %02X\n", ((POB)pOb)->Reserved.tag);
+        vmmprintf_fn("ERROR - SHOULD NOT HAPPEN - INVALID OBJECT TAG %02X\n", ((POB)pOb)->_tag);
         return;
     }
     if(!t->fActive) { return; }
@@ -176,9 +177,9 @@ VOID VmmCacheReserveReturn(_In_opt_ PVMMOB_MEM pOb)
     DWORD iR, iB;
     PVMM_CACHE_TABLE t;
     if(!pOb) { return; }
-    t = VmmCacheTableGet(((POB)pOb)->Reserved.tag);
+    t = VmmCacheTableGet(((POB)pOb)->_tag);
     if(!t) {
-        vmmprintf_fn("ERROR - SHOULD NOT HAPPEN - INVALID OBJECT TAG %02X\n", ((POB)pOb)->Reserved.tag);
+        vmmprintf_fn("ERROR - SHOULD NOT HAPPEN - INVALID OBJECT TAG %02X\n", ((POB)pOb)->_tag);
         return;
     }
     if((pOb->h.cb != 0x1000) || (pOb->h.qwA == (QWORD)-1) || !t->fActive) {
@@ -703,7 +704,7 @@ PVMM_PROCESS VmmProcessCreateEntry(_In_ BOOL fTotalRefresh, _In_ DWORD dwPID, _I
     if(!ptOld) { goto fail; }
     ptNew = (PVMMOB_PROCESS_TABLE)ObContainer_GetOb(ptOld->pObCNewPROC);
     if(!ptNew) {
-        ptNew = (PVMMOB_PROCESS_TABLE)Ob_Alloc('PT', LMEM_ZEROINIT, sizeof(VMMOB_PROCESS_TABLE), VmmProcessTable_CloseObCallback, NULL);
+        ptNew = (PVMMOB_PROCESS_TABLE)Ob_Alloc(OB_TAB_VMM_PROCESSTABLE, LMEM_ZEROINIT, sizeof(VMMOB_PROCESS_TABLE), VmmProcessTable_CloseObCallback, NULL);
         if(!ptNew) { goto fail; }
         ptNew->pObCNewPROC = ObContainer_New(NULL);
         ObContainer_SetOb(ptOld->pObCNewPROC, ptNew);
@@ -716,7 +717,7 @@ PVMM_PROCESS VmmProcessCreateEntry(_In_ BOOL fTotalRefresh, _In_ DWORD dwPID, _I
         pProcess = VmmProcessGetEx(ptOld, dwPID);
     }
     if(!pProcess) {
-        pProcess = (PVMM_PROCESS)Ob_Alloc('PR', LMEM_ZEROINIT, sizeof(VMM_PROCESS), VmmProcess_CloseObCallback, NULL);
+        pProcess = (PVMM_PROCESS)Ob_Alloc(OB_TAB_VMM_PROCESS, LMEM_ZEROINIT, sizeof(VMM_PROCESS), VmmProcess_CloseObCallback, NULL);
         if(!pProcess) { goto fail; }
         InitializeCriticalSectionAndSpinCount(&pProcess->LockUpdate, 4096);
         memcpy(pProcess->szName, szName, 16);
@@ -849,7 +850,7 @@ VOID VmmProcessListPIDs(_Out_writes_opt_(*pcPIDs) PDWORD pPIDs, _Inout_ PSIZE_T 
 */
 BOOL VmmProcessTableCreateInitial()
 {
-    PVMMOB_PROCESS_TABLE pt = (PVMMOB_PROCESS_TABLE)Ob_Alloc('PT', LMEM_ZEROINIT, sizeof(VMMOB_PROCESS_TABLE), VmmProcessTable_CloseObCallback, NULL);
+    PVMMOB_PROCESS_TABLE pt = (PVMMOB_PROCESS_TABLE)Ob_Alloc(OB_TAB_VMM_PROCESSTABLE, LMEM_ZEROINIT, sizeof(VMMOB_PROCESS_TABLE), VmmProcessTable_CloseObCallback, NULL);
     if(!pt) { return FALSE; }
     pt->pObCNewPROC = ObContainer_New(NULL);
     ctxVmm->pObCPROC = ObContainer_New(pt);
@@ -1125,6 +1126,10 @@ VOID VmmReadScatterPaged(_In_ PVMM_PROCESS pProcess, _Inout_ PPMEM_IO_SCATTER_HE
                 pMEM->cb = 0x1000;
                 memcpy(pMEM->pb, pObCacheEntry->pb, 0x1000);
                 Ob_DECREF(pObCacheEntry);
+
+                pObCacheEntry = VmmCacheGet(VMM_CACHE_TAG_PAGING, pMEM->qwA);
+                Ob_DECREF(pObCacheEntry);
+
                 InterlockedIncrement64(&ctxVmm->stat.cPageReadSuccessCacheHit);
                 c++;
                 continue;
@@ -1146,18 +1151,7 @@ VOID VmmReadScatterPaged(_In_ PVMM_PROCESS pProcess, _Inout_ PPMEM_IO_SCATTER_HE
             MmX64PageWin_ReadScatterPaged(pProcess, ppMEMsPaged, cpMEMsPaged);
         }
     }
-    // 3: read fail zero fixups (if required)
-    if(flags & VMM_FLAG_ZEROPAD_ON_FAIL) {
-        for(i = 0; i < cpMEMsPaged; i++) {
-            pMEM = ppMEMsPaged[i];
-            if(pMEM->cb != pMEM->cbMax) {
-                // fail
-                ZeroMemory(pMEM->pb, pMEM->cbMax);
-                pMEM->cb = pMEM->cbMax;
-            }
-        }
-    }
-    // 4: cache put
+    // 3: cache put
     if(fCache && fPaged) {
         for(i = 0; i < cpMEMsPaged; i++) {
             pMEM = ppMEMsPaged[i];
@@ -1170,9 +1164,20 @@ VOID VmmReadScatterPaged(_In_ PVMM_PROCESS pProcess, _Inout_ PPMEM_IO_SCATTER_HE
             }
         }
     }
+    // 4: read fail zero fixups (if required)
+    if(flags & VMM_FLAG_ZEROPAD_ON_FAIL) {
+        for(i = 0; i < cpMEMsPaged; i++) {
+            pMEM = ppMEMsPaged[i];
+            if(pMEM->cb != pMEM->cbMax) {
+                // fail
+                ZeroMemory(pMEM->pb, pMEM->cbMax);
+                pMEM->cb = pMEM->cbMax;
+            }
+        }
+    }
 }
 
-VOID VmmReadScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_ PPMEM_IO_SCATTER_HEADER ppMEMsVirt, _In_ DWORD cpMEMsVirt, _In_ QWORD flags)
+VOID VmmReadScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_updates_(cpMEMsVirt) PPMEM_IO_SCATTER_HEADER ppMEMsVirt, _In_ DWORD cpMEMsVirt, _In_ QWORD flags)
 {
     // NB! the buffers pIoPA / ppMEMsPhys are used for both:
     //     - physical memory (grows from 0 upwards)
@@ -1302,6 +1307,7 @@ VOID VmmClose()
     while(ctxVmm->ThreadWorkers.c) {
         SwitchToThread();
     }
+    VmmWinReg_Close();
     Ob_DECREF_NULL(&ctxVmm->pObCPROC);
     if(ctxVmm->fnMemoryModel.pfnClose) {
         ctxVmm->fnMemoryModel.pfnClose();
@@ -1312,7 +1318,6 @@ VOID VmmClose()
     Ob_DECREF_NULL(&ctxVmm->Cache.PAGING_FAILED);
     Ob_DECREF_NULL(&ctxVmm->pObCCachePrefetchEPROCESS);
     Ob_DECREF_NULL(&ctxVmm->pObCCachePrefetchRegistry);
-    Ob_DECREF_NULL(&ctxVmm->pObCRegistry);
     DeleteCriticalSection(&ctxVmm->TcpIp.LockUpdate);
     DeleteCriticalSection(&ctxVmm->MasterLock);
     LocalFree(ctxVmm);
@@ -1571,7 +1576,6 @@ BOOL VmmInitialize()
     // 6: OTHER INIT:
     ctxVmm->pObCCachePrefetchEPROCESS = ObContainer_New(NULL);
     ctxVmm->pObCCachePrefetchRegistry = ObContainer_New(NULL);
-    ctxVmm->pObCRegistry = ObContainer_New(NULL);
     InitializeCriticalSection(&ctxVmm->MasterLock);
     InitializeCriticalSection(&ctxVmm->TcpIp.LockUpdate);
     VmmInitializeFunctions();

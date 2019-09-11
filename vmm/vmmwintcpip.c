@@ -1,4 +1,4 @@
-// vmmwintcpip.h :  implementation of functionality related to the Windows networking.
+// vmmwintcpip.c :  implementation of functionality related to the Windows networking.
 //
 // (c) Ulf Frisk, 2019
 // Author: Ulf Frisk, pcileech@frizk.net
@@ -126,7 +126,7 @@ VOID VmmWinTcpIp_GetPartitionTable64(_In_ PVMM_PROCESS pSystemProcess)
         return;
     }
     // 1: fetch tcpip.sys .data section - it contains a pointer to tcpip!PartitionTable [TcPt]
-    if(!VmmProc_ModuleMapGetSingleEntry(pSystemProcess, "tcpip.sys", &pObModuleMap, &pModuleMapEntry)) {
+    if(!VmmProc_ModuleMapGetSingleEntry(pSystemProcess, L"tcpip.sys", &pObModuleMap, &pModuleMapEntry)) {
         vmmprintfv_fn("CANNOT LOCATE tcpip.sys.\n")
         goto fail;
     }

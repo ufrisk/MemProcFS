@@ -1015,7 +1015,7 @@ VOID VmmWin_OffsetLocatorEPROCESS_Print()
 VOID VmmWin_OffsetLocatorEPROCESS64(_In_ PVMM_PROCESS pSystemProcess)
 {
     BOOL f;
-    WORD i, cLoopProtect;
+    WORD i, j, cLoopProtect;
     QWORD va1, vaPEB, paPEB;
     BYTE pbSYSTEM[VMMPROC_EPROCESS_MAX_SIZE], pbSMSS[VMMPROC_EPROCESS_MAX_SIZE], pb1[VMMPROC_EPROCESS_MAX_SIZE], pbPage[0x1000];
     BYTE pbZero[0x800];
@@ -1081,7 +1081,7 @@ VOID VmmWin_OffsetLocatorEPROCESS64(_In_ PVMM_PROCESS pSystemProcess)
         if(!f) { return; }
         if(ctxMain->cfg.fVerboseExtra) {
             vmmprintf_fn("EPROCESS smss.exe BELOW:\n");
-            Util_PrintHexAscii(pbSYSTEM, VMMPROC_EPROCESS_MAX_SIZE, 0);
+            Util_PrintHexAscii(pbSMSS, VMMPROC_EPROCESS_MAX_SIZE, 0);
         }
     }
     // find offset for ParentPid (_EPROCESS!InheritedFromUniqueProcessId)
@@ -1095,19 +1095,25 @@ VOID VmmWin_OffsetLocatorEPROCESS64(_In_ PVMM_PROCESS pSystemProcess)
         }
         if(!poEPROCESS->PPID) { return; }
     }
-    // find offset for PEB (in EPROCESS) by comparing SYSTEM and SMSS
+    // find offset for PEB (in EPROCESS) by comparing SYSTEM and SMSS  [or other process on fail - max 4 tries]
     {
-        for(i = 0x280, f = FALSE; i < 0x480; i += 8) {
-            if(*(PQWORD)(pbSYSTEM + i)) { continue; }
-            vaPEB = *(PQWORD)(pbSMSS + i);
-            if(!vaPEB || (vaPEB & 0xffff800000000fff)) { continue; }
-            // Verify potential PEB
-            if(!VmmVirt2PhysEx(*(PQWORD)(pbSMSS + poEPROCESS->DTB), TRUE, vaPEB, &paPEB)) { continue; }
-            if(!VmmReadPage(NULL, paPEB, pbPage)) { continue; }
-            if(*(PWORD)pbPage == 0x5a4d) { continue; }  // MZ header -> likely entry point or something not PEB ...
-            poEPROCESS->PEB = i;
-            f = TRUE;
-            break;
+        for(j = 0; j < 4; j++) {
+            for(i = 0x280, f = FALSE; i < 0x480; i += 8) {
+                if(*(PQWORD)(pbSYSTEM + i)) { continue; }
+                vaPEB = *(PQWORD)(pbSMSS + i);
+                if(!vaPEB || (vaPEB & 0xffff800000000fff)) { continue; }
+                // Verify potential PEB
+                if(!VmmVirt2PhysEx(*(PQWORD)(pbSMSS + poEPROCESS->DTB), TRUE, vaPEB, &paPEB)) { continue; }
+                if(!VmmReadPage(NULL, paPEB, pbPage)) { continue; }
+                if(*(PWORD)pbPage == 0x5a4d) { continue; }  // MZ header -> likely entry point or something not PEB ...
+                poEPROCESS->PEB = i;
+                f = TRUE;
+                break;
+            }
+            if(f) { break; }
+            // failed locating PEB (paging?) -> try next process in EPROCESS list.
+            va1 = *(PQWORD)(pbSMSS + poEPROCESS->FLink) - poEPROCESS->FLink;
+            if(!VmmRead(pSystemProcess, va1, pbSMSS, VMMPROC_EPROCESS_MAX_SIZE)) { return; }
         }
         if(!f) { return; }
     }
@@ -1351,7 +1357,7 @@ BOOL VmmWin_EnumEPROCESS64(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fTotalRef
 VOID VmmWin_OffsetLocatorEPROCESS32(_In_ PVMM_PROCESS pSystemProcess)
 {
     BOOL f;
-    WORD i, cLoopProtect;
+    WORD i, j, cLoopProtect;
     DWORD va1, vaPEB;
     QWORD paPEB;
     BYTE pbSYSTEM[VMMPROC_EPROCESS_MAX_SIZE], pbSMSS[VMMPROC_EPROCESS_MAX_SIZE], pb1[VMMPROC_EPROCESS_MAX_SIZE], pbPage[0x1000];
@@ -1417,7 +1423,7 @@ VOID VmmWin_OffsetLocatorEPROCESS32(_In_ PVMM_PROCESS pSystemProcess)
         if(!f) { return; }
         if(ctxMain->cfg.fVerboseExtra) {
             vmmprintf_fn("EPROCESS smss.exe BELOW:\n");
-            Util_PrintHexAscii(pbSYSTEM, VMMPROC_EPROCESS_MAX_SIZE, 0);
+            Util_PrintHexAscii(pbSMSS, VMMPROC_EPROCESS_MAX_SIZE, 0);
         }
     }
     // find offset for ParentPid (_EPROCESS!InheritedFromUniqueProcessId)
@@ -1431,19 +1437,25 @@ VOID VmmWin_OffsetLocatorEPROCESS32(_In_ PVMM_PROCESS pSystemProcess)
         }
         if(!poEPROCESS->PPID) { return; }
     }
-    // find offset for PEB (in EPROCESS)
+    // find offset for PEB (in EPROCESS) by comparing SYSTEM and SMSS  [or other process on fail - max 4 tries]
     {
-        for(i = 0x100, f = FALSE; i < 0x240; i += 4) {
-            if(*(PDWORD)(pbSYSTEM + i)) { continue; }
-            vaPEB = *(PDWORD)(pbSMSS + i);
-            if(!vaPEB || (vaPEB & 0x80000fff)) { continue; }
-            // Verify potential PEB
-            if(!VmmVirt2PhysEx(*(PDWORD)(pbSMSS + poEPROCESS->DTB), TRUE, vaPEB, &paPEB)) { continue; }
-            if(!VmmReadPage(NULL, paPEB, pbPage)) { continue; }
-            if(*(PWORD)pbPage == 0x5a4d) { continue; }  // MZ header -> likely entry point or something not PEB ...
-            poEPROCESS->PEB = i;
-            f = TRUE;
-            break;
+        for(j = 0; j < 4; j++) {
+            for(i = 0x100, f = FALSE; i < 0x240; i += 4) {
+                if(*(PDWORD)(pbSYSTEM + i)) { continue; }
+                vaPEB = *(PDWORD)(pbSMSS + i);
+                if(!vaPEB || (vaPEB & 0x80000fff)) { continue; }
+                // Verify potential PEB
+                if(!VmmVirt2PhysEx(*(PDWORD)(pbSMSS + poEPROCESS->DTB), TRUE, vaPEB, &paPEB)) { continue; }
+                if(!VmmReadPage(NULL, paPEB, pbPage)) { continue; }
+                if(*(PWORD)pbPage == 0x5a4d) { continue; }  // MZ header -> likely entry point or something not PEB ...
+                poEPROCESS->PEB = i;
+                f = TRUE;
+                break;
+            }
+            if(f) { break; }
+            // failed locating PEB (paging?) -> try next process in EPROCESS list.
+            va1 = *(PDWORD)(pbSMSS + poEPROCESS->FLink) - poEPROCESS->FLink;
+            if(!VmmRead(pSystemProcess, va1, pbSMSS, VMMPROC_EPROCESS_MAX_SIZE)) { return; }
         }
         if(!f) { return; }
     }

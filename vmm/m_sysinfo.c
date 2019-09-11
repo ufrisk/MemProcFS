@@ -186,18 +186,18 @@ BOOL MSysInfo_ProcTree(_In_ BOOL fVerbose, _Out_ PBYTE *ppb, _Out_ PDWORD pcb)
     return fResult;
 }
 
-NTSTATUS MSysInfo_Read_ProcTree(_In_ LPSTR szPath, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MSysInfo_Read_ProcTree(_In_ LPWSTR wszPath, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt;
     DWORD cbFile = 0;
     PBYTE pbFile = NULL;
-    if(!strcmp(szPath, "tree")) {
+    if(!wcscmp(wszPath, L"tree")) {
         MSysInfo_ProcTree(FALSE, &pbFile, &cbFile);
         nt = Util_VfsReadFile_FromPBYTE(pbFile, cbFile, pb, cb, pcbRead, cbOffset);
         LocalFree(pbFile);
         return nt;
     }
-    if(!strcmp(szPath, "tree-v")) {
+    if(!wcscmp(wszPath, L"tree-v")) {
         MSysInfo_ProcTree(TRUE, &pbFile, &cbFile);
         nt = Util_VfsReadFile_FromPBYTE(pbFile, cbFile, pb, cb, pcbRead, cbOffset);
         LocalFree(pbFile);
@@ -242,7 +242,7 @@ BOOL MSysInfo_List_ProcTree(_Inout_ PHANDLE pFileList)
 #define MSYSINFO_NET_CACHE_MAXAGE   500      // ms
 
 typedef struct tdMSYSINFO_OB_NET_CONTEXT {
-    OB hdr;
+    OB ObHdr;
     QWORD qwCreateTimeTickCount64;
     DWORD cbFile;
     PBYTE pbFile;
@@ -374,18 +374,18 @@ finish:
     return pObCtx;
 }
 
-NTSTATUS MSysInfo_Read_Net(_In_ LPSTR szPath, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MSysInfo_Read_Net(_In_ LPWSTR wszPath, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PMSYSINFO_OB_NET_CONTEXT pObNetCtx;
-    if(!strcmp(szPath, "readme")) {
+    if(!wcscmp(wszPath, L"readme")) {
         return Util_VfsReadFile_FromPBYTE((PBYTE)szMSYSINFO_NET_README, strlen(szMSYSINFO_NET_README), pb, cb, pcbRead, cbOffset);
     }
     if((pObNetCtx = MSysInfo_GetNetContext())) {
-        if(!strcmp(szPath, "netstat")) {
+        if(!wcscmp(wszPath, L"netstat")) {
             nt = Util_VfsReadFile_FromPBYTE(pObNetCtx->pbFile, pObNetCtx->cbFile, pb, cb, pcbRead, cbOffset);
         }
-        if(!strcmp(szPath, "netstat-v")) {
+        if(!wcscmp(wszPath, L"netstat-v")) {
             nt = Util_VfsReadFile_FromPBYTE(pObNetCtx->pbFileVerbose, pObNetCtx->cbFileVerbose, pb, cb, pcbRead, cbOffset);
         }
         Ob_DECREF(pObNetCtx);
@@ -412,29 +412,30 @@ BOOL MSysInfo_List_Net(_Inout_ PHANDLE pFileList)
 NTSTATUS MSysInfo_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     DWORD cbBuffer;
-    BYTE pbBuffer[MAX_PATH];
-    LPSTR szPath1, szPath2;
+    BYTE pbBuffer[32];
+    WCHAR wszPath1[32];
+    LPWSTR wszPath2;
     // version.txt
-    if(!strcmp(ctx->szPath, "version")) {
-        cbBuffer = snprintf(pbBuffer, 32, "%i.%i.%i", ctxVmm->kernel.dwVersionMajor, ctxVmm->kernel.dwVersionMinor, ctxVmm->kernel.dwVersionBuild);
+    if(!wcscmp(ctx->wszPath, L"version")) {
+        cbBuffer = snprintf(pbBuffer, sizeof(pbBuffer), "%i.%i.%i", ctxVmm->kernel.dwVersionMajor, ctxVmm->kernel.dwVersionMinor, ctxVmm->kernel.dwVersionBuild);
         return Util_VfsReadFile_FromPBYTE(pbBuffer, cbBuffer, pb, cb, pcbRead, cbOffset);
     }
-    if(!strcmp(ctx->szPath, "version-major")) {
+    if(!wcscmp(ctx->wszPath, L"version-major")) {
         return Util_VfsReadFile_FromNumber(ctxVmm->kernel.dwVersionMajor, pb, cb, pcbRead, cbOffset);
     }
-    if(!strcmp(ctx->szPath, "version-minor")) {
+    if(!wcscmp(ctx->wszPath, L"version-minor")) {
         return Util_VfsReadFile_FromNumber(ctxVmm->kernel.dwVersionMinor, pb, cb, pcbRead, cbOffset);
     }
-    if(!strcmp(ctx->szPath, "version-build")) {
+    if(!wcscmp(ctx->wszPath, L"version-build")) {
         return Util_VfsReadFile_FromNumber(ctxVmm->kernel.dwVersionBuild, pb, cb, pcbRead, cbOffset);
     }
     // proc
-    Util_PathSplit2(ctx->szPath, pbBuffer, &szPath1, &szPath2);
-    if(!strcmp(szPath1, "proc")) {
-        return MSysInfo_Read_ProcTree(szPath2, pb, cb, pcbRead, cbOffset);
+    wszPath2 = Util_PathSplit2_ExWCHAR(ctx->wszPath, wszPath1, _countof(wszPath1));
+    if(!wcscmp(wszPath1, L"proc")) {
+        return MSysInfo_Read_ProcTree(wszPath2, pb, cb, pcbRead, cbOffset);
     }
-    if(!strcmp(szPath1, "net")) {
-        return MSysInfo_Read_Net(szPath2, pb, cb, pcbRead, cbOffset);
+    if(!wcscmp(wszPath1, L"net")) {
+        return MSysInfo_Read_Net(wszPath2, pb, cb, pcbRead, cbOffset);
     }
     return VMMDLL_STATUS_FILE_INVALID;
 }
@@ -442,12 +443,12 @@ NTSTATUS MSysInfo_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWO
 BOOL MSysInfo_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 {
     DWORD cchMajor, cchMinor, cchBuild;
-    if(!strcmp("proc", ctx->szPath)) {
+    if(!wcscmp(L"proc", ctx->wszPath)) {
         return MSysInfo_List_ProcTree(pFileList);
-    } else if(!strcmp("net", ctx->szPath)) {
+    } else if(!wcscmp(L"net", ctx->wszPath)) {
         return MSysInfo_List_Net(pFileList);
     }
-    else if(ctx->szPath[0]) {
+    else if(ctx->wszPath[0]) {
         return FALSE;
     }
     VMMDLL_VfsList_AddDirectory(pFileList, "net");
@@ -472,10 +473,10 @@ VOID M_SysInfo_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if((pRI->tpSystem != VMM_SYSTEM_WINDOWS_X64) && (pRI->tpSystem != VMM_SYSTEM_WINDOWS_X86)) { return; }
-    strcpy_s(pRI->reg_info.szModuleName, 32, "sysinfo");    // module name
-    pRI->reg_info.fRootModule = TRUE;                       // module shows in root directory
-    pRI->reg_fn.pfnList = MSysInfo_List;                    // List function supported
-    pRI->reg_fn.pfnRead = MSysInfo_Read;                    // Read function supported
-    pRI->reg_fn.pfnClose = MSysInfo_Close;                  // Close function supported
+    wcscpy_s(pRI->reg_info.wszModuleName, 32, L"sysinfo");      // module name
+    pRI->reg_info.fRootModule = TRUE;                           // module shows in root directory
+    pRI->reg_fn.pfnList = MSysInfo_List;                        // List function supported
+    pRI->reg_fn.pfnRead = MSysInfo_Read;                        // Read function supported
+    pRI->reg_fn.pfnClose = MSysInfo_Close;                      // Close function supported
     pRI->pfnPluginManager_Register(pRI);
 }

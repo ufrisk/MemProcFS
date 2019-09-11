@@ -191,6 +191,9 @@
     <ClCompile Include="vmmwintcpip.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="ob_map.c">
+      <Filter>Source Files\ob</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="vmmdll.def">

@@ -63,9 +63,6 @@ BOOL VmmProc_RefreshProcesses(_In_ BOOL fRefreshTotal)
         }
         result = VmmWin_EnumerateEPROCESS(pObProcessSystem, fRefreshTotal);
         Ob_DECREF(pObProcessSystem);
-        if(fRefreshTotal) {
-            VmmWinReg_Refresh();
-        }
     }
     return TRUE;
 }
@@ -73,22 +70,24 @@ BOOL VmmProc_RefreshProcesses(_In_ BOOL fRefreshTotal)
 // Initial hard coded values that seems to be working nicely below. These values
 // may be changed in config options or by editing files in the .status directory.
 
-#define VMMPROC_UPDATERTHREAD_LOCAL_PERIOD                100
-#define VMMPROC_UPDATERTHREAD_LOCAL_PHYSCACHE             (500 / VMMPROC_UPDATERTHREAD_LOCAL_PERIOD)                // 0.5s
-#define VMMPROC_UPDATERTHREAD_LOCAL_TLB                   (5 * 1000 / VMMPROC_UPDATERTHREAD_LOCAL_PERIOD)           // 5s
-#define VMMPROC_UPDATERTHREAD_LOCAL_PROC_REFRESHLIST      (5 * 1000 / VMMPROC_UPDATERTHREAD_LOCAL_PERIOD)           // 5s
-#define VMMPROC_UPDATERTHREAD_LOCAL_PROC_REFRESHTOTAL     (15 * 1000 / VMMPROC_UPDATERTHREAD_LOCAL_PERIOD)          // 15s
+#define VMMPROC_UPDATERTHREAD_LOCAL_PERIOD              100
+#define VMMPROC_UPDATERTHREAD_LOCAL_PHYSCACHE           (500 / VMMPROC_UPDATERTHREAD_LOCAL_PERIOD)                // 0.5s
+#define VMMPROC_UPDATERTHREAD_LOCAL_TLB                 (5 * 1000 / VMMPROC_UPDATERTHREAD_LOCAL_PERIOD)           // 5s
+#define VMMPROC_UPDATERTHREAD_LOCAL_PROC_REFRESHLIST    (5 * 1000 / VMMPROC_UPDATERTHREAD_LOCAL_PERIOD)           // 5s
+#define VMMPROC_UPDATERTHREAD_LOCAL_PROC_REFRESHTOTAL   (15 * 1000 / VMMPROC_UPDATERTHREAD_LOCAL_PERIOD)          // 15s
+#define VMMPROC_UPDATERTHREAD_LOCAL_REGISTRY            (5 * 60 * 1000 / VMMPROC_UPDATERTHREAD_LOCAL_PERIOD)      // 5m
 
-#define VMMPROC_UPDATERTHREAD_REMOTE_PERIOD                100
-#define VMMPROC_UPDATERTHREAD_REMOTE_PHYSCACHE             (15 * 1000 / VMMPROC_UPDATERTHREAD_REMOTE_PERIOD)        // 15s
-#define VMMPROC_UPDATERTHREAD_REMOTE_TLB                   (3 * 60 * 1000 / VMMPROC_UPDATERTHREAD_REMOTE_PERIOD)    // 3m
-#define VMMPROC_UPDATERTHREAD_REMOTE_PROC_REFRESHLIST      (15 * 1000 / VMMPROC_UPDATERTHREAD_REMOTE_PERIOD)        // 15s
-#define VMMPROC_UPDATERTHREAD_REMOTE_PROC_REFRESHTOTAL     (3 * 60 * 1000 / VMMPROC_UPDATERTHREAD_REMOTE_PERIOD)    // 3m
+#define VMMPROC_UPDATERTHREAD_REMOTE_PERIOD             100
+#define VMMPROC_UPDATERTHREAD_REMOTE_PHYSCACHE          (15 * 1000 / VMMPROC_UPDATERTHREAD_REMOTE_PERIOD)        // 15s
+#define VMMPROC_UPDATERTHREAD_REMOTE_TLB                (3 * 60 * 1000 / VMMPROC_UPDATERTHREAD_REMOTE_PERIOD)    // 3m
+#define VMMPROC_UPDATERTHREAD_REMOTE_PROC_REFRESHLIST   (15 * 1000 / VMMPROC_UPDATERTHREAD_REMOTE_PERIOD)        // 15s
+#define VMMPROC_UPDATERTHREAD_REMOTE_PROC_REFRESHTOTAL  (3 * 60 * 1000 / VMMPROC_UPDATERTHREAD_REMOTE_PERIOD)    // 3m
+#define VMMPROC_UPDATERTHREAD_REMOTE_REGISTRY           (10 * 60 * 1000 / VMMPROC_UPDATERTHREAD_LOCAL_PERIOD)    // 10m
 
 DWORD VmmProcCacheUpdaterThread()
 {
     QWORD i = 0, paMax;
-    BOOL fPHYS, fTLB, fProcPartial, fProcTotal;
+    BOOL fPHYS, fTLB, fProcPartial, fProcTotal, fRegistry;
     vmmprintfv("VmmProc: Start periodic cache flushing.\n");
     if(ctxMain->dev.fRemote) {
         ctxVmm->ThreadProcCache.cMs_TickPeriod = VMMPROC_UPDATERTHREAD_REMOTE_PERIOD;
@@ -96,12 +95,13 @@ DWORD VmmProcCacheUpdaterThread()
         ctxVmm->ThreadProcCache.cTick_TLB = VMMPROC_UPDATERTHREAD_REMOTE_TLB;
         ctxVmm->ThreadProcCache.cTick_ProcPartial = VMMPROC_UPDATERTHREAD_REMOTE_PROC_REFRESHLIST;
         ctxVmm->ThreadProcCache.cTick_ProcTotal = VMMPROC_UPDATERTHREAD_REMOTE_PROC_REFRESHTOTAL;
+        ctxVmm->ThreadProcCache.cTick_Registry = VMMPROC_UPDATERTHREAD_REMOTE_REGISTRY;
     } else {
         ctxVmm->ThreadProcCache.cMs_TickPeriod = VMMPROC_UPDATERTHREAD_LOCAL_PERIOD;
         ctxVmm->ThreadProcCache.cTick_Phys = VMMPROC_UPDATERTHREAD_LOCAL_PHYSCACHE;
         ctxVmm->ThreadProcCache.cTick_TLB = VMMPROC_UPDATERTHREAD_LOCAL_TLB;
         ctxVmm->ThreadProcCache.cTick_ProcPartial = VMMPROC_UPDATERTHREAD_LOCAL_PROC_REFRESHLIST;
-        ctxVmm->ThreadProcCache.cTick_ProcTotal = VMMPROC_UPDATERTHREAD_LOCAL_PROC_REFRESHTOTAL;
+        ctxVmm->ThreadProcCache.cTick_Registry = VMMPROC_UPDATERTHREAD_LOCAL_REGISTRY;
     }
     while(ctxVmm->ThreadProcCache.fEnabled) {
         Sleep(ctxVmm->ThreadProcCache.cMs_TickPeriod);
@@ -110,6 +110,7 @@ DWORD VmmProcCacheUpdaterThread()
         fPHYS = !(i % ctxVmm->ThreadProcCache.cTick_Phys);
         fProcTotal = !(i % ctxVmm->ThreadProcCache.cTick_ProcTotal);
         fProcPartial = !(i % ctxVmm->ThreadProcCache.cTick_ProcPartial) && !fProcTotal;
+        fRegistry = !(i % ctxVmm->ThreadProcCache.cTick_Registry);
         EnterCriticalSection(&ctxVmm->MasterLock);
         // PHYS / TLB cache clear
         if(fPHYS) {
@@ -141,6 +142,10 @@ DWORD VmmProcCacheUpdaterThread()
                 PluginManager_Notify(VMMDLL_PLUGIN_EVENT_TOTALREFRESH, NULL, 0);
             }
         }
+        // refresh registry
+        if(fRegistry) {
+            VmmWinReg_Refresh();
+        }
         LeaveCriticalSection(&ctxVmm->MasterLock);
     }
 fail:
@@ -171,13 +176,13 @@ BOOL VmmProc_ModuleMapGet(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MODULEMAP *pp
 }
 
 _Success_(return)
-BOOL VmmProc_ModuleMapGetSingleEntry(_In_ PVMM_PROCESS pProcess, _In_ LPSTR szModuleName, _Out_ PVMMOB_MODULEMAP *ppObModuleMap, _Out_ PVMM_MODULEMAP_ENTRY *ppModuleMapEntry)
+BOOL VmmProc_ModuleMapGetSingleEntry(_In_ PVMM_PROCESS pProcess, _In_ LPWSTR wszModuleName, _Out_ PVMMOB_MODULEMAP *ppObModuleMap, _Out_ PVMM_MODULEMAP_ENTRY *ppModuleMapEntry)
 {
     DWORD iModule;
     PVMMOB_MODULEMAP pObModuleMap = NULL;
     if(!VmmProc_ModuleMapGet(pProcess, &pObModuleMap)) { return FALSE; }
     for(iModule = 0; iModule < pObModuleMap->cMap; iModule++) {
-        if(0 == strcmp(szModuleName, pObModuleMap->pMap[iModule].szName)) {
+        if(0 == Util_wcsstrncmp(pObModuleMap->pMap[iModule].szName, wszModuleName, 0)) {
             *ppObModuleMap = pObModuleMap;
             *ppModuleMapEntry = pObModuleMap->pMap + iModule;
             return TRUE;

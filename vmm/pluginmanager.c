@@ -41,7 +41,7 @@
 typedef struct tdPLUGIN_LISTENTRY {
     struct tdPLUGIN_LISTENTRY *FLink;
     HMODULE hDLL;
-    CHAR szModuleName[32];
+    WCHAR wszModuleName[32];
     BOOL fRootModule;
     BOOL fProcessModule;
     BOOL(*pfnList)(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList);
@@ -55,15 +55,15 @@ typedef struct tdPLUGIN_LISTENTRY {
 // MODULES CORE FUNCTIONALITY - IMPLEMENTATION BELOW:
 // ----------------------------------------------------------------------------
 
-VOID PluginManager_ContextInitialize(_Out_ PVMMDLL_PLUGIN_CONTEXT ctx, PPLUGIN_LISTENTRY pModule, _In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR szPath)
+VOID PluginManager_ContextInitialize(_Out_ PVMMDLL_PLUGIN_CONTEXT ctx, PPLUGIN_LISTENTRY pModule, _In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszPath)
 {
     ctx->magic = VMMDLL_PLUGIN_CONTEXT_MAGIC;
     ctx->wVersion = VMMDLL_PLUGIN_CONTEXT_VERSION;
     ctx->wSize = sizeof(VMMDLL_PLUGIN_CONTEXT);
     ctx->dwPID = (pProcess ? pProcess->dwPID : (DWORD)-1);
     ctx->pProcess = pModule->hDLL ? NULL : pProcess;
-    ctx->szModule = pModule->szModuleName;
-    ctx->szPath = szPath;
+    ctx->wszModule = pModule->wszModuleName;
+    ctx->wszPath = wszPath;
 }
 
 VOID PluginManager_ListAll(_In_opt_ PVMM_PROCESS pProcess, _Inout_ PHANDLE pFileList)
@@ -71,13 +71,13 @@ VOID PluginManager_ListAll(_In_opt_ PVMM_PROCESS pProcess, _Inout_ PHANDLE pFile
     PPLUGIN_LISTENTRY pModule = (PPLUGIN_LISTENTRY)ctxVmm->pVmmVfsModuleList;
     while(pModule) {
         if((pProcess && pModule->fProcessModule) || (!pProcess && pModule->fRootModule)) {
-            VMMDLL_VfsList_AddDirectory(pFileList, pModule->szModuleName);
+            VMMDLL_VfsList_AddDirectoryEx(pFileList, NULL, pModule->wszModuleName, NULL);
         }
         pModule = pModule->FLink;
     }
 }
 
-BOOL PluginManager_List(_In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR szModule, _In_ LPSTR szPath, _Inout_ PHANDLE pFileList)
+BOOL PluginManager_List(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszModule, _In_ LPWSTR wszPath, _Inout_ PHANDLE pFileList)
 {
     QWORD tmStart = Statistics_CallStart();
     BOOL result;
@@ -88,8 +88,8 @@ BOOL PluginManager_List(_In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR szModule, _In
             pModule = pModule->FLink;
             continue;
         }
-        if(pModule->pfnList && !_stricmp(szModule, pModule->szModuleName)) {
-            PluginManager_ContextInitialize(&ctx, pModule, pProcess, (szPath ? szPath : ""));
+        if(pModule->pfnList && !_wcsicmp(wszModule, pModule->wszModuleName)) {
+            PluginManager_ContextInitialize(&ctx, pModule, pProcess, (wszPath ? wszPath : L""));
             result = pModule->pfnList(&ctx, pFileList);
             Statistics_CallEnd(STATISTICS_ID_PluginManager_List, tmStart);
             return result;
@@ -100,7 +100,7 @@ BOOL PluginManager_List(_In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR szModule, _In
     return FALSE;
 }
 
-NTSTATUS PluginManager_Read(_In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR szModule, _In_ LPSTR szPath, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS PluginManager_Read(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszModule, _In_ LPWSTR wszPath, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     QWORD tmStart = Statistics_CallStart();
     NTSTATUS nt;
@@ -111,8 +111,8 @@ NTSTATUS PluginManager_Read(_In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR szModule,
             pModule = pModule->FLink;
             continue;
         }
-        if(pModule->pfnRead && !_stricmp(szModule, pModule->szModuleName)) {
-            PluginManager_ContextInitialize(&ctx, pModule, pProcess, (szPath ? szPath : ""));
+        if(pModule->pfnRead && !_wcsicmp(wszModule, pModule->wszModuleName)) {
+            PluginManager_ContextInitialize(&ctx, pModule, pProcess, (wszPath ? wszPath : L""));
             nt = pModule->pfnRead(&ctx, pb, cb, pcbRead, cbOffset);
             Statistics_CallEnd(STATISTICS_ID_PluginManager_Read, tmStart);
             return nt;
@@ -123,7 +123,7 @@ NTSTATUS PluginManager_Read(_In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR szModule,
     return VMMDLL_STATUS_FILE_INVALID;
 }
 
-NTSTATUS PluginManager_Write(_In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR szModule, _In_ LPSTR szPath, _In_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
+NTSTATUS PluginManager_Write(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszModule, _In_ LPWSTR wszPath, _In_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
 {
     QWORD tmStart = Statistics_CallStart();
     NTSTATUS nt;
@@ -134,8 +134,8 @@ NTSTATUS PluginManager_Write(_In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR szModule
             pModule = pModule->FLink;
             continue;
         }
-        if(pModule->pfnWrite && !_stricmp(szModule, pModule->szModuleName)) {
-            PluginManager_ContextInitialize(&ctx, pModule, pProcess, (szPath ? szPath : ""));
+        if(pModule->pfnWrite && !_wcsicmp(wszModule, pModule->wszModuleName)) {
+            PluginManager_ContextInitialize(&ctx, pModule, pProcess, (wszPath ? wszPath : L""));
             nt = pModule->pfnWrite(&ctx, pb, cb, pcbWrite, cbOffset);
             Statistics_CallEnd(STATISTICS_ID_PluginManager_Write, tmStart);
             return nt;
@@ -160,11 +160,11 @@ BOOL PluginManager_Notify(_In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DW
     return TRUE;
 }
 
-BOOL PluginManager_ModuleExists(_In_opt_ HMODULE hDLL, _In_opt_ LPSTR szModule) {
+BOOL PluginManager_ModuleExists(_In_opt_ HMODULE hDLL, _In_opt_ LPWSTR wszModule) {
     PPLUGIN_LISTENTRY pModule = (PPLUGIN_LISTENTRY)ctxVmm->pVmmVfsModuleList;
     while(pModule) {
         if(hDLL && (hDLL == pModule->hDLL)) { return TRUE; }
-        if(szModule && !_stricmp(szModule, pModule->szModuleName)) { return TRUE; }
+        if(wszModule && !_wcsicmp(wszModule, pModule->wszModuleName)) { return TRUE; }
         pModule = pModule->FLink;
     }
     return FALSE;
@@ -172,22 +172,17 @@ BOOL PluginManager_ModuleExists(_In_opt_ HMODULE hDLL, _In_opt_ LPSTR szModule) 
 
 BOOL PluginManager_Register(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo)
 {
-    const LPSTR RESERVED_NAMES[] = { "name", "pid", "ppid", "pmem", "map", "pml4", "vmem", "pml4-user", "win-eprocess", "win-entry", "win-peb", "win-peb32", "win-modules" };
     PPLUGIN_LISTENTRY pModule;
-    DWORD i;
     // 1: tests if module is valid
     if(!pRegInfo || (pRegInfo->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRegInfo->wVersion > VMMDLL_PLUGIN_REGINFO_VERSION)) { return FALSE; }
-    if(!pRegInfo->reg_fn.pfnList || !pRegInfo->reg_info.szModuleName[0] || (strlen(pRegInfo->reg_info.szModuleName) > 31)) { return FALSE; }
-    if(PluginManager_ModuleExists(NULL, pRegInfo->reg_info.szModuleName)) { return FALSE; }
+    if(!pRegInfo->reg_fn.pfnList || !pRegInfo->reg_info.wszModuleName[0] || (wcslen(pRegInfo->reg_info.wszModuleName) > 31)) { return FALSE; }
+    if(PluginManager_ModuleExists(NULL, pRegInfo->reg_info.wszModuleName)) { return FALSE; }
     pModule = (PPLUGIN_LISTENTRY)LocalAlloc(LMEM_ZEROINIT, sizeof(PLUGIN_LISTENTRY));
     if(!pModule) { return FALSE; }
     if(!pRegInfo->reg_info.fRootModule && !pRegInfo->reg_info.fProcessModule) { return FALSE; }
-    for(i = 0; i < (sizeof(RESERVED_NAMES) / sizeof(LPSTR)); i++) {
-        if(!strcmp(pRegInfo->reg_info.szModuleName, RESERVED_NAMES[i])) { return FALSE; }
-    }
     // 2: register module
     pModule->hDLL = pRegInfo->hDLL;
-    strncpy_s(pModule->szModuleName, 32, pRegInfo->reg_info.szModuleName, 32);
+    wcsncpy_s(pModule->wszModuleName, 32, pRegInfo->reg_info.wszModuleName, 32);
     pModule->fRootModule = pRegInfo->reg_info.fRootModule;
     pModule->fProcessModule = pRegInfo->reg_info.fProcessModule;
     pModule->pfnList = pRegInfo->reg_fn.pfnList;
@@ -195,7 +190,7 @@ BOOL PluginManager_Register(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo)
     pModule->pfnWrite = pRegInfo->reg_fn.pfnWrite;
     pModule->pfnNotify = pRegInfo->reg_fn.pfnNotify;
     pModule->pfnClose = pRegInfo->reg_fn.pfnClose;
-    vmmprintfv("PluginManager: Loaded %s module '%s'.\n", (pModule->hDLL ? "native" : "built-in"), pModule->szModuleName);
+    vmmprintfv("PluginManager: Loaded %s module '%S'.\n", (pModule->hDLL ? "native" : "built-in"), pModule->wszModuleName);
     pModule->FLink = (PPLUGIN_LISTENTRY)ctxVmm->pVmmVfsModuleList;
     ctxVmm->pVmmVfsModuleList = pModule;
     return TRUE;

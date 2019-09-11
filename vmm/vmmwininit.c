@@ -10,6 +10,7 @@
 #include "vmmwin.h"
 #include "pe.h"
 #include "util.h"
+#include "vmmwinreg.h"
 
 /*
 * Scan a page table hierarchy between virtual addresses between vaMin and vaMax
@@ -155,7 +156,7 @@ cleanup:
 */
 DWORD VmmWinInit_FindNtosScan32(_In_ PVMM_PROCESS pSystemProcess)
 {
-    DWORD o, p;
+    DWORD o, p, vaNtosTry = 0;
     PBYTE pb;
     CHAR szModuleName[MAX_PATH] = { 0 };
     if(!(pb = LocalAlloc(LMEM_ZEROINIT, 0x04000000))) { return 0; }
@@ -166,18 +167,21 @@ DWORD VmmWinInit_FindNtosScan32(_In_ PVMM_PROCESS pSystemProcess)
         }
         // check for (1) MZ header, (2) POOLCODE section, (3) ntoskrnl.exe module name
         if(*(PWORD)(pb + p) != 0x5a4d) { continue; } // MZ header
-        for(o = 0; o < 0x1000; o += 8) {
+        for(o = 0; o < 0x800; o += 8) {
             if(*(PQWORD)(pb + p + o) == 0x45444F434C4F4F50) { // POOLCODE
-                PE_GetModuleNameEx(pSystemProcess, 0x80000000ULL + p, FALSE, pb + p, szModuleName, _countof(szModuleName), NULL);
-                if(!_stricmp(szModuleName, "ntoskrnl.exe")) {
-                    LocalFree(pb);
-                    return 0x80000000 + p;
+                if(PE_GetModuleNameEx(pSystemProcess, 0x80000000ULL + p, FALSE, pb + p, szModuleName, _countof(szModuleName), NULL)) {
+                    if(!_stricmp(szModuleName, "ntoskrnl.exe")) {
+                        LocalFree(pb);
+                        return 0x80000000 + p;
+                    }
+                } else {
+                    vaNtosTry = 0x80000000 + p;
                 }
             }
         }
     }
     LocalFree(pb);
-    return 0;
+    return vaNtosTry;      // on fail try return NtosTry derived from MZ + POOLCODE only.
 }
 
 /*
@@ -457,8 +461,19 @@ fail:
 */
 VOID VmmWinInit_VersionNumber(_In_ PVMM_PROCESS pProcessSMSS)
 {
+    BOOL fRead;
     BYTE pbPEB[0x130];
-    if(VmmRead(pProcessSMSS, pProcessSMSS->win.vaPEB, pbPEB, 0x130)) {
+    PVMM_PROCESS pObProcess = NULL;
+    fRead = VmmRead(pProcessSMSS, pProcessSMSS->win.vaPEB, pbPEB, 0x130);
+    if(!fRead) { // failed (paging?) - try to read from crss.exe / lsass.exe / winlogon.exe
+        while((pObProcess = VmmProcessGetNext(pObProcess, 0))) {
+            if(!strcmp("crss.exe", pObProcess->szName) || !strcmp("lsass.exe", pObProcess->szName) || !strcmp("winlogon.exe", pObProcess->szName)) {
+                if((fRead = VmmRead(pObProcess, pObProcess->win.vaPEB, pbPEB, 0x130))) { break; }
+            }
+        }
+        Ob_DECREF_NULL(&pObProcess);
+    }
+    if(fRead) {
         if(ctxVmm->f32) {
             ctxVmm->kernel.dwVersionMajor = *(PDWORD)(pbPEB + 0x0a4);
             ctxVmm->kernel.dwVersionMinor = *(PDWORD)(pbPEB + 0x0a8);
@@ -472,6 +487,47 @@ VOID VmmWinInit_VersionNumber(_In_ PVMM_PROCESS pProcessSMSS)
 }
 
 /*
+* Helper fucntion to VmmWinInit_TryInitialize. Tries to locate the EPROCESS of
+* the SYSTEM process and return it.
+* -- pSystemProcess
+* -- return
+*/
+QWORD VmmWinInit_FindSystemEPROCESS(_In_ PVMM_PROCESS pSystemProcess)
+{
+    BOOL f32 = ctxVmm->f32;
+    IMAGE_SECTION_HEADER SectionHeader;
+    BYTE pbALMOSTRO[0x80], pbSYSTEM[0x300];
+    QWORD i, vaPsInitialSystemProcess, vaSystemEPROCESS;
+    // 1: try locate System EPROCESS by PsInitialSystemProcess exported symbol (works on all win versions)
+    vaPsInitialSystemProcess = PE_GetProcAddress(pSystemProcess, ctxVmm->kernel.vaBase, "PsInitialSystemProcess");
+    if(VmmRead(pSystemProcess, vaPsInitialSystemProcess, (PBYTE)& vaSystemEPROCESS, 8)) {
+        if((VMM_MEMORYMODEL_X86 == ctxVmm->tpMemoryModel) || (VMM_MEMORYMODEL_X86PAE == ctxVmm->tpMemoryModel)) {
+            vaSystemEPROCESS &= 0xffffffff;
+        }
+        pSystemProcess->win.vaEPROCESS = vaSystemEPROCESS;
+        vmmprintfvv_fn("INFO: PsInitialSystemProcess located at %016llx.\n", vaPsInitialSystemProcess);
+        goto success;
+    }
+    // 2: fail - paging? (or not windows) - this should ideally not happen - but it happens rarely...
+    //    try scan beginning of ALMOSTRO section for pointers and validate (working on pre-win10 only)
+    if(!PE_SectionGetFromName(pSystemProcess, ctxVmm->kernel.vaBase, "ALMOSTRO", &SectionHeader)) { return 0; }
+    if(!VmmRead(pSystemProcess, ctxVmm->kernel.vaBase + SectionHeader.VirtualAddress, pbALMOSTRO, sizeof(pbALMOSTRO))) { return 0; }
+    for(i = 0; i < sizeof(pbALMOSTRO); i += f32 ? 4 : 8) {
+        vaSystemEPROCESS = f32 ? *(PDWORD)(pbALMOSTRO + i) : *(PQWORD)(pbALMOSTRO + i);
+        if(f32 ? VMM_KADDR32_8(vaSystemEPROCESS) : VMM_KADDR64_16(vaSystemEPROCESS)) {
+            if(VmmRead(pSystemProcess, vaSystemEPROCESS, pbSYSTEM, sizeof(pbSYSTEM))) {
+                if(f32 && ((*(PDWORD)(pbSYSTEM + 0x18) & ~0xf) == ctxVmm->kernel.paDTB)) { goto success; }      // 32-bit EPROCESS DTB at fixed offset
+                if(!f32 && ((*(PQWORD)(pbSYSTEM + 0x28) & ~0xf) == ctxVmm->kernel.paDTB)) { goto success; }     // 64-bit EPROCESS DTB at fixed offset
+            }
+        }
+    }
+    return 0;
+success:
+    vmmprintfvv_fn("INFO: EPROCESS located at %016llx.\n", vaSystemEPROCESS);
+    return vaSystemEPROCESS;
+}
+
+/*
 * Try initialize the VMM from scratch with new WINDOWS support.
 * -- paDTBOpt
 * -- return
@@ -479,7 +535,6 @@ VOID VmmWinInit_VersionNumber(_In_ PVMM_PROCESS pProcessSMSS)
 BOOL VmmWinInit_TryInitialize(_In_opt_ QWORD paDTBOpt)
 {
     PVMM_PROCESS pObSystemProcess = NULL, pObProcess = NULL;
-    QWORD vaPsInitialSystemProcess, vaSystemEPROCESS;
     // Fetch Directory Base (DTB (PML4)) and initialize Memory Model.
     if(paDTBOpt) {
         if(!VmmWinInit_DTB_Validate(paDTBOpt)) {
@@ -505,17 +560,11 @@ BOOL VmmWinInit_TryInitialize(_In_opt_ QWORD paDTBOpt)
     }
     vmmprintfvv_fn("INFO: NTOS located at: %016llx.\n", ctxVmm->kernel.vaBase);
     // Locate System EPROCESS
-    vaPsInitialSystemProcess = PE_GetProcAddress(pObSystemProcess, ctxVmm->kernel.vaBase, "PsInitialSystemProcess");
-    if(!VmmRead(pObSystemProcess, vaPsInitialSystemProcess, (PBYTE)&vaSystemEPROCESS, 8)) {
-        vmmprintfv("VmmWinInit_TryInitialize: Initialization Failed. Unable to locate EPROCESS. #4\n");
+    pObSystemProcess->win.vaEPROCESS = VmmWinInit_FindSystemEPROCESS(pObSystemProcess);
+    if(!pObSystemProcess->win.vaEPROCESS) {
+        vmmprintfv_fn("Initialization Failed. Unable to locate EPROCESS. #4\n");
         goto fail;
     }
-    if((VMM_MEMORYMODEL_X86 == ctxVmm->tpMemoryModel) || (VMM_MEMORYMODEL_X86PAE == ctxVmm->tpMemoryModel)) {
-        vaSystemEPROCESS &= 0xffffffff;
-    }
-    pObSystemProcess->win.vaEPROCESS = vaSystemEPROCESS;
-    vmmprintfvv_fn("INFO: PsInitialSystemProcess located at %016llx.\n", vaPsInitialSystemProcess);
-    vmmprintfvv_fn("INFO: EPROCESS located at %016llx.\n", vaSystemEPROCESS);
     // Enumerate processes
     if(!VmmWin_EnumerateEPROCESS(pObSystemProcess, TRUE)) {
         vmmprintfv("VmmWinInit: Initialization Failed. Unable to walk EPROCESS. #5\n");
@@ -541,6 +590,7 @@ BOOL VmmWinInit_TryInitialize(_In_opt_ QWORD paDTBOpt)
             }
         }
     }
+    VmmWinReg_Initialize();
     // return
     vmmprintf(
         "Initialized %i-bit Windows %i.%i.%i\n",

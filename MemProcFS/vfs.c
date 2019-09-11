@@ -60,7 +60,7 @@ VOID VfsFileList_Free(_Inout_ PVFS_FILELIST pFileList)
     }
 }
 
-VOID VfsFileList_AddDirectoryFileInternal(_Inout_ PVFS_FILELIST pFileList, _In_ DWORD dwFileAttributes, _In_ FILETIME ftCreationTime, _In_ FILETIME ftLastAccessTime, _In_ FILETIME ftLastWriteTime, _In_ DWORD nFileSizeHigh, _In_ DWORD nFileSizeLow, _In_ LPSTR szName)
+VOID VfsFileList_AddDirectoryFileInternal(_Inout_ PVFS_FILELIST pFileList, _In_ DWORD dwFileAttributes, _In_ FILETIME ftCreationTime, _In_ FILETIME ftLastAccessTime, _In_ FILETIME ftLastWriteTime, _In_ DWORD nFileSizeHigh, _In_ DWORD nFileSizeLow, _In_opt_ LPSTR szName, _In_opt_ LPWSTR wszName)
 {
     DWORD i = 0;
     PWIN32_FIND_DATAW pFindData;
@@ -84,43 +84,54 @@ VOID VfsFileList_AddDirectoryFileInternal(_Inout_ PVFS_FILELIST pFileList, _In_ 
     pFindData->ftLastWriteTime = ftLastWriteTime;
     pFindData->nFileSizeHigh = nFileSizeHigh;
     pFindData->nFileSizeLow = nFileSizeLow;
-    while(i < MAX_PATH && szName[i]) {
-        pFindData->cFileName[i] = szName[i];
-        i++;
+    if(szName) {
+        while(i < MAX_PATH && szName[i]) {
+            pFindData->cFileName[i] = szName[i];
+            i++;
+        }
+    } else if(wszName) {
+        while(i < MAX_PATH && wszName[i]) {
+            pFindData->cFileName[i] = wszName[i];
+            i++;
+        }
     }
-    pFindData->cFileName[i] = 0;
+    pFindData->cFileName[min(i, MAX_PATH - 1)] = 0;
 }
 
-VOID VfsFileList_AddFile(_Inout_ HANDLE hFileList, _In_ LPSTR szName, _In_ QWORD cb, _In_ PVOID pvReserved)
+VOID VfsFileList_AddFile(_Inout_ HANDLE hFileList, _In_opt_ LPSTR szName, _In_opt_ LPWSTR wszName, _In_ QWORD cb, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
 {
     PVFS_FILELIST pFileList2 = (PVFS_FILELIST)hFileList;
+    BOOL fExInfo = pExInfo && (pExInfo->dwVersion == VMMDLL_VFS_FILELIST_EXINFO_VERSION);
     if(pFileList2 && (pFileList2->magic == VFS_CONFIG_FILELIST_MAGIC)) {
         VfsFileList_AddDirectoryFileInternal(
             pFileList2,
-            FILE_ATTRIBUTE_NOT_CONTENT_INDEXED,
-            ctxVfs->ftDefaultTime,
-            ctxVfs->ftDefaultTime,
-            ctxVfs->ftDefaultTime,
+            FILE_ATTRIBUTE_NOT_CONTENT_INDEXED | ((fExInfo && pExInfo->fCompressed) ? FILE_ATTRIBUTE_COMPRESSED : 0),
+            (fExInfo && pExInfo->qwCreationTime) ? pExInfo->ftCreationTime : ctxVfs->ftDefaultTime,
+            (fExInfo && pExInfo->qwLastAccessTime) ? pExInfo->ftLastAccessTime : ctxVfs->ftDefaultTime,
+            (fExInfo && pExInfo->qwLastWriteTime) ? pExInfo->ftLastWriteTime : ctxVfs->ftDefaultTime,
             (DWORD)(cb >> 32),
             (DWORD)cb,
-            szName
+            szName,
+            wszName
         );
     }
 }
 
-VOID VfsFileList_AddDirectory(_Inout_ HANDLE hFileList, _In_ LPSTR szName, _In_ PVOID pvReserved)
+VOID VfsFileList_AddDirectory(_Inout_ HANDLE hFileList, _In_ LPSTR szName, _In_opt_ LPWSTR wszName, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
 {
     PVFS_FILELIST pFileList2 = (PVFS_FILELIST)hFileList;
+    BOOL fExInfo = pExInfo && (pExInfo->dwVersion == VMMDLL_VFS_FILELIST_EXINFO_VERSION);
     if(pFileList2 && (pFileList2->magic == VFS_CONFIG_FILELIST_MAGIC)) {
         VfsFileList_AddDirectoryFileInternal(
             pFileList2,
-            FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_NOT_CONTENT_INDEXED,
-            ctxVfs->ftDefaultTime,
-            ctxVfs->ftDefaultTime,
-            ctxVfs->ftDefaultTime,
+            FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_NOT_CONTENT_INDEXED | ((fExInfo && pExInfo->fCompressed) ? FILE_ATTRIBUTE_COMPRESSED : 0),
+            (fExInfo && pExInfo->qwCreationTime) ? pExInfo->ftCreationTime : ctxVfs->ftDefaultTime,
+            (fExInfo && pExInfo->qwLastAccessTime) ? pExInfo->ftLastAccessTime : ctxVfs->ftDefaultTime,
+            (fExInfo && pExInfo->qwLastWriteTime) ? pExInfo->ftLastWriteTime : ctxVfs->ftDefaultTime,
             0,
             0,
-            szName
+            szName,
+            wszName
         );
     }
 }
@@ -211,7 +222,7 @@ VOID VfsCacheDirectory_Put(_In_ LPCWSTR wcsDirectoryName, _In_ PVFS_FILELIST pFi
 {
     EnterCriticalSection(&ctxVfs->CacheDirectoryLock);
     ctxVfs->CacheDirectory[ctxVfs->CacheDirectoryIndex].qwExpireTickCount64 = GetTickCount64() + VMMVFS_CACHE_DIRECTORY_LIFETIME_PROC_MS;
-    wcscpy_s(ctxVfs->CacheDirectory[ctxVfs->CacheDirectoryIndex].wszDirectoryName, MAX_PATH, wcsDirectoryName);
+    wcsncpy_s(ctxVfs->CacheDirectory[ctxVfs->CacheDirectoryIndex].wszDirectoryName, MAX_PATH, wcsDirectoryName, _TRUNCATE);
     VfsFileList_Free(ctxVfs->CacheDirectory[ctxVfs->CacheDirectoryIndex].pFileList);
     ctxVfs->CacheDirectory[ctxVfs->CacheDirectoryIndex].pFileList = pFileList;
     ctxVfs->CacheDirectoryIndex = (ctxVfs->CacheDirectoryIndex + 1) % VMMVFS_CACHE_DIRECTORY_ENTRIES;
@@ -240,6 +251,7 @@ BOOL VfsListVmmDirectory(_In_ LPWSTR wszDirectoryName)
     PVFS_FILELIST pFileList = VfsFileList_Alloc(ctxVfs->ftDefaultTime);
     VMMDLL_VFS_FILELIST VfsFileList;
     if(!pFileList) { return FALSE; }
+    VfsFileList.dwVersion = VMMDLL_VFS_FILELIST_VERSION;
     VfsFileList.h = (HANDLE)pFileList;
     VfsFileList.pfnAddFile = VfsFileList_AddFile;
     VfsFileList.pfnAddDirectory = VfsFileList_AddDirectory;

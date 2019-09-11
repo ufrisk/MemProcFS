@@ -142,13 +142,13 @@ VOID LdrModules_Write_MemFile(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaMem, _In_
 /*
 * Helper write function - Write to the requested data directory file.
 */
-VOID LdrModules_Write_DirectoriesD(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MODULEMAP_ENTRY pModule, _In_ LPSTR szDirectory, _In_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
+VOID LdrModules_Write_DirectoriesD(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MODULEMAP_ENTRY pModule, _In_ LPWSTR wszDirectory, _In_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
 {
     DWORD i;
     IMAGE_DATA_DIRECTORY pDataDirectories[16];
     *pcbWrite = 0;
     for(i = 0; i < 16; i++) {
-        if(!strcmp(szDirectory, PE_DATA_DIRECTORIES[i])) {
+        if(!Util_wcsstrncmp((LPSTR)PE_DATA_DIRECTORIES[i], wszDirectory, 0)) {
             VmmWin_PE_DIRECTORY_DisplayBuffer(pProcess, pModule, NULL, 0, NULL, pDataDirectories);
             LdrModules_Write_MemFile(pProcess, pModule->BaseAddress + pDataDirectories[i].VirtualAddress, pDataDirectories[i].Size, pb, cb, pcbWrite, cbOffset);
         }
@@ -158,9 +158,12 @@ VOID LdrModules_Write_DirectoriesD(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MODULEM
 /*
 * Helper write function - Write to the requested section header file.
 */
-VOID LdrModules_Write_SectionsD(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MODULEMAP_ENTRY pModule, _In_ LPSTR szSection, _In_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
+VOID LdrModules_Write_SectionsD(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MODULEMAP_ENTRY pModule, _In_ LPWSTR wszSection, _In_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
 {
     IMAGE_SECTION_HEADER SectionHeader;
+    CHAR szSection[32];
+    CHAR chDefault = '_';
+    WideCharToMultiByte(CP_ACP, 0, wszSection, -1, szSection, sizeof(szSection), &chDefault, NULL);
     if(!PE_SectionGetFromName(pProcess, pModule->BaseAddress, szSection, &SectionHeader)) { *pcbWrite = 0;  return; }
     LdrModules_Write_MemFile(pProcess, pModule->BaseAddress + SectionHeader.VirtualAddress, SectionHeader.Misc.VirtualSize, pb, cb, pcbWrite, cbOffset);
 }
@@ -180,19 +183,20 @@ NTSTATUS LdrModules_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PBYTE pb, _In_ D
     CHAR _szBuf[MAX_PATH] = { 0 };
     PVMM_MODULEMAP_ENTRY pModule = NULL;
     PVMMOB_MODULEMAP pObModuleMap = NULL;
-    LPSTR szModuleName, szModuleSubPath;
+    WCHAR wszModuleName[32+1];
+    LPWSTR wszModuleSubPath;
     PVMM_PROCESS pProcess = (PVMM_PROCESS)ctx->pProcess;
     *pcbWrite = 0;
-    Util_PathSplit2(ctx->szPath, _szBuf, &szModuleName, &szModuleSubPath);
-    if(szModuleName[0] && szModuleSubPath[0] && VmmProc_ModuleMapGetSingleEntry(pProcess, szModuleName, &pObModuleMap, &pModule)) {
-        if(!_stricmp(szModuleSubPath, "pefile.dll")) {
+    wszModuleSubPath = Util_PathSplit2_ExWCHAR(ctx->wszPath, wszModuleName, _countof(wszModuleName));
+    if(wszModuleName[0] && wszModuleSubPath[0] && VmmProc_ModuleMapGetSingleEntry(pProcess, wszModuleName, &pObModuleMap, &pModule)) {
+        if(!_wcsicmp(wszModuleSubPath, L"pefile.dll")) {
             PE_FileRaw_Write(pProcess, pModule->BaseAddress, pb, cb, pcbWrite, (DWORD)cbOffset);
         }
-        if(!_strnicmp(szModuleSubPath, "sectionsd\\", 10)) {
-            LdrModules_Write_SectionsD(pProcess, pModule, szModuleSubPath + 10, pb, cb, pcbWrite, cbOffset);
+        if(!_wcsnicmp(wszModuleSubPath, L"sectionsd\\", 10)) {
+            LdrModules_Write_SectionsD(pProcess, pModule, wszModuleSubPath + 10, pb, cb, pcbWrite, cbOffset);
         }
-        if(!_strnicmp(szModuleSubPath, "directoriesd\\", 13)) {
-            LdrModules_Write_DirectoriesD(pProcess, pModule, szModuleSubPath + 13, pb, cb, pcbWrite, cbOffset);
+        if(!_wcsnicmp(wszModuleSubPath, L"directoriesd\\", 13)) {
+            LdrModules_Write_DirectoriesD(pProcess, pModule, wszModuleSubPath + 13, pb, cb, pcbWrite, cbOffset);
         }
         Ob_DECREF(pObModuleMap);
     }
@@ -214,10 +218,13 @@ NTSTATUS LdrModules_Read_MemFile(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaMem, _
 /*
 * Helper read function - Read the requested data directory file.
 */
-NTSTATUS LdrModules_Read_DirectoriesD(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MODULEMAP_ENTRY pModule, _In_ LPSTR szDirectory, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS LdrModules_Read_DirectoriesD(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MODULEMAP_ENTRY pModule, _In_ LPWSTR wszDirectory, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     DWORD i;
+    CHAR chDefault = '_';
+    CHAR szDirectory[32];
     IMAGE_DATA_DIRECTORY pDataDirectories[16];
+    WideCharToMultiByte(CP_ACP, 0, wszDirectory, -1, szDirectory, sizeof(szDirectory), &chDefault, NULL);
     for(i = 0; i < 16; i++) {
         if(!strcmp(szDirectory, PE_DATA_DIRECTORIES[i])) {
             VmmWin_PE_DIRECTORY_DisplayBuffer(pProcess, pModule, NULL, 0, NULL, pDataDirectories);
@@ -230,59 +237,62 @@ NTSTATUS LdrModules_Read_DirectoriesD(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MODU
 /*
 * Helper read function - Read the requested section header file.
 */
-NTSTATUS LdrModules_Read_SectionsD(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MODULEMAP_ENTRY pModule, _In_ LPSTR szSection, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS LdrModules_Read_SectionsD(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MODULEMAP_ENTRY pModule, _In_ LPWSTR wszSection, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
+    CHAR szSection[32];
     IMAGE_SECTION_HEADER SectionHeader;
+    CHAR chDefault = '_';
+    WideCharToMultiByte(CP_ACP, 0, wszSection, -1, szSection, sizeof(szSection), &chDefault, NULL);
     if(!PE_SectionGetFromName(pProcess, pModule->BaseAddress, szSection, &SectionHeader)) { return VMMDLL_STATUS_FILE_INVALID; }
     return LdrModules_Read_MemFile(pProcess, pModule->BaseAddress + SectionHeader.VirtualAddress, SectionHeader.Misc.VirtualSize, pb, cb, pcbRead, cbOffset);
 }
 
-NTSTATUS LdrModules_Read_ModuleSubFile(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PVMM_MODULEMAP_ENTRY pModule, _In_ LPSTR szPath, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS LdrModules_Read_ModuleSubFile(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PVMM_MODULEMAP_ENTRY pModule, _In_ LPWSTR wszPath, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt;
     DWORD cbBuffer;
     BYTE pbBuffer[0x800];
     POBLDRMODULES_CACHE_ENTRY pObCacheEntry = NULL;
     PVMM_PROCESS pProcess = (PVMM_PROCESS)ctx->pProcess;
-    if(!_stricmp(szPath, "base")) {
+    if(!_wcsicmp(wszPath, L"base")) {
         return Util_VfsReadFile_FromQWORD(pModule->BaseAddress, pb, cb, pcbRead, cbOffset, FALSE);
     }
-    if(!_stricmp(szPath, "entry")) {
+    if(!_wcsicmp(wszPath, L"entry")) {
         return Util_VfsReadFile_FromQWORD(pModule->EntryPoint, pb, cb, pcbRead, cbOffset, FALSE);
     }
-    if(!_stricmp(szPath, "size")) {
+    if(!_wcsicmp(wszPath, L"size")) {
         return Util_VfsReadFile_FromDWORD(pModule->SizeOfImage, pb, cb, pcbRead, cbOffset, FALSE);
     }
-    if(!_stricmp(szPath, "directories")) {
+    if(!_wcsicmp(wszPath, L"directories")) {
         VmmWin_PE_DIRECTORY_DisplayBuffer(ctx->pProcess, pModule, pbBuffer, 0x800, &cbBuffer, NULL);
         return Util_VfsReadFile_FromPBYTE(pbBuffer, cbBuffer, pb, cb, pcbRead, cbOffset);
     }
-    if(!_stricmp(szPath, "export")) {
+    if(!_wcsicmp(wszPath, L"export")) {
         pObCacheEntry = LdrModule_GetEAT(ctx, pModule);
         if(!pObCacheEntry) { return VMMDLL_STATUS_FILE_INVALID; }
         nt = Util_VfsReadFile_FromPBYTE(pObCacheEntry->pb, pObCacheEntry->cb, pb, cb, pcbRead, cbOffset);
         Ob_DECREF(pObCacheEntry);
         return nt;
     }
-    if(!_stricmp(szPath, "import")) {
+    if(!_wcsicmp(wszPath, L"import")) {
         pObCacheEntry = LdrModule_GetIAT(ctx, pModule);
         if(!pObCacheEntry) { return VMMDLL_STATUS_FILE_INVALID; }
         nt = Util_VfsReadFile_FromPBYTE(pObCacheEntry->pb, pObCacheEntry->cb, pb, cb, pcbRead, cbOffset);
         Ob_DECREF(pObCacheEntry);
         return nt;
     }
-    if(!_stricmp(szPath, "pefile.dll")) {
+    if(!_wcsicmp(wszPath, L"pefile.dll")) {
         return PE_FileRaw_Read(pProcess, pModule->BaseAddress, pb, cb, pcbRead, (DWORD)cbOffset) ? VMMDLL_STATUS_SUCCESS : VMMDLL_STATUS_FILE_INVALID;
     }
-    if(!_stricmp(szPath, "sections")) {
+    if(!_wcsicmp(wszPath, L"sections")) {
         VmmWin_PE_SECTION_DisplayBuffer(ctx->pProcess, pModule, pbBuffer, 0x800, &cbBuffer, NULL, NULL);
         return Util_VfsReadFile_FromPBYTE(pbBuffer, cbBuffer, pb, cb, pcbRead, cbOffset);
     }
-    if(!_strnicmp(szPath, "sectionsd\\", 10)) {
-        return LdrModules_Read_SectionsD(pProcess, pModule, szPath + 10, pb, cb, pcbRead, cbOffset);
+    if(!_wcsnicmp(wszPath, L"sectionsd\\", 10)) {
+        return LdrModules_Read_SectionsD(pProcess, pModule, wszPath + 10, pb, cb, pcbRead, cbOffset);
     }
-    if(!_strnicmp(szPath, "directoriesd\\", 13)) {
-        return LdrModules_Read_DirectoriesD(pProcess, pModule, szPath + 13, pb, cb, pcbRead, cbOffset);
+    if(!_wcsnicmp(wszPath, L"directoriesd\\", 13)) {
+        return LdrModules_Read_DirectoriesD(pProcess, pModule, wszPath + 13, pb, cb, pcbRead, cbOffset);
     }
     return VMMDLL_STATUS_FILE_INVALID;
 }
@@ -300,14 +310,14 @@ NTSTATUS LdrModules_Read_ModuleSubFile(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PVM
 NTSTATUS LdrModules_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt;
-    CHAR _szBuf[MAX_PATH] = { 0 };
-    LPSTR szModuleName, szModuleSubPath;
+    WCHAR wszModuleName[32 + 1];
+    LPWSTR wszModuleSubPath;
     PVMM_MODULEMAP_ENTRY pModule = NULL;
     PVMMOB_MODULEMAP pObModuleMap = NULL;
-    Util_PathSplit2(ctx->szPath, _szBuf, &szModuleName, &szModuleSubPath);
+    wszModuleSubPath = Util_PathSplit2_ExWCHAR(ctx->wszPath, wszModuleName, _countof(wszModuleName));
     *pcbRead = 0;
-    if(szModuleName[0] && szModuleSubPath[0] && VmmProc_ModuleMapGetSingleEntry((PVMM_PROCESS)ctx->pProcess, szModuleName, &pObModuleMap, &pModule)) {
-        nt = LdrModules_Read_ModuleSubFile(ctx, pModule, szModuleSubPath, pb, cb, pcbRead, cbOffset);
+    if(wszModuleName[0] && wszModuleSubPath[0] && VmmProc_ModuleMapGetSingleEntry((PVMM_PROCESS)ctx->pProcess, wszModuleName, &pObModuleMap, &pModule)) {
+        nt = LdrModules_Read_ModuleSubFile(ctx, pModule, wszModuleSubPath, pb, cb, pcbRead, cbOffset);
         Ob_DECREF(pObModuleMap);
         return nt;
     }
@@ -325,8 +335,9 @@ NTSTATUS LdrModules_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ D
 BOOL LdrModules_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 {
     DWORD c, i;
-    CHAR _szBuf[MAX_PATH] = { 0 };
-    LPSTR szPath1, szPath2;
+    CHAR szSectionName[9] = { 0 };
+    WCHAR wszPath1[32+1];
+    LPWSTR wszPath2;
     PVMMOB_MODULEMAP pObModuleMap = NULL;
     PVMM_MODULEMAP_ENTRY pModule = NULL;
     PIMAGE_SECTION_HEADER pSections = NULL;
@@ -334,23 +345,23 @@ BOOL LdrModules_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
     PVMM_PROCESS pProcess = (PVMM_PROCESS)ctx->pProcess;
     if(!VmmProc_ModuleMapGet(pProcess, &pObModuleMap)) { goto fail; }
     // modules root directory -> add directory per DLL
-    if(!ctx->szPath[0]) {
+    if(!ctx->wszPath[0]) {
         for(i = 0; i < pObModuleMap->cMap; i++) {
             VMMDLL_VfsList_AddDirectory(pFileList, pObModuleMap->pMap[i].szName);
         }
         goto success;
     }
     // individual module directory -> list files
-    Util_PathSplit2(ctx->szPath, _szBuf, &szPath1, &szPath2);
+    wszPath2 = Util_PathSplit2_ExWCHAR(ctx->wszPath, wszPath1, _countof(wszPath1));
     for(i = 0; i < pObModuleMap->cMap; i++) {
-        if(0 == strncmp(szPath1, pObModuleMap->pMap[i].szName, 32)) {
+        if(0 == Util_wcsstrncmp(pObModuleMap->pMap[i].szName, wszPath1, 32)) {
             pModule = pObModuleMap->pMap + i;
             break;
         }
     }
     if(!pModule) { goto fail; }
     // module-specific 'root' directory
-    if(!szPath2[0]) {
+    if(!wszPath2[0]) {
         VmmWin_PE_SetSizeSectionIATEAT_DisplayBuffer(ctx->pProcess, pObModuleMap->pMap + i);
         VMMDLL_VfsList_AddFile(pFileList, "base", 16);
         VMMDLL_VfsList_AddFile(pFileList, "entry", 16);
@@ -365,20 +376,19 @@ BOOL LdrModules_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
         goto success;
     }
     // module-specific 'sectiond' directory
-    if(szPath2[0] && !strcmp(szPath2, "sectionsd")) {
-        _szBuf[8] = 0;
+    if(wszPath2[0] && !wcscmp(wszPath2, L"sectionsd")) {
         c = PE_SectionGetNumberOf(pProcess, pModule->BaseAddress);
         if(!(pSections = LocalAlloc(0, c * sizeof(IMAGE_SECTION_HEADER)))) { goto fail; }
         VmmWin_PE_SECTION_DisplayBuffer(pProcess, pModule, NULL, 0, NULL, &c, pSections);
         for(i = 0; i < c; i++) {
-            *(PQWORD)_szBuf = *(PQWORD)pSections[i].Name;
-            VMMDLL_VfsList_AddFile(pFileList, _szBuf, pSections[i].Misc.VirtualSize);
+            memcpy(szSectionName, pSections[i].Name, 8);
+            VMMDLL_VfsList_AddFile(pFileList, szSectionName, pSections[i].Misc.VirtualSize);
         }
         LocalFree(pSections);
         goto success;
     }
     // module-specific 'directoriesd' directory
-    if(szPath2[0] && !strcmp(szPath2, "directoriesd")) {
+    if(wszPath2[0] && !wcscmp(wszPath2, L"directoriesd")) {
         ZeroMemory(pDataDirectories, 16 * sizeof(IMAGE_DATA_DIRECTORY));
         VmmWin_PE_DIRECTORY_DisplayBuffer(pProcess, pModule, NULL, 0, NULL, pDataDirectories);
         for(i = 0; i < 16; i++) {
@@ -406,7 +416,7 @@ VOID M_LdrModules_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if((pRI->tpSystem != VMM_SYSTEM_WINDOWS_X64) && (pRI->tpSystem != VMM_SYSTEM_WINDOWS_X86)) { return; }
-    strcpy_s(pRI->reg_info.szModuleName, 32, "modules");             // module name
+    wcscpy_s(pRI->reg_info.wszModuleName, 32, L"modules");           // module name
     pRI->reg_info.fProcessModule = TRUE;                             // module shows in process directory
     pRI->reg_fn.pfnList = LdrModules_List;                           // List function supported
     pRI->reg_fn.pfnRead = LdrModules_Read;                           // Read function supported

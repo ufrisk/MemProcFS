@@ -49,6 +49,20 @@ VMMPY_MEMORYMODEL_X64 =                 0x0003
 VMMPY_PLUGIN_EVENT_VERBOSITYCHANGE =    0x01
 VMMPY_PLUGIN_EVENT_TOTALREFRESH =       0x02
 
+# WINDOWS REGISTRY contants below:
+VMMPY_WINREG_NONE =                     0x00
+VMMPY_WINREG_SZ =                       0x01
+VMMPY_WINREG_EXPAND_SZ =                0x02
+VMMPY_WINREG_BINARY =                   0x03
+VMMPY_WINREG_DWORD =                    0x04
+VMMPY_WINREG_DWORD_BIG_ENDIAN =         0x05
+VMMPY_WINREG_LINK =                     0x06
+VMMPY_WINREG_MULTI_SZ =                 0x07
+VMMPY_WINREG_RESOURCE_LIST =            0x08
+VMMPY_WINREG_FULL_RESOURCE_DESCRIPTOR = 0x09
+VMMPY_WINREG_RESOURCE_REQUIREMENTS_LIST = 0x0A
+VMMPY_WINREG_QWORD =                    0x0B
+
 #------------------------------------------------------------------------------
 # VmmPy INITIALIZATION FUNCTIONALITY BELOW:
 #------------------------------------------------------------------------------
@@ -493,6 +507,36 @@ def VmmPy_WinReg_HiveWrite(va_hive, address, bytes_data):
     VmmPy_WinReg_HiveWrite(0xfffff800acb0000, 0x1000, b'\x00\x01\x02\x03')
     """
     VMMPYC_WinReg_HiveWrite(va_hive, address, bytes_data)
+
+
+
+def VmmPy_WinReg_KeyList(key):
+    """Retrieve sub-keys and associated values with the specified registry key.
+
+    Keyword arguments:
+    key -- str: path of registry key to list. May start with address of CMHIVE
+                in 0xhexadecimal format or HKLM.
+    return -- dict: of list of subkeys and list of values.
+    
+    Example:
+    VmmPy_WinReg_KeyList('HKLM\\HARDWARE') --> {'subkeys': [{'name': 'DEVICEMAP', 'time': 131877368614156304, 'time-str': '2018-11-26 20:14:21 UTC'}, ...], 'values': [...]}
+    """
+    return VMMPYC_WinReg_EnumKey(key)
+
+
+
+def VmmPy_WinReg_ValueRead(keyvalue):
+    """Read a registry value.
+
+    Keyword arguments:
+    keyvalue -- str: path of registry value to read. May start with address of
+                 CMHIVE in 0xhexadecimal format or HKLM.
+    return -- dict: of 'type' (value type as in VMMPY_WINREG_*) and 'data' (value data).
+    
+    Example:
+    VmmPy_WinReg_ValueRead('HKLM\\SYSTEM\\Setup\\SystemPartition') --> {'type': 1, 'data': b'\\\x00D\x00e\x00v\x00i\x00c\x00e\x00\\\x00H...'}
+    """
+    return VMMPYC_WinReg_QueryValue(keyvalue)
 
 
 

@@ -14,10 +14,37 @@
 //
 #include "ob.h"
 
-#define OB_VSET_IS_VALID(p)         (p && (p->ObHdr.Reserved.magic == OB_HEADER_MAGIC) && (p->ObHdr.Reserved.tag == 'VS'))
+#define OB_VSET_ENTRIES_DIRECTORY      0x100
+#define OB_VSET_ENTRIES_TABLE          0x80
+#define OB_VSET_ENTRIES_STORE          0x200
+
+typedef struct tdOB_VSET_TABLE_ENTRY {
+    PQWORD pValues;                 // ptr to QWORD[0x200]
+} OB_VSET_TABLE_ENTRY, *POB_VSET_TABLE_ENTRY;
+
+typedef struct tdOB_VSET_TABLE_DIRECTORY_ENTRY {
+    POB_VSET_TABLE_ENTRY pTable;    // ptr to OB_VSET_TABLE_ENTRY[0x20]
+} OB_VSET_TABLE_DIRECTORY_ENTRY, *POB_VSET_TABLE_DIRECTORY_ENTRY;
+
+typedef struct tdOB_VSET {
+    OB ObHdr;
+    SRWLOCK LockSRW;
+    DWORD c;
+    DWORD cHashMax;
+    DWORD cHashGrowThreshold;
+    BOOL fLargeMode;
+    PDWORD pHashMapLarge;
+    union {
+        WORD pHashMapSmall[0x400];
+        OB_VSET_TABLE_DIRECTORY_ENTRY pDirectory[OB_VSET_ENTRIES_DIRECTORY];
+    };
+    OB_VSET_TABLE_ENTRY pTable0[OB_VSET_ENTRIES_TABLE];
+    QWORD pStore00[OB_VSET_ENTRIES_STORE];
+} OB_VSET, *POB_VSET;
+
+#define OB_VSET_IS_VALID(p)         (p && (p->ObHdr._magic == OB_HEADER_MAGIC) && (p->ObHdr._tag == OB_TAG_CORE_VSET))
 #define TABLE_MAX_CAPACITY          VSET_ENTRIES_DIRECTORY * VSET_ENTRIES_TABLE * VSET_ENTRIES_STORE
 #define HASH_FUNCTION(v)            (13 * (v + _rotr16((WORD)v, 13) + _rotr((DWORD)v, 17) + _rotr64(v, 23)))
-//#define HASH_FUNCTION(v)            (v)
 
 #define OB_VSET_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(pvs, RetTp, RetValFail, fn) {    \
     if(!OB_VSET_IS_VALID(pvs)) { return RetValFail; }                                   \
@@ -58,6 +85,7 @@ VOID _ObVSet_ObCloseCallback(_In_ POB_VSET pObVSet)
                 LocalFree(pObVSet->pDirectory[iDirectory].pTable);
             }
         }
+        LocalFree(pObVSet->pHashMapLarge);
     } else {
         for(iTable = 1; iTable < OB_VSET_ENTRIES_TABLE; iTable++) {
             if(!pObVSet->pTable0[iTable].pValues) { break; }
@@ -75,7 +103,7 @@ VOID _ObVSet_ObCloseCallback(_In_ POB_VSET pObVSet)
 */
 POB_VSET ObVSet_New()
 {
-    POB_VSET pObVSet = Ob_Alloc('VS', LMEM_ZEROINIT, sizeof(OB_VSET) - sizeof(OB), _ObVSet_ObCloseCallback, NULL);
+    POB_VSET pObVSet = Ob_Alloc(OB_TAG_CORE_VSET, LMEM_ZEROINIT, sizeof(OB_VSET), _ObVSet_ObCloseCallback, NULL);
     if(!pObVSet) { return NULL; }
     InitializeSRWLock(&pObVSet->LockSRW);
     pObVSet->c = 1;     // item zero is reserved - hence the initialization of count to 1
@@ -126,9 +154,9 @@ VOID _ObVSet_InsertHash(_In_ POB_VSET pvs, _In_ DWORD iValue)
 {
     DWORD iHash;
     DWORD dwHashMask = pvs->cHashMax - 1;
-    QWORD qwValue = _ObVSet_GetValueFromIndex(pvs, iValue);
-    if(!qwValue) { return; }
-    iHash = HASH_FUNCTION(_ObVSet_GetValueFromIndex(pvs, iValue)) & dwHashMask;
+    QWORD qwValueToHash = _ObVSet_GetValueFromIndex(pvs, iValue);
+    if(!qwValueToHash) { return; }
+    iHash = HASH_FUNCTION(qwValueToHash) & dwHashMask;
     while(_ObVSet_GetIndexFromHash(pvs, iHash)) {
         iHash = (iHash + 1) & dwHashMask;
     }
@@ -138,26 +166,23 @@ VOID _ObVSet_InsertHash(_In_ POB_VSET pvs, _In_ DWORD iValue)
 VOID _ObVSet_RemoveHash(_In_ POB_VSET pvs, _In_ DWORD iHash)
 {
     DWORD dwHashMask = pvs->cHashMax - 1;
-    DWORD iNextHash, iNextValue, iNextHashPrefered;
-    if(pvs->fLargeMode) {
-        pvs->pHashMapLarge[iHash] = 0;
-    } else {
-        pvs->pHashMapSmall[iHash] = 0;
-    }
+    DWORD iNextHash, iNextEntry, iNextHashPreferred;
+    // clear existing hash entry
+    _ObVSet_SetHashIndex(pvs, iHash, 0);
     // re-hash any entries following
     iNextHash = iHash;
     while(TRUE) {
         iNextHash = (iNextHash + 1) & dwHashMask;
-        iNextValue = _ObVSet_GetIndexFromHash(pvs, iNextHash);
-        if(0 == iNextValue) { return; }
-        iNextHashPrefered = HASH_FUNCTION(_ObVSet_GetValueFromIndex(pvs, iNextValue)) & dwHashMask;
-        if(iNextHash == iNextHashPrefered) { return; }
+        iNextEntry = _ObVSet_GetIndexFromHash(pvs, iNextHash);
+        if(0 == iNextEntry) { return; }
+        iNextHashPreferred = HASH_FUNCTION(_ObVSet_GetValueFromIndex(pvs, iNextEntry)) & dwHashMask;
+        if(iNextHash == iNextHashPreferred) { return; }
         if(pvs->fLargeMode) {
             pvs->pHashMapLarge[iNextHash] = 0;
         } else {
             pvs->pHashMapSmall[iNextHash] = 0;
         }
-        _ObVSet_InsertHash(pvs, iNextValue);
+        _ObVSet_InsertHash(pvs, iNextEntry);
     }
 }
 
@@ -180,7 +205,7 @@ BOOL _ObVSet_GetIndexFromValue(_In_ POB_VSET pvs, _In_ QWORD v, _Out_opt_ PDWORD
     }
 }
 
-BOOL _ObVSet_Exists(_In_ POB_VSET pvs, _In_ QWORD value)
+inline BOOL _ObVSet_Exists(_In_ POB_VSET pvs, _In_ QWORD value)
 {
     return _ObVSet_GetIndexFromValue(pvs, value, NULL, NULL);
 }
@@ -279,7 +304,10 @@ VOID ObVSet_Clear(_In_opt_ POB_VSET pvs)
 {
     if(!OB_VSET_IS_VALID(pvs) || (pvs->c <= 1)) { return; }
     AcquireSRWLockExclusive(&pvs->LockSRW);
-    if(pvs->c <= 1) { return; }
+    if(pvs->c <= 1) {
+        ReleaseSRWLockExclusive(&pvs->LockSRW);
+        return;
+    }
     if(pvs->fLargeMode) {
         ZeroMemory(pvs->pHashMapLarge, pvs->cHashMax * sizeof(DWORD));
     } else {
@@ -323,16 +351,17 @@ _Success_(return)
 BOOL _ObVSet_Grow(_In_ POB_VSET pvs)
 {
     DWORD iValue;
+    PDWORD pdwNewAllocHashMap;
+    if(!(pdwNewAllocHashMap = LocalAlloc(LMEM_ZEROINIT, 2 * sizeof(DWORD) * pvs->cHashMax))) { return FALSE; }
     if(!pvs->fLargeMode) {
         ZeroMemory(pvs->pDirectory, OB_VSET_ENTRIES_DIRECTORY * sizeof(OB_VSET_TABLE_DIRECTORY_ENTRY));
         pvs->pDirectory[0].pTable = pvs->pTable0;
         pvs->fLargeMode = TRUE;
     }
-    LocalFree(pvs->pHashMapLarge);
-    pvs->pHashMapLarge = LocalAlloc(LMEM_ZEROINIT, 2 * sizeof(DWORD) * pvs->cHashMax);
-    if(!pvs->pHashMapLarge) { return FALSE; }
     pvs->cHashMax *= 2;
     pvs->cHashGrowThreshold *= 2;
+    LocalFree(pvs->pHashMapLarge);
+    pvs->pHashMapLarge = pdwNewAllocHashMap;
     for(iValue = 1; iValue < pvs->c; iValue++) {
         _ObVSet_InsertHash(pvs, iValue);
     }
@@ -340,7 +369,7 @@ BOOL _ObVSet_Grow(_In_ POB_VSET pvs)
 }
 
 _Success_(return)
-BOOL _ObVSet_Put(_In_ POB_VSET pvs, _In_ QWORD value)
+BOOL _ObVSet_Push(_In_ POB_VSET pvs, _In_ QWORD value)
 {
     POB_VSET_TABLE_ENTRY pTable = NULL;
     DWORD iValue = pvs->c;
@@ -370,7 +399,7 @@ BOOL _ObVSet_Put(_In_ POB_VSET pvs, _In_ QWORD value)
 }
 
 /*
-* Put / Insert a non-zero value into the ObVSet.
+* Push / Insert a non-zero value into the ObVSet.
 * -- pvs
 * -- value
 * -- return = TRUE on insertion, FALSE otherwise - i.e. if value already
@@ -379,7 +408,7 @@ BOOL _ObVSet_Put(_In_ POB_VSET pvs, _In_ QWORD value)
 _Success_(return)
 BOOL ObVSet_Push(_In_opt_ POB_VSET pvs, _In_ QWORD value)
 {
-    OB_VSET_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(pvs, BOOL, FALSE, _ObVSet_Put(pvs, value))
+    OB_VSET_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(pvs, BOOL, FALSE, _ObVSet_Push(pvs, value))
 }
 
 /*

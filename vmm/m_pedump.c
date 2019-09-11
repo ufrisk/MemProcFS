@@ -43,7 +43,7 @@ BOOL M_PEDump_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
     PVMM_PROCESS pProcess = (PVMM_PROCESS)ctx->pProcess;
     DWORD cbPageRead;
     BYTE pbPage[0x1000];
-    if(ctx->szPath[0]) { return FALSE; }
+    if(ctx->wszPath[0]) { return FALSE; }
     // 1: get cached entries
     pObCache = ObContainer_GetOb(pProcess->Plugin.pObCPeDumpDirCache);
     // 2: set up cache (if needed)
@@ -104,7 +104,7 @@ NTSTATUS M_PEDump_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWO
     PVMMOB_MODULEMAP pObModuleMap = NULL;
     result =
         (cbOffset <= 0x02000000) &&
-        VmmProc_ModuleMapGetSingleEntry((PVMM_PROCESS)ctx->pProcess, ctx->szPath, &pObModuleMap, &pModule) &&
+        VmmProc_ModuleMapGetSingleEntry((PVMM_PROCESS)ctx->pProcess, ctx->wszPath, &pObModuleMap, &pModule) &&
         PE_FileRaw_Read(ctx->pProcess, pModule->BaseAddress, pb, cb, pcbRead, (DWORD)cbOffset);
     Ob_DECREF(pObModuleMap);
     return result ? VMMDLL_STATUS_SUCCESS : VMMDLL_STATUS_FILE_INVALID;
@@ -132,7 +132,7 @@ NTSTATUS M_PEDump_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PBYTE pb, _In_ DWO
     PVMMOB_MODULEMAP pObModuleMap = NULL;
     result =
         (cbOffset <= 0x02000000) &&
-        VmmProc_ModuleMapGetSingleEntry((PVMM_PROCESS)ctx->pProcess, ctx->szPath, &pObModuleMap, &pModule) &&
+        VmmProc_ModuleMapGetSingleEntry((PVMM_PROCESS)ctx->pProcess, ctx->wszPath, &pObModuleMap, &pModule) &&
         PE_FileRaw_Write(ctx->pProcess, pModule->BaseAddress, pb, cb, pcbWrite, (DWORD)cbOffset);
     Ob_DECREF(pObModuleMap);
     return result ? VMMDLL_STATUS_SUCCESS : VMMDLL_STATUS_FILE_INVALID;
@@ -150,7 +150,7 @@ VOID M_PEDump_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if((pRI->tpSystem != VMM_SYSTEM_WINDOWS_X64) && (pRI->tpSystem != VMM_SYSTEM_WINDOWS_X86)) { return; }
-    strcpy_s(pRI->reg_info.szModuleName, 32, "pedump");              // module name
+    wcscpy_s(pRI->reg_info.wszModuleName, 32, L"pedump");            // module name
     pRI->reg_info.fProcessModule = TRUE;                             // module shows in process directory
     pRI->reg_fn.pfnList = M_PEDump_List;                             // List function supported
     pRI->reg_fn.pfnRead = M_PEDump_Read;                             // Read function supported

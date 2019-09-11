@@ -101,11 +101,14 @@ VOID PageStatUpdate(_In_opt_ PPAGE_STATISTICS pPageStat, _In_ QWORD qwAddr, _In_
 #define STATISTICS_ID_VMMDLL_WinRegHive_List                    0x1f
 #define STATISTICS_ID_VMMDLL_WinRegHive_ReadEx                  0x20
 #define STATISTICS_ID_VMMDLL_WinRegHive_Write                   0x21
-#define STATISTICS_ID_VMMDLL_WinNet_Get                         0x22
-#define STATISTICS_ID_VMMDLL_Refresh                            0x23
-#define STATISTICS_ID_VMMDLL_UtilFillHexAscii                   0x24
-#define STATISTICS_ID_VMM_PagedCompressedMemory                 0x25
-#define STATISTICS_ID_MAX                                       0x25
+#define STATISTICS_ID_VMMDLL_WinReg_EnumKeyExW                  0x22
+#define STATISTICS_ID_VMMDLL_WinReg_EnumValueW                  0x23
+#define STATISTICS_ID_VMMDLL_WinReg_QueryValueExW               0x24
+#define STATISTICS_ID_VMMDLL_WinNet_Get                         0x25
+#define STATISTICS_ID_VMMDLL_Refresh                            0x26
+#define STATISTICS_ID_VMMDLL_UtilFillHexAscii                   0x27
+#define STATISTICS_ID_VMM_PagedCompressedMemory                 0x28
+#define STATISTICS_ID_MAX                                       0x28
 #define STATISTICS_ID_NOLOG                                     0xffffffff
 
 VOID Statistics_CallSetEnabled(_In_ BOOL fEnabled);

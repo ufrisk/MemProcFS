@@ -49,6 +49,9 @@ EXPORTS
     VMMDLL_WinReg_HiveList
     VMMDLL_WinReg_HiveReadEx
     VMMDLL_WinReg_HiveWrite
+	VMMDLL_WinReg_EnumKeyExW
+	VMMDLL_WinReg_EnumValueW
+	VMMDLL_WinReg_QueryValueExW
 
 	VMMDLL_WinNet_Get
 

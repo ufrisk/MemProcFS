@@ -30,38 +30,38 @@ VOID PluginManager_ListAll(_In_opt_ PVMM_PROCESS pProcess, _Inout_ PHANDLE pFile
 /*
 * Send a List command down the module chain to the appropriate module.
 * -- pProcess
-* -- szModule
-* -- szPath
+* -- wszModule
+* -- wszPath
 * -- pFileList
 * -- return
 */
-BOOL PluginManager_List(_In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR szModule, _In_ LPSTR szPath, _Inout_ PHANDLE pFileList);
+BOOL PluginManager_List(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszModule, _In_ LPWSTR wszPath, _Inout_ PHANDLE pFileList);
 
 /*
 * Send a Read command down the module chain to the appropriate module.
 * -- pProcess
-* -- szModule
-* -- szPath
+* -- wszModule
+* -- wszPath
 * -- pb
 * -- cb
 * -- pcbRead
 * -- cbOffset
 * -- return
 */
-NTSTATUS PluginManager_Read(_In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR szModule, _In_ LPSTR szPath, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
+NTSTATUS PluginManager_Read(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszModule, _In_ LPWSTR wszPath, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 
 /*
 * Send a Write command down the module chain to the appropriate module.
 * -- pProcess
-* -- szModule
-* -- szPath
+* -- wszModule
+* -- wszPath
 * -- pb
 * -- cb
 * -- pcbWrite
 * -- cbOffset
 * -- return
 */
-NTSTATUS PluginManager_Write(_In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR szModule, _In_ LPSTR szPath, _In_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset);
+NTSTATUS PluginManager_Write(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszModule, _In_ LPWSTR wszPath, _In_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset);
 
 /*
 * Send a notification event to plugins that registered to receive notifications.

@@ -154,6 +154,7 @@ copy $(ProjectDir)\vmmdll.h $(SolutionDir)\files\ /y</Command>
     <ClCompile Include="m_winreg.c" />
     <ClCompile Include="ob_container.c" />
     <ClCompile Include="ob_core.c" />
+    <ClCompile Include="ob_map.c" />
     <ClCompile Include="ob_vset.c" />
     <ClCompile Include="pe.c" />
     <ClCompile Include="statistics.c" />

@@ -93,11 +93,11 @@ BOOL VmmDll_ConfigIntialize(_In_ DWORD argc, _In_ char* argv[])
         } else if(i + 1 >= argc) {
             return FALSE;
         } else if(0 == strcmp(argv[i], "-cr3")) {
-            ctxMain->cfg.paCR3 = Util_GetNumeric(argv[i + 1]);
+            ctxMain->cfg.paCR3 = Util_GetNumericA(argv[i + 1]);
             i += 2;
             continue;
         } else if(0 == strcmp(argv[i], "-max")) {
-            ctxMain->dev.paMax = Util_GetNumeric(argv[i + 1]);
+            ctxMain->dev.paMax = Util_GetNumericA(argv[i + 1]);
             i += 2;
             continue;
         } else if((0 == strcmp(argv[i], "-device")) || (0 == strcmp(argv[i], "-z"))) {
@@ -1143,11 +1143,9 @@ _Success_(return)
 BOOL VMMDLL_WinReg_HiveList_Impl(_Out_writes_(cHives) PVMMDLL_REGISTRY_HIVE_INFORMATION pHives, _In_ DWORD cHives, _Out_ PDWORD pcHives)
 {
     BOOL fResult = TRUE;
-    PVMMOB_REGISTRY pObRegistry = NULL;
-    PVMMOB_REGISTRY_HIVE pObHive = NULL;
-    if(!(pObRegistry = VmmWinReg_RegistryGet())) { return FALSE; }
+    POB_REGISTRY_HIVE pObHive = NULL;
     if(!pHives) {
-        *pcHives = pObRegistry->cHives;
+        *pcHives = VmmWinReg_HiveCount();
         goto cleanup;
     }
     *pcHives = 0;
@@ -1163,7 +1161,6 @@ BOOL VMMDLL_WinReg_HiveList_Impl(_Out_writes_(cHives) PVMMDLL_REGISTRY_HIVE_INFO
         *pcHives += 1;
     }
 cleanup:
-    Ob_DECREF(pObRegistry);
     Ob_DECREF(pObHive);
     return fResult;
 }
@@ -1190,7 +1187,7 @@ BOOL VMMDLL_WinReg_HiveList(_Out_writes_(cHives) PVMMDLL_REGISTRY_HIVE_INFORMATI
 _Success_(return)
 BOOL VMMDLL_WinReg_HiveReadEx_Impl(_In_ ULONG64 vaCMHive, _In_ DWORD ra, _Out_ PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbReadOpt, _In_ ULONG64 flags)
 {
-    PVMMOB_REGISTRY_HIVE pObHive = VmmWinReg_HiveGetByAddress(vaCMHive);
+    POB_REGISTRY_HIVE pObHive = VmmWinReg_HiveGetByAddress(vaCMHive);
     if(!pObHive) { return FALSE; }
     VmmWinReg_HiveReadEx(pObHive, ra, pb, cb, pcbReadOpt, flags);
     Ob_DECREF(pObHive);
@@ -1218,7 +1215,7 @@ _Success_(return)
 BOOL VMMDLL_WinReg_HiveWrite_Impl(_In_ ULONG64 vaCMHive, _In_ DWORD ra, _In_ PBYTE pb, _In_ DWORD cb)
 {
     BOOL f;
-    PVMMOB_REGISTRY_HIVE pObHive = VmmWinReg_HiveGetByAddress(vaCMHive);
+    POB_REGISTRY_HIVE pObHive = VmmWinReg_HiveGetByAddress(vaCMHive);
     if(!pObHive) { return FALSE; }
     f = VmmWinReg_HiveWrite(pObHive, ra, pb, cb);
     Ob_DECREF(pObHive);
@@ -1231,6 +1228,95 @@ BOOL VMMDLL_WinReg_HiveWrite(_In_ ULONG64 vaCMHive, _In_ DWORD ra, _In_ PBYTE pb
     CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_WinRegHive_Write,
         VMMDLL_WinReg_HiveWrite_Impl(vaCMHive, ra, pb, cb))
+}
+
+_Success_(return)
+BOOL VMMDLL_WinReg_EnumKeyExW_Impl(_In_ LPWSTR wszFullPathKey, _In_ DWORD dwIndex, _Out_writes_opt_(*lpcchName) LPWSTR lpName, _Inout_ LPDWORD lpcchName, _Out_opt_ PFILETIME lpftLastWriteTime)
+{
+    BOOL f;
+    VMM_REGISTRY_KEY_INFO KeyInfo = { 0 };
+    WCHAR wszPathKey[MAX_PATH];
+    POB_REGISTRY_HIVE pObHive = NULL;
+    POB_REGISTRY_KEY pObKey = NULL, pObSubKey = NULL;
+    POB_MAP pmObSubKeys = NULL;
+    if(lpName && !*lpcchName) {
+        if(lpftLastWriteTime) { *(PQWORD)lpftLastWriteTime = 0; }
+        return FALSE;
+    }
+    f = VmmWinRegKey_KeyValuePathFromPath(wszFullPathKey, &pObHive, wszPathKey) &&
+        (pObKey = VmmWinReg_KeyGetByPathW(pObHive, wszPathKey)) &&
+        (pmObSubKeys = VmmWinReg_KeyList(pObHive, pObKey)) &&
+        (pObSubKey = ObMap_GetByIndex(pmObSubKeys, dwIndex));
+    if(f) { VmmWinReg_KeyInfo(pObHive, pObSubKey, &KeyInfo); }
+    f = f && (!lpName || (KeyInfo.cchName <= *lpcchName));
+    if(lpName) { wcsncpy_s(lpName, *lpcchName, KeyInfo.wszName, _TRUNCATE); };
+    if(lpftLastWriteTime) { *(PQWORD)lpftLastWriteTime = KeyInfo.ftLastWrite; }
+    *lpcchName = KeyInfo.cchName;
+    Ob_DECREF(pObSubKey);
+    Ob_DECREF(pmObSubKeys);
+    Ob_DECREF(pObKey);
+    Ob_DECREF(pObHive);
+    return f;
+}
+
+_Success_(return)
+BOOL VMMDLL_WinReg_EnumValueW_Impl(_In_ LPWSTR wszFullPathKey, _In_ DWORD dwIndex, _Out_writes_opt_(*lpcchName) LPWSTR lpName, _Inout_ LPDWORD lpcchName, _Out_opt_ LPDWORD lpType, _Out_writes_opt_(*lpcbData) LPBYTE lpData, _Inout_opt_ LPDWORD lpcbData)
+{
+    BOOL f;
+    VMM_REGISTRY_VALUE_INFO ValueInfo = { 0 };
+    WCHAR wszPathKey[MAX_PATH];
+    POB_REGISTRY_HIVE pObHive = NULL;
+    POB_REGISTRY_KEY pObKey = NULL;
+    POB_MAP pmObValues = NULL;
+    POB_REGISTRY_VALUE pObValue = NULL;
+    if((lpName && !*lpcchName) || (lpData && (!lpcbData || !*lpcbData))) {
+        if(lpType) { *lpType = 0; }
+        if(lpcbData) { *lpcbData = 0; }
+        return FALSE;
+    }
+    f = VmmWinRegKey_KeyValuePathFromPath(wszFullPathKey, &pObHive, wszPathKey) &&
+        (pObKey = VmmWinReg_KeyGetByPathW(pObHive, wszPathKey)) &&
+        (pmObValues = VmmWinReg_KeyValueList(pObHive, pObKey)) &&
+        (pObValue = ObMap_GetByIndex(pmObValues, dwIndex));
+    if(f) { VmmWinReg_ValueInfo(pObHive, pObValue, &ValueInfo); }
+    f = f && (!lpName || (ValueInfo.cchName <= *lpcchName));
+    if(lpName) { wcsncpy_s(lpName, *lpcchName, ValueInfo.wszName, _TRUNCATE); };
+    if(lpType) { *lpType = ValueInfo.dwType; }
+    *lpcchName = ValueInfo.cchName;
+    if(f && lpData) {
+        f = VmmWinReg_ValueQuery4(pObHive, pObValue, NULL, lpData, *lpcbData, lpcbData);
+    } else if(lpcbData) {
+        *lpcbData = ValueInfo.cbData;
+    }
+    Ob_DECREF(pObValue);
+    Ob_DECREF(pObKey);
+    Ob_DECREF(pmObValues);
+    Ob_DECREF(pObHive);
+    return f;
+}
+
+_Success_(return)
+BOOL VMMDLL_WinReg_EnumKeyExW(_In_ LPWSTR wszFullPathKey, _In_ DWORD dwIndex, _Out_writes_opt_(*lpcchName) LPWSTR lpName, _Inout_ LPDWORD lpcchName, _Out_opt_ PFILETIME lpftLastWriteTime)
+{
+    CALL_IMPLEMENTATION_VMM(
+        STATISTICS_ID_VMMDLL_WinReg_EnumKeyExW,
+        VMMDLL_WinReg_EnumKeyExW_Impl(wszFullPathKey, dwIndex, lpName, lpcchName, lpftLastWriteTime))
+}
+
+_Success_(return)
+BOOL VMMDLL_WinReg_EnumValueW(_In_ LPWSTR wszFullPathKey, _In_ DWORD dwIndex, _Out_writes_opt_(*lpcchValueName) LPWSTR lpValueName, _Inout_ LPDWORD lpcchValueName, _Out_opt_ LPDWORD lpType, _Out_writes_opt_(*lpcbData) LPBYTE lpData, _Inout_opt_ LPDWORD lpcbData)
+{
+    CALL_IMPLEMENTATION_VMM(
+        STATISTICS_ID_VMMDLL_WinReg_EnumValueW,
+        VMMDLL_WinReg_EnumValueW_Impl(wszFullPathKey, dwIndex, lpValueName, lpcchValueName, lpType, lpData, lpcbData))
+}
+
+_Success_(return)
+BOOL VMMDLL_WinReg_QueryValueExW( _In_ LPWSTR wszFullPathKeyValue, _Out_opt_ LPDWORD lpType, _Out_writes_opt_(*lpcbData) LPBYTE lpData, _When_(lpData == NULL, _Out_opt_) _When_(lpData != NULL, _Inout_opt_) LPDWORD lpcbData)
+{
+    CALL_IMPLEMENTATION_VMM(
+        STATISTICS_ID_VMMDLL_WinReg_QueryValueExW,
+        VmmWinReg_ValueQuery2(wszFullPathKeyValue, lpType, lpData, lpcbData ? *lpcbData : 0, lpcbData))
 }
 
 
@@ -1333,7 +1419,7 @@ BOOL VMMDLL_WinGetThunkInfoIAT(_In_ DWORD dwPID, _In_ LPSTR szModuleName, _In_ L
 //-----------------------------------------------------------------------------
 
 _Success_(return)
-BOOL VMMDLL_UtilFillHexAscii(_In_ PBYTE pb, _In_ DWORD cb, _In_ DWORD cbInitialOffset, _Inout_opt_ LPSTR sz, _Out_ PDWORD pcsz)
+BOOL VMMDLL_UtilFillHexAscii(_In_ PBYTE pb, _In_ DWORD cb, _In_ DWORD cbInitialOffset, _Out_opt_ LPSTR sz, _Inout_ PDWORD pcsz)
 {
     CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_UtilFillHexAscii,

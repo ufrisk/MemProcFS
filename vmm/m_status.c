@@ -22,6 +22,7 @@
 #include "vmm.h"
 #include "vmmproc.h"
 #include "vmmvfs.h"
+#include "vmmwinreg.h"
 #include "statistics.h"
 
 /*
@@ -45,43 +46,46 @@ NTSTATUS MStatus_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWOR
     NTSTATUS nt;
     // "PROCESS"
     if(pProcess) {
-        if(!_stricmp(ctx->szPath, "cache_file_enable")) {
+        if(!_wcsicmp(ctx->wszPath, L"cache_file_enable")) {
             return Util_VfsReadFile_FromBOOL(!pProcess->fFileCacheDisabled, pb, cb, pcbRead, cbOffset);
         }
     }
     // "ROOT"
     if(!pProcess) {
-        if(!_stricmp(ctx->szPath, "config_process_show_terminated")) {
+        if(!_wcsicmp(ctx->wszPath, L"config_process_show_terminated")) {
             return Util_VfsReadFile_FromBOOL(ctxVmm->flags & VMM_FLAG_PROCESS_SHOW_TERMINATED, pb, cb, pcbRead, cbOffset);
         }
-        if(!_stricmp(ctx->szPath, "config_cache_enable")) {
+        if(!_wcsicmp(ctx->wszPath, L"config_cache_enable")) {
             return Util_VfsReadFile_FromBOOL(!(ctxVmm->flags & VMM_FLAG_NOCACHE), pb, cb, pcbRead, cbOffset);
         }
-        if(!_stricmp(ctx->szPath, "config_paging_enable")) {
+        if(!_wcsicmp(ctx->wszPath, L"config_paging_enable")) {
             return Util_VfsReadFile_FromBOOL(!(ctxVmm->flags & VMM_FLAG_NOPAGING), pb, cb, pcbRead, cbOffset);
         }
-        if(!_stricmp(ctx->szPath, "config_statistics_fncall")) {
+        if(!_wcsicmp(ctx->wszPath, L"config_statistics_fncall")) {
             return Util_VfsReadFile_FromBOOL(Statistics_CallGetEnabled(), pb, cb, pcbRead, cbOffset);
         }
-        if(!_stricmp(ctx->szPath, "config_refresh_enable")) {
+        if(!_wcsicmp(ctx->wszPath, L"config_refresh_enable")) {
             return Util_VfsReadFile_FromBOOL(ctxVmm->ThreadProcCache.fEnabled, pb, cb, pcbRead, cbOffset);
         }
-        if(!_stricmp(ctx->szPath, "config_refresh_tick_period_ms")) {
+        if(!_wcsicmp(ctx->wszPath, L"config_refresh_tick_period_ms")) {
             return Util_VfsReadFile_FromDWORD(ctxVmm->ThreadProcCache.cMs_TickPeriod, pb, cb, pcbRead, cbOffset, FALSE);
         }
-        if(!_stricmp(ctx->szPath, "config_refresh_read")) {
+        if(!_wcsicmp(ctx->wszPath, L"config_refresh_read")) {
             return Util_VfsReadFile_FromDWORD(ctxVmm->ThreadProcCache.cTick_Phys, pb, cb, pcbRead, cbOffset, FALSE);
         }
-        if(!_stricmp(ctx->szPath, "config_refresh_tlb")) {
+        if(!_wcsicmp(ctx->wszPath, L"config_refresh_tlb")) {
             return Util_VfsReadFile_FromDWORD(ctxVmm->ThreadProcCache.cTick_TLB, pb, cb, pcbRead, cbOffset, FALSE);
         }
-        if(!_stricmp(ctx->szPath, "config_refresh_proc_partial")) {
+        if(!_wcsicmp(ctx->wszPath, L"config_refresh_proc_partial")) {
             return Util_VfsReadFile_FromDWORD(ctxVmm->ThreadProcCache.cTick_ProcPartial, pb, cb, pcbRead, cbOffset, FALSE);
         }
-        if(!_stricmp(ctx->szPath, "config_refresh_proc_total")) {
+        if(!_wcsicmp(ctx->wszPath, L"config_refresh_proc_total")) {
             return Util_VfsReadFile_FromDWORD(ctxVmm->ThreadProcCache.cTick_ProcTotal, pb, cb, pcbRead, cbOffset, FALSE);
         }
-        if(!_stricmp(ctx->szPath, "statistics")) {
+        if(!_wcsicmp(ctx->wszPath, L"config_refresh_registry")) {
+            return Util_VfsReadFile_FromDWORD(ctxVmm->ThreadProcCache.cTick_Registry, pb, cb, pcbRead, cbOffset, FALSE);
+        }
+        if(!_wcsicmp(ctx->wszPath, L"statistics")) {
             cPageReadTotal = ctxVmm->stat.cPageReadSuccessCacheHit + ctxVmm->stat.cPageReadSuccessCompressed + ctxVmm->stat.cPageReadSuccessDemandZero;
             cPageFailTotal = ctxVmm->stat.cPageReadFailedCacheHit + ctxVmm->stat.cPageReadFailedCompressed + ctxVmm->stat.cPageReadFailed;
             cchBuffer = snprintf(szBuffer, 0x800,
@@ -116,7 +120,7 @@ NTSTATUS MStatus_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWOR
             );
             return Util_VfsReadFile_FromPBYTE(szBuffer, cchBuffer, pb, cb, pcbRead, cbOffset);
         }
-        if(!_stricmp(ctx->szPath, "statistics_fncall")) {
+        if(!_wcsicmp(ctx->wszPath, L"statistics_fncall")) {
             Statistics_CallToString(NULL, 0, &cbCallStatistics);
             pbCallStatistics = LocalAlloc(0, cbCallStatistics);
             if(!pbCallStatistics) { return VMMDLL_STATUS_FILE_INVALID; }
@@ -125,22 +129,22 @@ NTSTATUS MStatus_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWOR
             LocalFree(pbCallStatistics);
             return nt;
         }
-        if(!_stricmp(ctx->szPath, "config_printf_enable")) {
+        if(!_wcsicmp(ctx->wszPath, L"config_printf_enable")) {
             return Util_VfsReadFile_FromBOOL(ctxMain->cfg.fVerboseDll, pb, cb, pcbRead, cbOffset);
         }
-        if(!_stricmp(ctx->szPath, "config_printf_v")) {
+        if(!_wcsicmp(ctx->wszPath, L"config_printf_v")) {
             return Util_VfsReadFile_FromBOOL(ctxMain->cfg.fVerbose, pb, cb, pcbRead, cbOffset);
         }
-        if(!_stricmp(ctx->szPath, "config_printf_vv")) {
+        if(!_wcsicmp(ctx->wszPath, L"config_printf_vv")) {
             return Util_VfsReadFile_FromBOOL(ctxMain->cfg.fVerboseExtra, pb, cb, pcbRead, cbOffset);
         }
-        if(!_stricmp(ctx->szPath, "config_printf_vvv")) {
+        if(!_wcsicmp(ctx->wszPath, L"config_printf_vvv")) {
             return Util_VfsReadFile_FromBOOL(ctxMain->cfg.fVerboseExtraTlp, pb, cb, pcbRead, cbOffset);
         }
-        if(!_stricmp(ctx->szPath, "native_max_address")) {
+        if(!_wcsicmp(ctx->wszPath, L"native_max_address")) {
             return Util_VfsReadFile_FromQWORD(ctxMain->dev.paMaxNative, pb, cb, pcbRead, cbOffset, FALSE);
         }
-        if(!_stricmp(ctx->szPath, "native_max_iosize")) {
+        if(!_wcsicmp(ctx->wszPath, L"native_max_iosize")) {
             return Util_VfsReadFile_FromQWORD(ctxMain->dev.cbMaxSizeMemIo, pb, cb, pcbRead, cbOffset, FALSE);
         }
     }
@@ -172,7 +176,7 @@ NTSTATUS MStatus_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PBYTE pb, _In_ DWOR
     BOOL fEnable = FALSE;
     // "PROCESS"
     if(pProcess) {
-        if(!_stricmp(ctx->szPath, "cache_file_enable")) {
+        if(!_wcsicmp(ctx->wszPath, L"cache_file_enable")) {
             if((cbOffset == 0) && (cb > 0)) {
                 if(((PCHAR)pb)[0] == '1') { pProcess->fFileCacheDisabled = FALSE; }
                 if(((PCHAR)pb)[0] == '0') { pProcess->fFileCacheDisabled = TRUE; }
@@ -184,7 +188,7 @@ NTSTATUS MStatus_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PBYTE pb, _In_ DWOR
     // "ROOT"
     if(!pProcess) {
 
-        if(!_stricmp(ctx->szPath, "config_process_show_terminated")) {
+        if(!_wcsicmp(ctx->wszPath, L"config_process_show_terminated")) {
             nt = Util_VfsWriteFile_BOOL(&fEnable, pb, cb, pcbWrite, cbOffset);
             if(nt == VMMDLL_STATUS_SUCCESS) {
                 ctxVmm->flags &= ~VMM_FLAG_PROCESS_SHOW_TERMINATED;
@@ -192,7 +196,7 @@ NTSTATUS MStatus_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PBYTE pb, _In_ DWOR
             }
             return nt;
         }
-        if(!_stricmp(ctx->szPath, "config_cache_enable")) {
+        if(!_wcsicmp(ctx->wszPath, L"config_cache_enable")) {
             nt = Util_VfsWriteFile_BOOL(&fEnable, pb, cb, pcbWrite, cbOffset);
             if(nt == VMMDLL_STATUS_SUCCESS) {
                 ctxVmm->flags &= ~VMM_FLAG_NOCACHE;
@@ -200,7 +204,7 @@ NTSTATUS MStatus_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PBYTE pb, _In_ DWOR
             }
             return nt;
         }
-        if(!_stricmp(ctx->szPath, "config_paging_enable")) {
+        if(!_wcsicmp(ctx->wszPath, L"config_paging_enable")) {
             nt = Util_VfsWriteFile_BOOL(&fEnable, pb, cb, pcbWrite, cbOffset);
             if(nt == VMMDLL_STATUS_SUCCESS) {
                 ctxVmm->flags &= ~VMM_FLAG_NOPAGING;
@@ -208,41 +212,45 @@ NTSTATUS MStatus_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PBYTE pb, _In_ DWOR
             }
             return nt;
         }
-        if(!_stricmp(ctx->szPath, "config_statistics_fncall")) {
+        if(!_wcsicmp(ctx->wszPath, L"config_statistics_fncall")) {
             nt = Util_VfsWriteFile_BOOL(&fEnable, pb, cb, pcbWrite, cbOffset);
             if(nt == VMMDLL_STATUS_SUCCESS) {
                 Statistics_CallSetEnabled(fEnable);
             }
             return nt;
         }
-        if(!_stricmp(ctx->szPath, "config_refresh_tick_period_ms")) {
+        if(!_wcsicmp(ctx->wszPath, L"config_refresh_tick_period_ms")) {
             return Util_VfsWriteFile_DWORD(&ctxVmm->ThreadProcCache.cMs_TickPeriod, pb, cb, pcbWrite, cbOffset, 50);
         }
-        if(!_stricmp(ctx->szPath, "config_refresh_read")) {
+        if(!_wcsicmp(ctx->wszPath, L"config_refresh_read")) {
             return Util_VfsWriteFile_DWORD(&ctxVmm->ThreadProcCache.cTick_Phys, pb, cb, pcbWrite, cbOffset, 1);
         }
-        if(!_stricmp(ctx->szPath, "config_refresh_tlb")) {
+        if(!_wcsicmp(ctx->wszPath, L"config_refresh_tlb")) {
             return Util_VfsWriteFile_DWORD(&ctxVmm->ThreadProcCache.cTick_TLB, pb, cb, pcbWrite, cbOffset, 1);
         }
-        if(!_stricmp(ctx->szPath, "config_refresh_proc_partial")) {
+        if(!_wcsicmp(ctx->wszPath, L"config_refresh_proc_partial")) {
             return Util_VfsWriteFile_DWORD(&ctxVmm->ThreadProcCache.cTick_ProcPartial, pb, cb, pcbWrite, cbOffset, 1);
         }
-        if(!_stricmp(ctx->szPath, "config_refresh_proc_total")) {
+        if(!_wcsicmp(ctx->wszPath, L"config_refresh_proc_total")) {
             return Util_VfsWriteFile_DWORD(&ctxVmm->ThreadProcCache.cTick_ProcTotal, pb, cb, pcbWrite, cbOffset, 1);
         }
-        if(!_stricmp(ctx->szPath, "config_printf_enable")) {
+        if(!_wcsicmp(ctx->wszPath, L"config_refresh_registry")) {
+            VmmWinReg_Refresh();
+            return Util_VfsWriteFile_DWORD(&ctxVmm->ThreadProcCache.cTick_Registry, pb, cb, pcbWrite, cbOffset, 1);
+        }
+        if(!_wcsicmp(ctx->wszPath, L"config_printf_enable")) {
             return MStatus_Write_NotifyVerbosityChange(
                 Util_VfsWriteFile_BOOL(&ctxMain->cfg.fVerboseDll, pb, cb, pcbWrite, cbOffset));
         }
-        if(!_stricmp(ctx->szPath, "config_printf_v")) {
+        if(!_wcsicmp(ctx->wszPath, L"config_printf_v")) {
             return MStatus_Write_NotifyVerbosityChange(
                 Util_VfsWriteFile_BOOL(&ctxMain->cfg.fVerbose, pb, cb, pcbWrite, cbOffset));
         }
-        if(!_stricmp(ctx->szPath, "config_printf_vv")) {
+        if(!_wcsicmp(ctx->wszPath, L"config_printf_vv")) {
             return MStatus_Write_NotifyVerbosityChange(
                 Util_VfsWriteFile_BOOL(&ctxMain->cfg.fVerboseExtra, pb, cb, pcbWrite, cbOffset));
         }
-        if(!_stricmp(ctx->szPath, "config_printf_vvv")) {
+        if(!_wcsicmp(ctx->wszPath, L"config_printf_vvv")) {
             return MStatus_Write_NotifyVerbosityChange(
                 Util_VfsWriteFile_BOOL(&ctxMain->cfg.fVerboseExtraTlp, pb, cb, pcbWrite, cbOffset));
         }
@@ -263,7 +271,7 @@ BOOL MStatus_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
     DWORD cbCallStatistics = 0;
     PVMM_PROCESS pProcess = (PVMM_PROCESS)ctx->pProcess;
     // not module root directory -> fail!
-    if(ctx->szPath[0]) { return FALSE; }
+    if(ctx->wszPath[0]) { return FALSE; }
     // "root" view
     if(!ctx->pProcess) {
         VMMDLL_VfsList_AddFile(pFileList, "config_cache_enable", 1);
@@ -275,7 +283,8 @@ BOOL MStatus_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
         VMMDLL_VfsList_AddFile(pFileList, "config_refresh_tlb", 8);
         VMMDLL_VfsList_AddFile(pFileList, "config_refresh_proc_partial", 8);
         VMMDLL_VfsList_AddFile(pFileList, "config_refresh_proc_total", 8);
-        VMMDLL_VfsList_AddFile(pFileList, "statistics", 0x283);
+        VMMDLL_VfsList_AddFile(pFileList, "config_refresh_registry", 8);
+        VMMDLL_VfsList_AddFile(pFileList, "statistics", 1103);
         VMMDLL_VfsList_AddFile(pFileList, "config_printf_enable", 1);
         VMMDLL_VfsList_AddFile(pFileList, "config_printf_v", 1);
         VMMDLL_VfsList_AddFile(pFileList, "config_printf_vv", 1);
@@ -305,11 +314,11 @@ VOID M_Status_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     // .status module is always valid - no check against pPluginRegInfo->tpMemoryModel, tpSystem
-    strcpy_s(pRI->reg_info.szModuleName, 32, ".status"); // module name
-    pRI->reg_info.fRootModule = TRUE;                    // module shows in root directory
-    pRI->reg_info.fProcessModule = TRUE;                 // module shows in process directory
-    pRI->reg_fn.pfnList = MStatus_List;                  // List function supported
-    pRI->reg_fn.pfnRead = MStatus_Read;                  // Read function supported
-    pRI->reg_fn.pfnWrite = MStatus_Write;                // Write function supported
+    wcscpy_s(pRI->reg_info.wszModuleName, 32, L".status");      // module name
+    pRI->reg_info.fRootModule = TRUE;                           // module shows in root directory
+    pRI->reg_info.fProcessModule = TRUE;                        // module shows in process directory
+    pRI->reg_fn.pfnList = MStatus_List;                         // List function supported
+    pRI->reg_fn.pfnRead = MStatus_Read;                         // Read function supported
+    pRI->reg_fn.pfnWrite = MStatus_Write;                       // Write function supported
     pRI->pfnPluginManager_Register(pRI);
 }

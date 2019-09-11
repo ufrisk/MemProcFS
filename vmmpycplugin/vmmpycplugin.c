@@ -57,7 +57,8 @@ PY2C_CallbackRegister(PyObject *self, PyObject *args)
     return Py_BuildValue("s", NULL);    // None returned on success.
 }
 
-BOOL PY2C_Util_TranslatePathDelimiter(_Out_writes_(MAX_PATH) PCHAR dst, LPSTR src)
+_Success_(return)
+BOOL PY2C_Util_TranslatePathDelimiterW(_Out_writes_(MAX_PATH) LPWSTR dst, LPWSTR src)
 {
     DWORD i;
     for(i = 0; i < MAX_PATH; i++) {
@@ -70,26 +71,20 @@ BOOL PY2C_Util_TranslatePathDelimiter(_Out_writes_(MAX_PATH) PCHAR dst, LPSTR sr
 BOOL PY2C_Callback_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 {
     BOOL result = FALSE;
-    PyObject *args, *pyList = NULL, *pyDict, *pyPid;
+    PyObject *args = NULL, *pyList = NULL, *pyDict, *pyPid = NULL, *pyPath = NULL;
     PyObject *pyDict_Name, *pyDict_Size, *pyDict_IsDir;
     PyObject *pyDict_Name_Bytes;
     PyGILState_STATE gstate;
     SIZE_T i, cList;
-    CHAR szPathBuffer[MAX_PATH];
+    WCHAR wszPathBuffer[MAX_PATH];
     if(!ctxPY2C->fInitialized) { return FALSE; }
-    if(!PY2C_Util_TranslatePathDelimiter(szPathBuffer, ctx->szPath)) { return FALSE; }
+    if(!PY2C_Util_TranslatePathDelimiterW(wszPathBuffer, ctx->wszPath)) { return FALSE; }
     gstate = PyGILState_Ensure();
-    // pyPid is "consumed" by Py_BuildValue and does not need to be Py_DECREF'ed.
-    if(ctx->dwPID == (DWORD)-1) {
-        Py_INCREF(Py_None);
-        pyPid = Py_None;
-    } else {
-        pyPid = PyLong_FromUnsignedLong(ctx->dwPID);
-    }
-    args = Py_BuildValue("Ns", pyPid, szPathBuffer);
+    if(!(pyPath = PyUnicode_FromWideChar(wszPathBuffer, -1))) { goto fail; }
+    pyPid = (ctx->dwPID == -1) ? NULL : PyLong_FromUnsignedLong(ctx->dwPID);
+    args = Py_BuildValue("OO", (pyPid ? pyPid : Py_None), pyPath);
     if(!args) { goto fail; }
     pyList = PyObject_CallObject(ctxPY2C->fnList, args);
-    Py_DECREF(args);
     if(!pyList || !PyList_Check(pyList)) { goto fail; }
     cList = PyList_Size(pyList);
     for(i = 0; i < cList; i++) {
@@ -113,7 +108,10 @@ BOOL PY2C_Callback_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileLi
     result = TRUE;
     // fall through to cleanup
 fail:
-    if(pyList) { Py_DECREF(pyList); }
+    Py_XDECREF(args);
+    Py_XDECREF(pyPid);
+    Py_XDECREF(pyList);
+    Py_XDECREF(pyPath);
     PyGILState_Release(gstate);
     return result;
 }
@@ -121,27 +119,21 @@ fail:
 NTSTATUS PY2C_Callback_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
-    PyObject *args, *pyBytes = NULL, *pyPid;
+    PyObject *args = NULL, *pyBytes = NULL, *pyPid = NULL, *pyPath = NULL;
     PyGILState_STATE gstate;
-    CHAR szPathBuffer[MAX_PATH];
+    WCHAR wszPathBuffer[MAX_PATH];
     if(!ctxPY2C->fInitialized) { return FALSE; }
-    if(!PY2C_Util_TranslatePathDelimiter(szPathBuffer, ctx->szPath)) { return FALSE; }
+    if(!PY2C_Util_TranslatePathDelimiterW(wszPathBuffer, ctx->wszPath)) { return FALSE; }
     gstate = PyGILState_Ensure();
-    // pyPid is "consumed" by Py_BuildValue and does not need to be Py_DECREF'ed.
-    if(ctx->dwPID == (DWORD)-1) {
-        Py_INCREF(Py_None);
-        pyPid = Py_None;
-    } else {
-        pyPid = PyLong_FromUnsignedLong(ctx->dwPID);
-    }
-    args = Py_BuildValue("NskK",
-        pyPid,
-        szPathBuffer,
+    if(!(pyPath = PyUnicode_FromWideChar(wszPathBuffer, -1))) { goto fail; }
+    pyPid = (ctx->dwPID == -1) ? NULL : PyLong_FromUnsignedLong(ctx->dwPID);
+    args = Py_BuildValue("OOkK",
+        pyPid ? pyPid : Py_None,
+        pyPath,
         cb,
         cbOffset);
     if(!args) { goto fail; }
     pyBytes = PyObject_CallObject(ctxPY2C->fnRead, args);
-    Py_DECREF(args);
     if(!pyBytes || !PyBytes_Check(pyBytes)) { goto fail; }
     *pcbRead = min(cb, (DWORD)PyBytes_Size(pyBytes));
     if(*pcbRead) {
@@ -150,7 +142,10 @@ NTSTATUS PY2C_Callback_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ LPVOID pb, _I
     nt = *pcbRead ? VMMDLL_STATUS_SUCCESS : VMMDLL_STATUS_END_OF_FILE;
     // fall through to cleanup
 fail:
-    if(pyBytes) { Py_DECREF(pyBytes); }
+    Py_XDECREF(args);
+    Py_XDECREF(pyPid);
+    Py_XDECREF(pyBytes);
+    Py_XDECREF(pyPath);
     PyGILState_Release(gstate);
     return nt;
 }
@@ -158,35 +153,32 @@ fail:
 NTSTATUS PY2C_Callback_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ ULONG64 cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
-    PyObject *args, *pyLong = NULL, *pyPid;
+    PyObject *args = NULL, *pyLong = NULL, *pyPid = NULL, *pyPath = NULL;
     PyGILState_STATE gstate;
-    CHAR szPathBuffer[MAX_PATH];
+    WCHAR wszPathBuffer[MAX_PATH];
     *pcbWrite = 0;
     if(!ctxPY2C->fInitialized) { return VMMDLL_STATUS_FILE_INVALID; }
-    if(!PY2C_Util_TranslatePathDelimiter(szPathBuffer, ctx->szPath)) { return VMMDLL_STATUS_FILE_INVALID; }
+    if(!PY2C_Util_TranslatePathDelimiterW(wszPathBuffer, ctx->wszPath)) { return VMMDLL_STATUS_FILE_INVALID; }
     gstate = PyGILState_Ensure();
-    // pyPid is "consumed" by Py_BuildValue and does not need to be Py_DECREF'ed.
-    if(ctx->dwPID == (DWORD)-1) {
-        Py_INCREF(Py_None);
-        pyPid = Py_None;
-    } else {
-        pyPid = PyLong_FromUnsignedLong(ctx->dwPID);
-    }
-    args = Py_BuildValue("Nsy#K",
-        pyPid,
-        szPathBuffer,
+    if(!(pyPath = PyUnicode_FromWideChar(wszPathBuffer, -1))) { goto fail; }
+    pyPid = (ctx->dwPID == -1) ? NULL : PyLong_FromUnsignedLong(ctx->dwPID);
+    args = Py_BuildValue("OOy#K",
+        pyPid ? pyPid : Py_None,
+        pyPath,
         pb,
         cb,
         cbOffset);
     if(!args) { goto fail; }
     pyLong = PyObject_CallObject(ctxPY2C->fnWrite, args);
-    Py_DECREF(args);
     if(!pyLong || !PyLong_Check(pyLong)) { goto fail; }
     nt = PyLong_AsUnsignedLong(pyLong);
     if(!nt) { *pcbWrite = cb; }
     // fall through to cleanup
 fail:
-    if(pyLong) { Py_DECREF(pyLong); }
+    Py_XDECREF(args);
+    Py_XDECREF(pyPid);
+    Py_XDECREF(pyLong);
+    Py_XDECREF(pyPath);
     PyGILState_Release(gstate);
     return nt;
 }
@@ -374,7 +366,7 @@ VOID InitializeVmmPlugin(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo)
 {
     if((pRegInfo->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRegInfo->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if(VmmPyPlugin_PythonInitialize(pRegInfo->hReservedDllPython3X)) {
-        strcpy_s(pRegInfo->reg_info.szModuleName, 32, "py");    // module name - 'py'.
+        wcscpy_s(pRegInfo->reg_info.wszModuleName, 32, L"py");  // module name - 'py'.
         pRegInfo->reg_info.fRootModule = TRUE;                  // module shows in root directory.
         pRegInfo->reg_info.fProcessModule = TRUE;               // module shows in process directory.
         pRegInfo->reg_fn.pfnList = PY2C_Callback_List;          // List function supported.

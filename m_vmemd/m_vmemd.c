@@ -10,10 +10,10 @@
 
 VMMDLL_MEMORYMODEL_TP g_VMemD_TpMemoryModel = VMMDLL_MEMORYMODEL_NA;
 
-ULONG64 VMemD_GetBaseFromFileName(LPSTR sz)
+ULONG64 VMemD_GetBaseFromFileName(_In_ LPWSTR wsz)
 {
-    if((strlen(sz) < 15) || (sz[0] != '0') || (sz[1] != 'x')) { return (ULONG64)-1; }
-    return strtoull(sz, NULL, 16);
+    if((wcslen(wsz) < 15) || (wsz[0] != '0') || (wsz[1] != 'x')) { return (ULONG64)-1; }
+    return wcstoull(wsz, NULL, 16);
 }
 
 /*
@@ -32,7 +32,7 @@ NTSTATUS VMemD_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ LPVOID pb, _In_ DWORD
     ULONG64 cbMax, vaBase;
     VMMDLL_MEMMAP_ENTRY entry;
     // read memory from "vmemd" directory file
-    vaBase = VMemD_GetBaseFromFileName(ctx->szPath);
+    vaBase = VMemD_GetBaseFromFileName(ctx->wszPath);
     if(vaBase & 0xfff) { return VMMDLL_STATUS_FILE_INVALID; }
     result = VMMDLL_ProcessGetMemoryMapEntry(ctx->dwPID, &entry, vaBase, FALSE);
     if(!result) { return VMMDLL_STATUS_FILE_INVALID; }
@@ -59,7 +59,7 @@ NTSTATUS VMemD_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ LPVOID pb, _In_ DWORD
     ULONG64 cbMax, vaBase;
     VMMDLL_MEMMAP_ENTRY entry;
     // write memory from "vmemd" directory file
-    vaBase = VMemD_GetBaseFromFileName(ctx->szPath);
+    vaBase = VMemD_GetBaseFromFileName(ctx->wszPath);
     if(vaBase & 0xfff) { return VMMDLL_STATUS_FILE_INVALID; }
     result = VMMDLL_ProcessGetMemoryMapEntry(ctx->dwPID, &entry, vaBase, FALSE);
     if(!result) { return VMMDLL_STATUS_FILE_INVALID; }
@@ -86,7 +86,7 @@ BOOL VMemD_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
     ULONG64 cEntries = 0;
     CHAR szBufferFileName[MAX_PATH];
     PVMMDLL_MEMMAP_ENTRY pMemMap;
-    if(ctx->szPath[0]) {
+    if(ctx->wszPath[0]) {
         // only list in module root directory.
         // not root directory == error for this module.
         return FALSE;
@@ -119,6 +119,7 @@ BOOL VMemD_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
                 pMemMap[i].szTag[0] ? "-" : "",
                 pMemMap[i].szTag[0] ? pMemMap[i].szTag : "");
         }
+        szBufferFileName[MAX_PATH - 1] = 0;
         VMMDLL_VfsList_AddFile(pFileList, szBufferFileName, (pMemMap[i].cPages << 12));
     }
     LocalFree(pMemMap);
@@ -142,7 +143,7 @@ VOID InitializeVmmPlugin(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo)
     // currently supports the 64-bit x64 and 32-bit x86 and x86-pae memory models.
     if(!((pRegInfo->tpMemoryModel == VMMDLL_MEMORYMODEL_X64) || (pRegInfo->tpMemoryModel == VMMDLL_MEMORYMODEL_X86) || (pRegInfo->tpMemoryModel == VMMDLL_MEMORYMODEL_X86PAE))) { return; }
     g_VMemD_TpMemoryModel = pRegInfo->tpMemoryModel;
-    strcpy_s(pRegInfo->reg_info.szModuleName, 32, "vmemd");     // module name - 'vmemd'.
+    wcscpy_s(pRegInfo->reg_info.wszModuleName, 32, L"vmemd");   // module name - 'vmemd'.
     pRegInfo->reg_info.fProcessModule = TRUE;                   // module shows in process directory.
     pRegInfo->reg_fn.pfnList = VMemD_List;                      // List function supported.
     pRegInfo->reg_fn.pfnRead = VMemD_Read;                      // Read function supported.

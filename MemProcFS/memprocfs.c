@@ -67,10 +67,11 @@ VOID MemProcFsCtrlHandler_TryShutdownThread(PVOID pv)
 */
 BOOL WINAPI MemProcFsCtrlHandler(DWORD fdwCtrlType)
 {
+	HANDLE hThread;
     if (fdwCtrlType == CTRL_C_EVENT) {
         printf("CTRL+C detected - shutting down ...\n");
-        CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)MemProcFsCtrlHandler_TryShutdownThread, NULL, 0, NULL);
-        Sleep(500);
+        hThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)MemProcFsCtrlHandler_TryShutdownThread, NULL, 0, NULL);
+		if(hThread) { WaitForSingleObject(hThread, 500); }
         TerminateProcess(GetCurrentProcess(), 1);
         Sleep(1000);
         ExitProcess(1);

@@ -43,10 +43,11 @@ typedef unsigned __int64                QWORD, *PQWORD;
 #define VMM_FLAG_ZEROPAD_ON_FAIL                0x0002  // zero pad failed physical memory reads and report success if read within range of physical memory.
 #define VMM_FLAG_PROCESS_SHOW_TERMINATED        0x0004  // show terminated processes in the process list (if they can be found).
 #define VMM_FLAG_FORCECACHE_READ                0x0008  // force use of cache - fail non-cached pages - only valid for reads, invalid with VMM_FLAG_NOCACHE/VMM_FLAG_ZEROPAD_ON_FAIL.
-#define VMM_FLAG_NOPAGING                       0x0010  // do not try to retrieve memory from paged out memory from pagefile/compressed (even if possible)
+#define VMM_FLAG_NOPAGING                       0x0010  // do not try to retrieve memory from paged out memory from pagefile/compressed (even if possible).
 
 #define PAGE_SIZE                               0x1000
 
+#define VMM_KADDR32_8(va)                       ((va & 0xf0000007) == 0x80000000)
 #define VMM_KADDR64(va)                         ((va & 0xffff8000'00000000) == 0xffff8000'00000000)
 #define VMM_KADDR64_8(va)                       ((va & 0xffff8000'00000007) == 0xffff8000'00000000)
 #define VMM_KADDR64_16(va)                      ((va & 0xffff8000'0000000f) == 0xffff8000'00000000)
@@ -99,31 +100,28 @@ typedef struct tdVMMDATALIST {
 } VMMDATALIST, *PVMMDATALIST;
 
 typedef struct tdVMMOB_DATA {
-    OB_RESERVED_HEADER Reserved;
-    DWORD cbData;
+    OB ObHdr;
     union {
         BYTE pbData[];
         DWORD pdwData[];
         QWORD pqwData[];
         VMMDATALIST pList[];
     };
-} VMMOB_DATA, *PVMMOB_PDATA;
+} VMMOB_DATA, *PVMMOB_DATA;
 
 typedef struct tdVMMOB_MEMMAP {
-    OB_RESERVED_HEADER Reserved;
-    DWORD cbData;
+    OB ObHdr;
     BOOL fValid;                // map is valid (did not fail initialization)
     BOOL fTagModules;           // map contains tags from modules.
     BOOL fTagScan;              // map contains tags from scan.
     DWORD cMap;                 // # map entries.
     DWORD cbDisplay;            // byte count of display map (even if not existing yet).
-    PVMMOB_PDATA pObDisplay;    // human readable memory map.
+    PVMMOB_DATA pObDisplay;    // human readable memory map.
     VMM_MEMMAP_ENTRY pMap[];    // map entries
 } VMMOB_MEMMAP, *PVMMOB_MEMMAP;
 
 typedef struct tdVMMOB_MODULEMAP {
-    OB_RESERVED_HEADER Reserved;
-    DWORD cbData;
+    OB ObHdr;
     BOOL fValid;                // map is valid (did not fail initialization).
     DWORD cMap;                 // # map entries.
     DWORD cbDisplay;            // size of 'text' module map.
@@ -214,29 +212,6 @@ typedef struct tdVMMOB_PROCESS_TABLE {
     POB_CONTAINER pObCNewPROC;      // contains VMM_PROCESS_TABLE
 } VMMOB_PROCESS_TABLE, *PVMMOB_PROCESS_TABLE;
 
-typedef struct td_VMMOB_REGISTRY_HIVE {
-    OB ObHdr;
-    QWORD vaCMHIVE;
-    QWORD vaHBASE_BLOCK;
-    DWORD cbLength;
-    CHAR szName[136 + 1];
-    WCHAR wszNameShort[32 + 1];
-    WCHAR wszHiveRootPath[MAX_PATH];
-    QWORD _FutureReserved[0x10];
-    QWORD vaHMAP_DIRECTORY;
-    QWORD vaHMAP_TABLE_SmallDir;
-    struct td_VMMOB_REGISTRY_HIVE *FLink;
-} VMMOB_REGISTRY_HIVE, *PVMMOB_REGISTRY_HIVE;
-
-typedef struct td_VMMOB_REGISTRY {
-    OB ObHdr;
-    BOOL fValid;
-    DWORD cHives;
-    PVMMOB_REGISTRY_HIVE pHiveList;
-    BOOL fRefreshRequired;
-    CRITICAL_SECTION LockRefresh;
-} VMMOB_REGISTRY, *PVMMOB_REGISTRY;
-
 #define VMM_CACHE2_REGIONS      17
 #define VMM_CACHE2_BUCKETS      2039
 #define VMM_CACHE2_MAX_ENTRIES  0x8000
@@ -246,8 +221,7 @@ typedef struct td_VMMOB_REGISTRY {
 #define VMM_CACHE_TAG_TLB       'Tb'
 
 typedef struct tdVMMOB_MEM {
-    BYTE Reserved[0x1c];
-    DWORD cbData;
+    OB Ob;
     SLIST_ENTRY SListTotal;
     SLIST_ENTRY SListEmpty;
     struct tdVMMOB_MEM *FLink;
@@ -296,7 +270,7 @@ typedef struct tdVMM_MEMORYMODEL_FUNCTIONS {
     VOID(*pfnMapInitialize)(_In_ PVMM_PROCESS pProcess);
     VOID(*pfnMapTag)(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaBase, _In_ QWORD vaLimit, _In_opt_ LPSTR szTag, _In_opt_ LPWSTR wszTag, _In_ BOOL fWoW64, _In_ BOOL fOverwrite);
     BOOL(*pfnMapGetEntries)(_In_ PVMM_PROCESS pProcess, _In_ DWORD flags, _Out_ PVMMOB_MEMMAP *ppObMemMap);
-    BOOL(*pfnMapGetDisplay)(_In_ PVMM_PROCESS pProcess, _In_ DWORD flags, _Out_ PVMMOB_PDATA *ppObDisplay);
+    BOOL(*pfnMapGetDisplay)(_In_ PVMM_PROCESS pProcess, _In_ DWORD flags, _Out_ PVMMOB_DATA *ppObDisplay);
     VOID(*pfnTlbSpider)(_In_ PVMM_PROCESS pProcess);
     BOOL(*pfnTlbPageTableVerify)(_Inout_ PBYTE pb, _In_ QWORD pa, _In_ BOOL fSelfRefReq);
 } VMM_MEMORYMODEL_FUNCTIONS;
@@ -355,33 +329,7 @@ typedef struct tdVMM_WIN_EPROCESS_OFFSET {
     WORD SeAuditProcessCreationInfo;
 } VMM_WIN_EPROCESS_OFFSET, *PVMM_WIN_EPROCESS_OFFSET;
 
-typedef struct tdVMMWIN_REGISTRY_OFFSET {
-    QWORD vaHintCMHIVE;
-    struct {
-        WORD Signature;
-        WORD FLink;
-        WORD Length;
-        WORD StorageMap;
-        WORD StorageSmallDir;
-        WORD BaseBlock;
-        WORD FileFullPathOpt;
-        WORD FileUserNameOpt;
-        WORD HiveRootPathOpt;
-        WORD _Size;
-    } CM;
-    struct {
-        WORD Signature;
-        WORD Length;
-        WORD Major;
-        WORD Minor;
-        WORD FileName;
-    } BB;
-    struct {
-        WORD BlkA;
-        WORD HBin;
-        WORD _Size;
-    } HE;
-} VMMWIN_REGISTRY_OFFSET, *PVMMWIN_REGISTRY_OFFSET;
+typedef struct tdVMMWIN_REGISTRY_CONTEXT *PVMMWIN_REGISTRY_CONTEXT;
 
 typedef struct tdVMMWIN_TCPIP_OFFSET_TcpE {
     BOOL _fValid;
@@ -479,11 +427,11 @@ typedef struct tdVMM_CONTEXT {
         DWORD cTick_TLB;
         DWORD cTick_ProcPartial;
         DWORD cTick_ProcTotal;
+        DWORD cTick_Registry;
     } ThreadProcCache;
     VMM_STATISTICS stat;
     VMM_KERNELINFO kernel;
-    POB_CONTAINER pObCRegistry;
-    VMMWIN_REGISTRY_OFFSET RegistryOffset;
+    PVMMWIN_REGISTRY_CONTEXT pRegistry;
     VMMWIN_TCPIP_CONTEXT TcpIp;
     QWORD paPluginPhys2VirtRoot;
     VMM_DYNAMIC_LOAD_FUNCTIONS fn;
@@ -698,7 +646,7 @@ BOOL VmmReadPage(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Inout_bytecoun
 * -- cpMEMsVirt
 * -- flags = flags as in VMM_FLAG_*, [VMM_FLAG_NOCACHE for supression of data (not tlb) caching]
 */
-VOID VmmReadScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_ PPMEM_IO_SCATTER_HEADER ppMEMsVirt, _In_ DWORD cpMEMsVirt, _In_ QWORD flags);
+VOID VmmReadScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_updates_(cpMEMsVirt) PPMEM_IO_SCATTER_HEADER ppMEMsVirt, _In_ DWORD cpMEMsVirt, _In_ QWORD flags);
 
 /*
 * Scatter read physical memory. Non contiguous 4096-byte pages.
@@ -845,7 +793,7 @@ inline BOOL VmmMemMapGetEntries(_In_ PVMM_PROCESS pProcess, _In_ DWORD flags, _O
 * -- return
 */
 _Success_(return)
-inline BOOL VmmMemMapGetDisplay(_In_ PVMM_PROCESS pProcess, _In_ DWORD flags, _Out_ PVMMOB_PDATA *ppObDisplay)
+inline BOOL VmmMemMapGetDisplay(_In_ PVMM_PROCESS pProcess, _In_ DWORD flags, _Out_ PVMMOB_DATA *ppObDisplay)
 {
     if(ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_NA) { return FALSE; }
     return ctxVmm->fnMemoryModel.pfnMapGetDisplay(pProcess, flags, ppObDisplay);
