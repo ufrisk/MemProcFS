@@ -101,6 +101,7 @@ DWORD VmmProcCacheUpdaterThread()
         ctxVmm->ThreadProcCache.cTick_Phys = VMMPROC_UPDATERTHREAD_LOCAL_PHYSCACHE;
         ctxVmm->ThreadProcCache.cTick_TLB = VMMPROC_UPDATERTHREAD_LOCAL_TLB;
         ctxVmm->ThreadProcCache.cTick_ProcPartial = VMMPROC_UPDATERTHREAD_LOCAL_PROC_REFRESHLIST;
+        ctxVmm->ThreadProcCache.cTick_ProcTotal = VMMPROC_UPDATERTHREAD_LOCAL_PROC_REFRESHTOTAL;
         ctxVmm->ThreadProcCache.cTick_Registry = VMMPROC_UPDATERTHREAD_LOCAL_REGISTRY;
     }
     while(ctxVmm->ThreadProcCache.fEnabled) {
