@@ -17,6 +17,7 @@
 */
 
 #include "m_virt2phys.h"
+#include "pdb.h"
 #include "pluginmanager.h"
 #include "util.h"
 #include "vmm.h"
@@ -147,6 +148,20 @@ NTSTATUS MStatus_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWOR
         if(!_wcsicmp(ctx->wszPath, L"native_max_iosize")) {
             return Util_VfsReadFile_FromQWORD(ctxMain->dev.cbMaxSizeMemIo, pb, cb, pcbRead, cbOffset, FALSE);
         }
+        if(!_wcsnicmp(ctx->wszPath, L"config_symbol", 13)) {
+            if(!_wcsicmp(ctx->wszPath, L"config_symbol_enable")) {
+                return Util_VfsReadFile_FromBOOL(ctxMain->pdb.fEnable, pb, cb, pcbRead, cbOffset);
+            }
+            if(!_wcsicmp(ctx->wszPath, L"config_symbolcache")) {
+                return Util_VfsReadFile_FromPBYTE(ctxMain->pdb.szLocal, strlen(ctxMain->pdb.szLocal), pb, cb, pcbRead, cbOffset);
+            }
+            if(!_wcsicmp(ctx->wszPath, L"config_symbolserver")) {
+                return Util_VfsReadFile_FromPBYTE(ctxMain->pdb.szServer, strlen(ctxMain->pdb.szServer), pb, cb, pcbRead, cbOffset);
+            }
+            if(!_wcsicmp(ctx->wszPath, L"config_symbolserver_enable")) {
+                return Util_VfsReadFile_FromBOOL(ctxMain->pdb.fServerEnable, pb, cb, pcbRead, cbOffset);
+            }
+        }
     }
     return VMMDLL_STATUS_FILE_INVALID;
 }
@@ -254,6 +269,22 @@ NTSTATUS MStatus_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PBYTE pb, _In_ DWOR
             return MStatus_Write_NotifyVerbosityChange(
                 Util_VfsWriteFile_BOOL(&ctxMain->cfg.fVerboseExtraTlp, pb, cb, pcbWrite, cbOffset));
         }
+        if(!_wcsnicmp(ctx->wszPath, L"config_symbol", 13)) {
+            if(!_wcsicmp(ctx->wszPath, L"config_symbol_enable")) {
+                nt = Util_VfsWriteFile_DWORD(&ctxMain->pdb.fEnable, pb, cb, pcbWrite, cbOffset, 1);
+            }
+            if(!_wcsicmp(ctx->wszPath, L"config_symbolcache")) {
+                nt = Util_VfsWriteFile_PBYTE(ctxMain->pdb.szLocal, _countof(ctxMain->pdb.szLocal) - 1, pb, cb, pcbWrite, cbOffset, TRUE);
+            }
+            if(!_wcsicmp(ctx->wszPath, L"config_symbolserver")) {
+                nt = Util_VfsWriteFile_PBYTE(ctxMain->pdb.szServer, _countof(ctxMain->pdb.szServer) - 1, pb, cb, pcbWrite, cbOffset, TRUE);
+            }
+            if(!_wcsicmp(ctx->wszPath, L"config_symbolserver_enable")) {
+                nt = Util_VfsWriteFile_DWORD(&ctxMain->pdb.fServerEnable, pb, cb, pcbWrite, cbOffset, 1);
+            }
+            PDB_ConfigChange();
+            return nt;
+        }
     }
     return VMMDLL_STATUS_FILE_INVALID;
 }
@@ -284,6 +315,10 @@ BOOL MStatus_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
         VMMDLL_VfsList_AddFile(pFileList, "config_refresh_proc_partial", 8);
         VMMDLL_VfsList_AddFile(pFileList, "config_refresh_proc_total", 8);
         VMMDLL_VfsList_AddFile(pFileList, "config_refresh_registry", 8);
+        VMMDLL_VfsList_AddFile(pFileList, "config_symbol_enable", 1);
+        VMMDLL_VfsList_AddFile(pFileList, "config_symbolcache", strlen(ctxMain->pdb.szLocal));
+        VMMDLL_VfsList_AddFile(pFileList, "config_symbolserver", strlen(ctxMain->pdb.szServer));
+        VMMDLL_VfsList_AddFile(pFileList, "config_symbolserver_enable", 1);
         VMMDLL_VfsList_AddFile(pFileList, "statistics", 1103);
         VMMDLL_VfsList_AddFile(pFileList, "config_printf_enable", 1);
         VMMDLL_VfsList_AddFile(pFileList, "config_printf_v", 1);

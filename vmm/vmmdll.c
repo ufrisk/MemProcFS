@@ -8,6 +8,7 @@
 #include "vmmdll.h"
 #include "pluginmanager.h"
 #include "util.h"
+#include "pdb.h"
 #include "pe.h"
 #include "statistics.h"
 #include "version.h"
@@ -82,8 +83,8 @@ BOOL VmmDll_ConfigIntialize(_In_ DWORD argc, _In_ char* argv[])
             ctxMain->cfg.fVerboseExtraTlp = TRUE;
             i++;
             continue;
-        } else if(0 == _stricmp(argv[i], "-identify")) {
-            ctxMain->cfg.fCommandIdentify = TRUE;
+        } else if(0 == _stricmp(argv[i], "-symbolserverdisable")) {
+            ctxMain->cfg.fDisableSymbolServerOnStartup = TRUE;
             i++;
             continue;
         } else if(0 == _stricmp(argv[i], "-norefresh")) {
@@ -153,6 +154,7 @@ VOID VmmDll_PrintHelp()
         " License: GNU GENERAL PUBLIC LICENSE - Version 3, 29 June 2007                 \n" \
         " Contact information: pcileech@frizk.net                                       \n" \
         " The Memory Process File System: https://github.com/ufrisk/MemProcFS           \n" \
+        " LeechCore:                      https://github.com/ufrisk/LeechCore           \n" \
         " PCILeech:                       https://github.com/ufrisk/pcileech            \n" \
         " -----                                                                         \n" \
         " The recommended way to use the Memory Process File System is to specify the   \n" \
@@ -167,16 +169,17 @@ VOID VmmDll_PrintHelp()
         " Example 4: MemProcFS.exe c:\\dumps\\memdump-win7x64.dumpit                    \n" \
         " -----                                                                         \n" \
         " Valid options:                                                                \n" \
-        "   -device: select memory acquisition device or memory dump file to use.       \n" \
-        "          Valid options: <memory_dump_file>, PMEM, FPGA, TOTALMELTDOWN         \n" \
+        "   -device : select memory acquisition device or memory dump file to use.      \n" \
+        "          Valid options: <any device supported by the leechcore library>       \n" \
+        "          such as, but not limited to: <memory_dump_file>, PMEM, FPGA          \n" \
         "          ---                                                                  \n" \
         "          <memory_dump_file> = memory dump file name optionally including path.\n" \
         "          PMEM = use winpmem 'winpmem_64.sys' to acquire live memory.          \n" \
         "          PMEM://c:\\path\\to\\winpmem_64.sys = path to winpmem driver.        \n" \
         "          ---                                                                  \n" \
-        "          Below acquisition devices require pcileech.dll and are not built-in: \n" \
-        "          TOTALMELTDOWN = use CVE-2018-1038 (vulnerable windows 7 only)        \n" \
-        "          FPGA = use PCILeech PCIe DMA hardware memory acquisition device.     \n" \
+        "          Please see https://github.com/ufrisk/LeechCore for additional info.  \n" \
+        "   -remote : connect to a remote host running the LeechAgent. Please see the   \n" \
+        "          LeechCore documentation for more information.                        \n" \
         "   -v   : verbose option. Additional information is displayed in the output.   \n" \
         "          Option has no value. Example: -v                                     \n" \
         "   -vv  : extra verbose option. More detailed additional information is shown  \n" \
@@ -191,9 +194,12 @@ VOID VmmDll_PrintHelp()
         "          Example: -pythonpath \"C:\\Program Files\\Python37\"                 \n" \
         "   -mount : drive letter to mount The Memory Process File system at.           \n" \
         "          default: M   Example: -mount Q                                       \n" \
-        "   -identify : scan memory for the operating system and the kernel page table. \n" \
-        "          This may help if the default auto-detect is not working.             \n" \
-        "          Option has no value. Example: -identify                              \n" \
+        "   -norefresh : disable automatic cache and processes refreshes even when      \n" \
+        "          running against a live memory target - such as PCIe FPGA or live     \n" \
+        "          driver acquired memory. This is not recommended. Example: -norefresh \n" \
+        "   -symbolserverdisable : disable any integrations with the Microsoft Symbol   \n" \
+        "          Server used by the debugging .pdb symbol subsystem. Functionality    \n" \
+        "          will be limited if this is activated. Example: -symbolserverdisable  \n" \
         "                                                                               \n",
         VERSION_MAJOR, VERSION_MINOR, VERSION_REVISION
     );
@@ -237,10 +243,6 @@ BOOL VMMDLL_Initialize(_In_ DWORD argc, _In_ LPSTR argv[])
         return FALSE;
     }
     // ctxMain.dev context is initialized from here onwards - device functionality is working!
-    if(ctxMain->cfg.fCommandIdentify) {
-        // if identify option is supplied try scan for page directory base...
-        VmmProcIdentify();
-    }
     if(!VmmProcInitialize()) {
         vmmprintf("MOUNT: INFO: PROC file system not mounted.\n");
         VmmDll_FreeContext();
@@ -541,6 +543,15 @@ BOOL VMMDLL_Refresh(_In_ DWORD dwReserved)
     CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_Refresh,
         VMMDLL_Refresh_Impl(dwReserved))
+}
+
+/*
+* Free memory allocated by the VMMDLL.
+* -- pvMem
+*/
+VOID VMMDLL_MemFree(_Frees_ptr_opt_ PVOID pvMem)
+{
+    LocalFree(pvMem);
 }
 
 
@@ -904,13 +915,13 @@ BOOL VMMDLL_ProcessGetInformation_Impl(_In_ DWORD dwPID, _Inout_opt_ PVMMDLL_PRO
         case VMM_SYSTEM_WINDOWS_X64:
             pInfo->os.win.fWow64 = pObProcess->win.fWow64;
             pInfo->os.win.vaENTRY = pObProcess->win.vaENTRY;
-            pInfo->os.win.vaEPROCESS = pObProcess->win.vaEPROCESS;
+            pInfo->os.win.vaEPROCESS = pObProcess->win.EPROCESS.va;
             pInfo->os.win.vaPEB = pObProcess->win.vaPEB;
             pInfo->os.win.vaPEB32 = pObProcess->win.vaPEB32;
             break;
         case VMM_SYSTEM_WINDOWS_X86:
             pInfo->os.win.vaENTRY = pObProcess->win.vaENTRY;
-            pInfo->os.win.vaEPROCESS = pObProcess->win.vaEPROCESS;
+            pInfo->os.win.vaEPROCESS = pObProcess->win.EPROCESS.va;
             pInfo->os.win.vaPEB = pObProcess->win.vaPEB;
             break;
     }
@@ -1243,7 +1254,7 @@ BOOL VMMDLL_WinReg_EnumKeyExW_Impl(_In_ LPWSTR wszFullPathKey, _In_ DWORD dwInde
         if(lpftLastWriteTime) { *(PQWORD)lpftLastWriteTime = 0; }
         return FALSE;
     }
-    f = VmmWinRegKey_KeyValuePathFromPath(wszFullPathKey, &pObHive, wszPathKey) &&
+    f = VmmWinReg_PathHiveGetByFullPath(wszFullPathKey, &pObHive, wszPathKey) &&
         (pObKey = VmmWinReg_KeyGetByPathW(pObHive, wszPathKey)) &&
         (pmObSubKeys = VmmWinReg_KeyList(pObHive, pObKey)) &&
         (pObSubKey = ObMap_GetByIndex(pmObSubKeys, dwIndex));
@@ -1274,7 +1285,7 @@ BOOL VMMDLL_WinReg_EnumValueW_Impl(_In_ LPWSTR wszFullPathKey, _In_ DWORD dwInde
         if(lpcbData) { *lpcbData = 0; }
         return FALSE;
     }
-    f = VmmWinRegKey_KeyValuePathFromPath(wszFullPathKey, &pObHive, wszPathKey) &&
+    f = VmmWinReg_PathHiveGetByFullPath(wszFullPathKey, &pObHive, wszPathKey) &&
         (pObKey = VmmWinReg_KeyGetByPathW(pObHive, wszPathKey)) &&
         (pmObValues = VmmWinReg_KeyValueList(pObHive, pObKey)) &&
         (pObValue = ObMap_GetByIndex(pmObValues, dwIndex));
@@ -1411,6 +1422,58 @@ BOOL VMMDLL_WinGetThunkInfoIAT(_In_ DWORD dwPID, _In_ LPSTR szModuleName, _In_ L
         STATISTICS_ID_VMMDLL_WinGetThunkIAT,
         VMMDLL_WinGetThunkInfoIAT_Impl(dwPID, szModuleName, szImportModuleName, szImportFunctionName, pThunkInfoIAT))
 }
+
+
+
+//-----------------------------------------------------------------------------
+// WINDOWS SPECIFIC DEBUGGING / SYMBOL FUNCTIONALITY BELOW:
+//-----------------------------------------------------------------------------
+
+_Success_(return)
+BOOL VMMDLL_PdbSymbolAddress_Impl(_In_ LPSTR szModule, _In_ LPSTR szSymbolName, _Out_ PULONG64 pvaSymbolAddress)
+{
+    VMMWIN_PDB_HANDLE hPdb = PDB_GetHandleFromModuleName(szModule);
+    return PDB_GetSymbolAddress(hPdb, szSymbolName, pvaSymbolAddress);
+}
+
+_Success_(return)
+BOOL VMMDLL_PdbSymbolAddress(_In_ LPSTR szModule, _In_ LPSTR szSymbolName, _Out_ PULONG64 pvaSymbolAddress)
+{
+    CALL_IMPLEMENTATION_VMM(
+        STATISTICS_ID_VMMDLL_PdbSymbolAddress,
+        VMMDLL_PdbSymbolAddress_Impl(szModule, szSymbolName, pvaSymbolAddress))
+}
+
+_Success_(return)
+BOOL VMMDLL_PdbTypeSize_Impl(_In_ LPSTR szModule, _In_ LPSTR szTypeName, _Out_ PDWORD pcbTypeSize)
+{
+    VMMWIN_PDB_HANDLE hPdb = PDB_GetHandleFromModuleName(szModule);
+    return PDB_GetTypeSize(hPdb, szTypeName, pcbTypeSize);
+}
+
+_Success_(return)
+BOOL VMMDLL_PdbTypeSize(_In_ LPSTR szModule, _In_ LPSTR szTypeName, _Out_ PDWORD pcbTypeSize)
+{
+    CALL_IMPLEMENTATION_VMM(
+        STATISTICS_ID_VMMDLL_PdbTypeSize,
+        VMMDLL_PdbTypeSize_Impl(szModule, szTypeName, pcbTypeSize))
+}
+
+_Success_(return)
+BOOL VMMDLL_PdbTypeChildOffset_Impl(_In_ LPSTR szModule, _In_ LPSTR szTypeName, _In_ LPWSTR wszTypeChildName, _Out_ PDWORD pcbTypeChildOffset)
+{
+    VMMWIN_PDB_HANDLE hPdb = PDB_GetHandleFromModuleName(szModule);
+    return PDB_GetTypeChildOffset(hPdb, szTypeName, wszTypeChildName, pcbTypeChildOffset);
+}
+
+_Success_(return)
+BOOL VMMDLL_PdbTypeChildOffset(_In_ LPSTR szModule, _In_ LPSTR szTypeName, _In_ LPWSTR wszTypeChildName, _Out_ PDWORD pcbTypeChildOffset)
+{
+    CALL_IMPLEMENTATION_VMM(
+        STATISTICS_ID_VMMDLL_PdbTypeChildOffset,
+        VMMDLL_PdbTypeChildOffset_Impl(szModule, szTypeName, wszTypeChildName, pcbTypeChildOffset))
+}
+
 
 
 

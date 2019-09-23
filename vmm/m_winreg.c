@@ -113,7 +113,7 @@ NTSTATUS MWinReg_Read_KeyValue(_In_ LPWSTR wszPathFull, _Out_ PBYTE pb, _In_ DWO
     DWORD cbData;
     PBYTE pbData = NULL;
     LPSTR szMeta = NULL;
-    if(!VmmWinRegKey_KeyValuePathFromPath(wszPathFull, &pObHive, wszSubPath)) { goto finish; }
+    if(!VmmWinReg_PathHiveGetByFullPath(wszPathFull, &pObHive, wszSubPath)) { goto finish; }
     cwszSubPath = (DWORD)wcslen(wszSubPath);
     if((cwszSubPath < 5) || wcscmp(wszSubPath + cwszSubPath - 4, L".txt")) {
         // raw registry value - i.e not metadata
@@ -324,7 +324,7 @@ BOOL MWinReg_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
             return TRUE;
         }
         // list hive contents
-        if(VmmWinRegKey_KeyValuePathFromPath(ctx->wszPath, &pObHive, wszPathHive)) {
+        if(VmmWinReg_PathHiveGetByFullPath(ctx->wszPath, &pObHive, wszPathHive)) {
             MWinReg_List_KeyAndValue(pFileList, pObHive, wszPathHive);
             Ob_DECREF_NULL(&pObHive);
             return TRUE;
@@ -349,7 +349,7 @@ BOOL MWinReg_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
             return TRUE;
         }
         // list hive contents
-        if(VmmWinRegKey_KeyValuePathFromPath(ctx->wszPath, &pObHive, wszPathHive)) {
+        if(VmmWinReg_PathHiveGetByFullPath(ctx->wszPath, &pObHive, wszPathHive)) {
             MWinReg_List_KeyAndValue(pFileList, pObHive, wszPathHive);
             Ob_DECREF_NULL(&pObHive);
             return TRUE;

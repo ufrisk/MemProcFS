@@ -188,12 +188,16 @@ typedef struct tdVMM_PROCESS {
     PVMMOB_MODULEMAP pObModuleMap;
     PVMMOB_PROCESS_PERSISTENT pObProcessPersistent;     // Always exists
     struct {
-        QWORD vaEPROCESS;
         QWORD vaPEB;
         DWORD vaPEB32;      // WoW64 only
         QWORD vaENTRY;
         BOOL fWow64;
         QWORD vaSeAuditProcessCreationInfo;
+        struct {
+            QWORD va;
+            DWORD cb;
+            BYTE pb[0x800];
+        } EPROCESS;
     } win;
     struct {
         POB_CONTAINER pObCLdrModulesDisplayCache;
@@ -284,13 +288,13 @@ typedef struct tdVmmConfig {
     CHAR szPythonPath[MAX_PATH];
     QWORD paCR3;
     // flags below
-    BOOL fCommandIdentify;
     BOOL fVerboseDll;
     BOOL fVerbose;
     BOOL fVerboseExtra;
     BOOL fVerboseExtraTlp;
     BOOL fDisableBackgroundRefresh;
     BOOL fDisableLeechCoreClose;    // when device 'existing'
+    BOOL fDisableSymbolServerOnStartup;
 } VMMCONFIG, *PVMMCONFIG;
 
 typedef struct tdVMM_STATISTICS {
@@ -327,9 +331,16 @@ typedef struct tdVMM_WIN_EPROCESS_OFFSET {
     WORD PEB;
     WORD DTB_User;
     WORD SeAuditProcessCreationInfo;
+    struct {
+        // values may not exist - indicated by zero offset
+        BOOL fFailInitialize;
+        WORD CreateTime;
+        WORD ExitTime;
+    } opt;
 } VMM_WIN_EPROCESS_OFFSET, *PVMM_WIN_EPROCESS_OFFSET;
 
-typedef struct tdVMMWIN_REGISTRY_CONTEXT *PVMMWIN_REGISTRY_CONTEXT;
+typedef struct tdVMMWIN_REGISTRY_CONTEXT    *PVMMWIN_REGISTRY_CONTEXT;
+typedef QWORD                               VMMWIN_PDB_HANDLE;
 
 typedef struct tdVMMWIN_TCPIP_OFFSET_TcpE {
     BOOL _fValid;
@@ -380,20 +391,34 @@ typedef struct tdVMMWIN_MEMCOMPRESS_CONTEXT {
     VMMWIN_MEMCOMPRESS_OFFSET O;
 } VMMWIN_MEMCOMPRESS_CONTEXT, *PVMMWIN_MEMCOMPRESS_CONTEXT;
 
+typedef struct tdVMMWIN_OPTIONAL_KERNEL_CONTEXT {
+    BOOL fInitialized;
+    DWORD cCPUs;
+    QWORD vaPfnDatabase;
+    QWORD vaPsLoadedModuleListExp;
+    struct {
+        QWORD va;
+        // encrypted kdbg info below (x64 win8+)
+        QWORD vaKdpDataBlockEncoded;
+        QWORD qwKiWaitAlways;
+        QWORD qwKiWaitNever;
+    } KDBG;
+} VMMWIN_OPTIONAL_KERNEL_CONTEXT, *PVMMWIN_OPTIONAL_KERNEL_CONTEXT;
+
 typedef struct tdVMM_KERNELINFO {
     QWORD paDTB;
     QWORD vaBase;
     QWORD cbSize;
-    // optional non-required values below
-    VMM_WIN_EPROCESS_OFFSET OffsetEPROCESS;
+    // Windows-only related values below:
     QWORD vaEntry;
-    QWORD vaPsLoadedModuleList;
-    QWORD vaKDBG;
     DWORD dwPidRegistry;
     DWORD dwVersionMajor;
     DWORD dwVersionMinor;
     DWORD dwVersionBuild;
+    QWORD vaPsLoadedModuleListPtr;
+    VMM_WIN_EPROCESS_OFFSET OffsetEPROCESS;
     VMMWIN_MEMCOMPRESS_CONTEXT MemCompress;
+    VMMWIN_OPTIONAL_KERNEL_CONTEXT opt;
 } VMM_KERNELINFO;
 
 typedef NTSTATUS VMMFN_RtlDecompressBuffer(
@@ -412,8 +437,9 @@ typedef struct tdVMM_DYNAMIC_LOAD_FUNCTIONS {
 } VMM_DYNAMIC_LOAD_FUNCTIONS;
 
 typedef struct tdVMM_CONTEXT {
+    HMODULE hModuleVmm;             // do not call FreeLibrary on hModuleVmm
     CRITICAL_SECTION MasterLock;
-    POB_CONTAINER pObCPROC;        // contains VMM_PROCESS_TABLE
+    POB_CONTAINER pObCPROC;         // contains VMM_PROCESS_TABLE
     VMM_MEMORYMODEL_FUNCTIONS fnMemoryModel;
     VMM_MEMORYMODEL_TP tpMemoryModel;
     BOOL f32;
@@ -431,6 +457,8 @@ typedef struct tdVMM_CONTEXT {
     } ThreadProcCache;
     VMM_STATISTICS stat;
     VMM_KERNELINFO kernel;
+    POB pObVfsDumpContext;
+    PVOID pPdbContext;
     PVMMWIN_REGISTRY_CONTEXT pRegistry;
     VMMWIN_TCPIP_CONTEXT TcpIp;
     QWORD paPluginPhys2VirtRoot;
@@ -455,6 +483,14 @@ typedef struct tdVMM_CONTEXT {
 typedef struct tdVMM_MAIN_CONTEXT {
     VMMCONFIG cfg;
     LEECHCORE_CONFIG dev;
+    struct {
+        BOOL fInitialized;
+        BOOL fEnable;
+        BOOL fServerEnable;
+        CHAR szLocal[MAX_PATH];
+        CHAR szServer[MAX_PATH];
+        CHAR szSymbolPath[MAX_PATH];
+    } pdb;
     PVOID pvStatistics;
 } VMM_MAIN_CONTEXT, *PVMM_MAIN_CONTEXT;
 
@@ -852,8 +888,31 @@ inline PVMM_PROCESS VmmProcessGetNext(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD
 * -- paDTB_UserOpt
 * -- szName
 * -- fUserOnly = user mode process (hide supervisor pages from view)
+* -- pbEPROCESS
+* -- cbEPROCESS
+* -- return
 */
-PVMM_PROCESS VmmProcessCreateEntry(_In_ BOOL fTotalRefresh, _In_ DWORD dwPID, _In_ DWORD dwPPID, _In_ DWORD dwState, _In_ QWORD paDTB, _In_ QWORD paDTB_UserOpt, _In_ CHAR szName[16], _In_ BOOL fUserOnly);
+PVMM_PROCESS VmmProcessCreateEntry(_In_ BOOL fTotalRefresh, _In_ DWORD dwPID, _In_ DWORD dwPPID, _In_ DWORD dwState, _In_ QWORD paDTB, _In_ QWORD paDTB_UserOpt, _In_ CHAR szName[16], _In_ BOOL fUserOnly, _In_reads_opt_(cbEPROCESS) PBYTE pbEPROCESS, _In_ DWORD cbEPROCESS);
+
+/*
+* Query process for its creation time.
+* -- pProcess
+* -- return = time as FILETIME or 0 on error.
+*/
+inline QWORD VmmProcess_GetCreateTimeOpt(_In_opt_ PVMM_PROCESS pProcess)
+{
+    return (pProcess && ctxVmm->kernel.OffsetEPROCESS.opt.CreateTime) ? *(PQWORD)(pProcess->win.EPROCESS.pb + ctxVmm->kernel.OffsetEPROCESS.opt.CreateTime) : 0;
+}
+
+/*
+* Query process for its exit time.
+* -- pProcess
+* -- return = time as FILETIME or 0 on error.
+*/
+inline QWORD VmmProcess_GetExitTimeOpt(_In_opt_ PVMM_PROCESS pProcess)
+{
+    return (pProcess && ctxVmm->kernel.OffsetEPROCESS.opt.ExitTime) ? *(PQWORD)(pProcess->win.EPROCESS.pb + ctxVmm->kernel.OffsetEPROCESS.opt.ExitTime) : 0;
+}
 
 /*
 * Activate the pending, not yet active, processes added by VmmProcessCreateEntry.

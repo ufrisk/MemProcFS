@@ -110,19 +110,31 @@ VOID VmmWinReg_HiveReadEx(_In_ POB_REGISTRY_HIVE pRegistryHive, _In_ DWORD ra, _
 * -- return = TRUE on success, FALSE on partial or zero write.
 */
 _Success_(return)
-BOOL VmmWinReg_HiveWrite(_In_ POB_REGISTRY_HIVE pRegistryHive, _In_ DWORD ra, _In_ PBYTE pb, _In_ DWORD cb);
+BOOL VmmWinReg_HiveWrite(_In_ POB_REGISTRY_HIVE pRegistryHive, _In_ DWORD ra, _In_reads_(cb) PBYTE pb, _In_ DWORD cb);
 
 /*
 * Retrieve registry hive and key/value path from a "full" path starting with:
 * '0x...', 'by-hive\0x...' or 'HKLM\'
-* CALLER DECREF: *ppHive
+* CALLER DECREF: *ppObHive
 * -- wszPathFull
-* -- ppHive
+* -- ppObHive
 * -- wszPathKeyValue
 * -- return
 */
 _Success_(return)
-BOOL VmmWinRegKey_KeyValuePathFromPath(_In_ LPWSTR wszPathFull, _Out_ POB_REGISTRY_HIVE *ppHive, _Out_writes_(MAX_PATH) LPWSTR wszPathKeyValue);
+BOOL VmmWinReg_PathHiveGetByFullPath(_In_ LPWSTR wszPathFull, _Out_ POB_REGISTRY_HIVE *ppObHive, _Out_writes_(MAX_PATH) LPWSTR wszPathKeyValue);
+
+/*
+* Retrieve registry hive and key from a "full" path starting with:
+* '0x...', 'by-hive\0x...' or 'HKLM\'
+* CALLER DECREF: *ppObHive, *ppObKey
+* -- wszPathFull
+* -- ppObHive
+* -- ppObKey
+* -- return
+*/
+_Success_(return)
+BOOL VmmWinReg_KeyHiveGetByFullPath(_In_ LPWSTR wszPathFull, _Out_ POB_REGISTRY_HIVE *ppObHive, _Out_ POB_REGISTRY_KEY *ppObKey);
 
 /*
 * Retrieve a registry key by its path. If no registry key is found then NULL

@@ -26,7 +26,7 @@ BOOL VmmProcUserCR3TryInitialize64()
 {
     PVMM_PROCESS pObProcess;
     VmmInitializeMemoryModel(VMM_MEMORYMODEL_X64);
-    pObProcess = VmmProcessCreateEntry(TRUE, 1, 0, 0, ctxMain->cfg.paCR3, 0, "unknown_process", FALSE);
+    pObProcess = VmmProcessCreateEntry(TRUE, 1, 0, 0, ctxMain->cfg.paCR3, 0, "unknown_process", FALSE, NULL, 0);
     VmmProcessCreateFinish();
     if(!pObProcess) {
         vmmprintfv("VmmProc: FAIL: Initialization of Process failed from user-defined CR3 %016llx.\n", ctxMain->cfg.paCR3);
@@ -151,6 +151,7 @@ DWORD VmmProcCacheUpdaterThread()
     }
 fail:
     vmmprintfv("VmmProc: Exit periodic cache flushing.\n");
+    if(ctxVmm->ThreadProcCache.hThread) { CloseHandle(ctxVmm->ThreadProcCache.hThread); }
     ctxVmm->ThreadProcCache.hThread = NULL;
     return 0;
 }
@@ -257,67 +258,5 @@ BOOL VmmProcPHYS_VerifyWindowsEPROCESS(_In_ PBYTE pb, _In_ QWORD cb, _In_ QWORD 
         *ppaPML4 = *(PQWORD)(pb + i - 0x00) & ~0xfff;
         return TRUE;
     }
-    return FALSE;
-}
-
-_Success_(return)
-BOOL VmmProcPHYS_ScanForKernel(_Out_ PQWORD ppaPML4, _In_ QWORD paBase, _In_ QWORD paMax, _In_ LPSTR szDescription)
-{
-    QWORD o, i, paCurrent;
-    PBYTE pbBuffer8M = NULL;
-    PPAGE_STATISTICS pPageStat = NULL;
-    LEECHCORE_PAGESTAT_MINIMAL PageStatMinimal;
-    BOOL result;
-    // initialize / allocate memory
-    paCurrent = paBase;
-    if(!(pbBuffer8M = LocalAlloc(0, 0x800000))) { goto fail; }
-    if(!PageStatInitialize(&pPageStat, paCurrent, paMax, szDescription, FALSE, FALSE)) { goto fail; }
-    PageStatMinimal.h = (HANDLE)pPageStat;
-    PageStatMinimal.pfnPageStatUpdate = PageStatUpdate;
-    // loop kmd-find
-    for(; paCurrent < paMax; paCurrent += 0x00800000) {
-        if(!LeechCore_ReadEx(paCurrent, pbBuffer8M, 0x00800000, 0, &PageStatMinimal)) { continue; }
-        for(o = 0; o < 0x00800000; o += 0x1000) {
-            // Scan for windows EPROCESS (to get DirectoryBase/PML4)
-            for(i = 0; i < 0x1000; i += 8) {
-                if(*(PQWORD)(pbBuffer8M + o + i) == 0x00006D6574737953) {
-                    result = VmmProcPHYS_VerifyWindowsEPROCESS(pbBuffer8M, 0x00800000, o + i, ppaPML4);
-                    if(result) {
-                        pPageStat->szAction = "Windows System PageDirectoryBase/PML4 located";
-                        PageStatClose(&pPageStat);
-                        LocalFree(pbBuffer8M);
-                        return TRUE;
-                    }
-                }
-            }
-        }
-    }
-fail:
-    PageStatClose(&pPageStat);
-    LocalFree(pbBuffer8M);
-    *ppaPML4 = 0;
-    return FALSE;
-}
-
-BOOL VmmProcIdentify()
-{
-    QWORD paPML4;
-    BOOL result = FALSE;
-    vmmprintf(
-        "IDENTIFY: Scanning to identify target operating system and page directories...\n"
-        "  Currently supported oprerating systems:\n"
-        "     - Windows (64-bit).\n");
-    if(ctxMain->dev.paMax > 0x100000000) {
-        result = VmmProcPHYS_ScanForKernel(&paPML4, 0x100000000, ctxMain->dev.paMax, "Scanning 4GB+ to Identify (1/2) ...");
-    }
-    if(!result) {
-        result = VmmProcPHYS_ScanForKernel(&paPML4, 0x01000000, 0x100000000, "Scanning 0-4GB to Identify (2/2) ...");
-    }
-    if(result) {
-        vmmprintf("IDENTIFY: Succeeded: Windows System page directory base is located at: 0x%llx\n", paPML4);
-        ctxMain->cfg.paCR3 = paPML4;
-        return TRUE;
-    }
-    vmmprintf("IDENTIFY: Failed. No fully supported operating system detected.\n");
     return FALSE;
 }

@@ -1,0 +1,155 @@
+Redistributable Code
+==============================================
+The file(s) listed below are "Redistributable Code" within the meaning of the End-User 
+License Agreement under which you have licensed the file(s).  
+
+===================
+CVS.PM
+===================
+ 
+(1) You may redistribute cvs.pm
+ 
+===================
+CVSINDEX.CMD
+===================
+ 
+(1) You may redistribute cvsindex.cmd
+ 
+===================
+P4.PM
+===================
+ 
+(1) You may redistribute p4.pm
+ 
+===================
+P4INDEX.CMD
+===================
+ 
+(1) You may redistribute p4index.cmd
+ 
+===================
+SSINDEX.CMD
+===================
+ 
+(1) You may redistribute ssindex.cmd
+ 
+===================
+VSS.PM
+===================
+ 
+(1) You may redistribute vss.pm
+ 
+===================
+VSSINDEX.CMD
+===================
+ 
+(1) You may redistribute vssindex.cmd
+ 
+===================
+SVN.PM
+===================
+ 
+(1) You may redistribute svn.pm
+ 
+===================
+SVNINDEX.CMD
+===================
+ 
+(1) You may redistribute svnindex.cmd
+ 
+===================
+WALK.CMD
+===================
+ 
+(1) You may redistribute walk.cmd
+ 
+===================
+CV2HTTP.CMD
+===================
+ 
+(1) You may redistribute cv2http.cmd
+ 
+===================
+CV2HTTP.PL
+===================
+ 
+(1) You may redistribute cv2http.pl
+ 
+===================
+SRCSRV.INI
+===================
+ 
+(1) You may redistribute srcsrv.ini
+ 
+===================
+TFS.PM
+===================
+ 
+(1) You may redistribute tfs.pm
+
+===================
+TFSINDEX.CMD
+===================
+ 
+(1) You may redistribute tfsindex.cmd
+ 
+===================
+PDBCOPY.EXE
+===================
+ 
+(1) You may redistribute pdbcopy.exe
+
+===================
+dbghelp.dll
+===================
+ 
+(1) You may redistribute dbghelp.dll version 6.12.2.633
+ 
+===================
+symsrv.dll
+===================
+ 
+(1) You may redistribute symsrv.dll version 6.12.2.633
+ 
+===================
+srcsrv.dll
+===================
+ 
+(1) You may redistribute srcsrv.dll version 6.12.2.633
+ 
+===================
+pdbstr.exe
+===================
+ 
+(1) You may redistribute pdbstr.exe version 6.12.2.633
+ 
+===================
+srctool.exe
+===================
+ 
+(1) You may redistribute srctool.exe version 6.12.2.633
+ 
+===================
+agestore.exe
+===================
+ 
+(1) You may redistribute agestore.exe version 6.12.2.633
+ 
+===================
+symbolcheck.dll
+===================
+ 
+(1) You may redistribute symbolcheck.dll version 6.12.2.633
+ 
+===================
+symstore.exe
+===================
+ 
+(1) You may redistribute symstore.exe version 6.12.2.633
+ 
+===================
+symchk.exe
+===================
+ 
+(1) You may redistribute symchk.exe version 6.12.2.633
+ 

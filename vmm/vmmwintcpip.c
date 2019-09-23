@@ -196,7 +196,7 @@ VOID VmmWinTcpIp_TcpE_Fuzz(_In_ PVMM_PROCESS pSystemProcess, _In_ QWORD vaTcpE)
         for(o = 0x80; o < 0x300; o += 8) {
             va = *(PQWORD)(pb + o);
             if(!VMM_KADDR64_16(va)) { continue; }
-            if(va == pObProcess->win.vaEPROCESS) {
+            if(va == pObProcess->win.EPROCESS.va) {
                 po->EProcess = (WORD)o;
                 // INET_AF offset:
                 f = VMM_KADDR64_16(*(PQWORD)(pb + 0x10)) &&
@@ -460,9 +460,9 @@ BOOL VmmWinTcpIp_TcpE_Enumerate(_In_ PVMM_PROCESS pSystemProcess, _In_ POB_VSET 
         if(pE->_Reserved_fPidSearch) { continue; }
         pE->_Reserved_fPidSearch = TRUE;
         while((pObProcess = VmmProcessGetNext(pObProcess, VMM_FLAG_PROCESS_SHOW_TERMINATED))) {
-            if(pE->vaEPROCESS == pObProcess->win.vaEPROCESS) {
+            if(pE->vaEPROCESS == pObProcess->win.EPROCESS.va) {
                 for(j = i; j < c; j++) {
-                    if(pTcpEs[j].vaEPROCESS == pObProcess->win.vaEPROCESS) {
+                    if(pTcpEs[j].vaEPROCESS == pObProcess->win.EPROCESS.va) {
                         pTcpEs[j].dwPID = pObProcess->dwPID;
                         pTcpEs[j]._Reserved_fPidSearch = TRUE;
                     }

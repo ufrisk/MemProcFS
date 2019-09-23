@@ -147,6 +147,19 @@ inline DWORD PE_IatGetNumberOf(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBa
 }
 
 /*
+* Retrieve PDB debugging information from a single module.
+* -- pProcess
+* -- vaModulebase
+* -- pbModuleHeaderOpt
+* -- szPdbName
+* -- pbGUID
+* -- pdwAge
+* -- return
+*/
+_Success_(return)
+BOOL PE_GetPdbInfo(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt, _Out_writes_(MAX_PATH) LPSTR szPdbName, _Out_writes_(16) PBYTE pbGUID, _Out_ PDWORD pdwAge);
+
+/*
 * Retrieve the raw size of the 'file' estimation that is possible to rebuild
 * using PE sections from memory.
 * -- pProcess

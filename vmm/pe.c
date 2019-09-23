@@ -326,6 +326,68 @@ fail:
     return FALSE;
 }
 
+typedef struct tdIMAGE_DEBUG_TYPE_CODEVIEW_PDBINFO
+{
+    DWORD Signature;
+    BYTE Guid[16];
+    DWORD Age;
+    CHAR PdbFileName[256 - 4 - 16 - 4];
+} IMAGE_DEBUG_TYPE_CODEVIEW_PDBINFO;
+
+_Success_(return)
+BOOL PE_GetPdbInfo(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt, _Out_writes_(MAX_PATH) LPSTR szPdbName, _Out_writes_(16) PBYTE pbGUID, _Out_ PDWORD pdwAge)
+{
+    BOOL f, f32;
+    BYTE pbModuleHeader[0x1000] = { 0 };
+    PIMAGE_NT_HEADERS ntHeader;
+    PIMAGE_NT_HEADERS64 ntHeader64;
+    PIMAGE_NT_HEADERS32 ntHeader32;
+    QWORD vaDebugDirectory;
+    DWORD i, iMax, cbImageSize, cbDebugDirectory;
+    PBYTE pbDebugDirectory = NULL;
+    PIMAGE_DEBUG_DIRECTORY pDebugDirectory;
+    IMAGE_DEBUG_TYPE_CODEVIEW_PDBINFO PdbInfo = { 0 };
+    // load both 32/64 bit ntHeader unless already supplied in parameter (only one of 32/64 bit hdr will be valid)
+    // load nt header either by using optionally supplied module header or by fetching from memory.
+    ntHeader = pbModuleHeaderOpt ? PE_HeaderGetVerify(pProcess, 0, pbModuleHeaderOpt, &f32) : PE_HeaderGetVerify(pProcess, vaModuleBase, pbModuleHeader, &f32);
+    if(!ntHeader) { return FALSE; }
+    if(!f32) { // 64-bit PE
+        ntHeader64 = (PIMAGE_NT_HEADERS64)ntHeader;
+        vaDebugDirectory = vaModuleBase + ntHeader64->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].VirtualAddress;
+        cbDebugDirectory = ntHeader64->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].Size;
+        cbImageSize = ntHeader64->OptionalHeader.SizeOfImage;
+    } else { // 32-bit PE
+        ntHeader32 = (PIMAGE_NT_HEADERS32)ntHeader;
+        vaDebugDirectory = vaModuleBase + ntHeader32->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].VirtualAddress;
+        cbDebugDirectory = ntHeader32->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].Size;
+        cbImageSize = ntHeader32->OptionalHeader.SizeOfImage;
+    }
+    if((cbDebugDirectory < sizeof(IMAGE_DEBUG_DIRECTORY)) || (vaDebugDirectory == vaModuleBase) || (cbDebugDirectory > cbImageSize)) { goto fail; }
+    if(!(pbDebugDirectory = LocalAlloc(0, cbDebugDirectory))) { goto fail; }
+    if(!VmmRead(pProcess, vaDebugDirectory, pbDebugDirectory, cbDebugDirectory)) { goto fail; }
+    for(i = 0, iMax = cbDebugDirectory / sizeof(IMAGE_DEBUG_DIRECTORY); i < iMax; i++) {
+        pDebugDirectory = ((PIMAGE_DEBUG_DIRECTORY)pbDebugDirectory) + i;
+        f = !pDebugDirectory->Characteristics &&
+            (pDebugDirectory->Type == IMAGE_DEBUG_TYPE_CODEVIEW) &&
+            (pDebugDirectory->SizeOfData < sizeof(IMAGE_DEBUG_TYPE_CODEVIEW_PDBINFO)) &&
+            (pDebugDirectory->SizeOfData > 24) &&
+            (pDebugDirectory->AddressOfRawData + pDebugDirectory->SizeOfData < cbImageSize) &&
+            VmmRead(pProcess, vaModuleBase + pDebugDirectory->AddressOfRawData, (PBYTE)& PdbInfo, pDebugDirectory->SizeOfData) &&
+            (PdbInfo.Signature == 0x53445352);
+        if(f) {
+            *pdwAge = PdbInfo.Age;
+            memcpy(pbGUID, PdbInfo.Guid, 16);
+            strncpy_s(szPdbName, MAX_PATH, PdbInfo.PdbFileName, _TRUNCATE);
+            LocalFree(pbDebugDirectory);
+            return TRUE;
+        }
+    }
+fail:
+    LocalFree(pbDebugDirectory);
+    return FALSE;
+
+}
+
 //-----------------------------------------------------------------------------
 // READ / WRITE TO MEMORY BACKED RE-CONSTRUCTED 'RAW' PE FILES BELOW:
 //-----------------------------------------------------------------------------

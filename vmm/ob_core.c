@@ -61,7 +61,7 @@ PVOID Ob_Alloc(_In_ WORD tag, _In_ UINT uFlags, _In_ SIZE_T uBytes, _In_opt_ VOI
 * -- pOb
 * -- return
 */
-PVOID Ob_INCREF(PVOID pObIn)
+PVOID Ob_INCREF(_In_opt_ PVOID pObIn)
 {
     POB pOb = (POB)pObIn;
     if(pOb) {
@@ -80,7 +80,7 @@ PVOID Ob_INCREF(PVOID pObIn)
 * count reaches zero the object will be cleaned up.
 * -- pObIn
 */
-VOID Ob_DECREF(PVOID pObIn)
+VOID Ob_DECREF(_In_opt_ PVOID pObIn)
 {
     POB pOb = (POB)pObIn;
     DWORD c;

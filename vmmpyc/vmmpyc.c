@@ -549,9 +549,9 @@ VMMPYC_ProcessGetInformation(PyObject *self, PyObject *args)
             PyDict_SetItemString_DECREF(pyDict, "va-peb", PyLong_FromUnsignedLongLong(info.os.win.vaPEB));
             break;
     }
-    LocalFree(szPathKernel);
-    LocalFree(szPathUser);
-    LocalFree(szCmdLine);
+    VMMDLL_MemFree(szPathKernel);
+    VMMDLL_MemFree(szPathUser);
+    VMMDLL_MemFree(szCmdLine);
     return pyDict;
 }
 
@@ -1095,7 +1095,7 @@ VMMPYC_WinNet_Get(PyObject *self, PyObject *args)
     pNet = VMMDLL_WinNet_Get();
     Py_END_ALLOW_THREADS;
     if(!pNet || (pNet->magic != VMMDLL_WIN_TCPIP_MAGIC) || (pNet->dwVersion != VMMDLL_WIN_TCPIP_VERSION)) {
-        LocalFree(pNet);
+        VMMDLL_MemFree(pNet);
         Py_DECREF(pyDict);
         return PyErr_Format(PyExc_RuntimeError, "VMMPYC_WinNet_Get: Failed.");
     }
@@ -1128,8 +1128,60 @@ VMMPYC_WinNet_Get(PyObject *self, PyObject *args)
             PyList_Append_DECREF(pyListTcpE, pyDictTcpE);
         }
     }
-    LocalFree(pNet);
+    VMMDLL_MemFree(pNet);
     return pyDict;
+}
+
+
+
+
+// (STR, STR) -> ULONG64
+static PyObject *
+VMMPYC_PdbSymbolAddress(PyObject *self, PyObject *args)
+{
+    BOOL result;
+    ULONG64 vaSymbol;
+    LPSTR szModule, szTypeName;
+    if(!PyArg_ParseTuple(args, "ss", &szModule, &szTypeName)) { return NULL; }
+    Py_BEGIN_ALLOW_THREADS;
+    result = VMMDLL_PdbSymbolAddress(szModule, szTypeName, &vaSymbol);
+    Py_END_ALLOW_THREADS;
+    if(!result) { return PyErr_Format(PyExc_RuntimeError, "VMMPYC_PdbSymbolAddress: Failed."); }
+    return PyLong_FromUnsignedLongLong(vaSymbol);
+}
+
+// (STR, STR) -> ULONG
+static PyObject *
+VMMPYC_PdbTypeSize(PyObject *self, PyObject *args)
+{
+    BOOL result;
+    DWORD dwSize;
+    LPSTR szModule, szTypeName;
+    if(!PyArg_ParseTuple(args, "ss", &szModule, &szTypeName)) { return NULL; }
+    Py_BEGIN_ALLOW_THREADS;
+    result = VMMDLL_PdbTypeSize(szModule, szTypeName, &dwSize);
+    Py_END_ALLOW_THREADS;
+    if(!result) { return PyErr_Format(PyExc_RuntimeError, "VMMPYC_PdbTypeSize: Failed."); }
+    return PyLong_FromUnsignedLong(dwSize);
+}
+
+// (STR, STR, WSTR) -> ULONG
+static PyObject *
+VMMPYC_PdbTypeChildOffset(PyObject *self, PyObject *args)
+{
+    PyObject *pyTypeChildName;
+    BOOL result;
+    DWORD dwChildOffset;
+    LPSTR szModule, szTypeName;
+    LPWSTR wszTypeChildName = NULL;
+    if(!PyArg_ParseTuple(args, "ssO!", &szModule, &szTypeName, &PyUnicode_Type, &pyTypeChildName)) { return NULL; }  // pyTypeChildName == borrowed reference - do not decrement
+    if(!(wszTypeChildName = PyUnicode_AsWideCharString(pyTypeChildName, NULL))) { return NULL; }       // wszTypeChildName PyMem_Free() required 
+    Py_BEGIN_ALLOW_THREADS;
+    result = VMMDLL_PdbTypeChildOffset(szModule, szTypeName, wszTypeChildName, &dwChildOffset);
+    Py_END_ALLOW_THREADS;
+    PyMem_Free(wszTypeChildName); wszTypeChildName = NULL;
+    if(!result) { return PyErr_Format(PyExc_RuntimeError, "VMMPYC_PdbTypeChildOffset: Failed."); }
+    return PyLong_FromUnsignedLong(dwChildOffset);
 }
 
 
@@ -1148,7 +1200,7 @@ VOID VMMPYC_VfsList_AddInternal(_Inout_ HANDLE h, _In_opt_ LPSTR szName, _In_opt
     PVMMPYC_VFSLIST pE;
     PVMMPYC_VFSLIST *ppE = (PVMMPYC_VFSLIST*)h;
     if((pE = LocalAlloc(0, sizeof(VMMPYC_VFSLIST)))) {
-        while(i < MAX_PATH && szName[i]) {
+        while(i < MAX_PATH && ((szName && szName[i]) || (wszName && wszName[i]))) {
             pE->wszName[i] = szName ? szName[i] : wszName[i];
             i++;
         }
@@ -1248,6 +1300,9 @@ static PyMethodDef VMMPYC_EmbMethods[] = {
     {"VMMPYC_WinReg_EnumKey", VMMPYC_WinReg_EnumKey, METH_VARARGS, "Enumerate registry sub-keys."},
     {"VMMPYC_WinReg_QueryValue", VMMPYC_WinReg_QueryValue, METH_VARARGS, "Query registry value."},
     {"VMMPYC_WinNet_Get", VMMPYC_WinNet_Get, METH_VARARGS, "Retrieve windows networking information."},
+    {"VMMPYC_PdbSymbolAddress", VMMPYC_PdbSymbolAddress, METH_VARARGS, "Retrieve debugging information - symbol address."},
+    {"VMMPYC_PdbTypeSize", VMMPYC_PdbTypeSize, METH_VARARGS, "Retrieve debugging information - type size."},
+    {"VMMPYC_PdbTypeChildOffset", VMMPYC_PdbTypeChildOffset, METH_VARARGS, "Retrieve debugging information - child offset."},
     {"VMMPYC_VfsRead", VMMPYC_VfsRead, METH_VARARGS, "Read from a file in the virtual file system."},
     {"VMMPYC_VfsWrite", VMMPYC_VfsWrite, METH_VARARGS, "Write to a file in the virtual file system."},
     {"VMMPYC_VfsList", VMMPYC_VfsList, METH_VARARGS, "List files and folder for a specific directory in the Virutal File System."},

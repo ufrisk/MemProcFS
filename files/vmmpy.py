@@ -610,6 +610,64 @@ def VmmPy_VfsWrite(path_file, bytes_data, offset = 0):
 
 
 #------------------------------------------------------------------------------
+# VmmPy Windows Symbol Debugging (.pdb) FUNCTIONALITY BELOW:
+#------------------------------------------------------------------------------
+
+def VmmPy_PdbSymbolAddress(module_name, symbol_name):
+    """Retrieve a symbol address by module and symbol name.
+    NB! Vmm PDB Symbol functionality is limited and there is no guarantee that
+        all modules will be loaded - or that the functionality is available.
+        If multiple modules with the same name exists - the symbol will be
+        searched for in the 1st hit.
+
+    Keyword arguments:
+    module_name -- str: the module name or 'nt' for kernel.
+    symbol_name -- str: the symbol name to lookup.
+    return -- int: address of the located symbol.
+    
+    Example:
+    VmmPy_PdbSymbolAddress('nt', 'PsInitialSystemProcess') --> 0xffff800012345600
+    """
+    return VMMPYC_PdbSymbolAddress(module_name, symbol_name)
+
+def VmmPy_PdbTypeSize(module_name, type_name):
+    """Retrieve a type size by by module and type name.
+    NB! Vmm PDB Symbol functionality is limited and there is no guarantee that
+        all modules will be loaded - or that the functionality is available.
+        If multiple modules with the same name exists - the symbol will be
+        searched for in the 1st hit.
+
+    Keyword arguments:
+    module_name -- str: the module name or 'nt' for kernel.
+    type_name -- str: the type name to lookup.
+    return -- int: size of the type.
+    
+    Example:
+    VmmPy_PdbTypeSize('nt', '_EPROCESS') --> 1568
+    """
+    return VMMPYC_PdbTypeSize(module_name, type_name)
+
+def VmmPy_PdbTypeChildOffset(module_name, type_name, type_child_name):
+    """Retrieve the ofset of a type child (struct member) by by module, type and child name.
+    NB! Vmm PDB Symbol functionality is limited and there is no guarantee that
+        all modules will be loaded - or that the functionality is available.
+        If multiple modules with the same name exists - the symbol will be
+        searched for in the 1st hit.
+
+    Keyword arguments:
+    module_name -- str: the module name or 'nt' for kernel.
+    type_name -- str: the type name to lookup.
+    type_child_name -- str: the type child name (struct member) to lookup.
+    return -- int: offset (relative to type base) of the child type name.
+    
+    Example:
+    VmmPy_PdbTypeChildOffset('nt', '_EPROCESS', 'CreateTime') --> 768
+    """
+    return VMMPYC_PdbTypeChildOffset(module_name, type_name, type_child_name)
+
+
+
+#------------------------------------------------------------------------------
 # VmmPy WINDOWS ONLY FUNCTIONALITY BELOW:
 #------------------------------------------------------------------------------
 

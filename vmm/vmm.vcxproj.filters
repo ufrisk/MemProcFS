@@ -111,6 +111,15 @@
     <ClInclude Include="vmmwintcpip.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="m_vmmvfs_dump.h">
+      <Filter>Header Files\modules</Filter>
+    </ClInclude>
+    <ClInclude Include="pdb.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="sysquery.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="vmmdll.c">
@@ -193,6 +202,15 @@
     </ClCompile>
     <ClCompile Include="ob_map.c">
       <Filter>Source Files\ob</Filter>
+    </ClCompile>
+    <ClCompile Include="m_vmmvfs_dump.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="pdb.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="sysquery.c">
+      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

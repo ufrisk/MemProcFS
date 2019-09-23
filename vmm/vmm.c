@@ -10,6 +10,7 @@
 #include "mm_x64.h"
 #include "mm_x64_page_win.h"
 #include "ob.h"
+#include "pdb.h"
 #include "vmmproc.h"
 #include "vmmwinreg.h"
 #include "pluginmanager.h"
@@ -683,8 +684,11 @@ VOID VmmProcessTable_CloseObCallback(_In_ PVOID pVmmOb)
 * -- paDTB_UserOpt
 * -- szName
 * -- fUserOnly = user mode process (hide supervisor pages from view)
+* -- pbEPROCESS
+* -- cbEPROCESS
+* -- return
 */
-PVMM_PROCESS VmmProcessCreateEntry(_In_ BOOL fTotalRefresh, _In_ DWORD dwPID, _In_ DWORD dwPPID, _In_ DWORD dwState, _In_ QWORD paDTB, _In_ QWORD paDTB_UserOpt, _In_ CHAR szName[16], _In_ BOOL fUserOnly)
+PVMM_PROCESS VmmProcessCreateEntry(_In_ BOOL fTotalRefresh, _In_ DWORD dwPID, _In_ DWORD dwPPID, _In_ DWORD dwState, _In_ QWORD paDTB, _In_ QWORD paDTB_UserOpt, _In_ CHAR szName[16], _In_ BOOL fUserOnly, _In_reads_opt_(cbEPROCESS) PBYTE pbEPROCESS, _In_ DWORD cbEPROCESS)
 {
     PVMMOB_PROCESS_TABLE ptOld = NULL, ptNew = NULL;
     QWORD i, iStart, cEmpty = 0, cValid = 0;
@@ -704,7 +708,7 @@ PVMM_PROCESS VmmProcessCreateEntry(_In_ BOOL fTotalRefresh, _In_ DWORD dwPID, _I
     if(!ptOld) { goto fail; }
     ptNew = (PVMMOB_PROCESS_TABLE)ObContainer_GetOb(ptOld->pObCNewPROC);
     if(!ptNew) {
-        ptNew = (PVMMOB_PROCESS_TABLE)Ob_Alloc(OB_TAB_VMM_PROCESSTABLE, LMEM_ZEROINIT, sizeof(VMMOB_PROCESS_TABLE), VmmProcessTable_CloseObCallback, NULL);
+        ptNew = (PVMMOB_PROCESS_TABLE)Ob_Alloc(OB_TAG_VMM_PROCESSTABLE, LMEM_ZEROINIT, sizeof(VMMOB_PROCESS_TABLE), VmmProcessTable_CloseObCallback, NULL);
         if(!ptNew) { goto fail; }
         ptNew->pObCNewPROC = ObContainer_New(NULL);
         ObContainer_SetOb(ptOld->pObCNewPROC, ptNew);
@@ -717,7 +721,7 @@ PVMM_PROCESS VmmProcessCreateEntry(_In_ BOOL fTotalRefresh, _In_ DWORD dwPID, _I
         pProcess = VmmProcessGetEx(ptOld, dwPID);
     }
     if(!pProcess) {
-        pProcess = (PVMM_PROCESS)Ob_Alloc(OB_TAB_VMM_PROCESS, LMEM_ZEROINIT, sizeof(VMM_PROCESS), VmmProcess_CloseObCallback, NULL);
+        pProcess = (PVMM_PROCESS)Ob_Alloc(OB_TAG_VMM_PROCESS, LMEM_ZEROINIT, sizeof(VMM_PROCESS), VmmProcess_CloseObCallback, NULL);
         if(!pProcess) { goto fail; }
         InitializeCriticalSectionAndSpinCount(&pProcess->LockUpdate, 4096);
         memcpy(pProcess->szName, szName, 16);
@@ -732,6 +736,10 @@ PVMM_PROCESS VmmProcessCreateEntry(_In_ BOOL fTotalRefresh, _In_ DWORD dwPID, _I
         pProcess->Plugin.pObCLdrModulesDisplayCache = ObContainer_New(NULL);
         pProcess->Plugin.pObCPeDumpDirCache = ObContainer_New(NULL);
         pProcess->Plugin.pObCPhys2Virt = ObContainer_New(NULL);
+        if(pbEPROCESS && cbEPROCESS) {
+            pProcess->win.EPROCESS.cb = min(sizeof(pProcess->win.EPROCESS.pb), cbEPROCESS);
+            memcpy(pProcess->win.EPROCESS.pb, pbEPROCESS, pProcess->win.EPROCESS.cb);
+        }
         // attach pre-existing static process info entry or create new
         pProcessOld = VmmProcessGet(dwPID);
         if(pProcessOld) {
@@ -850,7 +858,7 @@ VOID VmmProcessListPIDs(_Out_writes_opt_(*pcPIDs) PDWORD pPIDs, _Inout_ PSIZE_T 
 */
 BOOL VmmProcessTableCreateInitial()
 {
-    PVMMOB_PROCESS_TABLE pt = (PVMMOB_PROCESS_TABLE)Ob_Alloc(OB_TAB_VMM_PROCESSTABLE, LMEM_ZEROINIT, sizeof(VMMOB_PROCESS_TABLE), VmmProcessTable_CloseObCallback, NULL);
+    PVMMOB_PROCESS_TABLE pt = (PVMMOB_PROCESS_TABLE)Ob_Alloc(OB_TAG_VMM_PROCESSTABLE, LMEM_ZEROINIT, sizeof(VMMOB_PROCESS_TABLE), VmmProcessTable_CloseObCallback, NULL);
     if(!pt) { return FALSE; }
     pt->pObCNewPROC = ObContainer_New(NULL);
     ctxVmm->pObCPROC = ObContainer_New(pt);
@@ -950,6 +958,10 @@ VOID VmmProcessActionForeachParallel(_In_opt_ PVOID ctx, _In_opt_ DWORD dwThread
     }
 fail:
     WaitForMultipleObjects(cThreads, hThreads, TRUE, INFINITE);
+    while(cThreads) {
+        cThreads--;
+        if(hThreads[cThreads]) { CloseHandle(hThreads[cThreads]); }
+    }
     if(hSemaphore) { CloseHandle(hSemaphore); }
     Ob_DECREF(pObProcess);
     Ob_DECREF(pObProcessSelectedSet);
@@ -1308,6 +1320,8 @@ VOID VmmClose()
         SwitchToThread();
     }
     VmmWinReg_Close();
+    PDB_Close();
+    Ob_DECREF_NULL(&ctxVmm->pObVfsDumpContext);
     Ob_DECREF_NULL(&ctxVmm->pObCPROC);
     if(ctxVmm->fnMemoryModel.pfnClose) {
         ctxVmm->fnMemoryModel.pfnClose();
@@ -1561,6 +1575,7 @@ BOOL VmmInitialize()
     if(ctxVmm) { VmmClose(); }
     ctxVmm = (PVMM_CONTEXT)LocalAlloc(LMEM_ZEROINIT, sizeof(VMM_CONTEXT));
     if(!ctxVmm) { goto fail; }
+    ctxVmm->hModuleVmm = GetModuleHandleA("vmm");
     // 2: CACHE INIT: Process Table
     if(!VmmProcessTableCreateInitial()) { goto fail; }
     // 3: CACHE INIT: Translation Lookaside Buffer (TLB) Cache Table

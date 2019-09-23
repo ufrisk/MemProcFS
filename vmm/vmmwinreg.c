@@ -327,7 +327,7 @@ BOOL VmmWinReg_HiveRead(_In_ POB_REGISTRY_HIVE pRegistryHive, _In_ DWORD ra, _Ou
 * -- return = TRUE on success, FALSE on partial or zero write.
 */
 _Success_(return)
-BOOL VmmWinReg_HiveWrite(_In_ POB_REGISTRY_HIVE pRegistryHive, _In_ DWORD ra, _In_ PBYTE pb, _In_ DWORD cb)
+BOOL VmmWinReg_HiveWrite(_In_ POB_REGISTRY_HIVE pRegistryHive, _In_ DWORD ra, _In_reads_(cb) PBYTE pb, _In_ DWORD cb)
 {
     QWORD vaWrite;
     DWORD cbWrite;
@@ -1547,14 +1547,14 @@ success:
 /*
 * Retrieve registry hive and key/value path from a "full" path starting with:
 * '0x...', 'by-hive\0x...' or 'HKLM\'
-* CALLER DECREF: *ppHive
+* CALLER DECREF: *ppObHive
 * -- wszPathFull
-* -- ppHive
+* -- ppObHive
 * -- wszPathKeyValue
 * -- return
 */
 _Success_(return)
-BOOL VmmWinRegKey_KeyValuePathFromPath(_In_ LPWSTR wszPathFull, _Out_ POB_REGISTRY_HIVE *ppHive, _Out_writes_(MAX_PATH) LPWSTR wszPathKeyValue)
+BOOL VmmWinReg_PathHiveGetByFullPath(_In_ LPWSTR wszPathFull, _Out_ POB_REGISTRY_HIVE *ppHive, _Out_writes_(MAX_PATH) LPWSTR wszPathKeyValue)
 {
     BOOL fOrphan = FALSE;
     LPWSTR wsz, wszPath2;
@@ -1592,6 +1592,35 @@ BOOL VmmWinRegKey_KeyValuePathFromPath(_In_ LPWSTR wszPathFull, _Out_ POB_REGIST
     wsz = Util_PathSplitNextW(wszPathFull);
     wcsncpy_s(wszPathKeyValue, MAX_PATH, wsz, _TRUNCATE);
     return TRUE;    // CALLER DECREF: *ppHive
+}
+
+/*
+* Retrieve registry hive and key from a "full" path starting with:
+* '0x...', 'by-hive\0x...' or 'HKLM\'
+* CALLER DECREF: *ppObHive, *ppObKey
+* -- wszPathFull
+* -- ppObHive
+* -- ppObKey
+* -- return
+*/
+_Success_(return)
+BOOL VmmWinReg_KeyHiveGetByFullPath(_In_ LPWSTR wszPathFull, _Out_ POB_REGISTRY_HIVE *ppObHive, _Out_ POB_REGISTRY_KEY *ppObKey)
+{
+    BOOL fResult;
+    WCHAR wszPathKey[MAX_PATH];
+    POB_REGISTRY_KEY pObKey = NULL;
+    POB_REGISTRY_HIVE pObHive = NULL;
+    fResult =
+        VmmWinReg_PathHiveGetByFullPath(wszPathFull, &pObHive, wszPathKey) &&
+        (pObKey = VmmWinReg_KeyGetByPathW(pObHive, wszPathKey));
+    if(fResult) {
+        *ppObHive = pObHive;
+        *ppObKey = pObKey;
+        return TRUE;
+    }
+    Ob_DECREF(pObKey);
+    Ob_DECREF(pObHive);
+    return FALSE;
 }
 
 /*
@@ -1749,7 +1778,7 @@ BOOL VmmWinReg_ValueQuery2(_In_ LPWSTR wszFullPathKeyValue, _Out_opt_ PDWORD pdw
     BOOL f;
     WCHAR wszPathKeyValue[MAX_PATH];
     POB_REGISTRY_HIVE pObHive = NULL;
-    f = VmmWinRegKey_KeyValuePathFromPath(wszFullPathKeyValue, &pObHive, wszPathKeyValue) &&
+    f = VmmWinReg_PathHiveGetByFullPath(wszFullPathKeyValue, &pObHive, wszPathKeyValue) &&
         VmmWinReg_ValueQuery1(pObHive, wszPathKeyValue, pdwType, pbData, cbData, pcbData, 0);
     Ob_DECREF(pObHive);
     return f;

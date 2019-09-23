@@ -354,9 +354,9 @@ VOID VmmWin_ScanLdrModules64(_In_ PVMM_PROCESS pProcess, _Inout_ PVMM_MODULEMAP_
         vaModuleLdrFirst = (QWORD)pPEBLdrData->InMemoryOrderModuleList.Flink - 0x10; // InLoadOrderModuleList == InMemoryOrderModuleList - 0x10
     } else {
         // Kernel mode process -> walk PsLoadedModuleList to enumerate drivers / .sys and .dlls.
-        if(!ctxVmm->kernel.vaPsLoadedModuleList) { goto fail; }
-        if(!VmmRead(pProcess, ctxVmm->kernel.vaPsLoadedModuleList, (PBYTE)&vaModuleLdrFirst, sizeof(QWORD)) || !vaModuleLdrFirst) { goto fail; }
-        if(!VmmRead(pProcess, ctxVmm->kernel.vaPsLoadedModuleList, pbPEBLdrData, sizeof(PEB_LDR_DATA))) { goto fail; }
+        if(!ctxVmm->kernel.vaPsLoadedModuleListPtr) { goto fail; }
+        if(!VmmRead(pProcess, ctxVmm->kernel.vaPsLoadedModuleListPtr, (PBYTE)&vaModuleLdrFirst, sizeof(QWORD)) || !vaModuleLdrFirst) { goto fail; }
+        if(!VmmRead(pProcess, ctxVmm->kernel.vaPsLoadedModuleListPtr, pbPEBLdrData, sizeof(PEB_LDR_DATA))) { goto fail; }
     }
     ObVSet_Push(pObVSet_vaAll, vaModuleLdrFirst);
     ObVSet_Push(pObVSet_vaTry1, vaModuleLdrFirst);
@@ -517,9 +517,9 @@ BOOL VmmWin_ScanLdrModules32(_In_ PVMM_PROCESS pProcess, _Inout_ PVMM_MODULEMAP_
         vaModuleLdrFirst32 = (DWORD)pPEBLdrData32->InMemoryOrderModuleList.Flink - 0x08; // InLoadOrderModuleList == InMemoryOrderModuleList - 0x08
     } else if(ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X86) {
         // Kernel mode process -> walk PsLoadedModuleList to enumerate drivers / .sys and .dlls.
-        if(!ctxVmm->kernel.vaPsLoadedModuleList) { goto fail; }
-        if(!VmmRead(pProcess, ctxVmm->kernel.vaPsLoadedModuleList, (PBYTE)&vaModuleLdrFirst32, sizeof(DWORD)) || !vaModuleLdrFirst32) { goto fail; }
-        if(!VmmRead(pProcess, ctxVmm->kernel.vaPsLoadedModuleList, pbPEBLdrData32, sizeof(PEB_LDR_DATA32))) { goto fail; }
+        if(!ctxVmm->kernel.vaPsLoadedModuleListPtr) { goto fail; }
+        if(!VmmRead(pProcess, ctxVmm->kernel.vaPsLoadedModuleListPtr, (PBYTE)&vaModuleLdrFirst32, sizeof(DWORD)) || !vaModuleLdrFirst32) { goto fail; }
+        if(!VmmRead(pProcess, ctxVmm->kernel.vaPsLoadedModuleListPtr, pbPEBLdrData32, sizeof(PEB_LDR_DATA32))) { goto fail; }
     } else {
         goto fail;
     }
@@ -1022,9 +1022,9 @@ VOID VmmWin_OffsetLocatorEPROCESS64(_In_ PVMM_PROCESS pSystemProcess)
     QWORD paMax, paDTB_0, paDTB_1;
     PVMM_WIN_EPROCESS_OFFSET poEPROCESS = &ctxVmm->kernel.OffsetEPROCESS;
     ZeroMemory(poEPROCESS, sizeof(VMM_WIN_EPROCESS_OFFSET));
-    if(!VmmRead(pSystemProcess, pSystemProcess->win.vaEPROCESS, pbSYSTEM, VMMPROC_EPROCESS_MAX_SIZE)) { return; }
+    if(!VmmRead(pSystemProcess, pSystemProcess->win.EPROCESS.va, pbSYSTEM, VMMPROC_EPROCESS_MAX_SIZE)) { return; }
     if(ctxMain->cfg.fVerboseExtra) {
-        vmmprintf_fn("SYSTEM DTB: %016llx EPROCESS: %016llx\n", pSystemProcess->paDTB, pSystemProcess->win.vaEPROCESS);
+        vmmprintf_fn("SYSTEM DTB: %016llx EPROCESS: %016llx\n", pSystemProcess->paDTB, pSystemProcess->win.EPROCESS.va);
         Util_PrintHexAscii(pbSYSTEM, VMMPROC_EPROCESS_MAX_SIZE, 0);
     }
     // find offset State (static for now)
@@ -1057,7 +1057,7 @@ VOID VmmWin_OffsetLocatorEPROCESS64(_In_ PVMM_PROCESS pSystemProcess)
             {
                 continue;
             }
-            if((*(PQWORD)(pb1 + i + 16) - i - 8) != pSystemProcess->win.vaEPROCESS) {
+            if((*(PQWORD)(pb1 + i + 16) - i - 8) != pSystemProcess->win.EPROCESS.va) {
                 continue;
             }
             poEPROCESS->PID = i;
@@ -1274,7 +1274,9 @@ BOOL VmmWin_EnumEPROCESS64_Post(_In_ PVMM_PROCESS pSystemProcess, _In_opt_ PVMMW
             ~0xfff & *pqwDTB,
             po->DTB_User ? (~0xfff & *pqwDTB_User) : 0,
             szName,
-            fUser);
+            fUser,
+            pb,
+            cb);
         if(!pObProcess) {
             vmmprintfv("VMM: WARNING: PID '%i' already exists.\n", *pdwPID);
             if(++ctx->cNewProcessCollision >= 8) {
@@ -1283,7 +1285,7 @@ BOOL VmmWin_EnumEPROCESS64_Post(_In_ PVMM_PROCESS pSystemProcess, _In_opt_ PVMMW
         }
     }
     if(pObProcess) {
-        pObProcess->win.vaEPROCESS = va;
+        pObProcess->win.EPROCESS.va = va;
         pObProcess->win.vaSeAuditProcessCreationInfo = *(PQWORD)(pb + po->SeAuditProcessCreationInfo);
         if(*pqwPEB % PAGE_SIZE) {
             vmmprintfv("VMM: WARNING: Bad PEB alignment for PID: '%i' (0x%016llx).\n", *pdwPID, *pqwPEB);
@@ -1328,7 +1330,7 @@ BOOL VmmWin_EnumEPROCESS64(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fTotalRef
             return FALSE;
         }
     }
-    vmmprintfvv_fn("SYSTEM DTB: %016llx EPROCESS: %016llx\n", pSystemProcess->paDTB, pSystemProcess->win.vaEPROCESS);
+    vmmprintfvv_fn("SYSTEM DTB: %016llx EPROCESS: %016llx\n", pSystemProcess->paDTB, pSystemProcess->win.EPROCESS.va);
     // set up context
     ctx.fTotalRefresh = fTotalRefresh;
     if(!(ctx.pObVSetPrefetchDTB = ObVSet_New())) { return FALSE; }
@@ -1338,7 +1340,7 @@ BOOL VmmWin_EnumEPROCESS64(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fTotalRef
         pSystemProcess,
         FALSE,
         &ctx,
-        pSystemProcess->win.vaEPROCESS,
+        pSystemProcess->win.EPROCESS.va,
         ctxVmm->kernel.OffsetEPROCESS.FLink,
         ctxVmm->kernel.OffsetEPROCESS.cbMaxOffset + 0x20,
         VmmWin_EnumEPROCESS64_Pre,
@@ -1365,9 +1367,9 @@ VOID VmmWin_OffsetLocatorEPROCESS32(_In_ PVMM_PROCESS pSystemProcess)
     ZeroMemory(poEPROCESS, sizeof(VMM_WIN_EPROCESS_OFFSET));
     //BYTE pbZero[0x800]
     //QWORD paMax, paDTB_0, paDTB_1;
-    if(!VmmRead(pSystemProcess, pSystemProcess->win.vaEPROCESS, pbSYSTEM, VMMPROC_EPROCESS_MAX_SIZE)) { return; }
+    if(!VmmRead(pSystemProcess, pSystemProcess->win.EPROCESS.va, pbSYSTEM, VMMPROC_EPROCESS_MAX_SIZE)) { return; }
     if(ctxMain->cfg.fVerboseExtra) {
-        vmmprintf_fn("SYSTEM DTB: %016llx EPROCESS: %016llx\n", pSystemProcess->paDTB, pSystemProcess->win.vaEPROCESS);
+        vmmprintf_fn("SYSTEM DTB: %016llx EPROCESS: %016llx\n", pSystemProcess->paDTB, pSystemProcess->win.EPROCESS.va);
         Util_PrintHexAscii(pbSYSTEM, VMMPROC_EPROCESS_MAX_SIZE, 0);
     }
     // find offset State (static for now)
@@ -1399,7 +1401,7 @@ VOID VmmWin_OffsetLocatorEPROCESS32(_In_ PVMM_PROCESS pSystemProcess)
             {
                 continue;
             }
-            if((*(PDWORD)(pb1 + i + 8) - i - 4) != pSystemProcess->win.vaEPROCESS) {
+            if((*(PDWORD)(pb1 + i + 8) - i - 4) != pSystemProcess->win.EPROCESS.va) {
                 continue;
             }
             poEPROCESS->PID = i;
@@ -1520,7 +1522,9 @@ BOOL VmmWin_EnumEPROCESS32_Post(_In_ PVMM_PROCESS pSystemProcess, _In_opt_ PVMMW
             *pdwDTB & 0xffffffe0,
             po->DTB_User ? (~0xfff & *pdwDTB_User) : 0,
             szName,
-            fUser);
+            fUser,
+            pb,
+            cb);
         if(!pObProcess) {
             vmmprintfv("VMM: WARNING: PID '%i' already exists.\n", *pdwPID);
             if(++ctx->cNewProcessCollision >= 8) {
@@ -1529,7 +1533,7 @@ BOOL VmmWin_EnumEPROCESS32_Post(_In_ PVMM_PROCESS pSystemProcess, _In_opt_ PVMMW
         }
     }
     if(pObProcess) {
-        pObProcess->win.vaEPROCESS = (DWORD)va;
+        pObProcess->win.EPROCESS.va = (DWORD)va;
         pObProcess->win.vaSeAuditProcessCreationInfo = *(PDWORD)(pb + po->SeAuditProcessCreationInfo);
         if(*pdwPEB % PAGE_SIZE) {
             vmmprintfv("VMM: WARNING: Bad PEB alignment for PID: '%i' (0x%08x).\n", *pdwPID, *pdwPEB);
@@ -1567,7 +1571,7 @@ BOOL VmmWin_EnumEPROCESS32(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fTotalRef
             return FALSE;
         }
     }
-    vmmprintfvv_fn("SYSTEM DTB: %016llx EPROCESS: %08x\n", pSystemProcess->paDTB, (DWORD)pSystemProcess->win.vaEPROCESS);
+    vmmprintfvv_fn("SYSTEM DTB: %016llx EPROCESS: %08x\n", pSystemProcess->paDTB, (DWORD)pSystemProcess->win.EPROCESS.va);
     // set up context
     ctx.fTotalRefresh = fTotalRefresh;
     if(!(ctx.pObVSetPrefetchDTB = ObVSet_New())) { return FALSE; }
@@ -1577,7 +1581,7 @@ BOOL VmmWin_EnumEPROCESS32(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fTotalRef
         pSystemProcess,
         TRUE,
         &ctx,
-        (DWORD)pSystemProcess->win.vaEPROCESS,
+        (DWORD)pSystemProcess->win.EPROCESS.va,
         ctxVmm->kernel.OffsetEPROCESS.FLink,
         ctxVmm->kernel.OffsetEPROCESS.cbMaxOffset + 0x20,
         VmmWin_EnumEPROCESS32_Pre,

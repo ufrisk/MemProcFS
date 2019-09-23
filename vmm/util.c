@@ -32,6 +32,18 @@ QWORD Util_GetNumericW(_In_ LPWSTR wsz)
     }
 }
 
+DWORD Util_HashStringA(_In_opt_ LPCSTR sz)
+{
+    CHAR c;
+    DWORD i = 0, dwHash = 0;
+    if(!sz) { return 0; }
+    while(TRUE) {
+        c = sz[i++];
+        if(!c) { return dwHash; }
+        dwHash = ((dwHash >> 13) | (dwHash << 19)) + c;
+    }
+}
+
 #define Util_2HexChar(x) (((((x) & 0xf) <= 9) ? '0' : ('a' - 10)) + ((x) & 0xf))
 
 _Success_(return)
@@ -94,7 +106,7 @@ BOOL Util_FillHexAscii(_In_opt_ PBYTE pb, _In_ DWORD cb, _In_ DWORD cbInitialOff
 
 VOID Util_PrintHexAscii(_In_ PBYTE pb, _In_ DWORD cb, _In_ DWORD cbInitialOffset)
 {
-    DWORD szMax;
+    DWORD szMax = 0;
     LPSTR sz;
     if(cb > 0x10000) {
         vmmprintf("Large output. Only displaying first 65kB.\n");
@@ -277,7 +289,24 @@ NTSTATUS Util_VfsReadFile_FromBOOL(_In_ BOOL fValue, _Out_ PBYTE pb, _In_ DWORD 
     return Util_VfsReadFile_FromPBYTE(pbBuffer, 1, pb, cb, pcbRead, cbOffset);
 }
 
-NTSTATUS Util_VfsWriteFile_BOOL(_Inout_ PBOOL pfTarget, _In_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
+NTSTATUS Util_VfsWriteFile_PBYTE(_Inout_ PBYTE pbTarget, _In_ DWORD cbTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset, _In_ BOOL fTerminatingNULL)
+{
+    if(cbOffset >= cbTarget) {
+        *pcbWrite = 0;
+        return UTIL_NTSTATUS_END_OF_FILE;
+    }
+    if(cbOffset + cb > cbTarget) {
+        cb = (DWORD)(cbTarget - cbOffset);
+    }
+    memcpy(pbTarget, pb, cb);
+    if(fTerminatingNULL) {
+        pbTarget[min(cbTarget - 1, cb)] = 0;
+    }
+    *pcbWrite = cb;
+    return UTIL_NTSTATUS_SUCCESS;
+}
+
+NTSTATUS Util_VfsWriteFile_BOOL(_Inout_ PBOOL pfTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
 {
     CHAR ch;
     if((cb > 0) && (cbOffset == 0)) {
@@ -288,7 +317,7 @@ NTSTATUS Util_VfsWriteFile_BOOL(_Inout_ PBOOL pfTarget, _In_ PBYTE pb, _In_ DWOR
     return UTIL_NTSTATUS_SUCCESS;
 }
 
-NTSTATUS Util_VfsWriteFile_DWORD(_Inout_ PDWORD pdwTarget, _In_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset, _In_ DWORD dwMinAllow)
+NTSTATUS Util_VfsWriteFile_DWORD(_Inout_ PDWORD pdwTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset, _In_ DWORD dwMinAllow)
 {
     DWORD dw;
     BYTE pbBuffer[9];

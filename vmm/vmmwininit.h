@@ -11,6 +11,14 @@
 #include "vmm.h"
 
 /*
+* Try initialize not yet initialized values in the optional windows kernel
+* context ctxVmm->kernel.opt
+* This function should be run once the system is fully up and running.
+* This is a best-effort function, uninitialized values will remain zero.
+*/
+VOID VmmWinInit_TryInitializeKernelOptionalValues();
+
+/*
 * Try initialize the VMM from scratch with new WINDOWS support.
 * -- paDTB
 * -- return

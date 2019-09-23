@@ -8,7 +8,7 @@ Analyze memory dump files, <b>live memory</b> via [DumpIt](https://www.comae.com
 
 It's even possible to connect to a remote LeechAgent memory acquisition agent over a secured connection - allowing for remote live memory incident response - even over higher latency low band-width connections!
 
-Use your favorite tools to analyze memory - use your favorite hex editors, your python and powershell scripts, your disassemblers - all will work trivally with the Memory Process File System by just reading and writing files!
+Use your favorite tools to analyze memory - use your favorite hex editors, your python and powershell scripts, WinDbg or your favorite disassemblers and debuggers - all will work trivally with the Memory Process File System by just reading and writing files!
 
 <p align="center"><img src="https://github.com/ufrisk/MemProcFS/wiki/resources/proc_base2.png" height="190"/><img src="https://github.com/ufrisk/MemProcFS/wiki/resources/pciescreamer.jpeg" height="190"/><img src="https://github.com/ufrisk/MemProcFS/wiki/resources/proc_modules.png" height="190"/></p>
 
@@ -85,7 +85,7 @@ Also check out my Microsoft BlueHatIL 2019 talk _Practical Uses for Hardware-ass
 
 Building:
 =========
-Pre-built binaries and other supporting files are found in the files folder. The Memory Process File System binaries are built with Visual Studio 2017. No binaries currently exists for Linux (future support - please see Current Limitations & Future Development below).
+Pre-built binaries and other supporting files are found in the files folder. The Memory Process File System binaries are built with Visual Studio. No binaries currently exists for Linux (future support - please see Current Limitations & Future Development below).
 
 Detailed build instructions may be found in the [Wiki](https://github.com/ufrisk/MemProcFS/wiki) in the [Building](https://github.com/ufrisk/MemProcFS/wiki/Dev_Building) section.
 
@@ -102,6 +102,10 @@ Please find some ideas for possible future expansions of the memory process file
 - PFN support.
 - Support for analyzing x64 Linux, macOS and UEFI memory dumps.
 - Hash lookup of executable memory pages in DB.
+
+License:
+======
+The project source code is released under GPLv3. Some bundled Microsoft redistributable binaries are released under separate licenses.
 
 Links:
 ======
@@ -174,3 +178,8 @@ v2.9
 * Bug fixes and major internal refactorings.
 * Full Registry support - Explore the Windows registry in the file system or via the API.
 * NB! The v2.9 C/C++ API vfs (virtual file system) API is incompatible with earlier versions.
+
+v2.10
+* Dump file support - create a WinDbg compatible `memory.dmp` file in the root folder.
+* Early .pdb debugging subsystem with Microsoft symbol server integration.
+* Process create/terminate timestamps on process directories.

@@ -126,15 +126,18 @@ VOID PageStatClose(_In_opt_ PPAGE_STATISTICS *ppPageStat)
 {
     BOOL status;
     DWORD dwExitCode;
+    PPAGE_STATISTICS ps;
     if(!ppPageStat || !*ppPageStat) { return; }
-    (*ppPageStat)->i.fUpdate = TRUE;
-    (*ppPageStat)->i.fThreadExit = TRUE;
-    while((status = GetExitCodeThread((*ppPageStat)->i.hThread, &dwExitCode)) && STILL_ACTIVE == dwExitCode) {
+    ps = *ppPageStat;
+    ps->i.fUpdate = TRUE;
+    ps->i.fThreadExit = TRUE;
+    while((status = GetExitCodeThread(ps->i.hThread, &dwExitCode)) && STILL_ACTIVE == dwExitCode) {
         SwitchToThread();
     }
     if(!status) {
         Sleep(200);
     }
+    if(ps->i.hThread) { CloseHandle(ps->i.hThread); }
     LocalFree(*ppPageStat);
     *ppPageStat = NULL;
 }
@@ -217,6 +220,9 @@ const LPSTR NAMES_VMM_STATISTICS_CALL[] = {
     "VMMDLL_WinNet_Get",
     "VMMDLL_Refresh",
     "VMMDLL_UtilFillHexAscii",
+    "VMMDLL_PdbSymbolAddress",
+    "VMMDLL_PdbTypeSize",
+    "VMMDLL_PdbTypeChildOffset",
     "VMM_PagedCompressedMemory",
 };
 

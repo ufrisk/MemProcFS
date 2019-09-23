@@ -24,7 +24,7 @@ BOOL VmmVfs_List(_In_ LPCWSTR wcsPath, _Inout_ PHANDLE pFileList);
 * -- pcbRead     = bytes actually read
 * -- cbOffset    = offset where to start read compared to file start
 */
-NTSTATUS VmmVfs_Read(_In_ LPCWSTR wcsFileName, _Out_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
+NTSTATUS VmmVfs_Read(LPCWSTR wcsFileName, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 
 /*
 * Write the contents of a file into the caller supplied buffer. This file may be
@@ -35,6 +35,6 @@ NTSTATUS VmmVfs_Read(_In_ LPCWSTR wcsFileName, _Out_ LPVOID pb, _In_ DWORD cb, _
 * -- pcbWrite    = bytes actually read
 * -- cbOffset    = offset where to start read compared to file start
 */
-NTSTATUS VmmVfs_Write(_In_ LPCWSTR wcsFileName, _In_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset);
+NTSTATUS VmmVfs_Write(_In_ LPCWSTR wcsFileName, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset);
 
 #endif /* __VMMVFS_H__ */

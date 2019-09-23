@@ -14,11 +14,13 @@ typedef unsigned __int64                QWORD, *PQWORD;
 #define OB_TAG_CORE_CONTAINER           'OC'
 #define OB_TAG_CORE_VSET                'OS'
 #define OB_TAG_CORE_MAP                 'OM'
+#define OB_TAG_PDB_ENTRY                'DE'
 #define OB_TAG_REG_HIVE                 'RH'
 #define OB_TAG_REG_KEY                  'RK'
 #define OB_TAG_REG_KEYVALUE             'RV'
-#define OB_TAB_VMM_PROCESS              'PR'
-#define OB_TAB_VMM_PROCESSTABLE         'PT'
+#define OB_TAG_VMM_PROCESS              'PR'
+#define OB_TAG_VMM_PROCESSTABLE         'PT'
+#define OB_TAG_VMMVFS_DUMPCONTEXT       'CD'
 
 // ----------------------------------------------------------------------------
 // OBJECT MANAGER CORE FUNCTIONALITY BELOW:
@@ -71,7 +73,7 @@ PVOID Ob_Alloc(_In_ WORD tag, _In_ UINT uFlags, _In_ SIZE_T uBytes, _In_opt_ VOI
 * -- pOb
 * -- return
 */
-PVOID Ob_INCREF(PVOID pOb);
+PVOID Ob_INCREF(_In_opt_ PVOID pOb);
 
 /*
 * Decrease the reference count of an object manager object by one.
@@ -79,7 +81,7 @@ PVOID Ob_INCREF(PVOID pOb);
 * the object at same time making it to be free'd - making the memory invalid.
 * -- pOb
 */
-VOID Ob_DECREF(PVOID pOb);
+VOID Ob_DECREF(_In_opt_ PVOID pOb);
 
 /*
 * Decrease the reference count of a object manager object. If the reference
@@ -87,7 +89,7 @@ VOID Ob_DECREF(PVOID pOb);
 * Also set the incoming pointer to NULL.
 * -- ppOb
 */
-inline VOID Ob_DECREF_NULL(PVOID *ppOb)
+inline VOID Ob_DECREF_NULL(_In_opt_ PVOID *ppOb)
 {
     if(ppOb) {
         Ob_DECREF(*ppOb);

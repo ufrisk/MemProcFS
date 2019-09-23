@@ -57,12 +57,4 @@ VOID VmmProc_ScanTagsMemMap(_In_ PVMM_PROCESS pProcess);
 */
 BOOL VmmProcInitialize();
 
-/*
-* Scans the memory for supported operating system structures, such as Windows
-* page directory bases and update the ctxMain.cfg with the correct value upon
-* success.
-* -- return
-*/
-BOOL VmmProcIdentify();
-
 #endif /* __VMMPROC_H__ */

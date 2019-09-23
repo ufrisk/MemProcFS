@@ -3,6 +3,7 @@ EXPORTS
     VMMDLL_Initialize
     VMMDLL_Close
     VMMDLL_Refresh
+	VMMDLL_MemFree
 
     VMMDLL_ConfigGet
     VMMDLL_ConfigSet
@@ -54,5 +55,9 @@ EXPORTS
 	VMMDLL_WinReg_QueryValueExW
 
 	VMMDLL_WinNet_Get
+
+	VMMDLL_PdbSymbolAddress
+	VMMDLL_PdbTypeSize
+	VMMDLL_PdbTypeChildOffset
 
     VMMDLL_UtilFillHexAscii
