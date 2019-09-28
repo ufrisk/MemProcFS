@@ -19,6 +19,8 @@ Include the Memory Process File System in your Python or C/C++ programming proje
 
 <b>Please check out the [LeechCore project](https://github.com/ufrisk/LeechCore)</b> for information about supported memory acquisition methods and remote memory access via the LeechService.
 
+<b>To get going clone the sources in the repository or download the [latest binaries, modules and configuration files](https://github.com/ufrisk/MemProcFS/releases/latest) from the releases section.</b>
+
 Fast and easy memory analysis via mounted file system:
 ======================================================
 No matter if you have no prior knowledge of memory analysis or are an advanced user the Memory Process File System (and the API) may be useful! Click around the memory objects in the file system
@@ -43,11 +45,11 @@ Anyone is able to extend the Memory Process File System with custom plugins! It 
 Installing:
 ===========
 ## Windows
-Download or clone the Memory Process File System github repository. <b>Pre-built binaries are found in the files folder.</b> If the Memory Process File System is used as an API it is only dependant on the Microsoft Visual C++ Redistributables for Visual Studio 2017 (see below).
+<b>Get the latest [binaries, modules and configuration files](https://github.com/ufrisk/MemProcFS-dev/releases/latest) from the latest release.</b> Alternatively clone the repository and build from source. If the Memory Process File System is used as an API it is only dependant on the Microsoft Visual C++ Redistributables for Visual Studio 2019 (see below).
 
-The Memory Process File System is dependant on the [LeechCore project](https://github.com/ufrisk/LeechCore) for memory acquisition. The necessary _leechcore.dll_ file is already pre-built and included in the files folder.
+The Memory Process File System is dependant on the [LeechCore project](https://github.com/ufrisk/LeechCore) for memory acquisition. The necessary _leechcore.dll_ file is already pre-built and included together with the pre-built binaries.
 
-The Memory Process File System is also dependant in the <b>Microsoft Visual C++ Redistributables for Visual Studio 2017</b>. They can be downloaded from Microsoft [here](https://go.microsoft.com/fwlink/?LinkId=746572). Alternatively, if installing the Dokany file system driver please install the <b>DokanSetup_redist</b> version and it will install the required redistributables.
+The Memory Process File System is also dependant in the <b>Microsoft Visual C++ Redistributables for Visual Studio 2019</b>. They can be downloaded from Microsoft [here](https://go.microsoft.com/fwlink/?LinkId=746572). Alternatively, if installing the Dokany file system driver please install the <b>DokanSetup_redist</b> version and it will install the required redistributables.
 
 Mounting the file system requires the <b>Dokany file system library</b> to be installed. Please download and install the latest version of Dokany at: https://github.com/dokan-dev/dokany/releases/latest It is recommended to download and install the <b>DokanSetup_redist</b> version.
 
@@ -55,7 +57,7 @@ Python support requires Python 3.6 or later. The user may specify the path to th
 
 To capture live memory (without PCILeech FPGA hardware) download [DumpIt](https://www.comae.com/) and start the Memory Process File System via the DumpIt /LIVEKD mode. Alternatively, get WinPMEM by downloading the most recent signed [WinPMEM driver](https://github.com/Velocidex/c-aff4/tree/master/tools/pmem/resources/winpmem) and place it alongside MemProcFS - detailed instructions in the [LeechCore Wiki](https://github.com/ufrisk/LeechCore/wiki/Device_WinPMEM).
 
-PCILeech FPGA will require hardware as well as _FTD3XX.dll_ to be dropped in the files folder. Please check out the [LeechCore](https://github.com/ufrisk/LeechCore) project for instructions.
+PCILeech FPGA will require hardware as well as _FTD3XX.dll_ to be dropped alongside the MemProcFS binaries. Please check out the [LeechCore](https://github.com/ufrisk/LeechCore) project for instructions.
 
 ## Linux
 The memory process file system is not yet supported on Linux.
@@ -85,7 +87,7 @@ Also check out my Microsoft BlueHatIL 2019 talk _Practical Uses for Hardware-ass
 
 Building:
 =========
-Pre-built binaries and other supporting files are found in the files folder. The Memory Process File System binaries are built with Visual Studio. No binaries currently exists for Linux (future support - please see Current Limitations & Future Development below).
+<b>Pre-built [binaries, modules and configuration files](https://github.com/ufrisk/MemProcFS-dev/releases/latest) are found in the latest release.</b>. The Memory Process File System binaries are built with Visual Studio. MemProcFS is not supported on Linux.
 
 Detailed build instructions may be found in the [Wiki](https://github.com/ufrisk/MemProcFS/wiki) in the [Building](https://github.com/ufrisk/MemProcFS/wiki/Dev_Building) section.
 
@@ -179,7 +181,11 @@ v2.9
 * Full Registry support - Explore the Windows registry in the file system or via the API.
 * NB! The v2.9 C/C++ API vfs (virtual file system) API is incompatible with earlier versions.
 
-v2.10
+[v2.10](https://github.com/ufrisk/MemProcFS/releases/tag/v2.10)
 * Dump file support - create a WinDbg compatible `memory.dmp` file in the root folder.
 * Early .pdb debugging subsystem with Microsoft symbol server integration.
 * Process create/terminate timestamps on process directories.
+
+Latest
+* Bug fixes.
+* Move binaries into releases section.

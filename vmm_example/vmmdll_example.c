@@ -1,4 +1,4 @@
-// vmmdll_example.c - Memory Process File System / Virtual Memory Manager DLL API usage examples
+// vmmdll_example.c - MemProcFS C/C++ VMM API usage examples
 //
 // Note that this is not a complete list of the VMM API. For the complete list please consult the vmmdll.h header file.
 //
@@ -36,8 +36,8 @@ VOID ShowKeyPress()
 
 VOID PrintHexAscii(_In_ PBYTE pb, _In_ DWORD cb)
 {
-    DWORD szMax;
     LPSTR sz;
+    DWORD szMax = 0;
     VMMDLL_UtilFillHexAscii(pb, cb, 0, NULL, &szMax);
     if(!(sz = LocalAlloc(0, szMax))) { return; }
     VMMDLL_UtilFillHexAscii(pb, cb, 0, sz, &szMax);
@@ -45,14 +45,24 @@ VOID PrintHexAscii(_In_ PBYTE pb, _In_ DWORD cb)
     LocalFree(sz);
 }
 
-VOID CallbackList_AddFile(_Inout_ HANDLE h, _In_ LPSTR szName, _In_ ULONG64 cb, _In_ PVOID pvReserved)
+VOID CallbackList_AddFile(_Inout_ HANDLE h, _In_opt_ LPSTR szName, _In_opt_ LPWSTR wszName, _In_ ULONG64 cb, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
 {
-    printf("         FILE: '%s'\tSize: %lli\n", szName, cb);
+    if(szName) {
+        printf("         FILE: '%s'\tSize: %lli\n", szName, cb);
+    }
+    if(wszName) {
+        wprintf(L"         FILE: '%s'\tSize: %lli\n", wszName, cb);
+    }
 }
 
-VOID CallbackList_AddDirectory(_Inout_ HANDLE h, _In_ LPSTR szName, _In_ PVOID pvReserved)
+VOID CallbackList_AddDirectory(_Inout_ HANDLE h, _In_opt_ LPSTR szName, _In_opt_ LPWSTR wszName, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
 {
-    printf("         DIR:  '%s'\n", szName);
+    if(szName) {
+        printf("         DIR:  '%s'\n", szName);
+    }
+    if(wszName) {
+        wprintf(L"         DIR:  '%s'\n", wszName);
+    }
 }
 
 // ----------------------------------------------------------------------------
@@ -624,6 +634,7 @@ int main(_In_ int argc, _In_ char* argv[])
     printf("#16: call the file system 'List' function on the root dir.  \n");
     ShowKeyPress();
     VMMDLL_VFS_FILELIST VfsFileList;
+    VfsFileList.dwVersion = VMMDLL_VFS_FILELIST_VERSION;
     VfsFileList.h = 0; // your handle passed to the callback functions (not used in example).
     VfsFileList.pfnAddDirectory = CallbackList_AddDirectory;
     VfsFileList.pfnAddFile = CallbackList_AddFile;
