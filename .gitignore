@@ -2,6 +2,9 @@
 *.ilk
 *.iobj
 *.ipdb
+*.exe
+*.dll
+*.pyd
 *pycache*
 /files/vmm_example.exe
 /files/lib
