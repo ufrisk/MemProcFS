@@ -45,7 +45,7 @@ Anyone is able to extend the Memory Process File System with custom plugins! It 
 Installing:
 ===========
 ## Windows
-<b>Get the latest [binaries, modules and configuration files](https://github.com/ufrisk/MemProcFS-dev/releases/latest) from the latest release.</b> Alternatively clone the repository and build from source. If the Memory Process File System is used as an API it is only dependant on the Microsoft Visual C++ Redistributables for Visual Studio 2019 (see below).
+<b>Get the latest [binaries, modules and configuration files](https://github.com/ufrisk/MemProcFS/releases/latest) from the latest release.</b> Alternatively clone the repository and build from source. If the Memory Process File System is used as an API it is only dependant on the Microsoft Visual C++ Redistributables for Visual Studio 2019 (see below).
 
 The Memory Process File System is dependant on the [LeechCore project](https://github.com/ufrisk/LeechCore) for memory acquisition. The necessary _leechcore.dll_ file is already pre-built and included together with the pre-built binaries.
 
@@ -87,7 +87,7 @@ Also check out my Microsoft BlueHatIL 2019 talk _Practical Uses for Hardware-ass
 
 Building:
 =========
-<b>Pre-built [binaries, modules and configuration files](https://github.com/ufrisk/MemProcFS-dev/releases/latest) are found in the latest release.</b>. The Memory Process File System binaries are built with Visual Studio. MemProcFS is not supported on Linux.
+<b>Pre-built [binaries, modules and configuration files](https://github.com/ufrisk/MemProcFS/releases/latest) are found in the latest release.</b>. The Memory Process File System binaries are built with Visual Studio. MemProcFS is not supported on Linux.
 
 Detailed build instructions may be found in the [Wiki](https://github.com/ufrisk/MemProcFS/wiki) in the [Building](https://github.com/ufrisk/MemProcFS/wiki/Dev_Building) section.
 
