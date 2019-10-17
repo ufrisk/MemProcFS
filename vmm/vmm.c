@@ -1377,14 +1377,14 @@ VOID VmmWriteEx(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _In_ PBYTE pb, _
     LocalFree(pbBuffer);
 }
 
-BOOL VmmWrite(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _In_ PBYTE pb, _In_ DWORD cb)
+BOOL VmmWrite(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _In_reads_(cb) PBYTE pb, _In_ DWORD cb)
 {
     DWORD cbWrite;
     VmmWriteEx(pProcess, qwA, pb, cb, &cbWrite);
     return (cbWrite == cb);
 }
 
-VOID VmmReadEx(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Out_ PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbReadOpt, _In_ QWORD flags)
+VOID VmmReadEx(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbReadOpt, _In_ QWORD flags)
 {
     DWORD cbP, cMEMs, cbRead = 0;
     PBYTE pbBuffer;
@@ -1394,7 +1394,10 @@ VOID VmmReadEx(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Out_ PBYTE pb, _
     if(!cb) { return; }
     cMEMs = (DWORD)(((qwA & 0xfff) + cb + 0xfff) >> 12);
     pbBuffer = (PBYTE)LocalAlloc(LMEM_ZEROINIT, 0x2000 + cMEMs * (sizeof(MEM_IO_SCATTER_HEADER) + sizeof(PMEM_IO_SCATTER_HEADER)));
-    if(!pbBuffer) { return; }
+    if(!pbBuffer) {
+        ZeroMemory(pb, cb);
+        return;
+    }
     pMEMs = (PMEM_IO_SCATTER_HEADER)(pbBuffer + 0x2000);
     ppMEMs = (PPMEM_IO_SCATTER_HEADER)(pbBuffer + 0x2000 + cMEMs * sizeof(MEM_IO_SCATTER_HEADER));
     oA = qwA & 0xfff;
@@ -1526,7 +1529,7 @@ BOOL VmmRead_U2A_Alloc(_In_ PVMM_PROCESS pProcess, _In_ BOOL f32, _In_ QWORD fla
 }
 
 _Success_(return)
-BOOL VmmRead(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Out_ PBYTE pb, _In_ DWORD cb)
+BOOL VmmRead(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb)
 {
     DWORD cbRead;
     VmmReadEx(pProcess, qwA, pb, cb, &cbRead, 0);

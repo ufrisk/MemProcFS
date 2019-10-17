@@ -188,4 +188,5 @@ v2.9
 
 Latest
 * Bug fixes.
+* Increased performance.
 * Move binaries into releases section.

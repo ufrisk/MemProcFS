@@ -212,8 +212,7 @@ BOOL VmmProcInitialize()
         if(!result) {
             vmmprintf(
                 "VmmProc: Unable to auto-identify operating system for PROC file system mount.   \n" \
-                "         Please specify PageDirectoryBase (DTB/CR3) in the -cr3 option if value \n" \
-                "         is known. If unknown it may be recoverable with command 'identify'.    \n");
+                "         Specify PageDirectoryBase (DTB/CR3) in -cr3 option if value if known.  \n");
         }
     }
     // set up cache maintenance in the form of a separate worker thread in case

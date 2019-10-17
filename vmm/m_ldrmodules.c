@@ -381,7 +381,11 @@ BOOL LdrModules_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
         if(!(pSections = LocalAlloc(0, c * sizeof(IMAGE_SECTION_HEADER)))) { goto fail; }
         VmmWin_PE_SECTION_DisplayBuffer(pProcess, pModule, NULL, 0, NULL, &c, pSections);
         for(i = 0; i < c; i++) {
-            memcpy(szSectionName, pSections[i].Name, 8);
+            if(pSections[i].Name[0]) {
+                memcpy(szSectionName, pSections[i].Name, 8);
+            } else {
+                snprintf(szSectionName, 9, "%02x", i);
+            }
             VMMDLL_VfsList_AddFile(pFileList, szSectionName, pSections[i].Misc.VirtualSize);
         }
         LocalFree(pSections);

@@ -145,9 +145,6 @@ NTSTATUS MStatus_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWOR
         if(!_wcsicmp(ctx->wszPath, L"native_max_address")) {
             return Util_VfsReadFile_FromQWORD(ctxMain->dev.paMaxNative, pb, cb, pcbRead, cbOffset, FALSE);
         }
-        if(!_wcsicmp(ctx->wszPath, L"native_max_iosize")) {
-            return Util_VfsReadFile_FromQWORD(ctxMain->dev.cbMaxSizeMemIo, pb, cb, pcbRead, cbOffset, FALSE);
-        }
         if(!_wcsnicmp(ctx->wszPath, L"config_symbol", 13)) {
             if(!_wcsicmp(ctx->wszPath, L"config_symbol_enable")) {
                 return Util_VfsReadFile_FromBOOL(ctxMain->pdb.fEnable, pb, cb, pcbRead, cbOffset);
@@ -326,7 +323,6 @@ BOOL MStatus_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
         VMMDLL_VfsList_AddFile(pFileList, "config_printf_vvv", 1);
         VMMDLL_VfsList_AddFile(pFileList, "config_process_show_terminated", 1);
         VMMDLL_VfsList_AddFile(pFileList, "native_max_address", 16);
-        VMMDLL_VfsList_AddFile(pFileList, "native_max_iosize", 16);
         Statistics_CallToString(NULL, 0, &cbCallStatistics);
         VMMDLL_VfsList_AddFile(pFileList, "statistics_fncall", cbCallStatistics);
     }

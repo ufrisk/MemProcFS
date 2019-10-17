@@ -140,6 +140,11 @@ VOID MmX64_MapInitialize_Index(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MEMMAP_ENTR
             pMemMapEntry->cPages += 1ULL << (MMX64_PAGETABLEMAP_PML_REGION_SIZE[iPML] - 12);
             continue;
         }
+        // optimization - same PT in multiple consecutive PDe
+        if((iPML == 2) && i && (pte == PTEs[i - 1]) && (pMemMapEntry->cPages >= 512) && (va == pMemMapEntry->AddrBase + (pMemMapEntry->cPages << 12))) {
+            pMemMapEntry->cPages += 1ULL << (MMX64_PAGETABLEMAP_PML_REGION_SIZE[iPML] - 12);
+            continue;
+        }
         // maps page table (PDPT, PD, PT)
         fNextSupervisorPML = !(pte & 0x04);
         pObNextPT = VmmTlbGetPageTable(pte & 0x0000fffffffff000, FALSE);

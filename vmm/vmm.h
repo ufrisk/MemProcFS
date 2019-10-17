@@ -571,7 +571,7 @@ VOID VmmCacheReserveReturn(_In_opt_ PVMMOB_MEM pOb);
 * -- cb
 * -- return = TRUE on success, FALSE on partial or zero write.
 */
-BOOL VmmWrite(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _In_ PBYTE pb, _In_ DWORD cb);
+BOOL VmmWrite(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _In_reads_(cb) PBYTE pb, _In_ DWORD cb);
 
 /*
 * Read a virtually contigious arbitrary amount of memory containing cch number of
@@ -647,7 +647,7 @@ BOOL VmmRead_U2A_RawStr(_In_ PVMM_PROCESS pProcess, _In_ QWORD flags, _In_ QWORD
 * -- return
 */
 _Success_(return)
-BOOL VmmRead(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Out_ PBYTE pb, _In_ DWORD cb);
+BOOL VmmRead(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb);
 
 /*
 * Read a contigious arbitrary amount of memory, physical or virtual, and report
@@ -661,7 +661,7 @@ BOOL VmmRead(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Out_ PBYTE pb, _In
 * -- pcbRead
 * -- flags = flags as in VMM_FLAG_*
 */
-VOID VmmReadEx(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Out_ PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbReadOpt, _In_ QWORD flags);
+VOID VmmReadEx(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbReadOpt, _In_ QWORD flags);
 
 /*
 * Read a single 4096-byte page of memory, virtual or physical.

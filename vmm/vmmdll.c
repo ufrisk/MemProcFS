@@ -345,9 +345,6 @@ BOOL VMMDLL_ConfigGet(_In_ ULONG64 fOption, _Out_ PULONG64 pqwValue)
             case VMMDLL_OPT_CORE_MAX_NATIVE_ADDRESS:
                 *pqwValue = ctxMain->dev.paMaxNative;
                 return TRUE;
-            case VMMDLL_OPT_CORE_MAX_NATIVE_IOSIZE:
-                *pqwValue = ctxMain->dev.cbMaxSizeMemIo;
-                return TRUE;
             case VMMDLL_OPT_CORE_SYSTEM:
                 *pqwValue = ctxVmm->tpSystem;
                 return TRUE;

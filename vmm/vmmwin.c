@@ -550,15 +550,22 @@ BOOL VmmWin_ScanLdrModules32(_In_ PVMM_PROCESS pProcess, _Inout_ PVMM_MODULEMAP_
         }
 
         if(!pLdrModule32->BaseAddress || !pLdrModule32->SizeOfImage) { continue; }
-        pModule = pModules + *pcModules;
-        pModule->BaseAddress = (QWORD)pLdrModule32->BaseAddress;
-        pModule->EntryPoint = (QWORD)pLdrModule32->EntryPoint;
-        pModule->SizeOfImage = (DWORD)pLdrModule32->SizeOfImage;
-        pModule->fWoW64 = TRUE;
-        if(!pLdrModule32->BaseDllName.Length) { continue; }
-        pModule->BaseDllName_Buffer = (QWORD)pLdrModule32->BaseDllName.Buffer;
-        pModule->BaseDllName_Length = pLdrModule32->BaseDllName.Length;
-        *pcModules = *pcModules + 1;
+        if(*pcModules && (pLdrModule32->BaseAddress == pModules->BaseAddress)) {
+            // WOW64 only: 32-bit main exeutable (.exe) shows up in both 32-bit and
+            //             64-bit views in WOW64-processes.
+            //             -> convert the 1st entry to a correct WoW64 (32-bit) entry.
+            pModules->fWoW64 = TRUE;
+        } else {
+            pModule = pModules + *pcModules;
+            pModule->BaseAddress = (QWORD)pLdrModule32->BaseAddress;
+            pModule->EntryPoint = (QWORD)pLdrModule32->EntryPoint;
+            pModule->SizeOfImage = (DWORD)pLdrModule32->SizeOfImage;
+            pModule->fWoW64 = TRUE;
+            if(!pLdrModule32->BaseDllName.Length) { continue; }
+            pModule->BaseDllName_Buffer = (QWORD)pLdrModule32->BaseDllName.Buffer;
+            pModule->BaseDllName_Length = pLdrModule32->BaseDllName.Length;
+            *pcModules = *pcModules + 1;
+        }
         // add FLink/BLink lists
         if(pLdrModule32->InLoadOrderModuleList.Flink && !((DWORD)pLdrModule32->InLoadOrderModuleList.Flink & 0x3)) {
             VmmWin_ScanLdrModules_VSetPutVA(pObVSet_vaAll, pObVSet_vaTry1, (QWORD)CONTAINING_RECORD32(pLdrModule32->InLoadOrderModuleList.Flink, LDR_MODULE32, InLoadOrderModuleList));

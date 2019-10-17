@@ -229,11 +229,17 @@ BOOL PE_SectionGetFromName(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, 
         (PIMAGE_SECTION_HEADER)((QWORD)ntHeader + sizeof(IMAGE_NT_HEADERS64));
     cSections = (DWORD)(((QWORD)pbModuleHeader + 0x1000 - (QWORD)pSectionBase) / sizeof(IMAGE_SECTION_HEADER)); // max section headers possible in 0x1000 module header buffer
     cSections = (DWORD)min(cSections, ntHeader->FileHeader.NumberOfSections); // FileHeader is the same in both 32/64-bit versions of struct
+    // get section by name
     for(i = 0; i < cSections; i++) {
         if(!strncmp((pSectionBase + i)->Name, szSectionName, 8)) {
             memcpy(pSection, pSectionBase + i, sizeof(IMAGE_SECTION_HEADER));
             return TRUE;
         }
+    }
+    // get section by index (two hex#)
+    if(!szSectionName[2] && ((i = strtoul(szSectionName, NULL, 16)) || (*(PWORD)szSectionName == 0x3030)) && (i < cSections)) {
+        memcpy(pSection, pSectionBase + i, sizeof(IMAGE_SECTION_HEADER));
+        return TRUE;
     }
     return FALSE;
 }
@@ -257,7 +263,7 @@ DWORD PE_IatGetNumberOfEx(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _
         ((PIMAGE_NT_HEADERS64)ntHeader)->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IAT].Size;
     cIatEntries = cbImportAddressTable / (f32 ? sizeof(DWORD) : sizeof(QWORD));
     cModules = cbImportDirectory / sizeof(IMAGE_IMPORT_DESCRIPTOR);
-    return cIatEntries - cModules;
+    return cIatEntries - min(cIatEntries, cModules);
 }
 
 DWORD PE_EatGetNumberOfEx(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt)
