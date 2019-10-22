@@ -12,6 +12,7 @@
 #include "leechcore.h"
 #include "vmmdll.h"
 
+#pragma comment(lib, "leechcore")
 #pragma comment(lib, "vmm")
 
 // ----------------------------------------------------------------------------
@@ -514,11 +515,57 @@ int main(_In_ int argc, _In_ char* argv[])
     }
 
 
+    // Scatter Read memory from each of the sections of kernel32.dll in explorer.exe
+    printf("------------------------------------------------------------\n");
+    printf("#13: 0x20 bytes of each 'kernel32.dll' section.             \n");
+    ShowKeyPress();
+    PPMEM_IO_SCATTER_HEADER ppMEMs = NULL;
+    // Allocate empty scatter entries and populate them with the virtual addresses of
+    // the sections to read. If one wish to have a more efficient way of doing things
+    // without lots of copying of memory it's possible to initialize the ppMEMs array
+    // manually and set each individual MEM_IO_SCATTER_HEADER result byte buffer to
+    // point into ones own pre-allocated data buffer.
+    printf("CALL:    LeechCore_AllocScatterEmpty #1\n");
+    if(LeechCore_AllocScatterEmpty(cSections, &ppMEMs)) {
+        printf("SUCCESS: LeechCore_AllocScatterEmpty #1\n");
+    } else {
+        printf("FAIL:    LeechCore_AllocScatterEmpty #1\n");
+        return 1;
+    }
+    for(i = 0; i < cSections; i++) {
+        // populate the virtual address of each scatter entry with the address to read
+        // (sections are assumed to be page-aligned in virtual memory.
+        ppMEMs[i]->qwA = ModuleEntry.BaseAddress + pSectionHeaders[i].VirtualAddress;
+    }
+    // Scatter Read - read all scatter entries in one efficient go. In this
+    // example the internal VMM cache is not to be used, and virtual memory
+    // is not to be used. One can skip the flags to get default behaviour -
+    // that is use cache and paging, and keep buffer byte data as-is on fail.
+    printf("CALL:    VMMDLL_MemReadScatter #1\n");
+    if(VMMDLL_MemReadScatter(dwPID, ppMEMs, cSections, VMMDLL_FLAG_NOCACHE | VMMDLL_FLAG_ZEROPAD_ON_FAIL | VMMDLL_FLAG_NOPAGING)) {
+        printf("SUCCESS: VMMDLL_MemReadScatter #1\n");
+    } else {
+        printf("FAIL:    VMMDLL_MemReadScatter #1\n");
+        return 1;
+    }
+    // print result
+    for(i = 0; i < cSections; i++) {
+        printf("--------------\n         %s\n", pSectionHeaders[i].Name);
+        if(ppMEMs[i]->cb == 0x1000) {
+            PrintHexAscii(ppMEMs[i]->pb, 0x40);
+        } else {
+            printf("[read failed]\n");
+        }
+    }
+    // free previosly allocated ppMEMs;
+    LeechCore_MemFree(ppMEMs);
+
+
     // Retrieve and display the data directories of kernel32.dll. The number of
     // data directories in a PE is always 16 - so this can be used to simplify
     // calling the functionality somewhat.
     printf("------------------------------------------------------------\n");
-    printf("#13: List directories of 'kernel32.dll' in 'explorer.exe'.  \n");
+    printf("#14: List directories of 'kernel32.dll' in 'explorer.exe'.  \n");
     ShowKeyPress();
     LPCSTR DIRECTORIES[16] = { "EXPORT", "IMPORT", "RESOURCE", "EXCEPTION", "SECURITY", "BASERELOC", "DEBUG", "ARCHITECTURE", "GLOBALPTR", "TLS", "LOAD_CONFIG", "BOUND_IMPORT", "IAT", "DELAY_IMPORT", "COM_DESCRIPTOR", "RESERVED" };
     DWORD cDirectories;
@@ -546,7 +593,7 @@ int main(_In_ int argc, _In_ char* argv[])
 
     // Retrieve the export address table (EAT) of kernel32.dll
     printf("------------------------------------------------------------\n");
-    printf("#14: exports of 'kernel32.dll' in 'explorer.exe'.           \n");
+    printf("#15: exports of 'kernel32.dll' in 'explorer.exe'.           \n");
     ShowKeyPress();
     DWORD cEATs;
     PVMMDLL_EAT_ENTRY pEATs;
@@ -586,7 +633,7 @@ int main(_In_ int argc, _In_ char* argv[])
 
     // Retrieve the import address table (IAT) of kernel32.dll
     printf("------------------------------------------------------------\n");
-    printf("#15: imports of 'kernel32.dll' in 'explorer.exe'.           \n");
+    printf("#16: imports of 'kernel32.dll' in 'explorer.exe'.           \n");
     ShowKeyPress();
     DWORD cIATs;
     PVMMDLL_IAT_ENTRY pIATs;
@@ -631,7 +678,7 @@ int main(_In_ int argc, _In_ char* argv[])
     // the API.
     // Virtual File System: 'List'.
     printf("------------------------------------------------------------\n");
-    printf("#16: call the file system 'List' function on the root dir.  \n");
+    printf("#17: call the file system 'List' function on the root dir.  \n");
     ShowKeyPress();
     VMMDLL_VFS_FILELIST VfsFileList;
     VfsFileList.dwVersion = VMMDLL_VFS_FILELIST_VERSION;
@@ -651,7 +698,7 @@ int main(_In_ int argc, _In_ char* argv[])
     // Virtual File System: 'Read' of 0x100 bytes from the offset 0x1000
     // in the physical memory by reading the /pmem physical memory file.
     printf("------------------------------------------------------------\n");
-    printf("#17: call the file system 'Read' function on the pmem file. \n");
+    printf("#18: call the file system 'Read' function on the pmem file. \n");
     ShowKeyPress();
     printf("CALL:    VMMDLL_VfsRead\n");
     nt = VMMDLL_VfsRead(L"\\pmem", pbPage1, 0x100, &i, 0x1000);
@@ -667,7 +714,7 @@ int main(_In_ int argc, _In_ char* argv[])
     // Initialize plugin manager so that statistics may be read in the
     // following read call to the .status built-in module/plugin.
     printf("------------------------------------------------------------\n");
-    printf("#18: initialize virtual file system plugins                 \n");
+    printf("#19: initialize virtual file system plugins                 \n");
     printf("     (this is required for following read call)             \n");
     ShowKeyPress();
     printf("CALL:    VMMDLL_VfsInitializePlugins\n");
@@ -682,7 +729,7 @@ int main(_In_ int argc, _In_ char* argv[])
 
     // Virtual File System: 'Read' statistics from the .status module/plugin.
     printf("------------------------------------------------------------\n");
-    printf("#19: call file system 'Read' on .status\\statistics         \n");
+    printf("#20: call file system 'Read' on .status\\statistics         \n");
     ShowKeyPress();
     printf("CALL:    VMMDLL_VfsRead\n");
     nt = VMMDLL_VfsRead(L"\\.status\\statistics", pbPage1, 0x1000, &i, 0);
@@ -697,7 +744,7 @@ int main(_In_ int argc, _In_ char* argv[])
 
     // Get base virtual address of ntoskrnl.exe
     printf("------------------------------------------------------------\n");
-    printf("#20: get ntoskrnl.exe base virtual address                  \n");
+    printf("#21: get ntoskrnl.exe base virtual address                  \n");
     ShowKeyPress();
     printf("CALL:    VMMDLL_ProcessGetModuleBase\n");
     va = VMMDLL_ProcessGetModuleBase(4, "ntoskrnl.exe");
@@ -712,7 +759,7 @@ int main(_In_ int argc, _In_ char* argv[])
 
     // GetProcAddress from ntoskrnl.exe
     printf("------------------------------------------------------------\n");
-    printf("#21: get proc address for ntoskrnl.exe!KeGetCurrentIrql     \n");
+    printf("#22: get proc address for ntoskrnl.exe!KeGetCurrentIrql     \n");
     ShowKeyPress();
     printf("CALL:    VMMDLL_ProcessGetProcAddress\n");
     va = VMMDLL_ProcessGetProcAddress(4, "ntoskrnl.exe", "KeGetCurrentIrql");
@@ -727,7 +774,7 @@ int main(_In_ int argc, _In_ char* argv[])
 
     // Get EAT Thunk from ntoskrnl.exe!KeGetCurrentIrql
     printf("------------------------------------------------------------\n");
-    printf("#22: Address of EAT thunk for ntoskrnl.exe!KeGetCurrentIrql \n");
+    printf("#23: Address of EAT thunk for ntoskrnl.exe!KeGetCurrentIrql \n");
     ShowKeyPress();
     VMMDLL_WIN_THUNKINFO_EAT oThunkInfoEAT;
     ZeroMemory(&oThunkInfoEAT, sizeof(VMMDLL_WIN_THUNKINFO_EAT));
@@ -747,7 +794,7 @@ int main(_In_ int argc, _In_ char* argv[])
 
     // Get IAT Thunk ntoskrnl.exe -> hal.dll!HalSendNMI
     printf("------------------------------------------------------------\n");
-    printf("#23: Address of IAT thunk for hal.dll!HalSendNMI in ntoskrnl\n");
+    printf("#24: Address of IAT thunk for hal.dll!HalSendNMI in ntoskrnl\n");
     ShowKeyPress();
     VMMDLL_WIN_THUNKINFO_IAT oThunkInfoIAT;
     ZeroMemory(&oThunkInfoIAT, sizeof(VMMDLL_WIN_THUNKINFO_IAT));
@@ -767,7 +814,7 @@ int main(_In_ int argc, _In_ char* argv[])
 
     // List Windows registry hives
     printf("------------------------------------------------------------\n");
-    printf("#24: List Windows Registry Hives.                           \n");
+    printf("#25: List Windows Registry Hives.                           \n");
     ShowKeyPress();
     DWORD cWinRegHives;
     PVMMDLL_REGISTRY_HIVE_INFORMATION pWinRegHives = NULL;
@@ -796,7 +843,7 @@ int main(_In_ int argc, _In_ char* argv[])
 
     // Read 0x100 bytes from offset 0x1000 from the 1st located registry hive memory space
     printf("------------------------------------------------------------\n");
-    printf("#25: Read 0x100 bytes from offset 0x1000 of registry hive   \n");
+    printf("#26: Read 0x100 bytes from offset 0x1000 of registry hive   \n");
     ShowKeyPress();
     printf("CALL:    VMMDLL_WinReg_HiveReadEx\n");
     result = VMMDLL_WinReg_HiveReadEx(pWinRegHives[0].vaCMHIVE, 0x1000, pbPage1, 0x100, NULL, 0);
