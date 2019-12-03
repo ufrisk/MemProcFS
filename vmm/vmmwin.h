@@ -22,13 +22,13 @@ typedef struct tdVMMWIN_IAT_ENTRY {
 
 /*
 * Load the size of the required display buffer for sections, imports and export
-* into the pModule struct. The size is a direct consequence of the number of
+* into the pModuleEx struct. The size is a direct consequence of the number of
 * functions since fixed line sizes are used for all these types. Loading is
 * done in a recource efficient way to minimize I/O as much as possible.
 * -- pProcess
 * -- pModule
 */
-VOID VmmWin_PE_SetSizeSectionIATEAT_DisplayBuffer(_In_ PVMM_PROCESS pProcess, _Inout_ PVMM_MODULEMAP_ENTRY pModule);
+VOID VmmWin_PE_SetSizeSectionIATEAT_DisplayBuffer(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pModule);
 
 /*
 * Walk the export address table (EAT) from a given pProcess and store it in the
@@ -41,7 +41,7 @@ VOID VmmWin_PE_SetSizeSectionIATEAT_DisplayBuffer(_In_ PVMM_PROCESS pProcess, _I
 * -- return
 */
 _Success_(return)
-BOOL VmmWin_PE_LoadEAT_DisplayBuffer(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MODULEMAP_ENTRY pModule, _Out_writes_opt_(cEATs) PVMMPROC_WINDOWS_EAT_ENTRY pEATs, _In_ DWORD cEATs, _Out_ PDWORD pcEATs);
+BOOL VmmWin_PE_LoadEAT_DisplayBuffer(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pModule, _Out_writes_opt_(cEATs) PVMMPROC_WINDOWS_EAT_ENTRY pEATs, _In_ DWORD cEATs, _Out_ PDWORD pcEATs);
 
 /*
 * Walk the import address table (IAT) from a given pProcess and store it in the
@@ -52,7 +52,7 @@ BOOL VmmWin_PE_LoadEAT_DisplayBuffer(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MODUL
 * -- cIATs
 * -- pcIATs = number of actual items of pIATs on exit
 */
-VOID VmmWin_PE_LoadIAT_DisplayBuffer(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MODULEMAP_ENTRY pModule, _Out_writes_(*pcIATs) PVMMWIN_IAT_ENTRY pIATs, _In_ DWORD cIATs, _Out_ PDWORD pcIATs);
+VOID VmmWin_PE_LoadIAT_DisplayBuffer(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pModule, _Out_writes_(*pcIATs) PVMMWIN_IAT_ENTRY pIATs, _In_ DWORD cIATs, _Out_ PDWORD pcIATs);
 
 /*
 * Fill the pbDisplayBuffer with a human readable version of the data directories.
@@ -67,7 +67,7 @@ VOID VmmWin_PE_LoadIAT_DisplayBuffer(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MODUL
 */
 VOID VmmWin_PE_DIRECTORY_DisplayBuffer(
     _In_ PVMM_PROCESS pProcess,
-    _In_ PVMM_MODULEMAP_ENTRY pModule,
+    _In_ PVMM_MAP_MODULEENTRY pModule,
     _Out_writes_bytes_opt_(*pcbDisplayBuffer) PBYTE pbDisplayBufferOpt,
     _In_ DWORD cbDisplayBufferMax,
     _Out_opt_ PDWORD pcbDisplayBuffer,
@@ -86,7 +86,7 @@ VOID VmmWin_PE_DIRECTORY_DisplayBuffer(
 */
 VOID VmmWin_PE_SECTION_DisplayBuffer(
     _In_ PVMM_PROCESS pProcess,
-    _In_ PVMM_MODULEMAP_ENTRY pModule,
+    _In_ PVMM_MAP_MODULEENTRY pModule,
     _Out_writes_bytes_opt_(*pcbDisplayBuffer) PBYTE pbDisplayBufferOpt,
     _In_ DWORD cbDisplayBufferMax,
     _Out_opt_ PDWORD pcbDisplayBuffer,
@@ -94,20 +94,61 @@ VOID VmmWin_PE_SECTION_DisplayBuffer(
     _Out_writes_opt_(*pcSectionsOpt) PIMAGE_SECTION_HEADER pSectionsOpt);
 
 /*
-* Initialize the module names into the ctxVMM. This is performed by a PEB/Ldr
-* scan of in-process memory structures. This may be unreliable of process is
-* obfuscated.
+* Try initialize PteMap text descriptions. This function will first try to pop-
+* ulate the pre-existing VMMOB_MAP_PTE object in pProcess with module names and
+* then, if failed or partially failed, try to initialize from PE file headers.
 * -- pProcess
 */
-VOID VmmWin_ModuleMapInitialize(_In_ PVMM_PROCESS pProcess);
+BOOL VmmWin_InitializePteMapText(_In_ PVMM_PROCESS pProcess);
 
 /*
-* Scan the process for various information that is put into the memory map. It
-* is recommended to initialize the ModuleMap before calling this function so it
-* can skip trying do double work identifying already known modules.
+* Initialize the module map containing information about loaded modules in the
+* system. This is performed by a PEB/Ldr walk/scan of in-process memory
+* structures. This may be unreliable if a process is obfuscated or tampered.
 * -- pProcess
+* -- return
 */
-VOID VmmWin_ScanTagsMemMap(_In_ PVMM_PROCESS pProcess);
+_Success_(return)
+BOOL VmmWin_InitializeLdrModules(_In_ PVMM_PROCESS pProcess);
+
+/*
+* Initialize the meap map containing information about the process heaps in the
+* specific process. This is performed by a PEB walk/scan of in-process memory
+* structures. This may be unreliable if a process is obfuscated or tampered.
+* -- pProcess
+* -- return
+*/
+BOOL VmmWinHeap_Initialize(_In_ PVMM_PROCESS pProcess);
+
+/*
+* Initialize the thread map for a specific process.
+* NB! The threading sub-system is dependent on pdb symbols and may take a small
+* amount of time before it's available after system startup.
+* -- pProcess
+* -- fNonBlocking
+* -- return
+*/
+BOOL VmmWinThread_Initialize(_In_ PVMM_PROCESS pProcess, _In_ BOOL fNonBlocking);
+
+/*
+* Initialize Handles for a specific process. Extended information text may take
+* extra time to initialize.
+* -- pProcess
+* -- fExtendedText = also fetch extended info such as handle paths/names.
+* -- return
+*/
+_Success_(return)
+BOOL VmmWinHandle_Initialize(_In_ PVMM_PROCESS pProcess, _In_ BOOL fExtendedText);
+
+/*
+* Retrieve a pointer to a VMMWIN_OBJECT_TYPE if possible. Initialization of the
+* table takes place on first use. The table only exists in Win7+ and is is
+* dependant on PDB symbol functionality for initialization.
+* -- iObjectType
+* -- return
+*/
+_Success_(return != NULL)
+PVMMWIN_OBJECT_TYPE VmmWin_ObjectTypeGet(_In_ BYTE iObjectType);
 
 /*
 * Try walk the EPROCESS list in the Windows kernel to enumerate processes into
@@ -130,7 +171,8 @@ BOOL VmmWin_EnumerateEPROCESS(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fRefre
 * -- pProcess
 * -- f32 = TRUE if 32-bit, FALSE if 64-bit
 * -- ctx = ctx to pass along to callback function (if any)
-* -- vaDataStart
+* -- cvaDataStart
+* -- pvaDataStart
 * -- oListStart = offset (in bytes) to _LIST_ENTRY from vaDataStart
 * -- cbData
 * -- pfnCallback_Pre = optional callback function to gather additional addresses.
@@ -141,11 +183,12 @@ VOID VmmWin_ListTraversePrefetch(
     _In_ PVMM_PROCESS pProcess,
     _In_ BOOL f32,
     _In_opt_ PVOID ctx,
-    _In_ QWORD vaDataStart,
+    _In_ DWORD cvaDataStart,
+    _In_ PQWORD pvaDataStart,
     _In_ DWORD oListStart,
     _In_ DWORD cbData,
     _In_opt_ VOID(*pfnCallback_Pre)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb, _In_ QWORD vaFLink, _In_ QWORD vaBLink, _In_ POB_VSET pVSetAddress, _Inout_ PBOOL pfValidEntry, _Inout_ PBOOL pfValidFLink, _Inout_ PBOOL pfValidBLink),
-    _In_opt_ BOOL(*pfnCallback_Post)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb),
+    _In_opt_ VOID(*pfnCallback_Post)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb),
     _In_opt_ POB_CONTAINER pPrefetchAddressContainer
 );
 

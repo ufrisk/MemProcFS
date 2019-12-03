@@ -44,6 +44,21 @@ DWORD Util_HashStringA(_In_opt_ LPCSTR sz)
     }
 }
 
+DWORD Util_HashStringUpperW(_In_opt_ LPCWSTR wsz)
+{
+    WCHAR c;
+    DWORD i = 0, dwHash = 0;
+    if(!wsz) { return 0; }
+    while(TRUE) {
+        c = wsz[i++];
+        if(!c) { return dwHash; }
+        if(c >= 'a' && c <= 'z') {
+            c += 'A' - 'a';
+        }
+        dwHash = ((dwHash >> 13) | (dwHash << 19)) + c;
+    }
+}
+
 #define Util_2HexChar(x) (((((x) & 0xf) <= 9) ? '0' : ('a' - 10)) + ((x) & 0xf))
 
 _Success_(return)
@@ -235,6 +250,26 @@ int Util_wcsstrncmp(_In_ LPSTR sz, _In_ LPWSTR wsz, _In_opt_ DWORD cMax)
     return 0;
 }
 
+_Success_(return >= 0)
+DWORD Util_snprintf_ln(
+    _Out_writes_(min(cszBuffer, cszLineLength + 1)) LPSTR szBuffer,
+    _In_ QWORD cszBuffer,
+    _In_ QWORD cszLineLength,
+    _In_z_ _Printf_format_string_ LPSTR szFormat,
+    ...
+) {
+    int status;
+    va_list arglist;
+    va_start(arglist, szFormat);
+    status = vsnprintf(szBuffer, min(cszBuffer, cszLineLength + 1), szFormat, arglist);
+    va_end(arglist);
+    if(status < 0) {
+        status = snprintf(szBuffer, cszBuffer, "%*s\n", (DWORD)(cszLineLength - 1), "");
+        if(status < 0) { status = 0; }
+    }
+    return (DWORD)status;
+}
+
 VOID Util_GetPathDll(_Out_writes_(MAX_PATH) PCHAR szPath, _In_opt_ HMODULE hModule)
 {
     SIZE_T i;
@@ -347,17 +382,17 @@ LPSTR Util_StrDupA(_In_opt_ LPSTR sz)
     return szDup;
 }
 
-VOID Util_FileTime2String(_In_ PFILETIME pFileTime, _Out_writes_(MAX_PATH) LPSTR szTime)
+VOID Util_FileTime2String(_In_ PFILETIME pFileTime, _Out_writes_(32) LPSTR szTime)
 {
     SYSTEMTIME SystemTime;
     if(!*(PQWORD)pFileTime) {
-        strcpy_s(szTime, MAX_PATH, "                    ***");
+        strcpy_s(szTime, 32, "                    ***");
         return;
     }
     FileTimeToSystemTime(pFileTime, &SystemTime);
     sprintf_s(
         szTime,
-        MAX_PATH,
+        32,
         "%04i-%02i-%02i %02i:%02i:%02i UTC",
         SystemTime.wYear,
         SystemTime.wMonth,
@@ -366,4 +401,38 @@ VOID Util_FileTime2String(_In_ PFILETIME pFileTime, _Out_writes_(MAX_PATH) LPSTR
         SystemTime.wMinute,
         SystemTime.wSecond
     );
+}
+
+PVOID Util_qfind(_In_ PVOID pvFind, _In_ DWORD cMap, _In_ PVOID pvMap, _In_ DWORD cbEntry, _In_ int(*pfnCmp)(_In_ PVOID pvFind, _In_ PVOID pvEntry))
+{
+    int f;
+    DWORD i, cbSearch, cbStep, cbMap;
+    PBYTE pbMap = pvMap;
+    if(!cMap || !cbEntry) { return NULL; }
+    for(i = 1; ((cMap - 1) >> i); i++);
+    cbMap = cMap * cbEntry;
+    cbSearch = cbEntry * min(1UL << (i - 1), cMap - 1);
+    cbStep = max(cbEntry, cbSearch >> 1);
+    while(cbStep >= cbEntry) {
+        f = pfnCmp(pvFind, pbMap + cbSearch);
+        if(f < 0) {
+            cbSearch -= cbStep;
+        } else if(f > 0) {
+            if(cbSearch + cbStep < cbMap) {
+                cbSearch += cbStep;
+            }
+        } else {
+            return pbMap + cbSearch;
+        }
+        cbStep = cbStep >> 1;
+    }
+    if(cbSearch < cbMap) {
+        if(!pfnCmp(pvFind, pbMap + cbSearch)) {
+            return pbMap + cbSearch;
+        }
+        if((cbSearch >= cbEntry) && !pfnCmp(pvFind, pbMap + cbSearch - cbEntry)) {
+            return pbMap + cbSearch - cbEntry;
+        }
+    }
+    return NULL;
 }

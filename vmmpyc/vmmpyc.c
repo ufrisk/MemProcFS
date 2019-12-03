@@ -310,36 +310,37 @@ VMMPYC_MemVirt2Phys(PyObject *self, PyObject *args)
 
 // (DWORD, (BOOL)) -> [{...}]
 static PyObject*
-VMMPYC_ProcessGetMemoryMap(PyObject *self, PyObject *args)
+VMMPYC_ProcessGetPteMap(PyObject *self, PyObject *args)
 {
     PyObject *pyList, *pyDict;
     BOOL result, fIdentifyModules;
     DWORD dwPID, i;
-    ULONG64 cMemMapEntries = 0;
-    PVMMDLL_MEMMAP_ENTRY pe, pMemMapEntries = NULL;
+    DWORD cbPteMap = 0;
+    PVMMDLL_MAP_PTEENTRY pe;
+    PVMMDLL_MAP_PTE pPteMap = NULL;
     CHAR sz[5];
     if(!PyArg_ParseTuple(args, "k|p", &dwPID, &fIdentifyModules)) { return NULL; }
     if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
     Py_BEGIN_ALLOW_THREADS;
     result =
-        VMMDLL_ProcessGetMemoryMap(dwPID, NULL, &cMemMapEntries, fIdentifyModules) &&
-        cMemMapEntries &&
-        (pMemMapEntries = LocalAlloc(0, cMemMapEntries * sizeof(VMMDLL_MEMMAP_ENTRY))) &&
-        VMMDLL_ProcessGetMemoryMap(dwPID, pMemMapEntries, &cMemMapEntries, fIdentifyModules);
+        VMMDLL_ProcessMap_GetPte(dwPID, NULL, &cbPteMap, fIdentifyModules) &&
+        cbPteMap &&
+        (pPteMap = LocalAlloc(0, cbPteMap)) &&
+        VMMDLL_ProcessMap_GetPte(dwPID, pPteMap, &cbPteMap, fIdentifyModules);
     Py_END_ALLOW_THREADS;
     if(!result) { 
         Py_DECREF(pyList);
-        LocalFree(pMemMapEntries);
-        return PyErr_Format(PyExc_RuntimeError, "VMMPYC_ProcessGetMemoryMap: Failed.");
+        LocalFree(pPteMap);
+        return PyErr_Format(PyExc_RuntimeError, "VMMPYC_ProcessGetPteMap: Failed.");
     }
-    for(i = 0; i < cMemMapEntries; i++) {
+    for(i = 0; i < pPteMap->cMap; i++) {
         if((pyDict = PyDict_New())) {
-            pe = pMemMapEntries + i;
-            PyDict_SetItemString_DECREF(pyDict, "va", PyLong_FromUnsignedLongLong(pe->AddrBase));
+            pe = pPteMap->pMap + i;
+            PyDict_SetItemString_DECREF(pyDict, "va", PyLong_FromUnsignedLongLong(pe->vaBase));
             PyDict_SetItemString_DECREF(pyDict, "size", PyLong_FromUnsignedLongLong(pe->cPages << 12));
             PyDict_SetItemString_DECREF(pyDict, "pages", PyLong_FromUnsignedLongLong(pe->cPages));
             PyDict_SetItemString_DECREF(pyDict, "wow64", PyBool_FromLong((long)pe->fWoW64));
-            PyDict_SetItemString_DECREF(pyDict, "tag", PyUnicode_FromFormat("%s", pe->szTag));
+            PyDict_SetItemString_DECREF(pyDict, "tag", PyUnicode_FromWideChar(pe->wszText, -1));
             PyDict_SetItemString_DECREF(pyDict, "flags-pte", PyLong_FromUnsignedLongLong(pe->fPage));
             sz[0] = (pe->fPage & VMMDLL_MEMMAP_FLAG_PAGE_NS) ? '-' : 's';
             sz[1] = 'r';
@@ -350,42 +351,86 @@ VMMPYC_ProcessGetMemoryMap(PyObject *self, PyObject *args)
             PyList_Append_DECREF(pyList, pyDict);
         }
     }
-    LocalFree(pMemMapEntries);
+    LocalFree(pPteMap);
     return pyList;
 }
 
-// (DWORD, ULONG64, (DWORD)) -> {}
-static PyObject*
-VMMPYC_ProcessGetMemoryMapEntry(PyObject *self, PyObject *args)
+VOID VMMPYC_ProcessGetVadMap_Protection(_In_ PVMMDLL_MAP_VADENTRY pVad, _Out_writes_(6) LPSTR sz)
 {
-    PyObject *pyDict;
-    BOOL result, fIdentifyModules;
-    DWORD dwPID;
-    ULONG64 va;
-    VMMDLL_MEMMAP_ENTRY e;
-    CHAR sz[5];
-    if(!PyArg_ParseTuple(args, "kK|p", &dwPID, &va, &fIdentifyModules)) { return NULL; }
-    if(!(pyDict = PyDict_New())) { return PyErr_NoMemory(); }
-    Py_BEGIN_ALLOW_THREADS;
-    result = VMMDLL_ProcessGetMemoryMapEntry(dwPID, &e, va, fIdentifyModules);
-    Py_END_ALLOW_THREADS;
-    if(!result) { 
-        Py_DECREF(pyDict);
-        return PyErr_Format(PyExc_RuntimeError, "VMMDLL_ProcessGetMemoryMapEntry: Failed.");
+    BYTE vh = (BYTE)pVad->Protection >> 3;
+    BYTE vl = (BYTE)pVad->Protection & 7;
+    sz[0] = pVad->fPrivateMemory ? 'p' : '-';                                    // PRIVATE MEMORY
+    sz[1] = (vh & 2) ? ((vh & 1) ? 'm' : 'g') : ((vh & 1) ? 'n' : '-');         // -/NO_CACHE/GUARD/WRITECOMBINE
+    sz[2] = ((vl == 1) || (vl == 3) || (vl == 4) || (vl == 6)) ? 'r' : '-';     // COPY ON WRITE
+    sz[3] = (vl & 4) ? 'w' : '-';                                               // WRITE
+    sz[4] = (vl & 2) ? 'x' : '-';                                               // EXECUTE
+    sz[5] = ((vl == 5) || (vl == 7)) ? 'c' : '-';                               // COPY ON WRITE
+    if(sz[1] != '-' && sz[2] == '-' && sz[3] == '-' && sz[4] == '-' && sz[5] == '-') { sz[1] = '-'; }
+}
+
+LPSTR VMMPYC_ProcessGetVadMap_Type(_In_ PVMMDLL_MAP_VADENTRY pVad)
+{
+    if(pVad->fImage) {
+        return "Image";
+    } else if(pVad->fFile) {
+        return "File ";
+    } else if(pVad->fHeap) {
+        return "Heap ";
+    } else if(pVad->fStack) {
+        return "Stack";
+    } else if(pVad->fTeb) {
+        return "Teb  ";
+    } else if(pVad->fPageFile) {
+        return "Pf   ";
+    } else {
+        return "     ";
     }
-    PyDict_SetItemString_DECREF(pyDict, "va", PyLong_FromUnsignedLongLong(e.AddrBase));
-    PyDict_SetItemString_DECREF(pyDict, "size", PyLong_FromUnsignedLongLong(e.cPages << 12));
-    PyDict_SetItemString_DECREF(pyDict, "pages", PyLong_FromUnsignedLongLong(e.cPages));
-    PyDict_SetItemString_DECREF(pyDict, "wow64", PyBool_FromLong((long)e.fWoW64));
-    PyDict_SetItemString_DECREF(pyDict, "tag", PyUnicode_FromFormat("%s", e.szTag));
-    PyDict_SetItemString_DECREF(pyDict, "flags-pte", PyLong_FromUnsignedLongLong(e.fPage));
-    sz[0] = (e.fPage & VMMDLL_MEMMAP_FLAG_PAGE_NS) ? '-' : 's';
-    sz[1] = 'r';
-    sz[2] = (e.fPage & VMMDLL_MEMMAP_FLAG_PAGE_W) ? 'w' : '-';
-    sz[3] = (e.fPage & VMMDLL_MEMMAP_FLAG_PAGE_NX) ? '-' : 'x';
-    sz[4] = 0;
-    PyDict_SetItemString_DECREF(pyDict, "flags", PyUnicode_FromFormat("%s", sz));
-    return pyDict;
+}
+
+// (DWORD, (BOOL)) -> [{...}]
+static PyObject*
+VMMPYC_ProcessGetVadMap(PyObject *self, PyObject *args)
+{
+    PyObject *pyList, *pyDict;
+    BOOL result, fIdentifyModules;
+    DWORD dwPID, i;
+    DWORD cbVadMap = 0;
+    PVMMDLL_MAP_VADENTRY pe;
+    PVMMDLL_MAP_VAD pVadMap = NULL;
+    CHAR szVadProtection[7] = { 0 };
+    if(!PyArg_ParseTuple(args, "k|p", &dwPID, &fIdentifyModules)) { return NULL; }
+    if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
+    Py_BEGIN_ALLOW_THREADS;
+    result =
+        VMMDLL_ProcessMap_GetVad(dwPID, NULL, &cbVadMap, fIdentifyModules) &&
+        cbVadMap &&
+        (pVadMap = LocalAlloc(0, cbVadMap)) &&
+        VMMDLL_ProcessMap_GetVad(dwPID, pVadMap, &cbVadMap, fIdentifyModules);
+    Py_END_ALLOW_THREADS;
+    if(!result) {
+        Py_DECREF(pyList);
+        LocalFree(pVadMap);
+        return PyErr_Format(PyExc_RuntimeError, "VMMPYC_ProcessGetVadMap: Failed.");
+    }
+    for(i = 0; i < pVadMap->cMap; i++) {
+        if((pyDict = PyDict_New())) {
+            pe = pVadMap->pMap + i;
+            VMMPYC_ProcessGetVadMap_Protection(pe, szVadProtection);
+            PyDict_SetItemString_DECREF(pyDict, "start", PyLong_FromUnsignedLongLong(pe->vaStart));
+            PyDict_SetItemString_DECREF(pyDict, "end", PyLong_FromUnsignedLongLong(pe->vaEnd));
+            PyDict_SetItemString_DECREF(pyDict, "subsection", PyLong_FromUnsignedLongLong(pe->vaSubsection));
+            PyDict_SetItemString_DECREF(pyDict, "prototype", PyLong_FromUnsignedLongLong(pe->vaPrototypePte));
+            PyDict_SetItemString_DECREF(pyDict, "prototype-len", PyLong_FromUnsignedLong(pe->cbPrototypePte));
+            PyDict_SetItemString_DECREF(pyDict, "mem_commit", PyBool_FromLong((long)pe->MemCommit));
+            PyDict_SetItemString_DECREF(pyDict, "commit_charge", PyLong_FromUnsignedLong(pe->CommitCharge));
+            PyDict_SetItemString_DECREF(pyDict, "protection", PyUnicode_FromFormat("%s", szVadProtection));
+            PyDict_SetItemString_DECREF(pyDict, "type", PyUnicode_FromFormat("%s", VMMPYC_ProcessGetVadMap_Type(pe)));
+            PyDict_SetItemString_DECREF(pyDict, "tag", PyUnicode_FromWideChar(pe->wszText, -1));
+            PyList_Append_DECREF(pyList, pyDict);
+        }
+    }
+    LocalFree(pVadMap);
+    return pyList;
 }
 
 // (DWORD) -> [{...}]
@@ -394,35 +439,36 @@ VMMPYC_ProcessGetModuleMap(PyObject *self, PyObject *args)
 {
     PyObject *pyList, *pyDict;
     BOOL result;
-    DWORD dwPID;
-    ULONG64 i, cModuleEntries = 0;
-    PVMMDLL_MODULEMAP_ENTRY pe, pModuleEntries = NULL;
+    DWORD dwPID, cbModuleMap = 0;
+    ULONG64 i;
+    PVMMDLL_MAP_MODULE pModuleMap = NULL;
+    PVMMDLL_MAP_MODULEENTRY pe;
     if(!PyArg_ParseTuple(args, "k", &dwPID)) { return NULL; }
     if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
     Py_BEGIN_ALLOW_THREADS;
     result =
-        VMMDLL_ProcessGetModuleMap(dwPID, NULL, &cModuleEntries) &&
-        cModuleEntries &&
-        (pModuleEntries = LocalAlloc(0, cModuleEntries * sizeof(VMMDLL_MODULEMAP_ENTRY))) &&
-        VMMDLL_ProcessGetModuleMap(dwPID, pModuleEntries, &cModuleEntries);
+        VMMDLL_ProcessMap_GetModule(dwPID, NULL, &cbModuleMap) &&
+        cbModuleMap &&
+        (pModuleMap = LocalAlloc(0, cbModuleMap)) &&
+        VMMDLL_ProcessMap_GetModule(dwPID, pModuleMap, &cbModuleMap);
     Py_END_ALLOW_THREADS;
     if(!result) {
         Py_DECREF(pyList);
-        LocalFree(pModuleEntries);
+        LocalFree(pModuleMap);
         return PyErr_Format(PyExc_RuntimeError, "VMMPYC_ProcessGetModuleMap: Failed.");
     }
-    for(i = 0; i < cModuleEntries; i++) {
+    for(i = 0; i < pModuleMap->cMap; i++) {
         if((pyDict = PyDict_New())) {
-            pe = pModuleEntries + i;
-            PyDict_SetItemString_DECREF(pyDict, "va", PyLong_FromUnsignedLongLong(pe->BaseAddress));
-            PyDict_SetItemString_DECREF(pyDict, "va-entry", PyLong_FromUnsignedLongLong(pe->EntryPoint));
-            PyDict_SetItemString_DECREF(pyDict, "size", PyLong_FromUnsignedLong(pe->SizeOfImage));
+            pe = pModuleMap->pMap + i;
+            PyDict_SetItemString_DECREF(pyDict, "va", PyLong_FromUnsignedLongLong(pe->vaBase));
+            PyDict_SetItemString_DECREF(pyDict, "va-entry", PyLong_FromUnsignedLongLong(pe->vaEntry));
+            PyDict_SetItemString_DECREF(pyDict, "size", PyLong_FromUnsignedLong(pe->cbImageSize));
             PyDict_SetItemString_DECREF(pyDict, "wow64", PyBool_FromLong((long)pe->fWoW64));
-            PyDict_SetItemString_DECREF(pyDict, "name", PyUnicode_FromFormat("%s", pe->szName));
+            PyDict_SetItemString_DECREF(pyDict, "name", PyUnicode_FromWideChar(pe->wszText, -1));
             PyList_Append_DECREF(pyList, pyDict);
         }
     }
-    LocalFree(pModuleEntries);
+    LocalFree(pModuleMap);
     return pyList;
 }
 
@@ -430,27 +476,170 @@ VMMPYC_ProcessGetModuleMap(PyObject *self, PyObject *args)
 static PyObject*
 VMMPYC_ProcessGetModuleFromName(PyObject *self, PyObject *args)
 {
-    PyObject *pyDict;
+    PyObject *pyDict, *pyUnicodePath;
     BOOL result;
     DWORD dwPID;
-    LPSTR szModuleName;
-    VMMDLL_MODULEMAP_ENTRY e;
-    if(!PyArg_ParseTuple(args, "ks", &dwPID, &szModuleName)) { return NULL; }
+    LPWSTR wszModuleName = NULL;
+    VMMDLL_MAP_MODULEENTRY e;
+    if(!PyArg_ParseTuple(args, "kO!", &dwPID, &PyUnicode_Type, &pyUnicodePath)) { return NULL; }
     if(!(pyDict = PyDict_New())) { return PyErr_NoMemory(); }
+    if(!(wszModuleName = PyUnicode_AsWideCharString(pyUnicodePath, NULL))) { return NULL; }     // wszPath PyMem_Free() required 
     Py_BEGIN_ALLOW_THREADS;
-    ZeroMemory(&e, sizeof(VMMDLL_MODULEMAP_ENTRY));
-    result = VMMDLL_ProcessGetModuleFromName(dwPID, szModuleName, &e);
+    ZeroMemory(&e, sizeof(VMMDLL_MAP_MODULEENTRY));
+    result = VMMDLL_ProcessMap_GetModuleFromName(dwPID, wszModuleName, &e);
     Py_END_ALLOW_THREADS;
+    PyMem_Free(wszModuleName);
     if(!result) { 
         Py_DECREF(pyDict);
         return PyErr_Format(PyExc_RuntimeError, "VMMPYC_ProcessGetModuleFromName: Failed.");
     }
-    PyDict_SetItemString_DECREF(pyDict, "va", PyLong_FromUnsignedLongLong(e.BaseAddress));
-    PyDict_SetItemString_DECREF(pyDict, "va-entry", PyLong_FromUnsignedLongLong(e.EntryPoint));
+    PyDict_SetItemString_DECREF(pyDict, "va", PyLong_FromUnsignedLongLong(e.vaBase));
+    PyDict_SetItemString_DECREF(pyDict, "va-entry", PyLong_FromUnsignedLongLong(e.vaEntry));
     PyDict_SetItemString_DECREF(pyDict, "wow64", PyBool_FromLong((long)e.fWoW64));
-    PyDict_SetItemString_DECREF(pyDict, "size", PyLong_FromUnsignedLong(e.SizeOfImage));
-    PyDict_SetItemString_DECREF(pyDict, "name", PyUnicode_FromFormat("%s", e.szName));
+    PyDict_SetItemString_DECREF(pyDict, "size", PyLong_FromUnsignedLong(e.cbImageSize));
+    PyDict_SetItemString(pyDict, "name", pyUnicodePath);
     return pyDict;
+}
+
+
+// (DWORD) -> [{...}]
+static PyObject*
+VMMPYC_ProcessGetHeapMap(PyObject *self, PyObject *args)
+{
+    PyObject *pyList, *pyDict;
+    BOOL result;
+    DWORD dwPID, i;
+    DWORD cbHeapMap = 0;
+    PVMMDLL_MAP_HEAPENTRY pe;
+    PVMMDLL_MAP_HEAP pHeapMap = NULL;
+    if(!PyArg_ParseTuple(args, "k", &dwPID)) { return NULL; }
+    if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
+    Py_BEGIN_ALLOW_THREADS;
+    result =
+        VMMDLL_ProcessMap_GetHeap(dwPID, NULL, &cbHeapMap) &&
+        cbHeapMap &&
+        (pHeapMap = LocalAlloc(0, cbHeapMap)) &&
+        VMMDLL_ProcessMap_GetHeap(dwPID, pHeapMap, &cbHeapMap);
+    Py_END_ALLOW_THREADS;
+    if(!result) {
+        Py_DECREF(pyList);
+        LocalFree(pHeapMap);
+        return PyErr_Format(PyExc_RuntimeError, "VMMPYC_ProcessGetHeapMap: Failed.");
+    }
+    for(i = 0; i < pHeapMap->cMap; i++) {
+        if((pyDict = PyDict_New())) {
+            pe = pHeapMap->pMap + i;
+            PyDict_SetItemString_DECREF(pyDict, "va", PyLong_FromUnsignedLongLong(pe->vaHeapSegment));
+            PyDict_SetItemString_DECREF(pyDict, "size", PyLong_FromUnsignedLong(pe->cPages << 12));
+            PyDict_SetItemString_DECREF(pyDict, "size-uncommitted", PyLong_FromUnsignedLong(pe->cPagesUnCommitted << 12));
+            PyDict_SetItemString_DECREF(pyDict, "id", PyLong_FromUnsignedLong(pe->HeapId));
+            PyDict_SetItemString_DECREF(pyDict, "primary", PyBool_FromLong((long)pe->fPrimary));
+            PyList_Append_DECREF(pyList, pyDict);
+        }
+    }
+    LocalFree(pHeapMap);
+    return pyList;
+}
+
+// (DWORD) -> [{...}]
+static PyObject*
+VMMPYC_ProcessGetThreadMap(PyObject *self, PyObject *args)
+{
+    PyObject *pyList, *pyDict;
+    BOOL result;
+    DWORD dwPID, i;
+    DWORD cbThreadMap = 0;
+    PVMMDLL_MAP_THREADENTRY pe;
+    PVMMDLL_MAP_THREAD pThreadMap = NULL;
+    CHAR szTimeUTC[MAX_PATH];
+    if(!PyArg_ParseTuple(args, "k", &dwPID)) { return NULL; }
+    if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
+    Py_BEGIN_ALLOW_THREADS;
+    result =
+        VMMDLL_ProcessMap_GetThread(dwPID, NULL, &cbThreadMap) &&
+        cbThreadMap &&
+        (pThreadMap = LocalAlloc(0, cbThreadMap)) &&
+        VMMDLL_ProcessMap_GetThread(dwPID, pThreadMap, &cbThreadMap);
+    Py_END_ALLOW_THREADS;
+    if(!result) {
+        Py_DECREF(pyList);
+        LocalFree(pThreadMap);
+        return PyErr_Format(PyExc_RuntimeError, "VMMPYC_ProcessGetThreadMap: Failed.");
+    }
+    for(i = 0; i < pThreadMap->cMap; i++) {
+        if((pyDict = PyDict_New())) {
+            pe = pThreadMap->pMap + i;
+            PyDict_SetItemString_DECREF(pyDict, "tid", PyLong_FromUnsignedLong(pe->dwTID));
+            PyDict_SetItemString_DECREF(pyDict, "pid", PyLong_FromUnsignedLong(pe->dwPID));
+            PyDict_SetItemString_DECREF(pyDict, "exitstatus", PyLong_FromUnsignedLong(pe->dwExitStatus));
+            PyDict_SetItemString_DECREF(pyDict, "state", PyLong_FromUnsignedLong(pe->bState));
+            PyDict_SetItemString_DECREF(pyDict, "running", PyLong_FromUnsignedLong(pe->bRunning));
+            PyDict_SetItemString_DECREF(pyDict, "priority", PyLong_FromUnsignedLong(pe->bPriority));
+            PyDict_SetItemString_DECREF(pyDict, "basepriority", PyLong_FromUnsignedLong(pe->bBasePriority));
+            PyDict_SetItemString_DECREF(pyDict, "va-ethread", PyLong_FromUnsignedLongLong(pe->vaETHREAD));
+            PyDict_SetItemString_DECREF(pyDict, "va-teb", PyLong_FromUnsignedLongLong(pe->vaTeb));
+            PyDict_SetItemString_DECREF(pyDict, "va-start", PyLong_FromUnsignedLongLong(pe->vaStartAddress));
+            PyDict_SetItemString_DECREF(pyDict, "va-stackbase", PyLong_FromUnsignedLongLong(pe->vaStackBaseUser));
+            PyDict_SetItemString_DECREF(pyDict, "va-stacklimit", PyLong_FromUnsignedLongLong(pe->vaStackLimitUser));
+            PyDict_SetItemString_DECREF(pyDict, "va-stackbase-kernel", PyLong_FromUnsignedLongLong(pe->vaStackBaseKernel));
+            PyDict_SetItemString_DECREF(pyDict, "va-stacklimit-kernel", PyLong_FromUnsignedLongLong(pe->vaStackLimitKernel));
+            PyDict_SetItemString_DECREF(pyDict, "time-create", PyLong_FromUnsignedLongLong(pe->ftCreateTime));
+            PyDict_SetItemString_DECREF(pyDict, "time-exit", PyLong_FromUnsignedLongLong(pe->ftExitTime));
+            Util_FileTime2String((PFILETIME)&pe->ftCreateTime, szTimeUTC);
+            PyDict_SetItemString_DECREF(pyDict, "time-create-str", PyUnicode_FromFormat("%s", szTimeUTC));
+            Util_FileTime2String((PFILETIME)&pe->ftExitTime, szTimeUTC);
+            PyDict_SetItemString_DECREF(pyDict, "time-exit-str", PyUnicode_FromFormat("%s", szTimeUTC));
+            PyList_Append_DECREF(pyList, pyDict);
+        }
+    }
+    LocalFree(pThreadMap);
+    return pyList;
+}
+
+// (DWORD) -> [{...}]
+static PyObject*
+VMMPYC_ProcessGetHandleMap(PyObject *self, PyObject *args)
+{
+    PyObject *pyList, *pyDict;
+    BOOL result;
+    DWORD dwPID, cbHandleMap = 0;
+    ULONG64 i;
+    PVMMDLL_MAP_HANDLE pHandleMap = NULL;
+    PVMMDLL_MAP_HANDLEENTRY pe;
+    if(!PyArg_ParseTuple(args, "k", &dwPID)) { return NULL; }
+    if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
+    Py_BEGIN_ALLOW_THREADS;
+    result =
+        VMMDLL_ProcessMap_GetHandle(dwPID, NULL, &cbHandleMap) &&
+        cbHandleMap &&
+        (pHandleMap = LocalAlloc(0, cbHandleMap)) &&
+        VMMDLL_ProcessMap_GetHandle(dwPID, pHandleMap, &cbHandleMap);
+    Py_END_ALLOW_THREADS;
+    if(!result) {
+        Py_DECREF(pyList);
+        LocalFree(pHandleMap);
+        return PyErr_Format(PyExc_RuntimeError, "VMMPYC_ProcessGetHandleMap: Failed.");
+    }
+    for(i = 0; i < pHandleMap->cMap; i++) {
+        if((pyDict = PyDict_New())) {
+            pe = pHandleMap->pMap + i;
+            PyDict_SetItemString_DECREF(pyDict, "va-object", PyLong_FromUnsignedLongLong(pe->vaObject));
+            PyDict_SetItemString_DECREF(pyDict, "handle", PyLong_FromUnsignedLong(pe->dwHandle));
+            PyDict_SetItemString_DECREF(pyDict, "access", PyLong_FromUnsignedLong(pe->dwGrantedAccess));
+            PyDict_SetItemString_DECREF(pyDict, "typeindex", PyLong_FromUnsignedLong(pe->iType));
+            PyDict_SetItemString_DECREF(pyDict, "pid", PyLong_FromUnsignedLong(pe->dwPID));
+            PyDict_SetItemString_DECREF(pyDict, "pooltag", PyLong_FromUnsignedLong(pe->dwPoolTag));
+            PyDict_SetItemString_DECREF(pyDict, "chandle", PyLong_FromUnsignedLongLong(pe->qwHandleCount));
+            PyDict_SetItemString_DECREF(pyDict, "cpointer", PyLong_FromUnsignedLongLong(pe->qwPointerCount));
+            PyDict_SetItemString_DECREF(pyDict, "va-object-creatinfo", PyLong_FromUnsignedLongLong(pe->vaObjectCreateInfo));
+            PyDict_SetItemString_DECREF(pyDict, "va-securitydescriptor", PyLong_FromUnsignedLongLong(pe->vaSecurityDescriptor));
+            PyDict_SetItemString_DECREF(pyDict, "tag", PyUnicode_FromWideChar(pe->wszText, -1));
+            PyDict_SetItemString_DECREF(pyDict, "type", PyUnicode_FromWideChar(pe->wszType, -1));
+            PyList_Append_DECREF(pyList, pyDict);
+        }
+    }
+    LocalFree(pHandleMap);
+    return pyList;
 }
 
 // (STR) -> DWORD
@@ -538,13 +727,11 @@ VMMPYC_ProcessGetInformation(PyObject *self, PyObject *args)
     switch(info.tpSystem) {
         case VMMDLL_SYSTEM_WINDOWS_X64:
             PyDict_SetItemString_DECREF(pyDict, "wow64", PyBool_FromLong((long)info.os.win.fWow64));
-            PyDict_SetItemString_DECREF(pyDict, "va-entry", PyLong_FromUnsignedLongLong(info.os.win.vaENTRY));
             PyDict_SetItemString_DECREF(pyDict, "va-eprocess", PyLong_FromUnsignedLongLong(info.os.win.vaEPROCESS));
             PyDict_SetItemString_DECREF(pyDict, "va-peb", PyLong_FromUnsignedLongLong(info.os.win.vaPEB));
             PyDict_SetItemString_DECREF(pyDict, "va-peb32", PyLong_FromUnsignedLongLong(info.os.win.vaPEB32));
             break;
         case VMMDLL_SYSTEM_WINDOWS_X86:
-            PyDict_SetItemString_DECREF(pyDict, "va-entry", PyLong_FromUnsignedLongLong(info.os.win.vaENTRY));
             PyDict_SetItemString_DECREF(pyDict, "va-eprocess", PyLong_FromUnsignedLongLong(info.os.win.vaEPROCESS));
             PyDict_SetItemString_DECREF(pyDict, "va-peb", PyLong_FromUnsignedLongLong(info.os.win.vaPEB));
             break;
@@ -559,19 +746,21 @@ VMMPYC_ProcessGetInformation(PyObject *self, PyObject *args)
 static PyObject*
 VMMPYC_ProcessGetDirectories(PyObject *self, PyObject *args)
 {
-    PyObject *pyList, *pyDict;
+    PyObject *pyList, *pyDict, *pyUnicodeModule;
     BOOL result;
     DWORD i, dwPID, cDirectories;
     PIMAGE_DATA_DIRECTORY pe, pDirectories = NULL;
-    LPSTR szModule;
+    LPWSTR wszModule = NULL;
     LPCSTR DIRECTORIES[16] = { "EXPORT", "IMPORT", "RESOURCE", "EXCEPTION", "SECURITY", "BASERELOC", "DEBUG", "ARCHITECTURE", "GLOBALPTR", "TLS", "LOAD_CONFIG", "BOUND_IMPORT", "IAT", "DELAY_IMPORT", "COM_DESCRIPTOR", "RESERVED" };
-    if(!PyArg_ParseTuple(args, "ks", &dwPID, &szModule)) { return NULL; }
+    if(!PyArg_ParseTuple(args, "kO!", &dwPID, &PyUnicode_Type, &pyUnicodeModule)) { return NULL; }
     if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
+    if(!(wszModule = PyUnicode_AsWideCharString(pyUnicodeModule, NULL))) { return NULL; }       // wszPath PyMem_Free() required
     Py_BEGIN_ALLOW_THREADS;
     result =
         (pDirectories = LocalAlloc(0, 16 * sizeof(IMAGE_DATA_DIRECTORY))) &&
-        VMMDLL_ProcessGetDirectories(dwPID, szModule, pDirectories, 16, &cDirectories);
+        VMMDLL_ProcessGetDirectories(dwPID, wszModule, pDirectories, 16, &cDirectories);
     Py_END_ALLOW_THREADS;
+    PyMem_Free(wszModule);
     if(!result) {
         Py_DECREF(pyList);
         LocalFree(pDirectories);
@@ -595,22 +784,24 @@ VMMPYC_ProcessGetDirectories(PyObject *self, PyObject *args)
 static PyObject*
 VMMPYC_ProcessGetSections(PyObject *self, PyObject *args)
 {
-    PyObject *pyList, *pyDict;
+    PyObject *pyList, *pyDict, *pyUnicodeModule;
     BOOL result;
     DWORD i, dwPID, cSections;
     PIMAGE_SECTION_HEADER pe, pSections = NULL;
-    LPSTR szModule;
+    LPWSTR wszModule = NULL;
     CHAR szName[9];
     szName[8] = 0;
-    if(!PyArg_ParseTuple(args, "ks", &dwPID, &szModule)) { return NULL; }
+    if(!PyArg_ParseTuple(args, "kO!", &dwPID, &PyUnicode_Type, &pyUnicodeModule)) { return NULL; }
     if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
+    if(!(wszModule = PyUnicode_AsWideCharString(pyUnicodeModule, NULL))) { return NULL; }       // wszPath PyMem_Free() required
     Py_BEGIN_ALLOW_THREADS;
     result =
-        VMMDLL_ProcessGetSections(dwPID, szModule, NULL, 0, &cSections) &&
+        VMMDLL_ProcessGetSections(dwPID, wszModule, NULL, 0, &cSections) &&
         cSections &&
         (pSections = LocalAlloc(0, cSections * sizeof(IMAGE_SECTION_HEADER))) &&
-        VMMDLL_ProcessGetSections(dwPID, szModule, pSections, cSections, &cSections);
+        VMMDLL_ProcessGetSections(dwPID, wszModule, pSections, cSections, &cSections);
     Py_END_ALLOW_THREADS;
+    PyMem_Free(wszModule);
     if(!result) {
         Py_DECREF(pyList);
         LocalFree(pSections);
@@ -624,7 +815,7 @@ VMMPYC_ProcessGetSections(PyObject *self, PyObject *args)
             PyDict_SetItemString_DECREF(pyDict, "misc-PhysicalAddress", PyLong_FromUnsignedLong(pe->Misc.PhysicalAddress));
             PyDict_SetItemString_DECREF(pyDict, "misc-VirtualSize", PyLong_FromUnsignedLong(pe->Misc.VirtualSize));
             *(PULONG64)szName = *(PULONG64)pe->Name;
-            PyDict_SetItemString_DECREF(pyDict, "Name", PyUnicode_FromFormat("%s", szName));
+            PyDict_SetItemString(pyDict, "Name", pyUnicodeModule);
             PyDict_SetItemString_DECREF(pyDict, "NumberOfLinenumbers", PyLong_FromUnsignedLong(pe->NumberOfLinenumbers));
             PyDict_SetItemString_DECREF(pyDict, "NumberOfRelocations", PyLong_FromUnsignedLong(pe->NumberOfRelocations));
             PyDict_SetItemString_DECREF(pyDict, "PointerToLinenumbers", PyLong_FromUnsignedLong(pe->PointerToLinenumbers));
@@ -643,20 +834,22 @@ VMMPYC_ProcessGetSections(PyObject *self, PyObject *args)
 static PyObject*
 VMMPYC_ProcessGetEAT(PyObject *self, PyObject *args)
 {
-    PyObject *pyList, *pyDict;
+    PyObject *pyList, *pyDict, *pyUnicodeModule;
     BOOL result;
     DWORD i, dwPID, cEATs;
     PVMMDLL_EAT_ENTRY pe, pEATs = NULL;
-    LPSTR szModule;
-    if(!PyArg_ParseTuple(args, "ks", &dwPID, &szModule)) { return NULL; }
+    LPWSTR wszModule = NULL;
+    if(!PyArg_ParseTuple(args, "kO!", &dwPID, &PyUnicode_Type, &pyUnicodeModule)) { return NULL; }
     if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
+    if(!(wszModule = PyUnicode_AsWideCharString(pyUnicodeModule, NULL))) { return NULL; }       // wszPath PyMem_Free() required
     Py_BEGIN_ALLOW_THREADS;
     result =
-        VMMDLL_ProcessGetEAT(dwPID, szModule, NULL, 0, &cEATs) &&
+        VMMDLL_ProcessGetEAT(dwPID, wszModule, NULL, 0, &cEATs) &&
         cEATs &&
         (pEATs = LocalAlloc(0, cEATs * sizeof(VMMDLL_EAT_ENTRY))) &&
-        VMMDLL_ProcessGetEAT(dwPID, szModule, pEATs, cEATs, &cEATs);
+        VMMDLL_ProcessGetEAT(dwPID, wszModule, pEATs, cEATs, &cEATs);
     Py_END_ALLOW_THREADS;
+    PyMem_Free(wszModule);
     if(!result) {
         Py_DECREF(pyList);
         LocalFree(pEATs);
@@ -680,20 +873,22 @@ VMMPYC_ProcessGetEAT(PyObject *self, PyObject *args)
 static PyObject*
 VMMPYC_ProcessGetIAT(PyObject *self, PyObject *args)
 {
-    PyObject *pyList, *pyDict;
+    PyObject *pyList, *pyDict, *pyUnicodeModule;
     BOOL result;
     DWORD i, dwPID, cIATs;
     PVMMDLL_IAT_ENTRY pe, pIATs = NULL;
-    LPSTR szModule;
-    if(!PyArg_ParseTuple(args, "ks", &dwPID, &szModule)) { return NULL; }
+    LPWSTR wszModule = NULL;
+    if(!PyArg_ParseTuple(args, "kO!", &dwPID, &PyUnicode_Type, &pyUnicodeModule)) { return NULL; }
     if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
+    if(!(wszModule = PyUnicode_AsWideCharString(pyUnicodeModule, NULL))) { return NULL; }       // wszPath PyMem_Free() required
     Py_BEGIN_ALLOW_THREADS;
     result =
-        VMMDLL_ProcessGetIAT(dwPID, szModule, NULL, 0, &cIATs) &&
+        VMMDLL_ProcessGetIAT(dwPID, wszModule, NULL, 0, &cIATs) &&
         cIATs &&
         (pIATs = LocalAlloc(0, cIATs * sizeof(VMMDLL_IAT_ENTRY))) &&
-        VMMDLL_ProcessGetIAT(dwPID, szModule, pIATs, cIATs, &cIATs);
+        VMMDLL_ProcessGetIAT(dwPID, wszModule, pIATs, cIATs, &cIATs);
     Py_END_ALLOW_THREADS;
+    PyMem_Free(wszModule);
     if(!result) {
         Py_DECREF(pyList);
         LocalFree(pIATs);
@@ -809,13 +1004,17 @@ VMMPYC_VfsWrite(PyObject *self, PyObject *args)
 static PyObject*
 VMMPYC_ProcessGetProcAddress(PyObject *self, PyObject *args)
 {
+    PyObject *pyUnicodeModule;
     ULONG64 va;
     DWORD dwPID;
-    LPSTR szModuleName, szProcName;
-    if(!PyArg_ParseTuple(args, "kss", &dwPID, &szModuleName, &szProcName)) { return NULL; }
+    LPSTR szProcName;
+    LPWSTR wszModule = NULL;
+    if(!PyArg_ParseTuple(args, "kO!s", &dwPID, &PyUnicode_Type, &pyUnicodeModule, &szProcName)) { return NULL; }
+    if(!(wszModule = PyUnicode_AsWideCharString(pyUnicodeModule, NULL))) { return NULL; }       // wszPath PyMem_Free() required
     Py_BEGIN_ALLOW_THREADS;
-    va = VMMDLL_ProcessGetProcAddress(dwPID, szModuleName, szProcName);
+    va = VMMDLL_ProcessGetProcAddress(dwPID, wszModule, szProcName);
     Py_END_ALLOW_THREADS;
+    PyMem_Free(wszModule);
     return va ?
         PyLong_FromUnsignedLongLong(va) :
         PyErr_Format(PyExc_RuntimeError, "VMMPYC_ProcessGetProcAddress: Failed.");
@@ -825,13 +1024,16 @@ VMMPYC_ProcessGetProcAddress(PyObject *self, PyObject *args)
 static PyObject*
 VMMPYC_ProcessGetModuleBase(PyObject *self, PyObject *args)
 {
+    PyObject *pyUnicodeModule;
     ULONG64 va;
     DWORD dwPID;
-    LPSTR szModuleName;
-    if(!PyArg_ParseTuple(args, "ks", &dwPID, &szModuleName)) { return NULL; }
+    LPWSTR wszModule = NULL;
+    if(!PyArg_ParseTuple(args, "kO!", &dwPID, &PyUnicode_Type, &pyUnicodeModule)) { return NULL; }
+    if(!(wszModule = PyUnicode_AsWideCharString(pyUnicodeModule, NULL))) { return NULL; }       // wszPath PyMem_Free() required
     Py_BEGIN_ALLOW_THREADS;
-    va = VMMDLL_ProcessGetModuleBase(dwPID, szModuleName);
+    va = VMMDLL_ProcessGetModuleBase(dwPID, wszModule);
     Py_END_ALLOW_THREADS;
+    PyMem_Free(wszModule);
     return va ?
         PyLong_FromUnsignedLongLong(va) :
         PyErr_Format(PyExc_RuntimeError, "VMMPYC_ProcessGetModuleBase: Failed.");
@@ -841,15 +1043,18 @@ VMMPYC_ProcessGetModuleBase(PyObject *self, PyObject *args)
 static PyObject*
 VMMPYC_WinGetThunkInfoEAT(PyObject *self, PyObject *args)
 {
-    PyObject *pyDict;
+    PyObject *pyDict, *pyUnicodeModule;
     BOOL result;
     DWORD dwPID;
     VMMDLL_WIN_THUNKINFO_EAT oThunkInfoEAT = { 0 };
-    LPSTR szModuleName, szExportFunctionName;
-    if(!PyArg_ParseTuple(args, "kss", &dwPID, &szModuleName, &szExportFunctionName)) { return NULL; }
+    LPSTR szExportFunctionName;
+    LPWSTR wszModule = NULL;
+    if(!PyArg_ParseTuple(args, "kO!s", &dwPID, &PyUnicode_Type, &pyUnicodeModule, &szExportFunctionName)) { return NULL; }
+    if(!(wszModule = PyUnicode_AsWideCharString(pyUnicodeModule, NULL))) { return NULL; }       // wszPath PyMem_Free() required
     Py_BEGIN_ALLOW_THREADS;
-    result = VMMDLL_WinGetThunkInfoEAT(dwPID, szModuleName, szExportFunctionName, &oThunkInfoEAT);
+    result = VMMDLL_WinGetThunkInfoEAT(dwPID, wszModule, szExportFunctionName, &oThunkInfoEAT);
     Py_END_ALLOW_THREADS;
+    PyMem_Free(wszModule);
     if(!result || !oThunkInfoEAT.fValid) {
         return PyErr_Format(PyExc_RuntimeError, "VMMPYC_WinGetThunkInfoEAT: Failed.");
     }
@@ -867,15 +1072,18 @@ VMMPYC_WinGetThunkInfoEAT(PyObject *self, PyObject *args)
 static PyObject*
 VMMPYC_WinGetThunkInfoIAT(PyObject *self, PyObject *args)
 {
-    PyObject *pyDict;
+    PyObject *pyDict, *pyUnicodeModule;
     BOOL result;
     DWORD dwPID;
     VMMDLL_WIN_THUNKINFO_IAT oThunkInfoIAT = { 0 };
-    LPSTR szModuleName, szImportModuleName, szImportFunctionName;
-    if(!PyArg_ParseTuple(args, "ksss", &dwPID, &szModuleName, &szImportModuleName, &szImportFunctionName)) { return NULL; }
+    LPSTR szImportModuleName, szImportFunctionName;
+    LPWSTR wszModule = NULL;
+    if(!PyArg_ParseTuple(args, "kO!ss", &dwPID, &PyUnicode_Type, &pyUnicodeModule, &szImportModuleName, &szImportFunctionName)) { return NULL; }
+    if(!(wszModule = PyUnicode_AsWideCharString(pyUnicodeModule, NULL))) { return NULL; }       // wszPath PyMem_Free() required
     Py_BEGIN_ALLOW_THREADS;
-    result = VMMDLL_WinGetThunkInfoIAT(dwPID, szModuleName, szImportModuleName, szImportFunctionName, &oThunkInfoIAT);
+    result = VMMDLL_WinGetThunkInfoIAT(dwPID, wszModule, szImportModuleName, szImportFunctionName, &oThunkInfoIAT);
     Py_END_ALLOW_THREADS;
+    PyMem_Free(wszModule);
     if(!result || !oThunkInfoIAT.fValid) {
         return PyErr_Format(PyExc_RuntimeError, "VMMPYC_WinGetThunkInfoEAT: Failed.");
     }
@@ -927,7 +1135,7 @@ VMMPYC_WinReg_HiveList(PyObject *self, PyObject *args)
 }
 
 // (ULONG64, DWORD, DWORD, (ULONG64)) -> PBYTE
-static PyObject *
+static PyObject*
 VMMPYC_WinReg_HiveRead(PyObject *self, PyObject *args)
 {
     PyObject *pyBytes;
@@ -1281,10 +1489,13 @@ static PyMethodDef VMMPYC_EmbMethods[] = {
     {"VMMPYC_MemVirt2Phys", VMMPYC_MemVirt2Phys, METH_VARARGS, "Translate a virtual address into a physical address."},
     {"VMMPYC_PidGetFromName", VMMPYC_PidGetFromName, METH_VARARGS, "Locate a process by name and return the PID."},
     {"VMMPYC_PidList", VMMPYC_PidList, METH_VARARGS, "List all process PIDs."},
-    {"VMMPYC_ProcessGetMemoryMap", VMMPYC_ProcessGetMemoryMap, METH_VARARGS, "Retrieve the memory map for a given process."},
-    {"VMMPYC_ProcessGetMemoryMapEntry", VMMPYC_ProcessGetMemoryMapEntry, METH_VARARGS, "Retrieve a single memory map entry for a given process and virtual address."},
+    {"VMMPYC_ProcessGetPteMap", VMMPYC_ProcessGetPteMap, METH_VARARGS, "Retrieve the PTE memory map for a given process."},
+    {"VMMPYC_ProcessGetVadMap", VMMPYC_ProcessGetVadMap, METH_VARARGS, "Retrieve the VAD memory map for a given process."},
     {"VMMPYC_ProcessGetModuleMap", VMMPYC_ProcessGetModuleMap, METH_VARARGS, "Retrieve the module map for a given process."},
     {"VMMPYC_ProcessGetModuleFromName", VMMPYC_ProcessGetModuleFromName, METH_VARARGS, "Locate a module by name and return its information."},
+    {"VMMPYC_ProcessGetHeapMap", VMMPYC_ProcessGetHeapMap, METH_VARARGS, "Retrieve the heap map for a given process."},
+    {"VMMPYC_ProcessGetThreadMap", VMMPYC_ProcessGetThreadMap, METH_VARARGS, "Retrieve the thread map for a given process."},
+    {"VMMPYC_ProcessGetHandleMap", VMMPYC_ProcessGetHandleMap, METH_VARARGS, "Retrieve the handle map for a given process."},
     {"VMMPYC_ProcessGetInformation", VMMPYC_ProcessGetInformation, METH_VARARGS, "Retrieve process information for a specific process."},
     {"VMMPYC_ProcessGetDirectories", VMMPYC_ProcessGetDirectories, METH_VARARGS, "Retrieve the data directories for a specific process and module."},
     {"VMMPYC_ProcessGetSections", VMMPYC_ProcessGetSections, METH_VARARGS, "Retrieve the sections for a specific process and module."},

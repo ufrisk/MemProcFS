@@ -132,6 +132,24 @@ def VmmPy_Example(dump_file_name):
     print("SUCCESS: VmmPy_ProcessListInformation()")
     print(result)
 
+    # PTE MEM MAP
+    print("--------------------------------------------------------------------")
+    print("Get the PTE memory map of 'explorer.exe' by walking the page table. ")
+    input("Press Enter to continue...")
+    print("CALL: VmmPy_ProcessGetPteMap()")
+    result = VmmPy_ProcessGetPteMap(pid, True)
+    print("SUCCESS: VmmPy_ProcessGetPteMap()")
+    print(result)
+
+    # VAD MEM MAP
+    print("--------------------------------------------------------------------")
+    print("Get the VAD memory map of 'explorer.exe' by looking at VADs         ")
+    input("Press Enter to continue...")
+    print("CALL: VmmPy_ProcessGetVadMap()")
+    result = VmmPy_ProcessGetVadMap(pid, True)
+    print("SUCCESS: VmmPy_ProcessGetVadMap()")
+    print(result)
+
     # MODULE INFORMATION
     print("--------------------------------------------------------------------")
     print("Get module information about the explorer.exe module in the process.")
@@ -142,22 +160,31 @@ def VmmPy_Example(dump_file_name):
     print(result)
     va = result['va']
 
-    # MEM MAP
+    # HEAP MAP
     print("--------------------------------------------------------------------")
-    print("Get the memory map of 'explorer.exe' by walking the page table.     ")
+    print("Get the HEAP map of 'explorer.exe'                                  ")
     input("Press Enter to continue...")
-    print("CALL: VmmPy_ProcessGetMemoryMap()")
-    result = VmmPy_ProcessGetMemoryMap(pid, True)
-    print("SUCCESS: VmmPy_ProcessGetMemoryMap()")
+    print("CALL: VmmPy_ProcessGetHeapMap()")
+    result = VmmPy_ProcessGetHeapMap(pid)
+    print("SUCCESS: VmmPy_ProcessGetHeapMap()")
     print(result)
 
-    # MEM MAP ENTRY
+    # THREAD MAP
     print("--------------------------------------------------------------------")
-    print("Get the PE base of 'explorer.exe' in the 'explorer.exe' process.    ")
+    print("Get the THREAD map of 'explorer.exe' by walking ETHREAD list        ")
     input("Press Enter to continue...")
-    print("CALL: VmmPy_ProcessGetMemoryMapEntry()")
-    result = VmmPy_ProcessGetMemoryMapEntry(pid, va, True)
-    print("SUCCESS: VmmPy_ProcessGetMemoryMapEntry()")
+    print("CALL: VmmPy_ProcessGetThreadMap()")
+    result = VmmPy_ProcessGetThreadMap(pid)
+    print("SUCCESS: VmmPy_ProcessGetThreadMap()")
+    print(result)
+
+    # HANDLE MAP
+    print("--------------------------------------------------------------------")
+    print("Get the HANDLE map of 'explorer.exe'                                ")
+    input("Press Enter to continue...")
+    print("CALL: VmmPy_ProcessGetHandleMap()")
+    result = VmmPy_ProcessGetHandleMap(pid)
+    print("SUCCESS: VmmPy_ProcessGetHandleMap()")
     print(result)
 
     # MEM VIRTUAL2PHYSICAL
@@ -255,10 +282,10 @@ def VmmPy_Example(dump_file_name):
 
     # VFS READ
     print("--------------------------------------------------------------------")
-    print("Read from a file in the virtual file system (/pmem at offset 0x1000)")
+    print("Read from a file in the virtual file system (/memory.pmem at offset 0x1000)")
     input("Press Enter to continue...")
     print("CALL: VmmPy_VfsRead()")
-    result = VmmPy_UtilFillHexAscii(VmmPy_VfsRead('/pmem', 0x100, 0x1000))
+    result = VmmPy_UtilFillHexAscii(VmmPy_VfsRead('/memory.pmem', 0x100, 0x1000))
     print("SUCCESS: VmmPy_VfsRead()")
     print(result)
 

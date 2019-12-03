@@ -3,7 +3,7 @@
 // (c) Ulf Frisk, 2019
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-#include "m_phys2virt.h"
+#include "m_modules.h"
 #include "pluginmanager.h"
 #include "util.h"
 #include "vmm.h"

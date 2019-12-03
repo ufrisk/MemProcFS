@@ -6,8 +6,6 @@
 
 #include "vmmwintcpip.h"
 #include "pe.h"
-#include "vmmproc.h"
-#include "vmmwin.h"
 #include "util.h"
 
 #define AF_INET6        23      // Ws2tcpip.h
@@ -54,7 +52,7 @@ QWORD VmmWinTcpIp_GetPartitionTable64_PageAligned(_In_ PVMM_PROCESS pSystemProce
             ObVSet_Push(pObSet, va);
         }
     }
-    VmmCachePrefetchPages(pSystemProcess, pObSet);
+    VmmCachePrefetchPages(pSystemProcess, pObSet, 0);
     // 2: filter potential page-aligned candidates
     while((va = ObVSet_Pop(pObSet))) {
         VmmReadEx(pSystemProcess, va, pb, 0x38, &cbRead, VMM_FLAG_FORCECACHE_READ);
@@ -91,7 +89,7 @@ QWORD VmmWinTcpIp_GetPartitionTable64_PoolHdr(_In_ PVMM_PROCESS pSystemProcess, 
             ObVSet_Push(pObSet, va);
         }
     }
-    VmmCachePrefetchPages3(pSystemProcess, pObSet, 0x48);
+    VmmCachePrefetchPages3(pSystemProcess, pObSet, 0x48, 0);
     // 2: filter potential candidates
     while((va = ObVSet_Pop(pObSet))) {
         VmmReadEx(pSystemProcess, va - 0x10, pb, 0x48, &cbRead, VMM_FLAG_FORCECACHE_READ);
@@ -116,8 +114,8 @@ VOID VmmWinTcpIp_GetPartitionTable64(_In_ PVMM_PROCESS pSystemProcess)
 {
     DWORD cbData;
     PBYTE pbData = NULL;
-    PVMMOB_MODULEMAP pObModuleMap = NULL;
-    PVMM_MODULEMAP_ENTRY pModuleMapEntry;
+    PVMMOB_MAP_MODULE pObModuleMap = NULL;
+    PVMM_MAP_MODULEENTRY pModuleMapEntry;
     IMAGE_SECTION_HEADER oSectionHeader;
     if(ctxVmm->TcpIp.fInitialized) { return; }
     EnterCriticalSection(&ctxVmm->TcpIp.LockUpdate);
@@ -126,18 +124,18 @@ VOID VmmWinTcpIp_GetPartitionTable64(_In_ PVMM_PROCESS pSystemProcess)
         return;
     }
     // 1: fetch tcpip.sys .data section - it contains a pointer to tcpip!PartitionTable [TcPt]
-    if(!VmmProc_ModuleMapGetSingleEntry(pSystemProcess, L"tcpip.sys", &pObModuleMap, &pModuleMapEntry)) {
+    if(!(VmmMap_GetModule(pSystemProcess, &pObModuleMap) && (pModuleMapEntry = VmmMap_GetModuleEntry(pObModuleMap, L"tcpip.sys")))) {
         vmmprintfv_fn("CANNOT LOCATE tcpip.sys.\n")
         goto fail;
     }
-    if(!PE_SectionGetFromName(pSystemProcess, pModuleMapEntry->BaseAddress, ".data", &oSectionHeader)) {
+    if(!PE_SectionGetFromName(pSystemProcess, pModuleMapEntry->vaBase, ".data", &oSectionHeader)) {
         vmmprintfv_fn("CANNOT READ tcpip.sys .data PE SECTION.\n")
         goto fail;
     }
     cbData = oSectionHeader.Misc.VirtualSize;
     if(!cbData || cbData > 0x00100000) { goto fail; }
     if(!(pbData = LocalAlloc(0, cbData))) { goto fail; }
-    if(!VmmRead(pSystemProcess, pModuleMapEntry->BaseAddress + oSectionHeader.VirtualAddress, pbData, cbData)) { goto fail; }
+    if(!VmmRead(pSystemProcess, pModuleMapEntry->vaBase + oSectionHeader.VirtualAddress, pbData, cbData)) { goto fail; }
     // 2: Locate tcpip!PartitionTable - it can either be in a page-aligned full page or in a smaller allocation with pool header
     ctxVmm->TcpIp.vaPartitionTable = VmmWinTcpIp_GetPartitionTable64_PageAligned(pSystemProcess, pbData, cbData);
     if(!ctxVmm->TcpIp.vaPartitionTable) {
@@ -288,7 +286,7 @@ BOOL VmmWinTcpIp_TcpE_GetAddressEPs(_In_ PVMM_PROCESS pSystemProcess, _Inout_ PO
         }
     }
     if(0 == ObVSet_Size(pObTcHT)) { goto fail; }
-    VmmCachePrefetchPages3(pSystemProcess, pObTcHT, cbTcpHT);
+    VmmCachePrefetchPages3(pSystemProcess, pObTcHT, cbTcpHT, 0);
     // 3: enumerate possible/interesting TCP hash tables - TcHT.
     while((va = ObVSet_Pop(pObTcHT))) {
         ZeroMemory(pbTcHT, cbTcpHT);
@@ -302,7 +300,7 @@ BOOL VmmWinTcpIp_TcpE_GetAddressEPs(_In_ PVMM_PROCESS pSystemProcess, _Inout_ PO
         }
     }
     if(0 == ObVSet_Size(pObHTab)) { goto fail; }
-    VmmCachePrefetchPages3(pSystemProcess, pObHTab, 0x810);
+    VmmCachePrefetchPages3(pSystemProcess, pObHTab, 0x810, 0);
     // 4: Enumerate TCP Endpoints 'TcpE' out of the potential 'HTab'
     while((va = ObVSet_Pop(pObHTab))) {
         VmmReadEx(pSystemProcess, va, pb, 0x810, &cbRead, VMM_FLAG_FORCECACHE_READ);
@@ -321,7 +319,7 @@ BOOL VmmWinTcpIp_TcpE_GetAddressEPs(_In_ PVMM_PROCESS pSystemProcess, _Inout_ PO
         }
     }
     if(0 == ObVSet_Size(pObTcpE)) { goto fail; }
-    VmmCachePrefetchPages3(pSystemProcess, pObTcpE, 0x10);
+    VmmCachePrefetchPages3(pSystemProcess, pObTcpE, 0x10, 0);
     // 5: Verify and transfer to outgoing result set pObTcpE_Located
     while((va = ObVSet_Pop(pObTcpE))) {
         VmmReadEx(pSystemProcess, va, pb, 0x10, &cbRead, VMM_FLAG_FORCECACHE_READ);
@@ -378,7 +376,7 @@ BOOL VmmWinTcpIp_TcpE_Enumerate(_In_ PVMM_PROCESS pSystemProcess, _In_ POB_VSET 
     };
     if(cTcpEs < ObVSet_Size(pSet_TcpE)) { goto fail; }
     if(!(pObPrefetch = ObVSet_New())) { goto fail; }
-    VmmCachePrefetchPages3(pSystemProcess, pSet_TcpE, po->_Size);
+    VmmCachePrefetchPages3(pSystemProcess, pSet_TcpE, po->_Size, 0);
     // 1: retrieve general info from main struct (TcpE)
     while((va = ObVSet_Pop(pSet_TcpE))) {
         VmmReadEx(pSystemProcess, va, pb, po->_Size, &cbRead, VMM_FLAG_FORCECACHE_READ);
@@ -401,7 +399,7 @@ BOOL VmmWinTcpIp_TcpE_Enumerate(_In_ PVMM_PROCESS pSystemProcess, _In_ POB_VSET 
         c++;
     }
     // 2: retrieve address family and ptr to address
-    VmmCachePrefetchPages3(pSystemProcess, pObPrefetch, 0x30);
+    VmmCachePrefetchPages3(pSystemProcess, pObPrefetch, 0x30, 0);
     Ob_DECREF_NULL(&pObPrefetch);
     if(!(pObPrefetch = ObVSet_New())) { goto fail; }
     for(i = 0; i < c; i++) {
@@ -428,7 +426,7 @@ BOOL VmmWinTcpIp_TcpE_Enumerate(_In_ PVMM_PROCESS pSystemProcess, _In_ POB_VSET 
         ObVSet_Push(pObPrefetch, pE->_Reserved_vaINET_Dst);
     }
     // 3: retrieve src / dst addresses
-    VmmCachePrefetchPages3(pSystemProcess, pObPrefetch, 0x18);
+    VmmCachePrefetchPages3(pSystemProcess, pObPrefetch, 0x18, 0);
     for(i = 0; i < c; i++) {
         pE = pTcpEs + i;
         if(pE->AF.fValid) {

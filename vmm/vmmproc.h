@@ -15,40 +15,6 @@
 BOOL VmmProc_RefreshProcesses(_In_ BOOL fRefreshTotal);
 
 /*
-* Load operating system dependant module names, such as parsed from PE or ELF
-* into the modules map.
-*/
-VOID VmmProc_ModuleMapInitialize(_In_ PVMM_PROCESS pProcess);
-
-/*
-* Retrieve the module map. Map is generated on-demand if not already existing.
-* CALLER DECREF: ppObModuleMap
-* -- pProcess
-* -- ppObModuleMap
-* -- return
-*/
-_Success_(return)
-BOOL VmmProc_ModuleMapGet(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MODULEMAP *ppObModuleMap);
-
-/*
-* Retrieve a single module map entry and its backing module map (if found).
-* CALLER DECREF: ppObModuleMap
-* -- pProcess
-* -- wszModuleName
-* -- ppObModuleMap
-* -- pModuleMapEntry
-* -- return
-*/
-_Success_(return)
-BOOL VmmProc_ModuleMapGetSingleEntry(_In_ PVMM_PROCESS pProcess, _In_ LPWSTR wszModuleName, _Out_ PVMMOB_MODULEMAP *ppObModuleMap, _Out_ PVMM_MODULEMAP_ENTRY *ppModuleMapEntry);
-
-/*
-* Scan additional process information (not already in the initialized modulemap)
-* and put the result into the memory map.
-*/
-VOID VmmProc_ScanTagsMemMap(_In_ PVMM_PROCESS pProcess);
-
-/*
 * Tries to automatically identify the operating system given by the supplied
 * memory device (fpga hardware or file). If an operating system is successfully
 * identified a VMM_CONTEXT will be created and stored within the PCILEECH_CONTEXT.

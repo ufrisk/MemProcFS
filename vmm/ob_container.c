@@ -70,9 +70,11 @@ PVOID ObContainer_GetOb(_In_ POB_CONTAINER pObContainer)
 */
 VOID ObContainer_SetOb(_In_ POB_CONTAINER pObContainer, _In_opt_ PVOID pOb)
 {
+    POB pObOld;
     if(!OB_CONTAINER_IS_VALID(pObContainer)) { return; }
     EnterCriticalSection(&pObContainer->Lock);
-    Ob_DECREF(pObContainer->pOb);
+    pObOld = pObContainer->pOb;
     pObContainer->pOb = Ob_INCREF(pOb);
     LeaveCriticalSection(&pObContainer->Lock);
+    Ob_DECREF(pObOld);
 }

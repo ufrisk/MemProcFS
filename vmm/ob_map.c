@@ -82,14 +82,15 @@ VOID _ObMap_ObFreeAllObjects(_In_ POB_MAP pObMap)
 {
     DWORD i;
     POB_MAP_ENTRY pe;
-    if(pObMap->fObjectsOb || pObMap->fObjectsLocalFree) {
+    if(pObMap->fObjectsOb) {
         for(i = 1; i < pObMap->c; i++) {
             pe = &pObMap->Directory[OB_MAP_INDEX_DIRECTORY(i)][OB_MAP_INDEX_TABLE(i)][OB_MAP_INDEX_STORE(i)];
-            if(pObMap->fObjectsOb) {
-                Ob_DECREF(pe->v);
-            } else if(pObMap->fObjectsLocalFree) {
-                LocalFree(pe->v);
-            }
+            Ob_DECREF(pe->v);
+        }
+    } else if(pObMap->fObjectsLocalFree) {
+        for(i = 1; i < pObMap->c; i++) {
+            pe = &pObMap->Directory[OB_MAP_INDEX_DIRECTORY(i)][OB_MAP_INDEX_TABLE(i)][OB_MAP_INDEX_STORE(i)];
+            LocalFree(pe->v);
         }
     }
 }
@@ -118,27 +119,6 @@ VOID _ObMap_ObCloseCallback(_In_ POB_MAP pObMap)
     }
 }
 
-/*
-* Create a new hashed value set. A hashed value set (ObVSet) provides atomic
-* ways to store unique 64-bit (or smaller) numbers as a set.
-* The ObVSet is an object manager object and must be DECREF'ed when required.
-* CALLER DECREF: return
-* -- return
-*/
-/*
-POB_VSET ObVSet_New()
-{
-    POB_VSET pObVSet = Ob_Alloc('VS', LMEM_ZEROINIT, sizeof(OB_VSET) - sizeof(OB), _ObVSet_ObCloseCallback, NULL);
-    if(!pObVSet) { return NULL; }
-    InitializeSRWLock(&pObVSet->LockSRW);
-    pObVSet->c = 1;     // item zero is reserved - hence the initialization of count to 1
-    pObVSet->cHashMax = 0x400;
-    pObVSet->cHashGrowThreshold = 0x300;
-    pObVSet->pTable0[0].pValues = pObVSet->pStore00;
-    return pObVSet;
-}
-*/
-
 inline POB_MAP_ENTRY _ObMap_GetFromIndex(_In_ POB_MAP pm, _In_ DWORD iEntry)
 {
     if(!iEntry || (iEntry >= pm->c)) { return NULL; }
@@ -150,20 +130,6 @@ inline QWORD _ObMap_GetFromEntryIndex(_In_ POB_MAP pm, _In_ BOOL fValueHash, _In
     POB_MAP_ENTRY pe = _ObMap_GetFromIndex(pm, iEntry);
     return pe ? (fValueHash ? (QWORD)pe->v : pe->k) : 0;
 }
-
-/*inline VOID _ObMap_SetFromEntryIndex(_In_ POB_MAP pm, _In_ DWORD iEntry, _In_ QWORD qwKey, _In_ PVOID pvObject)
-{
-    POB_MAP_ENTRY pe = _ObMap_GetFromIndex(pm, iEntry);
-    if(pe) {
-        pe->k = qwKey;
-        pe->v = pvObject;
-    }
-}*/
-
-/*inline DWORD _ObMap_GetEntryIndexFromHashIndex(_In_ POB_MAP pm, _In_ BOOL fValueHash, _In_ DWORD iHash)
-{
-    return fValueHash ? pm->pHashMapValue[iHash] : pm->pHashMapKey[iHash];
-}*/
 
 inline VOID _ObMap_SetHashIndex(_In_ POB_MAP pm, _In_ BOOL fValueHash, _In_ DWORD iHash, _In_ DWORD iEntry)
 {
@@ -312,6 +278,20 @@ PVOID _ObMap_GetNextByKey(_In_ POB_MAP pm, _In_ QWORD qwKey, _In_opt_ PVOID pvOb
     return _ObMap_GetByEntryIndex(pm, iEntry + 1);
 }
 
+// NB: CALLER LOCALFREE: return
+_Success_(return != NULL)
+POB_DATA _ObMap_GetTableKeys(_In_ POB_MAP pm)
+{
+    QWORD iEntry;
+    POB_DATA pObData;
+    if((pm->c <= 1) || !(pObData = Ob_Alloc(OB_TAG_CORE_DATA, 0, sizeof(OB) + pm->c * sizeof(QWORD), NULL, NULL))) { return NULL; }
+    for(iEntry = 1; iEntry < pm->c; iEntry++) {
+        pObData->pqw[iEntry] = pm->Directory[OB_MAP_INDEX_DIRECTORY(iEntry)][OB_MAP_INDEX_TABLE(iEntry)][OB_MAP_INDEX_STORE(iEntry)].k;
+    }
+    pObData->pqw[0] = pm->c - 1;
+    return pObData;
+}
+
 /*
 * Retrieve an object given an index (which is less than the amount of items
 * in the ObMap).
@@ -397,6 +377,19 @@ QWORD ObMap_PeekKey(_In_opt_ POB_MAP pm)
     OB_MAP_CALL_SYNCHRONIZED_IMPLEMENTATION_READ(pm, QWORD, 0, _ObMap_GetFromEntryIndex(pm, FALSE, pm->c - 1))
 }
 
+/*
+* Return all keys in the map in a POB_DATA object consisting of a QWORD array.
+* Item 0 contains the number of items in the array (not including the 0th item)
+* CALLER DECREF: return
+* -- pm
+* -- return = POB_DATA consisting of QWORD array, NULL if map is empty.
+*/
+_Success_(return != NULL)
+POB_DATA ObMap_GetTableKeys(_In_opt_ POB_MAP pm)
+{
+    OB_MAP_CALL_SYNCHRONIZED_IMPLEMENTATION_READ(pm, POB_DATA, NULL, _ObMap_GetTableKeys(pm));
+}
+
 
 
 //-----------------------------------------------------------------------------
@@ -407,7 +400,8 @@ QWORD ObMap_PeekKey(_In_opt_ POB_MAP pm)
 /*
 * CALLER DECREF: return
 */
-PVOID _ObMap_RetrieveAndRemoveByEntryIndex(_In_ POB_MAP pm, _In_ DWORD iEntry)
+_Success_(return != NULL)
+PVOID _ObMap_RetrieveAndRemoveByEntryIndex(_In_ POB_MAP pm, _In_ DWORD iEntry, _Out_opt_ PQWORD pKey)
 {
     POB_MAP_ENTRY pRemoveEntry, pLastEntry;
     QWORD qwRemoveKey, qwRemoveValue;
@@ -427,6 +421,7 @@ PVOID _ObMap_RetrieveAndRemoveByEntryIndex(_In_ POB_MAP pm, _In_ DWORD iEntry)
         _ObMap_InsertHash(pm, TRUE, iEntry);
     }
     pm->c--;
+    if(pKey) { *pKey = qwRemoveKey; }
     return (PVOID)qwRemoveValue;
 }
 
@@ -435,7 +430,7 @@ PVOID _ObMap_RemoveOrRemoveByKey(_In_ POB_MAP pm, _In_ BOOL fValueHash, _In_ QWO
     DWORD iEntry;
     if(fValueHash && !kv) { return NULL; }
     if(!_ObMap_GetEntryIndexFromKeyOrValue(pm, fValueHash, kv, &iEntry)) { return NULL; }
-    return _ObMap_RetrieveAndRemoveByEntryIndex(pm, iEntry);
+    return _ObMap_RetrieveAndRemoveByEntryIndex(pm, iEntry, NULL);
 }
 
 /*
@@ -444,9 +439,23 @@ PVOID _ObMap_RemoveOrRemoveByKey(_In_ POB_MAP pm, _In_ BOOL fValueHash, _In_ QWO
 * -- pm
 * -- return = success: object, fail: NULL.
 */
+_Success_(return != NULL)
 PVOID ObMap_Pop(_In_opt_ POB_MAP pm)
 {
-    OB_MAP_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(pm, PVOID, NULL, _ObMap_RetrieveAndRemoveByEntryIndex(pm, pm->c - 1))
+    OB_MAP_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(pm, PVOID, NULL, _ObMap_RetrieveAndRemoveByEntryIndex(pm, pm->c - 1, NULL))
+}
+
+/*
+* Remove the "last" object and return it and its key.
+* CALLER DECREF(if OB): return
+* -- pm
+* -- pKey
+* -- return = success: object, fail: NULL.
+*/
+_Success_(return != NULL)
+PVOID ObMap_PopWithKey(_In_opt_ POB_MAP pm, _Out_ PQWORD pKey)
+{
+    OB_MAP_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(pm, PVOID, NULL, _ObMap_RetrieveAndRemoveByEntryIndex(pm, pm->c - 1, pKey))
 }
 
 /*

@@ -332,14 +332,6 @@ fail:
     return FALSE;
 }
 
-typedef struct tdIMAGE_DEBUG_TYPE_CODEVIEW_PDBINFO
-{
-    DWORD Signature;
-    BYTE Guid[16];
-    DWORD Age;
-    CHAR PdbFileName[256 - 4 - 16 - 4];
-} IMAGE_DEBUG_TYPE_CODEVIEW_PDBINFO;
-
 _Success_(return)
 BOOL PE_GetPdbInfo(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt, _Out_writes_(MAX_PATH) LPSTR szPdbName, _Out_writes_(16) PBYTE pbGUID, _Out_ PDWORD pdwAge)
 {
@@ -378,7 +370,7 @@ BOOL PE_GetPdbInfo(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_read
             (pDebugDirectory->SizeOfData < sizeof(IMAGE_DEBUG_TYPE_CODEVIEW_PDBINFO)) &&
             (pDebugDirectory->SizeOfData > 24) &&
             (pDebugDirectory->AddressOfRawData + pDebugDirectory->SizeOfData < cbImageSize) &&
-            VmmRead(pProcess, vaModuleBase + pDebugDirectory->AddressOfRawData, (PBYTE)& PdbInfo, pDebugDirectory->SizeOfData) &&
+            VmmRead(pProcess, vaModuleBase + pDebugDirectory->AddressOfRawData, (PBYTE)&PdbInfo, pDebugDirectory->SizeOfData) &&
             (PdbInfo.Signature == 0x53445352);
         if(f) {
             *pdwAge = PdbInfo.Age;

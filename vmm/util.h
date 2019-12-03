@@ -45,6 +45,13 @@ QWORD Util_GetNumericW(_In_ LPWSTR wsz);
 DWORD Util_HashStringA(_In_opt_ LPCSTR sz);
 
 /*
+* Hash the uppercase version of a string with the ROT13 algorithm.
+* -- wsz
+* -- return
+*/
+DWORD Util_HashStringUpperW(_In_opt_ LPCWSTR wsz);
+
+/*
 * Print a maximum of 8192 bytes of binary data as hexascii on the screen.
 * -- pb
 * -- cb
@@ -146,6 +153,24 @@ LPWSTR Util_PathFileSplitW(_In_ LPWSTR wsz, _Out_writes_(MAX_PATH) LPWSTR wszPat
 int Util_wcsstrncmp(_In_ LPSTR sz, _In_ LPWSTR wsz, _In_opt_ DWORD cMax);
 
 /*
+* snprintf a line with fixed line length in a fairly error safe way.
+* -- szBuffer
+* -- cszBuffer
+* -- cszLineLength = line length in characters excluding terminating NULL.
+* -- szFormat = printf format string.
+* -- ... = printf varargs.
+* -- return
+*/
+_Success_(return >= 0)
+DWORD Util_snprintf_ln(
+    _Out_writes_(min(cszBuffer, cszLineLength + 1)) LPSTR szBuffer,
+    _In_ QWORD cszBuffer,
+    _In_ QWORD cszLineLength,
+    _In_z_ _Printf_format_string_ LPSTR szFormat,
+    ...
+);
+
+/*
 * Return the path of the specified hModule (DLL) - ending with a backslash, or current Executable.
 * -- szPath
 * -- hModule = Optional, HMODULE handle for path to DLL, NULL for path to EXE.
@@ -165,7 +190,18 @@ LPSTR Util_StrDupA(_In_opt_ LPSTR sz);
 * -- pFileTime
 * -- szTime
 */
-VOID Util_FileTime2String(_In_ PFILETIME pFileTime, _Out_writes_(MAX_PATH) LPSTR szTime);
+VOID Util_FileTime2String(_In_ PFILETIME pFileTime, _Out_writes_(32) LPSTR szTime);
+
+/*
+* Find an entry in a sorted array in an efficient way - O(log2(n)).
+* -- pvFind
+* -- cMap
+* -- pvMap
+* -- cbEntry
+* -- pfnCmp
+* -- return = the entry found or NULL on failure.
+*/
+PVOID Util_qfind(_In_ PVOID pvFind, _In_ DWORD cMap, _In_ PVOID pvMap, _In_ DWORD cbEntry, _In_ int(*pfnCmp)(_In_ PVOID pvFind, _In_ PVOID pvEntry));
 
 /*
 * Utility functions for read/write towards different underlying data representations.

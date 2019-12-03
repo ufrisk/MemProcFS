@@ -15,6 +15,13 @@
 
 static const LPCSTR PE_DATA_DIRECTORIES[16] = { "EXPORT", "IMPORT", "RESOURCE", "EXCEPTION", "SECURITY", "BASERELOC", "DEBUG", "ARCHITECTURE", "GLOBALPTR", "TLS", "LOAD_CONFIG", "BOUND_IMPORT", "IAT", "DELAY_IMPORT", "COM_DESCRIPTOR", "RESERVED" };
 
+typedef struct tdIMAGE_DEBUG_TYPE_CODEVIEW_PDBINFO {
+    DWORD Signature;
+    BYTE Guid[16];
+    DWORD Age;
+    CHAR PdbFileName[256 - 4 - 16 - 4];
+} IMAGE_DEBUG_TYPE_CODEVIEW_PDBINFO, *PIMAGE_DEBUG_TYPE_CODEVIEW_PDBINFO;
+
 typedef struct tdPE_THUNKINFO_IAT {
     BOOL fValid;
     BOOL f32;               // if TRUE fn is a 32-bit/4-byte entry, otherwise 64-bit/8-byte entry.

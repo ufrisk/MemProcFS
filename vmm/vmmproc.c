@@ -156,51 +156,6 @@ fail:
     return 0;
 }
 
-VOID VmmProc_ModuleMapInitialize(_In_ PVMM_PROCESS pProcess)
-{
-    if((ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X64) || (ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X86)) {
-        VmmTlbSpider(pProcess);
-        VmmWin_ModuleMapInitialize(pProcess);
-    }
-}
-
-_Success_(return)
-BOOL VmmProc_ModuleMapGet(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MODULEMAP *ppObModuleMap)
-{
-    if(!pProcess->pObModuleMap) {
-        VmmProc_ModuleMapInitialize(pProcess);
-    }
-    if(pProcess->pObModuleMap && pProcess->pObModuleMap->fValid) {
-        *ppObModuleMap = Ob_INCREF(pProcess->pObModuleMap);
-        return TRUE;
-    }
-    return FALSE;
-}
-
-_Success_(return)
-BOOL VmmProc_ModuleMapGetSingleEntry(_In_ PVMM_PROCESS pProcess, _In_ LPWSTR wszModuleName, _Out_ PVMMOB_MODULEMAP *ppObModuleMap, _Out_ PVMM_MODULEMAP_ENTRY *ppModuleMapEntry)
-{
-    DWORD iModule;
-    PVMMOB_MODULEMAP pObModuleMap = NULL;
-    if(!VmmProc_ModuleMapGet(pProcess, &pObModuleMap)) { return FALSE; }
-    for(iModule = 0; iModule < pObModuleMap->cMap; iModule++) {
-        if(0 == Util_wcsstrncmp(pObModuleMap->pMap[iModule].szName, wszModuleName, 0)) {
-            *ppObModuleMap = pObModuleMap;
-            *ppModuleMapEntry = pObModuleMap->pMap + iModule;
-            return TRUE;
-        }
-    }
-    Ob_DECREF(pObModuleMap);
-    return FALSE;
-}
-
-VOID VmmProc_ScanTagsMemMap(_In_ PVMM_PROCESS pProcess)
-{
-    if((ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X64) || (ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X86)) {
-        VmmWin_ScanTagsMemMap(pProcess);
-    }
-}
-
 BOOL VmmProcInitialize()
 {
     BOOL result = FALSE;
@@ -216,7 +171,7 @@ BOOL VmmProcInitialize()
         }
     }
     // set up cache maintenance in the form of a separate worker thread in case
-    // the backend is a writeable device (FPGA). If the underlying device isn't
+    // the backend is a volatile device (FPGA). If the underlying device isn't
     // volatile then there is no need to update! NB! Files are not considered
     // to be volatile.
     if(result && ctxMain->dev.fVolatile && !ctxMain->cfg.fDisableBackgroundRefresh) {

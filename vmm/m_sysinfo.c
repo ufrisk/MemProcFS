@@ -17,7 +17,7 @@
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include <ws2tcpip.h>
-#include "m_sysinfo.h"
+#include "m_modules.h"
 #include "vmm.h"
 #include "vmmwin.h"
 #include "vmmwintcpip.h"
@@ -83,7 +83,7 @@ DWORD MSysInfo_ProcTree_ProcessItems(_In_ PMSYSINFO_PROCTREE_ENTRY pProcessEntry
     fStateTerminated = (pProcessEntry->pObProcess->dwState != 0);
     fWinNativeProc = (pProcessEntry->dwPID == 4) || (pProcessEntry->dwPPID == 4);
     for(i = 0; !fWinNativeProc && (i < (sizeof(szMSYSINFO_WHITELIST_WINDOWS_PATHS_AND_BINARIES) / sizeof(LPSTR))); i++) {
-        fWinNativeProc = (NULL != strstr(pProcessEntry->pObProcess->pObProcessPersistent->szPathKernel, szMSYSINFO_WHITELIST_WINDOWS_PATHS_AND_BINARIES[i]));
+        fWinNativeProc = (NULL != strstr(pProcessEntry->pObProcess->pObPersistent->szPathKernel, szMSYSINFO_WHITELIST_WINDOWS_PATHS_AND_BINARIES[i]));
     }
     o = snprintf(
             pb,
@@ -97,18 +97,18 @@ DWORD MSysInfo_ProcTree_ProcessItems(_In_ PMSYSINFO_PROCTREE_ENTRY pProcessEntry
             pProcessEntry->dwPPID,
             fStateTerminated ? 'T' : ' ',
             fWinNativeProc ? ' ' : '*',
-            fVerbose ? pProcessEntry->pObProcess->pObProcessPersistent->szPathKernel : ""
+            fVerbose ? pProcessEntry->pObProcess->pObPersistent->szPathKernel : ""
         );
     if(fVerbose) {
-        if(pProcessEntry->pObProcess->pObProcessPersistent->UserProcessParams.szImagePathName) {
+        if(pProcessEntry->pObProcess->pObPersistent->UserProcessParams.szImagePathName) {
             o += snprintf(pb + o, cb - o, "%44s%-*s\n", "", 
-                pProcessEntry->pObProcess->pObProcessPersistent->UserProcessParams.cchImagePathName, 
-                pProcessEntry->pObProcess->pObProcessPersistent->UserProcessParams.szImagePathName);
+                pProcessEntry->pObProcess->pObPersistent->UserProcessParams.cchImagePathName, 
+                pProcessEntry->pObProcess->pObPersistent->UserProcessParams.szImagePathName);
         }
-        if(pProcessEntry->pObProcess->pObProcessPersistent->UserProcessParams.szCommandLine) {
+        if(pProcessEntry->pObProcess->pObPersistent->UserProcessParams.szCommandLine) {
             o += snprintf(pb + o, cb - o, "%44s%-*s\n", "", 
-                pProcessEntry->pObProcess->pObProcessPersistent->UserProcessParams.cchCommandLine,
-                pProcessEntry->pObProcess->pObProcessPersistent->UserProcessParams.szCommandLine);
+                pProcessEntry->pObProcess->pObPersistent->UserProcessParams.cchCommandLine,
+                pProcessEntry->pObProcess->pObPersistent->UserProcessParams.szCommandLine);
         }
         o += snprintf(pb + o, cb - o, "\n");
     }
@@ -209,7 +209,7 @@ NTSTATUS MSysInfo_Read_ProcTree(_In_ LPWSTR wszPath, _Out_ PBYTE pb, _In_ DWORD 
 VOID MSysInfo_List_ProcTree_ProcessUserParams_CallbackAction(_In_ PVMM_PROCESS pProcess, _In_ PDWORD pcTotalBytes)
 {
     PVMMWIN_USER_PROCESS_PARAMETERS pu = VmmWin_UserProcessParameters_Get(pProcess);
-    DWORD c = MSYSINFO_PROCTREE_LINE_LENGTH_BASE + pProcess->pObProcessPersistent->cchPathKernel + 1;
+    DWORD c = MSYSINFO_PROCTREE_LINE_LENGTH_BASE + pProcess->pObPersistent->cchPathKernel + 1;
     if(pu->szImagePathName) {
         c += MSYSINFO_PROCTREE_LINE_LENGTH_BASE + pu->cchImagePathName;
     }
@@ -325,7 +325,7 @@ BOOL MSysInfo_GetNetContext_ToString(_In_ PVMMWIN_TCPIP_ENTRY pTcpE, _In_ DWORD 
             szTime,
             pE->dwPID,
             (pObProcess ? pObProcess->szName : "***"),
-            (pObProcess ? pObProcess->pObProcessPersistent->szPathKernel : "***")
+            (pObProcess ? pObProcess->pObPersistent->szPathKernel : "***")
         );
         Ob_DECREF_NULL(&pObProcess);
     }
@@ -363,7 +363,7 @@ PMSYSINFO_OB_NET_CONTEXT MSysInfo_GetNetContext()
     // 2: replace with new version
     if(!VmmWinTcpIp_TcpE_Get(&pTcpE, &cTcpE)) { goto finish; }
     Ob_DECREF_NULL(&gp_MSYSINFO_OB_NETCONTEXT);
-    pObCtx = gp_MSYSINFO_OB_NETCONTEXT = Ob_Alloc('IP', LMEM_ZEROINIT, sizeof(MSYSINFO_OB_NET_CONTEXT), MSysInfo_ObNetContext_CallbackRefCount1, NULL);
+    pObCtx = gp_MSYSINFO_OB_NETCONTEXT = Ob_Alloc('IP__', LMEM_ZEROINIT, sizeof(MSYSINFO_OB_NET_CONTEXT), MSysInfo_ObNetContext_CallbackRefCount1, NULL);
     if(!pObCtx) { goto finish; }    // alloc failed - should not happen -> finish and return NULL
     MSysInfo_GetNetContext_ToString(pTcpE, cTcpE, &pObCtx->pbFile, &pObCtx->cbFile, &pObCtx->pbFileVerbose, &pObCtx->cbFileVerbose);
     pObCtx->qwCreateTimeTickCount64 = GetTickCount64();

@@ -8,6 +8,13 @@
 #include "vmm.h"
 
 /*
+* Set file timestamp into the ExInfo struct if possible.
+* -- pProcess
+* -- pExInfo
+*/
+VOID VmmVfs_UtilTimeStampFile(_In_opt_ PVMM_PROCESS pProcess, _Out_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo);
+
+/*
 * List files in the virtual file system directory specified by the path name.
 * -- wcsPath
 * -- pFileList

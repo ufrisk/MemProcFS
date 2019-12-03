@@ -7,11 +7,42 @@
 //
 
 #include "vmm.h"
-#include "vmmwin.h"
+#include "mm.h"
 #include "pe.h"
 #include "pdb.h"
 #include "util.h"
+#include "vmmwin.h"
 #include "vmmwinreg.h"
+
+/*
+* Try initialize threading - this is dependent on available PDB symbols.
+*/
+VOID VmmWinInit_TryInitializeThreading()
+{
+    BOOL f;
+    DWORD cbEThread = 0;
+    PVMM_WIN_THEADINFO pti = &ctxVmm->kernel.ThreadInfo;
+    f = PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_EPROCESS", L"ThreadListHead", &pti->oThreadListHeadKP) &&
+        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_KTHREAD", L"StackBase", &pti->oStackBase) &&
+        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_KTHREAD", L"StackLimit", &pti->oStackLimit) &&
+        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_KTHREAD", L"State", &pti->oState) &&
+        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_KTHREAD", L"Priority", &pti->oPriority) &&
+        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_KTHREAD", L"BasePriority", &pti->oBasePriority) &&
+        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_KTHREAD", L"Teb", &pti->oTeb) &&
+        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_ETHREAD", L"CreateTime", &pti->oCreateTime) &&
+        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_ETHREAD", L"ExitTime", &pti->oExitTime) &&
+        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_ETHREAD", L"ExitStatus", &pti->oExitStatus) &&
+        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_ETHREAD", L"StartAddress", &pti->oStartAddress) &&
+        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_ETHREAD", L"ThreadListEntry", &pti->oThreadListEntry) &&
+        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_ETHREAD", L"Cid", &pti->oCid) &&
+        PDB_GetTypeSize(VMMWIN_PDB_HANDLE_KERNEL, "_ETHREAD", &cbEThread);
+    PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_KTHREAD", L"Process", &pti->oProcessOpt);   // optional - does not exist in xp.
+    PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_KTHREAD", L"Running", &pti->oRunningOpt);   // optional - does not exist in vista/xp.
+    pti->oMax = (WORD)(cbEThread + 8);
+    pti->oTebStackBase = ctxVmm->f32 ? 0x004 : 0x008;
+    pti->oTebStackLimit = ctxVmm->f32 ? 0x008 : 0x010;
+    ctxVmm->fThreadMapEnabled = f;
+}
 
 /*
 * Try initialize not yet initialized values in the optional windows kernel
@@ -180,35 +211,46 @@ QWORD VmmWinInit_FindNtosScan64(PVMM_PROCESS pSystemProcess)
 QWORD VmmWinInit_FindNtosScanHint64(_In_ PVMM_PROCESS pSystemProcess, _In_ QWORD vaHint)
 {
     PBYTE pb;
-    QWORD vaBase, o, p, vaNtosBase = 0;
+    QWORD vaBase, o, p, vaNtosTry = 0;
     DWORD cbRead;
     CHAR szModuleName[MAX_PATH] = { 0 };
+    PIMAGE_DOS_HEADER pDosHeader;
+    PIMAGE_NT_HEADERS pNtHeader;
     pb = LocalAlloc(0, 0x00200000);
     if(!pb) { goto cleanup; }
-    // Scan back in 2MB chunks a time, (ntoskrnl.exe is loaded in 2MB pages).
+    // Scan back in 2MB chunks a time, (ntoskrnl.exe is loaded in 2MB pages except in low memory situations).
     for(vaBase = vaHint & ~0x1fffff; vaBase + 0x02000000 > vaHint; vaBase -= 0x200000) {
         VmmReadEx(pSystemProcess, vaBase, pb, 0x200000, &cbRead, 0);
-        // only fail here if all virtual memory in read fails. reason is that kernel is
+        // Only fail here if all virtual memory in read fails. reason is that kernel is
         // properly mapped in memory (with NX MZ header in separate page) with empty
         // space before next valid kernel pages when running Virtualization Based Security.
+        // Memory pages may be paged out of small pages are used in low-mem situations.
         if(!cbRead) { goto cleanup; }
         for(p = 0; p < 0x200000; p += 0x1000) {
-            // check for (1) MZ header, (2) POOLCODE section, (3) ntoskrnl.exe module name
-            if(*(PWORD)(pb + p) != 0x5a4d) { continue; } // MZ header
+            // check for (1) MZ+NT header, (2) POOLCODE section, (3) ntoskrnl.exe module name (if possible to read)
+            pDosHeader = (PIMAGE_DOS_HEADER)(pb + p);                       // DOS header
+            if(pDosHeader->e_magic != IMAGE_DOS_SIGNATURE) { continue; }    // DOS header signature (MZ)
+            if(pDosHeader->e_lfanew > 0x800) { continue; }
+            pNtHeader = (PIMAGE_NT_HEADERS)(pb + p + pDosHeader->e_lfanew); // NT header
+            if(pNtHeader->Signature != IMAGE_NT_SIGNATURE) { continue; }    // NT header signature
             for(o = 0; o < 0x1000; o += 8) {
-                if(*(PQWORD)(pb + p + o) == 0x45444F434C4F4F50) { // POOLCODE
-                    PE_GetModuleNameEx(pSystemProcess, vaBase + p, FALSE, pb + p, szModuleName, _countof(szModuleName), NULL);
-                    if(!_stricmp(szModuleName, "ntoskrnl.exe")) {
-                        LocalFree(pb);
-                        return vaBase + p;
+                if(*(PQWORD)(pb + p + o) == 0x45444F434C4F4F50) {           // POOLCODE
+                    if(!PE_GetModuleNameEx(pSystemProcess, vaBase + p, FALSE, pb + p, szModuleName, _countof(szModuleName), NULL)) {
+                        vaNtosTry = vaBase + p;
+                        continue;
                     }
+                    if(_stricmp(szModuleName, "ntoskrnl.exe")) {            // not ntoskrnl.exe
+                        continue;
+                    }
+                    LocalFree(pb);
+                    return vaBase + p;
                 }
             }
         }
     }
 cleanup:
     LocalFree(pb);
-    return vaNtosBase;
+    return vaNtosTry;       // on fail try return NtosTry derived from MZ + POOLCODE only
 }
 
 /*
@@ -224,24 +266,31 @@ DWORD VmmWinInit_FindNtosScan32(_In_ PVMM_PROCESS pSystemProcess)
     DWORD o, p, vaNtosTry = 0;
     PBYTE pb;
     CHAR szModuleName[MAX_PATH] = { 0 };
+    PIMAGE_DOS_HEADER pDosHeader;
+    PIMAGE_NT_HEADERS pNtHeader;
     if(!(pb = LocalAlloc(LMEM_ZEROINIT, 0x04000000))) { return 0; }
     for(p = 0; p < 0x04000000; p += 0x1000) {
         // read 8MB chunks when required.
         if(0 == p % 0x00800000) {
             VmmReadEx(pSystemProcess, 0x80000000ULL + p, pb + p, 0x00800000, NULL, 0);
         }
-        // check for (1) MZ header, (2) POOLCODE section, (3) ntoskrnl.exe module name
-        if(*(PWORD)(pb + p) != 0x5a4d) { continue; } // MZ header
+        // check for (1) MZ+NT header, (2) POOLCODE section, (3) ntoskrnl.exe module name (if possible to read)
+        pDosHeader = (PIMAGE_DOS_HEADER)(pb + p);                       // DOS header
+        if(pDosHeader->e_magic != IMAGE_DOS_SIGNATURE) { continue; }    // DOS header signature (MZ)
+        if(pDosHeader->e_lfanew > 0x800) { continue; }
+        pNtHeader = (PIMAGE_NT_HEADERS)(pb + p + pDosHeader->e_lfanew); // NT header
+        if(pNtHeader->Signature != IMAGE_NT_SIGNATURE) { continue; }    // NT header signature
         for(o = 0; o < 0x800; o += 8) {
-            if(*(PQWORD)(pb + p + o) == 0x45444F434C4F4F50) { // POOLCODE
-                if(PE_GetModuleNameEx(pSystemProcess, 0x80000000ULL + p, FALSE, pb + p, szModuleName, _countof(szModuleName), NULL)) {
-                    if(!_stricmp(szModuleName, "ntoskrnl.exe")) {
-                        LocalFree(pb);
-                        return 0x80000000 + p;
-                    }
-                } else {
+            if(*(PQWORD)(pb + p + o) == 0x45444F434C4F4F50) {           // POOLCODE
+                if(!PE_GetModuleNameEx(pSystemProcess, 0x80000000ULL + p, FALSE, pb + p, szModuleName, _countof(szModuleName), NULL)) {
                     vaNtosTry = 0x80000000 + p;
+                    continue;
                 }
+                if(_stricmp(szModuleName, "ntoskrnl.exe")) {            // not ntoskrnl.exe
+                    continue;
+                }
+                LocalFree(pb);
+                return 0x80000000 + p;
             }
         }
     }
@@ -285,7 +334,6 @@ PVMM_PROCESS VmmWinInit_FindNtosScan()
     }
     if(!vaKernelBase) { goto fail; }
     cbKernelSize = PE_GetSize(pObSystemProcess, vaKernelBase);
-    if(!cbKernelSize) { goto fail; }
     ctxVmm->kernel.vaBase = vaKernelBase;
     ctxVmm->kernel.cbSize = cbKernelSize;
     return pObSystemProcess;
@@ -505,7 +553,7 @@ BOOL VmmWinInit_FindPsLoadedModuleListKDBG(_In_ PVMM_PROCESS pSystemProcess)
     //    is the normal way of finding it on 64-bit Windows below Windows 10.
     //    This also works on 32-bit Windows versions - so use this method for
     //    simplicity rather than using a separate 32-bit method.
-    if(!ctxVmm->kernel.opt.KDBG.va) {
+    if(!ctxVmm->kernel.opt.KDBG.va && (ctxVmm->f32 || ctxVmm->kernel.dwVersionMajor < 10)) {
         if(!PE_SectionGetFromName(pSystemProcess, ctxVmm->kernel.vaBase, ".data", &SectionHeader)) { goto fail; }
         if((SectionHeader.Misc.VirtualSize > 0x00100000) || (SectionHeader.VirtualAddress > 0x01000000)) { goto fail; }
         if(!(pbData = LocalAlloc(LMEM_ZEROINIT, SectionHeader.Misc.VirtualSize))) { goto fail; }
@@ -525,6 +573,13 @@ BOOL VmmWinInit_FindPsLoadedModuleListKDBG(_In_ PVMM_PROCESS pSystemProcess)
                 return TRUE;
             }
         }
+    }
+    // 4: Try locate by querying the PDB for symbols. At this point the PDB
+    //    subsystem may not be fully initialized yet so wait for it to init.
+    PDB_Initialize_WaitComplete();
+    if(PDB_GetSymbolPTR(VMMWIN_PDB_HANDLE_KERNEL, "PsLoadedModuleList", pSystemProcess, &ctxVmm->kernel.vaPsLoadedModuleListPtr)) {
+        PDB_GetSymbolAddress(VMMWIN_PDB_HANDLE_KERNEL, "PsLoadedModuleList", &ctxVmm->kernel.opt.vaPsLoadedModuleListExp);
+        return TRUE;
     }
 fail:
     LocalFree(pbData);
@@ -586,7 +641,12 @@ QWORD VmmWinInit_FindSystemEPROCESS(_In_ PVMM_PROCESS pSystemProcess)
         vmmprintfvv_fn("INFO: PsInitialSystemProcess located at %016llx.\n", vaPsInitialSystemProcess);
         goto success;
     }
-    // 2: fail - paging? (or not windows) - this should ideally not happen - but it happens rarely...
+    // 2: fail - paging? try to retrive using PDB subsystem - this may take some time to initialize
+    //           and download symbols - but it's better than failing totally ...
+    PDB_Initialize(NULL, FALSE);
+    PDB_GetSymbolPTR(VMMWIN_PDB_HANDLE_KERNEL, "PsInitialSystemProcess", pSystemProcess, &vaSystemEPROCESS);
+    if(vaSystemEPROCESS) { goto success; }
+    // 3: fail - paging? (or not windows) - this should ideally not happen - but it happens rarely...
     //    try scan beginning of ALMOSTRO section for pointers and validate (working on pre-win10 only)
     if(!PE_SectionGetFromName(pSystemProcess, ctxVmm->kernel.vaBase, "ALMOSTRO", &SectionHeader)) { return 0; }
     if(!VmmRead(pSystemProcess, ctxVmm->kernel.vaBase + SectionHeader.VirtualAddress, pbALMOSTRO, sizeof(pbALMOSTRO))) { return 0; }
@@ -606,12 +666,27 @@ success:
 }
 
 /*
+* Async initialization of remaining actions in VmmWinInit_TryInitialize.
+* -- lpParameter
+* -- return
+*/
+DWORD VmmWinInit_TryInitialize_Async(LPVOID lpParameter)
+{
+    PDB_Initialize_WaitComplete();
+    MmWin_PagingInitialize(TRUE);   // initialize full paging (memcompression)
+    VmmWinInit_TryInitializeThreading();
+    VmmWinInit_TryInitializeKernelOptionalValues();
+    return 1;
+}
+
+/*
 * Try initialize the VMM from scratch with new WINDOWS support.
 * -- paDTBOpt
 * -- return
 */
 BOOL VmmWinInit_TryInitialize(_In_opt_ QWORD paDTBOpt)
 {
+    HANDLE hThreadInitializeAsync;
     PVMM_PROCESS pObSystemProcess = NULL, pObProcess = NULL;
     // Fetch Directory Base (DTB (PML4)) and initialize Memory Model.
     if(paDTBOpt) {
@@ -637,6 +712,8 @@ BOOL VmmWinInit_TryInitialize(_In_opt_ QWORD paDTBOpt)
         goto fail;
     }
     vmmprintfvv_fn("INFO: NTOS located at: %016llx.\n", ctxVmm->kernel.vaBase);
+    // Initialize Paging (Limited Mode)
+    MmWin_PagingInitialize(FALSE);
     // Locate System EPROCESS
     pObSystemProcess->win.EPROCESS.va = VmmWinInit_FindSystemEPROCESS(pObSystemProcess);
     if(!pObSystemProcess->win.EPROCESS.va) {
@@ -650,13 +727,9 @@ BOOL VmmWinInit_TryInitialize(_In_opt_ QWORD paDTBOpt)
     }
     ctxVmm->tpSystem = (VMM_MEMORYMODEL_X64 == ctxVmm->tpMemoryModel) ? VMM_SYSTEM_WINDOWS_X64 : VMM_SYSTEM_WINDOWS_X86;
     // Retrieve operating system version information from 'smss.exe' process
-    // Optionally retrieve PID of MemCompression and Registry process
+    // Optionally retrieve PID of Registry process
     while((pObProcess = VmmProcessGetNext(pObProcess, 0))) {
         if(pObProcess->dwPPID == 4) {
-            if(!memcmp("MemCompression", pObProcess->szName, 15)) {
-                ctxVmm->kernel.MemCompress.dwPid = pObProcess->dwPID;
-                ctxVmm->kernel.MemCompress.vaEPROCESS = pObProcess->win.EPROCESS.va;
-            }
             if(!memcmp("Registry", pObProcess->szName, 9)) {
                 ctxVmm->kernel.dwPidRegistry = pObProcess->dwPID;
             }
@@ -665,13 +738,20 @@ BOOL VmmWinInit_TryInitialize(_In_opt_ QWORD paDTBOpt)
             }
         }
     }
-    // Optionally fetch PsLoadedModuleList / KDBG
-    VmmWinInit_FindPsLoadedModuleListKDBG(pObSystemProcess);
-    Ob_DECREF(pObSystemProcess);
-    // Initialize PDB and Registry
-    PDB_Initialize();
-    VmmWinReg_Initialize();
+    // Initialization functionality:
+    PDB_Initialize(NULL, TRUE);                                 // Async init of PDB subsystem.
+    VmmWinInit_FindPsLoadedModuleListKDBG(pObSystemProcess);    // Find PsLoadedModuleList and possibly KDBG.
+    VmmWinReg_Initialize();                                     // Registry.
+    // Async Initialization functionality:
+    hThreadInitializeAsync = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)VmmWinInit_TryInitialize_Async, (LPVOID)NULL, 0, NULL);
+    if(hThreadInitializeAsync) {
+        if(ctxMain->cfg.fWaitInitialize) {
+            WaitForSingleObject(hThreadInitializeAsync, INFINITE);
+        }
+        CloseHandle(hThreadInitializeAsync);
+    }
     // return
+    Ob_DECREF(pObSystemProcess);
     vmmprintf(
         "Initialized %i-bit Windows %i.%i.%i\n",
         (ctxVmm->f32 ? 32 : 64),

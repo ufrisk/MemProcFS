@@ -348,8 +348,10 @@ fail:
 
 VOID PYTHON_Close()
 {
-    PY2C_Callback_Close();
-    Py_FinalizeEx();
+    __try {
+        PY2C_Callback_Close();
+        Py_FinalizeEx();
+    } __except(EXCEPTION_EXECUTE_HANDLER) { ; }
 }
 
 /*

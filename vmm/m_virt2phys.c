@@ -3,7 +3,7 @@
 // (c) Ulf Frisk, 2018-2019
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-#include "m_virt2phys.h"
+#include "m_modules.h"
 #include "pluginmanager.h"
 #include "util.h"
 #include "vmm.h"
@@ -39,7 +39,7 @@ NTSTATUS Virt2Phys_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DW
     PVMMOB_MEM pObPT = NULL;
     PVMM_PROCESS pProcess = (PVMM_PROCESS)ctx->pProcess;
     VMM_VIRT2PHYS_INFORMATION Virt2PhysInfo = { 0 };
-    Virt2PhysInfo.va = pProcess->pObProcessPersistent->Plugin.vaVirt2Phys;
+    Virt2PhysInfo.va = pProcess->pObPersistent->Plugin.vaVirt2Phys;
     VmmVirt2PhysGetInformation(pProcess, &Virt2PhysInfo);
     if(!_wcsicmp(ctx->wszPath, L"readme")) {
         return Util_VfsReadFile_FromPBYTE((PBYTE)szMVIRT2PHYS_README, strlen(szMVIRT2PHYS_README), pb, cb, pcbRead, cbOffset);
@@ -147,18 +147,18 @@ NTSTATUS Virt2Phys_WriteVA(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PBYTE pb, _In_ 
     VMM_MEMORYMODEL_TP tp = ctxVmm->tpMemoryModel;
     if((tp == VMM_MEMORYMODEL_X64) && (cbOffset < 16)) {
         *pcbWrite = cb;
-        snprintf(pbBuffer, 17, "%016llx", pProcess->pObProcessPersistent->Plugin.vaVirt2Phys);
+        snprintf(pbBuffer, 17, "%016llx", pProcess->pObPersistent->Plugin.vaVirt2Phys);
         cb = (DWORD)min(16 - cbOffset, cb);
         memcpy(pbBuffer + cbOffset, pb, cb);
         pbBuffer[16] = 0;
-        pProcess->pObProcessPersistent->Plugin.vaVirt2Phys = strtoull(pbBuffer, NULL, 16);
+        pProcess->pObPersistent->Plugin.vaVirt2Phys = strtoull(pbBuffer, NULL, 16);
     } else if ((tp == VMM_MEMORYMODEL_X86) || (tp == VMM_MEMORYMODEL_X86PAE)) {
         *pcbWrite = cb;
-        snprintf(pbBuffer, 9, "%08x", (DWORD)pProcess->pObProcessPersistent->Plugin.vaVirt2Phys);
+        snprintf(pbBuffer, 9, "%08x", (DWORD)pProcess->pObPersistent->Plugin.vaVirt2Phys);
         cb = (DWORD)min(8 - cbOffset, cb);
         memcpy(pbBuffer + cbOffset, pb, cb);
         pbBuffer[8] = 0;
-        pProcess->pObProcessPersistent->Plugin.vaVirt2Phys = strtoul(pbBuffer, NULL, 16);
+        pProcess->pObPersistent->Plugin.vaVirt2Phys = strtoul(pbBuffer, NULL, 16);
     } else {
         *pcbWrite = 0;
     }
@@ -183,7 +183,7 @@ NTSTATUS Virt2Phys_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PBYTE pb, _In_ DW
     if(!_wcsicmp(ctx->wszPath, L"virt")) {
         return Virt2Phys_WriteVA(ctx, pb, cb, pcbWrite, cbOffset);
     }
-    Virt2PhysInfo.va = pProcess->pObProcessPersistent->Plugin.vaVirt2Phys;
+    Virt2PhysInfo.va = pProcess->pObPersistent->Plugin.vaVirt2Phys;
     VmmVirt2PhysGetInformation(pProcess, &Virt2PhysInfo);
     i = 0xff;
     if(!_wcsicmp(ctx->wszPath, L"pt_pml4")) { i = 4; }

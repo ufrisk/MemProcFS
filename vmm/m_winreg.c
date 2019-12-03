@@ -3,7 +3,7 @@
 // (c) Ulf Frisk, 2019
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-#include "m_winreg.h"
+#include "m_modules.h"
 #include "vmm.h"
 #include "vmmwinreg.h"
 #include "util.h"

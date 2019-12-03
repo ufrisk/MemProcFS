@@ -115,16 +115,9 @@ copy $(ProjectDir)\vmmdll.h $(SolutionDir)\files\ /y</Command>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="leechcore.h" />
-    <ClInclude Include="mm_x64.h" />
-    <ClInclude Include="mm_x64_page_win.h" />
-    <ClInclude Include="mm_x86.h" />
-    <ClInclude Include="mm_x86pae.h" />
-    <ClInclude Include="m_pedump.h" />
-    <ClInclude Include="m_phys2virt.h" />
-    <ClInclude Include="m_status.h" />
-    <ClInclude Include="m_sysinfo.h" />
+    <ClInclude Include="mm.h" />
+    <ClInclude Include="m_modules.h" />
     <ClInclude Include="m_vmmvfs_dump.h" />
-    <ClInclude Include="m_winreg.h" />
     <ClInclude Include="ob.h" />
     <ClInclude Include="pdb.h" />
     <ClInclude Include="pe.h" />
@@ -136,24 +129,26 @@ copy $(ProjectDir)\vmmdll.h $(SolutionDir)\files\ /y</Command>
     <ClInclude Include="version.h" />
     <ClInclude Include="vmm.h" />
     <ClInclude Include="vmmdll.h" />
-    <ClInclude Include="m_ldrmodules.h" />
     <ClInclude Include="vmmproc.h" />
     <ClInclude Include="vmmwin.h" />
     <ClInclude Include="vmmvfs.h" />
-    <ClInclude Include="m_virt2phys.h" />
     <ClInclude Include="vmmwininit.h" />
     <ClInclude Include="vmmwinreg.h" />
     <ClInclude Include="vmmwintcpip.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="mm_vad.c" />
+    <ClCompile Include="mm_win.c" />
     <ClCompile Include="mm_x64.c" />
-    <ClCompile Include="mm_x64_page_win.c" />
     <ClCompile Include="mm_x86.c" />
     <ClCompile Include="mm_x86pae.c" />
+    <ClCompile Include="m_handleinfo.c" />
+    <ClCompile Include="m_memmap.c" />
     <ClCompile Include="m_pedump.c" />
     <ClCompile Include="m_phys2virt.c" />
     <ClCompile Include="m_status.c" />
     <ClCompile Include="m_sysinfo.c" />
+    <ClCompile Include="m_threadinfo.c" />
     <ClCompile Include="m_vmmvfs_dump.c" />
     <ClCompile Include="m_winreg.c" />
     <ClCompile Include="ob_container.c" />

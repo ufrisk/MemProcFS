@@ -74,6 +74,12 @@ typedef struct tdVMMWIN_PDB_CONTEXT {
     };
 } VMMWIN_PDB_CONTEXT, *PVMMWIN_PDB_CONTEXT;
 
+typedef struct tdVMMWIN_PDB_INITIALIZE_KERNEL_PARAMETERS {
+    PHANDLE phEventThreadStarted;
+    BOOL fPdbInfo;
+    IMAGE_DEBUG_TYPE_CODEVIEW_PDBINFO PdbInfo;
+} VMMWIN_PDB_INITIALIZE_KERNEL_PARAMETERS, *PVMMWIN_PDB_INITIALIZE_KERNEL_PARAMETERS;
+
 QWORD PDB_HashPdb(_In_ LPSTR szPdbName, _In_reads_(16) PBYTE pbPdbGUID, _In_ DWORD dwPdbAge)
 {
     QWORD qwHash = 0;
@@ -374,6 +380,15 @@ fail:
     return fResult;
 }
 
+_Success_(return)
+BOOL PDB_GetTypeChildOffsetShort(_In_opt_ VMMWIN_PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _In_ LPWSTR wszTypeChildName, _Out_ PWORD pwTypeOffset)
+{
+    DWORD dwTypeOffset;
+    if(!PDB_GetTypeChildOffset(hPDB, szTypeName, wszTypeChildName, &dwTypeOffset) || (dwTypeOffset > 0xffff)) { return FALSE; }
+    if(pwTypeOffset) { *pwTypeOffset = (WORD)dwTypeOffset; }
+    return TRUE;
+}
+
 
 
 //-----------------------------------------------------------------------------
@@ -398,6 +413,47 @@ VOID PDB_Close()
     Ob_DECREF(ctx->pmPdbByModule);
     if(ctx->hModuleDbgHelp) { FreeLibrary(ctx->hModuleDbgHelp); }
     if(ctx->hModuleSymSrv) { FreeLibrary(ctx->hModuleSymSrv); }
+    ZeroMemory(ctx, sizeof(VMMWIN_PDB_CONTEXT));
+    ctxMain->pdb.fInitialized = FALSE;
+}
+
+/*
+* 
+*/
+_Success_(return)
+BOOL PDB_Initialize_Async_Kernel_ScanForPdbInfo(_In_ PVMM_PROCESS pSystemProcess, _Out_writes_(MAX_PATH) LPSTR szPdbName, _Out_writes_(16) PBYTE pbGUID, _Out_ PDWORD pdwAge)
+{
+    PBYTE pb = NULL;
+    DWORD i, cbRead;
+    PIMAGE_DEBUG_TYPE_CODEVIEW_PDBINFO pPdb;
+    if(!ctxVmm->kernel.vaBase) { return FALSE; }
+    if(!(pb = LocalAlloc(0, 0x00800000))) { return FALSE; }
+    VmmReadEx(pSystemProcess, ctxVmm->kernel.vaBase, pb, 0x00800000, &cbRead, VMM_FLAG_ZEROPAD_ON_FAIL);
+    // 1: search for pdb debug information adn extract offset of PsInitialSystemProcess
+    for(i = 0; i < 0x00800000 - sizeof(IMAGE_DEBUG_TYPE_CODEVIEW_PDBINFO); i += 4) {
+        pPdb = (PIMAGE_DEBUG_TYPE_CODEVIEW_PDBINFO)(pb + i);
+        if(pPdb->Signature == 0x53445352) {
+            if(pPdb->Age > 0x20) { continue; }
+            if(memcmp("nt", pPdb->PdbFileName, 2)) { continue; }
+            if(memcmp(".pdb", pPdb->PdbFileName + 8, 5)) { continue; }
+            *pdwAge = pPdb->Age;
+            memcpy(pbGUID, pPdb->Guid, 16);
+            strncpy_s(szPdbName, MAX_PATH, pPdb->PdbFileName, sizeof(pPdb->PdbFileName));
+            LocalFree(pb);
+            return TRUE;
+        }
+    }
+    LocalFree(pb);
+    return FALSE;
+}
+
+VOID PDB_Initialize_WaitComplete()
+{
+    PVMMWIN_PDB_CONTEXT ctx = (PVMMWIN_PDB_CONTEXT)ctxVmm->pPdbContext;
+    if(ctxMain->pdb.fEnable) {
+        EnterCriticalSection(&ctx->Lock);
+        LeaveCriticalSection(&ctx->Lock);
+    }
 }
 
 /*
@@ -409,21 +465,26 @@ VOID PDB_Close()
 * -- hEventThreadStart
 * -- return
 */
-DWORD PDB_Initialize_Async_Kernel(LPVOID hEventThreadStart)
+DWORD PDB_Initialize_Async_Kernel(LPVOID lpParameter)
 {
     PVMMWIN_PDB_CONTEXT ctx = (PVMMWIN_PDB_CONTEXT)ctxVmm->pPdbContext;
+    PVMMWIN_PDB_INITIALIZE_KERNEL_PARAMETERS pKernelParameters = (PVMMWIN_PDB_INITIALIZE_KERNEL_PARAMETERS)lpParameter;
     DWORD dwReturnStatus = 0, dwPdbAge;
     BYTE pbPdbGUID[16];
-    CHAR szPdbName[MAX_PATH];
+    CHAR szPdbName[MAX_PATH] = { 0 };
     PVMM_PROCESS pObSystemProcess = NULL;
     PPDB_ENTRY pObKernelEntry = NULL;
     QWORD qwPdbHash;
     if(!ctx) { return 0; }
     EnterCriticalSection(&ctx->Lock);
     InterlockedIncrement(&ctxVmm->ThreadWorkers.c);
-    SetEvent((HANDLE)hEventThreadStart);
+    SetEvent(*pKernelParameters->phEventThreadStarted);
     if(!(pObSystemProcess = VmmProcessGet(4))) { goto fail; }
-    if(!PE_GetPdbInfo(pObSystemProcess, ctxVmm->kernel.vaBase, NULL, szPdbName, pbPdbGUID, &dwPdbAge)) {
+    if(pKernelParameters->fPdbInfo) {
+        dwPdbAge = pKernelParameters->PdbInfo.Age;
+        memcpy(pbPdbGUID, pKernelParameters->PdbInfo.Guid, 16);
+        memcpy(szPdbName, pKernelParameters->PdbInfo.PdbFileName, sizeof(pKernelParameters->PdbInfo.PdbFileName));
+    } else if(!PE_GetPdbInfo(pObSystemProcess, ctxVmm->kernel.vaBase, NULL, szPdbName, pbPdbGUID, &dwPdbAge) && !PDB_Initialize_Async_Kernel_ScanForPdbInfo(pObSystemProcess, szPdbName, pbPdbGUID, &dwPdbAge)) {
         vmmprintf("%s         Reason: Unable to locate debugging information in kernel image.\n", VMMWIN_PDB_WARN_DEFAULT);
         goto fail;
     }
@@ -443,12 +504,10 @@ DWORD PDB_Initialize_Async_Kernel(LPVOID hEventThreadStart)
     // fall-through to fail for cleanup
 fail:
     LeaveCriticalSection(&ctx->Lock);
-    if(dwReturnStatus) {
-        VmmWinInit_TryInitializeKernelOptionalValues();
-    }
     Ob_DECREF(pObKernelEntry);
     Ob_DECREF(pObSystemProcess);
     InterlockedDecrement(&ctxVmm->ThreadWorkers.c);
+    LocalFree(pKernelParameters);
     return dwReturnStatus;
 }
 
@@ -529,19 +588,21 @@ VOID PDB_ConfigChange()
     // refresh values and reload!
     EnterCriticalSection(&ctxVmm->MasterLock);
     PDB_Close();
-    PDB_Initialize();
+    PDB_Initialize(NULL, FALSE);
     LeaveCriticalSection(&ctxVmm->MasterLock);
 }
 
 /*
 * Initialize the PDB sub-system. This should ideally be done on Vmm Init()
 */
-VOID PDB_Initialize()
+VOID PDB_Initialize(_In_opt_ PIMAGE_DEBUG_TYPE_CODEVIEW_PDBINFO pPdbInfoOpt, _In_ BOOL fInitializeKernelAsync)
 {
     HANDLE hThreadAsyncKernel, hEventThreadStarted = 0;
     PVMMWIN_PDB_CONTEXT ctx = NULL;
     DWORD i, dwSymOptions;
     CHAR szPathSymSrv[MAX_PATH], szPathDbgHelp[MAX_PATH];
+    PVMMWIN_PDB_INITIALIZE_KERNEL_PARAMETERS pKernelParameters = NULL;
+    if(ctxMain->pdb.fInitialized) { return; }
     PDB_Initialize_InitialValues();
     if(!ctxMain->pdb.fEnable) { goto fail; }
     if(!(ctx = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMWIN_PDB_CONTEXT)))) { goto fail; }
@@ -582,18 +643,28 @@ VOID PDB_Initialize()
     // success - finish up and load kernel .pdb async (to optimize startup time).
     // pdb subsystem won't be fully initialized until before the kernel is loaded.
     if(!(hEventThreadStarted = CreateEvent(NULL, TRUE, FALSE, NULL))) { goto fail; }
+    if(!(pKernelParameters = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMWIN_PDB_INITIALIZE_KERNEL_PARAMETERS)))) { goto fail; }
+    pKernelParameters->phEventThreadStarted = &hEventThreadStarted;
+    if(pPdbInfoOpt) {
+        pKernelParameters->fPdbInfo = TRUE;
+        memcpy(&pKernelParameters->PdbInfo, pPdbInfoOpt, sizeof(IMAGE_DEBUG_TYPE_CODEVIEW_PDBINFO));
+    }
     InitializeCriticalSection(&ctx->Lock);
     ctx->qwLoadAddressNext = VMMWIN_PDB_LOAD_ADDRESS_BASE;
     ctx->fDisabled = TRUE;
     ctxVmm->pPdbContext = ctx;
-    hThreadAsyncKernel = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)PDB_Initialize_Async_Kernel, (LPVOID)hEventThreadStarted, 0, NULL);
-    if(!hThreadAsyncKernel) {
-        DeleteCriticalSection(&ctx->Lock);
-        goto fail;
+    if(fInitializeKernelAsync) {
+        hThreadAsyncKernel = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)PDB_Initialize_Async_Kernel, (LPVOID)pKernelParameters, 0, NULL);
+        if(!hThreadAsyncKernel) {
+            DeleteCriticalSection(&ctx->Lock);
+            goto fail;
+        }
+        WaitForSingleObject(hEventThreadStarted, 500);  // wait for async thread initialize thread to start (and acquire PDB lock).
+        CloseHandle(hThreadAsyncKernel);
+    } else {
+        PDB_Initialize_Async_Kernel(pKernelParameters); // synchronous call
     }
-    WaitForSingleObject(hEventThreadStarted, 500);  // wait for async thread initialize thread to start (and acquire PDB lock).
     CloseHandle(hEventThreadStarted);
-    CloseHandle(hThreadAsyncKernel);
     return;
 fail:
     if(hEventThreadStarted) { CloseHandle(hEventThreadStarted); }
@@ -607,4 +678,5 @@ fail:
         if(ctx->hModuleSymSrv) { FreeLibrary(ctx->hModuleSymSrv); }
     }
     LocalFree(ctx);
+    LocalFree(pKernelParameters);
 }

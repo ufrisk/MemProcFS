@@ -31,10 +31,13 @@ EXPORTS
 
     VMMDLL_PidList
     VMMDLL_PidGetFromName
-    VMMDLL_ProcessGetMemoryMap
-    VMMDLL_ProcessGetMemoryMapEntry
-    VMMDLL_ProcessGetModuleMap
-    VMMDLL_ProcessGetModuleFromName
+    VMMDLL_ProcessMap_GetPte
+    VMMDLL_ProcessMap_GetVad
+    VMMDLL_ProcessMap_GetModule
+    VMMDLL_ProcessMap_GetModuleFromName
+    VMMDLL_ProcessMap_GetHeap
+    VMMDLL_ProcessMap_GetThread
+    VMMDLL_ProcessMap_GetHandle
     VMMDLL_ProcessGetInformation
 	VMMDLL_ProcessGetInformationString
 

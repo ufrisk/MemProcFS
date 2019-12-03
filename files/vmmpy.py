@@ -12,7 +12,7 @@
 # (c) Ulf Frisk, 2018-2019
 # Author: Ulf Frisk, pcileech@frizk.net
 #
-# Header Version: 2.8
+# Header Version: 3.0
 #
 
 import atexit
@@ -136,7 +136,6 @@ VMMPY_OPT_CORE_VERBOSE                        = 0x80000002  # RW
 VMMPY_OPT_CORE_VERBOSE_EXTRA                  = 0x80000003  # RW
 VMMPY_OPT_CORE_VERBOSE_EXTRA_TLP              = 0x80000004  # RW
 VMMPY_OPT_CORE_MAX_NATIVE_ADDRESS             = 0x80000005  # R
-VMMPY_OPT_CORE_MAX_NATIVE_IOSIZE              = 0x80000006  # R
 VMMPY_OPT_CORE_SYSTEM                         = 0x80000007  # R
 VMMPY_OPT_CORE_MEMORYMODEL                    = 0x80000008  # R
 
@@ -304,34 +303,79 @@ def VmmPy_PidGetFromName(process_name):
 
 
 
+def VmmPy_ProcessGetPteMap(pid, is_identify_modules = False):
+    """Retrieve the pte memory map for a specific pid.
+
+    Keyword arguments:
+    pid -- int: the process identifier (pid).
+    is_identify_modules -- bool: (optional) identify module names (slow).
+    return -- list: of dict of PTE memory map entries.
+    
+    Example:
+    VmmPy_ProcessGetMemoryMap(4) --> [{'va': 140715078701056, 'size': 8192, 'pages': 2, 'wow64': False, 'tag': 'ntdll.dll', 'flags-pte': 9223372036854775812, 'flags': '-r--'}, ...]
+    """
+    return VMMPYC_ProcessGetPteMap(pid, is_identify_modules)
+
 def VmmPy_ProcessGetMemoryMap(pid, is_identify_modules = False):
-    """Retrieve the memory map for a specific pid.
+    """Deprecated - use VmmPy_ProcessGetPteMap instead!"""
+    return VMMPYC_ProcessGetPteMap(pid, is_identify_modules)
+
+
+
+def VmmPy_ProcessGetVadMap(pid, is_identify_modules = False):
+    """Retrieve the virtual address descriptor (VAD) memory map for a specific pid.
 
     Keyword arguments:
-    pid -- int: the process identifier (pid) when reading process virtual memory.
+    pid -- int: the process identifier (pid).
     is_identify_modules -- bool: (optional) identify module names (slow).
-    return -- list: of dict of memory map entries.
+    return -- list: of dict of VAD memory map entries.
     
     Example:
-    VmmPy_ProcessGetMemoryMap(4) --> [{'va': 2147352576, 'size': 4096, 'pages': 1, 'wow64': False, 'tag': '', 'flags-pte': 9223372036854775812, 'flags': 'srwx'}, ...]
+    VmmPy_ProcessGetMemoryMap(4) --> [{'start': 140715077140480, 'end': 140715079172095, 'subsection': 18446644053817718944, 'prototype': 18446663847518789648, 'prototype-len': 3968, 'mem_commit': False, 'commit_charge': 17, 'protection': '---wxc', 'type': 'Image', 'tag': '\\Windows\\System32\\ntdll.dll'}, ...]
     """
-    return VMMPYC_ProcessGetMemoryMap(pid, is_identify_modules)
+    return VMMPYC_ProcessGetVadMap(pid, is_identify_modules)
 
 
 
-def VmmPy_ProcessGetMemoryMapEntry(pid, va, is_identify_modules = False):
-    """Retrieve a single memory map entry for a given pid and virtual address (va).
+def VmmPy_ProcessGetHeapMap(pid):
+    """Retrieve information about heaps for a specific pid.
 
     Keyword arguments:
-    pid -- int: the process identifier (pid) when reading process virtual memory.
-    va -- int: a virtual address inside the entry to retrieve.
-    is_identify_modules -- bool: (optional) identify module names (slow).
-    return -- dict: of memory map entries.
+    pid -- int: the process identifier (pid).
+    return -- list: of dict of heap entries.
     
     Example:
-    VmmPy_ProcessGetMemoryMapEntry(4, 0x7ffe0000) --> {'va': 2147352576, 'size': 4096, 'pages': 1, 'wow64': False, 'name': '', 'flags-pte': 9223372036854775812, 'flags': 'srwx'}
+    VmmPy_ProcessGetHeapMap(256) --> [{'va': 296288256, 'size': 16576512, 'size-uncommitted': 13893632, 'id': 64, 'primary': False}, ...]
     """
-    return VMMPYC_ProcessGetMemoryMapEntry(pid, va, is_identify_modules)
+    return VMMPYC_ProcessGetHeapMap(pid)
+
+
+
+def VmmPy_ProcessGetThreadMap(pid):
+    """Retrieve information about threads for a specific pid.
+
+    Keyword arguments:
+    pid -- int: the process identifier (pid).
+    return -- list: of dict of thread entries.
+    
+    Example:
+    VmmPy_ProcessGetThreadMap(4) --> [{'tid': 9920, 'pid': 4280, 'exitstatus': 0, 'state': 5, 'running': 0, 'priority': 9, 'basepriority': 8, 'va-ethread': 18446644053942476992, 'va-teb': 13279232, 'va-start': 140715077586608, 'va-stackbase': 50331648, 'va-stacklimit': 50274304, 'va-stackbase-kernel': 18446613807470415872, 'va-stacklimit-kernel': 18446613807470391296, 'time-create': 132162322866787797, 'time-exit': 0, 'time-create-str': '2019-10-22 15:38:06 UTC', 'time-exit-str': '                    ***'}, ...]
+    """
+    return VMMPYC_ProcessGetThreadMap(pid)
+
+
+
+def VmmPy_ProcessGetHandleMap(pid):
+    """Retrieve information about handles for a specific pid.
+
+    Keyword arguments:
+    pid -- int: the process identifier (pid).
+    return -- list: of dict of handle entries.
+    
+    Example:
+    VmmPy_ProcessGetHandleMap(4) --> [{'va-object': 18446644053936528592, 'handle': 12268, 'access': 1180063, 'typeindex': 37, 'pid': 4280, 'pooltag': 1701603654, 'chandle': 1, 'cpointer': 1, 'va-object-creatinfo': 18446644053883285568, 'va-securitydescriptor': 0, 'tag': '\\Users\\User\\AppData\\Local\\Microsoft\\Windows\\Explorer\\thumbcache_256.db', 'type': 'File'}, ...]
+    """
+    return VMMPYC_ProcessGetHandleMap(pid)
 
 
 
@@ -339,11 +383,11 @@ def VmmPy_ProcessGetModuleMap(pid):
     """Retrieve the module map for a specific pid.
 
     Keyword arguments:
-    pid -- int: the process identifier (pid) when reading process virtual memory.
+    pid -- int: the process identifier (pid).
     return -- list: of dict of module map information entries.
     
     Example:
-    VmmPy_ProcessGetModuleMap(332) --> [{'va': 140718422491136, 'va-entry': 0, 'wow64': False, 'size': 1966080, 'name': 'ntdll.dll'}, ...]
+    VmmPy_ProcessGetModuleMap(332) --> [{'va': 140700185460736, 'va-entry': 140700186087664, 'wow64': False, 'size': 4599808, 'name': 'explorer.exe'}, ...]
     """
     return VMMPYC_ProcessGetModuleMap(pid)
 
@@ -353,12 +397,12 @@ def VmmPy_ProcessGetModuleFromName(pid, module_name):
     """Retrieve the module map for a specific pid and module name.
 
     Keyword arguments:
-    pid -- int: the process identifier (pid) when reading process virtual memory.
+    pid -- int: the process identifier (pid).
     module_name -- bool: name of the module to retrieve.
     return -- dict: of module information.
     
     Example:
-    VmmPy_ProcessGetModuleMap(332, "ntdll.dll") --> {'va': 140718422491136, 'va-entry': 0, 'wow64': False, 'size': 1966080, 'name': 'ntdll.dll'}
+    VmmPy_ProcessGetModuleMap(332, "ntdll.dll") --> {'va': 140700185460736, 'va-entry': 140700186087664, 'wow64': False, 'size': 4599808, 'name': 'explorer.exe'}
     """
     return VMMPYC_ProcessGetModuleFromName(pid, module_name)
 
@@ -372,7 +416,7 @@ def VmmPy_ProcessGetInformation(pid):
     return -- dict: of process information.
     
     Example:
-    VmmPy_ProcessGetInformation(332) --> {'pid': 8796, 'pa-dtb': 5798625280, 'pa-dtb-user': 6237978624, 'state': 0, 'tp-system': 2, 'usermode': True, 'name': 'cmd.exe', 'name-long': 'cmd.exe', 'wow64': False, 'va-entry': 140700131683072, 'va-eprocess': 18446635809067693440, 'va-peb': 708313505792, 'va-peb32': 0, 'path-kernel': '', 'path-user': '', 'cmdline': ''}
+    VmmPy_ProcessGetInformation(332) --> {'pid': 8796, 'pa-dtb': 5798625280, 'pa-dtb-user': 6237978624, 'state': 0, 'tp-system': 2, 'usermode': True, 'name': 'cmd.exe', 'name-long': 'cmd.exe', 'wow64': False, 'va-eprocess': 18446635809067693440, 'va-peb': 708313505792, 'va-peb32': 0, 'path-kernel': '', 'path-user': '', 'cmdline': ''}
     """
     return VMMPYC_ProcessGetInformation(pid)
 

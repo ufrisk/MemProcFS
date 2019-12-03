@@ -8,13 +8,7 @@
 #include "util.h"
 #include "vmm.h"
 #include "vmmdll.h"
-#include "m_ldrmodules.h"
-#include "m_pedump.h"
-#include "m_status.h"
-#include "m_sysinfo.h"
-#include "m_virt2phys.h"
-#include "m_phys2virt.h"
-#include "m_winreg.h"
+#include "m_modules.h"
 
 //
 // This file contains functionality related to keeping track of plugins, both
@@ -332,11 +326,17 @@ BOOL PluginManager_Initialize()
     PluginManager_Initialize_RegInfoInit(&ri, NULL);
     M_LdrModules_Initialize(&ri);
     PluginManager_Initialize_RegInfoInit(&ri, NULL);
+    M_MemMap_Initialize(&ri);
+    PluginManager_Initialize_RegInfoInit(&ri, NULL);
     M_Status_Initialize(&ri);
     PluginManager_Initialize_RegInfoInit(&ri, NULL);
     M_WinReg_Initialize(&ri);
     PluginManager_Initialize_RegInfoInit(&ri, NULL);
     M_PEDump_Initialize(&ri);
+    PluginManager_Initialize_RegInfoInit(&ri, NULL);
+    M_HandleInfo_Initialize(&ri);
+    PluginManager_Initialize_RegInfoInit(&ri, NULL);
+    M_ThreadInfo_Initialize(&ri);
     PluginManager_Initialize_RegInfoInit(&ri, NULL);
     M_SysInfo_Initialize(&ri);
     // 2: process dll modules

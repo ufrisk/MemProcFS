@@ -6,7 +6,7 @@
 // (c) Ulf Frisk, 2019
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-#include "m_phys2virt.h"
+#include "m_modules.h"
 #include "pluginmanager.h"
 #include "pe.h"
 #include "sysquery.h"
@@ -171,29 +171,28 @@ VOID MVmmVfsDump_EnsureProcessorContext0(_In_ PVMM_PROCESS pSystemProcess, _In_ 
 {
     BOOL f;
     QWORD va, vaContextKPRCB;
-    if(!ctxVmm->f32) {
-        f = (va = *(PQWORD)(ctx->KDBG.pb + KDBG64_KiProcessorBlock)) &&
-            VMM_KADDR64_16(va) &&
-            VmmRead(pSystemProcess, va, (PBYTE)&va, sizeof(QWORD)) &&
-            VMM_KADDR64_16(va) &&
-            (va = va + *(PWORD)(ctx->KDBG.pb + KDBG64_ContextKPRCB)) &&
-            VmmRead(pSystemProcess, va, (PBYTE)&vaContextKPRCB, sizeof(QWORD)) &&
-            VMM_KADDR64_16(vaContextKPRCB);
-        if(f) {
-            if(VmmVirt2Phys(pSystemProcess, vaContextKPRCB + 0x038, &ctx->KiInitialPCR_Context.pa)) {
-                ctx->KiInitialPCR_Context.cb = 0x10;
-                *(PWORD)(ctx->KiInitialPCR_Context.pb + 0x00) = 0x10;   // SegCs
-                *(PWORD)(ctx->KiInitialPCR_Context.pb + 0x02) = 0x2b;   // SegDs
-                *(PWORD)(ctx->KiInitialPCR_Context.pb + 0x04) = 0x2b;   // SegEs
-                *(PWORD)(ctx->KiInitialPCR_Context.pb + 0x06) = 0x53;   // SegFs
-                *(PWORD)(ctx->KiInitialPCR_Context.pb + 0x08) = 0x2b;   // SegGs
-                *(PWORD)(ctx->KiInitialPCR_Context.pb + 0x0a) = 0x00;   // SegSs
-            }
-            // set physical memory overlay struct for processor context
-            ctx->OVERLAY[2].pa = ctx->KiInitialPCR_Context.pa;
-            ctx->OVERLAY[2].cb = ctx->KiInitialPCR_Context.cb;
-            ctx->OVERLAY[2].pb = ctx->KiInitialPCR_Context.pb;
+    if(ctxVmm->f32) { return; }
+    f = (va = *(PQWORD)(ctx->KDBG.pb + KDBG64_KiProcessorBlock)) &&
+        VMM_KADDR64_16(va) &&
+        VmmRead(pSystemProcess, va, (PBYTE)&va, sizeof(QWORD)) &&
+        VMM_KADDR64_16(va) &&
+        (va = va + *(PWORD)(ctx->KDBG.pb + KDBG64_ContextKPRCB)) &&
+        VmmRead(pSystemProcess, va, (PBYTE)&vaContextKPRCB, sizeof(QWORD)) &&
+        VMM_KADDR64_16(vaContextKPRCB);
+    if(f) {
+        if(VmmVirt2Phys(pSystemProcess, vaContextKPRCB + 0x038, &ctx->KiInitialPCR_Context.pa)) {
+            ctx->KiInitialPCR_Context.cb = 0x10;
+            *(PWORD)(ctx->KiInitialPCR_Context.pb + 0x00) = 0x10;   // SegCs
+            *(PWORD)(ctx->KiInitialPCR_Context.pb + 0x02) = 0x2b;   // SegDs
+            *(PWORD)(ctx->KiInitialPCR_Context.pb + 0x04) = 0x2b;   // SegEs
+            *(PWORD)(ctx->KiInitialPCR_Context.pb + 0x06) = 0x53;   // SegFs
+            *(PWORD)(ctx->KiInitialPCR_Context.pb + 0x08) = 0x2b;   // SegGs
+            *(PWORD)(ctx->KiInitialPCR_Context.pb + 0x0a) = 0x00;   // SegSs
         }
+        // set physical memory overlay struct for processor context
+        ctx->OVERLAY[2].pa = ctx->KiInitialPCR_Context.pa;
+        ctx->OVERLAY[2].cb = ctx->KiInitialPCR_Context.cb;
+        ctx->OVERLAY[2].pb = ctx->KiInitialPCR_Context.pb;
     }
 }
 
@@ -282,7 +281,7 @@ VOID MVmmVfsDump_InitializeDumpContext64(_In_ PVMM_PROCESS pSystemProcess, _In_ 
     pd->PsLoadedModuleList = ctxVmm->kernel.opt.vaPsLoadedModuleListExp;
     pd->PsActiveProcessHead = pSystemProcess->win.EPROCESS.va;
     pd->MachineImageType = IMAGE_FILE_MACHINE_AMD64;
-    pd->NumberProcessors = ctxVmm->kernel.opt.cCPUs;
+    pd->NumberProcessors = max(1, ctxVmm->kernel.opt.cCPUs);
     pd->BugCheckCode = 0xDEADDEAD;
     pd->BugCheckParameter1 = 1;
     pd->BugCheckParameter2 = 2;
@@ -333,7 +332,7 @@ VOID MVmmVfsDump_InitializeDumpContext32(PVMM_PROCESS pSystemProcess, POB_VMMVFS
     pd->PsLoadedModuleList = (DWORD)ctxVmm->kernel.opt.vaPsLoadedModuleListExp;
     pd->PsActiveProcessHead = (DWORD)pSystemProcess->win.EPROCESS.va;
     pd->MachineImageType = IMAGE_FILE_MACHINE_I386;
-    pd->NumberProcessors = ctxVmm->kernel.opt.cCPUs;
+    pd->NumberProcessors = max(1, ctxVmm->kernel.opt.cCPUs);
     pd->BugCheckCode = 0xDEADDEAD;
     pd->BugCheckParameter1 = 1;
     pd->BugCheckParameter2 = 2;
@@ -542,8 +541,5 @@ NTSTATUS MVmmVfsDump_Write(_In_ LPCWSTR wcsFileName, _In_reads_(cb) PBYTE pb, _I
 VOID MVmmVfsDump_List(_Inout_ PHANDLE pFileList)
 {
     VMMDLL_VfsList_AddFile(pFileList, "memory.pmem", ctxMain->dev.paMax);
-    if(ctxVmm->kernel.dwVersionBuild >= 7600) {
-        // Memory dump files compatible with WinDbg are supported on Win7 and later.
-        VMMDLL_VfsList_AddFile(pFileList, "memory.dmp", ctxMain->dev.paMax + (ctxVmm->f32 ? 0x1000 : 0x2000));
-    }
+    VMMDLL_VfsList_AddFile(pFileList, "memory.dmp", ctxMain->dev.paMax + (ctxVmm->f32 ? 0x1000 : 0x2000));
 }

@@ -11,16 +11,23 @@ typedef unsigned __int64                QWORD, *PQWORD;
 #define OB_DEBUG
 #define OB_HEADER_MAGIC                 0x0c0efefe
 
-#define OB_TAG_CORE_CONTAINER           'OC'
-#define OB_TAG_CORE_VSET                'OS'
-#define OB_TAG_CORE_MAP                 'OM'
-#define OB_TAG_PDB_ENTRY                'DE'
-#define OB_TAG_REG_HIVE                 'RH'
-#define OB_TAG_REG_KEY                  'RK'
-#define OB_TAG_REG_KEYVALUE             'RV'
-#define OB_TAG_VMM_PROCESS              'PR'
-#define OB_TAG_VMM_PROCESSTABLE         'PT'
-#define OB_TAG_VMMVFS_DUMPCONTEXT       'CD'
+#define OB_TAG_CORE_CONTAINER           'ObCo'
+#define OB_TAG_CORE_DATA                'ObDA'
+#define OB_TAG_CORE_VSET                'ObVS'
+#define OB_TAG_CORE_MAP                 'ObMA'
+#define OB_TAG_MAP_PTE                  'PteM'
+#define OB_TAG_MAP_VAD                  'VadM'
+#define OB_TAG_MAP_MODULE               'ModM'
+#define OB_TAG_MAP_THREAD               'ThrM'
+#define OB_TAG_MAP_HANDLE               'HndM'
+#define OB_TAG_PDB_ENTRY                'PdbE'
+#define OB_TAG_REG_HIVE                 'RegH'
+#define OB_TAG_REG_KEY                  'RegK'
+#define OB_TAG_REG_KEYVALUE             'RegV'
+#define OB_TAG_VMM_PROCESS              'Ps__'
+#define OB_TAG_VMM_PROCESS_PERSISTENT   'PsSt'
+#define OB_TAG_VMM_PROCESSTABLE         'PsTb'
+#define OB_TAG_VMMVFS_DUMPCONTEXT       'CDmp'
 
 // ----------------------------------------------------------------------------
 // OBJECT MANAGER CORE FUNCTIONALITY BELOW:
@@ -43,10 +50,9 @@ typedef unsigned __int64                QWORD, *PQWORD;
 typedef struct tdOB {
     // internal object manager functionality below: (= do not use unless absolutely necessary)
     DWORD _magic;                        // magic value - OB_HEADER_MAGIC
-    WORD _Free;
     union {
-        WORD _tag;                       // tag - 2 chars, no null terminator
-        CHAR _tagCh[2];
+        DWORD _tag;                      // tag - 2 chars, no null terminator
+        CHAR _tagCh[4];
     };
     VOID(*_pfnRef_0)(_In_ PVOID pOb);    // callback - object specific cleanup before free
     VOID(*_pfnRef_1)(_In_ PVOID pOb);    // callback - when object reach refcount 1 (not initial)
@@ -66,7 +72,7 @@ typedef struct tdOB {
 * -- pfnRef_1 = optional callback for when object reach refcount = 1 at DECREF.
 * -- return = allocated object on success, with refcount = 1, - NULL on fail.
 */
-PVOID Ob_Alloc(_In_ WORD tag, _In_ UINT uFlags, _In_ SIZE_T uBytes, _In_opt_ VOID(*pfnRef_0)(_In_ PVOID pOb), _In_opt_ VOID(*pfnRef_1)(_In_ PVOID pOb));
+PVOID Ob_Alloc(_In_ DWORD tag, _In_ UINT uFlags, _In_ SIZE_T uBytes, _In_opt_ VOID(*pfnRef_0)(_In_ PVOID pOb), _In_opt_ VOID(*pfnRef_1)(_In_ PVOID pOb));
 
 /*
 * Increase the reference count of a object by one.
@@ -103,7 +109,23 @@ inline VOID Ob_DECREF_NULL(_In_opt_ PVOID *ppOb)
 * -- tag
 * -- return
 */
-BOOL Ob_VALID_TAG(_In_ PVOID pObIn, _In_ WORD tag);
+BOOL Ob_VALID_TAG(_In_ PVOID pObIn, _In_ DWORD tag);
+
+
+
+// ----------------------------------------------------------------------------
+// OBJECT MANAGER COMMON/GENERIC OBJECTS BELOW:
+//
+// ----------------------------------------------------------------------------
+
+typedef struct tdOB_DATA {
+    OB ObHdr;
+    union {
+        BYTE pb[];
+        DWORD pdw[];
+        QWORD pqw[];
+    };
+} OB_DATA, * POB_DATA;
 
 
 
@@ -334,7 +356,18 @@ BOOL ObMap_Push(_In_opt_ POB_MAP pm, _In_ QWORD qwKey, _In_ PVOID pvObject);
 * -- pm
 * -- return = success: object, fail: NULL.
 */
+_Success_(return != NULL)
 PVOID ObMap_Pop(_In_opt_ POB_MAP pm);
+
+/*
+* Remove the "last" object and return it and its key.
+* CALLER DECREF(if OB): return
+* -- pm
+* -- pKey
+* -- return = success: object, fail: NULL.
+*/
+_Success_(return != NULL)
+PVOID ObMap_PopWithKey(_In_opt_ POB_MAP pm, _Out_ PQWORD pKey);
 
 /*
 * Remove an object from the ObMap.
@@ -430,6 +463,16 @@ PVOID ObMap_GetByKey(_In_opt_ POB_MAP pm, _In_ QWORD qwKey);
 * -- return
 */
 PVOID ObMap_GetByIndex(_In_opt_ POB_MAP pm, _In_ DWORD index);
+
+/*
+* Return all keys in the map in a POB_DATA object consisting of a QWORD array.
+* Item 0 contains the number of items in the array (not including the 0th item)
+* CALLER DECREF: return
+* -- pm
+* -- return = POB_DATA consisting of QWORD array, NULL if map is empty.
+*/
+_Success_(return != NULL)
+POB_DATA ObMap_GetTableKeys(_In_opt_ POB_MAP pm);
 
 
 

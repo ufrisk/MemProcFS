@@ -47,12 +47,12 @@ fail:
 
 const DWORD MMX86_PAGETABLEMAP_PML_REGION_SIZE[3] = { 0, 12, 22 };
 
-VOID MmX86_MapInitialize_Index(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MEMMAP_ENTRY pMemMap, _In_ PDWORD pcMemMap, _In_ DWORD vaBase, _In_ BYTE iPML, _In_ DWORD PTEs[1024], _In_ BOOL fSupervisorPML, _In_ QWORD paMax)
+VOID MmX86_MapInitialize_Index(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_PTEENTRY pMemMap, _In_ PDWORD pcMemMap, _In_ DWORD vaBase, _In_ BYTE iPML, _In_ DWORD PTEs[1024], _In_ BOOL fSupervisorPML, _In_ QWORD paMax)
 {
     PVMMOB_MEM pObNextPT;
     DWORD i, va, pte;
     BOOL fUserOnly, fNextSupervisorPML, fTransition = FALSE;
-    PVMM_MEMMAP_ENTRY pMemMapEntry = pMemMap + *pcMemMap - 1;
+    PVMM_MAP_PTEENTRY pMemMapEntry = pMemMap + *pcMemMap - 1;
     fUserOnly = pProcess->fUserOnly;
     for(i = 0; i < 1024; i++) {
         pte = PTEs[i];
@@ -71,10 +71,10 @@ VOID MmX86_MapInitialize_Index(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MEMMAP_ENTR
         if((iPML == 1) || (pte & 0x80) /* PS */) {
             if((*pcMemMap == 0) ||
                 ((pMemMapEntry->fPage != (pte & VMM_MEMMAP_PAGE_MASK)) && !fTransition) ||
-                (va != pMemMapEntry->AddrBase + (pMemMapEntry->cPages << 12))) {
+                (va != pMemMapEntry->vaBase + (pMemMapEntry->cPages << 12))) {
                 if(*pcMemMap + 1 >= VMM_MEMMAP_ENTRIES_MAX) { return; }
                 pMemMapEntry = pMemMap + *pcMemMap;
-                pMemMapEntry->AddrBase = va;
+                pMemMapEntry->vaBase = va;
                 pMemMapEntry->fPage = pte & VMM_MEMMAP_PAGE_MASK;
                 pMemMapEntry->cPages = 1ULL << (MMX86_PAGETABLEMAP_PML_REGION_SIZE[iPML] - 12);
                 *pcMemMap = *pcMemMap + 1;
@@ -94,203 +94,47 @@ VOID MmX86_MapInitialize_Index(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MEMMAP_ENTR
     }
 }
 
-VOID MmX86_MapCloseObCallback(_In_ PVOID pVmmOb)
-{
-    PVMMOB_MEMMAP pObMemMap = (PVMMOB_MEMMAP)pVmmOb;
-    if(pObMemMap->pObDisplay) {
-        Ob_DECREF(pObMemMap->pObDisplay);
-    }
-}
-
 _Success_(return)
-BOOL MmX86_MapInitialize(_In_ PVMM_PROCESS pProcess)
+BOOL MmX86_PteMapInitialize(_In_ PVMM_PROCESS pProcess)
 {
     PVMMOB_MEM pObPD;
     DWORD cMemMap = 0;
-    PVMM_MEMMAP_ENTRY pMemMap = NULL;
-    PVMMOB_MEMMAP pObMemMap = NULL;
+    PVMM_MAP_PTEENTRY pMemMap = NULL;
+    PVMMOB_MAP_PTE pObMap = NULL;
     // already existing?
-    if(pProcess && pProcess->pObMemMap) {
-        return pProcess->pObMemMap->fValid;
-    }
+    if(pProcess->Map.pObPte) { TRUE; }
     EnterCriticalSection(&pProcess->LockUpdate);
-    if(pProcess && pProcess->pObMemMap) {
+    if(pProcess->Map.pObPte) {
         LeaveCriticalSection(&pProcess->LockUpdate);
-        return pProcess->pObMemMap->fValid;
+        return TRUE;
     }
     // allocate temporary buffer and walk page tables
     VmmTlbSpider(pProcess);
     pObPD = VmmTlbGetPageTable(pProcess->paDTB & 0xfffff000, FALSE);
     if(pObPD) {
-        pMemMap = (PVMM_MEMMAP_ENTRY)LocalAlloc(LMEM_ZEROINIT, VMM_MEMMAP_ENTRIES_MAX * sizeof(VMM_MEMMAP_ENTRY));
+        pMemMap = (PVMM_MAP_PTEENTRY)LocalAlloc(LMEM_ZEROINIT, VMM_MEMMAP_ENTRIES_MAX * sizeof(VMM_MAP_PTEENTRY));
         if(pMemMap) {
             MmX86_MapInitialize_Index(pProcess, pMemMap, &cMemMap, 0, 2, pObPD->pdw, FALSE, ctxMain->dev.paMax);
         }
         Ob_DECREF(pObPD);
     }
     // allocate VmmOb depending on result
-    pObMemMap = Ob_Alloc('MM', 0, sizeof(VMMOB_MEMMAP) + cMemMap * sizeof(VMM_MEMMAP_ENTRY), MmX86_MapCloseObCallback, NULL);
-    if(!pObMemMap) {
+    pObMap = Ob_Alloc(OB_TAG_MAP_PTE, 0, sizeof(VMMOB_MAP_PTE) + cMemMap * sizeof(VMM_MAP_PTEENTRY), NULL, NULL);
+    if(!pObMap) {
+        pProcess->Map.pObPte = Ob_Alloc(OB_TAG_MAP_PTE, LMEM_ZEROINIT, sizeof(VMMOB_MAP_PTE), NULL, NULL);
         LeaveCriticalSection(&pProcess->LockUpdate);
         LocalFree(pMemMap);
-        return FALSE;
+        return TRUE;
     }
-    pObMemMap->fValid = cMemMap > 0;
-    pObMemMap->fTagModules = FALSE;
-    pObMemMap->fTagScan = FALSE;
-    pObMemMap->cMap = cMemMap;
-    pObMemMap->cbDisplay = cMemMap * MMX86_MEMMAP_DISPLAYBUFFER_LINE_LENGTH;
-    pObMemMap->pObDisplay = NULL;
-    if(cMemMap > 0) {
-        memcpy(pObMemMap->pMap, pMemMap, cMemMap * sizeof(VMM_MEMMAP_ENTRY));
-    }
+    pObMap->wszMultiText = NULL;
+    pObMap->cbMultiText = 0;
+    pObMap->fTagScan = FALSE;
+    pObMap->cMap = cMemMap;
+    memcpy(pObMap->pMap, pMemMap, cMemMap * sizeof(VMM_MAP_PTEENTRY));
     LocalFree(pMemMap);
-    pProcess->pObMemMap = pObMemMap;
+    pProcess->Map.pObPte = pObMap;
     LeaveCriticalSection(&pProcess->LockUpdate);
-    return pObMemMap->fValid;
-}
-
-/*
-* Map a tag into the sorted memory map in O(log2) operations. Supply only one of szTag or wszTag.
-* -- pProcess
-* -- vaBase
-* -- vaLimit = limit == vaBase + size (== top address in range +1)
-* -- szTag
-* -- wszTag
-* -- fWoW64
-* -- fOverwrite
-*/
-VOID MmX86_MapTag(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaBase, _In_ QWORD vaLimit, _In_opt_ LPSTR szTag, _In_opt_ LPWSTR wszTag, _In_ BOOL fWoW64, _In_ BOOL fOverwrite)
-{
-    // NB! update here may take placey without acquiring the process 'LockUpdate'
-    // Data is not super important so it should be ok. Also, in many cases the
-    // lock will already be acquired by MapGetEntries function.
-    PVMM_MEMMAP_ENTRY pMap;
-    QWORD i, lvl, cMap;
-    if(!MmX86_MapInitialize(pProcess)) { return; }
-    if((vaBase > 0xffffffff) || (vaLimit > 0xffffffff)) { return; }
-    pMap = pProcess->pObMemMap->pMap;
-    cMap = pProcess->pObMemMap->cMap;
-    if(!pMap || !cMap) { return; }
-    // 1: locate base
-    lvl = 1;
-    i = cMap >> lvl;
-    while(TRUE) {
-        lvl++;
-        if((cMap >> lvl) == 0) {
-            break;
-        }
-        if(pMap[i].AddrBase > vaBase) {
-            i -= (cMap >> lvl);
-        } else {
-            i += (cMap >> lvl);
-        }
-    }
-    // 2: scan back if needed
-    while(i && (pMap[i].AddrBase > vaBase)) {
-        i--;
-    }
-    // 3: fill in tag
-    while((i < cMap) && (pMap[i].AddrBase + (pMap[i].cPages << 12) <= vaLimit)) {
-        if((pMap[i].AddrBase >= vaBase) && (fOverwrite || !pMap[i].szTag[0])) {
-            if(wszTag) {
-                snprintf(pMap[i].szTag, 31, "%S", wszTag);
-            }
-            if(szTag) {
-                snprintf(pMap[i].szTag, 31, "%s", szTag);
-            }
-        }
-        i++;
-    }
-}
-
-_Success_(return)
-BOOL MmX86_MapGetEntries(_In_ PVMM_PROCESS pProcess, _In_ DWORD flags, _Out_ PVMMOB_MEMMAP *ppObMemMap)
-{
-    DWORD i;
-    PVMM_MODULEMAP_ENTRY pModule;
-    PVMMOB_MODULEMAP pObModuleMap;
-    if(!MmX86_MapInitialize(pProcess)) { return FALSE; }
-    if((!pProcess->pObMemMap->fTagModules && (flags & VMM_MEMMAP_FLAG_MODULES)) || (!pProcess->pObMemMap->fTagScan && (flags & VMM_MEMMAP_FLAG_SCAN))) {
-        EnterCriticalSection(&pProcess->LockUpdate);
-        if(!pProcess->pObMemMap->fTagModules && (flags & VMM_MEMMAP_FLAG_MODULES)) {
-            pProcess->pObMemMap->fTagModules = TRUE;
-            if(VmmProc_ModuleMapGet(pProcess, &pObModuleMap)) {
-                // update memory map with names
-                for(i = 0; i < pObModuleMap->cMap; i++) {
-                    pModule = pObModuleMap->pMap + i;
-                    MmX86_MapTag(pProcess, pModule->BaseAddress, pModule->BaseAddress + pModule->SizeOfImage, pModule->szName, NULL, FALSE, FALSE);
-                }
-                Ob_DECREF(pObModuleMap);
-            }
-        }
-        if(!pProcess->pObMemMap->fTagScan && (flags & VMM_MEMMAP_FLAG_SCAN)) {
-            pProcess->pObMemMap->fTagScan = TRUE;
-            VmmProc_ScanTagsMemMap(pProcess);
-        }
-        LeaveCriticalSection(&pProcess->LockUpdate);
-    }
-    *ppObMemMap = Ob_INCREF(pProcess->pObMemMap);
     return TRUE;
-}
-
-_Success_(return)
-BOOL MmX86_MapGetDisplay(_In_ PVMM_PROCESS pProcess, _In_ DWORD flags, _Out_ PVMMOB_DATA *ppObDisplay)
-{
-    DWORD i, o = 0;
-    PVMMOB_MEMMAP pObMemMap = NULL;
-    PVMMOB_DATA pObDisplay = NULL;
-    // memory map display data already exists
-    if(!MmX86_MapInitialize(pProcess)) { return FALSE; }
-    if(pProcess->pObMemMap->pObDisplay) {
-        *ppObDisplay = Ob_INCREF(pProcess->pObMemMap->pObDisplay);
-        return TRUE;
-    }
-    // create new memory map display data
-    EnterCriticalSection(&pProcess->LockUpdate);
-    if(!pProcess->pObMemMap->pObDisplay) {
-        if(MmX86_MapGetEntries(pProcess, flags, &pObMemMap)) {
-            pObDisplay = Ob_Alloc('MD', LMEM_ZEROINIT, sizeof(VMMOB_DATA) + pObMemMap->cbDisplay, NULL, NULL);
-            if(pObDisplay) {
-                for(i = 0; i < pObMemMap->cMap; i++) {
-                    if(o + MMX86_MEMMAP_DISPLAYBUFFER_LINE_LENGTH > pObMemMap->cbDisplay) {
-                        vmmprintf_fn("ERROR: SHOULD NOT HAPPEN! LENGTH DIFFERS #1: %i %i\n", o + MMX86_MEMMAP_DISPLAYBUFFER_LINE_LENGTH, pObMemMap->cbDisplay);
-                        Ob_DECREF(pObDisplay);
-                        pObDisplay = NULL;
-                        goto fail;
-                    }
-                    o += snprintf(
-                        pObDisplay->pbData + o,
-                        pObMemMap->cbDisplay - o,
-                        "%04x %8x %08x-%08x %sr%sx %-32s\n",
-                        i,
-                        (DWORD)pObMemMap->pMap[i].cPages,
-                        (DWORD)pObMemMap->pMap[i].AddrBase,
-                        (DWORD)(pObMemMap->pMap[i].AddrBase + (pObMemMap->pMap[i].cPages << 12) - 1),
-                        pObMemMap->pMap[i].fPage & VMM_MEMMAP_PAGE_NS ? "-" : "s",
-                        pObMemMap->pMap[i].fPage & VMM_MEMMAP_PAGE_W ? "w" : "-",
-                        pObMemMap->pMap[i].szTag
-                    );
-                }
-                if(o != pObMemMap->cbDisplay) {
-                    vmmprintf_fn("ERROR: SHOULD NOT HAPPEN! LENGTH DIFFERS #2: %i %i\n", o, pObMemMap->cbDisplay);
-                    Ob_DECREF(pObDisplay);
-                    pObDisplay = NULL;
-                    goto fail;
-                }
-                pObDisplay->pbData[o - 1] = '\n';
-            }
-        }
-        pProcess->pObMemMap->pObDisplay = pObDisplay;
-    }
-fail:
-    Ob_DECREF(pObMemMap);
-    LeaveCriticalSection(&pProcess->LockUpdate);
-    if(pProcess->pObMemMap->pObDisplay) {
-        *ppObDisplay = Ob_INCREF(pProcess->pObMemMap->pObDisplay);
-        return TRUE;
-    }
-    return FALSE;
 }
 
 _Success_(return)
@@ -308,12 +152,8 @@ BOOL MmX86_Virt2Phys(_In_ QWORD paPT, _In_ BOOL fUserOnly, _In_ BYTE iPML, _In_ 
     pte = pObPTEs->pdw[i];
     Ob_DECREF(pObPTEs);
     if(!MMX86_PTE_IS_VALID(pte, iPML)) {
-        if(pte && MMX86_PTE_IS_TRANSITION(pte, iPML)) {
-            pte = MMX86_PTE_IS_TRANSITION(pte, iPML);       // TRANSITION
-        } else {
-            if(iPML == 1) { *ppa = pte; }                   // NOT VALID
-            return FALSE;
-        }
+        if(iPML == 1) { *ppa = pte; }                       // NOT VALID
+        return FALSE;
     }
     if(fUserOnly && !(pte & 0x04)) { return FALSE; }        // SUPERVISOR PAGE & USER MODE REQ
     if((iPML == 2) && !(pte & 0x80) /* PS */) {
@@ -435,9 +275,7 @@ VOID MmX86_Initialize()
     ctxVmm->fnMemoryModel.pfnVirt2Phys = MmX86_Virt2Phys;
     ctxVmm->fnMemoryModel.pfnVirt2PhysGetInformation = MmX86_Virt2PhysGetInformation;
     ctxVmm->fnMemoryModel.pfnPhys2VirtGetInformation = MmX86_Phys2VirtGetInformation;
-    ctxVmm->fnMemoryModel.pfnMapTag = MmX86_MapTag;
-    ctxVmm->fnMemoryModel.pfnMapGetEntries = MmX86_MapGetEntries;
-    ctxVmm->fnMemoryModel.pfnMapGetDisplay = MmX86_MapGetDisplay;
+    ctxVmm->fnMemoryModel.pfnPteMapInitialize = MmX86_PteMapInitialize;
     ctxVmm->fnMemoryModel.pfnTlbSpider = MmX86_TlbSpider;
     ctxVmm->fnMemoryModel.pfnTlbPageTableVerify = MmX86_TlbPageTableVerify;
     ctxVmm->tpMemoryModel = VMM_MEMORYMODEL_X86;

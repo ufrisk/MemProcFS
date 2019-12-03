@@ -34,7 +34,7 @@
 * -- pfnRef_1 = optional callback for when object reach refcount = 1 (excl. initial).
 * -- return = allocated object on success, with refcount = 1, - NULL on fail.
 */
-PVOID Ob_Alloc(_In_ WORD tag, _In_ UINT uFlags, _In_ SIZE_T uBytes, _In_opt_ VOID(*pfnRef_0)(_In_ PVOID pOb), _In_opt_ VOID(*pfnRef_1)(_In_ PVOID pOb))
+PVOID Ob_Alloc(_In_ DWORD tag, _In_ UINT uFlags, _In_ SIZE_T uBytes, _In_opt_ VOID(*pfnRef_0)(_In_ PVOID pOb), _In_opt_ VOID(*pfnRef_1)(_In_ PVOID pOb))
 {
     POB pOb;
     if((uBytes > 0x40000000) || (uBytes < sizeof(OB))) { return NULL; }
@@ -115,7 +115,7 @@ VOID Ob_DECREF(_In_opt_ PVOID pObIn)
 * -- tag
 * -- return
 */
-BOOL Ob_VALID_TAG(_In_ PVOID pObIn, _In_ WORD tag)
+BOOL Ob_VALID_TAG(_In_ PVOID pObIn, _In_ DWORD tag)
 {
     POB pOb = (POB)pObIn;
     return pOb && (pOb->_magic == OB_HEADER_MAGIC) && (pOb->_tag = tag);

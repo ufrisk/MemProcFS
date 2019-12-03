@@ -8,13 +8,21 @@
 #ifndef __PDB_H__
 #define __PDB_H__
 #include "vmm.h"
+#include "pe.h"
 
 #define VMMWIN_PDB_HANDLE_KERNEL            ((QWORD)-1)
 
 /*
 * Initialize the PDB sub-system. This should ideally be done on Vmm Init().
+* -- pPdbInfoOpt
+* -- fInitializeKernelAsync
 */
-VOID PDB_Initialize();
+VOID PDB_Initialize(_In_opt_ PIMAGE_DEBUG_TYPE_CODEVIEW_PDBINFO pPdbInfoOpt, _In_ BOOL fInitializeKernelAsync);
+
+/*
+* Wait for completion of initialization of the PDB sub-system.
+*/
+VOID PDB_Initialize_WaitComplete();
 
 /*
 * Cleanup the PDB sub-system. This should ideally be done on Vmm Close().
@@ -149,10 +157,13 @@ BOOL PDB_GetTypeSize(_In_opt_ VMMWIN_PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _Ou
 * -- hPDB
 * -- szTypeName = wildcard type name.
 * -- wszTypeChildName = exact match of child name.
-* -- pdwTypeOffset = offset relative to type base.
+* -- pdwTypeOffset / pwTypeOffset = offset relative to type base.
 * -- return
 */
 _Success_(return)
 BOOL PDB_GetTypeChildOffset(_In_opt_ VMMWIN_PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _In_ LPWSTR wszTypeChildName, _Out_ PDWORD pdwTypeOffset);
+
+_Success_(return)
+BOOL PDB_GetTypeChildOffsetShort(_In_opt_ VMMWIN_PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _In_ LPWSTR wszTypeChildName, _Out_ PWORD pwTypeOffset);
 
 #endif /* __PDB_H__ */
