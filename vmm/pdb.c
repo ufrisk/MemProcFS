@@ -450,7 +450,7 @@ BOOL PDB_Initialize_Async_Kernel_ScanForPdbInfo(_In_ PVMM_PROCESS pSystemProcess
 VOID PDB_Initialize_WaitComplete()
 {
     PVMMWIN_PDB_CONTEXT ctx = (PVMMWIN_PDB_CONTEXT)ctxVmm->pPdbContext;
-    if(ctxMain->pdb.fEnable) {
+    if(ctx && ctxMain->pdb.fEnable) {
         EnterCriticalSection(&ctx->Lock);
         LeaveCriticalSection(&ctx->Lock);
     }
@@ -679,4 +679,5 @@ fail:
     }
     LocalFree(ctx);
     LocalFree(pKernelParameters);
+    ctxMain->pdb.fEnable = FALSE;
 }
