@@ -3,7 +3,7 @@
 # Python plugin which allows convenient auto-installation of new or updated
 # plugins directly from the plugin directory on Github. This is advantageous
 # since it both allows for an updated plugins and to keep non-core potentially
-# controversial, but awsome plugins outside the main MemProcFS project.
+# controversial, but awesome plugins outside the main MemProcFS project.
 #
 # https://github.com/ufrisk/
 #
@@ -66,8 +66,8 @@ PLUGIN INFORMATION
 """
 
 
-text_desc_pypykatz = """The Pypykatz plugin for MemProcFS provides 'mimikatz' like functionality for MemProcFS.
-"""
+text_desc_pypykatz = "The Pypykatz plugin for MemProcFS provides 'mimikatz' like functionality for MemProcFS"
+text_desc_regsecrets = "The RegSecrets plugin for MemProcFS provides 'mimikatz' like functionality for MemProcFS."
 
 plugin_dir = os.path.realpath(__file__ + '\\..\\..\\') + '\\pym_'
 
@@ -84,6 +84,19 @@ plugins = {
         'text_upgrade': text_upgrade + text_desc_pypykatz,
         'text_install': text_install + text_desc_pypykatz,
         'text_completed': 'Additional dependencies: "python pip install pypykatz" may be required.',
+    },
+    'regsecrets': {
+        'name': 'regsecrets',
+        'files': ['__init__.py', 'pym_regsecrets.py', 'version.txt'],
+        'pid': None,
+        'files_installinfo': ['regsecrets/regsecrets-install.txt'],
+        'installed': False,
+        'version_installed': '0.0.0',
+        'version_remote': '0.0.0',
+        'upgrade': False,
+        'text_upgrade': text_upgrade + text_desc_regsecrets,
+        'text_install': text_install + text_desc_regsecrets,
+        'text_completed': 'Additional dependencies: "python pip install pypykatz aiowinreg" may be required.',
     }
 }
 
