@@ -1,6 +1,6 @@
 // pluginmanager.h : definitions for the plugin manager for memory process file system plugins.
 //
-// (c) Ulf Frisk, 2018-2019
+// (c) Ulf Frisk, 2018-2020
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __PLUGINMANAGER_H__
@@ -8,6 +8,7 @@
 
 #include <Windows.h>
 #include "vmm.h"
+#include "vmmdll.h"
 
 /*
 * Initialize built-in and external modules.
@@ -21,26 +22,17 @@ BOOL PluginManager_Initialize();
 VOID PluginManager_Close();
 
 /*
-* Enumerate modules in a process directory (insert directories of module names).
-* -- pProcess
-* -- pFileList
-*/
-VOID PluginManager_ListAll(_In_opt_ PVMM_PROCESS pProcess, _Inout_ PHANDLE pFileList);
-
-/*
 * Send a List command down the module chain to the appropriate module.
 * -- pProcess
-* -- wszModule
 * -- wszPath
 * -- pFileList
 * -- return
 */
-BOOL PluginManager_List(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszModule, _In_ LPWSTR wszPath, _Inout_ PHANDLE pFileList);
+VOID PluginManager_List(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszPath, _Inout_ PHANDLE pFileList);
 
 /*
 * Send a Read command down the module chain to the appropriate module.
 * -- pProcess
-* -- wszModule
 * -- wszPath
 * -- pb
 * -- cb
@@ -48,12 +40,11 @@ BOOL PluginManager_List(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszModule, _
 * -- cbOffset
 * -- return
 */
-NTSTATUS PluginManager_Read(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszModule, _In_ LPWSTR wszPath, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
+NTSTATUS PluginManager_Read(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszPath, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 
 /*
 * Send a Write command down the module chain to the appropriate module.
 * -- pProcess
-* -- wszModule
 * -- wszPath
 * -- pb
 * -- cb
@@ -61,7 +52,7 @@ NTSTATUS PluginManager_Read(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszModul
 * -- cbOffset
 * -- return
 */
-NTSTATUS PluginManager_Write(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszModule, _In_ LPWSTR wszPath, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset);
+NTSTATUS PluginManager_Write(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszPath, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset);
 
 /*
 * Send a notification event to plugins that registered to receive notifications.

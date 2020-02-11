@@ -1,7 +1,7 @@
 // memprocfs.h : implementation of core functionality for the Memory Process File System
 // This is just a thin loader for the virtual memory manager dll which contains the logic.
 //
-// (c) Ulf Frisk, 2018-2019
+// (c) Ulf Frisk, 2018-2020
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include <Windows.h>

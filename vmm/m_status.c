@@ -1,6 +1,6 @@
 // m_status.c : implementation of the .status built-in module.
 //
-// (c) Ulf Frisk, 2018-2019
+// (c) Ulf Frisk, 2018-2020
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -14,13 +14,11 @@
 * related to the VMM and Memory Process File System.
 */
 
-#include "m_modules.h"
 #include "pdb.h"
 #include "pluginmanager.h"
 #include "util.h"
 #include "vmm.h"
 #include "vmmproc.h"
-#include "vmmvfs.h"
 #include "vmmwinreg.h"
 #include "statistics.h"
 
@@ -280,29 +278,29 @@ BOOL MStatus_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
     if(ctx->wszPath[0]) { return FALSE; }
     // "root" view
     if(!ctx->pProcess) {
-        VMMDLL_VfsList_AddFile(pFileList, "config_cache_enable", 1);
-        VMMDLL_VfsList_AddFile(pFileList, "config_paging_enable", 1);
-        VMMDLL_VfsList_AddFile(pFileList, "config_statistics_fncall", 1);
-        VMMDLL_VfsList_AddFile(pFileList, "config_refresh_enable", 1);
-        VMMDLL_VfsList_AddFile(pFileList, "config_refresh_tick_period_ms", 8);
-        VMMDLL_VfsList_AddFile(pFileList, "config_refresh_read", 8);
-        VMMDLL_VfsList_AddFile(pFileList, "config_refresh_tlb", 8);
-        VMMDLL_VfsList_AddFile(pFileList, "config_refresh_proc_partial", 8);
-        VMMDLL_VfsList_AddFile(pFileList, "config_refresh_proc_total", 8);
-        VMMDLL_VfsList_AddFile(pFileList, "config_refresh_registry", 8);
-        VMMDLL_VfsList_AddFile(pFileList, "config_symbol_enable", 1);
-        VMMDLL_VfsList_AddFile(pFileList, "config_symbolcache", strlen(ctxMain->pdb.szLocal));
-        VMMDLL_VfsList_AddFile(pFileList, "config_symbolserver", strlen(ctxMain->pdb.szServer));
-        VMMDLL_VfsList_AddFile(pFileList, "config_symbolserver_enable", 1);
-        VMMDLL_VfsList_AddFile(pFileList, "statistics", 1103);
-        VMMDLL_VfsList_AddFile(pFileList, "config_printf_enable", 1);
-        VMMDLL_VfsList_AddFile(pFileList, "config_printf_v", 1);
-        VMMDLL_VfsList_AddFile(pFileList, "config_printf_vv", 1);
-        VMMDLL_VfsList_AddFile(pFileList, "config_printf_vvv", 1);
-        VMMDLL_VfsList_AddFile(pFileList, "config_process_show_terminated", 1);
-        VMMDLL_VfsList_AddFile(pFileList, "native_max_address", 16);
+        VMMDLL_VfsList_AddFile(pFileList, L"config_cache_enable", 1, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"config_paging_enable", 1, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"config_statistics_fncall", 1, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"config_refresh_enable", 1, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"config_refresh_tick_period_ms", 8, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"config_refresh_read", 8, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"config_refresh_tlb", 8, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"config_refresh_proc_partial", 8, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"config_refresh_proc_total", 8, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"config_refresh_registry", 8, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"config_symbol_enable", 1, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"config_symbolcache", strlen(ctxMain->pdb.szLocal), NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"config_symbolserver", strlen(ctxMain->pdb.szServer), NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"config_symbolserver_enable", 1, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"statistics", 1103, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"config_printf_enable", 1, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"config_printf_v", 1, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"config_printf_vv", 1, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"config_printf_vvv", 1, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"config_process_show_terminated", 1, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"native_max_address", 16, NULL);
         Statistics_CallToString(NULL, 0, &cbCallStatistics);
-        VMMDLL_VfsList_AddFile(pFileList, "statistics_fncall", cbCallStatistics);
+        VMMDLL_VfsList_AddFile(pFileList, L"statistics_fncall", cbCallStatistics, NULL);
     }
     return TRUE;
 }
@@ -319,7 +317,7 @@ VOID M_Status_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     // .status module is always valid - no check against pPluginRegInfo->tpMemoryModel, tpSystem
-    wcscpy_s(pRI->reg_info.wszModuleName, 32, L".status");      // module name
+    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\.status");     // module name
     pRI->reg_info.fRootModule = TRUE;                           // module shows in root directory
     pRI->reg_fn.pfnList = MStatus_List;                         // List function supported
     pRI->reg_fn.pfnRead = MStatus_Read;                         // Read function supported

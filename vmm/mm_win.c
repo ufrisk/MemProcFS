@@ -1,6 +1,6 @@
 // mm_win.c : implementation of functionality related to the windows paging subsystem.
 //
-// (c) Ulf Frisk, 2019
+// (c) Ulf Frisk, 2019-2020
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmm.h"
@@ -388,11 +388,11 @@ VOID MmWin_MemCompress_InitializeVirtualStorePageFileNumber()
     PBYTE pb = NULL;
     PVMM_PROCESS pObSystemProcess = NULL;
     IMAGE_SECTION_HEADER oSectionHeader;
-    POB_VSET pObSet = NULL;
+    POB_SET pObSet = NULL;
     PMMWIN_CONTEXT ctx = (PMMWIN_CONTEXT)ctxVmm->pMmContext;
     ctx->MemCompress.dwPageFileNumber = 2;
     // 1: SetUp and locate nt!MiSystemPartition/nt!.data
-    if(!(pObSet = ObVSet_New())) { goto finish; }
+    if(!(pObSet = ObSet_New())) { goto finish; }
     if(!(pObSystemProcess = VmmProcessGet(4))) { goto finish; }
     if(PDB_GetSymbolAddress(VMMWIN_PDB_HANDLE_KERNEL, "MiSystemPartition", &va) && va) {
         cb = 0x3000;
@@ -423,7 +423,7 @@ VOID MmWin_MemCompress_InitializeVirtualStorePageFileNumber()
                 for(j = 0; j < *(PDWORD)(pb + i + 0x000); j++) {
                     va = *(PDWORD)(pb + i + 0x008 + j * 4);
                     if(VMM_KADDR32_8(va)) {
-                        ObVSet_Push(pObSet, va);
+                        ObSet_Push(pObSet, va);
                     }
                 }
             }
@@ -444,7 +444,7 @@ VOID MmWin_MemCompress_InitializeVirtualStorePageFileNumber()
                 for(j = 0; j < *(PDWORD)(pb + i + 0x000); j++) {
                     va = *(PQWORD)(pb + i + 0x008 + j * 8);
                     if(VMM_KADDR64_16(va)) {
-                        ObVSet_Push(pObSet, va);
+                        ObSet_Push(pObSet, va);
                     }
                 }
             }
@@ -454,7 +454,7 @@ VOID MmWin_MemCompress_InitializeVirtualStorePageFileNumber()
     }
     // 3: Verify nt!dt _MMPAGING_FILE by looking at pool header and VirtualStorePagefile bit
     VmmCachePrefetchPages(pObSystemProcess, pObSet, 0);
-    while((va = ObVSet_Pop(pObSet))) {
+    while((va = ObSet_Pop(pObSet))) {
         VmmReadEx(pObSystemProcess, va - 0x10, pbMm, 0x100, &cbRead, VMM_FLAG_FORCECACHE_READ);
         if((*(PDWORD)(pbMm + oPoolHdr) == '  mM') && (*(PBYTE)(pbMm + 0x10 + oPfNum) & 0x40)) {
             ctx->MemCompress.dwPageFileNumber = (*(PBYTE)(pbMm + 0x10 + oPfNum) & 0x0f);
@@ -487,13 +487,13 @@ VOID MmWin_MemCompress_Initialize_NoPdb64()
     QWORD vaSmGlobals, vaSmsa, vaKeyToStoreTree;
     IMAGE_SECTION_HEADER oSectionHeader;
     PVMM_PROCESS pObSystemProcess = NULL;
-    POB_VSET pObSet = NULL;
+    POB_SET pObSet = NULL;
     PMMWIN_CONTEXT ctx = (PMMWIN_CONTEXT)ctxVmm->pMmContext;
     EnterCriticalSection(&ctxVmm->MasterLock);
     if(ctx->MemCompress.fInitialized || (ctxVmm->kernel.dwVersionBuild < 14393)) { goto finish; }
     // 1: Locate SmGlobals candidates in ntoskrnl.exe!CACHEALI section
     if(!(pObSystemProcess = VmmProcessGet(4))) { goto finish; }
-    if(!(pObSet = ObVSet_New())) { goto finish; }
+    if(!(pObSet = ObSet_New())) { goto finish; }
     if(!PE_SectionGetFromName(pObSystemProcess, ctxVmm->kernel.vaBase, "CACHEALI", &oSectionHeader)) {
         vmmprintfv_fn("CANNOT READ ntoskrnl.exe CACHEALI SECTION from PE header.\n");
         goto finish;
@@ -510,17 +510,17 @@ VOID MmWin_MemCompress_Initialize_NoPdb64()
         f = VMM_KADDR64_PAGE(vaKeyToStoreTree) &&
             VMM_KADDR64_16(vaSmsa);
         if(f) {
-            ObVSet_Push(pObSet, vaSmGlobals);
-            ObVSet_Push(pObSet, vaKeyToStoreTree);
-            ObVSet_Push(pObSet, vaSmsa);
+            ObSet_Push(pObSet, vaSmGlobals);
+            ObSet_Push(pObSet, vaKeyToStoreTree);
+            ObSet_Push(pObSet, vaSmsa);
         }
     }
     // 2: Verify SMGLOBALS / _SMKM_STORE_METADATA (pool hdr: 'smSa')
     VmmCachePrefetchPages(pObSystemProcess, pObSet, 0);
-    while(ObVSet_Size(pObSet)) {
-        vaSmsa = ObVSet_Pop(pObSet);
-        vaKeyToStoreTree = ObVSet_Pop(pObSet);
-        vaSmGlobals = ObVSet_Pop(pObSet);
+    while(ObSet_Size(pObSet)) {
+        vaSmsa = ObSet_Pop(pObSet);
+        vaKeyToStoreTree = ObSet_Pop(pObSet);
+        vaSmGlobals = ObSet_Pop(pObSet);
         VmmReadEx(pObSystemProcess, vaSmsa - 12, (PBYTE)&dwSmsaPoolHdr, sizeof(DWORD), &cbRead, VMM_FLAG_FORCECACHE_READ);
         if(dwSmsaPoolHdr == 'aSms') {
             MmWin_MemCompress_InitializeOffsets64();
@@ -661,11 +661,11 @@ BOOL MmWin_MemCompress_LogError(_In_ PMMWINX64_COMPRESS_CONTEXT ctx, _In_ LPSTR 
     vmmprintfvv(
         "MmWin_CompressedPage: FAIL: %s\n" \
         "  va= %016llx ep= %016llx pgk=%08x ism=%04x vas=%016llx \n" \
-        "  pte=%016llx oep=%016llx rgk=%08x pid=%04x \n" \
+        "  pte=%016llx oep=%016llx rgk=%08x pid=%04x vat=%016llx \n" \
         "  pgr=%016llx rgn=%016llx rgo=%08x cbc=%04x rga=%016llx\n",
         sz,
         ctx->e.va, ctx->e.vaEPROCESS, ctx->e.dwPageKey, ctx->e.iSmkm, ctx->e.vaSmkmStore,
-        ctx->e.PTE, ctx->e.vaOwnerEPROCESS, ctx->e.dwRegionKey, ctx->pProcess->dwPID,
+        ctx->e.PTE, ctx->e.vaOwnerEPROCESS, ctx->e.dwRegionKey, ctx->pProcess->dwPID, ((PMMWIN_CONTEXT)ctxVmm->pMmContext)->MemCompress.vaKeyToStoreTree,
         ctx->e.vaPageRecord, ctx->e.vaRegion, ctx->e.cbRegionOffset, ctx->e.cbCompressedData, (ctx->e.vaRegion + ctx->e.cbRegionOffset)
     );
     return FALSE;
@@ -934,12 +934,14 @@ BOOL MmWin_MemCompress5_DecompressPage(_In_ PMMWINX64_COMPRESS_CONTEXT ctx, _Out
 /*
 * Decompress a page.
 * -- pProcess
-* -- pMEM
+* -- va
+* -- pte
+* -- pbPage
 * -- fVmmRead = flags to VmmRead function calls.
 * -- return
 */
 _Success_(return)
-BOOL MmWin_MemCompress(_In_ PVMM_PROCESS pProcess, _In_ QWORD va, _In_ QWORD pte, _Out_writes_(4096) PBYTE pbPage, _In_ QWORD fVmmRead)
+BOOL MmWin_MemCompress(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD va, _In_ QWORD pte, _Out_writes_(4096) PBYTE pbPage, _In_ QWORD fVmmRead)
 {
     BOOL fResult = FALSE;
     PMMWINX64_COMPRESS_CONTEXT ctx = NULL;
@@ -1002,7 +1004,7 @@ BOOL MmWin_PfReadFile(_In_ DWORD dwPfNumber, _In_ DWORD dwPfOffset, _Out_writes_
 }
 
 _Success_(return)
-BOOL MmWin_PfRead(_In_ PVMM_PROCESS pProcess, _In_ QWORD va, _In_ QWORD pte, _In_ QWORD fVmmRead, _In_ DWORD dwPfNumber, _In_ DWORD dwPfOffset, _Out_writes_(4096) PBYTE pbPage)
+BOOL MmWin_PfRead(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD va, _In_ QWORD pte, _In_ QWORD fVmmRead, _In_ DWORD dwPfNumber, _In_ DWORD dwPfOffset, _Out_writes_(4096) PBYTE pbPage)
 {
     BOOL fResult;
     PVMMOB_MEM pObCacheEntry;
@@ -1014,7 +1016,7 @@ BOOL MmWin_PfRead(_In_ PVMM_PROCESS pProcess, _In_ QWORD va, _In_ QWORD pte, _In
         return TRUE;
     }
     // cached failed page?
-    if(ObVSet_Exists(ctxVmm->Cache.PAGING_FAILED, pte)) {
+    if(ObSet_Exists(ctxVmm->Cache.PAGING_FAILED, pte)) {
         InterlockedIncrement64(&ctxVmm->stat.page.cFailCacheHit);
         return FALSE;
     }
@@ -1047,7 +1049,7 @@ BOOL MmWin_PfRead(_In_ PVMM_PROCESS pProcess, _In_ QWORD va, _In_ QWORD pte, _In
         }
         return TRUE;
     }
-    ObVSet_Push(ctxVmm->Cache.PAGING_FAILED, pte);
+    ObSet_Push(ctxVmm->Cache.PAGING_FAILED, pte);
     return FALSE;
 }
 
@@ -1087,12 +1089,16 @@ fail:
 * -- return
 */
 _Success_(return)
-BOOL MmWinX86_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_ DWORD va, _In_ DWORD pte, _Out_writes_(4096) PBYTE pbPage, _Out_ PQWORD ppa, _In_ QWORD flags)
+BOOL MmWinX86_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_opt_ DWORD va, _In_ DWORD pte, _Out_writes_(4096) PBYTE pbPage, _Out_ PQWORD ppa, _In_ QWORD flags)
 {
     BOOL f;
     DWORD dwPfNumber, dwPfOffset;
     *ppa = 0;
-    if(MMWINX86_PTE_IS_HARDWARE(pte) || MM_LOOP_PROTECT_MAX(flags)) { goto fail; }
+    if(MMWINX86_PTE_IS_HARDWARE(pte)) {
+        *ppa = pte & 0xfffff000;
+        return FALSE;
+    }
+    if(!pte || MM_LOOP_PROTECT_MAX(flags)) { goto fail; }
     flags = MM_LOOP_PROTECT_ADD(flags);
     // prototype page [ nt!_MMPTE_PROTOTYPE ]
     if(!(flags & VMM_FLAG_NOPAGING_IO) && MMWINX86_PTE_PROTOTYPE(pte)) {
@@ -1116,7 +1122,7 @@ BOOL MmWinX86_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_ DWORD va, _In_ DWORD pt
     dwPfNumber = MMWINX86_PTE_PAGE_FILE_NUMBER(pte);
     dwPfOffset = MMWINX86_PTE_PAGE_FILE_OFFSET(pte);
     // Potentially VAD-backed virtual memory
-    if(!VMM_KADDR32(va) && !(flags & VMM_FLAG_NOVAD) && (!pte || (dwPfOffset == 0x000fffff))) {
+    if(va && !VMM_KADDR32(va) && !(flags & VMM_FLAG_NOVAD) && (!pte || (dwPfOffset == 0x000fffff))) {
         pte = (DWORD)MmVad_PrototypePte(pProcess, va, &f, flags);
         if(!pte) {
             if(f) { InterlockedIncrement64(&ctxVmm->stat.page.cFailVAD); }
@@ -1180,12 +1186,16 @@ fail:
 * -- return
 */
 _Success_(return)
-BOOL MmWinX86PAE_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_ DWORD va, _In_ QWORD pte, _Out_writes_(4096) PBYTE pbPage, _Out_ PQWORD ppa, _In_ QWORD flags)
+BOOL MmWinX86PAE_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_opt_ DWORD va, _In_ QWORD pte, _Out_writes_(4096) PBYTE pbPage, _Out_ PQWORD ppa, _In_ QWORD flags)
 {
     BOOL f;
     DWORD dwPfNumber, dwPfOffset;
     *ppa = 0;
-    if(MMWINX86PAE_PTE_IS_HARDWARE(pte) || MM_LOOP_PROTECT_MAX(flags)) { goto fail; }
+    if(MMWINX86PAE_PTE_IS_HARDWARE(pte)) {
+        *ppa = pte & 0x0000003f'fffff000;
+        return FALSE;
+    }
+    if(!pte || MM_LOOP_PROTECT_MAX(flags)) { goto fail; }
     flags = MM_LOOP_PROTECT_ADD(flags);
     // prototype page [ nt!_MMPTE_PROTOTYPE ]
     if(!(flags & VMM_FLAG_NOPAGING_IO) && MMWINX86PAE_PTE_PROTOTYPE(pte)) {
@@ -1209,7 +1219,7 @@ BOOL MmWinX86PAE_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_ DWORD va, _In_ QWORD
     dwPfNumber = MMWINX86PAE_PTE_PAGE_FILE_NUMBER(pte);
     dwPfOffset = MMWINX86PAE_PTE_PAGE_FILE_OFFSET(pte);
     // Potentially VAD-backed virtual memory
-    if(!VMM_KADDR32(va) && !(flags & VMM_FLAG_NOVAD) && (!pte || (dwPfOffset == 0xffffffff))) {
+    if(va && !VMM_KADDR32(va) && !(flags & VMM_FLAG_NOVAD) && (!pte || (dwPfOffset == 0xffffffff))) {
         pte = MmVad_PrototypePte(pProcess, va, &f, flags);
         if(!pte) {
             if(f) { InterlockedIncrement64(&ctxVmm->stat.page.cFailVAD); }
@@ -1274,12 +1284,16 @@ fail:
 * -- return
 */
 _Success_(return)
-BOOL MmWinX64_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_ QWORD va, _In_ QWORD pte, _Out_writes_(4096) PBYTE pbPage, _Out_ PQWORD ppa, _In_ QWORD flags)
+BOOL MmWinX64_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD va, _In_ QWORD pte, _Out_writes_(4096) PBYTE pbPage, _Out_ PQWORD ppa, _In_ QWORD flags)
 {
     BOOL f;
     DWORD dwPfNumber, dwPfOffset;
     *ppa = 0;
-    if(MMWINX64_PTE_IS_HARDWARE(pte) || MM_LOOP_PROTECT_MAX(flags)) { goto fail; }
+    if(MMWINX64_PTE_IS_HARDWARE(pte)) {
+        *ppa = pte & 0x0000ffff'fffff000;
+        return FALSE;
+    }
+    if(!pte || MM_LOOP_PROTECT_MAX(flags)) { goto fail; }
     flags = MM_LOOP_PROTECT_ADD(flags);
     // prototype page
     if(!(flags & VMM_FLAG_NOPAGING_IO) && MMWINX64_PTE_PROTOTYPE(pte)) {
@@ -1303,7 +1317,7 @@ BOOL MmWinX64_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_ QWORD va, _In_ QWORD pt
     dwPfNumber = MMWINX64_PTE_PAGE_FILE_NUMBER(pte);
     dwPfOffset = MMWINX64_PTE_PAGE_FILE_OFFSET(pte);
     // Potentially VAD-backed virtual memory
-    if(!VMM_KADDR64(va) && !(flags & VMM_FLAG_NOVAD) && (!pte || (dwPfOffset == 0xffffffff))) {
+    if(va && !VMM_KADDR64(va) && !(flags & VMM_FLAG_NOVAD) && (!pte || (dwPfOffset == 0xffffffff))) {
         pte = MmVad_PrototypePte(pProcess, va, &f, flags);
         if(!pte) {
             if(f) { InterlockedIncrement64(&ctxVmm->stat.page.cFailVAD); }

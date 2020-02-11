@@ -1,14 +1,15 @@
 // util.h : definitions of various utility functions.
 //
-// (c) Ulf Frisk, 2018-2019
+// (c) Ulf Frisk, 2018-2020
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __UTIL_H__
 #define __UTIL_H__
 #include "vmm.h"
+#include "vmmdll.h"
 
 #define UTIL_ASCIIFILENAME_ALLOW \
-    "0000000000000000000000000000000011011111111111101111111111010100" \
+    "0000000000000000000000000000000011011111110111101111111111010100" \
     "1111111111111111111111111111011111111111111111111111111111110111" \
     "0000000000000000000000000000000000000000000000000000000000000000" \
     "0000000000000000000000000000000000000000000000000000000000000000"
@@ -107,12 +108,30 @@ DWORD Util_PathFileNameFix_Registry(_Out_writes_(MAX_PATH) LPWSTR wszOut, _In_op
 /*
 * Return the sub-string after the first '\' character in the sz NULL terminated
 * string. If no '\' is found the empty NULL terminated string is returned. The
-* returned value must not be free'd and is only valid as long as the sz param-
+* returned value must not be free'd and is only valid as long as the wsz param-
 * eter is valid.
 * -- wsz
 * -- return
 */
 LPWSTR Util_PathSplitNextW(_In_ LPWSTR wsz);
+
+/*
+* Return the sub-string after the last '\' character in the wsz NULL terminated
+* string. If no '\' is found original wsz string is returned. The returned data
+* must not be free'd and is only valid as long as the wsz parameter is valid.
+* -- sz/wsz
+* -- return
+*/
+LPSTR Util_PathSplitLastA(_In_ LPSTR sz);
+
+/*
+* Return the sub-string after the last '\' character in the wsz NULL terminated
+* string. If no '\' is found original wsz string is returned. The returned data
+* must not be free'd and is only valid as long as the wsz parameter is valid.
+* -- sz/wsz
+* -- return
+*/
+LPWSTR Util_PathSplitLastW(_In_ LPWSTR wsz);
 
 /*
 * Get the 64-bit address value from a path string that starts with 0x.
@@ -141,6 +160,15 @@ LPWSTR Util_PathSplit2_ExWCHAR(_In_ LPWSTR wsz, _Out_writes_(cwsz1) LPWSTR wsz1,
 * -- return = NULL if no split is found.
 */
 LPWSTR Util_PathFileSplitW(_In_ LPWSTR wsz, _Out_writes_(MAX_PATH) LPWSTR wszPath);
+
+/*
+* Prepend a path with a hexascii address value.
+* -- wszDstBuffer
+* -- va
+* -- f32
+* -- wszText
+*/
+VOID Util_PathPrependVA(_Out_writes_(MAX_PATH) LPWSTR wszDstBuffer, _In_ QWORD va, _In_ BOOL f32, _In_ LPWSTR wszText);
 
 /*
 * Compare ANSI string with WIDE string with an optional max length; otherwise
@@ -180,10 +208,12 @@ VOID Util_GetPathDll(_Out_writes_(MAX_PATH) PCHAR szPath, _In_opt_ HMODULE hModu
 /*
 * Duplicates a string.
 * CALLER LocalFree return
-* -- sz
+* -- sz/wsz
 * -- return fail: null, success: duplicated string - caller responsible for free with LocalFree()
 */
 LPSTR Util_StrDupA(_In_opt_ LPSTR sz);
+LPWSTR Util_StrDupW(_In_opt_ LPWSTR wsz);
+LPSTR Util_StrDupW2A(_In_opt_ LPWSTR wsz);
 
 /*
 * Convert a FILETIME into a human readable string.
@@ -206,7 +236,7 @@ PVOID Util_qfind(_In_ PVOID pvFind, _In_ DWORD cMap, _In_ PVOID pvMap, _In_ DWOR
 /*
 * Utility functions for read/write towards different underlying data representations.
 */
-NTSTATUS Util_VfsReadFile_FromPBYTE(_In_ PBYTE pbFile, _In_ QWORD cbFile, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
+NTSTATUS Util_VfsReadFile_FromPBYTE(_In_opt_ PBYTE pbFile, _In_ QWORD cbFile, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsReadFile_FromNumber(_In_ QWORD qwValue, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsReadFile_FromQWORD(_In_ QWORD qwValue, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset, _In_ BOOL fPrefix);
 NTSTATUS Util_VfsReadFile_FromDWORD(_In_ DWORD dwValue, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset, _In_ BOOL fPrefix);
@@ -214,5 +244,6 @@ NTSTATUS Util_VfsReadFile_FromBOOL(_In_ BOOL fValue, _Out_ PBYTE pb, _In_ DWORD 
 NTSTATUS Util_VfsWriteFile_BOOL(_Inout_ PBOOL pfTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsWriteFile_DWORD(_Inout_ PDWORD pdwTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset, _In_ DWORD dwMinAllow);
 NTSTATUS Util_VfsWriteFile_PBYTE(_Inout_ PBYTE pbTarget, _In_ DWORD cbTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset, _In_ BOOL fTerminatingNULL);
+VOID Util_VfsTimeStampFile(_In_opt_ PVMM_PROCESS pProcess, _Out_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo);
 
 #endif /* __UTIL_H__ */

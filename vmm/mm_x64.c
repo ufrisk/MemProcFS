@@ -1,6 +1,6 @@
 // mm_x64.c : implementation of the x64 / IA32e / long-mode paging / memory model.
 //
-// (c) Ulf Frisk, 2018-2019
+// (c) Ulf Frisk, 2018-2020
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmm.h"
@@ -48,14 +48,14 @@ BOOL MmX64_TlbPageTableVerify(_Inout_ PBYTE pb, _In_ QWORD pa, _In_ BOOL fSelfRe
     return TRUE;
 }
 
-VOID MmX64_TlbSpider_Stage(_In_ QWORD pa, _In_ BYTE iPML, _In_ BOOL fUserOnly, _In_ POB_VSET pPageSet)
+VOID MmX64_TlbSpider_Stage(_In_ QWORD pa, _In_ BYTE iPML, _In_ BOOL fUserOnly, _In_ POB_SET pPageSet)
 {
     QWORD i, pe;
     PVMMOB_MEM ptObMEM = NULL;
     // 1: retrieve from cache, add to staging if not found
     ptObMEM = VmmCacheGet(VMM_CACHE_TAG_TLB, pa);
     if(!ptObMEM) {
-        ObVSet_Push(pPageSet, pa);
+        ObSet_Push(pPageSet, pa);
         return;
     }
     if(iPML == 1) {
@@ -80,9 +80,9 @@ VOID MmX64_TlbSpider_Stage(_In_ QWORD pa, _In_ BYTE iPML, _In_ BOOL fUserOnly, _
 VOID MmX64_TlbSpider(_In_ PVMM_PROCESS pProcess)
 {
     DWORD i;
-    POB_VSET pObPageSet = NULL;
+    POB_SET pObPageSet = NULL;
     if(pProcess->fTlbSpiderDone) { return; }
-    if(!(pObPageSet = ObVSet_New())) { return; }
+    if(!(pObPageSet = ObSet_New())) { return; }
     Ob_DECREF(VmmTlbGetPageTable(pProcess->paDTB, FALSE));
     for(i = 0; i < 3; i++) {
         MmX64_TlbSpider_Stage(pProcess->paDTB, 4, pProcess->fUserOnly, pObPageSet);

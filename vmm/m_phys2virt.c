@@ -1,13 +1,11 @@
 // m_phys2virt.c : implementation of the phys2virt built-in module.
 //
-// (c) Ulf Frisk, 2019
+// (c) Ulf Frisk, 2019-2020
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-#include "m_modules.h"
 #include "pluginmanager.h"
 #include "util.h"
 #include "vmm.h"
-#include "vmmvfs.h"
 
 LPCSTR szMPHYS2VIRT_README =
     "Information about the phys2virt module                                       \n" \
@@ -246,9 +244,9 @@ BOOL Phys2Virt_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
         Phys2Virt_GetUpdateAll(NULL, &c);
         cb = c * (8 + (ctxVmm->f32 ? 8 : 16));
     }
-    VMMDLL_VfsList_AddFile(pFileList, "readme", strlen(szMPHYS2VIRT_README));
-    VMMDLL_VfsList_AddFile(pFileList, "phys", 16);
-    VMMDLL_VfsList_AddFile(pFileList, "virt", cb);
+    VMMDLL_VfsList_AddFile(pFileList, L"readme", strlen(szMPHYS2VIRT_README), NULL);
+    VMMDLL_VfsList_AddFile(pFileList, L"phys", 16, NULL);
+    VMMDLL_VfsList_AddFile(pFileList, L"virt", cb, NULL);
     return TRUE;
 }
 
@@ -262,10 +260,9 @@ BOOL Phys2Virt_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 */
 VOID M_Phys2Virt_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
-    PVMMOB_PHYS2VIRT_INFORMATION pObPhys2Virt = NULL;
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if(!((pRI->tpMemoryModel == VMM_MEMORYMODEL_X64) || (pRI->tpMemoryModel == VMM_MEMORYMODEL_X86) || (pRI->tpMemoryModel == VMM_MEMORYMODEL_X86PAE))) { return; }
-    wcscpy_s(pRI->reg_info.wszModuleName, 32, L"phys2virt");             // module name
+    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\phys2virt");            // module name
     pRI->reg_info.fRootModule = TRUE;                                    // module shows in root directory
     pRI->reg_info.fProcessModule = TRUE;                                 // module shows in process directory
     pRI->reg_fn.pfnList = Phys2Virt_List;                                // List function supported

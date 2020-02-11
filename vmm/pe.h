@@ -2,7 +2,7 @@
 //        virtual address space. This may mostly (but not exclusively) be used
 //        by Windows functionality.
 //
-// (c) Ulf Frisk, 2018-2019
+// (c) Ulf Frisk, 2018-2020
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __PE_H__
@@ -13,7 +13,8 @@
                                                   (DWORD)(QWORD)(address) - \
                                                   (DWORD)(QWORD)(&((type *)0)->field)))
 
-static const LPCSTR PE_DATA_DIRECTORIES[16] = { "EXPORT", "IMPORT", "RESOURCE", "EXCEPTION", "SECURITY", "BASERELOC", "DEBUG", "ARCHITECTURE", "GLOBALPTR", "TLS", "LOAD_CONFIG", "BOUND_IMPORT", "IAT", "DELAY_IMPORT", "COM_DESCRIPTOR", "RESERVED" };
+static const LPCSTR  PE_DATA_DIRECTORIES[16]  = {  "EXPORT",  "IMPORT",  "RESOURCE",  "EXCEPTION",  "SECURITY",  "BASERELOC",  "DEBUG",  "ARCHITECTURE",  "GLOBALPTR",  "TLS",  "LOAD_CONFIG",  "BOUND_IMPORT",  "IAT",  "DELAY_IMPORT",  "COM_DESCRIPTOR",  "RESERVED" };
+static const LPCWSTR PE_DATA_DIRECTORIESW[16] = { L"EXPORT", L"IMPORT", L"RESOURCE", L"EXCEPTION", L"SECURITY", L"BASERELOC", L"DEBUG", L"ARCHITECTURE", L"GLOBALPTR", L"TLS", L"LOAD_CONFIG", L"BOUND_IMPORT", L"IAT", L"DELAY_IMPORT", L"COM_DESCRIPTOR", L"RESERVED" };
 
 typedef struct tdIMAGE_DEBUG_TYPE_CODEVIEW_PDBINFO {
     DWORD Signature;

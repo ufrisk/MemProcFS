@@ -70,7 +70,7 @@
       <ModuleDefinitionFile>vmmdll.def</ModuleDefinitionFile>
       <ProgramDatabaseFile>$(OutDir)\lib\$(TargetName).pdb</ProgramDatabaseFile>
       <ImportLibrary>$(OutDir)lib\$(TargetName).lib</ImportLibrary>
-      <AdditionalDependencies>$(SolutionDir)\files\leechcore.lib;Ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(SolutionDir)\files\leechcore.lib;Shlwapi.lib;Ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
       <Command>
@@ -102,7 +102,7 @@ copy $(ProjectDir)\vmmdll.h $(SolutionDir)\files\ /y</Command>
       <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
       <ProgramDatabaseFile>$(OutDir)\lib\$(TargetName).pdb</ProgramDatabaseFile>
       <ImportLibrary>$(OutDir)lib\$(TargetName).lib</ImportLibrary>
-      <AdditionalDependencies>$(SolutionDir)\files\leechcore.lib;Ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(SolutionDir)\files\leechcore.lib;Shlwapi.lib;Ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
       <Command>
@@ -117,7 +117,6 @@ copy $(ProjectDir)\vmmdll.h $(SolutionDir)\files\ /y</Command>
     <ClInclude Include="leechcore.h" />
     <ClInclude Include="mm.h" />
     <ClInclude Include="m_modules.h" />
-    <ClInclude Include="m_vmmvfs_dump.h" />
     <ClInclude Include="ob.h" />
     <ClInclude Include="pdb.h" />
     <ClInclude Include="pe.h" />
@@ -131,8 +130,9 @@ copy $(ProjectDir)\vmmdll.h $(SolutionDir)\files\ /y</Command>
     <ClInclude Include="vmmdll.h" />
     <ClInclude Include="vmmproc.h" />
     <ClInclude Include="vmmwin.h" />
-    <ClInclude Include="vmmvfs.h" />
+    <ClInclude Include="vmmwindef.h" />
     <ClInclude Include="vmmwininit.h" />
+    <ClInclude Include="vmmwinobj.h" />
     <ClInclude Include="vmmwinreg.h" />
     <ClInclude Include="vmmwintcpip.h" />
   </ItemGroup>
@@ -142,19 +142,24 @@ copy $(ProjectDir)\vmmdll.h $(SolutionDir)\files\ /y</Command>
     <ClCompile Include="mm_x64.c" />
     <ClCompile Include="mm_x86.c" />
     <ClCompile Include="mm_x86pae.c" />
+    <ClCompile Include="m_file_handles_vads.c" />
+    <ClCompile Include="m_file_modules.c" />
     <ClCompile Include="m_handleinfo.c" />
     <ClCompile Include="m_memmap.c" />
-    <ClCompile Include="m_pedump.c" />
     <ClCompile Include="m_phys2virt.c" />
+    <ClCompile Include="m_procuser.c" />
     <ClCompile Include="m_status.c" />
     <ClCompile Include="m_sysinfo.c" />
+    <ClCompile Include="m_sysinfo_net.c" />
+    <ClCompile Include="m_sysinfo_proc.c" />
     <ClCompile Include="m_threadinfo.c" />
-    <ClCompile Include="m_vmmvfs_dump.c" />
+    <ClCompile Include="m_vfsproc.c" />
+    <ClCompile Include="m_vfsroot.c" />
     <ClCompile Include="m_winreg.c" />
     <ClCompile Include="ob_container.c" />
     <ClCompile Include="ob_core.c" />
     <ClCompile Include="ob_map.c" />
-    <ClCompile Include="ob_vset.c" />
+    <ClCompile Include="ob_set.c" />
     <ClCompile Include="pdb.c" />
     <ClCompile Include="pe.c" />
     <ClCompile Include="statistics.c" />
@@ -169,6 +174,7 @@ copy $(ProjectDir)\vmmdll.h $(SolutionDir)\files\ /y</Command>
     <ClCompile Include="pluginmanager.c" />
     <ClCompile Include="m_virt2phys.c" />
     <ClCompile Include="vmmwininit.c" />
+    <ClCompile Include="vmmwinobj.c" />
     <ClCompile Include="vmmwinreg.c" />
     <ClCompile Include="vmmwintcpip.c" />
   </ItemGroup>

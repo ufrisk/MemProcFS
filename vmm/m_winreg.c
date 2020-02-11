@@ -1,9 +1,8 @@
 // m_winreg.c : implementation related to the WinReg built-in module.
 //
-// (c) Ulf Frisk, 2019
+// (c) Ulf Frisk, 2019-2020
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-#include "m_modules.h"
 #include "vmm.h"
 #include "vmmwinreg.h"
 #include "util.h"
@@ -95,7 +94,7 @@ DWORD MWinReg_Read_KeyValue_GetAscii(_In_ LPSTR szKeyName, _In_ LPWSTR wszData, 
     if(cbData > 2) {
         for(o = 0; (o < (cbData >> 1) - 1) && (cszMeta < KEY_META_BUFFER_SIZE - 2); o++) {
             c = wszData[o];
-            c = (c < 128 && c != '\n') ? UTIL_PRINTASCII[c] : ((c < 256) ? c : '.');
+            c = (c < 128 && c != '\n') ? UTIL_PRINTASCII[c] : ((c < 256) ? c : ' ');
             szMeta[cszMeta++] = (CHAR)c;
         }
         szMeta[cszMeta++] = '\n';
@@ -126,6 +125,7 @@ NTSTATUS MWinReg_Read_KeyValue(_In_ LPWSTR wszPathFull, _Out_ PBYTE pb, _In_ DWO
     if(!(szMeta = (LPSTR)LocalAlloc(0, KEY_META_BUFFER_SIZE))) { goto finish; }
     if(!(pbData = LocalAlloc(LMEM_ZEROINIT, KEY_META_BUFFER_SIZE))) { goto finish; }
     VmmWinReg_ValueQuery1(pObHive, wszSubPath, &dwType, pbData, KEY_META_BUFFER_SIZE, &cbData, 0) || VmmWinReg_ValueQuery1(pObHive, wszSubPath, &dwType, NULL, 0, &cbData, 0);
+    cbData = min(cbData, KEY_META_BUFFER_SIZE);
     // process read data
     switch(dwType) {
         case REG_NONE:
@@ -147,7 +147,7 @@ NTSTATUS MWinReg_Read_KeyValue(_In_ LPWSTR wszPathFull, _Out_ PBYTE pb, _In_ DWO
             cszMeta = snprintf(szMeta, KEY_META_BUFFER_SIZE, "REG_DWORD_BIG_ENDIAN\n%2x%2x%2x%2x\n", pbData[0], pbData[1], pbData[2], pbData[3]);
             break;
         case REG_LINK:
-            cszMeta = MWinReg_Read_KeyValue_GetAscii("REG_LINK", (LPWSTR)pbData, cbData, szMeta);
+            cszMeta = MWinReg_Read_KeyValue_GetAscii("REG_LINK", (LPWSTR)pbData, cbData + 2, szMeta);
             break;
         case REG_MULTI_SZ:
             for(i = 0; (cbData >= 6) && (i < cbData - 4); i += 2) { // replace NULL WCHAR between strings with newline
@@ -197,7 +197,7 @@ NTSTATUS MWinReg_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWOR
         Ob_DECREF(pObHive);
         return fResult ? VMMDLL_STATUS_SUCCESS : VMMDLL_STATUS_END_OF_FILE;
     }
-    if(!wcscmp(wszTopPath, L"by-hive") || !wcscmp(wszTopPath, L"HKLM")) {
+    if(!wcscmp(wszTopPath, L"by-hive") || !wcscmp(wszTopPath, L"HKLM") || !wcscmp(wszTopPath, L"HKU")) {
         return MWinReg_Read_KeyValue(ctx->wszPath, pb, cb, pcbRead, cbOffset);
     }
     return VMMDLL_STATUS_FILE_INVALID;
@@ -274,7 +274,7 @@ VOID MWinReg_List_KeyAndValue(_Inout_ PHANDLE pFileList, _In_ POB_REGISTRY_HIVE 
             VmmWinReg_KeyInfo(pHive, pObSubkey, &KeyInfo);
             FileExInfo.fCompressed = !KeyInfo.fActive;
             FileExInfo.qwLastWriteTime = KeyInfo.ftLastWrite;
-            VMMDLL_VfsList_AddDirectoryEx(pFileList, NULL, KeyInfo.wszName, &FileExInfo);
+            VMMDLL_VfsList_AddDirectory(pFileList, KeyInfo.wszName, &FileExInfo);
         }
     }
     // list values
@@ -284,10 +284,10 @@ VOID MWinReg_List_KeyAndValue(_Inout_ PHANDLE pFileList, _In_ POB_REGISTRY_HIVE 
         FileExInfo.qwLastWriteTime = KeyInfo.ftLastWrite;
         while((pObValue = ObMap_GetNext(pmObValues, pObValue))) {
             VmmWinReg_ValueInfo(pHive, pObValue, &ValueInfo);
-            VMMDLL_VfsList_AddFileEx(pFileList, NULL, ValueInfo.wszName, ValueInfo.cbData, &FileExInfo);
+            VMMDLL_VfsList_AddFile(pFileList, ValueInfo.wszName, ValueInfo.cbData, &FileExInfo);
             wcsncpy_s(wszNameMeta, MAX_PATH, ValueInfo.wszName, _TRUNCATE);
             wcsncat_s(wszNameMeta, MAX_PATH, L".txt", _TRUNCATE);
-            VMMDLL_VfsList_AddFileEx(pFileList, NULL, wszNameMeta, MWinReg_List_MWinReg_List_KeyAndValueMetaSize(&ValueInfo), &FileExInfo);
+            VMMDLL_VfsList_AddFile(pFileList, wszNameMeta, MWinReg_List_MWinReg_List_KeyAndValueMetaSize(&ValueInfo), &FileExInfo);
         }
     }
     Ob_DECREF(pmObSubkeys);
@@ -297,21 +297,23 @@ VOID MWinReg_List_KeyAndValue(_Inout_ PHANDLE pFileList, _In_ POB_REGISTRY_HIVE 
 
 BOOL MWinReg_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 {
-    CHAR szNameHive[148];
+    DWORD i;
+    WCHAR wszNameHive[MAX_PATH];
     WCHAR wszPathHive[MAX_PATH];
+    PVMMOB_MAP_USER pObUserMap = NULL;
     POB_REGISTRY_HIVE pObHive = NULL;
     VMMDLL_VFS_FILELIST_EXINFO FileExInfo = { 0 };
     if(!ctx->wszPath[0]) {
-        VMMDLL_VfsList_AddDirectory(pFileList, "hive_files");
-        VMMDLL_VfsList_AddDirectory(pFileList, "by-hive");
-        VMMDLL_VfsList_AddDirectory(pFileList, "HKLM");
+        VMMDLL_VfsList_AddDirectory(pFileList, L"hive_files", NULL);
+        VMMDLL_VfsList_AddDirectory(pFileList, L"by-hive", NULL);
+        VMMDLL_VfsList_AddDirectory(pFileList, L"HKLM", NULL);
+        VMMDLL_VfsList_AddDirectory(pFileList, L"HKU", NULL);
         return TRUE;
     }
     if(!wcscmp(ctx->wszPath, L"hive_files")) {
         while((pObHive = VmmWinReg_HiveGetNext(pObHive))) {
-            strncpy_s(szNameHive, sizeof(szNameHive), pObHive->szName, _TRUNCATE);
-            strncat_s(szNameHive, sizeof(szNameHive), ".reghive", _TRUNCATE);
-            VMMDLL_VfsList_AddFile(pFileList, szNameHive, pObHive->cbLength + 0x1000ULL);
+            _snwprintf_s(wszNameHive, MAX_PATH, MAX_PATH, L"%S.reghive", pObHive->szName);
+            VMMDLL_VfsList_AddFile(pFileList, wszNameHive, pObHive->cbLength + 0x1000ULL, NULL);
         }
         return TRUE;
     }
@@ -319,7 +321,8 @@ BOOL MWinReg_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
         // list hives
         if(!wcscmp(ctx->wszPath, L"by-hive")) {
             while((pObHive = VmmWinReg_HiveGetNext(pObHive))) {
-                VMMDLL_VfsList_AddDirectory(pFileList, pObHive->szName);
+                _snwprintf_s(wszNameHive, MAX_PATH, MAX_PATH, L"%S", pObHive->szName);
+                VMMDLL_VfsList_AddDirectory(pFileList, wszNameHive, NULL);
             }
             return TRUE;
         }
@@ -336,15 +339,40 @@ BOOL MWinReg_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
             FileExInfo.fCompressed = TRUE;
         }
         if(!wcscmp(ctx->wszPath, L"HKLM") || !wcscmp(ctx->wszPath, L"HKLM\\ORPHAN")) {
-            VMMDLL_VfsList_AddDirectoryEx(pFileList, "BCD", NULL, &FileExInfo);
-            VMMDLL_VfsList_AddDirectoryEx(pFileList, "HARDWARE", NULL, &FileExInfo);
-            VMMDLL_VfsList_AddDirectoryEx(pFileList, "SAM", NULL, &FileExInfo);
-            VMMDLL_VfsList_AddDirectoryEx(pFileList, "SECURITY", NULL, &FileExInfo);
-            VMMDLL_VfsList_AddDirectoryEx(pFileList, "SOFTWARE", NULL, &FileExInfo);
-            VMMDLL_VfsList_AddDirectoryEx(pFileList, "SYSTEM", NULL, &FileExInfo);
+            VMMDLL_VfsList_AddDirectory(pFileList, L"BCD",  &FileExInfo);
+            VMMDLL_VfsList_AddDirectory(pFileList, L"HARDWARE",  &FileExInfo);
+            VMMDLL_VfsList_AddDirectory(pFileList, L"SAM",  &FileExInfo);
+            VMMDLL_VfsList_AddDirectory(pFileList, L"SECURITY",  &FileExInfo);
+            VMMDLL_VfsList_AddDirectory(pFileList, L"SOFTWARE",  &FileExInfo);
+            VMMDLL_VfsList_AddDirectory(pFileList, L"SYSTEM",  &FileExInfo);
             if(!wcscmp(ctx->wszPath, L"HKLM")) {
                 FileExInfo.fCompressed = TRUE;
-                VMMDLL_VfsList_AddDirectoryEx(pFileList, "ORPHAN", NULL, &FileExInfo);
+                VMMDLL_VfsList_AddDirectory(pFileList, L"ORPHAN",  &FileExInfo);
+            }
+            return TRUE;
+        }
+        // list hive contents
+        if(VmmWinReg_PathHiveGetByFullPath(ctx->wszPath, &pObHive, wszPathHive)) {
+            MWinReg_List_KeyAndValue(pFileList, pObHive, wszPathHive);
+            Ob_DECREF_NULL(&pObHive);
+            return TRUE;
+        }
+        return FALSE;
+    }
+    if(!wcsncmp(ctx->wszPath, L"HKU", 3)) {
+        if(!wcsncmp(ctx->wszPath, L"HKU\\ORPHAN", 10)) {
+            FileExInfo.fCompressed = TRUE;
+        }
+        if(!wcscmp(ctx->wszPath, L"HKU") || !wcscmp(ctx->wszPath, L"HKU\\ORPHAN")) {
+            if(VmmMap_GetUser(&pObUserMap)) {
+                for(i = 0; i < pObUserMap->cMap; i++) {
+                    VMMDLL_VfsList_AddDirectory(pFileList, pObUserMap->pMap[i].wszText, &FileExInfo);
+                }
+                Ob_DECREF_NULL(&pObUserMap);
+            }
+            if(!wcscmp(ctx->wszPath, L"HKU")) {
+                FileExInfo.fCompressed = TRUE;
+                VMMDLL_VfsList_AddDirectory(pFileList, L"ORPHAN", &FileExInfo);
             }
             return TRUE;
         }
@@ -363,7 +391,7 @@ VOID M_WinReg_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if((pRI->tpSystem != VMM_SYSTEM_WINDOWS_X64) && (pRI->tpSystem != VMM_SYSTEM_WINDOWS_X86)) { return; }
-    wcscpy_s(pRI->reg_info.wszModuleName, 32, L"registry");     // module name
+    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\registry");    // module name
     pRI->reg_info.fRootModule = TRUE;                           // module shows in root directory
     pRI->reg_fn.pfnList = MWinReg_List;                         // List function supported
     pRI->reg_fn.pfnRead = MWinReg_Read;                         // Read function supported

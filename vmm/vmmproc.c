@@ -1,6 +1,6 @@
 // vfsproc.c : implementation of functions related to operating system and process parsing of virtual memory.
 //
-// (c) Ulf Frisk, 2018-2019
+// (c) Ulf Frisk, 2018-2020
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -8,6 +8,7 @@
 #include "vmmproc.h"
 #include "vmmwin.h"
 #include "vmmwininit.h"
+#include "vmmwinobj.h"
 #include "vmmwinreg.h"
 #include "pluginmanager.h"
 #include "statistics.h"
@@ -119,7 +120,7 @@ DWORD VmmProcCacheUpdaterThread()
             InterlockedIncrement64(&ctxVmm->stat.cPhysRefreshCache);
             VmmCacheClear(VMM_CACHE_TAG_PAGING);
             InterlockedIncrement64(&ctxVmm->stat.cPageRefreshCache);
-            ObVSet_Clear(ctxVmm->Cache.PAGING_FAILED);
+            ObSet_Clear(ctxVmm->Cache.PAGING_FAILED);
         }
         if(fTLB) {
             VmmCacheClear(VMM_CACHE_TAG_TLB);
@@ -140,12 +141,14 @@ DWORD VmmProcCacheUpdaterThread()
             }
             // send notify
             if(fProcTotal) {
+                VmmWinObj_Refresh();
                 PluginManager_Notify(VMMDLL_PLUGIN_EVENT_TOTALREFRESH, NULL, 0);
             }
         }
-        // refresh registry
+        // refresh registry and user map
         if(fRegistry) {
             VmmWinReg_Refresh();
+            VmmWinUser_Refresh();
         }
         LeaveCriticalSection(&ctxVmm->MasterLock);
     }

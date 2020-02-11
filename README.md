@@ -134,3 +134,11 @@ v1.1-v2.10
 * Handles.
 * Threads.
 * API: new features and updates (module names from ansi to wide string).
+
+[v3.1](https://github.com/ufrisk/MemProcFS/releases/tag/v3.1)
+* Bug fixes and refactorings.
+* Code signing of binaries.
+* New Features:
+  * Users.
+  * Volatile registry keys.
+  * File recovery via Handles and Vads.  

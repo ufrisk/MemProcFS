@@ -1,10 +1,11 @@
 // mm_vad.c : implementation of Windows VAD (virtual address descriptor) functionality.
 //
-// (c) Ulf Frisk, 2019
+// (c) Ulf Frisk, 2019-2020
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmm.h"
 #include "mm.h"
+#include "vmmwindef.h"
 
 #define MMVAD_POOLTAG_VAD       'Vad '
 #define MMVAD_POOLTAG_VADF      'VadF'
@@ -411,12 +412,12 @@ BOOL MmVad_Spider_PoolTagAny(_In_ DWORD dwPoolTag, _In_ DWORD cPoolTag, ...)
     return FALSE;
 }
 
-PVMM_MAP_VADENTRY MmVad_Spider_MMVAD32_XP(_In_ PVMM_PROCESS pSystemProcess, _In_ QWORD va, _In_ PVMMOB_MAP_VAD pmVad, _In_ POB_VSET psAll, _In_ POB_VSET psTry1, _In_opt_ POB_VSET psTry2, _In_ QWORD fVmmRead, _In_ DWORD dwReserved)
+PVMM_MAP_VADENTRY MmVad_Spider_MMVAD32_XP(_In_ PVMM_PROCESS pSystemProcess, _In_ QWORD va, _In_ PVMMOB_MAP_VAD pmVad, _In_ POB_SET psAll, _In_ POB_SET psTry1, _In_opt_ POB_SET psTry2, _In_ QWORD fVmmRead, _In_ DWORD dwReserved)
 {
     _MMVAD32_XP v = { 0 };
     PVMM_MAP_VADENTRY e;
     if(!VmmRead2(pSystemProcess, va, (PBYTE)&v, sizeof(_MMVAD32_XP), fVmmRead | VMM_FLAG_FORCECACHE_READ)) {
-        ObVSet_Push(psTry2, va);
+        ObSet_Push(psTry2, va);
         return NULL;
     }
     if((v.EndingVpn < v.StartingVpn) || !MmVad_Spider_PoolTagAny(v.PoolTag, 5, MMVAD_POOLTAG_VADS, MMVAD_POOLTAG_VAD, MMVAD_POOLTAG_VADL, MMVAD_POOLTAG_VADM, MMVAD_POOLTAG_VADF)) {
@@ -425,12 +426,12 @@ PVMM_MAP_VADENTRY MmVad_Spider_MMVAD32_XP(_In_ PVMM_PROCESS pSystemProcess, _In_
     // short vad
     e = &pmVad->pMap[pmVad->cMap++];
     if(VMM_KADDR32_8(v.LeftChild)) {
-        ObVSet_Push(psAll, v.LeftChild - 8);
-        ObVSet_Push(psTry1, v.LeftChild - 8);
+        ObSet_Push(psAll, v.LeftChild - 8);
+        ObSet_Push(psTry1, v.LeftChild - 8);
     }
     if(VMM_KADDR32_8(v.RightChild)) {
-        ObVSet_Push(psAll, v.RightChild - 8);
-        ObVSet_Push(psTry1, v.RightChild - 8);
+        ObSet_Push(psAll, v.RightChild - 8);
+        ObSet_Push(psTry1, v.RightChild - 8);
     }
     e->vaStart = (QWORD)v.StartingVpn << 12;
     e->vaEnd = ((QWORD)v.EndingVpn << 12) | 0xfff;
@@ -450,12 +451,12 @@ PVMM_MAP_VADENTRY MmVad_Spider_MMVAD32_XP(_In_ PVMM_PROCESS pSystemProcess, _In_
     return e;
 }
 
-PVMM_MAP_VADENTRY MmVad_Spider_MMVAD32_7(_In_ PVMM_PROCESS pSystemProcess, _In_ QWORD va, _In_ PVMMOB_MAP_VAD pmVad, _In_ POB_VSET psAll, _In_ POB_VSET psTry1, _In_opt_ POB_VSET psTry2, _In_ QWORD fVmmRead, _In_ DWORD dwReserved)
+PVMM_MAP_VADENTRY MmVad_Spider_MMVAD32_7(_In_ PVMM_PROCESS pSystemProcess, _In_ QWORD va, _In_ PVMMOB_MAP_VAD pmVad, _In_ POB_SET psAll, _In_ POB_SET psTry1, _In_opt_ POB_SET psTry2, _In_ QWORD fVmmRead, _In_ DWORD dwReserved)
 {
     _MMVAD32_7 v = { 0 };
     PVMM_MAP_VADENTRY e;
     if(!VmmRead2(pSystemProcess, va, (PBYTE)&v, sizeof(_MMVAD32_7), fVmmRead | VMM_FLAG_FORCECACHE_READ)) {
-        ObVSet_Push(psTry2, va);
+        ObSet_Push(psTry2, va);
         return NULL;
     }
     if((v.EndingVpn < v.StartingVpn) || !MmVad_Spider_PoolTagAny(v.PoolTag, 5, MMVAD_POOLTAG_VADS, MMVAD_POOLTAG_VAD, MMVAD_POOLTAG_VADL, MMVAD_POOLTAG_VADM, MMVAD_POOLTAG_VADF)) {
@@ -464,12 +465,12 @@ PVMM_MAP_VADENTRY MmVad_Spider_MMVAD32_7(_In_ PVMM_PROCESS pSystemProcess, _In_ 
     // short vad
     e = &pmVad->pMap[pmVad->cMap++];
     if(VMM_KADDR32_8(v.LeftChild)) {
-        ObVSet_Push(psAll, v.LeftChild - 8);
-        ObVSet_Push(psTry1, v.LeftChild - 8);
+        ObSet_Push(psAll, v.LeftChild - 8);
+        ObSet_Push(psTry1, v.LeftChild - 8);
     }
     if(VMM_KADDR32_8(v.RightChild)) {
-        ObVSet_Push(psAll, v.RightChild - 8);
-        ObVSet_Push(psTry1, v.RightChild - 8);
+        ObSet_Push(psAll, v.RightChild - 8);
+        ObSet_Push(psTry1, v.RightChild - 8);
     }
     e->vaStart = (QWORD)v.StartingVpn << 12;
     e->vaEnd = ((QWORD)v.EndingVpn << 12) | 0xfff;
@@ -488,12 +489,12 @@ PVMM_MAP_VADENTRY MmVad_Spider_MMVAD32_7(_In_ PVMM_PROCESS pSystemProcess, _In_ 
     return e;
 }
 
-PVMM_MAP_VADENTRY MmVad_Spider_MMVAD64_7(_In_ PVMM_PROCESS pSystemProcess, _In_ QWORD va, _In_ PVMMOB_MAP_VAD pmVad, _In_ POB_VSET psAll, _In_ POB_VSET psTry1, _In_opt_ POB_VSET psTry2, _In_ QWORD fVmmRead, _In_ DWORD dwReserved)
+PVMM_MAP_VADENTRY MmVad_Spider_MMVAD64_7(_In_ PVMM_PROCESS pSystemProcess, _In_ QWORD va, _In_ PVMMOB_MAP_VAD pmVad, _In_ POB_SET psAll, _In_ POB_SET psTry1, _In_opt_ POB_SET psTry2, _In_ QWORD fVmmRead, _In_ DWORD dwReserved)
 {
     _MMVAD64_7 v = { 0 };
     PVMM_MAP_VADENTRY e;
     if(!VmmRead2(pSystemProcess, va, (PBYTE)&v, sizeof(_MMVAD64_7), fVmmRead | VMM_FLAG_FORCECACHE_READ)) {
-        ObVSet_Push(psTry2, va);
+        ObSet_Push(psTry2, va);
         return NULL;
     }
     if((v.EndingVpn < v.StartingVpn) || !MmVad_Spider_PoolTagAny(v.PoolTag, 5, MMVAD_POOLTAG_VADS, MMVAD_POOLTAG_VAD, MMVAD_POOLTAG_VADL, MMVAD_POOLTAG_VADM, MMVAD_POOLTAG_VADF)) {
@@ -502,12 +503,12 @@ PVMM_MAP_VADENTRY MmVad_Spider_MMVAD64_7(_In_ PVMM_PROCESS pSystemProcess, _In_ 
     // short vad
     e = &pmVad->pMap[pmVad->cMap++];
     if(VMM_KADDR64_16(v.LeftChild)) {
-        ObVSet_Push(psAll, v.LeftChild - 0x10);
-        ObVSet_Push(psTry1, v.LeftChild - 0x10);
+        ObSet_Push(psAll, v.LeftChild - 0x10);
+        ObSet_Push(psTry1, v.LeftChild - 0x10);
     }
     if(VMM_KADDR64_16(v.RightChild)) {
-        ObVSet_Push(psAll, v.RightChild - 0x10);
-        ObVSet_Push(psTry1, v.RightChild - 0x10);
+        ObSet_Push(psAll, v.RightChild - 0x10);
+        ObSet_Push(psTry1, v.RightChild - 0x10);
     }
     e->vaStart = (QWORD)v.StartingVpn << 12;
     e->vaEnd = ((QWORD)v.EndingVpn << 12) | 0xfff;
@@ -526,12 +527,12 @@ PVMM_MAP_VADENTRY MmVad_Spider_MMVAD64_7(_In_ PVMM_PROCESS pSystemProcess, _In_ 
     return e;
 }
 
-PVMM_MAP_VADENTRY MmVad_Spider_MMVAD32_80(_In_ PVMM_PROCESS pSystemProcess, _In_ QWORD va, _In_ PVMMOB_MAP_VAD pmVad, _In_ POB_VSET psAll, _In_ POB_VSET psTry1, _In_opt_ POB_VSET psTry2, _In_ QWORD fVmmRead, _In_ DWORD dwReserved)
+PVMM_MAP_VADENTRY MmVad_Spider_MMVAD32_80(_In_ PVMM_PROCESS pSystemProcess, _In_ QWORD va, _In_ PVMMOB_MAP_VAD pmVad, _In_ POB_SET psAll, _In_ POB_SET psTry1, _In_opt_ POB_SET psTry2, _In_ QWORD fVmmRead, _In_ DWORD dwReserved)
 {
     _MMVAD32_80 v = { 0 };
     PVMM_MAP_VADENTRY e;
     if(!VmmRead2(pSystemProcess, va, (PBYTE)&v, sizeof(_MMVAD32_80), fVmmRead | VMM_FLAG_FORCECACHE_READ)) {
-        ObVSet_Push(psTry2, va);
+        ObSet_Push(psTry2, va);
         return NULL;
     }
     if((v.EndingVpn < v.StartingVpn) || !MmVad_Spider_PoolTagAny(v.PoolTag, 5, MMVAD_POOLTAG_VADS, MMVAD_POOLTAG_VAD, MMVAD_POOLTAG_VADL, MMVAD_POOLTAG_VADM, MMVAD_POOLTAG_VADF)) {
@@ -540,12 +541,12 @@ PVMM_MAP_VADENTRY MmVad_Spider_MMVAD32_80(_In_ PVMM_PROCESS pSystemProcess, _In_
     // short vad
     e = &pmVad->pMap[pmVad->cMap++];
     if(VMM_KADDR64_16(v.LeftChild)) {
-        ObVSet_Push(psAll, v.LeftChild - 8);
-        ObVSet_Push(psTry1, v.LeftChild - 8);
+        ObSet_Push(psAll, v.LeftChild - 8);
+        ObSet_Push(psTry1, v.LeftChild - 8);
     }
     if(VMM_KADDR64_16(v.RightChild)) {
-        ObVSet_Push(psAll, v.RightChild - 8);
-        ObVSet_Push(psTry1, v.RightChild - 8);
+        ObSet_Push(psAll, v.RightChild - 8);
+        ObSet_Push(psTry1, v.RightChild - 8);
     }
     e->vaStart = (QWORD)v.StartingVpn << 12;
     e->vaEnd = ((QWORD)v.EndingVpn << 12) | 0xfff;
@@ -565,12 +566,12 @@ PVMM_MAP_VADENTRY MmVad_Spider_MMVAD32_80(_In_ PVMM_PROCESS pSystemProcess, _In_
     return e;
 }
 
-PVMM_MAP_VADENTRY MmVad_Spider_MMVAD64_80(_In_ PVMM_PROCESS pSystemProcess, _In_ QWORD va, _In_ PVMMOB_MAP_VAD pmVad, _In_ POB_VSET psAll, _In_ POB_VSET psTry1, _In_opt_ POB_VSET psTry2, _In_ QWORD fVmmRead, _In_ DWORD dwReserved)
+PVMM_MAP_VADENTRY MmVad_Spider_MMVAD64_80(_In_ PVMM_PROCESS pSystemProcess, _In_ QWORD va, _In_ PVMMOB_MAP_VAD pmVad, _In_ POB_SET psAll, _In_ POB_SET psTry1, _In_opt_ POB_SET psTry2, _In_ QWORD fVmmRead, _In_ DWORD dwReserved)
 {
     _MMVAD64_80 v = { 0 };
     PVMM_MAP_VADENTRY e;
     if(!VmmRead2(pSystemProcess, va, (PBYTE)&v, sizeof(_MMVAD64_80), fVmmRead | VMM_FLAG_FORCECACHE_READ)) {
-        ObVSet_Push(psTry2, va);
+        ObSet_Push(psTry2, va);
         return NULL;
     }
     if((v.EndingVpn < v.StartingVpn) || !MmVad_Spider_PoolTagAny(v.PoolTag, 5, MMVAD_POOLTAG_VADS, MMVAD_POOLTAG_VAD, MMVAD_POOLTAG_VADL, MMVAD_POOLTAG_VADM, MMVAD_POOLTAG_VADF)) {
@@ -579,12 +580,12 @@ PVMM_MAP_VADENTRY MmVad_Spider_MMVAD64_80(_In_ PVMM_PROCESS pSystemProcess, _In_
     // short vad
     e = &pmVad->pMap[pmVad->cMap++];
     if(VMM_KADDR64_16(v.LeftChild)) {
-        ObVSet_Push(psAll, v.LeftChild - 0x10);
-        ObVSet_Push(psTry1, v.LeftChild - 0x10);
+        ObSet_Push(psAll, v.LeftChild - 0x10);
+        ObSet_Push(psTry1, v.LeftChild - 0x10);
     }
     if(VMM_KADDR64_16(v.RightChild)) {
-        ObVSet_Push(psAll, v.RightChild - 0x10);
-        ObVSet_Push(psTry1, v.RightChild - 0x10);
+        ObSet_Push(psAll, v.RightChild - 0x10);
+        ObSet_Push(psTry1, v.RightChild - 0x10);
     }
     e->vaStart = (QWORD)v.StartingVpn << 12;
     e->vaEnd = ((QWORD)v.EndingVpn << 12) | 0xfff;
@@ -604,12 +605,12 @@ PVMM_MAP_VADENTRY MmVad_Spider_MMVAD64_80(_In_ PVMM_PROCESS pSystemProcess, _In_
     return e;
 }
 
-PVMM_MAP_VADENTRY MmVad_Spider_MMVAD32_10(_In_ PVMM_PROCESS pSystemProcess, _In_ QWORD va, _In_ PVMMOB_MAP_VAD pmVad, _In_ POB_VSET psAll, _In_ POB_VSET psTry1, _In_opt_ POB_VSET psTry2, _In_ QWORD fVmmRead, _In_ DWORD dwFlagsBitMask)
+PVMM_MAP_VADENTRY MmVad_Spider_MMVAD32_10(_In_ PVMM_PROCESS pSystemProcess, _In_ QWORD va, _In_ PVMMOB_MAP_VAD pmVad, _In_ POB_SET psAll, _In_ POB_SET psTry1, _In_opt_ POB_SET psTry2, _In_ QWORD fVmmRead, _In_ DWORD dwFlagsBitMask)
 {
     _MMVAD32_10 v = { 0 };
     PVMM_MAP_VADENTRY e;
     if(!VmmRead2(pSystemProcess, va, (PBYTE)&v, sizeof(_MMVAD32_10), fVmmRead | VMM_FLAG_FORCECACHE_READ)) {
-        ObVSet_Push(psTry2, va);
+        ObSet_Push(psTry2, va);
         return NULL;
     }
     if((v.EndingVpn < v.StartingVpn) || !MmVad_Spider_PoolTagAny(v.PoolTag, 5, MMVAD_POOLTAG_VADS, MMVAD_POOLTAG_VAD, MMVAD_POOLTAG_VADL, MMVAD_POOLTAG_VADM, MMVAD_POOLTAG_VADF)) {
@@ -618,12 +619,12 @@ PVMM_MAP_VADENTRY MmVad_Spider_MMVAD32_10(_In_ PVMM_PROCESS pSystemProcess, _In_
     // short vad
     e = &pmVad->pMap[pmVad->cMap++];
     if(VMM_KADDR32_8(v.Children[0])) {
-        ObVSet_Push(psAll, v.Children[0] - 8);
-        ObVSet_Push(psTry1, v.Children[0] - 8);
+        ObSet_Push(psAll, v.Children[0] - 8);
+        ObSet_Push(psTry1, v.Children[0] - 8);
     }
     if(VMM_KADDR32_8(v.Children[1])) {
-        ObVSet_Push(psAll, v.Children[1] - 8);
-        ObVSet_Push(psTry1, v.Children[1] - 8);
+        ObSet_Push(psAll, v.Children[1] - 8);
+        ObSet_Push(psTry1, v.Children[1] - 8);
     }
     e->vaStart = (QWORD)v.StartingVpn << 12;
     e->vaEnd = ((QWORD)v.EndingVpn << 12) | 0xfff;
@@ -643,12 +644,12 @@ PVMM_MAP_VADENTRY MmVad_Spider_MMVAD32_10(_In_ PVMM_PROCESS pSystemProcess, _In_
     return e;
 }
 
-PVMM_MAP_VADENTRY MmVad_Spider_MMVAD64_10(_In_ PVMM_PROCESS pSystemProcess, _In_ QWORD va, _In_ PVMMOB_MAP_VAD pmVad, _In_ POB_VSET psAll, _In_ POB_VSET psTry1, _In_opt_ POB_VSET psTry2, _In_ QWORD fVmmRead, _In_ DWORD dwFlagsBitMask)
+PVMM_MAP_VADENTRY MmVad_Spider_MMVAD64_10(_In_ PVMM_PROCESS pSystemProcess, _In_ QWORD va, _In_ PVMMOB_MAP_VAD pmVad, _In_ POB_SET psAll, _In_ POB_SET psTry1, _In_opt_ POB_SET psTry2, _In_ QWORD fVmmRead, _In_ DWORD dwFlagsBitMask)
 {
     _MMVAD64_10 v = { 0 };
     PVMM_MAP_VADENTRY e;
     if(!VmmRead2(pSystemProcess, va, (PBYTE)&v, sizeof(_MMVAD64_10), fVmmRead | VMM_FLAG_FORCECACHE_READ)) {
-        ObVSet_Push(psTry2, va);
+        ObSet_Push(psTry2, va);
         return NULL;
     }
     if((v.EndingVpnHigh < v.StartingVpnHigh) || (v.EndingVpn < v.StartingVpn) || !MmVad_Spider_PoolTagAny(v.PoolTag, 5, MMVAD_POOLTAG_VADS, MMVAD_POOLTAG_VAD, MMVAD_POOLTAG_VADL, MMVAD_POOLTAG_VADM, MMVAD_POOLTAG_VADF)) {
@@ -657,12 +658,12 @@ PVMM_MAP_VADENTRY MmVad_Spider_MMVAD64_10(_In_ PVMM_PROCESS pSystemProcess, _In_
     // short vad
     e = &pmVad->pMap[pmVad->cMap++];
     if(VMM_KADDR64_16(v.Children[0])) {
-        ObVSet_Push(psAll, v.Children[0] - 0x10);
-        ObVSet_Push(psTry1, v.Children[0] - 0x10);
+        ObSet_Push(psAll, v.Children[0] - 0x10);
+        ObSet_Push(psTry1, v.Children[0] - 0x10);
     }
     if(VMM_KADDR64_16(v.Children[1])) {
-        ObVSet_Push(psAll, v.Children[1] - 0x10);
-        ObVSet_Push(psTry1, v.Children[1] - 0x10);
+        ObSet_Push(psAll, v.Children[1] - 0x10);
+        ObSet_Push(psTry1, v.Children[1] - 0x10);
     }
     e->vaStart = ((QWORD)v.StartingVpnHigh << (32 + 12)) | ((QWORD)v.StartingVpn << 12);
     e->vaEnd = ((QWORD)v.EndingVpnHigh << (32 + 12)) | ((QWORD)v.EndingVpn << 12) | 0xfff;
@@ -689,17 +690,17 @@ VOID MmVad_Spider_DoWork(_In_ PVMM_PROCESS pSystemProcess, _In_ PVMM_PROCESS pPr
     DWORD cMax, cVads, dwFlagsBitMask = 0;
     PVMM_MAP_VADENTRY eVad;
     PVMMOB_MAP_VAD pmObVad = NULL, pmObVadTemp;
-    POB_VSET psObAll = NULL, psObTry1 = NULL, psObTry2 = NULL, psObPrefetch = NULL;
-    PVMM_MAP_VADENTRY(*pfnMmVad_Spider)(PVMM_PROCESS, QWORD, PVMMOB_MAP_VAD, POB_VSET, POB_VSET, POB_VSET, QWORD, DWORD);
+    POB_SET psObAll = NULL, psObTry1 = NULL, psObTry2 = NULL, psObPrefetch = NULL;
+    PVMM_MAP_VADENTRY(*pfnMmVad_Spider)(PVMM_PROCESS, QWORD, PVMMOB_MAP_VAD, POB_SET, POB_SET, POB_SET, QWORD, DWORD);
     if(!(ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X64 || ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X86)) { goto fail; }
     // 1: retrieve # of VAD entries and sanity check.
     if(ctxVmm->kernel.dwVersionBuild >= 9600) {
         // Win8.1 and later -> fetch # of RtlBalancedNode from EPROCESS.
-        cVads = (DWORD)VMM_EPROCESS_PTR(pProcess, ctxVmm->kernel.OffsetEPROCESS.VadRoot + (ctxVmm->f32 ? 8 : 0x10));
+        cVads = (DWORD)VMM_EPROCESS_PTR(pProcess, ctxVmm->offset.EPROCESS.VadRoot + (ctxVmm->f32 ? 8 : 0x10));
     } else if(ctxVmm->kernel.dwVersionBuild >= 6000) {
         // WinVista::Win8.0 -> fetch # of AvlNode from EPROCESS.
         i = (ctxVmm->kernel.dwVersionBuild < 9200) ? (ctxVmm->f32 ? 0x14 : 0x28) : (ctxVmm->f32 ? 0x1c : 0x18);
-        cVads = ((DWORD)VMM_EPROCESS_PTR(pProcess, ctxVmm->kernel.OffsetEPROCESS.VadRoot + i) >> 8);
+        cVads = ((DWORD)VMM_EPROCESS_PTR(pProcess, ctxVmm->offset.EPROCESS.VadRoot + i) >> 8);
     } else {
         // WinXP
         cVads = (DWORD)VMM_EPROCESS_DWORD(pProcess, 0x240);
@@ -716,20 +717,20 @@ VOID MmVad_Spider_DoWork(_In_ PVMM_PROCESS pSystemProcess, _In_ PVMM_PROCESS pPr
         goto fail;
     }
     cMax = cVads;
-    if(!(psObAll = ObVSet_New())) { goto fail; }
-    if(!(psObTry1 = ObVSet_New())) { goto fail; }
-    if(!(psObTry2 = ObVSet_New())) { goto fail; }
+    if(!(psObAll = ObSet_New())) { goto fail; }
+    if(!(psObTry1 = ObSet_New())) { goto fail; }
+    if(!(psObTry2 = ObSet_New())) { goto fail; }
     // 3: retrieve initial VAD node entry
     f = ((ctxVmm->kernel.dwVersionBuild >= 6000) && (ctxVmm->kernel.dwVersionBuild < 9600));    // AvlTree (Vista::Win8.0
     for(i = (f ? 1 : 0); i < (f ? 4 : 1); i++) {
-        va = VMM_EPROCESS_PTR(pProcess, ctxVmm->kernel.OffsetEPROCESS.VadRoot + i * (ctxVmm->f32 ? 4 : 8));
+        va = VMM_EPROCESS_PTR(pProcess, ctxVmm->offset.EPROCESS.VadRoot + i * (ctxVmm->f32 ? 4 : 8));
         if(ctxVmm->f32 && !VMM_KADDR32_8(va)) { continue; }
         if(!ctxVmm->f32 && !VMM_KADDR64_16(va)) { continue; }
         va -= ctxVmm->f32 ? 8 : 0x10;
-        ObVSet_Push(psObAll, va);
-        ObVSet_Push(psObTry2, va);
+        ObSet_Push(psObAll, va);
+        ObSet_Push(psObTry2, va);
     }
-    if(!ObVSet_Size(psObTry2)) { goto fail; }
+    if(!ObSet_Size(psObTry2)) { goto fail; }
     if(ctxVmm->kernel.dwVersionBuild >= 9600) {
         // Win8.1 and later
         pfnMmVad_Spider = ctxVmm->f32 ? MmVad_Spider_MMVAD32_10 : MmVad_Spider_MMVAD64_10;
@@ -756,20 +757,20 @@ VOID MmVad_Spider_DoWork(_In_ PVMM_PROCESS pSystemProcess, _In_ PVMM_PROCESS pPr
         Ob_DECREF_NULL(&psObPrefetch);
     }
     // 5: spider vad tree in an efficient way (minimize non-cached reads)
-    while((pmObVad->cMap < cMax) && ObVSet_Size(psObTry2)) {
+    while((pmObVad->cMap < cMax) && ObSet_Size(psObTry2)) {
         // fetch vad entries 2nd attempt
         VmmCachePrefetchPages3(pSystemProcess, psObTry2, sizeof(_MMVAD64_10), fVmmRead);
-        while((pmObVad->cMap < cMax) && (va = ObVSet_Pop(psObTry2))) {
+        while((pmObVad->cMap < cMax) && (va = ObSet_Pop(psObTry2))) {
             if((eVad = pfnMmVad_Spider(pSystemProcess, va, pmObVad, psObAll, psObTry1, NULL, fVmmRead, dwFlagsBitMask))) {
-                eVad->vaVad = va;
+                eVad->vaVad = va + (ctxVmm->f32 ? 8 : 0x10);
                 eVad->wszText = &ctxVmm->_EmptyWCHAR;
                 if(eVad->cbPrototypePte > 0x01000000) { eVad->cbPrototypePte = MMVAD_PTESIZE * (DWORD)((0x1000 + eVad->vaEnd - eVad->vaStart) >> 12); }
             }
         }
         // fetch vad entries 1st attempt
-        while((pmObVad->cMap < cMax) && (va = ObVSet_Pop(psObTry1))) {
+        while((pmObVad->cMap < cMax) && (va = ObSet_Pop(psObTry1))) {
             if((eVad = pfnMmVad_Spider(pSystemProcess, va, pmObVad, psObAll, psObTry1, psObTry2, fVmmRead, dwFlagsBitMask))) {
-                eVad->vaVad = va;
+                eVad->vaVad = va + (ctxVmm->f32 ? 8 : 0x10);
                 eVad->wszText = &ctxVmm->_EmptyWCHAR;
                 if(eVad->cbPrototypePte > 0x01000000) { eVad->cbPrototypePte = MMVAD_PTESIZE * (DWORD)((0x1000 + eVad->vaEnd - eVad->vaStart) >> 12); }
             }
@@ -808,9 +809,10 @@ fail:
 VOID MmVad_TextFetch(_In_ PVMM_PROCESS pSystemProcess, _In_ PVMM_PROCESS pProcess, _In_ QWORD fVmmRead)
 {
     BOOL fResult = FALSE;
-    BOOL f, f2, f32 = ctxVmm->f32;
-    DWORD oControlAreaFilePointer, oMultiText = 1, cwszMultiText = 2, dwTID;
-    BYTE pb[MAX_PATH*2+2];
+    BOOL f, f32 = ctxVmm->f32, fSharedCacheMap = FALSE;
+    WORD oControlArea_FilePointer, oControlArea_SegmentPointer, oSegment_SizeOfSegment;
+    DWORD cMax, oMultiText = 1, cwszMultiText = 2, dwTID;
+    BYTE pb[MAX_PATH*2+2], *pb2;
     PQWORD pva = NULL;
     LPWSTR wszMultiText = NULL;
     QWORD i, j, va, cVads = 0;
@@ -820,20 +822,20 @@ VOID MmVad_TextFetch(_In_ PVMM_PROCESS pSystemProcess, _In_ PVMM_PROCESS pProces
     VmmMap_GetThreadAsync(pProcess);        // thread map async initialization to speed up later retrieval.
     // count max potential vads and allocate.
     {
-        for(i = 0; i < pProcess->Map.pObVad->cMap; i++) {
+        for(i = 0, cMax = pProcess->Map.pObVad->cMap; i < cMax; i++) {
             va = pProcess->Map.pObVad->pMap[i].vaSubsection;
-            if(f32 ? VMM_KADDR32_8(va) : VMM_KADDR64_16(va)) {
+            if(VMM_KADDR_4_8(va)) {
                 cVads++;
             }
         }
-        if(!cVads || !(pva = LocalAlloc(LMEM_ZEROINIT, cVads * 0x10))) { goto fail; }
-        ppVads = (PVMM_MAP_VADENTRY*)(pva + cVads);
+        if(!cVads || !(pva = LocalAlloc(LMEM_ZEROINIT, cVads * 0x18))) { goto fail; }
+        ppVads = (PVMM_MAP_VADENTRY*)(pva + 2 * cVads);
     }
     // get subsection addresses from vad.
     {
-        for(i = 0, j = 0; (i < pProcess->Map.pObVad->cMap) && (j < cVads); i++) {
+        for(i = 0, j = 0, cMax = pProcess->Map.pObVad->cMap; (i < cMax) && (j < cVads); i++) {
             va = pProcess->Map.pObVad->pMap[i].vaSubsection;
-            if(f32 ? VMM_KADDR32_8(va) : VMM_KADDR64_16(va)) {
+            if(VMM_KADDR_4_8(va)) {
                 ppVads[j] = pProcess->Map.pObVad->pMap + i;
                 pva[j++] = va;
             }
@@ -842,52 +844,58 @@ VOID MmVad_TextFetch(_In_ PVMM_PROCESS pSystemProcess, _In_ PVMM_PROCESS pProces
     // fetch subsection -> pointer to control area (1st address ptr in subsection)
     if((ctxVmm->kernel.dwVersionBuild >= 6000)) {   // Not WinXP (ControlArea already in map subsection field).
         VmmCachePrefetchPages4(pSystemProcess, (DWORD)cVads, pva, 8, fVmmRead);
-        for(i = 0, f2 = FALSE, va = 0; i < cVads; i++) {
+        for(i = 0, va = 0; i < cVads; i++) {
             f = pva[i] &&
                 VmmRead2(pSystemProcess, pva[i], (PBYTE)&va, f32 ? 4 : 8, fVmmRead | VMM_FLAG_FORCECACHE_READ) &&
-                (f32 ? VMM_KADDR32_8(va) : VMM_KADDR64_16(va));
-            f2 = f2 | f;
+                VMM_KADDR_8_16(va);
             pva[i] = f ? va : 0;
         }
-        if(!f2) { goto fail; }
     }
-    // fetch control area -> pointer to file object.
+    // fetch _CONTROL_AREA -> pointer to _FILE_OBJECT
     {
         VmmCachePrefetchPages4(pSystemProcess, (DWORD)cVads, pva, 0x50, fVmmRead);
-        oControlAreaFilePointer = f32 ?
+        oControlArea_FilePointer = f32 ?
             ((ctxVmm->kernel.dwVersionBuild <= 7601) ? 0x24 : 0x20) :   // 32-bit win7sp1- or win8.0+
             ((ctxVmm->kernel.dwVersionBuild <= 6000) ? 0x30 : 0x40);    // 64-bit vistasp0- or vistasp1+
-        for(i = 0, f2 = FALSE, va = 0; i < cVads; i++) {
+        oControlArea_SegmentPointer = 0;
+        oSegment_SizeOfSegment = f32 ? 0x10 : 0x18;
+        for(i = 0, va = 0; i < cVads; i++) {
+            // pointer to _FILE_OBJECT
             f = pva[i] &&
                 VmmRead2(pSystemProcess, pva[i] - 0x10, pb, 0x60, fVmmRead | VMM_FLAG_FORCECACHE_READ) &&
                 (VMM_POOLTAG_PREPENDED(pb, 0x10, 'MmCa') || VMM_POOLTAG_PREPENDED(pb, 0x10, 'MmCi')) &&
-                (va = f32 ? (~7 & *(PDWORD)(pb + 0x10 + oControlAreaFilePointer)) : (~0xf & *(PQWORD)(pb + 0x10 + oControlAreaFilePointer))) &&
-                (f32 ? VMM_KADDR32_8(va) : VMM_KADDR64_16(va));
-            f2 = f2 | f;
+                (va = VMM_PTR_OFFSET_EX_FAST_REF(f32, pb + 0x10, oControlArea_FilePointer)) &&
+                VMM_KADDR_8_16(va);
             if(pva[i] && !f && VMM_POOLTAG_PREPENDED(pb, 0x10, 'MmCa')) { ppVads[i]->fPageFile = 1; }
-            if(f && VMM_POOLTAG_PREPENDED(pb, 0x10, 'MmCa')) { ppVads[i]->fFile = 1; }
-            if(f && VMM_POOLTAG_PREPENDED(pb, 0x10, 'MmCi')) { ppVads[i]->fImage = 1; }
+            if(f && VMM_POOLTAG_PREPENDED(pb, 0x10, 'MmCa')) {
+                ppVads[i]->fFile = 1;
+                ppVads[i]->vaFileObject = va;
+            }
+            if(f && VMM_POOLTAG_PREPENDED(pb, 0x10, 'MmCi')) {
+                ppVads[i]->fImage = 1;
+                ppVads[i]->vaFileObject = va;
+            }
             pva[i] = f ? va : 0;
         }
-        if(!f2) { goto fail; }
     }
-    // fetch file object -> unicode string size and pointer to text.
+    // fetch _FILE_OBJECT -> _UNICODE_STRING (size and ptr to text)
     {
+        pb2 = pb + (f32 ? 0x30 : 0x58);     // pb2 = offset into _FILE_OBJECT.FileName _UNICODE_STRING (pb)
         VmmCachePrefetchPages4(pSystemProcess, (DWORD)cVads, pva, 0x68, fVmmRead);
-        for(i = 0, f2 = FALSE, va = 0; i < cVads; i++) {
+        for(i = 0, va = 0; i < cVads; i++) {
+            // fetch _FILE_OBJECT
             f = pva[i] &&
-                VmmRead2(pSystemProcess, pva[i] + (f32 ? 0x30 : 0x58), pb, 0x10, fVmmRead | VMM_FLAG_FORCECACHE_READ) &&
-                *(PWORD)(pb) && (*(PWORD)(pb) <= *(PWORD)(pb + 2)) &&
-                (va = f32 ? *(PDWORD)(pb + 4) : *(PQWORD)(pb + 8)) &&
-                (f32 ? VMM_KADDR32_8(va) : VMM_KADDR64_16(va));
-            f2 = f2 | f;
-            pva[i] = f ? va : 0;
+                VmmRead2(pSystemProcess, pva[i], pb, 0x68, fVmmRead | VMM_FLAG_FORCECACHE_READ) &&
+                *(PWORD)(pb2) && (*(PWORD)(pb2) <= *(PWORD)(pb2 + 2)) &&
+                (va = f32 ? *(PDWORD)(pb2 + 4) : *(PQWORD)(pb2 + 8)) &&
+                VMM_KADDR_8_16(va);
+            pva[i] = f ? va : 0;    // PTR FileName _UNICODE_STRING.Buffer
             if(f) {
-                ppVads[i]->cwszText = min(0xff, *(PWORD)(pb) >> 1);
+                // _FILE_OBJECT->FileName _UNICODE_STRING.Length
+                ppVads[i]->cwszText = min(0xff, *(PWORD)(pb2) >> 1);
                 cwszMultiText += ppVads[i]->cwszText + 1;
             }
         }
-        if(!f2) { goto fail; }
     }
     // [ heap map fetch reference ]
     if(VmmMap_GetHeap(pProcess, &pObHeapMap)) {
@@ -897,19 +905,20 @@ VOID MmVad_TextFetch(_In_ PVMM_PROCESS pSystemProcess, _In_ PVMM_PROCESS pProces
     if(VmmMap_GetThread(pProcess, &pObThreadMap)) {
         cwszMultiText += 20 * pObThreadMap->cMap;   // 8(TEB) + 10(STACK) WCHAR + 2 NULL per thread entry
     }
-    // fetch and parse unicode strings.
+    // fetch and parse: _UNICODE_STRING.Buffer
     {
         if(!(wszMultiText = LocalAlloc(LMEM_ZEROINIT, (QWORD)cwszMultiText << 1))) { goto fail; }
-        VmmCachePrefetchPages4(pSystemProcess, (DWORD)cVads, pva, MAX_PATH * 2, fVmmRead);
-        for(i = 0, f2 = FALSE; i < cVads; i++) {
+        VmmCachePrefetchPages4(pSystemProcess, (DWORD)cVads * 2, pva, MAX_PATH * 2, fVmmRead);
+        for(i = 0; i < cVads; i++) {
+            // _UNICODE_STRING.Buffer
             f = pva[i] && VmmRead2(pSystemProcess, pva[i], (PBYTE)(wszMultiText + oMultiText), ppVads[i]->cwszText << 1, fVmmRead | VMM_FLAG_FORCECACHE_READ);
             if(f) {
-                f2 = TRUE;
                 ppVads[i]->wszText = wszMultiText + oMultiText;
                 oMultiText += 1 + ppVads[i]->cwszText;
+            } else {
+                ppVads[i]->wszText = wszMultiText;
             }
         }
-        if(!f2) { goto fail; }
     }
     // [ heap map parse ]
     if(pObHeapMap) {
@@ -1035,7 +1044,7 @@ POB_DATA MmVad_PrototypePteArray_Get(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_V
 {
     QWORD i, va;
     POB_DATA e = NULL;
-    POB_VSET psObPrefetch = NULL;
+    POB_SET psObPrefetch = NULL;
     PVMM_PROCESS pObSystemProcess = NULL;
     PVMMOB_MAP_VAD pVadMap;
     if(!pVad->vaPrototypePte || !pVad->cbPrototypePte) { return NULL; }
@@ -1046,14 +1055,14 @@ POB_DATA MmVad_PrototypePteArray_Get(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_V
         return e;
     }
     if((pObSystemProcess = VmmProcessGet(4))) {
-        if(!pProcess->Map.pObVad->fSpiderPrototypePte && pVad->cbPrototypePte < 0x1000 && (psObPrefetch = ObVSet_New())) {
+        if(!pProcess->Map.pObVad->fSpiderPrototypePte && pVad->cbPrototypePte < 0x1000 && (psObPrefetch = ObSet_New())) {
             pVadMap = pProcess->Map.pObVad;
             // spider all prototype pte's less than 0x1000 in size into the cache
             pVadMap->fSpiderPrototypePte = TRUE;
             for(i = 0; i < pVadMap->cMap; i++) {
                 va = pVadMap->pMap[i].vaPrototypePte;
                 if(va && (pVadMap->pMap[i].cbPrototypePte < 0x1000) && !ObMap_ExistsKey(ctxVmm->Cache.pmPrototypePte, va)) {
-                    ObVSet_Push(psObPrefetch, va);
+                    ObSet_Push(psObPrefetch, va);
                 }
             }
             VmmCachePrefetchPages3(pObSystemProcess, psObPrefetch, 0x1000, fVmmRead);

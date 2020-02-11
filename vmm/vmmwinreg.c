@@ -1,9 +1,9 @@
 // vmmwinreg.c : implementation of functionality related to the Windows registry.
 //
-// (c) Ulf Frisk, 2019
+// (c) Ulf Frisk, 2019-2020
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-// Registry key parsing partly built on documentatin found at:
+// Registry key parsing partly built on documentation found at:
 // https://github.com/msuhanov/regf
 // 
 
@@ -20,9 +20,12 @@ typedef struct tdVMMWIN_REGISTRY_OFFSET {
     struct {
         WORD Signature;
         WORD FLink;
-        WORD Length;
-        WORD StorageMap;
-        WORD StorageSmallDir;
+        WORD Length0;
+        WORD StorageMap0;
+        WORD StorageSmallDir0;
+        WORD Length1;
+        WORD StorageMap1;
+        WORD StorageSmallDir1;
         WORD BaseBlock;
         WORD FileFullPathOpt;
         WORD FileUserNameOpt;
@@ -66,7 +69,7 @@ PVMM_PROCESS VmmWinReg_GetRegistryProcess()
     return VmmProcessGet(4);
 }
 
-#define _IS_HMAP_KDDR64(a)    ((a & 0xffff8000'00000ff0) == 0xffff8000'00000000)
+#define _IS_HMAP_KDDR64(a)     ((a & 0xffff8000'00000ff0) == 0xffff8000'00000000)
 #define _IS_HMAP_ADDR64(a)     (a && ((((a >> 47) == 0x1ffff) || (a >> 47) == 0)) && (a & 0x0000ffff'ffff0000) && !(a & 0xff0))
 #define _IS_HMAP_ZERO64(a)     (!a)
 #define _IS_HMAP_SIZE64(a)     (a && !(a & 0xffffffff'ffff0fff))
@@ -79,24 +82,26 @@ _Success_(return)
 BOOL VmmWinReg_Reg2Virt64(_In_ PVMM_PROCESS pProcessRegistry, _In_ POB_REGISTRY_HIVE pRegistryHive, _In_ DWORD ra, _Out_ PQWORD pva)
 {
     PVMMWIN_REGISTRY_OFFSET po = &ctxVmm->pRegistry->Offset;
-    QWORD iDirectory, iTable;
+    QWORD iSV, iDirectory, iTable;
     QWORD vaTable, vaCell, oCell;
     BYTE pbHE[0x40];
-    if(ra >= pRegistryHive->cbLength) { return FALSE; }
     // TRANSLATION REMINDS OF X86 MEMORY MODEL
     // 1-bit    10-bits   9-bits    12-bits
     // +-----+-----------+-------+-------------+
     // | S/V | DIRECTORY | TABLE | CELL OFFSET |
     // +-----+-----------+-------+-------------+
+    iSV = (ra >> 31);
     iDirectory = (ra >> (12 + 9)) & 0x3ff;
     iTable = (ra >> 12) & 0x1ff;
-    if(iDirectory || !pRegistryHive->vaHMAP_TABLE_SmallDir) {
+    ra = ra & 0x7fffffff;
+    if(ra >= pRegistryHive->_DUAL[iSV].cb) { return FALSE; }
+    if(iDirectory || !pRegistryHive->_DUAL[iSV].vaHMAP_TABLE_SmallDir) {
         // REG directory is array of max 1024 pointers to tables [ nt!_HMAP_DIRECTORY +0x000 Directory : [1024] Ptr64 _HMAP_TABLE ]
-        if(!VmmRead(pProcessRegistry, pRegistryHive->vaHMAP_DIRECTORY + iDirectory * sizeof(QWORD), (PBYTE)&vaTable, sizeof(QWORD)) || !vaTable) { return FALSE; }
-        if((vaTable & 0xffff8000'00000000) != 0xffff8000'00000000) { return FALSE; }  // not kernel addrees
+        if(!VmmRead(pProcessRegistry, pRegistryHive->_DUAL[iSV].vaHMAP_DIRECTORY + iDirectory * sizeof(QWORD), (PBYTE)&vaTable, sizeof(QWORD)) || !vaTable) { return FALSE; }
     } else {
-        vaTable = pRegistryHive->vaHMAP_TABLE_SmallDir;
+        vaTable = pRegistryHive->_DUAL[iSV].vaHMAP_TABLE_SmallDir;
     }
+    if(!VMM_KADDR64(vaTable)) { return FALSE; }
     // REG table is array of 512 _HMAP_ENTRY of size 0x18 or 0x20 or 0x28
     // [ --------------------------------------- ]
     // [ WINVISTA->WIN81: dt nt!_HMAP_ENTRY      ]
@@ -124,19 +129,26 @@ _Success_(return)
 BOOL VmmWinReg_Reg2Virt32(_In_ PVMM_PROCESS pProcessRegistry, _In_ POB_REGISTRY_HIVE pRegistryHive, _In_ DWORD ra, _Out_ PQWORD pva)
 {
     PVMMWIN_REGISTRY_OFFSET po = &ctxVmm->pRegistry->Offset;
-    QWORD iDirectory, iTable;
+    QWORD iSV, iDirectory, iTable;
     DWORD vaTable, vaCell, oCell;
     BYTE pbHE[0x20];
-    if(ra >= pRegistryHive->cbLength) { return FALSE; }
+    // TRANSLATION REMINDS OF X86 MEMORY MODEL
+    // 1-bit    10-bits   9-bits    12-bits
+    // +-----+-----------+-------+-------------+
+    // | S/V | DIRECTORY | TABLE | CELL OFFSET |
+    // +-----+-----------+-------+-------------+
+    iSV = (ra >> 31);
     iDirectory = (ra >> (12 + 9)) & 0x3ff;
     iTable = (ra >> 12) & 0x1ff;
+    ra = ra & 0x7fffffff;
+    if(ra >= pRegistryHive->_DUAL[iSV].cb) { return FALSE; }
     // DIRECTORY
-    if(iDirectory || !pRegistryHive->vaHMAP_TABLE_SmallDir) {
-        if(!VmmRead(pProcessRegistry, pRegistryHive->vaHMAP_DIRECTORY + iDirectory * sizeof(DWORD), (PBYTE)&vaTable, sizeof(DWORD)) || !vaTable) { return FALSE; }
-        if((vaTable & 0x80000000) != 0x80000000) { return FALSE; }  // not kernel address
+    if(iDirectory || !pRegistryHive->_DUAL[iSV].vaHMAP_TABLE_SmallDir) {
+        if(!VmmRead(pProcessRegistry, pRegistryHive->_DUAL[iSV].vaHMAP_DIRECTORY + iDirectory * sizeof(DWORD), (PBYTE)&vaTable, sizeof(DWORD)) || !vaTable) { return FALSE; }
     } else {
-        vaTable = (DWORD)pRegistryHive->vaHMAP_TABLE_SmallDir;
+        vaTable = (DWORD)pRegistryHive->_DUAL[iSV].vaHMAP_TABLE_SmallDir;
     }
+    if(!VMM_KADDR32(vaTable)) { return FALSE; }
     // [ --------------------------------------- ]
     // [ WINVISTA->WIN81: dt nt!_HMAP_ENTRY      ]
     // [    + 0x000 BlockAddress : Uint4B        ]
@@ -364,14 +376,17 @@ VOID VmmWinReg_FuzzHiveOffsets_PrintResultVerbose(_In_ PBYTE pb, _In_ DWORD cb)
     if(ctxMain->cfg.fVerboseExtra) {
         vmmprintfvv_fn("\n");
         vmmprintfvv(
-            "    CM.Sig   %03X, CM.Length %03X, CM.StorMap   %03X, CM.StorSmallDir %03X, CM.BaseBlock %03X \n",
-            po->CM.Signature, po->CM.Length, po->CM.StorageMap, po->CM.StorageSmallDir, po->CM.BaseBlock);
+            "    CM.Sig   %03X, CM.Len0   %03X, CM.StorMap0  %03X, CM.StorSmallDir0 %03X, CM.BaseBlock %03X \n",
+            po->CM.Signature, po->CM.Length0, po->CM.StorageMap0, po->CM.StorageSmallDir0, po->CM.BaseBlock);
         vmmprintfvv(
-            "    CM.FLink %03X, CM._Size  %03X, CM.FileFull  %03X, CM.FileUserPath %03X, CM.HiveRoot  %03X \n",
+            "                   CM.Len1   %03X, CM.StorMap1  %03X, CM.StorSmallDir1 %03X, HE._Size     %03X \n",
+            po->CM.Length1, po->CM.StorageMap1, po->CM.StorageSmallDir1, po->HE._Size);
+        vmmprintfvv(
+            "    CM.FLink %03X, CM._Size  %03X, CM.FileFull  %03X, CM.FileUserPath  %03X, CM.HiveRoot  %03X \n",
             po->CM.FLink, po->CM._Size, po->CM.FileFullPathOpt, po->CM.FileUserNameOpt, po->CM.HiveRootPathOpt);
         vmmprintfvv(
-            "    BB.Sig   %03X, BB.Length %03X, BB.FileName  %03X, BB.Major        %03X, BB.Minor     %03X, HE._Size %03X \n",
-            po->BB.Signature, po->BB.Length, po->BB.FileName, po->BB.Major, po->BB.Minor, po->HE._Size);
+            "    BB.Sig   %03X, BB.Length %03X, BB.FileName  %03X, BB.Major         %03X, BB.Minor     %03X \n",
+            po->BB.Signature, po->BB.Length, po->BB.FileName, po->BB.Major, po->BB.Minor);
         Util_PrintHexAscii(pb, cb, 0);
         vmmprintfvv("----------------\n");
     }
@@ -386,7 +401,7 @@ VOID VmmWinReg_FuzzHiveOffsets_PrintResultVerbose(_In_ PBYTE pb, _In_ DWORD cb)
 BOOL VmmWinReg_FuzzHiveOffsets64(_In_ PVMM_PROCESS pProcessSystem, _In_ QWORD vaCMHIVE, _In_reads_(0x1000) PBYTE pbCMHIVE)
 {
     BOOL f;
-    WORD o;
+    WORD o, cbDual;
     DWORD dw;
     QWORD qw, vaSmallDir;
     WCHAR wszBuffer[10];
@@ -402,31 +417,36 @@ BOOL VmmWinReg_FuzzHiveOffsets64(_In_ PVMM_PROCESS pProcessSystem, _In_ QWORD va
     po->CM.Signature = 0;
     // _CMHIVE.BaseBlock
     for(o = 0x30; o < 0x60; o += 8) {
-        f = (*(PQWORD)(pbCMHIVE + o) & 0xffff8000'00000fff) == 0xffff8000'00000000;
-        if(f) { break; }
+        if((f = VMM_KADDR64_PAGE(*(PQWORD)(pbCMHIVE + o)))) { break; }
     }
     if(!f) { return FALSE; }
     po->CM.BaseBlock = o;
-    // _CMHIVE _HHIVE.STORAGE._DUAL[1]
+    // sizeof(_DUAL): WinVista -> Win10
+    cbDual = 0x278;
+    // _CMHIVE _HHIVE.STORAGE._DUAL[0]
     for(; o < 0x800; o += 8) {
-        vaSmallDir = *(PQWORD)(pbCMHIVE + o + 0x010);                                           // _DUAL.SmallDir may be zero sometimes ...
-        f = (*(PDWORD)(pbCMHIVE + o + 0x018) == 0xffffffff) &&                                  // _DUAL.Guard
-            (*(PDWORD)(pbCMHIVE + o + 0x000) < 0x40000000) &&                                   // _DUAL.Length < 1GB
-            ((*(PQWORD)(pbCMHIVE + o + 0x008) & 0xffff8000'00000007) == 0xffff8000'00000000) && // _DUAL.Map = kernel 8-byte align
-            ((vaSmallDir == 0) || ((vaSmallDir & 0xffff8000'00000fff) == 0xffff8000'00000000)) && // _DUAL.SmallDir = kernel page base
-            VmmRead(pProcessSystem, *(PQWORD)(pbCMHIVE + o + 0x008), (PBYTE)&qw, sizeof(QWORD)) && // [_DUAL.Map][0]
-            ((vaSmallDir == 0) || (vaSmallDir == qw));                                          // _DUAL.SmallDir = 1st entry in _DUAL.Map 'directory'
+        vaSmallDir = *(PQWORD)(pbCMHIVE + o + 0x010);                                           // _DUAL[0].SmallDir may be zero sometimes ...
+        f = (*(PDWORD)(pbCMHIVE + o + 0x018) == 0xffffffff) &&                                  // _DUAL[0].Guard
+            (*(PDWORD)(pbCMHIVE + o + 0x000) < 0x40000000) &&                                   // _DUAL[0].Length < 1GB
+            VMM_KADDR64_8(*(PQWORD)(pbCMHIVE + o + 0x008)) &&                                   // _DUAL[0].Map = kernel 8-byte align
+            ((vaSmallDir == 0) || VMM_KADDR64_PAGE(vaSmallDir)) &&                              // _DUAL[0].SmallDir = kernel page base
+            VmmRead(pProcessSystem, *(PQWORD)(pbCMHIVE + o + 0x008), (PBYTE)&qw, sizeof(QWORD)) && // [_DUAL[0].Map]
+            ((vaSmallDir == 0) || (vaSmallDir == qw));                                          // _DUAL[0].SmallDir = 1st entry in _DUAL.Map 'directory'
         if(f) { break; }
     }
     if(!f) { return FALSE; }
-    po->CM.Length = o + 0x000;
-    po->CM.StorageMap = o + 0x008;
-    po->CM.StorageSmallDir = o + 0x010;
-    o += 2 * 0x278;                                                                             // sizeof(_DUAL WINVISTA-WIN10)
+    po->CM.Length0 = o + 0x000;
+    po->CM.StorageMap0 = o + 0x008;
+    po->CM.StorageSmallDir0 = o + 0x010;
+    o += cbDual;
+    po->CM.Length1 = o + 0x000;
+    po->CM.StorageMap1 = o + 0x008;
+    po->CM.StorageSmallDir1 = o + 0x010;
+    o += cbDual;
     // _CMHIVE _LIST_ENTRY
     for(; o < 0xff0; o += 8) {
-        f = ((*(PQWORD)(pbCMHIVE + o) & 0xffff8000'00000007) == 0xffff8000'00000000) &&         // FLink
-            ((*(PQWORD)(pbCMHIVE + o + 8) & 0xffff8000'00000007) == 0xffff8000'00000000) &&     // BLink
+        f = VMM_KADDR64_8(*(PQWORD)(pbCMHIVE + o)) &&                                           // FLink
+            VMM_KADDR64_8(*(PQWORD)(pbCMHIVE + o + 8)) &&                                       // BLink
             (*(PQWORD)(pbCMHIVE + o) != *(PQWORD)(pbCMHIVE + o + 8)) &&                         // FLink != BLink
             ((*(PQWORD)(pbCMHIVE + o) - o) != vaCMHIVE) &&                                      // Not ptr to this CMHIVE
             VmmRead(pProcessSystem, *(PQWORD)(pbCMHIVE + o) + 8, (PBYTE)&qw, sizeof(QWORD)) &&  // Read FLink->BLink
@@ -442,7 +462,7 @@ BOOL VmmWinReg_FuzzHiveOffsets64(_In_ PVMM_PROCESS pProcessSystem, _In_ QWORD va
         f = (*(PWORD)(pbCMHIVE + o) <= *(PWORD)(pbCMHIVE + o + 2)) &&                           // UNICODE_STRING.Length <= UNICODE_STRING.MaxLength
             (*(PWORD)(pbCMHIVE + o) > 12) &&                                                    // UNICODE_STRING.Length > 12 (\\REGISTRY\\)
             (*(PWORD)(pbCMHIVE + o) < 0xff) &&                                                  // UNICODE_STRING.Length < 0xff
-            ((*(PQWORD)(pbCMHIVE + o + 8) & 0xffff8000'00000000) == 0xffff8000'00000000) &&     // Is kernel address
+            VMM_KADDR64(*(PQWORD)(pbCMHIVE + o + 8)) &&                                         // Is kernel address
             VmmRead(pProcessSystem, *(PQWORD)(pbCMHIVE + o + 8), (PBYTE)wszBuffer, 20) &&       // Read STRING
             !memcmp(wszBuffer, L"\\REGISTRY\\", 20);                                            // Starts with '\REGISTRY\'
         if(f) { break; }
@@ -457,7 +477,7 @@ BOOL VmmWinReg_FuzzHiveOffsets64(_In_ PVMM_PROCESS pProcessSystem, _In_ QWORD va
     ZeroMemory(qwHE, sizeof(qwHE));
     po->HE._Size = 0x018;               // Most common (default try)
     if(!vaSmallDir) {
-        VmmRead(pProcessSystem, *(PQWORD)(pbCMHIVE + po->CM.StorageMap), (PBYTE)&vaSmallDir, sizeof(QWORD));
+        VmmRead(pProcessSystem, *(PQWORD)(pbCMHIVE + po->CM.StorageMap0), (PBYTE)&vaSmallDir, sizeof(QWORD));
     }
     if((vaSmallDir & 0xffff8000'00000fff) == 0xffff8000'00000000) {
         VmmRead(pProcessSystem, vaSmallDir, (PBYTE)qwHE, sizeof(qwHE));
@@ -485,7 +505,7 @@ BOOL VmmWinReg_FuzzHiveOffsets64(_In_ PVMM_PROCESS pProcessSystem, _In_ QWORD va
 BOOL VmmWinReg_FuzzHiveOffsets32(_In_ PVMM_PROCESS pProcessSystem, _In_ QWORD vaCMHIVE, _In_reads_(0x1000) PBYTE pbCMHIVE)
 {
     BOOL f;
-    WORD o;
+    WORD o, cbDual;
     DWORD dw, vaSmallDir;
     WCHAR wszBuffer[10];
     DWORD dwHE[0x10];
@@ -503,31 +523,42 @@ BOOL VmmWinReg_FuzzHiveOffsets32(_In_ PVMM_PROCESS pProcessSystem, _In_ QWORD va
     po->CM.Signature = 0;
     // _CMHIVE.BaseBlock
     for(o = 0x18; o < 0x30; o += 4) {
-        f = (*(PDWORD)(pbCMHIVE + o) & 0x80000fff) == 0x80000000;
-        if(f) { break; }
+        if((f = VMM_KADDR32_PAGE(*(PDWORD)(pbCMHIVE + o)))) { break; }
     }
     if(!f) { return FALSE; }
     po->CM.BaseBlock = o;
-    // _CMHIVE _HHIVE.STORAGE._DUAL[1]
+    // sizeof(_DUAL):
+    if(ctxVmm->kernel.dwVersionBuild < 6000) {
+        cbDual = 0x0dc;     // WinXP
+    } else if(ctxVmm->kernel.dwVersionBuild < 9200) {
+        cbDual = 0x13c;     // WinVista-Win7
+    } else {
+        cbDual = 0x19c;     // Win8+
+    }
+    // _CMHIVE _HHIVE.STORAGE._DUAL[0]
     for(; o < 0x400; o += 4) {
-        vaSmallDir = *(PDWORD)(pbCMHIVE + o + 0x008);                                           // _DUAL.SmallDir may be zero sometimes ...
-        f = (*(PDWORD)(pbCMHIVE + o + 0x00c) == 0xffffffff) &&                                  // _DUAL.Guard
-            (*(PDWORD)(pbCMHIVE + o + 0x000) < 0x40000000) &&                                   // _DUAL.Length < 1GB
-            ((*(PDWORD)(pbCMHIVE + o + 0x004) & 0x80000003) == 0x80000000) &&                   // _DUAL.Map = kernel 4-byte align
-            ((vaSmallDir == 0) || ((vaSmallDir & 0x80000fff) == 0x80000000)) &&                 // _DUAL.SmallDir = kernel page base
-            VmmRead(pProcessSystem, *(PDWORD)(pbCMHIVE + o + 0x004), (PBYTE)&dw, sizeof(DWORD)) &&  // [_DUAL.Map][0]
-            ((vaSmallDir == 0) || (vaSmallDir == dw));                                          // _DUAL.SmallDir = 1st entry in _DUAL.Map 'directory'
+        vaSmallDir = *(PDWORD)(pbCMHIVE + o + 0x008);                                           // _DUAL[0].SmallDir may be zero sometimes ...
+        f = (*(PDWORD)(pbCMHIVE + o + 0x00c) == 0xffffffff) &&                                  // _DUAL[0].Guard
+            (*(PDWORD)(pbCMHIVE + o + 0x000) < 0x40000000) &&                                   // _DUAL[0].Length < 1GB
+            VMM_KADDR32_4(*(PDWORD)(pbCMHIVE + o + 0x004)) &&                                   // _DUAL[0].Map = kernel 4-byte align
+            ((vaSmallDir == 0) || VMM_KADDR32_PAGE(vaSmallDir)) &&                              // _DUAL[0].SmallDir = kernel page base
+            VmmRead(pProcessSystem, *(PDWORD)(pbCMHIVE + o + 0x004), (PBYTE)&dw, sizeof(DWORD)) &&  // [_DUAL[0].Map]
+            ((vaSmallDir == 0) || (vaSmallDir == dw));                                          // _DUAL[0].SmallDir = 1st entry in _DUAL.Map 'directory'
         if(f) { break; }
     }
     if(!f) { return FALSE; }
-    po->CM.Length = o + 0x000;
-    po->CM.StorageMap = o + 0x004;
-    po->CM.StorageSmallDir = o + 0x008;
-    o += 2 * 0xdc;                                                                              // sizeof(_DUAL) 0xdc on WinXP, 0x13c on Win7SP0, but grows to 0x19c on later versions, use the smaller value.
+    po->CM.Length0 = o + 0x000;
+    po->CM.StorageMap0 = o + 0x004;
+    po->CM.StorageSmallDir0 = o + 0x008;
+    o += cbDual;
+    po->CM.Length1 = o + 0x000;
+    po->CM.StorageMap1 = o + 0x004;
+    po->CM.StorageSmallDir1 = o + 0x008;
+    o += cbDual;
     // _CMHIVE _LIST_ENTRY
     for(; o < 0x800; o += 4) {
-        f = ((*(PDWORD)(pbCMHIVE + o) & 0x80000003) == 0x80000000) &&                                   // FLink
-            ((*(PDWORD)(pbCMHIVE + o + 4) & 0x80000003) == 0x80000000) &&                               // BLink
+        f = VMM_KADDR32_4(*(PDWORD)(pbCMHIVE + o)) &&                                                   // FLink
+            VMM_KADDR32_4(*(PDWORD)(pbCMHIVE + o + 4)) &&                                               // BLink
             (*(PDWORD)(pbCMHIVE + o) != *(PDWORD)(pbCMHIVE + o + 4)) &&                                 // FLink != BLink
             VmmRead(pProcessSystem, *(PDWORD)(pbCMHIVE + o) + sizeof(DWORD), (PBYTE)&dw, sizeof(DWORD)) && // Read FLink->BLink
             VmmRead(pProcessSystem, (QWORD)dw - o + po->CM.Signature, (PBYTE)&dw, sizeof(DWORD)) &&     // Read (FLink->BLink) Signature
@@ -544,7 +575,7 @@ BOOL VmmWinReg_FuzzHiveOffsets32(_In_ PVMM_PROCESS pProcessSystem, _In_ QWORD va
         f = (*(PWORD)(pbCMHIVE + o) <= *(PWORD)(pbCMHIVE + o + 2)) &&                           // UNICODE_STRING.Length <= UNICODE_STRING.MaxLength
             (*(PWORD)(pbCMHIVE + o) > 12) &&                                                    // UNICODE_STRING.Length > 12 (\\REGISTRY\\)
             (*(PWORD)(pbCMHIVE + o) < 0xff) &&                                                  // UNICODE_STRING.Length < 0xff
-            ((*(PDWORD)(pbCMHIVE + o + 4) & 0x80000000) == 0x80000000) &&                       // Is kernel address
+            VMM_KADDR32(*(PDWORD)(pbCMHIVE + o + 4)) &&                                         // Is kernel address
             VmmRead(pProcessSystem, *(PDWORD)(pbCMHIVE + o + 4), (PBYTE)wszBuffer, 20) &&       // Read STRING
             !memcmp(wszBuffer, L"\\REGISTRY\\", 20);                                            // Starts with '\REGISTRY\'
         if(f) {
@@ -561,7 +592,7 @@ BOOL VmmWinReg_FuzzHiveOffsets32(_In_ PVMM_PROCESS pProcessSystem, _In_ QWORD va
     ZeroMemory(dwHE, sizeof(dwHE));
     po->HE._Size = 0x00c;               // Most common (default try)
     if(!vaSmallDir) {
-        VmmRead(pProcessSystem, *(PDWORD)(pbCMHIVE + po->CM.StorageMap), (PBYTE)&vaSmallDir, sizeof(DWORD));
+        VmmRead(pProcessSystem, *(PDWORD)(pbCMHIVE + po->CM.StorageMap0), (PBYTE)&vaSmallDir, sizeof(DWORD));
     }
     if((vaSmallDir & 0x80000fff) == 0x80000000) {
         VmmRead(pProcessSystem, vaSmallDir, (PBYTE)dwHE, sizeof(dwHE));
@@ -673,46 +704,48 @@ VOID VmmWinReg_CallbackCleanup_ObRegistryHive(POB_REGISTRY_HIVE pOb)
     DeleteCriticalSection(&pOb->LockUpdate);
     Ob_DECREF(pOb->Snapshot.pmKeyHash);
     Ob_DECREF(pOb->Snapshot.pmKeyOffset);
-    LocalFree(pOb->Snapshot.pb);
+    LocalFree(pOb->Snapshot._DUAL[0].pb);
+    LocalFree(pOb->Snapshot._DUAL[1].pb);
 }
 
 /*
 * Callback function from VmmWin_ListTraversePrefetch[32|64].
 * Gather referenced addresses into prefetch dataset.
 */
-VOID VmmWinReg_EnumHive64_Pre(_In_ PVMM_PROCESS pProcess, _In_opt_ POB_MAP pHiveMap, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb, _In_ QWORD vaFLink, _In_ QWORD vaBLink, _In_ POB_VSET pVSetAddress, _Inout_ PBOOL pfValidEntry, _Inout_ PBOOL pfValidFLink, _Inout_ PBOOL pfValidBLink)
+VOID VmmWinReg_EnumHive64_Pre(_In_ PVMM_PROCESS pProcess, _In_opt_ POB_MAP pHiveMap, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb, _In_ QWORD vaFLink, _In_ QWORD vaBLink, _In_ POB_SET pVSetAddress, _Inout_ PBOOL pfValidEntry, _Inout_ PBOOL pfValidFLink, _Inout_ PBOOL pfValidBLink)
 {
     PVMMWIN_REGISTRY_OFFSET po = &ctxVmm->pRegistry->Offset;
     if((va & 0xffff8000'00000007) != 0xffff8000'00000000) { return; }               // not aligned kernel address
     *pfValidFLink = ((vaFLink & 0xffff8000'00000007) == 0xffff8000'00000000);       // aligned kernel address
     *pfValidBLink = ((vaBLink & 0xffff8000'00000007) == 0xffff8000'00000000);       // aligned kernel address
     if(*pfValidFLink && *pfValidBLink && (*(PDWORD)(pb + po->CM.Signature) == 0xBEE0BEE0) && ((*(PQWORD)(pb + po->CM.BaseBlock) & 0xfff) == 0x000)) {
-        ObVSet_Push(pVSetAddress, *(PQWORD)(pb + po->CM.BaseBlock));
+        ObSet_Push(pVSetAddress, *(PQWORD)(pb + po->CM.BaseBlock));
         if(po->CM.HiveRootPathOpt && *(PQWORD)(pb + po->CM.HiveRootPathOpt)) {  // _CMHIVE.HiveRootPath
-            ObVSet_Push(pVSetAddress, *(PQWORD)(pb + po->CM.HiveRootPathOpt + 8) & ~0xfff);
+            ObSet_Push(pVSetAddress, *(PQWORD)(pb + po->CM.HiveRootPathOpt + 8) & ~0xfff);
         }
         *pfValidEntry = TRUE;
     }
 }
 
-VOID VmmWinReg_EnumHive32_Pre(_In_ PVMM_PROCESS pProcess, _In_opt_ POB_MAP pHiveMap, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb, _In_ QWORD vaFLink, _In_ QWORD vaBLink, _In_ POB_VSET pVSetAddress, _Inout_ PBOOL pfValidEntry, _Inout_ PBOOL pfValidFLink, _Inout_ PBOOL pfValidBLink)
+VOID VmmWinReg_EnumHive32_Pre(_In_ PVMM_PROCESS pProcess, _In_opt_ POB_MAP pHiveMap, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb, _In_ QWORD vaFLink, _In_ QWORD vaBLink, _In_ POB_SET pVSetAddress, _Inout_ PBOOL pfValidEntry, _Inout_ PBOOL pfValidFLink, _Inout_ PBOOL pfValidBLink)
 {
     PVMMWIN_REGISTRY_OFFSET po = &ctxVmm->pRegistry->Offset;
     if((va & 0x80000007) != 0x80000000) { return; }         // not aligned kernel address
     *pfValidFLink = ((vaFLink & 0x80000003) == 0x80000000);       // aligned kernel address
     *pfValidBLink = ((vaBLink & 0x80000003) == 0x80000000);       // aligned kernel address
     if(*pfValidFLink && *pfValidBLink && (*(PDWORD)(pb + po->CM.Signature) == 0xBEE0BEE0) && ((*(PDWORD)(pb + po->CM.BaseBlock) & 0xfff) == 0x000)) {
-        ObVSet_Push(pVSetAddress, *(PDWORD)(pb + po->CM.BaseBlock));
+        ObSet_Push(pVSetAddress, *(PDWORD)(pb + po->CM.BaseBlock));
         if(po->CM.HiveRootPathOpt && *(PDWORD)(pb + po->CM.HiveRootPathOpt)) {  // _CMHIVE.HiveRootPath
-            ObVSet_Push(pVSetAddress, *(PDWORD)(pb + po->CM.HiveRootPathOpt + 4) & ~0xfff);
+            ObSet_Push(pVSetAddress, *(PDWORD)(pb + po->CM.HiveRootPathOpt + 4) & ~0xfff);
         }
         *pfValidEntry = TRUE;
     }
 }
 
-VOID VmmWinReg_ListTraversePrefetch_CallbackPost_GetShortName(_In_ LPWSTR wsz, _Out_writes_(32) LPSTR sz)
+VOID VmmWinReg_HiveGetShortName(_In_ POB_REGISTRY_HIVE pHive, _Out_writes_(32) LPSTR sz)
 {
     DWORD i, iStart = 0;
+    LPWSTR wsz = pHive->wszNameShort;
     for(i = 0; i < 32; i++) {
         if(wsz[i] == L'\\') { iStart = i + 1; }
     }
@@ -739,17 +772,21 @@ VOID VmmWinReg_EnumHive64_Post(_In_ PVMM_PROCESS pProcess, _In_opt_ POB_MAP pHiv
     f = VMM_KADDR64_16(vaData) &&
         pHiveMap &&
         (*(PDWORD)(pbData + po->CM.Signature) == 0xBEE0BEE0) &&                 // Signature match
-        (*(PQWORD)(pbData + po->CM.StorageMap)) &&                              // _CMHIVE.Hive.Storage.Map
-        (*(PDWORD)(pbData + po->CM.Length)) &&                                  // Length > 0
-        (*(PDWORD)(pbData + po->CM.Length) <= 0x40000000);                      // Length < 1GB
+        (*(PQWORD)(pbData + po->CM.StorageMap0)) &&                             // _CMHIVE.Hive.Storage.Map
+        (*(PDWORD)(pbData + po->CM.Length0)) &&                                  // Length > 0
+        (*(PDWORD)(pbData + po->CM.Length0) <= 0x40000000);                      // Length < 1GB
     if(!f) { return; }
     // 2: Allocate and Initialize
     if(!(pObHive = Ob_Alloc(OB_TAG_REG_HIVE, LMEM_ZEROINIT, sizeof(OB_REGISTRY_HIVE), VmmWinReg_CallbackCleanup_ObRegistryHive, NULL))) { return; }
     pObHive->vaCMHIVE = vaData;
     pObHive->vaHBASE_BLOCK = *(PQWORD)(pbData + po->CM.BaseBlock);
-    pObHive->cbLength = *(PDWORD)(pbData + po->CM.Length);
-    pObHive->vaHMAP_DIRECTORY = *(PQWORD)(pbData + po->CM.StorageMap);
-    pObHive->vaHMAP_TABLE_SmallDir = *(PQWORD)(pbData + po->CM.StorageSmallDir);
+    pObHive->cbLength = *(PDWORD)(pbData + po->CM.Length0);
+    pObHive->_DUAL[0].cb = *(PDWORD)(pbData + po->CM.Length0);
+    pObHive->_DUAL[0].vaHMAP_DIRECTORY = *(PQWORD)(pbData + po->CM.StorageMap0);
+    pObHive->_DUAL[0].vaHMAP_TABLE_SmallDir = *(PQWORD)(pbData + po->CM.StorageSmallDir0);
+    pObHive->_DUAL[1].cb = *(PDWORD)(pbData + po->CM.Length1);
+    pObHive->_DUAL[1].vaHMAP_DIRECTORY = *(PQWORD)(pbData + po->CM.StorageMap1);
+    pObHive->_DUAL[1].vaHMAP_TABLE_SmallDir = *(PQWORD)(pbData + po->CM.StorageSmallDir1);
     InitializeCriticalSection(&pObHive->LockUpdate);
     VmmRead(pProcess, *(PQWORD)(pbData + po->CM.BaseBlock) + po->BB.FileName, (PBYTE)pObHive->wszNameShort, sizeof(pObHive->wszNameShort) - 2);   //_HBASE_BLOCK.FileName
     if(po->CM.HiveRootPathOpt && *(PQWORD)(pbData + po->CM.HiveRootPathOpt)) {  // _CMHIVE.HiveRootPath
@@ -763,7 +800,7 @@ VOID VmmWinReg_EnumHive64_Post(_In_ PVMM_PROCESS pProcess, _In_opt_ POB_MAP pHiv
     if(pObHive->wszHiveRootPath[0] && WideCharToMultiByte(CP_ACP, 0, pObHive->wszHiveRootPath + 10, -1, szHiveFileNameLong, sizeof(szHiveFileNameLong) - 1, &chDefault, &fBoolTrue)) {
         Util_AsciiFileNameFix(szHiveFileNameLong, '_');
     }
-    VmmWinReg_ListTraversePrefetch_CallbackPost_GetShortName(pObHive->wszNameShort, szHiveFileNameShort);
+    VmmWinReg_HiveGetShortName(pObHive, szHiveFileNameShort);
     snprintf(
         pObHive->szName,
         sizeof(pObHive->szName) - 1,
@@ -791,17 +828,21 @@ VOID VmmWinReg_EnumHive32_Post(_In_ PVMM_PROCESS pProcess, _In_opt_ POB_MAP pHiv
         pHiveMap &&
         (*(PDWORD)(pbData + po->CM.Signature) == 0xBEE0BEE0) &&                 // Signature match
         !(*(PDWORD)(pbData + po->CM.BaseBlock) & 0xfff) &&                      // _CMHIVE.BaseBlock on page boundary
-        (*(PQWORD)(pbData + po->CM.StorageMap)) &&                              // _CMHIVE.Hive.Storage.Map
-        (*(PDWORD)(pbData + po->CM.Length)) &&                                  // Length > 0
-        (*(PDWORD)(pbData + po->CM.Length) <= 0x40000000);                      // Length < 1GB
+        (*(PQWORD)(pbData + po->CM.StorageMap0)) &&                             // _CMHIVE.Hive.Storage.Map
+        (*(PDWORD)(pbData + po->CM.Length0)) &&                                  // Length > 0
+        (*(PDWORD)(pbData + po->CM.Length0) <= 0x40000000);                      // Length < 1GB
     if(!f) { return; }
     // 2: Allocate and Initialize
     if(!(pObHive = Ob_Alloc(OB_TAG_REG_HIVE, LMEM_ZEROINIT, sizeof(OB_REGISTRY_HIVE), VmmWinReg_CallbackCleanup_ObRegistryHive, NULL))) { return; }
     pObHive->vaCMHIVE = vaData;
     pObHive->vaHBASE_BLOCK = *(PDWORD)(pbData + po->CM.BaseBlock);
-    pObHive->cbLength = *(PDWORD)(pbData + po->CM.Length);
-    pObHive->vaHMAP_DIRECTORY = *(PDWORD)(pbData + po->CM.StorageMap);
-    pObHive->vaHMAP_TABLE_SmallDir = *(PDWORD)(pbData + po->CM.StorageSmallDir);
+    pObHive->cbLength = *(PDWORD)(pbData + po->CM.Length0);
+    pObHive->_DUAL[0].cb = *(PDWORD)(pbData + po->CM.Length0);
+    pObHive->_DUAL[0].vaHMAP_DIRECTORY = *(PDWORD)(pbData + po->CM.StorageMap0);
+    pObHive->_DUAL[0].vaHMAP_TABLE_SmallDir = *(PDWORD)(pbData + po->CM.StorageSmallDir0);
+    pObHive->_DUAL[1].cb = *(PDWORD)(pbData + po->CM.Length1);
+    pObHive->_DUAL[1].vaHMAP_DIRECTORY = *(PDWORD)(pbData + po->CM.StorageMap1);
+    pObHive->_DUAL[1].vaHMAP_TABLE_SmallDir = *(PDWORD)(pbData + po->CM.StorageSmallDir1);
     InitializeCriticalSection(&pObHive->LockUpdate);
     VmmRead(pProcess, (QWORD)*(PDWORD)(pbData + po->CM.BaseBlock) + po->BB.FileName, (PBYTE)pObHive->wszNameShort, sizeof(pObHive->wszNameShort) - 2);   //_HBASE_BLOCK.FileName
     if(po->CM.HiveRootPathOpt && *(PDWORD)(pbData + po->CM.HiveRootPathOpt)) {  // _CMHIVE.HiveRootPath
@@ -815,7 +856,7 @@ VOID VmmWinReg_EnumHive32_Post(_In_ PVMM_PROCESS pProcess, _In_opt_ POB_MAP pHiv
     if(pObHive->wszHiveRootPath[0] && WideCharToMultiByte(CP_ACP, 0, pObHive->wszHiveRootPath + 10, -1, szHiveFileNameLong, sizeof(szHiveFileNameLong) - 1, &chDefault, &fBoolTrue)) {
         Util_AsciiFileNameFix(szHiveFileNameLong, '_');
     }
-    VmmWinReg_ListTraversePrefetch_CallbackPost_GetShortName(pObHive->wszNameShort, szHiveFileNameShort);
+    VmmWinReg_HiveGetShortName(pObHive, szHiveFileNameShort);
     snprintf(
         pObHive->szName,
         sizeof(pObHive->szName) - 1,
@@ -901,7 +942,7 @@ BOOL VmmWinReg_KeyInitialize(_In_ POB_REGISTRY_HIVE pHive);
 _Success_(return)
 BOOL VmmWinReg_HiveSnapshotEnsure(_In_ POB_REGISTRY_HIVE pHive)
 {
-    DWORD cbRead;
+    DWORD i, cbRead;
     // 1: check already cached
     if(!pHive) { return FALSE; }
     if(pHive->Snapshot.fInitialized) { return TRUE; }
@@ -915,10 +956,12 @@ BOOL VmmWinReg_HiveSnapshotEnsure(_In_ POB_REGISTRY_HIVE pHive)
     // 3: allocate new
     pHive->Snapshot.pmKeyHash = ObMap_New(OB_MAP_FLAGS_OBJECT_OB);
     pHive->Snapshot.pmKeyOffset = ObMap_New(OB_MAP_FLAGS_OBJECT_OB);
-    pHive->Snapshot.cb = pHive->cbLength;
-    pHive->Snapshot.pb = LocalAlloc(0, pHive->Snapshot.cb);
-    if(!pHive->Snapshot.pmKeyHash || !pHive->Snapshot.pmKeyOffset || !pHive->Snapshot.pb) { goto fail; }
-    VmmWinReg_HiveReadEx(pHive, 0, pHive->Snapshot.pb, pHive->Snapshot.cb, &cbRead, VMM_FLAG_ZEROPAD_ON_FAIL);
+    if(!pHive->Snapshot.pmKeyHash || !pHive->Snapshot.pmKeyOffset) { goto fail; }
+    for(i = 0; i < 2; i++) {
+        pHive->Snapshot._DUAL[i].cb = pHive->_DUAL[i].cb;
+        if(!(pHive->Snapshot._DUAL[i].pb = LocalAlloc(0, pHive->Snapshot._DUAL[i].cb))) { goto fail; }
+        VmmWinReg_HiveReadEx(pHive, (i ? 0x80000000 : 0), pHive->Snapshot._DUAL[i].pb, pHive->Snapshot._DUAL[i].cb, &cbRead, VMM_FLAG_ZEROPAD_ON_FAIL);
+    }
     if(!VmmWinReg_KeyInitialize(pHive)) { goto fail; }
     pHive->Snapshot.fInitialized = TRUE;
     LeaveCriticalSection(&pHive->LockUpdate);
@@ -926,8 +969,10 @@ BOOL VmmWinReg_HiveSnapshotEnsure(_In_ POB_REGISTRY_HIVE pHive)
 fail:
     Ob_DECREF_NULL(&pHive->Snapshot.pmKeyHash);
     Ob_DECREF_NULL(&pHive->Snapshot.pmKeyOffset);
-    LocalFree(pHive->Snapshot.pb);
-    pHive->Snapshot.pb = NULL;
+    LocalFree(pHive->Snapshot._DUAL[0].pb);
+    LocalFree(pHive->Snapshot._DUAL[1].pb);
+    pHive->Snapshot._DUAL[0].pb = NULL;
+    pHive->Snapshot._DUAL[1].pb = NULL;
     LeaveCriticalSection(&pHive->LockUpdate);
     return FALSE;
 }
@@ -1117,8 +1162,8 @@ typedef struct tdOB_REGISTRY_KEY {
     QWORD qwHashKeyThis;            // this key hash (calculated on file system compatible hash)
     PREG_CM_KEY_NODE pKey;          // points into pHive->Snapshot.pb (must not be free'd)
     struct {
-        WORD c;
-        WORD cMax;
+        DWORD c;
+        DWORD cMax;
         PDWORD po;
     } Child;
 } OB_REGISTRY_KEY, *POB_REGISTRY_KEY;
@@ -1137,6 +1182,9 @@ typedef struct tdOB_REGISTRY_VALUE {
 #define REG_CELL_ISACTIVE(dwCellHead)               (dwCellHead >> 31)
 #define REG_CELL_SIZE(dwCellHead)                   ((dwCellHead >> 31) ? (DWORD)(0-dwCellHead) : dwCellHead)
 #define REG_CELL_SIZE_EX(pb, iCellHead)             REG_CELL_SIZE(*(PDWORD)(pb + (iCellHead)))
+
+#define REG_CELL_SV(oCell)                          (oCell >> 31)                       // static/volatile bit
+#define REG_CELL_ORAW(oCell)                        (oCell & 0x7fffffff)                // raw cell offset (from a static/volatile offset)
 
 VOID VmmWinReg_CallbackCleanup_ObRegKey(POB_REGISTRY_KEY pOb)
 {
@@ -1201,18 +1249,20 @@ QWORD VmmWinReg_KeyHashPathW(_In_ LPWSTR wszPath)
 /*
 * Helper function to validate the sanity of a Cell Size.
 * -- pHive
-* -- oCell
+* -- oCell = cell offset (incl. SV-bit).
 * -- cbCellSizeMin
 * -- cbCellSizeMax
 * -- return
 */
 BOOL VmmWinReg_KeyValidateCellSize(_In_ POB_REGISTRY_HIVE pHive, _In_ DWORD oCell, _In_ DWORD cbCellSizeMin, _In_ DWORD cbCellSizeMax)
 {
-    DWORD cbCell;
-    if(oCell + 4 > pHive->Snapshot.cb) { return FALSE; }
-    cbCell = REG_CELL_SIZE_EX(pHive->Snapshot.pb, oCell);
-    if((cbCell < cbCellSizeMin) || (cbCell > cbCellSizeMax) || (oCell + cbCell > pHive->Snapshot.cb)) { return FALSE; }
-    if(((oCell & 0xfff) + cbCell > 0x1000) && (REG_SIGNATURE_HBIN == *(PDWORD)(pHive->Snapshot.pb + ((oCell + 0xfff) & ~0xfff)))) { return FALSE; }
+    DWORD iSV, cbCell;
+    iSV = oCell >> 31;
+    oCell = oCell & 0x7fffffff;
+    if(oCell + 4 > pHive->Snapshot._DUAL[iSV].cb) { return FALSE; }
+    cbCell = REG_CELL_SIZE_EX(pHive->Snapshot._DUAL[iSV].pb, oCell);
+    if((cbCell < cbCellSizeMin) || (cbCell > cbCellSizeMax) || (oCell + cbCell > pHive->Snapshot._DUAL[iSV].cb)) { return FALSE; }
+    if(((oCell & 0xfff) + cbCell > 0x1000) && (REG_SIGNATURE_HBIN == *(PDWORD)(pHive->Snapshot._DUAL[iSV].pb + ((oCell + 0xfff) & ~0xfff)))) { return FALSE; }
     return TRUE;
 }
 
@@ -1223,7 +1273,7 @@ BOOL VmmWinReg_KeyValidateCellSize(_In_ POB_REGISTRY_HIVE pHive, _In_ DWORD oCel
 */
 VOID VmmWinReg_KeyInitializeCreateKey_AddChild(_In_opt_ POB_REGISTRY_KEY pObKeyParent, _In_ DWORD oCellChild)
 {
-    WORD cMax;
+    DWORD cMax;
     PDWORD poNew;
     if(!pObKeyParent) { return; }
     if(pObKeyParent->Child.c == pObKeyParent->Child.cMax) {
@@ -1251,7 +1301,7 @@ POB_REGISTRY_KEY VmmWinReg_KeyInitializeCreateKey(_In_ POB_REGISTRY_HIVE pHive, 
 {
     QWORD qwKeyHash;
     WORD iSuffix = 0;
-    DWORD dwCellHead, cbCell, cbKey, dwNameHash;
+    DWORD iSV, oCellRaw, dwCellHead, cbCell, cbKey, dwNameHash;
 	PREG_CM_KEY_NODE pnk;
 	POB_REGISTRY_KEY pObKeyParent = NULL, pObKey = NULL;
 	// 1: already exists in cache ?
@@ -1261,10 +1311,12 @@ POB_REGISTRY_KEY VmmWinReg_KeyInitializeCreateKey(_In_ POB_REGISTRY_HIVE pHive, 
 	}
 	// 2: retrieve key & validate
     if(!VmmWinReg_KeyValidateCellSize(pHive, oCell, REG_CM_KEY_NODE_SIZEOF + 4, 0x1000)) { goto fail; }
-	dwCellHead = *(PDWORD)(pHive->Snapshot.pb + oCell);
+    iSV = REG_CELL_SV(oCell);
+    oCellRaw = REG_CELL_ORAW(oCell);
+	dwCellHead = *(PDWORD)(pHive->Snapshot._DUAL[iSV].pb + oCellRaw);
 	cbCell = REG_CELL_SIZE(dwCellHead);
 	cbKey = cbCell - 4;
-	pnk = (PREG_CM_KEY_NODE)(pHive->Snapshot.pb + oCell + 4);
+	pnk = (PREG_CM_KEY_NODE)(pHive->Snapshot._DUAL[iSV].pb + oCellRaw + 4);
     if(pnk->Signature != REG_CM_KEY_SIGNATURE_KEYNODE) { goto fail; }
 	if(((QWORD)pnk->NameLength << ((pnk->Flags & REG_CM_KEY_NODE_FLAGS_COMP_NAME) ? 0 : 1)) > (cbKey - REG_CM_KEY_NODE_SIZEOF)) { goto fail; }
     if(pnk->Parent == oCell) { goto fail; }
@@ -1368,14 +1420,14 @@ BOOL VmmWinReg_KeyInitializeRootKey(_In_ POB_REGISTRY_HIVE pHive)
 	QWORD qwKeyRootHash = 0;
     // 1: get root key offset from regf-header (this is most often 0x20)
     if(!(pObSystemProcess = VmmProcessGet(4))) { return FALSE; }
-    if(!VmmRead(pObSystemProcess, pHive->vaHBASE_BLOCK + 0x24, (PBYTE)&oRootKey, sizeof(DWORD)) || !oRootKey || (oRootKey > pHive->Snapshot.cb - REG_CM_KEY_NODE_SIZEOF)) {
+    if(!VmmRead(pObSystemProcess, pHive->vaHBASE_BLOCK + 0x24, (PBYTE)&oRootKey, sizeof(DWORD)) || !oRootKey || (oRootKey > pHive->Snapshot._DUAL[0].cb - REG_CM_KEY_NODE_SIZEOF)) {
         // regf base block unreadable or corrupt - try locate root key in 1st hive page
         i = 0x20;
         while(TRUE) {
-            cbCell = REG_CELL_SIZE_EX(pHive->Snapshot.pb, i);
+            cbCell = REG_CELL_SIZE_EX(pHive->Snapshot._DUAL[0].pb, i);
             cbKey = (cbCell > 4) ? cbCell - 4 : 0;
 			if((cbKey < sizeof(REG_CM_KEY_NODE)) || (i + cbCell > 0x1000)) { break; }
-            pnk = (PREG_CM_KEY_NODE)(pHive->Snapshot.pb + i + 4);
+            pnk = (PREG_CM_KEY_NODE)(pHive->Snapshot._DUAL[0].pb + i + 4);
             if((pnk->Signature != REG_CM_KEY_SIGNATURE_KEYNODE) || (pnk->Flags != (REG_CM_KEY_NODE_FLAGS_HIVE_ENTRY | REG_CM_KEY_NODE_FLAGS_COMP_NAME))) {
                 i += cbCell;
                 continue;
@@ -1400,39 +1452,41 @@ BOOL VmmWinReg_KeyInitializeRootKey(_In_ POB_REGISTRY_HIVE pHive)
 _Success_(return)
 BOOL VmmWinReg_KeyInitialize(_In_ POB_REGISTRY_HIVE pHive)
 {
-	DWORD oCell, dwSignature, cbCell, cbHbin, iHbin = 0;
+	DWORD oCell, dwSignature, cbCell, cbHbin, iSV, iHbin;
     if(!VmmWinReg_KeyInitializeRootKey(pHive)) { return FALSE; }
-    while(iHbin < (pHive->Snapshot.cb & ~0xfff)) {
-        dwSignature = *(PDWORD)(pHive->Snapshot.pb + iHbin);
-        if(!dwSignature) {  // zero-padded hbin
-            iHbin += 0x1000;
-            continue;
-        }	
-        if(dwSignature != REG_SIGNATURE_HBIN) {
-            vmmprintfvv_fn("BAD HBIN HEADER: Hive=%016llx HBin=%08x Sig=%08x \n", pHive->vaCMHIVE, iHbin, dwSignature);
-            iHbin += 0x1000;
-            continue;
-        }
-        cbHbin = *(PDWORD)(pHive->Snapshot.pb + iHbin + 8);
-        if((cbHbin & 0xfff) || (cbHbin > 0x10000)) { cbHbin = 0x1000; }
-        oCell = 0x20;
-        while(oCell < cbHbin) {
-            cbCell = REG_CELL_SIZE_EX(pHive->Snapshot.pb, (QWORD)iHbin + oCell);
-            if(!cbCell || (oCell + cbCell) > cbHbin) {
-                oCell += 4;
+    for(iSV = 0; iSV < 2; iSV++) {
+        iHbin = 0;
+        while(iHbin < (pHive->Snapshot._DUAL[iSV].cb & ~0xfff)) {
+            dwSignature = *(PDWORD)(pHive->Snapshot._DUAL[iSV].pb + iHbin);
+            if(!dwSignature) {  // zero-padded hbin
+                iHbin += 0x1000;
                 continue;
             }
-            if(cbCell < 4 + REG_CM_KEY_NODE_SIZEOF) {
+            if(dwSignature != REG_SIGNATURE_HBIN) {
+                vmmprintfvv_fn("BAD HBIN HEADER: Hive=%016llx HBin=%08x Sig=%08x \n", pHive->vaCMHIVE, ((iSV << 31) | iHbin), dwSignature);
+                iHbin += 0x1000;
+                continue;
+            }
+            cbHbin = *(PDWORD)(pHive->Snapshot._DUAL[iSV].pb + iHbin + 8);
+            if((cbHbin & 0xfff) || (cbHbin > 0x10000)) { cbHbin = 0x1000; }
+            oCell = 0x20;
+            while(oCell < cbHbin) {
+                cbCell = REG_CELL_SIZE_EX(pHive->Snapshot._DUAL[iSV].pb, (QWORD)iHbin + oCell);
+                if(!cbCell || (oCell + cbCell) > cbHbin) {
+                    oCell += 4;
+                    continue;
+                }
+                if(cbCell < 4 + REG_CM_KEY_NODE_SIZEOF) {
+                    oCell += (cbCell + 3) & ~0x3;
+                    continue;
+                }
+                if(REG_CM_KEY_SIGNATURE_KEYNODE == *(PWORD)(pHive->Snapshot._DUAL[iSV].pb + iHbin + oCell + 4)) {
+                    Ob_DECREF(VmmWinReg_KeyInitializeCreateKey(pHive, iHbin + oCell + (iSV ? 0x80000000 : 0), 0));
+                }
                 oCell += (cbCell + 3) & ~0x3;
-                continue;
             }
-            if(REG_CM_KEY_SIGNATURE_KEYNODE == *(PWORD)(pHive->Snapshot.pb + iHbin + oCell + 4)) {
-                Ob_DECREF(VmmWinReg_KeyInitializeCreateKey(pHive, iHbin + oCell, 0));
-            }
-            oCell += (cbCell + 3) & ~0x3;
+            iHbin += cbHbin;
         }
-
-        iHbin += cbHbin;
     }
     return TRUE;
 }
@@ -1440,7 +1494,7 @@ BOOL VmmWinReg_KeyInitialize(_In_ POB_REGISTRY_HIVE pHive)
 /*
 * Try to create a key-value object manager object from the given cell offset.
 * -- pHive
-* -- oCell
+* -- oCell = offset to cell (incl. static/volatile bit).
 * -- return
 */
 POB_REGISTRY_VALUE VmmWinReg_KeyValue_Create(_In_ POB_REGISTRY_HIVE pHive, _In_ DWORD oCell)
@@ -1450,10 +1504,10 @@ POB_REGISTRY_VALUE VmmWinReg_KeyValue_Create(_In_ POB_REGISTRY_HIVE pHive, _In_ 
     POB_REGISTRY_VALUE pObKeyValue;
     // 1: retrieve key & validate
     if(!VmmWinReg_KeyValidateCellSize(pHive, oCell, REG_CM_KEY_VALUE_SIZEOF + 4, 0x1000)) { return NULL; }
-    dwCellHead = *(PDWORD)(pHive->Snapshot.pb + oCell);
+    dwCellHead = *(PDWORD)(pHive->Snapshot._DUAL[REG_CELL_SV(oCell)].pb + REG_CELL_ORAW(oCell));
     cbCell = REG_CELL_SIZE(dwCellHead);
     cbKeyValue = cbCell - 4;
-    pvk = (PREG_CM_KEY_VALUE)(pHive->Snapshot.pb + oCell + 4);
+    pvk = (PREG_CM_KEY_VALUE)(pHive->Snapshot._DUAL[REG_CELL_SV(oCell)].pb + REG_CELL_ORAW(oCell) + 4);
     if(pvk->Signature != REG_CM_KEY_SIGNATURE_KEYVALUE) { return NULL; }
     if(((QWORD)pvk->NameLength << ((pvk->Flags & REG_CM_KEY_VALUE_FLAGS_COMP_NAME) ? 0 : 1)) > (cbKeyValue - REG_CM_KEY_VALUE_SIZEOF)) { return NULL; }
     // 2: allocate and prepare
@@ -1479,11 +1533,14 @@ POB_REGISTRY_VALUE VmmWinReg_ValueByKeyAndName(_In_ POB_REGISTRY_HIVE pHive, _In
     DWORD cbListCell, iValues, cValues, *praValues;
     POB_REGISTRY_VALUE pObKeyValue;
     VMM_REGISTRY_VALUE_INFO ValueInfo;
-    if(!pKey->pKey->ValueList.Count || (pKey->pKey->ValueList.List + 8 > pHive->Snapshot.cb)) { return NULL; }
-    cbListCell = REG_CELL_SIZE_EX(pHive->Snapshot.pb, pKey->pKey->ValueList.List);
-    if((cbListCell < 8) || (pKey->pKey->ValueList.List & 0xfff) + cbListCell > 0x1000) { return NULL; }
+    DWORD oListCellRaw = REG_CELL_ORAW(pKey->pKey->ValueList.List);
+    DWORD cbSnapshot = pHive->Snapshot._DUAL[REG_CELL_SV(pKey->pKey->ValueList.List)].cb;
+    PBYTE pbSnapshot = pHive->Snapshot._DUAL[REG_CELL_SV(pKey->pKey->ValueList.List)].pb;
+    if(!pKey->pKey->ValueList.Count || (oListCellRaw + 8 > cbSnapshot)) { return NULL; }
+    cbListCell = REG_CELL_SIZE_EX(pbSnapshot, oListCellRaw);
+    if((cbListCell < 8) || (oListCellRaw & 0xfff) + cbListCell > 0x1000) { return NULL; }
     cValues = min(pKey->pKey->ValueList.Count, (cbListCell - 4) >> 2);
-    praValues = (PDWORD)(pHive->Snapshot.pb + pKey->pKey->ValueList.List + 4);
+    praValues = (PDWORD)(pbSnapshot + oListCellRaw + 4);
     for(iValues = 0; iValues < cValues; iValues++) {
         pObKeyValue = VmmWinReg_KeyValue_Create(pHive, praValues[iValues]);
         if(!pObKeyValue) { continue; }
@@ -1499,7 +1556,7 @@ POB_REGISTRY_VALUE VmmWinReg_ValueByKeyAndName(_In_ POB_REGISTRY_HIVE pHive, _In
 */
 _Success_(return)
 BOOL VmmWinReg_ValueQueryInternal(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_VALUE pObKeyValue, _Out_opt_ PDWORD pdwType, _Out_opt_ PDWORD pdwLength, _Out_writes_opt_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_opt_ PDWORD pcbDataRead, _In_ DWORD cbDataOffset) {
-    DWORD cbDataRead = 0, cbDataLength, oCellData, cbCellData;
+    DWORD cbDataRead = 0, cbDataLength, iCellSV, oCellRaw, cbCell;
     if(pcbDataRead) { *pcbDataRead = 0; }
     cbDataLength = pObKeyValue->pValue->DataLength & 0x7fffffff;
     if(pdwType) {
@@ -1517,20 +1574,21 @@ BOOL VmmWinReg_ValueQueryInternal(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTR
         memcpy(pbData, (PBYTE)(&pObKeyValue->pValue->Data) + cbDataOffset, cbDataRead);
         goto success;
     }
-    oCellData = pObKeyValue->pValue->Data;
-    if(oCellData + 0x10 > pHive->Snapshot.cb) { return FALSE; }
-    cbCellData = REG_CELL_SIZE_EX(pHive->Snapshot.pb, oCellData);
-    if(cbCellData < 8) { return FALSE; }
+    iCellSV = REG_CELL_SV(pObKeyValue->pValue->Data);
+    oCellRaw = REG_CELL_ORAW(pObKeyValue->pValue->Data);
+    if(oCellRaw + 0x10 > pHive->Snapshot._DUAL[iCellSV].cb) { return FALSE; }
+    cbCell = REG_CELL_SIZE_EX(pHive->Snapshot._DUAL[iCellSV].pb, oCellRaw);
+    if(cbCell < 8) { return FALSE; }
     // "big data" table
-    if(*(PWORD)(pHive->Snapshot.pb + oCellData + 4) == REG_CM_KEY_SIGNATURE_BIGDATA) {
+    if(*(PWORD)(pHive->Snapshot._DUAL[iCellSV].pb + oCellRaw + 4) == REG_CM_KEY_SIGNATURE_BIGDATA) {
         vmmprintfvv_fn("BIG DATA TABLE NOT YET SUPPORTED. Hive=%016llx Cell=%08x \n", pHive->vaCMHIVE, pObKeyValue->oCell);
         return FALSE;
     }
     // "ordinary" data
-    if(cbDataOffset > cbCellData - 4) { return FALSE; }
-    cbDataRead = min(cbDataRead, cbCellData - 4 - cbDataOffset);
-    if(oCellData + 4ULL + cbDataOffset + cbDataRead > pHive->Snapshot.cb) { return FALSE; }
-    memcpy(pbData, pHive->Snapshot.pb + oCellData + 4 + cbDataOffset, cbDataRead);
+    if(cbDataOffset > cbCell - 4) { return FALSE; }
+    cbDataRead = min(cbDataRead, cbCell - 4 - cbDataOffset);
+    if(oCellRaw + 4ULL + cbDataOffset + cbDataRead > pHive->Snapshot._DUAL[iCellSV].cb) { return FALSE; }
+    memcpy(pbData, pHive->Snapshot._DUAL[iCellSV].pb + oCellRaw + 4 + cbDataOffset, cbDataRead);
     goto success;
 success:
     if(pcbDataRead) { *pcbDataRead = cbDataRead; }
@@ -1555,12 +1613,14 @@ success:
 _Success_(return)
 BOOL VmmWinReg_PathHiveGetByFullPath(_In_ LPWSTR wszPathFull, _Out_ POB_REGISTRY_HIVE *ppHive, _Out_writes_(MAX_PATH) LPWSTR wszPathKeyValue)
 {
-    BOOL fOrphan = FALSE;
+    BOOL fUser = FALSE, fOrphan = FALSE;
+    DWORD i;
     LPWSTR wsz, wszPath2;
     WCHAR wszPath1[MAX_PATH];
     POB_REGISTRY_HIVE pObHive = NULL;
-    if(!wcsncmp(wszPathFull, L"HKLM\\", 5)) {
-        wszPathFull += 5;
+    PVMMOB_MAP_USER pObUserMap = NULL;
+    if(!wcsncmp(wszPathFull, L"HKLM\\", 5) || (fUser = !wcsncmp(wszPathFull, L"HKU\\", 4))) {
+        wszPathFull += fUser ? 4 : 5;
         if(!wcsncmp(wszPathFull, L"ORPHAN\\", 7)) {
             wszPathFull += 7;
             fOrphan = TRUE;
@@ -1568,16 +1628,29 @@ BOOL VmmWinReg_PathHiveGetByFullPath(_In_ LPWSTR wszPathFull, _Out_ POB_REGISTRY
         wszPath2 = Util_PathSplit2_ExWCHAR(wszPathFull, wszPath1, MAX_PATH);
         wcsncpy_s(wszPathKeyValue, MAX_PATH, fOrphan ? L"ORPHAN\\" : L"ROOT\\", _TRUNCATE);
         wcsncat_s(wszPathKeyValue, MAX_PATH, wszPath2, _TRUNCATE);
-        while((pObHive = VmmWinReg_HiveGetNext(pObHive))) {
-            if(wcsstr(pObHive->wszNameShort, wszPath1)) {
-                *ppHive = pObHive;
-                return TRUE;    // CALLER DECREF: *ppHive
+        if(fUser) {
+            if(VmmMap_GetUser(&pObUserMap)) {
+                for(i = 0; i < pObUserMap->cMap; i++) {
+                    if(wcsstr(pObUserMap->pMap[i].wszText, wszPath1)) {
+                        *ppHive = VmmWinReg_HiveGetByAddress(pObUserMap->pMap[i].vaRegHive);
+                        Ob_DECREF(pObUserMap);
+                        return (*ppHive != NULL);   // CALLER DECREF: *ppHive
+                    }
+                }
+                Ob_DECREF_NULL(&pObUserMap);
             }
-        }
-        while((pObHive = VmmWinReg_HiveGetNext(pObHive))) {
-            if(wcsstr(pObHive->wszHiveRootPath, wszPath1)) {
-                *ppHive = pObHive;
-                return TRUE;    // CALLER DECREF: *ppHive
+        } else {
+            while((pObHive = VmmWinReg_HiveGetNext(pObHive))) {
+                if(wcsstr(pObHive->wszNameShort, wszPath1)) {
+                    *ppHive = pObHive;
+                    return TRUE;    // CALLER DECREF: *ppHive
+                }
+            }
+            while((pObHive = VmmWinReg_HiveGetNext(pObHive))) {
+                if(wcsstr(pObHive->wszHiveRootPath, wszPath1)) {
+                    *ppHive = pObHive;
+                    return TRUE;    // CALLER DECREF: *ppHive
+                }
             }
         }
         return FALSE;
@@ -1637,6 +1710,20 @@ POB_REGISTRY_KEY VmmWinReg_KeyGetByPathW(_In_ POB_REGISTRY_HIVE pHive, _In_ LPWS
 }
 
 /*
+* Retrieve a registry key by its cell offset (incl. static/volatile bit).
+* If no registry key is found then NULL will be returned.
+* CALLER DECREF: return
+* -- pHive
+* -- raCellOffset
+* -- return
+*/
+POB_REGISTRY_KEY VmmWinReg_KeyGetByCellOffset(_In_ POB_REGISTRY_HIVE pHive, _In_ DWORD raCellOffset)
+{
+    if(!VmmWinReg_HiveSnapshotEnsure(pHive)) { return NULL; }
+    return (POB_REGISTRY_KEY)ObMap_GetByKey(pHive->Snapshot.pmKeyOffset, raCellOffset);
+}
+
+/*
 * Retrive registry sub-keys from the level directly below the given parent key.
 * The resulting keys are returned in a no-key map (set). If no parent key is
 * given the root keys are returned.
@@ -1686,6 +1773,48 @@ VOID VmmWinReg_KeyInfo(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pKey,
 }
 
 /*
+* Retrieve information about a registry key - pKeyInfo->wszName = set to full path.
+* -- pHive
+* -- pKey
+* -- pKeyInfo
+*/
+VOID VmmWinReg_KeyInfo2(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pKey, _Out_ PVMM_REGISTRY_KEY_INFO pKeyInfo)
+{
+    POB_SET ps;
+    QWORD qwHashKeyParent;
+    POB_REGISTRY_KEY pObKey;
+    VMM_REGISTRY_KEY_INFO KeyInfo;
+    int status;
+    DWORD cwszPath = 0;
+    CHAR szHiveShortName[33] = { 0 };
+    WCHAR wszPath[MAX_PATH] = { 0 };
+    VmmWinReg_KeyInfo(pHive, pKey, pKeyInfo);
+    if(!(ps = ObSet_New())) { return; }
+    ObSet_Push(ps, (QWORD)Ob_INCREF(pKey));
+    qwHashKeyParent = pKey->qwHashKeyParent;
+    while((pObKey = ObMap_GetByKey(pHive->Snapshot.pmKeyHash, qwHashKeyParent))) {
+        ObSet_Push(ps, (QWORD)pObKey);
+        qwHashKeyParent = pObKey->qwHashKeyParent;
+    }
+    Ob_DECREF((POB_REGISTRY_KEY)ObSet_Pop(ps));  // skip "root"
+    if(pHive->wszNameShort[0]) {
+        VmmWinReg_HiveGetShortName(pHive, szHiveShortName);
+    }
+    cwszPath = swprintf_s(wszPath, MAX_PATH - 1, L"[%llx:%08x] %S", pHive->vaCMHIVE, pKey->oCell, szHiveShortName);
+    while((pObKey = (POB_REGISTRY_KEY)ObSet_Pop(ps))) {
+        VmmWinReg_KeyInfo(pHive, pObKey, &KeyInfo);
+        status = swprintf_s(wszPath + cwszPath, MAX_PATH - cwszPath - 1, L"\\%s", KeyInfo.wszName);
+        if(status > 0) { cwszPath += status; }
+        Ob_DECREF(pObKey);
+    }
+    Ob_DECREF(ps);
+    if(cwszPath) {
+        pKeyInfo->cchName = cwszPath;
+        memcpy(pKeyInfo->wszName, wszPath, sizeof(pKeyInfo->wszName));
+    }
+}
+
+/*
 * Retrive registry values given a key. The resulting values are returned in a
 * no-key map (set). If no values are found the empty set or NULL are returned.
 * CALLER DECREF: return
@@ -1695,16 +1824,19 @@ VOID VmmWinReg_KeyInfo(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pKey,
 */
 POB_MAP VmmWinReg_KeyValueList(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pKeyParent)
 {
-    DWORD cbListCell, iValues, cValues, * praValues;
+    DWORD cbListCell, iValues, cValues, *praValues;
     POB_REGISTRY_VALUE pObKeyValue;
     POB_MAP pmObValues;
+    DWORD oListCellRaw = REG_CELL_ORAW(pKeyParent->pKey->ValueList.List);
+    DWORD cbSnapshot = pHive->Snapshot._DUAL[REG_CELL_SV(pKeyParent->pKey->ValueList.List)].cb;
+    PBYTE pbSnapshot = pHive->Snapshot._DUAL[REG_CELL_SV(pKeyParent->pKey->ValueList.List)].pb;
     if(!VmmWinReg_HiveSnapshotEnsure(pHive)) { return NULL; }
     if(!(pmObValues = ObMap_New(OB_MAP_FLAGS_OBJECT_OB | OB_MAP_FLAGS_NOKEY))) { return NULL; }
-    if(!pKeyParent->pKey->ValueList.Count || (pKeyParent->pKey->ValueList.List > pHive->Snapshot.cb - 8)) { return pmObValues; }
+    if(!pKeyParent->pKey->ValueList.Count || (oListCellRaw > cbSnapshot - 8)) { return pmObValues; }
     if(!VmmWinReg_KeyValidateCellSize(pHive, pKeyParent->pKey->ValueList.List, 8, 0x1000)) { return pmObValues; }
-    cbListCell = REG_CELL_SIZE_EX(pHive->Snapshot.pb, pKeyParent->pKey->ValueList.List);
+    cbListCell = REG_CELL_SIZE_EX(pbSnapshot, oListCellRaw);
     cValues = min(pKeyParent->pKey->ValueList.Count, (cbListCell - 4) >> 2);
-    praValues = (PDWORD)(pHive->Snapshot.pb + pKeyParent->pKey->ValueList.List + 4);
+    praValues = (PDWORD)(pbSnapshot + oListCellRaw + 4);
     for(iValues = 0; iValues < cValues; iValues++) {
         pObKeyValue = VmmWinReg_KeyValue_Create(pHive, praValues[iValues]);
         ObMap_Push(pmObValues, 0, pObKeyValue);

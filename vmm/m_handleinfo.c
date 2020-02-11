@@ -1,13 +1,12 @@
 // m_handleinfo.c : implementation of the handle info built-in module.
 //
-// (c) Ulf Frisk, 2019
+// (c) Ulf Frisk, 2019-2020
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "pluginmanager.h"
 #include "util.h"
 #include "vmm.h"
 #include "vmmdll.h"
-#include "vmmvfs.h"
 #include "vmmwin.h"
 
 #define HANDLEINFO_LINELENGTH       190ULL
@@ -89,8 +88,9 @@ BOOL HandleInfo_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 {
     PVMMOB_MAP_HANDLE pObHandleMap = NULL;
     // list thread map
+    if(ctx->wszPath[0]) { return FALSE; }
     if(VmmMap_GetHandle(ctx->pProcess, &pObHandleMap, FALSE)) {
-        VMMDLL_VfsList_AddFileEx(pFileList, "handles.txt", NULL, pObHandleMap->cMap * HANDLEINFO_LINELENGTH, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"handles.txt", pObHandleMap->cMap * HANDLEINFO_LINELENGTH, NULL);
         Ob_DECREF_NULL(&pObHandleMap);
     }
     return TRUE;
@@ -106,10 +106,9 @@ BOOL HandleInfo_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 */
 VOID M_HandleInfo_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
-    PVMMOB_PHYS2VIRT_INFORMATION pObPhys2Virt = NULL;
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if(!((pRI->tpSystem == VMM_SYSTEM_WINDOWS_X64) || (pRI->tpSystem == VMM_SYSTEM_WINDOWS_X86))) { return; }
-    wcscpy_s(pRI->reg_info.wszModuleName, 32, L"handles");              // module name
+    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\handles");             // module name
     pRI->reg_info.fRootModule = FALSE;                                  // module shows in root directory
     pRI->reg_info.fProcessModule = TRUE;                                // module shows in process directory
     pRI->reg_fn.pfnList = HandleInfo_List;                              // List function supported

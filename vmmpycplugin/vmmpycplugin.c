@@ -2,7 +2,7 @@
 // for the memory process file system. NB! this is a special plugin since it's
 // not residing in the plugin directory.
 //
-// (c) Ulf Frisk, 2018-2019
+// (c) Ulf Frisk, 2018-2020
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #define Py_LIMITED_API 0x03060000
@@ -73,7 +73,7 @@ BOOL PY2C_Callback_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileLi
     BOOL result = FALSE;
     PyObject *args = NULL, *pyList = NULL, *pyDict, *pyPid = NULL, *pyPath = NULL;
     PyObject *pyDict_Name, *pyDict_Size, *pyDict_IsDir;
-    PyObject *pyDict_Name_Bytes;
+    LPWSTR wszDict_Name;
     PyGILState_STATE gstate;
     SIZE_T i, cList;
     WCHAR wszPathBuffer[MAX_PATH];
@@ -94,15 +94,15 @@ BOOL PY2C_Callback_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileLi
         pyDict_Size = PyDict_GetItemString(pyDict, "size");
         pyDict_IsDir = PyDict_GetItemString(pyDict, "f_isdir");
         if(!pyDict_Name || !PyUnicode_Check(pyDict_Name) || !pyDict_IsDir || !PyBool_Check(pyDict_IsDir)) { continue; }
-        pyDict_Name_Bytes = PyUnicode_AsEncodedString(pyDict_Name, NULL, NULL);
-        if(pyDict_Name_Bytes) {
+        wszDict_Name = PyUnicode_AsWideCharString(pyDict_Name, NULL);
+        if(wszDict_Name) {
             if(pyDict_IsDir == Py_True) {
-                VMMDLL_VfsList_AddDirectory(pFileList, PyBytes_AsString(pyDict_Name_Bytes));
+                VMMDLL_VfsList_AddDirectory(pFileList, wszDict_Name, NULL);
             } else {
                 if(!pyDict_Size || !PyLong_Check(pyDict_Size)) { continue; }
-                VMMDLL_VfsList_AddFile(pFileList, PyBytes_AsString(pyDict_Name_Bytes), PyLong_AsUnsignedLongLong(pyDict_Size));
+                VMMDLL_VfsList_AddFile(pFileList, wszDict_Name, PyLong_AsUnsignedLongLong(pyDict_Size), NULL);
             }
-            Py_DECREF(pyDict_Name_Bytes);
+            PyMem_Free(wszDict_Name);
         }
     }
     result = TRUE;
@@ -368,7 +368,7 @@ VOID InitializeVmmPlugin(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo)
 {
     if((pRegInfo->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRegInfo->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if(VmmPyPlugin_PythonInitialize(pRegInfo->hReservedDllPython3X)) {
-        wcscpy_s(pRegInfo->reg_info.wszModuleName, 32, L"py");  // module name - 'py'.
+        wcscpy_s(pRegInfo->reg_info.wszPathName, 128, L"py");   // module name - 'py'.
         pRegInfo->reg_info.fRootModule = TRUE;                  // module shows in root directory.
         pRegInfo->reg_info.fProcessModule = TRUE;               // module shows in process directory.
         pRegInfo->reg_fn.pfnList = PY2C_Callback_List;          // List function supported.

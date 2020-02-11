@@ -15,10 +15,10 @@
 #
 # https://github.com/ufrisk/
 #
-# (c) Ulf Frisk, 2018
+# (c) Ulf Frisk, 2018-2020
 # Author: Ulf Frisk, pcileech@frizk.net
 #
-# Header Version: 2.4
+# Header Version: 3.1
 #
 
 from vmmpy import *

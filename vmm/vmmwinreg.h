@@ -1,6 +1,6 @@
 // vmmwinreg.h : declarations of functionality related to the Windows registry.
 //
-// (c) Ulf Frisk, 2019
+// (c) Ulf Frisk, 2020
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -17,16 +17,22 @@ typedef struct tdOB_REGISTRY_HIVE {
     WCHAR wszNameShort[32 + 1];
     WCHAR wszHiveRootPath[MAX_PATH];
     QWORD _FutureReserved[0x10];
-    QWORD vaHMAP_DIRECTORY;
-    QWORD vaHMAP_TABLE_SmallDir;
+    struct {
+        //_DUAL[0] = Static, _DUAL[1] = Volatile.
+        DWORD cb;
+        QWORD vaHMAP_DIRECTORY;
+        QWORD vaHMAP_TABLE_SmallDir;
+    } _DUAL[2];
     CRITICAL_SECTION LockUpdate;
     // snapshot functionality below - VmmWinReg_EnsureSnapshot() must be called before access!
     struct {
         BOOL fInitialized;
         POB_MAP pmKeyHash;      // object map for POB_REG_KEY keyed by hash
-        POB_MAP pmKeyOffset;    // object map for POB_REG_KEY& keyed by offset
-        DWORD cb;
-        PBYTE pb;
+        POB_MAP pmKeyOffset;    // object map for POB_REG_KEY keyed by offset
+        struct {
+            DWORD cb;
+            PBYTE pb;
+        } _DUAL[2];
     } Snapshot;
 } OB_REGISTRY_HIVE, *POB_REGISTRY_HIVE;
 
@@ -147,6 +153,16 @@ BOOL VmmWinReg_KeyHiveGetByFullPath(_In_ LPWSTR wszPathFull, _Out_ POB_REGISTRY_
 POB_REGISTRY_KEY VmmWinReg_KeyGetByPathW(_In_ POB_REGISTRY_HIVE pHive, _In_ LPWSTR wszPath);
 
 /*
+* Retrieve a registry key by its cell offset (incl. static/volatile bit).
+* If no registry key is found then NULL will be returned.
+* CALLER DECREF: return
+* -- pHive
+* -- raCellOffset
+* -- return
+*/
+POB_REGISTRY_KEY VmmWinReg_KeyGetByCellOffset(_In_ POB_REGISTRY_HIVE pHive, _In_ DWORD raCellOffset);
+
+/*
 * Retrive registry sub-keys from the level directly below the given parent key.
 * The resulting keys are returned in a no-key map (set). If no parent key is
 * given the root keys are returned.
@@ -164,6 +180,14 @@ POB_MAP VmmWinReg_KeyList(_In_ POB_REGISTRY_HIVE pHive, _In_opt_ POB_REGISTRY_KE
 * -- pKeyInfo
 */
 VOID VmmWinReg_KeyInfo(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pKey, _Out_ PVMM_REGISTRY_KEY_INFO pKeyInfo);
+
+/*
+* Retrieve information about a registry key - pKeyInfo->wszName = set to full path.
+* -- pHive
+* -- pKey
+* -- pKeyInfo
+*/
+VOID VmmWinReg_KeyInfo2(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pKey, _Out_ PVMM_REGISTRY_KEY_INFO pKeyInfo);
 
 /*
 * Retrive registry values given a key. The resulting values are returned in a

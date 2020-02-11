@@ -1,6 +1,6 @@
 // mm_x86pae.c : implementation of the x86 PAE (Physical Address Extension) 32-bit protected mode memory model.
 //
-// (c) Ulf Frisk, 2018-2019
+// (c) Ulf Frisk, 2018-2020
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmm.h"
@@ -19,14 +19,14 @@ BOOL MmX86PAE_TlbPageTableVerify(_Inout_ PBYTE pb, _In_ QWORD pa, _In_ BOOL fSel
     return TRUE;
 }
 
-VOID MmX86PAE_TlbSpider_PD_PT(_In_ QWORD pa, _In_ BYTE iPML, _In_ BOOL fUserOnly, _In_ POB_VSET pPageSet)
+VOID MmX86PAE_TlbSpider_PD_PT(_In_ QWORD pa, _In_ BYTE iPML, _In_ BOOL fUserOnly, _In_ POB_SET pPageSet)
 {
     QWORD i, pte;
     PVMMOB_MEM pObPT = NULL;
     // 1: retrieve from cache, add to staging if not found
     pObPT = VmmCacheGet(VMM_CACHE_TAG_TLB, pa);
     if(!pObPT) {
-        ObVSet_Push(pPageSet, pa);
+        ObSet_Push(pPageSet, pa);
         return;
     }
     if(iPML == 1) {
@@ -44,7 +44,7 @@ VOID MmX86PAE_TlbSpider_PD_PT(_In_ QWORD pa, _In_ BYTE iPML, _In_ BOOL fUserOnly
     Ob_DECREF(pObPT);
 }
 
-VOID MmX86PAE_TlbSpider_PDPT(_In_ QWORD paDTB, _In_ BOOL fUserOnly, _In_ POB_VSET pPageSet)
+VOID MmX86PAE_TlbSpider_PDPT(_In_ QWORD paDTB, _In_ BOOL fUserOnly, _In_ POB_SET pPageSet)
 {
     BOOL fSpiderComplete = TRUE;
     PVMMOB_MEM pObPDPT;
@@ -71,9 +71,9 @@ VOID MmX86PAE_TlbSpider_PDPT(_In_ QWORD paDTB, _In_ BOOL fUserOnly, _In_ POB_VSE
 VOID MmX86PAE_TlbSpider(_In_ PVMM_PROCESS pProcess)
 {
     DWORD i;
-    POB_VSET pObPageSet = NULL;
+    POB_SET pObPageSet = NULL;
     if(pProcess->fTlbSpiderDone) { return; }
-    if(!(pObPageSet = ObVSet_New())) { return; }
+    if(!(pObPageSet = ObSet_New())) { return; }
     for(i = 0; i < 3; i++) {
         MmX86PAE_TlbSpider_PDPT(pProcess->paDTB, pProcess->fUserOnly, pObPageSet);
         VmmTlbPrefetch(pObPageSet);

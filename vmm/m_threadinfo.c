@@ -1,14 +1,12 @@
 // m_threadinfo.c : implementation of the thread info built-in module.
 //
-// (c) Ulf Frisk, 2019
+// (c) Ulf Frisk, 2019-2020
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-#include "m_modules.h"
 #include "pluginmanager.h"
 #include "util.h"
 #include "vmm.h"
 #include "vmmdll.h"
-#include "vmmvfs.h"
 
 #define THREADINFO_LINELENGTH       186ULL
 #define THREADINFO_INFOFILE_LENGTH  582ULL
@@ -149,7 +147,7 @@ NTSTATUS ThreadInfo_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ D
         // individual thread files backed by kernel memory below:
         if(!(pObSystemProcess = VmmProcessGet(4))) { goto finish; }
         if(!_wcsicmp(wszSubPath, L"ethread")) {
-            nt = VmmReadAsFile(pObSystemProcess, pe->vaETHREAD, ctxVmm->kernel.ThreadInfo.oMax, pb, cb, pcbRead, cbOffset);
+            nt = VmmReadAsFile(pObSystemProcess, pe->vaETHREAD, ctxVmm->offset.ETHREAD.oMax, pb, cb, pcbRead, cbOffset);
             goto finish;
         }
         if(!_wcsicmp(wszSubPath, L"kstack")) {
@@ -198,7 +196,7 @@ NTSTATUS ThreadInfo_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PBYTE pb, _In_ D
         // individual thread files backed by kernel memory below:
         if(!(pObSystemProcess = VmmProcessGet(4))) { goto finish; }
         if(!_wcsicmp(wszSubPath, L"ethread")) {
-            nt = VmmWriteAsFile(pObSystemProcess, pe->vaETHREAD, ctxVmm->kernel.ThreadInfo.oMax, pb, cb, pcbWrite, cbOffset);
+            nt = VmmWriteAsFile(pObSystemProcess, pe->vaETHREAD, ctxVmm->offset.ETHREAD.oMax, pb, cb, pcbWrite, cbOffset);
             goto finish;
         }
         if(!_wcsicmp(wszSubPath, L"kstack")) {
@@ -238,7 +236,7 @@ VOID ThreadInfo_List_TimeStampFile(_In_ PVMM_MAP_THREADENTRY pThreadEntry, _Out_
 BOOL ThreadInfo_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 {
     DWORD i, dwTID, cbStack;
-    CHAR szBuffer[32] = { 0 };
+    WCHAR wszBuffer[32] = { 0 };
     PVMMOB_MAP_THREAD pObThreadMap = NULL;
     PVMM_MAP_THREADENTRY pe;
     VMMDLL_VFS_FILELIST_EXINFO ExInfo = { 0 };
@@ -248,10 +246,10 @@ BOOL ThreadInfo_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
         for(i = 0; i < pObThreadMap->cMap; i++) {
             pe = pObThreadMap->pMap + i;
             ThreadInfo_List_TimeStampFile(pe, &ExInfo);
-            snprintf(szBuffer, 32, "%i", pe->dwTID);
-            VMMDLL_VfsList_AddDirectoryEx(pFileList, szBuffer, NULL, &ExInfo);
+            _snwprintf_s(wszBuffer, _countof(wszBuffer), 32, L"%i", pe->dwTID);
+            VMMDLL_VfsList_AddDirectory(pFileList, wszBuffer, &ExInfo);
         }
-        VMMDLL_VfsList_AddFileEx(pFileList, "threads.txt", NULL, pObThreadMap->cMap * THREADINFO_LINELENGTH, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"threads.txt", pObThreadMap->cMap * THREADINFO_LINELENGTH, NULL);
         Ob_DECREF_NULL(&pObThreadMap);
         return TRUE;
     }
@@ -259,18 +257,18 @@ BOOL ThreadInfo_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
     if(!(dwTID = (DWORD)Util_GetNumericW(ctx->wszPath))) { goto fail; }
     if(!(pe = VmmMap_GetThreadEntry(pObThreadMap, dwTID))) { goto fail; }
     ThreadInfo_List_TimeStampFile(pe, &ExInfo);
-    VMMDLL_VfsList_AddFileEx(pFileList, "info.txt", NULL, THREADINFO_INFOFILE_LENGTH, &ExInfo);
-    VMMDLL_VfsList_AddFileEx(pFileList, "ethread", NULL, ctxVmm->kernel.ThreadInfo.oMax, &ExInfo);
+    VMMDLL_VfsList_AddFile(pFileList, L"info.txt", THREADINFO_INFOFILE_LENGTH, &ExInfo);
+    VMMDLL_VfsList_AddFile(pFileList, L"ethread", ctxVmm->offset.ETHREAD.oMax, &ExInfo);
     if(pe->vaTeb) {
-        VMMDLL_VfsList_AddFileEx(pFileList, "teb", NULL, 0x1000, &ExInfo);
+        VMMDLL_VfsList_AddFile(pFileList, L"teb", 0x1000, &ExInfo);
     }
     if(pe->vaStackBaseUser && pe->vaStackLimitUser && (pe->vaStackLimitUser < pe->vaStackBaseUser)) {
         cbStack = (DWORD)(pe->vaStackBaseUser - pe->vaStackLimitUser);
-        VMMDLL_VfsList_AddFileEx(pFileList, "stack", NULL, cbStack, &ExInfo);
+        VMMDLL_VfsList_AddFile(pFileList, L"stack", cbStack, &ExInfo);
     }
     if(pe->vaStackBaseKernel && pe->vaStackLimitKernel && (pe->vaStackLimitKernel < pe->vaStackBaseKernel)) {
         cbStack = (DWORD)(pe->vaStackBaseKernel - pe->vaStackLimitKernel);
-        VMMDLL_VfsList_AddFileEx(pFileList, "kstack", NULL, cbStack, &ExInfo);
+        VMMDLL_VfsList_AddFile(pFileList, L"kstack", cbStack, &ExInfo);
     }
 fail:
     Ob_DECREF_NULL(&pObThreadMap);
@@ -287,10 +285,9 @@ fail:
 */
 VOID M_ThreadInfo_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
-    PVMMOB_PHYS2VIRT_INFORMATION pObPhys2Virt = NULL;
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if(!((pRI->tpSystem == VMM_SYSTEM_WINDOWS_X64) || (pRI->tpSystem == VMM_SYSTEM_WINDOWS_X86))) { return; }
-    wcscpy_s(pRI->reg_info.wszModuleName, 32, L"threads");              // module name
+    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\threads");             // module name
     pRI->reg_info.fRootModule = FALSE;                                  // module shows in root directory
     pRI->reg_info.fProcessModule = TRUE;                                // module shows in process directory
     pRI->reg_fn.pfnList = ThreadInfo_List;                              // List function supported

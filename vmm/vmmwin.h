@@ -1,7 +1,7 @@
 // vmmwin.h : definitions related to windows operating system and processes.
 // parsing of virtual memory. Windows related features only.
 //
-// (c) Ulf Frisk, 2018-2019
+// (c) Ulf Frisk, 2018-2020
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __VMMWIN_H__
@@ -187,7 +187,7 @@ VOID VmmWin_ListTraversePrefetch(
     _In_ PQWORD pvaDataStart,
     _In_ DWORD oListStart,
     _In_ DWORD cbData,
-    _In_opt_ VOID(*pfnCallback_Pre)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb, _In_ QWORD vaFLink, _In_ QWORD vaBLink, _In_ POB_VSET pVSetAddress, _Inout_ PBOOL pfValidEntry, _Inout_ PBOOL pfValidFLink, _Inout_ PBOOL pfValidBLink),
+    _In_opt_ VOID(*pfnCallback_Pre)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb, _In_ QWORD vaFLink, _In_ QWORD vaBLink, _In_ POB_SET pVSetAddress, _Inout_ PBOOL pfValidEntry, _Inout_ PBOOL pfValidFLink, _Inout_ PBOOL pfValidBLink),
     _In_opt_ VOID(*pfnCallback_Post)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb),
     _In_opt_ POB_CONTAINER pPrefetchAddressContainer
 );
@@ -200,5 +200,31 @@ VOID VmmWin_ListTraversePrefetch(
 * -- return
 */
 PVMMWIN_USER_PROCESS_PARAMETERS VmmWin_UserProcessParameters_Get(_In_ PVMM_PROCESS pProcess);
+
+/*
+* Retrieve the account name and length of the user account given a SID.
+* NB! Names for well known SIDs will be given in the language of the system
+* running MemProcFS and not in the name of the analyzed system.
+* -- pSID = Required (function will always fail on NULL).
+* -- wszName
+* -- cwszName
+* -- pcwszName
+* -- pfAccountWellKnown
+* -- return
+*/
+_Success_(return)
+BOOL VmmWinUser_GetNameW(_In_opt_ PSID pSID, _Out_writes_opt_(cwszName) LPWSTR wszName, _In_ DWORD cwszName, _Out_opt_ PDWORD pcwszName, _Out_opt_ PBOOL pfAccountWellKnown);
+
+/*
+* Create a user map and assign to the global context upon success.
+* CALLER DECREF: return
+* -- return
+*/
+PVMMOB_MAP_USER VmmWinUser_Initialize();
+
+/*
+* Refresh the user map.
+*/
+VOID VmmWinUser_Refresh();
 
 #endif /* __VMMWIN_H__ */

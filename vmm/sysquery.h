@@ -1,6 +1,6 @@
 // sysquery.h : definitions of various system queries that may be performed.
 //
-// (c) Ulf Frisk, 2019
+// (c) Ulf Frisk, 2019-2020
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __SYSQUERY_H__

@@ -1,6 +1,6 @@
 // vfs.c : implementation of functions related to virtual file system support.
 //
-// (c) Ulf Frisk, 2018-2019
+// (c) Ulf Frisk, 2018-2020
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include <Windows.h>
@@ -60,8 +60,11 @@ VOID VfsFileList_Free(_Inout_ PVFS_FILELIST pFileList)
     }
 }
 
-VOID VfsFileList_AddDirectoryFileInternal(_Inout_ PVFS_FILELIST pFileList, _In_ DWORD dwFileAttributes, _In_ FILETIME ftCreationTime, _In_ FILETIME ftLastAccessTime, _In_ FILETIME ftLastWriteTime, _In_ DWORD nFileSizeHigh, _In_ DWORD nFileSizeLow, _In_opt_ LPSTR szName, _In_opt_ LPWSTR wszName)
+#define VFSFILELIST_ASCII      "________________________________ !_#$%&'()_+,-._0123456789_;_=__@ABCDEFGHIJKLMNOPQRSTUVWXYZ[_]^_`abcdefghijklmnopqrstuvwxyz{_}~ "
+
+VOID VfsFileList_AddDirectoryFileInternal(_Inout_ PVFS_FILELIST pFileList, _In_ DWORD dwFileAttributes, _In_ FILETIME ftCreationTime, _In_ FILETIME ftLastAccessTime, _In_ FILETIME ftLastWriteTime, _In_ DWORD nFileSizeHigh, _In_ DWORD nFileSizeLow, _In_ LPWSTR wszName)
 {
+    WCHAR c;
     DWORD i = 0;
     PWIN32_FIND_DATAW pFindData;
     // 1: check if required to allocate more FileList items
@@ -84,21 +87,13 @@ VOID VfsFileList_AddDirectoryFileInternal(_Inout_ PVFS_FILELIST pFileList, _In_ 
     pFindData->ftLastWriteTime = ftLastWriteTime;
     pFindData->nFileSizeHigh = nFileSizeHigh;
     pFindData->nFileSizeLow = nFileSizeLow;
-    if(szName) {
-        while(i < MAX_PATH && szName[i]) {
-            pFindData->cFileName[i] = szName[i];
-            i++;
-        }
-    } else if(wszName) {
-        while(i < MAX_PATH && wszName[i]) {
-            pFindData->cFileName[i] = wszName[i];
-            i++;
-        }
+    while(i < MAX_PATH && (c = wszName[i])) {
+        pFindData->cFileName[i++] = (c < 128) ? VFSFILELIST_ASCII[c] : c;
     }
     pFindData->cFileName[min(i, MAX_PATH - 1)] = 0;
 }
 
-VOID VfsFileList_AddFile(_Inout_ HANDLE hFileList, _In_opt_ LPSTR szName, _In_opt_ LPWSTR wszName, _In_ QWORD cb, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
+VOID VfsFileList_AddFile(_Inout_ HANDLE hFileList, _In_ LPWSTR wszName, _In_ QWORD cb, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
 {
     PVFS_FILELIST pFileList2 = (PVFS_FILELIST)hFileList;
     BOOL fExInfo = pExInfo && (pExInfo->dwVersion == VMMDLL_VFS_FILELIST_EXINFO_VERSION);
@@ -111,13 +106,12 @@ VOID VfsFileList_AddFile(_Inout_ HANDLE hFileList, _In_opt_ LPSTR szName, _In_op
             (fExInfo && pExInfo->qwLastWriteTime) ? pExInfo->ftLastWriteTime : ctxVfs->ftDefaultTime,
             (DWORD)(cb >> 32),
             (DWORD)cb,
-            szName,
             wszName
         );
     }
 }
 
-VOID VfsFileList_AddDirectory(_Inout_ HANDLE hFileList, _In_ LPSTR szName, _In_opt_ LPWSTR wszName, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
+VOID VfsFileList_AddDirectory(_Inout_ HANDLE hFileList, _In_ LPWSTR wszName, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
 {
     PVFS_FILELIST pFileList2 = (PVFS_FILELIST)hFileList;
     BOOL fExInfo = pExInfo && (pExInfo->dwVersion == VMMDLL_VFS_FILELIST_EXINFO_VERSION);
@@ -130,7 +124,6 @@ VOID VfsFileList_AddDirectory(_Inout_ HANDLE hFileList, _In_ LPSTR szName, _In_o
             (fExInfo && pExInfo->qwLastWriteTime) ? pExInfo->ftLastWriteTime : ctxVfs->ftDefaultTime,
             0,
             0,
-            szName,
             wszName
         );
     }

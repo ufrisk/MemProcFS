@@ -2,7 +2,7 @@
 //
 // Note that this is not a complete list of the VMM API. For the complete list please consult the vmmdll.h header file.
 //
-// (c) Ulf Frisk, 2018-2019
+// (c) Ulf Frisk, 2018-2020
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -46,21 +46,15 @@ VOID PrintHexAscii(_In_ PBYTE pb, _In_ DWORD cb)
     LocalFree(sz);
 }
 
-VOID CallbackList_AddFile(_Inout_ HANDLE h, _In_opt_ LPSTR szName, _In_opt_ LPWSTR wszName, _In_ ULONG64 cb, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
+VOID CallbackList_AddFile(_Inout_ HANDLE h, _In_ LPWSTR wszName, _In_ ULONG64 cb, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
 {
-    if(szName) {
-        printf("         FILE: '%s'\tSize: %lli\n", szName, cb);
-    }
     if(wszName) {
         wprintf(L"         FILE: '%s'\tSize: %lli\n", wszName, cb);
     }
 }
 
-VOID CallbackList_AddDirectory(_Inout_ HANDLE h, _In_opt_ LPSTR szName, _In_opt_ LPWSTR wszName, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
+VOID CallbackList_AddDirectory(_Inout_ HANDLE h, _In_ LPWSTR wszName, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
 {
-    if(szName) {
-        printf("         DIR:  '%s'\n", szName);
-    }
     if(wszName) {
         wprintf(L"         DIR:  '%s'\n", wszName);
     }

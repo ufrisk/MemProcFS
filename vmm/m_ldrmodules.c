@@ -1,9 +1,8 @@
 // m_ldrmodules.c : implementation of the ldrmodules built-in module.
 //
-// (c) Ulf Frisk, 2018-2019
+// (c) Ulf Frisk, 2018-2020
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-#include "m_modules.h"
 #include "pluginmanager.h"
 #include "vmm.h"
 #include "vmmwin.h"
@@ -13,8 +12,8 @@
 #define LDRMODULES_CACHE_TP_EAT     1
 #define LDRMODULES_CACHE_TP_IAT     2
 #define LDRMODULES_NUM_CACHE        8
-#define LDRMODULES_LINELENGTH_X86   97ULL
-#define LDRMODULES_LINELENGTH_X64   116ULL
+#define LDRMODULES_LINELENGTH_X86   104ULL
+#define LDRMODULES_LINELENGTH_X64   123ULL
 
 #define LDRMODULES_MAX_IATEAT       0x10000
 
@@ -36,7 +35,7 @@ typedef struct tdOBLDRMODULES_CACHE_ENTRY {
 * -- return
 */
 _Success_(return == 0)
-NTSTATUS LdrModules_ReadModulesFile(_In_ PVMMOB_MAP_MODULE pModuleMap, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS LdrModules_ReadModulesFile(_In_ PVMM_PROCESS pProcess, _In_ PVMMOB_MAP_MODULE pModuleMap, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt;
     LPSTR sz;
@@ -55,8 +54,9 @@ NTSTATUS LdrModules_ReadModulesFile(_In_ PVMMOB_MAP_MODULE pModuleMap, _Out_ PBY
                 sz + o,
                 cbMax - o,
                 cbLINELENGTH,
-                "%04x %8x %08x-%08x %-64S\n",
+                "%04x%7i %8x %08x-%08x %-64S\n",
                 (DWORD)i,
+                pProcess->dwPID,
                 pModule->cbImageSize >> 12,
                 (DWORD)pModule->vaBase,
                 (DWORD)(pModule->vaBase + pModule->cbImageSize - 1),
@@ -67,8 +67,9 @@ NTSTATUS LdrModules_ReadModulesFile(_In_ PVMMOB_MAP_MODULE pModuleMap, _Out_ PBY
                 sz + o,
                 cbMax - o,
                 cbLINELENGTH,
-                "%04x %8x %016llx-%016llx %s %-64S\n",
+                "%04x%7i %8x %016llx-%016llx %s %-64S\n",
                 (DWORD)i,
+                pProcess->dwPID,
                 pModule->cbImageSize >> 12,
                 pModule->vaBase,
                 pModule->vaBase + pModule->cbImageSize - 1,
@@ -343,13 +344,13 @@ NTSTATUS LdrModules_Read_ModuleSubFile(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PVM
 NTSTATUS LdrModules_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
-    WCHAR wszModuleName[32 + 1];
+    WCHAR wszModuleName[MAX_PATH];
     LPWSTR wszModuleSubPath;
     PVMM_MAP_MODULEENTRY pModule = NULL;
     PVMMOB_MAP_MODULE pObModuleMap = NULL;
     if(!_wcsicmp(ctx->wszPath, L"modules.txt")) {
         if(VmmMap_GetModule((PVMM_PROCESS)ctx->pProcess, &pObModuleMap)) {
-            nt = LdrModules_ReadModulesFile(pObModuleMap, pb, cb, pcbRead, cbOffset);
+            nt = LdrModules_ReadModulesFile((PVMM_PROCESS)ctx->pProcess, pObModuleMap, pb, cb, pcbRead, cbOffset);
             Ob_DECREF(pObModuleMap);
         }
         return nt;
@@ -375,8 +376,9 @@ NTSTATUS LdrModules_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ D
 */
 BOOL LdrModules_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 {
-    DWORD c, i;
+    DWORD c, i, j;
     CHAR szSectionName[9] = { 0 };
+    WCHAR wszSectionName[9];
     WCHAR wszPath1[MAX_PATH];
     LPWSTR wszPath2;
     PVMMOB_MAP_MODULE pObModuleMap = NULL;
@@ -388,9 +390,9 @@ BOOL LdrModules_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
     // modules root directory -> add directory per DLL
     if(!ctx->wszPath[0]) {
         for(i = 0; i < pObModuleMap->cMap; i++) {
-            VMMDLL_VfsList_AddDirectoryEx(pFileList, NULL, pObModuleMap->pMap[i].wszText, NULL);
+            VMMDLL_VfsList_AddDirectory(pFileList, pObModuleMap->pMap[i].wszText, NULL);
         }
-        VMMDLL_VfsList_AddFileEx(pFileList, NULL, L"modules.txt", pObModuleMap->cMap * (ctxVmm->f32 ? LDRMODULES_LINELENGTH_X86 : LDRMODULES_LINELENGTH_X64), NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"modules.txt", pObModuleMap->cMap * (ctxVmm->f32 ? LDRMODULES_LINELENGTH_X86 : LDRMODULES_LINELENGTH_X64), NULL);
         goto success;
     }
     // individual module directory -> list files
@@ -399,16 +401,16 @@ BOOL LdrModules_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
     // module-specific 'root' directory
     if(!wszPath2[0]) {
         VmmWin_PE_SetSizeSectionIATEAT_DisplayBuffer(ctx->pProcess, pModule);
-        VMMDLL_VfsList_AddFileEx(pFileList, NULL, L"base", 16, NULL);
-        VMMDLL_VfsList_AddFileEx(pFileList, NULL, L"entry", 16, NULL);
-        VMMDLL_VfsList_AddFileEx(pFileList, NULL, L"size", 8, NULL);
-        VMMDLL_VfsList_AddFileEx(pFileList, NULL, L"directories", 864, NULL);
-        VMMDLL_VfsList_AddFileEx(pFileList, NULL, L"export", pModule->cbDisplayBufferEAT, NULL);
-        VMMDLL_VfsList_AddFileEx(pFileList, NULL, L"import", pModule->cbDisplayBufferIAT, NULL);
-        VMMDLL_VfsList_AddFileEx(pFileList, NULL, L"sections", pModule->cbDisplayBufferSections, NULL);
-        VMMDLL_VfsList_AddFileEx(pFileList, NULL, L"pefile.dll", pModule->cbFileSizeRaw, NULL);
-        VMMDLL_VfsList_AddDirectoryEx(pFileList, NULL, L"sectionsd", NULL);
-        VMMDLL_VfsList_AddDirectoryEx(pFileList, NULL, L"directoriesd", NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"base", 16, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"entry", 16, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"size", 8, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"directories", 864, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"export", pModule->cbDisplayBufferEAT, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"import", pModule->cbDisplayBufferIAT, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"sections", pModule->cbDisplayBufferSections, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"pefile.dll", pModule->cbFileSizeRaw, NULL);
+        VMMDLL_VfsList_AddDirectory(pFileList, L"sectionsd", NULL);
+        VMMDLL_VfsList_AddDirectory(pFileList, L"directoriesd", NULL);
         goto success;
     }
     // module-specific 'sectiond' directory
@@ -422,7 +424,10 @@ BOOL LdrModules_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
             } else {
                 snprintf(szSectionName, 9, "%02x", i);
             }
-            VMMDLL_VfsList_AddFile(pFileList, szSectionName, pSections[i].Misc.VirtualSize);
+            for(j = 0; j < 9; j++) {
+                wszSectionName[j] = szSectionName[j];
+            }
+            VMMDLL_VfsList_AddFile(pFileList, wszSectionName, pSections[i].Misc.VirtualSize, NULL);
         }
         LocalFree(pSections);
         goto success;
@@ -432,7 +437,7 @@ BOOL LdrModules_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
         ZeroMemory(pDataDirectories, 16 * sizeof(IMAGE_DATA_DIRECTORY));
         VmmWin_PE_DIRECTORY_DisplayBuffer(pProcess, pModule, NULL, 0, NULL, pDataDirectories);
         for(i = 0; i < 16; i++) {
-            VMMDLL_VfsList_AddFile(pFileList, (LPSTR)PE_DATA_DIRECTORIES[i], pDataDirectories[i].Size);
+            VMMDLL_VfsList_AddFile(pFileList, (LPWSTR)PE_DATA_DIRECTORIESW[i], pDataDirectories[i].Size, NULL);
         }
         goto success;
     }
@@ -456,7 +461,7 @@ VOID M_LdrModules_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if((pRI->tpSystem != VMM_SYSTEM_WINDOWS_X64) && (pRI->tpSystem != VMM_SYSTEM_WINDOWS_X86)) { return; }
-    wcscpy_s(pRI->reg_info.wszModuleName, 32, L"modules");           // module name
+    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\modules");          // module name
     pRI->reg_info.fProcessModule = TRUE;                             // module shows in process directory
     pRI->reg_fn.pfnList = LdrModules_List;                           // List function supported
     pRI->reg_fn.pfnRead = LdrModules_Read;                           // Read function supported

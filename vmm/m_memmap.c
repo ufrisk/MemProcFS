@@ -1,19 +1,17 @@
 // m_memmap.c : implementation of the memmap built-in module.
 //
-// (c) Ulf Frisk, 2019
+// (c) Ulf Frisk, 2019-2020
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-#include "m_modules.h"
 #include "pluginmanager.h"
 #include "util.h"
 #include "vmm.h"
 #include "vmmdll.h"
-#include "vmmvfs.h"
 
-#define MEMMAP_PTE_LINELENGTH_X86       102ULL
-#define MEMMAP_PTE_LINELENGTH_X64       121ULL
-#define MEMMAP_VAD_LINELENGTH_X86       121ULL
-#define MEMMAP_VAD_LINELENGTH_X64       137ULL
+#define MEMMAP_PTE_LINELENGTH_X86       109ULL
+#define MEMMAP_PTE_LINELENGTH_X64       128ULL
+#define MEMMAP_VAD_LINELENGTH_X86       137ULL
+#define MEMMAP_VAD_LINELENGTH_X64       161ULL
 
 VOID MemMap_Read_VadMap_Protection(_In_ PVMM_MAP_VADENTRY pVad, _Out_writes_(6) LPSTR sz)
 {
@@ -48,7 +46,7 @@ LPSTR MemMap_Read_VadMap_Type(_In_ PVMM_MAP_VADENTRY pVad)
 }
 
 _Success_(return == 0)
-NTSTATUS MemMap_Read_VadMap(_In_ PVMMOB_MAP_VAD pVadMap, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MemMap_Read_VadMap(_In_ PVMM_PROCESS pProcess, _In_ PVMMOB_MAP_VAD pVadMap, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt;
     LPSTR sz;
@@ -69,8 +67,10 @@ NTSTATUS MemMap_Read_VadMap(_In_ PVMMOB_MAP_VAD pVadMap, _Out_ PBYTE pb, _In_ DW
                 sz + o,
                 cbMax - o,
                 cbLINELENGTH,
-                "%04x %8x %8x %i %08x-%08x %s %s %-64S\n",
+                "%04x%7i %08x %8x %8x %i %08x-%08x %s %s %-64S\n",
                 (DWORD)i,
+                pProcess->dwPID,
+                (DWORD)pVad->vaVad,
                 (DWORD)((pVad->vaEnd - pVad->vaStart + 1) >> 12),
                 pVad->CommitCharge,
                 pVad->MemCommit ? 1 : 0,
@@ -85,8 +85,10 @@ NTSTATUS MemMap_Read_VadMap(_In_ PVMMOB_MAP_VAD pVadMap, _Out_ PBYTE pb, _In_ DW
                 sz + o,
                 cbMax - o,
                 cbLINELENGTH,
-                "%04x %8x %8x %i %016llx-%016llx %s %s %-64S\n",
+                "%04x%7i %016llx %8x %8x %i %016llx-%016llx %s %s %-64S\n",
                 (DWORD)i,
+                pProcess->dwPID,
+                pVad->vaVad,
                 (DWORD)((pVad->vaEnd - pVad->vaStart + 1) >> 12),
                 pVad->CommitCharge,
                 pVad->MemCommit ? 1 : 0,
@@ -104,7 +106,7 @@ NTSTATUS MemMap_Read_VadMap(_In_ PVMMOB_MAP_VAD pVadMap, _Out_ PBYTE pb, _In_ DW
 }
 
 _Success_(return == 0)
-NTSTATUS MemMap_Read_PteMap(_In_ PVMMOB_MAP_PTE pPteMap, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MemMap_Read_PteMap(_In_ PVMM_PROCESS pProcess, _In_ PVMMOB_MAP_PTE pPteMap, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt;
     LPSTR sz;
@@ -123,8 +125,9 @@ NTSTATUS MemMap_Read_PteMap(_In_ PVMMOB_MAP_PTE pPteMap, _Out_ PBYTE pb, _In_ DW
                 sz + o,
                 cbMax - o,
                 cbLINELENGTH,
-                "%04x %8x %08x-%08x %sr%s%s %-64S\n",
+                "%04x%7i %8x %08x-%08x %sr%s%s %-64S\n",
                 (DWORD)i,
+                pProcess->dwPID,
                 (DWORD)pPte->cPages,
                 (DWORD)pPte->vaBase,
                 (DWORD)(pPte->vaBase + (pPte->cPages << 12) - 1),
@@ -138,8 +141,9 @@ NTSTATUS MemMap_Read_PteMap(_In_ PVMMOB_MAP_PTE pPteMap, _Out_ PBYTE pb, _In_ DW
                 sz + o,
                 cbMax - o,
                 cbLINELENGTH,
-                "%04x %8x %016llx-%016llx %sr%s%s%s%-64S\n",
+                "%04x%7i %8x %016llx-%016llx %sr%s%s%s%-64S\n",
                 (DWORD)i,
+                pProcess->dwPID,
                 (DWORD)pPte->cPages,
                 pPte->vaBase,
                 pPte->vaBase + (pPte->cPages << 12) - 1,
@@ -175,14 +179,14 @@ NTSTATUS MemMap_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWORD
     // read page table memory map.
     if(!_wcsicmp(ctx->wszPath, L"pte.txt")) {
         if(VmmMap_GetPte(ctx->pProcess, &pObMemMapPte, TRUE)) {
-            nt = MemMap_Read_PteMap(pObMemMapPte, pb, cb, pcbRead, cbOffset);
+            nt = MemMap_Read_PteMap(ctx->pProcess, pObMemMapPte, pb, cb, pcbRead, cbOffset);
             Ob_DECREF(pObMemMapPte);
         }
         return nt;
     }
     if(!_wcsicmp(ctx->wszPath, L"vad.txt")) {
         if(VmmMap_GetVad(ctx->pProcess, &pObMemMapVad, TRUE)) {
-            nt = MemMap_Read_VadMap(pObMemMapVad, pb, cb, pcbRead, cbOffset);
+            nt = MemMap_Read_VadMap(ctx->pProcess, pObMemMapVad, pb, cb, pcbRead, cbOffset);
             Ob_DECREF(pObMemMapVad);
         }
         return nt;
@@ -204,12 +208,12 @@ BOOL MemMap_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
     PVMMOB_MAP_VAD pObMemMapVad = NULL;
     // list page table memory map.
     if(VmmMap_GetPte(ctx->pProcess, &pObMemMapPte, FALSE)) {
-        VMMDLL_VfsList_AddFileEx(pFileList, "pte.txt", NULL, pObMemMapPte->cMap * (ctxVmm->f32 ? MEMMAP_PTE_LINELENGTH_X86 : MEMMAP_PTE_LINELENGTH_X64), NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"pte.txt", pObMemMapPte->cMap * (ctxVmm->f32 ? MEMMAP_PTE_LINELENGTH_X86 : MEMMAP_PTE_LINELENGTH_X64), NULL);
         Ob_DECREF_NULL(&pObMemMapPte);
     }
     // list vad memory map.
     if(VmmMap_GetVad(ctx->pProcess, &pObMemMapVad, FALSE)) {
-        VMMDLL_VfsList_AddFileEx(pFileList, "vad.txt", NULL, pObMemMapVad->cMap * (ctxVmm->f32 ? MEMMAP_VAD_LINELENGTH_X86 : MEMMAP_VAD_LINELENGTH_X64), NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"vad.txt", pObMemMapVad->cMap * (ctxVmm->f32 ? MEMMAP_VAD_LINELENGTH_X86 : MEMMAP_VAD_LINELENGTH_X64), NULL);
         Ob_DECREF_NULL(&pObMemMapVad);
     }
     return TRUE;
@@ -225,10 +229,9 @@ BOOL MemMap_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 */
 VOID M_MemMap_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
-    PVMMOB_PHYS2VIRT_INFORMATION pObPhys2Virt = NULL;
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if(!((pRI->tpMemoryModel == VMM_MEMORYMODEL_X64) || (pRI->tpMemoryModel == VMM_MEMORYMODEL_X86) || (pRI->tpMemoryModel == VMM_MEMORYMODEL_X86PAE))) { return; }
-    wcscpy_s(pRI->reg_info.wszModuleName, 32, L"memmap");               // module name
+    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\memmap");              // module name
     pRI->reg_info.fRootModule = FALSE;                                  // module shows in root directory
     pRI->reg_info.fProcessModule = TRUE;                                // module shows in process directory
     pRI->reg_fn.pfnList = MemMap_List;                                  // List function supported

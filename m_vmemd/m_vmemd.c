@@ -1,7 +1,7 @@
 // m_vmemd.h : implementation related to the vmemd native plugin module for the
 // memory process file system.
 //
-// (c) Ulf Frisk, 2018-2019
+// (c) Ulf Frisk, 2018-2020
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include <Windows.h>
@@ -277,7 +277,7 @@ BOOL VMemD_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
                 wszInfo
             );
         }
-        VMMDLL_VfsList_AddFileEx(pFileList, NULL, wszBufferFileName, pVad->vaEnd + 1 - pVad->vaStart, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, wszBufferFileName, pVad->vaEnd + 1 - pVad->vaStart, NULL);
     }
     // Display PteMap entries in the file system unless already part of Vad
     for(iPte = 0, iVad = 0; iPte < pPteMap->cMap; iPte++) {
@@ -306,7 +306,7 @@ BOOL VMemD_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
                 wszInfo
             );
         }
-        VMMDLL_VfsList_AddFileEx(pFileList, NULL, wszBufferFileName, pPte->cPages << 12, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, wszBufferFileName, pPte->cPages << 12, NULL);
     }
     fResult = TRUE;
 fail:
@@ -332,7 +332,7 @@ VOID InitializeVmmPlugin(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo)
     // currently supports the 64-bit x64 and 32-bit x86 and x86-pae memory models.
     if(!((pRegInfo->tpMemoryModel == VMMDLL_MEMORYMODEL_X64) || (pRegInfo->tpMemoryModel == VMMDLL_MEMORYMODEL_X86) || (pRegInfo->tpMemoryModel == VMMDLL_MEMORYMODEL_X86PAE))) { return; }
     g_VMemD_TpMemoryModel = pRegInfo->tpMemoryModel;
-    wcscpy_s(pRegInfo->reg_info.wszModuleName, 32, L"vmemd");   // module name - 'vmemd'.
+    wcscpy_s(pRegInfo->reg_info.wszPathName, 128, L"\\vmemd");  // module name - 'vmemd'.
     pRegInfo->reg_info.fProcessModule = TRUE;                   // module shows in process directory.
     pRegInfo->reg_fn.pfnList = VMemD_List;                      // List function supported.
     pRegInfo->reg_fn.pfnRead = VMemD_Read;                      // Read function supported.

@@ -20,7 +20,7 @@
 #
 # https://github.com/ufrisk/
 #
-# (c) Ulf Frisk, 2018-2019
+# (c) Ulf Frisk, 2018-2020
 # Author: Ulf Frisk, pcileech@frizk.net
 #
 
@@ -185,6 +185,15 @@ def VmmPy_Example(dump_file_name):
     print("CALL: VmmPy_ProcessGetHandleMap()")
     result = VmmPy_ProcessGetHandleMap(pid)
     print("SUCCESS: VmmPy_ProcessGetHandleMap()")
+    print(result)
+
+    # USER MAP
+    print("--------------------------------------------------------------------")
+    print("Get the USER map of logged on non well known users.                 ")
+    input("Press Enter to continue...")
+    print("CALL: VmmPy_GetUsers()")
+    result = VmmPy_GetUsers()
+    print("SUCCESS: VmmPy_GetUsers()")
     print(result)
 
     # MEM VIRTUAL2PHYSICAL

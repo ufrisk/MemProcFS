@@ -42,9 +42,6 @@
     <ClInclude Include="vmmproc.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="vmmvfs.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="pluginmanager.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -84,10 +81,13 @@
     <ClInclude Include="m_modules.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="m_vmmvfs_dump.h">
+    <ClInclude Include="mm.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="mm.h">
+    <ClInclude Include="vmmwindef.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="vmmwinobj.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -131,9 +131,6 @@
     <ClCompile Include="m_ldrmodules.c">
       <Filter>Source Files\modules</Filter>
     </ClCompile>
-    <ClCompile Include="m_pedump.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
     <ClCompile Include="m_status.c">
       <Filter>Source Files\modules</Filter>
     </ClCompile>
@@ -144,9 +141,6 @@
       <Filter>Source Files\ob</Filter>
     </ClCompile>
     <ClCompile Include="ob_core.c">
-      <Filter>Source Files\ob</Filter>
-    </ClCompile>
-    <ClCompile Include="ob_vset.c">
       <Filter>Source Files\ob</Filter>
     </ClCompile>
     <ClCompile Include="m_phys2virt.c">
@@ -160,9 +154,6 @@
     </ClCompile>
     <ClCompile Include="ob_map.c">
       <Filter>Source Files\ob</Filter>
-    </ClCompile>
-    <ClCompile Include="m_vmmvfs_dump.c">
-      <Filter>Source Files\modules</Filter>
     </ClCompile>
     <ClCompile Include="pdb.c">
       <Filter>Source Files</Filter>
@@ -193,6 +184,33 @@
     </ClCompile>
     <ClCompile Include="m_threadinfo.c">
       <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="ob_set.c">
+      <Filter>Source Files\ob</Filter>
+    </ClCompile>
+    <ClCompile Include="m_file_handles_vads.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="m_file_modules.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="m_procuser.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="m_sysinfo_net.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="m_sysinfo_proc.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="m_vfsproc.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="m_vfsroot.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmwinobj.c">
+      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

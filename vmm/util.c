@@ -1,6 +1,6 @@
 // util.c : implementation of various utility functions.
 //
-// (c) Ulf Frisk, 2018-2019
+// (c) Ulf Frisk, 2018-2020
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "util.h"
@@ -211,6 +211,38 @@ LPWSTR Util_PathSplitNextW(_In_ LPWSTR wsz)
     }
 }
 
+LPSTR Util_PathSplitLastA(_In_ LPSTR sz)
+{
+    LPSTR szResult = sz;
+    WCHAR ch;
+    DWORD i = 0;
+    while(TRUE) {
+        ch = sz[i++];
+        if(ch == '\0') {
+            return szResult;
+        }
+        if(ch == '\\') {
+            szResult = sz + i;
+        }
+    }
+}
+
+LPWSTR Util_PathSplitLastW(_In_ LPWSTR wsz)
+{
+    LPWSTR wszResult = wsz;
+    WCHAR ch;
+    DWORD i = 0;
+    while(TRUE) {
+        ch = wsz[i++];
+        if(ch == '\0') {
+            return wszResult;
+        }
+        if(ch == '\\') {
+            wszResult = wsz + i;
+        }
+    }
+}
+
 LPWSTR Util_PathFileSplitW(_In_ LPWSTR wsz, _Out_writes_(MAX_PATH) LPWSTR wszPath)
 {
     DWORD i, iBackSlash = -1;
@@ -237,6 +269,11 @@ LPWSTR Util_PathSplit2_ExWCHAR(_In_ LPWSTR wsz, _Out_writes_(cwsz1) LPWSTR wsz1,
     }
     wsz1[i] = 0;
     return wsz[i] ? &wsz[i + 1] : L"";
+}
+
+VOID Util_PathPrependVA(_Out_writes_(MAX_PATH) LPWSTR wszDstBuffer, _In_ QWORD va, _In_ BOOL f32, _In_ LPWSTR wszText)
+{
+    _snwprintf_s(wszDstBuffer, MAX_PATH, _TRUNCATE, (f32 ? L"%08x-%s" : L"%016llx-%s"), va, wszText);
 }
 
 int Util_wcsstrncmp(_In_ LPSTR sz, _In_ LPWSTR wsz, _In_opt_ DWORD cMax)
@@ -285,9 +322,9 @@ VOID Util_GetPathDll(_Out_writes_(MAX_PATH) PCHAR szPath, _In_opt_ HMODULE hModu
 #define UTIL_NTSTATUS_SUCCESS                      ((NTSTATUS)0x00000000L)
 #define UTIL_NTSTATUS_END_OF_FILE                  ((NTSTATUS)0xC0000011L)
 
-NTSTATUS Util_VfsReadFile_FromPBYTE(_In_ PBYTE pbFile, _In_ QWORD cbFile, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS Util_VfsReadFile_FromPBYTE(_In_opt_ PBYTE pbFile, _In_ QWORD cbFile, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
-    if(cbOffset > cbFile) { return UTIL_NTSTATUS_END_OF_FILE; }
+    if(!pbFile || (cbOffset > cbFile)) { return UTIL_NTSTATUS_END_OF_FILE; }
     *pcbRead = (DWORD)min(cb, cbFile - cbOffset);
     memcpy(pb, pbFile + cbOffset, *pcbRead);
     return *pcbRead ? UTIL_NTSTATUS_SUCCESS : UTIL_NTSTATUS_END_OF_FILE;
@@ -369,6 +406,17 @@ NTSTATUS Util_VfsWriteFile_DWORD(_Inout_ PDWORD pdwTarget, _In_reads_(cb) PBYTE 
     return UTIL_NTSTATUS_SUCCESS;
 }
 
+VOID Util_VfsTimeStampFile(_In_opt_ PVMM_PROCESS pProcess, _Out_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
+{
+    pExInfo->dwVersion = VMMDLL_VFS_FILELIST_EXINFO_VERSION;
+    pExInfo->fCompressed = pProcess && pProcess->dwState;
+    pExInfo->qwCreationTime = VmmProcess_GetCreateTimeOpt(pProcess);
+    pExInfo->qwLastWriteTime = (pProcess && pProcess->dwState) ? VmmProcess_GetExitTimeOpt(pProcess) : 0;
+    if(!pExInfo->qwLastWriteTime) {
+        pExInfo->qwLastWriteTime = pExInfo->qwCreationTime;
+    }
+}
+
 LPSTR Util_StrDupA(_In_opt_ LPSTR sz)
 {
     SIZE_T cch;
@@ -379,6 +427,33 @@ LPSTR Util_StrDupA(_In_opt_ LPSTR sz)
     if(szDup) {
         memcpy(szDup, sz, cch);
     }
+    return szDup;
+}
+
+LPWSTR Util_StrDupW(_In_opt_ LPWSTR wsz)
+{
+    SIZE_T cch;
+    LPWSTR wszDup;
+    if(!wsz) { return NULL; }
+    cch = 1 + wcslen(wsz);
+    wszDup = LocalAlloc(0, cch * 2);
+    if(wszDup) {
+        memcpy(wszDup, wsz, cch * 2);
+    }
+    return wszDup;
+}
+
+LPSTR Util_StrDupW2A(_In_opt_ LPWSTR wsz)
+{
+    DWORD cch;
+    LPSTR szDup;
+    if(!wsz) { return NULL; }
+    cch = (DWORD)wcslen(wsz);
+    if(!(szDup = LocalAlloc(0, cch + 1ULL))) { return NULL; }
+    if(cch) {
+        WideCharToMultiByte(CP_ACP, 0, wsz, cch, szDup, cch, "_", NULL);
+    }
+    szDup[cch] = 0;
     return szDup;
 }
 

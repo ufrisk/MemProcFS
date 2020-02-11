@@ -12,7 +12,7 @@
 // of the set with ObMap_Get/ObMap_GetNext may fail.
 // The ObMap is an object manager object and must be DECREF'ed when required.
 //
-// (c) Ulf Frisk, 2019
+// (c) Ulf Frisk, 2019-2020
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "ob.h"
@@ -22,7 +22,7 @@
 #define OB_MAP_ENTRIES_STORE        0x100
 #define OB_MAP_IS_VALID(p)          (p && (p->ObHdr._magic == OB_HEADER_MAGIC) && (p->ObHdr._tag == OB_TAG_CORE_MAP))
 #define OB_MAP_TABLE_MAX_CAPACITY   OB_MAP_ENTRIES_DIRECTORY * OB_MAP_ENTRIES_TABLE * OB_MAP_ENTRIES_STORE
-#define OB_MAP_HASH_FUNCTION(v)     (13 * (v + _rotr16((WORD)v, 13) + _rotr((DWORD)v, 17) + _rotr64(v, 23)))
+#define OB_MAP_HASH_FUNCTION(v)     (13 * (v + _rotr16((WORD)v, 9) + _rotr((DWORD)v, 17) + _rotr64(v, 31)))
 
 #define OB_MAP_INDEX_DIRECTORY(i)   ((i >> 17) & (OB_MAP_ENTRIES_DIRECTORY - 1))
 #define OB_MAP_INDEX_TABLE(i)       ((i >> 8) & (OB_MAP_ENTRIES_TABLE - 1))
@@ -170,7 +170,7 @@ VOID _ObMap_RemoveHash(_In_ POB_MAP pm, _In_ BOOL fValueHash, _In_ QWORD kv, _In
     iNextHash = iHash;
     while(TRUE) {
         iNextHash = (iNextHash + 1) & dwHashMask;
-        iNextEntry = fValueHash ? pm->pHashMapValue[iHash] : pm->pHashMapKey[iHash];
+        iNextEntry = fValueHash ? pm->pHashMapValue[iNextHash] : pm->pHashMapKey[iNextHash];
         if(0 == iNextEntry) { return; }
         qwNextEntry = _ObMap_GetFromEntryIndex(pm, fValueHash, iNextEntry);
         iNextHashPreferred = OB_MAP_HASH_FUNCTION(qwNextEntry) & dwHashMask;
@@ -278,25 +278,38 @@ PVOID _ObMap_GetNextByKey(_In_ POB_MAP pm, _In_ QWORD qwKey, _In_opt_ PVOID pvOb
     return _ObMap_GetByEntryIndex(pm, iEntry + 1);
 }
 
-// NB: CALLER LOCALFREE: return
-_Success_(return != NULL)
-POB_DATA _ObMap_GetTableKeys(_In_ POB_MAP pm)
+_Success_(return)
+BOOL _ObMap_Filter(_In_ POB_MAP pm, _Inout_opt_ PVOID ctx, _In_ VOID(*pfnFilter)(_In_ QWORD k, _In_ PVOID v, _Inout_opt_ PVOID ctx))
 {
-    QWORD iEntry;
-    POB_DATA pObData;
-    if((pm->c <= 1) || !(pObData = Ob_Alloc(OB_TAG_CORE_DATA, 0, sizeof(OB) + pm->c * sizeof(QWORD), NULL, NULL))) { return NULL; }
+    DWORD iEntry;
+    POB_MAP_ENTRY pEntry;
     for(iEntry = 1; iEntry < pm->c; iEntry++) {
-        pObData->pqw[iEntry] = pm->Directory[OB_MAP_INDEX_DIRECTORY(iEntry)][OB_MAP_INDEX_TABLE(iEntry)][OB_MAP_INDEX_STORE(iEntry)].k;
+        pEntry = &pm->Directory[OB_MAP_INDEX_DIRECTORY(iEntry)][OB_MAP_INDEX_TABLE(iEntry)][OB_MAP_INDEX_STORE(iEntry)];
+        pfnFilter(pEntry->k, pEntry->v, ctx);
     }
-    pObData->pqw[0] = pm->c - 1;
-    return pObData;
+    return TRUE;
+}
+
+_Success_(return != NULL)
+POB_SET _ObMap_FilterSet(_In_ POB_MAP pm, _In_opt_ VOID(*pfnFilter)(_In_ QWORD k, _In_ PVOID v, _Inout_ POB_SET ps))
+{
+    DWORD iEntry;
+    POB_MAP_ENTRY pEntry;
+    POB_SET pObSet;
+    if(!(pObSet = ObSet_New())) { return NULL; }
+    if(!pfnFilter) { return pObSet; }
+    for(iEntry = 1; iEntry < pm->c; iEntry++) {
+        pEntry = &pm->Directory[OB_MAP_INDEX_DIRECTORY(iEntry)][OB_MAP_INDEX_TABLE(iEntry)][OB_MAP_INDEX_STORE(iEntry)];
+        pfnFilter(pEntry->k, pEntry->v, pObSet);
+    }
+    return pObSet;
 }
 
 /*
 * Retrieve an object given an index (which is less than the amount of items
 * in the ObMap).
 * NB! Correctness of the Get/GetNext functionality is _NOT- guaranteed if the
-* ObMap_Remove* functions are called while iterating over the ObVSet - items
+* ObMap_Remove* functions are called while iterating over the ObSet - items
 * may be skipped or iterated over multiple times!
 * CALLER DECREF(if OB): return
 * -- pm
@@ -378,23 +391,45 @@ QWORD ObMap_PeekKey(_In_opt_ POB_MAP pm)
 }
 
 /*
-* Return all keys in the map in a POB_DATA object consisting of a QWORD array.
-* Item 0 contains the number of items in the array (not including the 0th item)
+* Filter map objects into a generic context by using a user-supplied filter function.
+* -- pm
+* -- ctx = optional context to pass on to the filter function.
+* -- pfnFilter
+* -- return
+*/
+_Success_(return)
+BOOL ObMap_Filter(_In_opt_ POB_MAP pm, _Inout_opt_ PVOID ctx, _In_opt_ VOID(*pfnFilter)(_In_ QWORD k, _In_ PVOID v, _Inout_opt_ PVOID ctx))
+{
+    if(!pfnFilter) { return FALSE; }
+    OB_MAP_CALL_SYNCHRONIZED_IMPLEMENTATION_READ(pm, BOOL, FALSE, _ObMap_Filter(pm, ctx, pfnFilter));
+}
+
+/*
+* Filter map objects into a POB_SET by using a user-supplied filter function.
 * CALLER DECREF: return
 * -- pm
-* -- return = POB_DATA consisting of QWORD array, NULL if map is empty.
+* -- pfnFilter
+* -- return = POB_SET consisting of values gathered by the pfnFilter function.
 */
 _Success_(return != NULL)
-POB_DATA ObMap_GetTableKeys(_In_opt_ POB_MAP pm)
+POB_SET ObMap_FilterSet(_In_opt_ POB_MAP pm, _In_opt_ VOID(*pfnFilter)(_In_ QWORD k, _In_ PVOID v, _Inout_ POB_SET ps))
 {
-    OB_MAP_CALL_SYNCHRONIZED_IMPLEMENTATION_READ(pm, POB_DATA, NULL, _ObMap_GetTableKeys(pm));
+    OB_MAP_CALL_SYNCHRONIZED_IMPLEMENTATION_READ(pm, POB_SET, NULL, _ObMap_FilterSet(pm, pfnFilter));
+}
+
+/*
+* Common filter function related to ObMap_FilterSet.
+*/
+VOID ObMap_FilterSet_FilterAllKey(_In_ QWORD k, _In_ PVOID v, _Inout_ POB_SET ps)
+{
+    ObSet_Push(ps, k);
 }
 
 
 
 //-----------------------------------------------------------------------------
 // REMOVAL FUNCTIONALITY BELOW:
-// ObMap_Pop, ObMap_Remove, ObMap_RemoveByKey
+// ObMap_Pop, ObMap_Remove, ObMap_RemoveByKey, ObMap_RemoveByFilter
 //-----------------------------------------------------------------------------
 
 /*
@@ -431,6 +466,25 @@ PVOID _ObMap_RemoveOrRemoveByKey(_In_ POB_MAP pm, _In_ BOOL fValueHash, _In_ QWO
     if(fValueHash && !kv) { return NULL; }
     if(!_ObMap_GetEntryIndexFromKeyOrValue(pm, fValueHash, kv, &iEntry)) { return NULL; }
     return _ObMap_RetrieveAndRemoveByEntryIndex(pm, iEntry, NULL);
+}
+
+DWORD _ObMap_RemoveByFilter(_In_ POB_MAP pm, _In_opt_ BOOL(*pfnFilter)(_In_ QWORD k, _In_ PVOID v))
+{
+    DWORD cRemove = 0;
+    DWORD iEntry;
+    PVOID pv;
+    POB_MAP_ENTRY pEntry;
+    if(!pfnFilter) { return 0; }
+    for(iEntry = pm->c - 1; iEntry; iEntry--) {
+        pEntry = &pm->Directory[OB_MAP_INDEX_DIRECTORY(iEntry)][OB_MAP_INDEX_TABLE(iEntry)][OB_MAP_INDEX_STORE(iEntry)];
+        if(pfnFilter(pEntry->k, pEntry->v)) {
+            cRemove++;
+            pv = _ObMap_RetrieveAndRemoveByEntryIndex(pm, iEntry, NULL);
+            if(pm->fObjectsOb) { Ob_DECREF(pv); }
+            if(pm->fObjectsLocalFree) { LocalFree(pv); }
+        }
+    }
+    return cRemove;
 }
 
 /*
@@ -480,6 +534,17 @@ PVOID ObMap_Remove(_In_opt_ POB_MAP pm, _In_ PVOID pvObject)
 PVOID ObMap_RemoveByKey(_In_opt_ POB_MAP pm, _In_ QWORD qwKey)
 {
     OB_MAP_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(pm, PVOID, NULL, _ObMap_RemoveOrRemoveByKey(pm, FALSE, qwKey))
+}
+
+/*
+* Remove map objects using a user-supplied filter function.
+* -- pm
+* -- pfnFilter = decision making function, TRUE = keep, FALSE = remove.
+* -- return = number of entries removed.
+*/
+DWORD ObMap_RemoveByFilter(_In_opt_ POB_MAP pm, _In_opt_ BOOL(*pfnFilter)(_In_ QWORD k, _In_ PVOID v))
+{
+    OB_MAP_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(pm, DWORD, 0, _ObMap_RemoveByFilter(pm, pfnFilter));
 }
 
 /*
@@ -590,7 +655,7 @@ BOOL ObMap_Push(_In_opt_ POB_MAP pm, _In_ QWORD qwKey, _In_ PVOID pvObject)
 /*
 * Create a new map. A map (ObMap) provides atomic map operations and ways
 * to optionally map key values to values, pointers or object manager objects.
-* The ObVSet is an object manager object and must be DECREF'ed when required.
+* The ObSet is an object manager object and must be DECREF'ed when required.
 * CALLER DECREF: return
 * -- flags
 * -- return

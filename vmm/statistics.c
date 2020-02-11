@@ -1,6 +1,6 @@
 // statistics.c : implementation of statistics related functionality.
 //
-// (c) Ulf Frisk, 2016-2019
+// (c) Ulf Frisk, 2016-2020
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "statistics.h"
@@ -205,6 +205,7 @@ const LPSTR NAMES_VMM_STATISTICS_CALL[] = {
     "VMMDLL_ProcessMap_GetHeap",
     "VMMDLL_ProcessMap_GetThread",
     "VMMDLL_ProcessMap_GetHandle",
+    "VMMDLL_MapGetUsers",
     "VMMDLL_ProcessGetDirectories",
     "VMMDLL_ProcessGetSections",
     "VMMDLL_ProcessGetEAT",

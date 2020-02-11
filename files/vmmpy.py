@@ -9,10 +9,10 @@
 #
 # https://github.com/ufrisk/
 #
-# (c) Ulf Frisk, 2018-2019
+# (c) Ulf Frisk, 2018-2020
 # Author: Ulf Frisk, pcileech@frizk.net
 #
-# Header Version: 3.0
+# Header Version: 3.1
 #
 
 import atexit
@@ -416,7 +416,7 @@ def VmmPy_ProcessGetInformation(pid):
     return -- dict: of process information.
     
     Example:
-    VmmPy_ProcessGetInformation(332) --> {'pid': 8796, 'pa-dtb': 5798625280, 'pa-dtb-user': 6237978624, 'state': 0, 'tp-system': 2, 'usermode': True, 'name': 'cmd.exe', 'name-long': 'cmd.exe', 'wow64': False, 'va-eprocess': 18446635809067693440, 'va-peb': 708313505792, 'va-peb32': 0, 'path-kernel': '', 'path-user': '', 'cmdline': ''}
+    VmmPy_ProcessGetInformation(332) --> {'pid': 4280, 'ppid': 4248, 'pa-dtb': 5930565632, 'pa-dtb-user': 5930561536, 'state': 0, 'tp-memorymodel': 3, 'tp-system': 2, 'usermode': True, 'name': 'explorer.exe', 'name-long': 'explorer.exe', 'path-kernel': '\\Device\\HarddiskVolume4\\Windows\\explorer.exe', 'path-user': 'C:\\Windows\\Explorer.EXE', 'cmdline': 'C:\\Windows\\Explorer.EXE', 'wow64': False, 'va-peb32': 0, 'va-eprocess': 18446644053912244352, 'va-peb': 14229504, 'id-session': 1, 'luid': 225102, 'sid': 'S-1-5-21-3317879871-105768242-2947499445-1001'}
     """
     return VMMPYC_ProcessGetInformation(pid)
 
@@ -714,6 +714,19 @@ def VmmPy_PdbTypeChildOffset(module_name, type_name, type_child_name):
 #------------------------------------------------------------------------------
 # VmmPy WINDOWS ONLY FUNCTIONALITY BELOW:
 #------------------------------------------------------------------------------
+
+def VmmPy_GetUsers():
+    """Retrieve information about the non well known logged on users in the system.
+
+    Keyword arguments:
+    return -- list: of dict of handle entries.
+    
+    Example:
+    VmmPy_GetUsers() --> [{'va-reghive': 18446663847596163072, 'sid': 'S-1-5-21-3317879871-105768242-2947499445-1001', 'name': 'User'}, ...]
+    """
+    return VMMPYC_GetUsers()
+
+
 
 def VmmPy_WinGetThunkInfoEAT(pid, module_name, exported_function):
     """Retrieve information about a single export address table (EAT) entry. This may be useful for hooking.

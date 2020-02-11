@@ -1,13 +1,11 @@
 // m_virt2phys.c : implementation of the virt2phys built-in module.
 //
-// (c) Ulf Frisk, 2018-2019
+// (c) Ulf Frisk, 2018-2020
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-#include "m_modules.h"
 #include "pluginmanager.h"
 #include "util.h"
 #include "vmm.h"
-#include "vmmvfs.h"
 
 LPCSTR szMVIRT2PHYS_README =
     "Information about the virt2phys module                                       \n" \
@@ -216,34 +214,34 @@ BOOL Virt2Phys_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
     }
     switch(ctxVmm->tpMemoryModel) {
         case VMM_MEMORYMODEL_X64:
-            VMMDLL_VfsList_AddFile(pFileList, "virt", 16);
-            VMMDLL_VfsList_AddFile(pFileList, "phys", 16);
-            VMMDLL_VfsList_AddFile(pFileList, "map", 198);
-            VMMDLL_VfsList_AddFile(pFileList, "pt_pml4", 0x1000);
-            VMMDLL_VfsList_AddFile(pFileList, "pt_pdpt", 0x1000);
-            VMMDLL_VfsList_AddFile(pFileList, "pt_pd", 0x1000);
-            VMMDLL_VfsList_AddFile(pFileList, "pt_pt", 0x1000);
-            VMMDLL_VfsList_AddFile(pFileList, "page", 0x1000);
+            VMMDLL_VfsList_AddFile(pFileList, L"virt", 16, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"phys", 16, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"map", 198, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"pt_pml4", 0x1000, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"pt_pdpt", 0x1000, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"pt_pd", 0x1000, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"pt_pt", 0x1000, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"page", 0x1000, NULL);
             break;
         case VMM_MEMORYMODEL_X86PAE:
-            VMMDLL_VfsList_AddFile(pFileList, "virt", 8);
-            VMMDLL_VfsList_AddFile(pFileList, "phys", 16);
-            VMMDLL_VfsList_AddFile(pFileList, "map", 154);
-            VMMDLL_VfsList_AddFile(pFileList, "pt_pdpt", 0x1000);
-            VMMDLL_VfsList_AddFile(pFileList, "pt_pd", 0x1000);
-            VMMDLL_VfsList_AddFile(pFileList, "pt_pt", 0x1000);
-            VMMDLL_VfsList_AddFile(pFileList, "page", 0x1000);
+            VMMDLL_VfsList_AddFile(pFileList, L"virt", 8, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"phys", 16, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"map", 154, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"pt_pdpt", 0x1000, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"pt_pd", 0x1000, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"pt_pt", 0x1000, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"page", 0x1000, NULL);
             break;
         case VMM_MEMORYMODEL_X86:
-            VMMDLL_VfsList_AddFile(pFileList, "virt", 8);
-            VMMDLL_VfsList_AddFile(pFileList, "phys", 16);
-            VMMDLL_VfsList_AddFile(pFileList, "map", 94);
-            VMMDLL_VfsList_AddFile(pFileList, "pt_pd", 0x1000);
-            VMMDLL_VfsList_AddFile(pFileList, "pt_pt", 0x1000);
-            VMMDLL_VfsList_AddFile(pFileList, "page", 0x1000);
+            VMMDLL_VfsList_AddFile(pFileList, L"virt", 8, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"phys", 16, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"map", 94, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"pt_pd", 0x1000, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"pt_pt", 0x1000, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"page", 0x1000, NULL);
             break;
     }
-    VMMDLL_VfsList_AddFile(pFileList, "readme", strlen(szMVIRT2PHYS_README));
+    VMMDLL_VfsList_AddFile(pFileList, L"readme", strlen(szMVIRT2PHYS_README), NULL);
     return TRUE;
 }
 
@@ -259,7 +257,7 @@ VOID M_Virt2Phys_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if(!((pRI->tpMemoryModel == VMM_MEMORYMODEL_X64) || (pRI->tpMemoryModel == VMM_MEMORYMODEL_X86) || (pRI->tpMemoryModel == VMM_MEMORYMODEL_X86PAE))) { return; }
-    wcscpy_s(pRI->reg_info.wszModuleName, 32, L"virt2phys");             // module name
+    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\virt2phys");            // module name
     pRI->reg_info.fProcessModule = TRUE;                                 // module shows in process directory
     pRI->reg_fn.pfnList = Virt2Phys_List;                                // List function supported
     pRI->reg_fn.pfnRead = Virt2Phys_Read;                                // Read function supported

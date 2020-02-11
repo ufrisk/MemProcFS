@@ -1,6 +1,6 @@
 // vmmpyc.c : implementation MemProcFS/VMM Python API
 //
-// (c) Ulf Frisk, 2018-2019
+// (c) Ulf Frisk, 2018-2020
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #define Py_LIMITED_API 0x03060000
@@ -642,6 +642,42 @@ VMMPYC_ProcessGetHandleMap(PyObject *self, PyObject *args)
     return pyList;
 }
 
+// () -> [{...}]
+static PyObject*
+VMMPYC_GetUsers(PyObject* self, PyObject* args)
+{
+    PyObject *pyList, *pyDict;
+    BOOL result;
+    DWORD cbUserMap = 0;
+    ULONG64 i;
+    PVMMDLL_MAP_USER pUserMap = NULL;
+    PVMMDLL_MAP_USERENTRY pe;
+    if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
+    Py_BEGIN_ALLOW_THREADS;
+    result =
+        VMMDLL_Map_GetUsers(NULL, &cbUserMap) &&
+        cbUserMap &&
+        (pUserMap = LocalAlloc(0, cbUserMap)) &&
+        VMMDLL_Map_GetUsers(pUserMap, &cbUserMap);
+    Py_END_ALLOW_THREADS;
+    if(!result) {
+        Py_DECREF(pyList);
+        LocalFree(pUserMap);
+        return PyErr_Format(PyExc_RuntimeError, "VMMPYC_GetUsers: Failed.");
+    }
+    for(i = 0; i < pUserMap->cMap; i++) {
+        if((pyDict = PyDict_New())) {
+            pe = pUserMap->pMap + i;
+            PyDict_SetItemString_DECREF(pyDict, "va-reghive", PyLong_FromUnsignedLongLong(pe->vaRegHive));
+            PyDict_SetItemString_DECREF(pyDict, "sid", PyUnicode_FromFormat("%s", pe->szSID));
+            PyDict_SetItemString_DECREF(pyDict, "name", PyUnicode_FromWideChar(pe->wszText, -1));
+            PyList_Append_DECREF(pyList, pyDict);
+        }
+    }
+    LocalFree(pUserMap);
+    return pyList;
+}
+
 // (STR) -> DWORD
 static PyObject*
 VMMPYC_PidGetFromName(PyObject *self, PyObject *args)
@@ -724,17 +760,17 @@ VMMPYC_ProcessGetInformation(PyObject *self, PyObject *args)
     PyDict_SetItemString_DECREF(pyDict, "path-kernel", PyUnicode_FromFormat("%s", szPathKernel ? szPathKernel : ""));
     PyDict_SetItemString_DECREF(pyDict, "path-user", PyUnicode_FromFormat("%s", szPathUser ? szPathUser : ""));
     PyDict_SetItemString_DECREF(pyDict, "cmdline", PyUnicode_FromFormat("%s", szCmdLine ? szCmdLine : ""));
-    switch(info.tpSystem) {
-        case VMMDLL_SYSTEM_WINDOWS_X64:
-            PyDict_SetItemString_DECREF(pyDict, "wow64", PyBool_FromLong((long)info.os.win.fWow64));
-            PyDict_SetItemString_DECREF(pyDict, "va-eprocess", PyLong_FromUnsignedLongLong(info.os.win.vaEPROCESS));
-            PyDict_SetItemString_DECREF(pyDict, "va-peb", PyLong_FromUnsignedLongLong(info.os.win.vaPEB));
-            PyDict_SetItemString_DECREF(pyDict, "va-peb32", PyLong_FromUnsignedLongLong(info.os.win.vaPEB32));
-            break;
-        case VMMDLL_SYSTEM_WINDOWS_X86:
-            PyDict_SetItemString_DECREF(pyDict, "va-eprocess", PyLong_FromUnsignedLongLong(info.os.win.vaEPROCESS));
-            PyDict_SetItemString_DECREF(pyDict, "va-peb", PyLong_FromUnsignedLongLong(info.os.win.vaPEB));
-            break;
+
+    if((info.tpSystem == VMMDLL_SYSTEM_WINDOWS_X64) || (info.tpSystem == VMMDLL_SYSTEM_WINDOWS_X86)) {
+        if(info.tpSystem == VMMDLL_SYSTEM_WINDOWS_X64) {
+            PyDict_SetItemString_DECREF(pyDict, "wow64", PyBool_FromLong((long)info.win.fWow64));
+            PyDict_SetItemString_DECREF(pyDict, "va-peb32", PyLong_FromUnsignedLongLong(info.win.vaPEB32));
+        }
+        PyDict_SetItemString_DECREF(pyDict, "va-eprocess", PyLong_FromUnsignedLongLong(info.win.vaEPROCESS));
+        PyDict_SetItemString_DECREF(pyDict, "va-peb", PyLong_FromUnsignedLongLong(info.win.vaPEB));
+        PyDict_SetItemString_DECREF(pyDict, "id-session", PyLong_FromUnsignedLong(info.win.dwSessionId));
+        PyDict_SetItemString_DECREF(pyDict, "luid", PyLong_FromUnsignedLongLong(info.win.qwLUID));
+        PyDict_SetItemString_DECREF(pyDict, "sid", PyUnicode_FromFormat("%s", info.win.szSID));
     }
     VMMDLL_MemFree(szPathKernel);
     VMMDLL_MemFree(szPathUser);
@@ -1402,14 +1438,14 @@ typedef struct tdVMMPYC_VFSLIST {
 } VMMPYC_VFSLIST, *PVMMPYC_VFSLIST;
 
 
-VOID VMMPYC_VfsList_AddInternal(_Inout_ HANDLE h, _In_opt_ LPSTR szName, _In_opt_ LPWSTR wszName, _In_ ULONG64 size, _In_ BOOL fIsDirectory)
+VOID VMMPYC_VfsList_AddInternal(_Inout_ HANDLE h, _In_ LPWSTR wszName, _In_ ULONG64 size, _In_ BOOL fIsDirectory)
 {
     DWORD i = 0;
     PVMMPYC_VFSLIST pE;
     PVMMPYC_VFSLIST *ppE = (PVMMPYC_VFSLIST*)h;
     if((pE = LocalAlloc(0, sizeof(VMMPYC_VFSLIST)))) {
-        while(i < MAX_PATH && ((szName && szName[i]) || (wszName && wszName[i]))) {
-            pE->wszName[i] = szName ? szName[i] : wszName[i];
+        while(i < MAX_PATH && wszName && wszName[i]) {
+            pE->wszName[i] = wszName[i];
             i++;
         }
         pE->wszName[min(i, MAX_PATH - 1)] = 0;
@@ -1420,14 +1456,14 @@ VOID VMMPYC_VfsList_AddInternal(_Inout_ HANDLE h, _In_opt_ LPSTR szName, _In_opt
     }
 }
 
-VOID VMMPYC_VfsList_AddFile(_Inout_ HANDLE h, _In_opt_ LPSTR szName, _In_opt_ LPWSTR wszName, _In_ ULONG64 size, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
+VOID VMMPYC_VfsList_AddFile(_Inout_ HANDLE h, _In_ LPWSTR wszName, _In_ ULONG64 size, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
 {
-    VMMPYC_VfsList_AddInternal(h, szName, wszName, size, FALSE);
+    VMMPYC_VfsList_AddInternal(h, wszName, size, FALSE);
 }
 
-VOID VMMPYC_VfsList_AddDirectory(_Inout_ HANDLE h, _In_opt_ LPSTR szName, _In_opt_ LPWSTR wszName, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
+VOID VMMPYC_VfsList_AddDirectory(_Inout_ HANDLE h, _In_ LPWSTR wszName, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
 {
-    VMMPYC_VfsList_AddInternal(h, szName, wszName, 0, TRUE);
+    VMMPYC_VfsList_AddInternal(h, wszName, 0, TRUE);
 }
 
 
@@ -1496,6 +1532,7 @@ static PyMethodDef VMMPYC_EmbMethods[] = {
     {"VMMPYC_ProcessGetHeapMap", VMMPYC_ProcessGetHeapMap, METH_VARARGS, "Retrieve the heap map for a given process."},
     {"VMMPYC_ProcessGetThreadMap", VMMPYC_ProcessGetThreadMap, METH_VARARGS, "Retrieve the thread map for a given process."},
     {"VMMPYC_ProcessGetHandleMap", VMMPYC_ProcessGetHandleMap, METH_VARARGS, "Retrieve the handle map for a given process."},
+    {"VMMPYC_GetUsers", VMMPYC_GetUsers, METH_VARARGS, "Retrieve the non-well known users from the system."},
     {"VMMPYC_ProcessGetInformation", VMMPYC_ProcessGetInformation, METH_VARARGS, "Retrieve process information for a specific process."},
     {"VMMPYC_ProcessGetDirectories", VMMPYC_ProcessGetDirectories, METH_VARARGS, "Retrieve the data directories for a specific process and module."},
     {"VMMPYC_ProcessGetSections", VMMPYC_ProcessGetSections, METH_VARARGS, "Retrieve the sections for a specific process and module."},

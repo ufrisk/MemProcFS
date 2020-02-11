@@ -2,7 +2,7 @@
 //                systems. Contains functions for detecting DTB and Memory Model
 //                as well as the Windows kernel base and core functionality.
 //
-// (c) Ulf Frisk, 2018-2019
+// (c) Ulf Frisk, 2018-2020
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -12,6 +12,7 @@
 #include "pdb.h"
 #include "util.h"
 #include "vmmwin.h"
+#include "vmmwinobj.h"
 #include "vmmwinreg.h"
 
 /*
@@ -21,7 +22,7 @@ VOID VmmWinInit_TryInitializeThreading()
 {
     BOOL f;
     DWORD cbEThread = 0;
-    PVMM_WIN_THEADINFO pti = &ctxVmm->kernel.ThreadInfo;
+    PVMM_OFFSET_ETHREAD pti = &ctxVmm->offset.ETHREAD;
     f = PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_EPROCESS", L"ThreadListHead", &pti->oThreadListHeadKP) &&
         PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_KTHREAD", L"StackBase", &pti->oStackBase) &&
         PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_KTHREAD", L"StackLimit", &pti->oStackLimit) &&
@@ -59,16 +60,76 @@ VOID VmmWinInit_TryInitializeKernelOptionalValues()
     POB_MAP pmObSubkeys = NULL;
     DWORD oKdpDataBlockEncoded, dwKDBG, dwo;
     BYTE bKdpDataBlockEncoded;
+    PVMM_OFFSET_FILE pof;
     if(ctxVmm->kernel.opt.fInitialized) { return; }
     if(!(pObSystemProcess = VmmProcessGet(4))) { return; }
-    // optional eprocess offsets
-    if(!ctxVmm->kernel.OffsetEPROCESS.opt.fFailInitialize && !ctxVmm->kernel.OffsetEPROCESS.opt.CreateTime) {
+    // Optional EPROCESS and _TOKEN offsets
+    if(!ctxVmm->offset.EPROCESS.opt.Token) {
+        // EPROCESS
+        if(PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_EPROCESS", L"Token", &dwo) && (dwo < sizeof(((PVMM_PROCESS)0)->win.EPROCESS.cb) - 8)) {
+            ctxVmm->offset.EPROCESS.opt.Token = (WORD)dwo;
+        }
         if(PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_EPROCESS", L"CreateTime", &dwo) && (dwo < sizeof(((PVMM_PROCESS)0)->win.EPROCESS.cb) - 8)) {
-            ctxVmm->kernel.OffsetEPROCESS.opt.CreateTime = (WORD)dwo;
+            ctxVmm->offset.EPROCESS.opt.CreateTime = (WORD)dwo;
         }
         if(PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_EPROCESS", L"ExitTime", &dwo) && (dwo < sizeof(((PVMM_PROCESS)0)->win.EPROCESS.cb) - 8)) {
-            ctxVmm->kernel.OffsetEPROCESS.opt.ExitTime = (WORD)dwo;
+            ctxVmm->offset.EPROCESS.opt.ExitTime = (WORD)dwo;
         }
+        // TOKEN
+        if(PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_TOKEN", L"UserAndGroups", &dwo)) {
+            ctxVmm->offset.EPROCESS.opt.TOKEN_UserAndGroups = (WORD)dwo;
+        }
+        if(PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_TOKEN", L"SessionId", &dwo)) {
+            ctxVmm->offset.EPROCESS.opt.TOKEN_SessionId = (WORD)dwo;
+        }
+        if(PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_TOKEN", L"TokenId", &dwo)) {
+            ctxVmm->offset.EPROCESS.opt.TOKEN_TokenId = (WORD)dwo;
+        }
+    }
+    // Optional _FILE_OBJECT related offsets
+    if(!ctxVmm->offset.FILE.fValid) {
+        pof = &ctxVmm->offset.FILE;
+        // _FILE_OBJECT
+        pof->_FILE_OBJECT.cb                    = (WORD)(PDB_GetTypeSize(VMMWIN_PDB_HANDLE_KERNEL, "_FILE_OBJECT", &dwo) ? dwo : 0);
+        pof->_FILE_OBJECT.oDeviceObject         = (WORD)(PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_FILE_OBJECT", L"DeviceObject", &dwo) ? dwo : 0);
+        pof->_FILE_OBJECT.oSectionObjectPointer = (WORD)(PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_FILE_OBJECT", L"SectionObjectPointer", &dwo) ? dwo : 0);
+        pof->_FILE_OBJECT.oFileName             = (WORD)(PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_FILE_OBJECT", L"FileName", &dwo) ? dwo : 0);
+        pof->_FILE_OBJECT.oFileNameBuffer       = pof->_FILE_OBJECT.oFileName + (ctxVmm->f32 ? 4 : 8);
+        // _SECTION_OBJECT_POINTERS
+        pof->_SECTION_OBJECT_POINTERS.cb        = (WORD)(PDB_GetTypeSize(VMMWIN_PDB_HANDLE_KERNEL, "_SECTION_OBJECT_POINTERS", &dwo) ? dwo : 0);
+        pof->_SECTION_OBJECT_POINTERS.oDataSectionObject = (WORD)(PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_SECTION_OBJECT_POINTERS", L"DataSectionObject", &dwo) ? dwo : 0);
+        pof->_SECTION_OBJECT_POINTERS.oSharedCacheMap = (WORD)(PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_SECTION_OBJECT_POINTERS", L"SharedCacheMap", &dwo) ? dwo : 0);
+        pof->_SECTION_OBJECT_POINTERS.oImageSectionObject = (WORD)(PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_SECTION_OBJECT_POINTERS", L"ImageSectionObject", &dwo) ? dwo : 0);
+        // _VACB
+        pof->_VACB.cb                           = (WORD)(PDB_GetTypeSize(VMMWIN_PDB_HANDLE_KERNEL, "_VACB", &dwo) ? dwo : 0);
+        pof->_VACB.oBaseAddress                 = (WORD)(PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_VACB", L"BaseAddress", &dwo) ? dwo : 0);
+        pof->_VACB.oSharedCacheMap              = (WORD)(PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_VACB", L"SharedCacheMap", &dwo) ? dwo : 0);
+        // _SHARED_CACHE_MAP
+        pof->_SHARED_CACHE_MAP.cb               = (WORD)(PDB_GetTypeSize(VMMWIN_PDB_HANDLE_KERNEL, "_SHARED_CACHE_MAP", &dwo) ? dwo : 0);
+        pof->_SHARED_CACHE_MAP.oFileSize        = (WORD)(PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_SHARED_CACHE_MAP", L"FileSize", &dwo) ? dwo : 0);
+        pof->_SHARED_CACHE_MAP.oSectionSize     = (WORD)(PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_SHARED_CACHE_MAP", L"SectionSize", &dwo) ? dwo : 0);
+        pof->_SHARED_CACHE_MAP.oValidDataLength = (WORD)(PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_SHARED_CACHE_MAP", L"ValidDataLength", &dwo) ? dwo : 0);
+        pof->_SHARED_CACHE_MAP.oInitialVacbs    = (WORD)(PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_SHARED_CACHE_MAP", L"InitialVacbs", &dwo) ? dwo : 0);
+        pof->_SHARED_CACHE_MAP.oVacbs           = (WORD)(PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_SHARED_CACHE_MAP", L"Vacbs", &dwo) ? dwo : 0);
+        pof->_SHARED_CACHE_MAP.oFileObjectFastRef = (WORD)(PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_SHARED_CACHE_MAP", L"FileObjectFastRef", &dwo) ? dwo : 0);
+        // _CONTROL_AREA
+        pof->_CONTROL_AREA.cb                   = (WORD)(PDB_GetTypeSize(VMMWIN_PDB_HANDLE_KERNEL, "_CONTROL_AREA", &dwo) ? dwo : 0);
+        pof->_CONTROL_AREA.oSegment             = (WORD)(PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_CONTROL_AREA", L"Segment", &dwo) ? dwo : 0);
+        pof->_CONTROL_AREA.oFilePointer         = (WORD)(PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_CONTROL_AREA", L"FilePointer", &dwo) ? dwo : 0);
+        // _SEGMENT
+        pof->_SEGMENT.cb                        = (WORD)(PDB_GetTypeSize(VMMWIN_PDB_HANDLE_KERNEL, "_SEGMENT", &dwo) ? dwo : 0);
+        pof->_SEGMENT.oControlArea              = (WORD)(PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_SEGMENT", L"ControlArea", &dwo) ? dwo : 0);
+        pof->_SEGMENT.oSizeOfSegment            = (WORD)(PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_SEGMENT", L"SizeOfSegment", &dwo) ? dwo : 0);
+        pof->_SEGMENT.oPrototypePte             = (WORD)(PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_SEGMENT", L"PrototypePte", &dwo) ? dwo : 0);
+        // _SUBSECTION
+        pof->_SUBSECTION.cb                     = (WORD)(PDB_GetTypeSize(VMMWIN_PDB_HANDLE_KERNEL, "_SUBSECTION", &dwo) ? dwo : 0);
+        pof->_SUBSECTION.oControlArea           = (WORD)(PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_SUBSECTION", L"ControlArea", &dwo) ? dwo : 0);
+        pof->_SUBSECTION.oNextSubsection        = (WORD)(PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_SUBSECTION", L"NextSubsection", &dwo) ? dwo : 0);
+        pof->_SUBSECTION.oNumberOfFullSectors   = (WORD)(PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_SUBSECTION", L"NumberOfFullSectors", &dwo) ? dwo : 0);
+        pof->_SUBSECTION.oPtesInSubsection      = (WORD)(PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_SUBSECTION", L"PtesInSubsection", &dwo) ? dwo : 0);
+        pof->_SUBSECTION.oStartingSector        = (WORD)(PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_SUBSECTION", L"StartingSector", &dwo) ? dwo : 0);
+        pof->_SUBSECTION.oSubsectionBase        = (WORD)(PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_SUBSECTION", L"SubsectionBase", &dwo) ? dwo : 0);
+        pof->fValid = pof->_SUBSECTION.cb ? TRUE : FALSE;
     }
     // cpu count
     if(!ctxVmm->kernel.opt.cCPUs) {
@@ -741,6 +802,7 @@ BOOL VmmWinInit_TryInitialize(_In_opt_ QWORD paDTBOpt)
     // Initialization functionality:
     PDB_Initialize(NULL, TRUE);                                 // Async init of PDB subsystem.
     VmmWinInit_FindPsLoadedModuleListKDBG(pObSystemProcess);    // Find PsLoadedModuleList and possibly KDBG.
+    VmmWinObj_Initialize();                                     // Windows Objects Manager.
     VmmWinReg_Initialize();                                     // Registry.
     // Async Initialization functionality:
     hThreadInitializeAsync = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)VmmWinInit_TryInitialize_Async, (LPVOID)NULL, 0, NULL);

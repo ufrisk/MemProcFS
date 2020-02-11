@@ -1,6 +1,6 @@
 // mm_x86.c : implementation of the x86 32-bit protected mode memory model.
 //
-// (c) Ulf Frisk, 2018-2019
+// (c) Ulf Frisk, 2018-2020
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmm.h"
@@ -26,9 +26,9 @@ VOID MmX86_TlbSpider(_In_ PVMM_PROCESS pProcess)
 {
     PVMMOB_MEM pObPD = NULL;
     DWORD i, pte;
-    POB_VSET pObPageSet = NULL;
+    POB_SET pObPageSet = NULL;
     if(pProcess->fTlbSpiderDone) { return; }
-    if(!(pObPageSet = ObVSet_New())) { return; }
+    if(!(pObPageSet = ObSet_New())) { return; }
     pObPD = VmmTlbGetPageTable(pProcess->paDTB & 0xfffff000, FALSE);
     if(!pObPD) { goto fail; }
     for(i = 0; i < 1024; i++) {
@@ -36,7 +36,7 @@ VOID MmX86_TlbSpider(_In_ PVMM_PROCESS pProcess)
         if(!(pte & 0x01)) { continue; }                 // not valid
         if(pte & 0x80) { continue; }                    // not valid ptr to PT
         if(pProcess->fUserOnly && !(pte & 0x04)) { continue; }    // supervisor page when fUserOnly -> not valid
-        ObVSet_Push(pObPageSet, pte & 0xfffff000);
+        ObSet_Push(pObPageSet, pte & 0xfffff000);
     }
     VmmTlbPrefetch(pObPageSet);
     pProcess->fTlbSpiderDone = TRUE;

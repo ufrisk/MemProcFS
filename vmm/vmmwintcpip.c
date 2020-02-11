@@ -1,6 +1,6 @@
 // vmmwintcpip.c :  implementation of functionality related to the Windows networking.
 //
-// (c) Ulf Frisk, 2019
+// (c) Ulf Frisk, 2019-2020
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -42,19 +42,19 @@ QWORD VmmWinTcpIp_GetPartitionTable64_PageAligned(_In_ PVMM_PROCESS pSystemProce
     BOOL f;
     QWORD va;
     BYTE pb[0x38];
-    POB_VSET pObSet = NULL;
+    POB_SET pObSet = NULL;
     DWORD i, cbRead, dwPoolHdr;
-    if(!(pObSet = ObVSet_New())) { goto fail; }
+    if(!(pObSet = ObSet_New())) { goto fail; }
     // 1: fetch potential page-aligned candidates
     for(i = 0; i < cbData - 8; i += 8) {
         va = *(PQWORD)(pbData + i);
         if(VMM_KADDR64_PAGE(va)) {
-            ObVSet_Push(pObSet, va);
+            ObSet_Push(pObSet, va);
         }
     }
     VmmCachePrefetchPages(pSystemProcess, pObSet, 0);
     // 2: filter potential page-aligned candidates
-    while((va = ObVSet_Pop(pObSet))) {
+    while((va = ObSet_Pop(pObSet))) {
         VmmReadEx(pSystemProcess, va, pb, 0x38, &cbRead, VMM_FLAG_FORCECACHE_READ);
         if(cbRead != 0x38) { continue; }
         f = VMMWINTCPIP_PARTITIONTABLE_OFFSET20(pb, va) ||
@@ -79,19 +79,19 @@ QWORD VmmWinTcpIp_GetPartitionTable64_PoolHdr(_In_ PVMM_PROCESS pSystemProcess, 
     BOOL f;
     QWORD va;
     BYTE pb[0x48];
-    POB_VSET pObSet = NULL;
+    POB_SET pObSet = NULL;
     DWORD i, cbRead;
-    if(!(pObSet = ObVSet_New())) { goto fail; }
+    if(!(pObSet = ObSet_New())) { goto fail; }
     // 1: fetch potential candidates
     for(i = 0; i < cbData - 8; i += 8) {
         va = *(PQWORD)(pbData + i);
         if(VMM_KADDR64_16(va)) {
-            ObVSet_Push(pObSet, va);
+            ObSet_Push(pObSet, va);
         }
     }
     VmmCachePrefetchPages3(pSystemProcess, pObSet, 0x48, 0);
     // 2: filter potential candidates
-    while((va = ObVSet_Pop(pObSet))) {
+    while((va = ObSet_Pop(pObSet))) {
         VmmReadEx(pSystemProcess, va - 0x10, pb, 0x48, &cbRead, VMM_FLAG_FORCECACHE_READ);
         if((cbRead != 0x48) || (*(PDWORD)(pb + 0x04) != 'tPcT')) { continue; }  // TcPt pool header
         f = VMMWINTCPIP_PARTITIONTABLE_OFFSET20(pb + 0x10, va) ||
@@ -243,19 +243,19 @@ fail:
 * -- return
 */
 _Success_(return)
-BOOL VmmWinTcpIp_TcpE_GetAddressEPs(_In_ PVMM_PROCESS pSystemProcess, _Inout_ POB_VSET pObSet_TcpEndpoints)
+BOOL VmmWinTcpIp_TcpE_GetAddressEPs(_In_ PVMM_PROCESS pSystemProcess, _Inout_ POB_SET pObSet_TcpEndpoints)
 {
     BOOL f, fResult = FALSE;
     QWORD va, va2, va3;
     DWORD i, o, oStartHT, oListPT = 0, cbRead, cbTcpHT;
     BYTE pb[0x810] = { 0 }, pbTcHT[0x400];
     PBYTE pbPartitionTable;
-    POB_VSET pObTcHT = NULL, pObHTab = NULL, pObTcpE = NULL;
+    POB_SET pObTcHT = NULL, pObHTab = NULL, pObTcpE = NULL;
     PRTL_DYNAMIC_HASH_TABLE pTcpHT;
     if(!(pbPartitionTable = LocalAlloc(LMEM_ZEROINIT, 0x4000))) { goto fail; }
-    if(!(pObTcHT = ObVSet_New())) { goto fail; }
-    if(!(pObHTab = ObVSet_New())) { goto fail; }
-    if(!(pObTcpE = ObVSet_New())) { goto fail; }
+    if(!(pObTcHT = ObSet_New())) { goto fail; }
+    if(!(pObHTab = ObSet_New())) { goto fail; }
+    if(!(pObTcpE = ObSet_New())) { goto fail; }
     // 1: load partition table
     if(!ctxVmm->TcpIp.fInitialized) {
         VmmWinTcpIp_GetPartitionTable64(pSystemProcess);
@@ -276,19 +276,19 @@ BOOL VmmWinTcpIp_TcpE_GetAddressEPs(_In_ PVMM_PROCESS pSystemProcess, _Inout_ PO
                 ((ctxVmm->TcpIp.vaPartitionTable + o + oListPT) == *(PQWORD)(pbPartitionTable + o + oListPT)) &&
                 ((ctxVmm->TcpIp.vaPartitionTable + o + oListPT) == *(PQWORD)(pbPartitionTable + o + oListPT + 8));
             if(!f) { continue; }
-            ObVSet_Push(pObTcHT, *(PQWORD)(pbPartitionTable + o + 0x00) - 0x10);  // store address in set & adjust for prepended pool header
+            ObSet_Push(pObTcHT, *(PQWORD)(pbPartitionTable + o + 0x00) - 0x10);  // store address in set & adjust for prepended pool header
             o += 0x70;
         }
     }
     if(VMMWINTCPIP_PARTITIONTABLE_WIN10_1903(pbPartitionTable)) {
         for(o = 0; o < 0x4000 - 0xc0 && VMMWINTCPIP_PARTITIONTABLE_WIN10_1903(pbPartitionTable + o); o += 0xc0) {
-            ObVSet_Push(pObTcHT, *(PQWORD)(pbPartitionTable + o + 0x00) - 0x10);  // store address in set & adjust for prepended pool header
+            ObSet_Push(pObTcHT, *(PQWORD)(pbPartitionTable + o + 0x00) - 0x10);  // store address in set & adjust for prepended pool header
         }
     }
-    if(0 == ObVSet_Size(pObTcHT)) { goto fail; }
+    if(0 == ObSet_Size(pObTcHT)) { goto fail; }
     VmmCachePrefetchPages3(pSystemProcess, pObTcHT, cbTcpHT, 0);
     // 3: enumerate possible/interesting TCP hash tables - TcHT.
-    while((va = ObVSet_Pop(pObTcHT))) {
+    while((va = ObSet_Pop(pObTcHT))) {
         ZeroMemory(pbTcHT, cbTcpHT);
         VmmReadEx(pSystemProcess, va, pbTcHT, cbTcpHT, &cbRead, VMM_FLAG_FORCECACHE_READ);
         if((cbTcpHT != cbRead) || (*(PDWORD)(pbTcHT + 0x04) !=  'THcT')) { continue; }
@@ -296,13 +296,13 @@ BOOL VmmWinTcpIp_TcpE_GetAddressEPs(_In_ PVMM_PROCESS pSystemProcess, _Inout_ PO
             pTcpHT = (PRTL_DYNAMIC_HASH_TABLE)(pbTcHT + 0x10 + oStartHT) + i;
             if(!VMM_KADDR64_16(pTcpHT->Directory) || (pTcpHT->TableSize != 0x80) || (pTcpHT->DivisorMask != 0x7f)) { break; }
             if(!pTcpHT->NonEmptyBuckets) { continue; }
-            ObVSet_Push(pObHTab, pTcpHT->Directory - 0x10);  // store address in set & account for prepended pool header
+            ObSet_Push(pObHTab, pTcpHT->Directory - 0x10);  // store address in set & account for prepended pool header
         }
     }
-    if(0 == ObVSet_Size(pObHTab)) { goto fail; }
+    if(0 == ObSet_Size(pObHTab)) { goto fail; }
     VmmCachePrefetchPages3(pSystemProcess, pObHTab, 0x810, 0);
     // 4: Enumerate TCP Endpoints 'TcpE' out of the potential 'HTab'
-    while((va = ObVSet_Pop(pObHTab))) {
+    while((va = ObSet_Pop(pObHTab))) {
         VmmReadEx(pSystemProcess, va, pb, 0x810, &cbRead, VMM_FLAG_FORCECACHE_READ);
         if(0x810 != cbRead) { continue; }
         if((*(PDWORD)(pb + 0x04) != 'baTH') && (ctxVmm->kernel.dwVersionBuild != 10240)) {
@@ -312,25 +312,25 @@ BOOL VmmWinTcpIp_TcpE_GetAddressEPs(_In_ PVMM_PROCESS pSystemProcess, _Inout_ PO
         for(o = 0x10; o < 0x800; o += 0x10) {
             va2 = *(PQWORD)(pb + o);
             if((va + o == va2) || !VMM_KADDR64_16(va2)) { continue; }
-            ObVSet_Push(pObTcpE, va2 - 0x50);
+            ObSet_Push(pObTcpE, va2 - 0x50);
             va3 = *(PQWORD)(pb + o + 8);
             if((va + o == va3) || (va2 == va3) || !VMM_KADDR64_16(va2)) { continue; }
-            ObVSet_Push(pObTcpE, va3 - 0x50);
+            ObSet_Push(pObTcpE, va3 - 0x50);
         }
     }
-    if(0 == ObVSet_Size(pObTcpE)) { goto fail; }
+    if(0 == ObSet_Size(pObTcpE)) { goto fail; }
     VmmCachePrefetchPages3(pSystemProcess, pObTcpE, 0x10, 0);
     // 5: Verify and transfer to outgoing result set pObTcpE_Located
-    while((va = ObVSet_Pop(pObTcpE))) {
+    while((va = ObSet_Pop(pObTcpE))) {
         VmmReadEx(pSystemProcess, va, pb, 0x10, &cbRead, VMM_FLAG_FORCECACHE_READ);
         if(0x10 != cbRead) { continue; }
         if(*(PDWORD)(pb + 0x04) != 'EpcT') {
             vmmprintfv_fn("UNEXPECTED POOL HDR: '%c%c%c%c' EXPECT: 'TcpE' AT VA: 0x%016llx\n", pb[4], pb[5], pb[6], pb[7], va);
             continue;
         }
-        ObVSet_Push(pObSet_TcpEndpoints, va + 0x10);
+        ObSet_Push(pObSet_TcpEndpoints, va + 0x10);
     }
-    if(0 == ObVSet_Size(pObSet_TcpEndpoints)) { goto fail; }
+    if(0 == ObSet_Size(pObSet_TcpEndpoints)) { goto fail; }
     fResult = TRUE;
 fail:
     Ob_DECREF(pObTcHT);
@@ -351,14 +351,14 @@ fail:
 * -- return
 */
 _Success_(return)
-BOOL VmmWinTcpIp_TcpE_Enumerate(_In_ PVMM_PROCESS pSystemProcess, _In_ POB_VSET pSet_TcpE, _In_count_(cTcpEs) PVMMWIN_TCPIP_ENTRY pTcpEs, _In_ DWORD cTcpEs, _Out_ PDWORD pcTcpEs)
+BOOL VmmWinTcpIp_TcpE_Enumerate(_In_ PVMM_PROCESS pSystemProcess, _In_ POB_SET pSet_TcpE, _In_count_(cTcpEs) PVMMWIN_TCPIP_ENTRY pTcpEs, _In_ DWORD cTcpEs, _Out_ PDWORD pcTcpEs)
 {
     BOOL f;
     QWORD va;
     DWORD cbRead, c = 0, i, j;
     BYTE pb[0x400] = { 0 };
     PVMMWIN_TCPIP_ENTRY pE;
-    POB_VSET pObPrefetch = NULL;
+    POB_SET pObPrefetch = NULL;
     PVMM_PROCESS pObProcess = NULL;
     PVMMWIN_TCPIP_OFFSET_TcpE po = &ctxVmm->TcpIp.OTcpE;
     LPCSTR szSTATES[] = {
@@ -374,11 +374,11 @@ BOOL VmmWinTcpIp_TcpE_Enumerate(_In_ PVMM_PROCESS pSystemProcess, _In_ POB_VSET 
         "LAST_ACK",
         "TIME_WAIT"
     };
-    if(cTcpEs < ObVSet_Size(pSet_TcpE)) { goto fail; }
-    if(!(pObPrefetch = ObVSet_New())) { goto fail; }
+    if(cTcpEs < ObSet_Size(pSet_TcpE)) { goto fail; }
+    if(!(pObPrefetch = ObSet_New())) { goto fail; }
     VmmCachePrefetchPages3(pSystemProcess, pSet_TcpE, po->_Size, 0);
     // 1: retrieve general info from main struct (TcpE)
-    while((va = ObVSet_Pop(pSet_TcpE))) {
+    while((va = ObSet_Pop(pSet_TcpE))) {
         VmmReadEx(pSystemProcess, va, pb, po->_Size, &cbRead, VMM_FLAG_FORCECACHE_READ);
         if(po->_Size != cbRead) { continue; }
         pE = pTcpEs + c;
@@ -394,14 +394,14 @@ BOOL VmmWinTcpIp_TcpE_Enumerate(_In_ PVMM_PROCESS pSystemProcess, _In_ POB_VSET 
         pE->_Reserved_vaINET_AF = *(PQWORD)(pb + po->INET_AF);
         pE->_Reserved_vaINET_Addr = *(PQWORD)(pb + po->INET_Addr);
         if(!VMM_KADDR64_8(pE->vaEPROCESS) || !VMM_KADDR64_8(pE->_Reserved_vaINET_AF) || !VMM_KADDR64_8(pE->_Reserved_vaINET_Addr)) { continue; }
-        ObVSet_Push(pObPrefetch, pE->_Reserved_vaINET_AF - 0x10);
-        ObVSet_Push(pObPrefetch, pE->_Reserved_vaINET_Addr);
+        ObSet_Push(pObPrefetch, pE->_Reserved_vaINET_AF - 0x10);
+        ObSet_Push(pObPrefetch, pE->_Reserved_vaINET_Addr);
         c++;
     }
     // 2: retrieve address family and ptr to address
     VmmCachePrefetchPages3(pSystemProcess, pObPrefetch, 0x30, 0);
     Ob_DECREF_NULL(&pObPrefetch);
-    if(!(pObPrefetch = ObVSet_New())) { goto fail; }
+    if(!(pObPrefetch = ObSet_New())) { goto fail; }
     for(i = 0; i < c; i++) {
         pE = pTcpEs + i;
         // 2.1 fetch INET_AF
@@ -422,11 +422,12 @@ BOOL VmmWinTcpIp_TcpE_Enumerate(_In_ PVMM_PROCESS pSystemProcess, _In_ POB_VSET 
         if((0x18 != cbRead) || !VMM_KADDR64_8(*(PQWORD)(pb + 0x00)) || !VMM_KADDR64_8(*(PQWORD)(pb + 0x10))) { continue; }
         pE->_Reserved_vaINET_Src = *(PQWORD)(pb + 0x00);
         pE->_Reserved_vaINET_Dst = *(PQWORD)(pb + 0x10);
-        ObVSet_Push(pObPrefetch, pE->_Reserved_vaINET_Src);
-        ObVSet_Push(pObPrefetch, pE->_Reserved_vaINET_Dst);
+        ObSet_Push(pObPrefetch, pE->_Reserved_vaINET_Src);
+        ObSet_Push(pObPrefetch, pE->_Reserved_vaINET_Dst);
     }
     // 3: retrieve src / dst addresses
     VmmCachePrefetchPages3(pSystemProcess, pObPrefetch, 0x18, 0);
+    Ob_DECREF_NULL(&pObPrefetch);
     for(i = 0; i < c; i++) {
         pE = pTcpEs + i;
         if(pE->AF.fValid) {
@@ -491,14 +492,14 @@ BOOL VmmWinTcpIp_TcpE_Get(_Out_ PPVMMWIN_TCPIP_ENTRY ppTcpE, _Out_ PDWORD pcTcpE
     DWORD cTcpEs;
     PVMMWIN_TCPIP_ENTRY pTcpEs = NULL;
     PVMM_PROCESS pObSystemProcess = NULL;
-    POB_VSET pObTcpE = NULL;
+    POB_SET pObTcpE = NULL;
     if(ctxVmm->f32) { goto fail; }
-    if(!(pObTcpE = ObVSet_New())) { goto fail; }
+    if(!(pObTcpE = ObSet_New())) { goto fail; }
     if(!(pObSystemProcess = VmmProcessGet(4))) { goto fail; }
     if(!VmmWinTcpIp_TcpE_GetAddressEPs(pObSystemProcess, pObTcpE)) { goto fail; }
-    VmmWinTcpIp_TcpE_Fuzz(pObSystemProcess, ObVSet_Get(pObTcpE, 0));
+    VmmWinTcpIp_TcpE_Fuzz(pObSystemProcess, ObSet_Get(pObTcpE, 0));
     if(!ctxVmm->TcpIp.OTcpE._fValid) { goto fail; }
-    cTcpEs = ObVSet_Size(pObTcpE);
+    cTcpEs = ObSet_Size(pObTcpE);
     if(!(pTcpEs = LocalAlloc(LMEM_ZEROINIT, cTcpEs * sizeof(VMMWIN_TCPIP_ENTRY)))) { goto fail; }
     if(!VmmWinTcpIp_TcpE_Enumerate(pObSystemProcess, pObTcpE, pTcpEs, cTcpEs, &cTcpEs)) { goto fail; }
     *ppTcpE = pTcpEs;
