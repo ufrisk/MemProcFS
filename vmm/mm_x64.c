@@ -17,13 +17,14 @@
 BOOL MmX64_TlbPageTableVerify(_Inout_ PBYTE pb, _In_ QWORD pa, _In_ BOOL fSelfRefReq)
 {
     DWORD i;
-    QWORD *ptes, c = 0, pte;
+    QWORD *ptes, c = 0, pte, paMax;
     BOOL fSelfRef = FALSE;
     if(!pb) { return FALSE; }
     ptes = (PQWORD)pb;
+    paMax = max(0xffffffff, ctxMain->dev.paMax);
     for(i = 0; i < 512; i++) {
         pte = *(ptes + i);
-        if((pte & 0x01) && ((0x000fffffffffffff & pte) > ctxMain->dev.paMax)) {
+        if((pte & 0x01) && ((0x000fffffffffffff & pte) > paMax)) {
             // A bad PTE, or memory allocated above the physical address max
             // limit. This may be just trash in the page table in which case
             // we clear this faulty entry. If too may bad PTEs are found this
