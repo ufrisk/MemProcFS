@@ -271,6 +271,24 @@ def VmmPy_Example(dump_file_name):
     else:
         print("FAIL: No registry hives read from VmmPy_WinReg_HiveList()")
 
+    # Retrieve PHYSICAL MEMORY MAP
+    print("--------------------------------------------------------------------")
+    print("Retrieve physical memory map                                        ")
+    input("Press Enter to continue...")
+    print("CALL: VmmPy_MapGetPhysMem()")
+    result = VmmPy_MapGetPhysMem()
+    print("SUCCESS: VmmPy_MapGetPhysMem()")
+    print(result)
+
+    # Retrieve PFNs (page frame numbers).
+    print("--------------------------------------------------------------------")
+    print("Retrieve PFNs (page frame numbers)                                  ")
+    input("Press Enter to continue...")
+    print("CALL: VmmPy_MapGetPfns([1, 0x123456, 0x58f4c])")
+    result = VmmPy_MapGetPfns([1, 0x123456, 0x58f4c])
+    print("SUCCESS: VmmPy_MapGetPfns([1, 0x123456, 0x58f4c])")
+    print(result)
+
     # VFS LIST /
     print("--------------------------------------------------------------------")
     print("Retrieve the file list of the virtual file system from the root path")

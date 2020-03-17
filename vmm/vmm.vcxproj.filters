@@ -90,6 +90,9 @@
     <ClInclude Include="vmmwinobj.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="mm_pfn.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="vmmdll.c">
@@ -105,9 +108,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="vmmproc.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="vmmvfs.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="pluginmanager.c">
@@ -211,6 +211,15 @@
     </ClCompile>
     <ClCompile Include="vmmwinobj.c">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="mm_pfn.c">
+      <Filter>Source Files\mm</Filter>
+    </ClCompile>
+    <ClCompile Include="m_sysinfo_cert.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="m_sysinfo_mem.c">
+      <Filter>Source Files\modules</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

@@ -75,6 +75,16 @@ VOID M_Status_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_SysInfo_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 
 /*
+* Initialization function for the built-in SysInfo/Certificates module.
+*/
+VOID M_SysInfoCert_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
+
+/*
+* Initialization function for the built-in SysInfo/Memory module.
+*/
+VOID M_SysInfoMem_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI);
+
+/*
 * Initialization function for the built-in SysInfo/Net module.
 */
 VOID M_SysInfoNet_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
@@ -107,7 +117,7 @@ VOID(*g_pfnModulesAllInternal[])(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo) = {
     M_HandleInfo_Initialize, M_FileHandlesVads_Initialize, M_MemMap_Initialize, M_LdrModules_Initialize, M_ThreadInfo_Initialize,
     M_Virt2Phys_Initialize, M_Phys2Virt_Initialize, M_FileModules_Initialize, M_ProcUser_Initialize,
     M_Status_Initialize, M_WinReg_Initialize,
-    M_SysInfo_Initialize, M_SysInfoProc_Initialize, M_SysInfoNet_Initialize
+    M_SysInfo_Initialize, M_SysInfoProc_Initialize, M_SysInfoNet_Initialize, M_SysInfoMem_Initialize, M_SysInfoCert_Initialize
 };
 
 #endif /* __M_MODULES_H__ */

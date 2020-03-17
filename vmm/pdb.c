@@ -323,6 +323,15 @@ fail:
     return fResult;
 }
 
+_Success_(return)
+BOOL PDB_GetTypeSizeShort(_In_opt_ VMMWIN_PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _Out_ PWORD pwTypeSize)
+{
+    DWORD dwTypeSize;
+    if(!PDB_GetTypeSize(hPDB, szTypeName, &dwTypeSize) || (dwTypeSize > 0xffff)) { return FALSE; }
+    if(pwTypeSize) { *pwTypeSize = (WORD)dwTypeSize; }
+    return TRUE;
+}
+
 /*
 * Callback function for PDB_GetTypeChildOffset()
 */

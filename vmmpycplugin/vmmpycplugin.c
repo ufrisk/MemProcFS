@@ -321,28 +321,32 @@ BOOL VmmPyPlugin_PythonInitialize(_In_ HMODULE hDllPython)
     wcscat_s(wszPathPython, PYTHON_PATH_MAX, wszPathBaseExe);
     wcscat_s(wszPathPython, PYTHON_PATH_MAX, L"pylib\\");
     // 3: Initialize (Embedded) Python.
-    Py_SetProgramName(L"VmmPyPluginManager");
-    Py_SetPath(wszPathPython);
-    if(ctxPY2C->fVerboseExtra) {
-        wprintf(L"VmmPyPluginManager: Python Path: %s\n", wszPathPython);
-    }
-    PY2C_InitializeModuleVMMPYCC();
-    Py_Initialize();
-    PyEval_InitThreads();
-    // 4: Import VmmPyPlugin library/file to start the python part of the plugin manager.
-    pName = PyUnicode_DecodeFSDefault("vmmpyplugin");
-    if(!pName) { goto fail; }
-    pModule = PyImport_Import(pName);
-    if(!pModule) { goto fail; }
-    // 5: Cleanups
-    Py_DECREF(pName);
-    Py_DECREF(pModule);
-    PyEval_ReleaseLock();
-    return TRUE;
+    __try {
+        Py_SetProgramName(L"VmmPyPluginManager");
+        Py_SetPath(wszPathPython);
+        if(ctxPY2C->fVerboseExtra) {
+            wprintf(L"VmmPyPluginManager: Python Path: %s\n", wszPathPython);
+        }
+        PY2C_InitializeModuleVMMPYCC();
+        Py_Initialize();
+        PyEval_InitThreads();
+        // 4: Import VmmPyPlugin library/file to start the python part of the plugin manager.
+        pName = PyUnicode_DecodeFSDefault("vmmpyplugin");
+        if(!pName) { goto fail; }
+        pModule = PyImport_Import(pName);
+        if(!pModule) { goto fail; }
+        // 5: Cleanups
+        Py_DECREF(pName);
+        Py_DECREF(pModule);
+        PyEval_ReleaseLock();
+        return TRUE;
+    } __except(EXCEPTION_EXECUTE_HANDLER) { ; }
 fail:
-    if(pName) { Py_DECREF(pName); }
-    if(pModule) { Py_DECREF(pModule); }
-    Py_FinalizeEx();
+    __try {
+        if(pName) { Py_DECREF(pName); }
+        if(pModule) { Py_DECREF(pModule); }
+        Py_FinalizeEx();
+    } __except(EXCEPTION_EXECUTE_HANDLER) { ; }
     return FALSE;
 }
 

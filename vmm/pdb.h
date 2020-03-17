@@ -144,11 +144,14 @@ inline BOOL PDB_GetSymbolPTR(_In_opt_ VMMWIN_PDB_HANDLE hPDB, _In_ LPSTR szSymbo
 * characters and matches multiple types the size of the 1st type is returned.
 * -- hPDB
 * -- szTypeName = wildcard type name
-* -- pdwTypeSize
+* -- pdwTypeSize / pwTypeSize
 * -- return
 */
 _Success_(return)
 BOOL PDB_GetTypeSize(_In_opt_ VMMWIN_PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _Out_ PDWORD pdwTypeSize);
+
+_Success_(return)
+BOOL PDB_GetTypeSizeShort(_In_opt_ VMMWIN_PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _Out_ PWORD pwTypeSize);
 
 /*
 * Query the PDB for the offset of a child inside a type - often inside a struct.

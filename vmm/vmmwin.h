@@ -98,7 +98,9 @@ VOID VmmWin_PE_SECTION_DisplayBuffer(
 * ulate the pre-existing VMMOB_MAP_PTE object in pProcess with module names and
 * then, if failed or partially failed, try to initialize from PE file headers.
 * -- pProcess
+* -- return
 */
+_Success_(return)
 BOOL VmmWin_InitializePteMapText(_In_ PVMM_PROCESS pProcess);
 
 /*
@@ -200,6 +202,18 @@ VOID VmmWin_ListTraversePrefetch(
 * -- return
 */
 PVMMWIN_USER_PROCESS_PARAMETERS VmmWin_UserProcessParameters_Get(_In_ PVMM_PROCESS pProcess);
+
+/*
+* Create a physical memory map and assign to the global context upon success.
+* CALLER DECREF: return
+* -- return
+*/
+PVMMOB_MAP_PHYSMEM VmmWinPhysMemMap_Initialize();
+
+/*
+* Refresh the physical memory map.
+*/
+VOID VmmWinPhysMemMap_Refresh();
 
 /*
 * Retrieve the account name and length of the user account given a SID.

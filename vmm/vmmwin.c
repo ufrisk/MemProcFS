@@ -906,13 +906,17 @@ VOID VmmWin_InitializePteMapText_DoWork(_In_ PVMM_PROCESS pProcess)
 * ulate the pre-existing VMMOB_MAP_PTE object in pProcess with module names and
 * then, if failed or partially failed, try to initialize from PE file headers.
 * -- pProcess
+* -- return
 */
+_Success_(return)
 BOOL VmmWin_InitializePteMapText(_In_ PVMM_PROCESS pProcess)
 {
     if(pProcess->Map.pObPte->fTagScan) { return TRUE; }
-    VmmTlbSpider(pProcess);
     EnterCriticalSection(&pProcess->LockUpdate);
-    VmmWin_InitializePteMapText_DoWork(pProcess);
+    if(!pProcess->Map.pObPte->fTagScan) {
+        VmmTlbSpider(pProcess);
+        VmmWin_InitializePteMapText_DoWork(pProcess);
+    }
     LeaveCriticalSection(&pProcess->LockUpdate);
     return pProcess->Map.pObPte->fTagScan;
 }
@@ -1667,7 +1671,7 @@ DWORD VmmWinHandle_InitializeText_DoWork_RegKeyHelper(_In_ PVMM_PROCESS pSystemP
         if((pObHive = VmmWinReg_HiveGetByAddress(prh->vaHive))) {
             if((pObKey = VmmWinReg_KeyGetByCellOffset(pObHive, prh->raKeyCell))) {
                 VmmWinReg_KeyInfo2(pObHive, pObKey, &prh->KeyInfo);
-                cchTotal += prh->KeyInfo.cchName + 1;
+                cchTotal += 28 + prh->KeyInfo.cchName + 1;
                 Ob_DECREF_NULL(&pObKey);
             }
             Ob_DECREF_NULL(&pObHive);
@@ -1895,7 +1899,7 @@ VOID VmmWinHandle_InitializeText_DoWork(_In_ PVMM_PROCESS pSystemProcess, _In_ P
         if((pe->dwPoolTag & 0x00ffffff) == 'yeK') {         // REG KEY
             if((pRegHelp = ObMap_GetByKey(pmObRegHelperMap, pe->vaObject)) && pRegHelp->KeyInfo.cchName) {
                 if(!pRegHelp->cwszText) {
-                    pRegHelp->cwszText = swprintf_s((LPWSTR)(pbMultiText + ocbMultiText), pRegHelp->KeyInfo.cchName + 1ULL, L"%s", pRegHelp->KeyInfo.wszName);
+                    pRegHelp->cwszText = swprintf_s((LPWSTR)(pbMultiText + ocbMultiText), 28ULL + pRegHelp->KeyInfo.cchName + 1, L"[%llx:%08x] %s", pRegHelp->vaHive, pRegHelp->KeyInfo.raKeyCell, pRegHelp->KeyInfo.wszName);
                     pRegHelp->wszText = (LPWSTR)(pbMultiText + ocbMultiText);
                     ocbMultiText += pRegHelp->cwszText * sizeof(WCHAR) + 2;
                 }
@@ -2038,6 +2042,112 @@ BOOL VmmWinHandle_Initialize(_In_ PVMM_PROCESS pProcess, _In_ BOOL fExtendedText
     if(pProcess->Map.pObHandle && (!fExtendedText || pProcess->Map.pObHandle->wszMultiText)) { return TRUE; }
     VmmTlbSpider(pProcess);
     return VmmWinHandle_InitializeCore(pProcess) && (!fExtendedText || VmmWinHandle_InitializeText(pProcess));
+}
+
+// ----------------------------------------------------------------------------
+// PHYSICAL MEMORY MAP FUNCTIONALITY BELOW:
+//
+// The physical memory map functionality is responsible for retrieving the
+// physical memory map from the Windows registry (if possible).
+// ----------------------------------------------------------------------------
+
+#pragma pack(push, 1) /* DISABLE STRUCT PADDINGS (REENABLE AFTER STRUCT DEFINITIONS) */
+typedef struct tdVMMWIN_PHYSMEMMAP_MEMORY_RANGE32 {
+    UCHAR Type;
+    UCHAR ShareDisposition;
+    USHORT Flags;
+    QWORD pa;
+    DWORD cb;
+} VMMWIN_PHYSMEMMAP_MEMORY_RANGE32, *PVMMWIN_PHYSMEMMAP_MEMORY_RANGE32;
+
+typedef struct tdVMMWIN_PHYSMEMMAP_MEMORY_RANGE64 {
+    UCHAR Type;
+    UCHAR ShareDisposition;
+    USHORT Flags;
+    QWORD pa;
+    QWORD cb;
+} VMMWIN_PHYSMEMMAP_MEMORY_RANGE64, *PVMMWIN_PHYSMEMMAP_MEMORY_RANGE64;
+#pragma pack(pop) /* RE-ENABLE STRUCT PADDINGS */
+
+PVMMOB_MAP_PHYSMEM VmmWinPhysMemMap_Initialize_DoWork()
+{
+    BOOL f32 = ctxVmm->f32;
+    DWORD cMap, cbData = 0;
+    PBYTE pbData = NULL;
+    QWORD c1, i, o;
+    PVMMWIN_PHYSMEMMAP_MEMORY_RANGE32 pMR32;
+    PVMMWIN_PHYSMEMMAP_MEMORY_RANGE64 pMR64;
+    PVMMOB_MAP_PHYSMEM pObPhysMemMap = NULL;
+    // 1: fetch binary data from registry
+    if(!VmmWinReg_ValueQuery2(L"HKLM\\HARDWARE\\RESOURCEMAP\\System Resources\\Physical Memory\\.Translated", NULL, NULL, 0, &cbData) || !cbData) { goto fail; }
+    if(!(pbData = LocalAlloc(0, cbData))) { goto fail; }
+    if(!VmmWinReg_ValueQuery2(L"HKLM\\HARDWARE\\RESOURCEMAP\\System Resources\\Physical Memory\\.Translated", NULL, pbData, cbData, &cbData)) { goto fail; }
+    if(cbData < (DWORD)(f32 ? 0x18 : 0x28)) { goto fail; }
+    // 2: fetch number of memory regions and allocate map object.
+    c1 = *(PQWORD)pbData;
+    if(!c1) { goto fail; }
+    o = 0x10;
+    cMap = *(PDWORD)(pbData + o); // this should be loop in case of c1 > 1, but works for now ...
+    if(f32 && (!cMap || (cbData < cMap * sizeof(VMMWIN_PHYSMEMMAP_MEMORY_RANGE32) + 0x0c))) { goto fail; }
+    if(!f32 && (!cMap || (cbData < cMap * sizeof(VMMWIN_PHYSMEMMAP_MEMORY_RANGE64) + 0x14))) { goto fail; }
+    if(!(pObPhysMemMap = Ob_Alloc(OB_TAG_MAP_PHYSMEM, LMEM_ZEROINIT, sizeof(VMMOB_MAP_PHYSMEM) + cMap * sizeof(VMM_MAP_PHYSMEMENTRY), NULL, NULL))) { goto fail; }
+    pObPhysMemMap->cMap = cMap;
+    // 3: iterate over the memory regions.
+    o += sizeof(DWORD);
+    for(i = 0; i < cMap; i++) {
+        if(f32) {
+            pMR32 = (PVMMWIN_PHYSMEMMAP_MEMORY_RANGE32)(pbData + o + i * sizeof(VMMWIN_PHYSMEMMAP_MEMORY_RANGE32));
+            pObPhysMemMap->pMap[i].pa = pMR32->pa;
+            pObPhysMemMap->pMap[i].cb = pMR32->cb;
+            if(pMR32->Flags & 0xff00) {
+                pObPhysMemMap->pMap[i].cb = pObPhysMemMap->pMap[i].cb << 8;
+            }
+        } else {
+            pMR64 = (PVMMWIN_PHYSMEMMAP_MEMORY_RANGE64)(pbData + o + i * sizeof(VMMWIN_PHYSMEMMAP_MEMORY_RANGE64));
+            pObPhysMemMap->pMap[i].pa = pMR64->pa;
+            pObPhysMemMap->pMap[i].cb = pMR64->cb;
+            if(pMR64->Flags & 0xff00) {
+                pObPhysMemMap->pMap[i].cb = pObPhysMemMap->pMap[i].cb << 8;
+            }
+        }
+        if((pObPhysMemMap->pMap[i].pa & 0xfff) || (pObPhysMemMap->pMap[i].cb & 0xfff)) { goto fail; }
+    }
+    return pObPhysMemMap;
+fail:
+    Ob_DECREF(pObPhysMemMap);
+    LocalFree(pbData);
+    return NULL;
+}
+
+/*
+* Create a physical memory map and assign to the global context upon success.
+* CALLER DECREF: return
+* -- return
+*/
+PVMMOB_MAP_PHYSMEM VmmWinPhysMemMap_Initialize()
+{
+    PVMMOB_MAP_PHYSMEM pObPhysMem;
+    if((pObPhysMem = ObContainer_GetOb(ctxVmm->pObCMapPhysMem))) { return pObPhysMem; }
+    EnterCriticalSection(&ctxVmm->LockUpdateMap);
+    if((pObPhysMem = ObContainer_GetOb(ctxVmm->pObCMapPhysMem))) {
+        LeaveCriticalSection(&ctxVmm->LockUpdateMap);
+        return pObPhysMem;
+    }
+    pObPhysMem = VmmWinPhysMemMap_Initialize_DoWork();
+    if(!pObPhysMem) {
+        pObPhysMem = Ob_Alloc(OB_TAG_MAP_PHYSMEM, LMEM_ZEROINIT, sizeof(VMMOB_MAP_PHYSMEM), NULL, NULL);
+    }
+    ObContainer_SetOb(ctxVmm->pObCMapPhysMem, pObPhysMem);
+    LeaveCriticalSection(&ctxVmm->LockUpdateMap);
+    return pObPhysMem;
+}
+
+/*
+* Refresh the physical memory map.
+*/
+VOID VmmWinPhysMemMap_Refresh()
+{
+    ObContainer_SetOb(ctxVmm->pObCMapPhysMem, NULL);
 }
 
 // ----------------------------------------------------------------------------
@@ -2278,7 +2388,7 @@ VOID VmmWinUser_Refresh()
 // WINDOWS EPROCESS WALKING FUNCTIONALITY FOR 64/32 BIT BELOW:
 // ----------------------------------------------------------------------------
 
-#define VMMPROC_EPROCESS64_MAX_SIZE       0x680
+#define VMMPROC_EPROCESS64_MAX_SIZE       0x800
 #define VMMPROC_EPROCESS32_MAX_SIZE       0x480
 
 VOID VmmWin_OffsetLocatorEPROCESS_Print()
@@ -2395,7 +2505,7 @@ VOID VmmWin_OffsetLocatorEPROCESS64(_In_ PVMM_PROCESS pSystemProcess)
     // find offset for PEB (in EPROCESS) by comparing SYSTEM and SMSS  [or other process on fail - max 4 tries]
     {
         for(j = 0; j < 4; j++) {
-            for(i = 0x280, f = FALSE; i < 0x480; i += 8) {
+            for(i = 0x280, f = FALSE; i < 0x580; i += 8) {
                 if(*(PQWORD)(pbSYSTEM + i)) { continue; }
                 vaPEB = *(PQWORD)(pbSMSS + i);
                 if(!vaPEB || (vaPEB & 0xffff800000000fff)) { continue; }
@@ -2469,7 +2579,7 @@ VOID VmmWin_OffsetLocatorEPROCESS64(_In_ PVMM_PROCESS pSystemProcess)
     // find offset for VadRoot by searching for ExitStatus value assumed to be
     // set to: 0x00000103 and existing prior to VadRoot by -12(VISTA)/-4(Win7+)
     {
-        for(i = 0x140 + po->Name; i < 0x680; i += 8) {
+        for(i = 0x140 + po->Name; i < 0x7f0; i += 8) {
             f = VMM_KADDR64(*(PQWORD)(pbSYSTEM + i)) && ((*(PDWORD)(pbSYSTEM + i - 4) == 0x00000103) || (*(PDWORD)(pbSYSTEM + i - 12) == 0x00000103));
             if(f) { break; }
         }

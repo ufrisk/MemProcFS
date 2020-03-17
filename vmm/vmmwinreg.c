@@ -379,7 +379,7 @@ VOID VmmWinReg_FuzzHiveOffsets_PrintResultVerbose(_In_ PBYTE pb, _In_ DWORD cb)
             "    CM.Sig   %03X, CM.Len0   %03X, CM.StorMap0  %03X, CM.StorSmallDir0 %03X, CM.BaseBlock %03X \n",
             po->CM.Signature, po->CM.Length0, po->CM.StorageMap0, po->CM.StorageSmallDir0, po->CM.BaseBlock);
         vmmprintfvv(
-            "                   CM.Len1   %03X, CM.StorMap1  %03X, CM.StorSmallDir1 %03X, HE._Size     %03X \n",
+            "                  CM.Len1   %03X, CM.StorMap1  %03X, CM.StorSmallDir1 %03X, HE._Size     %03X \n",
             po->CM.Length1, po->CM.StorageMap1, po->CM.StorageSmallDir1, po->HE._Size);
         vmmprintfvv(
             "    CM.FLink %03X, CM._Size  %03X, CM.FileFull  %03X, CM.FileUserPath  %03X, CM.HiveRoot  %03X \n",
@@ -1181,7 +1181,7 @@ typedef struct tdOB_REGISTRY_VALUE {
 
 #define REG_CELL_ISACTIVE(dwCellHead)               (dwCellHead >> 31)
 #define REG_CELL_SIZE(dwCellHead)                   ((dwCellHead >> 31) ? (DWORD)(0-dwCellHead) : dwCellHead)
-#define REG_CELL_SIZE_EX(pb, iCellHead)             REG_CELL_SIZE(*(PDWORD)(pb + (iCellHead)))
+#define REG_CELL_SIZE_EX(pb, dwCellHead)             REG_CELL_SIZE(*(PDWORD)(pb + (dwCellHead)))
 
 #define REG_CELL_SV(oCell)                          (oCell >> 31)                       // static/volatile bit
 #define REG_CELL_ORAW(oCell)                        (oCell & 0x7fffffff)                // raw cell offset (from a static/volatile offset)
@@ -1244,6 +1244,17 @@ QWORD VmmWinReg_KeyHashPathW(_In_ LPWSTR wszPath)
         qwHashTotal = dwHashName + ((qwHashTotal >> 13) | (qwHashTotal << 51));
     }
     return qwHashTotal;
+}
+
+/*
+* Hash a directly dependent child by name.
+* -- pParentKey
+* -- wszPath
+* -- return
+*/
+QWORD VmmWinReg_KeyHashChildName(_In_ POB_REGISTRY_KEY pParentKey, _In_ LPWSTR wszChildName)
+{
+    return VmmWinReg_KeyHashNameW(wszChildName) + ((pParentKey->qwHashKeyThis >> 13) | (pParentKey->qwHashKeyThis << 51));
 }
 
 /*
@@ -1497,7 +1508,7 @@ BOOL VmmWinReg_KeyInitialize(_In_ POB_REGISTRY_HIVE pHive)
 * -- oCell = offset to cell (incl. static/volatile bit).
 * -- return
 */
-POB_REGISTRY_VALUE VmmWinReg_KeyValue_Create(_In_ POB_REGISTRY_HIVE pHive, _In_ DWORD oCell)
+POB_REGISTRY_VALUE VmmWinReg_KeyValueGetByOffset(_In_ POB_REGISTRY_HIVE pHive, _In_ DWORD oCell)
 {
     DWORD dwCellHead, cbCell, cbKeyValue;
     PREG_CM_KEY_VALUE pvk;
@@ -1542,7 +1553,7 @@ POB_REGISTRY_VALUE VmmWinReg_ValueByKeyAndName(_In_ POB_REGISTRY_HIVE pHive, _In
     cValues = min(pKey->pKey->ValueList.Count, (cbListCell - 4) >> 2);
     praValues = (PDWORD)(pbSnapshot + oListCellRaw + 4);
     for(iValues = 0; iValues < cValues; iValues++) {
-        pObKeyValue = VmmWinReg_KeyValue_Create(pHive, praValues[iValues]);
+        pObKeyValue = VmmWinReg_KeyValueGetByOffset(pHive, praValues[iValues]);
         if(!pObKeyValue) { continue; }
         VmmWinReg_ValueInfo(pHive, pObKeyValue, &ValueInfo);
         if(!wcscmp(wszKeyValueName, ValueInfo.wszName)) { return pObKeyValue; }
@@ -1552,15 +1563,96 @@ POB_REGISTRY_VALUE VmmWinReg_ValueByKeyAndName(_In_ POB_REGISTRY_HIVE pHive, _In
 }
 
 /*
-* Helper function (core functionality) for the VmmWinReg_ValueQuery1 function.
+* Helper function for the VmmWinReg_ValueQueryInternal_BigDataList function.
+* Read an individual BigData 'Cell'. If the read fail data will be zero-padded.
+* -- pHive
+* -- oDataCell
+* -- fDataCellLast
+* -- pbData
+* -- cbData
+* -- cbDataOffset
+*/
+VOID VmmWinReg_ValueQueryInternal_BigDataCell(_In_ POB_REGISTRY_HIVE pHive, _In_ DWORD oDataCell, _In_ BOOL fDataCellLast, _Out_writes_opt_(cbData) PBYTE pbData, _In_ DWORD cbData, _In_ DWORD cbDataOffset)
+{
+    BOOL f;
+    DWORD iDataCellSV, oDataCellRaw, cbDataCell;
+    if(!pbData) { return; }
+    iDataCellSV = REG_CELL_SV(oDataCell);
+    oDataCellRaw = REG_CELL_ORAW(oDataCell);
+    cbDataCell = REG_CELL_SIZE_EX(pHive->Snapshot._DUAL[iDataCellSV].pb, oDataCellRaw);
+    f = (oDataCellRaw + cbDataCell <= pHive->Snapshot._DUAL[iDataCellSV].cb) &&
+        (fDataCellLast || (cbDataCell == 16344 + 8)) &&
+        (cbDataCell <= 16344 + 8) &&
+        (cbDataCell > 8);
+    if(f) {
+        memcpy(pbData, pHive->Snapshot._DUAL[iDataCellSV].pb + oDataCellRaw + 4 + cbDataOffset, min(cbData, cbDataCell));
+    } else {
+        ZeroMemory(pbData, cbData);
+    }
+}
+
+/*
+* Helper function for the VmmWinReg_ValueQueryInternal function.
+* BigData 'List' functionality.
+* -- pHive
+* -- cNumSegments
+* -- oListCell
+* -- pbData
+* -- cbData
+* -- pcbDataRead
+* -- cbDataOffset
+* -- return
 */
 _Success_(return)
-BOOL VmmWinReg_ValueQueryInternal(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_VALUE pObKeyValue, _Out_opt_ PDWORD pdwType, _Out_opt_ PDWORD pdwLength, _Out_writes_opt_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_opt_ PDWORD pcbDataRead, _In_ DWORD cbDataOffset) {
+BOOL VmmWinReg_ValueQueryInternal_BigDataList(_In_ POB_REGISTRY_HIVE pHive, _In_ WORD cNumSegments, _In_ DWORD oListCell, _Out_writes_opt_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_opt_ PDWORD pcbDataRead, _In_ DWORD cbDataOffset)
+{
+    DWORD i, cbMaxSizeTotalSegments, iListCellSV, oListCellRaw, cbListCell, cbReadDataCell;
+    cbMaxSizeTotalSegments = cNumSegments * 16344;
+    // adjust read size (if required)
+    if(cbDataOffset > cbMaxSizeTotalSegments) { return FALSE; }
+    if(cbData + cbDataOffset > cbMaxSizeTotalSegments) {
+        cbData = cbMaxSizeTotalSegments - cbDataOffset;
+    }
+    // verify list cell
+    iListCellSV = REG_CELL_SV(oListCell);
+    oListCellRaw = REG_CELL_ORAW(oListCell);
+    if(oListCellRaw + 4 + cNumSegments * 4 > pHive->Snapshot._DUAL[iListCellSV].cb) { return FALSE; }
+    cbListCell = REG_CELL_SIZE_EX(pHive->Snapshot._DUAL[iListCellSV].pb, oListCellRaw);
+    if(oListCellRaw + cbListCell > pHive->Snapshot._DUAL[iListCellSV].cb) { return FALSE; }
+    if(cbListCell < 4 + cNumSegments * 4UL) { return FALSE; }
+    // read individual data cells
+    if(pcbDataRead) { *pcbDataRead = cbData; }
+    for(i = 0; cbData && (i < cNumSegments); i++) {
+        if(cbDataOffset > 16344) {
+            cbDataOffset -= 16344;
+            continue;
+        }
+        cbReadDataCell = min(cbData, 16344 - cbDataOffset);
+        VmmWinReg_ValueQueryInternal_BigDataCell(
+            pHive,
+            *(PDWORD)(pHive->Snapshot._DUAL[iListCellSV].pb + oListCellRaw + 4 + i * 4ULL),
+            (i + 1 == cNumSegments),
+            pbData,
+            cbReadDataCell,
+            cbDataOffset
+        );
+        pbData += cbReadDataCell;
+        cbData -= cbReadDataCell;
+        cbDataOffset -= min(cbReadDataCell, cbDataOffset);
+    }
+    return TRUE;
+}
+
+/*
+* Helper function (core functionality) for the VmmWinReg_ValueQuery* functions.
+*/
+_Success_(return)
+BOOL VmmWinReg_ValueQueryInternal(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_VALUE pKeyValue, _Out_opt_ PDWORD pdwType, _Out_opt_ PDWORD pdwLength, _Out_writes_opt_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_opt_ PDWORD pcbDataRead, _In_ DWORD cbDataOffset) {
     DWORD cbDataRead = 0, cbDataLength, iCellSV, oCellRaw, cbCell;
     if(pcbDataRead) { *pcbDataRead = 0; }
-    cbDataLength = pObKeyValue->pValue->DataLength & 0x7fffffff;
+    cbDataLength = pKeyValue->pValue->DataLength & 0x7fffffff;
     if(pdwType) {
-        *pdwType = pObKeyValue->pValue->Type;
+        *pdwType = pKeyValue->pValue->Type;
     }
     if(pdwLength) {
         *pdwLength = cbDataLength;
@@ -1568,28 +1660,30 @@ BOOL VmmWinReg_ValueQueryInternal(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTR
     if(!pbData) { goto success; }
     if(!cbData || (cbDataOffset >= cbDataLength)) { return FALSE; }
     cbDataRead = min(cbData, cbDataLength - cbDataOffset);
-    if(pObKeyValue->pValue->DataLength & 0x80000000) {
+    if(pKeyValue->pValue->DataLength & 0x80000000) {
         // "small data" stored within keyvalue
         if((cbDataLength > 4) || (cbDataRead > 4)) { return FALSE; }
-        memcpy(pbData, (PBYTE)(&pObKeyValue->pValue->Data) + cbDataOffset, cbDataRead);
+        memcpy(pbData, (PBYTE)(&pKeyValue->pValue->Data) + cbDataOffset, cbDataRead);
         goto success;
     }
-    iCellSV = REG_CELL_SV(pObKeyValue->pValue->Data);
-    oCellRaw = REG_CELL_ORAW(pObKeyValue->pValue->Data);
+    iCellSV = REG_CELL_SV(pKeyValue->pValue->Data);
+    oCellRaw = REG_CELL_ORAW(pKeyValue->pValue->Data);
     if(oCellRaw + 0x10 > pHive->Snapshot._DUAL[iCellSV].cb) { return FALSE; }
     cbCell = REG_CELL_SIZE_EX(pHive->Snapshot._DUAL[iCellSV].pb, oCellRaw);
     if(cbCell < 8) { return FALSE; }
     // "big data" table
     if(*(PWORD)(pHive->Snapshot._DUAL[iCellSV].pb + oCellRaw + 4) == REG_CM_KEY_SIGNATURE_BIGDATA) {
-        vmmprintfvv_fn("BIG DATA TABLE NOT YET SUPPORTED. Hive=%016llx Cell=%08x \n", pHive->vaCMHIVE, pObKeyValue->oCell);
-        return FALSE;
+        return VmmWinReg_ValueQueryInternal_BigDataList(
+            pHive,
+            *(PWORD)(pHive->Snapshot._DUAL[iCellSV].pb + oCellRaw + 4 + 2),
+            *(PDWORD)(pHive->Snapshot._DUAL[iCellSV].pb + oCellRaw + 4 + 4),
+            pbData, cbDataRead, pcbDataRead, cbDataOffset);
     }
     // "ordinary" data
     if(cbDataOffset > cbCell - 4) { return FALSE; }
     cbDataRead = min(cbDataRead, cbCell - 4 - cbDataOffset);
     if(oCellRaw + 4ULL + cbDataOffset + cbDataRead > pHive->Snapshot._DUAL[iCellSV].cb) { return FALSE; }
     memcpy(pbData, pHive->Snapshot._DUAL[iCellSV].pb + oCellRaw + 4 + cbDataOffset, cbDataRead);
-    goto success;
 success:
     if(pcbDataRead) { *pcbDataRead = cbDataRead; }
     return TRUE;
@@ -1618,6 +1712,7 @@ BOOL VmmWinReg_PathHiveGetByFullPath(_In_ LPWSTR wszPathFull, _Out_ POB_REGISTRY
     LPWSTR wsz, wszPath2;
     WCHAR wszPath1[MAX_PATH];
     POB_REGISTRY_HIVE pObHive = NULL;
+    POB_REGISTRY_KEY pObKey = NULL;
     PVMMOB_MAP_USER pObUserMap = NULL;
     if(!wcsncmp(wszPathFull, L"HKLM\\", 5) || (fUser = !wcsncmp(wszPathFull, L"HKU\\", 4))) {
         wszPathFull += fUser ? 4 : 5;
@@ -1652,6 +1747,15 @@ BOOL VmmWinReg_PathHiveGetByFullPath(_In_ LPWSTR wszPathFull, _Out_ POB_REGISTRY
                     return TRUE;    // CALLER DECREF: *ppHive
                 }
             }
+            if(!_wcsicmp(wszPath1, L"HARDWARE")) {
+                while((pObHive = VmmWinReg_HiveGetNext(pObHive))) {
+                    if(!pObHive->wszNameShort[0] && !pObHive->wszHiveRootPath[0] && (pObKey = VmmWinReg_KeyGetByPath(pObHive, L"ROOT\\RESOURCEMAP"))) {
+                        Ob_DECREF(pObKey);
+                        *ppHive = pObHive;
+                        return TRUE;    // CALLER DECREF: *ppHive                        
+                    }
+                }
+            }
         }
         return FALSE;
     }
@@ -1684,7 +1788,7 @@ BOOL VmmWinReg_KeyHiveGetByFullPath(_In_ LPWSTR wszPathFull, _Out_ POB_REGISTRY_
     POB_REGISTRY_HIVE pObHive = NULL;
     fResult =
         VmmWinReg_PathHiveGetByFullPath(wszPathFull, &pObHive, wszPathKey) &&
-        (pObKey = VmmWinReg_KeyGetByPathW(pObHive, wszPathKey));
+        (pObKey = VmmWinReg_KeyGetByPath(pObHive, wszPathKey));
     if(fResult) {
         *ppObHive = pObHive;
         *ppObKey = pObKey;
@@ -1703,10 +1807,26 @@ BOOL VmmWinReg_KeyHiveGetByFullPath(_In_ LPWSTR wszPathFull, _Out_ POB_REGISTRY_
 * -- wszPath
 * -- return
 */
-POB_REGISTRY_KEY VmmWinReg_KeyGetByPathW(_In_ POB_REGISTRY_HIVE pHive, _In_ LPWSTR wszPath)
+_Success_(return != NULL)
+POB_REGISTRY_KEY VmmWinReg_KeyGetByPath(_In_ POB_REGISTRY_HIVE pHive, _In_ LPWSTR wszPath)
 {
     if(!VmmWinReg_HiveSnapshotEnsure(pHive)) { return NULL; }
     return (POB_REGISTRY_KEY)ObMap_GetByKey(pHive->Snapshot.pmKeyHash, VmmWinReg_KeyHashPathW(wszPath));
+}
+
+/*
+* Retrieve a registry key by parent key and name.
+* If no registry key is found then NULL is returned.
+* -- pHive
+* -- pParentKey
+* -- wszChildName
+* -- return
+*/
+_Success_(return != NULL)
+POB_REGISTRY_KEY VmmWinReg_KeyGetByChildName(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pParentKey, _In_ LPWSTR wszChildName)
+{
+    if(!VmmWinReg_HiveSnapshotEnsure(pHive)) { return NULL; }
+    return (POB_REGISTRY_KEY)ObMap_GetByKey(pHive->Snapshot.pmKeyHash, VmmWinReg_KeyHashChildName(pParentKey, wszChildName));
 }
 
 /*
@@ -1717,6 +1837,7 @@ POB_REGISTRY_KEY VmmWinReg_KeyGetByPathW(_In_ POB_REGISTRY_HIVE pHive, _In_ LPWS
 * -- raCellOffset
 * -- return
 */
+_Success_(return != NULL)
 POB_REGISTRY_KEY VmmWinReg_KeyGetByCellOffset(_In_ POB_REGISTRY_HIVE pHive, _In_ DWORD raCellOffset)
 {
     if(!VmmWinReg_HiveSnapshotEnsure(pHive)) { return NULL; }
@@ -1763,6 +1884,7 @@ POB_MAP VmmWinReg_KeyList(_In_ POB_REGISTRY_HIVE pHive, _In_opt_ POB_REGISTRY_KE
 */
 VOID VmmWinReg_KeyInfo(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pKey, _Out_ PVMM_REGISTRY_KEY_INFO pKeyInfo)
 {
+    pKeyInfo->raKeyCell = pKey->oCell;
     pKeyInfo->fActive = pKey->dwCellHead >> 31;
     pKeyInfo->ftLastWrite = pKey->pKey->LastWriteTime;
     if(pKey->pKey->Flags & REG_CM_KEY_NODE_FLAGS_COMP_NAME) {
@@ -1800,12 +1922,17 @@ VOID VmmWinReg_KeyInfo2(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pKey
     if(pHive->wszNameShort[0]) {
         VmmWinReg_HiveGetShortName(pHive, szHiveShortName);
     }
-    cwszPath = swprintf_s(wszPath, MAX_PATH - 1, L"[%llx:%08x] %S", pHive->vaCMHIVE, pKey->oCell, szHiveShortName);
+    cwszPath = _snwprintf_s(wszPath, MAX_PATH, _TRUNCATE, L"%S", szHiveShortName);
     while((pObKey = (POB_REGISTRY_KEY)ObSet_Pop(ps))) {
         VmmWinReg_KeyInfo(pHive, pObKey, &KeyInfo);
-        status = swprintf_s(wszPath + cwszPath, MAX_PATH - cwszPath - 1, L"\\%s", KeyInfo.wszName);
-        if(status > 0) { cwszPath += status; }
         Ob_DECREF(pObKey);
+        status = _snwprintf_s(wszPath + cwszPath, MAX_PATH - cwszPath, _TRUNCATE, L"\\%s", KeyInfo.wszName);
+        if(status == -1) {
+            cwszPath = MAX_PATH - 1;
+            break;
+        } else if(status > 0) {
+            cwszPath += status;
+        }
     }
     Ob_DECREF(ps);
     if(cwszPath) {
@@ -1820,7 +1947,7 @@ VOID VmmWinReg_KeyInfo2(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pKey
 * CALLER DECREF: return
 * -- pHive
 * -- pKeyParent
-* -- return
+* -- return = ObMap of POB_REGISTRY_VALUE
 */
 POB_MAP VmmWinReg_KeyValueList(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pKeyParent)
 {
@@ -1838,11 +1965,40 @@ POB_MAP VmmWinReg_KeyValueList(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_K
     cValues = min(pKeyParent->pKey->ValueList.Count, (cbListCell - 4) >> 2);
     praValues = (PDWORD)(pbSnapshot + oListCellRaw + 4);
     for(iValues = 0; iValues < cValues; iValues++) {
-        pObKeyValue = VmmWinReg_KeyValue_Create(pHive, praValues[iValues]);
+        pObKeyValue = VmmWinReg_KeyValueGetByOffset(pHive, praValues[iValues]);
         ObMap_Push(pmObValues, 0, pObKeyValue);
         Ob_DECREF_NULL(&pObKeyValue);
     }
     return pmObValues;
+}
+
+/*
+* Retrive registry values given a key and value name.
+* NB! VmmWinReg_KeyValueList is the preferred function.
+* CALLER DECREF: return
+* -- pHive
+* -- pKeyParent
+* -- wszValueName = value name or NULL for default.
+* -- return = registry value or NULL if not found.
+*/
+POB_REGISTRY_VALUE VmmWinReg_KeyValueGetByName(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pKeyParent, _In_ LPWSTR wszValueName)
+{
+    POB_MAP pmObValues = NULL;
+    POB_REGISTRY_VALUE pObValue = NULL;
+    VMM_REGISTRY_VALUE_INFO ValueInfo = { 0 };
+    if(!(pmObValues = VmmWinReg_KeyValueList(pHive, pKeyParent))) { return NULL; }
+    if(!wszValueName) {
+        wszValueName = L"(Default)";
+    }
+    while((pObValue = ObMap_GetNext(pmObValues, pObValue))) {
+        VmmWinReg_ValueInfo(pHive, pObValue, &ValueInfo);
+        if(0 == _wcsicmp(wszValueName, ValueInfo.wszName)) {
+            Ob_DECREF(pmObValues);
+            return pObValue;
+        }
+    }
+    Ob_DECREF(pmObValues);
+    return NULL;
 }
 
 /*
@@ -1855,6 +2011,7 @@ VOID VmmWinReg_ValueInfo(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_VALUE p
 {
     pValueInfo->dwType = pValue->pValue->Type;
     pValueInfo->cbData = pValue->pValue->DataLength & 0x7fffffff;
+    pValueInfo->raValueCell = pValue->oCell;
     if(!pValue->pValue->NameLength) {
         wcscpy_s(pValueInfo->wszName, _countof(pValueInfo->wszName), L"(Default)");
     } else if(pValue->pValue->Flags & REG_CM_KEY_VALUE_FLAGS_COMP_NAME) {
@@ -1886,7 +2043,7 @@ BOOL VmmWinReg_ValueQuery1(_In_ POB_REGISTRY_HIVE pHive, _In_ LPWSTR wszPathKeyV
     if(pcbRead) { *pcbRead = 0; }
     f = VmmWinReg_HiveSnapshotEnsure(pHive) &&
         (wszValueName = Util_PathFileSplitW(wszPathKeyValue, wszPathKey)) &&
-        (pObKey = VmmWinReg_KeyGetByPathW(pHive, wszPathKey)) &&
+        (pObKey = VmmWinReg_KeyGetByPath(pHive, wszPathKey)) &&
         (pObKeyValue = VmmWinReg_ValueByKeyAndName(pHive, pObKey, wszValueName)) &&
         (pb ? VmmWinReg_ValueQueryInternal(pHive, pObKeyValue, pdwType, NULL, pb, cb, pcbRead, (DWORD)cbOffset) : VmmWinReg_ValueQueryInternal(pHive, pObKeyValue, pdwType, pcbRead, NULL, 0, NULL, 0));        
     Ob_DECREF(pObKeyValue);
@@ -1942,10 +2099,10 @@ BOOL VmmWinReg_ValueQuery3(_In_ POB_REGISTRY_HIVE pHive, _In_ LPWSTR wszPathKeyV
 * -- return
 */
 _Success_(return)
-BOOL VmmWinReg_ValueQuery4(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_VALUE pObKeyValue, _Out_opt_ PDWORD pdwType, _Out_writes_opt_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_opt_ PDWORD pcbData)
+BOOL VmmWinReg_ValueQuery4(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_VALUE pKeyValue, _Out_opt_ PDWORD pdwType, _Out_writes_opt_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_opt_ PDWORD pcbData)
 {
     if(VmmWinReg_HiveSnapshotEnsure(pHive)) {
-        return VmmWinReg_ValueQueryInternal(pHive, pObKeyValue, pdwType, NULL, pbData, cbData, pcbData, 0);
+        return VmmWinReg_ValueQueryInternal(pHive, pKeyValue, pdwType, NULL, pbData, cbData, pcbData, 0);
     }
     if(pdwType) { *pdwType = 0; }
     if(pcbData) { *pcbData = 0; }

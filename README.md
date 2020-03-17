@@ -142,3 +142,12 @@ v1.1-v2.10
   * Users.
   * Volatile registry keys.
   * File recovery via Handles and Vads.  
+
+[v3.2](https://github.com/ufrisk/MemProcFS/releases/tag/v3.2)
+* Bug fixes.
+* Support for low-memory x64 systems.
+* New Features:
+  * Certificates.
+  * Physical memory map.
+  * Per-page physical memory information (PFN database).
+  * Registry "big data" value type support.

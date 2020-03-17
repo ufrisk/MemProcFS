@@ -15,6 +15,15 @@
 #include <Windows.h>
 #include "vmmdll.h"
 
+inline int PyDict_SetItemDWORD_DECREF(PyObject *dp, DWORD key, PyObject *item)
+{
+    PyObject *pyObjectKey = PyLong_FromUnsignedLong(key);
+    int i = PyDict_SetItem(dp, pyObjectKey, item);
+    Py_XDECREF(pyObjectKey);
+    Py_XDECREF(item);
+    return i;
+}
+
 inline int PyDict_SetItemString_DECREF(PyObject *dp, const char *key, PyObject *item)
 {
     int i = PyDict_SetItemString(dp, key, item);
@@ -640,6 +649,103 @@ VMMPYC_ProcessGetHandleMap(PyObject *self, PyObject *args)
     }
     LocalFree(pHandleMap);
     return pyList;
+}
+
+// () -> [[QWORD, QWORD], ...]
+static PyObject *
+VMMPYC_MapGetPhysMem(PyObject *self, PyObject *args)
+{
+    PyObject *pyList, *pyList_MemRange;
+    BOOL result;
+    DWORD cbPhysMemMap = 0;
+    ULONG64 i;
+    PVMMDLL_MAP_PHYSMEM pPhysMemMap = NULL;
+    PVMMDLL_MAP_PHYSMEMENTRY pe;
+    if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
+    Py_BEGIN_ALLOW_THREADS;
+    result =
+        VMMDLL_Map_GetPhysMem(NULL, &cbPhysMemMap) &&
+        cbPhysMemMap &&
+        (pPhysMemMap = LocalAlloc(0, cbPhysMemMap)) &&
+        VMMDLL_Map_GetPhysMem(pPhysMemMap, &cbPhysMemMap);
+    Py_END_ALLOW_THREADS;
+    if(!result) {
+        Py_DECREF(pyList);
+        LocalFree(pPhysMemMap);
+        return PyErr_Format(PyExc_RuntimeError, "VMMPYC_MapGetPhysMem: Failed.");
+    }
+    for(i = 0; i < pPhysMemMap->cMap; i++) {
+        if((pyList_MemRange = PyList_New(0))) {
+            pe = pPhysMemMap->pMap + i;
+            PyList_Append_DECREF(pyList_MemRange, PyLong_FromUnsignedLongLong(pe->pa));
+            PyList_Append_DECREF(pyList_MemRange, PyLong_FromUnsignedLongLong(pe->cb));
+            PyList_Append_DECREF(pyList, pyList_MemRange);
+        }
+    }
+    LocalFree(pPhysMemMap);
+    return pyList;
+}
+
+// ([DWORD]) -> {...}
+static PyObject *
+VMMPYC_MapGetPfns(PyObject *self, PyObject *args)
+{
+    PyObject *pyListSrc, *pyListItemSrc, *pyDictDst, *pyDictItem;
+    BOOL result;
+    DWORD cPfns = 0, *pPfns = NULL;
+    DWORD i, dwPfn, cbPfnMap = 0;
+    PVMMDLL_MAP_PFN pPfnMap = NULL;
+    PVMMDLL_MAP_PFNENTRY pe;
+    if(!PyArg_ParseTuple(args, "O!", &PyList_Type, &pyListSrc)) { return NULL; }    // borrowed reference
+    cPfns = (DWORD)PyList_Size(pyListSrc);
+    if(cPfns == 0) {
+        Py_DECREF(pyListSrc);
+        return PyDict_New();
+    }
+    pPfns = LocalAlloc(0, cPfns * sizeof(DWORD));
+    if(!pPfns) {
+        Py_DECREF(pyListSrc);
+        return PyErr_NoMemory();
+    }
+    for(i = 0; i < cPfns; i++) {
+        pyListItemSrc = PyList_GetItem(pyListSrc, i);   // borrowed reference
+        if(!pyListItemSrc || !PyLong_Check(pyListItemSrc) || (-1 == (dwPfn = PyLong_AsUnsignedLong(pyListItemSrc)))) {
+            Py_DECREF(pyListSrc);
+            LocalFree(pPfns);
+            return PyErr_Format(PyExc_RuntimeError, "VMMPYC_MapGetPfns: Argument list contains non numeric item or PFN exceeding 0xffffffff.");
+        }
+        pPfns[i] = dwPfn;
+    }
+    Py_DECREF(pyListSrc);
+    // call c-dll for vmm
+    Py_BEGIN_ALLOW_THREADS;
+    result =
+        VMMDLL_Map_GetPfn(pPfns, cPfns, NULL, &cbPfnMap) &&
+        (pPfnMap = LocalAlloc(0, cbPfnMap)) &&
+        VMMDLL_Map_GetPfn(pPfns, cPfns, pPfnMap, &cbPfnMap);
+    Py_END_ALLOW_THREADS;
+    if(!result) {
+        LocalFree(pPfnMap);
+        return PyErr_Format(PyExc_RuntimeError, "VMMPYC_MapGetPfns: Failed.");
+    }
+    if(!(pyDictDst = PyDict_New())) {
+        LocalFree(pPfnMap);
+        return PyErr_NoMemory();
+    }
+    for(i = 0; i < pPfnMap->cMap; i++) {
+        pe = pPfnMap->pMap + i;
+        if((pyDictItem = PyDict_New())) {
+            PyDict_SetItemString_DECREF(pyDictItem, "pfn", PyLong_FromUnsignedLong(pe->dwPfn));
+            PyDict_SetItemString_DECREF(pyDictItem, "pid", PyLong_FromUnsignedLong(pe->AddressInfo.dwPid));
+            PyDict_SetItemString_DECREF(pyDictItem, "va", PyLong_FromUnsignedLongLong(pe->AddressInfo.va));
+            PyDict_SetItemString_DECREF(pyDictItem, "va-pte", PyLong_FromUnsignedLongLong(pe->vaPte));
+            PyDict_SetItemString_DECREF(pyDictItem, "tp", PyUnicode_FromFormat("%s", VMMDLL_PFN_TYPE_TEXT[pe->PageLocation]));
+            PyDict_SetItemString_DECREF(pyDictItem, "tpex", PyUnicode_FromFormat("%s", VMMDLL_PFN_TYPEEXTENDED_TEXT[pe->tpExtended]));
+            PyDict_SetItemDWORD_DECREF(pyDictDst, pe->dwPfn, pyDictItem);
+        }
+    }
+    LocalFree(pPfnMap);
+    return pyDictDst;
 }
 
 // () -> [{...}]
@@ -1532,7 +1638,9 @@ static PyMethodDef VMMPYC_EmbMethods[] = {
     {"VMMPYC_ProcessGetHeapMap", VMMPYC_ProcessGetHeapMap, METH_VARARGS, "Retrieve the heap map for a given process."},
     {"VMMPYC_ProcessGetThreadMap", VMMPYC_ProcessGetThreadMap, METH_VARARGS, "Retrieve the thread map for a given process."},
     {"VMMPYC_ProcessGetHandleMap", VMMPYC_ProcessGetHandleMap, METH_VARARGS, "Retrieve the handle map for a given process."},
+    {"VMMPYC_MapGetPhysMem", VMMPYC_MapGetPhysMem, METH_VARARGS, "Retrieve the physical memory map from the system."},
     {"VMMPYC_GetUsers", VMMPYC_GetUsers, METH_VARARGS, "Retrieve the non-well known users from the system."},
+    {"VMMPYC_MapGetPfns", VMMPYC_MapGetPfns, METH_VARARGS, "Retrieve page frame number (PFN) information for select page frame numbers."},
     {"VMMPYC_ProcessGetInformation", VMMPYC_ProcessGetInformation, METH_VARARGS, "Retrieve process information for a specific process."},
     {"VMMPYC_ProcessGetDirectories", VMMPYC_ProcessGetDirectories, METH_VARARGS, "Retrieve the data directories for a specific process and module."},
     {"VMMPYC_ProcessGetSections", VMMPYC_ProcessGetSections, METH_VARARGS, "Retrieve the sections for a specific process and module."},

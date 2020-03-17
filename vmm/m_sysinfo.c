@@ -9,12 +9,14 @@
 #include <ws2tcpip.h>
 #include "vmm.h"
 #include "vmmwin.h"
+#include "vmmwinreg.h"
 #include "util.h"
 
 NTSTATUS MSysInfo_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     DWORD cbBuffer;
-    BYTE pbBuffer[32];
+    BYTE pbBuffer[34] = { 0 };
+    BYTE pbRegData[0x42] = { 0 };
     // version.txt
     if(!wcscmp(ctx->wszPath, L"version.txt")) {
         cbBuffer = snprintf(pbBuffer, sizeof(pbBuffer), "%i.%i.%i", ctxVmm->kernel.dwVersionMajor, ctxVmm->kernel.dwVersionMinor, ctxVmm->kernel.dwVersionBuild);
@@ -28,6 +30,11 @@ NTSTATUS MSysInfo_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWO
     }
     if(!wcscmp(ctx->wszPath, L"version-build.txt")) {
         return Util_VfsReadFile_FromNumber(ctxVmm->kernel.dwVersionBuild, pb, cb, pcbRead, cbOffset);
+    }
+    if(!wcscmp(ctx->wszPath, L"computername.txt")) {
+        VmmWinReg_ValueQuery2(L"HKLM\\SYSTEM\\ControlSet001\\Control\\ComputerName\\ComputerName\\ComputerName", NULL, pbRegData, sizeof(pbRegData) - 2, NULL);
+        Util_snprintf_ln((LPSTR)pbBuffer, 34, 33, "%-32S", (LPWSTR)pbRegData);
+        return Util_VfsReadFile_FromPBYTE(pbBuffer, 32, pb, cb, pcbRead, cbOffset);
     }
     return VMMDLL_STATUS_FILE_INVALID;
 }
@@ -43,6 +50,7 @@ BOOL MSysInfo_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
     VMMDLL_VfsList_AddFile(pFileList, L"version-major.txt", cchMajor, NULL);
     VMMDLL_VfsList_AddFile(pFileList, L"version-minor.txt", cchMinor, NULL);
     VMMDLL_VfsList_AddFile(pFileList, L"version-build.txt", cchBuild, NULL);
+    VMMDLL_VfsList_AddFile(pFileList, L"computername.txt", 32, NULL);
     return TRUE;
 }
 

@@ -20,7 +20,7 @@
 // Ensure only one is active below at one single time!
 // INITIALIZE_FROM_FILE contains file name to a raw memory dump.
 // ----------------------------------------------------------------------------
-#define _INITIALIZE_FROM_FILE    "c:\\temp\\win10.raw"
+#define _INITIALIZE_FROM_FILE    "Z:\\x64\\WIN10-X64-1909-18363-1.core"
 //#define _INITIALIZE_FROM_FPGA
 //#define _INITIALIZE_FROM_TOTALMELTDOWN
 
@@ -182,7 +182,7 @@ int main(_In_ int argc, _In_ char* argv[])
         return 1;
     }
 #endif /* _INITIALIZE_FROM_FPGA */
-
+    
 
     // Read physical memory at physical address 0x1000 and display the first
     // 0x100 bytes on-screen.
@@ -856,13 +856,28 @@ int main(_In_ int argc, _In_ char* argv[])
     }
 
 
+    // Initialize the plugin manager for the Vfs functionality to work.
+    printf("------------------------------------------------------------\n");
+    printf("#20: Initialize Plugin Manager functionality as is required \n");
+    printf("     by virtual file system (vfs) functionality.            \n");
+    ShowKeyPress();
+    printf("CALL:    VMMDLL_VfsList\n");
+    result = VMMDLL_VfsInitializePlugins();
+    if(result) {
+        printf("SUCCESS: VMMDLL_VfsInitializePlugins\n");
+    } else {
+        printf("FAIL:    VMMDLL_VfsInitializePlugins\n");
+        return 1;
+    }
+
+
     // The Memory Process File System exists virtually in the form of a virtual
     // file system even if it may not be mounted at a mount point or drive.
     // It is possible to call the functions 'List', 'Read' and 'Write' by using
     // the API.
     // Virtual File System: 'List'.
     printf("------------------------------------------------------------\n");
-    printf("#20: call the file system 'List' function on the root dir.  \n");
+    printf("#21: call the file system 'List' function on the root dir.  \n");
     ShowKeyPress();
     VMMDLL_VFS_FILELIST VfsFileList;
     VfsFileList.dwVersion = VMMDLL_VFS_FILELIST_VERSION;
@@ -882,7 +897,7 @@ int main(_In_ int argc, _In_ char* argv[])
     // Virtual File System: 'Read' of 0x100 bytes from the offset 0x1000
     // in the physical memory by reading the /pmem physical memory file.
     printf("------------------------------------------------------------\n");
-    printf("#21: call the file system 'Read' function on the pmem file. \n");
+    printf("#22: call the file system 'Read' function on the pmem file. \n");
     ShowKeyPress();
     printf("CALL:    VMMDLL_VfsRead\n");
     nt = VMMDLL_VfsRead(L"\\memory.pmem", pbPage1, 0x100, &i, 0x1000);
@@ -895,28 +910,13 @@ int main(_In_ int argc, _In_ char* argv[])
     }
 
 
-    // Initialize plugin manager so that statistics may be read in the
-    // following read call to the .status built-in module/plugin.
-    printf("------------------------------------------------------------\n");
-    printf("#22: initialize virtual file system plugins                 \n");
-    printf("     (this is required for following read call)             \n");
-    ShowKeyPress();
-    printf("CALL:    VMMDLL_VfsInitializePlugins\n");
-    result = VMMDLL_VfsInitializePlugins();
-    if(result) {
-        printf("SUCCESS: VMMDLL_VfsInitializePlugins\n");
-    } else {
-        printf("FAIL:    VMMDLL_VfsInitializePlugins\n");
-        return 1;
-    }
-
-
     // Virtual File System: 'Read' statistics from the .status module/plugin.
     printf("------------------------------------------------------------\n");
     printf("#23: call file system 'Read' on .status\\statistics         \n");
     ShowKeyPress();
     printf("CALL:    VMMDLL_VfsRead\n");
-    nt = VMMDLL_VfsRead(L"\\.status\\statistics", pbPage1, 0x1000, &i, 0);
+    ZeroMemory(pbPage1, 0x1000);
+    nt = VMMDLL_VfsRead(L"\\.status\\statistics", pbPage1, 0xfff, &i, 0);
     if(nt == VMMDLL_STATUS_SUCCESS) {
         printf("SUCCESS: VMMDLL_VfsRead\n");
         printf("%s", (LPSTR)pbPage1);
@@ -1025,9 +1025,38 @@ int main(_In_ int argc, _In_ char* argv[])
     }
 
 
+    // Retrieve Physical Memory Map
+    printf("------------------------------------------------------------\n");
+    printf("#29: Retrieve Physical Memory Map                           \n");
+    ShowKeyPress();
+    DWORD cbPhysMemMap = 0;
+    PVMMDLL_MAP_PHYSMEM pPhysMemMap = NULL;
+    printf("CALL:    VMMDLL_Map_GetPhysMem\n");
+    result = VMMDLL_Map_GetPhysMem(NULL, &cbPhysMemMap);
+    if(!result) {
+        printf("FAIL:    VMMDLL_Map_GetPhysMem #1 - Get # Hives.\n");
+        return 1;
+    }
+    pPhysMemMap = LocalAlloc(LMEM_ZEROINIT, cbPhysMemMap);
+    if(!pPhysMemMap) {
+        printf("FAIL:    OutOfMemory\n");
+        return 1;
+    }
+    result = VMMDLL_Map_GetPhysMem(pPhysMemMap, &cbPhysMemMap);
+    if(result) {
+        printf("SUCCESS: VMMDLL_Map_GetPhysMem\n");
+        for(i = 0; i < pPhysMemMap->cMap; i++) {
+            printf("%04i %12llx - %12llx\n", i, pPhysMemMap->pMap[i].pa, pPhysMemMap->pMap[i].pa + pPhysMemMap->pMap[i].cb - 1);
+        }
+    } else {
+        printf("FAIL:    VMMDLL_Map_GetPhysMem #2\n");
+        return 1;
+    }
+
+
     // Read 0x100 bytes from offset 0x1000 from the 1st located registry hive memory space
     printf("------------------------------------------------------------\n");
-    printf("#29: Read 0x100 bytes from offset 0x1000 of registry hive   \n");
+    printf("#30: Read 0x100 bytes from offset 0x1000 of registry hive   \n");
     ShowKeyPress();
     printf("CALL:    VMMDLL_WinReg_HiveReadEx\n");
     result = VMMDLL_WinReg_HiveReadEx(pWinRegHives[0].vaCMHIVE, 0x1000, pbPage1, 0x100, NULL, 0);
@@ -1039,6 +1068,46 @@ int main(_In_ int argc, _In_ char* argv[])
         return 1;
     }
 
+
+    // Retrieve Page Frame Number (PFN) information for pages located at
+    // physical addresses 0x00001000, 0x00677000, 0x27000000, 0x18000000
+    printf("------------------------------------------------------------\n");
+    printf("#31: Retrieve PAGE FRAME NUMBERS (PFNs)                     \n");
+    ShowKeyPress();
+    DWORD cbPfnMap = 0, cPfns, dwPfns[] = { 1, 0x677, 0x27000, 0x18000 };
+    PVMMDLL_MAP_PFN pPfnMap = NULL;
+    PVMMDLL_MAP_PFNENTRY pPfnEntry;
+    cPfns = sizeof(dwPfns) / sizeof(DWORD);
+    printf("CALL:    VMMDLL_Map_GetPfn #1\n");
+    result = VMMDLL_Map_GetPfn(dwPfns, cPfns, NULL, &cbPfnMap);
+    if(!result) {
+        printf("FAIL:    VMMDLL_Map_GetPfn #1\n");
+        return 1;
+    }
+    pPfnMap = LocalAlloc(LMEM_ZEROINIT, cbPfnMap);
+    if(!pPfnMap) {
+        printf("FAIL:    OutOfMemory\n");
+        return 1;
+    }
+    result = VMMDLL_Map_GetPfn(dwPfns, cPfns, pPfnMap, &cbPfnMap);
+    if(result) {
+        printf("SUCCESS: VMMDLL_Map_GetPfn\n");
+        printf("#    PFN# TYPE       TYPEEX     VA\n");
+        for(i = 0; i < pPfnMap->cMap; i++) {
+            pPfnEntry = pPfnMap->pMap + i;
+            printf(
+                "%i%8i %-10s %-10s %16llx\n",
+                i,
+                pPfnEntry->dwPfn,
+                VMMDLL_PFN_TYPE_TEXT[pPfnEntry->PageLocation],
+                VMMDLL_PFN_TYPEEXTENDED_TEXT[pPfnEntry->tpExtended],
+                pPfnEntry->vaPte
+                );
+        }
+    } else {
+        printf("FAIL:    VMMDLL_Map_GetPfn #2\n");
+        return 1;
+    }
 
 
     // Finish everything and exit!

@@ -9,7 +9,7 @@
 #include "vmmdll.h"
 #include "vmmwin.h"
 
-#define HANDLEINFO_LINELENGTH       190ULL
+#define HANDLEINFO_LINELENGTH       222ULL
 
 _Success_(return == 0)
 NTSTATUS HandleInfo_Read_HandleMap(_In_ PVMMOB_MAP_HANDLE pHandleMap, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
@@ -39,7 +39,7 @@ NTSTATUS HandleInfo_Read_HandleMap(_In_ PVMMOB_MAP_HANDLE pHandleMap, _Out_ PBYT
             sz + o,
             cbMax - o,
             cbLINELENGTH,
-            "%04x%7i%8x %16llx %6x %-16s %-128S\n",
+            "%04x%7i%8x %16llx %6x %-16s %-160S\n",
             (DWORD)i,
             pH->dwPID,
             pH->dwHandle,

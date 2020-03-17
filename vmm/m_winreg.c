@@ -123,9 +123,9 @@ NTSTATUS MWinReg_Read_KeyValue(_In_ LPWSTR wszPathFull, _Out_ PBYTE pb, _In_ DWO
     wszSubPath[cwszSubPath - 4] = 0;
     // allocate buffers and read value
     if(!(szMeta = (LPSTR)LocalAlloc(0, KEY_META_BUFFER_SIZE))) { goto finish; }
-    if(!(pbData = LocalAlloc(LMEM_ZEROINIT, KEY_META_BUFFER_SIZE))) { goto finish; }
-    VmmWinReg_ValueQuery1(pObHive, wszSubPath, &dwType, pbData, KEY_META_BUFFER_SIZE, &cbData, 0) || VmmWinReg_ValueQuery1(pObHive, wszSubPath, &dwType, NULL, 0, &cbData, 0);
-    cbData = min(cbData, KEY_META_BUFFER_SIZE);
+    if(!(pbData = LocalAlloc(LMEM_ZEROINIT, 2 * KEY_META_BUFFER_SIZE))) { goto finish; }
+    VmmWinReg_ValueQuery1(pObHive, wszSubPath, &dwType, pbData, 2 * KEY_META_BUFFER_SIZE, &cbData, 0) || VmmWinReg_ValueQuery1(pObHive, wszSubPath, &dwType, NULL, 0, &cbData, 0);
+    cbData = min(cbData, 2 * KEY_META_BUFFER_SIZE);
     // process read data
     switch(dwType) {
         case REG_NONE:
@@ -267,7 +267,7 @@ VOID MWinReg_List_KeyAndValue(_Inout_ PHANDLE pFileList, _In_ POB_REGISTRY_HIVE 
     VMM_REGISTRY_VALUE_INFO ValueInfo;
     VMMDLL_VFS_FILELIST_EXINFO FileExInfo = { 0 };
     FileExInfo.dwVersion = VMMDLL_VFS_FILELIST_EXINFO_VERSION;
-    if(wszPath[0] && !(pObKey = VmmWinReg_KeyGetByPathW(pHive, wszPath))) { return; }
+    if(wszPath[0] && !(pObKey = VmmWinReg_KeyGetByPath(pHive, wszPath))) { return; }
     // list sub-keys
     if((pmObSubkeys = VmmWinReg_KeyList(pHive, pObKey))) {
         while((pObSubkey = ObMap_GetNext(pmObSubkeys, pObSubkey))) {

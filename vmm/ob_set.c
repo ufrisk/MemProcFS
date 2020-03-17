@@ -447,6 +447,7 @@ VOID ObSet_Push_PageAlign(_In_opt_ POB_SET pvs, _In_ QWORD a, _In_ DWORD cb)
     QWORD qwA;
     if(!OB_SET_IS_VALID(pvs)) { return; }
     qwA = a & ~0xfff;
+    if(qwA == 0xfffffffffffff000) { return; }
     while(qwA < a + cb) {
         ObSet_Push(pvs, qwA);
         qwA += 0x1000;

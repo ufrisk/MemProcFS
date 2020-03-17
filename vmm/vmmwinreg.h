@@ -39,6 +39,7 @@ typedef struct tdOB_REGISTRY_HIVE {
 typedef struct tdVMM_REGISTRY_KEY_INFO {
     BOOL fActive;
     QWORD ftLastWrite;
+    DWORD raKeyCell;
     DWORD cchName;
     WCHAR wszName[MAX_PATH];
 } VMM_REGISTRY_KEY_INFO, *PVMM_REGISTRY_KEY_INFO;
@@ -46,6 +47,7 @@ typedef struct tdVMM_REGISTRY_KEY_INFO {
 typedef struct tdVMM_REGISTRY_VALUE_INFO {
     DWORD dwType;
     DWORD cbData;
+    DWORD raValueCell;
     DWORD cchName;
     WCHAR wszName[MAX_PATH];
 } VMM_REGISTRY_VALUE_INFO, *PVMM_REGISTRY_VALUE_INFO;
@@ -150,7 +152,19 @@ BOOL VmmWinReg_KeyHiveGetByFullPath(_In_ LPWSTR wszPathFull, _Out_ POB_REGISTRY_
 * -- wszPath
 * -- return
 */
-POB_REGISTRY_KEY VmmWinReg_KeyGetByPathW(_In_ POB_REGISTRY_HIVE pHive, _In_ LPWSTR wszPath);
+_Success_(return != NULL)
+POB_REGISTRY_KEY VmmWinReg_KeyGetByPath(_In_ POB_REGISTRY_HIVE pHive, _In_ LPWSTR wszPath);
+
+/*
+* Retrieve a registry key by parent key and name.
+* If no registry key is found then NULL is returned.
+* -- pHive
+* -- pParentKey
+* -- wszChildName
+* -- return
+*/
+_Success_(return != NULL)
+POB_REGISTRY_KEY VmmWinReg_KeyGetByChildName(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pParentKey, _In_ LPWSTR wszChildName);
 
 /*
 * Retrieve a registry key by its cell offset (incl. static/volatile bit).
@@ -160,6 +174,7 @@ POB_REGISTRY_KEY VmmWinReg_KeyGetByPathW(_In_ POB_REGISTRY_HIVE pHive, _In_ LPWS
 * -- raCellOffset
 * -- return
 */
+_Success_(return != NULL)
 POB_REGISTRY_KEY VmmWinReg_KeyGetByCellOffset(_In_ POB_REGISTRY_HIVE pHive, _In_ DWORD raCellOffset);
 
 /*
@@ -198,6 +213,25 @@ VOID VmmWinReg_KeyInfo2(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pKey
 * -- return = ObMap of POB_REGISTRY_VALUE
 */
 POB_MAP VmmWinReg_KeyValueList(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pKeyParent);
+
+/*
+* Try to create a key-value object manager object from the given cell offset.
+* -- pHive
+* -- oCell = offset to cell (incl. static/volatile bit).
+* -- return
+*/
+POB_REGISTRY_VALUE VmmWinReg_KeyValueGetByOffset(_In_ POB_REGISTRY_HIVE pHive, _In_ DWORD oCell);
+
+/*
+* Retrive registry values given a key and value name.
+* NB! VmmWinReg_KeyValueList is the preferred function.
+* CALLER DECREF: return
+* -- pHive
+* -- pKeyParent
+* -- wszValueName = value name or NULL for default.
+* -- return = registry value or NULL if not found.
+*/
+POB_REGISTRY_VALUE VmmWinReg_KeyValueGetByName(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pKeyParent, _In_ LPWSTR wszValueName);
 
 /*
 * Retrieve information about a registry key value.
@@ -249,7 +283,7 @@ BOOL VmmWinReg_ValueQuery3(_In_ POB_REGISTRY_HIVE pHive, _In_ LPWSTR wszPathKeyV
 /*
 * Read a registry value - similar to WINAPI function 'RegQueryValueEx'.
 * -- pHive
-* -- pObKeyValue
+* -- pKeyValue
 * -- pdwType
 * -- pbData
 * -- cbData
@@ -257,6 +291,6 @@ BOOL VmmWinReg_ValueQuery3(_In_ POB_REGISTRY_HIVE pHive, _In_ LPWSTR wszPathKeyV
 * -- return
 */
 _Success_(return)
-BOOL VmmWinReg_ValueQuery4(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_VALUE pObKeyValue, _Out_opt_ PDWORD pdwType, _Out_writes_opt_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_opt_ PDWORD pcbData);
+BOOL VmmWinReg_ValueQuery4(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_VALUE pKeyValue, _Out_opt_ PDWORD pdwType, _Out_writes_opt_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_opt_ PDWORD pcbData);
 
 #endif /* __VMMWINREG_H__ */

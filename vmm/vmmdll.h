@@ -4,7 +4,7 @@
 // (c) Ulf Frisk, 2018-2020
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-// Header Version: 3.1
+// Header Version: 3.2
 //
 
 #include <windows.h>
@@ -285,13 +285,14 @@ NTSTATUS VMMDLL_UtilVfsWriteFile_DWORD(_Inout_ PDWORD pdwTarget, _In_ PBYTE pb, 
 _Success_(return)
 BOOL VMMDLL_VfsInitializePlugins();
 
-#define VMMDLL_PLUGIN_CONTEXT_MAGIC             0xc0ffee663df9301c
-#define VMMDLL_PLUGIN_CONTEXT_VERSION           3
-#define VMMDLL_PLUGIN_REGINFO_MAGIC             0xc0ffee663df9301d
-#define VMMDLL_PLUGIN_REGINFO_VERSION           5
+#define VMMDLL_PLUGIN_CONTEXT_MAGIC                 0xc0ffee663df9301c
+#define VMMDLL_PLUGIN_CONTEXT_VERSION               3
+#define VMMDLL_PLUGIN_REGINFO_MAGIC                 0xc0ffee663df9301d
+#define VMMDLL_PLUGIN_REGINFO_VERSION               5
 
-#define VMMDLL_PLUGIN_EVENT_VERBOSITYCHANGE     0x01
-#define VMMDLL_PLUGIN_EVENT_TOTALREFRESH        0x02
+#define VMMDLL_PLUGIN_EVENT_VERBOSITYCHANGE         0x01
+#define VMMDLL_PLUGIN_EVENT_REFRESH_PROCESS_TOTAL   0x02
+#define VMMDLL_PLUGIN_EVENT_REFRESH_REGISTRY        0x04
 
 typedef struct tdVMMDLL_PLUGIN_CONTEXT {
     ULONG64 magic;
@@ -455,6 +456,7 @@ BOOL VMMDLL_MemVirt2Phys(_In_ DWORD dwPID, _In_ ULONG64 qwVA, _Out_ PULONG64 pqw
 #define VMMDLL_MAP_HEAP_VERSION             1
 #define VMMDLL_MAP_THREAD_VERSION           1
 #define VMMDLL_MAP_HANDLE_VERSION           1
+#define VMMDLL_MAP_PHYSMEM_VERSION          1
 #define VMMDLL_MAP_USER_VERSION             1
 
 // flags to check for existence in the fPage field of VMMDLL_MAP_PTEENTRY
@@ -559,6 +561,11 @@ typedef struct tdVMMDLL_MAP_HANDLEENTRY {
     LPWSTR wszType;
 } VMMDLL_MAP_HANDLEENTRY, *PVMMDLL_MAP_HANDLEENTRY;
 
+typedef struct tdVMMDLL_MAP_PHYSMEMENTRY {
+    QWORD pa;
+    QWORD cb;
+} VMMDLL_MAP_PHYSMEMENTRY, *PVMMDLL_MAP_PHYSMEMENTRY;
+
 typedef struct tdVMMDLL_MAP_USERENTRY {
     DWORD cwszText;                 // WCHAR count not including terminating null
     LPWSTR wszText;                 // LPWSTR pointed into VMMOB_MAP_USER.wszMultiText
@@ -616,6 +623,13 @@ typedef struct tdVMMDLL_MAP_HANDLE {
     DWORD cMap;                     // # map entries.
     VMMDLL_MAP_HANDLEENTRY pMap[];  // map entries.
 } VMMDLL_MAP_HANDLE, *PVMMDLL_MAP_HANDLE;
+
+typedef struct tdVMMDLL_MAP_PHYSMEM {
+    DWORD dwVersion;
+    DWORD _Reserved1[5];
+    DWORD cMap;                     // # map entries.
+    VMMDLL_MAP_PHYSMEMENTRY pMap[]; // map entries.
+} VMMDLL_MAP_PHYSMEM, *PVMMDLL_MAP_PHYSMEM;
 
 typedef struct tdVMMDLL_MAP_USER {
     DWORD dwVersion;
@@ -713,6 +727,16 @@ _Success_(return)
 BOOL VMMDLL_ProcessMap_GetHandle(_In_ DWORD dwPID, _Out_writes_bytes_opt_(*pcbHandleMap) PVMMDLL_MAP_HANDLE pHandleMap, _Inout_ PDWORD pcbHandleMap);
 
 /*
+* Retrieve the physical memory ranges from the physical memory map that Windows
+* have enumerated.
+* -- pPhysMemMap = buffer of minimum byte length *pcbPhysMemMap or NULL.
+* -- pcbPhysMemMap = pointer to byte count of pPhysMemMap buffer.
+* -- return = success/fail.
+*/
+_Success_(return)
+BOOL VMMDLL_Map_GetPhysMem(_Out_writes_bytes_opt_(*pcbPhysMemMap) PVMMDLL_MAP_PHYSMEM pPhysMemMap, _Inout_ PDWORD pcbPhysMemMap);
+
+/*
 * Retrieve the non well known users that are detected in the target system.
 * NB! There may be more users in the system than the ones that are detected,
 * only users with mounted registry hives may currently be detected - this is
@@ -723,6 +747,101 @@ BOOL VMMDLL_ProcessMap_GetHandle(_In_ DWORD dwPID, _Out_writes_bytes_opt_(*pcbHa
 */
 _Success_(return)
 BOOL VMMDLL_Map_GetUsers(_Out_writes_bytes_opt_(*pcbUserMap) PVMMDLL_MAP_USER pUserMap, _Inout_ PDWORD pcbUserMap);
+
+
+
+//-----------------------------------------------------------------------------
+// WINDOWS SPECIFIC PAGE FRAME NUMBER (PFN) FUNCTIONALITY BELOW
+//-----------------------------------------------------------------------------
+
+#define VMMDLL_MAP_PFN_VERSION              1
+
+static LPCSTR VMMDLL_PFN_TYPE_TEXT[] = { "Zero", "Free", "Standby", "Modifiy", "ModNoWr", "Bad", "Active", "Transit" };
+static LPCSTR VMMDLL_PFN_TYPEEXTENDED_TEXT[] = { "-", "Unused", "ProcPriv", "PageTable", "LargePage", "DriverLock", "Shareable", "File" };
+
+typedef enum tdVMMDLL_MAP_PFN_TYPE {
+    VmmDll_PfnTypeZero = 0,
+    VmmDll_PfnTypeFree = 1,
+    VmmDll_PfnTypeStandby = 2,
+    VmmDll_PfnTypeModified = 3,
+    VmmDll_PfnTypeModifiedNoWrite = 4,
+    VmmDll_PfnTypeBad = 5,
+    VmmDll_PfnTypeActive = 6,
+    VmmDll_PfnTypeTransition = 7
+} VMMDLL_MAP_PFN_TYPE;
+
+typedef enum tdVMMDLL_MAP_PFN_TYPEEXTENDED {
+    VmmDll_PfnExType_Unknown = 0,
+    VmmDll_PfnExType_Unused = 1,
+    VmmDll_PfnExType_ProcessPrivate = 2,
+    VmmDll_PfnExType_PageTable = 3,
+    VmmDll_PfnExType_LargePage = 4,
+    VmmDll_PfnExType_DriverLocked = 5,
+    VmmDll_PfnExType_Shareable = 6,
+    VmmDll_PfnExType_File = 7,
+} VMMDLL_MAP_PFN_TYPEEXTENDED;
+
+typedef struct tdVMMDLL_MAP_PFNENTRY {
+    DWORD dwPfn;
+    VMMDLL_MAP_PFN_TYPEEXTENDED tpExtended;
+    struct {        // Only valid if active non-prototype PFN
+        union {
+            DWORD dwPid;
+            DWORD dwPfnPte[5];  // PFN of paging levels 1-4 (x64)
+        };
+        QWORD va;               // valid if non-zero
+    } AddressInfo;
+    QWORD vaPte;
+    QWORD OriginalPte;
+    union {
+        DWORD _u3;
+        struct {
+            WORD ReferenceCount;
+            // MMPFNENTRY
+            BYTE PageLocation       : 3;    // Pos 0  - VMMDLL_MAP_PFN_TYPE
+            BYTE WriteInProgress    : 1;    // Pos 3
+            BYTE Modified           : 1;    // Pos 4
+            BYTE ReadInProgress     : 1;    // Pos 5
+            BYTE CacheAttribute     : 2;    // Pos 6
+            BYTE Priority           : 3;    // Pos 0
+            BYTE Rom_OnProtectedStandby : 1;// Pos 3
+            BYTE InPageError        : 1;    // Pos 4
+            BYTE KernelStack_SystemChargedPage : 1; // Pos 5
+            BYTE RemovalRequested   : 1;    // Pos 6
+            BYTE ParityError        : 1;    // Pos 7
+        };
+    };
+    union {
+        QWORD _u4;
+        struct {
+            DWORD PteFrame;
+            DWORD PteFrameHigh      : 4;    // Pos 32
+            DWORD _Reserved         : 21;   // Pos 36
+            DWORD PrototypePte      : 1;    // Pos 57
+            DWORD PageColor         : 6;    // Pos 58
+        };
+    };
+    DWORD _FutureUse[6];
+} VMMDLL_MAP_PFNENTRY, *PVMMDLL_MAP_PFNENTRY;
+
+typedef struct tdVMMDLL_MAP_PFN {
+    DWORD dwVersion;
+    DWORD _Reserved1[5];
+    DWORD cMap;                     // # map entries.
+    VMMDLL_MAP_PFNENTRY pMap[];     // map entries.
+} VMMDLL_MAP_PFN, *PVMMDLL_MAP_PFN;
+
+/*
+* Retrieve information about scattered PFNs. The PFNs are returned in order of
+* in which they are stored in the pPfns set.
+* -- pPfns
+* -- cPfns
+* -- pPfnMap = buffer of minimum byte length *pcbPfnMap or NULL.
+* -- pcbPfnMap = pointer to byte count of pPhysMemMap buffer.
+* -- return = success/fail.
+*/
+_Success_(return)
+BOOL VMMDLL_Map_GetPfn(_In_ DWORD pPfns[], _In_ DWORD cPfns, _Out_writes_bytes_opt_(*pcbPfnMap) PVMMDLL_MAP_PFN pPfnMap, _Inout_ PDWORD pcbPfnMap);
 
 
 

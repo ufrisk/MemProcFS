@@ -273,6 +273,21 @@ VOID Vfs_UtilSplitPathFile(_Out_writes_(MAX_PATH) PWCHAR wszPath, _Out_ LPWSTR *
     *pwcsFile = wszPath + iSplitFilePath + 1;
 }
 
+DWORD Vfs_UtilHashStringUpperW(_In_opt_ LPCWSTR wsz)
+{
+    WCHAR c;
+    DWORD i = 0, dwHash = 0;
+    if(!wsz) { return 0; }
+    while(TRUE) {
+        c = wsz[i++];
+        if(!c) { return dwHash; }
+        if(c >= 'a' && c <= 'z') {
+            c += 'A' - 'a';
+        }
+        dwHash = ((dwHash >> 13) | (dwHash << 19)) + c;
+    }
+}
+
 //-------------------------------------------------------------------------------
 // DOKAN CALLBACK FUNCTIONS BELOW:
 //-------------------------------------------------------------------------------
@@ -347,6 +362,8 @@ VfsCallback_GetFileInformation(_In_ LPCWSTR wcsFileName, _Inout_ LPBY_HANDLE_FIL
     hfi->ftLastWriteTime = FindData.ftLastWriteTime;
     hfi->nFileSizeHigh = FindData.nFileSizeHigh;
     hfi->nFileSizeLow = FindData.nFileSizeLow;
+    hfi->nFileIndexHigh = Vfs_UtilHashStringUpperW(wcsFileName);
+    hfi->nFileIndexLow = Vfs_UtilHashStringUpperW(FindData.cFileName);
     dbg_wprintf(L"DEBUG::%08x %8x VfsCallback_GetFileInformation:\t 0x%08x %s\t [ %08x %08x%08x %016llx %016llx %016llx ]\n",
         (DWORD)(dbg_GetTickCount64() - tmStart),
         STATUS_SUCCESS,
@@ -382,7 +399,7 @@ VfsCallback_ReadFile(LPCWSTR wcsFileName, LPVOID Buffer, DWORD BufferLength, LPD
 {
     UINT64 tmStart = dbg_GetTickCount64();
     NTSTATUS nt;
-    dbg_wprintf_init(L"DEBUG:: -------- VfsCallback_ReadFile:\t\t\t 0x%08x %s\n", 0, wcsFileName);
+    dbg_wprintf_init(L"DEBUG::%08x -------- VfsCallback_ReadFile:\t\t\t 0x%08x %s\n", 0, wcsFileName);
     nt = ctxVfs->pVmmDll->VfsRead(wcsFileName, Buffer, BufferLength, ReadLength, Offset);
     dbg_wprintf(L"DEBUG::%08x %8x VfsCallback_ReadFile:\t\t\t 0x%08x %s\t [ %016llx %08x %08x ]\n", (DWORD)(dbg_GetTickCount64() - tmStart), nt, wcsFileName, Offset, BufferLength, *ReadLength);
     return nt;
@@ -393,7 +410,7 @@ VfsCallback_WriteFile(LPCWSTR wcsFileName, LPCVOID Buffer, DWORD NumberOfBytesTo
 {
     UINT64 tmStart = dbg_GetTickCount64();
     NTSTATUS nt;
-    dbg_wprintf_init(L"DEBUG:: -------- VfsCallback_WriteFile:\t\t\t 0x%08x %s\n", 0, wcsFileName);
+    dbg_wprintf_init(L"DEBUG::%08x -------- VfsCallback_WriteFile:\t\t\t 0x%08x %s\n", 0, wcsFileName);
     nt = ctxVfs->pVmmDll->VfsWrite(wcsFileName, (PBYTE)Buffer, NumberOfBytesToWrite, NumberOfBytesWritten, Offset);
     dbg_wprintf(L"DEBUG::%08x %8x VfsCallback_WriteFile:\t\t\t 0x%08x %s\t [ %016llx %08x %08x ]\n", (DWORD)(dbg_GetTickCount64() - tmStart), nt, wcsFileName, Offset, NumberOfBytesToWrite, *NumberOfBytesWritten);
     return nt;
@@ -426,6 +443,35 @@ VOID VfsClose(_In_ CHAR chMountPoint)
     ctxVfs = NULL;
 }
 
+VOID VfsInitializeAndMount_DisplayInfo(LPWSTR wszMountPoint, _In_ PVMMDLL_FUNCTIONS pVmmDll)
+{
+    ULONG64 qwVersionVmmMajor = 0, qwVersionVmmMinor = 0, qwVersionVmmRevision = 0;
+    ULONG64 qwVersionWinMajor = 0, qwVersionWinMinor = 0, qwVersionWinBuild = 0, iMemoryModel;
+    // get vmm.dll versions
+    pVmmDll->ConfigGet(VMMDLL_OPT_CONFIG_VMM_VERSION_MAJOR, &qwVersionVmmMajor);
+    pVmmDll->ConfigGet(VMMDLL_OPT_CONFIG_VMM_VERSION_MINOR, &qwVersionVmmMinor);
+    pVmmDll->ConfigGet(VMMDLL_OPT_CONFIG_VMM_VERSION_REVISION, &qwVersionVmmRevision);
+    // get operating system versions
+    pVmmDll->ConfigGet(VMMDLL_OPT_CORE_MEMORYMODEL, &iMemoryModel);
+    pVmmDll->ConfigGet(VMMDLL_OPT_WIN_VERSION_MAJOR, &qwVersionWinMajor);
+    pVmmDll->ConfigGet(VMMDLL_OPT_WIN_VERSION_MINOR, &qwVersionWinMinor);
+    pVmmDll->ConfigGet(VMMDLL_OPT_WIN_VERSION_BUILD, &qwVersionWinBuild);
+    printf("\n" \
+        "=============== MemProcFS - THE MEMORY PROCESS FILE SYSTEM ===============\n" \
+        " - Author:           Ulf Frisk - pcileech@frizk.net - https://frizk.net   \n" \
+        " - Info:             https://github.com/ufrisk/MemProcFS                  \n" \
+        " - VmmDll Version:   %i.%i.%i                                             \n" \
+        " - Mount Point:      %S                                                   \n",
+        (DWORD)qwVersionVmmMajor, (DWORD)qwVersionVmmMinor, (DWORD)qwVersionVmmRevision, wszMountPoint);
+    if(qwVersionWinMajor && (iMemoryModel < (sizeof(VMMDLL_MEMORYMODEL_TOSTRING) / sizeof(LPSTR)))) {
+        printf(" - Operating System: Windows %i.%i.%i (%s)\n",
+            (DWORD)qwVersionWinMajor, (DWORD)qwVersionWinMinor, (DWORD)qwVersionWinBuild, VMMDLL_MEMORYMODEL_TOSTRING[iMemoryModel]);
+    } else {
+        printf(" - Operating System: Unknown\n");
+    }
+    printf("==========================================================================\n\n");
+}
+
 VOID VfsInitializeAndMount(_In_ CHAR chMountPoint, _In_ PVMMDLL_FUNCTIONS pVmmDll)
 {
     int status;
@@ -435,11 +481,6 @@ VOID VfsInitializeAndMount(_In_ CHAR chMountPoint, _In_ PVMMDLL_FUNCTIONS pVmmDl
     WCHAR wszMountPoint[] = { 'M', ':', '\\', 0 };
     SYSTEMTIME SystemTimeNow;
     int(*fnDokanMain)(PDOKAN_OPTIONS, PDOKAN_OPERATIONS);
-    ULONG64 qwVersionMajor = 0, qwVersionMinor = 0, qwVersionRevision = 0;
-    // get versions
-    pVmmDll->ConfigGet(VMMDLL_OPT_CONFIG_VMM_VERSION_MAJOR, &qwVersionMajor);
-    pVmmDll->ConfigGet(VMMDLL_OPT_CONFIG_VMM_VERSION_MINOR, &qwVersionMinor);
-    pVmmDll->ConfigGet(VMMDLL_OPT_CONFIG_VMM_VERSION_REVISION, &qwVersionRevision);
     // allocate
     hModuleDokan = LoadLibraryExA("dokan1.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
     if(!hModuleDokan) {
@@ -472,7 +513,7 @@ VOID VfsInitializeAndMount(_In_ CHAR chMountPoint, _In_ PVMMDLL_FUNCTIONS pVmmDl
     // set options
     pDokanOptions->Version = DOKAN_VERSION;
     pDokanOptions->Options |= DOKAN_OPTION_NETWORK;
-    pDokanOptions->UNCName = L"MemoryProcessFileSystem";
+    pDokanOptions->UNCName = L"MemProcFS";
     wszMountPoint[0] = chMountPoint;
     pDokanOptions->MountPoint = wszMountPoint;
     pDokanOptions->Timeout = 60000;
@@ -482,22 +523,9 @@ VOID VfsInitializeAndMount(_In_ CHAR chMountPoint, _In_ PVMMDLL_FUNCTIONS pVmmDl
     pDokanOperations->FindFiles = VfsCallback_FindFiles;
     pDokanOperations->ReadFile = VfsCallback_ReadFile;
     pDokanOperations->WriteFile = VfsCallback_WriteFile;
-    // enable
-    printf(
-        "MOUNTING THE MEMORY PROCESS FILE SYSTEM                                        \n" \
-        "===============================================================================\n" \
-        "The Memory Process File System is mounted as: %S              \n" \
-        "Loaded VmmDll Version: %i.%i.%i                               \n" \
-        "Memory from dump files or PCILeech supported devices are analyzed to provide   \n" \
-        "a convenient process file system for analysis purposes.                        \n" \
-        " - File system is read-only when dump files are used.                          \n" \
-        " - File system is read-write when FPGA hardware acquisition devices are used.  \n" \
-        " - Full support exists for Windows XP to Windows 10 (x86 and x64).             \n" \
-        " - Limited support for other x64 operating systems.                            \n" \
-        " - Memory Process File System: https://github.com/ufrisk/MemProcFS             \n" \
-        " - File system by: Ulf Frisk - pcileech@frizk.net - https://frizk.net          \n" \
-        "===============================================================================\n",
-        pDokanOptions->MountPoint, (DWORD)qwVersionMajor, (DWORD)qwVersionMinor, (DWORD)qwVersionRevision);
+    // print system information to console
+    VfsInitializeAndMount_DisplayInfo(wszMountPoint, pVmmDll);
+    // mount file system
     status = fnDokanMain(pDokanOptions, pDokanOperations);
     while(status == DOKAN_SUCCESS) {
         printf("MOUNT: ReMounting as drive %S\n", pDokanOptions->MountPoint);

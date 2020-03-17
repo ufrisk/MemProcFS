@@ -734,6 +734,23 @@ BOOL VmmMap_GetHandle(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_HANDLE *ppObH
 }
 
 /*
+* Retrieve the Physical Memory Map.
+* CALLER DECREF: ppObPhysMem
+* -- ppObPhysMem
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetPhysMem(_Out_ PVMMOB_MAP_PHYSMEM *ppObPhysMem)
+{
+    PVMMOB_MAP_PHYSMEM pObPhysMemMap = ObContainer_GetOb(ctxVmm->pObCMapPhysMem);
+    if(!pObPhysMemMap) {
+        pObPhysMemMap = VmmWinPhysMemMap_Initialize();
+    }
+    *ppObPhysMem = pObPhysMemMap;
+    return pObPhysMemMap != NULL;
+}
+
+/*
 * Retrieve the USER map
 * CALLER DECREF: ppObUserMap
 * -- ppObUserMap
@@ -1638,6 +1655,7 @@ VOID VmmClose()
     VmmWinReg_Close();
     PDB_Close();
     Ob_DECREF_NULL(&ctxVmm->pObVfsDumpContext);
+    Ob_DECREF_NULL(&ctxVmm->pObPfnContext);
     Ob_DECREF_NULL(&ctxVmm->pObCPROC);
     if(ctxVmm->fnMemoryModel.pfnClose) {
         ctxVmm->fnMemoryModel.pfnClose();
@@ -1648,12 +1666,14 @@ VOID VmmClose()
     VmmCache2Close(VMM_CACHE_TAG_PAGING);
     Ob_DECREF_NULL(&ctxVmm->Cache.PAGING_FAILED);
     Ob_DECREF_NULL(&ctxVmm->Cache.pmPrototypePte);
+    Ob_DECREF_NULL(&ctxVmm->pObCMapPhysMem);
     Ob_DECREF_NULL(&ctxVmm->pObCMapUser);
     Ob_DECREF_NULL(&ctxVmm->pObCCachePrefetchEPROCESS);
     Ob_DECREF_NULL(&ctxVmm->pObCCachePrefetchRegistry);
     DeleteCriticalSection(&ctxVmm->TcpIp.LockUpdate);
     DeleteCriticalSection(&ctxVmm->MasterLock);
     DeleteCriticalSection(&ctxVmm->LockUpdateMap);
+    DeleteCriticalSection(&ctxVmm->LockUpdateModule);
     LocalFree(ctxVmm->ObjectTypeTable.wszMultiText);
     LocalFree(ctxVmm);
     ctxVmm = NULL;
@@ -1931,11 +1951,13 @@ BOOL VmmInitialize()
     // 6: CACHE INIT: Prototype PTE Cache Map
     if(!(ctxVmm->Cache.pmPrototypePte = ObMap_New(OB_MAP_FLAGS_OBJECT_OB))) { goto fail; }
     // 7: OTHER INIT:
+    ctxVmm->pObCMapPhysMem = ObContainer_New(NULL);
     ctxVmm->pObCMapUser = ObContainer_New(NULL);
     ctxVmm->pObCCachePrefetchEPROCESS = ObContainer_New(NULL);
     ctxVmm->pObCCachePrefetchRegistry = ObContainer_New(NULL);
     InitializeCriticalSection(&ctxVmm->MasterLock);
     InitializeCriticalSection(&ctxVmm->LockUpdateMap);
+    InitializeCriticalSection(&ctxVmm->LockUpdateModule);
     InitializeCriticalSection(&ctxVmm->TcpIp.LockUpdate);
     VmmInitializeFunctions();
     return TRUE;

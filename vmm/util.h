@@ -223,6 +223,17 @@ LPSTR Util_StrDupW2A(_In_opt_ LPWSTR wsz);
 VOID Util_FileTime2String(_In_ PFILETIME pFileTime, _Out_writes_(32) LPSTR szTime);
 
 /*
+* Generic sort function to be used together with qsort. Sorts QWORD.
+*/
+int Util_qsort_QWORD(const void *pqw1, const void *pqw2);
+
+/*
+* Generic table search function to be used together with Util_qfind.
+* Finds an entry in a sorted QWORD table.
+*/
+int Util_qfind_CmpFindTableQWORD(_In_ PVOID pvFind, _In_ PVOID pvEntry);
+
+/*
 * Find an entry in a sorted array in an efficient way - O(log2(n)).
 * -- pvFind
 * -- cMap

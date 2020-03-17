@@ -12,7 +12,7 @@
 # (c) Ulf Frisk, 2018-2020
 # Author: Ulf Frisk, pcileech@frizk.net
 #
-# Header Version: 3.1
+# Header Version: 3.2
 #
 
 import atexit
@@ -48,6 +48,8 @@ VMMPY_MEMORYMODEL_X64 =                 0x0003
 # occuring in the native plugin manager / vmm / memory process file system.
 VMMPY_PLUGIN_EVENT_VERBOSITYCHANGE =    0x01
 VMMPY_PLUGIN_EVENT_TOTALREFRESH =       0x02
+VMMPY_PLUGIN_EVENT_REFRESH_PROCESS_TOTAL = 0x02
+VMMPY_PLUGIN_EVENT_REFRESH_REGISTRY =   0x04
 
 # WINDOWS REGISTRY contants below:
 VMMPY_WINREG_NONE =                     0x00
@@ -725,6 +727,38 @@ def VmmPy_GetUsers():
     VmmPy_GetUsers() --> [{'va-reghive': 18446663847596163072, 'sid': 'S-1-5-21-3317879871-105768242-2947499445-1001', 'name': 'User'}, ...]
     """
     return VMMPYC_GetUsers()
+
+
+
+def VmmPy_MapGetPhysMem():
+    """Retrieve information about the physical memory map
+
+    Keyword arguments:
+    return -- list: of list with memory ranges where each range is [base_physical_region, size_physical_region].
+    
+    Example:
+    VmmPy_MapGetPhysMem() --> [[4096, 638976], [1048576, 8192], [1060864, 2902675456], [4294967296, 13931380736], ...]
+    """
+    return VMMPYC_MapGetPhysMem()
+
+
+
+def VmmPy_MapGetPfns(pfns):
+    """Retrieve information about page frame numbers (PFNs).
+
+    Keyword arguments:
+    pfns -- list of int: the page frame numbers to retrieve information for.
+    return -- dict of dict: a dict with info for each retrieved page frame number.
+    
+    Example:
+    VmmPy_MapGetPfns([1, 0x123456, 0x58f4c]) -> {
+            1: {'pfn': 1, 'pid': 0, 'va': 18446734944756600832, 'va-pte': 18446607716437721160, 'tp': 'Active', 'tpex': '-'},
+            1193046: {'pfn': 1193046, 'pid': 0, 'va': 0, 'va-pte': 18446669339889095480, 'tp': 'Standby', 'tpex': 'File'},
+            364364: {'pfn': 364364, 'pid': 10744, 'va': 1977593008128, 'va-pte': 18446607188374379848, 'tp': 'Active', 'tpex': 'ProcPriv'}
+        }
+        
+    """
+    return VMMPYC_MapGetPfns(pfns)
 
 
 

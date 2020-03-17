@@ -134,7 +134,7 @@ NTSTATUS Phys2Virt_ReadVirtProcess(_In_ PVMM_PROCESS pProcess, _Out_ PBYTE pb, _
     pObPhys2Virt = VmmPhys2VirtGetInformation(pProcess, 0);
     // 2: show result
     if(pObPhys2Virt) {
-        for(i = 1; i <= pObPhys2Virt->cvaList; i++) {
+        for(i = 0; i < pObPhys2Virt->cvaList; i++) {
             cbBuffer += snprintf(
                 pbBuffer + cbBuffer,
                 cbBufferMax - cbBuffer,

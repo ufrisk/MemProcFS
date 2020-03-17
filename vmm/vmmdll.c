@@ -17,6 +17,7 @@
 #include "vmmwin.h"
 #include "vmmwinreg.h"
 #include "vmmwintcpip.h"
+#include "mm_pfn.h"
 
 // ----------------------------------------------------------------------------
 // Synchronization macro below. The VMM isn't thread safe so it's important to
@@ -1119,6 +1120,37 @@ BOOL VMMDLL_ProcessMap_GetHandle(_In_ DWORD dwPID, _Out_writes_bytes_opt_(*pcbHa
 }
 
 _Success_(return)
+BOOL VMMDLL_Map_GetPhysMem_Impl(_Out_writes_bytes_opt_(*pcbPhysMemMap) PVMMDLL_MAP_PHYSMEM pPhysMemMap, _Inout_ PDWORD pcbPhysMemMap)
+{
+    BOOL fResult = FALSE;
+    DWORD cbData = 0, cbDataMap;
+    PVMMOB_MAP_PHYSMEM pObMap = NULL;
+    if(!VmmMap_GetPhysMem(&pObMap)) { goto fail; }
+    cbDataMap = pObMap->cMap * sizeof(VMMDLL_MAP_PHYSMEMENTRY);
+    cbData = sizeof(VMMDLL_MAP_PHYSMEM) + cbDataMap;
+    if(pPhysMemMap) {
+        if(*pcbPhysMemMap < cbData) { goto fail; }
+        ZeroMemory(pPhysMemMap, cbData);
+        pPhysMemMap->dwVersion = VMMDLL_MAP_PHYSMEM_VERSION;
+        pPhysMemMap->cMap = pObMap->cMap;
+        memcpy(pPhysMemMap->pMap, pObMap->pMap, cbDataMap);
+    }
+    fResult = TRUE;
+fail:
+    *pcbPhysMemMap = cbData;
+    Ob_DECREF(pObMap);
+    return fResult;
+}
+
+_Success_(return)
+BOOL VMMDLL_Map_GetPhysMem(_Out_writes_bytes_opt_(*pcbPhysMemMap) PVMMDLL_MAP_PHYSMEM pPhysMemMap, _Inout_ PDWORD pcbPhysMemMap)
+{
+    CALL_IMPLEMENTATION_VMM(
+        STATISTICS_ID_VMMDLL_Map_GetPhysMem,
+        VMMDLL_Map_GetPhysMem_Impl(pPhysMemMap, pcbPhysMemMap))
+}
+
+_Success_(return)
 BOOL VMMDLL_Map_GetUsers_Impl(_Out_writes_bytes_opt_(*pcbUserMap) PVMMDLL_MAP_USER pUserMap, _Inout_ PDWORD pcbUserMap)
 {
     BOOL fResult = FALSE;
@@ -1130,7 +1162,7 @@ BOOL VMMDLL_Map_GetUsers_Impl(_Out_writes_bytes_opt_(*pcbUserMap) PVMMDLL_MAP_US
     cbData = sizeof(VMMDLL_MAP_USER) + cbDataMap + pObMap->cbMultiText;
     if(pUserMap) {
         if(*pcbUserMap < cbData) { goto fail; }
-        ZeroMemory(pUserMap, cbDataMap);
+        ZeroMemory(pUserMap, cbData);
         pUserMap->dwVersion = VMMDLL_MAP_USER_VERSION;
         pUserMap->wszMultiText = (LPWSTR)(((PBYTE)pUserMap->pMap) + cbDataMap);
         pUserMap->cbMultiText = pObMap->cbMultiText;
@@ -1158,8 +1190,47 @@ _Success_(return)
 BOOL VMMDLL_Map_GetUsers(_Out_writes_bytes_opt_(*pcbUserMap) PVMMDLL_MAP_USER pUserMap, _Inout_ PDWORD pcbUserMap)
 {
     CALL_IMPLEMENTATION_VMM(
-        STATISTICS_ID_VMMDLL_MapGetUsers,
+        STATISTICS_ID_VMMDLL_Map_GetUsers,
         VMMDLL_Map_GetUsers_Impl(pUserMap, pcbUserMap))
+}
+
+_Success_(return)
+BOOL VMMDLL_Map_GetPfn_Impl(_In_ DWORD pPfns[], _In_ DWORD cPfns, _Out_writes_bytes_opt_(*pcbPfnMap) PVMMDLL_MAP_PFN pPfnMap, _Inout_ PDWORD pcbPfnMap)
+{
+    BOOL fResult = FALSE;
+    POB_SET psObPfns = NULL;
+    PMMPFNOB_MAP pObMap = NULL;
+    DWORD i, cbData = 0, cbDataMap;
+    cbDataMap = cPfns * sizeof(VMMDLL_MAP_PFNENTRY);
+    cbData = sizeof(VMMDLL_MAP_PFN) + cbDataMap;
+    if(pPfnMap) {
+        if(*pcbPfnMap < cbData) { goto fail; }
+        if(!(psObPfns = ObSet_New())) { goto fail; }
+        for(i = 0; i < cPfns; i++) {
+            ObSet_Push(psObPfns, pPfns[i]);
+        }
+        if(!MmPfn_Map_GetPfnScatter(psObPfns, &pObMap)) { goto fail; }
+        ZeroMemory(pPfnMap, cbData);
+        pPfnMap->dwVersion = VMMDLL_MAP_PFN_VERSION;
+        pPfnMap->cMap = pObMap->cMap;
+        cbDataMap = pObMap->cMap * sizeof(VMMDLL_MAP_PFNENTRY);
+        cbData = sizeof(VMMDLL_MAP_PFN) + cbDataMap;
+        memcpy(pPfnMap->pMap, pObMap->pMap, cbDataMap);
+    }
+    fResult = TRUE;
+fail:
+    *pcbPfnMap = cbData;
+    Ob_DECREF(psObPfns);
+    Ob_DECREF(pObMap);
+    return fResult;
+}
+
+_Success_(return)
+BOOL VMMDLL_Map_GetPfn(_In_ DWORD pPfns[], _In_ DWORD cPfns, _Out_writes_bytes_opt_(*pcbPfnMap) PVMMDLL_MAP_PFN pPfnMap, _Inout_ PDWORD pcbPfnMap)
+{
+    CALL_IMPLEMENTATION_VMM(
+        STATISTICS_ID_VMMDLL_Map_GetPfn,
+        VMMDLL_Map_GetPfn_Impl(pPfns, cPfns, pPfnMap, pcbPfnMap))
 }
 
 _Success_(return)
@@ -1573,7 +1644,7 @@ BOOL VMMDLL_WinReg_EnumKeyExW_Impl(_In_ LPWSTR wszFullPathKey, _In_ DWORD dwInde
         return FALSE;
     }
     f = VmmWinReg_PathHiveGetByFullPath(wszFullPathKey, &pObHive, wszPathKey) &&
-        (pObKey = VmmWinReg_KeyGetByPathW(pObHive, wszPathKey)) &&
+        (pObKey = VmmWinReg_KeyGetByPath(pObHive, wszPathKey)) &&
         (pmObSubKeys = VmmWinReg_KeyList(pObHive, pObKey)) &&
         (pObSubKey = ObMap_GetByIndex(pmObSubKeys, dwIndex));
     if(f) { VmmWinReg_KeyInfo(pObHive, pObSubKey, &KeyInfo); }
@@ -1604,7 +1675,7 @@ BOOL VMMDLL_WinReg_EnumValueW_Impl(_In_ LPWSTR wszFullPathKey, _In_ DWORD dwInde
         return FALSE;
     }
     f = VmmWinReg_PathHiveGetByFullPath(wszFullPathKey, &pObHive, wszPathKey) &&
-        (pObKey = VmmWinReg_KeyGetByPathW(pObHive, wszPathKey)) &&
+        (pObKey = VmmWinReg_KeyGetByPath(pObHive, wszPathKey)) &&
         (pmObValues = VmmWinReg_KeyValueList(pObHive, pObKey)) &&
         (pObValue = ObMap_GetByIndex(pmObValues, dwIndex));
     if(f) { VmmWinReg_ValueInfo(pObHive, pObValue, &ValueInfo); }

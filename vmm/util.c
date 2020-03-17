@@ -478,6 +478,24 @@ VOID Util_FileTime2String(_In_ PFILETIME pFileTime, _Out_writes_(32) LPSTR szTim
     );
 }
 
+int Util_qsort_QWORD(const void *pqw1, const void *pqw2)
+{
+    QWORD qw1 = *(PQWORD)pqw1;
+    QWORD qw2 = *(PQWORD)pqw2;
+    return
+        (qw1 < qw2) ? -1 :
+        (qw1 > qw2) ? 1 : 0;
+}
+
+int Util_qfind_CmpFindTableQWORD(_In_ PVOID pvFind, _In_ PVOID pvEntry)
+{
+    QWORD qwKey = (QWORD)pvFind;
+    QWORD qwEntry = *(PQWORD)pvEntry;
+    if(qwEntry > qwKey) { return -1; }
+    if(qwEntry < qwKey) { return 1; }
+    return 0;
+}
+
 PVOID Util_qfind(_In_ PVOID pvFind, _In_ DWORD cMap, _In_ PVOID pvMap, _In_ DWORD cbEntry, _In_ int(*pfnCmp)(_In_ PVOID pvFind, _In_ PVOID pvEntry))
 {
     int f;

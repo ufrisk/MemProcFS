@@ -238,6 +238,11 @@ typedef struct tdVMM_MAP_HANDLEENTRY {
     };
 } VMM_MAP_HANDLEENTRY, *PVMM_MAP_HANDLEENTRY;
 
+typedef struct tdVMM_MAP_PHYSMEMENTRY {
+    QWORD pa;
+    QWORD cb;
+} VMM_MAP_PHYSMEMENTRY, *PVMM_MAP_PHYSMEMENTRY;
+
 typedef struct tdVMM_MAP_USERENTRY {
     PSID pSID;
     DWORD cbSID;
@@ -295,6 +300,12 @@ typedef struct tdVMMOB_MAP_HANDLE {
     DWORD cMap;                     // # map entries.
     VMM_MAP_HANDLEENTRY pMap[];     // map entries.
 } VMMOB_MAP_HANDLE, *PVMMOB_MAP_HANDLE;
+
+typedef struct tdVMMOB_MAP_PHYSMEM {
+    OB ObHdr;
+    DWORD cMap;                     // # map entries.
+    VMM_MAP_PHYSMEMENTRY pMap[];    // map entries.
+} VMMOB_MAP_PHYSMEM, *PVMMOB_MAP_PHYSMEM;
 
 typedef struct tdVMMOB_MAP_USER {
     OB ObHdr;
@@ -750,6 +761,7 @@ typedef struct tdVMM_CONTEXT {
     VMM_KERNELINFO kernel;
     VMM_OFFSET offset;
     POB pObVfsDumpContext;
+    POB pObPfnContext;
     PVOID pPdbContext;
     PVOID pMmContext;
     PVMMWINOBJ_CONTEXT pObjects;
@@ -763,7 +775,9 @@ typedef struct tdVMM_CONTEXT {
         PVOID Root;
         PVOID Proc;
     } Plugin;
-    CRITICAL_SECTION LockUpdateMap; // lock for global maps - such as MapUser
+    CRITICAL_SECTION LockUpdateMap;     // lock for global maps - such as MapUser
+    CRITICAL_SECTION LockUpdateModule;  // lock for internal modules
+    POB_CONTAINER pObCMapPhysMem;
     POB_CONTAINER pObCMapUser;
     POB_CONTAINER pObCCachePrefetchEPROCESS;
     POB_CONTAINER pObCCachePrefetchRegistry;
@@ -1211,6 +1225,15 @@ PVMM_MAP_THREADENTRY VmmMap_GetThreadEntry(_In_ PVMMOB_MAP_THREAD pThreadMap, _I
 */
 _Success_(return)
 BOOL VmmMap_GetHandle(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_HANDLE *ppObHandleMap, _In_ BOOL fExtendedText);
+
+/*
+* Retrieve the Physical Memory Map.
+* CALLER DECREF: ppObPhysMem
+* -- ppObPhysMem
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetPhysMem(_Out_ PVMMOB_MAP_PHYSMEM *ppObPhysMem);
 
 /*
 * Retrieve the USER map

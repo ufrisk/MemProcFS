@@ -10,6 +10,7 @@
 #include "vmmwininit.h"
 #include "vmmwinobj.h"
 #include "vmmwinreg.h"
+#include "mm_pfn.h"
 #include "pluginmanager.h"
 #include "statistics.h"
 #include "util.h"
@@ -142,13 +143,17 @@ DWORD VmmProcCacheUpdaterThread()
             // send notify
             if(fProcTotal) {
                 VmmWinObj_Refresh();
-                PluginManager_Notify(VMMDLL_PLUGIN_EVENT_TOTALREFRESH, NULL, 0);
+                PluginManager_Notify(VMMDLL_PLUGIN_EVENT_REFRESH_PROCESS_TOTAL, NULL, 0);
             }
+            // refresh pfn subsystem
+            MmPfn_Refresh();
         }
         // refresh registry and user map
         if(fRegistry) {
             VmmWinReg_Refresh();
             VmmWinUser_Refresh();
+            VmmWinPhysMemMap_Refresh();
+            PluginManager_Notify(VMMDLL_PLUGIN_EVENT_REFRESH_REGISTRY, NULL, 0);
         }
         LeaveCriticalSection(&ctxVmm->MasterLock);
     }

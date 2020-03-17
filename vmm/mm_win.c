@@ -10,12 +10,11 @@
 #include "statistics.h"
 #include "util.h"
 
-#define MM_BUILD_17134_LATER                        (ctxVmm->kernel.dwVersionBuild >= 17134)
 #define MM_LOOP_PROTECT_ADD(flags)                  ((flags & ~0x00ff0000) | ((((flags >> 16) & 0xff) + 1) << 16))
 #define MM_LOOP_PROTECT_MAX(flags)                  (((flags >> 16) & 0xff) > 4)
 
 #define PTE_SWIZZLE_BIT                             0x10
-#define PTE_SWIZZLE_MASK                            0x00002000
+#define PTE_SWIZZLE_MASK                            (((PMMWIN_CONTEXT)ctxVmm->pMmContext)->MemCompress.dwInvalidPteMask)
 
 #define MMWINX86_PTE_IS_HARDWARE(pte)               (pte & 0x01)
 #define MMWINX86_PTE_TRANSITION(pte)                (((pte & 0x0c01) == 0x0800) ? ((pte & 0xfffff000) | 0x005) : 0)
@@ -27,14 +26,14 @@
 #define MMWINX86PAE_PTE_TRANSITION(pte)             (((pte & 0x0c01) == 0x0800) ? ((pte & 0x0000003f'fffff000) | 0x005) : 0)
 #define MMWINX86PAE_PTE_PROTOTYPE(pte)              (((pte & 0x80000007'00000401) == 0x80000000'00000400) ? (pte >> 32) : 0)
 #define MMWINX86PAE_PTE_PAGE_FILE_NUMBER(pte)       ((pte >> (((ctxVmm->kernel.dwVersionBuild >= 17134) ? 12 : 1))) & 0x0f)
-#define MMWINX86PAE_PTE_PAGE_FILE_OFFSET(pte)       ((pte >> 32) ^ ((!(pte & PTE_SWIZZLE_BIT) && MM_BUILD_17134_LATER) ? PTE_SWIZZLE_MASK : 0))
+#define MMWINX86PAE_PTE_PAGE_FILE_OFFSET(pte)       ((pte >> 32) ^ (!(pte & PTE_SWIZZLE_BIT) ? PTE_SWIZZLE_MASK : 0))
 #define MMWINX86PAE_PTE_PAGE_KEY_COMPRESSED(pte)    (DWORD)(((MMWINX86PAE_PTE_PAGE_FILE_NUMBER(pte) << 0x1c) | MMWINX86PAE_PTE_PAGE_FILE_OFFSET(pte)))
 
 #define MMWINX64_PTE_IS_HARDWARE(pte)               (pte & 0x01)
 #define MMWINX64_PTE_TRANSITION(pte)                (((pte & 0x0c01) == 0x0800) ? ((pte & 0xffffdfff'fffff000) | 0x005) : 0)
 #define MMWINX64_PTE_PROTOTYPE(pte)                 (((pte & 0x80000000'00070401) == 0x80000000'00000400) ? ((pte >> 16) | 0xffff0000'00000000) : 0)
 #define MMWINX64_PTE_PAGE_FILE_NUMBER(pte)          ((pte >> (((ctxVmm->kernel.dwVersionBuild >= 17134) ? 12 : 1))) & 0x0f)
-#define MMWINX64_PTE_PAGE_FILE_OFFSET(pte)          ((pte >> 32) ^ ((!(pte & PTE_SWIZZLE_BIT) && MM_BUILD_17134_LATER) ? PTE_SWIZZLE_MASK : 0))
+#define MMWINX64_PTE_PAGE_FILE_OFFSET(pte)          ((pte >> 32) ^ (!(pte & PTE_SWIZZLE_BIT) ? PTE_SWIZZLE_MASK : 0))
 #define MMWINX64_PTE_PAGE_KEY_COMPRESSED(pte)       (DWORD)(((MMWINX64_PTE_PAGE_FILE_NUMBER(pte) << 0x1c) | MMWINX64_PTE_PAGE_FILE_OFFSET(pte)))
 
 typedef struct tdMMWIN_MEMCOMPRESS_OFFSET {
@@ -57,6 +56,7 @@ typedef struct tdMMWIN_MEMCOMPRESS_CONTEXT {
     QWORD vaEPROCESS;
     DWORD dwPid;
     DWORD dwPageFileNumber;
+    DWORD dwInvalidPteMask;     // top 32-bits of nt!MiState->Hardware.InvalidPteMask
     BOOL fValid;
     BOOL fInitialized;
     QWORD vaSmGlobals;
@@ -390,6 +390,8 @@ VOID MmWin_MemCompress_InitializeVirtualStorePageFileNumber()
     IMAGE_SECTION_HEADER oSectionHeader;
     POB_SET pObSet = NULL;
     PMMWIN_CONTEXT ctx = (PMMWIN_CONTEXT)ctxVmm->pMmContext;
+    QWORD qw, vaMiState;
+    DWORD oMiStateHardware, oMiStateHardwareInvalidPteMask;
     ctx->MemCompress.dwPageFileNumber = 2;
     // 1: SetUp and locate nt!MiSystemPartition/nt!.data
     if(!(pObSet = ObSet_New())) { goto finish; }
@@ -452,7 +454,15 @@ VOID MmWin_MemCompress_InitializeVirtualStorePageFileNumber()
         oPoolHdr = 4;
         oPfNum = 0xcc;
     }
-    // 3: Verify nt!dt _MMPAGING_FILE by looking at pool header and VirtualStorePagefile bit
+    // 3: Set InvalidPteMask
+    if(ctxVmm->kernel.dwVersionBuild >= 17134) {
+        f = PDB_GetSymbolAddress(VMMWIN_PDB_HANDLE_KERNEL, "MiState", &vaMiState) &&
+            PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_MI_SYSTEM_INFORMATION", L"Hardware", &oMiStateHardware) &&
+            PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_MI_HARDWARE_STATE", L"InvalidPteMask", &oMiStateHardwareInvalidPteMask) &&
+            VmmRead(pObSystemProcess, vaMiState + oMiStateHardware + oMiStateHardwareInvalidPteMask, (PBYTE)&qw, 8);
+        ctx->MemCompress.dwInvalidPteMask = f ? (qw >> 32) : 0x00002000;     // if fail: [0x00002000 = most common on Intel]
+    }
+    // 4: Verify nt!dt _MMPAGING_FILE by looking at pool header and VirtualStorePagefile bit
     VmmCachePrefetchPages(pObSystemProcess, pObSet, 0);
     while((va = ObSet_Pop(pObSet))) {
         VmmReadEx(pObSystemProcess, va - 0x10, pbMm, 0x100, &cbRead, VMM_FLAG_FORCECACHE_READ);

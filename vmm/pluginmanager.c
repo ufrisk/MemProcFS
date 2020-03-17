@@ -437,7 +437,7 @@ BOOL PluginManager_Initialize()
     hFindFile = FindFirstFileA(szPath, &FindData);
     if(hFindFile != INVALID_HANDLE_VALUE) {
         do {
-            szPath[cchPathBase] = '\0';
+            szPath[min(cchPathBase, _countof(szPath) - 1)] = '\0';
             strcat_s(szPath, _countof(szPath), "plugins\\");
             strcat_s(szPath, _countof(szPath), FindData.cFileName);
             hDLL = LoadLibraryExA(szPath, 0, 0);

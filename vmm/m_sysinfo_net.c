@@ -49,7 +49,7 @@ VOID MSysInfoNet_ObContext_CallbackRefCount1(PMSYSINFONET_OB_CONTEXT pOb)
 * Format network connection into into human readable text.
 */
 _Success_(return)
-BOOL MSysInfoNet_GetContext_ToString(_In_ PVMMWIN_TCPIP_ENTRY pTcpE, _In_ DWORD cTcpE, _Out_ PBYTE * ppbFileN, _Out_ PDWORD pcbFileN, _Out_ PBYTE * ppbFileV, _Out_ PDWORD pcbFileV)
+BOOL MSysInfoNet_GetContext_ToString(_In_ PVMMWIN_TCPIP_ENTRY pTcpE, _In_ DWORD cTcpE, _Out_ PBYTE *ppbFileN, _Out_ PDWORD pcbFileN, _Out_ PBYTE *ppbFileV, _Out_ PDWORD pcbFileV)
 {
     BOOL fResult = FALSE;
     PVMMWIN_TCPIP_ENTRY pE;

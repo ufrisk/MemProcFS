@@ -31,6 +31,8 @@ EXPORTS
 
     VMMDLL_PidList
     VMMDLL_PidGetFromName
+    VMMDLL_Map_GetPhysMem
+    VMMDLL_Map_GetPfn
     VMMDLL_Map_GetUsers
     VMMDLL_ProcessMap_GetPte
     VMMDLL_ProcessMap_GetVad
