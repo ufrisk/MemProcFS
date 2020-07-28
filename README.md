@@ -112,11 +112,14 @@ The project source code is released under GPLv3. Some bundled Microsoft redistri
 
 Links:
 ======
-* Blog: http://blog.frizk.net
-* Twitter: https://twitter.com/UlfFrisk
-* PCILeech: https://github.com/ufrisk/pcileech/
-* LeechCore: https://github.com/ufrisk/LeechCore/
+* Twitter: [![Twitter](https://img.shields.io/twitter/follow/UlfFrisk?label=UlfFrisk&style=social)](https://twitter.com/intent/follow?screen_name=UlfFrisk)
+* Discord: [![Discord | Porchetta Industries](https://img.shields.io/discord/736724457258745996.svg?label=&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/sEkn3aa)
+* PCILeech: https://github.com/ufrisk/pcileech
+* PCILeech FPGA: https://github.com/ufrisk/pcileech-fpga
+* LeechCore: https://github.com/ufrisk/LeechCore
+* MemProcFS: https://github.com/ufrisk/MemProcFS
 * YouTube: https://www.youtube.com/channel/UC2aAi-gjqvKiC7s7Opzv9rg
+* Blog: http://blog.frizk.net
 
 Support PCILeech/MemProcFS development:
 =======================================
