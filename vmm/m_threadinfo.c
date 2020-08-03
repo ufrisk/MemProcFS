@@ -9,7 +9,7 @@
 #include "vmmdll.h"
 
 #define THREADINFO_LINELENGTH       186ULL
-#define THREADINFO_INFOFILE_LENGTH  582ULL
+#define THREADINFO_INFOFILE_LENGTH  740ULL
 
 _Success_(return == 0)
 NTSTATUS ThreadInfo_Read_ThreadInfo(_In_ PVMM_MAP_THREADENTRY pThreadEntry, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
@@ -22,26 +22,31 @@ NTSTATUS ThreadInfo_Read_ThreadInfo(_In_ PVMM_MAP_THREADENTRY pThreadEntry, _Out
     o = snprintf(
         sz,
         THREADINFO_INFOFILE_LENGTH + 1,
-        "PID:          %21i\n" \
-        "TID:          %21i\n" \
-        "ExitStatus:   %21x\n" \
-        "State:        %21x\n" \
-        "Running:      %21x\n" \
-        "Priority:     %21x\n" \
-        "BasePriority: %21x\n" \
-        "ETHREAD:      %21llx\n" \
-        "TEB:          %21llx\n" \
-        "StartAddress:      %16llx\n" \
-        "UserStackBase:     %16llx\n" \
-        "UserStackLimit:    %16llx\n" \
-        "KernelStackBase:   %16llx\n" \
-        "KernelStackLimit:  %16llx\n" \
-        "CreateTime: %-26s\n" \
-        "ExitTime:   %-26s\n",
+        "PID:           %21i\n" \
+        "TID:           %21i\n" \
+        "ExitStatus:    %21x\n" \
+        "State:         %21x\n" \
+        "SuspendCount:  %21x\n" \
+        "Running:       %21x\n" \
+        "Priority:      %21x\n" \
+        "BasePriority:  %21x\n" \
+        "ETHREAD:       %21llx\n" \
+        "TEB:           %21llx\n" \
+        "StartAddress:       %16llx\n" \
+        "UserStackBase:      %16llx\n" \
+        "UserStackLimit:     %16llx\n" \
+        "KernelStackBase:    %16llx\n" \
+        "KernelStackLimit:   %16llx\n" \
+        "TrapFrame:          %16llx\n" \
+        "StackPointer:       %16llx\n" \
+        "InstructionPointer: %16llx\n" \
+        "CreateTime:  %-23s\n" \
+        "ExitTime:    %-23s\n",
         pThreadEntry->dwPID,
         pThreadEntry->dwTID,
         pThreadEntry->dwExitStatus,
         pThreadEntry->bState,
+        pThreadEntry->bSuspendCount,
         pThreadEntry->bRunning,
         pThreadEntry->bPriority,
         pThreadEntry->bBasePriority,
@@ -52,6 +57,9 @@ NTSTATUS ThreadInfo_Read_ThreadInfo(_In_ PVMM_MAP_THREADENTRY pThreadEntry, _Out
         pThreadEntry->vaStackLimitUser,
         pThreadEntry->vaStackBaseKernel,
         pThreadEntry->vaStackLimitKernel,
+        pThreadEntry->vaTrapFrame,
+        pThreadEntry->vaRSP,
+        pThreadEntry->vaRIP,
         szTimeCreate,
         szTimeExit
     );

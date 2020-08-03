@@ -1,4 +1,4 @@
-// pluginmanager.h : definitions for the plugin manager for memory process file system plugins.
+// pluginmanager.h : definitions for the plugin manager for MemProcFS plugins.
 //
 // (c) Ulf Frisk, 2018-2020
 // Author: Ulf Frisk, pcileech@frizk.net
@@ -20,6 +20,15 @@ BOOL PluginManager_Initialize();
 * DLLs from memory.
 */
 VOID PluginManager_Close();
+
+/*
+* Set/Change the visibility of an already registered plugin. Depending on other
+* plugins registered in the path parent paths may change as well.
+* -- fRoot = TRUE: root, FALSE: process.
+* -- wszPluginPath
+* -- fVisible
+*/
+VOID PluginManager_SetVisibility(_In_ BOOL fRoot, _In_ LPWSTR wszPluginPath, _In_ BOOL fVisible);
 
 /*
 * Send a List command down the module chain to the appropriate module.
@@ -63,5 +72,18 @@ NTSTATUS PluginManager_Write(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszPath
 * -- return = (always return TRUE).
 */
 BOOL PluginManager_Notify(_In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent);
+
+/*
+* Register plugins with timelining capabilities with the timeline manager
+* and call into each plugin to allow them to add their timelining entries.
+* -- pfnRegister = callback function to register timeline module.
+* -- pfnClose = function to close the timeline handle.
+* -- pfnAddEntry = callback function to call to add a timelining entry.
+*/
+VOID PluginManager_Timeline(
+    _In_ HANDLE(*pfnRegister)(_In_reads_(6) LPSTR sNameShort, _In_reads_(32) LPSTR szFileUTF8, _In_reads_(32) LPSTR szFileJSON),
+    _In_ VOID(*pfnClose)(_In_ HANDLE hTimeline),
+    _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ QWORD qwValue, _In_ LPWSTR wszText)
+);
 
 #endif /* __PLUGINMANAGER_H__ */

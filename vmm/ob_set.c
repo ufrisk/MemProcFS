@@ -13,6 +13,7 @@
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "ob.h"
+#include <stdio.h>
 
 #define OB_SET_ENTRIES_DIRECTORY        0x100
 #define OB_SET_ENTRIES_TABLE            0x80
@@ -421,6 +422,18 @@ BOOL _ObSet_Push(_In_ POB_SET pvs, _In_ QWORD value)
     return TRUE;
 }
 
+_Success_(return)
+BOOL _ObSet_PushSet(_In_ POB_SET pvs, _In_ POB_SET pvsSrc)
+{
+    DWORD iValue;
+    AcquireSRWLockShared(&pvsSrc->LockSRW);
+    for(iValue = pvsSrc->c - 1; iValue; iValue--) {
+        _ObSet_Push(pvs, _ObSet_GetValueFromIndex(pvsSrc, iValue));
+    }
+    ReleaseSRWLockShared(&pvsSrc->LockSRW);
+    return TRUE;
+}
+
 /*
 * Push / Insert a non-zero value into the ObSet.
 * -- pvs
@@ -432,6 +445,19 @@ _Success_(return)
 BOOL ObSet_Push(_In_opt_ POB_SET pvs, _In_ QWORD value)
 {
     OB_SET_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(pvs, BOOL, FALSE, _ObSet_Push(pvs, value))
+}
+
+/*
+* Push/Merge/Insert all values from the ObSet pvsSrc into the ObSet pvs.
+* The source set is kept intact.
+* -- pvs
+* -- pvsSrc
+* -- return = TRUE on success, FALSE otherwise.
+*/
+_Success_(return)
+BOOL ObSet_PushSet(_In_opt_ POB_SET pvs, _In_ POB_SET pvsSrc)
+{
+    OB_SET_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(pvs, BOOL, FALSE, _ObSet_PushSet(pvs, pvsSrc))
 }
 
 /*
@@ -462,4 +488,59 @@ VOID ObSet_Push_PageAlign(_In_opt_ POB_SET pvs, _In_ QWORD a, _In_ DWORD cb)
 DWORD ObSet_Size(_In_opt_ POB_SET pvs)
 {
     OB_SET_CALL_SYNCHRONIZED_IMPLEMENTATION_READ(pvs, DWORD, 0, pvs->c - 1)
+}
+
+
+_Success_(return)
+BOOL _ObSet_FileSave(_In_ POB_SET pvs, _In_ LPWSTR wszFileName)
+{
+    QWORD v = 0;
+    CHAR szBuffer[18] = { 0 };
+    HANDLE hFile = INVALID_HANDLE_VALUE;
+    hFile = CreateFileW(wszFileName, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if(hFile == INVALID_HANDLE_VALUE) { return FALSE; }
+    while(v = ObSet_GetNext(pvs, v)) {
+        snprintf(szBuffer, 18, "%016llx\n", v);
+        WriteFile(hFile, szBuffer, 17, NULL, NULL);
+    }
+    CloseHandle(hFile);
+    return TRUE;
+}
+
+/*
+* Save the contents of an ObSet to a disk file.
+* The resulting disk file may be read with ObSet_FileLoad().
+* -- pvs
+* -- wszFileName = save file to create.
+* -- return
+*/
+_Success_(return)
+BOOL ObSet_FileSave(_In_opt_ POB_SET pvs, _In_ LPWSTR wszFileName)
+{
+    OB_SET_CALL_SYNCHRONIZED_IMPLEMENTATION_READ(pvs, BOOL, FALSE, _ObSet_FileSave(pvs, wszFileName))
+}
+
+/*
+* Load the contents of an ObSet disk file into the supplied set.
+* -- pvs
+* -- wszFileName = file previously saved by ObSet_FileSave().
+* -- return
+*/
+_Success_(return)
+BOOL ObSet_FileLoad(_In_opt_ POB_SET pvs, _In_ LPWSTR wszFileName)
+{
+    QWORD v;
+    DWORD cbRead;
+    HANDLE hFile = INVALID_HANDLE_VALUE;
+    CHAR szBuffer[18] = { 0 };
+    if(!OB_SET_IS_VALID(pvs)) { return FALSE; }
+    hFile = CreateFileW(wszFileName, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if(hFile == INVALID_HANDLE_VALUE) { return FALSE; }
+    while(ReadFile(hFile, szBuffer, 17, &cbRead, NULL) && (cbRead == 17)) {
+        if((v = strtoull(szBuffer, NULL, 16))) {
+            ObSet_Push(pvs, v);
+        }
+    }
+    CloseHandle(hFile);
+    return TRUE;
 }

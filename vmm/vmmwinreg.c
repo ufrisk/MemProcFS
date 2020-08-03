@@ -199,48 +199,22 @@ BOOL VmmWinReg_Reg2Virt(_In_ PVMM_PROCESS pProcessRegistry, _In_ POB_REGISTRY_HI
 * -- cpMEMsReg
 * -- flags
 */
-VOID VmmWinReg_ReadScatter(_In_ PVMM_PROCESS pProcessRegistry, _In_ POB_REGISTRY_HIVE pRegistryHive, _Inout_ PPMEM_IO_SCATTER_HEADER ppMEMsReg, _In_ DWORD cpMEMsReg, _In_ QWORD flags)
+VOID VmmWinReg_ReadScatter(_In_ PVMM_PROCESS pProcessRegistry, _In_ POB_REGISTRY_HIVE pRegistryHive, _Inout_ PPMEM_SCATTER ppMEMsReg, _In_ DWORD cpMEMsReg, _In_ QWORD flags)
 {
-    QWORD va;
-    DWORD i = 0, iRA, iVA;
-    BYTE pbBufferSmall[0x20 * (sizeof(MEM_IO_SCATTER_HEADER) + sizeof(PMEM_IO_SCATTER_HEADER))];
-    PBYTE pbBufferMEMs, pbBufferLarge = NULL;
-    PMEM_IO_SCATTER_HEADER pIoVA, pIoRA;
-    PPMEM_IO_SCATTER_HEADER ppMEMsVirt = NULL;
-    // 1: allocate / set up buffers (if needed)
-    if(cpMEMsReg < 0x20) {
-        ppMEMsVirt = (PPMEM_IO_SCATTER_HEADER)pbBufferSmall;
-        pbBufferMEMs = pbBufferSmall + cpMEMsReg * sizeof(PMEM_IO_SCATTER_HEADER);
-    } else {
-        if(!(pbBufferLarge = LocalAlloc(0, cpMEMsReg * (sizeof(MEM_IO_SCATTER_HEADER) + sizeof(PMEM_IO_SCATTER_HEADER))))) { return; }
-        ppMEMsVirt = (PPMEM_IO_SCATTER_HEADER)pbBufferLarge;
-        pbBufferMEMs = pbBufferLarge + cpMEMsReg * sizeof(PMEM_IO_SCATTER_HEADER);
-    }
-    // 2: translate reg2virt
-    for(iRA = 0, iVA = 0; iRA < cpMEMsReg; iRA++) {
-        pIoRA = ppMEMsReg[iRA];
-        if(VmmWinReg_Reg2Virt(pProcessRegistry, pRegistryHive, (DWORD)pIoRA->qwA, &va)) {
-            pIoVA = ppMEMsVirt[iVA] = (PMEM_IO_SCATTER_HEADER)pbBufferMEMs + iVA;
-            iVA++;
-            pIoVA->magic = MEM_IO_SCATTER_HEADER_MAGIC;
-            pIoVA->version = MEM_IO_SCATTER_HEADER_VERSION;
-            pIoVA->qwA = va;
-            pIoVA->cbMax = 0x1000;
-            pIoVA->cb = 0;
-            pIoVA->pb = pIoRA->pb;
-            pIoVA->pvReserved1 = (PVOID)pIoRA;
-        } else {
-            pIoRA->cb = 0;
+    DWORD i;
+    PMEM_SCATTER pMEM;
+    for(i = 0; i < cpMEMsReg; i++) {
+        pMEM = ppMEMsReg[i];
+        MEM_SCATTER_STACK_PUSH(pMEM, pMEM->qwA);
+        if(pMEM->f || !VmmWinReg_Reg2Virt(pProcessRegistry, pRegistryHive, (DWORD)pMEM->qwA, &pMEM->qwA)) {
+            pMEM->qwA = -1;
         }
     }
-    // 3: read and check result
-    VmmReadScatterVirtual(pProcessRegistry, ppMEMsVirt, iVA, flags);
-    while(iVA > 0) {
-        pIoVA = ppMEMsVirt[--iVA];
-        pIoRA = (PMEM_IO_SCATTER_HEADER)pIoVA->pvReserved1;
-        pIoRA->cb = pIoVA->cb;
+    VmmReadScatterVirtual(pProcessRegistry, ppMEMsReg, cpMEMsReg, flags);
+    for(i = 0; i < cpMEMsReg; i++) {
+        pMEM = ppMEMsReg[i];
+        pMEM->qwA = MEM_SCATTER_STACK_POP(pMEM);
     }
-    LocalFree(pbBufferLarge);
 }
 
 /*
@@ -259,23 +233,22 @@ VOID VmmWinReg_HiveReadEx(_In_ POB_REGISTRY_HIVE pRegistryHive, _In_ DWORD ra, _
     PVMM_PROCESS pObProcessRegistry = NULL;
     DWORD cbP, cMEMs, cbRead = 0;
     PBYTE pbBuffer;
-    PMEM_IO_SCATTER_HEADER pMEMs, *ppMEMs;
+    PMEM_SCATTER pMEMs, *ppMEMs;
     QWORD i, oVA;
     if(pcbReadOpt) { *pcbReadOpt = 0; }
     if(!cb) { return; }
     cMEMs = (DWORD)(((ra & 0xfff) + cb + 0xfff) >> 12);
-    pbBuffer = (PBYTE)LocalAlloc(LMEM_ZEROINIT, 0x2000 + cMEMs * (sizeof(MEM_IO_SCATTER_HEADER) + sizeof(PMEM_IO_SCATTER_HEADER)));
+    pbBuffer = (PBYTE)LocalAlloc(LMEM_ZEROINIT, 0x2000 + cMEMs * (sizeof(MEM_SCATTER) + sizeof(PMEM_SCATTER)));
     if(!pbBuffer) { return; }
-    pMEMs = (PMEM_IO_SCATTER_HEADER)(pbBuffer + 0x2000);
-    ppMEMs = (PPMEM_IO_SCATTER_HEADER)(pbBuffer + 0x2000 + cMEMs * sizeof(MEM_IO_SCATTER_HEADER));
+    pMEMs = (PMEM_SCATTER)(pbBuffer + 0x2000);
+    ppMEMs = (PPMEM_SCATTER)(pbBuffer + 0x2000 + cMEMs * sizeof(MEM_SCATTER));
     oVA = ra & 0xfff;
     // prepare "middle" pages
     for(i = 0; i < cMEMs; i++) {
         ppMEMs[i] = &pMEMs[i];
-        pMEMs[i].magic = MEM_IO_SCATTER_HEADER_MAGIC;
-        pMEMs[i].version = MEM_IO_SCATTER_HEADER_VERSION;
+        pMEMs[i].version = MEM_SCATTER_VERSION;
         pMEMs[i].qwA = ra - oVA + (i << 12);
-        pMEMs[i].cbMax = 0x1000;
+        pMEMs[i].cb = 0x1000;
         pMEMs[i].pb = pb - oVA + (i << 12);
     }
     // fixup "first/last" pages
@@ -291,17 +264,17 @@ VOID VmmWinReg_HiveReadEx(_In_ POB_REGISTRY_HIVE pRegistryHive, _In_ DWORD ra, _
         pObProcessRegistry = NULL;
     }
     for(i = 0; i < cMEMs; i++) {
-        if(pMEMs[i].cb == 0x1000) {
+        if(pMEMs[i].f) {
             cbRead += 0x1000;
         } else {
             ZeroMemory(pMEMs[i].pb, 0x1000);
         }
     }
-    cbRead -= (pMEMs[0].cb == 0x1000) ? 0x1000 : 0;                             // adjust byte count for first page (if needed)
-    cbRead -= ((cMEMs > 1) && (pMEMs[cMEMs - 1].cb == 0x1000)) ? 0x1000 : 0;    // adjust byte count for last page (if needed)
+    cbRead -= pMEMs[0].f ? 0x1000 : 0;                             // adjust byte count for first page (if needed)
+    cbRead -= ((cMEMs > 1) && pMEMs[cMEMs - 1].f) ? 0x1000 : 0;    // adjust byte count for last page (if needed)
     // Handle first page
     cbP = (DWORD)min(cb, 0x1000 - oVA);
-    if(pMEMs[0].cb == 0x1000) {
+    if(pMEMs[0].f) {
         memcpy(pb, pMEMs[0].pb + oVA, cbP);
         cbRead += cbP;
     } else {
@@ -310,7 +283,7 @@ VOID VmmWinReg_HiveReadEx(_In_ POB_REGISTRY_HIVE pRegistryHive, _In_ DWORD ra, _
     // Handle last page
     if(cMEMs > 1) {
         cbP = (((ra + cb) & 0xfff) ? ((ra + cb) & 0xfff) : 0x1000);
-        if(pMEMs[cMEMs - 1].cb == 0x1000) {
+        if(pMEMs[cMEMs - 1].f) {
             memcpy(pb + ((QWORD)cMEMs << 12) - oVA - 0x1000, pMEMs[cMEMs - 1].pb, cbP);
             cbRead += cbP;
         } else {
@@ -636,7 +609,7 @@ BOOL VmmWinReg_LocateRegistryHive()
     DWORD iSection, cbSectionSize, cbPoolHdr, cbPoolHdrMax, cPotentialHive, o, p, i;
     QWORD vaPotentialHive[MAX_NUM_POTENTIAL_HIVE_HINT];
     PBYTE pb = NULL;
-    PPMEM_IO_SCATTER_HEADER ppMEMs = NULL;
+    PPMEM_SCATTER ppMEMs = NULL;
     if(!VmmProcessGet(4) || !(pb = LocalAlloc(0, 0x01000000))) { goto cleanup; }
     // 1: Try locate registry by scanning ntoskrnl.exe .data section.
     for(iSection = 0; iSection < 2; iSection++) {    // 1st check '.data' section, then PAGEDATA' for pointers.
@@ -657,13 +630,13 @@ BOOL VmmWinReg_LocateRegistryHive()
                 }
             }
             if(!cPotentialHive) { continue; }
-            if(!LeechCore_AllocScatterEmpty(cPotentialHive, &ppMEMs)) { continue; }
+            if(!LcAllocScatter1(cPotentialHive, &ppMEMs)) { continue; }
             for(i = 0; i < cPotentialHive; i++) {
                 ppMEMs[i]->qwA = vaPotentialHive[i] & ~0xfff;
             }
             VmmReadScatterVirtual(pObProcessSystem, ppMEMs, cPotentialHive, 0);
             for(i = 0; i < cPotentialHive; i++) {
-                if(ppMEMs[i]->cb == 0x1000) {
+                if(ppMEMs[i]->f) {
                     if((result = f32 ? VmmWinReg_FuzzHiveOffsets32(pObProcessSystem, ppMEMs[i]->qwA, ppMEMs[i]->pb) : VmmWinReg_FuzzHiveOffsets64(pObProcessSystem, ppMEMs[i]->qwA, ppMEMs[i]->pb))) {
                         goto cleanup;
                     }
@@ -683,7 +656,7 @@ BOOL VmmWinReg_LocateRegistryHive()
     }
 cleanup:
     LocalFree(pb);
-    LocalFree(ppMEMs);
+    LcMemFree(ppMEMs);
     Ob_DECREF(pObProcessSystem);
     return result;
 }
@@ -1194,23 +1167,6 @@ VOID VmmWinReg_CallbackCleanup_ObRegKey(POB_REGISTRY_KEY pOb)
 /*
 * Hash a registry key name in a way that is supported by the file system.
 * NB! this is not the same hash as the Windows registry uses.
-* -- wsz
-* -- return
-*/
-DWORD VmmWinReg_KeyHashNameW(_In_ LPCWSTR wsz)
-{
-    DWORD i, c, dwHash = 0;
-    WCHAR wszBuffer[MAX_PATH];
-    c = Util_PathFileNameFix_Registry(wszBuffer, NULL, wsz, 0, 0, TRUE);
-    for(i = 0; i < c; i++) {
-        dwHash = ((dwHash >> 13) | (dwHash << 19)) + wszBuffer[i];
-    }
-    return dwHash;
-}
-
-/*
-* Hash a registry key name in a way that is supported by the file system.
-* NB! this is not the same hash as the Windows registry uses.
 * -- pnk
 * -- iSuffix
 * -- return
@@ -1229,24 +1185,6 @@ DWORD VmmWinReg_KeyHashName(_In_ PREG_CM_KEY_NODE pnk, _In_ DWORD iSuffix)
 }
 
 /*
-* Hash a path. Used to calculate a registry key hash from a file system path.
-* -- wszPath
-* -- return
-*/
-QWORD VmmWinReg_KeyHashPathW(_In_ LPWSTR wszPath)
-{
-    DWORD dwHashName;
-    QWORD qwHashTotal = 0;
-    WCHAR wsz1[MAX_PATH];
-    while(wszPath && wszPath[0]) {
-        wszPath = Util_PathSplit2_ExWCHAR(wszPath, wsz1, _countof(wsz1));
-        dwHashName = VmmWinReg_KeyHashNameW(wsz1);
-        qwHashTotal = dwHashName + ((qwHashTotal >> 13) | (qwHashTotal << 51));
-    }
-    return qwHashTotal;
-}
-
-/*
 * Hash a directly dependent child by name.
 * -- pParentKey
 * -- wszPath
@@ -1254,7 +1192,7 @@ QWORD VmmWinReg_KeyHashPathW(_In_ LPWSTR wszPath)
 */
 QWORD VmmWinReg_KeyHashChildName(_In_ POB_REGISTRY_KEY pParentKey, _In_ LPWSTR wszChildName)
 {
-    return VmmWinReg_KeyHashNameW(wszChildName) + ((pParentKey->qwHashKeyThis >> 13) | (pParentKey->qwHashKeyThis << 51));
+    return Util_HashNameW_Registry(wszChildName, 0) + ((pParentKey->qwHashKeyThis >> 13) | (pParentKey->qwHashKeyThis << 51));
 }
 
 /*
@@ -1409,7 +1347,7 @@ POB_REGISTRY_KEY VmmWinReg_KeyInitializeRootKeyDummy(_In_ POB_REGISTRY_HIVE pHiv
 	pObKey->pKey->NameLength = cwszName;
 	// 2: calculate lookup hashes
 	pObKey->qwHashKeyParent = qwKeyParentHash;
-	pObKey->qwHashKeyThis = VmmWinReg_KeyHashNameW(wszName) + ((pObKey->qwHashKeyParent >> 13) | (pObKey->qwHashKeyParent << 51));
+	pObKey->qwHashKeyThis = Util_HashNameW_Registry(wszName, 0) + ((pObKey->qwHashKeyParent >> 13) | (pObKey->qwHashKeyParent << 51));
 	// 3: store to cache and return
 	ObMap_Push(pHive->Snapshot.pmKeyHash, pObKey->qwHashKeyThis, pObKey);
 	ObMap_Push(pHive->Snapshot.pmKeyOffset, oCell, pObKey);
@@ -1811,7 +1749,7 @@ _Success_(return != NULL)
 POB_REGISTRY_KEY VmmWinReg_KeyGetByPath(_In_ POB_REGISTRY_HIVE pHive, _In_ LPWSTR wszPath)
 {
     if(!VmmWinReg_HiveSnapshotEnsure(pHive)) { return NULL; }
-    return (POB_REGISTRY_KEY)ObMap_GetByKey(pHive->Snapshot.pmKeyHash, VmmWinReg_KeyHashPathW(wszPath));
+    return (POB_REGISTRY_KEY)ObMap_GetByKey(pHive->Snapshot.pmKeyHash, Util_HashPathW_Registry(wszPath));
 }
 
 /*
@@ -2107,4 +2045,82 @@ BOOL VmmWinReg_ValueQuery4(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_VALUE
     if(pdwType) { *pdwType = 0; }
     if(pcbData) { *pcbData = 0; }
     return FALSE;
+}
+
+/*
+* Create a full path given a registry key. This string format is primarily used
+* for forensic storage purposes.
+* -- pHive
+* -- pKey
+* -- wszHiveName
+* -- wszFullPath
+* -- powszName
+*/
+VOID VmmWinReg_KeyFullPath(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pKey, _In_ LPWSTR wszHiveName, _Out_writes_(2048) LPWSTR wszFullPath, _Out_ LPDWORD powszName)
+{
+    BOOL fResult = TRUE, fSkip = TRUE;
+    DWORD o, i, iKey = 0;
+    POB_REGISTRY_KEY pk, ppObKey[0x40];
+    // fetch parents (max depth: 0x40)
+    ppObKey[iKey++] = Ob_INCREF(pKey);
+    while((iKey < 0x40) && (ppObKey[iKey] = ObMap_GetByKey(pHive->Snapshot.pmKeyHash, ppObKey[iKey - 1]->qwHashKeyParent))) {
+        iKey++;
+    }
+    // unwind, copy name
+    o = (DWORD)wcslen(wszHiveName);
+    memcpy((PBYTE)wszFullPath, (PBYTE)wszHiveName, (QWORD)o << 1);
+    while(iKey) {
+        pk = ppObKey[--iKey];
+        if(o + pk->pKey->NameLength + 4 > 2048) {
+            fResult = FALSE;
+        } else if(fSkip && !pk->qwHashKeyParent && wcsncmp(pk->pKey->wszName, L"\\ROOT", 5)) {
+            ;
+        } else {
+            wszFullPath[o++] = '\\';
+            if(pk->pKey->Flags & REG_CM_KEY_NODE_FLAGS_COMP_NAME) {
+                for(i = 0; i < pk->pKey->NameLength; i++) {
+                    wszFullPath[o++] = pk->pKey->szName[i];
+                }
+            } else {
+                memcpy((PBYTE)(wszFullPath + o), (PBYTE)pk->pKey->wszName, (QWORD)pk->pKey->NameLength << 1);
+                o += pk->pKey->NameLength;
+            }
+        }
+        Ob_DECREF(pk);
+        fSkip = FALSE;
+    }
+    if(fResult) {
+        wszFullPath[o] = 0;
+        *powszName = o - pKey->pKey->NameLength;
+    } else {
+        wszFullPath[0] = 0;
+        *powszName = 0;
+    }
+}
+
+/*
+* Function to allow the forensic sub-system to request extraction of all keys
+* from a specific hive. The key information will be delivered back to the
+* forensic sub-system by the use of a callback function.
+* -- pHive
+* -- hCallback
+* -- pfnCallback
+*/
+VOID VmmWinReg_ForensicGetAllKeys(_In_ POB_REGISTRY_HIVE pHive, _In_ HANDLE hCallback1, _In_ HANDLE hCallback2, _In_ VOID(*pfnCallback)(_In_ HANDLE hCallback1, _In_ HANDLE hCallback2, _In_ LPWSTR wszPathName, _In_ DWORD owszName, _In_ QWORD vaHive, _In_ DWORD dwCell, _In_ DWORD dwCellParent, _In_ QWORD ftLastWrite))
+{
+    DWORD i, c, owszName;
+    WCHAR wszFullPath[2048];
+    LPWSTR wszHiveName;
+    POB_REGISTRY_KEY pObKey;
+    if(VmmWinReg_HiveSnapshotEnsure(pHive)) {
+        wszHiveName = pHive->wszHiveRootPath + (wcsncmp(pHive->wszHiveRootPath, L"\\REGISTRY", 9) ? 0 : 9);
+        c = ObMap_Size(pHive->Snapshot.pmKeyOffset);
+        for(i = 0; i < c; i++) {
+            if(pObKey = ObMap_GetByIndex(pHive->Snapshot.pmKeyOffset, i)) {
+                VmmWinReg_KeyFullPath(pHive, pObKey, wszHiveName, wszFullPath, &owszName);
+                pfnCallback(hCallback1, hCallback2, wszFullPath, owszName, pHive->vaCMHIVE, pObKey->oCell, pObKey->pKey->Parent, pObKey->pKey->LastWriteTime);
+                Ob_DECREF(pObKey);
+            }
+        }
+    }
 }

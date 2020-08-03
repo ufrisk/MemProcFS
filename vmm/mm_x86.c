@@ -51,18 +51,22 @@ VOID MmX86_MapInitialize_Index(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_PTEENTR
 {
     PVMMOB_MEM pObNextPT;
     DWORD i, va, pte;
-    BOOL fUserOnly, fNextSupervisorPML, fTransition = FALSE;
+    QWORD cPages;
+    BOOL fUserOnly, fNextSupervisorPML, fPagedOut = FALSE;
     PVMM_MAP_PTEENTRY pMemMapEntry = pMemMap + *pcMemMap - 1;
     fUserOnly = pProcess->fUserOnly;
     for(i = 0; i < 1024; i++) {
         pte = PTEs[i];
         if(!MMX86_PTE_IS_VALID(pte, iPML)) {
-            if(pte && MMX86_PTE_IS_TRANSITION(pte, iPML)) {
-                pte = MMX86_PTE_IS_TRANSITION(pte, iPML);   // TRANSITION PAGE
-                fTransition = TRUE;
-            } else {
-                continue;                                   // INVALID
+            if(!pte) { continue; }
+            pte = MMX86_PTE_IS_TRANSITION(pte, iPML);       // PAGE ATTRIBUTES IF TRANSITION PAGE
+            if(!pte) {
+                if(iPML != 1) { continue; }
+                pte = 0x00000005;                           // GUESS READ-ONLY USER PAGE IF NON TRANSITION
             }
+            fPagedOut = TRUE;
+        } else {
+            fPagedOut = FALSE;
         }
         if((pte & 0xfffff000) > paMax) { continue; }
         if(fSupervisorPML) { pte = pte & 0xfffffffb; }
@@ -70,18 +74,22 @@ VOID MmX86_MapInitialize_Index(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_PTEENTR
         va = vaBase + (i << MMX86_PAGETABLEMAP_PML_REGION_SIZE[iPML]);
         if((iPML == 1) || (pte & 0x80) /* PS */) {
             if((*pcMemMap == 0) ||
-                ((pMemMapEntry->fPage != (pte & VMM_MEMMAP_PAGE_MASK)) && !fTransition) ||
+                ((pMemMapEntry->fPage != (pte & VMM_MEMMAP_PAGE_MASK)) && !fPagedOut) ||
                 (va != pMemMapEntry->vaBase + (pMemMapEntry->cPages << 12))) {
                 if(*pcMemMap + 1 >= VMM_MEMMAP_ENTRIES_MAX) { return; }
                 pMemMapEntry = pMemMap + *pcMemMap;
                 pMemMapEntry->vaBase = va;
                 pMemMapEntry->fPage = pte & VMM_MEMMAP_PAGE_MASK;
-                pMemMapEntry->cPages = 1ULL << (MMX86_PAGETABLEMAP_PML_REGION_SIZE[iPML] - 12);
+                cPages = 1ULL << (MMX86_PAGETABLEMAP_PML_REGION_SIZE[iPML] - 12);
+                if(fPagedOut) { pMemMapEntry->cSoftware += (DWORD)cPages; }
+                pMemMapEntry->cPages = cPages;
                 *pcMemMap = *pcMemMap + 1;
                 if(*pcMemMap >= VMM_MEMMAP_ENTRIES_MAX - 1) { return; }
                 continue;
             }
-            pMemMapEntry->cPages += 1ULL << (MMX86_PAGETABLEMAP_PML_REGION_SIZE[iPML] - 12);
+            cPages = 1ULL << (MMX86_PAGETABLEMAP_PML_REGION_SIZE[iPML] - 12);
+            if(fPagedOut) { pMemMapEntry->cSoftware += (DWORD)cPages; }
+            pMemMapEntry->cPages += cPages;
             continue;
         }
         // maps page table

@@ -5,12 +5,12 @@
 //
 #include <Windows.h>
 #include <stdio.h>
-#include "vfs.h"
-#include "vmmdll.h"
+#include <vmmdll.h>
 #pragma warning( push )  
 #pragma warning( disable : 4005 )   
-#include "dokan.h"
+#include <dokan.h>
 #pragma warning( pop )
+#include "vfs.h"
 
 DWORD g_dbg_c = 0;
 

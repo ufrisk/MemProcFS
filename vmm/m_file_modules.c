@@ -167,8 +167,6 @@ VOID M_FileModules_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     pRI->reg_info.fProcessModule = TRUE;                                // module shows in process directory
     pRI->reg_fn.pfnList = M_FileModules_List;                           // List function supported
     pRI->reg_fn.pfnRead = M_FileModules_Read;                           // Read function supported
-    if(ctxMain->dev.fWritable) {
-        pRI->reg_fn.pfnWrite = M_FileModules_Write;                     // Write function supported
-    }
+    pRI->reg_fn.pfnWrite = M_FileModules_Write;                         // Write function supported
     pRI->pfnPluginManager_Register(pRI);
 }

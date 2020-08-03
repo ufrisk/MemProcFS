@@ -10,18 +10,20 @@
 #include "util.h"
 #include "pdb.h"
 #include "pe.h"
+#include "fc.h"
 #include "statistics.h"
 #include "version.h"
 #include "vmm.h"
 #include "vmmproc.h"
 #include "vmmwin.h"
+#include "vmmwinnet.h"
+#include "vmmwinobj.h"
 #include "vmmwinreg.h"
-#include "vmmwintcpip.h"
 #include "mm_pfn.h"
 
 // ----------------------------------------------------------------------------
 // Synchronization macro below. The VMM isn't thread safe so it's important to
-// serialize access to it over the VMM MasterLock. This master lock is shared
+// serialize access to it over the VMM LockMaster. This master lock is shared
 // with internal VMM housekeeping functionality.
 // ----------------------------------------------------------------------------
 
@@ -100,6 +102,11 @@ BOOL VmmDll_ConfigIntialize(_In_ DWORD argc, _In_ char* argv[])
             ctxMain->cfg.paCR3 = Util_GetNumericA(argv[i + 1]);
             i += 2;
             continue;
+        } else if(0 == _stricmp(argv[i], "-forensic")) {
+            ctxMain->cfg.tpForensicMode = (DWORD)Util_GetNumericA(argv[i + 1]);
+            if(ctxMain->cfg.tpForensicMode > FC_DATABASE_TYPE_MAX) { return FALSE; }
+            i += 2;
+            continue;
         } else if(0 == _stricmp(argv[i], "-max")) {
             ctxMain->dev.paMax = Util_GetNumericA(argv[i + 1]);
             i += 2;
@@ -110,6 +117,10 @@ BOOL VmmDll_ConfigIntialize(_In_ DWORD argc, _In_ char* argv[])
             continue;
         } else if(0 == _stricmp(argv[i], "-remote")) {
             strcpy_s(ctxMain->dev.szRemote, MAX_PATH, argv[i + 1]);
+            i += 2;
+            continue;
+        } else if(0 == _stricmp(argv[i], "-memmap")) {
+            strcpy_s(ctxMain->cfg.szMemMap, MAX_PATH, argv[i + 1]);
             i += 2;
             continue;
         } else if(0 == _stricmp(argv[i], "-pythonpath")) {
@@ -136,17 +147,15 @@ BOOL VmmDll_ConfigIntialize(_In_ DWORD argc, _In_ char* argv[])
     } else {
         ctxMain->cfg.szMountPoint[0] = 'M';
     }
-    if(ctxMain->dev.paMax == 0) { ctxMain->dev.paMax = 0x0000ffffffffffff; }
-    if(ctxMain->dev.paMax < 0x00100000) { return FALSE; }
+    if(ctxMain->dev.paMax && (ctxMain->dev.paMax < 0x00100000)) { return FALSE; }
     ctxMain->cfg.fVerbose = ctxMain->cfg.fVerbose && ctxMain->cfg.fVerboseDll;
     ctxMain->cfg.fVerboseExtra = ctxMain->cfg.fVerboseExtra && ctxMain->cfg.fVerboseDll;
     ctxMain->cfg.fVerboseExtraTlp = ctxMain->cfg.fVerboseExtraTlp && ctxMain->cfg.fVerboseDll;
-    ctxMain->dev.magic = LEECHCORE_CONFIG_MAGIC;
-    ctxMain->dev.version = LEECHCORE_CONFIG_VERSION;
-    ctxMain->dev.flags |= ctxMain->cfg.fVerboseDll ? LEECHCORE_CONFIG_FLAG_PRINTF : 0;
-    ctxMain->dev.flags |= ctxMain->cfg.fVerbose ? LEECHCORE_CONFIG_FLAG_PRINTF_VERBOSE_1 : 0;
-    ctxMain->dev.flags |= ctxMain->cfg.fVerboseExtra ? LEECHCORE_CONFIG_FLAG_PRINTF_VERBOSE_2 : 0;
-    ctxMain->dev.flags |= ctxMain->cfg.fVerboseExtraTlp ? LEECHCORE_CONFIG_FLAG_PRINTF_VERBOSE_3 : 0;
+    ctxMain->dev.dwVersion = LC_CONFIG_VERSION;
+    ctxMain->dev.dwPrintfVerbosity |= ctxMain->cfg.fVerboseDll ? LC_CONFIG_PRINTF_ENABLED : 0;
+    ctxMain->dev.dwPrintfVerbosity |= ctxMain->cfg.fVerbose ? LC_CONFIG_PRINTF_V : 0;
+    ctxMain->dev.dwPrintfVerbosity |= ctxMain->cfg.fVerboseExtra ? LC_CONFIG_PRINTF_VV : 0;
+    ctxMain->dev.dwPrintfVerbosity |= ctxMain->cfg.fVerboseExtraTlp ? LC_CONFIG_PRINTF_VVV : 0;
     return (ctxMain->dev.szDevice[0] != 0);
 }
 
@@ -199,6 +208,9 @@ VOID VmmDll_PrintHelp()
         "   -cr3 : base address of kernel/process page table (PML4) / CR3 CPU register. \n" \
         "   -max : memory max address, valid range: 0x0 .. 0xffffffffffffffff           \n" \
         "          default: auto-detect (max supported by device / target system).      \n" \
+        "   -memmap : specify a physical memory map given in a file or specify 'auto'.  \n" \
+        "          example: -memmap c:\\temp\\my_custom_memory_map.txt                  \n" \
+        "          example: -memmap auto                                                \n" \
         "   -pagefile0..9 : specify specify page file / swap file. By default pagefile  \n" \
         "          have index 0 - example: -pagefile0 pagefile.sys while swapfile have  \n" \
         "          have index 1 - example: -pagefile1 swapfile.sys                      \n" \
@@ -215,6 +227,15 @@ VOID VmmDll_PrintHelp()
         "          will be limited if this is activated. Example: -symbolserverdisable  \n" \
         "   -waitinitialize : wait debugging .pdb symbol subsystem to fully start before\n" \
         "          mounting file system and fully starting MemProcFS.                   \n" \
+        "   -forensic : start a forensic scan of the physical memory immediately after  \n" \
+        "          startup if possible. Allowed parameter values range from 0-4.        \n" \
+        "          Note! forensic mode is not available for live memory.                \n" \
+        "          0 = not enabled (default value)                                      \n" \
+        "          1 = forensic mode with in-memory sqlite database.                    \n" \
+        "          2 = forensic mode with temp sqlite database deleted upon exit.       \n" \
+        "          3 = forensic mode with temp sqlite database remaining upon exit.     \n" \
+        "          4 = forensic mode with static named sqlite database (vmm.sqlite3).   \n" \
+        "          default: 0  Example -forensic 4                                      \n" \
         "                                                                               \n",
         VERSION_MAJOR, VERSION_MINOR, VERSION_REVISION
     );
@@ -222,49 +243,110 @@ VOID VmmDll_PrintHelp()
 
 VOID VmmDll_FreeContext()
 {
+    if(ctxFc) {
+        FcClose();
+    }
     if(ctxVmm) {
         VmmClose();
     }
     if(ctxMain) {
         Statistics_CallSetEnabled(FALSE);
-        if(!ctxMain->cfg.fDisableLeechCoreClose) {
-            LeechCore_Close();
+        if(!ctxMain->cfg.fDisableLeechCoreClose && ctxMain->hLC) {
+            LcClose(ctxMain->hLC);
         }
         LocalFree(ctxMain);
         ctxMain = NULL;
     }
 }
 
+/*
+* Initialize memory map auto - i.e. retrieve it from the registry and load it into LeechCore.
+* -- return
+*/
+_Success_(return)
+BOOL VMMDLL_Initialize_MemMapAuto()
+{
+    BOOL fResult = FALSE;
+    DWORD i, cbMemMap = 0;
+    LPSTR szMemMap = NULL;
+    PVMMOB_MAP_PHYSMEM pObMap = NULL;
+    if(!VmmMap_GetPhysMem(&pObMap)) { goto fail; }
+    if(!(szMemMap = LocalAlloc(LMEM_ZEROINIT, 0x01000000))) { goto fail; }
+    for(i = 0; i < pObMap->cMap; i++) {
+        cbMemMap += snprintf(szMemMap + cbMemMap, 0x01000000 - cbMemMap - 1, "%016llx %016llx\n", pObMap->pMap[i].pa, pObMap->pMap[i].pa + pObMap->pMap[i].cb - 1);
+    }
+    fResult = 
+        LcCommand(ctxMain->hLC, LC_CMD_MEMMAP_SET, cbMemMap, (PBYTE)szMemMap, NULL, NULL) &&
+        LcGetOption(ctxMain->hLC, LC_OPT_CORE_ADDR_MAX, &ctxMain->dev.paMax);
+fail:
+    Ob_DECREF(pObMap);
+    LocalFree(szMemMap);
+    return fResult;
+}
+
 _Success_(return)
 BOOL VMMDLL_Initialize(_In_ DWORD argc, _In_ LPSTR argv[])
 {
-    ctxMain = LocalAlloc(LMEM_ZEROINIT, sizeof(VMM_MAIN_CONTEXT));
-    if(!ctxMain) {
-        return FALSE;
-    }
+    FILE *hFile = NULL;
+    BOOL f;
+    DWORD cbMemMap = 0;
+    PBYTE pbMemMap = NULL;
+    if(!(ctxMain = LocalAlloc(LMEM_ZEROINIT, sizeof(VMM_MAIN_CONTEXT)))) { return FALSE; }
     // initialize configuration
     if(!VmmDll_ConfigIntialize((DWORD)argc, argv)) {
         VmmDll_PrintHelp();
-        VmmDll_FreeContext();
-        return FALSE;
+        goto fail;
     }
     // ctxMain.cfg context is inintialized from here onwards - vmmprintf is working!
     if(0 == _stricmp(ctxMain->dev.szDevice, "existing")) {
         ctxMain->cfg.fDisableLeechCoreClose = TRUE;
     }
-    if(!LeechCore_Open(&ctxMain->dev)) {
+    if(!(ctxMain->hLC = LcCreate(&ctxMain->dev))) {
         vmmprintf("MemProcFS: Failed to connect to memory acquisition device.\n");
-        VmmDll_FreeContext();
-        return FALSE;
+        goto fail;
+    }
+    // Set LeechCore MemMap (if exists and not auto - i.e. from file)
+    if(ctxMain->cfg.szMemMap[0] && _stricmp(ctxMain->cfg.szMemMap, "auto")) {
+        f = (pbMemMap = LocalAlloc(LMEM_ZEROINIT, 0x01000000)) &&
+            !fopen_s(&hFile, ctxMain->cfg.szMemMap, "rb") && hFile &&
+            (cbMemMap = (DWORD)fread(pbMemMap, 1, 0x01000000, hFile)) && (cbMemMap < 0x01000000) &&
+            LcCommand(ctxMain->hLC, LC_CMD_MEMMAP_SET, cbMemMap, pbMemMap, NULL, NULL) &&
+            LcGetOption(ctxMain->hLC, LC_OPT_CORE_ADDR_MAX, &ctxMain->dev.paMax);
+        LocalFree(pbMemMap);
+        if(hFile) { fclose(hFile); }
+        if(!f) {
+            vmmprintf("MemProcFS: Failed to load initial memory map from: '%s'.\n", ctxMain->cfg.szMemMap);
+            goto fail;
+        }
     }
     // ctxMain.dev context is initialized from here onwards - device functionality is working!
     if(!VmmProcInitialize()) {
         vmmprintf("MOUNT: INFO: PROC file system not mounted.\n");
-        VmmDll_FreeContext();
-        return FALSE;
+        goto fail;
     }
     // ctxVmm context is initialized from here onwards - vmm functionality is working!
+    // Set LeechCore MemMap (if auto)
+    if(ctxMain->cfg.szMemMap[0] && !_stricmp(ctxMain->cfg.szMemMap, "auto")) {
+        if(!VMMDLL_Initialize_MemMapAuto()) {
+            vmmprintf("MemProcFS: Failed to load initial memory map from: '%s'.\n", ctxMain->cfg.szMemMap);
+            goto fail;
+        }
+    }
+    // Initialize forensic mode (if set by user parameter)
+    if(ctxMain->cfg.tpForensicMode) {
+        if(!FcInitialize(ctxMain->cfg.tpForensicMode, FALSE)) {
+            if(ctxMain->dev.fVolatile) {
+                vmmprintf("MemProcFS: Failed to initialize forensic mode - volatile (live) memory not supported - please use memory dump!\n");
+            } else {
+                vmmprintf("MemProcFS: Failed to initialize forensic mode.\n");
+            }
+            goto fail;
+        }
+    }
     return TRUE;
+fail:
+    VmmDll_FreeContext();
+    return FALSE;
 }
 
 _Success_(return)
@@ -274,179 +356,202 @@ BOOL VMMDLL_Close()
     return TRUE;
 }
 
+/*
+* Free memory allocated by the VMMDLL.
+* -- pvMem
+*/
+VOID VMMDLL_MemFree(_Frees_ptr_opt_ PVOID pvMem)
+{
+    LocalFree(pvMem);
+}
+
+
+
+//-----------------------------------------------------------------------------
+// PLUGIN MANAGER FUNCTIONALITY BELOW:
+//-----------------------------------------------------------------------------
+
+_Success_(return)
+BOOL VMMDLL_InitializePlugins()
+{
+    CALL_IMPLEMENTATION_VMM(
+        STATISTICS_ID_VMMDLL_InitializePlugins,
+        PluginManager_Initialize())
+}
+
+
+
 //-----------------------------------------------------------------------------
 // CONFIGURATION SETTINGS BELOW:
 //-----------------------------------------------------------------------------
 
-_Success_(return)
-BOOL VMMDLL_ConfigGet_VmmCore(_In_ ULONG64 fOption, _Out_ PULONG64 pqwValue)
-{
-    switch(fOption) {
-        case VMMDLL_OPT_CONFIG_IS_REFRESH_ENABLED:
-            *pqwValue = ctxVmm->ThreadProcCache.fEnabled ? 1 : 0;
-            break;
-        case VMMDLL_OPT_CONFIG_IS_PAGING_ENABLED:
-            *pqwValue = (ctxVmm->flags & VMM_FLAG_NOPAGING) ? 0 : 1;
-            break;
-        case VMMDLL_OPT_CONFIG_TICK_PERIOD:
-            *pqwValue = ctxVmm->ThreadProcCache.cMs_TickPeriod;
-            break;
-        case VMMDLL_OPT_CONFIG_READCACHE_TICKS:
-            *pqwValue = ctxVmm->ThreadProcCache.cTick_Phys;
-            break;
-        case VMMDLL_OPT_CONFIG_TLBCACHE_TICKS:
-            *pqwValue = ctxVmm->ThreadProcCache.cTick_TLB;
-            break;
-        case VMMDLL_OPT_CONFIG_PROCCACHE_TICKS_PARTIAL:
-            *pqwValue = ctxVmm->ThreadProcCache.cTick_ProcPartial;
-            break;
-        case VMMDLL_OPT_CONFIG_PROCCACHE_TICKS_TOTAL:
-            *pqwValue = ctxVmm->ThreadProcCache.cTick_ProcTotal;
-            break;
-        case VMMDLL_OPT_CONFIG_STATISTICS_FUNCTIONCALL:
-            *pqwValue = Statistics_CallGetEnabled() ? 1 : 0;
-            break;
-        case VMMDLL_OPT_WIN_VERSION_MAJOR:
-            *pqwValue = ctxVmm->kernel.dwVersionMajor;
-            break;
-        case VMMDLL_OPT_WIN_VERSION_MINOR:
-            *pqwValue = ctxVmm->kernel.dwVersionMinor;
-            break;
-        case VMMDLL_OPT_WIN_VERSION_BUILD:
-            *pqwValue = ctxVmm->kernel.dwVersionBuild;
-            break;
-        default:
-            return FALSE;
-    }
-    return TRUE;
-}
+#define VMMDLL_REFRESH_CHECK(fOption, mask)      (fOption & mask & 0xffff'00000000)
 
 _Success_(return)
 BOOL VMMDLL_ConfigGet(_In_ ULONG64 fOption, _Out_ PULONG64 pqwValue)
 {
-    if(!pqwValue) { return FALSE; }
-    if(fOption & 0x40000000) {
-        if(fOption == VMMDLL_OPT_CONFIG_VMM_VERSION_MAJOR) {
+    if(!fOption || !pqwValue) { return FALSE; }
+    switch(fOption & 0xffffffff'00000000) {
+        case VMMDLL_OPT_CORE_SYSTEM:
+            *pqwValue = ctxVmm->tpSystem;
+            return TRUE;
+        case VMMDLL_OPT_CORE_MEMORYMODEL:
+            *pqwValue = ctxVmm->tpMemoryModel;
+            return TRUE;
+        case VMMDLL_OPT_CONFIG_VMM_VERSION_MAJOR:
             *pqwValue = VERSION_MAJOR;
             return TRUE;
-        } else if(fOption == VMMDLL_OPT_CONFIG_VMM_VERSION_MINOR) {
+        case VMMDLL_OPT_CONFIG_VMM_VERSION_MINOR:
             *pqwValue = VERSION_MINOR;
             return TRUE;
-        } else if(fOption == VMMDLL_OPT_CONFIG_VMM_VERSION_REVISION) {
+        case VMMDLL_OPT_CONFIG_VMM_VERSION_REVISION:
             *pqwValue = VERSION_REVISION;
             return TRUE;
-        }
-    }
-    if(!ctxVmm) { return FALSE; }
-    // core options affecting only vmm.dll
-    if(fOption & 0x40000000) {
-        return VMMDLL_ConfigGet_VmmCore(fOption, pqwValue);
-    }
-    // core options affecting both vmm.dll and pcileech.dll
-    if(fOption & 0x80000000) {
-        switch(fOption) {
-            case VMMDLL_OPT_CORE_PRINTF_ENABLE:
-                *pqwValue = ctxMain->cfg.fVerboseDll ? 1 : 0;
-                return TRUE;
-            case VMMDLL_OPT_CORE_VERBOSE:
-                *pqwValue = ctxMain->cfg.fVerbose ? 1 : 0;
-                return TRUE;
-            case VMMDLL_OPT_CORE_VERBOSE_EXTRA:
-                *pqwValue = ctxMain->cfg.fVerboseExtra ? 1 : 0;
-                return TRUE;
-            case VMMDLL_OPT_CORE_VERBOSE_EXTRA_TLP:
-                *pqwValue = ctxMain->cfg.fVerboseExtraTlp ? 1 : 0;
-                return TRUE;
-            case VMMDLL_OPT_CORE_MAX_NATIVE_ADDRESS:
-                *pqwValue = ctxMain->dev.paMaxNative;
-                return TRUE;
-            case VMMDLL_OPT_CORE_SYSTEM:
-                *pqwValue = ctxVmm->tpSystem;
-                return TRUE;
-            case VMMDLL_OPT_CORE_MEMORYMODEL:
-                *pqwValue = ctxVmm->tpMemoryModel;
-                return TRUE;
-            default:
-                return FALSE;
-        }
-    }
-    // non-recognized option - possibly a device option to pass along to pcileech.dll
-    return LeechCore_GetOption(fOption, pqwValue);
-}
-
-_Success_(return)
-BOOL VMMDLL_ConfigSet_VmmCore(_In_ ULONG64 fOption, _In_ ULONG64 qwValue)
-{
-    switch(fOption) {
+        case VMMDLL_OPT_CONFIG_IS_REFRESH_ENABLED:
+            *pqwValue = ctxVmm->ThreadProcCache.fEnabled ? 1 : 0;
+            return TRUE;
         case VMMDLL_OPT_CONFIG_IS_PAGING_ENABLED:
-            ctxVmm->flags = (ctxVmm->flags & ~VMM_FLAG_NOPAGING) | (qwValue ? 0 : 1);
-            break;
+            *pqwValue = (ctxVmm->flags & VMM_FLAG_NOPAGING) ? 0 : 1;
+            return TRUE;
         case VMMDLL_OPT_CONFIG_TICK_PERIOD:
-            ctxVmm->ThreadProcCache.cMs_TickPeriod = (DWORD)qwValue;
-            break;
+            *pqwValue = ctxVmm->ThreadProcCache.cMs_TickPeriod;
+            return TRUE;
         case VMMDLL_OPT_CONFIG_READCACHE_TICKS:
-            ctxVmm->ThreadProcCache.cTick_Phys = (DWORD)qwValue;
-            break;
+            *pqwValue = ctxVmm->ThreadProcCache.cTick_Phys;
+            return TRUE;
         case VMMDLL_OPT_CONFIG_TLBCACHE_TICKS:
-            ctxVmm->ThreadProcCache.cTick_TLB = (DWORD)qwValue;
-            break;
+            *pqwValue = ctxVmm->ThreadProcCache.cTick_TLB;
+            return TRUE;
         case VMMDLL_OPT_CONFIG_PROCCACHE_TICKS_PARTIAL:
-            ctxVmm->ThreadProcCache.cTick_ProcPartial = (DWORD)qwValue;
-            break;
+            *pqwValue = ctxVmm->ThreadProcCache.cTick_ProcPartial;
+            return TRUE;
         case VMMDLL_OPT_CONFIG_PROCCACHE_TICKS_TOTAL:
-            ctxVmm->ThreadProcCache.cTick_ProcTotal = (DWORD)qwValue;
-            break;
+            *pqwValue = ctxVmm->ThreadProcCache.cTick_ProcTotal;
+            return TRUE;
         case VMMDLL_OPT_CONFIG_STATISTICS_FUNCTIONCALL:
-            Statistics_CallSetEnabled(qwValue ? TRUE : FALSE);
+            *pqwValue = Statistics_CallGetEnabled() ? 1 : 0;
+            return TRUE;
+        case VMMDLL_OPT_WIN_VERSION_MAJOR:
+            *pqwValue = ctxVmm->kernel.dwVersionMajor;
+            return TRUE;
+        case VMMDLL_OPT_WIN_VERSION_MINOR:
+            *pqwValue = ctxVmm->kernel.dwVersionMinor;
+            return TRUE;
+        case VMMDLL_OPT_WIN_VERSION_BUILD:
+            *pqwValue = ctxVmm->kernel.dwVersionBuild;
+            return TRUE;
+        case VMMDLL_OPT_FORENSIC_MODE:
+            *pqwValue = ctxFc ? (BYTE)ctxFc->db.tp : 0;
+            return TRUE;
+        // core options affecting both vmm.dll and pcileech.dll
+        case VMMDLL_OPT_CORE_PRINTF_ENABLE:
+            *pqwValue = ctxMain->cfg.fVerboseDll ? 1 : 0;
+            return TRUE;
+        case VMMDLL_OPT_CORE_VERBOSE:
+            *pqwValue = ctxMain->cfg.fVerbose ? 1 : 0;
+            return TRUE;
+        case VMMDLL_OPT_CORE_VERBOSE_EXTRA:
+            *pqwValue = ctxMain->cfg.fVerboseExtra ? 1 : 0;
+            return TRUE;
+        case VMMDLL_OPT_CORE_VERBOSE_EXTRA_TLP:
+            *pqwValue = ctxMain->cfg.fVerboseExtraTlp ? 1 : 0;
+            return TRUE;
+        case VMMDLL_OPT_CORE_MAX_NATIVE_ADDRESS:
+            *pqwValue = ctxMain->dev.paMax;
             return TRUE;
         default:
-            return FALSE;
+            // non-recognized option - possibly a device option to pass along to leechcore.dll
+            return LcGetOption(ctxMain->hLC, fOption, pqwValue);
     }
-    return TRUE;
 }
 
 _Success_(return)
 BOOL VMMDLL_ConfigSet(_In_ ULONG64 fOption, _In_ ULONG64 qwValue)
 {
-    if(!ctxVmm) { return FALSE; }
-    // core options affecting only vmm.dll
-    if(fOption & 0x40000000) {
-        return VMMDLL_ConfigSet_VmmCore(fOption, qwValue);
-    }
-    // core options affecting both vmm.dll and leechcore.dll
-    if(fOption & 0x80000000) {
-        LeechCore_SetOption(fOption, qwValue);
-        switch(fOption) {
-            case VMMDLL_OPT_CORE_PRINTF_ENABLE:
-                ctxMain->cfg.fVerboseDll = qwValue ? TRUE : FALSE;
-                CALL_IMPLEMENTATION_VMM(
-                    STATISTICS_ID_NOLOG,
-                    PluginManager_Notify(VMMDLL_PLUGIN_EVENT_VERBOSITYCHANGE, NULL, 0))
-                return TRUE;
-            case VMMDLL_OPT_CORE_VERBOSE:
-                ctxMain->cfg.fVerbose = qwValue ? TRUE : FALSE;
-                CALL_IMPLEMENTATION_VMM(
-                    STATISTICS_ID_NOLOG,
-                    PluginManager_Notify(VMMDLL_PLUGIN_EVENT_VERBOSITYCHANGE, NULL, 0))
-                return TRUE;
-            case VMMDLL_OPT_CORE_VERBOSE_EXTRA:
-                ctxMain->cfg.fVerboseExtra = qwValue ? TRUE : FALSE;
-                CALL_IMPLEMENTATION_VMM(
-                    STATISTICS_ID_NOLOG,
-                    PluginManager_Notify(VMMDLL_PLUGIN_EVENT_VERBOSITYCHANGE, NULL, 0))
-                return TRUE;
-            case VMMDLL_OPT_CORE_VERBOSE_EXTRA_TLP:
-                ctxMain->cfg.fVerboseExtraTlp = qwValue ? TRUE : FALSE;
-                CALL_IMPLEMENTATION_VMM(
-                    STATISTICS_ID_NOLOG,
-                    PluginManager_Notify(VMMDLL_PLUGIN_EVENT_VERBOSITYCHANGE, NULL, 0))
-                return TRUE;
-            default:
-                return FALSE;
+    // user-initiated refresh / cache flushes
+    if((fOption & 0xffff0000'00000000) == 0x20010000'00000000) {
+        if(VMMDLL_REFRESH_CHECK(fOption, VMMDLL_OPT_REFRESH_READ)) {
+            VmmCacheClear(VMM_CACHE_TAG_PHYS);
         }
+        if(VMMDLL_REFRESH_CHECK(fOption, VMMDLL_OPT_REFRESH_TLB)) {
+            VmmCacheClear(VMM_CACHE_TAG_TLB);
+        }
+        if(VMMDLL_REFRESH_CHECK(fOption, VMMDLL_OPT_REFRESH_PAGING)) {
+            VmmCacheClear(VMM_CACHE_TAG_PAGING);
+        }
+        if(VMMDLL_REFRESH_CHECK(fOption, VMMDLL_OPT_REFRESH_PROCESS)) {
+            VmmProc_RefreshProcesses(TRUE);
+            PluginManager_Notify(VMMDLL_PLUGIN_EVENT_REFRESH_PROCESS_TOTAL, NULL, 0);
+        }
+        if(VMMDLL_REFRESH_CHECK(fOption, VMMDLL_OPT_REFRESH_REGISTRY)) {
+            VmmWinReg_Refresh();
+            PluginManager_Notify(VMMDLL_PLUGIN_EVENT_REFRESH_REGISTRY, NULL, 0);
+        }
+        if(VMMDLL_REFRESH_CHECK(fOption, VMMDLL_OPT_REFRESH_USER)) {
+            VmmWinUser_Refresh();
+        }
+        if(VMMDLL_REFRESH_CHECK(fOption, VMMDLL_OPT_REFRESH_PHYSMEMMAP)) {
+            VmmWinPhysMemMap_Refresh();
+        }
+        if(VMMDLL_REFRESH_CHECK(fOption, VMMDLL_OPT_REFRESH_PFN)) {
+            MmPfn_Refresh();
+        }
+        if(VMMDLL_REFRESH_CHECK(fOption, VMMDLL_OPT_REFRESH_OBJ)) {
+            VmmWinObj_Refresh();
+        }
+        if(VMMDLL_REFRESH_CHECK(fOption, VMMDLL_OPT_REFRESH_NET)) {
+            VmmWinNet_Refresh();
+        }
+        return TRUE;
     }
-    // non-recognized option - possibly a device option to pass along to memdevice.dll
-    return LeechCore_SetOption(fOption, qwValue);
+    switch(fOption & 0xffffffff'00000000) {
+        case VMMDLL_OPT_CORE_PRINTF_ENABLE:
+            LcSetOption(ctxMain->hLC, fOption, qwValue);
+            ctxMain->cfg.fVerboseDll = qwValue ? TRUE : FALSE;
+            PluginManager_Notify(VMMDLL_PLUGIN_EVENT_VERBOSITYCHANGE, NULL, 0);
+            return TRUE;
+        case VMMDLL_OPT_CORE_VERBOSE:
+            LcSetOption(ctxMain->hLC, fOption, qwValue);
+            ctxMain->cfg.fVerbose = qwValue ? TRUE : FALSE;
+            PluginManager_Notify(VMMDLL_PLUGIN_EVENT_VERBOSITYCHANGE, NULL, 0);
+            return TRUE;
+        case VMMDLL_OPT_CORE_VERBOSE_EXTRA:
+            LcSetOption(ctxMain->hLC, fOption, qwValue);
+            ctxMain->cfg.fVerboseExtra = qwValue ? TRUE : FALSE;
+            PluginManager_Notify(VMMDLL_PLUGIN_EVENT_VERBOSITYCHANGE, NULL, 0);
+            return TRUE;
+        case VMMDLL_OPT_CORE_VERBOSE_EXTRA_TLP:
+            LcSetOption(ctxMain->hLC, fOption, qwValue);
+            ctxMain->cfg.fVerboseExtraTlp = qwValue ? TRUE : FALSE;
+            PluginManager_Notify(VMMDLL_PLUGIN_EVENT_VERBOSITYCHANGE, NULL, 0);
+            return TRUE;
+        case VMMDLL_OPT_CONFIG_IS_PAGING_ENABLED:
+            ctxVmm->flags = (ctxVmm->flags & ~VMM_FLAG_NOPAGING) | (qwValue ? 0 : 1);
+            return TRUE;
+        case VMMDLL_OPT_CONFIG_TICK_PERIOD:
+            ctxVmm->ThreadProcCache.cMs_TickPeriod = (DWORD)qwValue;
+            return TRUE;
+        case VMMDLL_OPT_CONFIG_READCACHE_TICKS:
+            ctxVmm->ThreadProcCache.cTick_Phys = (DWORD)qwValue;
+            return TRUE;
+        case VMMDLL_OPT_CONFIG_TLBCACHE_TICKS:
+            ctxVmm->ThreadProcCache.cTick_TLB = (DWORD)qwValue;
+            return TRUE;
+        case VMMDLL_OPT_CONFIG_PROCCACHE_TICKS_PARTIAL:
+            ctxVmm->ThreadProcCache.cTick_ProcPartial = (DWORD)qwValue;
+            return TRUE;
+        case VMMDLL_OPT_CONFIG_PROCCACHE_TICKS_TOTAL:
+            ctxVmm->ThreadProcCache.cTick_ProcTotal = (DWORD)qwValue;
+            return TRUE;
+        case VMMDLL_OPT_CONFIG_STATISTICS_FUNCTIONCALL:
+            Statistics_CallSetEnabled(qwValue ? TRUE : FALSE);
+            return TRUE;
+        case VMMDLL_OPT_FORENSIC_MODE:
+            return FcInitialize((DWORD)qwValue, FALSE);
+        default:
+            // non-recognized option - possibly a device option to pass along to leechcore.dll
+            return LcSetOption(ctxMain->hLC, fOption, qwValue);
+    }
 }
 
 //-----------------------------------------------------------------------------
@@ -613,64 +718,7 @@ NTSTATUS VMMDLL_UtilVfsWriteFile_BOOL(_Inout_ PBOOL pfTarget, _In_ PBYTE pb, _In
 
 NTSTATUS VMMDLL_UtilVfsWriteFile_DWORD(_Inout_ PDWORD pdwTarget, _In_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ ULONG64 cbOffset, _In_ DWORD dwMinAllow)
 {
-    return Util_VfsWriteFile_DWORD(pdwTarget, pb, cb, pcbWrite, cbOffset, dwMinAllow);
-}
-
-
-
-//-----------------------------------------------------------------------------
-// PLUGIN MANAGER FUNCTIONALITY BELOW:
-//-----------------------------------------------------------------------------
-
-_Success_(return)
-BOOL VMMDLL_VfsInitializePlugins()
-{
-    CALL_IMPLEMENTATION_VMM(
-        STATISTICS_ID_VMMDLL_VfsInitializePlugins,
-        PluginManager_Initialize())
-}
-
-
-
-//-----------------------------------------------------------------------------
-// REFRESH FUNCTIONALITY BELOW:
-//-----------------------------------------------------------------------------
-
-_Success_(return)
-BOOL VMMDLL_Refresh_Impl(_In_ DWORD dwReserved)
-{
-    ULONG64 paMax;
-    // enforce global lock even if 'multi thread' is enabled
-    // we wish to avoid parallel process refreshes ...
-    EnterCriticalSection(&ctxVmm->MasterLock);
-    VmmCacheClear(VMM_CACHE_TAG_PHYS);
-    VmmCacheClear(VMM_CACHE_TAG_TLB);
-    VmmProc_RefreshProcesses(TRUE);
-    // update max physical address (if volatile).
-    if(ctxMain->dev.fVolatileMaxAddress) {
-        if(LeechCore_GetOption(LEECHCORE_OPT_MEMORYINFO_ADDR_MAX, &paMax) && (paMax > 0x01000000)) {
-            ctxMain->dev.paMax = paMax;
-        }
-    }
-    LeaveCriticalSection(&ctxVmm->MasterLock);
-    return TRUE;
-}
-
-_Success_(return)
-BOOL VMMDLL_Refresh(_In_ DWORD dwReserved)
-{
-    CALL_IMPLEMENTATION_VMM(
-        STATISTICS_ID_VMMDLL_Refresh,
-        VMMDLL_Refresh_Impl(dwReserved))
-}
-
-/*
-* Free memory allocated by the VMMDLL.
-* -- pvMem
-*/
-VOID VMMDLL_MemFree(_Frees_ptr_opt_ PVOID pvMem)
-{
-    LocalFree(pvMem);
+    return Util_VfsWriteFile_DWORD(pdwTarget, pb, cb, pcbWrite, cbOffset, dwMinAllow, 0);
 }
 
 
@@ -679,7 +727,7 @@ VOID VMMDLL_MemFree(_Frees_ptr_opt_ PVOID pvMem)
 // VMM CORE FUNCTIONALITY BELOW:
 //-----------------------------------------------------------------------------
 
-DWORD VMMDLL_MemReadScatter_Impl(_In_ DWORD dwPID, _Inout_ PPMEM_IO_SCATTER_HEADER ppMEMs, _In_ DWORD cpMEMs, _In_ DWORD flags)
+DWORD VMMDLL_MemReadScatter_Impl(_In_ DWORD dwPID, _Inout_ PPMEM_SCATTER ppMEMs, _In_ DWORD cpMEMs, _In_ DWORD flags)
 {
     DWORD i, cMEMs;
     PVMM_PROCESS pObProcess = NULL;
@@ -688,19 +736,19 @@ DWORD VMMDLL_MemReadScatter_Impl(_In_ DWORD dwPID, _Inout_ PPMEM_IO_SCATTER_HEAD
         VmmReadScatterPhysical(ppMEMs, cpMEMs, flags);
     } else {
         pObProcess = VmmProcessGet(dwPID);
-        if(!pObProcess) { return FALSE; }
+        if(!pObProcess) { return 0; }
         VmmReadScatterVirtual(pObProcess, ppMEMs, cpMEMs, flags);
         Ob_DECREF(pObProcess);
     }
     for(i = 0, cMEMs = 0; i < cpMEMs; i++) {
-        if(ppMEMs[i]->cb == ppMEMs[i]->cbMax) {
+        if(ppMEMs[i]->f) {
             cMEMs++;
         }
     }
     return cMEMs;
 }
 
-DWORD VMMDLL_MemReadScatter(_In_ DWORD dwPID, _Inout_ PPMEM_IO_SCATTER_HEADER ppMEMs, _In_ DWORD cpMEMs, _In_ DWORD flags)
+DWORD VMMDLL_MemReadScatter(_In_ DWORD dwPID, _Inout_ PPMEM_SCATTER ppMEMs, _In_ DWORD cpMEMs, _In_ DWORD flags)
 {
     CALL_IMPLEMENTATION_VMM_RETURN(
         STATISTICS_ID_VMMDLL_MemReadScatter,
@@ -948,6 +996,7 @@ BOOL VMMDLL_ProcessMap_GetModule_Impl(_In_ DWORD dwPID, _Out_writes_bytes_opt_(*
         cbMultiTextDiff = (QWORD)pModuleMap->wszMultiText - (QWORD)pObMap->wszMultiText;
         for(i = 0; i < pModuleMap->cMap; i++) {
             pModuleMap->pMap[i].wszText = (LPWSTR)(cbMultiTextDiff + (QWORD)pObMap->pMap[i].wszText);
+            pModuleMap->pMap[i].wszFullName = (LPWSTR)(cbMultiTextDiff + (QWORD)pObMap->pMap[i].wszFullName);
         }
     }
     fResult = TRUE;
@@ -1044,7 +1093,7 @@ BOOL VMMDLL_ProcessMap_GetThread_Impl(_In_ DWORD dwPID, _Out_writes_bytes_opt_(*
     if(pThreadMap) {
         if(*pcbThreadMap < cbData) { goto fail; }
         ZeroMemory(pThreadMap, sizeof(VMMDLL_MAP_HEAP));
-        pThreadMap->dwVersion = VMMDLL_MAP_VAD_VERSION;
+        pThreadMap->dwVersion = VMMDLL_MAP_THREAD_VERSION;
         pThreadMap->cMap = pObMap->cMap;
         memcpy(pThreadMap->pMap, pObMap->pMap, cbDataMap);
     }
@@ -1151,6 +1200,48 @@ BOOL VMMDLL_Map_GetPhysMem(_Out_writes_bytes_opt_(*pcbPhysMemMap) PVMMDLL_MAP_PH
 }
 
 _Success_(return)
+BOOL VMMDLL_Map_GetNet_Impl(_Out_writes_bytes_opt_(*pcbNetMap) PVMMDLL_MAP_NET pNetMap, _Inout_ PDWORD pcbNetMap)
+{
+    BOOL fResult = FALSE;
+    QWORD i, cbData = 0, cbDataMap, cbMultiTextDiff;
+    PVMMDLL_MAP_NETENTRY pe;
+    PVMMOB_MAP_NET pObMap = NULL;
+    if(!VmmMap_GetNet(&pObMap)) { goto fail; }
+    cbDataMap = pObMap->cMap * sizeof(VMMDLL_MAP_NETENTRY);
+    cbData = sizeof(VMMDLL_MAP_NET) + cbDataMap + pObMap->cbMultiText;
+    if(pNetMap) {
+        if(*pcbNetMap < cbData) { goto fail; }
+        ZeroMemory(pNetMap, cbData);
+        pNetMap->dwVersion = VMMDLL_MAP_NET_VERSION;
+        pNetMap->wszMultiText = (LPWSTR)(((PBYTE)pNetMap->pMap) + cbDataMap);
+        pNetMap->cbMultiText = pObMap->cbMultiText;
+        pNetMap->cMap = pObMap->cMap;
+        memcpy(pNetMap->pMap, pObMap->pMap, cbDataMap);
+        memcpy(pNetMap->wszMultiText, pObMap->wszMultiText, pObMap->cbMultiText);
+        cbMultiTextDiff = (QWORD)pNetMap->wszMultiText - (QWORD)pObMap->wszMultiText;
+        for(i = 0; i < pNetMap->cMap; i++) {
+            pe = pNetMap->pMap + i;
+            pe->Src.wszText = (LPWSTR)(cbMultiTextDiff + (QWORD)pe->Src.wszText);
+            pe->Dst.wszText = (LPWSTR)(cbMultiTextDiff + (QWORD)pe->Dst.wszText);
+            pe->wszText = (LPWSTR)(cbMultiTextDiff + (QWORD)pe->wszText);
+        }
+    }
+    fResult = TRUE;
+fail:
+    *pcbNetMap = (DWORD)cbData;
+    Ob_DECREF(pObMap);
+    return fResult;
+}
+
+_Success_(return)
+BOOL VMMDLL_Map_GetNet(_Out_writes_bytes_opt_(*pcbNetMap) PVMMDLL_MAP_NET pNetMap, _Inout_ PDWORD pcbNetMap)
+{
+    CALL_IMPLEMENTATION_VMM(
+        STATISTICS_ID_VMMDLL_Map_GetNet,
+        VMMDLL_Map_GetNet_Impl(pNetMap, pcbNetMap))
+}
+
+_Success_(return)
 BOOL VMMDLL_Map_GetUsers_Impl(_Out_writes_bytes_opt_(*pcbUserMap) PVMMDLL_MAP_USER pUserMap, _Inout_ PDWORD pcbUserMap)
 {
     BOOL fResult = FALSE;
@@ -1209,7 +1300,7 @@ BOOL VMMDLL_Map_GetPfn_Impl(_In_ DWORD pPfns[], _In_ DWORD cPfns, _Out_writes_by
         for(i = 0; i < cPfns; i++) {
             ObSet_Push(psObPfns, pPfns[i]);
         }
-        if(!MmPfn_Map_GetPfnScatter(psObPfns, &pObMap)) { goto fail; }
+        if(!MmPfn_Map_GetPfnScatter(psObPfns, &pObMap, TRUE)) { goto fail; }
         ZeroMemory(pPfnMap, cbData);
         pPfnMap->dwVersion = VMMDLL_MAP_PFN_VERSION;
         pPfnMap->cMap = pObMap->cMap;
@@ -1255,7 +1346,7 @@ BOOL VMMDLL_PidGetFromName_Impl(_In_ LPSTR szProcName, _Out_ PDWORD pdwPID)
     // 1: try locate process using long (full) name
     while((pObProcess = VmmProcessGetNext(pObProcess, 0))) {
         if(pObProcess->dwState) { continue; }
-        if(!pObProcess->pObPersistent->szNameLong || _stricmp(szProcName, pObProcess->pObPersistent->szNameLong)) { continue; }
+        if(!pObProcess->pObPersistent->uszNameLong || _stricmp(szProcName, pObProcess->pObPersistent->uszNameLong)) { continue; }
         *pdwPID = pObProcess->dwPID;
         Ob_DECREF(pObProcess);
         return TRUE;
@@ -1305,7 +1396,7 @@ BOOL VMMDLL_ProcessGetInformation_Impl(_In_ DWORD dwPID, _Inout_opt_ PVMMDLL_PRO
     pInfo->paDTB = pObProcess->paDTB;
     pInfo->paDTB_UserOpt = pObProcess->paDTB_UserOpt;
     memcpy(pInfo->szName, pObProcess->szName, sizeof(pInfo->szName));
-    strncpy_s(pInfo->szNameLong, sizeof(pInfo->szNameLong), pObProcess->pObPersistent->szNameLong, _TRUNCATE);
+    strncpy_s(pInfo->szNameLong, sizeof(pInfo->szNameLong), pObProcess->pObPersistent->uszNameLong, _TRUNCATE);
     // set operating system specific parameters
     if((ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X64) || (ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X86)) {
         if(ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X64) {
@@ -1351,18 +1442,18 @@ LPSTR VMMDLL_ProcessGetInformationString_Impl(_In_ DWORD dwPID, _In_ DWORD fOpti
         case VMMDLL_PROCESS_INFORMATION_OPT_STRING_PATH_USER_IMAGE:
         case VMMDLL_PROCESS_INFORMATION_OPT_STRING_CMDLINE:
             if(!pObProcess->pObPersistent->UserProcessParams.fProcessed) {
-                VmmProcessActionForeachParallel(NULL, 5, VMMDLL_ProcessGetInformationString_Impl_CallbackCriteria, VMMDLL_ProcessGetInformationString_Impl_CallbackAction);
+                VmmProcessActionForeachParallel(NULL, VMMDLL_ProcessGetInformationString_Impl_CallbackCriteria, VMMDLL_ProcessGetInformationString_Impl_CallbackAction);
             }
     }
     switch(fOptionString) {
         case VMMDLL_PROCESS_INFORMATION_OPT_STRING_PATH_KERNEL:
-            sz = pObProcess->pObPersistent->szPathKernel;
+            sz = pObProcess->pObPersistent->uszPathKernel;
             break;
         case VMMDLL_PROCESS_INFORMATION_OPT_STRING_PATH_USER_IMAGE:
-            sz = pObProcess->pObPersistent->UserProcessParams.szImagePathName;
+            sz = pObProcess->pObPersistent->UserProcessParams.uszImagePathName;
             break;
         case VMMDLL_PROCESS_INFORMATION_OPT_STRING_CMDLINE:
-            sz = pObProcess->pObPersistent->UserProcessParams.szCommandLine;
+            sz = pObProcess->pObPersistent->UserProcessParams.uszCommandLine;
             break;
     }
     szStrDup = Util_StrDupA(sz);
@@ -1406,9 +1497,9 @@ BOOL VMMDLL_ProcessGet_Directories_Sections_IAT_EAT_Impl(
     if(!(pModule = VmmMap_GetModuleEntry(pObModuleMap, wszModule))) { goto fail; }
     // data directories
     if(fDataDirectory) {
-        if(!pDataDirectory) { *pcData = 16; goto success; }
+        if(!pDataDirectory) { *pcData = IMAGE_NUMBEROF_DIRECTORY_ENTRIES; goto success; }
         if(cData < 16) { goto fail; }
-        VmmWin_PE_DIRECTORY_DisplayBuffer(pObProcess, pModule, NULL, 0, NULL, pDataDirectory);
+        if(!PE_DirectoryGetAll(pObProcess, pModule->vaBase, NULL, pDataDirectory)) { goto fail; }
         *pcData = 16;
         goto success;
     }
@@ -1417,7 +1508,7 @@ BOOL VMMDLL_ProcessGet_Directories_Sections_IAT_EAT_Impl(
         i = PE_SectionGetNumberOf(pObProcess, pModule->vaBase);
         if(!pSections) { *pcData = i; goto success; }
         if(cData < i) { goto fail; }
-        VmmWin_PE_SECTION_DisplayBuffer(pObProcess, pModule, NULL, 0, NULL, &cData, pSections);
+        if(!PE_SectionGetAll(pObProcess, pModule->vaBase, i, pSections)) { goto fail; }
         *pcData = cData;
         goto success;
     }
@@ -1722,47 +1813,6 @@ BOOL VMMDLL_WinReg_QueryValueExW( _In_ LPWSTR wszFullPathKeyValue, _Out_opt_ LPD
 
 
 //-----------------------------------------------------------------------------
-// WINDOWS SPECIFIC NETWORKING FUNCTIONALITY BELOW:
-//-----------------------------------------------------------------------------
-
-/*
-* Retrieve networking information about network connections related to Windows TCP/IP stack.
-* NB! CALLER IS RESPONSIBLE FOR LocalFree return value!
-* CALLER LocalFree: return
-* -- return - fail: NULL, success: a PVMMDLL_WIN_TCPIP struct scontaining the result - NB! Caller responsible for LocalFree!
-*/
-PVMMDLL_WIN_TCPIP VMMDLL_WinNet_Get_Impl()
-{
-    DWORD cTcpE;
-    PVMMDLL_WIN_TCPIP pWinTcpIp;
-    PVMMWIN_TCPIP_ENTRY pTcpE = NULL;
-    if(!VmmWinTcpIp_TcpE_Get(&pTcpE, &cTcpE)) {
-        return NULL;
-    }
-    if(!(pWinTcpIp = LocalAlloc(0, sizeof(VMMDLL_WIN_TCPIP) + cTcpE * sizeof(VMMDLL_WIN_TCPIP_ENTRY)))) {
-        LocalFree(pTcpE);
-        return NULL;
-    }
-    pWinTcpIp->magic = VMMDLL_WIN_TCPIP_MAGIC;
-    pWinTcpIp->dwVersion = VMMDLL_WIN_TCPIP_VERSION;
-    pWinTcpIp->cTcpE = cTcpE;
-    memcpy(pWinTcpIp->pTcpE, pTcpE, cTcpE * sizeof(VMMDLL_WIN_TCPIP_ENTRY));
-    LocalFree(pTcpE);
-    return pWinTcpIp;
-}
-
-PVMMDLL_WIN_TCPIP VMMDLL_WinNet_Get()
-{
-    CALL_IMPLEMENTATION_VMM_RETURN(
-        STATISTICS_ID_VMMDLL_WinNet_Get,
-        PVMMDLL_WIN_TCPIP,
-        NULL,
-        VMMDLL_WinNet_Get_Impl())
-}
-
-
-
-//-----------------------------------------------------------------------------
 // WINDOWS SPECIFIC UTILITY FUNCTIONS BELOW:
 //-----------------------------------------------------------------------------
 
@@ -1816,9 +1866,47 @@ BOOL VMMDLL_WinGetThunkInfoIAT(_In_ DWORD dwPID, _In_ LPWSTR wszModuleName, _In_
 //-----------------------------------------------------------------------------
 
 _Success_(return)
+BOOL VMMDLL_PdbLoad_Impl(_In_ DWORD dwPID, _In_ ULONG64 vaModuleBase, _Out_writes_(MAX_PATH) LPSTR szModuleName)
+{
+    BOOL fResult;
+    PDB_HANDLE hPdb;
+    PVMM_PROCESS pObProcess;
+    if(!(pObProcess = VmmProcessGet(dwPID))) { return FALSE; }
+    fResult =
+        (hPdb = PDB_GetHandleFromModuleAddress(pObProcess, vaModuleBase)) &&
+        PDB_LoadEnsure(hPdb) &&
+        PDB_GetModuleName(hPdb, szModuleName);
+    Ob_DECREF(pObProcess);
+    return fResult;
+}
+
+_Success_(return)
+BOOL VMMDLL_PdbLoad(_In_ DWORD dwPID, _In_ ULONG64 vaModuleBase, _Out_writes_(MAX_PATH) LPSTR szModuleName)
+{
+    CALL_IMPLEMENTATION_VMM(
+        STATISTICS_ID_VMMDLL_PdbLoad,
+        VMMDLL_PdbLoad_Impl(dwPID, vaModuleBase, szModuleName))
+}
+
+_Success_(return)
+BOOL VMMDLL_PdbSymbolName_Impl(_In_ LPSTR szModule, _In_ DWORD cbSymbolOffset, _Out_writes_(MAX_PATH) LPSTR szSymbolName, _Out_opt_ PDWORD pdwSymbolDisplacement)
+{
+    PDB_HANDLE hPdb = PDB_GetHandleFromModuleName(szModule);
+    return PDB_GetSymbolFromOffset(hPdb, cbSymbolOffset, szSymbolName, pdwSymbolDisplacement);
+}
+
+_Success_(return)
+BOOL VMMDLL_PdbSymbolName(_In_ LPSTR szModule, _In_ DWORD cbSymbolOffset, _Out_writes_(MAX_PATH) LPSTR szSymbolName, _Out_opt_ PDWORD pdwSymbolDisplacement)
+{
+    CALL_IMPLEMENTATION_VMM(
+        STATISTICS_ID_VMMDLL_PdbSymbolName,
+        VMMDLL_PdbSymbolName_Impl(szModule, cbSymbolOffset, szSymbolName, pdwSymbolDisplacement))
+}
+
+_Success_(return)
 BOOL VMMDLL_PdbSymbolAddress_Impl(_In_ LPSTR szModule, _In_ LPSTR szSymbolName, _Out_ PULONG64 pvaSymbolAddress)
 {
-    VMMWIN_PDB_HANDLE hPdb = PDB_GetHandleFromModuleName(szModule);
+    PDB_HANDLE hPdb = PDB_GetHandleFromModuleName(szModule);
     return PDB_GetSymbolAddress(hPdb, szSymbolName, pvaSymbolAddress);
 }
 
@@ -1833,7 +1921,7 @@ BOOL VMMDLL_PdbSymbolAddress(_In_ LPSTR szModule, _In_ LPSTR szSymbolName, _Out_
 _Success_(return)
 BOOL VMMDLL_PdbTypeSize_Impl(_In_ LPSTR szModule, _In_ LPSTR szTypeName, _Out_ PDWORD pcbTypeSize)
 {
-    VMMWIN_PDB_HANDLE hPdb = PDB_GetHandleFromModuleName(szModule);
+    PDB_HANDLE hPdb = PDB_GetHandleFromModuleName(szModule);
     return PDB_GetTypeSize(hPdb, szTypeName, pcbTypeSize);
 }
 
@@ -1848,7 +1936,7 @@ BOOL VMMDLL_PdbTypeSize(_In_ LPSTR szModule, _In_ LPSTR szTypeName, _Out_ PDWORD
 _Success_(return)
 BOOL VMMDLL_PdbTypeChildOffset_Impl(_In_ LPSTR szModule, _In_ LPSTR szTypeName, _In_ LPWSTR wszTypeChildName, _Out_ PDWORD pcbTypeChildOffset)
 {
-    VMMWIN_PDB_HANDLE hPdb = PDB_GetHandleFromModuleName(szModule);
+    PDB_HANDLE hPdb = PDB_GetHandleFromModuleName(szModule);
     return PDB_GetTypeChildOffset(hPdb, szTypeName, wszTypeChildName, pcbTypeChildOffset);
 }
 
@@ -1868,7 +1956,7 @@ BOOL VMMDLL_PdbTypeChildOffset(_In_ LPSTR szModule, _In_ LPSTR szTypeName, _In_ 
 //-----------------------------------------------------------------------------
 
 _Success_(return)
-BOOL VMMDLL_UtilFillHexAscii(_In_ PBYTE pb, _In_ DWORD cb, _In_ DWORD cbInitialOffset, _Out_opt_ LPSTR sz, _Inout_ PDWORD pcsz)
+BOOL VMMDLL_UtilFillHexAscii(_In_reads_opt_(cb) PBYTE pb, _In_ DWORD cb, _In_ DWORD cbInitialOffset, _Out_writes_opt_(*pcsz) LPSTR sz, _Inout_ PDWORD pcsz)
 {
     CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_UtilFillHexAscii,

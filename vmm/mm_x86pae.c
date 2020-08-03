@@ -91,20 +91,23 @@ VOID MmX86PAE_MapInitialize_Index(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_PTEE
 {
     PVMMOB_MEM pObNextPT;
     DWORD i, va;
-    QWORD pte;
-    BOOL fUserOnly, fNextSupervisorPML, fTransition = FALSE;
+    QWORD cPages, pte;
+    BOOL fUserOnly, fNextSupervisorPML, fPagedOut = FALSE;
     PVMM_MAP_PTEENTRY pMemMapEntry = pMemMap + *pcMemMap - 1;
     fUserOnly = pProcess->fUserOnly;
     for(i = 0; i < 512; i++) {
         if((iPML == 3) && (i > 3)) { break; }                   // MAX 4 ENTRIES IN PDPT
         pte = PTEs[i];
         if(!MMX86PAE_PTE_IS_VALID(pte, iPML)) {
-            if(pte && MMX86PAE_PTE_IS_TRANSITION(pte, iPML)) {
-                pte = MMX86PAE_PTE_IS_TRANSITION(pte, iPML);    // TRANSITION PAGE
-                fTransition = TRUE;
-            } else {
-                continue;                                       // INVALID
+            if(!pte) { continue; }
+            pte = MMX86PAE_PTE_IS_TRANSITION(pte, iPML);        // PAGE ATTRIBUTES IF TRANSITION PAGE
+            if(!pte) {
+                if(iPML != 1) { continue; }
+                pte = 0x8000000000000005;                       // GUESS READ-ONLY USER PAGE IF NON TRANSITION
             }
+            fPagedOut = TRUE;
+        } else {
+            fPagedOut = FALSE;
         }
         if((pte & 0x0000fffffffff000) > paMax) { continue; }
         if(iPML == 3) {
@@ -120,17 +123,21 @@ VOID MmX86PAE_MapInitialize_Index(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_PTEE
             if((iPML == 1) || (pte & 0x80) /* PS */) {
                 if((*pcMemMap == 0) ||
                     (pMemMapEntry->fPage != (pte & VMM_MEMMAP_PAGE_MASK)) ||
-                    ((va != pMemMapEntry->vaBase + (pMemMapEntry->cPages << 12))) && !fTransition) {
+                    ((va != pMemMapEntry->vaBase + (pMemMapEntry->cPages << 12))) && !fPagedOut) {
                     if(*pcMemMap + 1 >= VMM_MEMMAP_ENTRIES_MAX) { return; }
                     pMemMapEntry = pMemMap + *pcMemMap;
                     pMemMapEntry->vaBase = va;
                     pMemMapEntry->fPage = pte & VMM_MEMMAP_PAGE_MASK;
-                    pMemMapEntry->cPages = 1ULL << (MMX86PAE_PAGETABLEMAP_PML_REGION_SIZE[iPML] - 12);
+                    cPages = 1ULL << (MMX86PAE_PAGETABLEMAP_PML_REGION_SIZE[iPML] - 12);
+                    if(fPagedOut) { pMemMapEntry->cSoftware += (DWORD)cPages; }
+                    pMemMapEntry->cPages = cPages;
                     *pcMemMap = *pcMemMap + 1;
                     if(*pcMemMap >= VMM_MEMMAP_ENTRIES_MAX - 1) { return; }
                     continue;
                 }
-                pMemMapEntry->cPages += 1ULL << (MMX86PAE_PAGETABLEMAP_PML_REGION_SIZE[iPML] - 12);
+                cPages = 1ULL << (MMX86PAE_PAGETABLEMAP_PML_REGION_SIZE[iPML] - 12);
+                if(fPagedOut) { pMemMapEntry->cSoftware += (DWORD)cPages; }
+                pMemMapEntry->cPages += cPages;
                 continue;
             }
         }

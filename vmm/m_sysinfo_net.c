@@ -3,14 +3,14 @@
 // The SysInfo/Net module is responsible for displaying networking information
 // in a 'netstat' like way at the path '/sysinfo/net/'
 //
+// The module is a provider of forensic timelining information.
+//
 // (c) Ulf Frisk, 2020
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-#include <ws2tcpip.h>
 #include "vmm.h"
-#include "vmmwin.h"
-#include "vmmwintcpip.h"
 #include "util.h"
+#include "fc.h"
 
 LPCSTR szMSYSINFONET_README =
 "Information about the sysinfo net module                                     \n" \
@@ -26,176 +26,105 @@ LPCSTR szMSYSINFONET_README =
 // Show information related to TCP/IP connectivity in the analyzed system.
 // ----------------------------------------------------------------------------
 
-#define MSYSINFONET_CACHE_MAXAGE   500      // ms
+#define MSYSINFONET_LINELENGTH                  128ULL
+#define MSYSINFONET_LINELENGTH_VERBOSE          260ULL
 
-typedef struct tdMSYSINFONET_OB_CONTEXT {
-    OB ObHdr;
-    QWORD qwCreateTimeTickCount64;
-    DWORD cbFile;
-    PBYTE pbFile;
-    DWORD cbFileVerbose;
-    PBYTE pbFileVerbose;
-} MSYSINFONET_OB_CONTEXT, *PMSYSINFONET_OB_CONTEXT;
-
-PMSYSINFONET_OB_CONTEXT gp_MSYSINFO_OB_NETCONTEXT = NULL;
-
-VOID MSysInfoNet_ObContext_CallbackRefCount1(PMSYSINFONET_OB_CONTEXT pOb)
+_Success_(return == 0)
+NTSTATUS MSysInfoNet_Read_DoWork(_In_ PVMMOB_MAP_NET pNetMap, _In_ BOOL fVerbose, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
-    LocalFree(pOb->pbFile);
-    LocalFree(pOb->pbFileVerbose);
-}
+    NTSTATUS nt;
+    LPSTR sz;
+    QWORD i, o = 0, cbMax, cStart, cEnd, cbLINELENGTH;
+    PVMM_MAP_NETENTRY pe;
+    PVMM_PROCESS pObProcess;
+    CHAR szTime[MAX_PATH];
+    cbLINELENGTH = fVerbose ? MSYSINFONET_LINELENGTH_VERBOSE : MSYSINFONET_LINELENGTH;
+    cStart = (DWORD)(cbOffset / cbLINELENGTH);
+    cEnd = (DWORD)min(pNetMap->cMap - 1, (cb + cbOffset + cbLINELENGTH - 1) / cbLINELENGTH);
+    cbMax = 1 + (1 + cEnd - cStart) * cbLINELENGTH;
+    if(!pNetMap->cMap || (cStart > pNetMap->cMap)) { return VMMDLL_STATUS_END_OF_FILE; }
+    if(!(sz = LocalAlloc(LMEM_ZEROINIT, cbMax))) { return VMMDLL_STATUS_FILE_INVALID; }
+    for(i = cStart; i <= cEnd; i++) {
+        pe = pNetMap->pMap + i;
+        pObProcess = VmmProcessGet(pe->dwPID);
+        if(fVerbose) {
+            Util_FileTime2String((PFILETIME)&pe->ftTime, szTime);
+            o += Util_snprintf_ln2(
+                sz + o,
+                cbLINELENGTH,
+                "%04x%7i %S %-20s %s  %s",
+                (DWORD)i,
+                pe->dwPID,
+                pe->wszText,
+                pObProcess ? pObProcess->pObPersistent->uszNameLong : "",
+                szTime,
+                pObProcess ? pObProcess->pObPersistent->uszPathKernel : ""
+            );
 
-/*
-* Format network connection into into human readable text.
-*/
-_Success_(return)
-BOOL MSysInfoNet_GetContext_ToString(_In_ PVMMWIN_TCPIP_ENTRY pTcpE, _In_ DWORD cTcpE, _Out_ PBYTE *ppbFileN, _Out_ PDWORD pcbFileN, _Out_ PBYTE *ppbFileV, _Out_ PDWORD pcbFileV)
-{
-    BOOL fResult = FALSE;
-    PVMMWIN_TCPIP_ENTRY pE;
-    DWORD i, oN = 0, oV = 0, dwIpVersion;
-    DWORD cbN = 0x00100000, cbV = 0x00100000;
-    PBYTE pbN = NULL, pbV = NULL;
-    PVMM_PROCESS pObProcess = NULL;
-    DWORD cchSrc, cchDst;
-    CHAR sz[64], szSrc[64], szDst[64], szTime[MAX_PATH];
-    if(!(pbN = LocalAlloc(0, cbN))) { goto fail; }
-    if(!(pbV = LocalAlloc(0, cbV))) { goto fail; }
-
-    for(i = 0; i < cTcpE; i++) {
-        pE = pTcpE + i;
-        pObProcess = VmmProcessGet(pE->dwPID);
-        dwIpVersion = (pE->AF.wAF == AF_INET) ? 4 : ((pE->AF.wAF == AF_INET6) ? 6 : 0);
-        // format src addr
-        if(pE->Src.fValid) {
-            sz[0] = 0;
-            InetNtopA(pE->AF.wAF, pE->Src.pbA, sz, sizeof(sz));
         } else {
-            strcpy_s(sz, sizeof(sz), "***");
+            o += Util_snprintf_ln2(
+                sz + o,
+                cbLINELENGTH,
+                "%04x%7i %S %s",
+                (DWORD)i,
+                pe->dwPID,
+                pe->wszText,
+                pObProcess ? pObProcess->pObPersistent->uszNameLong : ""
+            );
         }
-        cchSrc = snprintf(szSrc, sizeof(szSrc), ((dwIpVersion == 6) ? "[%s]:%i" : "%s:%i"), sz, pE->Src.wPort);
-        // format dst addr
-        if(pE->Dst.fValid) {
-            sz[0] = 0;
-            InetNtopA(pE->AF.wAF, pE->Dst.pbA, sz, sizeof(sz));
-        } else {
-            strcpy_s(sz, sizeof(sz), "***");
-        }
-        cchDst = snprintf(szDst, sizeof(szDst), ((dwIpVersion == 6) ? "[%s]:%i" : "%s:%i"), sz, pE->Dst.wPort);
-        // get time
-        Util_FileTime2String((PFILETIME)&pE->qwTime, szTime);
-        // print normal
-        oN += snprintf(
-            pbN + oN,
-            (QWORD)cbN + oN,
-            "TCPv%i  %-*s  %-*s  %-11s %6i  %s\n",
-            dwIpVersion,
-            max(28, cchSrc),
-            szSrc,
-            max(28, cchDst),
-            szDst,
-            pE->szState,
-            pE->dwPID,
-            (pObProcess ? pObProcess->szName : "***")
-        );
-        // print verbose
-        oV += snprintf(
-            pbV + oV,
-            (QWORD)cbV + oV,
-            "TCPv%i  %-*s  %-*s  %-11s  %s %6i  %-15s %S\n",
-            dwIpVersion,
-            max(28, cchSrc),
-            szSrc,
-            max(28, cchDst),
-            szDst,
-            pE->szState,
-            szTime,
-            pE->dwPID,
-            (pObProcess ? pObProcess->szName : "***"),
-            (pObProcess ? pObProcess->pObPersistent->wszPathKernel : L"***")
-        );
-        Ob_DECREF_NULL(&pObProcess);
+        Ob_DECREF(pObProcess);
     }
-    // move result into properly sized buffers
-    if(!(*ppbFileN = LocalAlloc(0, oN))) { goto fail; }
-    if(!(*ppbFileV = LocalAlloc(0, oV))) { goto fail; }
-    memcpy(*ppbFileN, pbN, oN);
-    memcpy(*ppbFileV, pbV, oV);
-    *pcbFileN = oN;
-    *pcbFileV = oV;
-    fResult = TRUE;
-fail:
-    LocalFree(pbN);
-    LocalFree(pbV);
-    return fResult;
-}
-
-/*
-* Retrieve a net context containing the processed data as an object manager object.
-* CALLER DECREF: return
-* -- return
-*/
-PMSYSINFONET_OB_CONTEXT MSysInfoNet_GetContext()
-{
-    DWORD cTcpE;
-    PVMMWIN_TCPIP_ENTRY pTcpE = NULL;
-    PMSYSINFONET_OB_CONTEXT pObCtx;
-    EnterCriticalSection(&ctxVmm->TcpIp.LockUpdate);
-    // 1: check if cached version is ok
-    pObCtx = gp_MSYSINFO_OB_NETCONTEXT;
-    if(pObCtx && (pObCtx->qwCreateTimeTickCount64 + MSYSINFONET_CACHE_MAXAGE > GetTickCount64())) {
-        Ob_INCREF(pObCtx);
-        goto finish;
-    }
-    // 2: replace with new version
-    if(!VmmWinTcpIp_TcpE_Get(&pTcpE, &cTcpE)) { goto finish; }
-    Ob_DECREF_NULL(&gp_MSYSINFO_OB_NETCONTEXT);
-    pObCtx = gp_MSYSINFO_OB_NETCONTEXT = Ob_Alloc('IP__', LMEM_ZEROINIT, sizeof(MSYSINFONET_OB_CONTEXT), MSysInfoNet_ObContext_CallbackRefCount1, NULL);
-    if(!pObCtx) { goto finish; }    // alloc failed - should not happen -> finish and return NULL
-    MSysInfoNet_GetContext_ToString(pTcpE, cTcpE, &pObCtx->pbFile, &pObCtx->cbFile, &pObCtx->pbFileVerbose, &pObCtx->cbFileVerbose);
-    pObCtx->qwCreateTimeTickCount64 = GetTickCount64();
-    Ob_INCREF(pObCtx);
-finish:
-    LeaveCriticalSection(&ctxVmm->TcpIp.LockUpdate);
-    LocalFree(pTcpE);
-    return pObCtx;
+    nt = Util_VfsReadFile_FromPBYTE(sz, cbMax - 1, pb, cb, pcbRead, cbOffset - cStart * cbLINELENGTH);
+    LocalFree(sz);
+    return nt;
 }
 
 NTSTATUS MSysInfoNet_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
-    PMSYSINFONET_OB_CONTEXT pObNetCtx;
+    PVMMOB_MAP_NET pObNetMap;
     if(!wcscmp(ctx->wszPath, L"readme.txt")) {
         return Util_VfsReadFile_FromPBYTE((PBYTE)szMSYSINFONET_README, strlen(szMSYSINFONET_README), pb, cb, pcbRead, cbOffset);
     }
-    if((pObNetCtx = MSysInfoNet_GetContext())) {
+    if(VmmMap_GetNet(&pObNetMap)) {
         if(!wcscmp(ctx->wszPath, L"netstat.txt")) {
-            nt = Util_VfsReadFile_FromPBYTE(pObNetCtx->pbFile, pObNetCtx->cbFile, pb, cb, pcbRead, cbOffset);
+            nt = MSysInfoNet_Read_DoWork(pObNetMap, FALSE, pb, cb, pcbRead, cbOffset);
         }
         if(!wcscmp(ctx->wszPath, L"netstat-v.txt")) {
-            nt = Util_VfsReadFile_FromPBYTE(pObNetCtx->pbFileVerbose, pObNetCtx->cbFileVerbose, pb, cb, pcbRead, cbOffset);
+            nt = MSysInfoNet_Read_DoWork(pObNetMap, TRUE, pb, cb, pcbRead, cbOffset);
         }
-        Ob_DECREF(pObNetCtx);
+        Ob_DECREF(pObNetMap);
     }
     return nt;
 }
 
 BOOL MSysInfoNet_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 {
-    PMSYSINFONET_OB_CONTEXT pObNetCtx;
+    PVMMOB_MAP_NET pObNetMap;
     if(ctx->wszPath[0]) { return FALSE; }
     VMMDLL_VfsList_AddFile(pFileList, L"readme.txt", strlen(szMSYSINFONET_README), NULL);
-    if((pObNetCtx = MSysInfoNet_GetContext())) {
-        VMMDLL_VfsList_AddFile(pFileList, L"netstat.txt", pObNetCtx->cbFile, NULL);
-        VMMDLL_VfsList_AddFile(pFileList, L"netstat-v.txt", pObNetCtx->cbFileVerbose, NULL);
-        Ob_DECREF(pObNetCtx);
+    if(VmmMap_GetNet(&pObNetMap)) {
+        VMMDLL_VfsList_AddFile(pFileList, L"netstat.txt", pObNetMap->cMap * MSYSINFONET_LINELENGTH, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"netstat-v.txt", pObNetMap->cMap * MSYSINFONET_LINELENGTH_VERBOSE, NULL);
+        Ob_DECREF(pObNetMap);
     }
     return TRUE;
 }
 
-VOID MSysInfoNet_Close()
+VOID MSysInfoNet_Timeline(_In_ HANDLE hTimeline, _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ QWORD qwValue, _In_ LPWSTR wszText))
 {
-    Ob_DECREF_NULL(&gp_MSYSINFO_OB_NETCONTEXT);
+    DWORD i;
+    PVMM_MAP_NETENTRY pe;
+    PVMMOB_MAP_NET pObNetMap;
+    if(VmmMap_GetNet(&pObNetMap)) {
+        for(i = 0; i < pObNetMap->cMap; i++) {
+            pe = pObNetMap->pMap + i;
+            if(pe->ftTime && pe->wszText[0]) {
+                pfnAddEntry(hTimeline, pe->ftTime, FC_TIMELINE_ACTION_CREATE, pe->dwPID, pe->vaObj, pe->wszText);
+            }
+        }
+        Ob_DECREF(pObNetMap);
+    }
 }
 
 VOID M_SysInfoNet_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
@@ -206,6 +135,9 @@ VOID M_SysInfoNet_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     pRI->reg_info.fRootModule = TRUE;                               // module shows in root directory
     pRI->reg_fn.pfnList = MSysInfoNet_List;                         // List function supported
     pRI->reg_fn.pfnRead = MSysInfoNet_Read;                         // Read function supported
-    pRI->reg_fn.pfnClose = MSysInfoNet_Close;                       // Close function supported
+    pRI->reg_fn.pfnTimeline = MSysInfoNet_Timeline;                 // Timeline supported
+    memcpy(pRI->reg_info.sTimelineNameShort, "Net   ", 6);
+    strncpy_s(pRI->reg_info.szTimelineFileUTF8, 32, "timeline_net.txt", _TRUNCATE);
+    strncpy_s(pRI->reg_info.szTimelineFileJSON, 32, "timeline_net.json", _TRUNCATE);
     pRI->pfnPluginManager_Register(pRI);
 }

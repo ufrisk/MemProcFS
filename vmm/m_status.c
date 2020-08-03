@@ -136,7 +136,7 @@ NTSTATUS MStatus_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWOR
         return Util_VfsReadFile_FromBOOL(ctxMain->cfg.fVerboseExtraTlp, pb, cb, pcbRead, cbOffset);
     }
     if(!_wcsicmp(ctx->wszPath, L"native_max_address")) {
-        return Util_VfsReadFile_FromQWORD(ctxMain->dev.paMaxNative, pb, cb, pcbRead, cbOffset, FALSE);
+        return Util_VfsReadFile_FromQWORD(ctxMain->dev.paMax, pb, cb, pcbRead, cbOffset, FALSE);
     }
     if(!_wcsnicmp(ctx->wszPath, L"config_symbol", 13)) {
         if(!_wcsicmp(ctx->wszPath, L"config_symbol_enable")) {
@@ -209,23 +209,23 @@ NTSTATUS MStatus_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PBYTE pb, _In_ DWOR
         return nt;
     }
     if(!_wcsicmp(ctx->wszPath, L"config_refresh_tick_period_ms")) {
-        return Util_VfsWriteFile_DWORD(&ctxVmm->ThreadProcCache.cMs_TickPeriod, pb, cb, pcbWrite, cbOffset, 50);
+        return Util_VfsWriteFile_DWORD(&ctxVmm->ThreadProcCache.cMs_TickPeriod, pb, cb, pcbWrite, cbOffset, 50, 0);
     }
     if(!_wcsicmp(ctx->wszPath, L"config_refresh_read")) {
-        return Util_VfsWriteFile_DWORD(&ctxVmm->ThreadProcCache.cTick_Phys, pb, cb, pcbWrite, cbOffset, 1);
+        return Util_VfsWriteFile_DWORD(&ctxVmm->ThreadProcCache.cTick_Phys, pb, cb, pcbWrite, cbOffset, 1, 0);
     }
     if(!_wcsicmp(ctx->wszPath, L"config_refresh_tlb")) {
-        return Util_VfsWriteFile_DWORD(&ctxVmm->ThreadProcCache.cTick_TLB, pb, cb, pcbWrite, cbOffset, 1);
+        return Util_VfsWriteFile_DWORD(&ctxVmm->ThreadProcCache.cTick_TLB, pb, cb, pcbWrite, cbOffset, 1, 0);
     }
     if(!_wcsicmp(ctx->wszPath, L"config_refresh_proc_partial")) {
-        return Util_VfsWriteFile_DWORD(&ctxVmm->ThreadProcCache.cTick_ProcPartial, pb, cb, pcbWrite, cbOffset, 1);
+        return Util_VfsWriteFile_DWORD(&ctxVmm->ThreadProcCache.cTick_ProcPartial, pb, cb, pcbWrite, cbOffset, 1, 0);
     }
     if(!_wcsicmp(ctx->wszPath, L"config_refresh_proc_total")) {
-        return Util_VfsWriteFile_DWORD(&ctxVmm->ThreadProcCache.cTick_ProcTotal, pb, cb, pcbWrite, cbOffset, 1);
+        return Util_VfsWriteFile_DWORD(&ctxVmm->ThreadProcCache.cTick_ProcTotal, pb, cb, pcbWrite, cbOffset, 1, 0);
     }
     if(!_wcsicmp(ctx->wszPath, L"config_refresh_registry")) {
         VmmWinReg_Refresh();
-        return Util_VfsWriteFile_DWORD(&ctxVmm->ThreadProcCache.cTick_Registry, pb, cb, pcbWrite, cbOffset, 1);
+        return Util_VfsWriteFile_DWORD(&ctxVmm->ThreadProcCache.cTick_Registry, pb, cb, pcbWrite, cbOffset, 1, 0);
     }
     if(!_wcsicmp(ctx->wszPath, L"config_printf_enable")) {
         return MStatus_Write_NotifyVerbosityChange(
@@ -246,7 +246,7 @@ NTSTATUS MStatus_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PBYTE pb, _In_ DWOR
     if(!_wcsnicmp(ctx->wszPath, L"config_symbol", 13)) {
         nt = VMMDLL_STATUS_FILE_INVALID;
         if(!_wcsicmp(ctx->wszPath, L"config_symbol_enable")) {
-            nt = Util_VfsWriteFile_DWORD(&ctxMain->pdb.fEnable, pb, cb, pcbWrite, cbOffset, 1);
+            nt = Util_VfsWriteFile_DWORD(&ctxMain->pdb.fEnable, pb, cb, pcbWrite, cbOffset, 1, 0);
         }
         if(!_wcsicmp(ctx->wszPath, L"config_symbolcache")) {
             nt = Util_VfsWriteFile_PBYTE(ctxMain->pdb.szLocal, _countof(ctxMain->pdb.szLocal) - 1, pb, cb, pcbWrite, cbOffset, TRUE);
@@ -255,7 +255,7 @@ NTSTATUS MStatus_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PBYTE pb, _In_ DWOR
             nt = Util_VfsWriteFile_PBYTE(ctxMain->pdb.szServer, _countof(ctxMain->pdb.szServer) - 1, pb, cb, pcbWrite, cbOffset, TRUE);
         }
         if(!_wcsicmp(ctx->wszPath, L"config_symbolserver_enable")) {
-            nt = Util_VfsWriteFile_DWORD(&ctxMain->pdb.fServerEnable, pb, cb, pcbWrite, cbOffset, 1);
+            nt = Util_VfsWriteFile_DWORD(&ctxMain->pdb.fServerEnable, pb, cb, pcbWrite, cbOffset, 1, 0);
         }
         PDB_ConfigChange();
         return nt;

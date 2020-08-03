@@ -293,4 +293,15 @@ BOOL VmmWinReg_ValueQuery3(_In_ POB_REGISTRY_HIVE pHive, _In_ LPWSTR wszPathKeyV
 _Success_(return)
 BOOL VmmWinReg_ValueQuery4(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_VALUE pKeyValue, _Out_opt_ PDWORD pdwType, _Out_writes_opt_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_opt_ PDWORD pcbData);
 
+/*
+* Function to allow the forensic sub-system to request extraction of all keys
+* from a specific hive. The key information will be delivered back to the
+* forensic sub-system by the use of a callback function.
+* -- pHive
+* -- hCallback1
+* -- hCallback2
+* -- pfnCallback
+*/
+VOID VmmWinReg_ForensicGetAllKeys(_In_ POB_REGISTRY_HIVE pHive, _In_ HANDLE hCallback1, _In_ HANDLE hCallback2, _In_ VOID(*pfnCallback)(_In_ HANDLE hCallback1, _In_ HANDLE hCallback2, _In_ LPWSTR wszPathName, _In_ DWORD owszName, _In_ QWORD vaHive, _In_ DWORD dwCell, _In_ DWORD dwCellParent, _In_ QWORD ftLastWrite));
+
 #endif /* __VMMWINREG_H__ */

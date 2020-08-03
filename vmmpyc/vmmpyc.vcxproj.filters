@@ -13,19 +13,19 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
-    <Filter Include="Header Files\vmm">
-      <UniqueIdentifier>{e9dc36c3-ddaf-4793-bc7a-ca2ded590236}</UniqueIdentifier>
+    <Filter Include="Header Files\includes">
+      <UniqueIdentifier>{bfa25535-d9b8-480a-b50d-50d3a8b46bfb}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="vmmdll.h">
-      <Filter>Header Files\vmm</Filter>
-    </ClInclude>
-    <ClInclude Include="leechcore.h">
-      <Filter>Header Files\vmm</Filter>
-    </ClInclude>
     <ClInclude Include="version.h">
       <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\includes\leechcore.h">
+      <Filter>Header Files\includes</Filter>
+    </ClInclude>
+    <ClInclude Include="..\includes\vmmdll.h">
+      <Filter>Header Files\includes</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

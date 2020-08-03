@@ -6,21 +6,28 @@
 #ifndef __VMM_H__
 #define __VMM_H__
 #include <windows.h>
+#pragma warning(push, 0)  
+#include <ntstatus.h>
+#pragma warning(pop)
 #include <stdio.h>
 #include "leechcore.h"
 #include "ob.h"
 
 typedef unsigned __int64                QWORD, *PQWORD;
+#ifndef STRINGIZE
+#define STRINGIZE2(x)                   #x
+#define STRINGIZE(x)                    STRINGIZE2(x)
+#endif
 
 // ----------------------------------------------------------------------------
 // VMM configuration constants and struct definitions below:
 // ----------------------------------------------------------------------------
 
-#define VMM_STATUS_SUCCESS                      ((NTSTATUS)0x00000000L)
-#define VMM_STATUS_UNSUCCESSFUL                 ((NTSTATUS)0xC0000001L)
-#define VMM_STATUS_END_OF_FILE                  ((NTSTATUS)0xC0000011L)
-#define VMM_STATUS_FILE_INVALID                 ((NTSTATUS)0xC0000098L)
-#define VMM_STATUS_FILE_SYSTEM_LIMITATION       ((NTSTATUS)0xC0000427L)
+#define VMM_STATUS_SUCCESS                      STATUS_SUCCESS
+#define VMM_STATUS_UNSUCCESSFUL                 STATUS_UNSUCCESSFUL
+#define VMM_STATUS_END_OF_FILE                  STATUS_END_OF_FILE
+#define VMM_STATUS_FILE_INVALID                 STATUS_FILE_INVALID
+#define VMM_STATUS_FILE_SYSTEM_LIMITATION       STATUS_FILE_SYSTEM_LIMITATION
 
 #define VMM_PROCESSTABLE_ENTRIES_MAX            0x4000
 #define VMM_PROCESS_OS_ALLOC_PTR_MAX            0x4    // max number of operating system specific pointers that must be free'd
@@ -39,6 +46,8 @@ typedef unsigned __int64                QWORD, *PQWORD;
 #define VMM_CACHE_TLB_ENTRIES                   0x4000  // -> 64MB of cached data
 #define VMM_CACHE_PHYS_ENTRIES                  0x4000  // -> 64MB of cached data
 
+#define VMM_WORK_THREADPOOL_NUM_THREADS         0x20
+
 #define VMM_FLAG_NOCACHE                        0x00000001  // do not use the data cache (force reading from memory acquisition device).
 #define VMM_FLAG_ZEROPAD_ON_FAIL                0x00000002  // zero pad failed physical memory reads and report success if read within range of physical memory.
 #define VMM_FLAG_PROCESS_SHOW_TERMINATED        0x00000004  // show terminated processes in the process list (if they can be found).
@@ -47,10 +56,10 @@ typedef unsigned __int64                QWORD, *PQWORD;
 #define VMM_FLAG_NOPAGING_IO                    0x00000020  // do not try to retrieve memory from paged out memory if read would incur additional I/O (even if possible).
 #define VMM_FLAG_PROCESS_TOKEN                  0x00000040  // try initialize process token
 #define VMM_FLAG_ALTADDR_VA_PTE                 0x00000080  // alternative address mode - MEM_IO_SCATTER_HEADER.qwA contains PTE instead of VA when calling VmmRead* functions.
+#define VMM_FLAG_NOCACHEPUT                     0x00000100  // do not write back to the data cache upon successful read from memory acquisition device.
 #define VMM_FLAG_PAGING_LOOP_PROTECT_BITS       0x00ff0000  // placeholder bits for paging loop protect counter.
 #define VMM_FLAG_NOVAD                          0x01000000  // do not try to retrieve memory from backing VAD even if otherwise possible.
 
-#define PAGE_SIZE                               0x1000
 #define VMM_POOLTAG(v, tag)                     (v == _byteswap_ulong(tag))
 #define VMM_POOLTAG_SHORT(v, tag)               ((v & 0x00ffffff) == (_byteswap_ulong(tag) & 0x00ffffff))
 #define VMM_POOLTAG_PREPENDED(pb, o, tag)       (VMM_POOLTAG(*(PDWORD)(pb + o - (ctxVmm->f32 ? 4 : 12)), tag))
@@ -80,6 +89,8 @@ typedef unsigned __int64                QWORD, *PQWORD;
 #define VMM_KADDR_8_16(va)                      (ctxVmm->f32 ? VMM_KADDR32_8(va) : VMM_KADDR64_16(va))
 #define VMM_KADDR_PAGE(va)                      (ctxVmm->f32 ? VMM_KADDR32_PAGE(va) : VMM_KADDR64_PAGE(va))
 
+#define VMM_PID_PROCESS_CLONE_WITH_KERNELMEMORY 0x80000000      // Combine with PID to create a shallowly cloned process with fUserOnly = FALSE
+
 static const LPSTR VMM_MEMORYMODEL_TOSTRING[4] = { "N/A", "X86", "X86PAE", "X64" };
 
 typedef enum tdVMM_MEMORYMODEL_TP {
@@ -103,7 +114,8 @@ typedef struct tdVMM_MAP_PTEENTRY {
     BOOL  fWoW64;
     DWORD cwszText;
     LPWSTR wszText;
-    DWORD _Reserved1[2];
+    DWORD _Reserved1;
+    DWORD cSoftware;    // # software (non active) PTEs in region
 } VMM_MAP_PTEENTRY, *PVMM_MAP_PTEENTRY;
 
 typedef struct tdVMM_MAP_VADENTRY {
@@ -152,8 +164,16 @@ typedef struct tdVMM_MAP_MODULEENTRY {
     QWORD vaEntry;
     DWORD cbImageSize;
     BOOL  fWoW64;
-    LPWSTR wszText;                 // LPWSTR pointed into VMM_MAP_MODULE.wszMultiText
+    LPWSTR wszText;                 // LPWSTR to name pointed into VMM_MAP_MODULE.wszMultiText
     DWORD cwszText;                 // WCHAR count not including terminating null
+    LPWSTR wszFullName;             // LPWSTR to path+name pointed into VMM_MAP_MODULE.wszMultiText
+    DWORD cwszFullName;             // WCHAR count not including terminating null
+    DWORD cbFileSizeRaw;
+    DWORD cSection;
+    DWORD cEAT;
+    DWORD cIAT;
+    POB pObEAT;
+    POB pObIAT;
     // optional internal fields lazy loaded due to perfomance reasons
     BOOL  fLoadedEAT;
     BOOL  fLoadedIAT;
@@ -162,12 +182,33 @@ typedef struct tdVMM_MAP_MODULEENTRY {
         struct {
             DWORD cbDisplayBufferIAT;
             DWORD cbDisplayBufferEAT;
+            //DWORD cbFileSizeRaw;
+            DWORD _Reserved4;
+            DWORD _Reserved2;
         };
-        QWORD _Reserved1;
+        struct {
+            QWORD _Reserved1;
+            QWORD _Reserved3;
+        };
     };
-    DWORD cbFileSizeRaw;
-    DWORD _Reserved2;
 } VMM_MAP_MODULEENTRY, *PVMM_MAP_MODULEENTRY;
+
+typedef struct tdVMM_MAP_EATENTRY {
+    QWORD vaFunction;
+    DWORD vaFunctionOffset;
+    DWORD cszFunction;
+    LPSTR szFunction;
+} VMM_MAP_EATENTRY, *PVMM_MAP_EATENTRY;
+
+typedef struct tdVMM_MAP_IATENTRY {
+    QWORD vaFunction;
+    DWORD _Reserved1;
+    DWORD cszFunction;
+    LPSTR szFunction;
+    DWORD _Reserved2;
+    DWORD cszModule;
+    LPSTR szModule;
+} VMM_MAP_IATENTRY, *PVMM_MAP_IATENTRY;
 
 typedef struct tdVMM_MAP_HEAPENTRY {
     QWORD vaHeapSegment;
@@ -199,7 +240,15 @@ typedef struct tdVMM_MAP_THREADENTRY {
     QWORD vaStackLimitUser;         // value from _NT_TIB / _TEB
     QWORD vaStackBaseKernel;
     QWORD vaStackLimitKernel;
-    DWORD _FutureUse[10];
+    QWORD vaTrapFrame;
+    QWORD vaRIP;                    // RIP register (if user mode)
+    QWORD vaRSP;                    // RSP register (if user mode)
+    QWORD qwAffinity;
+    DWORD dwUserTime;
+    DWORD dwKernelTime;
+    UCHAR bSuspendCount;
+    UCHAR _FutureUse1[3];
+    DWORD _FutureUse2[15];
 } VMM_MAP_THREADENTRY, *PVMM_MAP_THREADENTRY;
 
 typedef enum tdVMM_MAP_HANDLEENTRY_TP_INFOEX {
@@ -237,6 +286,33 @@ typedef struct tdVMM_MAP_HANDLEENTRY {
         } _Reserved;
     };
 } VMM_MAP_HANDLEENTRY, *PVMM_MAP_HANDLEENTRY;
+
+typedef struct tdVMM_MAP_NETENTRY {
+    DWORD dwPID;
+    DWORD dwState;
+    WORD _FutureUse3[3];
+    WORD AF;                        // address family (IPv4/IPv6)
+    struct {
+        BOOL fValid;
+        WORD _Reserved;
+        WORD port;
+        BYTE pbAddr[16];            // ipv4 = 1st 4 bytes, ipv6 = all bytes
+        LPWSTR wszText;
+    } Src;
+    struct {
+        BOOL fValid;
+        WORD _Reserved;
+        WORD port;
+        BYTE pbAddr[16];            // ipv4 = 1st 4 bytes, ipv6 = all bytes
+        LPWSTR wszText;
+    } Dst;
+    QWORD vaObj;
+    QWORD ftTime;
+    DWORD _FutureUse1;
+    DWORD cwszText;                 // WCHAR count not including terminating null
+    LPWSTR wszText;                 // LPWSTR pointed into VMMOB_MAP_NET.wszMultiText
+    DWORD _FutureUse2[4];
+} VMM_MAP_NETENTRY, *PVMM_MAP_NETENTRY;
 
 typedef struct tdVMM_MAP_PHYSMEMENTRY {
     QWORD pa;
@@ -276,9 +352,26 @@ typedef struct tdVMMOB_MAP_MODULE {
     PQWORD pHashTableLookup;
     LPWSTR wszMultiText;            // multi-wstr pointed into by VMM_MAP_MODULEENTRY.wszText
     DWORD cbMultiText;
+    BOOL fSubOb;                    // Ob references exists in entry items (optimization flag).
     DWORD cMap;                     // # map entries.
     VMM_MAP_MODULEENTRY pMap[];     // map entries.
 } VMMOB_MAP_MODULE, *PVMMOB_MAP_MODULE;
+
+typedef struct tdVMMOB_MAP_EAT {
+    OB ObHdr;
+    LPSTR szMultiText;              // multi-str pointed into by VMM_MAP_EATENTRY.szFunction
+    DWORD cbMultiText;
+    DWORD cMap;                     // # map entries.
+    VMM_MAP_EATENTRY pMap[];        // map entries.
+} VMMOB_MAP_EAT, *PVMMOB_MAP_EAT;
+
+typedef struct tdVMMOB_MAP_IAT {
+    OB ObHdr;
+    LPSTR szMultiText;              // multi-str pointed into by VMM_MAP_EATENTRY.[szFunction|szModule]
+    DWORD cbMultiText;
+    DWORD cMap;                     // # map entries.
+    VMM_MAP_IATENTRY pMap[];        // map entries.
+} VMMOB_MAP_IAT, *PVMMOB_MAP_IAT;
 
 typedef struct tdVMMOB_MAP_HEAP {
     OB ObHdr;
@@ -301,6 +394,14 @@ typedef struct tdVMMOB_MAP_HANDLE {
     VMM_MAP_HANDLEENTRY pMap[];     // map entries.
 } VMMOB_MAP_HANDLE, *PVMMOB_MAP_HANDLE;
 
+typedef struct tdVMMOB_MAP_NET {
+    OB ObHdr;
+    LPWSTR wszMultiText;            // multi-wstr pointed into by VMM_MAP_USERENTRY.wszText
+    DWORD cbMultiText;
+    DWORD cMap;                     // # map entries.
+    VMM_MAP_NETENTRY pMap[];        // map entries.
+} VMMOB_MAP_NET, *PVMMOB_MAP_NET;
+
 typedef struct tdVMMOB_MAP_PHYSMEM {
     OB ObHdr;
     DWORD cMap;                     // # map entries.
@@ -317,12 +418,14 @@ typedef struct tdVMMOB_MAP_USER {
 
 typedef struct tdVMMWIN_USER_PROCESS_PARAMETERS {
     BOOL fProcessed;
-    DWORD cchImagePathName;
-    DWORD cchCommandLine;
+    DWORD cwszImagePathName;
+    DWORD cuszImagePathName;
+    DWORD cwszCommandLine;
+    DWORD cuszCommandLine;
     LPWSTR wszImagePathName;
-    LPSTR szImagePathName;
+    LPSTR uszImagePathName;         // UTF8 version of wszImagePathName
     LPWSTR wszCommandLine;
-    LPSTR szCommandLine;
+    LPSTR uszCommandLine;           // UTF8 version of wszCommandLine
 } VMMWIN_USER_PROCESS_PARAMETERS, *PVMMWIN_USER_PROCESS_PARAMETERS;
 
 #define VMM_PHYS2VIRT_INFORMATION_MAX_PROCESS_RESULT    4
@@ -351,25 +454,29 @@ typedef struct tdVMMOB_PROCESS_PERSISTENT {
     POB_CONTAINER pObCMapThreadPrefetch;
     VMMWIN_USER_PROCESS_PARAMETERS UserProcessParams;
     // kernel path and long name (from EPROCESS.SeAuditProcessCreationInfo)
-    WORD cchNameLong;
-    WORD cchPathKernel;
-    LPSTR szNameLong;
+    WORD cwszNameLong;
+    WORD cuszNameLong;
+    WORD cwszPathKernel;
+    WORD cuszPathKernel;
+    LPSTR uszNameLong;
     LPWSTR wszNameLong;
-    LPSTR szPathKernel;
+    LPSTR uszPathKernel;
     LPWSTR wszPathKernel;
     // plugin functionality below:
     struct {
         QWORD vaVirt2Phys;
         QWORD paPhys2Virt;
+        POB_CONTAINER pObCMiniDump;
     } Plugin;
 } VMMOB_PROCESS_PERSISTENT, *PVMMOB_PROCESS_PERSISTENT;
 
 typedef struct tdVMM_PROCESS {
     OB ObHdr;
     CRITICAL_SECTION LockUpdate;
+    CRITICAL_SECTION LockPlugin;    // Lock used by internal plugins
     DWORD dwPID;
     DWORD dwPPID;
-    DWORD dwState;          // state of process, 0 = running
+    DWORD dwState;                  // state of process, 0 = running
     QWORD paDTB;
     QWORD paDTB_UserOpt;
     CHAR szName[16];
@@ -395,7 +502,7 @@ typedef struct tdVMM_PROCESS {
         struct {
             QWORD va;
             DWORD cb;
-            BYTE pb[0x800];
+            BYTE pb[0xa00];
         } EPROCESS;
         struct {
             BOOL fInitialized;
@@ -416,6 +523,7 @@ typedef struct tdVMM_PROCESS {
         POB_CONTAINER pObCPeDumpDirCache;
         POB_CONTAINER pObCPhys2Virt;
     } Plugin;
+    struct tdVMM_PROCESS *pObProcessCloneParent;    // only set in cloned processes
 } VMM_PROCESS, *PVMM_PROCESS;
 
 typedef struct tdVMMOB_PROCESS_TABLE {
@@ -444,7 +552,7 @@ typedef struct tdVMMOB_MEM {
     struct tdVMMOB_MEM *BLink;
     struct tdVMMOB_MEM *AgeFLink;
     struct tdVMMOB_MEM *AgeBLink;
-    MEM_IO_SCATTER_HEADER h;
+    MEM_SCATTER h;
     union {
         BYTE pb[0x1000];
         DWORD pdw[0x400];
@@ -486,7 +594,7 @@ typedef struct tdVMM_MEMORYMODEL_FUNCTIONS {
     BOOL(*pfnPteMapInitialize)(_In_ PVMM_PROCESS pProcess);
     VOID(*pfnTlbSpider)(_In_ PVMM_PROCESS pProcess);
     BOOL(*pfnTlbPageTableVerify)(_Inout_ PBYTE pb, _In_ QWORD pa, _In_ BOOL fSelfRefReq);
-    BOOL(*pfnPagedRead)(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD va, _In_ QWORD pte, _Out_writes_(4096) PBYTE pbPage, _Out_ PQWORD ppa, _In_ QWORD flags);
+    BOOL(*pfnPagedRead)(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD va, _In_ QWORD pte, _Out_writes_opt_(4096) PBYTE pbPage, _Out_ PQWORD ppa, _In_ QWORD flags);
 } VMM_MEMORYMODEL_FUNCTIONS;
 
 // ----------------------------------------------------------------------------
@@ -496,6 +604,7 @@ typedef struct tdVMM_MEMORYMODEL_FUNCTIONS {
 typedef struct tdVmmConfig {
     CHAR szMountPoint[1];
     QWORD paCR3;
+    DWORD tpForensicMode;                 // command line forensic mode
     // flags below
     BOOL fVerboseDll;
     BOOL fVerbose;
@@ -506,6 +615,7 @@ typedef struct tdVmmConfig {
     BOOL fDisableSymbolServerOnStartup;
     BOOL fWaitInitialize;
     // strings below
+    CHAR szMemMap[MAX_PATH];
     CHAR szPythonPath[MAX_PATH];
     CHAR szPageFile[10][MAX_PATH];
 } VMMCONFIG, *PVMMCONFIG;
@@ -564,6 +674,8 @@ typedef struct tdVMM_OFFSET_EPROCESS {
         WORD TOKEN_TokenId;
         WORD TOKEN_SessionId;
         WORD TOKEN_UserAndGroups;
+        WORD KernelTime;
+        WORD UserTime;
     } opt;
 } VMM_OFFSET_EPROCESS, *PVMM_OFFSET_EPROCESS;
 
@@ -573,10 +685,15 @@ typedef struct tdVMM_OFFSET_ETHREAD {
     WORD oStackBase;
     WORD oStackLimit;
     WORD oState;
+    WORD oSuspendCount;
     WORD oRunningOpt;
     WORD oPriority;
     WORD oBasePriority;
     WORD oTeb;
+    WORD oTrapFrame;
+    WORD oKernelTime;
+    WORD oUserTime;
+    WORD oAffinity;
     WORD oProcessOpt;
     // _ETHREAD offsets
     WORD oCreateTime;
@@ -589,6 +706,8 @@ typedef struct tdVMM_OFFSET_ETHREAD {
     // other
     WORD oTebStackBase;
     WORD oTebStackLimit;
+    WORD oTrapRip;
+    WORD oTrapRsp;
 } VMM_OFFSET_ETHREAD, *PVMM_OFFSET_ETHREAD;
 
 typedef struct tdVMM_OFFSET_FILE {
@@ -650,7 +769,6 @@ typedef struct tdVMM_OFFSET {
 
 typedef struct tdVMMWINOBJ_CONTEXT          *PVMMWINOBJ_CONTEXT;
 typedef struct tdVMMWIN_REGISTRY_CONTEXT    *PVMMWIN_REGISTRY_CONTEXT;
-typedef QWORD                               VMMWIN_PDB_HANDLE;
 
 typedef struct tdVMMWIN_TCPIP_OFFSET_TcpE {
     BOOL _fValid;
@@ -739,7 +857,8 @@ typedef struct tdVMMWIN_OBJECT_TYPE_TABLE {
 
 typedef struct tdVMM_CONTEXT {
     HMODULE hModuleVmm;             // do not call FreeLibrary on hModuleVmm
-    CRITICAL_SECTION MasterLock;
+    CRITICAL_SECTION LockMaster;
+    CRITICAL_SECTION LockPlugin;
     POB_CONTAINER pObCPROC;         // contains VMM_PROCESS_TABLE
     VMM_MEMORYMODEL_FUNCTIONS fnMemoryModel;
     VMM_MEMORYMODEL_TP tpMemoryModel;
@@ -749,7 +868,6 @@ typedef struct tdVMM_CONTEXT {
     DWORD flags;                    // VMM_FLAG_*
     struct {
         BOOL fEnabled;
-        HANDLE hThread;
         DWORD cMs_TickPeriod;
         DWORD cTick_Phys;
         DWORD cTick_TLB;
@@ -774,11 +892,12 @@ typedef struct tdVMM_CONTEXT {
         PVOID FLinkNotify;
         PVOID Root;
         PVOID Proc;
-    } Plugin;
+    } PluginManager;
     CRITICAL_SECTION LockUpdateMap;     // lock for global maps - such as MapUser
     CRITICAL_SECTION LockUpdateModule;  // lock for internal modules
     POB_CONTAINER pObCMapPhysMem;
     POB_CONTAINER pObCMapUser;
+    POB_CONTAINER pObCMapNet;
     POB_CONTAINER pObCCachePrefetchEPROCESS;
     POB_CONTAINER pObCCachePrefetchRegistry;
     // page caches
@@ -789,18 +908,21 @@ typedef struct tdVMM_CONTEXT {
         POB_SET PAGING_FAILED;
         POB_MAP pmPrototypePte;     // map with mm_vad.c managed data
     } Cache;
-    // thread worker count
+    // worker threads
     struct {
         BOOL fEnabled;
-        DWORD c;
-    } ThreadWorkers;
+        POB_SET psThreadAll;
+        POB_SET psThreadAvail;
+        POB_SET psUnit;
+    } Work;
     WCHAR _EmptyWCHAR;
     VMMWIN_OBJECT_TYPE_TABLE ObjectTypeTable;
 } VMM_CONTEXT, *PVMM_CONTEXT;
 
 typedef struct tdVMM_MAIN_CONTEXT {
     VMMCONFIG cfg;
-    LEECHCORE_CONFIG dev;
+    HANDLE hLC;
+    LC_CONFIG dev;
     struct {
         BOOL fInitialized;
         BOOL fEnable;
@@ -827,6 +949,15 @@ PVMM_MAIN_CONTEXT ctxMain;
 #define vmmprintfv_fn(format, ...)      vmmprintfv("%s: "format, __func__, ##__VA_ARGS__);
 #define vmmprintfvv_fn(format, ...)     vmmprintfvv("%s: "format, __func__, ##__VA_ARGS__);
 #define vmmprintfvvv_fn(format, ...)    vmmprintfvvv("%s: "format, __func__, ##__VA_ARGS__);
+
+#define vmmwprintf(format, ...)          { if(ctxMain->cfg.fVerboseDll)       { wprintf(format, ##__VA_ARGS__); } }
+#define vmmwprintfv(format, ...)         { if(ctxMain->cfg.fVerbose)          { wprintf(format, ##__VA_ARGS__); } }
+#define vmmwprintfvv(format, ...)        { if(ctxMain->cfg.fVerboseExtra)     { wprintf(format, ##__VA_ARGS__); } }
+#define vmmwprintfvvv(format, ...)       { if(ctxMain->cfg.fVerboseExtraTlp)  { wprintf(format, ##__VA_ARGS__); } }
+#define vmmwprintf_fn(format, ...)       vmmwprintf(L"%S: "format, __func__, ##__VA_ARGS__);
+#define vmmwprintfv_fn(format, ...)      vmmwprintfv(L"%S: "format, __func__, ##__VA_ARGS__);
+#define vmmwprintfvv_fn(format, ...)     vmmwprintfvv(L"%S: "format, __func__, ##__VA_ARGS__);
+#define vmmwprintfvvv_fn(format, ...)    vmmwprintfvvv(L"%S: "format, __func__, ##__VA_ARGS__);
 
 #define VMM_EPROCESS_DWORD(pProcess, offset)    (*(PDWORD)(pProcess->win.EPROCESS.pb + offset))
 #define VMM_EPROCESS_QWORD(pProcess, offset)    (*(PQWORD)(pProcess->win.EPROCESS.pb + offset))
@@ -987,7 +1118,7 @@ BOOL VmmReadPage(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Out_writes_(40
 * -- cpMEMsVirt
 * -- flags = flags as in VMM_FLAG_*, [VMM_FLAG_NOCACHE for supression of data (not tlb) caching]
 */
-VOID VmmReadScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_updates_(cpMEMsVirt) PPMEM_IO_SCATTER_HEADER ppMEMsVirt, _In_ DWORD cpMEMsVirt, _In_ QWORD flags);
+VOID VmmReadScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_updates_(cpMEMsVirt) PPMEM_SCATTER ppMEMsVirt, _In_ DWORD cpMEMsVirt, _In_ QWORD flags);
 
 /*
 * Scatter read physical memory. Non contiguous 4096-byte pages.
@@ -995,7 +1126,7 @@ VOID VmmReadScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_updates_(cpMEMsVir
 * -- cpMEMsPhys
 * -- flags = flags as in VMM_FLAG_*, [VMM_FLAG_NOCACHE for supression of caching]
 */
-VOID VmmReadScatterPhysical(_Inout_ PPMEM_IO_SCATTER_HEADER ppMEMsPhys, _In_ DWORD cpMEMsPhys, _In_ QWORD flags);
+VOID VmmReadScatterPhysical(_Inout_ PPMEM_SCATTER ppMEMsPhys, _In_ DWORD cpMEMsPhys, _In_ QWORD flags);
 
 /*
 * Read a memory segment as a file. This function is mainly a helper function
@@ -1227,6 +1358,15 @@ _Success_(return)
 BOOL VmmMap_GetHandle(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_HANDLE *ppObHandleMap, _In_ BOOL fExtendedText);
 
 /*
+* Retrieve the NETWORK CONNECTION map
+* CALLER DECREF: ppObNetMap
+* -- ppObNetMap
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetNet(_Out_ PVMMOB_MAP_NET *ppObNetMap);
+
+/*
 * Retrieve the Physical Memory Map.
 * CALLER DECREF: ppObPhysMem
 * -- ppObPhysMem
@@ -1297,6 +1437,18 @@ inline PVMM_PROCESS VmmProcessGetNext(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD
 }
 
 /*
+* Clone an original process entry creating a shallow clone. The user of this
+* shallow clone may use it to set the fUserOnly flag to FALSE on an otherwise
+* user-mode process to be able to access the whole kernel space for a standard
+* user-mode process.
+* NB! USE WITH EXTREME CARE - MAY CRASH VMM IF USED MORE GENERALLY!
+* CALLER DECREF: return
+* -- pProcess
+* -- return
+*/
+PVMM_PROCESS VmmProcessClone(_In_ PVMM_PROCESS pProcess);
+
+/*
 * Create a new process object. New process object are created in a separate
 * data structure and won't become visible to the "Process" functions until
 * after the VmmProcessCreateFinish have been called.
@@ -1351,6 +1503,16 @@ VOID VmmProcessCreateFinish();
 VOID VmmProcessListPIDs(_Out_writes_opt_(*pcPIDs) PDWORD pPIDs, _Inout_ PSIZE_T pcPIDs, _In_ QWORD flags);
 
 /*
+* Schedule an asynchronous work item onto a worker thread.
+* NB! longer running functions must monitor ctxVmm->Work.fEnabled and exit
+*     immediately if required!
+* -- pfn
+* -- ctx = optional context to provide to the pfn function.
+* -- hEventFinish = optional event with will be set upon work completion.
+*/
+VOID VmmWork(_In_ LPTHREAD_START_ROUTINE pfn, _In_opt_ PVOID ctx, _In_opt_ HANDLE hEventFinish);
+
+/*
 * Perform multi-threaded parallel processing of processes in the process table.
 * This is useful when slow I/O should take place on multiple or all processes
 * simultaneously.
@@ -1362,14 +1524,12 @@ VOID VmmProcessListPIDs(_Out_writes_opt_(*pcPIDs) PDWORD pPIDs, _Inout_ PSIZE_T 
 * NB! Manipulation of ctx in pfnAction callback function must be thread-safe!
 * NB! For fast actions VmmProcessGetNext in single-threaded mode is recommended
 *     over the use of this function!
-* -- ctx = optional context forwarded to callback functions pfnCriteria / pfnAction.
-* -- dwThreadLoadFactor = number of processed queued on each thread, or 0 for auto-select.
+* -- ctxAction = optional context forwarded to callback functions pfnCriteria / pfnAction.
 * -- pfnCriteria = optional callback function selecting which processes to process.
 * -- pfnAction = processing function to be called in multi-threaded context.
 */
 VOID VmmProcessActionForeachParallel(
-    _In_opt_ PVOID ctx,
-    _In_opt_ DWORD dwThreadLoadFactor,
+    _In_opt_ PVOID ctxAction,
     _In_opt_ BOOL(*pfnCriteria)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx),
     _In_ VOID(*pfnAction)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx)
 );

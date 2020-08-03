@@ -1,6 +1,6 @@
 The Memory Process File System:
 ===============================
-The Memory Process File System (MemProcFS) is an easy and convenient way of accessing physical memory as files a virtual file system. 
+The Memory Process File System (MemProcFS) is an easy and convenient way of viewing physical memory as files in a virtual file system. 
 
 Easy trivial point and click memory analysis without the need for complicated commandline arguments! Access memory content and artifacts via files in a mounted virtual file system or via a feature rich application library to include in your own projects!
 
@@ -74,7 +74,7 @@ Or register the memory dump file extension with MemProcFS.exe so that the file s
 - mount the memory dump file as S: <br>`memprocfs.exe -mount s -device c:\temp\win10x64-dump.raw`
 - mount live target memory, in verbose read-only mode, with DumpIt in /LIVEKD mode: <br>`DumpIt.exe /LIVEKD /A memprocfs.exe /C "-v"`
 - mount live target memory, in read-only mode, with WinPMEM driver: <br>`memprocfs.exe -device pmem`
-- mount live target memory, in read/write mode, with PCILeech FPGA memory acquisition device: <br>`memprocfs.exe -device fpga`
+- mount live target memory, in read/write mode, with PCILeech FPGA memory acquisition device: <br>`memprocfs.exe -device fpga -memmap auto`
 - mount live target memory, in read/write mode, with TotalMeltdown vulnerability acquisition device: <br>`memprocfs.exe -device totalmeltdown`
 - mount a memory dump with a corresponding page files: <br>`memprocfs.exe -device unknown-x64-dump.raw -pagefile0 pagefile.sys -pagefile1 swapfile.sys`
 
@@ -85,6 +85,7 @@ For additional documentation please check out the [project wiki](https://github.
 Also check out my Microsoft BlueHatIL 2019 talk _Practical Uses for Hardware-assisted Memory Visualization_ and my Disobey 2020 talk _Live Memory Attacks and Forensics_ about MemProcFS.
 
 <p align="center"><a href="https://www.youtube.com/watch?v=Da_9SV9FA34" alt="Microsoft BlueHatIL 2019 talk - Practical Uses for Hardware-assisted Memory Visualization" target="_new"><img src="http://img.youtube.com/vi/Da_9SV9FA34/0.jpg" height="250"/></a> <a href="https://youtu.be/mca3rLsHuTA?t=952" alt="Disobey 2020 talk - Live Memory Attacks and Forensics" target="_new"><img src="http://img.youtube.com/vi/mca3rLsHuTA/0.jpg" height="250"/></a></p>
+
 
 Building:
 =========
@@ -103,12 +104,16 @@ Please find some ideas for possible future expansions of the memory process file
 
 ### Other items:
 - Hash lookup of executable memory pages in DB.
-- Additional file recovery.
-- PFN support.
+- Forensic mode more more analysis tasks.
+- Forensic mode JSON file generation.
 
 License:
 ======
 The project source code is released under GPLv3. Some bundled Microsoft redistributable binaries are released under separate licenses.
+
+Contributing:
+=============
+PCILeech, MemProcFS and LeechCore are open source but not open contribution. PCILeech, MemProcFS and LeechCore offers a highly flexible plugin architecture that will allow for contributions in the form of plugins. If you wish to make a contribution, other than a plugin, to the core projects please contact me before starting to develop.
 
 Links:
 ======
@@ -165,3 +170,17 @@ v1.1-v2.10
   * Physical memory map.
   * Per-page physical memory information (PFN database).
   * Registry "big data" value type support.
+
+[v3.3](https://github.com/ufrisk/MemProcFS/releases/tag/v3.3)
+* Bug fixes.
+* Better write support.
+* AMD Ryzen FPGA support.
+* Module map: new info - Full .DLL Path.
+* Thread map: new info - CPU registers.
+* New forensic mode:
+  * Timelining.
+  * NTFS MFT parsing.
+  * SQLITE database generation.
+* New Features:
+  * Minidump .DMP file generation for individual processes.
+  * Syscalls - nt & win32k.

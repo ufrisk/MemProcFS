@@ -33,11 +33,33 @@ QWORD PE_GetSize(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase)
     DWORD cbSize;
     BOOL f32;
     ntHeader = PE_HeaderGetVerify(pProcess, vaModuleBase, pbHeader, &f32);
+    if(!ntHeader) { return 0; }
     cbSize = f32 ?
         ((PIMAGE_NT_HEADERS32)ntHeader)->OptionalHeader.SizeOfImage :
         ((PIMAGE_NT_HEADERS64)ntHeader)->OptionalHeader.SizeOfImage;
     if(cbSize > 0x02000000) { cbSize = 0; }
     return cbSize;
+}
+
+_Success_(return)
+BOOL PE_GetTimeDateStampCheckSum(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _Out_opt_ PDWORD pdwTimeDateStamp, _Out_opt_ PDWORD pdwCheckSum)
+{
+    BYTE pbHeader[0x1000] = { 0 };
+    PIMAGE_NT_HEADERS ntHeader;
+    BOOL f32;
+    DWORD dwTimeDateStamp, dwCheckSum;
+    ntHeader = PE_HeaderGetVerify(pProcess, vaModuleBase, pbHeader, &f32);
+    if(!ntHeader) { return FALSE; }
+    if(f32) {
+        dwCheckSum = ((PIMAGE_NT_HEADERS32)ntHeader)->OptionalHeader.CheckSum;
+        dwTimeDateStamp = ((PIMAGE_NT_HEADERS32)ntHeader)->FileHeader.TimeDateStamp;
+    } else {
+        dwCheckSum = ((PIMAGE_NT_HEADERS64)ntHeader)->OptionalHeader.CheckSum;
+        dwTimeDateStamp = ((PIMAGE_NT_HEADERS64)ntHeader)->FileHeader.TimeDateStamp;
+    }
+    if(pdwCheckSum) { *pdwCheckSum = dwCheckSum; }
+    if(pdwTimeDateStamp) { *pdwTimeDateStamp = dwTimeDateStamp; }
+    return TRUE;
 }
 
 _Success_(return)
@@ -216,6 +238,25 @@ WORD PE_SectionGetNumberOfEx(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModule
 }
 
 _Success_(return)
+BOOL PE_SectionGetAll(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ DWORD cSections, _Out_writes_(cSections) PIMAGE_SECTION_HEADER pSections)
+{
+    BOOL f32;
+    BYTE pbModuleHeader[0x1000] = { 0 };
+    PIMAGE_NT_HEADERS ntHeader;
+    PIMAGE_SECTION_HEADER pSectionBase;
+    DWORD cSectionsHdr;
+    if(!(ntHeader = PE_HeaderGetVerify(pProcess, vaModuleBase, pbModuleHeader, &f32))) { return FALSE; }
+    pSectionBase = f32 ?
+        (PIMAGE_SECTION_HEADER)((QWORD)ntHeader + sizeof(IMAGE_NT_HEADERS32)) :
+        (PIMAGE_SECTION_HEADER)((QWORD)ntHeader + sizeof(IMAGE_NT_HEADERS64));
+    cSectionsHdr = (DWORD)(((QWORD)pbModuleHeader + 0x1000 - (QWORD)pSectionBase) / sizeof(IMAGE_SECTION_HEADER)); // max section headers possible in 0x1000 module header buffer
+    cSectionsHdr = (DWORD)min(cSectionsHdr, ntHeader->FileHeader.NumberOfSections); // FileHeader is the same in both 32/64-bit versions of struct
+    if(cSections != cSectionsHdr) { return FALSE; }
+    memcpy(pSections, pSectionBase, cSections * sizeof(IMAGE_SECTION_HEADER));
+    return TRUE;
+}
+
+_Success_(return)
 BOOL PE_SectionGetFromName(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ LPSTR szSectionName, _Out_ PIMAGE_SECTION_HEADER pSection)
 {
     BOOL f32;
@@ -244,7 +285,7 @@ BOOL PE_SectionGetFromName(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, 
     return FALSE;
 }
 
-DWORD PE_IatGetNumberOfEx(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt)
+DWORD PE_IatGetNumberOfEx(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt)
 {
     BOOL f32;
     BYTE pbModuleHeader[0x1000] = { 0 };
@@ -266,7 +307,7 @@ DWORD PE_IatGetNumberOfEx(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _
     return cIatEntries - min(cIatEntries, cModules);
 }
 
-DWORD PE_EatGetNumberOfEx(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt)
+DWORD PE_EatGetNumberOfEx(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt)
 {
     BOOL f32;
     BYTE pbModuleHeader[0x1000] = { 0 };
@@ -332,8 +373,40 @@ fail:
     return FALSE;
 }
 
+DWORD PE_DirectoryGetOffset(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt, _In_ DWORD dwDirectory)
+{
+    BOOL f32;
+    PIMAGE_NT_HEADERS ntHeader;
+    BYTE pbModuleHeader[0x1000] = { 0 };
+    // load both 32/64 bit ntHeader unless already supplied in parameter (only one of 32/64 bit hdr will be valid)
+    // load nt header either by using optionally supplied module header or by fetching from memory.
+    ntHeader = pbModuleHeaderOpt ? PE_HeaderGetVerify(pProcess, 0, pbModuleHeaderOpt, &f32) : PE_HeaderGetVerify(pProcess, vaModuleBase, pbModuleHeader, &f32);
+    if(!ntHeader) { return 0; }
+    return f32 ?
+        ((PIMAGE_NT_HEADERS32)ntHeader)->OptionalHeader.DataDirectory[dwDirectory].VirtualAddress :
+        ((PIMAGE_NT_HEADERS64)ntHeader)->OptionalHeader.DataDirectory[dwDirectory].VirtualAddress;
+}
+
 _Success_(return)
-BOOL PE_GetPdbInfo(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt, _Out_writes_(MAX_PATH) LPSTR szPdbName, _Out_writes_(16) PBYTE pbGUID, _Out_ PDWORD pdwAge)
+BOOL PE_DirectoryGetAll(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt, _Out_writes_(IMAGE_NUMBEROF_DIRECTORY_ENTRIES) PIMAGE_DATA_DIRECTORY pDirectories)
+{
+    BOOL f32;
+    PIMAGE_NT_HEADERS ntHeader;
+    BYTE pbModuleHeader[0x1000] = { 0 };
+    // load both 32/64 bit ntHeader unless already supplied in parameter (only one of 32/64 bit hdr will be valid)
+    // load nt header either by using optionally supplied module header or by fetching from memory.
+    ntHeader = pbModuleHeaderOpt ? PE_HeaderGetVerify(pProcess, 0, pbModuleHeaderOpt, &f32) : PE_HeaderGetVerify(pProcess, vaModuleBase, pbModuleHeader, &f32);
+    if(!ntHeader) { return FALSE; }
+    if(f32) {
+        memcpy(pDirectories, ((PIMAGE_NT_HEADERS32)ntHeader)->OptionalHeader.DataDirectory, IMAGE_NUMBEROF_DIRECTORY_ENTRIES * sizeof(IMAGE_DATA_DIRECTORY));
+    } else {
+        memcpy(pDirectories, ((PIMAGE_NT_HEADERS64)ntHeader)->OptionalHeader.DataDirectory, IMAGE_NUMBEROF_DIRECTORY_ENTRIES * sizeof(IMAGE_DATA_DIRECTORY));
+    }
+    return TRUE;
+}
+
+_Success_(return)
+BOOL PE_GetCodeViewInfo(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt, _Out_ PPE_CODEVIEW_INFO pCodeViewInfo)
 {
     BOOL f, f32;
     BYTE pbModuleHeader[0x1000] = { 0 };
@@ -344,7 +417,7 @@ BOOL PE_GetPdbInfo(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_read
     DWORD i, iMax, cbImageSize, cbDebugDirectory;
     PBYTE pbDebugDirectory = NULL;
     PIMAGE_DEBUG_DIRECTORY pDebugDirectory;
-    IMAGE_DEBUG_TYPE_CODEVIEW_PDBINFO PdbInfo = { 0 };
+    ZeroMemory(pCodeViewInfo, sizeof(PE_CODEVIEW_INFO));
     // load both 32/64 bit ntHeader unless already supplied in parameter (only one of 32/64 bit hdr will be valid)
     // load nt header either by using optionally supplied module header or by fetching from memory.
     ntHeader = pbModuleHeaderOpt ? PE_HeaderGetVerify(pProcess, 0, pbModuleHeaderOpt, &f32) : PE_HeaderGetVerify(pProcess, vaModuleBase, pbModuleHeader, &f32);
@@ -367,20 +440,19 @@ BOOL PE_GetPdbInfo(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_read
         pDebugDirectory = ((PIMAGE_DEBUG_DIRECTORY)pbDebugDirectory) + i;
         f = !pDebugDirectory->Characteristics &&
             (pDebugDirectory->Type == IMAGE_DEBUG_TYPE_CODEVIEW) &&
-            (pDebugDirectory->SizeOfData < sizeof(IMAGE_DEBUG_TYPE_CODEVIEW_PDBINFO)) &&
+            (pDebugDirectory->SizeOfData <= sizeof(PE_CODEVIEW)) &&
             (pDebugDirectory->SizeOfData > 24) &&
             (pDebugDirectory->AddressOfRawData + pDebugDirectory->SizeOfData < cbImageSize) &&
-            VmmRead(pProcess, vaModuleBase + pDebugDirectory->AddressOfRawData, (PBYTE)&PdbInfo, pDebugDirectory->SizeOfData) &&
-            (PdbInfo.Signature == 0x53445352);
+            VmmRead(pProcess, vaModuleBase + pDebugDirectory->AddressOfRawData, (PBYTE)&pCodeViewInfo->CodeView, pDebugDirectory->SizeOfData) &&
+            (pCodeViewInfo->CodeView.Signature == 0x53445352) &&
+            (pCodeViewInfo->SizeCodeView = pDebugDirectory->SizeOfData);
         if(f) {
-            *pdwAge = PdbInfo.Age;
-            memcpy(pbGUID, PdbInfo.Guid, 16);
-            strncpy_s(szPdbName, MAX_PATH, PdbInfo.PdbFileName, _TRUNCATE);
             LocalFree(pbDebugDirectory);
             return TRUE;
         }
     }
 fail:
+    ZeroMemory(pCodeViewInfo, sizeof(PE_CODEVIEW_INFO));
     LocalFree(pbDebugDirectory);
     return FALSE;
 

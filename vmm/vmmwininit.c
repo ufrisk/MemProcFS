@@ -24,22 +24,29 @@ VOID VmmWinInit_TryInitializeThreading()
     BOOL f;
     DWORD cbEThread = 0;
     PVMM_OFFSET_ETHREAD pti = &ctxVmm->offset.ETHREAD;
-    f = PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_EPROCESS", L"ThreadListHead", &pti->oThreadListHeadKP) &&
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_KTHREAD", L"StackBase", &pti->oStackBase) &&
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_KTHREAD", L"StackLimit", &pti->oStackLimit) &&
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_KTHREAD", L"State", &pti->oState) &&
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_KTHREAD", L"Priority", &pti->oPriority) &&
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_KTHREAD", L"BasePriority", &pti->oBasePriority) &&
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_KTHREAD", L"Teb", &pti->oTeb) &&
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_ETHREAD", L"CreateTime", &pti->oCreateTime) &&
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_ETHREAD", L"ExitTime", &pti->oExitTime) &&
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_ETHREAD", L"ExitStatus", &pti->oExitStatus) &&
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_ETHREAD", L"StartAddress", &pti->oStartAddress) &&
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_ETHREAD", L"ThreadListEntry", &pti->oThreadListEntry) &&
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_ETHREAD", L"Cid", &pti->oCid) &&
-        PDB_GetTypeSize(VMMWIN_PDB_HANDLE_KERNEL, "_ETHREAD", &cbEThread);
-    PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_KTHREAD", L"Process", &pti->oProcessOpt);   // optional - does not exist in xp.
-    PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_KTHREAD", L"Running", &pti->oRunningOpt);   // optional - does not exist in vista/xp.
+    f = PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_EPROCESS", L"ThreadListHead", &pti->oThreadListHeadKP) &&
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTHREAD", L"StackBase", &pti->oStackBase) &&
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTHREAD", L"StackLimit", &pti->oStackLimit) &&
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTHREAD", L"State", &pti->oState) &&
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTHREAD", L"SuspendCount", &pti->oSuspendCount) &&
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTHREAD", L"Priority", &pti->oPriority) &&
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTHREAD", L"BasePriority", &pti->oBasePriority) &&
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTHREAD", L"Teb", &pti->oTeb) &&
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTHREAD", L"TrapFrame", &pti->oTrapFrame) &&
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTHREAD", L"KernelTime", &pti->oKernelTime) &&
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTHREAD", L"UserTime", &pti->oUserTime) &&
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTHREAD", L"Affinity", &pti->oAffinity) &&
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_ETHREAD", L"CreateTime", &pti->oCreateTime) &&
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_ETHREAD", L"ExitTime", &pti->oExitTime) &&
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_ETHREAD", L"ExitStatus", &pti->oExitStatus) &&
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_ETHREAD", L"StartAddress", &pti->oStartAddress) &&
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_ETHREAD", L"ThreadListEntry", &pti->oThreadListEntry) &&
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_ETHREAD", L"Cid", &pti->oCid) &&
+        PDB_GetTypeSize(PDB_HANDLE_KERNEL, "_ETHREAD", &cbEThread) &&
+        (PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTRAP_FRAME", L"Rip", &pti->oTrapRip) || PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTRAP_FRAME", L"Eip", &pti->oTrapRip)) &&
+        (PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTRAP_FRAME", L"Rsp", &pti->oTrapRsp) || PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTRAP_FRAME", L"HardwareEsp", &pti->oTrapRsp));
+    PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTHREAD", L"Process", &pti->oProcessOpt);   // optional - does not exist in xp.
+    PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTHREAD", L"Running", &pti->oRunningOpt);   // optional - does not exist in vista/xp.
     pti->oMax = (WORD)(cbEThread + 8);
     pti->oTebStackBase = ctxVmm->f32 ? 0x004 : 0x008;
     pti->oTebStackLimit = ctxVmm->f32 ? 0x008 : 0x010;
@@ -66,69 +73,75 @@ VOID VmmWinInit_TryInitializeKernelOptionalValues()
     if(!(pObSystemProcess = VmmProcessGet(4))) { return; }
     // Optional EPROCESS and _TOKEN offsets
     if(!ctxVmm->offset.EPROCESS.opt.Token) {
-        // EPROCESS
-        if(PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_EPROCESS", L"Token", &dwo) && (dwo < sizeof(((PVMM_PROCESS)0)->win.EPROCESS.cb) - 8)) {
+        // EPROCESS / KPROCESS
+        if(PDB_GetTypeChildOffset(PDB_HANDLE_KERNEL, "_EPROCESS", L"Token", &dwo) && (dwo < sizeof(((PVMM_PROCESS)0)->win.EPROCESS.cb) - 8)) {
             ctxVmm->offset.EPROCESS.opt.Token = (WORD)dwo;
         }
-        if(PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_EPROCESS", L"CreateTime", &dwo) && (dwo < sizeof(((PVMM_PROCESS)0)->win.EPROCESS.cb) - 8)) {
+        if(PDB_GetTypeChildOffset(PDB_HANDLE_KERNEL, "_EPROCESS", L"CreateTime", &dwo) && (dwo < sizeof(((PVMM_PROCESS)0)->win.EPROCESS.cb) - 8)) {
             ctxVmm->offset.EPROCESS.opt.CreateTime = (WORD)dwo;
         }
-        if(PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_EPROCESS", L"ExitTime", &dwo) && (dwo < sizeof(((PVMM_PROCESS)0)->win.EPROCESS.cb) - 8)) {
+        if(PDB_GetTypeChildOffset(PDB_HANDLE_KERNEL, "_EPROCESS", L"ExitTime", &dwo) && (dwo < sizeof(((PVMM_PROCESS)0)->win.EPROCESS.cb) - 8)) {
             ctxVmm->offset.EPROCESS.opt.ExitTime = (WORD)dwo;
         }
+        if(PDB_GetTypeChildOffset(PDB_HANDLE_KERNEL, "_KPROCESS", L"KernelTime", &dwo) && (dwo < sizeof(((PVMM_PROCESS)0)->win.EPROCESS.cb) - 8)) {
+            ctxVmm->offset.EPROCESS.opt.KernelTime = (WORD)dwo;
+        }
+        if(PDB_GetTypeChildOffset(PDB_HANDLE_KERNEL, "_KPROCESS", L"UserTime", &dwo) && (dwo < sizeof(((PVMM_PROCESS)0)->win.EPROCESS.cb) - 8)) {
+            ctxVmm->offset.EPROCESS.opt.UserTime = (WORD)dwo;
+        }
         // TOKEN
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_TOKEN", L"UserAndGroups", &ctxVmm->offset.EPROCESS.opt.TOKEN_UserAndGroups);
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_TOKEN", L"SessionId", &ctxVmm->offset.EPROCESS.opt.TOKEN_SessionId);
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_TOKEN", L"TokenId", &ctxVmm->offset.EPROCESS.opt.TOKEN_TokenId);
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_TOKEN", L"UserAndGroups", &ctxVmm->offset.EPROCESS.opt.TOKEN_UserAndGroups);
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_TOKEN", L"SessionId", &ctxVmm->offset.EPROCESS.opt.TOKEN_SessionId);
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_TOKEN", L"TokenId", &ctxVmm->offset.EPROCESS.opt.TOKEN_TokenId);
     }
     // Optional _FILE_OBJECT related offsets
     if(!ctxVmm->offset.FILE.fValid) {
         pof = &ctxVmm->offset.FILE;
         // _FILE_OBJECT
-        PDB_GetTypeSizeShort(VMMWIN_PDB_HANDLE_KERNEL, "_FILE_OBJECT", &pof->_FILE_OBJECT.cb);
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_FILE_OBJECT", L"DeviceObject", &pof->_FILE_OBJECT.oDeviceObject);
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_FILE_OBJECT", L"SectionObjectPointer", &pof->_FILE_OBJECT.oSectionObjectPointer);
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_FILE_OBJECT", L"FileName", &pof->_FILE_OBJECT.oFileName);
+        PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_FILE_OBJECT", &pof->_FILE_OBJECT.cb);
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_FILE_OBJECT", L"DeviceObject", &pof->_FILE_OBJECT.oDeviceObject);
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_FILE_OBJECT", L"SectionObjectPointer", &pof->_FILE_OBJECT.oSectionObjectPointer);
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_FILE_OBJECT", L"FileName", &pof->_FILE_OBJECT.oFileName);
         pof->_FILE_OBJECT.oFileNameBuffer       = pof->_FILE_OBJECT.oFileName + (ctxVmm->f32 ? 4 : 8);
         // _SECTION_OBJECT_POINTERS
-        PDB_GetTypeSizeShort(VMMWIN_PDB_HANDLE_KERNEL, "_SECTION_OBJECT_POINTERS", &pof->_SECTION_OBJECT_POINTERS.cb);
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_SECTION_OBJECT_POINTERS", L"DataSectionObject", &pof->_SECTION_OBJECT_POINTERS.oDataSectionObject);
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_SECTION_OBJECT_POINTERS", L"SharedCacheMap", &pof->_SECTION_OBJECT_POINTERS.oSharedCacheMap);
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_SECTION_OBJECT_POINTERS", L"ImageSectionObject", &pof->_SECTION_OBJECT_POINTERS.oImageSectionObject);
+        PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_SECTION_OBJECT_POINTERS", &pof->_SECTION_OBJECT_POINTERS.cb);
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SECTION_OBJECT_POINTERS", L"DataSectionObject", &pof->_SECTION_OBJECT_POINTERS.oDataSectionObject);
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SECTION_OBJECT_POINTERS", L"SharedCacheMap", &pof->_SECTION_OBJECT_POINTERS.oSharedCacheMap);
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SECTION_OBJECT_POINTERS", L"ImageSectionObject", &pof->_SECTION_OBJECT_POINTERS.oImageSectionObject);
         // _VACB
-        PDB_GetTypeSizeShort(VMMWIN_PDB_HANDLE_KERNEL, "_VACB", &pof->_VACB.cb);
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_VACB", L"BaseAddress", &pof->_VACB.oBaseAddress);
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_VACB", L"SharedCacheMap", &pof->_VACB.oSharedCacheMap);
+        PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_VACB", &pof->_VACB.cb);
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_VACB", L"BaseAddress", &pof->_VACB.oBaseAddress);
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_VACB", L"SharedCacheMap", &pof->_VACB.oSharedCacheMap);
         // _SHARED_CACHE_MAP
-        PDB_GetTypeSizeShort(VMMWIN_PDB_HANDLE_KERNEL, "_SHARED_CACHE_MAP", &pof->_SHARED_CACHE_MAP.cb);
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_SHARED_CACHE_MAP", L"FileSize", &pof->_SHARED_CACHE_MAP.oFileSize);
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_SHARED_CACHE_MAP", L"SectionSize", &pof->_SHARED_CACHE_MAP.oSectionSize);
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_SHARED_CACHE_MAP", L"ValidDataLength", &pof->_SHARED_CACHE_MAP.oValidDataLength);
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_SHARED_CACHE_MAP", L"InitialVacbs", &pof->_SHARED_CACHE_MAP.oInitialVacbs);
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_SHARED_CACHE_MAP", L"Vacbs", &pof->_SHARED_CACHE_MAP.oVacbs);
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_SHARED_CACHE_MAP", L"FileObjectFastRef", &pof->_SHARED_CACHE_MAP.oFileObjectFastRef);
+        PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_SHARED_CACHE_MAP", &pof->_SHARED_CACHE_MAP.cb);
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SHARED_CACHE_MAP", L"FileSize", &pof->_SHARED_CACHE_MAP.oFileSize);
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SHARED_CACHE_MAP", L"SectionSize", &pof->_SHARED_CACHE_MAP.oSectionSize);
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SHARED_CACHE_MAP", L"ValidDataLength", &pof->_SHARED_CACHE_MAP.oValidDataLength);
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SHARED_CACHE_MAP", L"InitialVacbs", &pof->_SHARED_CACHE_MAP.oInitialVacbs);
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SHARED_CACHE_MAP", L"Vacbs", &pof->_SHARED_CACHE_MAP.oVacbs);
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SHARED_CACHE_MAP", L"FileObjectFastRef", &pof->_SHARED_CACHE_MAP.oFileObjectFastRef);
         // _CONTROL_AREA
-        PDB_GetTypeSizeShort(VMMWIN_PDB_HANDLE_KERNEL, "_CONTROL_AREA", &pof->_CONTROL_AREA.cb);
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_CONTROL_AREA", L"Segment", &pof->_CONTROL_AREA.oSegment);
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_CONTROL_AREA", L"FilePointer", &pof->_CONTROL_AREA.oFilePointer);
+        PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_CONTROL_AREA", &pof->_CONTROL_AREA.cb);
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_CONTROL_AREA", L"Segment", &pof->_CONTROL_AREA.oSegment);
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_CONTROL_AREA", L"FilePointer", &pof->_CONTROL_AREA.oFilePointer);
         // _SEGMENT
-        PDB_GetTypeSizeShort(VMMWIN_PDB_HANDLE_KERNEL, "_SEGMENT", &pof->_SEGMENT.cb);
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_SEGMENT", L"ControlArea", &pof->_SEGMENT.oControlArea);
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_SEGMENT", L"SizeOfSegment", &pof->_SEGMENT.oSizeOfSegment);
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_SEGMENT", L"PrototypePte", &pof->_SEGMENT.oPrototypePte);
+        PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_SEGMENT", &pof->_SEGMENT.cb);
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SEGMENT", L"ControlArea", &pof->_SEGMENT.oControlArea);
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SEGMENT", L"SizeOfSegment", &pof->_SEGMENT.oSizeOfSegment);
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SEGMENT", L"PrototypePte", &pof->_SEGMENT.oPrototypePte);
         // _SUBSECTION
-        PDB_GetTypeSizeShort(VMMWIN_PDB_HANDLE_KERNEL, "_SUBSECTION", &pof->_SUBSECTION.cb);
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_SUBSECTION", L"ControlArea", &pof->_SUBSECTION.oControlArea);
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_SUBSECTION", L"NextSubsection", &pof->_SUBSECTION.oNextSubsection);
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_SUBSECTION", L"NumberOfFullSectors", &pof->_SUBSECTION.oNumberOfFullSectors);
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_SUBSECTION", L"PtesInSubsection", &pof->_SUBSECTION.oPtesInSubsection);
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_SUBSECTION", L"StartingSector", &pof->_SUBSECTION.oStartingSector);
-        PDB_GetTypeChildOffsetShort(VMMWIN_PDB_HANDLE_KERNEL, "_SUBSECTION", L"SubsectionBase", &pof->_SUBSECTION.oSubsectionBase);
+        PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_SUBSECTION", &pof->_SUBSECTION.cb);
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SUBSECTION", L"ControlArea", &pof->_SUBSECTION.oControlArea);
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SUBSECTION", L"NextSubsection", &pof->_SUBSECTION.oNextSubsection);
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SUBSECTION", L"NumberOfFullSectors", &pof->_SUBSECTION.oNumberOfFullSectors);
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SUBSECTION", L"PtesInSubsection", &pof->_SUBSECTION.oPtesInSubsection);
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SUBSECTION", L"StartingSector", &pof->_SUBSECTION.oStartingSector);
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SUBSECTION", L"SubsectionBase", &pof->_SUBSECTION.oSubsectionBase);
         pof->fValid = pof->_SUBSECTION.cb ? TRUE : FALSE;
     }
     // cpu count
     if(!ctxVmm->kernel.opt.cCPUs) {
-        PDB_GetSymbolDWORD(VMMWIN_PDB_HANDLE_KERNEL, "KiTotalCpuSetCount", pObSystemProcess, &ctxVmm->kernel.opt.cCPUs);
+        PDB_GetSymbolDWORD(PDB_HANDLE_KERNEL, "KiTotalCpuSetCount", pObSystemProcess, &ctxVmm->kernel.opt.cCPUs);
         if(ctxVmm->kernel.opt.cCPUs > 128) { ctxVmm->kernel.opt.cCPUs = 0; }
     }
     if(!ctxVmm->kernel.opt.cCPUs && VmmWinReg_KeyHiveGetByFullPath(L"HKLM\\HARDWARE\\DESCRIPTION\\System\\CentralProcessor", &pObHive, &pObKey)) {
@@ -137,24 +150,24 @@ VOID VmmWinInit_TryInitializeKernelOptionalValues()
     }
     // pfn database & pfn subsystem initialize
     if(!ctxVmm->kernel.opt.vaPfnDatabase) {
-        PDB_GetSymbolPTR(VMMWIN_PDB_HANDLE_KERNEL, "MmPfnDatabase", pObSystemProcess, &ctxVmm->kernel.opt.vaPfnDatabase);
+        PDB_GetSymbolPTR(PDB_HANDLE_KERNEL, "MmPfnDatabase", pObSystemProcess, &ctxVmm->kernel.opt.vaPfnDatabase);
     }
     MmPfn_Initialize(pObSystemProcess);
     // PsLoadedModuleListExp
     if(!ctxVmm->kernel.opt.vaPsLoadedModuleListExp) {
-        PDB_GetSymbolAddress(VMMWIN_PDB_HANDLE_KERNEL, "PsLoadedModuleList", &ctxVmm->kernel.opt.vaPsLoadedModuleListExp);
+        PDB_GetSymbolAddress(PDB_HANDLE_KERNEL, "PsLoadedModuleList", &ctxVmm->kernel.opt.vaPsLoadedModuleListExp);
     }
     // KdDebuggerDataBlock (KDBG)
-    if(!ctxVmm->kernel.opt.KDBG.va && PDB_GetSymbolAddress(VMMWIN_PDB_HANDLE_KERNEL, "KdDebuggerDataBlock", &ctxVmm->kernel.opt.KDBG.va)) {
+    if(!ctxVmm->kernel.opt.KDBG.va && PDB_GetSymbolAddress(PDB_HANDLE_KERNEL, "KdDebuggerDataBlock", &ctxVmm->kernel.opt.KDBG.va)) {
         f = !ctxVmm->f32 &&
             VmmRead(pObSystemProcess, ctxVmm->kernel.opt.KDBG.va + 0x10, (PBYTE)&dwKDBG, sizeof(DWORD)) && (dwKDBG != 0x4742444b) &&
-            PDB_GetSymbolOffset(VMMWIN_PDB_HANDLE_KERNEL, "KdpDataBlockEncoded", &oKdpDataBlockEncoded) &&
-            PDB_GetSymbolPBYTE(VMMWIN_PDB_HANDLE_KERNEL, "KdpDataBlockEncoded", pObSystemProcess, &bKdpDataBlockEncoded, 1) &&
+            PDB_GetSymbolOffset(PDB_HANDLE_KERNEL, "KdpDataBlockEncoded", &oKdpDataBlockEncoded) &&
+            PDB_GetSymbolPBYTE(PDB_HANDLE_KERNEL, "KdpDataBlockEncoded", pObSystemProcess, &bKdpDataBlockEncoded, 1) &&
             (bKdpDataBlockEncoded == 1);
         if(f) {
             ctxVmm->kernel.opt.KDBG.vaKdpDataBlockEncoded = ctxVmm->kernel.vaBase + oKdpDataBlockEncoded;
-            PDB_GetSymbolQWORD(VMMWIN_PDB_HANDLE_KERNEL, "KiWaitAlways", pObSystemProcess, &ctxVmm->kernel.opt.KDBG.qwKiWaitAlways);
-            PDB_GetSymbolQWORD(VMMWIN_PDB_HANDLE_KERNEL, "KiWaitNever", pObSystemProcess, &ctxVmm->kernel.opt.KDBG.qwKiWaitNever);
+            PDB_GetSymbolQWORD(PDB_HANDLE_KERNEL, "KiWaitAlways", pObSystemProcess, &ctxVmm->kernel.opt.KDBG.qwKiWaitAlways);
+            PDB_GetSymbolQWORD(PDB_HANDLE_KERNEL, "KiWaitNever", pObSystemProcess, &ctxVmm->kernel.opt.KDBG.qwKiWaitNever);
         }
     }
     // Cleanup
@@ -462,12 +475,12 @@ PVMM_PROCESS VmmWinInit_FindNtosScan()
     VmmTlbSpider(pObSystemProcess);
     // 3: Find the base of 'ntoskrnl.exe'
     if(VMM_MEMORYMODEL_X64 == ctxVmm->tpMemoryModel) {
-        LeechCore_GetOption(LEECHCORE_OPT_MEMORYINFO_OS_KERNELBASE, &vaKernelBase);
+        LcGetOption(ctxMain->hLC, LC_OPT_MEMORYINFO_OS_KERNELBASE, &vaKernelBase);
         if(!vaKernelBase) {
             vaKernelHint = ctxVmm->kernel.vaEntry;
-            if(!vaKernelHint) { LeechCore_GetOption(LEECHCORE_OPT_MEMORYINFO_OS_KERNELHINT, &vaKernelHint); }
-            if(!vaKernelHint) { LeechCore_GetOption(LEECHCORE_OPT_MEMORYINFO_OS_PsActiveProcessHead, &vaKernelHint); }
-            if(!vaKernelHint) { LeechCore_GetOption(LEECHCORE_OPT_MEMORYINFO_OS_PsLoadedModuleList, &vaKernelHint); }
+            if(!vaKernelHint) { LcGetOption(ctxMain->hLC, LC_OPT_MEMORYINFO_OS_KERNELHINT, &vaKernelHint); }
+            if(!vaKernelHint) { LcGetOption(ctxMain->hLC, LC_OPT_MEMORYINFO_OS_PsActiveProcessHead, &vaKernelHint); }
+            if(!vaKernelHint) { LcGetOption(ctxMain->hLC, LC_OPT_MEMORYINFO_OS_PsLoadedModuleList, &vaKernelHint); }
             if(vaKernelHint) {
                 vaKernelBase = VmmWinInit_FindNtosScanHint64(pObSystemProcess, vaKernelHint);
             }
@@ -585,8 +598,9 @@ BOOL VmmWinInit_DTB_FindValidate()
     QWORD paDTB = 0;
     PBYTE pb16M;
     if(!(pb16M = LocalAlloc(LMEM_ZEROINIT, 0x01000000))) { return FALSE; }
-    // 1: try locate DTB via X64 low stub in lower 1MB
-    LeechCore_Read(0, pb16M, 0x00100000);
+    // 1: try locate DTB via X64 low stub in lower 1MB -
+    //    avoiding normally reserved memory at a0000-fffff.
+    LcRead(ctxMain->hLC, 0x1000, 0x9f000, pb16M + 0x1000);
     if(VmmWinInit_DTB_FindValidate_X64_LowStub(pb16M)) {
         VmmInitializeMemoryModel(VMM_MEMORYMODEL_X64);
         paDTB = ctxVmm->kernel.paDTB;
@@ -596,7 +610,7 @@ BOOL VmmWinInit_DTB_FindValidate()
     if(!paDTB) {
         for(pa = 0; pa < 0x01000000; pa += 0x1000) {
             if(pa == 0x00100000) {
-                LeechCore_Read(0x00100000, pb16M + 0x00100000, 0x00f00000);
+                LcRead(ctxMain->hLC, 0x00100000, 0x00f00000, pb16M + 0x00100000);
             }
             if(VmmWinInit_DTB_FindValidate_X64(pa, pb16M + pa)) {
                 VmmInitializeMemoryModel(VMM_MEMORYMODEL_X64);
@@ -641,7 +655,7 @@ BOOL VmmWinInit_DTB_Validate(QWORD paDTB)
 {
     BYTE pb[0x1000];
     paDTB = paDTB & ~0xfff;
-    if(!LeechCore_Read(paDTB, pb, 0x1000)) { return FALSE; }
+    if(!LcRead(ctxMain->hLC, paDTB, 0x1000, pb)) { return FALSE; }
     if(VmmWinInit_DTB_FindValidate_X64(paDTB, pb)) {
         VmmInitializeMemoryModel(VMM_MEMORYMODEL_X64);
         ctxVmm->kernel.paDTB = paDTB;
@@ -668,9 +682,9 @@ BOOL VmmWinInit_FindPsLoadedModuleListKDBG(_In_ PVMM_PROCESS pSystemProcess)
     QWORD va, va64 = 0;
     // 1: Try locate 'PsLoadedModuleList' by querying the microsoft crash dump
     //    file used. This will fail if another memory acqusition device is used.
-    if(LeechCore_GetOption(LEECHCORE_OPT_MEMORYINFO_OS_PsLoadedModuleList, &va) && va) {
-        LeechCore_GetOption(LEECHCORE_OPT_MEMORYINFO_OS_PFN, &ctxVmm->kernel.opt.vaPfnDatabase);
-        LeechCore_GetOption(LEECHCORE_OPT_MEMORYINFO_OS_KdDebuggerDataBlock, &ctxVmm->kernel.opt.KDBG.va);
+    if(LcGetOption(ctxMain->hLC, LC_OPT_MEMORYINFO_OS_PsLoadedModuleList, &va) && va) {
+        LcGetOption(ctxMain->hLC, LC_OPT_MEMORYINFO_OS_PFN, &ctxVmm->kernel.opt.vaPfnDatabase);
+        LcGetOption(ctxMain->hLC, LC_OPT_MEMORYINFO_OS_KdDebuggerDataBlock, &ctxVmm->kernel.opt.KDBG.va);
         if(ctxVmm->f32 && VmmRead(pSystemProcess, va, (PBYTE)&va32, 4) && (va32 > 0x80000000)) {
             ctxVmm->kernel.opt.vaPsLoadedModuleListExp = va;
             ctxVmm->kernel.vaPsLoadedModuleListPtr = va32;
@@ -723,8 +737,8 @@ BOOL VmmWinInit_FindPsLoadedModuleListKDBG(_In_ PVMM_PROCESS pSystemProcess)
     // 4: Try locate by querying the PDB for symbols. At this point the PDB
     //    subsystem may not be fully initialized yet so wait for it to init.
     PDB_Initialize_WaitComplete();
-    if(PDB_GetSymbolPTR(VMMWIN_PDB_HANDLE_KERNEL, "PsLoadedModuleList", pSystemProcess, &ctxVmm->kernel.vaPsLoadedModuleListPtr)) {
-        PDB_GetSymbolAddress(VMMWIN_PDB_HANDLE_KERNEL, "PsLoadedModuleList", &ctxVmm->kernel.opt.vaPsLoadedModuleListExp);
+    if(PDB_GetSymbolPTR(PDB_HANDLE_KERNEL, "PsLoadedModuleList", pSystemProcess, &ctxVmm->kernel.vaPsLoadedModuleListPtr)) {
+        PDB_GetSymbolAddress(PDB_HANDLE_KERNEL, "PsLoadedModuleList", &ctxVmm->kernel.opt.vaPsLoadedModuleListExp);
         return TRUE;
     }
 fail:
@@ -790,7 +804,7 @@ QWORD VmmWinInit_FindSystemEPROCESS(_In_ PVMM_PROCESS pSystemProcess)
     // 2: fail - paging? try to retrive using PDB subsystem - this may take some time to initialize
     //           and download symbols - but it's better than failing totally ...
     PDB_Initialize(NULL, FALSE);
-    PDB_GetSymbolPTR(VMMWIN_PDB_HANDLE_KERNEL, "PsInitialSystemProcess", pSystemProcess, &vaSystemEPROCESS);
+    PDB_GetSymbolPTR(PDB_HANDLE_KERNEL, "PsInitialSystemProcess", pSystemProcess, &vaSystemEPROCESS);
     if(vaSystemEPROCESS) { goto success; }
     // 3: fail - paging? (or not windows) - this should ideally not happen - but it happens rarely...
     //    try scan beginning of ALMOSTRO section for pointers and validate (working on pre-win10 only)
@@ -840,7 +854,7 @@ BOOL VmmWinInit_TryInitialize(_In_opt_ QWORD paDTBOpt)
             vmmprintfv("VmmWinInit_TryInitialize: Initialization Failed. Unable to verify user-supplied (0x%016llx) DTB. #1\n", paDTBOpt);
             goto fail;
         }
-    } else if(LeechCore_GetOption(LEECHCORE_OPT_MEMORYINFO_OS_DTB, &paDTBOpt)) {
+    } else if(LcGetOption(ctxMain->hLC, LC_OPT_MEMORYINFO_OS_DTB, &paDTBOpt)) {
         if(!VmmWinInit_DTB_Validate(paDTBOpt)) {
             vmmprintfv("VmmWinInit_TryInitialize: Warning: Unable to verify crash-dump supplied DTB. (0x%016llx) #1\n", paDTBOpt);
             goto fail;
@@ -867,7 +881,7 @@ BOOL VmmWinInit_TryInitialize(_In_opt_ QWORD paDTBOpt)
         goto fail;
     }
     // Enumerate processes
-    if(!VmmWin_EnumerateEPROCESS(pObSystemProcess, TRUE)) {
+    if(!VmmWinProcess_Enumerate(pObSystemProcess, TRUE)) {
         vmmprintfv("VmmWinInit: Initialization Failed. Unable to walk EPROCESS. #5\n");
         goto fail;
     }

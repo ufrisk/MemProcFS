@@ -47,10 +47,12 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <OutDir>$(SolutionDir)files\</OutDir>
     <IntDir>$(SolutionDir)files\temp\$(ProjectName)\</IntDir>
+    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(SolutionDir)includes;</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <OutDir>$(SolutionDir)files\</OutDir>
     <IntDir>$(SolutionDir)files\temp\$(ProjectName)\</IntDir>
+    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(SolutionDir)includes;</IncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -71,9 +73,8 @@
       <ProgramDatabaseFile>$(OutDir)\lib\$(TargetName).pdb</ProgramDatabaseFile>
     </Link>
     <PreBuildEvent>
-      <Command>copy $(SolutionDir)\files\leechcore.h $(ProjectDir)\ /y
-
-copy $(SolutionDir)\files\vmmdll.h $(ProjectDir)\ /y</Command>
+      <Command>
+      </Command>
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -101,8 +102,8 @@ copy $(SolutionDir)\files\vmmdll.h $(ProjectDir)\ /y</Command>
       </Command>
     </PostBuildEvent>
     <PreBuildEvent>
-      <Command>copy $(SolutionDir)\files\leechcore.h $(ProjectDir)\ /y
-copy $(SolutionDir)\files\vmmdll.h $(ProjectDir)\ /y</Command>
+      <Command>
+      </Command>
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -110,13 +111,13 @@ copy $(SolutionDir)\files\vmmdll.h $(ProjectDir)\ /y</Command>
     <ClCompile Include="vfs.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="dokan.h" />
-    <ClInclude Include="fileinfo.h" />
-    <ClInclude Include="leechcore.h" />
-    <ClInclude Include="public.h" />
+    <ClInclude Include="..\includes\dokan.h" />
+    <ClInclude Include="..\includes\fileinfo.h" />
+    <ClInclude Include="..\includes\leechcore.h" />
+    <ClInclude Include="..\includes\public.h" />
+    <ClInclude Include="..\includes\vmmdll.h" />
     <ClInclude Include="version.h" />
     <ClInclude Include="vfs.h" />
-    <ClInclude Include="vmmdll.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="MemProcFS.rc" />

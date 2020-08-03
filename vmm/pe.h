@@ -16,12 +16,18 @@
 static const LPCSTR  PE_DATA_DIRECTORIES[16]  = {  "EXPORT",  "IMPORT",  "RESOURCE",  "EXCEPTION",  "SECURITY",  "BASERELOC",  "DEBUG",  "ARCHITECTURE",  "GLOBALPTR",  "TLS",  "LOAD_CONFIG",  "BOUND_IMPORT",  "IAT",  "DELAY_IMPORT",  "COM_DESCRIPTOR",  "RESERVED" };
 static const LPCWSTR PE_DATA_DIRECTORIESW[16] = { L"EXPORT", L"IMPORT", L"RESOURCE", L"EXCEPTION", L"SECURITY", L"BASERELOC", L"DEBUG", L"ARCHITECTURE", L"GLOBALPTR", L"TLS", L"LOAD_CONFIG", L"BOUND_IMPORT", L"IAT", L"DELAY_IMPORT", L"COM_DESCRIPTOR", L"RESERVED" };
 
-typedef struct tdIMAGE_DEBUG_TYPE_CODEVIEW_PDBINFO {
+typedef struct tdPE_CODEVIEW {
     DWORD Signature;
     BYTE Guid[16];
     DWORD Age;
     CHAR PdbFileName[256 - 4 - 16 - 4];
-} IMAGE_DEBUG_TYPE_CODEVIEW_PDBINFO, *PIMAGE_DEBUG_TYPE_CODEVIEW_PDBINFO;
+} PE_CODEVIEW, *PPE_CODEVIEW;
+
+typedef struct tdPE_CODEVIEW_INFO {
+    DWORD SizeCodeView;
+    PE_CODEVIEW CodeView;
+    DWORD _Reserved;
+} PE_CODEVIEW_INFO, *PPE_CODEVIEW_INFO;
 
 typedef struct tdPE_THUNKINFO_IAT {
     BOOL fValid;
@@ -46,7 +52,26 @@ typedef struct tdPE_THUNKINFO_EAT {
 * -- vaModuleBase = PE module base address.
 * -- return = success: size of module. fail: 0.
 */
-QWORD PE_GetSize(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase);
+QWORD PE_GetSize(
+    _In_ PVMM_PROCESS pProcess,
+    _In_opt_ QWORD vaModuleBase
+);
+
+/*
+* Retrieve the TimeDateStamp and CheckSum from the PE header.
+* -- pProcess
+* -- vaModuleBase = PE module base address.
+* -- pdwTimeDateStamp
+* -- pdwCheckSum
+* -- return
+*/
+_Success_(return)
+BOOL PE_GetTimeDateStampCheckSum(
+    _In_ PVMM_PROCESS pProcess,
+    _In_opt_ QWORD vaModuleBase,
+    _Out_opt_ PDWORD pdwTimeDateStamp,
+    _Out_opt_ PDWORD pdwCheckSum
+);
 
 /*
 * Lookup the virtual address of an exported function or symbol in the module supplied.
@@ -55,7 +80,11 @@ QWORD PE_GetSize(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase);
 * -- vaModuleBase = PE module base address.
 * -- return = success: virtual address of function / symbol. fail: 0.
 */
-QWORD PE_GetProcAddress(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ LPSTR lpProcName);
+QWORD PE_GetProcAddress(
+    _In_ PVMM_PROCESS pProcess,
+    _In_ QWORD vaModuleBase,
+    _In_ LPSTR lpProcName
+);
 
 /*
 * Lookup the virtual address of an exported function or symbol in the module supplied
@@ -67,7 +96,12 @@ QWORD PE_GetProcAddress(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In
 * -- return
 */
 _Success_(return)
-BOOL PE_GetThunkInfoEAT(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ LPSTR szProcName, _Out_ PPE_THUNKINFO_EAT pThunkInfoEAT);
+BOOL PE_GetThunkInfoEAT(
+    _In_ PVMM_PROCESS pProcess,
+    _In_ QWORD vaModuleBase,
+    _In_ LPSTR szProcName,
+    _Out_ PPE_THUNKINFO_EAT pThunkInfoEAT
+);
 
 /*
 * Retrieve an import address table (IAT) entry for a specific function.
@@ -80,7 +114,13 @@ BOOL PE_GetThunkInfoEAT(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In
 * -- return
 */
 _Success_(return)
-BOOL PE_GetThunkInfoIAT(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ LPSTR szImportModuleName, _In_ LPSTR szImportProcName, _Out_ PPE_THUNKINFO_IAT pThunkInfoIAT);
+BOOL PE_GetThunkInfoIAT(
+    _In_ PVMM_PROCESS pProcess,
+    _In_ QWORD vaModuleBase,
+    _In_ LPSTR szImportModuleName,
+    _In_ LPSTR szImportProcName,
+    _Out_ PPE_THUNKINFO_IAT pThunkInfoIAT
+);
 
 /*
 * Retrieve the module name and optionally the module size.
@@ -124,7 +164,28 @@ inline WORD PE_SectionGetNumberOf(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaM
 * -- return
 */
 _Success_(return)
-BOOL PE_SectionGetFromName(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ LPSTR szSectionName, _Out_ PIMAGE_SECTION_HEADER pSection);
+BOOL PE_SectionGetFromName(
+    _In_ PVMM_PROCESS pProcess,
+    _In_ QWORD vaModuleBase,
+    _In_ LPSTR szSectionName,
+    _Out_ PIMAGE_SECTION_HEADER pSection
+);
+
+/*
+* Retrieve all sections.
+* -- pProcess
+* -- vaModuleBase
+* -- cSections
+* -- pSections
+* -- return
+*/
+_Success_(return)
+BOOL PE_SectionGetAll(
+    _In_ PVMM_PROCESS pProcess,
+    _In_ QWORD vaModuleBase,
+    _In_ DWORD cSections,
+    _Out_writes_(cSections) PIMAGE_SECTION_HEADER pSections
+);
 
 /*
 * Retrieve the number of export address table (EAT) entries - i.e. the number
@@ -134,8 +195,8 @@ BOOL PE_SectionGetFromName(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, 
 * -- pbModuleHaderOpt = Optional buffer containing module header (MZ) page.
 * -- return = success: number of entries. fail: 0.
 */
-DWORD PE_EatGetNumberOfEx(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt);
-inline DWORD PE_EatGetNumberOf(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase)
+DWORD PE_EatGetNumberOfEx(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt);
+inline DWORD PE_EatGetNumberOf(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase)
 {
     return PE_EatGetNumberOfEx(pProcess, vaModuleBase, NULL);
 }
@@ -148,24 +209,57 @@ inline DWORD PE_EatGetNumberOf(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBa
 * -- pbModuleHaderOpt = Optional buffer containing module header (MZ) page.
 * -- return = success: number of entries. fail: 0.
 */
-DWORD PE_IatGetNumberOfEx(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt);
-inline DWORD PE_IatGetNumberOf(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase)
+DWORD PE_IatGetNumberOfEx(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt);
+inline DWORD PE_IatGetNumberOf(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase)
 {
     return PE_IatGetNumberOfEx(pProcess, vaModuleBase, NULL);
 }
+
+/*
+* Retrieve info about the PE directories.
+* -- pProcess
+* -- vaModuleBase = PE module base address (unless pbModuleHeaderOpt is specified)
+* -- pbModuleHeaderOpt = Optional buffer containing module header (MZ) page.
+* -- pDirectories = buffer to receive the data of the 16 directories.
+*/
+_Success_(return)
+BOOL PE_DirectoryGetAll(
+    _In_ PVMM_PROCESS pProcess,
+    _In_opt_ QWORD vaModuleBase,
+    _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt,
+    _Out_writes_(IMAGE_NUMBEROF_DIRECTORY_ENTRIES) PIMAGE_DATA_DIRECTORY pDirectories
+);
+
+/*
+* Retrieve the offset of a PE directory - i.e. the VirtualAddress of the directory.
+* -- pProcess
+* -- vaModuleBase = PE module base address (unless pbModuleHeaderOpt is specified)
+* -- pbModuleHeaderOpt = Optional buffer containing module header (MZ) page.
+* -- dwDataDirectory = Data directory as specified by IMAGE_DIRECTORY_ENTRY_*
+* -- return = the offset in bytes from PE base or 0 on fail.
+*/
+DWORD PE_DirectoryGetOffset(
+    _In_ PVMM_PROCESS pProcess,
+    _In_opt_ QWORD vaModuleBase,
+    _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt,
+    _In_ DWORD dwDirectory
+);
 
 /*
 * Retrieve PDB debugging information from a single module.
 * -- pProcess
 * -- vaModulebase
 * -- pbModuleHeaderOpt
-* -- szPdbName
-* -- pbGUID
-* -- pdwAge
+* -- pCodeViewInfo
 * -- return
 */
 _Success_(return)
-BOOL PE_GetPdbInfo(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt, _Out_writes_(MAX_PATH) LPSTR szPdbName, _Out_writes_(16) PBYTE pbGUID, _Out_ PDWORD pdwAge);
+BOOL PE_GetCodeViewInfo(
+    _In_ PVMM_PROCESS pProcess,
+    _In_opt_ QWORD vaModuleBase,
+    _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt,
+    _Out_ PPE_CODEVIEW_INFO pCodeViewInfo
+);
 
 /*
 * Retrieve the raw size of the 'file' estimation that is possible to rebuild

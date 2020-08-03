@@ -323,7 +323,10 @@ VOID MmWin_MemCompress_InitializeOffsets32()
     po->SMKM_STORE.RegionIndexMask = 0x38 + 0x1C8;          // static = ok
     po->SMKM_STORE.CompressionAlgorithm = 0x38 + 0x224;     // 1709+
     po->SMKM_STORE.CompressedRegionPtrArray = 0x1184;       // 1709+
-    po->SMKM_STORE.OwnerProcess = 0x1254;                   // 1709+
+    po->SMKM_STORE.OwnerProcess = 0x125c;                   // 2004+
+    if(ctxVmm->kernel.dwVersionBuild <= 18363) {            // 1709-1909
+        po->SMKM_STORE.OwnerProcess = 0x1254;
+    }
     if(ctxVmm->kernel.dwVersionBuild == 15063) {            // 1703
         po->SMKM_STORE.CompressionAlgorithm = 0x38 + 0x220;
         po->SMKM_STORE.CompressedRegionPtrArray = 0x1174;
@@ -349,7 +352,10 @@ VOID MmWin_MemCompress_InitializeOffsets64()
     po->SMKM_STORE.RegionIndexMask = 0x50 + 0x32C;          // static = ok
     po->SMKM_STORE.CompressionAlgorithm = 0x50 + 0x3E0;     // 1709+
     po->SMKM_STORE.CompressedRegionPtrArray = 0x1848;       // 1709+
-    po->SMKM_STORE.OwnerProcess = 0x19A8;                   // 1709+
+    po->SMKM_STORE.OwnerProcess = 0x19B8;                   // 2004+
+    if(ctxVmm->kernel.dwVersionBuild <= 18363) {            // 1709-1909
+        po->SMKM_STORE.OwnerProcess = 0x19A8;
+    }
     if(ctxVmm->kernel.dwVersionBuild == 15063) {            // 1703
         po->SMKM_STORE.CompressionAlgorithm = 0x50 + 0x3D0;
         po->SMKM_STORE.CompressedRegionPtrArray = 0x1828;
@@ -396,7 +402,7 @@ VOID MmWin_MemCompress_InitializeVirtualStorePageFileNumber()
     // 1: SetUp and locate nt!MiSystemPartition/nt!.data
     if(!(pObSet = ObSet_New())) { goto finish; }
     if(!(pObSystemProcess = VmmProcessGet(4))) { goto finish; }
-    if(PDB_GetSymbolAddress(VMMWIN_PDB_HANDLE_KERNEL, "MiSystemPartition", &va) && va) {
+    if(PDB_GetSymbolAddress(PDB_HANDLE_KERNEL, "MiSystemPartition", &va) && va) {
         cb = 0x3000;
     } else {
         if(!PE_SectionGetFromName(pObSystemProcess, ctxVmm->kernel.vaBase, ".data", &oSectionHeader)) {
@@ -456,9 +462,9 @@ VOID MmWin_MemCompress_InitializeVirtualStorePageFileNumber()
     }
     // 3: Set InvalidPteMask
     if(ctxVmm->kernel.dwVersionBuild >= 17134) {
-        f = PDB_GetSymbolAddress(VMMWIN_PDB_HANDLE_KERNEL, "MiState", &vaMiState) &&
-            PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_MI_SYSTEM_INFORMATION", L"Hardware", &oMiStateHardware) &&
-            PDB_GetTypeChildOffset(VMMWIN_PDB_HANDLE_KERNEL, "_MI_HARDWARE_STATE", L"InvalidPteMask", &oMiStateHardwareInvalidPteMask) &&
+        f = PDB_GetSymbolAddress(PDB_HANDLE_KERNEL, "MiState", &vaMiState) &&
+            PDB_GetTypeChildOffset(PDB_HANDLE_KERNEL, "_MI_SYSTEM_INFORMATION", L"Hardware", &oMiStateHardware) &&
+            PDB_GetTypeChildOffset(PDB_HANDLE_KERNEL, "_MI_HARDWARE_STATE", L"InvalidPteMask", &oMiStateHardwareInvalidPteMask) &&
             VmmRead(pObSystemProcess, vaMiState + oMiStateHardware + oMiStateHardwareInvalidPteMask, (PBYTE)&qw, 8);
         ctx->MemCompress.dwInvalidPteMask = f ? (qw >> 32) : 0x00002000;     // if fail: [0x00002000 = most common on Intel]
     }
@@ -499,7 +505,7 @@ VOID MmWin_MemCompress_Initialize_NoPdb64()
     PVMM_PROCESS pObSystemProcess = NULL;
     POB_SET pObSet = NULL;
     PMMWIN_CONTEXT ctx = (PMMWIN_CONTEXT)ctxVmm->pMmContext;
-    EnterCriticalSection(&ctxVmm->MasterLock);
+    EnterCriticalSection(&ctxVmm->LockMaster);
     if(ctx->MemCompress.fInitialized || (ctxVmm->kernel.dwVersionBuild < 14393)) { goto finish; }
     // 1: Locate SmGlobals candidates in ntoskrnl.exe!CACHEALI section
     if(!(pObSystemProcess = VmmProcessGet(4))) { goto finish; }
@@ -543,7 +549,7 @@ VOID MmWin_MemCompress_Initialize_NoPdb64()
         }
     }
 finish:
-    LeaveCriticalSection(&ctxVmm->MasterLock);
+    LeaveCriticalSection(&ctxVmm->LockMaster);
     ctx->MemCompress.fInitialized = TRUE;
     Ob_DECREF(pObSystemProcess);
     Ob_DECREF(pObSet);
@@ -564,7 +570,7 @@ VOID MmWin_MemCompress_Initialize()
         }
     }
     // Retrieve SmGlobals address
-    if(!PDB_GetSymbolAddress(VMMWIN_PDB_HANDLE_KERNEL, "SmGlobals", &ctx->MemCompress.vaSmGlobals)) {
+    if(!PDB_GetSymbolAddress(PDB_HANDLE_KERNEL, "SmGlobals", &ctx->MemCompress.vaSmGlobals)) {
         if(ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_X64) {
             MmWin_MemCompress_Initialize_NoPdb64();
         }
@@ -1052,8 +1058,8 @@ BOOL MmWin_PfRead(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD va, _In_ QWORD pte,
     // update cache
     if(fResult) {
         if((pObCacheEntry = VmmCacheReserve(VMM_CACHE_TAG_PAGING))) {
+            pObCacheEntry->h.f = TRUE;
             pObCacheEntry->h.qwA = pte;
-            pObCacheEntry->h.cb = 0x1000;
             memcpy(pObCacheEntry->pb, pbPage, 0x1000);
             VmmCacheReserveReturn(pObCacheEntry);
         }
@@ -1099,7 +1105,7 @@ fail:
 * -- return
 */
 _Success_(return)
-BOOL MmWinX86_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_opt_ DWORD va, _In_ DWORD pte, _Out_writes_(4096) PBYTE pbPage, _Out_ PQWORD ppa, _In_ QWORD flags)
+BOOL MmWinX86_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_opt_ DWORD va, _In_ DWORD pte, _Out_writes_opt_(4096) PBYTE pbPage, _Out_ PQWORD ppa, _In_ QWORD flags)
 {
     BOOL f;
     DWORD dwPfNumber, dwPfOffset;
@@ -1108,7 +1114,7 @@ BOOL MmWinX86_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_opt_ DWORD va, _In_ DWOR
         *ppa = pte & 0xfffff000;
         return FALSE;
     }
-    if(!pte || MM_LOOP_PROTECT_MAX(flags)) { goto fail; }
+    if(MM_LOOP_PROTECT_MAX(flags)) { goto fail; }
     flags = MM_LOOP_PROTECT_ADD(flags);
     // prototype page [ nt!_MMPTE_PROTOTYPE ]
     if(!(flags & VMM_FLAG_NOPAGING_IO) && MMWINX86_PTE_PROTOTYPE(pte)) {
@@ -1145,7 +1151,7 @@ BOOL MmWinX86_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_opt_ DWORD va, _In_ DWOR
         }
         return MmWinX86_ReadPaged(pProcess, va, pte, pbPage, ppa, flags | VMM_FLAG_NOVAD);
     }
-    if(!pte) { return FALSE; }
+    if(!pte || !pbPage) { return FALSE; }
     // demand zero virtual memory [ nt!_MMPTE_SOFTWARE ]
     if(!dwPfNumber && !dwPfOffset) {
         ZeroMemory(pbPage, 0x1000);
@@ -1196,7 +1202,7 @@ fail:
 * -- return
 */
 _Success_(return)
-BOOL MmWinX86PAE_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_opt_ DWORD va, _In_ QWORD pte, _Out_writes_(4096) PBYTE pbPage, _Out_ PQWORD ppa, _In_ QWORD flags)
+BOOL MmWinX86PAE_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_opt_ DWORD va, _In_ QWORD pte, _Out_writes_opt_(4096) PBYTE pbPage, _Out_ PQWORD ppa, _In_ QWORD flags)
 {
     BOOL f;
     DWORD dwPfNumber, dwPfOffset;
@@ -1205,7 +1211,7 @@ BOOL MmWinX86PAE_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_opt_ DWORD va, _In_ Q
         *ppa = pte & 0x0000003f'fffff000;
         return FALSE;
     }
-    if(!pte || MM_LOOP_PROTECT_MAX(flags)) { goto fail; }
+    if(MM_LOOP_PROTECT_MAX(flags)) { goto fail; }
     flags = MM_LOOP_PROTECT_ADD(flags);
     // prototype page [ nt!_MMPTE_PROTOTYPE ]
     if(!(flags & VMM_FLAG_NOPAGING_IO) && MMWINX86PAE_PTE_PROTOTYPE(pte)) {
@@ -1242,7 +1248,7 @@ BOOL MmWinX86PAE_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_opt_ DWORD va, _In_ Q
         }
         return MmWinX86PAE_ReadPaged(pProcess, va, pte, pbPage, ppa, flags | VMM_FLAG_NOVAD);
     }
-    if(!pte) { return FALSE; }
+    if(!pte || !pbPage) { return FALSE; }
     // demand zero virtual memory [ nt!_MMPTE_SOFTWARE ]
     if(!dwPfNumber && !dwPfOffset) {
         ZeroMemory(pbPage, 0x1000);
@@ -1294,7 +1300,7 @@ fail:
 * -- return
 */
 _Success_(return)
-BOOL MmWinX64_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD va, _In_ QWORD pte, _Out_writes_(4096) PBYTE pbPage, _Out_ PQWORD ppa, _In_ QWORD flags)
+BOOL MmWinX64_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD va, _In_ QWORD pte, _Out_writes_opt_(4096) PBYTE pbPage, _Out_ PQWORD ppa, _In_ QWORD flags)
 {
     BOOL f;
     DWORD dwPfNumber, dwPfOffset;
@@ -1303,7 +1309,7 @@ BOOL MmWinX64_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD va, _In_ QWOR
         *ppa = pte & 0x0000ffff'fffff000;
         return FALSE;
     }
-    if(!pte || MM_LOOP_PROTECT_MAX(flags)) { goto fail; }
+    if(MM_LOOP_PROTECT_MAX(flags)) { goto fail; }
     flags = MM_LOOP_PROTECT_ADD(flags);
     // prototype page
     if(!(flags & VMM_FLAG_NOPAGING_IO) && MMWINX64_PTE_PROTOTYPE(pte)) {
@@ -1340,7 +1346,7 @@ BOOL MmWinX64_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD va, _In_ QWOR
         }
         return MmWinX64_ReadPaged(pProcess, va, pte, pbPage, ppa, flags | VMM_FLAG_NOVAD);
     }
-    if(!pte) { return FALSE; }
+    if(!pte || !pbPage) { return FALSE; }
     // demand zero virtual memory [ nt!_MMPTE_SOFTWARE ]
     if(!dwPfNumber && !dwPfOffset) {
         ZeroMemory(pbPage, 0x1000);

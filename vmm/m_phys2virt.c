@@ -62,7 +62,7 @@ BOOL Phys2Virt_GetUpdateAll(_Out_opt_ PM_PHYS2VIRT_MULTIENTRY_CONTEXT *ppMultiEn
     if(!ctx) { return FALSE; }
     ctx->pa = ctxVmm->paPluginPhys2VirtRoot;
     ctx->cMax = (DWORD)cPIDs * 4;
-    VmmProcessActionForeachParallel(ctx, 5, VmmProcessActionForeachParallel_CriteriaActiveOnly, Phys2Virt_GetUpdateAll_CallbackAction);
+    VmmProcessActionForeachParallel(ctx, VmmProcessActionForeachParallel_CriteriaActiveOnly, Phys2Virt_GetUpdateAll_CallbackAction);
     ctx->c = min(ctx->c, ctx->cMax - 1);
     if(pcMultiEntry) { *pcMultiEntry = ctx->c; }
     if(ppMultiEntry) {

@@ -2,25 +2,24 @@ LIBRARY        VMM
 EXPORTS
     VMMDLL_Initialize
     VMMDLL_Close
-    VMMDLL_Refresh
-	VMMDLL_MemFree
+    VMMDLL_MemFree
 
+    VMMDLL_InitializePlugins
+    
     VMMDLL_ConfigGet
     VMMDLL_ConfigSet
-
+    
     VMMDLL_VfsList
     VMMDLL_VfsRead
     VMMDLL_VfsWrite
-
+    
     VMMDLL_UtilVfsReadFile_FromPBYTE
     VMMDLL_UtilVfsReadFile_FromQWORD
     VMMDLL_UtilVfsReadFile_FromDWORD
     VMMDLL_UtilVfsReadFile_FromBOOL
     VMMDLL_UtilVfsWriteFile_BOOL
     VMMDLL_UtilVfsWriteFile_DWORD
-
-    VMMDLL_VfsInitializePlugins
-
+    
     VMMDLL_MemReadScatter
     VMMDLL_MemReadPage
     VMMDLL_MemRead
@@ -28,11 +27,12 @@ EXPORTS
     VMMDLL_MemPrefetchPages
     VMMDLL_MemWrite
     VMMDLL_MemVirt2Phys
-
+    
     VMMDLL_PidList
     VMMDLL_PidGetFromName
-    VMMDLL_Map_GetPhysMem
+    VMMDLL_Map_GetNet
     VMMDLL_Map_GetPfn
+    VMMDLL_Map_GetPhysMem
     VMMDLL_Map_GetUsers
     VMMDLL_ProcessMap_GetPte
     VMMDLL_ProcessMap_GetVad
@@ -42,8 +42,8 @@ EXPORTS
     VMMDLL_ProcessMap_GetThread
     VMMDLL_ProcessMap_GetHandle
     VMMDLL_ProcessGetInformation
-	VMMDLL_ProcessGetInformationString
-
+    VMMDLL_ProcessGetInformationString
+    
     VMMDLL_ProcessGetDirectories
     VMMDLL_ProcessGetSections
     VMMDLL_ProcessGetEAT
@@ -52,18 +52,19 @@ EXPORTS
     VMMDLL_ProcessGetModuleBase
     VMMDLL_WinGetThunkInfoIAT
     VMMDLL_WinGetThunkInfoEAT
-
+    
     VMMDLL_WinReg_HiveList
     VMMDLL_WinReg_HiveReadEx
     VMMDLL_WinReg_HiveWrite
-	VMMDLL_WinReg_EnumKeyExW
-	VMMDLL_WinReg_EnumValueW
-	VMMDLL_WinReg_QueryValueExW
-
-	VMMDLL_WinNet_Get
-
-	VMMDLL_PdbSymbolAddress
-	VMMDLL_PdbTypeSize
-	VMMDLL_PdbTypeChildOffset
-
+    VMMDLL_WinReg_EnumKeyExW
+    VMMDLL_WinReg_EnumValueW
+    VMMDLL_WinReg_QueryValueExW
+    
+    VMMDLL_PdbLoad
+    VMMDLL_PdbSymbolName
+    VMMDLL_PdbSymbolAddress
+    VMMDLL_PdbTypeSize
+    VMMDLL_PdbTypeChildOffset
+    
     VMMDLL_UtilFillHexAscii
+    

@@ -100,10 +100,11 @@ VOID MmPfn_Refresh();
 * -- dwPfnStart = starting PFN. PFN = physical address / 0x1000.
 * -- cPfn
 * -- ppObPfnMap
+* -- fExtended = extended information such as process id's.
 * -- return
 */
 _Success_(return)
-BOOL MmPfn_Map_GetPfn(_In_ DWORD dwPfnStart, _In_ DWORD cPfn, _Out_ PMMPFNOB_MAP *ppObPfnMap);
+BOOL MmPfn_Map_GetPfn(_In_ DWORD dwPfnStart, _In_ DWORD cPfn, _Out_ PMMPFNOB_MAP *ppObPfnMap, _In_ BOOL fExtended);
 
 /*
 * Retrieve information about scattered PFNs. The PFNs are returned in order of
@@ -113,9 +114,10 @@ BOOL MmPfn_Map_GetPfn(_In_ DWORD dwPfnStart, _In_ DWORD cPfn, _Out_ PMMPFNOB_MAP
 * -- psPfn = Set of PFNs. PFN = physical address / 0x1000.
 * -- cPfn
 * -- ppObPfnMap
+* -- fExtended = extended information such as process id's.
 * -- return
 */
 _Success_(return)
-BOOL MmPfn_Map_GetPfnScatter(_In_ POB_SET psPfn, _Out_ PMMPFNOB_MAP *ppObPfnMap);
+BOOL MmPfn_Map_GetPfnScatter(_In_ POB_SET psPfn, _Out_ PMMPFNOB_MAP *ppObPfnMap, _In_ BOOL fExtended);
 
 #endif /* __MM_PFN_H__ */

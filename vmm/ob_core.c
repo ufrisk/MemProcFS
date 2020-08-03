@@ -79,8 +79,9 @@ PVOID Ob_INCREF(_In_opt_ PVOID pObIn)
 * Decrease the reference count of a object manager object. If the reference
 * count reaches zero the object will be cleaned up.
 * -- pObIn
+* -- return = pObIn if pObIn is valid and refcount > 0 after decref.
 */
-VOID Ob_DECREF(_In_opt_ PVOID pObIn)
+PVOID Ob_DECREF(_In_opt_ PVOID pObIn)
 {
     POB pOb = (POB)pObIn;
     DWORD c;
@@ -102,11 +103,15 @@ VOID Ob_DECREF(_In_opt_ PVOID pObIn)
                 LocalFree(pOb);
             } else if((c == 1) && pOb->_pfnRef_1) {
                 pOb->_pfnRef_1(pOb);
+                return pOb;
+            } else {
+                return pOb;
             }
         } else {
             obprintf_fn("ObCORE: CRITICAL: DECREF OF NON OBJECT MANAGER OBJECT!\n")
         }
     }
+    return NULL;
 }
 
 /*

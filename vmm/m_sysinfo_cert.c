@@ -94,7 +94,7 @@ VOID MSysInfoCert_GetContext_UserAddSingleCert(_In_ POB_REGISTRY_HIVE pHive, _In
             break;
         }
     }
-    if(!(pCertContext = CertCreateCertificateContext(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, pb + o, cb))) {
+    if(!(pCertContext = CertCreateCertificateContext(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, pb + o, cb + 10))) {
         goto fail;
     }
     if(!(pObResult = Ob_Alloc('Pcer', LMEM_ZEROINIT, sizeof(MSYSINFOCERT_OB_ENTRY), MSysInfoCert_CallbackCleanup, NULL))) {

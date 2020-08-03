@@ -12,7 +12,7 @@
 # (c) Ulf Frisk, 2018-2020
 # Author: Ulf Frisk, pcileech@frizk.net
 #
-# Header Version: 3.2
+# Header Version: 3.3
 #
 
 import atexit
@@ -65,6 +65,8 @@ VMMPY_WINREG_FULL_RESOURCE_DESCRIPTOR = 0x09
 VMMPY_WINREG_RESOURCE_REQUIREMENTS_LIST = 0x0A
 VMMPY_WINREG_QWORD =                    0x0B
 
+VMMPY_PID_PROCESS_CLONE_WITH_KERNELMEMORY   = 0x80000000
+
 #------------------------------------------------------------------------------
 # VmmPy INITIALIZATION FUNCTIONALITY BELOW:
 #------------------------------------------------------------------------------
@@ -80,19 +82,6 @@ def VmmPy_Close():
     """
     atexit.unregister(VmmPy_Close)
     VMMPYC_Close()
-
-
-
-def VmmPy_Refresh():
-    """Force refresh the internal state of the VMM.DLL - refreshing process listings and internal caches. NB! function may take a long time to execute!
-
-    Keyword arguments:
-    N/A
-    
-    Example:
-    VmmPy_Refresh()
-    """
-    VMMPYC_Refresh(0)
 
 
 
@@ -129,33 +118,58 @@ def VmmPy_Initialize(args, is_printf = True, is_verbose = False, is_verbose_extr
 
 
 
+def VmmPy_Initialize_Plugins():
+    """Initialize VMM internal plugin functionality (required to access the virtual
+       (file system amongst other things).
+       in the argument list args. Important is the -device option and optionally
+       -remote option as closer described in the MemProcFS and LeechCore projects.
+    
+    Example:
+    VmmPy_Initialize_Plugins() -> None
+    """
+    VMMPYC_Initialize_Plugins()
+
+
+
 #------------------------------------------------------------------------------
 # VmmPy CONFIGURATION FUNCTIONALITY BELOW:
 #------------------------------------------------------------------------------
 
-VMMPY_OPT_CORE_PRINTF_ENABLE                  = 0x80000001  # RW
-VMMPY_OPT_CORE_VERBOSE                        = 0x80000002  # RW
-VMMPY_OPT_CORE_VERBOSE_EXTRA                  = 0x80000003  # RW
-VMMPY_OPT_CORE_VERBOSE_EXTRA_TLP              = 0x80000004  # RW
-VMMPY_OPT_CORE_MAX_NATIVE_ADDRESS             = 0x80000005  # R
-VMMPY_OPT_CORE_SYSTEM                         = 0x80000007  # R
-VMMPY_OPT_CORE_MEMORYMODEL                    = 0x80000008  # R
+VMMPY_OPT_CORE_PRINTF_ENABLE                  = 0x4000000100000000  # RW
+VMMPY_OPT_CORE_VERBOSE                        = 0x4000000200000000  # RW
+VMMPY_OPT_CORE_VERBOSE_EXTRA                  = 0x4000000300000000  # RW
+VMMPY_OPT_CORE_VERBOSE_EXTRA_TLP              = 0x4000000400000000  # RW
+VMMPY_OPT_CORE_MAX_NATIVE_ADDRESS             = 0x4000000800000000  # R
 
-VMMPY_OPT_CONFIG_IS_REFRESH_ENABLED           = 0x40000001  # R - 1/0
-VMMPY_OPT_CONFIG_TICK_PERIOD                  = 0x40000002  # RW - base tick period in ms
-VMMPY_OPT_CONFIG_READCACHE_TICKS              = 0x40000003  # RW - memory cache validity period (in ticks)
-VMMPY_OPT_CONFIG_TLBCACHE_TICKS               = 0x40000004  # RW - page table (tlb) cache validity period (in ticks)
-VMMPY_OPT_CONFIG_PROCCACHE_TICKS_PARTIAL      = 0x40000005  # RW - process refresh (partial) period (in ticks)
-VMMPY_OPT_CONFIG_PROCCACHE_TICKS_TOTAL        = 0x40000006  # RW - process refresh (full) period (in ticks)
-VMMPY_OPT_CONFIG_VMM_VERSION_MAJOR            = 0x40000007  # R
-VMMPY_OPT_CONFIG_VMM_VERSION_MINOR            = 0x40000008  # R
-VMMPY_OPT_CONFIG_VMM_VERSION_REVISION         = 0x40000009  # R
-VMMPY_OPT_CONFIG_STATISTICS_FUNCTIONCALL      = 0x4000000A  # RW - enable function call statistics (.status/statistics_fncall file)
+VMMPY_OPT_CORE_SYSTEM                         = 0x2000000100000000  # R
+VMMPY_OPT_CORE_MEMORYMODEL                    = 0x2000000200000000  # R
+VMMPY_OPT_CONFIG_IS_REFRESH_ENABLED           = 0x2000000300000000  # R - 1/0
+VMMPY_OPT_CONFIG_TICK_PERIOD                  = 0x2000000400000000  # RW - base tick period in ms
+VMMPY_OPT_CONFIG_READCACHE_TICKS              = 0x2000000500000000  # RW - memory cache validity period (in ticks)
+VMMPY_OPT_CONFIG_TLBCACHE_TICKS               = 0x2000000600000000  # RW - page table (tlb) cache validity period (in ticks)
+VMMPY_OPT_CONFIG_PROCCACHE_TICKS_PARTIAL      = 0x2000000700000000  # RW - process refresh (partial) period (in ticks)
+VMMPY_OPT_CONFIG_PROCCACHE_TICKS_TOTAL        = 0x2000000800000000  # RW - process refresh (full) period (in ticks)
+VMMPY_OPT_CONFIG_VMM_VERSION_MAJOR            = 0x2000000900000000  # R
+VMMPY_OPT_CONFIG_VMM_VERSION_MINOR            = 0x2000000A00000000  # R
+VMMPY_OPT_CONFIG_VMM_VERSION_REVISION         = 0x2000000B00000000  # R
+VMMPY_OPT_CONFIG_STATISTICS_FUNCTIONCALL      = 0x2000000C00000000  # RW - enable function call statistics (.status/statistics_fncall file)
+VMMPY_OPT_CONFIG_IS_PAGING_ENABLED            = 0x2000000D00000000  # RW - 1/0
 
-VMMDLL_OPT_WIN_VERSION_MAJOR                  = 0x40000101  # R
-VMMDLL_OPT_WIN_VERSION_MINOR                  = 0x40000102  # R
-VMMDLL_OPT_WIN_VERSION_BUILD                  = 0x40000103  # R
+VMMDLL_OPT_WIN_VERSION_MAJOR                  = 0x2000010100000000  # R
+VMMDLL_OPT_WIN_VERSION_MINOR                  = 0x2000010200000000  # R
+VMMDLL_OPT_WIN_VERSION_BUILD                  = 0x2000010300000000  # R
 
+VMMDLL_OPT_REFRESH_ALL                        = 0x2001ffff00000000  # W - refresh all caches
+VMMDLL_OPT_REFRESH_PROCESS                    = 0x2001000100000000  # W - refresh process listings
+VMMDLL_OPT_REFRESH_READ                       = 0x2001000200000000  # W - refresh physical read cache
+VMMDLL_OPT_REFRESH_TLB                        = 0x2001000400000000  # W - refresh page table (TLB) cache
+VMMDLL_OPT_REFRESH_PAGING                     = 0x2001000800000000  # W - refresh virtual memory 'paging' cache
+VMMDLL_OPT_REFRESH_REGISTRY                   = 0x2001001000000000  # W
+VMMDLL_OPT_REFRESH_USER                       = 0x2001002000000000  # W
+VMMDLL_OPT_REFRESH_PHYSMEMMAP                 = 0x2001004000000000  # W
+VMMDLL_OPT_REFRESH_PFN                        = 0x2001008000000000  # W
+VMMDLL_OPT_REFRESH_OBJ                        = 0x2001010000000000  # W
+VMMDLL_OPT_REFRESH_NET                        = 0x2001020000000000  # W
 
 def VmmPy_ConfigGet(vmmpy_opt_id):
     """Retrieve a configuration setting given a VMMPY_OPT_* option.
@@ -587,23 +601,6 @@ def VmmPy_WinReg_ValueRead(keyvalue):
 
 
 #------------------------------------------------------------------------------
-# VmmPy NETWORK FUNCTIONALITY BELOW:
-#------------------------------------------------------------------------------
-
-def VmmPy_WinNet_Get():
-    """Retrieve networking information
-
-    Keyword arguments:
-    return -- dict with 'TcpE' list with dict for each TCP connection.
-    
-    Example:
-    VmmPy_WinReg_HiveList() --> {'TcpE': [{'ver': 4, 'pid': 612, 'state': 4, 'va': 18446690201099026448, 'time': 131983383869225588, 'time-str': '2019-03-29 13:06:26 UTC', 'src-ip': '127.0.0.1', 'src-port': 51734, 'dst-ip': '127.0.0.1', 'dst-port': 51733}, ...]}
-    """
-    return VMMPYC_WinNet_Get()
-
-
-
-#------------------------------------------------------------------------------
 # VmmPy VFS (Virtual File System) FUNCTIONALITY BELOW:
 #------------------------------------------------------------------------------
 
@@ -659,6 +656,40 @@ def VmmPy_VfsWrite(path_file, bytes_data, offset = 0):
 # VmmPy Windows Symbol Debugging (.pdb) FUNCTIONALITY BELOW:
 #------------------------------------------------------------------------------
 
+def VmmPy_PdbLoad(pid, module_base_address):
+    """Load a PDB Symbol file from the Microsoft Symbol Server into active use.
+
+    Keyword arguments:
+    pid -- int: the process identifier (pid).
+    module_base_address -- int: the base address of module to load symbols for.
+    return -- str: the successfully loaded module name.
+    
+    Example:
+    VmmPy_PdbLoad(4, 0xfffff80714840000) -> 'tcpip'
+    """
+    return VMMPYC_PdbLoad(pid, module_base_address)
+
+
+
+def VmmPy_PdbSymbolName(module_name, symbol_offset):
+    """Retrieve a symbol address by module and symbol name.
+    NB! Vmm PDB Symbol functionality is limited and there is no guarantee that
+        all modules will be loaded - or that the functionality is available.
+        If multiple modules with the same name exists - the symbol will be
+        searched for in the 1st hit.
+
+    Keyword arguments:
+    module_name -- str: the module name or 'nt' for kernel.
+    symbol_offset -- int: the module offset to find the symbol for.
+    return -- dict: { symbol, displacement }
+    
+    Example:
+    VmmPy_PdbSymbolName('tcpip', 0x2ad0) -> {'symbol': 'UdpReceiveDatagrams', 'displacement': 0}
+    """
+    return VMMPYC_PdbSymbolName(module_name, symbol_offset)
+
+
+
 def VmmPy_PdbSymbolAddress(module_name, symbol_name):
     """Retrieve a symbol address by module and symbol name.
     NB! Vmm PDB Symbol functionality is limited and there is no guarantee that
@@ -676,6 +707,8 @@ def VmmPy_PdbSymbolAddress(module_name, symbol_name):
     """
     return VMMPYC_PdbSymbolAddress(module_name, symbol_name)
 
+
+
 def VmmPy_PdbTypeSize(module_name, type_name):
     """Retrieve a type size by by module and type name.
     NB! Vmm PDB Symbol functionality is limited and there is no guarantee that
@@ -692,6 +725,8 @@ def VmmPy_PdbTypeSize(module_name, type_name):
     VmmPy_PdbTypeSize('nt', '_EPROCESS') --> 1568
     """
     return VMMPYC_PdbTypeSize(module_name, type_name)
+
+
 
 def VmmPy_PdbTypeChildOffset(module_name, type_name, type_child_name):
     """Retrieve the ofset of a type child (struct member) by by module, type and child name.
@@ -727,6 +762,19 @@ def VmmPy_GetUsers():
     VmmPy_GetUsers() --> [{'va-reghive': 18446663847596163072, 'sid': 'S-1-5-21-3317879871-105768242-2947499445-1001', 'name': 'User'}, ...]
     """
     return VMMPYC_GetUsers()
+
+
+
+def VmmPy_MapGetNet():
+    """Retrieve networking information
+
+    Keyword arguments:
+    return -- list with info about each network "connection".
+    
+    Example:
+    VmmPy_MapGetNet() --> [{'ver': 4, 'pid': 612, 'state': 4, 'va': 18446690201099026448, 'time': 131983383869225588, 'time-str': '2019-03-29 13:06:26 UTC', 'src-ip': '127.0.0.1', 'src-port': 51734, 'dst-ip': '127.0.0.1', 'dst-port': 51733}, ...]
+    """
+    return VMMPYC_MapGetNet()
 
 
 

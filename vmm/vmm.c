@@ -13,6 +13,7 @@
 #include "vmmwindef.h"
 #include "vmmwinobj.h"
 #include "vmmwinreg.h"
+#include "vmmwinnet.h"
 #include "pluginmanager.h"
 #include "util.h"
 #include <sddl.h>
@@ -184,7 +185,7 @@ VOID VmmCacheReserveReturn(_In_opt_ PVMMOB_MEM pOb)
         vmmprintf_fn("ERROR - SHOULD NOT HAPPEN - INVALID OBJECT TAG %02X\n", ((POB)pOb)->_tag);
         return;
     }
-    if((pOb->h.cb != 0x1000) || (pOb->h.qwA == (QWORD)-1) || !t->fActive) {
+    if(!t->fActive || !pOb->h.f || (pOb->h.qwA == MEM_SCATTER_ADDR_INVALID)) {
         // decrement refcount of object - callback will take care of
         // re-insertion into empty list when refcount becomes low enough.
         Ob_DECREF(pOb);
@@ -222,11 +223,10 @@ PVMMOB_MEM VmmCacheReserve(_In_ DWORD dwTblTag)
             // below max threshold -> create new
             pOb = Ob_Alloc(t->tag, LMEM_ZEROINIT, sizeof(VMMOB_MEM), NULL, VmmCache_CallbackRefCount1);
             if(!pOb) { return NULL; }
-            pOb->h.magic = MEM_IO_SCATTER_HEADER_MAGIC;
-            pOb->h.version = MEM_IO_SCATTER_HEADER_VERSION;
-            pOb->h.cbMax = 0x1000;
+            pOb->h.version = MEM_SCATTER_VERSION;
+            pOb->h.cb = 0x1000;
             pOb->h.pb = pOb->pb;
-            pOb->h.qwA = (QWORD)-1;
+            pOb->h.qwA = MEM_SCATTER_ADDR_INVALID;
             Ob_INCREF(pOb);  // "total list" reference
             InterlockedPushEntrySList(&t->ListHeadTotal, &pOb->SListTotal);
             InterlockedIncrement(&t->cTotal);
@@ -242,8 +242,8 @@ PVMMOB_MEM VmmCacheReserve(_In_ DWORD dwTblTag)
     }
     InterlockedDecrement(&t->cEmpty);
     pOb = CONTAINING_RECORD(e, VMMOB_MEM, SListEmpty);
-    pOb->h.qwA = (QWORD)-1;
-    pOb->h.cb = 0;
+    pOb->h.qwA = MEM_SCATTER_ADDR_INVALID;
+    pOb->h.f = FALSE;
     return pOb; // reference overtaken by callee (from EmptyList)
 }
 
@@ -268,22 +268,22 @@ PVMMOB_MEM VmmCacheGet(_In_ DWORD dwTblTag, _In_ QWORD qwA)
 PVMMOB_MEM VmmCacheGet_FromDeviceOnMiss(_In_ DWORD dwTblTag, _In_ DWORD dwTblTagSecondaryOpt, _In_ QWORD qwA)
 {
     PVMMOB_MEM pObMEM, pObReservedMEM;
-    PMEM_IO_SCATTER_HEADER pMEM;
+    PMEM_SCATTER pMEM;
     pObMEM = VmmCacheGet(dwTblTag, qwA);
     if(pObMEM) { return pObMEM; }
     if((pObReservedMEM = VmmCacheReserve(dwTblTag))) {
         pMEM = &pObReservedMEM->h;
         pMEM->qwA = qwA;
         if(dwTblTagSecondaryOpt && (pObMEM = VmmCacheGet(dwTblTagSecondaryOpt, qwA))) {
-            pMEM->cb = 0x1000;
+            pMEM->f = TRUE;
             memcpy(pMEM->pb, pObMEM->pb, 0x1000);
             Ob_DECREF(pObMEM);
             pObMEM = NULL;
         }
-        if(pMEM->cb != 0x1000) {
-            LeechCore_ReadScatter(&pMEM, 1);
+        if(!pMEM->f) {
+            LcReadScatter(ctxMain->hLC, 1, &pMEM);
         }
-        if(pMEM->cb == 0x1000) {
+        if(pMEM->f) {
             Ob_INCREF(pObReservedMEM);
             VmmCacheReserveReturn(pObReservedMEM);
             return pObReservedMEM;
@@ -387,9 +387,9 @@ VOID VmmTlbPrefetch(_In_ POB_SET pTlbPrefetch)
     QWORD pbTlb = 0;
     DWORD cTlbs, i = 0;
     PPVMMOB_MEM ppObMEMs = NULL;
-    PPMEM_IO_SCATTER_HEADER ppMEMs = NULL;
+    PPMEM_SCATTER ppMEMs = NULL;
     if(!(cTlbs = ObSet_Size(pTlbPrefetch))) { goto fail; }
-    if(!(ppMEMs = LocalAlloc(0, cTlbs * sizeof(PMEM_IO_SCATTER_HEADER)))) { goto fail; }
+    if(!(ppMEMs = LocalAlloc(0, cTlbs * sizeof(PMEM_SCATTER)))) { goto fail; }
     if(!(ppObMEMs = LocalAlloc(0, cTlbs * sizeof(PVMMOB_MEM)))) { goto fail; }
     while((cTlbs = min(0x2000, ObSet_Size(pTlbPrefetch)))) {   // protect cache bleed -> max 0x2000 pages/round
         for(i = 0; i < cTlbs; i++) {
@@ -397,10 +397,10 @@ VOID VmmTlbPrefetch(_In_ POB_SET pTlbPrefetch)
             ppMEMs[i] = &ppObMEMs[i]->h;
             ppMEMs[i]->qwA = ObSet_Pop(pTlbPrefetch);
         }
-        LeechCore_ReadScatter(ppMEMs, cTlbs);
+        LcReadScatter(ctxMain->hLC, cTlbs, ppMEMs);
         for(i = 0; i < cTlbs; i++) {
-            if((ppMEMs[i]->cb == 0x1000) && !VmmTlbPageTableVerify(ppMEMs[i]->pb, ppMEMs[i]->qwA, FALSE)) {
-                ppMEMs[i]->cb = 0;  // "fail" invalid page table read
+            if(ppMEMs[i]->f && !VmmTlbPageTableVerify(ppMEMs[i]->pb, ppMEMs[i]->qwA, FALSE)) {
+                ppMEMs[i]->f = FALSE;  // "fail" invalid page table read
             }
             VmmCacheReserveReturn(ppObMEMs[i]);
         }
@@ -423,10 +423,10 @@ VOID VmmCachePrefetchPages(_In_opt_ PVMM_PROCESS pProcess, _In_opt_ POB_SET pPre
 {
     QWORD qwA = 0;
     DWORD cPages, iMEM = 0;
-    PPMEM_IO_SCATTER_HEADER ppMEMs = NULL;
+    PPMEM_SCATTER ppMEMs = NULL;
     cPages = ObSet_Size(pPrefetchPages);
     if(!cPages || (ctxVmm->flags & VMM_FLAG_NOCACHE)) { return; }
-    if(!LeechCore_AllocScatterEmpty(cPages, &ppMEMs)) { return; }
+    if(!LcAllocScatter1(cPages, &ppMEMs)) { return; }
     while((qwA = ObSet_GetNext(pPrefetchPages, qwA))) {
         ppMEMs[iMEM++]->qwA = qwA & ~0xfff;
     }
@@ -435,7 +435,7 @@ VOID VmmCachePrefetchPages(_In_opt_ PVMM_PROCESS pProcess, _In_opt_ POB_SET pPre
     } else {
         VmmReadScatterPhysical(ppMEMs, iMEM, flags);
     }
-    LeechCore_MemFree(ppMEMs);
+    LcMemFree(ppMEMs);
 }
 
 /*
@@ -545,7 +545,7 @@ BOOL VmmMap_GetPte(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_PTE *ppObPteMap,
     return
         (ctxVmm->tpMemoryModel != VMM_MEMORYMODEL_NA) &&
         ctxVmm->fnMemoryModel.pfnPteMapInitialize(pProcess) &&
-        (!fExtendedText || VmmWin_InitializePteMapText(pProcess)) &&
+        (!fExtendedText || VmmWinPte_InitializeMapText(pProcess)) &&
         (*ppObPteMap = Ob_INCREF(pProcess->Map.pObPte));
 }
 
@@ -614,7 +614,7 @@ PVMM_MAP_VADENTRY VmmMap_GetVadEntry(_In_opt_ PVMMOB_MAP_VAD pVadMap, _In_ QWORD
 _Success_(return)
 BOOL VmmMap_GetModule(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_MODULE *ppObModuleMap)
 {
-    if(!pProcess->Map.pObModule && !VmmWin_InitializeLdrModules(pProcess)) { return FALSE; }
+    if(!pProcess->Map.pObModule && !VmmWinLdrModule_Initialize(pProcess)) { return FALSE; }
     *ppObModuleMap = Ob_INCREF(pProcess->Map.pObModule);
     return TRUE;
 }
@@ -660,13 +660,9 @@ BOOL VmmMap_GetHeap(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_HEAP *ppObHeapM
 /*
 * LPTHREAD_START_ROUTINE for VmmMap_GetThreadAsync.
 */
-DWORD VmmMap_GetThreadAsync_Thread(_In_ PVMM_PROCESS pProcess)
+DWORD VmmMap_GetThreadAsync_ThreadStartRoutine(_In_ PVMM_PROCESS pProcess)
 {
-    if(ctxVmm->ThreadWorkers.fEnabled) {
-        InterlockedIncrement(&ctxVmm->ThreadWorkers.c);
-        VmmWinThread_Initialize(pProcess, TRUE);
-        InterlockedDecrement(&ctxVmm->ThreadWorkers.c);
-    }
+    VmmWinThread_Initialize(pProcess, TRUE);
     return 1;
 }
 
@@ -679,8 +675,7 @@ DWORD VmmMap_GetThreadAsync_Thread(_In_ PVMM_PROCESS pProcess)
 */
 VOID VmmMap_GetThreadAsync(_In_ PVMM_PROCESS pProcess)
 {
-    HANDLE hThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)VmmMap_GetThreadAsync_Thread, pProcess, 0, NULL);
-    if(hThread) { CloseHandle(hThread); }
+    VmmWork(VmmMap_GetThreadAsync_ThreadStartRoutine, pProcess, 0);
 }
 
 /*
@@ -765,6 +760,23 @@ BOOL VmmMap_GetUser(_Out_ PVMMOB_MAP_USER *ppObUserMap)
     }
     *ppObUserMap = pObUserMap;
     return pObUserMap != NULL;
+}
+
+/*
+* Retrieve the NETWORK CONNECTION map
+* CALLER DECREF: ppObNetMap
+* -- ppObNetMap
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetNet(_Out_ PVMMOB_MAP_NET *ppObNetMap)
+{
+    PVMMOB_MAP_NET pObNetMap = ObContainer_GetOb(ctxVmm->pObCMapNet);
+    if(!pObNetMap) {
+        pObNetMap = VmmWinNet_Initialize();
+    }
+    *ppObNetMap = pObNetMap;
+    return pObNetMap != NULL;
 }
 
 // ----------------------------------------------------------------------------
@@ -879,11 +891,11 @@ fail:
 VOID VmmProcess_TokenTryEnsureLock(_In_ PVMMOB_PROCESS_TABLE pt, _In_ PVMM_PROCESS pProcess)
 {
     if(pProcess->win.TOKEN.fInitialized) { return; }
-    EnterCriticalSection(&ctxVmm->MasterLock);
+    EnterCriticalSection(&ctxVmm->LockMaster);
     if(!pProcess->win.TOKEN.fInitialized) {
         VmmProcess_TokenTryEnsure(pt);
     }
-    LeaveCriticalSection(&ctxVmm->MasterLock);
+    LeaveCriticalSection(&ctxVmm->LockMaster);
 }
 
 /*
@@ -897,7 +909,7 @@ VOID VmmProcess_TokenTryEnsureLock(_In_ PVMMOB_PROCESS_TABLE pt, _In_ PVMM_PROCE
 PVMM_PROCESS VmmProcessGetEx(_In_opt_ PVMMOB_PROCESS_TABLE pt, _In_ DWORD dwPID, _In_ QWORD flags)
 {
     BOOL fToken = ((flags | ctxVmm->flags) & VMM_FLAG_PROCESS_TOKEN);
-    PVMM_PROCESS pObProcess;
+    PVMM_PROCESS pObProcess, pObProcessClone;
     PVMMOB_PROCESS_TABLE pObTable;
     DWORD i, iStart;
     if(!pt) {
@@ -908,15 +920,26 @@ PVMM_PROCESS VmmProcessGetEx(_In_opt_ PVMMOB_PROCESS_TABLE pt, _In_ DWORD dwPID,
     }
     i = iStart = dwPID % VMM_PROCESSTABLE_ENTRIES_MAX;
     while(TRUE) {
-        if(!pt->_M[i]) { return NULL; }
+        if(!pt->_M[i]) { goto fail; }
         if(pt->_M[i]->dwPID == dwPID) {
             pObProcess = (PVMM_PROCESS)Ob_INCREF(pt->_M[i]);
             if(pObProcess && fToken && !pObProcess->win.TOKEN.fInitialized) { VmmProcess_TokenTryEnsureLock(pt, pObProcess); }
             return pObProcess;
         }
         if(++i == VMM_PROCESSTABLE_ENTRIES_MAX) { i = 0; }
-        if(i == iStart) { return NULL; }
+        if(i == iStart) { goto fail; }
     }
+fail:
+    if(dwPID & VMM_PID_PROCESS_CLONE_WITH_KERNELMEMORY) {
+        if((pObProcess = VmmProcessGetEx(pt, dwPID & ~VMM_PID_PROCESS_CLONE_WITH_KERNELMEMORY, flags))) {
+            if((pObProcessClone = VmmProcessClone(pObProcess))) {
+                pObProcessClone->fUserOnly = FALSE;
+            }
+            Ob_DECREF(pObProcess);
+            return pObProcessClone;
+        }
+    }
+    return NULL;
 }
 
 /*
@@ -989,11 +1012,12 @@ VOID VmmProcessStatic_CloseObCallback(_In_ PVOID pVmmOb)
     Ob_DECREF_NULL(&pProcessStatic->pObCLdrModulesPrefetch32);
     Ob_DECREF_NULL(&pProcessStatic->pObCLdrModulesPrefetch64);
     Ob_DECREF_NULL(&pProcessStatic->pObCMapThreadPrefetch);
-    LocalFree(pProcessStatic->szPathKernel);
+    Ob_DECREF_NULL(&pProcessStatic->Plugin.pObCMiniDump);
+    LocalFree(pProcessStatic->uszPathKernel);
     LocalFree(pProcessStatic->wszPathKernel);
-    LocalFree(pProcessStatic->UserProcessParams.szCommandLine);
+    LocalFree(pProcessStatic->UserProcessParams.uszCommandLine);
     LocalFree(pProcessStatic->UserProcessParams.wszCommandLine);
-    LocalFree(pProcessStatic->UserProcessParams.szImagePathName);
+    LocalFree(pProcessStatic->UserProcessParams.uszImagePathName);
     LocalFree(pProcessStatic->UserProcessParams.wszImagePathName);
 }
 
@@ -1011,6 +1035,7 @@ VOID VmmProcessStatic_Initialize(_In_ PVMM_PROCESS pProcess)
         pProcess->pObPersistent->pObCLdrModulesPrefetch32 = ObContainer_New(NULL);
         pProcess->pObPersistent->pObCLdrModulesPrefetch64 = ObContainer_New(NULL);
         pProcess->pObPersistent->pObCMapThreadPrefetch = ObContainer_New(NULL);
+        pProcess->pObPersistent->Plugin.pObCMiniDump = ObContainer_New(NULL);
     }
     LeaveCriticalSection(&pProcess->LockUpdate);
 }
@@ -1037,8 +1062,21 @@ VOID VmmProcess_CloseObCallback(_In_ PVOID pVmmOb)
     Ob_DECREF(pProcess->Plugin.pObCPhys2Virt);
     // delete lock
     DeleteCriticalSection(&pProcess->LockUpdate);
+    DeleteCriticalSection(&pProcess->LockPlugin);
     DeleteCriticalSection(&pProcess->Map.LockUpdateThreadMap);
     DeleteCriticalSection(&pProcess->Map.LockUpdateExtendedInfo);
+}
+
+VOID VmmProcessClone_CloseObCallback(_In_ PVOID pVmmOb)
+{
+    PVMM_PROCESS pProcessClone = (PVMM_PROCESS)pVmmOb;
+    // decref clone parent
+    Ob_DECREF(pProcessClone->pObProcessCloneParent);
+    // delete lock
+    DeleteCriticalSection(&pProcessClone->LockUpdate);
+    DeleteCriticalSection(&pProcessClone->LockPlugin);
+    DeleteCriticalSection(&pProcessClone->Map.LockUpdateThreadMap);
+    DeleteCriticalSection(&pProcessClone->Map.LockUpdateExtendedInfo);
 }
 
 /*
@@ -1061,6 +1099,31 @@ VOID VmmProcessTable_CloseObCallback(_In_ PVOID pVmmOb)
         pProcess = pt->_M[iProcess];
         if(!pProcess || iProcess == pt->_iFLink) { break; }
     }
+}
+
+/*
+* Clone an original process entry creating a shallow clone. The user of this
+* shallow clone may use it to set the fUserOnly flag to FALSE on an otherwise
+* user-mode process to be able to access the whole kernel space for a standard
+* user-mode process.
+* NB! USE WITH EXTREME CARE - MAY CRASH VMM IF USED MORE GENERALLY!
+* CALLER DECREF: return
+* -- pProcess
+* -- return
+*/
+PVMM_PROCESS VmmProcessClone(_In_ PVMM_PROCESS pProcess)
+{
+    PVMM_PROCESS pObProcessClone;
+    if(pProcess->pObProcessCloneParent) { return NULL; }
+    pObProcessClone = (PVMM_PROCESS)Ob_Alloc(OB_TAG_VMM_PROCESS_CLONE, LMEM_ZEROINIT, sizeof(VMM_PROCESS), VmmProcessClone_CloseObCallback, NULL);
+    if(!pObProcessClone) { return NULL; }
+    memcpy((PBYTE)pObProcessClone + sizeof(OB), (PBYTE)pProcess + sizeof(OB), pProcess->ObHdr.cbData);
+    pObProcessClone->pObProcessCloneParent = Ob_INCREF(pProcess);
+    InitializeCriticalSection(&pObProcessClone->LockUpdate);
+    InitializeCriticalSection(&pObProcessClone->LockPlugin);
+    InitializeCriticalSection(&pObProcessClone->Map.LockUpdateThreadMap);
+    InitializeCriticalSection(&pObProcessClone->Map.LockUpdateExtendedInfo);
+    return pObProcessClone;
 }
 
 /*
@@ -1117,6 +1180,7 @@ PVMM_PROCESS VmmProcessCreateEntry(_In_ BOOL fTotalRefresh, _In_ DWORD dwPID, _I
         pProcess = (PVMM_PROCESS)Ob_Alloc(OB_TAG_VMM_PROCESS, LMEM_ZEROINIT, sizeof(VMM_PROCESS), VmmProcess_CloseObCallback, NULL);
         if(!pProcess) { goto fail; }
         InitializeCriticalSectionAndSpinCount(&pProcess->LockUpdate, 4096);
+        InitializeCriticalSection(&pProcess->LockPlugin);
         InitializeCriticalSection(&pProcess->Map.LockUpdateThreadMap);
         InitializeCriticalSection(&pProcess->Map.LockUpdateExtendedInfo);
         memcpy(pProcess->szName, szName, 16);
@@ -1262,39 +1326,122 @@ BOOL VmmProcessTableCreateInitial()
 }
 
 // ----------------------------------------------------------------------------
-// PROCESS PARALLELIZATION FUNCTIONALITY:
+// WORK (THREAD POOL) API:
+// The 'Work' thread pool contain by default 32 threads which is waiting to
+// receive work scheduled by calling the VmmWork function.
 // ----------------------------------------------------------------------------
 
-#define VMM_PROCESS_ACTION_FOREACH_THREADS_PARALLEL     0x00c
+typedef struct tdVMMWORK_UNIT {
+    LPTHREAD_START_ROUTINE pfn;     // function to call
+    PVOID ctx;                      // optional function parameter
+    HANDLE hEventFinish;            // optional event to set when upon work completion
+} VMMWORK_UNIT, *PVMMWORK_UNIT;
 
-typedef struct tdVMMOB_PROCESS_ACTION_FOREACH {
-    OB ObHdr;
-    DWORD Reserved;
-    DWORD cProcess;
-    HANDLE hSemaphore;
-    VOID(*pfnAction)(_In_ PVMM_PROCESS pProcess, _In_ PVOID ctx);
-    PVOID ctx;
-    PVMM_PROCESS pProcesses[];
-} VMMOB_PROCESS_ACTION_FOREACH, *PVMMOB_PROCESS_ACTION_FOREACH;
+typedef struct tdVMMWORK_THREAD_CONTEXT {
+    HANDLE hEventWakeup;
+    HANDLE hThread;
+} VMMWORK_THREAD_CONTEXT, *PVMMWORK_THREAD_CONTEXT;
 
-DWORD VmmProcessActionForeachParallel_ThreadProc(PVMMOB_PROCESS_ACTION_FOREACH ctxObForeach)
+DWORD VmmWork_MainWorkerLoop_ThreadProc(PVMMWORK_THREAD_CONTEXT ctx)
 {
-    DWORD i;
-    WaitForSingleObject(ctxObForeach->hSemaphore, INFINITE);
-    for(i = 0; i < ctxObForeach->cProcess && ctxVmm->ThreadWorkers.fEnabled; i++) {
-        ctxObForeach->pfnAction(ctxObForeach->pProcesses[i], ctxObForeach->ctx);
+    PVMMWORK_UNIT pu;
+    while(ctxVmm->Work.fEnabled) {
+        if((pu = (PVMMWORK_UNIT)ObSet_Pop(ctxVmm->Work.psUnit))) {
+            pu->pfn(pu->ctx);
+            if(pu->hEventFinish) {
+                SetEvent(pu->hEventFinish);
+            }
+            LocalFree(pu);
+        } else {
+            ResetEvent(ctx->hEventWakeup);
+            ObSet_Push(ctxVmm->Work.psThreadAvail, (QWORD)ctx);
+            WaitForSingleObject(ctx->hEventWakeup, INFINITE);
+        }
     }
-    ReleaseSemaphore(ctxObForeach->hSemaphore, 1, NULL);
-    Ob_DECREF(ctxObForeach);
+    ObSet_Remove(ctxVmm->Work.psThreadAll, (QWORD)ctx);
+    CloseHandle(ctx->hEventWakeup);
+    CloseHandle(ctx->hThread);
+    LocalFree(ctx);
     return 1;
 }
 
-VOID VmmProcessActionForeachParallel_CloseObCallback(_In_ PVMMOB_PROCESS_ACTION_FOREACH ctxObForeach)
+VOID VmmWork_Initialize()
 {
-    DWORD i;
-    for(i = 0; i < ctxObForeach->cProcess; i++) {
-        Ob_DECREF(ctxObForeach->pProcesses[i]);
+    PVMMWORK_THREAD_CONTEXT p;
+    ctxVmm->Work.fEnabled = TRUE;
+    ctxVmm->Work.psUnit = ObSet_New();
+    ctxVmm->Work.psThreadAll = ObSet_New();
+    ctxVmm->Work.psThreadAvail = ObSet_New();
+    while(ObSet_Size(ctxVmm->Work.psThreadAll) < VMM_WORK_THREADPOOL_NUM_THREADS) {
+        if((p = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMWORK_THREAD_CONTEXT)))) {
+            p->hEventWakeup = CreateEvent(NULL, TRUE, FALSE, NULL);
+            p->hThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)VmmWork_MainWorkerLoop_ThreadProc, p, 0, NULL);
+            ObSet_Push(ctxVmm->Work.psThreadAll, (QWORD)p);
+        }
     }
+}
+
+VOID VmmWork_Close()
+{
+    PVMMWORK_UNIT pu;
+    PVMMWORK_THREAD_CONTEXT pt = NULL;
+    ctxVmm->Work.fEnabled = FALSE;
+    while(ObSet_Size(ctxVmm->Work.psThreadAll)) {
+        while((pt = (PVMMWORK_THREAD_CONTEXT)ObSet_GetNext(ctxVmm->Work.psThreadAll, (QWORD)pt))) {
+            SetEvent(pt->hEventWakeup);
+        }
+        SwitchToThread();
+    }
+    while((pu = (PVMMWORK_UNIT)ObSet_Pop(ctxVmm->Work.psUnit))) {
+        if(pu->hEventFinish) {
+            SetEvent(pu->hEventFinish);
+        }
+        LocalFree(pu);
+    }
+    Ob_DECREF_NULL(&ctxVmm->Work.psUnit);
+    Ob_DECREF_NULL(&ctxVmm->Work.psThreadAll);
+    Ob_DECREF_NULL(&ctxVmm->Work.psThreadAvail);
+}
+
+VOID VmmWork(_In_ LPTHREAD_START_ROUTINE pfn, _In_opt_ PVOID ctx, _In_opt_ HANDLE hEventFinish)
+{
+    PVMMWORK_UNIT pu;
+    PVMMWORK_THREAD_CONTEXT pt;
+    if((pu = LocalAlloc(0, sizeof(VMMWORK_UNIT)))) {
+        pu->pfn = pfn;
+        pu->ctx = ctx;
+        pu->hEventFinish = hEventFinish;
+        ObSet_Push(ctxVmm->Work.psUnit, (QWORD)pu);
+        if((pt = (PVMMWORK_THREAD_CONTEXT)ObSet_Pop(ctxVmm->Work.psThreadAvail))) {
+            SetEvent(pt->hEventWakeup);
+        }
+    }
+}
+
+// ----------------------------------------------------------------------------
+// PROCESS PARALLELIZATION FUNCTIONALITY:
+// ----------------------------------------------------------------------------
+
+typedef struct tdVMM_PROCESS_ACTION_FOREACH {
+    HANDLE hEventFinish;
+    VOID(*pfnAction)(_In_ PVMM_PROCESS pProcess, _In_ PVOID ctx);
+    PVOID ctxAction;
+    DWORD cRemainingWork;       // set to dwPIDs count on entry and decremented as-goes - when zero FinishEvent is set.
+    DWORD iPID;                 // set to dwPIDs count on entry and decremented as-goes
+    DWORD dwPIDs[];
+} VMM_PROCESS_ACTION_FOREACH, *PVMM_PROCESS_ACTION_FOREACH;
+
+DWORD VmmProcessActionForeachParallel_ThreadProc(PVMM_PROCESS_ACTION_FOREACH ctx)
+{
+    PVMM_PROCESS pObProcess = VmmProcessGet(ctx->dwPIDs[InterlockedDecrement(&ctx->iPID)]);
+    if(pObProcess) {
+        ctx->pfnAction(pObProcess, ctx->ctxAction);
+        Ob_DECREF(pObProcess);
+    }
+    if(0 == InterlockedDecrement(&ctx->cRemainingWork)) {
+        SetEvent(ctx->hEventFinish);
+    }
+    return 1;
 }
 
 BOOL VmmProcessActionForeachParallel_CriteriaActiveOnly(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx)
@@ -1302,123 +1449,99 @@ BOOL VmmProcessActionForeachParallel_CriteriaActiveOnly(_In_ PVMM_PROCESS pProce
     return pProcess->dwState == 0;
 }
 
-VOID VmmProcessActionForeachParallel(_In_opt_ PVOID ctx, _In_opt_ DWORD dwThreadLoadFactor, _In_opt_ BOOL(*pfnCriteria)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx), _In_ VOID(*pfnAction)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx))
+VOID VmmProcessActionForeachParallel(_In_opt_ PVOID ctxAction, _In_opt_ BOOL(*pfnCriteria)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx), _In_ VOID(*pfnAction)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx))
 {
-    HANDLE hSemaphore;
-    DWORD dwPID, cThreads = 0;
-    HANDLE hThreads[MAXIMUM_WAIT_OBJECTS];
-    PVMMOB_PROCESS_ACTION_FOREACH ctxObForeach = NULL;
+    DWORD i, cProcess;
     PVMM_PROCESS pObProcess = NULL;
     POB_SET pObProcessSelectedSet = NULL;
-    InterlockedIncrement(&ctxVmm->ThreadWorkers.c);
-    hSemaphore = CreateSemaphore(NULL, VMM_PROCESS_ACTION_FOREACH_THREADS_PARALLEL, VMM_PROCESS_ACTION_FOREACH_THREADS_PARALLEL, NULL);
-    if(!hSemaphore) { goto fail; }
-    if(!(pObProcessSelectedSet = ObSet_New())) { goto fail; }
+    PVMM_PROCESS_ACTION_FOREACH ctx = NULL;
     // 1: select processes to queue using criteria function
+    if(!(pObProcessSelectedSet = ObSet_New())) { goto fail; }
     while(pObProcess = VmmProcessGetNext(pObProcess, VMM_FLAG_PROCESS_SHOW_TERMINATED)) {
         if(!pfnCriteria || pfnCriteria(pObProcess, ctx)) {
             ObSet_Push(pObProcessSelectedSet, pObProcess->dwPID);
         }
     }
-    if(!ObSet_Size(pObProcessSelectedSet)) { goto fail; }
-    dwThreadLoadFactor = max(dwThreadLoadFactor, 1 + (ObSet_Size(pObProcessSelectedSet) / MAXIMUM_WAIT_OBJECTS));
-    // 2: queue selected processes onto threads and start execute
-    while(ctxVmm->ThreadWorkers.fEnabled && (dwPID = (DWORD)ObSet_Pop(pObProcessSelectedSet))) {
-        pObProcess = VmmProcessGet(dwPID);
-        if(pObProcess) {
-            if(!ctxObForeach) {
-                ctxObForeach = Ob_Alloc('ea__', 0, sizeof(VMMOB_PROCESS_ACTION_FOREACH) + dwThreadLoadFactor * sizeof(PVMM_PROCESS), VmmProcessActionForeachParallel_CloseObCallback, NULL);
-                if(!ctxObForeach) { goto fail; }
-                ctxObForeach->ctx = ctx;
-                ctxObForeach->hSemaphore = hSemaphore;
-                ctxObForeach->pfnAction = pfnAction;
-                ctxObForeach->Reserved = cThreads;
-                ctxObForeach->cProcess = 0;
-            }
-            ctxObForeach->pProcesses[ctxObForeach->cProcess++] = pObProcess;
-            pObProcess = NULL;          // object reference responsibility already passed on to ctxObForeach object.
-            if(ctxObForeach->cProcess == dwThreadLoadFactor) {
-                hThreads[cThreads] = CreateThread(NULL, 0, VmmProcessActionForeachParallel_ThreadProc, ctxObForeach, 0, NULL);
-                if(!hThreads[cThreads]) { goto fail; }
-                cThreads++;
-                ctxObForeach = NULL;    // object reference responsibility already passed on to CreateThread function call.
-            }
-        }
+    if(!(cProcess = ObSet_Size(pObProcessSelectedSet))) { goto fail; }
+    // 2: set up context for worker function
+    if(!(ctx = LocalAlloc(LMEM_ZEROINIT, sizeof(VMM_PROCESS_ACTION_FOREACH) + cProcess * sizeof(DWORD)))) { goto fail; }
+    if(!(ctx->hEventFinish = CreateEvent(NULL, TRUE, FALSE, NULL))) { goto fail; }
+    ctx->pfnAction = pfnAction;
+    ctx->ctxAction = ctxAction;
+    ctx->cRemainingWork = cProcess;
+    ctx->iPID = cProcess;
+    for(i = 0; i < cProcess; i++) {
+        ctx->dwPIDs[i] = (DWORD)ObSet_Pop(pObProcessSelectedSet);
     }
-    if(ctxObForeach) {          // process any remaining objects
-        hThreads[cThreads] = CreateThread(NULL, 0, VmmProcessActionForeachParallel_ThreadProc, ctxObForeach, 0, NULL);
-        if(!hThreads[cThreads]) { goto fail; }
-        cThreads++;
-        ctxObForeach = NULL;    // object reference responsibility already passed on to CreateThread function call.
+    // 3: parallelize onto worker threads and wait for completion
+    for(i = 0; i < cProcess; i++) {
+        VmmWork(VmmProcessActionForeachParallel_ThreadProc, ctx, NULL);
     }
+    WaitForSingleObject(ctx->hEventFinish, INFINITE);
+    BOOL DEBUG = ctxVmm->f32;
 fail:
-    WaitForMultipleObjects(cThreads, hThreads, TRUE, INFINITE);
-    while(cThreads) {
-        cThreads--;
-        if(hThreads[cThreads]) { CloseHandle(hThreads[cThreads]); }
-    }
-    if(hSemaphore) { CloseHandle(hSemaphore); }
-    Ob_DECREF(pObProcess);
     Ob_DECREF(pObProcessSelectedSet);
-    Ob_DECREF(ctxObForeach);
-    InterlockedDecrement(&ctxVmm->ThreadWorkers.c);
+    if(ctx) {
+        if(ctx->hEventFinish) {
+            CloseHandle(ctx->hEventFinish);
+        }
+        LocalFree(ctx);
+    }
 }
 
 // ----------------------------------------------------------------------------
 // INTERNAL VMMU FUNCTIONALITY: VIRTUAL MEMORY ACCESS.
 // ----------------------------------------------------------------------------
 
-VOID VmmWriteScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_ PPMEM_IO_SCATTER_HEADER ppMEMsVirt, _In_ DWORD cpMEMsVirt)
+VOID VmmWriteScatterPhysical(_Inout_ PPMEM_SCATTER ppMEMsPhys, _In_ DWORD cpMEMsPhys)
 {
-    BOOL result;
-    QWORD i, qwPA;
-    PMEM_IO_SCATTER_HEADER pMEM_Virt;
-    // loop over the items, this may not be very efficient compared to a true
-    // scatter write, but since underlying hardware implementation does not
-    // support it yet this will be fine ...
-    if(!ctxMain->dev.fWritable) { return; }
-    for(i = 0; i < cpMEMsVirt; i++) {
-        pMEM_Virt = ppMEMsVirt[i];
-        pMEM_Virt->cb = 0;
-        result = VmmVirt2Phys(pProcess, pMEM_Virt->qwA, &qwPA);
-        if(!result) { continue; }
-        InterlockedIncrement64(&ctxVmm->stat.cPhysWrite);
-        result = LeechCore_Write(qwPA, pMEM_Virt->pb, pMEM_Virt->cbMax);
-        if(result) {
-            pMEM_Virt->cb = pMEM_Virt->cbMax;
-            VmmCacheInvalidate(qwPA & ~0xfff);
-        }
-    }
-}
-
-VOID VmmWriteScatterPhysical(_Inout_ PPMEM_IO_SCATTER_HEADER ppMEMsPhys, _In_ DWORD cpMEMsPhys)
-{
-    BOOL result;
-    QWORD i;
-    PMEM_IO_SCATTER_HEADER pMEM_Phys;
-    // loop over the items, this may not be very efficient compared to a true
-    // scatter write, but since underlying hardware implementation does not
-    // support it yet this will be fine ...
-    if(!ctxMain->dev.fWritable) { return; }
+    DWORD i;
+    PMEM_SCATTER pMEM;
+    LcWriteScatter(ctxMain->hLC, cpMEMsPhys, ppMEMsPhys);
     for(i = 0; i < cpMEMsPhys; i++) {
-        pMEM_Phys = ppMEMsPhys[i];
+        pMEM = ppMEMsPhys[i];
         InterlockedIncrement64(&ctxVmm->stat.cPhysWrite);
-        result = LeechCore_Write(pMEM_Phys->qwA, pMEM_Phys->pb, pMEM_Phys->cbMax);
-        if(result) {
-            pMEM_Phys->cb = pMEM_Phys->cbMax;
-            VmmCacheInvalidate(pMEM_Phys->qwA & ~0xfff);
+        if(pMEM->f && MEM_SCATTER_ADDR_ISVALID(pMEM)) {
+            VmmCacheInvalidate(pMEM->qwA & ~0xfff);
         }
     }
 }
 
-VOID VmmReadScatterPhysical(_Inout_ PPMEM_IO_SCATTER_HEADER ppMEMsPhys, _In_ DWORD cpMEMsPhys, _In_ QWORD flags)
+VOID VmmWriteScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_ PPMEM_SCATTER ppMEMsVirt, _In_ DWORD cpMEMsVirt)
 {
-    DWORD i, c;
+    DWORD i;
+    QWORD qwPA_PTE = 0, qwPagedPA = 0;
+    PMEM_SCATTER pMEM;
+    for(i = 0; i < cpMEMsVirt; i++) {
+        pMEM = ppMEMsVirt[i];
+        MEM_SCATTER_STACK_PUSH(pMEM, pMEM->qwA);
+        if(pMEM->f || (pMEM->qwA == -1)) {
+            pMEM->qwA = -1;
+            continue;
+        }
+        if(VmmVirt2Phys(pProcess, pMEM->qwA, &qwPA_PTE)) {
+            pMEM->qwA = qwPA_PTE;
+            continue;
+        }
+        // paged "read" also translate virtual -> physical for some
+        // types of paged memory such as transition and prototype.
+        ctxVmm->fnMemoryModel.pfnPagedRead(pProcess, pMEM->qwA, qwPA_PTE, NULL, &qwPagedPA, 0);
+        pMEM->qwA = qwPagedPA ? qwPagedPA : -1;
+    }
+    VmmWriteScatterPhysical(ppMEMsVirt, cpMEMsVirt);
+    for(i = 0; i < cpMEMsVirt; i++) {
+        ppMEMsVirt[i]->qwA = MEM_SCATTER_STACK_POP(ppMEMsVirt[i]);
+    }
+}
+
+VOID VmmReadScatterPhysical(_Inout_ PPMEM_SCATTER ppMEMsPhys, _In_ DWORD cpMEMsPhys, _In_ QWORD flags)
+{
+    QWORD tp;   // 0 = normal, 1 = already read, 2 = cache hit, 3 = speculative read
     BOOL fCache;
-    PMEM_IO_SCATTER_HEADER pMEM;
+    PMEM_SCATTER pMEM;
+    DWORD i, c, cSpeculative;
     PVMMOB_MEM pObCacheEntry, pObReservedMEM;
-    DWORD cSpeculative;
-    PMEM_IO_SCATTER_HEADER ppMEMsSpeculative[0x18];
+    PMEM_SCATTER ppMEMsSpeculative[0x18];
     PVMMOB_MEM ppObCacheSpeculative[0x18];
     fCache = !(VMM_FLAG_NOCACHE & (flags | ctxVmm->flags));
     // 1: cache read
@@ -1426,40 +1549,51 @@ VOID VmmReadScatterPhysical(_Inout_ PPMEM_IO_SCATTER_HEADER ppMEMsPhys, _In_ DWO
         c = 0, cSpeculative = 0;
         for(i = 0; i < cpMEMsPhys; i++) {
             pMEM = ppMEMsPhys[i];
-            pMEM->pvReserved2 = (PVOID)0;
-            if(pMEM->cb == pMEM->cbMax) {
+            if(pMEM->f) {
                 // already valid -> skip
-                pMEM->pvReserved2 = (PVOID)1;  // 1 == already read
+                MEM_SCATTER_STACK_PUSH(pMEM, 3);    // 3: already finished
                 c++;
                 continue;
             }
             // retrieve from cache (if found)
-            if((pMEM->cbMax == 0x1000) && (pObCacheEntry = VmmCacheGet(VMM_CACHE_TAG_PHYS, pMEM->qwA))) {
+            if((pMEM->cb == 0x1000) && (pObCacheEntry = VmmCacheGet(VMM_CACHE_TAG_PHYS, pMEM->qwA))) {
                 // in cache - copy data into requester and set as completed!
-                pMEM->pvReserved2 = (PVOID)2;  // 2 == cache hit
-                pMEM->cb = 0x1000;
+                MEM_SCATTER_STACK_PUSH(pMEM, 2);    // 2: cache read
+                pMEM->f = TRUE;
                 memcpy(pMEM->pb, pObCacheEntry->pb, 0x1000);
                 Ob_DECREF(pObCacheEntry);
                 InterlockedIncrement64(&ctxVmm->stat.cPhysCacheHit);
                 c++;
                 continue;
             }
+            MEM_SCATTER_STACK_PUSH(pMEM, 1);        // 1: normal read
             // add to potential speculative read map if read is small enough...
             if(cSpeculative < 0x18) {
                 ppMEMsSpeculative[cSpeculative++] = pMEM;
             }
         }
-        if(c == cpMEMsPhys) { return; }                     // all found in cache -> return!
-        if(VMM_FLAG_FORCECACHE_READ & flags) { return; }    // only cached reads allowed -> return!
+        // all found in cache _OR_ only cached reads allowed -> restore mem stack and return!
+        if((c == cpMEMsPhys) || (VMM_FLAG_FORCECACHE_READ & flags)) {
+            for(i = 0; i < cpMEMsPhys; i++) {
+                MEM_SCATTER_STACK_POP(ppMEMsPhys[i]);
+            }
+            return;
+        }
     }
     // 2: speculative future read if negligible performance loss
     if(fCache && cSpeculative && (cSpeculative < 0x18)) {
+        for(i = 0; i < cpMEMsPhys; i++) {
+            pMEM = ppMEMsPhys[i];
+            if(1 != MEM_SCATTER_STACK_PEEK(pMEM, 1)) {
+                MEM_SCATTER_STACK_POP(pMEM);
+            }
+        }
         while(cSpeculative < 0x18) {
             if((ppObCacheSpeculative[cSpeculative] = VmmCacheReserve(VMM_CACHE_TAG_PHYS))) {
-                ppMEMsSpeculative[cSpeculative] = &ppObCacheSpeculative[cSpeculative]->h;
-                ppMEMsSpeculative[cSpeculative]->cb = 0;
-                ppMEMsSpeculative[cSpeculative]->qwA = ((QWORD)ppMEMsSpeculative[cSpeculative - 1]->qwA & ~0xfff) + 0x1000;
-                ppMEMsSpeculative[cSpeculative]->pvReserved2 = (PVOID)3;  // 3 == speculative & backed by cache reserved
+                pMEM = ppMEMsSpeculative[cSpeculative] = &ppObCacheSpeculative[cSpeculative]->h;
+                MEM_SCATTER_STACK_PUSH(pMEM, 4);
+                pMEM->f = FALSE;
+                pMEM->qwA = ((QWORD)ppMEMsSpeculative[cSpeculative - 1]->qwA & ~0xfff) + 0x1000;
                 cSpeculative++;
             }
         }
@@ -1467,19 +1601,19 @@ VOID VmmReadScatterPhysical(_Inout_ PPMEM_IO_SCATTER_HEADER ppMEMsPhys, _In_ DWO
         cpMEMsPhys = cSpeculative;
     }
     // 3: read!
-    LeechCore_ReadScatter(ppMEMsPhys, cpMEMsPhys);
+    LcReadScatter(ctxMain->hLC, cpMEMsPhys, ppMEMsPhys);
     // 4: statistics and read fail zero fixups (if required)
     for(i = 0; i < cpMEMsPhys; i++) {
         pMEM = ppMEMsPhys[i];
-        if(pMEM->cb == pMEM->cbMax) {
+        if(pMEM->f) {
             // success
             InterlockedIncrement64(&ctxVmm->stat.cPhysReadSuccess);
         } else {
             // fail
             InterlockedIncrement64(&ctxVmm->stat.cPhysReadFail);
             if((flags & VMM_FLAG_ZEROPAD_ON_FAIL) && (pMEM->qwA < ctxMain->dev.paMax)) {
-                ZeroMemory(pMEM->pb, pMEM->cbMax);
-                pMEM->cb = pMEM->cbMax;
+                ZeroMemory(pMEM->pb, pMEM->cb);
+                pMEM->f = TRUE;
             }
         }
     }
@@ -1487,22 +1621,25 @@ VOID VmmReadScatterPhysical(_Inout_ PPMEM_IO_SCATTER_HEADER ppMEMsPhys, _In_ DWO
     if(fCache) {
         for(i = 0; i < cpMEMsPhys; i++) {
             pMEM = ppMEMsPhys[i];
-            if(3 == (QWORD)pMEM->pvReserved2) { // 3 == speculative & backed by cache reserved
-                VmmCacheReserveReturn(ppObCacheSpeculative[i]);
-            }
-            if((0 == (QWORD)pMEM->pvReserved2) && (pMEM->cb == 0x1000)) { // 0 = default
-                if((pObReservedMEM = VmmCacheReserve(VMM_CACHE_TAG_PHYS))) {
-                    pObReservedMEM->h.qwA = pMEM->qwA;
-                    pObReservedMEM->h.cb = 0x1000;
-                    memcpy(pObReservedMEM->h.pb, pMEM->pb, 0x1000);
-                    VmmCacheReserveReturn(pObReservedMEM);
+            tp = MEM_SCATTER_STACK_POP(pMEM);
+            if(!(VMM_FLAG_NOCACHEPUT & flags)) {
+                if(tp == 4) {   // 4 == speculative & backed by cache reserved
+                    VmmCacheReserveReturn(ppObCacheSpeculative[i]);
+                }
+                if((tp == 1) && pMEM->f) { // 1 = normal read
+                    if((pObReservedMEM = VmmCacheReserve(VMM_CACHE_TAG_PHYS))) {
+                        pObReservedMEM->h.f = TRUE;
+                        pObReservedMEM->h.qwA = pMEM->qwA;
+                        memcpy(pObReservedMEM->h.pb, pMEM->pb, 0x1000);
+                        VmmCacheReserveReturn(pObReservedMEM);
+                    }
                 }
             }
         }
     }
 }
 
-VOID VmmReadScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_updates_(cpMEMsVirt) PPMEM_IO_SCATTER_HEADER ppMEMsVirt, _In_ DWORD cpMEMsVirt, _In_ QWORD flags)
+VOID VmmReadScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_updates_(cpMEMsVirt) PPMEM_SCATTER ppMEMsVirt, _In_ DWORD cpMEMsVirt, _In_ QWORD flags)
 {
     // NB! the buffers pIoPA / ppMEMsPhys are used for both:
     //     - physical memory (grows from 0 upwards)
@@ -1510,32 +1647,30 @@ VOID VmmReadScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_updates_(cpMEMsVir
     BOOL fVirt2Phys;
     DWORD i = 0, iVA, iPA;
     QWORD qwPA, qwPagedPA = 0;
-    BYTE pbBufferSmall[0x20 * (sizeof(MEM_IO_SCATTER_HEADER) + sizeof(PMEM_IO_SCATTER_HEADER))];
+    BYTE pbBufferSmall[0x20 * (sizeof(MEM_SCATTER) + sizeof(PMEM_SCATTER))];
     PBYTE pbBufferMEMs, pbBufferLarge = NULL;
-    PMEM_IO_SCATTER_HEADER pIoPA, pIoVA;
-    PPMEM_IO_SCATTER_HEADER ppMEMsPhys = NULL;
+    PMEM_SCATTER pIoPA, pIoVA;
+    PPMEM_SCATTER ppMEMsPhys = NULL;
     BOOL fPaging = !(VMM_FLAG_NOPAGING & (flags | ctxVmm->flags));
     BOOL fAltAddrPte = VMM_FLAG_ALTADDR_VA_PTE & flags;
     BOOL fZeropadOnFail = VMM_FLAG_ZEROPAD_ON_FAIL & (flags | ctxVmm->flags);
     // 1: allocate / set up buffers (if needed)
     if(cpMEMsVirt < 0x20) {
-        ppMEMsPhys = (PPMEM_IO_SCATTER_HEADER)pbBufferSmall;
-        pbBufferMEMs = pbBufferSmall + cpMEMsVirt * sizeof(PMEM_IO_SCATTER_HEADER);
+        ZeroMemory(pbBufferSmall, sizeof(pbBufferSmall));
+        ppMEMsPhys = (PPMEM_SCATTER)pbBufferSmall;
+        pbBufferMEMs = pbBufferSmall + cpMEMsVirt * sizeof(PMEM_SCATTER);
     } else {
-        if(!(pbBufferLarge = LocalAlloc(0, cpMEMsVirt * (sizeof(MEM_IO_SCATTER_HEADER) + sizeof(PMEM_IO_SCATTER_HEADER))))) { return; }
-        ppMEMsPhys = (PPMEM_IO_SCATTER_HEADER)pbBufferLarge;
-        pbBufferMEMs = pbBufferLarge + cpMEMsVirt * sizeof(PMEM_IO_SCATTER_HEADER);
+        if(!(pbBufferLarge = LocalAlloc(LMEM_ZEROINIT, cpMEMsVirt * (sizeof(MEM_SCATTER) + sizeof(PMEM_SCATTER))))) { return; }
+        ppMEMsPhys = (PPMEM_SCATTER)pbBufferLarge;
+        pbBufferMEMs = pbBufferLarge + cpMEMsVirt * sizeof(PMEM_SCATTER);
     }
     // 2: translate virt2phys
     for(iVA = 0, iPA = 0; iVA < cpMEMsVirt; iVA++) {
         pIoVA = ppMEMsVirt[iVA];
         // MEMORY READ ALREADY COMPLETED
-        if(!pIoVA->qwA || (pIoVA->cb == pIoVA->cbMax)) {
-            if(pIoVA->cb != pIoVA->cbMax) {
-                pIoVA->cb = 0;
-                if(fZeropadOnFail) {
-                    ZeroMemory(pIoVA->pb, pIoVA->cbMax);
-                }
+        if(pIoVA->f || (pIoVA->qwA == 0) || (pIoVA->qwA == -1)) {
+            if(!pIoVA->f && fZeropadOnFail) {
+                ZeroMemory(pIoVA->pb, pIoVA->cb);
             }
             continue;
         }
@@ -1543,9 +1678,8 @@ VOID VmmReadScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_updates_(cpMEMsVir
         qwPA = 0;
         fVirt2Phys = !fAltAddrPte && VmmVirt2Phys(pProcess, pIoVA->qwA, &qwPA);
         // PAGED MEMORY
-        if(!fVirt2Phys && fPaging && (pIoVA->cbMax == 0x1000) && ctxVmm->fnMemoryModel.pfnPagedRead) {
+        if(!fVirt2Phys && fPaging && (pIoVA->cb == 0x1000) && ctxVmm->fnMemoryModel.pfnPagedRead) {
             if(ctxVmm->fnMemoryModel.pfnPagedRead(pProcess, (fAltAddrPte ? 0 : pIoVA->qwA), (fAltAddrPte ? pIoVA->qwA : qwPA), pIoVA->pb, &qwPagedPA, flags)) {
-                pIoVA->cb = 0x1000;
                 continue;
             }
             if(qwPagedPA) {
@@ -1553,30 +1687,28 @@ VOID VmmReadScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_updates_(cpMEMsVir
                 fVirt2Phys = TRUE;
             }
         }
-        if(fVirt2Phys) {    // PHYS MEMORY
-            pIoPA = ppMEMsPhys[iPA] = (PMEM_IO_SCATTER_HEADER)pbBufferMEMs + iPA;
-            iPA++;
-        } else {            // NO TRANSLATION MEMORY / FAILED PAGED MEMORY
-            pIoVA->cb = 0;
+        if(!fVirt2Phys) {   // NO TRANSLATION MEMORY / FAILED PAGED MEMORY
             if(fZeropadOnFail) {
-                ZeroMemory(pIoVA->pb, pIoVA->cbMax);
+                ZeroMemory(pIoVA->pb, pIoVA->cb);
             }
             continue;
         }
-        pIoPA->magic = MEM_IO_SCATTER_HEADER_MAGIC;
-        pIoPA->version = MEM_IO_SCATTER_HEADER_VERSION;
+        // PHYS MEMORY
+        pIoPA = ppMEMsPhys[iPA] = (PMEM_SCATTER)pbBufferMEMs + iPA;
+        iPA++;
+        pIoPA->version = MEM_SCATTER_VERSION;
         pIoPA->qwA = qwPA;
-        pIoPA->cbMax = 0x1000;
-        pIoPA->cb = 0;
+        pIoPA->cb = 0x1000;
         pIoPA->pb = pIoVA->pb;
-        pIoPA->pvReserved1 = (PVOID)pIoVA;
+        pIoPA->f = FALSE;
+        MEM_SCATTER_STACK_PUSH(pIoPA, (QWORD)pIoVA);
     }
     // 3: read and check result
     if(iPA) {
         VmmReadScatterPhysical(ppMEMsPhys, iPA, flags);
         while(iPA > 0) {
             iPA--;
-            ((PMEM_IO_SCATTER_HEADER)ppMEMsPhys[iPA]->pvReserved1)->cb = ppMEMsPhys[iPA]->cb;
+            ((PMEM_SCATTER)MEM_SCATTER_STACK_POP(ppMEMsPhys[iPA]))->f = ppMEMsPhys[iPA]->f;
         }
     }
     LocalFree(pbBufferLarge);
@@ -1640,17 +1772,8 @@ PVMMOB_PHYS2VIRT_INFORMATION VmmPhys2VirtGetInformation(_In_ PVMM_PROCESS pProce
 VOID VmmClose()
 {
     if(!ctxVmm) { return; }
-    if(ctxVmm->Plugin.FLink) { PluginManager_Close(); }
-    ctxVmm->ThreadWorkers.fEnabled = FALSE;
-    if(ctxVmm->ThreadProcCache.fEnabled) {
-        ctxVmm->ThreadProcCache.fEnabled = FALSE;
-        while(ctxVmm->ThreadProcCache.hThread) {
-            SwitchToThread();
-        }
-    }
-    while(ctxVmm->ThreadWorkers.c) {
-        SwitchToThread();
-    }
+    if(ctxVmm->PluginManager.FLink) { PluginManager_Close(); }
+    VmmWork_Close();
     VmmWinObj_Close();
     VmmWinReg_Close();
     PDB_Close();
@@ -1668,10 +1791,12 @@ VOID VmmClose()
     Ob_DECREF_NULL(&ctxVmm->Cache.pmPrototypePte);
     Ob_DECREF_NULL(&ctxVmm->pObCMapPhysMem);
     Ob_DECREF_NULL(&ctxVmm->pObCMapUser);
+    Ob_DECREF_NULL(&ctxVmm->pObCMapNet);
     Ob_DECREF_NULL(&ctxVmm->pObCCachePrefetchEPROCESS);
     Ob_DECREF_NULL(&ctxVmm->pObCCachePrefetchRegistry);
     DeleteCriticalSection(&ctxVmm->TcpIp.LockUpdate);
-    DeleteCriticalSection(&ctxVmm->MasterLock);
+    DeleteCriticalSection(&ctxVmm->LockMaster);
+    DeleteCriticalSection(&ctxVmm->LockPlugin);
     DeleteCriticalSection(&ctxVmm->LockUpdateMap);
     DeleteCriticalSection(&ctxVmm->LockUpdateModule);
     LocalFree(ctxVmm->ObjectTypeTable.wszMultiText);
@@ -1683,25 +1808,23 @@ VOID VmmWriteEx(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _In_ PBYTE pb, _
 {
     DWORD i = 0, oA = 0, cbWrite = 0, cbP, cMEMs;
     PBYTE pbBuffer;
-    PMEM_IO_SCATTER_HEADER pMEMs, *ppMEMs;
+    PMEM_SCATTER pMEM, pMEMs, *ppMEMs;
     if(pcbWrite) { *pcbWrite = 0; }
     // allocate
     cMEMs = (DWORD)(((qwA & 0xfff) + cb + 0xfff) >> 12);
-    pbBuffer = (PBYTE)LocalAlloc(LMEM_ZEROINIT, cMEMs * (sizeof(MEM_IO_SCATTER_HEADER) + sizeof(PMEM_IO_SCATTER_HEADER)));
-    if(!pbBuffer) { return; }
-    pMEMs = (PMEM_IO_SCATTER_HEADER)pbBuffer;
-    ppMEMs = (PPMEM_IO_SCATTER_HEADER)(pbBuffer + cMEMs * sizeof(MEM_IO_SCATTER_HEADER));
+    if(!(pbBuffer = (PBYTE)LocalAlloc(LMEM_ZEROINIT, cMEMs * (sizeof(MEM_SCATTER) + sizeof(PMEM_SCATTER))))) { return; }
+    pMEMs = (PMEM_SCATTER)pbBuffer;
+    ppMEMs = (PPMEM_SCATTER)(pbBuffer + cMEMs * sizeof(MEM_SCATTER));
     // prepare pages
     while(oA < cb) {
-        ppMEMs[i] = &pMEMs[i];
-        pMEMs[i].version = MEM_IO_SCATTER_HEADER_VERSION;
-        pMEMs[i].qwA = qwA + oA;
         cbP = 0x1000 - ((qwA + oA) & 0xfff);
         cbP = min(cbP, cb - oA);
-        pMEMs[i].cbMax = cbP;
-        pMEMs[i].pb = pb + oA;
+        ppMEMs[i++] = pMEM = pMEMs + i;
+        pMEM->version = MEM_SCATTER_VERSION;
+        pMEM->qwA = qwA + oA;
+        pMEM->cb = cbP;
+        pMEM->pb = pb + oA;
         oA += cbP;
-        i++;
     }
     // write and count result
     if(pProcess) {
@@ -1711,7 +1834,9 @@ VOID VmmWriteEx(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _In_ PBYTE pb, _
     }
     if(pcbWrite) {
         for(i = 0; i < cMEMs; i++) {
-            cbWrite += pMEMs[i].cb;
+            if(pMEMs[i].f) {
+                cbWrite += pMEMs[i].cb;
+            }
         }
         *pcbWrite = cbWrite;
     }
@@ -1729,26 +1854,25 @@ VOID VmmReadEx(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Out_writes_(cb) 
 {
     DWORD cbP, cMEMs, cbRead = 0;
     PBYTE pbBuffer;
-    PMEM_IO_SCATTER_HEADER pMEMs, *ppMEMs;
+    PMEM_SCATTER pMEMs, *ppMEMs;
     QWORD i, oA;
     if(pcbReadOpt) { *pcbReadOpt = 0; }
     if(!cb) { return; }
     cMEMs = (DWORD)(((qwA & 0xfff) + cb + 0xfff) >> 12);
-    pbBuffer = (PBYTE)LocalAlloc(LMEM_ZEROINIT, 0x2000 + cMEMs * (sizeof(MEM_IO_SCATTER_HEADER) + sizeof(PMEM_IO_SCATTER_HEADER)));
+    pbBuffer = (PBYTE)LocalAlloc(LMEM_ZEROINIT, 0x2000 + cMEMs * (sizeof(MEM_SCATTER) + sizeof(PMEM_SCATTER)));
     if(!pbBuffer) {
         ZeroMemory(pb, cb);
         return;
     }
-    pMEMs = (PMEM_IO_SCATTER_HEADER)(pbBuffer + 0x2000);
-    ppMEMs = (PPMEM_IO_SCATTER_HEADER)(pbBuffer + 0x2000 + cMEMs * sizeof(MEM_IO_SCATTER_HEADER));
+    pMEMs = (PMEM_SCATTER)(pbBuffer + 0x2000);
+    ppMEMs = (PPMEM_SCATTER)(pbBuffer + 0x2000 + cMEMs * sizeof(MEM_SCATTER));
     oA = qwA & 0xfff;
     // prepare "middle" pages
     for(i = 0; i < cMEMs; i++) {
         ppMEMs[i] = &pMEMs[i];
-        pMEMs[i].magic = MEM_IO_SCATTER_HEADER_MAGIC;
-        pMEMs[i].version = MEM_IO_SCATTER_HEADER_VERSION;
+        pMEMs[i].version = MEM_SCATTER_VERSION;
         pMEMs[i].qwA = qwA - oA + (i << 12);
-        pMEMs[i].cbMax = 0x1000;
+        pMEMs[i].cb = 0x1000;
         pMEMs[i].pb = pb - oA + (i << 12);
     }
     // fixup "first/last" pages
@@ -1763,17 +1887,17 @@ VOID VmmReadEx(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Out_writes_(cb) 
         VmmReadScatterPhysical(ppMEMs, cMEMs, flags);
     }
     for(i = 0; i < cMEMs; i++) {
-        if(pMEMs[i].cb == 0x1000) {
+        if(pMEMs[i].f) {
             cbRead += 0x1000;
         } else {
             ZeroMemory(pMEMs[i].pb, 0x1000);
         }
     }
-    cbRead -= (pMEMs[0].cb == 0x1000) ? 0x1000 : 0;                             // adjust byte count for first page (if needed)
-    cbRead -= ((cMEMs > 1) && (pMEMs[cMEMs - 1].cb == 0x1000)) ? 0x1000 : 0;    // adjust byte count for last page (if needed)
+    cbRead -= pMEMs[0].f ? 0x1000 : 0;                             // adjust byte count for first page (if needed)
+    cbRead -= ((cMEMs > 1) && pMEMs[cMEMs - 1].f) ? 0x1000 : 0;    // adjust byte count for last page (if needed)
     // Handle first page
     cbP = (DWORD)min(cb, 0x1000 - oA);
-    if(pMEMs[0].cb == 0x1000) {
+    if(pMEMs[0].f) {
         memcpy(pb, pMEMs[0].pb + oA, cbP);
         cbRead += cbP;
     } else {
@@ -1782,7 +1906,7 @@ VOID VmmReadEx(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Out_writes_(cb) 
     // Handle last page
     if(cMEMs > 1) {
         cbP = (((qwA + cb) & 0xfff) ? ((qwA + cb) & 0xfff) : 0x1000);
-        if(pMEMs[cMEMs - 1].cb == 0x1000) {
+        if(pMEMs[cMEMs - 1].f) {
             memcpy(pb + ((QWORD)cMEMs << 12) - oA - 0x1000, pMEMs[cMEMs - 1].pb, cbP);
             cbRead += cbP;
         } else {
@@ -1950,12 +2074,16 @@ BOOL VmmInitialize()
     if(!(ctxVmm->Cache.PAGING_FAILED = ObSet_New())) { goto fail; }
     // 6: CACHE INIT: Prototype PTE Cache Map
     if(!(ctxVmm->Cache.pmPrototypePte = ObMap_New(OB_MAP_FLAGS_OBJECT_OB))) { goto fail; }
-    // 7: OTHER INIT:
+    // 7: WORKER THREADS INIT:
+    VmmWork_Initialize();
+    // 8: OTHER INIT:
     ctxVmm->pObCMapPhysMem = ObContainer_New(NULL);
     ctxVmm->pObCMapUser = ObContainer_New(NULL);
+    ctxVmm->pObCMapNet = ObContainer_New(NULL);
     ctxVmm->pObCCachePrefetchEPROCESS = ObContainer_New(NULL);
     ctxVmm->pObCCachePrefetchRegistry = ObContainer_New(NULL);
-    InitializeCriticalSection(&ctxVmm->MasterLock);
+    InitializeCriticalSection(&ctxVmm->LockMaster);
+    InitializeCriticalSection(&ctxVmm->LockPlugin);
     InitializeCriticalSection(&ctxVmm->LockUpdateMap);
     InitializeCriticalSection(&ctxVmm->LockUpdateModule);
     InitializeCriticalSection(&ctxVmm->TcpIp.LockUpdate);

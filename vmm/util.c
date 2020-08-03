@@ -59,10 +59,46 @@ DWORD Util_HashStringUpperW(_In_opt_ LPCWSTR wsz)
     }
 }
 
+/*
+* Hash a registry key name in a way that is supported by the file system.
+* NB! this is not the same hash as the Windows registry uses.
+* -- wsz
+* -- iSuffix
+* -- return
+*/
+DWORD Util_HashNameW_Registry(_In_ LPCWSTR wsz, _In_opt_ DWORD iSuffix)
+{
+    DWORD i, c, dwHash = 0;
+    WCHAR wszBuffer[MAX_PATH];
+    c = Util_PathFileNameFix_Registry(wszBuffer, NULL, wsz, 0, iSuffix, TRUE);
+    for(i = 0; i < c; i++) {
+        dwHash = ((dwHash >> 13) | (dwHash << 19)) + wszBuffer[i];
+    }
+    return dwHash;
+}
+
+/*
+* Hash a path. Used to calculate a registry key hash from a file system path.
+* -- wszPath
+* -- return
+*/
+QWORD Util_HashPathW_Registry(_In_ LPWSTR wszPath)
+{
+    DWORD dwHashName;
+    QWORD qwHashTotal = 0;
+    WCHAR wsz1[MAX_PATH];
+    while(wszPath && wszPath[0]) {
+        wszPath = Util_PathSplit2_ExWCHAR(wszPath, wsz1, _countof(wsz1));
+        dwHashName = Util_HashNameW_Registry(wsz1, 0);
+        qwHashTotal = dwHashName + ((qwHashTotal >> 13) | (qwHashTotal << 51));
+    }
+    return qwHashTotal;
+}
+
 #define Util_2HexChar(x) (((((x) & 0xf) <= 9) ? '0' : ('a' - 10)) + ((x) & 0xf))
 
 _Success_(return)
-BOOL Util_FillHexAscii(_In_opt_ PBYTE pb, _In_ DWORD cb, _In_ DWORD cbInitialOffset, _Out_opt_ LPSTR sz, _Inout_ PDWORD pcsz)
+BOOL Util_FillHexAscii(_In_reads_opt_(cb) PBYTE pb, _In_ DWORD cb, _In_ DWORD cbInitialOffset, _Out_writes_opt_(*pcsz) LPSTR sz, _Inout_ PDWORD pcsz)
 {
     DWORD i, j, o = 0, iMod, cRows;
     // checks
@@ -119,7 +155,7 @@ BOOL Util_FillHexAscii(_In_opt_ PBYTE pb, _In_ DWORD cb, _In_ DWORD cbInitialOff
     return TRUE;
 }
 
-VOID Util_PrintHexAscii(_In_ PBYTE pb, _In_ DWORD cb, _In_ DWORD cbInitialOffset)
+VOID Util_PrintHexAscii(_In_reads_(cb) PBYTE pb, _In_ DWORD cb, _In_ DWORD cbInitialOffset)
 {
     DWORD szMax = 0;
     LPSTR sz;
@@ -151,6 +187,7 @@ DWORD Util_PathFileNameFixA(_Out_writes_(MAX_PATH) LPWSTR wszOut, _In_ LPCSTR sz
         wszOut[i] = ((ch < 128) && (UTIL_ASCIIFILENAME_ALLOW[ch] == '0')) ? '_' : ch;
         i++;
     }
+    if(i && (wszOut[i - 1] == '.')) { wszOut[i - 1] = '_'; }
     wszOut[i] = 0;
     return i;
 }
@@ -163,6 +200,7 @@ DWORD Util_PathFileNameFixW(_Out_writes_(MAX_PATH) LPWSTR wszOut, _In_ LPCWSTR w
         wszOut[i] = ((ch < 128) && (UTIL_ASCIIFILENAME_ALLOW[ch] == '0')) ? '_' : ch;
         i++;
     }
+    if(i && (wszOut[i - 1] == '.')) { wszOut[i - 1] = '_'; }
     wszOut[i] = 0;
     return i;
 }
@@ -182,10 +220,17 @@ DWORD Util_PathFileNameFix_Registry(_Out_writes_(MAX_PATH) LPWSTR wszOut, _In_op
             i++;
         }
     }
-    if(iSuffix && (iSuffix < 10) && (i < MAX_PATH - 3)) {
-        wszOut[i++] = '-';
-        wszOut[i++] = '0' + (WCHAR)iSuffix;
+    if(iSuffix) {
+        if((iSuffix < 10) && (i < MAX_PATH - 3)) {
+            wszOut[i++] = '-';
+            wszOut[i++] = '0' + (WCHAR)iSuffix;
+        } else if((iSuffix < 100) && (i < MAX_PATH - 4)) {
+            wszOut[i++] = '-';
+            wszOut[i++] = '0' + (WCHAR)(iSuffix / 10);
+            wszOut[i++] = '0' + (WCHAR)(iSuffix % 10);
+        }
     }
+    if(i && (wszOut[i - 1] == '.')) { wszOut[i - 1] = '_'; }
     wszOut[i] = 0;
     return i;
 }
@@ -307,6 +352,24 @@ DWORD Util_snprintf_ln(
     return (DWORD)status;
 }
 
+_Success_(return >= 0)
+DWORD Util_snprintf_ln2(
+    _Out_writes_(cszLineLength) LPSTR szBuffer,
+    _In_ QWORD cszLineLength,
+    _In_z_ _Printf_format_string_ LPSTR szFormat,
+    ...
+)
+{
+    int csz, status;
+    va_list arglist;
+    va_start(arglist, szFormat);
+    status = vsnprintf(szBuffer, cszLineLength + 1, szFormat, arglist);
+    va_end(arglist);
+    csz = (int)min(cszLineLength - 1, ((status < 0) ? 0 : strlen(szBuffer)));
+    snprintf(szBuffer + csz, cszLineLength + 1 - csz, "%*s\n", (DWORD)(cszLineLength - 1 - csz), "");
+    return (DWORD)cszLineLength;
+}
+
 VOID Util_GetPathDll(_Out_writes_(MAX_PATH) PCHAR szPath, _In_opt_ HMODULE hModule)
 {
     SIZE_T i;
@@ -322,12 +385,29 @@ VOID Util_GetPathDll(_Out_writes_(MAX_PATH) PCHAR szPath, _In_opt_ HMODULE hModu
 #define UTIL_NTSTATUS_SUCCESS                      ((NTSTATUS)0x00000000L)
 #define UTIL_NTSTATUS_END_OF_FILE                  ((NTSTATUS)0xC0000011L)
 
+NTSTATUS Util_VfsReadFile_FromZERO(_In_ QWORD cbFile, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+{
+    if(cbOffset > cbFile) { return UTIL_NTSTATUS_END_OF_FILE; }
+    *pcbRead = (DWORD)min(cb, cbFile - cbOffset);
+    ZeroMemory(pb, *pcbRead);
+    return *pcbRead ? UTIL_NTSTATUS_SUCCESS : UTIL_NTSTATUS_END_OF_FILE;
+}
+
 NTSTATUS Util_VfsReadFile_FromPBYTE(_In_opt_ PBYTE pbFile, _In_ QWORD cbFile, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     if(!pbFile || (cbOffset > cbFile)) { return UTIL_NTSTATUS_END_OF_FILE; }
     *pcbRead = (DWORD)min(cb, cbFile - cbOffset);
     memcpy(pb, pbFile + cbOffset, *pcbRead);
     return *pcbRead ? UTIL_NTSTATUS_SUCCESS : UTIL_NTSTATUS_END_OF_FILE;
+}
+
+NTSTATUS Util_VfsReadFile_FromTextWtoU8(_In_opt_ LPWSTR wszValue, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+{
+    NTSTATUS nt;
+    LPSTR szTMP = Util_StrDupW2U8(wszValue);
+    nt = Util_VfsReadFile_FromPBYTE(szTMP, (szTMP ? strlen(szTMP) : 0), pb, cb, pcbRead, cbOffset);
+    LocalFree(szTMP);
+    return nt;
 }
 
 NTSTATUS Util_VfsReadFile_FromNumber(_In_ QWORD qwValue, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
@@ -381,6 +461,7 @@ NTSTATUS Util_VfsWriteFile_PBYTE(_Inout_ PBYTE pbTarget, _In_ DWORD cbTarget, _I
 NTSTATUS Util_VfsWriteFile_BOOL(_Inout_ PBOOL pfTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
 {
     CHAR ch;
+    if(cbOffset) { return UTIL_NTSTATUS_END_OF_FILE; }
     if((cb > 0) && (cbOffset == 0)) {
         ch = *(PCHAR)pb;
         *pfTarget = (ch == 0 || ch == '0') ? FALSE : TRUE;
@@ -389,10 +470,21 @@ NTSTATUS Util_VfsWriteFile_BOOL(_Inout_ PBOOL pfTarget, _In_reads_(cb) PBYTE pb,
     return UTIL_NTSTATUS_SUCCESS;
 }
 
-NTSTATUS Util_VfsWriteFile_DWORD(_Inout_ PDWORD pdwTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset, _In_ DWORD dwMinAllow)
+NTSTATUS Util_VfsWriteFile_09(_Inout_ PDWORD pdwTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
+{
+    if(cbOffset) { return UTIL_NTSTATUS_END_OF_FILE; }
+    if(cb && (pb[0] >= '0') && (pb[0] <= '9')) {
+        *pdwTarget = pb[0] - '0';
+    }
+    *pcbWrite = cb;
+    return UTIL_NTSTATUS_SUCCESS;
+}
+
+NTSTATUS Util_VfsWriteFile_DWORD(_Inout_ PDWORD pdwTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset, _In_ DWORD dwMinAllow, _In_opt_ DWORD dwMaxAllow)
 {
     DWORD dw;
     BYTE pbBuffer[9];
+    if(cbOffset > 8) { return UTIL_NTSTATUS_END_OF_FILE; }
     if(cbOffset < 8) {
         snprintf(pbBuffer, 9, "%08x", *pdwTarget);
         cb = (DWORD)min(8 - cbOffset, cb);
@@ -400,6 +492,9 @@ NTSTATUS Util_VfsWriteFile_DWORD(_Inout_ PDWORD pdwTarget, _In_reads_(cb) PBYTE 
         pbBuffer[8] = 0;
         dw = strtoul(pbBuffer, NULL, 16);
         dw = max(dw, dwMinAllow);
+        if(dwMaxAllow) {
+            dw = min(dw, dwMaxAllow);
+        }
         *pdwTarget = dw;
     }
     *pcbWrite = cb;
@@ -443,31 +538,30 @@ LPWSTR Util_StrDupW(_In_opt_ LPWSTR wsz)
     return wszDup;
 }
 
-LPSTR Util_StrDupW2A(_In_opt_ LPWSTR wsz)
+LPSTR Util_StrDupW2U8(_In_opt_ LPWSTR wsz)
 {
-    DWORD cch;
-    LPSTR szDup;
+    DWORD cchUTF8;
+    LPSTR szUTF8;
     if(!wsz) { return NULL; }
-    cch = (DWORD)wcslen(wsz);
-    if(!(szDup = LocalAlloc(0, cch + 1ULL))) { return NULL; }
-    if(cch) {
-        WideCharToMultiByte(CP_ACP, 0, wsz, cch, szDup, cch, "_", NULL);
-    }
-    szDup[cch] = 0;
-    return szDup;
+    cchUTF8 = wcslen_u8(wsz);
+    if(!cchUTF8 || (cchUTF8 > 0x01000000)) { return NULL; }
+    if(!(szUTF8 = LocalAlloc(0, cchUTF8 + 1ULL))) { return NULL; }
+    WideCharToMultiByte(CP_UTF8, 0, wsz, -1, szUTF8, cchUTF8, NULL, NULL);
+    szUTF8[cchUTF8] = 0;
+    return szUTF8;
 }
 
-VOID Util_FileTime2String(_In_ PFILETIME pFileTime, _Out_writes_(32) LPSTR szTime)
+VOID Util_FileTime2String(_In_ PFILETIME pFileTime, _Out_writes_(24) LPSTR szTime)
 {
     SYSTEMTIME SystemTime;
     if(!*(PQWORD)pFileTime) {
-        strcpy_s(szTime, 32, "                    ***");
+        strcpy_s(szTime, 24, "                    ***");
         return;
     }
     FileTimeToSystemTime(pFileTime, &SystemTime);
     sprintf_s(
         szTime,
-        32,
+        24,
         "%04i-%02i-%02i %02i:%02i:%02i UTC",
         SystemTime.wYear,
         SystemTime.wMonth,

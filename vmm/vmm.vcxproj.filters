@@ -13,9 +13,6 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
-    <Filter Include="Header Files\leechcore">
-      <UniqueIdentifier>{aedb4365-6f4c-4a1b-b130-a1d3adc27bf6}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Source Files\modules">
       <UniqueIdentifier>{00c5c579-6475-46c5-8997-359b6c6649b3}</UniqueIdentifier>
     </Filter>
@@ -24,6 +21,15 @@
     </Filter>
     <Filter Include="Source Files\mm">
       <UniqueIdentifier>{338e412d-8a2d-4a56-9f79-32aa6091c271}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\includes">
+      <UniqueIdentifier>{793ab526-24d7-44c9-b5d8-b41a0c1a0ab2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\sqlite">
+      <UniqueIdentifier>{ffb4db14-1180-4c7f-82f7-7f470cf19f51}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\sqlite">
+      <UniqueIdentifier>{8bbd50e3-b525-4d05-9df5-889abea6045c}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -54,9 +60,6 @@
     <ClInclude Include="vmmwininit.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="leechcore.h">
-      <Filter>Header Files\leechcore</Filter>
-    </ClInclude>
     <ClInclude Include="resource.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -64,9 +67,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="vmmwinreg.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="vmmwintcpip.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="pdb.h">
@@ -91,6 +91,21 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="mm_pfn.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\includes\leechcore.h">
+      <Filter>Header Files\includes</Filter>
+    </ClInclude>
+    <ClInclude Include="include\sqlite3.h">
+      <Filter>Header Files\sqlite</Filter>
+    </ClInclude>
+    <ClInclude Include="include\sqlite3ext.h">
+      <Filter>Header Files\sqlite</Filter>
+    </ClInclude>
+    <ClInclude Include="fc.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="vmmwinnet.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -148,9 +163,6 @@
     </ClCompile>
     <ClCompile Include="m_sysinfo.c">
       <Filter>Source Files\modules</Filter>
-    </ClCompile>
-    <ClCompile Include="vmmwintcpip.c">
-      <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="ob_map.c">
       <Filter>Source Files\ob</Filter>
@@ -220,6 +232,36 @@
     </ClCompile>
     <ClCompile Include="m_sysinfo_mem.c">
       <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="m_minidump.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="m_sysinfo_syscall.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="fc.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="fc_ntfs.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="fc_timeline.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmwinnet.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="m_fc.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="m_fc_ntfs.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="m_fc_timeline.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="include\sqlite3.c">
+      <Filter>Source Files\sqlite</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

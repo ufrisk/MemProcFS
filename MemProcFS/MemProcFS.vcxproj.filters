@@ -13,14 +13,8 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
-    <Filter Include="Header Files\dokan">
-      <UniqueIdentifier>{3df63be8-ffcd-417a-a1f9-c8d774863692}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Header Files\vmm">
-      <UniqueIdentifier>{ef93cbf4-5326-46d3-a5e0-6fb6d61d08f0}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Header Files\leechcore">
-      <UniqueIdentifier>{5c8e3ce6-1d2e-46ff-b5a6-a928f4c1569f}</UniqueIdentifier>
+    <Filter Include="Header Files\includes">
+      <UniqueIdentifier>{81e2f737-13dd-4ab5-8d2d-f8f822c46c53}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -35,23 +29,23 @@
     <ClInclude Include="vfs.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="dokan.h">
-      <Filter>Header Files\dokan</Filter>
-    </ClInclude>
-    <ClInclude Include="fileinfo.h">
-      <Filter>Header Files\dokan</Filter>
-    </ClInclude>
-    <ClInclude Include="public.h">
-      <Filter>Header Files\dokan</Filter>
-    </ClInclude>
-    <ClInclude Include="vmmdll.h">
-      <Filter>Header Files\vmm</Filter>
-    </ClInclude>
-    <ClInclude Include="leechcore.h">
-      <Filter>Header Files\leechcore</Filter>
-    </ClInclude>
     <ClInclude Include="version.h">
       <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\includes\dokan.h">
+      <Filter>Header Files\includes</Filter>
+    </ClInclude>
+    <ClInclude Include="..\includes\fileinfo.h">
+      <Filter>Header Files\includes</Filter>
+    </ClInclude>
+    <ClInclude Include="..\includes\leechcore.h">
+      <Filter>Header Files\includes</Filter>
+    </ClInclude>
+    <ClInclude Include="..\includes\public.h">
+      <Filter>Header Files\includes</Filter>
+    </ClInclude>
+    <ClInclude Include="..\includes\vmmdll.h">
+      <Filter>Header Files\includes</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

@@ -100,8 +100,8 @@ const QWORD MMX64_PAGETABLEMAP_PML_REGION_MASK_AD[5] = { 0, 0xfff, 0x1fffff, 0x3
 VOID MmX64_MapInitialize_Index(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_PTEENTRY pMemMap, _In_ PDWORD pcMemMap, _In_ QWORD vaBase, _In_ BYTE iPML, _In_ QWORD PTEs[512], _In_ BOOL fSupervisorPML, _In_ QWORD paMax)
 {
     PVMMOB_MEM pObNextPT;
-    QWORD i, pte, va;
-    BOOL fUserOnly, fNextSupervisorPML, fTransition = FALSE;
+    QWORD i, pte, va, cPages;
+    BOOL fUserOnly, fNextSupervisorPML, fPagedOut = FALSE;
     PVMM_MAP_PTEENTRY pMemMapEntry = pMemMap + *pcMemMap - 1;
     if(!pProcess->fTlbSpiderDone) {
         VmmTlbSpider(pProcess);
@@ -110,12 +110,15 @@ VOID MmX64_MapInitialize_Index(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_PTEENTR
     for(i = 0; i < 512; i++) {
         pte = PTEs[i];
         if(!MMX64_PTE_IS_VALID(pte, iPML)) {
-            if(pte && MMX64_PTE_IS_TRANSITION(pte, iPML)) {
-                pte = MMX64_PTE_IS_TRANSITION(pte, iPML);   // TRANSITION PAGE
-                fTransition = TRUE;
-            } else {
-                continue;                                   // INVALID
+            if(!pte) { continue; }
+            pte = MMX64_PTE_IS_TRANSITION(pte, iPML);       // PAGE ATTRIBUTES IF TRANSITION PAGE
+            if(!pte) {
+                if(iPML != 1) { continue; }
+                pte = 0x8000000000000005;                   // GUESS READ-ONLY USER PAGE IF NON TRANSITION
             }
+            fPagedOut = TRUE;
+        } else {
+            fPagedOut = FALSE;
         }
         if((pte & 0x0000fffffffff000) > paMax) { continue; }
         if(fSupervisorPML) { pte = pte & 0xfffffffffffffffb; }
@@ -125,20 +128,24 @@ VOID MmX64_MapInitialize_Index(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_PTEENTR
         if((iPML == 1) || (pte & 0x80) /* PS */) {
             if(iPML == 4) { continue; } // not supported - PML4 cannot map page directly
             if((*pcMemMap == 0) ||
-                ((pMemMapEntry->fPage != (pte & VMM_MEMMAP_PAGE_MASK)) && !fTransition) ||
+                ((pMemMapEntry->fPage != (pte & VMM_MEMMAP_PAGE_MASK)) && !fPagedOut) ||
                 (va != pMemMapEntry->vaBase + (pMemMapEntry->cPages << 12))) {
                 if(*pcMemMap + 1 >= VMM_MEMMAP_ENTRIES_MAX) { return; }
                 pMemMapEntry = pMemMap + *pcMemMap;
                 pMemMapEntry->vaBase = va;
                 pMemMapEntry->fPage = pte & VMM_MEMMAP_PAGE_MASK;
-                pMemMapEntry->cPages = 1ULL << (MMX64_PAGETABLEMAP_PML_REGION_SIZE[iPML] - 12);
+                cPages = 1ULL << (MMX64_PAGETABLEMAP_PML_REGION_SIZE[iPML] - 12);
+                if(fPagedOut) { pMemMapEntry->cSoftware += (DWORD)cPages; }
+                pMemMapEntry->cPages = cPages;
                 *pcMemMap = *pcMemMap + 1;
                 if(*pcMemMap >= VMM_MEMMAP_ENTRIES_MAX - 1) {
                     return;
                 }
                 continue;
             }
-            pMemMapEntry->cPages += 1ULL << (MMX64_PAGETABLEMAP_PML_REGION_SIZE[iPML] - 12);
+            cPages = 1ULL << (MMX64_PAGETABLEMAP_PML_REGION_SIZE[iPML] - 12);
+            if(fPagedOut) { pMemMapEntry->cSoftware += (DWORD)cPages; }
+            pMemMapEntry->cPages += cPages;
             continue;
         }
         // optimization - same PT in multiple consecutive PDe
@@ -244,7 +251,7 @@ VOID MmX64_Virt2PhysGetInformation_DoWork(_Inout_ PVMM_PROCESS pProcess, _Inout_
     if(pProcess->fUserOnly && !(pte & 0x04)) { return; }    // SUPERVISOR PAGE & USER MODE REQ
     if(pte & 0x000f000000000000) { return; }                // RESERVED
     if((iPML == 1) || (pte & 0x80) /* PS */) {
-        if(iPML == 4) { return; }                          // NO SUPPORT IN PML4
+        if(iPML == 4) { return; }                           // NO SUPPORT IN PML4
         qwMask = 0xffffffffffffffff << MMX64_PAGETABLEMAP_PML_REGION_SIZE[iPML];
         pVirt2PhysInfo->pas[0] = pte & 0x0000fffffffff000 & qwMask;     // MASK AWAY BITS FOR 4kB/2MB/1GB PAGES
         qwMask = qwMask ^ 0xffffffffffffffff;

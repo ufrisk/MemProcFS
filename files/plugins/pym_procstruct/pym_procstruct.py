@@ -9,14 +9,14 @@
 #
 # https://github.com/ufrisk/
 #
-# (c) Ulf Frisk, 2018
+# (c) Ulf Frisk, 2018-2019
 # Author: Ulf Frisk, pcileech@frizk.net
 #
 
 from vmmpy import *
 from vmmpyplugin import *
 
-procstruct_eprocess_size_bin = 0x500
+procstruct_eprocess_size_bin = 0x880
 procstruct_eprocess_size_hex = 0
 procstruct_peb_size_bin = 0x1000
 procstruct_peb_size_hex = 0

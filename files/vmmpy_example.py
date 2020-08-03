@@ -9,14 +9,14 @@
 #
 # To start example run:
 #    from vmmpy_example import *
-#    VmmPy_Example("<filename_of_windows_memory_dump_file>")
+#    VmmPy_Example(["-device", <filename_of_windows_memory_dump_file>"])
 # where <filename_of_windows_memory_dump_file> is the file name and path of a
-# Windows dump file of a 64-bit Windows operating system - Windows 7 or later.
-#
-# To start example how to conveniently parse the PE header structs by using
-# the dissect.cstruct library and VmmPy please run the example:
+# Windows dump file of a Windows operating system. You may also run the test
+# cases against live FPGA memory with example run:
 #    from vmmpy_example import *
-#    VmmPy_Example_ParsePE(<filename_of_windows_memory_dump_file>)
+#    VmmPy_Example(["-device", "fpga", "-memmap", "auto")
+#
+#
 #
 # https://github.com/ufrisk/
 #
@@ -26,15 +26,14 @@
 
 from vmmpy import *
 from io import BytesIO
-from dissect import cstruct
 
 
 # Examples:
 #
-# VmmPy_Example("c:\\temp\\win10.raw")
-# VmmPy_Example_ParsePE("c:\\temp\\win10.raw")
+# VmmPy_Example(["-device", "c:\\temp\\win10.raw"])
+# VmmPy_Example(["-device", "fpga", "-memmap", "auto"])
 
-def VmmPy_Example(dump_file_name):
+def VmmPy_Example(args):
     print("--------------------------------------------------------------------")
     print("Welcome to the VmmPy Example showcase / test cases. This will demo  ")
     print("how it is possible to use VmmPy to access memory dump files in a    ")
@@ -47,7 +46,7 @@ def VmmPy_Example(dump_file_name):
     print("Initialize VmmPy with the dump file specified.                      ")
     input("Press Enter to continue...")
     print("CALL: VmmPy_Initialize()")
-    VmmPy_Initialize(["-device", dump_file_name])
+    VmmPy_Initialize(args)
     print("SUCCESS: VmmPy_Initialize()")
 
     # GET CONFIG
@@ -289,6 +288,14 @@ def VmmPy_Example(dump_file_name):
     print("SUCCESS: VmmPy_MapGetPfns([1, 0x123456, 0x58f4c])")
     print(result)
 
+    # INITIALIZE PLUGIN MANAGER (REQUIRED BY VFS)
+    print("--------------------------------------------------------------------")
+    print("Initialize plugin functionality - required by virtual file system   ")
+    input("Press Enter to continue...")
+    print("CALL: VmmPy_Initialize_Plugins()")
+    VmmPy_Initialize_Plugins()
+    print("SUCCESS: VmmPy_Initialize_Plugins()")
+
     # VFS LIST /
     print("--------------------------------------------------------------------")
     print("Retrieve the file list of the virtual file system from the root path")
@@ -316,189 +323,5 @@ def VmmPy_Example(dump_file_name):
     print("SUCCESS: VmmPy_VfsRead()")
     print(result)
 
-
-
-PE_STRUCT_DEFINITIONS = """
-    #define IMAGE_NUMBEROF_DIRECTORY_ENTRIES 16
-    #define IMAGE_SIZEOF_SHORT_NAME          8
-    typedef struct _IMAGE_DOS_HEADER
-    {
-        WORD e_magic;
-        WORD e_cblp;
-        WORD e_cp;
-        WORD e_crlc;
-        WORD e_cparhdr;
-        WORD e_minalloc;
-        WORD e_maxalloc;
-        WORD e_ss;
-        WORD e_sp;
-        WORD e_csum;
-        WORD e_ip;
-        WORD e_cs;
-        WORD e_lfarlc;
-        WORD e_ovno;
-        WORD e_res[4];
-        WORD e_oemid;
-        WORD e_oeminfo;
-        WORD e_res2[10];
-        LONG e_lfanew;
-    } IMAGE_DOS_HEADER;
-    typedef struct _IMAGE_FILE_HEADER {
-        WORD  Machine;
-        WORD  NumberOfSections;
-        DWORD TimeDateStamp;
-        DWORD PointerToSymbolTable;
-        DWORD NumberOfSymbols;
-        WORD  SizeOfOptionalHeader;
-        WORD  Characteristics;
-    } IMAGE_FILE_HEADER;
-    typedef struct _IMAGE_DATA_DIRECTORY {
-        ULONG   VirtualAddress;
-        ULONG   Size;
-    } IMAGE_DATA_DIRECTORY;
-    typedef struct _IMAGE_OPTIONAL_HEADER {
-        WORD                 Magic;
-        BYTE                 MajorLinkerVersion;
-        BYTE                 MinorLinkerVersion;
-        DWORD                SizeOfCode;
-        DWORD                SizeOfInitializedData;
-        DWORD                SizeOfUninitializedData;
-        DWORD                AddressOfEntryPoint;
-        DWORD                BaseOfCode;
-        DWORD                BaseOfData;
-        DWORD                ImageBase;
-        DWORD                SectionAlignment;
-        DWORD                FileAlignment;
-        WORD                 MajorOperatingSystemVersion;
-        WORD                 MinorOperatingSystemVersion;
-        WORD                 MajorImageVersion;
-        WORD                 MinorImageVersion;
-        WORD                 MajorSubsystemVersion;
-        WORD                 MinorSubsystemVersion;
-        DWORD                Win32VersionValue;
-        DWORD                SizeOfImage;
-        DWORD                SizeOfHeaders;
-        DWORD                CheckSum;
-        WORD                 Subsystem;
-        WORD                 DllCharacteristics;
-        DWORD                SizeOfStackReserve;
-        DWORD                SizeOfStackCommit;
-        DWORD                SizeOfHeapReserve;
-        DWORD                SizeOfHeapCommit;
-        DWORD                LoaderFlags;
-        DWORD                NumberOfRvaAndSizes;
-        IMAGE_DATA_DIRECTORY DataDirectory[IMAGE_NUMBEROF_DIRECTORY_ENTRIES];
-    } IMAGE_OPTIONAL_HEADER;
-    typedef struct _IMAGE_OPTIONAL_HEADER64 {
-        WORD        Magic;
-        BYTE        MajorLinkerVersion;
-        BYTE        MinorLinkerVersion;
-        DWORD       SizeOfCode;
-        DWORD       SizeOfInitializedData;
-        DWORD       SizeOfUninitializedData;
-        DWORD       AddressOfEntryPoint;
-        DWORD       BaseOfCode;
-        ULONGLONG   ImageBase;
-        DWORD       SectionAlignment;
-        DWORD       FileAlignment;
-        WORD        MajorOperatingSystemVersion;
-        WORD        MinorOperatingSystemVersion;
-        WORD        MajorImageVersion;
-        WORD        MinorImageVersion;
-        WORD        MajorSubsystemVersion;
-        WORD        MinorSubsystemVersion;
-        DWORD       Win32VersionValue;
-        DWORD       SizeOfImage;
-        DWORD       SizeOfHeaders;
-        DWORD       CheckSum;
-        WORD        Subsystem;
-        WORD        DllCharacteristics;
-        ULONGLONG   SizeOfStackReserve;
-        ULONGLONG   SizeOfStackCommit;
-        ULONGLONG   SizeOfHeapReserve;
-        ULONGLONG   SizeOfHeapCommit;
-        DWORD       LoaderFlags;
-        DWORD       NumberOfRvaAndSizes;
-        IMAGE_DATA_DIRECTORY DataDirectory[IMAGE_NUMBEROF_DIRECTORY_ENTRIES];
-    } IMAGE_OPTIONAL_HEADER64;
-    typedef struct _IMAGE_SECTION_HEADER {
-        char    Name[IMAGE_SIZEOF_SHORT_NAME];
-        ULONG   VirtualSize;
-        ULONG   VirtualAddress;
-        ULONG   SizeOfRawData;
-        ULONG   PointerToRawData;
-        ULONG   PointerToRelocations;
-        ULONG   PointerToLinenumbers;
-        USHORT  NumberOfRelocations;
-        USHORT  NumberOfLinenumbers;
-        ULONG   Characteristics;
-    } IMAGE_SECTION_HEADER;
-"""
-
-
-
-def VmmPy_Example_ParsePE(dump_file_name):
-    # INIITALIZE
-    print("--------------------------------------------------------------------")
-    print("Initialize VmmPy with the dump file specified.                      ")
-    input("Press Enter to continue...")
-    print("CALL: VmmPy_InitializeFile()")
-    VmmPy_InitializeFile(dump_file_name)
-    print("SUCCESS: VmmPy_InitializeFile()")
-
-    #
-    # EXAMPLE BELOW USE THE FOX-IT DISSECT CSTRUCT PYTHON MODULE TO PARSE THE
-    # THE PE HEADER OF 'ntdll.dll' in 'explorer.exe'
-    #
-    print("--------------------------------------------------------------------")
-    print("Parse the PE header of 'explorer.exe'/'ntdll.dll' by using a VmmPy  ")
-    print("custom version of the dissect.cstruct parsing library from fox-it.  ")
-    print("dissect.cstruct: https://github.com/fox-it/dissect.cstruct          ")
-    input("Press Enter to continue...")
-
-    # Call VmmPy to retrieve the actual 0x1000 page containing the PE header.
-    print("CALL: VmmPy*")
-    mz_pid = VmmPy_PidGetFromName('explorer.exe')
-    mz_va = VmmPy_ProcessGetModuleFromName(mz_pid, "ntdll.dll")['va']
-    mz_bytes = VmmPy_MemRead(mz_pid, mz_va, 0x1000)
-    print("SUCCESS: VmmPy*")
-
-    # Create a stream for convenience
-    mz_stream = BytesIO(mz_bytes)
-
-    # Set up dissect.cstruct
-    print("INITIALIZING dissect.cstruct and parsing PE header structures ...   ")
-    pestruct = cstruct.cstruct()
-    pestruct.load(PE_STRUCT_DEFINITIONS)
-
-    # Load the MZ stream into dissect.struct. NB! loading mz_bytes will work as
-    # well but will not be as convenient since the 'file pointer' won't move on
-    # struct reads automatically...
-    struct_mz = pestruct.IMAGE_DOS_HEADER(mz_stream)
-    if struct_mz.e_magic != 0x5a4d:
-        print("MZ HEADER DOES NOT MATCH - ABORTING")
-        return
-    print(struct_mz)
-    print(cstruct.dumpstruct(struct_mz, None, 0, False, True))
-
-    # Seek towards the PE signature / magic value and check that it is correct.
-    mz_stream.seek(struct_mz.e_lfanew)
-    signature = pestruct.uint32(mz_stream)
-    if signature != 0x4550:
-        print("PE HEADER DOES NOT MATCH")
-        return
-
-    # Parse and display the PE file_header struct.
-    struct_file_header = pestruct.IMAGE_FILE_HEADER(mz_stream)
-    print(struct_file_header)
-    print(cstruct.dumpstruct(struct_file_header, None, 0, False, True))
-
-    # Parse and display the PE struct_optional_header struct.
-    struct_optional_header = pestruct.IMAGE_OPTIONAL_HEADER64(mz_stream) if struct_file_header.Machine == 0x8664 else pestruct.IMAGE_OPTIONAL_HEADER(mz_stream)
-    print(struct_optional_header)
-    print(cstruct.dumpstruct(struct_optional_header, None, 0, False, True))
-
-    # Parse and display the PE sections.
-    struct_sections = [pestruct.IMAGE_SECTION_HEADER(mz_stream) for _ in range(struct_file_header.NumberOfSections)]
-    for struct_section in struct_sections:
-        print(cstruct.dumpstruct(struct_section, None, 0, False, True))
+    # EXIT
+    input("Press enter to exit (examples finished)...")

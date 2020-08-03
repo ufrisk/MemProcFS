@@ -51,7 +51,7 @@ BOOL MSysInfoProc_Tree_ExistsUnprocessed(PMSYSINFOPROC_TREE_ENTRY pPidList, DWOR
     return FALSE;
 }
 
-VOID MSysInfoProc_Tree_ProcessItems_GetUserName(_In_ PVMM_PROCESS pProcess, _Out_writes_(17) LPSTR szUserName, _In_ PBOOL fAccountUser)
+VOID MSysInfoProc_Tree_ProcessItems_GetUserName(_In_ PVMM_PROCESS pProcess, _Out_writes_(17) LPSTR szUserName, _Out_ PBOOL fAccountUser)
 {
     BOOL f, fWellKnownAccount;
     DWORD cwszName;
@@ -76,7 +76,7 @@ DWORD MSysInfoProc_Tree_ProcessItems(_In_ PMSYSINFOPROC_TREE_ENTRY pProcessEntry
     fStateTerminated = (pProcessEntry->pObProcess->dwState != 0);
     fWinNativeProc = (pProcessEntry->dwPID == 4) || (pProcessEntry->dwPPID == 4);
     for(i = 0; !fWinNativeProc && (i < (sizeof(szMSYSINFOPROC_WHITELIST_WINDOWS_PATHS_AND_BINARIES) / sizeof(LPSTR))); i++) {
-        fWinNativeProc = (NULL != strstr(pProcessEntry->pObProcess->pObPersistent->szPathKernel, szMSYSINFOPROC_WHITELIST_WINDOWS_PATHS_AND_BINARIES[i]));
+        fWinNativeProc = (NULL != strstr(pProcessEntry->pObProcess->pObPersistent->uszPathKernel, szMSYSINFOPROC_WHITELIST_WINDOWS_PATHS_AND_BINARIES[i]));
     }
     MSysInfoProc_Tree_ProcessItems_GetUserName(pProcessEntry->pObProcess, szUserName, &fAccountUser);
     o = snprintf(
@@ -93,18 +93,18 @@ DWORD MSysInfoProc_Tree_ProcessItems(_In_ PMSYSINFOPROC_TREE_ENTRY pProcessEntry
         fAccountUser ? 'U' : ' ',
         fWinNativeProc ? ' ' : '*',
         szUserName,
-        fVerbose ? pProcessEntry->pObProcess->pObPersistent->szPathKernel : ""
+        fVerbose ? pProcessEntry->pObProcess->pObPersistent->uszPathKernel : ""
     );
     if(fVerbose) {
-        if(pProcessEntry->pObProcess->pObPersistent->UserProcessParams.szImagePathName) {
+        if(pProcessEntry->pObProcess->pObPersistent->UserProcessParams.uszImagePathName) {
             o += snprintf(pb + o, cb - o, "%61s%-*s\n", "",
-                pProcessEntry->pObProcess->pObPersistent->UserProcessParams.cchImagePathName,
-                pProcessEntry->pObProcess->pObPersistent->UserProcessParams.szImagePathName);
+                pProcessEntry->pObProcess->pObPersistent->UserProcessParams.cuszImagePathName,
+                pProcessEntry->pObProcess->pObPersistent->UserProcessParams.uszImagePathName);
         }
-        if(pProcessEntry->pObProcess->pObPersistent->UserProcessParams.szCommandLine) {
+        if(pProcessEntry->pObProcess->pObPersistent->UserProcessParams.uszCommandLine) {
             o += snprintf(pb + o, cb - o, "%61s%-*s\n", "",
-                pProcessEntry->pObProcess->pObPersistent->UserProcessParams.cchCommandLine,
-                pProcessEntry->pObProcess->pObPersistent->UserProcessParams.szCommandLine);
+                pProcessEntry->pObProcess->pObPersistent->UserProcessParams.cuszCommandLine,
+                pProcessEntry->pObProcess->pObPersistent->UserProcessParams.uszCommandLine);
         }
         o += snprintf(pb + o, cb - o, "\n");
     }
@@ -185,12 +185,12 @@ BOOL MSysInfoProc_Tree(_In_ BOOL fVerbose, _Out_ PBYTE * ppb, _Out_ PDWORD pcb)
 VOID MSysInfoProc_ListTree_ProcessUserParams_CallbackAction(_In_ PVMM_PROCESS pProcess, _In_ PDWORD pcTotalBytes)
 {
     PVMMWIN_USER_PROCESS_PARAMETERS pu = VmmWin_UserProcessParameters_Get(pProcess);
-    DWORD c = MSYSINFOPROC_TREE_LINE_LENGTH_BASE + pProcess->pObPersistent->cchPathKernel + 1;
-    if(pu->szImagePathName) {
-        c += MSYSINFOPROC_TREE_LINE_LENGTH_BASE + pu->cchImagePathName;
+    DWORD c = MSYSINFOPROC_TREE_LINE_LENGTH_BASE + pProcess->pObPersistent->cuszPathKernel + 1;
+    if(pu->uszImagePathName) {
+        c += MSYSINFOPROC_TREE_LINE_LENGTH_BASE + pu->cuszImagePathName;
     }
-    if(pu->szCommandLine) {
-        c += MSYSINFOPROC_TREE_LINE_LENGTH_BASE + pu->cchCommandLine;
+    if(pu->uszCommandLine) {
+        c += MSYSINFOPROC_TREE_LINE_LENGTH_BASE + pu->cuszCommandLine;
     }
     InterlockedAdd(pcTotalBytes, c);
 }
@@ -225,7 +225,7 @@ BOOL MSysInfoProc_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileLis
         cbProcTree = (DWORD)(cProcess + 2) * MSYSINFOPROC_TREE_LINE_LENGTH_BASE;
         VMMDLL_VfsList_AddFile(pFileList, L"tree.txt", cbProcTree, NULL);
         cbProcTree = MSYSINFOPROC_TREE_LINE_LENGTH_HEADER_VERBOSE * 2;
-        VmmProcessActionForeachParallel(&cbProcTree, 5, NULL, MSysInfoProc_ListTree_ProcessUserParams_CallbackAction);
+        VmmProcessActionForeachParallel(&cbProcTree, NULL, MSysInfoProc_ListTree_ProcessUserParams_CallbackAction);
         VMMDLL_VfsList_AddFile(pFileList, L"tree-v.txt", cbProcTree, NULL);
     }
     return TRUE;

@@ -10,14 +10,16 @@
 #include "vmm.h"
 #include "pe.h"
 
-#define VMMWIN_PDB_HANDLE_KERNEL            ((QWORD)-1)
+typedef QWORD                               PDB_HANDLE;
+
+#define PDB_HANDLE_KERNEL                   ((PDB_HANDLE)-1)
 
 /*
 * Initialize the PDB sub-system. This should ideally be done on Vmm Init().
 * -- pPdbInfoOpt
 * -- fInitializeKernelAsync
 */
-VOID PDB_Initialize(_In_opt_ PIMAGE_DEBUG_TYPE_CODEVIEW_PDBINFO pPdbInfoOpt, _In_ BOOL fInitializeKernelAsync);
+VOID PDB_Initialize(_In_opt_ PPE_CODEVIEW_INFO pPdbInfoOpt, _In_ BOOL fInitializeKernelAsync);
 
 /*
 * Wait for completion of initialization of the PDB sub-system.
@@ -37,26 +39,41 @@ VOID PDB_Close();
 VOID PDB_ConfigChange();
 
 /*
-* Add a module to the PDB database and return its handle. The PDB for the added
-* module won't be loaded until required. If the module already exists in the
-* PDB database the handle will also be returned.
+* Retrieve a PDB handle given a process and module base address. If the handle
+* is not found in the database an attempt to automatically add it is performed.
+* NB! Only one PDB with the same base address may exist regardless of process.
+* NB! The PDB for the added module won't be loaded until required.
+* -- pProcess
 * -- vaModuleBase
-* -- szModuleName
-* -- szPdbName
-* -- pbPdbGUID
-* -- dwPdbAge
-* -- return
+* -- return = The PDB handle on success (no need to close handle); or zero on fail.
 */
-VMMWIN_PDB_HANDLE PDB_AddModuleEntry(_In_ QWORD vaModuleBase, _In_ LPSTR szModuleName, _In_ LPSTR szPdbName, _In_reads_(16) PBYTE pbPdbGUID, _In_ DWORD dwPdbAge);
+PDB_HANDLE PDB_GetHandleFromModuleAddress(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase);
 
 /*
 * Retrieve a PDB handle from an already added module.
 * NB! If multiple modules exists with the same name the 1st module to be added
 *     is returned.
 * -- szModuleName
+* -- return = The PDB handle on success (no need to close handle); or zero on fail.
+*/
+PDB_HANDLE PDB_GetHandleFromModuleName(_In_ LPSTR szModuleName);
+
+/*
+* Ensure that the PDB_HANDLE have its symbols loaded into memory.
+* -- hPDB
 * -- return
 */
-VMMWIN_PDB_HANDLE PDB_GetHandleFromModuleName(_In_ LPSTR szModuleName);
+_Success_(return)
+BOOL PDB_LoadEnsure(_In_opt_ PDB_HANDLE hPDB);
+
+/*
+* Return the module name given a PDB handle.
+* -- hPDB
+* -- szModuleName = buffer to receive module name upon success.
+* -- return
+*/
+_Success_(return)
+BOOL PDB_GetModuleName(_In_opt_ PDB_HANDLE hPDB, _Out_writes_(MAX_PATH) LPSTR szModuleName);
 
 /*
 * Query the PDB for the offset of a symbol. If szSymbolName contains wildcard
@@ -68,7 +85,7 @@ VMMWIN_PDB_HANDLE PDB_GetHandleFromModuleName(_In_ LPSTR szModuleName);
 * -- return
 */
 _Success_(return)
-BOOL PDB_GetSymbolOffset(_In_opt_ VMMWIN_PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _Out_ PDWORD pdwSymbolOffset);
+BOOL PDB_GetSymbolOffset(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _Out_ PDWORD pdwSymbolOffset);
 
 /*
 * Query the PDB for the offset of a symbol and return its virtual address. If
@@ -76,11 +93,23 @@ BOOL PDB_GetSymbolOffset(_In_opt_ VMMWIN_PDB_HANDLE hPDB, _In_ LPSTR szSymbolNam
 * the virtual address of the 1st symbol is returned.
 * -- hPDB
 * -- szSymbolName = wildcard symbol name
-* -- pvaSymbolOffset
+* -- pvaSymbolAddress
 * -- return
 */
 _Success_(return)
-BOOL PDB_GetSymbolAddress(_In_opt_ VMMWIN_PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _Out_ PQWORD pvaSymbolOffset);
+BOOL PDB_GetSymbolAddress(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _Out_ PQWORD pvaSymbolAddress);
+
+/*
+* Query the PDB for the closest symbol name given an offset from the module
+* base address.
+* -- hPDB
+* -- dwSymbolOffset = the offset from the module base to query.
+* -- szSymbolName = buffer to receive the name of the symbol.
+* -- pdwSymbolDisplacement = displacement from the beginning of the symbol.
+* -- return
+*/
+_Success_(return)
+BOOL PDB_GetSymbolFromOffset(_In_opt_ PDB_HANDLE hPDB, _In_ DWORD dwSymbolOffset, _Out_writes_opt_(MAX_PATH) LPSTR szSymbolName, _Out_opt_ PDWORD pdwSymbolDisplacement);
 
 /*
 * Read memory at the PDB acquired symbol offset. If szSymbolName contains
@@ -95,7 +124,7 @@ BOOL PDB_GetSymbolAddress(_In_opt_ VMMWIN_PDB_HANDLE hPDB, _In_ LPSTR szSymbolNa
 * -- return
 */
 _Success_(return)
-BOOL PDB_GetSymbolPBYTE(_In_opt_ VMMWIN_PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb);
+BOOL PDB_GetSymbolPBYTE(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb);
 
 /*
 * Read memory pointed to at the PDB acquired symbol offset.
@@ -106,7 +135,7 @@ BOOL PDB_GetSymbolPBYTE(_In_opt_ VMMWIN_PDB_HANDLE hPDB, _In_ LPSTR szSymbolName
 * -- return
 */
 _Success_(return)
-inline BOOL PDB_GetSymbolQWORD(_In_opt_ VMMWIN_PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_ PQWORD pqw)
+inline BOOL PDB_GetSymbolQWORD(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_ PQWORD pqw)
 {
     return PDB_GetSymbolPBYTE(hPDB, szSymbolName, pProcess, (PBYTE)pqw, sizeof(QWORD));
 }
@@ -120,7 +149,7 @@ inline BOOL PDB_GetSymbolQWORD(_In_opt_ VMMWIN_PDB_HANDLE hPDB, _In_ LPSTR szSym
 * -- return
 */
 _Success_(return)
-inline BOOL PDB_GetSymbolDWORD(_In_opt_ VMMWIN_PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_ PDWORD pdw)
+inline BOOL PDB_GetSymbolDWORD(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_ PDWORD pdw)
 {
     return PDB_GetSymbolPBYTE(hPDB, szSymbolName, pProcess, (PBYTE)pdw, sizeof(DWORD));
 }
@@ -134,7 +163,7 @@ inline BOOL PDB_GetSymbolDWORD(_In_opt_ VMMWIN_PDB_HANDLE hPDB, _In_ LPSTR szSym
 * -- return
 */
 _Success_(return)
-inline BOOL PDB_GetSymbolPTR(_In_opt_ VMMWIN_PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_ PVOID pv)
+inline BOOL PDB_GetSymbolPTR(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_ PVOID pv)
 {
     return PDB_GetSymbolPBYTE(hPDB, szSymbolName, pProcess, (PBYTE)pv, (ctxVmm->f32 ? sizeof(DWORD) : sizeof(QWORD)));
 }
@@ -148,10 +177,10 @@ inline BOOL PDB_GetSymbolPTR(_In_opt_ VMMWIN_PDB_HANDLE hPDB, _In_ LPSTR szSymbo
 * -- return
 */
 _Success_(return)
-BOOL PDB_GetTypeSize(_In_opt_ VMMWIN_PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _Out_ PDWORD pdwTypeSize);
+BOOL PDB_GetTypeSize(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _Out_ PDWORD pdwTypeSize);
 
 _Success_(return)
-BOOL PDB_GetTypeSizeShort(_In_opt_ VMMWIN_PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _Out_ PWORD pwTypeSize);
+BOOL PDB_GetTypeSizeShort(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _Out_ PWORD pwTypeSize);
 
 /*
 * Query the PDB for the offset of a child inside a type - often inside a struct.
@@ -164,9 +193,9 @@ BOOL PDB_GetTypeSizeShort(_In_opt_ VMMWIN_PDB_HANDLE hPDB, _In_ LPSTR szTypeName
 * -- return
 */
 _Success_(return)
-BOOL PDB_GetTypeChildOffset(_In_opt_ VMMWIN_PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _In_ LPWSTR wszTypeChildName, _Out_ PDWORD pdwTypeOffset);
+BOOL PDB_GetTypeChildOffset(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _In_ LPWSTR wszTypeChildName, _Out_ PDWORD pdwTypeOffset);
 
 _Success_(return)
-BOOL PDB_GetTypeChildOffsetShort(_In_opt_ VMMWIN_PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _In_ LPWSTR wszTypeChildName, _Out_ PWORD pwTypeOffset);
+BOOL PDB_GetTypeChildOffsetShort(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _In_ LPWSTR wszTypeChildName, _Out_ PWORD pwTypeOffset);
 
 #endif /* __PDB_H__ */

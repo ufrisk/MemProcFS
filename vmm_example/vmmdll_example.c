@@ -9,8 +9,8 @@
 #include <Windows.h>
 #include <stdio.h>
 #include <conio.h>
-#include "leechcore.h"
-#include "vmmdll.h"
+#include <leechcore.h>
+#include <vmmdll.h>
 
 #pragma comment(lib, "leechcore")
 #pragma comment(lib, "vmm")
@@ -154,29 +154,13 @@ int main(_In_ int argc, _In_ char* argv[])
     ShowKeyPress();
     printf("CALL:    VMMDLL_ConfigGet\n");
     result =
-        VMMDLL_ConfigGet(LEECHCORE_OPT_FPGA_FPGA_ID, &qwID) &&
-        VMMDLL_ConfigGet(LEECHCORE_OPT_FPGA_VERSION_MAJOR, &qwVersionMajor) &&
-        VMMDLL_ConfigGet(LEECHCORE_OPT_FPGA_VERSION_MINOR, &qwVersionMinor);
+        VMMDLL_ConfigGet(LC_OPT_FPGA_FPGA_ID, &qwID) &&
+        VMMDLL_ConfigGet(LC_OPT_FPGA_VERSION_MAJOR, &qwVersionMajor) &&
+        VMMDLL_ConfigGet(LC_OPT_FPGA_VERSION_MINOR, &qwVersionMinor);
     if(result) {
         printf("SUCCESS: VMMDLL_ConfigGet\n");
         printf("         ID = %lli\n", qwID);
         printf("         VERSION = %lli.%lli\n", qwVersionMajor, qwVersionMinor);
-    } else {
-        printf("FAIL:    VMMDLL_ConfigGet\n");
-        return 1;
-    }
-    // Retrieve the read delay value (in microseconds uS) that is used by the
-    // FPGA to pause in every read. Sometimes it may be a good idea to adjust
-    // this (and other related values) to lower versions if the FPGA device
-    // still works stable without errors. Use PCIleech_DeviceConfigSet to set
-    // values.
-    ULONG64 qwReadDelay;
-    ShowKeyPress();
-    printf("CALL:    VMMDLL_ConfigGet\n");
-    result = VMMDLL_ConfigGet(LEECHCORE_OPT_FPGA_DELAY_READ, &qwReadDelay);
-    if(result) {
-        printf("SUCCESS: VMMDLL_ConfigGet\n");
-        printf("         FPGA Read Delay in microseconds (uS) = %lli\n", qwReadDelay);
     } else {
         printf("FAIL:    VMMDLL_ConfigGet\n");
         return 1;
@@ -419,16 +403,17 @@ int main(_In_ int argc, _In_ char* argv[])
     result = VMMDLL_ProcessMap_GetModule(dwPID, pModuleMap, &cbModuleMap);
     if(result) {
         printf("SUCCESS: VMMDLL_ProcessMap_GetModule #2\n");
-        printf("         MODULE_NAME                                 BASE             SIZE     ENTRY\n");
-        printf("         ======================================================================================\n");
+        printf("         MODULE_NAME                                 BASE             SIZE     ENTRY           PATH\n");
+        printf("         ==========================================================================================\n");
         for(i = 0; i < pModuleMap->cMap; i++) {
             printf(
-                "         %-40.40S %i %016llx %08x %016llx\n",
+                "         %-40.40S %i %016llx %08x %016llx %S\n",
                 pModuleMap->pMap[i].wszText,
                 pModuleMap->pMap[i].fWoW64 ? 32 : 64,
                 pModuleMap->pMap[i].vaBase,
                 pModuleMap->pMap[i].cbImageSize,
-                pModuleMap->pMap[i].vaEntry
+                pModuleMap->pMap[i].vaEntry,
+                pModuleMap->pMap[i].wszFullName
             );
         }
     } else {
@@ -494,12 +479,12 @@ int main(_In_ int argc, _In_ char* argv[])
     result = VMMDLL_ProcessMap_GetThread(dwPID, pThreadMap, &cbThreadMap);
     if(result) {
         printf("SUCCESS: VMMDLL_ProcessMap_GetThread #2\n");
-        printf("         #         TID      PID ADDR_TEB         ADDR_ETHREAD     ADDR_START       STACK\n");
-        printf("         ===============================================================================\n");
+        printf("         #         TID      PID ADDR_TEB         ADDR_ETHREAD     ADDR_START       INSTRUCTION_PTR  STACK[BASE:TOP]:PTR\n");
+        printf("         ==============================================================================================================\n");
         for(i = 0; i < pThreadMap->cMap; i++) {
             pThreadMapEntry = &pThreadMap->pMap[i];
             printf(
-                "         %04x %8x %8x %016llx %016llx %016llx [%016llx->%016llx]\n",
+                "         %04x %8x %8x %016llx %016llx %016llx [%016llx->%016llx]:%016llx %016llx\n",
                 i,
                 pThreadMapEntry->dwTID,
                 pThreadMapEntry->dwPID,
@@ -507,7 +492,9 @@ int main(_In_ int argc, _In_ char* argv[])
                 pThreadMapEntry->vaETHREAD,
                 pThreadMapEntry->vaStartAddress,
                 pThreadMapEntry->vaStackBaseUser,
-                pThreadMapEntry->vaStackLimitUser
+                pThreadMapEntry->vaStackLimitUser,
+                pThreadMapEntry->vaRSP,
+                pThreadMapEntry->vaRIP
             );
         }
     } else {
@@ -703,17 +690,17 @@ int main(_In_ int argc, _In_ char* argv[])
     printf("------------------------------------------------------------\n");
     printf("#16: 0x20 bytes of each 'kernel32.dll' section.             \n");
     ShowKeyPress();
-    PPMEM_IO_SCATTER_HEADER ppMEMs = NULL;
+    PPMEM_SCATTER ppMEMs = NULL;
     // Allocate empty scatter entries and populate them with the virtual addresses of
     // the sections to read. If one wish to have a more efficient way of doing things
     // without lots of copying of memory it's possible to initialize the ppMEMs array
-    // manually and set each individual MEM_IO_SCATTER_HEADER result byte buffer to
-    // point into ones own pre-allocated data buffer.
-    printf("CALL:    LeechCore_AllocScatterEmpty #1\n");
-    if(LeechCore_AllocScatterEmpty(cSections, &ppMEMs)) {
-        printf("SUCCESS: LeechCore_AllocScatterEmpty #1\n");
+    // manually and set each individual MEM_SCATTER result byte buffer to point into
+    // own pre-allocated data buffer or use one of the other LcAllocScatterX() fns.
+    printf("CALL:    LcAllocScatter1 #1\n");
+    if(LcAllocScatter1(cSections, &ppMEMs)) {
+        printf("SUCCESS: LcAllocScatter1 #1\n");
     } else {
-        printf("FAIL:    LeechCore_AllocScatterEmpty #1\n");
+        printf("FAIL:    LcAllocScatter1 #1\n");
         return 1;
     }
     for(i = 0; i < cSections; i++) {
@@ -735,14 +722,14 @@ int main(_In_ int argc, _In_ char* argv[])
     // print result
     for(i = 0; i < cSections; i++) {
         printf("--------------\n         %s\n", pSectionHeaders[i].Name);
-        if(ppMEMs[i]->cb == 0x1000) {
+        if(ppMEMs[i]->f) {
             PrintHexAscii(ppMEMs[i]->pb, 0x40);
         } else {
             printf("[read failed]\n");
         }
     }
     // free previosly allocated ppMEMs;
-    LeechCore_MemFree(ppMEMs);
+    LcMemFree(ppMEMs);
 
 
     // Retrieve and display the data directories of kernel32.dll. The number of
@@ -861,12 +848,12 @@ int main(_In_ int argc, _In_ char* argv[])
     printf("#20: Initialize Plugin Manager functionality as is required \n");
     printf("     by virtual file system (vfs) functionality.            \n");
     ShowKeyPress();
-    printf("CALL:    VMMDLL_VfsList\n");
-    result = VMMDLL_VfsInitializePlugins();
+    printf("CALL:    VMMDLL_InitializePlugins\n");
+    result = VMMDLL_InitializePlugins();
     if(result) {
-        printf("SUCCESS: VMMDLL_VfsInitializePlugins\n");
+        printf("SUCCESS: VMMDLL_InitializePlugins\n");
     } else {
-        printf("FAIL:    VMMDLL_VfsInitializePlugins\n");
+        printf("FAIL:    VMMDLL_InitializePlugins\n");
         return 1;
     }
 

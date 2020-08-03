@@ -6,7 +6,7 @@
 //
 #include <Windows.h>
 #include <stdio.h>
-#include "vmmdll.h"
+#include <vmmdll.h>
 
 VMMDLL_MEMORYMODEL_TP g_VMemD_TpMemoryModel = VMMDLL_MEMORYMODEL_NA;
 

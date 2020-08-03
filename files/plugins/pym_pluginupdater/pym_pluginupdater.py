@@ -7,7 +7,7 @@
 #
 # https://github.com/ufrisk/
 #
-# (c) Ulf Frisk, 2019
+# (c) Ulf Frisk, 2019-2020
 # Author: Ulf Frisk, pcileech@frizk.net
 #
 
@@ -83,7 +83,7 @@ plugins = {
         'upgrade': False,
         'text_upgrade': text_upgrade + text_desc_pypykatz,
         'text_install': text_install + text_desc_pypykatz,
-        'text_completed': 'Additional dependencies: "python pip install pypykatz" may be required.',
+        'text_completed': 'Additional dependencies: "pip install dissect.cstruct pypykatz" may be required.',
     },
     'regsecrets': {
         'name': 'regsecrets',
@@ -96,7 +96,7 @@ plugins = {
         'upgrade': False,
         'text_upgrade': text_upgrade + text_desc_regsecrets,
         'text_install': text_install + text_desc_regsecrets,
-        'text_completed': 'Additional dependencies: "python pip install pypykatz aiowinreg" may be required.',
+        'text_completed': 'Additional dependencies: "pip install pypykatz aiowinreg" may be required.',
     }
 }
 

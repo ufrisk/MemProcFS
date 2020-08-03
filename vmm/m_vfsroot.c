@@ -17,11 +17,6 @@
 #define KDBG64_ContextKPRCB         0x338
 #define KDBG64_OffsetPrcbNumber     0x2be
 
-#define DUMP_SIGNATURE              0x45474150
-#define DUMP_VALID_DUMP             0x504d5544
-#define DUMP_VALID_DUMP64           0x34365544
-#define DUMP_MAJOR_VERSION          0x0000000F
-#define DUMP_TYPE_FULL              1
 #define _PHYSICAL_MEMORY_MAX_RUNS   0x20
 
 typedef struct {
@@ -30,10 +25,12 @@ typedef struct {
 } _PHYSICAL_MEMORY_RUN64;
 
 typedef struct {
-    QWORD NumberOfRuns;
-    QWORD NumberOfPages;
+    DWORD NumberOfRuns;
+    DWORD Reserved1;
+    DWORD NumberOfPages;
+    DWORD Reserved2;
     _PHYSICAL_MEMORY_RUN64 Run[_PHYSICAL_MEMORY_MAX_RUNS];
-} _PHYSICAL_MEMORY_DESCRIPTOR64;
+} _PHYSICAL_MEMORY_DESCRIPTOR64, *_PPHYSICAL_MEMORY_DESCRIPTOR64;
 
 typedef struct {
     DWORD BasePage;
@@ -44,89 +41,7 @@ typedef struct {
     DWORD NumberOfRuns;
     DWORD NumberOfPages;
     _PHYSICAL_MEMORY_RUN32 Run[_PHYSICAL_MEMORY_MAX_RUNS];
-} _PHYSICAL_MEMORY_DESCRIPTOR32;
-
-typedef struct tdDUMP_HEADER32 {
-    ULONG Signature;                    // 0x0000
-    ULONG ValidDump;                    // 0x0004
-    ULONG MajorVersion;                 // 0x0008
-    ULONG MinorVersion;					// 0x000c
-    ULONG DirectoryTableBase;			// 0x0010
-    ULONG PfnDataBase;                  // 0x0014
-    ULONG PsLoadedModuleList;           // 0x0018
-    ULONG PsActiveProcessHead;          // 0x001c
-    ULONG MachineImageType;             // 0x0020
-    ULONG NumberProcessors;             // 0x0024
-    ULONG BugCheckCode;                 // 0x0028
-    ULONG BugCheckParameter1;           // 0x002c
-    ULONG BugCheckParameter2;           // 0x0030
-    ULONG BugCheckParameter3;           // 0x0034
-    ULONG BugCheckParameter4;           // 0x0038
-    CHAR VersionUser[32];               // 0x003c
-    CHAR PaeEnabled;                    // 0x005c
-    CHAR KdSecondaryVersion;            // 0x005d
-    CHAR spare[2];                      // 0x005e
-    ULONG KdDebuggerDataBlock;          // 0x0060
-    union {                             // 0x0064
-        _PHYSICAL_MEMORY_DESCRIPTOR32 PhysicalMemoryBlock;
-        UCHAR PhysicalMemoryBlockBuffer[700];
-    };
-    UCHAR ContextRecord[1200];          // 0x0320
-    EXCEPTION_RECORD32 ExceptionRecord; // 0x07d0
-    CHAR Comment[128];                  // 0x0820
-    UCHAR reserved0[1768];              // 0x08a0
-    ULONG DumpType;                     // 0x0f88
-    ULONG MiniDumpFields;               // 0x0f8c
-    ULONG SecondaryDataState;           // 0x0f90
-    ULONG ProductType;                  // 0x0f94
-    ULONG SuiteMask;                    // 0x0f98
-    UCHAR reserved1[4];                 // 0x0f9c
-    ULONG64 RequiredDumpSpace;          // 0x0fa0
-    UCHAR reserved2[16];                // 0x0fa8
-    ULONG64 SystemUpTime;               // 0x0fb8
-    ULONG64 SystemTime;                 // 0x0fc0
-    UCHAR reserved3[56];                // 0x0fc8
-} DUMP_HEADER32, *PDUMP_HEADER32;
-
-typedef struct tdDUMP_HEADER64 {
-    ULONG Signature;					// 0x0000
-    ULONG ValidDump;					// 0x0004
-    ULONG MajorVersion;					// 0x0008
-    ULONG MinorVersion;					// 0x000c
-    ULONG64 DirectoryTableBase;			// 0x0010
-    ULONG64 PfnDataBase;				// 0x0018
-    ULONG64 PsLoadedModuleList;			// 0x0020
-    ULONG64 PsActiveProcessHead;		// 0x0028
-    ULONG MachineImageType;				// 0x0030
-    ULONG NumberProcessors;				// 0x0034
-    ULONG BugCheckCode;					// 0x0038
-    ULONG64 BugCheckParameter1;			// 0x0040
-    ULONG64 BugCheckParameter2;			// 0x0048
-    ULONG64 BugCheckParameter3;			// 0x0050
-    ULONG64 BugCheckParameter4;			// 0x0058
-    CHAR VersionUser[32];				// 0x0060
-    ULONG64 KdDebuggerDataBlock;		// 0x0080
-    union {								// 0x0088
-        _PHYSICAL_MEMORY_DESCRIPTOR64 PhysicalMemoryBlock;
-        UCHAR PhysicalMemoryBlockBuffer[700];
-    };
-    UCHAR ContextRecord[3000];			// 0x0348
-    EXCEPTION_RECORD64 ExceptionRecord;	// 0x0F00
-    ULONG DumpType;						// 0x0F98
-    ULONG64 RequiredDumpSpace;	        // 0x0FA0
-    ULONG64 SystemTime;				    // 0x0FA8 
-    CHAR Comment[0x80];					// 0x0FB0 May not be present.
-    ULONG64 SystemUpTime;				// 0x1030
-    ULONG MiniDumpFields;				// 0x1038
-    ULONG SecondaryDataState;			// 0x103c
-    ULONG ProductType;					// 0x1040
-    ULONG SuiteMask;					// 0x1044
-    ULONG WriterStatus;					// 0x1048
-    UCHAR Unused1;						// 0x104c
-    UCHAR KdSecondaryVersion;			// 0x104d Present only for W2K3 SP1 and better
-    UCHAR Unused[2];					// 0x104e
-    UCHAR _reserved0[4016];				// 0x1050
-} DUMP_HEADER64, *PDUMP_HEADER64;
+} _PHYSICAL_MEMORY_DESCRIPTOR32, *_PPHYSICAL_MEMORY_DESCRIPTOR32;
 
 typedef struct tdVMMVFS_DUMP_CONTEXT_OVERLAY {
     QWORD pa;
@@ -141,8 +56,6 @@ typedef struct tdOB_VMMVFS_DUMP_CONTEXT {
     DWORD cbHdr;
     union {
         BYTE pb[0x2000];
-        DUMP_HEADER64 _64;
-        DUMP_HEADER32 _32;
     } Hdr;
     struct {
         BOOL fEncrypted;
@@ -253,127 +166,139 @@ VOID MVfsRoot_KdbgLoadAndDecrypt(_In_ PVMM_PROCESS pSystemProcess, _In_ POB_VMMV
 
 VOID MVfsRoot_InitializeDumpContext_SetMemory(_In_ POB_VMMVFS_DUMP_CONTEXT ctx)
 {
+    _PPHYSICAL_MEMORY_DESCRIPTOR32 pMd32 = (_PPHYSICAL_MEMORY_DESCRIPTOR32)(ctx->Hdr.pb + 0x064);
+    _PPHYSICAL_MEMORY_DESCRIPTOR64 pMd64 = (_PPHYSICAL_MEMORY_DESCRIPTOR64)(ctx->Hdr.pb + 0x088);
     if(ctxVmm->f32) {
-        ctx->Hdr._32.PhysicalMemoryBlock.NumberOfRuns = 1;
-        ctx->Hdr._32.PhysicalMemoryBlock.NumberOfPages = (DWORD)(ctxMain->dev.paMax / 0x1000);
-        ctx->Hdr._32.PhysicalMemoryBlock.Run[0].BasePage = 0;
-        ctx->Hdr._32.PhysicalMemoryBlock.Run[0].PageCount = (DWORD)(ctxMain->dev.paMax / 0x1000);
+        pMd32->NumberOfRuns = 1;
+        pMd32->NumberOfPages = (DWORD)(ctxMain->dev.paMax / 0x1000);
+        pMd32->Run[0].BasePage = 0;
+        pMd32->Run[0].PageCount = (DWORD)(ctxMain->dev.paMax / 0x1000);
     } else {
-        ctx->Hdr._64.PhysicalMemoryBlock.NumberOfRuns = 1;
-        ctx->Hdr._64.PhysicalMemoryBlock.NumberOfPages = (DWORD)(ctxMain->dev.paMax / 0x1000);
-        ctx->Hdr._64.PhysicalMemoryBlock.Run[0].BasePage = 0;
-        ctx->Hdr._64.PhysicalMemoryBlock.Run[0].PageCount = ctxMain->dev.paMax / 0x1000;
+        pMd64->Reserved1 = 0;
+        pMd64->Reserved2 = 0;
+        pMd64->NumberOfRuns = 1;
+        pMd64->NumberOfPages = (DWORD)(ctxMain->dev.paMax / 0x1000);
+        pMd64->Run[0].BasePage = 0;
+        pMd64->Run[0].PageCount = ctxMain->dev.paMax / 0x1000;
     }
 }
 
 VOID MVfsRoot_InitializeDumpContext64(_In_ PVMM_PROCESS pSystemProcess, _In_ POB_VMMVFS_DUMP_CONTEXT ctx)
 {
-    PDUMP_HEADER64 pd = &ctx->Hdr._64;
+    PBYTE pb = ctx->Hdr.pb;
     QWORD ftMin = 0, ftMax = 0;
     SysQuery_TimeProcessMinMax(&ftMin, &ftMax);
-    pd->Signature = DUMP_SIGNATURE;
-    pd->ValidDump = DUMP_VALID_DUMP64;
-    pd->MajorVersion = DUMP_MAJOR_VERSION;
-    pd->MinorVersion = ctxVmm->kernel.dwVersionBuild;
-    pd->DirectoryTableBase = ctxVmm->kernel.paDTB;
-    pd->PfnDataBase = ctxVmm->kernel.opt.vaPfnDatabase;
-    pd->PsLoadedModuleList = ctxVmm->kernel.opt.vaPsLoadedModuleListExp;
-    pd->PsActiveProcessHead = pSystemProcess->win.EPROCESS.va;
-    pd->MachineImageType = IMAGE_FILE_MACHINE_AMD64;
-    pd->NumberProcessors = max(1, ctxVmm->kernel.opt.cCPUs);
-    pd->BugCheckCode = 0xDEADDEAD;
-    pd->BugCheckParameter1 = 1;
-    pd->BugCheckParameter2 = 2;
-    pd->BugCheckParameter3 = 3;
-    pd->BugCheckParameter4 = 4;
-    pd->KdDebuggerDataBlock = ctxVmm->kernel.opt.KDBG.va;
+    *(PDWORD)(pb + 0x000) = 0x45474150;                         // Signature #1
+    *(PDWORD)(pb + 0x004) = 0x34365544;                         // Signature #2
+    *(PDWORD)(pb + 0x008) = 0x0000000F;                         // DumpVersion
+    *(PDWORD)(pb + 0x00c) = ctxVmm->kernel.dwVersionBuild;      // BuildNo
+    *(PQWORD)(pb + 0x010) = ctxVmm->kernel.paDTB;
+    *(PQWORD)(pb + 0x018) = ctxVmm->kernel.opt.vaPfnDatabase;
+    *(PQWORD)(pb + 0x020) = ctxVmm->kernel.opt.vaPsLoadedModuleListExp;
+    *(PQWORD)(pb + 0x028) = pSystemProcess->win.EPROCESS.va;
+    *(PDWORD)(pb + 0x030) = 0x8664;                             // MachineImageType = AMD64
+    *(PDWORD)(pb + 0x034) = max(1, ctxVmm->kernel.opt.cCPUs);
+    *(PDWORD)(pb + 0x038) = 0xDEADDEAD;                         // BugCheckCode
+    *(PQWORD)(pb + 0x040) = 1;                                  // BugCheck1
+    *(PQWORD)(pb + 0x048) = 2;                                  // BugCheck2
+    *(PQWORD)(pb + 0x050) = 3;                                  // BugCheck3
+    *(PQWORD)(pb + 0x058) = 4;                                  // BugCheck4
+    *(PQWORD)(pb + 0x080) = ctxVmm->kernel.opt.KDBG.va;         // KDBG
     MVfsRoot_InitializeDumpContext_SetMemory(ctx);
-    ZeroMemory(pd->ContextRecord, sizeof(pd->ContextRecord));
-    *(PWORD)(pd->ContextRecord + 0x038) = 0x10;                     // SegCs
-    *(PWORD)(pd->ContextRecord + 0x03a) = 0x2b;                     // SegDs
-    *(PWORD)(pd->ContextRecord + 0x03c) = 0x2b;                     // SegEs
-    *(PWORD)(pd->ContextRecord + 0x03e) = 0x53;                     // SegFs
-    *(PWORD)(pd->ContextRecord + 0x040) = 0x2b;                     // SegGs
-    *(PWORD)(pd->ContextRecord + 0x042) = 0x00;                     // SegSs
-    *(PQWORD)(pd->ContextRecord + 0x098) = ctxVmm->kernel.vaBase;   // Rsp
-    ZeroMemory(&pd->ExceptionRecord, sizeof(pd->ExceptionRecord));
-    pd->DumpType = DUMP_TYPE_FULL;
-    pd->RequiredDumpSpace = 0x2000 + ctxMain->dev.paMax;
-    pd->SystemTime = ftMax;
-    ZeroMemory(pd->Comment, sizeof(pd->Comment));
+    ZeroMemory(pb + 0x348, 3000);                               // ContextRecord
+    *(PWORD)(pb + 0x348 + 0x038) = 0x10;                        // SegCs
+    *(PWORD)(pb + 0x348 + 0x03a) = 0x2b;                        // SegDs
+    *(PWORD)(pb + 0x348 + 0x03c) = 0x2b;                        // SegEs
+    *(PWORD)(pb + 0x348 + 0x03e) = 0x53;                        // SegFs
+    *(PWORD)(pb + 0x348 + 0x040) = 0x2b;                        // SegGs
+    *(PWORD)(pb + 0x348 + 0x042) = 0x00;                        // SegSs
+    *(PQWORD)(pb + 0x348 + 0x098) = ctxVmm->kernel.vaBase;      // Rsp
+    ZeroMemory(pb + 0xf00, 152);                                // ExceptionRecord
+    ZeroMemory(pb + 0xfb0, 128);                                // Comment
     snprintf(
-        pd->Comment,
-        sizeof(pd->Comment),
+        pb + 0xfb0,
+        128,
         "Dump file generated by MemProcFS v%i.%i.%i-%i - The Memory Process File System - https://github.com/ufrisk/MemProcFS",
         VERSION_MAJOR,
         VERSION_MINOR,
         VERSION_REVISION,
         VERSION_BUILD);
-    pd->SystemUpTime = ftMax - ftMin;
-    pd->MiniDumpFields = 0;
-    pd->SecondaryDataState = 0;
-    pd->ProductType = 1;
-    pd->SuiteMask = 0;
+    *(PDWORD)(pb + 0xf98) = 1;
+    *(PQWORD)(pb + 0xfa0) = 0x2000 + ctxMain->dev.paMax;
+    *(PQWORD)(pb + 0xfa8) = ftMax;
+    *(PQWORD)(pb + 0x1030) = ftMax - ftMin;
+    *(PDWORD)(pb + 0x1038) = 0;
+    *(PDWORD)(pb + 0x103c) = 0;
+    *(PDWORD)(pb + 0x1040) = 1;
+    *(PDWORD)(pb + 0x1044) = 0;
     ctx->fInitialized = TRUE;
 }
 
 VOID MVfsRoot_InitializeDumpContext32(PVMM_PROCESS pSystemProcess, POB_VMMVFS_DUMP_CONTEXT ctx)
 {
-    PDUMP_HEADER32 pd = &ctx->Hdr._32;
+    PBYTE pb = ctx->Hdr.pb;
+    //PDUMP_HEADER32 pd = &ctx->Hdr._32;
     QWORD ftMin = 0, ftMax = 0;
     SysQuery_TimeProcessMinMax(&ftMin, &ftMax);
-    pd->Signature = DUMP_SIGNATURE;
-    pd->ValidDump = DUMP_VALID_DUMP;
-    pd->MajorVersion = DUMP_MAJOR_VERSION;
-    pd->MinorVersion = ctxVmm->kernel.dwVersionBuild;
-    pd->DirectoryTableBase = (DWORD)ctxVmm->kernel.paDTB;
-    pd->PfnDataBase = (DWORD)ctxVmm->kernel.opt.vaPfnDatabase;
-    pd->PsLoadedModuleList = (DWORD)ctxVmm->kernel.opt.vaPsLoadedModuleListExp;
-    pd->PsActiveProcessHead = (DWORD)pSystemProcess->win.EPROCESS.va;
-    pd->MachineImageType = IMAGE_FILE_MACHINE_I386;
-    pd->NumberProcessors = max(1, ctxVmm->kernel.opt.cCPUs);
-    pd->BugCheckCode = 0xDEADDEAD;
-    pd->BugCheckParameter1 = 1;
-    pd->BugCheckParameter2 = 2;
-    pd->BugCheckParameter3 = 3;
-    pd->BugCheckParameter4 = 4;
-    pd->PaeEnabled = (ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_X86PAE) ? 1 : 0;
-    pd->KdDebuggerDataBlock = (DWORD)ctxVmm->kernel.opt.KDBG.va;
+    *(PDWORD)(pb + 0x000) = 0x45474150;                         // Signature #1
+    *(PDWORD)(pb + 0x004) = 0x504d5544;                         // Signature #2
+    *(PDWORD)(pb + 0x008) = 0x0000000F;                         // DumpVersion
+    *(PDWORD)(pb + 0x00c) = ctxVmm->kernel.dwVersionBuild;      // BuildNo
+    *(PDWORD)(pb + 0x010) = (DWORD)ctxVmm->kernel.paDTB;
+    *(PDWORD)(pb + 0x014) = (DWORD)ctxVmm->kernel.opt.vaPfnDatabase;
+    *(PDWORD)(pb + 0x018) = (DWORD)ctxVmm->kernel.opt.vaPsLoadedModuleListExp;
+    *(PDWORD)(pb + 0x01c) = (DWORD)pSystemProcess->win.EPROCESS.va;
+    *(PDWORD)(pb + 0x020) = 0x014c;                             // MachineImageType = I386
+    *(PDWORD)(pb + 0x024) = max(1, ctxVmm->kernel.opt.cCPUs);
+    *(PDWORD)(pb + 0x028) = 0xDEADDEAD;                         // BugCheckCode
+    *(PDWORD)(pb + 0x02c) = 1;                                  // BugCheck1
+    *(PDWORD)(pb + 0x030) = 2;                                  // BugCheck2
+    *(PDWORD)(pb + 0x034) = 3;                                  // BugCheck3
+    *(PDWORD)(pb + 0x038) = 4;                                  // BugCheck4
+    *(PBYTE)(pb + 0x05c) = (ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_X86PAE) ? 1 : 0;   // PAE or NOT.
+    *(PDWORD)(pb + 0x060) = (DWORD)ctxVmm->kernel.opt.KDBG.va;  // KDBG
     MVfsRoot_InitializeDumpContext_SetMemory(ctx);
-    ZeroMemory(pd->ContextRecord, sizeof(pd->ContextRecord));
-    ZeroMemory(&pd->ExceptionRecord, sizeof(pd->ExceptionRecord));
-    pd->DumpType = DUMP_TYPE_FULL;
-    pd->RequiredDumpSpace = 0x1000 + ctxMain->dev.paMax;
-    pd->SystemTime = ftMax;
-    ZeroMemory(pd->Comment, sizeof(pd->Comment));
+    ZeroMemory(pb + 0x320, 1200);                               // ContextRecord
+    ZeroMemory(pb + 0x7d0, 80);                                 // ExceptionRecord
+    ZeroMemory(pb + 0x820, 128);                                // Comment
     snprintf(
-        pd->Comment,
-        sizeof(pd->Comment),
+        pb + 0x820,
+        128,
         "Dump file generated by MemProcFS v%i.%i.%i-%i - The Memory Process File System - https://github.com/ufrisk/MemProcFS",
         VERSION_MAJOR,
         VERSION_MINOR,
         VERSION_REVISION,
         VERSION_BUILD);
-    pd->SystemUpTime = ftMax - ftMin;
-    pd->MiniDumpFields = 0;
-    pd->SecondaryDataState = 0;
-    pd->ProductType = 1;
-    pd->SuiteMask = 0;
+    *(PDWORD)(pb + 0xf88) = 1;
+    *(PQWORD)(pb + 0xfa0) = 0x2000 + ctxMain->dev.paMax;
+    *(PQWORD)(pb + 0xfc0) = ftMax;
+    *(PQWORD)(pb + 0xfb8) = ftMax - ftMin;
+    *(PDWORD)(pb + 0xf8c) = 0;
+    *(PDWORD)(pb + 0xf90) = 0;
+    *(PDWORD)(pb + 0xf94) = 1;
+    *(PDWORD)(pb + 0xf98) = 0;
     ctx->fInitialized = TRUE;
 }
 
 VOID MVfsRoot_InitializeDumpContext(POB_VMMVFS_DUMP_CONTEXT ctx)
 {
     PVMM_PROCESS pObSystemProcess = NULL;
+    DWORD cbDumpHeader;
+    PBYTE pbDumpHeader;
     // 1: Try to initialize from underlying crash dump file header (if possible)
     //    The crash dump header is simply copied verbatim - except mem regions.
     //    Crash dump headers are always assumed to be correct and the dump files
     //    are assumed to have a decrypted KDBG block.
     ctx->cbHdr = ctxVmm->f32 ? 0x1000 : 0x2000;
-    if(LeechCore_CommandData(LEECHCORE_COMMANDDATA_FILE_DUMPHEADER_GET, NULL, 0, ctx->Hdr.pb, ctx->cbHdr, NULL)) {
-        MVfsRoot_InitializeDumpContext_SetMemory(ctx);
-        ctx->fInitialized = TRUE;
-        return;
+    if(LcCommand(ctxMain->hLC, LC_CMD_FILE_DUMPHEADER_GET, 0, NULL, &pbDumpHeader, &cbDumpHeader)) {
+        if(cbDumpHeader == ctx->cbHdr) {
+            memcpy(ctx->Hdr.pb, pbDumpHeader, ctx->cbHdr);
+            LocalFree(pbDumpHeader);
+            MVfsRoot_InitializeDumpContext_SetMemory(ctx);
+            ctx->fInitialized = TRUE;
+            return;
+        }
+        LocalFree(pbDumpHeader);
     }
     // 2: Load optional required values in a best-effort way and decrypt KDBG
     //    if necessary and possible.
@@ -406,7 +331,7 @@ POB_VMMVFS_DUMP_CONTEXT MVfsRoot_GetDumpContext()
     POB_VMMVFS_DUMP_CONTEXT ctx;
     // 1: fetch context or create initial context if required
     if(!(ctx = (POB_VMMVFS_DUMP_CONTEXT)Ob_INCREF(ctxVmm->pObVfsDumpContext))) {
-        EnterCriticalSection(&ctxVmm->MasterLock);
+        EnterCriticalSection(&ctxVmm->LockMaster);
         if(!(ctx = (POB_VMMVFS_DUMP_CONTEXT)Ob_INCREF(ctxVmm->pObVfsDumpContext))) {
             ctx = (POB_VMMVFS_DUMP_CONTEXT)Ob_Alloc(OB_TAG_VMMVFS_DUMPCONTEXT, LMEM_ZEROINIT, sizeof(OB_VMMVFS_DUMP_CONTEXT), NULL, NULL);
             if(ctx) {
@@ -414,7 +339,7 @@ POB_VMMVFS_DUMP_CONTEXT MVfsRoot_GetDumpContext()
                 ctxVmm->pObVfsDumpContext = Ob_INCREF(ctx);
             }
         }
-        LeaveCriticalSection(&ctxVmm->MasterLock);
+        LeaveCriticalSection(&ctxVmm->LockMaster);
     }
     // 2: initialize context (if required)
     if(ctx && !ctx->fInitialized) {
@@ -561,6 +486,8 @@ VOID M_VfsRoot_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     pRI->reg_info.fRootModule = TRUE;                                    // root module
     pRI->reg_fn.pfnList = MVfsRoot_List;                                 // List function supported
     pRI->reg_fn.pfnRead = MVfsRoot_Read;                                 // Read function supported
-    pRI->reg_fn.pfnWrite = MVfsRoot_Write;                               // Write function supported
+    if(ctxMain->dev.fWritable) {
+        pRI->reg_fn.pfnWrite = MVfsRoot_Write;                           // Write function supported
+    }
     pRI->pfnPluginManager_Register(pRI);
 }

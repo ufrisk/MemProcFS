@@ -15,7 +15,7 @@
 #endif
 #include <Windows.h>
 #include <stdio.h>
-#include "vmmdll.h"
+#include <vmmdll.h>
 
 
 //-----------------------------------------------------------------------------

@@ -6,7 +6,7 @@
 //
 #include <Windows.h>
 #include <stdio.h>
-#include "vmmdll.h"
+#include <vmmdll.h>
 #include "vfs.h"
 
 CHAR g_VfsMountPoint = 'M';
@@ -98,19 +98,20 @@ int main(_In_ int argc, _In_ char* argv[])
     HMODULE hVMM;
     VMMDLL_FUNCTIONS VmmDll;
     LoadLibraryA("leechcore.dll");
-    hVMM = LoadLibraryExA("vmm.dll", NULL, LOAD_LIBRARY_SEARCH_APPLICATION_DIR);
+    hVMM = LoadLibraryA("vmm.dll");
+    //hVMM = LoadLibraryExA("vmm.dll");
     if(!hVMM) {
         printf("MemProcFS: Error loading vmm.dll - ensure vmm.dll resides in the memprocfs.exe application directory!\n");
         return 1;
     }
     VmmDll.Initialize = (BOOL(*)(DWORD, LPSTR*))GetProcAddress(hVMM, "VMMDLL_Initialize");
+    VmmDll.InitializePlugins = (BOOL(*)())GetProcAddress(hVMM, "VMMDLL_InitializePlugins");
     VmmDll.ConfigGet = (BOOL(*)(ULONG64, PULONG64))GetProcAddress(hVMM, "VMMDLL_ConfigGet");
     VmmDll.ConfigSet = (BOOL(*)(ULONG64, ULONG64))GetProcAddress(hVMM, "VMMDLL_ConfigSet");
     VmmDll.VfsList = (BOOL(*)(LPCWSTR, PVMMDLL_VFS_FILELIST))GetProcAddress(hVMM, "VMMDLL_VfsList");
     VmmDll.VfsRead = (DWORD(*)(LPCWSTR, LPVOID, DWORD, PDWORD, ULONG64))GetProcAddress(hVMM, "VMMDLL_VfsRead");
     VmmDll.VfsWrite = (DWORD(*)(LPCWSTR, LPVOID, DWORD, PDWORD, ULONG64))GetProcAddress(hVMM, "VMMDLL_VfsWrite");
-    VmmDll.VfsInitializePlugins = (BOOL(*)())GetProcAddress(hVMM, "VMMDLL_VfsInitializePlugins");
-    if(!VmmDll.Initialize || !VmmDll.ConfigGet || !VmmDll.VfsList || !VmmDll.VfsRead || !VmmDll.VfsWrite || !VmmDll.VfsInitializePlugins) {
+    if(!VmmDll.Initialize || !VmmDll.ConfigGet || !VmmDll.VfsList || !VmmDll.VfsRead || !VmmDll.VfsWrite || !VmmDll.InitializePlugins) {
         printf("MemProcFS: Error loading vmm.dll - invalid version of vmm.dll found!\n");
         return 1;
     }
@@ -121,7 +122,7 @@ int main(_In_ int argc, _In_ char* argv[])
         return 1;
     }
     VmmDll.ConfigSet(VMMDLL_OPT_CONFIG_STATISTICS_FUNCTIONCALL, 1);
-    result = VmmDll.VfsInitializePlugins();
+    result = VmmDll.InitializePlugins();
     if(!result) {
         printf("MemProcFS: Error file system plugins in vmm.dll!\n");
         return 1;

@@ -762,6 +762,7 @@ VOID MmVad_Spider_DoWork(_In_ PVMM_PROCESS pSystemProcess, _In_ PVMM_PROCESS pPr
         VmmCachePrefetchPages3(pSystemProcess, psObTry2, sizeof(_MMVAD64_10), fVmmRead);
         while((pmObVad->cMap < cMax) && (va = ObSet_Pop(psObTry2))) {
             if((eVad = pfnMmVad_Spider(pSystemProcess, va, pmObVad, psObAll, psObTry1, NULL, fVmmRead, dwFlagsBitMask))) {
+                if(eVad->CommitCharge > ((eVad->vaEnd + 1 - eVad->vaStart) >> 12)) { eVad->CommitCharge = 0; }
                 eVad->vaVad = va + (ctxVmm->f32 ? 8 : 0x10);
                 eVad->wszText = &ctxVmm->_EmptyWCHAR;
                 if(eVad->cbPrototypePte > 0x01000000) { eVad->cbPrototypePte = MMVAD_PTESIZE * (DWORD)((0x1000 + eVad->vaEnd - eVad->vaStart) >> 12); }
@@ -770,6 +771,7 @@ VOID MmVad_Spider_DoWork(_In_ PVMM_PROCESS pSystemProcess, _In_ PVMM_PROCESS pPr
         // fetch vad entries 1st attempt
         while((pmObVad->cMap < cMax) && (va = ObSet_Pop(psObTry1))) {
             if((eVad = pfnMmVad_Spider(pSystemProcess, va, pmObVad, psObAll, psObTry1, psObTry2, fVmmRead, dwFlagsBitMask))) {
+                if(eVad->CommitCharge > ((eVad->vaEnd + 1 - eVad->vaStart) >> 12)) { eVad->CommitCharge = 0; }
                 eVad->vaVad = va + (ctxVmm->f32 ? 8 : 0x10);
                 eVad->wszText = &ctxVmm->_EmptyWCHAR;
                 if(eVad->cbPrototypePte > 0x01000000) { eVad->cbPrototypePte = MMVAD_PTESIZE * (DWORD)((0x1000 + eVad->vaEnd - eVad->vaStart) >> 12); }
@@ -848,7 +850,7 @@ VOID MmVad_TextFetch(_In_ PVMM_PROCESS pSystemProcess, _In_ PVMM_PROCESS pProces
             f = pva[i] &&
                 VmmRead2(pSystemProcess, pva[i], (PBYTE)&va, f32 ? 4 : 8, fVmmRead | VMM_FLAG_FORCECACHE_READ) &&
                 VMM_KADDR_8_16(va);
-            pva[i] = f ? va : 0;
+            pva[i] = f ? (va - 0x10) : 0;
         }
     }
     // fetch _CONTROL_AREA -> pointer to _FILE_OBJECT
@@ -859,10 +861,10 @@ VOID MmVad_TextFetch(_In_ PVMM_PROCESS pSystemProcess, _In_ PVMM_PROCESS pProces
             ((ctxVmm->kernel.dwVersionBuild <= 6000) ? 0x30 : 0x40);    // 64-bit vistasp0- or vistasp1+
         oControlArea_SegmentPointer = 0;
         oSegment_SizeOfSegment = f32 ? 0x10 : 0x18;
-        for(i = 0, va = 0; i < cVads; i++) {
+        for(i = 0; i < cVads; i++) {
             // pointer to _FILE_OBJECT
             f = pva[i] &&
-                VmmRead2(pSystemProcess, pva[i] - 0x10, pb, 0x60, fVmmRead | VMM_FLAG_FORCECACHE_READ) &&
+                VmmRead2(pSystemProcess, pva[i], pb, 0x60, fVmmRead | VMM_FLAG_FORCECACHE_READ) &&
                 (VMM_POOLTAG_PREPENDED(pb, 0x10, 'MmCa') || VMM_POOLTAG_PREPENDED(pb, 0x10, 'MmCi')) &&
                 (va = VMM_PTR_OFFSET_EX_FAST_REF(f32, pb + 0x10, oControlArea_FilePointer)) &&
                 VMM_KADDR_8_16(va);

@@ -22,7 +22,9 @@ typedef unsigned __int64                QWORD, *PQWORD;
 #define OB_TAG_MAP_HANDLE               'Mhnd'
 #define OB_TAG_MAP_PHYSMEM              'Mmem'
 #define OB_TAG_MAP_USER                 'Musr'
+#define OB_TAG_MAP_NET                  'Mnet'
 #define OB_TAG_MAP_PFN                  'Mpfn'
+#define OB_TAG_MOD_MINIDUMP_CTX         'mMDx'
 #define OB_TAG_OBJ_ERROR                'Oerr'
 #define OB_TAG_OBJ_FILE                 'Ofil'
 #define OB_TAG_PDB_ENTRY                'PdbE'
@@ -32,6 +34,7 @@ typedef unsigned __int64                QWORD, *PQWORD;
 #define OB_TAG_REG_KEY                  'Rkey'
 #define OB_TAG_REG_KEYVALUE             'Rval'
 #define OB_TAG_VMM_PROCESS              'Ps__'
+#define OB_TAG_VMM_PROCESS_CLONE        'PsC_'
 #define OB_TAG_VMM_PROCESS_PERSISTENT   'PsSt'
 #define OB_TAG_VMM_PROCESSTABLE         'PsTb'
 #define OB_TAG_VMMVFS_DUMPCONTEXT       'CDmp'
@@ -93,8 +96,9 @@ PVOID Ob_INCREF(_In_opt_ PVOID pOb);
 * NB! Do not use object after DECREF - other threads might have also DECREF'ed
 * the object at same time making it to be free'd - making the memory invalid.
 * -- pOb
+* -- return = pObIn if pObIn is valid and refcount > 0 after decref.
 */
-VOID Ob_DECREF(_In_opt_ PVOID pOb);
+PVOID Ob_DECREF(_In_opt_ PVOID pOb);
 
 /*
 * Decrease the reference count of a object manager object. If the reference
@@ -231,6 +235,16 @@ _Success_(return)
 BOOL ObSet_Push(_In_opt_ POB_SET pvs, _In_ QWORD value);
 
 /*
+* Push/Merge/Insert all values from the ObSet pvsSrc into the ObSet pvs.
+* The source set is kept intact.
+* -- pvs
+* -- pvsSrc
+* -- return = TRUE on success, FALSE otherwise.
+*/
+_Success_(return)
+BOOL ObSet_PushSet(_In_opt_ POB_SET pvs, _In_ POB_SET pvsSrc);
+
+/*
 * Insert a value representing an address into the ObSet. If the length of the
 * data read from the start of the address a traverses page boundries all the
 * pages are inserted into the set.
@@ -255,6 +269,25 @@ BOOL ObSet_Remove(_In_opt_ POB_SET pvs, _In_ QWORD value);
 * -- pvs
 */
 VOID ObSet_Clear(_In_opt_ POB_SET pvs);
+
+/*
+* Save the contents of an ObSet to a disk file.
+* The resulting disk file may be read with ObSet_FileLoad().
+* -- pvs
+* -- wszFileName = save file to create.
+* -- return
+*/
+_Success_(return)
+BOOL ObSet_FileSave(_In_opt_ POB_SET pvs, _In_ LPWSTR wszFileName);
+
+/*
+* Load the contents of an ObSet disk file into the supplied set.
+* -- pvs
+* -- wszFileName = file previously saved by ObSet_FileSave().
+* -- return
+*/
+_Success_(return)
+BOOL ObSet_FileLoad(_In_opt_ POB_SET pvs, _In_ LPWSTR wszFileName);
 
 /*
 * Remove the "last" value in a way that is safe for concurrent iterations of

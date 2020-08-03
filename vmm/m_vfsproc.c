@@ -62,13 +62,13 @@ NTSTATUS MVfsProc_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWO
     // windows specific reads below:
     if((ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X64) || (ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X86)) {
         if(!_wcsicmp(wszPath, L"name-long")) {
-            return Util_VfsReadFile_FromPBYTE(pProcess->pObPersistent->szNameLong, pProcess->pObPersistent->cchNameLong, pb, cb, pcbRead, cbOffset);
+            return Util_VfsReadFile_FromPBYTE(pProcess->pObPersistent->uszNameLong, pProcess->pObPersistent->cuszNameLong, pb, cb, pcbRead, cbOffset);
         }
         if(!_wcsicmp(wszPath, L"win-cmdline")) {
-            return Util_VfsReadFile_FromPBYTE(pProcess->pObPersistent->UserProcessParams.szCommandLine, pProcess->pObPersistent->UserProcessParams.cchCommandLine, pb, cb, pcbRead, cbOffset);
+            return Util_VfsReadFile_FromPBYTE(pProcess->pObPersistent->UserProcessParams.uszCommandLine, pProcess->pObPersistent->UserProcessParams.cuszCommandLine, pb, cb, pcbRead, cbOffset);
         }
         if(!_wcsicmp(wszPath, L"win-path")) {
-            return Util_VfsReadFile_FromPBYTE(pProcess->pObPersistent->szPathKernel, pProcess->pObPersistent->cchPathKernel, pb, cb, pcbRead, cbOffset);
+            return Util_VfsReadFile_FromPBYTE(pProcess->pObPersistent->uszPathKernel, pProcess->pObPersistent->cuszPathKernel, pb, cb, pcbRead, cbOffset);
         }
     }
     if(ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X64) {
@@ -136,10 +136,10 @@ VOID MVfsProc_List_OsSpecific(_In_ PVMM_PROCESS pProcess, _In_ PVMMDLL_VFS_FILEL
 {
     // WINDOWS - 32 & 64-bit
     if((ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X64) || (ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X86)) {
-        VMMDLL_VfsList_AddFile(pFileList, L"name-long", pProcess->pObPersistent->cchNameLong, pExInfo);
-        VMMDLL_VfsList_AddFile(pFileList, L"win-path", pProcess->pObPersistent->cchPathKernel, pExInfo);
-        if(pProcess->pObPersistent->UserProcessParams.cchCommandLine) {
-            VMMDLL_VfsList_AddFile(pFileList, L"win-cmdline", pProcess->pObPersistent->UserProcessParams.cchCommandLine, pExInfo);
+        VMMDLL_VfsList_AddFile(pFileList, L"name-long", pProcess->pObPersistent->cuszNameLong, pExInfo);
+        VMMDLL_VfsList_AddFile(pFileList, L"win-path", pProcess->pObPersistent->cuszPathKernel, pExInfo);
+        if(pProcess->pObPersistent->UserProcessParams.cuszCommandLine) {
+            VMMDLL_VfsList_AddFile(pFileList, L"win-cmdline", pProcess->pObPersistent->UserProcessParams.cuszCommandLine, pExInfo);
         }
     }
     // WINDOWS - 64-bit specific

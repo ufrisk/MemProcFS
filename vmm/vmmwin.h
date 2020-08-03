@@ -55,45 +55,6 @@ BOOL VmmWin_PE_LoadEAT_DisplayBuffer(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_M
 VOID VmmWin_PE_LoadIAT_DisplayBuffer(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pModule, _Out_writes_(*pcIATs) PVMMWIN_IAT_ENTRY pIATs, _In_ DWORD cIATs, _Out_ PDWORD pcIATs);
 
 /*
-* Fill the pbDisplayBuffer with a human readable version of the data directories.
-* This is guaranteed to be exactly 864 bytes (excluding NULL terminator).
-* Alternatively copy the 16 data directories into pDataDirectoryOpt.
-* -- pProcess
-* -- pModule
-* -- pbDisplayBufferOpt
-* -- cbDisplayBufferMax
-* -- pcbDisplayBuffer
-* -- pDataDirectoryOpt
-*/
-VOID VmmWin_PE_DIRECTORY_DisplayBuffer(
-    _In_ PVMM_PROCESS pProcess,
-    _In_ PVMM_MAP_MODULEENTRY pModule,
-    _Out_writes_bytes_opt_(*pcbDisplayBuffer) PBYTE pbDisplayBufferOpt,
-    _In_ DWORD cbDisplayBufferMax,
-    _Out_opt_ PDWORD pcbDisplayBuffer,
-    _Out_writes_opt_(16) PIMAGE_DATA_DIRECTORY pDataDirectoryOpt);
-
-/*
-* Fill the pbDisplayBuffer with a human readable version of the PE sections.
-* Alternatively copy the sections into the pSectionsOpt buffer.
-* -- pProcess
-* -- pModule
-* -- pbDisplayBufferOpt
-* -- cbDisplayBufferMax
-* -- pcbDisplayBuffer
-* -- pcSectionsOpt = size of buffer pSectionsOpt on entry, # returned entries on exit
-* -- pSectionsOpt
-*/
-VOID VmmWin_PE_SECTION_DisplayBuffer(
-    _In_ PVMM_PROCESS pProcess,
-    _In_ PVMM_MAP_MODULEENTRY pModule,
-    _Out_writes_bytes_opt_(*pcbDisplayBuffer) PBYTE pbDisplayBufferOpt,
-    _In_ DWORD cbDisplayBufferMax,
-    _Out_opt_ PDWORD pcbDisplayBuffer,
-    _Inout_opt_ PDWORD pcSectionsOpt,
-    _Out_writes_opt_(*pcSectionsOpt) PIMAGE_SECTION_HEADER pSectionsOpt);
-
-/*
 * Try initialize PteMap text descriptions. This function will first try to pop-
 * ulate the pre-existing VMMOB_MAP_PTE object in pProcess with module names and
 * then, if failed or partially failed, try to initialize from PE file headers.
@@ -101,7 +62,7 @@ VOID VmmWin_PE_SECTION_DisplayBuffer(
 * -- return
 */
 _Success_(return)
-BOOL VmmWin_InitializePteMapText(_In_ PVMM_PROCESS pProcess);
+BOOL VmmWinPte_InitializeMapText(_In_ PVMM_PROCESS pProcess);
 
 /*
 * Initialize the module map containing information about loaded modules in the
@@ -111,7 +72,7 @@ BOOL VmmWin_InitializePteMapText(_In_ PVMM_PROCESS pProcess);
 * -- return
 */
 _Success_(return)
-BOOL VmmWin_InitializeLdrModules(_In_ PVMM_PROCESS pProcess);
+BOOL VmmWinLdrModule_Initialize(_In_ PVMM_PROCESS pProcess);
 
 /*
 * Initialize the meap map containing information about the process heaps in the
@@ -160,7 +121,7 @@ PVMMWIN_OBJECT_TYPE VmmWin_ObjectTypeGet(_In_ BYTE iObjectType);
 * -- pSystemProcess
 * -- return
 */
-BOOL VmmWin_EnumerateEPROCESS(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fRefreshTotal);
+BOOL VmmWinProcess_Enumerate(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fRefreshTotal);
 
 /*
 * Walk a windows linked list in an efficient way that minimize IO requests to

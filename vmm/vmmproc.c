@@ -8,6 +8,7 @@
 #include "vmmproc.h"
 #include "vmmwin.h"
 #include "vmmwininit.h"
+#include "vmmwinnet.h"
 #include "vmmwinobj.h"
 #include "vmmwinreg.h"
 #include "mm_pfn.h"
@@ -63,7 +64,7 @@ BOOL VmmProc_RefreshProcesses(_In_ BOOL fRefreshTotal)
             vmmprintf_fn("FAIL - SYSTEM PROCESS NOT FOUND - SHOULD NOT HAPPEN\n");
             return FALSE;
         }
-        result = VmmWin_EnumerateEPROCESS(pObProcessSystem, fRefreshTotal);
+        result = VmmWinProcess_Enumerate(pObProcessSystem, fRefreshTotal);
         Ob_DECREF(pObProcessSystem);
     }
     return TRUE;
@@ -88,7 +89,7 @@ BOOL VmmProc_RefreshProcesses(_In_ BOOL fRefreshTotal)
 
 DWORD VmmProcCacheUpdaterThread()
 {
-    QWORD i = 0, paMax;
+    QWORD i = 0;
     BOOL fPHYS, fTLB, fProcPartial, fProcTotal, fRegistry;
     vmmprintfv("VmmProc: Start periodic cache flushing.\n");
     if(ctxMain->dev.fRemote) {
@@ -106,7 +107,7 @@ DWORD VmmProcCacheUpdaterThread()
         ctxVmm->ThreadProcCache.cTick_ProcTotal = VMMPROC_UPDATERTHREAD_LOCAL_PROC_REFRESHTOTAL;
         ctxVmm->ThreadProcCache.cTick_Registry = VMMPROC_UPDATERTHREAD_LOCAL_REGISTRY;
     }
-    while(ctxVmm->ThreadProcCache.fEnabled) {
+    while(ctxVmm->Work.fEnabled && ctxVmm->ThreadProcCache.fEnabled) {
         Sleep(ctxVmm->ThreadProcCache.cMs_TickPeriod);
         i++;
         fTLB = !(i % ctxVmm->ThreadProcCache.cTick_TLB);
@@ -114,7 +115,7 @@ DWORD VmmProcCacheUpdaterThread()
         fProcTotal = !(i % ctxVmm->ThreadProcCache.cTick_ProcTotal);
         fProcPartial = !(i % ctxVmm->ThreadProcCache.cTick_ProcPartial) && !fProcTotal;
         fRegistry = !(i % ctxVmm->ThreadProcCache.cTick_Registry);
-        EnterCriticalSection(&ctxVmm->MasterLock);
+        EnterCriticalSection(&ctxVmm->LockMaster);
         // PHYS / TLB cache clear
         if(fPHYS) {
             VmmCacheClear(VMM_CACHE_TAG_PHYS);
@@ -131,17 +132,12 @@ DWORD VmmProcCacheUpdaterThread()
         if(fProcPartial || fProcTotal) {
             if(!VmmProc_RefreshProcesses(fProcTotal)) {
                 vmmprintf("VmmProc: Failed to refresh memory process file system - aborting.\n");
-                LeaveCriticalSection(&ctxVmm->MasterLock);
+                LeaveCriticalSection(&ctxVmm->LockMaster);
                 goto fail;
-            }
-            // update max physical address (if volatile).
-            if(ctxMain->dev.fVolatileMaxAddress) {
-                if(LeechCore_GetOption(LEECHCORE_OPT_MEMORYINFO_ADDR_MAX, &paMax) && (paMax > 0x01000000)) {
-                    ctxMain->dev.paMax = paMax;
-                }
             }
             // send notify
             if(fProcTotal) {
+                VmmWinNet_Refresh();
                 VmmWinObj_Refresh();
                 PluginManager_Notify(VMMDLL_PLUGIN_EVENT_REFRESH_PROCESS_TOTAL, NULL, 0);
             }
@@ -155,12 +151,10 @@ DWORD VmmProcCacheUpdaterThread()
             VmmWinPhysMemMap_Refresh();
             PluginManager_Notify(VMMDLL_PLUGIN_EVENT_REFRESH_REGISTRY, NULL, 0);
         }
-        LeaveCriticalSection(&ctxVmm->MasterLock);
+        LeaveCriticalSection(&ctxVmm->LockMaster);
     }
 fail:
     vmmprintfv("VmmProc: Exit periodic cache flushing.\n");
-    if(ctxVmm->ThreadProcCache.hThread) { CloseHandle(ctxVmm->ThreadProcCache.hThread); }
-    ctxVmm->ThreadProcCache.hThread = NULL;
     return 0;
 }
 
@@ -178,18 +172,14 @@ BOOL VmmProcInitialize()
                 "         Specify PageDirectoryBase (DTB/CR3) in -cr3 option if value if known.  \n");
         }
     }
-    // set up cache maintenance in the form of a separate worker thread in case
-    // the backend is a volatile device (FPGA). If the underlying device isn't
-    // volatile then there is no need to update! NB! Files are not considered
-    // to be volatile.
+    // set up cache maintenance in the form of a separate eternally running
+    // worker thread in case the backend is a volatile device (FPGA).
+    // If the underlying device isn't volatile then there is no need to update!
+    // NB! Files are not considered to be volatile.
     if(result && ctxMain->dev.fVolatile && !ctxMain->cfg.fDisableBackgroundRefresh) {
         ctxVmm->ThreadProcCache.fEnabled = TRUE;
-        ctxVmm->ThreadProcCache.hThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)VmmProcCacheUpdaterThread, ctxVmm, 0, NULL);
-        if(!ctxVmm->ThreadProcCache.hThread) { ctxVmm->ThreadProcCache.fEnabled = FALSE; }
+        VmmWork((LPTHREAD_START_ROUTINE)VmmProcCacheUpdaterThread, NULL, 0);
     }
-    // allow worker threads for various functions in other parts of the code
-    // NB! this only allows worker threads - it does not create them!
-    ctxVmm->ThreadWorkers.fEnabled = TRUE;
     return result;
 }
 

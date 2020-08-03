@@ -53,12 +53,32 @@ DWORD Util_HashStringA(_In_opt_ LPCSTR sz);
 DWORD Util_HashStringUpperW(_In_opt_ LPCWSTR wsz);
 
 /*
+* Hash a registry key name in a way that is supported by the file system.
+* NB! this is not the same hash as the Windows registry uses.
+* -- wsz
+* -- iSuffix
+* -- return
+*/
+DWORD Util_HashNameW_Registry(_In_ LPCWSTR wsz, _In_opt_ DWORD iSuffix);
+
+/*
+* Hash a path. Used to calculate a registry key hash from a file system path.
+* -- wszPath
+* -- return
+*/
+QWORD Util_HashPathW_Registry(_In_ LPWSTR wszPath);
+
+/*
 * Print a maximum of 8192 bytes of binary data as hexascii on the screen.
 * -- pb
 * -- cb
 * -- cbInitialOffset = offset, must be max 0x1000 and multiple of 0x10.
 */
-VOID Util_PrintHexAscii(_In_ PBYTE pb, _In_ DWORD cb, _In_ DWORD cbInitialOffset);
+VOID Util_PrintHexAscii(
+    _In_reads_(cb) PBYTE pb,
+    _In_ DWORD cb,
+    _In_ DWORD cbInitialOffset
+);
 
 /*
 * Fill a human readable hex ascii memory dump into the caller supplied sz buffer.
@@ -70,7 +90,13 @@ VOID Util_PrintHexAscii(_In_ PBYTE pb, _In_ DWORD cb, _In_ DWORD cbInitialOffset
 *           IF sz!=NULL :: size of buffer on entry, size of characters (excluding terminating NULL) on exit.
 */
 _Success_(return)
-BOOL Util_FillHexAscii(_In_opt_ PBYTE pb, _In_ DWORD cb, _In_ DWORD cbInitialOffset, _Out_opt_ LPSTR sz, _Inout_ PDWORD pcsz);
+BOOL Util_FillHexAscii(
+    _In_reads_opt_(cb) PBYTE pb,
+    _In_ DWORD cb,
+    _In_ DWORD cbInitialOffset,
+    _Out_writes_opt_(*pcsz) LPSTR sz,
+    _Inout_ PDWORD pcsz
+);
 
 /*
 * Replaces ascii characters not allowed in file names in the NULL-terminated
@@ -101,7 +127,7 @@ DWORD Util_PathFileNameFixW(_Out_writes_(MAX_PATH) LPWSTR wszOut, _In_ LPCWSTR w
 * -- cwsz
 * -- iSuffix
 * -- fUpper
-* -- return
+* -- return = number of characters written (not including terminating NULL).
 */
 DWORD Util_PathFileNameFix_Registry(_Out_writes_(MAX_PATH) LPWSTR wszOut, _In_opt_ LPCSTR sz, _In_opt_ LPCWSTR wsz, _In_opt_ DWORD cwsz, _In_opt_ DWORD iSuffix, _In_ BOOL fUpper);
 
@@ -199,11 +225,40 @@ DWORD Util_snprintf_ln(
 );
 
 /*
+* snprintf a line with fixed line length, space padded to meet line length
+* requirement and terminated with newline '\n' (at last char in line length)
+* and NULL char (linelength + 1).
+* -- szBuffer
+* -- cszLineLength = line length in characters excluding terminating NULL.
+* -- szFormat = printf format string without "terminating" spaces+newline.
+* -- ... = printf varargs.
+* -- return
+*/
+_Success_(return >= 0)
+DWORD Util_snprintf_ln2(
+    _Out_writes_(cszLineLength) LPSTR szBuffer,
+    _In_ QWORD cszLineLength,
+    _In_z_ _Printf_format_string_ LPSTR szFormat,
+    ...
+);
+
+/*
 * Return the path of the specified hModule (DLL) - ending with a backslash, or current Executable.
 * -- szPath
 * -- hModule = Optional, HMODULE handle for path to DLL, NULL for path to EXE.
 */
 VOID Util_GetPathDll(_Out_writes_(MAX_PATH) PCHAR szPath, _In_opt_ HMODULE hModule);
+
+/*
+* Return the UTF-8 length of a LPWSTR.
+* -- wsz
+* -- return
+*/
+inline DWORD wcslen_u8(_In_z_ LPWSTR wsz)
+{
+    DWORD dw = wsz ? WideCharToMultiByte(CP_UTF8, 0, wsz, -1, NULL, 0, NULL, NULL) : 0;
+    return dw ? dw - 1 : 0;
+}
 
 /*
 * Duplicates a string.
@@ -213,14 +268,14 @@ VOID Util_GetPathDll(_Out_writes_(MAX_PATH) PCHAR szPath, _In_opt_ HMODULE hModu
 */
 LPSTR Util_StrDupA(_In_opt_ LPSTR sz);
 LPWSTR Util_StrDupW(_In_opt_ LPWSTR wsz);
-LPSTR Util_StrDupW2A(_In_opt_ LPWSTR wsz);
+LPSTR Util_StrDupW2U8(_In_opt_ LPWSTR wsz);
 
 /*
 * Convert a FILETIME into a human readable string.
 * -- pFileTime
 * -- szTime
 */
-VOID Util_FileTime2String(_In_ PFILETIME pFileTime, _Out_writes_(32) LPSTR szTime);
+VOID Util_FileTime2String(_In_ PFILETIME pFileTime, _Out_writes_(24) LPSTR szTime);
 
 /*
 * Generic sort function to be used together with qsort. Sorts QWORD.
@@ -247,13 +302,16 @@ PVOID Util_qfind(_In_ PVOID pvFind, _In_ DWORD cMap, _In_ PVOID pvMap, _In_ DWOR
 /*
 * Utility functions for read/write towards different underlying data representations.
 */
+NTSTATUS Util_VfsReadFile_FromZERO(_In_ QWORD cbFile, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsReadFile_FromPBYTE(_In_opt_ PBYTE pbFile, _In_ QWORD cbFile, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
+NTSTATUS Util_VfsReadFile_FromTextWtoU8(_In_opt_ LPWSTR wszValue, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsReadFile_FromNumber(_In_ QWORD qwValue, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsReadFile_FromQWORD(_In_ QWORD qwValue, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset, _In_ BOOL fPrefix);
 NTSTATUS Util_VfsReadFile_FromDWORD(_In_ DWORD dwValue, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset, _In_ BOOL fPrefix);
 NTSTATUS Util_VfsReadFile_FromBOOL(_In_ BOOL fValue, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsWriteFile_BOOL(_Inout_ PBOOL pfTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset);
-NTSTATUS Util_VfsWriteFile_DWORD(_Inout_ PDWORD pdwTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset, _In_ DWORD dwMinAllow);
+NTSTATUS Util_VfsWriteFile_09(_Inout_ PDWORD pdwTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset);
+NTSTATUS Util_VfsWriteFile_DWORD(_Inout_ PDWORD pdwTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset, _In_ DWORD dwMinAllow, _In_opt_ DWORD dwMaxAllow);
 NTSTATUS Util_VfsWriteFile_PBYTE(_Inout_ PBYTE pbTarget, _In_ DWORD cbTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset, _In_ BOOL fTerminatingNULL);
 VOID Util_VfsTimeStampFile(_In_opt_ PVMM_PROCESS pProcess, _Out_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo);
 

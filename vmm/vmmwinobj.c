@@ -525,26 +525,26 @@ VOID VmmWinObjFile_ReadSubsectionAndSharedCache(_In_ PVMM_PROCESS pSystemProcess
     BOOL fReadSubsection = FALSE, fReadSharedCacheMap = FALSE;
     DWORD cbP, cMEMs, cbRead = 0;
     PBYTE pbBuffer;
-    PMEM_IO_SCATTER_HEADER pMEMs, *ppMEMs;
+    PMEM_SCATTER pMEMs, *ppMEMs;
     QWORD i, oA, iPte;
     if(pcbReadOpt) { *pcbReadOpt = 0; }
     if(!cb) { return; }
     cMEMs = (DWORD)(((cbOffset & 0xfff) + cb + 0xfff) >> 12);
-    pbBuffer = (PBYTE)LocalAlloc(LMEM_ZEROINIT, 0x2000 + cMEMs * (sizeof(MEM_IO_SCATTER_HEADER) + sizeof(PMEM_IO_SCATTER_HEADER)));
+    pbBuffer = (PBYTE)LocalAlloc(LMEM_ZEROINIT, 0x2000 + cMEMs * (sizeof(MEM_SCATTER) + sizeof(PMEM_SCATTER)));
     if(!pbBuffer) {
         ZeroMemory(pb, cb);
         return;
     }
-    pMEMs = (PMEM_IO_SCATTER_HEADER)(pbBuffer + 0x2000);
-    ppMEMs = (PPMEM_IO_SCATTER_HEADER)(pbBuffer + 0x2000 + cMEMs * sizeof(MEM_IO_SCATTER_HEADER));
+    pMEMs = (PMEM_SCATTER)(pbBuffer + 0x2000);
+    ppMEMs = (PPMEM_SCATTER)(pbBuffer + 0x2000 + cMEMs * sizeof(MEM_SCATTER));
     oA = cbOffset & 0xfff;
     // prepare "middle" pages
     for(i = 0; i < cMEMs; i++) {
         ppMEMs[i] = &pMEMs[i];
-        pMEMs[i].magic = MEM_IO_SCATTER_HEADER_MAGIC;
-        pMEMs[i].version = MEM_IO_SCATTER_HEADER_VERSION;
+        pMEMs[i].version = MEM_SCATTER_VERSION;
         pMEMs[i].qwA = 0;
-        pMEMs[i].cbMax = 0x1000;
+        pMEMs[i].f = FALSE;
+        pMEMs[i].cb = 0x1000;
         pMEMs[i].pb = pb - oA + (i << 12);
     }
     // fixup "first/last" pages
@@ -568,7 +568,7 @@ VOID VmmWinObjFile_ReadSubsectionAndSharedCache(_In_ PVMM_PROCESS pSystemProcess
     // Read from _SUBSECTION
     if(pFile->cSUBSECTION && (iSubsection < pFile->cSUBSECTION)) {
         for(i = 0; i < cMEMs; i++) {
-            if(pMEMs[i].cb == 0x1000) { continue; }
+            if(pMEMs[i].f) { continue; }
             iPte = i + ((cbOffset - oA) >> 12);
             pMEMs[i].qwA = (iPte < pFile->pSUBSECTION[iSubsection].dwPtesInSubsection) ? VmmWinObjFile_ReadSubsectionAndSharedCache_GetPteSubsection(pSystemProcess, pFile->pSUBSECTION[iSubsection].vaSubsectionBase, iPte, fVmmRead) : 0;
             fReadSubsection = TRUE;
@@ -579,17 +579,17 @@ VOID VmmWinObjFile_ReadSubsectionAndSharedCache(_In_ PVMM_PROCESS pSystemProcess
     }
     // Handle Result
     for(i = 0; i < cMEMs; i++) {
-        if(pMEMs[i].cb == 0x1000) {
+        if(pMEMs[i].f) {
             cbRead += 0x1000;
         } else {
             ZeroMemory(pMEMs[i].pb, 0x1000);
         }
     }
-    cbRead -= (pMEMs[0].cb == 0x1000) ? 0x1000 : 0;                             // adjust byte count for first page (if needed)
-    cbRead -= ((cMEMs > 1) && (pMEMs[cMEMs - 1].cb == 0x1000)) ? 0x1000 : 0;    // adjust byte count for last page (if needed)
+    cbRead -= pMEMs[0].f ? 0x1000 : 0;                             // adjust byte count for first page (if needed)
+    cbRead -= ((cMEMs > 1) && pMEMs[cMEMs - 1].f) ? 0x1000 : 0;    // adjust byte count for last page (if needed)
     // Handle first page
     cbP = (DWORD)min(cb, 0x1000 - oA);
-    if(pMEMs[0].cb == 0x1000) {
+    if(pMEMs[0].f) {
         memcpy(pb, pMEMs[0].pb + oA, cbP);
         cbRead += cbP;
     } else {
@@ -598,7 +598,7 @@ VOID VmmWinObjFile_ReadSubsectionAndSharedCache(_In_ PVMM_PROCESS pSystemProcess
     // Handle last page
     if(cMEMs > 1) {
         cbP = (((cbOffset + cb) & 0xfff) ? ((cbOffset + cb) & 0xfff) : 0x1000);
-        if(pMEMs[cMEMs - 1].cb == 0x1000) {
+        if(pMEMs[cMEMs - 1].f) {
             memcpy(pb + ((QWORD)cMEMs << 12) - oA - 0x1000, pMEMs[cMEMs - 1].pb, cbP);
             cbRead += cbP;
         } else {

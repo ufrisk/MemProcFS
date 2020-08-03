@@ -66,59 +66,116 @@ VOID PageStatClose(_In_opt_ PPAGE_STATISTICS *ppPageStat);
 */
 VOID PageStatUpdate(_In_opt_ PPAGE_STATISTICS pPageStat, _In_ QWORD qwAddr, _In_ QWORD cPageSuccessAdd, _In_ QWORD cPageFailAdd);
 
-// NB! also update statistics.c!NAMES_VMM_STATISTICS_CALL
+// NB! also update STATISTICS_ID_STR
 #define STATISTICS_ID_INITIALIZE                                0x00
 #define STATISTICS_ID_PluginManager_List                        0x01
 #define STATISTICS_ID_PluginManager_Read                        0x02
 #define STATISTICS_ID_PluginManager_Write                       0x03
 #define STATISTICS_ID_PluginManager_Notify                      0x04
-#define STATISTICS_ID_VMMDLL_VfsList                            0x05
-#define STATISTICS_ID_VMMDLL_VfsRead                            0x06
-#define STATISTICS_ID_VMMDLL_VfsWrite                           0x07
-#define STATISTICS_ID_VMMDLL_VfsInitializePlugins               0x08
-#define STATISTICS_ID_VMMDLL_MemReadEx                          0x09
-#define STATISTICS_ID_VMMDLL_MemReadScatter                     0x0a
-#define STATISTICS_ID_VMMDLL_MemWrite                           0x0b
-#define STATISTICS_ID_VMMDLL_MemVirt2Phys                       0x0c
-#define STATISTICS_ID_VMMDLL_MemPrefetchPages                   0x0d
-#define STATISTICS_ID_VMMDLL_PidList                            0x0e
-#define STATISTICS_ID_VMMDLL_PidGetFromName                     0x0f
-#define STATISTICS_ID_VMMDLL_ProcessGetInformation              0x10
-#define STATISTICS_ID_VMMDLL_ProcessGetInformationString        0x11
-#define STATISTICS_ID_VMMDLL_ProcessMap_GetPte                  0x12
-#define STATISTICS_ID_VMMDLL_ProcessMap_GetVad                  0x13
-#define STATISTICS_ID_VMMDLL_ProcessMap_GetModule               0x14
-#define STATISTICS_ID_VMMDLL_ProcessMap_GetModuleFromName       0x15
-#define STATISTICS_ID_VMMDLL_ProcessMap_GetHeap                 0x16
-#define STATISTICS_ID_VMMDLL_ProcessMap_GetThread               0x17
-#define STATISTICS_ID_VMMDLL_ProcessMap_GetHandle               0x18
-#define STATISTICS_ID_VMMDLL_Map_GetPhysMem                     0x19
-#define STATISTICS_ID_VMMDLL_Map_GetUsers                       0x1a
-#define STATISTICS_ID_VMMDLL_Map_GetPfn                         0x1b
-#define STATISTICS_ID_VMMDLL_ProcessGetDirectories              0x1c
-#define STATISTICS_ID_VMMDLL_ProcessGetSections                 0x1d
-#define STATISTICS_ID_VMMDLL_ProcessGetEAT                      0x1e
-#define STATISTICS_ID_VMMDLL_ProcessGetIAT                      0x1f
-#define STATISTICS_ID_VMMDLL_ProcessGetProcAddress              0x20
-#define STATISTICS_ID_VMMDLL_ProcessGetModuleBase               0x21
-#define STATISTICS_ID_VMMDLL_WinGetThunkEAT                     0x22
-#define STATISTICS_ID_VMMDLL_WinGetThunkIAT                     0x23
-#define STATISTICS_ID_VMMDLL_WinMemCompression_DecompressPage   0x24
-#define STATISTICS_ID_VMMDLL_WinRegHive_List                    0x25
-#define STATISTICS_ID_VMMDLL_WinRegHive_ReadEx                  0x26
-#define STATISTICS_ID_VMMDLL_WinRegHive_Write                   0x27
-#define STATISTICS_ID_VMMDLL_WinReg_EnumKeyExW                  0x28
-#define STATISTICS_ID_VMMDLL_WinReg_EnumValueW                  0x29
-#define STATISTICS_ID_VMMDLL_WinReg_QueryValueExW               0x2a
-#define STATISTICS_ID_VMMDLL_WinNet_Get                         0x2b
-#define STATISTICS_ID_VMMDLL_Refresh                            0x2c
+#define STATISTICS_ID_PluginManager_Timeline                    0x05
+#define STATISTICS_ID_VMMDLL_VfsList                            0x06
+#define STATISTICS_ID_VMMDLL_VfsRead                            0x07
+#define STATISTICS_ID_VMMDLL_VfsWrite                           0x08
+#define STATISTICS_ID_VMMDLL_InitializePlugins                  0x09
+#define STATISTICS_ID_VMMDLL_MemReadEx                          0x0a
+#define STATISTICS_ID_VMMDLL_MemReadScatter                     0x0b
+#define STATISTICS_ID_VMMDLL_MemWrite                           0x0c
+#define STATISTICS_ID_VMMDLL_MemVirt2Phys                       0x0d
+#define STATISTICS_ID_VMMDLL_MemPrefetchPages                   0x0e
+#define STATISTICS_ID_VMMDLL_PidList                            0x0f
+#define STATISTICS_ID_VMMDLL_PidGetFromName                     0x10
+#define STATISTICS_ID_VMMDLL_ProcessGetInformation              0x11
+#define STATISTICS_ID_VMMDLL_ProcessGetInformationString        0x12
+#define STATISTICS_ID_VMMDLL_ProcessMap_GetPte                  0x13
+#define STATISTICS_ID_VMMDLL_ProcessMap_GetVad                  0x14
+#define STATISTICS_ID_VMMDLL_ProcessMap_GetModule               0x15
+#define STATISTICS_ID_VMMDLL_ProcessMap_GetModuleFromName       0x16
+#define STATISTICS_ID_VMMDLL_ProcessMap_GetHeap                 0x17
+#define STATISTICS_ID_VMMDLL_ProcessMap_GetThread               0x18
+#define STATISTICS_ID_VMMDLL_ProcessMap_GetHandle               0x19
+#define STATISTICS_ID_VMMDLL_Map_GetPhysMem                     0x1a
+#define STATISTICS_ID_VMMDLL_Map_GetNet                         0x1b
+#define STATISTICS_ID_VMMDLL_Map_GetUsers                       0x1c
+#define STATISTICS_ID_VMMDLL_Map_GetPfn                         0x1d
+#define STATISTICS_ID_VMMDLL_ProcessGetDirectories              0x1e
+#define STATISTICS_ID_VMMDLL_ProcessGetSections                 0x1f
+#define STATISTICS_ID_VMMDLL_ProcessGetEAT                      0x20
+#define STATISTICS_ID_VMMDLL_ProcessGetIAT                      0x21
+#define STATISTICS_ID_VMMDLL_ProcessGetProcAddress              0x22
+#define STATISTICS_ID_VMMDLL_ProcessGetModuleBase               0x23
+#define STATISTICS_ID_VMMDLL_WinGetThunkEAT                     0x24
+#define STATISTICS_ID_VMMDLL_WinGetThunkIAT                     0x25
+#define STATISTICS_ID_VMMDLL_WinMemCompression_DecompressPage   0x26
+#define STATISTICS_ID_VMMDLL_WinRegHive_List                    0x27
+#define STATISTICS_ID_VMMDLL_WinRegHive_ReadEx                  0x28
+#define STATISTICS_ID_VMMDLL_WinRegHive_Write                   0x29
+#define STATISTICS_ID_VMMDLL_WinReg_EnumKeyExW                  0x2a
+#define STATISTICS_ID_VMMDLL_WinReg_EnumValueW                  0x2b
+#define STATISTICS_ID_VMMDLL_WinReg_QueryValueExW               0x2c
 #define STATISTICS_ID_VMMDLL_UtilFillHexAscii                   0x2d
-#define STATISTICS_ID_VMMDLL_PdbSymbolAddress                   0x2e
-#define STATISTICS_ID_VMMDLL_PdbTypeSize                        0x2f
-#define STATISTICS_ID_VMMDLL_PdbTypeChildOffset                 0x30
-#define STATISTICS_ID_VMM_PagedCompressedMemory                 0x31
-#define STATISTICS_ID_MAX                                       0x31
+#define STATISTICS_ID_VMMDLL_PdbLoad                            0x2e
+#define STATISTICS_ID_VMMDLL_PdbSymbolName                      0x2f
+#define STATISTICS_ID_VMMDLL_PdbSymbolAddress                   0x30
+#define STATISTICS_ID_VMMDLL_PdbTypeSize                        0x31
+#define STATISTICS_ID_VMMDLL_PdbTypeChildOffset                 0x32
+#define STATISTICS_ID_VMM_PagedCompressedMemory                 0x33
+#define STATISTICS_ID_MAX                                       0x33
 #define STATISTICS_ID_NOLOG                                     0xffffffff
+
+static LPCSTR STATISTICS_ID_STR[] = {
+    "INITIALIZE",
+    "PluginManager_List",
+    "PluginManager_Read",
+    "PluginManager_Write",
+    "PluginManager_Notify",
+    "PluginManager_Timeline",
+    "VMMDLL_VfsList",
+    "VMMDLL_VfsRead",
+    "VMMDLL_VfsWrite",
+    "VMMDLL_InitializePlugins",
+    "VMMDLL_MemReadEx",
+    "VMMDLL_MemReadScatter",
+    "VMMDLL_MemWrite",
+    "VMMDLL_MemVirt2Phys",
+    "VMMDLL_MemPrefetchPages",
+    "VMMDLL_PidList",
+    "VMMDLL_PidGetFromName",
+    "VMMDLL_ProcessGetInformation",
+    "VMMDLL_ProcessGetInformationString",
+    "VMMDLL_ProcessMap_GetPte",
+    "VMMDLL_ProcessMap_GetVad",
+    "VMMDLL_ProcessMap_GetModule",
+    "VMMDLL_ProcessMap_GetModuleFromName",
+    "VMMDLL_ProcessMap_GetHeap",
+    "VMMDLL_ProcessMap_GetThread",
+    "VMMDLL_ProcessMap_GetHandle",
+    "VMMDLL_Map_GetPhysMem",
+    "VMMDLL_Map_GetNet",
+    "VMMDLL_Map_GetUsers",
+    "VMMDLL_Map_GetPfn",
+    "VMMDLL_ProcessGetDirectories",
+    "VMMDLL_ProcessGetSections",
+    "VMMDLL_ProcessGetEAT",
+    "VMMDLL_ProcessGetIAT",
+    "VMMDLL_ProcessGetProcAddress",
+    "VMMDLL_ProcessGetModuleBase",
+    "VMMDLL_WinGetThunkEAT",
+    "VMMDLL_WinGetThunkIAT",
+    "VMMDLL_WinMemCompression_DecompressPage",
+    "VMMDLL_WinRegHive_List",
+    "VMMDLL_WinRegHive_ReadEx",
+    "VMMDLL_WinRegHive_Write",
+    "VMMDLL_WinReg_EnumKeyExW",
+    "VMMDLL_WinReg_EnumValueW",
+    "VMMDLL_WinReg_QueryValueExW",
+    "VMMDLL_UtilFillHexAscii",
+    "VMMDLL_PdbLoad",
+    "VMMDLL_PdbSymbolName",
+    "VMMDLL_PdbSymbolAddress",
+    "VMMDLL_PdbTypeSize",
+    "VMMDLL_PdbTypeChildOffset",
+    "VMM_PagedCompressedMemory",
+};
 
 VOID Statistics_CallSetEnabled(_In_ BOOL fEnabled);
 BOOL Statistics_CallGetEnabled();
