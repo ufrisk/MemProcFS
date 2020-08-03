@@ -135,6 +135,10 @@ Please do note that PCILeech and MemProcFS are free and open source - as such I'
  - Github Sponsors: [`https://github.com/sponsors/ufrisk`](https://github.com/sponsors/ufrisk) (preferred)
  - Paypal: `paypal@ulffrisk.com` 
  - Bitcoin: `bc1q9kur5pym8wmh5yxkf65792rdqm0guncd2gl4tu`
+ 
+To all my sponsors, Thank You :sparkling_heart:
+
+All sponsorships are welcome, no matter how large or small. I especially wish to thank my **bronze sponsors**: [grandprixgp](https://github.com/grandprixgp).
 
 Changelog:
 ===================
