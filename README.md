@@ -27,9 +27,9 @@ No matter if you have no prior knowledge of memory analysis or are an advanced u
 
 <p align="center"><img src="https://github.com/ufrisk/MemProcFS/wiki/resources/proc_procstruct.png" height="225"/><img src="https://github.com/ufrisk/MemProcFS/wiki/resources/proc_virt2phys.png" height="225"/></p>
 
-Extensive Python and C/C++ API:
+Extensive Python, C# and C/C++ API:
 ===============================
-Everything in MemProcFS is exposed as APIs. APIs exist for both C/C++ `vmmdll.h` and Python `vmmpy.py`. The file system itself is made available virtually via the API without the need to mount it. Specialized process analysis and process alteration functionality is made easy by calling API functionality. It is possible to read both virtual process memory as well as physical memory! The example below shows reading 0x20 bytes from physical address 0x1000:
+Everything in MemProcFS is exposed as APIs. APIs exist for both C/C++ `vmmdll.h`, C# `vmmsharp.cs` and Python `vmmpy.py`. The file system itself is made available virtually via the API without the need to mount it. Specialized process analysis and process alteration functionality is made easy by calling API functionality. It is possible to read both virtual process memory as well as physical memory! The example below shows reading 0x20 bytes from physical address 0x1000:
 ```
 >>> from vmmpy import *
 >>> VmmPy_Initialize('c:/temp/win10_memdump.raw')
@@ -188,3 +188,7 @@ v1.1-v2.10
 * New Features:
   * Minidump .DMP file generation for individual processes.
   * Syscalls - nt & win32k.
+  
+Latest:
+* C# API and examples - located in `vmmsharp` project.
+

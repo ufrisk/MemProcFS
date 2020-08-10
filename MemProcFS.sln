@@ -51,6 +51,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "dissect.cstruct", "dissect.
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "leechcore", "..\LeechCore\leechcore\leechcore.vcxproj", "{3476ABD2-5DEA-43E6-A676-8BE25F74535A}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "vmmsharp", "vmmsharp\vmmsharp.csproj", "{3CDF36DD-2B04-4876-B4BF-29FED2386E6A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -103,6 +105,10 @@ Global
 		{3476ABD2-5DEA-43E6-A676-8BE25F74535A}.Release|x64.Build.0 = Release|x64
 		{3476ABD2-5DEA-43E6-A676-8BE25F74535A}.Release|x86.ActiveCfg = Release|Win32
 		{3476ABD2-5DEA-43E6-A676-8BE25F74535A}.Release|x86.Build.0 = Release|Win32
+		{3CDF36DD-2B04-4876-B4BF-29FED2386E6A}.Debug|x64.ActiveCfg = Debug|x64
+		{3CDF36DD-2B04-4876-B4BF-29FED2386E6A}.Debug|x86.ActiveCfg = Debug|x64
+		{3CDF36DD-2B04-4876-B4BF-29FED2386E6A}.Release|x64.ActiveCfg = Release|x64
+		{3CDF36DD-2B04-4876-B4BF-29FED2386E6A}.Release|x86.ActiveCfg = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
