@@ -1,6 +1,7 @@
 LIBRARY        VMM
 EXPORTS
     VMMDLL_Initialize
+    VMMDLL_InitializeEx
     VMMDLL_Close
     VMMDLL_MemFree
 

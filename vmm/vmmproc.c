@@ -8,7 +8,7 @@
 #include "vmmproc.h"
 #include "vmmwin.h"
 #include "vmmwininit.h"
-#include "vmmwinnet.h"
+#include "vmmnet.h"
 #include "vmmwinobj.h"
 #include "vmmwinreg.h"
 #include "mm_pfn.h"
@@ -74,15 +74,15 @@ BOOL VmmProc_RefreshProcesses(_In_ BOOL fRefreshTotal)
 // may be changed in config options or by editing files in the .status directory.
 
 #define VMMPROC_UPDATERTHREAD_LOCAL_PERIOD              100
-#define VMMPROC_UPDATERTHREAD_LOCAL_PHYSCACHE           (500 / VMMPROC_UPDATERTHREAD_LOCAL_PERIOD)                // 0.5s
-#define VMMPROC_UPDATERTHREAD_LOCAL_TLB                 (5 * 1000 / VMMPROC_UPDATERTHREAD_LOCAL_PERIOD)           // 5s
+#define VMMPROC_UPDATERTHREAD_LOCAL_PHYSCACHE           (200 / VMMPROC_UPDATERTHREAD_LOCAL_PERIOD)                // 0.2s
+#define VMMPROC_UPDATERTHREAD_LOCAL_TLB                 (2 * 1000 / VMMPROC_UPDATERTHREAD_LOCAL_PERIOD)           // 2s
 #define VMMPROC_UPDATERTHREAD_LOCAL_PROC_REFRESHLIST    (5 * 1000 / VMMPROC_UPDATERTHREAD_LOCAL_PERIOD)           // 5s
 #define VMMPROC_UPDATERTHREAD_LOCAL_PROC_REFRESHTOTAL   (15 * 1000 / VMMPROC_UPDATERTHREAD_LOCAL_PERIOD)          // 15s
 #define VMMPROC_UPDATERTHREAD_LOCAL_REGISTRY            (5 * 60 * 1000 / VMMPROC_UPDATERTHREAD_LOCAL_PERIOD)      // 5m
 
 #define VMMPROC_UPDATERTHREAD_REMOTE_PERIOD             100
-#define VMMPROC_UPDATERTHREAD_REMOTE_PHYSCACHE          (15 * 1000 / VMMPROC_UPDATERTHREAD_REMOTE_PERIOD)        // 15s
-#define VMMPROC_UPDATERTHREAD_REMOTE_TLB                (3 * 60 * 1000 / VMMPROC_UPDATERTHREAD_REMOTE_PERIOD)    // 3m
+#define VMMPROC_UPDATERTHREAD_REMOTE_PHYSCACHE          (5 * 1000 / VMMPROC_UPDATERTHREAD_REMOTE_PERIOD)         // 5s
+#define VMMPROC_UPDATERTHREAD_REMOTE_TLB                (2 * 60 * 1000 / VMMPROC_UPDATERTHREAD_REMOTE_PERIOD)    // 2m
 #define VMMPROC_UPDATERTHREAD_REMOTE_PROC_REFRESHLIST   (15 * 1000 / VMMPROC_UPDATERTHREAD_REMOTE_PERIOD)        // 15s
 #define VMMPROC_UPDATERTHREAD_REMOTE_PROC_REFRESHTOTAL  (3 * 60 * 1000 / VMMPROC_UPDATERTHREAD_REMOTE_PERIOD)    // 3m
 #define VMMPROC_UPDATERTHREAD_REMOTE_REGISTRY           (10 * 60 * 1000 / VMMPROC_UPDATERTHREAD_LOCAL_PERIOD)    // 10m
@@ -118,14 +118,14 @@ DWORD VmmProcCacheUpdaterThread()
         EnterCriticalSection(&ctxVmm->LockMaster);
         // PHYS / TLB cache clear
         if(fPHYS) {
-            VmmCacheClear(VMM_CACHE_TAG_PHYS);
+            VmmCacheClearPartial(VMM_CACHE_TAG_PHYS);
             InterlockedIncrement64(&ctxVmm->stat.cPhysRefreshCache);
-            VmmCacheClear(VMM_CACHE_TAG_PAGING);
+            VmmCacheClearPartial(VMM_CACHE_TAG_PAGING);
             InterlockedIncrement64(&ctxVmm->stat.cPageRefreshCache);
             ObSet_Clear(ctxVmm->Cache.PAGING_FAILED);
         }
         if(fTLB) {
-            VmmCacheClear(VMM_CACHE_TAG_TLB);
+            VmmCacheClearPartial(VMM_CACHE_TAG_TLB);
             InterlockedIncrement64(&ctxVmm->stat.cTlbRefreshCache);
         }
         // refresh proc list
@@ -137,7 +137,7 @@ DWORD VmmProcCacheUpdaterThread()
             }
             // send notify
             if(fProcTotal) {
-                VmmWinNet_Refresh();
+                VmmNet_Refresh();
                 VmmWinObj_Refresh();
                 PluginManager_Notify(VMMDLL_PLUGIN_EVENT_REFRESH_PROCESS_TOTAL, NULL, 0);
             }

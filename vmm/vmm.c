@@ -13,7 +13,7 @@
 #include "vmmwindef.h"
 #include "vmmwinobj.h"
 #include "vmmwinreg.h"
-#include "vmmwinnet.h"
+#include "vmmnet.h"
 #include "pluginmanager.h"
 #include "util.h"
 #include <sddl.h>
@@ -22,6 +22,8 @@
 // CACHE FUNCTIONALITY:
 // PHYSICAL MEMORY CACHING FOR READS AND PAGE TABLES
 // ----------------------------------------------------------------------------
+
+#define VMM_CACHE_GET_BUCKET(qwA)      ((VMM_CACHE_BUCKETS - 1) & ((qwA >> 12) + 13 * (qwA + _rotr16((WORD)qwA, 9) + _rotr((DWORD)qwA, 17) + _rotr64(qwA, 31))))
 
 /*
 * Retrieve cache table from ctxVmm given a specific tag.
@@ -40,111 +42,36 @@ PVMM_CACHE_TABLE VmmCacheTableGet(_In_ DWORD wTblTag)
     }
 }
 
-#define VMM_CACHE2_GET_REGION(qwA)      ((qwA >> 12) % VMM_CACHE2_REGIONS)
-#define VMM_CACHE2_GET_BUCKET(qwA)      ((qwA >> 12) % VMM_CACHE2_BUCKETS)
-
 /*
-* Invalidate a cache entry (if exists)
+* Clear the oldest region of all InUse entries and make it the new active region.
+* -- wTblTag
 */
-VOID VmmCacheInvalidate_2(_In_ DWORD dwTblTag, _In_ QWORD qwA)
+VOID VmmCacheClearPartial(_In_ DWORD dwTblTag)
 {
-    DWORD iR, iB;
     PVMM_CACHE_TABLE t;
-    PVMMOB_MEM pOb, pObNext;
+    PVMMOB_CACHE_MEM pOb;
+    PSLIST_ENTRY e;
+    DWORD iR;
+    PVMM_PROCESS pObProcess = NULL;
     t = VmmCacheTableGet(dwTblTag);
     if(!t || !t->fActive) { return; }
-    iR = VMM_CACHE2_GET_REGION(qwA);
-    iB = VMM_CACHE2_GET_BUCKET(qwA);
-    EnterCriticalSection(&t->R[iR].Lock);
-    pOb = t->R[iR].B[iB];
-    while(pOb) {
-        pObNext = pOb->FLink;
-        if(pOb->h.qwA == qwA) {
-            // detach bucket
-            if(pOb->BLink) {
-                pOb->BLink->FLink = pOb->FLink;
-            } else {
-                t->R[iR].B[iB] = pOb->FLink;
-            }
-            if(pOb->FLink) {
-                pOb->FLink->BLink = pOb->BLink;
-            }
-            // detach age list
-            if(pOb->AgeBLink) {
-                pOb->AgeBLink->AgeFLink = pOb->AgeFLink;
-            } else {
-                t->R[iR].AgeFLink = pOb->AgeFLink;
-            }
-            if(pOb->AgeFLink) {
-                pOb->AgeFLink->AgeBLink = pOb->AgeBLink;
-            } else {
-                t->R[iR].AgeBLink = pOb->AgeBLink;
-            }
-            // decrease count & decref
-            InterlockedDecrement(&t->R[iR].c);
-            Ob_DECREF(pOb);
-        }
-        pOb = pObNext;
-    }
-    LeaveCriticalSection(&t->R[iR].Lock);
-}
-
-VOID VmmCacheInvalidate(_In_ QWORD pa)
-{
-    VmmCacheInvalidate_2(VMM_CACHE_TAG_TLB, pa);
-    VmmCacheInvalidate_2(VMM_CACHE_TAG_PHYS, pa);
-}
-
-VOID VmmCacheReclaim(_In_ PVMM_CACHE_TABLE t, _In_ DWORD iR, _In_ BOOL fTotal)
-{
-    DWORD cThreshold;
-    PVMMOB_MEM pOb;
-    EnterCriticalSection(&t->R[iR].Lock);
-    cThreshold = fTotal ? 0 : max(0x10, t->R[iR].c >> 1);
-    while(t->R[iR].c > cThreshold) {
-        // get
-        pOb = t->R[iR].AgeBLink;
-        if(!pOb) {
-            vmmprintf_fn("ERROR - SHOULD NOT HAPPEN - NULL OBJECT RETRIEVED\n");
-            break;
-        }
-        // detach from age list
-        t->R[iR].AgeBLink = pOb->AgeBLink;
-        if(pOb->AgeBLink) {
-            pOb->AgeBLink->AgeFLink = NULL;
-        } else {
-            t->R[iR].AgeFLink = NULL;
-        }
-        // detach from bucket list
-        if(pOb->BLink) {
-            pOb->BLink->FLink = NULL;
-        } else {
-            t->R[iR].B[VMM_CACHE2_GET_BUCKET(pOb->h.qwA)] = NULL;
-        }
+    EnterCriticalSection(&t->Lock);
+    iR = (t->iR + (VMM_CACHE_REGIONS - 1)) % VMM_CACHE_REGIONS;
+    // 1: clear all entries from region
+    AcquireSRWLockExclusive(&t->R[iR].LockSRW);
+    while((e = InterlockedPopEntrySList(&t->R[iR].ListHeadInUse))) {
+        pOb = CONTAINING_RECORD(e, VMMOB_CACHE_MEM, SListInUse);
         // remove region refcount of object - callback will take care of
         // re-insertion into empty list when refcount becomes low enough.
         Ob_DECREF(pOb);
-        InterlockedDecrement(&t->R[iR].c);
     }
-    LeaveCriticalSection(&t->R[iR].Lock);
-}
-
-/*
-* Clear the specified cache from all entries.
-* -- wTblTag
-*/
-VOID VmmCacheClear(_In_ DWORD dwTblTag)
-{
-    DWORD i;
-    PVMM_CACHE_TABLE t;
-    PVMM_PROCESS pObProcess = NULL;
-    // 1: clear cache
-    t = VmmCacheTableGet(dwTblTag);
-    for(i = 0; i < VMM_CACHE2_REGIONS; i++) {
-        VmmCacheReclaim(t, i, TRUE);
-    }
+    ZeroMemory(t->R[iR].B, VMM_CACHE_BUCKETS * sizeof(PVMMOB_CACHE_MEM));
+    ReleaseSRWLockExclusive(&t->R[iR].LockSRW);
+    t->iR = iR;
+    t->fAllActiveRegions = t->fAllActiveRegions || (t->iR == 0);
+    LeaveCriticalSection(&t->Lock);
     // 2: if tlb cache clear -> update process 'is spider done' flag
-    if(dwTblTag == VMM_CACHE_TAG_TLB) {
+    if(t->fAllActiveRegions && (dwTblTag == VMM_CACHE_TAG_TLB)) {
         while((pObProcess = VmmProcessGetNext(pObProcess, 0))) {
             if(pObProcess->fTlbSpiderDone) {
                 EnterCriticalSection(&pObProcess->LockUpdate);
@@ -155,7 +82,76 @@ VOID VmmCacheClear(_In_ DWORD dwTblTag)
     }
 }
 
-VOID VmmCache_CallbackRefCount1(PVMMOB_MEM pOb)
+/*
+* Clear the specified cache from all entries.
+* -- dwTblTag
+*/
+VOID VmmCacheClear(_In_ DWORD dwTblTag)
+{
+    DWORD i;
+    for(i = 0; i < VMM_CACHE_REGIONS; i++) {
+        VmmCacheClearPartial(dwTblTag);
+    }
+}
+
+/*
+* Retrieve an item from the cache.
+* CALLER DECREF: return
+* -- dwTblTag
+* -- qwA
+* -- fCurrentRegionOnly = only retrieve from the currently active cache region.
+* -- return
+*/
+PVMMOB_CACHE_MEM VmmCacheGetEx(_In_ DWORD dwTblTag, _In_ QWORD qwA, _In_ BOOL fCurrentRegionOnly)
+{
+    PVMM_CACHE_TABLE t;
+    DWORD iB, iR, iRB, iRC;
+    PVMMOB_CACHE_MEM pOb;
+    t = VmmCacheTableGet(dwTblTag);
+    if(!t || !t->fActive) { return NULL; }
+    iB = VMM_CACHE_GET_BUCKET(qwA);
+    iRB = t->iR;
+    for(iRC = 0; iRC < VMM_CACHE_REGIONS; iRC++) {
+        iR = (iRB + iRC) % VMM_CACHE_REGIONS;
+        AcquireSRWLockShared(&t->R[iR].LockSRW);
+        pOb = t->R[iR].B[iB];
+        while(pOb && (pOb->h.qwA != qwA)) {
+            pOb = pOb->FLink;
+        }
+        if(pOb) {
+            Ob_INCREF(pOb);
+            ReleaseSRWLockShared(&t->R[iR].LockSRW);
+            return pOb;
+        }
+        ReleaseSRWLockShared(&t->R[iR].LockSRW);
+        if(fCurrentRegionOnly) { break; }
+    }
+    return NULL;
+}
+
+/*
+* Retrieve an item from the cache.
+* CALLER DECREF: return
+* -- dwTblTag
+* -- qwA
+* -- return
+*/
+PVMMOB_CACHE_MEM VmmCacheGet(_In_ DWORD dwTblTag, _In_ QWORD qwA)
+{
+    return VmmCacheGetEx(dwTblTag, qwA, FALSE);
+}
+
+BOOL VmmCacheExists(_In_ DWORD dwTblTag, _In_ QWORD qwA)
+{
+    BOOL result;
+    PVMMOB_CACHE_MEM pOb;
+    pOb = VmmCacheGetEx(dwTblTag, qwA, FALSE);
+    result = pOb != NULL;
+    Ob_DECREF(pOb);
+    return result;
+}
+
+VOID VmmCache_CallbackRefCount1(PVMMOB_CACHE_MEM pOb)
 {
     PVMM_CACHE_TABLE t;
     t = VmmCacheTableGet(((POB)pOb)->_tag);
@@ -165,8 +161,42 @@ VOID VmmCache_CallbackRefCount1(PVMMOB_MEM pOb)
     }
     if(!t->fActive) { return; }
     Ob_INCREF(pOb);
-    InterlockedPushEntrySList(&t->ListHeadEmpty, &pOb->SListEmpty);
-    InterlockedIncrement(&t->cEmpty);
+    InterlockedPushEntrySList(&t->R[pOb->iR].ListHeadEmpty, &pOb->SListEmpty);
+}
+
+PVMMOB_CACHE_MEM VmmCacheReserve(_In_ DWORD dwTblTag)
+{
+    PVMM_CACHE_TABLE t;
+    PVMMOB_CACHE_MEM pOb;
+    PSLIST_ENTRY e;
+    WORD cLoopProtect = 0;
+    t = VmmCacheTableGet(dwTblTag);
+    if(!t || !t->fActive) { return NULL; }
+    while(!(e = InterlockedPopEntrySList(&t->R[t->iR].ListHeadEmpty))) {
+        if(QueryDepthSList(&t->R[t->iR].ListHeadTotal) < VMM_CACHE_REGION_MEMS) {
+            // below max threshold -> create new
+            pOb = Ob_Alloc(t->tag, LMEM_ZEROINIT, sizeof(VMMOB_CACHE_MEM), NULL, VmmCache_CallbackRefCount1);
+            if(!pOb) { return NULL; }
+            pOb->iR = t->iR;
+            pOb->h.version = MEM_SCATTER_VERSION;
+            pOb->h.cb = 0x1000;
+            pOb->h.pb = pOb->pb;
+            pOb->h.qwA = MEM_SCATTER_ADDR_INVALID;
+            Ob_INCREF(pOb);  // "total list" reference
+            InterlockedPushEntrySList(&t->R[pOb->iR].ListHeadTotal, &pOb->SListTotal);
+            return pOb;         // return fresh object - refcount = 2.
+        }
+        // reclaim existing entries by clearing the oldest cache region.
+        VmmCacheClearPartial(dwTblTag);
+        if(++cLoopProtect == VMM_CACHE_REGIONS) {
+            vmmprintf_fn("ERROR - SHOULD NOT HAPPEN - CACHE %04X DRAINED OF ENTRIES\n", dwTblTag);
+            Sleep(10);
+        }
+    }
+    pOb = CONTAINING_RECORD(e, VMMOB_CACHE_MEM, SListEmpty);
+    pOb->h.qwA = MEM_SCATTER_ADDR_INVALID;
+    pOb->h.f = FALSE;
+    return pOb; // reference overtaken by callee (from EmptyList)
 }
 
 /*
@@ -175,9 +205,8 @@ VOID VmmCache_CallbackRefCount1(PVMMOB_MEM pOb)
 * FUNCTION DECREF: pOb
 * -- pOb
 */
-VOID VmmCacheReserveReturn(_In_opt_ PVMMOB_MEM pOb)
+VOID VmmCacheReserveReturn(_In_opt_ PVMMOB_CACHE_MEM pOb)
 {
-    DWORD iR, iB;
     PVMM_CACHE_TABLE t;
     if(!pOb) { return; }
     t = VmmCacheTableGet(((POB)pOb)->_tag);
@@ -192,82 +221,101 @@ VOID VmmCacheReserveReturn(_In_opt_ PVMMOB_MEM pOb)
         return;
     }
     // insert into map - refcount will be overtaken by "cache region".
-    iR = VMM_CACHE2_GET_REGION(pOb->h.qwA);
-    iB = VMM_CACHE2_GET_BUCKET(pOb->h.qwA);
-    EnterCriticalSection(&t->R[iR].Lock);
+    pOb->iB = VMM_CACHE_GET_BUCKET(pOb->h.qwA);
+    AcquireSRWLockExclusive(&t->R[pOb->iR].LockSRW);
+    InterlockedPushEntrySList(&t->R[pOb->iR].ListHeadInUse, &pOb->SListInUse);
     // insert into "bucket"
     pOb->BLink = NULL;
-    pOb->FLink = t->R[iR].B[iB];
+    pOb->FLink = t->R[pOb->iR].B[pOb->iB];
     if(pOb->FLink) { pOb->FLink->BLink = pOb; }
-    t->R[iR].B[iB] = pOb;
-    // insert into "age list"
-    pOb->AgeFLink = t->R[iR].AgeFLink;
-    if(pOb->AgeFLink) { pOb->AgeFLink->AgeBLink = pOb; }
-    pOb->AgeBLink = NULL;
-    t->R[iR].AgeFLink = pOb;
-    if(!t->R[iR].AgeBLink) { t->R[iR].AgeBLink = pOb; }
-    InterlockedIncrement(&t->R[iR].c);
-    LeaveCriticalSection(&t->R[iR].Lock);
+    t->R[pOb->iR].B[pOb->iB] = pOb;
+    ReleaseSRWLockExclusive(&t->R[pOb->iR].LockSRW);
 }
 
-PVMMOB_MEM VmmCacheReserve(_In_ DWORD dwTblTag)
+VOID VmmCacheClose(_In_ DWORD dwTblTag)
 {
     PVMM_CACHE_TABLE t;
-    PVMMOB_MEM pOb;
+    PVMMOB_CACHE_MEM pOb;
     PSLIST_ENTRY e;
-    WORD iReclaimLast, cLoopProtect = 0;
+    DWORD iR;
     t = VmmCacheTableGet(dwTblTag);
-    if(!t || !t->fActive) { return NULL; }
-    while(!(e = InterlockedPopEntrySList(&t->ListHeadEmpty))) {
-        if(t->cTotal < VMM_CACHE2_MAX_ENTRIES) {
-            // below max threshold -> create new
-            pOb = Ob_Alloc(t->tag, LMEM_ZEROINIT, sizeof(VMMOB_MEM), NULL, VmmCache_CallbackRefCount1);
-            if(!pOb) { return NULL; }
-            pOb->h.version = MEM_SCATTER_VERSION;
-            pOb->h.cb = 0x1000;
-            pOb->h.pb = pOb->pb;
-            pOb->h.qwA = MEM_SCATTER_ADDR_INVALID;
-            Ob_INCREF(pOb);  // "total list" reference
-            InterlockedPushEntrySList(&t->ListHeadTotal, &pOb->SListTotal);
-            InterlockedIncrement(&t->cTotal);
-            return pOb;         // return fresh object - refcount = 2.
+    if(!t || !t->fActive) { return; }
+    t->fActive = FALSE;
+    EnterCriticalSection(&t->Lock);
+    for(iR = 0; iR < VMM_CACHE_REGIONS; iR++) {
+        AcquireSRWLockExclusive(&t->R[iR].LockSRW);
+        // remove from "empty list"
+        while(e = InterlockedPopEntrySList(&t->R[iR].ListHeadEmpty)) {
+            pOb = CONTAINING_RECORD(e, VMMOB_CACHE_MEM, SListEmpty);
+            Ob_DECREF(pOb);
         }
-        // reclaim existing entries
-        iReclaimLast = InterlockedIncrement16(&t->iReclaimLast);
-        VmmCacheReclaim(t, iReclaimLast % VMM_CACHE2_REGIONS, FALSE);
-        if(++cLoopProtect == VMM_CACHE2_REGIONS) {
-            vmmprintf_fn("ERROR - SHOULD NOT HAPPEN - CACHE %04X DRAINED OF ENTRIES\n", dwTblTag);
-            Sleep(10);
+        // remove from "in use list"
+        while(e = InterlockedPopEntrySList(&t->R[iR].ListHeadInUse)) {
+            pOb = CONTAINING_RECORD(e, VMMOB_CACHE_MEM, SListInUse);
+            Ob_DECREF(pOb);
+        }
+        // remove from "total list"
+        while(e = InterlockedPopEntrySList(&t->R[iR].ListHeadTotal)) {
+            pOb = CONTAINING_RECORD(e, VMMOB_CACHE_MEM, SListTotal);
+            Ob_DECREF(pOb);
         }
     }
-    InterlockedDecrement(&t->cEmpty);
-    pOb = CONTAINING_RECORD(e, VMMOB_MEM, SListEmpty);
-    pOb->h.qwA = MEM_SCATTER_ADDR_INVALID;
-    pOb->h.f = FALSE;
-    return pOb; // reference overtaken by callee (from EmptyList)
+    DeleteCriticalSection(&t->Lock);
 }
 
-PVMMOB_MEM VmmCacheGet(_In_ DWORD dwTblTag, _In_ QWORD qwA)
+VOID VmmCacheInitialize(_In_ DWORD dwTblTag)
+{
+    DWORD iR;
+    PVMM_CACHE_TABLE t;
+    t = VmmCacheTableGet(dwTblTag);
+    if(!t || t->fActive) { return; }
+    for(iR = 0; iR < VMM_CACHE_REGIONS; iR++) {
+        InitializeSRWLock(&t->R[iR].LockSRW);
+        InitializeSListHead(&t->R[iR].ListHeadEmpty);
+        InitializeSListHead(&t->R[iR].ListHeadInUse);
+        InitializeSListHead(&t->R[iR].ListHeadTotal);
+    }
+    InitializeCriticalSection(&t->Lock);
+    t->tag = dwTblTag;
+    t->fActive = TRUE;
+}
+
+/*
+* Invalidate a cache entry (if exists)
+*/
+VOID VmmCacheInvalidate_2(_In_ DWORD dwTblTag, _In_ QWORD qwA)
 {
     PVMM_CACHE_TABLE t;
-    DWORD iR;
-    PVMMOB_MEM pOb;
+    PVMMOB_CACHE_MEM pOb;
     t = VmmCacheTableGet(dwTblTag);
-    if(!t || !t->fActive) { return NULL; }
-    iR = VMM_CACHE2_GET_REGION(qwA);
-    EnterCriticalSection(&t->R[iR].Lock);
-    pOb = t->R[iR].B[VMM_CACHE2_GET_BUCKET(qwA)];
-    while(pOb && (qwA != pOb->h.qwA)) {
-        pOb = pOb->FLink;
+    if(!t || !t->fActive) { return; }
+    while((pOb = VmmCacheGet(dwTblTag, qwA))) {
+        AcquireSRWLockExclusive(&t->R[pOb->iR].LockSRW);
+        // remove from bucket list
+        if(pOb->FLink) {
+            pOb->FLink->BLink = pOb->BLink;
+        }
+        if(pOb->BLink) {
+            pOb->BLink->FLink = pOb->FLink;
+        } else {
+            t->R[pOb->iR].B[pOb->iB] = pOb->FLink;
+        }
+        // NB! "leak" object - i.e. keep it on InUse list until the cache
+        //     region itself gets cleared. somewhat ugly, but simple...
+        ReleaseSRWLockExclusive(&t->R[pOb->iR].LockSRW);
+        Ob_DECREF(pOb);
     }
-    Ob_INCREF(pOb);
-    LeaveCriticalSection(&t->R[iR].Lock);
-    return pOb;
 }
 
-PVMMOB_MEM VmmCacheGet_FromDeviceOnMiss(_In_ DWORD dwTblTag, _In_ DWORD dwTblTagSecondaryOpt, _In_ QWORD qwA)
+VOID VmmCacheInvalidate(_In_ QWORD pa)
 {
-    PVMMOB_MEM pObMEM, pObReservedMEM;
+    VmmCacheInvalidate_2(VMM_CACHE_TAG_TLB, pa);
+    VmmCacheInvalidate_2(VMM_CACHE_TAG_PHYS, pa);
+}
+
+PVMMOB_CACHE_MEM VmmCacheGet_FromDeviceOnMiss(_In_ DWORD dwTblTag, _In_ DWORD dwTblTagSecondaryOpt, _In_ QWORD qwA)
+{
+    PVMMOB_CACHE_MEM pObMEM, pObReservedMEM;
     PMEM_SCATTER pMEM;
     pObMEM = VmmCacheGet(dwTblTag, qwA);
     if(pObMEM) { return pObMEM; }
@@ -293,16 +341,6 @@ PVMMOB_MEM VmmCacheGet_FromDeviceOnMiss(_In_ DWORD dwTblTag, _In_ DWORD dwTblTag
     return NULL;
 }
 
-BOOL VmmCacheExists(_In_ DWORD dwTblTag, _In_ QWORD qwA)
-{
-    BOOL result;
-    PVMMOB_MEM pOb;
-    pOb = VmmCacheGet(dwTblTag, qwA);
-    result = pOb != NULL;
-    Ob_DECREF(pOb);
-    return result;
-}
-
 /*
 * Retrieve a page table from a given physical address (if possible).
 * CALLER DECREF: return
@@ -310,9 +348,9 @@ BOOL VmmCacheExists(_In_ DWORD dwTblTag, _In_ QWORD qwA)
 * -- fCacheOnly
 * -- return = Cache entry on success, NULL on fail.
 */
-PVMMOB_MEM VmmTlbGetPageTable(_In_ QWORD pa, _In_ BOOL fCacheOnly)
+PVMMOB_CACHE_MEM VmmTlbGetPageTable(_In_ QWORD pa, _In_ BOOL fCacheOnly)
 {
-    PVMMOB_MEM pObMEM;
+    PVMMOB_CACHE_MEM pObMEM;
     pObMEM = VmmCacheGet(VMM_CACHE_TAG_TLB, pa);
     if(pObMEM) {
         InterlockedIncrement64(&ctxVmm->stat.cTlbCacheHit);
@@ -333,49 +371,6 @@ PVMMOB_MEM VmmTlbGetPageTable(_In_ QWORD pa, _In_ BOOL fCacheOnly)
     return NULL;
 }
 
-VOID VmmCache2Close(_In_ DWORD dwTblTag)
-{
-    PVMM_CACHE_TABLE t;
-    PVMMOB_MEM pOb;
-    PSLIST_ENTRY e;
-    DWORD i;
-    t = VmmCacheTableGet(dwTblTag);
-    if(!t || !t->fActive) { return; }
-    t->fActive = FALSE;
-    // remove from "regions"
-    for(i = 0; i < VMM_CACHE2_REGIONS; i++) {
-        VmmCacheReclaim(t, i, TRUE);
-        DeleteCriticalSection(&t->R[i].Lock);
-    }
-    // remove from "empty list"
-    while(e = InterlockedPopEntrySList(&t->ListHeadEmpty)) {
-        pOb = CONTAINING_RECORD(e, VMMOB_MEM, SListEmpty);
-        Ob_DECREF(pOb);
-        InterlockedDecrement(&t->cEmpty);
-    }
-    // remove from "total list"
-    while(e = InterlockedPopEntrySList(&t->ListHeadTotal)) {
-        pOb = CONTAINING_RECORD(e, VMMOB_MEM, SListTotal);
-        Ob_DECREF(pOb);
-        InterlockedDecrement(&t->cTotal);
-    }
-}
-
-VOID VmmCache2Initialize(_In_ DWORD dwTblTag)
-{
-    DWORD i;
-    PVMM_CACHE_TABLE t;
-    t = VmmCacheTableGet(dwTblTag);
-    if(!t || t->fActive) { return; }
-    for(i = 0; i < VMM_CACHE2_REGIONS; i++) {
-        InitializeCriticalSection(&t->R[i].Lock);
-    }
-    InitializeSListHead(&t->ListHeadEmpty);
-    InitializeSListHead(&t->ListHeadTotal);
-    t->fActive = TRUE;
-    t->tag = dwTblTag;
-}
-
 /*
 * Prefetch a set of physical addresses contained in pTlbPrefetch into the Tlb.
 * NB! pTlbPrefetch must not be updated/altered during the function call.
@@ -386,11 +381,11 @@ VOID VmmTlbPrefetch(_In_ POB_SET pTlbPrefetch)
 {
     QWORD pbTlb = 0;
     DWORD cTlbs, i = 0;
-    PPVMMOB_MEM ppObMEMs = NULL;
+    PPVMMOB_CACHE_MEM ppObMEMs = NULL;
     PPMEM_SCATTER ppMEMs = NULL;
     if(!(cTlbs = ObSet_Size(pTlbPrefetch))) { goto fail; }
     if(!(ppMEMs = LocalAlloc(0, cTlbs * sizeof(PMEM_SCATTER)))) { goto fail; }
-    if(!(ppObMEMs = LocalAlloc(0, cTlbs * sizeof(PVMMOB_MEM)))) { goto fail; }
+    if(!(ppObMEMs = LocalAlloc(0, cTlbs * sizeof(PVMMOB_CACHE_MEM)))) { goto fail; }
     while((cTlbs = min(0x2000, ObSet_Size(pTlbPrefetch)))) {   // protect cache bleed -> max 0x2000 pages/round
         for(i = 0; i < cTlbs; i++) {
             ppObMEMs[i] = VmmCacheReserve(VMM_CACHE_TAG_TLB);
@@ -431,9 +426,9 @@ VOID VmmCachePrefetchPages(_In_opt_ PVMM_PROCESS pProcess, _In_opt_ POB_SET pPre
         ppMEMs[iMEM++]->qwA = qwA & ~0xfff;
     }
     if(pProcess) {
-        VmmReadScatterVirtual(pProcess, ppMEMs, iMEM, flags);
+        VmmReadScatterVirtual(pProcess, ppMEMs, iMEM, flags | VMM_FLAG_CACHE_RECENT_ONLY);
     } else {
-        VmmReadScatterPhysical(ppMEMs, iMEM, flags);
+        VmmReadScatterPhysical(ppMEMs, iMEM, flags | VMM_FLAG_CACHE_RECENT_ONLY);
     }
     LcMemFree(ppMEMs);
 }
@@ -773,7 +768,7 @@ BOOL VmmMap_GetNet(_Out_ PVMMOB_MAP_NET *ppObNetMap)
 {
     PVMMOB_MAP_NET pObNetMap = ObContainer_GetOb(ctxVmm->pObCMapNet);
     if(!pObNetMap) {
-        pObNetMap = VmmWinNet_Initialize();
+        pObNetMap = VmmNet_Initialize();
     }
     *ppObNetMap = pObNetMap;
     return pObNetMap != NULL;
@@ -1149,7 +1144,7 @@ PVMM_PROCESS VmmProcessCreateEntry(_In_ BOOL fTotalRefresh, _In_ DWORD dwPID, _I
     PVMMOB_PROCESS_TABLE ptOld = NULL, ptNew = NULL;
     QWORD i, iStart, cEmpty = 0, cValid = 0;
     PVMM_PROCESS pProcess = NULL, pProcessOld = NULL;
-    PVMMOB_MEM pObDTB = NULL;
+    PVMMOB_CACHE_MEM pObDTB = NULL;
     BOOL result;
     // 1: Sanity check DTB
     if(dwState == 0) {
@@ -1418,6 +1413,26 @@ VOID VmmWork(_In_ LPTHREAD_START_ROUTINE pfn, _In_opt_ PVOID ctx, _In_opt_ HANDL
     }
 }
 
+VOID VmmWorkWaitMultiple(_In_opt_ PVOID ctx, _In_ DWORD cWork, ...)
+{
+    DWORD i;
+    va_list arguments;
+    HANDLE hEventFinish[MAXIMUM_WAIT_OBJECTS] = { 0 };
+    if(cWork > MAXIMUM_WAIT_OBJECTS) { return; }
+    va_start(arguments, cWork);
+    for(i = 0; i < cWork; i++) {
+        hEventFinish[i] = CreateEvent(NULL, TRUE, FALSE, NULL);
+        VmmWork(va_arg(arguments, LPTHREAD_START_ROUTINE), ctx, hEventFinish[i]);
+    }
+    va_end(arguments);
+    WaitForMultipleObjects(cWork, hEventFinish, TRUE, INFINITE);
+    for(i = 0; i < cWork; i++) {
+        if(hEventFinish[i]) {
+            CloseHandle(hEventFinish[i]);
+        }
+    }
+}
+
 // ----------------------------------------------------------------------------
 // PROCESS PARALLELIZATION FUNCTIONALITY:
 // ----------------------------------------------------------------------------
@@ -1537,13 +1552,14 @@ VOID VmmWriteScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_ PPMEM_SCATTER pp
 VOID VmmReadScatterPhysical(_Inout_ PPMEM_SCATTER ppMEMsPhys, _In_ DWORD cpMEMsPhys, _In_ QWORD flags)
 {
     QWORD tp;   // 0 = normal, 1 = already read, 2 = cache hit, 3 = speculative read
-    BOOL fCache;
+    BOOL fCache, fCacheRecent;
     PMEM_SCATTER pMEM;
     DWORD i, c, cSpeculative;
-    PVMMOB_MEM pObCacheEntry, pObReservedMEM;
+    PVMMOB_CACHE_MEM pObCacheEntry, pObReservedMEM;
     PMEM_SCATTER ppMEMsSpeculative[0x18];
-    PVMMOB_MEM ppObCacheSpeculative[0x18];
+    PVMMOB_CACHE_MEM ppObCacheSpeculative[0x18];
     fCache = !(VMM_FLAG_NOCACHE & (flags | ctxVmm->flags));
+    fCacheRecent = fCache && (VMM_FLAG_CACHE_RECENT_ONLY & flags);
     // 1: cache read
     if(fCache) {
         c = 0, cSpeculative = 0;
@@ -1556,7 +1572,7 @@ VOID VmmReadScatterPhysical(_Inout_ PPMEM_SCATTER ppMEMsPhys, _In_ DWORD cpMEMsP
                 continue;
             }
             // retrieve from cache (if found)
-            if((pMEM->cb == 0x1000) && (pObCacheEntry = VmmCacheGet(VMM_CACHE_TAG_PHYS, pMEM->qwA))) {
+            if((pMEM->cb == 0x1000) && (pObCacheEntry = VmmCacheGetEx(VMM_CACHE_TAG_PHYS, pMEM->qwA, fCacheRecent))) {
                 // in cache - copy data into requester and set as completed!
                 MEM_SCATTER_STACK_PUSH(pMEM, 2);    // 2: cache read
                 pMEM->f = TRUE;
@@ -1776,6 +1792,7 @@ VOID VmmClose()
     VmmWork_Close();
     VmmWinObj_Close();
     VmmWinReg_Close();
+    VmmNet_Close();
     PDB_Close();
     Ob_DECREF_NULL(&ctxVmm->pObVfsDumpContext);
     Ob_DECREF_NULL(&ctxVmm->pObPfnContext);
@@ -1784,9 +1801,9 @@ VOID VmmClose()
         ctxVmm->fnMemoryModel.pfnClose();
     }
     MmWin_PagingClose();
-    VmmCache2Close(VMM_CACHE_TAG_PHYS);
-    VmmCache2Close(VMM_CACHE_TAG_TLB);
-    VmmCache2Close(VMM_CACHE_TAG_PAGING);
+    VmmCacheClose(VMM_CACHE_TAG_PHYS);
+    VmmCacheClose(VMM_CACHE_TAG_TLB);
+    VmmCacheClose(VMM_CACHE_TAG_PAGING);
     Ob_DECREF_NULL(&ctxVmm->Cache.PAGING_FAILED);
     Ob_DECREF_NULL(&ctxVmm->Cache.pmPrototypePte);
     Ob_DECREF_NULL(&ctxVmm->pObCMapPhysMem);
@@ -1794,7 +1811,6 @@ VOID VmmClose()
     Ob_DECREF_NULL(&ctxVmm->pObCMapNet);
     Ob_DECREF_NULL(&ctxVmm->pObCCachePrefetchEPROCESS);
     Ob_DECREF_NULL(&ctxVmm->pObCCachePrefetchRegistry);
-    DeleteCriticalSection(&ctxVmm->TcpIp.LockUpdate);
     DeleteCriticalSection(&ctxVmm->LockMaster);
     DeleteCriticalSection(&ctxVmm->LockPlugin);
     DeleteCriticalSection(&ctxVmm->LockUpdateMap);
@@ -2063,13 +2079,13 @@ BOOL VmmInitialize()
     // 2: CACHE INIT: Process Table
     if(!VmmProcessTableCreateInitial()) { goto fail; }
     // 3: CACHE INIT: Translation Lookaside Buffer (TLB) Cache Table
-    VmmCache2Initialize(VMM_CACHE_TAG_TLB);
+    VmmCacheInitialize(VMM_CACHE_TAG_TLB);
     if(!ctxVmm->Cache.TLB.fActive) { goto fail; }
     // 4: CACHE INIT: Physical Memory Cache Table
-    VmmCache2Initialize(VMM_CACHE_TAG_PHYS);
+    VmmCacheInitialize(VMM_CACHE_TAG_PHYS);
     if(!ctxVmm->Cache.PHYS.fActive) { goto fail; }
     // 5: CACHE INIT: Paged Memory Cache Table
-    VmmCache2Initialize(VMM_CACHE_TAG_PAGING);
+    VmmCacheInitialize(VMM_CACHE_TAG_PAGING);
     if(!ctxVmm->Cache.PAGING.fActive) { goto fail; }
     if(!(ctxVmm->Cache.PAGING_FAILED = ObSet_New())) { goto fail; }
     // 6: CACHE INIT: Prototype PTE Cache Map
@@ -2086,7 +2102,6 @@ BOOL VmmInitialize()
     InitializeCriticalSection(&ctxVmm->LockPlugin);
     InitializeCriticalSection(&ctxVmm->LockUpdateMap);
     InitializeCriticalSection(&ctxVmm->LockUpdateModule);
-    InitializeCriticalSection(&ctxVmm->TcpIp.LockUpdate);
     VmmInitializeFunctions();
     return TRUE;
 fail:

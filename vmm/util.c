@@ -554,7 +554,7 @@ LPSTR Util_StrDupW2U8(_In_opt_ LPWSTR wsz)
 VOID Util_FileTime2String(_In_ PFILETIME pFileTime, _Out_writes_(24) LPSTR szTime)
 {
     SYSTEMTIME SystemTime;
-    if(!*(PQWORD)pFileTime) {
+    if(!*(PQWORD)pFileTime || (*(PQWORD)pFileTime > 0x0200000000000000)) {
         strcpy_s(szTime, 24, "                    ***");
         return;
     }

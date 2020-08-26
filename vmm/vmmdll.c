@@ -16,7 +16,7 @@
 #include "vmm.h"
 #include "vmmproc.h"
 #include "vmmwin.h"
-#include "vmmwinnet.h"
+#include "vmmnet.h"
 #include "vmmwinobj.h"
 #include "vmmwinreg.h"
 #include "mm_pfn.h"
@@ -70,6 +70,10 @@ BOOL VmmDll_ConfigIntialize(_In_ DWORD argc, _In_ char* argv[])
             continue;
         } else if(0 == _stricmp(argv[i], "-printf")) {
             ctxMain->cfg.fVerboseDll = TRUE;
+            i++;
+            continue;
+        } else if(0 == _stricmp(argv[i], "-userinteract")) {
+            ctxMain->cfg.fUserInteract = TRUE;
             i++;
             continue;
         } else if(0 == _stricmp(argv[i], "-v")) {
@@ -227,6 +231,9 @@ VOID VmmDll_PrintHelp()
         "          will be limited if this is activated. Example: -symbolserverdisable  \n" \
         "   -waitinitialize : wait debugging .pdb symbol subsystem to fully start before\n" \
         "          mounting file system and fully starting MemProcFS.                   \n" \
+        "   -userinteract = allow vmm.dll to, on the console, query the user for        \n" \
+        "          information such as, but not limited to, leechcore device options.   \n" \
+        "          Default: user interaction = disabled.                                \n" \
         "   -forensic : start a forensic scan of the physical memory immediately after  \n" \
         "          startup if possible. Allowed parameter values range from 0-4.        \n" \
         "          Note! forensic mode is not available for live memory.                \n" \
@@ -285,12 +292,54 @@ fail:
 }
 
 _Success_(return)
-BOOL VMMDLL_Initialize(_In_ DWORD argc, _In_ LPSTR argv[])
+BOOL VMMDLL_Initialize_RequestUserInput(_In_ DWORD argc, _In_ LPSTR argv[])
+{
+    BOOL fResult;
+    LPSTR szProto;
+    DWORD i, cbRead = 0;
+    CHAR szInput[33] = { 0 };
+    CHAR szDevice[MAX_PATH] = { 0 };
+    HANDLE hStdIn = GetStdHandle(STD_INPUT_HANDLE);
+    // 1: read input
+    vmmprintf("\n?> ");
+    fResult = ReadConsoleA(hStdIn, szInput, 32, &cbRead, NULL);
+    CloseHandle(hStdIn);
+    for(i = 0; i < _countof(szInput); i++) {
+        if((szInput[i] == '\r') || (szInput[i] == '\n')) { szInput[i] = 0; }
+    }
+    cbRead = (DWORD)strlen(szInput);
+    if(!cbRead) { return FALSE; }
+    // 2: clear "userinput" option and update "device" option
+    for(i = 0; i < argc; i++) {
+        if(0 == _stricmp(argv[i], "-userinteract")) {
+            argv[i] = "";
+        }
+        if((i + 1 < argc) && ((0 == _stricmp(argv[i], "-device")) || (0 == strcmp(argv[i], "-z")))) {
+            szProto = strstr(argv[i + 1], "://");
+            snprintf(
+                szDevice,
+                MAX_PATH - 1,
+                "%s%s%sid=%s",
+                argv[i + 1],
+                szProto ? "" : "://",
+                szProto && szProto[3] ? "," : "",
+                szInput);
+            argv[i + 1] = szDevice;
+        }
+    }
+    // 3: try re-initialize with new user input
+    return VMMDLL_InitializeEx(argc, argv, NULL);
+}
+
+_Success_(return)
+BOOL VMMDLL_InitializeEx(_In_ DWORD argc, _In_ LPSTR argv[], _Out_opt_ PPLC_CONFIG_ERRORINFO ppLcErrorInfo)
 {
     FILE *hFile = NULL;
     BOOL f;
     DWORD cbMemMap = 0;
     PBYTE pbMemMap = NULL;
+    PLC_CONFIG_ERRORINFO pLcErrorInfo = NULL;
+    if(ppLcErrorInfo) { *ppLcErrorInfo = NULL; }
     if(!(ctxMain = LocalAlloc(LMEM_ZEROINIT, sizeof(VMM_MAIN_CONTEXT)))) { return FALSE; }
     // initialize configuration
     if(!VmmDll_ConfigIntialize((DWORD)argc, argv)) {
@@ -301,7 +350,16 @@ BOOL VMMDLL_Initialize(_In_ DWORD argc, _In_ LPSTR argv[])
     if(0 == _stricmp(ctxMain->dev.szDevice, "existing")) {
         ctxMain->cfg.fDisableLeechCoreClose = TRUE;
     }
-    if(!(ctxMain->hLC = LcCreate(&ctxMain->dev))) {
+    if(!(ctxMain->hLC = LcCreateEx(&ctxMain->dev, &pLcErrorInfo))) {
+        if(pLcErrorInfo && (pLcErrorInfo->dwVersion == LC_CONFIG_ERRORINFO_VERSION)) {
+            if(pLcErrorInfo->cwszUserText) {
+                vmmwprintf(L"MESSAGE FROM MEMORY ACQUISITION DEVICE:\n=======================================\n%s\n", pLcErrorInfo->wszUserText);
+            }
+            if(ctxMain->cfg.fUserInteract && pLcErrorInfo->fUserInputRequest) {
+                LcMemFree(pLcErrorInfo);
+                return VMMDLL_Initialize_RequestUserInput(argc, argv);
+            }
+        }
         vmmprintf("MemProcFS: Failed to connect to memory acquisition device.\n");
         goto fail;
     }
@@ -345,8 +403,19 @@ BOOL VMMDLL_Initialize(_In_ DWORD argc, _In_ LPSTR argv[])
     }
     return TRUE;
 fail:
+    if(ppLcErrorInfo) {
+        *ppLcErrorInfo = pLcErrorInfo;
+    } else {
+        LcMemFree(pLcErrorInfo);
+    }
     VmmDll_FreeContext();
     return FALSE;
+}
+
+_Success_(return)
+BOOL VMMDLL_Initialize(_In_ DWORD argc, _In_ LPSTR argv[])
+{
+    return VMMDLL_InitializeEx(argc, argv, NULL);
 }
 
 _Success_(return)
@@ -500,7 +569,7 @@ BOOL VMMDLL_ConfigSet(_In_ ULONG64 fOption, _In_ ULONG64 qwValue)
             VmmWinObj_Refresh();
         }
         if(VMMDLL_REFRESH_CHECK(fOption, VMMDLL_OPT_REFRESH_NET)) {
-            VmmWinNet_Refresh();
+            VmmNet_Refresh();
         }
         return TRUE;
     }
@@ -1385,6 +1454,7 @@ BOOL VMMDLL_ProcessGetInformation_Impl(_In_ DWORD dwPID, _Inout_opt_ PVMMDLL_PRO
     if(!(pObProcess = VmmProcessGetEx(NULL, dwPID, VMM_FLAG_PROCESS_TOKEN))) { return FALSE; }
     ZeroMemory(pInfo, sizeof(VMMDLL_PROCESS_INFORMATION_MAGIC));
     // set general parameters
+    pInfo->magic = VMMDLL_PROCESS_INFORMATION_MAGIC;
     pInfo->wVersion = VMMDLL_PROCESS_INFORMATION_VERSION;
     pInfo->wSize = sizeof(VMMDLL_PROCESS_INFORMATION);
     pInfo->tpMemoryModel = ctxVmm->tpMemoryModel;

@@ -52,7 +52,7 @@ BOOL MmX64_TlbPageTableVerify(_Inout_ PBYTE pb, _In_ QWORD pa, _In_ BOOL fSelfRe
 VOID MmX64_TlbSpider_Stage(_In_ QWORD pa, _In_ BYTE iPML, _In_ BOOL fUserOnly, _In_ POB_SET pPageSet)
 {
     QWORD i, pe;
-    PVMMOB_MEM ptObMEM = NULL;
+    PVMMOB_CACHE_MEM ptObMEM = NULL;
     // 1: retrieve from cache, add to staging if not found
     ptObMEM = VmmCacheGet(VMM_CACHE_TAG_TLB, pa);
     if(!ptObMEM) {
@@ -99,7 +99,7 @@ const QWORD MMX64_PAGETABLEMAP_PML_REGION_MASK_AD[5] = { 0, 0xfff, 0x1fffff, 0x3
 
 VOID MmX64_MapInitialize_Index(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_PTEENTRY pMemMap, _In_ PDWORD pcMemMap, _In_ QWORD vaBase, _In_ BYTE iPML, _In_ QWORD PTEs[512], _In_ BOOL fSupervisorPML, _In_ QWORD paMax)
 {
-    PVMMOB_MEM pObNextPT;
+    PVMMOB_CACHE_MEM pObNextPT;
     QWORD i, pte, va, cPages;
     BOOL fUserOnly, fNextSupervisorPML, fPagedOut = FALSE;
     PVMM_MAP_PTEENTRY pMemMapEntry = pMemMap + *pcMemMap - 1;
@@ -168,7 +168,7 @@ BOOL MmX64_PteMapInitialize(_In_ PVMM_PROCESS pProcess)
 {
     QWORD i;
     DWORD cMemMap = 0;
-    PVMMOB_MEM pObPML4;
+    PVMMOB_CACHE_MEM pObPML4;
     PVMM_MAP_PTEENTRY pMemMap = NULL;
     PVMMOB_MAP_PTE pObMap = NULL;
     // already existing?
@@ -215,7 +215,7 @@ _Success_(return)
 BOOL MmX64_Virt2Phys(_In_ QWORD paPT, _In_ BOOL fUserOnly, _In_ BYTE iPML, _In_ QWORD va, _Out_ PQWORD ppa)
 {
     QWORD pte, i, qwMask;
-    PVMMOB_MEM pObPTEs;
+    PVMMOB_CACHE_MEM pObPTEs;
     if(iPML == (BYTE)-1) { iPML = 4; }
     pObPTEs = VmmTlbGetPageTable(paPT & 0x0000fffffffff000, FALSE);
     if(!pObPTEs) { return FALSE; }
@@ -242,7 +242,7 @@ BOOL MmX64_Virt2Phys(_In_ QWORD paPT, _In_ BOOL fUserOnly, _In_ BYTE iPML, _In_ 
 VOID MmX64_Virt2PhysGetInformation_DoWork(_Inout_ PVMM_PROCESS pProcess, _Inout_ PVMM_VIRT2PHYS_INFORMATION pVirt2PhysInfo, _In_ BYTE iPML, _In_ QWORD PTEs[512])
 {
     QWORD pte, i, qwMask;
-    PVMMOB_MEM pObNextPT;
+    PVMMOB_CACHE_MEM pObNextPT;
     i = 0x1ff & (pVirt2PhysInfo->va >> MMX64_PAGETABLEMAP_PML_REGION_SIZE[iPML]);
     pte = PTEs[i];
     pVirt2PhysInfo->iPTEs[iPML] = (WORD)i;
@@ -268,7 +268,7 @@ VOID MmX64_Virt2PhysGetInformation_DoWork(_Inout_ PVMM_PROCESS pProcess, _Inout_
 VOID MmX64_Virt2PhysGetInformation(_Inout_ PVMM_PROCESS pProcess, _Inout_ PVMM_VIRT2PHYS_INFORMATION pVirt2PhysInfo)
 {
     QWORD va;
-    PVMMOB_MEM pObPML4;
+    PVMMOB_CACHE_MEM pObPML4;
     va = pVirt2PhysInfo->va;
     ZeroMemory(pVirt2PhysInfo, sizeof(VMM_VIRT2PHYS_INFORMATION));
     pVirt2PhysInfo->tpMemoryModel = VMM_MEMORYMODEL_X64;
@@ -284,7 +284,7 @@ VOID MmX64_Phys2VirtGetInformation_Index(_In_ PVMM_PROCESS pProcess, _In_ QWORD 
 {
     BOOL fUserOnly;
     QWORD i, pte, va;
-    PVMMOB_MEM pObNextPT;
+    PVMMOB_CACHE_MEM pObNextPT;
     if(!pProcess->fTlbSpiderDone) {
         VmmTlbSpider(pProcess);
     }
@@ -318,7 +318,7 @@ VOID MmX64_Phys2VirtGetInformation_Index(_In_ PVMM_PROCESS pProcess, _In_ QWORD 
 
 VOID MmX64_Phys2VirtGetInformation(_In_ PVMM_PROCESS pProcess, _Inout_ PVMMOB_PHYS2VIRT_INFORMATION pP2V)
 {
-    PVMMOB_MEM pObPML4;
+    PVMMOB_CACHE_MEM pObPML4;
     if((pP2V->cvaList == VMM_PHYS2VIRT_INFORMATION_MAX_PROCESS_RESULT) || (pP2V->paTarget > ctxMain->dev.paMax)) { return; }
     pObPML4 = VmmTlbGetPageTable(pProcess->paDTB, FALSE);
     if(!pObPML4) { return; }

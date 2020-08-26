@@ -1023,7 +1023,7 @@ _Success_(return)
 BOOL MmWin_PfRead(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD va, _In_ QWORD pte, _In_ QWORD fVmmRead, _In_ DWORD dwPfNumber, _In_ DWORD dwPfOffset, _Out_writes_(4096) PBYTE pbPage)
 {
     BOOL fResult;
-    PVMMOB_MEM pObCacheEntry;
+    PVMMOB_CACHE_MEM pObCacheEntry;
     // cached page?
     if((pObCacheEntry = VmmCacheGet(VMM_CACHE_TAG_PAGING, pte))) {
         memcpy(pbPage, pObCacheEntry->pb, 0x1000);

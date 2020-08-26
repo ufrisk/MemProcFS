@@ -27,7 +27,7 @@ LPCSTR szMSYSINFONET_README =
 // ----------------------------------------------------------------------------
 
 #define MSYSINFONET_LINELENGTH                  128ULL
-#define MSYSINFONET_LINELENGTH_VERBOSE          260ULL
+#define MSYSINFONET_LINELENGTH_VERBOSE          278ULL
 
 _Success_(return == 0)
 NTSTATUS MSysInfoNet_Read_DoWork(_In_ PVMMOB_MAP_NET pNetMap, _In_ BOOL fVerbose, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
@@ -52,12 +52,13 @@ NTSTATUS MSysInfoNet_Read_DoWork(_In_ PVMMOB_MAP_NET pNetMap, _In_ BOOL fVerbose
             o += Util_snprintf_ln2(
                 sz + o,
                 cbLINELENGTH,
-                "%04x%7i %S %-20s %s  %s",
+                "%04x%7i %S %-20s %s  %016llx  %s",
                 (DWORD)i,
                 pe->dwPID,
                 pe->wszText,
                 pObProcess ? pObProcess->pObPersistent->uszNameLong : "",
                 szTime,
+                pe->vaObj,
                 pObProcess ? pObProcess->pObPersistent->uszPathKernel : ""
             );
 

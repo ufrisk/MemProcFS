@@ -394,6 +394,7 @@ VOID PluginManager_Initialize_Python()
     LPSTR szPYTHON_VERSIONS_SUPPORTED[] = { "python39.dll", "python38.dll", "python37.dll", "python36.dll"};
     DWORD cszPYTHON_VERSIONS_SUPPORTED = (sizeof(szPYTHON_VERSIONS_SUPPORTED) / sizeof(LPSTR));
     DWORD i;
+    BOOL fBitnessFail = FALSE;
     VMMDLL_PLUGIN_REGINFO ri;
     CHAR szPythonPath[MAX_PATH];
     HMODULE hDllPython3X = NULL, hDllPython3 = NULL, hDllPyPlugin = NULL;
@@ -407,10 +408,15 @@ VOID PluginManager_Initialize_Python()
             strcat_s(szPythonPath, MAX_PATH, szPYTHON_VERSIONS_SUPPORTED[i]);
             hDllPython3X = LoadLibraryExA(szPythonPath, 0, LOAD_WITH_ALTERED_SEARCH_PATH);
             if(hDllPython3X) { break; }
+            fBitnessFail = fBitnessFail || (ERROR_BAD_EXE_FORMAT == GetLastError());
         }
         if(!hDllPython3X) {
             ZeroMemory(ctxMain->cfg.szPythonPath, MAX_PATH);
-            vmmprintf("PluginManager: Python initialization failed. Python 3.6 or later not found on user specified path.\n");
+            vmmprintf(
+                fBitnessFail ?
+                "PluginManager: Python initialization failed. Unable to load 32-bit Python. 64-bit required.\n" :
+                "PluginManager: Python initialization failed. Python 3.6 or later not found on user specified path.\n"
+            );
             return;
         }
     }
@@ -423,6 +429,7 @@ VOID PluginManager_Initialize_Python()
             strcat_s(szPythonPath, MAX_PATH, szPYTHON_VERSIONS_SUPPORTED[i]);
             hDllPython3X = LoadLibraryExA(szPythonPath, 0, LOAD_WITH_ALTERED_SEARCH_PATH);
             if(hDllPython3X) { break; }
+            fBitnessFail = fBitnessFail || (ERROR_BAD_EXE_FORMAT == GetLastError());
         }
         if(hDllPython3X) {
             Util_GetPathDll(ctxMain->cfg.szPythonPath, NULL);
@@ -434,6 +441,7 @@ VOID PluginManager_Initialize_Python()
         for(i = 0; i < cszPYTHON_VERSIONS_SUPPORTED; i++) {
             hDllPython3X = LoadLibraryA(szPYTHON_VERSIONS_SUPPORTED[i]);
             if(hDllPython3X) { break; }
+            fBitnessFail = fBitnessFail || (ERROR_BAD_EXE_FORMAT == GetLastError());
         }
         if(hDllPython3X) {
             Util_GetPathDll(ctxMain->cfg.szPythonPath, hDllPython3X);
@@ -441,7 +449,11 @@ VOID PluginManager_Initialize_Python()
     }
     // 4: Python is not found?
     if(0 == ctxMain->cfg.szPythonPath[0]) {
-        vmmprintf("PluginManager: Python initialization failed. Python 3.6 or later not found.\n");
+        vmmprintf(
+            fBitnessFail ?
+            "PluginManager: Python initialization failed. Unable to load 32-bit Python. 64-bit required.\n" :
+            "PluginManager: Python initialization failed. Python 3.6 or later not found.\n"
+        );
         goto fail;
     }
     // 5: Load Python3.dll as well (i.e. prevent vmmpycplugin.dll to fetch the wrong one by mistake...)

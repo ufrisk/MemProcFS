@@ -105,7 +105,7 @@
     <ClInclude Include="fc.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="vmmwinnet.h">
+    <ClInclude Include="vmmnet.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -248,9 +248,6 @@
     <ClCompile Include="fc_timeline.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="vmmwinnet.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="m_fc.c">
       <Filter>Source Files\modules</Filter>
     </ClCompile>
@@ -262,6 +259,9 @@
     </ClCompile>
     <ClCompile Include="include\sqlite3.c">
       <Filter>Source Files\sqlite</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmnet.c">
+      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

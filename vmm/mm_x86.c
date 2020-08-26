@@ -24,7 +24,7 @@ BOOL MmX86_TlbPageTableVerify(_Inout_ PBYTE pb, _In_ QWORD pa, _In_ BOOL fSelfRe
 */
 VOID MmX86_TlbSpider(_In_ PVMM_PROCESS pProcess)
 {
-    PVMMOB_MEM pObPD = NULL;
+    PVMMOB_CACHE_MEM pObPD = NULL;
     DWORD i, pte;
     POB_SET pObPageSet = NULL;
     if(pProcess->fTlbSpiderDone) { return; }
@@ -49,7 +49,7 @@ const DWORD MMX86_PAGETABLEMAP_PML_REGION_SIZE[3] = { 0, 12, 22 };
 
 VOID MmX86_MapInitialize_Index(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_PTEENTRY pMemMap, _In_ PDWORD pcMemMap, _In_ DWORD vaBase, _In_ BYTE iPML, _In_ DWORD PTEs[1024], _In_ BOOL fSupervisorPML, _In_ QWORD paMax)
 {
-    PVMMOB_MEM pObNextPT;
+    PVMMOB_CACHE_MEM pObNextPT;
     DWORD i, va, pte;
     QWORD cPages;
     BOOL fUserOnly, fNextSupervisorPML, fPagedOut = FALSE;
@@ -105,7 +105,7 @@ VOID MmX86_MapInitialize_Index(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_PTEENTR
 _Success_(return)
 BOOL MmX86_PteMapInitialize(_In_ PVMM_PROCESS pProcess)
 {
-    PVMMOB_MEM pObPD;
+    PVMMOB_CACHE_MEM pObPD;
     DWORD cMemMap = 0;
     PVMM_MAP_PTEENTRY pMemMap = NULL;
     PVMMOB_MAP_PTE pObMap = NULL;
@@ -149,7 +149,7 @@ _Success_(return)
 BOOL MmX86_Virt2Phys(_In_ QWORD paPT, _In_ BOOL fUserOnly, _In_ BYTE iPML, _In_ QWORD va, _Out_ PQWORD ppa)
 {
     DWORD pte, i;
-    PVMMOB_MEM pObPTEs;
+    PVMMOB_CACHE_MEM pObPTEs;
     //PBYTE pbPTEs;
     if(va > 0xffffffff) { return FALSE; }
     if(paPT > 0xffffffff) { return FALSE; }
@@ -179,7 +179,7 @@ BOOL MmX86_Virt2Phys(_In_ QWORD paPT, _In_ BOOL fUserOnly, _In_ BYTE iPML, _In_ 
 
 VOID MmX86_Virt2PhysGetInformation_DoWork(_Inout_ PVMM_PROCESS pProcess, _Inout_ PVMM_VIRT2PHYS_INFORMATION pVirt2PhysInfo, _In_ BYTE iPML, _In_ QWORD paPT)
 {
-    PVMMOB_MEM pObPTEs;
+    PVMMOB_CACHE_MEM pObPTEs;
     DWORD pte, i;
     pObPTEs = VmmTlbGetPageTable(paPT, FALSE);
     if(!pObPTEs) { return; }
@@ -219,7 +219,7 @@ VOID MmX86_Phys2VirtGetInformation_Index(_In_ PVMM_PROCESS pProcess, _In_ DWORD 
     BOOL fUserOnly;
     QWORD pa;
     DWORD i, va, pte;
-    PVMMOB_MEM pObNextPT;
+    PVMMOB_CACHE_MEM pObNextPT;
     if(!pProcess->fTlbSpiderDone) {
         VmmTlbSpider(pProcess);
     }
@@ -259,7 +259,7 @@ VOID MmX86_Phys2VirtGetInformation_Index(_In_ PVMM_PROCESS pProcess, _In_ DWORD 
 
 VOID MmX86_Phys2VirtGetInformation(_In_ PVMM_PROCESS pProcess, _Inout_ PVMMOB_PHYS2VIRT_INFORMATION pP2V)
 {
-    PVMMOB_MEM pObPD;
+    PVMMOB_CACHE_MEM pObPD;
     if((pP2V->cvaList == VMM_PHYS2VIRT_INFORMATION_MAX_PROCESS_RESULT) || (pP2V->paTarget > ctxMain->dev.paMax)) { return; }
     pObPD = VmmTlbGetPageTable(pProcess->paDTB & 0xfffff000, FALSE);
     if(!pObPD) { return; }

@@ -97,9 +97,10 @@ int main(_In_ int argc, _In_ char* argv[])
     BOOL result;
     HMODULE hVMM;
     VMMDLL_FUNCTIONS VmmDll;
+    int i;
+    LPSTR *szArgs = NULL;
     LoadLibraryA("leechcore.dll");
     hVMM = LoadLibraryA("vmm.dll");
-    //hVMM = LoadLibraryExA("vmm.dll");
     if(!hVMM) {
         printf("MemProcFS: Error loading vmm.dll - ensure vmm.dll resides in the memprocfs.exe application directory!\n");
         return 1;
@@ -115,8 +116,16 @@ int main(_In_ int argc, _In_ char* argv[])
         printf("MemProcFS: Error loading vmm.dll - invalid version of vmm.dll found!\n");
         return 1;
     }
-    argv[0] = "-printf";
-    result = VmmDll.Initialize(argc, argv);
+    if(!(szArgs = LocalAlloc(LMEM_ZEROINIT, (argc + 1ULL) * sizeof(LPSTR)))) {
+        printf("MemProcFS: Out of memory!\n");
+        return 1;
+    }
+    for(i = 1; i < argc; i++) {
+        szArgs[i] = argv[i];
+    }
+    szArgs[0] = "-printf";
+    szArgs[argc++] = "-userinteract";
+    result = VmmDll.Initialize(argc, szArgs);
     if(!result) {
         // any error message will already be shown by the InitializeReserved function.
         return 1;

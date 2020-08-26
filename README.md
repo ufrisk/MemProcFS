@@ -6,7 +6,7 @@ Easy trivial point and click memory analysis without the need for complicated co
 
 Analyze memory dump files, <b>live memory</b> via DumpIt or WinPMEM, <b>live memory in read-write mode</b> via linked [PCILeech](https://github.com/ufrisk/pcileech/) and [PCILeech-FPGA](https://github.com/ufrisk/pcileech-fpga/) devices!
 
-It's even possible to connect to a remote LeechAgent memory acquisition agent over a secured connection - allowing for remote live memory incident response - even over higher latency low band-width connections!
+It's even possible to connect to a remote LeechAgent memory acquisition agent over a secured connection - allowing for remote live memory incident response - even over higher latency low band-width connections! Peek into Hyper-V Virtual Machines with [LiveCloudKd](https://github.com/ufrisk/LeechCore/wiki/Device_LiveCloudKd)!
 
 Use your favorite tools to analyze memory - use your favorite hex editors, your python and powershell scripts, WinDbg or your favorite disassemblers and debuggers - all will work trivally with MemProcFS by just reading and writing files!
 
@@ -189,6 +189,8 @@ v1.1-v2.10
   * Minidump .DMP file generation for individual processes.
   * Syscalls - nt & win32k.
   
-Latest:
+[v3.4](https://github.com/ufrisk/MemProcFS/releases/tag/v3.4)
+* Bug fixes.
+* Support for [LiveCloudKd](https://github.com/ufrisk/LeechCore/wiki/Device_LiveCloudKd).
+* Network UDP and TCP listen socket support.
 * C# API and examples - located in `vmmsharp` project.
-

@@ -14,7 +14,7 @@ using System.Collections.Generic;
  *  (c) Ulf Frisk, 2020
  *  Author: Ulf Frisk, pcileech@frizk.net
  *  
- *  Version 3.3
+ *  Version 3.4
  *  
  */
 
@@ -92,6 +92,7 @@ namespace vmmsharp
         public static ulong CMD_AGENT_EXIT_PROCESS =            0x8000000200000000;
 
         public static uint CONFIG_VERSION =                     0xc0fd0002;
+        public static uint CONFIG_ERRORINFO_VERSION =           0xc0fe0001;
 
         public static uint CONFIG_PRINTF_ENABLED =              0x01;
         public static uint CONFIG_PRINTF_V =                    0x02;
@@ -114,8 +115,43 @@ namespace vmmsharp
             [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] public string szDeviceName;
         }
 
-        [DllImport("leechcore.dll", EntryPoint = "LcCreate")]
-        public static extern ulong Create(ref CONFIG pLcCreateConfig);
+        public struct CONFIG_ERRORINFO
+        {
+            public bool fValid;
+            public bool fUserInputRequest;
+            public string strUserText;
+        }
+
+        public static unsafe ulong Create(ref CONFIG pLcCreateConfig, out CONFIG_ERRORINFO ConfigErrorInfo)
+        {
+            IntPtr pLcErrorInfo;
+            int cbERROR_INFO = System.Runtime.InteropServices.Marshal.SizeOf(typeof(lci.LC_CONFIG_ERRORINFO));
+            ulong hLC = lci.LcCreateEx(ref pLcCreateConfig, out pLcErrorInfo);
+            long vaLcCreateErrorInfo = pLcErrorInfo.ToInt64();
+            ConfigErrorInfo = new CONFIG_ERRORINFO();
+            ConfigErrorInfo.strUserText = "";
+            if (vaLcCreateErrorInfo == 0) {
+                return hLC;
+            }
+            lci.LC_CONFIG_ERRORINFO e = Marshal.PtrToStructure<lci.LC_CONFIG_ERRORINFO>(pLcErrorInfo);
+            if(e.dwVersion == CONFIG_ERRORINFO_VERSION)
+            {
+                ConfigErrorInfo.fValid = true;
+                ConfigErrorInfo.fUserInputRequest = e.fUserInputRequest;
+                if(e.cwszUserText > 0)
+                {
+                    ConfigErrorInfo.strUserText = Marshal.PtrToStringUni((System.IntPtr)(vaLcCreateErrorInfo + cbERROR_INFO));
+                }
+            }
+            lci.LcMemFree(pLcErrorInfo);
+            return hLC;
+        }
+
+        public static ulong Create(ref CONFIG pLcCreateConfig)
+        {
+            CONFIG_ERRORINFO ErrorInfo;
+            return Create(ref pLcCreateConfig, out ErrorInfo);
+        }
 
         [DllImport("leechcore.dll", EntryPoint = "LcClose")]
         public static extern void Close(ulong hLC);
@@ -301,9 +337,36 @@ namespace vmmsharp
             SYSTEM_WINDOWS_X86 = 4
         }
 
+        public static unsafe bool Initialize(out lc.CONFIG_ERRORINFO ConfigErrorInfo, params string[] args)
+        {
+            IntPtr pLcErrorInfo;
+            int cbERROR_INFO = System.Runtime.InteropServices.Marshal.SizeOf(typeof(lci.LC_CONFIG_ERRORINFO));
+            bool fResult = vmmi.VMMDLL_InitializeEx(args.Length, args, out pLcErrorInfo);
+            long vaLcCreateErrorInfo = pLcErrorInfo.ToInt64();
+            ConfigErrorInfo = new lc.CONFIG_ERRORINFO();
+            ConfigErrorInfo.strUserText = "";
+            if (vaLcCreateErrorInfo == 0)
+            {
+                return fResult;
+            }
+            lci.LC_CONFIG_ERRORINFO e = Marshal.PtrToStructure<lci.LC_CONFIG_ERRORINFO>(pLcErrorInfo);
+            if (e.dwVersion == lc.CONFIG_ERRORINFO_VERSION)
+            {
+                ConfigErrorInfo.fValid = true;
+                ConfigErrorInfo.fUserInputRequest = e.fUserInputRequest;
+                if (e.cwszUserText > 0)
+                {
+                    ConfigErrorInfo.strUserText = Marshal.PtrToStringUni((System.IntPtr)(vaLcCreateErrorInfo + cbERROR_INFO));
+                }
+            }
+            lci.LcMemFree(pLcErrorInfo);
+            return fResult;
+        }
+
         public static bool Initialize(params string[] args)
         {
-            return vmmi.VMMDLL_Initialize(args.Length, args);
+            lc.CONFIG_ERRORINFO ErrorInfo;
+            return Initialize(out ErrorInfo, args);
         }
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Close")]
@@ -876,6 +939,7 @@ namespace vmmsharp
         {
             public uint dwPID;
             public uint dwState;
+            public uint dwPoolTag;
             public ushort AF;
             public MAP_NETENTRY_ADDR src;
             public MAP_NETENTRY_ADDR dst;
@@ -1207,6 +1271,7 @@ namespace vmmsharp
                     MAP_NETENTRY e;
                     e.dwPID = n.dwPID;
                     e.dwState = n.dwState;
+                    e.dwPoolTag = n.dwPoolTag;
                     e.AF = n.AF;
                     e.src.fValid = n.src_fValid;
                     e.src.port = n.src_port;
@@ -1545,6 +1610,17 @@ namespace vmmsharp
     internal static class lci
     {
         [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        internal struct LC_CONFIG_ERRORINFO
+        {
+            internal uint dwVersion;
+            internal uint cbStruct;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)] internal uint[] _FutureUse;
+            internal bool fUserInputRequest;
+            internal uint cwszUserText;
+            // szUserText
+        }
+
+        [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
         internal struct LC_MEM_SCATTER
         {
             internal uint version;
@@ -1555,6 +1631,9 @@ namespace vmmsharp
             internal uint iStack;
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 12)] internal ulong[] vStack;
         }
+
+        [DllImport("leechcore.dll", EntryPoint = "LcCreateEx")]
+        public static extern ulong LcCreateEx(ref lc.CONFIG pLcCreateConfig, out IntPtr ppLcCreateErrorInfo);
 
         [DllImport("leechcore.dll", EntryPoint = "LcMemFree")]
         internal static extern unsafe void LcMemFree(IntPtr pv);
@@ -1589,7 +1668,7 @@ namespace vmmsharp
         internal static uint VMMDLL_MAP_HEAP_VERSION =       1;
         internal static uint VMMDLL_MAP_THREAD_VERSION =     2;
         internal static uint VMMDLL_MAP_HANDLE_VERSION =     1;
-        internal static uint VMMDLL_MAP_NET_VERSION =        1;
+        internal static uint VMMDLL_MAP_NET_VERSION =        2;
         internal static uint VMMDLL_MAP_PHYSMEM_VERSION =    1;
         internal static uint VMMDLL_MAP_USER_VERSION =       1;
         internal static uint VMMDLL_MAP_PFN_VERSION =        1;
@@ -1600,6 +1679,12 @@ namespace vmmsharp
         internal static extern bool VMMDLL_Initialize(
             int argc,
             string[] argv);
+
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_InitializeEx")]
+        internal static extern bool VMMDLL_InitializeEx(
+            int argc,
+            string[] argv,
+            out IntPtr ppLcErrorInfo);
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_MemFree")]
         internal static extern unsafe bool VMMDLL_MemFree(
@@ -2060,7 +2145,7 @@ namespace vmmsharp
             //
             internal ulong vaObj;
             internal ulong ftTime;
-            internal uint _FutureUse1;
+            internal uint dwPoolTag;
             internal uint cwszText;
             [MarshalAs(UnmanagedType.LPWStr)] internal string wszText;
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)] internal uint[] _FutureUse2;

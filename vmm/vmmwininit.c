@@ -191,7 +191,7 @@ VOID VmmWinInit_FindNtosScan64_SmallPageWalk_DoWork(_In_ QWORD paTable, _In_ QWO
 {
     const QWORD PML_REGION_SIZE[5] = { 0, 12, 21, 30, 39 };
     QWORD i, j, pte, vaCurrent, vaSizeRegion;
-    PVMMOB_MEM pObPTEs = NULL;
+    PVMMOB_CACHE_MEM pObPTEs = NULL;
     BOOL f;
     pObPTEs = VmmTlbGetPageTable(paTable, FALSE);
     if(!pObPTEs) { return; }
@@ -280,7 +280,7 @@ VOID VmmWinInit_FindNtosScan64_LargePageWalk(_In_ QWORD paTable, _In_ QWORD vaBa
 {
     const QWORD PML_REGION_SIZE[5] = { 0, 12, 21, 30, 39 };
     QWORD i, pte, vaCurrent, vaSizeRegion;
-    PVMMOB_MEM pObPTEs = NULL;
+    PVMMOB_CACHE_MEM pObPTEs = NULL;
     pObPTEs = VmmTlbGetPageTable(paTable, FALSE);
     if(!pObPTEs) { return; }
     if(iPML == 4) {

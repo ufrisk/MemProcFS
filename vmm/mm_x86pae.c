@@ -22,7 +22,7 @@ BOOL MmX86PAE_TlbPageTableVerify(_Inout_ PBYTE pb, _In_ QWORD pa, _In_ BOOL fSel
 VOID MmX86PAE_TlbSpider_PD_PT(_In_ QWORD pa, _In_ BYTE iPML, _In_ BOOL fUserOnly, _In_ POB_SET pPageSet)
 {
     QWORD i, pte;
-    PVMMOB_MEM pObPT = NULL;
+    PVMMOB_CACHE_MEM pObPT = NULL;
     // 1: retrieve from cache, add to staging if not found
     pObPT = VmmCacheGet(VMM_CACHE_TAG_TLB, pa);
     if(!pObPT) {
@@ -47,7 +47,7 @@ VOID MmX86PAE_TlbSpider_PD_PT(_In_ QWORD pa, _In_ BYTE iPML, _In_ BOOL fUserOnly
 VOID MmX86PAE_TlbSpider_PDPT(_In_ QWORD paDTB, _In_ BOOL fUserOnly, _In_ POB_SET pPageSet)
 {
     BOOL fSpiderComplete = TRUE;
-    PVMMOB_MEM pObPDPT;
+    PVMMOB_CACHE_MEM pObPDPT;
     PBYTE pbPDPT;
     QWORD i, pte;
     // 1: retrieve PDPT
@@ -89,7 +89,7 @@ const DWORD MMX86PAE_PAGETABLEMAP_PML_REGION_MASK_AD[4] = { 0, 0xfff, 0x1fffff, 
 
 VOID MmX86PAE_MapInitialize_Index(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_PTEENTRY pMemMap, _In_ PDWORD pcMemMap, _In_ DWORD vaBase, _In_ BYTE iPML, _In_ QWORD PTEs[512], _In_ BOOL fSupervisorPML, _In_ QWORD paMax)
 {
-    PVMMOB_MEM pObNextPT;
+    PVMMOB_CACHE_MEM pObNextPT;
     DWORD i, va;
     QWORD cPages, pte;
     BOOL fUserOnly, fNextSupervisorPML, fPagedOut = FALSE;
@@ -156,7 +156,7 @@ BOOL MmX86PAE_PteMapInitialize(_In_ PVMM_PROCESS pProcess)
 {
     DWORD cMemMap = 0;
     PBYTE pbPDPT;
-    PVMMOB_MEM pObPDPT;
+    PVMMOB_CACHE_MEM pObPDPT;
     PVMM_MAP_PTEENTRY pMemMap = NULL;
     PVMMOB_MAP_PTE pObMap = NULL;
     // already existing?
@@ -201,7 +201,7 @@ BOOL MmX86PAE_Virt2Phys(_In_ QWORD paPT, _In_ BOOL fUserOnly, _In_ BYTE iPML, _I
 {
     PBYTE pbPTEs;
     QWORD pte, i, qwMask;
-    PVMMOB_MEM pObPTEs;
+    PVMMOB_CACHE_MEM pObPTEs;
     if(va > 0xffffffff) { return FALSE; }
     if(iPML == (BYTE)-1) { iPML = 3; }
     pObPTEs = VmmTlbGetPageTable(paPT & 0x0000fffffffff000, FALSE);
@@ -242,7 +242,7 @@ BOOL MmX86PAE_Virt2Phys(_In_ QWORD paPT, _In_ BOOL fUserOnly, _In_ BYTE iPML, _I
 VOID MmX86PAE_Virt2PhysGetInformation_DoWork(_Inout_ PVMM_PROCESS pProcess, _Inout_ PVMM_VIRT2PHYS_INFORMATION pVirt2PhysInfo, _In_ BYTE iPML, _In_ QWORD PTEs[512])
 {
     QWORD pte, i, qwMask;
-    PVMMOB_MEM pObNextPT;
+    PVMMOB_CACHE_MEM pObNextPT;
     i = 0x1ff & (pVirt2PhysInfo->va >> MMX86PAE_PAGETABLEMAP_PML_REGION_SIZE[iPML]);
     if((iPML == 3) && (i > 3)) { return; }                      // MAX 4 ENTRIES IN PDPT
     pte = PTEs[i];
@@ -274,7 +274,7 @@ VOID MmX86PAE_Virt2PhysGetInformation_DoWork(_Inout_ PVMM_PROCESS pProcess, _Ino
 VOID MmX86PAE_Virt2PhysGetInformation(_Inout_ PVMM_PROCESS pProcess, _Inout_ PVMM_VIRT2PHYS_INFORMATION pVirt2PhysInfo)
 {
     QWORD va;
-    PVMMOB_MEM pObPDPT;
+    PVMMOB_CACHE_MEM pObPDPT;
     if(pVirt2PhysInfo->va > 0xffffffff) { return; }
     va = pVirt2PhysInfo->va;
     ZeroMemory(pVirt2PhysInfo, sizeof(VMM_VIRT2PHYS_INFORMATION));
@@ -292,7 +292,7 @@ VOID MmX86PAE_Phys2VirtGetInformation_Index(_In_ PVMM_PROCESS pProcess, _In_ DWO
     BOOL fUserOnly;
     QWORD pte;
     DWORD i, va;
-    PVMMOB_MEM pObNextPT;
+    PVMMOB_CACHE_MEM pObNextPT;
     if(!pProcess->fTlbSpiderDone) {
         VmmTlbSpider(pProcess);
     }
@@ -333,7 +333,7 @@ VOID MmX86PAE_Phys2VirtGetInformation_Index(_In_ PVMM_PROCESS pProcess, _In_ DWO
 
 VOID MmX86PAE_Phys2VirtGetInformation(_In_ PVMM_PROCESS pProcess, _Inout_ PVMMOB_PHYS2VIRT_INFORMATION pP2V)
 {
-    PVMMOB_MEM pObPDPT;
+    PVMMOB_CACHE_MEM pObPDPT;
     if((pP2V->cvaList == VMM_PHYS2VIRT_INFORMATION_MAX_PROCESS_RESULT) || (pP2V->paTarget > ctxMain->dev.paMax)) { return; }
     pObPDPT = VmmTlbGetPageTable(pProcess->paDTB & ~0xfff, FALSE);
     if(!pObPDPT) { return; }

@@ -69,7 +69,7 @@ POB_DATA MmPfn_ProcDTB_Create(_In_ POB_MMPFN_CONTEXT ctx)
     SIZE_T i, j, cPIDs = 0, cEntries;
     POB_DATA pObData = NULL;
     PVMM_PROCESS pObProcess = NULL;
-    PVMMOB_MEM pObPDPT = NULL;
+    PVMMOB_CACHE_MEM pObPDPT = NULL;
     QWORD qwPte;
     VmmProcessListPIDs(NULL, &cPIDs, 0);
     cEntries = cPIDs * ((ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_X86PAE) ? 4 : 1);
@@ -140,14 +140,13 @@ VOID MmPfn_Map_GetPfn_GetVaX64(_In_ POB_MMPFN_CONTEXT ctx, _In_ PVMM_PROCESS pSy
     PMMPFN_MAP_ENTRY pe;
     DWORD i, c, iPfnNext, cbRead;
     QWORD pa;
-    PVMMOB_MEM pObPD = NULL;
+    PVMMOB_CACHE_MEM pObPD = NULL;
     VmmCachePrefetchPages(pSystemProcess, psPrefetch, 0);
     ObSet_Clear(psPrefetch);
     for(i = 0, c = ObSet_Size(psPte); i < c; i++) {
         pe = (PMMPFN_MAP_ENTRY)ObSet_Get(psPte, i);
         if(!pe || !pe->AddressInfo.va) { continue; }
-        // TODO: reinstate VMM_FLAG_FORCECACHE_READ when caching algo is fixed.
-        VmmReadEx(pSystemProcess, MMPFN_PFN_TO_VA(ctx, pe->AddressInfo.dwPfnPte[iPML]), pbPfn, ctx->_MMPFN.cb, &cbRead, 0 /*VMM_FLAG_FORCECACHE_READ*/);
+        VmmReadEx(pSystemProcess, MMPFN_PFN_TO_VA(ctx, pe->AddressInfo.dwPfnPte[iPML]), pbPfn, ctx->_MMPFN.cb, &cbRead, 0);
         f = cbRead &&
             (tp = (pbPfn[ctx->_MMPFN.ou3 + 2] & 0x7)) &&                                    // "PageLocation"
             ((tp == MmPfnTypeActive) || (pe->PageLocation == MmPfnTypeStandby) || (tp == MmPfnTypeModified) || (tp == MmPfnTypeModifiedNoWrite)) &&
@@ -212,7 +211,7 @@ VOID MmPfn_Map_GetPfn_GetVaX86PAE(_In_ POB_MMPFN_CONTEXT ctx, _In_ PVMM_PROCESS 
             }
             continue;
         }
-        VmmReadEx(pSystemProcess, MMPFN_PFN_TO_VA(ctx, pe->AddressInfo.dwPfnPte[iPML]), pbPfn, ctx->_MMPFN.cb, &cbRead, VMM_FLAG_FORCECACHE_READ);
+        VmmReadEx(pSystemProcess, MMPFN_PFN_TO_VA(ctx, pe->AddressInfo.dwPfnPte[iPML]), pbPfn, ctx->_MMPFN.cb, &cbRead, 0);
         f = cbRead &&
             (tp = (pbPfn[ctx->_MMPFN.ou3 + 2] & 0x7)) &&                                    // "PageLocation"
             ((tp == MmPfnTypeActive) || (pe->PageLocation == MmPfnTypeStandby) || (tp == MmPfnTypeModified) || (tp == MmPfnTypeModifiedNoWrite)) &&
@@ -237,14 +236,14 @@ VOID MmPfn_Map_GetPfn_GetVaX86(_In_ POB_MMPFN_CONTEXT ctx, _In_ PVMM_PROCESS pSy
     PMMPFN_MAP_ENTRY pe;
     DWORD i, c, iPfnNext, cbRead, dwPID, dwPte;
     QWORD pa;
-    PVMMOB_MEM pObPD = NULL;
+    PVMMOB_CACHE_MEM pObPD = NULL;
     VmmCachePrefetchPages(pSystemProcess, psPrefetch, 0);
     ObSet_Clear(psPrefetch);
     for(i = 0, c = ObSet_Size(psPte); i < c; i++) {
         pe = (PMMPFN_MAP_ENTRY)ObSet_Get(psPte, i);
         if(!pe) { continue; }
         pe->AddressInfo.va = 0;
-        VmmReadEx(pSystemProcess, MMPFN_PFN_TO_VA(ctx, pe->AddressInfo.dwPfnPte[1]), pbPfn, ctx->_MMPFN.cb, &cbRead, VMM_FLAG_FORCECACHE_READ);
+        VmmReadEx(pSystemProcess, MMPFN_PFN_TO_VA(ctx, pe->AddressInfo.dwPfnPte[1]), pbPfn, ctx->_MMPFN.cb, &cbRead, 0);
         f = cbRead &&
             (tp = (pbPfn[ctx->_MMPFN.ou3 + 2] & 0x7)) &&                                    // "PageLocation"
             ((tp == MmPfnTypeActive) || (pe->PageLocation == MmPfnTypeStandby) || (tp == MmPfnTypeModified) || (tp == MmPfnTypeModifiedNoWrite)) &&
@@ -307,8 +306,7 @@ BOOL MmPfn_Map_GetPfnScatter(_In_ POB_SET psPfn, _Out_ PMMPFNOB_MAP *ppObPfnMap,
     for(i = 0; i < cPfn; i++) {
         pe = pObPfnMap->pMap + i;
         if(pe->dwPfn > ctx->iPfnMax) { continue; }
-        // TODO: reinstate VMM_FLAG_FORCECACHE_READ when caching algo is fixed.
-        VmmReadEx(pObSystemProcess, MMPFN_PFN_TO_VA(ctx, pe->dwPfn), pbPfn, ctx->_MMPFN.cb, &cbRead, 0 /*VMM_FLAG_FORCECACHE_READ*/);
+        VmmReadEx(pObSystemProcess, MMPFN_PFN_TO_VA(ctx, pe->dwPfn), pbPfn, ctx->_MMPFN.cb, &cbRead, 0);
         if(!cbRead) { continue; }
         pe->_u3 = *(PDWORD)(pbPfn + ctx->_MMPFN.ou3);
         qw = *(PQWORD)(pbPfn + ctx->_MMPFN.ou4);

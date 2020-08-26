@@ -34,7 +34,7 @@ NTSTATUS Virt2Phys_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DW
     DWORD cbBuffer;
     PBYTE pbSourceData;
     BYTE pbBuffer[0x1000];
-    PVMMOB_MEM pObPT = NULL;
+    PVMMOB_CACHE_MEM pObPT = NULL;
     PVMM_PROCESS pProcess = (PVMM_PROCESS)ctx->pProcess;
     VMM_VIRT2PHYS_INFORMATION Virt2PhysInfo = { 0 };
     Virt2PhysInfo.va = pProcess->pObPersistent->Plugin.vaVirt2Phys;

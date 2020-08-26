@@ -57,6 +57,7 @@ typedef unsigned __int64                QWORD, *PQWORD;
 #define VMM_FLAG_PROCESS_TOKEN                  0x00000040  // try initialize process token
 #define VMM_FLAG_ALTADDR_VA_PTE                 0x00000080  // alternative address mode - MEM_IO_SCATTER_HEADER.qwA contains PTE instead of VA when calling VmmRead* functions.
 #define VMM_FLAG_NOCACHEPUT                     0x00000100  // do not write back to the data cache upon successful read from memory acquisition device.
+#define VMM_FLAG_CACHE_RECENT_ONLY              0x00000200  // only fetch from the most recent active cache region when reading.
 #define VMM_FLAG_PAGING_LOOP_PROTECT_BITS       0x00ff0000  // placeholder bits for paging loop protect counter.
 #define VMM_FLAG_NOVAD                          0x01000000  // do not try to retrieve memory from backing VAD even if otherwise possible.
 
@@ -308,10 +309,11 @@ typedef struct tdVMM_MAP_NETENTRY {
     } Dst;
     QWORD vaObj;
     QWORD ftTime;
-    DWORD _FutureUse1;
+    DWORD dwPoolTag;
     DWORD cwszText;                 // WCHAR count not including terminating null
     LPWSTR wszText;                 // LPWSTR pointed into VMMOB_MAP_NET.wszMultiText
-    DWORD _FutureUse2[4];
+    QWORD _Reserved1;
+    QWORD _Reserved2;
 } VMM_MAP_NETENTRY, *PVMM_MAP_NETENTRY;
 
 typedef struct tdVMM_MAP_PHYSMEMENTRY {
@@ -536,46 +538,48 @@ typedef struct tdVMMOB_PROCESS_TABLE {
     POB_CONTAINER pObCNewPROC;      // contains VMM_PROCESS_TABLE
 } VMMOB_PROCESS_TABLE, *PVMMOB_PROCESS_TABLE;
 
-#define VMM_CACHE2_REGIONS      17
-#define VMM_CACHE2_BUCKETS      2039
-#define VMM_CACHE2_MAX_ENTRIES  0x8000
+#define VMM_CACHE_REGIONS       3
+#define VMM_CACHE_REGION_MEMS   0x5000
+#define VMM_CACHE_BUCKETS       0x5000
 
 #define VMM_CACHE_TAG_PHYS      'CaPh'
 #define VMM_CACHE_TAG_PAGING    'CaPg'
 #define VMM_CACHE_TAG_TLB       'CaTb'
 
-typedef struct tdVMMOB_MEM {
+typedef struct tdVMMOB_CACHE_MEM {
     OB Ob;
-    SLIST_ENTRY SListTotal;
+    // internal cache table values below:
+    DWORD iR;
+    DWORD iB;
     SLIST_ENTRY SListEmpty;
-    struct tdVMMOB_MEM *FLink;
-    struct tdVMMOB_MEM *BLink;
-    struct tdVMMOB_MEM *AgeFLink;
-    struct tdVMMOB_MEM *AgeBLink;
+    SLIST_ENTRY SListInUse;
+    SLIST_ENTRY SListTotal;
+    struct tdVMMOB_CACHE_MEM *FLink;
+    struct tdVMMOB_CACHE_MEM *BLink;
+    // "user" modifiable values below:
     MEM_SCATTER h;
     union {
         BYTE pb[0x1000];
         DWORD pdw[0x400];
         QWORD pqw[0x200];
     };
-} VMMOB_MEM, *PVMMOB_MEM, **PPVMMOB_MEM;
+} VMMOB_CACHE_MEM, *PVMMOB_CACHE_MEM, **PPVMMOB_CACHE_MEM;
+
+typedef struct tdVMM_CACHE_REGION {
+    SRWLOCK LockSRW;
+    SLIST_HEADER ListHeadEmpty;
+    SLIST_HEADER ListHeadInUse;
+    SLIST_HEADER ListHeadTotal;
+    PVMMOB_CACHE_MEM B[VMM_CACHE_BUCKETS];
+} VMM_CACHE_REGION, *PVMM_CACHE_REGION;
 
 typedef struct tdVMM_CACHE_TABLE {
     BOOL fActive;
     DWORD tag;
-    SLIST_HEADER ListHeadEmpty;
-    SLIST_HEADER ListHeadTotal;
-    DWORD cEmpty;
-    DWORD cTotal;
-    WORD iReclaimLast;
-    struct {
-        DWORD c;
-        DWORD dwFuture;
-        CRITICAL_SECTION Lock;
-        PVMMOB_MEM AgeFLink;
-        PVMMOB_MEM AgeBLink;
-        PVMMOB_MEM B[VMM_CACHE2_BUCKETS];
-    } R[VMM_CACHE2_REGIONS];
+    DWORD iR;
+    BOOL fAllActiveRegions;
+    CRITICAL_SECTION Lock;
+    VMM_CACHE_REGION R[VMM_CACHE_REGIONS];
 } VMM_CACHE_TABLE, *PVMM_CACHE_TABLE;
 
 typedef struct tdVMM_VIRT2PHYS_INFORMATION {
@@ -614,6 +618,7 @@ typedef struct tdVmmConfig {
     BOOL fDisableLeechCoreClose;    // when device 'existing'
     BOOL fDisableSymbolServerOnStartup;
     BOOL fWaitInitialize;
+    BOOL fUserInteract;
     // strings below
     CHAR szMemMap[MAX_PATH];
     CHAR szPythonPath[MAX_PATH];
@@ -770,28 +775,6 @@ typedef struct tdVMM_OFFSET {
 typedef struct tdVMMWINOBJ_CONTEXT          *PVMMWINOBJ_CONTEXT;
 typedef struct tdVMMWIN_REGISTRY_CONTEXT    *PVMMWIN_REGISTRY_CONTEXT;
 
-typedef struct tdVMMWIN_TCPIP_OFFSET_TcpE {
-    BOOL _fValid;
-    BOOL _fProcessedTry;
-    WORD _Size;
-    WORD INET_AF;
-    WORD INET_AF_AF;
-    WORD INET_Addr;
-    WORD FLink;
-    WORD State;
-    WORD PortSrc;
-    WORD PortDst;
-    WORD EProcess;
-    WORD Time;
-} VMMWIN_TCPIP_OFFSET_TcpE, *PVMMWIN_TCPIP_OFFSET_TcpE;
-
-typedef struct tdVMMWIN_TCPIP_CONTEXT {
-    CRITICAL_SECTION LockUpdate;
-    BOOL fInitialized;
-    QWORD vaPartitionTable;
-    VMMWIN_TCPIP_OFFSET_TcpE OTcpE;
-} VMMWIN_TCPIP_CONTEXT, *PVMMWIN_TCPIP_CONTEXT;
-
 typedef struct tdVMMWIN_OPTIONAL_KERNEL_CONTEXT {
     BOOL fInitialized;
     DWORD cCPUs;
@@ -882,9 +865,9 @@ typedef struct tdVMM_CONTEXT {
     POB pObPfnContext;
     PVOID pPdbContext;
     PVOID pMmContext;
+    PVOID pNetContext;
     PVMMWINOBJ_CONTEXT pObjects;
     PVMMWIN_REGISTRY_CONTEXT pRegistry;
-    VMMWIN_TCPIP_CONTEXT TcpIp;
     QWORD paPluginPhys2VirtRoot;
     VMM_DYNAMIC_LOAD_FUNCTIONS fn;
     struct {
@@ -975,7 +958,7 @@ PVMM_MAIN_CONTEXT ctxMain;
 * -- qwA
 * -- return
 */
-PVMMOB_MEM VmmCacheGet(_In_ DWORD dwTblTag, _In_ QWORD qwA);
+PVMMOB_CACHE_MEM VmmCacheGet(_In_ DWORD dwTblTag, _In_ QWORD qwA);
 
 /*
 * Retrieve a page table (0x1000 bytes) via the TLB cache.
@@ -984,7 +967,7 @@ PVMMOB_MEM VmmCacheGet(_In_ DWORD dwTblTag, _In_ QWORD qwA);
 * -- fCacheOnly = if set do not make a request to underlying device if not in cache.
 * -- return
 */
-PVMMOB_MEM VmmTlbGetPageTable(_In_ QWORD pa, _In_ BOOL fCacheOnly);
+PVMMOB_CACHE_MEM VmmTlbGetPageTable(_In_ QWORD pa, _In_ BOOL fCacheOnly);
 
 /*
 * Check if an address page exists in the indicated cache.
@@ -1002,7 +985,7 @@ BOOL VmmCacheExists(_In_ DWORD dwTblTag, _In_ QWORD qwA);
 * -- dwTblTag
 * -- return
 */
-PVMMOB_MEM VmmCacheReserve(_In_ DWORD wTblTag);
+PVMMOB_CACHE_MEM VmmCacheReserve(_In_ DWORD wTblTag);
 
 /*
 * Return an entry retrieved with VmmCacheReserve to the cache.
@@ -1010,7 +993,7 @@ PVMMOB_MEM VmmCacheReserve(_In_ DWORD wTblTag);
 * FUNCTION DECREF SPECIAL: pOb
 * -- pOb
 */
-VOID VmmCacheReserveReturn(_In_opt_ PVMMOB_MEM pOb);
+VOID VmmCacheReserveReturn(_In_opt_ PVMMOB_CACHE_MEM pOb);
 
 
 // ----------------------------------------------------------------------------
@@ -1513,6 +1496,17 @@ VOID VmmProcessListPIDs(_Out_writes_opt_(*pcPIDs) PDWORD pPIDs, _Inout_ PSIZE_T 
 VOID VmmWork(_In_ LPTHREAD_START_ROUTINE pfn, _In_opt_ PVOID ctx, _In_opt_ HANDLE hEventFinish);
 
 /*
+* Schedule up to 64 asynchronous work items onto worker threads.
+* Function will wait for all work items to complete before returning.
+* NB! longer running functions must monitor ctxVmm->Work.fEnabled and exit
+*     immediately if required!
+* -- ctx = optional context to provide to the pfn functions.
+* -- cWork = number of work LPTHREAD_START_ROUTINE following in varargs.
+* -- ... = vararg of cWork LPTHREAD_START_ROUTINE work items.
+*/
+VOID VmmWorkWaitMultiple(_In_opt_ PVOID ctx, _In_ DWORD cWork, ...);
+
+/*
 * Perform multi-threaded parallel processing of processes in the process table.
 * This is useful when slow I/O should take place on multiple or all processes
 * simultaneously.
@@ -1542,6 +1536,12 @@ VOID VmmProcessActionForeachParallel(
 * -- return
 */
 BOOL VmmProcessActionForeachParallel_CriteriaActiveOnly(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx);
+
+/*
+* Clear the oldest region of all InUse entries and make it the new active region.
+* -- wTblTag
+*/
+VOID VmmCacheClearPartial(_In_ DWORD dwTblTag);
 
 /* 
 * Clear the specified cache from all entries.
