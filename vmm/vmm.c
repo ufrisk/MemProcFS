@@ -1618,22 +1618,7 @@ VOID VmmReadScatterPhysical(_Inout_ PPMEM_SCATTER ppMEMsPhys, _In_ DWORD cpMEMsP
     }
     // 3: read!
     LcReadScatter(ctxMain->hLC, cpMEMsPhys, ppMEMsPhys);
-    // 4: statistics and read fail zero fixups (if required)
-    for(i = 0; i < cpMEMsPhys; i++) {
-        pMEM = ppMEMsPhys[i];
-        if(pMEM->f) {
-            // success
-            InterlockedIncrement64(&ctxVmm->stat.cPhysReadSuccess);
-        } else {
-            // fail
-            InterlockedIncrement64(&ctxVmm->stat.cPhysReadFail);
-            if((flags & VMM_FLAG_ZEROPAD_ON_FAIL) && (pMEM->qwA < ctxMain->dev.paMax)) {
-                ZeroMemory(pMEM->pb, pMEM->cb);
-                pMEM->f = TRUE;
-            }
-        }
-    }
-    // 5: cache put
+    // 4: cache put
     if(fCache) {
         for(i = 0; i < cpMEMsPhys; i++) {
             pMEM = ppMEMsPhys[i];
@@ -1650,6 +1635,21 @@ VOID VmmReadScatterPhysical(_Inout_ PPMEM_SCATTER ppMEMsPhys, _In_ DWORD cpMEMsP
                         VmmCacheReserveReturn(pObReservedMEM);
                     }
                 }
+            }
+        }
+    }
+    // 5: statistics and read fail zero fixups (if required)
+    for(i = 0; i < cpMEMsPhys; i++) {
+        pMEM = ppMEMsPhys[i];
+        if(pMEM->f) {
+            // success
+            InterlockedIncrement64(&ctxVmm->stat.cPhysReadSuccess);
+        } else {
+            // fail
+            InterlockedIncrement64(&ctxVmm->stat.cPhysReadFail);
+            if((flags & VMM_FLAG_ZEROPAD_ON_FAIL) && (pMEM->qwA < ctxMain->dev.paMax)) {
+                ZeroMemory(pMEM->pb, pMEM->cb);
+                pMEM->f = TRUE;
             }
         }
     }

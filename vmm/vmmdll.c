@@ -258,9 +258,7 @@ VOID VmmDll_FreeContext()
     }
     if(ctxMain) {
         Statistics_CallSetEnabled(FALSE);
-        if(!ctxMain->cfg.fDisableLeechCoreClose && ctxMain->hLC) {
-            LcClose(ctxMain->hLC);
-        }
+        LcClose(ctxMain->hLC);
         LocalFree(ctxMain);
         ctxMain = NULL;
     }
@@ -347,9 +345,6 @@ BOOL VMMDLL_InitializeEx(_In_ DWORD argc, _In_ LPSTR argv[], _Out_opt_ PPLC_CONF
         goto fail;
     }
     // ctxMain.cfg context is inintialized from here onwards - vmmprintf is working!
-    if(0 == _stricmp(ctxMain->dev.szDevice, "existing")) {
-        ctxMain->cfg.fDisableLeechCoreClose = TRUE;
-    }
     if(!(ctxMain->hLC = LcCreateEx(&ctxMain->dev, &pLcErrorInfo))) {
         if(pLcErrorInfo && (pLcErrorInfo->dwVersion == LC_CONFIG_ERRORINFO_VERSION)) {
             if(pLcErrorInfo->cwszUserText) {

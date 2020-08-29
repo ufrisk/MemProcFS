@@ -615,7 +615,6 @@ typedef struct tdVmmConfig {
     BOOL fVerboseExtra;
     BOOL fVerboseExtraTlp;
     BOOL fDisableBackgroundRefresh;
-    BOOL fDisableLeechCoreClose;    // when device 'existing'
     BOOL fDisableSymbolServerOnStartup;
     BOOL fWaitInitialize;
     BOOL fUserInteract;
