@@ -194,3 +194,6 @@ v1.1-v2.10
 * Support for [LiveCloudKd](https://github.com/ufrisk/LeechCore/wiki/Device_LiveCloudKd).
 * Network UDP and TCP listen socket support.
 * C# API and examples - located in `vmmsharp` project.
+
+Latest:
+ * Bug fixes.
