@@ -337,7 +337,7 @@ QWORD VmmWinInit_FindNtosScan64(PVMM_PROCESS pSystemProcess)
         }
         if(!vaBase) { return 0; }
         vaCurrentMin = vaBase + cbSize;
-        if(cbSize >= 0x01000000) { continue; }  // too big
+        if(cbSize >= 0x01800000) { continue; }  // too big
         if(cbSize <= 0x00400000) { continue; }  // too small
         // try locate ntoskrnl.exe base inside suggested area
         if(!(pb = (PBYTE)LocalAlloc(0, cbSize))) { return 0; }
