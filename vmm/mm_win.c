@@ -519,7 +519,7 @@ VOID MmWin_MemCompress_Initialize_NoPdb64()
         goto finish;
     }
     // 2: Verify SMGLOBALS / _SMKM_STORE_METADATA (pool hdr: 'smSa')
-    for(i = 0; i < 0x1000; i += 8) {
+    for(i = 0; i < 0x1000 - 0x1c0 - sizeof(QWORD); i += 8) {
         vaSmGlobals = ctxVmm->kernel.vaBase + oSectionHeader.VirtualAddress + i;
         vaSmsa = *(PQWORD)(pbPage + i);
         vaKeyToStoreTree = *(PQWORD)(pbPage + i + 0x1c0);
