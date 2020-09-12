@@ -124,7 +124,9 @@ int main(_In_ int argc, _In_ char* argv[])
         szArgs[i] = argv[i];
     }
     szArgs[0] = "-printf";
-    szArgs[argc++] = "-userinteract";
+    if(argc > 2) {
+        szArgs[argc++] = "-userinteract";
+    }
     result = VmmDll.Initialize(argc, szArgs);
     if(!result) {
         // any error message will already be shown by the InitializeReserved function.

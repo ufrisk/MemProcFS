@@ -177,8 +177,8 @@ BOOL VmmNet_TcpE_GetAddressEPs(_In_ PVMMNET_CONTEXT ctx, _In_ PVMM_PROCESS pSyst
     BOOL f, fResult = FALSE;
     QWORD va, va2, va3;
     DWORD i, o, oStartHT, oListPT = 0, cbRead, cbTcpHT;
-    BYTE pb[0x810] = { 0 }, pbTcHT[0x400];
-    PBYTE pbPartitionTable = NULL;
+    BYTE pb[0x810] = { 0 };
+    PBYTE pbPartitionTable = NULL, pbTcHT = NULL;
     POB_SET pObTcHT = NULL, pObHTab = NULL, pObTcpE = NULL;
     PRTL_DYNAMIC_HASH_TABLE pTcpHT;
     if(!(pObTcHT = ObSet_New())) { goto fail; }
@@ -189,7 +189,8 @@ BOOL VmmNet_TcpE_GetAddressEPs(_In_ PVMMNET_CONTEXT ctx, _In_ PVMM_PROCESS pSyst
     VmmReadEx(pSystemProcess, ctx->vaPartitionTable, pbPartitionTable, 0x4000, NULL, 0);
     oStartHT = (DWORD)(*(PQWORD)(pbPartitionTable + 0x10) - *(PQWORD)(pbPartitionTable + 0x00));
     cbTcpHT = 0x10 + oStartHT + ctx->cPartition * sizeof(RTL_DYNAMIC_HASH_TABLE);
-    if(cbTcpHT > sizeof(pbTcHT)) { goto fail; }
+    if(cbTcpHT > 0x10000) { goto fail; }
+    if(!(pbTcHT = LocalAlloc(LMEM_ZEROINIT, cbTcpHT))) { goto fail; }
     oListPT = VMMNET_PARTITIONTABLE_OFFSET20(pbPartitionTable, ctx->vaPartitionTable) ? 0x20 : oListPT;
     oListPT = VMMNET_PARTITIONTABLE_OFFSET18(pbPartitionTable, ctx->vaPartitionTable) ? 0x18 : oListPT;
     if(oListPT) {
@@ -260,6 +261,7 @@ fail:
     Ob_DECREF(pObHTab);
     Ob_DECREF(pObTcpE);
     LocalFree(pbPartitionTable);
+    LocalFree(pbTcHT);
     return fResult;
 }
 
