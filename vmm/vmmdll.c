@@ -127,6 +127,10 @@ BOOL VmmDll_ConfigIntialize(_In_ DWORD argc, _In_ char* argv[])
             strcpy_s(ctxMain->cfg.szMemMap, MAX_PATH, argv[i + 1]);
             i += 2;
             continue;
+        } else if(0 == _stricmp(argv[i], "-memmap-str")) {
+            strcpy_s(ctxMain->cfg.szMemMapStr, _countof(ctxMain->cfg.szMemMapStr), argv[i + 1]);
+            i += 2;
+            continue;
         } else if(0 == _stricmp(argv[i], "-pythonpath")) {
             strcpy_s(ctxMain->cfg.szPythonPath, MAX_PATH, argv[i + 1]);
             i += 2;
@@ -212,6 +216,7 @@ VOID VmmDll_PrintHelp()
         "   -cr3 : base address of kernel/process page table (PML4) / CR3 CPU register. \n" \
         "   -max : memory max address, valid range: 0x0 .. 0xffffffffffffffff           \n" \
         "          default: auto-detect (max supported by device / target system).      \n" \
+        "   -memmap-str : specify a physical memory map in parameter agrument text.     \n" \
         "   -memmap : specify a physical memory map given in a file or specify 'auto'.  \n" \
         "          example: -memmap c:\\temp\\my_custom_memory_map.txt                  \n" \
         "          example: -memmap auto                                                \n" \
@@ -368,6 +373,14 @@ BOOL VMMDLL_InitializeEx(_In_ DWORD argc, _In_ LPSTR argv[], _Out_opt_ PPLC_CONF
         if(hFile) { fclose(hFile); }
         if(!f) {
             vmmprintf("MemProcFS: Failed to load initial memory map from: '%s'.\n", ctxMain->cfg.szMemMap);
+            goto fail;
+        }
+    }
+    if(ctxMain->cfg.szMemMapStr[0]) {
+        f = LcCommand(ctxMain->hLC, LC_CMD_MEMMAP_SET, (DWORD)strlen(ctxMain->cfg.szMemMapStr), ctxMain->cfg.szMemMapStr, NULL, NULL) &&
+            LcGetOption(ctxMain->hLC, LC_OPT_CORE_ADDR_MAX, &ctxMain->dev.paMax);
+        if(!f) {
+            vmmprintf("MemProcFS: Failed to load command line argument memory map.\n");
             goto fail;
         }
     }
@@ -542,13 +555,17 @@ BOOL VMMDLL_ConfigSet(_In_ ULONG64 fOption, _In_ ULONG64 qwValue)
         if(VMMDLL_REFRESH_CHECK(fOption, VMMDLL_OPT_REFRESH_PAGING)) {
             VmmCacheClear(VMM_CACHE_TAG_PAGING);
         }
-        if(VMMDLL_REFRESH_CHECK(fOption, VMMDLL_OPT_REFRESH_PROCESS)) {
-            VmmProc_RefreshProcesses(TRUE);
-            PluginManager_Notify(VMMDLL_PLUGIN_EVENT_REFRESH_PROCESS_TOTAL, NULL, 0);
+        if(VMMDLL_REFRESH_CHECK(fOption, VMMDLL_OPT_REFRESH_FREQ_FAST)) {
+            VmmProc_RefreshProcesses(FALSE);
+            PluginManager_Notify(VMMDLL_PLUGIN_NOTIFY_REFRESH_FAST, NULL, 0);
         }
-        if(VMMDLL_REFRESH_CHECK(fOption, VMMDLL_OPT_REFRESH_REGISTRY)) {
+        if(VMMDLL_REFRESH_CHECK(fOption, VMMDLL_OPT_REFRESH_FREQ_MEDIUM)) {
+            VmmProc_RefreshProcesses(TRUE);
+            PluginManager_Notify(VMMDLL_PLUGIN_NOTIFY_REFRESH_MEDIUM, NULL, 0);
+        }
+        if(VMMDLL_REFRESH_CHECK(fOption, VMMDLL_OPT_REFRESH_FREQ_SLOW)) {
             VmmWinReg_Refresh();
-            PluginManager_Notify(VMMDLL_PLUGIN_EVENT_REFRESH_REGISTRY, NULL, 0);
+            PluginManager_Notify(VMMDLL_PLUGIN_NOTIFY_REFRESH_SLOW, NULL, 0);
         }
         if(VMMDLL_REFRESH_CHECK(fOption, VMMDLL_OPT_REFRESH_USER)) {
             VmmWinUser_Refresh();
@@ -571,22 +588,22 @@ BOOL VMMDLL_ConfigSet(_In_ ULONG64 fOption, _In_ ULONG64 qwValue)
         case VMMDLL_OPT_CORE_PRINTF_ENABLE:
             LcSetOption(ctxMain->hLC, fOption, qwValue);
             ctxMain->cfg.fVerboseDll = qwValue ? TRUE : FALSE;
-            PluginManager_Notify(VMMDLL_PLUGIN_EVENT_VERBOSITYCHANGE, NULL, 0);
+            PluginManager_Notify(VMMDLL_PLUGIN_NOTIFY_VERBOSITYCHANGE, NULL, 0);
             return TRUE;
         case VMMDLL_OPT_CORE_VERBOSE:
             LcSetOption(ctxMain->hLC, fOption, qwValue);
             ctxMain->cfg.fVerbose = qwValue ? TRUE : FALSE;
-            PluginManager_Notify(VMMDLL_PLUGIN_EVENT_VERBOSITYCHANGE, NULL, 0);
+            PluginManager_Notify(VMMDLL_PLUGIN_NOTIFY_VERBOSITYCHANGE, NULL, 0);
             return TRUE;
         case VMMDLL_OPT_CORE_VERBOSE_EXTRA:
             LcSetOption(ctxMain->hLC, fOption, qwValue);
             ctxMain->cfg.fVerboseExtra = qwValue ? TRUE : FALSE;
-            PluginManager_Notify(VMMDLL_PLUGIN_EVENT_VERBOSITYCHANGE, NULL, 0);
+            PluginManager_Notify(VMMDLL_PLUGIN_NOTIFY_VERBOSITYCHANGE, NULL, 0);
             return TRUE;
         case VMMDLL_OPT_CORE_VERBOSE_EXTRA_TLP:
             LcSetOption(ctxMain->hLC, fOption, qwValue);
             ctxMain->cfg.fVerboseExtraTlp = qwValue ? TRUE : FALSE;
-            PluginManager_Notify(VMMDLL_PLUGIN_EVENT_VERBOSITYCHANGE, NULL, 0);
+            PluginManager_Notify(VMMDLL_PLUGIN_NOTIFY_VERBOSITYCHANGE, NULL, 0);
             return TRUE;
         case VMMDLL_OPT_CONFIG_IS_PAGING_ENABLED:
             ctxVmm->flags = (ctxVmm->flags & ~VMM_FLAG_NOPAGING) | (qwValue ? 0 : 1);
@@ -702,7 +719,7 @@ BOOL VMMDLL_VfsList(_In_ LPCWSTR wcsPath, _Inout_ PVMMDLL_VFS_FILELIST pFileList
         VMMDLL_VfsList_Impl((LPWSTR)wcsPath, (PHANDLE)pFileList))
 }
 
-NTSTATUS VMMDLL_VfsRead_Impl(LPWSTR wszPath, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS VMMDLL_VfsRead_Impl(LPWSTR wszPath, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt;
     DWORD dwPID;
@@ -719,7 +736,7 @@ NTSTATUS VMMDLL_VfsRead_Impl(LPWSTR wszPath, _Out_writes_(cb) PBYTE pb, _In_ DWO
     return PluginManager_Read(NULL, wszPath, pb, cb, pcbRead, cbOffset);
 }
 
-NTSTATUS VMMDLL_VfsRead(_In_ LPCWSTR wcsFileName, _Out_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset)
+NTSTATUS VMMDLL_VfsRead(_In_ LPCWSTR wcsFileName, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset)
 {
     CALL_IMPLEMENTATION_VMM_RETURN(
         STATISTICS_ID_VMMDLL_VfsRead,
@@ -745,7 +762,7 @@ NTSTATUS VMMDLL_VfsWrite_Impl(_In_ LPWSTR wszPath, _In_reads_(cb) PBYTE pb, _In_
     return PluginManager_Write(NULL, wszPath, pb, cb, pcbWrite, cbOffset);
 }
 
-NTSTATUS VMMDLL_VfsWrite(_In_ LPCWSTR wcsFileName, _In_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ ULONG64 cbOffset)
+NTSTATUS VMMDLL_VfsWrite(_In_ LPCWSTR wcsFileName, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ ULONG64 cbOffset)
 {
     CALL_IMPLEMENTATION_VMM_RETURN(
         STATISTICS_ID_VMMDLL_VfsWrite,
@@ -754,32 +771,32 @@ NTSTATUS VMMDLL_VfsWrite(_In_ LPCWSTR wcsFileName, _In_ LPVOID pb, _In_ DWORD cb
         VMMDLL_VfsWrite_Impl((LPWSTR)wcsFileName, pb, cb, pcbWrite, cbOffset))
 }
 
-NTSTATUS VMMDLL_UtilVfsReadFile_FromPBYTE(_In_ PBYTE pbFile, _In_ ULONG64 cbFile, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset)
+NTSTATUS VMMDLL_UtilVfsReadFile_FromPBYTE(_In_ PBYTE pbFile, _In_ ULONG64 cbFile, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset)
 {
     return Util_VfsReadFile_FromPBYTE(pbFile, cbFile, pb, cb, pcbRead, cbOffset);
 }
 
-NTSTATUS VMMDLL_UtilVfsReadFile_FromQWORD(_In_ ULONG64 qwValue, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset, _In_ BOOL fPrefix)
+NTSTATUS VMMDLL_UtilVfsReadFile_FromQWORD(_In_ ULONG64 qwValue, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset, _In_ BOOL fPrefix)
 {
     return Util_VfsReadFile_FromQWORD(qwValue, pb, cb, pcbRead, cbOffset, fPrefix);
 }
 
-NTSTATUS VMMDLL_UtilVfsReadFile_FromDWORD(_In_ DWORD dwValue, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset, _In_ BOOL fPrefix)
+NTSTATUS VMMDLL_UtilVfsReadFile_FromDWORD(_In_ DWORD dwValue, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset, _In_ BOOL fPrefix)
 {
     return Util_VfsReadFile_FromDWORD(dwValue, pb, cb, pcbRead, cbOffset, fPrefix);
 }
 
-NTSTATUS VMMDLL_UtilVfsReadFile_FromBOOL(_In_ BOOL fValue, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset)
+NTSTATUS VMMDLL_UtilVfsReadFile_FromBOOL(_In_ BOOL fValue, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset)
 {
     return Util_VfsReadFile_FromBOOL(fValue, pb, cb, pcbRead, cbOffset);
 }
 
-NTSTATUS VMMDLL_UtilVfsWriteFile_BOOL(_Inout_ PBOOL pfTarget, _In_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ ULONG64 cbOffset)
+NTSTATUS VMMDLL_UtilVfsWriteFile_BOOL(_Inout_ PBOOL pfTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ ULONG64 cbOffset)
 {
     return Util_VfsWriteFile_BOOL(pfTarget, pb, cb, pcbWrite, cbOffset);
 }
 
-NTSTATUS VMMDLL_UtilVfsWriteFile_DWORD(_Inout_ PDWORD pdwTarget, _In_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ ULONG64 cbOffset, _In_ DWORD dwMinAllow)
+NTSTATUS VMMDLL_UtilVfsWriteFile_DWORD(_Inout_ PDWORD pdwTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ ULONG64 cbOffset, _In_ DWORD dwMinAllow)
 {
     return Util_VfsWriteFile_DWORD(pdwTarget, pb, cb, pcbWrite, cbOffset, dwMinAllow, 0);
 }
@@ -999,6 +1016,7 @@ BOOL VMMDLL_ProcessMap_GetVad_Impl(_In_ DWORD dwPID, _Out_writes_bytes_opt_(*pcb
         if(*pcbVadMap < cbData) { goto fail; }
         ZeroMemory(pVadMap, sizeof(VMMDLL_MAP_VAD));
         pVadMap->dwVersion = VMMDLL_MAP_VAD_VERSION;
+        pVadMap->cPage = pObMap->cPage;
         pVadMap->cMap = pObMap->cMap;
         memcpy(pVadMap->pMap, pObMap->pMap, cbDataMap);
         pVadMap->cbMultiText = pObMap->cbMultiText;
@@ -1034,6 +1052,45 @@ BOOL VMMDLL_ProcessMap_GetVad(_In_ DWORD dwPID, _Out_writes_bytes_opt_(*pcbVadMa
     CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_ProcessMap_GetVad,
         VMMDLL_ProcessMap_GetVad_Impl(dwPID, pVadMap, pcbVadMap, fIdentifyModules))
+}
+
+_Success_(return)
+BOOL VMMDLL_ProcessMap_GetVadEx_Impl(_In_ DWORD dwPID, _Out_writes_bytes_opt_(*pcbVadExMap) PVMMDLL_MAP_VADEX pVadExMap, _Inout_ PDWORD pcbVadExMap, _In_ DWORD oPage, _In_ DWORD cPage)
+{
+    BOOL fResult = FALSE;
+    DWORD i, cbData = 0, cbDataMap;
+    PVMMOB_MAP_VADEX pObMap = NULL;
+    PVMM_PROCESS pObProcess = NULL;
+    if(!pVadExMap) {
+        *pcbVadExMap = sizeof(VMMDLL_MAP_VADEX) + cPage * sizeof(VMMDLL_MAP_VADEXENTRY);
+        return TRUE;
+    }
+    if(!(pObProcess = VmmProcessGet(dwPID))) { goto fail; }
+    if(!VmmMap_GetVadEx(pObProcess, &pObMap, oPage, cPage)) { goto fail; }
+    cbDataMap = pObMap->cMap * sizeof(VMMDLL_MAP_VADEXENTRY);
+    cbData = sizeof(VMMDLL_MAP_VADEX) + cbDataMap;
+    if(*pcbVadExMap < cbData) { goto fail; }
+    ZeroMemory(pVadExMap, sizeof(VMMDLL_MAP_VADEX));
+    pVadExMap->dwVersion = VMMDLL_MAP_VADEX_VERSION;
+    pVadExMap->cMap = pObMap->cMap;
+    memcpy(pVadExMap->pMap, pObMap->pMap, cbDataMap);
+    for(i = 0; i < pObMap->cMap; i++) {
+        pVadExMap->pMap[i].vaVadBase = pObMap->pMap[i].peVad->vaStart;
+    }
+    fResult = TRUE;
+fail:
+    *pcbVadExMap = cbData;
+    Ob_DECREF(pObProcess);
+    Ob_DECREF(pObMap);
+    return fResult;
+}
+
+_Success_(return)
+BOOL VMMDLL_ProcessMap_GetVadEx(_In_ DWORD dwPID, _Out_writes_bytes_opt_(*pcbVadExMap) PVMMDLL_MAP_VADEX pVadExMap, _Inout_ PDWORD pcbVadExMap, _In_ DWORD oPage, _In_ DWORD cPage)
+{
+    CALL_IMPLEMENTATION_VMM(
+        STATISTICS_ID_VMMDLL_ProcessMap_GetVadEx,
+        VMMDLL_ProcessMap_GetVadEx_Impl(dwPID, pVadExMap, pcbVadExMap, oPage, cPage))
 }
 
 _Success_(return)
@@ -1346,6 +1403,52 @@ BOOL VMMDLL_Map_GetUsers(_Out_writes_bytes_opt_(*pcbUserMap) PVMMDLL_MAP_USER pU
     CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_Map_GetUsers,
         VMMDLL_Map_GetUsers_Impl(pUserMap, pcbUserMap))
+}
+
+_Success_(return)
+BOOL VMMDLL_Map_GetServices_Impl(_Out_writes_bytes_opt_(*pcbServiceMap) PVMMDLL_MAP_SERVICE pServiceMap, _Inout_ PDWORD pcbServiceMap)
+{
+    BOOL fResult = FALSE;
+    QWORD i, cbData = 0, cbDataMap, cbMultiTextDiff;
+    PVMMDLL_MAP_SERVICEENTRY peDst;
+    PVMM_MAP_SERVICEENTRY peSrc;
+    PVMMOB_MAP_SERVICE pObMap = NULL;
+    if(!VmmMap_GetService(&pObMap)) { goto fail; }
+    cbDataMap = pObMap->cMap * sizeof(VMMDLL_MAP_SERVICEENTRY);
+    cbData = sizeof(VMMDLL_MAP_USER) + cbDataMap + pObMap->cbMultiText;
+    if(pServiceMap) {
+        if(*pcbServiceMap < cbData) { goto fail; }
+        ZeroMemory(pServiceMap, cbData);
+        pServiceMap->dwVersion = VMMDLL_MAP_SERVICE_VERSION;
+        pServiceMap->wszMultiText = (LPWSTR)(((PBYTE)pServiceMap->pMap) + cbDataMap);
+        pServiceMap->cbMultiText = pObMap->cbMultiText;
+        pServiceMap->cMap = pObMap->cMap;
+        memcpy(pServiceMap->wszMultiText, pObMap->wszMultiText, pObMap->cbMultiText);
+        cbMultiTextDiff = (QWORD)pServiceMap->wszMultiText - (QWORD)pObMap->wszMultiText;
+        for(i = 0; i < pServiceMap->cMap; i++) {
+            peDst = pServiceMap->pMap + i;
+            peSrc = pObMap->pMap + i;
+            memcpy(peDst, pObMap->pMap + i, sizeof(VMM_MAP_SERVICEENTRY));
+            peDst->wszServiceName = (LPWSTR)(cbMultiTextDiff + (QWORD)peSrc->wszServiceName);
+            peDst->wszDisplayName = (LPWSTR)(cbMultiTextDiff + (QWORD)peSrc->wszDisplayName);
+            peDst->wszPath        = (LPWSTR)(cbMultiTextDiff + (QWORD)peSrc->wszPath);
+            peDst->wszUserTp      = (LPWSTR)(cbMultiTextDiff + (QWORD)peSrc->wszUserTp);
+            peDst->wszUserAcct    = (LPWSTR)(cbMultiTextDiff + (QWORD)peSrc->wszUserAcct);
+        }
+    }
+    fResult = TRUE;
+fail:
+    *pcbServiceMap = (DWORD)cbData;
+    Ob_DECREF(pObMap);
+    return fResult;
+}
+
+_Success_(return)
+BOOL VMMDLL_Map_GetServices(_Out_writes_bytes_opt_(*pcbServiceMap) PVMMDLL_MAP_SERVICE pServiceMap, _Inout_ PDWORD pcbServiceMap)
+{
+    CALL_IMPLEMENTATION_VMM(
+        STATISTICS_ID_VMMDLL_Map_GetServices,
+        VMMDLL_Map_GetServices_Impl(pServiceMap, pcbServiceMap))
 }
 
 _Success_(return)

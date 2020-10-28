@@ -147,7 +147,7 @@ VOID VmmNet_TcpE_Fuzz(_In_ PVMMNET_CONTEXT ctx, _In_ PVMM_PROCESS pSystemProcess
                 if(ctxMain->cfg.fVerboseExtra) {
                     vmmprintfvv_fn("0x%016llx:\n", vaTcpE);
                     vmmprintfvv(
-                        "  _Size %03X, InetAF  %03X, InetAFAF %03X, InetAddr %03X, FLink %03X\n",
+                        "  _Size %03X, InetAF  %03X, InetAFAF %03X, InetAddr %03X, FLinkAll %03X\n",
                         po->_Size, po->INET_AF, po->INET_AF_AF, po->INET_Addr, po->FLink);
                     vmmprintfvv(
                         "  State %03X, SrcPort %03X, DstPort  %03X, EProcess %03X, Time  %03X\n",

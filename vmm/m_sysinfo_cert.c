@@ -196,7 +196,7 @@ finish:
     return pObCtx;
 }
 
-NTSTATUS MSysInfoCert_Read_Cert(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MSysInfoCert_Read_Cert(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     BYTE pbCertBuffer[0x1800];
@@ -243,7 +243,7 @@ VOID MSysInfoCert_Read_InfoFile_GetUserName(_In_ PVMMOB_MAP_USER pUserMap, _In_ 
     szUserName[0] = 0;
 }
 
-NTSTATUS MSysInfoCert_Read_InfoFile2(_In_ POB_MAP pmCertificates, _In_ PVMMOB_MAP_USER pUserMap, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MSysInfoCert_Read_InfoFile2(_In_ POB_MAP pmCertificates, _In_ PVMMOB_MAP_USER pUserMap, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     LPSTR sz;
@@ -262,18 +262,17 @@ NTSTATUS MSysInfoCert_Read_InfoFile2(_In_ POB_MAP pmCertificates, _In_ PVMMOB_MA
         peOb = ObMap_GetByIndex(pmCertificates, (DWORD)i);
         fWellKnown = 0 != Util_qfind((PVOID)peOb->qwIdMapKey, sizeof(gqw_MSYSINFO_CERTWELLKNOWN) / sizeof(QWORD), gqw_MSYSINFO_CERTWELLKNOWN, sizeof(QWORD), Util_qfind_CmpFindTableQWORD);
         MSysInfoCert_Read_InfoFile_GetUserName(pUserMap, peOb->dwHashUserSID, szUserName);
-        o += Util_snprintf_ln(
+        o += Util_snwprintf_u8ln(
             sz + o,
-            cbMax - o,
             cbLINELENGTH,
-            "%04x %-16s %-32S %-64S %-64S %40S %c\n",
+            L"%04x %-16S %-32s %-64s %-64s%c %s",
             (DWORD)i,
             szUserName,
             peOb->wszStore,
             peOb->wszSubjectCN,
             peOb->wszIssuerCN,
-            peOb->wszIdHash,
-            (fWellKnown ? ' ' : '*')
+            (fWellKnown ? ' ' : '*'),
+            peOb->wszIdHash
         );
     }
     nt = Util_VfsReadFile_FromPBYTE(sz, cbMax - 1, pb, cb, pcbRead, cbOffset - cStart * cbLINELENGTH);
@@ -281,7 +280,7 @@ NTSTATUS MSysInfoCert_Read_InfoFile2(_In_ POB_MAP pmCertificates, _In_ PVMMOB_MA
     return nt;
 }
 
-NTSTATUS MSysInfoCert_Read_InfoFile(_Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MSysInfoCert_Read_InfoFile(_Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     POB_MAP pmObCtx = NULL;
@@ -296,7 +295,7 @@ fail:
 }
 
 
-NTSTATUS MSysInfoCert_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MSysInfoCert_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     return _wcsicmp(ctx->wszPath, L"certificates.txt") ? MSysInfoCert_Read_Cert(ctx, pb, cb, pcbRead, cbOffset) : MSysInfoCert_Read_InfoFile(pb, cb, pcbRead, cbOffset);
 }
@@ -343,7 +342,7 @@ fail:
 
 VOID MSysInfoCert_Notify(_In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent)
 {
-    if(fEvent == VMMDLL_PLUGIN_EVENT_REFRESH_REGISTRY) {
+    if(fEvent == VMMDLL_PLUGIN_NOTIFY_REFRESH_SLOW) {
         ObContainer_SetOb(gp_MSYSINFO_OB_CERTCONTEXT, NULL);
     }
 }

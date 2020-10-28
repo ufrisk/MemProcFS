@@ -333,40 +333,86 @@ int Util_wcsstrncmp(_In_ LPSTR sz, _In_ LPWSTR wsz, _In_opt_ DWORD cMax)
 }
 
 _Success_(return >= 0)
-DWORD Util_snprintf_ln(
-    _Out_writes_(min(cszBuffer, cszLineLength + 1)) LPSTR szBuffer,
-    _In_ QWORD cszBuffer,
-    _In_ QWORD cszLineLength,
-    _In_z_ _Printf_format_string_ LPSTR szFormat,
-    ...
-) {
-    int status;
-    va_list arglist;
-    va_start(arglist, szFormat);
-    status = vsnprintf(szBuffer, min(cszBuffer, cszLineLength + 1), szFormat, arglist);
-    va_end(arglist);
-    if(status < 0) {
-        status = snprintf(szBuffer, cszBuffer, "%*s\n", (DWORD)(cszLineLength - 1), "");
-        if(status < 0) { status = 0; }
-    }
-    return (DWORD)status;
-}
-
-_Success_(return >= 0)
-DWORD Util_snprintf_ln2(
-    _Out_writes_(cszLineLength) LPSTR szBuffer,
-    _In_ QWORD cszLineLength,
-    _In_z_ _Printf_format_string_ LPSTR szFormat,
+size_t Util_snwprintf_u8(
+    _Out_writes_(cbBuffer) LPSTR szBuffer,
+    _In_ QWORD cbBuffer,
+    _In_z_ _Printf_format_string_ LPWSTR wszFormat,
     ...
 )
 {
-    int csz, status;
+    int cch;
     va_list arglist;
-    va_start(arglist, szFormat);
-    status = vsnprintf(szBuffer, cszLineLength + 1, szFormat, arglist);
+    WCHAR wszBufferTiny[MAX_PATH];
+    LPWSTR wszBuffer;
+    if(cbBuffer == 0) { return 0; }
+    if(cbBuffer == 1) {
+        szBuffer[0] = '\0';
+        return 0;
+    }
+    // 1: alloc/assign wchar buffer
+    if(cbBuffer < _countof(wszBufferTiny)) {
+        wszBuffer = wszBufferTiny;
+    } else {
+        wszBuffer = LocalAlloc(0, cbBuffer * sizeof(WCHAR));
+        if(!wszBuffer) {
+            szBuffer[0] = '\0';
+            goto fail;
+        }
+    }
+    // 2: write to whar buffer
+    va_start(arglist, wszFormat);
+    cch = _vsnwprintf_s(wszBuffer, cbBuffer, _TRUNCATE, wszFormat, arglist);
     va_end(arglist);
-    csz = (int)min(cszLineLength - 1, ((status < 0) ? 0 : strlen(szBuffer)));
-    snprintf(szBuffer + csz, cszLineLength + 1 - csz, "%*s\n", (DWORD)(cszLineLength - 1 - csz), "");
+    if(cch < 0) { cch = (int)cbBuffer - 1; }
+    // 3: convert to utf-8
+    while((0 == WideCharToMultiByte(CP_UTF8, 0, wszBuffer, -1, szBuffer, (int)cbBuffer, NULL, NULL)) && cch) {
+        wszBuffer[--cch] = '\0';
+    }
+fail:
+    if(wszBuffer != wszBufferTiny) { LocalFree(wszBuffer); }
+    return strlen(szBuffer);
+}
+
+_Success_(return >= 0)
+DWORD Util_snwprintf_u8ln(
+    _Out_writes_(cszLineLength+1) LPSTR szBuffer,
+    _In_ QWORD cszLineLength,
+    _In_z_ _Printf_format_string_ LPWSTR wszFormat,
+    ...
+)
+{
+    int cch, csz = 0;
+    va_list arglist;
+    WCHAR wszBufferTiny[MAX_PATH];
+    LPWSTR wszBuffer;
+    if(0 == cszLineLength) { 
+        szBuffer[0] = '\0';
+        return 0;
+    }
+    // 1: alloc/assign wchar buffer
+    if(cszLineLength < _countof(wszBufferTiny)) {
+        wszBuffer = wszBufferTiny;
+    } else {
+        wszBuffer = LocalAlloc(0, cszLineLength * sizeof(WCHAR));
+        if(!wszBuffer) { goto fail; }
+    }
+    // 2: write to whar buffer
+    va_start(arglist, wszFormat);
+    cch = _vsnwprintf_s(wszBuffer, cszLineLength, _TRUNCATE, wszFormat, arglist);
+    va_end(arglist);
+    if(cch < 0) { cch = (int)cszLineLength - 1; }
+    // 3: convert to utf-8
+    while((0 == (csz = WideCharToMultiByte(CP_UTF8, 0, wszBuffer, -1, szBuffer, (int)cszLineLength, NULL, NULL))) && cch) {
+        wszBuffer[--cch] = '\0';
+    }
+    csz--;
+fail:
+    if(csz < cszLineLength - 1) {
+        memset(szBuffer + csz, ' ', cszLineLength - 1 - csz);
+    }
+    szBuffer[cszLineLength - 1] = '\n';
+    szBuffer[cszLineLength] = '\0';
+    if(wszBuffer != wszBufferTiny) { LocalFree(wszBuffer); }
     return (DWORD)cszLineLength;
 }
 
@@ -385,7 +431,7 @@ VOID Util_GetPathDll(_Out_writes_(MAX_PATH) PCHAR szPath, _In_opt_ HMODULE hModu
 #define UTIL_NTSTATUS_SUCCESS                      ((NTSTATUS)0x00000000L)
 #define UTIL_NTSTATUS_END_OF_FILE                  ((NTSTATUS)0xC0000011L)
 
-NTSTATUS Util_VfsReadFile_FromZERO(_In_ QWORD cbFile, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS Util_VfsReadFile_FromZERO(_In_ QWORD cbFile, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     if(cbOffset > cbFile) { return UTIL_NTSTATUS_END_OF_FILE; }
     *pcbRead = (DWORD)min(cb, cbFile - cbOffset);
@@ -393,7 +439,7 @@ NTSTATUS Util_VfsReadFile_FromZERO(_In_ QWORD cbFile, _Out_ PBYTE pb, _In_ DWORD
     return *pcbRead ? UTIL_NTSTATUS_SUCCESS : UTIL_NTSTATUS_END_OF_FILE;
 }
 
-NTSTATUS Util_VfsReadFile_FromPBYTE(_In_opt_ PBYTE pbFile, _In_ QWORD cbFile, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS Util_VfsReadFile_FromPBYTE(_In_opt_ PBYTE pbFile, _In_ QWORD cbFile, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     if(!pbFile || (cbOffset > cbFile)) { return UTIL_NTSTATUS_END_OF_FILE; }
     *pcbRead = (DWORD)min(cb, cbFile - cbOffset);
@@ -401,7 +447,7 @@ NTSTATUS Util_VfsReadFile_FromPBYTE(_In_opt_ PBYTE pbFile, _In_ QWORD cbFile, _O
     return *pcbRead ? UTIL_NTSTATUS_SUCCESS : UTIL_NTSTATUS_END_OF_FILE;
 }
 
-NTSTATUS Util_VfsReadFile_FromTextWtoU8(_In_opt_ LPWSTR wszValue, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS Util_VfsReadFile_FromTextWtoU8(_In_opt_ LPWSTR wszValue, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt;
     LPSTR szTMP = Util_StrDupW2U8(wszValue);
@@ -410,7 +456,7 @@ NTSTATUS Util_VfsReadFile_FromTextWtoU8(_In_opt_ LPWSTR wszValue, _Out_ PBYTE pb
     return nt;
 }
 
-NTSTATUS Util_VfsReadFile_FromNumber(_In_ QWORD qwValue, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS Util_VfsReadFile_FromNumber(_In_ QWORD qwValue, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     BYTE pbBuffer[32];
     DWORD cbBuffer;
@@ -418,7 +464,7 @@ NTSTATUS Util_VfsReadFile_FromNumber(_In_ QWORD qwValue, _Out_ PBYTE pb, _In_ DW
     return Util_VfsReadFile_FromPBYTE(pbBuffer, cbBuffer, pb, cb, pcbRead, cbOffset);
 }
 
-NTSTATUS Util_VfsReadFile_FromQWORD(_In_ QWORD qwValue, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset, _In_ BOOL fPrefix)
+NTSTATUS Util_VfsReadFile_FromQWORD(_In_ QWORD qwValue, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset, _In_ BOOL fPrefix)
 {
     BYTE pbBuffer[32];
     DWORD cbBuffer;
@@ -426,7 +472,7 @@ NTSTATUS Util_VfsReadFile_FromQWORD(_In_ QWORD qwValue, _Out_ PBYTE pb, _In_ DWO
     return Util_VfsReadFile_FromPBYTE(pbBuffer, cbBuffer, pb, cb, pcbRead, cbOffset);
 }
 
-NTSTATUS Util_VfsReadFile_FromDWORD(_In_ DWORD dwValue, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset, _In_ BOOL fPrefix)
+NTSTATUS Util_VfsReadFile_FromDWORD(_In_ DWORD dwValue, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset, _In_ BOOL fPrefix)
 {
     BYTE pbBuffer[32];
     DWORD cbBuffer;
@@ -434,7 +480,7 @@ NTSTATUS Util_VfsReadFile_FromDWORD(_In_ DWORD dwValue, _Out_ PBYTE pb, _In_ DWO
     return Util_VfsReadFile_FromPBYTE(pbBuffer, cbBuffer, pb, cb, pcbRead, cbOffset);
 }
 
-NTSTATUS Util_VfsReadFile_FromBOOL(_In_ BOOL fValue, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS Util_VfsReadFile_FromBOOL(_In_ BOOL fValue, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     BYTE pbBuffer[1];
     pbBuffer[0] = fValue ? '1' : '0';
@@ -590,7 +636,8 @@ int Util_qfind_CmpFindTableQWORD(_In_ PVOID pvFind, _In_ PVOID pvEntry)
     return 0;
 }
 
-PVOID Util_qfind(_In_ PVOID pvFind, _In_ DWORD cMap, _In_ PVOID pvMap, _In_ DWORD cbEntry, _In_ int(*pfnCmp)(_In_ PVOID pvFind, _In_ PVOID pvEntry))
+_Success_(return != NULL)
+PVOID Util_qfind_ex(_In_ PVOID pvFind, _In_ DWORD cMap, _In_ PVOID pvMap, _In_ DWORD cbEntry, _In_ int(*pfnCmp)(_In_ PVOID pvFind, _In_ PVOID pvEntry), _Out_opt_ PDWORD piMapOpt)
 {
     int f;
     DWORD i, cbSearch, cbStep, cbMap;
@@ -609,15 +656,18 @@ PVOID Util_qfind(_In_ PVOID pvFind, _In_ DWORD cMap, _In_ PVOID pvMap, _In_ DWOR
                 cbSearch += cbStep;
             }
         } else {
+            if(piMapOpt) { *piMapOpt = cbSearch / cbEntry; }
             return pbMap + cbSearch;
         }
         cbStep = cbStep >> 1;
     }
     if(cbSearch < cbMap) {
         if(!pfnCmp(pvFind, pbMap + cbSearch)) {
+            if(piMapOpt) { *piMapOpt = cbSearch / cbEntry; }
             return pbMap + cbSearch;
         }
         if((cbSearch >= cbEntry) && !pfnCmp(pvFind, pbMap + cbSearch - cbEntry)) {
+            if(piMapOpt) { *piMapOpt = (cbSearch - cbEntry) / cbEntry; }
             return pbMap + cbSearch - cbEntry;
         }
     }

@@ -160,7 +160,7 @@ finish:
     return (ctx && ctx->fInit) ? ctx : NULL;
 }
 
-NTSTATUS MSyscall_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MSyscall_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     PMSYSCALL_CONTEXT ctxSyscall;
     if((ctxSyscall = MSyscall_GetContext())) {

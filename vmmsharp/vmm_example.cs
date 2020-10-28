@@ -114,6 +114,7 @@ class vmm_example
         vmm.MAP_NETENTRY[] mNetworkConnections = vmm.Map_GetNet();
         vmm.MAP_PHYSMEMENTRY[] mPhysMemRanges = vmm.Map_GetPhysMem();
         vmm.MAP_USERENTRY[] mUsers = vmm.Map_GetUsers();
+        vmm.MAP_SERVICEENTRY[] mServices = vmm.Map_GetServices();
         vmm.MAP_PFNENTRY[] mPfn = vmm.Map_GetPfn(1, 2, 1024);
 
         // read first 128 bytes of kernel32.dll

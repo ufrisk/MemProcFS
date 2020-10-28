@@ -12,7 +12,7 @@
 # (c) Ulf Frisk, 2018-2020
 # Author: Ulf Frisk, pcileech@frizk.net
 #
-# Header Version: 3.4
+# Header Version: 3.5
 #
 
 import atexit
@@ -44,12 +44,18 @@ VMMPY_MEMORYMODEL_X86 =                 0x0001
 VMMPY_MEMORYMODEL_X86PAE =              0x0002
 VMMPY_MEMORYMODEL_X64 =                 0x0003
 
-# EVENT values - received by the notify callback function for specific events
-# occuring in the native plugin manager / vmm / memory process file system.
-VMMPY_PLUGIN_EVENT_VERBOSITYCHANGE =    0x01
-VMMPY_PLUGIN_EVENT_TOTALREFRESH =       0x02
-VMMPY_PLUGIN_EVENT_REFRESH_PROCESS_TOTAL = 0x02
-VMMPY_PLUGIN_EVENT_REFRESH_REGISTRY =   0x04
+# NOTIFY EVENT values - received by the notify callback function for specific
+# events occuring in the native plugin manager / VMM / MemProcFS.
+VMMPY_PLUGIN_EVENT_VERBOSITYCHANGE =        0x01    # deprecated
+VMMPY_PLUGIN_EVENT_TOTALREFRESH =           0x02    # deprecated
+VMMPY_PLUGIN_EVENT_REFRESH_PROCESS_TOTAL =  0x02    # deprecated
+VMMPY_PLUGIN_EVENT_REFRESH_REGISTRY =       0x04    # deprecated
+VMMPY_PLUGIN_NOTIFY_VERBOSITYCHANGE =       0x01
+VMMPY_PLUGIN_NOTIFY_REFRESH_FAST =          0x05    # refresh fast event   - at partial process refresh.
+VMMPY_PLUGIN_NOTIFY_REFRESH_MEDIUM =        0x02    # refresh medium event - at full process refresh.
+VMMPY_PLUGIN_NOTIFY_REFRESH_SLOW =          0x04    # refresh slow event   - at registry refresh.
+VMMPY_PLUGIN_NOTIFY_FORENSIC_INIT =         0x01000100
+VMMPY_PLUGIN_NOTIFY_FORENSIC_INIT_COMPLETE= 0x01000200
 
 # WINDOWS REGISTRY contants below:
 VMMPY_WINREG_NONE =                     0x00
@@ -155,21 +161,37 @@ VMMPY_OPT_CONFIG_VMM_VERSION_REVISION         = 0x2000000B00000000  # R
 VMMPY_OPT_CONFIG_STATISTICS_FUNCTIONCALL      = 0x2000000C00000000  # RW - enable function call statistics (.status/statistics_fncall file)
 VMMPY_OPT_CONFIG_IS_PAGING_ENABLED            = 0x2000000D00000000  # RW - 1/0
 
-VMMDLL_OPT_WIN_VERSION_MAJOR                  = 0x2000010100000000  # R
-VMMDLL_OPT_WIN_VERSION_MINOR                  = 0x2000010200000000  # R
-VMMDLL_OPT_WIN_VERSION_BUILD                  = 0x2000010300000000  # R
+VMMPY_OPT_WIN_VERSION_MAJOR                   = 0x2000010100000000  # R
+VMMPY_OPT_WIN_VERSION_MINOR                   = 0x2000010200000000  # R
+VMMPY_OPT_WIN_VERSION_BUILD                   = 0x2000010300000000  # R
 
-VMMDLL_OPT_REFRESH_ALL                        = 0x2001ffff00000000  # W - refresh all caches
-VMMDLL_OPT_REFRESH_PROCESS                    = 0x2001000100000000  # W - refresh process listings
-VMMDLL_OPT_REFRESH_READ                       = 0x2001000200000000  # W - refresh physical read cache
-VMMDLL_OPT_REFRESH_TLB                        = 0x2001000400000000  # W - refresh page table (TLB) cache
-VMMDLL_OPT_REFRESH_PAGING                     = 0x2001000800000000  # W - refresh virtual memory 'paging' cache
-VMMDLL_OPT_REFRESH_REGISTRY                   = 0x2001001000000000  # W
-VMMDLL_OPT_REFRESH_USER                       = 0x2001002000000000  # W
-VMMDLL_OPT_REFRESH_PHYSMEMMAP                 = 0x2001004000000000  # W
-VMMDLL_OPT_REFRESH_PFN                        = 0x2001008000000000  # W
-VMMDLL_OPT_REFRESH_OBJ                        = 0x2001010000000000  # W
-VMMDLL_OPT_REFRESH_NET                        = 0x2001020000000000  # W
+VMMPY_OPT_REFRESH_ALL                         = 0x2001ffff00000000  # W - refresh all caches
+VMMPY_OPT_REFRESH_FREQ_FAST                   = 0x2001040000000000  # W - refresh fast frequency (including partial process listings)
+VMMPY_OPT_REFRESH_FREQ_MEDIUM                 = 0x2001000100000000  # W - refresh medium frequency (including full process listings)
+VMMPY_OPT_REFRESH_FREQ_SLOW                   = 0x2001001000000000  # W - refresh slow frequency (including registry)
+VMMPY_OPT_REFRESH_READ                        = 0x2001000200000000  # W - refresh physical read cache
+VMMPY_OPT_REFRESH_TLB                         = 0x2001000400000000  # W - refresh page table (TLB) cache
+VMMPY_OPT_REFRESH_PAGING                      = 0x2001000800000000  # W - refresh virtual memory 'paging' cache
+VMMPY_OPT_REFRESH_USER                        = 0x2001002000000000  # W
+VMMPY_OPT_REFRESH_PHYSMEMMAP                  = 0x2001004000000000  # W
+VMMPY_OPT_REFRESH_PFN                         = 0x2001008000000000  # W
+VMMPY_OPT_REFRESH_OBJ                         = 0x2001010000000000  # W
+VMMPY_OPT_REFRESH_NET                         = 0x2001020000000000  # W
+
+VMMDLL_OPT_WIN_VERSION_MAJOR                  = 0x2000010100000000  # DEPRECATED
+VMMDLL_OPT_WIN_VERSION_MINOR                  = 0x2000010200000000  # DEPRECATED
+VMMDLL_OPT_WIN_VERSION_BUILD                  = 0x2000010300000000  # DEPRECATED
+VMMDLL_OPT_REFRESH_ALL                        = 0x2001ffff00000000  # DEPRECATED
+VMMDLL_OPT_REFRESH_PROCESS                    = 0x2001000100000000  # DEPRECATED
+VMMDLL_OPT_REFRESH_READ                       = 0x2001000200000000  # DEPRECATED
+VMMDLL_OPT_REFRESH_TLB                        = 0x2001000400000000  # DEPRECATED
+VMMDLL_OPT_REFRESH_PAGING                     = 0x2001000800000000  # DEPRECATED
+VMMDLL_OPT_REFRESH_REGISTRY                   = 0x2001001000000000  # DEPRECATED
+VMMDLL_OPT_REFRESH_USER                       = 0x2001002000000000  # DEPRECATED
+VMMDLL_OPT_REFRESH_PHYSMEMMAP                 = 0x2001004000000000  # DEPRECATED
+VMMDLL_OPT_REFRESH_PFN                        = 0x2001008000000000  # DEPRECATED
+VMMDLL_OPT_REFRESH_OBJ                        = 0x2001010000000000  # DEPRECATED
+VMMDLL_OPT_REFRESH_NET                        = 0x2001020000000000  # DEPRECATED
 
 def VmmPy_ConfigGet(vmmpy_opt_id):
     """Retrieve a configuration setting given a VMMPY_OPT_* option.
@@ -762,6 +784,19 @@ def VmmPy_GetUsers():
     VmmPy_GetUsers() --> [{'va-reghive': 18446663847596163072, 'sid': 'S-1-5-21-3317879871-105768242-2947499445-1001', 'name': 'User'}, ...]
     """
     return VMMPYC_GetUsers()
+
+
+
+def VmmPy_MapGetServices():
+    """Retrieve services from the service control manager (SCM) of the target system.
+
+    Keyword arguments:
+    return -- dict: of dict of services.
+    
+    Example:
+    VmmPy_MapGetServices() --> {{1: {'ordinal': 1, 'va-obj': 2498879344160, 'pid': 0, 'dwStartType': 3, 'dwServiceType': 1, 'dwCurrentState': 1, 'dwControlsAccepted': 0, 'dwWin32ExitCode': 1077, 'dwServiceSpecificExitCode': 0, 'dwCheckPoint': 0, 'dwWaitHint': 0, 'name': '1394ohci', 'name-display': '1394 OHCI Compliant Host Controller', 'path': '', 'user-tp': '', 'user-acct': ''}, 2: ...}
+    """
+    return VMMPYC_MapGetServices()
 
 
 

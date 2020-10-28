@@ -11,7 +11,7 @@
 #include "vmmwinobj.h"
 
 _Success_(return == 0)
-NTSTATUS M_FileHandlesVads_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset, _In_ BOOL fHandles)
+NTSTATUS M_FileHandlesVads_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset, _In_ BOOL fHandles)
 {
     QWORD va;
     POB_MAP pmObFiles = NULL;
@@ -34,13 +34,13 @@ NTSTATUS M_FileHandlesVads_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb,
 }
 
 _Success_(return == 0)
-NTSTATUS M_FileHandles_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS M_FileHandles_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     return M_FileHandlesVads_Read(ctx, pb, cb, pcbRead, cbOffset, TRUE);
 }
 
 _Success_(return == 0)
-NTSTATUS M_FileVads_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS M_FileVads_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     return M_FileHandlesVads_Read(ctx, pb, cb, pcbRead, cbOffset, FALSE);
 }

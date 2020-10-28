@@ -12,7 +12,7 @@
 #include "vmmwinreg.h"
 #include "util.h"
 
-NTSTATUS MSysInfo_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MSysInfo_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     DWORD cbBuffer;
     BYTE pbBuffer[34] = { 0 };
@@ -33,7 +33,7 @@ NTSTATUS MSysInfo_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWO
     }
     if(!wcscmp(ctx->wszPath, L"computername.txt")) {
         VmmWinReg_ValueQuery2(L"HKLM\\SYSTEM\\ControlSet001\\Control\\ComputerName\\ComputerName\\ComputerName", NULL, pbRegData, sizeof(pbRegData) - 2, NULL);
-        Util_snprintf_ln((LPSTR)pbBuffer, 34, 33, "%-32S", (LPWSTR)pbRegData);
+        Util_snwprintf_u8ln((LPSTR)pbBuffer, 33, L"%s", (LPWSTR)pbRegData);
         return Util_VfsReadFile_FromPBYTE(pbBuffer, 32, pb, cb, pcbRead, cbOffset);
     }
     return VMMDLL_STATUS_FILE_INVALID;

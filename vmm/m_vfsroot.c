@@ -361,7 +361,7 @@ POB_VMMVFS_DUMP_CONTEXT MVfsRoot_GetDumpContext()
 * -- cbOffset
 * -- return
 */
-NTSTATUS MVfsRoot_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MVfsRoot_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMM_STATUS_FILE_INVALID;
     POB_VMMVFS_DUMP_CONTEXT pObDumpCtx = NULL;
@@ -428,7 +428,7 @@ finish:
 * -- cbOffset
 * -- return
 */
-NTSTATUS MVfsRoot_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
+NTSTATUS MVfsRoot_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
 {
     BOOL fResult;
     DWORD cbHeaderSize;

@@ -207,38 +207,36 @@ VOID Util_PathPrependVA(_Out_writes_(MAX_PATH) LPWSTR wszDstBuffer, _In_ QWORD v
 int Util_wcsstrncmp(_In_ LPSTR sz, _In_ LPWSTR wsz, _In_opt_ DWORD cMax);
 
 /*
-* snprintf a line with fixed line length in a fairly error safe way.
+* snwprintf to a utf-8 buffer. The result is guaranteed to be NULL terminated.
 * -- szBuffer
-* -- cszBuffer
-* -- cszLineLength = line length in characters excluding terminating NULL.
-* -- szFormat = printf format string.
+* -- cbBuffer
+* -- wszFormat = printf format string.
 * -- ... = printf varargs.
 * -- return
 */
 _Success_(return >= 0)
-DWORD Util_snprintf_ln(
-    _Out_writes_(min(cszBuffer, cszLineLength + 1)) LPSTR szBuffer,
-    _In_ QWORD cszBuffer,
-    _In_ QWORD cszLineLength,
-    _In_z_ _Printf_format_string_ LPSTR szFormat,
+size_t Util_snwprintf_u8(
+    _Out_writes_(cbBuffer) LPSTR szBuffer,
+    _In_ QWORD cbBuffer,
+    _In_z_ _Printf_format_string_ LPWSTR wszFormat,
     ...
 );
 
 /*
-* snprintf a line with fixed line length, space padded to meet line length
+* snwprintf to a utf-8 fixed line length, space padded to meet line length
 * requirement and terminated with newline '\n' (at last char in line length)
 * and NULL char (linelength + 1).
 * -- szBuffer
-* -- cszLineLength = line length in characters excluding terminating NULL.
-* -- szFormat = printf format string without "terminating" spaces+newline.
+* -- cszLineLength = line length in bytes including newline, excluding NULL.
+* -- wszFormat = printf format string without "terminating" spaces+newline.
 * -- ... = printf varargs.
 * -- return
 */
 _Success_(return >= 0)
-DWORD Util_snprintf_ln2(
-    _Out_writes_(cszLineLength) LPSTR szBuffer,
+DWORD Util_snwprintf_u8ln(
+    _Out_writes_(cszLineLength + 1) LPSTR szBuffer,
     _In_ QWORD cszLineLength,
-    _In_z_ _Printf_format_string_ LPSTR szFormat,
+    _In_z_ _Printf_format_string_ LPWSTR wszFormat,
     ...
 );
 
@@ -295,20 +293,37 @@ int Util_qfind_CmpFindTableQWORD(_In_ PVOID pvFind, _In_ PVOID pvEntry);
 * -- pvMap
 * -- cbEntry
 * -- pfnCmp
+* -- piMapOpt = pointer to receive the map index of the located item
 * -- return = the entry found or NULL on failure.
 */
-PVOID Util_qfind(_In_ PVOID pvFind, _In_ DWORD cMap, _In_ PVOID pvMap, _In_ DWORD cbEntry, _In_ int(*pfnCmp)(_In_ PVOID pvFind, _In_ PVOID pvEntry));
+_Success_(return != NULL)
+PVOID Util_qfind_ex(_In_ PVOID pvFind, _In_ DWORD cMap, _In_ PVOID pvMap, _In_ DWORD cbEntry, _In_ int(*pfnCmp)(_In_ PVOID pvFind, _In_ PVOID pvEntry), _Out_opt_ PDWORD piMapOpt);
+
+/*
+* Find an entry in a sorted array in an efficient way - O(log2(n)).
+* -- pvFind
+* -- cMap
+* -- pvMap
+* -- cbEntry
+* -- pfnCmp
+* -- return = the entry found or NULL on failure.
+*/
+_Success_(return != NULL)
+inline PVOID Util_qfind(_In_ PVOID pvFind, _In_ DWORD cMap, _In_ PVOID pvMap, _In_ DWORD cbEntry, _In_ int(*pfnCmp)(_In_ PVOID pvFind, _In_ PVOID pvEntry))
+{
+    return Util_qfind_ex(pvFind, cMap, pvMap, cbEntry, pfnCmp, NULL);
+}
 
 /*
 * Utility functions for read/write towards different underlying data representations.
 */
-NTSTATUS Util_VfsReadFile_FromZERO(_In_ QWORD cbFile, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
-NTSTATUS Util_VfsReadFile_FromPBYTE(_In_opt_ PBYTE pbFile, _In_ QWORD cbFile, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
-NTSTATUS Util_VfsReadFile_FromTextWtoU8(_In_opt_ LPWSTR wszValue, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
-NTSTATUS Util_VfsReadFile_FromNumber(_In_ QWORD qwValue, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
-NTSTATUS Util_VfsReadFile_FromQWORD(_In_ QWORD qwValue, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset, _In_ BOOL fPrefix);
-NTSTATUS Util_VfsReadFile_FromDWORD(_In_ DWORD dwValue, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset, _In_ BOOL fPrefix);
-NTSTATUS Util_VfsReadFile_FromBOOL(_In_ BOOL fValue, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
+NTSTATUS Util_VfsReadFile_FromZERO(_In_ QWORD cbFile, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
+NTSTATUS Util_VfsReadFile_FromPBYTE(_In_opt_ PBYTE pbFile, _In_ QWORD cbFile, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
+NTSTATUS Util_VfsReadFile_FromTextWtoU8(_In_opt_ LPWSTR wszValue, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
+NTSTATUS Util_VfsReadFile_FromNumber(_In_ QWORD qwValue, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
+NTSTATUS Util_VfsReadFile_FromQWORD(_In_ QWORD qwValue, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset, _In_ BOOL fPrefix);
+NTSTATUS Util_VfsReadFile_FromDWORD(_In_ DWORD dwValue, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset, _In_ BOOL fPrefix);
+NTSTATUS Util_VfsReadFile_FromBOOL(_In_ BOOL fValue, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsWriteFile_BOOL(_Inout_ PBOOL pfTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsWriteFile_09(_Inout_ PDWORD pdwTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsWriteFile_DWORD(_Inout_ PDWORD pdwTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset, _In_ DWORD dwMinAllow, _In_opt_ DWORD dwMaxAllow);

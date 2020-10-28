@@ -377,7 +377,7 @@ VOID VmmWinLdrModule_Initialize64(_In_ PVMM_PROCESS pProcess, _In_ PVMMWIN_LDRMO
         ctx->cwszTextTotal += max(12, 1 + pModule->cwszFullName);
         pModule->_Reserved3 = ((QWORD)pLdrModule->FullDllName.Buffer) + pLdrModule->FullDllName.Length - ((QWORD)pModule->cwszFullName << 1);;
         ObSet_Push(ctx->psVaName, pModule->_Reserved3);
-        // add FLink/BLink lists
+        // add FLinkAll/BLink lists
         if(pLdrModule->InLoadOrderModuleList.Flink && !((QWORD)pLdrModule->InLoadOrderModuleList.Flink & 0x7)) {
             VmmWinLdrModule_Initialize_VSetPutVA(pObSet_vaAll, pObSet_vaTry1, (QWORD)CONTAINING_RECORD(pLdrModule->InLoadOrderModuleList.Flink, VMMPROC_LDR_DATA_TABLE_ENTRY, InLoadOrderModuleList));
         }
@@ -491,7 +491,7 @@ VOID VmmWinLdrModule_Initialize32(_In_ PVMM_PROCESS pProcess, _In_ PVMMWIN_LDRMO
             pModule->_Reserved3 = ((QWORD)pLdrModule32->FullDllName.Buffer) + pLdrModule32->FullDllName.Length - ((QWORD)pModule->cwszFullName << 1);
             ObSet_Push(ctx->psVaName, pModule->_Reserved3);
         }
-        // add FLink/BLink lists
+        // add FLinkAll/BLink lists
         if(pLdrModule32->InLoadOrderModuleList.Flink && !((DWORD)pLdrModule32->InLoadOrderModuleList.Flink & 0x3)) {
             VmmWinLdrModule_Initialize_VSetPutVA(pObSet_vaAll, pObSet_vaTry1, (QWORD)CONTAINING_RECORD32(pLdrModule32->InLoadOrderModuleList.Flink, LDR_MODULE32, InLoadOrderModuleList));
         }
@@ -2501,11 +2501,11 @@ VOID VmmWinProcess_OffsetLocator64(_In_ PVMM_PROCESS pSystemProcess)
         }
     }
     if(!f) { return; }
-    // find offset for PID, FLink, BLink (assumed to be following eachother)
+    // find offset for PID, FLinkAll, BLink (assumed to be following eachother)
     for(i = 0, f = FALSE; i < VMMPROC_EPROCESS64_MAX_SIZE - 8; i += 8) {
         if(*(PQWORD)(pbSYSTEM + i) == 4) {
             // PID = correct, this is a candidate
-            if(0xffff000000000000 != (0xffff000000000003 & *(PQWORD)(pbSYSTEM + i + 8))) { continue; }    // FLink not valid kernel pointer
+            if(0xffff000000000000 != (0xffff000000000003 & *(PQWORD)(pbSYSTEM + i + 8))) { continue; }    // FLinkAll not valid kernel pointer
             va1 = *(PQWORD)(pbSYSTEM + i + 8) - i - 8;
             f = VmmRead(pSystemProcess, va1, pb1, VMMPROC_EPROCESS64_MAX_SIZE);
             if(!f) { continue; }
@@ -2902,11 +2902,11 @@ VOID VmmWinProcess_OffsetLocator32(_In_ PVMM_PROCESS pSystemProcess)
         }
     }
     if(!f) { return; }
-    // find offset for PID, FLink, BLink (assumed to be following eachother)
+    // find offset for PID, FLinkAll, BLink (assumed to be following eachother)
     for(i = 0, f = FALSE; i < VMMPROC_EPROCESS32_MAX_SIZE - 4; i += 4) {
         if(*(PDWORD)(pbSYSTEM + i) == 4) {
             // PID = correct, this is a candidate
-            if(0x80000000 != (0x80000003 & *(PDWORD)(pbSYSTEM + i + 4))) { continue; }    // FLink not valid kernel pointer
+            if(0x80000000 != (0x80000003 & *(PDWORD)(pbSYSTEM + i + 4))) { continue; }    // FLinkAll not valid kernel pointer
             va1 = *(PDWORD)(pbSYSTEM + i + 4) - i - 4;
             f = VmmRead(pSystemProcess, va1, pb1, VMMPROC_EPROCESS32_MAX_SIZE);
             if(!f) { continue; }
@@ -3201,7 +3201,7 @@ BOOL VmmWinProcess_Enumerate(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fRefres
 * -- cbData
 * -- pfnCallback_Pre = optional callback function to gather additional addresses.
 * -- pfnCallback_Post = optional callback function called after all pages fetched into cache.
-* -- pContainerPrefetch = optional pointer to a PVMMOBCONTAINER containing a POB_VSET of prefetch addresses to use/update.
+* -- pPrefetchAddressContainer = optional pointer to a PVMMOBCONTAINER containing a POB_VSET of prefetch addresses to use/update.
 */
 VOID VmmWin_ListTraversePrefetch(
     _In_ PVMM_PROCESS pProcess,
@@ -3211,10 +3211,10 @@ VOID VmmWin_ListTraversePrefetch(
     _In_ PQWORD pvaDataStart,
     _In_ DWORD oListStart,
     _In_ DWORD cbData,
-    _In_opt_ VOID(*pfnCallback_Pre)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb, _In_ QWORD vaFLink, _In_ QWORD vaBLink, _In_ POB_SET pVSetAddress, _Inout_ PBOOL pfValidEntry, _Inout_ PBOOL pfValidFLink, _Inout_ PBOOL pfValidBLink),
-    _In_opt_ VOID(*pfnCallback_Post)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb),
-    _In_opt_ POB_CONTAINER pPrefetchAddressContainer)
-{
+    _In_opt_ VOID(*pfnCallback_Pre)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx, _In_ QWORD va, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _In_ QWORD vaFLink, _In_ QWORD vaBLink, _In_ POB_SET pVSetAddress, _Inout_ PBOOL pfValidEntry, _Inout_ PBOOL pfValidFLink, _Inout_ PBOOL pfValidBLink),
+    _In_opt_ VOID(*pfnCallback_Post)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx, _In_ QWORD va, _In_reads_(cb) PBYTE pb, _In_ DWORD cb),
+    _In_opt_ POB_CONTAINER pPrefetchAddressContainer
+) {
     QWORD vaData;
     DWORD cbReadData;
     PBYTE pbData = NULL;

@@ -239,6 +239,54 @@ BOOL MmX86PAE_Virt2Phys(_In_ QWORD paPT, _In_ BOOL fUserOnly, _In_ BYTE iPML, _I
     return MmX86PAE_Virt2Phys(pte, fUserOnly, 1, va, ppa);
 }
 
+VOID MmX86PAE_Virt2PhysVadEx(_In_ QWORD paPT, _Inout_ PVMMOB_MAP_VADEX pVadEx, _In_ BYTE iPML, _Inout_ PDWORD piVadEx)
+{
+    PBYTE pbPTEs;
+    QWORD pa, pte, iPte, iVadEx, qwMask;
+    PVMMOB_CACHE_MEM pObPTEs = NULL;
+    if(iPML == (BYTE)-1) { iPML = 3; }
+    if((pVadEx->pMap[*piVadEx].va > 0xffffffff) || !(pObPTEs = VmmTlbGetPageTable(paPT & 0x0000fffffffff000, FALSE))) {
+        *piVadEx = *piVadEx + 1;
+        return;
+    }
+next_entry:
+    iVadEx = *piVadEx;
+    iPte = 0x1ff & (pVadEx->pMap[iVadEx].va >> MMX86PAE_PAGETABLEMAP_PML_REGION_SIZE[iPML]);
+    pte = pObPTEs->pqw[iPte];
+    if(iPML == 3) {
+        // PDPT
+        if(iPte > 3) { goto next_check; }                   // MAX 4 ENTRIES IN PDPT
+        pbPTEs = pObPTEs->pb + (paPT & 0xfe0);              // ADJUST PDPT TO 32-BYTE BOUNDARY
+        pte = ((PQWORD)pbPTEs)[iPte];
+        if(!(pte & 0x01)) { goto next_check; }              // NOT VALID
+        if(pte & 0xffff0000000001e6) { goto next_check; }   // RESERVED BITS IN PDPTE
+        MmX86PAE_Virt2PhysVadEx(pte, pVadEx, 2, piVadEx);
+        Ob_DECREF(pObPTEs);
+        return;
+    }
+    // PT or PD
+    if(!MMX86PAE_PTE_IS_VALID(pte, iPML)) { goto next_check; }  // NOT VALID
+    if(!(pte & 0x04)) { goto next_check; }                  // SUPERVISOR PAGE & USER MODE REQ
+    if(pte & 0x000f000000000000) { goto next_check; }       // RESERVED
+    if((iPML == 1) || (pte & 0x80) /* PS */) {
+        qwMask = 0xffffffffffffffff << MMX86PAE_PAGETABLEMAP_PML_REGION_SIZE[iPML];
+        pa = pte & 0x0000fffffffff000 & qwMask;             // MASK AWAY BITS FOR 4kB/2MB/1GB PAGES
+        qwMask = qwMask ^ 0xffffffffffffffff;
+        pVadEx->pMap[iVadEx].pa = pa | (qwMask & pVadEx->pMap[iVadEx].va);  // FILL LOWER ADDRESS BITS
+        pVadEx->pMap[iVadEx].tp = VMM_PTE_TP_HARDWARE;
+        goto next_check;
+    }
+    MmX86PAE_Virt2PhysVadEx(pte, pVadEx, 1, piVadEx);
+    Ob_DECREF(pObPTEs);
+    return;
+next_check:
+    pVadEx->pMap[iVadEx].pte = pte;
+    pVadEx->pMap[iVadEx].iPML = iPML;
+    *piVadEx = *piVadEx + 1;
+    if((iPML == 1) && (iPte < 0x3ff) && (iVadEx + 1 < pVadEx->cMap) && (pVadEx->pMap[iVadEx].va + 0x1000 == pVadEx->pMap[iVadEx + 1].va)) { goto next_entry; }
+    Ob_DECREF(pObPTEs);
+}
+
 VOID MmX86PAE_Virt2PhysGetInformation_DoWork(_Inout_ PVMM_PROCESS pProcess, _Inout_ PVMM_VIRT2PHYS_INFORMATION pVirt2PhysInfo, _In_ BYTE iPML, _In_ QWORD PTEs[512])
 {
     QWORD pte, i, qwMask;
@@ -355,6 +403,7 @@ VOID MmX86PAE_Initialize()
     }
     ctxVmm->fnMemoryModel.pfnClose = MmX86PAE_Close;
     ctxVmm->fnMemoryModel.pfnVirt2Phys = MmX86PAE_Virt2Phys;
+    ctxVmm->fnMemoryModel.pfnVirt2PhysVadEx = MmX86PAE_Virt2PhysVadEx;
     ctxVmm->fnMemoryModel.pfnVirt2PhysGetInformation = MmX86PAE_Virt2PhysGetInformation;
     ctxVmm->fnMemoryModel.pfnPhys2VirtGetInformation = MmX86PAE_Phys2VirtGetInformation;
     ctxVmm->fnMemoryModel.pfnPteMapInitialize = MmX86PAE_PteMapInitialize;

@@ -195,6 +195,15 @@ def VmmPy_Example(args):
     print("SUCCESS: VmmPy_GetUsers()")
     print(result)
 
+    # SERVICE MAP
+    print("--------------------------------------------------------------------")
+    print("Retrieve services from the service control manager (SCM).           ")
+    input("Press Enter to continue...")
+    print("CALL: VmmPy_MapGetServices()")
+    result = VmmPy_MapGetServices()
+    print("SUCCESS: VmmPy_MapGetServices()")
+    print(result)
+
     # MEM VIRTUAL2PHYSICAL
     print("--------------------------------------------------------------------")
     print("Get physical address of the PE virtual address of 'explorer.exe'.   ")

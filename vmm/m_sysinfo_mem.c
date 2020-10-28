@@ -14,7 +14,7 @@
 #define MSYSINFOMEM_PFNMAP_LINE_LENGTH              56ULL
 
 _Success_(return == 0)
-NTSTATUS MSysInfoMem_Read_PhysMemMap(_Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MSysInfoMem_Read_PhysMemMap(_Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt;
     LPSTR sz;
@@ -34,11 +34,10 @@ NTSTATUS MSysInfoMem_Read_PhysMemMap(_Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD
         return VMMDLL_STATUS_FILE_INVALID;
     }
     for(i = cStart; i <= cEnd; i++) {
-        o += Util_snprintf_ln(
+        o += Util_snwprintf_u8ln(
             sz + o,
-            cbMax - o,
             cbLINELENGTH,
-            "%04x %12llx - %12llx\n",
+            L"%04x %12llx - %12llx",
             (DWORD)i,
             pObPhysMemMap->pMap[i].pa,
             pObPhysMemMap->pMap[i].pa + pObPhysMemMap->pMap[i].cb - 1
@@ -52,7 +51,7 @@ NTSTATUS MSysInfoMem_Read_PhysMemMap(_Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD
 
 
 _Success_(return == 0)
-NTSTATUS MSysInfoMem_Read_PfnMap(_Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MSysInfoMem_Read_PfnMap(_Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt;
     LPSTR sz;
@@ -78,11 +77,10 @@ NTSTATUS MSysInfoMem_Read_PfnMap(_Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcb
         tp = pe->PageLocation;
         fModified = pe->Modified && ((tp == MmPfnTypeStandby) || (tp == MmPfnTypeModified) || (tp == MmPfnTypeModifiedNoWrite) || (tp == MmPfnTypeActive) || (tp == MmPfnTypeTransition));
         fPrototype = pe->PrototypePte && ((tp == MmPfnTypeStandby) || (tp == MmPfnTypeModified) || (tp == MmPfnTypeModifiedNoWrite) || (tp == MmPfnTypeActive) || (tp == MmPfnTypeTransition));
-        o += Util_snprintf_ln(
+        o += Util_snwprintf_u8ln(
             sz + o,
-            cbMax - o,
             cbLINELENGTH,
-            "%8x%7i %-7s %-10s %i%c%c %16llx\n",
+            L"%8x%7i %-7S %-10S %i%c%c %16llx\n",
             pe->dwPfn,
             pe->AddressInfo.dwPid,
             MMPFN_TYPE_TEXT[pe->PageLocation],
@@ -99,7 +97,7 @@ NTSTATUS MSysInfoMem_Read_PfnMap(_Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcb
     return nt;
 }
 
-NTSTATUS MSysInfoMem_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MSysInfoMem_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     if(!_wcsicmp(ctx->wszPath, L"physmemmap.txt")) {

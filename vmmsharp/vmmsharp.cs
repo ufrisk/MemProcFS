@@ -14,7 +14,7 @@ using System.Collections.Generic;
  *  (c) Ulf Frisk, 2020
  *  Author: Ulf Frisk, pcileech@frizk.net
  *  
- *  Version 3.4
+ *  Version 3.5
  *  
  */
 
@@ -310,16 +310,18 @@ namespace vmmsharp
         public static ulong OPT_FORENSIC_MODE =                  0x2000020100000000;  // RW - enable/retrieve forensic mode type [0-4].
 
         public static ulong OPT_REFRESH_ALL =                    0x2001ffff00000000;  // W - refresh all caches
-        public static ulong OPT_REFRESH_PROCESS =                0x2001000100000000;  // W - refresh process listings
+        public static ulong OPT_REFRESH_FREQ_FAST =              0x2001040000000000;  // W - refresh fast frequency (including partial process listings)
+        public static ulong OPT_REFRESH_FREQ_MEDIUM =            0x2001000100000000;  // W - refresh medium frequency (including full process listings)
+        public static ulong OPT_REFRESH_FREQ_SLOW =              0x2001001000000000;  // W - refresh slow frequency (including registry)
         public static ulong OPT_REFRESH_READ =                   0x2001000200000000;  // W - refresh physical read cache
         public static ulong OPT_REFRESH_TLB =                    0x2001000400000000;  // W - refresh page table (TLB) cache
         public static ulong OPT_REFRESH_PAGING =                 0x2001000800000000;  // W - refresh virtual memory 'paging' cache
-        public static ulong OPT_REFRESH_REGISTRY =               0x2001001000000000;  // W
         public static ulong OPT_REFRESH_USER =                   0x2001002000000000;  // W
         public static ulong OPT_REFRESH_PHYSMEMMAP =             0x2001004000000000;  // W
         public static ulong OPT_REFRESH_PFN =                    0x2001008000000000;  // W
         public static ulong OPT_REFRESH_OBJ =                    0x2001010000000000;  // W
         public static ulong OPT_REFRESH_NET =                    0x2001020000000000;  // W
+
 
         public enum MEMORYMODEL_TP
         {
@@ -862,6 +864,8 @@ namespace vmmsharp
             public ulong vaSubsection;
             public string wszText;
             public ulong vaFileObject;
+            public uint cVadExPages;
+            public uint cVadExPagesBase;
         }
 
         public struct MAP_MODULEENTRY
@@ -959,6 +963,26 @@ namespace vmmsharp
             public string szSID;
             public string wszText;
             public ulong vaRegHive;
+        }
+
+        public struct MAP_SERVICEENTRY
+        {
+            public ulong vaObj;
+            public uint dwPID;
+            public uint dwOrdinal;
+            public string wszServiceName;
+            public string wszDisplayName;
+            public string wszPath;
+            public string wszUserTp;
+            public string wszUserAcct;
+            public uint dwStartType;
+            public uint dwServiceType;
+            public uint dwCurrentState;
+            public uint dwControlsAccepted;
+            public uint dwWin32ExitCode;
+            public uint dwServiceSpecificExitCode;
+            public uint dwCheckPoint;
+            public uint dwWaitHint;
         }
 
         public enum MAP_PFN_TYPE
@@ -1074,8 +1098,8 @@ namespace vmmsharp
                     e.vaSubsection = n.vaSubsection;
                     e.wszText = n.wszText;
                     e.vaFileObject = n.vaFileObject;
-
-
+                    e.cVadExPages = n.cVadExPages;
+                    e.cVadExPagesBase = n.cVadExPagesBase;
                     m[i] = e;
                 }
                 return m;
@@ -1339,6 +1363,47 @@ namespace vmmsharp
                     e.szSID = n.szSID;
                     e.wszText = n.wszText;
                     e.vaRegHive = n.vaRegHive;
+                    m[i] = e;
+                }
+                return m;
+            }
+        }
+
+        public static unsafe MAP_SERVICEENTRY[] Map_GetServices()
+        {
+            bool result;
+            uint cb = 0;
+            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_SERVICE));
+            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_SERVICEENTRY));
+            result = vmmi.VMMDLL_Map_GetServices(null, ref cb);
+            if (!result || (cb == 0)) { return new MAP_SERVICEENTRY[0]; }
+            fixed (byte* pb = new byte[cb])
+            {
+                result = vmmi.VMMDLL_Map_GetServices(pb, ref cb);
+                if (!result) { return new MAP_SERVICEENTRY[0]; }
+                vmmi.VMMDLL_MAP_SERVICE pm = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_SERVICE>((System.IntPtr)pb);
+                if (pm.dwVersion != vmmi.VMMDLL_MAP_SERVICE_VERSION) { return new MAP_SERVICEENTRY[0]; }
+                MAP_SERVICEENTRY[] m = new MAP_SERVICEENTRY[pm.cMap];
+                for (int i = 0; i < pm.cMap; i++)
+                {
+                    vmmi.VMMDLL_MAP_SERVICEENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_SERVICEENTRY>((System.IntPtr)(pb + cbMAP + i * cbENTRY));
+                    MAP_SERVICEENTRY e;
+                    e.vaObj = n.vaObj;
+                    e.dwPID = n.dwPID;
+                    e.dwOrdinal = n.dwOrdinal;
+                    e.wszServiceName = n.wszServiceName;
+                    e.wszDisplayName = n.wszDisplayName;
+                    e.wszPath = n.wszPath;
+                    e.wszUserTp = n.wszUserTp;
+                    e.wszUserAcct = n.wszUserAcct;
+                    e.dwStartType = n.dwStartType;
+                    e.dwServiceType = n.dwServiceType;
+                    e.dwCurrentState = n.dwCurrentState;
+                    e.dwControlsAccepted = n.dwControlsAccepted;
+                    e.dwWin32ExitCode = n.dwWin32ExitCode;
+                    e.dwServiceSpecificExitCode = n.dwServiceSpecificExitCode;
+                    e.dwCheckPoint = n.dwCheckPoint;
+                    e.dwWaitHint = n.dwWaitHint;
                     m[i] = e;
                 }
                 return m;
@@ -1663,7 +1728,7 @@ namespace vmmsharp
     {
         internal static ulong MAX_PATH =                     260;
         internal static uint VMMDLL_MAP_PTE_VERSION =        1;
-        internal static uint VMMDLL_MAP_VAD_VERSION =        3;
+        internal static uint VMMDLL_MAP_VAD_VERSION =        5;
         internal static uint VMMDLL_MAP_MODULE_VERSION =     3;
         internal static uint VMMDLL_MAP_HEAP_VERSION =       1;
         internal static uint VMMDLL_MAP_THREAD_VERSION =     2;
@@ -1672,6 +1737,7 @@ namespace vmmsharp
         internal static uint VMMDLL_MAP_PHYSMEM_VERSION =    1;
         internal static uint VMMDLL_MAP_USER_VERSION =       1;
         internal static uint VMMDLL_MAP_PFN_VERSION =        1;
+        internal static uint VMMDLL_MAP_SERVICE_VERSION =    1;
 
 
 
@@ -1947,15 +2013,19 @@ namespace vmmsharp
             internal ulong vaSubsection;
             [MarshalAs(UnmanagedType.LPWStr)] internal string wszText;
             internal uint cwszText;
-            internal uint _Reserved;
+            internal uint _Reserved1;
             internal ulong vaFileObject;
+            internal uint cVadExPages;
+            internal uint cVadExPagesBase;
+            internal ulong _Reserved2;
         }
 
         [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
         internal struct VMMDLL_MAP_VAD
         {
             internal uint dwVersion;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 5)] internal uint[] _Reserved1;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)] internal uint[] _Reserved1;
+            internal uint cPage;
             [MarshalAs(UnmanagedType.LPWStr)] internal string wszMultiText;
             internal uint cbMultiText;
             internal uint cMap;
@@ -2155,7 +2225,9 @@ namespace vmmsharp
         internal struct VMMDLL_MAP_NET
         {
             internal uint dwVersion;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 5)] internal uint[] _Reserved1;
+            internal uint _Reserved1;
+            [MarshalAs(UnmanagedType.LPWStr)] internal string wszMultiText;
+            internal uint cbMultiText;
             internal uint cMap;
         }
 
@@ -2217,6 +2289,50 @@ namespace vmmsharp
         internal static extern unsafe bool VMMDLL_Map_GetUsers(
             byte* pbUserMap,
             ref uint pcbUserMap);
+
+
+
+        // VMMDLL_Map_GetServuces
+
+        [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        internal struct VMMDLL_MAP_SERVICEENTRY
+        {
+            internal ulong vaObj;
+            internal uint dwOrdinal;
+            internal uint dwStartType;
+            // SERVICE_STATUS START
+            internal uint dwServiceType;
+            internal uint dwCurrentState;
+            internal uint dwControlsAccepted;
+            internal uint dwWin32ExitCode;
+            internal uint dwServiceSpecificExitCode;
+            internal uint dwCheckPoint;
+            internal uint dwWaitHint;
+            // SERVICE_STATUS END
+            [MarshalAs(UnmanagedType.LPWStr)] internal string wszServiceName;
+            [MarshalAs(UnmanagedType.LPWStr)] internal string wszDisplayName;
+            [MarshalAs(UnmanagedType.LPWStr)] internal string wszPath;
+            [MarshalAs(UnmanagedType.LPWStr)] internal string wszUserTp;
+            [MarshalAs(UnmanagedType.LPWStr)] internal string wszUserAcct;
+            internal uint dwPID;
+            internal uint _FutureUse1;
+            internal ulong _FutureUse2;
+        }
+
+        [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        internal struct VMMDLL_MAP_SERVICE
+        {
+            internal uint dwVersion;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 5)] internal uint[] _Reserved1;
+            [MarshalAs(UnmanagedType.LPWStr)] internal string wszMultiText;
+            internal uint cbMultiText;
+            internal uint cMap;
+        }
+
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetServices")]
+        internal static extern unsafe bool VMMDLL_Map_GetServices(
+            byte* pbServiceMap,
+            ref uint pcbServiceMap);
 
 
 

@@ -195,7 +195,7 @@ VOID MSysInfoProc_ListTree_ProcessUserParams_CallbackAction(_In_ PVMM_PROCESS pP
     InterlockedAdd(pcTotalBytes, c);
 }
 
-NTSTATUS MSysInfoProc_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MSysInfoProc_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt;
     DWORD cbFile = 0;

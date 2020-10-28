@@ -164,7 +164,7 @@ PDB_HANDLE PDB_GetHandleFromModuleAddress(_In_ PVMM_PROCESS pProcess, _In_ QWORD
 {
     PVMMWIN_PDB_CONTEXT ctx = (PVMMWIN_PDB_CONTEXT)ctxVmm->pPdbContext;
     PPDB_ENTRY pObPdbEntry = 0;
-    PE_CODEVIEW_INFO CodeViewInfo;
+    PE_CODEVIEW_INFO CodeViewInfo = { 0 };
     DWORD i, iMax;
     QWORD qwPdbHash, cbModuleSize;
     CHAR szModuleName[MAX_PATH], *szPdbText;

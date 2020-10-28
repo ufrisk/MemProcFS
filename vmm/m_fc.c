@@ -38,7 +38,7 @@ LPCSTR szMFC_README =
 "For additional information about MemProcFS forensics check out the guide at:\n" \
 "https://github.com/ufrisk/MemProcFS/wiki                                    \n";
 
-NTSTATUS M_Fc_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS M_Fc_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     BYTE btp;
     if(!wcscmp(ctx->wszPath, L"readme.txt")) {
@@ -58,7 +58,7 @@ NTSTATUS M_Fc_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWORD c
     return VMMDLL_STATUS_FILE_INVALID;
 }
 
-NTSTATUS M_Fc_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
+NTSTATUS M_Fc_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
 {
     DWORD dwDatabaseType = 0;
     NTSTATUS nt;

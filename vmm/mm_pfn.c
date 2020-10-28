@@ -278,7 +278,7 @@ _Success_(return)
 BOOL MmPfn_Map_GetPfnScatter(_In_ POB_SET psPfn, _Out_ PMMPFNOB_MAP *ppObPfnMap, _In_ BOOL fExtended)
 {
     POB_MMPFN_CONTEXT ctx = (POB_MMPFN_CONTEXT)ctxVmm->pObPfnContext;
-    BOOL fResult = FALSE, f32 = ctxVmm->f32;
+    BOOL f32 = ctxVmm->f32;
     BYTE pbPfn[0x30] = { 0 };
     PVMM_PROCESS pObSystemProcess = NULL;
     PMMPFNOB_MAP pObPfnMap = NULL;
@@ -350,15 +350,14 @@ BOOL MmPfn_Map_GetPfnScatter(_In_ POB_SET psPfn, _Out_ PMMPFNOB_MAP *ppObPfnMap,
             MmPfn_Map_GetPfn_GetVaX86(ctx, pObSystemProcess, psObEnrichAddress, psObPrefetch);
         }
     }
-    *ppObPfnMap = Ob_INCREF(pObPfnMap);
-    fResult = TRUE;
     // fall through to cleanup
+    Ob_INCREF(pObPfnMap);
 fail:
-    Ob_DECREF(pObPfnMap);
     Ob_DECREF(pObSystemProcess);
     Ob_DECREF(psObPrefetch);
     Ob_DECREF(psObEnrichAddress);
-    return fResult;
+    *ppObPfnMap = Ob_DECREF(pObPfnMap);
+    return *ppObPfnMap ? TRUE : FALSE;
 }
 
 _Success_(return)

@@ -19,79 +19,13 @@
 #include "vmmwin.h"
 #include "vmmwinreg.h"
 #include "pluginmanager.h"
-#include "include/sqlite3.h"
+#include "sqlite/sqlite3.h"
 #include "util.h"
 #include <bcrypt.h>
 
-static LPSTR FC_SQL_SCHEMA_PFN =
-    "DROP TABLE IF EXISTS pfn; " \
-    "CREATE TABLE pfn ( pfn INTEGER PRIMARY KEY, tp INTEGER, tpex INTEGER, pid INTEGER, va INTEGER, hash BLOB ); ";
 static LPSTR FC_SQL_SCHEMA_STR =
     "DROP TABLE IF EXISTS str; " \
     "CREATE TABLE str ( id INTEGER PRIMARY KEY, osz, csz INT, cbu INT, cbj INT, sz TEXT ); ";
-static LPSTR FC_SQL_SCHEMA_NTFS =
-    "DROP VIEW IF EXISTS v_ntfs; " \
-    "DROP TABLE IF EXISTS ntfs; " \
-    "CREATE TABLE ntfs ( id INTEGER PRIMARY KEY, id_parent INTEGER, id_str INTEGER, hash INTEGER, hash_parent INTEGER, addr_phys INTEGER, inode INTEGER, mft_flags INTEGER, depth INTEGER, size_file INTEGER, size_fileres INTEGER, time_create INTEGER, time_modify INTEGER, time_read INTEGER, name_seq INTEGER, oln_u INTEGER, oln_j INTEGER );" \
-    "CREATE INDEX idx_ntfs_hash ON ntfs(hash); " \
-    "CREATE INDEX idx_ntfs_hash_parent ON ntfs(hash_parent); " \
-    "CREATE INDEX idx_oln_u ON ntfs(oln_u); " \
-    "CREATE VIEW v_ntfs AS SELECT *, SUBSTR(sz, osz+1) AS sz_sub FROM ntfs, str WHERE ntfs.id_str = str.id; ";
-static LPSTR FC_SQL_SCHEMA_PROCESS =
-    "DROP TABLE IF EXISTS process; " \
-    "CREATE TABLE process(id INTEGER PRIMARY KEY AUTOINCREMENT, id_str_name INTEGER, id_str_path INTEGER, id_str_user INTEGER, id_str_all INTEGER, pid INT, ppid INT, eprocess INTEGER, dtb INTEGER, dtb_user INTEGER, state INTEGER, wow64 INT, peb INTEGER, peb32 INTEGER, time_create INTEGER, time_exit INTEGER); " \
-    "DROP VIEW IF EXISTS v_process; " \
-    "CREATE VIEW v_process AS SELECT p.*, sn.csz AS csz_name, sn.cbu AS cbu_name, sn.cbj AS cbj_name, sn.sz AS sz_name, sp.csz AS csz_path, sp.cbu AS cbu_path, sp.cbj AS cbj_path, sp.sz AS sz_path, su.csz AS csz_user, su.cbu AS cbu_user, su.cbj AS cbj_user, su.sz AS sz_user, sa.csz AS csz_all, sa.cbu AS cbu_all, sa.cbj AS cbj_all, sa.sz AS sz_all FROM process p, str sn, str sp, str su, str sa WHERE p.id_str_name = sn.id AND p.id_str_path = sp.id AND p.id_str_user = su.id AND  p.id_str_all = sa.id; ";
-static LPSTR FC_SQL_SCHEMA_THREAD =
-    "DROP TABLE IF EXISTS thread; " \
-    "CREATE TABLE thread(id INTEGER PRIMARY KEY AUTOINCREMENT, id_str INTEGER, pid INT, tid INT, ethread INTEGER, teb INTEGER, state INT, exitstatus INT, running INT, prio INT, priobase INT, startaddr INTEGER, stackbase_u INTEGER, stacklimit_u INTEGER, stackbase_k INTEGER, stacklimit_k INTEGER, trapframe INTEGER, sp INTEGER, ip INTEGER, time_create INTEGER, time_exit INTEGER); " \
-    "DROP VIEW IF EXISTS v_thread; " \
-    "CREATE VIEW v_thread AS SELECT t.*, str.* FROM thread t, str WHERE t.id_str = str.id; ";
-static LPSTR FC_SQL_SCHEMA_REGISTRY =
-    "DROP VIEW IF EXISTS v_registry; " \
-    "DROP TABLE IF EXISTS registry; " \
-    "CREATE TABLE registry ( id INTEGER PRIMARY KEY AUTOINCREMENT, id_str INTEGER, hive INTEGER, cell INTEGER, cell_parent INTEGER, time INTEGER ); " \
-    "CREATE VIEW v_registry AS SELECT *, SUBSTR(sz, osz+1) AS sz_sub FROM registry, str WHERE registry.id_str = str.id; ";
-
-
-
-// ----------------------------------------------------------------------------
-// FORWARD DECLARATIONS FORENSIC INTERNAL FUNCTIONALITY:
-// ----------------------------------------------------------------------------
-
-/*
-* Initialize a new empty PFCNTFS_SETUP_CONTEXT.
-* -- return = the initialized context, or NULL on fail.
-*/
-PVOID FcNtfs_SetupInitialize();
-
-/*
-* Analyze a POB_FC_SCANPHYSMEM_CHUNK 16MB memory chunk for MFT file candidates
-* and add any found to the internal data sets. This function is meant to be
-* called asynchronously by a worker thread (VmmWork). Function is thread-safe.
-* -- pc
-*/
-VOID FcNtfs_Setup_ThreadProc(_In_ POB_FC_SCANPHYSMEM_CHUNK pc);
-
-/*
-* Finalize the NTFS setup/initialization phase. Try to put re-assemble the NTFS
-* MFT file fragments into some kind of usable file-system approximation using
-* heuristics and save it to the forensic database.
-* -- pvSetupContextNtfs
-* -- fScanSuccess
-*/
-VOID FcNtfs_SetupFinalize(_In_opt_ PVOID pvSetupContextNtfs, _In_ BOOL fScanSuccess);
-
-/*
-* Initialize the timelining functionality. Before the timelining functionality
-* is initialized processes, threads, registry and ntfs must be initialized.
-* Initialization may take some time.
-* -- return
-*/
-_Success_(return)
-BOOL FcTimeline_Initialize();
-
-
 
 // ----------------------------------------------------------------------------
 // SQLITE GENERAL FUNCTIONALITY:
@@ -251,429 +185,452 @@ int Fc_SqlBindMultiInt64(_In_ sqlite3_stmt *hStmt, _In_ DWORD iFirstBind, _In_ D
     return rc;
 }
 
-_Success_(return)
-BOOL Fc_SqlInitializeDatabaseTables()
-{
-    if(SQLITE_OK != Fc_SqlExec(FC_SQL_SCHEMA_PFN)) { return FALSE; }
-    if(SQLITE_OK != Fc_SqlExec(FC_SQL_SCHEMA_STR)) { return FALSE; }
-    if(SQLITE_OK != Fc_SqlExec(FC_SQL_SCHEMA_NTFS)) { return FALSE; }
-    if(SQLITE_OK != Fc_SqlExec(FC_SQL_SCHEMA_PROCESS)) { return FALSE; }
-    if(SQLITE_OK != Fc_SqlExec(FC_SQL_SCHEMA_THREAD)) { return FALSE; }
-    if(SQLITE_OK != Fc_SqlExec(FC_SQL_SCHEMA_REGISTRY)) { return FALSE; }
-    return TRUE;
-}
-
 
 
 // ----------------------------------------------------------------------------
-// PFN / PAGE HASHING FUNCTIONALITY:
+// TIMELINING FUNCTIONALITY BELOW:
 // ----------------------------------------------------------------------------
 
-typedef struct tdFCPFN_SETUP_CONTEXT {
-    BCRYPT_HASH_HANDLE hMultiHash;
-} FCPFN_SETUP_CONTEXT, *PFCPFN_SETUP_CONTEXT;
+typedef struct tdFCTIMELINE_PLUGIN_CONTEXT {
+    DWORD dwId;
+    sqlite3 *hSql;
+    sqlite3_stmt *hStmt;
+    sqlite3_stmt *hStmtStr;
+} FCTIMELINE_PLUGIN_CONTEXT, *PFCTIMELINE_PLUGIN_CONTEXT;
 
-VOID FcPfn_InitializeClose(_Frees_ptr_opt_ PFCPFN_SETUP_CONTEXT ctx)
+/*
+* Callback function to add a single plugin module timeline entry.
+* -- hTimeline
+* -- ft
+* -- dwAction
+* -- dwPID
+* -- qwValue
+* -- wszText
+*/
+VOID FcTimeline_Callback_PluginEntryAdd(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ QWORD qwValue, _In_ LPWSTR wszText)
 {
-    if(ctx && ctx->hMultiHash) {
-        BCryptDestroyHash(ctx->hMultiHash);
-    }
-    LocalFree(ctx);
-}
-
-VOID FcPfn_Finalize(_In_opt_ PVOID pvSetupContextPfn, _In_ BOOL fScanSuccess)
-{
-    FcPfn_InitializeClose((PFCPFN_SETUP_CONTEXT)pvSetupContextPfn);
-    ctxFc->fEnablePfn = fScanSuccess;
+    PFCTIMELINE_PLUGIN_CONTEXT ctx = (PFCTIMELINE_PLUGIN_CONTEXT)hTimeline;
+    FCSQL_INSERTSTRTABLE SqlStrInsert;
+    // build and insert string data into 'str' table.
+    if(!Fc_SqlInsertStr(ctx->hStmtStr, wszText, 0, &SqlStrInsert)) { return; }
+    // insert into 'timeline_data' table.
+    sqlite3_reset(ctx->hStmt);
+    Fc_SqlBindMultiInt64(ctx->hStmt, 1, 6,
+        SqlStrInsert.id,
+        (QWORD)ctx->dwId,
+        ft,
+        (QWORD)dwAction,
+        (QWORD)dwPID,
+        qwValue
+    );
+    sqlite3_step(ctx->hStmt);
 }
 
 /*
-* Initialize a PFN setup context.
-* -- return = the initialized context, or NULL on fail.
+* Callback function to add timelining entries by partial select query.
+* -- hTimeline
+* -- cEntrySql
+* -- pszEntrySql
 */
-PVOID FcPfn_Initialize()
+VOID FcTimeline_Callback_PluginEntryAddBySQL(_In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPSTR *pszEntrySql)
 {
-    NTSTATUS nt;
-    PFCPFN_SETUP_CONTEXT ctx = NULL;
-    if(!(ctx = LocalAlloc(LMEM_ZEROINIT, sizeof(FCPFN_SETUP_CONTEXT)))) { goto fail; }
-    // CREATE BCRYPT MULTI HASH
-    nt = BCryptCreateMultiHash(
-        BCRYPT_SHA256_ALG_HANDLE,
-        &ctx->hMultiHash,
-        FC_PHYSMEM_NUM_CHUNKS,
-        NULL,
-        0,
-        NULL,
-        0,
-        BCRYPT_HASH_REUSABLE_FLAG
-    );
-    if(nt != STATUS_SUCCESS) { goto fail; }
-    return ctx;
+    int rc;
+    DWORD i;
+    CHAR szSql[2048];
+    PFCTIMELINE_PLUGIN_CONTEXT ctx = (PFCTIMELINE_PLUGIN_CONTEXT)hTimeline;
+    for(i = 0; i < cEntrySql; i++) {
+        ZeroMemory(szSql, sizeof(szSql));
+        snprintf(szSql, sizeof(szSql), "INSERT INTO timeline_data(tp, id_str, ft, ac, pid, data64) SELECT %i, %s;", ctx->dwId, pszEntrySql[i]);
+        rc = sqlite3_exec(ctx->hSql, szSql, NULL, NULL, NULL);
+        if(rc != SQLITE_OK) {
+            vmmprintfvv_fn("BAD SQL CODE=0x%x SQL=%s\n", rc, szSql);
+        }
+    }
+}
+
+/*
+* Callback function to close an existing timeline plugin module handle.
+* -- hTimeline
+*/
+VOID FcTimeline_Callback_PluginClose(_In_ HANDLE hTimeline)
+{
+    PFCTIMELINE_PLUGIN_CONTEXT ctxPlugin = (PFCTIMELINE_PLUGIN_CONTEXT)hTimeline;
+    sqlite3_exec(ctxPlugin->hSql, "COMMIT TRANSACTION", NULL, NULL, NULL);
+    sqlite3_finalize(ctxPlugin->hStmtStr);
+    sqlite3_finalize(ctxPlugin->hStmt);
+    Fc_SqlReserveReturn(ctxPlugin->hSql);
+}
+
+/*
+* Callback function to register a new timeline plugin module.
+* -- sNameShort = a 6 char non-null terminated string.
+* -- szFileUTF8 = utf-8 file name (if exists)
+* -- szFileJSON = utf-8 file name (if exists)
+* -- return = handle, should be closed with callback function.
+*/
+HANDLE FcTimeline_Callback_PluginRegister(_In_reads_(6) LPSTR sNameShort, _In_reads_(32) LPSTR szFileUTF8, _In_reads_(32) LPSTR szFileJSON)
+{
+    QWORD v;
+    sqlite3 *hSql = NULL;
+    sqlite3_stmt *hStmt = NULL;
+    PFCTIMELINE_PLUGIN_CONTEXT ctxPlugin = NULL;
+    if(!(hSql = Fc_SqlReserve())) { goto fail; }
+    if(SQLITE_OK != sqlite3_prepare_v2(hSql, "INSERT INTO timeline_info (short_name, file_name_u, file_name_j) VALUES (?, ?, ?);", -1, &hStmt, 0)) { goto fail; }
+    if(SQLITE_OK != sqlite3_bind_text(hStmt, 1, sNameShort, 6, NULL)) { goto fail; }
+    if(SQLITE_OK != sqlite3_bind_text(hStmt, 2, szFileUTF8, -1, NULL)) { goto fail; }
+    if(SQLITE_OK != sqlite3_bind_text(hStmt, 3, szFileJSON, -1, NULL)) { goto fail; }
+    if(SQLITE_DONE != sqlite3_step(hStmt)) { goto fail; }
+    hSql = Fc_SqlReserveReturn(hSql);
+    Fc_SqlQueryN("SELECT MAX(id) FROM timeline_info;", 0, NULL, 1, &v, NULL);
+    if(!(ctxPlugin = LocalAlloc(LMEM_ZEROINIT, sizeof(FCTIMELINE_PLUGIN_CONTEXT)))) { goto fail; }
+    ctxPlugin->dwId = (DWORD)v;
+    ctxPlugin->hSql = Fc_SqlReserve();
+    sqlite3_prepare_v2(ctxPlugin->hSql, "INSERT INTO timeline_data (id_str, tp, ft, ac, pid, data64) VALUES (?, ?, ?, ?, ?, ?);", -1, &ctxPlugin->hStmt, NULL);
+    sqlite3_prepare_v2(ctxPlugin->hSql, "INSERT INTO str (id, osz, csz, cbu, cbj, sz) VALUES (?, ?, ?, ?, ?, ?);", -1, &ctxPlugin->hStmtStr, NULL);
+    sqlite3_exec(ctxPlugin->hSql, "BEGIN TRANSACTION", NULL, NULL, NULL);
 fail:
-    FcPfn_InitializeClose(ctx);
+    sqlite3_finalize(hStmt);
+    if(ctxPlugin) {
+        return (HANDLE)ctxPlugin;
+    }
+    Fc_SqlReserveReturn(hSql);
     return NULL;
 }
 
 /*
-* Analyze a POB_FC_SCANPHYSMEM_CHUNK 16MB memory chunk for MFT file candidates
-* and add any found to the internal data sets. This function is meant to be
-* called asynchronously by a worker thread (VmmWork). This function is thread-safe.
-* -- pc
+* Initialize the timelining functionality. Before the timelining functionality
+* is initialized processes, threads, registry and ntfs must be initialized.
+* Initialization may take some time.
+* -- return
 */
-VOID FcPfn_Setup_ThreadProc(_In_ POB_FC_SCANPHYSMEM_CHUNK pc)
+_Success_(return)
+BOOL FcTimeline_Initialize()
 {
-    PFCPFN_SETUP_CONTEXT ctx = (PFCPFN_SETUP_CONTEXT)pc->ctx_PFN;
-    BCRYPT_MULTI_HASH_OPERATION *pMultiFinishOps, *pMultiHashOps = NULL;
-    PBYTE pbMultiHash = NULL;
-    DWORD i, iHash = 0;
-    NTSTATUS nt;
+    BOOL f, fResult = FALSE;
     int rc;
+    DWORD i, j;
+    QWORD k, v = 0;
     sqlite3 *hSql = NULL;
-    sqlite3_stmt *hSqlStmt = NULL;
-    PMMPFN_MAP_ENTRY pePfn;
-    // 1: INITIALIZE HASHING
-    if(!(pbMultiHash = LocalAlloc(0, 32 * FC_PHYSMEM_NUM_CHUNKS))) { goto fail; }
-    if(!(pMultiHashOps = LocalAlloc(0, 2 * FC_PHYSMEM_NUM_CHUNKS * sizeof(BCRYPT_MULTI_HASH_OPERATION)))) { goto fail; }
-    pMultiFinishOps = pMultiHashOps + FC_PHYSMEM_NUM_CHUNKS;
-    for(i = 0; i < FC_PHYSMEM_NUM_CHUNKS; i++) {
-        if((pc->ppMEMs[i]->qwA != (QWORD)-1) && pc->ppMEMs[i]->f && (pc->ppMEMs[i]->cb == 0x1000)) {
-            pMultiHashOps[iHash].iHash = iHash;
-            pMultiHashOps[iHash].hashOperation = BCRYPT_OPERATION_TYPE_HASH;
-            pMultiHashOps[iHash].pbBuffer = pc->ppMEMs[i]->pb;
-            pMultiHashOps[iHash].cbBuffer = 0x1000;
-            pMultiFinishOps[iHash].iHash = iHash;
-            pMultiFinishOps[iHash].hashOperation = BCRYPT_HASH_OPERATION_FINISH_HASH;
-            pMultiFinishOps[iHash].pbBuffer = pbMultiHash + 32ULL * i;
-            pMultiFinishOps[iHash].cbBuffer = 32;
-            iHash++;
+    sqlite3_stmt *hStmt = NULL;
+    PFC_TIMELINE_INFO pi;
+    LPSTR szTIMELINE_SQL1[] = {
+        // populate timeline_info with basic information:
+        "DROP TABLE IF EXISTS timeline_info;",
+        "CREATE TABLE timeline_info (id INTEGER PRIMARY KEY, short_name TEXT, file_name_u TEXT, file_name_j TEXT, file_size_u INTEGER DEFAULT 0, file_size_j INTEGER DEFAULT 0);",
+        "INSERT INTO timeline_info VALUES(0, ''    , 'timeline_all.txt',      'timeline_all.json',      0, 0); ",
+        // populate timeline_data temporary table - with basic data.
+        "DROP TABLE IF EXISTS timeline_data;",
+        "CREATE TABLE timeline_data ( id INTEGER PRIMARY KEY AUTOINCREMENT, id_str INTEGER, tp INT, ft INTEGER, ac INT, pid INT, data64 INTEGER );"
+    };
+    for(i = 0; i < sizeof(szTIMELINE_SQL1) / sizeof(LPCSTR); i++) {
+        if(SQLITE_OK != (rc = Fc_SqlExec(szTIMELINE_SQL1[i]))) {
+            vmmprintf_fn("FAIL INITIALIZE TIMELINE WITH SQLITE ERROR CODE %i, QUERY: %s\n", rc, szTIMELINE_SQL1[i]);
+            goto fail;
         }
     }
-    // 2: HASH
-    nt = BCryptProcessMultiOperations(ctx->hMultiHash, BCRYPT_OPERATION_TYPE_HASH, pMultiHashOps, iHash * sizeof(BCRYPT_MULTI_HASH_OPERATION), 0);
-    if(nt != STATUS_SUCCESS) { goto fail; }
-    nt = BCryptProcessMultiOperations(ctx->hMultiHash, BCRYPT_OPERATION_TYPE_HASH, pMultiFinishOps, iHash * sizeof(BCRYPT_MULTI_HASH_OPERATION), 0);
-    if(nt != STATUS_SUCCESS) { goto fail; }
-    // 3: INSERT INTO DATABASE
+    // populate timeline_data temporary table - with plugins.
+    PluginManager_FcTimeline(FcTimeline_Callback_PluginRegister, FcTimeline_Callback_PluginClose, FcTimeline_Callback_PluginEntryAdd, FcTimeline_Callback_PluginEntryAddBySQL);
+    LPSTR szTIMELINE_SQL2[] = {
+        // populate main timeline table:
+        "DROP TABLE IF EXISTS timeline;",
+        "DROP VIEW IF EXISTS v_timeline;",
+        "CREATE TABLE timeline ( id INTEGER PRIMARY KEY AUTOINCREMENT, tp INT, tp_id INTEGER, id_str INTEGER, ft INTEGER, ac INT, pid INT, data64 INTEGER, oln_u INTEGER, oln_j INTEGER, oln_utp INTEGER, oln_jtp INTEGER );"
+        "CREATE VIEW v_timeline AS SELECT * FROM timeline, str WHERE timeline.id_str = str.id;",
+        "CREATE UNIQUE INDEX idx_timeline_tpid     ON timeline(tp, tp_id);",
+        "CREATE UNIQUE INDEX idx_timeline_oln_u    ON timeline(oln_u);",
+        "CREATE UNIQUE INDEX idx_timeline_oln_j    ON timeline(oln_j);"
+        "CREATE UNIQUE INDEX idx_timeline_oln_utp  ON timeline(tp, oln_utp);",
+        "CREATE UNIQUE INDEX idx_timeline_oln_jtp  ON timeline(tp, oln_jtp);",
+        "INSERT INTO timeline (tp, tp_id, id_str, ft, ac, pid, data64, oln_u, oln_j, oln_utp, oln_jtp) SELECT td.tp, (SUM(1) OVER (PARTITION BY td.tp ORDER BY td.ft DESC, td.id)), td.id_str, td.ft, td.ac, td.pid, td.data64, (SUM(str.cbu+"STRINGIZE(FC_LINELENGTH_TIMELINE_UTF8)")  OVER (ORDER BY td.ft DESC, td.id) - str.cbu-"STRINGIZE(FC_LINELENGTH_TIMELINE_UTF8)"), (SUM(str.cbj+"STRINGIZE(FC_LINELENGTH_TIMELINE_JSON)") OVER (ORDER BY td.ft DESC, td.id) - str.cbj-"STRINGIZE(FC_LINELENGTH_TIMELINE_JSON)"), (SUM(str.cbu+"STRINGIZE(FC_LINELENGTH_TIMELINE_UTF8)")  OVER (PARTITION BY td.tp ORDER BY td.ft DESC, td.id) - str.cbu-"STRINGIZE(FC_LINELENGTH_TIMELINE_UTF8)"), (SUM(str.cbj+"STRINGIZE(FC_LINELENGTH_TIMELINE_JSON)") OVER (PARTITION BY td.tp ORDER BY td.ft DESC, td.id) - str.cbj-"STRINGIZE(FC_LINELENGTH_TIMELINE_JSON)") FROM timeline_data td, str WHERE str.id = td.id_str ORDER BY td.ft DESC, td.id;",
+        "DROP TABLE timeline_data;"
+        // update timeline_info with sizes for 'all' file (utf8 and json).
+        "UPDATE timeline_info SET file_size_u = (SELECT oln_u+cbu+"STRINGIZE(FC_LINELENGTH_TIMELINE_UTF8)" AS cbu_tot FROM v_timeline WHERE id = (SELECT MAX(id) FROM v_timeline)) WHERE id = 0;",
+        "UPDATE timeline_info SET file_size_j = (SELECT oln_j+cbj+"STRINGIZE(FC_LINELENGTH_TIMELINE_JSON)" AS cbj_tot FROM v_timeline WHERE id = (SELECT MAX(id) FROM v_timeline)) WHERE id = 0;",
+    };
+    for(i = 0; i < sizeof(szTIMELINE_SQL2) / sizeof(LPCSTR); i++) {
+        if(SQLITE_OK != (rc = Fc_SqlExec(szTIMELINE_SQL2[i]))) {
+            vmmprintf_fn("FAIL INITIALIZE TIMELINE WITH SQLITE ERROR CODE %i, QUERY: %s\n", rc, szTIMELINE_SQL2[i]);
+            goto fail;
+        }
+    }
+    // update timeline_info with sizes for individual types (utf8 and json).
+    LPSTR szTIMELINE_SQL_TIMELINE_UPD[] = {
+        "UPDATE timeline_info SET file_size_u = (SELECT oln_utp+cbu+"STRINGIZE(FC_LINELENGTH_TIMELINE_UTF8)" FROM v_timeline WHERE tp = ? AND tp_id = (SELECT MAX(tp_id) FROM v_timeline WHERE tp = ?)) WHERE id = ?;",
+        "UPDATE timeline_info SET file_size_j = (SELECT oln_jtp+cbj+"STRINGIZE(FC_LINELENGTH_TIMELINE_JSON)" FROM v_timeline WHERE tp = ? AND tp_id = (SELECT MAX(tp_id) FROM v_timeline WHERE tp = ?)) WHERE id = ?;",
+    };
+    Fc_SqlQueryN("SELECT MAX(id) FROM timeline_info;", 0, NULL, 1, &v, NULL);
+    ctxFc->Timeline.cTp = (DWORD)v + 1;
+    for(k = 1; k < ctxFc->Timeline.cTp; k++) {
+        for(j = 0; j < 2; j++) {
+            if(SQLITE_DONE != (rc = Fc_SqlQueryN(szTIMELINE_SQL_TIMELINE_UPD[j], 3, (QWORD[]) { k, k, k }, 0, NULL, NULL))) {
+                vmmprintf_fn("FAIL INITIALIZE TIMELINE WITH SQLITE ERROR CODE %i, QUERY: %s\n", rc, szTIMELINE_SQL_TIMELINE_UPD[j]);
+                goto fail;
+            }
+        }
+    }
+    // populate timeline info struct
+    if(!(ctxFc->Timeline.pInfo = LocalAlloc(LMEM_ZEROINIT, (ctxFc->Timeline.cTp) * sizeof(FC_TIMELINE_INFO)))) { goto fail; }
     if(!(hSql = Fc_SqlReserve())) { goto fail; }
-    rc = sqlite3_prepare_v2(hSql, "INSERT INTO pfn (pfn, tp, tpex, pid, va, hash) VALUES (?, ?, ?, ?, ?, ?);", -1, &hSqlStmt, NULL);
+    if(SQLITE_OK != sqlite3_prepare_v2(hSql, "SELECT * FROM timeline_info", -1, &hStmt, 0)) { goto fail; }
+    for(i = 0; i < ctxFc->Timeline.cTp; i++) {
+        pi = ctxFc->Timeline.pInfo + i;
+        if(SQLITE_ROW != sqlite3_step(hStmt)) { goto fail; }
+        pi->dwId = sqlite3_column_int(hStmt, 0);
+        strncpy_s(pi->szNameShort, _countof(pi->szNameShort), sqlite3_column_text(hStmt, 1), _TRUNCATE);
+        for(j = 0, f = FALSE; j < _countof(pi->szNameShort) - 1; j++) {
+            if(f || (pi->szNameShort[j] == 0)) {
+                pi->szNameShort[j] = ' ';
+                f = TRUE;
+            }
+        }
+        pi->szNameShort[_countof(pi->szNameShort) - 1] = 0;
+        wcsncpy_s(pi->wszNameFileUTF8, _countof(pi->wszNameFileUTF8), sqlite3_column_text16(hStmt, 2), _TRUNCATE);
+        wcsncpy_s(pi->wszNameFileJSON, _countof(pi->wszNameFileJSON), sqlite3_column_text16(hStmt, 3), _TRUNCATE);
+        pi->dwFileSizeUTF8 = sqlite3_column_int(hStmt, 4);
+        pi->dwFileSizeJSON = sqlite3_column_int(hStmt, 5);
+    }
+    fResult = TRUE;
+fail:
+    sqlite3_finalize(hStmt);
+    Fc_SqlReserveReturn(hSql);
+    return fResult;
+}
+
+#define FCTIMELINE_SQL_SELECT_FIELDS_ALL " csz, osz, sz,    id, ft, tp, ac, pid, data64, oln_u,   oln_j   "
+#define FCTIMELINE_SQL_SELECT_FIELDS_TP  " csz, osz, sz, tp_id, ft, tp, ac, pid, data64, oln_utp, oln_jtp "
+
+/*
+* Internal function to create a PFCOB_MAP_TIMELINE map from given sql queries.
+* -- szSqlCount
+* -- szSqlSelect
+* -- cQueryValues
+* -- pqwQueryValues
+* -- ppObNtfsMap
+* -- return
+*/
+_Success_(return)
+BOOL FcTimelineMap_CreateInternal(_In_ LPSTR szSqlCount, _In_ LPSTR szSqlSelect, _In_ DWORD cQueryValues, _In_reads_(cQueryValues) PQWORD pqwQueryValues, _Out_ PFCOB_MAP_TIMELINE * ppObNtfsMap)
+{
+    int rc;
+    QWORD pqwResult[2];
+    DWORD i, cchMultiText, owszName;
+    LPWSTR wszMultiText, wszEntryText;
+    PFCOB_MAP_TIMELINE pObTimelineMap = NULL;
+    PFC_MAP_TIMELINEENTRY pe;
+    sqlite3 *hSql = NULL;
+    sqlite3_stmt *hStmt = NULL;
+    rc = Fc_SqlQueryN(szSqlCount, cQueryValues, pqwQueryValues, 2, pqwResult, NULL);
+    if((rc != SQLITE_OK) || (pqwResult[0] > 0x00010000) || (pqwResult[1] > 0x01000000)) { goto fail; }
+    cchMultiText = (DWORD)(1 + 2 * pqwResult[0] + pqwResult[1]);
+    pObTimelineMap = Ob_Alloc('Mtml', LMEM_ZEROINIT, sizeof(FCOB_MAP_TIMELINE) + pqwResult[0] * sizeof(FC_MAP_TIMELINEENTRY) + cchMultiText * sizeof(WCHAR), NULL, NULL);
+    if(!pObTimelineMap) { goto fail; }
+    pObTimelineMap->wszMultiText = (LPWSTR)((PBYTE)pObTimelineMap + sizeof(FCOB_MAP_TIMELINE) + pqwResult[0] * sizeof(FC_MAP_TIMELINEENTRY));
+    pObTimelineMap->cbMultiText = cchMultiText * sizeof(WCHAR);
+    pObTimelineMap->cMap = (DWORD)pqwResult[0];
+    cchMultiText--;
+    wszMultiText = pObTimelineMap->wszMultiText + 1;
+    if(!(hSql = Fc_SqlReserve())) { goto fail; }
+    rc = sqlite3_prepare_v2(hSql, szSqlSelect, -1, &hStmt, 0);
     if(rc != SQLITE_OK) { goto fail; }
-    sqlite3_exec(hSql, "BEGIN TRANSACTION", NULL, NULL, NULL);
-    for(i = 0; i < pc->pPfnMap->cMap; i++) {
-        pePfn = pc->pPfnMap->pMap + i;
-        sqlite3_reset(hSqlStmt);
-        sqlite3_bind_int(hSqlStmt, 1, pePfn->dwPfn);
-        sqlite3_bind_int(hSqlStmt, 2, pePfn->PageLocation);
-        sqlite3_bind_int(hSqlStmt, 3, pePfn->tpExtended);
-        sqlite3_bind_int(hSqlStmt, 4, pePfn->AddressInfo.dwPid);
-        sqlite3_bind_int64(hSqlStmt, 5, pePfn->AddressInfo.va);
-        if((pc->ppMEMs[i]->qwA != (QWORD)-1) && pc->ppMEMs[i]->f && (pc->ppMEMs[i]->cb == 0x1000)) {
-            sqlite3_bind_blob(hSqlStmt, 6, pbMultiHash + 32ULL * i, 32, NULL);
-        } else {
-            sqlite3_bind_null(hSqlStmt, 6);
-        }
-        sqlite3_step(hSqlStmt);
+    for(i = 0; i < cQueryValues; i++) {
+        sqlite3_bind_int64(hStmt, i + 1, pqwQueryValues[i]);
     }
-    sqlite3_exec(hSql, "COMMIT TRANSACTION", NULL, NULL, NULL);
-fail:
-    sqlite3_finalize(hSqlStmt);
-    Fc_SqlReserveReturn(hSql);
-    LocalFree(pMultiHashOps);
-    LocalFree(pbMultiHash);
-}
-
-
-
-// ----------------------------------------------------------------------------
-// REGISTRY FUNCTIONALITY BELOW:
-// ----------------------------------------------------------------------------
-
-VOID FcWinReg_Initialize_CallbackAddEntry(_In_ HANDLE hCallback1, _In_ HANDLE hCallback2, _In_ LPWSTR wszPathName, _In_ DWORD owszName, _In_ QWORD vaHive, _In_ DWORD dwCell, _In_ DWORD dwCellParent, _In_ QWORD ftLastWrite)
-{
-    FCSQL_INSERTSTRTABLE SqlStrInsert;
-    sqlite3_stmt *hStmt = (sqlite3_stmt*)hCallback1;
-    sqlite3_stmt *hStmtStr = (sqlite3_stmt *)hCallback2;
-    // build and insert string data into 'str' table.
-    if(!Fc_SqlInsertStr(hStmtStr, wszPathName, owszName, &SqlStrInsert)) { return; }
-    // insert into 'process' table.
-    sqlite3_reset(hStmt);
-    Fc_SqlBindMultiInt64(hStmt, 1, 5,
-        SqlStrInsert.id,
-        vaHive,
-        (QWORD)dwCell,
-        (QWORD)dwCellParent,
-        ftLastWrite
-    );
-    sqlite3_step(hStmt);
-}
-
-_Success_(return)
-BOOL FcWinReg_Initialize()
-{
-    BOOL fResult = FALSE;
-    POB_REGISTRY_HIVE pObHive = NULL;
-    sqlite3 *hSql = NULL;
-    sqlite3_stmt *hStmt = NULL, *hStmtStr = NULL;
-    if(!(hSql = Fc_SqlReserve())) { goto fail; }
-    if(SQLITE_OK != sqlite3_prepare_v2(hSql, "INSERT INTO registry (id_str, hive, cell, cell_parent, time) VALUES (?, ?, ?, ?, ?);", -1, &hStmt, NULL)) { goto fail; }
-    if(SQLITE_OK != sqlite3_prepare_v2(hSql, "INSERT INTO str (id, osz, csz, cbu, cbj, sz) VALUES (?, ?, ?, ?, ?, ?);", -1, &hStmtStr, NULL)) { goto fail; }
-    sqlite3_exec(hSql, "BEGIN TRANSACTION", NULL, NULL, NULL);
-    while(pObHive = VmmWinReg_HiveGetNext(pObHive)) {
-        VmmWinReg_ForensicGetAllKeys(pObHive, hStmt, hStmtStr, FcWinReg_Initialize_CallbackAddEntry);
+    for(i = 0; i < pObTimelineMap->cMap; i++) {
+        rc = sqlite3_step(hStmt);
+        if(rc != SQLITE_ROW) { goto fail; }
+        pe = pObTimelineMap->pMap + i;
+        // populate text related data: path+name
+        pe->cwszText = sqlite3_column_int(hStmt, 0);
+        owszName = sqlite3_column_int(hStmt, 1);
+        wszEntryText = (LPWSTR)sqlite3_column_text16(hStmt, 2);
+        if(!wszEntryText || (pe->cwszText != wcslen(wszEntryText)) || (pe->cwszText > cchMultiText - 1) || (owszName > pe->cwszText)) { goto fail; }
+        pe->wszText = wszMultiText;
+        pe->wszTextSub = wszMultiText + owszName;
+        memcpy(wszMultiText, wszEntryText, pe->cwszText * sizeof(WCHAR));
+        wszMultiText = wszMultiText + pe->cwszText + 1;
+        cchMultiText += pe->cwszText + 1;
+        // populate numeric data
+        pe->id = sqlite3_column_int64(hStmt, 3);
+        pe->ft = sqlite3_column_int64(hStmt, 4);
+        pe->tp = sqlite3_column_int(hStmt, 5);
+        pe->ac = sqlite3_column_int(hStmt, 6);
+        pe->pid = sqlite3_column_int(hStmt, 7);
+        pe->data64 = sqlite3_column_int64(hStmt, 8);
+        pe->cszuOffset = sqlite3_column_int64(hStmt, 9);
+        pe->cszjOffset = sqlite3_column_int64(hStmt, 10);
     }
-    sqlite3_exec(hSql, "COMMIT TRANSACTION", NULL, NULL, NULL);
-    ctxFc->fEnableRegistry = TRUE;
-    fResult = TRUE;
-fail:
-    Ob_DECREF(pObHive);
-    sqlite3_finalize(hStmt);
-    sqlite3_finalize(hStmtStr);
-    Fc_SqlReserveReturn(hSql);
-    return fResult;
-}
-
-
-
-// ----------------------------------------------------------------------------
-// PROCESS AND THREAD FUNCTIONALITY BELOW:
-// ----------------------------------------------------------------------------
-
-_Success_(return)
-BOOL FcProcess_Initialize()
-{
-    int rc;
-    BOOL fResult = FALSE, fWellKnownAccount = FALSE;
-    PVMM_PROCESS pObProcess = NULL;
-    sqlite3 *hSql = NULL;
-    sqlite3_stmt *hStmt = NULL, *hStmtStr = NULL;
-    FCSQL_INSERTSTRTABLE SqlStrInsert[4];
-    WCHAR wszUserName[MAX_PATH], wszFullInfo[2048];
-    if(!(hSql = Fc_SqlReserve())) { goto fail; }
-    if(SQLITE_OK != sqlite3_prepare_v2(hSql, "INSERT INTO process (id_str_name, id_str_path, id_str_user, id_str_all, pid, ppid, eprocess, dtb, dtb_user, state, wow64, peb, peb32, time_create, time_exit) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", -1, &hStmt, NULL)) { goto fail; }
-    if(SQLITE_OK != sqlite3_prepare_v2(hSql, "INSERT INTO str (id, osz, csz, cbu, cbj, sz) VALUES (?, ?, ?, ?, ?, ?);", -1, &hStmtStr, NULL)) { goto fail; }
-    sqlite3_exec(hSql, "BEGIN TRANSACTION", NULL, NULL, NULL);
-    while(pObProcess = VmmProcessGetNext(pObProcess, VMM_FLAG_PROCESS_TOKEN | VMM_FLAG_PROCESS_SHOW_TERMINATED)) {
-        // build and insert string data into 'str' table.
-        if(!Fc_SqlInsertStr(hStmtStr, pObProcess->pObPersistent->wszNameLong, 0, &SqlStrInsert[0])) { goto fail_transact; }
-        if(!Fc_SqlInsertStr(hStmtStr, pObProcess->pObPersistent->wszPathKernel, 0, &SqlStrInsert[1])) { goto fail_transact; }
-        if(!pObProcess->win.TOKEN.fSID || !VmmWinUser_GetNameW(&pObProcess->win.TOKEN.SID, wszUserName, MAX_PATH, NULL, &fWellKnownAccount)) { wszUserName[0] = 0; }
-        if(!Fc_SqlInsertStr(hStmtStr, wszUserName, 0, &SqlStrInsert[2])) { goto fail_transact; }
-        _snwprintf_s(wszFullInfo, 2048 - 2, 2048 - 3, L"%s [%s%s] %s", pObProcess->pObPersistent->wszNameLong, (fWellKnownAccount ? L"*" : L""), wszUserName, pObProcess->pObPersistent->wszPathKernel);
-        if(!Fc_SqlInsertStr(hStmtStr, wszFullInfo, 0, &SqlStrInsert[3])) { goto fail_transact; }
-        // insert into 'process' table.
-        sqlite3_reset(hStmt);
-        rc = Fc_SqlBindMultiInt64(hStmt, 1, 15,
-            SqlStrInsert[0].id,
-            SqlStrInsert[1].id,
-            SqlStrInsert[2].id,
-            SqlStrInsert[3].id,
-            (QWORD)pObProcess->dwPID,
-            (QWORD)pObProcess->dwPPID,
-            pObProcess->win.EPROCESS.va,
-            pObProcess->paDTB,
-            pObProcess->paDTB_UserOpt,
-            (QWORD)pObProcess->dwState,
-            (QWORD)(pObProcess->win.fWow64 ? 1 : 0),
-            pObProcess->win.vaPEB,
-            (QWORD)pObProcess->win.vaPEB32,
-            VmmProcess_GetCreateTimeOpt(pObProcess),
-            VmmProcess_GetExitTimeOpt(pObProcess)
-        );
-        if(SQLITE_OK != rc) { goto fail_transact; }
-        sqlite3_step(hStmt);
-    }
-    sqlite3_exec(hSql, "COMMIT TRANSACTION", NULL, NULL, NULL);
-    ctxFc->fEnableProcess = TRUE;
-    fResult = TRUE;
-fail:
-    Ob_DECREF(pObProcess);
-    sqlite3_finalize(hStmt);
-    sqlite3_finalize(hStmtStr);
-    Fc_SqlReserveReturn(hSql);
-    return fResult;
-fail_transact:
-    sqlite3_exec(hSql, "COMMIT TRANSACTION", NULL, NULL, NULL);
-    goto fail;
-}
-
-VOID FcThread_ThreadProc(_In_ PVMM_PROCESS pProcess, _In_ PVOID pv)
-{
-    int rc;
-    sqlite3 *hSql = NULL;
-    sqlite3_stmt *hStmt = NULL, *hStmtStr = NULL;
-    DWORD i;
-    PVMMOB_MAP_THREAD pObThreadMap = NULL;
-    PVMM_MAP_THREADENTRY pe;
-    WCHAR wszStr[MAX_PATH];
-    FCSQL_INSERTSTRTABLE SqlStrInsert;
-    if(!VmmMap_GetThread(pProcess, &pObThreadMap)) { goto fail; }
-    if(!(hSql = Fc_SqlReserve())) { goto fail; }
-    if(SQLITE_OK != sqlite3_prepare_v2(hSql, "INSERT INTO thread (id_str, pid, tid, ethread, teb, state, exitstatus, running, prio, priobase, startaddr, stackbase_u, stacklimit_u, stackbase_k, stacklimit_k, trapframe, sp, ip, time_create, time_exit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", -1, &hStmt, NULL)) { goto fail; }
-    if(SQLITE_OK != sqlite3_prepare_v2(hSql, "INSERT INTO str (id, osz, csz, cbu, cbj, sz) VALUES (?, ?, ?, ?, ?, ?);", -1, &hStmtStr, NULL)) { goto fail; }
-    sqlite3_exec(hSql, "BEGIN TRANSACTION", NULL, NULL, NULL);
-    for(i = 0; i < pObThreadMap->cMap; i++) {
-        pe = pObThreadMap->pMap + i;
-        swprintf(wszStr, _countof(wszStr), L"TID: %i", pe->dwTID);
-        if(!Fc_SqlInsertStr(hStmtStr, wszStr, 0, &SqlStrInsert)) { goto fail_transact; }
-        sqlite3_reset(hStmt);
-        rc = Fc_SqlBindMultiInt64(hStmt, 1, 20,
-            SqlStrInsert.id,
-            (QWORD)pe->dwPID,
-            (QWORD)pe->dwTID,
-            pe->vaETHREAD,
-            pe->vaTeb,
-            (QWORD)pe->bState,
-            (QWORD)pe->dwExitStatus,
-            (QWORD)pe->bRunning,
-            (QWORD)pe->bPriority,
-            (QWORD)pe->bBasePriority,
-            pe->vaStartAddress,
-            pe->vaStackBaseUser,
-            pe->vaStackLimitUser,
-            pe->vaStackBaseKernel,
-            pe->vaStackLimitKernel,
-            pe->vaTrapFrame,
-            pe->vaRSP,
-            pe->vaRIP,
-            pe->ftCreateTime,
-            pe->ftExitTime
-        );
-        if(SQLITE_OK != rc) { goto fail_transact; }
-        sqlite3_step(hStmt);
-    }
-fail_transact:
-    sqlite3_exec(hSql, "COMMIT TRANSACTION", NULL, NULL, NULL);
+    Ob_INCREF(pObTimelineMap);
 fail:
     sqlite3_finalize(hStmt);
-    sqlite3_finalize(hStmtStr);
     Fc_SqlReserveReturn(hSql);
-    Ob_DECREF(pObThreadMap);
-    return;
+    *ppObNtfsMap = Ob_DECREF(pObTimelineMap);
+    return (*ppObNtfsMap != NULL);
 }
 
+/*
+* Retrieve a timeline map object consisting of timeline data.
+* -- dwTimelineType = the timeline type, 0 for all.
+* -- qwId = the minimum timeline id of the entries to retrieve.
+* -- cId = the number of timeline entries to retrieve.
+* -- ppObTimelineMap
+* -- return
+*/
 _Success_(return)
-BOOL FcThread_Initialize()
+BOOL FcTimelineMap_GetFromIdRange(_In_ DWORD dwTimelineType, _In_ QWORD qwId, _In_ QWORD cId, _Out_ PFCOB_MAP_TIMELINE * ppObTimelineMap)
 {
-    VmmProcessActionForeachParallel(NULL, VmmProcessActionForeachParallel_CriteriaActiveOnly, FcThread_ThreadProc);
-    ctxFc->fEnableThread = TRUE;
-    return TRUE;
+    QWORD v[] = { qwId, qwId + cId, dwTimelineType };
+    DWORD iSQL = dwTimelineType ? 2 : 0;
+    LPSTR szSQL[] = {
+        "SELECT COUNT(*), SUM(csz) FROM v_timeline WHERE id >= ? AND id < ?",
+        "SELECT "FCTIMELINE_SQL_SELECT_FIELDS_ALL" FROM v_timeline WHERE id >= ? AND id < ? ORDER BY id",
+        "SELECT COUNT(*), SUM(csz) FROM v_timeline WHERE tp_id >= ? AND tp_id < ? AND tp = ?",
+        "SELECT "FCTIMELINE_SQL_SELECT_FIELDS_TP" FROM v_timeline WHERE tp_id >= ? AND tp_id < ? AND tp = ? ORDER BY tp_id"
+    };
+    return FcTimelineMap_CreateInternal(szSQL[iSQL], szSQL[iSQL + 1], (dwTimelineType ? 3 : 2), v, ppObTimelineMap);
+}
+
+/*
+* Retrieve the minimum timeline id that exists within a byte range inside a
+* timeline file of a specific type.
+* -- dwTimelineType = the timeline type, 0 for all.
+* -- fJSON = is JSON type, otherwise UTF8 type.
+* -- qwFilePos = the file position.
+* -- pqwId = pointer to receive the result id.
+* -- return
+*/
+_Success_(return)
+BOOL FcTimeline_GetIdFromPosition(_In_ DWORD dwTimelineType, _In_ BOOL fJSON, _In_ QWORD qwFilePos, _Out_ PQWORD pqwId)
+{
+    QWORD v[] = { max(2048, qwFilePos) - 2048, qwFilePos, dwTimelineType };
+    DWORD iSQL = (dwTimelineType ? 2 : 0) + (fJSON ? 1 : 0);
+    LPSTR szSQL[4] = {
+        "SELECT MAX(id) FROM timeline WHERE oln_u >= ? AND oln_u <= ?",
+        "SELECT MAX(id) FROM timeline WHERE oln_j >= ? AND oln_j <= ?",
+        "SELECT MAX(tp_id) FROM timeline WHERE oln_utp >= ? AND oln_utp <= ? AND tp = ?",
+        "SELECT MAX(tp_id) FROM timeline WHERE oln_jtp >= ? AND oln_jtp <= ? AND tp = ?"
+    };
+    return (SQLITE_OK == Fc_SqlQueryN(szSQL[iSQL], (dwTimelineType ? 3 : 2), v, 1, pqwId, NULL));
 }
 
 
 
 // ----------------------------------------------------------------------------
 // PHYSICAL MEMORY SCAN FUNCTIONALITY BELOW:
-// Physical memory is scanned and analyzed in parallel. Currently
-// the physical memory consumers are:
-// - PFN / HASH
-// - NTFS MFT ANALYZE
+// Physical memory is scanned and analyzed in parallel via registered plugins
+// though the plugin manager - such as, but not limited to, NTFS plugin.
 // ----------------------------------------------------------------------------
 
-VOID FcScanPhysMem_CallbackCleanup_ObChunk(POB_FC_SCANPHYSMEM_CHUNK pOb)
+typedef struct tdFC_SCANPHYSMEM_CONTEXT {
+    HANDLE hEvent;
+    VMMDLL_PLUGIN_FORENSIC_INGEST_PHYSMEM e;
+} FC_SCANPHYSMEM_CONTEXT, *PFC_SCANPHYSMEM_CONTEXT;
+
+
+VOID FcScanPhysmem_ThreadProc(_Inout_ PVMMDLL_PLUGIN_FORENSIC_INGEST_PHYSMEM ctx)
 {
-    for(DWORD i = 0; i < sizeof(pOb->hEventFinish) / sizeof(HANDLE); i++) {
-        if(pOb->hEventFinish[i]) {
-            CloseHandle(pOb->hEventFinish[i]);
-        }
+    DWORD dwPfnBase, cbPfnMap;
+    QWORD i, pa;
+    BOOL fValidMEMs, fValidAddr;
+    PDWORD pPfns = NULL;
+    PVMMDLL_MAP_PFNENTRY pePfn;
+    ctx->fValid = FALSE;
+    // 1: fetch and setup PFN map by calling VMMDLL API
+    //    (somewhat ugly to call external api, but it provides required data).
+    if(!ctxVmm->Work.fEnabled) { goto fail; }
+    dwPfnBase = (DWORD)(ctx->paBase >> 12);
+    if(!(pPfns = LocalAlloc(0, FC_PHYSMEM_NUM_CHUNKS * sizeof(DWORD)))) { goto fail; }
+    for(i = 0; i < FC_PHYSMEM_NUM_CHUNKS; i++) {
+        pPfns[i] = dwPfnBase + (DWORD)i;
     }
-    LcMemFree(pOb->ppMEMs);
+    cbPfnMap = sizeof(VMMDLL_MAP_PFN) + FC_PHYSMEM_NUM_CHUNKS * sizeof(VMMDLL_MAP_PFNENTRY);
+    if(!VMMDLL_Map_GetPfn(pPfns, FC_PHYSMEM_NUM_CHUNKS, ctx->pPfnMap, &cbPfnMap)) { goto fail; }
+    if(ctx->pPfnMap->cMap < FC_PHYSMEM_NUM_CHUNKS) { goto fail; }
+    // 2: set up MEMs
+    if(!ctxVmm->Work.fEnabled) { goto fail; }
+    for(i = 0, fValidMEMs = FALSE; i < FC_PHYSMEM_NUM_CHUNKS; i++) {
+        pa = ctx->paBase + (i << 12);
+        fValidAddr = (pa <= ctxMain->dev.paMax);
+        if(fValidAddr) {
+            pePfn = &ctx->pPfnMap->pMap[i];
+            fValidAddr =
+                (pePfn->PageLocation == MmPfnTypeStandby) ||
+                (pePfn->PageLocation == MmPfnTypeModified) ||
+                (pePfn->PageLocation == MmPfnTypeModifiedNoWrite) ||
+                (pePfn->PageLocation == MmPfnTypeTransition) ||
+                (pePfn->PageLocation == MmPfnTypeActive);
+        }
+        ctx->ppMEMs[i]->qwA = fValidAddr ? pa : (QWORD)-1;
+        ctx->ppMEMs[i]->cb = 0x1000;
+        ctx->ppMEMs[i]->f = FALSE;
+        fValidMEMs = fValidMEMs || fValidAddr;
+    }
+    // 3: read physical memory
+    if(fValidMEMs) {
+        VmmReadScatterPhysical(ctx->ppMEMs, FC_PHYSMEM_NUM_CHUNKS, VMM_FLAG_NOCACHEPUT);
+    }
+    ctx->fValid = TRUE;
+fail:
+    LocalFree(pPfns);
 }
 
 /*
 * Physical Memory Scan Loop - function is meant to be running in asynchronously
 * with one thread calling only. The function allocates two 16MB chunks and will
-* begin to loop-read physical memory into a chunk, call consumers asynchronously
-* and continue to read next 16MB chunk (if consumers are finished processing).
-* Currently the consumers are:
-* - NTFS MFT SCAN
-* - SHA256 PAGE HASHING
+* begin to loop-read physical memory into chunks (in separate thread) and call
+* the plugin manager for processing by forensic consumer plugins.
 */
-VOID FcScanPhysMem()
+VOID FcScanPhysmem()
 {
-    BOOL fValidMEMs, fValidAddr, fScanSuccess = FALSE;
-    QWORD i, j, iChunk = 0, pa, paBase;
-    POB_FC_SCANPHYSMEM_CHUNK pc, pObScanChunk[2] = { 0 };
-    PVOID ctx_Pfn = NULL, ctx_Ntfs = NULL;
-    PMMPFN_MAP_ENTRY pePfn;
+    BOOL fSuccess = FALSE;
+    QWORD i, iChunk = 0, paBase;
+    FC_SCANPHYSMEM_CONTEXT ctx2[2] = { 0 };
+    PFC_SCANPHYSMEM_CONTEXT ctx;
     // 1: initialize two 16MB physical memory scan chunks
     for(i = 0; i < 2; i++) {
-        if(!(pObScanChunk[i] = Ob_Alloc('FSCN', LMEM_ZEROINIT, sizeof(OB_FC_SCANPHYSMEM_CHUNK), FcScanPhysMem_CallbackCleanup_ObChunk, NULL))) { goto fail; }
-        if(!LcAllocScatter1(FC_PHYSMEM_NUM_CHUNKS, &pObScanChunk[i]->ppMEMs)) { goto fail; }
-        for(j = 0; j < FC_PHYSMEMSCAN_CONSUMERS; j++) {
-            if(!(pObScanChunk[i]->hEventFinish[j] = CreateEvent(NULL, TRUE, TRUE, NULL))) { goto fail; }
-        }
+        ctx = ctx2 + i;
+        if(!(ctx->hEvent = CreateEvent(NULL, TRUE, TRUE, NULL))) { goto fail; }
+        if(!LcAllocScatter1(FC_PHYSMEM_NUM_CHUNKS, &ctx->e.ppMEMs)) { goto fail; }
+        if(!(ctx->e.pPfnMap = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_MAP_PFN) + FC_PHYSMEM_NUM_CHUNKS * sizeof(VMMDLL_MAP_PFNENTRY)))) { goto fail; }
+        ctx->e.cMEMs = FC_PHYSMEM_NUM_CHUNKS;
     }
-    // 2: initialize scan consumers
-    ctx_Pfn = FcPfn_Initialize();
-    ctx_Ntfs = FcNtfs_SetupInitialize();
-    for(i = 0; i < 2; i++) {
-        pObScanChunk[i]->ctx_PFN = ctx_Pfn;
-        pObScanChunk[i]->ctx_NTFS = ctx_Ntfs;
-    }
-    // 3: main physical memory scan loop
+    // 2: main physical memory scan loop
     for(paBase = 0; paBase < ctxMain->dev.paMax; paBase += 0x1000 * FC_PHYSMEM_NUM_CHUNKS) {
+        iChunk++;
+        if(!ctxVmm->Work.fEnabled) { goto fail; }
         vmmprintfvv_fn("PhysicalAddress=%016llx\n", paBase);
-        // 3.1: get entry and wait for previous consumers to finish
-        pc = pObScanChunk[++iChunk % 2];
-        WaitForMultipleObjects(FC_PHYSMEMSCAN_CONSUMERS, pc->hEventFinish, TRUE, INFINITE);
+        // 2.1: fetch new physical data in separate thread:
+        ctx = ctx2 + (iChunk % 2);
+        ctx->e.paBase = paBase;
+        ResetEvent(ctx->hEvent);
+        VmmWork((LPTHREAD_START_ROUTINE)FcScanPhysmem_ThreadProc, &ctx->e, ctx->hEvent);
+        // 2.2: process previously scheduled work item (unless first):
+        if(paBase == 0) { continue; }
+        ctx = ctx2 + ((iChunk - 1) % 2);
+        WaitForSingleObject(ctx->hEvent, INFINITE);
         if(!ctxVmm->Work.fEnabled) { goto fail; }
-        // 3.2: init pfn map
-        Ob_DECREF_NULL(&pc->pPfnMap);
-        MmPfn_Map_GetPfn((DWORD)(paBase >> 12), FC_PHYSMEM_NUM_CHUNKS, &pc->pPfnMap, TRUE);
-        // 3.3: init addresses & read
-        for(i = 0, fValidMEMs = FALSE; i < FC_PHYSMEM_NUM_CHUNKS; i++) {
-            pa = paBase + (i << 12);
-            fValidAddr = (pa <= ctxMain->dev.paMax);
-            if(fValidAddr) {
-                pePfn = (pc->pPfnMap && (i < pc->pPfnMap->cMap)) ? (pc->pPfnMap->pMap + i) : NULL;
-                fValidAddr =
-                    !pePfn ||
-                    (pePfn->PageLocation == MmPfnTypeStandby) ||
-                    (pePfn->PageLocation == MmPfnTypeModified) ||
-                    (pePfn->PageLocation == MmPfnTypeModifiedNoWrite) ||
-                    (pePfn->PageLocation == MmPfnTypeTransition) ||
-                    (pePfn->PageLocation == MmPfnTypeActive);
-            }
-            pc->ppMEMs[i]->qwA = fValidAddr ? pa : (QWORD)-1;
-            pc->ppMEMs[i]->cb = 0x1000;
-            pc->ppMEMs[i]->f = FALSE;
-            fValidMEMs = fValidMEMs || fValidAddr;
-        }
-        if(fValidMEMs) {
-            VmmReadScatterPhysical(pc->ppMEMs, FC_PHYSMEM_NUM_CHUNKS, VMM_FLAG_NOCACHEPUT);
-        }
-        if(!ctxVmm->Work.fEnabled) { goto fail; }
-        // 3.4: schedule work onto consumers
-        //if(pc->ctx_PFN) {
-        //    ResetEvent(pc->hEventFinish_PFN);
-        //    VmmWork((LPTHREAD_START_ROUTINE)FcPfn_Setup_ThreadProc, pc, pc->hEventFinish_PFN);
-        //}
-        if(pc->ctx_NTFS) {
-            ResetEvent(pc->hEventFinish_NTFS);
-            VmmWork((LPTHREAD_START_ROUTINE)FcNtfs_Setup_ThreadProc, pc, pc->hEventFinish_NTFS);
+        if(ctx->e.fValid) {
+            PluginManager_FcIngestPhysmem(&ctx->e);
         }
     }
-    // 4: finalize scan consumers
-    fScanSuccess = TRUE;
+    // 2.3: process last read chunk
+    if(iChunk) {
+        ctx = ctx2 + ((iChunk - 1) % 2);
+        WaitForSingleObject(ctx->hEvent, INFINITE);
+        if(!ctxVmm->Work.fEnabled) { goto fail; }
+        if(ctx->e.fValid) {
+            PluginManager_FcIngestPhysmem(&ctx->e);
+        }
+    }
+    fSuccess = TRUE;
 fail:
-    // 5: wait for any worker sub-threads to finish
     for(i = 0; i < 2; i++) {
-        if(pObScanChunk[i] && pObScanChunk[i]->hEventFinish[FC_PHYSMEMSCAN_CONSUMERS - 1]) {
-            WaitForMultipleObjects(FC_PHYSMEMSCAN_CONSUMERS, pObScanChunk[i]->hEventFinish, TRUE, INFINITE);
+        ctx = ctx2 + i;
+        if(ctx->hEvent) {
+            WaitForSingleObject(ctx->hEvent, INFINITE);
         }
-    }
-    // 6: call work customer finalize functionality
-    FcPfn_Finalize(ctx_Pfn, fScanSuccess);
-    FcNtfs_SetupFinalize(ctx_Ntfs, fScanSuccess);
-    // 7: clean up / close
-    for(i = 0; i < 2; i++) {
-        if(!(pc = pObScanChunk[i])) { continue; }
-        for(j = 0; j < FC_PHYSMEMSCAN_CONSUMERS; j++) {
-            if(pc->hEventFinish[j]) {
-                CloseHandle(pc->hEventFinish[j]);
-            }
-        }
-        LcMemFree(pc->ppMEMs);
-        Ob_DECREF(pc->pPfnMap);
+        if(ctx->hEvent) { CloseHandle(ctx->hEvent); }
+        LcMemFree(ctx->e.ppMEMs);
+        LocalFree(ctx->e.pPfnMap);
     }
 }
 
@@ -688,16 +645,22 @@ fail:
 */
 VOID FcInitialize_ThreadProc(_In_ PVOID pvContext)
 {
-    Fc_SqlInitializeDatabaseTables();
-    FcProcess_Initialize();
-    FcThread_Initialize();
-    FcWinReg_Initialize();
-    FcScanPhysMem();
+    if(SQLITE_OK != Fc_SqlExec(FC_SQL_SCHEMA_STR)) { return; }
+    if(!ctxVmm->Work.fEnabled) { return; }
+    PluginManager_Notify(VMMDLL_PLUGIN_NOTIFY_FORENSIC_INIT, NULL, 0);
+    PluginManager_FcInitialize();
+    if(!ctxVmm->Work.fEnabled) { return; }
+    FcScanPhysmem();
+    if(!ctxVmm->Work.fEnabled) { return; }
+    PluginManager_FcIngestFinalize();
+    if(!ctxVmm->Work.fEnabled) { return; }
     FcTimeline_Initialize();
+    if(!ctxVmm->Work.fEnabled) { return; }
+    PluginManager_FcFinalize();
     ctxFc->db.fSingleThread = FALSE;
     ctxFc->fInitFinish = TRUE;
-    PluginManager_Notify(VMMDLL_PLUGIN_EVENT_FORENSIC_INIT, NULL, 100);
-    PluginManager_Notify(VMMDLL_PLUGIN_EVENT_FORENSIC_INIT_COMPLETE, NULL, 0);
+    PluginManager_Notify(VMMDLL_PLUGIN_NOTIFY_FORENSIC_INIT, NULL, 100);
+    PluginManager_Notify(VMMDLL_PLUGIN_NOTIFY_FORENSIC_INIT_COMPLETE, NULL, 0);
 }
 
 /*

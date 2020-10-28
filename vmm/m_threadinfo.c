@@ -12,7 +12,7 @@
 #define THREADINFO_INFOFILE_LENGTH  740ULL
 
 _Success_(return == 0)
-NTSTATUS ThreadInfo_Read_ThreadInfo(_In_ PVMM_MAP_THREADENTRY pThreadEntry, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS ThreadInfo_Read_ThreadInfo(_In_ PVMM_MAP_THREADENTRY pThreadEntry, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     DWORD o;
     CHAR sz[THREADINFO_INFOFILE_LENGTH + 1];
@@ -67,7 +67,7 @@ NTSTATUS ThreadInfo_Read_ThreadInfo(_In_ PVMM_MAP_THREADENTRY pThreadEntry, _Out
 }
 
 _Success_(return == 0)
-NTSTATUS ThreadInfo_Read_ThreadMap(_In_ PVMMOB_MAP_THREAD pThreadMap, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS ThreadInfo_Read_ThreadMap(_In_ PVMMOB_MAP_THREAD pThreadMap, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt;
     LPSTR sz;
@@ -121,7 +121,7 @@ NTSTATUS ThreadInfo_Read_ThreadMap(_In_ PVMMOB_MAP_THREAD pThreadMap, _Out_ PBYT
 * -- return
 */
 _Success_(return == 0)
-NTSTATUS ThreadInfo_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS ThreadInfo_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PVMMOB_MAP_THREAD pObThreadMap = NULL;
@@ -179,7 +179,7 @@ finish:
 * -- cbOffset
 * -- return
 */
-NTSTATUS ThreadInfo_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
+NTSTATUS ThreadInfo_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PVMMOB_MAP_THREAD pObThreadMap = NULL;

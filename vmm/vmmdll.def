@@ -35,8 +35,10 @@ EXPORTS
     VMMDLL_Map_GetPfn
     VMMDLL_Map_GetPhysMem
     VMMDLL_Map_GetUsers
+    VMMDLL_Map_GetServices
     VMMDLL_ProcessMap_GetPte
     VMMDLL_ProcessMap_GetVad
+    VMMDLL_ProcessMap_GetVadEx
     VMMDLL_ProcessMap_GetModule
     VMMDLL_ProcessMap_GetModuleFromName
     VMMDLL_ProcessMap_GetHeap

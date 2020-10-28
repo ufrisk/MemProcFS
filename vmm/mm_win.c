@@ -461,7 +461,7 @@ VOID MmWin_MemCompress_InitializeVirtualStorePageFileNumber()
         oPfNum = 0xcc;
     }
     // 3: Set InvalidPteMask
-    if(ctxVmm->kernel.dwVersionBuild >= 17134) {
+    if(ctxVmm->kernel.dwVersionBuild >= 15063) {
         f = PDB_GetSymbolAddress(PDB_HANDLE_KERNEL, "MiState", &vaMiState) &&
             PDB_GetTypeChildOffset(PDB_HANDLE_KERNEL, "_MI_SYSTEM_INFORMATION", L"Hardware", &oMiStateHardware) &&
             PDB_GetTypeChildOffset(PDB_HANDLE_KERNEL, "_MI_HARDWARE_STATE", L"InvalidPteMask", &oMiStateHardwareInvalidPteMask) &&
@@ -1102,15 +1102,17 @@ fail:
 * -- pte
 * -- pbPage
 * -- ppa
+* -- ptp
 * -- return
 */
 _Success_(return)
-BOOL MmWinX86_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_opt_ DWORD va, _In_ DWORD pte, _Out_writes_opt_(4096) PBYTE pbPage, _Out_ PQWORD ppa, _In_ QWORD flags)
+BOOL MmWinX86_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_opt_ DWORD va, _In_ DWORD pte, _Out_writes_opt_(4096) PBYTE pbPage, _Out_ PQWORD ppa, _Inout_opt_ PVMM_PTE_TP ptp, _In_ QWORD flags)
 {
     BOOL f;
     DWORD dwPfNumber, dwPfOffset;
     *ppa = 0;
     if(MMWINX86_PTE_IS_HARDWARE(pte)) {
+        if(ptp && !*ptp) { *ptp = VMM_PTE_TP_HARDWARE; }
         *ppa = pte & 0xfffff000;
         return FALSE;
     }
@@ -1118,6 +1120,7 @@ BOOL MmWinX86_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_opt_ DWORD va, _In_ DWOR
     flags = MM_LOOP_PROTECT_ADD(flags);
     // prototype page [ nt!_MMPTE_PROTOTYPE ]
     if(!(flags & VMM_FLAG_NOPAGING_IO) && MMWINX86_PTE_PROTOTYPE(pte)) {
+        if(ptp && !*ptp) { *ptp = VMM_PTE_TP_PROTOTYPE; }
         InterlockedIncrement64(&ctxVmm->stat.page.cPrototype);
         pte = MmWinX86_Prototype(pte, flags);
         if(MMWINX86_PTE_IS_HARDWARE(pte)) {
@@ -1128,6 +1131,7 @@ BOOL MmWinX86_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_opt_ DWORD va, _In_ DWOR
     }
     // transition page [ nt!_MMPTE_TRANSITION ]
     if(MMWINX86_PTE_TRANSITION(pte)) {
+        if(ptp && !*ptp) { *ptp = VMM_PTE_TP_TRANSITION; }
         pte = MMWINX86_PTE_TRANSITION(pte);
         if((pte & 0xfffff000) < ctxMain->dev.paMax) {
             *ppa = pte & 0xfffff000;
@@ -1144,22 +1148,31 @@ BOOL MmWinX86_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_opt_ DWORD va, _In_ DWOR
             if(f) { InterlockedIncrement64(&ctxVmm->stat.page.cFailVAD); }
             return FALSE;
         }
+        if(ptp && !*ptp) { *ptp = VMM_PTE_TP_PROTOTYPE; }
         InterlockedIncrement64(&ctxVmm->stat.page.cVAD);
         if(MMWINX86_PTE_IS_HARDWARE(pte)) {
             *ppa = pte & 0xfffff000;
             return FALSE;
         }
-        return MmWinX86_ReadPaged(pProcess, va, pte, pbPage, ppa, flags | VMM_FLAG_NOVAD);
+        return MmWinX86_ReadPaged(pProcess, va, pte, pbPage, ppa, NULL, flags | VMM_FLAG_NOVAD);
     }
-    if(!pte || !pbPage) { return FALSE; }
+    if(!pte) { return FALSE; }
     // demand zero virtual memory [ nt!_MMPTE_SOFTWARE ]
     if(!dwPfNumber && !dwPfOffset) {
-        ZeroMemory(pbPage, 0x1000);
-        InterlockedIncrement64(&ctxVmm->stat.page.cDemandZero);
-        return TRUE;
+        if(ptp && !*ptp) { *ptp = VMM_PTE_TP_DEMANDZERO; }
+        if(pbPage) {
+            ZeroMemory(pbPage, 0x1000);
+            InterlockedIncrement64(&ctxVmm->stat.page.cDemandZero);
+            return TRUE;
+        }
+        return FALSE;
     }
     // retrive from page file or compressed store
-    return MmWin_PfRead(pProcess, va, pte, flags, dwPfNumber, dwPfOffset, pbPage);
+    if(ptp && !*ptp) {
+        *ptp = (((PMMWIN_CONTEXT)ctxVmm->pMmContext)->MemCompress.fValid && (dwPfNumber == ((PMMWIN_CONTEXT)ctxVmm->pMmContext)->MemCompress.dwPageFileNumber)) ?
+            VMM_PTE_TP_COMPRESSED : VMM_PTE_TP_PAGEFILE;
+    }
+    return pbPage ? MmWin_PfRead(pProcess, va, pte, flags, dwPfNumber, dwPfOffset, pbPage) : FALSE;
 fail:
     InterlockedIncrement64(&ctxVmm->stat.page.cFail);
     return FALSE;
@@ -1199,15 +1212,17 @@ fail:
 * -- pte
 * -- pbPage
 * -- ppa
+* -- ptp
 * -- return
 */
 _Success_(return)
-BOOL MmWinX86PAE_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_opt_ DWORD va, _In_ QWORD pte, _Out_writes_opt_(4096) PBYTE pbPage, _Out_ PQWORD ppa, _In_ QWORD flags)
+BOOL MmWinX86PAE_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_opt_ DWORD va, _In_ QWORD pte, _Out_writes_opt_(4096) PBYTE pbPage, _Out_ PQWORD ppa, _Inout_opt_ PVMM_PTE_TP ptp, _In_ QWORD flags)
 {
     BOOL f;
     DWORD dwPfNumber, dwPfOffset;
     *ppa = 0;
     if(MMWINX86PAE_PTE_IS_HARDWARE(pte)) {
+        if(ptp && !*ptp) { *ptp = VMM_PTE_TP_HARDWARE; }
         *ppa = pte & 0x0000003f'fffff000;
         return FALSE;
     }
@@ -1215,6 +1230,7 @@ BOOL MmWinX86PAE_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_opt_ DWORD va, _In_ Q
     flags = MM_LOOP_PROTECT_ADD(flags);
     // prototype page [ nt!_MMPTE_PROTOTYPE ]
     if(!(flags & VMM_FLAG_NOPAGING_IO) && MMWINX86PAE_PTE_PROTOTYPE(pte)) {
+        if(ptp && !*ptp) { *ptp = VMM_PTE_TP_PROTOTYPE; }
         InterlockedIncrement64(&ctxVmm->stat.page.cPrototype);
         pte = MmWinX86PAE_Prototype(pte, flags);
         if(MMWINX86PAE_PTE_IS_HARDWARE(pte)) {
@@ -1225,6 +1241,7 @@ BOOL MmWinX86PAE_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_opt_ DWORD va, _In_ Q
     }
     // transition page [ nt!_MMPTE_TRANSITION ]
     if(MMWINX86PAE_PTE_TRANSITION(pte)) {
+        if(ptp && !*ptp) { *ptp = VMM_PTE_TP_TRANSITION; }
         pte = MMWINX86PAE_PTE_TRANSITION(pte);
         if((pte & 0x0000003f'fffff000) < ctxMain->dev.paMax) {
             *ppa = pte & 0x0000003f'fffff000;
@@ -1241,22 +1258,31 @@ BOOL MmWinX86PAE_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_opt_ DWORD va, _In_ Q
             if(f) { InterlockedIncrement64(&ctxVmm->stat.page.cFailVAD); }
             return FALSE;
         }
+        if(ptp && !*ptp) { *ptp = VMM_PTE_TP_PROTOTYPE; }
         InterlockedIncrement64(&ctxVmm->stat.page.cVAD);
         if(MMWINX86PAE_PTE_IS_HARDWARE(pte)) {
             *ppa = pte & 0x0000003f'fffff000;
             return FALSE;
         }
-        return MmWinX86PAE_ReadPaged(pProcess, va, pte, pbPage, ppa, flags | VMM_FLAG_NOVAD);
+        return MmWinX86PAE_ReadPaged(pProcess, va, pte, pbPage, ppa, NULL, flags | VMM_FLAG_NOVAD);
     }
-    if(!pte || !pbPage) { return FALSE; }
+    if(!pte) { return FALSE; }
     // demand zero virtual memory [ nt!_MMPTE_SOFTWARE ]
     if(!dwPfNumber && !dwPfOffset) {
-        ZeroMemory(pbPage, 0x1000);
-        InterlockedIncrement64(&ctxVmm->stat.page.cDemandZero);
-        return TRUE;
+        if(ptp && !*ptp) { *ptp = VMM_PTE_TP_DEMANDZERO; }
+        if(pbPage) {
+            ZeroMemory(pbPage, 0x1000);
+            InterlockedIncrement64(&ctxVmm->stat.page.cDemandZero);
+            return TRUE;
+        }
+        return FALSE;
     }
     // retrive from page file or compressed store
-    return MmWin_PfRead(pProcess, va, pte, flags, dwPfNumber, dwPfOffset, pbPage);
+    if(ptp && !*ptp) {
+        *ptp = (((PMMWIN_CONTEXT)ctxVmm->pMmContext)->MemCompress.fValid && (dwPfNumber == ((PMMWIN_CONTEXT)ctxVmm->pMmContext)->MemCompress.dwPageFileNumber)) ?
+            VMM_PTE_TP_COMPRESSED : VMM_PTE_TP_PAGEFILE;
+    }
+    return  pbPage ? MmWin_PfRead(pProcess, va, pte, flags, dwPfNumber, dwPfOffset, pbPage) : FALSE;
 fail:
     InterlockedIncrement64(&ctxVmm->stat.page.cFail);
     return FALSE;
@@ -1296,16 +1322,18 @@ fail:
 * -- pte
 * -- pbPage
 * -- ppa
+* -- ptp
 * -- flags
 * -- return
 */
 _Success_(return)
-BOOL MmWinX64_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD va, _In_ QWORD pte, _Out_writes_opt_(4096) PBYTE pbPage, _Out_ PQWORD ppa, _In_ QWORD flags)
+BOOL MmWinX64_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD va, _In_ QWORD pte, _Out_writes_opt_(4096) PBYTE pbPage, _Out_ PQWORD ppa, _Inout_opt_ PVMM_PTE_TP ptp, _In_ QWORD flags)
 {
     BOOL f;
     DWORD dwPfNumber, dwPfOffset;
     *ppa = 0;
     if(MMWINX64_PTE_IS_HARDWARE(pte)) {
+        if(ptp && !*ptp) { *ptp = VMM_PTE_TP_HARDWARE; }
         *ppa = pte & 0x0000ffff'fffff000;
         return FALSE;
     }
@@ -1313,6 +1341,7 @@ BOOL MmWinX64_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD va, _In_ QWOR
     flags = MM_LOOP_PROTECT_ADD(flags);
     // prototype page
     if(!(flags & VMM_FLAG_NOPAGING_IO) && MMWINX64_PTE_PROTOTYPE(pte)) {
+        if(ptp && !*ptp) { *ptp = VMM_PTE_TP_PROTOTYPE; }
         InterlockedIncrement64(&ctxVmm->stat.page.cPrototype);
         pte = MmWinX64_Prototype(pte, flags);
         if(MMWINX64_PTE_IS_HARDWARE(pte)) {
@@ -1323,6 +1352,7 @@ BOOL MmWinX64_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD va, _In_ QWOR
     }
     // transition page
     if(MMWINX64_PTE_TRANSITION(pte)) {
+        if(ptp && !*ptp) { *ptp = VMM_PTE_TP_TRANSITION; }
         pte = MMWINX64_PTE_TRANSITION(pte);
         if((pte & 0x0000ffff'fffff000) < ctxMain->dev.paMax) {
             *ppa = pte & 0x0000ffff'fffff000;
@@ -1339,22 +1369,31 @@ BOOL MmWinX64_ReadPaged(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD va, _In_ QWOR
             if(f) { InterlockedIncrement64(&ctxVmm->stat.page.cFailVAD); }
             return FALSE;
         }
+        if(ptp && !*ptp) { *ptp = VMM_PTE_TP_PROTOTYPE; }
         InterlockedIncrement64(&ctxVmm->stat.page.cVAD);
         if(MMWINX64_PTE_IS_HARDWARE(pte)) {
             *ppa = pte & 0x0000ffff'fffff000;
             return FALSE;
         }
-        return MmWinX64_ReadPaged(pProcess, va, pte, pbPage, ppa, flags | VMM_FLAG_NOVAD);
+        return MmWinX64_ReadPaged(pProcess, va, pte, pbPage, ppa, NULL, flags | VMM_FLAG_NOVAD);
     }
-    if(!pte || !pbPage) { return FALSE; }
+    if(!pte) { return FALSE; }
     // demand zero virtual memory [ nt!_MMPTE_SOFTWARE ]
     if(!dwPfNumber && !dwPfOffset) {
-        ZeroMemory(pbPage, 0x1000);
-        InterlockedIncrement64(&ctxVmm->stat.page.cDemandZero);
-        return TRUE;
+        if(ptp && !*ptp) { *ptp = VMM_PTE_TP_DEMANDZERO; }
+        if(pbPage) {
+            ZeroMemory(pbPage, 0x1000);
+            InterlockedIncrement64(&ctxVmm->stat.page.cDemandZero);
+            return TRUE;
+        }
+        return FALSE;
     }
     // retrive from page file or compressed store
-    return MmWin_PfRead(pProcess, va, pte, flags, dwPfNumber, dwPfOffset, pbPage);
+    if(ptp && !*ptp) {
+        *ptp = (((PMMWIN_CONTEXT)ctxVmm->pMmContext)->MemCompress.fValid && (dwPfNumber == ((PMMWIN_CONTEXT)ctxVmm->pMmContext)->MemCompress.dwPageFileNumber)) ?
+            VMM_PTE_TP_COMPRESSED : VMM_PTE_TP_PAGEFILE;
+    }
+    return pbPage ? MmWin_PfRead(pProcess, va, pte, flags, dwPfNumber, dwPfOffset, pbPage) : FALSE;
 fail:
     InterlockedIncrement64(&ctxVmm->stat.page.cFail);
     return FALSE;
@@ -1390,10 +1429,10 @@ VOID MmWin_PagingInitialize(_In_ BOOL fModeFull)
             ctxVmm->fnMemoryModel.pfnPagedRead = MmWinX64_ReadPaged;
             break;
         case VMM_MEMORYMODEL_X86PAE:
-            ctxVmm->fnMemoryModel.pfnPagedRead = (BOOL(*)(PVMM_PROCESS, QWORD, QWORD, PBYTE, PQWORD, QWORD))MmWinX86PAE_ReadPaged;
+            ctxVmm->fnMemoryModel.pfnPagedRead = (BOOL(*)(PVMM_PROCESS, QWORD, QWORD, PBYTE, PQWORD, PVMM_PTE_TP, QWORD))MmWinX86PAE_ReadPaged;
             break;
         case VMM_MEMORYMODEL_X86:
-            ctxVmm->fnMemoryModel.pfnPagedRead = (BOOL(*)(PVMM_PROCESS, QWORD, QWORD, PBYTE, PQWORD, QWORD))MmWinX86_ReadPaged;
+            ctxVmm->fnMemoryModel.pfnPagedRead = (BOOL(*)(PVMM_PROCESS, QWORD, QWORD, PBYTE, PQWORD, PVMM_PTE_TP, QWORD))MmWinX86_ReadPaged;
             break;
         default:
             return;

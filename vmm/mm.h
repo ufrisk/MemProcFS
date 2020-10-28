@@ -62,4 +62,16 @@ BOOL MmVad_MapInitialize(_In_ PVMM_PROCESS pProcess, _In_ BOOL fExtendedText, _I
 */
 QWORD MmVad_PrototypePte(_In_ PVMM_PROCESS pProcess, _In_ QWORD va, _Out_opt_ PBOOL pfInRange, _In_ QWORD fVmmRead);
 
+/*
+* Initialize / Retrieve an extended VAD map with info about individual pages in
+* the ranges pecified by the iPage and cPage variables.
+* CALLER DECREF: return
+* -- pProcess
+* -- iPage = index of range start in vad map.
+* -- cPage = number of pages, starting at iPage.
+* -- return
+*/
+_Success_(return != NULL)
+PVMMOB_MAP_VADEX MmVadEx_MapInitialize(_In_ PVMM_PROCESS pProcess, _In_ DWORD iPage, _In_ DWORD cPage);
+
 #endif /* __MM_H__ */

@@ -19,7 +19,7 @@ typedef struct tdVMMWIN_REGISTRY_OFFSET {
     QWORD vaHintCMHIVE;
     struct {
         WORD Signature;
-        WORD FLink;
+        WORD FLinkAll;
         WORD Length0;
         WORD StorageMap0;
         WORD StorageSmallDir0;
@@ -355,8 +355,8 @@ VOID VmmWinReg_FuzzHiveOffsets_PrintResultVerbose(_In_ PBYTE pb, _In_ DWORD cb)
             "                  CM.Len1   %03X, CM.StorMap1  %03X, CM.StorSmallDir1 %03X, HE._Size     %03X \n",
             po->CM.Length1, po->CM.StorageMap1, po->CM.StorageSmallDir1, po->HE._Size);
         vmmprintfvv(
-            "    CM.FLink %03X, CM._Size  %03X, CM.FileFull  %03X, CM.FileUserPath  %03X, CM.HiveRoot  %03X \n",
-            po->CM.FLink, po->CM._Size, po->CM.FileFullPathOpt, po->CM.FileUserNameOpt, po->CM.HiveRootPathOpt);
+            "    CM.FLinkAll %03X, CM._Size  %03X, CM.FileFull  %03X, CM.FileUserPath  %03X, CM.HiveRoot  %03X \n",
+            po->CM.FLinkAll, po->CM._Size, po->CM.FileFullPathOpt, po->CM.FileUserNameOpt, po->CM.HiveRootPathOpt);
         vmmprintfvv(
             "    BB.Sig   %03X, BB.Length %03X, BB.FileName  %03X, BB.Major         %03X, BB.Minor     %03X \n",
             po->BB.Signature, po->BB.Length, po->BB.FileName, po->BB.Major, po->BB.Minor);
@@ -418,18 +418,18 @@ BOOL VmmWinReg_FuzzHiveOffsets64(_In_ PVMM_PROCESS pProcessSystem, _In_ QWORD va
     o += cbDual;
     // _CMHIVE _LIST_ENTRY
     for(; o < 0xff0; o += 8) {
-        f = VMM_KADDR64_8(*(PQWORD)(pbCMHIVE + o)) &&                                           // FLink
+        f = VMM_KADDR64_8(*(PQWORD)(pbCMHIVE + o)) &&                                           // FLinkAll
             VMM_KADDR64_8(*(PQWORD)(pbCMHIVE + o + 8)) &&                                       // BLink
-            (*(PQWORD)(pbCMHIVE + o) != *(PQWORD)(pbCMHIVE + o + 8)) &&                         // FLink != BLink
+            (*(PQWORD)(pbCMHIVE + o) != *(PQWORD)(pbCMHIVE + o + 8)) &&                         // FLinkAll != BLink
             ((*(PQWORD)(pbCMHIVE + o) - o) != vaCMHIVE) &&                                      // Not ptr to this CMHIVE
-            VmmRead(pProcessSystem, *(PQWORD)(pbCMHIVE + o) + 8, (PBYTE)&qw, sizeof(QWORD)) &&  // Read FLink->BLink
-            (!vaCMHIVE || (qw - o == vaCMHIVE)) &&                                              // vaCMHIVE == FLink->BLink
+            VmmRead(pProcessSystem, *(PQWORD)(pbCMHIVE + o) + 8, (PBYTE)&qw, sizeof(QWORD)) &&  // Read FLinkAll->BLink
+            (!vaCMHIVE || (qw - o == vaCMHIVE)) &&                                              // vaCMHIVE == FLinkAll->BLink
             VmmRead(pProcessSystem, ((*(PQWORD)(pbCMHIVE + o) - o)), (PBYTE)&dw, sizeof(DWORD)) &&
             (dw == 0xBEE0BEE0);                                                                 // Signature check
         if(f) { break; }
     }
     if(!f) { return FALSE; }
-    po->CM.FLink = o;
+    po->CM.FLinkAll = o;
     // _CMHIVE UNICODE_STRING HiveRootPath (OPTIONAL)
     for(; o < 0xff0; o += 8) {
         f = (*(PWORD)(pbCMHIVE + o) <= *(PWORD)(pbCMHIVE + o + 2)) &&                           // UNICODE_STRING.Length <= UNICODE_STRING.MaxLength
@@ -445,7 +445,7 @@ BOOL VmmWinReg_FuzzHiveOffsets64(_In_ PVMM_PROCESS pProcessSystem, _In_ QWORD va
         po->CM.FileFullPathOpt = po->CM.HiveRootPathOpt - 0x020;
         po->CM.FileUserNameOpt = po->CM.HiveRootPathOpt - 0x010;
     }
-    po->CM._Size = max(po->CM.FLink, po->CM.HiveRootPathOpt) + 0x020;
+    po->CM._Size = max(po->CM.FLinkAll, po->CM.HiveRootPathOpt) + 0x020;
     // _HMAP_ENTRY SIZE AND OFFSETS
     ZeroMemory(qwHE, sizeof(qwHE));
     po->HE._Size = 0x018;               // Most common (default try)
@@ -470,7 +470,7 @@ BOOL VmmWinReg_FuzzHiveOffsets64(_In_ PVMM_PROCESS pProcessSystem, _In_ QWORD va
     po->BB.Minor = 0x018;
     po->BB.FileName = 0x030;
     // CMHIVE virtual address hint
-    po->vaHintCMHIVE = vaCMHIVE ? vaCMHIVE : (*(PQWORD)(pbCMHIVE + po->CM.FLink) - po->CM.FLink);
+    po->vaHintCMHIVE = vaCMHIVE ? vaCMHIVE : (*(PQWORD)(pbCMHIVE + po->CM.FLinkAll) - po->CM.FLinkAll);
     VmmWinReg_FuzzHiveOffsets_PrintResultVerbose((PBYTE)qwHE, sizeof(qwHE));
     return TRUE;
 }
@@ -530,21 +530,21 @@ BOOL VmmWinReg_FuzzHiveOffsets32(_In_ PVMM_PROCESS pProcessSystem, _In_ QWORD va
     o += cbDual;
     // _CMHIVE _LIST_ENTRY
     for(; o < 0x800; o += 4) {
-        f = VMM_KADDR32_4(*(PDWORD)(pbCMHIVE + o)) &&                                                   // FLink
+        f = VMM_KADDR32_4(*(PDWORD)(pbCMHIVE + o)) &&                                                   // FLinkAll
             VMM_KADDR32_4(*(PDWORD)(pbCMHIVE + o + 4)) &&                                               // BLink
-            (*(PDWORD)(pbCMHIVE + o) != *(PDWORD)(pbCMHIVE + o + 4)) &&                                 // FLink != BLink
-            VmmRead(pProcessSystem, *(PDWORD)(pbCMHIVE + o) + sizeof(DWORD), (PBYTE)&dw, sizeof(DWORD)) && // Read FLink->BLink
-            VmmRead(pProcessSystem, (QWORD)dw - o + po->CM.Signature, (PBYTE)&dw, sizeof(DWORD)) &&     // Read (FLink->BLink) Signature
+            (*(PDWORD)(pbCMHIVE + o) != *(PDWORD)(pbCMHIVE + o + 4)) &&                                 // FLinkAll != BLink
+            VmmRead(pProcessSystem, *(PDWORD)(pbCMHIVE + o) + sizeof(DWORD), (PBYTE)&dw, sizeof(DWORD)) && // Read FLinkAll->BLink
+            VmmRead(pProcessSystem, (QWORD)dw - o + po->CM.Signature, (PBYTE)&dw, sizeof(DWORD)) &&     // Read (FLinkAll->BLink) Signature
             (dw == 0xBEE0BEE0) &&                                                                       // Signature check
-            VmmRead(pProcessSystem, *(PDWORD)(pbCMHIVE + o + 4), (PBYTE)&dw, sizeof(DWORD)) &&          // Read BLink->FLink
-            VmmRead(pProcessSystem, (QWORD)dw - o + po->CM.Signature, (PBYTE)&dw, sizeof(DWORD)) &&     // Read (BLink->FLink) Signature
+            VmmRead(pProcessSystem, *(PDWORD)(pbCMHIVE + o + 4), (PBYTE)&dw, sizeof(DWORD)) &&          // Read BLink->FLinkAll
+            VmmRead(pProcessSystem, (QWORD)dw - o + po->CM.Signature, (PBYTE)&dw, sizeof(DWORD)) &&     // Read (BLink->FLinkAll) Signature
             (dw == 0xBEE0BEE0);                                                                         // Signature check
         if(f) { break; }
     }
     if(!f) { return FALSE; }
-    po->CM.FLink = o;
+    po->CM.FLinkAll = o;
     // _CMHIVE UNICODE_STRING HiveRootPath
-    for(o = po->CM.FLink; o < 0xf00; o += 4) {
+    for(o = po->CM.FLinkAll; o < 0xf00; o += 4) {
         f = (*(PWORD)(pbCMHIVE + o) <= *(PWORD)(pbCMHIVE + o + 2)) &&                           // UNICODE_STRING.Length <= UNICODE_STRING.MaxLength
             (*(PWORD)(pbCMHIVE + o) > 12) &&                                                    // UNICODE_STRING.Length > 12 (\\REGISTRY\\)
             (*(PWORD)(pbCMHIVE + o) < 0xff) &&                                                  // UNICODE_STRING.Length < 0xff
@@ -560,7 +560,7 @@ BOOL VmmWinReg_FuzzHiveOffsets32(_In_ PVMM_PROCESS pProcessSystem, _In_ QWORD va
         po->CM.FileFullPathOpt = po->CM.HiveRootPathOpt - 0x010;
         po->CM.FileUserNameOpt = po->CM.HiveRootPathOpt - 0x008;
     }
-    po->CM._Size = max(po->CM.FLink, po->CM.HiveRootPathOpt) + 0x010;
+    po->CM._Size = max(po->CM.FLinkAll, po->CM.HiveRootPathOpt) + 0x010;
     // _HMAP_ENTRY SIZE AND OFFSETS
     ZeroMemory(dwHE, sizeof(dwHE));
     po->HE._Size = 0x00c;               // Most common (default try)
@@ -586,7 +586,7 @@ BOOL VmmWinReg_FuzzHiveOffsets32(_In_ PVMM_PROCESS pProcessSystem, _In_ QWORD va
     po->BB.Minor = 0x018;
     po->BB.FileName = 0x030;
     // CMHIVE virtual address hint
-    po->vaHintCMHIVE = vaCMHIVE ? vaCMHIVE : (*(PDWORD)(pbCMHIVE + po->CM.FLink) - po->CM.FLink);
+    po->vaHintCMHIVE = vaCMHIVE ? vaCMHIVE : (*(PDWORD)(pbCMHIVE + po->CM.FLinkAll) - po->CM.FLinkAll);
     VmmWinReg_FuzzHiveOffsets_PrintResultVerbose((PBYTE)dwHE, sizeof(dwHE));
     return TRUE;
 }
@@ -864,7 +864,7 @@ POB_MAP VmmWinReg_HiveMap_New()
         pObHiveMap,
         1,
         &ctxVmm->pRegistry->Offset.vaHintCMHIVE,
-        ctxVmm->pRegistry->Offset.CM.FLink,
+        ctxVmm->pRegistry->Offset.CM.FLinkAll,
         ctxVmm->pRegistry->Offset.CM._Size,
         f32 ? VmmWinReg_EnumHive32_Pre : VmmWinReg_EnumHive64_Pre,
         f32 ? VmmWinReg_EnumHive32_Post : VmmWinReg_EnumHive64_Post,

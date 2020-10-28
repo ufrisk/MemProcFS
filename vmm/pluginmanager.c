@@ -33,25 +33,41 @@
 // ----------------------------------------------------------------------------
 
 typedef struct tdPLUGIN_ENTRY {
-    struct tdPLUGIN_ENTRY *FLink;
+    struct tdPLUGIN_ENTRY *FLinkAll;
     struct tdPLUGIN_ENTRY *FLinkNotify;
+    struct tdPLUGIN_ENTRY *FLinkForensic;
     HMODULE hDLL;
     WCHAR wszName[32];
     DWORD dwNameHash;
     BOOL fRootModule;
     BOOL fProcessModule;
     BOOL(*pfnList)(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList);
-    NTSTATUS(*pfnRead)(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
-    NTSTATUS(*pfnWrite)(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset);
+    NTSTATUS(*pfnRead)(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
+    NTSTATUS(*pfnWrite)(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset);
     VOID(*pfnNotify)(_In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent);
     VOID(*pfnClose)();
     struct {
-        CHAR sNameShort[6];
-        CHAR _Reserved[2];
-        CHAR szFileUTF8[32];
-        CHAR szFileJSON[32];
-        VOID(*pfn)(_In_ HANDLE hTimeline, _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ QWORD qwValue, _In_ LPWSTR wszText));
-    } Timeline;
+        PVOID ctxfc;
+        PHANDLE phEventIngestFinish;
+        PVOID(*pfnInitialize)();
+        VOID(*pfnFinalize)(_In_opt_ PVOID ctxfc);
+        VOID(*pfnTimeline)(
+            _In_opt_ PVOID ctxfc,
+            _In_ HANDLE hTimeline,
+            _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ QWORD qwValue, _In_ LPWSTR wszText),
+            _In_ VOID(*pfnEntryAddBySql)(_In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPSTR *pszEntrySql));
+        VOID(*pfnIngestPhysmem)(_In_opt_ PVOID ctxfc, _In_ PVMMDLL_PLUGIN_FORENSIC_INGEST_PHYSMEM pIngestPhysmem);
+        VOID(*pfnIngestFinalize)(_In_opt_ PVOID ctxfc);
+        struct {
+            PVMMDLL_PLUGIN_FORENSIC_INGEST_PHYSMEM p;
+        } IngestPhysmem;
+        struct {
+            CHAR sNameShort[6];
+            CHAR _Reserved[2];
+            CHAR szFileUTF8[32];
+            CHAR szFileJSON[32];
+        } Timeline;
+    } fc;
 } PLUGIN_ENTRY, *PPLUGIN_ENTRY;
 
 #define PLUGIN_TREE_MAX_CHILDITEMS      32
@@ -149,10 +165,10 @@ VOID PluginManager_SetVisibility(_In_ BOOL fRoot, _In_ LPWSTR wszPluginPath, _In
 }
 
 BOOL PluginManager_ModuleExistsDll(_In_opt_ HMODULE hDLL) {
-    PPLUGIN_ENTRY pModule = (PPLUGIN_ENTRY)ctxVmm->PluginManager.FLink;
+    PPLUGIN_ENTRY pModule = (PPLUGIN_ENTRY)ctxVmm->PluginManager.FLinkAll;
     while(pModule) {
         if(hDLL && (hDLL == pModule->hDLL)) { return TRUE; }
-        pModule = pModule->FLink;
+        pModule = pModule->FLinkAll;
     }
     return FALSE;
 }
@@ -203,7 +219,7 @@ VOID PluginManager_List(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszPath, _In
     Statistics_CallEnd(STATISTICS_ID_PluginManager_List, tmStart);
 }
 
-NTSTATUS PluginManager_Read(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszPath, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS PluginManager_Read(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszPath, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     QWORD tmStart = Statistics_CallStart();
     NTSTATUS nt;
@@ -263,25 +279,115 @@ BOOL PluginManager_Notify(_In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DW
     return TRUE;
 }
 
-VOID PluginManager_Timeline(
+/*
+* Initialize plugins with forensic mode capabilities.
+*/
+VOID PluginManager_FcInitialize()
+{
+    QWORD tmStart = Statistics_CallStart();
+    PPLUGIN_ENTRY pModule = (PPLUGIN_ENTRY)ctxVmm->PluginManager.FLinkForensic;
+    while(pModule) {
+        if(pModule->fc.pfnInitialize) {
+            pModule->fc.ctxfc = pModule->fc.pfnInitialize();
+        }
+        pModule = pModule->FLinkForensic;
+    }
+    Statistics_CallEnd(STATISTICS_ID_PluginManager_FcInitialize, tmStart);
+}
+
+/*
+* Finalize plugins with forensic mode capabilities.
+*/
+VOID PluginManager_FcFinalize()
+{
+    QWORD tmStart = Statistics_CallStart();
+    PPLUGIN_ENTRY pModule = (PPLUGIN_ENTRY)ctxVmm->PluginManager.FLinkForensic;
+    while(pModule) {
+        if(pModule->fc.pfnFinalize) {
+            pModule->fc.pfnFinalize(pModule->fc.ctxfc);
+            pModule->fc.ctxfc = NULL;
+        }
+        pModule = pModule->FLinkForensic;
+    }
+    Statistics_CallEnd(STATISTICS_ID_PluginManager_FcFinalize, tmStart);
+}
+
+/*
+* Worker thread entry point:
+* Ingest physical memory into plugins with forensic mode capabilities.
+* -- pModule
+*/
+VOID PluginManager_FcIngestPhysmem_ThreadProc(PPLUGIN_ENTRY pModule)
+{
+    pModule->fc.pfnIngestPhysmem(pModule->fc.ctxfc, pModule->fc.IngestPhysmem.p);
+}
+
+/*
+* Ingest physical memory into plugins with forensic mode capabilities.
+* -- pIngestPhysmem
+*/
+VOID PluginManager_FcIngestPhysmem(_In_ PVMMDLL_PLUGIN_FORENSIC_INGEST_PHYSMEM pIngestPhysmem)
+{
+    QWORD tmStart = Statistics_CallStart();
+    PPLUGIN_ENTRY pModule = (PPLUGIN_ENTRY)ctxVmm->PluginManager.FLinkForensic;
+    while(pModule) {
+        if(pModule->fc.pfnIngestPhysmem) {
+            ResetEvent(pModule->fc.phEventIngestFinish);
+            pModule->fc.IngestPhysmem.p = pIngestPhysmem;
+            // ingestion will happen in parallel between all plugins, but this
+            // function will wait for all ingestion to finish before exiting.
+            VmmWork((LPTHREAD_START_ROUTINE)PluginManager_FcIngestPhysmem_ThreadProc, pModule, pModule->fc.phEventIngestFinish);
+        }
+        pModule = pModule->FLinkForensic;
+    }
+    WaitForMultipleObjects(ctxVmm->PluginManager.fc.cEvent, ctxVmm->PluginManager.fc.hEvent, TRUE, INFINITE);
+    Statistics_CallEnd(STATISTICS_ID_PluginManager_FcIngestPhysmem, tmStart);
+}
+
+/*
+* All ingestion actions are completed.
+*/
+VOID PluginManager_FcIngestFinalize()
+{
+    QWORD tmStart = Statistics_CallStart();
+    PPLUGIN_ENTRY pModule = (PPLUGIN_ENTRY)ctxVmm->PluginManager.FLinkForensic;
+    while(pModule) {
+        if(pModule->fc.pfnIngestFinalize) {
+            pModule->fc.pfnIngestFinalize(pModule->fc.ctxfc);
+        }
+        pModule = pModule->FLinkForensic;
+    }
+    Statistics_CallEnd(STATISTICS_ID_PluginManager_FcIngestPhysmem, tmStart);
+}
+
+/*
+* Register plugins with timelining capabilities with the timeline manager
+* and call into each plugin to allow them to add their timelining entries.
+* NB! This function is meant to be called by the core forensic subsystem only.
+* -- pfnRegister = callback function to register timeline module.
+* -- pfnClose = function to close the timeline handle.
+* -- pfnAddEntry = callback function to call to add a timelining entry.
+*/
+VOID PluginManager_FcTimeline(
     _In_ HANDLE(*pfnRegister)(_In_reads_(6) LPSTR sNameShort, _In_reads_(32) LPSTR szFileUTF8, _In_reads_(32) LPSTR szFileJSON),
     _In_ VOID(*pfnClose)(_In_ HANDLE hTimeline),
-    _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ QWORD qwValue, _In_ LPWSTR wszText)
+    _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ QWORD qwValue, _In_ LPWSTR wszText),
+    _In_ VOID(*pfnEntryAddBySql)(_In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPSTR *pszEntrySql)
 ) {
     HANDLE hTimeline;
     QWORD tmStart = Statistics_CallStart();
-    PPLUGIN_ENTRY pModule = (PPLUGIN_ENTRY)ctxVmm->PluginManager.FLink;
+    PPLUGIN_ENTRY pModule = (PPLUGIN_ENTRY)ctxVmm->PluginManager.FLinkForensic;
     while(pModule) {
-        if(pModule->Timeline.pfn) {
-            hTimeline = pfnRegister(pModule->Timeline.sNameShort, pModule->Timeline.szFileUTF8, pModule->Timeline.szFileJSON);
+        if(pModule->fc.pfnTimeline) {
+            hTimeline = pfnRegister(pModule->fc.Timeline.sNameShort, pModule->fc.Timeline.szFileUTF8, pModule->fc.Timeline.szFileJSON);
             if(hTimeline) {
-                pModule->Timeline.pfn(hTimeline, pfnAddEntry);
+                pModule->fc.pfnTimeline(pModule->fc.ctxfc, hTimeline, pfnAddEntry, pfnEntryAddBySql);
                 pfnClose(hTimeline);
             }
         }
-        pModule = pModule->FLink;
+        pModule = pModule->FLinkForensic;
     }
-    Statistics_CallEnd(STATISTICS_ID_PluginManager_Timeline, tmStart);
+    Statistics_CallEnd(STATISTICS_ID_PluginManager_FcTimeline, tmStart);
 }
 
 // ----------------------------------------------------------------------------
@@ -296,8 +402,9 @@ BOOL PluginManager_Register(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo)
     PPLUGIN_TREE pPluginTreeEntry;
     // 1: tests if plugin is valid
     pRegInfo->reg_info.wszPathName[127] = 0;
+    if(ctxVmm->PluginManager.fc.cEvent >= _countof(ctxVmm->PluginManager.fc.hEvent)) { return FALSE; }
     if(!pRegInfo || (pRegInfo->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRegInfo->wVersion > VMMDLL_PLUGIN_REGINFO_VERSION)) { return FALSE; }
-    if(!pRegInfo->reg_fn.pfnList || !pRegInfo->reg_info.wszPathName[0]) { return FALSE; }
+    if(!pRegInfo->reg_info.wszPathName[0]) { return FALSE; }
     wszPluginName = Util_PathSplitLastW(pRegInfo->reg_info.wszPathName);
     if(wcslen(wszPluginName) > 31) { return FALSE; }
     if(pRegInfo->reg_info.fRootModule && PluginManager_ModuleExists(ctxVmm->PluginManager.Root, pRegInfo->reg_info.wszPathName)) { return FALSE; }
@@ -316,17 +423,30 @@ BOOL PluginManager_Register(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo)
     pModule->pfnWrite = pRegInfo->reg_fn.pfnWrite;
     pModule->pfnNotify = pRegInfo->reg_fn.pfnNotify;
     pModule->pfnClose = pRegInfo->reg_fn.pfnClose;
-    pModule->Timeline.pfn = pRegInfo->reg_fn.pfnTimeline;
-    memcpy(pModule->Timeline.sNameShort, pRegInfo->reg_info.sTimelineNameShort, _countof(pModule->Timeline.sNameShort));
-    memcpy(pModule->Timeline.szFileUTF8, pRegInfo->reg_info.szTimelineFileUTF8, _countof(pModule->Timeline.szFileUTF8));
-    memcpy(pModule->Timeline.szFileJSON, pRegInfo->reg_info.szTimelineFileJSON, _countof(pModule->Timeline.szFileJSON));
+    // 3: register plugin (forensic functionality)
+    pModule->fc.pfnInitialize = pRegInfo->reg_fnfc.pfnInitialize;
+    pModule->fc.pfnFinalize = pRegInfo->reg_fnfc.pfnFinalize;
+    pModule->fc.pfnTimeline = pRegInfo->reg_fnfc.pfnTimeline;
+    pModule->fc.pfnIngestPhysmem = pRegInfo->reg_fnfc.pfnIngestPhysmem;
+    pModule->fc.pfnIngestFinalize = pRegInfo->reg_fnfc.pfnIngestFinalize;
+    memcpy(pModule->fc.Timeline.sNameShort, pRegInfo->reg_info.sTimelineNameShort, _countof(pModule->fc.Timeline.sNameShort));
+    memcpy(pModule->fc.Timeline.szFileUTF8, pRegInfo->reg_info.szTimelineFileUTF8, _countof(pModule->fc.Timeline.szFileUTF8));
+    memcpy(pModule->fc.Timeline.szFileJSON, pRegInfo->reg_info.szTimelineFileJSON, _countof(pModule->fc.Timeline.szFileJSON));
+    if(pRegInfo->reg_fnfc.pfnIngestPhysmem) {
+        ctxVmm->PluginManager.fc.hEvent[ctxVmm->PluginManager.fc.cEvent] = CreateEvent(NULL, TRUE, TRUE, NULL);
+        pModule->fc.phEventIngestFinish = ctxVmm->PluginManager.fc.hEvent[ctxVmm->PluginManager.fc.cEvent++];
+    }
     vmmprintfv("PluginManager: Loaded %s module: '%S'\n", (pModule->hDLL ? " native " : "built-in"), pRegInfo->reg_info.wszPathName);
     if(pModule->pfnNotify) {
         pModule->FLinkNotify = (PPLUGIN_ENTRY)ctxVmm->PluginManager.FLinkNotify;
         ctxVmm->PluginManager.FLinkNotify = pModule;
     }
-    pModule->FLink = (PPLUGIN_ENTRY)ctxVmm->PluginManager.FLink;
-    ctxVmm->PluginManager.FLink = pModule;
+    if(pModule->fc.pfnInitialize || pModule->fc.pfnFinalize || pModule->fc.pfnTimeline || pModule->fc.pfnIngestPhysmem || pModule->fc.pfnIngestFinalize) {
+        pModule->FLinkForensic = (PPLUGIN_ENTRY)ctxVmm->PluginManager.FLinkForensic;
+        ctxVmm->PluginManager.FLinkForensic = pModule;
+    }
+    pModule->FLinkAll = (PPLUGIN_ENTRY)ctxVmm->PluginManager.FLinkAll;
+    ctxVmm->PluginManager.FLinkAll = pModule;
     // 3: register plugin in plugin tree
     iPluginNameStart = (pRegInfo->reg_info.wszPathName[0] == '\\') ? 1 : 0;
     if(pModule->fRootModule) {
@@ -363,9 +483,9 @@ VOID PluginManager_Close()
     PluginManager_Close_Tree(pTreeRoot);
     PluginManager_Close_Tree(pTreeProc);
     ctxVmm->PluginManager.FLinkNotify = NULL;
-    while((pm = (PPLUGIN_ENTRY)ctxVmm->PluginManager.FLink)) {
+    while((pm = (PPLUGIN_ENTRY)ctxVmm->PluginManager.FLinkAll)) {
         // 1: Detach current module list entry from list
-        ctxVmm->PluginManager.FLink = pm->FLink;
+        ctxVmm->PluginManager.FLinkAll = pm->FLinkAll;
         // 2: Close module callback
         if(pm->pfnClose) {
             pm->pfnClose();
@@ -374,6 +494,10 @@ VOID PluginManager_Close()
         if(pm->hDLL && !PluginManager_ModuleExistsDll(pm->hDLL)) { FreeLibrary(pm->hDLL); }
         // 4: LocalFree this ListEntry
         LocalFree(pm);
+    }
+    // 5: Clean up events
+    while(ctxVmm->PluginManager.fc.cEvent) {
+        CloseHandle(ctxVmm->PluginManager.fc.hEvent[--ctxVmm->PluginManager.fc.cEvent]);
     }
 }
 
@@ -391,7 +515,7 @@ VOID PluginManager_Initialize_RegInfoInit(_Out_ PVMMDLL_PLUGIN_REGINFO pRI, _In_
 
 VOID PluginManager_Initialize_Python()
 {
-    LPSTR szPYTHON_VERSIONS_SUPPORTED[] = { "python39.dll", "python38.dll", "python37.dll", "python36.dll"};
+    LPSTR szPYTHON_VERSIONS_SUPPORTED[] = { "python315.dll", "python314.dll", "python313.dll", "python312.dll", "python311.dll", "python310.dll", "python39.dll", "python38.dll", "python37.dll", "python36.dll"};
     DWORD cszPYTHON_VERSIONS_SUPPORTED = (sizeof(szPYTHON_VERSIONS_SUPPORTED) / sizeof(LPSTR));
     DWORD i;
     BOOL fBitnessFail = FALSE;
@@ -498,9 +622,9 @@ BOOL PluginManager_Initialize()
     HMODULE hDLL;
     VOID(*pfnInitializeVmmPlugin)(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo);
     // 1: check if already initialized
-    if(ctxVmm->PluginManager.FLink) { return FALSE; }
+    if(ctxVmm->PluginManager.FLinkAll) { return FALSE; }
     EnterCriticalSection(&ctxVmm->LockMaster);
-    if(ctxVmm->PluginManager.FLink) { goto fail; }
+    if(ctxVmm->PluginManager.FLinkAll) { goto fail; }
     // 2: set up root nodes of process plugin tree
     ctxVmm->PluginManager.Root = LocalAlloc(LMEM_ZEROINIT, sizeof(PLUGIN_TREE));
     ctxVmm->PluginManager.Proc = LocalAlloc(LMEM_ZEROINIT, sizeof(PLUGIN_TREE));

@@ -12,7 +12,7 @@
 #define HANDLEINFO_LINELENGTH       222ULL
 
 _Success_(return == 0)
-NTSTATUS HandleInfo_Read_HandleMap(_In_ PVMMOB_MAP_HANDLE pHandleMap, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS HandleInfo_Read_HandleMap(_In_ PVMMOB_MAP_HANDLE pHandleMap, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt;
     LPSTR sz;
@@ -35,11 +35,10 @@ NTSTATUS HandleInfo_Read_HandleMap(_In_ PVMMOB_MAP_HANDLE pHandleMap, _Out_ PBYT
             *(PDWORD)szType = pH->dwPoolTag;
             szType[4] = 0;
         }
-        o += Util_snprintf_ln(
+        o += Util_snwprintf_u8ln(
             sz + o,
-            cbMax - o,
             cbLINELENGTH,
-            "%04x%7i%8x %16llx %6x %-16s %-160S\n",
+            L"%04x%7i%8x %16llx %6x %-16S %s",
             (DWORD)i,
             pH->dwPID,
             pH->dwHandle,
@@ -65,7 +64,7 @@ NTSTATUS HandleInfo_Read_HandleMap(_In_ PVMMOB_MAP_HANDLE pHandleMap, _Out_ PBYT
 * -- return
 */
 _Success_(return == 0)
-NTSTATUS HandleInfo_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS HandleInfo_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PVMMOB_MAP_HANDLE pObHandleMap = NULL;

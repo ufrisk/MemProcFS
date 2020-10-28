@@ -177,6 +177,41 @@ BOOL MmX86_Virt2Phys(_In_ QWORD paPT, _In_ BOOL fUserOnly, _In_ BYTE iPML, _In_ 
     return TRUE;
 }
 
+VOID MmX86_Virt2PhysVadEx(_In_ QWORD paPT, _Inout_ PVMMOB_MAP_VADEX pVadEx, _In_ BYTE iPML, _Inout_ PDWORD piVadEx)
+{
+    DWORD pte, iPte, iVadEx;
+    PVMMOB_CACHE_MEM pObPTEs = NULL;
+    if(iPML == (BYTE)-1) { iPML = 2; }
+    if((pVadEx->pMap[*piVadEx].va > 0xffffffff) || (paPT > 0xffffffff) || !(pObPTEs = VmmTlbGetPageTable(paPT & 0xfffff000, FALSE))) {
+        *piVadEx = *piVadEx + 1;
+        return;
+    }
+next_entry:
+    iVadEx = *piVadEx;
+    iPte = 0x3ff & (pVadEx->pMap[iVadEx].va >> MMX86_PAGETABLEMAP_PML_REGION_SIZE[iPML]);
+    pte = pObPTEs->pdw[iPte];
+    if(!MMX86_PTE_IS_VALID(pte, iPML)) { goto next_check; } // NOT VALID
+    if(!(pte & 0x04)) { goto next_check; }                  // SUPERVISOR PAGE & USER MODE REQ
+    if((iPML == 2) && !(pte & 0x80) /* PS */) {
+        MmX86_Virt2PhysVadEx(pte, pVadEx, 1, piVadEx);
+        Ob_DECREF(pObPTEs);
+        return;
+    }
+    if(iPML == 1) {                     // 4kB PAGE
+        pVadEx->pMap[iVadEx].pa = pte & 0xfffff000;
+        pVadEx->pMap[iVadEx].tp = VMM_PTE_TP_HARDWARE;
+    } else if(!(pte & 0x003e0000)) {    // 4MB PAGE
+        pVadEx->pMap[iVadEx].pa = (((QWORD)(pte & 0x0001e000)) << (32 - 13)) + (pte & 0xffc00000) + (pVadEx->pMap[iVadEx].va & 0x003ff000);
+        pVadEx->pMap[iVadEx].tp = VMM_PTE_TP_HARDWARE;
+    }
+next_check:
+    pVadEx->pMap[iVadEx].pte = pte;
+    pVadEx->pMap[iVadEx].iPML = iPML;
+    *piVadEx = *piVadEx + 1;
+    if((iPML == 1) && (iPte < 0x3ff) && (iVadEx + 1 < pVadEx->cMap) && (pVadEx->pMap[iVadEx].va + 0x1000 == pVadEx->pMap[iVadEx + 1].va)) { goto next_entry; }
+    Ob_DECREF(pObPTEs);
+}
+
 VOID MmX86_Virt2PhysGetInformation_DoWork(_Inout_ PVMM_PROCESS pProcess, _Inout_ PVMM_VIRT2PHYS_INFORMATION pVirt2PhysInfo, _In_ BYTE iPML, _In_ QWORD paPT)
 {
     PVMMOB_CACHE_MEM pObPTEs;
@@ -281,6 +316,7 @@ VOID MmX86_Initialize()
     }
     ctxVmm->fnMemoryModel.pfnClose = MmX86_Close;
     ctxVmm->fnMemoryModel.pfnVirt2Phys = MmX86_Virt2Phys;
+    ctxVmm->fnMemoryModel.pfnVirt2PhysVadEx = MmX86_Virt2PhysVadEx;
     ctxVmm->fnMemoryModel.pfnVirt2PhysGetInformation = MmX86_Virt2PhysGetInformation;
     ctxVmm->fnMemoryModel.pfnPhys2VirtGetInformation = MmX86_Phys2VirtGetInformation;
     ctxVmm->fnMemoryModel.pfnPteMapInitialize = MmX86_PteMapInitialize;

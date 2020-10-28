@@ -413,6 +413,8 @@ VMMPYC_ProcessGetVadMap(PyObject *self, PyObject *args)
             VMMPYC_ProcessGetVadMap_Protection(pe, szVadProtection);
             PyDict_SetItemString_DECREF(pyDict, "start", PyLong_FromUnsignedLongLong(pe->vaStart));
             PyDict_SetItemString_DECREF(pyDict, "end", PyLong_FromUnsignedLongLong(pe->vaEnd));
+            PyDict_SetItemString_DECREF(pyDict, "cvadex-pages", PyLong_FromUnsignedLong(pe->cVadExPages));
+            PyDict_SetItemString_DECREF(pyDict, "cvadex-pages-base", PyLong_FromUnsignedLong(pe->cVadExPagesBase));
             PyDict_SetItemString_DECREF(pyDict, "subsection", PyLong_FromUnsignedLongLong(pe->vaSubsection));
             PyDict_SetItemString_DECREF(pyDict, "prototype", PyLong_FromUnsignedLongLong(pe->vaPrototypePte));
             PyDict_SetItemString_DECREF(pyDict, "prototype-len", PyLong_FromUnsignedLong(pe->cbPrototypePte));
@@ -788,7 +790,7 @@ VMMPYC_MapGetPfns(PyObject *self, PyObject *args)
 
 // () -> [{...}]
 static PyObject*
-VMMPYC_GetUsers(PyObject* self, PyObject* args)
+VMMPYC_GetUsers(PyObject *self, PyObject *args)
 {
     PyObject *pyList, *pyDict;
     BOOL result;
@@ -820,6 +822,55 @@ VMMPYC_GetUsers(PyObject* self, PyObject* args)
     }
     LocalFree(pUserMap);
     return pyList;
+}
+
+// () -> {1: {...}, ...}
+static PyObject*
+VMMPYC_MapGetServices(PyObject *self, PyObject *args)
+{
+    PyObject *pyDictResult, *pyDict;
+    BOOL result;
+    DWORD cbServiceMap = 0;
+    ULONG64 i;
+    PVMMDLL_MAP_SERVICE pServiceMap = NULL;
+    PVMMDLL_MAP_SERVICEENTRY pe;
+    if(!(pyDictResult = PyDict_New())) { return PyErr_NoMemory(); }
+    Py_BEGIN_ALLOW_THREADS;
+    result =
+        VMMDLL_Map_GetServices(NULL, &cbServiceMap) &&
+        cbServiceMap &&
+        (pServiceMap = LocalAlloc(0, cbServiceMap)) &&
+        VMMDLL_Map_GetServices(pServiceMap, &cbServiceMap);
+    Py_END_ALLOW_THREADS;
+    if(!result || (pServiceMap->dwVersion != VMMDLL_MAP_SERVICE_VERSION)) {
+        Py_DECREF(pyDictResult);
+        LocalFree(pServiceMap);
+        return PyErr_Format(PyExc_RuntimeError, "VMMPYC_MapGetServices: Failed.");
+    }
+    for(i = 0; i < pServiceMap->cMap; i++) {
+        if((pyDict = PyDict_New())) {
+            pe = pServiceMap->pMap + i;
+            PyDict_SetItemString_DECREF(pyDict, "ordinal", PyLong_FromUnsignedLong(pe->dwOrdinal));
+            PyDict_SetItemString_DECREF(pyDict, "va-obj", PyLong_FromUnsignedLongLong(pe->vaObj));
+            PyDict_SetItemString_DECREF(pyDict, "pid", PyLong_FromUnsignedLong(pe->dwPID));
+            PyDict_SetItemString_DECREF(pyDict, "dwStartType", PyLong_FromUnsignedLong(pe->dwStartType));
+            PyDict_SetItemString_DECREF(pyDict, "dwServiceType", PyLong_FromUnsignedLong(pe->ServiceStatus.dwServiceType));
+            PyDict_SetItemString_DECREF(pyDict, "dwCurrentState", PyLong_FromUnsignedLong(pe->ServiceStatus.dwCurrentState));
+            PyDict_SetItemString_DECREF(pyDict, "dwControlsAccepted", PyLong_FromUnsignedLong(pe->ServiceStatus.dwControlsAccepted));
+            PyDict_SetItemString_DECREF(pyDict, "dwWin32ExitCode", PyLong_FromUnsignedLong(pe->ServiceStatus.dwWin32ExitCode));
+            PyDict_SetItemString_DECREF(pyDict, "dwServiceSpecificExitCode", PyLong_FromUnsignedLong(pe->ServiceStatus.dwServiceSpecificExitCode));
+            PyDict_SetItemString_DECREF(pyDict, "dwCheckPoint", PyLong_FromUnsignedLong(pe->ServiceStatus.dwCheckPoint));
+            PyDict_SetItemString_DECREF(pyDict, "dwWaitHint", PyLong_FromUnsignedLong(pe->ServiceStatus.dwWaitHint));
+            PyDict_SetItemString_DECREF(pyDict, "name", PyUnicode_FromWideChar(pe->wszServiceName, -1));
+            PyDict_SetItemString_DECREF(pyDict, "name-display", PyUnicode_FromWideChar(pe->wszDisplayName, -1));
+            PyDict_SetItemString_DECREF(pyDict, "path", PyUnicode_FromWideChar(pe->wszPath, -1));
+            PyDict_SetItemString_DECREF(pyDict, "user-tp", PyUnicode_FromWideChar(pe->wszUserTp, -1));
+            PyDict_SetItemString_DECREF(pyDict, "user-acct", PyUnicode_FromWideChar(pe->wszUserAcct, -1));
+            PyDict_SetItemDWORD_DECREF(pyDictResult, pe->dwOrdinal, pyDict);
+        }
+    }
+    LocalFree(pServiceMap);
+    return pyDictResult;
 }
 
 // (STR) -> DWORD
@@ -1665,6 +1716,7 @@ static PyMethodDef VMMPYC_EmbMethods[] = {
     {"VMMPYC_MapGetNet", VMMPYC_MapGetNet, METH_VARARGS, "Retrieve the network connection map."},
     {"VMMPYC_MapGetPhysMem", VMMPYC_MapGetPhysMem, METH_VARARGS, "Retrieve the physical memory map from the system."},
     {"VMMPYC_GetUsers", VMMPYC_GetUsers, METH_VARARGS, "Retrieve the non-well known users from the system."},
+    {"VMMPYC_MapGetServices", VMMPYC_MapGetServices, METH_VARARGS, "Retrieve services from the service control manager (SCM) of the target system."},
     {"VMMPYC_MapGetPfns", VMMPYC_MapGetPfns, METH_VARARGS, "Retrieve page frame number (PFN) information for select page frame numbers."},
     {"VMMPYC_ProcessGetInformation", VMMPYC_ProcessGetInformation, METH_VARARGS, "Retrieve process information for a specific process."},
     {"VMMPYC_ProcessGetDirectories", VMMPYC_ProcessGetDirectories, METH_VARARGS, "Retrieve the data directories for a specific process and module."},

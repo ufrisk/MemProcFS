@@ -41,7 +41,7 @@ BOOL MWinReg_Read_HiveFile(POB_REGISTRY_HIVE pHive, _Out_writes_(*pcbRead) PBYTE
 }
 
 _Success_(return)
-BOOL MWinReg_Write_HiveFile(POB_REGISTRY_HIVE pHive, _In_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
+BOOL MWinReg_Write_HiveFile(POB_REGISTRY_HIVE pHive, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
 {
     DWORD cbWriteBaseBlock;
     PVMM_PROCESS pObSystemProcess = NULL;
@@ -103,7 +103,7 @@ DWORD MWinReg_Read_KeyValue_GetAscii(_In_ LPSTR szKeyName, _In_ LPWSTR wszData, 
     return cszMeta;
 }
 
-NTSTATUS MWinReg_Read_KeyValue(_In_ LPWSTR wszPathFull, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MWinReg_Read_KeyValue(_In_ LPWSTR wszPathFull, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     POB_REGISTRY_HIVE pObHive = NULL;
@@ -182,7 +182,7 @@ finish:
     return nt;
 }
 
-NTSTATUS MWinReg_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MWinReg_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     BOOL fResult;
     POB_REGISTRY_HIVE pObHive = NULL;
@@ -203,7 +203,7 @@ NTSTATUS MWinReg_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWOR
     return VMMDLL_STATUS_FILE_INVALID;
 }
 
-NTSTATUS MWinReg_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
+NTSTATUS MWinReg_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
 {
     POB_REGISTRY_HIVE pObHive = NULL;
     WCHAR wszTopPath[64];

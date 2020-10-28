@@ -157,7 +157,7 @@ NTSTATUS Phys2Virt_ReadVirtProcess(_In_ PVMM_PROCESS pProcess, _Out_ PBYTE pb, _
 * -- cbOffset
 * -- return
 */
-NTSTATUS Phys2Virt_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS Phys2Virt_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt;
     PVMMOB_PHYS2VIRT_INFORMATION pObPhys2Virt = NULL;
@@ -196,7 +196,7 @@ NTSTATUS Phys2Virt_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DW
 * -- cbOffset
 * -- return
 */
-NTSTATUS Phys2Virt_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
+NTSTATUS Phys2Virt_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
 {
     BYTE pbBuffer[17];
     PVMM_PROCESS pProcess = (PVMM_PROCESS)ctx->pProcess;

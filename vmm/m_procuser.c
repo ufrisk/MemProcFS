@@ -20,12 +20,10 @@
 * -- return
 */
 _Success_(return == 0)
-NTSTATUS M_ProcUser_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS M_ProcUser_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
-    DWORD cwszBuffer = 0;
     WCHAR wszBuffer[MAX_PATH + 1];
-    CHAR szBuffer[MAX_PATH + 1] = { 0 };
     PVMM_PROCESS pObProcess = NULL;
     if(!(pObProcess = VmmProcessGetEx(NULL, ctx->dwPID, VMM_FLAG_PROCESS_TOKEN))) { goto fail; }
     if(!pObProcess->win.TOKEN.fInitialized || !pObProcess->win.TOKEN.fSID) { goto fail; }
@@ -35,10 +33,8 @@ NTSTATUS M_ProcUser_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ D
             pObProcess->win.TOKEN.szSID ? strlen(pObProcess->win.TOKEN.szSID) : 0,
             pb, cb, pcbRead, cbOffset);
     } else if(!_wcsicmp(ctx->wszPath, L"user.txt")) {
-        if(VmmWinUser_GetNameW(&pObProcess->win.TOKEN.SID, wszBuffer, MAX_PATH, &cwszBuffer, NULL)) {
-            cwszBuffer = Util_snprintf_ln(szBuffer, MAX_PATH, cwszBuffer, "%S", wszBuffer);
-        }
-        nt = Util_VfsReadFile_FromPBYTE((PBYTE)szBuffer, cwszBuffer, pb, cb, pcbRead, cbOffset);
+        VmmWinUser_GetNameW(&pObProcess->win.TOKEN.SID, wszBuffer, MAX_PATH, NULL, NULL);
+        nt = Util_VfsReadFile_FromTextWtoU8(wszBuffer, pb, cb, pcbRead, cbOffset);
     } else if(!_wcsicmp(ctx->wszPath, L"luid.txt")) {
         nt = Util_VfsReadFile_FromQWORD(pObProcess->win.TOKEN.qwLUID, pb, cb, pcbRead, cbOffset, FALSE);
     } else if(!_wcsicmp(ctx->wszPath, L"session.txt")) {
@@ -60,15 +56,17 @@ fail:
 BOOL M_ProcUser_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 {
     BOOL fResult = FALSE;
-    DWORD cwszName;
+    DWORD cuszName;
+    WCHAR wszBuffer[MAX_PATH + 1] = { 0 };
     PVMM_PROCESS pObProcess = NULL;   
     if(!(pObProcess = VmmProcessGetEx(NULL, ctx->dwPID, VMM_FLAG_PROCESS_TOKEN))) { goto fail; }
     if(!pObProcess->win.TOKEN.fInitialized || !pObProcess->win.TOKEN.fSID) { goto fail; }
     if(pObProcess->win.TOKEN.szSID) {
         VMMDLL_VfsList_AddFile(pFileList, L"sid.txt", strlen(pObProcess->win.TOKEN.szSID), NULL);
     }
-    if(VmmWinUser_GetNameW(&pObProcess->win.TOKEN.SID, NULL, 0, &cwszName, NULL)) {
-        VMMDLL_VfsList_AddFile(pFileList, L"user.txt", cwszName, NULL);
+    if(VmmWinUser_GetNameW(&pObProcess->win.TOKEN.SID, wszBuffer, MAX_PATH, NULL, NULL)) {
+        cuszName = wcslen_u8(wszBuffer);
+        VMMDLL_VfsList_AddFile(pFileList, L"user.txt", cuszName, NULL);
     }
     VMMDLL_VfsList_AddFile(pFileList, L"luid.txt", 16, NULL);
     VMMDLL_VfsList_AddFile(pFileList, L"session.txt", 8, NULL);

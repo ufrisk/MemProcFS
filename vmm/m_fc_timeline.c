@@ -44,7 +44,7 @@ NTSTATUS M_FcTimeline_ReadInfo(_In_ DWORD dwTimelineType, _Out_ PBYTE pb, _In_ D
             pe->data64
         );
         o += WideCharToMultiByte(CP_UTF8, 0, pe->wszText, -1, szuBuffer + o, (int)(cszuBuffer - o), NULL, NULL);
-        if(o) {
+        if(o && (o <= cszuBuffer)) {
             szuBuffer[o - 1] = '\n';
         }
     }
@@ -55,7 +55,7 @@ fail:
     return nt;
 }
 
-NTSTATUS M_FcTimeline_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS M_FcTimeline_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     DWORD i;
     PFC_TIMELINE_INFO pi;
@@ -90,7 +90,7 @@ BOOL M_FcTimeline_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileLis
 
 VOID M_FcTimeline_Notify(_In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent)
 {
-    if((fEvent == VMMDLL_PLUGIN_EVENT_FORENSIC_INIT_COMPLETE) && ctxFc->fEnableTimeline) {
+    if(fEvent == VMMDLL_PLUGIN_NOTIFY_FORENSIC_INIT_COMPLETE) {
         PluginManager_SetVisibility(TRUE, L"\\forensic\\timeline", TRUE);
     }
 }

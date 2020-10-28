@@ -120,15 +120,15 @@
   <ItemGroup>
     <ClInclude Include="..\includes\leechcore.h" />
     <ClInclude Include="fc.h" />
-    <ClInclude Include="include\sqlite3.h" />
-    <ClInclude Include="include\sqlite3ext.h" />
     <ClInclude Include="mm.h" />
     <ClInclude Include="mm_pfn.h" />
     <ClInclude Include="m_modules.h" />
-    <ClInclude Include="ob.h" />
+    <ClInclude Include="ob\ob.h" />
     <ClInclude Include="pdb.h" />
     <ClInclude Include="pe.h" />
     <ClInclude Include="resource.h" />
+    <ClInclude Include="sqlite\sqlite3.h" />
+    <ClInclude Include="sqlite\sqlite3ext.h" />
     <ClInclude Include="statistics.h" />
     <ClInclude Include="sysquery.h" />
     <ClInclude Include="util.h" />
@@ -143,12 +143,10 @@
     <ClInclude Include="vmmwininit.h" />
     <ClInclude Include="vmmwinobj.h" />
     <ClInclude Include="vmmwinreg.h" />
+    <ClInclude Include="vmmwinsvc.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="fc.c" />
-    <ClCompile Include="fc_ntfs.c" />
-    <ClCompile Include="fc_timeline.c" />
-    <ClCompile Include="include\sqlite3.c" />
     <ClCompile Include="mm_pfn.c" />
     <ClCompile Include="mm_vad.c" />
     <ClCompile Include="mm_win.c" />
@@ -157,6 +155,9 @@
     <ClCompile Include="mm_x86pae.c" />
     <ClCompile Include="m_fc.c" />
     <ClCompile Include="m_fc_ntfs.c" />
+    <ClCompile Include="m_fc_proc.c" />
+    <ClCompile Include="m_fc_registry.c" />
+    <ClCompile Include="m_fc_thread.c" />
     <ClCompile Include="m_fc_timeline.c" />
     <ClCompile Include="m_file_handles_vads.c" />
     <ClCompile Include="m_file_modules.c" />
@@ -171,17 +172,19 @@
     <ClCompile Include="m_sysinfo_mem.c" />
     <ClCompile Include="m_sysinfo_net.c" />
     <ClCompile Include="m_sysinfo_proc.c" />
+    <ClCompile Include="m_sysinfo_svc.c" />
     <ClCompile Include="m_sysinfo_syscall.c" />
     <ClCompile Include="m_threadinfo.c" />
     <ClCompile Include="m_vfsproc.c" />
     <ClCompile Include="m_vfsroot.c" />
     <ClCompile Include="m_winreg.c" />
-    <ClCompile Include="ob_container.c" />
-    <ClCompile Include="ob_core.c" />
-    <ClCompile Include="ob_map.c" />
-    <ClCompile Include="ob_set.c" />
+    <ClCompile Include="ob\ob_container.c" />
+    <ClCompile Include="ob\ob_core.c" />
+    <ClCompile Include="ob\ob_map.c" />
+    <ClCompile Include="ob\ob_set.c" />
     <ClCompile Include="pdb.c" />
     <ClCompile Include="pe.c" />
+    <ClCompile Include="sqlite\sqlite3.c" />
     <ClCompile Include="statistics.c" />
     <ClCompile Include="sysquery.c" />
     <ClCompile Include="util.c" />
@@ -196,6 +199,7 @@
     <ClCompile Include="vmmwininit.c" />
     <ClCompile Include="vmmwinobj.c" />
     <ClCompile Include="vmmwinreg.c" />
+    <ClCompile Include="vmmwinsvc.c" />
   </ItemGroup>
   <ItemGroup>
     <None Include="vmmdll.def" />

@@ -6,13 +6,13 @@
 
 #include "vmm.h"
 #include "mm.h"
-#include "ob.h"
 #include "pdb.h"
 #include "vmmproc.h"
 #include "vmmwin.h"
 #include "vmmwindef.h"
 #include "vmmwinobj.h"
 #include "vmmwinreg.h"
+#include "vmmwinsvc.h"
 #include "vmmnet.h"
 #include "pluginmanager.h"
 #include "util.h"
@@ -544,24 +544,20 @@ BOOL VmmMap_GetPte(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_PTE *ppObPteMap,
         (*ppObPteMap = Ob_INCREF(pProcess->Map.pObPte));
 }
 
-int VmmMap_GetPteEntry_CmpFind(_In_ QWORD vaFind, _In_ PVMM_MAP_PTEENTRY pEntry)
-{
-    if(pEntry->vaBase > vaFind) { return -1; }
-    if(pEntry->vaBase + (pEntry->cPages << 12) - 1 < vaFind) { return 1; }
-    return 0;
-}
-
 /*
-* Retrieve a single PVMM_MAP_PTEENTRY from the PTE hardware page table memory map.
+* Retrieve the VAD extended memory map by range specified by iPage and cPage.
+* CALLER DECREF: ppObVadExMap
 * -- pProcess
-* -- ppObPteMap
-* -- fExtendedText
-* -- return = PTR to PTEENTRY or NULL on fail. Must not be used out of pPteMap scope.
+* -- ppObVadExMap
+* -- iPage = index of range start in vad map.
+* -- cPage = number of pages, starting at iPage.
+* -- return
 */
-PVMM_MAP_PTEENTRY VmmMap_GetPteEntry(_In_ PVMMOB_MAP_PTE pPteMap, _In_ QWORD va)
+_Success_(return)
+BOOL VmmMap_GetVadEx(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_VADEX *ppObVadExMap, _In_ DWORD iPage, _In_ DWORD cPage)
 {
-    if(!pPteMap) { return NULL; }
-    return Util_qfind((PVOID)va, pPteMap->cMap, pPteMap->pMap, sizeof(VMM_MAP_PTEENTRY), (int(*)(PVOID, PVOID))VmmMap_GetPteEntry_CmpFind);
+    *ppObVadExMap = MmVadEx_MapInitialize(pProcess, iPage, cPage);
+    return *ppObVadExMap ? TRUE : FALSE;
 }
 
 /*
@@ -772,6 +768,23 @@ BOOL VmmMap_GetNet(_Out_ PVMMOB_MAP_NET *ppObNetMap)
     }
     *ppObNetMap = pObNetMap;
     return pObNetMap != NULL;
+}
+
+/*
+* Retrieve the SERVICES map
+* CALLER DECREF: ppObServiceMap
+* -- ppObServiceMap
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetService(_Out_ PVMMOB_MAP_SERVICE *ppObServiceMap)
+{
+    PVMMOB_MAP_SERVICE pObSvcMap = ObContainer_GetOb(ctxVmm->pObCMapService);
+    if(!pObSvcMap) {
+        pObSvcMap = VmmWinSvc_Initialize();
+    }
+    *ppObServiceMap = pObSvcMap;
+    return pObSvcMap != NULL;
 }
 
 // ----------------------------------------------------------------------------
@@ -1007,7 +1020,6 @@ VOID VmmProcessStatic_CloseObCallback(_In_ PVOID pVmmOb)
     Ob_DECREF_NULL(&pProcessStatic->pObCLdrModulesPrefetch32);
     Ob_DECREF_NULL(&pProcessStatic->pObCLdrModulesPrefetch64);
     Ob_DECREF_NULL(&pProcessStatic->pObCMapThreadPrefetch);
-    Ob_DECREF_NULL(&pProcessStatic->Plugin.pObCMiniDump);
     LocalFree(pProcessStatic->uszPathKernel);
     LocalFree(pProcessStatic->wszPathKernel);
     LocalFree(pProcessStatic->UserProcessParams.uszCommandLine);
@@ -1030,7 +1042,6 @@ VOID VmmProcessStatic_Initialize(_In_ PVMM_PROCESS pProcess)
         pProcess->pObPersistent->pObCLdrModulesPrefetch32 = ObContainer_New(NULL);
         pProcess->pObPersistent->pObCLdrModulesPrefetch64 = ObContainer_New(NULL);
         pProcess->pObPersistent->pObCMapThreadPrefetch = ObContainer_New(NULL);
-        pProcess->pObPersistent->Plugin.pObCMiniDump = ObContainer_New(NULL);
     }
     LeaveCriticalSection(&pProcess->LockUpdate);
 }
@@ -1540,7 +1551,7 @@ VOID VmmWriteScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_ PPMEM_SCATTER pp
         }
         // paged "read" also translate virtual -> physical for some
         // types of paged memory such as transition and prototype.
-        ctxVmm->fnMemoryModel.pfnPagedRead(pProcess, pMEM->qwA, qwPA_PTE, NULL, &qwPagedPA, 0);
+        ctxVmm->fnMemoryModel.pfnPagedRead(pProcess, pMEM->qwA, qwPA_PTE, NULL, &qwPagedPA, NULL, 0);
         pMEM->qwA = qwPagedPA ? qwPagedPA : -1;
     }
     VmmWriteScatterPhysical(ppMEMsVirt, cpMEMsVirt);
@@ -1695,7 +1706,7 @@ VOID VmmReadScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_updates_(cpMEMsVir
         fVirt2Phys = !fAltAddrPte && VmmVirt2Phys(pProcess, pIoVA->qwA, &qwPA);
         // PAGED MEMORY
         if(!fVirt2Phys && fPaging && (pIoVA->cb == 0x1000) && ctxVmm->fnMemoryModel.pfnPagedRead) {
-            if(ctxVmm->fnMemoryModel.pfnPagedRead(pProcess, (fAltAddrPte ? 0 : pIoVA->qwA), (fAltAddrPte ? pIoVA->qwA : qwPA), pIoVA->pb, &qwPagedPA, flags)) {
+            if(ctxVmm->fnMemoryModel.pfnPagedRead(pProcess, (fAltAddrPte ? 0 : pIoVA->qwA), (fAltAddrPte ? pIoVA->qwA : qwPA), pIoVA->pb, &qwPagedPA, NULL, flags)) {
                 continue;
             }
             if(qwPagedPA) {
@@ -1788,7 +1799,7 @@ PVMMOB_PHYS2VIRT_INFORMATION VmmPhys2VirtGetInformation(_In_ PVMM_PROCESS pProce
 VOID VmmClose()
 {
     if(!ctxVmm) { return; }
-    if(ctxVmm->PluginManager.FLink) { PluginManager_Close(); }
+    if(ctxVmm->PluginManager.FLinkAll) { PluginManager_Close(); }
     VmmWork_Close();
     VmmWinObj_Close();
     VmmWinReg_Close();
@@ -1809,6 +1820,7 @@ VOID VmmClose()
     Ob_DECREF_NULL(&ctxVmm->pObCMapPhysMem);
     Ob_DECREF_NULL(&ctxVmm->pObCMapUser);
     Ob_DECREF_NULL(&ctxVmm->pObCMapNet);
+    Ob_DECREF_NULL(&ctxVmm->pObCMapService);
     Ob_DECREF_NULL(&ctxVmm->pObCCachePrefetchEPROCESS);
     Ob_DECREF_NULL(&ctxVmm->pObCCachePrefetchRegistry);
     DeleteCriticalSection(&ctxVmm->LockMaster);
@@ -2096,6 +2108,7 @@ BOOL VmmInitialize()
     ctxVmm->pObCMapPhysMem = ObContainer_New(NULL);
     ctxVmm->pObCMapUser = ObContainer_New(NULL);
     ctxVmm->pObCMapNet = ObContainer_New(NULL);
+    ctxVmm->pObCMapService = ObContainer_New(NULL);
     ctxVmm->pObCCachePrefetchEPROCESS = ObContainer_New(NULL);
     ctxVmm->pObCCachePrefetchRegistry = ObContainer_New(NULL);
     InitializeCriticalSection(&ctxVmm->LockMaster);

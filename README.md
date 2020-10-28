@@ -195,5 +195,9 @@ v1.1-v2.10
 * Network UDP and TCP listen socket support.
 * C# API and examples - located in `vmmsharp` project.
 
-Latest:
- * Bug fixes.
+[v3.5](https://github.com/ufrisk/MemProcFS/releases/tag/v3.5)
+* Bug fixes.
+* New Features:
+ * Minidump for live processes.
+ * Services information.
+ * Memmap: Verbose VAD with individual page info.

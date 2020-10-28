@@ -615,7 +615,7 @@ BOOL PE_FileRaw_Read(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _Out_ 
 }
 
 _Success_(return)
-BOOL PE_FileRaw_Write(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ DWORD cbOffset)
+BOOL PE_FileRaw_Write(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ DWORD cbOffset)
 {
     BOOL result;
     DWORD iRegion, cbOffsetBuffer;

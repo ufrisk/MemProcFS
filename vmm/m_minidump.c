@@ -14,12 +14,15 @@
 #include "version.h"
 #include <DbgHelp.h>
 
+#define M_MINIDUMP_DYNAMIC_DUMP_MAX_AGE_MS      30*1000
+
+POB_MAP g_pmOb_MMINIDUMP_CONTEXT = NULL;
+
 LPCSTR szMMINIDUMP_README =
 "Information about the minidump module                                        \n" \
 "=====================================                                        \n" \
 "The minidump module generates a minidump.dmp .dmp file for processes.        \n" \
 " Prerequisites:                                                              \n" \
-"  - static memory dump analyzed (no live memory from PCILeech/driver).       \n" \
 "  - symbols from Microsoft symbol server must be downloaded and active.      \n" \
 "  - process must be an active user-mode (non-kernel) process.                \n";
 
@@ -28,6 +31,8 @@ typedef struct tdOB_M_MINIDUMP_CONTEXT {
     DWORD cb;
     PBYTE pb;
     QWORD cbMemory;
+    QWORD qwTimeUpdate;
+    QWORD qwLastAccessTickCount64;
     struct {
         DWORD cb;
         DWORD rva;
@@ -203,7 +208,13 @@ VOID M_MiniDump_CallbackCleanup_ObMiniDumpContext(POB_M_MINIDUMP_CONTEXT pOb)
     LocalFree(pOb->pb);
 }
 
-VOID M_MiniDump_Initialize_Internal(_In_ PVMM_PROCESS pProcess)
+/*
+* Create a new minidump context for the given process.
+* CALLER DECREF: return
+* -- pProcess
+* -- return
+*/
+POB_M_MINIDUMP_CONTEXT M_MiniDump_Initialize_Internal(_In_ PVMM_PROCESS pProcess)
 {
     BOOL f, f32 = ctxVmm->f32;
     DWORD i, j, iPte, iVad, iMR, dwCpuMhz, cThreadActive = 0;
@@ -420,11 +431,11 @@ VOID M_MiniDump_Initialize_Internal(_In_ PVMM_PROCESS pProcess)
         }
     }
 
-// populate: MINIDUMP_UNLOADED_MODULE_LIST
+    // populate: MINIDUMP_UNLOADED_MODULE_LIST
     {
-    ctx->UnloadedModuleList.p1->SizeOfHeader = sizeof(MINIDUMP_UNLOADED_MODULE_LIST);
-    ctx->UnloadedModuleList.p1->SizeOfEntry = sizeof(MINIDUMP_UNLOADED_MODULE);
-    ctx->UnloadedModuleList.p1->NumberOfEntries = 0;
+        ctx->UnloadedModuleList.p1->SizeOfHeader = sizeof(MINIDUMP_UNLOADED_MODULE_LIST);
+        ctx->UnloadedModuleList.p1->SizeOfEntry = sizeof(MINIDUMP_UNLOADED_MODULE);
+        ctx->UnloadedModuleList.p1->NumberOfEntries = 0;
     }
 
     // allocate: MINIDUMP_HANDLE_DATA_STREAM
@@ -591,8 +602,14 @@ VOID M_MiniDump_Initialize_Internal(_In_ PVMM_PROCESS pProcess)
     ctx->MemoryList.p->BaseRva = ctx->cb;
     if(ctx->pb != LocalReAlloc(ctx->pb, ctx->cb, LMEM_FIXED)) { goto fail; }
 
+    // set update time (used for file time stamp)
+    ctx->qwLastAccessTickCount64 = GetTickCount64();
+    if(ctxMain->dev.fVolatile || !(ctx->qwTimeUpdate = VmmProcess_GetCreateTimeOpt(pProcess))) {
+        GetSystemTimeAsFileTime((LPFILETIME)&ctx->qwTimeUpdate);
+    }
+
     // finish
-    ObContainer_SetOb(pProcess->pObPersistent->Plugin.pObCMiniDump, ctx);
+    Ob_INCREF(ctx);
 fail:
     Ob_DECREF(pObSystemProcess);
     Ob_DECREF(pObPteMap);
@@ -600,25 +617,44 @@ fail:
     Ob_DECREF(psObPrefetch);
     Ob_DECREF(pObThreadMap);
     Ob_DECREF(pObModuleMap);
-    Ob_DECREF(ctx);
+    return Ob_DECREF(ctx);
 }
 
+/*
+* Retrieve minidump context for the given process.
+* CALLER DECREF: return
+* -- pProcess
+* -- return
+*/
 POB_M_MINIDUMP_CONTEXT M_MiniDump_GetContext(_In_ PVMM_PROCESS pProcess)
 {
-    POB_M_MINIDUMP_CONTEXT pObCtx;
+    POB_M_MINIDUMP_CONTEXT pObCtx = NULL;
+    QWORD qwKey = (QWORD)pProcess->dwPID;
     if(!pProcess->fUserOnly) { return NULL; }
-    pObCtx = ObContainer_GetOb(pProcess->pObPersistent->Plugin.pObCMiniDump);
-    if(!pObCtx) {
-        EnterCriticalSection(&pProcess->LockPlugin);
-        M_MiniDump_Initialize_Internal(pProcess);
-        LeaveCriticalSection(&pProcess->LockPlugin);
-        pObCtx = ObContainer_GetOb(pProcess->pObPersistent->Plugin.pObCMiniDump);
+    if((pObCtx = ObMap_GetByKey(g_pmOb_MMINIDUMP_CONTEXT, qwKey))) {
+        if(!ctxMain->dev.fVolatile || pObCtx->qwLastAccessTickCount64 + M_MINIDUMP_DYNAMIC_DUMP_MAX_AGE_MS > GetTickCount64()) {
+            goto finish;
+        }
+        // ctx is aged out
+        ObMap_RemoveByKey(g_pmOb_MMINIDUMP_CONTEXT, qwKey);
+        Ob_DECREF_NULL(&pObCtx);
+    }
+    EnterCriticalSection(&pProcess->LockPlugin);
+    if(!(pObCtx = ObMap_GetByKey(g_pmOb_MMINIDUMP_CONTEXT, qwKey))) {
+        if((pObCtx = M_MiniDump_Initialize_Internal(pProcess))) {
+            ObMap_Push(g_pmOb_MMINIDUMP_CONTEXT, qwKey, pObCtx);
+        }
+    }
+    LeaveCriticalSection(&pProcess->LockPlugin);
+finish:
+    if(pObCtx) {
+        pObCtx->qwLastAccessTickCount64 = GetTickCount64();
     }
     return pObCtx;
 }
 
 _Success_(return == STATUS_SUCCESS)
-NTSTATUS M_MiniDump_ReadMiniDump(_In_ PVMM_PROCESS pProcess, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS M_MiniDump_ReadMiniDump(_In_ PVMM_PROCESS pProcess, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     DWORD i, cbHead = 0, cbReadMem = 0, dwIntraSize;
     QWORD cbBase = 0, cbIntraOffset;
@@ -671,14 +707,22 @@ NTSTATUS M_MiniDump_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ D
 
 BOOL M_MiniDump_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 {
+    VMMDLL_VFS_FILELIST_EXINFO ExInfo = { 0 };
     POB_M_MINIDUMP_CONTEXT pObMiniDump = NULL;
     if(ctx->wszPath[0]) { return FALSE; }
     VMMDLL_VfsList_AddFile(pFileList, L"readme.txt", strlen(szMMINIDUMP_README), NULL);
     if((pObMiniDump = M_MiniDump_GetContext(ctx->pProcess))) {
-        VMMDLL_VfsList_AddFile(pFileList, L"minidump.dmp", pObMiniDump->cb + pObMiniDump->cbMemory, NULL);
+        ExInfo.dwVersion = VMMDLL_VFS_FILELIST_EXINFO_VERSION;
+        ExInfo.qwCreationTime = ExInfo.qwLastAccessTime = ExInfo.qwLastWriteTime = pObMiniDump->qwTimeUpdate;
+        VMMDLL_VfsList_AddFile(pFileList, L"minidump.dmp", pObMiniDump->cb + pObMiniDump->cbMemory, &ExInfo);
         Ob_DECREF_NULL(&pObMiniDump);
     }
     return TRUE;
+}
+
+VOID M_MiniDump_Close()
+{
+    Ob_DECREF_NULL(&g_pmOb_MMINIDUMP_CONTEXT);
 }
 
 /*
@@ -693,11 +737,12 @@ VOID M_MiniDump_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if(!((pRI->tpSystem == VMM_SYSTEM_WINDOWS_X64) || (pRI->tpSystem == VMM_SYSTEM_WINDOWS_X86))) { return; }
-    if(ctxMain->dev.fVolatile) { return; }
-    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\minidump");            // module name
-    pRI->reg_info.fRootModule = FALSE;                                  // module shows in root directory
-    pRI->reg_info.fProcessModule = TRUE;                                // module shows in process directory
+    if(!(g_pmOb_MMINIDUMP_CONTEXT = ObMap_New(OB_MAP_FLAGS_OBJECT_OB))) { return; }
+    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\minidump");              // module name
+    pRI->reg_info.fRootModule = FALSE;                                    // module shows in root directory
+    pRI->reg_info.fProcessModule = TRUE;                                  // module shows in process directory
     pRI->reg_fn.pfnList = M_MiniDump_List;                                // List function supported
     pRI->reg_fn.pfnRead = M_MiniDump_Read;                                // Read function supported
+    pRI->reg_fn.pfnClose = M_MiniDump_Close;                              // Close function supported
     pRI->pfnPluginManager_Register(pRI);
 }

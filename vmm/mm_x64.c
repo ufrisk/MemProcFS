@@ -239,6 +239,42 @@ BOOL MmX64_Virt2Phys(_In_ QWORD paPT, _In_ BOOL fUserOnly, _In_ BYTE iPML, _In_ 
     return MmX64_Virt2Phys(pte, fUserOnly, iPML - 1, va, ppa);
 }
 
+VOID MmX64_Virt2PhysVadEx(_In_ QWORD paPT, _Inout_ PVMMOB_MAP_VADEX pVadEx, _In_ BYTE iPML, _Inout_ PDWORD piVadEx)
+{
+    QWORD pa, pte, iPte, iVadEx, qwMask;
+    PVMMOB_CACHE_MEM pObPTEs = NULL;
+    if(iPML == (BYTE)-1) { iPML = 4; }
+    if(!(pObPTEs = VmmTlbGetPageTable(paPT & 0x0000fffffffff000, FALSE))) {
+        *piVadEx = *piVadEx + 1;
+        return;
+    }
+next_entry:
+    iVadEx = *piVadEx;
+    iPte = 0x1ff & (pVadEx->pMap[iVadEx].va >> MMX64_PAGETABLEMAP_PML_REGION_SIZE[iPML]);
+    pte = pObPTEs->pqw[iPte];
+    if(!MMX64_PTE_IS_VALID(pte, iPML)) { goto next_check; } // NOT VALID
+    if(!(pte & 0x04)) { goto next_check; }                  // SUPERVISOR PAGE & USER MODE REQ
+    if(pte & 0x000f000000000000) { goto next_check; }       // RESERVED
+    if((iPML == 1) || (pte & 0x80) /* PS */) {
+        if(iPML == 4) { goto next_check; }                  // NO SUPPORT IN PML4
+        qwMask = 0xffffffffffffffff << MMX64_PAGETABLEMAP_PML_REGION_SIZE[iPML];
+        pa = pte & 0x0000fffffffff000 & qwMask;             // MASK AWAY BITS FOR 4kB/2MB/1GB PAGES
+        qwMask = qwMask ^ 0xffffffffffffffff;
+        pVadEx->pMap[iVadEx].pa = pa | (qwMask & pVadEx->pMap[iVadEx].va);  // FILL LOWER ADDRESS BITS
+        pVadEx->pMap[iVadEx].tp = VMM_PTE_TP_HARDWARE;
+        goto next_check;
+    }    
+    MmX64_Virt2PhysVadEx(pte, pVadEx, iPML - 1, piVadEx);
+    Ob_DECREF(pObPTEs);
+    return;
+next_check:
+    pVadEx->pMap[iVadEx].pte = pte;
+    pVadEx->pMap[iVadEx].iPML = iPML;
+    *piVadEx = *piVadEx + 1;
+    if((iPML == 1) && (iPte < 0x1ff) && (iVadEx + 1 < pVadEx->cMap) && (pVadEx->pMap[iVadEx].va + 0x1000 == pVadEx->pMap[iVadEx + 1].va)) { goto next_entry; }
+    Ob_DECREF(pObPTEs);
+}
+
 VOID MmX64_Virt2PhysGetInformation_DoWork(_Inout_ PVMM_PROCESS pProcess, _Inout_ PVMM_VIRT2PHYS_INFORMATION pVirt2PhysInfo, _In_ BYTE iPML, _In_ QWORD PTEs[512])
 {
     QWORD pte, i, qwMask;
@@ -340,6 +376,7 @@ VOID MmX64_Initialize()
     }
     ctxVmm->fnMemoryModel.pfnClose = MmX64_Close;
     ctxVmm->fnMemoryModel.pfnVirt2Phys = MmX64_Virt2Phys;
+    ctxVmm->fnMemoryModel.pfnVirt2PhysVadEx = MmX64_Virt2PhysVadEx;
     ctxVmm->fnMemoryModel.pfnVirt2PhysGetInformation = MmX64_Virt2PhysGetInformation;
     ctxVmm->fnMemoryModel.pfnPhys2VirtGetInformation = MmX64_Phys2VirtGetInformation;
     ctxVmm->fnMemoryModel.pfnPteMapInitialize = MmX64_PteMapInitialize;

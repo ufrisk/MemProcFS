@@ -17,11 +17,10 @@
 #include <windows.h>
 #include "vmm.h"
 #include "mm_pfn.h"
-#include "include/sqlite3.h"
+#include "sqlite/sqlite3.h"
 
 #define FC_SQL_POOL_CONNECTION_NUM          4
 #define FC_PHYSMEM_NUM_CHUNKS               0x1000
-#define FC_PHYSMEMSCAN_CONSUMERS            2
 
 typedef struct tdFCSQL_INSERTSTRTABLE {
     QWORD id;
@@ -29,28 +28,6 @@ typedef struct tdFCSQL_INSERTSTRTABLE {
     DWORD cbu;      // UTF-8 byte count (excl. NULL)
     DWORD cbj;      // UTF-8 JSON string count (excl. NULL)
 } FCSQL_INSERTSTRTABLE, *PFCSQL_INSERTSTRTABLE;
-
-/*
-* Context struct for communicating between physical memory scan activity and
-* its worker thread consumers which resides in other c-files. This struct is
-* only used during the setup phase and between vmf* modules.
-*/
-typedef struct tdOB_FC_SCANPHYSMEM_CHUNK {
-    OB ObHdr;
-    QWORD paBase;
-    PMMPFNOB_MAP pPfnMap;
-    PPMEM_SCATTER ppMEMs;
-    union {
-        HANDLE hEventFinish[FC_PHYSMEMSCAN_CONSUMERS];
-        struct {
-            HANDLE hEventFinish_PFN;
-            HANDLE hEventFinish_NTFS;
-        };
-    };
-    // consumer contexts (must be individually thread safe)
-    PVOID ctx_PFN;
-    PVOID ctx_NTFS;
-} OB_FC_SCANPHYSMEM_CHUNK, *POB_FC_SCANPHYSMEM_CHUNK;
 
 typedef struct tdFC_TIMELINE_INFO {
     DWORD dwId;
@@ -64,12 +41,6 @@ typedef struct tdFC_TIMELINE_INFO {
 typedef struct tdFC_CONTEXT {
     BOOL fInitStart;
     BOOL fInitFinish;
-    BOOL fEnablePfn;
-    BOOL fEnableNtfs;
-    BOOL fEnableTimeline;
-    BOOL fEnableProcess;
-    BOOL fEnableThread;
-    BOOL fEnableRegistry;
     CRITICAL_SECTION Lock;
     struct {
         DWORD tp;                           // type as specified in FC_DATABASE_TYPE_*
@@ -242,7 +213,7 @@ typedef struct tdFC_MAP_TIMELINEENTRY {
     QWORD cszuOffset;               // offset to start of "line" in bytes (utf-8)
     QWORD cszjOffset;               // offset to start of "line" in bytes (json)
     DWORD cwszText;                 // WCHAR count not including terminating null
-    LPWSTR wszText;                 // LPWSTR pointed into FCOB_MAP_NTFS.wszMultiText
+    LPWSTR wszText;                 // LPWSTR pointed into FCOB_MAP_TIMELINE.wszMultiText
     LPWSTR wszTextSub;              // potential sub-text at end of wszText
 } FC_MAP_TIMELINEENTRY, *PFC_MAP_TIMELINEENTRY;
 
@@ -284,128 +255,6 @@ BOOL FcTimeline_GetIdFromPosition(
     _In_ DWORD dwTimelineType,
     _In_ BOOL fJSON,
     _In_ QWORD qwFilePos,
-    _Out_ PQWORD pqwId
-);
-
-
-
-// ----------------------------------------------------------------------------
-// FC NTFS FUNCTIONALITY BELOW:
-// ----------------------------------------------------------------------------
-
-#define M_NTFS_INFO_LINELENGTH_UTF8          98
-#define M_NTFS_INFO_LINELENGTH_JSON          98
-
-typedef struct tdFC_MAP_NTFSENTRY {
-    QWORD qwId;
-    QWORD qwIdParent;
-    QWORD pa;
-    QWORD qwFileSize;
-    DWORD dwFileSizeResident;
-    QWORD ftCreate;
-    QWORD ftModify;
-    QWORD ftRead;
-    DWORD dwMftFlags;
-    DWORD dwMftId;
-    BOOL fDir;
-    DWORD dwDirDepth;
-    DWORD dwTextSeq;
-    QWORD cszuOffset;               // offset to start of "line" in bytes (utf-8)
-    QWORD cszjOffset;               // offset to start of "line" in bytes (json)
-    DWORD cwszText;                 // WCHAR count not including terminating null
-    LPWSTR wszText;                 // LPWSTR pointed into FCOB_MAP_NTFS.wszMultiText
-    LPWSTR wszTextName;             // name at end of wszText
-} FC_MAP_NTFSENTRY, *PFC_MAP_NTFSENTRY;
-
-typedef struct tdFCOB_MAP_NTFS {
-    OB ObHdr;
-    LPWSTR wszMultiText;            // multi-wstr pointed into by FC_MAP_NTFSENTRY.wszText
-    DWORD cbMultiText;
-    DWORD cMap;                     // # map entries.
-    FC_MAP_NTFSENTRY pMap[];        // map entries.
-} FCOB_MAP_NTFS, *PFCOB_MAP_NTFS;
-
-/*
-* Retrieve the MFT resident data (i.e. read file contents that fit into the MFT).
-* -- pNtfsEntry
-* -- pbData
-* -- cbData
-* -- pcbDataRead
-* -- return
-*/
-_Success_(return)
-BOOL FcNtfs_GetMftResidentData(
-    _In_ PFC_MAP_NTFSENTRY pNtfsEntry,
-    _Out_writes_opt_(cbData) PBYTE pbData,
-    _In_ DWORD cbData,
-    _Out_opt_ PDWORD pcbDataRead
-);
-
-/*
-* Retrieve a FCOB_MAP_NTFS map object containing a specific entry given by its
-* file system hash.
-* -- qwHash
-* -- ppObNtfsMap
-* -- return
-*/
-_Success_(return)
-BOOL FcNtfsMap_GetFromHash(
-    _In_ QWORD qwHash,
-    _Out_ PFCOB_MAP_NTFS * ppObNtfsMap
-);
-
-/*
-* Retrieve a FCOB_MAP_NTFS map object containing entries which have the same
-* file system parent given by its parent hash.
-* -- qwHashParent
-* -- ppObNtfsMap
-* -- return
-*/
-_Success_(return)
-BOOL FcNtfsMap_GetFromHashParent(
-    _In_ QWORD qwHashParent,
-    _Out_ PFCOB_MAP_NTFS * ppObNtfsMap
-);
-
-/*
-* Retrieve a FCOB_MAP_NTFS map object containing entries within a range.
-* -- qwId
-* -- cId
-* -- ppObNtfsMap
-* -- return
-*/
-_Success_(return)
-BOOL FcNtfsMap_GetFromIdRange(
-    _In_ QWORD qwId,
-    _In_ QWORD cId,
-    _Out_ PFCOB_MAP_NTFS * ppObNtfsMap
-);
-
-/*
-* Retieve the file size of the ntfs information file either in JSON or UTF8.
-* -- pcRecords = number of entries/lines/records.
-* -- pcbUTF8 = UTF8 text file size.
-* -- pcbJSON = JSON file size.
-* -- return
-*/
-_Success_(return)
-BOOL FcNtfs_GetFileSize(
-    _Out_opt_ PQWORD pcRecords,
-    _Out_opt_ PQWORD pcbUTF8,
-    _Out_opt_ PQWORD pcbJSON
-);
-
-/*
-* Retrieve the id associated within the position of the info file.
-* -- qwFilePos
-* -- fJSON
-* -- pqwId
-* -- return
-*/
-_Success_(return)
-BOOL FcNtfs_GetIdFromPosition(
-    _In_ QWORD qwFilePos,
-    _In_ BOOL fJSON,
     _Out_ PQWORD pqwId
 );
 

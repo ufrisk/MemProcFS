@@ -30,7 +30,7 @@ LPCSTR szMSYSINFONET_README =
 #define MSYSINFONET_LINELENGTH_VERBOSE          278ULL
 
 _Success_(return == 0)
-NTSTATUS MSysInfoNet_Read_DoWork(_In_ PVMMOB_MAP_NET pNetMap, _In_ BOOL fVerbose, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MSysInfoNet_Read_DoWork(_In_ PVMMOB_MAP_NET pNetMap, _In_ BOOL fVerbose, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt;
     LPSTR sz;
@@ -49,10 +49,10 @@ NTSTATUS MSysInfoNet_Read_DoWork(_In_ PVMMOB_MAP_NET pNetMap, _In_ BOOL fVerbose
         pObProcess = VmmProcessGet(pe->dwPID);
         if(fVerbose) {
             Util_FileTime2String((PFILETIME)&pe->ftTime, szTime);
-            o += Util_snprintf_ln2(
+            o += Util_snwprintf_u8ln(
                 sz + o,
                 cbLINELENGTH,
-                "%04x%7i %S %-20s %s  %016llx  %s",
+                L"%04x%7i %s %-20S %S  %016llx  %S",
                 (DWORD)i,
                 pe->dwPID,
                 pe->wszText,
@@ -63,10 +63,10 @@ NTSTATUS MSysInfoNet_Read_DoWork(_In_ PVMMOB_MAP_NET pNetMap, _In_ BOOL fVerbose
             );
 
         } else {
-            o += Util_snprintf_ln2(
+            o += Util_snwprintf_u8ln(
                 sz + o,
                 cbLINELENGTH,
-                "%04x%7i %S %s",
+                L"%04x%7i %s %S",
                 (DWORD)i,
                 pe->dwPID,
                 pe->wszText,
@@ -80,7 +80,7 @@ NTSTATUS MSysInfoNet_Read_DoWork(_In_ PVMMOB_MAP_NET pNetMap, _In_ BOOL fVerbose
     return nt;
 }
 
-NTSTATUS MSysInfoNet_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MSysInfoNet_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PVMMOB_MAP_NET pObNetMap;
@@ -112,8 +112,12 @@ BOOL MSysInfoNet_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList
     return TRUE;
 }
 
-VOID MSysInfoNet_Timeline(_In_ HANDLE hTimeline, _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ QWORD qwValue, _In_ LPWSTR wszText))
-{
+VOID MSysInfoNet_Timeline(
+    _In_opt_ PVOID ctxfc,
+    _In_ HANDLE hTimeline,
+    _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ QWORD qwValue, _In_ LPWSTR wszText),
+    _In_ VOID(*pfnEntryAddBySql)(_In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPSTR *pszEntrySql)
+) {
     DWORD i;
     PVMM_MAP_NETENTRY pe;
     PVMMOB_MAP_NET pObNetMap;
@@ -136,7 +140,7 @@ VOID M_SysInfoNet_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     pRI->reg_info.fRootModule = TRUE;                               // module shows in root directory
     pRI->reg_fn.pfnList = MSysInfoNet_List;                         // List function supported
     pRI->reg_fn.pfnRead = MSysInfoNet_Read;                         // Read function supported
-    pRI->reg_fn.pfnTimeline = MSysInfoNet_Timeline;                 // Timeline supported
+    pRI->reg_fnfc.pfnTimeline = MSysInfoNet_Timeline;               // Timeline supported
     memcpy(pRI->reg_info.sTimelineNameShort, "Net   ", 6);
     strncpy_s(pRI->reg_info.szTimelineFileUTF8, 32, "timeline_net.txt", _TRUNCATE);
     strncpy_s(pRI->reg_info.szTimelineFileJSON, 32, "timeline_net.json", _TRUNCATE);

@@ -140,7 +140,7 @@ BOOL VmmWinProcess_Enumerate(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fRefres
 * -- cbData
 * -- pfnCallback_Pre = optional callback function to gather additional addresses.
 * -- pfnCallback_Post = optional callback function called after all pages fetched into cache.
-* -- pContainerPrefetch = optional pointer to a PVMMOBCONTAINER containing a POB_VSET of prefetch addresses to use/update.
+* -- pPrefetchAddressContainer = optional pointer to a PVMMOBCONTAINER containing a POB_VSET of prefetch addresses to use/update.
 */
 VOID VmmWin_ListTraversePrefetch(
     _In_ PVMM_PROCESS pProcess,

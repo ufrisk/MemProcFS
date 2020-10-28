@@ -296,7 +296,15 @@ int main(_In_ int argc, _In_ char* argv[])
     }
     printf("CALL:    VMMDLL_ProcessMap_GetPte #2\n");
     result = VMMDLL_ProcessMap_GetPte(dwPID, pPteMap, &cbPteMap, TRUE);
-    if(result) {
+    if(!result) {
+        printf("FAIL:    VMMDLL_ProcessMap_GetPte #2\n");
+        return 1;
+    }
+    if(pPteMap->dwVersion != VMMDLL_MAP_PTE_VERSION) {
+        printf("FAIL:    VMMDLL_ProcessMap_GetPte - BAD VERSION\n");
+        return 1;
+    }
+    {
         printf("SUCCESS: VMMDLL_ProcessMap_GetPte #2\n");
         printf("         #      #PAGES ADRESS_RANGE                      SRWX\n");
         printf("         ====================================================\n");
@@ -315,12 +323,9 @@ int main(_In_ int argc, _In_ char* argv[])
                 pPteMapEntry->wszText
             );
         }
-    } else {
-        printf("FAIL:    VMMDLL_ProcessMap_GetPte #2\n");
-        return 1;
+        LocalFree(pPteMap);
+        pPteMap = NULL;
     }
-    LocalFree(pPteMap);
-    pPteMap = NULL;
 
 
     // Retrieve the memory map from the virtual address descriptors (VAD). This
@@ -349,7 +354,15 @@ int main(_In_ int argc, _In_ char* argv[])
     }
     printf("CALL:    VMMDLL_ProcessMap_GetVad #2\n");
     result = VMMDLL_ProcessMap_GetVad(dwPID, pVadMap, &cbVadMap, TRUE);
-    if(result) {
+    if(!result) {
+        printf("FAIL:    VMMDLL_ProcessMap_GetVad #2\n");
+        return 1;
+    }
+    if(pVadMap->dwVersion != VMMDLL_MAP_VAD_VERSION) {
+        printf("FAIL:    VMMDLL_ProcessMap_GetVad - BAD VERSION\n");
+        return 1;
+    }
+    {
         printf("SUCCESS: VMMDLL_ProcessMap_GetVad #2\n");
         printf("         #    ADRESS_RANGE                      KERNEL_ADDR        TYPE  PROT   INFO \n");
         printf("         ============================================================================\n");
@@ -367,12 +380,9 @@ int main(_In_ int argc, _In_ char* argv[])
                 pVadMapEntry->wszText
             );
         }
-    } else {
-        printf("FAIL:    VMMDLL_ProcessMap_GetVad #2\n");
-        return 1;
+        LocalFree(pVadMap);
+        pVadMap = NULL;
     }
-    LocalFree(pVadMap);
-    pVadMap = NULL;
 
 
     // Retrieve the list of loaded DLLs from the process. Please note that this
@@ -401,7 +411,15 @@ int main(_In_ int argc, _In_ char* argv[])
     }
     printf("CALL:    VMMDLL_ProcessMap_GetModule #2\n");
     result = VMMDLL_ProcessMap_GetModule(dwPID, pModuleMap, &cbModuleMap);
-    if(result) {
+    if(!result) {
+        printf("FAIL:    VMMDLL_ProcessMap_GetModule #2\n");
+        return 1;
+    }
+    if(pModuleMap->dwVersion != VMMDLL_MAP_MODULE_VERSION) {
+        printf("FAIL:    VMMDLL_ProcessMap_GetModule - BAD VERSION\n");
+        return 1;
+    }
+    {
         printf("SUCCESS: VMMDLL_ProcessMap_GetModule #2\n");
         printf("         MODULE_NAME                                 BASE             SIZE     ENTRY           PATH\n");
         printf("         ==========================================================================================\n");
@@ -416,12 +434,9 @@ int main(_In_ int argc, _In_ char* argv[])
                 pModuleMap->pMap[i].wszFullName
             );
         }
-    } else {
-        printf("FAIL:    VMMDLL_ProcessMap_GetModule #2\n");
-        return 1;
+        LocalFree(pModuleMap);
+        pModuleMap = NULL;
     }
-    LocalFree(pModuleMap);
-    pModuleMap = NULL;
 
 
     // Retrieve the module of explorer.exe by its name. Note it is also possible
@@ -477,7 +492,15 @@ int main(_In_ int argc, _In_ char* argv[])
     }
     printf("CALL:    VMMDLL_ProcessMap_GetThread #2\n");
     result = VMMDLL_ProcessMap_GetThread(dwPID, pThreadMap, &cbThreadMap);
-    if(result) {
+    if(!result) {
+        printf("FAIL:    VMMDLL_ProcessMap_GetThread #2\n");
+        return 1;
+    }
+    if(pThreadMap->dwVersion != VMMDLL_MAP_THREAD_VERSION) {
+        printf("FAIL:    VMMDLL_ProcessMap_GetThread - BAD VERSION\n");
+        return 1;
+    }
+    {
         printf("SUCCESS: VMMDLL_ProcessMap_GetThread #2\n");
         printf("         #         TID      PID ADDR_TEB         ADDR_ETHREAD     ADDR_START       INSTRUCTION_PTR  STACK[BASE:TOP]:PTR\n");
         printf("         ==============================================================================================================\n");
@@ -497,12 +520,9 @@ int main(_In_ int argc, _In_ char* argv[])
                 pThreadMapEntry->vaRIP
             );
         }
-    } else {
-        printf("FAIL:    VMMDLL_ProcessMap_GetThread #2\n");
-        return 1;
+        LocalFree(pThreadMap);
+        pThreadMap = NULL;
     }
-    LocalFree(pThreadMap);
-    pThreadMap = NULL;
 
 
     // THREADS: Retrieve handle information about handles in the explorer.exe
@@ -529,6 +549,14 @@ int main(_In_ int argc, _In_ char* argv[])
     }
     printf("CALL:    VMMDLL_ProcessMap_GetHandle #2\n");
     result = VMMDLL_ProcessMap_GetHandle(dwPID, pHandleMap, &cbHandleMap);
+    if(!result) {
+        printf("FAIL:    VMMDLL_ProcessMap_GetHandle #2\n");
+        return 1;
+    }
+    if(pHandleMap->dwVersion != VMMDLL_MAP_HANDLE_VERSION) {
+        printf("FAIL:    VMMDLL_ProcessMap_GetHandle - BAD VERSION\n");
+        return 1;
+    }
     if(result) {
         printf("SUCCESS: VMMDLL_ProcessMap_GetHandle #2\n");
         printf("         #         HANDLE   PID ADDR_OBJECT      ACCESS TYPE             DESCRIPTION\n");
@@ -546,12 +574,9 @@ int main(_In_ int argc, _In_ char* argv[])
                 pHandleMapEntry->wszText
             );
         }
-    } else {
-        printf("FAIL:    VMMDLL_ProcessMap_GetHandle #2\n");
-        return 1;
+        LocalFree(pHandleMap);
+        pHandleMap = NULL;
     }
-    LocalFree(pHandleMap);
-    pHandleMap = NULL;
 
 
     // Write virtual memory at PE header of Explorer.EXE and display the first
@@ -1030,14 +1055,19 @@ int main(_In_ int argc, _In_ char* argv[])
         return 1;
     }
     result = VMMDLL_Map_GetPhysMem(pPhysMemMap, &cbPhysMemMap);
+    if(!result) {
+        printf("FAIL:    VMMDLL_Map_GetPhysMem #2\n");
+        return 1;
+    }
+    if(pPhysMemMap->dwVersion != VMMDLL_MAP_PHYSMEM_VERSION) {
+        printf("FAIL:    VMMDLL_Map_GetPhysMem - BAD VERSION\n");
+        return 1;
+    }
     if(result) {
         printf("SUCCESS: VMMDLL_Map_GetPhysMem\n");
         for(i = 0; i < pPhysMemMap->cMap; i++) {
             printf("%04i %12llx - %12llx\n", i, pPhysMemMap->pMap[i].pa, pPhysMemMap->pMap[i].pa + pPhysMemMap->pMap[i].cb - 1);
         }
-    } else {
-        printf("FAIL:    VMMDLL_Map_GetPhysMem #2\n");
-        return 1;
     }
 
 
@@ -1077,7 +1107,15 @@ int main(_In_ int argc, _In_ char* argv[])
         return 1;
     }
     result = VMMDLL_Map_GetPfn(dwPfns, cPfns, pPfnMap, &cbPfnMap);
-    if(result) {
+    if(!result) {
+        printf("FAIL:    VMMDLL_Map_GetPfn #2\n");
+        return 1;
+    }
+    if(pPfnMap->dwVersion != VMMDLL_MAP_PFN_VERSION) {
+        printf("FAIL:    VMMDLL_Map_GetPfn - BAD VERSION\n");
+        return 1;
+    }
+    {
         printf("SUCCESS: VMMDLL_Map_GetPfn\n");
         printf("#    PFN# TYPE       TYPEEX     VA\n");
         for(i = 0; i < pPfnMap->cMap; i++) {
@@ -1091,9 +1129,53 @@ int main(_In_ int argc, _In_ char* argv[])
                 pPfnEntry->vaPte
                 );
         }
-    } else {
-        printf("FAIL:    VMMDLL_Map_GetPfn #2\n");
+    }
+
+
+    // Retrieve services from the service control manager (SCM) and display
+    // select information about the services.
+    printf("------------------------------------------------------------\n");
+    printf("#32: Retrieve SERVICES                                      \n");
+    ShowKeyPress();
+    DWORD cbServiceMap = 0;
+    PVMMDLL_MAP_SERVICE pServiceMap = NULL;
+    PVMMDLL_MAP_SERVICEENTRY pServiceEntry;
+    printf("CALL:    VMMDLL_Map_GetServices #1\n");
+    result = VMMDLL_Map_GetServices(NULL, &cbServiceMap);
+    if(!result) {
+        printf("FAIL:    VMMDLL_Map_GetServices #1\n");
         return 1;
+    }
+    pServiceMap = LocalAlloc(LMEM_ZEROINIT, cbServiceMap);
+    if(!pServiceMap) {
+        printf("FAIL:    OutOfMemory\n");
+        return 1;
+    }
+    result = VMMDLL_Map_GetServices(pServiceMap, &cbServiceMap);
+    if(!result) {
+        printf("FAIL:    VMMDLL_Map_GetServices #2\n");
+        return 1;
+    }
+    if(pServiceMap->dwVersion != VMMDLL_MAP_SERVICE_VERSION) {
+        printf("FAIL:    VMMDLL_Map_GetServices - BAD VERSION\n");
+        return 1;
+    }
+    {
+        printf("SUCCESS: VMMDLL_Map_GetServices\n");
+        printf("#     PID  VA-OBJ   STATE NAME                       PATH [USER]\n");
+        for(i = 0; i < pServiceMap->cMap; i++) {
+            pServiceEntry = pServiceMap->pMap + i;
+            printf(
+                "%02i%7i %12llx %02i %-32S %S [%S]\n",
+                pServiceEntry->dwOrdinal,
+                pServiceEntry->dwPID,
+                pServiceEntry->vaObj,
+                pServiceEntry->ServiceStatus.dwCurrentState,
+                pServiceEntry->wszServiceName,
+                pServiceEntry->wszPath,
+                pServiceEntry->wszUserAcct
+            );
+        }
     }
 
 
