@@ -531,7 +531,7 @@ BOOL VMMDLL_MemVirt2Phys(_In_ DWORD dwPID, _In_ ULONG64 qwVA, _Out_ PULONG64 pqw
 
 #define VMMDLL_MAP_PTE_VERSION              1
 #define VMMDLL_MAP_VAD_VERSION              5
-#define VMMDLL_MAP_VADEX_VERSION            1
+#define VMMDLL_MAP_VADEX_VERSION            2
 #define VMMDLL_MAP_MODULE_VERSION           3
 #define VMMDLL_MAP_HEAP_VERSION             1
 #define VMMDLL_MAP_THREAD_VERSION           2
@@ -608,6 +608,8 @@ typedef struct tdVMMDLL_MAP_VADEXENTRY {
     QWORD pa;
     QWORD pte;
     struct {
+        DWORD _Reserved1;
+        VMMDLL_PTE_TP tp;
         QWORD pa;
         QWORD pte;
     } proto;

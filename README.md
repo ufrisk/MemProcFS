@@ -201,3 +201,6 @@ v1.1-v2.10
  * Minidump for live processes.
  * Services information.
  * Memmap: Verbose VAD with individual page info.
+
+ Latest:
+ * Bug fixes.

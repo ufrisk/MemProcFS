@@ -430,6 +430,62 @@ VMMPYC_ProcessGetVadMap(PyObject *self, PyObject *args)
     return pyList;
 }
 
+CHAR VMMPYC_ProcessGetVadExMap_Type(_In_ VMMDLL_PTE_TP tp)
+{
+    switch(tp) {
+        case VMMDLL_PTE_TP_HARDWARE:   return 'A';
+        case VMMDLL_PTE_TP_TRANSITION: return 'T';
+        case VMMDLL_PTE_TP_PROTOTYPE:  return 'P';
+        case VMMDLL_PTE_TP_DEMANDZERO: return 'Z';
+        case VMMDLL_PTE_TP_COMPRESSED: return 'C';
+        case VMMDLL_PTE_TP_PAGEFILE:   return 'F';
+        default:                       return '-';
+    }
+}
+
+// (DWORD, DWORD, DWORD) -> [{...}]
+static PyObject*
+VMMPYC_ProcessGetVadExMap(PyObject *self, PyObject *args)
+{
+    PyObject *pyList, *pyDict;
+    BOOL result;
+    DWORD dwPID, oPage, cPage, i;
+    DWORD cbVadExMap = 0;
+    PVMMDLL_MAP_VADEXENTRY pe;
+    PVMMDLL_MAP_VADEX pVadExMap = NULL;
+    if(!PyArg_ParseTuple(args, "kkk", &dwPID, &oPage, &cPage)) { return NULL; }
+    if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
+    Py_BEGIN_ALLOW_THREADS;
+    result =
+        VMMDLL_ProcessMap_GetVadEx(dwPID, NULL, &cbVadExMap, oPage, cPage) &&
+        cbVadExMap &&
+        (pVadExMap = LocalAlloc(0, cbVadExMap)) &&
+        VMMDLL_ProcessMap_GetVadEx(dwPID, pVadExMap, &cbVadExMap, oPage, cPage);
+    Py_END_ALLOW_THREADS;
+    if(!result || (pVadExMap->dwVersion != VMMDLL_MAP_VADEX_VERSION)) {
+        Py_DECREF(pyList);
+        LocalFree(pVadExMap);
+        return PyErr_Format(PyExc_RuntimeError, "VMMPYC_ProcessGetVadExMap: Failed.");
+    }
+    for(i = 0; i < pVadExMap->cMap; i++) {
+        if((pyDict = PyDict_New())) {
+            pe = pVadExMap->pMap + i;
+            PyDict_SetItemString_DECREF(pyDict, "tp", PyUnicode_FromFormat("%c", VMMPYC_ProcessGetVadExMap_Type(pe->tp)));
+            PyDict_SetItemString_DECREF(pyDict, "pml", PyLong_FromUnsignedLong(pe->iPML));
+            PyDict_SetItemString_DECREF(pyDict, "va", PyLong_FromUnsignedLongLong(pe->va));
+            PyDict_SetItemString_DECREF(pyDict, "pa", PyLong_FromUnsignedLongLong(pe->pa));
+            PyDict_SetItemString_DECREF(pyDict, "pte", PyLong_FromUnsignedLongLong(pe->pte));
+            PyDict_SetItemString_DECREF(pyDict, "vad-va", PyLong_FromUnsignedLongLong(pe->vaVadBase));
+            PyDict_SetItemString_DECREF(pyDict, "proto-tp", PyUnicode_FromFormat("%c", VMMPYC_ProcessGetVadExMap_Type(pe->proto.tp)));
+            PyDict_SetItemString_DECREF(pyDict, "proto-pa", PyLong_FromUnsignedLongLong(pe->proto.pa));
+            PyDict_SetItemString_DECREF(pyDict, "proto-pte", PyLong_FromUnsignedLongLong(pe->proto.pte));
+            PyList_Append_DECREF(pyList, pyDict);
+        }
+    }
+    LocalFree(pVadExMap);
+    return pyList;
+}
+
 // (DWORD) -> [{...}]
 static PyObject*
 VMMPYC_ProcessGetModuleMap(PyObject *self, PyObject *args)
@@ -1708,6 +1764,7 @@ static PyMethodDef VMMPYC_EmbMethods[] = {
     {"VMMPYC_PidList", VMMPYC_PidList, METH_VARARGS, "List all process PIDs."},
     {"VMMPYC_ProcessGetPteMap", VMMPYC_ProcessGetPteMap, METH_VARARGS, "Retrieve the PTE memory map for a given process."},
     {"VMMPYC_ProcessGetVadMap", VMMPYC_ProcessGetVadMap, METH_VARARGS, "Retrieve the VAD memory map for a given process."},
+    {"VMMPYC_ProcessGetVadExMap", VMMPYC_ProcessGetVadExMap, METH_VARARGS, "Retrieve extended VAD map (with additional information about each page) for a given process."},
     {"VMMPYC_ProcessGetModuleMap", VMMPYC_ProcessGetModuleMap, METH_VARARGS, "Retrieve the module map for a given process."},
     {"VMMPYC_ProcessGetModuleFromName", VMMPYC_ProcessGetModuleFromName, METH_VARARGS, "Locate a module by name and return its information."},
     {"VMMPYC_ProcessGetHeapMap", VMMPYC_ProcessGetHeapMap, METH_VARARGS, "Retrieve the heap map for a given process."},

@@ -184,6 +184,8 @@ typedef struct tdVMM_MAP_VADEXENTRY {
     QWORD pa;
     QWORD pte;
     struct {
+        DWORD _Reserved1;
+        VMM_PTE_TP tp;
         QWORD pa;
         QWORD pte;
     } proto;

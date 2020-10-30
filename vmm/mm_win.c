@@ -543,7 +543,6 @@ VOID MmWin_MemCompress_Initialize_NoPdb64()
             ctx->MemCompress.fValid = TRUE;
             ctx->MemCompress.vaSmGlobals = vaSmGlobals;
             ctx->MemCompress.vaKeyToStoreTree = vaKeyToStoreTree;
-            MmWin_MemCompress_InitializeVirtualStorePageFileNumber();
             vmmprintfv("Windows 10 Memory Compression Initialize #1 - SmGlobals located at: %16llx Pf: %i \n", ctx->MemCompress.vaSmGlobals, ctx->MemCompress.dwPageFileNumber);
             break;
         }
@@ -562,6 +561,7 @@ VOID MmWin_MemCompress_Initialize()
     PVMM_PROCESS pObSystemProcess = NULL, pObProcess = NULL;
     PMMWIN_CONTEXT ctx = (PMMWIN_CONTEXT)ctxVmm->pMmContext;
     if(ctxVmm->kernel.dwVersionMajor < 10) { goto fail; }
+    MmWin_MemCompress_InitializeVirtualStorePageFileNumber();
     // Retrieve MemCompression process PID and vaEPROCESS
     while((pObProcess = VmmProcessGetNext(pObProcess, 0))) {
         if((pObProcess->dwPPID == 4) && !memcmp("MemCompression", pObProcess->szName, 15)) {
@@ -588,7 +588,6 @@ VOID MmWin_MemCompress_Initialize()
         if(!VMM_KADDR64_PAGE(vaKeyToStoreTree64)) { goto fail; }
         ctx->MemCompress.vaKeyToStoreTree = vaKeyToStoreTree64;
     }
-    MmWin_MemCompress_InitializeVirtualStorePageFileNumber();
     ctx->MemCompress.fValid = TRUE;
 fail:
     Ob_DECREF(pObSystemProcess);

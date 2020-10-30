@@ -375,6 +375,21 @@ def VmmPy_ProcessGetVadMap(pid, is_identify_modules = False):
 
 
 
+def VmmPy_ProcessGetVadExMap(pid, page_offset, page_count):
+    """Retrieve extended VAD map (with additional information about each page) for a specific pid.
+
+    Keyword arguments:
+    pid -- int: the process identifier (pid).
+    page_offset -- int: starting offset in number of pages from first VAD base.
+    page_count -- int: number of entries to retrieve.
+    
+    Example:
+    VmmPy_ProcessGetVadExMap(4, 5, 6) --> [{'tp': 'P', 'pml': 1, 'va': 2010992640, 'pa': 13357056, 'pte': 0, 'vad-va': 2010972160, 'proto-tp': 'A', 'proto-pa': 13357056, 'proto-pte': 9943947977247412513}, ...]
+    """
+    return VMMPYC_ProcessGetVadExMap(pid, page_offset, page_count)
+
+
+
 def VmmPy_ProcessGetHeapMap(pid):
     """Retrieve information about heaps for a specific pid.
 

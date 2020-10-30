@@ -1258,29 +1258,22 @@ VOID MmVadEx_EntryPrefill(
     _In_ DWORD oVadEx,      // start offset in # entries from vad base
     _Inout_count_(cVadEx) PVMM_MAP_VADEXENTRY peVadEx
 ) {
+    BOOL fX86 = (ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_X86);
     DWORD cPteFwd, iePte = 0, iPteCurrent = 0;
-    QWORD va, iVadEx;
+    QWORD va, iVad, iVadEx;
     PVMM_MAP_VADEXENTRY pe;
     PVMM_MAP_PTEENTRY pePte = NULL;
     POB_DATA pObProtoPteArray = NULL;
+    if(!peVad->fPrivateMemory && peVad->vaPrototypePte && peVad->cbPrototypePte) {
+        pObProtoPteArray = MmVad_PrototypePteArray_Get(pProcess, peVad, 0);
+    }
     if(peVad->fFile || peVad->fImage) {
         // FILE or IMAGE VAD
-        pObProtoPteArray = MmVad_PrototypePteArray_Get(pProcess, peVad, 0);
         for(iVadEx = 0; iVadEx < cVadEx; iVadEx++) {
             pe = peVadEx + iVadEx;
             pe->va = peVad->vaStart + ((oVadEx + iVadEx) << 12);
-            if((ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_X64) || (ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_X86PAE)) {
-                if(pObProtoPteArray && (pObProtoPteArray->ObHdr.cbData > (iVadEx * 8))) {
-                    pe->proto.pte = pObProtoPteArray->pqw[iVadEx];
-                }
-            }
-            if(ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_X86) {
-                if(pObProtoPteArray && (pObProtoPteArray->ObHdr.cbData > (iVadEx * 4))) {
-                    pe->proto.pte = pObProtoPteArray->pdw[iVadEx];
-                }
-            }
-            if(pe->proto.pte) {
-                ctxVmm->fnMemoryModel.pfnPagedRead(pProcess, pe->va, pe->proto.pte, NULL, &pe->proto.pa, NULL, 0);
+            if(pObProtoPteArray && (pObProtoPteArray->ObHdr.cbData > (iVadEx * (fX86 ? 4 : 8)))) {
+                pe->proto.pte = fX86 ? pObProtoPteArray->pqw[iVadEx] : pObProtoPteArray->pqw[iVadEx];
             }
         }
     } else {
@@ -1309,8 +1302,12 @@ VOID MmVadEx_EntryPrefill(
                     iePte++;
                     pePte = (iePte < pPteMap->cMap) ? pPteMap->pMap + iePte : NULL;
                 }
-                // map pte va -> vadex va
+                // map pte va -> vadex va (and prototype pte if suitable)
                 if(pePte && ((va = pePte->vaBase + ((QWORD)iPteCurrent << 12)) < peVad->vaEnd)) {
+                    iVad = (va - peVad->vaStart) >> 12;
+                    if(pObProtoPteArray && (pObProtoPteArray->ObHdr.cbData > (iVad * (fX86 ? 4 : 8)))) {
+                        pe->proto.pte = fX86 ? pObProtoPteArray->pqw[iVad] : pObProtoPteArray->pqw[iVad];
+                    }
                     pe->va = va;
                     iPteCurrent++;
                 } else {
@@ -1319,11 +1316,15 @@ VOID MmVadEx_EntryPrefill(
             }
         }
     }
+    // set VAD and prototype physical address
     for(iVadEx = 0; iVadEx < cVadEx; iVadEx++) {
         pe = peVadEx + iVadEx;
         pe->peVad = peVad;
+        if(pe->proto.pte) {
+            ctxVmm->fnMemoryModel.pfnPagedRead(pProcess, pe->va, pe->proto.pte, NULL, &pe->proto.pa, &pe->proto.tp, VMM_FLAG_NOVAD);
+        }
     }
-    // 6: cleanup
+    // cleanup
     Ob_DECREF(pObProtoPteArray);
 }
 
@@ -1395,7 +1396,8 @@ PVMMOB_MAP_VADEX MmVadEx_MapInitialize(_In_ PVMM_PROCESS pProcess, _In_ DWORD iP
         if(pex->tp == VMM_PTE_TP_NA) {
             if(pex->pte && (pex->iPML == 1)) {
                 ctxVmm->fnMemoryModel.pfnPagedRead(pProcess, pex->va, pex->pte, NULL, &pex->pa, &pex->tp, VMM_FLAG_NOVAD);
-            } else if(pex->proto.pa) {
+            }
+            if(!pex->pte || (pex->iPML != 1) || (pex->tp == VMM_PTE_TP_PROTOTYPE)) {
                 pex->tp = VMM_PTE_TP_PROTOTYPE;
                 pex->pa = pex->proto.pa;
             }

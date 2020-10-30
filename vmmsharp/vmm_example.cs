@@ -106,6 +106,7 @@ class vmm_example
         // retrieve different "map" structures related to explorer.exe and the system.
         vmm.MAP_PTEENTRY[] mPte = vmm.Map_GetPte(dwExplorerPID);
         vmm.MAP_VADENTRY[] mVad = vmm.Map_GetVad(dwExplorerPID);
+        vmm.MAP_VADEXENTRY[] mVadEx = vmm.Map_GetVadEx(dwExplorerPID, 0, 10);
         vmm.MAP_MODULEENTRY[] mModule = vmm.Map_GetModule(dwExplorerPID);
         vmm.MAP_MODULEENTRY mModuleKernel32 = vmm.Map_GetModuleFromName(dwExplorerPID, "kernel32.dll");
         vmm.MAP_HEAPENTRY[] mHeaps = vmm.Map_GetHeap(dwExplorerPID);

@@ -2,9 +2,9 @@
 #define STRINGIZE(s) STRINGIZE2(s)
 
 #define VERSION_MAJOR               3
-#define VERSION_MINOR               4
-#define VERSION_REVISION            5
-#define VERSION_BUILD               16
+#define VERSION_MINOR               5
+#define VERSION_REVISION            1
+#define VERSION_BUILD               17
 
 #define VER_FILE_DESCRIPTION_STR    "MemProcFS : Python API"
 #define VER_FILE_VERSION            VERSION_MAJOR, VERSION_MINOR, VERSION_REVISION, VERSION_BUILD

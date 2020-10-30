@@ -868,6 +868,24 @@ namespace vmmsharp
             public uint cVadExPagesBase;
         }
 
+        public struct MAP_VADEXENTRY_PROTOTYPE
+        {
+            public uint tp;
+            public ulong pa;
+            public ulong pte;
+        }
+
+            public struct MAP_VADEXENTRY
+        {
+            public uint tp;
+            public uint iPML;
+            public ulong va;
+            public ulong pa;
+            public ulong pte;
+            public MAP_VADEXENTRY_PROTOTYPE proto;
+            public ulong vaVadBase;
+        }
+
         public struct MAP_MODULEENTRY
         {
             public bool fValid;
@@ -1100,6 +1118,40 @@ namespace vmmsharp
                     e.vaFileObject = n.vaFileObject;
                     e.cVadExPages = n.cVadExPages;
                     e.cVadExPagesBase = n.cVadExPagesBase;
+                    m[i] = e;
+                }
+                return m;
+            }
+        }
+
+        public static unsafe MAP_VADEXENTRY[] Map_GetVadEx(uint pid, uint oPages, uint cPages)
+        {
+            bool result;
+            uint cb = 0;
+            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_VADEX));
+            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_VADEXENTRY));
+            result = vmmi.VMMDLL_ProcessMap_GetVadEx(pid, null, ref cb, oPages, cPages);
+            if (!result || (cb == 0)) { return new MAP_VADEXENTRY[0]; }
+            fixed (byte* pb = new byte[cb])
+            {
+                result = vmmi.VMMDLL_ProcessMap_GetVadEx(pid, pb, ref cb, oPages, cPages);
+                if (!result) { return new MAP_VADEXENTRY[0]; }
+                vmmi.VMMDLL_MAP_VADEX pm = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_VADEX>((System.IntPtr)pb);
+                if (pm.dwVersion != vmmi.VMMDLL_MAP_VADEX_VERSION) { return new MAP_VADEXENTRY[0]; }
+                MAP_VADEXENTRY[] m = new MAP_VADEXENTRY[pm.cMap];
+                for (int i = 0; i < pm.cMap; i++)
+                {
+                    vmmi.VMMDLL_MAP_VADEXENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_VADEXENTRY>((System.IntPtr)(pb + cbMAP + i * cbENTRY));
+                    MAP_VADEXENTRY e;
+                    e.tp = n.tp;
+                    e.iPML = n.iPML;
+                    e.va = n.va;
+                    e.pa = n.pa;
+                    e.pte = n.pte;
+                    e.proto.tp = n.proto_tp;
+                    e.proto.pa = n.proto_pa;
+                    e.proto.pte = n.proto_pte;
+                    e.vaVadBase = n.vaVadBase;
                     m[i] = e;
                 }
                 return m;
@@ -1729,6 +1781,7 @@ namespace vmmsharp
         internal static ulong MAX_PATH =                     260;
         internal static uint VMMDLL_MAP_PTE_VERSION =        1;
         internal static uint VMMDLL_MAP_VAD_VERSION =        5;
+        internal static uint VMMDLL_MAP_VADEX_VERSION =      2;
         internal static uint VMMDLL_MAP_MODULE_VERSION =     3;
         internal static uint VMMDLL_MAP_HEAP_VERSION =       1;
         internal static uint VMMDLL_MAP_THREAD_VERSION =     2;
@@ -2037,6 +2090,41 @@ namespace vmmsharp
             byte* pVadMap,
             ref uint pcbVadMap,
             bool fIdentifyModules);
+
+
+
+        // VMMDLL_ProcessMap_GetVadEx
+
+        [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        internal struct VMMDLL_MAP_VADEXENTRY
+        {
+            internal uint tp;
+            internal uint iPML;
+            internal ulong va;
+            internal ulong pa;
+            internal ulong pte;
+            internal uint _Reserved1;
+            internal uint proto_tp;
+            internal ulong proto_pa;
+            internal ulong proto_pte;
+            internal ulong vaVadBase;
+        }
+
+        [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        internal struct VMMDLL_MAP_VADEX
+        {
+            internal uint dwVersion;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)] internal uint[] _Reserved1;
+            internal uint cMap;
+        }
+
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_ProcessMap_GetVadEx")]
+        internal static extern unsafe bool VMMDLL_ProcessMap_GetVadEx(
+            uint dwPid,
+            byte* pVadMap,
+            ref uint pcbVadMap,
+            uint oPage,
+            uint cPage);
 
 
 

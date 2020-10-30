@@ -13,7 +13,7 @@
 #define MEMMAP_VAD_LINELENGTH_X86       137ULL
 #define MEMMAP_VAD_LINELENGTH_X64       161ULL
 
-#define MEMMAP_VADEX_LINELENGTH         160ULL
+#define MEMMAP_VADEX_LINELENGTH         162ULL
 
 VOID MemMap_Read_VadMap_Protection(_In_ PVMM_MAP_VADENTRY pVad, _Out_writes_(6) LPSTR sz)
 {
@@ -44,6 +44,19 @@ LPSTR MemMap_Read_VadMap_Type(_In_ PVMM_MAP_VADENTRY pVad)
         return "Pf   ";
     } else {
         return "     ";
+    }
+}
+
+CHAR MemMap_Read_VadExMap_Type(_In_ VMM_PTE_TP tp)
+{
+    switch(tp) {
+        case VMM_PTE_TP_HARDWARE:   return 'A';
+        case VMM_PTE_TP_TRANSITION: return 'T';
+        case VMM_PTE_TP_PROTOTYPE:  return 'P';
+        case VMM_PTE_TP_DEMANDZERO: return 'Z';
+        case VMM_PTE_TP_COMPRESSED: return 'C';
+        case VMM_PTE_TP_PAGEFILE:   return 'F';
+        default:                    return '-';
     }
 }
 
@@ -110,7 +123,6 @@ NTSTATUS MemMap_Read_VadExMap2(_In_ PVMM_PROCESS pProcess, _In_ DWORD oVadExPage
 {
     NTSTATUS nt;
     LPSTR sz;
-    CHAR chtp;
     QWORD qwHwPte;
     DWORD i, iPage, cPage;
     QWORD o = 0, cbMax, cbLINELENGTH;
@@ -129,32 +141,24 @@ NTSTATUS MemMap_Read_VadExMap2(_In_ PVMM_PROCESS pProcess, _In_ DWORD oVadExPage
         pex = pObMap->pMap + i;
         pVad = pex->peVad;
         qwHwPte = (pex->tp == VMM_PTE_TP_HARDWARE) ? pex->pte : 0;
-        switch(pex->tp) {
-            case VMM_PTE_TP_HARDWARE:   chtp = 'A'; break;
-            case VMM_PTE_TP_TRANSITION: chtp = 'T'; break;
-            case VMM_PTE_TP_PROTOTYPE:  chtp = 'P'; break;
-            case VMM_PTE_TP_DEMANDZERO: chtp = 'Z'; break;
-            case VMM_PTE_TP_COMPRESSED: chtp = 'C'; break;
-            case VMM_PTE_TP_PAGEFILE:   chtp = 'F'; break;
-            default:                    chtp = '-'; break;
-        }
         MemMap_Read_VadMap_Protection(pVad, szProtection);
         o += Util_snwprintf_u8ln(
             sz + o,
             cbLINELENGTH,
-            L"%06x%7i %016llx %012llx %016llx %c %c%c%c %016llx %012llx %016llx %S %S %s",
+            L"%06x%7i %016llx %012llx %016llx %c %c%c%c %016llx %012llx %016llx %c %S %S %s",
             iPage + i,
             pProcess->dwPID,
             pex->va,
             pex->pa,
             pex->pte,
-            chtp,
+            MemMap_Read_VadExMap_Type(pex->tp),
             qwHwPte ? 'r' : '-',
             (qwHwPte & VMM_MEMMAP_PAGE_W) ? 'w' : '-',
             (!qwHwPte || (qwHwPte & VMM_MEMMAP_PAGE_NX)) ? '-' : 'x',
             pVad->vaVad,
             pex->proto.pa,
             pex->proto.pte,
+            MemMap_Read_VadExMap_Type(pex->proto.tp),
             MemMap_Read_VadMap_Type(pVad),
             szProtection,
             pVad->wszText + pVad->cwszText - min(32, pVad->cwszText)
