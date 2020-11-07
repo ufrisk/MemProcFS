@@ -165,6 +165,28 @@ int main(_In_ int argc, _In_ char* argv[])
         printf("FAIL:    VMMDLL_ConfigGet\n");
         return 1;
     }
+    // Set PCIe config space status register flags auto-clear [master abort].
+    // This requires bitstream version 4.7 or above. By default the flags are
+    // reset evry ms. If timing are to be changed it's possible to write a new
+    // timing value to PCILeech PCIe register at address: 0x054 (DWORD-value,
+    // tickcount of multiples of 62.5MHz ticks).
+    if((qwVersionMajor >= 4) && ((qwVersionMajor >= 5) || (qwVersionMinor >= 7)))
+    {
+        HANDLE hLC;
+        LC_CONFIG LcConfig = {
+            .dwVersion = LC_CONFIG_VERSION,
+            .szDevice = "existing"
+        };
+        // fetch already existing leechcore handle.
+        hLC = LcCreate(&LcConfig);
+        if(hLC) {
+            // enable auto-clear of status register [master abort].
+            LcCommand(hLC, LC_CMD_FPGA_CFGREGPCIE_MARKWR | 0x002, 4, (BYTE[4]) { 0x10, 0x00, 0x10, 0x00 }, NULL, NULL);
+            printf("SUCCESS: LcCommand: STATUS REGISTER AUTO-CLEAR\n");
+            // close leechcore handle.
+            LcClose(hLC);
+        }
+    }
 #endif /* _INITIALIZE_FROM_FPGA */
     
 
