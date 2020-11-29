@@ -156,6 +156,10 @@ BOOL VmmDll_ConfigIntialize(_In_ DWORD argc, _In_ char* argv[])
         ctxMain->cfg.szMountPoint[0] = 'M';
     }
     if(ctxMain->dev.paMax && (ctxMain->dev.paMax < 0x00100000)) { return FALSE; }
+    if(!ctxMain->dev.paMax && (ctxMain->cfg.szMemMap[0] || ctxMain->cfg.szMemMapStr[0])) {
+        // disable memory auto-detect when memmap is specified
+        ctxMain->dev.paMax = -1;
+    }
     ctxMain->cfg.fVerbose = ctxMain->cfg.fVerbose && ctxMain->cfg.fVerboseDll;
     ctxMain->cfg.fVerboseExtra = ctxMain->cfg.fVerboseExtra && ctxMain->cfg.fVerboseDll;
     ctxMain->cfg.fVerboseExtraTlp = ctxMain->cfg.fVerboseExtraTlp && ctxMain->cfg.fVerboseDll;

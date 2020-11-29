@@ -96,6 +96,7 @@
       <OptimizeReferences>true</OptimizeReferences>
       <ProgramDatabaseFile>$(OutDir)\lib\$(TargetName).pdb</ProgramDatabaseFile>
       <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+      <CETCompat>true</CETCompat>
     </Link>
     <PostBuildEvent>
       <Command>

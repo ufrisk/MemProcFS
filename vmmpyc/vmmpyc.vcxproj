@@ -100,6 +100,7 @@
       <ProgramDatabaseFile>$(OutDir)\lib\$(TargetName).pdb</ProgramDatabaseFile>
       <ImportLibrary>$(OutDir)lib\$(TargetName).lib</ImportLibrary>
       <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+      <CETCompat>true</CETCompat>
     </Link>
     <PostBuildEvent>
       <Command>

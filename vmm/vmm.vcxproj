@@ -108,6 +108,7 @@
       <ProgramDatabaseFile>$(OutDir)\lib\$(TargetName).pdb</ProgramDatabaseFile>
       <ImportLibrary>$(OutDir)lib\$(TargetName).lib</ImportLibrary>
       <AdditionalDependencies>leechcore.lib;bcrypt.lib;crypt32.lib;Shlwapi.lib;Ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <CETCompat>true</CETCompat>
     </Link>
     <PostBuildEvent>
       <Command>copy "$(OutDir)\lib\vmm.lib" "$(SolutionDir)includes\lib64" /y
