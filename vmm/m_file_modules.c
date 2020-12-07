@@ -115,8 +115,7 @@ NTSTATUS M_FileModules_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb,
     PVMMOB_MAP_MODULE pObModuleMap = NULL;
     *pcbRead = 0;
     f = (cbOffset <= 0x02000000) &&
-        VmmMap_GetModule((PVMM_PROCESS)ctx->pProcess, &pObModuleMap) &&
-        (pModule = VmmMap_GetModuleEntry(pObModuleMap, ctx->wszPath)) &&
+        VmmMap_GetModuleEntryEx((PVMM_PROCESS)ctx->pProcess, 0, ctx->wszPath, &pObModuleMap, &pModule) &&
         PE_FileRaw_Read(ctx->pProcess, pModule->vaBase, pb, cb, pcbRead, (DWORD)cbOffset);
     Ob_DECREF_NULL(&pObModuleMap);
     return f ? VMMDLL_STATUS_SUCCESS : VMMDLL_STATUS_FILE_INVALID;
@@ -144,8 +143,7 @@ NTSTATUS M_FileModules_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBY
     PVMMOB_MAP_MODULE pObModuleMap = NULL;
     *pcbWrite = 0;
     f = (cbOffset <= 0x02000000) &&
-        VmmMap_GetModule((PVMM_PROCESS)ctx->pProcess, &pObModuleMap) &&
-        (pModule = VmmMap_GetModuleEntry(pObModuleMap, ctx->wszPath)) &&
+        VmmMap_GetModuleEntryEx((PVMM_PROCESS)ctx->pProcess, 0, ctx->wszPath, &pObModuleMap, &pModule) &&
         PE_FileRaw_Write(ctx->pProcess, pModule->vaBase, pb, cb, pcbWrite, (DWORD)cbOffset);
     Ob_DECREF_NULL(&pObModuleMap);
     return f ? VMMDLL_STATUS_SUCCESS : VMMDLL_STATUS_FILE_INVALID;

@@ -36,25 +36,25 @@ EXPORTS
     VMMDLL_Map_GetPhysMem
     VMMDLL_Map_GetUsers
     VMMDLL_Map_GetServices
-    VMMDLL_ProcessMap_GetPte
-    VMMDLL_ProcessMap_GetVad
-    VMMDLL_ProcessMap_GetVadEx
-    VMMDLL_ProcessMap_GetModule
-    VMMDLL_ProcessMap_GetModuleFromName
-    VMMDLL_ProcessMap_GetHeap
-    VMMDLL_ProcessMap_GetThread
-    VMMDLL_ProcessMap_GetHandle
+    VMMDLL_Map_GetPte
+    VMMDLL_Map_GetVad
+    VMMDLL_Map_GetVadEx
+    VMMDLL_Map_GetModule
+    VMMDLL_Map_GetModuleFromName
+    VMMDLL_Map_GetUnloadedModule
+    VMMDLL_Map_GetEAT
+    VMMDLL_Map_GetIAT
+    VMMDLL_Map_GetHeap
+    VMMDLL_Map_GetThread
+    VMMDLL_Map_GetHandle
     VMMDLL_ProcessGetInformation
     VMMDLL_ProcessGetInformationString
     
     VMMDLL_ProcessGetDirectories
     VMMDLL_ProcessGetSections
-    VMMDLL_ProcessGetEAT
-    VMMDLL_ProcessGetIAT
     VMMDLL_ProcessGetProcAddress
     VMMDLL_ProcessGetModuleBase
     VMMDLL_WinGetThunkInfoIAT
-    VMMDLL_WinGetThunkInfoEAT
     
     VMMDLL_WinReg_HiveList
     VMMDLL_WinReg_HiveReadEx

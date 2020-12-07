@@ -18,8 +18,8 @@
 // efficient, but the file is not read often so it should be OK.
 // ----------------------------------------------------------------------------
 
-#define MSYSINFOPROC_TREE_LINE_LENGTH_BASE              62
-#define MSYSINFOPROC_TREE_LINE_LENGTH_HEADER_VERBOSE    81
+#define MSYSINFOPROC_TREE_LINE_LENGTH_BASE              63
+#define MSYSINFOPROC_TREE_LINE_LENGTH_HEADER_VERBOSE    82
 
 const LPSTR szMSYSINFOPROC_WHITELIST_WINDOWS_PATHS_AND_BINARIES[] = {
     "\\Windows\\System32\\",
@@ -82,13 +82,14 @@ DWORD MSysInfoProc_Tree_ProcessItems(_In_ PMSYSINFOPROC_TREE_ENTRY pProcessEntry
     o = snprintf(
         pb,
         cb,
-        "%s %-15s%*s%6i %6i  %c%c%c %-16s %s\n",
+        "%s %-15s%*s%6i %6i %s%c%c%c %-16s %s\n",
         szINDENT[min(8, iLevel)],
         pProcessEntry->pObProcess->szName,
         8 - min(7, iLevel),
         "",
         pProcessEntry->dwPID,
         pProcessEntry->dwPPID,
+        pProcessEntry->pObProcess->win.fWow64 ? "32" : "  ",
         fStateTerminated ? 'T' : ' ',
         fAccountUser ? 'U' : ' ',
         fWinNativeProc ? ' ' : '*',
@@ -154,8 +155,8 @@ BOOL MSysInfoProc_Tree(_In_ BOOL fVerbose, _Out_ PBYTE * ppb, _Out_ PDWORD pcb)
         // 3: iterate over top level items - processes with no parent
         qsort(pPidList, cPidList, sizeof(MSYSINFOPROC_TREE_ENTRY), (int(*)(const void *, const void *))MSysInfoProc_Tree_CmpSort);
         o = snprintf(pb, cb, fVerbose ?
-            "  Process                   Pid Parent Flag User             Path / Command Line\n--------------------------------------------------------------------------------\n" :
-            "  Process                   Pid Parent Flag User             \n-------------------------------------------------------------\n");
+            "  Process                   Pid Parent  Flag User             Path / Command Line\n---------------------------------------------------------------------------------\n" :
+            "  Process                   Pid Parent  Flag User             \n--------------------------------------------------------------\n");
         // 3.1 process items
         for(i = 0; i < cPidList; i++) {
             pPidEntry = pPidList + i;
@@ -200,13 +201,13 @@ NTSTATUS MSysInfoProc_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, 
     NTSTATUS nt;
     DWORD cbFile = 0;
     PBYTE pbFile = NULL;
-    if(!wcscmp(ctx->wszPath, L"tree.txt")) {
+    if(!wcscmp(ctx->wszPath, L"proc.txt")) {
         MSysInfoProc_Tree(FALSE, &pbFile, &cbFile);
         nt = Util_VfsReadFile_FromPBYTE(pbFile, cbFile, pb, cb, pcbRead, cbOffset);
         LocalFree(pbFile);
         return nt;
     }
-    if(!wcscmp(ctx->wszPath, L"tree-v.txt")) {
+    if(!wcscmp(ctx->wszPath, L"proc-v.txt")) {
         MSysInfoProc_Tree(TRUE, &pbFile, &cbFile);
         nt = Util_VfsReadFile_FromPBYTE(pbFile, cbFile, pb, cb, pcbRead, cbOffset);
         LocalFree(pbFile);
@@ -223,10 +224,10 @@ BOOL MSysInfoProc_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileLis
     VmmProcessListPIDs(NULL, &cProcess, VMM_FLAG_PROCESS_SHOW_TERMINATED);
     if(cProcess) {
         cbProcTree = (DWORD)(cProcess + 2) * MSYSINFOPROC_TREE_LINE_LENGTH_BASE;
-        VMMDLL_VfsList_AddFile(pFileList, L"tree.txt", cbProcTree, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"proc.txt", cbProcTree, NULL);
         cbProcTree = MSYSINFOPROC_TREE_LINE_LENGTH_HEADER_VERBOSE * 2;
         VmmProcessActionForeachParallel(&cbProcTree, NULL, MSysInfoProc_ListTree_ProcessUserParams_CallbackAction);
-        VMMDLL_VfsList_AddFile(pFileList, L"tree-v.txt", cbProcTree, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"proc-v.txt", cbProcTree, NULL);
     }
     return TRUE;
 }

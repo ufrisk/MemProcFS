@@ -177,7 +177,7 @@ VOID _ObSet_RemoveHash(_In_ POB_SET pvs, _In_ DWORD iHash)
         iNextEntry = _ObSet_GetIndexFromHash(pvs, iNextHash);
         if(0 == iNextEntry) { return; }
         iNextHashPreferred = HASH_FUNCTION(_ObSet_GetValueFromIndex(pvs, iNextEntry)) & dwHashMask;
-        if(iNextHash == iNextHashPreferred) { return; }
+        if(iNextHash == iNextHashPreferred) { continue; }
         if(pvs->fLargeMode) {
             pvs->pHashMapLarge[iNextHash] = 0;
         } else {
@@ -292,10 +292,10 @@ BOOL _ObSet_Remove(_In_ POB_SET pvs, _In_ QWORD value)
     DWORD iLastValue, iLastHash;
     DWORD dwHashMask = pvs->cHashMax - 1;
     if(value == 0) { return FALSE; }
+    if(!_ObSet_GetIndexFromValue(pvs, value, &iRemoveValue, &iRemoveHash)) { return FALSE; }
     qwLastValue = _ObSet_GetValueFromIndex(pvs, pvs->c - 1);
     if(qwLastValue == 0) { return FALSE; }
     if(!_ObSet_GetIndexFromValue(pvs, qwLastValue, &iLastValue, &iLastHash)) { return FALSE; }
-    if(!_ObSet_GetIndexFromValue(pvs, value, &iRemoveValue, &iRemoveHash)) { return FALSE; }
     _ObSet_SetValueFromIndex(pvs, iLastValue, 0);
     _ObSet_RemoveHash(pvs, iLastHash);
     pvs->c--;
@@ -423,14 +423,29 @@ BOOL _ObSet_Push(_In_ POB_SET pvs, _In_ QWORD value)
 }
 
 _Success_(return)
-BOOL _ObSet_PushSet(_In_ POB_SET pvs, _In_ POB_SET pvsSrc)
+BOOL _ObSet_PushSet(_In_ POB_SET pvs, _In_opt_ POB_SET pvsSrc)
 {
     DWORD iValue;
-    AcquireSRWLockShared(&pvsSrc->LockSRW);
-    for(iValue = pvsSrc->c - 1; iValue; iValue--) {
-        _ObSet_Push(pvs, _ObSet_GetValueFromIndex(pvsSrc, iValue));
+    if(pvsSrc) {
+        AcquireSRWLockShared(&pvsSrc->LockSRW);
+        for(iValue = pvsSrc->c - 1; iValue; iValue--) {
+            QWORD qwValue = _ObSet_GetValueFromIndex(pvsSrc, iValue);
+            _ObSet_Push(pvs, _ObSet_GetValueFromIndex(pvsSrc, iValue));
+        }
+        ReleaseSRWLockShared(&pvsSrc->LockSRW);
     }
-    ReleaseSRWLockShared(&pvsSrc->LockSRW);
+    return TRUE;
+}
+
+_Success_(return)
+BOOL _ObSet_PushData(_In_ POB_SET pvs, _In_opt_ POB_DATA pDataSrc)
+{
+    DWORD i, iMax;
+    if(pDataSrc) {   
+        for(i = 0, iMax = pDataSrc->ObHdr.cbData / sizeof(QWORD); i < iMax; i++) {
+            _ObSet_Push(pvs, pDataSrc->pqw[i]);
+        }
+    }
     return TRUE;
 }
 
@@ -455,9 +470,22 @@ BOOL ObSet_Push(_In_opt_ POB_SET pvs, _In_ QWORD value)
 * -- return = TRUE on success, FALSE otherwise.
 */
 _Success_(return)
-BOOL ObSet_PushSet(_In_opt_ POB_SET pvs, _In_ POB_SET pvsSrc)
+BOOL ObSet_PushSet(_In_opt_ POB_SET pvs, _In_opt_ POB_SET pvsSrc)
 {
     OB_SET_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(pvs, BOOL, FALSE, _ObSet_PushSet(pvs, pvsSrc))
+}
+
+/*
+* Push/Merge/Insert all QWORD values from the ObData pDataSrc into the ObSet pvs.
+* The source data is kept intact.
+* -- pvs
+* -- pDataSrc
+* -- return = TRUE on success, FALSE otherwise.
+*/
+_Success_(return)
+BOOL ObSet_PushData(_In_opt_ POB_SET pvs, _In_opt_ POB_DATA pDataSrc)
+{
+    OB_SET_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(pvs, BOOL, FALSE, _ObSet_PushData(pvs, pDataSrc))
 }
 
 /*

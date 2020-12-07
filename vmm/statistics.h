@@ -90,26 +90,26 @@ VOID PageStatUpdate(_In_opt_ PPAGE_STATISTICS pPageStat, _In_ QWORD qwAddr, _In_
 #define STATISTICS_ID_VMMDLL_PidGetFromName                     0x14
 #define STATISTICS_ID_VMMDLL_ProcessGetInformation              0x15
 #define STATISTICS_ID_VMMDLL_ProcessGetInformationString        0x16
-#define STATISTICS_ID_VMMDLL_ProcessMap_GetPte                  0x17
-#define STATISTICS_ID_VMMDLL_ProcessMap_GetVad                  0x18
-#define STATISTICS_ID_VMMDLL_ProcessMap_GetVadEx                0x19
-#define STATISTICS_ID_VMMDLL_ProcessMap_GetModule               0x1a
-#define STATISTICS_ID_VMMDLL_ProcessMap_GetModuleFromName       0x1b
-#define STATISTICS_ID_VMMDLL_ProcessMap_GetHeap                 0x1c
-#define STATISTICS_ID_VMMDLL_ProcessMap_GetThread               0x1d
-#define STATISTICS_ID_VMMDLL_ProcessMap_GetHandle               0x1e
-#define STATISTICS_ID_VMMDLL_Map_GetPhysMem                     0x1f
-#define STATISTICS_ID_VMMDLL_Map_GetNet                         0x20
-#define STATISTICS_ID_VMMDLL_Map_GetUsers                       0x21
-#define STATISTICS_ID_VMMDLL_Map_GetServices                    0x22
-#define STATISTICS_ID_VMMDLL_Map_GetPfn                         0x23
-#define STATISTICS_ID_VMMDLL_ProcessGetDirectories              0x24
-#define STATISTICS_ID_VMMDLL_ProcessGetSections                 0x25
-#define STATISTICS_ID_VMMDLL_ProcessGetEAT                      0x26
-#define STATISTICS_ID_VMMDLL_ProcessGetIAT                      0x27
-#define STATISTICS_ID_VMMDLL_ProcessGetProcAddress              0x28
-#define STATISTICS_ID_VMMDLL_ProcessGetModuleBase               0x29
-#define STATISTICS_ID_VMMDLL_WinGetThunkEAT                     0x2a
+#define STATISTICS_ID_VMMDLL_Map_GetPte                         0x17
+#define STATISTICS_ID_VMMDLL_Map_GetVad                         0x18
+#define STATISTICS_ID_VMMDLL_Map_GetVadEx                       0x19
+#define STATISTICS_ID_VMMDLL_Map_GetModule                      0x1a
+#define STATISTICS_ID_VMMDLL_Map_GetModuleFromName              0x1b
+#define STATISTICS_ID_VMMDLL_Map_GetUnloadedModule              0x1c
+#define STATISTICS_ID_VMMDLL_Map_GetEAT                         0x1d
+#define STATISTICS_ID_VMMDLL_Map_GetIAT                         0x1e
+#define STATISTICS_ID_VMMDLL_Map_GetHeap                        0x1f
+#define STATISTICS_ID_VMMDLL_Map_GetThread                      0x20
+#define STATISTICS_ID_VMMDLL_Map_GetHandle                      0x21
+#define STATISTICS_ID_VMMDLL_Map_GetPhysMem                     0x22
+#define STATISTICS_ID_VMMDLL_Map_GetNet                         0x23
+#define STATISTICS_ID_VMMDLL_Map_GetUsers                       0x24
+#define STATISTICS_ID_VMMDLL_Map_GetServices                    0x25
+#define STATISTICS_ID_VMMDLL_Map_GetPfn                         0x26
+#define STATISTICS_ID_VMMDLL_ProcessGetDirectories              0x27
+#define STATISTICS_ID_VMMDLL_ProcessGetSections                 0x28
+#define STATISTICS_ID_VMMDLL_ProcessGetProcAddress              0x29
+#define STATISTICS_ID_VMMDLL_ProcessGetModuleBase               0x2a
 #define STATISTICS_ID_VMMDLL_WinGetThunkIAT                     0x2b
 #define STATISTICS_ID_VMMDLL_WinMemCompression_DecompressPage   0x2c
 #define STATISTICS_ID_VMMDLL_WinRegHive_List                    0x2d
@@ -152,14 +152,17 @@ static LPCSTR STATISTICS_ID_STR[] = {
     "VMMDLL_PidGetFromName",
     "VMMDLL_ProcessGetInformation",
     "VMMDLL_ProcessGetInformationString",
-    "VMMDLL_ProcessMap_GetPte",
-    "VMMDLL_ProcessMap_GetVad",
-    "VMMDLL_ProcessMap_GetVadEx",
-    "VMMDLL_ProcessMap_GetModule",
-    "VMMDLL_ProcessMap_GetModuleFromName",
-    "VMMDLL_ProcessMap_GetHeap",
-    "VMMDLL_ProcessMap_GetThread",
-    "VMMDLL_ProcessMap_GetHandle",
+    "VMMDLL_Map_GetPte",
+    "VMMDLL_Map_GetVad",
+    "VMMDLL_Map_GetVadEx",
+    "VMMDLL_Map_GetModule",
+    "VMMDLL_Map_GetModuleFromName",
+    "VMMDLL_Map_GetUnloadedModule",
+    "VMMDLL_Map_GetEAT",
+    "VMMDLL_Map_GetIAT",
+    "VMMDLL_Map_GetHeap",
+    "VMMDLL_Map_GetThread",
+    "VMMDLL_Map_GetHandle",
     "VMMDLL_Map_GetPhysMem",
     "VMMDLL_Map_GetNet",
     "VMMDLL_Map_GetUsers",
@@ -167,11 +170,8 @@ static LPCSTR STATISTICS_ID_STR[] = {
     "VMMDLL_Map_GetPfn",
     "VMMDLL_ProcessGetDirectories",
     "VMMDLL_ProcessGetSections",
-    "VMMDLL_ProcessGetEAT",
-    "VMMDLL_ProcessGetIAT",
     "VMMDLL_ProcessGetProcAddress",
     "VMMDLL_ProcessGetModuleBase",
-    "VMMDLL_WinGetThunkEAT",
     "VMMDLL_WinGetThunkIAT",
     "VMMDLL_WinMemCompression_DecompressPage",
     "VMMDLL_WinRegHive_List",
@@ -193,6 +193,16 @@ VOID Statistics_CallSetEnabled(_In_ BOOL fEnabled);
 BOOL Statistics_CallGetEnabled();
 QWORD Statistics_CallStart();
 QWORD Statistics_CallEnd(_In_ DWORD fId, QWORD tmCallStart);
-VOID Statistics_CallToString(_In_opt_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcb);
+
+/*
+* Retrieve call statistics as a string buffer and size. If psz is not supplied
+* only retrieve size.
+* CALLER LocalFree: psz
+* -- psz
+* -- pcsz
+* -- return
+*/
+_Success_(return)
+BOOL Statistics_CallToString(_Out_opt_ LPSTR *psz, _Out_ PDWORD pcsz);
 
 #endif /* __STATISTICS_H__ */

@@ -388,7 +388,7 @@ VOID VmmWinObjFile_GetByProcess_DoWork(_In_ PVMM_PROCESS pProcess, _In_ POB_MAP 
         }
     } else {
         // vad map -> file objects
-        if(VmmMap_GetVad(pProcess, &pmObVad, TRUE)) {
+        if(VmmMap_GetVad(pProcess, &pmObVad, VMM_VADMAP_TP_PARTIAL)) {
             for(i = 0, iMax = pmObVad->cMap; i < iMax; i++) {
                 if(pmObVad->pMap[i].vaFileObject) {
                     VmmWinObjFile_GetByProcess_DoWork_AddInitial(pmObVad->pMap[i].vaFileObject, pmObFiles, psvaObFiles, ctx);

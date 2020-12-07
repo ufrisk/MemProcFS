@@ -13,7 +13,7 @@
 #define MM_LOOP_PROTECT_ADD(flags)                  ((flags & ~0x00ff0000) | ((((flags >> 16) & 0xff) + 1) << 16))
 #define MM_LOOP_PROTECT_MAX(flags)                  (((flags >> 16) & 0xff) > 4)
 
-#define PTE_SWIZZLE_BIT                             0x10
+#define PTE_SWIZZLE_BIT                             0x10        // nt!_MMPTE_SOFTWARE.SwizzleBit
 #define PTE_SWIZZLE_MASK                            (((PMMWIN_CONTEXT)ctxVmm->pMmContext)->MemCompress.dwInvalidPteMask)
 
 #define MMWINX86_PTE_IS_HARDWARE(pte)               (pte & 0x01)

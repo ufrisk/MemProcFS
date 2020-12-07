@@ -27,23 +27,21 @@ VOID ObContainer_ObCloseCallback(_In_ POB_CONTAINER pObContainer)
 }
 
 /*
-* Create a new object container object with an optional contained object.
+* Create a new object container object without an initial contained object.
 * An object container provides atomic access to its contained object in a
 * multithreaded environment. The object container is in itself an object
 * manager object and must be DECREF'ed by the caller when use is complete.
 * CALLER DECREF: return
-* -- pOb = optional contained object.
 * -- return
 */
-POB_CONTAINER ObContainer_New(_In_opt_ PVOID pOb)
+POB_CONTAINER ObContainer_New()
 {
-    POB_CONTAINER pObContainer = Ob_Alloc(OB_TAG_CORE_CONTAINER, 0, sizeof(OB_CONTAINER), ObContainer_ObCloseCallback, NULL);
+    POB_CONTAINER pObContainer = Ob_Alloc(OB_TAG_CORE_CONTAINER, LMEM_ZEROINIT, sizeof(OB_CONTAINER), ObContainer_ObCloseCallback, NULL);
     if(!pObContainer) { return NULL; }
     if(!InitializeCriticalSectionAndSpinCount(&pObContainer->Lock, 4096)) {
         LocalFree(pObContainer);
         return NULL;
     }
-    pObContainer->pOb = Ob_INCREF(pOb);
     return pObContainer;
 }
 
@@ -77,4 +75,14 @@ VOID ObContainer_SetOb(_In_ POB_CONTAINER pObContainer, _In_opt_ PVOID pOb)
     pObContainer->pOb = Ob_INCREF(pOb);
     LeaveCriticalSection(&pObContainer->Lock);
     Ob_DECREF(pObOld);
+}
+
+/*
+* Check if the object container is valid and contains an object.
+* -- pObContainer
+* -- return
+*/
+BOOL ObContainer_Exists(_In_opt_ POB_CONTAINER pObContainer)
+{
+    return OB_CONTAINER_IS_VALID(pObContainer) && pObContainer->pOb;
 }

@@ -239,7 +239,10 @@ VOID VmmWinReg_HiveReadEx(_In_ POB_REGISTRY_HIVE pRegistryHive, _In_ DWORD ra, _
     if(!cb) { return; }
     cMEMs = (DWORD)(((ra & 0xfff) + cb + 0xfff) >> 12);
     pbBuffer = (PBYTE)LocalAlloc(LMEM_ZEROINIT, 0x2000 + cMEMs * (sizeof(MEM_SCATTER) + sizeof(PMEM_SCATTER)));
-    if(!pbBuffer) { return; }
+    if(!pbBuffer) {
+        ZeroMemory(pb, cb);
+        return;
+    }
     pMEMs = (PMEM_SCATTER)(pbBuffer + 0x2000);
     ppMEMs = (PPMEM_SCATTER)(pbBuffer + 0x2000 + cMEMs * sizeof(MEM_SCATTER));
     oVA = ra & 0xfff;
@@ -960,7 +963,7 @@ VOID VmmWinReg_Initialize()
 {
     PVMMWIN_REGISTRY_CONTEXT ctx;
     if(!(ctx = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMWIN_REGISTRY_CONTEXT)))) { goto fail; }
-    if(!(ctx->pObCHiveMap = ObContainer_New(NULL))) { goto fail; }
+    if(!(ctx->pObCHiveMap = ObContainer_New())) { goto fail; }
     InitializeCriticalSection(&ctx->LockUpdate);
     ctxVmm->pRegistry = ctx;
     return;

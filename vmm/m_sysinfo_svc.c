@@ -122,7 +122,7 @@ NTSTATUS MSysInfoSvc_Read_DoWork(_In_ PVMMOB_MAP_SERVICE pSvcMap, _Out_writes_to
         wszUser[0] = '\0';
         wszSvcName[0] = '\0';
         wcsncat_s(wszSvcName, MAX_PATH, pe->wszServiceName, _TRUNCATE);
-        if(pe->wszServiceName != pe->wszDisplayName) {
+        if((pe->wszServiceName != pe->wszDisplayName) && pe->wszDisplayName[0]) {
             wcsncat_s(wszSvcName, MAX_PATH, L" / ", _TRUNCATE);
             wcsncat_s(wszSvcName, MAX_PATH, pe->wszDisplayName, _TRUNCATE);
         }

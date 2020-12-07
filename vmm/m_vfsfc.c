@@ -1,4 +1,4 @@
-// m_fc.c : implementation of forensic info & startup module.
+// m_vfsfc.c : implementation of forensic info & startup module.
 //
 // (c) Ulf Frisk, 2020
 // Author: Ulf Frisk, pcileech@frizk.net
@@ -38,7 +38,7 @@ LPCSTR szMFC_README =
 "For additional information about MemProcFS forensics check out the guide at:\n" \
 "https://github.com/ufrisk/MemProcFS/wiki                                    \n";
 
-NTSTATUS M_Fc_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS M_VfsFc_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     BYTE btp;
     if(!wcscmp(ctx->wszPath, L"readme.txt")) {
@@ -58,7 +58,7 @@ NTSTATUS M_Fc_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead
     return VMMDLL_STATUS_FILE_INVALID;
 }
 
-NTSTATUS M_Fc_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
+NTSTATUS M_VfsFc_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
 {
     DWORD dwDatabaseType = 0;
     NTSTATUS nt;
@@ -70,7 +70,7 @@ NTSTATUS M_Fc_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBYTE pb, _I
     return VMMDLL_STATUS_FILE_INVALID;
 }
 
-BOOL M_Fc_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
+BOOL M_VfsFc_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 {
     VMMDLL_VfsList_AddFile(pFileList, L"forensic_enable.txt", 1, NULL);
     VMMDLL_VfsList_AddFile(pFileList, L"database.txt", ctxFc ? wcslen_u8(ctxFc->db.wszDatabaseWinPath) : 0, NULL);
@@ -78,15 +78,15 @@ BOOL M_Fc_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
     return TRUE;
 }
 
-VOID M_Fc_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
+VOID M_VfsFc_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if((pRI->tpSystem != VMM_SYSTEM_WINDOWS_X64) && (pRI->tpSystem != VMM_SYSTEM_WINDOWS_X86)) { return; }
     if(ctxMain->dev.fVolatile) { return; }
     wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\forensic");                    // module name
     pRI->reg_info.fRootModule = TRUE;                                           // module shows in root directory
-    pRI->reg_fn.pfnList = M_Fc_List;                                            // List function supported
-    pRI->reg_fn.pfnRead = M_Fc_Read;                                            // Read function supported
-    pRI->reg_fn.pfnWrite = M_Fc_Write;                                          // Read function supported
+    pRI->reg_fn.pfnList = M_VfsFc_List;                                         // List function supported
+    pRI->reg_fn.pfnRead = M_VfsFc_Read;                                         // Read function supported
+    pRI->reg_fn.pfnWrite = M_VfsFc_Write;                                       // Read function supported
     pRI->pfnPluginManager_Register(pRI);
 }

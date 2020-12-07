@@ -8,51 +8,23 @@
 #define __VMMWIN_H__
 #include "vmm.h"
 
-typedef struct tdVMMWIN_EAT_ENTRY {
-    QWORD vaFunction;
-    DWORD vaFunctionOffset;
-    CHAR szFunction[40];
-} VMMPROC_WINDOWS_EAT_ENTRY, *PVMMPROC_WINDOWS_EAT_ENTRY;
-
-typedef struct tdVMMWIN_IAT_ENTRY {
-    ULONG64 vaFunction;
-    CHAR szFunction[40];
-    CHAR szModule[64];
-} VMMWIN_IAT_ENTRY, *PVMMWIN_IAT_ENTRY;
-
 /*
-* Load the size of the required display buffer for sections, imports and export
-* into the pModuleEx struct. The size is a direct consequence of the number of
-* functions since fixed line sizes are used for all these types. Loading is
-* done in a recource efficient way to minimize I/O as much as possible.
+* Initialize EAT (exported functions) for a specific module.
+* CALLER DECREF: return
 * -- pProcess
 * -- pModule
-*/
-VOID VmmWin_PE_SetSizeSectionIATEAT_DisplayBuffer(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pModule);
-
-/*
-* Walk the export address table (EAT) from a given pProcess and store it in the
-* in the caller supplied pEATs/pcEATs structures.
-* -- pProcess
-* -- pModule
-* -- pEATs
-* -- cEATs
-* -- pcEATs = number of actual items of pEATs written.
 * -- return
 */
-_Success_(return)
-BOOL VmmWin_PE_LoadEAT_DisplayBuffer(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pModule, _Out_writes_opt_(cEATs) PVMMPROC_WINDOWS_EAT_ENTRY pEATs, _In_ DWORD cEATs, _Out_ PDWORD pcEATs);
+PVMMOB_MAP_EAT VmmWinEAT_Initialize(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pModule);
 
 /*
-* Walk the import address table (IAT) from a given pProcess and store it in the
-* in the caller supplied pIATs/pcIATs structures.
+* Initialize IAT (imported functions) for a specific module.
+* CALLER DECREF: return
 * -- pProcess
 * -- pModule
-* -- pIATs
-* -- cIATs
-* -- pcIATs = number of actual items of pIATs on exit
+* -- return
 */
-VOID VmmWin_PE_LoadIAT_DisplayBuffer(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pModule, _Out_writes_(*pcIATs) PVMMWIN_IAT_ENTRY pIATs, _In_ DWORD cIATs, _Out_ PDWORD pcIATs);
+PVMMOB_MAP_IAT VmmWinIAT_Initialize(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pModule);
 
 /*
 * Try initialize PteMap text descriptions. This function will first try to pop-
@@ -69,10 +41,19 @@ BOOL VmmWinPte_InitializeMapText(_In_ PVMM_PROCESS pProcess);
 * system. This is performed by a PEB/Ldr walk/scan of in-process memory
 * structures. This may be unreliable if a process is obfuscated or tampered.
 * -- pProcess
+* -- psvaInjected = optional set of injected addresses, updated on exit.
 * -- return
 */
 _Success_(return)
-BOOL VmmWinLdrModule_Initialize(_In_ PVMM_PROCESS pProcess);
+BOOL VmmWinLdrModule_Initialize(_In_ PVMM_PROCESS pProcess, _Inout_opt_ POB_SET psvaInjected);
+
+/*
+* Initialize the unloaded module map containing information about unloaded modules.
+* -- pProcess
+* -- return
+*/
+_Success_(return)
+BOOL VmmWinUnloadedModule_Initialize(_In_ PVMM_PROCESS pProcess);
 
 /*
 * Initialize the meap map containing information about the process heaps in the
@@ -88,10 +69,9 @@ BOOL VmmWinHeap_Initialize(_In_ PVMM_PROCESS pProcess);
 * NB! The threading sub-system is dependent on pdb symbols and may take a small
 * amount of time before it's available after system startup.
 * -- pProcess
-* -- fNonBlocking
 * -- return
 */
-BOOL VmmWinThread_Initialize(_In_ PVMM_PROCESS pProcess, _In_ BOOL fNonBlocking);
+BOOL VmmWinThread_Initialize(_In_ PVMM_PROCESS pProcess);
 
 /*
 * Initialize Handles for a specific process. Extended information text may take

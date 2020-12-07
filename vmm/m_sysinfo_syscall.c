@@ -126,8 +126,7 @@ VOID MSyscall_Initialize(PMSYSCALL_CONTEXT ctx)
     }
     // fetch win32k infos
     if(!(pObProcessFakeCsrss = MSyscall_GetProcessCsrssFake())) { goto fail_win32k; }
-    if(!VmmMap_GetModule(pObSystemProcess, &pObModuleMap)) { goto fail_win32k; }
-    if(!(peModuleWin32k = VmmMap_GetModuleEntry(pObModuleMap, L"win32k.sys"))) { goto fail_win32k; }
+    if(!VmmMap_GetModuleEntryEx(pObSystemProcess, 0, L"win32k.sys", &pObModuleMap, &peModuleWin32k)) { goto fail_win32k; }
     //if(!PE_GetCodeViewInfo(pObProcessFakeCsrss, peModuleWin32k->vaBase, NULL, &CVInfoWin32k)) { goto fail_win32k; }
     //if(!(hPdbWin32k = PDB_AddModuleEntry(peModuleWin32k->vaBase, peModuleWin32k->cbImageSize, "win32k.sys", CVInfoWin32k.CodeView.PdbFileName, CVInfoWin32k.CodeView.Guid, CVInfoWin32k.CodeView.Age))) { goto fail_win32k; }
     if(!(hPdbWin32k = PDB_GetHandleFromModuleAddress(pObProcessFakeCsrss, peModuleWin32k->vaBase))) { goto fail_win32k; }

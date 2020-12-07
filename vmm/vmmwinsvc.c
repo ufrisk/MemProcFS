@@ -138,8 +138,7 @@ VOID VmmWinSvc_ListHeadFromPDB(_In_ PVMM_PROCESS pSvcProcess, _Out_writes_(2) PQ
     DWORD dwoSymSvcDB = 0;
     pvaListHead[0] = 0;
     pvaListHead[1] = 0;
-    if(!VmmMap_GetModule(pSvcProcess, &pObModuleMap)) { goto fail; }
-    if(!(peModuleServices = VmmMap_GetModuleEntry(pObModuleMap, L"services.exe"))) { goto fail; }
+    if(!VmmMap_GetModuleEntryEx(pSvcProcess, 0, L"services.exe", &pObModuleMap, &peModuleServices)) { goto fail; }
     if(!(hPdbServices = PDB_GetHandleFromModuleAddress(pSvcProcess, peModuleServices->vaBase))) { goto fail; }
     if(!PDB_GetSymbolOffset(hPdbServices, "ServiceDatabase", &dwoSymSvcDB)) { goto fail; }
     if(!VmmRead(pSvcProcess, peModuleServices->vaBase + dwoSymSvcDB, pbSymSvcDB, sizeof(pbSymSvcDB))) { goto fail; }
@@ -164,7 +163,7 @@ VOID VmmWinSvc_ListHeadFromVAD(_In_ PVMMWINSVC_CONTEXT ctx, _In_ PVMM_PROCESS pS
     BYTE pb2[0x10], *pb = NULL;
     PVMM_MAP_VADENTRY pe;
     PVMMOB_MAP_VAD pObVadMap = NULL;
-    if(!VmmMap_GetVad(pSvcProcess, &pObVadMap, FALSE)) { goto finish; }
+    if(!VmmMap_GetVad(pSvcProcess, &pObVadMap, VMM_VADMAP_TP_CORE)) { goto finish; }
     // 1: if address exist -> prefetch vad and finish
     if(pvaListHead[0] && (pe = VmmMap_GetVadEntry(pObVadMap, pvaListHead[0]))) {
         cbVad = (DWORD)(pe->vaEnd + 1 - pe->vaStart);
@@ -329,6 +328,8 @@ LPWSTR VmmWinSvc_ResolveStrAddSingle(_In_ PVMM_PROCESS pProcessSvc, _In_ LPWSTR 
     } else {
         if((qwA < 0x10000) || !VMM_UADDR(qwA)) { goto fail; }
         VmmRead2(pProcessSvc, qwA, (PBYTE)wsz, sizeof(wsz) - 2, VMM_FLAG_FORCECACHE_READ);
+        if(!wsz[0]) { goto fail; }
+        if(wsz[0] > 0xff || wsz[1] > 0xff || wsz[2] > 0xff) { goto fail; }
     }
     qwHash = Util_HashStringUpperW(wsz);
     if((wszResult = ObMap_GetByKey(pmStr, qwHash))) { return wszResult; }

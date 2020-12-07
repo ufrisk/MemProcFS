@@ -30,7 +30,7 @@ from io import BytesIO
 
 # Examples:
 #
-# VmmPy_Example(["-device", "c:\\temp\\win10.raw"])
+# VmmPy_Example(["-device", "c:\\dumps\\WIN7-X64-SP1-1.pmem"])
 # VmmPy_Example(["-device", "fpga", "-memmap", "auto"])
 
 def VmmPy_Example(args):
@@ -158,6 +158,15 @@ def VmmPy_Example(args):
     print("SUCCESS: VmmPy_ProcessGetModuleFromName()")
     print(result)
     va = result['va']
+
+    # UNLOADED MODULE MAP
+    print("--------------------------------------------------------------------")
+    print("Get unloaded module information about the explorer.exe process.     ")
+    input("Press Enter to continue...")
+    print("CALL: VmmPy_ProcessGetUnloadedModuleMap()")
+    result = VmmPy_ProcessGetUnloadedModuleMap(pid)
+    print("SUCCESS: VmmPy_ProcessGetUnloadedModuleMap()")
+    print(result)
 
     # HEAP MAP
     print("--------------------------------------------------------------------")
@@ -306,6 +315,7 @@ def VmmPy_Example(args):
     print("SUCCESS: VmmPy_Initialize_Plugins()")
 
     # VFS LIST /
+    # NB! VmmPy_Initialize_Plugins() must be called prior to VmmPy_VfsList()
     print("--------------------------------------------------------------------")
     print("Retrieve the file list of the virtual file system from the root path")
     input("Press Enter to continue...")
@@ -315,6 +325,7 @@ def VmmPy_Example(args):
     print(result)
 
     # VFS LIST /name
+    # NB! VmmPy_Initialize_Plugins() must be called prior to VmmPy_VfsList()
     print("--------------------------------------------------------------------")
     print("Retrieve the file list of the virtual file system from the name path")
     input("Press Enter to continue...")
@@ -324,6 +335,7 @@ def VmmPy_Example(args):
     print(result)
 
     # VFS READ
+    # NB! VmmPy_Initialize_Plugins() must be called prior to VmmPy_VfsRead()
     print("--------------------------------------------------------------------")
     print("Read from a file in the virtual file system (/memory.pmem at offset 0x1000)")
     input("Press Enter to continue...")

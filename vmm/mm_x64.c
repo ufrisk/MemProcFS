@@ -111,11 +111,9 @@ VOID MmX64_MapInitialize_Index(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_PTEENTR
         pte = PTEs[i];
         if(!MMX64_PTE_IS_VALID(pte, iPML)) {
             if(!pte) { continue; }
-            pte = MMX64_PTE_IS_TRANSITION(pte, iPML);       // PAGE ATTRIBUTES IF TRANSITION PAGE
-            if(!pte) {
-                if(iPML != 1) { continue; }
-                pte = 0x8000000000000005;                   // GUESS READ-ONLY USER PAGE IF NON TRANSITION
-            }
+            if(iPML != 1) { continue; }
+            pte = MMX64_PTE_IS_TRANSITION(pte, iPML);
+            pte = 0x8000000000000005 | (pte ? (pte & 0x8000fffffffff000 ) : 0); // GUESS READ-ONLY USER PAGE IF NON TRANSITION
             fPagedOut = TRUE;
         } else {
             fPagedOut = FALSE;

@@ -126,9 +126,9 @@ NTSTATUS VMemD_ReadWritePte(_In_ DWORD dwPID, _In_ QWORD vaBase, _In_ BOOL fRead
     // read memory from "vmemd" directory file - "pte mapped"
     *pcbReadWrite = 0;
     result =
-        VMMDLL_ProcessMap_GetPte(dwPID, NULL, &cbPteMap, FALSE) &&
+        VMMDLL_Map_GetPte(dwPID, NULL, &cbPteMap, FALSE) &&
         (pPteMap = LocalAlloc(0, cbPteMap)) &&
-        VMMDLL_ProcessMap_GetPte(dwPID, pPteMap, &cbPteMap, FALSE) &&
+        VMMDLL_Map_GetPte(dwPID, pPteMap, &cbPteMap, FALSE) &&
         (pe = VMemD_Util_qfind((PVOID)vaBase, pPteMap->cMap, pPteMap->pMap, sizeof(VMMDLL_MAP_PTEENTRY), (int(*)(PVOID, PVOID))VMemD_ReadPte_CmpFind));
     if(!result) { goto fail; }
     if(pe->vaBase + (pe->cPages << 12) <= vaBase + cbOffset) {
@@ -164,9 +164,9 @@ NTSTATUS VMemD_ReadWriteVad(_In_ DWORD dwPID, _In_ QWORD vaBase, _In_ BOOL fRead
     // read memory from "vmemd" directory file - "pte mapped"
     *pcbReadWrite = 0;
     result =
-        VMMDLL_ProcessMap_GetVad(dwPID, NULL, &cbVadMap, FALSE) &&
+        VMMDLL_Map_GetVad(dwPID, NULL, &cbVadMap, FALSE) &&
         (pVadMap = LocalAlloc(0, cbVadMap)) &&
-        VMMDLL_ProcessMap_GetVad(dwPID, pVadMap, &cbVadMap, FALSE) &&
+        VMMDLL_Map_GetVad(dwPID, pVadMap, &cbVadMap, FALSE) &&
         (pe = VMemD_Util_qfind((PVOID)vaBase, pVadMap->cMap, pVadMap->pMap, sizeof(VMMDLL_MAP_VADENTRY), (int(*)(PVOID, PVOID))VMemD_ReadVad_CmpFind));
     if(!result) { goto fail; }
     if(pe->vaEnd <= vaBase + cbOffset) {
@@ -246,14 +246,14 @@ BOOL VMemD_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
     PVMMDLL_MAP_VADENTRY pVad = NULL;
     WCHAR wszBufferFileName[MAX_PATH] = { 0 }, wszInfo[64] = { 0 };
     // Retrieve mandatory memory map based on hardware page tables.
-    f = VMMDLL_ProcessMap_GetPte(ctx->dwPID, NULL, &cbPteMap, TRUE) &&
+    f = VMMDLL_Map_GetPte(ctx->dwPID, NULL, &cbPteMap, TRUE) &&
         (pPteMap = LocalAlloc(0, cbPteMap));
-    f = f && VMMDLL_ProcessMap_GetPte(ctx->dwPID, pPteMap, &cbPteMap, TRUE);
+    f = f && VMMDLL_Map_GetPte(ctx->dwPID, pPteMap, &cbPteMap, TRUE);
     if(!f) { goto fail; }
     // Retrieve optional memory map based on virtual address descriptors (VADs).
-    f = VMMDLL_ProcessMap_GetVad(ctx->dwPID, NULL, &cbVadMap, TRUE) &&
+    f = VMMDLL_Map_GetVad(ctx->dwPID, NULL, &cbVadMap, TRUE) &&
         (pVadMap = LocalAlloc(0, cbVadMap)) &&
-        VMMDLL_ProcessMap_GetVad(ctx->dwPID, pVadMap, &cbVadMap, TRUE);
+        VMMDLL_Map_GetVad(ctx->dwPID, pVadMap, &cbVadMap, TRUE);
     // Display VadMap entries in the file system (if any)
     for(iVad = 0; (f && (iVad < pVadMap->cMap)); iVad++) {
         pVad = pVadMap->pMap + iVad;

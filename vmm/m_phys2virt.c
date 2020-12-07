@@ -256,17 +256,23 @@ BOOL Phys2Virt_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 * shall call the supplied pfnPluginManager_Register function.
 * NB! the module does not have to register itself - for example if the target
 * operating system or architecture is unsupported.
-* -- pPluginRegInfo
+* -- pRI
 */
 VOID M_Phys2Virt_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if(!((pRI->tpMemoryModel == VMM_MEMORYMODEL_X64) || (pRI->tpMemoryModel == VMM_MEMORYMODEL_X86) || (pRI->tpMemoryModel == VMM_MEMORYMODEL_X86PAE))) { return; }
-    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\phys2virt");            // module name
-    pRI->reg_info.fRootModule = TRUE;                                    // module shows in root directory
-    pRI->reg_info.fProcessModule = TRUE;                                 // module shows in process directory
     pRI->reg_fn.pfnList = Phys2Virt_List;                                // List function supported
     pRI->reg_fn.pfnRead = Phys2Virt_Read;                                // Read function supported
     pRI->reg_fn.pfnWrite = Phys2Virt_Write;                              // Write function supported
+    // register process plugin
+    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\phys2virt");
+    pRI->reg_info.fRootModule = FALSE;
+    pRI->reg_info.fProcessModule = TRUE;
+    pRI->pfnPluginManager_Register(pRI);
+    // register root plugin
+    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\misc\\phys2virt");
+    pRI->reg_info.fRootModule = TRUE;
+    pRI->reg_info.fProcessModule = FALSE;
     pRI->pfnPluginManager_Register(pRI);
 }

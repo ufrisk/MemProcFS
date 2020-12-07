@@ -8,11 +8,21 @@
 #include "vmm.h"
 
 /*
-* Force a refresh of the process list.
-* -- fRefreshTotal = full refresh of processes should be done instead of partial.
-* -- return
+* Refresh functions refreshes aspects of MemProcFS at different intervals.
+* Frequency from frequent to less frequent is as:
+* 1. VmmProcRefresh_MEM()    = refresh memory cache (except page tables).
+* 2. VmmProcRefresh_TLB()    = refresh page table cache.
+* 3. VmmProcRefresh_Fast()   = fast refresh incl. partial process refresh.
+* 4. VmmProcRefresh_Medium() = medium refresh incl. full process refresh.
+* 5. VmmProcRefresh_Slow()   = slow refresh.
+* A slower more comprehensive refresh layer does not equal that the lower
+* faster refresh layers are run automatically - user has to refresh them too.
 */
-BOOL VmmProc_RefreshProcesses(_In_ BOOL fRefreshTotal);
+_Success_(return) BOOL VmmProcRefresh_MEM();
+_Success_(return) BOOL VmmProcRefresh_TLB();
+_Success_(return) BOOL VmmProcRefresh_Fast();
+_Success_(return) BOOL VmmProcRefresh_Medium();
+_Success_(return) BOOL VmmProcRefresh_Slow();
 
 /*
 * Tries to automatically identify the operating system given by the supplied

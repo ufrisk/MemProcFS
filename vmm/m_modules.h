@@ -19,10 +19,15 @@ VOID M_VfsRoot_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_VfsProc_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 
 /*
+* Initialization function for the build-in virtual file system forensic folder module.
+*/
+VOID M_VfsFc_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
+
+/*
 * Initialization functions for ROOT modules.
 * NB! modules may in some cases be combined ROOT/PROCESS modules.
 */
-
+VOID M_FindEvil_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_Phys2Virt_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_Status_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_SysInfo_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
@@ -38,7 +43,6 @@ VOID M_WinReg_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 /*
 * Initialization functions for FORENSIC related modules.
 */
-VOID M_Fc_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_FcTimeline_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_FcNtfs_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_FcProc_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
@@ -61,9 +65,11 @@ VOID(*g_pfnModulesAllInternal[])(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo) = {
     // core modules
     M_VfsRoot_Initialize,
     M_VfsProc_Initialize,
+    M_VfsFc_Initialize,
     // various per-process modules
     M_FileHandlesVads_Initialize,
     M_FileModules_Initialize,
+    M_FindEvil_Initialize,
     M_HandleInfo_Initialize,
     M_LdrModules_Initialize,
     M_MemMap_Initialize,
@@ -83,7 +89,6 @@ VOID(*g_pfnModulesAllInternal[])(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo) = {
     M_SysInfoSyscall_Initialize,
     M_WinReg_Initialize,
     // various global forensic modules
-    M_Fc_Initialize,
     M_FcTimeline_Initialize,
     M_FcNtfs_Initialize,
     M_FcProc_Initialize,

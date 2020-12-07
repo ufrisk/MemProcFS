@@ -227,6 +227,9 @@ POB_M_MINIDUMP_CONTEXT M_MiniDump_Initialize_Internal(_In_ PVMM_PROCESS pProcess
     PVMM_MAP_THREADENTRY peT;
     PMINIDUMP_MODULE pmdM;
     PVMMOB_MAP_MODULE pObModuleMap = NULL;
+    PMINIDUMP_UNLOADED_MODULE pmdU;
+    PVMM_MAP_UNLOADEDMODULEENTRY peU;
+    PVMMOB_MAP_UNLOADEDMODULE pObUnloadedModuleMap = NULL;
     PVMM_MAP_MODULEENTRY peM;
     POB_SET psObPrefetch = NULL;
     PE_CODEVIEW_INFO CodeViewInfo;
@@ -241,9 +244,10 @@ POB_M_MINIDUMP_CONTEXT M_MiniDump_Initialize_Internal(_In_ PVMM_PROCESS pProcess
     if(!(psObPrefetch = ObSet_New())) { goto fail; }
     if(!(pObSystemProcess = VmmProcessGet(4))) { goto fail; }
     if(!VmmMap_GetPte(pProcess, &pObPteMap, FALSE) || !pObPteMap->cMap || (pObPteMap->cMap > 0x4000)) { goto fail; }
-    if(!VmmMap_GetVad(pProcess, &pObVadMap, TRUE) || !pObVadMap->cMap || (pObVadMap->cMap > 0x1000)) { goto fail; }
+    if(!VmmMap_GetVad(pProcess, &pObVadMap, VMM_VADMAP_TP_FULL) || !pObVadMap->cMap || (pObVadMap->cMap > 0x1000)) { goto fail; }
     if(!VmmMap_GetThread(pProcess, &pObThreadMap) || !pObThreadMap->cMap || (pObThreadMap->cMap > 0x4000)) { goto fail; }
     if(!VmmMap_GetModule(pProcess, &pObModuleMap) || !pObModuleMap->cMap || (pObModuleMap->cMap > 0x4000)) { goto fail; }
+    if(!VmmMap_GetUnloadedModule(pProcess, &pObUnloadedModuleMap)) { goto fail; }
     if(!(ctx = Ob_Alloc(OB_TAG_MOD_MINIDUMP_CTX, LMEM_ZEROINIT, sizeof(OB_M_MINIDUMP_CONTEXT), M_MiniDump_CallbackCleanup_ObMiniDumpContext, NULL))) { goto fail; }
     if(!(ctx->pb = LocalAlloc(LMEM_ZEROINIT, MINIDUMP_BUFFER_INITIAL))) { goto fail; }
     _snwprintf_s(
@@ -305,7 +309,7 @@ POB_M_MINIDUMP_CONTEXT M_MiniDump_Initialize_Internal(_In_ PVMM_PROCESS pProcess
     ctx->cb += ctx->ModuleList.cb;
 
     // allocate: MINIDUMP_UNLOADED_MODULE_LIST
-    ctx->UnloadedModuleList.cb = sizeof(MINIDUMP_UNLOADED_MODULE_LIST) + 0 * sizeof(MINIDUMP_UNLOADED_MODULE);
+    ctx->UnloadedModuleList.cb = sizeof(MINIDUMP_UNLOADED_MODULE_LIST) + pObUnloadedModuleMap->cMap * sizeof(MINIDUMP_UNLOADED_MODULE);
     ctx->UnloadedModuleList.rva = ctx->cb;
     ctx->UnloadedModuleList.p1 = (PMINIDUMP_UNLOADED_MODULE_LIST)(ctx->pb + ctx->UnloadedModuleList.rva);
     ctx->UnloadedModuleList.p2 = (PMINIDUMP_UNLOADED_MODULE)((QWORD)ctx->UnloadedModuleList.p1 + sizeof(MINIDUMP_UNLOADED_MODULE_LIST));
@@ -362,6 +366,22 @@ POB_M_MINIDUMP_CONTEXT M_MiniDump_Initialize_Internal(_In_ PVMM_PROCESS pProcess
             //pmdM->CvRecord            // ADDED LATER
             pmdM->MiscRecord.DataSize = 0;
             pmdM->MiscRecord.Rva = 0;
+        }
+    }
+
+    // populate: MINIDUMP_UNLOADED_MODULE_LIST
+    {
+        ctx->ThreadInfoList.p1->SizeOfHeader = sizeof(MINIDUMP_UNLOADED_MODULE_LIST);
+        ctx->ThreadInfoList.p1->SizeOfEntry = sizeof(MINIDUMP_UNLOADED_MODULE);
+        ctx->ThreadInfoList.p1->NumberOfEntries = pObUnloadedModuleMap->cMap;
+        for(i = 0; i < pObUnloadedModuleMap->cMap; i++) {
+            peU = &pObUnloadedModuleMap->pMap[i];
+            pmdU = &ctx->UnloadedModuleList.p2[i];
+            pmdU->BaseOfImage = peU->vaBase;
+            pmdU->CheckSum = peU->dwCheckSum;
+            pmdU->SizeOfImage = peU->cbImageSize;
+            pmdU->TimeDateStamp = peU->dwTimeDateStamp;
+            pmdU->ModuleNameRva = M_MiniDump_Initialize_AddText(ctx, peU->wszText);
         }
     }
 
@@ -617,6 +637,7 @@ fail:
     Ob_DECREF(psObPrefetch);
     Ob_DECREF(pObThreadMap);
     Ob_DECREF(pObModuleMap);
+    Ob_DECREF(pObUnloadedModuleMap);
     return Ob_DECREF(ctx);
 }
 

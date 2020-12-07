@@ -15,10 +15,15 @@ typedef unsigned __int64                QWORD, *PQWORD;
 #define OB_TAG_CORE_DATA                'ObDa'
 #define OB_TAG_CORE_SET                 'ObSe'
 #define OB_TAG_CORE_MAP                 'ObMa'
+#define OB_TAG_CORE_CACHEMAP            'ObMc'
+#define OB_TAG_CORE_STRMAP              'ObMs'
 #define OB_TAG_MAP_PTE                  'Mpte'
 #define OB_TAG_MAP_VAD                  'Mvad'
 #define OB_TAG_MAP_VADEX                'Mvae'
 #define OB_TAG_MAP_MODULE               'Mmod'
+#define OB_TAG_MAP_UNLOADEDMODULE       'Mumd'
+#define OB_TAG_MAP_EAT                  'Meat'
+#define OB_TAG_MAP_IAT                  'Miat'
 #define OB_TAG_MAP_THREAD               'Mthr'
 #define OB_TAG_MAP_HANDLE               'Mhnd'
 #define OB_TAG_MAP_PHYSMEM              'Mmem'
@@ -26,6 +31,7 @@ typedef unsigned __int64                QWORD, *PQWORD;
 #define OB_TAG_MAP_SERVICE              'Msvc'
 #define OB_TAG_MAP_NET                  'Mnet'
 #define OB_TAG_MAP_PFN                  'Mpfn'
+#define OB_TAG_MAP_EVIL                 'Mevl'
 #define OB_TAG_MOD_MINIDUMP_CTX         'mMDx'
 #define OB_TAG_OBJ_ERROR                'Oerr'
 #define OB_TAG_OBJ_FILE                 'Ofil'
@@ -160,15 +166,14 @@ typedef struct tdOB_CONTAINER {
 } OB_CONTAINER, *POB_CONTAINER;
 
 /*
-* Create a new object container object with an optional contained object.
+* Create a new object container object without an initial contained object.
 * An object container provides atomic access to its contained object in a
 * multithreaded environment. The object container is in itself an object
 * manager object and must be DECREF'ed by the caller when use is complete.
 * CALLER DECREF: return
-* -- pOb = optional contained object.
 * -- return
 */
-POB_CONTAINER ObContainer_New(_In_opt_ PVOID pOb);
+POB_CONTAINER ObContainer_New();
 
 /*
 * Retrieve an enclosed object from the given pObContainer.
@@ -184,6 +189,13 @@ PVOID ObContainer_GetOb(_In_ POB_CONTAINER pObContainer);
 * -- pOb
 */
 VOID ObContainer_SetOb(_In_ POB_CONTAINER pObContainer, _In_opt_ PVOID pOb);
+
+/*
+* Check if the object container is valid and contains an object.
+* -- pObContainer
+* -- return
+*/
+BOOL ObContainer_Exists(_In_opt_ POB_CONTAINER pObContainer);
 
 
 
@@ -244,7 +256,17 @@ BOOL ObSet_Push(_In_opt_ POB_SET pvs, _In_ QWORD value);
 * -- return = TRUE on success, FALSE otherwise.
 */
 _Success_(return)
-BOOL ObSet_PushSet(_In_opt_ POB_SET pvs, _In_ POB_SET pvsSrc);
+BOOL ObSet_PushSet(_In_opt_ POB_SET pvs, _In_opt_ POB_SET pvsSrc);
+
+/*
+* Push/Merge/Insert all QWORD values from the ObData pDataSrc into the ObSet pvs.
+* The source data is kept intact.
+* -- pvs
+* -- pDataSrc
+* -- return = TRUE on success, FALSE otherwise.
+*/
+_Success_(return)
+BOOL ObSet_PushData(_In_opt_ POB_SET pvs, _In_opt_ POB_DATA pDataSrc);
 
 /*
 * Insert a value representing an address into the ObSet. If the length of the
@@ -361,7 +383,7 @@ typedef struct tdOB_MAP *POB_MAP;
 * to optionally map key values to values, pointers or object manager objects.
 * The ObSet is an object manager object and must be DECREF'ed when required.
 * CALLER DECREF: return
-* -- flags
+* -- flags = defined by OB_MAP_FLAGS_*
 * -- return
 */
 POB_MAP ObMap_New(_In_ QWORD flags);
@@ -400,6 +422,19 @@ BOOL ObMap_ExistsKey(_In_opt_ POB_MAP pm, _In_ QWORD qwKey);
 */
 _Success_(return)
 BOOL ObMap_Push(_In_opt_ POB_MAP pm, _In_ QWORD qwKey, _In_ PVOID pvObject);
+
+/*
+* Push / Insert into the ObMap by making a shallow copy of the object.
+* NB! only valid for OB_MAP_FLAGS_OBJECT_LOCALFREE initialized maps.
+* -- pm
+* -- qwKey
+* -- pvObject
+* -- cbObject
+* -- return = TRUE on insertion, FALSE otherwise - i.e. if the key or object
+*             already exists or if the max capacity of the map is reached.
+*/
+_Success_(return)
+BOOL ObMap_PushCopy(_In_opt_ POB_MAP pm, _In_ QWORD qwKey, _In_ PVOID pvObject, _In_ SIZE_T cbObject);
 
 /*
 * Remove the "last" object.
@@ -446,7 +481,8 @@ PVOID ObMap_RemoveByKey(_In_opt_ POB_MAP pm, _In_ QWORD qwKey);
 * -- pm
 * -- return = clear was successful - always true.
 */
-VOID ObMap_Clear(_In_opt_ POB_MAP pm);
+_Success_(return)
+BOOL ObMap_Clear(_In_opt_ POB_MAP pm);
 
 /*
 * Peek the "last" object.
@@ -515,6 +551,14 @@ PVOID ObMap_GetByKey(_In_opt_ POB_MAP pm, _In_ QWORD qwKey);
 */
 PVOID ObMap_GetByIndex(_In_opt_ POB_MAP pm, _In_ DWORD index);
 
+/*
+* Retrieve the key for an existing object in the ObMap.
+* -- pm
+* -- pvObject
+* -- return
+*/
+_Success_(return != 0)
+QWORD ObMap_GetKey(_In_opt_ POB_MAP pm, _In_ PVOID pvObject);
 
 /*
 * Common filter function related to ObMap_FilterSet.
@@ -550,5 +594,181 @@ POB_SET ObMap_FilterSet(_In_opt_ POB_MAP pm, _In_opt_ VOID(*pfnFilter)(_In_ QWOR
 DWORD ObMap_RemoveByFilter(_In_opt_ POB_MAP pm, _In_opt_ BOOL(*pfnFilter)(_In_ QWORD k, _In_ PVOID v));
 
 
+
+// ----------------------------------------------------------------------------
+// CACHE MAP FUNCTIONALITY BELOW:
+//
+// The map (ObCacheMap) implements an efficient caching of objects stored in
+// an internal hash map. The cached object are retrieved and cleared according
+// to rules implemented by callback functions.
+//
+// If the max number of map entries are reached the least recently accessed
+// entry will be removed if required to make room for a new entry.
+//
+// The map (ObCacheMap) is thread safe.
+// The ObCacheMap is an object manager object and must be DECREF'ed when required.
+// ----------------------------------------------------------------------------
+
+typedef struct tdOB_CACHEMAP *POB_CACHEMAP;
+
+#define OB_CACHEMAP_FLAGS_OBJECT_OB          0x01
+#define OB_CACHEMAP_FLAGS_OBJECT_LOCALFREE   0x02
+
+/*
+* Create a new cached map. A cached map (ObCacheMap) provides atomic map
+* operations on cached objects.
+* The ObCacheMap is an object manager object and must be DECREF'ed when required.
+* CALLER DECREF: return
+* -- cMaxEntries = max entries in the cache, if more entries are added the
+*       least recently accessed item will be removed from the cache map.
+* -- pfnValidEntry = validation callback function (if any).
+* -- flags = defined by OB_CACHEMAP_FLAGS_*
+* -- return
+*/
+POB_CACHEMAP ObCacheMap_New(
+    _In_ DWORD cMaxEntries,
+    _In_opt_ BOOL(*pfnValidEntry)(_Inout_ PQWORD qwContext, _In_ QWORD qwKey, _In_ PVOID pvObject),
+    _In_ QWORD flags
+);
+
+/*
+* Clear the ObCacheMap by removing all objects and their keys.
+* -- pcm
+* -- return = clear was successful - always true.
+*/
+_Success_(return)
+BOOL ObCacheMap_Clear(_In_opt_ POB_CACHEMAP pcm);
+
+/*
+* Check if a key exists in the ObCacheMap.
+* -- pcm
+* -- qwKey/pvObject
+* -- return
+*/
+BOOL ObCacheMap_ExistsKey(_In_opt_ POB_CACHEMAP pcm, _In_ QWORD qwKey);
+
+/*
+* Push / Insert into the ObCacheMap. If an object with the same key already
+* exists it's removed from the cache map before the new object is inserted.
+* If pvObject is OB the map performs Ob_INCREF on its own reference.
+* -- pcm
+* -- qwKey
+* -- pvObject
+* -- qwContextInitial = initial context (passed on to pfnValidEntry callback).
+* -- return = TRUE on insertion, FALSE otherwise - i.e. if the key or object
+*             already exists or if the max capacity of the map is reached.
+*/
+_Success_(return)
+BOOL ObCacheMap_Push(_In_opt_ POB_CACHEMAP pcm, _In_ QWORD qwKey, _In_ PVOID pvObject, _In_ QWORD qwContextInitial);
+
+/*
+* Retrieve the number of objects in the ObCacheMap.
+* -- pcm
+* -- return
+*/
+DWORD ObCacheMap_Size(_In_opt_ POB_CACHEMAP pcm);
+
+/*
+* Retrieve a value given a key.
+* CALLER DECREF(if OB): return
+* -- pcm
+* -- qwKey
+* -- return
+*/
+PVOID ObCacheMap_GetByKey(_In_opt_ POB_CACHEMAP pcm, _In_ QWORD qwKey);
+
+/*
+* Remove an object from the ObCacheMap by using its key.
+* NB! Object is removed and returned even if valid critera is not matched.
+* CALLER DECREF(if OB): return
+* -- pcm
+* -- qwKey
+* -- return = success: object, fail: NULL.
+*/
+PVOID ObCacheMap_RemoveByKey(_In_opt_ POB_CACHEMAP pcm, _In_ QWORD qwKey);
+
+
+// ----------------------------------------------------------------------------
+// STRMAP FUNCTIONALITY BELOW:
+//
+// The strmap is created and populated with strings (ascii and wide-char)
+// in an optimal way removing duplicates. Upon finalization the string map
+// results in a multi-string and an update of string references will happen.
+//
+// References to the strings will only be valid after a successful call to
+// finalize_DECREF_NULL().
+//
+// The strmap is only meant to be an interim object to be used for creation
+// of multi-string values and should not be kept as a long-lived object.
+//
+// The ObStrMap is an object manager object and must be DECREF'ed when required.
+// ----------------------------------------------------------------------------
+
+typedef struct tdOB_STRMAP *POB_STRMAP;
+
+#define OB_STRMAP_FLAGS_CASE_SENSITIVE      0x00
+#define OB_STRMAP_FLAGS_CASE_INSENSITIVE    0x01
+
+/*
+* Create a new strmap. A strmap (ObStrMap) provides an easy way to add new
+* strings to a multi-string in an efficient way. The ObStrMap is not meant
+* to be a long-term object - it's supposed to be finalized and decommissioned
+* by calling ObStrMap_Finalize_DECREF_NULL().
+* The ObStrMap is an object manager object and must be DECREF'ed when required.
+* CALLER DECREF: return
+* -- flags = defined by OB_STRMAP_FLAGS_*
+* -- return
+*/
+POB_STRMAP ObStrMap_New(_In_ QWORD flags);
+
+/*
+* Push / Insert into the ObStrMap.
+* -- psm
+* -- sz
+* -- pwszDst
+* -- pcchDst
+* -- return = TRUE on insertion, FALSE otherwise.
+*/
+_Success_(return)
+BOOL ObStrMap_PushA(_In_opt_ POB_STRMAP psm, _In_opt_ LPSTR sz, _In_opt_ LPWSTR *pwszDst, _In_opt_ PDWORD pcchDst);
+
+/*
+* Push / Insert into the ObStrMap.
+* -- psm
+* -- wsz
+* -- pwszDst
+* -- pcchDst
+* -- return = TRUE on insertion, FALSE otherwise.
+*/
+_Success_(return)
+BOOL ObStrMap_Push(_In_opt_ POB_STRMAP psm, _In_opt_ LPWSTR wsz, _In_opt_ LPWSTR *pwszDst, _In_opt_ PDWORD pcchDst);
+
+/*
+* Push / Insert max 2048 characters into ObStrMap using a swprintf_s syntax.
+* -- psm
+* -- pwszDst
+* -- pcchDst
+* -- wszFormat
+* -- ...
+* -- return = TRUE on insertion, FALSE otherwise.
+*/
+_Success_(return)
+BOOL ObStrMap_Push_swprintf_s(_In_opt_ POB_STRMAP psm, _In_opt_ LPWSTR *pwszDst, _In_opt_ PDWORD pcchDst, _In_z_ _Printf_format_string_ wchar_t const *const wszFormat, ...);
+
+/*
+* Finalize the ObStrMap. Create and assign the MultiStr and assign each
+* previously added string reference to a pointer location within the MultiStr.
+* ---
+* Also decrease the reference count of the object. If the reference count
+* reaches zero the object will be cleaned up.
+* Also set the incoming pointer to NULL.
+* CALLER LOCALFREE: *pwszMultiStr
+* -- ppsm
+* -- pwszMultiStr
+* -- pcbMultiStr
+* -- return
+*/
+_Success_(return)
+BOOL ObStrMap_Finalize_DECREF_NULL(_In_opt_ PVOID *ppsm, _Out_ LPWSTR *pwszMultiStr, _Out_ PDWORD pcbMultiStr);
 
 #endif /* __OB_H__ */

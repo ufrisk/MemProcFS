@@ -137,6 +137,7 @@
     <ClInclude Include="version.h" />
     <ClInclude Include="vmm.h" />
     <ClInclude Include="vmmdll.h" />
+    <ClInclude Include="vmmevil.h" />
     <ClInclude Include="vmmnet.h" />
     <ClInclude Include="vmmproc.h" />
     <ClInclude Include="vmmwin.h" />
@@ -154,7 +155,6 @@
     <ClCompile Include="mm_x64.c" />
     <ClCompile Include="mm_x86.c" />
     <ClCompile Include="mm_x86pae.c" />
-    <ClCompile Include="m_fc.c" />
     <ClCompile Include="m_fc_ntfs.c" />
     <ClCompile Include="m_fc_proc.c" />
     <ClCompile Include="m_fc_registry.c" />
@@ -162,6 +162,7 @@
     <ClCompile Include="m_fc_timeline.c" />
     <ClCompile Include="m_file_handles_vads.c" />
     <ClCompile Include="m_file_modules.c" />
+    <ClCompile Include="m_findevil.c" />
     <ClCompile Include="m_handleinfo.c" />
     <ClCompile Include="m_memmap.c" />
     <ClCompile Include="m_minidump.c" />
@@ -176,13 +177,16 @@
     <ClCompile Include="m_sysinfo_svc.c" />
     <ClCompile Include="m_sysinfo_syscall.c" />
     <ClCompile Include="m_threadinfo.c" />
+    <ClCompile Include="m_vfsfc.c" />
     <ClCompile Include="m_vfsproc.c" />
     <ClCompile Include="m_vfsroot.c" />
     <ClCompile Include="m_winreg.c" />
+    <ClCompile Include="ob\ob_cachemap.c" />
     <ClCompile Include="ob\ob_container.c" />
     <ClCompile Include="ob\ob_core.c" />
     <ClCompile Include="ob\ob_map.c" />
     <ClCompile Include="ob\ob_set.c" />
+    <ClCompile Include="ob\ob_strmap.c" />
     <ClCompile Include="pdb.c" />
     <ClCompile Include="pe.c" />
     <ClCompile Include="sqlite\sqlite3.c" />
@@ -192,6 +196,7 @@
     <ClCompile Include="vmm.c" />
     <ClCompile Include="vmmdll.c" />
     <ClCompile Include="m_ldrmodules.c" />
+    <ClCompile Include="vmmevil.c" />
     <ClCompile Include="vmmnet.c" />
     <ClCompile Include="vmmproc.c" />
     <ClCompile Include="vmmwin.c" />

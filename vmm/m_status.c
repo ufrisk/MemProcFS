@@ -37,9 +37,9 @@ NTSTATUS MStatus_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbR
     DWORD cchBuffer;
     CHAR szBuffer[0x800];
     DWORD cbCallStatistics = 0;
-    PBYTE pbCallStatistics = NULL;
+    LPSTR szCallStatistics = NULL;
     QWORD cPageReadTotal, cPageFailTotal;
-    NTSTATUS nt;
+    NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     if(!_wcsicmp(ctx->wszPath, L"config_process_show_terminated")) {
         return Util_VfsReadFile_FromBOOL(ctxVmm->flags & VMM_FLAG_PROCESS_SHOW_TERMINATED, pb, cb, pcbRead, cbOffset);
     }
@@ -59,19 +59,19 @@ NTSTATUS MStatus_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbR
         return Util_VfsReadFile_FromDWORD(ctxVmm->ThreadProcCache.cMs_TickPeriod, pb, cb, pcbRead, cbOffset, FALSE);
     }
     if(!_wcsicmp(ctx->wszPath, L"config_refresh_read")) {
-        return Util_VfsReadFile_FromDWORD(ctxVmm->ThreadProcCache.cTick_Phys, pb, cb, pcbRead, cbOffset, FALSE);
+        return Util_VfsReadFile_FromDWORD(ctxVmm->ThreadProcCache.cTick_MEM, pb, cb, pcbRead, cbOffset, FALSE);
     }
     if(!_wcsicmp(ctx->wszPath, L"config_refresh_tlb")) {
         return Util_VfsReadFile_FromDWORD(ctxVmm->ThreadProcCache.cTick_TLB, pb, cb, pcbRead, cbOffset, FALSE);
     }
     if(!_wcsicmp(ctx->wszPath, L"config_refresh_proc_partial")) {
-        return Util_VfsReadFile_FromDWORD(ctxVmm->ThreadProcCache.cTick_ProcPartial, pb, cb, pcbRead, cbOffset, FALSE);
+        return Util_VfsReadFile_FromDWORD(ctxVmm->ThreadProcCache.cTick_Fast, pb, cb, pcbRead, cbOffset, FALSE);
     }
     if(!_wcsicmp(ctx->wszPath, L"config_refresh_proc_total")) {
-        return Util_VfsReadFile_FromDWORD(ctxVmm->ThreadProcCache.cTick_ProcTotal, pb, cb, pcbRead, cbOffset, FALSE);
+        return Util_VfsReadFile_FromDWORD(ctxVmm->ThreadProcCache.cTick_Medium, pb, cb, pcbRead, cbOffset, FALSE);
     }
     if(!_wcsicmp(ctx->wszPath, L"config_refresh_registry")) {
-        return Util_VfsReadFile_FromDWORD(ctxVmm->ThreadProcCache.cTick_Registry, pb, cb, pcbRead, cbOffset, FALSE);
+        return Util_VfsReadFile_FromDWORD(ctxVmm->ThreadProcCache.cTick_Slow, pb, cb, pcbRead, cbOffset, FALSE);
     }
     if(!_wcsicmp(ctx->wszPath, L"statistics")) {
         cPageReadTotal = ctxVmm->stat.page.cPrototype + ctxVmm->stat.page.cTransition + ctxVmm->stat.page.cDemandZero + ctxVmm->stat.page.cVAD + ctxVmm->stat.page.cCacheHit + ctxVmm->stat.page.cPageFile + ctxVmm->stat.page.cCompressed;
@@ -115,12 +115,10 @@ NTSTATUS MStatus_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbR
         return Util_VfsReadFile_FromPBYTE(szBuffer, cchBuffer, pb, cb, pcbRead, cbOffset);
     }
     if(!_wcsicmp(ctx->wszPath, L"statistics_fncall")) {
-        Statistics_CallToString(NULL, 0, &cbCallStatistics);
-        pbCallStatistics = LocalAlloc(0, cbCallStatistics);
-        if(!pbCallStatistics) { return VMMDLL_STATUS_FILE_INVALID; }
-        Statistics_CallToString(pbCallStatistics, cbCallStatistics, &cbCallStatistics);
-        nt = Util_VfsReadFile_FromPBYTE(pbCallStatistics, cbCallStatistics, pb, cb, pcbRead, cbOffset);
-        LocalFree(pbCallStatistics);
+        if(Statistics_CallToString(&szCallStatistics, &cbCallStatistics)) {
+            nt = Util_VfsReadFile_FromPBYTE(szCallStatistics, cbCallStatistics, pb, cb, pcbRead, cbOffset);
+            LocalFree(szCallStatistics);
+        }
         return nt;
     }
     if(!_wcsicmp(ctx->wszPath, L"config_printf_enable")) {
@@ -212,20 +210,20 @@ NTSTATUS MStatus_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBYTE pb,
         return Util_VfsWriteFile_DWORD(&ctxVmm->ThreadProcCache.cMs_TickPeriod, pb, cb, pcbWrite, cbOffset, 50, 0);
     }
     if(!_wcsicmp(ctx->wszPath, L"config_refresh_read")) {
-        return Util_VfsWriteFile_DWORD(&ctxVmm->ThreadProcCache.cTick_Phys, pb, cb, pcbWrite, cbOffset, 1, 0);
+        return Util_VfsWriteFile_DWORD(&ctxVmm->ThreadProcCache.cTick_MEM, pb, cb, pcbWrite, cbOffset, 1, 0);
     }
     if(!_wcsicmp(ctx->wszPath, L"config_refresh_tlb")) {
         return Util_VfsWriteFile_DWORD(&ctxVmm->ThreadProcCache.cTick_TLB, pb, cb, pcbWrite, cbOffset, 1, 0);
     }
     if(!_wcsicmp(ctx->wszPath, L"config_refresh_proc_partial")) {
-        return Util_VfsWriteFile_DWORD(&ctxVmm->ThreadProcCache.cTick_ProcPartial, pb, cb, pcbWrite, cbOffset, 1, 0);
+        return Util_VfsWriteFile_DWORD(&ctxVmm->ThreadProcCache.cTick_Fast, pb, cb, pcbWrite, cbOffset, 1, 0);
     }
     if(!_wcsicmp(ctx->wszPath, L"config_refresh_proc_total")) {
-        return Util_VfsWriteFile_DWORD(&ctxVmm->ThreadProcCache.cTick_ProcTotal, pb, cb, pcbWrite, cbOffset, 1, 0);
+        return Util_VfsWriteFile_DWORD(&ctxVmm->ThreadProcCache.cTick_Medium, pb, cb, pcbWrite, cbOffset, 1, 0);
     }
     if(!_wcsicmp(ctx->wszPath, L"config_refresh_registry")) {
         VmmWinReg_Refresh();
-        return Util_VfsWriteFile_DWORD(&ctxVmm->ThreadProcCache.cTick_Registry, pb, cb, pcbWrite, cbOffset, 1, 0);
+        return Util_VfsWriteFile_DWORD(&ctxVmm->ThreadProcCache.cTick_Slow, pb, cb, pcbWrite, cbOffset, 1, 0);
     }
     if(!_wcsicmp(ctx->wszPath, L"config_printf_enable")) {
         return MStatus_Write_NotifyVerbosityChange(
@@ -278,6 +276,7 @@ BOOL MStatus_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
     if(ctx->wszPath[0]) { return FALSE; }
     // "root" view
     if(!ctx->pProcess) {
+        Statistics_CallToString(NULL, &cbCallStatistics);
         VMMDLL_VfsList_AddFile(pFileList, L"config_cache_enable", 1, NULL);
         VMMDLL_VfsList_AddFile(pFileList, L"config_paging_enable", 1, NULL);
         VMMDLL_VfsList_AddFile(pFileList, L"config_statistics_fncall", 1, NULL);
@@ -299,7 +298,6 @@ BOOL MStatus_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
         VMMDLL_VfsList_AddFile(pFileList, L"config_printf_vvv", 1, NULL);
         VMMDLL_VfsList_AddFile(pFileList, L"config_process_show_terminated", 1, NULL);
         VMMDLL_VfsList_AddFile(pFileList, L"native_max_address", 16, NULL);
-        Statistics_CallToString(NULL, 0, &cbCallStatistics);
         VMMDLL_VfsList_AddFile(pFileList, L"statistics_fncall", cbCallStatistics, NULL);
     }
     return TRUE;

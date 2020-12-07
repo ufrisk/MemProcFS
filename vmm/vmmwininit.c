@@ -157,6 +157,11 @@ VOID VmmWinInit_TryInitializeKernelOptionalValues()
     if(!ctxVmm->kernel.opt.vaPsLoadedModuleListExp) {
         PDB_GetSymbolAddress(PDB_HANDLE_KERNEL, "PsLoadedModuleList", &ctxVmm->kernel.opt.vaPsLoadedModuleListExp);
     }
+    // MmUnloadedDrivers / MmLastUnloadedDriver
+    if(!ctxVmm->kernel.opt.vaMmUnloadedDrivers || !ctxVmm->kernel.opt.vaMmLastUnloadedDriver) {
+        PDB_GetSymbolAddress(PDB_HANDLE_KERNEL, "MmUnloadedDrivers", &ctxVmm->kernel.opt.vaMmUnloadedDrivers);
+        PDB_GetSymbolAddress(PDB_HANDLE_KERNEL, "MmLastUnloadedDriver", &ctxVmm->kernel.opt.vaMmLastUnloadedDriver);
+    }
     // KdDebuggerDataBlock (KDBG)
     if(!ctxVmm->kernel.opt.KDBG.va && PDB_GetSymbolAddress(PDB_HANDLE_KERNEL, "KdDebuggerDataBlock", &ctxVmm->kernel.opt.KDBG.va)) {
         f = !ctxVmm->f32 &&
@@ -468,7 +473,7 @@ PVMM_PROCESS VmmWinInit_FindNtosScan()
     QWORD vaKernelBase = 0, cbKernelSize, vaKernelHint;
     PVMM_PROCESS pObSystemProcess = NULL;
     // 1: Pre-initialize System PID (required by VMM)
-    pObSystemProcess = VmmProcessCreateEntry(TRUE, 4, 0, 0, ctxVmm->kernel.paDTB, 0, "System", FALSE, NULL, 0);
+    pObSystemProcess = VmmProcessCreateEntry(TRUE, 4, 0, 0, ctxVmm->kernel.paDTB, 0, "System         ", FALSE, NULL, 0);
     if(!pObSystemProcess) { return NULL; }
     VmmProcessCreateFinish();
     // 2: Spider DTB to speed things up.
@@ -547,18 +552,17 @@ _Success_(return)
 BOOL VmmWinInit_DTB_FindValidate_X64(_In_ QWORD pa, _In_reads_(0x1000) PBYTE pbPage)
 {
     DWORD c, i;
+    QWORD *ptes, paMax;
     BOOL fSelfRef = FALSE;
-    QWORD pte, paMax;
+    ptes = (PQWORD)pbPage;
     paMax = ctxMain->dev.paMax;
     // check for user-mode page table with PDPT below max physical address and not NX.
-    pte = *(PQWORD)pbPage;
-    if(((pte & 0x0000000000000087) != 0x07) || ((pte & 0x0000fffffffff000) > paMax)) { return FALSE; }
-    for(c = 0, i = 0x800; i < 0x1000; i += 8) { // minimum number of supervisor entries above 0x800
-        pte = *(PQWORD)(pbPage + i);
+    if((ptes[0] & 1) && ((ptes[0] & 0x0000fffffffff000) > paMax)) { return FALSE; }
+    for(c = 0, i = 256; i < 512; i++) { // minimum number of supervisor entries above 0x800
         // check for user-mode page table with PDPT below max physical address and not NX.
-        if(((pte & 0x8000ff0000000087) == 0x03) && ((pte & 0x0000fffffffff000) < paMax)) { c++; }
+        if(((ptes[i] & 0x8000000000000087) == 0x03) && ((ptes[i] & 0x0000fffffffff000) < paMax)) { c++; }
         // check for self-referential entry
-        if((*(PQWORD)(pbPage + i) & 0x0000fffffffff083) == pa + 0x03) { fSelfRef = TRUE; }
+        if((ptes[i] & 0x0000fffffffff083) == pa + 0x03) { fSelfRef = TRUE; }
     }
     return fSelfRef && (c >= 6);
 }

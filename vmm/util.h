@@ -47,9 +47,10 @@ DWORD Util_HashStringA(_In_opt_ LPCSTR sz);
 
 /*
 * Hash the uppercase version of a string with the ROT13 algorithm.
-* -- wsz
+* -- sz/wsz
 * -- return
 */
+DWORD Util_HashStringUpperA(_In_opt_ LPCSTR sz);
 DWORD Util_HashStringUpperW(_In_opt_ LPCWSTR wsz);
 
 /*

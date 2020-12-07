@@ -45,7 +45,7 @@ VOID MmPfn_Initialize(_In_ PVMM_PROCESS pSystemProcess)
     POB_MMPFN_CONTEXT ctx;
     if(!(ctx = Ob_Alloc(OB_TAG_PFN_CONTEXT, LMEM_ZEROINIT, sizeof(OB_MMPFN_CONTEXT), MmPfn_CallbackCleanup_ObContext, NULL))) { return; }
     InitializeCriticalSection(&ctx->Lock);
-    f = (ctx->pObCProcTableDTB = ObContainer_New(NULL)) &&
+    f = (ctx->pObCProcTableDTB = ObContainer_New()) &&
         PDB_GetSymbolPTR(PDB_HANDLE_KERNEL, "MmPfnDatabase", pSystemProcess, &ctx->vaPfnDatabase) &&
         PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_MMPFN", &ctx->_MMPFN.cb) &&
         PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_MMPFN", L"OriginalPte", &ctx->_MMPFN.oOriginalPte) &&

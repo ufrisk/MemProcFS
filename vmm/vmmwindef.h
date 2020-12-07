@@ -282,4 +282,42 @@ typedef struct tdCPU_KTRAP_FRAME64 {
     DWORD   Fill4;              // +18c
 } CPU_KTRAP_FRAME64, *PCPU_KTRAP_FRAME64;
 
+#define RTL_UNLOAD_EVENT_TRACE_NUMBER 64
+
+typedef struct _RTL_UNLOAD_EVENT_TRACE32 {
+    DWORD BaseAddress;
+    DWORD SizeOfImage;
+    DWORD Sequence;
+    DWORD TimeDateStamp;
+    DWORD CheckSum;
+    WCHAR ImageName[32];
+} RTL_UNLOAD_EVENT_TRACE32, *PRTL_UNLOAD_EVENT_TRACE32;
+
+typedef struct _RTL_UNLOAD_EVENT_TRACE64 {
+    QWORD BaseAddress;
+    QWORD SizeOfImage;
+    DWORD Sequence;
+    DWORD TimeDateStamp;
+    DWORD CheckSum;
+    WCHAR ImageName[32];
+} RTL_UNLOAD_EVENT_TRACE64, *PRTL_UNLOAD_EVENT_TRACE64;
+
+#define MM_UNLOADED_DRIVER_MAX      50
+
+typedef struct tdMM_UNLOADED_DRIVER32
+{
+    UNICODE_STRING32    Name;
+    DWORD               ModuleStart;
+    DWORD               ModuleEnd;
+    QWORD               UnloadTime;
+} MM_UNLOADED_DRIVER32, *PMM_UNLOADED_DRIVER32;
+
+typedef struct tdMM_UNLOADED_DRIVER64
+{
+    UNICODE_STRING64    Name;
+    QWORD               ModuleStart;
+    QWORD               ModuleEnd;
+    QWORD               UnloadTime;
+} MM_UNLOADED_DRIVER64, *PMM_UNLOADED_DRIVER64;
+
 #endif /* __VMMWINDEF_H__ */

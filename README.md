@@ -202,5 +202,9 @@ v1.1-v2.10
  * Services information.
  * Memmap: Verbose VAD with individual page info.
 
- Latest:
- * Bug fixes.
+[v3.6](https://github.com/ufrisk/MemProcFS/releases/tag/v3.6)
+* Bug fixes & refactorings.
+* NB! Breaking C/C++ API changes (function renames).
+* New Features:
+ * Unloaded modules.
+ * [FindEvil](https://github.com/ufrisk/MemProcFS/wiki/FS_FindEvil) - find select signs of injections and malware.

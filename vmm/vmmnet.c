@@ -815,8 +815,7 @@ VOID VmmNet_Initialize_Context(_In_ PVMM_PROCESS pSystemProcess)
     PVMM_MAP_MODULEENTRY peModuleTcpip;
     if(!(ctx = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMNET_CONTEXT)))) { goto fail; }
     // 1: fetch pdb handle
-    if(!VmmMap_GetModule(pSystemProcess, &pObModuleMap)) { goto fail; }
-    if(!(peModuleTcpip = VmmMap_GetModuleEntry(pObModuleMap, L"tcpip.sys"))) { goto fail; }
+    if(!VmmMap_GetModuleEntryEx(pSystemProcess, 0, L"tcpip.sys", &pObModuleMap, &peModuleTcpip)) { goto fail; }
     ctx->vaModuleTcpip = peModuleTcpip->vaBase;
     if(!(ctx->hPDB = PDB_GetHandleFromModuleAddress(pSystemProcess, ctx->vaModuleTcpip))) { goto fail; }
     if(!PDB_LoadEnsure(ctx->hPDB)) { goto fail; }

@@ -96,7 +96,7 @@ VOID _ObMap_ObFreeAllObjects(_In_ POB_MAP pObMap)
 }
 
 /*
-* Object Container object manager cleanup function to be called when reference
+* Object Map object manager cleanup function to be called when reference
 * count reaches zero.
 * -- pObMap
 */
@@ -174,7 +174,7 @@ VOID _ObMap_RemoveHash(_In_ POB_MAP pm, _In_ BOOL fValueHash, _In_ QWORD kv, _In
         if(0 == iNextEntry) { return; }
         qwNextEntry = _ObMap_GetFromEntryIndex(pm, fValueHash, iNextEntry);
         iNextHashPreferred = OB_MAP_HASH_FUNCTION(qwNextEntry) & dwHashMask;
-        if(iNextHash == iNextHashPreferred) { return; }
+        if(iNextHash == iNextHashPreferred) { continue; }
         _ObMap_SetHashIndex(pm, fValueHash, iNextHash, 0);
         _ObMap_InsertHash(pm, fValueHash, iNextEntry);
     }
@@ -201,8 +201,9 @@ BOOL _ObMap_GetEntryIndexFromKeyOrValue(_In_ POB_MAP pm, _In_ BOOL fValueHash, _
 
 //-----------------------------------------------------------------------------
 // RETRIEVE/GET FUNCTIONALITY BELOW:
-// ObMap_Size, ObMap_Exists,  ObMap_ExistsKey, ObMap_GetByIndex,
-// ObMap_Peek, ObMap_PeekKey, ObMap_GetByKey,  ObMap_GetNext, 
+// ObMap_Size,   ObMap_Exists,  ObMap_ExistsKey, ObMap_GetByIndex,
+// ObMap_Peek,   ObMap_PeekKey, ObMap_GetByKey,  ObMap_GetNext, 
+// ObMap_GetKey, 
 //-----------------------------------------------------------------------------
 
 inline BOOL _ObMap_Exists(_In_ POB_MAP pm, _In_ BOOL fValueHash, _In_ QWORD kv)
@@ -276,6 +277,14 @@ PVOID _ObMap_GetNextByKey(_In_ POB_MAP pm, _In_ QWORD qwKey, _In_opt_ PVOID pvOb
     if(pm->fObjectsOb) { Ob_DECREF(pvObject); }
     if(!_ObMap_GetEntryIndexFromKeyOrValue(pm, FALSE, qwKey, &iEntry)) { return NULL; }
     return _ObMap_GetByEntryIndex(pm, iEntry + 1);
+}
+
+_Success_(return != 0)
+QWORD _ObMap_GetKey(_In_ POB_MAP pm, _In_ PVOID pvObject)
+{
+    DWORD iEntry;
+    if(!_ObMap_GetEntryIndexFromKeyOrValue(pm, TRUE, (QWORD)pvObject, &iEntry)) { return 0; }
+    return _ObMap_GetFromIndex(pm, iEntry)->k;
 }
 
 _Success_(return)
@@ -367,6 +376,18 @@ PVOID ObMap_GetNext(_In_opt_ POB_MAP pm, _In_opt_ PVOID pvObject)
 PVOID ObMap_GetNextByKey(_In_opt_ POB_MAP pm, _In_ QWORD qwKey, _In_opt_ PVOID pvObject)
 {
     OB_MAP_CALL_SYNCHRONIZED_IMPLEMENTATION_READ(pm, PVOID, NULL, _ObMap_GetNextByKey(pm, qwKey, pvObject))
+}
+
+/*
+* Retrieve the key for an existing object in the ObMap.
+* -- pm
+* -- pvObject
+* -- return
+*/
+_Success_(return != 0)
+QWORD ObMap_GetKey(_In_opt_ POB_MAP pm, _In_ PVOID pvObject)
+{
+    OB_MAP_CALL_SYNCHRONIZED_IMPLEMENTATION_READ(pm, QWORD, 0, _ObMap_GetKey(pm, pvObject))
 }
 
 /*
@@ -527,6 +548,7 @@ PVOID ObMap_Remove(_In_opt_ POB_MAP pm, _In_ PVOID pvObject)
 /*
 * Remove an object from the ObMap by using its key.
 * NB! must not be called simultaneously while iterating with ObMap_GetByIndex/ObMap_GetNext.
+* CALLER DECREF(if OB): return
 * -- pm
 * -- qwKey
 * -- return = success: object, fail: NULL.
@@ -553,19 +575,21 @@ DWORD ObMap_RemoveByFilter(_In_opt_ POB_MAP pm, _In_opt_ BOOL(*pfnFilter)(_In_ Q
 * -- pm
 * -- return = clear was successful - always true.
 */
-VOID ObMap_Clear(_In_opt_ POB_MAP pm)
+_Success_(return)
+BOOL ObMap_Clear(_In_opt_ POB_MAP pm)
 {
-    if(!OB_MAP_IS_VALID(pm) || (pm->c <= 1)) { return; }
+    if(!OB_MAP_IS_VALID(pm) || (pm->c <= 1)) { return TRUE; }
     AcquireSRWLockExclusive(&pm->LockSRW);
     if(pm->c <= 1) {
         ReleaseSRWLockExclusive(&pm->LockSRW);
-        return;
+        return TRUE;
     }
     _ObMap_ObFreeAllObjects(pm);
     ZeroMemory(pm->pHashMapValue, 4ULL * pm->cHashMax);
     if(pm->pHashMapKey) { ZeroMemory(pm->pHashMapKey, 4ULL * pm->cHashMax); }
     pm->c = 1;  // item zero is reserved - hence the initialization of count to 1
     ReleaseSRWLockExclusive(&pm->LockSRW);
+    return TRUE;
 }
 
 
@@ -638,6 +662,18 @@ BOOL _ObMap_Push(_In_ POB_MAP pm, _In_ QWORD qwKey, _In_ PVOID pvObject)
     return TRUE;
 }
 
+_Success_(return)
+BOOL _ObMap_PushCopy(_In_ POB_MAP pm, _In_ QWORD qwKey, _In_ PVOID pvObject, _In_ SIZE_T cbObject)
+{
+    PVOID pvObjectCopy;
+    if(!pm->fObjectsLocalFree) { return FALSE; }
+    if(!(pvObjectCopy = LocalAlloc(0, cbObject))) { return FALSE; }
+    memcpy(pvObjectCopy, pvObject, cbObject);
+    if(_ObMap_Push(pm, qwKey, pvObjectCopy)) { return TRUE; }
+    LocalFree(pvObjectCopy);
+    return FALSE;
+}
+
 /*
 * Push / Insert into the ObMap.
 * -- pm
@@ -653,11 +689,27 @@ BOOL ObMap_Push(_In_opt_ POB_MAP pm, _In_ QWORD qwKey, _In_ PVOID pvObject)
 }
 
 /*
+* Push / Insert into the ObMap by making a shallow copy of the object.
+* NB! only valid for OB_MAP_FLAGS_OBJECT_LOCALFREE initialized maps.
+* -- pm
+* -- qwKey
+* -- pvObject
+* -- cbObject
+* -- return = TRUE on insertion, FALSE otherwise - i.e. if the key or object
+*             already exists or if the max capacity of the map is reached.
+*/
+_Success_(return)
+BOOL ObMap_PushCopy(_In_opt_ POB_MAP pm, _In_ QWORD qwKey, _In_ PVOID pvObject, _In_ SIZE_T cbObject)
+{
+    OB_MAP_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(pm, BOOL, FALSE, _ObMap_PushCopy(pm, qwKey, pvObject, cbObject))
+}
+
+/*
 * Create a new map. A map (ObMap) provides atomic map operations and ways
 * to optionally map key values to values, pointers or object manager objects.
-* The ObSet is an object manager object and must be DECREF'ed when required.
+* The ObMap is an object manager object and must be DECREF'ed when required.
 * CALLER DECREF: return
-* -- flags
+* -- flags = defined by OB_MAP_FLAGS_*
 * -- return
 */
 POB_MAP ObMap_New(_In_ QWORD flags)

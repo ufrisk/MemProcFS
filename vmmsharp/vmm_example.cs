@@ -94,14 +94,6 @@ class vmm_example
         // retrieve Directories/Sections/IAT/EAT from kernel32.dll of explorer.exe
         vmm.IMAGE_DATA_DIRECTORY[] DIRs = vmm.ProcessGetDirectories(dwExplorerPID, "kernel32.dll");
         vmm.IMAGE_SECTION_HEADER[] SECTIONs = vmm.ProcessGetSections(dwExplorerPID, "kernel32.dll");
-        vmm.EAT_ENTRY[] EATs = vmm.ProcessGetEAT(dwExplorerPID, "kernel32.dll");
-        vmm.IAT_ENTRY[] IATs = vmm.ProcessGetIAT(dwExplorerPID, "kernel32.dll");
-
-        // retrieve IAT/EAT THUNK INFO
-        vmm.THUNKINFO_EAT ThunkEAT;
-        result = vmm.GetThunkInfoEAT(dwExplorerPID, "kernel32.dll", "GetTickCount64", out ThunkEAT);
-        vmm.THUNKINFO_IAT ThunkIAT;
-        result = vmm.GetThunkInfoIAT(dwExplorerPID, "kernel32.dll", "ntdll.dll", "TpAllocPool", out ThunkIAT);
 
         // retrieve different "map" structures related to explorer.exe and the system.
         vmm.MAP_PTEENTRY[] mPte = vmm.Map_GetPte(dwExplorerPID);
@@ -109,6 +101,10 @@ class vmm_example
         vmm.MAP_VADEXENTRY[] mVadEx = vmm.Map_GetVadEx(dwExplorerPID, 0, 10);
         vmm.MAP_MODULEENTRY[] mModule = vmm.Map_GetModule(dwExplorerPID);
         vmm.MAP_MODULEENTRY mModuleKernel32 = vmm.Map_GetModuleFromName(dwExplorerPID, "kernel32.dll");
+        vmm.MAP_UNLOADEDMODULEENTRY[] mUnloadedModule = vmm.Map_GetUnloadedModule(dwExplorerPID);
+        vmm.MAP_EATINFO EatInfo;
+        vmm.MAP_EATENTRY[] mEAT = vmm.Map_GetEAT(dwExplorerPID, "kernel32.dll", out EatInfo);
+        vmm.MAP_IATENTRY[] mIAT = vmm.Map_GetIAT(dwExplorerPID, "kernel32.dll");
         vmm.MAP_HEAPENTRY[] mHeaps = vmm.Map_GetHeap(dwExplorerPID);
         vmm.MAP_THREADENTRY[] mThreads = vmm.Map_GetThread(dwExplorerPID);
         vmm.MAP_HANDLEENTRY[] mHandles = vmm.Map_GetHandle(dwExplorerPID);

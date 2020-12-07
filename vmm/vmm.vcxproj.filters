@@ -114,6 +114,9 @@
     <ClInclude Include="sqlite\sqlite3ext.h">
       <Filter>Header Files\sqlite</Filter>
     </ClInclude>
+    <ClInclude Include="vmmevil.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="vmmdll.c">
@@ -236,9 +239,6 @@
     <ClCompile Include="fc.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="m_fc.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
     <ClCompile Include="m_fc_ntfs.c">
       <Filter>Source Files\modules</Filter>
     </ClCompile>
@@ -276,6 +276,21 @@
       <Filter>Source Files\modules</Filter>
     </ClCompile>
     <ClCompile Include="vmmwinsvc.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="m_findevil.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="m_vfsfc.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="ob\ob_cachemap.c">
+      <Filter>Source Files\ob</Filter>
+    </ClCompile>
+    <ClCompile Include="ob\ob_strmap.c">
+      <Filter>Source Files\ob</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmevil.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

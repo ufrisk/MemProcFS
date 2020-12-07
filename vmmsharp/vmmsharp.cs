@@ -14,7 +14,7 @@ using System.Collections.Generic;
  *  (c) Ulf Frisk, 2020
  *  Author: Ulf Frisk, pcileech@frizk.net
  *  
- *  Version 3.5
+ *  Version 3.6
  *  
  */
 
@@ -625,20 +625,6 @@ namespace vmmsharp
             return s;
         }
 
-        public struct EAT_ENTRY
-        {
-            public ulong vaFunction;
-            public uint vaFunctionOffset;
-            public string szFunction;
-        }
-
-        public struct IAT_ENTRY
-        {
-            public ulong vaFunction;
-            public string szFunction;
-            public string szModule;
-        }
-
         public struct IMAGE_SECTION_HEADER
         {
             public string Name;
@@ -710,56 +696,6 @@ namespace vmmsharp
                     e.NumberOfRelocations = n.NumberOfRelocations;
                     e.NumberOfLinenumbers = n.NumberOfLinenumbers;
                     e.Characteristics = n.Characteristics;
-                    m[i] = e;
-                }
-                return m;
-            }
-        }
-
-        public static unsafe EAT_ENTRY[] ProcessGetEAT(uint pid, string wszModule)
-        {
-            bool result;
-            uint cData;
-            uint cbENTRY = (uint)System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_EAT_ENTRY));
-            result = vmmi.VMMDLL_ProcessGetEAT(pid, wszModule, null, 0, out cData);
-            if (!result || (cData == 0)) { return new EAT_ENTRY[0]; }
-            fixed (byte* pb = new byte[cData * cbENTRY])
-            {
-                result = vmmi.VMMDLL_ProcessGetEAT(pid, wszModule, pb, cData, out cData);
-                if (!result || (cData == 0)) { return new EAT_ENTRY[0]; }
-                EAT_ENTRY[] m = new EAT_ENTRY[cData];
-                for (int i = 0; i < cData; i++)
-                {
-                    vmmi.VMMDLL_EAT_ENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_EAT_ENTRY>((System.IntPtr)(pb + i * cbENTRY));
-                    EAT_ENTRY e;
-                    e.vaFunction = n.vaFunction;
-                    e.vaFunctionOffset = n.vaFunctionOffset;
-                    e.szFunction = n.szFunction;
-                    m[i] = e;
-                }
-                return m;
-            }
-        }
-
-        public static unsafe IAT_ENTRY[] ProcessGetIAT(uint pid, string wszModule)
-        {
-            bool result;
-            uint cData;
-            uint cbENTRY = (uint)System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_IAT_ENTRY));
-            result = vmmi.VMMDLL_ProcessGetIAT(pid, wszModule, null, 0, out cData);
-            if (!result || (cData == 0)) { return new IAT_ENTRY[0]; }
-            fixed (byte* pb = new byte[cData * cbENTRY])
-            {
-                result = vmmi.VMMDLL_ProcessGetIAT(pid, wszModule, pb, cData, out cData);
-                if (!result || (cData == 0)) { return new IAT_ENTRY[0]; }
-                IAT_ENTRY[] m = new IAT_ENTRY[cData];
-                for (int i = 0; i < cData; i++)
-                {
-                    vmmi.VMMDLL_IAT_ENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_IAT_ENTRY>((System.IntPtr)(pb + i * cbENTRY));
-                    IAT_ENTRY e;
-                    e.vaFunction = n.vaFunction;
-                    e.szFunction = n.szFunction;
-                    e.szModule = n.szModule;
                     m[i] = e;
                 }
                 return m;
@@ -875,7 +811,7 @@ namespace vmmsharp
             public ulong pte;
         }
 
-            public struct MAP_VADEXENTRY
+        public struct MAP_VADEXENTRY
         {
             public uint tp;
             public uint iPML;
@@ -886,6 +822,11 @@ namespace vmmsharp
             public ulong vaVadBase;
         }
 
+        public static uint MAP_MODULEENTRY_TP_NORMAL    = 0;
+        public static uint VMMDLL_MODULE_TP_DATA        = 1;
+        public static uint VMMDLL_MODULE_TP_NOTLINKED   = 2;
+        public static uint VMMDLL_MODULE_TP_INJECTED    = 3;
+
         public struct MAP_MODULEENTRY
         {
             public bool fValid;
@@ -895,6 +836,56 @@ namespace vmmsharp
             public bool fWow64;
             public string wszText;
             public string wszFullName;
+            public uint tp;
+            public uint cbFileSizeRaw;
+            public uint cSection;
+            public uint cEAT;
+            public uint cIAT;
+        }
+
+        public struct MAP_UNLOADEDMODULEENTRY
+        {
+            public ulong vaBase;
+            public uint cbImageSize;
+            public bool fWow64;
+            public string wszText;
+            public uint dwCheckSum;         // user-mode only
+            public uint dwTimeDateStamp;    // user-mode only
+            public ulong ftUnload;          // kernel-mode only
+        }
+
+        public struct MAP_EATINFO
+        {
+            public bool fValid; 
+            public ulong vaModuleBase;
+            public ulong vaAddressOfFunctions;
+            public ulong vaAddressOfNames;
+            public uint cNumberOfFunctions;
+            public uint cNumberOfNames;
+            public uint dwOrdinalBase;
+        }
+
+        public struct MAP_EATENTRY
+        {
+            public ulong vaFunction;
+            public uint dwOrdinal;
+            public uint oFunctionsArray;
+            public uint oNamesArray;
+            public string wszFunction;
+        }
+
+        public struct MAP_IATENTRY
+        {
+            public ulong vaFunction;
+            public ulong vaModule;
+            public string wszFunction;
+            public string wszModule;
+            public bool f32;
+            public ushort wHint;
+            public uint rvaFirstThunk;
+            public uint rvaOriginalFirstThunk;
+            public uint rvaNameModule;
+            public uint rvaNameFunction;
         }
 
         public struct MAP_HEAPENTRY
@@ -1049,11 +1040,11 @@ namespace vmmsharp
             uint cb = 0;
             int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_PTE));
             int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_PTEENTRY));
-            result = vmmi.VMMDLL_ProcessMap_GetPte(pid, null, ref cb, fIdentifyModules);
+            result = vmmi.VMMDLL_Map_GetPte(pid, null, ref cb, fIdentifyModules);
             if (!result || (cb == 0)) { return new MAP_PTEENTRY[0]; }
             fixed (byte* pb = new byte[cb])
             {
-                result = vmmi.VMMDLL_ProcessMap_GetPte(pid, pb, ref cb, fIdentifyModules);
+                result = vmmi.VMMDLL_Map_GetPte(pid, pb, ref cb, fIdentifyModules);
                 if (!result) { return new MAP_PTEENTRY[0]; }
                 vmmi.VMMDLL_MAP_PTE pm = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_PTE>((System.IntPtr)pb);
                 if (pm.dwVersion != vmmi.VMMDLL_MAP_PTE_VERSION) { return new MAP_PTEENTRY[0]; }
@@ -1080,11 +1071,11 @@ namespace vmmsharp
             uint cb = 0;
             int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_VAD));
             int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_VADENTRY));
-            result = vmmi.VMMDLL_ProcessMap_GetVad(pid, null, ref cb, fIdentifyModules);
+            result = vmmi.VMMDLL_Map_GetVad(pid, null, ref cb, fIdentifyModules);
             if (!result || (cb == 0)) { return new MAP_VADENTRY[0]; }
             fixed (byte* pb = new byte[cb])
             {
-                result = vmmi.VMMDLL_ProcessMap_GetVad(pid, pb, ref cb, fIdentifyModules);
+                result = vmmi.VMMDLL_Map_GetVad(pid, pb, ref cb, fIdentifyModules);
                 if (!result) { return new MAP_VADENTRY[0]; }
                 vmmi.VMMDLL_MAP_VAD pm = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_VAD>((System.IntPtr)pb);
                 if (pm.dwVersion != vmmi.VMMDLL_MAP_VAD_VERSION) { return new MAP_VADENTRY[0]; }
@@ -1130,11 +1121,11 @@ namespace vmmsharp
             uint cb = 0;
             int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_VADEX));
             int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_VADEXENTRY));
-            result = vmmi.VMMDLL_ProcessMap_GetVadEx(pid, null, ref cb, oPages, cPages);
+            result = vmmi.VMMDLL_Map_GetVadEx(pid, null, ref cb, oPages, cPages);
             if (!result || (cb == 0)) { return new MAP_VADEXENTRY[0]; }
             fixed (byte* pb = new byte[cb])
             {
-                result = vmmi.VMMDLL_ProcessMap_GetVadEx(pid, pb, ref cb, oPages, cPages);
+                result = vmmi.VMMDLL_Map_GetVadEx(pid, pb, ref cb, oPages, cPages);
                 if (!result) { return new MAP_VADEXENTRY[0]; }
                 vmmi.VMMDLL_MAP_VADEX pm = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_VADEX>((System.IntPtr)pb);
                 if (pm.dwVersion != vmmi.VMMDLL_MAP_VADEX_VERSION) { return new MAP_VADEXENTRY[0]; }
@@ -1164,11 +1155,11 @@ namespace vmmsharp
             uint cb = 0;
             int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_MODULE));
             int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_MODULEENTRY));
-            result = vmmi.VMMDLL_ProcessMap_GetModule(pid, null, ref cb);
+            result = vmmi.VMMDLL_Map_GetModule(pid, null, ref cb);
             if(!result || (cb == 0)) { return new MAP_MODULEENTRY[0]; }
             fixed(byte* pb = new byte[cb])
             {
-                result = vmmi.VMMDLL_ProcessMap_GetModule(pid, pb, ref cb);
+                result = vmmi.VMMDLL_Map_GetModule(pid, pb, ref cb);
                 if(!result) { return new MAP_MODULEENTRY[0]; }
                 vmmi.VMMDLL_MAP_MODULE pm = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_MODULE>((System.IntPtr)pb);
                 if(pm.dwVersion != vmmi.VMMDLL_MAP_MODULE_VERSION) { return new MAP_MODULEENTRY[0]; }
@@ -1184,6 +1175,11 @@ namespace vmmsharp
                     e.fWow64 = n.fWow64;
                     e.wszText = n.wszText;
                     e.wszFullName = n.wszFullName;
+                    e.tp = n.tp;
+                    e.cbFileSizeRaw = n.cbFileSizeRaw;
+                    e.cSection = n.cSection;
+                    e.cEAT = n.cEAT;
+                    e.cIAT = n.cIAT;
                     m[i] = e;
                 }
                 return m;
@@ -1193,10 +1189,12 @@ namespace vmmsharp
         public static unsafe MAP_MODULEENTRY Map_GetModuleFromName(uint pid, string wszModuleName)
         {
             bool result;
-            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_MODULEENTRY));
+            uint cbENTRY = 0;
+            result = vmmi.VMMDLL_Map_GetModuleFromName(pid, wszModuleName, null, ref cbENTRY);
+            if (!result || (cbENTRY == 0)) { return new MAP_MODULEENTRY(); }
             fixed (byte* pb = new byte[cbENTRY])
             {
-                result = vmmi.VMMDLL_ProcessMap_GetModuleFromName(pid, wszModuleName, pb);
+                result = vmmi.VMMDLL_Map_GetModuleFromName(pid, wszModuleName, pb, ref cbENTRY);
                 if (!result) { return new MAP_MODULEENTRY(); }
                 vmmi.VMMDLL_MAP_MODULEENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_MODULEENTRY>((System.IntPtr)pb);
                 MAP_MODULEENTRY e;
@@ -1207,7 +1205,117 @@ namespace vmmsharp
                 e.fWow64 = n.fWow64;
                 e.wszText = wszModuleName;
                 e.wszFullName = n.wszFullName;
+                e.tp = n.tp;
+                e.cbFileSizeRaw = n.cbFileSizeRaw;
+                e.cSection = n.cSection;
+                e.cEAT = n.cEAT;
+                e.cIAT = n.cIAT;
                 return e;
+            }
+        }
+
+        public static unsafe MAP_UNLOADEDMODULEENTRY[] Map_GetUnloadedModule(uint pid)
+        {
+            bool result;
+            uint cb = 0;
+            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_UNLOADEDMODULE));
+            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_UNLOADEDMODULEENTRY));
+            result = vmmi.VMMDLL_Map_GetUnloadedModule(pid, null, ref cb);
+            if (!result || (cb == 0)) { return new MAP_UNLOADEDMODULEENTRY[0]; }
+            fixed (byte* pb = new byte[cb])
+            {
+                result = vmmi.VMMDLL_Map_GetUnloadedModule(pid, pb, ref cb);
+                if (!result) { return new MAP_UNLOADEDMODULEENTRY[0]; }
+                vmmi.VMMDLL_MAP_UNLOADEDMODULE pm = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_UNLOADEDMODULE>((System.IntPtr)pb);
+                if (pm.dwVersion != vmmi.VMMDLL_MAP_UNLOADEDMODULE_VERSION) { return new MAP_UNLOADEDMODULEENTRY[0]; }
+                MAP_UNLOADEDMODULEENTRY[] m = new MAP_UNLOADEDMODULEENTRY[pm.cMap];
+                for (int i = 0; i < pm.cMap; i++)
+                {
+                    vmmi.VMMDLL_MAP_UNLOADEDMODULEENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_UNLOADEDMODULEENTRY>((System.IntPtr)(pb + cbMAP + i * cbENTRY));
+                    MAP_UNLOADEDMODULEENTRY e;
+                    e.vaBase = n.vaBase;
+                    e.cbImageSize = n.cbImageSize;
+                    e.fWow64 = n.fWow64;
+                    e.wszText = n.wszText;
+                    e.dwCheckSum = n.dwCheckSum;
+                    e.dwTimeDateStamp = n.dwTimeDateStamp;
+                    e.ftUnload = n.ftUnload;
+                    m[i] = e;
+                }
+                return m;
+            }
+        }
+
+        public static unsafe MAP_EATENTRY[] Map_GetEAT(uint pid, string wszModule, out MAP_EATINFO EatInfo)
+        {
+            bool result;
+            uint cb = 0;
+            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_EAT));
+            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_EATENTRY));
+            EatInfo = new MAP_EATINFO();
+            result = vmmi.VMMDLL_Map_GetEAT(pid, wszModule, null, ref cb);
+            if (!result || (cb == 0)) { return new MAP_EATENTRY[0]; }
+            fixed (byte* pb = new byte[cb])
+            {
+                result = vmmi.VMMDLL_Map_GetEAT(pid, wszModule, pb, ref cb);
+                if (!result) { return new MAP_EATENTRY[0]; }
+                vmmi.VMMDLL_MAP_EAT pm = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_EAT>((System.IntPtr)pb);
+                if (pm.dwVersion != vmmi.VMMDLL_MAP_EAT_VERSION) { return new MAP_EATENTRY[0]; }
+                MAP_EATENTRY[] m = new MAP_EATENTRY[pm.cMap];
+                for (int i = 0; i < pm.cMap; i++)
+                {
+                    vmmi.VMMDLL_MAP_EATENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_EATENTRY>((System.IntPtr)(pb + cbMAP + i * cbENTRY));
+                    MAP_EATENTRY e;
+                    e.vaFunction = n.vaFunction;
+                    e.dwOrdinal = n.dwOrdinal;
+                    e.oFunctionsArray = n.oFunctionsArray;
+                    e.oNamesArray = n.oNamesArray;
+                    e.wszFunction = n.wszFunction;
+                    m[i] = e;
+                }
+                EatInfo.fValid = true;
+                EatInfo.vaModuleBase = pm.vaModuleBase;
+                EatInfo.vaAddressOfFunctions = pm.vaAddressOfFunctions;
+                EatInfo.vaAddressOfNames = pm.vaAddressOfNames;
+                EatInfo.cNumberOfFunctions = pm.cNumberOfFunctions;
+                EatInfo.cNumberOfNames = pm.cNumberOfNames;
+                EatInfo.dwOrdinalBase = pm.dwOrdinalBase;
+                return m;
+            }
+        }
+
+        public static unsafe MAP_IATENTRY[] Map_GetIAT(uint pid, string wszModule)
+        {
+            bool result;
+            uint cb = 0;
+            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_IAT));
+            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_IATENTRY));
+            result = vmmi.VMMDLL_Map_GetIAT(pid, wszModule, null, ref cb);
+            if (!result || (cb == 0)) { return new MAP_IATENTRY[0]; }
+            fixed (byte* pb = new byte[cb])
+            {
+                result = vmmi.VMMDLL_Map_GetIAT(pid, wszModule, pb, ref cb);
+                if (!result) { return new MAP_IATENTRY[0]; }
+                vmmi.VMMDLL_MAP_IAT pm = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_IAT>((System.IntPtr)pb);
+                if (pm.dwVersion != vmmi.VMMDLL_MAP_IAT_VERSION) { return new MAP_IATENTRY[0]; }
+                MAP_IATENTRY[] m = new MAP_IATENTRY[pm.cMap];
+                for (int i = 0; i < pm.cMap; i++)
+                {
+                    vmmi.VMMDLL_MAP_IATENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_IATENTRY>((System.IntPtr)(pb + cbMAP + i * cbENTRY));
+                    MAP_IATENTRY e;
+                    e.vaFunction = n.vaFunction;
+                    e.wszFunction = n.wszFunction;
+                    e.wszModule = n.wszModule;
+                    e.f32 = n.f32;
+                    e.wHint = n.wHint;
+                    e.rvaFirstThunk = n.rvaFirstThunk;
+                    e.rvaOriginalFirstThunk = n.rvaOriginalFirstThunk;
+                    e.rvaNameModule = n.rvaNameModule;
+                    e.rvaNameFunction = n.rvaNameFunction;
+                    e.vaModule = pm.vaModuleBase;
+                    m[i] = e;
+                }
+                return m;
             }
         }
 
@@ -1217,11 +1325,11 @@ namespace vmmsharp
             uint cb = 0;
             int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_HEAP));
             int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_HEAPENTRY));
-            result = vmmi.VMMDLL_ProcessMap_GetHeap(pid, null, ref cb);
+            result = vmmi.VMMDLL_Map_GetHeap(pid, null, ref cb);
             if (!result || (cb == 0)) { return new MAP_HEAPENTRY[0]; }
             fixed (byte* pb = new byte[cb])
             {
-                result = vmmi.VMMDLL_ProcessMap_GetHeap(pid, pb, ref cb);
+                result = vmmi.VMMDLL_Map_GetHeap(pid, pb, ref cb);
                 if (!result) { return new MAP_HEAPENTRY[0]; }
                 vmmi.VMMDLL_MAP_HEAP pm = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_HEAP>((System.IntPtr)pb);
                 if (pm.dwVersion != vmmi.VMMDLL_MAP_HEAP_VERSION) { return new MAP_HEAPENTRY[0]; }
@@ -1247,11 +1355,11 @@ namespace vmmsharp
             uint cb = 0;
             int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_THREAD));
             int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_THREADENTRY));
-            result = vmmi.VMMDLL_ProcessMap_GetThread(pid, null, ref cb);
+            result = vmmi.VMMDLL_Map_GetThread(pid, null, ref cb);
             if (!result || (cb == 0)) { return new MAP_THREADENTRY[0]; }
             fixed (byte* pb = new byte[cb])
             {
-                result = vmmi.VMMDLL_ProcessMap_GetThread(pid, pb, ref cb);
+                result = vmmi.VMMDLL_Map_GetThread(pid, pb, ref cb);
                 if (!result) { return new MAP_THREADENTRY[0]; }
                 vmmi.VMMDLL_MAP_THREAD pm = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_THREAD>((System.IntPtr)pb);
                 if (pm.dwVersion != vmmi.VMMDLL_MAP_THREAD_VERSION) { return new MAP_THREADENTRY[0]; }
@@ -1295,11 +1403,11 @@ namespace vmmsharp
             uint cb = 0;
             int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_HANDLE));
             int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_HANDLEENTRY));
-            result = vmmi.VMMDLL_ProcessMap_GetHandle(pid, null, ref cb);
+            result = vmmi.VMMDLL_Map_GetHandle(pid, null, ref cb);
             if (!result || (cb == 0)) { return new MAP_HANDLEENTRY[0]; }
             fixed (byte* pb = new byte[cb])
             {
-                result = vmmi.VMMDLL_ProcessMap_GetHandle(pid, pb, ref cb);
+                result = vmmi.VMMDLL_Map_GetHandle(pid, pb, ref cb);
                 if (!result) { return new MAP_HANDLEENTRY[0]; }
                 vmmi.VMMDLL_MAP_HANDLE pm = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_HANDLE>((System.IntPtr)pb);
                 if (pm.dwVersion != vmmi.VMMDLL_MAP_HANDLE_VERSION) { return new MAP_HANDLEENTRY[0]; }
@@ -1512,72 +1620,6 @@ namespace vmmsharp
 
 
         //---------------------------------------------------------------------
-        // WINDOWS SPECIFIC UTILITY FUNCTIONS BELOW:
-        //---------------------------------------------------------------------
-
-        public struct THUNKINFO_IAT
-        {
-            public bool fValid;
-            public bool f32;
-            public ulong vaThunk;
-            public ulong vaFunction;
-            public ulong vaNameModule;
-            public ulong vaNameFunction;
-        }
-
-        public struct THUNKINFO_EAT
-        {
-            public bool fValid;
-            public uint valueThunk;
-            public ulong vaThunk;
-            public ulong vaNameFunction;
-            public ulong vaFunction;
-        }
-
-        public static unsafe bool GetThunkInfoIAT(uint pid, string wszModuleName, string szImportModuleName, string szImportFunctionName, out THUNKINFO_IAT ThunkInfo)
-        {
-            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_WIN_THUNKINFO_IAT));
-            ThunkInfo = new THUNKINFO_IAT();
-            fixed (byte* pb = new byte[cbENTRY])
-            {
-                if(!vmmi.VMMDLL_WinGetThunkInfoIAT(pid, wszModuleName, szImportModuleName, szImportFunctionName, pb))
-                {
-                    return false;
-                }
-                vmmi.VMMDLL_WIN_THUNKINFO_IAT n = Marshal.PtrToStructure<vmmi.VMMDLL_WIN_THUNKINFO_IAT>((System.IntPtr)pb);
-                ThunkInfo.fValid = n.fValid;
-                ThunkInfo.f32 = n.f32;
-                ThunkInfo.vaThunk = n.vaThunk;
-                ThunkInfo.vaFunction = n.vaFunction;
-                ThunkInfo.vaNameModule = n.vaNameModule;
-                ThunkInfo.vaNameFunction = n.vaNameFunction;
-                return true;
-            }
-        }
-
-        public static unsafe bool GetThunkInfoEAT(uint pid, string wszModuleName, string szExportFunctionName, out THUNKINFO_EAT ThunkInfo)
-        {
-            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_WIN_THUNKINFO_EAT));
-            ThunkInfo = new THUNKINFO_EAT();
-            fixed (byte* pb = new byte[cbENTRY])
-            {
-                if (!vmmi.VMMDLL_WinGetThunkInfoEAT(pid, wszModuleName, szExportFunctionName, pb))
-                {
-                    return false;
-                }
-                vmmi.VMMDLL_WIN_THUNKINFO_EAT n = Marshal.PtrToStructure<vmmi.VMMDLL_WIN_THUNKINFO_EAT>((System.IntPtr)pb);
-                ThunkInfo.fValid = n.fValid;
-                ThunkInfo.valueThunk = n.valueThunk;
-                ThunkInfo.vaThunk = n.vaThunk;
-                ThunkInfo.vaNameFunction = n.vaNameFunction;
-                ThunkInfo.vaFunction = n.vaFunction;
-                return true;
-            }
-        }
-
-
-
-        //---------------------------------------------------------------------
         // REGISTRY FUNCTIONALITY BELOW:
         //---------------------------------------------------------------------
 
@@ -1782,7 +1824,10 @@ namespace vmmsharp
         internal static uint VMMDLL_MAP_PTE_VERSION =        1;
         internal static uint VMMDLL_MAP_VAD_VERSION =        5;
         internal static uint VMMDLL_MAP_VADEX_VERSION =      2;
-        internal static uint VMMDLL_MAP_MODULE_VERSION =     3;
+        internal static uint VMMDLL_MAP_MODULE_VERSION =     4;
+        internal static uint VMMDLL_MAP_UNLOADEDMODULE_VERSION = 1;
+        internal static uint VMMDLL_MAP_EAT_VERSION =        1;
+        internal static uint VMMDLL_MAP_IAT_VERSION =        1;
         internal static uint VMMDLL_MAP_HEAP_VERSION =       1;
         internal static uint VMMDLL_MAP_THREAD_VERSION =     2;
         internal static uint VMMDLL_MAP_HANDLE_VERSION =     1;
@@ -1928,22 +1973,6 @@ namespace vmmsharp
             uint fOptionString);
 
         [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential, CharSet = CharSet.Ansi)]
-        internal struct VMMDLL_EAT_ENTRY
-        {
-            internal ulong vaFunction;
-            internal uint vaFunctionOffset;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 40)] internal string szFunction;
-        }
-
-        [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential, CharSet = CharSet.Ansi)]
-        internal struct VMMDLL_IAT_ENTRY
-        {
-            internal ulong vaFunction;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 40)] internal string szFunction;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)] internal string szModule;
-        }
-
-        [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential, CharSet = CharSet.Ansi)]
         internal struct VMMDLL_IMAGE_SECTION_HEADER
         {
             [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 8)] internal string Name;
@@ -1981,22 +2010,6 @@ namespace vmmsharp
             uint cData,
             out uint pcData);
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_ProcessGetEAT")]
-        internal static extern unsafe bool VMMDLL_ProcessGetEAT(
-            uint dwPID,
-            [MarshalAs(UnmanagedType.LPWStr)] string wszModule,
-            byte* pData,
-            uint cData,
-            out uint pcData);
-
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_ProcessGetIAT")]
-        internal static extern unsafe bool VMMDLL_ProcessGetIAT(
-            uint dwPID,
-            [MarshalAs(UnmanagedType.LPWStr)] string wszModule,
-            byte* pData,
-            uint cData,
-            out uint pcData);
-
 
 
         // WINDOWS SPECIFIC DEBUGGING / SYMBOL FUNCTIONALITY BELOW:
@@ -2016,7 +2029,7 @@ namespace vmmsharp
 
 
 
-        // VMMDLL_ProcessMap_GetPte
+        // VMMDLL_Map_GetPte
 
         [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
         internal struct VMMDLL_MAP_PTEENTRY
@@ -2041,8 +2054,8 @@ namespace vmmsharp
             internal uint cMap;
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_ProcessMap_GetPte")]
-        internal static extern unsafe bool VMMDLL_ProcessMap_GetPte(
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetPte")]
+        internal static extern unsafe bool VMMDLL_Map_GetPte(
             uint dwPid,
             byte* pPteMap,
             ref uint pcbPteMap,
@@ -2050,7 +2063,7 @@ namespace vmmsharp
 
 
 
-        // VMMDLL_ProcessMap_GetVad
+        // VMMDLL_Map_GetVad
 
         [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
         internal struct VMMDLL_MAP_VADENTRY
@@ -2084,8 +2097,8 @@ namespace vmmsharp
             internal uint cMap;
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_ProcessMap_GetVad")]
-        internal static extern unsafe bool VMMDLL_ProcessMap_GetVad(
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetVad")]
+        internal static extern unsafe bool VMMDLL_Map_GetVad(
             uint dwPid,
             byte* pVadMap,
             ref uint pcbVadMap,
@@ -2093,7 +2106,7 @@ namespace vmmsharp
 
 
 
-        // VMMDLL_ProcessMap_GetVadEx
+        // VMMDLL_Map_GetVadEx
 
         [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
         internal struct VMMDLL_MAP_VADEXENTRY
@@ -2118,8 +2131,8 @@ namespace vmmsharp
             internal uint cMap;
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_ProcessMap_GetVadEx")]
-        internal static extern unsafe bool VMMDLL_ProcessMap_GetVadEx(
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetVadEx")]
+        internal static extern unsafe bool VMMDLL_Map_GetVadEx(
             uint dwPid,
             byte* pVadMap,
             ref uint pcbVadMap,
@@ -2128,7 +2141,7 @@ namespace vmmsharp
 
 
 
-        // VMMDLL_ProcessMap_GetModule
+        // VMMDLL_Map_GetModule
 
         [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
         internal struct VMMDLL_MAP_MODULEENTRY
@@ -2139,9 +2152,14 @@ namespace vmmsharp
             internal bool fWow64;
             [MarshalAs(UnmanagedType.LPWStr)] internal string wszText;
             internal uint cwszText;
-            [MarshalAs(UnmanagedType.LPWStr)] internal string wszFullName;
             internal uint cwszFullName;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 7)] internal uint[] _Reserved1;
+            [MarshalAs(UnmanagedType.LPWStr)] internal string wszFullName;
+            internal uint tp;
+            internal uint cbFileSizeRaw;
+            internal uint cSection;
+            internal uint cEAT;
+            internal uint cIAT;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)] internal uint[] _Reserved1;
         }
 
         internal struct VMMDLL_MAP_MODULE
@@ -2153,20 +2171,126 @@ namespace vmmsharp
             internal uint cMap;
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_ProcessMap_GetModule")]
-        internal static extern unsafe bool VMMDLL_ProcessMap_GetModule(uint dwPid, byte* pModuleMap, ref uint pcbModuleMap);
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetModule")]
+        internal static extern unsafe bool VMMDLL_Map_GetModule(uint dwPid, byte* pModuleMap, ref uint pcbModuleMap);
 
-        // VMMDLL_ProcessMap_GetModuleFromName
+        // VMMDLL_Map_GetModuleFromName
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_ProcessMap_GetModuleFromName")]
-        internal static extern unsafe bool VMMDLL_ProcessMap_GetModuleFromName(
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetModuleFromName")]
+        internal static extern unsafe bool VMMDLL_Map_GetModuleFromName(
             uint dwPID,
             [MarshalAs(UnmanagedType.LPWStr)] string wszModuleName,
-            byte* pModuleMapEntry);
+            byte* pModuleMapEntry,
+            ref uint pcbModuleMapEntry);
 
 
 
-        // VMMDLL_ProcessMap_GetHeap
+        // VMMDLL_Map_GetUnloadedModule
+
+        [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        internal struct VMMDLL_MAP_UNLOADEDMODULEENTRY
+        {
+            internal ulong vaBase;
+            internal uint cbImageSize;
+            internal bool fWow64;
+            [MarshalAs(UnmanagedType.LPWStr)] internal string wszText;
+            internal uint cwszText;
+            internal uint dwCheckSum;
+            internal uint dwTimeDateStamp;
+            internal uint _Reserved1;
+            internal ulong ftUnload;
+        }
+
+        internal struct VMMDLL_MAP_UNLOADEDMODULE
+        {
+            internal uint dwVersion;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 5)] internal uint[] _Reserved1;
+            [MarshalAs(UnmanagedType.LPWStr)] internal string wszMultiText;
+            internal uint cbMultiText;
+            internal uint cMap;
+        }
+
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetUnloadedModule")]
+        internal static extern unsafe bool VMMDLL_Map_GetUnloadedModule(uint dwPid, byte* pModuleMap, ref uint pcbModuleMap);
+        
+        
+        
+        // VMMDLL_Map_GetEAT
+
+        [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        internal struct VMMDLL_MAP_EATENTRY
+        {
+            internal ulong vaFunction;
+            internal uint dwOrdinal;
+            internal uint oFunctionsArray;
+            internal uint oNamesArray;
+            internal uint cwszFunction;
+            [MarshalAs(UnmanagedType.LPWStr)] internal string wszFunction;
+        }
+
+        internal struct VMMDLL_MAP_EAT
+        {
+            internal uint dwVersion;
+            internal uint dwOrdinalBase;
+            internal uint cNumberOfNames;
+            internal uint cNumberOfFunctions;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)] internal uint[] _Reserved1;
+            internal ulong vaModuleBase;
+            internal ulong vaAddressOfFunctions;
+            internal ulong vaAddressOfNames;
+            [MarshalAs(UnmanagedType.LPWStr)] internal string wszMultiText;
+            internal uint cbMultiText;
+            internal uint cMap;
+        }
+
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetEAT")]
+        internal static extern unsafe bool VMMDLL_Map_GetEAT(
+            uint dwPid,
+            [MarshalAs(UnmanagedType.LPWStr)] string wszModuleName,
+            byte* pEatMap,
+            ref uint pcbEatMap);
+
+
+
+        // VMMDLL_Map_GetIAT
+
+        [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        internal struct VMMDLL_MAP_IATENTRY
+        {
+            internal ulong vaFunction;
+            [MarshalAs(UnmanagedType.LPWStr)] internal string wszFunction;
+            internal uint cwszFunction;
+            internal uint cwszModule;
+            [MarshalAs(UnmanagedType.LPWStr)] internal string wszModule;
+            internal bool f32;
+            internal ushort wHint;
+            internal ushort _Reserved1;
+            internal uint rvaFirstThunk;
+            internal uint rvaOriginalFirstThunk;
+            internal uint rvaNameModule;
+            internal uint rvaNameFunction;
+        }
+
+        internal struct VMMDLL_MAP_IAT
+        {
+            internal uint dwVersion;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 5)] internal uint[] _Reserved1;
+            internal ulong vaModuleBase;
+            [MarshalAs(UnmanagedType.LPWStr)] internal string wszMultiText;
+            internal uint cbMultiText;
+            internal uint cMap;
+        }
+
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetIAT")]
+        internal static extern unsafe bool VMMDLL_Map_GetIAT(
+            uint dwPid,
+            [MarshalAs(UnmanagedType.LPWStr)] string wszModuleName,
+            byte* pIatMap,
+            ref uint pcbIatMap);
+
+
+
+        // VMMDLL_Map_GetHeap
 
         [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
         internal struct VMMDLL_MAP_HEAPENTRY
@@ -2184,15 +2308,15 @@ namespace vmmsharp
             internal uint cMap;
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_ProcessMap_GetHeap")]
-        internal static extern unsafe bool VMMDLL_ProcessMap_GetHeap(
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetHeap")]
+        internal static extern unsafe bool VMMDLL_Map_GetHeap(
             uint dwPid,
             byte* pHeapMap,
             ref uint pcbHeapMap);
 
 
 
-        // VMMDLL_ProcessMap_GetThread
+        // VMMDLL_Map_GetThread
 
         [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
         internal struct VMMDLL_MAP_THREADENTRY
@@ -2232,15 +2356,15 @@ namespace vmmsharp
             internal uint cMap;
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_ProcessMap_GetThread")]
-        internal static extern unsafe bool VMMDLL_ProcessMap_GetThread(
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetThread")]
+        internal static extern unsafe bool VMMDLL_Map_GetThread(
             uint dwPid,
             byte* pThreadMap,
             ref uint pcbThreadMap);
 
 
 
-        // VMMDLL_ProcessMap_GetHandle
+        // VMMDLL_Map_GetHandle
 
         [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
         internal struct VMMDLL_MAP_HANDLEENTRY
@@ -2271,8 +2395,8 @@ namespace vmmsharp
             internal uint cMap;
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_ProcessMap_GetHandle")]
-        internal static extern unsafe bool VMMDLL_ProcessMap_GetHandle(
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetHandle")]
+        internal static extern unsafe bool VMMDLL_Map_GetHandle(
             uint dwPid,
             byte* pHandleMap,
             ref uint pcbHandleMap);
@@ -2455,45 +2579,6 @@ namespace vmmsharp
             uint cPfns,
             byte* pPfnMap,
             ref uint pcbPfnMap);
-        
-        
-        
-        // THUNK INFO EAT / IAT
-
-        [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
-        internal struct VMMDLL_WIN_THUNKINFO_IAT
-        {
-            internal bool fValid;
-            internal bool f32;
-            internal ulong vaThunk;
-            internal ulong vaFunction;
-            internal ulong vaNameModule;
-            internal ulong vaNameFunction;
-        }
-
-        [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
-        internal struct VMMDLL_WIN_THUNKINFO_EAT
-        {
-            internal bool fValid;
-            internal uint valueThunk;
-            internal ulong vaThunk;
-            internal ulong vaNameFunction;
-            internal ulong vaFunction;
-        }
-
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_WinGetThunkInfoIAT")]
-        internal static extern unsafe bool VMMDLL_WinGetThunkInfoIAT(
-            uint dwPID, [MarshalAs(UnmanagedType.LPWStr)] string wszModuleName,
-            [MarshalAs(UnmanagedType.LPStr)] string szImportModuleName,
-            [MarshalAs(UnmanagedType.LPStr)] string szImportFunctionName,
-            byte* pThunkInfoIAT);
-
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_WinGetThunkInfoEAT")]
-        internal static extern unsafe bool VMMDLL_WinGetThunkInfoEAT(
-            uint dwPID,
-            [MarshalAs(UnmanagedType.LPWStr)] string wszModuleName,
-            [MarshalAs(UnmanagedType.LPStr)] string szExportFunctionName,
-            byte* pThunkInfoEAT);
 
 
 

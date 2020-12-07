@@ -41,6 +41,7 @@ typedef struct tdPLUGIN_ENTRY {
     DWORD dwNameHash;
     BOOL fRootModule;
     BOOL fProcessModule;
+    BOOL(*pfnVisibleModule)(_In_ PVMMDLL_PLUGIN_CONTEXT ctx);
     BOOL(*pfnList)(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList);
     NTSTATUS(*pfnRead)(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
     NTSTATUS(*pfnWrite)(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset);
@@ -194,7 +195,7 @@ VOID PluginManager_ContextInitialize(_Out_ PVMMDLL_PLUGIN_CONTEXT ctx, PPLUGIN_E
 VOID PluginManager_List(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszPath, _Inout_ PHANDLE pFileList)
 {
     DWORD i;
-    BOOL result = TRUE;
+    BOOL fVisibleProgrammatic, result = TRUE;
     QWORD tmStart = Statistics_CallStart();
     VMMDLL_PLUGIN_CONTEXT ctx;
     LPWSTR wszSubPath;
@@ -207,13 +208,22 @@ VOID PluginManager_List(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszPath, _In
         if(pTree->cChild && !wszSubPath[0]) {
             for(i = 0; i < pTree->cChild; i++) {
                 if(pTree->Child[i]->fVisible) {
-                    VMMDLL_VfsList_AddDirectory(pFileList, pTree->Child[i]->wszName, NULL);
+                    fVisibleProgrammatic = pTree->Child[i]->cChild || !pTree->Child[i]->pPlugin || !pTree->Child[i]->pPlugin->pfnVisibleModule;
+                    if(!fVisibleProgrammatic) {
+                        PluginManager_ContextInitialize(&ctx, pTree->Child[i]->pPlugin, pProcess, wszSubPath);
+                        fVisibleProgrammatic = pTree->Child[i]->pPlugin->pfnVisibleModule(&ctx);
+                    }
+                    if(fVisibleProgrammatic) {
+                        VMMDLL_VfsList_AddDirectory(pFileList, pTree->Child[i]->wszName, NULL);
+                    }
                 }
             }
         }
         if((pPlugin = pTree->pPlugin) && pPlugin->pfnList) {
             PluginManager_ContextInitialize(&ctx, pPlugin, pProcess, wszSubPath);
-            pTree->pPlugin->pfnList(&ctx, pFileList);
+            if(!pPlugin->pfnVisibleModule || pPlugin->pfnVisibleModule(&ctx)) {
+                pTree->pPlugin->pfnList(&ctx, pFileList);
+            }
         }
     }
     Statistics_CallEnd(STATISTICS_ID_PluginManager_List, tmStart);
@@ -423,6 +433,7 @@ BOOL PluginManager_Register(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo)
     pModule->pfnWrite = pRegInfo->reg_fn.pfnWrite;
     pModule->pfnNotify = pRegInfo->reg_fn.pfnNotify;
     pModule->pfnClose = pRegInfo->reg_fn.pfnClose;
+    pModule->pfnVisibleModule = pRegInfo->reg_fn.pfnVisibleModule;
     // 3: register plugin (forensic functionality)
     pModule->fc.pfnInitialize = pRegInfo->reg_fnfc.pfnInitialize;
     pModule->fc.pfnFinalize = pRegInfo->reg_fnfc.pfnFinalize;
@@ -511,6 +522,10 @@ VOID PluginManager_Initialize_RegInfoInit(_Out_ PVMMDLL_PLUGIN_REGINFO pRI, _In_
     pRI->tpMemoryModel = ctxVmm->tpMemoryModel;
     pRI->tpSystem = ctxVmm->tpSystem;
     pRI->pfnPluginManager_Register = PluginManager_Register;
+    pRI->sysinfo.f32 = ctxVmm->f32;
+    pRI->sysinfo.dwVersionMajor = ctxVmm->kernel.dwVersionMajor;
+    pRI->sysinfo.dwVersionMinor = ctxVmm->kernel.dwVersionMinor;
+    pRI->sysinfo.dwVersionBuild = ctxVmm->kernel.dwVersionBuild;
 }
 
 VOID PluginManager_Initialize_Python()

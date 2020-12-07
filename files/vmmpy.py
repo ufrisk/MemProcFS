@@ -12,7 +12,7 @@
 # (c) Ulf Frisk, 2018-2020
 # Author: Ulf Frisk, pcileech@frizk.net
 #
-# Header Version: 3.5
+# Header Version: 3.6
 #
 
 import atexit
@@ -461,6 +461,20 @@ def VmmPy_ProcessGetModuleFromName(pid, module_name):
 
 
 
+def VmmPy_ProcessGetUnloadedModuleMap(pid):
+    """Retrieve the unloaded module map for a specific pid.
+
+    Keyword arguments:
+    pid -- int: the process identifier (pid).
+    return -- list: of dict of unloaded module map information entries.
+    
+    Example:
+    VmmPy_ProcessGetUnloadedModuleMap(332) --> [{'va': 8791633559552, 'size': 110592, 'wow64': False, 'name': 'MAPI32.dll', 'dwCheckSum': 104436, 'dwTimeDateStamp': 1290258211, 'ft': 0}, ...]
+    """
+    return VMMPYC_ProcessGetUnloadedModuleMap(pid)
+
+
+
 def VmmPy_ProcessGetInformation(pid):
     """Retrieve process information for a specific pid and return as dict.
 
@@ -502,10 +516,10 @@ def VmmPy_ProcessGetEAT(pid, module_name):
     Keyword arguments:
     pid -- int: the process identifier (pid) when reading process virtual memory.
     module_name -- str: name of the module to retrieve.
-    return -- list: of dict of EAT information.
+    return -- dict with list: of dict of EAT information.
     
     Example:
-    VmmPy_ProcessGetEAT(332, "ntdll.dll") --> [{'i': 0, 'va': 140718385196671, 'offset': 585343, 'fn': 'AcquireSRWLockExclusive'}, ... ]
+    VmmPy_ProcessGetEAT(332, "kernel32.dll") --> {'va-module': 1999175680, 'va-afn': 1999831140, 'va-anm': 1999836688, 'ord-base': 1, 'c-afn': 1387, 'c-anm': 1387, 'e': [{'i': 0, 'ord': 1, 'oafn': 0, 'oanm': 0, 'ofn': 696654, 'va': 1999872334, 'fn': 'AcquireSRWLockExclusive'}, ...]}
     """
     return VMMPYC_ProcessGetEAT(pid, module_name)
 
@@ -520,7 +534,7 @@ def VmmPy_ProcessGetIAT(pid, module_name):
     return -- list: of dict of IAT information.
     
     Example:
-    VmmPy_ProcessGetAT(332, "cmd.exe") --> [{'i': 0, 'va': 140718377374992, 'fn': 'setlocale', 'dll': 'msvcrt.dll'}, ... ]
+    VmmPy_ProcessGetIAT(332, "cmd.exe") --> [{'i': 0, 'va-fn': 2000694368, 'va-mod': 1999175680, 'fn': 'RtlCompareMemory', 'dll': 'API-MS-Win-Core-RtlSupport-L1-1-0.dll', '32': False, 'hint': 3, 'rvaFirstThunk': 638976, 'rvaOriginalFirstThunk': 1018152, 'rvaNameModule': 1018108, 'rvaNameFunction': 1025472}, ... ]
     """
     return VMMPYC_ProcessGetIAT(pid, module_name)
 
@@ -857,39 +871,6 @@ def VmmPy_MapGetPfns(pfns):
         
     """
     return VMMPYC_MapGetPfns(pfns)
-
-
-
-def VmmPy_WinGetThunkInfoEAT(pid, module_name, exported_function):
-    """Retrieve information about a single export address table (EAT) entry. This may be useful for hooking.
-
-    Keyword arguments:
-    pid -- int: the process identifier (pid) when reading process virtual memory.
-    module_name -- str: name of the module to retrieve.
-    exported_function -- str: name of the exported function to retrieve.
-    return -- dict: information about the EAT entry.
-
-    Example:
-    VmmPy_WinGetThunkInfoEAT(4, 'ntoskrnl.exe', 'KeGetCurrentIrql') --> {'vaFunction': 18446735288139539584, 'valueThunk': 1479808, 'vaNameFunction': 18446735288147899428, 'vaThunk': 18446735288147849312}
-    """
-    return VMMPYC_WinGetThunkInfoEAT(pid, module_name, exported_function)
-
-
-
-def VmmPy_WinGetThunkInfoIAT(pid, module_name, imported_module_name, imported_module_function):
-    """Retrieve information about a single import address table (IAT) entry. This may be useful for hooking.
-
-    Keyword arguments:
-    pid -- int: the process identifier (pid) when reading process virtual memory.
-    module_name -- str: name of the module to retrieve.
-    imported_module_name -- str: name of the imported module to retrieve.
-    imported_module_function -- str: name of the imported function to retrieve.
-    return -- dict: information about the IAT entry.
-
-    Example:
-    VmmPy_WinGetThunkInfoIAT(4, 'ntoskrnl.exe', 'hal.dll', 'HalSendNMI') --> {'32': False, 'vaFunction': 18446735288149190896, 'vaNameFunction': 18446735288143568050, 'vaNameModule': 18446735288143568362, 'vaThunk': 18446735288143561136}
-    """
-    return VMMPYC_WinGetThunkInfoIAT(pid, module_name, imported_module_name, imported_module_function)
 
 
 

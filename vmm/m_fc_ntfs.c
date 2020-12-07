@@ -917,7 +917,7 @@ VOID M_FcNtfs_IngestFinalize(_In_opt_ PVOID ctxfc)
     if(!(psObHashPath = ObSet_New())) { goto fail; }
     // initialize virtual root
     pNtfsGlobalRoot = FcNtfs_SetupCreateEntry(ctx, --iNtfsDummy, L"", 0, TRUE);
-    pNtfsGlobalOrphan = FcNtfs_SetupCreateEntry(ctx, --iNtfsDummy, L"u0", 8, TRUE);
+    pNtfsGlobalOrphan = FcNtfs_SetupCreateEntry(ctx, --iNtfsDummy, L"u0", 2, TRUE);
     M_FcNtfs_IngestFinalize_AddToParent(pNtfsGlobalRoot, pNtfsGlobalOrphan);
     // allocate arrays for counting and sorting
     if(!(ctx->pListsCounter = LocalAlloc(LMEM_ZEROINIT, ctx->dwLastIdFs * sizeof(FCNTFS_CONTEXT_COUNTER)))) { goto fail; }

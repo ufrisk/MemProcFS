@@ -5,6 +5,7 @@
 //
 #include "pluginmanager.h"
 #include "util.h"
+#include "mm.h"
 #include "vmm.h"
 #include "vmmdll.h"
 
@@ -14,51 +15,6 @@
 #define MEMMAP_VAD_LINELENGTH_X64       161ULL
 
 #define MEMMAP_VADEX_LINELENGTH         162ULL
-
-VOID MemMap_Read_VadMap_Protection(_In_ PVMM_MAP_VADENTRY pVad, _Out_writes_(6) LPSTR sz)
-{
-    BYTE vh = (BYTE)pVad->Protection >> 3;
-    BYTE vl = (BYTE)pVad->Protection & 7;
-    sz[0] = pVad->fPrivateMemory ? 'p' : '-';                                   // PRIVATE MEMORY
-    sz[1] = (vh & 2) ? ((vh & 1) ? 'm' : 'g') : ((vh & 1) ? 'n' : '-');         // -/NO_CACHE/GUARD/WRITECOMBINE
-    sz[2] = ((vl == 1) || (vl == 3) || (vl == 4) || (vl == 6)) ? 'r' : '-';     // COPY ON WRITE
-    sz[3] = (vl & 4) ? 'w' : '-';                                               // WRITE
-    sz[4] = (vl & 2) ? 'x' : '-';                                               // EXECUTE
-    sz[5] = ((vl == 5) || (vl == 7)) ? 'c' : '-';                               // COPY ON WRITE
-    if(sz[1] != '-' && sz[2] == '-' && sz[3] == '-' && sz[4] == '-' && sz[5] == '-') { sz[1] = '-'; }
-}
-
-LPSTR MemMap_Read_VadMap_Type(_In_ PVMM_MAP_VADENTRY pVad)
-{
-    if(pVad->fImage) {
-        return "Image";
-    } else if(pVad->fFile) {
-        return "File ";
-    } else if(pVad->fHeap) {
-        return "Heap ";
-    } else if(pVad->fStack) {
-        return "Stack";
-    } else if(pVad->fTeb) {
-        return "Teb  ";
-    } else if(pVad->fPageFile) {
-        return "Pf   ";
-    } else {
-        return "     ";
-    }
-}
-
-CHAR MemMap_Read_VadExMap_Type(_In_ VMM_PTE_TP tp)
-{
-    switch(tp) {
-        case VMM_PTE_TP_HARDWARE:   return 'A';
-        case VMM_PTE_TP_TRANSITION: return 'T';
-        case VMM_PTE_TP_PROTOTYPE:  return 'P';
-        case VMM_PTE_TP_DEMANDZERO: return 'Z';
-        case VMM_PTE_TP_COMPRESSED: return 'C';
-        case VMM_PTE_TP_PAGEFILE:   return 'F';
-        default:                    return '-';
-    }
-}
 
 _Success_(return == 0)
 NTSTATUS MemMap_Read_VadMap(_In_ PVMM_PROCESS pProcess, _In_ PVMMOB_MAP_VAD pVadMap, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
@@ -76,7 +32,7 @@ NTSTATUS MemMap_Read_VadMap(_In_ PVMM_PROCESS pProcess, _In_ PVMMOB_MAP_VAD pVad
     if(!(sz = LocalAlloc(LMEM_ZEROINIT, cbMax))) { return VMMDLL_STATUS_FILE_INVALID; }
     for(i = cStart; i <= cVad; i++) {
         pVad = pVadMap->pMap + i;
-        MemMap_Read_VadMap_Protection(pVad, szProtection);
+        MmVad_StrProtectionFlags(pVad, szProtection);
         if(ctxVmm->f32) {
             o += Util_snwprintf_u8ln(
                 sz + o,
@@ -90,7 +46,7 @@ NTSTATUS MemMap_Read_VadMap(_In_ PVMM_PROCESS pProcess, _In_ PVMMOB_MAP_VAD pVad
                 pVad->MemCommit ? 1 : 0,
                 (DWORD)pVad->vaStart,
                 (DWORD)pVad->vaEnd,
-                MemMap_Read_VadMap_Type(pVad),
+                MmVad_StrType(pVad),
                 szProtection,
                 pVad->wszText + pVad->cwszText - min(64, pVad->cwszText)
             );
@@ -107,7 +63,7 @@ NTSTATUS MemMap_Read_VadMap(_In_ PVMM_PROCESS pProcess, _In_ PVMMOB_MAP_VAD pVad
                 pVad->MemCommit ? 1 : 0,
                 pVad->vaStart,
                 pVad->vaEnd,
-                MemMap_Read_VadMap_Type(pVad),
+                MmVad_StrType(pVad),
                 szProtection,
                 pVad->wszText + pVad->cwszText - min(64, pVad->cwszText)
             );
@@ -133,7 +89,7 @@ NTSTATUS MemMap_Read_VadExMap2(_In_ PVMM_PROCESS pProcess, _In_ DWORD oVadExPage
     cbLINELENGTH = MEMMAP_VADEX_LINELENGTH;
     iPage = (DWORD)(cbOffset / cbLINELENGTH) + oVadExPages;
     cPage = (DWORD)min((cb + cbOffset + cbLINELENGTH - 1) / cbLINELENGTH, cVadExPagesMax - (iPage - oVadExPages));
-    if(!VmmMap_GetVadEx(pProcess, &pObMap, iPage, cPage)) { return VMMDLL_STATUS_FILE_INVALID; }
+    if(!VmmMap_GetVadEx(pProcess, &pObMap, VMM_VADMAP_TP_FULL, iPage, cPage)) { return VMMDLL_STATUS_FILE_INVALID; }
     cPage = pObMap->cMap;
     cbMax = 1 + pObMap->cMap * cbLINELENGTH;
     if(!(sz = LocalAlloc(LMEM_ZEROINIT, cbMax))) { Ob_DECREF(pObMap); return VMMDLL_STATUS_FILE_INVALID; }
@@ -141,7 +97,7 @@ NTSTATUS MemMap_Read_VadExMap2(_In_ PVMM_PROCESS pProcess, _In_ DWORD oVadExPage
         pex = pObMap->pMap + i;
         pVad = pex->peVad;
         qwHwPte = (pex->tp == VMM_PTE_TP_HARDWARE) ? pex->pte : 0;
-        MemMap_Read_VadMap_Protection(pVad, szProtection);
+        MmVad_StrProtectionFlags(pVad, szProtection);
         o += Util_snwprintf_u8ln(
             sz + o,
             cbLINELENGTH,
@@ -151,15 +107,15 @@ NTSTATUS MemMap_Read_VadExMap2(_In_ PVMM_PROCESS pProcess, _In_ DWORD oVadExPage
             pex->va,
             pex->pa,
             pex->pte,
-            MemMap_Read_VadExMap_Type(pex->tp),
+            MmVadEx_StrType(pex->tp),
             qwHwPte ? 'r' : '-',
             (qwHwPte & VMM_MEMMAP_PAGE_W) ? 'w' : '-',
             (!qwHwPte || (qwHwPte & VMM_MEMMAP_PAGE_NX)) ? '-' : 'x',
             pVad->vaVad,
             pex->proto.pa,
             pex->proto.pte,
-            MemMap_Read_VadExMap_Type(pex->proto.tp),
-            MemMap_Read_VadMap_Type(pVad),
+            MmVadEx_StrType(pex->proto.tp),
+            MmVad_StrType(pVad),
             szProtection,
             pVad->wszText + pVad->cwszText - min(32, pVad->cwszText)
         );
@@ -187,7 +143,7 @@ NTSTATUS MemMap_Read_VadExMap(_In_ PVMM_PROCESS pProcess, _In_ LPWSTR wszFile, _
     if(!_wcsicmp(wszFile, L"_vad-v.txt")) {
         return MemMap_Read_VadExMap2(pProcess, 0, 0xffffffff, pb, cb, pcbRead, cbOffset);
     }
-    if(wszFile[0] == '0' && wszFile[1] == 'x' && VmmMap_GetVad(pProcess, &pObVadMap, FALSE)) {
+    if(wszFile[0] == '0' && wszFile[1] == 'x' && VmmMap_GetVad(pProcess, &pObVadMap, VMM_VADMAP_TP_CORE)) {
         vaVad = Util_GetNumericW(wszFile);
         peVad = Util_qfind((PVOID)vaVad, pObVadMap->cMap, pObVadMap->pMap, sizeof(VMM_MAP_VADENTRY), (int(*)(PVOID, PVOID))MemMap_Read_VadExMap_CmpFind);
         if(peVad) {
@@ -279,7 +235,7 @@ NTSTATUS MemMap_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRe
         return nt;
     }
     if(!_wcsicmp(ctx->wszPath, L"vad.txt")) {
-        if(VmmMap_GetVad(ctx->pProcess, &pObMemMapVad, TRUE)) {
+        if(VmmMap_GetVad(ctx->pProcess, &pObMemMapVad, VMM_VADMAP_TP_FULL)) {
             nt = MemMap_Read_VadMap(ctx->pProcess, pObMemMapVad, pb, cb, pcbRead, cbOffset);
             Ob_DECREF(pObMemMapVad);
         }
@@ -316,7 +272,7 @@ BOOL MemMap_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
         }
         // list vad & and extended vad map directory
         VMMDLL_VfsList_AddDirectory(pFileList, L"vad-v", NULL);
-        if(VmmMap_GetVad(ctx->pProcess, &pObVadMap, TRUE)) {
+        if(VmmMap_GetVad(ctx->pProcess, &pObVadMap, VMM_VADMAP_TP_CORE)) {
             VMMDLL_VfsList_AddFile(pFileList, L"vad.txt", pObVadMap->cMap * (ctxVmm->f32 ? MEMMAP_VAD_LINELENGTH_X86 : MEMMAP_VAD_LINELENGTH_X64), NULL);
             Ob_DECREF_NULL(&pObVadMap);
         }
@@ -324,7 +280,7 @@ BOOL MemMap_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
     }
     wszFile = Util_PathSplit2_ExWCHAR(ctx->wszPath, wszPath1, _countof(wszPath1));
     if(!_wcsicmp(wszPath1, L"vad-v") && !wszFile[0]) {
-        if(VmmMap_GetVad(ctx->pProcess, &pObVadMap, TRUE)) {
+        if(VmmMap_GetVad(ctx->pProcess, &pObVadMap, VMM_VADMAP_TP_FULL)) {
             VMMDLL_VfsList_AddFile(pFileList, L"_vad-v.txt", pObVadMap->cPage * MEMMAP_VADEX_LINELENGTH, NULL);
             for(iVad = 0; iVad < pObVadMap->cMap; iVad++) {
                 swprintf_s(

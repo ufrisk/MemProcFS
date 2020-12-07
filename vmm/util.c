@@ -44,6 +44,21 @@ DWORD Util_HashStringA(_In_opt_ LPCSTR sz)
     }
 }
 
+DWORD Util_HashStringUpperA(_In_opt_ LPCSTR sz)
+{
+    CHAR c;
+    DWORD i = 0, dwHash = 0;
+    if(!sz) { return 0; }
+    while(TRUE) {
+        c = sz[i++];
+        if(!c) { return dwHash; }
+        if(c >= 'a' && c <= 'z') {
+            c += 'A' - 'a';
+        }
+        dwHash = ((dwHash >> 13) | (dwHash << 19)) + c;
+    }
+}
+
 DWORD Util_HashStringUpperW(_In_opt_ LPCWSTR wsz)
 {
     WCHAR c;
@@ -590,8 +605,9 @@ LPSTR Util_StrDupW2U8(_In_opt_ LPWSTR wsz)
     LPSTR szUTF8;
     if(!wsz) { return NULL; }
     cchUTF8 = wcslen_u8(wsz);
-    if(!cchUTF8 || (cchUTF8 > 0x01000000)) { return NULL; }
-    if(!(szUTF8 = LocalAlloc(0, cchUTF8 + 1ULL))) { return NULL; }
+    if(!cchUTF8 || (cchUTF8 > 0x01000000) || !(szUTF8 = LocalAlloc(0, cchUTF8 + 1ULL))) {
+        return LocalAlloc(LMEM_ZEROINIT, 1);
+    }
     WideCharToMultiByte(CP_UTF8, 0, wsz, -1, szUTF8, cchUTF8, NULL, NULL);
     szUTF8[cchUTF8] = 0;
     return szUTF8;
