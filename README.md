@@ -206,5 +206,5 @@ v1.1-v2.10
 * Bug fixes & refactorings.
 * NB! Breaking C/C++ API changes (function renames).
 * New Features:
- * Unloaded modules.
- * [FindEvil](https://github.com/ufrisk/MemProcFS/wiki/FS_FindEvil) - find select signs of injections and malware.
+  * Unloaded modules.
+  * [FindEvil](https://github.com/ufrisk/MemProcFS/wiki/FS_FindEvil) - find select signs of injections and malware.
