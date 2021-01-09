@@ -206,3 +206,14 @@ v1.1-v2.10
 * New Features:
   * Unloaded modules.
   * [FindEvil](https://github.com/ufrisk/MemProcFS/wiki/FS_FindEvil) - find select signs of injections and malware.
+ 
+[v3.7](https://github.com/ufrisk/MemProcFS/releases/tag/v3.7)
+* Updates & Improvements:
+  * Registry.
+  * Services.
+  * NTFS MFT.
+* New Features:
+  * Time: process-time, boot-time, current-time, timezone.
+  * Python Light Plugins: print('file system plugins as easy as Python print!')
+  * Registry Parsing: usb-storage, bluetooth, wallpapers and more in 'py/reg' & 'py/by-user/reg'.
+  
