@@ -562,10 +562,10 @@ BOOL VmmWinInit_DTB_FindValidate_X64(_In_ QWORD pa, _In_reads_(0x1000) PBYTE pbP
     // check for user-mode page table with PDPT below max physical address and not NX.
     if((ptes[0] & 1) && ((ptes[0] & 0x0000fffffffff000) > paMax)) { return FALSE; }
     for(i = 0; i < 256; i++) {      // user-mode
-        if(ptes[0] == 0) { cUserZero++; }
+        if(ptes[i] == 0) { cUserZero++; }
     }
     for(i = 256; i < 512; i++) {    // kernel mode: minimum number of supervisor entries above 0x800
-        if(ptes[0] == 0) { cKernelZero++; }
+        if(ptes[i] == 0) { cKernelZero++; }
         // check for user-mode page table with PDPT below max physical address and not NX.
         if(((ptes[i] & 0x8000000000000087) == 0x03) && ((ptes[i] & 0x0000fffffffff000) < paMax)) { cKernelValid++; }
         // check for self-referential entry
