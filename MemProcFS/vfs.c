@@ -1,6 +1,6 @@
 // vfs.c : implementation of functions related to virtual file system support.
 //
-// (c) Ulf Frisk, 2018-2020
+// (c) Ulf Frisk, 2018-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include <Windows.h>
@@ -50,7 +50,7 @@ PVFS_FILELIST VfsFileList_Alloc()
     return pFileList;
 }
 
-VOID VfsFileList_Free(_Inout_ PVFS_FILELIST pFileList)
+VOID VfsFileList_Free(_Frees_ptr_opt_ PVFS_FILELIST pFileList)
 {
     PVFS_FILELIST pFileListFlink;
     while(pFileList) {
@@ -303,6 +303,7 @@ VfsCallback_CreateFile_Impl(LPCWSTR wcsFileName, PDOKAN_IO_SECURITY_CONTEXT Secu
     BOOL fIsDirectoryExisting = FALSE;
     UNREFERENCED_PARAMETER(SecurityContext);
     UNREFERENCED_PARAMETER(FileAttributes);
+    if(!ctxVfs || !ctxVfs->fInitialized) { return STATUS_FILE_INVALID; }
     // root directory
     if(!wcscmp(wcsFileName, L"\\")) {
         if(CreateDisposition == CREATE_ALWAYS) { return ctxVfs->DokanNtStatusFromWin32(ERROR_ACCESS_DENIED); }
@@ -324,7 +325,9 @@ NTSTATUS DOKAN_CALLBACK
 VfsCallback_CreateFile(LPCWSTR FileName, PDOKAN_IO_SECURITY_CONTEXT SecurityContext, ACCESS_MASK DesiredAccess, ULONG FileAttributes, ULONG ShareAccess, ULONG CreateDisposition, ULONG CreateOptions, PDOKAN_FILE_INFO DokanFileInfo)
 {
     UINT64 tmStart = dbg_GetTickCount64();
-    NTSTATUS nt = VfsCallback_CreateFile_Impl(FileName, SecurityContext, DesiredAccess, FileAttributes, ShareAccess, CreateDisposition, CreateOptions, DokanFileInfo);
+    NTSTATUS nt;
+    if(!ctxVfs || !ctxVfs->fInitialized) { return STATUS_FILE_INVALID; }
+    nt = VfsCallback_CreateFile_Impl(FileName, SecurityContext, DesiredAccess, FileAttributes, ShareAccess, CreateDisposition, CreateOptions, DokanFileInfo);
     dbg_wprintf(L"DEBUG::%08x %8x VfsCallback_CreateFile:\t\t 0x%08x %s [ %08x %08x %08x %08x ]\n", (DWORD)(dbg_GetTickCount64() - tmStart), nt, FileName, FileAttributes, ShareAccess, CreateDisposition, CreateOptions);
     return nt;
 }
@@ -338,6 +341,7 @@ VfsCallback_GetFileInformation(_In_ LPCWSTR wcsFileName, _Inout_ LPBY_HANDLE_FIL
     WCHAR wszPath[MAX_PATH];
     LPWSTR wszFile;
     BOOL fIsDirectoryExisting = FALSE;
+    if(!ctxVfs || !ctxVfs->fInitialized) { return STATUS_FILE_INVALID; }
     dbg_wprintf_init(L"DEBUG::%08x -------- VfsCallback_GetFileInformation:\t 0x%08x %s\n", 0, wcsFileName);
     // matches: root directory
     if(!wcscmp(wcsFileName, L"\\")) {
@@ -382,6 +386,7 @@ VfsCallback_FindFiles(LPCWSTR wcsFileName, PFillFindData FillFindData, PDOKAN_FI
 {
     UINT64 tmStart = dbg_GetTickCount64();
     BOOL result;
+    if(!ctxVfs || !ctxVfs->fInitialized) { return STATUS_FILE_INVALID; }
     dbg_wprintf_init(L"DEBUG::%08x -------- VfsCallback_FindFiles:\t\t\t 0x%08x %s\n", 0, wcsFileName);
     result = VfsCacheDirectory_DokanFillDirectory(wcsFileName, FillFindData, DokanFileInfo);
     if(result) {
@@ -399,6 +404,7 @@ VfsCallback_ReadFile(LPCWSTR wcsFileName, LPVOID Buffer, DWORD BufferLength, LPD
 {
     UINT64 tmStart = dbg_GetTickCount64();
     NTSTATUS nt;
+    if(!ctxVfs || !ctxVfs->fInitialized) { return STATUS_FILE_INVALID; }
     dbg_wprintf_init(L"DEBUG::%08x -------- VfsCallback_ReadFile:\t\t\t 0x%08x %s\n", 0, wcsFileName);
     nt = ctxVfs->pVmmDll->VfsRead(wcsFileName, Buffer, BufferLength, ReadLength, Offset);
     dbg_wprintf(L"DEBUG::%08x %8x VfsCallback_ReadFile:\t\t\t 0x%08x %s\t [ %016llx %08x %08x ]\n", (DWORD)(dbg_GetTickCount64() - tmStart), nt, wcsFileName, Offset, BufferLength, *ReadLength);
@@ -410,6 +416,7 @@ VfsCallback_WriteFile(LPCWSTR wcsFileName, LPCVOID Buffer, DWORD NumberOfBytesTo
 {
     UINT64 tmStart = dbg_GetTickCount64();
     NTSTATUS nt;
+    if(!ctxVfs || !ctxVfs->fInitialized) { return STATUS_FILE_INVALID; }
     dbg_wprintf_init(L"DEBUG::%08x -------- VfsCallback_WriteFile:\t\t\t 0x%08x %s\n", 0, wcsFileName);
     nt = ctxVfs->pVmmDll->VfsWrite(wcsFileName, (PBYTE)Buffer, NumberOfBytesToWrite, NumberOfBytesWritten, Offset);
     dbg_wprintf(L"DEBUG::%08x %8x VfsCallback_WriteFile:\t\t\t 0x%08x %s\t [ %016llx %08x %08x ]\n", (DWORD)(dbg_GetTickCount64() - tmStart), nt, wcsFileName, Offset, NumberOfBytesToWrite, *NumberOfBytesWritten);
@@ -426,6 +433,7 @@ VOID VfsClose(_In_ CHAR chMountPoint)
     WCHAR wchMountPoint = chMountPoint;
     BOOL(*pfnDokanUnmount)(WCHAR DriveLetter);
     if(ctxVfs && ctxVfs->fInitialized) {
+        ctxVfs->fInitialized = FALSE;
         if(wchMountPoint) {
             hModuleDokan = LoadLibraryExA("dokan1.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
             if(hModuleDokan) {
@@ -528,11 +536,15 @@ VOID VfsInitializeAndMount(_In_ CHAR chMountPoint, _In_ PVMMDLL_FUNCTIONS pVmmDl
     VfsInitializeAndMount_DisplayInfo(wszMountPoint, pVmmDll);
     // mount file system
     status = fnDokanMain(pDokanOptions, pDokanOperations);
-    while(status == DOKAN_SUCCESS) {
+    while(ctxVfs && ctxVfs->fInitialized && (status == DOKAN_SUCCESS)) {
         printf("MOUNT: ReMounting as drive %S\n", pDokanOptions->MountPoint);
         status = fnDokanMain(pDokanOptions, pDokanOperations);
     }
-    printf("MOUNT: Failed. Status Code: %i\n", status);
+    if(status == -5) {
+        printf("MOUNT: Failed: drive busy/already mounted.\n");
+    } else {
+        printf("MOUNT: Failed. Status Code: %i\n", status);
+    }
 fail:
     if(hModuleDokan) { FreeLibrary(hModuleDokan); }
     LocalFree(pDokanOptions);

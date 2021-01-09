@@ -1,6 +1,6 @@
 // vmmwinobj.c : implementation of functionality related to Windows objects.
 //
-// (c) Ulf Frisk, 2020
+// (c) Ulf Frisk, 2020-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -374,7 +374,6 @@ VOID VmmWinObjFile_GetByProcess_DoWork(_In_ PVMM_PROCESS pProcess, _In_ POB_MAP 
     PVMMOB_MAP_VAD pmObVad = NULL;
     PVMMOB_MAP_HANDLE pmObHandle = NULL;
     PVMMWINOBJ_CONTEXT ctx = ctxVmm->pObjects;
-    PVMM_PROCESS pObSystemProcess;
     if(!(psvaObFiles = ObSet_New())) { return; }
     if(fHandles) {
         // handle map -> file objects
@@ -399,10 +398,7 @@ VOID VmmWinObjFile_GetByProcess_DoWork(_In_ PVMM_PROCESS pProcess, _In_ POB_MAP 
     }
     // Fetch and initialize new file objects
     if(ObSet_Size(psvaObFiles)) {
-        if((pObSystemProcess = VmmProcessGet(4))) {
-            VmmWinObjFile_Initialize_FileObjects(pObSystemProcess, psvaObFiles, pmObFiles);
-            Ob_DECREF(pObSystemProcess);
-        }
+        VmmWinObjFile_Initialize_FileObjects(PVMM_PROCESS_SYSTEM, psvaObFiles, pmObFiles);
     }
     Ob_DECREF(psvaObFiles);
 }

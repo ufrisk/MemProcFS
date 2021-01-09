@@ -1,6 +1,6 @@
 // m_threadinfo.c : implementation of the thread info built-in module.
 //
-// (c) Ulf Frisk, 2019-2020
+// (c) Ulf Frisk, 2019-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "pluginmanager.h"
@@ -17,8 +17,8 @@ NTSTATUS ThreadInfo_Read_ThreadInfo(_In_ PVMM_MAP_THREADENTRY pThreadEntry, _Out
     DWORD o;
     CHAR sz[THREADINFO_INFOFILE_LENGTH + 1];
     CHAR szTimeCreate[32] = { 0 }, szTimeExit[32] = { 0 };
-    Util_FileTime2String((PFILETIME)&pThreadEntry->ftCreateTime, szTimeCreate);
-    Util_FileTime2String((PFILETIME)&pThreadEntry->ftExitTime, szTimeExit);
+    Util_FileTime2String(pThreadEntry->ftCreateTime, szTimeCreate);
+    Util_FileTime2String(pThreadEntry->ftExitTime, szTimeExit);
     o = snprintf(
         sz,
         THREADINFO_INFOFILE_LENGTH + 1,
@@ -82,8 +82,8 @@ NTSTATUS ThreadInfo_Read_ThreadMap(_In_ PVMMOB_MAP_THREAD pThreadMap, _Out_write
     if(!(sz = LocalAlloc(LMEM_ZEROINIT, cbMax))) { return VMMDLL_STATUS_FILE_INVALID; }
     for(i = cStart; i <= cEnd; i++) {
         pT = pThreadMap->pMap + i;
-        Util_FileTime2String((PFILETIME)&pT->ftCreateTime, szTimeCreate);
-        Util_FileTime2String((PFILETIME)&pT->ftExitTime, szTimeExit);
+        Util_FileTime2String(pT->ftCreateTime, szTimeCreate);
+        Util_FileTime2String(pT->ftExitTime, szTimeExit);
         o += snprintf(
             sz + o,
             cbMax - o,
@@ -125,7 +125,6 @@ NTSTATUS ThreadInfo_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *p
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PVMMOB_MAP_THREAD pObThreadMap = NULL;
-    PVMM_PROCESS pObSystemProcess = NULL;
     WCHAR wszThreadName[16 + 1];
     LPWSTR wszSubPath;
     DWORD dwTID;
@@ -153,18 +152,16 @@ NTSTATUS ThreadInfo_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *p
             goto finish;
         }
         // individual thread files backed by kernel memory below:
-        if(!(pObSystemProcess = VmmProcessGet(4))) { goto finish; }
         if(!_wcsicmp(wszSubPath, L"ethread")) {
-            nt = VmmReadAsFile(pObSystemProcess, pe->vaETHREAD, ctxVmm->offset.ETHREAD.oMax, pb, cb, pcbRead, cbOffset);
+            nt = VmmReadAsFile(PVMM_PROCESS_SYSTEM, pe->vaETHREAD, ctxVmm->offset.ETHREAD.oMax, pb, cb, pcbRead, cbOffset);
             goto finish;
         }
         if(!_wcsicmp(wszSubPath, L"kstack")) {
-            nt = VmmReadAsFile(pObSystemProcess, pe->vaStackLimitKernel, pe->vaStackBaseKernel - pe->vaStackLimitKernel, pb, cb, pcbRead, cbOffset);
+            nt = VmmReadAsFile(PVMM_PROCESS_SYSTEM, pe->vaStackLimitKernel, pe->vaStackBaseKernel - pe->vaStackLimitKernel, pb, cb, pcbRead, cbOffset);
             goto finish;
         }
     }
 finish:
-    Ob_DECREF(pObSystemProcess);
     Ob_DECREF(pObThreadMap);
     return nt;
 }
@@ -183,7 +180,6 @@ NTSTATUS ThreadInfo_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBYTE 
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PVMMOB_MAP_THREAD pObThreadMap = NULL;
-    PVMM_PROCESS pObSystemProcess = NULL;
     WCHAR wszThreadName[16 + 1];
     LPWSTR wszSubPath;
     DWORD dwTID;
@@ -202,18 +198,16 @@ NTSTATUS ThreadInfo_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBYTE 
             goto finish;
         }
         // individual thread files backed by kernel memory below:
-        if(!(pObSystemProcess = VmmProcessGet(4))) { goto finish; }
         if(!_wcsicmp(wszSubPath, L"ethread")) {
-            nt = VmmWriteAsFile(pObSystemProcess, pe->vaETHREAD, ctxVmm->offset.ETHREAD.oMax, pb, cb, pcbWrite, cbOffset);
+            nt = VmmWriteAsFile(PVMM_PROCESS_SYSTEM, pe->vaETHREAD, ctxVmm->offset.ETHREAD.oMax, pb, cb, pcbWrite, cbOffset);
             goto finish;
         }
         if(!_wcsicmp(wszSubPath, L"kstack")) {
-            nt = VmmWriteAsFile(pObSystemProcess, pe->vaStackLimitKernel, pe->vaStackBaseKernel - pe->vaStackLimitKernel, pb, cb, pcbWrite, cbOffset);
+            nt = VmmWriteAsFile(PVMM_PROCESS_SYSTEM, pe->vaStackLimitKernel, pe->vaStackBaseKernel - pe->vaStackLimitKernel, pb, cb, pcbWrite, cbOffset);
             goto finish;
         }
     }
 finish:
-    Ob_DECREF(pObSystemProcess);
     Ob_DECREF(pObThreadMap);
     return nt;
 }

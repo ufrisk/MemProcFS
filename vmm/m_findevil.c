@@ -1,6 +1,6 @@
 // m_findevil.c : implementation of the find evil built-in module.
 //
-// (c) Ulf Frisk, 2020
+// (c) Ulf Frisk, 2020-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "pluginmanager.h"
@@ -202,7 +202,7 @@ BOOL M_FindEvil_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
     return TRUE;
 }
 
-VOID M_FindEvil_Notify(_In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent)
+VOID M_FindEvil_Notify(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent)
 {
     if(fEvent == VMMDLL_PLUGIN_NOTIFY_FORENSIC_INIT_COMPLETE) {
         PluginManager_SetVisibility(TRUE, L"\\forensic\\findevil", TRUE);

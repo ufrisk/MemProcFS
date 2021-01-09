@@ -2,7 +2,7 @@
 //                systems. Contains functions for detecting DTB and Memory Model
 //                as well as the Windows kernel base and core functionality.
 //
-// (c) Ulf Frisk, 2018-2020
+// (c) Ulf Frisk, 2018-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -175,6 +175,8 @@ VOID VmmWinInit_TryInitializeKernelOptionalValues()
             PDB_GetSymbolQWORD(PDB_HANDLE_KERNEL, "KiWaitNever", pObSystemProcess, &ctxVmm->kernel.opt.KDBG.qwKiWaitNever);
         }
     }
+    // Other:
+    PDB_GetSymbolQWORD(PDB_HANDLE_KERNEL, "KeBootTime", pObSystemProcess, &ctxVmm->kernel.opt.ftBootTime);
     // Cleanup
     Ob_DECREF(pObKey);
     Ob_DECREF(pObHive);
@@ -551,20 +553,27 @@ BOOL VmmWinInit_DTB_FindValidate_X86PAE(_In_ QWORD pa, _In_reads_(0x1000) PBYTE 
 _Success_(return)
 BOOL VmmWinInit_DTB_FindValidate_X64(_In_ QWORD pa, _In_reads_(0x1000) PBYTE pbPage)
 {
-    DWORD c, i;
+    DWORD cKernelValid = 0, i;
+    DWORD cUserZero = 0, cKernelZero = 0;
     QWORD *ptes, paMax;
     BOOL fSelfRef = FALSE;
     ptes = (PQWORD)pbPage;
     paMax = ctxMain->dev.paMax;
     // check for user-mode page table with PDPT below max physical address and not NX.
     if((ptes[0] & 1) && ((ptes[0] & 0x0000fffffffff000) > paMax)) { return FALSE; }
-    for(c = 0, i = 256; i < 512; i++) { // minimum number of supervisor entries above 0x800
-        // check for user-mode page table with PDPT below max physical address and not NX.
-        if(((ptes[i] & 0x8000000000000087) == 0x03) && ((ptes[i] & 0x0000fffffffff000) < paMax)) { c++; }
-        // check for self-referential entry
-        if((ptes[i] & 0x0000fffffffff083) == pa + 0x03) { fSelfRef = TRUE; }
+    for(i = 0; i < 256; i++) {      // user-mode
+        if(ptes[0] == 0) { cUserZero++; }
     }
-    return fSelfRef && (c >= 6);
+    for(i = 256; i < 512; i++) {    // kernel mode: minimum number of supervisor entries above 0x800
+        if(ptes[0] == 0) { cKernelZero++; }
+        // check for user-mode page table with PDPT below max physical address and not NX.
+        if(((ptes[i] & 0x8000000000000087) == 0x03) && ((ptes[i] & 0x0000fffffffff000) < paMax)) { cKernelValid++; }
+        // check for self-referential entry
+        if((ptes[i] & 0x0000fffffffff083) == pa + 0x03) {
+            fSelfRef = TRUE;
+        }
+    }
+    return fSelfRef && (cKernelValid >= 6) && (cUserZero > 0x40) && (cKernelZero > 0x40);
 }
 
 /*

@@ -1,6 +1,6 @@
 // pluginmanager.c : implementation of the plugin manager for memory process file system plugins.
 //
-// (c) Ulf Frisk, 2018-2020
+// (c) Ulf Frisk, 2018-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "pluginmanager.h"
@@ -41,12 +41,13 @@ typedef struct tdPLUGIN_ENTRY {
     DWORD dwNameHash;
     BOOL fRootModule;
     BOOL fProcessModule;
-    BOOL(*pfnVisibleModule)(_In_ PVMMDLL_PLUGIN_CONTEXT ctx);
-    BOOL(*pfnList)(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList);
-    NTSTATUS(*pfnRead)(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
-    NTSTATUS(*pfnWrite)(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset);
-    VOID(*pfnNotify)(_In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent);
-    VOID(*pfnClose)();
+    PVMMDLL_PLUGIN_INTERNAL_CONTEXT ctxM;
+    BOOL(*pfnVisibleModule)(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP);
+    BOOL(*pfnList)(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList);
+    NTSTATUS(*pfnRead)(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
+    NTSTATUS(*pfnWrite)(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset);
+    VOID(*pfnNotify)(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent);
+    VOID(*pfnClose)(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP);
     struct {
         PVOID ctxfc;
         PHANDLE phEventIngestFinish;
@@ -181,7 +182,7 @@ BOOL PluginManager_ModuleExists(_In_ PPLUGIN_TREE pTree, _In_ LPWSTR wszPath) {
     return pTreePlugin->pPlugin && !wszSubPath[0];
 }
 
-VOID PluginManager_ContextInitialize(_Out_ PVMMDLL_PLUGIN_CONTEXT ctx, PPLUGIN_ENTRY pModule, _In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszPath)
+VOID PluginManager_ContextInitialize(_Out_ PVMMDLL_PLUGIN_CONTEXT ctx, PPLUGIN_ENTRY pModule, _In_opt_ PVMM_PROCESS pProcess, _In_opt_ LPWSTR wszPath)
 {
     ctx->magic = VMMDLL_PLUGIN_CONTEXT_MAGIC;
     ctx->wVersion = VMMDLL_PLUGIN_CONTEXT_VERSION;
@@ -190,6 +191,7 @@ VOID PluginManager_ContextInitialize(_Out_ PVMMDLL_PLUGIN_CONTEXT ctx, PPLUGIN_E
     ctx->pProcess = pModule->hDLL ? NULL : pProcess;
     ctx->wszModule = pModule->wszName;
     ctx->wszPath = wszPath;
+    ctx->ctxM = pModule->ctxM;
 }
 
 VOID PluginManager_List(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszPath, _Inout_ PHANDLE pFileList)
@@ -197,7 +199,7 @@ VOID PluginManager_List(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszPath, _In
     DWORD i;
     BOOL fVisibleProgrammatic, result = TRUE;
     QWORD tmStart = Statistics_CallStart();
-    VMMDLL_PLUGIN_CONTEXT ctx;
+    VMMDLL_PLUGIN_CONTEXT ctxPlugin;
     LPWSTR wszSubPath;
     PPLUGIN_TREE pTree;
     PPLUGIN_ENTRY pPlugin;
@@ -210,8 +212,8 @@ VOID PluginManager_List(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszPath, _In
                 if(pTree->Child[i]->fVisible) {
                     fVisibleProgrammatic = pTree->Child[i]->cChild || !pTree->Child[i]->pPlugin || !pTree->Child[i]->pPlugin->pfnVisibleModule;
                     if(!fVisibleProgrammatic) {
-                        PluginManager_ContextInitialize(&ctx, pTree->Child[i]->pPlugin, pProcess, wszSubPath);
-                        fVisibleProgrammatic = pTree->Child[i]->pPlugin->pfnVisibleModule(&ctx);
+                        PluginManager_ContextInitialize(&ctxPlugin, pTree->Child[i]->pPlugin, pProcess, wszSubPath);
+                        fVisibleProgrammatic = pTree->Child[i]->pPlugin->pfnVisibleModule(&ctxPlugin);
                     }
                     if(fVisibleProgrammatic) {
                         VMMDLL_VfsList_AddDirectory(pFileList, pTree->Child[i]->wszName, NULL);
@@ -220,9 +222,9 @@ VOID PluginManager_List(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszPath, _In
             }
         }
         if((pPlugin = pTree->pPlugin) && pPlugin->pfnList) {
-            PluginManager_ContextInitialize(&ctx, pPlugin, pProcess, wszSubPath);
-            if(!pPlugin->pfnVisibleModule || pPlugin->pfnVisibleModule(&ctx)) {
-                pTree->pPlugin->pfnList(&ctx, pFileList);
+            PluginManager_ContextInitialize(&ctxPlugin, pPlugin, pProcess, wszSubPath);
+            if(!pPlugin->pfnVisibleModule || pPlugin->pfnVisibleModule(&ctxPlugin)) {
+                pTree->pPlugin->pfnList(&ctxPlugin, pFileList);
             }
         }
     }
@@ -233,7 +235,7 @@ NTSTATUS PluginManager_Read(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszPath,
 {
     QWORD tmStart = Statistics_CallStart();
     NTSTATUS nt;
-    VMMDLL_PLUGIN_CONTEXT ctx;
+    VMMDLL_PLUGIN_CONTEXT ctxPlugin;
     LPWSTR wszSubPath;
     PPLUGIN_TREE pTree;
     PPLUGIN_ENTRY pPlugin;
@@ -242,13 +244,13 @@ NTSTATUS PluginManager_Read(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszPath,
     PluginManager_GetTree((pProcess ? ctxVmm->PluginManager.Proc : ctxVmm->PluginManager.Root), wszPath, &pTree, &wszSubPath);
     if(pTree->fVisible) {
         if((pPlugin = pTree->pPlugin) && pPlugin->pfnRead) {
-            PluginManager_ContextInitialize(&ctx, pPlugin, pProcess, wszSubPath);
-            nt = pPlugin->pfnRead(&ctx, pb, cb, pcbRead, cbOffset);
+            PluginManager_ContextInitialize(&ctxPlugin, pPlugin, pProcess, wszSubPath);
+            nt = pPlugin->pfnRead(&ctxPlugin, pb, cb, pcbRead, cbOffset);
             Statistics_CallEnd(STATISTICS_ID_PluginManager_Read, tmStart);
             return nt;
         }
     }
-    Statistics_CallEnd(STATISTICS_ID_PluginManager_List, tmStart);
+    Statistics_CallEnd(STATISTICS_ID_PluginManager_Read, tmStart);
     return VMMDLL_STATUS_FILE_INVALID;
 }
 
@@ -256,7 +258,7 @@ NTSTATUS PluginManager_Write(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszPath
 {
     QWORD tmStart = Statistics_CallStart();
     NTSTATUS nt;
-    VMMDLL_PLUGIN_CONTEXT ctx;
+    VMMDLL_PLUGIN_CONTEXT ctxPlugin;
     LPWSTR wszSubPath;
     PPLUGIN_TREE pTree;
     PPLUGIN_ENTRY pPlugin;
@@ -265,25 +267,27 @@ NTSTATUS PluginManager_Write(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszPath
     PluginManager_GetTree((pProcess ? ctxVmm->PluginManager.Proc : ctxVmm->PluginManager.Root), wszPath, &pTree, &wszSubPath);
     if(pTree->fVisible) {
         if((pPlugin = pTree->pPlugin) && pPlugin->pfnWrite) {
-            PluginManager_ContextInitialize(&ctx, pPlugin, pProcess, wszSubPath);
-            nt = pPlugin->pfnWrite(&ctx, pb, cb, pcbWrite, cbOffset);
-            Statistics_CallEnd(STATISTICS_ID_PluginManager_Read, tmStart);
+            PluginManager_ContextInitialize(&ctxPlugin, pPlugin, pProcess, wszSubPath);
+            nt = pPlugin->pfnWrite(&ctxPlugin, pb, cb, pcbWrite, cbOffset);
+            Statistics_CallEnd(STATISTICS_ID_PluginManager_Write, tmStart);
             return nt;
         }
     }
-    Statistics_CallEnd(STATISTICS_ID_PluginManager_List, tmStart);
+    Statistics_CallEnd(STATISTICS_ID_PluginManager_Write, tmStart);
     return VMMDLL_STATUS_FILE_INVALID;
 }
 
 BOOL PluginManager_Notify(_In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent)
 {
+    VMMDLL_PLUGIN_CONTEXT ctxPlugin;
     QWORD tmStart = Statistics_CallStart();
-    PPLUGIN_ENTRY pModule = (PPLUGIN_ENTRY)ctxVmm->PluginManager.FLinkNotify;
-    while(pModule) {
-        if(pModule->pfnNotify) {
-            pModule->pfnNotify(fEvent, pvEvent, cbEvent);
+    PPLUGIN_ENTRY pPlugin = (PPLUGIN_ENTRY)ctxVmm->PluginManager.FLinkNotify;
+    while(pPlugin) {
+        if(pPlugin->pfnNotify) {
+            PluginManager_ContextInitialize(&ctxPlugin, pPlugin, NULL, NULL);
+            pPlugin->pfnNotify(&ctxPlugin, fEvent, pvEvent, cbEvent);
         }
-        pModule = pModule->FLinkNotify;
+        pPlugin = pPlugin->FLinkNotify;
     }
     Statistics_CallEnd(STATISTICS_ID_PluginManager_Notify, tmStart);
     return TRUE;
@@ -428,6 +432,7 @@ BOOL PluginManager_Register(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo)
     pModule->dwNameHash = Util_HashStringUpperW(pModule->wszName);
     pModule->fRootModule = pRegInfo->reg_info.fRootModule;
     pModule->fProcessModule = pRegInfo->reg_info.fProcessModule;
+    pModule->ctxM = pRegInfo->reg_info.ctxM;
     pModule->pfnList = pRegInfo->reg_fn.pfnList;
     pModule->pfnRead = pRegInfo->reg_fn.pfnRead;
     pModule->pfnWrite = pRegInfo->reg_fn.pfnWrite;
@@ -487,24 +492,26 @@ VOID PluginManager_Close_Tree(_In_ PPLUGIN_TREE pTree)
 
 VOID PluginManager_Close()
 {
-    PPLUGIN_ENTRY pm;
+    PPLUGIN_ENTRY pPlugin;
+    VMMDLL_PLUGIN_CONTEXT ctxPlugin;
     PPLUGIN_TREE pTreeRoot = ctxVmm->PluginManager.Root, pTreeProc = ctxVmm->PluginManager.Proc;
     ctxVmm->PluginManager.Root = NULL;
     ctxVmm->PluginManager.Proc = NULL;
     PluginManager_Close_Tree(pTreeRoot);
     PluginManager_Close_Tree(pTreeProc);
     ctxVmm->PluginManager.FLinkNotify = NULL;
-    while((pm = (PPLUGIN_ENTRY)ctxVmm->PluginManager.FLinkAll)) {
+    while((pPlugin = (PPLUGIN_ENTRY)ctxVmm->PluginManager.FLinkAll)) {
         // 1: Detach current module list entry from list
-        ctxVmm->PluginManager.FLinkAll = pm->FLinkAll;
+        ctxVmm->PluginManager.FLinkAll = pPlugin->FLinkAll;
         // 2: Close module callback
-        if(pm->pfnClose) {
-            pm->pfnClose();
+        if(pPlugin->pfnClose) {
+            PluginManager_ContextInitialize(&ctxPlugin, pPlugin, NULL, NULL);
+            pPlugin->pfnClose(&ctxPlugin);
         }
         // 3: FreeLibrary (if last module belonging to specific Library)
-        if(pm->hDLL && !PluginManager_ModuleExistsDll(pm->hDLL)) { FreeLibrary(pm->hDLL); }
+        if(pPlugin->hDLL && !PluginManager_ModuleExistsDll(pPlugin->hDLL)) { FreeLibrary(pPlugin->hDLL); }
         // 4: LocalFree this ListEntry
-        LocalFree(pm);
+        LocalFree(pPlugin);
     }
     // 5: Clean up events
     while(ctxVmm->PluginManager.fc.cEvent) {

@@ -1,7 +1,7 @@
 // memprocfs.h : implementation of core functionality for the Memory Process File System
 // This is just a thin loader for the virtual memory manager dll which contains the logic.
 //
-// (c) Ulf Frisk, 2018-2020
+// (c) Ulf Frisk, 2018-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include <Windows.h>
@@ -71,7 +71,7 @@ BOOL WINAPI MemProcFsCtrlHandler(DWORD fdwCtrlType)
     if (fdwCtrlType == CTRL_C_EVENT) {
         printf("CTRL+C detected - shutting down ...\n");
         hThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)MemProcFsCtrlHandler_TryShutdownThread, NULL, 0, NULL);
-		if(hThread) { WaitForSingleObject(hThread, 500); }
+		if(hThread) { WaitForSingleObject(hThread, INFINITE); }
         TerminateProcess(GetCurrentProcess(), 1);
         Sleep(1000);
         ExitProcess(1);

@@ -1,6 +1,6 @@
 // m_virt2phys.c : implementation of the virt2phys built-in module.
 //
-// (c) Ulf Frisk, 2018-2020
+// (c) Ulf Frisk, 2018-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "pluginmanager.h"
@@ -39,24 +39,22 @@ NTSTATUS Virt2Phys_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pc
     VMM_VIRT2PHYS_INFORMATION Virt2PhysInfo = { 0 };
     Virt2PhysInfo.va = pProcess->pObPersistent->Plugin.vaVirt2Phys;
     VmmVirt2PhysGetInformation(pProcess, &Virt2PhysInfo);
-    if(!_wcsicmp(ctx->wszPath, L"readme")) {
+    if(!_wcsicmp(ctx->wszPath, L"readme.txt")) {
         return Util_VfsReadFile_FromPBYTE((PBYTE)szMVIRT2PHYS_README, strlen(szMVIRT2PHYS_README), pb, cb, pcbRead, cbOffset);
     }
-    if(!_wcsicmp(ctx->wszPath, L"virt")) {
+    if(!_wcsicmp(ctx->wszPath, L"virt.txt")) {
         switch(ctxVmm->tpMemoryModel) {
             case VMM_MEMORYMODEL_X64:
                 return Util_VfsReadFile_FromQWORD(Virt2PhysInfo.va, pb, cb, pcbRead, cbOffset, FALSE);
-                break;
             case VMM_MEMORYMODEL_X86:
             case VMM_MEMORYMODEL_X86PAE:
                 return Util_VfsReadFile_FromDWORD((DWORD)Virt2PhysInfo.va, pb, cb, pcbRead, cbOffset, FALSE);
-                break;
         }
     }
-    if(!_wcsicmp(ctx->wszPath, L"phys")) {
+    if(!_wcsicmp(ctx->wszPath, L"phys.txt")) {
         return Util_VfsReadFile_FromQWORD(Virt2PhysInfo.pas[0], pb, cb, pcbRead, cbOffset, FALSE);
     }
-    if(!_wcsicmp(ctx->wszPath, L"map")) {
+    if(!_wcsicmp(ctx->wszPath, L"map.txt")) {
         switch(ctxVmm->tpMemoryModel) {
             case VMM_MEMORYMODEL_X64:
                 cbBuffer = snprintf(
@@ -104,10 +102,10 @@ NTSTATUS Virt2Phys_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pc
         return Util_VfsReadFile_FromPBYTE(pbBuffer, cbBuffer, pb, cb, pcbRead, cbOffset);
     }
     // "page table" or data page
-    if(!_wcsicmp(ctx->wszPath, L"pt_pml4")) { iPML = 4; }
-    if(!_wcsicmp(ctx->wszPath, L"pt_pdpt")) { iPML = 3; }
-    if(!_wcsicmp(ctx->wszPath, L"pt_pd")) { iPML = 2; }
-    if(!_wcsicmp(ctx->wszPath, L"pt_pt")) { iPML = 1; }
+    if(!_wcsicmp(ctx->wszPath, L"pt_pml4.mem")) { iPML = 4; }
+    if(!_wcsicmp(ctx->wszPath, L"pt_pdpt.mem")) { iPML = 3; }
+    if(!_wcsicmp(ctx->wszPath, L"pt_pd.mem")) { iPML = 2; }
+    if(!_wcsicmp(ctx->wszPath, L"pt_pt.mem")) { iPML = 1; }
     if((ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_X86) && (iPML > 2)) { return VMMDLL_STATUS_FILE_INVALID; }
     if((ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_X86PAE) && (iPML > 3)) { return VMMDLL_STATUS_FILE_INVALID; }
     ZeroMemory(pbBuffer, 0x1000);
@@ -120,10 +118,10 @@ NTSTATUS Virt2Phys_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pc
             pObPT = NULL;
         }
     }
-    if(!_wcsicmp(ctx->wszPath, L"page") && (Virt2PhysInfo.pas[0] & ~0xfff)) {
+    if(!_wcsicmp(ctx->wszPath, L"page.mem") && (Virt2PhysInfo.pas[0] & ~0xfff)) {
         VmmReadPage(NULL, Virt2PhysInfo.pas[0] & ~0xfff, pbBuffer);
     }
-    if(iPML || !_wcsicmp(ctx->wszPath, L"page")) {
+    if(iPML || !_wcsicmp(ctx->wszPath, L"page.mem")) {
         return Util_VfsReadFile_FromPBYTE(pbSourceData, 0x1000, pb, cb, pcbRead, cbOffset);
     }
     return VMMDLL_STATUS_FILE_INVALID;
@@ -178,17 +176,17 @@ NTSTATUS Virt2Phys_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBYTE p
     DWORD i;
     PVMM_PROCESS pProcess = (PVMM_PROCESS)ctx->pProcess;
     VMM_VIRT2PHYS_INFORMATION Virt2PhysInfo = { 0 };
-    if(!_wcsicmp(ctx->wszPath, L"virt")) {
+    if(!_wcsicmp(ctx->wszPath, L"virt.txt")) {
         return Virt2Phys_WriteVA(ctx, pb, cb, pcbWrite, cbOffset);
     }
     Virt2PhysInfo.va = pProcess->pObPersistent->Plugin.vaVirt2Phys;
     VmmVirt2PhysGetInformation(pProcess, &Virt2PhysInfo);
     i = 0xff;
-    if(!_wcsicmp(ctx->wszPath, L"pt_pml4")) { i = 4; }
-    if(!_wcsicmp(ctx->wszPath, L"pt_pdpt")) { i = 3; }
-    if(!_wcsicmp(ctx->wszPath, L"pt_pd")) { i = 2; }
-    if(!_wcsicmp(ctx->wszPath, L"pt_pt")) { i = 1; }
-    if(!_wcsicmp(ctx->wszPath, L"page")) { i = 0; }
+    if(!_wcsicmp(ctx->wszPath, L"pt_pml4.mem")) { i = 4; }
+    if(!_wcsicmp(ctx->wszPath, L"pt_pdpt.mem")) { i = 3; }
+    if(!_wcsicmp(ctx->wszPath, L"pt_pd.mem")) { i = 2; }
+    if(!_wcsicmp(ctx->wszPath, L"pt_pt.mem")) { i = 1; }
+    if(!_wcsicmp(ctx->wszPath, L"page.mem")) { i = 0; }
     if(i > 4) { return VMMDLL_STATUS_FILE_INVALID; }
     if(Virt2PhysInfo.pas[i] < 0x1000) { return VMMDLL_STATUS_FILE_INVALID; }
     if(cbOffset > 0x1000) { return VMMDLL_STATUS_END_OF_FILE; }
@@ -214,34 +212,34 @@ BOOL Virt2Phys_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
     }
     switch(ctxVmm->tpMemoryModel) {
         case VMM_MEMORYMODEL_X64:
-            VMMDLL_VfsList_AddFile(pFileList, L"virt", 16, NULL);
-            VMMDLL_VfsList_AddFile(pFileList, L"phys", 16, NULL);
-            VMMDLL_VfsList_AddFile(pFileList, L"map", 198, NULL);
-            VMMDLL_VfsList_AddFile(pFileList, L"pt_pml4", 0x1000, NULL);
-            VMMDLL_VfsList_AddFile(pFileList, L"pt_pdpt", 0x1000, NULL);
-            VMMDLL_VfsList_AddFile(pFileList, L"pt_pd", 0x1000, NULL);
-            VMMDLL_VfsList_AddFile(pFileList, L"pt_pt", 0x1000, NULL);
-            VMMDLL_VfsList_AddFile(pFileList, L"page", 0x1000, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"virt.txt", 16, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"phys.txt", 16, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"map.txt", 198, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"pt_pml4.mem", 0x1000, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"pt_pdpt.mem", 0x1000, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"pt_pd.mem", 0x1000, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"pt_pt.mem", 0x1000, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"page.mem", 0x1000, NULL);
             break;
         case VMM_MEMORYMODEL_X86PAE:
-            VMMDLL_VfsList_AddFile(pFileList, L"virt", 8, NULL);
-            VMMDLL_VfsList_AddFile(pFileList, L"phys", 16, NULL);
-            VMMDLL_VfsList_AddFile(pFileList, L"map", 154, NULL);
-            VMMDLL_VfsList_AddFile(pFileList, L"pt_pdpt", 0x1000, NULL);
-            VMMDLL_VfsList_AddFile(pFileList, L"pt_pd", 0x1000, NULL);
-            VMMDLL_VfsList_AddFile(pFileList, L"pt_pt", 0x1000, NULL);
-            VMMDLL_VfsList_AddFile(pFileList, L"page", 0x1000, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"virt.txt", 8, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"phys.txt", 16, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"map.txt", 154, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"pt_pdpt.mem", 0x1000, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"pt_pd.mem", 0x1000, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"pt_pt.mem", 0x1000, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"page.mem", 0x1000, NULL);
             break;
         case VMM_MEMORYMODEL_X86:
-            VMMDLL_VfsList_AddFile(pFileList, L"virt", 8, NULL);
-            VMMDLL_VfsList_AddFile(pFileList, L"phys", 16, NULL);
-            VMMDLL_VfsList_AddFile(pFileList, L"map", 94, NULL);
-            VMMDLL_VfsList_AddFile(pFileList, L"pt_pd", 0x1000, NULL);
-            VMMDLL_VfsList_AddFile(pFileList, L"pt_pt", 0x1000, NULL);
-            VMMDLL_VfsList_AddFile(pFileList, L"page", 0x1000, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"virt.txt", 8, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"phys.txt", 16, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"map.txt", 94, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"pt_pd.mem", 0x1000, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"pt_pt.mem", 0x1000, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"page.mem", 0x1000, NULL);
             break;
     }
-    VMMDLL_VfsList_AddFile(pFileList, L"readme", strlen(szMVIRT2PHYS_README), NULL);
+    VMMDLL_VfsList_AddFile(pFileList, L"readme.txt", strlen(szMVIRT2PHYS_README), NULL);
     return TRUE;
 }
 

@@ -1,8 +1,7 @@
-// vmmpycplugin.c : implementation related to the python wrapper native plugin
-// for the memory process file system. NB! this is a special plugin since it's
-// not residing in the plugin directory.
+// vmmpycplugin.c : implementation of the python wrapper native MemProcFS plugin.
+// NB! this is a special plugin since it's not residing in the plugin directory.
 //
-// (c) Ulf Frisk, 2018-2020
+// (c) Ulf Frisk, 2018-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #define Py_LIMITED_API 0x03060000
@@ -80,12 +79,12 @@ BOOL PY2C_Callback_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileLi
     if(!ctxPY2C->fInitialized) { return FALSE; }
     if(!PY2C_Util_TranslatePathDelimiterW(wszPathBuffer, ctx->wszPath)) { return FALSE; }
     gstate = PyGILState_Ensure();
-    if(!(pyPath = PyUnicode_FromWideChar(wszPathBuffer, -1))) { goto fail; }
+    if(!(pyPath = PyUnicode_FromWideChar(wszPathBuffer, -1))) { goto pyfail; }
     pyPid = (ctx->dwPID == -1) ? NULL : PyLong_FromUnsignedLong(ctx->dwPID);
     args = Py_BuildValue("OO", (pyPid ? pyPid : Py_None), pyPath);
-    if(!args) { goto fail; }
+    if(!args) { goto pyfail; }
     pyList = PyObject_CallObject(ctxPY2C->fnList, args);
-    if(!pyList || !PyList_Check(pyList)) { goto fail; }
+    if(!pyList || !PyList_Check(pyList)) { goto pyfail; }
     cList = PyList_Size(pyList);
     for(i = 0; i < cList; i++) {
         pyDict = PyList_GetItem(pyList, i); // borrowed reference
@@ -107,7 +106,7 @@ BOOL PY2C_Callback_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileLi
     }
     result = TRUE;
     // fall through to cleanup
-fail:
+pyfail:
     Py_XDECREF(args);
     Py_XDECREF(pyPid);
     Py_XDECREF(pyList);
@@ -122,26 +121,26 @@ NTSTATUS PY2C_Callback_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ LPVOID pb, _I
     PyObject *args = NULL, *pyBytes = NULL, *pyPid = NULL, *pyPath = NULL;
     PyGILState_STATE gstate;
     WCHAR wszPathBuffer[MAX_PATH];
-    if(!ctxPY2C->fInitialized) { return FALSE; }
-    if(!PY2C_Util_TranslatePathDelimiterW(wszPathBuffer, ctx->wszPath)) { return FALSE; }
+    if(!ctxPY2C->fInitialized) { return VMMDLL_STATUS_FILE_INVALID; }
+    if(!PY2C_Util_TranslatePathDelimiterW(wszPathBuffer, ctx->wszPath)) { return VMMDLL_STATUS_FILE_INVALID; }
     gstate = PyGILState_Ensure();
-    if(!(pyPath = PyUnicode_FromWideChar(wszPathBuffer, -1))) { goto fail; }
+    if(!(pyPath = PyUnicode_FromWideChar(wszPathBuffer, -1))) { goto pyfail; }
     pyPid = (ctx->dwPID == -1) ? NULL : PyLong_FromUnsignedLong(ctx->dwPID);
     args = Py_BuildValue("OOkK",
         pyPid ? pyPid : Py_None,
         pyPath,
         cb,
         cbOffset);
-    if(!args) { goto fail; }
+    if(!args) { goto pyfail; }
     pyBytes = PyObject_CallObject(ctxPY2C->fnRead, args);
-    if(!pyBytes || !PyBytes_Check(pyBytes)) { goto fail; }
+    if(!pyBytes || !PyBytes_Check(pyBytes)) { goto pyfail; }
     *pcbRead = min(cb, (DWORD)PyBytes_Size(pyBytes));
     if(*pcbRead) {
         memcpy(pb, PyBytes_AsString(pyBytes), *pcbRead);
     }
     nt = *pcbRead ? VMMDLL_STATUS_SUCCESS : VMMDLL_STATUS_END_OF_FILE;
     // fall through to cleanup
-fail:
+pyfail:
     Py_XDECREF(args);
     Py_XDECREF(pyPid);
     Py_XDECREF(pyBytes);
@@ -160,7 +159,7 @@ NTSTATUS PY2C_Callback_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ LPVOID pb, _I
     if(!ctxPY2C->fInitialized) { return VMMDLL_STATUS_FILE_INVALID; }
     if(!PY2C_Util_TranslatePathDelimiterW(wszPathBuffer, ctx->wszPath)) { return VMMDLL_STATUS_FILE_INVALID; }
     gstate = PyGILState_Ensure();
-    if(!(pyPath = PyUnicode_FromWideChar(wszPathBuffer, -1))) { goto fail; }
+    if(!(pyPath = PyUnicode_FromWideChar(wszPathBuffer, -1))) { goto pyfail; }
     pyPid = (ctx->dwPID == -1) ? NULL : PyLong_FromUnsignedLong(ctx->dwPID);
     args = Py_BuildValue("OOy#K",
         pyPid ? pyPid : Py_None,
@@ -168,13 +167,13 @@ NTSTATUS PY2C_Callback_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ LPVOID pb, _I
         pb,
         cb,
         cbOffset);
-    if(!args) { goto fail; }
+    if(!args) { goto pyfail; }
     pyLong = PyObject_CallObject(ctxPY2C->fnWrite, args);
-    if(!pyLong || !PyLong_Check(pyLong)) { goto fail; }
+    if(!pyLong || !PyLong_Check(pyLong)) { goto pyfail; }
     nt = PyLong_AsUnsignedLong(pyLong);
     if(!nt) { *pcbWrite = cb; }
     // fall through to cleanup
-fail:
+pyfail:
     Py_XDECREF(args);
     Py_XDECREF(pyPid);
     Py_XDECREF(pyLong);
@@ -183,38 +182,37 @@ fail:
     return nt;
 }
 
-VOID PY2C_Callback_Notify(_In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent)
+VOID PY2C_Callback_Notify(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent)
 {
     PyObject *args, *pyResult = NULL;
     PyGILState_STATE gstate;
     if(!ctxPY2C->fInitialized) { return; }
     gstate = PyGILState_Ensure();
     args = Py_BuildValue("ky#", fEvent, (char*)pvEvent, cbEvent);
-    if(!args) { goto fail; }
+    if(!args) { goto pyfail; }
     pyResult = PyObject_CallObject(ctxPY2C->fnNotify, args);
     Py_DECREF(args);
     // fall through to cleanup
-fail:
+pyfail:
     if(pyResult) { Py_DECREF(pyResult); }
     PyGILState_Release(gstate);
 }
 
 BOOL PY2C_Callback_Close()
 {
-    NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PyObject *args, *pyResult = NULL;
     PyGILState_STATE gstate;
     if(!ctxPY2C->fInitialized) { return FALSE; }
     gstate = PyGILState_Ensure();
     args = Py_BuildValue("");
-    if(!args) { goto fail; }
+    if(!args) { goto pyfail; }
     pyResult = PyObject_CallObject(ctxPY2C->fnClose, args);
     Py_DECREF(args);
     // fall through to cleanup
-fail:
+pyfail:
     if(pyResult) { Py_DECREF(pyResult); }
     PyGILState_Release(gstate);
-    return nt;
+    return TRUE;
 }
 
 //-----------------------------------------------------------------------------
@@ -350,10 +348,12 @@ fail:
     return FALSE;
 }
 
-VOID PYTHON_Close()
+VOID PYTHON_Close(_In_ PVMMDLL_PLUGIN_CONTEXT ctx)
 {
     __try {
         PY2C_Callback_Close();
+    } __except(EXCEPTION_EXECUTE_HANDLER) { ; }
+    __try {
         Py_FinalizeEx();
     } __except(EXCEPTION_EXECUTE_HANDLER) { ; }
 }

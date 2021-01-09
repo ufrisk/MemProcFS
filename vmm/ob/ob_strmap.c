@@ -12,7 +12,7 @@
 //
 // The ObStrMap is an object manager object and must be DECREF'ed when required.
 //
-// (c) Ulf Frisk, 2020
+// (c) Ulf Frisk, 2020-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "ob.h"
@@ -43,8 +43,9 @@ typedef struct tdOB_STRMAP_ENTRY {
 typedef struct tdOB_STRMAP {
     OB ObHdr;
     SRWLOCK LockSRW;
+    BOOL fStrAssignTemporary;   // assign "temporary" strings to output location at push.
     BOOL fCaseInsensitive;
-    DWORD cch;  // incl. terminating NULL.
+    DWORD cch;                  // incl. terminating NULL.
     POB_MAP pm;
 } OB_STRMAP, *POB_STRMAP;
 
@@ -88,7 +89,7 @@ QWORD _StrMap_HashStringW(_In_ LPCWSTR wsz, _In_ BOOL fUpper)
 }
 
 _Success_(return)
-BOOL _ObStrMap_Push(_In_ POB_STRMAP psm, _In_opt_ LPSTR sz, _In_opt_ LPWSTR wsz, _In_opt_ LPWSTR *pwszDst, _In_opt_ PDWORD pcchDst)
+BOOL _ObStrMap_Push(_In_ POB_STRMAP psm, _In_opt_ LPSTR sz, _In_opt_ LPWSTR wsz, _Out_opt_ LPWSTR *pwszDst, _Out_opt_ PDWORD pcchDst)
 {
     BOOL fW = FALSE;
     DWORD i, cch;
@@ -146,6 +147,9 @@ BOOL _ObStrMap_Push(_In_ POB_STRMAP psm, _In_opt_ LPSTR sz, _In_opt_ LPWSTR wsz,
         }
         ObMap_Push(psm->pm, qwHash, pStrEntry);
     }
+    if(psm->fStrAssignTemporary && pwszDst) {
+        *pwszDst = pStrEntry->wsz;
+    }
     return TRUE;
 }
 
@@ -158,7 +162,7 @@ BOOL _ObStrMap_Push(_In_ POB_STRMAP psm, _In_opt_ LPSTR sz, _In_opt_ LPWSTR wsz,
 * -- return = TRUE on insertion, FALSE otherwise.
 */
 _Success_(return)
-BOOL ObStrMap_PushA(_In_opt_ POB_STRMAP psm, _In_opt_ LPSTR sz, _In_opt_ LPWSTR * pwszDst, _In_opt_ PDWORD pcchDst)
+BOOL ObStrMap_PushA(_In_opt_ POB_STRMAP psm, _In_opt_ LPSTR sz, _Out_opt_ LPWSTR * pwszDst, _Out_opt_ PDWORD pcchDst)
 {
     OB_STRMAP_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(psm, BOOL, FALSE, _ObStrMap_Push(psm, sz, NULL, pwszDst, pcchDst))
 }
@@ -172,7 +176,7 @@ BOOL ObStrMap_PushA(_In_opt_ POB_STRMAP psm, _In_opt_ LPSTR sz, _In_opt_ LPWSTR 
 * -- return = TRUE on insertion, FALSE otherwise.
 */
 _Success_(return)
-BOOL ObStrMap_Push(_In_opt_ POB_STRMAP psm, _In_opt_ LPWSTR wsz, _In_opt_ LPWSTR *pwszDst, _In_opt_ PDWORD pcchDst)
+BOOL ObStrMap_Push(_In_opt_ POB_STRMAP psm, _In_opt_ LPWSTR wsz, _Out_opt_ LPWSTR *pwszDst, _Out_opt_ PDWORD pcchDst)
 {
     OB_STRMAP_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(psm, BOOL, FALSE, _ObStrMap_Push(psm, NULL, wsz, pwszDst, pcchDst))
 }
@@ -187,7 +191,7 @@ BOOL ObStrMap_Push(_In_opt_ POB_STRMAP psm, _In_opt_ LPWSTR wsz, _In_opt_ LPWSTR
 * -- return = TRUE on insertion, FALSE otherwise.
 */
 _Success_(return)
-BOOL ObStrMap_Push_swprintf_s(_In_opt_ POB_STRMAP psm, _In_opt_ LPWSTR *pwszDst, _In_opt_ PDWORD pcchDst, _In_z_ _Printf_format_string_ wchar_t const *const wszFormat, ...)
+BOOL ObStrMap_Push_swprintf_s(_In_opt_ POB_STRMAP psm, _Out_opt_ LPWSTR *pwszDst, _Out_opt_ PDWORD pcchDst, _In_z_ _Printf_format_string_ wchar_t const *const wszFormat, ...)
 {
     int cch;
     va_list arglist;
@@ -312,6 +316,7 @@ POB_STRMAP ObStrMap_New(_In_ QWORD flags)
     if(!(pStrEntry = LocalAlloc(LMEM_ZEROINIT, sizeof(OB_STRMAP_ENTRY) + 2))) { goto fail; }
     if(!(pObStrMap->pm = ObMap_New(0))) { goto fail; }
     pObStrMap->fCaseInsensitive = (flags | OB_STRMAP_FLAGS_CASE_INSENSITIVE) ? TRUE : FALSE;
+    pObStrMap->fStrAssignTemporary = (flags | OB_STRMAP_FLAGS_STR_ASSIGN_TEMPORARY) ? TRUE : FALSE;
     pObStrMap->cch = 1;
     pStrEntry->cch = 1;
     ObMap_Push(pObStrMap->pm, 1, pStrEntry);

@@ -1,12 +1,13 @@
 // m_winreg.c : implementation related to the WinReg built-in module.
 //
-// (c) Ulf Frisk, 2019-2020
+// (c) Ulf Frisk, 2019-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmm.h"
 #include "vmmwinreg.h"
 #include "util.h"
 
+#define KEY_INFO_META_SIZE              59ULL
 #define KEY_META_BUFFER_SIZE            0xA000
 
 _Success_(return)
@@ -14,7 +15,6 @@ BOOL MWinReg_Read_HiveFile(POB_REGISTRY_HIVE pHive, _Out_writes_(*pcbRead) PBYTE
 {
     DWORD cbReadBaseBlock;
     BYTE pbBaseBlock[0x1000] = { 0 };
-    PVMM_PROCESS pObSystemProcess = NULL;
     *pcbRead = 0;
     if(!cb || (cbOffset >= pHive->cbLength + 0x1000ULL)) { return FALSE; }
     if(cbOffset + cb > pHive->cbLength + 0x1000ULL) {
@@ -24,10 +24,7 @@ BOOL MWinReg_Read_HiveFile(POB_REGISTRY_HIVE pHive, _Out_writes_(*pcbRead) PBYTE
     // Read base block / regf (first 0x1000 bytes).
     if(cbOffset < 0x1000) {
         cbReadBaseBlock = (DWORD)min(cb, 0x1000 - cbOffset);
-        if((pObSystemProcess = VmmProcessGet(4))) {
-            VmmReadEx(pObSystemProcess, pHive->vaHBASE_BLOCK, pbBaseBlock, 0x1000, NULL, VMM_FLAG_ZEROPAD_ON_FAIL);
-        }
-        Ob_DECREF_NULL(&pObSystemProcess);
+        VmmReadEx(PVMM_PROCESS_SYSTEM, pHive->vaHBASE_BLOCK, pbBaseBlock, 0x1000, NULL, VMM_FLAG_ZEROPAD_ON_FAIL);
         memcpy(pb, pbBaseBlock + cbOffset, cbReadBaseBlock);
         cbOffset += cbReadBaseBlock;
         pb += cbReadBaseBlock;
@@ -41,12 +38,22 @@ BOOL MWinReg_Read_HiveFile(POB_REGISTRY_HIVE pHive, _Out_writes_(*pcbRead) PBYTE
 }
 
 _Success_(return)
-BOOL MWinReg_Write_HiveFile(POB_REGISTRY_HIVE pHive, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
+BOOL MWinReg_Read_HiveMemory(POB_REGISTRY_HIVE pHive, _Out_writes_(*pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+{
+    if(cbOffset >= 0x100000000) {
+        *pcbRead = 0;
+        return FALSE;
+    }
+    *pcbRead = cb = (DWORD)min(cb, 0x100000000 - cbOffset);
+    VmmWinReg_HiveReadEx(pHive, (DWORD)cbOffset, pb, cb, NULL, VMM_FLAG_ZEROPAD_ON_FAIL);
+    return TRUE;
+}
+
+VOID MWinReg_Write_HiveFile(POB_REGISTRY_HIVE pHive, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
 {
     DWORD cbWriteBaseBlock;
-    PVMM_PROCESS pObSystemProcess = NULL;
     *pcbWrite = 0;
-    if(!cb || (cbOffset >= pHive->cbLength + 0x1000ULL)) { return FALSE; }
+    if(!cb || (cbOffset >= pHive->cbLength + 0x1000ULL)) { return; }
     if(cbOffset + cb > pHive->cbLength + 0x1000ULL) {
         cb = (DWORD)(pHive->cbLength + 0x1000 - cbOffset);
     }
@@ -54,10 +61,7 @@ BOOL MWinReg_Write_HiveFile(POB_REGISTRY_HIVE pHive, _In_reads_(cb) PBYTE pb, _I
     // Write base block / regf (first 0x1000 bytes).
     if(cbOffset < 0x1000) {
         cbWriteBaseBlock = (DWORD)min(cb, 0x1000 - cbOffset);
-        if((pObSystemProcess = VmmProcessGet(4))) {
-            VmmWrite(pObSystemProcess, (pHive->vaHBASE_BLOCK + (cbOffset & 0xfff)), pb, cbWriteBaseBlock);
-        }
-        Ob_DECREF_NULL(&pObSystemProcess);
+        VmmWrite(PVMM_PROCESS_SYSTEM, (pHive->vaHBASE_BLOCK + (cbOffset & 0xfff)), pb, cbWriteBaseBlock);
         cbOffset += cbWriteBaseBlock;
         pb += cbWriteBaseBlock;
         cb -= cbWriteBaseBlock;
@@ -66,7 +70,17 @@ BOOL MWinReg_Write_HiveFile(POB_REGISTRY_HIVE pHive, _In_reads_(cb) PBYTE pb, _I
     if((cbOffset >= 0x1000) && cb) {
         VmmWinReg_HiveWrite(pHive, (DWORD)(cbOffset - 0x1000), pb, cb);
     }
-    return TRUE;
+}
+
+VOID MWinReg_Write_HiveMemory(POB_REGISTRY_HIVE pHive, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
+{
+    if(cbOffset >= 0x100000000) {
+        *pcbWrite = 0;
+        return;
+    }
+    cb = (DWORD)min(cb, 0x100000000 - cbOffset);
+    VmmWinReg_HiveWrite(pHive, (DWORD)cbOffset, pb, cb);
+    *pcbWrite = cb;
 }
 
 /*
@@ -103,29 +117,69 @@ DWORD MWinReg_Read_KeyValue_GetAscii(_In_ LPSTR szKeyName, _In_ LPWSTR wszData, 
     return cszMeta;
 }
 
+NTSTATUS MWinReg_Read_KeyInfo(POB_REGISTRY_HIVE pHive, _In_ LPWSTR wszKeyPath, _In_ BOOL fMeta, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+{
+    NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
+    VMM_REGISTRY_KEY_INFO KeyInfo = { 0 };
+    POB_REGISTRY_KEY pObKey = NULL;
+    PBYTE pbKey = NULL;
+    QWORD cbKey;
+    CHAR szTime[24];
+    if(!(pObKey = VmmWinReg_KeyGetByPath(pHive, wszKeyPath))) { goto fail; }
+    VmmWinReg_KeyInfo(pHive, pObKey, &KeyInfo);
+    if(fMeta) {
+        cbKey = KEY_INFO_META_SIZE + wcslen_u8(KeyInfo.wszName);
+        if(!(pbKey = LocalAlloc(LMEM_ZEROINIT, cbKey + 1))) { goto fail; }
+        Util_FileTime2String(KeyInfo.ftLastWrite, szTime);
+        Util_snwprintf_u8(pbKey, cbKey + 1, L"%016llx:%08x\nREG_KEY\n%s\n%S\n", pHive->vaCMHIVE, KeyInfo.raKeyCell, KeyInfo.wszName, szTime);
+        nt = Util_VfsReadFile_FromPBYTE(pbKey, cbKey, pb, cb, pcbRead, cbOffset);
+    } else {
+        cbKey = KeyInfo.cbKeyCell;
+        if(!(pbKey = LocalAlloc(LMEM_ZEROINIT, cbKey))) { goto fail; }
+        VmmWinReg_HiveReadEx(pHive, KeyInfo.raKeyCell, pbKey, (DWORD)cbKey, NULL, VMM_FLAG_ZEROPAD_ON_FAIL);
+        nt = Util_VfsReadFile_FromPBYTE(pbKey, cbKey, pb, cb, pcbRead, cbOffset);
+    }
+fail:
+    Ob_DECREF(pObKey);
+    LocalFree(pbKey);
+    return nt;
+}
+
 NTSTATUS MWinReg_Read_KeyValue(_In_ LPWSTR wszPathFull, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     POB_REGISTRY_HIVE pObHive = NULL;
     WCHAR wszSubPath[MAX_PATH];
     DWORD i, cwszSubPath, dwType, cszMeta;
-    DWORD cbData;
+    DWORD cbData, raValue = 0;
     PBYTE pbData = NULL;
     LPSTR szMeta = NULL;
     if(!VmmWinReg_PathHiveGetByFullPath(wszPathFull, &pObHive, wszSubPath)) { goto finish; }
     cwszSubPath = (DWORD)wcslen(wszSubPath);
+    // key info file
+    if(Util_StrEndsWithW(wszSubPath, L"\\(_Key_)", TRUE)) {
+        wszSubPath[cwszSubPath - 8] = 0;
+        return MWinReg_Read_KeyInfo(pObHive, wszSubPath, FALSE, pb, cb, pcbRead, cbOffset);
+    }
+    if(Util_StrEndsWithW(wszSubPath, L"\\(_Key_).txt", TRUE)) {
+        wszSubPath[cwszSubPath - 12] = 0;
+        return MWinReg_Read_KeyInfo(pObHive, wszSubPath, TRUE, pb, cb, pcbRead, cbOffset);
+    }
+    // raw registry value - i.e not metadata
     if((cwszSubPath < 5) || wcscmp(wszSubPath + cwszSubPath - 4, L".txt")) {
-        // raw registry value - i.e not metadata
-        nt = VmmWinReg_ValueQuery1(pObHive, wszSubPath, NULL, pb, cb, pcbRead, cbOffset) ? VMMDLL_STATUS_SUCCESS : VMMDLL_STATUS_END_OF_FILE;
+        nt = VmmWinReg_ValueQuery1(pObHive, wszSubPath, NULL, NULL, pb, cb, pcbRead, cbOffset) ? VMMDLL_STATUS_SUCCESS : VMMDLL_STATUS_END_OF_FILE;
         goto finish;
     }
     // metadata file below:
     wszSubPath[cwszSubPath - 4] = 0;
     // allocate buffers and read value
-    if(!(szMeta = (LPSTR)LocalAlloc(0, KEY_META_BUFFER_SIZE))) { goto finish; }
+    if(!(szMeta = (LPSTR)LocalAlloc(0, 27 + KEY_META_BUFFER_SIZE))) { goto finish; }
     if(!(pbData = LocalAlloc(LMEM_ZEROINIT, 2 * KEY_META_BUFFER_SIZE))) { goto finish; }
-    VmmWinReg_ValueQuery1(pObHive, wszSubPath, &dwType, pbData, 2 * KEY_META_BUFFER_SIZE, &cbData, 0) || VmmWinReg_ValueQuery1(pObHive, wszSubPath, &dwType, NULL, 0, &cbData, 0);
+    VmmWinReg_ValueQuery1(pObHive, wszSubPath, &dwType, &raValue, pbData, 2 * KEY_META_BUFFER_SIZE, &cbData, 0) || VmmWinReg_ValueQuery1(pObHive, wszSubPath, &dwType, &raValue, NULL, 0, &cbData, 0);
     cbData = min(cbData, 2 * KEY_META_BUFFER_SIZE);
+    // write address header and temporarily move szMeta start forward 26 bytes
+    snprintf(szMeta, 27, "%016llx:%08x\n", pObHive->vaCMHIVE, raValue);
+    szMeta += 26;
     // process read data
     switch(dwType) {
         case REG_NONE:
@@ -173,8 +227,11 @@ NTSTATUS MWinReg_Read_KeyValue(_In_ LPWSTR wszPathFull, _Out_writes_to_(cb, *pcb
             cszMeta = MWinReg_Read_KeyValue_GetHexAscii("REG_UNKNOWN", pbData, cbData, szMeta);
             break;
     }
-    Util_VfsReadFile_FromPBYTE(szMeta, cszMeta, pb, cb, pcbRead, cbOffset);
-    nt = VMMDLL_STATUS_SUCCESS;
+    // move back address header
+    szMeta -= 26;
+    cszMeta += 26;
+    // return data
+    nt = Util_VfsReadFile_FromPBYTE(szMeta, cszMeta, pb, cb, pcbRead, cbOffset);
 finish:
     Ob_DECREF(pObHive);
     LocalFree(szMeta);
@@ -197,6 +254,13 @@ NTSTATUS MWinReg_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbR
         Ob_DECREF(pObHive);
         return fResult ? VMMDLL_STATUS_SUCCESS : VMMDLL_STATUS_END_OF_FILE;
     }
+    if(!wcscmp(wszTopPath, L"hive_memory")) {
+        pObHive = VmmWinReg_HiveGetByAddress(Util_GetNumericW(wszSubPath));
+        if(!pObHive) { return VMMDLL_STATUS_FILE_INVALID; }
+        fResult = MWinReg_Read_HiveMemory(pObHive, pb, cb, pcbRead, cbOffset);
+        Ob_DECREF(pObHive);
+        return fResult ? VMMDLL_STATUS_SUCCESS : VMMDLL_STATUS_END_OF_FILE;
+    }
     if(!wcscmp(wszTopPath, L"by-hive") || !wcscmp(wszTopPath, L"HKLM") || !wcscmp(wszTopPath, L"HKU")) {
         return MWinReg_Read_KeyValue(ctx->wszPath, pb, cb, pcbRead, cbOffset);
     }
@@ -209,10 +273,17 @@ NTSTATUS MWinReg_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBYTE pb,
     WCHAR wszTopPath[64];
     LPWSTR wszSubPath;
     wszSubPath = Util_PathSplit2_ExWCHAR(ctx->wszPath, wszTopPath, _countof(wszTopPath));
-    if(!wcscmp(wszTopPath, L"hive_files")) {
+    if(!_wcsicmp(wszTopPath, L"hive_files")) {
         pObHive = VmmWinReg_HiveGetByAddress(Util_GetNumericW(wszSubPath));
         if(!pObHive) { return VMMDLL_STATUS_FILE_INVALID; }
         MWinReg_Write_HiveFile(pObHive, pb, cb, pcbWrite, cbOffset);
+        Ob_DECREF(pObHive);
+        return VMMDLL_STATUS_SUCCESS;
+    }
+    if(!_wcsicmp(wszTopPath, L"hive_memory")) {
+        pObHive = VmmWinReg_HiveGetByAddress(Util_GetNumericW(wszSubPath));
+        if(!pObHive) { return VMMDLL_STATUS_FILE_INVALID; }
+        MWinReg_Write_HiveMemory(pObHive, pb, cb, pcbWrite, cbOffset);
         Ob_DECREF(pObHive);
         return VMMDLL_STATUS_SUCCESS;
     }
@@ -221,39 +292,39 @@ NTSTATUS MWinReg_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBYTE pb,
 
 DWORD MWinReg_List_MWinReg_List_KeyAndValueMetaSize(_In_ PVMM_REGISTRY_VALUE_INFO pValueInfo)
 {
-    DWORD cbHexAscii = 0, cbsz = min(KEY_META_BUFFER_SIZE - 0x20, pValueInfo->cbData >> 1);
+    DWORD cbHexAscii = 0, cbsz = min(KEY_META_BUFFER_SIZE - 0x40, pValueInfo->cbData >> 1);
     switch(pValueInfo->dwType) {
         case REG_NONE:
-            return sizeof("REG_NONE");
+            return 26 + sizeof("REG_NONE");
         case REG_SZ:
-            return sizeof("REG_SZ") + cbsz;
+            return 26 + sizeof("REG_SZ") + cbsz;
         case REG_EXPAND_SZ:
-            return sizeof("REG_EXPAND_SZ") + cbsz;
+            return 26 + sizeof("REG_EXPAND_SZ") + cbsz;
         case REG_BINARY:
             Util_FillHexAscii(NULL, min(KEY_META_BUFFER_SIZE / 5, pValueInfo->cbData), 0, NULL, &cbHexAscii);
-            return sizeof("REG_BINARY") + cbHexAscii - 1;
+            return 26 + sizeof("REG_BINARY") + cbHexAscii - 1;
         case REG_DWORD:
-            return sizeof("REG_DWORD") + 8 + 1;
+            return 26 + sizeof("REG_DWORD") + 8 + 1;
         case REG_DWORD_BIG_ENDIAN:
-            return sizeof("REG_DWORD_BIG_ENDIAN") + 8 + 1;
+            return 26 + sizeof("REG_DWORD_BIG_ENDIAN") + 8 + 1;
         case REG_LINK:
-            return sizeof("REG_LINK") + cbsz;
+            return 26 + sizeof("REG_LINK") + cbsz;
         case REG_MULTI_SZ:
-            return sizeof("REG_MULTI_SZ") + cbsz - 1;
+            return 26 + sizeof("REG_MULTI_SZ") + cbsz - 1;
         case REG_RESOURCE_LIST:
             Util_FillHexAscii(NULL, min(KEY_META_BUFFER_SIZE / 5, pValueInfo->cbData), 0, NULL, &cbHexAscii);
-            return sizeof("REG_RESOURCE_LIST") + cbHexAscii - 1;
+            return 26 + sizeof("REG_RESOURCE_LIST") + cbHexAscii - 1;
         case REG_FULL_RESOURCE_DESCRIPTOR:
             Util_FillHexAscii(NULL, min(KEY_META_BUFFER_SIZE / 5, pValueInfo->cbData), 0, NULL, &cbHexAscii);
-            return sizeof("REG_FULL_RESOURCE_DESCRIPTOR") + cbHexAscii - 1;
+            return 26 + sizeof("REG_FULL_RESOURCE_DESCRIPTOR") + cbHexAscii - 1;
         case REG_RESOURCE_REQUIREMENTS_LIST:
             Util_FillHexAscii(NULL, min(KEY_META_BUFFER_SIZE / 5, pValueInfo->cbData), 0, NULL, &cbHexAscii);
-            return sizeof("REG_RESOURCE_REQUIREMENTS_LIST") + cbHexAscii - 1;
+            return 26 + sizeof("REG_RESOURCE_REQUIREMENTS_LIST") + cbHexAscii - 1;
         case REG_QWORD:
-            return sizeof("REG_QWORD") + 16 + 1;
+            return 26 + sizeof("REG_QWORD") + 16 + 1;
         default:
             Util_FillHexAscii(NULL, min(KEY_META_BUFFER_SIZE / 5, pValueInfo->cbData), 0, NULL, &cbHexAscii);
-            return sizeof("REG_UNKNOWN") + cbHexAscii - 1;
+            return 26 + sizeof("REG_UNKNOWN") + cbHexAscii - 1;
     }
 }
 
@@ -268,6 +339,14 @@ VOID MWinReg_List_KeyAndValue(_Inout_ PHANDLE pFileList, _In_ POB_REGISTRY_HIVE 
     VMMDLL_VFS_FILELIST_EXINFO FileExInfo = { 0 };
     FileExInfo.dwVersion = VMMDLL_VFS_FILELIST_EXINFO_VERSION;
     if(wszPath[0] && !(pObKey = VmmWinReg_KeyGetByPath(pHive, wszPath))) { return; }
+    // list key info
+    if(pObKey && _wcsicmp(wszPath, L"ORPHAN\\") && _wcsicmp(wszPath, L"ORPHAN")) {
+        VmmWinReg_KeyInfo(pHive, pObKey, &KeyInfo);
+        FileExInfo.fCompressed = !KeyInfo.fActive;
+        FileExInfo.qwLastWriteTime = KeyInfo.ftLastWrite;
+        VMMDLL_VfsList_AddFile(pFileList, L"(_Key_)", KeyInfo.cbKeyCell, &FileExInfo);
+        VMMDLL_VfsList_AddFile(pFileList, L"(_Key_).txt", KEY_INFO_META_SIZE + wcslen_u8(KeyInfo.wszName), &FileExInfo);
+    }
     // list sub-keys
     if((pmObSubkeys = VmmWinReg_KeyList(pHive, pObKey))) {
         while((pObSubkey = ObMap_GetNext(pmObSubkeys, pObSubkey))) {
@@ -305,21 +384,29 @@ BOOL MWinReg_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
     VMMDLL_VFS_FILELIST_EXINFO FileExInfo = { 0 };
     if(!ctx->wszPath[0]) {
         VMMDLL_VfsList_AddDirectory(pFileList, L"hive_files", NULL);
+        VMMDLL_VfsList_AddDirectory(pFileList, L"hive_memory", NULL);
         VMMDLL_VfsList_AddDirectory(pFileList, L"by-hive", NULL);
         VMMDLL_VfsList_AddDirectory(pFileList, L"HKLM", NULL);
         VMMDLL_VfsList_AddDirectory(pFileList, L"HKU", NULL);
         return TRUE;
     }
-    if(!wcscmp(ctx->wszPath, L"hive_files")) {
+    if(!_wcsicmp(ctx->wszPath, L"hive_files")) {
         while((pObHive = VmmWinReg_HiveGetNext(pObHive))) {
             _snwprintf_s(wszNameHive, MAX_PATH, MAX_PATH, L"%S.reghive", pObHive->szName);
             VMMDLL_VfsList_AddFile(pFileList, wszNameHive, pObHive->cbLength + 0x1000ULL, NULL);
         }
         return TRUE;
     }
-    if(!wcsncmp(ctx->wszPath, L"by-hive", 7)) {
+    if(!_wcsicmp(ctx->wszPath, L"hive_memory")) {
+        while((pObHive = VmmWinReg_HiveGetNext(pObHive))) {
+            _snwprintf_s(wszNameHive, MAX_PATH, MAX_PATH, L"%S.hivemem", pObHive->szName);
+            VMMDLL_VfsList_AddFile(pFileList, wszNameHive, 0x100000000, NULL);
+        }
+        return TRUE;
+    }
+    if(!_wcsnicmp(ctx->wszPath, L"by-hive", 7)) {
         // list hives
-        if(!wcscmp(ctx->wszPath, L"by-hive")) {
+        if(!_wcsicmp(ctx->wszPath, L"by-hive")) {
             while((pObHive = VmmWinReg_HiveGetNext(pObHive))) {
                 _snwprintf_s(wszNameHive, MAX_PATH, MAX_PATH, L"%S", pObHive->szName);
                 VMMDLL_VfsList_AddDirectory(pFileList, wszNameHive, NULL);
@@ -334,18 +421,18 @@ BOOL MWinReg_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
         }
         return FALSE;
     }
-    if(!wcsncmp(ctx->wszPath, L"HKLM", 4)) {
+    if(!_wcsnicmp(ctx->wszPath, L"HKLM", 4)) {
         if(!wcsncmp(ctx->wszPath, L"HKLM\\ORPHAN", 11)) {
             FileExInfo.fCompressed = TRUE;
         }
-        if(!wcscmp(ctx->wszPath, L"HKLM") || !wcscmp(ctx->wszPath, L"HKLM\\ORPHAN")) {
+        if(!_wcsicmp(ctx->wszPath, L"HKLM") || !_wcsicmp(ctx->wszPath, L"HKLM\\ORPHAN")) {
             VMMDLL_VfsList_AddDirectory(pFileList, L"BCD",  &FileExInfo);
             VMMDLL_VfsList_AddDirectory(pFileList, L"HARDWARE",  &FileExInfo);
             VMMDLL_VfsList_AddDirectory(pFileList, L"SAM",  &FileExInfo);
             VMMDLL_VfsList_AddDirectory(pFileList, L"SECURITY",  &FileExInfo);
             VMMDLL_VfsList_AddDirectory(pFileList, L"SOFTWARE",  &FileExInfo);
             VMMDLL_VfsList_AddDirectory(pFileList, L"SYSTEM",  &FileExInfo);
-            if(!wcscmp(ctx->wszPath, L"HKLM")) {
+            if(!_wcsicmp(ctx->wszPath, L"HKLM")) {
                 FileExInfo.fCompressed = TRUE;
                 VMMDLL_VfsList_AddDirectory(pFileList, L"ORPHAN",  &FileExInfo);
             }
@@ -359,18 +446,18 @@ BOOL MWinReg_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
         }
         return FALSE;
     }
-    if(!wcsncmp(ctx->wszPath, L"HKU", 3)) {
+    if(!_wcsnicmp(ctx->wszPath, L"HKU", 3)) {
         if(!wcsncmp(ctx->wszPath, L"HKU\\ORPHAN", 10)) {
             FileExInfo.fCompressed = TRUE;
         }
-        if(!wcscmp(ctx->wszPath, L"HKU") || !wcscmp(ctx->wszPath, L"HKU\\ORPHAN")) {
+        if(!_wcsicmp(ctx->wszPath, L"HKU") || !_wcsicmp(ctx->wszPath, L"HKU\\ORPHAN")) {
             if(VmmMap_GetUser(&pObUserMap)) {
                 for(i = 0; i < pObUserMap->cMap; i++) {
                     VMMDLL_VfsList_AddDirectory(pFileList, pObUserMap->pMap[i].wszText, &FileExInfo);
                 }
                 Ob_DECREF_NULL(&pObUserMap);
             }
-            if(!wcscmp(ctx->wszPath, L"HKU")) {
+            if(!_wcsicmp(ctx->wszPath, L"HKU")) {
                 FileExInfo.fCompressed = TRUE;
                 VMMDLL_VfsList_AddDirectory(pFileList, L"ORPHAN", &FileExInfo);
             }

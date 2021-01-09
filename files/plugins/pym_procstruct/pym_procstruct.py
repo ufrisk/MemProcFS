@@ -9,7 +9,7 @@
 #
 # https://github.com/ufrisk/
 #
-# (c) Ulf Frisk, 2018-2019
+# (c) Ulf Frisk, 2018-2021
 # Author: Ulf Frisk, pcileech@frizk.net
 #
 
@@ -22,7 +22,7 @@ procstruct_peb_size_bin = 0x1000
 procstruct_peb_size_hex = 0
 procstruct_cache_proc_wow64 = {}
 
-def ReadEPROCESS_Binary(pid, file_name, file_attr, bytes_length, bytes_offset):
+def ReadEPROCESS_Binary(pid, file_path, file_name, file_attr, bytes_length, bytes_offset):
     #
     # Read binary data from the EPROCESS file that the List function put into
     # the VmmPyPlugin file list.
@@ -55,7 +55,7 @@ def ReadEPROCESS_Binary(pid, file_name, file_attr, bytes_length, bytes_offset):
 
 
 
-def ReadEPROCESS_Hexdump(pid, file_name, file_attr, bytes_length, bytes_offset):
+def ReadEPROCESS_Hexdump(pid, file_path, file_name, file_attr, bytes_length, bytes_offset):
     # Read the binary data required for the EPROCESS struct by calling the
     # function ReadEPROCESS_Binary which already does this very conveniently.
     memory_data = ReadEPROCESS_Binary(pid, file_name, file_attr, bytes_length, bytes_offset)
@@ -69,7 +69,7 @@ def ReadEPROCESS_Hexdump(pid, file_name, file_attr, bytes_length, bytes_offset):
 
 
 
-def WriteEPROCESS_Binary(pid, file_name, file_attr, bytes_data, bytes_offset):
+def WriteEPROCESS_Binary(pid, file_path, file_name, file_attr, bytes_data, bytes_offset):
     # Write binary data to the EPROCESS struct in kernel memory.
     #
     # Since the List function only registered this function with one file which
@@ -87,7 +87,7 @@ def WriteEPROCESS_Binary(pid, file_name, file_attr, bytes_data, bytes_offset):
 
 
 
-def ReadPEB_Binary(pid, file_name, file_attr, bytes_length, bytes_offset):
+def ReadPEB_Binary(pid, file_path, file_name, file_attr, bytes_length, bytes_offset):
     #
     # Read binary data from the PEB page. This is a compact version of the
     # Read function. Please see ReadEPROCESS_Binary for a detailed description
@@ -101,7 +101,7 @@ def ReadPEB_Binary(pid, file_name, file_attr, bytes_length, bytes_offset):
 
 
 
-def ReadPEB_Hexdump(pid, file_name, file_attr, bytes_length, bytes_offset):
+def ReadPEB_Hexdump(pid, file_path, file_name, file_attr, bytes_length, bytes_offset):
     #
     # Read hexascii data from the PEB page. This is a compact version of the
     # Read function. Please see ReadEPROCESS_Hexdump for a detailed description
@@ -112,7 +112,7 @@ def ReadPEB_Hexdump(pid, file_name, file_attr, bytes_length, bytes_offset):
 
 
 
-def WritePEB_Binary(pid, file_name, file_attr, bytes_data, bytes_offset):
+def WritePEB_Binary(pid, file_path, file_name, file_attr, bytes_data, bytes_offset):
     #
     # Write binary data to the PEB page. This is a compact version of the
     # Write function. Please see WritePEB_Binary for a detailed description

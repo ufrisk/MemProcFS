@@ -3,7 +3,7 @@
 // The SysInfo/Mmeory module is responsible for displaying various memory related
 // information such as information about the Windows PFN database.
 //
-// (c) Ulf Frisk, 2020
+// (c) Ulf Frisk, 2020-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "pluginmanager.h"

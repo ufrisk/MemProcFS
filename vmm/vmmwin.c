@@ -1,7 +1,7 @@
 // vmmwin.c : implementation related to operating system and process
 // parsing of virtual memory. Windows related features only.
 //
-// (c) Ulf Frisk, 2018-2020
+// (c) Ulf Frisk, 2018-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -2791,7 +2791,7 @@ PVMMOB_MAP_USER VmmWinUser_Initialize_DoWork()
         if(!szUser && !StrStrIA(szNtdat, "-unknown")) { continue; }
         if(szUser && ((strlen(szUser) < 20) || StrStrIA(szUser, "Classes"))) { continue; }
         // get username
-        if(!VmmWinReg_ValueQuery1(pObHive, L"ROOT\\Volatile Environment\\USERNAME", &dwType, (PBYTE)e->wszUser, sizeof(e->wszUser) - 2, NULL, 0) || (dwType != REG_SZ)) {
+        if(!VmmWinReg_ValueQuery1(pObHive, L"ROOT\\Volatile Environment\\USERNAME", &dwType, NULL, (PBYTE)e->wszUser, sizeof(e->wszUser) - 2, NULL, 0) || (dwType != REG_SZ)) {
             if(ctxVmm->kernel.dwVersionBuild > 2600) { continue; }      // allow missing USERNAME if WinXP
         }
         // get sid
@@ -2801,7 +2801,7 @@ PVMMOB_MAP_USER VmmWinUser_Initialize_DoWork()
         if(!e->pSID) {
             i = 0;
             ZeroMemory(wszSymlinkValue, sizeof(wszSymlinkValue));
-            if(!VmmWinReg_ValueQuery1(pObHive, L"ROOT\\Software\\Classes\\SymbolicLinkValue", &dwType, (PBYTE)wszSymlinkValue, sizeof(wszSymlinkValue) - 2, NULL, 0) || (dwType != REG_LINK)) { continue; }
+            if(!VmmWinReg_ValueQuery1(pObHive, L"ROOT\\Software\\Classes\\SymbolicLinkValue", &dwType, NULL, (PBYTE)wszSymlinkValue, sizeof(wszSymlinkValue) - 2, NULL, 0) || (dwType != REG_LINK)) { continue; }
             if(!(wszSymlinkSid = wcsstr(wszSymlinkValue, L"\\S-"))) { continue; }
             if(wcslen(wszSymlinkSid) < 20) { continue; }
             while(wszSymlinkSid[i] && (wszSymlinkSid[i] != L'_') && ++i);
@@ -3476,7 +3476,7 @@ VOID VmmWinProcess_OffsetLocator32(_In_ PVMM_PROCESS pSystemProcess)
             oP = (DWORD)ObSet_Pop(psObOff);
             vaP = (DWORD)ObSet_Pop(psObVa);
             if(!VmmRead2(pSystemProcess, vaP, pbPage, 0x40, VMM_FLAG_FORCECACHE_READ)) {
-                if(((vaP + 0x10) & 0xfff) || !VmmRead2(pSystemProcess, vaP + 0x10, pbPage + 0x10, 0x30, VMM_FLAG_FORCECACHE_READ)) {
+                if(((vaP + 0x10) & 0xfff) || !VmmRead2(pSystemProcess, vaP + 0x10ULL, pbPage + 0x10, 0x30, VMM_FLAG_FORCECACHE_READ)) {
                     continue;
                 }
             }

@@ -1,6 +1,6 @@
 // mm_x86pae.c : implementation of the x86 PAE (Physical Address Extension) 32-bit protected mode memory model.
 //
-// (c) Ulf Frisk, 2018-2020
+// (c) Ulf Frisk, 2018-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmm.h"
@@ -149,6 +149,11 @@ VOID MmX86PAE_MapInitialize_Index(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_PTEE
     }
 }
 
+VOID MmX86PAE_CallbackCleanup_ObPteMap(PVMMOB_MAP_PTE pOb)
+{
+    LocalFree(pOb->wszMultiText);
+}
+
 _Success_(return)
 BOOL MmX86PAE_PteMapInitialize(_In_ PVMM_PROCESS pProcess)
 {
@@ -176,7 +181,7 @@ BOOL MmX86PAE_PteMapInitialize(_In_ PVMM_PROCESS pProcess)
         Ob_DECREF(pObPDPT);
     }
     // allocate VmmOb depending on result
-    pObMap = Ob_Alloc(OB_TAG_MAP_PTE, 0, sizeof(VMMOB_MAP_PTE) + cMemMap * sizeof(VMM_MAP_PTEENTRY), NULL, NULL);
+    pObMap = Ob_Alloc(OB_TAG_MAP_PTE, 0, sizeof(VMMOB_MAP_PTE) + cMemMap * sizeof(VMM_MAP_PTEENTRY), MmX86PAE_CallbackCleanup_ObPteMap, NULL);
     if(!pObMap) {
         pProcess->Map.pObPte = Ob_Alloc(OB_TAG_MAP_PTE, LMEM_ZEROINIT, sizeof(VMMOB_MAP_PTE), NULL, NULL);
         LeaveCriticalSection(&pProcess->LockUpdate);

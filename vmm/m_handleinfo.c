@@ -1,6 +1,6 @@
 // m_handleinfo.c : implementation of the handle info built-in module.
 //
-// (c) Ulf Frisk, 2019-2020
+// (c) Ulf Frisk, 2019-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "pluginmanager.h"

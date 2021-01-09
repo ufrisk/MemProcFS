@@ -1,6 +1,6 @@
 // pluginmanager.h : definitions for the plugin manager for MemProcFS plugins.
 //
-// (c) Ulf Frisk, 2018-2020
+// (c) Ulf Frisk, 2018-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __PLUGINMANAGER_H__

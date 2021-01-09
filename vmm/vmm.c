@@ -1,6 +1,6 @@
 // vmm.c : implementation of functions related to virtual memory management support.
 //
-// (c) Ulf Frisk, 2018-2020
+// (c) Ulf Frisk, 2018-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -1629,6 +1629,10 @@ VOID VmmWriteScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_ PPMEM_SCATTER pp
     DWORD i;
     QWORD qwPA_PTE = 0, qwPagedPA = 0;
     PMEM_SCATTER pMEM;
+    BOOL fSystemProcessMagicHandle = (pProcess == PVMM_PROCESS_SYSTEM);
+    // 0: 'magic' system process handle
+    if(fSystemProcessMagicHandle && !(pProcess = VmmProcessGet(4))) { return; }
+    // 1: virt2phys translation
     for(i = 0; i < cpMEMsVirt; i++) {
         pMEM = ppMEMsVirt[i];
         MEM_SCATTER_STACK_PUSH(pMEM, pMEM->qwA);
@@ -1645,10 +1649,12 @@ VOID VmmWriteScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_ PPMEM_SCATTER pp
         ctxVmm->fnMemoryModel.pfnPagedRead(pProcess, pMEM->qwA, qwPA_PTE, NULL, &qwPagedPA, NULL, 0);
         pMEM->qwA = qwPagedPA ? qwPagedPA : -1;
     }
+    // write to physical addresses
     VmmWriteScatterPhysical(ppMEMsVirt, cpMEMsVirt);
     for(i = 0; i < cpMEMsVirt; i++) {
         ppMEMsVirt[i]->qwA = MEM_SCATTER_STACK_POP(ppMEMsVirt[i]);
     }
+    if(fSystemProcessMagicHandle) { Ob_DECREF(pProcess); }
 }
 
 VOID VmmReadScatterPhysical(_Inout_ PPMEM_SCATTER ppMEMsPhys, _In_ DWORD cpMEMsPhys, _In_ QWORD flags)
@@ -1772,13 +1778,19 @@ VOID VmmReadScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_updates_(cpMEMsVir
     BOOL fPaging = !(VMM_FLAG_NOPAGING & (flags | ctxVmm->flags));
     BOOL fAltAddrPte = VMM_FLAG_ALTADDR_VA_PTE & flags;
     BOOL fZeropadOnFail = VMM_FLAG_ZEROPAD_ON_FAIL & (flags | ctxVmm->flags);
+    BOOL fSystemProcessMagicHandle = (pProcess == PVMM_PROCESS_SYSTEM);
+    // 0: 'magic' system process handle
+    if(fSystemProcessMagicHandle && !(pProcess = VmmProcessGet(4))) { return; }
     // 1: allocate / set up buffers (if needed)
     if(cpMEMsVirt < 0x20) {
         ZeroMemory(pbBufferSmall, sizeof(pbBufferSmall));
         ppMEMsPhys = (PPMEM_SCATTER)pbBufferSmall;
         pbBufferMEMs = pbBufferSmall + cpMEMsVirt * sizeof(PMEM_SCATTER);
     } else {
-        if(!(pbBufferLarge = LocalAlloc(LMEM_ZEROINIT, cpMEMsVirt * (sizeof(MEM_SCATTER) + sizeof(PMEM_SCATTER))))) { return; }
+        if(!(pbBufferLarge = LocalAlloc(LMEM_ZEROINIT, cpMEMsVirt * (sizeof(MEM_SCATTER) + sizeof(PMEM_SCATTER))))) {
+            if(fSystemProcessMagicHandle) { Ob_DECREF(pProcess); }
+            return;
+        }
         ppMEMsPhys = (PPMEM_SCATTER)pbBufferLarge;
         pbBufferMEMs = pbBufferLarge + cpMEMsVirt * sizeof(PMEM_SCATTER);
     }
@@ -1831,6 +1843,7 @@ VOID VmmReadScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_updates_(cpMEMsVir
         }
     }
     LocalFree(pbBufferLarge);
+    if(fSystemProcessMagicHandle) { Ob_DECREF(pProcess); }
 }
 
 /*

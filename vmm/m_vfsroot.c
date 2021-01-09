@@ -3,7 +3,7 @@
 //               In practice this is the implementation of the root files:
 //               'memory.dmp' and 'memory.pmem' only.
 //
-// (c) Ulf Frisk, 2020
+// (c) Ulf Frisk, 2020-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "pluginmanager.h"
@@ -186,8 +186,9 @@ VOID MVfsRoot_InitializeDumpContext_SetMemory(_In_ POB_VMMVFS_DUMP_CONTEXT ctx)
 VOID MVfsRoot_InitializeDumpContext64(_In_ PVMM_PROCESS pSystemProcess, _In_ POB_VMMVFS_DUMP_CONTEXT ctx)
 {
     PBYTE pb = ctx->Hdr.pb;
-    QWORD ftMin = 0, ftMax = 0;
-    SysQuery_TimeProcessMinMax(&ftMin, &ftMax);
+    QWORD ftMin, ftMax;
+    ftMin = ctxVmm->kernel.opt.ftBootTime;
+    ftMax = SysQuery_TimeCurrent();
     *(PDWORD)(pb + 0x000) = 0x45474150;                         // Signature #1
     *(PDWORD)(pb + 0x004) = 0x34365544;                         // Signature #2
     *(PDWORD)(pb + 0x008) = 0x0000000F;                         // DumpVersion
@@ -238,8 +239,9 @@ VOID MVfsRoot_InitializeDumpContext32(PVMM_PROCESS pSystemProcess, POB_VMMVFS_DU
 {
     PBYTE pb = ctx->Hdr.pb;
     //PDUMP_HEADER32 pd = &ctx->Hdr._32;
-    QWORD ftMin = 0, ftMax = 0;
-    SysQuery_TimeProcessMinMax(&ftMin, &ftMax);
+    QWORD ftMin, ftMax;
+    ftMin = ctxVmm->kernel.opt.ftBootTime;
+    ftMax = SysQuery_TimeCurrent();
     *(PDWORD)(pb + 0x000) = 0x45474150;                         // Signature #1
     *(PDWORD)(pb + 0x004) = 0x504d5544;                         // Signature #2
     *(PDWORD)(pb + 0x008) = 0x0000000F;                         // DumpVersion

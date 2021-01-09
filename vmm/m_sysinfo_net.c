@@ -5,7 +5,7 @@
 //
 // The module is a provider of forensic timelining information.
 //
-// (c) Ulf Frisk, 2020
+// (c) Ulf Frisk, 2020-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmm.h"
@@ -48,7 +48,7 @@ NTSTATUS MSysInfoNet_Read_DoWork(_In_ PVMMOB_MAP_NET pNetMap, _In_ BOOL fVerbose
         pe = pNetMap->pMap + i;
         pObProcess = VmmProcessGet(pe->dwPID);
         if(fVerbose) {
-            Util_FileTime2String((PFILETIME)&pe->ftTime, szTime);
+            Util_FileTime2String(pe->ftTime, szTime);
             o += Util_snwprintf_u8ln(
                 sz + o,
                 cbLINELENGTH,

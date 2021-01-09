@@ -1,6 +1,6 @@
 // util.h : definitions of various utility functions.
 //
-// (c) Ulf Frisk, 2018-2020
+// (c) Ulf Frisk, 2018-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __UTIL_H__
@@ -181,7 +181,7 @@ LPWSTR Util_PathSplit2_ExWCHAR(_In_ LPWSTR wsz, _Out_writes_(cwsz1) LPWSTR wsz1,
 
 /*
 * Split the string wsz into two at the last backslash which is removed. Ex:
-* wsz: XXX\YYY\ZZZ\AAA -> wszPath: XXX\YYY\ZZZ + return: AAA
+* wsz: XXX\\YYY\\ZZZ\\AAA -> wszPath: XXX\\YYY\\ZZZ + return: AAA
 * -- wsz
 * -- wszPath
 * -- return = NULL if no split is found.
@@ -270,15 +270,32 @@ LPWSTR Util_StrDupW(_In_opt_ LPWSTR wsz);
 LPSTR Util_StrDupW2U8(_In_opt_ LPWSTR wsz);
 
 /*
-* Convert a FILETIME into a human readable string.
-* -- pFileTime
-* -- szTime
+* Checks if a string ends with a certain substring.
+* -- wsz
+* -- wszEndsWith
+* -- fCaseInsensitive
+* -- return
 */
-VOID Util_FileTime2String(_In_ PFILETIME pFileTime, _Out_writes_(24) LPSTR szTime);
+BOOL Util_StrEndsWithW(_In_opt_ LPWSTR wsz, _In_opt_ LPWSTR wszEndsWith, _In_ BOOL fCaseInsensitive);
 
 /*
-* Generic sort function to be used together with qsort. Sorts QWORD.
+* Convert a FILETIME (ft) into a human readable string.
+* -- ft = the FILETIME in UCT time zone.
+* -- szTime = time in format '2020-01-01 23:59:59 UCT' (23 chars).
 */
+VOID Util_FileTime2String(_In_ QWORD ft, _Out_writes_(24) LPSTR szTime);
+
+/*
+* Convert a GUID in byte format to a GUID in string format.
+* -- pbGUID = 16-byte GUID value.
+* -- szGUID = 37-byte buffer to receive GUID string.
+*/
+VOID Util_GuidToString(_In_reads_(16) PBYTE pb, _Out_writes_(37) LPSTR szGUID);
+
+/*
+* Generic sort function to be used together with qsort. Sorts DWORD/QWORD.
+*/
+int Util_qsort_DWORD(const void *pdw1, const void *pdw2);
 int Util_qsort_QWORD(const void *pqw1, const void *pqw2);
 
 /*
@@ -325,10 +342,23 @@ NTSTATUS Util_VfsReadFile_FromNumber(_In_ QWORD qwValue, _Out_writes_to_(cb, *pc
 NTSTATUS Util_VfsReadFile_FromQWORD(_In_ QWORD qwValue, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset, _In_ BOOL fPrefix);
 NTSTATUS Util_VfsReadFile_FromDWORD(_In_ DWORD dwValue, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset, _In_ BOOL fPrefix);
 NTSTATUS Util_VfsReadFile_FromBOOL(_In_ BOOL fValue, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
+NTSTATUS Util_VfsReadFile_FromFILETIME(_In_ QWORD ftValue, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
+NTSTATUS Util_VfsReadFile_snwprintf_u8ln(_Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset, _In_ QWORD cszLineLength, _In_z_ _Printf_format_string_ LPWSTR wszFormat, ...);
 NTSTATUS Util_VfsWriteFile_BOOL(_Inout_ PBOOL pfTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsWriteFile_09(_Inout_ PDWORD pdwTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsWriteFile_DWORD(_Inout_ PDWORD pdwTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset, _In_ DWORD dwMinAllow, _In_opt_ DWORD dwMaxAllow);
 NTSTATUS Util_VfsWriteFile_PBYTE(_Inout_ PBYTE pbTarget, _In_ DWORD cbTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset, _In_ BOOL fTerminatingNULL);
 VOID Util_VfsTimeStampFile(_In_opt_ PVMM_PROCESS pProcess, _Out_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo);
+
+/*
+* Retrieve PID / ID number from path (in base10). This is commonly used to
+* parse pid from process name in the 'name' / 'pid' folders.
+* -- wszPath
+* -- pdwID
+* -- pwszSubPath
+* -- return
+*/
+_Success_(return)
+BOOL Util_VfsHelper_GetIdDir(_In_ LPWSTR wszPath, _Out_ PDWORD pdwID, _Out_ LPWSTR *pwszSubPath);
 
 #endif /* __UTIL_H__ */

@@ -4,7 +4,7 @@
 // as a tree structure together with various nice to have information at
 // the path '/sysinfo/proc/'
 //
-// (c) Ulf Frisk, 2020
+// (c) Ulf Frisk, 2020-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include <ws2tcpip.h>

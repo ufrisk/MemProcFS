@@ -1,7 +1,7 @@
 // m_vmemd.h : implementation related to the vmemd native plugin module for the
 // memory process file system.
 //
-// (c) Ulf Frisk, 2018-2020
+// (c) Ulf Frisk, 2018-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include <Windows.h>

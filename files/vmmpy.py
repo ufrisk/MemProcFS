@@ -9,10 +9,10 @@
 #
 # https://github.com/ufrisk/
 #
-# (c) Ulf Frisk, 2018-2020
+# (c) Ulf Frisk, 2018-2021
 # Author: Ulf Frisk, pcileech@frizk.net
 #
-# Header Version: 3.6
+# Header Version: 3.7
 #
 
 import atexit
@@ -621,18 +621,20 @@ def VmmPy_WinReg_HiveWrite(va_hive, address, bytes_data):
 
 
 
-def VmmPy_WinReg_KeyList(key):
+def VmmPy_WinReg_KeyList(key, is_value_data = False):
     """Retrieve sub-keys and associated values with the specified registry key.
 
     Keyword arguments:
     key -- str: path of registry key to list. May start with address of CMHIVE
                 in 0xhexadecimal format or HKLM.
-    return -- dict: of list of subkeys and list of values.
+    is_value_data -- bool: read value data if smaller than 0x1000
+    return -- dict: of dict of subkeys and list of values.
     
     Example:
-    VmmPy_WinReg_KeyList('HKLM\\HARDWARE') --> {'subkeys': [{'name': 'DEVICEMAP', 'time': 131877368614156304, 'time-str': '2018-11-26 20:14:21 UTC'}, ...], 'values': [...]}
+    VmmPy_WinReg_KeyList('HKLM\\HARDWARE') --> {'subkeys': {'DEVICEMAP': {'name': 'DEVICEMAP', 'time': 131877368614156304, 'time-str': '2018-11-26 20:14:21 UTC'}, ...], 'values': [...]}}
     """
-    return VMMPYC_WinReg_EnumKey(key)
+    cb_max_value_data = 0x01000000 if is_value_data else 0
+    return VMMPYC_WinReg_EnumKey(key, cb_max_value_data)
 
 
 
@@ -823,7 +825,7 @@ def VmmPy_MapGetServices():
     return -- dict: of dict of services.
     
     Example:
-    VmmPy_MapGetServices() --> {{1: {'ordinal': 1, 'va-obj': 2498879344160, 'pid': 0, 'dwStartType': 3, 'dwServiceType': 1, 'dwCurrentState': 1, 'dwControlsAccepted': 0, 'dwWin32ExitCode': 1077, 'dwServiceSpecificExitCode': 0, 'dwCheckPoint': 0, 'dwWaitHint': 0, 'name': '1394ohci', 'name-display': '1394 OHCI Compliant Host Controller', 'path': '', 'user-tp': '', 'user-acct': ''}, 2: ...}
+    VmmPy_MapGetServices() --> {{1: {'ordinal': 1, 'va-obj': 2498879344160, 'pid': 0, 'dwStartType': 3, 'dwServiceType': 1, 'dwCurrentState': 1, 'dwControlsAccepted': 0, 'dwWin32ExitCode': 1077, 'dwServiceSpecificExitCode': 0, 'dwCheckPoint': 0, 'dwWaitHint': 0, 'name': '1394ohci', 'name-display': '1394 OHCI Compliant Host Controller', 'path': '', 'user-tp': '', 'user-acct': '', 'path-image': '\SystemRoot\System32\drivers\1394ohci.sys'}, 2: ...}
     """
     return VMMPYC_MapGetServices()
 
@@ -889,3 +891,110 @@ def VmmPy_UtilFillHexAscii(data_bytes, cb_initial_offset = 0):
     return VMMPYC_UtilFillHexAscii(data_bytes, cb_initial_offset)
 
 
+
+#------------------------------------------------------------------------------
+# GENERAL UTIL FUNCTIONALITY BELOW:
+#------------------------------------------------------------------------------
+
+def regutil_ft2str(ft_int):
+    """Convert a Windows FileTime integer to string.
+
+    Keyword arguments:
+    ft_int -- int: Windows FileTime value.
+    return -- str: 23 char time in format: '%Y-%m-%d %H:%M:%S UTC' / '2020-01-01 23:59:59 UTC'.
+    """
+    from datetime import datetime, timedelta
+    if ft_int > 0x0100000000000000 and ft_int < 0x0200000000000000:
+        ft_dt = datetime(1601,1,1) + timedelta(microseconds=ft_int/10)
+        return ft_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+    return '                    ***'
+
+
+
+def regutil_print_keyvalue(indent_int, key_str, value_str = '', line_length = 80, is_line_truncate = False, is_value_bracket = False):
+    pad = max(0, line_length - 23 - indent_int)
+    if is_value_bracket:
+        value_str = '[' + value_str + ']'
+    if is_line_truncate:
+        key_str = key_str[0:line_length - 25 - indent_int]
+        value_str = value_str[0:25]
+    if value_str == '':
+        pad = 0
+    else:
+        value_str = ' ' + value_str
+    print('%*s%-*s%s' % (indent_int, '', pad, key_str, value_str))
+
+
+
+def regutil_print_filetime(indent_int, key_str, ft_int, line_length = 80, is_line_truncate = False, is_value_bracket = False):
+    ft_str = regutil_ft2str(ft_int)
+    regutil_print_keyvalue(indent_int, key_str, ft_str, line_length, is_line_truncate, is_value_bracket)
+
+
+
+def regutil_read_utf16(reg_value_path, is_skip_typecheck = False):
+    try:
+        reg_value = VmmPy_WinReg_ValueRead(reg_value_path)
+        if is_skip_typecheck or reg_value['type'] == VMMPY_WINREG_SZ or reg_value['type'] == VMMPY_WINREG_EXPAND_SZ:
+            data_str = reg_value['data'].decode('utf-16le')
+            data_nul = data_str.index('\0')
+            if data_nul == -1:
+                return data_str
+            return data_str[0:data_nul]
+    except: pass
+    return ''
+
+
+
+def regutil_read_ascii(reg_value_path):
+    try:
+        reg_value = VmmPy_WinReg_ValueRead(reg_value_path)
+        data_str = reg_value['data'].decode('ascii')
+        data_nul = data_str.index('\0')
+        if data_nul == -1:
+            return data_str
+        return data_str[0:data_nul]
+    except: pass
+    return ''
+
+
+
+def regutil_read_qword(reg_value_path, is_skip_typecheck = False):
+    try:
+        reg_value = VmmPy_WinReg_ValueRead(reg_value_path)
+        if len(reg_value['data']) == 8:
+            if is_skip_typecheck or reg_value['type'] == VMMPY_WINREG_QWORD:
+                return int.from_bytes(reg_value['data'], byteorder='little')
+    except: pass
+    return -1
+
+
+
+def regutil_read_dword(reg_value_path, is_skip_typecheck = False):
+    try:
+        reg_value = VmmPy_WinReg_ValueRead(reg_value_path)
+        if len(reg_value['data']) == 4:
+            if reg_value['type'] == VMMPY_WINREG_DWORD_BIG_ENDIAN:
+                return int.from_bytes(reg_value['data'], byteorder='big')
+            if is_skip_typecheck or reg_value['type'] == DWORD:
+                return int.from_bytes(reg_value['data'], byteorder='little')
+    except: pass
+    return -1
+
+def regutil_mrulistex_expand(mrulistex_bytes):
+    """Convert a MRUListEx reg value into a list.
+
+    Keyword arguments:
+    mrulistex_bytes -- bytes: value of MRUListEx data.
+    return -- array: int of value MRUListEx values.
+    """
+    i = 0
+    result = []
+    if len(mrulistex_bytes) % 4 == 0:
+        while i < len(mrulistex_bytes):
+            v = int.from_bytes(mrulistex_bytes[i:i+4], byteorder='little')
+            if v == 0xffffffff:
+                return result
+            result.append(v)
+            i = i + 4
+    return []

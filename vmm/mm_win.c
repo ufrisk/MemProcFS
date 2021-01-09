@@ -1,6 +1,6 @@
 // mm_win.c : implementation of functionality related to the windows paging subsystem.
 //
-// (c) Ulf Frisk, 2019-2020
+// (c) Ulf Frisk, 2019-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmm.h"

@@ -1,6 +1,6 @@
 // vmmwinreg.c : implementation of functionality related to the Windows registry.
 //
-// (c) Ulf Frisk, 2019-2020
+// (c) Ulf Frisk, 2019-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 // Registry key parsing partly built on documentation found at:
@@ -1365,14 +1365,12 @@ POB_REGISTRY_KEY VmmWinReg_KeyInitializeRootKeyDummy(_In_ POB_REGISTRY_HIVE pHiv
 _Success_(return)
 BOOL VmmWinReg_KeyInitializeRootKey(_In_ POB_REGISTRY_HIVE pHive)
 {
-    PVMM_PROCESS pObSystemProcess = NULL;
     PREG_CM_KEY_NODE pnk;
     DWORD i, oRootKey = -1, cbCell, cbKey;
 	POB_REGISTRY_KEY pObKeyRoot = NULL;
 	QWORD qwKeyRootHash = 0;
     // 1: get root key offset from regf-header (this is most often 0x20)
-    if(!(pObSystemProcess = VmmProcessGet(4))) { return FALSE; }
-    if(!VmmRead(pObSystemProcess, pHive->vaHBASE_BLOCK + 0x24, (PBYTE)&oRootKey, sizeof(DWORD)) || !oRootKey || (oRootKey > pHive->Snapshot._DUAL[0].cb - REG_CM_KEY_NODE_SIZEOF)) {
+    if(!VmmRead(PVMM_PROCESS_SYSTEM, pHive->vaHBASE_BLOCK + 0x24, (PBYTE)&oRootKey, sizeof(DWORD)) || !oRootKey || (oRootKey > pHive->Snapshot._DUAL[0].cb - REG_CM_KEY_NODE_SIZEOF)) {
         // regf base block unreadable or corrupt - try locate root key in 1st hive page
         i = 0x20;
         while(TRUE) {
@@ -1588,12 +1586,15 @@ BOOL VmmWinReg_ValueQueryInternal_BigDataList(_In_ POB_REGISTRY_HIVE pHive, _In_
 * Helper function (core functionality) for the VmmWinReg_ValueQuery* functions.
 */
 _Success_(return)
-BOOL VmmWinReg_ValueQueryInternal(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_VALUE pKeyValue, _Out_opt_ PDWORD pdwType, _Out_opt_ PDWORD pdwLength, _Out_writes_opt_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_opt_ PDWORD pcbDataRead, _In_ DWORD cbDataOffset) {
+BOOL VmmWinReg_ValueQueryInternal(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_VALUE pKeyValue, _Out_opt_ PDWORD pdwType, _Out_opt_ PDWORD pra, _Out_opt_ PDWORD pdwLength, _Out_writes_opt_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_opt_ PDWORD pcbDataRead, _In_ DWORD cbDataOffset) {
     DWORD cbDataRead = 0, cbDataLength, iCellSV, oCellRaw, cbCell;
     if(pcbDataRead) { *pcbDataRead = 0; }
     cbDataLength = pKeyValue->pValue->DataLength & 0x7fffffff;
     if(pdwType) {
         *pdwType = pKeyValue->pValue->Type;
+    }
+    if(pra) {
+        *pra = pKeyValue->oCell;
     }
     if(pdwLength) {
         *pdwLength = cbDataLength;
@@ -1721,22 +1722,13 @@ BOOL VmmWinReg_PathHiveGetByFullPath(_In_ LPWSTR wszPathFull, _Out_ POB_REGISTRY
 * -- return
 */
 _Success_(return)
-BOOL VmmWinReg_KeyHiveGetByFullPath(_In_ LPWSTR wszPathFull, _Out_ POB_REGISTRY_HIVE *ppObHive, _Out_ POB_REGISTRY_KEY *ppObKey)
+BOOL VmmWinReg_KeyHiveGetByFullPath(_In_ LPWSTR wszPathFull, _Out_ POB_REGISTRY_HIVE *ppObHive, _Out_opt_ POB_REGISTRY_KEY *ppObKey)
 {
-    BOOL fResult;
     WCHAR wszPathKey[MAX_PATH];
-    POB_REGISTRY_KEY pObKey = NULL;
-    POB_REGISTRY_HIVE pObHive = NULL;
-    fResult =
-        VmmWinReg_PathHiveGetByFullPath(wszPathFull, &pObHive, wszPathKey) &&
-        (pObKey = VmmWinReg_KeyGetByPath(pObHive, wszPathKey));
-    if(fResult) {
-        *ppObHive = pObHive;
-        *ppObKey = pObKey;
-        return TRUE;
-    }
-    Ob_DECREF(pObKey);
-    Ob_DECREF(pObHive);
+    if(!VmmWinReg_PathHiveGetByFullPath(wszPathFull, ppObHive, wszPathKey)) { return FALSE; }
+    if(!ppObKey) { return TRUE; }
+    if((*ppObKey = VmmWinReg_KeyGetByPath(*ppObHive, wszPathKey))) { return TRUE; }
+    Ob_DECREF_NULL(ppObHive);
     return FALSE;
 }
 
@@ -1826,6 +1818,7 @@ POB_MAP VmmWinReg_KeyList(_In_ POB_REGISTRY_HIVE pHive, _In_opt_ POB_REGISTRY_KE
 VOID VmmWinReg_KeyInfo(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pKey, _Out_ PVMM_REGISTRY_KEY_INFO pKeyInfo)
 {
     pKeyInfo->raKeyCell = pKey->oCell;
+    pKeyInfo->cbKeyCell = pKey->cbCell;
     pKeyInfo->fActive = pKey->dwCellHead >> 31;
     pKeyInfo->ftLastWrite = pKey->pKey->LastWriteTime;
     if(pKey->pKey->Flags & REG_CM_KEY_NODE_FLAGS_COMP_NAME) {
@@ -1967,6 +1960,7 @@ VOID VmmWinReg_ValueInfo(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_VALUE p
 * -- pHive
 * -- wszPathKeyValue
 * -- pdwType
+* -- pra = registry address of value cell
 * -- pb
 * -- cb
 * -- pcbRead
@@ -1974,7 +1968,7 @@ VOID VmmWinReg_ValueInfo(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_VALUE p
 * -- return
 */
 _Success_(return)
-BOOL VmmWinReg_ValueQuery1(_In_ POB_REGISTRY_HIVE pHive, _In_ LPWSTR wszPathKeyValue, _Out_opt_ PDWORD pdwType, _Out_writes_opt_(cb) PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbRead, _In_ QWORD cbOffset)
+BOOL VmmWinReg_ValueQuery1(_In_ POB_REGISTRY_HIVE pHive, _In_ LPWSTR wszPathKeyValue, _Out_opt_ PDWORD pdwType, _Out_opt_ PDWORD pra, _Out_writes_opt_(cb) PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     BOOL f;
     LPWSTR wszValueName;
@@ -1986,7 +1980,7 @@ BOOL VmmWinReg_ValueQuery1(_In_ POB_REGISTRY_HIVE pHive, _In_ LPWSTR wszPathKeyV
         (wszValueName = Util_PathFileSplitW(wszPathKeyValue, wszPathKey)) &&
         (pObKey = VmmWinReg_KeyGetByPath(pHive, wszPathKey)) &&
         (pObKeyValue = VmmWinReg_ValueByKeyAndName(pHive, pObKey, wszValueName)) &&
-        (pb ? VmmWinReg_ValueQueryInternal(pHive, pObKeyValue, pdwType, NULL, pb, cb, pcbRead, (DWORD)cbOffset) : VmmWinReg_ValueQueryInternal(pHive, pObKeyValue, pdwType, pcbRead, NULL, 0, NULL, 0));        
+        (pb ? VmmWinReg_ValueQueryInternal(pHive, pObKeyValue, pdwType, pra, NULL, pb, cb, pcbRead, (DWORD)cbOffset) : VmmWinReg_ValueQueryInternal(pHive, pObKeyValue, pdwType, pra, pcbRead, NULL, 0, NULL, 0));
     Ob_DECREF(pObKeyValue);
     Ob_DECREF(pObKey);
     return f;
@@ -2008,7 +2002,7 @@ BOOL VmmWinReg_ValueQuery2(_In_ LPWSTR wszFullPathKeyValue, _Out_opt_ PDWORD pdw
     WCHAR wszPathKeyValue[MAX_PATH];
     POB_REGISTRY_HIVE pObHive = NULL;
     f = VmmWinReg_PathHiveGetByFullPath(wszFullPathKeyValue, &pObHive, wszPathKeyValue) &&
-        VmmWinReg_ValueQuery1(pObHive, wszPathKeyValue, pdwType, pbData, cbData, pcbData, 0);
+        VmmWinReg_ValueQuery1(pObHive, wszPathKeyValue, pdwType, NULL, pbData, cbData, pcbData, 0);
     Ob_DECREF(pObHive);
     return f;
 }
@@ -2026,7 +2020,7 @@ BOOL VmmWinReg_ValueQuery2(_In_ LPWSTR wszFullPathKeyValue, _Out_opt_ PDWORD pdw
 _Success_(return)
 BOOL VmmWinReg_ValueQuery3(_In_ POB_REGISTRY_HIVE pHive, _In_ LPWSTR wszPathKeyValue, _Out_opt_ PDWORD pdwType, _Out_writes_opt_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_opt_ PDWORD pcbData)
 {
-    return VmmWinReg_ValueQuery1(pHive, wszPathKeyValue, pdwType, pbData, cbData, pcbData, 0);
+    return VmmWinReg_ValueQuery1(pHive, wszPathKeyValue, pdwType, NULL, pbData, cbData, pcbData, 0);
 }
 
 /*
@@ -2043,7 +2037,7 @@ _Success_(return)
 BOOL VmmWinReg_ValueQuery4(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_VALUE pKeyValue, _Out_opt_ PDWORD pdwType, _Out_writes_opt_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_opt_ PDWORD pcbData)
 {
     if(VmmWinReg_HiveSnapshotEnsure(pHive)) {
-        return VmmWinReg_ValueQueryInternal(pHive, pKeyValue, pdwType, NULL, pbData, cbData, pcbData, 0);
+        return VmmWinReg_ValueQueryInternal(pHive, pKeyValue, pdwType, NULL, NULL, pbData, cbData, pcbData, 0);
     }
     if(pdwType) { *pdwType = 0; }
     if(pcbData) { *pcbData = 0; }

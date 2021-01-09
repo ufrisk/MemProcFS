@@ -1,6 +1,6 @@
 // m_file_handles_vads.c : implementation of the 'files/handles/vads' built-in module.
 //
-// (c) Ulf Frisk, 2020
+// (c) Ulf Frisk, 2020-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "pluginmanager.h"

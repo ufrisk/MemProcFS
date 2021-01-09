@@ -2,7 +2,7 @@
 //
 // REQUIRE: FORENSIC SUB-SYSTEM INIT: TIMELINE
 //
-// (c) Ulf Frisk, 2020
+// (c) Ulf Frisk, 2020-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -30,7 +30,7 @@ NTSTATUS M_FcTimeline_ReadInfo(_In_ DWORD dwTimelineType, _Out_ PBYTE pb, _In_ D
     if(!(szuBuffer = LocalAlloc(0, cszuBuffer))) { goto fail; }
     for(i = 0, o = 0; (i < pObMap->cMap) && (o < cszuBuffer - 0x1000); i++) {
         pe = pObMap->pMap + i;
-        Util_FileTime2String((PFILETIME)&pe->ft, szTime);
+        Util_FileTime2String(pe->ft, szTime);
         dwEntryType = (pe->tp < ctxFc->Timeline.cTp) ? pe->tp : 0;
         dwEntryAction = (pe->ac <= FC_TIMELINE_ACTION_MAX) ? pe->ac : FC_TIMELINE_ACTION_NONE;
         o += snprintf(
@@ -88,7 +88,7 @@ BOOL M_FcTimeline_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileLis
     return TRUE;
 }
 
-VOID M_FcTimeline_Notify(_In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent)
+VOID M_FcTimeline_Notify(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent)
 {
     if(fEvent == VMMDLL_PLUGIN_NOTIFY_FORENSIC_INIT_COMPLETE) {
         PluginManager_SetVisibility(TRUE, L"\\forensic\\timeline", TRUE);

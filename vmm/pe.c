@@ -2,7 +2,7 @@
 //        in virtual address space. This may mostly (but not exclusively) be
 //        used by Windows functionality.
 //
-// (c) Ulf Frisk, 2018-2020
+// (c) Ulf Frisk, 2018-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmm.h"

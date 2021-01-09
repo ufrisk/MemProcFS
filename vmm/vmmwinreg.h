@@ -1,6 +1,6 @@
 // vmmwinreg.h : declarations of functionality related to the Windows registry.
 //
-// (c) Ulf Frisk, 2020
+// (c) Ulf Frisk, 2020-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -38,10 +38,11 @@ typedef struct tdOB_REGISTRY_HIVE {
 
 typedef struct tdVMM_REGISTRY_KEY_INFO {
     BOOL fActive;
-    QWORD ftLastWrite;
     DWORD raKeyCell;
+    DWORD cbKeyCell;
     DWORD cchName;
     WCHAR wszName[MAX_PATH];
+    QWORD ftLastWrite;
 } VMM_REGISTRY_KEY_INFO, *PVMM_REGISTRY_KEY_INFO;
 
 typedef struct tdVMM_REGISTRY_VALUE_INFO {
@@ -142,7 +143,7 @@ BOOL VmmWinReg_PathHiveGetByFullPath(_In_ LPWSTR wszPathFull, _Out_ POB_REGISTRY
 * -- return
 */
 _Success_(return)
-BOOL VmmWinReg_KeyHiveGetByFullPath(_In_ LPWSTR wszPathFull, _Out_ POB_REGISTRY_HIVE *ppObHive, _Out_ POB_REGISTRY_KEY *ppObKey);
+BOOL VmmWinReg_KeyHiveGetByFullPath(_In_ LPWSTR wszPathFull, _Out_ POB_REGISTRY_HIVE *ppObHive, _Out_opt_ POB_REGISTRY_KEY *ppObKey);
 
 /*
 * Retrieve a registry key by its path. If no registry key is found then NULL
@@ -246,6 +247,7 @@ VOID VmmWinReg_ValueInfo(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_VALUE p
 * -- pHive
 * -- wszPathKeyValue
 * -- pdwType
+* -- pra = registry address of value cell
 * -- pb
 * -- cb
 * -- pcbRead
@@ -253,7 +255,7 @@ VOID VmmWinReg_ValueInfo(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_VALUE p
 * -- return
 */
 _Success_(return)
-BOOL VmmWinReg_ValueQuery1(_In_ POB_REGISTRY_HIVE pHive, _In_ LPWSTR wszPathKeyValue, _Out_opt_ PDWORD pdwType, _Out_writes_opt_(cb) PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbRead, _In_ QWORD cbOffset);
+BOOL VmmWinReg_ValueQuery1(_In_ POB_REGISTRY_HIVE pHive, _In_ LPWSTR wszPathKeyValue, _Out_opt_ PDWORD pdwType, _Out_opt_ PDWORD pra, _Out_writes_opt_(cb) PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbRead, _In_ QWORD cbOffset);
 
 /*
 * Read a registry value - similar to WINAPI function 'RegQueryValueEx'.

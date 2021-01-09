@@ -1,6 +1,6 @@
 // vmm.h : definitions related to virtual memory management support.
 //
-// (c) Ulf Frisk, 2018-2020
+// (c) Ulf Frisk, 2018-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __VMM_H__
@@ -391,6 +391,7 @@ typedef struct tdVMM_MAP_SERVICEENTRY {
     LPWSTR wszPath;
     LPWSTR wszUserTp;
     LPWSTR wszUserAcct;
+    LPWSTR wszImagePath;
     DWORD dwPID;
     DWORD _FutureUse;
     QWORD _Reserved;
@@ -677,6 +678,8 @@ typedef struct tdVMM_PROCESS {
     struct tdVMM_PROCESS *pObProcessCloneParent;    // only set in cloned processes
 } VMM_PROCESS, *PVMM_PROCESS;
 
+#define PVMM_PROCESS_SYSTEM         ((PVMM_PROCESS)-2)      // SYSTEM PROCESS (PID 4) - ONLY VALID WITH VmmRead*/VmmWrite*/VmmCachePrefetch* functions!
+
 typedef struct tdVMMOB_PROCESS_TABLE {
     OB ObHdr;
     SIZE_T c;                       // Total # of processes in table
@@ -939,6 +942,7 @@ typedef struct tdVMMWIN_OPTIONAL_KERNEL_CONTEXT {
         QWORD qwKiWaitAlways;
         QWORD qwKiWaitNever;
     } KDBG;
+    QWORD ftBootTime;
 } VMMWIN_OPTIONAL_KERNEL_CONTEXT, *PVMMWIN_OPTIONAL_KERNEL_CONTEXT;
 
 typedef struct tdVMM_KERNELINFO {

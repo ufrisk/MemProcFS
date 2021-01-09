@@ -3,7 +3,7 @@
 // The SysInfo/Certificates module is responsible for displaying cryptographic
 // certificates from the certificate stores in the virtual file system.
 //
-// (c) Ulf Frisk, 2020
+// (c) Ulf Frisk, 2020-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmm.h"
@@ -36,8 +36,6 @@ QWORD gqw_MSYSINFO_CERTWELLKNOWN[] = {
     0xF8A9ED3D038E2EA8, 0xF8C775C34CCD17B6, 0xFA589B3073951DCB, 0xFA6CDC21D92E8099, 0xFABCB418C68D31C5, 0xFB665DAA2C0E225C, 0xFD277F6A9FB4FAC1, 0xFD42BA3F43886AEF,
     0xFE06D1CC8D4F82A4, 0xFE2F9DF5B7D18A41
 };
-
-POB_CONTAINER gp_MSYSINFO_OB_CERTCONTEXT = NULL;
 
 #define MSYSINFOCERT_LINE_LENGTH              228ULL
 
@@ -154,7 +152,8 @@ VOID MSysInfoCert_GetContext_UserAddCerts(_In_ POB_REGISTRY_HIVE pHive, _In_ POB
 * CALLER DECREF: return
 * -- return
 */
-POB_MAP MSysInfoCert_GetContext()
+_Success_(return != NULL)
+POB_MAP MSysInfoCert_GetContext(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
 {
     LPWSTR wszCertStoresUSER[] = { L"ROOT\\Software\\Microsoft\\SystemCertificates", L"ROOT\\Software\\Policies\\Microsoft\\SystemCertificates" };
     LPWSTR wszCertStoresSYSTEM[] = { L"HKLM\\SOFTWARE\\Microsoft\\SystemCertificates", L"HKLM\\SOFTWARE\\Policies\\Microsoft\\SystemCertificates" };
@@ -163,9 +162,10 @@ POB_MAP MSysInfoCert_GetContext()
     PVMMOB_MAP_USER pObUserMap = NULL;
     POB_REGISTRY_KEY pObKey = NULL;
     POB_REGISTRY_HIVE pObHive = NULL;
-    if((pObCtx = ObContainer_GetOb(gp_MSYSINFO_OB_CERTCONTEXT))) { return pObCtx; }
+    POB_CONTAINER ctxM = (POB_CONTAINER)ctxP->ctxM;
+    if((pObCtx = ObContainer_GetOb(ctxM))) { return pObCtx; }
     EnterCriticalSection(&ctxVmm->LockUpdateModule);
-    if((pObCtx = ObContainer_GetOb(gp_MSYSINFO_OB_CERTCONTEXT))) { goto finish; }
+    if((pObCtx = ObContainer_GetOb(ctxM))) { goto finish; }
     if(!(pObCtx = ObMap_New(OB_MAP_FLAGS_OBJECT_OB))) { goto finish; }
     // Retrieve system (local machine) certificates:
     for(i = 0; i < sizeof(wszCertStoresSYSTEM) / sizeof(LPWSTR); i++) {
@@ -190,13 +190,13 @@ POB_MAP MSysInfoCert_GetContext()
         }
         Ob_DECREF_NULL(&pObUserMap);
     }
-    ObContainer_SetOb(gp_MSYSINFO_OB_CERTCONTEXT, pObCtx);
+    ObContainer_SetOb(ctxM, pObCtx);
 finish:
     LeaveCriticalSection(&ctxVmm->LockUpdateModule);
     return pObCtx;
 }
 
-NTSTATUS MSysInfoCert_Read_Cert(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MSysInfoCert_Read_Cert(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     BYTE pbCertBuffer[0x1800];
@@ -207,10 +207,10 @@ NTSTATUS MSysInfoCert_Read_Cert(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_
     POB_REGISTRY_HIVE pObHive = NULL;
     POB_REGISTRY_VALUE pObValue = NULL;
     VMM_REGISTRY_VALUE_INFO ValueInfo = { 0 };
-    if(!(cch = wcslen(ctx->wszPath)) || (cch < 20)) { goto fail; }
-    if(_wcsicmp(ctx->wszPath + cch - 4, L".cer")) { goto fail; }
-    if(!(qwIdMapKey = wcstoull(ctx->wszPath + cch - 20, NULL, 16))) { goto fail; }
-    if(!(pmOb = MSysInfoCert_GetContext())) { goto fail; }
+    if(!(cch = wcslen(ctxP->wszPath)) || (cch < 20)) { goto fail; }
+    if(_wcsicmp(ctxP->wszPath + cch - 4, L".cer")) { goto fail; }
+    if(!(qwIdMapKey = wcstoull(ctxP->wszPath + cch - 20, NULL, 16))) { goto fail; }
+    if(!(pmOb = MSysInfoCert_GetContext(ctxP))) { goto fail; }
     if(!(pObEntry = ObMap_GetByKey(pmOb, qwIdMapKey))) { goto fail; }
     if(!(pObHive = VmmWinReg_HiveGetByAddress(pObEntry->vaHive))) { goto fail; }
     if(!(pObValue = VmmWinReg_KeyValueGetByOffset(pObHive, pObEntry->oRegCellValue))) { goto fail; }
@@ -280,13 +280,13 @@ NTSTATUS MSysInfoCert_Read_InfoFile2(_In_ POB_MAP pmCertificates, _In_ PVMMOB_MA
     return nt;
 }
 
-NTSTATUS MSysInfoCert_Read_InfoFile(_Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MSysInfoCert_Read_InfoFile(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     POB_MAP pmObCtx = NULL;
     PVMMOB_MAP_USER pObUserMap = NULL;
     if(!VmmMap_GetUser(&pObUserMap)) { goto fail; }
-    if(!(pmObCtx = MSysInfoCert_GetContext())) { goto fail; }
+    if(!(pmObCtx = MSysInfoCert_GetContext(ctxP))) { goto fail; }
     nt = MSysInfoCert_Read_InfoFile2(pmObCtx, pObUserMap, pb, cb, pcbRead, cbOffset);
 fail:
     Ob_DECREF(pmObCtx);
@@ -295,12 +295,12 @@ fail:
 }
 
 
-NTSTATUS MSysInfoCert_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MSysInfoCert_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
-    return _wcsicmp(ctx->wszPath, L"certificates.txt") ? MSysInfoCert_Read_Cert(ctx, pb, cb, pcbRead, cbOffset) : MSysInfoCert_Read_InfoFile(pb, cb, pcbRead, cbOffset);
+    return _wcsicmp(ctxP->wszPath, L"certificates.txt") ? MSysInfoCert_Read_Cert(ctxP, pb, cb, pcbRead, cbOffset) : MSysInfoCert_Read_InfoFile(ctxP, pb, cb, pcbRead, cbOffset);
 }
 
-BOOL MSysInfoCert_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
+BOOL MSysInfoCert_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList)
 {
     DWORD i, dwHashUserSID = 0;
     WCHAR wsz[MAX_PATH];
@@ -308,8 +308,8 @@ BOOL MSysInfoCert_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileLis
     PVMMOB_MAP_USER pObUserMap = NULL;
     PMSYSINFOCERT_OB_ENTRY pObEntry = NULL;
     if(!VmmMap_GetUser(&pObUserMap)) { goto fail; }
-    if(!(pmObCtx = MSysInfoCert_GetContext())) { goto fail; }
-    if(!ctx->wszPath[0]) {
+    if(!(pmObCtx = MSysInfoCert_GetContext(ctxP))) { goto fail; }
+    if(!ctxP->wszPath[0]) {
         // ROOT
         VMMDLL_VfsList_AddFile(pFileList, L"certificates.txt", ObMap_Size(pmObCtx) * MSYSINFOCERT_LINE_LENGTH, NULL);
         VMMDLL_VfsList_AddDirectory(pFileList, L"LocalMachine", NULL);
@@ -318,9 +318,9 @@ BOOL MSysInfoCert_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileLis
         }
     } else {
         // USER DIR
-        if(_wcsicmp(ctx->wszPath, L"LocalMachine")) {
+        if(_wcsicmp(ctxP->wszPath, L"LocalMachine")) {
             for(i = 0; i < pObUserMap->cMap; i++) {
-                if(_wcsicmp(ctx->wszPath, pObUserMap->pMap[i].wszText)) {
+                if(_wcsicmp(ctxP->wszPath, pObUserMap->pMap[i].wszText)) {
                     dwHashUserSID = pObUserMap->pMap[i].dwHashSID;
                     break;
                 }
@@ -340,23 +340,25 @@ fail:
     return TRUE;
 }
 
-VOID MSysInfoCert_Notify(_In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent)
+VOID MSysInfoCert_Notify(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent)
 {
+    POB_CONTAINER ctxM = (POB_CONTAINER)ctxP->ctxM;
     if(fEvent == VMMDLL_PLUGIN_NOTIFY_REFRESH_SLOW) {
-        ObContainer_SetOb(gp_MSYSINFO_OB_CERTCONTEXT, NULL);
+        ObContainer_SetOb(ctxM, NULL);
     }
 }
 
-VOID MSysInfoCert_Close()
+VOID MSysInfoCert_Close(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
 {
-    Ob_DECREF_NULL(&gp_MSYSINFO_OB_CERTCONTEXT);
+    POB_CONTAINER ctxM = (POB_CONTAINER)ctxP->ctxM;
+    Ob_DECREF(ctxM);
 }
 
 VOID M_SysInfoCert_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if((pRI->tpSystem != VMM_SYSTEM_WINDOWS_X64) && (pRI->tpSystem != VMM_SYSTEM_WINDOWS_X86)) { return; }
-    if(!(gp_MSYSINFO_OB_CERTCONTEXT = ObContainer_New())) { return; }       // Initialize context container
+    if(!(pRI->reg_info.ctxM = (PVMMDLL_PLUGIN_INTERNAL_CONTEXT)ObContainer_New())) { return; }      // Initialize context container
     wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\sysinfo\\certificates");   // module name
     pRI->reg_info.fRootModule = TRUE;                                       // module shows in root directory
     pRI->reg_fn.pfnList = MSysInfoCert_List;                                // List function supported

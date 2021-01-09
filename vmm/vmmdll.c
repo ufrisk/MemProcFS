@@ -1,7 +1,7 @@
 // vmmdll.c : implementation of core dynamic link library (dll) functionality
 // of the virtual memory manager (VMM) for The Memory Process File System.
 //
-// (c) Ulf Frisk, 2018-2020
+// (c) Ulf Frisk, 2018-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -640,30 +640,6 @@ BOOL VMMDLL_ConfigSet(_In_ ULONG64 fOption, _In_ ULONG64 qwValue)
 //-----------------------------------------------------------------------------
 
 _Success_(return)
-BOOL VMMDLL_VfsHelper_GetPidDir(_In_ LPWSTR wszPath, _Out_ PDWORD pdwPID, _Out_ LPWSTR * pwszSubPath)
-{
-    DWORD i = 0, iSubPath = 0;
-    // 1: Check if starting with PID or NAME
-    if(!wcsncmp(wszPath, L"pid\\", 4)) {
-        i = 4;
-    } else if(!wcsncmp(wszPath, L"name\\", 5)) {
-        i = 5;
-    } else {
-        return FALSE;
-    }
-    // 3: Locate start of PID number and 1st Path item (if any)
-    while((i < MAX_PATH) && wszPath[i] && (wszPath[i] != '\\')) { i++; }
-    iSubPath = ((i < MAX_PATH - 1) && (wszPath[i] == '\\')) ? (i + 1) : i;
-    i--;
-    while((wszPath[i] >= '0') && (wszPath[i] <= '9')) { i--; }
-    i++;
-    if(!((wszPath[i] >= '0') && (wszPath[i] <= '9'))) { return FALSE; }
-    *pdwPID = wcstoul(wszPath + i, NULL, 10);
-    *pwszSubPath = wszPath + iSubPath;
-    return TRUE;
-}
-
-_Success_(return)
 BOOL VMMDLL_VfsList_Impl_ProcessRoot(_In_ BOOL fNamePID, _Inout_ PHANDLE pFileList)
 {
     PVMM_PROCESS pObProcess = NULL;
@@ -694,7 +670,7 @@ BOOL VMMDLL_VfsList_Impl(_In_ LPWSTR wszPath, _Inout_ PHANDLE pFileList)
     PVMM_PROCESS pObProcess;
     if(!ctxVmm || !VMMDLL_VfsList_IsHandleValid(pFileList)) { return FALSE; }
     if(wszPath[0] == '\\') { wszPath++; }
-    if(VMMDLL_VfsHelper_GetPidDir(wszPath, &dwPID, &wszSubPath)) {
+    if(Util_VfsHelper_GetIdDir(wszPath, &dwPID, &wszSubPath)) {
         if(!(pObProcess = VmmProcessGet(dwPID))) { return FALSE; }
         PluginManager_List(pObProcess, wszSubPath, pFileList);
         Ob_DECREF(pObProcess);
@@ -728,7 +704,7 @@ NTSTATUS VMMDLL_VfsRead_Impl(LPWSTR wszPath, _Out_writes_to_(cb, *pcbRead) PBYTE
     PVMM_PROCESS pObProcess;
     if(!ctxVmm) { return VMM_STATUS_FILE_INVALID; }
     if(wszPath[0] == '\\') { wszPath++; }
-    if(VMMDLL_VfsHelper_GetPidDir(wszPath, &dwPID, &wszSubPath)) {
+    if(Util_VfsHelper_GetIdDir(wszPath, &dwPID, &wszSubPath)) {
         if(!(pObProcess = VmmProcessGet(dwPID))) { return VMM_STATUS_FILE_INVALID; }
         nt = PluginManager_Read(pObProcess, wszSubPath, pb, cb, pcbRead, cbOffset);
         Ob_DECREF(pObProcess);
@@ -754,7 +730,7 @@ NTSTATUS VMMDLL_VfsWrite_Impl(_In_ LPWSTR wszPath, _In_reads_(cb) PBYTE pb, _In_
     PVMM_PROCESS pObProcess;
     if(!ctxVmm) { return VMM_STATUS_FILE_INVALID; }
     if(wszPath[0] == '\\') { wszPath++; }
-    if(VMMDLL_VfsHelper_GetPidDir(wszPath, &dwPID, &wszSubPath)) {
+    if(Util_VfsHelper_GetIdDir(wszPath, &dwPID, &wszSubPath)) {
         if(!(pObProcess = VmmProcessGet(dwPID))) { return VMM_STATUS_FILE_INVALID; }
         nt = PluginManager_Write(pObProcess, wszSubPath, pb, cb, pcbWrite, cbOffset);
         Ob_DECREF(pObProcess);
@@ -1584,6 +1560,7 @@ BOOL VMMDLL_Map_GetServices_Impl(_Out_writes_bytes_opt_(*pcbServiceMap) PVMMDLL_
             peDst->wszPath        = (LPWSTR)(cbMultiTextDiff + (QWORD)peSrc->wszPath);
             peDst->wszUserTp      = (LPWSTR)(cbMultiTextDiff + (QWORD)peSrc->wszUserTp);
             peDst->wszUserAcct    = (LPWSTR)(cbMultiTextDiff + (QWORD)peSrc->wszUserAcct);
+            peDst->wszImagePath   = (LPWSTR)(cbMultiTextDiff + (QWORD)peSrc->wszImagePath);
         }
     }
     fResult = TRUE;

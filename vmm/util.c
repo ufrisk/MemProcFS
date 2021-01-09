@@ -1,6 +1,6 @@
 // util.c : implementation of various utility functions.
 //
-// (c) Ulf Frisk, 2018-2020
+// (c) Ulf Frisk, 2018-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "util.h"
@@ -389,15 +389,14 @@ fail:
 }
 
 _Success_(return >= 0)
-DWORD Util_snwprintf_u8ln(
+DWORD Util_snwprintf_u8ln_impl(
     _Out_writes_(cszLineLength+1) LPSTR szBuffer,
     _In_ QWORD cszLineLength,
     _In_z_ _Printf_format_string_ LPWSTR wszFormat,
-    ...
+    _In_ va_list arglist
 )
 {
     int cch, csz = 0;
-    va_list arglist;
     WCHAR wszBufferTiny[MAX_PATH];
     LPWSTR wszBuffer;
     if(0 == cszLineLength) { 
@@ -412,9 +411,7 @@ DWORD Util_snwprintf_u8ln(
         if(!wszBuffer) { goto fail; }
     }
     // 2: write to whar buffer
-    va_start(arglist, wszFormat);
     cch = _vsnwprintf_s(wszBuffer, cszLineLength, _TRUNCATE, wszFormat, arglist);
-    va_end(arglist);
     if(cch < 0) { cch = (int)cszLineLength - 1; }
     // 3: convert to utf-8
     while((0 == (csz = WideCharToMultiByte(CP_UTF8, 0, wszBuffer, -1, szBuffer, (int)cszLineLength, NULL, NULL))) && cch) {
@@ -429,6 +426,22 @@ fail:
     szBuffer[cszLineLength] = '\0';
     if(wszBuffer != wszBufferTiny) { LocalFree(wszBuffer); }
     return (DWORD)cszLineLength;
+}
+
+_Success_(return >= 0)
+DWORD Util_snwprintf_u8ln(
+    _Out_writes_(cszLineLength + 1) LPSTR szBuffer,
+    _In_ QWORD cszLineLength,
+    _In_z_ _Printf_format_string_ LPWSTR wszFormat,
+    ...
+)
+{
+    DWORD ret;
+    va_list arglist;
+    va_start(arglist, wszFormat);
+    ret = Util_snwprintf_u8ln_impl(szBuffer, cszLineLength, wszFormat, arglist);
+    va_end(arglist);
+    return ret;
 }
 
 VOID Util_GetPathDll(_Out_writes_(MAX_PATH) PCHAR szPath, _In_opt_ HMODULE hModule)
@@ -500,6 +513,31 @@ NTSTATUS Util_VfsReadFile_FromBOOL(_In_ BOOL fValue, _Out_writes_to_(cb, *pcbRea
     BYTE pbBuffer[1];
     pbBuffer[0] = fValue ? '1' : '0';
     return Util_VfsReadFile_FromPBYTE(pbBuffer, 1, pb, cb, pcbRead, cbOffset);
+}
+
+NTSTATUS Util_VfsReadFile_FromFILETIME(_In_ QWORD ftValue, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+{
+    CHAR szTime[24];
+    Util_FileTime2String(ftValue, szTime);
+    szTime[23] = '\n';
+    return Util_VfsReadFile_FromPBYTE(szTime, 24, pb, cb, pcbRead, cbOffset);
+}
+
+NTSTATUS Util_VfsReadFile_snwprintf_u8ln(_Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset, _In_ QWORD cszLineLength, _In_z_ _Printf_format_string_ LPWSTR wszFormat, ...)
+{
+    NTSTATUS nt = UTIL_NTSTATUS_END_OF_FILE;
+    DWORD ret;
+    va_list arglist;
+    LPSTR szBuffer;
+    if(!(szBuffer = LocalAlloc(0, cszLineLength + 1))) { goto fail; }
+    va_start(arglist, wszFormat);
+    ret = Util_snwprintf_u8ln_impl(szBuffer, cszLineLength, wszFormat, arglist);
+    va_end(arglist);
+    if(!ret) { goto fail; }
+    nt = Util_VfsReadFile_FromPBYTE(szBuffer, cszLineLength, pb, cb, pcbRead, cbOffset);
+fail:
+    LocalFree(szBuffer);
+    return nt;
 }
 
 NTSTATUS Util_VfsWriteFile_PBYTE(_Inout_ PBYTE pbTarget, _In_ DWORD cbTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset, _In_ BOOL fTerminatingNULL)
@@ -613,14 +651,26 @@ LPSTR Util_StrDupW2U8(_In_opt_ LPWSTR wsz)
     return szUTF8;
 }
 
-VOID Util_FileTime2String(_In_ PFILETIME pFileTime, _Out_writes_(24) LPSTR szTime)
+BOOL Util_StrEndsWithW(_In_opt_ LPWSTR wsz, _In_opt_ LPWSTR wszEndsWith, _In_ BOOL fCaseInsensitive)
+{
+    SIZE_T cch, cchEndsWith;
+    if(!wsz || !wszEndsWith) { return FALSE; }
+    cch = wcslen(wsz);
+    cchEndsWith = wcslen(wszEndsWith);
+    if(cch < cchEndsWith) { return FALSE; }
+    return fCaseInsensitive ?
+        (0 == _wcsicmp(wsz + cch - cchEndsWith, wszEndsWith)) :
+        (0 == wcscmp(wsz + cch - cchEndsWith, wszEndsWith));
+}
+
+VOID Util_FileTime2String(_In_ QWORD ft, _Out_writes_(24) LPSTR szTime)
 {
     SYSTEMTIME SystemTime;
-    if(!*(PQWORD)pFileTime || (*(PQWORD)pFileTime > 0x0200000000000000)) {
+    if(!ft || (ft > 0x0200000000000000)) {
         strcpy_s(szTime, 24, "                    ***");
         return;
     }
-    FileTimeToSystemTime(pFileTime, &SystemTime);
+    FileTimeToSystemTime((PFILETIME)&ft, &SystemTime);
     sprintf_s(
         szTime,
         24,
@@ -632,6 +682,31 @@ VOID Util_FileTime2String(_In_ PFILETIME pFileTime, _Out_writes_(24) LPSTR szTim
         SystemTime.wMinute,
         SystemTime.wSecond
     );
+}
+
+VOID Util_GuidToString(_In_reads_(16) PBYTE pb, _Out_writes_(37) LPSTR szGUID)
+{
+    typedef struct tdGUID {
+        DWORD v1;
+        WORD  v2;
+        WORD  v3;
+        BYTE  v4[8];
+    } GUID, *PGUID;
+    PGUID g = (PGUID)pb;
+    _snprintf_s(szGUID, 37, _TRUNCATE,
+        "%08lX-%04hX-%04hX-%02hhX%02hhX-%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX",
+        g->v1, g->v2, g->v3,
+        g->v4[0], g->v4[1], g->v4[2], g->v4[3], g->v4[4], g->v4[5], g->v4[6], g->v4[7]
+    );
+}
+
+int Util_qsort_DWORD(const void *pdw1, const void *pdw2)
+{
+    DWORD dw1 = *(PDWORD)pdw1;
+    DWORD dw2 = *(PDWORD)pdw2;
+    return
+        (dw1 < dw2) ? -1 :
+        (dw1 > dw2) ? 1 : 0;
 }
 
 int Util_qsort_QWORD(const void *pqw1, const void *pqw2)
@@ -688,4 +763,32 @@ PVOID Util_qfind_ex(_In_ PVOID pvFind, _In_ DWORD cMap, _In_ PVOID pvMap, _In_ D
         }
     }
     return NULL;
+}
+
+_Success_(return)
+BOOL Util_VfsHelper_GetIdDir(_In_ LPWSTR wszPath, _Out_ PDWORD pdwID, _Out_ LPWSTR *pwszSubPath)
+{
+    DWORD i = 0, iSubPath = 0;
+    // 1: Check if starting with PID/NAME/BY-ID/BY-NAME
+    if(!_wcsnicmp(wszPath, L"pid\\", 4)) {
+        i = 4;
+    } else if(!_wcsnicmp(wszPath, L"name\\", 5)) {
+        i = 5;
+    } else if(!_wcsnicmp(wszPath, L"by-id\\", 6)) {
+        i = 6;
+    } else if(!_wcsnicmp(wszPath, L"by-name\\", 8)) {
+        i = 8;
+    } else {
+        return FALSE;
+    }
+    // 3: Locate start of PID/ID number and 1st Path item (if any)
+    while((i < MAX_PATH) && wszPath[i] && (wszPath[i] != '\\')) { i++; }
+    iSubPath = ((i < MAX_PATH - 1) && (wszPath[i] == '\\')) ? (i + 1) : i;
+    i--;
+    while((wszPath[i] >= '0') && (wszPath[i] <= '9')) { i--; }
+    i++;
+    if(!((wszPath[i] >= '0') && (wszPath[i] <= '9'))) { return FALSE; }
+    *pdwID = wcstoul(wszPath + i, NULL, 10);
+    *pwszSubPath = wszPath + iSubPath;
+    return TRUE;
 }

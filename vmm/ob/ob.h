@@ -1,6 +1,6 @@
 // ob.h : definitions related to the object manager and object manager collections.
 //
-// (c) Ulf Frisk, 2018-2020
+// (c) Ulf Frisk, 2018-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __OB_H__
@@ -706,8 +706,16 @@ PVOID ObCacheMap_RemoveByKey(_In_opt_ POB_CACHEMAP pcm, _In_ QWORD qwKey);
 
 typedef struct tdOB_STRMAP *POB_STRMAP;
 
-#define OB_STRMAP_FLAGS_CASE_SENSITIVE      0x00
-#define OB_STRMAP_FLAGS_CASE_INSENSITIVE    0x01
+// Strings in OB_STRMAP are considered to be CASE SENSITIVE.
+#define OB_STRMAP_FLAGS_CASE_SENSITIVE          0x00
+
+// Strings in OB_STRMAP are considered to be CASE INSENSITIVE. The case is
+// preserved for 1st unique entry added; subsequent entries will use 1st entry.
+#define OB_STRMAP_FLAGS_CASE_INSENSITIVE        0x01
+
+// Assign temporary string values to destinations at time of push.
+// NB! values will become invalid after OB_STRMAP DECREF/FINALIZE!
+#define OB_STRMAP_FLAGS_STR_ASSIGN_TEMPORARY    0x02
 
 /*
 * Create a new strmap. A strmap (ObStrMap) provides an easy way to add new
@@ -730,7 +738,7 @@ POB_STRMAP ObStrMap_New(_In_ QWORD flags);
 * -- return = TRUE on insertion, FALSE otherwise.
 */
 _Success_(return)
-BOOL ObStrMap_PushA(_In_opt_ POB_STRMAP psm, _In_opt_ LPSTR sz, _In_opt_ LPWSTR *pwszDst, _In_opt_ PDWORD pcchDst);
+BOOL ObStrMap_PushA(_In_opt_ POB_STRMAP psm, _In_opt_ LPSTR sz, _Out_opt_ LPWSTR *pwszDst, _Out_opt_ PDWORD pcchDst);
 
 /*
 * Push / Insert into the ObStrMap.
@@ -741,7 +749,7 @@ BOOL ObStrMap_PushA(_In_opt_ POB_STRMAP psm, _In_opt_ LPSTR sz, _In_opt_ LPWSTR 
 * -- return = TRUE on insertion, FALSE otherwise.
 */
 _Success_(return)
-BOOL ObStrMap_Push(_In_opt_ POB_STRMAP psm, _In_opt_ LPWSTR wsz, _In_opt_ LPWSTR *pwszDst, _In_opt_ PDWORD pcchDst);
+BOOL ObStrMap_Push(_In_opt_ POB_STRMAP psm, _In_opt_ LPWSTR wsz, _Out_opt_ LPWSTR *pwszDst, _Out_opt_ PDWORD pcchDst);
 
 /*
 * Push / Insert max 2048 characters into ObStrMap using a swprintf_s syntax.
@@ -753,7 +761,7 @@ BOOL ObStrMap_Push(_In_opt_ POB_STRMAP psm, _In_opt_ LPWSTR wsz, _In_opt_ LPWSTR
 * -- return = TRUE on insertion, FALSE otherwise.
 */
 _Success_(return)
-BOOL ObStrMap_Push_swprintf_s(_In_opt_ POB_STRMAP psm, _In_opt_ LPWSTR *pwszDst, _In_opt_ PDWORD pcchDst, _In_z_ _Printf_format_string_ wchar_t const *const wszFormat, ...);
+BOOL ObStrMap_Push_swprintf_s(_In_opt_ POB_STRMAP psm, _Out_opt_ LPWSTR *pwszDst, _Out_opt_ PDWORD pcchDst, _In_z_ _Printf_format_string_ wchar_t const *const wszFormat, ...);
 
 /*
 * Finalize the ObStrMap. Create and assign the MultiStr and assign each

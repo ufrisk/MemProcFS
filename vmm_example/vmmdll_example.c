@@ -2,7 +2,7 @@
 //
 // Note that this is not a complete list of the VMM API. For the complete list please consult the vmmdll.h header file.
 //
-// (c) Ulf Frisk, 2018-2020
+// (c) Ulf Frisk, 2018-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

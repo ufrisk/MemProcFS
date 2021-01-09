@@ -1,6 +1,6 @@
 // m_status.c : implementation of the .status built-in module.
 //
-// (c) Ulf Frisk, 2018-2020
+// (c) Ulf Frisk, 2018-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

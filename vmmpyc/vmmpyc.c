@@ -1,6 +1,6 @@
 // vmmpyc.c : implementation MemProcFS/VMM Python API
 //
-// (c) Ulf Frisk, 2018-2020
+// (c) Ulf Frisk, 2018-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #define Py_LIMITED_API 0x03060000
@@ -42,17 +42,17 @@ inline int PyList_Append_DECREF(PyObject *dp, PyObject *item)
 // UTIL FUNCTIONS BELOW:
 //-----------------------------------------------------------------------------
 
-VOID Util_FileTime2String(_In_ PFILETIME pFileTime, _Out_writes_(MAX_PATH) LPSTR szTime)
+VOID Util_FileTime2String(_In_ QWORD ft, _Out_writes_(24) LPSTR szTime)
 {
     SYSTEMTIME SystemTime;
-    if(!*(PQWORD)pFileTime) {
-        strcpy_s(szTime, MAX_PATH, "                    ***");
+    if(!ft || (ft > 0x0200000000000000)) {
+        strcpy_s(szTime, 24, "                    ***");
         return;
     }
-    FileTimeToSystemTime(pFileTime, &SystemTime);
+    FileTimeToSystemTime((PFILETIME)&ft, &SystemTime);
     sprintf_s(
         szTime,
-        MAX_PATH,
+        24,
         "%04i-%02i-%02i %02i:%02i:%02i UTC",
         SystemTime.wYear,
         SystemTime.wMonth,
@@ -387,7 +387,7 @@ static PyObject*
 VMMPYC_ProcessGetVadMap(PyObject *self, PyObject *args)
 {
     PyObject *pyList, *pyDict;
-    BOOL result, fIdentifyModules;
+    BOOL result, fIdentifyModules = FALSE;
     DWORD dwPID, i;
     DWORD cbVadMap = 0;
     PVMMDLL_MAP_VADENTRY pe;
@@ -700,9 +700,9 @@ VMMPYC_ProcessGetThreadMap(PyObject *self, PyObject *args)
             PyDict_SetItemString_DECREF(pyDict, "reg-rsp", PyLong_FromUnsignedLongLong(pe->vaRSP));
             PyDict_SetItemString_DECREF(pyDict, "time-create", PyLong_FromUnsignedLongLong(pe->ftCreateTime));
             PyDict_SetItemString_DECREF(pyDict, "time-exit", PyLong_FromUnsignedLongLong(pe->ftExitTime));
-            Util_FileTime2String((PFILETIME)&pe->ftCreateTime, szTimeUTC);
+            Util_FileTime2String(pe->ftCreateTime, szTimeUTC);
             PyDict_SetItemString_DECREF(pyDict, "time-create-str", PyUnicode_FromFormat("%s", szTimeUTC));
-            Util_FileTime2String((PFILETIME)&pe->ftExitTime, szTimeUTC);
+            Util_FileTime2String(pe->ftExitTime, szTimeUTC);
             PyDict_SetItemString_DECREF(pyDict, "time-exit-str", PyUnicode_FromFormat("%s", szTimeUTC));
             PyList_Append_DECREF(pyList, pyDict);
         }
@@ -766,7 +766,7 @@ VMMPYC_MapGetNet(PyObject *self, PyObject *args)
     DWORD i, dwIpVersion, cbNetMap = 0;
     PVMMDLL_MAP_NET pNetMap = NULL;
     PVMMDLL_MAP_NETENTRY pe;
-    CHAR szTime[MAX_PATH];
+    CHAR szTime[24];
     if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
     Py_BEGIN_ALLOW_THREADS;
     result =
@@ -786,7 +786,7 @@ VMMPYC_MapGetNet(PyObject *self, PyObject *args)
             pe = pNetMap->pMap + i;
             dwIpVersion = (pe->AF == AF_INET) ? 4 : ((pe->AF == AF_INET6) ? 6 : 0);
             // get time
-            Util_FileTime2String((PFILETIME)&pe->ftTime, szTime);
+            Util_FileTime2String(pe->ftTime, szTime);
             PyDict_SetItemString_DECREF(pyDictTcpE, "ver", PyLong_FromUnsignedLong(dwIpVersion));
             PyDict_SetItemString_DECREF(pyDictTcpE, "pid", PyLong_FromUnsignedLong(pe->dwPID));
             PyDict_SetItemString_DECREF(pyDictTcpE, "pooltag", PyLong_FromUnsignedLong(pe->dwPoolTag));
@@ -980,6 +980,7 @@ VMMPYC_MapGetServices(PyObject *self, PyObject *args)
             PyDict_SetItemString_DECREF(pyDict, "path", PyUnicode_FromWideChar(pe->wszPath, -1));
             PyDict_SetItemString_DECREF(pyDict, "user-tp", PyUnicode_FromWideChar(pe->wszUserTp, -1));
             PyDict_SetItemString_DECREF(pyDict, "user-acct", PyUnicode_FromWideChar(pe->wszUserAcct, -1));
+            PyDict_SetItemString_DECREF(pyDict, "path-image", PyUnicode_FromWideChar(pe->wszImagePath, -1));
             PyDict_SetItemDWORD_DECREF(pyDictResult, pe->dwOrdinal, pyDict);
         }
     }
@@ -1493,19 +1494,20 @@ VMMPYC_WinReg_HiveWrite(PyObject *self, PyObject *args)
     return Py_BuildValue("s", NULL);    // None returned on success.
 }
 
-// (WSTR) -> {...}
+// (STR, DWORD) -> {'subkeys': {...}, 'values': {...}}
 static PyObject*
 VMMPYC_WinReg_EnumKey(PyObject *self, PyObject *args)
 {
-    PyObject *pyDict, *pyListKey, *pyDictKey, *pyListValue, *pyDictValue, *pyName;
+    PyObject *pyDict, *pyDictAllKey, *pyDictKey, *pyDictAllValue, *pyDictValue, *pyName;
     PyObject *pyUnicodePathKey;             // must not be DECREF'ed
-    BOOL fResult;
+    BOOL fResult, fDataValueValid = FALSE;
     LPWSTR wszPathKey = NULL;               // PyMem_Free() required
     WCHAR wsz[MAX_PATH];
-    CHAR szTime[MAX_PATH];
-    DWORD i, cch, dwType, cbData = 0;
-    FILETIME ftKeyLastWriteTime;
-    if(!PyArg_ParseTuple(args, "O!", &PyUnicode_Type, &pyUnicodePathKey)) { return NULL; }
+    CHAR szTime[24];
+    DWORD i, cch, dwType, cbData = 0, cbDataValueMax = 0;
+    QWORD ftKeyLastWriteTime;
+    PBYTE pbData = NULL;
+    if(!PyArg_ParseTuple(args, "O!k", &PyUnicode_Type, &pyUnicodePathKey, &cbDataValueMax)) { return NULL; }
     if(!(wszPathKey = PyUnicode_AsWideCharString(pyUnicodePathKey, NULL))) {
         PyErr_Clear();
         PyMem_Free(wszPathKey);
@@ -1513,46 +1515,65 @@ VMMPYC_WinReg_EnumKey(PyObject *self, PyObject *args)
     }
     if((pyDict = PyDict_New())) {
         // key list
-        if((pyListKey = PyList_New(0))) {
+        if((pyDictAllKey = PyDict_New())) {
             i = 0;
             while(TRUE) {
                 Py_BEGIN_ALLOW_THREADS;
                 cch = _countof(wsz);
-                fResult = VMMDLL_WinReg_EnumKeyExW(wszPathKey, i++, wsz, &cch, &ftKeyLastWriteTime);
+                fResult = VMMDLL_WinReg_EnumKeyExW(wszPathKey, i++, wsz, &cch, (PFILETIME)&ftKeyLastWriteTime);
                 Py_END_ALLOW_THREADS;
                 if(!fResult) { break; }
                 if((pyDictKey = PyDict_New())) {
                     if((pyName = PyUnicode_FromWideChar(wsz, -1))) {
-                        Util_FileTime2String(&ftKeyLastWriteTime, szTime);
-                        PyDict_SetItemString_DECREF(pyDictKey, "name", pyName);
-                        PyDict_SetItemString_DECREF(pyDictKey, "time", PyLong_FromUnsignedLongLong(*(PQWORD)&ftKeyLastWriteTime));
+                        PyDict_SetItemString(pyDictKey, "name", pyName);
+                        Util_FileTime2String(ftKeyLastWriteTime, szTime);
+                        PyDict_SetItemString_DECREF(pyDictKey, "time", PyLong_FromUnsignedLongLong(ftKeyLastWriteTime));
                         PyDict_SetItemString_DECREF(pyDictKey, "time-str", PyUnicode_FromFormat("%s", szTime));
+                        PyDict_SetItem(pyDictAllKey, pyName, pyDictKey);
+                        Py_XDECREF(pyName);
                     }
-                    PyList_Append_DECREF(pyListKey, pyDictKey);
+                    Py_XDECREF(pyDictKey);
                 }
             }
-            PyDict_SetItemString_DECREF(pyDict, "subkeys", pyListKey);
+            PyDict_SetItemString_DECREF(pyDict, "subkeys", pyDictAllKey);
         }
         // value list
-        if((pyListValue = PyList_New(0))) {
+        if(cbDataValueMax) {
+            pbData = LocalAlloc(0, cbDataValueMax);
+            if(!pbData) { cbDataValueMax = 0; }
+        }
+        if((pyDictAllValue = PyDict_New())) {
             i = 0;
             while(TRUE) {
                 Py_BEGIN_ALLOW_THREADS;
+                fResult = FALSE;
                 cch = _countof(wsz);
-                fResult = VMMDLL_WinReg_EnumValueW(wszPathKey, i++, wsz, &cch, &dwType, NULL, &cbData);
+                if(cbDataValueMax) {
+                    cbData = cbDataValueMax;
+                    fResult = fDataValueValid = VMMDLL_WinReg_EnumValueW(wszPathKey, i++, wsz, &cch, &dwType, pbData, &cbData);
+                }
+                if(!fResult) {
+                    fResult = VMMDLL_WinReg_EnumValueW(wszPathKey, i++, wsz, &cch, &dwType, NULL, &cbData);
+                }
                 Py_END_ALLOW_THREADS;
                 if(!fResult) { break; }
                 if((pyDictValue = PyDict_New())) {
                     if((pyName = PyUnicode_FromWideChar(wsz, -1))) {
-                        PyDict_SetItemString_DECREF(pyDictValue, "name", pyName);
+                        PyDict_SetItemString(pyDictValue, "name", pyName);
                         PyDict_SetItemString_DECREF(pyDictValue, "type", PyLong_FromUnsignedLong(dwType));
                         PyDict_SetItemString_DECREF(pyDictValue, "size", PyLong_FromUnsignedLong(cbData));
+                        if(cbDataValueMax) {
+                            PyDict_SetItemString_DECREF(pyDictValue, "data", PyBytes_FromStringAndSize(pbData, fDataValueValid ? cbData : 0));
+                        }
+                        PyDict_SetItem(pyDictAllValue, pyName, pyDictValue);
+                        Py_XDECREF(pyName);
                     }
-                    PyList_Append_DECREF(pyListValue, pyDictValue);
+                    Py_XDECREF(pyDictValue);
                 }
             }
-            PyDict_SetItemString_DECREF(pyDict, "values", pyListValue);
+            PyDict_SetItemString_DECREF(pyDict, "values", pyDictAllValue);
         }
+        LocalFree(pbData);
     }
     PyMem_Free(wszPathKey);
     return pyDict;

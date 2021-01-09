@@ -11,7 +11,7 @@ using System.Collections.Generic;
  *  Please consult the C/C++ header files vmmdll.h and leechcore.h for information about
  *  parameters and API usage.
  *  
- *  (c) Ulf Frisk, 2020
+ *  (c) Ulf Frisk, 2020-2021
  *  Author: Ulf Frisk, pcileech@frizk.net
  *  
  *  Version 3.6
@@ -984,6 +984,7 @@ namespace vmmsharp
             public string wszPath;
             public string wszUserTp;
             public string wszUserAcct;
+            public string wszImagePath;
             public uint dwStartType;
             public uint dwServiceType;
             public uint dwCurrentState;
@@ -1556,6 +1557,7 @@ namespace vmmsharp
                     e.wszPath = n.wszPath;
                     e.wszUserTp = n.wszUserTp;
                     e.wszUserAcct = n.wszUserAcct;
+                    e.wszImagePath = n.wszImagePath;
                     e.dwStartType = n.dwStartType;
                     e.dwServiceType = n.dwServiceType;
                     e.dwCurrentState = n.dwCurrentState;
@@ -1835,7 +1837,7 @@ namespace vmmsharp
         internal static uint VMMDLL_MAP_PHYSMEM_VERSION =    1;
         internal static uint VMMDLL_MAP_USER_VERSION =       1;
         internal static uint VMMDLL_MAP_PFN_VERSION =        1;
-        internal static uint VMMDLL_MAP_SERVICE_VERSION =    1;
+        internal static uint VMMDLL_MAP_SERVICE_VERSION =    2;
 
 
 
@@ -2526,6 +2528,7 @@ namespace vmmsharp
             [MarshalAs(UnmanagedType.LPWStr)] internal string wszPath;
             [MarshalAs(UnmanagedType.LPWStr)] internal string wszUserTp;
             [MarshalAs(UnmanagedType.LPWStr)] internal string wszUserAcct;
+            [MarshalAs(UnmanagedType.LPWStr)] internal string wszImagePath;
             internal uint dwPID;
             internal uint _FutureUse1;
             internal ulong _FutureUse2;
