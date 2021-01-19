@@ -216,4 +216,6 @@ v1.1-v2.10
   * Time: process-time, boot-time, current-time, timezone.
   * Python Light Plugins: print('file system plugins as easy as Python print!')
   * Registry Parsing: usb-storage, bluetooth, wallpapers and more in 'py/reg' & 'py/by-user/reg'.
-  
+
+Latest:
+* Better os detection (symbol fallback).

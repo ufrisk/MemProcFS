@@ -2933,7 +2933,40 @@ VOID VmmWinProcess_OffsetLocator_SetMaxOffset()
 }
 
 /*
-* Very ugly hack that tries to locate some offsets required withn the EPROCESS struct.
+* Fallback solution to use debug symbols to locate offsets within the EPROCESS struct.
+* This is more resilient - but also add a slow dependency on the symbol server so only
+* use this as a fallback for now.
+*/
+VOID VmmWinProcess_OffsetLocatorSYMSERV(_In_ PVMM_PROCESS pSystemProcess)
+{
+    PVMM_OFFSET_EPROCESS po = &ctxVmm->offset.EPROCESS;
+    PDB_Initialize(NULL, FALSE);
+    PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_DISPATCHER_HEADER", L"SignalState", &po->State);
+    PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KPROCESS", L"DirectoryTableBase", &po->DTB);
+    PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KPROCESS", L"UserDirectoryTableBase", &po->DTB_User);
+    PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_EPROCESS", L"ImageFileName", &po->Name);
+    PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_EPROCESS", L"UniqueProcessId", &po->PID);
+    PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_EPROCESS", L"InheritedFromUniqueProcessId", &po->PPID);
+    PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_EPROCESS", L"ActiveProcessLinks", &po->FLink);
+    po->BLink = po->FLink + ctxVmm->f32 ? 4 : 8;
+    PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_EPROCESS", L"Peb", &po->PEB);
+    PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_EPROCESS", L"SeAuditProcessCreationInfo", &po->SeAuditProcessCreationInfo);
+    PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_EPROCESS", L"VadRoot", &po->VadRoot);
+    PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_EPROCESS", L"ObjectTable", &po->ObjectTable);
+    if(!ctxVmm->f32) {
+        if(po->Name < po->PEB) {
+            po->f64VistaOr7 = TRUE;
+            po->Wow64Process = po->Name + 0x40;     // Vista, Win7
+        } else {
+            po->Wow64Process = po->PEB + 0x30;      // Win8, Win10
+        }
+    }
+    PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_EPROCESS", &po->cbMaxOffset);
+    po->fValid = po->State && po->DTB && po->Name && po->PPID && po->FLink && po->PEB && po->VadRoot && po->SeAuditProcessCreationInfo && po->ObjectTable;
+}
+
+/*
+* Very ugly hack that tries to locate some offsets required within the EPROCESS struct.
 */
 VOID VmmWinProcess_OffsetLocator64(_In_ PVMM_PROCESS pSystemProcess)
 {
@@ -3106,7 +3139,7 @@ VOID VmmWinProcess_OffsetLocator64(_In_ PVMM_PROCESS pSystemProcess)
             f = VMM_KADDR64(*(PQWORD)(pbSYSTEM + i)) && ((*(PDWORD)(pbSYSTEM + i - 4) == 0x00000103) || (*(PDWORD)(pbSYSTEM + i - 12) == 0x00000103));
             if(f) { break; }
         }
-        if(!f) { return; }
+        if(!f) { goto fail; }
         po->VadRoot = i;
     }
     // find "optional" offset for user cr3/pml4 (post meltdown only)
@@ -3309,6 +3342,10 @@ BOOL VmmWinProcess_Enum64(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fTotalRefr
             VmmWinProcess_OffsetLocator_Print();
         }
         if(!po->fValid) {
+            vmmprintf("VmmWin: Unable to fuzz EPROCESS offsets - trying debug symbols.\n");
+            VmmWinProcess_OffsetLocatorSYMSERV(pSystemProcess);
+        }
+        if(!po->fValid) {
             vmmprintf("VmmWin: Unable to locate EPROCESS offsets.\n");
             return FALSE;
         }
@@ -3506,7 +3543,7 @@ VOID VmmWinProcess_OffsetLocator32(_In_ PVMM_PROCESS pSystemProcess)
             i = 0x11c;
             f = TRUE;
         }
-        if(!f) { return; }
+        if(!f) { goto fail; }
         po->VadRoot = i;
     }
     // DTB_USER not searched for in 32-bit EPROCESS
@@ -3601,6 +3638,10 @@ BOOL VmmWinProcess_Enum32(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fTotalRefr
         VmmWinProcess_OffsetLocator32(pSystemProcess);
         if(!po->fValid || ctxMain->cfg.fVerboseExtra) {
             VmmWinProcess_OffsetLocator_Print();
+        }
+        if(!po->fValid) {
+            vmmprintf("VmmWin: Unable to fuzz EPROCESS offsets - trying debug symbols.\n");
+            VmmWinProcess_OffsetLocatorSYMSERV(pSystemProcess);
         }
         if(!po->fValid) {
             vmmprintf("VmmWin: Unable to locate EPROCESS offsets.\n");
