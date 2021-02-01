@@ -223,7 +223,7 @@ v1.1-v2.10
   * Better os detection (symbol fallback).
   * Handles: additional object info.
   * Info header in most info-files (enabled by default - possible to disable).
-New Features:
+* New Features:
   * Windows Kernel Object Manager Objects.
   * Additional kernel driver information.
   * Detailed Object and Object Header Info.
