@@ -93,7 +93,7 @@ PVOID Ob_DECREF(_In_opt_ PVOID pObIn)
             PBYTE pb = (PBYTE)pOb;
             for(i = 0; i < OB_DEBUG_FOOTER_SIZE; i += 8) {
                 if(*(PQWORD)(pb + cb + i) != OB_DEBUG_FOOTER_MAGIC) {
-                    obprintf_fn("ObCORE: CRITICAL: FOOTER OVERWRITTEN - MEMORY CORRUPTION? REFCNT: %i TAG: %02X\n", c, pOb->_tag)
+                    obprintf_fn("ObCORE: CRITICAL: FOOTER OVERWRITTEN - MEMORY CORRUPTION? REFCNT: %i TAG: %04X\n", c, pOb->_tag)
                 }
             }
 #endif /* OB_DEBUG */
@@ -124,4 +124,23 @@ BOOL Ob_VALID_TAG(_In_ PVOID pObIn, _In_ DWORD tag)
 {
     POB pOb = (POB)pObIn;
     return pOb && (pOb->_magic == OB_HEADER_MAGIC) && (pOb->_tag = tag);
+}
+
+/*
+* Create a new object manager data object in which the ObHdr->cbData is equal
+* to the number of bytes in the data buffer supplied to this function.
+* May also be created with Ob_Alloc with size: sizeof(OB_HDR) + length of data.
+* CALLER DECREF: return
+* -- pb
+* -- cb
+* -- return
+*/
+_Success_(return != NULL)
+POB_DATA ObData_New(_In_ PBYTE pb, _In_ DWORD cb)
+{
+    POB_DATA pObData = NULL;
+    if(pObData = Ob_Alloc(OB_TAG_CORE_DATA, 0, sizeof(OB) + cb, NULL, NULL)) {
+        memcpy(pObData->pb, pb, cb);
+    }
+    return pObData;
 }

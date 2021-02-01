@@ -1,12 +1,14 @@
-// vmmwinobj.c : implementation of functionality related to Windows objects.
+// vmmwinobj.c : implementation related to Windows Objects.
 //
 // (c) Ulf Frisk, 2020-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
-#include "vmmwinobj.h"
-#include "vmmwindef.h"
 #include "vmm.h"
+#include "vmmwin.h"
+#include "vmmwindef.h"
+#include "vmmwinobj.h"
+#include "pdb.h"
 #include "util.h"
 
 #define VMMWINOBJ_WORKITEM_FILEPROCSCAN_VAD         0x0000000100000000
@@ -62,8 +64,10 @@ VOID VmmWinObj_Refresh()
         ObSet_Clear(ctx->psError);
         ObMap_Clear(ctx->pmByObj);
         ObMap_Clear(ctx->pmByWorkitem);
+        ObCacheMap_Clear(ctxVmm->pObCacheMapWinObjDisplay);
         LeaveCriticalSection(&ctx->LockUpdate);
     }
+    ObContainer_SetOb(ctxVmm->pObCMapObject, NULL);
 }
 
 
@@ -316,7 +320,7 @@ VOID VmmWinObjFile_Initialize_FileObjects(_In_ PVMM_PROCESS pSystemProcess, _Ino
             vaFileNameBuffer += cbPath - MAX_PATH * 2;
             cbPath = MAX_PATH * 2;
         }
-        if(!VmmReadAlloc(pSystemProcess, vaFileNameBuffer, (PBYTE*)&peObFile->wszPath, cbPath, VMM_FLAG_FORCECACHE_READ)) { continue; }
+        if(!VmmReadAlloc(pSystemProcess, vaFileNameBuffer, (PBYTE *)&peObFile->wszPath, cbPath, VMM_FLAG_FORCECACHE_READ)) { continue; }
         peObFile->wszName = Util_PathSplitLastW(peObFile->wszPath);
         peObFile->dwNameHash = Util_HashStringUpperW(peObFile->wszName);
         // _SECTION_OBJECT_POINTERS
@@ -412,7 +416,7 @@ VOID VmmWinObjFile_GetByProcess_DoWork(_In_ PVMM_PROCESS pProcess, _In_ POB_MAP 
 * -- return
 */
 _Success_(return)
-BOOL VmmWinObjFile_GetByProcess(_In_ PVMM_PROCESS pProcess, _Out_ POB_MAP *ppmObFiles, _In_ BOOL fHandles)
+BOOL VmmWinObjFile_GetByProcess(_In_ PVMM_PROCESS pProcess, _Out_ POB_MAP * ppmObFiles, _In_ BOOL fHandles)
 {
     DWORD i, iMax;
     POB_MAP pmObFiles = NULL;
@@ -687,4 +691,749 @@ DWORD VmmWinObjFile_Read(_In_ POB_VMMWINOBJ_FILE pFile, _In_ QWORD cbOffset, _Ou
 finish:
     Ob_DECREF(pObSystemProcess);
     return cb;
+}
+
+
+
+//-----------------------------------------------------------------------------
+// WINDOWS OBJECT MANAGER: INTERNAL SETUP FUNCTIONALITY BELOW:
+//-----------------------------------------------------------------------------
+
+typedef struct tdVMM_WINOBJ_SETUP_OBJECT {
+    QWORD va;
+    struct tdVMM_WINOBJ_SETUP_OBJECT *pParent;
+    PVMM_MAP_OBJECTENTRY pParentMapEntry;
+    DWORD iType;
+    DWORD iLevel;
+    DWORD dwId;
+    DWORD dwIdDir;
+    DWORD cchName;
+    QWORD vaName;
+    struct {
+        DWORD cchName;
+        QWORD vaName;
+        QWORD ft;
+    } ExtInfo;
+} VMM_WINOBJ_SETUP_OBJECT, *PVMM_WINOBJ_SETUP_OBJECT, **PPVMM_WINOBJ_SETUP_OBJECT;
+
+typedef struct tdVMM_WINOBJ_SETUP_CONTEXT {
+    PVMM_PROCESS pSystemProcess;
+    POB_SET psObj[2];
+    POB_SET psDirEntry[2];
+    POB_SET psObjectAll;
+    POB_SET psObjectDir;
+    POB_SET psvaAllObj;
+    POB_SET psvaPrefetch;
+} VMM_WINOBJ_SETUP_CONTEXT, *PVMM_WINOBJ_SETUP_CONTEXT;
+
+/*
+* Process a single object in the initial setup phase.
+*/
+VOID VmmWinObjMgr_Initialize_ProcessObject(_Inout_ PVMM_WINOBJ_SETUP_CONTEXT ctxInit, _In_reads_(0x70) PBYTE pb, _In_ PVMM_WINOBJ_SETUP_OBJECT pe)
+{
+    DWORD vaDir32[37];
+    QWORD vaDir64[37];
+    POBJECT_HEADER32 pHdr32;
+    POBJECT_HEADER64 pHdr64;
+    POBJECT_HEADER_NAME_INFO32 pName32;
+    POBJECT_HEADER_NAME_INFO64 pName64;
+    PUNICODE_STRING32 pus32;
+    PUNICODE_STRING64 pus64;
+    PVMM_WINOBJ_SETUP_OBJECT peNext;
+    BYTE i, iTp;
+    if(!ObSet_Push(ctxInit->psvaAllObj, pe->va)) { goto fail; }     // loop/duplicate protect
+    if(ctxVmm->f32) {
+        pHdr32 = (POBJECT_HEADER32)(pb + 0x20);
+        if(pHdr32->SecurityDescriptor && !VMM_KADDR32(pHdr32->SecurityDescriptor)) { goto fail; }
+        iTp = VmmWin_ObjectTypeGetIndexFromEncoded(pe->va - 0x18, pHdr32->TypeIndex);
+        if(iTp < 2 || iTp >= ctxVmm->ObjectTypeTable.c) { goto fail; }
+        if(!(pHdr32->InfoMask & 2)) { goto fail; }
+        pName32 = (POBJECT_HEADER_NAME_INFO32)(pb + (pHdr32->InfoMask & 1 ? 0 : 0x10));
+        if((pName32->Name.Length & 1) || pName32->Name.Length > 0x200) { goto fail; }
+        if(!VMM_KADDR32(pName32->Name.Buffer)) { goto fail; }
+        if(pName32->Directory) {
+            if(!pe->pParent) { goto fail; }
+            if(pe->pParent->va != pName32->Directory) { goto fail; }
+        } else {
+            if(pe->pParent) { goto fail; }
+        }
+        pe->iType = iTp;
+        pe->vaName = pName32->Name.Buffer;
+        pe->cchName = pName32->Name.Length >> 1;
+        if((iTp == 3) && VmmRead(ctxInit->pSystemProcess, pe->va, (PBYTE)vaDir32, 37 * sizeof(DWORD))) {
+            // OBJECT_TYPE == DIRECTORY
+            ObSet_Push(ctxInit->psObjectDir, (QWORD)pe);
+            for(i = 0; i < 37; i++) {
+                if(VMM_KADDR32_4(vaDir32[i]) && (peNext = LocalAlloc(LMEM_ZEROINIT, sizeof(VMM_WINOBJ_SETUP_OBJECT)))) {
+                    peNext->va = vaDir32[i];
+                    peNext->pParent = pe;
+                    ObSet_Push(ctxInit->psDirEntry[0], (QWORD)peNext);
+                }
+            }
+        }
+    } else {
+        pHdr64 = (POBJECT_HEADER64)(pb + 0x40);
+        if(pHdr64->SecurityDescriptor && !VMM_KADDR64(pHdr64->SecurityDescriptor)) { goto fail; }
+        iTp = VmmWin_ObjectTypeGetIndexFromEncoded(pe->va - 0x30, pHdr64->TypeIndex);
+        if(iTp < 2 || iTp >= ctxVmm->ObjectTypeTable.c) { goto fail; }
+        if(!(pHdr64->InfoMask & 2)) { goto fail; }
+        pName64 = (POBJECT_HEADER_NAME_INFO64)(pb + (pHdr64->InfoMask & 1 ? 0 : 0x20));
+        if((pName64->Name.Length & 1) || pName64->Name.Length > 0x200) { goto fail; }
+        if(!VMM_KADDR64(pName64->Name.Buffer)) { goto fail; }
+        if(pName64->Directory) {
+            if(!pe->pParent) { goto fail; }
+            if(pe->pParent->va != pName64->Directory) { goto fail; }
+        } else {
+            if(pe->pParent) { goto fail; }
+        }
+        pe->iType = iTp;
+        pe->vaName = pName64->Name.Buffer;
+        pe->cchName = pName64->Name.Length >> 1;
+        if((iTp == 3) && VmmRead(ctxInit->pSystemProcess, pe->va, (PBYTE)vaDir64, 37 * sizeof(QWORD))) {
+            // OBJECT_TYPE == DIRECTORY
+            ObSet_Push(ctxInit->psObjectDir, (QWORD)pe);
+            for(i = 0; i < 37; i++) {
+                if(VMM_KADDR64_8(vaDir64[i]) && (peNext = LocalAlloc(LMEM_ZEROINIT, sizeof(VMM_WINOBJ_SETUP_OBJECT)))) {
+                    peNext->va = vaDir64[i];
+                    peNext->pParent = pe;
+                    ObSet_Push(ctxInit->psDirEntry[0], (QWORD)peNext);
+                }
+            }
+        }
+    }
+    // OBJECT_TYPE == _OBJECT_SYMBOLIC_LINK --> EXTENDED INFO
+    if((iTp == ctxVmm->ObjectTypeTable.tpSymbolicLink) && VmmRead(ctxInit->pSystemProcess, pe->va, pb, 0x18)) {
+        pe->ExtInfo.ft = *(PQWORD)pb;
+        if(ctxVmm->f32) {
+            pus32 = (PUNICODE_STRING32)(pb + 8);
+            if(!(pus32->Length & 1) && (pus32->Length < 0x200) && VMM_KADDR32(pus32->Buffer)) {
+                pe->ExtInfo.cchName = pus32->Length;
+                pe->ExtInfo.vaName = pus32->Buffer;
+            }
+        } else {
+            pus64 = (PUNICODE_STRING64)(pb + 8);
+            if(!(pus64->Length & 1) && (pus64->Length < 0x200) && VMM_KADDR64(pus64->Buffer)) {
+                pe->ExtInfo.cchName = pus64->Length;
+                pe->ExtInfo.vaName = pus64->Buffer;
+            }
+        }
+    }
+    pe->iLevel = pe->pParent ? pe->pParent->iLevel + 1 : 0;
+    ObSet_Push(ctxInit->psObjectAll, (QWORD)pe);
+    return;
+fail:
+    LocalFree(pe);
+}
+
+/*
+* Process a single _OBJECT_DIRECTORY_ENTRY in the initial setup phase.
+*/
+VOID VmmWinObjMgr_Initialize_ProcessDirectoryObjectEntry(_Inout_ PVMM_WINOBJ_SETUP_CONTEXT ctxInit, _In_reads_(0x10) PBYTE pb, _In_ PVMM_WINOBJ_SETUP_OBJECT pe)
+{
+    QWORD vaNext, vaObject;
+    PVMM_WINOBJ_SETUP_OBJECT peNext;
+    if(ctxVmm->f32) {
+        vaNext = *(PDWORD)pb;           // _OBJECT_DIRECTORY_ENTRY.ChainLink
+        vaObject = *(PDWORD)(pb + 4);   // _OBJECT_DIRECTORY_ENTRY.Object
+        if(!VMM_KADDR32_4(vaObject) || (vaNext && !VMM_KADDR32_4(vaNext))) { goto fail; }
+    } else {
+        vaNext = *(PQWORD)pb;           // _OBJECT_DIRECTORY_ENTRY.ChainLink
+        vaObject = *(PQWORD)(pb + 8);   // _OBJECT_DIRECTORY_ENTRY.Object
+        if(!VMM_KADDR64_8(vaObject) || (vaNext && !VMM_KADDR64_8(vaNext))) { goto fail; }
+    }
+    if(!ObSet_Push(ctxInit->psvaAllObj, pe->va | 1)) { goto fail; }     // loop/duplicate protect
+    pe->va = vaObject;
+    ObSet_Push(ctxInit->psObj[0], (QWORD)pe);
+    if(vaNext && (peNext = LocalAlloc(LMEM_ZEROINIT, sizeof(VMM_WINOBJ_SETUP_OBJECT)))) {
+        peNext->va = vaNext;
+        peNext->pParent = pe->pParent;
+        ObSet_Push(ctxInit->psDirEntry[0], (QWORD)peNext);
+    }
+    return;
+fail:
+    LocalFree(pe);
+}
+
+_Success_(return)
+BOOL VmmWinObjMgr_Initialize_ObjectNameExtInfo(_In_ PVMM_PROCESS pSystemProcess, _Inout_ POB_STRMAP pStrMap, _Inout_ PVMM_MAP_OBJECTENTRY pe, _In_ PVMM_WINOBJ_SETUP_OBJECT pes, _In_ BOOL fForce)
+{
+    WCHAR wsz[0x201];
+    if(pes->ExtInfo.cchName == -1) { return TRUE; }
+    pe->ExtInfo.ft = pes->ExtInfo.ft;
+    if(pes->ExtInfo.vaName && VmmRead2(pSystemProcess, pes->ExtInfo.vaName, (PBYTE)wsz, min(0x400, pes->ExtInfo.cchName << 1), VMM_FLAG_FORCECACHE_READ)) {
+        wsz[min(0x200, pes->ExtInfo.cchName)] = 0;
+        ObStrMap_Push(pStrMap, wsz, &pe->ExtInfo.wsz, NULL);
+        pes->ExtInfo.cchName = -1;
+        return TRUE;
+    }
+    if(!pes->ExtInfo.vaName || fForce) {
+        ObStrMap_Push(pStrMap, NULL, &pe->ExtInfo.wsz, NULL);
+        pes->ExtInfo.cchName = -1;
+        return TRUE;
+    }
+    return FALSE;
+}
+
+/*
+* Fetch object name for a single object
+*/
+_Success_(return)
+BOOL VmmWinObjMgr_Initialize_ObjectName(_In_ PVMM_PROCESS pSystemProcess, _Inout_ POB_STRMAP pStrMap, _Inout_ PVMM_MAP_OBJECTENTRY pe, _In_ PVMM_WINOBJ_SETUP_OBJECT pes, _In_ BOOL fForce)
+{
+    WCHAR wsz[0x201];
+    if(pes->cchName == -1) { return TRUE; }
+    if(pes->vaName && VmmRead2(pSystemProcess, pes->vaName, (PBYTE)wsz, min(0x400, pes->cchName << 1), VMM_FLAG_FORCECACHE_READ)) {
+        wsz[min(0x200, pes->cchName)] = 0;
+        ObStrMap_Push(pStrMap, wsz, &pe->wszName, &pe->cchName);
+        pes->cchName = -1;
+        return TRUE;
+    }
+    if(!pes->vaName || fForce) {
+        ObStrMap_Push_swprintf_s(pStrMap, &pe->wszName, &pe->cchName, L"$OBJECT-%llX", pe->va);
+        pes->cchName = -1;
+        return TRUE;
+    }
+    return FALSE;
+}
+
+/*
+* Lookup and set object names and other string data.
+*/
+_Success_(return)
+BOOL VmmWinObjMgr_Initialize_ObMapLookupStr(_Inout_ PVMMOB_MAP_OBJECT pMap, _Inout_ PVMM_WINOBJ_SETUP_CONTEXT ctxInit)
+{
+    DWORD i;
+    PVMM_WINOBJ_SETUP_OBJECT pes;
+    PVMM_MAP_OBJECTENTRY pe;
+    POB_STRMAP pObStrMap = NULL;
+    if(!(pObStrMap = ObStrMap_New(OB_STRMAP_FLAGS_CASE_SENSITIVE))) { return FALSE; }
+    ObSet_Clear(ctxInit->psvaPrefetch);
+    for(i = 0; i < pMap->cMap; i++) {
+        pe = pMap->pMap + i;
+        pes = (PVMM_WINOBJ_SETUP_OBJECT)pe->_Reserved;
+        if(!VmmWinObjMgr_Initialize_ObjectName(ctxInit->pSystemProcess, pObStrMap, pe, pes, FALSE)) {
+            ObSet_Push_PageAlign(ctxInit->psvaPrefetch, pes->vaName, pes->cchName << 1);
+        }
+        if(!VmmWinObjMgr_Initialize_ObjectNameExtInfo(ctxInit->pSystemProcess, pObStrMap, pe, pes, FALSE)) {
+            ObSet_Push_PageAlign(ctxInit->psvaPrefetch, pes->ExtInfo.vaName, pes->ExtInfo.cchName << 1);
+        }
+    }
+    if(ObSet_Size(ctxInit->psvaPrefetch)) {
+        VmmCachePrefetchPages(ctxInit->pSystemProcess, ctxInit->psvaPrefetch, 0);
+        for(i = 0; i < pMap->cMap; i++) {
+            pe = pMap->pMap + i;
+            pes = (PVMM_WINOBJ_SETUP_OBJECT)pe->_Reserved;
+            VmmWinObjMgr_Initialize_ObjectName(ctxInit->pSystemProcess, pObStrMap, pe, pes, TRUE);
+            VmmWinObjMgr_Initialize_ObjectNameExtInfo(ctxInit->pSystemProcess, pObStrMap, pe, pes, TRUE);
+        }
+    }
+    if(!ObStrMap_Finalize_DECREF_NULL(&pObStrMap, &pMap->wszMultiText, &pMap->cbMultiText)) { return FALSE; }
+    if(pMap->cMap) { pMap->pMap[0].dwHash = Util_HashNameW_Registry(L"ROOT", 0); }
+    for(i = 1; i < pMap->cMap; i++) {
+        pe = pMap->pMap + i;
+        pe->dwHash = Util_HashNameW_Registry(pe->wszName, 0);
+    }
+    return TRUE;
+}
+
+int VmmWinObjMgr_Initialize_ObMapAlloc_qsort_all(const void *pqw1, const void *pqw2)
+{
+    PVMM_WINOBJ_SETUP_OBJECT p1 = *(PPVMM_WINOBJ_SETUP_OBJECT)pqw1;
+    PVMM_WINOBJ_SETUP_OBJECT p2 = *(PPVMM_WINOBJ_SETUP_OBJECT)pqw2;
+    if(!p1->pParent) { return -1; }
+    if(!p2->pParent) { return 1; }
+    int i = (int)(p1->pParent->dwIdDir - p2->pParent->dwIdDir);
+    return i ? i : (int)(p1->va - p2->va);
+}
+
+int VmmWinObjMgr_Initialize_ObMapAlloc_qsort_dir(const void *pqw1, const void *pqw2)
+{
+    PVMM_WINOBJ_SETUP_OBJECT p1 = *(PPVMM_WINOBJ_SETUP_OBJECT)pqw1;
+    PVMM_WINOBJ_SETUP_OBJECT p2 = *(PPVMM_WINOBJ_SETUP_OBJECT)pqw2;
+    int i = (int)(p1->iLevel - p2->iLevel);
+    return i ? i : (int)(p1->va - p2->va);
+}
+
+VOID VmmWinObjMgr_CallbackCleanup_ObObjectMap(PVMMOB_MAP_OBJECT pOb)
+{
+    LocalFree(pOb->wszMultiText);
+}
+
+/*
+* Allocate an object manager map, fill it with initial (non string) data and return it.
+* CALLER DECREF: return
+* -- return
+*/
+_Success_(return != NULL)
+PVMMOB_MAP_OBJECT VmmWinObjMgr_Initialize_ObMapAlloc(_Inout_ PVMM_WINOBJ_SETUP_CONTEXT ctxInit)
+{
+    DWORD i, cDir, cAll, cType[256] = { 0 }, iTypeSort;
+    PVMMOB_MAP_OBJECT pObMap = NULL;
+    POB_DATA pObData = NULL;
+    PVMM_MAP_OBJECTENTRY pe;
+    PVMM_WINOBJ_SETUP_OBJECT pes;
+    if(0 == (cAll = ObSet_Size(ctxInit->psObjectAll))) { return NULL; }
+    if(0 == (cDir = ObSet_Size(ctxInit->psObjectDir))) { return NULL; }
+    // 1: sort directories by level & va
+    if(!(pObData = ObSet_GetAll(ctxInit->psObjectDir))) { return NULL; }
+    qsort(pObData->pqw, cDir, sizeof(QWORD), VmmWinObjMgr_Initialize_ObMapAlloc_qsort_dir);
+    for(i = 0; i < cDir; i++) {
+        ((PVMM_WINOBJ_SETUP_OBJECT)pObData->pqw[i])->dwIdDir = i;
+    }
+    Ob_DECREF_NULL(&pObData);
+    // 2: sort all entries by parent-id & va
+    if(!(pObData = ObSet_GetAll(ctxInit->psObjectAll))) { return NULL; }
+    qsort(pObData->pqw, cAll, sizeof(QWORD), VmmWinObjMgr_Initialize_ObMapAlloc_qsort_all);
+    for(i = 0; i < cAll; i++) {
+        pes = (PVMM_WINOBJ_SETUP_OBJECT)pObData->pqw[i];
+        cType[pes->iType]++;
+        pes->dwId = i;
+    }
+    Ob_DECREF_NULL(&pObData);
+    // 3: alloc
+    pObMap = Ob_Alloc(OB_TAG_MAP_OBJECT, LMEM_ZEROINIT, sizeof(VMMOB_MAP_OBJECT) + cAll * (sizeof(VMM_MAP_OBJECTENTRY) + sizeof(DWORD)), VmmWinObjMgr_CallbackCleanup_ObObjectMap, NULL);
+    if(!pObMap) { return NULL; }
+    pObMap->cMap = cAll;
+    pObMap->piTypeSort = (PDWORD)((QWORD)pObMap + sizeof(VMMOB_MAP_OBJECT) + cAll * sizeof(VMM_MAP_OBJECTENTRY));
+    for(i = 1; i < ctxVmm->ObjectTypeTable.c; i++) {
+        pObMap->iTypeSortBase[i] = pObMap->iTypeSortBase[i-1] + cType[i-1];
+    }
+    // 4: populate
+    while((pes = (PVMM_WINOBJ_SETUP_OBJECT)ObSet_Pop(ctxInit->psObjectAll))) {
+        pe = pObMap->pMap + pes->dwId;
+        pe->va = pes->va;
+        pe->id = pes->dwId;
+        pe->pType = ctxVmm->ObjectTypeTable.h + pes->iType;
+        iTypeSort = pObMap->iTypeSortBase[pes->iType] + pObMap->cType[pes->iType]++;
+        pObMap->piTypeSort[iTypeSort] = pe->id;
+        if(pes->pParent) {
+            pe->pParent = pObMap->pMap + pes->pParent->dwId;
+            pe->pParent->cChild++;
+            pe->pNextByParent = pe->pParent->pChild;
+            pe->pParent->pChild = pe;
+        }
+        pe->_Reserved = pes;
+    }
+    return pObMap;
+}
+
+/*
+* Create an object manager map, in a single threaded context, and return it upon success.
+* CALLER DECREF: return
+* -- return
+*/
+_Success_(return != NULL)
+PVMMOB_MAP_OBJECT VmmWinObjMgr_Initialize_DoWork()
+{
+    BOOL fResult = FALSE;
+    DWORD c, i, cbHdr = ctxVmm->f32 ? 0x38 : 0x70;
+    QWORD vaRootDirectoryObject = 0;
+    PVMM_WINOBJ_SETUP_OBJECT pes;
+    VMM_WINOBJ_SETUP_CONTEXT ctxInit = { 0 };
+    BYTE pb[0x70];
+    PVMMOB_MAP_OBJECT pObObjectMap = NULL;
+    // 1: INIT
+    if(!VmmWin_ObjectTypeGet(3)) { goto fail; }     // ensure type table initialization
+    if(!(ctxInit.pSystemProcess = VmmProcessGet(4))) { goto fail; }
+    if(!PDB_GetSymbolPTR(PDB_HANDLE_KERNEL, "ObpRootDirectoryObject", ctxInit.pSystemProcess, &vaRootDirectoryObject)) { goto fail; }
+    if(!VMM_KADDR_8_16(vaRootDirectoryObject)) { goto fail; }
+    for(i = 0; i < 2; i++) {
+        if(!(ctxInit.psObj[i] = ObSet_New())) { goto fail; }
+        if(!(ctxInit.psDirEntry[i] = ObSet_New())) { goto fail; }
+    }
+    if(!(ctxInit.psObjectAll = ObSet_New())) { goto fail; }
+    if(!(ctxInit.psObjectDir = ObSet_New())) { goto fail; }
+    if(!(ctxInit.psvaAllObj = ObSet_New())) { goto fail; }
+    if(!(ctxInit.psvaPrefetch = ObSet_New())) { goto fail; }
+    if(!(pes = LocalAlloc(LMEM_ZEROINIT, sizeof(VMM_WINOBJ_SETUP_OBJECT)))) { goto fail; }
+    pes->va = vaRootDirectoryObject;
+    ObSet_Push(ctxInit.psObj[0], (QWORD)pes);
+    // 2: FETCH objects in an efficient way minimizing number of physical device accesses.
+    while(ObSet_Size(ctxInit.psObj[0]) || ObSet_Size(ctxInit.psDirEntry[0])) {
+        while(ObSet_Size(ctxInit.psObj[0]) || ObSet_Size(ctxInit.psDirEntry[0])) {
+            while((pes = (PVMM_WINOBJ_SETUP_OBJECT)ObSet_Pop(ctxInit.psObj[0]))) {
+                if(VmmRead2(ctxInit.pSystemProcess, pes->va - cbHdr, pb, cbHdr, VMM_FLAG_FORCECACHE_READ)) {
+                    VmmWinObjMgr_Initialize_ProcessObject(&ctxInit, pb, pes);
+                } else {
+                    ObSet_Push(ctxInit.psObj[1], (QWORD)pes);
+                }
+            }
+            while((pes = (PVMM_WINOBJ_SETUP_OBJECT)ObSet_Pop(ctxInit.psDirEntry[0]))) {
+                if(VmmRead2(ctxInit.pSystemProcess, pes->va, pb, 0x18, VMM_FLAG_FORCECACHE_READ)) {
+                    VmmWinObjMgr_Initialize_ProcessDirectoryObjectEntry(&ctxInit, pb, pes);
+                } else {
+                    ObSet_Push(ctxInit.psDirEntry[1], (QWORD)pes);
+                }
+            }
+        }
+        // OBJECT 2nd ATTEMPT:
+        if((c = ObSet_Size(ctxInit.psObj[1]))) {
+            ObSet_Clear(ctxInit.psvaPrefetch);
+            for(i = 0; i < c; i++) {
+                ObSet_Push_PageAlign(ctxInit.psvaPrefetch, ((PVMM_WINOBJ_SETUP_OBJECT)ObSet_Get(ctxInit.psObj[1], i))->va - cbHdr, cbHdr);
+            }
+            VmmCachePrefetchPages(ctxInit.pSystemProcess, ctxInit.psvaPrefetch, 0);
+            while((pes = (PVMM_WINOBJ_SETUP_OBJECT)ObSet_Pop(ctxInit.psObj[1]))) {
+                if(VmmRead2(ctxInit.pSystemProcess, pes->va - cbHdr, pb, cbHdr, VMM_FLAG_FORCECACHE_READ)) {
+                    VmmWinObjMgr_Initialize_ProcessObject(&ctxInit, pb, pes);
+                } else {
+                    LocalFree(pes);
+                }
+            }
+        }
+        // DIR ENTRY 2nd ATTEMPT:
+        if((c = ObSet_Size(ctxInit.psDirEntry[1]))) {
+            ObSet_Clear(ctxInit.psvaPrefetch);
+            for(i = 0; i < c; i++) {
+                ObSet_Push_PageAlign(ctxInit.psvaPrefetch, ((PVMM_WINOBJ_SETUP_OBJECT)ObSet_Get(ctxInit.psDirEntry[1], i))->va, 0x18);
+            }
+            VmmCachePrefetchPages(ctxInit.pSystemProcess, ctxInit.psvaPrefetch, 0);
+            while((pes = (PVMM_WINOBJ_SETUP_OBJECT)ObSet_Pop(ctxInit.psDirEntry[1]))) {
+                if(VmmRead2(ctxInit.pSystemProcess, pes->va, pb, 0x18, VMM_FLAG_FORCECACHE_READ)) {
+                    VmmWinObjMgr_Initialize_ProcessDirectoryObjectEntry(&ctxInit, pb, pes);
+                } else {
+                    LocalFree(pes);
+                }
+            }
+
+        }
+    }
+    // 3: ALLOC ObMap and populate with initial data
+    if(!(pObObjectMap = VmmWinObjMgr_Initialize_ObMapAlloc(&ctxInit))) { goto fail; }
+    // 4: STRING LOOKUP:
+    if(!VmmWinObjMgr_Initialize_ObMapLookupStr(pObObjectMap, &ctxInit)) { goto fail; }
+    Ob_INCREF(pObObjectMap);
+fail:
+    for(i = 0; i < 2; i++) {
+        Ob_DECREF(ctxInit.psObj[i]);
+        Ob_DECREF(ctxInit.psDirEntry[i]);
+    }
+    Ob_DECREF(ctxInit.psObjectAll);
+    Ob_DECREF(ctxInit.psObjectDir);
+    Ob_DECREF(ctxInit.psvaAllObj);
+    Ob_DECREF(ctxInit.psvaPrefetch);
+    Ob_DECREF(ctxInit.pSystemProcess);
+    if(pObObjectMap) {
+        for(i = 0; i < pObObjectMap->cMap; i++) {
+            LocalFree(pObObjectMap->pMap[i]._Reserved);
+            pObObjectMap->pMap[i]._Reserved = 0;
+        }
+    }
+    return Ob_DECREF(pObObjectMap);
+}
+
+
+
+//-----------------------------------------------------------------------------
+// WINDOWS OBJECT MANAGER: EXPORTED FUNCTIONALITY BELOW:
+//-----------------------------------------------------------------------------
+
+/*
+* Create an object manager map and assign to the global vmm context upon success.
+* CALLER DECREF: return
+* -- return
+*/
+PVMMOB_MAP_OBJECT VmmWinObjMgr_Initialize()
+{
+    PVMMOB_MAP_OBJECT pObObject = NULL;
+    if((pObObject = ObContainer_GetOb(ctxVmm->pObCMapObject))) { return pObObject; }
+    EnterCriticalSection(&ctxVmm->LockUpdateMap);
+    if((pObObject = ObContainer_GetOb(ctxVmm->pObCMapObject))) {
+        LeaveCriticalSection(&ctxVmm->LockUpdateMap);
+        return pObObject;
+    }
+    if(!(pObObject = VmmWinObjMgr_Initialize_DoWork())) {
+        pObObject = Ob_Alloc(OB_TAG_MAP_OBJECT, LMEM_ZEROINIT, sizeof(VMMOB_MAP_OBJECT), NULL, NULL);
+        if(pObObject) {
+            pObObject->wszMultiText = (LPWSTR)&pObObject->cbMultiText;   // NULL CHAR guaranteed.
+        }
+    }
+    ObContainer_SetOb(ctxVmm->pObCMapObject, pObObject);
+    LeaveCriticalSection(&ctxVmm->LockUpdateMap);
+    return pObObject;
+}
+
+
+
+//-----------------------------------------------------------------------------
+// WINDOWS OBJECT MANAGER: KERNEL DRIVER FUNCTIONALITY BELOW:
+//-----------------------------------------------------------------------------
+
+/*
+* Cleanup function to be called when reference count reaches zero.
+*/
+VOID VmmWinObjKDrv_ObCloseCallback(_In_ PVMMOB_MAP_KDRIVER pObKDriver)
+{
+    LocalFree(pObKDriver->wszMultiText);
+}
+
+/*
+* Worker function to initialize a new kernel driver map.
+* CALLER DECREF: return
+* -- return
+*/
+PVMMOB_MAP_KDRIVER VmmWinObjKDrv_Initialize_DoWork()
+{
+    BOOL f32 = ctxVmm->f32;
+    DWORD i, j, cDriver, iObMapDriverBase;
+    PVMM_PROCESS pObSystemProcess = NULL;
+    PVMMOB_MAP_KDRIVER pObMap = NULL;
+    PVMMOB_MAP_OBJECT pObObjMap = NULL;
+    PVMM_MAP_OBJECTENTRY peObj;
+    PVMM_MAP_KDRIVERENTRY pe;
+    POB_SET psObPrefetch = NULL;
+    POB_STRMAP psmObText = NULL;
+    BYTE pbBuffer[sizeof(DRIVER_OBJECT64)];
+    PDRIVER_OBJECT32 pD32 = (PDRIVER_OBJECT32)pbBuffer;
+    PDRIVER_OBJECT64 pD64 = (PDRIVER_OBJECT64)pbBuffer;
+    // 1: pre-init
+    if(!(pObSystemProcess = VmmProcessGet(4))) { goto fail; }
+    if(!(psObPrefetch = ObSet_New())) { goto fail; }
+    if(!(psmObText = ObStrMap_New(OB_STRMAP_FLAGS_CASE_SENSITIVE))) { goto fail; }
+    if(!VmmMap_GetObject(&pObObjMap)) { goto fail; }
+    // 2: alloc object
+    cDriver = pObObjMap->cType[ctxVmm->ObjectTypeTable.tpDriver];
+    pObMap = Ob_Alloc(OB_TAG_MAP_KDRIVER, LMEM_ZEROINIT, sizeof(VMMOB_MAP_KDRIVER) + cDriver * sizeof(VMM_MAP_KDRIVERENTRY), VmmWinObjKDrv_ObCloseCallback, NULL);
+    if(!pObMap) { goto fail; }
+    pObMap->cMap = cDriver;
+    // 3: get initial data from object map and prefetch
+    iObMapDriverBase = pObObjMap->iTypeSortBase[ctxVmm->ObjectTypeTable.tpDriver];
+    for(i = 0; i < cDriver; i++) {
+        pe = pObMap->pMap + i;
+        peObj = pObObjMap->pMap + pObObjMap->piTypeSort[iObMapDriverBase + i];
+        ObSet_Push_PageAlign(psObPrefetch, peObj->va, sizeof(DRIVER_OBJECT64));
+        ObStrMap_Push(psmObText, peObj->wszName, &pe->wszName, NULL);
+        pe->va = peObj->va;
+        pe->dwHash = peObj->dwHash;
+    }
+    VmmCachePrefetchPages(pObSystemProcess, psObPrefetch, 0);
+    ObSet_Clear(psObPrefetch);
+    // 4: fetch driver objects and populate
+    for(i = 0; i < cDriver; i++) {
+        pe = pObMap->pMap + i;
+        if(!VmmRead2(pObSystemProcess, pe->va, pbBuffer, (f32 ? sizeof(DRIVER_OBJECT32) : sizeof(DRIVER_OBJECT64)), VMM_FLAG_FORCECACHE_READ)) { continue; }
+        if(f32) {
+            if(VMM_KADDR32(pD32->DriverStart) && (pD32->DriverSize < 0x10000000)) {
+                pe->vaStart = pD32->DriverStart;
+                pe->cbDriverSize = pD32->DriverSize;
+            }
+            pe->vaDeviceObject = VMM_KADDR32_8(pD32->DeviceObject) ? pD32->DeviceObject : 0;
+            for(j = 0; j < 28; j++) {
+                pe->MajorFunction[j] = pD32->MajorFunction[j];
+            }
+            ObStrMap_Push_UnicodeObject(psmObText, TRUE, (QWORD)pD32->DriverExtension + 0x0c, &pe->wszServiceKeyName, NULL);
+            ObStrMap_Push_UnicodeBuffer(psmObText, pD32->DriverName.Length, pD32->DriverName.Buffer, &pe->wszPath, NULL);
+        } else {
+            if(VMM_KADDR64(pD64->DriverStart) && (pD64->DriverSize < 0x10000000)) {
+                pe->vaStart = pD64->DriverStart;
+                pe->cbDriverSize = pD64->DriverSize;
+            }
+            pe->vaDeviceObject = VMM_KADDR32_8(pD64->DeviceObject) ? pD64->DeviceObject : 0;
+            for(j = 0; j < 28; j++) {
+                pe->MajorFunction[j] = pD64->MajorFunction[j];
+            }
+            ObStrMap_Push_UnicodeObject(psmObText, FALSE, pD64->DriverExtension + 0x18, &pe->wszServiceKeyName, NULL);
+            ObStrMap_Push_UnicodeBuffer(psmObText, pD64->DriverName.Length, pD64->DriverName.Buffer, &pe->wszPath, NULL);
+        }
+    }
+    if(!ObStrMap_Finalize_DECREF_NULL(&psmObText, &pObMap->wszMultiText, &pObMap->cbMultiText)) { goto fail; }
+    for(i = 0; i < cDriver; i++) {
+        pe = pObMap->pMap + i;
+        if(!pe->wszName) { pe->wszName = pObMap->wszMultiText; }
+        if(!pe->wszPath) { pe->wszPath = pObMap->wszMultiText; }
+        if(!pe->wszServiceKeyName) { pe->wszServiceKeyName = pObMap->wszMultiText; }
+    }
+    Ob_INCREF(pObMap);
+fail:
+    Ob_DECREF(pObSystemProcess);
+    Ob_DECREF(psObPrefetch);
+    Ob_DECREF(psmObText);
+    Ob_DECREF(pObObjMap);
+    return Ob_DECREF(pObMap);
+}
+
+/*
+* Create an kernel driver map and assign to the global vmm context upon success.
+* CALLER DECREF: return
+* -- return
+*/
+PVMMOB_MAP_KDRIVER VmmWinObjKDrv_Initialize()
+{
+    PVMMOB_MAP_KDRIVER pObKDriver = NULL;
+    if((pObKDriver = ObContainer_GetOb(ctxVmm->pObCMapKDriver))) { return pObKDriver; }
+    EnterCriticalSection(&ctxVmm->LockUpdateMap);
+    if((pObKDriver = ObContainer_GetOb(ctxVmm->pObCMapKDriver))) {
+        LeaveCriticalSection(&ctxVmm->LockUpdateMap);
+        return pObKDriver;
+    }
+    if(!(pObKDriver = VmmWinObjKDrv_Initialize_DoWork())) {
+        pObKDriver = Ob_Alloc(OB_TAG_MAP_KDRIVER, LMEM_ZEROINIT, sizeof(VMMOB_MAP_KDRIVER), NULL, NULL);
+        if(pObKDriver) {
+            pObKDriver->wszMultiText = (LPWSTR)&pObKDriver->cbMultiText;   // NULL CHAR guaranteed.
+        }
+    }
+    ObContainer_SetOb(ctxVmm->pObCMapKDriver, pObKDriver);
+    LeaveCriticalSection(&ctxVmm->LockUpdateMap);
+    return pObKDriver;
+}
+
+
+
+//-----------------------------------------------------------------------------
+// WINDOWS OBJECT MANAGER: OBJECT DISPLAY FUNCTIONALITY BELOW:
+//-----------------------------------------------------------------------------
+
+#define VMMWINOBJDISPLAY_DEFAULT_OBJECT_MEMSIZE     0x400
+
+typedef struct tdOB_OBJECT_DISPLAY {
+    OB ObHdr;
+    QWORD va;
+    DWORD cbType;
+    DWORD cbObj;                // -1 = failed fetch
+    DWORD cbHdr;                // -1 = failed fetch
+    POB_COMPRESSED pdcObj;
+    POB_COMPRESSED pdcHdr;
+} OB_OBJECT_DISPLAY, *POB_OBJECT_DISPLAY;
+
+/*
+* Windows Object Display cleanup function to be called when reference count reaches zero.
+* -- pObCompressed
+*/
+VOID _VmmWinObjDisplay_ObCloseCallback(_In_ POB_OBJECT_DISPLAY pObObjectDisplay)
+{
+    Ob_DECREF(pObObjectDisplay->pdcObj);
+    Ob_DECREF(pObObjectDisplay->pdcHdr);
+}
+
+/*
+* Retrieve a display object representing object information normally displayed
+* in a object-subdirectory to a '$_INFO' directory.
+* CALLER DECREF: *ppObjectDisplay
+* -- szTypeName
+* -- vaObject
+* -- fDataObj
+* -- fDataHdr
+* -- ppObjectDisplay = ptr to receive POB_OBJECT_DISPLAY on success.
+* -- return
+*/
+_Success_(return)
+BOOL VmmWinObjDisplay_Get(_In_ LPSTR szTypeName, _In_ QWORD vaObject, _In_ BOOL fDataObj, _In_ BOOL fDataHdr, _Out_ POB_OBJECT_DISPLAY *ppObObjectDisplay)
+{
+    LPSTR szData = NULL;
+    BOOL fResult = FALSE;
+    POB_OBJECT_DISPLAY pOb = NULL;
+    AcquireSRWLockExclusive(&ctxVmm->LockSRW.WinObjDisplay);
+    // 1: fetch existing object from cache
+    if(!ctxVmm->pObCacheMapWinObjDisplay) {
+        if(!(ctxVmm->pObCacheMapWinObjDisplay = ObCacheMap_New(0x10000, NULL, OB_CACHEMAP_FLAGS_OBJECT_OB))) { goto fail; }
+    }
+    if(!(pOb = ObCacheMap_GetByKey(ctxVmm->pObCacheMapWinObjDisplay, vaObject))) {
+        if(!(pOb = Ob_Alloc(OB_TAG_OBJ_DISPLAY, LMEM_ZEROINIT, sizeof(OB_OBJECT_DISPLAY), _VmmWinObjDisplay_ObCloseCallback, NULL))) { goto fail; }
+        pOb->va = vaObject;
+        ObCacheMap_Push(ctxVmm->pObCacheMapWinObjDisplay, vaObject, pOb, 0);
+    }
+    if((pOb->cbObj == -1) || (pOb->cbHdr == -1)) { goto fail; }
+    // 2: fetch object data (if required)
+    if(!pOb->cbObj || (fDataObj && !pOb->pdcObj)) {
+        if(!PDB_DisplayTypeNt(szTypeName, 1, vaObject, TRUE, FALSE, (fDataObj ? &szData : NULL), &pOb->cbObj, &pOb->cbType)) { goto fail; }
+        if(szData) {
+            pOb->pdcObj = ObCompressed_NewFromByte(szData, pOb->cbObj);
+            szData = LocalFree(szData);
+            if(!pOb->pdcObj) { goto fail; }
+        }
+    }
+    // 2: fetch header data (if required)
+    if(!pOb->cbHdr || (fDataHdr && !pOb->pdcHdr)) {
+        if(!PDB_DisplayTypeNt(szTypeName, 1, vaObject, TRUE, TRUE, (fDataHdr ? &szData : NULL), &pOb->cbHdr, NULL)) { goto fail; }
+        if(szData) {
+            pOb->pdcHdr = ObCompressed_NewFromByte(szData, pOb->cbHdr);
+            szData = LocalFree(szData);
+            if(!pOb->pdcHdr) { goto fail; }
+        }
+    }
+    *ppObObjectDisplay = pOb;
+    ReleaseSRWLockExclusive(&ctxVmm->LockSRW.WinObjDisplay);
+    return TRUE;
+fail:
+    if(pOb) {
+        pOb->cbObj = -1;
+        pOb->cbHdr = -1;
+    }
+    Ob_DECREF(pOb);
+    ReleaseSRWLockExclusive(&ctxVmm->LockSRW.WinObjDisplay);
+    return FALSE;
+}
+
+/*
+* Vfs Read: helper function to read object files in an object information dir.
+* -- wszPathFile
+* -- iTypeIndex = the object type index in the ObjectTypeTable
+* -- vaObject
+* -- pb
+* -- cb
+* -- pcbRead
+* -- cbOffset
+* -- return
+*/
+NTSTATUS VmmWinObjDisplay_VfsRead(_In_ LPWSTR wszPathFile, _In_opt_ DWORD iTypeIndex, _In_ QWORD vaObject, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+{
+    NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
+    POB_OBJECT_DISPLAY pObObjDisp = NULL;
+    PVMMWIN_OBJECT_TYPE ptp = NULL;
+    if(Util_StrEndsWithW(wszPathFile, L"obj-address.txt", TRUE)) {
+        if(ctxVmm->f32) {
+            return Util_VfsReadFile_FromDWORD((DWORD)vaObject, pb, cb, pcbRead, cbOffset, FALSE);
+        } else {
+            return Util_VfsReadFile_FromQWORD(vaObject, pb, cb, pcbRead, cbOffset, FALSE);
+        }
+    }
+    ptp = VmmWin_ObjectTypeGet((BYTE)iTypeIndex);
+    if(ptp && Util_StrEndsWithW(wszPathFile, L"obj-type.txt", TRUE)) {
+        return Util_VfsReadFile_FromTextWtoU8(ptp->wsz, pb, cb, pcbRead, cbOffset);
+    }
+    if(Util_StrEndsWithW(wszPathFile, L"obj-data.mem", TRUE)) {
+        if(ptp && ptp->szType && VmmWinObjDisplay_Get(ptp->szType, vaObject, FALSE, FALSE, &pObObjDisp)) {
+            nt = Util_VfsReadFile_FromMEM(PVMM_PROCESS_SYSTEM, pObObjDisp->va, pObObjDisp->cbType, VMM_FLAG_ZEROPAD_ON_FAIL, pb, cb, pcbRead, cbOffset);
+            Ob_DECREF(pObObjDisp);
+            return nt;
+        }
+        return Util_VfsReadFile_FromMEM(PVMM_PROCESS_SYSTEM, vaObject, VMMWINOBJDISPLAY_DEFAULT_OBJECT_MEMSIZE, VMM_FLAG_ZEROPAD_ON_FAIL, pb, cb, pcbRead, cbOffset);
+    }
+    if(Util_StrEndsWithW(wszPathFile, L"obj-data.txt", TRUE) && ptp && ptp->szType && VmmWinObjDisplay_Get(ptp->szType, vaObject, TRUE, FALSE, &pObObjDisp)) {
+        nt = Util_VfsReadFile_FromObCompressedStrA(pObObjDisp->pdcObj, pb, cb, pcbRead, cbOffset);
+        Ob_DECREF(pObObjDisp);
+        return nt;
+    }
+    if(Util_StrEndsWithW(wszPathFile, L"obj-header.txt", TRUE) && ptp && ptp->szType && VmmWinObjDisplay_Get(ptp->szType, vaObject, FALSE, TRUE, &pObObjDisp)) {
+        nt = Util_VfsReadFile_FromObCompressedStrA(pObObjDisp->pdcHdr, pb, cb, pcbRead, cbOffset);
+        Ob_DECREF(pObObjDisp);
+        return nt;
+    }
+    return nt;
+}
+
+
+/*
+* Vfs List: helper function to list object files in an object information dir.
+* -- iTypeIndex = the object type index in the ObjectTypeTable
+* -- vaObject
+* -- pFileList
+*/
+VOID VmmWinObjDisplay_VfsList(_In_opt_ DWORD iTypeIndex, _In_ QWORD vaObject, _Inout_ PHANDLE pFileList)
+{
+    PVMMWIN_OBJECT_TYPE ptp = NULL;
+    POB_OBJECT_DISPLAY pObObjDisp = NULL;
+    ptp = VmmWin_ObjectTypeGet((BYTE)iTypeIndex);
+    if(ptp && ptp->szType && VmmWinObjDisplay_Get(ptp->szType, vaObject, FALSE, FALSE, &pObObjDisp)) {
+        VMMDLL_VfsList_AddFile(pFileList, L"obj-header.txt", pObObjDisp->cbHdr - 1, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"obj-data.txt", pObObjDisp->cbObj - 1, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"obj-data.mem", pObObjDisp->cbType, NULL);
+    } else {
+        VMMDLL_VfsList_AddFile(pFileList, L"obj-data.mem", VMMWINOBJDISPLAY_DEFAULT_OBJECT_MEMSIZE, NULL);
+    }
+    if(ptp) {
+        VMMDLL_VfsList_AddFile(pFileList, L"obj-type.txt", wcslen(ptp->wsz), NULL);
+    }
+    VMMDLL_VfsList_AddFile(pFileList, L"obj-address.txt", ctxVmm->f32 ? 8 : 16, NULL);
+    Ob_DECREF(pObObjDisp);
 }

@@ -1,7 +1,7 @@
-// m_sysinfo_syscall.c : implementation related to the SysInfo/Syscall built-in module.
+// m_sys_syscall.c : implementation related to the Sys/Syscall built-in module.
 //
-// The SysInfo/Syscall module is responsible for displaying the Windows syscall table
-// a.k.a. the System Service Dispatch Table.
+// The '/sys/syscall' module is responsible for displaying the Windows syscall table
+// a.k.a. the System Service Dispatch Table (SSDT).
 //
 // (c) Ulf Frisk, 2020-2021
 // Author: Ulf Frisk, pcileech@frizk.net
@@ -27,14 +27,15 @@ typedef struct tdKSERVICE_DESCRIPTOR_TABLE64 {
 
 typedef struct tdMSYSCALL_CONTEXT {
     BOOL fInit;
+    QWORD vaKeServiceDescriptorTable;
     QWORD vaKeServiceDescriptorTableShadow;
     union {
         BYTE pbServiceDescriptorTable[1];
-        KSERVICE_DESCRIPTOR_TABLE32 ServiceDescriptorTable32[2];
-        KSERVICE_DESCRIPTOR_TABLE64 ServiceDescriptorTable64[2];
+        // [0] = TableNt, [1] = TableNtShadow, [2] = TableWin32kShadow
+        KSERVICE_DESCRIPTOR_TABLE32 ServiceDescriptorTable32[3];
+        KSERVICE_DESCRIPTOR_TABLE64 ServiceDescriptorTable64[3];
     };
-    DWORD cb[2];
-    PBYTE pb[2];
+    POB_COMPRESSED pCompressedData[3];
 } MSYSCALL_CONTEXT, *PMSYSCALL_CONTEXT;
 
 /*
@@ -63,9 +64,9 @@ VOID MSyscall_Initialize_BuildText(PMSYSCALL_CONTEXT ctxM, PVMM_PROCESS pProcess
 {
     BOOL f, f32 = ctxVmm->f32;
     DWORD i, c, dwSymbolDisplacement, oBuffer = 0, cbBuffer;
-    PBYTE pbBuffer;
-    QWORD va, vaServiceTableBase;
+    PBYTE pbBuffer = NULL;
     PDWORD pdwTable = NULL;
+    QWORD va, vaServiceTableBase;
     CHAR szSymbolName[MAX_PATH];
     c = f32 ? ctxM->ServiceDescriptorTable32[iTable].NumberOfServices : (DWORD)ctxM->ServiceDescriptorTable64[iTable].NumberOfServices;
     vaServiceTableBase = f32 ? ctxM->ServiceDescriptorTable32[iTable].ServiceTableBase : ctxM->ServiceDescriptorTable64[iTable].ServiceTableBase;
@@ -80,12 +81,12 @@ VOID MSyscall_Initialize_BuildText(PMSYSCALL_CONTEXT ctxM, PVMM_PROCESS pProcess
             PDB_GetSymbolFromOffset(hPDB, (DWORD)(va - vaBase), szSymbolName, &dwSymbolDisplacement) &&
             (dwSymbolDisplacement == 0);
         oBuffer += f ?
-            snprintf(pbBuffer + oBuffer, cbBuffer - oBuffer, "%04x %08x +%06x %llx %s %s\n", (i + 0x1000 * iTable), pdwTable[i], (DWORD)(va - vaBase), va, (iTable ? "win32k" : "nt    "), szSymbolName) :
-            snprintf(pbBuffer + oBuffer, cbBuffer - oBuffer, "%04x %08x +%06x %*llx %s %s\n", (i + 0x1000 * iTable), pdwTable[i], 0, (f32 ? 8 : 16), va, (iTable ? "win32k" : "nt    "), "---");
+            snprintf(pbBuffer + oBuffer, cbBuffer - oBuffer, "%04x %08x +%06x %llx %s %s\n", (i + 0x1000 * iTable), pdwTable[i], (DWORD)(va - vaBase), va, (iTable == 2 ? "win32k" : "nt    "), szSymbolName) :
+            snprintf(pbBuffer + oBuffer, cbBuffer - oBuffer, "%04x %08x +%06x %*llx %s %s\n", (i + 0x1000 * iTable), pdwTable[i], 0, (f32 ? 8 : 16), va, (iTable == 2 ? "win32k" : "nt    "), "---");
     }
-    ctxM->pb[iTable] = LocalReAlloc(pbBuffer, oBuffer, 0);
-    ctxM->cb[iTable] = oBuffer;
+    ctxM->pCompressedData[iTable] = ObCompressed_NewFromByte(pbBuffer, oBuffer);
 fail:
+    LocalFree(pbBuffer);
     LocalFree(pdwTable);
 }
 
@@ -99,13 +100,16 @@ VOID MSyscall_Initialize(PMSYSCALL_CONTEXT ctxM)
     PE_CODEVIEW_INFO CVInfoWin32k = { 0 };
     PVMM_PROCESS pObProcessFakeCsrss = NULL, pObSystemProcess = NULL;
     if(!(pObSystemProcess = VmmProcessGet(4))) { goto fail; }
-    // retrieve nt!KeServiceDescriptorTableShadow
+    // retrieve nt!KeServiceDescriptorTable & nt!KeServiceDescriptorTableShadow
+    if(!PDB_GetSymbolAddress(PDB_HANDLE_KERNEL, "KeServiceDescriptorTable", &ctxM->vaKeServiceDescriptorTable)) { goto fail; }
     if(!PDB_GetSymbolAddress(PDB_HANDLE_KERNEL, "KeServiceDescriptorTableShadow", &ctxM->vaKeServiceDescriptorTableShadow)) { goto fail; }
+    if(!VMM_KADDR_8_16(ctxM->vaKeServiceDescriptorTable)) { goto fail; }
     if(!VMM_KADDR_8_16(ctxM->vaKeServiceDescriptorTableShadow)) { goto fail; }
-    cbRead = 2 * (f32 ? sizeof(KSERVICE_DESCRIPTOR_TABLE32) : sizeof(KSERVICE_DESCRIPTOR_TABLE64));
-    if(!VmmRead(pObSystemProcess, ctxM->vaKeServiceDescriptorTableShadow, ctxM->pbServiceDescriptorTable, cbRead)) { goto fail; }
-    // validate nt!KeServiceDescriptorTableShadow
-    for(i = 0; i < 2; i++) {
+    cbRead = (f32 ? sizeof(KSERVICE_DESCRIPTOR_TABLE32) : sizeof(KSERVICE_DESCRIPTOR_TABLE64));
+    if(!VmmRead(pObSystemProcess, ctxM->vaKeServiceDescriptorTable, ctxM->pbServiceDescriptorTable, cbRead)) { goto fail; }                     // Table
+    if(!VmmRead(pObSystemProcess, ctxM->vaKeServiceDescriptorTableShadow, ctxM->pbServiceDescriptorTable + cbRead, 2 * cbRead)) { goto fail; }  // TableShadow
+    // validate nt!KeServiceDescriptorTable / nt!KeServiceDescriptorTableShadow
+    for(i = 0; i < 3; i++) {
         if(f32) {
             f = VMM_KADDR32_4(ctxM->ServiceDescriptorTable32[i].ServiceTableBase) &&
                 (ctxM->ServiceDescriptorTable32[i].ServiceCounterTableBase == 0) &&
@@ -125,14 +129,13 @@ VOID MSyscall_Initialize(PMSYSCALL_CONTEXT ctxM)
     // fetch win32k infos
     if(!(pObProcessFakeCsrss = MSyscall_GetProcessCsrssFake())) { goto fail_win32k; }
     if(!VmmMap_GetModuleEntryEx(pObSystemProcess, 0, L"win32k.sys", &pObModuleMap, &peModuleWin32k)) { goto fail_win32k; }
-    //if(!PE_GetCodeViewInfo(pObProcessFakeCsrss, peModuleWin32k->vaBase, NULL, &CVInfoWin32k)) { goto fail_win32k; }
-    //if(!(hPdbWin32k = PDB_AddModuleEntry(peModuleWin32k->vaBase, peModuleWin32k->cbImageSize, "win32k.sys", CVInfoWin32k.CodeView.PdbFileName, CVInfoWin32k.CodeView.Guid, CVInfoWin32k.CodeView.Age))) { goto fail_win32k; }
     if(!(hPdbWin32k = PDB_GetHandleFromModuleAddress(pObProcessFakeCsrss, peModuleWin32k->vaBase))) { goto fail_win32k; }
     // build text files in-memory (win32k)
-    MSyscall_Initialize_BuildText(ctxM, pObProcessFakeCsrss, 1, hPdbWin32k, peModuleWin32k->vaBase);
+    MSyscall_Initialize_BuildText(ctxM, pObProcessFakeCsrss, 2, hPdbWin32k, peModuleWin32k->vaBase);
 fail_win32k:
     // build text files in-memory (nt)
     MSyscall_Initialize_BuildText(ctxM, pObSystemProcess, 0, PDB_HANDLE_KERNEL, ctxVmm->kernel.vaBase);
+    MSyscall_Initialize_BuildText(ctxM, pObSystemProcess, 1, PDB_HANDLE_KERNEL, ctxVmm->kernel.vaBase);
 fail:
     Ob_DECREF(pObModuleMap);
     Ob_DECREF(pObSystemProcess);
@@ -157,10 +160,13 @@ NTSTATUS MSyscall_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pc
 {
     PMSYSCALL_CONTEXT ctxM = MSyscall_GetContext(ctxP);
     if(!_wcsicmp(ctxP->wszPath, L"syscall_nt.txt")) {
-        return Util_VfsReadFile_FromPBYTE(ctxM->pb[0], ctxM->cb[0], pb, cb, pcbRead, cbOffset);
+        return Util_VfsReadFile_FromObCompressed(ctxM->pCompressedData[0], pb, cb, pcbRead, cbOffset);
+    }
+    if(!_wcsicmp(ctxP->wszPath, L"syscall_nt_shadow.txt")) {
+        return Util_VfsReadFile_FromObCompressed(ctxM->pCompressedData[1], pb, cb, pcbRead, cbOffset);
     }
     if(!_wcsicmp(ctxP->wszPath, L"syscall_win32k.txt")) {
-        return Util_VfsReadFile_FromPBYTE(ctxM->pb[1], ctxM->cb[1], pb, cb, pcbRead, cbOffset);
+        return Util_VfsReadFile_FromObCompressed(ctxM->pCompressedData[2], pb, cb, pcbRead, cbOffset);
     }
     return VMMDLL_STATUS_FILE_INVALID;
 }
@@ -169,28 +175,30 @@ BOOL MSyscall_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList)
 {
     PMSYSCALL_CONTEXT ctxM = MSyscall_GetContext(ctxP);
     if(ctxP->wszPath[0]) { return FALSE; }
-    VMMDLL_VfsList_AddFile(pFileList, L"syscall_nt.txt", ctxM->cb[0], NULL);
-    VMMDLL_VfsList_AddFile(pFileList, L"syscall_win32k.txt", ctxM->cb[1], NULL);
+    VMMDLL_VfsList_AddFile(pFileList, L"syscall_nt.txt", ObCompress_Size(ctxM->pCompressedData[0]), NULL);
+    VMMDLL_VfsList_AddFile(pFileList, L"syscall_nt_shadow.txt", ObCompress_Size(ctxM->pCompressedData[1]), NULL);
+    VMMDLL_VfsList_AddFile(pFileList, L"syscall_win32k.txt", ObCompress_Size(ctxM->pCompressedData[2]), NULL);
     return TRUE;
 }
 
 VOID MSyscall_Close(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
 {
     PMSYSCALL_CONTEXT ctxM = (PMSYSCALL_CONTEXT)ctxP->ctxM;
-    LocalFree(ctxM->pb[0]);
-    LocalFree(ctxM->pb[1]);
+    Ob_DECREF(ctxM->pCompressedData[0]);
+    Ob_DECREF(ctxM->pCompressedData[1]);
+    Ob_DECREF(ctxM->pCompressedData[2]);
     LocalFree(ctxM);
 }
 
-VOID M_SysInfoSyscall_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
+VOID M_SysSyscall_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if((pRI->tpSystem != VMM_SYSTEM_WINDOWS_X64) && (pRI->tpSystem != VMM_SYSTEM_WINDOWS_X86)) { return; }
     if(!(pRI->reg_info.ctxM = LocalAlloc(LMEM_ZEROINIT, sizeof(MSYSCALL_CONTEXT)))) { return; }     // internal module context
-    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\sysinfo\\syscall");        // module name
-    pRI->reg_info.fRootModule = TRUE;                                       // module shows in root directory
-    pRI->reg_fn.pfnList = MSyscall_List;                                    // List function supported
-    pRI->reg_fn.pfnRead = MSyscall_Read;                                    // Read function supported
-    pRI->reg_fn.pfnClose = MSyscall_Close;                                  // Close function supported
+    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\sys\\syscall");    // module name
+    pRI->reg_info.fRootModule = TRUE;                               // module shows in root directory
+    pRI->reg_fn.pfnList = MSyscall_List;                            // List function supported
+    pRI->reg_fn.pfnRead = MSyscall_Read;                            // Read function supported
+    pRI->reg_fn.pfnClose = MSyscall_Close;                          // Close function supported
     pRI->pfnPluginManager_Register(pRI);
 }

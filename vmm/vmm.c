@@ -840,6 +840,36 @@ BOOL VmmMap_GetUser(_Out_ PVMMOB_MAP_USER *ppObUserMap)
 }
 
 /*
+* Retrieve the OBJECT MANAGER map
+* CALLER DECREF: ppObObjectMap
+* -- ppObObjectMap
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetObject(_Out_ PVMMOB_MAP_OBJECT *ppObObjectMap)
+{
+    if(!(*ppObObjectMap = ObContainer_GetOb(ctxVmm->pObCMapObject))) {
+        *ppObObjectMap = VmmWinObjMgr_Initialize();
+    }
+    return *ppObObjectMap != NULL;
+}
+
+/*
+* Retrieve the KERNEL DRIVER map
+* CALLER DECREF: ppObKDriverMap
+* -- ppObKDriverMap
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetKDriver(_Out_ PVMMOB_MAP_KDRIVER *ppObKDriverMap)
+{
+    if(!(*ppObKDriverMap = ObContainer_GetOb(ctxVmm->pObCMapKDriver))) {
+        *ppObKDriverMap = VmmWinObjKDrv_Initialize();
+    }
+    return *ppObKDriverMap != NULL;
+}
+
+/*
 * Retrieve the NETWORK CONNECTION map
 * CALLER DECREF: ppObNetMap
 * -- ppObNetMap
@@ -1705,7 +1735,7 @@ VOID VmmReadScatterPhysical(_Inout_ PPMEM_SCATTER ppMEMsPhys, _In_ DWORD cpMEMsP
         }
     }
     // 2: speculative future read if negligible performance loss
-    if(fCache && cSpeculative && (cSpeculative < 0x18)) {
+    if(fCache && cSpeculative && (cSpeculative < 0x18) && !(flags & VMMDLL_FLAG_NO_PREDICTIVE_READ)) {
         for(i = 0; i < cpMEMsPhys; i++) {
             pMEM = ppMEMsPhys[i];
             if(1 != MEM_SCATTER_STACK_PEEK(pMEM, 1)) {
@@ -1926,11 +1956,14 @@ VOID VmmClose()
     Ob_DECREF_NULL(&ctxVmm->pObCMapEvil);
     Ob_DECREF_NULL(&ctxVmm->pObCMapUser);
     Ob_DECREF_NULL(&ctxVmm->pObCMapNet);
+    Ob_DECREF_NULL(&ctxVmm->pObCMapObject);
+    Ob_DECREF_NULL(&ctxVmm->pObCMapKDriver);
     Ob_DECREF_NULL(&ctxVmm->pObCMapService);
     Ob_DECREF_NULL(&ctxVmm->pObCCachePrefetchEPROCESS);
     Ob_DECREF_NULL(&ctxVmm->pObCCachePrefetchRegistry);
     Ob_DECREF_NULL(&ctxVmm->pObCacheMapEAT);
     Ob_DECREF_NULL(&ctxVmm->pObCacheMapIAT);
+    Ob_DECREF_NULL(&ctxVmm->pObCacheMapWinObjDisplay);
     DeleteCriticalSection(&ctxVmm->LockMaster);
     DeleteCriticalSection(&ctxVmm->LockPlugin);
     DeleteCriticalSection(&ctxVmm->LockUpdateMap);
@@ -2217,6 +2250,8 @@ BOOL VmmInitialize()
     ctxVmm->pObCMapEvil = ObContainer_New();
     ctxVmm->pObCMapUser = ObContainer_New();
     ctxVmm->pObCMapNet = ObContainer_New();
+    ctxVmm->pObCMapObject = ObContainer_New();
+    ctxVmm->pObCMapKDriver = ObContainer_New();
     ctxVmm->pObCMapService = ObContainer_New();
     ctxVmm->pObCCachePrefetchEPROCESS = ObContainer_New();
     ctxVmm->pObCCachePrefetchRegistry = ObContainer_New();

@@ -259,6 +259,7 @@ VOID VmmEvil_ProcessScan_Modules(_In_ PVMM_PROCESS pProcess, _Inout_ POB_MAP pmE
     DWORD i;
     PVMM_MAP_MODULEENTRY pe;
     PVMMOB_MAP_MODULE pObModuleMap = NULL;
+    if((pProcess->dwPPID == 4) && !memcmp("MemCompression", pProcess->szName, 15)) { return; }
     if(!VmmMap_GetModule(pProcess, &pObModuleMap)) { return; }
     for(i = 0; i < pObModuleMap->cMap; i++) {
         if(pObModuleMap->pMap[i].tp == VMM_MODULE_TP_NORMAL) {
@@ -268,6 +269,9 @@ VOID VmmEvil_ProcessScan_Modules(_In_ PVMM_PROCESS pProcess, _Inout_ POB_MAP pmE
     }
     if(fBadLdr) {
         VmmEvil_AddEvil_NoVadReq(pmEvil, pProcess, VMM_EVIL_TP_BAD_PEB_LDR, pProcess->win.vaPEB32 ? pProcess->win.vaPEB32 : pProcess->win.vaPEB, 0, 0, FALSE);
+    }
+    if(pProcess->win.EPROCESS.fNoLink) {
+        VmmEvil_AddEvil_NoVadReq(pmEvil, pProcess, VMM_EVIL_TP_PROC_NOLINK, pProcess->win.EPROCESS.va, 0, 0, FALSE);
     }
     for(i = 0; i < pObModuleMap->cMap; i++) {
         pe = pObModuleMap->pMap + i;

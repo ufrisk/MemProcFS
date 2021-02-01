@@ -216,6 +216,14 @@ v1.1-v2.10
   * Time: process-time, boot-time, current-time, timezone.
   * Python Light Plugins: print('file system plugins as easy as Python print!')
   * Registry Parsing: usb-storage, bluetooth, wallpapers and more in 'py/reg' & 'py/by-user/reg'.
-
-Latest:
-* Better os detection (symbol fallback).
+  
+[v3.8](https://github.com/ufrisk/MemProcFS/releases/tag/v3.8)
+* Updates & Improvements:
+  * Rename 'sysinfo' directory to 'sys'.
+  * Better os detection (symbol fallback).
+  * Handles: additional object info.
+  * Info header in most info-files (enabled by default - possible to disable).
+New Features:
+  * Windows Kernel Object Manager Objects.
+  * Additional kernel driver information.
+  * Detailed Object and Object Header Info.

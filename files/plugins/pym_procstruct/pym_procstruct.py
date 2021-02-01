@@ -58,7 +58,7 @@ def ReadEPROCESS_Binary(pid, file_path, file_name, file_attr, bytes_length, byte
 def ReadEPROCESS_Hexdump(pid, file_path, file_name, file_attr, bytes_length, bytes_offset):
     # Read the binary data required for the EPROCESS struct by calling the
     # function ReadEPROCESS_Binary which already does this very conveniently.
-    memory_data = ReadEPROCESS_Binary(pid, file_name, file_attr, bytes_length, bytes_offset)
+    memory_data = ReadEPROCESS_Binary(pid, file_path, file_name, file_attr, bytes_length, bytes_offset)
     # Translate the binary data into hexascii memory dump format by calling
     # the VmmPy_UtilFillHexAscii function.
     hexdump_string = VmmPy_UtilFillHexAscii(memory_data)
@@ -106,7 +106,7 @@ def ReadPEB_Hexdump(pid, file_path, file_name, file_attr, bytes_length, bytes_of
     # Read hexascii data from the PEB page. This is a compact version of the
     # Read function. Please see ReadEPROCESS_Hexdump for a detailed description
     #
-    memory_data = ReadPEB_Binary(pid, file_name, file_attr, bytes_length, bytes_offset)
+    memory_data = ReadPEB_Binary(pid, file_path, file_name, file_attr, bytes_length, bytes_offset)
     hexdump_string = VmmPy_UtilFillHexAscii(memory_data)
     return bytes(hexdump_string, 'ascii')[bytes_offset:bytes_length+bytes_offset]
 

@@ -1,4 +1,4 @@
-// vfsproc.c : implementation of functions related to operating system and process parsing of virtual memory.
+// vmmproc.c : implementation of functions related to operating system and process parsing of virtual memory.
 //
 // (c) Ulf Frisk, 2018-2021
 // Author: Ulf Frisk, pcileech@frizk.net
@@ -65,7 +65,7 @@ BOOL VmmProc_RefreshProcesses(_In_ BOOL fRefreshTotal)
             vmmprintf_fn("FAIL - SYSTEM PROCESS NOT FOUND - SHOULD NOT HAPPEN\n");
             return FALSE;
         }
-        result = VmmWinProcess_Enumerate(pObProcessSystem, fRefreshTotal);
+        result = VmmWinProcess_Enumerate(pObProcessSystem, fRefreshTotal, NULL);
         Ob_DECREF(pObProcessSystem);
     }
     return TRUE;

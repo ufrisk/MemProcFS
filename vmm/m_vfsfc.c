@@ -41,8 +41,11 @@ LPCSTR szMFC_README =
 NTSTATUS M_VfsFc_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     BYTE btp;
-    if(!wcscmp(ctx->wszPath, L"readme.txt")) {
+    if(!_wcsicmp(ctx->wszPath, L"readme.txt")) {
         return Util_VfsReadFile_FromPBYTE((PBYTE)szMFC_README, strlen(szMFC_README), pb, cb, pcbRead, cbOffset);
+    }
+    if(!_wcsicmp(ctx->wszPath, L"progress_percent.txt")) {
+        return Util_VfsReadFile_FromNumber(ctxFc ? ctxFc->cProgressPercent : 0, pb, cb, pcbRead, cbOffset);
     }
     if(!_wcsicmp(ctx->wszPath, L"forensic_enable.txt")) {
         btp = '0' + (ctxFc ? (BYTE)ctxFc->db.tp : 0);
@@ -72,6 +75,10 @@ NTSTATUS M_VfsFc_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBYTE pb,
 
 BOOL M_VfsFc_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 {
+    QWORD qwProgress;
+    qwProgress = ctxFc ? ctxFc->cProgressPercent : 0;
+    qwProgress = (qwProgress == 100) ? 3 : ((qwProgress >= 10) ? 2 : 1);
+    VMMDLL_VfsList_AddFile(pFileList, L"progress_percent.txt", qwProgress, NULL);
     VMMDLL_VfsList_AddFile(pFileList, L"forensic_enable.txt", 1, NULL);
     VMMDLL_VfsList_AddFile(pFileList, L"database.txt", ctxFc ? wcslen_u8(ctxFc->db.wszDatabaseWinPath) : 0, NULL);
     VMMDLL_VfsList_AddFile(pFileList, L"readme.txt", strlen(szMFC_README), NULL);

@@ -1,6 +1,6 @@
-// vmmwinobj.h : declarations of functionality related to Windows objects.
+// vmmwinobj.h : declarations of functionality related to windows object manager.
 //
-// (c) Ulf Frisk, 2020-2021
+// (c) Ulf Frisk, 2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -69,6 +69,13 @@ typedef struct tdOB_VMMWINOBJ_FILE {
 VOID VmmWinObj_Initialize();
 
 /*
+* Create an object manager map and assign to the global vmm context upon success.
+* CALLER DECREF: return
+* -- return
+*/
+PVMMOB_MAP_OBJECT VmmWinObjMgr_Initialize();
+
+/*
 * Refresh the Object sub-system.
 */
 VOID VmmWinObj_Refresh();
@@ -95,7 +102,7 @@ POB_VMMWINOBJ_OBJECT VmmWinObj_Get(_In_ QWORD va);
 * -- return
 */
 _Success_(return)
-BOOL VmmWinObjFile_GetByProcess(_In_ PVMM_PROCESS pProcess, _Out_ POB_MAP *ppmObFiles, _In_ BOOL fHandles);
+BOOL VmmWinObjFile_GetByProcess(_In_ PVMM_PROCESS pProcess, _Out_ POB_MAP * ppmObFiles, _In_ BOOL fHandles);
 
 /*
 * Read a contigious amount of file data and report the number of bytes read.
@@ -109,5 +116,39 @@ BOOL VmmWinObjFile_GetByProcess(_In_ PVMM_PROCESS pProcess, _Out_ POB_MAP *ppmOb
 _Success_(return != 0)
 DWORD VmmWinObjFile_Read(_In_ POB_VMMWINOBJ_FILE pFile, _In_ QWORD cbOffset, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb, _In_ QWORD fVmmRead);
 
+/*
+* Create an object manager map and assign to the global vmm context upon success.
+* CALLER DECREF: return
+* -- return
+*/
+PVMMOB_MAP_OBJECT VmmWinObjMgr_Initialize();
+
+/*
+* Create an kernel driver map and assign to the global vmm context upon success.
+* CALLER DECREF: return
+* -- return
+*/
+PVMMOB_MAP_KDRIVER VmmWinObjKDrv_Initialize();
+
+/*
+* Vfs Read: helper function to read object files in an object information dir.
+* -- wszPathFile
+* -- iTypeIndex = the object type index in the ObjectTypeTable
+* -- vaObject
+* -- pb
+* -- cb
+* -- pcbRead
+* -- cbOffset
+* -- return
+*/
+NTSTATUS VmmWinObjDisplay_VfsRead(_In_ LPWSTR wszPathFile, _In_opt_ DWORD iTypeIndex, _In_ QWORD vaObject, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
+
+/*
+* Vfs List: helper function to list object files in an object information dir.
+* -- iTypeIndex = the object type index in the ObjectTypeTable
+* -- vaObject
+* -- pFileList
+*/
+VOID VmmWinObjDisplay_VfsList(_In_opt_ DWORD iTypeIndex, _In_ QWORD vaObject, _Inout_ PHANDLE pFileList);
 
 #endif /* __VMMWINOBJ_H__ */

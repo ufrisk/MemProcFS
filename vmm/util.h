@@ -133,10 +133,10 @@ DWORD Util_PathFileNameFixW(_Out_writes_(MAX_PATH) LPWSTR wszOut, _In_ LPCWSTR w
 DWORD Util_PathFileNameFix_Registry(_Out_writes_(MAX_PATH) LPWSTR wszOut, _In_opt_ LPCSTR sz, _In_opt_ LPCWSTR wsz, _In_opt_ DWORD cwsz, _In_opt_ DWORD iSuffix, _In_ BOOL fUpper);
 
 /*
-* Return the sub-string after the first '\' character in the sz NULL terminated
-* string. If no '\' is found the empty NULL terminated string is returned. The
-* returned value must not be free'd and is only valid as long as the wsz param-
-* eter is valid.
+* Return the sub-string after the first backslash character in the sz NULL terminated
+* string. If no backslash is found the empty NULL terminated string is returned.
+* The returned value must not be free'd and is only valid as long as the wsz
+* parameter is valid.
 * -- wsz
 * -- return
 */
@@ -217,7 +217,7 @@ int Util_wcsstrncmp(_In_ LPSTR sz, _In_ LPWSTR wsz, _In_opt_ DWORD cMax);
 */
 _Success_(return >= 0)
 size_t Util_snwprintf_u8(
-    _Out_writes_(cbBuffer) LPSTR szBuffer,
+    _Out_writes_z_(cbBuffer) LPSTR szBuffer,
     _In_ QWORD cbBuffer,
     _In_z_ _Printf_format_string_ LPWSTR wszFormat,
     ...
@@ -235,7 +235,7 @@ size_t Util_snwprintf_u8(
 */
 _Success_(return >= 0)
 DWORD Util_snwprintf_u8ln(
-    _Out_writes_(cszLineLength + 1) LPSTR szBuffer,
+    _Out_writes_z_(cszLineLength + 1) LPSTR szBuffer,
     _In_ QWORD cszLineLength,
     _In_z_ _Printf_format_string_ LPWSTR wszFormat,
     ...
@@ -337,6 +337,10 @@ inline PVOID Util_qfind(_In_ PVOID pvFind, _In_ DWORD cMap, _In_ PVOID pvMap, _I
 */
 NTSTATUS Util_VfsReadFile_FromZERO(_In_ QWORD cbFile, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsReadFile_FromPBYTE(_In_opt_ PBYTE pbFile, _In_ QWORD cbFile, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
+NTSTATUS Util_VfsReadFile_FromMEM(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD vaMEM, _In_ QWORD cbMEM, _In_ QWORD flags, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
+NTSTATUS Util_VfsReadFile_FromObData(_In_opt_ POB_DATA pData, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
+NTSTATUS Util_VfsReadFile_FromObCompressed(_In_opt_ POB_COMPRESSED pdc, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
+NTSTATUS Util_VfsReadFile_FromObCompressedStrA(_In_opt_ POB_COMPRESSED pdc, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsReadFile_FromTextWtoU8(_In_opt_ LPWSTR wszValue, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsReadFile_FromNumber(_In_ QWORD qwValue, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsReadFile_FromQWORD(_In_ QWORD qwValue, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset, _In_ BOOL fPrefix);
@@ -360,5 +364,55 @@ VOID Util_VfsTimeStampFile(_In_opt_ PVMM_PROCESS pProcess, _Out_ PVMMDLL_VFS_FIL
 */
 _Success_(return)
 BOOL Util_VfsHelper_GetIdDir(_In_ LPWSTR wszPath, _Out_ PDWORD pdwID, _Out_ LPWSTR *pwszSubPath);
+
+#define UTIL_VFSLINEFIXED_LINECOUNT(c)            (c + (ctxMain->cfg.fFileInfoHeader ? 2ULL : 0ULL))
+
+/*
+* FixedLineRead: Callback function to populate a fixed-length line in a
+* dynamically created file. Line data should be written in utf-8 with the
+* function: Util_snwprintf_u8ln(). Line data MUST ALWAYS be written!
+* -- ctx = optional context.
+* -- cbLineLength = line length including newline, excluding null terminator.
+* -- ie = line index.
+* -- pe = the single entry to process.
+* -- szu8 = utf-8 string to write line data into.
+*/
+typedef VOID(*UTIL_VFSLINEFIXED_PFN_CALLBACK)(
+    _Inout_opt_ PVOID ctx,
+    _In_ DWORD cbLineLength,
+    _In_ DWORD ie,
+    _In_ PVOID pe,
+    _Out_writes_(cbLineLength + 1) LPSTR szu8
+    );
+
+/*
+* FixedLineRead: Read from a file dynamically created from a map/array object
+* using a callback function to populate individual lines (excluding header).
+* -- pfnCallback = callback function to populate individual lines.
+* -- ctx = optional context to 'pfn' callback function.
+* -- cbLineLength = line length, including newline, excluding null terminator.
+* -- wszHeader = optional header line.
+* -- pMap = an array of entries (usually 'pMap' in a map).
+* -- cMap = number of pMap entries.
+* -- cbEntry = byte length of each entry.
+* -- pb
+* -- cb
+* -- pcbRead
+* -- cbOffset
+* -- return
+*/
+NTSTATUS Util_VfsLineFixed_Read(
+    _In_ UTIL_VFSLINEFIXED_PFN_CALLBACK pfnCallback,
+    _Inout_opt_ PVOID ctx,
+    _In_ DWORD cbLineLength,
+    _In_opt_ LPWSTR wszHeader,
+    _In_ PVOID pMap,
+    _In_ DWORD cMap,
+    _In_ DWORD cbEntry,
+    _Out_writes_to_(cb, *pcbRead) PBYTE pb,
+    _In_ DWORD cb,
+    _Out_ PDWORD pcbRead,
+    _In_ QWORD cbOffset
+);
 
 #endif /* __UTIL_H__ */

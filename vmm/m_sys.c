@@ -1,7 +1,7 @@
-// m_sysinfo.c : implementation related to the SysInfo built-in module.
+// m_sys.c : implementation related to the Sys built-in module.
 //
-// The SysInfo module is responsible for displaying various informational files
-// at the path /sysinfo/
+// The '/sys' module is responsible for displaying various informational files
+// at the path '/sys/'
 //
 // (c) Ulf Frisk, 2019-2021
 // Author: Ulf Frisk, pcileech@frizk.net
@@ -13,7 +13,7 @@
 #include "sysquery.h"
 #include "util.h"
 
-NTSTATUS MSysInfo_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MSys_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     DWORD cbBuffer;
     int iTimeZoneActiveBias = 0;
@@ -60,7 +60,7 @@ NTSTATUS MSysInfo_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcb
     return VMMDLL_STATUS_FILE_INVALID;
 }
 
-BOOL MSysInfo_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
+BOOL MSys_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 {
     DWORD cchMajor, cchMinor, cchBuild;
     if(ctx->wszPath[0]) { return FALSE; }
@@ -78,13 +78,13 @@ BOOL MSysInfo_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
     return TRUE;
 }
 
-VOID M_SysInfo_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
+VOID M_Sys_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if((pRI->tpSystem != VMM_SYSTEM_WINDOWS_X64) && (pRI->tpSystem != VMM_SYSTEM_WINDOWS_X86)) { return; }
-    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\sysinfo");     // module name
-    pRI->reg_info.fRootModule = TRUE;                           // module shows in root directory
-    pRI->reg_fn.pfnList = MSysInfo_List;                        // List function supported
-    pRI->reg_fn.pfnRead = MSysInfo_Read;                        // Read function supported
+    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\sys");     // module name
+    pRI->reg_info.fRootModule = TRUE;                       // module shows in root directory
+    pRI->reg_fn.pfnList = MSys_List;                        // List function supported
+    pRI->reg_fn.pfnRead = MSys_Read;                        // Read function supported
     pRI->pfnPluginManager_Register(pRI);
 }

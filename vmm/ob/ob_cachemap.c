@@ -117,6 +117,8 @@ PVOID _ObCacheMap_GetByKey(_In_ POB_CACHEMAP pcm, _In_ QWORD qwKey)
     if(pcm->AgeListHead != pe) {
         pe->FLink->BLink = pe->BLink;
         pe->BLink->FLink = pe->FLink;
+        pe->BLink = pcm->AgeListHead->BLink;
+        pe->FLink = pcm->AgeListHead;
         pcm->AgeListHead->BLink->FLink = pe;
         pcm->AgeListHead->BLink = pe;
         pcm->AgeListHead = pe;
@@ -244,7 +246,7 @@ POB_CACHEMAP ObCacheMap_New(_In_ DWORD cMaxEntries, _In_opt_ BOOL(*pfnValidEntry
     pObCacheMap->pfnValidEntry = pfnValidEntry;
     pObCacheMap->fObjectsOb = (flags & OB_CACHEMAP_FLAGS_OBJECT_OB) ? TRUE : FALSE;
     pObCacheMap->fObjectsLocalFree = (flags & OB_CACHEMAP_FLAGS_OBJECT_LOCALFREE) ? TRUE : FALSE;
-    pObCacheMap->pm = ObMap_New(0);
+    pObCacheMap->pm = ObMap_New(OB_MAP_FLAGS_OBJECT_VOID);
     if(!pObCacheMap->pm) {
         Ob_DECREF(pObCacheMap);
         return NULL;

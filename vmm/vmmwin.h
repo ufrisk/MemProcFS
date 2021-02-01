@@ -94,14 +94,32 @@ _Success_(return != NULL)
 PVMMWIN_OBJECT_TYPE VmmWin_ObjectTypeGet(_In_ BYTE iObjectType);
 
 /*
+* _OBJECT_HEADER.TypeIndex is encoded on Windows 10 - this function decodes it.
+* https://medium.com/@ashabdalhalim/e8f907e7073a
+* -- vaObjectHeader
+* -- iTypeIndexTableEncoded
+* -- return
+*/
+BYTE VmmWin_ObjectTypeGetIndexFromEncoded(_In_ QWORD vaObjectHeader, _In_ BYTE iTypeIndexTableEncoded);
+
+/*
 * Try walk the EPROCESS list in the Windows kernel to enumerate processes into
 * the VMM/PROC file system.
 * NB! This may be done to refresh an existing PID cache hence migration code.
-* -- fTotalRefresh = create completely new process entries (instead of updating).
 * -- pSystemProcess
+* -- fTotalRefresh = create completely new process entries (instead of updating).
+* -- psvaNoLinkEPROCESS = optional set of no-link EPROCESS virtual addresses.
 * -- return
 */
-BOOL VmmWinProcess_Enumerate(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fRefreshTotal);
+BOOL VmmWinProcess_Enumerate(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fRefreshTotal, _In_opt_ POB_SET psvaNoLinkEPROCESS);
+
+/*
+* Locate EPROCESS objects not linked by the EPROCESS list.
+* This is achieved by analyzing the object table for the SYSTEM process.
+* CALLER DECREF: return
+* -- return = Set of vaEPROCESS if no-link addresses exist. NULL otherwise.
+*/
+POB_SET VmmWinProcess_Enumerate_FindNoLinkProcesses();
 
 /*
 * Walk a windows linked list in an efficient way that minimize IO requests to

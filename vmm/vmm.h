@@ -122,6 +122,53 @@ typedef enum tdVMM_PTE_TP {
     VMM_PTE_TP_PAGEFILE = 6,
 } VMM_PTE_TP, *PVMM_PTE_TP;
 
+// OBJECT TYPE table exists on Win7+ It's initialized on first use and it will
+// exist throughout the lifetime of vmm context. Call function:
+// VmmWin_ObjectTypeGet() to retrieve the type for a specific object type.
+// OBJECT TYPE description table is dependant on PDB symbol functionality.
+typedef struct tdVMMWIN_OBJECT_TYPE {
+    DWORD cb;       // optional type size
+    DWORD cwsz;
+    DWORD iType;
+    LPWSTR wsz;
+    LPSTR szType;   // optional type name
+} VMMWIN_OBJECT_TYPE, *PVMMWIN_OBJECT_TYPE;
+
+typedef struct tdVMMWIN_OBJECT_TYPE_TABLE {
+    BOOL fInitialized;
+    BOOL fInitializedFailed;
+    BYTE bObjectHeaderCookie;
+    DWORD cbMultiText;
+    LPWSTR wszMultiText;
+    DWORD c;
+    VMMWIN_OBJECT_TYPE h[256];
+    union {
+        BYTE _tpAll[0];
+        struct {
+            BYTE tpAlpcPort;
+            BYTE tpDevice;
+            BYTE tpDirectory;
+            BYTE tpDriver;
+            BYTE tpEvent;
+            BYTE tpFile;
+            BYTE tpJob;
+            BYTE tpKey;
+            BYTE tpMutant;
+            BYTE tpProcess;
+            BYTE tpSection;
+            BYTE tpSemaphore;
+            BYTE tpSession;
+            BYTE tpSymbolicLink;
+            BYTE tpThread;
+            BYTE tpTimer;
+            BYTE tpToken;
+            BYTE tpType;
+        };
+    };
+} VMMWIN_OBJECT_TYPE_TABLE, *PVMMWIN_OBJECT_TYPE_TABLE;
+
+// "MAP" OBJECTS AND ENTRIES BELOW:
+
 typedef struct tdVMM_MAP_PTEENTRY {
     QWORD vaBase;
     QWORD cPages;
@@ -338,6 +385,38 @@ typedef struct tdVMM_MAP_HANDLEENTRY {
     };
 } VMM_MAP_HANDLEENTRY, *PVMM_MAP_HANDLEENTRY;
 
+typedef struct tdVMM_MAP_OBJECTENTRY {
+    QWORD va;
+    DWORD id;
+    DWORD cChild;
+    DWORD dwHash;
+    PVMMWIN_OBJECT_TYPE pType;
+    struct tdVMM_MAP_OBJECTENTRY *pParent;
+    struct tdVMM_MAP_OBJECTENTRY *pChild;
+    struct tdVMM_MAP_OBJECTENTRY *pNextByParent;
+    DWORD cchName;
+    LPWSTR wszName;
+    // type dependent extra fields
+    struct {
+        LPWSTR wsz;
+        QWORD ft;
+    } ExtInfo;
+    PVOID _Reserved;
+} VMM_MAP_OBJECTENTRY, *PVMM_MAP_OBJECTENTRY;
+
+typedef struct tdVMM_MAP_KDRIVERENTRY {
+    QWORD va;
+    DWORD dwHash;
+    DWORD _Reserved;
+    QWORD vaStart;
+    QWORD cbDriverSize;
+    QWORD vaDeviceObject;
+    LPWSTR wszName;
+    LPWSTR wszPath;
+    LPWSTR wszServiceKeyName;
+    QWORD MajorFunction[28];
+} VMM_MAP_KDRIVERENTRY, *PVMM_MAP_KDRIVERENTRY;
+
 typedef struct tdVMM_MAP_NETENTRY {
     DWORD dwPID;
     DWORD dwState;
@@ -400,18 +479,20 @@ typedef struct tdVMM_MAP_SERVICEENTRY {
 typedef enum tdVMM_EVIL_TP {            // EVIL types - sorted by "evilness"
     VMM_EVIL_TP_PE_NA           = 0,    // _NA
     VMM_EVIL_TP_PE_INJECTED     = 1,    // MODULE
-    VMM_EVIL_TP_BAD_PEB_LDR     = 2,    // _NA
-    VMM_EVIL_TP_PE_NOTLINKED    = 3,    // MODULE
-    VMM_EVIL_TP_VAD_PATCHED_PE  = 4,    // VADEX
-    VMM_EVIL_TP_VAD_PRIVATE_RWX = 5,    // VADEX
-    VMM_EVIL_TP_VAD_NOIMAGE_RWX = 6,    // VADEX
-    VMM_EVIL_TP_VAD_PRIVATE_RX  = 7,    // VADEX
-    VMM_EVIL_TP_VAD_NOIMAGE_RX  = 8,    // VADEX
+    VMM_EVIL_TP_PROC_NOLINK     = 2,    // _NA
+    VMM_EVIL_TP_BAD_PEB_LDR     = 3,    // _NA
+    VMM_EVIL_TP_PE_NOTLINKED    = 4,    // MODULE
+    VMM_EVIL_TP_VAD_PATCHED_PE  = 5,    // VADEX
+    VMM_EVIL_TP_VAD_PRIVATE_RWX = 6,    // VADEX
+    VMM_EVIL_TP_VAD_NOIMAGE_RWX = 7,    // VADEX
+    VMM_EVIL_TP_VAD_PRIVATE_RX  = 8,    // VADEX
+    VMM_EVIL_TP_VAD_NOIMAGE_RX  = 9,    // VADEX
 } VMM_EVIL_TP;
 
 static LPCSTR VMM_EVIL_TP_STRING[] = {
     "UNKNOWN    ",
     "PE_INJECT  ",
+    "PROC_NOLINK",
     "BAD_PEB_LDR",
     "PE_NOLINK  ",
     "PE_PATCHED ",
@@ -525,6 +606,25 @@ typedef struct tdVMMOB_MAP_HANDLE {
     DWORD cMap;                     // # map entries.
     VMM_MAP_HANDLEENTRY pMap[];     // map entries.
 } VMMOB_MAP_HANDLE, *PVMMOB_MAP_HANDLE;
+
+typedef struct tdVMMOB_MAP_OBJECT {
+    OB ObHdr;
+    DWORD cType[256];
+    DWORD iTypeSortBase[256];
+    PDWORD piTypeSort;              // ptr to array of per-type sorted indexes into pMap
+    LPWSTR wszMultiText;            // multi-wstr
+    DWORD cbMultiText;
+    DWORD cMap;                     // # map entries.
+    VMM_MAP_OBJECTENTRY pMap[];     // map entries.
+} VMMOB_MAP_OBJECT, *PVMMOB_MAP_OBJECT;
+
+typedef struct tdVMMOB_MAP_KDRIVER {
+    OB ObHdr;
+    LPWSTR wszMultiText;            // multi-wstr
+    DWORD cbMultiText;
+    DWORD cMap;                     // # map entries.
+    VMM_MAP_KDRIVERENTRY pMap[];    // map entries.
+} VMMOB_MAP_KDRIVER, *PVMMOB_MAP_KDRIVER;
 
 typedef struct tdVMMOB_MAP_NET {
     OB ObHdr;
@@ -653,6 +753,7 @@ typedef struct tdVMM_PROCESS {
         BOOL fWow64;
         struct {
             QWORD va;
+            BOOL fNoLink;
             DWORD cb;
             BYTE pb[0xa00];
         } EPROCESS;
@@ -678,7 +779,7 @@ typedef struct tdVMM_PROCESS {
     struct tdVMM_PROCESS *pObProcessCloneParent;    // only set in cloned processes
 } VMM_PROCESS, *PVMM_PROCESS;
 
-#define PVMM_PROCESS_SYSTEM         ((PVMM_PROCESS)-2)      // SYSTEM PROCESS (PID 4) - ONLY VALID WITH VmmRead*/VmmWrite*/VmmCachePrefetch* functions!
+#define PVMM_PROCESS_SYSTEM         ((PVMM_PROCESS)-4)      // SYSTEM PROCESS (PID 4) - ONLY VALID WITH VmmRead*/VmmWrite*/VmmCachePrefetch* functions!
 
 typedef struct tdVMMOB_PROCESS_TABLE {
     OB ObHdr;
@@ -771,6 +872,7 @@ typedef struct tdVmmConfig {
     BOOL fDisableSymbolServerOnStartup;
     BOOL fWaitInitialize;
     BOOL fUserInteract;
+    BOOL fFileInfoHeader;
     // strings below
     CHAR szPythonPath[MAX_PATH];
     CHAR szPageFile[10][MAX_PATH];
@@ -923,6 +1025,13 @@ typedef struct tdVMM_OFFSET {
     VMM_OFFSET_EPROCESS EPROCESS;
     VMM_OFFSET_ETHREAD ETHREAD;
     VMM_OFFSET_FILE FILE;
+    struct { WORD cb; } _OBJECT_HEADER_CREATOR_INFO;
+    struct { WORD cb; } _OBJECT_HEADER_NAME_INFO;
+    struct { WORD cb; } _OBJECT_HEADER_HANDLE_INFO;
+    struct { WORD cb; } _OBJECT_HEADER_QUOTA_INFO;
+    struct { WORD cb; } _OBJECT_HEADER_PROCESS_INFO;
+    struct { WORD cb; } _OBJECT_HEADER_AUDIT_INFO;
+    struct { WORD cb; } _POOL_HEADER;
 } VMM_OFFSET, *PVMM_OFFSET;
 
 typedef struct tdVMMWINOBJ_CONTEXT          *PVMMWINOBJ_CONTEXT;
@@ -935,6 +1044,7 @@ typedef struct tdVMMWIN_OPTIONAL_KERNEL_CONTEXT {
     QWORD vaPsLoadedModuleListExp;
     QWORD vaMmUnloadedDrivers;
     QWORD vaMmLastUnloadedDriver;
+    QWORD vaIopInvalidDeviceRequest;
     struct {
         QWORD va;
         // encrypted kdbg info below (x64 win8+)
@@ -973,26 +1083,6 @@ typedef struct tdVMM_DYNAMIC_LOAD_FUNCTIONS {
     // NB! null checks are required before use!
     VMMFN_RtlDecompressBuffer *RtlDecompressBuffer;     // ntdll.dll!RtlDecompressBuffer
 } VMM_DYNAMIC_LOAD_FUNCTIONS;
-
-// OBJECT TYPE table exists on Win7+ It's initialized on first use and it will
-// exist throughout the lifetime of vmm context. Call function:
-// VmmWin_ObjectTypeGet() to retrieve the type for a specific object type.
-// OBJECT TYPE description table is dependant on PDB symbol functionality.
-typedef struct tdVMMWIN_OBJECT_TYPE {
-    DWORD cwsz;
-    DWORD _Reserved2;
-    LPWSTR wsz;
-} VMMWIN_OBJECT_TYPE, *PVMMWIN_OBJECT_TYPE;
-
-typedef struct tdVMMWIN_OBJECT_TYPE_TABLE {
-    BOOL fInitialized;
-    BOOL fInitializedFailed;
-    BYTE bObjectHeaderCookie;
-    DWORD cbMultiText;
-    LPWSTR wszMultiText;
-    DWORD c;
-    VMMWIN_OBJECT_TYPE h[256];
-} VMMWIN_OBJECT_TYPE_TABLE, *PVMMWIN_OBJECT_TYPE_TABLE;
 
 typedef struct tdVMM_CONTEXT {
     HMODULE hModuleVmm;             // do not call FreeLibrary on hModuleVmm
@@ -1051,15 +1141,21 @@ typedef struct tdVMM_CONTEXT {
     } PluginManager;
     CRITICAL_SECTION LockUpdateMap;     // lock for global maps - such as MapUser
     CRITICAL_SECTION LockUpdateModule;  // lock for internal modules
+    struct {                            // lightweight SRW locks
+        SRWLOCK WinObjDisplay;
+    } LockSRW;
     POB_CONTAINER pObCMapPhysMem;
     POB_CONTAINER pObCMapEvil;
     POB_CONTAINER pObCMapUser;
     POB_CONTAINER pObCMapNet;
+    POB_CONTAINER pObCMapObject;
+    POB_CONTAINER pObCMapKDriver;
     POB_CONTAINER pObCMapService;
     POB_CONTAINER pObCCachePrefetchEPROCESS;
     POB_CONTAINER pObCCachePrefetchRegistry;
     POB_CACHEMAP pObCacheMapEAT;
     POB_CACHEMAP pObCacheMapIAT;
+    POB_CACHEMAP pObCacheMapWinObjDisplay;
     // page caches
     struct {
         VMM_CACHE_TABLE PHYS;
@@ -1578,6 +1674,24 @@ BOOL VmmMap_GetHandle(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_HANDLE *ppObH
 */
 _Success_(return)
 BOOL VmmMap_GetEvil(_In_opt_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_EVIL *ppObEvilMap);
+
+/*
+* Retrieve the OBJECT MANAGER map
+* CALLER DECREF: ppObObjectMap
+* -- ppObObjectMap
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetObject(_Out_ PVMMOB_MAP_OBJECT *ppObObjectMap);
+
+/*
+* Retrieve the KERNEL DRIVER map
+* CALLER DECREF: ppObKDriverMap
+* -- ppObKDriverMap
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetKDriver(_Out_ PVMMOB_MAP_KDRIVER *ppObKDriverMap);
 
 /*
 * Retrieve the NETWORK CONNECTION map

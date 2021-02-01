@@ -12,6 +12,7 @@ typedef unsigned __int64                QWORD, *PQWORD;
 #define OB_HEADER_MAGIC                 0x0c0efefe
 
 #define OB_TAG_CORE_CONTAINER           'ObCo'
+#define OB_TAG_CORE_COMPRESSED          'ObCp'
 #define OB_TAG_CORE_DATA                'ObDa'
 #define OB_TAG_CORE_SET                 'ObSe'
 #define OB_TAG_CORE_MAP                 'ObMa'
@@ -26,6 +27,8 @@ typedef unsigned __int64                QWORD, *PQWORD;
 #define OB_TAG_MAP_IAT                  'Miat'
 #define OB_TAG_MAP_THREAD               'Mthr'
 #define OB_TAG_MAP_HANDLE               'Mhnd'
+#define OB_TAG_MAP_OBJECT               'Mobj'
+#define OB_TAG_MAP_KDRIVER              'Mdrv'
 #define OB_TAG_MAP_PHYSMEM              'Mmem'
 #define OB_TAG_MAP_USER                 'Musr'
 #define OB_TAG_MAP_SERVICE              'Msvc'
@@ -35,6 +38,7 @@ typedef unsigned __int64                QWORD, *PQWORD;
 #define OB_TAG_MOD_MINIDUMP_CTX         'mMDx'
 #define OB_TAG_OBJ_ERROR                'Oerr'
 #define OB_TAG_OBJ_FILE                 'Ofil'
+#define OB_TAG_OBJ_DISPLAY              'Odis'
 #define OB_TAG_PDB_ENTRY                'PdbE'
 #define OB_TAG_PFN_CONTEXT              'PfnC'
 #define OB_TAG_PFN_PROC_TABLE           'PfnT'
@@ -141,10 +145,23 @@ typedef struct tdOB_DATA {
     OB ObHdr;
     union {
         BYTE pb[];
+        CHAR sz[];
         DWORD pdw[];
         QWORD pqw[];
     };
 } OB_DATA, *POB_DATA;
+
+/*
+* Create a new object manager data object in which the ObHdr->cbData is equal
+* to the number of bytes in the data buffer supplied to this function.
+* May also be created with Ob_Alloc with size: sizeof(OB_HDR) + length of data.
+* CALLER DECREF: return
+* -- pb
+* -- cb
+* -- return
+*/
+_Success_(return != NULL)
+POB_DATA ObData_New(_In_ PBYTE pb, _In_ DWORD cb);
 
 
 
@@ -374,6 +391,7 @@ POB_DATA ObSet_GetAll(_In_opt_ POB_SET pvs);
 
 typedef struct tdOB_MAP *POB_MAP;
 
+#define OB_MAP_FLAGS_OBJECT_VOID        0x00
 #define OB_MAP_FLAGS_OBJECT_OB          0x01
 #define OB_MAP_FLAGS_OBJECT_LOCALFREE   0x02
 #define OB_MAP_FLAGS_NOKEY              0x04
@@ -611,6 +629,7 @@ DWORD ObMap_RemoveByFilter(_In_opt_ POB_MAP pm, _In_opt_ BOOL(*pfnFilter)(_In_ Q
 
 typedef struct tdOB_CACHEMAP *POB_CACHEMAP;
 
+#define OB_CACHEMAP_FLAGS_OBJECT_VOID        0x00
 #define OB_CACHEMAP_FLAGS_OBJECT_OB          0x01
 #define OB_CACHEMAP_FLAGS_OBJECT_LOCALFREE   0x02
 
@@ -764,6 +783,32 @@ _Success_(return)
 BOOL ObStrMap_Push_swprintf_s(_In_opt_ POB_STRMAP psm, _Out_opt_ LPWSTR *pwszDst, _Out_opt_ PDWORD pcchDst, _In_z_ _Printf_format_string_ wchar_t const *const wszFormat, ...);
 
 /*
+* Push a UNICODE_OBJECT Pointer for delayed resolve at finalize stage.
+* NB! Incompatible with: OB_STRMAP_FLAGS_STR_ASSIGN_TEMPORARY create flag.
+* -- psm
+* -- f32 = 32-bit/64-bit unicode object.
+* -- vaUnicodeObject
+* -- pwszDst
+* -- pcchDst
+* -- return = TRUE on initial validation success (NB! no guarantee for success).
+*/
+_Success_(return)
+BOOL ObStrMap_Push_UnicodeObject(_In_opt_ POB_STRMAP psm, _In_ BOOL f32, _In_ QWORD vaUnicodeObject, _Out_opt_ LPWSTR *pwszDst, _Out_opt_ PDWORD pcchDst);
+
+/*
+* Push a UNICODE_OBJECT Buffer for delayed resolve at finalize stage.
+* NB! Incompatible with: OB_STRMAP_FLAGS_STR_ASSIGN_TEMPORARY create flag.
+* -- psm
+* -- cbUnicodeBuffer.
+* -- vaUnicodeBuffer
+* -- pwszDst
+* -- pcchDst
+* -- return = TRUE on initial validation success (NB! no guarantee for success).
+*/
+_Success_(return)
+BOOL ObStrMap_Push_UnicodeBuffer(_In_opt_ POB_STRMAP psm, _In_ WORD cbUnicodeBuffer, _In_ QWORD vaUnicodeBuffer, _Out_opt_ LPWSTR *pwszDst, _Out_opt_ PDWORD pcchDst);
+
+/*
 * Finalize the ObStrMap. Create and assign the MultiStr and assign each
 * previously added string reference to a pointer location within the MultiStr.
 * ---
@@ -778,5 +823,51 @@ BOOL ObStrMap_Push_swprintf_s(_In_opt_ POB_STRMAP psm, _Out_opt_ LPWSTR *pwszDst
 */
 _Success_(return)
 BOOL ObStrMap_Finalize_DECREF_NULL(_In_opt_ PVOID *ppsm, _Out_ LPWSTR *pwszMultiStr, _Out_ PDWORD pcbMultiStr);
+
+
+
+// ----------------------------------------------------------------------------
+// COMPRESSED DATA OBJECT FUNCTIONALITY BELOW:
+//
+// ----------------------------------------------------------------------------
+
+typedef struct tdOB_COMPRESSED *POB_COMPRESSED;
+
+/*
+* Create a new compressed buffer object from a byte buffer.
+* CALLER DECREF: return
+* -- pcm
+* -- pb
+* -- cb
+* -- return
+*/
+_Success_(return != NULL)
+POB_COMPRESSED ObCompressed_NewFromByte(_In_reads_(cb) PBYTE pb, _In_ DWORD cb);
+
+/*
+* Create a new compressed buffer object from a zero terminated string.
+* CALLER DECREF: return
+* -- pcm
+* -- sz
+* -- return
+*/
+_Success_(return != NULL)
+POB_COMPRESSED ObCompress_NewFromStrA(_In_ LPSTR sz);
+
+/*
+* Retrieve the uncompressed size of the compressed data object.
+* -- pdc
+* -- return
+*/
+DWORD ObCompress_Size(_In_opt_ POB_COMPRESSED pdc);
+
+/*
+* Retrieve uncompressed from a compressed data object.
+* CALLER DECREF: return
+* -- pdc
+* -- return
+*/
+_Success_(return != NULL)
+POB_DATA ObCompressed_GetData(_In_opt_ POB_COMPRESSED pdc);
 
 #endif /* __OB_H__ */

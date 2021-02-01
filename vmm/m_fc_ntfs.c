@@ -121,6 +121,8 @@ typedef struct tdNTFS_ATTR {
 #define NTFS_STDINFO_PERMISSION_NOINDEX         0x2000
 #define NTFS_STDINFO_PERMISSION_ENCRYPTED       0x4000
 
+#define NTFS_STANDARD_INFORMATION_LEN_PREWIN2K  0x30
+
 typedef struct tdNTFS_STANDARD_INFORMATION {
     QWORD TimeCreate;                   // +000
     QWORD TimeAlter;                    // +008
@@ -310,7 +312,7 @@ VOID FcNtfs_IngestMftEntry(_In_ PFCNTFS_SETUP_CONTEXT ctx, _In_ QWORD qwPhysical
             cbData = pa->AttrLength;
         }
         if(pa->Type == NTFS_ATTR_TYPE_STANDARD_INFORMATION) {
-            if(pa->AttrLength < sizeof(NTFS_STANDARD_INFORMATION)) { break; }
+            if(pa->AttrLength < sizeof(NTFS_STANDARD_INFORMATION) && (pa->AttrLength != NTFS_STANDARD_INFORMATION_LEN_PREWIN2K)) { break; }
             psi = (PNTFS_STANDARD_INFORMATION)(pb + oA + pa->AttrOffset);
         }
         if(pa->Type == NTFS_ATTR_TYPE_FILE_NAME) {
@@ -1045,7 +1047,7 @@ PBYTE M_FcNtfs_ReadInfoSingle(_In_ PFC_MAP_NTFSENTRY peNtfs, _Out_ PDWORD pcsz)
             continue;
         }
         // $STANDARD_INFORMATION
-        if((pA->Type == NTFS_ATTR_TYPE_STANDARD_INFORMATION) && (pA->AttrLength >= sizeof(NTFS_STANDARD_INFORMATION))) {
+        if((pA->Type == NTFS_ATTR_TYPE_STANDARD_INFORMATION) && ((pA->AttrLength >= sizeof(NTFS_STANDARD_INFORMATION)) || pA->AttrLength == NTFS_STANDARD_INFORMATION_LEN_PREWIN2K)) {
             pSI = (PNTFS_STANDARD_INFORMATION)(pbr + oA + pA->AttrOffset);
             Util_FileTime2String(pSI->TimeCreate, szTimeC);
             Util_FileTime2String(pSI->TimeAlter, szTimeA);
@@ -1162,16 +1164,16 @@ fail:
 }
 
 /*
-* Check if the path contains the meta info directory '$_MFT_INFO' and also if
+* Check if the path contains the meta info directory '$_INFO' and also if
 * it points to a file '\mftinfo.txt' / '\mftdata.mem' / '\mftdata.bin'.
 * If so strip this info.
 * -- wszPath
 * -- wszPathStripped
-* -- pfMeta = path contains '\\$_MFT_INFO'
-* -- pfEnd = path ends with '\\$_MFT_INFO'
-* -- pfTxt = path ends wtih '\\mftinfo.txt'
-* -- pfMem = path ends wtih '\\mftdata.mem'
-* -- pfBin = path ends wtih '\\mftfile.bin'
+* -- pfMeta = path contains '\\$_INFO'
+* -- pfEnd = path ends with '\\$_INFO'
+* -- pfTxt = path ends with '\\mftinfo.txt'
+* -- pfMem = path ends with '\\mftdata.mem'
+* -- pfBin = path ends with '\\mftfile.bin'
 */
 VOID M_FcNtfs_PathStripMftInfo(_In_ LPWSTR wszPath, _Out_writes_(MAX_PATH) LPWSTR wszPathStripped, _Out_opt_ PBOOL pfMeta, _Out_opt_ PBOOL pfEnd, _Out_opt_ PBOOL pfTxt, _Out_opt_ PBOOL pfMem, _Out_opt_ PBOOL pfBin)
 {
@@ -1181,9 +1183,9 @@ VOID M_FcNtfs_PathStripMftInfo(_In_ LPWSTR wszPath, _Out_writes_(MAX_PATH) LPWST
     if(pfTxt) { *pfTxt = FALSE; }
     if(pfMem) { *pfMem = FALSE; }
     if(pfBin) { *pfBin = FALSE; }
-    if(pfEnd) { *pfEnd = Util_StrEndsWithW(wszPath, L"\\$_MFT_INFO", TRUE); }
+    if(pfEnd) { *pfEnd = Util_StrEndsWithW(wszPath, L"\\$_INFO", TRUE); }
     wcsncpy_s(wszPathStripped, MAX_PATH, wszPath, _TRUNCATE);
-    if(!(wsz = wcsstr(wszPath, L"\\$_MFT_INFO"))) { return; }
+    if(!(wsz = wcsstr(wszPath, L"\\$_INFO"))) { return; }
     cch = ((QWORD)wsz - (QWORD)wszPath) >> 1;
     wcsncpy_s(wszPathStripped + cch, MAX_PATH - cch, wsz + 11, _TRUNCATE);
     if(Util_StrEndsWithW(wszPathStripped, L"\\mftinfo.txt", TRUE)) {
@@ -1279,7 +1281,7 @@ VOID M_FcNtfs_ListDirectory(_In_ LPWSTR wszPath, _Inout_ PHANDLE pFileList)
     // ordinary directory or metadata directory
     if(!FcNtfsMap_GetFromHashParent(qwHashPath, &pObNtfsMap)) { return; }
     if(!fMeta && wszPath[0] && pObNtfsMap->cMap) {
-        VMMDLL_VfsList_AddDirectory(pFileList, L"$_MFT_INFO", NULL);
+        VMMDLL_VfsList_AddDirectory(pFileList, L"$_INFO", NULL);
     }
     for(i = 0; i < pObNtfsMap->cMap; i++) {
         pe = pObNtfsMap->pMap + i;

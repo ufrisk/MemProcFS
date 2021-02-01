@@ -160,6 +160,7 @@ BOOL VmmDll_ConfigIntialize(_In_ DWORD argc, _In_ char* argv[])
         // disable memory auto-detect when memmap is specified
         ctxMain->dev.paMax = -1;
     }
+    ctxMain->cfg.fFileInfoHeader = TRUE;
     ctxMain->cfg.fVerbose = ctxMain->cfg.fVerbose && ctxMain->cfg.fVerboseDll;
     ctxMain->cfg.fVerboseExtra = ctxMain->cfg.fVerboseExtra && ctxMain->cfg.fVerboseDll;
     ctxMain->cfg.fVerboseExtraTlp = ctxMain->cfg.fVerboseExtraTlp && ctxMain->cfg.fVerboseDll;

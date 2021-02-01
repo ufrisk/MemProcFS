@@ -12,7 +12,7 @@
 #define M_FINDEVIL_LINELENGTH_X64           214ULL
 
 LPCSTR szM_FINDEVIL_README =
-"Find Evil tries to identify and discover signs of malsare infection.         \n" \
+"Find Evil tries to identify and discover signs of malware infection.         \n" \
 "Find Evil currently detect some types of malware infection by memory analysis\n" \
 "and does not, at this moment, support anti-virus scans and custom yara rules.\n" \
 "---                                                                          \n" \
@@ -23,6 +23,7 @@ LPCSTR szM_FINDEVIL_README =
 "Find Evil is currently able to detect:                                       \n" \
 "- Injected PE:    Non-loader loaded .dll with intact PE header.              \n" \
 "                  Low false positive ratio.                                  \n" \
+"- NoLink PROC:    Processes not linked by the _EPROCESS linked list.         \n" \
 "- Bad PEB/LDR:    No ordinary modules located in the PEB/LDR_DATA structures \n" \
 "                  indicates corruption; due to malware or paged out memory.  \n" \
 "- No-Link PE:     Loader loaded .dll with intact PE header not in PEB.       \n" \

@@ -1,6 +1,6 @@
-// m_sysinfo_svc.c : implementation related to the sysinfo/services built-in module.
+// m_sys_svc.c : implementation related to the sys/services built-in module.
 //
-// The sysinfo/services module is responsible for displaying information about
+// The '/sys/services' module is responsible for displaying information about
 // system services retrieved from the service control manager (SCM).
 //
 // (c) Ulf Frisk, 2020-2021
@@ -11,9 +11,11 @@
 #include "fc.h"
 #include "pluginmanager.h"
 
-#define MSYSINFOSVC_LINELENGTH                  288ULL
+#define MSYSSVC_LINELENGTH      288ULL
+#define MSYSSVC_LINEHEADER      L"   #    PID Start Type   State      Type Type    Obj Address  Name / Display Name                                              User                         Image Path                                          Object Name / Command Line"
 
-VOID MSysInfoSvc_GetSvcTypeLong(_In_ PVMM_MAP_SERVICEENTRY pe, _Out_writes_(MAX_PATH) LPSTR sz)
+
+VOID MSysSvc_GetSvcTypeLong(_In_ PVMM_MAP_SERVICEENTRY pe, _Out_writes_(MAX_PATH) LPSTR sz)
 {
     DWORD tp = pe->ServiceStatus.dwServiceType;
     BOOL fUser = tp & SERVICE_USER_SERVICE;
@@ -52,7 +54,7 @@ VOID MSysInfoSvc_GetSvcTypeLong(_In_ PVMM_MAP_SERVICEENTRY pe, _Out_writes_(MAX_
     }
 }
 
-LPSTR MSysInfoSvc_GetSvcTypeShort(_In_ PVMM_MAP_SERVICEENTRY pe)
+LPSTR MSysSvc_GetSvcTypeShort(_In_ PVMM_MAP_SERVICEENTRY pe)
 {
     DWORD tp = pe->ServiceStatus.dwServiceType;
     if(tp & SERVICE_KERNEL_DRIVER) {
@@ -74,7 +76,7 @@ LPSTR MSysInfoSvc_GetSvcTypeShort(_In_ PVMM_MAP_SERVICEENTRY pe)
     }
 }
 
-LPSTR MSysInfoSvc_GetSvcStartType(_In_ PVMM_MAP_SERVICEENTRY pe, _In_ BOOL fLong)
+LPSTR MSysSvc_GetSvcStartType(_In_ PVMM_MAP_SERVICEENTRY pe, _In_ BOOL fLong)
 {
     LPSTR szSVC_START_TYPE[][2] = {
         { "BOOT_START  ", "SERVICE_BOOT_START"      },
@@ -87,7 +89,7 @@ LPSTR MSysInfoSvc_GetSvcStartType(_In_ PVMM_MAP_SERVICEENTRY pe, _In_ BOOL fLong
     return szSVC_START_TYPE[min(5, pe->dwStartType)][fLong ? 1 : 0];
 }
 
-LPSTR MSysInfoSvc_GetSvcState(_In_ PVMM_MAP_SERVICEENTRY pe, _In_ BOOL fLong)
+LPSTR MSysSvc_GetSvcState(_In_ PVMM_MAP_SERVICEENTRY pe, _In_ BOOL fLong)
 {
     LPSTR szSVC_STATE[][2] = {
         { "---       ", "---"                       },
@@ -103,56 +105,37 @@ LPSTR MSysInfoSvc_GetSvcState(_In_ PVMM_MAP_SERVICEENTRY pe, _In_ BOOL fLong)
     return szSVC_STATE[min(8, pe->ServiceStatus.dwCurrentState)][fLong ? 1 : 0];
 }
 
-_Success_(return == 0)
-NTSTATUS MSysInfoSvc_Read_DoWork(_In_ PVMMOB_MAP_SERVICE pSvcMap, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+VOID MSysSvc_ReadLine_Callback(_Inout_opt_ PVOID ctx, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVMM_MAP_SERVICEENTRY pe, _Out_writes_(cbLineLength + 1) LPSTR szu8)
 {
-    NTSTATUS nt;
-    LPSTR sz;
     WCHAR wszSvcName[MAX_PATH + 1];
-    QWORD i, o = 0, cbMax, cStart, cEnd, cbLINELENGTH;
-    PVMM_MAP_SERVICEENTRY pe;
-    cbLINELENGTH = MSYSINFOSVC_LINELENGTH;
-    cStart = (DWORD)(cbOffset / cbLINELENGTH);
-    cEnd = (DWORD)min(pSvcMap->cMap - 1, (cb + cbOffset + cbLINELENGTH - 1) / cbLINELENGTH);
-    cbMax = 1 + (1 + cEnd - cStart) * cbLINELENGTH;
-    if(!pSvcMap->cMap || (cStart > pSvcMap->cMap)) { return VMMDLL_STATUS_END_OF_FILE; }
-    if(!(sz = LocalAlloc(LMEM_ZEROINIT, cbMax))) { return VMMDLL_STATUS_FILE_INVALID; }
-    for(i = cStart; i <= cEnd; i++) {
-        pe = pSvcMap->pMap + i;
-        wszSvcName[0] = '\0';
-        wcsncat_s(wszSvcName, MAX_PATH, pe->wszServiceName, _TRUNCATE);
-        if((pe->wszServiceName != pe->wszDisplayName) && pe->wszDisplayName[0]) {
-            wcsncat_s(wszSvcName, MAX_PATH, L" / ", _TRUNCATE);
-            wcsncat_s(wszSvcName, MAX_PATH, pe->wszDisplayName, _TRUNCATE);
-        }
-        o += Util_snwprintf_u8ln(
-            sz + o,
-            cbLINELENGTH,
-            L"%04i%7i %S %S %S %012llx %-64.64s %-28.28s %-48s%s%s",
-            pe->dwOrdinal,
-            pe->dwPID,
-            MSysInfoSvc_GetSvcStartType(pe, FALSE),
-            MSysInfoSvc_GetSvcState(pe, FALSE),
-            MSysInfoSvc_GetSvcTypeShort(pe),
-            pe->vaObj,
-            wszSvcName,
-            pe->wszUserAcct[0] ? pe->wszUserAcct : L"---",
-            pe->wszImagePath[0] ? pe->wszImagePath : L"---",
-            pe->wszPath[0] ? L" :: " : L"",
-            pe->wszPath[0] ? pe->wszPath : L""
-        );
+    wszSvcName[0] = '\0';
+    wcsncat_s(wszSvcName, MAX_PATH, pe->wszServiceName, _TRUNCATE);
+    if((pe->wszServiceName != pe->wszDisplayName) && pe->wszDisplayName[0]) {
+        wcsncat_s(wszSvcName, MAX_PATH, L" / ", _TRUNCATE);
+        wcsncat_s(wszSvcName, MAX_PATH, pe->wszDisplayName, _TRUNCATE);
     }
-    nt = Util_VfsReadFile_FromPBYTE(sz, cbMax - 1, pb, cb, pcbRead, cbOffset - cStart * cbLINELENGTH);
-    LocalFree(sz);
-    return nt;
+    Util_snwprintf_u8ln(szu8, cbLineLength,
+        L"%04i%7i %S %S %S %012llx %-64.64s %-28.28s %-48s%s%s",
+        pe->dwOrdinal,
+        pe->dwPID,
+        MSysSvc_GetSvcStartType(pe, FALSE),
+        MSysSvc_GetSvcState(pe, FALSE),
+        MSysSvc_GetSvcTypeShort(pe),
+        pe->vaObj,
+        wszSvcName,
+        pe->wszUserAcct[0] ? pe->wszUserAcct : L"---",
+        pe->wszImagePath[0] ? pe->wszImagePath : L"---",
+        pe->wszPath[0] ? L" :: " : L"",
+        pe->wszPath[0] ? pe->wszPath : L""
+    );
 }
 
-DWORD MSysInfoSvc_InfoFromEntry(_In_ PVMM_MAP_SERVICEENTRY pe, _Out_writes_(cbszu8) LPSTR szu8, _In_ DWORD cbszu8)
+DWORD MSysSvc_InfoFromEntry(_In_ PVMM_MAP_SERVICEENTRY pe, _Out_writes_(cbszu8) LPSTR szu8, _In_ DWORD cbszu8)
 {
     CHAR szSvcType[MAX_PATH];
-    LPSTR szStartType = MSysInfoSvc_GetSvcStartType(pe, TRUE);
-    LPSTR szState = MSysInfoSvc_GetSvcState(pe, TRUE);
-    MSysInfoSvc_GetSvcTypeLong(pe, szSvcType);
+    LPSTR szStartType = MSysSvc_GetSvcStartType(pe, TRUE);
+    LPSTR szState = MSysSvc_GetSvcState(pe, TRUE);
+    MSysSvc_GetSvcTypeLong(pe, szSvcType);
     return (DWORD)Util_snwprintf_u8(szu8, cbszu8,
         L"Ordinal:          %i\n" \
         L"Service Name:     %s\n" \
@@ -181,12 +164,12 @@ DWORD MSysInfoSvc_InfoFromEntry(_In_ PVMM_MAP_SERVICEENTRY pe, _Out_writes_(cbsz
     );
 }
 
-int MSysInfoSvc_InfoFromPath_Filter(_In_ QWORD pvFind, _In_ PVMM_MAP_SERVICEENTRY pvEntry)
+int MSysSvc_InfoFromPath_Filter(_In_ QWORD pvFind, _In_ PVMM_MAP_SERVICEENTRY pvEntry)
 {
     return (DWORD)pvFind - pvEntry->dwOrdinal;
 }
 
-NTSTATUS MSysInfoSvc_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MSysSvc_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PVMMOB_MAP_SERVICE pObSvcMap = NULL;
@@ -198,15 +181,19 @@ NTSTATUS MSysInfoSvc_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *
     CHAR szu8InfoFile[0x1000];
     if(!VmmMap_GetService(&pObSvcMap)) { goto finish; }
     if(!wcscmp(ctx->wszPath, L"services.txt")) {
-        nt = MSysInfoSvc_Read_DoWork(pObSvcMap, pb, cb, pcbRead, cbOffset);
+        nt = Util_VfsLineFixed_Read(
+            MSysSvc_ReadLine_Callback, NULL, MSYSSVC_LINELENGTH, MSYSSVC_LINEHEADER,
+            pObSvcMap->pMap, pObSvcMap->cMap, sizeof(VMM_MAP_SERVICEENTRY),
+            pb, cb, pcbRead, cbOffset
+        );
         goto finish;
     }
     if(Util_VfsHelper_GetIdDir(ctx->wszPath, &dwSvcId, &wszSvcSubPath)) {
         qwSvcId = dwSvcId;
-        pe = Util_qfind((PVOID)qwSvcId, pObSvcMap->cMap, pObSvcMap->pMap, sizeof(VMM_MAP_SERVICEENTRY), (int(*)(PVOID, PVOID))MSysInfoSvc_InfoFromPath_Filter);
+        pe = Util_qfind((PVOID)qwSvcId, pObSvcMap->cMap, pObSvcMap->pMap, sizeof(VMM_MAP_SERVICEENTRY), (int(*)(PVOID, PVOID))MSysSvc_InfoFromPath_Filter);
         if(pe) {
             if(!_wcsicmp(L"svcinfo.txt", wszSvcSubPath)) {
-                cbInfoFile = MSysInfoSvc_InfoFromEntry(pe, szu8InfoFile, sizeof(szu8InfoFile));
+                cbInfoFile = MSysSvc_InfoFromEntry(pe, szu8InfoFile, sizeof(szu8InfoFile));
                 nt = Util_VfsReadFile_FromPBYTE((PBYTE)szu8InfoFile, cbInfoFile, pb, cb, pcbRead, cbOffset);
                 goto finish;
             }
@@ -222,7 +209,7 @@ finish:
     return nt;
 }
 
-BOOL MSysInfoSvc_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
+BOOL MSysSvc_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 {
     QWORD qwSvcId;
     DWORD i, cbInfoFile, dwSvcId;
@@ -235,7 +222,7 @@ BOOL MSysInfoSvc_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList
     if(0 == ctx->wszPath[0]) {
         VMMDLL_VfsList_AddDirectory(pFileList, L"by-id", NULL);
         VMMDLL_VfsList_AddDirectory(pFileList, L"by-name", NULL);
-        VMMDLL_VfsList_AddFile(pFileList, L"services.txt", pObSvcMap->cMap * MSYSINFOSVC_LINELENGTH, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"services.txt", UTIL_VFSLINEFIXED_LINECOUNT(pObSvcMap->cMap) * MSYSSVC_LINELENGTH, NULL);
         goto finish;
     }
     if(!_wcsicmp(L"by-id", ctx->wszPath)) {
@@ -254,10 +241,10 @@ BOOL MSysInfoSvc_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList
     }
     if(Util_VfsHelper_GetIdDir(ctx->wszPath, &dwSvcId, &wszSvcSubPath)) {
         qwSvcId = dwSvcId;
-        pe = Util_qfind((PVOID)qwSvcId, pObSvcMap->cMap, pObSvcMap->pMap, sizeof(VMM_MAP_SERVICEENTRY), (int(*)(PVOID, PVOID))MSysInfoSvc_InfoFromPath_Filter);
+        pe = Util_qfind((PVOID)qwSvcId, pObSvcMap->cMap, pObSvcMap->pMap, sizeof(VMM_MAP_SERVICEENTRY), (int(*)(PVOID, PVOID))MSysSvc_InfoFromPath_Filter);
         if(pe) {
             if(0 == wszSvcSubPath[0]) {
-                cbInfoFile = MSysInfoSvc_InfoFromEntry(pe, szu8InfoFile, sizeof(szu8InfoFile));
+                cbInfoFile = MSysSvc_InfoFromEntry(pe, szu8InfoFile, sizeof(szu8InfoFile));
                 VMMDLL_VfsList_AddFile(pFileList, L"svcinfo.txt", cbInfoFile, NULL);
                 VMMDLL_VfsList_AddDirectory(pFileList, L"registry", NULL);
                 goto finish;
@@ -275,13 +262,13 @@ finish:
     return TRUE;
 }
 
-VOID M_SysInfoSvc_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
+VOID M_SysSvc_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if((pRI->tpSystem != VMM_SYSTEM_WINDOWS_X64) && (pRI->tpSystem != VMM_SYSTEM_WINDOWS_X86)) { return; }
-    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\sysinfo\\services");   // module name
-    pRI->reg_info.fRootModule = TRUE;                                   // module shows in root directory
-    pRI->reg_fn.pfnList = MSysInfoSvc_List;                             // List function supported
-    pRI->reg_fn.pfnRead = MSysInfoSvc_Read;                             // Read function supported
+    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\sys\\services");   // module name
+    pRI->reg_info.fRootModule = TRUE;                               // module shows in root directory
+    pRI->reg_fn.pfnList = MSysSvc_List;                             // List function supported
+    pRI->reg_fn.pfnRead = MSysSvc_Read;                             // Read function supported
     pRI->pfnPluginManager_Register(pRI);
 }

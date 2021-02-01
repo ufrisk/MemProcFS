@@ -12,6 +12,7 @@
 #include "version.h"
 #include "vmm.h"
 #include "vmmwininit.h"
+#include "vmmwinobj.h"      // DEBUG
 
 #define KDBG64_KiProcessorBlock     0x218
 #define KDBG64_ContextKPRCB         0x338

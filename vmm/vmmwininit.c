@@ -175,6 +175,18 @@ VOID VmmWinInit_TryInitializeKernelOptionalValues()
             PDB_GetSymbolQWORD(PDB_HANDLE_KERNEL, "KiWaitNever", pObSystemProcess, &ctxVmm->kernel.opt.KDBG.qwKiWaitNever);
         }
     }
+    // IopInvalidDeviceRequest
+    if(!ctxVmm->kernel.opt.vaIopInvalidDeviceRequest) {
+        PDB_GetSymbolAddress(PDB_HANDLE_KERNEL, "IopInvalidDeviceRequest", &ctxVmm->kernel.opt.vaIopInvalidDeviceRequest);
+    }
+    // _OBJECT_HEADER InfoMask headers:
+    PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_OBJECT_HEADER_CREATOR_INFO", &ctxVmm->offset._OBJECT_HEADER_CREATOR_INFO.cb);
+    PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_OBJECT_HEADER_NAME_INFO",    &ctxVmm->offset._OBJECT_HEADER_NAME_INFO.cb);
+    PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_OBJECT_HEADER_HANDLE_INFO",  &ctxVmm->offset._OBJECT_HEADER_HANDLE_INFO.cb);
+    PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_OBJECT_HEADER_QUOTA_INFO",   &ctxVmm->offset._OBJECT_HEADER_QUOTA_INFO.cb);
+    PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_OBJECT_HEADER_PROCESS_INFO", &ctxVmm->offset._OBJECT_HEADER_PROCESS_INFO.cb);
+    PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_OBJECT_HEADER_AUDIT_INFO",   &ctxVmm->offset._OBJECT_HEADER_AUDIT_INFO.cb);
+    PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_POOL_HEADER",                &ctxVmm->offset._POOL_HEADER.cb);
     // Other:
     PDB_GetSymbolQWORD(PDB_HANDLE_KERNEL, "KeBootTime", pObSystemProcess, &ctxVmm->kernel.opt.ftBootTime);
     // Cleanup
@@ -845,10 +857,20 @@ success:
 */
 DWORD VmmWinInit_TryInitialize_Async(LPVOID lpParameter)
 {
+    POB_SET psObNoLinkEPROCESS = NULL;
+    PVMM_PROCESS pObSystemProcess = NULL;
     PDB_Initialize_WaitComplete();
     MmWin_PagingInitialize(TRUE);   // initialize full paging (memcompression)
     VmmWinInit_TryInitializeThreading();
     VmmWinInit_TryInitializeKernelOptionalValues();
+    // locate no-link processes [only in non-volatile memory due to performance].
+    if(!ctxMain->dev.fVolatile && (psObNoLinkEPROCESS = VmmWinProcess_Enumerate_FindNoLinkProcesses())) {
+        if((pObSystemProcess = VmmProcessGet(4))) {
+            VmmWinProcess_Enumerate(pObSystemProcess, FALSE, psObNoLinkEPROCESS);
+        }
+        Ob_DECREF(psObNoLinkEPROCESS);
+        Ob_DECREF(pObSystemProcess);
+    }
     return 1;
 }
 
@@ -894,7 +916,7 @@ BOOL VmmWinInit_TryInitialize(_In_opt_ QWORD paDTBOpt)
         goto fail;
     }
     // Enumerate processes
-    if(!VmmWinProcess_Enumerate(pObSystemProcess, TRUE)) {
+    if(!VmmWinProcess_Enumerate(pObSystemProcess, TRUE, NULL)) {
         vmmprintfv("VmmWinInit: Initialization Failed. Unable to walk EPROCESS. #5\n");
         goto fail;
     }

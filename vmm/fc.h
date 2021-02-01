@@ -41,6 +41,7 @@ typedef struct tdFC_TIMELINE_INFO {
 typedef struct tdFC_CONTEXT {
     BOOL fInitStart;
     BOOL fInitFinish;
+    BYTE cProgressPercent;
     CRITICAL_SECTION Lock;
     struct {
         DWORD tp;                           // type as specified in FC_DATABASE_TYPE_*

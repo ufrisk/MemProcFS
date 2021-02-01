@@ -39,6 +39,107 @@ typedef struct _UNICODE_STRING64 {
     QWORD  Buffer;
 } UNICODE_STRING64, *PUNICODE_STRING64;
 
+typedef struct _OBJECT_HEADER32 {
+    DWORD PointerCount;
+    union {
+        DWORD HandleCount;
+        DWORD NextToFree;
+    };
+    DWORD Lock;
+    BYTE TypeIndex;
+    BYTE TraceFlags;
+    BYTE InfoMask;
+    BYTE Flags;
+    union {
+        DWORD ObjectCreateInfo;
+        DWORD QuotaBlockCharged;
+    };
+    DWORD SecurityDescriptor;
+} OBJECT_HEADER32, *POBJECT_HEADER32;
+
+typedef struct _OBJECT_HEADER64 {
+    QWORD PointerCount;
+    union {
+        QWORD HandleCount;
+        QWORD NextToFree;
+    };
+    QWORD Lock;
+    BYTE TypeIndex;
+    BYTE TraceFlags;
+    BYTE InfoMask;
+    BYTE Flags;
+    union {
+        QWORD ObjectCreateInfo;
+        QWORD QuotaBlockCharged;
+    };
+    QWORD SecurityDescriptor;
+} OBJECT_HEADER64, *POBJECT_HEADER64;
+
+typedef struct _OBJECT_HEADER_NAME_INFO32 {
+    DWORD Directory;
+    UNICODE_STRING32 Name;
+    DWORD ReferenceCount;
+} OBJECT_HEADER_NAME_INFO32, *POBJECT_HEADER_NAME_INFO32;
+
+typedef struct _OBJECT_HEADER_NAME_INFO64 {
+    QWORD Directory;
+    UNICODE_STRING64 Name;
+    DWORD ReferenceCount;
+} OBJECT_HEADER_NAME_INFO64, *POBJECT_HEADER_NAME_INFO64;
+
+typedef struct _DRIVER_EXTENSION32 {
+    DWORD DriverObject;
+    DWORD AddDevice;
+    DWORD Count;
+    UNICODE_STRING32 ServiceKeyName;
+} DRIVER_EXTENSION32, *PDRIVER_EXTENSION32;
+
+typedef struct _DRIVER_EXTENSION64 {
+    QWORD DriverObject;
+    QWORD AddDevice;
+    DWORD Count;
+    DWORD _Pad1;
+    UNICODE_STRING64 ServiceKeyName;
+} DRIVER_EXTENSION64, *PDRIVER_EXTENSION64;
+
+typedef struct _DRIVER_OBJECT32 {
+    WORD  Type;
+    WORD  Size;
+    DWORD DeviceObject;
+    DWORD Flags;
+    DWORD DriverStart;
+    DWORD DriverSize;
+    DWORD DriverSection;
+    DWORD DriverExtension;
+    UNICODE_STRING32 DriverName;
+    DWORD HardwareDatabase;
+    DWORD FastIoDispatch;
+    DWORD DriverInit;
+    DWORD DriverStartIo;
+    DWORD DriverUnload;
+    DWORD MajorFunction[28];
+} DRIVER_OBJECT32, *PDRIVER_OBJECT32;
+
+typedef struct _DRIVER_OBJECT64 {
+    WORD  Type;
+    WORD  Size;
+    DWORD _Pad1;
+    QWORD DeviceObject;
+    DWORD Flags;
+    DWORD _Pad2;
+    QWORD DriverStart;
+    QWORD DriverSize;
+    QWORD DriverSection;
+    QWORD DriverExtension;
+    UNICODE_STRING64 DriverName;
+    QWORD HardwareDatabase;
+    QWORD FastIoDispatch;
+    QWORD DriverInit;
+    QWORD DriverStartIo;
+    QWORD DriverUnload;
+    QWORD MajorFunction[28];
+} DRIVER_OBJECT64, *PDRIVER_OBJECT64;
+
 typedef struct tdCPU_CONTEXT32_FLOATING_SAVE_AREA {
     DWORD ControlWord;          // +000
     DWORD StatusWord;           // +004

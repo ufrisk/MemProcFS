@@ -12,14 +12,15 @@
 #define LDRMODULES_CACHE_TP_EAT             1
 #define LDRMODULES_CACHE_TP_IAT             2
 #define LDRMODULES_NUM_CACHE                8
-#define LDRMODULES_LINELENGTH_X86           104ULL
+#define LDRMODULES_LINELENGTH_X86           107ULL
 #define LDRMODULES_LINELENGTH_X64           123ULL
-#define LDRMODULES_LINELENGTH_UNLOADED_X86  104ULL
-#define LDRMODULES_LINELENGTH_UNLOADED_X64  123ULL
 #define LDRMODULES_LINELENGTH_DIRECTORIES   54ULL
 #define LDRMODULES_LINELENGTH_SECTIONS      70ULL
 #define LDRMODULES_LINELENGTH_EAT           78ULL
 #define LDRMODULES_LINELENGTH_IAT           128ULL
+
+#define LDRMODULES_LINEHEADER_X86       L"   #    PID    Pages Range Start-End      Description"
+#define LDRMODULES_LINEHEADER_X64       L"   #    PID    Pages      Range Start-End                 Description"
 
 #define LDRMODULES_MAX_IATEAT               0x10000
 
@@ -178,114 +179,36 @@ fail:
 
 /*
 * Dynamically generate the file \modules.txt.
-* -- pModuleMap
-* -- pb
-* -- cb
-* -- pcbRead
-* -- cbOffset
-* -- return
 */
-_Success_(return == 0)
-NTSTATUS LdrModules_ReadModulesFile(_In_ PVMM_PROCESS pProcess, _In_ PVMMOB_MAP_MODULE pModuleMap, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+VOID LdrModules_ModuleReadLine_Callback(_In_ PVMM_PROCESS pProcess, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVMM_MAP_MODULEENTRY pe, _Out_writes_(cbLineLength + 1) LPSTR szu8)
 {
-    NTSTATUS nt;
-    LPSTR sz;
-    QWORD i, o = 0, cbMax, cStart, cEnd, cbLINELENGTH;
-    PVMM_MAP_MODULEENTRY pe;
-    cbLINELENGTH = ctxVmm->f32 ? LDRMODULES_LINELENGTH_X86 : LDRMODULES_LINELENGTH_X64;
-    cStart = (DWORD)(cbOffset / cbLINELENGTH);
-    cEnd = (DWORD)min(pModuleMap->cMap - 1, (cb + cbOffset + cbLINELENGTH - 1) / cbLINELENGTH);
-    cbMax = 1 + (1 + cEnd - cStart) * cbLINELENGTH;
-    if(!pModuleMap->cMap || (cStart > pModuleMap->cMap)) { return VMMDLL_STATUS_END_OF_FILE; }
-    if(!(sz = LocalAlloc(LMEM_ZEROINIT, cbMax))) { return VMMDLL_STATUS_FILE_INVALID; }
-    for(i = cStart; i <= cEnd; i++) {
-        pe = pModuleMap->pMap + i;
-        if(ctxVmm->f32) {
-            o += Util_snwprintf_u8ln(
-                sz + o,
-                cbLINELENGTH,
-                L"%04x%7i %8x %08x-%08x %s",
-                (DWORD)i,
-                pProcess->dwPID,
-                pe->cbImageSize >> 12,
-                (DWORD)pe->vaBase,
-                (DWORD)(pe->vaBase + pe->cbImageSize - 1),
-                pe->wszText + pe->cwszText - min(64, pe->cwszText)
-            );
-        } else {
-            o += Util_snwprintf_u8ln(
-                sz + o,
-                cbLINELENGTH,
-                L"%04x%7i %8x %016llx-%016llx %s %s",
-                (DWORD)i,
-                pProcess->dwPID,
-                pe->cbImageSize >> 12,
-                pe->vaBase,
-                pe->vaBase + pe->cbImageSize - 1,
-                pe->fWoW64 ? L"32" : L"  ",
-                pe->wszText + pe->cwszText - min(64, pe->cwszText)
-            );
-        }
-    }
-    nt = Util_VfsReadFile_FromPBYTE(sz, cbMax - 1, pb, cb, pcbRead, cbOffset - cStart * cbLINELENGTH);
-    LocalFree(sz);
-    return nt;
+    Util_snwprintf_u8ln(szu8, cbLineLength,
+        ctxVmm->f32 ? L"%04x%7i %8x %08x-%08x %s %s" : L"%04x%7i %8x %016llx-%016llx %s %s",
+        ie,
+        pProcess->dwPID,
+        pe->cbImageSize >> 12,
+        pe->vaBase,
+        pe->vaBase + pe->cbImageSize - 1,
+        pe->fWoW64 ? L"32" : L"  ",
+        pe->wszText + pe->cwszText - min(64, pe->cwszText)
+    );
 }
 
 /*
 * Dynamically generate the file \unloaded_modules.txt.
-* -- pUnloadedMap
-* -- pb
-* -- cb
-* -- pcbRead
-* -- cbOffset
-* -- return
 */
-_Success_(return == 0)
-NTSTATUS LdrModules_ReadUnloadedModulesFile(_In_ PVMM_PROCESS pProcess, _In_ PVMMOB_MAP_UNLOADEDMODULE pUnloadedMap, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+VOID LdrModules_UnloadedReadLine_Callback(_In_ PVMM_PROCESS pProcess, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVMM_MAP_UNLOADEDMODULEENTRY pe, _Out_writes_(cbLineLength + 1) LPSTR szu8)
 {
-    NTSTATUS nt;
-    LPSTR sz;
-    QWORD i, o = 0, cbMax, cStart, cEnd, cbLINELENGTH;
-    PVMM_MAP_UNLOADEDMODULEENTRY pe;
-    cbLINELENGTH = ctxVmm->f32 ? LDRMODULES_LINELENGTH_UNLOADED_X86 : LDRMODULES_LINELENGTH_UNLOADED_X64;
-    cStart = (DWORD)(cbOffset / cbLINELENGTH);
-    cEnd = (DWORD)min(pUnloadedMap->cMap - 1, (cb + cbOffset + cbLINELENGTH - 1) / cbLINELENGTH);
-    cbMax = 1 + (1 + cEnd - cStart) * cbLINELENGTH;
-    if(!pUnloadedMap->cMap || (cStart > pUnloadedMap->cMap)) { return VMMDLL_STATUS_END_OF_FILE; }
-    if(!(sz = LocalAlloc(LMEM_ZEROINIT, cbMax))) { return VMMDLL_STATUS_FILE_INVALID; }
-    for(i = cStart; i <= cEnd; i++) {
-        pe = pUnloadedMap->pMap + i;
-        if(ctxVmm->f32) {
-            o += Util_snwprintf_u8ln(
-                sz + o,
-                cbLINELENGTH,
-                L"%04x%7i %8x %08x-%08x %s",
-                (DWORD)i,
-                pProcess->dwPID,
-                pe->cbImageSize >> 12,
-                (DWORD)pe->vaBase,
-                (DWORD)(pe->vaBase + pe->cbImageSize - 1),
-                pe->wszText + pe->cwszText - min(64, pe->cwszText)
-            );
-        } else {
-            o += Util_snwprintf_u8ln(
-                sz + o,
-                cbLINELENGTH,
-                L"%04x%7i %8x %016llx-%016llx %s %s",
-                (DWORD)i,
-                pProcess->dwPID,
-                pe->cbImageSize >> 12,
-                pe->vaBase,
-                pe->vaBase + pe->cbImageSize - 1,
-                pe->fWoW64 ? L"32" : L"  ",
-                pe->wszText + pe->cwszText - min(64, pe->cwszText)
-            );
-        }
-    }
-    nt = Util_VfsReadFile_FromPBYTE(sz, cbMax - 1, pb, cb, pcbRead, cbOffset - cStart * cbLINELENGTH);
-    LocalFree(sz);
-    return nt;
+    Util_snwprintf_u8ln(szu8, cbLineLength,
+        ctxVmm->f32 ? L"%04x%7i %8x %08x-%08x %s %s" : L"%04x%7i %8x %016llx-%016llx %s %s",
+        ie,
+        pProcess->dwPID,
+        pe->cbImageSize >> 12,
+        pe->vaBase,
+        pe->vaBase + pe->cbImageSize - 1,
+        pe->fWoW64 ? L"32" : L"  ",
+        pe->wszText + pe->cwszText - min(64, pe->cwszText)
+    );
 }
 
 /*
@@ -456,14 +379,26 @@ NTSTATUS LdrModules_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *p
     PVMMOB_MAP_UNLOADEDMODULE pObUnloadedModuleMap = NULL;
     if(!_wcsicmp(ctx->wszPath, L"modules.txt")) {
         if(VmmMap_GetModule((PVMM_PROCESS)ctx->pProcess, &pObModuleMap)) {
-            nt = LdrModules_ReadModulesFile((PVMM_PROCESS)ctx->pProcess, pObModuleMap, pb, cb, pcbRead, cbOffset);
+            nt = Util_VfsLineFixed_Read(
+                LdrModules_ModuleReadLine_Callback, ctx->pProcess,
+                (ctxVmm->f32 ? LDRMODULES_LINELENGTH_X86 : LDRMODULES_LINELENGTH_X64),
+                (ctxVmm->f32 ? LDRMODULES_LINEHEADER_X86 : LDRMODULES_LINEHEADER_X64),
+                pObModuleMap->pMap, pObModuleMap->cMap, sizeof(VMM_MAP_MODULEENTRY),
+                pb, cb, pcbRead, cbOffset
+            );
             Ob_DECREF(pObModuleMap);
         }
         return nt;
     }
     if(!_wcsicmp(ctx->wszPath, L"unloaded_modules.txt")) {
         if(VmmMap_GetUnloadedModule((PVMM_PROCESS)ctx->pProcess, &pObUnloadedModuleMap)) {
-            nt = LdrModules_ReadUnloadedModulesFile((PVMM_PROCESS)ctx->pProcess, pObUnloadedModuleMap, pb, cb, pcbRead, cbOffset);
+            nt = Util_VfsLineFixed_Read(
+                LdrModules_UnloadedReadLine_Callback, ctx->pProcess,
+                (ctxVmm->f32 ? LDRMODULES_LINELENGTH_X86 : LDRMODULES_LINELENGTH_X64),
+                (ctxVmm->f32 ? LDRMODULES_LINEHEADER_X86 : LDRMODULES_LINEHEADER_X64),
+                pObUnloadedModuleMap->pMap, pObUnloadedModuleMap->cMap, sizeof(VMM_MAP_UNLOADEDMODULEENTRY),
+                pb, cb, pcbRead, cbOffset
+            );
             Ob_DECREF(pObUnloadedModuleMap);
         }
         return nt;
@@ -489,7 +424,7 @@ NTSTATUS LdrModules_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *p
 */
 BOOL LdrModules_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 {
-    DWORD c, i, j;
+    DWORD c, i, j, cbLine;
     CHAR szSectionName[9] = { 0 };
     WCHAR wszSectionName[9];
     WCHAR wszPath1[MAX_PATH];
@@ -506,9 +441,10 @@ BOOL LdrModules_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
         for(i = 0; i < pObModuleMap->cMap; i++) {
             VMMDLL_VfsList_AddDirectory(pFileList, pObModuleMap->pMap[i].wszText, NULL);
         }
-        VMMDLL_VfsList_AddFile(pFileList, L"modules.txt", pObModuleMap->cMap * (ctxVmm->f32 ? LDRMODULES_LINELENGTH_X86 : LDRMODULES_LINELENGTH_X64), NULL);
+        cbLine = ctxVmm->f32 ? LDRMODULES_LINELENGTH_X86 : LDRMODULES_LINELENGTH_X64;
+        VMMDLL_VfsList_AddFile(pFileList, L"modules.txt", UTIL_VFSLINEFIXED_LINECOUNT(pObModuleMap->cMap) * cbLine, NULL);
         if(VmmMap_GetUnloadedModule(pProcess, &pObUnloadedModuleMap)) {
-            VMMDLL_VfsList_AddFile(pFileList, L"unloaded_modules.txt", pObUnloadedModuleMap->cMap * (ctxVmm->f32 ? LDRMODULES_LINELENGTH_UNLOADED_X86 : LDRMODULES_LINELENGTH_UNLOADED_X64), NULL);
+            VMMDLL_VfsList_AddFile(pFileList, L"unloaded_modules.txt", UTIL_VFSLINEFIXED_LINECOUNT(pObUnloadedModuleMap->cMap) * cbLine, NULL);
             Ob_DECREF_NULL(&pObUnloadedModuleMap);
         }
         goto success;

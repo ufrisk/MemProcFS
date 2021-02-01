@@ -349,7 +349,7 @@ int Util_wcsstrncmp(_In_ LPSTR sz, _In_ LPWSTR wsz, _In_opt_ DWORD cMax)
 
 _Success_(return >= 0)
 size_t Util_snwprintf_u8(
-    _Out_writes_(cbBuffer) LPSTR szBuffer,
+    _Out_writes_z_(cbBuffer) LPSTR szBuffer,
     _In_ QWORD cbBuffer,
     _In_z_ _Printf_format_string_ LPWSTR wszFormat,
     ...
@@ -430,7 +430,7 @@ fail:
 
 _Success_(return >= 0)
 DWORD Util_snwprintf_u8ln(
-    _Out_writes_(cszLineLength + 1) LPSTR szBuffer,
+    _Out_writes_z_(cszLineLength + 1) LPSTR szBuffer,
     _In_ QWORD cszLineLength,
     _In_z_ _Printf_format_string_ LPWSTR wszFormat,
     ...
@@ -473,6 +473,57 @@ NTSTATUS Util_VfsReadFile_FromPBYTE(_In_opt_ PBYTE pbFile, _In_ QWORD cbFile, _O
     *pcbRead = (DWORD)min(cb, cbFile - cbOffset);
     memcpy(pb, pbFile + cbOffset, *pcbRead);
     return *pcbRead ? UTIL_NTSTATUS_SUCCESS : UTIL_NTSTATUS_END_OF_FILE;
+}
+
+NTSTATUS Util_VfsReadFile_FromMEM(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD vaMEM, _In_ QWORD cbMEM, _In_ QWORD flags, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+{
+    NTSTATUS nt = UTIL_NTSTATUS_END_OF_FILE;
+    PBYTE pbMEM;
+    if(cbOffset < cbMEM) {
+        vaMEM += cbOffset;
+        cbMEM -= cbOffset;
+        if((cbMEM < 0x04000000) && (pbMEM = LocalAlloc(0, cbMEM))) {
+            if(VmmRead2(pProcess, vaMEM, pbMEM, (DWORD)cbMEM, flags)) {
+                nt = Util_VfsReadFile_FromPBYTE(pbMEM, cbMEM, pb, cb, pcbRead, 0);
+            }
+            LocalFree(pbMEM);
+        }
+    }
+    return nt;
+}
+
+NTSTATUS Util_VfsReadFile_FromObData(_In_opt_ POB_DATA pData, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+{
+    if(!pData) { return UTIL_NTSTATUS_END_OF_FILE; }
+    return Util_VfsReadFile_FromPBYTE(pData->pb, pData->ObHdr.cbData, pb, cb, pcbRead, cbOffset);
+}
+
+NTSTATUS Util_VfsReadFile_FromObDataStrA(_In_opt_ POB_DATA pData, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+{
+    if(!pData) { return UTIL_NTSTATUS_END_OF_FILE; }
+    return Util_VfsReadFile_FromPBYTE(pData->pb, (pData->ObHdr.cbData ? pData->ObHdr.cbData - 1 : 0), pb, cb, pcbRead, cbOffset);
+}
+
+NTSTATUS Util_VfsReadFile_FromObCompressed(_In_opt_ POB_COMPRESSED pdc, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+{
+    NTSTATUS nt = UTIL_NTSTATUS_END_OF_FILE;
+    POB_DATA pObData;
+    if((pObData = ObCompressed_GetData(pdc))) {
+        nt = Util_VfsReadFile_FromObData(pObData, pb, cb, pcbRead, cbOffset);
+        Ob_DECREF(pObData);
+    }
+    return nt;
+}
+
+NTSTATUS Util_VfsReadFile_FromObCompressedStrA(_In_opt_ POB_COMPRESSED pdc, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+{
+    NTSTATUS nt = UTIL_NTSTATUS_END_OF_FILE;
+    POB_DATA pObData;
+    if((pObData = ObCompressed_GetData(pdc))) {
+        nt = Util_VfsReadFile_FromObDataStrA(pObData, pb, cb, pcbRead, cbOffset);
+        Ob_DECREF(pObData);
+    }
+    return nt;
 }
 
 NTSTATUS Util_VfsReadFile_FromTextWtoU8(_In_opt_ LPWSTR wszValue, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
@@ -791,4 +842,69 @@ BOOL Util_VfsHelper_GetIdDir(_In_ LPWSTR wszPath, _Out_ PDWORD pdwID, _Out_ LPWS
     *pdwID = wcstoul(wszPath + i, NULL, 10);
     *pwszSubPath = wszPath + iSubPath;
     return TRUE;
+}
+
+#define UTIL_VFSLINEFIXED_LINEPAD512 \
+    L"-----------------------------------------------------" \
+    L"-----------------------------------------------------" \
+    L"-----------------------------------------------------" \
+    L"-----------------------------------------------------"
+
+/*
+* FixedLineRead: Read from a file dynamically created from a map/array object
+* using a callback function to populate individual lines (excluding header).
+* -- pfnCallback = callback function to populate individual lines.
+* -- ctx = optional context to 'pfn' callback function.
+* -- cbLineLength = line length, including newline, excluding null terminator.
+* -- wszHeader = optional header line.
+* -- pMap = an array of entries (usually 'pMap' in a map).
+* -- cMap = number of pMap entries.
+* -- cbEntry = byte length of each entry.
+* -- pb
+* -- cb
+* -- pcbRead
+* -- cbOffset
+* -- return
+*/
+NTSTATUS Util_VfsLineFixed_Read(
+    _In_ UTIL_VFSLINEFIXED_PFN_CALLBACK pfnCallback,
+    _Inout_opt_ PVOID ctx,
+    _In_ DWORD cbLineLength,
+    _In_opt_ LPWSTR wszHeader,
+    _In_ PVOID pMap,
+    _In_ DWORD cMap,
+    _In_ DWORD cbEntry,
+    _Out_writes_to_(cb, *pcbRead) PBYTE pb,
+    _In_ DWORD cb,
+    _Out_ PDWORD pcbRead,
+    _In_ QWORD cbOffset
+) {
+    LPSTR sz;
+    NTSTATUS nt;
+    PVOID pvMapEntry;
+    QWORD i, iMapEntry, o = 0, cbMax, cStart, cEnd, cHeader;
+    cHeader = (wszHeader && ctxMain->cfg.fFileInfoHeader) ? 2 : 0;
+    cStart = (DWORD)(cbOffset / cbLineLength);
+    cEnd = (DWORD)min(cHeader + cMap - 1, (cb + cbOffset + cbLineLength - 1) / cbLineLength);
+    cbMax = 1 + (1 + cEnd - cStart) * cbLineLength;
+    if(!cHeader && !cMap) { return VMMDLL_STATUS_END_OF_FILE; }
+    if((cStart > cHeader + cMap)) { return VMMDLL_STATUS_END_OF_FILE; }
+    if(!(sz = LocalAlloc(LMEM_ZEROINIT, cbMax))) { return VMMDLL_STATUS_FILE_INVALID; }
+    for(i = cStart; i <= cEnd; i++) {
+        // header:
+        if(i < cHeader) {
+            o += i ?
+                Util_snwprintf_u8ln(sz + o, cbLineLength, L"%.*s", (DWORD)wcslen(wszHeader), UTIL_VFSLINEFIXED_LINEPAD512) :
+                Util_snwprintf_u8ln(sz + o, cbLineLength, L"%s", wszHeader);
+            continue;
+        }
+        // line:
+        iMapEntry = i - cHeader;
+        pvMapEntry = (PBYTE)pMap + (i - cHeader) * cbEntry;
+        pfnCallback(ctx, cbLineLength, (DWORD)iMapEntry, pvMapEntry, sz + o);
+        o += cbLineLength;
+    }
+    nt = Util_VfsReadFile_FromPBYTE(sz, cbMax - 1, pb, cb, pcbRead, cbOffset - cStart * cbLineLength);
+    LocalFree(sz);
+    return nt;
 }

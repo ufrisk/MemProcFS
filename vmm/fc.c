@@ -353,6 +353,8 @@ BOOL FcTimeline_Initialize()
             goto fail;
         }
     }
+    // update progress percent counter.
+    ctxFc->cProgressPercent = 80;
     // update timeline_info with sizes for individual types (utf8 and json).
     LPSTR szTIMELINE_SQL_TIMELINE_UPD[] = {
         "UPDATE timeline_info SET file_size_u = (SELECT oln_utp+cbu+"STRINGIZE(FC_LINELENGTH_TIMELINE_UTF8)" FROM v_timeline WHERE tp = ? AND tp_id = (SELECT MAX(tp_id) FROM v_timeline WHERE tp = ?)) WHERE id = ?;",
@@ -611,6 +613,7 @@ VOID FcScanPhysmem()
         if(ctx->e.fValid) {
             PluginManager_FcIngestPhysmem(&ctx->e);
         }
+        ctxFc->cProgressPercent = 10 + (BYTE)((50 * paBase) / ctxMain->dev.paMax);
     }
     // 2.3: process last read chunk
     if(iChunk) {
@@ -645,22 +648,30 @@ fail:
 */
 VOID FcInitialize_ThreadProc(_In_ PVOID pvContext)
 {
-    if(SQLITE_OK != Fc_SqlExec(FC_SQL_SCHEMA_STR)) { return; }
-    if(!ctxVmm->Work.fEnabled) { return; }
+    if(SQLITE_OK != Fc_SqlExec(FC_SQL_SCHEMA_STR)) { goto fail; }
+    if(!ctxVmm->Work.fEnabled) { goto fail; }
     PluginManager_Notify(VMMDLL_PLUGIN_NOTIFY_FORENSIC_INIT, NULL, 0);
-    PluginManager_FcInitialize();
-    if(!ctxVmm->Work.fEnabled) { return; }
-    FcScanPhysmem();
-    if(!ctxVmm->Work.fEnabled) { return; }
-    PluginManager_FcIngestFinalize();
-    if(!ctxVmm->Work.fEnabled) { return; }
-    FcTimeline_Initialize();
-    if(!ctxVmm->Work.fEnabled) { return; }
-    PluginManager_FcFinalize();
+    PluginManager_FcInitialize();       // 0-10%
+    ctxFc->cProgressPercent = 10;
+    if(!ctxVmm->Work.fEnabled) { goto fail; }
+    FcScanPhysmem();                    // 11-60%
+    ctxFc->cProgressPercent = 60;
+    if(!ctxVmm->Work.fEnabled) { goto fail; }
+    PluginManager_FcIngestFinalize();   // 61-70%
+    ctxFc->cProgressPercent = 70;
+    if(!ctxVmm->Work.fEnabled) { goto fail; }
+    FcTimeline_Initialize();            // 71-90%
+    ctxFc->cProgressPercent = 90;
+    if(!ctxVmm->Work.fEnabled) { goto fail; }
+    PluginManager_FcFinalize();         // 91-100%
+    ctxFc->cProgressPercent = 100;
     ctxFc->db.fSingleThread = FALSE;
     ctxFc->fInitFinish = TRUE;
     PluginManager_Notify(VMMDLL_PLUGIN_NOTIFY_FORENSIC_INIT, NULL, 100);
     PluginManager_Notify(VMMDLL_PLUGIN_NOTIFY_FORENSIC_INIT_COMPLETE, NULL, 0);
+    return;
+fail:
+    ctxFc->cProgressPercent = 0;
 }
 
 /*
