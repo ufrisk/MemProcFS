@@ -195,7 +195,7 @@ VOID VfsDokan_InitializeAndMount_DisplayInfo(LPWSTR wszMountPoint, _In_ PVMMDLL_
         " - License:          GNU Affero General Public License v3.0               \n" \
         "   --------------------------------------------------------------------   \n" \
         "   MemProcFS is free open source software. If you find it useful please   \n" \
-        "   become a sponsor at: https://github.com/sponsors/ufrisk   Thank You!   \n" \
+        "   become a sponsor at: https://github.com/sponsors/ufrisk Thank You :)   \n" \
         "   --------------------------------------------------------------------   \n" \
         " - Version:          %i.%i.%i                                             \n" \
         " - Mount Point:      %S                                                   \n",

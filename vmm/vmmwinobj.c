@@ -1168,6 +1168,17 @@ VOID VmmWinObjKDrv_ObCloseCallback(_In_ PVMMOB_MAP_KDRIVER pObKDriver)
 }
 
 /*
+* qsort compare function for sorting kernel drivers.
+*/
+int VmmWinObjKDrv_Initialize_DoWork_CmpSort(_In_ PVMM_MAP_KDRIVERENTRY a, _In_ PVMM_MAP_KDRIVERENTRY b)
+{
+    if(a->vaStart == b->vaStart) {
+        return (a->va < b->va) ? -1 : 1;
+    }
+    return (a->vaStart < b->vaStart) ? -1 : 1;
+}
+
+/*
 * Worker function to initialize a new kernel driver map.
 * CALLER DECREF: return
 * -- return
@@ -1243,6 +1254,7 @@ PVMMOB_MAP_KDRIVER VmmWinObjKDrv_Initialize_DoWork()
         if(!pe->wszPath) { pe->wszPath = pObMap->wszMultiText; }
         if(!pe->wszServiceKeyName) { pe->wszServiceKeyName = pObMap->wszMultiText; }
     }
+    qsort(pObMap->pMap, pObMap->cMap, sizeof(VMM_MAP_KDRIVERENTRY), (int(*)(void const *, void const *))VmmWinObjKDrv_Initialize_DoWork_CmpSort);
     Ob_INCREF(pObMap);
 fail:
     Ob_DECREF(pObSystemProcess);
