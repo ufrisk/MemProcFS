@@ -109,7 +109,12 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="memprocfs.c" />
-    <ClCompile Include="vfs.c" />
+    <ClCompile Include="ob\ob_cachemap.c" />
+    <ClCompile Include="ob\ob_core.c" />
+    <ClCompile Include="ob\ob_map.c" />
+    <ClCompile Include="ob\ob_set.c" />
+    <ClCompile Include="vfsdokan.c" />
+    <ClCompile Include="vfslist.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\includes\dokan.h" />
@@ -117,6 +122,7 @@
     <ClInclude Include="..\includes\leechcore.h" />
     <ClInclude Include="..\includes\public.h" />
     <ClInclude Include="..\includes\vmmdll.h" />
+    <ClInclude Include="ob\ob.h" />
     <ClInclude Include="version.h" />
     <ClInclude Include="vfs.h" />
   </ItemGroup>

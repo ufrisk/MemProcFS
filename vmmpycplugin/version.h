@@ -3,8 +3,8 @@
 
 #define VERSION_MAJOR               3
 #define VERSION_MINOR               8
-#define VERSION_REVISION            0
-#define VERSION_BUILD               23
+#define VERSION_REVISION            1
+#define VERSION_BUILD               24
 
 #define VER_FILE_DESCRIPTION_STR    "MemProcFS : Python Plugin Manager"
 #define VER_FILE_VERSION            VERSION_MAJOR, VERSION_MINOR, VERSION_REVISION, VERSION_BUILD

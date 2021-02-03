@@ -108,8 +108,8 @@ Please find some ideas for possible future expansions of the memory process file
 - Forensic mode JSON file generation.
 
 License:
-======
-The project source code is released under GPLv3. Some bundled Microsoft redistributable binaries are released under separate licenses.
+========
+The project source code is released under: GNU Affero General Public License v3.0. Some bundled dependencies and plugins are released under GPLv3. Some bundled Microsoft redistributable binaries are released under separate licenses. Alternative licensing may be possible.
 
 Contributing:
 =============
@@ -227,3 +227,7 @@ v1.1-v2.10
   * Windows Kernel Object Manager Objects.
   * Additional kernel driver information.
   * Detailed Object and Object Header Info.
+
+Latest:
+* License Change to: GNU Affero General Public License v3.0.
+* MemProcFS.exe updates.

@@ -45,7 +45,8 @@ VOID MemProcFsCtrlHandler_TryShutdownThread(PVOID pv)
     HMODULE hModuleVmm;
     BOOL(*VMMDLL_Close)();
     __try {
-        VfsClose(g_VfsMountPoint);
+        VfsDokan_Close(g_VfsMountPoint);
+        VfsList_Close();
     } __except(EXCEPTION_EXECUTE_HANDLER) { ; }
     __try {
         hModuleVmm = GetModuleHandleA("vmm.dll");
@@ -138,9 +139,10 @@ int main(_In_ int argc, _In_ char* argv[])
         printf("MemProcFS: Error file system plugins in vmm.dll!\n");
         return 1;
     }
+    VfsList_Initialize(hVMM, 500, 128);
     SetConsoleCtrlHandler(MemProcFsCtrlHandler, TRUE);
     g_VfsMountPoint = GetMountPoint(argc, argv);
-    VfsInitializeAndMount(g_VfsMountPoint, &VmmDll);
+    VfsDokan_InitializeAndMount(g_VfsMountPoint, &VmmDll);
     CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)MemProcFsCtrlHandler_TryShutdownThread, NULL, 0, NULL);
     Sleep(250);
     TerminateProcess(GetCurrentProcess(), 1);
