@@ -10,7 +10,7 @@
 
 from vmmpy import *
 
-print('MemProcFS Registry: User Desktop Wallpapers [2021-01-09] \n')
+print('MemProcFS Registry: User Desktop Wallpapers [ver: 2021-01-09] \n')
 
 # NB! string 'path' and object 'user' are guaranteed to exist in user lignt plugins.
 root_path = 'HKU\\' + user['name'] + '\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Wallpaper\\MRU'

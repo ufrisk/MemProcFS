@@ -12,7 +12,7 @@
 # (c) Ulf Frisk, 2018-2021
 # Author: Ulf Frisk, pcileech@frizk.net
 #
-# Header Version: 3.7
+# Header Version: 3.8
 #
 
 import atexit
@@ -934,7 +934,10 @@ def regutil_print_filetime(indent_int, key_str, ft_int, line_length = 80, is_lin
 
 def regutil_read_utf16(reg_value_path, is_skip_typecheck = False):
     try:
-        reg_value = VmmPy_WinReg_ValueRead(reg_value_path)
+        if type(reg_value_path) is bytes:
+            reg_value = { 'data': reg_value_path, 'type': VMMPY_WINREG_SZ }
+        else:
+            reg_value = VmmPy_WinReg_ValueRead(reg_value_path)
         if is_skip_typecheck or reg_value['type'] == VMMPY_WINREG_SZ or reg_value['type'] == VMMPY_WINREG_EXPAND_SZ:
             data_str = reg_value['data'].decode('utf-16le')
             data_nul = data_str.index('\0')
@@ -948,7 +951,10 @@ def regutil_read_utf16(reg_value_path, is_skip_typecheck = False):
 
 def regutil_read_ascii(reg_value_path):
     try:
-        reg_value = VmmPy_WinReg_ValueRead(reg_value_path)
+        if type(reg_value_path) is bytes:
+            reg_value = { 'data': reg_value_path }
+        else:
+            reg_value = VmmPy_WinReg_ValueRead(reg_value_path)
         data_str = reg_value['data'].decode('ascii')
         data_nul = data_str.index('\0')
         if data_nul == -1:
@@ -961,7 +967,10 @@ def regutil_read_ascii(reg_value_path):
 
 def regutil_read_qword(reg_value_path, is_skip_typecheck = False):
     try:
-        reg_value = VmmPy_WinReg_ValueRead(reg_value_path)
+        if type(reg_value_path) is bytes:
+            reg_value = { 'data': reg_value_path, 'type': VMMPY_WINREG_QWORD }
+        else:
+            reg_value = VmmPy_WinReg_ValueRead(reg_value_path)
         if len(reg_value['data']) == 8:
             if is_skip_typecheck or reg_value['type'] == VMMPY_WINREG_QWORD:
                 return int.from_bytes(reg_value['data'], byteorder='little')
@@ -972,11 +981,14 @@ def regutil_read_qword(reg_value_path, is_skip_typecheck = False):
 
 def regutil_read_dword(reg_value_path, is_skip_typecheck = False):
     try:
-        reg_value = VmmPy_WinReg_ValueRead(reg_value_path)
+        if type(reg_value_path) is bytes:
+            reg_value = { 'data': reg_value_path, 'type': VMMPY_WINREG_DWORD }
+        else:
+            reg_value = VmmPy_WinReg_ValueRead(reg_value_path)
         if len(reg_value['data']) == 4:
             if reg_value['type'] == VMMPY_WINREG_DWORD_BIG_ENDIAN:
                 return int.from_bytes(reg_value['data'], byteorder='big')
-            if is_skip_typecheck or reg_value['type'] == DWORD:
+            if is_skip_typecheck or reg_value['type'] == VMMPY_WINREG_DWORD:
                 return int.from_bytes(reg_value['data'], byteorder='little')
     except: pass
     return -1

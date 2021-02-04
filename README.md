@@ -229,5 +229,8 @@ v1.1-v2.10
   * Detailed Object and Object Header Info.
 
 Latest:
-* License Change to: GNU Affero General Public License v3.0.
+* Bug fixes.
 * MemProcFS.exe updates.
+* License Change: GNU Affero General Public License v3.0.
+* New Features:
+  * py/reg/net/tcpip_interfaces.txt

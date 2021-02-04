@@ -10,7 +10,7 @@
 
 from vmmpy import *
 
-print('MemProcFS Registry: USB Devices [2021-01-09] \n')
+print('MemProcFS Registry: USB Devices [ver: 2021-01-09] \n')
 
 root_path = 'HKLM\\SYSTEM\\ControlSet001\\Enum\\USB'
 print(root_path)

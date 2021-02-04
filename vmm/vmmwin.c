@@ -1957,7 +1957,7 @@ PVMMWIN_OBJECT_TYPE VmmWin_ObjectTypeGet(_In_ BYTE iObjectType)
     for(i = 2; i < cType; i++) {
         ptp = ctxVmm->ObjectTypeTable.h + i;
         for(j = 0; j < sizeof(VMMWIN_OBJECTTYPE_NAME2OBJECT_ARRAY) / sizeof(VMMWIN_OBJECTTYPE_NAME2OBJECT_ENTRY); j++) {
-            if((ptp->wsz[0] == VMMWIN_OBJECTTYPE_NAME2OBJECT_ARRAY[j].wsz[0]) && !wcscmp(ptp->wsz, VMMWIN_OBJECTTYPE_NAME2OBJECT_ARRAY[j].wsz)) {
+            if(ptp->wsz && (ptp->wsz[0] == VMMWIN_OBJECTTYPE_NAME2OBJECT_ARRAY[j].wsz[0]) && !wcscmp(ptp->wsz, VMMWIN_OBJECTTYPE_NAME2OBJECT_ARRAY[j].wsz)) {
                 ctxVmm->ObjectTypeTable._tpAll[j] = (BYTE)i;
                 PDB_GetTypeSize(PDB_HANDLE_KERNEL, VMMWIN_OBJECTTYPE_NAME2OBJECT_ARRAY[j].sz, &ptp->cb);
                 ptp->szType = VMMWIN_OBJECTTYPE_NAME2OBJECT_ARRAY[j].sz;
@@ -3833,6 +3833,7 @@ POB_SET VmmWinProcess_Enumerate_FindNoLinkProcesses()
 fail:
     Ob_DECREF(pObSystemProcess);
     Ob_DECREF(pObHandleMap);
+    Ob_DECREF(psOb);
     return psObNoLink;
 }
 

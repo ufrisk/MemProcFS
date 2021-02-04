@@ -11,7 +11,7 @@
 
 from vmmpy import *
 
-print('MemProcFS Registry: USB Storage [2021-01-09] \n')
+print('MemProcFS Registry: USB Storage [ver: 2021-01-09] \n')
 
 root_path = 'HKLM\\SYSTEM\\ControlSet001\\Enum\\USBSTOR'
 print(root_path)

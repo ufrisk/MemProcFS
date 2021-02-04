@@ -10,7 +10,7 @@
 
 from vmmpy import *
 
-print('MemProcFS Registry: Bluetooth Devices [2021-01-09] \n')
+print('MemProcFS Registry: Bluetooth Devices [ver: 2021-01-09] \n')
 
 bthport_dict = {}
 bthport_path = 'HKLM\\SYSTEM\\ControlSet001\\Services\\BTHPORT\\Parameters\\Devices'
