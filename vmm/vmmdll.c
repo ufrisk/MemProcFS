@@ -182,8 +182,8 @@ VOID VmmDll_PrintHelp()
         " PCILeech if pcileech.dll is placed in the application directory. For infor-   \n" \
         " mation about PCILeech please consult the separate PCILeech documentation.     \n" \
         " -----                                                                         \n" \
-        " The Memory Process File System (c) 2018-2019 Ulf Frisk                        \n" \
-        " License: GNU GENERAL PUBLIC LICENSE - Version 3, 29 June 2007                 \n" \
+        " The Memory Process File System (c) 2018-2021 Ulf Frisk                        \n" \
+        " License: GNU Affero General Public License v3.0                               \n" \
         " Contact information: pcileech@frizk.net                                       \n" \
         " The Memory Process File System: https://github.com/ufrisk/MemProcFS           \n" \
         " LeechCore:                      https://github.com/ufrisk/LeechCore           \n" \
