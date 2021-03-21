@@ -728,14 +728,14 @@ namespace vmmsharp
             return true;
         }
 
-        public static unsafe bool PdbSymbolName(string szModule, uint cbSymbolOffset, out string szSymbolName, out uint pdwSymbolDisplacement)
+        public static unsafe bool PdbSymbolName(string szModule, ulong cbSymbolAddressOrOffset, out string szSymbolName, out uint pdwSymbolDisplacement)
         {
             szSymbolName = "";
             pdwSymbolDisplacement = 0;
             byte[] data = new byte[260];
             fixed (byte* pb = data)
             {
-                bool result = vmmi.VMMDLL_PdbSymbolName(szModule, cbSymbolOffset, pb, out pdwSymbolDisplacement);
+                bool result = vmmi.VMMDLL_PdbSymbolName(szModule, cbSymbolAddressOrOffset, pb, out pdwSymbolDisplacement);
                 if (!result) { return false; }
                 szSymbolName = Encoding.UTF8.GetString(data);
                 szSymbolName = szSymbolName.Substring(0, szSymbolName.IndexOf((char)0));
@@ -2025,7 +2025,7 @@ namespace vmmsharp
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_PdbSymbolName")]
         internal static extern unsafe bool VMMDLL_PdbSymbolName(
             [MarshalAs(UnmanagedType.LPStr)] string szModule,
-            uint cbSymbolOffset,
+            ulong cbSymbolAddressOrOffset,
             byte* szSymbolName,
             out uint pdwSymbolDisplacement);
 

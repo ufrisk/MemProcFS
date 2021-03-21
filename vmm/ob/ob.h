@@ -39,6 +39,7 @@ typedef unsigned __int64                QWORD, *PQWORD;
 #define OB_TAG_OBJ_ERROR                'Oerr'
 #define OB_TAG_OBJ_FILE                 'Ofil'
 #define OB_TAG_OBJ_DISPLAY              'Odis'
+#define OB_TAG_PDB_CTX                  'PdbC'
 #define OB_TAG_PDB_ENTRY                'PdbE'
 #define OB_TAG_PFN_CONTEXT              'PfnC'
 #define OB_TAG_PFN_PROC_TABLE           'PfnT'

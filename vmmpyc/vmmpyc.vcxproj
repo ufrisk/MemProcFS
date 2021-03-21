@@ -115,9 +115,27 @@
     <ClInclude Include="..\includes\leechcore.h" />
     <ClInclude Include="..\includes\vmmdll.h" />
     <ClInclude Include="version.h" />
+    <ClInclude Include="vmmpyc.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="vmmpyc.c" />
+    <ClCompile Include="vmmpycplugin.c" />
+    <ClCompile Include="vmmpyc_kernel.c" />
+    <ClCompile Include="vmmpyc_maps.c" />
+    <ClCompile Include="vmmpyc_module.c" />
+    <ClCompile Include="vmmpyc_modulemaps.c" />
+    <ClCompile Include="vmmpyc_pdb.c" />
+    <ClCompile Include="vmmpyc_physicalmemory.c" />
+    <ClCompile Include="vmmpyc_process.c" />
+    <ClCompile Include="vmmpyc_processmaps.c" />
+    <ClCompile Include="vmmpyc_reghive.c" />
+    <ClCompile Include="vmmpyc_regkey.c" />
+    <ClCompile Include="vmmpyc_regmemory.c" />
+    <ClCompile Include="vmmpyc_regvalue.c" />
+    <ClCompile Include="vmmpyc_util.c" />
+    <ClCompile Include="vmmpyc_vfs.c" />
+    <ClCompile Include="vmmpyc_virtualmemory.c" />
+    <ClCompile Include="vmmpyc_vmm.c" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="vmmpyc.rc" />

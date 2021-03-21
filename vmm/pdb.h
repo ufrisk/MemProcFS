@@ -67,13 +67,15 @@ _Success_(return)
 BOOL PDB_LoadEnsure(_In_opt_ PDB_HANDLE hPDB);
 
 /*
-* Return the module name given a PDB handle.
+* Return module information given a PDB handle.
 * -- hPDB
 * -- szModuleName = buffer to receive module name upon success.
+* -- pvaModuleBase
+* -- pcbModuleSize
 * -- return
 */
 _Success_(return)
-BOOL PDB_GetModuleName(_In_opt_ PDB_HANDLE hPDB, _Out_writes_(MAX_PATH) LPSTR szModuleName);
+BOOL PDB_GetModuleInfo(_In_opt_ PDB_HANDLE hPDB, _Out_writes_opt_(MAX_PATH) LPSTR szModuleName, _Out_opt_ PQWORD pvaModuleBase, _Out_opt_ PDWORD pcbModuleSize);
 
 /*
 * Query the PDB for the offset of a symbol.

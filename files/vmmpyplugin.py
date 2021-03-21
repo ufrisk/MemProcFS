@@ -26,11 +26,10 @@
 # (c) Ulf Frisk, 2018-2021
 # Author: Ulf Frisk, pcileech@frizk.net
 #
-# Header Version: 3.7
+# Header Version: 3.9
 #
 
-from vmmpy import *
-from vmmpycc import *
+import memprocfs
 
 VmmPyPlugin_fPrint =    False   # print statements enable.
 VmmPyPlugin_fPrintV =   False   # verbose print statements enable.
@@ -76,20 +75,22 @@ def VmmPyPlugin_InternalInitialize():
     """
     if 'VmmPyPlugin_IsInitialized' in globals():
         return
+    global vmm
     global VmmPyPlugin_IsInitialized
     global VmmPyPlugin_RootDirectoryRoot
     global VmmPyPlugin_RootDirectoryProcess
     global VmmPyPlugin_TargetSystem
     global VmmPyPlugin_TargetMemoryModel
+    vmm = memprocfs.Vmm()
     VmmPyPlugin_IsInitialized = True
     VmmPyPlugin_RootDirectoryRoot = {}
     VmmPyPlugin_RootDirectoryProcess = {}
-    VmmPyPlugin_TargetSystem = VmmPy_ConfigGet(VMMPY_OPT_CORE_SYSTEM)
-    VmmPyPlugin_TargetMemoryModel = VmmPy_ConfigGet(VMMPY_OPT_CORE_MEMORYMODEL)
+    VmmPyPlugin_TargetSystem = vmm.get_config(memprocfs.OPT_CORE_SYSTEM)
+    VmmPyPlugin_TargetMemoryModel = vmm.get_config(memprocfs.OPT_CORE_MEMORYMODEL)
     VmmPyPlugin_InternalSetVerbosity();
     VmmPyPlugin_InternalInitializePlugins()
     VmmPyPluginLight_InternalInitializePlugins()
-    VMMPYCC_CallbackRegister(
+    memprocfs.VmmPycPlugin().VMMPYCC_CallbackRegister(
         VmmPyPlugin_InternalCallback_List, 
         VmmPyPlugin_InternalCallback_Read, 
         VmmPyPlugin_InternalCallback_Write, 
@@ -200,22 +201,22 @@ def VmmPyPlugin_InternalCallback_Write(pid, path, bytes_data, bytes_offset):
     path -- str: the path/file to write.
     bytes_data -- bytes: the bytes to write.
     bytes_offset -- int: offset of bytes to write.
-    return -- int: VMMPY_STATUS (NTSTATUS) value of the write operation.
+    return -- int: memprocfs.STATUS_* (NTSTATUS) value of the write operation.
     """
     try:
         file_path, file_name, file_attr = VmmPyPlugin_FileRetrieve(pid, path)
         bytes_length = len(bytes_data)
         if file_attr['write'] == None:
-            return VMMPY_STATUS_END_OF_FILE
+            return memprocfs.VSTATUS_END_OF_FILE
         if bytes_offset >= file_attr['size']:
-            return VMMPY_STATUS_END_OF_FILE
+            return memprocfs.STATUS_END_OF_FILE
         if bytes_length + bytes_offset > file_attr['size']:
             bytes_length = file_attr['size'] - bytes_offset
         return file_attr['write'](pid, file_path, file_name, file_attr, bytes_data, bytes_offset)
     except Exception as e:
         if VmmPyPlugin_fPrintV:
             print("VmmPyPlugin_InternalCallback_Write: Exception: " + str(e))
-        return VMMPY_STATUS_FILE_INVALID
+        return memprocfs.STATUS_FILE_INVALID
 
 
 
@@ -225,10 +226,10 @@ def VmmPyPlugin_InternalSetVerbosity():
     """
     try:
         global VmmPyPlugin_fPrint, VmmPyPlugin_fPrintV, VmmPyPlugin_fPrintVV, VmmPyPlugin_fPrintVVV
-        VmmPyPlugin_fPrint = VmmPy_ConfigGet(VMMPY_OPT_CORE_PRINTF_ENABLE) > 0
-        VmmPyPlugin_fPrintV = VmmPyPlugin_fPrint and VmmPy_ConfigGet(VMMPY_OPT_CORE_VERBOSE) > 0
-        VmmPyPlugin_fPrintVV = VmmPyPlugin_fPrint and VmmPy_ConfigGet(VMMPY_OPT_CORE_VERBOSE_EXTRA) > 0
-        VmmPyPlugin_fPrintVVV = VmmPyPlugin_fPrint and VmmPy_ConfigGet(VMMPY_OPT_CORE_VERBOSE_EXTRA_TLP) > 0
+        VmmPyPlugin_fPrint = vmm.get_config(memprocfs.OPT_CORE_PRINTF_ENABLE) > 0
+        VmmPyPlugin_fPrintV = VmmPyPlugin_fPrint and vmm.get_config(memprocfs.OPT_CORE_VERBOSE) > 0
+        VmmPyPlugin_fPrintVV = VmmPyPlugin_fPrint and vmm.get_config(memprocfs.OPT_CORE_VERBOSE_EXTRA) > 0
+        VmmPyPlugin_fPrintVVV = VmmPyPlugin_fPrint and vmm.get_config(memprocfs.OPT_CORE_VERBOSE_EXTRA_TLP) > 0
     except Exception as e:
         if VmmPyPlugin_fPrintV:
             print("VmmPyPlugin_InternalSetVerbosity: Exception: " + str(e))
@@ -240,15 +241,15 @@ def VmmPyPlugin_InternalCallback_Notify(fEvent, bytesData):
     Receive notify events from the native plugin manager.
 
     Keyword arguments:
-    fEvent -- int: the event id as given by VMMPY_PLUGIN_EVENT_*
+    fEvent -- int: the event id as given by memprocfs.PLUGIN_EVENT_*
     bytesData -- bytes: any bytes object (or None) related to the event.
     """
-    if fEvent == VMMPY_PLUGIN_EVENT_VERBOSITYCHANGE:
+    if fEvent == memprocfs.PLUGIN_EVENT_VERBOSITYCHANGE:
         VmmPyPlugin_InternalSetVerbosity()
     for module in VmmPyPlugin_PluginModules:
         if hasattr(module, 'Notify'):
             module.Notify(fEvent, bytesData)
-    if fEvent == VMMPY_PLUGIN_NOTIFY_REFRESH_SLOW:
+    if fEvent == memprocfs.PLUGIN_NOTIFY_REFRESH_SLOW:
         VmmPyPluginLight_InternalCallback_Refresh()
 
 
@@ -257,7 +258,6 @@ def VmmPyPlugin_InternalCallback_Close():
     """Internal Use Only!
     Callback when closing down python interpreter.
     """
-    print("VmmPyPlugin_InternalCallback_Close")
     return 0
 
 
@@ -303,8 +303,7 @@ def VmmPyPlugin_FileRegisterDirectory(pid, path, fn_list_callback = None, is_ove
         # replace {by-user} with all user names and perform as many directory
         # registrations as there are users in the system. Use the function:
         # VmmPyPlugin_UserDirectoryStrip(path) to remove user-name from path.
-        users = VmmPy_GetUsers()
-        for user in users:
+        for user in vmm.maps.user():
             userpath = path.replace('{by-user}', 'by-user/' + user['name'].replace('\\', '_').replace('/', '_'))
             VmmPyPlugin_FileRegisterDirectory(pid, userpath, fn_list_callback, is_overwrite)
         return
@@ -334,8 +333,7 @@ def VmmPyPlugin_FileUnregister(pid, path):
         # replace {by-user} with all user names and perform as many directory
         # registrations as there are users in the system. Use the function:
         # VmmPyPlugin_UserDirectoryStrip(path) to remove user-name from path.
-        users = VmmPy_GetUsers()
-        for user in users:
+        for user in vmm.maps.user():
             userpath = path.replace('{by-user}', 'by-user/' + user['name'].replace('\\', '_').replace('/', '_'))
             VmmPyPlugin_FileUnregister(pid, userpath)
         return
@@ -381,7 +379,7 @@ def VmmPyPlugin_FileRetrieve(pid, path):
 
 def VmmPyPlugin_UserDirectoryStrip(path):
     """Strip a valid username on the format '/by-user/username' from path and
-    return the stripped string and the user-dict [as given by VmmPy_GetUsers()]
+    return the stripped string and the user-dict [as given by vmm.maps.user()]
 
     Keyword arguments:
     path -- the path with the potential system username
@@ -392,8 +390,7 @@ def VmmPyPlugin_UserDirectoryStrip(path):
     """
     if not 'by-user/' in path:
         return path, None
-    users = VmmPy_GetUsers()
-    for user in VmmPy_GetUsers():
+    for user in vmm.maps.user():
         name = 'by-user/' + user['name'].replace('\\', '_').replace('/', '_') + '/'
         if name in path:
             return path.replace(name, ''), user
@@ -431,7 +428,7 @@ def VmmPyPluginLight_InternalInitializePlugins():
             VmmPyPluginLight_registry[df[2]] = {'$list': None, '$lock': threading.Lock()}
         VmmPyPluginLight_registry[df[2]][df[3]] = {'file': df[3], 'plugin': plugin_file, 'data': None}
         if VmmPyPlugin_fPrintV:
-            if df[0] == 'root':
+            if df[1] == 'root':
                 print("VmmPyPluginLight: Register '" + df[2] + '/' + df[3] + "'")
             else:
                 print("VmmPyPluginLight: Register 'by-user/" + df[2][1:] + '/' + df[3] + "'")
@@ -498,6 +495,7 @@ def VmmPyPluginLight_Process(path, user, key):
                     print("VmmPyPluginLight: Process: '" + path + "/" + d['file'] + "'")
                 spec = importlib.util.spec_from_file_location(d['plugin'], d['plugin'])
                 module = importlib.util.module_from_spec(spec)
+                setattr(module, 'vmm', vmm)
                 setattr(module, 'path', path)
                 setattr(module, 'user', user)
                 io_stdout = io.StringIO()

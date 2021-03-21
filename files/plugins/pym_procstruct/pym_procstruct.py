@@ -13,7 +13,7 @@
 # Author: Ulf Frisk, pcileech@frizk.net
 #
 
-from vmmpy import *
+import memprocfs
 from vmmpyplugin import *
 
 procstruct_eprocess_size_bin = 0x880
@@ -39,7 +39,7 @@ def ReadEPROCESS_Binary(pid, file_path, file_name, file_attr, bytes_length, byte
     # validity either.
     #
     # Start by retrieving the process information for the given pid.
-    procinfo = VmmPy_ProcessGetInformation(pid)
+    procinfo = vmm.process(pid).info()
     # The procinfo is a dict that amongst other entries contains 'va-eprocess'
     # which is the virtual address for the eprocess struct in kernel memory.
     va_eprocess = procinfo['va-eprocess']
@@ -47,7 +47,7 @@ def ReadEPROCESS_Binary(pid, file_path, file_name, file_attr, bytes_length, byte
     # Since EPROCESS resides in kernel memory (which is mapped into process
     # address space as supervisor only memory, but is filtered out by the
     # VMM) it is necessary to read it from the SYSTEM process - i.e. pid 4.
-    memory_data = VmmPy_MemRead(4, va_eprocess + bytes_offset, bytes_length)
+    memory_data = vmm.kernel.process.memory.read(va_eprocess + bytes_offset, bytes_length)
     # The read memory data should be of the correct size and correct offset,
     # and it's also already of the bytes data type - so just return it and
     # finish with the read!
@@ -61,7 +61,7 @@ def ReadEPROCESS_Hexdump(pid, file_path, file_name, file_attr, bytes_length, byt
     memory_data = ReadEPROCESS_Binary(pid, file_path, file_name, file_attr, bytes_length, bytes_offset)
     # Translate the binary data into hexascii memory dump format by calling
     # the VmmPy_UtilFillHexAscii function.
-    hexdump_string = VmmPy_UtilFillHexAscii(memory_data)
+    hexdump_string = vmm.hex(memory_data)
     # Convert from string into bytes using ascii encoding.
     hexdump_binary = bytes(hexdump_string, 'ascii')
     # return the data that should be read as a bytes object.
@@ -77,13 +77,14 @@ def WriteEPROCESS_Binary(pid, file_path, file_name, file_attr, bytes_data, bytes
     # bytes_offset since thise are all verified by the plugin manager.
     #
     # Start by retrieving the process information for the given pid.
-    procinfo = VmmPy_ProcessGetInformation(pid)
+    process = vmm.process(pid)
+    procinfo = process.info()
     # The procinfo is a dict that amongst other entries contains 'va-eprocess'
     # which is the virtual address for the eprocess struct in kernel memory.
     va_eprocess = procinfo['va-eprocess']
     # Now all data which is required to make a write exists! Perform the write!
-    VmmPy_MemWrite(4, va_eprocess+bytes_offset, bytes_data)
-    return VMMPY_STATUS_SUCCESS
+    vmm.kernel.process.write(va_eprocess+bytes_offset, bytes_data)
+    return memprocfs.STATUS_SUCCESS
 
 
 
@@ -92,12 +93,13 @@ def ReadPEB_Binary(pid, file_path, file_name, file_attr, bytes_length, bytes_off
     # Read binary data from the PEB page. This is a compact version of the
     # Read function. Please see ReadEPROCESS_Binary for a detailed description
     #
-    procinfo = VmmPy_ProcessGetInformation(pid)
+    process = vmm.process(pid)
+    procinfo = process.info()
     if '32' in file_name:
         va_peb = procinfo['va-peb32']
     else:
         va_peb = procinfo['va-peb']
-    return VmmPy_MemRead(pid, va_peb + bytes_offset, bytes_length)
+    return process.memory.read(va_peb + bytes_offset, bytes_length)
 
 
 
@@ -107,7 +109,7 @@ def ReadPEB_Hexdump(pid, file_path, file_name, file_attr, bytes_length, bytes_of
     # Read function. Please see ReadEPROCESS_Hexdump for a detailed description
     #
     memory_data = ReadPEB_Binary(pid, file_path, file_name, file_attr, bytes_length, bytes_offset)
-    hexdump_string = VmmPy_UtilFillHexAscii(memory_data)
+    hexdump_string = vmm.hex(memory_data)
     return bytes(hexdump_string, 'ascii')[bytes_offset:bytes_length+bytes_offset]
 
 
@@ -117,13 +119,14 @@ def WritePEB_Binary(pid, file_path, file_name, file_attr, bytes_data, bytes_offs
     # Write binary data to the PEB page. This is a compact version of the
     # Write function. Please see WritePEB_Binary for a detailed description
     #
-    procinfo = VmmPy_ProcessGetInformation(pid)
+    process = vmm.process(pid)
+    procinfo = process.info()
     if '32' in file_name:
         va_peb = procinfo['va-peb32']
     else:
         va_peb = procinfo['va-peb']
-    VmmPy_MemWrite(pid, va_peb+bytes_offset, bytes_data)
-    return VMMPY_STATUS_SUCCESS
+    process.write(va_peb+bytes_offset, bytes_data)
+    return memprocfs.STATUS_SUCCESS
 
 
 
@@ -136,7 +139,7 @@ def IsProcessPeb6432(pid):
     #
     if pid in procstruct_cache_proc_wow64:
         return procstruct_cache_proc_wow64[pid]
-    procinfo = VmmPy_ProcessGetInformation(pid)
+    procinfo = vmm.process(pid).info()
     if(procinfo['state'] != 0):
         result = False, False
     else:
@@ -188,15 +191,15 @@ def Close():
 def Initialize(target_system, target_memorymodel):
     # Check that the operating system is 32-bit or 64-bit Windows. If it's not
     # then raise an exception to terminate loading of this module.
-    if target_system != VMMPY_SYSTEM_WINDOWS_X64 and target_system != VMMPY_SYSTEM_WINDOWS_X86:
+    if target_system != memprocfs.SYSTEM_WINDOWS_X64 and target_system != memprocfs.SYSTEM_WINDOWS_X86:
         raise RuntimeError("Only Windows is supported by the pym_procstruct module.")
     # Calculate the size of the 'eprocess_size_hex' global variable. This is
     # only done once - at module instantiation to speed up the list operation.
     global procstruct_eprocess_size_hex
-    procstruct_eprocess_size_hex = len(VmmPy_UtilFillHexAscii(bytes(procstruct_eprocess_size_bin)))
+    procstruct_eprocess_size_hex = len(vmm.hex(bytes(procstruct_eprocess_size_bin)))
     # Calculate the size of the 'PEB page'
     global procstruct_peb_size_hex
-    procstruct_peb_size_hex = len(VmmPy_UtilFillHexAscii(bytes(procstruct_peb_size_bin)))
+    procstruct_peb_size_hex = len(vmm.hex(bytes(procstruct_peb_size_bin)))
     # Register a directory with the VmmPyPlugin plugin manager. The directory
     # is a non-root (i.e. a process) directory and have a custom List function.
     VmmPyPlugin_FileRegisterDirectory(True, 'procstruct', List)

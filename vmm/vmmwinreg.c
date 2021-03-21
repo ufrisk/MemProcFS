@@ -1561,6 +1561,7 @@ BOOL VmmWinReg_ValueQueryInternal_BigDataList(_In_ POB_REGISTRY_HIVE pHive, _In_
     if(cbListCell < 4 + cNumSegments * 4UL) { return FALSE; }
     // read individual data cells
     if(pcbDataRead) { *pcbDataRead = cbData; }
+    if(pbData) { ZeroMemory(pbData, cbData); }
     for(i = 0; cbData && (i < cNumSegments); i++) {
         if(cbDataOffset > 16344) {
             cbDataOffset -= 16344;

@@ -11,38 +11,13 @@
 #include "sysquery.h"
 #include "version.h"
 #include "vmm.h"
+#include "vmmwindef.h"
 #include "vmmwininit.h"
 #include "vmmwinobj.h"      // DEBUG
 
 #define KDBG64_KiProcessorBlock     0x218
 #define KDBG64_ContextKPRCB         0x338
 #define KDBG64_OffsetPrcbNumber     0x2be
-
-#define _PHYSICAL_MEMORY_MAX_RUNS   0x20
-
-typedef struct {
-    QWORD BasePage;
-    QWORD PageCount;
-} _PHYSICAL_MEMORY_RUN64;
-
-typedef struct {
-    DWORD NumberOfRuns;
-    DWORD Reserved1;
-    DWORD NumberOfPages;
-    DWORD Reserved2;
-    _PHYSICAL_MEMORY_RUN64 Run[_PHYSICAL_MEMORY_MAX_RUNS];
-} _PHYSICAL_MEMORY_DESCRIPTOR64, *_PPHYSICAL_MEMORY_DESCRIPTOR64;
-
-typedef struct {
-    DWORD BasePage;
-    DWORD PageCount;
-} _PHYSICAL_MEMORY_RUN32;
-
-typedef struct {
-    DWORD NumberOfRuns;
-    DWORD NumberOfPages;
-    _PHYSICAL_MEMORY_RUN32 Run[_PHYSICAL_MEMORY_MAX_RUNS];
-} _PHYSICAL_MEMORY_DESCRIPTOR32, *_PPHYSICAL_MEMORY_DESCRIPTOR32;
 
 typedef struct tdVMMVFS_DUMP_CONTEXT_OVERLAY {
     QWORD pa;
@@ -467,11 +442,12 @@ NTSTATUS MVfsRoot_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBYTE pb
 */
 BOOL MVfsRoot_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 {
-    UNREFERENCED_PARAMETER(ctx);
-    VMMDLL_VfsList_AddDirectory(pFileList, L"name", NULL);
-    VMMDLL_VfsList_AddDirectory(pFileList, L"pid", NULL);
-    VMMDLL_VfsList_AddFile(pFileList, L"memory.pmem", ctxMain->dev.paMax, NULL);
-    VMMDLL_VfsList_AddFile(pFileList, L"memory.dmp", ctxMain->dev.paMax + (ctxVmm->f32 ? 0x1000 : 0x2000), NULL);
+    if(!ctx->wszPath[0]) {
+        VMMDLL_VfsList_AddDirectory(pFileList, L"name", NULL);
+        VMMDLL_VfsList_AddDirectory(pFileList, L"pid", NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"memory.pmem", ctxMain->dev.paMax, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, L"memory.dmp", ctxMain->dev.paMax + (ctxVmm->f32 ? 0x1000 : 0x2000), NULL);
+    }
     return TRUE;
 }
 

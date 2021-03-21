@@ -540,11 +540,13 @@ VOID PluginManager_Initialize_Python()
     LPSTR szPYTHON_VERSIONS_SUPPORTED[] = { "python315.dll", "python314.dll", "python313.dll", "python312.dll", "python311.dll", "python310.dll", "python39.dll", "python38.dll", "python37.dll", "python36.dll"};
     DWORD cszPYTHON_VERSIONS_SUPPORTED = (sizeof(szPYTHON_VERSIONS_SUPPORTED) / sizeof(LPSTR));
     DWORD i;
-    BOOL fBitnessFail = FALSE;
+    BOOL fBitnessFail = FALSE, fPythonStandalone = FALSE;
     VMMDLL_PLUGIN_REGINFO ri;
     CHAR szPythonPath[MAX_PATH];
     HMODULE hDllPython3X = NULL, hDllPython3 = NULL, hDllPyPlugin = NULL;
     VOID(*pfnInitializeVmmPlugin)(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo);
+    // 0: Verify that Python should be enabled
+    if(ctxMain->cfg.fDisablePython) { return; }
     // 1: Locate Python by trying user-defined path
     if(ctxMain->cfg.szPythonPath[0]) {
         for(i = 0; i < cszPYTHON_VERSIONS_SUPPORTED; i++) {
@@ -566,7 +568,21 @@ VOID PluginManager_Initialize_Python()
             return;
         }
     }
-    // 2: Try locate Python by checking the python36 sub-directory relative to the current executable (.exe).
+    // 2: If Python is already loaded - use it!
+    if(0 == ctxMain->cfg.szPythonPath[0]) {
+        for(i = 0; i < cszPYTHON_VERSIONS_SUPPORTED; i++) {
+            if((hDllPython3X = GetModuleHandleA(szPYTHON_VERSIONS_SUPPORTED[i]))) {
+                GetModuleFileNameA(hDllPython3X, szPythonPath, MAX_PATH);
+                hDllPython3X = LoadLibraryA(szPythonPath);
+                if(hDllPython3X) {
+                    Util_GetPathDll(ctxMain->cfg.szPythonPath, hDllPython3X);
+                    fPythonStandalone = TRUE;
+                    break;
+                }
+            }
+        }
+    }
+    // 3: Try locate Python by checking the python36 sub-directory relative to the current executable (.exe).
     if(0 == ctxMain->cfg.szPythonPath[0]) {
         for(i = 0; i < cszPYTHON_VERSIONS_SUPPORTED; i++) {
             ZeroMemory(szPythonPath, MAX_PATH);
@@ -582,7 +598,7 @@ VOID PluginManager_Initialize_Python()
             strcat_s(ctxMain->cfg.szPythonPath, MAX_PATH, "python\\");
         }
     }
-    // 3: Try locate Python by loading from the current path.
+    // 4: Try locate Python by loading from the current path.
     if(0 == ctxMain->cfg.szPythonPath[0]) {
         for(i = 0; i < cszPYTHON_VERSIONS_SUPPORTED; i++) {
             hDllPython3X = LoadLibraryA(szPYTHON_VERSIONS_SUPPORTED[i]);
@@ -593,7 +609,7 @@ VOID PluginManager_Initialize_Python()
             Util_GetPathDll(ctxMain->cfg.szPythonPath, hDllPython3X);
         }
     }
-    // 4: Python is not found?
+    // 5: Python is not found?
     if(0 == ctxMain->cfg.szPythonPath[0]) {
         vmmprintf(
             fBitnessFail ?
@@ -602,12 +618,12 @@ VOID PluginManager_Initialize_Python()
         );
         goto fail;
     }
-    // 5: Load Python3.dll as well (i.e. prevent vmmpycplugin.dll to fetch the wrong one by mistake...)
+    // 6: Load Python3.dll as well (i.e. prevent vmmpyc.pyd to fetch the wrong one by mistake...)
     Util_GetPathDll(szPythonPath, hDllPython3X);
     strcat_s(szPythonPath, MAX_PATH, "python3.dll");
     hDllPython3 = LoadLibraryExA(szPythonPath, 0, LOAD_WITH_ALTERED_SEARCH_PATH);
-    // 6: process 'special status' python plugin manager.
-    hDllPyPlugin = LoadLibraryA("vmmpycplugin.dll");
+    // 7: process 'special status' python plugin manager.
+    hDllPyPlugin = LoadLibraryA("vmmpyc.pyd");
     if(!hDllPyPlugin) {
         vmmprintf("PluginManager: Python plugin manager failed to load.\n");
         goto fail;
@@ -618,8 +634,9 @@ VOID PluginManager_Initialize_Python()
         goto fail;
     }
     PluginManager_Initialize_RegInfoInit(&ri, hDllPyPlugin);
-    ri.hReservedDllPython3X = hDllPython3X;
-    ri.hReservedDllPython3 = hDllPython3;
+    ri.python.fPythonStandalone = fPythonStandalone;
+    ri.python.hReservedDllPython3X = hDllPython3X;
+    ri.python.hReservedDllPython3 = hDllPython3;
     pfnInitializeVmmPlugin(&ri);
     if(!PluginManager_ModuleExistsDll(hDllPyPlugin)) {
         vmmprintf("PluginManager: Python plugin manager failed to load due to internal error.\n");

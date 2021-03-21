@@ -60,7 +60,7 @@ VOID M_Handle_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_LdrModules_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_MemMap_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_MiniDump_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
-VOID M_ProcUser_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
+VOID M_ProcToken_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_Thread_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 
 VOID(*g_pfnModulesAllInternal[])(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo) = {
@@ -77,7 +77,7 @@ VOID(*g_pfnModulesAllInternal[])(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo) = {
     M_MemMap_Initialize,
     M_MiniDump_Initialize,
     M_Phys2Virt_Initialize,
-    M_ProcUser_Initialize,
+    M_ProcToken_Initialize,
     M_Thread_Initialize,
     M_Virt2Phys_Initialize,
     // various global modules

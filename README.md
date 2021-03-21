@@ -13,7 +13,9 @@ Use your favorite tools to analyze memory - use your favorite hex editors, your 
 <p align="center"><img src="https://github.com/ufrisk/MemProcFS/wiki/resources/proc_base3.png" height="190"/><img src="https://github.com/ufrisk/MemProcFS/wiki/resources/pciescreamer.jpeg" height="190"/><img src="https://github.com/ufrisk/MemProcFS/wiki/resources/proc_modules.png" height="190"/></p>
 
 
-Include MemProcFS in your Python or C/C++ programming projects! Everything in MemProcFS is exposed via an easy-to-use API for use in your own projects! The Plugin friendly architecture allows users to easily extend MemProcFS with native C .DLL plugins or Python .py plugins - providing additional analysis capabilities!
+Include MemProcFS in your C/C++, C# or Python programming projects! Everything in MemProcFS is exposed via an easy-to-use API for use in your own projects! The Plugin friendly architecture allows users to easily extend MemProcFS with native C .DLL plugins or Python .py plugins - providing additional analysis capabilities!
+
+MemProcFS is available on Python pip. Just type `pip install memprocfs` and you're ready to go! Please see the [Python API documentation](https://github.com/ufrisk/MemProcFS/wiki/API_Python) for examples and useage!
 
 <b>Please check out the [project wiki](https://github.com/ufrisk/MemProcFS/wiki)</b> for more in-depth detailed information about the file system itself, its API and its plugin modules!
 
@@ -29,11 +31,11 @@ No matter if you have no prior knowledge of memory analysis or are an advanced u
 
 Extensive Python, C# and C/C++ API:
 ===============================
-Everything in MemProcFS is exposed as APIs. APIs exist for both C/C++ `vmmdll.h`, C# `vmmsharp.cs` and Python `vmmpy.py`. The file system itself is made available virtually via the API without the need to mount it. Specialized process analysis and process alteration functionality is made easy by calling API functionality. It is possible to read both virtual process memory as well as physical memory! The example below shows reading 0x20 bytes from physical address 0x1000:
+Everything in MemProcFS is exposed as APIs. APIs exist for both C/C++ `vmmdll.h`, C# `vmmsharp.cs` and Python `memprocfs.py`. The file system itself is made available virtually via the API without the need to mount it. SIt is possible to read both virtual process memory as well as physical memory! The example below shows reading 0x20 bytes from physical address 0x1000:
 ```
->>> from vmmpy import *
->>> VmmPy_Initialize('c:/temp/win10_memdump.raw')
->>> print(VmmPy_UtilFillHexAscii(VmmPy_MemRead(-1, 0x1000, 0x20)))
+>>> import memprocfs
+>>> vmm = memprocfs.Vmm(['-device', 'c:/temp/win10_memdump.raw'])
+>>> print(vmm.hex( vmm.memory.read(0x1000, 0x20) ))
 0000    e9 4d 06 00 01 00 00 00  01 00 00 00 3f 00 18 10   .M..........?...
 0010    00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ................
 ```
@@ -128,9 +130,7 @@ Links:
 
 Support PCILeech/MemProcFS development:
 =======================================
-PCILeech and MemProcFS are hobby projects of mine. I put a lot of time and energy into my projects. The time being most of my spare time - since I'm not able to work with this. Unfortunately since some aspects also relate to hardware I also put quite some of money into my projects. If you think PCILeech and/or MemProcFS are awesome tools and/or if you had a use for them it's now possible to contribute.
-
-Please do note that PCILeech and MemProcFS are free and open source - as such I'm not expecting sponsorships; even though a sponsorship would be very much appreciated. I'm also not able to promise product features, consultancy or other things in return for a donation. A sponsorship will have to stay a sponsorship and no more. It's possible to sponsor via Github Sponsors.
+PCILeech and MemProcFS are hobby projects of mine. I put a lot of time and energy into my projects. The time being most of my spare time. Since some aspects also relate to hardware I also put quite some of money into my projects. If you think PCILeech and/or MemProcFS are awesome tools and/or if you had a use for them it's now possible to contribute. It's possible to sponsor via Github Sponsors.
 
  - Github Sponsors: [`https://github.com/sponsors/ufrisk`](https://github.com/sponsors/ufrisk)
  
@@ -228,9 +228,12 @@ v1.1-v2.10
   * Additional kernel driver information.
   * Detailed Object and Object Header Info.
 
-Latest:
+[v3.9](https://github.com/ufrisk/MemProcFS/releases/tag/v3.9)
 * Bug fixes.
-* MemProcFS.exe updates.
 * License Change: GNU Affero General Public License v3.0.
+* Updates & Improvements:
+  * Faster and more robust parsing of physical memory map
+  * Rename per-process `user` to `token` and add more info.
 * New Features:
-  * py/reg/net/tcpip_interfaces.txt
+  * New [Python API](https://github.com/ufrisk/MemProcFS/wiki/API_Python) now also available on [Python pip](https://pypi.org/project/memprocfs/).
+  * `py/reg/net/tcpip_interfaces.txt`

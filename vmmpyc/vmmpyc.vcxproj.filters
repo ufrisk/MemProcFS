@@ -27,9 +27,63 @@
     <ClInclude Include="..\includes\vmmdll.h">
       <Filter>Header Files\includes</Filter>
     </ClInclude>
+    <ClInclude Include="vmmpyc.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="vmmpyc.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmpyc_kernel.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmpyc_maps.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmpyc_module.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmpyc_modulemaps.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmpyc_pdb.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmpyc_process.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmpyc_processmaps.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmpyc_reghive.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmpyc_regkey.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmpyc_regvalue.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmpyc_util.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmpyc_vfs.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmpyc_vmm.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmpycplugin.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmpyc_physicalmemory.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmpyc_regmemory.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmpyc_virtualmemory.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

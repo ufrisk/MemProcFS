@@ -421,4 +421,36 @@ typedef struct tdMM_UNLOADED_DRIVER64
     QWORD               UnloadTime;
 } MM_UNLOADED_DRIVER64, *PMM_UNLOADED_DRIVER64;
 
+typedef struct tdSEP_TOKEN_PRIVILEGES {
+    QWORD Present;
+    QWORD Enabled;
+    QWORD EnabledByDefault;
+} SEP_TOKEN_PRIVILEGES, *PSEP_TOKEN_PRIVILEGES;
+
+#define _PHYSICAL_MEMORY_MAX_RUNS   0x20
+
+typedef struct {
+    DWORD BasePage;
+    DWORD PageCount;
+} _PHYSICAL_MEMORY_RUN32;
+
+typedef struct {
+    DWORD NumberOfRuns;
+    DWORD NumberOfPages;
+    _PHYSICAL_MEMORY_RUN32 Run[_PHYSICAL_MEMORY_MAX_RUNS];
+} _PHYSICAL_MEMORY_DESCRIPTOR32, *_PPHYSICAL_MEMORY_DESCRIPTOR32;
+
+typedef struct {
+    QWORD BasePage;
+    QWORD PageCount;
+} _PHYSICAL_MEMORY_RUN64;
+
+typedef struct {
+    DWORD NumberOfRuns;
+    DWORD Reserved1;
+    DWORD NumberOfPages;
+    DWORD Reserved2;
+    _PHYSICAL_MEMORY_RUN64 Run[_PHYSICAL_MEMORY_MAX_RUNS];
+} _PHYSICAL_MEMORY_DESCRIPTOR64, *_PPHYSICAL_MEMORY_DESCRIPTOR64;
+
 #endif /* __VMMWINDEF_H__ */

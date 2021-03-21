@@ -194,9 +194,6 @@
     <ClCompile Include="m_file_modules.c">
       <Filter>Source Files\modules</Filter>
     </ClCompile>
-    <ClCompile Include="m_procuser.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
     <ClCompile Include="m_vfsproc.c">
       <Filter>Source Files\modules</Filter>
     </ClCompile>
@@ -301,6 +298,9 @@
     </ClCompile>
     <ClCompile Include="ob\ob_compressed.c">
       <Filter>Source Files\ob</Filter>
+    </ClCompile>
+    <ClCompile Include="m_proc_token.c">
+      <Filter>Source Files\modules</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

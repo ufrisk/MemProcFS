@@ -92,6 +92,10 @@ BOOL VmmDll_ConfigIntialize(_In_ DWORD argc, _In_ char* argv[])
             ctxMain->cfg.fDisableSymbolServerOnStartup = TRUE;
             i++;
             continue;
+        } else if(0 == _stricmp(argv[i], "-pythondisable")) {
+            ctxMain->cfg.fDisablePython = TRUE;
+            i++;
+            continue;
         } else if(0 == _stricmp(argv[i], "-norefresh")) {
             ctxMain->cfg.fDisableBackgroundRefresh = TRUE;
             i++;
@@ -231,6 +235,8 @@ VOID VmmDll_PrintHelp()
         "   -pythonpath : specify the path to a python 3 installation for Windows.      \n" \
         "          The path given should be to the directory that contain: python.dll   \n" \
         "          Example: -pythonpath \"C:\\Program Files\\Python37\"                 \n" \
+        "   -pythondisable : prevent/disable the python plugin sub-system from loading. \n" \
+        "          Example: -pythondisable                                              \n" \
         "   -mount : drive letter to mount The Memory Process File system at.           \n" \
         "          default: M   Example: -mount Q                                       \n" \
         "   -norefresh : disable automatic cache and processes refreshes even when      \n" \
@@ -1995,10 +2001,18 @@ BOOL VMMDLL_WinReg_EnumKeyExW_Impl(_In_ LPWSTR wszFullPathKey, _In_ DWORD dwInde
         return FALSE;
     }
     f = VmmWinReg_PathHiveGetByFullPath(wszFullPathKey, &pObHive, wszPathKey) &&
-        (pObKey = VmmWinReg_KeyGetByPath(pObHive, wszPathKey)) &&
-        (pmObSubKeys = VmmWinReg_KeyList(pObHive, pObKey)) &&
-        (pObSubKey = ObMap_GetByIndex(pmObSubKeys, dwIndex));
-    if(f) { VmmWinReg_KeyInfo(pObHive, pObSubKey, &KeyInfo); }
+        (pObKey = VmmWinReg_KeyGetByPath(pObHive, wszPathKey));
+    if(f) {
+        if(f && (dwIndex == (DWORD)-1)) {
+            // actual key
+            VmmWinReg_KeyInfo(pObHive, pObKey, &KeyInfo);
+        } else {
+            // subkeys
+            f = (pmObSubKeys = VmmWinReg_KeyList(pObHive, pObKey)) &&
+                (pObSubKey = ObMap_GetByIndex(pmObSubKeys, dwIndex));
+            if(f) { VmmWinReg_KeyInfo(pObHive, pObSubKey, &KeyInfo); }
+        }
+    }
     f = f && (!lpName || (KeyInfo.cchName <= *lpcchName));
     if(lpName) { wcsncpy_s(lpName, *lpcchName, KeyInfo.wszName, _TRUNCATE); };
     if(lpftLastWriteTime) { *(PQWORD)lpftLastWriteTime = KeyInfo.ftLastWrite; }
@@ -2114,7 +2128,7 @@ BOOL VMMDLL_PdbLoad_Impl(_In_ DWORD dwPID, _In_ ULONG64 vaModuleBase, _Out_write
     fResult =
         (hPdb = PDB_GetHandleFromModuleAddress(pObProcess, vaModuleBase)) &&
         PDB_LoadEnsure(hPdb) &&
-        PDB_GetModuleName(hPdb, szModuleName);
+        PDB_GetModuleInfo(hPdb, szModuleName, NULL, NULL);
     Ob_DECREF(pObProcess);
     return fResult;
 }
@@ -2128,18 +2142,25 @@ BOOL VMMDLL_PdbLoad(_In_ DWORD dwPID, _In_ ULONG64 vaModuleBase, _Out_writes_(MA
 }
 
 _Success_(return)
-BOOL VMMDLL_PdbSymbolName_Impl(_In_ LPSTR szModule, _In_ DWORD cbSymbolOffset, _Out_writes_(MAX_PATH) LPSTR szSymbolName, _Out_opt_ PDWORD pdwSymbolDisplacement)
+BOOL VMMDLL_PdbSymbolName_Impl(_In_ LPSTR szModule, _In_ QWORD cbSymbolAddressOrOffset, _Out_writes_(MAX_PATH) LPSTR szSymbolName, _Out_opt_ PDWORD pdwSymbolDisplacement)
 {
+    DWORD cbPdbModuleSize = 0;
+    QWORD vaPdbModuleBase = 0;
     PDB_HANDLE hPdb = PDB_GetHandleFromModuleName(szModule);
-    return PDB_GetSymbolFromOffset(hPdb, cbSymbolOffset, szSymbolName, pdwSymbolDisplacement);
+    if(PDB_GetModuleInfo(hPdb, NULL, &vaPdbModuleBase, &cbPdbModuleSize)) {
+        if((vaPdbModuleBase <= cbSymbolAddressOrOffset) && (vaPdbModuleBase + cbPdbModuleSize >= cbSymbolAddressOrOffset)) {
+            cbSymbolAddressOrOffset -= vaPdbModuleBase;     // cbSymbolAddressOrOffset is absolute address
+        }
+    }
+    return PDB_GetSymbolFromOffset(hPdb, (DWORD)cbSymbolAddressOrOffset, szSymbolName, pdwSymbolDisplacement);
 }
 
 _Success_(return)
-BOOL VMMDLL_PdbSymbolName(_In_ LPSTR szModule, _In_ DWORD cbSymbolOffset, _Out_writes_(MAX_PATH) LPSTR szSymbolName, _Out_opt_ PDWORD pdwSymbolDisplacement)
+BOOL VMMDLL_PdbSymbolName(_In_ LPSTR szModule, _In_ QWORD cbSymbolAddressOrOffset, _Out_writes_(MAX_PATH) LPSTR szSymbolName, _Out_opt_ PDWORD pdwSymbolDisplacement)
 {
     CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_PdbSymbolName,
-        VMMDLL_PdbSymbolName_Impl(szModule, cbSymbolOffset, szSymbolName, pdwSymbolDisplacement))
+        VMMDLL_PdbSymbolName_Impl(szModule, cbSymbolAddressOrOffset, szSymbolName, pdwSymbolDisplacement))
 }
 
 _Success_(return)

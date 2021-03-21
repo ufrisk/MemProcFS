@@ -15,6 +15,7 @@
 #define MMVAD_POOLTAG_VADM      'Vadm'
 
 #define MMVAD_PTESIZE           ((ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_X86) ? 4 : 8)
+#define MMVAD_MAXVADS_THRESHOLD 0x10000
 
 #define MMVADEX_MAXVADPAGES_THRESHOLD   0x10000
 
@@ -765,9 +766,9 @@ VOID MmVad_Spider_DoWork(_In_ PVMM_PROCESS pSystemProcess, _In_ PVMM_PROCESS pPr
         // WinXP
         cVads = (DWORD)VMM_EPROCESS_DWORD(pProcess, 0x240);
     }
-    if(cVads > 0x1000) {
+    if(cVads > MMVAD_MAXVADS_THRESHOLD) {
         vmmprintfv_fn("WARNING: BAD #VAD VALUE- PID: %i #VAD: %x\n", pProcess->dwPID, cVads);
-        cVads = 0x1000;
+        cVads = MMVAD_MAXVADS_THRESHOLD;
     }
     // 2: allocate and retrieve objects required for processing
     if(!(pmObVad = Ob_Alloc(OB_TAG_MAP_VAD, LMEM_ZEROINIT, sizeof(VMMOB_MAP_VAD) + cVads * sizeof(VMM_MAP_VADENTRY), MmVad_MemMapVad_CloseObCallback, NULL))) { goto fail; }

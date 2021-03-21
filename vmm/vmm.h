@@ -19,6 +19,8 @@ typedef unsigned __int64                QWORD, *PQWORD;
 #define STRINGIZE(x)                    STRINGIZE2(x)
 #endif
 
+
+
 // ----------------------------------------------------------------------------
 // VMM configuration constants and struct definitions below:
 // ----------------------------------------------------------------------------
@@ -167,7 +169,11 @@ typedef struct tdVMMWIN_OBJECT_TYPE_TABLE {
     };
 } VMMWIN_OBJECT_TYPE_TABLE, *PVMMWIN_OBJECT_TYPE_TABLE;
 
-// "MAP" OBJECTS AND ENTRIES BELOW:
+
+
+// ----------------------------------------------------------------------------
+// VMM MAP object/struct definitions below:
+// ----------------------------------------------------------------------------
 
 typedef struct tdVMM_MAP_PTEENTRY {
     QWORD vaBase;
@@ -663,6 +669,12 @@ typedef struct tdVMMOB_MAP_EVIL {
     VMM_MAP_EVILENTRY pMap[];       // map entries.
 } VMMOB_MAP_EVIL, *PVMMOB_MAP_EVIL;
 
+
+
+// ----------------------------------------------------------------------------
+// VMM process object/struct related definitions below:
+// ----------------------------------------------------------------------------
+
 typedef struct tdVMMWIN_USER_PROCESS_PARAMETERS {
     BOOL fProcessed;
     DWORD cwszImagePathName;
@@ -855,6 +867,12 @@ typedef struct tdVMM_MEMORYMODEL_FUNCTIONS {
     BOOL(*pfnPagedRead)(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD va, _In_ QWORD pte, _Out_writes_opt_(4096) PBYTE pbPage, _Out_ PQWORD ppa, _Inout_opt_ PVMM_PTE_TP ptp, _In_ QWORD flags);
 } VMM_MEMORYMODEL_FUNCTIONS;
 
+#define VMM_EPROCESS_DWORD(pProcess, offset)    (*(PDWORD)(pProcess->win.EPROCESS.pb + offset))
+#define VMM_EPROCESS_QWORD(pProcess, offset)    (*(PQWORD)(pProcess->win.EPROCESS.pb + offset))
+#define VMM_EPROCESS_PTR(pProcess, offset)      (ctxVmm->f32 ? VMM_EPROCESS_DWORD(pProcess, offset) : VMM_EPROCESS_QWORD(pProcess, offset))
+
+
+
 // ----------------------------------------------------------------------------
 // VMM general constants and struct definitions below: 
 // ----------------------------------------------------------------------------
@@ -870,6 +888,7 @@ typedef struct tdVmmConfig {
     BOOL fVerboseExtraTlp;
     BOOL fDisableBackgroundRefresh;
     BOOL fDisableSymbolServerOnStartup;
+    BOOL fDisablePython;
     BOOL fWaitInitialize;
     BOOL fUserInteract;
     BOOL fFileInfoHeader;
@@ -1114,7 +1133,7 @@ typedef struct tdVMM_CONTEXT {
     VMM_OFFSET offset;
     POB pObVfsDumpContext;
     POB pObPfnContext;
-    PVOID pPdbContext;
+    POB pObPdbContext;
     PVOID pMmContext;
     PVOID pNetContext;
     struct {
@@ -1190,6 +1209,8 @@ typedef struct tdVMM_MAIN_CONTEXT {
     PVOID pvStatistics;
 } VMM_MAIN_CONTEXT, *PVMM_MAIN_CONTEXT;
 
+
+
 // ----------------------------------------------------------------------------
 // VMM global variables below:
 // ----------------------------------------------------------------------------
@@ -1215,9 +1236,23 @@ PVMM_MAIN_CONTEXT ctxMain;
 #define vmmwprintfvv_fn(format, ...)     vmmwprintfvv(L"%S: "format, __func__, ##__VA_ARGS__);
 #define vmmwprintfvvv_fn(format, ...)    vmmwprintfvvv(L"%S: "format, __func__, ##__VA_ARGS__);
 
-#define VMM_EPROCESS_DWORD(pProcess, offset)    (*(PDWORD)(pProcess->win.EPROCESS.pb + offset))
-#define VMM_EPROCESS_QWORD(pProcess, offset)    (*(PQWORD)(pProcess->win.EPROCESS.pb + offset))
-#define VMM_EPROCESS_PTR(pProcess, offset)      (ctxVmm->f32 ? VMM_EPROCESS_DWORD(pProcess, offset) : VMM_EPROCESS_QWORD(pProcess, offset))
+// ----------------------------------------------------------------------------
+// INITIALIZE/CLOSE FUNCTIONALITY BELOW:
+// ----------------------------------------------------------------------------
+
+/*
+* Initialize a new VMM context. This must always be done before calling any
+* other VMM functions. An alternative way to do this is to call the function:
+* VmmProcInitialize.
+* -- return
+*/
+BOOL VmmInitialize();
+
+/*
+* Close and clean up the VMM context inside the PCILeech context, if existing.
+*/
+VOID VmmClose();
+
 
 
 // ----------------------------------------------------------------------------
@@ -1267,6 +1302,7 @@ PVMMOB_CACHE_MEM VmmCacheReserve(_In_ DWORD wTblTag);
 * -- pOb
 */
 VOID VmmCacheReserveReturn(_In_opt_ PVMMOB_CACHE_MEM pOb);
+
 
 
 // ----------------------------------------------------------------------------
@@ -1508,226 +1544,11 @@ inline VOID VmmVirt2PhysGetInformation(_Inout_ PVMM_PROCESS pProcess, _Inout_ PV
 */
 PVMMOB_PHYS2VIRT_INFORMATION VmmPhys2VirtGetInformation(_In_ PVMM_PROCESS pProcess, _In_ QWORD paTarget);
 
-/*
-* Retrieve the PTE hardware page table memory map.
-* CALLER DECREF: ppObPteMap
-* -- pProcess
-* -- ppObPteMap
-* -- fExtendedText
-* -- return
-*/
-_Success_(return)
-BOOL VmmMap_GetPte(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_PTE *ppObPteMap, _In_ BOOL fExtendedText);
 
-/*
-* Retrieve the VAD memory map.
-* CALLER DECREF: ppObVadMap
-* -- pProcess
-* -- ppObVadMap
-* -- tpVmmVadMap = VMM_VADMAP_TP_*
-* -- return
-*/
-_Success_(return)
-BOOL VmmMap_GetVad(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_VAD *ppObVadMap, _In_ VMM_VADMAP_TP tpVmmVadMap);
 
-/*
-* Retrieve a single PVMM_MAP_VADENTRY for a given VadMap and address inside it.
-* -- pVadMap
-* -- va
-* -- return = PTR to VADENTRY or NULL on fail. Must not be used out of pVadMap scope.
-*/
-PVMM_MAP_VADENTRY VmmMap_GetVadEntry(_In_opt_ PVMMOB_MAP_VAD pVadMap, _In_ QWORD va);
-
-/*
-* Retrieve the VAD extended memory map by range specified by iPage and cPage.
-* CALLER DECREF: ppObVadExMap
-* -- pProcess
-* -- ppObVadExMap
-* -- tpVmmVadMap = VMM_VADMAP_TP_*
-* -- iPage = index of range start in vad map.
-* -- cPage = number of pages, starting at iPage.
-* -- return
-*/
-_Success_(return)
-BOOL VmmMap_GetVadEx(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_VADEX *ppObVadExMap, _In_ VMM_VADMAP_TP tpVmmVadMap, _In_ DWORD iPage, _In_ DWORD cPage);
-
-/*
-* Retrieve the process module map.
-* CALLER DECREF: ppObModuleMap
-* -- pProcess
-* -- ppObModuleMap
-* -- return
-*/
-_Success_(return)
-BOOL VmmMap_GetModule(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_MODULE *ppObModuleMap);
-
-/*
-* Retrieve a single VMM_MAP_MODULEENTRY for a given ModuleMap and module name inside it.
-* -- pModuleMap
-* -- wszModuleName
-* -- return = PTR to VMM_MAP_MODULEENTRY or NULL on fail. Must not be used out of pModuleMap scope.
-*/
-PVMM_MAP_MODULEENTRY VmmMap_GetModuleEntry(_In_ PVMMOB_MAP_MODULE pModuleMap, _In_ LPWSTR wszModuleName);
-
-/*
-* Retrieve a single VMM_MAP_MODULEENTRY for a given process and module name.
-* CALLER DECREF: ppObModuleMap
-* -- pProcessOpt
-* -- dwPidOpt
-* -- wszModuleName
-* -- ppObModuleMap
-* -- pModuleEntry
-* -- return
-*/
-_Success_(return)
-BOOL VmmMap_GetModuleEntryEx(_In_opt_ PVMM_PROCESS pProcessOpt, _In_opt_ DWORD dwPidOpt, _In_ LPWSTR wszModuleName, _Out_ PVMMOB_MAP_MODULE *ppObModuleMap, _Out_ PVMM_MAP_MODULEENTRY *pModuleEntry);
-
-/*
-* Retrieve the process unloaded module map.
-* CALLER DECREF: ppObUnloadedModuleMap
-* -- pProcess
-* -- ppObUnloadedModuleMap
-* -- return
-*/
-_Success_(return)
-BOOL VmmMap_GetUnloadedModule(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_UNLOADEDMODULE *ppObUnloadedModuleMap);
-
-/*
-* Retrieve the process module export address table (EAT) map.
-* CALLER DECREF: ppObEatMap
-* -- pProcess
-* -- pModule
-* -- ppObEatMap
-* -- return
-*/
-_Success_(return)
-BOOL VmmMap_GetEAT(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pModuleEntry, _Out_ PVMMOB_MAP_EAT *ppObEatMap);
-
-/*
-* Retrieve the export entry index in pEatMap->pMap by function name.
-* -- pEatMap
-* -- szFunctionName/wszFunctionName
-* -- pdwEntryIndex = pointer to receive the pEatMap->pMap index.
-* -- return
-*/
-_Success_(return)
-BOOL VmmMap_GetEATEntryIndex(_In_ PVMMOB_MAP_EAT pEatMap, _In_ LPWSTR wszFunctionName, _Out_ PDWORD pdwEntryIndex);
-_Success_(return)
-BOOL VmmMap_GetEATEntryIndexA(_In_ PVMMOB_MAP_EAT pEatMap, _In_ LPSTR szFunctionName, _Out_ PDWORD pdwEntryIndex);
-
-/*
-* Retrieve the process module import address table (IAT) map.
-* CALLER DECREF: ppObIatMap
-* -- pProcess
-* -- pModule
-* -- ppObIatMap
-* -- return
-*/
-_Success_(return)
-BOOL VmmMap_GetIAT(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pModuleEntry, _Out_ PVMMOB_MAP_IAT *ppObIatMap);
-
-/*
-* Retrieve the heap map.
-* CALLER DECREF: ppObHeapMap
-* -- pProcess
-* -- ppObHeapMap
-* -- return
-*/
-_Success_(return)
-BOOL VmmMap_GetHeap(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_HEAP *ppObHeapMap);
-
-/*
-* Retrieve the thread map.
-* CALLER DECREF: ppObThreadMap
-* -- pProcess
-* -- ppObThreadMap
-* -- return
-*/
-_Success_(return)
-BOOL VmmMap_GetThread(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_THREAD *ppObThreadMap);
-
-/*
-* Retrieve a single PVMM_MAP_THREADENTRY for a given ThreadMap and ThreadID.
-* -- pThreadMap
-* -- dwTID
-* -- return = PTR to VMM_MAP_THREADENTRY or NULL on fail. Must not be used out of pThreadMap scope.
-*/
-PVMM_MAP_THREADENTRY VmmMap_GetThreadEntry(_In_ PVMMOB_MAP_THREAD pThreadMap, _In_ DWORD dwTID);
-
-/*
-* Retrieve the HANDLE map
-* CALLER DECREF: ppObHandleMap
-* -- pProcess
-* -- ppObHandleMap
-* -- fExtendedText
-* -- return
-*/
-_Success_(return)
-BOOL VmmMap_GetHandle(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_HANDLE *ppObHandleMap, _In_ BOOL fExtendedText);
-
-/*
-* Retrieve the EVIL map
-* CALLER DECREF: ppObEvilMap
-* -- pProcess = retrieve for specific process, or if NULL for all processes.
-* -- ppObEvilMap
-* -- return
-*/
-_Success_(return)
-BOOL VmmMap_GetEvil(_In_opt_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_EVIL *ppObEvilMap);
-
-/*
-* Retrieve the OBJECT MANAGER map
-* CALLER DECREF: ppObObjectMap
-* -- ppObObjectMap
-* -- return
-*/
-_Success_(return)
-BOOL VmmMap_GetObject(_Out_ PVMMOB_MAP_OBJECT *ppObObjectMap);
-
-/*
-* Retrieve the KERNEL DRIVER map
-* CALLER DECREF: ppObKDriverMap
-* -- ppObKDriverMap
-* -- return
-*/
-_Success_(return)
-BOOL VmmMap_GetKDriver(_Out_ PVMMOB_MAP_KDRIVER *ppObKDriverMap);
-
-/*
-* Retrieve the NETWORK CONNECTION map
-* CALLER DECREF: ppObNetMap
-* -- ppObNetMap
-* -- return
-*/
-_Success_(return)
-BOOL VmmMap_GetNet(_Out_ PVMMOB_MAP_NET *ppObNetMap);
-
-/*
-* Retrieve the Physical Memory Map.
-* CALLER DECREF: ppObPhysMem
-* -- ppObPhysMem
-* -- return
-*/
-_Success_(return)
-BOOL VmmMap_GetPhysMem(_Out_ PVMMOB_MAP_PHYSMEM *ppObPhysMem);
-
-/*
-* Retrieve the USER map
-* CALLER DECREF: ppObUserMap
-* -- ppObUserMap
-* -- return
-*/
-_Success_(return)
-BOOL VmmMap_GetUser(_Out_ PVMMOB_MAP_USER *ppObUserMap);
-
-/*
-* Retrieve the SERVICES map
-* CALLER DECREF: ppObServiceMap
-* -- ppObServiceMap
-* -- return
-*/
-_Success_(return)
-BOOL VmmMap_GetService(_Out_ PVMMOB_MAP_SERVICE *ppObServiceMap);
+// ----------------------------------------------------------------------------
+// VMM process related function definitions below:
+// ----------------------------------------------------------------------------
 
 /*
 * Retrieve a process for a given PID and optional PVMMOB_PROCESS_TABLE.
@@ -1906,7 +1727,7 @@ BOOL VmmProcessActionForeachParallel_CriteriaActiveUserOnly(_In_ PVMM_PROCESS pP
 */
 VOID VmmCacheClearPartial(_In_ DWORD dwTblTag);
 
-/* 
+/*
 * Clear the specified cache from all entries.
 * -- dwTblTag
 */
@@ -1980,17 +1801,231 @@ BOOL VmmCachePrefetchPages5(_In_opt_ PVMM_PROCESS pProcess, _In_opt_ POB_MAP pmP
 */
 VOID VmmInitializeMemoryModel(_In_ VMM_MEMORYMODEL_TP tp);
 
-/*
-* Initialize a new VMM context. This must always be done before calling any
-* other VMM functions. An alternative way to do this is to call the function:
-* VmmProcInitialize.
-* -- return
-*/
-BOOL VmmInitialize();
+
+
+// ----------------------------------------------------------------------------
+// MAP FUNCTIONALITY BELOW:
+// ----------------------------------------------------------------------------
 
 /*
-* Close and clean up the VMM context inside the PCILeech context, if existing.
+* Retrieve the PTE hardware page table memory map.
+* CALLER DECREF: ppObPteMap
+* -- pProcess
+* -- ppObPteMap
+* -- fExtendedText
+* -- return
 */
-VOID VmmClose();
+_Success_(return)
+BOOL VmmMap_GetPte(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_PTE *ppObPteMap, _In_ BOOL fExtendedText);
+
+/*
+* Retrieve the VAD memory map.
+* CALLER DECREF: ppObVadMap
+* -- pProcess
+* -- ppObVadMap
+* -- tpVmmVadMap = VMM_VADMAP_TP_*
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetVad(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_VAD *ppObVadMap, _In_ VMM_VADMAP_TP tpVmmVadMap);
+
+/*
+* Retrieve a single PVMM_MAP_VADENTRY for a given VadMap and address inside it.
+* -- pVadMap
+* -- va
+* -- return = PTR to VADENTRY or NULL on fail. Must not be used out of pVadMap scope.
+*/
+PVMM_MAP_VADENTRY VmmMap_GetVadEntry(_In_opt_ PVMMOB_MAP_VAD pVadMap, _In_ QWORD va);
+
+/*
+* Retrieve the VAD extended memory map by range specified by iPage and cPage.
+* CALLER DECREF: ppObVadExMap
+* -- pProcess
+* -- ppObVadExMap
+* -- tpVmmVadMap = VMM_VADMAP_TP_*
+* -- iPage = index of range start in vad map.
+* -- cPage = number of pages, starting at iPage.
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetVadEx(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_VADEX *ppObVadExMap, _In_ VMM_VADMAP_TP tpVmmVadMap, _In_ DWORD iPage, _In_ DWORD cPage);
+
+/*
+* Retrieve the process module map.
+* CALLER DECREF: ppObModuleMap
+* -- pProcess
+* -- ppObModuleMap
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetModule(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_MODULE *ppObModuleMap);
+
+/*
+* Retrieve a single VMM_MAP_MODULEENTRY for a given ModuleMap and module name inside it.
+* -- pModuleMap
+* -- wszModuleName
+* -- return = PTR to VMM_MAP_MODULEENTRY or NULL on fail. Must not be used out of pModuleMap scope.
+*/
+PVMM_MAP_MODULEENTRY VmmMap_GetModuleEntry(_In_ PVMMOB_MAP_MODULE pModuleMap, _In_ LPWSTR wszModuleName);
+
+/*
+* Retrieve a single VMM_MAP_MODULEENTRY for a given process and module name.
+* CALLER DECREF: ppObModuleMap
+* -- pProcessOpt
+* -- dwPidOpt
+* -- wszModuleName
+* -- ppObModuleMap
+* -- pModuleEntry
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetModuleEntryEx(_In_opt_ PVMM_PROCESS pProcessOpt, _In_opt_ DWORD dwPidOpt, _In_ LPWSTR wszModuleName, _Out_ PVMMOB_MAP_MODULE *ppObModuleMap, _Out_ PVMM_MAP_MODULEENTRY *pModuleEntry);
+
+/*
+* Retrieve the process unloaded module map.
+* CALLER DECREF: ppObUnloadedModuleMap
+* -- pProcess
+* -- ppObUnloadedModuleMap
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetUnloadedModule(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_UNLOADEDMODULE *ppObUnloadedModuleMap);
+
+/*
+* Retrieve the process module export address table (EAT) map.
+* CALLER DECREF: ppObEatMap
+* -- pProcess
+* -- pModule
+* -- ppObEatMap
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetEAT(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pModuleEntry, _Out_ PVMMOB_MAP_EAT *ppObEatMap);
+
+/*
+* Retrieve the export entry index in pEatMap->pMap by function name.
+* -- pEatMap
+* -- wszFunctionName/szFunctionName
+* -- pdwEntryIndex = pointer to receive the pEatMap->pMap index.
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetEATEntryIndexW(_In_ PVMMOB_MAP_EAT pEatMap, _In_ LPWSTR wszFunctionName, _Out_ PDWORD pdwEntryIndex);
+_Success_(return)
+BOOL VmmMap_GetEATEntryIndexA(_In_ PVMMOB_MAP_EAT pEatMap, _In_ LPSTR szFunctionName, _Out_ PDWORD pdwEntryIndex);
+
+/*
+* Retrieve the process module import address table (IAT) map.
+* CALLER DECREF: ppObIatMap
+* -- pProcess
+* -- pModule
+* -- ppObIatMap
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetIAT(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pModuleEntry, _Out_ PVMMOB_MAP_IAT *ppObIatMap);
+
+/*
+* Retrieve the heap map.
+* CALLER DECREF: ppObHeapMap
+* -- pProcess
+* -- ppObHeapMap
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetHeap(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_HEAP *ppObHeapMap);
+
+/*
+* Retrieve the thread map.
+* CALLER DECREF: ppObThreadMap
+* -- pProcess
+* -- ppObThreadMap
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetThread(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_THREAD *ppObThreadMap);
+
+/*
+* Retrieve a single PVMM_MAP_THREADENTRY for a given ThreadMap and ThreadID.
+* -- pThreadMap
+* -- dwTID
+* -- return = PTR to VMM_MAP_THREADENTRY or NULL on fail. Must not be used out of pThreadMap scope.
+*/
+PVMM_MAP_THREADENTRY VmmMap_GetThreadEntry(_In_ PVMMOB_MAP_THREAD pThreadMap, _In_ DWORD dwTID);
+
+/*
+* Retrieve the HANDLE map
+* CALLER DECREF: ppObHandleMap
+* -- pProcess
+* -- ppObHandleMap
+* -- fExtendedText
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetHandle(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_HANDLE *ppObHandleMap, _In_ BOOL fExtendedText);
+
+/*
+* Retrieve the EVIL map
+* CALLER DECREF: ppObEvilMap
+* -- pProcess = retrieve for specific process, or if NULL for all processes.
+* -- ppObEvilMap
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetEvil(_In_opt_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_EVIL *ppObEvilMap);
+
+/*
+* Retrieve the OBJECT MANAGER map
+* CALLER DECREF: ppObObjectMap
+* -- ppObObjectMap
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetObject(_Out_ PVMMOB_MAP_OBJECT *ppObObjectMap);
+
+/*
+* Retrieve the KERNEL DRIVER map
+* CALLER DECREF: ppObKDriverMap
+* -- ppObKDriverMap
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetKDriver(_Out_ PVMMOB_MAP_KDRIVER *ppObKDriverMap);
+
+/*
+* Retrieve the NETWORK CONNECTION map
+* CALLER DECREF: ppObNetMap
+* -- ppObNetMap
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetNet(_Out_ PVMMOB_MAP_NET *ppObNetMap);
+
+/*
+* Retrieve the Physical Memory Map.
+* CALLER DECREF: ppObPhysMem
+* -- ppObPhysMem
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetPhysMem(_Out_ PVMMOB_MAP_PHYSMEM *ppObPhysMem);
+
+/*
+* Retrieve the USER map
+* CALLER DECREF: ppObUserMap
+* -- ppObUserMap
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetUser(_Out_ PVMMOB_MAP_USER *ppObUserMap);
+
+/*
+* Retrieve the SERVICES map
+* CALLER DECREF: ppObServiceMap
+* -- ppObServiceMap
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetService(_Out_ PVMMOB_MAP_SERVICE *ppObServiceMap);
 
 #endif /* __VMM_H__ */

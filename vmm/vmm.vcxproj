@@ -167,7 +167,7 @@
     <ClCompile Include="m_memmap.c" />
     <ClCompile Include="m_minidump.c" />
     <ClCompile Include="m_phys2virt.c" />
-    <ClCompile Include="m_procuser.c" />
+    <ClCompile Include="m_proc_token.c" />
     <ClCompile Include="m_status.c" />
     <ClCompile Include="m_sys.c" />
     <ClCompile Include="m_sys_cert.c" />

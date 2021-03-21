@@ -17,17 +17,12 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "m_vmemd", "m_vmemd\m_vmemd.
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "python", "python", "{50E46B01-0786-4222-B8C8-8D1612DA8A3B}"
 	ProjectSection(SolutionItems) = preProject
-		files\vmmpy.py = files\vmmpy.py
-		files\vmmpy_example.py = files\vmmpy_example.py
+		files\memprocfs.py = files\memprocfs.py
+		files\memprocfs_example.py = files\memprocfs_example.py
 		files\vmmpyplugin.py = files\vmmpyplugin.py
 	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "vmmpyc", "vmmpyc\vmmpyc.vcxproj", "{9E47796D-B834-470E-B437-0754BC14DF09}"
-	ProjectSection(ProjectDependencies) = postProject
-		{6326FCE0-1BA5-4AEC-9973-7783309FFD6B} = {6326FCE0-1BA5-4AEC-9973-7783309FFD6B}
-	EndProjectSection
-EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "vmmpycplugin", "vmmpycplugin\vmmpycplugin.vcxproj", "{283FF01B-31A6-465A-A728-F187F974EFF4}"
 	ProjectSection(ProjectDependencies) = postProject
 		{6326FCE0-1BA5-4AEC-9973-7783309FFD6B} = {6326FCE0-1BA5-4AEC-9973-7783309FFD6B}
 	EndProjectSection
@@ -85,12 +80,6 @@ Global
 		{9E47796D-B834-470E-B437-0754BC14DF09}.Release|x64.ActiveCfg = Release|x64
 		{9E47796D-B834-470E-B437-0754BC14DF09}.Release|x64.Build.0 = Release|x64
 		{9E47796D-B834-470E-B437-0754BC14DF09}.Release|x86.ActiveCfg = Release|x64
-		{283FF01B-31A6-465A-A728-F187F974EFF4}.Debug|x64.ActiveCfg = Debug|x64
-		{283FF01B-31A6-465A-A728-F187F974EFF4}.Debug|x64.Build.0 = Debug|x64
-		{283FF01B-31A6-465A-A728-F187F974EFF4}.Debug|x86.ActiveCfg = Debug|x64
-		{283FF01B-31A6-465A-A728-F187F974EFF4}.Release|x64.ActiveCfg = Release|x64
-		{283FF01B-31A6-465A-A728-F187F974EFF4}.Release|x64.Build.0 = Release|x64
-		{283FF01B-31A6-465A-A728-F187F974EFF4}.Release|x86.ActiveCfg = Release|x64
 		{45CC506E-E97A-45B8-8050-B2C5BC8A4B15}.Debug|x64.ActiveCfg = Debug|x64
 		{45CC506E-E97A-45B8-8050-B2C5BC8A4B15}.Debug|x64.Build.0 = Debug|x64
 		{45CC506E-E97A-45B8-8050-B2C5BC8A4B15}.Debug|x86.ActiveCfg = Debug|x64

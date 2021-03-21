@@ -2631,31 +2631,38 @@ BOOL VmmWinHandle_Initialize(_In_ PVMM_PROCESS pProcess, _In_ BOOL fExtendedText
 // ----------------------------------------------------------------------------
 
 #pragma pack(push, 1) /* DISABLE STRUCT PADDINGS (REENABLE AFTER STRUCT DEFINITIONS) */
-typedef struct tdVMMWIN_PHYSMEMMAP_MEMORY_RANGE32 {
+typedef struct tdVMMWIN_PHYSMEMMAP_REGISTRY_MEMORY_RANGE32 {
     UCHAR Type;
     UCHAR ShareDisposition;
     USHORT Flags;
     QWORD pa;
     DWORD cb;
-} VMMWIN_PHYSMEMMAP_MEMORY_RANGE32, *PVMMWIN_PHYSMEMMAP_MEMORY_RANGE32;
+} VMMWIN_PHYSMEMMAP_REGISTRY_MEMORY_RANGE32, *PVMMWIN_PHYSMEMMAP_REGISTRY_MEMORY_RANGE32;
 
-typedef struct tdVMMWIN_PHYSMEMMAP_MEMORY_RANGE64 {
+typedef struct tdVMMWIN_PHYSMEMMAP_REGISTRY_MEMORY_RANGE64 {
     UCHAR Type;
     UCHAR ShareDisposition;
     USHORT Flags;
     QWORD pa;
     QWORD cb;
-} VMMWIN_PHYSMEMMAP_MEMORY_RANGE64, *PVMMWIN_PHYSMEMMAP_MEMORY_RANGE64;
+} VMMWIN_PHYSMEMMAP_REGISTRY_MEMORY_RANGE64, *PVMMWIN_PHYSMEMMAP_REGISTRY_MEMORY_RANGE64;
 #pragma pack(pop) /* RE-ENABLE STRUCT PADDINGS */
 
-PVMMOB_MAP_PHYSMEM VmmWinPhysMemMap_Initialize_DoWork()
+/*
+* Retrieve the physical memory by parsing the registry. This is only used as a
+* fallback in case it cannot be parsed from kernel due to the extra overhead
+* by parsing the registry hardware hive.
+* -- return
+*/
+_Success_(return != NULL)
+PVMMOB_MAP_PHYSMEM VmmWinPhysMemMap_InitializeFromRegistry_DoWork()
 {
     BOOL f32 = ctxVmm->f32;
     DWORD cMap, cbData = 0;
     PBYTE pbData = NULL;
     QWORD c1, i, o;
-    PVMMWIN_PHYSMEMMAP_MEMORY_RANGE32 pMR32;
-    PVMMWIN_PHYSMEMMAP_MEMORY_RANGE64 pMR64;
+    PVMMWIN_PHYSMEMMAP_REGISTRY_MEMORY_RANGE32 pMR32;
+    PVMMWIN_PHYSMEMMAP_REGISTRY_MEMORY_RANGE64 pMR64;
     PVMMOB_MAP_PHYSMEM pObPhysMemMap = NULL;
     // 1: fetch binary data from registry
     if(!VmmWinReg_ValueQuery2(L"HKLM\\HARDWARE\\RESOURCEMAP\\System Resources\\Physical Memory\\.Translated", NULL, NULL, 0, &cbData) || !cbData) { goto fail; }
@@ -2667,22 +2674,22 @@ PVMMOB_MAP_PHYSMEM VmmWinPhysMemMap_Initialize_DoWork()
     if(!c1) { goto fail; }
     o = 0x10;
     cMap = *(PDWORD)(pbData + o); // this should be loop in case of c1 > 1, but works for now ...
-    if(f32 && (!cMap || (cbData < cMap * sizeof(VMMWIN_PHYSMEMMAP_MEMORY_RANGE32) + 0x0c))) { goto fail; }
-    if(!f32 && (!cMap || (cbData < cMap * sizeof(VMMWIN_PHYSMEMMAP_MEMORY_RANGE64) + 0x14))) { goto fail; }
+    if(f32 && (!cMap || (cbData < cMap * sizeof(VMMWIN_PHYSMEMMAP_REGISTRY_MEMORY_RANGE32) + 0x0c))) { goto fail; }
+    if(!f32 && (!cMap || (cbData < cMap * sizeof(VMMWIN_PHYSMEMMAP_REGISTRY_MEMORY_RANGE64) + 0x14))) { goto fail; }
     if(!(pObPhysMemMap = Ob_Alloc(OB_TAG_MAP_PHYSMEM, LMEM_ZEROINIT, sizeof(VMMOB_MAP_PHYSMEM) + cMap * sizeof(VMM_MAP_PHYSMEMENTRY), NULL, NULL))) { goto fail; }
     pObPhysMemMap->cMap = cMap;
     // 3: iterate over the memory regions.
     o += sizeof(DWORD);
     for(i = 0; i < cMap; i++) {
         if(f32) {
-            pMR32 = (PVMMWIN_PHYSMEMMAP_MEMORY_RANGE32)(pbData + o + i * sizeof(VMMWIN_PHYSMEMMAP_MEMORY_RANGE32));
+            pMR32 = (PVMMWIN_PHYSMEMMAP_REGISTRY_MEMORY_RANGE32)(pbData + o + i * sizeof(VMMWIN_PHYSMEMMAP_REGISTRY_MEMORY_RANGE32));
             pObPhysMemMap->pMap[i].pa = pMR32->pa;
             pObPhysMemMap->pMap[i].cb = pMR32->cb;
             if(pMR32->Flags & 0xff00) {
                 pObPhysMemMap->pMap[i].cb = pObPhysMemMap->pMap[i].cb << 8;
             }
         } else {
-            pMR64 = (PVMMWIN_PHYSMEMMAP_MEMORY_RANGE64)(pbData + o + i * sizeof(VMMWIN_PHYSMEMMAP_MEMORY_RANGE64));
+            pMR64 = (PVMMWIN_PHYSMEMMAP_REGISTRY_MEMORY_RANGE64)(pbData + o + i * sizeof(VMMWIN_PHYSMEMMAP_REGISTRY_MEMORY_RANGE64));
             pObPhysMemMap->pMap[i].pa = pMR64->pa;
             pObPhysMemMap->pMap[i].cb = pMR64->cb;
             if(pMR64->Flags & 0xff00) {
@@ -2699,6 +2706,54 @@ fail:
 }
 
 /*
+* Retrieve the physical memory map from the kernel by parsing the kernel symbol
+* 'MmPhysicalMemoryBlock'. This is the preferred way of fetching the memory map
+* due to better efficiency as compared to fallback - parsing from registry.
+* -- return
+*/
+_Success_(return != NULL)
+PVMMOB_MAP_PHYSMEM VmmWinPhysMemMap_InitializeFromKernel_DoWork()
+{
+    QWORD i, c, vaPhysicalMemoryBlock = 0;
+    _PHYSICAL_MEMORY_DESCRIPTOR32 Md32;
+    _PHYSICAL_MEMORY_DESCRIPTOR64 Md64;
+    PVMM_PROCESS pObSystemProcess = NULL;
+    PVMMOB_MAP_PHYSMEM pObMemMap = NULL;
+    if(!(pObSystemProcess = VmmProcessGet(4))) { goto fail; }
+    if(!PDB_GetSymbolPTR(PDB_HANDLE_KERNEL, "MmPhysicalMemoryBlock", pObSystemProcess, (PVOID)&vaPhysicalMemoryBlock)) { goto fail; }
+    if(!VMM_KADDR_4_8(vaPhysicalMemoryBlock)) { goto fail; }
+    if(ctxVmm->f32) {
+        if(!VmmRead2(pObSystemProcess, vaPhysicalMemoryBlock, (PBYTE)&Md32, sizeof(_PHYSICAL_MEMORY_DESCRIPTOR32), VMMDLL_FLAG_ZEROPAD_ON_FAIL)) { goto fail; }
+        if(!Md32.NumberOfRuns || (Md32.NumberOfRuns > _PHYSICAL_MEMORY_MAX_RUNS)) { goto fail; }
+        if(!(pObMemMap = Ob_Alloc(OB_TAG_MAP_PHYSMEM, LMEM_ZEROINIT, sizeof(VMMOB_MAP_PHYSMEM) + Md32.NumberOfRuns * sizeof(VMM_MAP_PHYSMEMENTRY), NULL, NULL))) { goto fail; }
+        pObMemMap->cMap = Md32.NumberOfRuns;
+        for(i = 0, c = 0; i < Md32.NumberOfRuns; i++) {
+            pObMemMap->pMap[i].pa = (QWORD)Md32.Run[i].BasePage << 12;
+            pObMemMap->pMap[i].cb = (QWORD)Md32.Run[i].PageCount << 12;
+            c += Md32.Run[i].PageCount;
+            if(i && ((pObMemMap->pMap[i - 1].pa + pObMemMap->pMap[i - 1].cb) > pObMemMap->pMap[i].pa)) { goto fail; }
+        }
+        if(c != Md32.NumberOfPages) { goto fail; }
+    } else {
+        if(!VmmRead2(pObSystemProcess, vaPhysicalMemoryBlock, (PBYTE)&Md64, sizeof(_PHYSICAL_MEMORY_DESCRIPTOR64), VMMDLL_FLAG_ZEROPAD_ON_FAIL)) { goto fail; }
+        if(!Md64.NumberOfRuns || (Md64.NumberOfRuns > _PHYSICAL_MEMORY_MAX_RUNS)) { goto fail; }
+        if(!(pObMemMap = Ob_Alloc(OB_TAG_MAP_PHYSMEM, LMEM_ZEROINIT, sizeof(VMMOB_MAP_PHYSMEM) + Md64.NumberOfRuns * sizeof(VMM_MAP_PHYSMEMENTRY), NULL, NULL))) { goto fail; }
+        pObMemMap->cMap = Md64.NumberOfRuns;
+        for(i = 0, c = 0; i < Md64.NumberOfRuns; i++) {
+            pObMemMap->pMap[i].pa = Md64.Run[i].BasePage << 12;
+            pObMemMap->pMap[i].cb = Md64.Run[i].PageCount << 12;
+            c += Md64.Run[i].PageCount;
+            if(i && ((pObMemMap->pMap[i-1].pa + pObMemMap->pMap[i-1].cb) > pObMemMap->pMap[i].pa)) { goto fail; }
+        }
+        if(c != Md64.NumberOfPages) { goto fail; }
+    }
+    Ob_INCREF(pObMemMap);
+fail:
+    Ob_DECREF(pObSystemProcess);
+    return Ob_DECREF(pObMemMap);
+}
+
+/*
 * Create a physical memory map and assign to the global context upon success.
 * CALLER DECREF: return
 * -- return
@@ -2712,7 +2767,10 @@ PVMMOB_MAP_PHYSMEM VmmWinPhysMemMap_Initialize()
         LeaveCriticalSection(&ctxVmm->LockUpdateMap);
         return pObPhysMem;
     }
-    pObPhysMem = VmmWinPhysMemMap_Initialize_DoWork();
+    pObPhysMem = VmmWinPhysMemMap_InitializeFromKernel_DoWork();
+    if(!pObPhysMem) {     // fallback to parsing registry (if error on no loaded symbols)
+        pObPhysMem = VmmWinPhysMemMap_InitializeFromRegistry_DoWork();
+    }
     if(!pObPhysMem) {
         pObPhysMem = Ob_Alloc(OB_TAG_MAP_PHYSMEM, LMEM_ZEROINIT, sizeof(VMMOB_MAP_PHYSMEM), NULL, NULL);
     }

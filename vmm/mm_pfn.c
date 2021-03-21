@@ -29,6 +29,7 @@ typedef struct tdOB_MMPFN_CONTEXT {
 
 VOID MmPfn_CallbackCleanup_ObContext(POB_MMPFN_CONTEXT ctx)
 {
+    Ob_DECREF(ctx->pObCProcTableDTB);
     DeleteCriticalSection(&ctx->Lock);
 }
 

@@ -7,13 +7,13 @@
 #
 # https://github.com/ufrisk/
 #
-# (c) Ulf Frisk, 2019-2020
+# (c) Ulf Frisk, 2019-2021
 # Author: Ulf Frisk, pcileech@frizk.net
 #
 
 import os
 import time
-from vmmpy import *
+import memprocfs
 from vmmpyplugin import *
 from threading import Thread
 
