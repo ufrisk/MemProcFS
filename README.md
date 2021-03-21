@@ -15,7 +15,7 @@ Use your favorite tools to analyze memory - use your favorite hex editors, your 
 
 Include MemProcFS in your C/C++, C# or Python programming projects! Everything in MemProcFS is exposed via an easy-to-use API for use in your own projects! The Plugin friendly architecture allows users to easily extend MemProcFS with native C .DLL plugins or Python .py plugins - providing additional analysis capabilities!
 
-MemProcFS is available on Python pip. Just type `pip install memprocfs` and you're ready to go! Please see the [Python API documentation](https://github.com/ufrisk/MemProcFS/wiki/API_Python) for examples and useage!
+MemProcFS is available on Python pip. Just type `pip install memprocfs` and you're ready to go! Please see the [Python API documentation](https://github.com/ufrisk/MemProcFS/wiki/API_Python) and the [YouTube demo](https://youtu.be/pLFU1lxBNM0) for examples and usage!
 
 <b>Please check out the [project wiki](https://github.com/ufrisk/MemProcFS/wiki)</b> for more in-depth detailed information about the file system itself, its API and its plugin modules!
 
@@ -235,5 +235,5 @@ v1.1-v2.10
   * Faster and more robust parsing of physical memory map
   * Rename per-process `user` to `token` and add more info.
 * New Features:
-  * New [Python API](https://github.com/ufrisk/MemProcFS/wiki/API_Python) now also available on [Python pip](https://pypi.org/project/memprocfs/).
+  * New [Python API](https://github.com/ufrisk/MemProcFS/wiki/API_Python) now also available on [Python pip](https://pypi.org/project/memprocfs/). Check out the [YouTube demo](https://youtu.be/pLFU1lxBNM0)!
   * `py/reg/net/tcpip_interfaces.txt`
