@@ -38,11 +38,8 @@ def ReadEPROCESS_Binary(pid, file_path, file_name, file_attr, bytes_length, byte
     # it does they are automatically adjusted - so no need to check those for
     # validity either.
     #
-    # Start by retrieving the process information for the given pid.
-    procinfo = vmm.process(pid).info()
-    # The procinfo is a dict that amongst other entries contains 'va-eprocess'
-    # which is the virtual address for the eprocess struct in kernel memory.
-    va_eprocess = procinfo['va-eprocess']
+    # Start by retriving the process object and then the eprocess attribute:
+    va_eprocess = vmm.process(pid).eprocess
     # Read the amount of bytes from virtual memory with the specified offset.
     # Since EPROCESS resides in kernel memory (which is mapped into process
     # address space as supervisor only memory, but is filtered out by the
@@ -76,12 +73,8 @@ def WriteEPROCESS_Binary(pid, file_path, file_name, file_attr, bytes_data, bytes
     # is in a process directory we do not need to check pid, file_name and
     # bytes_offset since thise are all verified by the plugin manager.
     #
-    # Start by retrieving the process information for the given pid.
-    process = vmm.process(pid)
-    procinfo = process.info()
-    # The procinfo is a dict that amongst other entries contains 'va-eprocess'
-    # which is the virtual address for the eprocess struct in kernel memory.
-    va_eprocess = procinfo['va-eprocess']
+    # Start by retriving the process object and then the eprocess attribute:
+    va_eprocess = vmm.process(pid).eprocess
     # Now all data which is required to make a write exists! Perform the write!
     vmm.kernel.process.write(va_eprocess+bytes_offset, bytes_data)
     return memprocfs.STATUS_SUCCESS
@@ -94,11 +87,10 @@ def ReadPEB_Binary(pid, file_path, file_name, file_attr, bytes_length, bytes_off
     # Read function. Please see ReadEPROCESS_Binary for a detailed description
     #
     process = vmm.process(pid)
-    procinfo = process.info()
     if '32' in file_name:
-        va_peb = procinfo['va-peb32']
+        va_peb = process.peb32
     else:
-        va_peb = procinfo['va-peb']
+        va_peb = process.peb
     return process.memory.read(va_peb + bytes_offset, bytes_length)
 
 
@@ -120,11 +112,10 @@ def WritePEB_Binary(pid, file_path, file_name, file_attr, bytes_data, bytes_offs
     # Write function. Please see WritePEB_Binary for a detailed description
     #
     process = vmm.process(pid)
-    procinfo = process.info()
     if '32' in file_name:
-        va_peb = procinfo['va-peb32']
+        va_peb = process.peb32
     else:
-        va_peb = procinfo['va-peb']
+        va_peb = process.peb
     process.write(va_peb+bytes_offset, bytes_data)
     return memprocfs.STATUS_SUCCESS
 
@@ -139,11 +130,11 @@ def IsProcessPeb6432(pid):
     #
     if pid in procstruct_cache_proc_wow64:
         return procstruct_cache_proc_wow64[pid]
-    procinfo = vmm.process(pid).info()
-    if(procinfo['state'] != 0):
+    process = vmm.process(pid)
+    if(process.state != 0):
         result = False, False
     else:
-        result = procinfo['va-peb'] > 0, ('va-peb32' in procinfo and procinfo['va-peb32'] > 0)
+        result = process.peb > 0, process.peb32 > 0
     procstruct_cache_proc_wow64[pid] = result
     return result
 
