@@ -768,6 +768,8 @@ namespace vmmsharp
         public struct MAP_PTEENTRY
         {
             public ulong vaBase;
+            public ulong vaEnd;
+            public ulong cbSize;
             public ulong cPages;
             public ulong fPage;
             public bool fWoW64;
@@ -780,6 +782,7 @@ namespace vmmsharp
             public ulong vaStart;
             public ulong vaEnd;
             public ulong vaVad;
+            public ulong cbSize;
             public uint VadType;
             public uint Protection;
             public bool fImage;
@@ -1055,6 +1058,8 @@ namespace vmmsharp
                     vmmi.VMMDLL_MAP_PTEENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_PTEENTRY>((System.IntPtr)(pb + cbMAP + i * cbENTRY));
                     MAP_PTEENTRY e;
                     e.vaBase = n.vaBase;
+                    e.vaEnd = n.vaBase + (n.cPages << 12) - 1;
+                    e.cbSize = n.cPages << 12;
                     e.cPages = n.cPages;
                     e.fPage = n.fPage;
                     e.fWoW64 = n.fWoW64;
@@ -1087,6 +1092,7 @@ namespace vmmsharp
                     MAP_VADENTRY e;
                     e.vaStart = n.vaStart;
                     e.vaEnd = n.vaEnd;
+                    e.cbSize = n.vaEnd + 1 - n.vaStart;
                     e.vaVad = n.vaVad;
                     e.VadType = n.dw0 & 0x07;
                     e.Protection = (n.dw0 >> 3) & 0x1f;
