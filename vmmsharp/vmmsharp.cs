@@ -769,7 +769,7 @@ namespace vmmsharp
         {
             public ulong vaBase;
             public ulong vaEnd;
-            public ulong cbSize;
+            public uint cbSize;
             public ulong cPages;
             public ulong fPage;
             public bool fWoW64;
@@ -782,7 +782,7 @@ namespace vmmsharp
             public ulong vaStart;
             public ulong vaEnd;
             public ulong vaVad;
-            public ulong cbSize;
+            public uint cbSize;
             public uint VadType;
             public uint Protection;
             public bool fImage;
