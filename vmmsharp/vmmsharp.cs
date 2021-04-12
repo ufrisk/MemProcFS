@@ -1059,7 +1059,7 @@ namespace vmmsharp
                     MAP_PTEENTRY e;
                     e.vaBase = n.vaBase;
                     e.vaEnd = n.vaBase + (n.cPages << 12) - 1;
-                    e.cbSize = n.cPages << 12;
+                    e.cbSize = (uint)n.cPages << 12;
                     e.cPages = n.cPages;
                     e.fPage = n.fPage;
                     e.fWoW64 = n.fWoW64;
@@ -1092,7 +1092,7 @@ namespace vmmsharp
                     MAP_VADENTRY e;
                     e.vaStart = n.vaStart;
                     e.vaEnd = n.vaEnd;
-                    e.cbSize = n.vaEnd + 1 - n.vaStart;
+                    e.cbSize = (uint)(n.vaEnd + 1 - n.vaStart);
                     e.vaVad = n.vaVad;
                     e.VadType = n.dw0 & 0x07;
                     e.Protection = (n.dw0 >> 3) & 0x1f;
