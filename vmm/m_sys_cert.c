@@ -340,6 +340,32 @@ fail:
     return TRUE;
 }
 
+VOID MSysCert_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
+{
+    PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd;
+    POB_MAP pmObCerts = NULL;
+    PMSYSCERT_OB_ENTRY peOb = NULL;
+    DWORD i, iMax;
+    CHAR szj[MAX_PATH];
+    if(ctxP->pProcess || !(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)))) { return; }
+    pd->dwVersion = VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION;
+    pd->szjType = "certificate";
+    if((pmObCerts = MSysCert_GetContext(ctxP))) {
+        for(i = 0, iMax = ObMap_Size(pmObCerts); i < iMax; i++) {
+            if((peOb = ObMap_GetByIndex(pmObCerts, (DWORD)i))) {
+                Util_snwprintf_u8j(szj, _countof(szj), L"store:[%s] thumbprint:[%s] issuer:[%s]", peOb->wszStore, peOb->wszIdHash, peOb->wszIssuerCN);
+                pd->i = i;
+                pd->wsz[0] = peOb->wszSubjectCN;
+                pd->szj[1] = szj;
+                pfnLogJSON(pd);
+                Ob_DECREF_NULL(&peOb);
+            }
+        }
+    }
+    Ob_DECREF(pmObCerts);
+    LocalFree(pd);
+}
+
 VOID MSysCert_Notify(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent)
 {
     POB_CONTAINER ctxM = (POB_CONTAINER)ctxP->ctxM;
@@ -365,5 +391,6 @@ VOID M_SysCert_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     pRI->reg_fn.pfnRead = MSysCert_Read;                                // Read function supported
     pRI->reg_fn.pfnClose = MSysCert_Close;                              // Close function supported
     pRI->reg_fn.pfnNotify = MSysCert_Notify;                            // Notify function supported
+    pRI->reg_fnfc.pfnLogJSON = MSysCert_FcLogJSON;                      // JSON log function supported
     pRI->pfnPluginManager_Register(pRI);
 }

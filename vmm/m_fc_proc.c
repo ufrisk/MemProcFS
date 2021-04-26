@@ -12,6 +12,7 @@
 #include "vmm.h"
 #include "vmmwin.h"
 #include "pluginmanager.h"
+#include "util.h"
 
 static LPSTR FC_SQL_SCHEMA_PROCESS =
     "DROP TABLE IF EXISTS process; " \
@@ -22,7 +23,7 @@ static LPSTR FC_SQL_SCHEMA_PROCESS =
 /*
 * Forensic initialization function called when the forensic sub-system is initializing.
 */
-PVOID M_FcProc_FcInitialize()
+PVOID MFcProc_FcInitialize(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
 {
     int rc;
     BOOL fWellKnownAccount = FALSE;
@@ -85,17 +86,93 @@ fail_transact:
 * -- pfnAddEntry
 * -- pfnEntryAddBySql
 */
-VOID M_FcProc_FcTimeline(
+VOID MFcProc_FcTimeline(
     _In_opt_ PVOID ctxfc,
     _In_ HANDLE hTimeline,
-    _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ QWORD qwValue, _In_ LPWSTR wszText),
+    _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPWSTR wszText),
     _In_ VOID(*pfnEntryAddBySql)(_In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPSTR *pszEntrySql)
 ) {
     LPSTR pszSql[] = {
-        "id_str_all, time_create, "STRINGIZE(FC_TIMELINE_ACTION_CREATE)", pid, eprocess FROM process WHERE time_create > 0;",
-        "id_str_all, time_exit,   "STRINGIZE(FC_TIMELINE_ACTION_DELETE)", pid, eprocess FROM process WHERE time_exit > 0;"
+        "id_str_all, time_create, "STRINGIZE(FC_TIMELINE_ACTION_CREATE)", pid, ppid, eprocess FROM process WHERE time_create > 0;",
+        "id_str_all, time_exit,   "STRINGIZE(FC_TIMELINE_ACTION_DELETE)", pid, ppid, eprocess FROM process WHERE time_exit > 0;"
     };
     pfnEntryAddBySql(hTimeline, sizeof(pszSql) / sizeof(LPSTR), pszSql);
+}
+
+VOID MFcProc_LogHeap(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd, _In_ VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData), _In_ PVMMOB_MAP_HEAP pMap)
+{
+    DWORD i;
+    PVMM_MAP_HEAPENTRY pe;
+    for(i = 0; i < pMap->cMap; i++) {
+        pe = pMap->pMap + i;
+        pd->i = i;
+        pd->va[0] = pe->vaHeapSegment;
+        pd->qwNum[0] = (QWORD)pe->cPages << 12;
+        pfnLogJSON(pd);
+    }
+}
+
+VOID MFcProc_LogProcess_GetUserName(_In_ PVMM_PROCESS pProcess, _Out_writes_(17) LPSTR szUserName, _Out_ PBOOL fAccountUser)
+{
+    BOOL f, fWellKnownAccount;
+    DWORD cwszName;
+    WCHAR wszUserName[MAX_PATH];
+    f = pProcess->win.TOKEN.fSID &&
+        VmmWinUser_GetNameW(&pProcess->win.TOKEN.SID, wszUserName, MAX_PATH, &cwszName, &fWellKnownAccount) &&
+        snprintf(szUserName, 17, "%S", wszUserName);
+    szUserName[f ? 16 : 0] = 0;
+    *fAccountUser = f && !fWellKnownAccount;
+}
+
+VOID MFcProc_LogProcess(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd, _In_ VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData), PVMM_PROCESS pProcess)
+{
+    QWORD o;
+    BOOL fStateTerminated, fAccountUser = FALSE;
+    CHAR szj[1024], szUserName[17], szTimeCRE[24], szTimeEXIT[24];
+    PVMMWIN_USER_PROCESS_PARAMETERS pu = VmmWin_UserProcessParameters_Get(pProcess);
+    pd->i = pProcess->dwPID;
+    pd->vaObj = pProcess->win.EPROCESS.va;
+    pd->qwNum[1] = pProcess->dwPPID;
+    pd->qwHex[0] = pProcess->paDTB;
+    pd->qwHex[1] = pProcess->paDTB_UserOpt;
+    pd->szu[0] = pProcess->pObPersistent->uszPathKernel;
+    fStateTerminated = (pProcess->dwState != 0);
+    MFcProc_LogProcess_GetUserName(pProcess, szUserName, &fAccountUser);
+    Util_FileTime2String(VmmProcess_GetCreateTimeOpt(pProcess), szTimeCRE);
+    o = Util_snwprintf_u8j(szj, _countof(szj), L"flags:[%S%c%c%c] user:[%S] upath:[%s] cmd:[%s] createtime:[%S]",
+        pProcess->win.fWow64 ? "32" : "  ",
+        pProcess->win.EPROCESS.fNoLink ? 'E' : ' ',
+        fStateTerminated ? 'T' : ' ',
+        fAccountUser ? 'U' : ' ',
+        szUserName,
+        pu->wszImagePathName,
+        pu->wszCommandLine,
+        szTimeCRE
+    );
+    if(VmmProcess_GetExitTimeOpt(pProcess)) {
+        Util_FileTime2String(VmmProcess_GetExitTimeOpt(pProcess), szTimeEXIT);
+        snprintf(szj + o, _countof(szj) - o, " exittime:[%s]", szTimeEXIT);
+    }
+    pd->szj[1] = szj;
+    pfnLogJSON(pd);
+}
+
+VOID MFcProc_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
+{
+    PVMM_PROCESS pProcess = ctxP->pProcess;
+    PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd;
+    PVMMOB_MAP_HEAP pObHeapMap = NULL;
+    if(!pProcess || !(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)))) { return; }
+    // process:
+    FC_JSONDATA_INIT_PIDTYPE(pd, pProcess->dwPID, "process");
+    MFcProc_LogProcess(pd, pfnLogJSON, pProcess);
+    // heap:
+    FC_JSONDATA_INIT_PIDTYPE(pd, pProcess->dwPID, "heap");
+    if(VmmMap_GetHeap(pProcess, &pObHeapMap)) {
+        MFcProc_LogHeap(pd, pfnLogJSON, pObHeapMap);
+    }
+    Ob_DECREF(pObHeapMap);
+    LocalFree(pd);
 }
 
 /*
@@ -110,10 +187,10 @@ VOID M_FcProc_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\forensic\\hidden\\proc");      // module name
     pRI->reg_info.fRootModule = TRUE;                                           // module shows in root directory
     pRI->reg_info.fRootModuleHidden = TRUE;                                     // module hidden by default
-    pRI->reg_fnfc.pfnInitialize = M_FcProc_FcInitialize;                        // Forensic initialize function supported
-    pRI->reg_fnfc.pfnTimeline = M_FcProc_FcTimeline;                            // Forensic timelining supported
-    memcpy(pRI->reg_info.sTimelineNameShort, "PROC  ", 6);
+    pRI->reg_fnfc.pfnInitialize = MFcProc_FcInitialize;                         // Forensic initialize function supported
+    pRI->reg_fnfc.pfnTimeline = MFcProc_FcTimeline;                             // Forensic timelining supported
+    pRI->reg_fnfc.pfnLogJSON = MFcProc_FcLogJSON;                               // JSON log function supported
+    memcpy(pRI->reg_info.sTimelineNameShort, "PROC", 5);
     strncpy_s(pRI->reg_info.szTimelineFileUTF8, 32, "timeline_process.txt", _TRUNCATE);
-    strncpy_s(pRI->reg_info.szTimelineFileJSON, 32, "timeline_process.json", _TRUNCATE);
     pRI->pfnPluginManager_Register(pRI);
 }

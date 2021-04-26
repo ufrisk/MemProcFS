@@ -2046,18 +2046,43 @@ BOOL VmmWinReg_ValueQuery4(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_VALUE
 }
 
 /*
+* Read a registry value - similar to WINAPI function 'RegQueryValueEx'.
+* -- pHive
+* -- pObKey
+* -- wszValueName
+* -- pdwType
+* -- pbData
+* -- cbData
+* -- pcbData
+* -- return
+*/
+_Success_(return)
+BOOL VmmWinReg_ValueQuery5(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pKey, _In_ LPWSTR wszValueName, _Out_opt_ PDWORD pdwType, _Out_writes_opt_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_opt_ PDWORD pcbData)
+{
+    BOOL fResult = FALSE;
+    POB_REGISTRY_VALUE pObKeyValue;
+    if((pObKeyValue = VmmWinReg_KeyValueGetByName(pHive, pKey, wszValueName))) {
+        fResult = VmmWinReg_ValueQuery4(pHive, pObKeyValue, pdwType, pbData, cbData, pcbData);
+        Ob_DECREF(pObKeyValue);
+    }
+    return fResult;
+}
+
+/*
 * Create a full path given a registry key. This string format is primarily used
 * for forensic storage purposes.
 * -- pHive
 * -- pKey
+* -- wszHivePrefix
 * -- wszHiveName
 * -- wszFullPath
 * -- powszName
 */
-VOID VmmWinReg_KeyFullPath(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pKey, _In_ LPWSTR wszHiveName, _Out_writes_(2048) LPWSTR wszFullPath, _Out_ LPDWORD powszName)
+VOID VmmWinReg_KeyFullPath(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pKey, _In_ LPWSTR wszHivePrefix, _In_ LPWSTR wszHiveName, _Out_writes_(1024) LPWSTR wszFullPath, _Out_ LPDWORD powszName)
 {
     BOOL fResult = TRUE, fSkip = TRUE;
-    DWORD o, i, iKey = 0;
+    QWORD cch;
+    DWORD o = 0, i, iKey = 0;
     POB_REGISTRY_KEY pk, ppObKey[0x40];
     // fetch parents (max depth: 0x40)
     ppObKey[iKey++] = Ob_INCREF(pKey);
@@ -2065,11 +2090,13 @@ VOID VmmWinReg_KeyFullPath(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY p
         iKey++;
     }
     // unwind, copy name
-    o = (DWORD)wcslen(wszHiveName);
-    memcpy((PBYTE)wszFullPath, (PBYTE)wszHiveName, (QWORD)o << 1);
+    cch = (DWORD)wcslen(wszHivePrefix);
+    memcpy((PBYTE)(wszFullPath + o), (PBYTE)wszHivePrefix, cch << 1); o += (DWORD)cch;
+    cch = (DWORD)wcslen(wszHiveName);
+    memcpy((PBYTE)(wszFullPath + o), (PBYTE)wszHiveName, cch << 1); o += (DWORD)cch;
     while(iKey) {
         pk = ppObKey[--iKey];
-        if(o + pk->pKey->NameLength + 4 > 2048) {
+        if(o + pk->pKey->NameLength + 4 > 1024) {
             fResult = FALSE;
         } else if(fSkip && !pk->qwHashKeyParent && wcsncmp(pk->pKey->wszName, L"\\ROOT", 5)) {
             ;
@@ -2098,27 +2125,70 @@ VOID VmmWinReg_KeyFullPath(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY p
 
 /*
 * Function to allow the forensic sub-system to request extraction of all keys
-* from a specific hive. The key information will be delivered back to the
-* forensic sub-system by the use of a callback function.
+* and their values from a specific hive. The key information will be delivered
+* back to the forensic sub-system by the use of callback functions.
 * -- pHive
-* -- hCallback
-* -- pfnCallback
+* -- hCallback1
+* -- hCallback2
+* -- pfnKeyCB = callback to populate the forensic database with keys.
+* -- pfnJsonKeyCB
+* -- pfnJsonValueCB
 */
-VOID VmmWinReg_ForensicGetAllKeys(_In_ POB_REGISTRY_HIVE pHive, _In_ HANDLE hCallback1, _In_ HANDLE hCallback2, _In_ VOID(*pfnCallback)(_In_ HANDLE hCallback1, _In_ HANDLE hCallback2, _In_ LPWSTR wszPathName, _In_ DWORD owszName, _In_ QWORD vaHive, _In_ DWORD dwCell, _In_ DWORD dwCellParent, _In_ QWORD ftLastWrite))
-{
-    DWORD i, c, owszName;
-    WCHAR wszFullPath[2048];
-    LPWSTR wszHiveName;
+VOID VmmWinReg_ForensicGetAllKeysAndValues(
+    _In_ POB_REGISTRY_HIVE pHive,
+    _In_ HANDLE hCallback1,
+    _In_ HANDLE hCallback2,
+    _In_ VOID(*pfnKeyCB)(_In_ HANDLE hCallback1, _In_ HANDLE hCallback2, _In_ LPWSTR wszPathName, _In_ DWORD owszName, _In_ QWORD vaHive, _In_ DWORD dwCell, _In_ DWORD dwCellParent, _In_ QWORD ftLastWrite),
+    _In_ VOID(*pfnJsonKeyCB)(_Inout_ PVMMWINREG_FORENSIC_CONTEXT ctx, _In_z_ LPWSTR wszPathName, _In_ QWORD ftLastWrite),
+    _In_ VOID(*pfnJsonValueCB)(_Inout_ PVMMWINREG_FORENSIC_CONTEXT ctx)
+) {
+    DWORD i, c, owszName, oHive, j, jMax;
+    WCHAR wszFullPath[1024];
+    LPWSTR wszHivePrefix;
     POB_REGISTRY_KEY pObKey;
+    POB_MAP pmObValues = NULL;
+    POB_REGISTRY_VALUE pObValue = NULL;
+    PVMMWINREG_FORENSIC_CONTEXT ctx;
+    if(!(ctx = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMWINREG_FORENSIC_CONTEXT)))) { return; }
     if(VmmWinReg_HiveSnapshotEnsure(pHive)) {
-        wszHiveName = pHive->wszHiveRootPath + (wcsncmp(pHive->wszHiveRootPath, L"\\REGISTRY", 9) ? 0 : 9);
+        oHive = 0;
+        wszHivePrefix = L"";
+        if(pHive->wszHiveRootPath[oHive] == '\\') {
+            oHive += 1;
+        }
+        if(!_wcsnicmp(pHive->wszHiveRootPath + oHive, L"REGISTRY\\", 9)) {
+            oHive += 9;
+        }
+        if(!_wcsnicmp(pHive->wszHiveRootPath + oHive, L"MACHINE\\", 8)) {
+            oHive += 8;
+            wszHivePrefix = L"HKLM\\";
+        }
+        if(!_wcsnicmp(pHive->wszHiveRootPath + oHive, L"USER\\", 5)) {
+            oHive += 5;
+            wszHivePrefix = L"HKU\\";
+        }
         c = ObMap_Size(pHive->Snapshot.pmKeyOffset);
         for(i = 0; i < c; i++) {
             if(pObKey = ObMap_GetByIndex(pHive->Snapshot.pmKeyOffset, i)) {
-                VmmWinReg_KeyFullPath(pHive, pObKey, wszHiveName, wszFullPath, &owszName);
-                pfnCallback(hCallback1, hCallback2, wszFullPath, owszName, pHive->vaCMHIVE, pObKey->oCell, pObKey->pKey->Parent, pObKey->pKey->LastWriteTime);
+                VmmWinReg_KeyFullPath(pHive, pObKey, wszHivePrefix, pHive->wszHiveRootPath + oHive, wszFullPath, &owszName);
+                // registry timeline:
+                pfnKeyCB(hCallback1, hCallback2, wszFullPath, owszName, pHive->vaCMHIVE, pObKey->oCell, pObKey->pKey->Parent, pObKey->pKey->LastWriteTime);
+                // registry json data:
+                pfnJsonKeyCB(ctx, wszFullPath, pObKey->pKey->LastWriteTime);
+                if((pmObValues = VmmWinReg_KeyValueList(pHive, pObKey))) {
+                    for(j = 0, jMax = ObMap_Size(pmObValues); j < jMax; j++) {
+                        if((pObValue = ObMap_GetByIndex(pmObValues, j))) {
+                            VmmWinReg_ValueInfo(pHive, pObValue, &ctx->value.info);
+                            VmmWinReg_ValueQueryInternal(pHive, pObValue, NULL, NULL, NULL, ctx->value.pb, sizeof(ctx->value.pb), &ctx->value.cb, 0);
+                            pfnJsonValueCB(ctx);
+                            Ob_DECREF_NULL(&pObValue);
+                        }
+                    }
+                    Ob_DECREF_NULL(&pmObValues);
+                }
                 Ob_DECREF(pObKey);
             }
         }
     }
+    LocalFree(ctx);
 }

@@ -527,6 +527,9 @@ BOOL VMMDLL_ConfigGet(_In_ ULONG64 fOption, _Out_ PULONG64 pqwValue)
         case VMMDLL_OPT_WIN_VERSION_BUILD:
             *pqwValue = ctxVmm->kernel.dwVersionBuild;
             return TRUE;
+        case VMMDLL_OPT_WIN_SYSTEM_UNIQUE_ID:
+            *pqwValue = ctxVmm->dwSystemUniqueId;
+            return TRUE;
         case VMMDLL_OPT_FORENSIC_MODE:
             *pqwValue = ctxFc ? (BYTE)ctxFc->db.tp : 0;
             return TRUE;

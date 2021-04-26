@@ -262,6 +262,43 @@ finish:
     return TRUE;
 }
 
+/*
+* Forensic JSON log:
+*/
+VOID MSysSvc_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
+{
+    PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd;
+    PVMMOB_MAP_SERVICE pObSvcMap = NULL;
+    PVMM_MAP_SERVICEENTRY pe;
+    DWORD i;
+    CHAR sz[MAX_PATH], szj[2][MAX_PATH];
+    if(ctxP->pProcess || !(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)))) { return; }
+    pd->dwVersion = VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION;
+    pd->szjType = "service";
+    if(VmmMap_GetService(&pObSvcMap)) {
+        for(i = 0; i < pObSvcMap->cMap; i++) {
+            pe = pObSvcMap->pMap + i;
+            pd->i = i;
+            pd->dwPID = pe->dwPID;
+            pd->vaObj = pe->vaObj;
+            MSysSvc_GetSvcTypeLong(pe, sz);
+            Util_snwprintf_u8j(szj[0], _countof(szj[0]), L"%s [%s]",
+                pe->wszServiceName,
+                pe->wszDisplayName);
+            Util_snwprintf_u8j(szj[1], _countof(szj[1]), L"start:[%S] state:[%S] type:[%S] user:[%s] image:[%s] path:[%s]",
+                MSysSvc_GetSvcStartType(pe, FALSE), MSysSvc_GetSvcState(pe, FALSE), sz,
+                (pe->wszUserAcct[0] ? pe->wszUserAcct : L"---"),
+                (pe->wszImagePath[0] ? pe->wszImagePath : L"---"),
+                (pe->wszPath[0] ? pe->wszPath : L"---"));
+            pd->szj[0] = szj[0];
+            pd->szj[1] = szj[1];
+            pfnLogJSON(pd);
+        }
+    }
+    Ob_DECREF(pObSvcMap);
+    LocalFree(pd);
+}
+
 VOID M_SysSvc_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
@@ -270,5 +307,6 @@ VOID M_SysSvc_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     pRI->reg_info.fRootModule = TRUE;                               // module shows in root directory
     pRI->reg_fn.pfnList = MSysSvc_List;                             // List function supported
     pRI->reg_fn.pfnRead = MSysSvc_Read;                             // Read function supported
+    pRI->reg_fnfc.pfnLogJSON = MSysSvc_FcLogJSON;                   // JSON log function supported
     pRI->pfnPluginManager_Register(pRI);
 }

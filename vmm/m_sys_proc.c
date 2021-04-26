@@ -18,9 +18,9 @@
 // efficient, but the file is not read often so it should be OK.
 // ----------------------------------------------------------------------------
 
-#define MSYSPROC_TREE_LINE_LENGTH                   111
-#define MSYSPROC_TREE_LINE_LENGTH_VERBOSE_BASE      63
-#define MSYSPROC_TREE_LINE_LENGTH_VERBOSE_HEADER    84
+#define MSYSPROC_TREE_LINE_LENGTH                   112
+#define MSYSPROC_TREE_LINE_LENGTH_VERBOSE_BASE      64
+#define MSYSPROC_TREE_LINE_LENGTH_VERBOSE_HEADER    85
 
 const LPSTR szMSYSPROC_WHITELIST_WINDOWS_PATHS_AND_BINARIES[] = {
     "\\Windows\\System32\\",
@@ -87,7 +87,7 @@ DWORD MSysProc_Tree_ProcessItems(_In_ PMSYSPROC_TREE_ENTRY pProcessEntry, _In_ P
         o = snprintf(
             pb,
             cb,
-            "%s %-15s%*s%6i %6i %s%c%c%c%c %-16s%s  %s\n",
+            "%s %-15s%*s%6i %6i %s%c%c%c%c %-16s %s  %s\n",
             szINDENT[min(8, iLevel)],
             pProcessEntry->pObProcess->szName,
             8 - min(7, iLevel),
@@ -108,7 +108,7 @@ DWORD MSysProc_Tree_ProcessItems(_In_ PMSYSPROC_TREE_ENTRY pProcessEntry, _In_ P
         o = snprintf(
             pb,
             cb,
-            "%s %-15s%*s%6i %6i %s%c%c%c%c %-16s%s\n",
+            "%s %-15s%*s%6i %6i %s%c%c%c%c %-16s %s\n",
             szINDENT[min(8, iLevel)],
             pProcessEntry->pObProcess->szName,
             8 - min(7, iLevel),
@@ -124,17 +124,17 @@ DWORD MSysProc_Tree_ProcessItems(_In_ PMSYSPROC_TREE_ENTRY pProcessEntry, _In_ P
             pProcessEntry->pObProcess->pObPersistent->uszPathKernel
         );
         if(pProcessEntry->pObProcess->pObPersistent->UserProcessParams.uszImagePathName) {
-            o += snprintf(pb + o, cb - o, "%62s%-*s\n", "",
+            o += snprintf(pb + o, cb - o, "%63s%-*s\n", "",
                 pProcessEntry->pObProcess->pObPersistent->UserProcessParams.cuszImagePathName,
                 pProcessEntry->pObProcess->pObPersistent->UserProcessParams.uszImagePathName);
         }
         if(pProcessEntry->pObProcess->pObPersistent->UserProcessParams.uszCommandLine) {
-            o += snprintf(pb + o, cb - o, "%62s%-*s\n", "",
+            o += snprintf(pb + o, cb - o, "%63s%-*s\n", "",
                 pProcessEntry->pObProcess->pObPersistent->UserProcessParams.cuszCommandLine,
                 pProcessEntry->pObProcess->pObPersistent->UserProcessParams.uszCommandLine);
         }
         if(szTimeCRE[0] != ' ') {
-            o += snprintf(pb + o, cb - o, "%62s%s -> %s\n", "", szTimeCRE, szTimeEXIT);
+            o += snprintf(pb + o, cb - o, "%63s%s -> %s\n", "", szTimeCRE, szTimeEXIT);
         }
         o += snprintf(pb + o, cb - o, "\n");
     }
@@ -184,8 +184,8 @@ BOOL MSysProc_Tree(_In_ BOOL fVerbose, _Out_ PBYTE * ppb, _Out_ PDWORD pcb)
         // 3: iterate over top level items - processes with no parent
         qsort(pPidList, cPidList, sizeof(MSYSPROC_TREE_ENTRY), (int(*)(const void *, const void *))MSysProc_Tree_CmpSort);
         o = snprintf(pb, cb, fVerbose ?
-            "  Process                   Pid Parent   Flag User            Path / Command / Time\n-----------------------------------------------------------------------------------\n" :
-            "  Process                   Pid Parent   Flag User            Create Time              Exit Time              \n--------------------------------------------------------------------------------------------------------------\n");
+            "  Process                   Pid Parent   Flag User             Path / Command / Time\n------------------------------------------------------------------------------------\n" :
+            "  Process                   Pid Parent   Flag User             Create Time              Exit Time              \n---------------------------------------------------------------------------------------------------------------\n");
         // 3.1 process items
         for(i = 0; i < cPidList; i++) {
             pPidEntry = pPidList + i;

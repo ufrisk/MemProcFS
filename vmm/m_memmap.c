@@ -244,6 +244,67 @@ BOOL MemMap_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 }
 
 /*
+* Forensic JSON log:
+*/
+VOID MemMap_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
+{
+    PVMM_PROCESS pProcess = ctxP->pProcess;
+    PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd;
+    PVMMOB_MAP_PTE pObPteMap = NULL;
+    PVMMOB_MAP_VAD pObVadMap = NULL;
+    PVMM_MAP_PTEENTRY pep;
+    PVMM_MAP_VADENTRY pev;
+    DWORD i;
+    CHAR szj[MAX_PATH] = { 0 };
+    if(!pProcess || !(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)))) { return; }
+    pd->dwVersion = VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION;
+    pd->dwPID = pProcess->dwPID;
+    pd->szjType = "pte";
+    // 1: PTEs
+    pd->fHex[0] = TRUE;
+    szj[1] = 'r'; szj[6] = ' ';
+    if(VmmMap_GetPte(pProcess, &pObPteMap, TRUE)) {
+        for(i = 0; i < pObPteMap->cMap; i++) {
+            pep = pObPteMap->pMap + i;
+            szj[0] = pep->fPage & VMM_MEMMAP_PAGE_NS ? '-' : 's';
+            szj[2] = pep->fPage & VMM_MEMMAP_PAGE_W ? 'w' : '-';
+            szj[3] = pep->fPage & VMM_MEMMAP_PAGE_NX ? '-' : 'x';
+            pd->i = i;
+            pd->qwNum[0] = pep->cPages << 12;
+            pd->qwHex[0] = pep->cPages;
+            pd->va[0] = pep->vaBase;
+            pd->va[1] = pep->vaBase + (pep->cPages << 12) - 1;
+            pd->szj[0] = szj;
+            pd->wsz[1] = pep->wszText;
+            pfnLogJSON(pd);
+        }
+    }
+    // 2: VADs
+    pd->szjType = "vad";
+    pd->fHex[1] = TRUE;
+    if(VmmMap_GetVad(pProcess, &pObVadMap, VMM_VADMAP_TP_FULL)) {
+        for(i = 0; i < pObVadMap->cMap; i++) {
+            pev = pObVadMap->pMap + i;
+            MmVad_StrProtectionFlags(pev, szj);
+            Util_snwprintf_u8j(szj + 7, sizeof(szj) - 7, L"%s", pev->wszText);
+            pd->i = i;
+            pd->vaObj = pev->vaVad;
+            pd->qwNum[0] = pev->vaEnd - pev->vaStart + 1;
+            pd->qwHex[0] = ((pev->vaEnd - pev->vaStart + 1) >> 12);   // pages
+            pd->qwHex[1] = pev->CommitCharge;
+            pd->va[0] = pev->vaStart;
+            pd->va[1] = pev->vaEnd;
+            pd->szj[0] = (LPSTR)MmVad_StrType(pev);
+            pd->szj[1] = szj;
+            pfnLogJSON(pd);
+        }
+    }
+    Ob_DECREF(pObVadMap);
+    Ob_DECREF(pObPteMap);
+    LocalFree(pd);
+}
+
+/*
 * Initialization function. The module manager shall call into this function
 * when the module shall be initialized. If the module wish to initialize it
 * shall call the supplied pfnPluginManager_Register function.
@@ -260,5 +321,6 @@ VOID M_MemMap_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     pRI->reg_info.fProcessModule = TRUE;                                // module shows in process directory
     pRI->reg_fn.pfnList = MemMap_List;                                  // List function supported
     pRI->reg_fn.pfnRead = MemMap_Read;                                  // Read function supported
+    pRI->reg_fnfc.pfnLogJSON = MemMap_FcLogJSON;                        // JSON log function supported
     pRI->pfnPluginManager_Register(pRI);
 }

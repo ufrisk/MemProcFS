@@ -197,6 +197,34 @@ finish:
     return TRUE;
 }
 
+VOID MSysDriver_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
+{
+    PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd;
+    PVMMOB_MAP_KDRIVER pObDrvMap = NULL;
+    PVMM_MAP_KDRIVERENTRY pe;
+    DWORD i;
+    CHAR szj[MAX_PATH];
+    if(ctxP->pProcess || !(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)))) { return; }
+    pd->dwVersion = VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION;
+    pd->szjType = "driver";
+    if(VmmMap_GetKDriver(&pObDrvMap)) {
+        for(i = 0; i < pObDrvMap->cMap; i++) {
+            pe = pObDrvMap->pMap + i;
+            pd->i = i;
+            pd->vaObj = pe->va;
+            pd->qwNum[0] = pe->cbDriverSize;
+            pd->va[0] = pe->vaStart;
+            pd->va[1] = pe->cbDriverSize ? (pe->vaStart + pe->cbDriverSize - 1) : pe->vaStart;
+            pd->wsz[0] = pe->wszName;
+            Util_snwprintf_u8j(szj, sizeof(szj), L"svc:[%s] path:[%s]", pe->wszServiceKeyName, pe->wszPath);
+            pd->szj[1] = szj;
+            pfnLogJSON(pd);
+        }
+    }
+    Ob_DECREF(pObDrvMap);
+    LocalFree(pd);
+}
+
 VOID M_SysDriver_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
@@ -206,5 +234,6 @@ VOID M_SysDriver_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     pRI->reg_info.fRootModule = TRUE;                               // module shows in root directory
     pRI->reg_fn.pfnList = MSysDriver_List;                          // List function supported
     pRI->reg_fn.pfnRead = MSysDriver_Read;                          // Read function supported
+    pRI->reg_fnfc.pfnLogJSON = MSysDriver_FcLogJSON;                // JSON log function supported
     pRI->pfnPluginManager_Register(pRI);
 }

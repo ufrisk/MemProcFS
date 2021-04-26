@@ -486,20 +486,22 @@ typedef enum tdVMM_EVIL_TP {            // EVIL types - sorted by "evilness"
     VMM_EVIL_TP_PE_NA           = 0,    // _NA
     VMM_EVIL_TP_PE_INJECTED     = 1,    // MODULE
     VMM_EVIL_TP_PROC_NOLINK     = 2,    // _NA
-    VMM_EVIL_TP_BAD_PEB_LDR     = 3,    // _NA
-    VMM_EVIL_TP_PE_NOTLINKED    = 4,    // MODULE
-    VMM_EVIL_TP_VAD_PATCHED_PE  = 5,    // VADEX
-    VMM_EVIL_TP_VAD_PRIVATE_RWX = 6,    // VADEX
-    VMM_EVIL_TP_VAD_NOIMAGE_RWX = 7,    // VADEX
-    VMM_EVIL_TP_VAD_PRIVATE_RX  = 8,    // VADEX
-    VMM_EVIL_TP_VAD_NOIMAGE_RX  = 9,    // VADEX
+    VMM_EVIL_TP_PEB_MASQUERADE  = 3,    // _NA
+    VMM_EVIL_TP_PEB_BAD_LDR     = 4,    // _NA
+    VMM_EVIL_TP_PE_NOTLINKED    = 5,    // MODULE
+    VMM_EVIL_TP_VAD_PATCHED_PE  = 6,    // VADEX
+    VMM_EVIL_TP_VAD_PRIVATE_RWX = 7,    // VADEX
+    VMM_EVIL_TP_VAD_NOIMAGE_RWX = 8,    // VADEX
+    VMM_EVIL_TP_VAD_PRIVATE_RX  = 9,    // VADEX
+    VMM_EVIL_TP_VAD_NOIMAGE_RX  = 10,   // VADEX
 } VMM_EVIL_TP;
 
 static LPCSTR VMM_EVIL_TP_STRING[] = {
     "UNKNOWN    ",
     "PE_INJECT  ",
     "PROC_NOLINK",
-    "BAD_PEB_LDR",
+    "PEB_MASQ   ",
+    "PEB_BAD_LDR",
     "PE_NOLINK  ",
     "PE_PATCHED ",
     "PRIVATE_RWX",
@@ -1114,6 +1116,8 @@ typedef struct tdVMM_CONTEXT {
     BOOL fThreadMapEnabled;         // Thread Map subsystem is enabled / available
     VMM_SYSTEM_TP tpSystem;
     DWORD flags;                    // VMM_FLAG_*
+    DWORD dwSystemUniqueId;
+    CHAR szSystemUniqueTag[15];
     struct {
         BOOL fEnabled;
         DWORD cMs_TickPeriod;

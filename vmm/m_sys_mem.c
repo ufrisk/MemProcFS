@@ -24,7 +24,6 @@ VOID MSysMem_PhysMemReadLine_Callback(_Inout_opt_ PVOID ctx, _In_ DWORD cbLineLe
     );
 }
 
-
 _Success_(return == 0)
 NTSTATUS MSysMem_Read_PfnMap(_Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
@@ -113,6 +112,29 @@ BOOL MSysMem_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
     return TRUE;
 }
 
+VOID MSysMem_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
+{
+    PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd;
+    PVMMOB_MAP_PHYSMEM pObPhysMemMap = NULL;
+    PVMM_MAP_PHYSMEMENTRY pe;
+    DWORD i;
+    if(ctxP->pProcess || !(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)))) { return; }
+    pd->dwVersion = VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION;
+    pd->szjType = "memorymap";
+    if(VmmMap_GetPhysMem(&pObPhysMemMap)) {
+        for(i = 0; i < pObPhysMemMap->cMap; i++) {
+            pe = pObPhysMemMap->pMap + i;
+            pd->i = i;
+            pd->va[0] = pe->pa;
+            pd->va[1] = pe->pa + pe->cb - 1;
+            pd->qwNum[0] = pe->cb;
+            pfnLogJSON(pd);
+        }
+    }
+    Ob_DECREF(pObPhysMemMap);
+    LocalFree(pd);
+}
+
 VOID M_SysMem_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
@@ -121,5 +143,6 @@ VOID M_SysMem_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     pRI->reg_info.fRootModule = TRUE;                                   // module shows in root directory
     pRI->reg_fn.pfnList = MSysMem_List;                                 // List function supported
     pRI->reg_fn.pfnRead = MSysMem_Read;                                 // Read function supported
+    pRI->reg_fnfc.pfnLogJSON = MSysMem_FcLogJSON;                       // JSON log function supported
     pRI->pfnPluginManager_Register(pRI);
 }

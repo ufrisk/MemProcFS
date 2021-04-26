@@ -178,7 +178,8 @@ VOID VfsDokan_Close(_In_ CHAR chMountPoint)
 VOID VfsDokan_InitializeAndMount_DisplayInfo(LPWSTR wszMountPoint, _In_ PVMMDLL_FUNCTIONS pVmmDll)
 {
     ULONG64 qwVersionVmmMajor = 0, qwVersionVmmMinor = 0, qwVersionVmmRevision = 0;
-    ULONG64 qwVersionWinMajor = 0, qwVersionWinMinor = 0, qwVersionWinBuild = 0, iMemoryModel;
+    ULONG64 qwVersionWinMajor = 0, qwVersionWinMinor = 0, qwVersionWinBuild = 0;
+    ULONG64 qwUniqueSystemId = 0, iMemoryModel;
     // get vmm.dll versions
     pVmmDll->ConfigGet(VMMDLL_OPT_CONFIG_VMM_VERSION_MAJOR, &qwVersionVmmMajor);
     pVmmDll->ConfigGet(VMMDLL_OPT_CONFIG_VMM_VERSION_MINOR, &qwVersionVmmMinor);
@@ -188,18 +189,21 @@ VOID VfsDokan_InitializeAndMount_DisplayInfo(LPWSTR wszMountPoint, _In_ PVMMDLL_
     pVmmDll->ConfigGet(VMMDLL_OPT_WIN_VERSION_MAJOR, &qwVersionWinMajor);
     pVmmDll->ConfigGet(VMMDLL_OPT_WIN_VERSION_MINOR, &qwVersionWinMinor);
     pVmmDll->ConfigGet(VMMDLL_OPT_WIN_VERSION_BUILD, &qwVersionWinBuild);
+    pVmmDll->ConfigGet(VMMDLL_OPT_WIN_SYSTEM_UNIQUE_ID, &qwUniqueSystemId);
     printf("\n" \
         "=============== MemProcFS - THE MEMORY PROCESS FILE SYSTEM ===============\n" \
-        " - Author:           Ulf Frisk - pcileech@frizk.net                       \n" \
-        " - Info:             https://github.com/ufrisk/MemProcFS                  \n" \
-        " - License:          GNU Affero General Public License v3.0               \n" \
-        "   --------------------------------------------------------------------   \n" \
-        "   MemProcFS is free open source software. If you find it useful please   \n" \
-        "   become a sponsor at: https://github.com/sponsors/ufrisk Thank You :)   \n" \
-        "   --------------------------------------------------------------------   \n" \
-        " - Version:          %i.%i.%i                                             \n" \
-        " - Mount Point:      %S                                                   \n",
-        (DWORD)qwVersionVmmMajor, (DWORD)qwVersionVmmMinor, (DWORD)qwVersionVmmRevision, wszMountPoint);
+        " - Author:           Ulf Frisk - pcileech@frizk.net                     \n" \
+        " - Info:             https://github.com/ufrisk/MemProcFS                \n" \
+        " - License:          GNU Affero General Public License v3.0             \n" \
+        "   -------------------------------------------------------------------- \n" \
+        "   MemProcFS is free open source software. If you find it useful please \n" \
+        "   become a sponsor at: https://github.com/sponsors/ufrisk Thank You :) \n" \
+        "   -------------------------------------------------------------------- \n" \
+        " - Version:          %i.%i.%i                                           \n" \
+        " - Mount Point:      %S                                                 \n" \
+        " - Tag:              %i_%x                                              \n" ,
+        (DWORD)qwVersionVmmMajor, (DWORD)qwVersionVmmMinor, (DWORD)qwVersionVmmRevision,
+        wszMountPoint, (DWORD)qwVersionWinBuild, (DWORD)qwUniqueSystemId);
     if(qwVersionWinMajor && (iMemoryModel < (sizeof(VMMDLL_MEMORYMODEL_TOSTRING) / sizeof(LPSTR)))) {
         printf(" - Operating System: Windows %i.%i.%i (%s)\n",
             (DWORD)qwVersionWinMajor, (DWORD)qwVersionWinMinor, (DWORD)qwVersionWinBuild, VMMDLL_MEMORYMODEL_TOSTRING[iMemoryModel]);

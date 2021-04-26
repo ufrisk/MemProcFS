@@ -139,6 +139,47 @@ finish:
 }
 
 /*
+* Forensic JSON log:
+*/
+VOID MHandle_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
+{
+    PVMM_PROCESS pProcess = ctxP->pProcess;
+    PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd;
+    PVMMOB_MAP_HANDLE pObHandleMap = NULL;
+    PVMM_MAP_HANDLEENTRY pe;
+    PVMMWIN_OBJECT_TYPE pOT;
+    CHAR szTypePool[5], szjType[32];
+    DWORD i;
+    if(!pProcess || !(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)))) { return; }
+    pd->dwVersion = VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION;
+    pd->dwPID = pProcess->dwPID;
+    pd->szjType = "handle";
+    if(VmmMap_GetHandle(ctxP->pProcess, &pObHandleMap, TRUE)) {
+        for(i = 0; i < pObHandleMap->cMap; i++) {
+            pe = pObHandleMap->pMap + i;
+            // get type:
+            if((pOT = VmmWin_ObjectTypeGet((BYTE)pe->iType))) {
+                Util_snwprintf_u8j(szjType, _countof(szjType), L"%s", pOT->wsz);
+            } else {
+                *(PDWORD)szTypePool = pe->dwPoolTag;
+                szTypePool[4] = 0;
+                Util_snwprintf_u8j(szjType, _countof(szjType), L"%S", szTypePool);
+            }
+            // populate & log:
+            pd->i = i;
+            pd->vaObj = pe->vaObject;
+            pd->qwHex[0] = pe->dwHandle;
+            pd->qwHex[1] = pe->dwGrantedAccess;
+            pd->szj[0] = szjType;
+            pd->wsz[1] = pe->wszText;
+            pfnLogJSON(pd);
+        }
+    }
+    Ob_DECREF(pObHandleMap);
+    LocalFree(pd);
+}
+
+/*
 * Initialization function. The module manager shall call into this function
 * when the module shall be initialized. If the module wish to initialize it
 * shall call the supplied pfnPluginManager_Register function.
@@ -153,7 +194,8 @@ VOID M_Handle_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\handles");             // module name
     pRI->reg_info.fRootModule = FALSE;                                  // module shows in root directory
     pRI->reg_info.fProcessModule = TRUE;                                // module shows in process directory
-    pRI->reg_fn.pfnList = MHandle_List;                              // List function supported
-    pRI->reg_fn.pfnRead = MHandle_Read;                              // Read function supported
+    pRI->reg_fn.pfnList = MHandle_List;                                 // List function supported
+    pRI->reg_fn.pfnRead = MHandle_Read;                                 // Read function supported
+    pRI->reg_fnfc.pfnLogJSON = MHandle_FcLogJSON;                       // JSON log function supported
     pRI->pfnPluginManager_Register(pRI);
 }

@@ -875,6 +875,21 @@ DWORD VmmWinInit_TryInitialize_Async(LPVOID lpParameter)
 }
 
 /*
+* Initialize the "system unique tag" - i.e. an unique system-dependent id.
+*/
+VOID VmmWinInit_TryInitialize_SystemUniqueTag()
+{
+    BYTE pbSHA256[32] = { 0 };
+    PVMM_PROCESS pObSystemProcess = NULL;
+    if((pObSystemProcess = VmmProcessGet(4))) {
+        Util_HashSHA256(pObSystemProcess->win.EPROCESS.pb, pObSystemProcess->win.EPROCESS.cb, pbSHA256);
+        ctxVmm->dwSystemUniqueId = *(PDWORD)pbSHA256;
+        snprintf(ctxVmm->szSystemUniqueTag, _countof(ctxVmm->szSystemUniqueTag), "%i_%x", ctxVmm->kernel.dwVersionBuild, ctxVmm->dwSystemUniqueId);
+    }
+    Ob_DECREF(pObSystemProcess);
+}
+
+/*
 * Try initialize the VMM from scratch with new WINDOWS support.
 * -- paDTBOpt
 * -- return
@@ -938,6 +953,7 @@ BOOL VmmWinInit_TryInitialize(_In_opt_ QWORD paDTBOpt)
     VmmWinInit_FindPsLoadedModuleListKDBG(pObSystemProcess);    // Find PsLoadedModuleList and possibly KDBG.
     VmmWinObj_Initialize();                                     // Windows Objects Manager.
     VmmWinReg_Initialize();                                     // Registry.
+    VmmWinInit_TryInitialize_SystemUniqueTag();
     // Async Initialization functionality:
     hThreadInitializeAsync = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)VmmWinInit_TryInitialize_Async, (LPVOID)NULL, 0, NULL);
     if(hThreadInitializeAsync) {

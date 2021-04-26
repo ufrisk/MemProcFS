@@ -140,6 +140,8 @@ All sponsorships are welcome, no matter how large or small. I especially wish to
 
 Changelog:
 ===================
+<details><summary>Previous releases (click to expand):</summary>
+ 
 v1.0
 * Initial Release.
 
@@ -237,3 +239,10 @@ v1.1-v2.10
 * New Features:
   * New [Python API](https://github.com/ufrisk/MemProcFS/wiki/API_Python) now also available on [Python pip](https://pypi.org/project/memprocfs/). Check out the [YouTube demo](https://youtu.be/pLFU1lxBNM0)!
   * `py/reg/net/tcpip_interfaces.txt`
+</details>
+
+[v3.10](https://github.com/ufrisk/MemProcFS/releases/tag/v3.10)
+* Bug fixes.
+* New Features:
+  * Scheduled Tasks at `/sys/tasks/`
+  * Forensic mode: JSON info file generation `/forensic/json/` (compatible with Elasticsearch).

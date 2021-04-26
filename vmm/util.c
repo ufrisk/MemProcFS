@@ -5,6 +5,7 @@
 //
 #include "util.h"
 #include <math.h>
+#include <ntstatus.h>
 
 /*
 * Calculate the number of digits of an integer number.
@@ -108,6 +109,35 @@ QWORD Util_HashPathW_Registry(_In_ LPWSTR wszPath)
         qwHashTotal = dwHashName + ((qwHashTotal >> 13) | (qwHashTotal << 51));
     }
     return qwHashTotal;
+}
+
+/*
+* SHA256 hash some data.
+* -- pbData
+* -- cbData
+* -- pbHash
+* -- return
+*/
+_Success_(return)
+BOOL Util_HashSHA256(_In_reads_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_writes_(32) PBYTE pbHash)
+{
+    BOOL fResult = FALSE;
+    DWORD cbHashObject;
+    PBYTE pbHashObject = NULL;
+    BCRYPT_ALG_HANDLE hAlg = NULL;
+    BCRYPT_HASH_HANDLE hHash = NULL;
+    if(BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_SHA256_ALGORITHM, NULL, 0)) { goto fail; }
+    if(BCryptGetProperty(hAlg, BCRYPT_OBJECT_LENGTH, (PBYTE)&cbHashObject, sizeof(DWORD), &cbData, 0)) { goto fail; }
+    if(!(pbHashObject = LocalAlloc(0, cbHashObject))) { goto fail;}
+    if(BCryptCreateHash(hAlg, &hHash, pbHashObject, cbHashObject, NULL, 0, 0)) { goto fail; }
+    if(BCryptHashData(hHash, pbData, cbData, 0)) { goto fail; }
+    if(BCryptFinishHash(hHash, pbHash, 32, 0)) { goto fail; }
+    fResult = TRUE;
+fail:
+    if(hAlg) { BCryptCloseAlgorithmProvider(hAlg, 0); }
+    if(hHash) { BCryptDestroyHash(hHash); }
+    LocalFree(pbHashObject);
+    return fResult;
 }
 
 #define Util_2HexChar(x) (((((x) & 0xf) <= 9) ? '0' : ('a' - 10)) + ((x) & 0xf))
@@ -336,6 +366,71 @@ VOID Util_PathPrependVA(_Out_writes_(MAX_PATH) LPWSTR wszDstBuffer, _In_ QWORD v
     _snwprintf_s(wszDstBuffer, MAX_PATH, _TRUNCATE, (f32 ? L"%08x-%s" : L"%016llx-%s"), va, wszText);
 }
 
+/*
+* Number of extra bytes required to represent a JSON string as compared to the
+* number of original utf-8 bytes in the string.
+* -- szu = utf-8 encoded string
+* -- return = number of additional bytes needed to account for JSON escape chars.
+*/
+DWORD Util_JsonEscapeByteCountExtra(_In_ LPSTR szu)
+{
+    UCHAR ch;
+    DWORD n = 0, i = 0;
+    while((ch = szu[i++])) {
+        if(ch < 0x20 || ch == '"' || ch == '\\') {
+            n += (ch == '"' || ch == '\\' || ch == '\b' || ch == '\f' || ch == '\n' || ch == '\r' || ch == '\t') ? 1 : 5;
+        }
+    }
+    return n;
+}
+
+/*
+* Escape utf-8 text into json text. The number of bytes in the resulting string
+* is returned whilst the szj buffer is updated with the escaped string.
+* -- szu = utf-8 string to escape.
+* -- cbj = byte length of szj buffer (including null terminator).
+* -- szj = buffer to receive json-escaped string
+* -- return = number of bytes written (excluding null terminator).
+*/
+DWORD Util_JsonEscape(_In_ LPSTR szu, _In_ DWORD cbj, _Out_writes_z_(cbj) LPSTR szj)
+{
+    UCHAR ch, chh;
+    DWORD i = 0, j = 0;
+    if(cbj == 0) { return 0; }
+    cbj--;      // target byte count excl. null terminator
+    while((ch = szu[i++]) && (j < cbj)) {
+        if(ch < 0x20 || ch == '"' || ch == '\\') {
+            if(ch == '"' || ch == '\\' || ch == '\b' || ch == '\f' || ch == '\n' || ch == '\r' || ch == '\t') {
+                if(cbj < j + 1) { break; }
+                szj[j++] = '\\';
+                switch(ch) {
+                    case '"': szj[j++] = '"'; break;
+                    case '\\': szj[j++] = '\\'; break;
+                    case '\b': szj[j++] = 'b'; break;
+                    case '\f': szj[j++] = 'f'; break;
+                    case '\n': szj[j++] = 'n'; break;
+                    case '\r': szj[j++] = 'r'; break;
+                    case '\t': szj[j++] = 't'; break;
+                }
+            } else {
+                if(cbj < j + 5) { break; }
+                szj[j++] = '\\';
+                szj[j++] = 'u';
+                szj[j++] = '0';
+                szj[j++] = '0';
+                chh = (ch >> 4) & 0xf;
+                szj[j++] = (chh < 10) ? '0' + chh : 'a' - 10 + chh;
+                chh = ch & 0xf;
+                szj[j++] = (chh < 10) ? '0' + chh : 'a' - 10 + chh;
+            }
+        } else {
+            szj[j++] = ch;
+        }
+    }
+    szj[min(j, cbj)] = 0;
+    return j;
+}
+
 int Util_wcsstrncmp(_In_ LPSTR sz, _In_ LPWSTR wsz, _In_opt_ DWORD cMax)
 {
     DWORD i;
@@ -348,44 +443,80 @@ int Util_wcsstrncmp(_In_ LPSTR sz, _In_ LPWSTR wsz, _In_opt_ DWORD cMax)
 }
 
 _Success_(return >= 0)
-size_t Util_snwprintf_u8(
-    _Out_writes_z_(cbBuffer) LPSTR szBuffer,
-    _In_ QWORD cbBuffer,
+size_t Util_snwprintf_u8_impl(
+    _Out_writes_z_(cbBuffer) LPSTR szuBuffer,
+    _In_ size_t cbBuffer,
     _In_z_ _Printf_format_string_ LPWSTR wszFormat,
-    ...
-)
-{
+    _In_ va_list arglist
+) {
     int cch;
-    va_list arglist;
-    WCHAR wszBufferTiny[MAX_PATH];
-    LPWSTR wszBuffer;
-    if(cbBuffer == 0) { return 0; }
-    if(cbBuffer == 1) {
-        szBuffer[0] = '\0';
+    WCHAR wszBufferTiny[MAX_PATH+1];
+    LPWSTR wszBuffer = wszBufferTiny;
+    if(cbBuffer < 2) {
+        if(cbBuffer) { szuBuffer[0] = '\0'; };
         return 0;
     }
     // 1: alloc/assign wchar buffer
-    if(cbBuffer < _countof(wszBufferTiny)) {
-        wszBuffer = wszBufferTiny;
-    } else {
+    if(cbBuffer >= _countof(wszBufferTiny)) {
         wszBuffer = LocalAlloc(0, cbBuffer * sizeof(WCHAR));
         if(!wszBuffer) {
-            szBuffer[0] = '\0';
+            szuBuffer[0] = '\0';
             goto fail;
         }
     }
     // 2: write to whar buffer
-    va_start(arglist, wszFormat);
     cch = _vsnwprintf_s(wszBuffer, cbBuffer, _TRUNCATE, wszFormat, arglist);
-    va_end(arglist);
     if(cch < 0) { cch = (int)cbBuffer - 1; }
     // 3: convert to utf-8
-    while((0 == WideCharToMultiByte(CP_UTF8, 0, wszBuffer, -1, szBuffer, (int)cbBuffer, NULL, NULL)) && cch) {
+    while((0 == WideCharToMultiByte(CP_UTF8, 0, wszBuffer, -1, szuBuffer, (int)cbBuffer, NULL, NULL)) && cch) {
         wszBuffer[--cch] = '\0';
     }
 fail:
     if(wszBuffer != wszBufferTiny) { LocalFree(wszBuffer); }
-    return strlen(szBuffer);
+    return strlen(szuBuffer);
+}
+
+_Success_(return >= 0)
+size_t Util_snwprintf_u8(
+    _Out_writes_z_(cbBuffer) LPSTR szuBuffer,
+    _In_ size_t cbBuffer,
+    _In_z_ _Printf_format_string_ LPWSTR wszFormat,
+    ...
+) {
+    size_t ret;
+    va_list arglist;
+    va_start(arglist, wszFormat);
+    ret = Util_snwprintf_u8_impl(szuBuffer, cbBuffer, wszFormat, arglist);
+    va_end(arglist);
+    return ret;
+}
+
+_Success_(return >= 0)
+size_t Util_snwprintf_u8j(
+    _Out_writes_z_(cbBuffer) LPSTR szjBuffer,
+    _In_ size_t cbBuffer,
+    _In_z_ _Printf_format_string_ LPWSTR wszFormat,
+    ...
+) {
+    size_t cbu, cbj;
+    va_list arglist;
+    CHAR szuBufferTiny[MAX_PATH+1];
+    LPSTR szuBuffer = szuBufferTiny;
+    va_start(arglist, wszFormat);
+    cbu = Util_snwprintf_u8_impl(szjBuffer, cbBuffer, wszFormat, arglist);
+    va_end(arglist);
+    // json escape chars if required:
+    if(!cbu || !Util_JsonEscapeByteCountExtra(szjBuffer)) { return cbu; }
+    if(cbu >= _countof(szuBufferTiny)) {
+        if(!(szuBuffer = LocalAlloc(0, cbu + 1))) {
+            szjBuffer[0] = '\0';
+            return 0;
+        }
+    }
+    memcpy(szuBuffer, szjBuffer, cbu); szuBuffer[cbu] = 0;
+    cbj = Util_JsonEscape(szuBuffer, (DWORD)cbBuffer, szjBuffer);
+    if(szuBuffer != szuBufferTiny) { LocalFree(szuBuffer); }
+    return cbj;
 }
 
 _Success_(return >= 0)
@@ -397,16 +528,14 @@ DWORD Util_snwprintf_u8ln_impl(
 )
 {
     int cch, csz = 0;
-    WCHAR wszBufferTiny[MAX_PATH];
-    LPWSTR wszBuffer;
+    WCHAR wszBufferTiny[MAX_PATH+1];
+    LPWSTR wszBuffer = wszBufferTiny;
     if(0 == cszLineLength) { 
         szBuffer[0] = '\0';
         return 0;
     }
     // 1: alloc/assign wchar buffer
-    if(cszLineLength < _countof(wszBufferTiny)) {
-        wszBuffer = wszBufferTiny;
-    } else {
+    if(cszLineLength >= _countof(wszBufferTiny)) {
         wszBuffer = LocalAlloc(0, cszLineLength * sizeof(WCHAR));
         if(!wszBuffer) { goto fail; }
     }
@@ -457,6 +586,7 @@ VOID Util_GetPathDll(_Out_writes_(MAX_PATH) PCHAR szPath, _In_opt_ HMODULE hModu
 }
 
 #define UTIL_NTSTATUS_SUCCESS                      ((NTSTATUS)0x00000000L)
+#define VMMDLL_STATUS_FILE_INVALID                 ((NTSTATUS)0xC0000098L)
 #define UTIL_NTSTATUS_END_OF_FILE                  ((NTSTATUS)0xC0000011L)
 
 NTSTATUS Util_VfsReadFile_FromZERO(_In_ QWORD cbFile, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
@@ -574,6 +704,21 @@ NTSTATUS Util_VfsReadFile_FromFILETIME(_In_ QWORD ftValue, _Out_writes_to_(cb, *
     return Util_VfsReadFile_FromPBYTE(szTime, 24, pb, cb, pcbRead, cbOffset);
 }
 
+NTSTATUS Util_VfsReadFile_FromResource(_In_ LPWSTR wszResourceName, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+{
+    HRSRC hRes;
+    HGLOBAL hResGlobal;
+    DWORD cbRes;
+    PBYTE pbRes;
+    if(!(hRes = FindResource(ctxVmm->hModuleVmm, wszResourceName, RT_RCDATA))) { goto fail; }
+    if(!(hResGlobal = LoadResource(ctxVmm->hModuleVmm, hRes))) { goto fail; }
+    if(!(pbRes = (PBYTE)LockResource(hResGlobal))) { goto fail; }
+    cbRes = SizeofResource(ctxVmm->hModuleVmm, hRes);
+    return Util_VfsReadFile_FromPBYTE(pbRes, cbRes, pb, cb, pcbRead, cbOffset);
+fail:
+    return VMMDLL_STATUS_FILE_INVALID;
+}
+
 NTSTATUS Util_VfsReadFile_snwprintf_u8ln(_Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset, _In_ QWORD cszLineLength, _In_z_ _Printf_format_string_ LPWSTR wszFormat, ...)
 {
     NTSTATUS nt = UTIL_NTSTATUS_END_OF_FILE;
@@ -651,6 +796,13 @@ NTSTATUS Util_VfsWriteFile_DWORD(_Inout_ PDWORD pdwTarget, _In_reads_(cb) PBYTE 
     return UTIL_NTSTATUS_SUCCESS;
 }
 
+DWORD Util_ResourceSize(_In_ LPWSTR wszResourceName)
+{
+    HRSRC hRes;
+    if(!(hRes = FindResource(ctxVmm->hModuleVmm, wszResourceName, RT_RCDATA))) { return 0; }
+    return SizeofResource(ctxVmm->hModuleVmm, hRes);
+}
+
 VOID Util_VfsTimeStampFile(_In_opt_ PVMM_PROCESS pProcess, _Out_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
 {
     pExInfo->dwVersion = VMMDLL_VFS_FILELIST_EXINFO_VERSION;
@@ -722,10 +874,7 @@ VOID Util_FileTime2String(_In_ QWORD ft, _Out_writes_(24) LPSTR szTime)
         return;
     }
     FileTimeToSystemTime((PFILETIME)&ft, &SystemTime);
-    sprintf_s(
-        szTime,
-        24,
-        "%04i-%02i-%02i %02i:%02i:%02i UTC",
+    sprintf_s(szTime, 24, "%04i-%02i-%02i %02i:%02i:%02i UTC",
         SystemTime.wYear,
         SystemTime.wMonth,
         SystemTime.wDay,
@@ -733,6 +882,25 @@ VOID Util_FileTime2String(_In_ QWORD ft, _Out_writes_(24) LPSTR szTime)
         SystemTime.wMinute,
         SystemTime.wSecond
     );
+}
+
+BOOL Util_FileTime2JSON(_In_ QWORD ft, _Out_writes_(21) LPSTR szTime)
+{
+    SYSTEMTIME SystemTime;
+    if(!ft || (ft > 0x0200000000000000)) {
+        sprintf_s(szTime, 21, "1601-01-01T00:00:00Z");
+        return FALSE;
+    }
+    FileTimeToSystemTime((PFILETIME)&ft, &SystemTime);
+    sprintf_s(szTime, 21, "%04i-%02i-%02iT%02i:%02i:%02iZ",
+        SystemTime.wYear,
+        SystemTime.wMonth,
+        SystemTime.wDay,
+        SystemTime.wHour,
+        SystemTime.wMinute,
+        SystemTime.wSecond
+    );
+    return TRUE;
 }
 
 VOID Util_GuidToString(_In_reads_(16) PBYTE pb, _Out_writes_(37) LPSTR szGUID)

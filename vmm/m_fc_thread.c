@@ -11,6 +11,7 @@
 #include "fc.h"
 #include "vmm.h"
 #include "pluginmanager.h"
+#include "util.h"
 
 static LPSTR FC_SQL_SCHEMA_THREAD =
     "DROP TABLE IF EXISTS thread; " \
@@ -76,7 +77,7 @@ fail:
 /*
 * Forensic initialization function called when the forensic sub-system is initializing.
 */
-PVOID M_FcThread_FcInitialize()
+PVOID M_FcThread_FcInitialize(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
 {
     if(SQLITE_OK != Fc_SqlExec(FC_SQL_SCHEMA_THREAD)) { return NULL; }
     VmmProcessActionForeachParallel(NULL, VmmProcessActionForeachParallel_CriteriaActiveOnly, M_FcThread_FcInitialize_ThreadProc);
@@ -93,14 +94,51 @@ PVOID M_FcThread_FcInitialize()
 VOID M_FcThread_FcTimeline(
     _In_opt_ PVOID ctxfc,
     _In_ HANDLE hTimeline,
-    _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ QWORD qwValue, _In_ LPWSTR wszText),
+    _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPWSTR wszText),
     _In_ VOID(*pfnEntryAddBySql)(_In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPSTR *pszEntrySql)
 ) {
     LPSTR pszSql[] = {
-        "id_str, time_create, "STRINGIZE(FC_TIMELINE_ACTION_CREATE)", pid, ethread FROM thread WHERE time_create > 0;",
-        "id_str, time_exit,   "STRINGIZE(FC_TIMELINE_ACTION_DELETE)", pid, ethread FROM thread WHERE time_exit > 0;",
+        "id_str, time_create, "STRINGIZE(FC_TIMELINE_ACTION_CREATE)", pid, tid, ethread FROM thread WHERE time_create > 0;",
+        "id_str, time_exit,   "STRINGIZE(FC_TIMELINE_ACTION_DELETE)", pid, tid, ethread FROM thread WHERE time_exit > 0;",
     };
     pfnEntryAddBySql(hTimeline, sizeof(pszSql) / sizeof(LPSTR), pszSql);
+}
+
+VOID M_FcThread_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
+{
+    PVMM_PROCESS pProcess = ctxP->pProcess;
+    PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd;
+    PVMMOB_MAP_THREAD pObThreadMap = NULL;
+    PVMM_MAP_THREADENTRY pe;
+    DWORD i, o;
+    CHAR szTime[24];
+    CHAR szj[MAX_PATH] = { 0 };
+    if(!pProcess || !(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)))) { return; }
+    pd->dwVersion = VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION;
+    pd->dwPID = pProcess->dwPID;
+    pd->szjType = "thread";
+    if(VmmMap_GetThread(pProcess, &pObThreadMap)) {
+        for(i = 0; i < pObThreadMap->cMap; i++) {
+            pe = pObThreadMap->pMap + i;
+            Util_FileTime2String(pe->ftCreateTime, szTime);
+            o = snprintf(szj, _countof(szj), "state:[%x %x %x] prio:[%x %x] start:[%s]", pe->bState, pe->bRunning, pe->dwExitStatus, pe->bBasePriority, pe->bPriority, szTime);
+            if(pe->ftExitTime) {
+                Util_FileTime2String(pe->ftExitTime, szTime);
+                snprintf(szj + o, _countof(szj) - 0, " stop:[%s]", szTime);
+            }
+            // assign:
+            pd->i = i;
+            pd->vaObj = pe->vaETHREAD;
+            pd->qwHex[0] = pe->dwTID;
+            pd->qwHex[1] = pe->vaTeb;
+            pd->va[0] = pe->vaStackBaseUser ? pe->vaStackBaseUser : pe->vaStackBaseKernel;
+            pd->va[1] = pe->vaStackBaseUser ? pe->vaStackLimitUser : pe->vaStackLimitKernel;
+            pd->szj[0] = szj;
+            pfnLogJSON(pd);
+        }
+    }
+    Ob_DECREF(pObThreadMap);
+    LocalFree(pd);
 }
 
 /*
@@ -117,8 +155,8 @@ VOID M_FcThread_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     pRI->reg_info.fRootModuleHidden = TRUE;                                     // module hidden by default
     pRI->reg_fnfc.pfnInitialize = M_FcThread_FcInitialize;                      // Forensic initialize function supported
     pRI->reg_fnfc.pfnTimeline = M_FcThread_FcTimeline;                          // Forensic timelining supported
+    pRI->reg_fnfc.pfnLogJSON = M_FcThread_FcLogJSON;                            // JSON log function supported
     memcpy(pRI->reg_info.sTimelineNameShort, "THREAD", 6);
     strncpy_s(pRI->reg_info.szTimelineFileUTF8, 32, "timeline_thread.txt", _TRUNCATE);
-    strncpy_s(pRI->reg_info.szTimelineFileJSON, 32, "timeline_thread.json", _TRUNCATE);
     pRI->pfnPluginManager_Register(pRI);
 }

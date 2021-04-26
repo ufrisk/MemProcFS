@@ -70,6 +70,16 @@ DWORD Util_HashNameW_Registry(_In_ LPCWSTR wsz, _In_opt_ DWORD iSuffix);
 QWORD Util_HashPathW_Registry(_In_ LPWSTR wszPath);
 
 /*
+* SHA256 hash some data.
+* -- pbData
+* -- cbData
+* -- pbHash
+* -- return
+*/
+_Success_(return)
+BOOL Util_HashSHA256(_In_reads_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_writes_(32) PBYTE pbHash);
+
+/*
 * Print a maximum of 8192 bytes of binary data as hexascii on the screen.
 * -- pb
 * -- cb
@@ -168,10 +178,10 @@ LPWSTR Util_PathSplitLastW(_In_ LPWSTR wsz);
 QWORD Util_PathGetBaseFromW(_In_ LPWSTR wsz);
 
 /*
-* Split a "path" string into two at the first L'\' character. The 1st string is
-* returned in the pwsz1 caller-allocated buffer. The 2nd string (after the L'\'
+* Split a "path" string into two at the first L'\\' character. The 1st string is
+* returned in the pwsz1 caller-allocated buffer. The 2nd string (after the L'\\'
 * character is returned as return data (is a sub-string of wsz). If no 2nd string
-* is not found then it's returned as null character L'\0' (i.e. not as NULL).
+* is not found then it's returned as null character (i.e. not as NULL).
 * -- wsz
 * -- wsz1
 * -- cwsz1
@@ -198,6 +208,24 @@ LPWSTR Util_PathFileSplitW(_In_ LPWSTR wsz, _Out_writes_(MAX_PATH) LPWSTR wszPat
 VOID Util_PathPrependVA(_Out_writes_(MAX_PATH) LPWSTR wszDstBuffer, _In_ QWORD va, _In_ BOOL f32, _In_ LPWSTR wszText);
 
 /*
+* Number of extra bytes required to represent a JSON string as compared to the
+* number of original utf-8 bytes in the string.
+* -- szu = utf-8 encoded string
+* -- return = number of additional bytes needed to account for JSON escape chars.
+*/
+DWORD Util_JsonEscapeByteCountExtra(_In_ LPSTR szu);
+
+/*
+* Escape utf-8 text into json text. The number of bytes in the resulting string
+* is returned whilst the szj buffer is updated with the escaped string.
+* -- szu = utf-8 string to escape.
+* -- cbj = byte length of szj buffer (including null terminator).
+* -- szj = buffer to receive json-escaped string
+* -- return = number of bytes written (excluding null terminator).
+*/
+DWORD Util_JsonEscape(_In_ LPSTR szu, _In_ DWORD cbj, _Out_writes_z_(cbj) LPSTR szj);
+
+/*
 * Compare ANSI string with WIDE string with an optional max length; otherwise
 * comparison will stop at first difference or when strings are NULL terminated.
 * -- sz
@@ -209,16 +237,32 @@ int Util_wcsstrncmp(_In_ LPSTR sz, _In_ LPWSTR wsz, _In_opt_ DWORD cMax);
 
 /*
 * snwprintf to a utf-8 buffer. The result is guaranteed to be NULL terminated.
-* -- szBuffer
-* -- cbBuffer
+* -- szuBuffer
+* -- cbBuffer = buffer size - NB! large values = slow!
 * -- wszFormat = printf format string.
 * -- ... = printf varargs.
-* -- return
+* -- return = the number of bytes written (excluding terminating null).
 */
 _Success_(return >= 0)
 size_t Util_snwprintf_u8(
-    _Out_writes_z_(cbBuffer) LPSTR szBuffer,
-    _In_ QWORD cbBuffer,
+    _Out_writes_z_(cbBuffer) LPSTR szuBuffer,
+    _In_ size_t cbBuffer,
+    _In_z_ _Printf_format_string_ LPWSTR wszFormat,
+    ...
+);
+
+/*
+* snwprintf to a json escaped utf-8 buffer. The result is guaranteed to be NULL terminated.
+* -- szjBuffer
+* -- cbBuffer = buffer size - NB! large values = slow!
+* -- wszFormat = printf format string.
+* -- ... = printf varargs.
+* -- return = the number of bytes written (excluding terminating null).
+*/
+_Success_(return >= 0)
+size_t Util_snwprintf_u8j(
+    _Out_writes_z_(cbBuffer) LPSTR szjBuffer,
+    _In_ size_t cbBuffer,
     _In_z_ _Printf_format_string_ LPWSTR wszFormat,
     ...
 );
@@ -280,10 +324,18 @@ BOOL Util_StrEndsWithW(_In_opt_ LPWSTR wsz, _In_opt_ LPWSTR wszEndsWith, _In_ BO
 
 /*
 * Convert a FILETIME (ft) into a human readable string.
-* -- ft = the FILETIME in UCT time zone.
+* -- ft = the FILETIME in UTC time zone.
 * -- szTime = time in format '2020-01-01 23:59:59 UCT' (23 chars).
 */
 VOID Util_FileTime2String(_In_ QWORD ft, _Out_writes_(24) LPSTR szTime);
+
+/*
+* Convert a FILETIME (ft) into a JSON string.
+* -- ft = the FILETIME in UTC time zone.
+* -- szTime = time in format '2020-01-01T23:59:59Z' (20 chars).
+* -- return
+*/
+BOOL Util_FileTime2JSON(_In_ QWORD ft, _Out_writes_(21) LPSTR szTime);
 
 /*
 * Convert a GUID in byte format to a GUID in string format.
@@ -347,11 +399,13 @@ NTSTATUS Util_VfsReadFile_FromQWORD(_In_ QWORD qwValue, _Out_writes_to_(cb, *pcb
 NTSTATUS Util_VfsReadFile_FromDWORD(_In_ DWORD dwValue, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset, _In_ BOOL fPrefix);
 NTSTATUS Util_VfsReadFile_FromBOOL(_In_ BOOL fValue, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsReadFile_FromFILETIME(_In_ QWORD ftValue, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
+NTSTATUS Util_VfsReadFile_FromResource(_In_ LPWSTR wszResourceName, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsReadFile_snwprintf_u8ln(_Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset, _In_ QWORD cszLineLength, _In_z_ _Printf_format_string_ LPWSTR wszFormat, ...);
 NTSTATUS Util_VfsWriteFile_BOOL(_Inout_ PBOOL pfTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsWriteFile_09(_Inout_ PDWORD pdwTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsWriteFile_DWORD(_Inout_ PDWORD pdwTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset, _In_ DWORD dwMinAllow, _In_opt_ DWORD dwMaxAllow);
 NTSTATUS Util_VfsWriteFile_PBYTE(_Inout_ PBYTE pbTarget, _In_ DWORD cbTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset, _In_ BOOL fTerminatingNULL);
+DWORD Util_ResourceSize(_In_ LPWSTR wszResourceName);
 VOID Util_VfsTimeStampFile(_In_opt_ PVMM_PROCESS pProcess, _Out_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo);
 
 /*

@@ -266,7 +266,7 @@ VOID FcNtfs_Close(_Frees_ptr_opt_ PFCNTFS_SETUP_CONTEXT ctx)
 * Initialize a new empty PFCNTFS_SETUP_CONTEXT.
 * -- return = the initialized context, or NULL on fail.
 */
-PVOID FcNtfs_Initialize()
+PVOID FcNtfs_Initialize(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
 {
     PFCNTFS_SETUP_CONTEXT ctx;
     Fc_SqlExec(FC_SQL_SCHEMA_NTFS);
@@ -721,13 +721,13 @@ fail:
 VOID FcNtfs_SetupTimeline(
     _In_opt_ PVOID ctxfc,
     _In_ HANDLE hTimeline,
-    _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ QWORD qwValue, _In_ LPWSTR wszText),
+    _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPWSTR wszText),
     _In_ VOID(*pfnEntryAddBySql)(_In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPSTR *pszEntrySql)
 ) {
     LPSTR pszSql[] = {
-        "id_str, time_create, "STRINGIZE(FC_TIMELINE_ACTION_CREATE)", 0, size_file FROM ntfs WHERE time_create > 0;",
-        "id_str, time_modify, "STRINGIZE(FC_TIMELINE_ACTION_MODIFY)", 0, size_file FROM ntfs WHERE time_modify > 0 AND time_modify != time_create;",
-        "id_str, time_read,   "STRINGIZE(FC_TIMELINE_ACTION_READ)"  , 0, size_file FROM ntfs WHERE time_read   > 0 AND time_read != time_create AND time_read != time_modify;"
+        "id_str, time_create, "STRINGIZE(FC_TIMELINE_ACTION_CREATE)", 0, size_file, addr_phys FROM ntfs WHERE time_create > 0;",
+        "id_str, time_modify, "STRINGIZE(FC_TIMELINE_ACTION_MODIFY)", 0, size_file, addr_phys FROM ntfs WHERE time_modify > 0 AND time_modify != time_create;",
+        "id_str, time_read,   "STRINGIZE(FC_TIMELINE_ACTION_READ)"  , 0, size_file, addr_phys FROM ntfs WHERE time_read   > 0 AND time_read != time_create AND time_read != time_modify;"
     };
     pfnEntryAddBySql(hTimeline, sizeof(pszSql) / sizeof(LPSTR), pszSql);
 }
@@ -1334,8 +1334,7 @@ VOID M_FcNtfs_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     pRI->reg_fnfc.pfnIngestPhysmem = FcNtfs_Ingest;                             // Forensic physmem ingest supported
     pRI->reg_fnfc.pfnIngestFinalize = FcNtfs_Finalize;                          // Forensic ingest finalize function supported
     pRI->reg_fnfc.pfnTimeline = FcNtfs_SetupTimeline;                           // Forensic timelining supported
-    memcpy(pRI->reg_info.sTimelineNameShort, "NTFS  ", 6);
+    memcpy(pRI->reg_info.sTimelineNameShort, "NTFS", 5);
     strncpy_s(pRI->reg_info.szTimelineFileUTF8, 32, "timeline_ntfs.txt", _TRUNCATE);
-    strncpy_s(pRI->reg_info.szTimelineFileJSON, 32, "timeline_ntfs.json", _TRUNCATE);
     pRI->pfnPluginManager_Register(pRI);
 }

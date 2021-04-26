@@ -104,13 +104,21 @@ VOID PluginManager_FcIngestFinalize();
 * -- pfnEntryAdd = callback function to call to add a timelining entry.
 * -- pfnEntryAddBySql = callback function to call to add timelining data by
 *      insert by partial sql select sub-query - data selected should be:
-*      id_str, ft, ac, pid, data64 (in order and without SELECT statement).
+*      id_str, ft, ac, pid, data32, data64 (in order and without SELECT statement).
 */
 VOID PluginManager_FcTimeline(
-    _In_ HANDLE(*pfnRegister)(_In_reads_(6) LPSTR sNameShort, _In_reads_(32) LPSTR szFileUTF8, _In_reads_(32) LPSTR szFileJSON),
+    _In_ HANDLE(*pfnRegister)(_In_reads_(6) LPSTR sNameShort, _In_reads_(32) LPSTR szFileUTF8),
     _In_ VOID(*pfnClose)(_In_ HANDLE hTimeline),
-    _In_ VOID(*pfnEntryAdd)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ QWORD qwValue, _In_ LPWSTR wszText),
+    _In_ VOID(*pfnEntryAdd)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPWSTR wszText),
     _In_ VOID(*pfnEntryAddBySql)(_In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPSTR *pszEntrySql)
 );
+
+/*
+* Call each plugin capable of forensic json log. Plugins may be process or global.
+* NB! This function is meant to be called by the core forensic subsystem only.
+* -- pfnAddEntry = callback function to call to add a json entry.
+* -- return = 0 (to make function compatible with LPTHREAD_START_ROUTINE).
+*/
+DWORD PluginManager_FcLogJSON(_In_ VOID(*pfnAddEntry)(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData));
 
 #endif /* __PLUGINMANAGER_H__ */

@@ -16,6 +16,7 @@ typedef unsigned __int64                QWORD, *PQWORD;
 #define OB_TAG_CORE_DATA                'ObDa'
 #define OB_TAG_CORE_SET                 'ObSe'
 #define OB_TAG_CORE_MAP                 'ObMa'
+#define OB_TAG_CORE_MEMFILE             'ObMF'
 #define OB_TAG_CORE_CACHEMAP            'ObMc'
 #define OB_TAG_CORE_STRMAP              'ObMs'
 #define OB_TAG_MAP_PTE                  'Mpte'
@@ -35,6 +36,7 @@ typedef unsigned __int64                QWORD, *PQWORD;
 #define OB_TAG_MAP_NET                  'Mnet'
 #define OB_TAG_MAP_PFN                  'Mpfn'
 #define OB_TAG_MAP_EVIL                 'Mevl'
+#define OB_TAG_MAP_TASK                 'Mtsk'
 #define OB_TAG_MOD_MINIDUMP_CTX         'mMDx'
 #define OB_TAG_OBJ_ERROR                'Oerr'
 #define OB_TAG_OBJ_FILE                 'Ofil'
@@ -830,6 +832,7 @@ BOOL ObStrMap_Finalize_DECREF_NULL(_In_opt_ PVOID *ppsm, _Out_ LPWSTR *pwszMulti
 // ----------------------------------------------------------------------------
 // COMPRESSED DATA OBJECT FUNCTIONALITY BELOW:
 //
+// The ObCompressed is an object manager object and must be DECREF'ed when required.
 // ----------------------------------------------------------------------------
 
 typedef struct tdOB_COMPRESSED *POB_COMPRESSED;
@@ -837,7 +840,6 @@ typedef struct tdOB_COMPRESSED *POB_COMPRESSED;
 /*
 * Create a new compressed buffer object from a byte buffer.
 * CALLER DECREF: return
-* -- pcm
 * -- pb
 * -- cb
 * -- return
@@ -848,7 +850,6 @@ POB_COMPRESSED ObCompressed_NewFromByte(_In_reads_(cb) PBYTE pb, _In_ DWORD cb);
 /*
 * Create a new compressed buffer object from a zero terminated string.
 * CALLER DECREF: return
-* -- pcm
 * -- sz
 * -- return
 */
@@ -870,5 +871,66 @@ DWORD ObCompress_Size(_In_opt_ POB_COMPRESSED pdc);
 */
 _Success_(return != NULL)
 POB_DATA ObCompressed_GetData(_In_opt_ POB_COMPRESSED pdc);
+
+
+
+// ----------------------------------------------------------------------------
+// MEMORY BACKED FILE FUNCTIONALITY BELOW:
+// 
+// The memfile is a growing memory backed file that may be read and appended.
+// The memfile will be automatically (de)compressed when it's required for
+// optimal performance. This object is typically implementing a generated
+// output file - such as some forensic JSON data output.
+//
+// The ObMemFile is an object manager object and must be DECREF'ed when required.
+// ----------------------------------------------------------------------------
+
+typedef struct tdOB_MEMFILE *POB_MEMFILE;
+
+/*
+* Create a new empty memory file.
+* CALLER DECREF: return
+* -- return
+*/
+_Success_(return != NULL)
+POB_MEMFILE ObMemFile_New();
+
+/*
+* Retrieve byte count of the ObMemFile.
+* -- pmf
+* -- return
+*/
+QWORD ObMemFile_Size(_In_opt_ POB_MEMFILE pmf);
+
+/*
+* Append binary data to the ObMemFile.
+* -- pmf
+* -- pb
+* -- cb
+* -- return
+*/
+_Success_(return)
+BOOL ObMemFile_Append(_In_opt_ POB_MEMFILE pmf, _In_reads_(cb) PBYTE pb, _In_ QWORD cb);
+
+/*
+* Append a string (ansi or utf-8) to the ObMemFile.
+* -- pmf
+* -- sz
+* -- return
+*/
+_Success_(return)
+BOOL ObMemFile_AppendString(_In_opt_ POB_MEMFILE pmf, _In_opt_z_ LPSTR sz);
+
+/*
+* Read data 'as file' from the ObMemFile.
+* -- pmf
+* -- pb
+* -- cb
+* -- pcbRad
+* -- cbOffset
+* -- return
+*/
+_Success_(return == 0)
+NTSTATUS ObMemFile_ReadFile(_In_opt_ POB_MEMFILE pmf, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 
 #endif /* __OB_H__ */

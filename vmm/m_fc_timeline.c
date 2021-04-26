@@ -11,6 +11,9 @@
 #include "pluginmanager.h"
 #include "util.h"
 
+/*
+* Read the text version of the timeline info files.
+*/
 NTSTATUS M_FcTimeline_ReadInfo(_In_ DWORD dwTimelineType, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
@@ -36,17 +39,16 @@ NTSTATUS M_FcTimeline_ReadInfo(_In_ DWORD dwTimelineType, _Out_ PBYTE pb, _In_ D
         o += snprintf(
             szuBuffer + o,
             cszuBuffer - o,
-            "%s  %s %s%10i %16llx ",
+            "%s  %-*s %s%10u%10u %16llx %s\n",
             szTime,
+            6,
             ctxFc->Timeline.pInfo[dwEntryType].szNameShort,
             FC_TIMELINE_ACTION_STR[dwEntryAction],
             pe->pid,
-            pe->data64
+            pe->data32,
+            pe->data64,
+            pe->szuText
         );
-        o += WideCharToMultiByte(CP_UTF8, 0, pe->wszText, -1, szuBuffer + o, (int)(cszuBuffer - o), NULL, NULL);
-        if(o && (o <= cszuBuffer)) {
-            szuBuffer[o - 1] = '\n';
-        }
     }
     nt = Util_VfsReadFile_FromPBYTE(szuBuffer, o, pb, cb, pcbRead, cbOffset - cbOffsetBuffer);
 fail:
@@ -61,12 +63,9 @@ NTSTATUS M_FcTimeline_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, 
     PFC_TIMELINE_INFO pi;
     for(i = 0; i < ctxFc->Timeline.cTp; i++) {
         pi = ctxFc->Timeline.pInfo + i;
-        if(!wcscmp(ctx->wszPath, pi->wszNameFileUTF8)) {
+        if(!_wcsicmp(ctx->wszPath, pi->wszNameFileUTF8)) {
             return M_FcTimeline_ReadInfo(pi->dwId, pb, cb, pcbRead, cbOffset);
         }
-        //if(!wcscmp(ctx->wszPath, ctxFc->Timeline.pInfo[i].szNameFileJSON)) {
-        //    return M_FcTimeline_ReadInfo(ctxFc->Timeline.pInfo[i].dwId, pb, cb, pcbRead, cbOffset);
-        //}
     }
     return VMMDLL_STATUS_FILE_INVALID;
 }
@@ -81,9 +80,6 @@ BOOL M_FcTimeline_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileLis
         if(pi->wszNameFileUTF8[0]) {
             VMMDLL_VfsList_AddFile(pFileList, pi->wszNameFileUTF8, pi->dwFileSizeUTF8, NULL);
         }
-        //if(pi->wszNameFileJSON[0]) {
-        //    VMMDLL_VfsList_AddFile(pFileList, pi->wszNameFileJSON, pi->dwFileSizeJSON, NULL);
-        //}
     }
     return TRUE;
 }

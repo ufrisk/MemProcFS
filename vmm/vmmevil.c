@@ -6,6 +6,7 @@
 #include "vmmevil.h"
 #include "vmmwin.h"
 #include "pe.h"
+#include "util.h"
 
 #define VMMEVIL_MAXCOUNT_VAD_PATCHED_PE             4   // max number of "patched" entries per vad
 #define VMMEVIL_MAXCOUNT_VAD_EXECUTE                4
@@ -268,7 +269,7 @@ VOID VmmEvil_ProcessScan_Modules(_In_ PVMM_PROCESS pProcess, _Inout_ POB_MAP pmE
         }
     }
     if(fBadLdr) {
-        VmmEvil_AddEvil_NoVadReq(pmEvil, pProcess, VMM_EVIL_TP_BAD_PEB_LDR, pProcess->win.vaPEB32 ? pProcess->win.vaPEB32 : pProcess->win.vaPEB, 0, 0, FALSE);
+        VmmEvil_AddEvil_NoVadReq(pmEvil, pProcess, VMM_EVIL_TP_PEB_BAD_LDR, pProcess->win.vaPEB32 ? pProcess->win.vaPEB32 : pProcess->win.vaPEB, 0, 0, FALSE);
     }
     if(pProcess->win.EPROCESS.fNoLink) {
         VmmEvil_AddEvil_NoVadReq(pmEvil, pProcess, VMM_EVIL_TP_PROC_NOLINK, pProcess->win.EPROCESS.va, 0, 0, FALSE);
@@ -284,6 +285,20 @@ VOID VmmEvil_ProcessScan_Modules(_In_ PVMM_PROCESS pProcess, _Inout_ POB_MAP pmE
     }
     Ob_DECREF(pObModuleMap);
 }
+
+/*
+* Locate PEB masquerading - i.e. when process image path in user-land differs from the kernel path.
+* https://www.ired.team/offensive-security/defense-evasion/masquerading-processes-in-userland-through-_peb
+*/
+VOID VmmEvil_ProcessScan_PebMasquerade(_In_ PVMM_PROCESS pProcess, _Inout_ POB_MAP pmEvil)
+{
+    PVMMWIN_USER_PROCESS_PARAMETERS pu = VmmWin_UserProcessParameters_Get(pProcess);
+    if(!pu || (pu->cwszImagePathName < 12) || pProcess->pObPersistent->cwszPathKernel < 24) { return; }                                 // length sanity checks
+    if(Util_StrEndsWithW(pProcess->pObPersistent->wszPathKernel, pu->wszImagePathName + 12, TRUE)) { return; }                          // ends-with
+    if(!Util_StrEndsWithW(pProcess->pObPersistent->wszPathKernel, pu->wszImagePathName + pu->cwszImagePathName - 4, TRUE)) { return; }  // file-ending match (remove windows apps)
+    VmmEvil_AddEvil_NoVadReq(pmEvil, pProcess, VMM_EVIL_TP_PEB_MASQUERADE, 0, 0, 0, FALSE);
+}
+
 
 /*
 * Scan a process for evil. Multiple scans are undertaken. The function may have
@@ -303,6 +318,8 @@ VOID VmmEvil_ProcessScan(_In_ PVMM_PROCESS pProcess, _Inout_ POB_MAP pmEvil)
     VmmWinLdrModule_Initialize(pProcess, psObInjectedPE);
     // update result with interesting module entries.
     VmmEvil_ProcessScan_Modules(pProcess, pmEvil);
+    // update with other process-related findings:
+    VmmEvil_ProcessScan_PebMasquerade(pProcess, pmEvil);
 fail:
     Ob_DECREF(psObInjectedPE);
 }

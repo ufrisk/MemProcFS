@@ -163,7 +163,7 @@ finish:
 VOID MSysObj_Timeline(
     _In_opt_ PVOID ctxfc,
     _In_ HANDLE hTimeline,
-    _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ QWORD qwValue, _In_ LPWSTR wszText),
+    _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPWSTR wszText),
     _In_ VOID(*pfnEntryAddBySql)(_In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPSTR *pszEntrySql)
 ) {
     DWORD i, cType, iTypeBase;
@@ -177,10 +177,41 @@ VOID MSysObj_Timeline(
             pe = &pObObjMap->pMap[iTypeBase + i];
             if(pe->ExtInfo.ft) {
                 MSysObj_GetFullPath(pe, wszPath);
-                pfnAddEntry(hTimeline, pe->ExtInfo.ft, FC_TIMELINE_ACTION_CREATE, 0, pe->va, wszPath);
+                pfnAddEntry(hTimeline, pe->ExtInfo.ft, FC_TIMELINE_ACTION_CREATE, 0, 0, pe->va, wszPath);
             }
         }
     }
+}
+
+VOID MSysObj_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
+{
+    PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd;
+    PVMMOB_MAP_OBJECT pObObjMap = NULL;
+    PVMM_MAP_OBJECTENTRY pe;
+    DWORD i;
+    CHAR szj[MAX_PATH];
+    WCHAR wszPath[MAX_PATH];
+    if(ctxP->pProcess || !(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)))) { return; }
+    pd->dwVersion = VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION;
+    pd->szjType = "kobj";
+    if(VmmMap_GetObject(&pObObjMap)) {
+        for(i = 0; i < pObObjMap->cMap; i++) {
+            pe = pObObjMap->pMap + i;
+            MSysObj_GetFullPath(pe, wszPath);
+            Util_snwprintf_u8j(szj, _countof(szj), L"%s %s%s%s",
+                wszPath,
+                pe->ExtInfo.wsz[0] ? L"  [" : L"",
+                pe->ExtInfo.wsz,
+                pe->ExtInfo.wsz[0] ? L"]" : L"");
+            pd->i = i;
+            pd->vaObj = pe->va;
+            pd->wsz[0] = pe->pType->wsz;
+            pd->szj[1] = szj;
+            pfnLogJSON(pd);
+        }
+    }
+    Ob_DECREF(pObObjMap);
+    LocalFree(pd);
 }
 
 VOID M_SysObj_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
@@ -193,8 +224,8 @@ VOID M_SysObj_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     pRI->reg_fn.pfnList = MSysObj_List;                             // List function supported
     pRI->reg_fn.pfnRead = MSysObj_Read;                             // Read function supported
     pRI->reg_fnfc.pfnTimeline = MSysObj_Timeline;                   // Timeline supported
-    memcpy(pRI->reg_info.sTimelineNameShort, "KObj  ", 6);
+    pRI->reg_fnfc.pfnLogJSON = MSysObj_FcLogJSON;                   // JSON log function supported
+    memcpy(pRI->reg_info.sTimelineNameShort, "KObj", 5);
     strncpy_s(pRI->reg_info.szTimelineFileUTF8, 32, "timeline_kernelobject.txt", _TRUNCATE);
-    strncpy_s(pRI->reg_info.szTimelineFileJSON, 32, "timeline_kernelobject.json", _TRUNCATE);
     pRI->pfnPluginManager_Register(pRI);
 }

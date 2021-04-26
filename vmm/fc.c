@@ -20,7 +20,9 @@
 #include "vmmwinreg.h"
 #include "pluginmanager.h"
 #include "sqlite/sqlite3.h"
+#include "statistics.h"
 #include "util.h"
+#include "version.h"
 #include <bcrypt.h>
 
 static LPSTR FC_SQL_SCHEMA_STR =
@@ -137,20 +139,20 @@ fail:
 }
 
 _Success_(return)
-BOOL Fc_SqlInsertStr(_In_ sqlite3_stmt *hStmt, _In_ LPWSTR wsz, _In_ DWORD owszSub, _Out_ PFCSQL_INSERTSTRTABLE pThis)
+BOOL Fc_SqlInsertStr(_In_ sqlite3_stmt *hStmt, _In_ LPWSTR wsz, _In_ DWORD occhSub, _Out_ PFCSQL_INSERTSTRTABLE pThis)
 {
     CHAR szUTF8[2048];
-    pThis->cwsz = (DWORD)wcslen(wsz);
-    if(pThis->cwsz < owszSub) { return FALSE; }
+    pThis->cch = (DWORD)wcslen(wsz);
+    if(pThis->cch < occhSub) { return FALSE; }
     pThis->cbu = WideCharToMultiByte(CP_UTF8, 0, wsz, -1, szUTF8, sizeof(szUTF8), NULL, NULL);
     if(!pThis->cbu) { return FALSE; }
     pThis->cbu--;               // don't count null terminator.
-    pThis->cbj = pThis->cbu;    // TODO: FIX THIS - CALCULATE FOR JSON ESPAPE CHARS !!!
+    pThis->cbj = pThis->cbu + Util_JsonEscapeByteCountExtra(szUTF8); // # of bytes to represent JSON string
     pThis->id = InterlockedIncrement64(&ctxFc->db.qwIdStr);
     sqlite3_reset(hStmt);
     sqlite3_bind_int64(hStmt, 1, pThis->id);
-    sqlite3_bind_int(hStmt, 2, owszSub);
-    sqlite3_bind_int(hStmt, 3, pThis->cwsz);
+    sqlite3_bind_int(hStmt, 2, occhSub);
+    sqlite3_bind_int(hStmt, 3, pThis->cch);
     sqlite3_bind_int(hStmt, 4, pThis->cbu);
     sqlite3_bind_int(hStmt, 5, pThis->cbj);
     sqlite3_bind_text(hStmt, 6, szUTF8, -1, NULL);
@@ -207,7 +209,7 @@ typedef struct tdFCTIMELINE_PLUGIN_CONTEXT {
 * -- qwValue
 * -- wszText
 */
-VOID FcTimeline_Callback_PluginEntryAdd(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ QWORD qwValue, _In_ LPWSTR wszText)
+VOID FcTimeline_Callback_PluginEntryAdd(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPWSTR wszText)
 {
     PFCTIMELINE_PLUGIN_CONTEXT ctx = (PFCTIMELINE_PLUGIN_CONTEXT)hTimeline;
     FCSQL_INSERTSTRTABLE SqlStrInsert;
@@ -215,13 +217,14 @@ VOID FcTimeline_Callback_PluginEntryAdd(_In_ HANDLE hTimeline, _In_ QWORD ft, _I
     if(!Fc_SqlInsertStr(ctx->hStmtStr, wszText, 0, &SqlStrInsert)) { return; }
     // insert into 'timeline_data' table.
     sqlite3_reset(ctx->hStmt);
-    Fc_SqlBindMultiInt64(ctx->hStmt, 1, 6,
+    Fc_SqlBindMultiInt64(ctx->hStmt, 1, 7,
         SqlStrInsert.id,
         (QWORD)ctx->dwId,
         ft,
         (QWORD)dwAction,
         (QWORD)dwPID,
-        qwValue
+        (QWORD)dwData32,
+        qwData64
     );
     sqlite3_step(ctx->hStmt);
 }
@@ -240,7 +243,7 @@ VOID FcTimeline_Callback_PluginEntryAddBySQL(_In_ HANDLE hTimeline, _In_ DWORD c
     PFCTIMELINE_PLUGIN_CONTEXT ctx = (PFCTIMELINE_PLUGIN_CONTEXT)hTimeline;
     for(i = 0; i < cEntrySql; i++) {
         ZeroMemory(szSql, sizeof(szSql));
-        snprintf(szSql, sizeof(szSql), "INSERT INTO timeline_data(tp, id_str, ft, ac, pid, data64) SELECT %i, %s;", ctx->dwId, pszEntrySql[i]);
+        snprintf(szSql, sizeof(szSql), "INSERT INTO timeline_data(tp, id_str, ft, ac, pid, data32, data64) SELECT %i, %s;", ctx->dwId, pszEntrySql[i]);
         rc = sqlite3_exec(ctx->hSql, szSql, NULL, NULL, NULL);
         if(rc != SQLITE_OK) {
             vmmprintfvv_fn("BAD SQL CODE=0x%x SQL=%s\n", rc, szSql);
@@ -265,27 +268,25 @@ VOID FcTimeline_Callback_PluginClose(_In_ HANDLE hTimeline)
 * Callback function to register a new timeline plugin module.
 * -- sNameShort = a 6 char non-null terminated string.
 * -- szFileUTF8 = utf-8 file name (if exists)
-* -- szFileJSON = utf-8 file name (if exists)
 * -- return = handle, should be closed with callback function.
 */
-HANDLE FcTimeline_Callback_PluginRegister(_In_reads_(6) LPSTR sNameShort, _In_reads_(32) LPSTR szFileUTF8, _In_reads_(32) LPSTR szFileJSON)
+HANDLE FcTimeline_Callback_PluginRegister(_In_reads_(6) LPSTR sNameShort, _In_reads_(32) LPSTR szFileUTF8)
 {
     QWORD v;
     sqlite3 *hSql = NULL;
     sqlite3_stmt *hStmt = NULL;
     PFCTIMELINE_PLUGIN_CONTEXT ctxPlugin = NULL;
     if(!(hSql = Fc_SqlReserve())) { goto fail; }
-    if(SQLITE_OK != sqlite3_prepare_v2(hSql, "INSERT INTO timeline_info (short_name, file_name_u, file_name_j) VALUES (?, ?, ?);", -1, &hStmt, 0)) { goto fail; }
+    if(SQLITE_OK != sqlite3_prepare_v2(hSql, "INSERT INTO timeline_info (short_name, file_name_u, file_name_j) VALUES (?, ?, '');", -1, &hStmt, 0)) { goto fail; }
     if(SQLITE_OK != sqlite3_bind_text(hStmt, 1, sNameShort, 6, NULL)) { goto fail; }
     if(SQLITE_OK != sqlite3_bind_text(hStmt, 2, szFileUTF8, -1, NULL)) { goto fail; }
-    if(SQLITE_OK != sqlite3_bind_text(hStmt, 3, szFileJSON, -1, NULL)) { goto fail; }
     if(SQLITE_DONE != sqlite3_step(hStmt)) { goto fail; }
     hSql = Fc_SqlReserveReturn(hSql);
     Fc_SqlQueryN("SELECT MAX(id) FROM timeline_info;", 0, NULL, 1, &v, NULL);
     if(!(ctxPlugin = LocalAlloc(LMEM_ZEROINIT, sizeof(FCTIMELINE_PLUGIN_CONTEXT)))) { goto fail; }
     ctxPlugin->dwId = (DWORD)v;
     ctxPlugin->hSql = Fc_SqlReserve();
-    sqlite3_prepare_v2(ctxPlugin->hSql, "INSERT INTO timeline_data (id_str, tp, ft, ac, pid, data64) VALUES (?, ?, ?, ?, ?, ?);", -1, &ctxPlugin->hStmt, NULL);
+    sqlite3_prepare_v2(ctxPlugin->hSql, "INSERT INTO timeline_data (id_str, tp, ft, ac, pid, data32, data64) VALUES (?, ?, ?, ?, ?, ?, ?);", -1, &ctxPlugin->hStmt, NULL);
     sqlite3_prepare_v2(ctxPlugin->hSql, "INSERT INTO str (id, osz, csz, cbu, cbj, sz) VALUES (?, ?, ?, ?, ?, ?);", -1, &ctxPlugin->hStmtStr, NULL);
     sqlite3_exec(ctxPlugin->hSql, "BEGIN TRANSACTION", NULL, NULL, NULL);
 fail:
@@ -306,9 +307,9 @@ fail:
 _Success_(return)
 BOOL FcTimeline_Initialize()
 {
-    BOOL f, fResult = FALSE;
+    BOOL fResult = FALSE;
     int rc;
-    DWORD i, j;
+    DWORD i;
     QWORD k, v = 0;
     sqlite3 *hSql = NULL;
     sqlite3_stmt *hStmt = NULL;
@@ -320,7 +321,7 @@ BOOL FcTimeline_Initialize()
         "INSERT INTO timeline_info VALUES(0, ''    , 'timeline_all.txt',      'timeline_all.json',      0, 0); ",
         // populate timeline_data temporary table - with basic data.
         "DROP TABLE IF EXISTS timeline_data;",
-        "CREATE TABLE timeline_data ( id INTEGER PRIMARY KEY AUTOINCREMENT, id_str INTEGER, tp INT, ft INTEGER, ac INT, pid INT, data64 INTEGER );"
+        "CREATE TABLE timeline_data ( id INTEGER PRIMARY KEY AUTOINCREMENT, id_str INTEGER, tp INT, ft INTEGER, ac INT, pid INT, data32 INT, data64 INTEGER );"
     };
     for(i = 0; i < sizeof(szTIMELINE_SQL1) / sizeof(LPCSTR); i++) {
         if(SQLITE_OK != (rc = Fc_SqlExec(szTIMELINE_SQL1[i]))) {
@@ -334,14 +335,13 @@ BOOL FcTimeline_Initialize()
         // populate main timeline table:
         "DROP TABLE IF EXISTS timeline;",
         "DROP VIEW IF EXISTS v_timeline;",
-        "CREATE TABLE timeline ( id INTEGER PRIMARY KEY AUTOINCREMENT, tp INT, tp_id INTEGER, id_str INTEGER, ft INTEGER, ac INT, pid INT, data64 INTEGER, oln_u INTEGER, oln_j INTEGER, oln_utp INTEGER, oln_jtp INTEGER );"
+        "CREATE TABLE timeline ( id INTEGER PRIMARY KEY AUTOINCREMENT, tp INT, tp_id INTEGER, id_str INTEGER, ft INTEGER, ac INT, pid INT, data32 INT, data64 INTEGER, oln_u INTEGER, oln_j INTEGER, oln_utp INTEGER );"
         "CREATE VIEW v_timeline AS SELECT * FROM timeline, str WHERE timeline.id_str = str.id;",
         "CREATE UNIQUE INDEX idx_timeline_tpid     ON timeline(tp, tp_id);",
         "CREATE UNIQUE INDEX idx_timeline_oln_u    ON timeline(oln_u);",
         "CREATE UNIQUE INDEX idx_timeline_oln_j    ON timeline(oln_j);"
         "CREATE UNIQUE INDEX idx_timeline_oln_utp  ON timeline(tp, oln_utp);",
-        "CREATE UNIQUE INDEX idx_timeline_oln_jtp  ON timeline(tp, oln_jtp);",
-        "INSERT INTO timeline (tp, tp_id, id_str, ft, ac, pid, data64, oln_u, oln_j, oln_utp, oln_jtp) SELECT td.tp, (SUM(1) OVER (PARTITION BY td.tp ORDER BY td.ft DESC, td.id)), td.id_str, td.ft, td.ac, td.pid, td.data64, (SUM(str.cbu+"STRINGIZE(FC_LINELENGTH_TIMELINE_UTF8)")  OVER (ORDER BY td.ft DESC, td.id) - str.cbu-"STRINGIZE(FC_LINELENGTH_TIMELINE_UTF8)"), (SUM(str.cbj+"STRINGIZE(FC_LINELENGTH_TIMELINE_JSON)") OVER (ORDER BY td.ft DESC, td.id) - str.cbj-"STRINGIZE(FC_LINELENGTH_TIMELINE_JSON)"), (SUM(str.cbu+"STRINGIZE(FC_LINELENGTH_TIMELINE_UTF8)")  OVER (PARTITION BY td.tp ORDER BY td.ft DESC, td.id) - str.cbu-"STRINGIZE(FC_LINELENGTH_TIMELINE_UTF8)"), (SUM(str.cbj+"STRINGIZE(FC_LINELENGTH_TIMELINE_JSON)") OVER (PARTITION BY td.tp ORDER BY td.ft DESC, td.id) - str.cbj-"STRINGIZE(FC_LINELENGTH_TIMELINE_JSON)") FROM timeline_data td, str WHERE str.id = td.id_str ORDER BY td.ft DESC, td.id;",
+        "INSERT INTO timeline (tp, tp_id, id_str, ft, ac, pid, data32, data64, oln_u, oln_j, oln_utp) SELECT td.tp, (SUM(1) OVER (PARTITION BY td.tp ORDER BY td.ft DESC, td.id)), td.id_str, td.ft, td.ac, td.pid, td.data32, td.data64, (SUM(str.cbu+"STRINGIZE(FC_LINELENGTH_TIMELINE_UTF8)")  OVER (ORDER BY td.ft DESC, td.id) - str.cbu-"STRINGIZE(FC_LINELENGTH_TIMELINE_UTF8)"), (SUM(str.cbj+"STRINGIZE(FC_LINELENGTH_TIMELINE_JSON)") OVER (ORDER BY td.ft DESC, td.id) - str.cbj-"STRINGIZE(FC_LINELENGTH_TIMELINE_JSON)"), (SUM(str.cbu+"STRINGIZE(FC_LINELENGTH_TIMELINE_UTF8)")  OVER (PARTITION BY td.tp ORDER BY td.ft DESC, td.id) - str.cbu-"STRINGIZE(FC_LINELENGTH_TIMELINE_UTF8)") FROM timeline_data td, str WHERE str.id = td.id_str ORDER BY td.ft DESC, td.id;",
         "DROP TABLE timeline_data;"
         // update timeline_info with sizes for 'all' file (utf8 and json).
         "UPDATE timeline_info SET file_size_u = (SELECT oln_u+cbu+"STRINGIZE(FC_LINELENGTH_TIMELINE_UTF8)" AS cbu_tot FROM v_timeline WHERE id = (SELECT MAX(id) FROM v_timeline)) WHERE id = 0;",
@@ -355,19 +355,15 @@ BOOL FcTimeline_Initialize()
     }
     // update progress percent counter.
     ctxFc->cProgressPercent = 80;
-    // update timeline_info with sizes for individual types (utf8 and json).
-    LPSTR szTIMELINE_SQL_TIMELINE_UPD[] = {
-        "UPDATE timeline_info SET file_size_u = (SELECT oln_utp+cbu+"STRINGIZE(FC_LINELENGTH_TIMELINE_UTF8)" FROM v_timeline WHERE tp = ? AND tp_id = (SELECT MAX(tp_id) FROM v_timeline WHERE tp = ?)) WHERE id = ?;",
-        "UPDATE timeline_info SET file_size_j = (SELECT oln_jtp+cbj+"STRINGIZE(FC_LINELENGTH_TIMELINE_JSON)" FROM v_timeline WHERE tp = ? AND tp_id = (SELECT MAX(tp_id) FROM v_timeline WHERE tp = ?)) WHERE id = ?;",
-    };
+    // update timeline_info with sizes for individual types for utf-8 only.
+    LPSTR szTIMELINE_SQL_TIMELINE_UPD_UTF8 =
+        "UPDATE timeline_info SET file_size_u = (SELECT oln_utp+cbu+"STRINGIZE(FC_LINELENGTH_TIMELINE_UTF8)" FROM v_timeline WHERE tp = ? AND tp_id = (SELECT MAX(tp_id) FROM v_timeline WHERE tp = ?)) WHERE id = ?;";
     Fc_SqlQueryN("SELECT MAX(id) FROM timeline_info;", 0, NULL, 1, &v, NULL);
     ctxFc->Timeline.cTp = (DWORD)v + 1;
     for(k = 1; k < ctxFc->Timeline.cTp; k++) {
-        for(j = 0; j < 2; j++) {
-            if(SQLITE_DONE != (rc = Fc_SqlQueryN(szTIMELINE_SQL_TIMELINE_UPD[j], 3, (QWORD[]) { k, k, k }, 0, NULL, NULL))) {
-                vmmprintf_fn("FAIL INITIALIZE TIMELINE WITH SQLITE ERROR CODE %i, QUERY: %s\n", rc, szTIMELINE_SQL_TIMELINE_UPD[j]);
-                goto fail;
-            }
+        if(SQLITE_DONE != (rc = Fc_SqlQueryN(szTIMELINE_SQL_TIMELINE_UPD_UTF8, 3, (QWORD[]) { k, k, k }, 0, NULL, NULL))) {
+            vmmprintf_fn("FAIL INITIALIZE TIMELINE WITH SQLITE ERROR CODE %i, QUERY: %s\n", rc, szTIMELINE_SQL_TIMELINE_UPD_UTF8);
+            goto fail;
         }
     }
     // populate timeline info struct
@@ -378,13 +374,8 @@ BOOL FcTimeline_Initialize()
         pi = ctxFc->Timeline.pInfo + i;
         if(SQLITE_ROW != sqlite3_step(hStmt)) { goto fail; }
         pi->dwId = sqlite3_column_int(hStmt, 0);
+        pi->szNameShort[0] = 0;
         strncpy_s(pi->szNameShort, _countof(pi->szNameShort), sqlite3_column_text(hStmt, 1), _TRUNCATE);
-        for(j = 0, f = FALSE; j < _countof(pi->szNameShort) - 1; j++) {
-            if(f || (pi->szNameShort[j] == 0)) {
-                pi->szNameShort[j] = ' ';
-                f = TRUE;
-            }
-        }
         pi->szNameShort[_countof(pi->szNameShort) - 1] = 0;
         wcsncpy_s(pi->wszNameFileUTF8, _countof(pi->wszNameFileUTF8), sqlite3_column_text16(hStmt, 2), _TRUNCATE);
         wcsncpy_s(pi->wszNameFileJSON, _countof(pi->wszNameFileJSON), sqlite3_column_text16(hStmt, 3), _TRUNCATE);
@@ -398,8 +389,8 @@ fail:
     return fResult;
 }
 
-#define FCTIMELINE_SQL_SELECT_FIELDS_ALL " csz, osz, sz,    id, ft, tp, ac, pid, data64, oln_u,   oln_j   "
-#define FCTIMELINE_SQL_SELECT_FIELDS_TP  " csz, osz, sz, tp_id, ft, tp, ac, pid, data64, oln_utp, oln_jtp "
+#define FCTIMELINE_SQL_SELECT_FIELDS_ALL " cbu, osz, sz,    id, ft, tp, ac, pid, data32, data64, oln_u,   oln_j   "
+#define FCTIMELINE_SQL_SELECT_FIELDS_TP  " cbu, osz, sz, tp_id, ft, tp, ac, pid, data32, data64, oln_utp, 0 "
 
 /*
 * Internal function to create a PFCOB_MAP_TIMELINE map from given sql queries.
@@ -411,12 +402,12 @@ fail:
 * -- return
 */
 _Success_(return)
-BOOL FcTimelineMap_CreateInternal(_In_ LPSTR szSqlCount, _In_ LPSTR szSqlSelect, _In_ DWORD cQueryValues, _In_reads_(cQueryValues) PQWORD pqwQueryValues, _Out_ PFCOB_MAP_TIMELINE * ppObNtfsMap)
+BOOL FcTimelineMap_CreateInternal(_In_ LPSTR szSqlCount, _In_ LPSTR szSqlSelect, _In_ DWORD cQueryValues, _In_reads_(cQueryValues) PQWORD pqwQueryValues, _Out_ PFCOB_MAP_TIMELINE *ppObNtfsMap)
 {
     int rc;
     QWORD pqwResult[2];
     DWORD i, cchMultiText, owszName;
-    LPWSTR wszMultiText, wszEntryText;
+    LPSTR szuMultiText, szuEntryText;
     PFCOB_MAP_TIMELINE pObTimelineMap = NULL;
     PFC_MAP_TIMELINEENTRY pe;
     sqlite3 *hSql = NULL;
@@ -424,13 +415,13 @@ BOOL FcTimelineMap_CreateInternal(_In_ LPSTR szSqlCount, _In_ LPSTR szSqlSelect,
     rc = Fc_SqlQueryN(szSqlCount, cQueryValues, pqwQueryValues, 2, pqwResult, NULL);
     if((rc != SQLITE_OK) || (pqwResult[0] > 0x00010000) || (pqwResult[1] > 0x01000000)) { goto fail; }
     cchMultiText = (DWORD)(1 + 2 * pqwResult[0] + pqwResult[1]);
-    pObTimelineMap = Ob_Alloc('Mtml', LMEM_ZEROINIT, sizeof(FCOB_MAP_TIMELINE) + pqwResult[0] * sizeof(FC_MAP_TIMELINEENTRY) + cchMultiText * sizeof(WCHAR), NULL, NULL);
+    pObTimelineMap = Ob_Alloc('Mtml', LMEM_ZEROINIT, sizeof(FCOB_MAP_TIMELINE) + pqwResult[0] * sizeof(FC_MAP_TIMELINEENTRY) + cchMultiText, NULL, NULL);
     if(!pObTimelineMap) { goto fail; }
-    pObTimelineMap->wszMultiText = (LPWSTR)((PBYTE)pObTimelineMap + sizeof(FCOB_MAP_TIMELINE) + pqwResult[0] * sizeof(FC_MAP_TIMELINEENTRY));
-    pObTimelineMap->cbMultiText = cchMultiText * sizeof(WCHAR);
+    pObTimelineMap->szuMultiText = (LPSTR)((PBYTE)pObTimelineMap + sizeof(FCOB_MAP_TIMELINE) + pqwResult[0] * sizeof(FC_MAP_TIMELINEENTRY));
+    pObTimelineMap->cbMultiText = cchMultiText;
     pObTimelineMap->cMap = (DWORD)pqwResult[0];
     cchMultiText--;
-    wszMultiText = pObTimelineMap->wszMultiText + 1;
+    szuMultiText = pObTimelineMap->szuMultiText + 1;
     if(!(hSql = Fc_SqlReserve())) { goto fail; }
     rc = sqlite3_prepare_v2(hSql, szSqlSelect, -1, &hStmt, 0);
     if(rc != SQLITE_OK) { goto fail; }
@@ -442,24 +433,24 @@ BOOL FcTimelineMap_CreateInternal(_In_ LPSTR szSqlCount, _In_ LPSTR szSqlSelect,
         if(rc != SQLITE_ROW) { goto fail; }
         pe = pObTimelineMap->pMap + i;
         // populate text related data: path+name
-        pe->cwszText = sqlite3_column_int(hStmt, 0);
+        pe->cszuText = sqlite3_column_int(hStmt, 0);
         owszName = sqlite3_column_int(hStmt, 1);
-        wszEntryText = (LPWSTR)sqlite3_column_text16(hStmt, 2);
-        if(!wszEntryText || (pe->cwszText != wcslen(wszEntryText)) || (pe->cwszText > cchMultiText - 1) || (owszName > pe->cwszText)) { goto fail; }
-        pe->wszText = wszMultiText;
-        pe->wszTextSub = wszMultiText + owszName;
-        memcpy(wszMultiText, wszEntryText, pe->cwszText * sizeof(WCHAR));
-        wszMultiText = wszMultiText + pe->cwszText + 1;
-        cchMultiText += pe->cwszText + 1;
+        szuEntryText = (LPSTR)sqlite3_column_text(hStmt, 2);
+        if(!szuEntryText || (pe->cszuText != strlen(szuEntryText)) || (pe->cszuText > cchMultiText - 1) || (owszName > pe->cszuText)) { goto fail; }
+        pe->szuText = szuMultiText;
+        memcpy(szuMultiText, szuEntryText, pe->cszuText);
+        szuMultiText = szuMultiText + pe->cszuText + 1;
+        cchMultiText += pe->cszuText + 1;
         // populate numeric data
         pe->id = sqlite3_column_int64(hStmt, 3);
         pe->ft = sqlite3_column_int64(hStmt, 4);
         pe->tp = sqlite3_column_int(hStmt, 5);
         pe->ac = sqlite3_column_int(hStmt, 6);
         pe->pid = sqlite3_column_int(hStmt, 7);
-        pe->data64 = sqlite3_column_int64(hStmt, 8);
-        pe->cszuOffset = sqlite3_column_int64(hStmt, 9);
-        pe->cszjOffset = sqlite3_column_int64(hStmt, 10);
+        pe->data32 = sqlite3_column_int(hStmt, 8);
+        pe->data64 = sqlite3_column_int64(hStmt, 9);
+        pe->cszuOffset = sqlite3_column_int64(hStmt, 10);
+        pe->cszjOffset = sqlite3_column_int64(hStmt, 11);
     }
     Ob_INCREF(pObTimelineMap);
 fail:
@@ -483,9 +474,9 @@ BOOL FcTimelineMap_GetFromIdRange(_In_ DWORD dwTimelineType, _In_ QWORD qwId, _I
     QWORD v[] = { qwId, qwId + cId, dwTimelineType };
     DWORD iSQL = dwTimelineType ? 2 : 0;
     LPSTR szSQL[] = {
-        "SELECT COUNT(*), SUM(csz) FROM v_timeline WHERE id >= ? AND id < ?",
+        "SELECT COUNT(*), SUM(cbu) FROM v_timeline WHERE id >= ? AND id < ?",
         "SELECT "FCTIMELINE_SQL_SELECT_FIELDS_ALL" FROM v_timeline WHERE id >= ? AND id < ? ORDER BY id",
-        "SELECT COUNT(*), SUM(csz) FROM v_timeline WHERE tp_id >= ? AND tp_id < ? AND tp = ?",
+        "SELECT COUNT(*), SUM(cbu) FROM v_timeline WHERE tp_id >= ? AND tp_id < ? AND tp = ?",
         "SELECT "FCTIMELINE_SQL_SELECT_FIELDS_TP" FROM v_timeline WHERE tp_id >= ? AND tp_id < ? AND tp = ? ORDER BY tp_id"
     };
     return FcTimelineMap_CreateInternal(szSQL[iSQL], szSQL[iSQL + 1], (dwTimelineType ? 3 : 2), v, ppObTimelineMap);
@@ -494,7 +485,7 @@ BOOL FcTimelineMap_GetFromIdRange(_In_ DWORD dwTimelineType, _In_ QWORD qwId, _I
 /*
 * Retrieve the minimum timeline id that exists within a byte range inside a
 * timeline file of a specific type.
-* -- dwTimelineType = the timeline type, 0 for all.
+* -- dwTimelineType = the timeline type, 0 for all - has no meaning in json mode.
 * -- fJSON = is JSON type, otherwise UTF8 type.
 * -- qwFilePos = the file position.
 * -- pqwId = pointer to receive the result id.
@@ -504,12 +495,11 @@ _Success_(return)
 BOOL FcTimeline_GetIdFromPosition(_In_ DWORD dwTimelineType, _In_ BOOL fJSON, _In_ QWORD qwFilePos, _Out_ PQWORD pqwId)
 {
     QWORD v[] = { max(2048, qwFilePos) - 2048, qwFilePos, dwTimelineType };
-    DWORD iSQL = (dwTimelineType ? 2 : 0) + (fJSON ? 1 : 0);
-    LPSTR szSQL[4] = {
+    DWORD iSQL = fJSON ? 1 : ((dwTimelineType ? 2 : 0));
+    LPSTR szSQL[3] = {
         "SELECT MAX(id) FROM timeline WHERE oln_u >= ? AND oln_u <= ?",
         "SELECT MAX(id) FROM timeline WHERE oln_j >= ? AND oln_j <= ?",
-        "SELECT MAX(tp_id) FROM timeline WHERE oln_utp >= ? AND oln_utp <= ? AND tp = ?",
-        "SELECT MAX(tp_id) FROM timeline WHERE oln_jtp >= ? AND oln_jtp <= ? AND tp = ?"
+        "SELECT MAX(tp_id) FROM timeline WHERE oln_utp >= ? AND oln_utp <= ? AND tp = ?"
     };
     return (SQLITE_OK == Fc_SqlQueryN(szSQL[iSQL], (dwTimelineType ? 3 : 2), v, 1, pqwId, NULL));
 }
@@ -640,6 +630,115 @@ fail:
 
 
 // ----------------------------------------------------------------------------
+// GENERAL JSON DATA LOG BELOW:
+// ----------------------------------------------------------------------------
+
+/*
+* Callback function to add a json log line to 'general.json'
+* -- pDataJSON
+*/
+VOID FcJson_Callback_EntryAdd(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pDataJSON)
+{
+    LPSTR szj;
+    QWORD i, o = 0;
+    PVMM_PROCESS pObProcess = NULL;
+    typedef struct tdBUFFER {
+        CHAR szj[0x1000];
+        CHAR szln[0x3000];
+        // header+type cache
+        CHAR szjHdrType[128];
+        DWORD dwHdrType;
+        DWORD cchHdrType;
+        // pid-procname cache
+        DWORD dwPID;
+        DWORD cchPidProcName;
+        CHAR szjProcName[32];
+        CHAR szjPidProcName[64];
+    } *PBUFFER;
+    PBUFFER buf = (PBUFFER)pDataJSON->_Reserved;
+    if(pDataJSON->dwVersion != VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION) { return; }
+    // general/base:
+    {
+        if(buf->dwHdrType != *(PDWORD)pDataJSON->szjType) {
+            buf->dwHdrType = *(PDWORD)pDataJSON->szjType;
+            buf->cchHdrType = snprintf(buf->szjHdrType, sizeof(buf->szjHdrType),
+                "{\"class\":\"GEN\",\"ver\":\"%i.%i\",\"sys\":\"%s\",\"type\":\"%s\"",
+                VERSION_MAJOR, VERSION_MINOR,
+                ctxVmm->szSystemUniqueTag,
+                pDataJSON->szjType
+            );
+        }
+        memcpy(buf->szln + o, buf->szjHdrType, buf->cchHdrType + 1ULL); o += buf->cchHdrType;
+    }
+    // pid & process:
+    if(pDataJSON->dwPID) {
+        if(buf->dwPID != pDataJSON->dwPID) {
+            buf->dwPID = pDataJSON->dwPID;
+            if((pObProcess = VmmProcessGetEx(NULL, pDataJSON->dwPID, VMM_FLAG_PROCESS_SHOW_TERMINATED))) {
+                Util_JsonEscape(pObProcess->pObPersistent->uszNameLong, sizeof(buf->szjProcName), buf->szjProcName);
+                buf->cchPidProcName = snprintf(buf->szjPidProcName, sizeof(buf->szjPidProcName), ",\"pid\":%i,\"proc\":\"%s\"", pDataJSON->dwPID, buf->szjProcName);
+                Ob_DECREF_NULL(&pObProcess);
+            } else {
+                buf->cchPidProcName = snprintf(buf->szjPidProcName, sizeof(buf->szjPidProcName), ",\"pid\":%i", pDataJSON->dwPID);
+            }
+        }
+        memcpy(buf->szln + o, buf->szjPidProcName, buf->cchPidProcName + 1ULL); o += buf->cchPidProcName;
+    }
+    // index:
+    o += snprintf(buf->szln + o, sizeof(buf->szln) - o, ",\"i\":%i", pDataJSON->i);
+    // obj:
+    if(pDataJSON->vaObj) {
+        o += snprintf(buf->szln + o, sizeof(buf->szln) - o, ",\"obj\":\"%llx\"", pDataJSON->vaObj);
+    }
+    // addr:
+    for(i = 0; i < 2; i++) {
+        if(pDataJSON->fva[i] || pDataJSON->va[i]) {
+            o += snprintf(buf->szln + o, sizeof(buf->szln) - o, ",\"addr%s\":\"%llx\"", (i ? "2" : ""), pDataJSON->va[i]);
+        }
+    }
+    // size/num:
+    if(pDataJSON->fNum[0] || pDataJSON->qwNum[0]) {
+        o += snprintf(buf->szln + o, sizeof(buf->szln) - o, ",\"size\":%lli", pDataJSON->qwNum[0]);
+    }
+    if(pDataJSON->fNum[1] || pDataJSON->qwNum[1]) {
+        o += snprintf(buf->szln + o, sizeof(buf->szln) - o, ",\"num\":%lli", pDataJSON->qwNum[1]);
+    }
+    // hex:
+    for(i = 0; i < 2; i++) {
+        if(pDataJSON->fHex[i] || pDataJSON->qwHex[i]) {
+            o += snprintf(buf->szln + o, sizeof(buf->szln) - o, ",\"hex%s\":\"%llx\"", (i ? "2" : ""), pDataJSON->qwHex[i]);
+        }
+    }
+    // desc:
+    for(i = 0; i < 2; i++) {
+        szj = NULL;
+        if(pDataJSON->szj[i]) {
+            szj = (LPSTR)pDataJSON->szj[i];
+        } else if(pDataJSON->szu[i]) {
+            Util_JsonEscape((LPSTR)pDataJSON->szu[i], sizeof(buf->szj), buf->szj);
+            szj = buf->szj;
+        } else if(pDataJSON->wsz[i]) {
+            Util_snwprintf_u8j(buf->szj, sizeof(buf->szj), L"%s", pDataJSON->wsz[i]);
+            szj = buf->szj;
+        }
+        if(szj) {
+            o += snprintf(buf->szln + o, sizeof(buf->szln) - o, ",\"desc%s\":\"%s\"", (i ? "2" : ""), szj);
+        }
+    }
+    // commit to json file:
+    if(sizeof(buf->szln) - o > 3) {
+        memcpy(buf->szln + o, "}\n", 3);
+        if(pDataJSON->fVerbose) {
+            ObMemFile_AppendString(ctxFc->FileJSON.pGenVerbose, buf->szln);
+        } else {
+            ObMemFile_AppendString(ctxFc->FileJSON.pGen, buf->szln);
+        }
+    }
+}
+
+
+
+// ----------------------------------------------------------------------------
 // FORENSIC INITIALIZATION FUNCTIONALITY BELOW:
 // ----------------------------------------------------------------------------
 
@@ -648,12 +747,19 @@ fail:
 */
 VOID FcInitialize_ThreadProc(_In_ PVOID pvContext)
 {
+    PVMMOB_MAP_EVIL pObEvilMap = NULL;
+    HANDLE hEventAsyncLogJSON = 0;
+    QWORD tmStart = Statistics_CallStart();
     if(SQLITE_OK != Fc_SqlExec(FC_SQL_SCHEMA_STR)) { goto fail; }
     if(!ctxVmm->Work.fEnabled) { goto fail; }
+    if(!(hEventAsyncLogJSON = CreateEvent(NULL, TRUE, FALSE, NULL))) { goto fail; }
     PluginManager_Notify(VMMDLL_PLUGIN_NOTIFY_FORENSIC_INIT, NULL, 0);
+    VmmMap_GetEvil(NULL, &pObEvilMap);  // start findevil (in 'async' mode)
+    Ob_DECREF_NULL(&pObEvilMap);
     PluginManager_FcInitialize();       // 0-10%
     ctxFc->cProgressPercent = 10;
     if(!ctxVmm->Work.fEnabled) { goto fail; }
+    VmmWork(PluginManager_FcLogJSON, FcJson_Callback_EntryAdd, hEventAsyncLogJSON); // parallel async init of json log
     FcScanPhysmem();                    // 11-60%
     ctxFc->cProgressPercent = 60;
     if(!ctxVmm->Work.fEnabled) { goto fail; }
@@ -663,15 +769,19 @@ VOID FcInitialize_ThreadProc(_In_ PVOID pvContext)
     FcTimeline_Initialize();            // 71-90%
     ctxFc->cProgressPercent = 90;
     if(!ctxVmm->Work.fEnabled) { goto fail; }
+    WaitForSingleObject(hEventAsyncLogJSON, INFINITE);
     PluginManager_FcFinalize();         // 91-100%
     ctxFc->cProgressPercent = 100;
     ctxFc->db.fSingleThread = FALSE;
     ctxFc->fInitFinish = TRUE;
     PluginManager_Notify(VMMDLL_PLUGIN_NOTIFY_FORENSIC_INIT, NULL, 100);
     PluginManager_Notify(VMMDLL_PLUGIN_NOTIFY_FORENSIC_INIT_COMPLETE, NULL, 0);
-    return;
+    Statistics_CallEnd(STATISTICS_ID_FORENSIC_FcInitialize, tmStart);
 fail:
-    ctxFc->cProgressPercent = 0;
+    if(hEventAsyncLogJSON) { CloseHandle(hEventAsyncLogJSON); }
+    if(ctxFc->cProgressPercent != 100) {
+        ctxFc->cProgressPercent = 0;
+    }
 }
 
 /*
@@ -693,6 +803,9 @@ VOID FcClose()
     if(ctxFc->db.tp == FC_DATABASE_TYPE_TEMPFILE_CLOSE) {
         DeleteFileW(ctxFc->db.wszDatabaseWinPath);
     }
+    Ob_DECREF_NULL(&ctxFc->FileJSON.pGen);
+    Ob_DECREF_NULL(&ctxFc->FileJSON.pGenVerbose);
+    Ob_DECREF_NULL(&ctxFc->FileJSON.pReg);
     LocalFree(ctxFc->Timeline.pInfo);
     LeaveCriticalSection(&ctxFc->Lock);
     DeleteCriticalSection(&ctxFc->Lock);
@@ -770,6 +883,9 @@ BOOL FcInitialize_Impl(_In_ DWORD dwDatabaseType, _In_ BOOL fForceReInit)
     if(ctxFc) { FcClose(); }
     if(!(ctxFc = (PFC_CONTEXT)LocalAlloc(LMEM_ZEROINIT, sizeof(FC_CONTEXT)))) { goto fail; }
     InitializeCriticalSection(&ctxFc->Lock);
+    if(!(ctxFc->FileJSON.pGen = ObMemFile_New())) { goto fail; }
+    if(!(ctxFc->FileJSON.pGenVerbose = ObMemFile_New())) { goto fail; }
+    if(!(ctxFc->FileJSON.pReg = ObMemFile_New())) { goto fail; }
     // 2: SQLITE INIT:
     if(SQLITE_CONFIG_MULTITHREAD != sqlite3_threadsafe()) {
         vmmprintf_fn("CRITICAL: WRONG SQLITE THREADING MODE - TERMINATING!\n");

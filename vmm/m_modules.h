@@ -39,13 +39,16 @@ VOID M_SysObj_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_SysProc_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_SysSvc_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_SysSyscall_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
+VOID M_SysTask_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_Virt2Phys_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_WinReg_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 
 /*
 * Initialization functions for FORENSIC related modules.
 */
+VOID M_FcJSON_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_FcTimeline_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
+VOID M_FcModule_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_FcNtfs_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_FcProc_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_FcRegistry_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
@@ -91,9 +94,12 @@ VOID(*g_pfnModulesAllInternal[])(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo) = {
     M_SysProc_Initialize,
     M_SysSvc_Initialize,
     M_SysSyscall_Initialize,
+    M_SysTask_Initialize,
     M_WinReg_Initialize,
     // various global forensic modules
+    M_FcJSON_Initialize,
     M_FcTimeline_Initialize,
+    M_FcModule_Initialize,
     M_FcNtfs_Initialize,
     M_FcProc_Initialize,
     M_FcRegistry_Initialize,

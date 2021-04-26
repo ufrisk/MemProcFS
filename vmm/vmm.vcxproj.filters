@@ -34,6 +34,9 @@
     <Filter Include="Header Files\ob">
       <UniqueIdentifier>{4b033bbd-b98a-426a-b25c-4c7d5686604e}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Resource Files\res">
+      <UniqueIdentifier>{36acfda3-7a80-4829-affe-6ab4d6ef5c9f}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="vmmdll.h">
@@ -302,10 +305,25 @@
     <ClCompile Include="m_proc_token.c">
       <Filter>Source Files\modules</Filter>
     </ClCompile>
+    <ClCompile Include="ob\ob_memfile.c">
+      <Filter>Source Files\ob</Filter>
+    </ClCompile>
+    <ClCompile Include="m_sys_task.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="m_fc_module.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="m_fc_json.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="vmmdll.def">
       <Filter>Resource Files</Filter>
+    </None>
+    <None Include="res\m_fc_json_elastic_import.ps1">
+      <Filter>Resource Files\res</Filter>
     </None>
   </ItemGroup>
   <ItemGroup>

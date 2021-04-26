@@ -296,14 +296,52 @@ _Success_(return)
 BOOL VmmWinReg_ValueQuery4(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_VALUE pKeyValue, _Out_opt_ PDWORD pdwType, _Out_writes_opt_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_opt_ PDWORD pcbData);
 
 /*
+* Read a registry value - similar to WINAPI function 'RegQueryValueEx'.
+* -- pHive
+* -- pObKey
+* -- wszValueName
+* -- pdwType
+* -- pbData
+* -- cbData
+* -- pcbData
+* -- return
+*/
+_Success_(return)
+BOOL VmmWinReg_ValueQuery5(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pKey, _In_ LPWSTR wszValueName, _Out_opt_ PDWORD pdwType, _Out_writes_opt_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_opt_ PDWORD pcbData);
+
+typedef struct tdVMMWINREG_FORENSIC_CONTEXT {
+    struct {
+        DWORD cb;
+        BYTE pb[0x2000];
+        WCHAR _EMPTY[2];
+        VMM_REGISTRY_VALUE_INFO info;
+        CHAR sz[0x800];
+        CHAR szjValue[0x800];
+        CHAR szjName[MAX_PATH];
+    } value;
+    QWORD cchBase;
+    CHAR szjBase[0x1000];
+    CHAR sz[0x00100000];
+} VMMWINREG_FORENSIC_CONTEXT, *PVMMWINREG_FORENSIC_CONTEXT;
+
+/*
 * Function to allow the forensic sub-system to request extraction of all keys
-* from a specific hive. The key information will be delivered back to the
-* forensic sub-system by the use of a callback function.
+* and their values from a specific hive. The key information will be delivered
+* back to the forensic sub-system by the use of callback functions.
 * -- pHive
 * -- hCallback1
 * -- hCallback2
-* -- pfnCallback
+* -- pfnKeyCB = callback to populate the forensic database with keys.
+* -- pfnJsonKeyCB
+* -- pfnJsonValueCB
 */
-VOID VmmWinReg_ForensicGetAllKeys(_In_ POB_REGISTRY_HIVE pHive, _In_ HANDLE hCallback1, _In_ HANDLE hCallback2, _In_ VOID(*pfnCallback)(_In_ HANDLE hCallback1, _In_ HANDLE hCallback2, _In_ LPWSTR wszPathName, _In_ DWORD owszName, _In_ QWORD vaHive, _In_ DWORD dwCell, _In_ DWORD dwCellParent, _In_ QWORD ftLastWrite));
+VOID VmmWinReg_ForensicGetAllKeysAndValues(
+    _In_ POB_REGISTRY_HIVE pHive,
+    _In_ HANDLE hCallback1,
+    _In_ HANDLE hCallback2,
+    _In_ VOID(*pfnKeyCB)(_In_ HANDLE hCallback1, _In_ HANDLE hCallback2, _In_ LPWSTR wszPathName, _In_ DWORD owszName, _In_ QWORD vaHive, _In_ DWORD dwCell, _In_ DWORD dwCellParent, _In_ QWORD ftLastWrite),
+    _In_ VOID(*pfnJsonKeyCB)(_Inout_ PVMMWINREG_FORENSIC_CONTEXT ctx, _In_z_ LPWSTR wszPathName, _In_ QWORD ftLastWrite),
+    _In_ VOID(*pfnJsonValueCB)(_Inout_ PVMMWINREG_FORENSIC_CONTEXT ctx)
+);
 
 #endif /* __VMMWINREG_H__ */

@@ -24,9 +24,9 @@
 
 typedef struct tdFCSQL_INSERTSTRTABLE {
     QWORD id;
-    DWORD cwsz;     // WCHAR count (excl. NULL)
+    DWORD cch;      // character count (excl. NULL)
     DWORD cbu;      // UTF-8 byte count (excl. NULL)
-    DWORD cbj;      // UTF-8 JSON string count (excl. NULL)
+    DWORD cbj;      // JSON byte count (excl. NULL)
 } FCSQL_INSERTSTRTABLE, *PFCSQL_INSERTSTRTABLE;
 
 typedef struct tdFC_TIMELINE_INFO {
@@ -56,7 +56,14 @@ typedef struct tdFC_CONTEXT {
         DWORD cTp;
         PFC_TIMELINE_INFO pInfo;    // array of cTp items
     } Timeline;
+    struct {
+        POB_MEMFILE pGen;
+        POB_MEMFILE pGenVerbose;
+        POB_MEMFILE pReg;
+    } FileJSON;
 } FC_CONTEXT, *PFC_CONTEXT;
+
+#define FC_JSONDATA_INIT_PIDTYPE(pd, pid, tp)   { ZeroMemory(pd, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)); pd->dwVersion = VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION; pd->dwPID = pid; pd->szjType = tp; }
 
 
 
@@ -186,8 +193,8 @@ int Fc_SqlBindMultiInt64(
 // FC TIMELINING FUNCTIONALITY BELOW:
 // ----------------------------------------------------------------------------
 
-#define FC_LINELENGTH_TIMELINE_UTF8             64
-#define FC_LINELENGTH_TIMELINE_JSON             110
+#define FC_LINELENGTH_TIMELINE_UTF8             74
+#define FC_LINELENGTH_TIMELINE_JSON             170
 
 #define FC_TIMELINE_ACTION_NONE                 0
 #define FC_TIMELINE_ACTION_CREATE               1
@@ -210,17 +217,17 @@ typedef struct tdFC_MAP_TIMELINEENTRY {
     DWORD tp;
     DWORD ac;
     DWORD pid;
+    DWORD data32;
     QWORD data64;
     QWORD cszuOffset;               // offset to start of "line" in bytes (utf-8)
     QWORD cszjOffset;               // offset to start of "line" in bytes (json)
-    DWORD cwszText;                 // WCHAR count not including terminating null
-    LPWSTR wszText;                 // LPWSTR pointed into FCOB_MAP_TIMELINE.wszMultiText
-    LPWSTR wszTextSub;              // potential sub-text at end of wszText
+    DWORD cszuText;                 // WCHAR count not including terminating null
+    LPSTR szuText;                  // LPWSTR pointed into FCOB_MAP_TIMELINE.wszMultiText
 } FC_MAP_TIMELINEENTRY, *PFC_MAP_TIMELINEENTRY;
 
 typedef struct tdFCOB_MAP_TIMELINE {
     OB ObHdr;
-    LPWSTR wszMultiText;            // multi-wstr pointed into by FC_MAP_TIMELINEENTRY.wszText
+    LPSTR szuMultiText;             // multi-utf8-str pointed into by FC_MAP_TIMELINEENTRY.szuText
     DWORD cbMultiText;
     DWORD cMap;                     // # map entries.
     FC_MAP_TIMELINEENTRY pMap[];    // map entries.

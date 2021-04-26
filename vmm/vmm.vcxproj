@@ -155,6 +155,8 @@
     <ClCompile Include="mm_x64.c" />
     <ClCompile Include="mm_x86.c" />
     <ClCompile Include="mm_x86pae.c" />
+    <ClCompile Include="m_fc_json.c" />
+    <ClCompile Include="m_fc_module.c" />
     <ClCompile Include="m_fc_ntfs.c" />
     <ClCompile Include="m_fc_proc.c" />
     <ClCompile Include="m_fc_registry.c" />
@@ -178,6 +180,7 @@
     <ClCompile Include="m_sys_proc.c" />
     <ClCompile Include="m_sys_svc.c" />
     <ClCompile Include="m_sys_syscall.c" />
+    <ClCompile Include="m_sys_task.c" />
     <ClCompile Include="m_thread.c" />
     <ClCompile Include="m_vfsfc.c" />
     <ClCompile Include="m_vfsproc.c" />
@@ -188,6 +191,7 @@
     <ClCompile Include="ob\ob_container.c" />
     <ClCompile Include="ob\ob_core.c" />
     <ClCompile Include="ob\ob_map.c" />
+    <ClCompile Include="ob\ob_memfile.c" />
     <ClCompile Include="ob\ob_set.c" />
     <ClCompile Include="ob\ob_strmap.c" />
     <ClCompile Include="pdb.c" />
@@ -211,6 +215,7 @@
     <ClCompile Include="vmmwinsvc.c" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="res\m_fc_json_elastic_import.ps1" />
     <None Include="vmmdll.def" />
   </ItemGroup>
   <ItemGroup>

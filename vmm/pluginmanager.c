@@ -51,13 +51,14 @@ typedef struct tdPLUGIN_ENTRY {
     struct {
         PVOID ctxfc;
         PHANDLE phEventIngestFinish;
-        PVOID(*pfnInitialize)();
+        PVOID(*pfnInitialize)(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP);
         VOID(*pfnFinalize)(_In_opt_ PVOID ctxfc);
         VOID(*pfnTimeline)(
             _In_opt_ PVOID ctxfc,
             _In_ HANDLE hTimeline,
-            _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ QWORD qwValue, _In_ LPWSTR wszText),
+            _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPWSTR wszText),
             _In_ VOID(*pfnEntryAddBySql)(_In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPSTR *pszEntrySql));
+        VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData));
         VOID(*pfnIngestPhysmem)(_In_opt_ PVOID ctxfc, _In_ PVMMDLL_PLUGIN_FORENSIC_INGEST_PHYSMEM pIngestPhysmem);
         VOID(*pfnIngestFinalize)(_In_opt_ PVOID ctxfc);
         struct {
@@ -67,7 +68,6 @@ typedef struct tdPLUGIN_ENTRY {
             CHAR sNameShort[6];
             CHAR _Reserved[2];
             CHAR szFileUTF8[32];
-            CHAR szFileJSON[32];
         } Timeline;
     } fc;
 } PLUGIN_ENTRY, *PPLUGIN_ENTRY;
@@ -298,13 +298,15 @@ BOOL PluginManager_Notify(_In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DW
 */
 VOID PluginManager_FcInitialize()
 {
+    VMMDLL_PLUGIN_CONTEXT ctxPlugin;
     QWORD tmStart = Statistics_CallStart();
-    PPLUGIN_ENTRY pModule = (PPLUGIN_ENTRY)ctxVmm->PluginManager.FLinkForensic;
-    while(pModule) {
-        if(pModule->fc.pfnInitialize) {
-            pModule->fc.ctxfc = pModule->fc.pfnInitialize();
+    PPLUGIN_ENTRY pPlugin = (PPLUGIN_ENTRY)ctxVmm->PluginManager.FLinkForensic;
+    while(pPlugin) {
+        if(pPlugin->fc.pfnInitialize) {
+            PluginManager_ContextInitialize(&ctxPlugin, pPlugin, NULL, NULL);
+            pPlugin->fc.ctxfc = pPlugin->fc.pfnInitialize(&ctxPlugin);
         }
-        pModule = pModule->FLinkForensic;
+        pPlugin = pPlugin->FLinkForensic;
     }
     Statistics_CallEnd(STATISTICS_ID_PluginManager_FcInitialize, tmStart);
 }
@@ -383,9 +385,9 @@ VOID PluginManager_FcIngestFinalize()
 * -- pfnAddEntry = callback function to call to add a timelining entry.
 */
 VOID PluginManager_FcTimeline(
-    _In_ HANDLE(*pfnRegister)(_In_reads_(6) LPSTR sNameShort, _In_reads_(32) LPSTR szFileUTF8, _In_reads_(32) LPSTR szFileJSON),
+    _In_ HANDLE(*pfnRegister)(_In_reads_(6) LPSTR sNameShort, _In_reads_(32) LPSTR szFileUTF8),
     _In_ VOID(*pfnClose)(_In_ HANDLE hTimeline),
-    _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ QWORD qwValue, _In_ LPWSTR wszText),
+    _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPWSTR wszText),
     _In_ VOID(*pfnEntryAddBySql)(_In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPSTR *pszEntrySql)
 ) {
     HANDLE hTimeline;
@@ -393,7 +395,7 @@ VOID PluginManager_FcTimeline(
     PPLUGIN_ENTRY pModule = (PPLUGIN_ENTRY)ctxVmm->PluginManager.FLinkForensic;
     while(pModule) {
         if(pModule->fc.pfnTimeline) {
-            hTimeline = pfnRegister(pModule->fc.Timeline.sNameShort, pModule->fc.Timeline.szFileUTF8, pModule->fc.Timeline.szFileJSON);
+            hTimeline = pfnRegister(pModule->fc.Timeline.sNameShort, pModule->fc.Timeline.szFileUTF8);
             if(hTimeline) {
                 pModule->fc.pfnTimeline(pModule->fc.ctxfc, hTimeline, pfnAddEntry, pfnEntryAddBySql);
                 pfnClose(hTimeline);
@@ -403,6 +405,37 @@ VOID PluginManager_FcTimeline(
     }
     Statistics_CallEnd(STATISTICS_ID_PluginManager_FcTimeline, tmStart);
 }
+
+/*
+* Call each plugin capable of forensic json log. Plugins may be process or global.
+* NB! This function is meant to be called by the core forensic subsystem only.
+* -- pfnAddEntry = callback function to call to add a json entry.
+* -- return = 0 (to make function compatible with LPTHREAD_START_ROUTINE).
+*/
+DWORD PluginManager_FcLogJSON(_In_ VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
+{
+    VMMDLL_PLUGIN_CONTEXT ctxPlugin;
+    QWORD tmStart = Statistics_CallStart();
+    PPLUGIN_ENTRY pPlugin = (PPLUGIN_ENTRY)ctxVmm->PluginManager.FLinkForensic;
+    PVMM_PROCESS pObProcess = NULL;
+    while(pPlugin && ctxVmm->Work.fEnabled) {
+        if(pPlugin->fc.pfnLogJSON) {
+            // global plugins:
+            PluginManager_ContextInitialize(&ctxPlugin, pPlugin, NULL, NULL);
+            pPlugin->fc.pfnLogJSON(&ctxPlugin, pfnLogJSON);
+            // per-process plugins:
+            while((pObProcess = VmmProcessGetNext(pObProcess, 0))) {
+                PluginManager_ContextInitialize(&ctxPlugin, pPlugin, pObProcess, NULL);
+                pPlugin->fc.pfnLogJSON(&ctxPlugin, pfnLogJSON);
+            }
+        }
+        pPlugin = pPlugin->FLinkForensic;
+    }
+    Statistics_CallEnd(STATISTICS_ID_PluginManager_FcLogJSON, tmStart);
+    return 0;
+}
+
+
 
 // ----------------------------------------------------------------------------
 // MODULES REGISTRATION/CLEANUP FUNCTIONALITY - IMPLEMENTATION BELOW:
@@ -443,11 +476,11 @@ BOOL PluginManager_Register(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo)
     pModule->fc.pfnInitialize = pRegInfo->reg_fnfc.pfnInitialize;
     pModule->fc.pfnFinalize = pRegInfo->reg_fnfc.pfnFinalize;
     pModule->fc.pfnTimeline = pRegInfo->reg_fnfc.pfnTimeline;
+    pModule->fc.pfnLogJSON = pRegInfo->reg_fnfc.pfnLogJSON;
     pModule->fc.pfnIngestPhysmem = pRegInfo->reg_fnfc.pfnIngestPhysmem;
     pModule->fc.pfnIngestFinalize = pRegInfo->reg_fnfc.pfnIngestFinalize;
     memcpy(pModule->fc.Timeline.sNameShort, pRegInfo->reg_info.sTimelineNameShort, _countof(pModule->fc.Timeline.sNameShort));
     memcpy(pModule->fc.Timeline.szFileUTF8, pRegInfo->reg_info.szTimelineFileUTF8, _countof(pModule->fc.Timeline.szFileUTF8));
-    memcpy(pModule->fc.Timeline.szFileJSON, pRegInfo->reg_info.szTimelineFileJSON, _countof(pModule->fc.Timeline.szFileJSON));
     if(pRegInfo->reg_fnfc.pfnIngestPhysmem) {
         ctxVmm->PluginManager.fc.hEvent[ctxVmm->PluginManager.fc.cEvent] = CreateEvent(NULL, TRUE, TRUE, NULL);
         pModule->fc.phEventIngestFinish = ctxVmm->PluginManager.fc.hEvent[ctxVmm->PluginManager.fc.cEvent++];
@@ -457,7 +490,7 @@ BOOL PluginManager_Register(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo)
         pModule->FLinkNotify = (PPLUGIN_ENTRY)ctxVmm->PluginManager.FLinkNotify;
         ctxVmm->PluginManager.FLinkNotify = pModule;
     }
-    if(pModule->fc.pfnInitialize || pModule->fc.pfnFinalize || pModule->fc.pfnTimeline || pModule->fc.pfnIngestPhysmem || pModule->fc.pfnIngestFinalize) {
+    if(pModule->fc.pfnInitialize || pModule->fc.pfnFinalize || pModule->fc.pfnTimeline || pModule->fc.pfnLogJSON || pModule->fc.pfnIngestPhysmem || pModule->fc.pfnIngestFinalize) {
         pModule->FLinkForensic = (PPLUGIN_ENTRY)ctxVmm->PluginManager.FLinkForensic;
         ctxVmm->PluginManager.FLinkForensic = pModule;
     }

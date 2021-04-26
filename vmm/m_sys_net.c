@@ -107,7 +107,7 @@ BOOL MSysNet_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 VOID MSysNet_Timeline(
     _In_opt_ PVOID ctxfc,
     _In_ HANDLE hTimeline,
-    _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ QWORD qwValue, _In_ LPWSTR wszText),
+    _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPWSTR wszText),
     _In_ VOID(*pfnEntryAddBySql)(_In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPSTR *pszEntrySql)
 ) {
     DWORD i;
@@ -117,11 +117,46 @@ VOID MSysNet_Timeline(
         for(i = 0; i < pObNetMap->cMap; i++) {
             pe = pObNetMap->pMap + i;
             if(pe->ftTime && pe->wszText[0]) {
-                pfnAddEntry(hTimeline, pe->ftTime, FC_TIMELINE_ACTION_CREATE, pe->dwPID, pe->vaObj, pe->wszText);
+                pfnAddEntry(hTimeline, pe->ftTime, FC_TIMELINE_ACTION_CREATE, pe->dwPID, 0, pe->vaObj, pe->wszText);
             }
         }
         Ob_DECREF(pObNetMap);
     }
+}
+
+VOID MSysNet_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
+{
+    PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd;
+    PVMMOB_MAP_NET pObNetMap = NULL;
+    PVMM_MAP_NETENTRY pe;
+    DWORD i;
+    PVMM_PROCESS pObProcess = NULL;
+    CHAR szTime[24], szu[MAX_PATH];
+    if(ctxP->pProcess || !(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)))) { return; }
+    pd->dwVersion = VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION;
+    pd->szjType = "net";
+    if(VmmMap_GetNet(&pObNetMap)) {
+        for(i = 0; i < pObNetMap->cMap; i++) {
+            pe = pObNetMap->pMap + i;
+            szu[0] = 0;
+            if((pObProcess = VmmProcessGet(pe->dwPID))) {
+                Util_FileTime2String(pe->ftTime, szTime);
+                snprintf(szu, _countof(szu), "proc:[%s] time:[%s] path:[%s]",
+                    pObProcess ? pObProcess->pObPersistent->uszNameLong : "",
+                    szTime,
+                    pObProcess ? pObProcess->pObPersistent->uszPathKernel : "");
+                Ob_DECREF_NULL(&pObProcess);
+            }
+            pd->i = i;
+            pd->dwPID = pe->dwPID;
+            pd->vaObj = pe->vaObj;
+            pd->wsz[0] = pe->wszText;
+            pd->szu[1] = szu;
+            pfnLogJSON(pd);
+        }
+    }
+    Ob_DECREF(pObNetMap);
+    LocalFree(pd);
 }
 
 VOID M_SysNet_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
@@ -133,8 +168,8 @@ VOID M_SysNet_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     pRI->reg_fn.pfnList = MSysNet_List;                         // List function supported
     pRI->reg_fn.pfnRead = MSysNet_Read;                         // Read function supported
     pRI->reg_fnfc.pfnTimeline = MSysNet_Timeline;               // Timeline supported
-    memcpy(pRI->reg_info.sTimelineNameShort, "Net   ", 6);
+    pRI->reg_fnfc.pfnLogJSON = MSysNet_FcLogJSON;               // JSON log function supported
+    memcpy(pRI->reg_info.sTimelineNameShort, "Net", 4);
     strncpy_s(pRI->reg_info.szTimelineFileUTF8, 32, "timeline_net.txt", _TRUNCATE);
-    strncpy_s(pRI->reg_info.szTimelineFileJSON, 32, "timeline_net.json", _TRUNCATE);
     pRI->pfnPluginManager_Register(pRI);
 }
