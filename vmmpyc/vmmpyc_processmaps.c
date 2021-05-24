@@ -24,10 +24,10 @@ VmmPycProcessMaps_pte(PyObj_ProcessMaps *self, PyObject *args)
     if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
     Py_BEGIN_ALLOW_THREADS;
     result =
-        VMMDLL_Map_GetPte(self->dwPID, NULL, &cbPteMap, fIdentifyModules) &&
+        VMMDLL_Map_GetPteU(self->dwPID, NULL, &cbPteMap, fIdentifyModules) &&
         cbPteMap &&
         (pPteMap = LocalAlloc(0, cbPteMap)) &&
-        VMMDLL_Map_GetPte(self->dwPID, pPteMap, &cbPteMap, fIdentifyModules);
+        VMMDLL_Map_GetPteU(self->dwPID, pPteMap, &cbPteMap, fIdentifyModules);
     Py_END_ALLOW_THREADS;
     if(!result || (pPteMap->dwVersion != VMMDLL_MAP_PTE_VERSION)) {
         Py_DECREF(pyList);
@@ -42,14 +42,14 @@ VmmPycProcessMaps_pte(PyObj_ProcessMaps *self, PyObject *args)
             PyDict_SetItemString_DECREF(pyDict, "pages", PyLong_FromUnsignedLongLong(pe->cPages));
             PyDict_SetItemString_DECREF(pyDict, "pages-sw", PyLong_FromUnsignedLong(pe->cSoftware));
             PyDict_SetItemString_DECREF(pyDict, "wow64", PyBool_FromLong((long)pe->fWoW64));
-            PyDict_SetItemString_DECREF(pyDict, "tag", PyUnicode_FromWideChar(pe->wszText, -1));
+            PyDict_SetItemString_DECREF(pyDict, "tag", PyUnicode_FromString(pe->uszText));
             PyDict_SetItemString_DECREF(pyDict, "flags-pte", PyLong_FromUnsignedLongLong(pe->fPage));
             sz[0] = (pe->fPage & VMMDLL_MEMMAP_FLAG_PAGE_NS) ? '-' : 's';
             sz[1] = 'r';
             sz[2] = (pe->fPage & VMMDLL_MEMMAP_FLAG_PAGE_W) ? 'w' : '-';
             sz[3] = (pe->fPage & VMMDLL_MEMMAP_FLAG_PAGE_NX) ? '-' : 'x';
             sz[4] = 0;
-            PyDict_SetItemString_DECREF(pyDict, "flags", PyUnicode_FromFormat("%s", sz));
+            PyDict_SetItemString_DECREF(pyDict, "flags", PyUnicode_FromString(sz));
             PyList_Append_DECREF(pyList, pyDict);
         }
     }
@@ -106,10 +106,10 @@ VmmPycProcessMaps_vad(PyObj_ProcessMaps *self, PyObject *args)
     if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
     Py_BEGIN_ALLOW_THREADS;
     result =
-        VMMDLL_Map_GetVad(self->dwPID, NULL, &cbVadMap, fIdentifyModules) &&
+        VMMDLL_Map_GetVadU(self->dwPID, NULL, &cbVadMap, fIdentifyModules) &&
         cbVadMap &&
         (pVadMap = LocalAlloc(0, cbVadMap)) &&
-        VMMDLL_Map_GetVad(self->dwPID, pVadMap, &cbVadMap, fIdentifyModules);
+        VMMDLL_Map_GetVadU(self->dwPID, pVadMap, &cbVadMap, fIdentifyModules);
     Py_END_ALLOW_THREADS;
     if(!result || (pVadMap->dwVersion != VMMDLL_MAP_VAD_VERSION)) {
         Py_DECREF(pyList);
@@ -129,9 +129,9 @@ VmmPycProcessMaps_vad(PyObj_ProcessMaps *self, PyObject *args)
             PyDict_SetItemString_DECREF(pyDict, "prototype-len", PyLong_FromUnsignedLong(pe->cbPrototypePte));
             PyDict_SetItemString_DECREF(pyDict, "mem_commit", PyBool_FromLong((long)pe->MemCommit));
             PyDict_SetItemString_DECREF(pyDict, "commit_charge", PyLong_FromUnsignedLong(pe->CommitCharge));
-            PyDict_SetItemString_DECREF(pyDict, "protection", PyUnicode_FromFormat("%s", szVadProtection));
+            PyDict_SetItemString_DECREF(pyDict, "protection", PyUnicode_FromString(szVadProtection));
             PyDict_SetItemString_DECREF(pyDict, "type", PyUnicode_FromFormat("%s", VmmPycProcessMaps_vad_Type(pe)));
-            PyDict_SetItemString_DECREF(pyDict, "tag", PyUnicode_FromWideChar(pe->wszText, -1));
+            PyDict_SetItemString_DECREF(pyDict, "tag", PyUnicode_FromString(pe->uszText));
             PyList_Append_DECREF(pyList, pyDict);
         }
     }
@@ -212,10 +212,10 @@ VmmPycProcessMaps_unloaded_module(PyObj_ProcessMaps *self, PyObject *args)
     if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
     Py_BEGIN_ALLOW_THREADS;
     result =
-        VMMDLL_Map_GetUnloadedModule(self->dwPID, NULL, &cbUnloadedMap) &&
+        VMMDLL_Map_GetUnloadedModuleU(self->dwPID, NULL, &cbUnloadedMap) &&
         cbUnloadedMap &&
         (pUnloadedMap = LocalAlloc(0, cbUnloadedMap)) &&
-        VMMDLL_Map_GetUnloadedModule(self->dwPID, pUnloadedMap, &cbUnloadedMap);
+        VMMDLL_Map_GetUnloadedModuleU(self->dwPID, pUnloadedMap, &cbUnloadedMap);
     Py_END_ALLOW_THREADS;
     if(!result || (pUnloadedMap->dwVersion != VMMDLL_MAP_UNLOADEDMODULE_VERSION)) {
         Py_DECREF(pyList);
@@ -228,7 +228,7 @@ VmmPycProcessMaps_unloaded_module(PyObj_ProcessMaps *self, PyObject *args)
             PyDict_SetItemString_DECREF(pyDict, "va", PyLong_FromUnsignedLongLong(pe->vaBase));
             PyDict_SetItemString_DECREF(pyDict, "size", PyLong_FromUnsignedLong(pe->cbImageSize));
             PyDict_SetItemString_DECREF(pyDict, "wow64", PyBool_FromLong((long)pe->fWoW64));
-            PyDict_SetItemString_DECREF(pyDict, "name", PyUnicode_FromWideChar(pe->wszText, -1));
+            PyDict_SetItemString_DECREF(pyDict, "name", PyUnicode_FromString(pe->uszText));
             PyDict_SetItemString_DECREF(pyDict, "dwCheckSum", PyLong_FromUnsignedLong(pe->dwCheckSum));
             PyDict_SetItemString_DECREF(pyDict, "dwTimeDateStamp", PyLong_FromUnsignedLong(pe->dwTimeDateStamp));
             PyDict_SetItemString_DECREF(pyDict, "ft", PyLong_FromUnsignedLongLong(pe->ftUnload));
@@ -349,10 +349,10 @@ VmmPycProcessMaps_handle(PyObj_ProcessMaps *self, PyObject *args)
     if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
     Py_BEGIN_ALLOW_THREADS;
     result =
-        VMMDLL_Map_GetHandle(self->dwPID, NULL, &cbHandleMap) &&
+        VMMDLL_Map_GetHandleU(self->dwPID, NULL, &cbHandleMap) &&
         cbHandleMap &&
         (pHandleMap = LocalAlloc(0, cbHandleMap)) &&
-        VMMDLL_Map_GetHandle(self->dwPID, pHandleMap, &cbHandleMap);
+        VMMDLL_Map_GetHandleU(self->dwPID, pHandleMap, &cbHandleMap);
     Py_END_ALLOW_THREADS;
     if(!result || (pHandleMap->dwVersion != VMMDLL_MAP_HANDLE_VERSION)) {
         Py_DECREF(pyList);
@@ -372,8 +372,8 @@ VmmPycProcessMaps_handle(PyObj_ProcessMaps *self, PyObject *args)
             PyDict_SetItemString_DECREF(pyDict, "cpointer", PyLong_FromUnsignedLongLong(pe->qwPointerCount));
             PyDict_SetItemString_DECREF(pyDict, "va-object-creatinfo", PyLong_FromUnsignedLongLong(pe->vaObjectCreateInfo));
             PyDict_SetItemString_DECREF(pyDict, "va-securitydescriptor", PyLong_FromUnsignedLongLong(pe->vaSecurityDescriptor));
-            PyDict_SetItemString_DECREF(pyDict, "tag", PyUnicode_FromWideChar(pe->wszText, -1));
-            PyDict_SetItemString_DECREF(pyDict, "type", PyUnicode_FromWideChar(pe->wszType, -1));
+            PyDict_SetItemString_DECREF(pyDict, "tag", PyUnicode_FromString(pe->uszText));
+            PyDict_SetItemString_DECREF(pyDict, "type", PyUnicode_FromString(pe->uszType));
             PyList_Append_DECREF(pyList, pyDict);
         }
     }

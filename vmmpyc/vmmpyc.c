@@ -52,8 +52,8 @@ PyObject* VmmPyc_MemReadScatter(_In_ DWORD dwPID, _In_ LPSTR szFN, PyObject *arg
         pMEM = ppMEMs[i];
         if((pyDict = PyDict_New())) {
             PyDict_SetItemString_DECREF(pyDict, "addr", PyLong_FromUnsignedLongLong(pMEM->qwA));
-            PyDict_SetItemString_DECREF(pyDict, ((dwPID == -1) ? "pa" : "va"), PyLong_FromUnsignedLongLong(pMEM->qwA));
-            PyDict_SetItemString_DECREF(pyDict, "data", PyBytes_FromStringAndSize(pMEM->pb, 0x1000));
+            PyDict_SetItemString_DECREF(pyDict, ((dwPID == 0xffffffff) ? "pa" : "va"), PyLong_FromUnsignedLongLong(pMEM->qwA));
+            PyDict_SetItemString_DECREF(pyDict, "data", PyBytes_FromStringAndSize((const char *)pMEM->pb, 0x1000));
             PyDict_SetItemString_DECREF(pyDict, "size", PyLong_FromUnsignedLong(pMEM->cb));
             PyList_Append_DECREF(pyListDst, pyDict);
         }
@@ -82,7 +82,7 @@ PyObject* VmmPyc_MemRead(_In_ DWORD dwPID, _In_ LPSTR szFN, PyObject *args)
         LocalFree(pb);
         return PyErr_Format(PyExc_RuntimeError, "%s: Failed.", szFN);
     }
-    pyBytes = PyBytes_FromStringAndSize(pb, cbRead);
+    pyBytes = PyBytes_FromStringAndSize((const char *)pb, cbRead);
     LocalFree(pb);
     return pyBytes;
 }
@@ -122,13 +122,16 @@ static PyModuleDef VMMPYC_EmbModule = {
     NULL, NULL, NULL, NULL
 };
 
-__declspec(dllexport)
+EXPORTED_FUNCTION
 PyObject* PyInit_vmmpyc(void)
 {
     DWORD i;
     PyObject *pPyModule;
     BOOL(*pfnTYPE_INITIALIZERS[])(PyObject*) = {
-        VmmPycPlugin_InitializeType, VmmPycPhysicalMemory_InitializeType,
+#ifdef _WIN32
+        VmmPycPlugin_InitializeType,
+#endif /* _WIN32 */
+        VmmPycPhysicalMemory_InitializeType,
         VmmPycVirtualMemory_InitializeType, VmmPycRegMemory_InitializeType,
         VmmPycRegHive_InitializeType, VmmPycRegKey_InitializeType, VmmPycRegValue_InitializeType,
         VmmPycProcess_InitializeType, VmmPycProcessMaps_InitializeType,

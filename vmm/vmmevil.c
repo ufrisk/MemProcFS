@@ -6,6 +6,7 @@
 #include "vmmevil.h"
 #include "vmmwin.h"
 #include "pe.h"
+#include "charutil.h"
 #include "util.h"
 
 #define VMMEVIL_MAXCOUNT_VAD_PATCHED_PE             4   // max number of "patched" entries per vad
@@ -293,9 +294,9 @@ VOID VmmEvil_ProcessScan_Modules(_In_ PVMM_PROCESS pProcess, _Inout_ POB_MAP pmE
 VOID VmmEvil_ProcessScan_PebMasquerade(_In_ PVMM_PROCESS pProcess, _Inout_ POB_MAP pmEvil)
 {
     PVMMWIN_USER_PROCESS_PARAMETERS pu = VmmWin_UserProcessParameters_Get(pProcess);
-    if(!pu || (pu->cwszImagePathName < 12) || pProcess->pObPersistent->cwszPathKernel < 24) { return; }                                 // length sanity checks
-    if(Util_StrEndsWithW(pProcess->pObPersistent->wszPathKernel, pu->wszImagePathName + 12, TRUE)) { return; }                          // ends-with
-    if(!Util_StrEndsWithW(pProcess->pObPersistent->wszPathKernel, pu->wszImagePathName + pu->cwszImagePathName - 4, TRUE)) { return; }  // file-ending match (remove windows apps)
+    if(!pu || (pu->cbuImagePathName < 12) || pProcess->pObPersistent->cuszPathKernel < 24) { return; }                                  // length sanity checks
+    if(CharUtil_StrEndsWith(pProcess->pObPersistent->uszPathKernel, pu->uszImagePathName + 12, TRUE)) { return; }                       // ends-with
+    if(!CharUtil_StrEndsWith(pProcess->pObPersistent->uszPathKernel, pu->uszImagePathName + strlen(pu->uszImagePathName) - 4, TRUE)) { return; }  // file-ending match (remove windows apps)
     VmmEvil_AddEvil_NoVadReq(pmEvil, pProcess, VMM_EVIL_TP_PEB_MASQUERADE, 0, 0, 0, FALSE);
 }
 

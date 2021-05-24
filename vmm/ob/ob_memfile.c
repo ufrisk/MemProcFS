@@ -205,7 +205,7 @@ QWORD ObMemFile_Size(_In_opt_ POB_MEMFILE pmf)
 _Success_(return != NULL)
 POB_MEMFILE ObMemFile_New()
 {
-    POB_MEMFILE pObMemFile = Ob_Alloc(OB_TAG_CORE_MEMFILE, LMEM_ZEROINIT, sizeof(OB_MEMFILE), _ObMemFile_ObCloseCallback, NULL);
+    POB_MEMFILE pObMemFile = Ob_Alloc(OB_TAG_CORE_MEMFILE, LMEM_ZEROINIT, sizeof(OB_MEMFILE), (OB_CLEANUP_CB)_ObMemFile_ObCloseCallback, NULL);
     if(pObMemFile) {
         pObMemFile->Directory[0] = pObMemFile->Table0;
     }

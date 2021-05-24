@@ -17,7 +17,7 @@ NTSTATUS M_FileHandlesVads_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_
     POB_MAP pmObFiles = NULL;
     POB_VMMWINOBJ_OBJECT pOb = NULL;
     *pcbRead = 0;
-    if(!(va = wcstoull(ctx->wszPath, NULL, 16))) { return VMMDLL_STATUS_FILE_INVALID; }
+    if(!(va = strtoull(ctx->uszPath, NULL, 16))) { return VMMDLL_STATUS_FILE_INVALID; }
     if(!(pOb = VmmWinObj_Get(va))) {
         VmmWinObjFile_GetByProcess(ctx->pProcess, &pmObFiles, fHandles);
         Ob_DECREF_NULL(&pmObFiles);
@@ -49,12 +49,12 @@ BOOL M_FileHandlesVads_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFi
 {
     POB_MAP pmObFiles;
     POB_VMMWINOBJ_FILE pObFile;
-    WCHAR wszAddressPath[MAX_PATH];
-    if(ctx->wszPath[0]) { return FALSE; }
+    CHAR uszAddressPath[MAX_PATH];
+    if(ctx->uszPath[0]) { return FALSE; }
     if(VmmWinObjFile_GetByProcess(ctx->pProcess, &pmObFiles, fHandles)) {
         while((pObFile = ObMap_Pop(pmObFiles))) {
-            Util_PathPrependVA(wszAddressPath, pObFile->va, ctxVmm->f32, pObFile->wszName);
-            VMMDLL_VfsList_AddFile(pFileList, wszAddressPath, pObFile->cb, NULL);
+            Util_PathPrependVA(uszAddressPath, pObFile->va, ctxVmm->f32, pObFile->uszName);
+            VMMDLL_VfsList_AddFile(pFileList, uszAddressPath, pObFile->cb, NULL);
         }
         Ob_DECREF_NULL(&pmObFiles);
     }
@@ -76,14 +76,14 @@ VOID M_FileHandlesVads_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if(!((pRI->tpSystem == VMM_SYSTEM_WINDOWS_X64) || (pRI->tpSystem == VMM_SYSTEM_WINDOWS_X86))) { return; }
     // file handles
-    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\files\\handles");      // module name
+    strcpy_s(pRI->reg_info.uszPathName, 128, "\\files\\handles");       // module name
     pRI->reg_info.fRootModule = FALSE;                                  // module shows in root directory
     pRI->reg_info.fProcessModule = TRUE;                                // module shows in process directory
     pRI->reg_fn.pfnList = M_FileHandles_List;                           // List function supported
     pRI->reg_fn.pfnRead = M_FileHandles_Read;                           // Read function supported
     pRI->pfnPluginManager_Register(pRI);
     // file vads
-    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\files\\vads");         // module name
+    strcpy_s(pRI->reg_info.uszPathName, 128, "\\files\\vads");          // module name
     pRI->reg_info.fRootModule = FALSE;                                  // module shows in root directory
     pRI->reg_info.fProcessModule = TRUE;                                // module shows in process directory
     pRI->reg_fn.pfnList = M_FileVads_List;                              // List function supported

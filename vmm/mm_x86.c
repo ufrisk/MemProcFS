@@ -102,7 +102,7 @@ VOID MmX86_MapInitialize_Index(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_PTEENTR
 
 VOID MmX86_CallbackCleanup_ObPteMap(PVMMOB_MAP_PTE pOb)
 {
-    LocalFree(pOb->wszMultiText);
+    LocalFree(pOb->pbMultiText);
 }
 
 _Success_(return)
@@ -130,14 +130,14 @@ BOOL MmX86_PteMapInitialize(_In_ PVMM_PROCESS pProcess)
         Ob_DECREF(pObPD);
     }
     // allocate VmmOb depending on result
-    pObMap = Ob_Alloc(OB_TAG_MAP_PTE, 0, sizeof(VMMOB_MAP_PTE) + cMemMap * sizeof(VMM_MAP_PTEENTRY), MmX86_CallbackCleanup_ObPteMap, NULL);
+    pObMap = Ob_Alloc(OB_TAG_MAP_PTE, 0, sizeof(VMMOB_MAP_PTE) + cMemMap * sizeof(VMM_MAP_PTEENTRY), (OB_CLEANUP_CB)MmX86_CallbackCleanup_ObPteMap, NULL);
     if(!pObMap) {
         pProcess->Map.pObPte = Ob_Alloc(OB_TAG_MAP_PTE, LMEM_ZEROINIT, sizeof(VMMOB_MAP_PTE), NULL, NULL);
         LeaveCriticalSection(&pProcess->LockUpdate);
         LocalFree(pMemMap);
         return TRUE;
     }
-    pObMap->wszMultiText = NULL;
+    pObMap->pbMultiText = NULL;
     pObMap->cbMultiText = 0;
     pObMap->fTagScan = FALSE;
     pObMap->cMap = cMemMap;
@@ -277,7 +277,7 @@ VOID MmX86_Phys2VirtGetInformation_Index(_In_ PVMM_PROCESS pProcess, _In_ DWORD 
             continue;
         }
         if(pte & 0x80 /* PS */) {
-            pa = (pte & 0xffc00000 | ((QWORD)(pte & 0x001fe000) << 19));
+            pa = ((pte & 0xffc00000) | ((QWORD)(pte & 0x001fe000) << 19));
             if(pa == (pP2V->paTarget & 0xffc00000)) {
                 pP2V->pvaList[pP2V->cvaList] = va | (pP2V->paTarget & 0x3fffff);
                 pP2V->cvaList++;

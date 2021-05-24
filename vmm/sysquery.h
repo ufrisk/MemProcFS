@@ -17,11 +17,11 @@ QWORD SysQuery_TimeCurrent();
 /*
 * Query the system for current time zone and its bias in minutes against UCT.
 * NB! individual sessions connected remotely may have other time zones.
-* -- wszTimeZone = full name text representation - ex: 'Eastern Standard Time'.
+* -- uszTimeZone = full name text representation - ex: 'Eastern Standard Time'.
 * -- piActiveBias = bias against UCT in minutes - ex: (CET=UCT+1=-60).
 * -- return
 */
 _Success_(return)
-BOOL SysQuery_TimeZone(_Out_writes_opt_(32) LPWSTR wszTimeZone, _Out_opt_ int *piActiveBias);
+BOOL SysQuery_TimeZone(_Out_writes_opt_(32) LPSTR uszTimeZone, _Out_opt_ int *piActiveBias);
 
 #endif /* __SYSQUERY_H__ */

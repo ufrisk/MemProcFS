@@ -41,8 +41,8 @@ typedef struct tdOB_VMMWINOBJ_FILE {
     BOOL fCache;
     BOOL fImage;
     DWORD dwNameHash;
-    LPWSTR wszPath;
-    LPWSTR wszName;
+    LPSTR uszPath;
+    LPSTR uszName;
     QWORD vaControlArea;
     struct {
         BOOL fValid;
@@ -102,7 +102,7 @@ POB_VMMWINOBJ_OBJECT VmmWinObj_Get(_In_ QWORD va);
 * -- return
 */
 _Success_(return)
-BOOL VmmWinObjFile_GetByProcess(_In_ PVMM_PROCESS pProcess, _Out_ POB_MAP * ppmObFiles, _In_ BOOL fHandles);
+BOOL VmmWinObjFile_GetByProcess(_In_ PVMM_PROCESS pProcess, _Out_ POB_MAP *ppmObFiles, _In_ BOOL fHandles);
 
 /*
 * Read a contigious amount of file data and report the number of bytes read.
@@ -132,7 +132,7 @@ PVMMOB_MAP_KDRIVER VmmWinObjKDrv_Initialize();
 
 /*
 * Vfs Read: helper function to read object files in an object information dir.
-* -- wszPathFile
+* -- uszPathFile
 * -- iTypeIndex = the object type index in the ObjectTypeTable
 * -- vaObject
 * -- pb
@@ -141,7 +141,7 @@ PVMMOB_MAP_KDRIVER VmmWinObjKDrv_Initialize();
 * -- cbOffset
 * -- return
 */
-NTSTATUS VmmWinObjDisplay_VfsRead(_In_ LPWSTR wszPathFile, _In_opt_ DWORD iTypeIndex, _In_ QWORD vaObject, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
+NTSTATUS VmmWinObjDisplay_VfsRead(_In_ LPSTR uszPathFile, _In_opt_ DWORD iTypeIndex, _In_ QWORD vaObject, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 
 /*
 * Vfs List: helper function to list object files in an object information dir.

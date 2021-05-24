@@ -4,7 +4,7 @@
 //
 #ifndef __VMMWINDEF_H__
 #define __VMMWINDEF_H__
-#include <windows.h>
+#include "oscompatibility.h"
 
 #define O32_FILE_OBJECT_SectionObjectPointer            0x014
 #define O64_FILE_OBJECT_SectionObjectPointer            0x028

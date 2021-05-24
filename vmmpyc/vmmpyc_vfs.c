@@ -9,31 +9,36 @@ PyObject *g_pPyType_Vfs = NULL;
 
 typedef struct tdVMMPYCVFS_LIST {
     struct tdVMMPYCVFS_LIST *FLink;
-    WCHAR wszName[MAX_PATH];
+    CHAR uszName[3 * MAX_PATH];
     BOOL fIsDir;
     ULONG64 qwSize;
 } VMMPYCVFS_LIST, *PVMMPYCVFS_LIST;
 
-VOID Util_ReplaceSlash(_Inout_ LPWSTR wsz)
+LPSTR Util_ReplaceSlashAlloc(_In_opt_ LPSTR usz)
 {
-    DWORD i = 0;
-    while(wsz[i]) {
-        if(wsz[i] == '/') { wsz[i] = '\\'; }
-        i++;
+    DWORD i = 0, cbu = (usz ? (DWORD)strlen(usz) : 0) + 1;
+    LPSTR uszDst = LocalAlloc(LMEM_ZEROINIT, cbu);
+    if(usz && uszDst) {
+        memcpy(uszDst, usz, cbu);
+        while(uszDst[i]) {
+            if(uszDst[i] == '/') { uszDst[i] = '\\'; }
+            i++;
+        }
     }
+    return uszDst;
 }
 
-VOID VmmPycVfs_list_AddInternal(_Inout_ HANDLE h, _In_ LPWSTR wszName, _In_ ULONG64 size, _In_ BOOL fIsDirectory)
+VOID VmmPycVfs_list_AddInternal(_Inout_ HANDLE h, _In_ LPSTR uszName, _In_ ULONG64 size, _In_ BOOL fIsDirectory)
 {
     DWORD i = 0;
     PVMMPYCVFS_LIST pE;
     PVMMPYCVFS_LIST *ppE = (PVMMPYCVFS_LIST*)h;
     if((pE = LocalAlloc(0, sizeof(VMMPYCVFS_LIST)))) {
-        while(i < MAX_PATH && wszName && wszName[i]) {
-            pE->wszName[i] = wszName[i];
+        while(i < sizeof(pE->uszName) && uszName && uszName[i]) {
+            pE->uszName[i] = uszName[i];
             i++;
         }
-        pE->wszName[min(i, MAX_PATH - 1)] = 0;
+        pE->uszName[min(i, sizeof(pE->uszName) - 1)] = 0;
         pE->fIsDir = fIsDirectory;
         pE->qwSize = size;
         pE->FLink = *ppE;
@@ -41,14 +46,14 @@ VOID VmmPycVfs_list_AddInternal(_Inout_ HANDLE h, _In_ LPWSTR wszName, _In_ ULON
     }
 }
 
-VOID VmmPycVfs_list_AddFile(_Inout_ HANDLE h, _In_ LPWSTR wszName, _In_ ULONG64 size, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
+VOID VmmPycVfs_list_AddFile(_Inout_ HANDLE h, _In_ LPSTR uszName, _In_ ULONG64 size, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
 {
-    VmmPycVfs_list_AddInternal(h, wszName, size, FALSE);
+    VmmPycVfs_list_AddInternal(h, uszName, size, FALSE);
 }
 
-VOID VmmPycVfs_list_AddDirectory(_Inout_ HANDLE h, _In_ LPWSTR wszName, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
+VOID VmmPycVfs_list_AddDirectory(_Inout_ HANDLE h, _In_ LPSTR uszName, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
 {
-    VmmPycVfs_list_AddInternal(h, wszName, 0, TRUE);
+    VmmPycVfs_list_AddInternal(h, uszName, 0, TRUE);
 }
 
 // (STR) -> {{...}}
@@ -56,16 +61,13 @@ static PyObject*
 VmmPycVfs_list(PyObj_Vfs *self, PyObject *args)
 {
     PyObject *pyDict, *PyDict_Attr;
-    PyObject *pyKeyName, *pyUnicodePath;
+    PyObject *pyKeyName;
     BOOL result;
-    LPWSTR wszPath = NULL;
-    VMMDLL_VFS_FILELIST hFileList;
+    LPSTR uszPathPython = NULL, uszPath;
+    VMMDLL_VFS_FILELIST2 hFileList;
     PVMMPYCVFS_LIST pE = NULL, pE_Next;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Vfs.list(): Not initialized."); }
-    if(!PyArg_ParseTuple(args, "O!", &PyUnicode_Type, &pyUnicodePath)) {    // pyUnicodePath == borrowed reference - do not decrement
-        return PyErr_Format(PyExc_RuntimeError, "Vfs.list(): Illegal argument.");
-    }
-    if(!(wszPath = PyUnicode_AsWideCharString(pyUnicodePath, NULL))) {      // wszPath PyMem_Free() required 
+    if(!PyArg_ParseTuple(args, "s", &uszPathPython)) {
         return PyErr_Format(PyExc_RuntimeError, "Vfs.list(): Illegal argument.");
     }
     if(!(pyDict = PyDict_New())) { return PyErr_NoMemory(); }
@@ -74,14 +76,14 @@ VmmPycVfs_list(PyObj_Vfs *self, PyObject *args)
     hFileList.pfnAddFile = VmmPycVfs_list_AddFile;
     hFileList.pfnAddDirectory = VmmPycVfs_list_AddDirectory;
     hFileList.dwVersion = VMMDLL_VFS_FILELIST_VERSION;
-    Util_ReplaceSlash(wszPath);
-    result = VMMDLL_VfsList(wszPath, &hFileList);
+    uszPath = Util_ReplaceSlashAlloc(uszPathPython);
+    result = uszPath && VMMDLL_VfsListU(uszPath, &hFileList);
+    LocalFree(uszPath);
     pE = *(PVMMPYCVFS_LIST*)hFileList.h;
     Py_END_ALLOW_THREADS;
-    PyMem_Free(wszPath); wszPath = NULL;
     while(pE) {
         if((PyDict_Attr = PyDict_New())) {
-            pyKeyName = PyUnicode_FromWideChar(pE->wszName, -1);
+            pyKeyName = PyUnicode_FromString(pE->uszName);
             PyDict_SetItemString_DECREF(PyDict_Attr, "f_isdir", PyBool_FromLong(pE->fIsDir ? 1 : 0));
             PyDict_SetItemString_DECREF(PyDict_Attr, "size", PyLong_FromUnsignedLongLong(pE->qwSize));
             PyDict_SetItemString(PyDict_Attr, "name", pyKeyName);
@@ -104,33 +106,30 @@ VmmPycVfs_list(PyObj_Vfs *self, PyObject *args)
 static PyObject*
 VmmPycVfs_read(PyObj_Vfs *self, PyObject *args)
 {
-    PyObject *pyBytes, *pyUnicodePath;
+    PyObject *pyBytes;
     NTSTATUS nt;
     DWORD cb = 0x00100000, cbRead = 0;
     ULONG64 cbOffset = 0;
     PBYTE pb;
-    LPWSTR wszPath = NULL;
+    LPSTR uszPathPython = NULL, uszPath;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Vfs.read(): Not initialized."); }
-    if(!PyArg_ParseTuple(args, "O!|kK", &PyUnicode_Type, &pyUnicodePath, &cb, &cbOffset)) {     // pyUnicodePath == borrowed reference - do not decrement
+    if(!PyArg_ParseTuple(args, "s|kK", &uszPathPython, &cb, &cbOffset)) {
         return PyErr_Format(PyExc_RuntimeError, "Vfs.read(): Illegal argument.");
     }
     if(cb > 0x10000000) {
         return PyErr_Format(PyExc_RuntimeError, "Vfs.read(): Read exceeds maximum allowed (128MB).");
     }
-    if(!(wszPath = PyUnicode_AsWideCharString(pyUnicodePath, NULL))) {      // wszPath PyMem_Free() required
-        return PyErr_Format(PyExc_RuntimeError, "Vfs.read(): Illegal argument.");
-    }
     if(!(pb = LocalAlloc(0, cb))) { return PyErr_NoMemory(); }
     Py_BEGIN_ALLOW_THREADS;
-    Util_ReplaceSlash(wszPath);
-    nt = VMMDLL_VfsRead(wszPath, pb, cb, &cbRead, cbOffset);
+    uszPath = Util_ReplaceSlashAlloc(uszPathPython);
+    nt = VMMDLL_VfsReadU(uszPath, pb, cb, &cbRead, cbOffset);
+    LocalFree(uszPath);
     Py_END_ALLOW_THREADS;
-    PyMem_Free(wszPath); wszPath = NULL;
     if(nt != VMMDLL_STATUS_SUCCESS) {
         LocalFree(pb);
         return PyErr_Format(PyExc_RuntimeError, "Vfs.read(): Failed.");
     }
-    pyBytes = PyBytes_FromStringAndSize(pb, cbRead);
+    pyBytes = PyBytes_FromStringAndSize((const char*)pb, cbRead);
     LocalFree(pb);
     return pyBytes;
 }
@@ -139,15 +138,14 @@ VmmPycVfs_read(PyObj_Vfs *self, PyObject *args)
 static PyObject*
 VmmPycVfs_write(PyObj_Vfs *self, PyObject *args)
 {
-    PyObject *pyUnicodePath;
     BOOL result;
     QWORD cb;
     DWORD cbWritten;
     ULONG64 cbOffset;
     PBYTE pb;
-    LPWSTR wszPath = NULL;
+    LPSTR uszPathPython = NULL, uszPath;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Vfs.write(): Not initialized."); }
-    if(!PyArg_ParseTuple(args, "O!y#|K", &PyUnicode_Type, &pyUnicodePath, &pb, &cb, &cbOffset)) {   // pyUnicodePath == borrowed reference - do not decrement
+    if(!PyArg_ParseTuple(args, "sy#|K", &uszPathPython, &pb, &cb, &cbOffset)) {
         return PyErr_Format(PyExc_RuntimeError, "Vfs.write(): Illegal argument.");
     }  
     if(cb == 0) {
@@ -156,14 +154,11 @@ VmmPycVfs_write(PyObj_Vfs *self, PyObject *args)
     if(cb > 0x10000000) {
         return PyErr_Format(PyExc_RuntimeError, "Vfs.write(): Write exceeds maximum allowed (128MB).");
     }
-    if(!(wszPath = PyUnicode_AsWideCharString(pyUnicodePath, NULL))) {      // wszPath PyMem_Free() required 
-        return PyErr_Format(PyExc_RuntimeError, "Vfs.write(): Illegal argument.");
-    }
     Py_BEGIN_ALLOW_THREADS;
-    Util_ReplaceSlash(wszPath);
-    result = (VMMDLL_STATUS_SUCCESS == VMMDLL_VfsWrite(wszPath, pb, (DWORD)cb, &cbWritten, cbOffset));
+    uszPath = Util_ReplaceSlashAlloc(uszPathPython);
+    result = uszPath && (VMMDLL_STATUS_SUCCESS == VMMDLL_VfsWriteU(uszPath, pb, (DWORD)cb, &cbWritten, cbOffset));
+    LocalFree(uszPath);
     Py_END_ALLOW_THREADS;
-    PyMem_Free(wszPath); wszPath = NULL;
     if(!result) {
         return PyErr_Format(PyExc_RuntimeError, "Vfs.write(): Failed.");
     }

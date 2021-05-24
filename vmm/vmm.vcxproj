@@ -120,11 +120,13 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="..\includes\leechcore.h" />
+    <ClInclude Include="charutil.h" />
     <ClInclude Include="fc.h" />
     <ClInclude Include="mm.h" />
     <ClInclude Include="mm_pfn.h" />
     <ClInclude Include="m_modules.h" />
     <ClInclude Include="ob\ob.h" />
+    <ClInclude Include="oscompatibility.h" />
     <ClInclude Include="pdb.h" />
     <ClInclude Include="pe.h" />
     <ClInclude Include="resource.h" />
@@ -148,6 +150,7 @@
     <ClInclude Include="vmmwinsvc.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="charutil.c" />
     <ClCompile Include="fc.c" />
     <ClCompile Include="mm_pfn.c" />
     <ClCompile Include="mm_vad.c" />
@@ -155,6 +158,7 @@
     <ClCompile Include="mm_x64.c" />
     <ClCompile Include="mm_x86.c" />
     <ClCompile Include="mm_x86pae.c" />
+    <ClCompile Include="m_conf.c" />
     <ClCompile Include="m_fc_json.c" />
     <ClCompile Include="m_fc_module.c" />
     <ClCompile Include="m_fc_ntfs.c" />
@@ -170,7 +174,6 @@
     <ClCompile Include="m_minidump.c" />
     <ClCompile Include="m_phys2virt.c" />
     <ClCompile Include="m_proc_token.c" />
-    <ClCompile Include="m_status.c" />
     <ClCompile Include="m_sys.c" />
     <ClCompile Include="m_sys_cert.c" />
     <ClCompile Include="m_sys_driver.c" />
@@ -194,6 +197,7 @@
     <ClCompile Include="ob\ob_memfile.c" />
     <ClCompile Include="ob\ob_set.c" />
     <ClCompile Include="ob\ob_strmap.c" />
+    <ClCompile Include="oscompatibility.c" />
     <ClCompile Include="pdb.c" />
     <ClCompile Include="pe.c" />
     <ClCompile Include="sqlite\sqlite3.c" />
@@ -215,6 +219,7 @@
     <ClCompile Include="vmmwinsvc.c" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="Makefile" />
     <None Include="res\m_fc_json_elastic_import.ps1" />
     <None Include="vmmdll.def" />
   </ItemGroup>

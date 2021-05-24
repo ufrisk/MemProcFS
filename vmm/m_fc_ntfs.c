@@ -12,6 +12,7 @@
 #include "fc.h"
 #include "vmm.h"
 #include "pluginmanager.h"
+#include "charutil.h"
 #include "util.h"
 
 #define M_NTFS_INFO_LINELENGTH_UTF8          98
@@ -24,7 +25,7 @@ static LPSTR FC_SQL_SCHEMA_NTFS =
     "CREATE INDEX idx_ntfs_hash ON ntfs(hash); " \
     "CREATE INDEX idx_ntfs_hash_parent ON ntfs(hash_parent); " \
     "CREATE INDEX idx_oln_u ON ntfs(oln_u); " \
-    "CREATE VIEW v_ntfs AS SELECT *, SUBSTR(sz, osz+1) AS sz_sub FROM ntfs, str WHERE ntfs.id_str = str.id; ";
+    "CREATE VIEW v_ntfs AS SELECT * FROM ntfs, str WHERE ntfs.id_str = str.id; ";
 
 //-----------------------------------------------------------------------------
 // NTFS MFT WINDOWS DEFINES AND TYPEDEFS BELOW:
@@ -170,7 +171,7 @@ typedef struct tdNTFS_FILE_NAME {
     DWORD _Reserved;                    // +03c
     BYTE NameLength;                    // +040
     BYTE NameSpace;                     // +041
-    WCHAR Name[];                       // +042
+    WCHAR Name[0];                      // +042
 } NTFS_FILE_NAME, *PNTFS_FILE_NAME;
 
 
@@ -207,10 +208,8 @@ typedef struct tdFCNTFS {
     WORD wName_SeqNbr;                  // collision counter for wszName (in same directory)
     WORD iDirDepth;                     // directory depth from GlobalRoot
     DWORD iMap;                         // index (after setup)
-    DWORD cszu8Name;
-    QWORD cszu8NameSum;
     // initial general create attributes - name
-    WCHAR wszName[0];
+    CHAR uszName[0];
 } FCNTFS, *PFCNTFS;
 
 typedef struct tdFCNTFS_SETUP_CONTEXT {
@@ -292,7 +291,7 @@ fail:
 VOID FcNtfs_IngestMftEntry(_In_ PFCNTFS_SETUP_CONTEXT ctx, _In_ QWORD qwPhysicalAddress, _In_opt_ QWORD qwVirtualAddress, _In_reads_(0x400) PBYTE pb)
 {
     QWORD qwHashDuplicateCheck;
-    DWORD oA, cbData = 0;
+    DWORD oA, cbData = 0, cbuName;
     PNTFS_FILE_RECORD pr;
     PNTFS_ATTR pa;
     PNTFS_FILE_NAME pfnC, pfn = NULL;
@@ -330,7 +329,9 @@ VOID FcNtfs_IngestMftEntry(_In_ PFCNTFS_SETUP_CONTEXT ctx, _In_ QWORD qwPhysical
     qwHashDuplicateCheck = (((QWORD)pr->MftRecordNumber << 32) ^ pr->LogFileSequenceNumber);
     if(ObMap_ExistsKey(ctx->pmDuplicate, qwHashDuplicateCheck)) { return; }
     // Create NTFS object and populate:
-    if(!(pNtfs = LocalAlloc(LMEM_ZEROINIT, sizeof(FCNTFS) + ((pfn->NameLength + 1ULL) << 1)))) { return; }
+    if(!CharUtil_WtoU(pfn->Name, pfn->NameLength, NULL, 0, NULL, &cbuName, 0)) { return; }
+    if(!(pNtfs = LocalAlloc(LMEM_ZEROINIT, sizeof(FCNTFS) + cbuName))) { return; }
+    if(!CharUtil_WtoU(pfn->Name, pfn->NameLength, pNtfs->uszName, cbuName, NULL, &cbuName, CHARUTIL_FLAG_STR_BUFONLY)) { return; }
     pNtfs->pa = qwPhysicalAddress;
     pNtfs->va = qwVirtualAddress;
     pNtfs->ftCreate = psi->TimeCreate;
@@ -345,7 +346,6 @@ VOID FcNtfs_IngestMftEntry(_In_ PFCNTFS_SETUP_CONTEXT ctx, _In_ QWORD qwPhysical
     pNtfs->wMftSequenceNumber = pr->SequenceNumber;
     pNtfs->Setup.dwParentRecordNumber = (DWORD)pfn->ParentDirectory.SegmentNumber;
     pNtfs->Setup.wParentSeqenceNumber = (WORD)pfn->ParentDirectory.SequenceNumber;
-    memcpy(pNtfs->wszName, pfn->Name, (QWORD)pfn->NameLength << 1);
     // Commit:
     ObMap_Push(ctx->pmDuplicate, qwHashDuplicateCheck, pNtfs);
     if(pNtfs->fDir) {
@@ -365,14 +365,14 @@ VOID FcNtfs_IngestMftEntry(_In_ PFCNTFS_SETUP_CONTEXT ctx, _In_ QWORD qwPhysical
         ObSet_Push(ctx->psDirFile, (QWORD)pNtfs);
     }
     // Debug output:
-    vmmwprintfvv_fn(
-        L"   %08x:%04x %12llx %8lli : %c : %s \n",
+    vmmprintfvv_fn(
+        "   %08x:%04x %12llx %8lli : %c : %s \n",
         pNtfs->Setup.dwParentRecordNumber,
         pNtfs->Setup.wParentSeqenceNumber,
         pNtfs->pa,
         pNtfs->cbFileSize,
         (pNtfs->fDir ? 'D' : ' '),
-        pNtfs->wszName
+        pNtfs->uszName
     );
 }
 
@@ -523,12 +523,12 @@ VOID FcNtfs_FinalizeMerge1(_In_ PFCNTFS_SETUP_CONTEXT ctx)
 /*
 * Create a "synthentic" root directory
 */
-PFCNTFS FcNtfs_FinalizeCreateSynthenticDir(_In_ PFCNTFS_SETUP_CONTEXT ctx, _In_ DWORD dwMftRecordNumber, _In_ LPWSTR wszName, _In_ BOOL fRootDir)
+PFCNTFS FcNtfs_FinalizeCreateSynthenticDir(_In_ PFCNTFS_SETUP_CONTEXT ctx, _In_ DWORD dwMftRecordNumber, _In_ LPSTR uszName, _In_ BOOL fRootDir)
 {
     PFCNTFS pNtfs, pNtfs_Coll;
-    QWORD cwszName = wcslen(wszName);
-    if(!(pNtfs = LocalAlloc(LMEM_ZEROINIT, sizeof(FCNTFS) + ((cwszName + 1) << 1)))) { return NULL; }
-    memcpy(pNtfs->wszName, wszName, cwszName << 1);
+    QWORD cuszName = strlen(uszName);
+    if(!(pNtfs = LocalAlloc(LMEM_ZEROINIT, sizeof(FCNTFS) + cuszName + 1))) { return NULL; }
+    memcpy(pNtfs->uszName, uszName, cuszName + 1);
     pNtfs->dwMftRecordNumber = dwMftRecordNumber;
     pNtfs->wMftSequenceNumber = (WORD)-1;
     pNtfs->fSynthenticDir = TRUE;
@@ -558,8 +558,8 @@ PFCNTFS FcNtfs_FinalizeMerge2(_In_ PFCNTFS_SETUP_CONTEXT ctx)
 {
     PFCNTFS pe, pRootOrphan, pRootGlobal = NULL;
     PDWORD pdwRecordNumberArray = NULL;
-    DWORD cMax = 0, i, c, dwLastRecord = -1, iDirCount = 0;
-    WCHAR wszDirName[16];
+    DWORD cMax = 0, i, c = 0, dwLastRecord = -1, iDirCount = 0;
+    CHAR uszDirName[16];
     // 1: Generate sorted array of ParentRecordNumber and move Orphan into DirFile Set.
     if(!(pdwRecordNumberArray = LocalAlloc(0, sizeof(DWORD) * ObSet_Size(ctx->psOrphan)))) { goto fail; }
     while((pe = (PFCNTFS)ObSet_Pop(ctx->psOrphan))) {
@@ -568,8 +568,8 @@ PFCNTFS FcNtfs_FinalizeMerge2(_In_ PFCNTFS_SETUP_CONTEXT ctx)
     }
     qsort(pdwRecordNumberArray, cMax, sizeof(DWORD), Util_qsort_DWORD);
     // 2: Create "synthetic" root directories
-    if(!(pRootGlobal = FcNtfs_FinalizeCreateSynthenticDir(ctx, (DWORD)-1, L"", FALSE))) { goto fail; }
-    if(!(pRootOrphan = FcNtfs_FinalizeCreateSynthenticDir(ctx, (DWORD)-2, L"ORPHAN", TRUE))) { goto fail; }
+    if(!(pRootGlobal = FcNtfs_FinalizeCreateSynthenticDir(ctx, (DWORD)-1, "", FALSE))) { goto fail; }
+    if(!(pRootOrphan = FcNtfs_FinalizeCreateSynthenticDir(ctx, (DWORD)-2, "ORPHAN", TRUE))) { goto fail; }
     // 3: Create "syntethic" directories for enties if record# count >= 3
     for(i = 0; i < cMax; i++) {
         if(dwLastRecord != pdwRecordNumberArray[i]) {
@@ -578,8 +578,8 @@ PFCNTFS FcNtfs_FinalizeMerge2(_In_ PFCNTFS_SETUP_CONTEXT ctx)
         } else {
             c++;
             if(c == 3) {
-                _snwprintf_s(wszDirName, 16, _TRUNCATE, L"$%i", ++iDirCount);
-                if((pe = FcNtfs_FinalizeCreateSynthenticDir(ctx, dwLastRecord, wszDirName, FALSE))) {
+                _snprintf_s(uszDirName, 16, _TRUNCATE, "$%i", ++iDirCount);
+                if((pe = FcNtfs_FinalizeCreateSynthenticDir(ctx, dwLastRecord, uszDirName, FALSE))) {
                     pe->pParent = pRootOrphan;
                     pe->pSibling = pRootOrphan->pChild;
                     pRootOrphan->pChild = pe;
@@ -609,11 +609,11 @@ fail:
 /*
 * Add a file system entry to the database.
 */
-VOID FcNtfs_Finalize_DatabaseAdd(_In_ PFCNTFS_FINALIZE_CONTEXT ctx, _In_ PFCNTFS pe, _In_ LPWSTR wszPathName, _In_ DWORD owszName)
+VOID FcNtfs_Finalize_DatabaseAdd(_In_ PFCNTFS_FINALIZE_CONTEXT ctx, _In_ PFCNTFS pe, _In_ LPSTR uszPathName)
 {
     QWORD id = pe->iMap;
     FCSQL_INSERTSTRTABLE SqlStrInsert = { 0 };
-    if(!Fc_SqlInsertStr(ctx->st_str, wszPathName + 1, owszName - 1, &SqlStrInsert)) { return; }
+    if(!Fc_SqlInsertStr(ctx->st_str, uszPathName + 1, &SqlStrInsert)) { return; }
     sqlite3_reset(ctx->st);
     sqlite3_bind_int64(ctx->st, 1, id);
     sqlite3_bind_int64(ctx->st, 2, pe->pParent ? pe->pParent->iMap : -1);
@@ -637,33 +637,33 @@ VOID FcNtfs_Finalize_DatabaseAdd(_In_ PFCNTFS_FINALIZE_CONTEXT ctx, _In_ PFCNTFS
     ctx->cbJsonTotal += SqlStrInsert.cbj;
 }
 
-DWORD FcNtfs_FinalizeFinish(_In_ PFCNTFS_FINALIZE_CONTEXT ctx, _In_ POB_SET psHashPath, _In_ PFCNTFS peNtfs, _In_ DWORD iMap, _In_ BYTE iDirDepth, _In_reads_(2048) LPWSTR wszPath, _In_ DWORD cwszPath)
+DWORD FcNtfs_FinalizeFinish(_In_ PFCNTFS_FINALIZE_CONTEXT ctx, _In_ POB_SET psHashPath, _In_ PFCNTFS peNtfs, _In_ DWORD iMap, _In_ BYTE iDirDepth, _In_reads_(2048) LPSTR uszPath, _In_ DWORD cuszPath)
 {
-    DWORD dwHashName, cwszName;
+    DWORD dwHashName, cuszName;
     QWORD qwHashTotal;
     while(peNtfs) {
         // update/set path
-        cwszName = (DWORD)wcslen(peNtfs->wszName);
-        if(cwszPath + cwszName + 2 >= 2048) { break; }
-        wszPath[cwszPath] = '\\';
-        memcpy(&wszPath[cwszPath + 1], peNtfs->wszName, ((QWORD)cwszName << 1) + 2);
+        cuszName = (DWORD)strlen(peNtfs->uszName);
+        if(cuszPath + cuszName + 2 >= 2048) { break; }
+        uszPath[cuszPath] = '\\';
+        memcpy(&uszPath[cuszPath + 1], peNtfs->uszName, cuszName + 1);
         // update/set path hash
         while(TRUE) {
             qwHashTotal = peNtfs->pParent ? peNtfs->pParent->qwHashThis : 0;
-            dwHashName = Util_HashNameW_Registry(peNtfs->wszName, peNtfs->wName_SeqNbr);
+            dwHashName = CharUtil_HashNameFsU(peNtfs->uszName, peNtfs->wName_SeqNbr);
             qwHashTotal = dwHashName + ((qwHashTotal >> 13) | (qwHashTotal << 51));
-            if(!ObSet_Exists(psHashPath, qwHashTotal) || (peNtfs->wName_SeqNbr > 100)) { break; }
+            if(!ObSet_Exists(psHashPath, qwHashTotal) || (peNtfs->wName_SeqNbr >= 100)) { break; }
             peNtfs->wName_SeqNbr++;
         }
         ObSet_Push(psHashPath, qwHashTotal);
         peNtfs->qwHashThis = qwHashTotal;
         peNtfs->iDirDepth = iDirDepth;
         peNtfs->iMap = iMap++;
-        FcNtfs_Finalize_DatabaseAdd(ctx, peNtfs, wszPath, cwszPath + 1);
-        iMap = FcNtfs_FinalizeFinish(ctx, psHashPath, peNtfs->pChild, iMap, iDirDepth + 1, wszPath, cwszPath + cwszName + 1);
+        FcNtfs_Finalize_DatabaseAdd(ctx, peNtfs, uszPath);
+        iMap = FcNtfs_FinalizeFinish(ctx, psHashPath, peNtfs->pChild, iMap, iDirDepth + 1, uszPath, cuszPath + cuszName + 1);
         peNtfs = peNtfs->pSibling;
     }
-    wszPath[cwszPath] = 0;
+    uszPath[cuszPath] = 0;
     return iMap;
 }
 
@@ -678,7 +678,7 @@ VOID FcNtfs_Finalize(_In_opt_ PVOID ctxfc)
 {
     PFCNTFS_SETUP_CONTEXT ctx = (PFCNTFS_SETUP_CONTEXT)ctxfc;
     FCNTFS_FINALIZE_CONTEXT ctxFinal = { 0 };
-    WCHAR wszPath[2048] = { 0 };
+    CHAR uszPath[2048] = { 0 };
     POB_SET psObHashPath = NULL;
     PFCNTFS pNtfsGlobalRoot;
     int rc;
@@ -697,10 +697,10 @@ VOID FcNtfs_Finalize(_In_opt_ PVOID ctxfc)
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"
         , -1, &ctxFinal.st, NULL);
     if(rc != SQLITE_OK) { goto fail; }
-    rc = sqlite3_prepare_v2(ctxFinal.hSql, "INSERT INTO str (id, osz, csz, cbu, cbj, sz) VALUES (?, ?, ?, ?, ?, ?);", -1, &ctxFinal.st_str, NULL);
+    rc = sqlite3_prepare_v2(ctxFinal.hSql, "INSERT INTO str (id, cbu, cbj, sz) VALUES (?, ?, ?, ?);", -1, &ctxFinal.st_str, NULL);
     if(rc != SQLITE_OK) { goto fail; }
     sqlite3_exec(ctxFinal.hSql, "BEGIN TRANSACTION", NULL, NULL, NULL);
-    DWORD DEBUG_NUM = FcNtfs_FinalizeFinish(&ctxFinal, psObHashPath, pNtfsGlobalRoot, 0, 0, wszPath, 0);
+    DWORD DEBUG_NUM = FcNtfs_FinalizeFinish(&ctxFinal, psObHashPath, pNtfsGlobalRoot, 0, 0, uszPath, 0);
     sqlite3_exec(ctxFinal.hSql, "COMMIT TRANSACTION", NULL, NULL, NULL);
     // CLEAN UP:
 fail:
@@ -721,7 +721,7 @@ fail:
 VOID FcNtfs_SetupTimeline(
     _In_opt_ PVOID ctxfc,
     _In_ HANDLE hTimeline,
-    _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPWSTR wszText),
+    _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPSTR uszText),
     _In_ VOID(*pfnEntryAddBySql)(_In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPSTR *pszEntrySql)
 ) {
     LPSTR pszSql[] = {
@@ -757,17 +757,16 @@ typedef struct tdFC_MAP_NTFSENTRY {
     DWORD dwTextSeq;
     QWORD cszuOffset;               // offset to start of "line" in bytes (utf-8)
     QWORD cszjOffset;               // offset to start of "line" in bytes (json)
-    DWORD cwszText;                 // WCHAR count not including terminating null
-    LPWSTR wszText;                 // LPWSTR pointed into FCOB_MAP_NTFS.wszMultiText
-    LPWSTR wszTextName;             // name at end of wszText
+    DWORD cbuText;                  // utf-8 byte count including terminating null
+    LPSTR uszText;                  // utf-8 string pointed into FCOB_MAP_NTFS.uszMultiText
 } FC_MAP_NTFSENTRY, *PFC_MAP_NTFSENTRY;
 
 typedef struct tdFCOB_MAP_NTFS {
     OB ObHdr;
-    LPWSTR wszMultiText;            // multi-wstr pointed into by FC_MAP_NTFSENTRY.wszText
-    DWORD cbMultiText;
+    LPSTR uszMultiText;             // multi-utf-8 string pointed into by FC_MAP_NTFSENTRY.uszText
+    DWORD cbuMultiText;
     DWORD cMap;                     // # map entries.
-    FC_MAP_NTFSENTRY pMap[];        // map entries.
+    FC_MAP_NTFSENTRY pMap[0];        // map entries.
 } FCOB_MAP_NTFS, *PFCOB_MAP_NTFS;
 
 /*
@@ -809,29 +808,28 @@ BOOL FcNtfs_GetMftResidentData(_In_ PFC_MAP_NTFSENTRY pNtfsEntry, _Out_writes_op
     return FALSE;
 }
 
-#define FCNTFS_SQL_SELECT_FIELDS " csz, osz, sz, id, id_parent, addr_phys, inode, mft_flags, depth, name_seq, time_create, time_modify, time_read, size_file, size_fileres, oln_u, oln_j "
+#define FCNTFS_SQL_SELECT_FIELDS " sz, id, id_parent, addr_phys, inode, mft_flags, depth, name_seq, time_create, time_modify, time_read, size_file, size_fileres, oln_u, oln_j "
 
 _Success_(return)
-BOOL FcNtfsMap_CreateInternal(_In_ LPSTR szSqlCount, _In_ LPSTR szSqlSelect, _In_ DWORD cQueryValues, _In_reads_(cQueryValues) PQWORD pqwQueryValues, _Out_ PFCOB_MAP_NTFS * ppObNtfsMap)
+BOOL FcNtfsMap_CreateInternal(_In_ LPSTR szSqlCount, _In_ LPSTR szSqlSelect, _In_ DWORD cQueryValues, _In_reads_(cQueryValues) PQWORD pqwQueryValues, _Out_ PFCOB_MAP_NTFS *ppObNtfsMap)
 {
+    // TODO: CHANGE MAP INTO UTF-8 STRING!
     int rc;
     QWORD pqwResult[2];
-    DWORD i, cchMultiText, owszName;
-    LPWSTR wszMultiText, wszEntryText;
+    DWORD i, cbuMultiText, oMultiText = 1;
+    LPSTR uszEntryText;
     PFCOB_MAP_NTFS pObNtfsMap = NULL;
     PFC_MAP_NTFSENTRY pe;
     sqlite3 *hSql = NULL;
     sqlite3_stmt *hStmt = NULL;
     rc = Fc_SqlQueryN(szSqlCount, cQueryValues, pqwQueryValues, 2, pqwResult, NULL);
     if((rc != SQLITE_OK) || (pqwResult[0] > 0x00010000) || (pqwResult[1] > 0x01000000)) { goto fail; }
-    cchMultiText = (DWORD)(1 + 2 * pqwResult[0] + pqwResult[1]);
-    pObNtfsMap = Ob_Alloc('Mntf', LMEM_ZEROINIT, sizeof(FCOB_MAP_NTFS) + pqwResult[0] * sizeof(FC_MAP_NTFSENTRY) + cchMultiText * sizeof(WCHAR), NULL, NULL);
+    cbuMultiText = (DWORD)(1 + pqwResult[0] + pqwResult[1]);
+    pObNtfsMap = Ob_Alloc('Mntf', LMEM_ZEROINIT, sizeof(FCOB_MAP_NTFS) + pqwResult[0] * sizeof(FC_MAP_NTFSENTRY) + cbuMultiText, NULL, NULL);
     if(!pObNtfsMap) { goto fail; }
-    pObNtfsMap->wszMultiText = (LPWSTR)((PBYTE)pObNtfsMap + sizeof(FCOB_MAP_NTFS) + pqwResult[0] * sizeof(FC_MAP_NTFSENTRY));
-    pObNtfsMap->cbMultiText = cchMultiText * sizeof(WCHAR);
+    pObNtfsMap->uszMultiText = (LPSTR)((PBYTE)pObNtfsMap + sizeof(FCOB_MAP_NTFS) + pqwResult[0] * sizeof(FC_MAP_NTFSENTRY));
+    pObNtfsMap->cbuMultiText = cbuMultiText;
     pObNtfsMap->cMap = (DWORD)pqwResult[0];
-    cchMultiText--;
-    wszMultiText = pObNtfsMap->wszMultiText + 1;
     if(!(hSql = Fc_SqlReserve())) { goto fail; }
     rc = sqlite3_prepare_v2(hSql, szSqlSelect, -1, &hStmt, 0);
     if(rc != SQLITE_OK) { goto fail; }
@@ -842,32 +840,29 @@ BOOL FcNtfsMap_CreateInternal(_In_ LPSTR szSqlCount, _In_ LPSTR szSqlSelect, _In
         rc = sqlite3_step(hStmt);
         if(rc != SQLITE_ROW) { goto fail; }
         pe = pObNtfsMap->pMap + i;
-        // populate text related data: path+name
-        pe->cwszText = sqlite3_column_int(hStmt, 0);
-        owszName = sqlite3_column_int(hStmt, 1);
-        wszEntryText = (LPWSTR)sqlite3_column_text16(hStmt, 2);
-        if(!wszEntryText || (pe->cwszText != wcslen(wszEntryText)) || (pe->cwszText > cchMultiText - 1) || (owszName > pe->cwszText)) { goto fail; }
-        pe->wszText = wszMultiText;
-        pe->wszTextName = wszMultiText + owszName;
-        memcpy(wszMultiText, wszEntryText, pe->cwszText * sizeof(WCHAR));
-        wszMultiText = wszMultiText + pe->cwszText + 1;
-        cchMultiText += pe->cwszText + 1;
+        // populate text related data: path
+        uszEntryText = (LPSTR)sqlite3_column_text(hStmt, 0);
+        pe->cbuText = sqlite3_column_bytes(hStmt, 0) + 1;
+        if(!uszEntryText || (oMultiText + pe->cbuText > cbuMultiText)) { goto fail; }
+        memcpy(pObNtfsMap->uszMultiText + oMultiText, uszEntryText, pe->cbuText);
+        pe->uszText = pObNtfsMap->uszMultiText + oMultiText;
+        oMultiText += pe->cbuText;
         // populate numeric data
-        pe->qwId = sqlite3_column_int64(hStmt, 3);
-        pe->qwIdParent = sqlite3_column_int64(hStmt, 4);
-        pe->pa = sqlite3_column_int64(hStmt, 5);
-        pe->dwMftId = sqlite3_column_int(hStmt, 6);
-        pe->dwMftFlags = sqlite3_column_int(hStmt, 7);
+        pe->qwId = sqlite3_column_int64(hStmt, 1);
+        pe->qwIdParent = sqlite3_column_int64(hStmt, 2);
+        pe->pa = sqlite3_column_int64(hStmt, 3);
+        pe->dwMftId = sqlite3_column_int(hStmt, 4);
+        pe->dwMftFlags = sqlite3_column_int(hStmt, 5);
         pe->fDir = (pe->dwMftFlags & 2) ? TRUE : FALSE;
-        pe->dwDirDepth = sqlite3_column_int(hStmt, 8);
-        pe->dwTextSeq = sqlite3_column_int(hStmt, 9);
-        pe->ftCreate = sqlite3_column_int64(hStmt, 10);
-        pe->ftModify = sqlite3_column_int64(hStmt, 11);
-        pe->ftRead = sqlite3_column_int64(hStmt, 12);
-        pe->qwFileSize = sqlite3_column_int64(hStmt, 13);
-        pe->dwFileSizeResident = sqlite3_column_int(hStmt, 14);
-        pe->cszuOffset = sqlite3_column_int64(hStmt, 15);
-        pe->cszjOffset = sqlite3_column_int64(hStmt, 16);
+        pe->dwDirDepth = sqlite3_column_int(hStmt, 6);
+        pe->dwTextSeq = sqlite3_column_int(hStmt, 7);
+        pe->ftCreate = sqlite3_column_int64(hStmt, 8);
+        pe->ftModify = sqlite3_column_int64(hStmt, 9);
+        pe->ftRead = sqlite3_column_int64(hStmt, 10);
+        pe->qwFileSize = sqlite3_column_int64(hStmt, 11);
+        pe->dwFileSizeResident = sqlite3_column_int(hStmt, 12);
+        pe->cszuOffset = sqlite3_column_int64(hStmt, 13);
+        pe->cszjOffset = sqlite3_column_int64(hStmt, 14);
     }
     Ob_INCREF(pObNtfsMap);
 fail:
@@ -888,7 +883,7 @@ _Success_(return)
 BOOL FcNtfsMap_GetFromHash(_In_ QWORD qwHash, _Out_ PFCOB_MAP_NTFS * ppObNtfsMap)
 {
     return FcNtfsMap_CreateInternal(
-        "SELECT COUNT(*), SUM(csz) FROM v_ntfs WHERE hash = ?",
+        "SELECT COUNT(*), SUM(cbu) FROM v_ntfs WHERE hash = ?",
         "SELECT "FCNTFS_SQL_SELECT_FIELDS" FROM v_ntfs WHERE hash = ?",
         1,
         &qwHash,
@@ -907,7 +902,7 @@ _Success_(return)
 BOOL FcNtfsMap_GetFromHashParent(_In_ QWORD qwHashParent, _Out_ PFCOB_MAP_NTFS * ppObNtfsMap)
 {
     return FcNtfsMap_CreateInternal(
-        "SELECT COUNT(*), SUM(csz) FROM v_ntfs WHERE hash_parent = ?",
+        "SELECT COUNT(*), SUM(cbu) FROM v_ntfs WHERE hash_parent = ?",
         "SELECT "FCNTFS_SQL_SELECT_FIELDS" FROM v_ntfs WHERE hash_parent = ?",
         1,
         &qwHashParent,
@@ -927,7 +922,7 @@ BOOL FcNtfsMap_GetFromIdRange(_In_ QWORD qwId, _In_ QWORD cId, _Out_ PFCOB_MAP_N
 {
     QWORD v[] = { qwId, qwId + cId };
     return FcNtfsMap_CreateInternal(
-        "SELECT COUNT(*), SUM(csz) FROM v_ntfs WHERE id >= ? AND id < ?",
+        "SELECT COUNT(*), SUM(cbu) FROM v_ntfs WHERE id >= ? AND id < ?",
         "SELECT "FCNTFS_SQL_SELECT_FIELDS" FROM v_ntfs WHERE id >= ? AND id < ? ORDER BY id",
         2,
         v,
@@ -988,12 +983,14 @@ BOOL FcNtfs_GetIdFromPosition(_In_ QWORD qwFilePos, _In_ BOOL fJSON, _Out_ PQWOR
 PBYTE M_FcNtfs_ReadInfoSingle(_In_ PFC_MAP_NTFSENTRY peNtfs, _Out_ PDWORD pcsz)
 {
     LPSTR sz = NULL;
+    LPSTR uszTextName;
     DWORD cszHexAscii;
     QWORD csz = 0;
     BYTE pbr[0x400];
     BYTE szHexAscii[0xC00];
     //----
-    WCHAR wsz[MAX_PATH];
+    LPSTR uszRecordFileName;
+    BYTE pbBuffer[2*MAX_PATH];
     CHAR szTimeC[24], szTimeA[24], szTimeM[24], szTimeR[24];
     CHAR szGuid1[37], szGuid2[37], szGuid3[37], szGuid4[37];
     DWORD oA, iStr;
@@ -1008,16 +1005,17 @@ PBYTE M_FcNtfs_ReadInfoSingle(_In_ PFC_MAP_NTFSENTRY peNtfs, _Out_ PDWORD pcsz)
     pR = (PNTFS_FILE_RECORD)pbr;
     if(pR->FirstAttributeOffset > 0x300) { goto fail; }
     // file name+path:
-    csz += Util_snwprintf_u8(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz,
-        L"INFORMATION\n======================\nName: %s\nPath: %s\n\n\n",
-        peNtfs->wszTextName,
-        peNtfs->wszText
+    uszTextName = CharUtil_PathSplitLast(peNtfs->uszText);
+    csz += snprintf(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz,
+        "INFORMATION\n======================\nName: %s\nPath: %s\n\n\n",
+        uszTextName,
+        peNtfs->uszText
     );
     // mft record:
-    csz += Util_snwprintf_u8(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz,
-        L"$MFT_RECORD\n======================\nFlags:            %s, %s\nPhysical Address: 0x%llX\nRecord Number:    0x%X\nSequence Number:  0x%X\nHard Link Count:  %i\n\n\n",
-        (pR->Flags & NTFS_FILE_RECORD_FLAG_ACTIVE ? L"ACTIVE" : L"INACTIVE"),
-        (pR->Flags & NTFS_FILE_RECORD_FLAG_DIRECTORY ? L"DIRECTORY" : L"FILE"),
+    csz += snprintf(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz,
+        "$MFT_RECORD\n======================\nFlags:            %s, %s\nPhysical Address: 0x%llX\nRecord Number:    0x%X\nSequence Number:  0x%X\nHard Link Count:  %i\n\n\n",
+        (pR->Flags & NTFS_FILE_RECORD_FLAG_ACTIVE ? "ACTIVE" : "INACTIVE"),
+        (pR->Flags & NTFS_FILE_RECORD_FLAG_DIRECTORY ? "DIRECTORY" : "FILE"),
         peNtfs->pa,
         pR->MftRecordNumber,
         pR->SequenceNumber,
@@ -1031,18 +1029,18 @@ PBYTE M_FcNtfs_ReadInfoSingle(_In_ PFC_MAP_NTFSENTRY peNtfs, _Out_ PDWORD pcsz)
         if(oA + pA->Length > 0x400) { break; }
         // $ATTRIBUTE_HEADER
         iStr = ((pA->Type <= NTFS_ATTR_TYPE_MAX) & !(pA->Type & 0xf)) ? pA->Type >> 4 : 0;
-        csz += Util_snwprintf_u8(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz,
-            L"$%S\n======================\nO Offset:Length:  %03X:%03X\nA Offset:Length:  %03X:%03X\nType:             %s%s\nAttribute ID:     %i\n",
+        csz += snprintf(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz,
+            "$%s\n======================\nO Offset:Length:  %03X:%03X\nA Offset:Length:  %03X:%03X\nType:             %s%s\nAttribute ID:     %i\n",
             NTFS_ATTR_TYPE_NAME_STR[iStr],
             oA, pA->Length,
             (pA->fNonResident ? 0 : pA->AttrOffset), (pA->fNonResident ? 0 : pA->AttrLength),
-            (pA->fNonResident ? L"Non-Resident" : L"Resident"),
-            (pA->NameLength ? L", Named" : L""),
+            (pA->fNonResident ? "Non-Resident" : "Resident"),
+            (pA->NameLength ? ", Named" : ""),
             pA->AttrId
         );
         // only parse resident attributes below:
         if(pA->fNonResident || (pA->Length < pA->AttrOffset + pA->AttrLength)) {
-            csz += Util_snwprintf_u8(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz, L"\n\n");
+            csz += snprintf(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz, "\n\n");
             oA += pA->Length;
             continue;
         }
@@ -1053,37 +1051,37 @@ PBYTE M_FcNtfs_ReadInfoSingle(_In_ PFC_MAP_NTFSENTRY peNtfs, _Out_ PDWORD pcsz)
             Util_FileTime2String(pSI->TimeAlter, szTimeA);
             Util_FileTime2String(pSI->TimeModify, szTimeM);
             Util_FileTime2String(pSI->TimeRead, szTimeR);
-            csz += Util_snwprintf_u8(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz,
-                L"---\nTime File Create: %S\nTime File Alter:  %S\nTime File Read:   %S\nTime MFT Change:  %S\nFile Permissions: %s%s%s%s%s%s%s%s%s%s%s%s",
+            csz += snprintf(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz,
+                "---\nTime File Create: %s\nTime File Alter:  %s\nTime File Read:   %s\nTime MFT Change:  %s\nFile Permissions: %s%s%s%s%s%s%s%s%s%s%s%s",
                 szTimeC, szTimeA, szTimeR, szTimeM,
-                (pSI->DosFilePermissions & NTFS_STDINFO_PERMISSION_READONLY   ? L"ReadOnly, " : L""),
-                (pSI->DosFilePermissions & NTFS_STDINFO_PERMISSION_HIDDEN     ? L"Hidden, " : L""),
-                (pSI->DosFilePermissions & NTFS_STDINFO_PERMISSION_SYSTEM     ? L"System, " : L""),
-                (pSI->DosFilePermissions & NTFS_STDINFO_PERMISSION_ARCHIVE    ? L"Archive, " : L""),
-                (pSI->DosFilePermissions & NTFS_STDINFO_PERMISSION_DEVICE     ? L"Device, " : L""),
-                (pSI->DosFilePermissions & NTFS_STDINFO_PERMISSION_TEMPORARY  ? L"Temporary, " : L""),
-                (pSI->DosFilePermissions & NTFS_STDINFO_PERMISSION_SPARSE     ? L"Sparse, " : L""),
-                (pSI->DosFilePermissions & NTFS_STDINFO_PERMISSION_REPARSE    ? L"Reparse, " : L""),
-                (pSI->DosFilePermissions & NTFS_STDINFO_PERMISSION_COMPRESSED ? L"Compressed, " : L""),
-                (pSI->DosFilePermissions & NTFS_STDINFO_PERMISSION_OFFLINE    ? L"Offline, " : L""),
-                (pSI->DosFilePermissions & NTFS_STDINFO_PERMISSION_NOINDEX    ? L"NoIndex, " : L""),
-                (pSI->DosFilePermissions & NTFS_STDINFO_PERMISSION_ENCRYPTED  ? L"Encrypted, " : L"")
+                (pSI->DosFilePermissions & NTFS_STDINFO_PERMISSION_READONLY ? "ReadOnly, " : ""),
+                (pSI->DosFilePermissions & NTFS_STDINFO_PERMISSION_HIDDEN ? "Hidden, " : ""),
+                (pSI->DosFilePermissions & NTFS_STDINFO_PERMISSION_SYSTEM ? "System, " : ""),
+                (pSI->DosFilePermissions & NTFS_STDINFO_PERMISSION_ARCHIVE ? "Archive, " : ""),
+                (pSI->DosFilePermissions & NTFS_STDINFO_PERMISSION_DEVICE ? "Device, " : ""),
+                (pSI->DosFilePermissions & NTFS_STDINFO_PERMISSION_TEMPORARY ? "Temporary, " : ""),
+                (pSI->DosFilePermissions & NTFS_STDINFO_PERMISSION_SPARSE ? "Sparse, " : ""),
+                (pSI->DosFilePermissions & NTFS_STDINFO_PERMISSION_REPARSE ? "Reparse, " : ""),
+                (pSI->DosFilePermissions & NTFS_STDINFO_PERMISSION_COMPRESSED ? "Compressed, " : ""),
+                (pSI->DosFilePermissions & NTFS_STDINFO_PERMISSION_OFFLINE ? "Offline, " : ""),
+                (pSI->DosFilePermissions & NTFS_STDINFO_PERMISSION_NOINDEX ? "NoIndex, " : ""),
+                (pSI->DosFilePermissions & NTFS_STDINFO_PERMISSION_ENCRYPTED ? "Encrypted, " : "")
             );
         }
         // $FILE_NAME
         if(pA->Type == NTFS_ATTR_TYPE_FILE_NAME) {
             pFN = (PNTFS_FILE_NAME)(pbr + oA + pA->AttrOffset);
             if(pA->AttrLength >= 42 + pFN->NameLength * sizeof(WCHAR)) {
-                memcpy(wsz, pFN->Name, pFN->NameLength * sizeof(WCHAR)); wsz[pFN->NameLength] = 0;
+                CharUtil_WtoU((LPWSTR)pFN->Name, pFN->NameLength, pbBuffer, sizeof(pbBuffer), &uszRecordFileName, NULL, CHARUTIL_FLAG_TRUNCATE);
                 Util_FileTime2String(pFN->TimeCreate, szTimeC);
                 Util_FileTime2String(pFN->TimeAlter, szTimeA);
                 Util_FileTime2String(pFN->TimeModify, szTimeM);
                 Util_FileTime2String(pFN->TimeRead, szTimeR);
-                csz += Util_snwprintf_u8(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz,
-                    L"---\nName:             %s\nName Space:       %S\nParent Directory: %llX:%llX\nSize Real:        %lli\nSize Allocated:   %lli\nTime File Create: %S\nTime File Alter:  %S\nTime File Read:   %S\nTime MFT Change:  %S",
-                    wsz,
+                csz += snprintf(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz,
+                    "---\nName:             %s\nName Space:       %s\nParent Directory: %llX:%llX\nSize Real:        %lli\nSize Allocated:   %lli\nTime File Create: %s\nTime File Alter:  %s\nTime File Read:   %s\nTime MFT Change:  %s",
+                    uszRecordFileName,
                     NTFS_FILENAME_NAMESPACE_NAME_STR[min(pFN->NameSpace, NTFS_FILENAME_NAMESPACE_MAX)],
-                    pFN->ParentDirectory.SegmentNumber, pFN->ParentDirectory.SequenceNumber,
+                    (QWORD)pFN->ParentDirectory.SegmentNumber, (QWORD)pFN->ParentDirectory.SequenceNumber,
                     pFN->SizeReal,
                     pFN->SizeAllocated,
                     szTimeC, szTimeA, szTimeR, szTimeM
@@ -1094,7 +1092,7 @@ PBYTE M_FcNtfs_ReadInfoSingle(_In_ PFC_MAP_NTFSENTRY peNtfs, _Out_ PDWORD pcsz)
         if(pA->Type == NTFS_ATTR_TYPE_DATA) {
             cszHexAscii = sizeof(szHexAscii) - 2;
             Util_FillHexAscii(pbr + oA + pA->AttrOffset, pA->AttrLength, 0, szHexAscii, &cszHexAscii);
-            csz += Util_snwprintf_u8(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz, L"---\n%S", szHexAscii);
+            csz += snprintf(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz, "---\n%s", szHexAscii);
         }
         // $OBJECT_ID
         if((pA->Type == NTFS_ATTR_TYPE_OBJECT_ID) && (pA->AttrLength >= sizeof(NTFS_OBJECT_ID))) {
@@ -1103,12 +1101,12 @@ PBYTE M_FcNtfs_ReadInfoSingle(_In_ PFC_MAP_NTFSENTRY peNtfs, _Out_ PDWORD pcsz)
             Util_GuidToString(pOID->BirthVolumeId, szGuid2);
             Util_GuidToString(pOID->BirthObjectId, szGuid3);
             Util_GuidToString(pOID->DomainId, szGuid4);
-            csz += Util_snwprintf_u8(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz,
-                L"---\nObject ID:        {%S}\nBirth Volume ID:  {%S}\nBirth Object ID:  {%S}\nDomain ID:        {%S}",
+            csz += snprintf(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz,
+                "---\nObject ID:        {%s}\nBirth Volume ID:  {%s}\nBirth Object ID:  {%s}\nDomain ID:        {%s}",
                 szGuid1, szGuid2, szGuid3, szGuid4
             );
         }
-        csz += Util_snwprintf_u8(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz, L"\n\n\n");
+        csz += snprintf(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz, "\n\n\n");
         oA += pA->Length;
     }
 fail:
@@ -1122,7 +1120,6 @@ NTSTATUS M_FcNtfs_ReadInfoAll(_Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRea
     PFC_MAP_NTFSENTRY pe;
     PFCOB_MAP_NTFS pObNtfsMap = NULL;
     QWORD i, o, qwIdBase, qwIdTop, cId, cszuBuffer, cbOffsetBuffer;
-    DWORD iDirDepth;
     LPSTR szuBuffer = NULL;
     CHAR szTimeCreate[24], szTimeModify[24];
     if(!FcNtfs_GetIdFromPosition(cbOffset, FALSE, &qwIdBase)) { goto fail; }
@@ -1137,11 +1134,10 @@ NTSTATUS M_FcNtfs_ReadInfoAll(_Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRea
         pe = pObNtfsMap->pMap + i;
         Util_FileTime2String(pe->ftCreate, szTimeCreate);
         Util_FileTime2String(pe->ftModify, szTimeModify);
-        iDirDepth = min(20, pe->dwDirDepth);
         o += snprintf(
             szuBuffer + o,
             cszuBuffer - o,
-            "%6llx%12llx %8x %s : %s %12llx %3x %c ",
+            "%6llx%12llx %8x %s : %s %12llx %3x %c %s\n",
             pe->qwId,
             pe->pa,
             (pe->dwMftId & 0xf0000000 ? 0 : pe->dwMftId),
@@ -1149,12 +1145,9 @@ NTSTATUS M_FcNtfs_ReadInfoAll(_Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRea
             szTimeModify,
             pe->qwFileSize,
             pe->dwFileSizeResident,
-            pe->fDir ? 'D' : ' '
+            pe->fDir ? 'D' : ' ',
+            pe->uszText
         );
-        o += WideCharToMultiByte(CP_UTF8, 0, pe->wszText, -1, szuBuffer + o, (int)(cszuBuffer - o), NULL, NULL);
-        if(o && (o <= cszuBuffer)) {
-            szuBuffer[o - 1] = '\n';
-        }
     }
     nt = Util_VfsReadFile_FromPBYTE(szuBuffer, o, pb, cb, pcbRead, cbOffset - cbOffsetBuffer);
 fail:
@@ -1168,37 +1161,37 @@ fail:
 * it points to a file '\mftinfo.txt' / '\mftdata.mem' / '\mftdata.bin'.
 * If so strip this info.
 * -- wszPath
-* -- wszPathStripped
+* -- uszPathStripped
 * -- pfMeta = path contains '\\$_INFO'
 * -- pfEnd = path ends with '\\$_INFO'
 * -- pfTxt = path ends with '\\mftinfo.txt'
 * -- pfMem = path ends with '\\mftdata.mem'
 * -- pfBin = path ends with '\\mftfile.bin'
 */
-VOID M_FcNtfs_PathStripMftInfo(_In_ LPWSTR wszPath, _Out_writes_(MAX_PATH) LPWSTR wszPathStripped, _Out_opt_ PBOOL pfMeta, _Out_opt_ PBOOL pfEnd, _Out_opt_ PBOOL pfTxt, _Out_opt_ PBOOL pfMem, _Out_opt_ PBOOL pfBin)
+VOID M_FcNtfs_PathStripMftInfo(_In_ LPSTR uszPath, _Out_writes_(MAX_PATH) LPSTR uszPathStripped, _Out_opt_ PBOOL pfMeta, _Out_opt_ PBOOL pfEnd, _Out_opt_ PBOOL pfTxt, _Out_opt_ PBOOL pfMem, _Out_opt_ PBOOL pfBin)
 {
     QWORD cch;
-    LPWSTR wsz;
+    LPSTR usz;
     if(pfMeta) { *pfMeta = FALSE; }
     if(pfTxt) { *pfTxt = FALSE; }
     if(pfMem) { *pfMem = FALSE; }
     if(pfBin) { *pfBin = FALSE; }
-    if(pfEnd) { *pfEnd = Util_StrEndsWithW(wszPath, L"\\$_INFO", TRUE); }
-    wcsncpy_s(wszPathStripped, MAX_PATH, wszPath, _TRUNCATE);
-    if(!(wsz = wcsstr(wszPath, L"\\$_INFO"))) { return; }
-    cch = ((QWORD)wsz - (QWORD)wszPath) >> 1;
-    wcsncpy_s(wszPathStripped + cch, MAX_PATH - cch, wsz + 11, _TRUNCATE);
-    if(Util_StrEndsWithW(wszPathStripped, L"\\mftinfo.txt", TRUE)) {
+    if(pfEnd) { *pfEnd = CharUtil_StrEndsWith(uszPath, "\\$_INFO", TRUE); }
+    strncpy_s(uszPathStripped, MAX_PATH, uszPath, _TRUNCATE);
+    if(!(usz = strstr(uszPath, "\\$_INFO"))) { return; }
+    cch = (QWORD)usz - (QWORD)uszPath;
+    strncpy_s(uszPathStripped + cch, MAX_PATH - cch, usz + 7, _TRUNCATE);
+    if(CharUtil_StrEndsWith(uszPathStripped, "\\mftinfo.txt", TRUE)) {
         if(pfTxt) { *pfTxt = TRUE; }
-        wszPathStripped[wcslen(wszPathStripped) - 12] = 0;
+        uszPathStripped[strlen(uszPathStripped) - 12] = 0;
     }
-    if(Util_StrEndsWithW(wszPathStripped, L"\\mftdata.mem", TRUE)) {
+    if(CharUtil_StrEndsWith(uszPathStripped, "\\mftdata.mem", TRUE)) {
         if(pfMem) { *pfMem = TRUE; }
-        wszPathStripped[wcslen(wszPathStripped) - 12] = 0;
+        uszPathStripped[strlen(uszPathStripped) - 12] = 0;
     }
-    if(Util_StrEndsWithW(wszPathStripped, L"\\mftfile.bin", TRUE)) {
+    if(CharUtil_StrEndsWith(uszPathStripped, "\\mftfile.bin", TRUE)) {
         if(pfBin) { *pfBin = TRUE; }
-        wszPathStripped[wcslen(wszPathStripped) - 12] = 0;
+        uszPathStripped[strlen(uszPathStripped) - 12] = 0;
     }
     if(pfMeta) { *pfMeta = TRUE; }
 }
@@ -1211,14 +1204,14 @@ NTSTATUS M_FcNtfs_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcb
     QWORD qwHashPath;
     BYTE pbNtfsRecordMax[0x400];
     BOOL fMeta, fMetaTxt, fMetaMem, fMetaBin;
-    WCHAR wszPath[MAX_PATH];
+    CHAR uszPathStripped[MAX_PATH];
     PBYTE pbInfoTxt;
     DWORD cbInfoTxt;
-    if(!wcscmp(ctx->wszPath, L"ntfs_files.txt")) {
+    if(!strcmp(ctx->uszPath, "ntfs_files.txt")) {
         return M_FcNtfs_ReadInfoAll(pb, cb, pcbRead, cbOffset);
     }
-    M_FcNtfs_PathStripMftInfo(ctx->wszPath, wszPath, &fMeta, NULL, &fMetaTxt, &fMetaMem, &fMetaBin);
-    qwHashPath = Util_HashPathW_Registry(wszPath);
+    M_FcNtfs_PathStripMftInfo(ctx->uszPath, uszPathStripped, &fMeta, NULL, &fMetaTxt, &fMetaMem, &fMetaBin);
+    qwHashPath = CharUtil_HashPathFsU(uszPathStripped);
     if(FcNtfsMap_GetFromHash(qwHashPath, &pObNtfsMap) && pObNtfsMap->cMap) {
         peNtfs = pObNtfsMap->pMap + 0;
         if(!fMeta || fMetaBin) {
@@ -1243,20 +1236,21 @@ NTSTATUS M_FcNtfs_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcb
     return nt;
 }
 
-VOID M_FcNtfs_ListDirectory(_In_ LPWSTR wszPath, _Inout_ PHANDLE pFileList)
+VOID M_FcNtfs_ListDirectory(_In_ LPSTR uszPath, _Inout_ PHANDLE pFileList)
 {
     BOOL fMeta, fEnd, fTxt, fMem, fBin;
     PBYTE pbInfoTxt;
-    DWORD i, cch, cbInfoTxt;
+    DWORD i, cbInfoTxt;
     PFC_MAP_NTFSENTRY pe;
     PFCOB_MAP_NTFS pObNtfsMap = NULL;
     VMMDLL_VFS_FILELIST_EXINFO FileExInfo = { 0 };
-    WCHAR wszNameFix[MAX_PATH];
+    CHAR uszNameFix[2*MAX_PATH];
+    LPSTR uszTextName;
     QWORD qwHashPath;
     FileExInfo.dwVersion = VMMDLL_VFS_FILELIST_EXINFO_VERSION;
-    M_FcNtfs_PathStripMftInfo(wszPath, wszNameFix, &fMeta, &fEnd, &fTxt, &fMem, &fBin);
+    M_FcNtfs_PathStripMftInfo(uszPath, uszNameFix, &fMeta, &fEnd, &fTxt, &fMem, &fBin);
     if(fTxt || fMem || fBin) { return; }
-    qwHashPath = Util_HashPathW_Registry(wszNameFix);
+    qwHashPath = CharUtil_HashPathFsU(uszNameFix);
     // single mft entry metadata files
     if(fMeta && !fEnd) {
         if(FcNtfsMap_GetFromHash(qwHashPath, &pObNtfsMap) && pObNtfsMap->cMap) {
@@ -1266,12 +1260,12 @@ VOID M_FcNtfs_ListDirectory(_In_ LPWSTR wszPath, _Inout_ PHANDLE pFileList)
                 FileExInfo.qwLastWriteTime = pe->ftModify;
                 FileExInfo.qwLastAccessTime = pe->ftRead;
                 if((pbInfoTxt = M_FcNtfs_ReadInfoSingle(pe, &cbInfoTxt))) {
-                    VMMDLL_VfsList_AddFile(pFileList, L"mftinfo.txt", cbInfoTxt, &FileExInfo);
+                    VMMDLL_VfsList_AddFile(pFileList, "mftinfo.txt", cbInfoTxt, &FileExInfo);
                     LocalFree(pbInfoTxt);
                 }
-                VMMDLL_VfsList_AddFile(pFileList, L"mftdata.mem", 0x400, &FileExInfo);
+                VMMDLL_VfsList_AddFile(pFileList, "mftdata.mem", 0x400, &FileExInfo);
                 if(!pe->fDir) {
-                    VMMDLL_VfsList_AddFile(pFileList, L"mftfile.bin", pe->qwFileSize, &FileExInfo);
+                    VMMDLL_VfsList_AddFile(pFileList, "mftfile.bin", pe->qwFileSize, &FileExInfo);
                 }
             }
         }
@@ -1280,23 +1274,24 @@ VOID M_FcNtfs_ListDirectory(_In_ LPWSTR wszPath, _Inout_ PHANDLE pFileList)
     }
     // ordinary directory or metadata directory
     if(!FcNtfsMap_GetFromHashParent(qwHashPath, &pObNtfsMap)) { return; }
-    if(!fMeta && wszPath[0] && pObNtfsMap->cMap) {
-        VMMDLL_VfsList_AddDirectory(pFileList, L"$_INFO", NULL);
+    if(!fMeta && uszPath[0] && pObNtfsMap->cMap) {
+        VMMDLL_VfsList_AddDirectory(pFileList, "$_INFO", NULL);
     }
     for(i = 0; i < pObNtfsMap->cMap; i++) {
         pe = pObNtfsMap->pMap + i;
-        if(!(cch = Util_PathFileNameFix_Registry(wszNameFix, NULL, pe->wszTextName, 0, pe->dwTextSeq, FALSE))) { continue; }
+        uszTextName = CharUtil_PathSplitLast(pe->uszText);
+        if(!CharUtil_FixFsName(uszNameFix, uszTextName, NULL, NULL, -1, pe->dwTextSeq, FALSE)) { continue; }
         FileExInfo.qwCreationTime = pe->ftCreate;
         FileExInfo.qwLastWriteTime = pe->ftModify;
         FileExInfo.qwLastAccessTime = pe->ftRead;
         if(pe->fDir || fMeta) {
             if(pe->pa || !fMeta) {
                 FileExInfo.fCompressed = FALSE;
-                VMMDLL_VfsList_AddDirectory(pFileList, wszNameFix, &FileExInfo);
+                VMMDLL_VfsList_AddDirectory(pFileList, uszNameFix, &FileExInfo);
             }
         } else {
             FileExInfo.fCompressed = !pe->qwFileSize || (pe->qwFileSize != pe->dwFileSizeResident);
-            VMMDLL_VfsList_AddFile(pFileList, wszNameFix, pe->qwFileSize, &FileExInfo);
+            VMMDLL_VfsList_AddFile(pFileList, uszNameFix, pe->qwFileSize, &FileExInfo);
         }
     }
     Ob_DECREF(pObNtfsMap);
@@ -1305,9 +1300,9 @@ VOID M_FcNtfs_ListDirectory(_In_ LPWSTR wszPath, _Inout_ PHANDLE pFileList)
 BOOL M_FcNtfs_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 {
     QWORD cbFileSizeUTF8;
-    M_FcNtfs_ListDirectory(ctx->wszPath, pFileList);
-    if(!ctx->wszPath[0] && FcNtfs_GetFileSize(NULL, &cbFileSizeUTF8, NULL)) {
-        VMMDLL_VfsList_AddFile(pFileList, L"ntfs_files.txt", cbFileSizeUTF8, NULL);
+    M_FcNtfs_ListDirectory(ctx->uszPath, pFileList);
+    if(!ctx->uszPath[0] && FcNtfs_GetFileSize(NULL, &cbFileSizeUTF8, NULL)) {
+        VMMDLL_VfsList_AddFile(pFileList, "ntfs_files.txt", cbFileSizeUTF8, NULL);
     }
     return TRUE;
 }
@@ -1315,7 +1310,7 @@ BOOL M_FcNtfs_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 VOID M_FcNtfs_Notify(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent)
 {
     if(fEvent == VMMDLL_PLUGIN_NOTIFY_FORENSIC_INIT_COMPLETE) {
-        PluginManager_SetVisibility(TRUE, L"\\forensic\\ntfs", TRUE);
+        PluginManager_SetVisibility(TRUE, "\\forensic\\ntfs", TRUE);
     }
 }
 
@@ -1324,7 +1319,7 @@ VOID M_FcNtfs_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if((pRI->tpSystem != VMM_SYSTEM_WINDOWS_X64) && (pRI->tpSystem != VMM_SYSTEM_WINDOWS_X86)) { return; }
     if(ctxMain->dev.fVolatile) { return; }
-    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\forensic\\ntfs");              // module name
+    strcpy_s(pRI->reg_info.uszPathName, 128, "\\forensic\\ntfs");               // module name
     pRI->reg_info.fRootModule = TRUE;                                           // module shows in root directory
     pRI->reg_info.fRootModuleHidden = TRUE;                                     // module hidden by default
     pRI->reg_fn.pfnList = M_FcNtfs_List;                                        // List function supported
@@ -1335,6 +1330,6 @@ VOID M_FcNtfs_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     pRI->reg_fnfc.pfnIngestFinalize = FcNtfs_Finalize;                          // Forensic ingest finalize function supported
     pRI->reg_fnfc.pfnTimeline = FcNtfs_SetupTimeline;                           // Forensic timelining supported
     memcpy(pRI->reg_info.sTimelineNameShort, "NTFS", 5);
-    strncpy_s(pRI->reg_info.szTimelineFileUTF8, 32, "timeline_ntfs.txt", _TRUNCATE);
+    strncpy_s(pRI->reg_info.uszTimelineFile, 32, "timeline_ntfs.txt", _TRUNCATE);
     pRI->pfnPluginManager_Register(pRI);
 }

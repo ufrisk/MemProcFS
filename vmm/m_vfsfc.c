@@ -41,19 +41,19 @@ LPCSTR szMFC_README =
 NTSTATUS M_VfsFc_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     BYTE btp;
-    if(!_wcsicmp(ctx->wszPath, L"readme.txt")) {
+    if(!_stricmp(ctx->uszPath, "readme.txt")) {
         return Util_VfsReadFile_FromPBYTE((PBYTE)szMFC_README, strlen(szMFC_README), pb, cb, pcbRead, cbOffset);
     }
-    if(!_wcsicmp(ctx->wszPath, L"progress_percent.txt")) {
+    if(!_stricmp(ctx->uszPath, "progress_percent.txt")) {
         return Util_VfsReadFile_FromNumber(ctxFc ? ctxFc->cProgressPercent : 0, pb, cb, pcbRead, cbOffset);
     }
-    if(!_wcsicmp(ctx->wszPath, L"forensic_enable.txt")) {
+    if(!_stricmp(ctx->uszPath, "forensic_enable.txt")) {
         btp = '0' + (ctxFc ? (BYTE)ctxFc->db.tp : 0);
         return Util_VfsReadFile_FromPBYTE(&btp, 1, pb, cb, pcbRead, cbOffset);
     }
-    if(!_wcsicmp(ctx->wszPath, L"database.txt")) {
+    if(!_stricmp(ctx->uszPath, "database.txt")) {
         if(ctxFc) {
-            return Util_VfsReadFile_FromTextWtoU8(ctxFc->db.wszDatabaseWinPath, pb, cb, pcbRead, cbOffset);
+            return Util_VfsReadFile_FromPBYTE(ctxFc->db.uszDatabasePath, strlen(ctxFc->db.uszDatabasePath), pb, cb, pcbRead, cbOffset);
         } else {
             return Util_VfsReadFile_FromPBYTE(NULL, 0, pb, cb, pcbRead, cbOffset);
         }
@@ -65,7 +65,7 @@ NTSTATUS M_VfsFc_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBYTE pb,
 {
     DWORD dwDatabaseType = 0;
     NTSTATUS nt;
-    if(!_wcsicmp(ctx->wszPath, L"forensic_enable.txt")) {
+    if(!_stricmp(ctx->uszPath, "forensic_enable.txt")) {
         nt = Util_VfsWriteFile_09(&dwDatabaseType, pb, cb, pcbWrite, cbOffset);
         FcInitialize(dwDatabaseType, FALSE);
         return nt;
@@ -78,10 +78,10 @@ BOOL M_VfsFc_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
     QWORD qwProgress;
     qwProgress = ctxFc ? ctxFc->cProgressPercent : 0;
     qwProgress = (qwProgress == 100) ? 3 : ((qwProgress >= 10) ? 2 : 1);
-    VMMDLL_VfsList_AddFile(pFileList, L"progress_percent.txt", qwProgress, NULL);
-    VMMDLL_VfsList_AddFile(pFileList, L"forensic_enable.txt", 1, NULL);
-    VMMDLL_VfsList_AddFile(pFileList, L"database.txt", ctxFc ? wcslen_u8(ctxFc->db.wszDatabaseWinPath) : 0, NULL);
-    VMMDLL_VfsList_AddFile(pFileList, L"readme.txt", strlen(szMFC_README), NULL);
+    VMMDLL_VfsList_AddFile(pFileList, "progress_percent.txt", qwProgress, NULL);
+    VMMDLL_VfsList_AddFile(pFileList, "forensic_enable.txt", 1, NULL);
+    VMMDLL_VfsList_AddFile(pFileList, "database.txt", ctxFc ? strlen(ctxFc->db.uszDatabasePath) : 0, NULL);
+    VMMDLL_VfsList_AddFile(pFileList, "readme.txt", strlen(szMFC_README), NULL);
     return TRUE;
 }
 
@@ -90,7 +90,7 @@ VOID M_VfsFc_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if((pRI->tpSystem != VMM_SYSTEM_WINDOWS_X64) && (pRI->tpSystem != VMM_SYSTEM_WINDOWS_X86)) { return; }
     if(ctxMain->dev.fVolatile) { return; }
-    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\forensic");                    // module name
+    strcpy_s(pRI->reg_info.uszPathName, 128, "\\forensic");                     // module name
     pRI->reg_info.fRootModule = TRUE;                                           // module shows in root directory
     pRI->reg_fn.pfnList = M_VfsFc_List;                                         // List function supported
     pRI->reg_fn.pfnRead = M_VfsFc_Read;                                         // Read function supported

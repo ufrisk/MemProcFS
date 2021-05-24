@@ -36,7 +36,7 @@ VOID ObContainer_ObCloseCallback(_In_ POB_CONTAINER pObContainer)
 */
 POB_CONTAINER ObContainer_New()
 {
-    POB_CONTAINER pObContainer = Ob_Alloc(OB_TAG_CORE_CONTAINER, LMEM_ZEROINIT, sizeof(OB_CONTAINER), ObContainer_ObCloseCallback, NULL);
+    POB_CONTAINER pObContainer = Ob_Alloc(OB_TAG_CORE_CONTAINER, LMEM_ZEROINIT, sizeof(OB_CONTAINER), (OB_CLEANUP_CB)ObContainer_ObCloseCallback, NULL);
     if(!pObContainer) { return NULL; }
     if(!InitializeCriticalSectionAndSpinCount(&pObContainer->Lock, 4096)) {
         LocalFree(pObContainer);

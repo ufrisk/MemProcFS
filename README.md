@@ -46,13 +46,11 @@ Anyone is able to extend MemProcFS with custom plugins! It is as easy as droppin
 
 Installing:
 ===========
-## Windows
 <b>Get the latest [binaries, modules and configuration files](https://github.com/ufrisk/MemProcFS/releases/latest) from the latest release.</b> Alternatively clone the repository and build from source.
 
-MemProcFS is dependent on the [LeechCore project](https://github.com/ufrisk/LeechCore) for memory acquisition. The necessary _leechcore.dll_ file is already pre-built and included together with the pre-built binaries.
+MemProcFS is dependent on the [LeechCore project](https://github.com/ufrisk/LeechCore) for memory acquisition. The necessary _leechcore.dll_ / _leechcore.so_ file is already pre-built and included together with the pre-built binaries.
 
-MemProcFS is also dependent in the <b>Microsoft Visual C++ Redistributables for Visual Studio 2019</b>. They can be downloaded from Microsoft [here](https://go.microsoft.com/fwlink/?LinkId=746572). Alternatively, if installing the Dokany file system driver please install the <b>DokanSetup_redist</b> version and it will install the required redistributables.
-
+## Windows
 Mounting the file system requires the <b>Dokany file system library</b> to be installed. Please download and install the latest version of Dokany at: https://github.com/dokan-dev/dokany/releases/latest It is recommended to download and install the <b>DokanSetup_redist</b> version.
 
 Python support requires Python 3.6 or later. The user may specify the path to the Python installation with the command line parameter `-pythonhome`, alternatively download [Python 3.7 - Windows x86-64 embeddable zip file](https://www.python.org/downloads/windows/) and unzip its contents into the `files/python` folder when using Python modules in the file system. To use the Python API a normal 64-bit Python 3.6 or later installation for Windows is required.
@@ -62,7 +60,7 @@ To capture live memory (without PCILeech FPGA hardware) download [DumpIt](https:
 PCILeech FPGA will require hardware as well as _FTD3XX.dll_ to be dropped alongside the MemProcFS binaries. Please check out the [LeechCore](https://github.com/ufrisk/LeechCore) project for instructions.
 
 ## Linux
-The memory process file system is only supported on Windows.
+MemProcFS is dependent on packages, please do a `sudo apt-get install libusb-1.0 fuse openssl lz4` before trying out MemProcFS. If building from source please check out the guide about [MemProcFS on Linux](https://github.com/ufrisk/MemProcFS/wiki/_Linux).
 
 Examples:
 =========
@@ -70,6 +68,7 @@ Start MemProcFS from the command line - possibly by using one of the examples be
 
 Or register the memory dump file extension with MemProcFS.exe so that the file system is automatically mounted when double-clicking on a memory dump file!
 
+- mount the memory dump file as /home/pi/mnt/ on Linux: <br>`./memprocfs -mount /home/pi/linux -device /dumps/win10x64-dump.raw`
 - mount the memory dump file as default M: <br>`memprocfs.exe -device c:\temp\win10x64-dump.raw`
 - mount the memory dump file as default M: with extra verbosity: <br>`memprocfs.exe -device c:\temp\win10x64-dump.raw -v`
 - mount the memory dump file as default M: with extra extra verbosity: <br>`memprocfs.exe -device c:\temp\win10x64-dump.raw -v -vv`
@@ -77,7 +76,6 @@ Or register the memory dump file extension with MemProcFS.exe so that the file s
 - mount live target memory, in verbose read-only mode, with DumpIt in /LIVEKD mode: <br>`DumpIt.exe /LIVEKD /A memprocfs.exe /C "-v"`
 - mount live target memory, in read-only mode, with WinPMEM driver: <br>`memprocfs.exe -device pmem`
 - mount live target memory, in read/write mode, with PCILeech FPGA memory acquisition device: <br>`memprocfs.exe -device fpga -memmap auto`
-- mount live target memory, in read/write mode, with TotalMeltdown vulnerability acquisition device: <br>`memprocfs.exe -device totalmeltdown`
 - mount a memory dump with a corresponding page files: <br>`memprocfs.exe -device unknown-x64-dump.raw -pagefile0 pagefile.sys -pagefile1 swapfile.sys`
 
 Documentation:
@@ -99,6 +97,8 @@ Current Limitations & Future Development:
 =========================================
 MemProcFS is currently limited to analyzing Windows (32-bit and 64-bit XP to 10) memory dumps.
 
+Some features are missing in Linux version (compressed windows memory and offline symbols). This both limits and degrades the analysis on Linux systems. These features are planned for future versions.
+
 Please find some ideas for possible future expansions of the memory process file system listed below. This is a list of ideas - not a list of features that will be implemented. Even though some items are put as prioritized there is no guarantee that they will be implemented in a timely fashion.
 
 ### Prioritized items:
@@ -106,8 +106,8 @@ Please find some ideas for possible future expansions of the memory process file
 
 ### Other items:
 - Hash lookup of executable memory pages in DB.
-- Forensic mode more more analysis tasks.
-- Forensic mode JSON file generation.
+- Forensic mode more analysis tasks.
+- Offlne debug symbols.
 
 License:
 ========
@@ -128,13 +128,20 @@ Links:
 * YouTube: https://www.youtube.com/channel/UC2aAi-gjqvKiC7s7Opzv9rg
 * Blog: http://blog.frizk.net
 
+Links - Related Projects:
+=========================
+* MemProcFSHunter: https://github.com/memprocfshunt/MemProcFSHunter
+* MemProcFS-Analyzer: https://github.com/evild3ad/MemProcFS-Analyzer
+
 Support PCILeech/MemProcFS development:
 =======================================
-PCILeech and MemProcFS are hobby projects of mine. I put a lot of time and energy into my projects. The time being most of my spare time. Since some aspects also relate to hardware I also put quite some of money into my projects. If you think PCILeech and/or MemProcFS are awesome tools and/or if you had a use for them it's now possible to contribute. It's possible to sponsor via Github Sponsors.
+PCILeech and MemProcFS is free and open source!
 
- - Github Sponsors: [`https://github.com/sponsors/ufrisk`](https://github.com/sponsors/ufrisk)
+I put a lot of time and energy into PCILeech and MemProcFS and related research to make this happen. Some aspects of the projects relate to hardware and I put quite some money into my projects and related research. If you think PCILeech and/or MemProcFS are awesome tools and/or if you had a use for them it's now possible to contribute by becoming a sponsor! 
  
-To all my sponsors, Thank You :sparkling_heart:
+If you like what I've created with PCIleech and MemProcFS with regards to DMA, Memory Analysis and Memory Forensics and would like to give something back to support future development please consider becoming a sponsor at: [`https://github.com/sponsors/ufrisk`](https://github.com/sponsors/ufrisk)
+
+To all my sponsors, Thank You 💖 
 
 All sponsorships are welcome, no matter how large or small. I especially wish to thank my **bronze sponsors**: [grandprixgp](https://github.com/grandprixgp).
 
@@ -239,10 +246,15 @@ v1.1-v2.10
 * New Features:
   * New [Python API](https://github.com/ufrisk/MemProcFS/wiki/API_Python) now also available on [Python pip](https://pypi.org/project/memprocfs/). Check out the [YouTube demo](https://youtu.be/pLFU1lxBNM0)!
   * `py/reg/net/tcpip_interfaces.txt`
-</details>
 
 [v3.10](https://github.com/ufrisk/MemProcFS/releases/tag/v3.10)
 * Bug fixes.
 * New Features:
   * Scheduled Tasks at `/sys/tasks/`
   * Forensic mode: JSON info file generation `/forensic/json/` (compatible with Elasticsearch).
+</details>
+
+[v4.0](https://github.com/ufrisk/MemProcFS/releases/tag/v4.0)
+* Linux support (x64 and aarch64).
+* Separate releases for Windows and Linux.
+* API Changes and some incompatibilities.

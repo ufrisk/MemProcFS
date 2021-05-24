@@ -11,46 +11,46 @@
 #include "vmmwindef.h"
 
 #define MPROCTOKEN_PRIVILEGE_LINELENGTH     60ULL
-#define MPROCTOKEN_PRIVILEGE_LINEHEADER     L"   #    PID Flags Privilege Name"
+#define MPROCTOKEN_PRIVILEGE_LINEHEADER     "   #    PID Flags Privilege Name"
 
-static LPCWSTR szTOKEN_NAMES[] = {
-    L"",
-    L"",
-    SE_CREATE_TOKEN_NAME,
-    SE_ASSIGNPRIMARYTOKEN_NAME,
-    SE_LOCK_MEMORY_NAME,
-    SE_INCREASE_QUOTA_NAME,
-    SE_MACHINE_ACCOUNT_NAME,
-    SE_TCB_NAME,
-    SE_SECURITY_NAME,
-    SE_TAKE_OWNERSHIP_NAME,
-    SE_LOAD_DRIVER_NAME,
-    SE_SYSTEM_PROFILE_NAME,
-    SE_SYSTEMTIME_NAME,
-    SE_PROF_SINGLE_PROCESS_NAME,
-    SE_INC_BASE_PRIORITY_NAME,
-    SE_CREATE_PAGEFILE_NAME,
-    SE_CREATE_PERMANENT_NAME,
-    SE_BACKUP_NAME,
-    SE_RESTORE_NAME,
-    SE_SHUTDOWN_NAME,
-    SE_DEBUG_NAME,
-    SE_AUDIT_NAME,
-    SE_SYSTEM_ENVIRONMENT_NAME,
-    SE_CHANGE_NOTIFY_NAME,
-    SE_REMOTE_SHUTDOWN_NAME,
-    SE_UNDOCK_NAME,
-    SE_SYNC_AGENT_NAME,
-    SE_ENABLE_DELEGATION_NAME,
-    SE_MANAGE_VOLUME_NAME,
-    SE_IMPERSONATE_NAME,
-    SE_CREATE_GLOBAL_NAME,
-    SE_TRUSTED_CREDMAN_ACCESS_NAME,
-    SE_RELABEL_NAME,
-    SE_INC_WORKING_SET_NAME,
-    SE_TIME_ZONE_NAME,
-    SE_CREATE_SYMBOLIC_LINK_NAME,
-    SE_DELEGATE_SESSION_USER_IMPERSONATE_NAME
+static LPCSTR szTOKEN_NAMES[] = {
+    "",
+    "",
+    "SeCreateTokenPrivilege",           // SE_CREATE_TOKEN_NAME
+    "SeAssignPrimaryTokenPrivilege",    // SE_ASSIGNPRIMARYTOKEN_NAME
+    "SeLockMemoryPrivilege",            // SE_LOCK_MEMORY_NAME
+    "SeIncreaseQuotaPrivilege",         // SE_INCREASE_QUOTA_NAME
+    "SeMachineAccountPrivilege",        // SE_MACHINE_ACCOUNT_NAME
+    "SeTcbPrivilege",                   // SE_TCB_NAME
+    "SeSecurityPrivilege",              // SE_SECURITY_NAME
+    "SeTakeOwnershipPrivilege",         // SE_TAKE_OWNERSHIP_NAME
+    "SeLoadDriverPrivilege",            // SE_LOAD_DRIVER_NAME
+    "SeSystemProfilePrivilege",         // SE_SYSTEM_PROFILE_NAME
+    "SeSystemtimePrivilege",            // SE_SYSTEMTIME_NAME
+    "SeProfileSingleProcessPrivilege",  // SE_PROF_SINGLE_PROCESS_NAME
+    "SeIncreaseBasePriorityPrivilege",  // SE_INC_BASE_PRIORITY_NAME
+    "SeCreatePagefilePrivilege",        // SE_CREATE_PAGEFILE_NAME
+    "SeCreatePermanentPrivilege",       // SE_CREATE_PERMANENT_NAME
+    "SeBackupPrivilege",                // SE_BACKUP_NAME
+    "SeRestorePrivilege",               // SE_RESTORE_NAME
+    "SeShutdownPrivilege",              // SE_SHUTDOWN_NAME
+    "SeDebugPrivilege",                 // SE_DEBUG_NAME
+    "SeAuditPrivilege",                 // SE_AUDIT_NAME
+    "SeSystemEnvironmentPrivilege",     // SE_SYSTEM_ENVIRONMENT_NAME
+    "SeChangeNotifyPrivilege",          // SE_CHANGE_NOTIFY_NAME
+    "SeRemoteShutdownPrivilege",        // SE_REMOTE_SHUTDOWN_NAME
+    "SeUndockPrivilege",                // SE_UNDOCK_NAME
+    "SeSyncAgentPrivilege",             // SE_SYNC_AGENT_NAME
+    "SeEnableDelegationPrivilege",      // SE_ENABLE_DELEGATION_NAME
+    "SeManageVolumePrivilege",          // SE_MANAGE_VOLUME_NAME
+    "SeImpersonatePrivilege",           // SE_IMPERSONATE_NAME
+    "SeCreateGlobalPrivilege",          // SE_CREATE_GLOBAL_NAME
+    "SeTrustedCredManAccessPrivilege",  // SE_TRUSTED_CREDMAN_ACCESS_NAME
+    "SeRelabelPrivilege",               // SE_RELABEL_NAME
+    "SeIncreaseWorkingSetPrivilege",    // SE_INC_WORKING_SET_NAME
+    "SeTimeZonePrivilege",              // SE_TIME_ZONE_NAME
+    "SeCreateSymbolicLinkPrivilege",    // SE_CREATE_SYMBOLIC_LINK_NAME
+    "SeDelegateSessionUserImpersonatePrivilege"     // SE_DELEGATE_SESSION_USER_IMPERSONATE_NAME
 };
 
 _Success_(return)
@@ -78,8 +78,8 @@ VOID MProcToken_PrivilegeReadLine_Callback(_In_ PVMM_PROCESS pProcess, _In_ DWOR
             if(c) {
                 c--;
             } else {
-                Util_snwprintf_u8ln(szu8, cbLineLength,
-                    L"%04x%7i  %c%c%c  %s",
+                Util_usnprintf_ln(szu8, cbLineLength,
+                    "%04x%7i  %c%c%c  %s",
                     i,
                     pProcess->dwPID,
                     ((pPriv->Enabled >> i) & 1) ? 'e' : '-',
@@ -91,7 +91,7 @@ VOID MProcToken_PrivilegeReadLine_Callback(_In_ PVMM_PROCESS pProcess, _In_ DWOR
             }
         }
     }
-    Util_snwprintf_u8ln(szu8, cbLineLength, L"");
+    Util_usnprintf_ln(szu8, cbLineLength, "");
 }
 
 /*
@@ -108,28 +108,28 @@ _Success_(return == 0)
 NTSTATUS MProcToken_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
-    WCHAR wszBuffer[MAX_PATH + 1];
+    CHAR uszBuffer[MAX_PATH + 1];
     PVMM_PROCESS pObProcess = NULL;
     SEP_TOKEN_PRIVILEGES SepTokenPrivileges;
     DWORD cSepTokenPrivileges;
     if(!(pObProcess = VmmProcessGetEx(NULL, ctx->dwPID, VMM_FLAG_PROCESS_TOKEN))) { goto fail; }
     if(!pObProcess->win.TOKEN.fInitialized || !pObProcess->win.TOKEN.fSID) { goto fail; }
-    if(!_wcsicmp(ctx->wszPath, L"sid.txt")) {
+    if(!_stricmp(ctx->uszPath, "sid.txt")) {
         nt = Util_VfsReadFile_FromPBYTE(
             (PBYTE)pObProcess->win.TOKEN.szSID,
             pObProcess->win.TOKEN.szSID ? strlen(pObProcess->win.TOKEN.szSID) : 0,
             pb, cb, pcbRead, cbOffset);
-    } else if(!_wcsicmp(ctx->wszPath, L"user.txt")) {
-        VmmWinUser_GetNameW(&pObProcess->win.TOKEN.SID, wszBuffer, MAX_PATH, NULL, NULL);
-        nt = Util_VfsReadFile_FromTextWtoU8(wszBuffer, pb, cb, pcbRead, cbOffset);
-    } else if(!_wcsicmp(ctx->wszPath, L"luid.txt")) {
+    } else if(!_stricmp(ctx->uszPath, "user.txt")) {
+        VmmWinUser_GetName(&pObProcess->win.TOKEN.SID, uszBuffer, MAX_PATH, NULL);
+        nt = Util_VfsReadFile_FromPBYTE(uszBuffer, strlen(uszBuffer), pb, cb, pcbRead, cbOffset);
+    } else if(!_stricmp(ctx->uszPath, "luid.txt")) {
         nt = Util_VfsReadFile_FromQWORD(pObProcess->win.TOKEN.qwLUID, pb, cb, pcbRead, cbOffset, FALSE);
-    } else if(!_wcsicmp(ctx->wszPath, L"session.txt")) {
+    } else if(!_stricmp(ctx->uszPath, "session.txt")) {
         nt = Util_VfsReadFile_FromDWORD(pObProcess->win.TOKEN.dwSessionId, pb, cb, pcbRead, cbOffset, FALSE);
-    } else if(!_wcsicmp(ctx->wszPath, L"privileges.txt")) {
+    } else if(!_stricmp(ctx->uszPath, "privileges.txt")) {
         if(MProcToken_PrivilegeGet(pObProcess->win.TOKEN.va, &SepTokenPrivileges, &cSepTokenPrivileges)) {
             nt = Util_VfsLineFixed_Read(
-                MProcToken_PrivilegeReadLine_Callback, pObProcess, MPROCTOKEN_PRIVILEGE_LINELENGTH, MPROCTOKEN_PRIVILEGE_LINEHEADER,
+                (UTIL_VFSLINEFIXED_PFN_CB)MProcToken_PrivilegeReadLine_Callback, pObProcess, MPROCTOKEN_PRIVILEGE_LINELENGTH, MPROCTOKEN_PRIVILEGE_LINEHEADER,
                 &SepTokenPrivileges, cSepTokenPrivileges, 0,
                 pb, cb, pcbRead, cbOffset
             );
@@ -151,23 +151,22 @@ fail:
 BOOL MProcToken_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 {
     BOOL fResult = FALSE;
-    DWORD cuszName, cSepTokenPrivileges;
-    WCHAR wszBuffer[MAX_PATH + 1] = { 0 };
+    DWORD cSepTokenPrivileges;
+    CHAR uszBuffer[MAX_PATH + 1] = { 0 };
     PVMM_PROCESS pObProcess = NULL;
     SEP_TOKEN_PRIVILEGES SepTokenPrivileges;
     if(!(pObProcess = VmmProcessGetEx(NULL, ctx->dwPID, VMM_FLAG_PROCESS_TOKEN))) { goto fail; }
     if(!pObProcess->win.TOKEN.fInitialized || !pObProcess->win.TOKEN.fSID) { goto fail; }
     if(pObProcess->win.TOKEN.szSID) {
-        VMMDLL_VfsList_AddFile(pFileList, L"sid.txt", strlen(pObProcess->win.TOKEN.szSID), NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "sid.txt", strlen(pObProcess->win.TOKEN.szSID), NULL);
     }
-    if(VmmWinUser_GetNameW(&pObProcess->win.TOKEN.SID, wszBuffer, MAX_PATH, NULL, NULL)) {
-        cuszName = wcslen_u8(wszBuffer);
-        VMMDLL_VfsList_AddFile(pFileList, L"user.txt", cuszName, NULL);
+    if(VmmWinUser_GetName(&pObProcess->win.TOKEN.SID, uszBuffer, MAX_PATH, NULL)) {
+        VMMDLL_VfsList_AddFile(pFileList, "user.txt", strlen(uszBuffer), NULL);
     }
-    VMMDLL_VfsList_AddFile(pFileList, L"luid.txt", 16, NULL);
-    VMMDLL_VfsList_AddFile(pFileList, L"session.txt", 8, NULL);
+    VMMDLL_VfsList_AddFile(pFileList, "luid.txt", 16, NULL);
+    VMMDLL_VfsList_AddFile(pFileList, "session.txt", 8, NULL);
     if(MProcToken_PrivilegeGet(pObProcess->win.TOKEN.va, &SepTokenPrivileges, &cSepTokenPrivileges)) {
-        VMMDLL_VfsList_AddFile(pFileList, L"privileges.txt", UTIL_VFSLINEFIXED_LINECOUNT(cSepTokenPrivileges) * MPROCTOKEN_PRIVILEGE_LINELENGTH, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "privileges.txt", UTIL_VFSLINEFIXED_LINECOUNT(cSepTokenPrivileges) * MPROCTOKEN_PRIVILEGE_LINELENGTH, NULL);
     }
     fResult = TRUE;
 fail:
@@ -187,7 +186,7 @@ VOID M_ProcToken_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if(!((pRI->tpSystem == VMM_SYSTEM_WINDOWS_X64) || (pRI->tpSystem == VMM_SYSTEM_WINDOWS_X86))) { return; }
-    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\token");               // module name
+    strcpy_s(pRI->reg_info.uszPathName, 128, "\\token");                // module name
     pRI->reg_info.fRootModule = FALSE;                                  // module shows in root directory
     pRI->reg_info.fProcessModule = TRUE;                                // module shows in process directory
     pRI->reg_fn.pfnList = MProcToken_List;                              // List function supported

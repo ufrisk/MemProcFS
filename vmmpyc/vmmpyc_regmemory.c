@@ -30,7 +30,7 @@ VmmPycRegMemory_read(PyObj_RegMemory *self, PyObject *args)
         LocalFree(pb);
         return PyErr_Format(PyExc_RuntimeError, "RegMemory.read(): Failed.");
     }
-    pyBytes = PyBytes_FromStringAndSize(pb, cbRead);
+    pyBytes = PyBytes_FromStringAndSize((const char *)pb, cbRead);
     LocalFree(pb);
     return pyBytes;
 }

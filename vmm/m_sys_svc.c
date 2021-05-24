@@ -12,7 +12,7 @@
 #include "pluginmanager.h"
 
 #define MSYSSVC_LINELENGTH      288ULL
-#define MSYSSVC_LINEHEADER      L"   #    PID Start Type   State      Type Type    Obj Address  Name / Display Name                                              User                         Image Path                                          Object Name / Command Line"
+#define MSYSSVC_LINEHEADER      "   #    PID Start Type   State      Type Type    Obj Address  Name / Display Name                                              User                         Image Path                                          Object Name / Command Line"
 
 
 VOID MSysSvc_GetSvcTypeLong(_In_ PVMM_MAP_SERVICEENTRY pe, _Out_writes_(MAX_PATH) LPSTR sz)
@@ -107,60 +107,60 @@ LPSTR MSysSvc_GetSvcState(_In_ PVMM_MAP_SERVICEENTRY pe, _In_ BOOL fLong)
 
 VOID MSysSvc_ReadLine_Callback(_Inout_opt_ PVOID ctx, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVMM_MAP_SERVICEENTRY pe, _Out_writes_(cbLineLength + 1) LPSTR szu8)
 {
-    WCHAR wszSvcName[MAX_PATH + 1];
-    wszSvcName[0] = '\0';
-    wcsncat_s(wszSvcName, MAX_PATH, pe->wszServiceName, _TRUNCATE);
-    if((pe->wszServiceName != pe->wszDisplayName) && pe->wszDisplayName[0]) {
-        wcsncat_s(wszSvcName, MAX_PATH, L" / ", _TRUNCATE);
-        wcsncat_s(wszSvcName, MAX_PATH, pe->wszDisplayName, _TRUNCATE);
+    CHAR uszSvcName[MAX_PATH + 1];
+    uszSvcName[0] = '\0';
+    strncat_s(uszSvcName, MAX_PATH, pe->uszServiceName, _TRUNCATE);
+    if((pe->uszServiceName != pe->uszDisplayName) && pe->uszDisplayName[0]) {
+        strncat_s(uszSvcName, MAX_PATH, " / ", _TRUNCATE);
+        strncat_s(uszSvcName, MAX_PATH, pe->uszDisplayName, _TRUNCATE);
     }
-    Util_snwprintf_u8ln(szu8, cbLineLength,
-        L"%04i%7i %S %S %S %012llx %-64.64s %-28.28s %-48s%s%s",
+    Util_usnprintf_ln(szu8, cbLineLength,
+        "%04i%7i %s %s %s %012llx %-64.64s %-28.28s %-48s%s%s",
         pe->dwOrdinal,
         pe->dwPID,
         MSysSvc_GetSvcStartType(pe, FALSE),
         MSysSvc_GetSvcState(pe, FALSE),
         MSysSvc_GetSvcTypeShort(pe),
         pe->vaObj,
-        wszSvcName,
-        pe->wszUserAcct[0] ? pe->wszUserAcct : L"---",
-        pe->wszImagePath[0] ? pe->wszImagePath : L"---",
-        pe->wszPath[0] ? L" :: " : L"",
-        pe->wszPath[0] ? pe->wszPath : L""
+        uszSvcName,
+        pe->uszUserAcct[0] ? pe->uszUserAcct : "---",
+        pe->uszImagePath[0] ? pe->uszImagePath : "---",
+        pe->uszPath[0] ? " :: " : "",
+        pe->uszPath[0] ? pe->uszPath : ""
     );
 }
 
-DWORD MSysSvc_InfoFromEntry(_In_ PVMM_MAP_SERVICEENTRY pe, _Out_writes_(cbszu8) LPSTR szu8, _In_ DWORD cbszu8)
+DWORD MSysSvc_InfoFromEntry(_In_ PVMM_MAP_SERVICEENTRY pe, _Out_writes_(cbu) LPSTR usz, _In_ DWORD cbu)
 {
     CHAR szSvcType[MAX_PATH];
     LPSTR szStartType = MSysSvc_GetSvcStartType(pe, TRUE);
     LPSTR szState = MSysSvc_GetSvcState(pe, TRUE);
     MSysSvc_GetSvcTypeLong(pe, szSvcType);
-    return (DWORD)Util_snwprintf_u8(szu8, cbszu8,
-        L"Ordinal:          %i\n" \
-        L"Service Name:     %s\n" \
-        L"Display Name:     %s\n" \
-        L"Record Address:   0x%012llx\n" \
-        L"Service Type:     %S (0x%x)\n" \
-        L"Service State:    %S (0x%x)\n" \
-        L"Service Type:     %S (0x%x)\n" \
-        L"Process ID (PID): %i\n" \
-        L"Path:             %s\n" \
-        L"Image Path:       %s\n" \
-        L"User Type:        %s\n" \
-        L"User Account:     %s\n",
+    return (DWORD)snprintf(usz, cbu,
+        "Ordinal:          %i\n" \
+        "Service Name:     %s\n" \
+        "Display Name:     %s\n" \
+        "Record Address:   0x%012llx\n" \
+        "Service Type:     %s (0x%x)\n" \
+        "Service State:    %s (0x%x)\n" \
+        "Service Type:     %s (0x%x)\n" \
+        "Process ID (PID): %i\n" \
+        "Path:             %s\n" \
+        "Image Path:       %s\n" \
+        "User Type:        %s\n" \
+        "User Account:     %s\n",
         pe->dwOrdinal,
-        pe->wszServiceName,
-        pe->wszDisplayName,
+        pe->uszServiceName,
+        pe->uszDisplayName,
         pe->vaObj,
         szStartType, pe->dwStartType,
         szState, pe->ServiceStatus.dwCurrentState,
         szSvcType, pe->ServiceStatus.dwServiceType,
         pe->dwPID,
-        pe->wszPath,
-        pe->wszImagePath,
-        pe->wszUserTp,
-        pe->wszUserAcct
+        pe->uszPath,
+        pe->uszImagePath,
+        pe->uszUserTp,
+        pe->uszUserAcct
     );
 }
 
@@ -174,33 +174,33 @@ NTSTATUS MSysSvc_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbR
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PVMMOB_MAP_SERVICE pObSvcMap = NULL;
     PVMM_MAP_SERVICEENTRY pe;
-    LPWSTR wszSvcSubPath;
+    LPSTR uszSvcSubPath;
     QWORD qwSvcId;
     DWORD i, cbInfoFile, dwSvcId;
-    WCHAR wsz[MAX_PATH];
+    CHAR usz[MAX_PATH];
     CHAR szu8InfoFile[0x1000];
     if(!VmmMap_GetService(&pObSvcMap)) { goto finish; }
-    if(!wcscmp(ctx->wszPath, L"services.txt")) {
+    if(!_stricmp(ctx->uszPath, "services.txt")) {
         nt = Util_VfsLineFixed_Read(
-            MSysSvc_ReadLine_Callback, NULL, MSYSSVC_LINELENGTH, MSYSSVC_LINEHEADER,
+            (UTIL_VFSLINEFIXED_PFN_CB)MSysSvc_ReadLine_Callback, NULL, MSYSSVC_LINELENGTH, MSYSSVC_LINEHEADER,
             pObSvcMap->pMap, pObSvcMap->cMap, sizeof(VMM_MAP_SERVICEENTRY),
             pb, cb, pcbRead, cbOffset
         );
         goto finish;
     }
-    if(Util_VfsHelper_GetIdDir(ctx->wszPath, &dwSvcId, &wszSvcSubPath)) {
+    if(Util_VfsHelper_GetIdDir(ctx->uszPath, &dwSvcId, &uszSvcSubPath)) {
         qwSvcId = dwSvcId;
         pe = Util_qfind((PVOID)qwSvcId, pObSvcMap->cMap, pObSvcMap->pMap, sizeof(VMM_MAP_SERVICEENTRY), (int(*)(PVOID, PVOID))MSysSvc_InfoFromPath_Filter);
         if(pe) {
-            if(!_wcsicmp(L"svcinfo.txt", wszSvcSubPath)) {
+            if(!_stricmp("svcinfo.txt", uszSvcSubPath)) {
                 cbInfoFile = MSysSvc_InfoFromEntry(pe, szu8InfoFile, sizeof(szu8InfoFile));
                 nt = Util_VfsReadFile_FromPBYTE((PBYTE)szu8InfoFile, cbInfoFile, pb, cb, pcbRead, cbOffset);
                 goto finish;
             }
-            if(!_wcsnicmp(L"registry", wszSvcSubPath, 8)) {
-                i = (wszSvcSubPath[8] == '\\') ? 9 : 8;
-                _snwprintf_s(wsz, MAX_PATH, _TRUNCATE, L"registry\\HKLM\\SYSTEM\\ControlSet001\\Services\\%s\\%s", pe->wszServiceName, wszSvcSubPath + i);
-                return PluginManager_Read(NULL, wsz, pb, cb, pcbRead, cbOffset);
+            if(!_strnicmp("registry", uszSvcSubPath, 8)) {
+                i = (uszSvcSubPath[8] == '\\') ? 9 : 8;
+                _snprintf_s(usz, MAX_PATH, _TRUNCATE, "registry\\HKLM\\SYSTEM\\ControlSet001\\Services\\%s\\%s", pe->uszServiceName, uszSvcSubPath + i);
+                return PluginManager_Read(NULL, usz, pb, cb, pcbRead, cbOffset);
             }
         }
     }
@@ -213,46 +213,46 @@ BOOL MSysSvc_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 {
     QWORD qwSvcId;
     DWORD i, cbInfoFile, dwSvcId;
-    LPWSTR wszSvcSubPath;
+    LPSTR uszSvcSubPath;
     PVMMOB_MAP_SERVICE pObSvcMap = NULL;
     PVMM_MAP_SERVICEENTRY pe;
-    WCHAR wsz[MAX_PATH];
+    CHAR usz[MAX_PATH];
     CHAR szu8InfoFile[0x1000];
     if(!VmmMap_GetService(&pObSvcMap)) { goto finish; }
-    if(0 == ctx->wszPath[0]) {
-        VMMDLL_VfsList_AddDirectory(pFileList, L"by-id", NULL);
-        VMMDLL_VfsList_AddDirectory(pFileList, L"by-name", NULL);
-        VMMDLL_VfsList_AddFile(pFileList, L"services.txt", UTIL_VFSLINEFIXED_LINECOUNT(pObSvcMap->cMap) * MSYSSVC_LINELENGTH, NULL);
+    if(0 == ctx->uszPath[0]) {
+        VMMDLL_VfsList_AddDirectory(pFileList, "by-id", NULL);
+        VMMDLL_VfsList_AddDirectory(pFileList, "by-name", NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "services.txt", UTIL_VFSLINEFIXED_LINECOUNT(pObSvcMap->cMap) * MSYSSVC_LINELENGTH, NULL);
         goto finish;
     }
-    if(!_wcsicmp(L"by-id", ctx->wszPath)) {
+    if(!_stricmp(ctx->uszPath, "by-id")) {
         for(i = 0; i < pObSvcMap->cMap; i++) {
-            _snwprintf_s(wsz, 5, _TRUNCATE, L"%i", pObSvcMap->pMap[i].dwOrdinal);
-            VMMDLL_VfsList_AddDirectory(pFileList, wsz, NULL);
+            _snprintf_s(usz, 5, _TRUNCATE, "%i", pObSvcMap->pMap[i].dwOrdinal);
+            VMMDLL_VfsList_AddDirectory(pFileList, usz, NULL);
         }
         goto finish;
     }
-    if(!_wcsicmp(L"by-name", ctx->wszPath)) {
+    if(!_stricmp(ctx->uszPath, "by-name")) {
         for(i = 0; i < pObSvcMap->cMap; i++) {
-            _snwprintf_s(wsz, MAX_PATH, _TRUNCATE, L"%s-%i", pObSvcMap->pMap[i].wszServiceName, pObSvcMap->pMap[i].dwOrdinal);
-            VMMDLL_VfsList_AddDirectory(pFileList, wsz, NULL);
+            _snprintf_s(usz, MAX_PATH, _TRUNCATE, "%s-%i", pObSvcMap->pMap[i].uszServiceName, pObSvcMap->pMap[i].dwOrdinal);
+            VMMDLL_VfsList_AddDirectory(pFileList, usz, NULL);
         }
         goto finish;
     }
-    if(Util_VfsHelper_GetIdDir(ctx->wszPath, &dwSvcId, &wszSvcSubPath)) {
+    if(Util_VfsHelper_GetIdDir(ctx->uszPath, &dwSvcId, &uszSvcSubPath)) {
         qwSvcId = dwSvcId;
         pe = Util_qfind((PVOID)qwSvcId, pObSvcMap->cMap, pObSvcMap->pMap, sizeof(VMM_MAP_SERVICEENTRY), (int(*)(PVOID, PVOID))MSysSvc_InfoFromPath_Filter);
         if(pe) {
-            if(0 == wszSvcSubPath[0]) {
+            if(0 == uszSvcSubPath[0]) {
                 cbInfoFile = MSysSvc_InfoFromEntry(pe, szu8InfoFile, sizeof(szu8InfoFile));
-                VMMDLL_VfsList_AddFile(pFileList, L"svcinfo.txt", cbInfoFile, NULL);
-                VMMDLL_VfsList_AddDirectory(pFileList, L"registry", NULL);
+                VMMDLL_VfsList_AddFile(pFileList, "svcinfo.txt", cbInfoFile, NULL);
+                VMMDLL_VfsList_AddDirectory(pFileList, "registry", NULL);
                 goto finish;
             }
-            if(!_wcsnicmp(L"registry", wszSvcSubPath, 8)) {
-                i = (wszSvcSubPath[8] == '\\') ? 9 : 8;
-                _snwprintf_s(wsz, MAX_PATH, _TRUNCATE, L"registry\\HKLM\\SYSTEM\\ControlSet001\\Services\\%s\\%s", pe->wszServiceName, wszSvcSubPath + i);
-                PluginManager_List(NULL, wsz, pFileList);
+            if(!_strnicmp(uszSvcSubPath, "registry", 8)) {
+                i = (uszSvcSubPath[8] == '\\') ? 9 : 8;
+                _snprintf_s(usz, MAX_PATH, _TRUNCATE, "registry\\HKLM\\SYSTEM\\ControlSet001\\Services\\%s\\%s", pe->uszServiceName, uszSvcSubPath + i);
+                PluginManager_List(NULL, usz, pFileList);
                 goto finish;
             }
         }
@@ -271,7 +271,7 @@ VOID MSysSvc_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(
     PVMMOB_MAP_SERVICE pObSvcMap = NULL;
     PVMM_MAP_SERVICEENTRY pe;
     DWORD i;
-    CHAR sz[MAX_PATH], szj[2][MAX_PATH];
+    CHAR sz[MAX_PATH], usz[2][MAX_PATH];
     if(ctxP->pProcess || !(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)))) { return; }
     pd->dwVersion = VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION;
     pd->szjType = "service";
@@ -282,16 +282,16 @@ VOID MSysSvc_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(
             pd->dwPID = pe->dwPID;
             pd->vaObj = pe->vaObj;
             MSysSvc_GetSvcTypeLong(pe, sz);
-            Util_snwprintf_u8j(szj[0], _countof(szj[0]), L"%s [%s]",
-                pe->wszServiceName,
-                pe->wszDisplayName);
-            Util_snwprintf_u8j(szj[1], _countof(szj[1]), L"start:[%S] state:[%S] type:[%S] user:[%s] image:[%s] path:[%s]",
+            snprintf(usz[0], _countof(usz[0]), "%s [%s]",
+                pe->uszServiceName,
+                pe->uszDisplayName);
+            _snprintf_s(usz[1], _countof(usz[1]), _TRUNCATE, "start:[%s] state:[%s] type:[%s] user:[%s] image:[%s] path:[%s]",
                 MSysSvc_GetSvcStartType(pe, FALSE), MSysSvc_GetSvcState(pe, FALSE), sz,
-                (pe->wszUserAcct[0] ? pe->wszUserAcct : L"---"),
-                (pe->wszImagePath[0] ? pe->wszImagePath : L"---"),
-                (pe->wszPath[0] ? pe->wszPath : L"---"));
-            pd->szj[0] = szj[0];
-            pd->szj[1] = szj[1];
+                (pe->uszUserAcct[0] ? pe->uszUserAcct : "---"),
+                (pe->uszImagePath[0] ? pe->uszImagePath : "---"),
+                (pe->uszPath[0] ? pe->uszPath : "---"));
+            pd->usz[0] = usz[0];
+            pd->usz[1] = usz[1];
             pfnLogJSON(pd);
         }
     }
@@ -303,7 +303,7 @@ VOID M_SysSvc_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if((pRI->tpSystem != VMM_SYSTEM_WINDOWS_X64) && (pRI->tpSystem != VMM_SYSTEM_WINDOWS_X86)) { return; }
-    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\sys\\services");   // module name
+    strcpy_s(pRI->reg_info.uszPathName, 128, "\\sys\\services");    // module name
     pRI->reg_info.fRootModule = TRUE;                               // module shows in root directory
     pRI->reg_fn.pfnList = MSysSvc_List;                             // List function supported
     pRI->reg_fn.pfnRead = MSysSvc_Read;                             // Read function supported

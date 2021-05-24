@@ -37,7 +37,7 @@ VmmPycVmm_process(PyObj_Vmm *self, PyObject *args)
     PyObject *pyData = NULL, *pyObjProcess;
     BOOL result;
     DWORD dwPID;
-    LPSTR szProcessName;
+    LPSTR szProcessName = NULL;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Vmm.process(): Not initialized."); }
     if(PyArg_ParseTuple(args, "k", &dwPID)) {
         // argument: by-pid:
@@ -49,7 +49,7 @@ VmmPycVmm_process(PyObj_Vmm *self, PyObject *args)
     }
     PyErr_Clear();
     // argument: by-name:
-    if(!PyArg_ParseTuple(args, "s", &szProcessName)) {
+    if(!PyArg_ParseTuple(args, "s", &szProcessName) || !szProcessName) {
         return PyErr_Format(PyExc_RuntimeError, "Vmm.process(): Illegal argument.");
     }
     Py_BEGIN_ALLOW_THREADS;
@@ -180,36 +180,36 @@ VmmPycVmm_reg_hive_list(PyObj_Vmm *self, PyObject *args)
 static PyObject*
 VmmPycVmm_reg_key(PyObj_Vmm *self, PyObject *args)
 {
-    PyObject *pyObj, *pyUnicodePath;
-    LPWSTR wszName;
+    PyObject *pyObj, *pyUnicodeName;
+    LPSTR uszName = NULL;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Vmm.reg_key(): Not initialized."); }
-    if(!PyArg_ParseTuple(args, "O!", &PyUnicode_Type, &pyUnicodePath)) {
+    if(!PyArg_ParseTuple(args, "s", &uszName) || !uszName) {
         return PyErr_Format(PyExc_RuntimeError, "Vmm.reg_key(): Illegal argument.");
     }
-    if(!(wszName = PyUnicode_AsWideCharString(pyUnicodePath, NULL))) {    // wszPath PyMem_Free() required 
-        return PyErr_Format(PyExc_RuntimeError, "Vmm.reg_key(): Illegal argument.");
+    pyObj = (PyObject*)VmmPycRegKey_InitializeInternal(uszName, TRUE);
+    if(!pyObj && (pyUnicodeName = PyUnicode_FromString(uszName))) {
+        pyObj = PyErr_Format(PyExc_RuntimeError, "Vmm.reg_key('%U'): Failed.", pyUnicodeName);
+        Py_XDECREF(pyObj);
     }
-    pyObj = (PyObject*)VmmPycRegKey_InitializeInternal(wszName, TRUE);
-    PyMem_Free(wszName);
-    return pyObj ? pyObj : PyErr_Format(PyExc_RuntimeError, "Vmm.reg_key('%U'): Failed.", pyUnicodePath);
+    return pyObj;
 }
 
 // (STR) -> PyObj_RegKey*
 static PyObject*
 VmmPycVmm_reg_value(PyObj_Vmm *self, PyObject *args)
 {
-    PyObject *pyObj, *pyUnicodePath;
-    LPWSTR wszName;
+    PyObject *pyObj, *pyUnicodeName;
+    LPSTR uszName = NULL;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Vmm.reg_value(): Not initialized."); }
-    if(!PyArg_ParseTuple(args, "O!", &PyUnicode_Type, &pyUnicodePath)) {
+    if(!PyArg_ParseTuple(args, "s", &uszName) || !uszName) {
         return PyErr_Format(PyExc_RuntimeError, "Vmm.reg_value(): Illegal argument.");
     }
-    if(!(wszName = PyUnicode_AsWideCharString(pyUnicodePath, NULL))) {    // wszPath PyMem_Free() required 
-        return PyErr_Format(PyExc_RuntimeError, "Vmm.reg_value(): Illegal argument.");
+    pyObj = (PyObject *)VmmPycRegValue_InitializeInternal(uszName, TRUE);
+    if(!pyObj && (pyUnicodeName = PyUnicode_FromString(uszName))) {
+        pyObj = PyErr_Format(PyExc_RuntimeError, "Vmm.reg_value('%U'): Failed.", pyUnicodeName);
+        Py_XDECREF(pyUnicodeName);
     }
-    pyObj = (PyObject *)VmmPycRegValue_InitializeInternal(wszName, TRUE);
-    PyMem_Free(wszName);
-    return pyObj ? pyObj : PyErr_Format(PyExc_RuntimeError, "Vmm.reg_value('%U'): Failed.", pyUnicodePath);
+    return pyObj;
 }
 
 // -> *PyObj_Maps
@@ -271,6 +271,9 @@ VmmPycVmm_init(PyObj_Vmm *self, PyObject *args, PyObject *kwds)
         }
         Py_BEGIN_ALLOW_THREADS;
         result = VMMDLL_Initialize(cDstArgs, pszDstArgs);
+        if(result) {
+            VMMDLL_InitializePlugins();
+        }
         Py_END_ALLOW_THREADS;
         for(i = PARAM_OFFSET; i < cDstArgs; i++) {
             Py_XDECREF(pyBytesDstArgs[i]);
@@ -280,6 +283,10 @@ VmmPycVmm_init(PyObj_Vmm *self, PyObject *args, PyObject *kwds)
             return -1;
         }
         self->fVmmCoreOpenType = TRUE;
+        // initialize vfs:
+        if(!self->pyObjVfs) {
+            self->pyObjVfs = (PyObject *)VmmPycVfs_InitializeInternal();
+        }
     } else {    // INITIALIZE EXISTING VMM (CHECK IF EXISTING IS VALID)
         pyObjProcessTest = (PyObject*)VmmPycProcess_InitializeInternal(4, TRUE);
         if(!pyObjProcessTest) {

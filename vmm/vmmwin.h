@@ -121,6 +121,9 @@ BOOL VmmWinProcess_Enumerate(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fRefres
 */
 POB_SET VmmWinProcess_Enumerate_FindNoLinkProcesses();
 
+typedef VOID(*VMMWIN_LISTTRAVERSE_PRE_CB)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb, _In_ QWORD vaFLink, _In_ QWORD vaBLink, _In_ POB_SET pVSetAddress, _Inout_ PBOOL pfValidEntry, _Inout_ PBOOL pfValidFLink, _Inout_ PBOOL pfValidBLink);
+typedef VOID(*VMMWIN_LISTTRAVERSE_POST_CB)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb);
+
 /*
 * Walk a windows linked list in an efficient way that minimize IO requests to
 * the the device. This is advantageous for latency reasons. The function return
@@ -148,8 +151,8 @@ VOID VmmWin_ListTraversePrefetch(
     _In_ PQWORD pvaDataStart,
     _In_ DWORD oListStart,
     _In_ DWORD cbData,
-    _In_opt_ VOID(*pfnCallback_Pre)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb, _In_ QWORD vaFLink, _In_ QWORD vaBLink, _In_ POB_SET pVSetAddress, _Inout_ PBOOL pfValidEntry, _Inout_ PBOOL pfValidFLink, _Inout_ PBOOL pfValidBLink),
-    _In_opt_ VOID(*pfnCallback_Post)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb),
+    _In_opt_ VMMWIN_LISTTRAVERSE_PRE_CB pfnCallback_Pre,
+    _In_opt_ VMMWIN_LISTTRAVERSE_POST_CB pfnCallback_Post,
     _In_opt_ POB_CONTAINER pPrefetchAddressContainer
 );
 
@@ -175,18 +178,17 @@ PVMMOB_MAP_PHYSMEM VmmWinPhysMemMap_Initialize();
 VOID VmmWinPhysMemMap_Refresh();
 
 /*
-* Retrieve the account name and length of the user account given a SID.
+* Retrieve the account name of the user account given a SID.
 * NB! Names for well known SIDs will be given in the language of the system
 * running MemProcFS and not in the name of the analyzed system.
-* -- pSID = Required (function will always fail on NULL).
-* -- wszName
-* -- cwszName
-* -- pcwszName
-* -- pfAccountWellKnown
+* -- pSID
+* -- uszName
+* -- cbuName
+* -- fAccountWellKnown
 * -- return
 */
 _Success_(return)
-BOOL VmmWinUser_GetNameW(_In_opt_ PSID pSID, _Out_writes_opt_(cwszName) LPWSTR wszName, _In_ DWORD cwszName, _Out_opt_ PDWORD pcwszName, _Out_opt_ PBOOL pfAccountWellKnown);
+BOOL VmmWinUser_GetName(_In_opt_ PSID pSID, _Out_writes_(cbuName) LPSTR uszName, _In_ DWORD cbuName, _Out_opt_ PBOOL pfAccountWellKnown);
 
 /*
 * Create a user map and assign to the global context upon success.

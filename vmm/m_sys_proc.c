@@ -7,9 +7,9 @@
 // (c) Ulf Frisk, 2020-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-#include <ws2tcpip.h>
 #include "vmm.h"
 #include "vmmwin.h"
+#include "charutil.h"
 #include "util.h"
 
 // ----------------------------------------------------------------------------
@@ -52,15 +52,12 @@ BOOL MSysProc_Tree_ExistsUnprocessed(PMSYSPROC_TREE_ENTRY pPidList, DWORD cPidLi
     return FALSE;
 }
 
-VOID MSysProc_Tree_ProcessItems_GetUserName(_In_ PVMM_PROCESS pProcess, _Out_writes_(17) LPSTR szUserName, _Out_ PBOOL fAccountUser)
+VOID MSysProc_Tree_ProcessItems_GetUserName(_In_ PVMM_PROCESS pProcess, _Out_writes_(17) LPSTR uszUserName, _Out_ PBOOL fAccountUser)
 {
-    BOOL f, fWellKnownAccount;
-    DWORD cwszName;
-    WCHAR wszUserName[MAX_PATH];
+    BOOL f, fWellKnownAccount = FALSE;
+    uszUserName[0] = 0;
     f = pProcess->win.TOKEN.fSID &&
-        VmmWinUser_GetNameW(&pProcess->win.TOKEN.SID, wszUserName, MAX_PATH, &cwszName, &fWellKnownAccount) &&
-        snprintf(szUserName, 17, "%S", wszUserName);
-    szUserName[f ? 16 : 0] = 0;
+        VmmWinUser_GetName(&pProcess->win.TOKEN.SID, uszUserName, 17, &fWellKnownAccount);
     *fAccountUser = f && !fWellKnownAccount;
 }
 
@@ -70,6 +67,7 @@ DWORD MSysProc_Tree_ProcessItems(_In_ PMSYSPROC_TREE_ENTRY pProcessEntry, _In_ P
     CHAR szUserName[17], szTimeCRE[24], szTimeEXIT[24];
     DWORD i, o = 0;
     BOOL fWinNativeProc, fStateTerminated, fAccountUser = FALSE;
+    PVMMWIN_USER_PROCESS_PARAMETERS pu;
     if((cb > 0x01000000) || (cb < 0x00040000)) {
         vmmprintf_fn("WARNING: BUFFER MAY BE TOO SMALL - SHOULD NOT HAPPEN! %i\n", cb);
         return 0;
@@ -123,15 +121,12 @@ DWORD MSysProc_Tree_ProcessItems(_In_ PMSYSPROC_TREE_ENTRY pProcessEntry, _In_ P
             szUserName,
             pProcessEntry->pObProcess->pObPersistent->uszPathKernel
         );
-        if(pProcessEntry->pObProcess->pObPersistent->UserProcessParams.uszImagePathName) {
-            o += snprintf(pb + o, cb - o, "%63s%-*s\n", "",
-                pProcessEntry->pObProcess->pObPersistent->UserProcessParams.cuszImagePathName,
-                pProcessEntry->pObProcess->pObPersistent->UserProcessParams.uszImagePathName);
+        pu = VmmWin_UserProcessParameters_Get(pProcessEntry->pObProcess);
+        if(pu->cbuImagePathName > 1) {
+            o += snprintf(pb + o, cb - o, "%63s%s\n", "", pu->uszImagePathName);
         }
-        if(pProcessEntry->pObProcess->pObPersistent->UserProcessParams.uszCommandLine) {
-            o += snprintf(pb + o, cb - o, "%63s%-*s\n", "",
-                pProcessEntry->pObProcess->pObPersistent->UserProcessParams.cuszCommandLine,
-                pProcessEntry->pObProcess->pObPersistent->UserProcessParams.uszCommandLine);
+        if(pu->cbuCommandLine > 1) {
+            o += snprintf(pb + o, cb - o, "%63s%s\n", "", pu->uszCommandLine);
         }
         if(szTimeCRE[0] != ' ') {
             o += snprintf(pb + o, cb - o, "%63s%s -> %s\n", "", szTimeCRE, szTimeEXIT);
@@ -212,15 +207,16 @@ BOOL MSysProc_Tree(_In_ BOOL fVerbose, _Out_ PBYTE * ppb, _Out_ PDWORD pcb)
     return fResult;
 }
 
-VOID MSysProc_ListTree_ProcessUserParams_CallbackAction(_In_ PVMM_PROCESS pProcess, _In_ PDWORD pcTotalBytes)
+VOID MSysProc_ListTree_ProcessUserParams_CallbackAction(_In_ PVMM_PROCESS pProcess, _In_ PVOID ctx)
 {
+    PDWORD pcTotalBytes = (PDWORD)ctx;
     PVMMWIN_USER_PROCESS_PARAMETERS pu = VmmWin_UserProcessParameters_Get(pProcess);
     DWORD c = MSYSPROC_TREE_LINE_LENGTH_VERBOSE_BASE + pProcess->pObPersistent->cuszPathKernel + 1;
-    if(pu->uszImagePathName) {
-        c += MSYSPROC_TREE_LINE_LENGTH_VERBOSE_BASE + pu->cuszImagePathName;
+    if(pu->cbuImagePathName > 1) {
+        c += MSYSPROC_TREE_LINE_LENGTH_VERBOSE_BASE + pu->cbuImagePathName - 1;
     }
-    if(pu->uszCommandLine) {
-        c += MSYSPROC_TREE_LINE_LENGTH_VERBOSE_BASE + pu->cuszCommandLine;
+    if(pu->cbuCommandLine > 1) {
+        c += MSYSPROC_TREE_LINE_LENGTH_VERBOSE_BASE + pu->cbuCommandLine - 1;
     }
     if(VmmProcess_GetCreateTimeOpt(pProcess)) {
         c += MSYSPROC_TREE_LINE_LENGTH_VERBOSE_BASE + 23 + 4 + 23;
@@ -233,13 +229,13 @@ NTSTATUS MSysProc_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcb
     NTSTATUS nt;
     DWORD cbFile = 0;
     PBYTE pbFile = NULL;
-    if(!wcscmp(ctx->wszPath, L"proc.txt")) {
+    if(!_stricmp(ctx->uszPath, "proc.txt")) {
         MSysProc_Tree(FALSE, &pbFile, &cbFile);
         nt = Util_VfsReadFile_FromPBYTE(pbFile, cbFile, pb, cb, pcbRead, cbOffset);
         LocalFree(pbFile);
         return nt;
     }
-    if(!wcscmp(ctx->wszPath, L"proc-v.txt")) {
+    if(!_stricmp(ctx->uszPath, "proc-v.txt")) {
         MSysProc_Tree(TRUE, &pbFile, &cbFile);
         nt = Util_VfsReadFile_FromPBYTE(pbFile, cbFile, pb, cb, pcbRead, cbOffset);
         LocalFree(pbFile);
@@ -252,14 +248,14 @@ BOOL MSysProc_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 {
     SIZE_T cProcess = 0;
     DWORD cbProcTree = 0;
-    if(ctx->wszPath[0]) { return FALSE; }
+    if(ctx->uszPath[0]) { return FALSE; }
     VmmProcessListPIDs(NULL, &cProcess, VMM_FLAG_PROCESS_SHOW_TERMINATED);
     if(cProcess) {
         cbProcTree = (DWORD)(cProcess + 2) * MSYSPROC_TREE_LINE_LENGTH;
-        VMMDLL_VfsList_AddFile(pFileList, L"proc.txt", cbProcTree, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "proc.txt", cbProcTree, NULL);
         cbProcTree = MSYSPROC_TREE_LINE_LENGTH_VERBOSE_HEADER * 2;
         VmmProcessActionForeachParallel(&cbProcTree, NULL, MSysProc_ListTree_ProcessUserParams_CallbackAction);
-        VMMDLL_VfsList_AddFile(pFileList, L"proc-v.txt", cbProcTree, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "proc-v.txt", cbProcTree, NULL);
     }
     return TRUE;
 }
@@ -268,7 +264,7 @@ VOID M_SysProc_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if((pRI->tpSystem != VMM_SYSTEM_WINDOWS_X64) && (pRI->tpSystem != VMM_SYSTEM_WINDOWS_X86)) { return; }
-    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\sys\\proc");   // module name
+    strcpy_s(pRI->reg_info.uszPathName, 128, "\\sys\\proc");    // module name
     pRI->reg_info.fRootModule = TRUE;                           // module shows in root directory
     pRI->reg_fn.pfnList = MSysProc_List;                        // List function supported
     pRI->reg_fn.pfnRead = MSysProc_Read;                        // Read function supported

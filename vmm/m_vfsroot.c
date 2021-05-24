@@ -347,11 +347,11 @@ NTSTATUS MVfsRoot_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcb
     DWORD io, cbHead = 0, cbReadMem = 0;
     DWORD cbOverlayOffset, cbOverlay;
     QWORD cbOverlayAdjust;
-    if(!_wcsicmp(ctx->wszPath, L"memory.pmem")) {
+    if(!_stricmp(ctx->uszPath, "memory.pmem")) {
         VmmReadEx(NULL, cbOffset, pb, cb, pcbRead, VMM_FLAG_ZEROPAD_ON_FAIL);
         return VMM_STATUS_SUCCESS;
     }
-    if(!_wcsicmp(ctx->wszPath, L"memory.dmp")) {
+    if(!_stricmp(ctx->uszPath, "memory.dmp")) {
         if(!(pObDumpCtx = MVfsRoot_GetDumpContext())) { goto finish; }
         // read dump header
         if(cbOffset < pObDumpCtx->cbHdr) {
@@ -410,12 +410,12 @@ NTSTATUS MVfsRoot_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBYTE pb
 {
     BOOL fResult;
     DWORD cbHeaderSize;
-    if(!_wcsicmp(ctx->wszPath, L"memory.pmem")) {
+    if(!_stricmp(ctx->uszPath, "memory.pmem")) {
         *pcbWrite = cb;
         fResult = VmmWrite(NULL, cbOffset, pb, cb);
         return fResult ? VMM_STATUS_SUCCESS : VMM_STATUS_FILE_SYSTEM_LIMITATION;
     }
-    if(!_wcsicmp(ctx->wszPath, L"memory.dmp")) {
+    if(!_stricmp(ctx->uszPath, "memory.dmp")) {
         *pcbWrite = cb;
         cbHeaderSize = ctxVmm->f32 ? 0x1000 : 0x2000;
         if(cbOffset + cb <= cbHeaderSize) {
@@ -442,11 +442,11 @@ NTSTATUS MVfsRoot_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBYTE pb
 */
 BOOL MVfsRoot_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 {
-    if(!ctx->wszPath[0]) {
-        VMMDLL_VfsList_AddDirectory(pFileList, L"name", NULL);
-        VMMDLL_VfsList_AddDirectory(pFileList, L"pid", NULL);
-        VMMDLL_VfsList_AddFile(pFileList, L"memory.pmem", ctxMain->dev.paMax, NULL);
-        VMMDLL_VfsList_AddFile(pFileList, L"memory.dmp", ctxMain->dev.paMax + (ctxVmm->f32 ? 0x1000 : 0x2000), NULL);
+    if(!ctx->uszPath[0]) {
+        VMMDLL_VfsList_AddDirectory(pFileList, "name", NULL);
+        VMMDLL_VfsList_AddDirectory(pFileList, "pid", NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "memory.pmem", ctxMain->dev.paMax, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "memory.dmp", ctxMain->dev.paMax + (ctxVmm->f32 ? 0x1000 : 0x2000), NULL);
     }
     return TRUE;
 }
@@ -461,7 +461,7 @@ BOOL MVfsRoot_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 */
 VOID M_VfsRoot_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
-    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\");                     // module name
+    strcpy_s(pRI->reg_info.uszPathName, 128, "\\");                      // module name
     pRI->reg_info.fRootModule = TRUE;                                    // root module
     pRI->reg_fn.pfnList = MVfsRoot_List;                                 // List function supported
     pRI->reg_fn.pfnRead = MVfsRoot_Read;                                 // Read function supported

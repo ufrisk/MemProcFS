@@ -26,35 +26,74 @@ VOID Util_FileTime2String(_In_ QWORD ft, _Out_writes_(24) LPSTR szTime)
     );
 }
 
-LPWSTR Util_PathSplitLastW(_In_ LPWSTR wsz)
+LPSTR Util_PathSplitLastU(_In_ LPSTR usz)
 {
-    LPWSTR wszResult = wsz;
-    WCHAR ch;
+    LPSTR uszResult = usz;
+    CHAR ch;
     DWORD i = 0;
     while(TRUE) {
-        ch = wsz[i++];
+        ch = usz[i++];
         if(ch == '\0') {
-            return wszResult;
+            return uszResult;
         }
         if(ch == '\\') {
-            wszResult = wsz + i;
+            uszResult = usz + i;
         }
     }
 }
 
-LPWSTR Util_PathFileSplitW(_In_ LPWSTR wsz, _Out_writes_(MAX_PATH) LPWSTR wszPath)
+/*
+* Split the string usz into two at the last (back)slash which is removed.
+* Ex: usz: XXX/YYY/ZZZ/AAA -> uszPath: XXX/YYY/ZZZ + return: AAA
+* -- usz = utf-8 or ascii string.
+* -- uszPath = buffer to receive result.
+* -- cbuPath = byte length of uszPath buffer
+* -- return
+*/
+LPSTR Util_PathSplitLastEx(_In_ LPSTR usz, _Out_writes_(cbuPath) LPSTR uszPath, _In_ DWORD cbuPath)
 {
-    DWORD i, iBackSlash = -1;
-    WCHAR ch = -1;
-    for(i = 0; ch && i < MAX_PATH; i++) {
-        ch = wsz[i];
-        wszPath[i] = ch;
-        if(ch == '\\') {
-            iBackSlash = i;
+    DWORD i, iSlash = -1;
+    CHAR ch = -1;
+    if(!cbuPath) { return NULL; }
+    for(i = 0; ch && i < cbuPath; i++) {
+        ch = usz[i];
+        uszPath[i] = ch;
+        if((ch == '\\') || (ch == '/')) {
+            iSlash = i;
         }
     }
-    wszPath[MAX_PATH - 1] = 0;
-    if(iBackSlash == -1) { return NULL; }
-    wszPath[iBackSlash] = 0;
-    return wszPath + iBackSlash + 1;
+    uszPath[cbuPath - 1] = 0;
+    if(iSlash == 0xffffffff) { return NULL; }
+    uszPath[iSlash] = 0;
+    return uszPath + iSlash + 1;
+}
+
+int PyDict_SetItemDWORD_DECREF(PyObject *dp, DWORD key, PyObject *item)
+{
+    PyObject *pyObjectKey = PyLong_FromUnsignedLong(key);
+    int i = PyDict_SetItem(dp, pyObjectKey, item);
+    Py_XDECREF(pyObjectKey);
+    Py_XDECREF(item);
+    return i;
+}
+
+int PyDict_SetItemString_DECREF(PyObject *dp, const char *key, PyObject *item)
+{
+    int i = PyDict_SetItemString(dp, key, item);
+    Py_XDECREF(item);
+    return i;
+}
+
+int PyDict_SetItemUnicode_DECREF(PyObject *dp, PyObject *key_nodecref, PyObject *item)
+{
+    int i = PyDict_SetItem(dp, key_nodecref, item);
+    Py_XDECREF(item);
+    return i;
+}
+
+int PyList_Append_DECREF(PyObject *dp, PyObject *item)
+{
+    int i = PyList_Append(dp, item);
+    Py_XDECREF(item);
+    return i;
 }

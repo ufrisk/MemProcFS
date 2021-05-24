@@ -380,7 +380,7 @@ typedef struct _tdMMVAD64_10 {
 VOID MmVad_MemMapVad_CloseObCallback(_In_ PVOID pVmmOb)
 {
     PVMMOB_MAP_VAD pOb = (PVMMOB_MAP_VAD)pVmmOb;
-    LocalFree(pOb->wszMultiText);
+    LocalFree(pOb->pbMultiText);
 }
 
 
@@ -825,7 +825,8 @@ VOID MmVad_Spider_DoWork(_In_ PVMM_PROCESS pSystemProcess, _In_ PVMM_PROCESS pPr
             if((eVad = pfnMmVad_Spider(pSystemProcess, va, pmObVad, psObAll, psObTry1, NULL, fVmmRead, dwFlagsBitMask))) {
                 if(eVad->CommitCharge > ((eVad->vaEnd + 1 - eVad->vaStart) >> 12)) { eVad->CommitCharge = 0; }
                 eVad->vaVad = va + (ctxVmm->f32 ? 8 : 0x10);
-                eVad->wszText = &ctxVmm->_EmptyWCHAR;
+                eVad->cbuText = 1;
+                eVad->uszText = "";
                 if(eVad->cbPrototypePte > 0x01000000) { eVad->cbPrototypePte = MMVAD_PTESIZE * (DWORD)((0x1000 + eVad->vaEnd - eVad->vaStart) >> 12); }
             }
         }
@@ -834,7 +835,8 @@ VOID MmVad_Spider_DoWork(_In_ PVMM_PROCESS pSystemProcess, _In_ PVMM_PROCESS pPr
             if((eVad = pfnMmVad_Spider(pSystemProcess, va, pmObVad, psObAll, psObTry1, psObTry2, fVmmRead, dwFlagsBitMask))) {
                 if(eVad->CommitCharge > ((eVad->vaEnd + 1 - eVad->vaStart) >> 12)) { eVad->CommitCharge = 0; }
                 eVad->vaVad = va + (ctxVmm->f32 ? 8 : 0x10);
-                eVad->wszText = &ctxVmm->_EmptyWCHAR;
+                eVad->cbuText = 1;
+                eVad->uszText = "";
                 if(eVad->cbPrototypePte > 0x01000000) { eVad->cbPrototypePte = MMVAD_PTESIZE * (DWORD)((0x1000 + eVad->vaEnd - eVad->vaStart) >> 12); }
             }
         }
@@ -872,20 +874,22 @@ fail:
 */
 VOID MmVad_ExtendedInfoFetch(_In_ PVMM_PROCESS pSystemProcess, _In_ PVMM_PROCESS pProcess, _In_ VMM_VADMAP_TP tp, _In_ QWORD fVmmRead)
 {
-    BOOL fResult = FALSE;
     BOOL f, f32 = ctxVmm->f32, fSharedCacheMap = FALSE;
-    WORD oControlArea_FilePointer, oControlArea_SegmentPointer, oSegment_SizeOfSegment;
-    DWORD cMax, oMultiText = 1, cwszMultiText = 2, dwTID;
-    BYTE pb[MAX_PATH*2+2], *pb2;
+    WORD oControlArea_FilePointer;
+    DWORD cMax;
+    BYTE pbBuffer[0x60];
     PQWORD pva = NULL;
-    LPWSTR wszMultiText = NULL;
     QWORD i, j, va, cVads = 0;
     PVMM_MAP_VADENTRY peVad, *ppeVads;
     PVMMOB_MAP_VAD pVadMap = NULL;
     PVMMOB_MAP_PTE pObPteMap = NULL;
     PVMMOB_MAP_HEAP pObHeapMap = NULL;
     PVMMOB_MAP_THREAD pObThreadMap = NULL;
+    POB_STRMAP psmOb = NULL;
     pVadMap = pProcess->Map.pObVad;
+    if(tp == VMM_VADMAP_TP_FULL) {
+        if(!(psmOb = ObStrMap_New(0))) { goto cleanup; }
+    }
     // count max potential vads and allocate.
     {
         for(i = 0, cMax = pVadMap->cMap; i < cMax; i++) {
@@ -923,25 +927,26 @@ VOID MmVad_ExtendedInfoFetch(_In_ PVMM_PROCESS pSystemProcess, _In_ PVMM_PROCESS
         oControlArea_FilePointer = f32 ?
             ((ctxVmm->kernel.dwVersionBuild <= 7601) ? 0x24 : 0x20) :   // 32-bit win7sp1- or win8.0+
             ((ctxVmm->kernel.dwVersionBuild <= 6000) ? 0x30 : 0x40);    // 64-bit vistasp0- or vistasp1+
-        oControlArea_SegmentPointer = 0;
-        oSegment_SizeOfSegment = f32 ? 0x10 : 0x18;
         for(i = 0; i < cVads; i++) {
             // pointer to _FILE_OBJECT
             f = pva[i] &&
-                VmmRead2(pSystemProcess, pva[i], pb, 0x60, fVmmRead | VMM_FLAG_FORCECACHE_READ) &&
-                (VMM_POOLTAG_PREPENDED(pb, 0x10, 'MmCa') || VMM_POOLTAG_PREPENDED(pb, 0x10, 'MmCi')) &&
-                (va = VMM_PTR_OFFSET_EX_FAST_REF(f32, pb + 0x10, oControlArea_FilePointer)) &&
+                VmmRead2(pSystemProcess, pva[i], pbBuffer, sizeof(pbBuffer), fVmmRead | VMM_FLAG_FORCECACHE_READ) &&
+                (VMM_POOLTAG_PREPENDED(pbBuffer, 0x10, 'MmCa') || VMM_POOLTAG_PREPENDED(pbBuffer, 0x10, 'MmCi')) &&
+                (va = VMM_PTR_OFFSET_EX_FAST_REF(f32, pbBuffer + 0x10, oControlArea_FilePointer)) &&
                 VMM_KADDR_8_16(va);
-            if(pva[i] && !f && VMM_POOLTAG_PREPENDED(pb, 0x10, 'MmCa')) { ppeVads[i]->fPageFile = 1; }
-            if(f && VMM_POOLTAG_PREPENDED(pb, 0x10, 'MmCa')) {
+            if(pva[i] && !f && VMM_POOLTAG_PREPENDED(pbBuffer, 0x10, 'MmCa')) { ppeVads[i]->fPageFile = 1; }
+            if(f && VMM_POOLTAG_PREPENDED(pbBuffer, 0x10, 'MmCa')) {
                 ppeVads[i]->fFile = 1;
                 ppeVads[i]->vaFileObject = va;
             }
-            if(f && VMM_POOLTAG_PREPENDED(pb, 0x10, 'MmCi')) {
+            if(f && VMM_POOLTAG_PREPENDED(pbBuffer, 0x10, 'MmCi')) {
                 ppeVads[i]->fImage = 1;
                 ppeVads[i]->vaFileObject = va;
             }
-            pva[i] = f ? va : 0;
+            if(f && (tp == VMM_VADMAP_TP_FULL)) {
+                // _FILE_OBJECT.FileName [_UNICODE_STRING]
+                ObStrMap_Push_UnicodeObject(psmOb, f32, va + 0x58, &ppeVads[i]->uszText, &ppeVads[i]->cbuText);
+            }
         }
     }
     // [ page count set ]
@@ -960,98 +965,41 @@ VOID MmVad_ExtendedInfoFetch(_In_ PVMM_PROCESS pSystemProcess, _In_ PVMM_PROCESS
     // [ terminate if partial ]
     if(tp == VMM_VADMAP_TP_PARTIAL) {
         pVadMap->tp = tp;
-        fResult = TRUE;
         goto cleanup;
     }
-    // fetch _FILE_OBJECT -> _UNICODE_STRING (size and ptr to text)
-    {
-        pb2 = pb + (f32 ? 0x30 : 0x58);     // pb2 = offset into _FILE_OBJECT.FileName _UNICODE_STRING (pb)
-        VmmCachePrefetchPages4(pSystemProcess, (DWORD)cVads, pva, 0x68, fVmmRead);
-        for(i = 0, va = 0; i < cVads; i++) {
-            // fetch _FILE_OBJECT
-            f = pva[i] &&
-                VmmRead2(pSystemProcess, pva[i], pb, 0x68, fVmmRead | VMM_FLAG_FORCECACHE_READ) &&
-                *(PWORD)(pb2) && (*(PWORD)(pb2) <= *(PWORD)(pb2 + 2)) &&
-                (va = f32 ? *(PDWORD)(pb2 + 4) : *(PQWORD)(pb2 + 8)) &&
-                VMM_KADDR_8_16(va);
-            pva[i] = f ? va : 0;    // PTR FileName _UNICODE_STRING.Buffer
-            if(f) {
-                // _FILE_OBJECT->FileName _UNICODE_STRING.Length
-                ppeVads[i]->cwszText = min(0xff, *(PWORD)(pb2) >> 1);
-                cwszMultiText += ppeVads[i]->cwszText + 1;
-            }
-        }
-    }
-    // [ heap map fetch reference ]
-    if(VmmMap_GetHeap(pProcess, &pObHeapMap)) {
-        cwszMultiText += 8 * pObHeapMap->cMap;      // 7 WCHAR + NULL per heap entry
-    }
-    // [ thread map fetch reference ]
-    if(VmmMap_GetThread(pProcess, &pObThreadMap)) {
-        cwszMultiText += 20 * pObThreadMap->cMap;   // 8(TEB) + 10(STACK) WCHAR + 2 NULL per thread entry
-    }
-    // fetch and parse: _UNICODE_STRING.Buffer
-    {
-        if(!(wszMultiText = LocalAlloc(LMEM_ZEROINIT, (QWORD)cwszMultiText << 1))) { goto cleanup; }
-        VmmCachePrefetchPages4(pSystemProcess, (DWORD)cVads * 2, pva, MAX_PATH * 2, fVmmRead);
-        for(i = 0; i < cVads; i++) {
-            // _UNICODE_STRING.Buffer
-            f = pva[i] && VmmRead2(pSystemProcess, pva[i], (PBYTE)(wszMultiText + oMultiText), ppeVads[i]->cwszText << 1, fVmmRead | VMM_FLAG_FORCECACHE_READ);
-            if(f) {
-                ppeVads[i]->wszText = wszMultiText + oMultiText;
-                oMultiText += 1 + ppeVads[i]->cwszText;
-            } else {
-                ppeVads[i]->wszText = wszMultiText;
-            }
-        }
-    }
     // [ heap map parse ]
-    if(pObHeapMap) {
+    if(VmmMap_GetHeap(pProcess, &pObHeapMap)) {
         for(i = 0; i < pObHeapMap->cMap; i++) {
             if((peVad = VmmMap_GetVadEntry(pVadMap, pObHeapMap->pMap[i].vaHeapSegment))) {
                 peVad->fHeap = 1;
                 peVad->HeapNum = pObHeapMap->pMap[i].HeapId;
-                if(!peVad->cwszText) {
-                    swprintf_s(wszMultiText + oMultiText, cwszMultiText - oMultiText, L"HEAP-%02X", peVad->HeapNum);
-                    peVad->wszText = wszMultiText + oMultiText;
-                    peVad->cwszText = 7;
-                    oMultiText += 8;
+                if(peVad->cbuText < 2) {
+                    ObStrMap_PushUU_snprintf_s(psmOb, &peVad->uszText, &peVad->cbuText, "HEAP-%02X", peVad->HeapNum);
                 }
             }
         }
     }
     // [ thread map parse ]
-    if(pObThreadMap) {
+    if(VmmMap_GetThread(pProcess, &pObThreadMap)) {
         for(i = 0; i < pObThreadMap->cMap; i++) {
             if((peVad = VmmMap_GetVadEntry(pVadMap, pObThreadMap->pMap[i].vaTeb))) {
                 peVad->fTeb = TRUE;
-                if(!peVad->cwszText) {
-                    dwTID = min(0xffff, pObThreadMap->pMap[i].dwTID);
-                    swprintf_s(wszMultiText + oMultiText, cwszMultiText - oMultiText, L"TEB-%04X", (WORD)min(0xffff, pObThreadMap->pMap[i].dwTID));
-                    peVad->wszText = wszMultiText + oMultiText;
-                    peVad->cwszText = 8;
-                    oMultiText += 9;
+                if(peVad->cbuText < 2) {
+                    ObStrMap_PushUU_snprintf_s(psmOb, &peVad->uszText, &peVad->cbuText, "TEB-%04X", (WORD)min(0xffff, pObThreadMap->pMap[i].dwTID));
                 }
             }
             if((peVad = VmmMap_GetVadEntry(pVadMap, pObThreadMap->pMap[i].vaStackLimitUser))) {
                 peVad->fStack = TRUE;
-                if(!peVad->cwszText) {
-                    dwTID = min(0xffff, pObThreadMap->pMap[i].dwTID);
-                    swprintf_s(wszMultiText + oMultiText, cwszMultiText - oMultiText, L"STACK-%04X", (WORD)min(0xffff, pObThreadMap->pMap[i].dwTID));
-                    peVad->wszText = wszMultiText + oMultiText;
-                    peVad->cwszText = 10;
-                    oMultiText += 11;
+                if(peVad->cbuText < 2) {
+                    ObStrMap_PushUU_snprintf_s(psmOb, &peVad->uszText, &peVad->cbuText, "STACK-%04X", (WORD)min(0xffff, pObThreadMap->pMap[i].dwTID));
                 }
             }
         }
     }
     // cleanup
-    pVadMap->cbMultiText = cwszMultiText << 1;
-    pVadMap->wszMultiText = wszMultiText;
     pVadMap->tp = tp;
-    fResult = TRUE;
 cleanup:
-    if(!fResult) { LocalFree(wszMultiText); }
+    ObStrMap_FinalizeAllocU_DECREF_NULL(&psmOb, &pVadMap->pbMultiText, &pVadMap->cbMultiText);
     Ob_DECREF(pObThreadMap);
     Ob_DECREF(pObHeapMap);
     Ob_DECREF(pObPteMap);

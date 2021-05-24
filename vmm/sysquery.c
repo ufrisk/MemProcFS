@@ -5,6 +5,7 @@
 //
 #include "sysquery.h"
 #include "vmmwinreg.h"
+#include "charutil.h"
 
 /*
 * Retrieve the current system time as FILETIME.
@@ -31,14 +32,15 @@ QWORD SysQuery_TimeCurrent()
 * -- return
 */
 _Success_(return)
-BOOL SysQuery_TimeZone(_Out_writes_opt_(32) LPWSTR wszTimeZone, _Out_opt_ int *piActiveBias)
+BOOL SysQuery_TimeZone(_Out_writes_opt_(32) LPSTR uszTimeZone, _Out_opt_ int *piActiveBias)
 {
-    if(wszTimeZone) {
-        if(!VmmWinReg_ValueQuery2(L"HKLM\\SYSTEM\\ControlSet001\\Control\\TimeZoneInformation\\TimeZoneKeyName", NULL, (PBYTE)wszTimeZone, 31 * sizeof(WCHAR), NULL)) { return FALSE; }
-        wszTimeZone[31] = 0;
+    BYTE pbTimeZone[64];
+    if(uszTimeZone) {
+        if(!VmmWinReg_ValueQuery2("HKLM\\SYSTEM\\ControlSet001\\Control\\TimeZoneInformation\\TimeZoneKeyName", NULL, pbTimeZone, sizeof(pbTimeZone), NULL)) { return FALSE; }
+        CharUtil_WtoU((LPWSTR)pbTimeZone, 32, uszTimeZone, 32, NULL, NULL, CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR | CHARUTIL_FLAG_STR_BUFONLY);
     }
     if(piActiveBias) {
-        if(!VmmWinReg_ValueQuery2(L"HKLM\\SYSTEM\\ControlSet001\\Control\\TimeZoneInformation\\ActiveTimeBias", NULL, (PBYTE)piActiveBias, sizeof(DWORD), NULL)) { return FALSE; }
+        if(!VmmWinReg_ValueQuery2("HKLM\\SYSTEM\\ControlSet001\\Control\\TimeZoneInformation\\ActiveTimeBias", NULL, (PBYTE)piActiveBias, sizeof(DWORD), NULL)) { return FALSE; }
         if((*piActiveBias > 24 * 60) && (*piActiveBias < -(24 * 60))) { return FALSE; }
     }
     return TRUE;

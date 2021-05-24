@@ -7,7 +7,7 @@
 #include "vmmproc.h"
 
 #define MMX86PAE_MEMMAP_DISPLAYBUFFER_LINE_LENGTH      70
-#define MMX86PAE_PTE_IS_TRANSITION(pte, iPML)          ((((pte & 0x0c01) == 0x0800) && (iPML == 1) && ctxVmm && (ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X86)) ? ((pte & 0xffffdfff'fffff000) | 0x005) : 0)
+#define MMX86PAE_PTE_IS_TRANSITION(pte, iPML)          ((((pte & 0x0c01) == 0x0800) && (iPML == 1) && ctxVmm && (ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X86)) ? ((pte & 0xffffdffffffff000) | 0x005) : 0)
 #define MMX86PAE_PTE_IS_VALID(pte, iPML)               (pte & 0x01)
 
 /*
@@ -121,7 +121,7 @@ VOID MmX86PAE_MapInitialize_Index(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_PTEE
             if((iPML == 1) || (pte & 0x80) /* PS */) {
                 if((*pcMemMap == 0) ||
                     (pMemMapEntry->fPage != (pte & VMM_MEMMAP_PAGE_MASK)) ||
-                    ((va != pMemMapEntry->vaBase + (pMemMapEntry->cPages << 12))) && !fPagedOut) {
+                    ((va != pMemMapEntry->vaBase + (pMemMapEntry->cPages << 12)) && !fPagedOut)) {
                     if(*pcMemMap + 1 >= VMM_MEMMAP_ENTRIES_MAX) { return; }
                     pMemMapEntry = pMemMap + *pcMemMap;
                     pMemMapEntry->vaBase = va;
@@ -151,7 +151,7 @@ VOID MmX86PAE_MapInitialize_Index(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_PTEE
 
 VOID MmX86PAE_CallbackCleanup_ObPteMap(PVMMOB_MAP_PTE pOb)
 {
-    LocalFree(pOb->wszMultiText);
+    LocalFree(pOb->pbMultiText);
 }
 
 _Success_(return)
@@ -181,14 +181,14 @@ BOOL MmX86PAE_PteMapInitialize(_In_ PVMM_PROCESS pProcess)
         Ob_DECREF(pObPDPT);
     }
     // allocate VmmOb depending on result
-    pObMap = Ob_Alloc(OB_TAG_MAP_PTE, 0, sizeof(VMMOB_MAP_PTE) + cMemMap * sizeof(VMM_MAP_PTEENTRY), MmX86PAE_CallbackCleanup_ObPteMap, NULL);
+    pObMap = Ob_Alloc(OB_TAG_MAP_PTE, 0, sizeof(VMMOB_MAP_PTE) + cMemMap * sizeof(VMM_MAP_PTEENTRY), (OB_CLEANUP_CB)MmX86PAE_CallbackCleanup_ObPteMap, NULL);
     if(!pObMap) {
         pProcess->Map.pObPte = Ob_Alloc(OB_TAG_MAP_PTE, LMEM_ZEROINIT, sizeof(VMMOB_MAP_PTE), NULL, NULL);
         LeaveCriticalSection(&pProcess->LockUpdate);
         LocalFree(pMemMap);
         return TRUE;
     }
-    pObMap->wszMultiText = NULL;
+    pObMap->pbMultiText = NULL;
     pObMap->cbMultiText = 0;
     pObMap->fTagScan = FALSE;
     pObMap->cMap = cMemMap;

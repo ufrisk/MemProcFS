@@ -128,7 +128,7 @@ VOID MSyscall_Initialize(PMSYSCALL_CONTEXT ctxM)
     }
     // fetch win32k infos
     if(!(pObProcessFakeCsrss = MSyscall_GetProcessCsrssFake())) { goto fail_win32k; }
-    if(!VmmMap_GetModuleEntryEx(pObSystemProcess, 0, L"win32k.sys", &pObModuleMap, &peModuleWin32k)) { goto fail_win32k; }
+    if(!VmmMap_GetModuleEntryEx(pObSystemProcess, 0, "win32k.sys", &pObModuleMap, &peModuleWin32k)) { goto fail_win32k; }
     if(!(hPdbWin32k = PDB_GetHandleFromModuleAddress(pObProcessFakeCsrss, peModuleWin32k->vaBase))) { goto fail_win32k; }
     // build text files in-memory (win32k)
     MSyscall_Initialize_BuildText(ctxM, pObProcessFakeCsrss, 2, hPdbWin32k, peModuleWin32k->vaBase);
@@ -159,13 +159,13 @@ finish:
 NTSTATUS MSyscall_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     PMSYSCALL_CONTEXT ctxM = MSyscall_GetContext(ctxP);
-    if(!_wcsicmp(ctxP->wszPath, L"syscall_nt.txt")) {
+    if(!_stricmp(ctxP->uszPath, "syscall_nt.txt")) {
         return Util_VfsReadFile_FromObCompressed(ctxM->pCompressedData[0], pb, cb, pcbRead, cbOffset);
     }
-    if(!_wcsicmp(ctxP->wszPath, L"syscall_nt_shadow.txt")) {
+    if(!_stricmp(ctxP->uszPath, "syscall_nt_shadow.txt")) {
         return Util_VfsReadFile_FromObCompressed(ctxM->pCompressedData[1], pb, cb, pcbRead, cbOffset);
     }
-    if(!_wcsicmp(ctxP->wszPath, L"syscall_win32k.txt")) {
+    if(!_stricmp(ctxP->uszPath, "syscall_win32k.txt")) {
         return Util_VfsReadFile_FromObCompressed(ctxM->pCompressedData[2], pb, cb, pcbRead, cbOffset);
     }
     return VMMDLL_STATUS_FILE_INVALID;
@@ -174,10 +174,10 @@ NTSTATUS MSyscall_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pc
 BOOL MSyscall_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList)
 {
     PMSYSCALL_CONTEXT ctxM = MSyscall_GetContext(ctxP);
-    if(ctxP->wszPath[0]) { return FALSE; }
-    VMMDLL_VfsList_AddFile(pFileList, L"syscall_nt.txt", ObCompress_Size(ctxM->pCompressedData[0]), NULL);
-    VMMDLL_VfsList_AddFile(pFileList, L"syscall_nt_shadow.txt", ObCompress_Size(ctxM->pCompressedData[1]), NULL);
-    VMMDLL_VfsList_AddFile(pFileList, L"syscall_win32k.txt", ObCompress_Size(ctxM->pCompressedData[2]), NULL);
+    if(ctxP->uszPath[0]) { return FALSE; }
+    VMMDLL_VfsList_AddFile(pFileList, "syscall_nt.txt", ObCompress_Size(ctxM->pCompressedData[0]), NULL);
+    VMMDLL_VfsList_AddFile(pFileList, "syscall_nt_shadow.txt", ObCompress_Size(ctxM->pCompressedData[1]), NULL);
+    VMMDLL_VfsList_AddFile(pFileList, "syscall_win32k.txt", ObCompress_Size(ctxM->pCompressedData[2]), NULL);
     return TRUE;
 }
 
@@ -195,7 +195,7 @@ VOID M_SysSyscall_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if((pRI->tpSystem != VMM_SYSTEM_WINDOWS_X64) && (pRI->tpSystem != VMM_SYSTEM_WINDOWS_X86)) { return; }
     if(!(pRI->reg_info.ctxM = LocalAlloc(LMEM_ZEROINIT, sizeof(MSYSCALL_CONTEXT)))) { return; }     // internal module context
-    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\sys\\syscall");    // module name
+    strcpy_s(pRI->reg_info.uszPathName, 128, "\\sys\\syscall");     // module name
     pRI->reg_info.fRootModule = TRUE;                               // module shows in root directory
     pRI->reg_fn.pfnList = MSyscall_List;                            // List function supported
     pRI->reg_fn.pfnRead = MSyscall_Read;                            // Read function supported

@@ -140,7 +140,7 @@ VOID VmmWinSvc_ListHeadFromPDB(_In_ PVMM_PROCESS pSvcProcess, _Out_writes_(2) PQ
     DWORD dwoSymSvcDB = 0;
     pvaListHead[0] = 0;
     pvaListHead[1] = 0;
-    if(!VmmMap_GetModuleEntryEx(pSvcProcess, 0, L"services.exe", &pObModuleMap, &peModuleServices)) { goto fail; }
+    if(!VmmMap_GetModuleEntryEx(pSvcProcess, 0, "services.exe", &pObModuleMap, &peModuleServices)) { goto fail; }
     if(!(hPdbServices = PDB_GetHandleFromModuleAddress(pSvcProcess, peModuleServices->vaBase))) { goto fail; }
     if(!PDB_GetSymbolOffset(hPdbServices, "ServiceDatabase", &dwoSymSvcDB)) { goto fail; }
     if(!VmmRead(pSvcProcess, peModuleServices->vaBase + dwoSymSvcDB, pbSymSvcDB, sizeof(pbSymSvcDB))) { goto fail; }
@@ -175,7 +175,7 @@ VOID VmmWinSvc_ListHeadFromVAD(_In_ PVMMWINSVC_CONTEXT ctx, _In_ PVMM_PROCESS pS
         goto finish;
     }
     // 2: locate vad candidates and scan:
-    if(!(pb = LocalAlloc(0, 0x00200000))) { goto finish; }
+    if(!(pb = LocalAlloc(LMEM_ZEROINIT, 0x00200000))) { goto finish; }
     for(i = 0; i < pObVadMap->cMap; i++) {
         pe = pObVadMap->pMap + i;
         if(!pe->fPrivateMemory || (pe->CommitCharge < 0x10)) { continue; }
@@ -254,10 +254,10 @@ POB_MAP VmmWinSvc_MainListWalk(_In_ PVMMWINSVC_CONTEXT ctx, _In_ PVMM_PROCESS pP
         pe->dwOrdinal = dwOrdinal;
         pe->dwStartType = dwStartType;
         memcpy(&pe->ServiceStatus, pb + o->SvcStatus, sizeof(SERVICE_STATUS));
-        pe->wszServiceName = (LPWSTR)VMM_PTR_OFFSET(f32, pb, o->NmShort);
-        pe->wszDisplayName = (LPWSTR)VMM_PTR_OFFSET(f32, pb, o->NmLong);
+        pe->uszServiceName = (LPSTR)VMM_PTR_OFFSET(f32, pb, o->NmShort);
+        pe->uszDisplayName = (LPSTR)VMM_PTR_OFFSET(f32, pb, o->NmLong);
         if((pe->ServiceStatus.dwServiceType & SERVICE_KERNEL_DRIVER) || (pe->ServiceStatus.dwServiceType & SERVICE_FILE_SYSTEM_DRIVER)) {
-            pe->wszPath = (LPWSTR)VMM_PTR_OFFSET(f32, pb, o->ExtInfo);
+            pe->uszPath = (LPSTR)VMM_PTR_OFFSET(f32, pb, o->ExtInfo);
         } else {
             va3 = VMM_PTR_OFFSET(f32, pb, o->ExtInfo);
             pe->_Reserved = VMM_UADDR_4_8(va3) ? va3 : 0;
@@ -302,9 +302,9 @@ VOID VmmWinSvc_GetExtendedInfo(_In_ PVMMWINSVC_CONTEXT ctx, _In_ PVMM_PROCESS pP
                 if(!(va = VMM_PTR_OFFSET(f32, pb, o->FLink)) || !VMM_UADDR_4_8(va)) { continue; }
             }
             pe->dwPID = *(PDWORD)(pb + o->Pid);
-            pe->wszPath = (LPWSTR)VMM_PTR_OFFSET(f32, pb, o->StartupPath);
-            pe->wszUserTp = o->UserTp ? (LPWSTR)VMM_PTR_OFFSET(f32, pb, o->UserTp) : NULL;
-            pe->wszUserAcct = o->UserAcct ? (LPWSTR)VMM_PTR_OFFSET(f32, pb, o->UserAcct) : NULL;
+            pe->uszPath = (LPSTR)VMM_PTR_OFFSET(f32, pb, o->StartupPath);
+            pe->uszUserTp = o->UserTp ? (LPSTR)VMM_PTR_OFFSET(f32, pb, o->UserTp) : NULL;
+            pe->uszUserAcct = o->UserAcct ? (LPSTR)VMM_PTR_OFFSET(f32, pb, o->UserAcct) : NULL;
         }
     }
 }
@@ -313,24 +313,24 @@ VOID VmmWinSvc_GetExtendedInfo(_In_ PVMMWINSVC_CONTEXT ctx, _In_ PVMM_PROCESS pP
 * Add a string from an address uniquely to the ObStrMap.
 * -- pProcessSvc
 * -- psm
-* -- pwszText
+* -- puszText
 * -- qwA
 * -- fNullOnFail = set pwszText to NULL on fail (i.e. don't include in OB_STRMAP psm)
 */
-VOID VmmWinSvc_ResolveStrAddSingle(_In_ PVMM_PROCESS pProcessSvc, _In_ POB_STRMAP psm, _Out_ LPWSTR *pwszText, _In_ QWORD qwA, _In_ BOOL fNullOnFail)
+VOID VmmWinSvc_ResolveStrAddSingle(_In_ PVMM_PROCESS pProcessSvc, _In_ POB_STRMAP psm, _Out_ LPSTR *puszText, _In_ QWORD qwA, _In_ BOOL fNullOnFail)
 {
     WCHAR wsz[2048] = { 0 };
     if((qwA < 0x10000) || !VMM_UADDR(qwA)) { goto fail; }
     VmmRead2(pProcessSvc, qwA, (PBYTE)wsz, sizeof(wsz) - 2, VMM_FLAG_FORCECACHE_READ);
     if(!wsz[0]) { goto fail; }
     if(wsz[0] > 0xff || wsz[1] > 0xff || wsz[2] > 0xff) { goto fail; }
-    ObStrMap_Push(psm, wsz, pwszText, NULL);
+    ObStrMap_PushPtrWU(psm, wsz, puszText, NULL);
     return;
 fail:
     if(fNullOnFail) {
-        *pwszText = NULL;
+        *puszText = NULL;
     } else {
-        ObStrMap_Push(psm, NULL, pwszText, NULL);
+        ObStrMap_PushPtrWU(psm, NULL, puszText, NULL);
     }
 }
 
@@ -339,21 +339,22 @@ VOID VmmWinSvc_ResolveStrRegistry(_In_ PVMM_PROCESS pProcessSvc, _In_ PVMMOB_MAP
     DWORD i, dwType, cbData = 0;
     PVMM_MAP_SERVICEENTRY pe;
     POB_REGISTRY_HIVE pObHive = NULL;
-    WCHAR wsz[MAX_PATH + 1];
-    VmmWinReg_KeyHiveGetByFullPath(L"HKLM\\SYSTEM", &pObHive, NULL);
+    CHAR usz[MAX_PATH + 1];
+    USHORT wsz[MAX_PATH + 1];
+    VmmWinReg_KeyHiveGetByFullPath("HKLM\\SYSTEM", &pObHive, NULL);
     for(i = 0; i < pSvcMap->cMap; i++) {
         pe = pSvcMap->pMap + i;
         if(pObHive) {
-            _snwprintf_s(wsz, MAX_PATH, _TRUNCATE, L"ROOT\\ControlSet001\\Services\\%s\\parameters\\ServiceDll", pe->wszServiceName);
-            if(!VmmWinReg_ValueQuery3(pObHive, wsz, &dwType, (PBYTE)wsz, MAX_PATH * 2, &cbData) || (dwType != REG_EXPAND_SZ)) {
-                _snwprintf_s(wsz, MAX_PATH, _TRUNCATE, L"ROOT\\ControlSet001\\Services\\%s\\ImagePath", pe->wszServiceName);
-                if(!VmmWinReg_ValueQuery3(pObHive, wsz, &dwType, (PBYTE)wsz, MAX_PATH * 2, &cbData) || (dwType != REG_EXPAND_SZ)) {
+            _snprintf_s(usz, MAX_PATH, _TRUNCATE, "ROOT\\ControlSet001\\Services\\%s\\parameters\\ServiceDll", pe->uszServiceName);
+            if(!VmmWinReg_ValueQuery3(pObHive, usz, &dwType, (PBYTE)wsz, MAX_PATH * 2, &cbData) || (dwType != REG_EXPAND_SZ)) {
+                _snprintf_s(usz, MAX_PATH, _TRUNCATE, "ROOT\\ControlSet001\\Services\\%s\\ImagePath", pe->uszServiceName);
+                if(!VmmWinReg_ValueQuery3(pObHive, usz, &dwType, (PBYTE)wsz, MAX_PATH * 2, &cbData) || (dwType != REG_EXPAND_SZ)) {
                     cbData = 0;
                 }
             }
             wsz[cbData >> 1] = 0;
         }
-        ObStrMap_Push(psm, wsz, &pe->wszImagePath, NULL);
+        ObStrMap_PushPtrWU(psm, wsz, &pe->uszImagePath, NULL);
     }
     Ob_DECREF(pObHive);
 }
@@ -369,7 +370,7 @@ BOOL VmmWinSvc_ResolveStrAll(_In_ PVMM_PROCESS pProcessSvc, _In_ PVMMOB_MAP_SERV
 {
     DWORD i;
     BOOL fProcessUser;
-    WCHAR wsz[MAX_PATH];
+    CHAR usz[MAX_PATH];
     PVMM_PROCESS pObProcessUser = NULL;
     PVMM_MAP_SERVICEENTRY pe;
     POB_SET psObPrefetch;
@@ -380,11 +381,11 @@ BOOL VmmWinSvc_ResolveStrAll(_In_ PVMM_PROCESS pProcessSvc, _In_ PVMMOB_MAP_SERV
     if((psObPrefetch = ObSet_New())) {
         for(i = 0; i < pSvcMap->cMap; i++) {
             pe = pSvcMap->pMap + i;
-            ObSet_Push(psObPrefetch, (QWORD)pe->wszServiceName);
-            ObSet_Push(psObPrefetch, (QWORD)pe->wszDisplayName);
-            ObSet_Push(psObPrefetch, (QWORD)pe->wszPath);
-            ObSet_Push(psObPrefetch, (QWORD)pe->wszUserTp);
-            ObSet_Push(psObPrefetch, (QWORD)pe->wszUserAcct);
+            ObSet_Push(psObPrefetch, (QWORD)pe->uszServiceName);
+            ObSet_Push(psObPrefetch, (QWORD)pe->uszDisplayName);
+            ObSet_Push(psObPrefetch, (QWORD)pe->uszPath);
+            ObSet_Push(psObPrefetch, (QWORD)pe->uszUserTp);
+            ObSet_Push(psObPrefetch, (QWORD)pe->uszUserAcct);
         }
         VmmCachePrefetchPages3(pProcessSvc, psObPrefetch, 2 * 2048, 0);
         Ob_DECREF_NULL(&psObPrefetch);
@@ -392,29 +393,29 @@ BOOL VmmWinSvc_ResolveStrAll(_In_ PVMM_PROCESS pProcessSvc, _In_ PVMMOB_MAP_SERV
     // 3.1: fetch strings - general
     for(i = 0; i < pSvcMap->cMap; i++) {
         pe = pSvcMap->pMap + i;
-        VmmWinSvc_ResolveStrAddSingle(pProcessSvc, pObStrMap, &pe->wszServiceName, (QWORD)pe->wszServiceName, FALSE);
-        VmmWinSvc_ResolveStrAddSingle(pProcessSvc, pObStrMap, &pe->wszDisplayName, (QWORD)pe->wszDisplayName, FALSE);
-        VmmWinSvc_ResolveStrAddSingle(pProcessSvc, pObStrMap, &pe->wszPath, (QWORD)pe->wszPath, FALSE);
-        VmmWinSvc_ResolveStrAddSingle(pProcessSvc, pObStrMap, &pe->wszUserTp, (QWORD)pe->wszUserTp, FALSE);
-        VmmWinSvc_ResolveStrAddSingle(pProcessSvc, pObStrMap, &pe->wszUserAcct, (QWORD)pe->wszUserAcct, TRUE);
+        VmmWinSvc_ResolveStrAddSingle(pProcessSvc, pObStrMap, &pe->uszServiceName, (QWORD)pe->uszServiceName, FALSE);
+        VmmWinSvc_ResolveStrAddSingle(pProcessSvc, pObStrMap, &pe->uszDisplayName, (QWORD)pe->uszDisplayName, FALSE);
+        VmmWinSvc_ResolveStrAddSingle(pProcessSvc, pObStrMap, &pe->uszPath, (QWORD)pe->uszPath, FALSE);
+        VmmWinSvc_ResolveStrAddSingle(pProcessSvc, pObStrMap, &pe->uszUserTp, (QWORD)pe->uszUserTp, FALSE);
+        VmmWinSvc_ResolveStrAddSingle(pProcessSvc, pObStrMap, &pe->uszUserAcct, (QWORD)pe->uszUserAcct, TRUE);
     }
     // 3.2: fetch strings - user (if does not exist already)
     for(i = 0; i < pSvcMap->cMap; i++) {
         pe = pSvcMap->pMap + i;
-        if(!pe->wszUserAcct) {
+        if(!pe->uszUserAcct) {
             fProcessUser =
                 pe->dwPID &&
                 (pObProcessUser = VmmProcessGetEx(NULL, pe->dwPID, VMM_FLAG_PROCESS_TOKEN)) &&
                 pObProcessUser->win.TOKEN.fInitialized && pObProcessUser->win.TOKEN.fSID &&
-                VmmWinUser_GetNameW(&pObProcessUser->win.TOKEN.SID, wsz, MAX_PATH, NULL, NULL);
-            ObStrMap_Push(pObStrMap, fProcessUser ? wsz : NULL, &pe->wszUserAcct, NULL);
+                VmmWinUser_GetName(&pObProcessUser->win.TOKEN.SID, usz, sizeof(usz), NULL);
+            ObStrMap_PushPtrUU(pObStrMap, fProcessUser ? usz : NULL, &pe->uszUserAcct, NULL);
             Ob_DECREF_NULL(&pObProcessUser);
         }
     }
     // 3.3: fetch strings - image path from registry
     VmmWinSvc_ResolveStrRegistry(pProcessSvc, pSvcMap, pObStrMap);
     // 4: resolve strmap and return
-    ObStrMap_Finalize_DECREF_NULL(&pObStrMap, &pSvcMap->wszMultiText, &pSvcMap->cbMultiText);
+    ObStrMap_FinalizeAllocU_DECREF_NULL(&pObStrMap, &pSvcMap->pbMultiText, &pSvcMap->cbMultiText);
     return TRUE;
 }
 
@@ -425,7 +426,7 @@ BOOL VmmWinSvc_ResolveStrAll(_In_ PVMM_PROCESS pProcessSvc, _In_ PVMMOB_MAP_SERV
 VOID VmmWinSvc_CloseObCallback(_In_ PVOID pVmmServiceMap)
 {
     PVMMOB_MAP_SERVICE pOb = (PVMMOB_MAP_SERVICE)pVmmServiceMap;
-    LocalFree(pOb->wszMultiText);
+    LocalFree(pOb->pbMultiText);
 }
 
 /*
@@ -445,7 +446,7 @@ int VmmWinSvc_CmpSort(PVMM_MAP_SERVICEENTRY a, PVMM_MAP_SERVICEENTRY b)
 DWORD VmmWinSvc_PrefetchRegSystemHive_ThreadProc(PVOID lpThreadParameter)
 {
     POB_REGISTRY_HIVE pObHive;
-    if(VmmWinReg_KeyHiveGetByFullPath(L"HKLM\\SYSTEM", &pObHive, NULL)) {
+    if(VmmWinReg_KeyHiveGetByFullPath("HKLM\\SYSTEM", &pObHive, NULL)) {
         Ob_DECREF(pObHive);
     }
     return 0;
@@ -516,9 +517,6 @@ PVMMOB_MAP_SERVICE VmmWinSvc_Initialize()
     pObSvc = VmmWinSvc_Initialize_DoWork();
     if(!pObSvc) {
         pObSvc = Ob_Alloc(OB_TAG_MAP_SERVICE, LMEM_ZEROINIT, sizeof(VMMOB_MAP_SERVICE), NULL, NULL);
-        if(pObSvc) {
-            pObSvc->wszMultiText = (LPWSTR)&pObSvc->cbMultiText;   // NULL CHAR guaranteed.
-        }
     }
     ObContainer_SetOb(ctxVmm->pObCMapService, pObSvc);
     LeaveCriticalSection(&ctxVmm->LockUpdateMap);

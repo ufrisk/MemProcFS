@@ -44,16 +44,16 @@ VOID MmPfn_Initialize(_In_ PVMM_PROCESS pSystemProcess)
 {
     BOOL f;
     POB_MMPFN_CONTEXT ctx;
-    if(!(ctx = Ob_Alloc(OB_TAG_PFN_CONTEXT, LMEM_ZEROINIT, sizeof(OB_MMPFN_CONTEXT), MmPfn_CallbackCleanup_ObContext, NULL))) { return; }
+    if(!(ctx = Ob_Alloc(OB_TAG_PFN_CONTEXT, LMEM_ZEROINIT, sizeof(OB_MMPFN_CONTEXT), (OB_CLEANUP_CB)MmPfn_CallbackCleanup_ObContext, NULL))) { return; }
     InitializeCriticalSection(&ctx->Lock);
     f = (ctx->pObCProcTableDTB = ObContainer_New()) &&
         PDB_GetSymbolPTR(PDB_HANDLE_KERNEL, "MmPfnDatabase", pSystemProcess, &ctx->vaPfnDatabase) &&
         PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_MMPFN", &ctx->_MMPFN.cb) &&
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_MMPFN", L"OriginalPte", &ctx->_MMPFN.oOriginalPte) &&
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_MMPFN", L"PteAddress", &ctx->_MMPFN.oPteAddress) &&
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_MMPFN", L"u2", &ctx->_MMPFN.ou2) &&
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_MMPFN", L"u3", &ctx->_MMPFN.ou3) &&
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_MMPFN", L"u4", &ctx->_MMPFN.ou4) &&
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_MMPFN", "OriginalPte", &ctx->_MMPFN.oOriginalPte) &&
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_MMPFN", "PteAddress", &ctx->_MMPFN.oPteAddress) &&
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_MMPFN", "u2", &ctx->_MMPFN.ou2) &&
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_MMPFN", "u3", &ctx->_MMPFN.ou3) &&
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_MMPFN", "u4", &ctx->_MMPFN.ou4) &&
         (ctx->iPfnMax = (DWORD)(ctxMain->dev.paMax >> 12)) &&
         (ctxVmm->pObPfnContext = Ob_INCREF(ctx));
     Ob_DECREF(ctx);
@@ -83,10 +83,10 @@ POB_DATA MmPfn_ProcDTB_Create(_In_ POB_MMPFN_CONTEXT ctx)
                     pObData->pqw[cPIDs - i - 1] = pObProcess->dwPID | (pObProcess->paDTB << 20);
                 }
             } else if(ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_X86PAE) {
-                if(pObPDPT = VmmTlbGetPageTable(pObProcess->paDTB & ~0xfff, FALSE)) {
+                if((pObPDPT = VmmTlbGetPageTable(pObProcess->paDTB & ~0xfff, FALSE))) {
                     for(j = 0; j < 4; j++) {
                         if((qwPte = pObPDPT->pqw[((pObProcess->paDTB & 0xfff) >> 3) + j])) {
-                            pObData->pqw[(cPIDs - i - 1) * 4 + j] = pObProcess->dwPID | ((qwPte & 0x00000fff'fffff000) << 20) | (j << 30);
+                            pObData->pqw[(cPIDs - i - 1) * 4 + j] = pObProcess->dwPID | ((qwPte & 0x00000ffffffff000) << 20) | (j << 30);
                         }
                     }
                     Ob_DECREF_NULL(&pObPDPT);
@@ -158,7 +158,7 @@ VOID MmPfn_Map_GetPfn_GetVaX64(_In_ POB_MMPFN_CONTEXT ctx, _In_ PVMM_PROCESS pSy
             if(iPML == 3) {
                 pe->AddressInfo.va = pe->AddressInfo.va & ~0xfff;
                 if(pe->AddressInfo.va >> 47) {
-                    pe->AddressInfo.va = pe->AddressInfo.va | 0xffff0000'00000000;
+                    pe->AddressInfo.va = pe->AddressInfo.va | 0xffff000000000000;
                 }
                 if(pe->AddressInfo.va) {
                     pe->AddressInfo.dwPid = MmPfn_GetPidFromDTB(ctx, pSystemProcess, (QWORD)pe->AddressInfo.dwPfnPte[4]);
@@ -322,7 +322,7 @@ BOOL MmPfn_Map_GetPfnScatter(_In_ POB_SET psPfn, _Out_ PMMPFNOB_MAP *ppObPfnMap,
         pe->vaPte = VMM_PTR_OFFSET(f32, pbPfn, ctx->_MMPFN.oPteAddress);
         pe->OriginalPte = VMM_PTR_OFFSET(f32, pbPfn, ctx->_MMPFN.oOriginalPte);
         tp = pe->PageLocation;
-        if(fExtended && (tp == MmPfnTypeActive) || (tp == MmPfnTypeStandby) || (tp == MmPfnTypeModified) || (tp == MmPfnTypeModifiedNoWrite)) {
+        if(fExtended && ((tp == MmPfnTypeActive) || (tp == MmPfnTypeStandby) || (tp == MmPfnTypeModified) || (tp == MmPfnTypeModifiedNoWrite))) {
             if(!pe->PrototypePte && !pe->PteFrameHigh && (pe->PteFrame <= ctx->iPfnMax)) {
                 pe->AddressInfo.va = ((pe->vaPte << 9) & 0x1ff000) | 0xfff;
                 pe->AddressInfo.dwPfnPte[1] = pe->PteFrame;
@@ -369,7 +369,7 @@ BOOL MmPfn_Map_GetPfn(_In_ DWORD dwPfnStart, _In_ DWORD cPfn, _Out_ PMMPFNOB_MAP
     QWORD iPfn, iPfnEnd;
     if(!(psObPfn = ObSet_New())) { return FALSE; }
     for(iPfn = dwPfnStart, iPfnEnd = (QWORD)dwPfnStart + cPfn; iPfn < iPfnEnd; iPfn++) {
-        ObSet_Push(psObPfn, 0x80000000'00000000 | iPfn);
+        ObSet_Push(psObPfn, 0x8000000000000000 | iPfn);
     }
     fResult = MmPfn_Map_GetPfnScatter(psObPfn, ppObPfnMap, fExtended);
     Ob_DECREF(psObPfn);

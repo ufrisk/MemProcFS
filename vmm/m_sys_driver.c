@@ -7,6 +7,7 @@
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmm.h"
+#include "charutil.h"
 #include "util.h"
 #include "pluginmanager.h"
 #include "vmmwinobj.h"
@@ -14,38 +15,38 @@
 
 #define MSYSDRIVER_DRV_LINELENGTH                  128ULL
 #define MSYSDRIVER_IRP_LINELENGTH                  88ULL
-#define MSYSDRIVER_DRV_LINEHEADER     L"   #   Object Address Driver               Size Drv Range: Start-End              Service Key      Driver Name"
-#define MSYSDRIVER_IRP_LINEHEADER     L"   # Driver            # IRP_MJ_*                          Address Target Module"
+#define MSYSDRIVER_DRV_LINEHEADER     "   #   Object Address Driver               Size Drv Range: Start-End              Service Key      Driver Name"
+#define MSYSDRIVER_IRP_LINEHEADER     "   # Driver            # IRP_MJ_*                          Address Target Module"
 
-#define MSYSDRIVER_IRP_STR (LPWSTR[]){ \
-    L"CREATE",                   \
-    L"CREATE_NAMED_PIPE",        \
-    L"CLOSE",                    \
-    L"READ",                     \
-    L"WRITE",                    \
-    L"QUERY_INFORMATION",        \
-    L"SET_INFORMATION",          \
-    L"QUERY_EA",                 \
-    L"SET_EA",                   \
-    L"FLUSH_BUFFERS",            \
-    L"QUERY_VOLUME_INFORMATION", \
-    L"SET_VOLUME_INFORMATION",   \
-    L"DIRECTORY_CONTROL",        \
-    L"FILE_SYSTEM_CONTROL",      \
-    L"DEVICE_CONTROL",           \
-    L"INTERNAL_DEVICE_CONTROL",  \
-    L"SHUTDOWN",                 \
-    L"LOCK_CONTROL",             \
-    L"CLEANUP",                  \
-    L"CREATE_MAILSLOT",          \
-    L"QUERY_SECURITY",           \
-    L"SET_SECURITY",             \
-    L"POWER",                    \
-    L"SYSTEM_CONTROL",           \
-    L"DEVICE_CHANGE",            \
-    L"QUERY_QUOTA",              \
-    L"SET_QUOTA",                \
-    L"PNP" }
+#define MSYSDRIVER_IRP_STR (LPCSTR[]){ \
+    "CREATE",                   \
+    "CREATE_NAMED_PIPE",        \
+    "CLOSE",                    \
+    "READ",                     \
+    "WRITE",                    \
+    "QUERY_INFORMATION",        \
+    "SET_INFORMATION",          \
+    "QUERY_EA",                 \
+    "SET_EA",                   \
+    "FLUSH_BUFFERS",            \
+    "QUERY_VOLUME_INFORMATION", \
+    "SET_VOLUME_INFORMATION",   \
+    "DIRECTORY_CONTROL",        \
+    "FILE_SYSTEM_CONTROL",      \
+    "DEVICE_CONTROL",           \
+    "INTERNAL_DEVICE_CONTROL",  \
+    "SHUTDOWN",                 \
+    "LOCK_CONTROL",             \
+    "CLEANUP",                  \
+    "CREATE_MAILSLOT",          \
+    "QUERY_SECURITY",           \
+    "SET_SECURITY",             \
+    "POWER",                    \
+    "SYSTEM_CONTROL",           \
+    "DEVICE_CHANGE",            \
+    "QUERY_QUOTA",              \
+    "SET_QUOTA",                \
+    "PNP" }
 
 typedef struct tdMSYSDRIVER_IRP_CONTEXT {
     PVMMOB_MAP_PTE pPteMap;
@@ -65,61 +66,61 @@ int MSysDriver_PteCmpFind(_In_ PVOID va, _In_ PVMM_MAP_PTEENTRY pe)
 /*
 * Line callback function to print a single driver/irp line.
 */
-VOID MSysDriver_IrpReadLine_Callback(_In_ PMSYSDRIVER_IRP_CONTEXT ctx, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVOID pv, _Out_writes_(cbLineLength + 1) LPSTR szu8)
+VOID MSysDriver_IrpReadLine_Callback(_In_ PMSYSDRIVER_IRP_CONTEXT ctx, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVOID pv, _Out_writes_(cbLineLength + 1) LPSTR usz)
 {
     PVMM_MAP_PTEENTRY pePte;
     PVMM_MAP_KDRIVERENTRY pe;
     QWORD vaIrp;
     DWORD iDrv, iIrp;
-    LPWSTR wsz = L"?";
+    LPSTR uszTxt = "?";
     iDrv = ie / 28;
     iIrp = ie % 28;
     pe = ctx->pDrvMap->pMap + iDrv;
     vaIrp = pe->MajorFunction[iIrp];
     if(vaIrp == ctxVmm->kernel.opt.vaIopInvalidDeviceRequest) {
-        wsz = L"---";
+        uszTxt = "---";
     } else if((vaIrp >= pe->vaStart) && (vaIrp < pe->vaStart + pe->cbDriverSize)) {
-        wsz = pe->wszName;
-    } else if((pePte = Util_qfind((PVOID)vaIrp, ctx->pPteMap->cMap, ctx->pPteMap->pMap, sizeof(VMM_MAP_PTEENTRY), MSysDriver_PteCmpFind))) {
-        wsz = pePte->wszText;
+        uszTxt = pe->uszName;
+    } else if((pePte = Util_qfind((PVOID)vaIrp, ctx->pPteMap->cMap, ctx->pPteMap->pMap, sizeof(VMM_MAP_PTEENTRY), (UTIL_QFIND_CMP_PFN)MSysDriver_PteCmpFind))) {
+        uszTxt = pePte->uszText;
     }
-    Util_snwprintf_u8ln(szu8, cbLineLength,
-        L"%04x %-16.16s %2i %-24.24s %16llx %s",
+    Util_usnprintf_ln(usz, cbLineLength,
+        "%04x %-16.16s %2i %-24.24s %16llx %s",
         ie,
-        pe->wszName,
+        pe->uszName,
         iIrp,
         MSYSDRIVER_IRP_STR[iIrp],
         vaIrp,
-        wsz
+        uszTxt
     );
 }
 
-VOID MSysDriver_DrvReadLine_Callback(_Inout_opt_ PVOID ctx, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVMM_MAP_KDRIVERENTRY pe, _Out_writes_(cbLineLength + 1) LPSTR szu8)
+VOID MSysDriver_DrvReadLine_Callback(_Inout_opt_ PVOID ctx, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVMM_MAP_KDRIVERENTRY pe, _Out_writes_(cbLineLength + 1) LPSTR usz)
 {
-    Util_snwprintf_u8ln(szu8, cbLineLength,
-        L"%04x %16llx %-16.16s %8llx %16llx-%16llx %-16.16s %s",
+    Util_usnprintf_ln(usz, cbLineLength,
+        "%04x %16llx %-16.16s %8llx %16llx-%16llx %-16.16s %s",
         ie,
         pe->va,
-        pe->wszName,
+        pe->uszName,
         pe->cbDriverSize,
         pe->vaStart,
         pe->cbDriverSize ? (pe->vaStart + pe->cbDriverSize - 1) : pe->vaStart,
-        pe->wszServiceKeyName,
-        pe->wszPath
+        pe->uszServiceKeyName,
+        pe->uszPath
     );
 }
 
 _Success_(return)
-BOOL MSysDriver_EntryFromPath(_In_ LPWSTR wszPath, _In_ PVMMOB_MAP_KDRIVER pDrvMap, _Out_ PVMM_MAP_KDRIVERENTRY * ppDrvMapEntry, _Out_opt_ LPWSTR *pwszPath)
+BOOL MSysDriver_EntryFromPath(_In_ LPSTR uszPath, _In_ PVMMOB_MAP_KDRIVER pDrvMap, _Out_ PVMM_MAP_KDRIVERENTRY *ppDrvMapEntry, _Out_opt_ LPSTR *puszPath)
 {
     DWORD i, dwHash;
-    WCHAR wsz[MAX_PATH];
-    if(_wcsnicmp(wszPath, L"by-name\\", 8)) { return FALSE; }
-    Util_PathSplit2_ExWCHAR(wszPath + 8, wsz, MAX_PATH);
-    dwHash = Util_HashNameW_Registry(wsz, 0);
+    CHAR usz[MAX_PATH];
+    if(_strnicmp(uszPath, "by-name\\", 8)) { return FALSE; }
+    CharUtil_PathSplitFirst(uszPath + 8, usz, sizeof(usz));
+    dwHash = CharUtil_HashNameFsU(usz, 0);
     for(i = 0; i < pDrvMap->cMap; i++) {
         if(dwHash == pDrvMap->pMap[i].dwHash) {
-            if(pwszPath) { *pwszPath = wszPath + 8; }
+            if(puszPath) { *puszPath = uszPath + 8; }
             *ppDrvMapEntry = pDrvMap->pMap + i;
             return TRUE;
         }
@@ -136,29 +137,29 @@ NTSTATUS MSysDriver_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *p
     PVMM_PROCESS pObSystemProcess = NULL;
     MSYSDRIVER_IRP_CONTEXT IrpCtx = { 0 };
     if(!VmmMap_GetKDriver(&pObDrvMap)) { goto cleanup; }
-    if(!_wcsicmp(ctx->wszPath, L"drivers.txt")) {
+    if(!_stricmp(ctx->uszPath, "drivers.txt")) {
         nt = Util_VfsLineFixed_Read(
-            MSysDriver_DrvReadLine_Callback, NULL, MSYSDRIVER_DRV_LINELENGTH, MSYSDRIVER_DRV_LINEHEADER,
+            (UTIL_VFSLINEFIXED_PFN_CB)MSysDriver_DrvReadLine_Callback, NULL, MSYSDRIVER_DRV_LINELENGTH, MSYSDRIVER_DRV_LINEHEADER,
             pObDrvMap->pMap, pObDrvMap->cMap, sizeof(VMM_MAP_KDRIVERENTRY),
             pb, cb, pcbRead, cbOffset
         );
         goto cleanup;
     }
-    if(!_wcsicmp(ctx->wszPath, L"driver_irp.txt")) {
+    if(!_stricmp(ctx->uszPath, "driver_irp.txt")) {
         if(!(pObSystemProcess = VmmProcessGet(4))) { goto cleanup; }
         if(!VmmMap_GetPte(pObSystemProcess, &pObPteMap, TRUE)) { goto cleanup; }
         IrpCtx.pDrvMap = pObDrvMap;
         IrpCtx.pPteMap = pObPteMap;
         nt = Util_VfsLineFixed_Read(
-            MSysDriver_IrpReadLine_Callback, &IrpCtx, MSYSDRIVER_IRP_LINELENGTH, MSYSDRIVER_IRP_LINEHEADER,
+            (UTIL_VFSLINEFIXED_PFN_CB)MSysDriver_IrpReadLine_Callback, &IrpCtx, MSYSDRIVER_IRP_LINELENGTH, MSYSDRIVER_IRP_LINEHEADER,
             pObDrvMap->pMap, pObDrvMap->cMap * 28ULL, 0,
             pb, cb, pcbRead, cbOffset
         );
         goto cleanup;
     }
-    if(!_wcsnicmp(L"by-name\\", ctx->wszPath, 8)) {
-        if(MSysDriver_EntryFromPath(ctx->wszPath, pObDrvMap, &pe, NULL)) {
-            nt = VmmWinObjDisplay_VfsRead(ctx->wszPath, ctxVmm->ObjectTypeTable.tpDriver, pe->va, pb, cb, pcbRead, cbOffset);
+    if(!_strnicmp("by-name\\", ctx->uszPath, 8)) {
+        if(MSysDriver_EntryFromPath(ctx->uszPath, pObDrvMap, &pe, NULL)) {
+            nt = VmmWinObjDisplay_VfsRead(ctx->uszPath, ctxVmm->ObjectTypeTable.tpDriver, pe->va, pb, cb, pcbRead, cbOffset);
             goto cleanup;
         }
     }
@@ -172,23 +173,23 @@ cleanup:
 BOOL MSysDriver_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 {
     DWORD i;
-    LPWSTR wszPath;
+    LPSTR uszPath;
     PVMM_MAP_KDRIVERENTRY pe;
     PVMMOB_MAP_KDRIVER pObDrvMap = NULL;
     if(!VmmMap_GetKDriver(&pObDrvMap)) { goto finish; }
-    if(!ctx->wszPath[0]) {
-        VMMDLL_VfsList_AddDirectory(pFileList, L"by-name", NULL);
-        VMMDLL_VfsList_AddFile(pFileList, L"drivers.txt", UTIL_VFSLINEFIXED_LINECOUNT(pObDrvMap->cMap) * MSYSDRIVER_DRV_LINELENGTH, NULL);
-        VMMDLL_VfsList_AddFile(pFileList, L"driver_irp.txt", UTIL_VFSLINEFIXED_LINECOUNT(pObDrvMap->cMap * 28ULL) * MSYSDRIVER_IRP_LINELENGTH, NULL);
+    if(!ctx->uszPath[0]) {
+        VMMDLL_VfsList_AddDirectory(pFileList, "by-name", NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "drivers.txt", UTIL_VFSLINEFIXED_LINECOUNT(pObDrvMap->cMap) * MSYSDRIVER_DRV_LINELENGTH, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "driver_irp.txt", UTIL_VFSLINEFIXED_LINECOUNT(pObDrvMap->cMap * 28ULL) * MSYSDRIVER_IRP_LINELENGTH, NULL);
         goto finish;
     }
-    if(!_wcsicmp(L"by-name", ctx->wszPath)) {
+    if(!_stricmp(ctx->uszPath, "by-name")) {
         for(i = 0; i < pObDrvMap->cMap; i++) {
-            VMMDLL_VfsList_AddDirectory(pFileList, pObDrvMap->pMap[i].wszName, NULL);
+            VMMDLL_VfsList_AddDirectory(pFileList, pObDrvMap->pMap[i].uszName, NULL);
         }
         goto finish;
     }
-    if(MSysDriver_EntryFromPath(ctx->wszPath, pObDrvMap, &pe, &wszPath) && wszPath[0]) {
+    if(MSysDriver_EntryFromPath(ctx->uszPath, pObDrvMap, &pe, &uszPath) && uszPath[0]) {
         VmmWinObjDisplay_VfsList(ctxVmm->ObjectTypeTable.tpDriver, pe->va, pFileList);
         goto finish;
     }
@@ -203,7 +204,7 @@ VOID MSysDriver_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSO
     PVMMOB_MAP_KDRIVER pObDrvMap = NULL;
     PVMM_MAP_KDRIVERENTRY pe;
     DWORD i;
-    CHAR szj[MAX_PATH];
+    CHAR usz[MAX_PATH];
     if(ctxP->pProcess || !(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)))) { return; }
     pd->dwVersion = VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION;
     pd->szjType = "driver";
@@ -215,9 +216,9 @@ VOID MSysDriver_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSO
             pd->qwNum[0] = pe->cbDriverSize;
             pd->va[0] = pe->vaStart;
             pd->va[1] = pe->cbDriverSize ? (pe->vaStart + pe->cbDriverSize - 1) : pe->vaStart;
-            pd->wsz[0] = pe->wszName;
-            Util_snwprintf_u8j(szj, sizeof(szj), L"svc:[%s] path:[%s]", pe->wszServiceKeyName, pe->wszPath);
-            pd->szj[1] = szj;
+            pd->usz[0] = pe->uszName;
+            snprintf(usz, sizeof(usz), "svc:[%s] path:[%s]", pe->uszServiceKeyName, pe->uszPath);
+            pd->usz[1] = usz;
             pfnLogJSON(pd);
         }
     }
@@ -230,7 +231,7 @@ VOID M_SysDriver_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if((pRI->tpSystem != VMM_SYSTEM_WINDOWS_X64) && (pRI->tpSystem != VMM_SYSTEM_WINDOWS_X86)) { return; }
     if(pRI->sysinfo.dwVersionBuild < 7600) { return; }              // WIN7+ required
-    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\sys\\drivers");    // module name
+    strcpy_s(pRI->reg_info.uszPathName, 128, "\\sys\\drivers");     // module name
     pRI->reg_info.fRootModule = TRUE;                               // module shows in root directory
     pRI->reg_fn.pfnList = MSysDriver_List;                          // List function supported
     pRI->reg_fn.pfnRead = MSysDriver_Read;                          // Read function supported

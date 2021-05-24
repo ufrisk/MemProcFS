@@ -9,6 +9,7 @@
 #include "vmmwindef.h"
 #include "vmmwinobj.h"
 #include "pdb.h"
+#include "charutil.h"
 #include "util.h"
 
 #define VMMWINOBJ_WORKITEM_FILEPROCSCAN_VAD         0x0000000100000000
@@ -106,7 +107,7 @@ POB_VMMWINOBJ_OBJECT VmmWinObj_Get(_In_ QWORD va)
 
 VOID VmmWinObj_CallbackCleanup_ObObjFile(POB_VMMWINOBJ_FILE pOb)
 {
-    LocalFree(pOb->wszPath);
+    LocalFree(pOb->uszPath);
     LocalFree(pOb->pSUBSECTION);
 }
 
@@ -133,7 +134,7 @@ VOID VmmWinObjFile_Initialize_SharedCacheMap(_In_ PVMM_PROCESS pSystemProcess, _
     POB_VMMWINOBJ_FILE peObFile = NULL;
     PVMM_OFFSET_FILE po = &ctxVmm->offset.FILE;
     // 1: Prefetch valid _SHARED_CACHE_MAP into cache.
-    if(!VmmCachePrefetchPages5(pSystemProcess, pmFiles, 0x10 + po->_SHARED_CACHE_MAP.cb, 0, VmmWinObjFile_Initialize_SharedCacheMap_Filter)) { return; }
+    if(!VmmCachePrefetchPages5(pSystemProcess, pmFiles, 0x10 + po->_SHARED_CACHE_MAP.cb, 0, (VOID(*)(QWORD, PVOID, POB_SET))VmmWinObjFile_Initialize_SharedCacheMap_Filter)) { return; }
     // 2: process _SHARED_CACHE_MAP
     while((peObFile = ObMap_GetNext(pmFiles, peObFile))) {
         f = peObFile->_SHARED_CACHE_MAP.va &&
@@ -220,7 +221,7 @@ VOID VmmWinObjFile_Initialize_ControlArea(_In_ PVMM_PROCESS pSystemProcess, _In_
     POB_VMMWINOBJ_FILE peObFile = NULL;
     PVMM_OFFSET_FILE po = &ctxVmm->offset.FILE;
     // 1: Prefetch valid _CONTROL_AREA and following _SUBSECTION into cache.
-    if(!VmmCachePrefetchPages5(pSystemProcess, pmFiles, 0x1000, 0, VmmWinObjFile_Initialize_ControlArea_Filter)) { return; }
+    if(!VmmCachePrefetchPages5(pSystemProcess, pmFiles, 0x1000, 0, (VOID(*)(QWORD, PVOID, POB_SET))VmmWinObjFile_Initialize_ControlArea_Filter)) { return; }
     // 2: get _SEGMENT pointer and sub-process _SUBSECTION(s)
     while((peObFile = ObMap_GetNext(pmFiles, peObFile))) {
         f = peObFile->vaControlArea &&
@@ -230,7 +231,7 @@ VOID VmmWinObjFile_Initialize_ControlArea(_In_ PVMM_PROCESS pSystemProcess, _In_
             VmmWinObjFile_Initialize_ControlArea_Subsection(pSystemProcess, peObFile);
     }
     // 3: Prefetch valid _SEGMENT into cache.
-    if(!VmmCachePrefetchPages5(pSystemProcess, pmFiles, po->_SEGMENT.cb, 0, VmmWinObjFile_Initialize_ControlArea_FilterSegment)) { return; }
+    if(!VmmCachePrefetchPages5(pSystemProcess, pmFiles, po->_SEGMENT.cb, 0, (VOID(*)(QWORD, PVOID, POB_SET))VmmWinObjFile_Initialize_ControlArea_FilterSegment)) { return; }
     // 4: get _SEGMENT data
     while((peObFile = ObMap_GetNext(pmFiles, peObFile))) {
         if(peObFile->_SEGMENT.va && VmmRead2(pSystemProcess, peObFile->_SEGMENT.va, pb, po->_SEGMENT.cb, VMM_FLAG_FORCECACHE_READ) && (peObFile->vaControlArea == VMM_PTR_OFFSET(f32, pb, po->_SEGMENT.oControlArea))) {
@@ -296,7 +297,7 @@ VOID VmmWinObjFile_Initialize_FileObjects(_In_ PVMM_PROCESS pSystemProcess, _Ino
             (vaFileNameBuffer = VMM_PTR_OFFSET(f32, pb, po->_FILE_OBJECT.oFileNameBuffer)) &&
             (vaSectionObjectPointers = VMM_PTR_OFFSET(f32, pb, po->_FILE_OBJECT.oSectionObjectPointer)) &&
             VMM_KADDR(vaFileNameBuffer) && VMM_KADDR_4_8(vaSectionObjectPointers) &&
-            (peObFile = Ob_Alloc(OB_TAG_OBJ_FILE, LMEM_ZEROINIT, sizeof(OB_VMMWINOBJ_FILE), VmmWinObj_CallbackCleanup_ObObjFile, NULL));
+            (peObFile = Ob_Alloc(OB_TAG_OBJ_FILE, LMEM_ZEROINIT, sizeof(OB_VMMWINOBJ_FILE), (OB_CLEANUP_CB)VmmWinObj_CallbackCleanup_ObObjFile, NULL));
         if(f) {
             peObFile->tp = VMMWINOBJ_TYPE_FILE;
             peObFile->va = va;
@@ -310,7 +311,7 @@ VOID VmmWinObjFile_Initialize_FileObjects(_In_ PVMM_PROCESS pSystemProcess, _Ino
         }
     }
     // 3: prefetch _UNICODE_STRING and _SECTION_OBJECT_POINTERS
-    if(!VmmCachePrefetchPages5(pSystemProcess, pmObFiles, MAX_PATH * 2, 0, VmmWinObjFile_Initialize_FileObject_Filter)) { goto finish; }
+    if(!VmmCachePrefetchPages5(pSystemProcess, pmObFiles, MAX_PATH * 2, 0, (VOID(*)(QWORD, PVOID, POB_SET))VmmWinObjFile_Initialize_FileObject_Filter)) { goto finish; }
     // 4: fill _UNICODE_STRING and _SECTION_OBJECT_POINTERS
     while((peObFile = ObMap_GetNext(pmObFiles, peObFile))) {
         // _UNICODE_STRING
@@ -320,9 +321,11 @@ VOID VmmWinObjFile_Initialize_FileObjects(_In_ PVMM_PROCESS pSystemProcess, _Ino
             vaFileNameBuffer += cbPath - MAX_PATH * 2;
             cbPath = MAX_PATH * 2;
         }
-        if(!VmmReadAlloc(pSystemProcess, vaFileNameBuffer, (PBYTE *)&peObFile->wszPath, cbPath, VMM_FLAG_FORCECACHE_READ)) { continue; }
-        peObFile->wszName = Util_PathSplitLastW(peObFile->wszPath);
-        peObFile->dwNameHash = Util_HashStringUpperW(peObFile->wszName);
+        if(!VmmReadWtoU(pSystemProcess, vaFileNameBuffer, cbPath, VMM_FLAG_FORCECACHE_READ, NULL, 0, &peObFile->uszPath, NULL, CHARUTIL_FLAG_ALLOC)) {
+            peObFile->uszPath = (LPSTR)LocalAlloc(LMEM_ZEROINIT, 1);
+        }
+        peObFile->uszName = CharUtil_PathSplitLast(peObFile->uszPath);
+        peObFile->dwNameHash = CharUtil_HashNameFsU(peObFile->uszName, 0);
         // _SECTION_OBJECT_POINTERS
         if(!VmmRead2(pSystemProcess, peObFile->vaSectionObjectPointers, pb, po->_SECTION_OBJECT_POINTERS.cb, VMM_FLAG_FORCECACHE_READ)) { continue; }
         if((va = VMM_PTR_OFFSET(f32, pb, po->_SECTION_OBJECT_POINTERS.oDataSectionObject)) && VMM_KADDR_8_16(va)) {
@@ -343,7 +346,7 @@ VOID VmmWinObjFile_Initialize_FileObjects(_In_ PVMM_PROCESS pSystemProcess, _Ino
     VmmWinObjFile_Initialize_SharedCacheMap(pSystemProcess, pmObFiles);
     // 6: finish - move valid to result map and invalid to error set.
 finish:
-    ObMap_RemoveByFilter(pmObFiles, VmmWinObjFile_Initialize_FileObject_FilterRemove);
+    ObMap_RemoveByFilter(pmObFiles, (BOOL(*)(QWORD, PVOID))VmmWinObjFile_Initialize_FileObject_FilterRemove);
     while((peObFile = ObMap_GetNext(pmObFiles, peObFile))) {
         ObMap_Push(pmFilesResult, peObFile->va, peObFile);
         ObMap_Push(ctx->pmByObj, peObFile->va, peObFile);
@@ -862,12 +865,12 @@ BOOL VmmWinObjMgr_Initialize_ObjectNameExtInfo(_In_ PVMM_PROCESS pSystemProcess,
     pe->ExtInfo.ft = pes->ExtInfo.ft;
     if(pes->ExtInfo.vaName && VmmRead2(pSystemProcess, pes->ExtInfo.vaName, (PBYTE)wsz, min(0x400, pes->ExtInfo.cchName << 1), VMM_FLAG_FORCECACHE_READ)) {
         wsz[min(0x200, pes->ExtInfo.cchName)] = 0;
-        ObStrMap_Push(pStrMap, wsz, &pe->ExtInfo.wsz, NULL);
+        ObStrMap_PushPtrWU(pStrMap, wsz, &pe->ExtInfo.usz, NULL);
         pes->ExtInfo.cchName = -1;
         return TRUE;
     }
     if(!pes->ExtInfo.vaName || fForce) {
-        ObStrMap_Push(pStrMap, NULL, &pe->ExtInfo.wsz, NULL);
+        ObStrMap_PushPtrWU(pStrMap, NULL, &pe->ExtInfo.usz, NULL);
         pes->ExtInfo.cchName = -1;
         return TRUE;
     }
@@ -884,12 +887,12 @@ BOOL VmmWinObjMgr_Initialize_ObjectName(_In_ PVMM_PROCESS pSystemProcess, _Inout
     if(pes->cchName == -1) { return TRUE; }
     if(pes->vaName && VmmRead2(pSystemProcess, pes->vaName, (PBYTE)wsz, min(0x400, pes->cchName << 1), VMM_FLAG_FORCECACHE_READ)) {
         wsz[min(0x200, pes->cchName)] = 0;
-        ObStrMap_Push(pStrMap, wsz, &pe->wszName, &pe->cchName);
+        ObStrMap_PushPtrWU(pStrMap, wsz, &pe->uszName, &pe->cbuName);
         pes->cchName = -1;
         return TRUE;
     }
     if(!pes->vaName || fForce) {
-        ObStrMap_Push_swprintf_s(pStrMap, &pe->wszName, &pe->cchName, L"$OBJECT-%llX", pe->va);
+        ObStrMap_PushUU_snprintf_s(pStrMap, &pe->uszName, &pe->cbuName, "$OBJECT-%llX", pe->va);
         pes->cchName = -1;
         return TRUE;
     }
@@ -927,11 +930,11 @@ BOOL VmmWinObjMgr_Initialize_ObMapLookupStr(_Inout_ PVMMOB_MAP_OBJECT pMap, _Ino
             VmmWinObjMgr_Initialize_ObjectNameExtInfo(ctxInit->pSystemProcess, pObStrMap, pe, pes, TRUE);
         }
     }
-    if(!ObStrMap_Finalize_DECREF_NULL(&pObStrMap, &pMap->wszMultiText, &pMap->cbMultiText)) { return FALSE; }
-    if(pMap->cMap) { pMap->pMap[0].dwHash = Util_HashNameW_Registry(L"ROOT", 0); }
+    if(!ObStrMap_FinalizeAllocU_DECREF_NULL(&pObStrMap, &pMap->pbMultiText, &pMap->cbMultiText)) { return FALSE; }
+    if(pMap->cMap) { pMap->pMap[0].dwHash = CharUtil_HashNameFsU("ROOT", 0); }
     for(i = 1; i < pMap->cMap; i++) {
         pe = pMap->pMap + i;
-        pe->dwHash = Util_HashNameW_Registry(pe->wszName, 0);
+        pe->dwHash = CharUtil_HashNameFsU(pe->uszName, 0);
     }
     return TRUE;
 }
@@ -956,7 +959,7 @@ int VmmWinObjMgr_Initialize_ObMapAlloc_qsort_dir(const void *pqw1, const void *p
 
 VOID VmmWinObjMgr_CallbackCleanup_ObObjectMap(PVMMOB_MAP_OBJECT pOb)
 {
-    LocalFree(pOb->wszMultiText);
+    LocalFree(pOb->pbMultiText);
 }
 
 /*
@@ -991,7 +994,7 @@ PVMMOB_MAP_OBJECT VmmWinObjMgr_Initialize_ObMapAlloc(_Inout_ PVMM_WINOBJ_SETUP_C
     }
     Ob_DECREF_NULL(&pObData);
     // 3: alloc
-    pObMap = Ob_Alloc(OB_TAG_MAP_OBJECT, LMEM_ZEROINIT, sizeof(VMMOB_MAP_OBJECT) + cAll * (sizeof(VMM_MAP_OBJECTENTRY) + sizeof(DWORD)), VmmWinObjMgr_CallbackCleanup_ObObjectMap, NULL);
+    pObMap = Ob_Alloc(OB_TAG_MAP_OBJECT, LMEM_ZEROINIT, sizeof(VMMOB_MAP_OBJECT) + cAll * (sizeof(VMM_MAP_OBJECTENTRY) + sizeof(DWORD)), (OB_CLEANUP_CB)VmmWinObjMgr_CallbackCleanup_ObObjectMap, NULL);
     if(!pObMap) { return NULL; }
     pObMap->cMap = cAll;
     pObMap->piTypeSort = (PDWORD)((QWORD)pObMap + sizeof(VMMOB_MAP_OBJECT) + cAll * sizeof(VMM_MAP_OBJECTENTRY));
@@ -1144,9 +1147,6 @@ PVMMOB_MAP_OBJECT VmmWinObjMgr_Initialize()
     }
     if(!(pObObject = VmmWinObjMgr_Initialize_DoWork())) {
         pObObject = Ob_Alloc(OB_TAG_MAP_OBJECT, LMEM_ZEROINIT, sizeof(VMMOB_MAP_OBJECT), NULL, NULL);
-        if(pObObject) {
-            pObObject->wszMultiText = (LPWSTR)&pObObject->cbMultiText;   // NULL CHAR guaranteed.
-        }
     }
     ObContainer_SetOb(ctxVmm->pObCMapObject, pObObject);
     LeaveCriticalSection(&ctxVmm->LockUpdateMap);
@@ -1164,7 +1164,7 @@ PVMMOB_MAP_OBJECT VmmWinObjMgr_Initialize()
 */
 VOID VmmWinObjKDrv_ObCloseCallback(_In_ PVMMOB_MAP_KDRIVER pObKDriver)
 {
-    LocalFree(pObKDriver->wszMultiText);
+    LocalFree(pObKDriver->pbMultiText);
 }
 
 /*
@@ -1204,7 +1204,7 @@ PVMMOB_MAP_KDRIVER VmmWinObjKDrv_Initialize_DoWork()
     if(!VmmMap_GetObject(&pObObjMap)) { goto fail; }
     // 2: alloc object
     cDriver = pObObjMap->cType[ctxVmm->ObjectTypeTable.tpDriver];
-    pObMap = Ob_Alloc(OB_TAG_MAP_KDRIVER, LMEM_ZEROINIT, sizeof(VMMOB_MAP_KDRIVER) + cDriver * sizeof(VMM_MAP_KDRIVERENTRY), VmmWinObjKDrv_ObCloseCallback, NULL);
+    pObMap = Ob_Alloc(OB_TAG_MAP_KDRIVER, LMEM_ZEROINIT, sizeof(VMMOB_MAP_KDRIVER) + cDriver * sizeof(VMM_MAP_KDRIVERENTRY), (OB_CLEANUP_CB)VmmWinObjKDrv_ObCloseCallback, NULL);
     if(!pObMap) { goto fail; }
     pObMap->cMap = cDriver;
     // 3: get initial data from object map and prefetch
@@ -1213,7 +1213,7 @@ PVMMOB_MAP_KDRIVER VmmWinObjKDrv_Initialize_DoWork()
         pe = pObMap->pMap + i;
         peObj = pObObjMap->pMap + pObObjMap->piTypeSort[iObMapDriverBase + i];
         ObSet_Push_PageAlign(psObPrefetch, peObj->va, sizeof(DRIVER_OBJECT64));
-        ObStrMap_Push(psmObText, peObj->wszName, &pe->wszName, NULL);
+        ObStrMap_PushPtrUU(psmObText, peObj->uszName, &pe->uszName, NULL);
         pe->va = peObj->va;
         pe->dwHash = peObj->dwHash;
     }
@@ -1232,8 +1232,8 @@ PVMMOB_MAP_KDRIVER VmmWinObjKDrv_Initialize_DoWork()
             for(j = 0; j < 28; j++) {
                 pe->MajorFunction[j] = pD32->MajorFunction[j];
             }
-            ObStrMap_Push_UnicodeObject(psmObText, TRUE, (QWORD)pD32->DriverExtension + 0x0c, &pe->wszServiceKeyName, NULL);
-            ObStrMap_Push_UnicodeBuffer(psmObText, pD32->DriverName.Length, pD32->DriverName.Buffer, &pe->wszPath, NULL);
+            ObStrMap_Push_UnicodeObject(psmObText, TRUE, (QWORD)pD32->DriverExtension + 0x0c, &pe->uszServiceKeyName, NULL);
+            ObStrMap_Push_UnicodeBuffer(psmObText, pD32->DriverName.Length, pD32->DriverName.Buffer, &pe->uszPath, NULL);
         } else {
             if(VMM_KADDR64(pD64->DriverStart) && (pD64->DriverSize < 0x10000000)) {
                 pe->vaStart = pD64->DriverStart;
@@ -1243,16 +1243,16 @@ PVMMOB_MAP_KDRIVER VmmWinObjKDrv_Initialize_DoWork()
             for(j = 0; j < 28; j++) {
                 pe->MajorFunction[j] = pD64->MajorFunction[j];
             }
-            ObStrMap_Push_UnicodeObject(psmObText, FALSE, pD64->DriverExtension + 0x18, &pe->wszServiceKeyName, NULL);
-            ObStrMap_Push_UnicodeBuffer(psmObText, pD64->DriverName.Length, pD64->DriverName.Buffer, &pe->wszPath, NULL);
+            ObStrMap_Push_UnicodeObject(psmObText, FALSE, pD64->DriverExtension + 0x18, &pe->uszServiceKeyName, NULL);
+            ObStrMap_Push_UnicodeBuffer(psmObText, pD64->DriverName.Length, pD64->DriverName.Buffer, &pe->uszPath, NULL);
         }
     }
-    if(!ObStrMap_Finalize_DECREF_NULL(&psmObText, &pObMap->wszMultiText, &pObMap->cbMultiText)) { goto fail; }
+    if(!ObStrMap_FinalizeAllocU_DECREF_NULL(&psmObText, &pObMap->pbMultiText, &pObMap->cbMultiText)) { goto fail; }
     for(i = 0; i < cDriver; i++) {
         pe = pObMap->pMap + i;
-        if(!pe->wszName) { pe->wszName = pObMap->wszMultiText; }
-        if(!pe->wszPath) { pe->wszPath = pObMap->wszMultiText; }
-        if(!pe->wszServiceKeyName) { pe->wszServiceKeyName = pObMap->wszMultiText; }
+        if(!pe->uszName) { pe->uszName = (LPSTR)pObMap->pbMultiText; }
+        if(!pe->uszPath) { pe->uszPath = (LPSTR)pObMap->pbMultiText; }
+        if(!pe->uszServiceKeyName) { pe->uszServiceKeyName = (PBYTE)pObMap->pbMultiText; }
     }
     qsort(pObMap->pMap, pObMap->cMap, sizeof(VMM_MAP_KDRIVERENTRY), (int(*)(void const *, void const *))VmmWinObjKDrv_Initialize_DoWork_CmpSort);
     Ob_INCREF(pObMap);
@@ -1280,9 +1280,6 @@ PVMMOB_MAP_KDRIVER VmmWinObjKDrv_Initialize()
     }
     if(!(pObKDriver = VmmWinObjKDrv_Initialize_DoWork())) {
         pObKDriver = Ob_Alloc(OB_TAG_MAP_KDRIVER, LMEM_ZEROINIT, sizeof(VMMOB_MAP_KDRIVER), NULL, NULL);
-        if(pObKDriver) {
-            pObKDriver->wszMultiText = (LPWSTR)&pObKDriver->cbMultiText;   // NULL CHAR guaranteed.
-        }
     }
     ObContainer_SetOb(ctxVmm->pObCMapKDriver, pObKDriver);
     LeaveCriticalSection(&ctxVmm->LockUpdateMap);
@@ -1340,7 +1337,7 @@ BOOL VmmWinObjDisplay_Get(_In_ LPSTR szTypeName, _In_ QWORD vaObject, _In_ BOOL 
         if(!(ctxVmm->pObCacheMapWinObjDisplay = ObCacheMap_New(0x10000, NULL, OB_CACHEMAP_FLAGS_OBJECT_OB))) { goto fail; }
     }
     if(!(pOb = ObCacheMap_GetByKey(ctxVmm->pObCacheMapWinObjDisplay, vaObject))) {
-        if(!(pOb = Ob_Alloc(OB_TAG_OBJ_DISPLAY, LMEM_ZEROINIT, sizeof(OB_OBJECT_DISPLAY), _VmmWinObjDisplay_ObCloseCallback, NULL))) { goto fail; }
+        if(!(pOb = Ob_Alloc(OB_TAG_OBJ_DISPLAY, LMEM_ZEROINIT, sizeof(OB_OBJECT_DISPLAY), (OB_CLEANUP_CB)_VmmWinObjDisplay_ObCloseCallback, NULL))) { goto fail; }
         pOb->va = vaObject;
         ObCacheMap_Push(ctxVmm->pObCacheMapWinObjDisplay, vaObject, pOb, 0);
     }
@@ -1350,7 +1347,7 @@ BOOL VmmWinObjDisplay_Get(_In_ LPSTR szTypeName, _In_ QWORD vaObject, _In_ BOOL 
         if(!PDB_DisplayTypeNt(szTypeName, 1, vaObject, TRUE, FALSE, (fDataObj ? &szData : NULL), &pOb->cbObj, &pOb->cbType)) { goto fail; }
         if(szData) {
             pOb->pdcObj = ObCompressed_NewFromByte(szData, pOb->cbObj);
-            szData = LocalFree(szData);
+            LocalFree(szData); szData = NULL;
             if(!pOb->pdcObj) { goto fail; }
         }
     }
@@ -1359,7 +1356,7 @@ BOOL VmmWinObjDisplay_Get(_In_ LPSTR szTypeName, _In_ QWORD vaObject, _In_ BOOL 
         if(!PDB_DisplayTypeNt(szTypeName, 1, vaObject, TRUE, TRUE, (fDataHdr ? &szData : NULL), &pOb->cbHdr, NULL)) { goto fail; }
         if(szData) {
             pOb->pdcHdr = ObCompressed_NewFromByte(szData, pOb->cbHdr);
-            szData = LocalFree(szData);
+            LocalFree(szData); szData = NULL;
             if(!pOb->pdcHdr) { goto fail; }
         }
     }
@@ -1387,12 +1384,12 @@ fail:
 * -- cbOffset
 * -- return
 */
-NTSTATUS VmmWinObjDisplay_VfsRead(_In_ LPWSTR wszPathFile, _In_opt_ DWORD iTypeIndex, _In_ QWORD vaObject, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS VmmWinObjDisplay_VfsRead(_In_ LPSTR uszPathFile, _In_opt_ DWORD iTypeIndex, _In_ QWORD vaObject, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     POB_OBJECT_DISPLAY pObObjDisp = NULL;
     PVMMWIN_OBJECT_TYPE ptp = NULL;
-    if(Util_StrEndsWithW(wszPathFile, L"obj-address.txt", TRUE)) {
+    if(CharUtil_StrEndsWith(uszPathFile, "obj-address.txt", TRUE)) {
         if(ctxVmm->f32) {
             return Util_VfsReadFile_FromDWORD((DWORD)vaObject, pb, cb, pcbRead, cbOffset, FALSE);
         } else {
@@ -1400,10 +1397,10 @@ NTSTATUS VmmWinObjDisplay_VfsRead(_In_ LPWSTR wszPathFile, _In_opt_ DWORD iTypeI
         }
     }
     ptp = VmmWin_ObjectTypeGet((BYTE)iTypeIndex);
-    if(ptp && Util_StrEndsWithW(wszPathFile, L"obj-type.txt", TRUE)) {
-        return Util_VfsReadFile_FromTextWtoU8(ptp->wsz, pb, cb, pcbRead, cbOffset);
+    if(ptp && CharUtil_StrEndsWith(uszPathFile, "obj-type.txt", TRUE)) {
+        return Util_VfsReadFile_FromPBYTE(ptp->usz, strlen(ptp->usz), pb, cb, pcbRead, cbOffset);
     }
-    if(Util_StrEndsWithW(wszPathFile, L"obj-data.mem", TRUE)) {
+    if(CharUtil_StrEndsWith(uszPathFile, "obj-data.mem", TRUE)) {
         if(ptp && ptp->szType && VmmWinObjDisplay_Get(ptp->szType, vaObject, FALSE, FALSE, &pObObjDisp)) {
             nt = Util_VfsReadFile_FromMEM(PVMM_PROCESS_SYSTEM, pObObjDisp->va, pObObjDisp->cbType, VMM_FLAG_ZEROPAD_ON_FAIL, pb, cb, pcbRead, cbOffset);
             Ob_DECREF(pObObjDisp);
@@ -1411,12 +1408,12 @@ NTSTATUS VmmWinObjDisplay_VfsRead(_In_ LPWSTR wszPathFile, _In_opt_ DWORD iTypeI
         }
         return Util_VfsReadFile_FromMEM(PVMM_PROCESS_SYSTEM, vaObject, VMMWINOBJDISPLAY_DEFAULT_OBJECT_MEMSIZE, VMM_FLAG_ZEROPAD_ON_FAIL, pb, cb, pcbRead, cbOffset);
     }
-    if(Util_StrEndsWithW(wszPathFile, L"obj-data.txt", TRUE) && ptp && ptp->szType && VmmWinObjDisplay_Get(ptp->szType, vaObject, TRUE, FALSE, &pObObjDisp)) {
+    if(CharUtil_StrEndsWith(uszPathFile, "obj-data.txt", TRUE) && ptp && ptp->szType && VmmWinObjDisplay_Get(ptp->szType, vaObject, TRUE, FALSE, &pObObjDisp)) {
         nt = Util_VfsReadFile_FromObCompressedStrA(pObObjDisp->pdcObj, pb, cb, pcbRead, cbOffset);
         Ob_DECREF(pObObjDisp);
         return nt;
     }
-    if(Util_StrEndsWithW(wszPathFile, L"obj-header.txt", TRUE) && ptp && ptp->szType && VmmWinObjDisplay_Get(ptp->szType, vaObject, FALSE, TRUE, &pObObjDisp)) {
+    if(CharUtil_StrEndsWith(uszPathFile, "obj-header.txt", TRUE) && ptp && ptp->szType && VmmWinObjDisplay_Get(ptp->szType, vaObject, FALSE, TRUE, &pObObjDisp)) {
         nt = Util_VfsReadFile_FromObCompressedStrA(pObObjDisp->pdcHdr, pb, cb, pcbRead, cbOffset);
         Ob_DECREF(pObObjDisp);
         return nt;
@@ -1437,15 +1434,15 @@ VOID VmmWinObjDisplay_VfsList(_In_opt_ DWORD iTypeIndex, _In_ QWORD vaObject, _I
     POB_OBJECT_DISPLAY pObObjDisp = NULL;
     ptp = VmmWin_ObjectTypeGet((BYTE)iTypeIndex);
     if(ptp && ptp->szType && VmmWinObjDisplay_Get(ptp->szType, vaObject, FALSE, FALSE, &pObObjDisp)) {
-        VMMDLL_VfsList_AddFile(pFileList, L"obj-header.txt", pObObjDisp->cbHdr - 1, NULL);
-        VMMDLL_VfsList_AddFile(pFileList, L"obj-data.txt", pObObjDisp->cbObj - 1, NULL);
-        VMMDLL_VfsList_AddFile(pFileList, L"obj-data.mem", pObObjDisp->cbType, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "obj-header.txt", pObObjDisp->cbHdr - 1, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "obj-data.txt", pObObjDisp->cbObj - 1, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "obj-data.mem", pObObjDisp->cbType, NULL);
     } else {
-        VMMDLL_VfsList_AddFile(pFileList, L"obj-data.mem", VMMWINOBJDISPLAY_DEFAULT_OBJECT_MEMSIZE, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "obj-data.mem", VMMWINOBJDISPLAY_DEFAULT_OBJECT_MEMSIZE, NULL);
     }
     if(ptp) {
-        VMMDLL_VfsList_AddFile(pFileList, L"obj-type.txt", wcslen(ptp->wsz), NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "obj-type.txt", strlen(ptp->usz), NULL);
     }
-    VMMDLL_VfsList_AddFile(pFileList, L"obj-address.txt", ctxVmm->f32 ? 8 : 16, NULL);
+    VMMDLL_VfsList_AddFile(pFileList, "obj-address.txt", ctxVmm->f32 ? 8 : 16, NULL);
     Ob_DECREF(pObObjDisp);
 }

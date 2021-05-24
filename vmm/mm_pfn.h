@@ -109,7 +109,7 @@ BOOL MmPfn_Map_GetPfn(_In_ DWORD dwPfnStart, _In_ DWORD cPfn, _Out_ PMMPFNOB_MAP
 /*
 * Retrieve information about scattered PFNs. The PFNs are returned in order of
 * in which they are stored in the psPfn set.
-* NB! POB_SET does not support ZERO, for PFN zero use 0x80000000'00000000.
+* NB! POB_SET does not support ZERO, for PFN zero use 0x8000000000000000.
 * CALLER DECREF: pObPfnMap
 * -- psPfn = Set of PFNs. PFN = physical address / 0x1000.
 * -- cPfn

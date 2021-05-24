@@ -5,7 +5,6 @@
 //
 #ifndef __M_MODULES_H__
 #define __M_MODULES_H__
-#include <Windows.h>
 #include "vmmdll.h"
 
 /*
@@ -29,7 +28,7 @@ VOID M_VfsFc_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 */
 VOID M_FindEvil_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_Phys2Virt_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
-VOID M_Status_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
+VOID M_Conf_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_Sys_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_SysCert_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_SysDriver_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
@@ -71,7 +70,7 @@ VOID(*g_pfnModulesAllInternal[])(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo) = {
     M_VfsRoot_Initialize,
     M_VfsProc_Initialize,
     M_VfsFc_Initialize,
-    // various per-process modules
+    // per-process modules
     M_FileHandlesVads_Initialize,
     M_FileModules_Initialize,
     M_FindEvil_Initialize,
@@ -80,30 +79,35 @@ VOID(*g_pfnModulesAllInternal[])(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo) = {
     M_MemMap_Initialize,
     M_MiniDump_Initialize,
     M_Phys2Virt_Initialize,
-    M_ProcToken_Initialize,
-    M_Thread_Initialize,
     M_Virt2Phys_Initialize,
-    // various global modules
-    M_Status_Initialize,
+    // global modules
+    M_Conf_Initialize,
     M_Sys_Initialize,
-    M_SysCert_Initialize,
-    M_SysDriver_Initialize,
     M_SysMem_Initialize,
     M_SysNet_Initialize,
-    M_SysObj_Initialize,
     M_SysProc_Initialize,
     M_SysSvc_Initialize,
-    M_SysSyscall_Initialize,
     M_SysTask_Initialize,
     M_WinReg_Initialize,
-    // various global forensic modules
+    // forensic modules
     M_FcJSON_Initialize,
     M_FcTimeline_Initialize,
     M_FcModule_Initialize,
-    M_FcNtfs_Initialize,
-    M_FcProc_Initialize,
     M_FcRegistry_Initialize,
-    M_FcThread_Initialize,
+#ifdef _WIN32
+    // windows-only per-process modules
+    M_ProcToken_Initialize,
+    M_Thread_Initialize,
+    // windows-only global modules
+    M_SysCert_Initialize,           // req: winapi
+    M_SysDriver_Initialize,         // req: symbols
+    M_SysObj_Initialize,            // req: symbols
+    M_SysSyscall_Initialize,        // req: symbols
+    // windows-only forensic modules
+    M_FcNtfs_Initialize,            // req: symbols
+    M_FcProc_Initialize,            // req: symbols
+    M_FcThread_Initialize,          // req: symbols
+#endif /* _WIN32 */
 };
 
 #endif /* __M_MODULES_H__ */

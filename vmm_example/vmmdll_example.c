@@ -1,28 +1,75 @@
 // vmmdll_example.c - MemProcFS C/C++ VMM API usage examples
 //
-// Note that this is not a complete list of the VMM API. For the complete list please consult the vmmdll.h header file.
+// Note that this is not a complete list of the VMM API.
+// For the complete list please consult the vmmdll.h header file.
+// 
+// Note about Windows/Linux differences:
+// - Path to the file to be analyzed
+// - Not all functionality is yet implemented on Linux - primarily debug symbol
+//   and forensic functionality is missing. Future support is planned.
+//   Please see the guide at https://github.com/ufrisk/MemProcFS/wiki for info.
+// - Windows have access to both UTF-8 *U functions as well as Wide-Char *W
+//   functions whilst linux in general should use UTF-8 functions only. This
+//   example use UTF-8 functions throughout to have the best compatibility.
 //
 // (c) Ulf Frisk, 2018-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
+
+#ifdef _WIN32
 
 #include <Windows.h>
 #include <stdio.h>
 #include <conio.h>
 #include <leechcore.h>
 #include <vmmdll.h>
-
 #pragma comment(lib, "leechcore")
 #pragma comment(lib, "vmm")
 
+#endif /* _WIN32 */
+#ifdef LINUX
+
+#include <leechcore.h>
+#include <vmmdll.h>
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+
+#define TRUE                                1
+#define FALSE                               0
+#define LMEM_ZEROINIT                       0x0040
+#define _getch()                            (getchar())
+#define ZeroMemory(pb, cb)                  (memset(pb, 0, cb))
+#define Sleep(dwMilliseconds)               (usleep(1000*dwMilliseconds))
+#define min(a, b)                           (((a) < (b)) ? (a) : (b))
+#define IMAGE_SCN_MEM_EXECUTE               0x20000000
+#define IMAGE_SCN_MEM_READ                  0x40000000
+#define IMAGE_SCN_MEM_WRITE                 0x80000000
+
+HANDLE LocalAlloc(DWORD uFlags, SIZE_T uBytes)
+{
+    HANDLE h = malloc(uBytes);
+    if(h && (uFlags & LMEM_ZEROINIT)) {
+        memset(h, 0, uBytes);
+    }
+    return h;
+}
+
+VOID LocalFree(HANDLE hMem)
+{
+    free(hMem);
+}
+
+#endif /* LINUX */
+
 // ----------------------------------------------------------------------------
-// Initialize from type of device, FILE, FPGA or Total Meltdown (CVE-2018-1038).
+// Initialize from type of device, FILE or  FPGA.
 // Ensure only one is active below at one single time!
 // INITIALIZE_FROM_FILE contains file name to a raw memory dump.
 // ----------------------------------------------------------------------------
-#define _INITIALIZE_FROM_FILE    "Z:\\x64\\WIN10-X64-1909-18363-1.core"
+//#define _INITIALIZE_FROM_FILE    "Z:\\x64\\WIN10-X64-1909-18363-1.core"
+#define _INITIALIZE_FROM_FILE    "/mnt/c/Dumps/WIN7-x64-SP1-1.pmem"
 //#define _INITIALIZE_FROM_FPGA
-//#define _INITIALIZE_FROM_TOTALMELTDOWN
 
 // ----------------------------------------------------------------------------
 // Utility functions below:
@@ -42,21 +89,21 @@ VOID PrintHexAscii(_In_ PBYTE pb, _In_ DWORD cb)
     VMMDLL_UtilFillHexAscii(pb, cb, 0, NULL, &szMax);
     if(!(sz = LocalAlloc(0, szMax))) { return; }
     VMMDLL_UtilFillHexAscii(pb, cb, 0, sz, &szMax);
-    printf(sz);
+    printf("%s", sz);
     LocalFree(sz);
 }
 
-VOID CallbackList_AddFile(_Inout_ HANDLE h, _In_ LPWSTR wszName, _In_ ULONG64 cb, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
+VOID CallbackList_AddFile(_Inout_ HANDLE h, _In_ LPSTR uszName, _In_ ULONG64 cb, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
 {
-    if(wszName) {
-        wprintf(L"         FILE: '%s'\tSize: %lli\n", wszName, cb);
+    if(uszName) {
+        printf("         FILE: '%s'\tSize: %lli\n", uszName, cb);
     }
 }
 
-VOID CallbackList_AddDirectory(_Inout_ HANDLE h, _In_ LPWSTR wszName, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
+VOID CallbackList_AddDirectory(_Inout_ HANDLE h, _In_ LPSTR uszName, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
 {
-    if(wszName) {
-        wprintf(L"         DIR:  '%s'\n", wszName);
+    if(uszName) {
+        printf("         DIR:  '%s'\n", uszName);
     }
 }
 
@@ -120,21 +167,6 @@ int main(_In_ int argc, _In_ char* argv[])
         return 1;
     }
 #endif /* _INITIALIZE_FROM_FILE */
-
-#ifdef _INITIALIZE_FROM_TOTALMELTDOWN
-    // Initialize VMM DLL from a linked PCILeech with the TotalMeltdown exploit.
-    printf("------------------------------------------------------------\n");
-    printf("#01: Initialize from TotalMeltdown:                         \n");
-    ShowKeyPress();
-    printf("CALL:    VMMDLL_Initialize\n");
-    result = result = VMMDLL_Initialize(3, (LPSTR[]) { "", "-device", "totalmeltdown" });
-    if(result) {
-        printf("SUCCESS: VMMDLL_Initialize\n");
-    } else {
-        printf("FAIL:    VMMDLL_Initialize\n");
-        return 1;
-    }
-#endif /* _INITIALIZE_FROM_TOTALMELTDOWN */
 
 #ifdef _INITIALIZE_FROM_FPGA
     // Initialize VMM DLL from a linked PCILeech with a FPGA hardware device
@@ -296,19 +328,23 @@ int main(_In_ int argc, _In_ char* argv[])
     // them. This is done by multiple methods internally and may sometimes be
     // more resilient against anti-reversing techniques that may be employed in
     // some processes.
+    //
+    // Note! VMMDLL_Map_GetPte() comes in two variants. The Wide-Char version
+    //       VMMDLL_Map_GetPteW() is only available on Windows whilst the UTF-8
+    //       VMMDLL_Map_GetPteU() version is available on Linux and Windows.
     printf("------------------------------------------------------------\n");
     printf("#06: Get PTE Memory Map of 'explorer.exe'.                  \n");
     ShowKeyPress();
     DWORD cbPteMap = 0;
     PVMMDLL_MAP_PTE pPteMap = NULL;
     PVMMDLL_MAP_PTEENTRY pPteMapEntry;
-    printf("CALL:    VMMDLL_Map_GetPte #1\n");
-    result = VMMDLL_Map_GetPte(dwPID, NULL, &cbPteMap, TRUE);
+    printf("CALL:    VMMDLL_Map_GetPteU #1\n");
+    result = VMMDLL_Map_GetPteU(dwPID, NULL, &cbPteMap, TRUE);
     if(result) {
-        printf("SUCCESS: VMMDLL_Map_GetPte #1\n");
+        printf("SUCCESS: VMMDLL_Map_GetPteU #1\n");
         printf("         ByteCount = %i\n", cbPteMap);
     } else {
-        printf("FAIL:    VMMDLL_Map_GetPte #1\n");
+        printf("FAIL:    VMMDLL_Map_GetPteU #1\n");
         return 1;
     }
     pPteMap = (PVMMDLL_MAP_PTE)LocalAlloc(0, cbPteMap);
@@ -316,24 +352,24 @@ int main(_In_ int argc, _In_ char* argv[])
         printf("FAIL:    OutOfMemory\n");
         return 1;
     }
-    printf("CALL:    VMMDLL_Map_GetPte #2\n");
-    result = VMMDLL_Map_GetPte(dwPID, pPteMap, &cbPteMap, TRUE);
+    printf("CALL:    VMMDLL_Map_GetPteU #2\n");
+    result = VMMDLL_Map_GetPteU(dwPID, pPteMap, &cbPteMap, TRUE);
     if(!result) {
-        printf("FAIL:    VMMDLL_Map_GetPte #2\n");
+        printf("FAIL:    VMMDLL_Map_GetPteU #2\n");
         return 1;
     }
     if(pPteMap->dwVersion != VMMDLL_MAP_PTE_VERSION) {
-        printf("FAIL:    VMMDLL_Map_GetPte - BAD VERSION\n");
+        printf("FAIL:    VMMDLL_Map_GetPteU - BAD VERSION\n");
         return 1;
     }
     {
-        printf("SUCCESS: VMMDLL_Map_GetPte #2\n");
+        printf("SUCCESS: VMMDLL_Map_GetPteU #2\n");
         printf("         #      #PAGES ADRESS_RANGE                      SRWX\n");
         printf("         ====================================================\n");
         for(i = 0; i < pPteMap->cMap; i++) {
             pPteMapEntry = &pPteMap->pMap[i];
             printf(
-                "         %04x %8x %016llx-%016llx %sr%s%s%s%S\n",
+                "         %04x %8x %016llx-%016llx %sr%s%s%s%s\n",
                 i,
                 (DWORD)pPteMapEntry->cPages,
                 pPteMapEntry->vaBase,
@@ -341,8 +377,8 @@ int main(_In_ int argc, _In_ char* argv[])
                 pPteMapEntry->fPage & VMMDLL_MEMMAP_FLAG_PAGE_NS ? "-" : "s",
                 pPteMapEntry->fPage & VMMDLL_MEMMAP_FLAG_PAGE_W ? "w" : "-",
                 pPteMapEntry->fPage & VMMDLL_MEMMAP_FLAG_PAGE_NX ? "-" : "x",
-                pPteMapEntry->cwszText ? (pPteMapEntry->fWoW64 ? " 32 " : "    ") : "",
-                pPteMapEntry->wszText
+                pPteMapEntry->fWoW64 ? " 32 " : "    ",
+                pPteMapEntry->uszText
             );
         }
         LocalFree(pPteMap);
@@ -360,13 +396,13 @@ int main(_In_ int argc, _In_ char* argv[])
     DWORD cbVadMap = 0;
     PVMMDLL_MAP_VAD pVadMap = NULL;
     PVMMDLL_MAP_VADENTRY pVadMapEntry;
-    printf("CALL:    VMMDLL_Map_GetVad #1\n");
-    result = VMMDLL_Map_GetVad(dwPID, NULL, &cbVadMap, TRUE);
+    printf("CALL:    VMMDLL_Map_GetVadU #1\n");
+    result = VMMDLL_Map_GetVadU(dwPID, NULL, &cbVadMap, TRUE);
     if(result) {
-        printf("SUCCESS: VMMDLL_Map_GetVad #1\n");
+        printf("SUCCESS: VMMDLL_Map_GetVadU #1\n");
         printf("         ByteCount = %i\n", cbVadMap);
     } else {
-        printf("FAIL:    VMMDLL_Map_GetVad #1\n");
+        printf("FAIL:    VMMDLL_Map_GetVadU #1\n");
         return 1;
     }
     pVadMap = (PVMMDLL_MAP_VAD)LocalAlloc(0, cbVadMap);
@@ -374,32 +410,32 @@ int main(_In_ int argc, _In_ char* argv[])
         printf("FAIL:    OutOfMemory\n");
         return 1;
     }
-    printf("CALL:    VMMDLL_Map_GetVad #2\n");
-    result = VMMDLL_Map_GetVad(dwPID, pVadMap, &cbVadMap, TRUE);
+    printf("CALL:    VMMDLL_Map_GetVadU #2\n");
+    result = VMMDLL_Map_GetVadU(dwPID, pVadMap, &cbVadMap, TRUE);
     if(!result) {
-        printf("FAIL:    VMMDLL_Map_GetVad #2\n");
+        printf("FAIL:    VMMDLL_Map_GetVadU #2\n");
         return 1;
     }
     if(pVadMap->dwVersion != VMMDLL_MAP_VAD_VERSION) {
-        printf("FAIL:    VMMDLL_Map_GetVad - BAD VERSION\n");
+        printf("FAIL:    VMMDLL_Map_GetVadU - BAD VERSION\n");
         return 1;
     }
     {
-        printf("SUCCESS: VMMDLL_Map_GetVad #2\n");
+        printf("SUCCESS: VMMDLL_Map_GetVadU #2\n");
         printf("         #    ADRESS_RANGE                      KERNEL_ADDR        TYPE  PROT   INFO \n");
         printf("         ============================================================================\n");
         for(i = 0; i < pVadMap->cMap; i++) {
             pVadMapEntry = &pVadMap->pMap[i];
             VadMap_Protection(pVadMapEntry, szVadProtection);
             printf(
-                "         %04x %016llx-%016llx [%016llx] %s %s %S\n",
+                "         %04x %016llx-%016llx [%016llx] %s %s %s\n",
                 i,
                 pVadMapEntry->vaStart,
                 pVadMapEntry->vaEnd,
                 pVadMapEntry->vaVad,
                 VadMap_Type(pVadMapEntry),
                 szVadProtection,
-                pVadMapEntry->wszText
+                pVadMapEntry->uszText
             );
         }
         LocalFree(pVadMap);
@@ -417,13 +453,13 @@ int main(_In_ int argc, _In_ char* argv[])
     ShowKeyPress();
     DWORD cbModuleMap = 0;
     PVMMDLL_MAP_MODULE pModuleMap = NULL;
-    printf("CALL:    VMMDLL_Map_GetModule #1\n");
-    result = VMMDLL_Map_GetModule(dwPID, NULL, &cbModuleMap);
+    printf("CALL:    VMMDLL_Map_GetModuleU #1\n");
+    result = VMMDLL_Map_GetModuleU(dwPID, NULL, &cbModuleMap);
     if(result) {
-        printf("SUCCESS: VMMDLL_Map_GetModule #1\n");
+        printf("SUCCESS: VMMDLL_Map_GetModuleU #1\n");
         printf("         ByteCount = %i\n", cbModuleMap);
     } else {
-        printf("FAIL:    VMMDLL_Map_GetModule #1\n");
+        printf("FAIL:    VMMDLL_Map_GetModuleU #1\n");
         return 1;
     }
     pModuleMap = (PVMMDLL_MAP_MODULE)LocalAlloc(0, cbModuleMap);
@@ -431,29 +467,29 @@ int main(_In_ int argc, _In_ char* argv[])
         printf("FAIL:    OutOfMemory\n");
         return 1;
     }
-    printf("CALL:    VMMDLL_Map_GetModule #2\n");
-    result = VMMDLL_Map_GetModule(dwPID, pModuleMap, &cbModuleMap);
+    printf("CALL:    VMMDLL_Map_GetModuleU #2\n");
+    result = VMMDLL_Map_GetModuleU(dwPID, pModuleMap, &cbModuleMap);
     if(!result) {
-        printf("FAIL:    VMMDLL_Map_GetModule #2\n");
+        printf("FAIL:    VMMDLL_Map_GetModuleU #2\n");
         return 1;
     }
     if(pModuleMap->dwVersion != VMMDLL_MAP_MODULE_VERSION) {
-        printf("FAIL:    VMMDLL_Map_GetModule - BAD VERSION\n");
+        printf("FAIL:    VMMDLL_Map_GetModuleU - BAD VERSION\n");
         return 1;
     }
     {
-        printf("SUCCESS: VMMDLL_Map_GetModule #2\n");
+        printf("SUCCESS: VMMDLL_Map_GetModuleU #2\n");
         printf("         MODULE_NAME                                 BASE             SIZE     ENTRY           PATH\n");
         printf("         ==========================================================================================\n");
         for(i = 0; i < pModuleMap->cMap; i++) {
             printf(
-                "         %-40.40S %s %016llx %08x %016llx %S\n",
-                pModuleMap->pMap[i].wszText,
+                "         %-40.40s %s %016llx %08x %016llx %s\n",
+                pModuleMap->pMap[i].uszText,
                 pModuleMap->pMap[i].fWoW64 ? "32" : "  ",
                 pModuleMap->pMap[i].vaBase,
                 pModuleMap->pMap[i].cbImageSize,
                 pModuleMap->pMap[i].vaEntry,
-                pModuleMap->pMap[i].wszFullName
+                pModuleMap->pMap[i].uszFullName
             );
         }
         LocalFree(pModuleMap);
@@ -468,13 +504,13 @@ int main(_In_ int argc, _In_ char* argv[])
     ShowKeyPress();
     DWORD cbUnloadedMap = 0;
     PVMMDLL_MAP_UNLOADEDMODULE pUnloadedMap = NULL;
-    printf("CALL:    VMMDLL_Map_GetUnloadedModule #1\n");
-    result = VMMDLL_Map_GetUnloadedModule(dwPID, NULL, &cbUnloadedMap);
+    printf("CALL:    VMMDLL_Map_GetUnloadedModuleU #1\n");
+    result = VMMDLL_Map_GetUnloadedModuleU(dwPID, NULL, &cbUnloadedMap);
     if(result) {
-        printf("SUCCESS: VMMDLL_Map_GetUnloadedModule #1\n");
+        printf("SUCCESS: VMMDLL_Map_GetUnloadedModuleU #1\n");
         printf("         ByteCount = %i\n", cbUnloadedMap);
     } else {
-        printf("FAIL:    VMMDLL_Map_GetUnloadedModule #1\n");
+        printf("FAIL:    VMMDLL_Map_GetUnloadedModuleU #1\n");
         return 1;
     }
     pUnloadedMap = (PVMMDLL_MAP_UNLOADEDMODULE)LocalAlloc(0, cbUnloadedMap);
@@ -482,24 +518,24 @@ int main(_In_ int argc, _In_ char* argv[])
         printf("FAIL:    OutOfMemory\n");
         return 1;
     }
-    printf("CALL:    VMMDLL_Map_GetModule #2\n");
-    result = VMMDLL_Map_GetUnloadedModule(dwPID, pUnloadedMap, &cbUnloadedMap);
+    printf("CALL:    VMMDLL_Map_GetUnloadedModuleU #2\n");
+    result = VMMDLL_Map_GetUnloadedModuleU(dwPID, pUnloadedMap, &cbUnloadedMap);
     if(!result) {
-        printf("FAIL:    VMMDLL_Map_GetUnloadedModule #2\n");
+        printf("FAIL:    VMMDLL_Map_GetUnloadedModuleU #2\n");
         return 1;
     }
     if(pUnloadedMap->dwVersion != VMMDLL_MAP_UNLOADEDMODULE_VERSION) {
-        printf("FAIL:    VMMDLL_Map_GetUnloadedModule - BAD VERSION\n");
+        printf("FAIL:    VMMDLL_Map_GetUnloadedModuleU - BAD VERSION\n");
         return 1;
     }
     {
-        printf("SUCCESS: VMMDLL_Map_GetUnloadedModule #2\n");
+        printf("SUCCESS: VMMDLL_Map_GetUnloadedModuleU #2\n");
         printf("         MODULE_NAME                                 BASE             SIZE\n");
         printf("         =================================================================\n");
         for(i = 0; i < pUnloadedMap->cMap; i++) {
             printf(
-                "         %-40.40S %s %016llx %08x\n",
-                pUnloadedMap->pMap[i].wszText,
+                "         %-40.40s %s %016llx %08x\n",
+                pUnloadedMap->pMap[i].uszText,
                 pUnloadedMap->pMap[i].fWoW64 ? "32" : "  ",
                 pUnloadedMap->pMap[i].vaBase,
                 pUnloadedMap->pMap[i].cbImageSize
@@ -518,27 +554,28 @@ int main(_In_ int argc, _In_ char* argv[])
     printf("------------------------------------------------------------\n");
     printf("#09: Get module by name 'explorer.exe' in 'explorer.exe'.   \n");
     ShowKeyPress();
-    printf("CALL:    VMMDLL_Map_GetModuleFromName\n");
+    printf("CALL:    VMMDLL_Map_GetModuleFromNameU\n");
     VMMDLL_MAP_MODULEENTRY ModuleEntryExplorer;
-    result = VMMDLL_Map_GetModuleFromName(dwPID, L"explorer.exe", &ModuleEntryExplorer, NULL);
+    result = VMMDLL_Map_GetModuleFromNameU(dwPID, "explorer.exe", &ModuleEntryExplorer, NULL);
     if(result) {
-        printf("SUCCESS: VMMDLL_Map_GetModuleFromName\n");
+        printf("SUCCESS: VMMDLL_Map_GetModuleFromNameU\n");
         printf("         MODULE_NAME                                 BASE             SIZE     ENTRY\n");
         printf("         ======================================================================================\n");
         printf(
-            "         %-40.40S %i %016llx %08x %016llx\n",
-            L"explorer.exe",
+            "         %-40.40s %i %016llx %08x %016llx\n",
+            "explorer.exe",
             ModuleEntryExplorer.fWoW64 ? 32 : 64,
             ModuleEntryExplorer.vaBase,
             ModuleEntryExplorer.cbImageSize,
             ModuleEntryExplorer.vaEntry
         );
     } else {
-        printf("FAIL:    VMMDLL_Map_GetModuleFromName\n");
+        printf("FAIL:    VMMDLL_Map_GetModuleFromNameU\n");
         return 1;
     }
 
 
+#ifdef _WIN32
     // THREADS: Retrieve thread information about threads in the explorer.exe
     // process and display on the screen.
     printf("------------------------------------------------------------\n");
@@ -594,9 +631,10 @@ int main(_In_ int argc, _In_ char* argv[])
         LocalFree(pThreadMap);
         pThreadMap = NULL;
     }
+#endif /* _WIN32 */
 
 
-    // THREADS: Retrieve handle information about handles in the explorer.exe
+    // HANDLES: Retrieve handle information about handles in the explorer.exe
     // process and display on the screen.
     printf("------------------------------------------------------------\n");
     printf("#11: Get Handle Information of 'explorer.exe'.              \n");
@@ -604,13 +642,13 @@ int main(_In_ int argc, _In_ char* argv[])
     DWORD cbHandleMap = 0;
     PVMMDLL_MAP_HANDLE pHandleMap = NULL;
     PVMMDLL_MAP_HANDLEENTRY pHandleMapEntry;
-    printf("CALL:    VMMDLL_Map_GetHandle #1\n");
-    result = VMMDLL_Map_GetHandle(dwPID, NULL, &cbHandleMap);
+    printf("CALL:    VMMDLL_Map_GetHandleU #1\n");
+    result = VMMDLL_Map_GetHandleU(dwPID, NULL, &cbHandleMap);
     if(result) {
-        printf("SUCCESS: VMMDLL_Map_GetHandle #1\n");
+        printf("SUCCESS: VMMDLL_Map_GetHandleU #1\n");
         printf("         ByteCount = %i\n", cbHandleMap);
     } else {
-        printf("FAIL:    VMMDLL_Map_GetHandle #1\n");
+        printf("FAIL:    VMMDLL_Map_GetHandleU #1\n");
         return 1;
     }
     pHandleMap = (PVMMDLL_MAP_HANDLE)LocalAlloc(0, cbHandleMap);
@@ -618,31 +656,31 @@ int main(_In_ int argc, _In_ char* argv[])
         printf("FAIL:    OutOfMemory\n");
         return 1;
     }
-    printf("CALL:    VMMDLL_Map_GetHandle #2\n");
-    result = VMMDLL_Map_GetHandle(dwPID, pHandleMap, &cbHandleMap);
+    printf("CALL:    VMMDLL_Map_GetHandleU #2\n");
+    result = VMMDLL_Map_GetHandleU(dwPID, pHandleMap, &cbHandleMap);
     if(!result) {
-        printf("FAIL:    VMMDLL_Map_GetHandle #2\n");
+        printf("FAIL:    VMMDLL_Map_GetHandleU #2\n");
         return 1;
     }
     if(pHandleMap->dwVersion != VMMDLL_MAP_HANDLE_VERSION) {
-        printf("FAIL:    VMMDLL_Map_GetHandle - BAD VERSION\n");
+        printf("FAIL:    VMMDLL_Map_GetHandleU - BAD VERSION\n");
         return 1;
     }
     {
-        printf("SUCCESS: VMMDLL_Map_GetHandle #2\n");
+        printf("SUCCESS: VMMDLL_Map_GetHandleU #2\n");
         printf("         #         HANDLE   PID ADDR_OBJECT      ACCESS TYPE             DESCRIPTION\n");
         printf("         ===========================================================================\n");
         for(i = 0; i < pHandleMap->cMap; i++) {
             pHandleMapEntry = &pHandleMap->pMap[i];
             printf(
-                "         %04x %8x %8x %016llx %6x %-16S %S\n",
+                "         %04x %8x %8x %016llx %6x %-16s %s\n",
                 i,
                 pHandleMapEntry->dwHandle,
                 pHandleMapEntry->dwPID,
                 pHandleMapEntry->vaObject,
                 pHandleMapEntry->dwGrantedAccess,
-                pHandleMapEntry->wszType,
-                pHandleMapEntry->wszText
+                pHandleMapEntry->uszType,
+                pHandleMapEntry->uszText
             );
         }
         LocalFree(pHandleMap);
@@ -697,11 +735,11 @@ int main(_In_ int argc, _In_ char* argv[])
     printf("------------------------------------------------------------\n");
     printf("#13: Get by name 'kernel32.dll' in 'explorer.exe'.          \n");
     ShowKeyPress();
-    printf("CALL:    VMMDLL_Map_GetModuleFromName\n");
+    printf("CALL:    VMMDLL_Map_GetModuleFromNameU\n");
     VMMDLL_MAP_MODULEENTRY ModuleEntryKernel32;
-    result = VMMDLL_Map_GetModuleFromName(dwPID, L"kernel32.dll", &ModuleEntryKernel32, NULL);
+    result = VMMDLL_Map_GetModuleFromNameU(dwPID, "kernel32.dll", &ModuleEntryKernel32, NULL);
     if(result) {
-        printf("SUCCESS: VMMDLL_Map_GetModuleFromName\n");
+        printf("SUCCESS: VMMDLL_Map_GetModuleFromNameU\n");
         printf("         MODULE_NAME                                 BASE             SIZE     ENTRY\n");
         printf("         ======================================================================================\n");
         printf(
@@ -713,7 +751,7 @@ int main(_In_ int argc, _In_ char* argv[])
             ModuleEntryKernel32.vaEntry
         );
     } else {
-        printf("FAIL:    VMMDLL_Map_GetModuleFromName\n");
+        printf("FAIL:    VMMDLL_Map_GetModuleFromNameU\n");
         return 1;
     }
 
@@ -742,15 +780,15 @@ int main(_In_ int argc, _In_ char* argv[])
     printf("------------------------------------------------------------\n");
     printf("#15: List sections of 'kernel32.dll' in 'explorer.exe'.     \n");
     ShowKeyPress();
-    printf("CALL:    VMMDLL_ProcessGetSections #1\n");
+    printf("CALL:    VMMDLL_ProcessGetSectionsU #1\n");
     DWORD cSections;
     PIMAGE_SECTION_HEADER pSectionHeaders;
-    result = VMMDLL_ProcessGetSections(dwPID, L"kernel32.dll", NULL, 0, &cSections);
+    result = VMMDLL_ProcessGetSectionsU(dwPID, "kernel32.dll", NULL, 0, &cSections);
     if(result) {
-        printf("SUCCESS: VMMDLL_ProcessGetSections #1\n");
+        printf("SUCCESS: VMMDLL_ProcessGetSectionsU #1\n");
         printf("         Count = %i\n", cSections);
     } else {
-        printf("FAIL:    VMMDLL_ProcessGetSections #1\n");
+        printf("FAIL:    VMMDLL_ProcessGetSectionsU #1\n");
         return 1;
     }
     pSectionHeaders = (PIMAGE_SECTION_HEADER)LocalAlloc(LMEM_ZEROINIT, cSections * sizeof(IMAGE_SECTION_HEADER));
@@ -758,15 +796,15 @@ int main(_In_ int argc, _In_ char* argv[])
         printf("FAIL:    OutOfMemory\n");
         return 1;
     }
-    printf("CALL:    VMMDLL_ProcessGetSections #2\n");
-    result = VMMDLL_ProcessGetSections(dwPID, L"kernel32.dll", pSectionHeaders, cSections, &cSections);
+    printf("CALL:    VMMDLL_ProcessGetSectionsU #2\n");
+    result = VMMDLL_ProcessGetSectionsU(dwPID, "kernel32.dll", pSectionHeaders, cSections, &cSections);
     if(result) {
-        printf("SUCCESS: VMMDLL_ProcessGetSections #2\n");
+        printf("SUCCESS: VMMDLL_ProcessGetSectionsU #2\n");
         printf("         #  NAME     OFFSET   SIZE     RWX\n");
         printf("         =================================\n");
         for(i = 0; i < cSections; i++) {
             printf(
-                "         %02lx %-8.8s %08x %08x %c%c%c\n",
+                "         %02x %-8.8s %08x %08x %c%c%c\n",
                 i,
                 pSectionHeaders[i].Name,
                 pSectionHeaders[i].VirtualAddress,
@@ -777,7 +815,7 @@ int main(_In_ int argc, _In_ char* argv[])
             );
         }
     } else {
-        printf("FAIL:    VMMDLL_ProcessGetSections #2\n");
+        printf("FAIL:    VMMDLL_ProcessGetSectionsU #2\n");
         return 1;
     }
 
@@ -837,15 +875,15 @@ int main(_In_ int argc, _In_ char* argv[])
     LPCSTR DIRECTORIES[16] = { "EXPORT", "IMPORT", "RESOURCE", "EXCEPTION", "SECURITY", "BASERELOC", "DEBUG", "ARCHITECTURE", "GLOBALPTR", "TLS", "LOAD_CONFIG", "BOUND_IMPORT", "IAT", "DELAY_IMPORT", "COM_DESCRIPTOR", "RESERVED" };
     DWORD cDirectories;
     IMAGE_DATA_DIRECTORY pDirectories[16];
-    printf("CALL:    VMMDLL_ProcessGetDirectories\n");
-    result = VMMDLL_ProcessGetDirectories(dwPID, L"kernel32.dll", pDirectories, 16, &cDirectories);
+    printf("CALL:    VMMDLL_ProcessGetDirectoriesU\n");
+    result = VMMDLL_ProcessGetDirectoriesU(dwPID, "kernel32.dll", pDirectories, 16, &cDirectories);
     if(result) {
         printf("SUCCESS: PCIleech_VmmProcess_GetDirectories\n");
         printf("         #  NAME             OFFSET   SIZE\n");
         printf("         =====================================\n");
         for(i = 0; i < 16; i++) {
             printf(
-                "         %02lx %-16.16s %08x %08x\n",
+                "         %02x %-16.16s %08x %08x\n",
                 i,
                 DIRECTORIES[i],
                 pDirectories[i].VirtualAddress,
@@ -853,7 +891,7 @@ int main(_In_ int argc, _In_ char* argv[])
             );
         }
     } else {
-        printf("FAIL:    VMMDLL_ProcessGetDirectories\n");
+        printf("FAIL:    VMMDLL_ProcessGetDirectoriesU\n");
         return 1;
     }
     
@@ -865,12 +903,12 @@ int main(_In_ int argc, _In_ char* argv[])
     DWORD cbEatMap = 0;
     PVMMDLL_MAP_EAT pEatMap = NULL;
     PVMMDLL_MAP_EATENTRY pEatMapEntry;
-    printf("CALL:    VMMDLL_Map_GetEAT #1\n");
-    result = VMMDLL_Map_GetEAT(dwPID, L"kernel32.dll", NULL, &cbEatMap);
+    printf("CALL:    VMMDLL_Map_GetEATU #1\n");
+    result = VMMDLL_Map_GetEATU(dwPID, "kernel32.dll", NULL, &cbEatMap);
     if(result) {
-        printf("SUCCESS: VMMDLL_Map_GetEAT #1\n");
+        printf("SUCCESS: VMMDLL_Map_GetEATU #1\n");
     } else {
-        printf("FAIL:    VMMDLL_Map_GetEAT #1\n");
+        printf("FAIL:    VMMDLL_Map_GetEATU #1\n");
         return 1;
     }
     pEatMap = (PVMMDLL_MAP_EAT)LocalAlloc(0, cbEatMap);
@@ -878,27 +916,27 @@ int main(_In_ int argc, _In_ char* argv[])
         printf("FAIL:    OutOfMemory\n");
         return 1;
     }
-    printf("CALL:    VMMDLL_Map_GetEAT #2\n");
-    result = VMMDLL_Map_GetEAT(dwPID, L"kernel32.dll", pEatMap, &cbEatMap);
+    printf("CALL:    VMMDLL_Map_GetEATU #2\n");
+    result = VMMDLL_Map_GetEATU(dwPID, "kernel32.dll", pEatMap, &cbEatMap);
     if(!result) {
-        printf("FAIL:    VMMDLL_Map_GetEAT #2\n");
+        printf("FAIL:    VMMDLL_Map_GetEATU #2\n");
         return 1;
     }
     if(pEatMap->dwVersion != VMMDLL_MAP_EAT_VERSION) {
-        printf("FAIL:    VMMDLL_Map_GetEAT - BAD VERSION\n");
+        printf("FAIL:    VMMDLL_Map_GetEATU - BAD VERSION\n");
         return 1;
     }
     {
-        printf("SUCCESS: VMMDLL_Map_GetEAT #2\n");
+        printf("SUCCESS: VMMDLL_Map_GetEATU #2\n");
         printf("         #     ORD NAME\n");
         printf("         =============================\n");
         for(i = 0; i < pEatMap->cMap; i++) {
             pEatMapEntry = pEatMap->pMap + i;
             printf(
-                "         %04lx %4x %S\n",
+                "         %04x %4x %s\n",
                 i,
                 pEatMapEntry->dwOrdinal,
-                pEatMapEntry->wszFunction
+                pEatMapEntry->uszFunction
             );
         }
     }
@@ -911,12 +949,12 @@ int main(_In_ int argc, _In_ char* argv[])
     DWORD cbIatMap = 0;
     PVMMDLL_MAP_IAT pIatMap = NULL;
     PVMMDLL_MAP_IATENTRY pIatMapEntry;
-    printf("CALL:    VMMDLL_Map_GetIAT #1\n");
-    result = VMMDLL_Map_GetIAT(dwPID, L"kernel32.dll", NULL, &cbIatMap);
+    printf("CALL:    VMMDLL_Map_GetIATU #1\n");
+    result = VMMDLL_Map_GetIATU(dwPID, "kernel32.dll", NULL, &cbIatMap);
     if(result) {
-        printf("SUCCESS: VMMDLL_Map_GetIAT #1\n");
+        printf("SUCCESS: VMMDLL_Map_GetIATU #1\n");
     } else {
-        printf("FAIL:    VMMDLL_Map_GetIAT #1\n");
+        printf("FAIL:    VMMDLL_Map_GetIATU #1\n");
         return 1;
     }
     pIatMap = (PVMMDLL_MAP_IAT)LocalAlloc(LMEM_ZEROINIT, cbIatMap);
@@ -924,28 +962,28 @@ int main(_In_ int argc, _In_ char* argv[])
         printf("FAIL:    OutOfMemory\n");
         return 1;
     }
-    printf("CALL:    VMMDLL_Map_GetIAT #2\n");
-    result = VMMDLL_Map_GetIAT(dwPID, L"kernel32.dll", pIatMap, &cbIatMap);
+    printf("CALL:    VMMDLL_Map_GetIATU #2\n");
+    result = VMMDLL_Map_GetIATU(dwPID, "kernel32.dll", pIatMap, &cbIatMap);
     if(!result) {
-        printf("FAIL:    VMMDLL_Map_GetIAT #2\n");
+        printf("FAIL:    VMMDLL_Map_GetIATU #2\n");
         return 1;
     }
     if(pIatMap->dwVersion != VMMDLL_MAP_IAT_VERSION) {
-        printf("FAIL:    VMMDLL_Map_GetIAT - BAD VERSION\n");
+        printf("FAIL:    VMMDLL_Map_GetIATU - BAD VERSION\n");
         return 1;
     }
     {
-        printf("SUCCESS: VMMDLL_Map_GetIAT #2\n");
+        printf("SUCCESS: VMMDLL_Map_GetIATU #2\n");
         printf("         #    VIRTUAL_ADDRESS    MODULE!NAME\n");
         printf("         ===================================\n");
         for(i = 0; i < pIatMap->cMap; i++) {
             pIatMapEntry = pIatMap->pMap + i;
             printf(
-                "         %04lx %016llx   %S!%S\n",
+                "         %04x %016llx   %s!%s\n",
                 i,
                 pIatMapEntry->vaFunction,
-                pIatMapEntry->wszModule,
-                pIatMapEntry->wszFunction
+                pIatMapEntry->uszModule,
+                pIatMapEntry->uszFunction
             );
         }
     }
@@ -974,17 +1012,17 @@ int main(_In_ int argc, _In_ char* argv[])
     printf("------------------------------------------------------------\n");
     printf("#21: call the file system 'List' function on the root dir.  \n");
     ShowKeyPress();
-    VMMDLL_VFS_FILELIST VfsFileList;
+    VMMDLL_VFS_FILELIST2 VfsFileList;
     VfsFileList.dwVersion = VMMDLL_VFS_FILELIST_VERSION;
     VfsFileList.h = 0; // your handle passed to the callback functions (not used in example).
     VfsFileList.pfnAddDirectory = CallbackList_AddDirectory;
     VfsFileList.pfnAddFile = CallbackList_AddFile;
-    printf("CALL:    VMMDLL_VfsList\n");
-    result = VMMDLL_VfsList(L"\\", &VfsFileList);
+    printf("CALL:    VMMDLL_VfsListU\n");
+    result = VMMDLL_VfsListU("\\", &VfsFileList);
     if(result) {
-        printf("SUCCESS: VMMDLL_VfsList\n");
+        printf("SUCCESS: VMMDLL_VfsListU\n");
     } else {
-        printf("FAIL:    VMMDLL_VfsList\n");
+        printf("FAIL:    VMMDLL_VfsListU\n");
         return 1;
     }
 
@@ -994,13 +1032,13 @@ int main(_In_ int argc, _In_ char* argv[])
     printf("------------------------------------------------------------\n");
     printf("#22: call the file system 'Read' function on the pmem file. \n");
     ShowKeyPress();
-    printf("CALL:    VMMDLL_VfsRead\n");
-    nt = VMMDLL_VfsRead(L"\\memory.pmem", pbPage1, 0x100, &i, 0x1000);
+    printf("CALL:    VMMDLL_VfsReadU\n");
+    nt = VMMDLL_VfsReadU("\\memory.pmem", pbPage1, 0x100, &i, 0x1000);
     if(nt == VMMDLL_STATUS_SUCCESS) {
-        printf("SUCCESS: VMMDLL_VfsRead\n");
+        printf("SUCCESS: VMMDLL_VfsReadU\n");
         PrintHexAscii(pbPage1, i);
     } else {
-        printf("FAIL:    VMMDLL_VfsRead\n");
+        printf("FAIL:    VMMDLL_VfsReadU\n");
         return 1;
     }
 
@@ -1009,14 +1047,14 @@ int main(_In_ int argc, _In_ char* argv[])
     printf("------------------------------------------------------------\n");
     printf("#23: call file system 'Read' on .status\\statistics         \n");
     ShowKeyPress();
-    printf("CALL:    VMMDLL_VfsRead\n");
+    printf("CALL:    VMMDLL_VfsReadU\n");
     ZeroMemory(pbPage1, 0x1000);
-    nt = VMMDLL_VfsRead(L"\\.status\\statistics", pbPage1, 0xfff, &i, 0);
+    nt = VMMDLL_VfsReadU("\\.status\\statistics", pbPage1, 0xfff, &i, 0);
     if(nt == VMMDLL_STATUS_SUCCESS) {
-        printf("SUCCESS: VMMDLL_VfsRead\n");
+        printf("SUCCESS: VMMDLL_VfsReadU\n");
         printf("%s", (LPSTR)pbPage1);
     } else {
-        printf("FAIL:    VMMDLL_VfsRead\n");
+        printf("FAIL:    VMMDLL_VfsReadU\n");
         return 1;
     }
 
@@ -1025,13 +1063,13 @@ int main(_In_ int argc, _In_ char* argv[])
     printf("------------------------------------------------------------\n");
     printf("#24: get ntoskrnl.exe base virtual address                  \n");
     ShowKeyPress();
-    printf("CALL:    VMMDLL_ProcessGetModuleBase\n");
-    va = VMMDLL_ProcessGetModuleBase(4, L"ntoskrnl.exe");
+    printf("CALL:    VMMDLL_ProcessGetModuleBaseU\n");
+    va = VMMDLL_ProcessGetModuleBaseU(4, "ntoskrnl.exe");
     if(va) {
-        printf("SUCCESS: VMMDLL_ProcessGetModuleBase\n");
+        printf("SUCCESS: VMMDLL_ProcessGetModuleBaseU\n");
         printf("         %s = %016llx\n", "ntoskrnl.exe", va);
     } else {
-        printf("FAIL:    VMMDLL_ProcessGetModuleBase\n");
+        printf("FAIL:    VMMDLL_ProcessGetModuleBaseU\n");
         return 1;
     }
 
@@ -1040,13 +1078,13 @@ int main(_In_ int argc, _In_ char* argv[])
     printf("------------------------------------------------------------\n");
     printf("#25: get proc address for ntoskrnl.exe!KeGetCurrentIrql     \n");
     ShowKeyPress();
-    printf("CALL:    VMMDLL_ProcessGetProcAddress\n");
-    va = VMMDLL_ProcessGetProcAddress(4, L"ntoskrnl.exe", "KeGetCurrentIrql");
+    printf("CALL:    VMMDLL_ProcessGetProcAddressU\n");
+    va = VMMDLL_ProcessGetProcAddressU(4, "ntoskrnl.exe", "KeGetCurrentIrql");
     if(va) {
-        printf("SUCCESS: VMMDLL_ProcessGetProcAddress\n");
+        printf("SUCCESS: VMMDLL_ProcessGetProcAddressU\n");
         printf("         %s!%s = %016llx\n", "ntoskrnl.exe", "KeGetCurrentIrql", va);
     } else {
-        printf("FAIL:    VMMDLL_ProcessGetProcAddress\n");
+        printf("FAIL:    VMMDLL_ProcessGetProcAddressU\n");
         return 1;
     }
 
@@ -1057,10 +1095,10 @@ int main(_In_ int argc, _In_ char* argv[])
     ShowKeyPress();
     VMMDLL_WIN_THUNKINFO_IAT oThunkInfoIAT;
     ZeroMemory(&oThunkInfoIAT, sizeof(VMMDLL_WIN_THUNKINFO_IAT));
-    printf("CALL:    VMMDLL_WinGetThunkInfoIAT\n");
-    result = VMMDLL_WinGetThunkInfoIAT(4, L"ntoskrnl.Exe", "hal.Dll", "HalSendNMI", &oThunkInfoIAT);
+    printf("CALL:    VMMDLL_WinGetThunkInfoIATU\n");
+    result = VMMDLL_WinGetThunkInfoIATU(4, "ntoskrnl.Exe", "hal.Dll", "HalSendNMI", &oThunkInfoIAT);
     if(result) {
-        printf("SUCCESS: VMMDLL_WinGetThunkInfoIAT\n");
+        printf("SUCCESS: VMMDLL_WinGetThunkInfoIATU\n");
         printf("         vaFunction:     %016llx\n", oThunkInfoIAT.vaFunction);
         printf("         vaThunk:        %016llx\n", oThunkInfoIAT.vaThunk);
         printf("         vaNameFunction: %016llx\n", oThunkInfoIAT.vaNameFunction);
@@ -1092,7 +1130,7 @@ int main(_In_ int argc, _In_ char* argv[])
     if(result && cWinRegHives) {
         printf("SUCCESS: VMMDLL_WinReg_HiveList\n");
         for(i = 0; i < cWinRegHives; i++) {
-            printf("         %s\n", pWinRegHives[i].szName);
+            printf("         %s\n", pWinRegHives[i].uszName);
         }
     } else {
         printf("FAIL:    VMMDLL_WinReg_HiveList #2\n");
@@ -1203,10 +1241,10 @@ int main(_In_ int argc, _In_ char* argv[])
     DWORD cbServiceMap = 0;
     PVMMDLL_MAP_SERVICE pServiceMap = NULL;
     PVMMDLL_MAP_SERVICEENTRY pServiceEntry;
-    printf("CALL:    VMMDLL_Map_GetServices #1\n");
-    result = VMMDLL_Map_GetServices(NULL, &cbServiceMap);
+    printf("CALL:    VMMDLL_Map_GetServicesU #1\n");
+    result = VMMDLL_Map_GetServicesU(NULL, &cbServiceMap);
     if(!result) {
-        printf("FAIL:    VMMDLL_Map_GetServices #1\n");
+        printf("FAIL:    VMMDLL_Map_GetServicesU #1\n");
         return 1;
     }
     pServiceMap = LocalAlloc(LMEM_ZEROINIT, cbServiceMap);
@@ -1214,29 +1252,29 @@ int main(_In_ int argc, _In_ char* argv[])
         printf("FAIL:    OutOfMemory\n");
         return 1;
     }
-    result = VMMDLL_Map_GetServices(pServiceMap, &cbServiceMap);
+    result = VMMDLL_Map_GetServicesU(pServiceMap, &cbServiceMap);
     if(!result) {
-        printf("FAIL:    VMMDLL_Map_GetServices #2\n");
+        printf("FAIL:    VMMDLL_Map_GetServicesU #2\n");
         return 1;
     }
     if(pServiceMap->dwVersion != VMMDLL_MAP_SERVICE_VERSION) {
-        printf("FAIL:    VMMDLL_Map_GetServices - BAD VERSION\n");
+        printf("FAIL:    VMMDLL_Map_GetServicesU - BAD VERSION\n");
         return 1;
     }
     {
-        printf("SUCCESS: VMMDLL_Map_GetServices\n");
+        printf("SUCCESS: VMMDLL_Map_GetServicesU\n");
         printf("#     PID  VA-OBJ   STATE NAME                       PATH [USER]\n");
         for(i = 0; i < pServiceMap->cMap; i++) {
             pServiceEntry = pServiceMap->pMap + i;
             printf(
-                "%02i%7i %12llx %02i %-32S %S [%S]\n",
+                "%02i%7i %12llx %02i %-32s %s [%s]\n",
                 pServiceEntry->dwOrdinal,
                 pServiceEntry->dwPID,
                 pServiceEntry->vaObj,
                 pServiceEntry->ServiceStatus.dwCurrentState,
-                pServiceEntry->wszServiceName,
-                pServiceEntry->wszPath,
-                pServiceEntry->wszUserAcct
+                pServiceEntry->uszServiceName,
+                pServiceEntry->uszPath,
+                pServiceEntry->uszUserAcct
             );
         }
     }

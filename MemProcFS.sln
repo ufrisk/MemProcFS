@@ -48,6 +48,29 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "leechcore", "..\LeechCore\l
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "vmmsharp", "vmmsharp\vmmsharp.csproj", "{3CDF36DD-2B04-4876-B4BF-29FED2386E6A}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "memprocfs_fuse", "memprocfs_fuse", "{D0F044E6-B1D4-4DCC-AA61-B6248A20E051}"
+	ProjectSection(SolutionItems) = preProject
+		memprocfs_fuse\charutil.c = memprocfs_fuse\charutil.c
+		memprocfs_fuse\charutil.h = memprocfs_fuse\charutil.h
+		memprocfs_fuse\Makefile = memprocfs_fuse\Makefile
+		memprocfs_fuse\memprocfs.c = memprocfs_fuse\memprocfs.c
+		memprocfs_fuse\oscompatibility.c = memprocfs_fuse\oscompatibility.c
+		memprocfs_fuse\oscompatibility.h = memprocfs_fuse\oscompatibility.h
+		memprocfs_fuse\version.h = memprocfs_fuse\version.h
+		memprocfs_fuse\vfs.h = memprocfs_fuse\vfs.h
+		memprocfs_fuse\vfsfuse.c = memprocfs_fuse\vfsfuse.c
+		memprocfs_fuse\vfslist.c = memprocfs_fuse\vfslist.c
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "ob", "ob", "{7F301DE8-002D-42B9-A1A8-F9F533A009D0}"
+	ProjectSection(SolutionItems) = preProject
+		memprocfs_fuse\ob\ob.h = memprocfs_fuse\ob\ob.h
+		memprocfs_fuse\ob\ob_cachemap.c = memprocfs_fuse\ob\ob_cachemap.c
+		memprocfs_fuse\ob\ob_core.c = memprocfs_fuse\ob\ob_core.c
+		memprocfs_fuse\ob\ob_map.c = memprocfs_fuse\ob\ob_map.c
+		memprocfs_fuse\ob\ob_set.c = memprocfs_fuse\ob\ob_set.c
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -105,6 +128,7 @@ Global
 	GlobalSection(NestedProjects) = preSolution
 		{7BEEEE90-F2CC-4ADD-BA8B-82599E3D1408} = {50E46B01-0786-4222-B8C8-8D1612DA8A3B}
 		{A8B68178-FE06-42E2-80C9-2C936973B5FA} = {50E46B01-0786-4222-B8C8-8D1612DA8A3B}
+		{7F301DE8-002D-42B9-A1A8-F9F533A009D0} = {D0F044E6-B1D4-4DCC-AA61-B6248A20E051}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {CE6C3AA7-477A-4329-B4E3-5F219ACF4063}

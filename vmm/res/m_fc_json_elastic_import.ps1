@@ -6,6 +6,13 @@
 # It is possible to import multiple memory dumps in the same database.
 #
 
+# Set MemProcFS JSON ROOT to $PSScriptRoot by default, alternatively use the
+# user supplied drive-letter in 1st script argument ($args[0]).
+$MEMPROCFS_JSON_ROOT = $PSScriptRoot
+if(($args.Count -eq 1) -and ($args[0].length -eq 1)) {
+    $MEMPROCFS_JSON_ROOT = $args[0] + ":\forensic\json"
+}
+
 $ELK_CONFIG_NDJSON = '
 {"attributes":{"fieldAttrs":"{}","fields":"[]","runtimeFieldMap":"{}","timeFieldName":"date","title":"mp_timeline"},"coreMigrationVersion":"7.12.0","id":"4412f450-9884-11eb-900a-8d859ec6b571","migrationVersion":{"index-pattern":"7.11.0"},"references":[],"type":"index-pattern","updated_at":"2021-04-23T06:10:30.992Z","version":"WzE2ODc0NSw0XQ=="}
 {"attributes":{"fieldAttrs":"{}","fields":"[]","runtimeFieldMap":"{}","title":"mp_general"},"coreMigrationVersion":"7.12.0","id":"acc9fd50-9b80-11eb-900a-8d859ec6b571","migrationVersion":{"index-pattern":"7.11.0"},"references":[],"type":"index-pattern","updated_at":"2021-04-23T06:10:50.958Z","version":"WzE2ODc1Myw0XQ=="}
@@ -129,7 +136,7 @@ function MemProcFS_ELKImport()
     #--------------------------------------------------------------------------
     # RETRIEVE MEMPROCFS INFO
     #--------------------------------------------------------------------------
-    $sysid = Get-Content -Path $PSScriptRoot\..\..\sys\unique-tag.txt
+    $sysid = Get-Content -Path $MEMPROCFS_JSON_ROOT\..\..\sys\unique-tag.txt
 
     #--------------------------------------------------------------------------
     # VERIFY ELASTICSEARCH AND KIBANA AVAILABILITY
@@ -174,9 +181,9 @@ function MemProcFS_ELKImport()
     #--------------------------------------------------------------------------
     # IMPORT DATA
     #--------------------------------------------------------------------------
-    $jsonFilePath_general = $PSScriptRoot + "\general.json"
-    $jsonFilePath_timeline = $PSScriptRoot + "\timeline.json"
-    $jsonFilePath_registry = $PSScriptRoot + "\registry.json"
+    $jsonFilePath_general = $MEMPROCFS_JSON_ROOT + "\general.json"
+    $jsonFilePath_timeline = $MEMPROCFS_JSON_ROOT + "\timeline.json"
+    $jsonFilePath_registry = $MEMPROCFS_JSON_ROOT + "\registry.json"
     MemProcFS_ELK_ImportIndex $sysid "mp_general" $jsonFilePath_general
     MemProcFS_ELK_ImportIndex $sysid "mp_timeline" $jsonFilePath_timeline
     MemProcFS_ELK_ImportIndex $sysid "mp_registry" $jsonFilePath_registry
@@ -185,3 +192,4 @@ function MemProcFS_ELKImport()
 }
 
 MemProcFS_ELKImport
+Exit 0

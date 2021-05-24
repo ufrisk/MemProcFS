@@ -6,7 +6,7 @@
 #ifndef __PLUGINMANAGER_H__
 #define __PLUGINMANAGER_H__
 
-#include <Windows.h>
+#include "oscompatibility.h"
 #include "vmm.h"
 #include "vmmdll.h"
 
@@ -25,43 +25,43 @@ VOID PluginManager_Close();
 * Set/Change the visibility of an already registered plugin. Depending on other
 * plugins registered in the path parent paths may change as well.
 * -- fRoot = TRUE: root, FALSE: process.
-* -- wszPluginPath
+* -- uszPluginPath
 * -- fVisible
 */
-VOID PluginManager_SetVisibility(_In_ BOOL fRoot, _In_ LPWSTR wszPluginPath, _In_ BOOL fVisible);
+VOID PluginManager_SetVisibility(_In_ BOOL fRoot, _In_ LPSTR uszPluginPath, _In_ BOOL fVisible);
 
 /*
 * Send a List command down the module chain to the appropriate module.
 * -- pProcess
-* -- wszPath
+* -- uszPath
 * -- pFileList
 * -- return
 */
-VOID PluginManager_List(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszPath, _Inout_ PHANDLE pFileList);
+VOID PluginManager_List(_In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR uszPath, _Inout_ PHANDLE pFileList);
 
 /*
 * Send a Read command down the module chain to the appropriate module.
 * -- pProcess
-* -- wszPath
+* -- uszPath
 * -- pb
 * -- cb
 * -- pcbRead
 * -- cbOffset
 * -- return
 */
-NTSTATUS PluginManager_Read(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszPath, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
+NTSTATUS PluginManager_Read(_In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR uszPath, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 
 /*
 * Send a Write command down the module chain to the appropriate module.
 * -- pProcess
-* -- wszPath
+* -- uszPath
 * -- pb
 * -- cb
 * -- pcbWrite
 * -- cbOffset
 * -- return
 */
-NTSTATUS PluginManager_Write(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszPath, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset);
+NTSTATUS PluginManager_Write(_In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR uszPath, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset);
 
 /*
 * Send a notification event to plugins that registered to receive notifications.
@@ -109,7 +109,7 @@ VOID PluginManager_FcIngestFinalize();
 VOID PluginManager_FcTimeline(
     _In_ HANDLE(*pfnRegister)(_In_reads_(6) LPSTR sNameShort, _In_reads_(32) LPSTR szFileUTF8),
     _In_ VOID(*pfnClose)(_In_ HANDLE hTimeline),
-    _In_ VOID(*pfnEntryAdd)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPWSTR wszText),
+    _In_ VOID(*pfnEntryAdd)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPSTR uszText),
     _In_ VOID(*pfnEntryAddBySql)(_In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPSTR *pszEntrySql)
 );
 

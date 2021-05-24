@@ -27,17 +27,17 @@ VOID M_FcThread_FcInitialize_ThreadProc(_In_ PVMM_PROCESS pProcess, _In_ PVOID p
     DWORD i;
     PVMMOB_MAP_THREAD pObThreadMap = NULL;
     PVMM_MAP_THREADENTRY pe;
-    WCHAR wszStr[MAX_PATH];
+    CHAR szStr[MAX_PATH];
     FCSQL_INSERTSTRTABLE SqlStrInsert;
     if(!VmmMap_GetThread(pProcess, &pObThreadMap)) { goto fail; }
     if(!(hSql = Fc_SqlReserve())) { goto fail; }
     if(SQLITE_OK != sqlite3_prepare_v2(hSql, "INSERT INTO thread (id_str, pid, tid, ethread, teb, state, exitstatus, running, prio, priobase, startaddr, stackbase_u, stacklimit_u, stackbase_k, stacklimit_k, trapframe, sp, ip, time_create, time_exit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", -1, &hStmt, NULL)) { goto fail; }
-    if(SQLITE_OK != sqlite3_prepare_v2(hSql, "INSERT INTO str (id, osz, csz, cbu, cbj, sz) VALUES (?, ?, ?, ?, ?, ?);", -1, &hStmtStr, NULL)) { goto fail; }
+    if(SQLITE_OK != sqlite3_prepare_v2(hSql, "INSERT INTO str (id, cbu, cbj, sz) VALUES (?, ?, ?, ?);", -1, &hStmtStr, NULL)) { goto fail; }
     sqlite3_exec(hSql, "BEGIN TRANSACTION", NULL, NULL, NULL);
     for(i = 0; i < pObThreadMap->cMap; i++) {
         pe = pObThreadMap->pMap + i;
-        swprintf(wszStr, _countof(wszStr), L"TID: %i", pe->dwTID);
-        if(!Fc_SqlInsertStr(hStmtStr, wszStr, 0, &SqlStrInsert)) { goto fail_transact; }
+        snprintf(szStr, _countof(szStr), "TID: %i", pe->dwTID);
+        if(!Fc_SqlInsertStr(hStmtStr, szStr, &SqlStrInsert)) { goto fail_transact; }
         sqlite3_reset(hStmt);
         rc = Fc_SqlBindMultiInt64(hStmt, 1, 20,
             SqlStrInsert.id,
@@ -94,7 +94,7 @@ PVOID M_FcThread_FcInitialize(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
 VOID M_FcThread_FcTimeline(
     _In_opt_ PVOID ctxfc,
     _In_ HANDLE hTimeline,
-    _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPWSTR wszText),
+    _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPSTR uszText),
     _In_ VOID(*pfnEntryAddBySql)(_In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPSTR *pszEntrySql)
 ) {
     LPSTR pszSql[] = {
@@ -112,7 +112,7 @@ VOID M_FcThread_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSO
     PVMM_MAP_THREADENTRY pe;
     DWORD i, o;
     CHAR szTime[24];
-    CHAR szj[MAX_PATH] = { 0 };
+    CHAR usz[MAX_PATH] = { 0 };
     if(!pProcess || !(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)))) { return; }
     pd->dwVersion = VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION;
     pd->dwPID = pProcess->dwPID;
@@ -121,10 +121,10 @@ VOID M_FcThread_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSO
         for(i = 0; i < pObThreadMap->cMap; i++) {
             pe = pObThreadMap->pMap + i;
             Util_FileTime2String(pe->ftCreateTime, szTime);
-            o = snprintf(szj, _countof(szj), "state:[%x %x %x] prio:[%x %x] start:[%s]", pe->bState, pe->bRunning, pe->dwExitStatus, pe->bBasePriority, pe->bPriority, szTime);
+            o = snprintf(usz, _countof(usz), "state:[%x %x %x] prio:[%x %x] start:[%s]", pe->bState, pe->bRunning, pe->dwExitStatus, pe->bBasePriority, pe->bPriority, szTime);
             if(pe->ftExitTime) {
                 Util_FileTime2String(pe->ftExitTime, szTime);
-                snprintf(szj + o, _countof(szj) - 0, " stop:[%s]", szTime);
+                snprintf(usz + o, _countof(usz) - 0, " stop:[%s]", szTime);
             }
             // assign:
             pd->i = i;
@@ -133,7 +133,7 @@ VOID M_FcThread_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSO
             pd->qwHex[1] = pe->vaTeb;
             pd->va[0] = pe->vaStackBaseUser ? pe->vaStackBaseUser : pe->vaStackBaseKernel;
             pd->va[1] = pe->vaStackBaseUser ? pe->vaStackLimitUser : pe->vaStackLimitKernel;
-            pd->szj[0] = szj;
+            pd->usz[0] = usz;
             pfnLogJSON(pd);
         }
     }
@@ -150,13 +150,13 @@ VOID M_FcThread_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if((pRI->tpSystem != VMM_SYSTEM_WINDOWS_X64) && (pRI->tpSystem != VMM_SYSTEM_WINDOWS_X86)) { return; }
     if(ctxMain->dev.fVolatile) { return; }
-    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\forensic\\hidden\\thread");    // module name
+    strcpy_s(pRI->reg_info.uszPathName, 128, "\\forensic\\hidden\\thread");     // module name
     pRI->reg_info.fRootModule = TRUE;                                           // module shows in root directory
     pRI->reg_info.fRootModuleHidden = TRUE;                                     // module hidden by default
     pRI->reg_fnfc.pfnInitialize = M_FcThread_FcInitialize;                      // Forensic initialize function supported
     pRI->reg_fnfc.pfnTimeline = M_FcThread_FcTimeline;                          // Forensic timelining supported
     pRI->reg_fnfc.pfnLogJSON = M_FcThread_FcLogJSON;                            // JSON log function supported
     memcpy(pRI->reg_info.sTimelineNameShort, "THREAD", 6);
-    strncpy_s(pRI->reg_info.szTimelineFileUTF8, 32, "timeline_thread.txt", _TRUNCATE);
+    strncpy_s(pRI->reg_info.uszTimelineFile, 32, "timeline_thread.txt", _TRUNCATE);
     pRI->pfnPluginManager_Register(pRI);
 }

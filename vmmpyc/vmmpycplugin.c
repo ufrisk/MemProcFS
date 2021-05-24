@@ -49,10 +49,10 @@ PY2C_CallbackRegister(PyObject *self, PyObject *args)
 }
 
 _Success_(return)
-BOOL PY2C_Util_TranslatePathDelimiterW(_Out_writes_(MAX_PATH) LPWSTR dst, LPWSTR src)
+BOOL PY2C_Util_TranslatePathDelimiterU(_Out_writes_(3 * MAX_PATH) LPSTR dst, LPSTR src)
 {
     DWORD i;
-    for(i = 0; i < MAX_PATH; i++) {
+    for(i = 0; i < 3 * MAX_PATH; i++) {
         dst[i] = (src[i] == '\\') ? '/' : src[i];
         if(src[i] == 0) { return TRUE; }
     }
@@ -62,16 +62,16 @@ BOOL PY2C_Util_TranslatePathDelimiterW(_Out_writes_(MAX_PATH) LPWSTR dst, LPWSTR
 BOOL PY2C_Callback_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 {
     BOOL result = FALSE;
-    PyObject *args = NULL, *pyList = NULL, *pyDict, *pyPid = NULL, *pyPath = NULL;
+    PyObject *args = NULL, *pyList = NULL, *pyDict, *pyPid = NULL, *pyPath = NULL, *pyBytes_Name;
     PyObject *pyDict_Name, *pyDict_Size, *pyDict_IsDir;
-    LPWSTR wszDict_Name;
+    LPSTR uszName;
     PyGILState_STATE gstate;
     SIZE_T i, cList;
-    WCHAR wszPathBuffer[MAX_PATH];
+    CHAR uszPathBuffer[3 * MAX_PATH];
     if(!ctxPY2C->fInitialized) { return FALSE; }
-    if(!PY2C_Util_TranslatePathDelimiterW(wszPathBuffer, ctx->wszPath)) { return FALSE; }
+    if(!PY2C_Util_TranslatePathDelimiterU(uszPathBuffer, ctx->uszPath)) { return FALSE; }
     gstate = PyGILState_Ensure();
-    if(!(pyPath = PyUnicode_FromWideChar(wszPathBuffer, -1))) { goto pyfail; }
+    if(!(pyPath = PyUnicode_FromString(uszPathBuffer))) { goto pyfail; }
     pyPid = (ctx->dwPID == -1) ? NULL : PyLong_FromUnsignedLong(ctx->dwPID);
     args = Py_BuildValue("OO", (pyPid ? pyPid : Py_None), pyPath);
     if(!args) { goto pyfail; }
@@ -81,19 +81,19 @@ BOOL PY2C_Callback_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileLi
     for(i = 0; i < cList; i++) {
         pyDict = PyList_GetItem(pyList, i); // borrowed reference
         if(!PyDict_Check(pyDict)) { continue; }
-        pyDict_Name = PyDict_GetItemString(pyDict, "name");
-        pyDict_Size = PyDict_GetItemString(pyDict, "size");
-        pyDict_IsDir = PyDict_GetItemString(pyDict, "f_isdir");
+        pyDict_Name = PyDict_GetItemString(pyDict, "name");         // borrowed reference
+        pyDict_Size = PyDict_GetItemString(pyDict, "size");         // borrowed reference
+        pyDict_IsDir = PyDict_GetItemString(pyDict, "f_isdir");     // borrowed reference
         if(!pyDict_Name || !PyUnicode_Check(pyDict_Name) || !pyDict_IsDir || !PyBool_Check(pyDict_IsDir)) { continue; }
-        wszDict_Name = PyUnicode_AsWideCharString(pyDict_Name, NULL);
-        if(wszDict_Name) {
+        pyBytes_Name = PyUnicode_AsEncodedString(pyDict_Name, NULL, NULL);
+        if(pyBytes_Name && (uszName = PyBytes_AsString(pyBytes_Name))) {
             if(pyDict_IsDir == Py_True) {
-                VMMDLL_VfsList_AddDirectory(pFileList, wszDict_Name, NULL);
+                VMMDLL_VfsList_AddDirectory(pFileList, uszName, NULL);
             } else {
                 if(!pyDict_Size || !PyLong_Check(pyDict_Size)) { continue; }
-                VMMDLL_VfsList_AddFile(pFileList, wszDict_Name, PyLong_AsUnsignedLongLong(pyDict_Size), NULL);
+                VMMDLL_VfsList_AddFile(pFileList, uszName, PyLong_AsUnsignedLongLong(pyDict_Size), NULL);
             }
-            PyMem_Free(wszDict_Name);
+            Py_DECREF(pyBytes_Name);
         }
     }
     result = TRUE;
@@ -112,11 +112,11 @@ NTSTATUS PY2C_Callback_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ LPVOID pb, _I
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PyObject *args = NULL, *pyBytes = NULL, *pyPid = NULL, *pyPath = NULL;
     PyGILState_STATE gstate;
-    WCHAR wszPathBuffer[MAX_PATH];
+    CHAR uszPathBuffer[3 * MAX_PATH];
     if(!ctxPY2C->fInitialized) { return VMMDLL_STATUS_FILE_INVALID; }
-    if(!PY2C_Util_TranslatePathDelimiterW(wszPathBuffer, ctx->wszPath)) { return VMMDLL_STATUS_FILE_INVALID; }
+    if(!PY2C_Util_TranslatePathDelimiterU(uszPathBuffer, ctx->uszPath)) { return VMMDLL_STATUS_FILE_INVALID; }
     gstate = PyGILState_Ensure();
-    if(!(pyPath = PyUnicode_FromWideChar(wszPathBuffer, -1))) { goto pyfail; }
+    if(!(pyPath = PyUnicode_FromString(uszPathBuffer))) { goto pyfail; }
     pyPid = (ctx->dwPID == -1) ? NULL : PyLong_FromUnsignedLong(ctx->dwPID);
     args = Py_BuildValue("OOkK",
         pyPid ? pyPid : Py_None,
@@ -146,12 +146,12 @@ NTSTATUS PY2C_Callback_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ LPVOID pb, _I
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PyObject *args = NULL, *pyLong = NULL, *pyPid = NULL, *pyPath = NULL;
     PyGILState_STATE gstate;
-    WCHAR wszPathBuffer[MAX_PATH];
+    CHAR uszPathBuffer[3 * MAX_PATH];
     *pcbWrite = 0;
     if(!ctxPY2C->fInitialized) { return VMMDLL_STATUS_FILE_INVALID; }
-    if(!PY2C_Util_TranslatePathDelimiterW(wszPathBuffer, ctx->wszPath)) { return VMMDLL_STATUS_FILE_INVALID; }
+    if(!PY2C_Util_TranslatePathDelimiterU(uszPathBuffer, ctx->uszPath)) { return VMMDLL_STATUS_FILE_INVALID; }
     gstate = PyGILState_Ensure();
-    if(!(pyPath = PyUnicode_FromWideChar(wszPathBuffer, -1))) { goto pyfail; }
+    if(!(pyPath = PyUnicode_FromString(uszPathBuffer))) { goto pyfail; }
     pyPid = (ctx->dwPID == -1) ? NULL : PyLong_FromUnsignedLong(ctx->dwPID);
     args = Py_BuildValue("OOy#K",
         pyPid ? pyPid : Py_None,
@@ -429,7 +429,7 @@ VOID InitializeVmmPlugin(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo)
 {
     if((pRegInfo->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRegInfo->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if(VmmPyPlugin_PythonInitialize(pRegInfo->python.hReservedDllPython3X, pRegInfo->hDLL, pRegInfo->python.fPythonStandalone)) {
-        wcscpy_s(pRegInfo->reg_info.wszPathName, 128, L"py");   // module name - 'py'.
+        strcpy_s(pRegInfo->reg_info.uszPathName, 128, "py");    // module name - 'py'.
         pRegInfo->reg_info.fRootModule = TRUE;                  // module shows in root directory.
         pRegInfo->reg_info.fProcessModule = TRUE;               // module shows in process directory.
         pRegInfo->reg_fn.pfnList = PY2C_Callback_List;          // List function supported.

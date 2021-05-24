@@ -22,15 +22,15 @@ VMMDLL_MEMORYMODEL_TP g_VMemD_TpMemoryModel = VMMDLL_MEMORYMODEL_NA;
 * -- return
 */
 _Success_(return)
-BOOL VMemD_GetBaseAndTypeFromFileName(_In_ LPWSTR wsz, _Out_ PQWORD pva, _Out_ PBOOL pfVad)
+BOOL VMemD_GetBaseAndTypeFromFileName(_In_ LPSTR usz, _Out_ PQWORD pva, _Out_ PBOOL pfVad)
 {
-    if((wcslen(wsz) < 15) || (wsz[0] != '0') || (wsz[1] != 'x')) { return FALSE; }
-    *pva = wcstoull(wsz, NULL, 16);
-    *pfVad = wcsstr(wsz, L".vvmem") ? TRUE : FALSE;
+    if((strlen(usz) < 15) || (usz[0] != '0') || (usz[1] != 'x')) { return FALSE; }
+    *pva = strtoull(usz, NULL, 16);
+    *pfVad = strstr(usz, ".vvmem") ? TRUE : FALSE;
     return TRUE;
 }
 
-VOID VMemD_Util_FileNameW(_Out_writes_(64) LPWSTR wszOut, _In_ LPCWSTR wsz)
+VOID VMemD_Util_FileNameU(_Out_writes_(64) LPSTR uszOut, _In_ LPWSTR wsz)
 {
     WCHAR ch;
     DWORD i = 0;
@@ -48,10 +48,10 @@ VOID VMemD_Util_FileNameW(_Out_writes_(64) LPWSTR wszOut, _In_ LPCWSTR wsz)
     }
     i = 0;
     while((ch = wsz[i])) {
-        wszOut[i] = ((ch < 128) && (UTIL_ASCIIFILENAME_ALLOW[ch] == '0')) ? '_' : ch;
+        uszOut[i] = ((ch < 128) && (UTIL_ASCIIFILENAME_ALLOW[ch] == '0')) ? '_' : ch;
         i++;
     }
-    wszOut[i] = 0;
+    uszOut[i] = 0;
 }
 
 /*
@@ -202,7 +202,7 @@ NTSTATUS VMemD_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ LPVOID pb, _In_ DWORD
 {
     BOOL fVad;
     QWORD vaBase;
-    if(!VMemD_GetBaseAndTypeFromFileName(ctx->wszPath, &vaBase, &fVad)) { return VMMDLL_STATUS_FILE_INVALID; }
+    if(!VMemD_GetBaseAndTypeFromFileName(ctx->uszPath, &vaBase, &fVad)) { return VMMDLL_STATUS_FILE_INVALID; }
     return fVad ?
         VMemD_ReadWriteVad(ctx->dwPID, vaBase, TRUE, pb, cb, pcbRead, cbOffset) :
         VMemD_ReadWritePte(ctx->dwPID, vaBase, TRUE, pb, cb, pcbRead, cbOffset);
@@ -222,7 +222,7 @@ NTSTATUS VMemD_WritePte(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ LPVOID pb, _In_ DW
 {
     BOOL fVad;
     QWORD vaBase;
-    if(!VMemD_GetBaseAndTypeFromFileName(ctx->wszPath, &vaBase, &fVad)) { return VMMDLL_STATUS_FILE_INVALID; }
+    if(!VMemD_GetBaseAndTypeFromFileName(ctx->uszPath, &vaBase, &fVad)) { return VMMDLL_STATUS_FILE_INVALID; }
     return fVad ?
         VMemD_ReadWriteVad(ctx->dwPID, vaBase, FALSE, pb, cb, pcbWrite, cbOffset) :
         VMemD_ReadWritePte(ctx->dwPID, vaBase, FALSE, pb, cb, pcbWrite, cbOffset);
@@ -244,7 +244,8 @@ BOOL VMemD_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
     PVMMDLL_MAP_PTEENTRY pPte = NULL;
     PVMMDLL_MAP_VAD pVadMap = NULL;
     PVMMDLL_MAP_VADENTRY pVad = NULL;
-    WCHAR wszBufferFileName[MAX_PATH] = { 0 }, wszInfo[64] = { 0 };
+    WCHAR wszBufferFileName[MAX_PATH] = { 0 };
+    CHAR uszInfo[64] = { 0 };
     // Retrieve mandatory memory map based on hardware page tables.
     f = VMMDLL_Map_GetPte(ctx->dwPID, NULL, &cbPteMap, TRUE) &&
         (pPteMap = LocalAlloc(0, cbPteMap));
@@ -257,27 +258,27 @@ BOOL VMemD_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
     // Display VadMap entries in the file system (if any)
     for(iVad = 0; (f && (iVad < pVadMap->cMap)); iVad++) {
         pVad = pVadMap->pMap + iVad;
-        VMemD_Util_FileNameW(wszInfo, pVad->wszText);
+        VMemD_Util_FileNameU(uszInfo, pVad->wszText);
         if(g_VMemD_TpMemoryModel == VMMDLL_MEMORYMODEL_X64) {
             swprintf_s(
                 wszBufferFileName,
                 MAX_PATH - 1,
-                L"0x%016llx%s%s.vvmem",
+                L"0x%016llx%s%S.vvmem",
                 pVad->vaStart,
-                pVad->cwszText ? L"-" : L"",
-                wszInfo
+                uszInfo[0] ? L"-" : L"",
+                uszInfo
             );
         } else if((g_VMemD_TpMemoryModel == VMMDLL_MEMORYMODEL_X86) || (g_VMemD_TpMemoryModel == VMMDLL_MEMORYMODEL_X86PAE)) {
             swprintf_s(
                 wszBufferFileName,
                 MAX_PATH - 1,
-                L"0x%08lx%s%s.vvmem",
+                L"0x%08lx%s%S.vvmem",
                 (DWORD)pVad->vaStart,
-                pVad->cwszText ? L"-" : L"",
-                wszInfo
+                uszInfo[0] ? L"-" : L"",
+                uszInfo
             );
         }
-        VMMDLL_VfsList_AddFile(pFileList, wszBufferFileName, pVad->vaEnd + 1 - pVad->vaStart, NULL);
+        VMMDLL_VfsList_AddFileW(pFileList, wszBufferFileName, pVad->vaEnd + 1 - pVad->vaStart, NULL);
     }
     // Display PteMap entries in the file system unless already part of Vad
     for(iPte = 0, iVad = 0; iPte < pPteMap->cMap; iPte++) {
@@ -286,27 +287,27 @@ BOOL VMemD_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
             while((iVad < pVadMap->cMap) && (pVadMap->pMap[iVad].vaEnd < pPte->vaBase) && ++iVad);
             if((iVad < pVadMap->cMap) && (pVadMap->pMap[iVad].vaStart <= pPte->vaBase) && (pVadMap->pMap[iVad].vaEnd >= pPte->vaBase)) { continue; }
         }
-        VMemD_Util_FileNameW(wszInfo, pPte->wszText);
+        VMemD_Util_FileNameU(uszInfo, pPte->wszText);
         if(g_VMemD_TpMemoryModel == VMMDLL_MEMORYMODEL_X64) {
             swprintf_s(
                 wszBufferFileName,
                 MAX_PATH - 1,
-                L"0x%016llx%s%s.vmem",
+                L"0x%016llx%s%S.vmem",
                 pPte->vaBase,
-                pPte->cwszText ? L"-" : L"",
-                wszInfo
+                uszInfo[0] ? L"-" : L"",
+                uszInfo
             );
         } else if((g_VMemD_TpMemoryModel == VMMDLL_MEMORYMODEL_X86) || (g_VMemD_TpMemoryModel == VMMDLL_MEMORYMODEL_X86PAE)) {
             swprintf_s(
                 wszBufferFileName,
                 MAX_PATH - 1,
-                L"0x%08lx%s%s.vmem",
+                L"0x%08lx%s%S.vmem",
                 (DWORD)pPte->vaBase,
-                pPte->cwszText ? L"-" : L"",
-                wszInfo
+                uszInfo[0] ? L"-" : L"",
+                uszInfo
             );
         }
-        VMMDLL_VfsList_AddFile(pFileList, wszBufferFileName, pPte->cPages << 12, NULL);
+        VMMDLL_VfsList_AddFileW(pFileList, wszBufferFileName, pPte->cPages << 12, NULL);
     }
     fResult = TRUE;
 fail:
@@ -332,10 +333,10 @@ VOID InitializeVmmPlugin(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo)
     // currently supports the 64-bit x64 and 32-bit x86 and x86-pae memory models.
     if(!((pRegInfo->tpMemoryModel == VMMDLL_MEMORYMODEL_X64) || (pRegInfo->tpMemoryModel == VMMDLL_MEMORYMODEL_X86) || (pRegInfo->tpMemoryModel == VMMDLL_MEMORYMODEL_X86PAE))) { return; }
     g_VMemD_TpMemoryModel = pRegInfo->tpMemoryModel;
-    wcscpy_s(pRegInfo->reg_info.wszPathName, 128, L"\\vmemd");  // module name - 'vmemd'.
+    strcpy_s(pRegInfo->reg_info.uszPathName, 128, "\\vmemd");   // module name - 'vmemd'.
     pRegInfo->reg_info.fProcessModule = TRUE;                   // module shows in process directory.
     pRegInfo->reg_fn.pfnList = VMemD_List;                      // List function supported.
     pRegInfo->reg_fn.pfnRead = VMemD_Read;                      // Read function supported.
-    pRegInfo->reg_fn.pfnWrite = VMemD_WritePte;                    // Write function supported.
+    pRegInfo->reg_fn.pfnWrite = VMemD_WritePte;                 // Write function supported.
     pRegInfo->pfnPluginManager_Register(pRegInfo);              // Register with the plugin maanger.
 }

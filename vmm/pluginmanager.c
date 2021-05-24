@@ -5,6 +5,7 @@
 //
 #include "pluginmanager.h"
 #include "statistics.h"
+#include "charutil.h"
 #include "util.h"
 #include "vmm.h"
 #include "vmmdll.h"
@@ -37,7 +38,7 @@ typedef struct tdPLUGIN_ENTRY {
     struct tdPLUGIN_ENTRY *FLinkNotify;
     struct tdPLUGIN_ENTRY *FLinkForensic;
     HMODULE hDLL;
-    WCHAR wszName[32];
+    CHAR uszName[32];
     DWORD dwNameHash;
     BOOL fRootModule;
     BOOL fProcessModule;
@@ -56,7 +57,7 @@ typedef struct tdPLUGIN_ENTRY {
         VOID(*pfnTimeline)(
             _In_opt_ PVOID ctxfc,
             _In_ HANDLE hTimeline,
-            _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPWSTR wszText),
+            _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPSTR uszText),
             _In_ VOID(*pfnEntryAddBySql)(_In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPSTR *pszEntrySql));
         VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData));
         VOID(*pfnIngestPhysmem)(_In_opt_ PVOID ctxfc, _In_ PVMMDLL_PLUGIN_FORENSIC_INGEST_PHYSMEM pIngestPhysmem);
@@ -75,7 +76,7 @@ typedef struct tdPLUGIN_ENTRY {
 #define PLUGIN_TREE_MAX_CHILDITEMS      32
 
 typedef struct tdPLUGIN_TREE {
-    WCHAR wszName[32];
+    CHAR uszName[32];
     DWORD dwHashName;
     DWORD cChild;
     BOOL fVisible;
@@ -83,6 +84,8 @@ typedef struct tdPLUGIN_TREE {
     struct tdPLUGIN_TREE *Child[PLUGIN_TREE_MAX_CHILDITEMS];
     PPLUGIN_ENTRY pPlugin;
 } PLUGIN_TREE, *PPLUGIN_TREE;
+
+VOID PluginManager_Initialize_Python();
 
 
 
@@ -105,64 +108,64 @@ VOID PluginManager_SetTreeVisibility(_In_opt_ PPLUGIN_TREE pTree, _In_ BOOL fVis
     }
 }
 
-PPLUGIN_TREE PluginManager_Register_GetCreateTree(_In_ PPLUGIN_TREE pTree, _In_ LPWSTR wszPathName, _In_ BOOL fVisible)
+PPLUGIN_TREE PluginManager_Register_GetCreateTree(_In_ PPLUGIN_TREE pTree, _In_ LPSTR uszPathName, _In_ BOOL fVisible)
 {
     DWORD i, dwHash;
-    WCHAR wszEntry[32];
+    CHAR uszEntry[32];
     PPLUGIN_TREE pChild;
     // 1: no more levels to create - return
-    if(!wszPathName[0]) { return pTree; }
+    if(!uszPathName[0]) { return pTree; }
     // 2: check existing tree child entries
-    wszPathName = Util_PathSplit2_ExWCHAR(wszPathName, wszEntry, _countof(wszEntry));
-    dwHash = Util_HashStringUpperW(wszEntry);
+    uszPathName = CharUtil_PathSplitFirst(uszPathName, uszEntry, _countof(uszEntry));
+    dwHash = CharUtil_HashNameFsU(uszEntry, 0);
     for(i = 0; i < pTree->cChild; i++) {
         if(pTree->Child[i]->dwHashName == dwHash) {
-            return PluginManager_Register_GetCreateTree(pTree->Child[i], wszPathName, fVisible);
+            return PluginManager_Register_GetCreateTree(pTree->Child[i], uszPathName, fVisible);
         }
     }
     // 3: create new entry
     if(pTree->cChild == PLUGIN_TREE_MAX_CHILDITEMS) { return NULL; }
     if(!(pTree->Child[pTree->cChild] = pChild = LocalAlloc(LMEM_ZEROINIT, sizeof(PLUGIN_TREE)))) { return NULL; }
     pTree->cChild++;
-    wcsncpy_s(pChild->wszName, _countof(pChild->wszName), wszEntry, _TRUNCATE);
+    strncpy_s(pChild->uszName, _countof(pChild->uszName), uszEntry, _TRUNCATE);
     pChild->dwHashName = dwHash;
     pChild->pParent = pTree;
     PluginManager_SetTreeVisibility(pChild, fVisible);
-    return PluginManager_Register_GetCreateTree(pChild, wszPathName, fVisible);
+    return PluginManager_Register_GetCreateTree(pChild, uszPathName, fVisible);
 }
 
 /*
 * Retrieve the PLUGIN_TREE entry and the remaining path given a root tree and a root path.
 * -- pTree
-* -- wszPath
+* -- uszPath
 * -- pTree
 * -- pwszSubPath
 */
-VOID PluginManager_GetTree(_In_ PPLUGIN_TREE pTree, _In_ LPWSTR wszPath, _Out_ PPLUGIN_TREE *ppTree, _Out_ LPWSTR *pwszSubPath)
+VOID PluginManager_GetTree(_In_ PPLUGIN_TREE pTree, _In_ LPSTR uszPath, _Out_ PPLUGIN_TREE *ppTree, _Out_ LPSTR *puszSubPath)
 {
     DWORD i, dwHash;
-    WCHAR wszEntry[32];
-    LPWSTR wszSubPath;
-    if(!wszPath[0]) { goto finish; }
-    wszSubPath = Util_PathSplit2_ExWCHAR(wszPath, wszEntry, _countof(wszEntry));
-    dwHash = Util_HashStringUpperW(wszEntry);
+    CHAR uszEntry[32];
+    LPSTR uszSubPath;
+    if(!uszPath[0]) { goto finish; }
+    uszSubPath = CharUtil_PathSplitFirst(uszPath, uszEntry, _countof(uszEntry));
+    dwHash = CharUtil_HashNameFsU(uszEntry, 0);
     for(i = 0; i < pTree->cChild; i++) {
         if(pTree->Child[i]->dwHashName == dwHash) {
-            PluginManager_GetTree(pTree->Child[i], wszSubPath, ppTree, pwszSubPath);
+            PluginManager_GetTree(pTree->Child[i], uszSubPath, ppTree, puszSubPath);
             return;
         }
     }
 finish:
     *ppTree = pTree;
-    *pwszSubPath = wszPath;
+    *puszSubPath = uszPath;
 }
 
-VOID PluginManager_SetVisibility(_In_ BOOL fRoot, _In_ LPWSTR wszPluginPath, _In_ BOOL fVisible)
+VOID PluginManager_SetVisibility(_In_ BOOL fRoot, _In_ LPSTR uszPluginPath, _In_ BOOL fVisible)
 {
-    LPWSTR wszSubPath;
+    LPSTR uszSubPath;
     PPLUGIN_TREE pTree;
-    if(wszPluginPath[0] == '\\') { wszPluginPath++; }
-    PluginManager_GetTree((fRoot ? ctxVmm->PluginManager.Root : ctxVmm->PluginManager.Proc), wszPluginPath, &pTree, &wszSubPath);
+    if(uszPluginPath[0] == '\\') { uszPluginPath++; }
+    PluginManager_GetTree((fRoot ? ctxVmm->PluginManager.Root : ctxVmm->PluginManager.Proc), uszPluginPath, &pTree, &uszSubPath);
     PluginManager_SetTreeVisibility(pTree, fVisible);
 }
 
@@ -175,54 +178,54 @@ BOOL PluginManager_ModuleExistsDll(_In_opt_ HMODULE hDLL) {
     return FALSE;
 }
 
-BOOL PluginManager_ModuleExists(_In_ PPLUGIN_TREE pTree, _In_ LPWSTR wszPath) {
-    LPWSTR wszSubPath;
+BOOL PluginManager_ModuleExists(_In_ PPLUGIN_TREE pTree, _In_ LPSTR uszPath) {
+    LPSTR uszSubPath;
     PPLUGIN_TREE pTreePlugin;
-    PluginManager_GetTree(pTree, wszPath, &pTreePlugin, &wszSubPath);
-    return pTreePlugin->pPlugin && !wszSubPath[0];
+    PluginManager_GetTree(pTree, uszPath, &pTreePlugin, &uszSubPath);
+    return pTreePlugin->pPlugin && !uszSubPath[0];
 }
 
-VOID PluginManager_ContextInitialize(_Out_ PVMMDLL_PLUGIN_CONTEXT ctx, PPLUGIN_ENTRY pModule, _In_opt_ PVMM_PROCESS pProcess, _In_opt_ LPWSTR wszPath)
+VOID PluginManager_ContextInitialize(_Out_ PVMMDLL_PLUGIN_CONTEXT ctx, PPLUGIN_ENTRY pModule, _In_opt_ PVMM_PROCESS pProcess, _In_opt_ LPSTR uszPath)
 {
     ctx->magic = VMMDLL_PLUGIN_CONTEXT_MAGIC;
     ctx->wVersion = VMMDLL_PLUGIN_CONTEXT_VERSION;
     ctx->wSize = sizeof(VMMDLL_PLUGIN_CONTEXT);
     ctx->dwPID = (pProcess ? pProcess->dwPID : (DWORD)-1);
     ctx->pProcess = pModule->hDLL ? NULL : pProcess;
-    ctx->wszModule = pModule->wszName;
-    ctx->wszPath = wszPath;
+    ctx->uszModule = pModule->uszName;
+    ctx->uszPath = uszPath;
     ctx->ctxM = pModule->ctxM;
 }
 
-VOID PluginManager_List(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszPath, _Inout_ PHANDLE pFileList)
+VOID PluginManager_List(_In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR uszPath, _Inout_ PHANDLE pFileList)
 {
     DWORD i;
     BOOL fVisibleProgrammatic, result = TRUE;
     QWORD tmStart = Statistics_CallStart();
     VMMDLL_PLUGIN_CONTEXT ctxPlugin;
-    LPWSTR wszSubPath;
+    LPSTR uszSubPath;
     PPLUGIN_TREE pTree;
     PPLUGIN_ENTRY pPlugin;
     pTree = pProcess ? ctxVmm->PluginManager.Proc : ctxVmm->PluginManager.Root;
     if(!pTree) { return; }
-    PluginManager_GetTree((pProcess ? ctxVmm->PluginManager.Proc : ctxVmm->PluginManager.Root), wszPath, &pTree, &wszSubPath);
+    PluginManager_GetTree((pProcess ? ctxVmm->PluginManager.Proc : ctxVmm->PluginManager.Root), uszPath, &pTree, &uszSubPath);
     if(pTree->fVisible) {
-        if(pTree->cChild && !wszSubPath[0]) {
+        if(pTree->cChild && !uszSubPath[0]) {
             for(i = 0; i < pTree->cChild; i++) {
                 if(pTree->Child[i]->fVisible) {
                     fVisibleProgrammatic = pTree->Child[i]->cChild || !pTree->Child[i]->pPlugin || !pTree->Child[i]->pPlugin->pfnVisibleModule;
                     if(!fVisibleProgrammatic) {
-                        PluginManager_ContextInitialize(&ctxPlugin, pTree->Child[i]->pPlugin, pProcess, wszSubPath);
+                        PluginManager_ContextInitialize(&ctxPlugin, pTree->Child[i]->pPlugin, pProcess, uszSubPath);
                         fVisibleProgrammatic = pTree->Child[i]->pPlugin->pfnVisibleModule(&ctxPlugin);
                     }
                     if(fVisibleProgrammatic) {
-                        VMMDLL_VfsList_AddDirectory(pFileList, pTree->Child[i]->wszName, NULL);
+                        VMMDLL_VfsList_AddDirectory(pFileList, pTree->Child[i]->uszName, NULL);
                     }
                 }
             }
         }
         if((pPlugin = pTree->pPlugin) && pPlugin->pfnList) {
-            PluginManager_ContextInitialize(&ctxPlugin, pPlugin, pProcess, wszSubPath);
+            PluginManager_ContextInitialize(&ctxPlugin, pPlugin, pProcess, uszSubPath);
             if(!pPlugin->pfnVisibleModule || pPlugin->pfnVisibleModule(&ctxPlugin)) {
                 pTree->pPlugin->pfnList(&ctxPlugin, pFileList);
             }
@@ -231,20 +234,20 @@ VOID PluginManager_List(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszPath, _In
     Statistics_CallEnd(STATISTICS_ID_PluginManager_List, tmStart);
 }
 
-NTSTATUS PluginManager_Read(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszPath, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS PluginManager_Read(_In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR uszPath, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     QWORD tmStart = Statistics_CallStart();
     NTSTATUS nt;
     VMMDLL_PLUGIN_CONTEXT ctxPlugin;
-    LPWSTR wszSubPath;
+    LPSTR uszSubPath;
     PPLUGIN_TREE pTree;
     PPLUGIN_ENTRY pPlugin;
     pTree = pProcess ? ctxVmm->PluginManager.Proc : ctxVmm->PluginManager.Root;
     if(!pTree) { return VMMDLL_STATUS_FILE_INVALID; }
-    PluginManager_GetTree((pProcess ? ctxVmm->PluginManager.Proc : ctxVmm->PluginManager.Root), wszPath, &pTree, &wszSubPath);
+    PluginManager_GetTree((pProcess ? ctxVmm->PluginManager.Proc : ctxVmm->PluginManager.Root), uszPath, &pTree, &uszSubPath);
     if(pTree->fVisible) {
         if((pPlugin = pTree->pPlugin) && pPlugin->pfnRead) {
-            PluginManager_ContextInitialize(&ctxPlugin, pPlugin, pProcess, wszSubPath);
+            PluginManager_ContextInitialize(&ctxPlugin, pPlugin, pProcess, uszSubPath);
             nt = pPlugin->pfnRead(&ctxPlugin, pb, cb, pcbRead, cbOffset);
             Statistics_CallEnd(STATISTICS_ID_PluginManager_Read, tmStart);
             return nt;
@@ -254,20 +257,20 @@ NTSTATUS PluginManager_Read(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszPath,
     return VMMDLL_STATUS_FILE_INVALID;
 }
 
-NTSTATUS PluginManager_Write(_In_opt_ PVMM_PROCESS pProcess, _In_ LPWSTR wszPath, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
+NTSTATUS PluginManager_Write(_In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR uszPath, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
 {
     QWORD tmStart = Statistics_CallStart();
     NTSTATUS nt;
     VMMDLL_PLUGIN_CONTEXT ctxPlugin;
-    LPWSTR wszSubPath;
+    LPSTR uszSubPath;
     PPLUGIN_TREE pTree;
     PPLUGIN_ENTRY pPlugin;
     pTree = pProcess ? ctxVmm->PluginManager.Proc : ctxVmm->PluginManager.Root;
     if(!pTree) { return VMMDLL_STATUS_FILE_INVALID; }
-    PluginManager_GetTree((pProcess ? ctxVmm->PluginManager.Proc : ctxVmm->PluginManager.Root), wszPath, &pTree, &wszSubPath);
+    PluginManager_GetTree((pProcess ? ctxVmm->PluginManager.Proc : ctxVmm->PluginManager.Root), uszPath, &pTree, &uszSubPath);
     if(pTree->fVisible) {
         if((pPlugin = pTree->pPlugin) && pPlugin->pfnWrite) {
-            PluginManager_ContextInitialize(&ctxPlugin, pPlugin, pProcess, wszSubPath);
+            PluginManager_ContextInitialize(&ctxPlugin, pPlugin, pProcess, uszSubPath);
             nt = pPlugin->pfnWrite(&ctxPlugin, pb, cb, pcbWrite, cbOffset);
             Statistics_CallEnd(STATISTICS_ID_PluginManager_Write, tmStart);
             return nt;
@@ -387,7 +390,7 @@ VOID PluginManager_FcIngestFinalize()
 VOID PluginManager_FcTimeline(
     _In_ HANDLE(*pfnRegister)(_In_reads_(6) LPSTR sNameShort, _In_reads_(32) LPSTR szFileUTF8),
     _In_ VOID(*pfnClose)(_In_ HANDLE hTimeline),
-    _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPWSTR wszText),
+    _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPSTR uszText),
     _In_ VOID(*pfnEntryAddBySql)(_In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPSTR *pszEntrySql)
 ) {
     HANDLE hTimeline;
@@ -444,25 +447,25 @@ DWORD PluginManager_FcLogJSON(_In_ VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_FORENSI
 BOOL PluginManager_Register(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo)
 {
     DWORD iPluginNameStart;
-    LPWSTR wszPluginName;
+    LPSTR uszPluginName;
     PPLUGIN_ENTRY pModule;
     PPLUGIN_TREE pPluginTreeEntry;
     // 1: tests if plugin is valid
-    pRegInfo->reg_info.wszPathName[127] = 0;
+    pRegInfo->reg_info.uszPathName[127] = 0;
     if(ctxVmm->PluginManager.fc.cEvent >= _countof(ctxVmm->PluginManager.fc.hEvent)) { return FALSE; }
     if(!pRegInfo || (pRegInfo->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRegInfo->wVersion > VMMDLL_PLUGIN_REGINFO_VERSION)) { return FALSE; }
-    if(!pRegInfo->reg_info.wszPathName[0]) { return FALSE; }
-    wszPluginName = Util_PathSplitLastW(pRegInfo->reg_info.wszPathName);
-    if(wcslen(wszPluginName) > 31) { return FALSE; }
-    if(pRegInfo->reg_info.fRootModule && PluginManager_ModuleExists(ctxVmm->PluginManager.Root, pRegInfo->reg_info.wszPathName)) { return FALSE; }
-    if(pRegInfo->reg_info.fProcessModule && PluginManager_ModuleExists(ctxVmm->PluginManager.Proc, pRegInfo->reg_info.wszPathName)) { return FALSE; }
+    if(!pRegInfo->reg_info.uszPathName[0]) { return FALSE; }
+    uszPluginName = CharUtil_PathSplitLast(pRegInfo->reg_info.uszPathName);
+    if(strlen(uszPluginName) > 31) { return FALSE; }
+    if(pRegInfo->reg_info.fRootModule && PluginManager_ModuleExists(ctxVmm->PluginManager.Root, pRegInfo->reg_info.uszPathName)) { return FALSE; }
+    if(pRegInfo->reg_info.fProcessModule && PluginManager_ModuleExists(ctxVmm->PluginManager.Proc, pRegInfo->reg_info.uszPathName)) { return FALSE; }
     pModule = (PPLUGIN_ENTRY)LocalAlloc(LMEM_ZEROINIT, sizeof(PLUGIN_ENTRY));
     if(!pModule) { return FALSE; }
     if(!pRegInfo->reg_info.fRootModule && !pRegInfo->reg_info.fProcessModule) { return FALSE; }
     // 2: register plugin
     pModule->hDLL = pRegInfo->hDLL;
-    wcsncpy_s(pModule->wszName, 32, wszPluginName, _TRUNCATE);
-    pModule->dwNameHash = Util_HashStringUpperW(pModule->wszName);
+    strncpy_s(pModule->uszName, 32, uszPluginName, _TRUNCATE);
+    pModule->dwNameHash = CharUtil_HashNameFsU(pModule->uszName, TRUE);
     pModule->fRootModule = pRegInfo->reg_info.fRootModule;
     pModule->fProcessModule = pRegInfo->reg_info.fProcessModule;
     pModule->ctxM = pRegInfo->reg_info.ctxM;
@@ -480,12 +483,12 @@ BOOL PluginManager_Register(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo)
     pModule->fc.pfnIngestPhysmem = pRegInfo->reg_fnfc.pfnIngestPhysmem;
     pModule->fc.pfnIngestFinalize = pRegInfo->reg_fnfc.pfnIngestFinalize;
     memcpy(pModule->fc.Timeline.sNameShort, pRegInfo->reg_info.sTimelineNameShort, _countof(pModule->fc.Timeline.sNameShort));
-    memcpy(pModule->fc.Timeline.szFileUTF8, pRegInfo->reg_info.szTimelineFileUTF8, _countof(pModule->fc.Timeline.szFileUTF8));
+    memcpy(pModule->fc.Timeline.szFileUTF8, pRegInfo->reg_info.uszTimelineFile, _countof(pModule->fc.Timeline.szFileUTF8));
     if(pRegInfo->reg_fnfc.pfnIngestPhysmem) {
         ctxVmm->PluginManager.fc.hEvent[ctxVmm->PluginManager.fc.cEvent] = CreateEvent(NULL, TRUE, TRUE, NULL);
         pModule->fc.phEventIngestFinish = ctxVmm->PluginManager.fc.hEvent[ctxVmm->PluginManager.fc.cEvent++];
     }
-    vmmprintfv("PluginManager: Loaded %s module: '%S'\n", (pModule->hDLL ? " native " : "built-in"), pRegInfo->reg_info.wszPathName);
+    vmmprintfv("PluginManager: Loaded %s module: '%s'\n", (pModule->hDLL ? " native " : "built-in"), pRegInfo->reg_info.uszPathName);
     if(pModule->pfnNotify) {
         pModule->FLinkNotify = (PPLUGIN_ENTRY)ctxVmm->PluginManager.FLinkNotify;
         ctxVmm->PluginManager.FLinkNotify = pModule;
@@ -497,15 +500,15 @@ BOOL PluginManager_Register(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo)
     pModule->FLinkAll = (PPLUGIN_ENTRY)ctxVmm->PluginManager.FLinkAll;
     ctxVmm->PluginManager.FLinkAll = pModule;
     // 3: register plugin in plugin tree
-    iPluginNameStart = (pRegInfo->reg_info.wszPathName[0] == '\\') ? 1 : 0;
+    iPluginNameStart = (pRegInfo->reg_info.uszPathName[0] == '\\') ? 1 : 0;
     if(pModule->fRootModule) {
-        pPluginTreeEntry = PluginManager_Register_GetCreateTree(ctxVmm->PluginManager.Root, pRegInfo->reg_info.wszPathName + iPluginNameStart, !pRegInfo->reg_info.fRootModuleHidden);
+        pPluginTreeEntry = PluginManager_Register_GetCreateTree(ctxVmm->PluginManager.Root, pRegInfo->reg_info.uszPathName + iPluginNameStart, !pRegInfo->reg_info.fRootModuleHidden);
         if(pPluginTreeEntry && !pPluginTreeEntry->pPlugin) {
             pPluginTreeEntry->pPlugin = pModule;
         }
     }
     if(pModule->fProcessModule) {
-        pPluginTreeEntry = PluginManager_Register_GetCreateTree(ctxVmm->PluginManager.Proc, pRegInfo->reg_info.wszPathName + iPluginNameStart, !pRegInfo->reg_info.fProcessModuleHidden);
+        pPluginTreeEntry = PluginManager_Register_GetCreateTree(ctxVmm->PluginManager.Proc, pRegInfo->reg_info.uszPathName + iPluginNameStart, !pRegInfo->reg_info.fProcessModuleHidden);
         if(pPluginTreeEntry && !pPluginTreeEntry->pPlugin) {
             pPluginTreeEntry->pPlugin = pModule;
         }
@@ -568,9 +571,10 @@ VOID PluginManager_Initialize_RegInfoInit(_Out_ PVMMDLL_PLUGIN_REGINFO pRI, _In_
     pRI->sysinfo.dwVersionBuild = ctxVmm->kernel.dwVersionBuild;
 }
 
+#ifdef _WIN32
 VOID PluginManager_Initialize_Python()
 {
-    LPSTR szPYTHON_VERSIONS_SUPPORTED[] = { "python315.dll", "python314.dll", "python313.dll", "python312.dll", "python311.dll", "python310.dll", "python39.dll", "python38.dll", "python37.dll", "python36.dll"};
+    LPSTR szPYTHON_VERSIONS_SUPPORTED[] = { "python315.dll", "python314.dll", "python313.dll", "python312.dll", "python311.dll", "python310.dll", "python39.dll", "python38.dll", "python37.dll", "python36.dll" };
     DWORD cszPYTHON_VERSIONS_SUPPORTED = (sizeof(szPYTHON_VERSIONS_SUPPORTED) / sizeof(LPSTR));
     DWORD i;
     BOOL fBitnessFail = FALSE, fPythonStandalone = FALSE;
@@ -684,29 +688,15 @@ fail:
     if(hDllPython3) { FreeLibrary(hDllPython3); }
 }
 
-BOOL PluginManager_Initialize()
+VOID PluginManager_Initialize_ExternalDlls()
 {
     VMMDLL_PLUGIN_REGINFO ri;
     CHAR szPath[MAX_PATH];
-    DWORD i, cchPathBase;
+    DWORD cchPathBase;
     HANDLE hFindFile;
     WIN32_FIND_DATAA FindData;
     HMODULE hDLL;
     VOID(*pfnInitializeVmmPlugin)(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo);
-    // 1: check if already initialized
-    if(ctxVmm->PluginManager.FLinkAll) { return FALSE; }
-    EnterCriticalSection(&ctxVmm->LockMaster);
-    if(ctxVmm->PluginManager.FLinkAll) { goto fail; }
-    // 2: set up root nodes of process plugin tree
-    ctxVmm->PluginManager.Root = LocalAlloc(LMEM_ZEROINIT, sizeof(PLUGIN_TREE));
-    ctxVmm->PluginManager.Proc = LocalAlloc(LMEM_ZEROINIT, sizeof(PLUGIN_TREE));
-    if(!ctxVmm->PluginManager.Root || !ctxVmm->PluginManager.Proc) { goto fail; }
-    // 3: process built-in modules
-    for(i = 0; i < sizeof(g_pfnModulesAllInternal) / sizeof(PVOID); i++) {
-        PluginManager_Initialize_RegInfoInit(&ri, NULL);
-        g_pfnModulesAllInternal[i](&ri);
-    }
-    // 4: process dll modules
     Util_GetPathDll(szPath, NULL);
     cchPathBase = (DWORD)strnlen(szPath, MAX_PATH - 1);
     strcat_s(szPath, MAX_PATH, "plugins\\m_*.dll");
@@ -717,7 +707,7 @@ BOOL PluginManager_Initialize()
             strcat_s(szPath, MAX_PATH, "plugins\\");
             strcat_s(szPath, MAX_PATH, FindData.cFileName);
             hDLL = LoadLibraryExA(szPath, 0, 0);
-            if(!hDLL) { 
+            if(!hDLL) {
                 vmmprintfvv("PluginManager: FAIL: Load DLL: '%s' - missing dependencies?\n", FindData.cFileName);
                 continue;
             }
@@ -737,6 +727,33 @@ BOOL PluginManager_Initialize()
             }
         } while(FindNextFileA(hFindFile, &FindData));
     }
+}
+
+#endif /* _WIN32 */
+#ifdef LINUX
+VOID PluginManager_Initialize_Python() { return; }
+VOID PluginManager_Initialize_ExternalDlls() { return; }
+#endif /* LINUX */
+
+BOOL PluginManager_Initialize()
+{
+    DWORD i;
+    VMMDLL_PLUGIN_REGINFO ri;
+    // 1: check if already initialized
+    if(ctxVmm->PluginManager.FLinkAll) { return FALSE; }
+    EnterCriticalSection(&ctxVmm->LockMaster);
+    if(ctxVmm->PluginManager.FLinkAll) { goto fail; }
+    // 2: set up root nodes of process plugin tree
+    ctxVmm->PluginManager.Root = LocalAlloc(LMEM_ZEROINIT, sizeof(PLUGIN_TREE));
+    ctxVmm->PluginManager.Proc = LocalAlloc(LMEM_ZEROINIT, sizeof(PLUGIN_TREE));
+    if(!ctxVmm->PluginManager.Root || !ctxVmm->PluginManager.Proc) { goto fail; }
+    // 3: process built-in modules
+    for(i = 0; i < sizeof(g_pfnModulesAllInternal) / sizeof(PVOID); i++) {
+        PluginManager_Initialize_RegInfoInit(&ri, NULL);
+        g_pfnModulesAllInternal[i](&ri);
+    }
+    // 4: process dll modules
+    PluginManager_Initialize_ExternalDlls();
     // 5: process 'special status' python plugin manager.
     PluginManager_Initialize_Python();
     LeaveCriticalSection(&ctxVmm->LockMaster);

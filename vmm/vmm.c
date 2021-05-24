@@ -16,8 +16,11 @@
 #include "vmmevil.h"
 #include "vmmnet.h"
 #include "pluginmanager.h"
+#include "charutil.h"
 #include "util.h"
+#ifdef _WIN32
 #include <sddl.h>
+#endif /* _WIN32 */
 
 // ----------------------------------------------------------------------------
 // CACHE FUNCTIONALITY:
@@ -176,7 +179,7 @@ PVMMOB_CACHE_MEM VmmCacheReserve(_In_ DWORD dwTblTag)
     while(!(e = InterlockedPopEntrySList(&t->R[t->iR].ListHeadEmpty))) {
         if(QueryDepthSList(&t->R[t->iR].ListHeadTotal) < VMM_CACHE_REGION_MEMS) {
             // below max threshold -> create new
-            pOb = Ob_Alloc(t->tag, LMEM_ZEROINIT, sizeof(VMMOB_CACHE_MEM), NULL, VmmCache_CallbackRefCount1);
+            pOb = Ob_Alloc(t->tag, LMEM_ZEROINIT, sizeof(VMMOB_CACHE_MEM), NULL, (OB_CLEANUP_CB)VmmCache_CallbackRefCount1);
             if(!pOb) { return NULL; }
             pOb->iR = t->iR;
             pOb->h.version = MEM_SCATTER_VERSION;
@@ -246,17 +249,17 @@ VOID VmmCacheClose(_In_ DWORD dwTblTag)
     for(iR = 0; iR < VMM_CACHE_REGIONS; iR++) {
         AcquireSRWLockExclusive(&t->R[iR].LockSRW);
         // remove from "empty list"
-        while(e = InterlockedPopEntrySList(&t->R[iR].ListHeadEmpty)) {
+        while((e = InterlockedPopEntrySList(&t->R[iR].ListHeadEmpty))) {
             pOb = CONTAINING_RECORD(e, VMMOB_CACHE_MEM, SListEmpty);
             Ob_DECREF(pOb);
         }
         // remove from "in use list"
-        while(e = InterlockedPopEntrySList(&t->R[iR].ListHeadInUse)) {
+        while((e = InterlockedPopEntrySList(&t->R[iR].ListHeadInUse))) {
             pOb = CONTAINING_RECORD(e, VMMOB_CACHE_MEM, SListInUse);
             Ob_DECREF(pOb);
         }
         // remove from "total list"
-        while(e = InterlockedPopEntrySList(&t->R[iR].ListHeadTotal)) {
+        while((e = InterlockedPopEntrySList(&t->R[iR].ListHeadTotal))) {
             pOb = CONTAINING_RECORD(e, VMMOB_CACHE_MEM, SListTotal);
             Ob_DECREF(pOb);
         }
@@ -370,6 +373,67 @@ PVMMOB_CACHE_MEM VmmTlbGetPageTable(_In_ QWORD pa, _In_ BOOL fCacheOnly)
     }
     Ob_DECREF(pObMEM);
     return NULL;
+}
+
+/*
+* Translate a virtual address to a physical address by walking the page tables.
+* The successfully translated Physical Address (PA) is returned in ppa.
+* Upon fail the PTE will be returned in ppa (if possible) - which may be used
+* to further lookup virtual memory in case of PageFile or Win10 MemCompression.
+* -- paDTB
+* -- fUserOnly
+* -- va
+* -- ppa
+* -- return
+*/
+_Success_(return)
+BOOL VmmVirt2PhysEx(_In_ QWORD paDTB, _In_ BOOL fUserOnly, _In_ QWORD va, _Out_ PQWORD ppa)
+{
+    *ppa = 0;
+    if(ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_NA) { return FALSE; }
+    return ctxVmm->fnMemoryModel.pfnVirt2Phys(paDTB, fUserOnly, -1, va, ppa);
+}
+
+/*
+* Translate a virtual address to a physical address by walking the page tables.
+* The successfully translated Physical Address (PA) is returned in ppa.
+* Upon fail the PTE will be returned in ppa (if possible) - which may be used
+* to further lookup virtual memory in case of PageFile or Win10 MemCompression.
+* -- pProcess
+* -- va
+* -- ppa
+* -- return
+*/
+_Success_(return)
+BOOL VmmVirt2Phys(_In_ PVMM_PROCESS pProcess, _In_ QWORD va, _Out_ PQWORD ppa)
+{
+    *ppa = 0;
+    if(ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_NA) { return FALSE; }
+    return ctxVmm->fnMemoryModel.pfnVirt2Phys(pProcess->paDTB, pProcess->fUserOnly, -1, va, ppa);
+}
+
+/*
+* Spider the TLB (page table cache) to load all page table pages into the cache.
+* This is done to speed up various subsequent virtual memory accesses.
+* NB! pages may fall out of the cache if it's in heavy use or doe to timing.
+* -- pProcess
+*/
+VOID VmmTlbSpider(_In_ PVMM_PROCESS pProcess)
+{
+    if(ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_NA) { return; }
+    ctxVmm->fnMemoryModel.pfnTlbSpider(pProcess);
+}
+
+/*
+* Try verify that a supplied page table in pb is valid by analyzing it.
+* -- pb = 0x1000 bytes containing the page table page.
+* -- pa = physical address if the page table page.
+* -- fSelfRefReq = is a self referential entry required to be in the map? (PML4 for Windows).
+*/
+BOOL VmmTlbPageTableVerify(_Inout_ PBYTE pb, _In_ QWORD pa, _In_ BOOL fSelfRefReq)
+{
+    if(ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_NA) { return FALSE; }
+    return ctxVmm->fnMemoryModel.pfnTlbPageTableVerify(pb, pa, fSelfRefReq);
 }
 
 /*
@@ -551,6 +615,7 @@ BOOL VmmCachePrefetchPages5(_In_opt_ PVMM_PROCESS pProcess, _In_opt_ POB_MAP pmP
 // The process table object (only used internally): VMMOB_PROCESS_TABLE
 // ----------------------------------------------------------------------------
 
+#ifdef _WIN32
 VOID VmmProcess_TokenTryEnsure(_In_ PVMMOB_PROCESS_TABLE pt)
 {
     BOOL f, f32 = ctxVmm->f32;
@@ -627,6 +692,10 @@ fail:
     LocalFree(ppProcess);
     Ob_DECREF(pObSystemProcess);
 }
+#endif /* _WIN32 */
+#ifdef LINUX
+VOID VmmProcess_TokenTryEnsure(_In_ PVMMOB_PROCESS_TABLE pt) { return; }
+#endif /* LINUX */
 
 /*
 * Global Synchronization/Lock of VmmProcess_TokenTryEnsure()
@@ -685,6 +754,17 @@ fail:
         }
     }
     return NULL;
+}
+
+/*
+* Retrieve a process for a given PID.
+* CALLER DECREF: return
+* -- dwPID
+* -- return = a process struct, or NULL if not found.
+*/
+inline PVMM_PROCESS VmmProcessGet(_In_ DWORD dwPID)
+{
+    return VmmProcessGetEx(NULL, dwPID, 0);
 }
 
 /*
@@ -747,6 +827,22 @@ fail:
 }
 
 /*
+* Retrieve the next process given a process. This may be useful when iterating
+* over a process list. NB! Listing of next item may fail prematurely if the
+* previous process is terminated while having a reference to it.
+* FUNCTION DECREF: pProcess
+* CALLER DECREF: return
+* -- pProcess = a process struct, or NULL if first.
+*    NB! function DECREF's  pProcess and must not be used after call!
+* -- flags = 0 (recommended) or VMM_FLAG_PROCESS_[TOKEN|SHOW_TERMINATED]
+* -- return = a process struct, or NULL if not found.
+*/
+PVMM_PROCESS VmmProcessGetNext(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD flags)
+{
+    return VmmProcessGetNextEx(NULL, pProcess, flags);
+}
+
+/*
 * Object manager callback before 'static process' object cleanup
 * decrease refcount of any internal objects.
 */
@@ -759,11 +855,8 @@ VOID VmmProcessStatic_CloseObCallback(_In_ PVOID pVmmOb)
     Ob_DECREF_NULL(&pProcessStatic->pObCLdrModulesInjected);
     Ob_DECREF_NULL(&pProcessStatic->pObCMapThreadPrefetch);
     LocalFree(pProcessStatic->uszPathKernel);
-    LocalFree(pProcessStatic->wszPathKernel);
     LocalFree(pProcessStatic->UserProcessParams.uszCommandLine);
-    LocalFree(pProcessStatic->UserProcessParams.wszCommandLine);
     LocalFree(pProcessStatic->UserProcessParams.uszImagePathName);
-    LocalFree(pProcessStatic->UserProcessParams.wszImagePathName);
 }
 
 /*
@@ -1021,6 +1114,26 @@ VOID VmmProcessTlbClear()
 }
 
 /*
+* Query process for its creation time.
+* -- pProcess
+* -- return = time as FILETIME or 0 on error.
+*/
+QWORD VmmProcess_GetCreateTimeOpt(_In_opt_ PVMM_PROCESS pProcess)
+{
+    return (pProcess && ctxVmm->offset.EPROCESS.opt.CreateTime) ? *(PQWORD)(pProcess->win.EPROCESS.pb + ctxVmm->offset.EPROCESS.opt.CreateTime) : 0;
+}
+
+/*
+* Query process for its exit time.
+* -- pProcess
+* -- return = time as FILETIME or 0 on error.
+*/
+QWORD VmmProcess_GetExitTimeOpt(_In_opt_ PVMM_PROCESS pProcess)
+{
+    return (pProcess && ctxVmm->offset.EPROCESS.opt.ExitTime) ? *(PQWORD)(pProcess->win.EPROCESS.pb + ctxVmm->offset.EPROCESS.opt.ExitTime) : 0;
+}
+
+/*
 * List the PIDs and put them into the supplied table.
 * -- pPIDs = user allocated DWORD array to receive result, or NULL.
 * -- pcPIDs = ptr to number of DWORDs in pPIDs on entry - number of PIDs in system on exit.
@@ -1230,7 +1343,7 @@ VOID VmmProcessActionForeachParallel(_In_opt_ PVOID ctxAction, _In_opt_ BOOL(*pf
     PVMM_PROCESS_ACTION_FOREACH ctx = NULL;
     // 1: select processes to queue using criteria function
     if(!(pObProcessSelectedSet = ObSet_New())) { goto fail; }
-    while(pObProcess = VmmProcessGetNext(pObProcess, VMM_FLAG_PROCESS_SHOW_TERMINATED)) {
+    while((pObProcess = VmmProcessGetNext(pObProcess, VMM_FLAG_PROCESS_SHOW_TERMINATED))) {
         if(!pfnCriteria || pfnCriteria(pObProcess, ctx)) {
             ObSet_Push(pObProcessSelectedSet, pObProcess->dwPID);
         }
@@ -1248,7 +1361,7 @@ VOID VmmProcessActionForeachParallel(_In_opt_ PVOID ctxAction, _In_opt_ BOOL(*pf
     }
     // 3: parallelize onto worker threads and wait for completion
     for(i = 0; i < cProcess; i++) {
-        VmmWork(VmmProcessActionForeachParallel_ThreadProc, ctx, NULL);
+        VmmWork((PTHREAD_START_ROUTINE)VmmProcessActionForeachParallel_ThreadProc, ctx, NULL);
     }
     WaitForSingleObject(ctx->hEventFinish, INFINITE);
 fail:
@@ -1502,6 +1615,19 @@ VOID VmmReadScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_updates_(cpMEMsVir
 }
 
 /*
+* Retrieve information of the virtual2physical address translation for the
+* supplied process. The Virtual address must be supplied in pVirt2PhysInfo upon
+* entry.
+* -- pProcess
+* -- pVirt2PhysInfo
+*/
+VOID VmmVirt2PhysGetInformation(_Inout_ PVMM_PROCESS pProcess, _Inout_ PVMM_VIRT2PHYS_INFORMATION pVirt2PhysInfo)
+{
+    if(ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_NA) { return; }
+    ctxVmm->fnMemoryModel.pfnVirt2PhysGetInformation(pProcess, pVirt2PhysInfo);
+}
+
+/*
 * Retrieve information of the physical2virtual address translation for the
 * supplied process. This function may take time on larger address spaces -
 * such as the kernel adderss space due to extensive page walking. If a new
@@ -1593,7 +1719,7 @@ VOID VmmClose()
     DeleteCriticalSection(&ctxVmm->LockPlugin);
     DeleteCriticalSection(&ctxVmm->LockUpdateMap);
     DeleteCriticalSection(&ctxVmm->LockUpdateModule);
-    LocalFree(ctxVmm->ObjectTypeTable.wszMultiText);
+    LocalFree(ctxVmm->ObjectTypeTable.pbMultiText);
     LocalFree(ctxVmm);
     ctxVmm = NULL;
 }
@@ -1613,7 +1739,7 @@ VOID VmmWriteEx(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _In_ PBYTE pb, _
     while(oA < cb) {
         cbP = 0x1000 - ((qwA + oA) & 0xfff);
         cbP = min(cbP, cb - oA);
-        ppMEMs[i++] = pMEM = pMEMs + i;
+        ppMEMs[i] = pMEM = pMEMs + i; i++;
         pMEM->version = MEM_SCATTER_VERSION;
         pMEM->qwA = qwA + oA;
         pMEM->cb = cbP;
@@ -1746,6 +1872,33 @@ NTSTATUS VmmWriteAsFile(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwMemoryAddre
     return STATUS_SUCCESS;
 }
 
+
+_Success_(return)
+BOOL VmmReadWtoU(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _In_ DWORD cb, _In_ QWORD flagsRead, _Maybenull_ _Writable_bytes_(cbBuffer) PBYTE pbBuffer, _In_ DWORD cbBuffer, _Out_opt_ LPSTR *pusz, _Out_opt_ PDWORD pcbu, _In_ DWORD flagsChar)
+{
+    BOOL fResult = FALSE;
+    BYTE pbBufferTMP[2 * MAX_PATH + 2] = { 0 };
+    PBYTE pb = pbBufferTMP;
+    DWORD cbRead = 0;
+    if(cb > sizeof(pbBufferTMP)) {
+        if(!(pb = LocalAlloc(0, cb))) { goto fail; }
+    }
+    VmmReadEx(pProcess, qwA, pb, cb, &cbRead, flagsRead);
+    if(cbRead != cb) {
+        if(cbBuffer && pbBuffer) { pbBuffer[0] = 0; }
+        goto fail;
+    }
+    fResult = CharUtil_WtoU((LPWSTR)pb, cb >> 1, pbBuffer, cbBuffer, pusz, pcbu, flagsChar);
+fail:
+    if(pb != pbBufferTMP) { LocalFree(pb); }
+    if(!fResult) {
+        if(pbBuffer && cbBuffer) { pbBuffer[0] = 0; }
+        if(pusz) { *pusz = NULL; }
+        if(pcbu) { *pcbu = 0; }
+    }
+    return fResult;
+}
+
 _Success_(return)
 BOOL VmmReadAlloc(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Out_ PBYTE *ppb, _In_ DWORD cb, _In_ QWORD flags)
 {
@@ -1842,9 +1995,10 @@ VOID VmmInitializeFunctions()
 {
     HMODULE hNtDll = NULL;
     if((hNtDll = LoadLibraryA("ntdll.dll"))) {
-        ctxVmm->fn.RtlDecompressBuffer = (VMMFN_RtlDecompressBuffer*)GetProcAddress(hNtDll, "RtlDecompressBuffer");
+        ctxVmm->fn.RtlDecompressBufferOpt = (VMMFN_RtlDecompressBuffer*)GetProcAddress(hNtDll, "RtlDecompressBuffer");
         FreeLibrary(hNtDll);
     }
+    return;
 }
 
 BOOL VmmInitialize()
@@ -1853,7 +2007,7 @@ BOOL VmmInitialize()
     if(ctxVmm) { VmmClose(); }
     ctxVmm = (PVMM_CONTEXT)LocalAlloc(LMEM_ZEROINIT, sizeof(VMM_CONTEXT));
     if(!ctxVmm) { goto fail; }
-    ctxVmm->hModuleVmm = GetModuleHandleA("vmm");
+    ctxVmm->hModuleVmmOpt = GetModuleHandleA("vmm");
     // 2: CACHE INIT: Process Table
     if(!VmmProcessTableCreateInitial()) { goto fail; }
     // 3: CACHE INIT: Translation Lookaside Buffer (TLB) Cache Table
@@ -1993,15 +2147,13 @@ int VmmMap_HashTableLookup_CmpFind(_In_ DWORD qwHash, _In_ PDWORD pdwEntry)
 /*
 * Retrieve a single PVMM_MAP_MODULEENTRY for a given ModuleMap and module name inside it.
 * -- pModuleMap
-* -- wszModuleName
+* -- uszModuleName
 * -- return = PTR to VMM_MAP_MODULEENTRY or NULL on fail. Must not be used out of pModuleMap scope.
 */
-PVMM_MAP_MODULEENTRY VmmMap_GetModuleEntry(_In_ PVMMOB_MAP_MODULE pModuleMap, _In_ LPWSTR wszModuleName)
+PVMM_MAP_MODULEENTRY VmmMap_GetModuleEntry(_In_ PVMMOB_MAP_MODULE pModuleMap, _In_ LPSTR uszModuleName)
 {
     QWORD qwHash, *pqwHashIndex;
-    WCHAR wsz[MAX_PATH];
-    Util_PathFileNameFixW(wsz, wszModuleName, 0);
-    qwHash = Util_HashStringUpperW(wsz);
+    qwHash = CharUtil_HashNameFsU(uszModuleName, 0);
     pqwHashIndex = (PQWORD)Util_qfind((PVOID)qwHash, pModuleMap->cMap, pModuleMap->pHashTableLookup, sizeof(QWORD), (int(*)(PVOID, PVOID))VmmMap_HashTableLookup_CmpFind);
     return pqwHashIndex ? &pModuleMap->pMap[*pqwHashIndex >> 32] : NULL;
 }
@@ -2017,13 +2169,13 @@ PVMM_MAP_MODULEENTRY VmmMap_GetModuleEntry(_In_ PVMMOB_MAP_MODULE pModuleMap, _I
 * -- return
 */
 _Success_(return)
-BOOL VmmMap_GetModuleEntryEx(_In_opt_ PVMM_PROCESS pProcessOpt, _In_opt_ DWORD dwPidOpt, _In_ LPWSTR wszModuleName, _Out_ PVMMOB_MAP_MODULE *ppObModuleMap, _Out_ PVMM_MAP_MODULEENTRY * pModuleEntry)
+BOOL VmmMap_GetModuleEntryEx(_In_opt_ PVMM_PROCESS pProcessOpt, _In_opt_ DWORD dwPidOpt, _In_ LPSTR uszModuleName, _Out_ PVMMOB_MAP_MODULE *ppObModuleMap, _Out_ PVMM_MAP_MODULEENTRY *pModuleEntry)
 {
     PVMM_PROCESS pObProcess = pProcessOpt ? Ob_INCREF(pProcessOpt) : VmmProcessGet(dwPidOpt);
     *ppObModuleMap = NULL;
     *pModuleEntry = NULL;
     if(VmmMap_GetModule(pObProcess, ppObModuleMap)) {
-        *pModuleEntry = VmmMap_GetModuleEntry(*ppObModuleMap, wszModuleName);
+        *pModuleEntry = VmmMap_GetModuleEntry(*ppObModuleMap, uszModuleName);
         Ob_DECREF_NULL(&pObProcess);
     }
     return *pModuleEntry != NULL;
@@ -2062,28 +2214,18 @@ BOOL VmmMap_GetEAT(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pModule
 /*
 * Retrieve the export entry index in pEatMap->pMap by function name.
 * -- pEatMap
-* -- wszFunctionName
+* -- uszFunctionName
 * -- pdwEntryIndex = pointer to receive the pEatMap->pMap index.
 * -- return
 */
 _Success_(return)
-BOOL VmmMap_GetEATEntryIndexW(_In_ PVMMOB_MAP_EAT pEatMap, _In_ LPWSTR wszFunctionName, _Out_ PDWORD pdwEntryIndex)
+BOOL VmmMap_GetEATEntryIndexU(_In_ PVMMOB_MAP_EAT pEatMap, _In_ LPSTR uszFunctionName, _Out_ PDWORD pdwEntryIndex)
 {
     QWORD qwHash, *pqwHashIndex;
-    qwHash = Util_HashStringUpperW(wszFunctionName);
+    qwHash = (DWORD)CharUtil_Hash64U(uszFunctionName, TRUE);
     pqwHashIndex = (PQWORD)Util_qfind((PVOID)qwHash, pEatMap->cMap, pEatMap->pHashTableLookup, sizeof(QWORD), (int(*)(PVOID, PVOID))VmmMap_HashTableLookup_CmpFind);
     *pdwEntryIndex = pqwHashIndex ? *pqwHashIndex >> 32 : 0;
-    return pqwHashIndex != NULL;
-}
-
-_Success_(return)
-BOOL VmmMap_GetEATEntryIndexA(_In_ PVMMOB_MAP_EAT pEatMap, _In_ LPSTR szFunctionName, _Out_ PDWORD pdwEntryIndex)
-{
-    QWORD qwHash, *pqwHashIndex;
-    qwHash = Util_HashStringUpperA(szFunctionName);
-    pqwHashIndex = (PQWORD)Util_qfind((PVOID)qwHash, pEatMap->cMap, pEatMap->pHashTableLookup, sizeof(QWORD), (int(*)(PVOID, PVOID))VmmMap_HashTableLookup_CmpFind);
-    *pdwEntryIndex = pqwHashIndex ? *pqwHashIndex >> 32 : 0;
-    return pqwHashIndex != NULL;
+    return (pqwHashIndex != NULL) && (*pdwEntryIndex < pEatMap->cMap);
 }
 
 /*

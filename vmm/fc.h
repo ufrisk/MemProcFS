@@ -14,7 +14,7 @@
 //
 #ifndef __FC_H__
 #define __FC_H__
-#include <windows.h>
+#include "oscompatibility.h"
 #include "vmm.h"
 #include "mm_pfn.h"
 #include "sqlite/sqlite3.h"
@@ -24,7 +24,6 @@
 
 typedef struct tdFCSQL_INSERTSTRTABLE {
     QWORD id;
-    DWORD cch;      // character count (excl. NULL)
     DWORD cbu;      // UTF-8 byte count (excl. NULL)
     DWORD cbj;      // JSON byte count (excl. NULL)
 } FCSQL_INSERTSTRTABLE, *PFCSQL_INSERTSTRTABLE;
@@ -34,8 +33,7 @@ typedef struct tdFC_TIMELINE_INFO {
     DWORD dwFileSizeUTF8;
     DWORD dwFileSizeJSON;
     CHAR szNameShort[7];        // 6 chars + NULL
-    WCHAR wszNameFileUTF8[32];
-    WCHAR wszNameFileJSON[32];
+    CHAR uszNameFile[32];
 } FC_TIMELINE_INFO, *PFC_TIMELINE_INFO;
 
 typedef struct tdFC_CONTEXT {
@@ -45,7 +43,7 @@ typedef struct tdFC_CONTEXT {
     CRITICAL_SECTION Lock;
     struct {
         DWORD tp;                           // type as specified in FC_DATABASE_TYPE_*
-        WCHAR wszDatabaseWinPath[MAX_PATH]; // Windows file path
+        CHAR uszDatabasePath[MAX_PATH];     // database filsystem path
         CHAR szuDatabase[MAX_PATH];         // Sqlite3 database path in UTF-8
         BOOL fSingleThread;                 // enforce single-thread access (used during insert-bound init phase)
         HANDLE hEvent[FC_SQL_POOL_CONNECTION_NUM];
@@ -154,18 +152,17 @@ int Fc_SqlQueryN(
 
 /*
 * Helper function to insert a string into the database 'str' table.
-* NB! the string must not exceed 2048 characters.
+* Wide-Char string must not exceed 2048 characters. Only one of utf-8
+* and wide-char string is inserted (preferential treatment to utf-8).
 * -- hStmt
-* -- wsz
-* -- owszSub = sub-offset to 2'nd string at the end of wsz (if any).
+* -- usz = utf-8 string to be inserted
 * -- pThis
 * -- return
 */
 _Success_(return)
 BOOL Fc_SqlInsertStr(
     _In_ sqlite3_stmt *hStmt,
-    _In_ LPWSTR wsz,
-    _In_ DWORD cwszSubOffset,
+    _In_ LPSTR usz,
     _Out_ PFCSQL_INSERTSTRTABLE pThis
 );
 
@@ -219,16 +216,16 @@ typedef struct tdFC_MAP_TIMELINEENTRY {
     DWORD pid;
     DWORD data32;
     QWORD data64;
-    QWORD cszuOffset;               // offset to start of "line" in bytes (utf-8)
-    QWORD cszjOffset;               // offset to start of "line" in bytes (json)
-    DWORD cszuText;                 // WCHAR count not including terminating null
-    LPSTR szuText;                  // LPWSTR pointed into FCOB_MAP_TIMELINE.wszMultiText
+    QWORD cuszOffset;               // offset to start of "line" in bytes (utf-8)
+    QWORD cjszOffset;               // offset to start of "line" in bytes (json)
+    DWORD cuszText;                 // UTF-8 BYTE count not including terminating null
+    LPSTR uszText;                  // UTF-8 LPSTR pointed into FCOB_MAP_TIMELINE.uszMultiText
 } FC_MAP_TIMELINEENTRY, *PFC_MAP_TIMELINEENTRY;
 
 typedef struct tdFCOB_MAP_TIMELINE {
     OB ObHdr;
-    LPSTR szuMultiText;             // multi-utf8-str pointed into by FC_MAP_TIMELINEENTRY.szuText
-    DWORD cbMultiText;
+    LPSTR uszMultiText;             // multi-utf8-str pointed into by FC_MAP_TIMELINEENTRY.szuText
+    DWORD cbuMultiText;
     DWORD cMap;                     // # map entries.
     FC_MAP_TIMELINEENTRY pMap[];    // map entries.
 } FCOB_MAP_TIMELINE, *PFCOB_MAP_TIMELINE;

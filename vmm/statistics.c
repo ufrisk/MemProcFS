@@ -248,10 +248,10 @@ BOOL Statistics_CallToString(_Out_opt_ LPSTR *psz, _Out_ PDWORD pcsz)
     if(!(*psz = sz = LocalAlloc(0, STATISTICS_CALL_BUFFERSIZE))) { return FALSE; }
     QueryPerformanceFrequency((PLARGE_INTEGER)&qwFreq);
     // header
-    o += Util_snwprintf_u8ln(sz + o, STATISTICS_CALL_LINELENGTH, L"FUNCTION CALL STATISTICS:");
-    o += Util_snwprintf_u8ln(sz + o, STATISTICS_CALL_LINELENGTH, L"VALUES IN DECIMAL, TIME IN MICROSECONDS uS, STATISTICS = %s", ctxMain->pvStatistics ? L"ENABLED " : L"DISABLED");
-    o += Util_snwprintf_u8ln(sz + o, STATISTICS_CALL_LINELENGTH, L"FUNCTION CALL NAME                           CALLS  TIME AVG        TIME TOTAL");
-    o += Util_snwprintf_u8ln(sz + o, STATISTICS_CALL_LINELENGTH, L"==============================================================================");
+    o += Util_usnprintf_ln(sz + o, STATISTICS_CALL_LINELENGTH, "FUNCTION CALL STATISTICS:");
+    o += Util_usnprintf_ln(sz + o, STATISTICS_CALL_LINELENGTH, "VALUES IN DECIMAL, TIME IN MICROSECONDS uS, STATISTICS = %s", ctxMain->pvStatistics ? "ENABLED " : "DISABLED");
+    o += Util_usnprintf_ln(sz + o, STATISTICS_CALL_LINELENGTH, "FUNCTION CALL NAME                           CALLS  TIME AVG        TIME TOTAL");
+    o += Util_usnprintf_ln(sz + o, STATISTICS_CALL_LINELENGTH, "==============================================================================");
     // vmm statistics
     for(i = 0; i <= STATISTICS_ID_MAX; i++) {
         qwCallCount = qwCallTimeAvg_uS = qwCallTimeTotal_uS = 0;
@@ -260,10 +260,10 @@ BOOL Statistics_CallToString(_Out_opt_ LPSTR *psz, _Out_ PDWORD pcsz)
             qwCallTimeTotal_uS = (pStat->tm * 1000000ULL) / qwFreq;
             qwCallTimeAvg_uS = (qwCallTimeTotal_uS / qwCallCount);
         }
-        o += Util_snwprintf_u8ln(
+        o += Util_usnprintf_ln(
             sz + o,
             STATISTICS_CALL_LINELENGTH,
-            L"%-40.40S %9lli %9lli %17lli",
+            "%-40.40s %9lli %9lli %17lli",
             STATISTICS_ID_STR[i],
             qwCallCount,
             qwCallTimeAvg_uS,
@@ -271,7 +271,7 @@ BOOL Statistics_CallToString(_Out_opt_ LPSTR *psz, _Out_ PDWORD pcsz)
         );
     }
     // leechcore statistics
-    result = LcCommand(ctxMain->hLC, LC_CMD_STATISTICS_GET, 0, NULL, &(PBYTE)pLcStatistics, NULL);
+    result = LcCommand(ctxMain->hLC, LC_CMD_STATISTICS_GET, 0, NULL, (PBYTE*)&pLcStatistics, NULL);
     if(result && (pLcStatistics->dwVersion == LC_STATISTICS_VERSION) && pLcStatistics->qwFreq) {
         for(i = 0; i <= LC_STATISTICS_ID_MAX; i++) {
             qwCallCount = qwCallTimeAvg_uS = qwCallTimeTotal_uS = 0;
@@ -280,10 +280,10 @@ BOOL Statistics_CallToString(_Out_opt_ LPSTR *psz, _Out_ PDWORD pcsz)
                 qwCallTimeTotal_uS = (pLcStatistics->Call[i].tm * 1000000ULL) / qwFreq;
                 qwCallTimeAvg_uS = (qwCallTimeTotal_uS / qwCallCount);
             }
-           o += Util_snwprintf_u8ln(
+           o += Util_usnprintf_ln(
                 sz + o,
                 STATISTICS_CALL_LINELENGTH,
-                L"%-40.40S %9lli %9lli %17lli",
+                "%-40.40s %9lli %9lli %17lli",
                 LC_STATISTICS_NAME[i],
                 qwCallCount,
                 qwCallTimeAvg_uS,

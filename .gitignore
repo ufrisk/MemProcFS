@@ -5,7 +5,10 @@
 *.exe
 *.dll
 *.pyd
+*.so
+*.o
 *pycache*
+/files/memprocfs
 /files/vmm_example.exe
 /files/lib
 /files/temp

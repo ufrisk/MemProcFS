@@ -14,7 +14,6 @@
                                                   (DWORD)(QWORD)(&((type *)0)->field)))
 
 static const LPCSTR  PE_DATA_DIRECTORIES[16]  = {  "EXPORT",  "IMPORT",  "RESOURCE",  "EXCEPTION",  "SECURITY",  "BASERELOC",  "DEBUG",  "ARCHITECTURE",  "GLOBALPTR",  "TLS",  "LOAD_CONFIG",  "BOUND_IMPORT",  "IAT",  "DELAY_IMPORT",  "COM_DESCRIPTOR",  "RESERVED" };
-static const LPCWSTR PE_DATA_DIRECTORIESW[16] = { L"EXPORT", L"IMPORT", L"RESOURCE", L"EXCEPTION", L"SECURITY", L"BASERELOC", L"DEBUG", L"ARCHITECTURE", L"GLOBALPTR", L"TLS", L"LOAD_CONFIG", L"BOUND_IMPORT", L"IAT", L"DELAY_IMPORT", L"COM_DESCRIPTOR", L"RESERVED" };
 
 typedef struct tdPE_CODEVIEW {
     DWORD Signature;
@@ -136,10 +135,7 @@ BOOL PE_GetThunkInfoIAT(
 _Success_(return)
 BOOL PE_GetModuleNameEx(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ BOOL fOnFailDummyName, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt, _Out_writes_(cszModuleName) PCHAR szModuleName, _In_ DWORD cszModuleName, _Out_opt_ PDWORD pdwSize);
 _Success_(return)
-inline BOOL PE_GetModuleName(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _Out_writes_(cszModuleName) PCHAR szModuleName, _In_ DWORD cszModuleName)
-{
-    return PE_GetModuleNameEx(pProcess, vaModuleBase, FALSE, NULL, szModuleName, cszModuleName, NULL);
-}
+BOOL PE_GetModuleName(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _Out_writes_(cszModuleName) PCHAR szModuleName, _In_ DWORD cszModuleName);
 
 /*
 * Retrieve the number of sections in the module given by either the module base
@@ -150,10 +146,7 @@ inline BOOL PE_GetModuleName(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase
 * -- return = success: number of sections. fail: 0.
 */
 WORD PE_SectionGetNumberOfEx(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt);
-inline WORD PE_SectionGetNumberOf(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase)
-{
-    return PE_SectionGetNumberOfEx(pProcess, vaModuleBase, NULL);
-}
+WORD PE_SectionGetNumberOf(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase);
 
 /*
 * Retrieve a single section header given its name.

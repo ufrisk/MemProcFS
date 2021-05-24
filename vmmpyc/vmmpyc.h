@@ -17,9 +17,71 @@
 #include <Python.h>
 #include <structmember.h>
 #endif
-#include <ws2tcpip.h>
-#include <Windows.h>
+#include <leechcore.h>
 #include <vmmdll.h>
+#undef EXPORTED_FUNCTION
+
+#ifdef _WIN32
+#define EXPORTED_FUNCTION                   __declspec(dllexport)
+#endif /* _WIN32 */
+#ifdef LINUX
+
+#include <netinet/in.h>
+
+#define EXPORTED_FUNCTION                   __attribute__((visibility("default")))
+typedef uint32_t                            BOOL, *PBOOL;
+typedef char                                CHAR, *PCHAR, *PSTR, *LPSTR;
+typedef uint64_t                            LARGE_INTEGER, *PLARGE_INTEGER, ULONGLONG, FILETIME, *PFILETIME;
+
+#define TRUE                                1
+#define FALSE                               0
+#define _TRUNCATE                           ((SIZE_T)-1LL)
+#define LMEM_ZEROINIT                       0x0040
+
+#define _In_
+#define _Success_(x)
+
+#define REG_NONE                            ( 0ul )
+#define REG_SZ                              ( 1ul )
+#define REG_EXPAND_SZ                       ( 2ul )
+#define REG_BINARY                          ( 3ul )
+#define REG_DWORD                           ( 4ul )
+#define REG_DWORD_LITTLE_ENDIAN             ( 4ul )
+#define REG_DWORD_BIG_ENDIAN                ( 5ul )
+#define REG_LINK                            ( 6ul )
+#define REG_MULTI_SZ                        ( 7ul )
+#define REG_RESOURCE_LIST                   ( 8ul )
+#define REG_FULL_RESOURCE_DESCRIPTOR        ( 9ul )
+#define REG_RESOURCE_REQUIREMENTS_LIST      ( 10ul )
+#define REG_QWORD                           ( 11ul )
+#define REG_QWORD_LITTLE_ENDIAN             ( 11ul )
+
+typedef struct _SYSTEMTIME {
+    WORD wYear;
+    WORD wMonth;
+    WORD wDayOfWeek;
+    WORD wDay;
+    WORD wHour;
+    WORD wMinute;
+    WORD wSecond;
+    WORD wMilliseconds;
+} SYSTEMTIME, *PSYSTEMTIME, *LPSYSTEMTIME;
+
+#define max(a, b)                           (((a) > (b)) ? (a) : (b))
+#define min(a, b)                           (((a) < (b)) ? (a) : (b))
+#define _countof(_Array)                    (sizeof(_Array) / sizeof(_Array[0]))
+#define ZeroMemory(pb, cb)                  (memset(pb, 0, cb))
+#define strcpy_s(dst, len, src)             (strncpy(dst, src, len))
+#define strncpy_s(dst, len, src, srclen)    (strncpy(dst, src, min((QWORD)(max(1, len)) - 1, (QWORD)(srclen))))
+#define sprintf_s(s, maxcount, ...)         (snprintf(s, maxcount, __VA_ARGS__))
+#define _snprintf_s(s,l,c,...)              (snprintf(s,min((QWORD)(l), (QWORD)(c)),__VA_ARGS__))
+
+// linux functions defined in oscompatibility.c
+HANDLE LocalAlloc(DWORD uFlags, SIZE_T uBytes);
+VOID LocalFree(HANDLE hMem);
+BOOL FileTimeToSystemTime(_In_ PFILETIME lpFileTime, _Out_ PSYSTEMTIME lpSystemTime);
+
+#endif /* LINUX */
 
 extern PyObject *g_pPyType_Vmm;
 extern PyObject *g_pPyType_Pdb;
@@ -65,15 +127,15 @@ typedef struct tdPyObj_Module {
     BOOL fValid;
     DWORD dwPID;
     VMMDLL_MAP_MODULEENTRY ModuleEntry;
-    WCHAR wszText[32];
-    WCHAR wszFullName[64];
+    CHAR uszText[64];
+    CHAR uszFullName[128];
 } PyObj_Module;
 
 typedef struct tdPyObj_ModuleMaps {
     PyObject_HEAD
     BOOL fValid;
     DWORD dwPID;
-    WCHAR wszModule[32];
+    CHAR uszModule[64];
 } PyObj_ModuleMaps;
 
 typedef struct tdPyObj_Kernel {
@@ -119,7 +181,7 @@ typedef struct tdPyObj_RegKey {
     PyObject_HEAD
     BOOL fValid;
     PyObject *pyName;   // unicode object
-    WCHAR wszPath[MAX_PATH];
+    CHAR uszPath[2 * MAX_PATH];
     QWORD ftLastWrite;
 } PyObj_RegKey;
 
@@ -127,7 +189,7 @@ typedef struct tdPyObj_RegValue {
     PyObject_HEAD
     BOOL fValid;
     PyObject *pyName;   // unicode object
-    WCHAR wszPath[MAX_PATH];
+    CHAR uszPath[2 * MAX_PATH];
     BOOL fValue;
     BOOL fValueData;
     DWORD tp;
@@ -143,35 +205,10 @@ typedef struct tdPyObj_VmmPycPlugin {
     PyObject_HEAD
 } PyObj_VmmPycPlugin;
 
-inline int PyDict_SetItemDWORD_DECREF(PyObject *dp, DWORD key, PyObject *item)
-{
-    PyObject *pyObjectKey = PyLong_FromUnsignedLong(key);
-    int i = PyDict_SetItem(dp, pyObjectKey, item);
-    Py_XDECREF(pyObjectKey);
-    Py_XDECREF(item);
-    return i;
-}
-
-inline int PyDict_SetItemString_DECREF(PyObject *dp, const char *key, PyObject *item)
-{
-    int i = PyDict_SetItemString(dp, key, item);
-    Py_XDECREF(item);
-    return i;
-}
-
-inline int PyDict_SetItemUnicode_DECREF(PyObject *dp, PyObject *key_nodecref, PyObject *item)
-{
-    int i = PyDict_SetItem(dp, key_nodecref, item);
-    Py_XDECREF(item);
-    return i;
-}
-
-inline int PyList_Append_DECREF(PyObject *dp, PyObject *item)
-{
-    int i = PyList_Append(dp, item);
-    Py_XDECREF(item);
-    return i;
-}
+int PyDict_SetItemDWORD_DECREF(PyObject *dp, DWORD key, PyObject *item);
+int PyDict_SetItemString_DECREF(PyObject *dp, const char *key, PyObject *item);
+int PyDict_SetItemUnicode_DECREF(PyObject *dp, PyObject *key_nodecref, PyObject *item);
+int PyList_Append_DECREF(PyObject *dp, PyObject *item);
 
 VOID Util_FileTime2String(_In_ QWORD ft, _Out_writes_(24) LPSTR szTime);
 
@@ -179,19 +216,20 @@ VOID Util_FileTime2String(_In_ QWORD ft, _Out_writes_(24) LPSTR szTime);
 * Return the sub-string after the last '\' character in the wsz NULL terminated
 * string. If no '\' is found original wsz string is returned. The returned data
 * must not be free'd and is only valid as long as the wsz parameter is valid.
-* -- sz/wsz
+* -- usz
 * -- return
 */
-LPWSTR Util_PathSplitLastW(_In_ LPWSTR wsz);
+LPSTR Util_PathSplitLastU(_In_ LPSTR usz);
 
 /*
-* Split the string wsz into two at the last backslash which is removed. Ex:
-* wsz: XXX\\YYY\\ZZZ\\AAA -> wszPath: XXX\\YYY\\ZZZ + return: AAA
-* -- wsz
-* -- wszPath
-* -- return = NULL if no split is found.
+* Split the string usz into two at the last (back)slash which is removed.
+* Ex: usz: XXX/YYY/ZZZ/AAA -> uszPath: XXX/YYY/ZZZ + return: AAA
+* -- usz = utf-8 or ascii string.
+* -- uszPath = buffer to receive result.
+* -- cbuPath = byte length of uszPath buffer
+* -- return
 */
-LPWSTR Util_PathFileSplitW(_In_ LPWSTR wsz, _Out_writes_(MAX_PATH) LPWSTR wszPath);
+LPSTR Util_PathSplitLastEx(_In_ LPSTR usz, _Out_writes_(cbuPath) LPSTR uszPath, _In_ DWORD cbuPath);
 
 /*
 * Initialize Python Type objects.
@@ -225,11 +263,11 @@ PyObj_Process* VmmPycProcess_InitializeInternal(_In_ DWORD dwPID, _In_ BOOL fVer
 PyObj_ProcessMaps* VmmPycProcessMaps_InitializeInternal(_In_ DWORD dwPID);
 PyObj_VirtualMemory* VmmPycVirtualMemory_InitializeInternal(_In_ DWORD dwPID);
 PyObj_Module* VmmPycModule_InitializeInternal(_In_ DWORD dwPID, _In_ PVMMDLL_MAP_MODULEENTRY pe);
-PyObj_ModuleMaps* VmmPycModuleMaps_InitializeInternal(_In_ DWORD dwPID, _In_ LPWSTR wszModule);
+PyObj_ModuleMaps* VmmPycModuleMaps_InitializeInternal(_In_ DWORD dwPID, _In_ LPSTR uszModule);
 PyObj_RegHive* VmmPycRegHive_InitializeInternal(_In_ PVMMDLL_REGISTRY_HIVE_INFORMATION pInfo);
 PyObj_RegMemory* VmmPycRegMemory_InitializeInternal(_In_ QWORD vaCMHive);
-PyObj_RegKey* VmmPycRegKey_InitializeInternal(_In_ LPWSTR wszFullPathKey, _In_ BOOL fVerify);
-PyObj_RegValue* VmmPycRegValue_InitializeInternal(_In_ LPWSTR wszFullPathKeyValue, _In_ BOOL fVerify);
+PyObj_RegKey* VmmPycRegKey_InitializeInternal(_In_ LPSTR uszFullPathKey, _In_ BOOL fVerify);
+PyObj_RegValue* VmmPycRegValue_InitializeInternal(_In_ LPSTR uszFullPathKeyValue, _In_ BOOL fVerify);
 
 PyObject* VmmPyc_MemReadScatter(_In_ DWORD dwPID, _In_ LPSTR szFN, PyObject *args);
 PyObject* VmmPyc_MemRead(_In_ DWORD dwPID, _In_ LPSTR szFN, PyObject *args);

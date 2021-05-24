@@ -46,16 +46,14 @@ BOOL VmmProcUserCR3TryInitialize64()
 
 BOOL VmmProc_RefreshProcesses(_In_ BOOL fRefreshTotal)
 {
-    BOOL result;
+    BOOL fResult = FALSE;
     PVMM_PROCESS pObProcessSystem;
     // statistic count
     if(!fRefreshTotal) { InterlockedIncrement64(&ctxVmm->stat.cProcessRefreshPartial); }
     if(fRefreshTotal) { InterlockedIncrement64(&ctxVmm->stat.cProcessRefreshFull); }
     // Single user-defined X64 process
-    if(fRefreshTotal) {
-        if(ctxVmm->tpSystem == VMM_SYSTEM_UNKNOWN_X64) {
-            VmmProcUserCR3TryInitialize64();
-        }
+    if(fRefreshTotal && (ctxVmm->tpSystem == VMM_SYSTEM_UNKNOWN_X64)) {
+        fResult = VmmProcUserCR3TryInitialize64();
     }
     // Windows OS
     if((ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X64) || (ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X86)) {
@@ -65,10 +63,10 @@ BOOL VmmProc_RefreshProcesses(_In_ BOOL fRefreshTotal)
             vmmprintf_fn("FAIL - SYSTEM PROCESS NOT FOUND - SHOULD NOT HAPPEN\n");
             return FALSE;
         }
-        result = VmmWinProcess_Enumerate(pObProcessSystem, fRefreshTotal, NULL);
+        fResult = VmmWinProcess_Enumerate(pObProcessSystem, fRefreshTotal, NULL);
         Ob_DECREF(pObProcessSystem);
     }
-    return TRUE;
+    return fResult;
 }
 
 // Initial hard coded values that seems to be working nicely below. These values

@@ -68,10 +68,10 @@ VmmPycProcess_module_list(PyObj_Process *self, PyObject *args)
     if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
     Py_BEGIN_ALLOW_THREADS;
     result =
-        VMMDLL_Map_GetModule(self->dwPID, NULL, &cbModuleMap) &&
+        VMMDLL_Map_GetModuleU(self->dwPID, NULL, &cbModuleMap) &&
         cbModuleMap &&
         (pModuleMap = LocalAlloc(0, cbModuleMap)) &&
-        VMMDLL_Map_GetModule(self->dwPID, pModuleMap, &cbModuleMap);
+        VMMDLL_Map_GetModuleU(self->dwPID, pModuleMap, &cbModuleMap);
     Py_END_ALLOW_THREADS;
     if(!result || (pModuleMap->dwVersion != VMMDLL_MAP_MODULE_VERSION)) {
         Py_DECREF(pyList);
@@ -91,26 +91,22 @@ VmmPycProcess_module_list(PyObj_Process *self, PyObject *args)
 static PyObject*
 VmmPycProcess_module(PyObj_Process *self, PyObject *args)
 {
-    PyObject *pyObjModule, *pyUnicodePath;
+    PyObject *pyObjModule;
     BOOL result;
     DWORD cbModule = 0;
-    LPWSTR wszModuleName = NULL;
+    LPSTR uszModuleName = NULL;
     PVMMDLL_MAP_MODULEENTRY pe = NULL;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Process.module(): Not initialized."); }
-    if(!PyArg_ParseTuple(args, "O!", &PyUnicode_Type, &pyUnicodePath)) {
-        return PyErr_Format(PyExc_RuntimeError, "Process.module(): Illegal argument.");
-    }
-    if(!(wszModuleName = PyUnicode_AsWideCharString(pyUnicodePath, NULL))) {    // wszPath PyMem_Free() required 
+    if(!PyArg_ParseTuple(args, "s", &uszModuleName) || !uszModuleName) {
         return PyErr_Format(PyExc_RuntimeError, "Process.module(): Illegal argument.");
     }
     Py_BEGIN_ALLOW_THREADS;
     result =
-        VMMDLL_Map_GetModuleFromName(self->dwPID, wszModuleName, NULL, &cbModule) &&
+        VMMDLL_Map_GetModuleFromNameU(self->dwPID, uszModuleName, NULL, &cbModule) &&
         cbModule &&
         (pe = LocalAlloc(0, cbModule)) &&
-        VMMDLL_Map_GetModuleFromName(self->dwPID, wszModuleName, pe, &cbModule);
+        VMMDLL_Map_GetModuleFromNameU(self->dwPID, uszModuleName, pe, &cbModule);
     Py_END_ALLOW_THREADS;
-    PyMem_Free(wszModuleName);
     if(!result) {
         LocalFree(pe);
         return PyErr_Format(PyExc_RuntimeError, "Process.module(): Failed.");
@@ -317,7 +313,7 @@ VmmPycProcess_InitializeInternal(_In_ DWORD dwPID, _In_ BOOL fVerify)
     BOOL fResult;
     if(fVerify) {
         Py_BEGIN_ALLOW_THREADS;
-        fResult = VMMDLL_Map_GetModule(dwPID, NULL, &cbModuleMap);
+        fResult = VMMDLL_Map_GetModuleU(dwPID, NULL, &cbModuleMap);
         Py_END_ALLOW_THREADS;
         if(!fResult) { return NULL; }
     }

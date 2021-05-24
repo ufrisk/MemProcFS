@@ -39,13 +39,13 @@ VmmPycPdb_symbol_address(PyObj_Pdb *self, PyObject *args)
 {
     BOOL result;
     ULONG64 vaSymbol;
-    LPSTR szTypeName;
+    LPSTR uszTypeName = NULL;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Pdb.symbol_address(): Not initialized."); }
-    if(!PyArg_ParseTuple(args, "s", &szTypeName)) {
+    if(!PyArg_ParseTuple(args, "s", &uszTypeName) || !uszTypeName) {
         return PyErr_Format(PyExc_RuntimeError, "Pdb.symbol_address(): Illegal argument.");
     }
     Py_BEGIN_ALLOW_THREADS;
-    result = VMMDLL_PdbSymbolAddress(self->szModule, szTypeName, &vaSymbol);
+    result = VMMDLL_PdbSymbolAddress(self->szModule, uszTypeName, &vaSymbol);
     Py_END_ALLOW_THREADS;
     if(!result) {
         return PyErr_Format(PyExc_RuntimeError, "Pdb.symbol_address(): Failed.");
@@ -59,13 +59,13 @@ VmmPycPdb_type_size(PyObj_Pdb *self, PyObject *args)
 {
     BOOL result;
     DWORD dwSize;
-    LPSTR szTypeName;
+    LPSTR uszTypeName = NULL;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Pdb.type_size(): Not initialized."); }
-    if(!PyArg_ParseTuple(args, "s", &szTypeName)) {
+    if(!PyArg_ParseTuple(args, "s", &uszTypeName) || !uszTypeName) {
         return PyErr_Format(PyExc_RuntimeError, "Pdb.type_size(): Illegal argument.");
     }
     Py_BEGIN_ALLOW_THREADS;
-    result = VMMDLL_PdbTypeSize(self->szModule, szTypeName, &dwSize);
+    result = VMMDLL_PdbTypeSize(self->szModule, uszTypeName, &dwSize);
     Py_END_ALLOW_THREADS;
     if(!result) {
         return PyErr_Format(PyExc_RuntimeError, "Pdb.type_size(): Failed.");
@@ -77,22 +77,17 @@ VmmPycPdb_type_size(PyObj_Pdb *self, PyObject *args)
 static PyObject*
 VmmPycPdb_type_child_offset(PyObj_Pdb *self, PyObject *args)
 {
-    PyObject *pyTypeChildName;
     BOOL result;
     DWORD dwChildOffset;
-    LPSTR szTypeName;
-    LPWSTR wszTypeChildName = NULL;
+    LPSTR uszTypeName = NULL;
+    LPSTR uszTypeChildName = NULL;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Pdb.type_child_offset(): Not initialized."); }
-    if(!PyArg_ParseTuple(args, "sO!", &szTypeName, &PyUnicode_Type, &pyTypeChildName)) {    // pyTypeChildName == borrowed reference - do not decrement
-        return PyErr_Format(PyExc_RuntimeError, "Pdb.type_child_offset(): Illegal argument.");
-    }
-    if(!(wszTypeChildName = PyUnicode_AsWideCharString(pyTypeChildName, NULL))) {   // wszTypeChildName PyMem_Free() required 
+    if(!PyArg_ParseTuple(args, "ss", &uszTypeName, &uszTypeChildName) || !uszTypeName || !uszTypeChildName) {
         return PyErr_Format(PyExc_RuntimeError, "Pdb.type_child_offset(): Illegal argument.");
     }
     Py_BEGIN_ALLOW_THREADS;
-    result = VMMDLL_PdbTypeChildOffset(self->szModule, szTypeName, wszTypeChildName, &dwChildOffset);
+    result = VMMDLL_PdbTypeChildOffset(self->szModule, uszTypeName, uszTypeChildName, &dwChildOffset);
     Py_END_ALLOW_THREADS;
-    PyMem_Free(wszTypeChildName); wszTypeChildName = NULL;
     if(!result) {
         return PyErr_Format(PyExc_RuntimeError, "Pdb.type_child_offset(): Failed.");
     }

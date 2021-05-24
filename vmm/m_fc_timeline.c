@@ -9,6 +9,7 @@
 #include "fc.h"
 #include "vmm.h"
 #include "pluginmanager.h"
+#include "charutil.h"
 #include "util.h"
 
 /*
@@ -27,7 +28,7 @@ NTSTATUS M_FcTimeline_ReadInfo(_In_ DWORD dwTimelineType, _Out_ PBYTE pb, _In_ D
     if(!FcTimeline_GetIdFromPosition(dwTimelineType, FALSE, cbOffset + cb, &qwIdTop)) { goto fail; }
     cId = min(cb / FC_LINELENGTH_TIMELINE_UTF8, qwIdTop - qwIdBase) + 1;
     if(!FcTimelineMap_GetFromIdRange(dwTimelineType, qwIdBase, cId, &pObMap) || !pObMap->cMap) { goto fail; }
-    cbOffsetBuffer = pObMap->pMap[0].cszuOffset;
+    cbOffsetBuffer = pObMap->pMap[0].cuszOffset;
     if((cbOffsetBuffer > cbOffset) || (cbOffset - cbOffsetBuffer > 0x10000)) { goto fail; }
     cszuBuffer = 0x01000000;
     if(!(szuBuffer = LocalAlloc(0, cszuBuffer))) { goto fail; }
@@ -47,7 +48,7 @@ NTSTATUS M_FcTimeline_ReadInfo(_In_ DWORD dwTimelineType, _Out_ PBYTE pb, _In_ D
             pe->pid,
             pe->data32,
             pe->data64,
-            pe->szuText
+            pe->uszText
         );
     }
     nt = Util_VfsReadFile_FromPBYTE(szuBuffer, o, pb, cb, pcbRead, cbOffset - cbOffsetBuffer);
@@ -63,7 +64,7 @@ NTSTATUS M_FcTimeline_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, 
     PFC_TIMELINE_INFO pi;
     for(i = 0; i < ctxFc->Timeline.cTp; i++) {
         pi = ctxFc->Timeline.pInfo + i;
-        if(!_wcsicmp(ctx->wszPath, pi->wszNameFileUTF8)) {
+        if(!_stricmp(ctx->uszPath, pi->uszNameFile)) {
             return M_FcTimeline_ReadInfo(pi->dwId, pb, cb, pcbRead, cbOffset);
         }
     }
@@ -74,11 +75,11 @@ BOOL M_FcTimeline_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileLis
 {
     QWORD i;
     PFC_TIMELINE_INFO pi;
-    if(ctx->wszPath[0]) { return FALSE; }
+    if(ctx->uszPath[0]) { return FALSE; }
     for(i = 0; i < ctxFc->Timeline.cTp; i++) {
         pi = ctxFc->Timeline.pInfo + i;
-        if(pi->wszNameFileUTF8[0]) {
-            VMMDLL_VfsList_AddFile(pFileList, pi->wszNameFileUTF8, pi->dwFileSizeUTF8, NULL);
+        if(pi->uszNameFile[0]) {
+            VMMDLL_VfsList_AddFile(pFileList, pi->uszNameFile, pi->dwFileSizeUTF8, NULL);
         }
     }
     return TRUE;
@@ -87,7 +88,7 @@ BOOL M_FcTimeline_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileLis
 VOID M_FcTimeline_Notify(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent)
 {
     if(fEvent == VMMDLL_PLUGIN_NOTIFY_FORENSIC_INIT_COMPLETE) {
-        PluginManager_SetVisibility(TRUE, L"\\forensic\\timeline", TRUE);
+        PluginManager_SetVisibility(TRUE, "\\forensic\\timeline", TRUE);
     }
 }
 
@@ -96,7 +97,7 @@ VOID M_FcTimeline_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if((pRI->tpSystem != VMM_SYSTEM_WINDOWS_X64) && (pRI->tpSystem != VMM_SYSTEM_WINDOWS_X86)) { return; }
     if(ctxMain->dev.fVolatile) { return; }
-    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\forensic\\timeline");          // module name
+    strcpy_s(pRI->reg_info.uszPathName, 128, "\\forensic\\timeline");           // module name
     pRI->reg_info.fRootModule = TRUE;                                           // module shows in root directory
     pRI->reg_info.fRootModuleHidden = TRUE;                                     // module hidden by default
     pRI->reg_fn.pfnList = M_FcTimeline_List;                                    // List function supported

@@ -21,13 +21,13 @@
 #include "pluginmanager.h"
 #include "sqlite/sqlite3.h"
 #include "statistics.h"
+#include "charutil.h"
 #include "util.h"
 #include "version.h"
-#include <bcrypt.h>
 
 static LPSTR FC_SQL_SCHEMA_STR =
     "DROP TABLE IF EXISTS str; " \
-    "CREATE TABLE str ( id INTEGER PRIMARY KEY, osz, csz INT, cbu INT, cbj INT, sz TEXT ); ";
+    "CREATE TABLE str ( id INTEGER PRIMARY KEY, cbu INT, cbj INT, sz TEXT ); ";
 
 // ----------------------------------------------------------------------------
 // SQLITE GENERAL FUNCTIONALITY:
@@ -48,7 +48,7 @@ sqlite3* Fc_SqlReserve()
         iWaitNum = WaitForMultipleObjects(FC_SQL_POOL_CONNECTION_NUM, ctxFc->db.hEvent, FALSE, INFINITE) - WAIT_OBJECT_0;
     }
     if(iWaitNum >= FC_SQL_POOL_CONNECTION_NUM) {
-        vmmprintf_fn("FATAL DATABASE ERROR: WaitForMultipleObjects ERROR: 0x%08x\n", iWaitNum + WAIT_OBJECT_0);
+        vmmprintf_fn("FATAL DATABASE ERROR: WaitForMultipleObjects ERROR: 0x%08x\n", (DWORD)(iWaitNum + WAIT_OBJECT_0));
         return NULL;
     }
     return ctxFc->db.hSql[iWaitNum];
@@ -139,23 +139,18 @@ fail:
 }
 
 _Success_(return)
-BOOL Fc_SqlInsertStr(_In_ sqlite3_stmt *hStmt, _In_ LPWSTR wsz, _In_ DWORD occhSub, _Out_ PFCSQL_INSERTSTRTABLE pThis)
+BOOL Fc_SqlInsertStr(_In_ sqlite3_stmt *hStmt, _In_ LPSTR usz, _Out_ PFCSQL_INSERTSTRTABLE pThis)
 {
-    CHAR szUTF8[2048];
-    pThis->cch = (DWORD)wcslen(wsz);
-    if(pThis->cch < occhSub) { return FALSE; }
-    pThis->cbu = WideCharToMultiByte(CP_UTF8, 0, wsz, -1, szUTF8, sizeof(szUTF8), NULL, NULL);
-    if(!pThis->cbu) { return FALSE; }
+    if(!CharUtil_UtoU(usz, -1, NULL, 0, NULL, &pThis->cbu, 0)) { return FALSE; }
     pThis->cbu--;               // don't count null terminator.
-    pThis->cbj = pThis->cbu + Util_JsonEscapeByteCountExtra(szUTF8); // # of bytes to represent JSON string
+    CharUtil_UtoJ(usz, -1, NULL, 0, NULL, &pThis->cbj, 0);   // # of bytes to represent JSON string (incl. null-terminator)
+    if(pThis->cbj) { pThis->cbj--; }
     pThis->id = InterlockedIncrement64(&ctxFc->db.qwIdStr);
     sqlite3_reset(hStmt);
     sqlite3_bind_int64(hStmt, 1, pThis->id);
-    sqlite3_bind_int(hStmt, 2, occhSub);
-    sqlite3_bind_int(hStmt, 3, pThis->cch);
-    sqlite3_bind_int(hStmt, 4, pThis->cbu);
-    sqlite3_bind_int(hStmt, 5, pThis->cbj);
-    sqlite3_bind_text(hStmt, 6, szUTF8, -1, NULL);
+    sqlite3_bind_int(hStmt, 2, pThis->cbu);
+    sqlite3_bind_int(hStmt, 3, pThis->cbj);
+    sqlite3_bind_text(hStmt, 4, usz, -1, NULL);
     sqlite3_step(hStmt);
     return TRUE;
 }
@@ -209,12 +204,12 @@ typedef struct tdFCTIMELINE_PLUGIN_CONTEXT {
 * -- qwValue
 * -- wszText
 */
-VOID FcTimeline_Callback_PluginEntryAdd(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPWSTR wszText)
+VOID FcTimeline_Callback_PluginEntryAdd(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPSTR uszText)
 {
     PFCTIMELINE_PLUGIN_CONTEXT ctx = (PFCTIMELINE_PLUGIN_CONTEXT)hTimeline;
     FCSQL_INSERTSTRTABLE SqlStrInsert;
     // build and insert string data into 'str' table.
-    if(!Fc_SqlInsertStr(ctx->hStmtStr, wszText, 0, &SqlStrInsert)) { return; }
+    if(!Fc_SqlInsertStr(ctx->hStmtStr, uszText, &SqlStrInsert)) { return; }
     // insert into 'timeline_data' table.
     sqlite3_reset(ctx->hStmt);
     Fc_SqlBindMultiInt64(ctx->hStmt, 1, 7,
@@ -287,7 +282,7 @@ HANDLE FcTimeline_Callback_PluginRegister(_In_reads_(6) LPSTR sNameShort, _In_re
     ctxPlugin->dwId = (DWORD)v;
     ctxPlugin->hSql = Fc_SqlReserve();
     sqlite3_prepare_v2(ctxPlugin->hSql, "INSERT INTO timeline_data (id_str, tp, ft, ac, pid, data32, data64) VALUES (?, ?, ?, ?, ?, ?, ?);", -1, &ctxPlugin->hStmt, NULL);
-    sqlite3_prepare_v2(ctxPlugin->hSql, "INSERT INTO str (id, osz, csz, cbu, cbj, sz) VALUES (?, ?, ?, ?, ?, ?);", -1, &ctxPlugin->hStmtStr, NULL);
+    sqlite3_prepare_v2(ctxPlugin->hSql, "INSERT INTO str (id, cbu, cbj, sz) VALUES (?, ?, ?, ?);", -1, &ctxPlugin->hStmtStr, NULL);
     sqlite3_exec(ctxPlugin->hSql, "BEGIN TRANSACTION", NULL, NULL, NULL);
 fail:
     sqlite3_finalize(hStmt);
@@ -377,8 +372,7 @@ BOOL FcTimeline_Initialize()
         pi->szNameShort[0] = 0;
         strncpy_s(pi->szNameShort, _countof(pi->szNameShort), sqlite3_column_text(hStmt, 1), _TRUNCATE);
         pi->szNameShort[_countof(pi->szNameShort) - 1] = 0;
-        wcsncpy_s(pi->wszNameFileUTF8, _countof(pi->wszNameFileUTF8), sqlite3_column_text16(hStmt, 2), _TRUNCATE);
-        wcsncpy_s(pi->wszNameFileJSON, _countof(pi->wszNameFileJSON), sqlite3_column_text16(hStmt, 3), _TRUNCATE);
+        strncpy_s(pi->uszNameFile, _countof(pi->uszNameFile), sqlite3_column_text(hStmt, 2), _TRUNCATE);
         pi->dwFileSizeUTF8 = sqlite3_column_int(hStmt, 4);
         pi->dwFileSizeJSON = sqlite3_column_int(hStmt, 5);
     }
@@ -389,8 +383,8 @@ fail:
     return fResult;
 }
 
-#define FCTIMELINE_SQL_SELECT_FIELDS_ALL " cbu, osz, sz,    id, ft, tp, ac, pid, data32, data64, oln_u,   oln_j   "
-#define FCTIMELINE_SQL_SELECT_FIELDS_TP  " cbu, osz, sz, tp_id, ft, tp, ac, pid, data32, data64, oln_utp, 0 "
+#define FCTIMELINE_SQL_SELECT_FIELDS_ALL " cbu, sz,    id, ft, tp, ac, pid, data32, data64, oln_u,   oln_j   "
+#define FCTIMELINE_SQL_SELECT_FIELDS_TP  " cbu, sz, tp_id, ft, tp, ac, pid, data32, data64, oln_utp, 0 "
 
 /*
 * Internal function to create a PFCOB_MAP_TIMELINE map from given sql queries.
@@ -406,7 +400,7 @@ BOOL FcTimelineMap_CreateInternal(_In_ LPSTR szSqlCount, _In_ LPSTR szSqlSelect,
 {
     int rc;
     QWORD pqwResult[2];
-    DWORD i, cchMultiText, owszName;
+    DWORD i, cchMultiText;
     LPSTR szuMultiText, szuEntryText;
     PFCOB_MAP_TIMELINE pObTimelineMap = NULL;
     PFC_MAP_TIMELINEENTRY pe;
@@ -417,11 +411,11 @@ BOOL FcTimelineMap_CreateInternal(_In_ LPSTR szSqlCount, _In_ LPSTR szSqlSelect,
     cchMultiText = (DWORD)(1 + 2 * pqwResult[0] + pqwResult[1]);
     pObTimelineMap = Ob_Alloc('Mtml', LMEM_ZEROINIT, sizeof(FCOB_MAP_TIMELINE) + pqwResult[0] * sizeof(FC_MAP_TIMELINEENTRY) + cchMultiText, NULL, NULL);
     if(!pObTimelineMap) { goto fail; }
-    pObTimelineMap->szuMultiText = (LPSTR)((PBYTE)pObTimelineMap + sizeof(FCOB_MAP_TIMELINE) + pqwResult[0] * sizeof(FC_MAP_TIMELINEENTRY));
-    pObTimelineMap->cbMultiText = cchMultiText;
+    pObTimelineMap->uszMultiText = (LPSTR)((PBYTE)pObTimelineMap + sizeof(FCOB_MAP_TIMELINE) + pqwResult[0] * sizeof(FC_MAP_TIMELINEENTRY));
+    pObTimelineMap->cbuMultiText = cchMultiText;
     pObTimelineMap->cMap = (DWORD)pqwResult[0];
     cchMultiText--;
-    szuMultiText = pObTimelineMap->szuMultiText + 1;
+    szuMultiText = pObTimelineMap->uszMultiText + 1;
     if(!(hSql = Fc_SqlReserve())) { goto fail; }
     rc = sqlite3_prepare_v2(hSql, szSqlSelect, -1, &hStmt, 0);
     if(rc != SQLITE_OK) { goto fail; }
@@ -433,24 +427,23 @@ BOOL FcTimelineMap_CreateInternal(_In_ LPSTR szSqlCount, _In_ LPSTR szSqlSelect,
         if(rc != SQLITE_ROW) { goto fail; }
         pe = pObTimelineMap->pMap + i;
         // populate text related data: path+name
-        pe->cszuText = sqlite3_column_int(hStmt, 0);
-        owszName = sqlite3_column_int(hStmt, 1);
-        szuEntryText = (LPSTR)sqlite3_column_text(hStmt, 2);
-        if(!szuEntryText || (pe->cszuText != strlen(szuEntryText)) || (pe->cszuText > cchMultiText - 1) || (owszName > pe->cszuText)) { goto fail; }
-        pe->szuText = szuMultiText;
-        memcpy(szuMultiText, szuEntryText, pe->cszuText);
-        szuMultiText = szuMultiText + pe->cszuText + 1;
-        cchMultiText += pe->cszuText + 1;
+        pe->cuszText = sqlite3_column_int(hStmt, 0);
+        szuEntryText = (LPSTR)sqlite3_column_text(hStmt, 1);
+        if(!szuEntryText || (pe->cuszText != strlen(szuEntryText)) || (pe->cuszText > cchMultiText - 1)) { goto fail; }
+        pe->uszText = szuMultiText;
+        memcpy(szuMultiText, szuEntryText, pe->cuszText);
+        szuMultiText = szuMultiText + pe->cuszText + 1;
+        cchMultiText += pe->cuszText + 1;
         // populate numeric data
-        pe->id = sqlite3_column_int64(hStmt, 3);
-        pe->ft = sqlite3_column_int64(hStmt, 4);
-        pe->tp = sqlite3_column_int(hStmt, 5);
-        pe->ac = sqlite3_column_int(hStmt, 6);
-        pe->pid = sqlite3_column_int(hStmt, 7);
-        pe->data32 = sqlite3_column_int(hStmt, 8);
-        pe->data64 = sqlite3_column_int64(hStmt, 9);
-        pe->cszuOffset = sqlite3_column_int64(hStmt, 10);
-        pe->cszjOffset = sqlite3_column_int64(hStmt, 11);
+        pe->id = sqlite3_column_int64(hStmt, 2);
+        pe->ft = sqlite3_column_int64(hStmt, 3);
+        pe->tp = sqlite3_column_int(hStmt, 4);
+        pe->ac = sqlite3_column_int(hStmt, 5);
+        pe->pid = sqlite3_column_int(hStmt, 6);
+        pe->data32 = sqlite3_column_int(hStmt, 7);
+        pe->data64 = sqlite3_column_int64(hStmt, 8);
+        pe->cuszOffset = sqlite3_column_int64(hStmt, 9);
+        pe->cjszOffset = sqlite3_column_int64(hStmt, 10);
     }
     Ob_INCREF(pObTimelineMap);
 fail:
@@ -573,7 +566,6 @@ fail:
 */
 VOID FcScanPhysmem()
 {
-    BOOL fSuccess = FALSE;
     QWORD i, iChunk = 0, paBase;
     FC_SCANPHYSMEM_CONTEXT ctx2[2] = { 0 };
     PFC_SCANPHYSMEM_CONTEXT ctx;
@@ -614,7 +606,6 @@ VOID FcScanPhysmem()
             PluginManager_FcIngestPhysmem(&ctx->e);
         }
     }
-    fSuccess = TRUE;
 fail:
     for(i = 0; i < 2; i++) {
         ctx = ctx2 + i;
@@ -675,7 +666,7 @@ VOID FcJson_Callback_EntryAdd(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pDataJSON)
         if(buf->dwPID != pDataJSON->dwPID) {
             buf->dwPID = pDataJSON->dwPID;
             if((pObProcess = VmmProcessGetEx(NULL, pDataJSON->dwPID, VMM_FLAG_PROCESS_SHOW_TERMINATED))) {
-                Util_JsonEscape(pObProcess->pObPersistent->uszNameLong, sizeof(buf->szjProcName), buf->szjProcName);
+                CharUtil_UtoJ(pObProcess->pObPersistent->uszNameLong, -1, buf->szjProcName, sizeof(buf->szjProcName), &szj, NULL, CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR);
                 buf->cchPidProcName = snprintf(buf->szjPidProcName, sizeof(buf->szjPidProcName), ",\"pid\":%i,\"proc\":\"%s\"", pDataJSON->dwPID, buf->szjProcName);
                 Ob_DECREF_NULL(&pObProcess);
             } else {
@@ -712,14 +703,10 @@ VOID FcJson_Callback_EntryAdd(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pDataJSON)
     // desc:
     for(i = 0; i < 2; i++) {
         szj = NULL;
-        if(pDataJSON->szj[i]) {
-            szj = (LPSTR)pDataJSON->szj[i];
-        } else if(pDataJSON->szu[i]) {
-            Util_JsonEscape((LPSTR)pDataJSON->szu[i], sizeof(buf->szj), buf->szj);
-            szj = buf->szj;
+        if(pDataJSON->usz[i]) {
+            CharUtil_UtoJ((LPSTR)pDataJSON->usz[i], -1, buf->szj, sizeof(buf->szj), &szj, NULL, CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR);
         } else if(pDataJSON->wsz[i]) {
-            Util_snwprintf_u8j(buf->szj, sizeof(buf->szj), L"%s", pDataJSON->wsz[i]);
-            szj = buf->szj;
+            CharUtil_WtoJ((LPWSTR)pDataJSON->wsz[i], -1, buf->szj, sizeof(buf->szj), &szj, NULL, CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR);
         }
         if(szj) {
             o += snprintf(buf->szln + o, sizeof(buf->szln) - o, ",\"desc%s\":\"%s\"", (i ? "2" : ""), szj);
@@ -759,7 +746,11 @@ VOID FcInitialize_ThreadProc(_In_ PVOID pvContext)
     PluginManager_FcInitialize();       // 0-10%
     ctxFc->cProgressPercent = 10;
     if(!ctxVmm->Work.fEnabled) { goto fail; }
-    VmmWork(PluginManager_FcLogJSON, FcJson_Callback_EntryAdd, hEventAsyncLogJSON); // parallel async init of json log
+    VmmWork(
+        (LPTHREAD_START_ROUTINE)PluginManager_FcLogJSON,
+        FcJson_Callback_EntryAdd,
+        hEventAsyncLogJSON
+    ); // parallel async init of json log
     FcScanPhysmem();                    // 11-60%
     ctxFc->cProgressPercent = 60;
     if(!ctxVmm->Work.fEnabled) { goto fail; }
@@ -801,7 +792,7 @@ VOID FcClose()
         if(ctxFc->db.hSql[i]) { sqlite3_close(ctxFc->db.hSql[i]); }
     }
     if(ctxFc->db.tp == FC_DATABASE_TYPE_TEMPFILE_CLOSE) {
-        DeleteFileW(ctxFc->db.wszDatabaseWinPath);
+        Util_DeleteFileU(ctxFc->db.uszDatabasePath);
     }
     Ob_DECREF_NULL(&ctxFc->FileJSON.pGen);
     Ob_DECREF_NULL(&ctxFc->FileJSON.pGenVerbose);
@@ -820,8 +811,8 @@ VOID FcClose()
 _Success_(return)
 BOOL FcInitialize_SetPath(_In_ DWORD dwDatabaseType)
 {
-    LPSTR szu8;
     DWORD i, cch;
+    CHAR uszTemp[MAX_PATH];
     WCHAR wszTemp[MAX_PATH], wszTempShort[MAX_PATH];
     SYSTEMTIME st;
     if(dwDatabaseType == FC_DATABASE_TYPE_MEMORY) {
@@ -829,17 +820,23 @@ BOOL FcInitialize_SetPath(_In_ DWORD dwDatabaseType)
         strcpy_s(ctxFc->db.szuDatabase, _countof(ctxFc->db.szuDatabase), "file:///memorydb?mode=memory");
         return TRUE;
     }
+#ifdef _WIN32
     cch = GetTempPathW(_countof(wszTempShort), wszTempShort);
     if(!cch || cch > 128) { return FALSE; }
     cch = GetLongPathNameW(wszTempShort, wszTemp, _countof(wszTemp));
     if(!cch || cch > 128) { return FALSE; }
+    if(!CharUtil_WtoU(wszTemp, -1, uszTemp, sizeof(uszTemp), NULL, NULL, CHARUTIL_FLAG_STR_BUFONLY)) { return FALSE; }
+#endif /* _WIN32 */
+#ifdef LINUX
+    strcpy_s(uszTemp, sizeof(uszTemp), "/tmp/");
+#endif /* LINUX */
     if((dwDatabaseType == FC_DATABASE_TYPE_TEMPFILE_CLOSE) || (dwDatabaseType == FC_DATABASE_TYPE_TEMPFILE_NOCLOSE)) {
         GetLocalTime(&st);
-        _snwprintf_s(
-            wszTemp + wcslen(wszTemp),
-            _countof(wszTemp) - wcslen(wszTemp),
+        _snprintf_s(
+            uszTemp + strlen(uszTemp),
+            _countof(uszTemp) - strlen(uszTemp),
             _TRUNCATE,
-            L"vmm-%i%02i%02i-%02i%02i%02i.sqlite3",
+            "vmm-%i%02i%02i-%02i%02i%02i.sqlite3",
             st.wYear,
             st.wMonth,
             st.wDay,
@@ -847,18 +844,16 @@ BOOL FcInitialize_SetPath(_In_ DWORD dwDatabaseType)
             st.wMinute,
             st.wSecond);
     } else {
-        wcscat_s(wszTemp, _countof(wszTemp), L"vmm.sqlite3");
+        strcat_s(uszTemp, _countof(wszTemp), "vmm.sqlite3");
     }
     // check length, copy into ctxFc and finish
-    if(wcslen_u8(wszTemp) > MAX_PATH - 10) { return FALSE; }
-    wcscpy_s(ctxFc->db.wszDatabaseWinPath, _countof(ctxFc->db.wszDatabaseWinPath), wszTemp);
+    if(strlen(uszTemp) > MAX_PATH - 10) { return FALSE; }
+    strncpy_s(ctxFc->db.uszDatabasePath, _countof(ctxFc->db.uszDatabasePath), uszTemp, _TRUNCATE);
     for(i = 0; i < MAX_PATH; i++) {
-        if(wszTemp[i] == '\\') { wszTemp[i] = '/'; }
+        if(uszTemp[i] == '\\') { uszTemp[i] = '/'; }
     }
-    szu8 = Util_StrDupW2U8(wszTemp);
     strcpy_s(ctxFc->db.szuDatabase, _countof(ctxFc->db.szuDatabase), "file:///");
-    strcat_s(ctxFc->db.szuDatabase, _countof(ctxFc->db.szuDatabase), szu8);
-    LocalFree(szu8);
+    strncpy_s(ctxFc->db.szuDatabase + 8, _countof(ctxFc->db.szuDatabase) - 8, uszTemp, _TRUNCATE);
     ctxFc->db.tp = dwDatabaseType;
     return TRUE;
 }

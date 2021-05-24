@@ -12,6 +12,31 @@ typedef unsigned __int64                QWORD, *PQWORD;
 
 typedef int(*PFN_VFSLIST_CALLBACK)(_In_ PWIN32_FIND_DATAW pFindData, _In_opt_ PVOID ctx);
 
+#define CHARUTIL_FLAG_NONE                      0x0000
+#define CHARUTIL_FLAG_ALLOC                     0x0001
+#define CHARUTIL_FLAG_TRUNCATE                  0x0002
+#define CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR   0x0006
+#define CHARUTIL_FLAG_STR_BUFONLY               0x0008
+#define CHARUTIL_CONVERT_MAXSIZE                0x40000000
+
+/*
+* Convert UTF-8 string into a Windows Wide-Char string.
+* Function support usz == pbBuffer - usz will then become overwritten.
+* CALLER LOCALFREE (if *pusz != pbBuffer): *pusz
+* -- usz = the string to convert.
+* -- cch = -1 for null-terminated string; or max number of chars (excl. null).
+* -- pbBuffer = optional buffer to place the result in.
+* -- cbBuffer
+* -- pusz = if set to null: function calculate length only and return TRUE.
+            result wide-string, either as (*pwsz == pbBuffer) or LocalAlloc'ed
+*           buffer that caller is responsible for free.
+* -- pcbu = byte length (including terminating null) of wide-char string.
+* -- flags = CHARUTIL_FLAG_NONE, CHARUTIL_FLAG_ALLOC or CHARUTIL_FLAG_TRUNCATE
+* -- return
+*/
+_Success_(return)
+BOOL CharUtil_UtoW(_In_opt_ LPSTR usz, _In_ DWORD cch, _Maybenull_ _Writable_bytes_(cbBuffer) PBYTE pbBuffer, _In_ DWORD cbBuffer, _Out_opt_ LPWSTR *pwsz, _Out_opt_ PDWORD pcbw, _In_ DWORD flags);
+
 /*
 * Split a path into path + filename.
 * -- wszPath
@@ -65,7 +90,7 @@ VOID VfsList_Close();
 typedef struct tdVMMDLL_FUNCTIONS {
     BOOL(*Initialize)(_In_ DWORD argc, _In_ LPSTR argv[]);
     BOOL(*InitializePlugins)();
-    BOOL(*VfsList)(_In_ LPCWSTR wcsPath, _Inout_ PVMMDLL_VFS_FILELIST pFileList);
+    BOOL(*VfsList)(_In_ LPCWSTR wcsPath, _Inout_ PVMMDLL_VFS_FILELIST2 pFileList);
     DWORD(*VfsRead)(LPCWSTR wcsFileName, _Out_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset);
     DWORD(*VfsWrite)(_In_ LPCWSTR wcsFileName, _In_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ ULONG64 cbOffset);
     BOOL(*ConfigGet)(_In_ ULONG64 fOption, _Out_ PULONG64 pqwValue);

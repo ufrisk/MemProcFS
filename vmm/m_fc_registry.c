@@ -12,6 +12,7 @@
 #include "vmm.h"
 #include "vmmwinreg.h"
 #include "pluginmanager.h"
+#include "charutil.h"
 #include "util.h"
 #include "version.h"
 
@@ -19,7 +20,7 @@ static LPSTR FC_SQL_SCHEMA_REGISTRY =
     "DROP VIEW IF EXISTS v_registry; " \
     "DROP TABLE IF EXISTS registry; " \
     "CREATE TABLE registry ( id INTEGER PRIMARY KEY AUTOINCREMENT, id_str INTEGER, hive INTEGER, cell INTEGER, cell_parent INTEGER, time INTEGER ); " \
-    "CREATE VIEW v_registry AS SELECT *, SUBSTR(sz, osz+1) AS sz_sub FROM registry, str WHERE registry.id_str = str.id; ";
+    "CREATE VIEW v_registry AS SELECT * FROM registry, str WHERE registry.id_str = str.id; ";
 
 static LPCSTR MFCREGISTRY_TYPE_NAMES[] = {
     "REG_NONE",
@@ -36,7 +37,7 @@ static LPCSTR MFCREGISTRY_TYPE_NAMES[] = {
     "REG_QWORD"
 };
 
-VOID MFcRegistry_JsonKeyCB(_Inout_ PVMMWINREG_FORENSIC_CONTEXT ctx, _In_z_ LPWSTR wszPathName, _In_ QWORD ftLastWrite)
+VOID MFcRegistry_JsonKeyCB(_Inout_ PVMMWINREG_FORENSIC_CONTEXT ctx, _In_z_ LPSTR uszPathName, _In_ QWORD ftLastWrite)
 {
     QWORD o = 0;
     CHAR szKeyLastWrite[21];
@@ -46,7 +47,7 @@ VOID MFcRegistry_JsonKeyCB(_Inout_ PVMMWINREG_FORENSIC_CONTEXT ctx, _In_z_ LPWST
         VERSION_MAJOR, VERSION_MINOR,
         ctxVmm->szSystemUniqueTag
     );
-    Util_snwprintf_u8j(ctx->szjBase + o, sizeof(ctx->szjBase) - o, L"%s", wszPathName);
+    CharUtil_UtoJ(uszPathName, -1, ctx->szjBase + o, (DWORD)(sizeof(ctx->szjBase) - o), NULL, NULL, CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR | CHARUTIL_FLAG_STR_BUFONLY);
     // 2: write key json line
     Util_FileTime2JSON(ftLastWrite, szKeyLastWrite);
     snprintf(ctx->sz, sizeof(ctx->sz),
@@ -61,7 +62,8 @@ VOID MFcRegistry_JsonValueCB(_Inout_ PVMMWINREG_FORENSIC_CONTEXT ctx)
 {
     QWORD i;
     DWORD cch;
-    Util_snwprintf_u8j(ctx->value.szjName, sizeof(ctx->value.szjName), L"%s", ctx->value.info.wszName);
+    LPSTR szj;
+    CharUtil_UtoJ(ctx->value.info.uszName, -1, ctx->value.szjName, sizeof(ctx->value.szjName), NULL, NULL, CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR | CHARUTIL_FLAG_STR_BUFONLY);
     if(ctx->value.info.dwType >= sizeof(MFCREGISTRY_TYPE_NAMES) / sizeof(LPCSTR)) { ctx->value.info.dwType = 0; }
     ctx->value.szjValue[0] = 0;
     switch(ctx->value.info.dwType) {
@@ -72,7 +74,7 @@ VOID MFcRegistry_JsonValueCB(_Inout_ PVMMWINREG_FORENSIC_CONTEXT ctx)
         case REG_RESOURCE_REQUIREMENTS_LIST:
             cch = _countof(ctx->value.sz);
             Util_FillHexAscii(ctx->value.pb, min(0x100, ctx->value.cb), 0, ctx->value.sz, &cch);
-            Util_JsonEscape(ctx->value.sz, sizeof(ctx->value.szjValue), ctx->value.szjValue);
+            CharUtil_AtoJ(ctx->value.sz, -1, ctx->value.szjValue, sizeof(ctx->value.szjValue), &szj, NULL, CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR);
             break;
         case REG_DWORD:
         case REG_DWORD_BIG_ENDIAN:
@@ -90,7 +92,7 @@ VOID MFcRegistry_JsonValueCB(_Inout_ PVMMWINREG_FORENSIC_CONTEXT ctx)
             // fall-through
         case REG_SZ:
         case REG_EXPAND_SZ:
-            Util_snwprintf_u8j(ctx->value.szjValue, sizeof(ctx->value.szjValue), L"%s", (LPWSTR)ctx->value.pb);
+            CharUtil_WtoJ((LPWSTR)ctx->value.pb, -1, (PBYTE)ctx->value.szjValue, sizeof(ctx->value.szjValue), NULL, NULL, CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR);
             break;
     }
     snprintf(ctx->sz, sizeof(ctx->sz),
@@ -107,13 +109,13 @@ VOID MFcRegistry_JsonValueCB(_Inout_ PVMMWINREG_FORENSIC_CONTEXT ctx)
 /*
 * Callback for registry key information destined for forensic database.
 */
-VOID MFcRegistry_KeyCB(_In_ HANDLE hCallback1, _In_ HANDLE hCallback2, _In_ LPWSTR wszPathName, _In_ DWORD owszName, _In_ QWORD vaHive, _In_ DWORD dwCell, _In_ DWORD dwCellParent, _In_ QWORD ftLastWrite)
+VOID MFcRegistry_KeyCB(_In_ HANDLE hCallback1, _In_ HANDLE hCallback2, _In_ LPSTR uszPathName, _In_ QWORD vaHive, _In_ DWORD dwCell, _In_ DWORD dwCellParent, _In_ QWORD ftLastWrite)
 {
     FCSQL_INSERTSTRTABLE SqlStrInsert;
     sqlite3_stmt *hStmt = (sqlite3_stmt *)hCallback1;
     sqlite3_stmt *hStmtStr = (sqlite3_stmt *)hCallback2;
     // build and insert string data into 'str' table.
-    if(!Fc_SqlInsertStr(hStmtStr, wszPathName, owszName, &SqlStrInsert)) { return; }
+    if(!Fc_SqlInsertStr(hStmtStr, uszPathName, &SqlStrInsert)) { return; }
     // insert into 'process' table.
     sqlite3_reset(hStmt);
     Fc_SqlBindMultiInt64(hStmt, 1, 5,
@@ -137,9 +139,9 @@ PVOID M_FcRegistry_FcInitialize(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
     if(SQLITE_OK != Fc_SqlExec(FC_SQL_SCHEMA_REGISTRY)) { goto fail; }
     if(!(hSql = Fc_SqlReserve())) { goto fail; }
     if(SQLITE_OK != sqlite3_prepare_v2(hSql, "INSERT INTO registry (id_str, hive, cell, cell_parent, time) VALUES (?, ?, ?, ?, ?);", -1, &hStmt, NULL)) { goto fail; }
-    if(SQLITE_OK != sqlite3_prepare_v2(hSql, "INSERT INTO str (id, osz, csz, cbu, cbj, sz) VALUES (?, ?, ?, ?, ?, ?);", -1, &hStmtStr, NULL)) { goto fail; }
+    if(SQLITE_OK != sqlite3_prepare_v2(hSql, "INSERT INTO str (id, cbu, cbj, sz) VALUES (?, ?, ?, ?);", -1, &hStmtStr, NULL)) { goto fail; }
     sqlite3_exec(hSql, "BEGIN TRANSACTION", NULL, NULL, NULL);
-    while(pObHive = VmmWinReg_HiveGetNext(pObHive)) {
+    while((pObHive = VmmWinReg_HiveGetNext(pObHive))) {
         VmmWinReg_ForensicGetAllKeysAndValues(pObHive, hStmt, hStmtStr, MFcRegistry_KeyCB, MFcRegistry_JsonKeyCB, MFcRegistry_JsonValueCB);
     }
     sqlite3_exec(hSql, "COMMIT TRANSACTION", NULL, NULL, NULL);
@@ -161,7 +163,7 @@ fail:
 VOID M_FcRegistry_FcTimeline(
     _In_opt_ PVOID ctxfc,
     _In_ HANDLE hTimeline,
-    _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPWSTR wszText),
+    _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPSTR uszText),
     _In_ VOID(*pfnEntryAddBySql)(_In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPSTR *pszEntrySql)
 ) {
     LPSTR pszSql[] = {
@@ -179,12 +181,12 @@ VOID M_FcRegistry_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if((pRI->tpSystem != VMM_SYSTEM_WINDOWS_X64) && (pRI->tpSystem != VMM_SYSTEM_WINDOWS_X86)) { return; }
     if(ctxMain->dev.fVolatile) { return; }
-    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\forensic\\hidden\\registry");  // module name
+    strcpy_s(pRI->reg_info.uszPathName, 128, "\\forensic\\hidden\\registry");   // module name
     pRI->reg_info.fRootModule = TRUE;                                           // module shows in root directory
     pRI->reg_info.fRootModuleHidden = TRUE;                                     // module hidden by default
     pRI->reg_fnfc.pfnInitialize = M_FcRegistry_FcInitialize;                    // Forensic initialize function supported
     pRI->reg_fnfc.pfnTimeline = M_FcRegistry_FcTimeline;                        // Forensic timelining supported
     memcpy(pRI->reg_info.sTimelineNameShort, "REG", 4);
-    strncpy_s(pRI->reg_info.szTimelineFileUTF8, 32, "timeline_registry.txt", _TRUNCATE);
+    strncpy_s(pRI->reg_info.uszTimelineFile, 32, "timeline_registry.txt", _TRUNCATE);
     pRI->pfnPluginManager_Register(pRI);
 }

@@ -28,19 +28,19 @@ LPCSTR szMSYSNET_README =
 
 #define MSYSNET_LINELENGTH                  128ULL
 #define MSYSNET_LINELENGTH_VERBOSE          278ULL
-#define MSYSNET_LINEHEADER                  L"   #    PID Proto  State        Src                           Dst                          Process"
-#define MSYSNET_LINEHEADER_VERBOSE          MSYSNET_LINEHEADER L"              Time                     Object Address    Process Path"
+#define MSYSNET_LINEHEADER                  "   #    PID Proto  State        Src                           Dst                          Process"
+#define MSYSNET_LINEHEADER_VERBOSE          MSYSNET_LINEHEADER "              Time                     Object Address    Process Path"
 
 
 
 VOID MSysNet_ReadLine_Callback(_Inout_opt_ PVOID ctx, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVMM_MAP_NETENTRY pe, _Out_writes_(cbLineLength + 1) LPSTR szu8)
 {
     PVMM_PROCESS pObProcess = VmmProcessGet(pe->dwPID);
-    Util_snwprintf_u8ln(szu8, cbLineLength,
-        L"%04x%7i %s %S",
+    Util_usnprintf_ln(szu8, cbLineLength,
+        "%04x%7i %s %s",
         ie,
         pe->dwPID,
-        pe->wszText,
+        pe->uszText,
         pObProcess ? pObProcess->pObPersistent->uszNameLong : ""
     );
     Ob_DECREF(pObProcess);
@@ -51,11 +51,11 @@ VOID MSysNet_ReadLineVerbose_Callback(_Inout_opt_ PVOID ctx, _In_ DWORD cbLineLe
     CHAR szTime[24];
     PVMM_PROCESS pObProcess = VmmProcessGet(pe->dwPID);
     Util_FileTime2String(pe->ftTime, szTime);
-    Util_snwprintf_u8ln(szu8, cbLineLength,
-        L"%04x%7i %s %-20S %S  %016llx  %S",
+    Util_usnprintf_ln(szu8, cbLineLength,
+        "%04x%7i %s %-20s %s  %016llx  %s",
         ie,
         pe->dwPID,
-        pe->wszText,
+        pe->uszText,
         pObProcess ? pObProcess->pObPersistent->uszNameLong : "",
         szTime,
         pe->vaObj,
@@ -68,20 +68,20 @@ NTSTATUS MSysNet_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbR
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PVMMOB_MAP_NET pObNetMap;
-    if(!wcscmp(ctx->wszPath, L"readme.txt")) {
+    if(!_stricmp(ctx->uszPath, "readme.txt")) {
         return Util_VfsReadFile_FromPBYTE((PBYTE)szMSYSNET_README, strlen(szMSYSNET_README), pb, cb, pcbRead, cbOffset);
     }
     if(VmmMap_GetNet(&pObNetMap)) {
-        if(!wcscmp(ctx->wszPath, L"netstat.txt")) {
+        if(!_stricmp(ctx->uszPath, "netstat.txt")) {
             nt = Util_VfsLineFixed_Read(
-                MSysNet_ReadLine_Callback, NULL, MSYSNET_LINELENGTH, MSYSNET_LINEHEADER,
+                (UTIL_VFSLINEFIXED_PFN_CB)MSysNet_ReadLine_Callback, NULL, MSYSNET_LINELENGTH, MSYSNET_LINEHEADER,
                 pObNetMap->pMap, pObNetMap->cMap, sizeof(VMM_MAP_NETENTRY),
                 pb, cb, pcbRead, cbOffset
             );
         }
-        if(!wcscmp(ctx->wszPath, L"netstat-v.txt")) {
+        if(!_stricmp(ctx->uszPath, "netstat-v.txt")) {
             nt = Util_VfsLineFixed_Read(
-                MSysNet_ReadLineVerbose_Callback, NULL, MSYSNET_LINELENGTH_VERBOSE, MSYSNET_LINEHEADER_VERBOSE,
+                (UTIL_VFSLINEFIXED_PFN_CB)MSysNet_ReadLineVerbose_Callback, NULL, MSYSNET_LINELENGTH_VERBOSE, MSYSNET_LINEHEADER_VERBOSE,
                 pObNetMap->pMap, pObNetMap->cMap, sizeof(VMM_MAP_NETENTRY),
                 pb, cb, pcbRead, cbOffset
             );
@@ -94,11 +94,11 @@ NTSTATUS MSysNet_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbR
 BOOL MSysNet_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 {
     PVMMOB_MAP_NET pObNetMap;
-    if(ctx->wszPath[0]) { return FALSE; }
-    VMMDLL_VfsList_AddFile(pFileList, L"readme.txt", strlen(szMSYSNET_README), NULL);
+    if(ctx->uszPath[0]) { return FALSE; }
+    VMMDLL_VfsList_AddFile(pFileList, "readme.txt", strlen(szMSYSNET_README), NULL);
     if(VmmMap_GetNet(&pObNetMap)) {
-        VMMDLL_VfsList_AddFile(pFileList, L"netstat.txt", UTIL_VFSLINEFIXED_LINECOUNT(pObNetMap->cMap) * MSYSNET_LINELENGTH, NULL);
-        VMMDLL_VfsList_AddFile(pFileList, L"netstat-v.txt", UTIL_VFSLINEFIXED_LINECOUNT(pObNetMap->cMap) * MSYSNET_LINELENGTH_VERBOSE, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "netstat.txt", UTIL_VFSLINEFIXED_LINECOUNT(pObNetMap->cMap) * MSYSNET_LINELENGTH, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "netstat-v.txt", UTIL_VFSLINEFIXED_LINECOUNT(pObNetMap->cMap) * MSYSNET_LINELENGTH_VERBOSE, NULL);
         Ob_DECREF(pObNetMap);
     }
     return TRUE;
@@ -107,7 +107,7 @@ BOOL MSysNet_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 VOID MSysNet_Timeline(
     _In_opt_ PVOID ctxfc,
     _In_ HANDLE hTimeline,
-    _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPWSTR wszText),
+    _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPSTR uszText),
     _In_ VOID(*pfnEntryAddBySql)(_In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPSTR *pszEntrySql)
 ) {
     DWORD i;
@@ -116,8 +116,8 @@ VOID MSysNet_Timeline(
     if(VmmMap_GetNet(&pObNetMap)) {
         for(i = 0; i < pObNetMap->cMap; i++) {
             pe = pObNetMap->pMap + i;
-            if(pe->ftTime && pe->wszText[0]) {
-                pfnAddEntry(hTimeline, pe->ftTime, FC_TIMELINE_ACTION_CREATE, pe->dwPID, 0, pe->vaObj, pe->wszText);
+            if(pe->ftTime && pe->uszText[0]) {
+                pfnAddEntry(hTimeline, pe->ftTime, FC_TIMELINE_ACTION_CREATE, pe->dwPID, 0, pe->vaObj, pe->uszText);
             }
         }
         Ob_DECREF(pObNetMap);
@@ -150,8 +150,8 @@ VOID MSysNet_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(
             pd->i = i;
             pd->dwPID = pe->dwPID;
             pd->vaObj = pe->vaObj;
-            pd->wsz[0] = pe->wszText;
-            pd->szu[1] = szu;
+            pd->usz[0] = pe->uszText;
+            pd->usz[1] = szu;
             pfnLogJSON(pd);
         }
     }
@@ -163,13 +163,13 @@ VOID M_SysNet_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if((pRI->tpSystem != VMM_SYSTEM_WINDOWS_X64) && (pRI->tpSystem != VMM_SYSTEM_WINDOWS_X86)) { return; }
-    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\sys\\net");    // module name
+    strcpy_s(pRI->reg_info.uszPathName, 128, "\\sys\\net");     // module name
     pRI->reg_info.fRootModule = TRUE;                           // module shows in root directory
     pRI->reg_fn.pfnList = MSysNet_List;                         // List function supported
     pRI->reg_fn.pfnRead = MSysNet_Read;                         // Read function supported
     pRI->reg_fnfc.pfnTimeline = MSysNet_Timeline;               // Timeline supported
     pRI->reg_fnfc.pfnLogJSON = MSysNet_FcLogJSON;               // JSON log function supported
     memcpy(pRI->reg_info.sTimelineNameShort, "Net", 4);
-    strncpy_s(pRI->reg_info.szTimelineFileUTF8, 32, "timeline_net.txt", _TRUNCATE);
+    strncpy_s(pRI->reg_info.uszTimelineFile, 32, "timeline_net.txt", _TRUNCATE);
     pRI->pfnPluginManager_Register(pRI);
 }

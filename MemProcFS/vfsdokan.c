@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <vmmdll.h>
 #include "vfs.h"
+#include "version.h"
 #pragma warning( push )  
 #pragma warning( disable : 4005 )   
 #include <dokan.h>
@@ -199,10 +200,10 @@ VOID VfsDokan_InitializeAndMount_DisplayInfo(LPWSTR wszMountPoint, _In_ PVMMDLL_
         "   MemProcFS is free open source software. If you find it useful please \n" \
         "   become a sponsor at: https://github.com/sponsors/ufrisk Thank You :) \n" \
         "   -------------------------------------------------------------------- \n" \
-        " - Version:          %i.%i.%i                                           \n" \
-        " - Mount Point:      %S                                                 \n" \
-        " - Tag:              %i_%x                                              \n" ,
-        (DWORD)qwVersionVmmMajor, (DWORD)qwVersionVmmMinor, (DWORD)qwVersionVmmRevision,
+        " - Version:          %i.%i.%i (%s)\n" \
+        " - Mount Point:      %S           \n" \
+        " - Tag:              %i_%x        \n" ,
+        (DWORD)qwVersionVmmMajor, (DWORD)qwVersionVmmMinor, (DWORD)qwVersionVmmRevision, VER_OSARCH,
         wszMountPoint, (DWORD)qwVersionWinBuild, (DWORD)qwUniqueSystemId);
     if(qwVersionWinMajor && (iMemoryModel < (sizeof(VMMDLL_MEMORYMODEL_TOSTRING) / sizeof(LPSTR)))) {
         printf(" - Operating System: Windows %i.%i.%i (%s)\n",

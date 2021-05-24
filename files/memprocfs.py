@@ -10,18 +10,24 @@
 # (c) Ulf Frisk, 2021
 # Author: Ulf Frisk, pcileech@frizk.net
 #
-# Header Version: 3.10
+# Header Version: 4.0
 #
 
 try:
     import leechcorepyc
 except: pass
+
 try:
     from .vmmpyc import Vmm
-    from .vmmpyc import VmmPycPlugin
 except:
     from vmmpyc import Vmm
-    from vmmpyc import VmmPycPlugin
+
+try:
+    try:
+        from .vmmpyc import VmmPycPlugin
+    except:
+        from vmmpyc import VmmPycPlugin
+except: pass
 
 
 

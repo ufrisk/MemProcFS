@@ -75,12 +75,116 @@ QWORD Util_HashPathW(_In_ LPWSTR wszPath)
     return qwHashTotal;
 }
 
+/*
+* Convert UTF-8 string into a Windows Wide-Char string.
+* Function support usz == pbBuffer - usz will then become overwritten.
+* CALLER LOCALFREE (if *pusz != pbBuffer): *pusz
+* -- usz = the string to convert.
+* -- cch = -1 for null-terminated string; or max number of chars (excl. null).
+* -- pbBuffer = optional buffer to place the result in.
+* -- cbBuffer
+* -- pusz = if set to null: function calculate length only and return TRUE.
+            result wide-string, either as (*pwsz == pbBuffer) or LocalAlloc'ed
+*           buffer that caller is responsible for free.
+* -- pcbu = byte length (including terminating null) of wide-char string.
+* -- flags = CHARUTIL_FLAG_NONE, CHARUTIL_FLAG_ALLOC or CHARUTIL_FLAG_TRUNCATE
+* -- return
+*/
+_Success_(return)
+BOOL CharUtil_UtoW(_In_opt_ LPSTR usz, _In_ DWORD cch, _Maybenull_ _Writable_bytes_(cbBuffer) PBYTE pbBuffer, _In_ DWORD cbBuffer, _Out_opt_ LPWSTR * pwsz, _Out_opt_ PDWORD pcbw, _In_ DWORD flags)
+{
+    UCHAR c;
+    LPWSTR wsz;
+    DWORD i, j, n, cbu = 0, cbw = 0, ch;
+    BOOL fTruncate = flags & CHARUTIL_FLAG_TRUNCATE;
+    if(pcbw) { *pcbw = 0; }
+    if(pwsz) { *pwsz = NULL; }
+    if(!usz) { usz = ""; }
+    if(cch > CHARUTIL_CONVERT_MAXSIZE) { cch = CHARUTIL_CONVERT_MAXSIZE; }
+    // 1: utf-8 byte-length:
+    cbBuffer = cbBuffer & ~1;       // multiple of 2-byte sizeof(WCHAR)
+    if(fTruncate && (!cbBuffer || (flags & CHARUTIL_FLAG_ALLOC))) { goto fail; }
+    while((c = usz[cbu]) && (cbu < cch)) {
+        if(c & 0x80) {
+            // utf-8 char:
+            n = 0;
+            if((c & 0xe0) == 0xc0) { n = 2; }
+            if((c & 0xf0) == 0xe0) { n = 3; }
+            if((c & 0xf8) == 0xf0) { n = 4; }
+            if(!n || (cbu + n > cch)) { break; }
+            if(fTruncate && (cbw + ((n == 4) ? 4 : 2) >= cbBuffer)) { break; }
+            if((n > 1) && ((usz[cbu + 1] & 0xc0) != 0x80)) { goto fail; }   // invalid char-encoding
+            if((n > 2) && ((usz[cbu + 2] & 0xc0) != 0x80)) { goto fail; }   // invalid char-encoding
+            if((n > 3) && ((usz[cbu + 3] & 0xc0) != 0x80)) { goto fail; }   // invalid char-encoding
+            cbw += (n == 4) ? 4 : 2;
+            cbu += n;
+        } else {
+            if(fTruncate && (cbw + 2 >= cbBuffer)) { break; }
+            cbw += 2;
+            cbu += 1;
+        }
+    }
+    cbu += 1;
+    cbw += 2;
+    if(pcbw) { *pcbw = cbw; }
+    // 2: return on length-request or alloc-fail
+    if(!pwsz) {
+        if(!(flags & CHARUTIL_FLAG_STR_BUFONLY)) { return TRUE; }   // success: length request
+        if(flags & CHARUTIL_FLAG_ALLOC) { return FALSE; }
+    }
+    if(!(flags & CHARUTIL_FLAG_ALLOC) && (!pbBuffer || (cbBuffer < cbw))) { goto fail; } // fail: insufficient buffer space
+    wsz = (pbBuffer && (cbBuffer >= cbw)) ? pbBuffer : LocalAlloc(0, cbw);
+    if(!wsz) { goto fail; }                                                 // fail: failed buffer space allocation
+    // 3: Populate with wchar string. NB! algorithm works only on correctly
+    //    formed UTF-8 - which has been verified in the count-step.
+    i = cbu - 2; j = (cbw >> 1) - 1;
+    wsz[j--] = 0;
+    while(i < 0x7fffffff) {
+        if(((c = usz[i--]) & 0xc0) == 0x80) {
+            // 2-3-4 byte utf-8
+            ch = c & 0x3f;
+            if(((c = usz[i--]) & 0xc0) == 0x80) {
+                // 3-4 byte utf-8
+                ch += (c & 0x3f) << 6;
+                if(((c = usz[i--]) & 0xc0) == 0x80) {
+                    ch += (c & 0x3f) << 12;     // 4-byte utf-8
+                    c = usz[i--];
+                    ch += (c & 0x07) << 18;
+                } else {
+                    ch += (c & 0x0f) << 12;     // 3-byte utf-8
+                }
+            } else {
+                ch += (c & 0x1f) << 6;          // 2-byte utf-8
+            }
+            if(ch >= 0x10000) {
+                // surrogate pair:
+                ch -= 0x10000;
+                wsz[j--] = (ch & 0x3ff) + 0xdc00;
+                wsz[j--] = (USHORT)((ch >> 10) + 0xd800);
+            } else {
+                wsz[j--] = (USHORT)ch;
+            }
+        } else {
+            wsz[j--] = c;
+        }
+    }
+    if(pwsz) { *pwsz = wsz; }
+    return TRUE;
+fail:
+    if(!(flags ^ CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR) && pbBuffer && (cbBuffer > 1)) {
+        if(pwsz) { *pwsz = (LPWSTR)pbBuffer; }
+        if(pcbw) { *pcbw = 2; }
+        pbBuffer[0] = 0;
+    }
+    return FALSE;
+}
+
 //-----------------------------------------------------------------------------
 // VFS LIST FUNCTIONALITY BELOW:
 //-----------------------------------------------------------------------------
 
 typedef struct tdVFSLIST_CONTEXT {
-    BOOL(*pfnVfsList)(_In_ LPCWSTR wcsPath, _Inout_ PVMMDLL_VFS_FILELIST pFileList);
+    BOOL(*pfnVfsList)(_In_ LPCWSTR wcsPath, _Inout_ PVMMDLL_VFS_FILELIST2 pFileList);
     QWORD qwCacheValidMs;
     FILETIME ftDefaultTime;
     POB_CACHEMAP pcm;
@@ -120,7 +224,7 @@ VOID VfsList_CallbackCleanup_ObDirectory(PVFSLISTOB_DIRECTORY pObDir)
 
 #define VFSLIST_ASCII      "________________________________ !_#$%&'()_+,-._0123456789_;_=__@ABCDEFGHIJKLMNOPQRSTUVWXYZ[_]^_`abcdefghijklmnopqrstuvwxyz{_}~ "
 
-VOID VfsList_AddDirectoryFileInternal(_Inout_ PVFSLIST_DIRECTORY pFileList, _In_ DWORD dwFileAttributes, _In_ FILETIME ftCreationTime, _In_ FILETIME ftLastAccessTime, _In_ FILETIME ftLastWriteTime, _In_ DWORD nFileSizeHigh, _In_ DWORD nFileSizeLow, _In_ LPWSTR wszName)
+VOID VfsList_AddDirectoryFileInternal(_Inout_ PVFSLIST_DIRECTORY pFileList, _In_ DWORD dwFileAttributes, _In_ FILETIME ftCreationTime, _In_ FILETIME ftLastAccessTime, _In_ FILETIME ftLastWriteTime, _In_ DWORD nFileSizeHigh, _In_ DWORD nFileSizeLow, _In_ LPSTR uszName)
 {
     WCHAR c;
     DWORD i = 0;
@@ -145,13 +249,14 @@ VOID VfsList_AddDirectoryFileInternal(_Inout_ PVFSLIST_DIRECTORY pFileList, _In_
     pFindData->ftLastWriteTime = ftLastWriteTime;
     pFindData->nFileSizeHigh = nFileSizeHigh;
     pFindData->nFileSizeLow = nFileSizeLow;
-    while(i < MAX_PATH && (c = wszName[i])) {
+    CharUtil_UtoW(uszName, -1, (PBYTE)pFindData->cFileName, sizeof(pFindData->cFileName), NULL, NULL, CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR | CHARUTIL_FLAG_STR_BUFONLY);
+    while(i < MAX_PATH && (c = pFindData->cFileName[i])) {
         pFindData->cFileName[i++] = (c < 128) ? VFSLIST_ASCII[c] : c;
     }
     pFindData->cFileName[min(i, MAX_PATH - 1)] = 0;
 }
 
-VOID VfsList_AddFile(_Inout_ HANDLE hFileList, _In_ LPWSTR wszName, _In_ QWORD cb, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
+VOID VfsList_AddFile(_Inout_ HANDLE hFileList, _In_ LPSTR uszName, _In_ QWORD cb, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
 {
     PVFSLIST_DIRECTORY pFileList2 = (PVFSLIST_DIRECTORY)hFileList;
     BOOL fExInfo = pExInfo && (pExInfo->dwVersion == VMMDLL_VFS_FILELIST_EXINFO_VERSION);
@@ -164,12 +269,12 @@ VOID VfsList_AddFile(_Inout_ HANDLE hFileList, _In_ LPWSTR wszName, _In_ QWORD c
             (fExInfo && pExInfo->qwLastWriteTime) ? pExInfo->ftLastWriteTime : g_ctxVfsList.ftDefaultTime,
             (DWORD)(cb >> 32),
             (DWORD)cb,
-            wszName
+            uszName
         );
     }
 }
 
-VOID VfsList_AddDirectory(_Inout_ HANDLE hFileList, _In_ LPWSTR wszName, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
+VOID VfsList_AddDirectory(_Inout_ HANDLE hFileList, _In_ LPSTR uszName, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
 {
     PVFSLIST_DIRECTORY pFileList2 = (PVFSLIST_DIRECTORY)hFileList;
     BOOL fExInfo = pExInfo && (pExInfo->dwVersion == VMMDLL_VFS_FILELIST_EXINFO_VERSION);
@@ -182,7 +287,7 @@ VOID VfsList_AddDirectory(_Inout_ HANDLE hFileList, _In_ LPWSTR wszName, _In_opt
             (fExInfo && pExInfo->qwLastWriteTime) ? pExInfo->ftLastWriteTime : g_ctxVfsList.ftDefaultTime,
             0,
             0,
-            wszName
+            uszName
         );
     }
 }
@@ -197,7 +302,7 @@ PVFSLISTOB_DIRECTORY VfsList_GetDirectory(_In_ LPWSTR wszPath)
 {
     QWORD qwHash;
     PVFSLISTOB_DIRECTORY pObDir;
-    VMMDLL_VFS_FILELIST VfsFileList;
+    VMMDLL_VFS_FILELIST2 VfsFileList;
     // 1: try fetch from cache:
     qwHash = Util_HashPathW(wszPath);
     if((pObDir = ObCacheMap_GetByKey(g_ctxVfsList.pcm, qwHash))) {
@@ -312,7 +417,7 @@ BOOL VfsList_Initialize(_In_ HMODULE hModuleVmm, _In_ DWORD dwCacheValidMs, _In_
 {
     SYSTEMTIME SystemTimeNow;
     if(!(g_ctxVfsList.pcm = ObCacheMap_New(cCacheMaxEntries, VfsList_ValidEntry, OB_CACHEMAP_FLAGS_OBJECT_OB))) { return FALSE; }
-    g_ctxVfsList.pfnVfsList = (BOOL(*)(LPCWSTR, PVMMDLL_VFS_FILELIST))GetProcAddress(hModuleVmm, "VMMDLL_VfsList");
+    g_ctxVfsList.pfnVfsList = (BOOL(*)(LPCWSTR, PVMMDLL_VFS_FILELIST2))GetProcAddress(hModuleVmm, "VMMDLL_VfsList");
     g_ctxVfsList.qwCacheValidMs = dwCacheValidMs;
     GetSystemTime(&SystemTimeNow);
     SystemTimeToFileTime(&SystemTimeNow, &g_ctxVfsList.ftDefaultTime);

@@ -119,7 +119,7 @@ VOID PageStatUpdate(_In_opt_ PPAGE_STATISTICS pPageStat, _In_ QWORD qwAddr, _In_
 #define STATISTICS_ID_VMMDLL_WinRegHive_Write                   0x31
 #define STATISTICS_ID_VMMDLL_WinReg_EnumKeyExW                  0x32
 #define STATISTICS_ID_VMMDLL_WinReg_EnumValueW                  0x33
-#define STATISTICS_ID_VMMDLL_WinReg_QueryValueExW               0x34
+#define STATISTICS_ID_VMMDLL_WinReg_QueryValueEx               0x34
 #define STATISTICS_ID_VMMDLL_UtilFillHexAscii                   0x35
 #define STATISTICS_ID_VMMDLL_PdbLoad                            0x36
 #define STATISTICS_ID_VMMDLL_PdbSymbolName                      0x37

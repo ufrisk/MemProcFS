@@ -237,6 +237,11 @@ WORD PE_SectionGetNumberOfEx(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModule
     return cSections;
 }
 
+WORD PE_SectionGetNumberOf(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase)
+{
+    return PE_SectionGetNumberOfEx(pProcess, vaModuleBase, NULL);
+}
+
 _Success_(return)
 BOOL PE_SectionGetAll(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ DWORD cSections, _Out_writes_(cSections) PIMAGE_SECTION_HEADER pSections)
 {
@@ -371,6 +376,12 @@ fail:
         return TRUE;
     }
     return FALSE;
+}
+
+_Success_(return)
+BOOL PE_GetModuleName(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _Out_writes_(cszModuleName) PCHAR szModuleName, _In_ DWORD cszModuleName)
+{
+    return PE_GetModuleNameEx(pProcess, vaModuleBase, FALSE, NULL, szModuleName, cszModuleName, NULL);
 }
 
 DWORD PE_DirectoryGetOffset(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt, _In_ DWORD dwDirectory)

@@ -12,12 +12,12 @@
 
 #define MSYSMEM_PFNMAP_LINELENGTH           56ULL
 #define MSYSMEM_PHYSMEMMAP_LINELENGTH       33ULL
-#define MSYSMEM_PHYSMEMMAP_LINEHEADER       L"   #         Base            Top"
+#define MSYSMEM_PHYSMEMMAP_LINEHEADER       "   #         Base            Top"
 
-VOID MSysMem_PhysMemReadLine_Callback(_Inout_opt_ PVOID ctx, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVMM_MAP_PHYSMEMENTRY pe, _Out_writes_(cbLineLength + 1) LPSTR szu8)
+VOID MSysMem_PhysMemReadLine_Callback(_Inout_opt_ PVOID ctx, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVMM_MAP_PHYSMEMENTRY pe, _Out_writes_(cbLineLength + 1) LPSTR usz)
 {
-    Util_snwprintf_u8ln(szu8, cbLineLength,
-        L"%04x %12llx - %12llx",
+    Util_usnprintf_ln(usz, cbLineLength,
+        "%04x %12llx - %12llx",
         ie,
         pe->pa,
         pe->pa + pe->cb - 1
@@ -51,10 +51,10 @@ NTSTATUS MSysMem_Read_PfnMap(_Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD 
         tp = pe->PageLocation;
         fModified = pe->Modified && ((tp == MmPfnTypeStandby) || (tp == MmPfnTypeModified) || (tp == MmPfnTypeModifiedNoWrite) || (tp == MmPfnTypeActive) || (tp == MmPfnTypeTransition));
         fPrototype = pe->PrototypePte && ((tp == MmPfnTypeStandby) || (tp == MmPfnTypeModified) || (tp == MmPfnTypeModifiedNoWrite) || (tp == MmPfnTypeActive) || (tp == MmPfnTypeTransition));
-        o += Util_snwprintf_u8ln(
+        o += Util_usnprintf_ln(
             sz + o,
             cbLINELENGTH,
-            L"%8x%7i %-7S %-10S %i%c%c %16llx\n",
+            "%8x%7i %-7s %-10s %i%c%c %16llx\n",
             pe->dwPfn,
             pe->AddressInfo.dwPid,
             MMPFN_TYPE_TEXT[pe->PageLocation],
@@ -75,18 +75,18 @@ NTSTATUS MSysMem_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbR
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PVMMOB_MAP_PHYSMEM pObPhysMemMap = NULL;
-    if(!_wcsicmp(ctx->wszPath, L"physmemmap.txt") && VmmMap_GetPhysMem(&pObPhysMemMap)) {
+    if(!_stricmp(ctx->uszPath, "physmemmap.txt") && VmmMap_GetPhysMem(&pObPhysMemMap)) {
         nt = Util_VfsLineFixed_Read(
-            MSysMem_PhysMemReadLine_Callback, NULL, MSYSMEM_PHYSMEMMAP_LINELENGTH, MSYSMEM_PHYSMEMMAP_LINEHEADER,
+            (UTIL_VFSLINEFIXED_PFN_CB)MSysMem_PhysMemReadLine_Callback, NULL, MSYSMEM_PHYSMEMMAP_LINELENGTH, MSYSMEM_PHYSMEMMAP_LINEHEADER,
             pObPhysMemMap->pMap, pObPhysMemMap->cMap, sizeof(VMM_MAP_PHYSMEMENTRY),
             pb, cb, pcbRead, cbOffset
         );
         Ob_DECREF_NULL(&pObPhysMemMap);
     }
-    if(!_wcsicmp(ctx->wszPath, L"pfndb.txt")) {
+    if(!_stricmp(ctx->uszPath, "pfndb.txt")) {
         nt = MSysMem_Read_PfnMap(pb, cb, pcbRead, cbOffset);
     }
-    if(!_wcsicmp(ctx->wszPath, L"pfnaddr.txt")) {
+    if(!_stricmp(ctx->uszPath, "pfnaddr.txt")) {
         nt = ctxVmm->f32 ?
             Util_VfsReadFile_FromDWORD((DWORD)ctxVmm->kernel.opt.vaPfnDatabase, pb, cb, pcbRead, cbOffset, FALSE) :
             Util_VfsReadFile_FromQWORD((QWORD)ctxVmm->kernel.opt.vaPfnDatabase, pb, cb, pcbRead, cbOffset, FALSE);
@@ -101,13 +101,13 @@ BOOL MSysMem_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
     // PFN database:
     if(ctxVmm->kernel.opt.vaPfnDatabase) {
         cPfn = (DWORD)(ctxMain->dev.paMax >> 12);
-        VMMDLL_VfsList_AddFile(pFileList, L"pfndb.txt", cPfn * MSYSMEM_PFNMAP_LINELENGTH, NULL);
-        VMMDLL_VfsList_AddFile(pFileList, L"pfnaddr.txt", ctxVmm->f32 ? 8 : 16, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "pfndb.txt", cPfn * MSYSMEM_PFNMAP_LINELENGTH, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "pfnaddr.txt", ctxVmm->f32 ? 8 : 16, NULL);
     }
     // Physical Memory Map:
     VmmMap_GetPhysMem(&pObPhysMemMap);
     cPhys = pObPhysMemMap ? pObPhysMemMap->cMap : 0;
-    VMMDLL_VfsList_AddFile(pFileList, L"physmemmap.txt", UTIL_VFSLINEFIXED_LINECOUNT(cPhys) * MSYSMEM_PHYSMEMMAP_LINELENGTH, NULL);
+    VMMDLL_VfsList_AddFile(pFileList, "physmemmap.txt", UTIL_VFSLINEFIXED_LINECOUNT(cPhys) * MSYSMEM_PHYSMEMMAP_LINELENGTH, NULL);
     Ob_DECREF(pObPhysMemMap);
     return TRUE;
 }
@@ -139,7 +139,7 @@ VOID M_SysMem_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if((pRI->tpSystem != VMM_SYSTEM_WINDOWS_X64) && (pRI->tpSystem != VMM_SYSTEM_WINDOWS_X86)) { return; }
-    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\sys\\memory");         // module name
+    strcpy_s(pRI->reg_info.uszPathName, 128, "\\sys\\memory");          // module name
     pRI->reg_info.fRootModule = TRUE;                                   // module shows in root directory
     pRI->reg_fn.pfnList = MSysMem_List;                                 // List function supported
     pRI->reg_fn.pfnRead = MSysMem_Read;                                 // Read function supported

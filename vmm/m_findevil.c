@@ -4,13 +4,14 @@
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "pluginmanager.h"
+#include "charutil.h"
 #include "util.h"
 #include "mm.h"
 #include "vmm.h"
 #include "vmmevil.h"
 
 #define MFINDEVIL_LINELENGTH_X64   214ULL
-#define MFINDEVIL_LINEHEADER       L"   #    PID Process         Type        Address          Description"
+#define MFINDEVIL_LINEHEADER       "   #    PID Process         Type        Address          Description"
 
 LPCSTR szM_FINDEVIL_README =
 "Find Evil tries to identify and discover signs of malware infection.         \n" \
@@ -43,25 +44,25 @@ LPCSTR szM_FINDEVIL_README =
 "---                                                                          \n" \
 "Find Evil is a work in progress - post github issues for feature requests.   \n";
 
-VOID MFindEvil_Read_FindEvil_LnTpModule(_In_opt_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_EVILENTRY peEvil, _In_ WORD iLine, _Inout_updates_(MFINDEVIL_LINELENGTH_X64) LPWSTR wsz)
+VOID MFindEvil_Read_FindEvil_LnTpModule(_In_opt_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_EVILENTRY peEvil, _In_ WORD iLine, _Inout_updates_(MFINDEVIL_LINELENGTH_X64) LPSTR usz)
 {
     DWORD i;
     PVMMOB_MAP_MODULE pObModuleMap = NULL;
-    LPWSTR wszModuleName = NULL;
+    LPSTR uszModuleName = NULL;
     if(!pProcess) { return; }
     if(VmmMap_GetModule(pProcess, &pObModuleMap)) {
         for(i = 0; i < pObModuleMap->cMap; i++) {
             if(pObModuleMap->pMap[i].vaBase == peEvil->va) {
-                wszModuleName = pObModuleMap->pMap[i].wszFullName;
+                uszModuleName = pObModuleMap->pMap[i].uszFullName;
                 break;
             }
         }
     }
-    wcsncat_s(wsz, MFINDEVIL_LINELENGTH_X64, wszModuleName ? wszModuleName : L"", _TRUNCATE);
+    strncat_s(usz, MFINDEVIL_LINELENGTH_X64, uszModuleName ? uszModuleName : "", _TRUNCATE);
     Ob_DECREF(pObModuleMap);
 }
 
-VOID MFindEvil_Read_FindEvil_LnTpVadEx(_In_opt_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_EVILENTRY peEvil, _In_ WORD iLine, _Inout_updates_(MFINDEVIL_LINELENGTH_X64) LPWSTR wsz)
+VOID MFindEvil_Read_FindEvil_LnTpVadEx(_In_opt_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_EVILENTRY peEvil, _In_ WORD iLine, _Inout_updates_(MFINDEVIL_LINELENGTH_X64) LPSTR usz)
 {
     QWORD qwHwPte;
     PVMM_MAP_VADENTRY peVad;
@@ -81,11 +82,11 @@ VOID MFindEvil_Read_FindEvil_LnTpVadEx(_In_opt_ PVMM_PROCESS pProcess, _In_ PVMM
     if(peEvil->tp == VMM_EVIL_TP_VAD_PATCHED_PE) {
         _snprintf_s(szPatchOffset, _countof(szPatchOffset), _TRUNCATE, "%03x:%03x", peEvil->VAD_PATCHED_PE.wPatchOffset, peEvil->VAD_PATCHED_PE.wPatchByteCount);
     }
-    _snwprintf_s(
-        wsz,
+    _snprintf_s(
+        usz,
         MFINDEVIL_LINELENGTH_X64,
         _TRUNCATE,
-        L"%S %012llx %016llx %c %c%c%c %016llx %012llx %016llx %c %S %S %s",
+        "%s %012llx %016llx %c %c%c%c %016llx %012llx %016llx %c %s %s %s",
         szPatchOffset,
         pex->pa,
         pex->pte,
@@ -99,45 +100,53 @@ VOID MFindEvil_Read_FindEvil_LnTpVadEx(_In_opt_ PVMM_PROCESS pProcess, _In_ PVMM
         MmVadEx_StrType(pex->proto.tp),
         MmVad_StrType(peVad),
         szProtection,
-        peVad->wszText + peVad->cwszText - min(50, peVad->cwszText)
+        peVad->uszText + peVad->cbuText - min(51, peVad->cbuText)
     );
 fail:
     Ob_DECREF(pObVadMap);
     Ob_DECREF(pObVadEx);
 }
 
-VOID MFindEvil_ReadLineCB(_Inout_opt_ PVOID ctx, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVMM_MAP_EVILENTRY pe, _Out_writes_(cbLineLength + 1) LPSTR szu8)
+VOID MFindEvil_ReadLineCB(_Inout_opt_ PVOID ctx, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVMM_MAP_EVILENTRY pe, _Out_writes_(cbLineLength + 1) LPSTR usz)
 {
     VMM_EVIL_TP tp;
-    WCHAR wsz[MFINDEVIL_LINELENGTH_X64] = { 0 };
+    CHAR uszBuffer[MFINDEVIL_LINELENGTH_X64] = { 0 };
     PVMM_PROCESS pObProcess = VmmProcessGet(pe->dwPID);
     switch(pe->tp) {
+        case VMM_EVIL_TP_PE_NA:
+            strncpy_s(uszBuffer, sizeof(uszBuffer), "__internal_error__", _TRUNCATE);
+            break;
         case VMM_EVIL_TP_PE_INJECTED:
         case VMM_EVIL_TP_PE_NOTLINKED:
-            MFindEvil_Read_FindEvil_LnTpModule(pObProcess, pe, (WORD)ie, wsz);
+            MFindEvil_Read_FindEvil_LnTpModule(pObProcess, pe, (WORD)ie, uszBuffer);
             break;
         case VMM_EVIL_TP_VAD_PATCHED_PE:
         case VMM_EVIL_TP_VAD_PRIVATE_RX:
         case VMM_EVIL_TP_VAD_PRIVATE_RWX:
         case VMM_EVIL_TP_VAD_NOIMAGE_RX:
         case VMM_EVIL_TP_VAD_NOIMAGE_RWX:
-            MFindEvil_Read_FindEvil_LnTpVadEx(pObProcess, pe, (WORD)ie, wsz);
+            MFindEvil_Read_FindEvil_LnTpVadEx(pObProcess, pe, (WORD)ie, uszBuffer);
+            break;
+        case VMM_EVIL_TP_PROC_NOLINK:
+        case VMM_EVIL_TP_PEB_MASQUERADE:
+        case VMM_EVIL_TP_PEB_BAD_LDR:
+            // no description on these
             break;
     }
     tp = min(pe->tp, sizeof(VMM_EVIL_TP_STRING) / sizeof(LPSTR) - 1);
     if(ctx) {
         // "fake" file read for json data
-        Util_snwprintf_u8j(szu8, cbLineLength, L"%s", wsz);
+        CharUtil_UtoJ(uszBuffer, -1, usz, cbLineLength + 1, NULL, NULL, CHARUTIL_FLAG_TRUNCATE | CHARUTIL_FLAG_STR_BUFONLY);
     } else {
         // "ordinary" file read
-        Util_snwprintf_u8ln(szu8, cbLineLength,
-            L"%04x%7i %-15S%12S %016llx %s",
+        Util_usnprintf_ln(usz, cbLineLength,
+            "%04x%7i %-15s%12s %016llx %s",
             ie,
             pe->dwPID,
             pObProcess ? pObProcess->szName : "_NA",
             VMM_EVIL_TP_STRING[tp],
             pe->va,
-            wsz
+            uszBuffer
         );
     }
     Ob_DECREF(pObProcess);
@@ -150,7 +159,7 @@ VOID MFindEvil_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON
     PVMM_MAP_EVILENTRY pe;
     DWORD i;
     VMM_EVIL_TP tp;
-    CHAR szj[MAX_PATH];
+    CHAR usz[MAX_PATH];
     if(ctxP->pProcess || !(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)))) { return; }
     pd->dwVersion = VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION;
     pd->szjType = "evil";
@@ -158,13 +167,13 @@ VOID MFindEvil_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON
         for(i = 0; i < pObEvilMap->cMap; i++) {
             pe = pObEvilMap->pMap + i;
             tp = min(pe->tp, sizeof(VMM_EVIL_TP_STRING) / sizeof(LPSTR) - 1);
-            MFindEvil_ReadLineCB((PVOID)TRUE, _countof(szj) - 1, i, pe, szj);
+            MFindEvil_ReadLineCB((PVOID)TRUE, _countof(usz) - 1, i, pe, usz);
             // assign:
             pd->i = i;
             pd->dwPID = pe->dwPID;
             pd->va[0] = pe->va;
-            pd->szj[0] = VMM_EVIL_TP_STRING[tp];
-            pd->szj[1] = szj;
+            pd->usz[0] = VMM_EVIL_TP_STRING[tp];
+            pd->usz[1] = usz;
             pfnLogJSON(pd);
         }
     }
@@ -177,16 +186,16 @@ NTSTATUS MFindEvil_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pc
     NTSTATUS nt;
     PVMMOB_MAP_EVIL pObEvilMap = NULL;
     PVMM_PROCESS pProcess = (PVMM_PROCESS)ctx->pProcess;
-    if(!_wcsicmp(ctx->wszPath, L"readme.txt")) {
+    if(!_stricmp(ctx->uszPath, "readme.txt")) {
         return Util_VfsReadFile_FromPBYTE((PBYTE)szM_FINDEVIL_README, strlen(szM_FINDEVIL_README), pb, cb, pcbRead, cbOffset);
     }
-    if(!_wcsicmp(ctx->wszPath, L"progress_percent.txt")) {
+    if(!_stricmp(ctx->uszPath, "progress_percent.txt")) {
         return Util_VfsReadFile_FromNumber(ctxVmm->EvilContext.cProgressPercent, pb, cb, pcbRead, cbOffset);
     }
-    if(!_wcsicmp(ctx->wszPath, L"findevil.txt")) {
+    if(!_stricmp(ctx->uszPath, "findevil.txt")) {
         if(VmmMap_GetEvil(pProcess, &pObEvilMap)) {
             nt = Util_VfsLineFixed_Read(
-                MFindEvil_ReadLineCB, NULL, MFINDEVIL_LINELENGTH_X64, MFINDEVIL_LINEHEADER,
+                (UTIL_VFSLINEFIXED_PFN_CB)MFindEvil_ReadLineCB, NULL, MFINDEVIL_LINELENGTH_X64, MFINDEVIL_LINEHEADER,
                 pObEvilMap->pMap, pObEvilMap->cMap, sizeof(VMM_MAP_EVILENTRY),
                 pb, cb, pcbRead, cbOffset
             );
@@ -206,15 +215,15 @@ BOOL MFindEvil_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
     DWORD cbEvil;
     PVMMOB_MAP_EVIL pObEvilMap = NULL;
     PVMM_PROCESS pProcess = (PVMM_PROCESS)ctx->pProcess;
-    if(ctx->wszPath[0]) { return FALSE; }
+    if(ctx->uszPath[0]) { return FALSE; }
     VmmMap_GetEvil(pProcess, &pObEvilMap);
     cbEvil = pObEvilMap ? (UTIL_VFSLINEFIXED_LINECOUNT(pObEvilMap->cMap) * MFINDEVIL_LINELENGTH_X64) : 0;
-    VMMDLL_VfsList_AddFile(pFileList, L"findevil.txt", cbEvil, NULL);
-    VMMDLL_VfsList_AddFile(pFileList, L"readme.txt", strlen(szM_FINDEVIL_README), NULL);
+    VMMDLL_VfsList_AddFile(pFileList, "findevil.txt", cbEvil, NULL);
+    VMMDLL_VfsList_AddFile(pFileList, "readme.txt", strlen(szM_FINDEVIL_README), NULL);
     if(!ctx->pProcess) {
         qwProgress = ctxVmm->EvilContext.cProgressPercent;
         qwProgress = (qwProgress == 100) ? 3 : ((qwProgress >= 10) ? 2 : 1);
-        VMMDLL_VfsList_AddFile(pFileList, L"progress_percent.txt", qwProgress, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "progress_percent.txt", qwProgress, NULL);
     }
     Ob_DECREF(pObEvilMap);
     return TRUE;
@@ -223,7 +232,7 @@ BOOL MFindEvil_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 VOID MFindEvil_Notify(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent)
 {
     if(fEvent == VMMDLL_PLUGIN_NOTIFY_FORENSIC_INIT_COMPLETE) {
-        PluginManager_SetVisibility(TRUE, L"\\forensic\\findevil", TRUE);
+        PluginManager_SetVisibility(TRUE, "\\forensic\\findevil", TRUE);
     }
 }
 
@@ -245,17 +254,17 @@ VOID M_FindEvil_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     pRI->reg_fn.pfnRead = MFindEvil_Read;
     pRI->reg_fn.pfnVisibleModule = MFindEvil_VisiblePlugin;                     // programmatic visibility
     // register process plugin
-    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\findevil");
+    strcpy_s(pRI->reg_info.uszPathName, 128, "\\findevil");
     pRI->reg_info.fRootModule = FALSE;
     pRI->reg_info.fProcessModule = TRUE;
     pRI->pfnPluginManager_Register(pRI);
     // register root plugin
-    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\misc\\findevil");
+    strcpy_s(pRI->reg_info.uszPathName, 128, "\\misc\\findevil");
     pRI->reg_info.fRootModule = TRUE;
     pRI->reg_info.fProcessModule = FALSE;
     pRI->pfnPluginManager_Register(pRI);
     // register forensic plugin
-    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\forensic\\findevil");
+    strcpy_s(pRI->reg_info.uszPathName, 128, "\\forensic\\findevil");
     pRI->reg_info.fRootModuleHidden = TRUE;
     pRI->reg_fn.pfnNotify = MFindEvil_Notify;
     pRI->reg_fnfc.pfnFinalize = MFindEvil_FcFinalize;

@@ -12,14 +12,14 @@ typedef struct tdFILEMODULES_FILENTRY {
     DWORD cb;
     DWORD dwNameHash;
     QWORD vaBase;
-    WCHAR wszName[MAX_PATH];
+    CHAR uszName[MAX_PATH];
 } FILEMODULES_FILENTRY, *PFILEMODULES_FILENTRY;
 
 typedef struct tdOBFILEMODULES_MODULECACHE {
     OB ObHdr;
     DWORD dwPID;
     DWORD cFiles;
-    FILEMODULES_FILENTRY File[];
+    FILEMODULES_FILENTRY File[0];
 } OBFILEMODULES_MODULECACHE, *POBFILEMODULES_MODULECACHE;
 
 /*
@@ -56,15 +56,15 @@ POBFILEMODULES_MODULECACHE M_FileModules_GetModuleCache(_In_ PVMMDLL_PLUGIN_CONT
         for(iModule = 0; iModule < pObModuleMap->cMap; iModule++) {
             VmmReadEx(pProcess, pObModuleMap->pMap[iModule].vaBase, pbPage, 0x1000, &cbPageRead, VMM_FLAG_FORCECACHE_READ);
             if(cbPageRead != 0x1000) {
-                vmmprintfvv_fn("Skipping module: '%S' - paged/invalid?\n", pObModuleMap->pMap[iModule].wszText);
+                vmmprintfvv_fn("Skipping module: '%s' - paged/invalid?\n", pObModuleMap->pMap[iModule].uszText);
                 continue;
             }
             pObCache->File[pObCache->cFiles].cb = PE_FileRaw_Size(pProcess, pObModuleMap->pMap[iModule].vaBase, pbPage);
             if(!pObCache->File[pObCache->cFiles].cb) {
-                vmmprintfvv_fn("Skipping module: '%S' - paged/invalid?\n", pObModuleMap->pMap[iModule].wszText);
+                vmmprintfvv_fn("Skipping module: '%s' - paged/invalid?\n", pObModuleMap->pMap[iModule].uszText);
                 continue;
             }
-            wcsncpy_s(pObCache->File[pObCache->cFiles].wszName, MAX_PATH, pObModuleMap->pMap[iModule].wszText, _TRUNCATE);
+            strncpy_s(pObCache->File[pObCache->cFiles].uszName, MAX_PATH, pObModuleMap->pMap[iModule].uszText, _TRUNCATE);
             pObCache->cFiles++;
         }
         ObContainer_SetOb(pProcess->Plugin.pObCPeDumpDirCache, pObCache);
@@ -89,10 +89,10 @@ BOOL M_FileModules_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileLi
     BOOL result = FALSE;
     DWORD iModule;
     POBFILEMODULES_MODULECACHE pObCache = NULL;
-    if(ctx->wszPath[0]) { return FALSE; }
+    if(ctx->uszPath[0]) { return FALSE; }
     if(!(pObCache = M_FileModules_GetModuleCache(ctx))) { return FALSE; }
     for(iModule = 0; iModule < pObCache->cFiles; iModule++) {
-        VMMDLL_VfsList_AddFile(pFileList, pObCache->File[iModule].wszName, pObCache->File[iModule].cb, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, pObCache->File[iModule].uszName, pObCache->File[iModule].cb, NULL);
     }
     Ob_DECREF(pObCache);
     return TRUE;
@@ -115,7 +115,7 @@ NTSTATUS M_FileModules_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb,
     PVMMOB_MAP_MODULE pObModuleMap = NULL;
     *pcbRead = 0;
     f = (cbOffset <= 0x02000000) &&
-        VmmMap_GetModuleEntryEx((PVMM_PROCESS)ctx->pProcess, 0, ctx->wszPath, &pObModuleMap, &pModule) &&
+        VmmMap_GetModuleEntryEx((PVMM_PROCESS)ctx->pProcess, 0, ctx->uszPath, &pObModuleMap, &pModule) &&
         PE_FileRaw_Read(ctx->pProcess, pModule->vaBase, pb, cb, pcbRead, (DWORD)cbOffset);
     Ob_DECREF_NULL(&pObModuleMap);
     return f ? VMMDLL_STATUS_SUCCESS : VMMDLL_STATUS_FILE_INVALID;
@@ -143,7 +143,7 @@ NTSTATUS M_FileModules_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBY
     PVMMOB_MAP_MODULE pObModuleMap = NULL;
     *pcbWrite = 0;
     f = (cbOffset <= 0x02000000) &&
-        VmmMap_GetModuleEntryEx((PVMM_PROCESS)ctx->pProcess, 0, ctx->wszPath, &pObModuleMap, &pModule) &&
+        VmmMap_GetModuleEntryEx((PVMM_PROCESS)ctx->pProcess, 0, ctx->uszPath, &pObModuleMap, &pModule) &&
         PE_FileRaw_Write(ctx->pProcess, pModule->vaBase, pb, cb, pcbWrite, (DWORD)cbOffset);
     Ob_DECREF_NULL(&pObModuleMap);
     return f ? VMMDLL_STATUS_SUCCESS : VMMDLL_STATUS_FILE_INVALID;
@@ -161,7 +161,7 @@ VOID M_FileModules_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if((pRI->tpSystem != VMM_SYSTEM_WINDOWS_X64) && (pRI->tpSystem != VMM_SYSTEM_WINDOWS_X86)) { return; }
-    wcscpy_s(pRI->reg_info.wszPathName, 128, L"\\files\\modules");      // module name
+    strcpy_s(pRI->reg_info.uszPathName, 128, "\\files\\modules");       // module name
     pRI->reg_info.fProcessModule = TRUE;                                // module shows in process directory
     pRI->reg_fn.pfnList = M_FileModules_List;                           // List function supported
     pRI->reg_fn.pfnRead = M_FileModules_Read;                           // Read function supported

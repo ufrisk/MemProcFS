@@ -10,9 +10,16 @@ EXPORTS
     VMMDLL_ConfigGet
     VMMDLL_ConfigSet
     
-    VMMDLL_VfsList
-    VMMDLL_VfsRead
-    VMMDLL_VfsWrite
+    VMMDLL_VfsListU
+    VMMDLL_VfsListW
+    VMMDLL_VfsList_AddFile
+    VMMDLL_VfsList_AddFileW
+    VMMDLL_VfsList_AddDirectory
+    VMMDLL_VfsList_AddDirectoryW
+    VMMDLL_VfsReadU
+    VMMDLL_VfsReadW
+    VMMDLL_VfsWriteU
+    VMMDLL_VfsWriteW
     
     VMMDLL_UtilVfsReadFile_FromPBYTE
     VMMDLL_UtilVfsReadFile_FromQWORD
@@ -31,36 +38,55 @@ EXPORTS
     
     VMMDLL_PidList
     VMMDLL_PidGetFromName
-    VMMDLL_Map_GetNet
+    VMMDLL_Map_GetNetU
+    VMMDLL_Map_GetNetW
     VMMDLL_Map_GetPfn
     VMMDLL_Map_GetPhysMem
-    VMMDLL_Map_GetUsers
-    VMMDLL_Map_GetServices
-    VMMDLL_Map_GetPte
-    VMMDLL_Map_GetVad
+    VMMDLL_Map_GetUsersU
+    VMMDLL_Map_GetUsersW
+    VMMDLL_Map_GetServicesU
+    VMMDLL_Map_GetServicesW
+    VMMDLL_Map_GetPteU
+    VMMDLL_Map_GetPteW
+    VMMDLL_Map_GetVadU
+    VMMDLL_Map_GetVadW
     VMMDLL_Map_GetVadEx
-    VMMDLL_Map_GetModule
-    VMMDLL_Map_GetModuleFromName
-    VMMDLL_Map_GetUnloadedModule
-    VMMDLL_Map_GetEAT
-    VMMDLL_Map_GetIAT
+    VMMDLL_Map_GetModuleU
+    VMMDLL_Map_GetModuleW
+    VMMDLL_Map_GetModuleFromNameU
+    VMMDLL_Map_GetModuleFromNameW
+    VMMDLL_Map_GetUnloadedModuleU
+    VMMDLL_Map_GetUnloadedModuleW
+    VMMDLL_Map_GetEATU
+    VMMDLL_Map_GetEATW
+    VMMDLL_Map_GetIATU
+    VMMDLL_Map_GetIATW
     VMMDLL_Map_GetHeap
     VMMDLL_Map_GetThread
-    VMMDLL_Map_GetHandle
+    VMMDLL_Map_GetHandleU
+    VMMDLL_Map_GetHandleW
     VMMDLL_ProcessGetInformation
     VMMDLL_ProcessGetInformationString
     
-    VMMDLL_ProcessGetDirectories
-    VMMDLL_ProcessGetSections
-    VMMDLL_ProcessGetProcAddress
-    VMMDLL_ProcessGetModuleBase
-    VMMDLL_WinGetThunkInfoIAT
+    VMMDLL_ProcessGetDirectoriesU
+    VMMDLL_ProcessGetDirectoriesW
+    VMMDLL_ProcessGetSectionsU
+    VMMDLL_ProcessGetSectionsW
+    VMMDLL_ProcessGetProcAddressU
+    VMMDLL_ProcessGetProcAddressW
+    VMMDLL_ProcessGetModuleBaseU
+    VMMDLL_ProcessGetModuleBaseW
+    VMMDLL_WinGetThunkInfoIATU
+    VMMDLL_WinGetThunkInfoIATW
     
     VMMDLL_WinReg_HiveList
     VMMDLL_WinReg_HiveReadEx
     VMMDLL_WinReg_HiveWrite
+    VMMDLL_WinReg_EnumKeyExU
     VMMDLL_WinReg_EnumKeyExW
+    VMMDLL_WinReg_EnumValueU
     VMMDLL_WinReg_EnumValueW
+    VMMDLL_WinReg_QueryValueExU
     VMMDLL_WinReg_QueryValueExW
     
     VMMDLL_PdbLoad

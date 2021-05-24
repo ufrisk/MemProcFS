@@ -30,4 +30,9 @@
       <Filter>Header Files\includes</Filter>
     </ClInclude>
   </ItemGroup>
+  <ItemGroup>
+    <None Include="Makefile">
+      <Filter>Resource Files</Filter>
+    </None>
+  </ItemGroup>
 </Project>

@@ -118,6 +118,7 @@
     <ClInclude Include="vmmpyc.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="oscompatibility.c" />
     <ClCompile Include="vmmpyc.c" />
     <ClCompile Include="vmmpycplugin.c" />
     <ClCompile Include="vmmpyc_kernel.c" />

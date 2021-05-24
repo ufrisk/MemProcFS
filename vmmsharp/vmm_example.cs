@@ -21,7 +21,7 @@ using vmmsharp;
  */
 class vmm_example
 {
-    static bool ExampleVfsCallBack_AddFile(ulong h, [MarshalAs(UnmanagedType.LPWStr)] string wszName, ulong cb, IntPtr pExInfo)
+    static bool ExampleVfsCallBack_AddFile(ulong h, [MarshalAs(UnmanagedType.LPUTF8Str)] string wszName, ulong cb, IntPtr pExInfo)
     {
         ulong ft = 0;
         if(pExInfo != IntPtr.Zero)
@@ -33,7 +33,7 @@ class vmm_example
         return true;
     }
 
-    static bool ExampleVfsCallBack_AddDirectory(ulong h, [MarshalAs(UnmanagedType.LPWStr)] string wszName, IntPtr pExInfo)
+    static bool ExampleVfsCallBack_AddDirectory(ulong h, [MarshalAs(UnmanagedType.LPUTF8Str)] string wszName, IntPtr pExInfo)
     {
         ulong ft = 0;
         if (pExInfo != IntPtr.Zero)

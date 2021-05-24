@@ -13,7 +13,7 @@ static BOOL VmmPycRegKey_EnsureLastWrite(PyObj_RegKey *self)
     BOOL result = FALSE;
     if(!self->ftLastWrite) {
         Py_BEGIN_ALLOW_THREADS;
-        result = VMMDLL_WinReg_EnumKeyExW(self->wszPath, -1, NULL, &cch, (PFILETIME)&self->ftLastWrite);
+        result = VMMDLL_WinReg_EnumKeyExU(self->uszPath, -1, NULL, &cch, (PFILETIME)&self->ftLastWrite);
         Py_END_ALLOW_THREADS;
     }
     return result || self->ftLastWrite;
@@ -46,21 +46,21 @@ VmmPycRegKey_values(PyObj_RegKey *self, void *closure)
     BOOL fResult;
     DWORD cch, i = 0;
     PyObject *pyList;
-    WCHAR wsz[2 * MAX_PATH];
-    LPWSTR wszValueName;
+    CHAR usz[2 * MAX_PATH];
+    LPSTR uszValueName;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "RegKey.subkeys(): Not initialized."); }
     if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
-    wcscpy_s(wsz, _countof(wsz), self->wszPath);
-    cch = (DWORD)wcslen(wsz);
-    wsz[cch] = '\\';
-    wszValueName = wsz + cch + 1;
+    strcpy_s(usz, _countof(usz), self->uszPath);
+    cch = (DWORD)strlen(usz);
+    usz[cch] = '\\';
+    uszValueName = usz + cch + 1;
     while(TRUE) {
         Py_BEGIN_ALLOW_THREADS;
         cch = MAX_PATH;
-        fResult = VMMDLL_WinReg_EnumValueW(self->wszPath, i++, wszValueName, &cch, NULL, NULL, NULL);
+        fResult = VMMDLL_WinReg_EnumValueU(self->uszPath, i++, uszValueName, &cch, NULL, NULL, NULL);
         Py_END_ALLOW_THREADS;
         if(!fResult) { break; }
-        PyList_Append_DECREF(pyList, (PyObject*)VmmPycRegValue_InitializeInternal(wsz, FALSE));
+        PyList_Append_DECREF(pyList, (PyObject*)VmmPycRegValue_InitializeInternal(usz, FALSE));
     }
     return pyList;
 }
@@ -73,21 +73,21 @@ VmmPycRegKey_values_dict(PyObj_RegKey *self, void *closure)
     DWORD cch, i = 0;
     PyObject *pyDict;
     PyObj_RegValue *pyObjValue;
-    WCHAR wsz[2 * MAX_PATH];
-    LPWSTR wszValueName;
+    CHAR usz[2 * MAX_PATH];
+    LPSTR uszValueName;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "RegKey.values_dict(): Not initialized."); }
     if(!(pyDict = PyDict_New())) { return PyErr_NoMemory(); }
-    wcscpy_s(wsz, _countof(wsz), self->wszPath);
-    cch = (DWORD)wcslen(wsz);
-    wsz[cch] = '\\';
-    wszValueName = wsz + cch + 1;
+    strcpy_s(usz, _countof(usz), self->uszPath);
+    cch = (DWORD)strlen(usz);
+    usz[cch] = '\\';
+    uszValueName = usz + cch + 1;
     while(TRUE) {
         Py_BEGIN_ALLOW_THREADS;
         cch = MAX_PATH;
-        fResult = VMMDLL_WinReg_EnumValueW(self->wszPath, i++, wszValueName, &cch, NULL, NULL, NULL);
+        fResult = VMMDLL_WinReg_EnumValueU(self->uszPath, i++, uszValueName, &cch, NULL, NULL, NULL);
         Py_END_ALLOW_THREADS;
         if(!fResult) { break; }
-        if((pyObjValue = VmmPycRegValue_InitializeInternal(wsz, FALSE))) {
+        if((pyObjValue = VmmPycRegValue_InitializeInternal(usz, FALSE))) {
             PyDict_SetItemUnicode_DECREF(pyDict, pyObjValue->pyName, (PyObject*)pyObjValue);
         }
     }
@@ -101,21 +101,21 @@ VmmPycRegKey_subkeys(PyObj_RegKey *self, void *closure)
     BOOL fResult;
     DWORD cch, i = 0;
     PyObject *pyList;
-    WCHAR wsz[2*MAX_PATH];
-    LPWSTR wszKeyName;
+    CHAR usz[2*MAX_PATH];
+    LPSTR uszKeyName;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "RegKey.subkeys(): Not initialized."); }
     if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
-    wcscpy_s(wsz, _countof(wsz), self->wszPath);
-    cch = (DWORD)wcslen(wsz);
-    wsz[cch] = '\\';
-    wszKeyName = wsz + cch + 1;
+    strcpy_s(usz, _countof(usz), self->uszPath);
+    cch = (DWORD)strlen(usz);
+    usz[cch] = '\\';
+    uszKeyName = usz + cch + 1;
     while(TRUE) {
         Py_BEGIN_ALLOW_THREADS;
         cch = MAX_PATH;
-        fResult = VMMDLL_WinReg_EnumKeyExW(self->wszPath, i++, wszKeyName, &cch, NULL);
+        fResult = VMMDLL_WinReg_EnumKeyExU(self->uszPath, i++, uszKeyName, &cch, NULL);
         Py_END_ALLOW_THREADS;
         if(!fResult) { break; }
-        PyList_Append_DECREF(pyList, (PyObject*)VmmPycRegKey_InitializeInternal(wsz, FALSE));
+        PyList_Append_DECREF(pyList, (PyObject*)VmmPycRegKey_InitializeInternal(usz, FALSE));
     }
     return pyList;
 }
@@ -128,21 +128,21 @@ VmmPycRegKey_subkeys_dict(PyObj_RegKey *self, void *closure)
     DWORD cch, i = 0;
     PyObject *pyDict;
     PyObj_RegKey *pyObjKey;
-    WCHAR wsz[2*MAX_PATH];
-    LPWSTR wszKeyName;
+    CHAR usz[2*MAX_PATH];
+    LPSTR uszKeyName;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "RegKey.subkeys_dict(): Not initialized."); }
     if(!(pyDict = PyDict_New())) { return PyErr_NoMemory(); }
-    wcscpy_s(wsz, _countof(wsz), self->wszPath);
-    cch = (DWORD)wcslen(wsz);
-    wsz[cch] = '\\';
-    wszKeyName = wsz + cch + 1;
+    strcpy_s(usz, _countof(usz), self->uszPath);
+    cch = (DWORD)strlen(usz);
+    usz[cch] = '\\';
+    uszKeyName = usz + cch + 1;
     while(TRUE) {
         Py_BEGIN_ALLOW_THREADS;
         cch = MAX_PATH;
-        fResult = VMMDLL_WinReg_EnumKeyExW(self->wszPath, i++, wszKeyName, &cch, NULL);
+        fResult = VMMDLL_WinReg_EnumKeyExU(self->uszPath, i++, uszKeyName, &cch, NULL);
         Py_END_ALLOW_THREADS;
         if(!fResult) { break; }
-        if((pyObjKey = VmmPycRegKey_InitializeInternal(wsz, FALSE))) {
+        if((pyObjKey = VmmPycRegKey_InitializeInternal(usz, FALSE))) {
             PyDict_SetItemUnicode_DECREF(pyDict, pyObjKey->pyName, (PyObject*)pyObjKey);
         }
     }
@@ -153,12 +153,12 @@ VmmPycRegKey_subkeys_dict(PyObj_RegKey *self, void *closure)
 static PyObject*
 VmmPycRegKey_parent(PyObj_RegKey *self, void *closure)
 {
-    WCHAR wszParentPath[MAX_PATH];
+    CHAR uszParentPath[2 * MAX_PATH];
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "RegKey.parent: Not initialized."); }
-    if(!Util_PathFileSplitW(self->wszPath, wszParentPath)) {
+    if(!Util_PathSplitLastEx(self->uszPath, uszParentPath, sizeof(uszParentPath))) {
         return PyErr_Format(PyExc_RuntimeError, "RegKey.parent: No parent key.");
     }
-    return (PyObject*)VmmPycRegKey_InitializeInternal(wszParentPath, FALSE);
+    return (PyObject*)VmmPycRegKey_InitializeInternal(uszParentPath, FALSE);
 }
 
 // -> STR
@@ -175,7 +175,7 @@ static PyObject*
 VmmPycRegKey_path(PyObj_RegKey *self, void *closure)
 {
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "RegKey.path: Not initialized."); }
-    return PyUnicode_FromWideChar(self->wszPath, -1);
+    return PyUnicode_FromString(self->uszPath);
 }
 
 //-----------------------------------------------------------------------------
@@ -183,14 +183,14 @@ VmmPycRegKey_path(PyObj_RegKey *self, void *closure)
 //-----------------------------------------------------------------------------
 
 PyObj_RegKey*
-VmmPycRegKey_InitializeInternal(_In_ LPWSTR wszFullPathKey, _In_ BOOL fVerify)
+VmmPycRegKey_InitializeInternal(_In_ LPSTR uszFullPathKey, _In_ BOOL fVerify)
 {
     PyObj_RegKey *pyObj;
     if(!(pyObj = PyObject_New(PyObj_RegKey, (PyTypeObject*)g_pPyType_RegKey))) { return NULL; }
     pyObj->fValid = TRUE;
     pyObj->ftLastWrite = 0;
-    wcsncpy_s(pyObj->wszPath, MAX_PATH, wszFullPathKey, _TRUNCATE);
-    pyObj->pyName = PyUnicode_FromWideChar(Util_PathSplitLastW(pyObj->wszPath), -1);
+    strncpy_s(pyObj->uszPath, _countof(pyObj->uszPath), uszFullPathKey, _TRUNCATE);
+    pyObj->pyName = PyUnicode_FromString(Util_PathSplitLastU(pyObj->uszPath));
     if(fVerify && !VmmPycRegKey_EnsureLastWrite(pyObj)) {
         Py_DECREF(pyObj);
         return NULL;

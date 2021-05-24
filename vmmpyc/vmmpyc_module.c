@@ -12,13 +12,13 @@ static PyObject*
 VmmPycModule_procaddress(PyObj_Module *self, PyObject *args)
 {
     ULONG64 va;
-    LPSTR szProcName;
+    LPSTR uszProcName = NULL;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Module.procaddress(): Not initialized."); }
-    if(!PyArg_ParseTuple(args, "s", &szProcName)) {
+    if(!PyArg_ParseTuple(args, "s", &uszProcName) || !uszProcName) {
         return PyErr_Format(PyExc_RuntimeError, "Module.procaddress(): Illegal argument.");
     }
     Py_BEGIN_ALLOW_THREADS;
-    va = VMMDLL_ProcessGetProcAddress(self->dwPID, self->ModuleEntry.wszText, szProcName);
+    va = VMMDLL_ProcessGetProcAddressU(self->dwPID, self->ModuleEntry.uszText, uszProcName);
     Py_END_ALLOW_THREADS;
     return va ?
         PyLong_FromUnsignedLongLong(va) :
@@ -40,7 +40,7 @@ static PyObject*
 VmmPycModule_maps(PyObj_Module *self, void *closure)
 {
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Module.maps: Not initialized."); }
-    return (PyObject*)VmmPycModuleMaps_InitializeInternal(self->dwPID, self->ModuleEntry.wszText);
+    return (PyObject*)VmmPycModuleMaps_InitializeInternal(self->dwPID, self->ModuleEntry.uszText);
 }
 
 // -> PyObj_Process
@@ -56,7 +56,7 @@ static PyObject*
 VmmPycModule_name(PyObj_Module *self, void *closure)
 {
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Module.name: Not initialized."); }
-    return PyUnicode_FromWideChar(self->ModuleEntry.wszText, -1);
+    return PyUnicode_FromString(self->ModuleEntry.uszText);
 }
 
 // -> STR
@@ -64,7 +64,7 @@ static PyObject*
 VmmPycModule_fullname(PyObj_Module *self, void *closure)
 {
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Module.fullname: Not initialized."); }
-    return PyUnicode_FromWideChar(self->ModuleEntry.wszFullName, -1);
+    return PyUnicode_FromString(self->ModuleEntry.uszFullName);
 }
 
 //-----------------------------------------------------------------------------
@@ -79,10 +79,10 @@ VmmPycModule_InitializeInternal(_In_ DWORD dwPID, _In_ PVMMDLL_MAP_MODULEENTRY p
     pyM->fValid = TRUE;
     pyM->dwPID = dwPID;
     memcpy(&pyM->ModuleEntry, pe, sizeof(VMMDLL_MAP_MODULEENTRY));
-    wcsncpy_s(pyM->wszText, _countof(pyM->wszText), pe->wszText, _TRUNCATE);
-    wcsncpy_s(pyM->wszFullName, _countof(pyM->wszFullName), pe->wszFullName, _TRUNCATE);
-    pyM->ModuleEntry.wszText = pyM->wszText;
-    pyM->ModuleEntry.wszFullName = pyM->wszFullName;
+    strncpy_s(pyM->uszText, _countof(pyM->uszText), pe->uszText, _TRUNCATE);
+    strncpy_s(pyM->uszFullName, _countof(pyM->uszFullName), pe->uszFullName, _TRUNCATE);
+    pyM->ModuleEntry.uszText = pyM->uszText;
+    pyM->ModuleEntry.uszFullName = pyM->uszFullName;
     return pyM;
 }
 
@@ -91,7 +91,7 @@ VmmPycModule_repr(PyObj_Module *self)
 {
     PyObject *pyStr, *pyModuleName;
     if(!self->fValid) { return PyUnicode_FromFormat("Module:NotValid"); }
-    pyModuleName = PyUnicode_FromWideChar(self->ModuleEntry.wszText, -1);
+    pyModuleName = PyUnicode_FromString(self->ModuleEntry.uszText);
     pyStr = PyUnicode_FromFormat("Module:%i:%U", self->dwPID, pyModuleName);
     Py_XDECREF(pyModuleName);
     return pyStr;

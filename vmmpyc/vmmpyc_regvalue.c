@@ -13,7 +13,7 @@ static BOOL VmmPycRegValue_EnsureValue(PyObj_RegValue *self)
     DWORD cb = sizeof(self->Value.pb);
     if(self->fValue) { return TRUE; }
     Py_BEGIN_ALLOW_THREADS;
-    result = VMMDLL_WinReg_QueryValueExW(self->wszPath, &self->tp, self->Value.pb, &cb);
+    result = VMMDLL_WinReg_QueryValueExU(self->uszPath, &self->tp, self->Value.pb, &cb);
     Py_END_ALLOW_THREADS;
     if(result) {
         if(cb < sizeof(self->Value.pb)) {
@@ -22,7 +22,7 @@ static BOOL VmmPycRegValue_EnsureValue(PyObj_RegValue *self)
             self->cb = cb;
         } else {
             Py_BEGIN_ALLOW_THREADS;
-            result = VMMDLL_WinReg_QueryValueExW(self->wszPath, &self->tp, NULL, &cb);
+            result = VMMDLL_WinReg_QueryValueExU(self->uszPath, &self->tp, NULL, &cb);
             Py_END_ALLOW_THREADS;
             self->fValueData = FALSE;
             self->fValue = result;
@@ -61,18 +61,18 @@ VmmPycRegValue_value(PyObj_RegValue *self, PyObject *args)
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "RegValue.value(): Not initialized."); }
     if(!VmmPycRegValue_EnsureValue(self)) { return PyErr_Format(PyExc_RuntimeError, "RegValue.value(): Failed."); }
     if(self->fValueData) {
-        return PyBytes_FromStringAndSize(self->Value.pb, self->cb);
+        return PyBytes_FromStringAndSize((char *)self->Value.pb, self->cb);
     }
     cb = self->cb;
     if(!(pb = LocalAlloc(LMEM_ZEROINIT, cb))) { return PyErr_NoMemory(); }
     Py_BEGIN_ALLOW_THREADS;
-    result = VMMDLL_WinReg_QueryValueExW(self->wszPath, NULL, pb, &cb);
+    result = VMMDLL_WinReg_QueryValueExU(self->uszPath, NULL, pb, &cb);
     Py_END_ALLOW_THREADS;
     if(!result) {
         LocalFree(pb);
         return PyErr_Format(PyExc_RuntimeError, "RegValue.value(): Failed.");
     }
-    pyBytes = PyBytes_FromStringAndSize(pb, cb);
+    pyBytes = PyBytes_FromStringAndSize((const char *)pb, cb);
     LocalFree(pb);
     return pyBytes;
 }
@@ -151,7 +151,7 @@ VmmPycRegValue_InternalValueString(PyObj_RegValue *self, PyObject *args, _In_ LP
         memcpy(pb, self->Value.pb, cb);
     } else {
         Py_BEGIN_ALLOW_THREADS;
-        result = VMMDLL_WinReg_QueryValueExW(self->wszPath, NULL, pb, &cb);
+        result = VMMDLL_WinReg_QueryValueExU(self->uszPath, NULL, pb, &cb);
         Py_END_ALLOW_THREADS;
         if(!result) {
             LocalFree(pb);
@@ -176,7 +176,7 @@ VmmPycRegValue_InternalValueString(PyObj_RegValue *self, PyObject *args, _In_ LP
         }
     }
     // 3: create string:
-    pyUnicode = PyUnicode_Decode(pb, cb, (fW ? "utf-16le" : "ascii"), NULL);
+    pyUnicode = PyUnicode_Decode((const char *)pb, cb, (fW ? "utf-16le" : "ascii"), NULL);
     LocalFree(pb);
     return pyUnicode ? pyUnicode : PyErr_Format(PyExc_RuntimeError, "%s(): Failed translation.", szFN);
 }
@@ -199,12 +199,12 @@ VmmPycRegValue_vascii(PyObj_RegValue *self, PyObject *args)
 static PyObject*
 VmmPycRegValue_parent(PyObj_RegValue *self, void *closure)
 {
-    WCHAR wszParentPath[MAX_PATH];
+    CHAR uszParentPath[2 * MAX_PATH];
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "RegValue.parent: Not initialized."); }
-    if(!Util_PathFileSplitW(self->wszPath, wszParentPath)) {
+    if(!Util_PathSplitLastEx(self->uszPath, uszParentPath, sizeof(uszParentPath))) {
         return PyErr_Format(PyExc_RuntimeError, "RegValue.parent: No parent key.");
     }
-    return (PyObject*)VmmPycRegKey_InitializeInternal(wszParentPath, FALSE);
+    return (PyObject*)VmmPycRegKey_InitializeInternal(uszParentPath, FALSE);
 }
 
 // -> STR
@@ -221,7 +221,7 @@ static PyObject*
 VmmPycRegValue_path(PyObj_RegValue *self, void *closure)
 {
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "RegValue.path: Not initialized."); }
-    return PyUnicode_FromWideChar(self->wszPath, -1);
+    return PyUnicode_FromString(self->uszPath);
 }
 
 //-----------------------------------------------------------------------------
@@ -229,7 +229,7 @@ VmmPycRegValue_path(PyObj_RegValue *self, void *closure)
 //-----------------------------------------------------------------------------
 
 PyObj_RegValue*
-VmmPycRegValue_InitializeInternal(_In_ LPWSTR wszFullPathKeyValue, _In_ BOOL fVerify)
+VmmPycRegValue_InitializeInternal(_In_ LPSTR uszFullPathKeyValue, _In_ BOOL fVerify)
 {
     DWORD cch = 0;
     PyObj_RegValue *pyObj;
@@ -237,8 +237,8 @@ VmmPycRegValue_InitializeInternal(_In_ LPWSTR wszFullPathKeyValue, _In_ BOOL fVe
     pyObj->fValid = TRUE;
     pyObj->fValue = FALSE;
     pyObj->fValueData = FALSE;
-    wcsncpy_s(pyObj->wszPath, MAX_PATH, wszFullPathKeyValue, _TRUNCATE);
-    pyObj->pyName = PyUnicode_FromWideChar(Util_PathSplitLastW(pyObj->wszPath), -1);
+    strncpy_s(pyObj->uszPath, _countof(pyObj->uszPath), uszFullPathKeyValue, _TRUNCATE);
+    pyObj->pyName = PyUnicode_FromString(Util_PathSplitLastU(pyObj->uszPath));
     if(fVerify && !VmmPycRegValue_EnsureValue(pyObj)) {
         Py_DECREF(pyObj);
         return NULL;

@@ -3,6 +3,9 @@
 // (c) Ulf Frisk, 2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
+#ifdef _WIN32
+#include <ws2tcpip.h>
+#endif /* _WIN32 */
 #include "vmmpyc.h"
 
 PyObject *g_pPyType_Maps = NULL;
@@ -21,10 +24,10 @@ VmmPycMaps_net(PyObj_Maps *self, PyObject *args)
     if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
     Py_BEGIN_ALLOW_THREADS;
     result =
-        VMMDLL_Map_GetNet(NULL, &cbNetMap) &&
+        VMMDLL_Map_GetNetU(NULL, &cbNetMap) &&
         cbNetMap &&
         (pNetMap = LocalAlloc(0, cbNetMap)) &&
-        VMMDLL_Map_GetNet(pNetMap, &cbNetMap);
+        VMMDLL_Map_GetNetU(pNetMap, &cbNetMap);
     Py_END_ALLOW_THREADS;
     if(!result || (pNetMap->dwVersion != VMMDLL_MAP_NET_VERSION)) {
         Py_DECREF(pyList);
@@ -45,9 +48,9 @@ VmmPycMaps_net(PyObj_Maps *self, PyObject *args)
             PyDict_SetItemString_DECREF(pyDictTcpE, "va", PyLong_FromUnsignedLongLong(pe->vaObj));
             PyDict_SetItemString_DECREF(pyDictTcpE, "time", PyLong_FromUnsignedLongLong(pe->ftTime));
             PyDict_SetItemString_DECREF(pyDictTcpE, "time-str", PyUnicode_FromFormat("%s", szTime));
-            PyDict_SetItemString_DECREF(pyDictTcpE, "src-ip", PyUnicode_FromWideChar(pe->Src.wszText, -1));
+            PyDict_SetItemString_DECREF(pyDictTcpE, "src-ip", PyUnicode_FromString(pe->Src.uszText));
             PyDict_SetItemString_DECREF(pyDictTcpE, "src-port", PyLong_FromUnsignedLong(pe->Src.port));
-            PyDict_SetItemString_DECREF(pyDictTcpE, "dst-ip", PyUnicode_FromWideChar(pe->Src.wszText, -1));
+            PyDict_SetItemString_DECREF(pyDictTcpE, "dst-ip", PyUnicode_FromString(pe->Src.uszText));
             PyDict_SetItemString_DECREF(pyDictTcpE, "dst-port", PyLong_FromUnsignedLong(pe->Dst.port));
             PyList_Append_DECREF(pyList, pyDictTcpE);
         }
@@ -114,7 +117,7 @@ VmmPycMaps_pfn(PyObj_Maps *self, PyObject *args)
     }
     for(i = 0; i < cPfns; i++) {
         pyListItemSrc = PyList_GetItem(pyListSrc, i);   // borrowed reference
-        if(!pyListItemSrc || !PyLong_Check(pyListItemSrc) || (-1 == (dwPfn = PyLong_AsUnsignedLong(pyListItemSrc)))) {
+        if(!pyListItemSrc || !PyLong_Check(pyListItemSrc) || (0xffffffff == (dwPfn = PyLong_AsUnsignedLong(pyListItemSrc)))) {
             LocalFree(pPfns);
             return PyErr_Format(PyExc_RuntimeError, "Maps.pfn(): Argument list contains non numeric item or PFN exceeding 0xffffffff.");
         }
@@ -165,10 +168,10 @@ VmmPycMaps_user(PyObj_Maps *self, PyObject *args)
     if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
     Py_BEGIN_ALLOW_THREADS;
     result =
-        VMMDLL_Map_GetUsers(NULL, &cbUserMap) &&
+        VMMDLL_Map_GetUsersU(NULL, &cbUserMap) &&
         cbUserMap &&
         (pUserMap = LocalAlloc(0, cbUserMap)) &&
-        VMMDLL_Map_GetUsers(pUserMap, &cbUserMap);
+        VMMDLL_Map_GetUsersU(pUserMap, &cbUserMap);
     Py_END_ALLOW_THREADS;
     if(!result || (pUserMap->dwVersion != VMMDLL_MAP_USER_VERSION)) {
         Py_DECREF(pyList);
@@ -179,8 +182,8 @@ VmmPycMaps_user(PyObj_Maps *self, PyObject *args)
         if((pyDict = PyDict_New())) {
             pe = pUserMap->pMap + i;
             PyDict_SetItemString_DECREF(pyDict, "va-reghive", PyLong_FromUnsignedLongLong(pe->vaRegHive));
-            PyDict_SetItemString_DECREF(pyDict, "sid", PyUnicode_FromFormat("%s", pe->szSID));
-            PyDict_SetItemString_DECREF(pyDict, "name", PyUnicode_FromWideChar(pe->wszText, -1));
+            PyDict_SetItemString_DECREF(pyDict, "sid", PyUnicode_FromString(pe->uszSID));
+            PyDict_SetItemString_DECREF(pyDict, "name", PyUnicode_FromString(pe->uszText));
             PyList_Append_DECREF(pyList, pyDict);
         }
     }
@@ -202,10 +205,10 @@ VmmPycMaps_service(PyObj_Maps *self, PyObject *args)
     if(!(pyDictResult = PyDict_New())) { return PyErr_NoMemory(); }
     Py_BEGIN_ALLOW_THREADS;
     result =
-        VMMDLL_Map_GetServices(NULL, &cbServiceMap) &&
+        VMMDLL_Map_GetServicesU(NULL, &cbServiceMap) &&
         cbServiceMap &&
         (pServiceMap = LocalAlloc(0, cbServiceMap)) &&
-        VMMDLL_Map_GetServices(pServiceMap, &cbServiceMap);
+        VMMDLL_Map_GetServicesU(pServiceMap, &cbServiceMap);
     Py_END_ALLOW_THREADS;
     if(!result || (pServiceMap->dwVersion != VMMDLL_MAP_SERVICE_VERSION)) {
         Py_DECREF(pyDictResult);
@@ -226,12 +229,12 @@ VmmPycMaps_service(PyObj_Maps *self, PyObject *args)
             PyDict_SetItemString_DECREF(pyDict, "dwServiceSpecificExitCode", PyLong_FromUnsignedLong(pe->ServiceStatus.dwServiceSpecificExitCode));
             PyDict_SetItemString_DECREF(pyDict, "dwCheckPoint", PyLong_FromUnsignedLong(pe->ServiceStatus.dwCheckPoint));
             PyDict_SetItemString_DECREF(pyDict, "dwWaitHint", PyLong_FromUnsignedLong(pe->ServiceStatus.dwWaitHint));
-            PyDict_SetItemString_DECREF(pyDict, "name", PyUnicode_FromWideChar(pe->wszServiceName, -1));
-            PyDict_SetItemString_DECREF(pyDict, "name-display", PyUnicode_FromWideChar(pe->wszDisplayName, -1));
-            PyDict_SetItemString_DECREF(pyDict, "path", PyUnicode_FromWideChar(pe->wszPath, -1));
-            PyDict_SetItemString_DECREF(pyDict, "user-tp", PyUnicode_FromWideChar(pe->wszUserTp, -1));
-            PyDict_SetItemString_DECREF(pyDict, "user-acct", PyUnicode_FromWideChar(pe->wszUserAcct, -1));
-            PyDict_SetItemString_DECREF(pyDict, "path-image", PyUnicode_FromWideChar(pe->wszImagePath, -1));
+            PyDict_SetItemString_DECREF(pyDict, "name", PyUnicode_FromString(pe->uszServiceName));
+            PyDict_SetItemString_DECREF(pyDict, "name-display", PyUnicode_FromString(pe->uszDisplayName));
+            PyDict_SetItemString_DECREF(pyDict, "path", PyUnicode_FromString(pe->uszPath));
+            PyDict_SetItemString_DECREF(pyDict, "user-tp", PyUnicode_FromString(pe->uszUserTp));
+            PyDict_SetItemString_DECREF(pyDict, "user-acct", PyUnicode_FromString(pe->uszUserAcct));
+            PyDict_SetItemString_DECREF(pyDict, "path-image", PyUnicode_FromString(pe->uszImagePath));
             PyDict_SetItemDWORD_DECREF(pyDictResult, pe->dwOrdinal, pyDict);
         }
     }
