@@ -230,8 +230,8 @@ VOID VmmWinInit_FindNtosScan64_SmallPageWalk_DoWork(_In_ QWORD paTable, _In_ QWO
         if(iPML == 1) {
             if(i && pObPTEs->pqw[i - 1]) { continue; }      // PAGE i-1 NOT EMPTY -> NOT VALID
             if((pte & 0x800000000000000f) != 0x8000000000000003) { continue; } // PAGE i+0 IS ACTIVE-WRITE-SUPERVISOR-NOEXECUTE
-            for(j = i + 1, f = TRUE; f && (j < min(i + 32, 512)); j++) {
-                f = ((pObPTEs->pqw[j] & 0x800000000000000f) == 0x01);   // PAGE i+0 IS ACTIVE-SUPERVISOR-NOEXECUTE
+            for(j = i + 2, f = TRUE; f && (j < min(i + 32, 512)); j++) {
+                f = ((pObPTEs->pqw[j] & 0x0f) == 0x01);   // PAGE i+1 IS ACTIVE-SUPERVISOR
             }
             if(f) {
                 ObSet_Push(psvaKernelCandidates, vaCurrent);

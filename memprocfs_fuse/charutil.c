@@ -74,12 +74,12 @@ BOOL CharUtil_AtoU(_In_opt_ LPSTR sz, _In_ DWORD cch, _Maybenull_ _Writable_byte
             }
             cba++;
         }
-        cba++;
     } else {
         while((cba < cch) && (c = sz[cba++])) {
             if(c > 0x7f) { cbu++; }
         }
     }
+    cba++;
     cbu += cba;
     if(pcbu) { *pcbu = cbu; }
     // 2: return on length-request or alloc-fail
@@ -87,7 +87,6 @@ BOOL CharUtil_AtoU(_In_opt_ LPSTR sz, _In_ DWORD cch, _Maybenull_ _Writable_byte
         if(!(flags & CHARUTIL_FLAG_STR_BUFONLY)) { return TRUE; }   // success: length request
         if(flags & CHARUTIL_FLAG_ALLOC) { return FALSE; }
     }                                              
-    if(!cbu) { goto fail; }
     if(!(flags & CHARUTIL_FLAG_ALLOC) && (!pbBuffer || (cbBuffer < cbu))) { goto fail; } // fail: insufficient buffer space
     usz = (pbBuffer && (cbBuffer >= cbu)) ? pbBuffer : LocalAlloc(0, cbu);
     if(!usz) { goto fail; }                                              // fail: failed buffer space allocation
@@ -208,7 +207,6 @@ BOOL CharUtil_WtoU(_In_opt_ LPWSTR wsz, _In_ DWORD cch, _Maybenull_ _Writable_by
             }
             cbw++;
         }
-        cbw++;
     } else {
         while((cbw < cch) && (c = pus[cbw++])) {
             if(c > 0x7ff) {
@@ -226,6 +224,7 @@ BOOL CharUtil_WtoU(_In_opt_ LPWSTR wsz, _In_ DWORD cch, _Maybenull_ _Writable_by
             }
         }
     }
+    cbw++;
     cbu += cbw;
     if(pcbu) { *pcbu = cbu; }
     // 2: return on length-request or alloc-fail
@@ -233,7 +232,6 @@ BOOL CharUtil_WtoU(_In_opt_ LPWSTR wsz, _In_ DWORD cch, _Maybenull_ _Writable_by
         if(!(flags & CHARUTIL_FLAG_STR_BUFONLY)) { return TRUE; }   // success: length request
         if(flags & CHARUTIL_FLAG_ALLOC) { return FALSE; }
     }
-    if(!cbu) { goto fail; }
     if(!(flags & CHARUTIL_FLAG_ALLOC) && (!pbBuffer || (cbBuffer < cbu))) { goto fail; } // fail: insufficient buffer space
     usz = (pbBuffer && (cbBuffer >= cbu)) ? pbBuffer : LocalAlloc(0, cbu);
     if(!usz) { goto fail; }                                              // fail: failed buffer space allocation
@@ -440,7 +438,6 @@ BOOL CharUtil_UtoJ(_In_opt_ LPSTR usz, _In_ DWORD cch, _Maybenull_ _Writable_byt
                 cbj += n;
             }cba++;
         }
-        cba++;
     } else {
         while((cba < cch) && (c = usz[cba++])) {
             if(c < 0x20 || c == '"' || c == '\\') {
@@ -449,6 +446,7 @@ BOOL CharUtil_UtoJ(_In_opt_ LPSTR usz, _In_ DWORD cch, _Maybenull_ _Writable_byt
             }
         }
     }
+    cba++;
     cbj += cba;
     if(pcbj) { *pcbj = cbj; }
     // 2: return on length-request or alloc-fail
@@ -513,7 +511,6 @@ BOOL CharUtil_AtoJ(_In_opt_ LPSTR sz, _In_ DWORD cch, _Maybenull_ _Writable_byte
             }
             cba++;
         }
-        cba++;
     } else {
         while((cba < cch) && (c = sz[cba++])) {
             if(c > 0x7f) {
@@ -524,6 +521,7 @@ BOOL CharUtil_AtoJ(_In_opt_ LPSTR sz, _In_ DWORD cch, _Maybenull_ _Writable_byte
             }
         }
     }
+    cba++;
     cbj += cba;
     if(pcbj) { *pcbj = cbj; }
     // 2: return on length-request or alloc-fail
@@ -604,7 +602,6 @@ BOOL CharUtil_WtoJ(_In_opt_ LPWSTR wsz, _In_ DWORD cch, _Maybenull_ _Writable_by
             }
             cbw++;
         }
-        cbw++;
     } else {
         while((cbw < cch) && (c = pus[cbw++])) {
             if(c > 0x7ff) {
@@ -625,6 +622,7 @@ BOOL CharUtil_WtoJ(_In_opt_ LPWSTR wsz, _In_ DWORD cch, _Maybenull_ _Writable_by
             }
         }
     }
+    cbw++;
     cbj += cbw;
     if(pcbj) { *pcbj = cbj; }
     // 2: return on length-request or alloc-fail

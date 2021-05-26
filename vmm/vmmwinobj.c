@@ -322,7 +322,7 @@ VOID VmmWinObjFile_Initialize_FileObjects(_In_ PVMM_PROCESS pSystemProcess, _Ino
             cbPath = MAX_PATH * 2;
         }
         if(!VmmReadWtoU(pSystemProcess, vaFileNameBuffer, cbPath, VMM_FLAG_FORCECACHE_READ, NULL, 0, &peObFile->uszPath, NULL, CHARUTIL_FLAG_ALLOC)) {
-            peObFile->uszPath = (LPSTR)LocalAlloc(LMEM_ZEROINIT, 1);
+            if(!(peObFile->uszPath = (LPSTR)LocalAlloc(LMEM_ZEROINIT, 1))) { continue; }
         }
         peObFile->uszName = CharUtil_PathSplitLast(peObFile->uszPath);
         peObFile->dwNameHash = CharUtil_HashNameFsU(peObFile->uszName, 0);

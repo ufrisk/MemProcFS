@@ -258,3 +258,6 @@ v1.1-v2.10
 * Linux support (x64 and aarch64).
 * Separate releases for Windows and Linux.
 * API Changes and some incompatibilities.
+
+Latest:
+* Bug fixes

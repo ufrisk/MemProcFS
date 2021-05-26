@@ -646,7 +646,7 @@ DWORD FcNtfs_FinalizeFinish(_In_ PFCNTFS_FINALIZE_CONTEXT ctx, _In_ POB_SET psHa
         cuszName = (DWORD)strlen(peNtfs->uszName);
         if(cuszPath + cuszName + 2 >= 2048) { break; }
         uszPath[cuszPath] = '\\';
-        memcpy(&uszPath[cuszPath + 1], peNtfs->uszName, cuszName + 1);
+        memcpy(&uszPath[cuszPath + 1], peNtfs->uszName, cuszName + 1ULL);
         // update/set path hash
         while(TRUE) {
             qwHashTotal = peNtfs->pParent ? peNtfs->pParent->qwHashThis : 0;
