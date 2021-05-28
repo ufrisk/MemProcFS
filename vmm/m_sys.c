@@ -40,7 +40,7 @@ VOID MSys_QueryTimeZone(_Out_writes_(49) LPSTR uszTimeZone, _In_ BOOL fLine)
 
 NTSTATUS MSys_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
-    DWORD cbBuffer;
+    DWORD cbBuffer, cbData;
     BYTE pbBuffer[0x42] = { 0 };
     BYTE pbRegData[0x42] = { 0 };
     CHAR szTimeZone[64] = { 0 };
@@ -68,8 +68,8 @@ NTSTATUS MSys_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead
             pb, cb, pcbRead, cbOffset);
     }
     if(!_stricmp(ctx->uszPath, "computername.txt")) {
-        VmmWinReg_ValueQuery2("HKLM\\SYSTEM\\ControlSet001\\Control\\ComputerName\\ComputerName\\ComputerName", NULL, pbRegData, sizeof(pbRegData) - 2, NULL);
-        CharUtil_WtoU((LPWSTR)pbRegData, 32, pbBuffer, sizeof(pbBuffer), NULL, NULL, CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR);
+        VmmWinReg_ValueQuery2("HKLM\\SYSTEM\\ControlSet001\\Control\\ComputerName\\ComputerName\\ComputerName", NULL, pbRegData, sizeof(pbRegData) - 2, &cbData);
+        CharUtil_WtoU((LPWSTR)pbRegData, cbData << 1, pbBuffer, sizeof(pbBuffer), NULL, NULL, CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR | CHARUTIL_FLAG_STR_BUFONLY);
         return Util_VfsReadFile_FromPBYTE(pbBuffer, 32, pb, cb, pcbRead, cbOffset);
     }
     if(!_stricmp(ctx->uszPath, "time-boot.txt")) {

@@ -75,8 +75,9 @@ BOOL CharUtil_AtoU(_In_opt_ LPSTR sz, _In_ DWORD cch, _Maybenull_ _Writable_byte
             cba++;
         }
     } else {
-        while((cba < cch) && (c = sz[cba++])) {
+        while((cba < cch) && (c = sz[cba])) {
             if(c > 0x7f) { cbu++; }
+            cba++;
         }
     }
     cba++;
@@ -135,7 +136,8 @@ BOOL CharUtil_UtoU(_In_opt_ LPSTR uszIn, _In_ DWORD cch, _Maybenull_ _Writable_b
             if((c & 0xe0) == 0xc0) { n = 2; }
             if((c & 0xf0) == 0xe0) { n = 3; }
             if((c & 0xf8) == 0xf0) { n = 4; }
-            if(!n || (cbu + n > cch)) { break; }
+            if(!n) { goto fail; }                                              // invalid char-encoding
+            if(cbu + n > cch) { break; }
             if(fTruncate && (cbu + n >= cbBuffer)) { break; }
             if((n > 1) && ((uszIn[cbu + 1] & 0xc0) != 0x80)) { goto fail; }    // invalid char-encoding
             if((n > 2) && ((uszIn[cbu + 2] & 0xc0) != 0x80)) { goto fail; }    // invalid char-encoding
@@ -208,12 +210,12 @@ BOOL CharUtil_WtoU(_In_opt_ LPWSTR wsz, _In_ DWORD cch, _Maybenull_ _Writable_by
             cbw++;
         }
     } else {
-        while((cbw < cch) && (c = pus[cbw++])) {
+        while((cbw < cch) && (c = pus[cbw])) {
             if(c > 0x7ff) {
                 if(c >= 0xD800 && c <= 0xDFFF) {
                     // surrogate pair
-                    if(cbw + 1 > cch) { break; }    // end of string
-                    if(pus[cbw] < 0xD800 || pus[cbw] > 0xDFFF) { goto fail; }    // fail: invalid code point
+                    if(cbw + 1 >= cch) { break; }    // end of string
+                    if(pus[cbw + 1] < 0xD800 || pus[cbw + 1] > 0xDFFF) { goto fail; }    // fail: invalid code point
                     cbu += 2;
                     cbw++;
                 } else {
@@ -222,6 +224,7 @@ BOOL CharUtil_WtoU(_In_opt_ LPWSTR wsz, _In_ DWORD cch, _Maybenull_ _Writable_by
             } else if(c > 0x7f) {
                 cbu++;
             }
+            cbw++;
         }
     }
     cbw++;
@@ -307,7 +310,8 @@ BOOL CharUtil_UtoW(_In_opt_ LPSTR usz, _In_ DWORD cch, _Maybenull_ _Writable_byt
             if((c & 0xe0) == 0xc0) { n = 2; }
             if((c & 0xf0) == 0xe0) { n = 3; }
             if((c & 0xf8) == 0xf0) { n = 4; }
-            if(!n || (cbu + n > cch)) { break; }
+            if(!n) { goto fail; }                                           // invalid char-encoding
+            if(cbu + n > cch) { break; }
             if(fTruncate && (cbw + ((n == 4) ? 4 : 2) >= cbBuffer)) { break; }
             if((n > 1) && ((usz[cbu + 1] & 0xc0) != 0x80)) { goto fail; }   // invalid char-encoding
             if((n > 2) && ((usz[cbu + 2] & 0xc0) != 0x80)) { goto fail; }   // invalid char-encoding
@@ -436,14 +440,16 @@ BOOL CharUtil_UtoJ(_In_opt_ LPSTR usz, _In_ DWORD cch, _Maybenull_ _Writable_byt
                 n = (c == '"' || c == '\\' || c == '\b' || c == '\f' || c == '\n' || c == '\r' || c == '\t') ? 1 : 5;
                 if(cba + cbj + 1 + n >= cbBuffer) { break; }
                 cbj += n;
-            }cba++;
+            }
+            cba++;
         }
     } else {
-        while((cba < cch) && (c = usz[cba++])) {
+        while((cba < cch) && (c = usz[cba])) {
             if(c < 0x20 || c == '"' || c == '\\') {
                 // JSON encode
                 cbj += (c == '"' || c == '\\' || c == '\b' || c == '\f' || c == '\n' || c == '\r' || c == '\t') ? 1 : 5;
             }
+            cba++;
         }
     }
     cba++;
@@ -512,13 +518,14 @@ BOOL CharUtil_AtoJ(_In_opt_ LPSTR sz, _In_ DWORD cch, _Maybenull_ _Writable_byte
             cba++;
         }
     } else {
-        while((cba < cch) && (c = sz[cba++])) {
+        while((cba < cch) && (c = sz[cba])) {
             if(c > 0x7f) {
                 cbj++;
             } else if(c < 0x20 || c == '"' || c == '\\') {
                 // JSON encode
                 cbj += (c == '"' || c == '\\' || c == '\b' || c == '\f' || c == '\n' || c == '\r' || c == '\t') ? 1 : 5;
             }
+            cba++;
         }
     }
     cba++;
@@ -603,12 +610,12 @@ BOOL CharUtil_WtoJ(_In_opt_ LPWSTR wsz, _In_ DWORD cch, _Maybenull_ _Writable_by
             cbw++;
         }
     } else {
-        while((cbw < cch) && (c = pus[cbw++])) {
+        while((cbw < cch) && (c = pus[cbw])) {
             if(c > 0x7ff) {
                 if(c >= 0xD800 && c <= 0xDFFF) {
                     // surrogate pair
-                    if(cbw + 1 > cch) { break; }    // end of string
-                    if(pus[cbw] < 0xD800 || pus[cbw] > 0xDFFF) { goto fail; }   // fail: invalid code point
+                    if(cbw + 1 >= cch) { break; }    // end of string
+                    if(pus[cbw + 1] < 0xD800 || pus[cbw + 1] > 0xDFFF) { goto fail; }   // fail: invalid code point
                     cbj += 2;
                     cbw++;
                 } else {
@@ -620,6 +627,7 @@ BOOL CharUtil_WtoJ(_In_opt_ LPWSTR wsz, _In_ DWORD cch, _Maybenull_ _Writable_by
                 // JSON encode
                 cbj += (c == '"' || c == '\\' || c == '\b' || c == '\f' || c == '\n' || c == '\r' || c == '\t') ? 1 : 5;
             }
+            cbw++;
         }
     }
     cbw++;

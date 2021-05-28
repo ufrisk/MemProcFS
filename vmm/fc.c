@@ -352,7 +352,7 @@ BOOL FcTimeline_Initialize()
     ctxFc->cProgressPercent = 80;
     // update timeline_info with sizes for individual types for utf-8 only.
     LPSTR szTIMELINE_SQL_TIMELINE_UPD_UTF8 =
-        "UPDATE timeline_info SET file_size_u = (SELECT oln_utp+cbu+"STRINGIZE(FC_LINELENGTH_TIMELINE_UTF8)" FROM v_timeline WHERE tp = ? AND tp_id = (SELECT MAX(tp_id) FROM v_timeline WHERE tp = ?)) WHERE id = ?;";
+        "UPDATE timeline_info SET file_size_u = IFNULL((SELECT oln_utp+cbu+"STRINGIZE(FC_LINELENGTH_TIMELINE_UTF8)" FROM v_timeline WHERE tp = ? AND tp_id = (SELECT MAX(tp_id) FROM v_timeline WHERE tp = ?)), 0) WHERE id = ?;";
     Fc_SqlQueryN("SELECT MAX(id) FROM timeline_info;", 0, NULL, 1, &v, NULL);
     ctxFc->Timeline.cTp = (DWORD)v + 1;
     for(k = 1; k < ctxFc->Timeline.cTp; k++) {

@@ -2114,7 +2114,7 @@ VOID VmmWinReg_KeyFullPath(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY p
     CONST BYTE pbTEXT_ROOT[] = { '\\', 0, 'R', 0, 'O', 0, 'O', 0, 'T', 0 };
     BOOL fResult = TRUE, fSkip = TRUE;
     QWORD cch;
-    DWORD o = 0, i, iKey = 0;
+    DWORD o = 0, i, iKey = 0, cbName;
     POB_REGISTRY_KEY pk, ppObKey[0x40];
     // fetch parents (max depth: 0x40)
     ppObKey[iKey++] = Ob_INCREF(pKey);
@@ -2133,14 +2133,15 @@ VOID VmmWinReg_KeyFullPath(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY p
         } else if(fSkip && !pk->qwHashKeyParent && memcmp(pk->pKey->wszName, pbTEXT_ROOT, sizeof(pbTEXT_ROOT))) {
             ;
         } else {
+            cbName = 0;
             uszFullPath[o++] = '\\';
             if(pk->pKey->Flags & REG_CM_KEY_NODE_FLAGS_COMP_NAME) {
-                for(i = 0; i < pk->pKey->NameLength; i++) {
-                    uszFullPath[o++] = pk->pKey->szName[i];
-                }
+                CharUtil_AtoU(pk->pKey->szName, pk->pKey->NameLength, uszFullPath + o, 1024 - o, NULL, &cbName, CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR | CHARUTIL_FLAG_STR_BUFONLY);
             } else {
-                CharUtil_WtoU(pk->pKey->wszName, pk->pKey->NameLength, uszFullPath + o, 1024 - o, NULL, NULL, CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR | CHARUTIL_FLAG_STR_BUFONLY);
-                o += pk->pKey->NameLength;
+                CharUtil_WtoU(pk->pKey->wszName, pk->pKey->NameLength, uszFullPath + o, 1024 - o, NULL, &cbName, CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR | CHARUTIL_FLAG_STR_BUFONLY);
+            }
+            if(cbName) {
+                o += cbName - 1;
             }
         }
         Ob_DECREF(pk);
