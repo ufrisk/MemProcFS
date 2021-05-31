@@ -576,7 +576,9 @@ POB_M_MINIDUMP_CONTEXT M_MiniDump_Initialize_Internal(_In_ PVMM_PROCESS pProcess
     if(!(pObSystemProcess = VmmProcessGet(4))) { goto fail; }
     if(!VmmMap_GetPte(pProcess, &pObPteMap, FALSE) || !pObPteMap->cMap || (pObPteMap->cMap > 0x4000)) { goto fail; }
     if(!VmmMap_GetVad(pProcess, &pObVadMap, VMM_VADMAP_TP_FULL) || !pObVadMap->cMap || (pObVadMap->cMap > 0x1000)) { goto fail; }
-    VmmMap_GetThread(pProcess, &pObThreadMap) || !pObThreadMap->cMap || (pObThreadMap->cMap > 0x4000);  // THREAD = allowed to fail (due to dependency on debug symbols).
+    if(VmmMap_GetThread(pProcess, &pObThreadMap) && (!pObThreadMap->cMap || (pObThreadMap->cMap > 0x4000))) {   // THREAD = allowed to fail (due to dependency on debug symbols).
+        Ob_DECREF_NULL(&pObThreadMap);
+    }
     if(!VmmMap_GetModule(pProcess, &pObModuleMap) || !pObModuleMap->cMap || (pObModuleMap->cMap > 0x4000)) { goto fail; }
     if(!VmmMap_GetUnloadedModule(pProcess, &pObUnloadedModuleMap)) { goto fail; }
     if(!(ctx = Ob_Alloc(OB_TAG_MOD_MINIDUMP_CTX, LMEM_ZEROINIT, sizeof(OB_M_MINIDUMP_CONTEXT), (OB_CLEANUP_CB)M_MiniDump_CallbackCleanup_ObMiniDumpContext, NULL))) { goto fail; }

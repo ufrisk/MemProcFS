@@ -344,6 +344,7 @@ VOID VmmWinSvc_ResolveStrRegistry(_In_ PVMM_PROCESS pProcessSvc, _In_ PVMMOB_MAP
     VmmWinReg_KeyHiveGetByFullPath("HKLM\\SYSTEM", &pObHive, NULL);
     for(i = 0; i < pSvcMap->cMap; i++) {
         pe = pSvcMap->pMap + i;
+        cbData = 0;
         if(pObHive) {
             _snprintf_s(usz, MAX_PATH, _TRUNCATE, "ROOT\\ControlSet001\\Services\\%s\\parameters\\ServiceDll", pe->uszServiceName);
             if(!VmmWinReg_ValueQuery3(pObHive, usz, &dwType, (PBYTE)wsz, MAX_PATH * 2, &cbData) || (dwType != REG_EXPAND_SZ)) {
@@ -352,8 +353,8 @@ VOID VmmWinSvc_ResolveStrRegistry(_In_ PVMM_PROCESS pProcessSvc, _In_ PVMMOB_MAP
                     cbData = 0;
                 }
             }
-            wsz[cbData >> 1] = 0;
         }
+        wsz[cbData >> 1] = 0;
         ObStrMap_PushPtrWU(psm, wsz, &pe->uszImagePath, NULL);
     }
     Ob_DECREF(pObHive);
