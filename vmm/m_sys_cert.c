@@ -157,7 +157,7 @@ POB_MAP MSysCert_GetContext(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
 {
     LPSTR uszCertStoresUSER[] = { "ROOT\\Software\\Microsoft\\SystemCertificates", "ROOT\\Software\\Policies\\Microsoft\\SystemCertificates" };
     LPSTR uszCertStoresSYSTEM[] = { "HKLM\\SOFTWARE\\Microsoft\\SystemCertificates", "HKLM\\SOFTWARE\\Policies\\Microsoft\\SystemCertificates" };
-    DWORD i;
+    DWORD i, j;
     POB_MAP pObCtx = NULL;
     PVMMOB_MAP_USER pObUserMap = NULL;
     POB_REGISTRY_KEY pObKey = NULL;
@@ -179,8 +179,8 @@ POB_MAP MSysCert_GetContext(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
     if(VmmMap_GetUser(&pObUserMap)) {
         for(i = 0; i < pObUserMap->cMap; i++) {
             if((pObHive = VmmWinReg_HiveGetByAddress(pObUserMap->pMap[i].vaRegHive))) {
-                for(i = 0; i < sizeof(uszCertStoresUSER) / sizeof(LPSTR); i++) {
-                    if((pObKey = VmmWinReg_KeyGetByPath(pObHive, uszCertStoresUSER[i]))) {
+                for(j = 0; j < sizeof(uszCertStoresUSER) / sizeof(LPSTR); j++) {
+                    if((pObKey = VmmWinReg_KeyGetByPath(pObHive, uszCertStoresUSER[j]))) {
                         MSysCert_GetContext_UserAddCerts(pObHive, pObKey, pObUserMap->pMap + i, pObCtx);
                         Ob_DECREF_NULL(&pObKey);
                     }
