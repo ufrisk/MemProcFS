@@ -19,6 +19,7 @@
 #define OB_TAG_CORE_CACHEMAP            'ObMc'
 #define OB_TAG_CORE_STRMAP              'ObMs'
 #define OB_TAG_CORE_STRWMAP             'ObMw'
+#define OB_TAG_INFODB_CTX               'IDBC'
 #define OB_TAG_MAP_PTE                  'Mpte'
 #define OB_TAG_MAP_VAD                  'Mvad'
 #define OB_TAG_MAP_VADEX                'Mvae'

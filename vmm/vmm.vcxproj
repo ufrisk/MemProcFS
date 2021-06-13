@@ -122,6 +122,7 @@
     <ClInclude Include="..\includes\leechcore.h" />
     <ClInclude Include="charutil.h" />
     <ClInclude Include="fc.h" />
+    <ClInclude Include="infodb.h" />
     <ClInclude Include="mm.h" />
     <ClInclude Include="mm_pfn.h" />
     <ClInclude Include="m_modules.h" />
@@ -152,6 +153,7 @@
   <ItemGroup>
     <ClCompile Include="charutil.c" />
     <ClCompile Include="fc.c" />
+    <ClCompile Include="infodb.c" />
     <ClCompile Include="mm_pfn.c" />
     <ClCompile Include="mm_vad.c" />
     <ClCompile Include="mm_win.c" />

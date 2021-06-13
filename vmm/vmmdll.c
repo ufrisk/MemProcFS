@@ -2451,7 +2451,7 @@ BOOL VMMDLL_PdbSymbolName(_In_ LPSTR szModule, _In_ QWORD cbSymbolAddressOrOffse
 _Success_(return)
 BOOL VMMDLL_PdbSymbolAddress_Impl(_In_ LPSTR szModule, _In_ LPSTR szSymbolName, _Out_ PULONG64 pvaSymbolAddress)
 {
-    PDB_HANDLE hPdb = PDB_GetHandleFromModuleName(szModule);
+    PDB_HANDLE hPdb = (strcmp(szModule, "nt") && strcmp(szModule, "ntoskrnl")) ? PDB_GetHandleFromModuleName(szModule) : PDB_HANDLE_KERNEL;
     return PDB_GetSymbolAddress(hPdb, szSymbolName, pvaSymbolAddress);
 }
 
@@ -2466,7 +2466,7 @@ BOOL VMMDLL_PdbSymbolAddress(_In_ LPSTR szModule, _In_ LPSTR szSymbolName, _Out_
 _Success_(return)
 BOOL VMMDLL_PdbTypeSize_Impl(_In_ LPSTR szModule, _In_ LPSTR szTypeName, _Out_ PDWORD pcbTypeSize)
 {
-    PDB_HANDLE hPdb = PDB_GetHandleFromModuleName(szModule);
+    PDB_HANDLE hPdb = (strcmp(szModule, "nt") && strcmp(szModule, "ntoskrnl")) ? PDB_GetHandleFromModuleName(szModule) : PDB_HANDLE_KERNEL;
     return PDB_GetTypeSize(hPdb, szTypeName, pcbTypeSize);
 }
 
@@ -2481,7 +2481,7 @@ BOOL VMMDLL_PdbTypeSize(_In_ LPSTR szModule, _In_ LPSTR szTypeName, _Out_ PDWORD
 _Success_(return)
 BOOL VMMDLL_PdbTypeChildOffset_Impl(_In_ LPSTR szModule, _In_ LPSTR uszTypeName, _In_ LPSTR uszTypeChildName, _Out_ PDWORD pcbTypeChildOffset)
 {
-    PDB_HANDLE hPdb = PDB_GetHandleFromModuleName(szModule);
+    PDB_HANDLE hPdb = (strcmp(szModule, "nt") && strcmp(szModule, "ntoskrnl")) ? PDB_GetHandleFromModuleName(szModule) : PDB_HANDLE_KERNEL;
     return PDB_GetTypeChildOffset(hPdb, uszTypeName, uszTypeChildName, pcbTypeChildOffset);
 }
 

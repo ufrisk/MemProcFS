@@ -20,10 +20,12 @@ OBJ = oscompatibility.o charutil.o util.o pe.o vmm.o vmmdll.o mm_x64.o       \
 	  vmmwin.o vmmwinobj.o vmmwinreg.o vmmwinsvc.o m_file_handles_vads.o     \
 	  m_file_modules.o m_findevil.o m_handle.o m_ldrmodules.o m_memmap.o     \
 	  m_phys2virt.o m_conf.o m_vfsproc.o m_vfsroot.o m_vfsfc.o m_virt2phys.o \
-	  m_winreg.o m_minidump.o                                                \
-	  m_sys.o m_sys_mem.o m_sys_net.o m_sys_proc.o m_sys_svc.o m_sys_task.o  \
-	  fc.o m_fc_json.o m_fc_module.o m_fc_registry.o m_fc_timeline.o         \
-	  sqlite/sqlite3.o
+	  m_winreg.o m_minidump.o m_thread.o                                     \
+	  m_sys.o m_sys_driver.o m_sys_mem.o m_sys_net.o m_sys_obj.o             \
+	  m_sys_proc.o m_sys_svc.o m_sys_task.o                                  \
+	  fc.o m_fc_json.o m_fc_module.o m_fc_ntfs.o m_fc_proc.o m_fc_registry.o \
+	  m_fc_thread.o m_fc_timeline.o                                          \
+	  infodb.o sqlite/sqlite3.o
 
 
 %.o: %.c $(DEPS)

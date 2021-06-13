@@ -1163,6 +1163,7 @@ typedef struct tdVMM_CONTEXT {
     POB_CONTAINER pObCMapObject;
     POB_CONTAINER pObCMapKDriver;
     POB_CONTAINER pObCMapService;
+    POB_CONTAINER pObCInfoDB;
     POB_CONTAINER pObCCachePrefetchEPROCESS;
     POB_CONTAINER pObCCachePrefetchRegistry;
     POB_CACHEMAP pObCacheMapEAT;

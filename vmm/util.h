@@ -131,6 +131,13 @@ size_t Util_usnprintf_ln(
 VOID Util_GetPathDll(_Out_writes_(MAX_PATH) PCHAR szPath, _In_opt_ HMODULE hModule);
 
 /*
+* Retrieve the operating system path of the directory which is containing this:
+* .dll/.so file.
+* -- szPath
+*/
+VOID Util_GetPathLib(_Out_writes_(MAX_PATH) PCHAR szPath);
+
+/*
 * Duplicates a string.
 * CALLER LocalFree return
 * -- sz/wsz

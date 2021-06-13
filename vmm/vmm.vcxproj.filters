@@ -126,6 +126,9 @@
     <ClInclude Include="oscompatibility.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="infodb.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="vmmdll.c">
@@ -328,6 +331,9 @@
     </ClCompile>
     <ClCompile Include="m_conf.c">
       <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="infodb.c">
+      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

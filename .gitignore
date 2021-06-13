@@ -8,6 +8,7 @@
 *.so
 *.o
 *pycache*
+info.db
 /files/memprocfs
 /files/vmm_example.exe
 /files/lib

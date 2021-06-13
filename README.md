@@ -107,7 +107,6 @@ Please find some ideas for possible future expansions of the memory process file
 ### Other items:
 - Hash lookup of executable memory pages in DB.
 - Forensic mode more analysis tasks.
-- Offlne debug symbols.
 
 License:
 ========
@@ -259,5 +258,6 @@ v1.1-v2.10
 * Separate releases for Windows and Linux.
 * API Changes and some incompatibilities.
 
-Latest:
-* Bug fixes
+[v4.1](https://github.com/ufrisk/MemProcFS/releases/tag/v4.1)
+* Bug fixes.
+* Offline kernel symbols (partial support). This allows for more functionality in Linux mode and in Windows offline mode.

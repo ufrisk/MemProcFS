@@ -17,12 +17,11 @@
 _Success_(return == 0)
 NTSTATUS MThread_Read_ThreadInfo(_In_ PVMM_MAP_THREADENTRY pThreadEntry, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
-    DWORD o;
     CHAR sz[MTHREAD_INFOFILE_LENGTH + 1];
     CHAR szTimeCreate[32] = { 0 }, szTimeExit[32] = { 0 };
     Util_FileTime2String(pThreadEntry->ftCreateTime, szTimeCreate);
     Util_FileTime2String(pThreadEntry->ftExitTime, szTimeExit);
-    o = snprintf(
+    snprintf(
         sz,
         MTHREAD_INFOFILE_LENGTH + 1,
         "PID:           %21i\n" \

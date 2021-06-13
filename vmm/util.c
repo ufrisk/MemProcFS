@@ -603,6 +603,34 @@ NTSTATUS Util_VfsLineFixed_Read(
     return nt;
 }
 
+/*
+* Retrieve the operating system path of the directory which is containing this:
+* .dll/.so file.
+* -- szPath
+*/
+VOID Util_GetPathLib(_Out_writes_(MAX_PATH) PCHAR szPath)
+{
+    SIZE_T i;
+    ZeroMemory(szPath, MAX_PATH);
+#ifdef _WIN32
+    HMODULE hModuleVmm;
+    hModuleVmm = LoadLibraryA("vmm.dll");
+    GetModuleFileNameA(hModuleVmm, szPath, MAX_PATH - 4);
+    if(hModuleVmm) { FreeLibrary(hModuleVmm); }
+#endif /* _WIN32 */
+#ifdef LINUX
+    Dl_info Info = { 0 };
+    if(!dladdr((void *)Util_GetPathLib, &Info) || !Info.dli_fname) { return; }
+    strncpy(szPath, Info.dli_fname, MAX_PATH - 1);
+#endif /* LINUX */
+    for(i = strlen(szPath) - 1; i > 0; i--) {
+        if(szPath[i] == '/' || szPath[i] == '\\') {
+            szPath[i + 1] = '\0';
+            return;
+        }
+    }
+}
+
 #ifdef _WIN32
 
 VOID Util_GetPathDll(_Out_writes_(MAX_PATH) PCHAR szPath, _In_opt_ HMODULE hModule)

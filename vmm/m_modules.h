@@ -79,12 +79,15 @@ VOID(*g_pfnModulesAllInternal[])(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo) = {
     M_MemMap_Initialize,
     M_MiniDump_Initialize,
     M_Phys2Virt_Initialize,
+    M_Thread_Initialize,
     M_Virt2Phys_Initialize,
     // global modules
     M_Conf_Initialize,
     M_Sys_Initialize,
+    M_SysDriver_Initialize,
     M_SysMem_Initialize,
     M_SysNet_Initialize,
+    M_SysObj_Initialize,
     M_SysProc_Initialize,
     M_SysSvc_Initialize,
     M_SysTask_Initialize,
@@ -93,20 +96,16 @@ VOID(*g_pfnModulesAllInternal[])(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo) = {
     M_FcJSON_Initialize,
     M_FcTimeline_Initialize,
     M_FcModule_Initialize,
+    M_FcNtfs_Initialize,
+    M_FcProc_Initialize,
     M_FcRegistry_Initialize,
+    M_FcThread_Initialize,
 #ifdef _WIN32
     // windows-only per-process modules
-    M_ProcToken_Initialize,
-    M_Thread_Initialize,
+    M_ProcToken_Initialize,         // req: winapi
     // windows-only global modules
     M_SysCert_Initialize,           // req: winapi
-    M_SysDriver_Initialize,         // req: symbols
-    M_SysObj_Initialize,            // req: symbols
-    M_SysSyscall_Initialize,        // req: symbols
-    // windows-only forensic modules
-    M_FcNtfs_Initialize,            // req: symbols
-    M_FcProc_Initialize,            // req: symbols
-    M_FcThread_Initialize,          // req: symbols
+    M_SysSyscall_Initialize,        // req: full symbols
 #endif /* _WIN32 */
 };
 

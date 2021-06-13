@@ -15,6 +15,7 @@
 #include "vmmwin.h"
 #include "vmmwinobj.h"
 #include "vmmwinreg.h"
+#include "infodb.h"
 
 /*
 * Try initialize threading - this is dependent on available PDB symbols.
@@ -826,6 +827,7 @@ QWORD VmmWinInit_FindSystemEPROCESS(_In_ PVMM_PROCESS pSystemProcess)
     }
     // 2: fail - paging? try to retrive using PDB subsystem - this may take some time to initialize
     //           and download symbols - but it's better than failing totally ...
+    InfoDB_Initialize();
     PDB_Initialize(NULL, FALSE);
     PDB_GetSymbolPTR(PDB_HANDLE_KERNEL, "PsInitialSystemProcess", pSystemProcess, &vaSystemEPROCESS);
     if(vaSystemEPROCESS) { goto success; }
@@ -947,6 +949,7 @@ BOOL VmmWinInit_TryInitialize(_In_opt_ QWORD paDTBOpt)
         }
     }
     // Initialization functionality:
+    InfoDB_Initialize();
     PDB_Initialize(NULL, TRUE);                                 // Async init of PDB subsystem.
     VmmWinInit_FindPsLoadedModuleListKDBG(pObSystemProcess);    // Find PsLoadedModuleList and possibly KDBG.
     VmmWinObj_Initialize();                                     // Windows Objects Manager.

@@ -14,6 +14,7 @@
 #include "pdb.h"
 #include "pe.h"
 #include "mm.h"
+#include "infodb.h"
 #ifdef _WIN32
 #include <sddl.h>
 #include <shlwapi.h>
@@ -3014,6 +3015,7 @@ VOID VmmWinProcess_OffsetLocator_SetMaxOffset()
 VOID VmmWinProcess_OffsetLocatorSYMSERV(_In_ PVMM_PROCESS pSystemProcess)
 {
     PVMM_OFFSET_EPROCESS po = &ctxVmm->offset.EPROCESS;
+    InfoDB_Initialize();
     PDB_Initialize(NULL, FALSE);
     PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_DISPATCHER_HEADER", "SignalState", &po->State);
     PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KPROCESS", "DirectoryTableBase", &po->DTB);
