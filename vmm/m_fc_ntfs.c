@@ -1318,7 +1318,6 @@ VOID M_FcNtfs_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if((pRI->tpSystem != VMM_SYSTEM_WINDOWS_X64) && (pRI->tpSystem != VMM_SYSTEM_WINDOWS_X86)) { return; }
-    if(ctxMain->dev.fVolatile) { return; }
     strcpy_s(pRI->reg_info.uszPathName, 128, "\\forensic\\ntfs");               // module name
     pRI->reg_info.fRootModule = TRUE;                                           // module shows in root directory
     pRI->reg_info.fRootModuleHidden = TRUE;                                     // module hidden by default

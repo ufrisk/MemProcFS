@@ -39,22 +39,17 @@ typedef struct tdMSYSCALL_CONTEXT {
 } MSYSCALL_CONTEXT, *PMSYSCALL_CONTEXT;
 
 /*
-* Retrieve fake csrss.exe process with nothing but DTB and paging set to kernel.
-* Reason is that win32k driver is not mapped into ordinary kernel address space.
-* Win32k is only mapped into user mode processes and csrss.exe always exist on
-* a system so pick this process and create a new fake/dummy process object with
-* paging set to kernel to access Win32k
+* Retrieve csrss.exe process. It's a specially treated process with both
+* user/kernel space mapped for win32k reasons.
 * CALLER DECREF: return
 * -- return
 */
-PVMM_PROCESS MSyscall_GetProcessCsrssFake()
+PVMM_PROCESS MSyscall_GetProcessCsrss()
 {
-    PVMM_PROCESS pObProcess = NULL, pObProcessClone = NULL;
+    PVMM_PROCESS pObProcess = NULL;
     while((pObProcess = VmmProcessGetNext(pObProcess, 0))) {
-        if(pObProcess->fUserOnly && !strcmp(pObProcess->szName, "csrss.exe") && (pObProcessClone = VmmProcessClone(pObProcess))) {
-            pObProcessClone->fUserOnly = FALSE;
-            Ob_DECREF(pObProcess);
-            return pObProcessClone;
+        if(!strcmp(pObProcess->szName, "csrss.exe")) {
+            return pObProcess;
         }
     }
     return NULL;
@@ -98,7 +93,7 @@ VOID MSyscall_Initialize(PMSYSCALL_CONTEXT ctxM)
     PVMM_MAP_MODULEENTRY peModuleWin32k;
     PVMMOB_MAP_MODULE pObModuleMap = NULL;
     PE_CODEVIEW_INFO CVInfoWin32k = { 0 };
-    PVMM_PROCESS pObProcessFakeCsrss = NULL, pObSystemProcess = NULL;
+    PVMM_PROCESS pObProcessCsrss = NULL, pObSystemProcess = NULL;
     if(!(pObSystemProcess = VmmProcessGet(4))) { goto fail; }
     // retrieve nt!KeServiceDescriptorTable & nt!KeServiceDescriptorTableShadow
     if(!PDB_GetSymbolAddress(PDB_HANDLE_KERNEL, "KeServiceDescriptorTable", &ctxM->vaKeServiceDescriptorTable)) { goto fail; }
@@ -127,11 +122,11 @@ VOID MSyscall_Initialize(PMSYSCALL_CONTEXT ctxM)
         }
     }
     // fetch win32k infos
-    if(!(pObProcessFakeCsrss = MSyscall_GetProcessCsrssFake())) { goto fail_win32k; }
+    if(!(pObProcessCsrss = MSyscall_GetProcessCsrss())) { goto fail_win32k; }
     if(!VmmMap_GetModuleEntryEx(pObSystemProcess, 0, "win32k.sys", &pObModuleMap, &peModuleWin32k)) { goto fail_win32k; }
-    if(!(hPdbWin32k = PDB_GetHandleFromModuleAddress(pObProcessFakeCsrss, peModuleWin32k->vaBase))) { goto fail_win32k; }
+    if(!(hPdbWin32k = PDB_GetHandleFromModuleAddress(pObProcessCsrss, peModuleWin32k->vaBase))) { goto fail_win32k; }
     // build text files in-memory (win32k)
-    MSyscall_Initialize_BuildText(ctxM, pObProcessFakeCsrss, 2, hPdbWin32k, peModuleWin32k->vaBase);
+    MSyscall_Initialize_BuildText(ctxM, pObProcessCsrss, 2, hPdbWin32k, peModuleWin32k->vaBase);
 fail_win32k:
     // build text files in-memory (nt)
     MSyscall_Initialize_BuildText(ctxM, pObSystemProcess, 0, PDB_HANDLE_KERNEL, ctxVmm->kernel.vaBase);
@@ -139,7 +134,7 @@ fail_win32k:
 fail:
     Ob_DECREF(pObModuleMap);
     Ob_DECREF(pObSystemProcess);
-    Ob_DECREF(pObProcessFakeCsrss);
+    Ob_DECREF(pObProcessCsrss);
     ctxM->fInit = TRUE;
 }
 

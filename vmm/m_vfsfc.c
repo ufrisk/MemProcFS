@@ -12,9 +12,11 @@ LPCSTR szMFC_README =
 "Information about MemProcFS forensics:                                      \n" \
 "======================================                                      \n" \
 "MemProcFS forensics is a collection of batch oriented comprehensive analysis\n" \
-"tasks that may be initiated by the user if the prerequisites below are met: \n" \
-" - static non-volatile memory being analyzed (i.e. only memory dump file).  \n" \
-" - no live memory (first dump to file before running MemProcFS forensics).  \n" \
+"tasks that may be initiated by the user.                                    \n" \
+"                                                                            \n" \
+"PLEASE NOTE: Forensic analysis of live memory (FPGA, WinPMEM, VMWARE, etc.) \n" \
+"is supported but not recommended. Severe memory drift/smear will occur and  \n" \
+"may severely affect results over time. Run at your own risk!                \n" \
 "                                                                            \n" \
 "MemProcFS forensics performs the batch oriented comprehensive analysis tasks\n" \
 "and outputs the result into a sqlite database and displays the result in the\n" \
@@ -89,7 +91,6 @@ VOID M_VfsFc_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if((pRI->tpSystem != VMM_SYSTEM_WINDOWS_X64) && (pRI->tpSystem != VMM_SYSTEM_WINDOWS_X86)) { return; }
-    if(ctxMain->dev.fVolatile) { return; }
     strcpy_s(pRI->reg_info.uszPathName, 128, "\\forensic");                     // module name
     pRI->reg_info.fRootModule = TRUE;                                           // module shows in root directory
     pRI->reg_fn.pfnList = M_VfsFc_List;                                         // List function supported

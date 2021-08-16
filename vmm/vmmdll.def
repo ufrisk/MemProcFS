@@ -12,6 +12,7 @@ EXPORTS
     
     VMMDLL_VfsListU
     VMMDLL_VfsListW
+    VMMDLL_VfsListBlobU
     VMMDLL_VfsList_AddFile
     VMMDLL_VfsList_AddFileW
     VMMDLL_VfsList_AddDirectory

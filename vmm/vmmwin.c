@@ -450,7 +450,7 @@ VOID VmmWinLdrModule_Initialize_VSetPutVA(_In_ POB_SET pObSet_vaAll, _In_ POB_SE
     }
 }
 
-VOID VmmWinLdrModule_Initialize64(_In_ PVMM_PROCESS pProcess, _Inout_ POB_MAP pmModules)
+VOID VmmWinLdrModule_Initialize64(_In_ PVMM_PROCESS pProcess, _Inout_ POB_MAP pmModules, _In_ BOOL fUserOnly)
 {
     QWORD vaModuleLdrFirst64, vaModuleLdr64 = 0;
     BYTE pbPEB64[sizeof(PEB64)], pbPEBLdrData64[sizeof(PEB_LDR_DATA64)], pbLdrModule64[sizeof(LDR_MODULE64)];
@@ -469,7 +469,7 @@ VOID VmmWinLdrModule_Initialize64(_In_ PVMM_PROCESS pProcess, _Inout_ POB_MAP pm
     if(!(pObSet_vaTry1 = ObSet_New())) { goto fail; }
     if(!(pObSet_vaTry2 = ObSet_New())) { goto fail; }
     // set up initial entry in vaModuleLdr DataSet
-    if(pProcess->fUserOnly) {
+    if(fUserOnly) {
         // User mode process -> walk PEB LDR list to enumerate modules / .dlls.
         if(!pProcess->win.vaPEB) { goto fail; }
         if(!VmmRead(pProcess, pProcess->win.vaPEB, pbPEB64, sizeof(PEB64))) { goto fail; }
@@ -558,9 +558,12 @@ fail:
     Ob_DECREF(pObSet_vaAll);
     Ob_DECREF(pObSet_vaTry1);
     Ob_DECREF(pObSet_vaTry2);
+    if(!fUserOnly && pProcess->win.vaPEB) {
+        VmmWinLdrModule_Initialize64(pProcess, pmModules, TRUE);
+    }
 }
 
-VOID VmmWinLdrModule_Initialize32(_In_ PVMM_PROCESS pProcess, _Inout_ POB_MAP pmModules)
+VOID VmmWinLdrModule_Initialize32(_In_ PVMM_PROCESS pProcess, _Inout_ POB_MAP pmModules, _In_ BOOL fUserOnly)
 {
     DWORD vaModuleLdrFirst32, vaModuleLdr32 = 0;
     BYTE pbPEB32[sizeof(PEB32)], pbPEBLdrData32[sizeof(PEB_LDR_DATA32)], pbLdrModule32[sizeof(LDR_MODULE32)];
@@ -579,7 +582,7 @@ VOID VmmWinLdrModule_Initialize32(_In_ PVMM_PROCESS pProcess, _Inout_ POB_MAP pm
     if(!(pObSet_vaTry1 = ObSet_New())) { goto fail; }
     if(!(pObSet_vaTry2 = ObSet_New())) { goto fail; }
     // set up initial entry in vaModuleLdr DataSet
-    if(pProcess->fUserOnly) {
+    if(fUserOnly) {
         if(!pProcess->win.vaPEB32) { goto fail; }
         if(!VmmRead(pProcess, pProcess->win.vaPEB32, pbPEB32, sizeof(PEB32))) { goto fail; }
         if(!VmmRead(pProcess, (QWORD)pPEB32->Ldr, pbPEBLdrData32, sizeof(PEB_LDR_DATA32))) { goto fail; }
@@ -670,6 +673,9 @@ fail:
     Ob_DECREF(pObSet_vaAll);
     Ob_DECREF(pObSet_vaTry1);
     Ob_DECREF(pObSet_vaTry2);
+    if(!fUserOnly && pProcess->win.vaPEB) {
+        VmmWinLdrModule_Initialize32(pProcess, pmModules, TRUE);
+    }
 }
 
 VOID VmmWinLdrModule_InitializeVAD(_In_ PVMM_PROCESS pProcess, _Inout_ POB_MAP pmModules)
@@ -897,10 +903,10 @@ BOOL VmmWinLdrModule_Initialize(_In_ PVMM_PROCESS pProcess, _Inout_opt_ POB_SET 
     if(!(pmObModules = ObMap_New(OB_MAP_FLAGS_OBJECT_LOCALFREE))) { goto fail; }
     // fetch modules: "ordinary" linked list
     if((ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X86) || ((ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X64) && pProcess->win.fWow64)) {
-        VmmWinLdrModule_Initialize32(pProcess, pmObModules);
+        VmmWinLdrModule_Initialize32(pProcess, pmObModules, pProcess->fUserOnly);
     }
     if(ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X64) {
-        VmmWinLdrModule_Initialize64(pProcess, pmObModules);
+        VmmWinLdrModule_Initialize64(pProcess, pmObModules, pProcess->fUserOnly);
     }
     // fetch modules: VADs
     VmmWinLdrModule_InitializeVAD(pProcess, pmObModules);
@@ -3356,9 +3362,10 @@ VOID VmmWinProcess_Enum64_Post(_In_ PVMM_PROCESS pSystemProcess, _In_opt_ PVMMWI
         Ob_DECREF_NULL(&ctx->pObSetPrefetchDTB);
     }
     if(*pdwPID && *pqwDTB && *(PQWORD)szName) {
+        // treat csrss.exe as 'kernel' due to win32k mapping missing in System Process _AND_ treat MemCompression as 'user'
         fUser =
-            !((*pdwPID == 4) || ((*pdwState == 0) && (*pqwPEB == 0))) ||
-            ((*(PQWORD)(szName + 0x00) == 0x72706d6f436d654d) && (*(PDWORD)(szName + 0x08) == 0x69737365));     // MemCompression "process"
+            !((*pdwPID == 4) || ((*pdwState == 0) && (*pqwPEB == 0)) || (*(PQWORD)szName == 0x78652e7373727363)) ||     // csrss.exe
+            ((*(PQWORD)(szName + 0x00) == 0x72706d6f436d654d) && (*(PDWORD)(szName + 0x08) == 0x69737365));             // MemCompression "process"
         pObProcess = VmmProcessCreateEntry(
             ctx->fTotalRefresh,
             *pdwPID,
@@ -3708,9 +3715,10 @@ VOID VmmWinProcess_Enum32_Post(_In_ PVMM_PROCESS pSystemProcess, _In_opt_ PVMMWI
         Ob_DECREF_NULL(&ctx->pObSetPrefetchDTB);
     }
     if(*pdwPID && *pdwDTB && *(PQWORD)szName) {
+        // treat csrss.exe as 'kernel' due to win32k mapping missing in System Process _AND_ treat MemCompression as 'user'
         fUser =
-            !((*pdwPID == 4) || ((*pdwState == 0) && (*pdwPEB == 0))) ||
-            ((*(PQWORD)(szName + 0x00) == 0x72706d6f436d654d) && (*(PDWORD)(szName + 0x08) == 0x69737365)); // MemCompression "process"
+            !((*pdwPID == 4) || ((*pdwState == 0) && (*pdwPEB == 0)) || (*(PQWORD)szName == 0x78652e7373727363)) ||     // csrss.exe
+            ((*(PQWORD)(szName + 0x00) == 0x72706d6f436d654d) && (*(PDWORD)(szName + 0x08) == 0x69737365));             // MemCompression "process"
         pObProcess = VmmProcessCreateEntry(
             ctx->fTotalRefresh,
             *pdwPID,

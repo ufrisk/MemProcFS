@@ -133,7 +133,7 @@ VfsDokanCallback_ReadFile(LPCWSTR wcsFileName, LPVOID Buffer, DWORD BufferLength
     NTSTATUS nt;
     if(!ctxVfs || !ctxVfs->fInitialized) { return STATUS_FILE_INVALID; }
     dbg_wprintf_init(L"DEBUG::%08x -------- VfsCallback_ReadFile:\t\t\t 0x%08x %s\n", 0, wcsFileName);
-    nt = ctxVfs->pVmmDll->VfsRead(wcsFileName, Buffer, BufferLength, ReadLength, Offset);
+    nt = MemProcFS_VfsReadW((LPWSTR)wcsFileName, Buffer, BufferLength, ReadLength, Offset);
     dbg_wprintf(L"DEBUG::%08x %8x VfsCallback_ReadFile:\t\t\t 0x%08x %s\t [ %016llx %08x %08x ]\n", (DWORD)(dbg_GetTickCount64() - tmStart), nt, wcsFileName, Offset, BufferLength, *ReadLength);
     return nt;
 }
@@ -145,7 +145,7 @@ VfsDokanCallback_WriteFile(LPCWSTR wcsFileName, LPCVOID Buffer, DWORD NumberOfBy
     NTSTATUS nt;
     if(!ctxVfs || !ctxVfs->fInitialized) { return STATUS_FILE_INVALID; }
     dbg_wprintf_init(L"DEBUG::%08x -------- VfsCallback_WriteFile:\t\t\t 0x%08x %s\n", 0, wcsFileName);
-    nt = ctxVfs->pVmmDll->VfsWrite(wcsFileName, (PBYTE)Buffer, NumberOfBytesToWrite, NumberOfBytesWritten, Offset);
+    nt = MemProcFS_VfsWriteW((LPWSTR)wcsFileName, (PBYTE)Buffer, NumberOfBytesToWrite, NumberOfBytesWritten, Offset);
     dbg_wprintf(L"DEBUG::%08x %8x VfsCallback_WriteFile:\t\t\t 0x%08x %s\t [ %016llx %08x %08x ]\n", (DWORD)(dbg_GetTickCount64() - tmStart), nt, wcsFileName, Offset, NumberOfBytesToWrite, *NumberOfBytesWritten);
     return nt;
 }
@@ -176,21 +176,21 @@ VOID VfsDokan_Close(_In_ CHAR chMountPoint)
     ctxVfs = NULL;
 }
 
-VOID VfsDokan_InitializeAndMount_DisplayInfo(LPWSTR wszMountPoint, _In_ PVMMDLL_FUNCTIONS pVmmDll)
+VOID VfsDokan_InitializeAndMount_DisplayInfo(LPWSTR wszMountPoint)
 {
     ULONG64 qwVersionVmmMajor = 0, qwVersionVmmMinor = 0, qwVersionVmmRevision = 0;
     ULONG64 qwVersionWinMajor = 0, qwVersionWinMinor = 0, qwVersionWinBuild = 0;
     ULONG64 qwUniqueSystemId = 0, iMemoryModel;
     // get vmm.dll versions
-    pVmmDll->ConfigGet(VMMDLL_OPT_CONFIG_VMM_VERSION_MAJOR, &qwVersionVmmMajor);
-    pVmmDll->ConfigGet(VMMDLL_OPT_CONFIG_VMM_VERSION_MINOR, &qwVersionVmmMinor);
-    pVmmDll->ConfigGet(VMMDLL_OPT_CONFIG_VMM_VERSION_REVISION, &qwVersionVmmRevision);
+    MemProcFS_ConfigGet(VMMDLL_OPT_CONFIG_VMM_VERSION_MAJOR, &qwVersionVmmMajor);
+    MemProcFS_ConfigGet(VMMDLL_OPT_CONFIG_VMM_VERSION_MINOR, &qwVersionVmmMinor);
+    MemProcFS_ConfigGet(VMMDLL_OPT_CONFIG_VMM_VERSION_REVISION, &qwVersionVmmRevision);
     // get operating system versions
-    pVmmDll->ConfigGet(VMMDLL_OPT_CORE_MEMORYMODEL, &iMemoryModel);
-    pVmmDll->ConfigGet(VMMDLL_OPT_WIN_VERSION_MAJOR, &qwVersionWinMajor);
-    pVmmDll->ConfigGet(VMMDLL_OPT_WIN_VERSION_MINOR, &qwVersionWinMinor);
-    pVmmDll->ConfigGet(VMMDLL_OPT_WIN_VERSION_BUILD, &qwVersionWinBuild);
-    pVmmDll->ConfigGet(VMMDLL_OPT_WIN_SYSTEM_UNIQUE_ID, &qwUniqueSystemId);
+    MemProcFS_ConfigGet(VMMDLL_OPT_CORE_MEMORYMODEL, &iMemoryModel);
+    MemProcFS_ConfigGet(VMMDLL_OPT_WIN_VERSION_MAJOR, &qwVersionWinMajor);
+    MemProcFS_ConfigGet(VMMDLL_OPT_WIN_VERSION_MINOR, &qwVersionWinMinor);
+    MemProcFS_ConfigGet(VMMDLL_OPT_WIN_VERSION_BUILD, &qwVersionWinBuild);
+    MemProcFS_ConfigGet(VMMDLL_OPT_WIN_SYSTEM_UNIQUE_ID, &qwUniqueSystemId);
     printf("\n" \
         "=============== MemProcFS - THE MEMORY PROCESS FILE SYSTEM ===============\n" \
         " - Author:           Ulf Frisk - pcileech@frizk.net                     \n" \
@@ -214,7 +214,7 @@ VOID VfsDokan_InitializeAndMount_DisplayInfo(LPWSTR wszMountPoint, _In_ PVMMDLL_
     printf("==========================================================================\n\n");
 }
 
-VOID VfsDokan_InitializeAndMount(_In_ CHAR chMountPoint, _In_ PVMMDLL_FUNCTIONS pVmmDll)
+VOID VfsDokan_InitializeAndMount(_In_ CHAR chMountPoint)
 {
     int status;
     HMODULE hModuleDokan = NULL;
@@ -245,7 +245,6 @@ VOID VfsDokan_InitializeAndMount(_In_ CHAR chMountPoint, _In_ PVMMDLL_FUNCTIONS 
     // allocate empty vfs context
     ctxVfs = (PVMMVFS_CONFIG)LocalAlloc(LMEM_ZEROINIT, sizeof(VMMVFS_CONFIG));
     if(!ctxVfs) { goto fail; }
-    ctxVfs->pVmmDll = pVmmDll;
     // set vfs context
     GetSystemTime(&SystemTimeNow);
     SystemTimeToFileTime(&SystemTimeNow, &ctxVfs->ftDefaultTime);
@@ -266,7 +265,7 @@ VOID VfsDokan_InitializeAndMount(_In_ CHAR chMountPoint, _In_ PVMMDLL_FUNCTIONS 
     pDokanOperations->ReadFile = VfsDokanCallback_ReadFile;
     pDokanOperations->WriteFile = VfsDokanCallback_WriteFile;
     // print system information to console
-    VfsDokan_InitializeAndMount_DisplayInfo(wszMountPoint, pVmmDll);
+    VfsDokan_InitializeAndMount_DisplayInfo(wszMountPoint);
     // mount file system
     status = fnDokanMain(pDokanOptions, pDokanOperations);
     while(ctxVfs && ctxVfs->fInitialized && (status == DOKAN_SUCCESS)) {

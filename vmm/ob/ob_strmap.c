@@ -60,6 +60,7 @@ typedef struct tdOB_STRMAP {
     BOOL fFinalized;
     BOOL fCaseInsensitive;
     BOOL fStrAssignTemporary;   // assign "temporary" strings to output location at push.
+    BOOL fStrAssignOffset;      // assign offset (in bytes) instead of pointer at finalize.
     DWORD cbu;                  // incl. terminating NULL.
     DWORD cbw;                  // incl. terminating NULL.
     POB_MAP pm;
@@ -514,6 +515,7 @@ BOOL _ObStrMap_Finalize_FillBuffer(_In_ POB_STRMAP psm, _In_ DWORD cbMultiStr, _
     LPSTR usz;
     POB_STRMAP_ENTRY pe;
     POB_STRMAP_SUBENTRY pse;
+    BOOL fOffset = psm->fStrAssignOffset;
     cb = _ObStrMap_Finalize_ByteCount(psm, fWideChar);
     *pcbMultiStr = cb;
     if(!pbMultiStr) { return TRUE; }           // size request
@@ -528,7 +530,7 @@ BOOL _ObStrMap_Finalize_FillBuffer(_In_ POB_STRMAP psm, _In_ DWORD cbMultiStr, _
             pse = &pe->SubEntry;
             while(pse) {
                 for(j = 0; j < OB_STRMAP_SUBENTRY_SIZE; j++) {
-                    if(pse->e[j].pwsz) { *(pse->e[j].pwsz) = wsz; }
+                    if(pse->e[j].pwsz) { *(pse->e[j].pwsz) = fOffset ? ((LPWSTR)((QWORD)wsz - (QWORD)pbMultiStr)) : wsz; }
                     if(pse->e[j].pcbw) { *(pse->e[j].pcbw) = pe->cbw; }
                 }
                 pse = pse->FLink;
@@ -545,7 +547,7 @@ BOOL _ObStrMap_Finalize_FillBuffer(_In_ POB_STRMAP psm, _In_ DWORD cbMultiStr, _
             pse = &pe->SubEntry;
             while(pse) {
                 for(j = 0; j < OB_STRMAP_SUBENTRY_SIZE; j++) {
-                    if(pse->e[j].pusz) { *(pse->e[j].pusz) = usz; }
+                    if(pse->e[j].pusz) { *(pse->e[j].pusz) = fOffset ? ((LPSTR)((QWORD)usz - (QWORD)pbMultiStr)) : usz; }
                     if(pse->e[j].pcbu) { *(pse->e[j].pcbu) = pe->cbu; }
                 }
                 pse = pse->FLink;
@@ -679,11 +681,13 @@ POB_STRMAP ObStrMap_New(_In_ QWORD flags)
 {
     POB_STRMAP pObStrMap = NULL;
     POB_STRMAP_ENTRY pStrEntry = NULL;
+    if((flags & OB_STRMAP_FLAGS_STR_ASSIGN_TEMPORARY) && (flags & OB_STRMAP_FLAGS_STR_ASSIGN_OFFSET)) { goto fail; }
     if(!(pObStrMap = Ob_Alloc(OB_TAG_CORE_STRMAP, LMEM_ZEROINIT, sizeof(OB_STRMAP), (OB_CLEANUP_CB)_ObStrMap_ObCloseCallback, NULL))) { goto fail; }
     if(!(pStrEntry = LocalAlloc(LMEM_ZEROINIT, sizeof(OB_STRMAP_ENTRY) + 1))) { goto fail; }        // "" entry
     if(!(pObStrMap->pm = ObMap_New(0))) { goto fail; }
     pObStrMap->fCaseInsensitive = (flags & OB_STRMAP_FLAGS_CASE_INSENSITIVE) ? TRUE : FALSE;
     pObStrMap->fStrAssignTemporary = (flags & OB_STRMAP_FLAGS_STR_ASSIGN_TEMPORARY) ? TRUE : FALSE;
+    pObStrMap->fStrAssignOffset = (flags & OB_STRMAP_FLAGS_STR_ASSIGN_OFFSET) ? TRUE : FALSE;
     pObStrMap->cbu = 1;
     pStrEntry->cbu = 1;
     ObMap_Push(pObStrMap->pm, 1, pStrEntry);

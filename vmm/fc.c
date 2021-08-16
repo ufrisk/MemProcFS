@@ -870,7 +870,9 @@ _Success_(return)
 BOOL FcInitialize_Impl(_In_ DWORD dwDatabaseType, _In_ BOOL fForceReInit)
 {
     DWORD i;
-    if(ctxMain->dev.fVolatile) { return FALSE; }
+    if(ctxMain->dev.fVolatile) {
+        vmmprintf("WARNING: FORENSIC mode on volatile memory is not recommended due to memory drift/smear.\n");
+    }
     if(!dwDatabaseType || (dwDatabaseType > FC_DATABASE_TYPE_MAX)) { return FALSE; }
     if(ctxFc && !fForceReInit) { return FALSE; }
     PDB_Initialize_WaitComplete();

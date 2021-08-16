@@ -11,12 +11,13 @@
 #ifdef _WIN32
 
 #include <Windows.h>
-#pragma warning(push, 0)  
-#include <ntstatus.h>
-#pragma warning(pop)
 #include <stdio.h>
-
-typedef unsigned __int64                QWORD, *PQWORD;
+#define STATUS_SUCCESS                      ((NTSTATUS)0x00000000L)
+#define STATUS_UNSUCCESSFUL                 ((NTSTATUS)0xC0000001L)
+#define STATUS_END_OF_FILE                  ((NTSTATUS)0xC0000011L)
+#define STATUS_FILE_INVALID                 ((NTSTATUS)0xC0000098L)
+#define STATUS_FILE_SYSTEM_LIMITATION       ((NTSTATUS)0xC0000427L)
+typedef unsigned __int64                    QWORD, *PQWORD;
 
 #endif /* _WIN32 */
 #ifdef LINUX

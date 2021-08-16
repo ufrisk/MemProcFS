@@ -18,7 +18,6 @@
 #define OB_TAG_CORE_MEMFILE             'ObMF'
 #define OB_TAG_CORE_CACHEMAP            'ObMc'
 #define OB_TAG_CORE_STRMAP              'ObMs'
-#define OB_TAG_CORE_STRWMAP             'ObMw'
 #define OB_TAG_INFODB_CTX               'IDBC'
 #define OB_TAG_MAP_PTE                  'Mpte'
 #define OB_TAG_MAP_VAD                  'Mvad'
@@ -708,7 +707,6 @@ PVOID ObCacheMap_RemoveByKey(_In_opt_ POB_CACHEMAP pcm, _In_ QWORD qwKey);
 // ----------------------------------------------------------------------------
 
 typedef struct tdOB_STRMAP *POB_STRMAP;
-typedef struct tdOB_STRWMAP *POB_STRWMAP;
 
 // Strings in OB_STRMAP are considered to be CASE SENSITIVE.
 #define OB_STRMAP_FLAGS_CASE_SENSITIVE         0x00
@@ -720,6 +718,11 @@ typedef struct tdOB_STRWMAP *POB_STRWMAP;
 // Assign temporary string values to destinations at time of push.
 // NB! values will become invalid after OB_STRMAP DECREF/FINALIZE!
 #define OB_STRMAP_FLAGS_STR_ASSIGN_TEMPORARY   0x02
+
+// Assign offset in number of bytes to string pointers at finalize stage
+// instead of pointers. Offset is counted from base of multi-string.
+// incompatible with OB_STRMAP_FLAGS_STR_ASSIGN_TEMPORARY option.
+#define OB_STRMAP_FLAGS_STR_ASSIGN_OFFSET      0x04
 
 //
 // STRMAP BELOW:

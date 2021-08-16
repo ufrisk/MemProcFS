@@ -261,3 +261,8 @@ v1.1-v2.10
 [v4.1](https://github.com/ufrisk/MemProcFS/releases/tag/v4.1)
 * Bug fixes.
 * Offline kernel symbols (partial support). This allows for more functionality in Linux mode and in Windows offline mode.
+
+[v4.2](https://github.com/ufrisk/MemProcFS/releases/tag/v4.2)
+* Support for VMWare live VM introspection.
+* Support for remote agent-based memory analysis.
+* Map kernel memory space into csrss.exe process (to make win32k easier to access).

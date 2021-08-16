@@ -20,10 +20,71 @@ typedef int(*PFN_VFSLIST_CALLBACK)(_In_ PWIN32_FIND_DATAW pFindData, _In_opt_ PV
 #define CHARUTIL_CONVERT_MAXSIZE                0x40000000
 
 /*
+* WRAPPER FUNCTION AROUND LOCAL/REMOTE VMMDLL_ConfigGet
+* Set a device specific option value. Please see defines VMMDLL_OPT_* for infor-
+* mation about valid option values. Please note that option values may overlap
+* between different device types with different meanings.
+* -- fOption
+* -- pqwValue = pointer to ULONG64 to receive option value.
+* -- return = success/fail.
+*/
+_Success_(return)
+BOOL MemProcFS_ConfigGet(_In_ ULONG64 fOption, _Out_ PULONG64 pqwValue);
+
+/*
+* WRAPPER FUNCTION AROUND LOCAL/REMOTE VMMDLL_ConfigSet
+* Set a device specific option value. Please see defines VMMDLL_OPT_* for infor-
+* mation about valid option values. Please note that option values may overlap
+* between different device types with different meanings.
+* -- fOption
+* -- qwValue
+* -- return = success/fail.
+*/
+_Success_(return)
+BOOL MemProcFS_ConfigSet(_In_ ULONG64 fOption, _In_ ULONG64 qwValue);
+
+/*
+* WRAPPER FUNCTION AROUND LOCAL/REMOTE VMMDLL_VfsListW
+* List a directory of files in MemProcFS. Directories and files will be listed
+* by callbacks into functions supplied in the pFileList parameter.
+* If information of an individual file is needed it's neccessary to list all
+* files in its directory.
+* -- wszPath
+* -- pFileList
+* -- return
+*/
+_Success_(return) BOOL MemProcFS_VfsListW(_In_ LPWSTR wszPath, _Inout_ PVMMDLL_VFS_FILELIST2 pFileList);
+
+/*
+* WRAPPER FUNCTION AROUND LOCAL/REMOTE VMMDLL_VfsReadW
+* Read select parts of a file in MemProcFS.
+* -- wszFileName
+* -- pb
+* -- cb
+* -- pcbRead
+* -- cbOffset
+* -- return
+*
+*/
+NTSTATUS MemProcFS_VfsReadW(_In_ LPWSTR wszFileName, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset);
+
+/*
+* WRAPPER FUNCTION AROUND LOCAL/REMOTE VMMDLL_VfsWriteW
+* Write select parts to a file in MemProcFS.
+* -- wszFileName
+* -- pb
+* -- cb
+* -- pcbWrite
+* -- cbOffset
+* -- return
+*/
+NTSTATUS MemProcFS_VfsWriteW(_In_ LPWSTR wszFileName, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ ULONG64 cbOffset);
+
+/*
 * Convert UTF-8 string into a Windows Wide-Char string.
 * Function support usz == pbBuffer - usz will then become overwritten.
 * CALLER LOCALFREE (if *pusz != pbBuffer): *pusz
-* -- usz = the string to convert.
+* -- [uw]sz = the string to convert.
 * -- cch = -1 for null-terminated string; or max number of chars (excl. null).
 * -- pbBuffer = optional buffer to place the result in.
 * -- cbBuffer
@@ -36,6 +97,8 @@ typedef int(*PFN_VFSLIST_CALLBACK)(_In_ PWIN32_FIND_DATAW pFindData, _In_opt_ PV
 */
 _Success_(return)
 BOOL CharUtil_UtoW(_In_opt_ LPSTR usz, _In_ DWORD cch, _Maybenull_ _Writable_bytes_(cbBuffer) PBYTE pbBuffer, _In_ DWORD cbBuffer, _Out_opt_ LPWSTR *pwsz, _Out_opt_ PDWORD pcbw, _In_ DWORD flags);
+_Success_(return)
+BOOL CharUtil_WtoU(_In_opt_ LPWSTR wsz, _In_ DWORD cch, _Maybenull_ _Writable_bytes_(cbBuffer) PBYTE pbBuffer, _In_ DWORD cbBuffer, _Out_opt_ LPSTR *pusz, _Out_opt_ PDWORD pcbu, _In_ DWORD flags);
 
 /*
 * Split a path into path + filename.
@@ -44,6 +107,13 @@ BOOL CharUtil_UtoW(_In_opt_ LPSTR usz, _In_ DWORD cch, _Maybenull_ _Writable_byt
 * -- wcsFileName
 */
 VOID Util_SplitPathFile(_Out_writes_(MAX_PATH) PWCHAR wszPath, _Out_ LPWSTR *pwcsFile, _In_ LPCWSTR wcsFileName);
+
+/*
+* Hash a path in uppercase.
+* -- wszPath
+* -- return
+*/
+QWORD Util_HashPathW(_In_ LPWSTR wszPath);
 
 /*
 * Hash a string in uppercase.
@@ -74,37 +144,26 @@ BOOL VfsList_ListDirectory(_In_ LPWSTR wszPath, _In_opt_ PVOID ctx, _In_opt_ PFN
 
 /*
 * Initialize the vfs list functionality.
-* -- hModuleVmm
 * -- dwCacheValidMs
 * -- cCacheMaxEntries
 * -- return
 */
 _Success_(return)
-BOOL VfsList_Initialize(_In_ HMODULE hModuleVmm, _In_ DWORD dwCacheValidMs, _In_ DWORD dwCacheMaxEntries);
+BOOL VfsList_Initialize(_In_ DWORD dwCacheValidMs, _In_ DWORD dwCacheMaxEntries);
 
 /*
 * Close and clean up the vfs list functionality.
 */
 VOID VfsList_Close();
 
-typedef struct tdVMMDLL_FUNCTIONS {
-    BOOL(*Initialize)(_In_ DWORD argc, _In_ LPSTR argv[]);
-    BOOL(*InitializePlugins)();
-    BOOL(*VfsList)(_In_ LPCWSTR wcsPath, _Inout_ PVMMDLL_VFS_FILELIST2 pFileList);
-    DWORD(*VfsRead)(LPCWSTR wcsFileName, _Out_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset);
-    DWORD(*VfsWrite)(_In_ LPCWSTR wcsFileName, _In_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ ULONG64 cbOffset);
-    BOOL(*ConfigGet)(_In_ ULONG64 fOption, _Out_ PULONG64 pqwValue);
-    BOOL(*ConfigSet)(_In_ ULONG64 fOption, _In_ ULONG64 qwValue);
-} VMMDLL_FUNCTIONS, *PVMMDLL_FUNCTIONS;
-
 typedef struct tdVMMVFS_CONFIG {
-    PVMMDLL_FUNCTIONS pVmmDll;
     FILETIME ftDefaultTime;
     NTSTATUS(*DokanNtStatusFromWin32)(DWORD Error);
     BOOL fInitialized;
 } VMMVFS_CONFIG, *PVMMVFS_CONFIG;
 
 PVMMVFS_CONFIG ctxVfs;
+HANDLE g_hLC_RemoteFS;
 
 /*
 * Mount a drive backed by the Memory Process File System. The mounted file system
@@ -115,9 +174,8 @@ PVMMVFS_CONFIG ctxVfs;
 * This also initializes the globalcontext ctxVfs that should be closed by
 * calling VfsClose on exit.
 * -- chMountPoint
-* -- pVmmDll
 */
-VOID VfsDokan_InitializeAndMount(_In_ CHAR chMountPoint, _In_ PVMMDLL_FUNCTIONS pVmmDll);
+VOID VfsDokan_InitializeAndMount(_In_ CHAR chMountPoint);
 
 /*
 * Close a vfs sub-context in ctxVfs - if exists.

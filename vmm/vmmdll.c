@@ -722,6 +722,84 @@ BOOL VMMDLL_VfsListW(_In_ LPWSTR wszPath, _Inout_ PVMMDLL_VFS_FILELIST2 pFileLis
     return VMMDLL_VfsListU(uszPath, pFileList);
 }
 
+typedef struct tdVMMDLL_VFS_FILELISTBLOB_CREATE_CONTEXT {
+    POB_MAP pme;
+    POB_STRMAP psm;
+} VMMDLL_VFS_FILELISTBLOB_CREATE_CONTEXT, *PVMMDLL_VFS_FILELISTBLOB_CREATE_CONTEXT;
+
+VOID VMMDLL_VfsListBlob_Impl_AddFile(_Inout_ HANDLE h, _In_ LPSTR uszName, _In_ ULONG64 cb, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
+{
+    PVMMDLL_VFS_FILELISTBLOB_CREATE_CONTEXT ctx = (PVMMDLL_VFS_FILELISTBLOB_CREATE_CONTEXT)h;
+    PVMMDLL_VFS_FILELISTBLOB_ENTRY pe = NULL;
+    if(!(pe = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_VFS_FILELISTBLOB_ENTRY)))) { return; }
+    if(!ObStrMap_PushPtrUU(ctx->psm, uszName, (LPSTR*)&pe->ouszName, NULL)) {
+        LocalFree(pe);
+        return;
+    }
+    if(pExInfo) {
+        memcpy(&pe->ExInfo, pExInfo, sizeof(VMMDLL_VFS_FILELIST_EXINFO));
+    }
+    pe->cbFileSize = cb;
+    ObMap_Push(ctx->pme, (QWORD)pe, pe);    // reference to pe overtaken by ctx->pme
+}
+
+VOID VMMDLL_VfsListBlob_Impl_AddDirectory(_Inout_ HANDLE h, _In_ LPSTR uszName, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
+{
+    VMMDLL_VfsListBlob_Impl_AddFile(h, uszName, (ULONG64)-1, pExInfo);
+}
+
+_Success_(return != NULL)
+PVMMDLL_VFS_FILELISTBLOB VMMDLL_VfsListBlob_Impl(_In_ LPSTR uszPath)
+{
+    BOOL fResult = FALSE;
+    VMMDLL_VFS_FILELISTBLOB_CREATE_CONTEXT ctx = { 0 };
+    VMMDLL_VFS_FILELIST2 FL2;
+    DWORD i = 0, cbStruct, cFileEntry, cbMultiText;
+    PVMMDLL_VFS_FILELISTBLOB pFLB = NULL;
+    PVMMDLL_VFS_FILELISTBLOB_ENTRY pe;
+    // 1: init
+    if(!(ctx.pme = ObMap_New(OB_MAP_FLAGS_OBJECT_LOCALFREE))) { goto fail; }
+    if(!(ctx.psm = ObStrMap_New(OB_STRMAP_FLAGS_STR_ASSIGN_OFFSET))) { goto fail; }
+    // 2: call
+    FL2.dwVersion = VMMDLL_VFS_FILELIST_VERSION;
+    FL2.pfnAddFile = VMMDLL_VfsListBlob_Impl_AddFile;
+    FL2.pfnAddDirectory = VMMDLL_VfsListBlob_Impl_AddDirectory;
+    FL2.h = &ctx;
+    if(!VMMDLL_VfsList_Impl(uszPath, (PHANDLE)&FL2)) { goto fail; }
+    // 3: assign result blob
+    cFileEntry = ObMap_Size(ctx.pme);
+    if(!ObStrMap_FinalizeBufferU(ctx.psm, 0, NULL, &cbMultiText)) { goto fail; }
+    cbStruct = sizeof(VMMDLL_VFS_FILELISTBLOB) + cFileEntry * sizeof(VMMDLL_VFS_FILELISTBLOB_ENTRY) + cbMultiText;
+    if(!(pFLB = LocalAlloc(0, cbStruct))) { goto fail; }
+    ZeroMemory(pFLB, sizeof(VMMDLL_VFS_FILELISTBLOB));
+    pFLB->dwVersion = VMMDLL_VFS_FILELISTBLOB_VERSION;
+    pFLB->cbStruct = cbStruct;
+    pFLB->cFileEntry = cFileEntry;
+    pFLB->uszMultiText = (LPSTR)((QWORD)pFLB + sizeof(VMMDLL_VFS_FILELISTBLOB) + cFileEntry * sizeof(VMMDLL_VFS_FILELISTBLOB_ENTRY));
+    if(!ObStrMap_FinalizeBufferU(ctx.psm, cbMultiText, pFLB->uszMultiText, &pFLB->cbMultiText)) { goto fail; }
+    for(i = 0; i < cFileEntry; i++) {
+        pe = ObMap_GetByIndex(ctx.pme, i);
+        if(!pe) { goto fail; }
+        memcpy(pFLB->FileEntry + i, pe, sizeof(VMMDLL_VFS_FILELISTBLOB_ENTRY));
+    }
+    fResult = TRUE;
+fail:
+    Ob_DECREF(ctx.pme);
+    Ob_DECREF(ctx.psm);
+    if(!fResult) { LocalFree(pFLB); }
+    return fResult ? pFLB : NULL;
+}
+
+_Success_(return != NULL)
+PVMMDLL_VFS_FILELISTBLOB VMMDLL_VfsListBlobU(_In_ LPSTR uszPath)
+{
+    CALL_IMPLEMENTATION_VMM_RETURN(
+        STATISTICS_ID_VMMDLL_VfsListBlob,
+        PVMMDLL_VFS_FILELISTBLOB,
+        NULL,
+        VMMDLL_VfsListBlob_Impl(uszPath))
+}
+
 NTSTATUS VMMDLL_VfsRead_Impl(LPSTR uszPath, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt;
