@@ -1209,8 +1209,8 @@ typedef struct tdVMM_MAIN_CONTEXT {
 // VMM global variables below:
 // ----------------------------------------------------------------------------
 
-PVMM_CONTEXT ctxVmm;
-PVMM_MAIN_CONTEXT ctxMain;
+extern PVMM_CONTEXT ctxVmm;
+extern PVMM_MAIN_CONTEXT ctxMain;
 
 #define vmmprintf(format, ...)          { if(ctxMain->cfg.fVerboseDll)       { printf(format, ##__VA_ARGS__); } }
 #define vmmprintfv(format, ...)         { if(ctxMain->cfg.fVerbose)          { printf(format, ##__VA_ARGS__); } }

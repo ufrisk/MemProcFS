@@ -29,6 +29,16 @@ static LPSTR FC_SQL_SCHEMA_STR =
     "DROP TABLE IF EXISTS str; " \
     "CREATE TABLE str ( id INTEGER PRIMARY KEY, cbu INT, cbj INT, sz TEXT ); ";
 
+
+
+// ----------------------------------------------------------------------------
+// FC global variable below:
+// ----------------------------------------------------------------------------
+
+PFC_CONTEXT ctxFc = NULL;
+
+
+
 // ----------------------------------------------------------------------------
 // SQLITE GENERAL FUNCTIONALITY:
 // ----------------------------------------------------------------------------

@@ -69,7 +69,7 @@ typedef struct tdFC_CONTEXT {
 // FC global variable below:
 // ----------------------------------------------------------------------------
 
-PFC_CONTEXT ctxFc;
+extern PFC_CONTEXT ctxFc;
 
 
 
