@@ -424,15 +424,16 @@ BOOL PDB_GetSymbolOffset(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _Out
     if(!(pObPdbEntry = ObMap_GetByKey(ctxOb->pmPdbByHash, hPDB))) { goto fail; }
     EnterCriticalSection(&ctxOb->Lock);
     if(PDB_LoadEnsureEx(ctxOb, pObPdbEntry)) {
-        if(ctxVmm->f32) {
-            // 32-bit: use slower algo since it's working ...
-            ctxOb->pfn.SymEnumSymbols(ctxOb->hSym, pObPdbEntry->qwLoadAddress, szSymbolName, PDB_GetSymbolOffset_Callback, pdwSymbolOffset);
-        } else {
+        if(!ctxVmm->f32) {
             // 64-bit: use faster algo
             SymbolInfo.SizeOfStruct = sizeof(SYMBOL_INFO);
             if(ctxOb->pfn.SymGetTypeFromName(ctxOb->hSym, pObPdbEntry->qwLoadAddress, szSymbolName, &SymbolInfo)) {
                 *pdwSymbolOffset = (DWORD)(SymbolInfo.Address - SymbolInfo.ModBase);
             }
+        }
+        if(0 == *pdwSymbolOffset) {
+            // 32-bit & 64-bit fallback: use slower algo since it's working ...
+            ctxOb->pfn.SymEnumSymbols(ctxOb->hSym, pObPdbEntry->qwLoadAddress, szSymbolName, PDB_GetSymbolOffset_Callback, pdwSymbolOffset);
         }
     }
     LeaveCriticalSection(&ctxOb->Lock);

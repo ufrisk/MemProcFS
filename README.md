@@ -266,3 +266,6 @@ v1.1-v2.10
 * Support for VMWare live VM introspection.
 * Support for remote agent-based memory analysis.
 * Map kernel memory space into csrss.exe process (to make win32k easier to access).
+
+Latest:
+* Support for Windows Server 2022

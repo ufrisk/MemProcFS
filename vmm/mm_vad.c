@@ -795,7 +795,9 @@ VOID MmVad_Spider_DoWork(_In_ PVMM_PROCESS pSystemProcess, _In_ PVMM_PROCESS pPr
     if(ctxVmm->kernel.dwVersionBuild >= 9600) {
         // Win8.1 and later
         pfnMmVad_Spider = ctxVmm->f32 ? MmVad_Spider_MMVAD32_10 : MmVad_Spider_MMVAD64_10;
-        if(ctxVmm->kernel.dwVersionBuild >= 18362) {    // bitmask offset for empty:PrivateMemory:Protection:VadType
+        if(ctxVmm->kernel.dwVersionBuild >= 20348) {    // bitmask offset for empty:PrivateMemory:Protection:VadType
+            dwFlagsBitMask = 0x00150704;
+        } else if(ctxVmm->kernel.dwVersionBuild >= 18362) {
             dwFlagsBitMask = 0x00140704;
         } else if(ctxVmm->kernel.dwVersionBuild >= 17134) {
             dwFlagsBitMask = 0x000e0300;

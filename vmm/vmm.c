@@ -414,10 +414,10 @@ BOOL VmmVirt2PhysEx(_In_ QWORD paDTB, _In_ BOOL fUserOnly, _In_ QWORD va, _Out_ 
 * -- return
 */
 _Success_(return)
-BOOL VmmVirt2Phys(_In_ PVMM_PROCESS pProcess, _In_ QWORD va, _Out_ PQWORD ppa)
+BOOL VmmVirt2Phys(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD va, _Out_ PQWORD ppa)
 {
     *ppa = 0;
-    if(ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_NA) { return FALSE; }
+    if(!pProcess || (ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_NA)) { return FALSE; }
     return ctxVmm->fnMemoryModel.pfnVirt2Phys(pProcess->paDTB, pProcess->fUserOnly, -1, va, ppa);
 }
 

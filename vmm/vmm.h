@@ -1496,7 +1496,7 @@ BOOL VmmVirt2PhysEx(_In_ QWORD paDTB, _In_ BOOL fUserOnly, _In_ QWORD va, _Out_ 
 * -- return
 */
 _Success_(return)
-BOOL VmmVirt2Phys(_In_ PVMM_PROCESS pProcess, _In_ QWORD va, _Out_ PQWORD ppa);
+BOOL VmmVirt2Phys(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD va, _Out_ PQWORD ppa);
 
 /*
 * Spider the TLB (page table cache) to load all page table pages into the cache.

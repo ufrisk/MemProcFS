@@ -3356,7 +3356,7 @@ VOID VmmWinProcess_Enum64_Post(_In_ PVMM_PROCESS pSystemProcess, _In_opt_ PVMMWI
     szName = (LPSTR)(pb + po->Name);
     pqwPEB = (PQWORD)(pb + po->PEB);
     pqwWow64Process = (PQWORD)(pb + po->Wow64Process);
-    if(*pqwDTB & 0xffffff0000000000) { return; }   // NB! Fail if target system have more than 1TB of memory (unlikely)
+    if(*pqwDTB & 0xfffff00000000000) { return; }   // NB! Fail if target system have more than 16TB of memory (unlikely)
     if(ctx->pObSetPrefetchDTB) {    // prefetch any physical pages in ctx->pObSetPrefetchDTB on 1st run only
         VmmCachePrefetchPages(NULL, ctx->pObSetPrefetchDTB, 0);
         Ob_DECREF_NULL(&ctx->pObSetPrefetchDTB);

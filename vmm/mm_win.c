@@ -372,49 +372,31 @@ VOID MmWin_MemCompress_InitializeOffsets64()
 }
 
 /*
-* Retrieve the page file number of the virtual store. This will be '2' on a
-* standard system, but if paging are configured in a non-standard way this
-* number may differ.
-* Walk nt!MiSystemPartition/nt!.data section for candidate pointers to
-* nt!_MMPAGING_FILE which have pool header: 'Mm  '. The page file number and
-* the virtual store flag is contained at same bits in all known versions with
-* MemCompression as per below (for 64-bit):
-* dt nt!_MMPAGING_FILE
-*  +0x0cc PageFileNumber   : Pos 0, 4 Bits
-*  +0x0cc VirtualStorePagefile : Pos 6, 1 Bit
-* If this function fails it will automatically fallback to the default number
-* of 2.
+* Older version of InitializeVirtualStorePageFileNumber() which has no reliance
+* on debug symbols.
+* NB! THIS DOES NOT WORK ON MORE RECENT WINDOWS VERSION (SERVER2022/WIN11).
 */
-VOID MmWin_MemCompress_InitializeVirtualStorePageFileNumber()
+VOID MmWin_MemCompress_InitializeVirtualStorePageFileNumber_Old(_Inout_ PMMWIN_CONTEXT ctx, _In_ PVMM_PROCESS pSystemProcess)
 {
     BOOL f;
     BYTE pbMm[0x100] = { 0 };
     QWORD j, va = 0;
     DWORD i, cb, cbRead, oPoolHdr, oPfNum;
     PBYTE pb = NULL;
-    PVMM_PROCESS pObSystemProcess = NULL;
     IMAGE_SECTION_HEADER oSectionHeader;
     POB_SET pObSet = NULL;
-    PMMWIN_CONTEXT ctx = (PMMWIN_CONTEXT)ctxVmm->pMmContext;
-    QWORD qw, vaMiState;
-    DWORD oMiStateHardware, oMiStateHardwareInvalidPteMask;
     ctx->MemCompress.dwPageFileNumber = 2;
     // 1: SetUp and locate nt!MiSystemPartition/nt!.data
     if(!(pObSet = ObSet_New())) { goto finish; }
-    if(!(pObSystemProcess = VmmProcessGet(4))) { goto finish; }
-    if(PDB_GetSymbolAddress(PDB_HANDLE_KERNEL, "MiSystemPartition", &va) && va) {
-        cb = 0x3000;
-    } else {
-        if(!PE_SectionGetFromName(pObSystemProcess, ctxVmm->kernel.vaBase, ".data", &oSectionHeader)) {
-            vmmprintfv_fn("CANNOT READ ntoskrnl.exe .data SECTION from PE header.\n");
-            goto finish;
-        }
-        if(oSectionHeader.Misc.VirtualSize > 0x00100000) { goto finish; }
-        va = ctxVmm->kernel.vaBase + oSectionHeader.VirtualAddress;
-        cb = oSectionHeader.Misc.VirtualSize;
+    if(!PE_SectionGetFromName(pSystemProcess, ctxVmm->kernel.vaBase, ".data", &oSectionHeader)) {
+        vmmprintfv_fn("CANNOT READ ntoskrnl.exe .data SECTION from PE header.\n");
+        goto finish;
     }
+    if(oSectionHeader.Misc.VirtualSize > 0x00100000) { goto finish; }
+    va = ctxVmm->kernel.vaBase + oSectionHeader.VirtualAddress;
+    cb = oSectionHeader.Misc.VirtualSize;
     if(!(pb = LocalAlloc(0, cb))) { goto finish; }
-    if(!VmmRead(pObSystemProcess, va, pb, cb)) {
+    if(!VmmRead(pSystemProcess, va, pb, cb)) {
         vmmprintfv_fn("CANNOT READ ntoskrnl.exe .data SECTION.\n");
         goto finish;
     }
@@ -460,18 +442,10 @@ VOID MmWin_MemCompress_InitializeVirtualStorePageFileNumber()
         oPoolHdr = 4;
         oPfNum = 0xcc;
     }
-    // 3: Set InvalidPteMask
-    if(ctxVmm->kernel.dwVersionBuild >= 15063) {
-        f = PDB_GetSymbolAddress(PDB_HANDLE_KERNEL, "MiState", &vaMiState) &&
-            PDB_GetTypeChildOffset(PDB_HANDLE_KERNEL, "_MI_SYSTEM_INFORMATION", "Hardware", &oMiStateHardware) &&
-            PDB_GetTypeChildOffset(PDB_HANDLE_KERNEL, "_MI_HARDWARE_STATE", "InvalidPteMask", &oMiStateHardwareInvalidPteMask) &&
-            VmmRead(pObSystemProcess, vaMiState + oMiStateHardware + oMiStateHardwareInvalidPteMask, (PBYTE)&qw, 8);
-        ctx->MemCompress.dwInvalidPteMask = f ? (qw >> 32) : 0x00002000;     // if fail: [0x00002000 = most common on Intel]
-    }
-    // 4: Verify nt!dt _MMPAGING_FILE by looking at pool header and VirtualStorePagefile bit
-    VmmCachePrefetchPages(pObSystemProcess, pObSet, 0);
+    // 3: Verify nt!dt _MMPAGING_FILE by looking at pool header and VirtualStorePagefile bit
+    VmmCachePrefetchPages(pSystemProcess, pObSet, 0);
     while((va = ObSet_Pop(pObSet))) {
-        VmmReadEx(pObSystemProcess, va - 0x10, pbMm, 0x100, &cbRead, VMM_FLAG_FORCECACHE_READ);
+        VmmReadEx(pSystemProcess, va - 0x10, pbMm, 0x100, &cbRead, VMM_FLAG_FORCECACHE_READ);
         if((*(PDWORD)(pbMm + oPoolHdr) == '  mM') && (*(PBYTE)(pbMm + 0x10 + oPfNum) & 0x40)) {
             ctx->MemCompress.dwPageFileNumber = (*(PBYTE)(pbMm + 0x10 + oPfNum) & 0x0f);
             goto finish;
@@ -480,6 +454,70 @@ VOID MmWin_MemCompress_InitializeVirtualStorePageFileNumber()
     vmmprintfv_fn("WARN! did not find virtual store number - fallback to default.\n");
 finish:
     LocalFree(pb);
+    Ob_DECREF(pObSet);
+}
+
+/*
+* Retrieve the page file number of the virtual store. This will be '2' on a
+* standard system, but if paging are configured in a non-standard way this
+* number may differ.
+* ---
+* nt!MiSystemPartition(dt:_MI_PARTITION).Vp(dt:_MI_VISIBLE_PARTITION).
+* .PagingFile[0-15](dt:PTR:_MMPAGING_FILE)
+* ---
+* The page file number and the virtual store flag is contained at same bits
+* in all known versions with MemCompression as per below (for 64-bit):
+* dt nt!_MMPAGING_FILE
+*  +0x0cc PageFileNumber   : Pos 0, 4 Bits
+*  +0x0cc VirtualStorePagefile : Pos 6, 1 Bit
+* If this function fails it will automatically fallback to default number 2.
+*/
+VOID MmWin_MemCompress_InitializeVirtualStorePageFileNumber()
+{
+    BOOL f;
+    PVMM_PROCESS pObSystemProcess = NULL;
+    QWORD qw, va, vaMiState, iPfNum;
+    DWORD oMiStateHardware, oMiStateHardwareInvalidPteMask;
+    PMMWIN_CONTEXT ctx = (PMMWIN_CONTEXT)ctxVmm->pMmContext;
+    DWORD oVp, oPagingFile, oPageFileNumber;
+    POB_SET pObSet = NULL;
+    BYTE pb[16 * sizeof(QWORD)], bFlags;
+    // 1: Prepare
+    if(!(pObSet = ObSet_New())) { goto finish; }
+    if(!(pObSystemProcess = VmmProcessGet(4))) { goto finish; }
+    // 2: Set InvalidPteMask
+    if(ctxVmm->kernel.dwVersionBuild >= 15063) {
+        f = PDB_GetSymbolAddress(PDB_HANDLE_KERNEL, "MiState", &vaMiState) &&
+            PDB_GetTypeChildOffset(PDB_HANDLE_KERNEL, "_MI_SYSTEM_INFORMATION", "Hardware", &oMiStateHardware) &&
+            PDB_GetTypeChildOffset(PDB_HANDLE_KERNEL, "_MI_HARDWARE_STATE", "InvalidPteMask", &oMiStateHardwareInvalidPteMask) &&
+            VmmRead(pObSystemProcess, vaMiState + oMiStateHardware + oMiStateHardwareInvalidPteMask, (PBYTE)&qw, 8);
+        ctx->MemCompress.dwInvalidPteMask = f ? (qw >> 32) : 0x00002000;     // if fail: [0x00002000 = most common on Intel]
+    }
+    // 3: fetch virtual store # via pdb symbols
+    f = PDB_GetSymbolAddress(PDB_HANDLE_KERNEL, "MiSystemPartition", &va) &&
+        PDB_GetTypeChildOffset(PDB_HANDLE_KERNEL, "_MI_PARTITION", "Vp", &oVp) &&
+        PDB_GetTypeChildOffset(PDB_HANDLE_KERNEL, "_MI_VISIBLE_PARTITION", "PagingFile", &oPagingFile) &&
+        PDB_GetTypeChildOffset(PDB_HANDLE_KERNEL, "_MMPAGING_FILE", "PageFileNumber", &oPageFileNumber) &&
+        VmmRead(pObSystemProcess, va + oVp + oPagingFile, pb, 16 * sizeof(QWORD));
+    if(!f) { goto fail; }
+    for(iPfNum = 0; iPfNum < 16; iPfNum++) {
+        va = ctxVmm->f32 ? *(PDWORD)(pb + iPfNum * 4) : *(PQWORD)(pb + iPfNum * 8);
+        if(VMM_KADDR_8_16(va)) {
+            ObSet_Push(pObSet, va + oPageFileNumber);
+        }
+    }
+    VmmCachePrefetchPages(pObSystemProcess, pObSet, 0);
+    while((va = ObSet_Pop(pObSet))) {
+        if(VmmRead2(pObSystemProcess, va, &bFlags, 1, VMM_FLAG_FORCECACHE_READ)) {
+            if(bFlags & 0x40) {
+                ctx->MemCompress.dwPageFileNumber = bFlags & 0x0f;
+                goto finish;
+            }
+        }
+    }
+fail:
+    MmWin_MemCompress_InitializeVirtualStorePageFileNumber_Old(ctx, pObSystemProcess);
+finish:
     Ob_DECREF(pObSystemProcess);
     Ob_DECREF(pObSet);
 }

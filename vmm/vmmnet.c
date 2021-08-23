@@ -46,8 +46,9 @@ typedef struct tdVMMNET_OFFSET_TcpL_UdpA {
     WORD _Size;
     WORD INET_AF;
     WORD INET_AF_AF;
-    WORD LocalAddr;
-    WORD LocalPort;
+    WORD SrcAddr;
+    WORD SrcPort;
+    WORD DstPort;
     WORD FLink;
     WORD EProcess;
     WORD Time;
@@ -176,7 +177,7 @@ BOOL VmmNet_TcpE_GetAddressEPs(_In_ PVMMNET_CONTEXT ctx, _In_ PVMM_PROCESS pSyst
 {
     BOOL f, fResult = FALSE;
     QWORD va, va2, va3;
-    DWORD i, o, oStartHT, oListPT = 0, cbRead, cbTcpHT;
+    DWORD i, o, oStartHT, oListPT = 0, cbRead, cbTcpHT, dwPoolTag;
     BYTE pb[0x810] = { 0 };
     PBYTE pbPartitionTable = NULL, pbTcHT = NULL;
     POB_SET pObTcHT = NULL, pObHTab = NULL, pObTcpE = NULL;
@@ -248,8 +249,9 @@ BOOL VmmNet_TcpE_GetAddressEPs(_In_ PVMMNET_CONTEXT ctx, _In_ PVMM_PROCESS pSyst
     while((va = ObSet_Pop(pObTcpE))) {
         VmmReadEx(pSystemProcess, va, pb, 0x10, &cbRead, VMM_FLAG_FORCECACHE_READ);
         if(0x10 != cbRead) { continue; }
-        if(*(PDWORD)(pb + 0x04) != 'EpcT') {
-            vmmprintfv_fn("UNEXPECTED POOL HDR: '%c%c%c%c' EXPECT: 'TcpE' AT VA: 0x%016llx\n", pb[4], pb[5], pb[6], pb[7], va);
+        dwPoolTag = *(PDWORD)(pb + 0x04);
+        if(!VMM_POOLTAG(dwPoolTag, 'TcpE') && !VMM_POOLTAG(dwPoolTag, 'TTcb')) {
+            vmmprintfv_fn("UNEXPECTED POOL HDR: '%c%c%c%c' EXPECT: 'TcpE/TTcb' AT VA: 0x%016llx\n", pb[4], pb[5], pb[6], pb[7], va);
             continue;
         }
         ObSet_Push(psvaOb_TcpEndpoints, va + 0x10);
@@ -531,15 +533,18 @@ PVMM_MAP_NETENTRY VmmNet_InPP_TcpL_UdpA(_In_ PVMMNET_CONTEXT ctx, _In_ PVMM_PROC
     if(!(pe = LocalAlloc(LMEM_ZEROINIT, sizeof(VMM_MAP_NETENTRY)))) { return NULL; }
     pe->dwPoolTag = dwPoolTag;
     pe->dwState = (dwPoolTag == 'TcpL') ? 1 : 13;
-    pe->Src.port = _byteswap_ushort(*(PWORD)(pb + po->LocalPort));
+    pe->Src.port = _byteswap_ushort(*(PWORD)(pb + po->SrcPort));
+    if(po->DstPort) {
+        pe->Dst.port = _byteswap_ushort(*(PWORD)(pb + po->DstPort));
+    }
     pe->vaObj = vaTcpE_UdpA;
     ftTime = *(PQWORD)(pb + po->Time);
     if(1 == (ftTime >> 56)) {
         pe->ftTime = ftTime;
     }
     pe->_Reserved1 = *(PQWORD)(pb + po->INET_AF);       // vaINET_AF
-    if(VMM_KADDR64_8(*(PQWORD)(pb + po->LocalAddr))) {
-        pe->_Reserved2 = *(PQWORD)(pb + po->LocalAddr); // vaLocalAddr
+    if(VMM_KADDR64_8(*(PQWORD)(pb + po->SrcAddr))) {
+        pe->_Reserved2 = *(PQWORD)(pb + po->SrcAddr); // vaLocalAddr
     }
     vaEPROCESS = *(PQWORD)(pb + po->EProcess);
     if(VMM_KADDR64_16(vaEPROCESS)) {
@@ -711,44 +716,48 @@ VOID VmmNet_CallbackCleanup_ObMapNet(PVMMOB_MAP_NET pOb)
 VOID VmmNet_Initialize_Context_Fuzz_TcpL_UdpA(_In_ PVMMNET_CONTEXT ctx)
 {
     PVMMNET_OFFSET_TcpL_UdpA po;
+    DWORD dwBuild = ctxVmm->kernel.dwVersionBuild;
     // TcpL
     po = &ctx->oTcpL;
-    if(ctxVmm->kernel.dwVersionBuild < 10240) {
-        // VISTA - WIN8.1
-        po->INET_AF = 0x60;
-        po->EProcess = 0x28;
-        po->LocalAddr = 0x58;
-        po->LocalPort = 0x6a;
-        po->FLink = 0x70;
-    } else {
-        // WIN10
+    if(dwBuild >= 10240) {
+        // WIN10+
         po->INET_AF = 0x28;
         po->EProcess = 0x30;
         po->Time = 0x40;
-        po->LocalAddr = 0x60;
-        po->LocalPort = 0x72;
+        po->SrcAddr = 0x60;
+        po->SrcPort = 0x72;
         po->FLink = 0x78;
+    } else {
+        // VISTA - WIN8.1
+        po->INET_AF = 0x60;
+        po->EProcess = 0x28;
+        po->SrcAddr = 0x58;
+        po->SrcPort = 0x6a;
+        po->FLink = 0x70;
     }
-    po->INET_AF_AF = (ctxVmm->kernel.dwVersionBuild < 9200) ? 0x14 : 0x18;  // VISTA-WIN7 or WIN8+
+    po->INET_AF_AF = (dwBuild < 9200) ? 0x14 : 0x18;  // VISTA-WIN7 or WIN8+
     po->_Size = po->FLink + 8;
     // UdpA
     po = &ctx->oUdpA;
-    if(ctxVmm->kernel.dwVersionBuild < 10240) {
-        // VISTA - WIN8.1
-        po->LocalAddr = 0x60;
-        po->LocalPort = 0x80;
-        po->FLink = 0x88;
-    } else {
-        // WIN10
-        po->LocalAddr = 0x80;
-        po->LocalPort = 0x78;
+    if(dwBuild >= 19041) {          // WIN10 / WIN11 / SERVER2022
+        po->SrcAddr = 0xa8;
+        po->SrcPort = 0xa0;
+        po->DstPort = 0x110;
+        po->FLink = 0x70;   // ??
+    } else if(dwBuild >= 10240) {   // WIN10
+        po->SrcAddr = 0x80;
+        po->SrcPort = 0x78;
         po->FLink = 0x70;
+    } else {                        // VISTA - WIN8.1
+        po->SrcAddr = 0x60;
+        po->SrcPort = 0x80;
+        po->FLink = 0x88;
     }
     po->INET_AF = 0x20;
     po->EProcess = 0x28;
     po->Time = 0x58;
-    po->INET_AF_AF = (ctxVmm->kernel.dwVersionBuild < 9200) ? 0x14 : 0x18;  // VISTA-WIN7 or WIN8+
-    po->_Size = po->FLink + 8;
+    po->INET_AF_AF = (dwBuild < 9200) ? 0x14 : 0x18;  // VISTA-WIN7 or WIN8+
+    po->_Size = max(max(po->SrcAddr, po->SrcPort), max(po->DstPort, po->FLink)) + 8;
 }
 
 /*

@@ -844,7 +844,7 @@ VOID VmmWinReg_EnumHive32_Post(_In_ PVMM_PROCESS pProcess, _In_opt_ POB_MAP pHiv
     //_HBASE_BLOCK.FileName
     VmmReadWtoU(
         pProcess,
-        *(PDWORD)(pbData + po->CM.BaseBlock) + po->BB.FileName,
+        (QWORD)*(PDWORD)(pbData + po->CM.BaseBlock) + po->BB.FileName,
         2 * _countof(pObHive->uszNameShort) - 2,
         VMM_FLAG_ZEROPAD_ON_FAIL,
         (PBYTE)pObHive->uszNameShort,
