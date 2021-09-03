@@ -113,6 +113,6 @@ int main(_In_ int argc, _In_ char* argv[])
     VfsList_Initialize(500, 128);
     VfsDokan_InitializeAndMount_DisplayInfo(szMountPoint);
     // hand over control to FUSE.
-    LPSTR szArgListFuse[] = { "", szMountPoint, "-f" };
+    LPSTR szArgListFuse[] = { argv[0], szMountPoint, "-f" };
     return vfs_initialize_and_mount_displayinfo(3, szArgListFuse);
 }
