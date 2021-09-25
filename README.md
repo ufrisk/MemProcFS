@@ -271,4 +271,4 @@ v1.1-v2.10
 * Support for Windows Server 2022.
 * Support for Active Memory and Full Bitmap Microsoft Crash Dump files.
 * 32-bit support for Windows and Linux (no 32-bit binary release yet).<br>
-  Many thanks to @JosiahWhite for helping out getting me going and showing this was possible!
+  Many thanks to [@JosiahWhite](https://github.com/JosiahWhite) for helping out getting me going and showing this was possible!
