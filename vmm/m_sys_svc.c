@@ -164,8 +164,9 @@ DWORD MSysSvc_InfoFromEntry(_In_ PVMM_MAP_SERVICEENTRY pe, _Out_writes_(cbu) LPS
     );
 }
 
-int MSysSvc_InfoFromPath_Filter(_In_ QWORD pvFind, _In_ PVMM_MAP_SERVICEENTRY pvEntry)
+int MSysSvc_InfoFromPath_Filter(_In_ QWORD pvFind, _In_ QWORD qwEntry)
 {
+    PVMM_MAP_SERVICEENTRY pvEntry = (PVMM_MAP_SERVICEENTRY)qwEntry;
     return (DWORD)pvFind - pvEntry->dwOrdinal;
 }
 
@@ -190,7 +191,7 @@ NTSTATUS MSysSvc_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbR
     }
     if(Util_VfsHelper_GetIdDir(ctx->uszPath, &dwSvcId, &uszSvcSubPath)) {
         qwSvcId = dwSvcId;
-        pe = Util_qfind((PVOID)qwSvcId, pObSvcMap->cMap, pObSvcMap->pMap, sizeof(VMM_MAP_SERVICEENTRY), (int(*)(PVOID, PVOID))MSysSvc_InfoFromPath_Filter);
+        pe = Util_qfind(qwSvcId, pObSvcMap->cMap, pObSvcMap->pMap, sizeof(VMM_MAP_SERVICEENTRY), MSysSvc_InfoFromPath_Filter);
         if(pe) {
             if(!_stricmp("svcinfo.txt", uszSvcSubPath)) {
                 cbInfoFile = MSysSvc_InfoFromEntry(pe, szu8InfoFile, sizeof(szu8InfoFile));
@@ -241,7 +242,7 @@ BOOL MSysSvc_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
     }
     if(Util_VfsHelper_GetIdDir(ctx->uszPath, &dwSvcId, &uszSvcSubPath)) {
         qwSvcId = dwSvcId;
-        pe = Util_qfind((PVOID)qwSvcId, pObSvcMap->cMap, pObSvcMap->pMap, sizeof(VMM_MAP_SERVICEENTRY), (int(*)(PVOID, PVOID))MSysSvc_InfoFromPath_Filter);
+        pe = Util_qfind(qwSvcId, pObSvcMap->cMap, pObSvcMap->pMap, sizeof(VMM_MAP_SERVICEENTRY), MSysSvc_InfoFromPath_Filter);
         if(pe) {
             if(0 == uszSvcSubPath[0]) {
                 cbInfoFile = MSysSvc_InfoFromEntry(pe, szu8InfoFile, sizeof(szu8InfoFile));

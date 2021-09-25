@@ -42,7 +42,7 @@ NTSTATUS MSysMem_Read_PfnMap(_Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD 
     cbMax = 1 + (1ULL + cPfnEnd - cPfnStart) * cbLINELENGTH;
     if(cPfnStart >= cPfnTotal) { return VMMDLL_STATUS_END_OF_FILE; }
     if(!MmPfn_Map_GetPfn(cPfnStart, cPfnEnd - cPfnStart + 1, &pObPfnMap, TRUE)) { return VMMDLL_STATUS_FILE_INVALID; }
-    if(!(sz = LocalAlloc(LMEM_ZEROINIT, cbMax))) {
+    if(!(sz = LocalAlloc(LMEM_ZEROINIT, (SIZE_T)cbMax))) {
         Ob_DECREF(pObPfnMap);
         return VMMDLL_STATUS_FILE_INVALID;
     }

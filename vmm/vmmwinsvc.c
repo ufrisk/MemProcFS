@@ -254,10 +254,10 @@ POB_MAP VmmWinSvc_MainListWalk(_In_ PVMMWINSVC_CONTEXT ctx, _In_ PVMM_PROCESS pP
         pe->dwOrdinal = dwOrdinal;
         pe->dwStartType = dwStartType;
         memcpy(&pe->ServiceStatus, pb + o->SvcStatus, sizeof(SERVICE_STATUS));
-        pe->uszServiceName = (LPSTR)VMM_PTR_OFFSET(f32, pb, o->NmShort);
-        pe->uszDisplayName = (LPSTR)VMM_PTR_OFFSET(f32, pb, o->NmLong);
+        pe->_vaReservedServiceName = VMM_PTR_OFFSET(f32, pb, o->NmShort);
+        pe->_vaReservedDisplayName = VMM_PTR_OFFSET(f32, pb, o->NmLong);
         if((pe->ServiceStatus.dwServiceType & SERVICE_KERNEL_DRIVER) || (pe->ServiceStatus.dwServiceType & SERVICE_FILE_SYSTEM_DRIVER)) {
-            pe->uszPath = (LPSTR)VMM_PTR_OFFSET(f32, pb, o->ExtInfo);
+            pe->_vaReservedPath = VMM_PTR_OFFSET(f32, pb, o->ExtInfo);
         } else {
             va3 = VMM_PTR_OFFSET(f32, pb, o->ExtInfo);
             pe->_Reserved = VMM_UADDR_4_8(va3) ? va3 : 0;
@@ -302,9 +302,9 @@ VOID VmmWinSvc_GetExtendedInfo(_In_ PVMMWINSVC_CONTEXT ctx, _In_ PVMM_PROCESS pP
                 if(!(va = VMM_PTR_OFFSET(f32, pb, o->FLink)) || !VMM_UADDR_4_8(va)) { continue; }
             }
             pe->dwPID = *(PDWORD)(pb + o->Pid);
-            pe->uszPath = (LPSTR)VMM_PTR_OFFSET(f32, pb, o->StartupPath);
-            pe->uszUserTp = o->UserTp ? (LPSTR)VMM_PTR_OFFSET(f32, pb, o->UserTp) : NULL;
-            pe->uszUserAcct = o->UserAcct ? (LPSTR)VMM_PTR_OFFSET(f32, pb, o->UserAcct) : NULL;
+            pe->_vaReservedPath = VMM_PTR_OFFSET(f32, pb, o->StartupPath);
+            pe->_vaReservedUserTp = o->UserTp ? VMM_PTR_OFFSET(f32, pb, o->UserTp) : 0;
+            pe->_vaReservedUserAcct = o->UserAcct ? VMM_PTR_OFFSET(f32, pb, o->UserAcct) : 0;
         }
     }
 }
@@ -382,11 +382,11 @@ BOOL VmmWinSvc_ResolveStrAll(_In_ PVMM_PROCESS pProcessSvc, _In_ PVMMOB_MAP_SERV
     if((psObPrefetch = ObSet_New())) {
         for(i = 0; i < pSvcMap->cMap; i++) {
             pe = pSvcMap->pMap + i;
-            ObSet_Push(psObPrefetch, (QWORD)pe->uszServiceName);
-            ObSet_Push(psObPrefetch, (QWORD)pe->uszDisplayName);
-            ObSet_Push(psObPrefetch, (QWORD)pe->uszPath);
-            ObSet_Push(psObPrefetch, (QWORD)pe->uszUserTp);
-            ObSet_Push(psObPrefetch, (QWORD)pe->uszUserAcct);
+            ObSet_Push(psObPrefetch, pe->_vaReservedServiceName);
+            ObSet_Push(psObPrefetch, pe->_vaReservedDisplayName);
+            ObSet_Push(psObPrefetch, pe->_vaReservedPath);
+            ObSet_Push(psObPrefetch, pe->_vaReservedUserTp);
+            ObSet_Push(psObPrefetch, pe->_vaReservedUserAcct);
         }
         VmmCachePrefetchPages3(pProcessSvc, psObPrefetch, 2 * 2048, 0);
         Ob_DECREF_NULL(&psObPrefetch);
@@ -394,11 +394,11 @@ BOOL VmmWinSvc_ResolveStrAll(_In_ PVMM_PROCESS pProcessSvc, _In_ PVMMOB_MAP_SERV
     // 3.1: fetch strings - general
     for(i = 0; i < pSvcMap->cMap; i++) {
         pe = pSvcMap->pMap + i;
-        VmmWinSvc_ResolveStrAddSingle(pProcessSvc, pObStrMap, &pe->uszServiceName, (QWORD)pe->uszServiceName, FALSE);
-        VmmWinSvc_ResolveStrAddSingle(pProcessSvc, pObStrMap, &pe->uszDisplayName, (QWORD)pe->uszDisplayName, FALSE);
-        VmmWinSvc_ResolveStrAddSingle(pProcessSvc, pObStrMap, &pe->uszPath, (QWORD)pe->uszPath, FALSE);
-        VmmWinSvc_ResolveStrAddSingle(pProcessSvc, pObStrMap, &pe->uszUserTp, (QWORD)pe->uszUserTp, FALSE);
-        VmmWinSvc_ResolveStrAddSingle(pProcessSvc, pObStrMap, &pe->uszUserAcct, (QWORD)pe->uszUserAcct, TRUE);
+        VmmWinSvc_ResolveStrAddSingle(pProcessSvc, pObStrMap, &pe->uszServiceName, pe->_vaReservedServiceName, FALSE);
+        VmmWinSvc_ResolveStrAddSingle(pProcessSvc, pObStrMap, &pe->uszDisplayName, pe->_vaReservedDisplayName, FALSE);
+        VmmWinSvc_ResolveStrAddSingle(pProcessSvc, pObStrMap, &pe->uszPath,        pe->_vaReservedPath, FALSE);
+        VmmWinSvc_ResolveStrAddSingle(pProcessSvc, pObStrMap, &pe->uszUserTp,      pe->_vaReservedUserTp, FALSE);
+        VmmWinSvc_ResolveStrAddSingle(pProcessSvc, pObStrMap, &pe->uszUserAcct,    pe->_vaReservedUserAcct, TRUE);
     }
     // 3.2: fetch strings - user (if does not exist already)
     for(i = 0; i < pSvcMap->cMap; i++) {
@@ -468,7 +468,7 @@ PVMMOB_MAP_SERVICE VmmWinSvc_Initialize_DoWork()
     PVMMOB_MAP_SERVICE pObServiceMap = NULL;
     PVMM_MAP_SERVICEENTRY pe = NULL;
     // 0: prefetch SYSTEM reg hive
-    VmmWork(VmmWinSvc_PrefetchRegSystemHive_ThreadProc, NULL, NULL);
+    VmmWork((LPTHREAD_START_ROUTINE)VmmWinSvc_PrefetchRegSystemHive_ThreadProc, NULL, NULL);
     // 1: initialize
     if(!(pObSvcProcess = VmmWinSvc_GetProcessServices())) { goto fail; }
     VmmWinSvc_OffsetLocator(&InitCtx);

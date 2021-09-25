@@ -30,7 +30,10 @@
 
 typedef struct tdOB_MAP_ENTRY {
     QWORD k;
-    PVOID v;
+    union {
+        PVOID v;
+        QWORD _Filler;
+    };
 } OB_MAP_ENTRY, *POB_MAP_ENTRY, **PPOB_MAP_ENTRY;
 
 typedef struct tdOB_MAP {

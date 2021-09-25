@@ -121,7 +121,7 @@ VfsDokanCallback_FindFiles(LPCWSTR wcsFileName, PFillFindData FillFindData, PDOK
     UINT64 tmStart = dbg_GetTickCount64();
     if(!ctxVfs || !ctxVfs->fInitialized) { return STATUS_FILE_INVALID; }
     dbg_wprintf_init(L"DEBUG::%08x -------- VfsCallback_FindFiles:\t\t\t 0x%08x %s\n", 0, wcsFileName);
-    VfsList_ListDirectory((LPWSTR)wcsFileName, DokanFileInfo, FillFindData);
+    VfsList_ListDirectory((LPWSTR)wcsFileName, DokanFileInfo, (PFN_VFSLIST_CALLBACK)FillFindData);
     dbg_wprintf(L"DEBUG::%08x %8x VfsCallback_FindFiles:\t\t\t 0x%08x %s\n", (DWORD)(dbg_GetTickCount64() - tmStart), STATUS_SUCCESS, wcsFileName);
     return STATUS_SUCCESS;
 }
@@ -158,13 +158,13 @@ VOID VfsDokan_Close(_In_ CHAR chMountPoint)
 {
     HMODULE hModuleDokan = NULL;
     WCHAR wchMountPoint = chMountPoint;
-    BOOL(*pfnDokanUnmount)(WCHAR DriveLetter);
+    BOOL(WINAPI *pfnDokanUnmount)(WCHAR DriveLetter);
     if(ctxVfs && ctxVfs->fInitialized) {
         ctxVfs->fInitialized = FALSE;
         if(wchMountPoint) {
             hModuleDokan = LoadLibraryExA("dokan1.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
             if(hModuleDokan) {
-                pfnDokanUnmount = (BOOL(*)(WCHAR))GetProcAddress(hModuleDokan, "DokanUnmount");
+                pfnDokanUnmount = (BOOL(WINAPI *)(WCHAR))GetProcAddress(hModuleDokan, "DokanUnmount");
                 if(pfnDokanUnmount) {
                     pfnDokanUnmount(wchMountPoint);
                 }

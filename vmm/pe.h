@@ -9,10 +9,6 @@
 #define __PE_H__
 #include "vmm.h"
 
-#define CONTAINING_RECORD32(address, type, field) ((DWORD)( \
-                                                  (DWORD)(QWORD)(address) - \
-                                                  (DWORD)(QWORD)(&((type *)0)->field)))
-
 static const LPCSTR  PE_DATA_DIRECTORIES[16]  = {  "EXPORT",  "IMPORT",  "RESOURCE",  "EXCEPTION",  "SECURITY",  "BASERELOC",  "DEBUG",  "ARCHITECTURE",  "GLOBALPTR",  "TLS",  "LOAD_CONFIG",  "BOUND_IMPORT",  "IAT",  "DELAY_IMPORT",  "COM_DESCRIPTOR",  "RESERVED" };
 
 typedef struct tdPE_CODEVIEW {

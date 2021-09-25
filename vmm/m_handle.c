@@ -39,10 +39,9 @@ VOID MHandle_ReadLine_Callback(_Inout_opt_ PVOID ctx, _In_ DWORD cbLineLength, _
 /*
 * qfind callback function for locating a handle entry in its map given an id.
 */
-int MHandle_HandleFromPath_qfind(_In_ PVOID pvFind, _In_ PVOID pvEntry)
+int MHandle_HandleFromPath_qfind(_In_ QWORD qwKey, _In_ QWORD qwEntry)
 {
-    QWORD qwKey = (QWORD)pvFind;
-    PVMM_MAP_HANDLEENTRY peEntry = (PVMM_MAP_HANDLEENTRY)pvEntry;
+    PVMM_MAP_HANDLEENTRY peEntry = (PVMM_MAP_HANDLEENTRY)qwEntry;
     if(peEntry->dwHandle > qwKey) { return -1; }
     if(peEntry->dwHandle < qwKey) { return 1; }
     return 0;
@@ -61,7 +60,7 @@ PVMM_MAP_HANDLEENTRY MHandle_HandleFromPath(_In_ LPSTR uszPath, _In_ PVMMOB_MAP_
     QWORD qwHandle = 0;
     if(_strnicmp("by-id\\", uszPath, 6)) { return NULL; }
     qwHandle = strtoull(uszPath + 6, NULL, 16);
-    return Util_qfind((PVOID)qwHandle, pHandleMap->cMap, pHandleMap->pMap, sizeof(VMM_MAP_HANDLEENTRY), MHandle_HandleFromPath_qfind);
+    return Util_qfind(qwHandle, pHandleMap->cMap, pHandleMap->pMap, sizeof(VMM_MAP_HANDLEENTRY), MHandle_HandleFromPath_qfind);
 }
 
 /*

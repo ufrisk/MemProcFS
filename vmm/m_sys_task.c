@@ -306,7 +306,7 @@ VOID VmmSysTask_CallbackCleanup_ObObjectMap(PVMMOB_MAP_TASK pOb)
 VOID VmmSysTask_Initialize_DoWork(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
 {
     BOOL fResult = FALSE;
-    QWORD cAll, cTask, cbData, cbo, i, iTask;
+    DWORD cAll, cTask, cbData, cbo, i, iTask;
     PVMM_MAP_TASKENTRY pTask;
     PVMMOB_MAP_TASK pObMap = NULL;
     POB_REGISTRY_KEY pObKey = NULL;
@@ -330,7 +330,7 @@ VOID VmmSysTask_Initialize_DoWork(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
     cAll = ObMap_Size(ctxInit.pmAll);
     cTask = ObMap_Size(ctxInit.pmTask);
     if(cAll > 0xffff) { goto fail; }
-    cbData = sizeof(VMMOB_MAP_TASK) + cAll * sizeof(VMM_MAP_TASKENTRY) + (cAll + cTask + cTask) * sizeof(QWORD);
+    cbData = sizeof(VMMOB_MAP_TASK) + cAll * sizeof(VMM_MAP_TASKENTRY) + ((SIZE_T)cAll + cTask + cTask) * sizeof(QWORD);
     pObMap = Ob_Alloc(OB_TAG_MAP_TASK, LMEM_ZEROINIT, cbData, (OB_CLEANUP_CB)VmmSysTask_CallbackCleanup_ObObjectMap, NULL);
     if(!pObMap) { goto fail; }
     cbo = sizeof(VMMOB_MAP_TASK) + cAll * sizeof(VMM_MAP_TASKENTRY);
@@ -396,8 +396,9 @@ PVMMOB_MAP_TASK VmmSysTask_GetTaskMap(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
     return ObContainer_GetOb((POB_CONTAINER)ctxP->ctxM);
 }
 
-int VmmSysTask_GetTaskByHash_qfind_CmpFindTableQWORD(_In_ QWORD qwKey, _In_ PQWORD pqwEntry)
+int VmmSysTask_GetTaskByHash_qfind_CmpFindTableQWORD(_In_ QWORD qwKey, _In_ QWORD qwpqwEntry)
 {
+    PQWORD pqwEntry = (PQWORD)qwpqwEntry;
     QWORD qwEntry = *pqwEntry >> 16;
     return (qwEntry > qwKey) ? -1 : ((qwEntry == qwKey) ? 0 : 1);
 }
@@ -406,7 +407,7 @@ PVMM_MAP_TASKENTRY VmmSysTask_GetTaskByHash(_In_ PVMMOB_MAP_TASK pObTaskMap, _In
 {
     PQWORD pqwHash;
     if(!qwHash) { return NULL; }
-    pqwHash = Util_qfind((PVOID)(qwHash & 0x0000ffffffffffff), cHashTable, pqwHashTable, sizeof(QWORD), (int(*)(PVOID, PVOID))VmmSysTask_GetTaskByHash_qfind_CmpFindTableQWORD);
+    pqwHash = Util_qfind((qwHash & 0x0000ffffffffffff), cHashTable, pqwHashTable, sizeof(QWORD), VmmSysTask_GetTaskByHash_qfind_CmpFindTableQWORD);
     if(!pqwHash) { return NULL; }
     return pObTaskMap->pMap + (*pqwHash & 0xffff);
 }

@@ -124,20 +124,20 @@ NTSTATUS MWinReg_Read_KeyInfo(POB_REGISTRY_HIVE pHive, _In_ LPSTR uszKeyPath, _I
     VMM_REGISTRY_KEY_INFO KeyInfo = { 0 };
     POB_REGISTRY_KEY pObKey = NULL;
     PBYTE pbKey = NULL;
-    QWORD cbKey;
+    DWORD cbKey;
     CHAR szTime[24];
     if(!(pObKey = VmmWinReg_KeyGetByPath(pHive, uszKeyPath))) { goto fail; }
     VmmWinReg_KeyInfo(pHive, pObKey, &KeyInfo);
     if(fMeta) {
         cbKey = KEY_INFO_META_SIZE + KeyInfo.cbuName;
-        if(!(pbKey = LocalAlloc(LMEM_ZEROINIT, cbKey + 1))) { goto fail; }
+        if(!(pbKey = LocalAlloc(LMEM_ZEROINIT, (SIZE_T)cbKey + 1))) { goto fail; }
         Util_FileTime2String(KeyInfo.ftLastWrite, szTime);
-        snprintf((LPSTR)pbKey, cbKey + 1, "%016llx:%08x\nREG_KEY\n%s\n%s\n", pHive->vaCMHIVE, KeyInfo.raKeyCell, KeyInfo.uszName, szTime);
+        snprintf((LPSTR)pbKey, (SIZE_T)cbKey + 1, "%016llx:%08x\nREG_KEY\n%s\n%s\n", pHive->vaCMHIVE, KeyInfo.raKeyCell, KeyInfo.uszName, szTime);
         nt = Util_VfsReadFile_FromPBYTE(pbKey, cbKey, pb, cb, pcbRead, cbOffset);
     } else {
         cbKey = KeyInfo.cbKeyCell;
         if(!(pbKey = LocalAlloc(LMEM_ZEROINIT, cbKey))) { goto fail; }
-        VmmWinReg_HiveReadEx(pHive, KeyInfo.raKeyCell, pbKey, (DWORD)cbKey, NULL, VMM_FLAG_ZEROPAD_ON_FAIL);
+        VmmWinReg_HiveReadEx(pHive, KeyInfo.raKeyCell, pbKey, cbKey, NULL, VMM_FLAG_ZEROPAD_ON_FAIL);
         nt = Util_VfsReadFile_FromPBYTE(pbKey, cbKey, pb, cb, pcbRead, cbOffset);
     }
 fail:

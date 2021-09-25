@@ -419,7 +419,7 @@ BOOL FcTimelineMap_CreateInternal(_In_ LPSTR szSqlCount, _In_ LPSTR szSqlSelect,
     rc = Fc_SqlQueryN(szSqlCount, cQueryValues, pqwQueryValues, 2, pqwResult, NULL);
     if((rc != SQLITE_OK) || (pqwResult[0] > 0x00010000) || (pqwResult[1] > 0x01000000)) { goto fail; }
     cchMultiText = (DWORD)(1 + 2 * pqwResult[0] + pqwResult[1]);
-    pObTimelineMap = Ob_Alloc('Mtml', LMEM_ZEROINIT, sizeof(FCOB_MAP_TIMELINE) + pqwResult[0] * sizeof(FC_MAP_TIMELINEENTRY) + cchMultiText, NULL, NULL);
+    pObTimelineMap = Ob_Alloc('Mtml', LMEM_ZEROINIT, (SIZE_T)(sizeof(FCOB_MAP_TIMELINE) + pqwResult[0] * sizeof(FC_MAP_TIMELINEENTRY) + cchMultiText), NULL, NULL);
     if(!pObTimelineMap) { goto fail; }
     pObTimelineMap->uszMultiText = (LPSTR)((PBYTE)pObTimelineMap + sizeof(FCOB_MAP_TIMELINE) + pqwResult[0] * sizeof(FC_MAP_TIMELINEENTRY));
     pObTimelineMap->cbuMultiText = cchMultiText;
@@ -641,7 +641,8 @@ fail:
 VOID FcJson_Callback_EntryAdd(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pDataJSON)
 {
     LPSTR szj;
-    QWORD i, o = 0;
+    DWORD i;
+    SIZE_T o = 0;
     PVMM_PROCESS pObProcess = NULL;
     typedef struct tdBUFFER {
         CHAR szj[0x1000];

@@ -148,7 +148,7 @@ VOID MFcProc_LogProcess(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd, _In_ VOID(*pfn
     );
     if(VmmProcess_GetExitTimeOpt(pProcess)) {
         Util_FileTime2String(VmmProcess_GetExitTimeOpt(pProcess), szTimeEXIT);
-        snprintf(usz + o, _countof(usz) - o, " exittime:[%s]", szTimeEXIT);
+        snprintf(usz + o, (SIZE_T)(_countof(usz) - o), " exittime:[%s]", szTimeEXIT);
     }
     pd->usz[1] = usz;
     pfnLogJSON(pd);

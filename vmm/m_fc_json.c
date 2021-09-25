@@ -22,7 +22,8 @@ NTSTATUS M_FcJSON_TimelineReadInfo(_Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD p
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PFC_MAP_TIMELINEENTRY pe;
     PFCOB_MAP_TIMELINE pObMap = NULL;
-    QWORD i, o, cbln, qwIdBase, qwIdTop, cId, cszuBuffer, cbOffsetBuffer;
+    QWORD i, qwIdBase, qwIdTop, cId, cbOffsetBuffer;
+    SIZE_T o, cbln, cszuBuffer;
     LPSTR szj, szuBuffer = NULL;
     DWORD dwEntryType, dwEntryAction;
     CHAR szTime[21];

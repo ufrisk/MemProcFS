@@ -39,7 +39,7 @@ static LPCSTR MFCREGISTRY_TYPE_NAMES[] = {
 
 VOID MFcRegistry_JsonKeyCB(_Inout_ PVMMWINREG_FORENSIC_CONTEXT ctx, _In_z_ LPSTR uszPathName, _In_ QWORD ftLastWrite)
 {
-    QWORD o = 0;
+    SIZE_T o = 0;
     CHAR szKeyLastWrite[21];
     // 1: create json 'base/prefix' to re-use with values:
     o += snprintf(ctx->szjBase, sizeof(ctx->szjBase) - o,

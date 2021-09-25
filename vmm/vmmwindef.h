@@ -35,7 +35,7 @@ typedef struct _UNICODE_STRING32 {
 typedef struct _UNICODE_STRING64 {
     USHORT Length;
     USHORT MaximumLength;
-    DWORD  Filler;
+    DWORD  _Filler;
     QWORD  Buffer;
 } UNICODE_STRING64, *PUNICODE_STRING64;
 
@@ -68,6 +68,7 @@ typedef struct _OBJECT_HEADER64 {
     BYTE TraceFlags;
     BYTE InfoMask;
     BYTE Flags;
+    DWORD _Filler;
     union {
         QWORD ObjectCreateInfo;
         QWORD QuotaBlockCharged;

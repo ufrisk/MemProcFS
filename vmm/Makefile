@@ -10,6 +10,7 @@ CFLAGS  += -std=c11 -I. -I../includes -D LINUX -D _GNU_SOURCE -D SQLITE_THREADSA
 #CFLAGS  += -g -O0
 CFLAGS  += -fPIE -pie -fstack-protector -D_FORTIFY_SOURCE=2 -O1 -Wl,-z,noexecstack
 CFLAGS  += -Wall -Wno-format-truncation -Wno-enum-compare -Wno-pointer-sign -Wno-multichar -Wno-unused-variable -Wno-unused-value
+CFLAGS  += -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast
 LDFLAGS += -Wl,-rpath,'$$ORIGIN' -g -ldl -shared
 DEPS = vmmdll.h
 OBJ = oscompatibility.o charutil.o util.o pe.o vmm.o vmmdll.o mm_x64.o       \

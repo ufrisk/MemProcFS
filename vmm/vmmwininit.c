@@ -75,19 +75,19 @@ VOID VmmWinInit_TryInitializeKernelOptionalValues()
     // Optional EPROCESS and _TOKEN offsets
     if(!ctxVmm->offset.EPROCESS.opt.Token) {
         // EPROCESS / KPROCESS
-        if(PDB_GetTypeChildOffset(PDB_HANDLE_KERNEL, "_EPROCESS", "Token", &dwo) && (dwo < sizeof(((PVMM_PROCESS)0)->win.EPROCESS.cb) - 8)) {
+        if(PDB_GetTypeChildOffset(PDB_HANDLE_KERNEL, "_EPROCESS", "Token", &dwo) && (dwo < pObSystemProcess->win.EPROCESS.cb - 8)) {
             ctxVmm->offset.EPROCESS.opt.Token = (WORD)dwo;
         }
-        if(PDB_GetTypeChildOffset(PDB_HANDLE_KERNEL, "_EPROCESS", "CreateTime", &dwo) && (dwo < sizeof(((PVMM_PROCESS)0)->win.EPROCESS.cb) - 8)) {
+        if(PDB_GetTypeChildOffset(PDB_HANDLE_KERNEL, "_EPROCESS", "CreateTime", &dwo) && (dwo < pObSystemProcess->win.EPROCESS.cb - 8)) {
             ctxVmm->offset.EPROCESS.opt.CreateTime = (WORD)dwo;
         }
-        if(PDB_GetTypeChildOffset(PDB_HANDLE_KERNEL, "_EPROCESS", "ExitTime", &dwo) && (dwo < sizeof(((PVMM_PROCESS)0)->win.EPROCESS.cb) - 8)) {
+        if(PDB_GetTypeChildOffset(PDB_HANDLE_KERNEL, "_EPROCESS", "ExitTime", &dwo) && (dwo < pObSystemProcess->win.EPROCESS.cb - 8)) {
             ctxVmm->offset.EPROCESS.opt.ExitTime = (WORD)dwo;
         }
-        if(PDB_GetTypeChildOffset(PDB_HANDLE_KERNEL, "_KPROCESS", "KernelTime", &dwo) && (dwo < sizeof(((PVMM_PROCESS)0)->win.EPROCESS.cb) - 8)) {
+        if(PDB_GetTypeChildOffset(PDB_HANDLE_KERNEL, "_KPROCESS", "KernelTime", &dwo) && (dwo < pObSystemProcess->win.EPROCESS.cb - 8)) {
             ctxVmm->offset.EPROCESS.opt.KernelTime = (WORD)dwo;
         }
-        if(PDB_GetTypeChildOffset(PDB_HANDLE_KERNEL, "_KPROCESS", "UserTime", &dwo) && (dwo < sizeof(((PVMM_PROCESS)0)->win.EPROCESS.cb) - 8)) {
+        if(PDB_GetTypeChildOffset(PDB_HANDLE_KERNEL, "_KPROCESS", "UserTime", &dwo) && (dwo < pObSystemProcess->win.EPROCESS.cb - 8)) {
             ctxVmm->offset.EPROCESS.opt.UserTime = (WORD)dwo;
         }
         // TOKEN
@@ -358,7 +358,7 @@ QWORD VmmWinInit_FindNtosScan64(PVMM_PROCESS pSystemProcess)
         if(cbSize >= 0x01800000) { continue; }  // too big
         if(cbSize <= 0x00400000) { continue; }  // too small
         // try locate ntoskrnl.exe base inside suggested area
-        if(!(pb = (PBYTE)LocalAlloc(0, cbSize))) { return 0; }
+        if(!(pb = (PBYTE)LocalAlloc(0, (DWORD)cbSize))) { return 0; }
         VmmReadEx(pSystemProcess, vaBase, pb, (DWORD)cbSize, NULL, 0);
         for(p = 0; p < cbSize; p += 0x1000) {
             // check for (1) MZ header, (2) POOLCODE section, (3) ntoskrnl.exe module name
@@ -392,7 +392,7 @@ QWORD VmmWinInit_FindNtosScanHint64(_In_ PVMM_PROCESS pSystemProcess, _In_ QWORD
     DWORD cbRead;
     CHAR szModuleName[MAX_PATH] = { 0 };
     PIMAGE_DOS_HEADER pDosHeader;
-    PIMAGE_NT_HEADERS pNtHeader;
+    PIMAGE_NT_HEADERS64 pNtHeader;
     pb = LocalAlloc(0, 0x00200000);
     if(!pb) { goto cleanup; }
     // Scan back in 2MB chunks a time, (ntoskrnl.exe is loaded in 2MB pages except in low memory situations).
@@ -408,7 +408,7 @@ QWORD VmmWinInit_FindNtosScanHint64(_In_ PVMM_PROCESS pSystemProcess, _In_ QWORD
             pDosHeader = (PIMAGE_DOS_HEADER)(pb + p);                       // DOS header
             if(pDosHeader->e_magic != IMAGE_DOS_SIGNATURE) { continue; }    // DOS header signature (MZ)
             if(pDosHeader->e_lfanew > 0x800) { continue; }
-            pNtHeader = (PIMAGE_NT_HEADERS)(pb + p + pDosHeader->e_lfanew); // NT header
+            pNtHeader = (PIMAGE_NT_HEADERS64)(pb + p + pDosHeader->e_lfanew); // NT header
             if(pNtHeader->Signature != IMAGE_NT_SIGNATURE) { continue; }    // NT header signature
             for(o = 0; o < 0x1000; o += 8) {
                 if(*(PQWORD)(pb + p + o) == 0x45444F434C4F4F50) {           // POOLCODE
@@ -799,6 +799,27 @@ VOID VmmWinInit_VersionNumber(_In_ PVMM_PROCESS pProcessSMSS)
             ctxVmm->kernel.dwVersionMajor = *(PDWORD)(pbPEB + 0x118);
             ctxVmm->kernel.dwVersionMinor = *(PDWORD)(pbPEB + 0x11c);
             ctxVmm->kernel.dwVersionBuild = *(PWORD)(pbPEB + 0x120);
+        }
+    } else if(PDB_GetSymbolDWORD(PDB_HANDLE_KERNEL, "NtBuildNumber", PVMM_PROCESS_SYSTEM, &ctxVmm->kernel.dwVersionBuild)) {
+        ctxVmm->kernel.dwVersionBuild = (WORD)ctxVmm->kernel.dwVersionBuild;
+        if(ctxVmm->kernel.dwVersionBuild) {
+            if(ctxVmm->kernel.dwVersionBuild > 20348) {         // 11
+                ctxVmm->kernel.dwVersionMajor = 11;
+            } else if(ctxVmm->kernel.dwVersionBuild >= 10240) { //10
+                ctxVmm->kernel.dwVersionMajor = 10;
+            } else if(ctxVmm->kernel.dwVersionBuild >= 9100) {  // 8
+                ctxVmm->kernel.dwVersionMajor = 6;
+                ctxVmm->kernel.dwVersionMinor = 3;
+            } else if(ctxVmm->kernel.dwVersionBuild >= 7600) {  // 7
+                ctxVmm->kernel.dwVersionMajor = 6;
+                ctxVmm->kernel.dwVersionMinor = 1;
+            } else if(ctxVmm->kernel.dwVersionBuild >= 6000) {  // VISTA
+                ctxVmm->kernel.dwVersionMajor = 6;
+                ctxVmm->kernel.dwVersionMinor = 0;
+            } else {                                            // XP
+                ctxVmm->kernel.dwVersionMajor = 5;
+                ctxVmm->kernel.dwVersionMinor = 1;
+            }
         }
     }
 }

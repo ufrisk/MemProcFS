@@ -2113,7 +2113,7 @@ VOID VmmWinReg_KeyFullPath(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY p
 {
     CONST BYTE pbTEXT_ROOT[] = { '\\', 0, 'R', 0, 'O', 0, 'O', 0, 'T', 0 };
     BOOL fResult = TRUE, fSkip = TRUE;
-    QWORD cch;
+    SIZE_T cch;
     DWORD o = 0, iKey = 0, cbName;
     POB_REGISTRY_KEY pk, ppObKey[0x40];
     // fetch parents (max depth: 0x40)

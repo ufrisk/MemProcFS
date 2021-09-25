@@ -342,6 +342,7 @@ typedef struct _tdMMVAD64_10 {
     BYTE EndingVpnHigh;
     BYTE CommitChargeHigh;
     BYTE SpareNT64VadUChar;
+    DWORD _Filler1;
     QWORD PushLock;
     DWORD u;    // no struct - bit order varies too much in Win10
     union {
@@ -394,8 +395,10 @@ typedef struct tdMMVAD_PTEENTRY_FIND_CONTEXT {
     QWORD vaEnd;
 } MMVAD_PTEENTRY_FIND_CONTEXT, *PMMVAD_PTEENTRY_FIND_CONTEXT;
 
-int VmmVad_PteEntryFind_CmpFind(_In_ PMMVAD_PTEENTRY_FIND_CONTEXT ctxFind, _In_ PVMM_MAP_PTEENTRY pEntry)
+int MmVad_PteEntryFind_CmpFind(_In_ QWORD qwFind, _In_ QWORD qwEntry)
 {
+    PMMVAD_PTEENTRY_FIND_CONTEXT ctxFind = (PMMVAD_PTEENTRY_FIND_CONTEXT)qwFind;
+    PVMM_MAP_PTEENTRY pEntry = (PVMM_MAP_PTEENTRY)qwEntry;
     if(pEntry->vaBase > ctxFind->vaEnd) { return -1; }
     if(pEntry->vaBase + (pEntry->cPages << 12) - 1 < ctxFind->vaBase) { return 1; }
     return 0;
@@ -405,11 +408,11 @@ int VmmVad_PteEntryFind_CmpFind(_In_ PMMVAD_PTEENTRY_FIND_CONTEXT ctxFind, _In_ 
 * Retrieve the lowest PTE entry index mathing a PTE memory region from a PTE map.
 */
 _Success_(return)
-BOOL VmmVad_PteEntryFind(_In_ PVMMOB_MAP_PTE pPteMap, _In_ QWORD vaBase, _In_ QWORD vaEnd, _Out_ PDWORD piPteEntry)
+BOOL MmVad_PteEntryFind(_In_ PVMMOB_MAP_PTE pPteMap, _In_ QWORD vaBase, _In_ QWORD vaEnd, _Out_ PDWORD piPteEntry)
 {
     DWORD iMap = 0;
-    MMVAD_PTEENTRY_FIND_CONTEXT ctx = { vaBase,vaEnd };
-    if(!Util_qfind_ex(&ctx, pPteMap->cMap, pPteMap->pMap, sizeof(VMM_MAP_PTEENTRY), (int(*)(PVOID, PVOID))VmmVad_PteEntryFind_CmpFind, &iMap)) { return FALSE; }
+    MMVAD_PTEENTRY_FIND_CONTEXT ctx = { vaBase, vaEnd };
+    if(!Util_qfind_ex((QWORD)&ctx, pPteMap->cMap, pPteMap->pMap, sizeof(VMM_MAP_PTEENTRY), (UTIL_QFIND_CMP_PFN)MmVad_PteEntryFind_CmpFind, &iMap)) { return FALSE; }
     while(iMap && (pPteMap->pMap[iMap - 1].vaBase + (pPteMap->pMap[iMap - 1].cPages << 12) - 1 > vaBase)) {
         iMap--;
     }
@@ -421,12 +424,12 @@ BOOL VmmVad_PteEntryFind(_In_ PVMMOB_MAP_PTE pPteMap, _In_ QWORD vaBase, _In_ QW
 * Retrive number of "valid" pte entries in memory region.
 */
 _Success_(return != 0)
-DWORD VmmVad_PteEntryFind_RegionPageCount(_In_ PVMMOB_MAP_PTE pPteMap, _In_ QWORD vaBase, _In_ QWORD vaEnd)
+DWORD MmVad_PteEntryFind_RegionPageCount(_In_ PVMMOB_MAP_PTE pPteMap, _In_ QWORD vaBase, _In_ QWORD vaEnd)
 {
     PVMM_MAP_PTEENTRY pe;
     QWORD iPteBase, iPteEnd;
     DWORD cPages = 0, iPteEntry = 0;
-    if(!VmmVad_PteEntryFind(pPteMap, vaBase, vaEnd, &iPteEntry)) { return 0; }
+    if(!MmVad_PteEntryFind(pPteMap, vaBase, vaEnd, &iPteEntry)) { return 0; }
     while((iPteEntry < pPteMap->cMap)) {
         pe = pPteMap->pMap + iPteEntry;
         if(pe->vaBase > vaEnd) { break; }
@@ -878,10 +881,10 @@ VOID MmVad_ExtendedInfoFetch(_In_ PVMM_PROCESS pSystemProcess, _In_ PVMM_PROCESS
 {
     BOOL f, f32 = ctxVmm->f32, fSharedCacheMap = FALSE;
     WORD oControlArea_FilePointer;
-    DWORD cMax;
+    DWORD cMax, cVads = 0;
     BYTE pbBuffer[0x60];
     PQWORD pva = NULL;
-    QWORD i, j, va, cVads = 0;
+    QWORD i, j, va;
     PVMM_MAP_VADENTRY peVad, *ppeVads;
     PVMMOB_MAP_VAD pVadMap = NULL;
     PVMMOB_MAP_PTE pObPteMap = NULL;
@@ -900,8 +903,8 @@ VOID MmVad_ExtendedInfoFetch(_In_ PVMM_PROCESS pSystemProcess, _In_ PVMM_PROCESS
                 cVads++;
             }
         }
-        if(!cVads || !(pva = LocalAlloc(LMEM_ZEROINIT, cVads * 0x18))) { goto cleanup; }
-        ppeVads = (PVMM_MAP_VADENTRY*)(pva + 2 * cVads);
+        if(!cVads || !(pva = LocalAlloc(LMEM_ZEROINIT, (SIZE_T)cVads * 0x18))) { goto cleanup; }
+        ppeVads = (PVMM_MAP_VADENTRY*)(pva + (SIZE_T)cVads * 2);
     }
     // get subsection addresses from vad.
     {
@@ -915,7 +918,7 @@ VOID MmVad_ExtendedInfoFetch(_In_ PVMM_PROCESS pSystemProcess, _In_ PVMM_PROCESS
     }
     // fetch subsection -> pointer to control area (1st address ptr in subsection)
     if((ctxVmm->kernel.dwVersionBuild >= 6000)) {   // Not WinXP (ControlArea already in map subsection field).
-        VmmCachePrefetchPages4(pSystemProcess, (DWORD)cVads, pva, 8, fVmmRead);
+        VmmCachePrefetchPages4(pSystemProcess, cVads, pva, 8, fVmmRead);
         for(i = 0, va = 0; i < cVads; i++) {
             f = pva[i] &&
                 VmmRead2(pSystemProcess, pva[i], (PBYTE)&va, f32 ? 4 : 8, fVmmRead | VMM_FLAG_FORCECACHE_READ) &&
@@ -925,7 +928,7 @@ VOID MmVad_ExtendedInfoFetch(_In_ PVMM_PROCESS pSystemProcess, _In_ PVMM_PROCESS
     }
     // fetch _CONTROL_AREA -> pointer to _FILE_OBJECT
     {
-        VmmCachePrefetchPages4(pSystemProcess, (DWORD)cVads, pva, 0x50, fVmmRead);
+        VmmCachePrefetchPages4(pSystemProcess, cVads, pva, 0x50, fVmmRead);
         oControlArea_FilePointer = f32 ?
             ((ctxVmm->kernel.dwVersionBuild <= 7601) ? 0x24 : 0x20) :   // 32-bit win7sp1- or win8.0+
             ((ctxVmm->kernel.dwVersionBuild <= 6000) ? 0x30 : 0x40);    // 64-bit vistasp0- or vistasp1+
@@ -959,7 +962,7 @@ VOID MmVad_ExtendedInfoFetch(_In_ PVMM_PROCESS pSystemProcess, _In_ PVMM_PROCESS
             if(peVad->fFile || peVad->fImage) {
                 peVad->cVadExPages = (DWORD)((peVad->vaEnd - peVad->vaStart + 1) >> 12);
             } else {
-                peVad->cVadExPages = VmmVad_PteEntryFind_RegionPageCount(pObPteMap, peVad->vaStart, peVad->vaEnd);
+                peVad->cVadExPages = MmVad_PteEntryFind_RegionPageCount(pObPteMap, peVad->vaStart, peVad->vaEnd);
             }
             pVadMap->cPage += peVad->cVadExPages;
         }
@@ -1306,7 +1309,7 @@ VOID MmVadEx_EntryPrefill(
         }
     } else {
         // NO FILE|IMAGE VAD -> skip non-backed VAs -> populate VAs from page tables
-        if(VmmVad_PteEntryFind(pPteMap, peVad->vaStart, peVad->vaEnd, &iePte)) {
+        if(MmVad_PteEntryFind(pPteMap, peVad->vaStart, peVad->vaEnd, &iePte)) {
             // 1: adjust initial offset
             pePte = pPteMap->pMap + iePte;
             iPteCurrent = (DWORD)((max(peVad->vaStart, pePte->vaBase) - pePte->vaBase) >> 12);
@@ -1365,8 +1368,9 @@ VOID MmVadEx_CloseObCallback(_In_ PVOID pVmmOb)
     Ob_DECREF(pOb->pVadMap);
 }
 
-int VmmVadEx_VadEntryFind_CmpFind(_In_ QWORD iPage, _In_ PVMM_MAP_VADENTRY pEntry)
+int MmVadEx_VadEntryFind_CmpFind(_In_ QWORD iPage, _In_ QWORD qwEntry)
 {
+    PVMM_MAP_VADENTRY pEntry = (PVMM_MAP_VADENTRY)qwEntry;
     if((QWORD)pEntry->cVadExPagesBase + pEntry->cVadExPages - 1 < iPage) { return 1; }
     if(pEntry->cVadExPagesBase > iPage) { return -1; }
     if(0 == pEntry->cVadExPages) { return 1; }
@@ -1405,7 +1409,7 @@ PVMMOB_MAP_VADEX MmVadEx_MapInitialize(_In_ PVMM_PROCESS pProcess, _In_ VMM_VADM
     // 3: fill extended vad map entries with va and peVad
     iPageCurrent = iPage;
     while(iPageCurrent < iPage + cPage) {
-        peVad = Util_qfind((PVOID)(QWORD)iPageCurrent, pObVad->cMap, pObVad->pMap, sizeof(VMM_MAP_VADENTRY), (int(*)(PVOID, PVOID))VmmVadEx_VadEntryFind_CmpFind);
+        peVad = Util_qfind((QWORD)iPageCurrent, pObVad->cMap, pObVad->pMap, sizeof(VMM_MAP_VADENTRY), MmVadEx_VadEntryFind_CmpFind);
         if(!peVad) { goto fail; }
         cPageCurrent = min(iPage + cPage - iPageCurrent, peVad->cVadExPagesBase + peVad->cVadExPages - iPageCurrent);
         MmVadEx_EntryPrefill(pProcess, pObPte, peVad, cPageCurrent, iPageCurrent - peVad->cVadExPagesBase, pObVadEx->pMap + iPageCurrent - iPage);

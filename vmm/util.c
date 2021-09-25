@@ -135,14 +135,14 @@ size_t Util_usnprintf_ln_impl(
 {
     int csz = 0;
     // 2: write to buffer
-    csz = _vsnprintf_s(uszBuffer, cszLineLength, _TRUNCATE, uszFormat, arglist);
+    csz = _vsnprintf_s(uszBuffer, (SIZE_T)cszLineLength, _TRUNCATE, uszFormat, arglist);
     if((csz < 0) && (csz != -1)) { csz = 0; }   // error & not _TRUNCATE
     if(csz < cszLineLength - 1) {
-        memset(uszBuffer + csz, ' ', cszLineLength - 1 - csz);
+        memset(uszBuffer + csz, ' ', (SIZE_T)(cszLineLength - 1 - csz));
     }
     uszBuffer[cszLineLength - 1] = '\n';
     uszBuffer[cszLineLength] = '\0';
-    return cszLineLength;
+    return (SIZE_T)cszLineLength;
 }
 
 _Success_(return >= 0)
@@ -193,7 +193,7 @@ NTSTATUS Util_VfsReadFile_FromMEM(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD vaM
     if(cbOffset < cbMEM) {
         vaMEM += cbOffset;
         cbMEM -= cbOffset;
-        if((cbMEM < 0x04000000) && (pbMEM = LocalAlloc(0, cbMEM))) {
+        if((cbMEM < 0x04000000) && (pbMEM = LocalAlloc(0, (SIZE_T)cbMEM))) {
             if(VmmRead2(pProcess, vaMEM, pbMEM, (DWORD)cbMEM, flags)) {
                 nt = Util_VfsReadFile_FromPBYTE(pbMEM, cbMEM, pb, cb, pcbRead, 0);
             }
@@ -282,7 +282,7 @@ NTSTATUS Util_VfsReadFile_usnprintf_ln(_Out_writes_to_(cb, *pcbRead) PBYTE pb, _
     DWORD ret;
     va_list arglist;
     LPSTR szBuffer;
-    if(!(szBuffer = LocalAlloc(0, cszLineLength + 1))) { goto fail; }
+    if(!(szBuffer = LocalAlloc(0, (SIZE_T)(cszLineLength + 1)))) { goto fail; }
     va_start(arglist, uszFormat);
     ret = (DWORD)Util_usnprintf_ln_impl(szBuffer, cszLineLength, uszFormat, arglist);
     va_end(arglist);
@@ -458,7 +458,7 @@ int Util_qfind_CmpFindTableQWORD(_In_ PVOID pvFind, _In_ PVOID pvEntry)
 }
 
 _Success_(return != NULL)
-PVOID Util_qfind_ex(_In_ PVOID pvFind, _In_ DWORD cMap, _In_ PVOID pvMap, _In_ DWORD cbEntry, _In_ UTIL_QFIND_CMP_PFN pfnCmp, _Out_opt_ PDWORD piMapOpt)
+PVOID Util_qfind_ex(_In_ QWORD qwFind, _In_ DWORD cMap, _In_ PVOID pvMap, _In_ DWORD cbEntry, _In_ UTIL_QFIND_CMP_PFN pfnCmp, _Out_opt_ PDWORD piMapOpt)
 {
     int f;
     DWORD i, cbSearch, cbStep, cbMap;
@@ -469,7 +469,7 @@ PVOID Util_qfind_ex(_In_ PVOID pvFind, _In_ DWORD cMap, _In_ PVOID pvMap, _In_ D
     cbSearch = cbEntry * min(1UL << (i - 1), cMap - 1);
     cbStep = max(cbEntry, cbSearch >> 1);
     while(cbStep >= cbEntry) {
-        f = pfnCmp(pvFind, pbMap + cbSearch);
+        f = pfnCmp(qwFind, (QWORD)(pbMap + cbSearch));
         if(f < 0) {
             cbSearch -= cbStep;
         } else if(f > 0) {
@@ -483,11 +483,11 @@ PVOID Util_qfind_ex(_In_ PVOID pvFind, _In_ DWORD cMap, _In_ PVOID pvMap, _In_ D
         cbStep = cbStep >> 1;
     }
     if(cbSearch < cbMap) {
-        if(!pfnCmp(pvFind, pbMap + cbSearch)) {
+        if(!pfnCmp(qwFind, (QWORD)(pbMap + cbSearch))) {
             if(piMapOpt) { *piMapOpt = cbSearch / cbEntry; }
             return pbMap + cbSearch;
         }
-        if((cbSearch >= cbEntry) && !pfnCmp(pvFind, pbMap + cbSearch - cbEntry)) {
+        if((cbSearch >= cbEntry) && !pfnCmp(qwFind, (QWORD)(pbMap + cbSearch - cbEntry))) {
             if(piMapOpt) { *piMapOpt = (cbSearch - cbEntry) / cbEntry; }
             return pbMap + cbSearch - cbEntry;
         }
@@ -505,9 +505,9 @@ PVOID Util_qfind_ex(_In_ PVOID pvFind, _In_ DWORD cMap, _In_ PVOID pvMap, _In_ D
 * -- return = the entry found or NULL on failure.
 */
 _Success_(return != NULL)
-PVOID Util_qfind(_In_ PVOID pvFind, _In_ DWORD cMap, _In_ PVOID pvMap, _In_ DWORD cbEntry, _In_ UTIL_QFIND_CMP_PFN pfnCmp)
+PVOID Util_qfind(_In_ QWORD qwFind, _In_ DWORD cMap, _In_ PVOID pvMap, _In_ DWORD cbEntry, _In_ UTIL_QFIND_CMP_PFN pfnCmp)
 {
-    return Util_qfind_ex(pvFind, cMap, pvMap, cbEntry, pfnCmp, NULL);
+    return Util_qfind_ex(qwFind, cMap, pvMap, cbEntry, pfnCmp, NULL);
 }
 
 _Success_(return)
@@ -583,7 +583,7 @@ NTSTATUS Util_VfsLineFixed_Read(
     cbMax = 1 + (1 + cEnd - cStart) * cbLineLength;
     if(!cHeader && !cMap) { return VMMDLL_STATUS_END_OF_FILE; }
     if((cStart > cHeader + cMap)) { return VMMDLL_STATUS_END_OF_FILE; }
-    if(!(usz = LocalAlloc(LMEM_ZEROINIT, cbMax))) { return VMMDLL_STATUS_FILE_INVALID; }
+    if(!(usz = LocalAlloc(LMEM_ZEROINIT, (SIZE_T)cbMax))) { return VMMDLL_STATUS_FILE_INVALID; }
     for(i = cStart; i <= cEnd; i++) {
         // header:
         if(i < cHeader) {

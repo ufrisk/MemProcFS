@@ -23,9 +23,9 @@
 
 #define OB_MEMFILE_IS_VALID(p)          (p && (p->ObHdr._magic == OB_HEADER_MAGIC) && (p->ObHdr._tag == OB_TAG_CORE_MEMFILE))
 
-#define NTSTATUS_SUCCESS           ((NTSTATUS)0x00000000L)
-#define NTSTATUS_END_OF_FILE       ((NTSTATUS)0xC0000011L)
-#define NTSTATUS_FILE_INVALID      ((NTSTATUS)0xC0000098L)
+#define NTSTATUS_SUCCESS                ((NTSTATUS)0x00000000L)
+#define NTSTATUS_END_OF_FILE            ((NTSTATUS)0xC0000011L)
+#define NTSTATUS_FILE_INVALID           ((NTSTATUS)0xC0000098L)
 
 typedef struct tdOB_MEMFILE {
     OB ObHdr;
@@ -74,8 +74,7 @@ _Success_(return == 0)
 NTSTATUS _ObMemFile_ReadFile(_In_ POB_MEMFILE pmf, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     POB_DATA pObData = NULL;
-    QWORD iDirectory, iTable;
-    QWORD cbBufferStart, oBuffer, cbCopy;
+    QWORD iDirectory, iTable, cbBufferStart, oBuffer, cbCopy;
     if(cbOffset >= pmf->cb) { return NTSTATUS_END_OF_FILE; }
     *pcbRead = cb = (DWORD)min(cb, pmf->cb - cbOffset);
     cbBufferStart = pmf->cb & ~(OB_MEMFILE_BUFSIZE - 1);
@@ -95,7 +94,7 @@ NTSTATUS _ObMemFile_ReadFile(_In_ POB_MEMFILE pmf, _Out_writes_to_(cb, *pcbRead)
             Ob_DECREF_NULL(&pObData);
             return NTSTATUS_FILE_INVALID;
         }
-        memcpy(pb, pObData->pb + oBuffer, cbCopy);
+        memcpy(pb, pObData->pb + oBuffer, (SIZE_T)cbCopy);
         Ob_DECREF_NULL(&pObData);
         pb += cbCopy;
         cb -= (DWORD)cbCopy;
@@ -149,7 +148,7 @@ BOOL _ObMemFile_Append(_In_ POB_MEMFILE pmf, _In_reads_(cbData) PBYTE pbData, _I
         // fill as many bytes as possible to buffer
         oBuffer = pmf->cb % OB_MEMFILE_BUFSIZE;
         cbCopy = min(cbData, OB_MEMFILE_BUFSIZE - oBuffer);
-        memcpy(pmf->pbBuffer + oBuffer, pbData, cbCopy);
+        memcpy(pmf->pbBuffer + oBuffer, pbData, (SIZE_T)cbCopy);
         pbData += cbCopy;
         cbData -= cbCopy;
         pmf->cb += cbCopy;

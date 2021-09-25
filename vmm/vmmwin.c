@@ -90,7 +90,7 @@ PVMMOB_MAP_EAT VmmWinEAT_Initialize_DoWork(_In_ PVMM_PROCESS pProcess, _In_ PVMM
     PVMMOB_MAP_EAT pObEAT = NULL;
     PVMM_MAP_EATENTRY pe;
     // load both 32/64 bit ntHeader (only one will be valid)
-    if(!(ntHeader64 = VmmWin_GetVerifyHeaderPE(pProcess, pModule->vaBase, pbModuleHeader, &fHdr32))) { goto fail; }
+    if(!(ntHeader64 = (PIMAGE_NT_HEADERS64)VmmWin_GetVerifyHeaderPE(pProcess, pModule->vaBase, pbModuleHeader, &fHdr32))) { goto fail; }
     ntHeader32 = (PIMAGE_NT_HEADERS32)ntHeader64;
     // load Export Address Table (EAT)
     oExpDir = fHdr32 ?
@@ -224,7 +224,7 @@ PVMMOB_MAP_IAT VmmWinIAT_Initialize_DoWork(_In_ PVMM_PROCESS pProcess, _In_ PVMM
     if(cbRead <= 0x2000) { goto fail; }
     pbModule[cbModule - 1] = 0;
     // load both 32/64 bit ntHeader (only one will be valid)
-    if(!(ntHeader64 = VmmWin_GetVerifyHeaderPE(pProcess, pModule->vaBase, pbModuleHeader, &fHdr32))) { goto fail; }
+    if(!(ntHeader64 = (PIMAGE_NT_HEADERS64)VmmWin_GetVerifyHeaderPE(pProcess, pModule->vaBase, pbModuleHeader, &fHdr32))) { goto fail; }
     ntHeader32 = (PIMAGE_NT_HEADERS32)ntHeader64;
     oImportDirectory = fHdr32 ?
         ntHeader32->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress :
@@ -361,6 +361,7 @@ typedef struct _LDR_MODULE64 {
     QWORD               BaseAddress;
     QWORD               EntryPoint;
     ULONG               SizeOfImage;
+    ULONG               _Filler1;
     UNICODE_STRING64    FullDllName;
     UNICODE_STRING64    BaseDllName;
     ULONG               Flags;
@@ -368,6 +369,7 @@ typedef struct _LDR_MODULE64 {
     SHORT               TlsIndex;
     LIST_ENTRY64        HashTableEntry;
     ULONG               TimeDateStamp;
+    ULONG               _Filler2;
 } LDR_MODULE64, *PLDR_MODULE64;
 
 typedef struct _LDR_MODULE32 {
@@ -422,6 +424,7 @@ typedef struct _PEB64 {
     BYTE Reserved1[2];
     BYTE BeingDebugged;
     BYTE Reserved2[1];
+    DWORD _Filler;
     QWORD Reserved3[2];
     QWORD Ldr;
     QWORD ProcessParameters;
@@ -530,23 +533,23 @@ VOID VmmWinLdrModule_Initialize64(_In_ PVMM_PROCESS pProcess, _Inout_ POB_MAP pm
         ObMap_PushCopy(pmModules, oModule.vaBase, &oModule, sizeof(VMM_MAP_MODULEENTRY));
         // add FLinkAll/BLink lists
         if(pLdrModule64->InLoadOrderModuleList.Flink && !((QWORD)pLdrModule64->InLoadOrderModuleList.Flink & 0x7)) {
-            VmmWinLdrModule_Initialize_VSetPutVA(pObSet_vaAll, pObSet_vaTry1, (QWORD)CONTAINING_RECORD(pLdrModule64->InLoadOrderModuleList.Flink, LDR_MODULE64, InLoadOrderModuleList));
+            VmmWinLdrModule_Initialize_VSetPutVA(pObSet_vaAll, pObSet_vaTry1, (QWORD)CONTAINING_RECORD64(pLdrModule64->InLoadOrderModuleList.Flink, LDR_MODULE64, InLoadOrderModuleList));
         }
         if(pLdrModule64->InLoadOrderModuleList.Blink && !((QWORD)pLdrModule64->InLoadOrderModuleList.Blink & 0x7)) {
-            VmmWinLdrModule_Initialize_VSetPutVA(pObSet_vaAll, pObSet_vaTry1, (QWORD)CONTAINING_RECORD(pLdrModule64->InLoadOrderModuleList.Blink, LDR_MODULE64, InLoadOrderModuleList));
+            VmmWinLdrModule_Initialize_VSetPutVA(pObSet_vaAll, pObSet_vaTry1, (QWORD)CONTAINING_RECORD64(pLdrModule64->InLoadOrderModuleList.Blink, LDR_MODULE64, InLoadOrderModuleList));
         }
         if(pProcess->fUserOnly) {
             if(pLdrModule64->InInitializationOrderModuleList.Flink && !((QWORD)pLdrModule64->InInitializationOrderModuleList.Flink & 0x7)) {
-                VmmWinLdrModule_Initialize_VSetPutVA(pObSet_vaAll, pObSet_vaTry1, (QWORD)CONTAINING_RECORD(pLdrModule64->InInitializationOrderModuleList.Flink, LDR_MODULE64, InInitializationOrderModuleList));
+                VmmWinLdrModule_Initialize_VSetPutVA(pObSet_vaAll, pObSet_vaTry1, (QWORD)CONTAINING_RECORD64(pLdrModule64->InInitializationOrderModuleList.Flink, LDR_MODULE64, InInitializationOrderModuleList));
             }
             if(pLdrModule64->InInitializationOrderModuleList.Blink && !((QWORD)pLdrModule64->InInitializationOrderModuleList.Blink & 0x7)) {
-                VmmWinLdrModule_Initialize_VSetPutVA(pObSet_vaAll, pObSet_vaTry1, (QWORD)CONTAINING_RECORD(pLdrModule64->InInitializationOrderModuleList.Blink, LDR_MODULE64, InInitializationOrderModuleList));
+                VmmWinLdrModule_Initialize_VSetPutVA(pObSet_vaAll, pObSet_vaTry1, (QWORD)CONTAINING_RECORD64(pLdrModule64->InInitializationOrderModuleList.Blink, LDR_MODULE64, InInitializationOrderModuleList));
             }
             if(pLdrModule64->InMemoryOrderModuleList.Flink && !((QWORD)pLdrModule64->InMemoryOrderModuleList.Flink & 0x7)) {
-                VmmWinLdrModule_Initialize_VSetPutVA(pObSet_vaAll, pObSet_vaTry1, (QWORD)CONTAINING_RECORD(pLdrModule64->InMemoryOrderModuleList.Flink, LDR_MODULE64, InMemoryOrderModuleList));
+                VmmWinLdrModule_Initialize_VSetPutVA(pObSet_vaAll, pObSet_vaTry1, (QWORD)CONTAINING_RECORD64(pLdrModule64->InMemoryOrderModuleList.Flink, LDR_MODULE64, InMemoryOrderModuleList));
             }
             if(pLdrModule64->InMemoryOrderModuleList.Blink && !((QWORD)pLdrModule64->InMemoryOrderModuleList.Blink & 0x7)) {
-                VmmWinLdrModule_Initialize_VSetPutVA(pObSet_vaAll, pObSet_vaTry1, (QWORD)CONTAINING_RECORD(pLdrModule64->InMemoryOrderModuleList.Blink, LDR_MODULE64, InMemoryOrderModuleList));
+                VmmWinLdrModule_Initialize_VSetPutVA(pObSet_vaAll, pObSet_vaTry1, (QWORD)CONTAINING_RECORD64(pLdrModule64->InMemoryOrderModuleList.Blink, LDR_MODULE64, InMemoryOrderModuleList));
             }
         }
     }

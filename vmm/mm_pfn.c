@@ -67,11 +67,11 @@ VOID MmPfn_Initialize(_In_ PVMM_PROCESS pSystemProcess)
 */
 POB_DATA MmPfn_ProcDTB_Create(_In_ POB_MMPFN_CONTEXT ctx)
 {
-    SIZE_T i, j, cPIDs = 0, cEntries;
+    SIZE_T i, cPIDs = 0, cEntries;
     POB_DATA pObData = NULL;
     PVMM_PROCESS pObProcess = NULL;
     PVMMOB_CACHE_MEM pObPDPT = NULL;
-    QWORD qwPte;
+    QWORD j, qwPte;
     VmmProcessListPIDs(NULL, &cPIDs, 0);
     cEntries = cPIDs * ((ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_X86PAE) ? 4 : 1);
     if(!(pObData = Ob_Alloc(OB_TAG_PFN_PROC_TABLE, LMEM_ZEROINIT, sizeof(OB) + cEntries * sizeof(QWORD), NULL, NULL))) { return NULL; }
@@ -100,9 +100,9 @@ POB_DATA MmPfn_ProcDTB_Create(_In_ POB_MMPFN_CONTEXT ctx)
     return pObData;
 }
 
-int MmPfn_GetPidFromDTB_qfind(_In_ PVOID pvFind, _In_ PVOID pvEntry)
+int MmPfn_GetPidFromDTB_qfind(_In_ QWORD pvFind, _In_ QWORD pvEntry)
 {
-    DWORD dwKey = (DWORD)(QWORD)pvFind;
+    DWORD dwKey = (DWORD)pvFind;
     DWORD dwEntry = (*(PQWORD)pvEntry) >> 32;
     if(dwEntry > dwKey) { return -1; }
     if(dwEntry < dwKey) { return 1; }
@@ -128,7 +128,7 @@ DWORD MmPfn_GetPidFromDTB(_In_ POB_MMPFN_CONTEXT ctx, _In_ PVMM_PROCESS pSystemP
         LeaveCriticalSection(&ctx->Lock);
     }
     if(!pObData) { return 0; }
-    pvFind = Util_qfind((PVOID)qwPfnDTB, pObData->ObHdr.cbData / sizeof(QWORD), pObData->pqw, sizeof(QWORD), MmPfn_GetPidFromDTB_qfind);
+    pvFind = Util_qfind(qwPfnDTB, pObData->ObHdr.cbData / sizeof(QWORD), pObData->pqw, sizeof(QWORD), MmPfn_GetPidFromDTB_qfind);
     dwPID = pvFind ? (DWORD)*(PQWORD)pvFind : 0;
     Ob_DECREF(pObData);
     return dwPID;

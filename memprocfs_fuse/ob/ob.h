@@ -18,7 +18,7 @@
 #define OB_TAG_CORE_MEMFILE             'ObMF'
 #define OB_TAG_CORE_CACHEMAP            'ObMc'
 #define OB_TAG_CORE_STRMAP              'ObMs'
-#define OB_TAG_CORE_STRWMAP             'ObMw'
+#define OB_TAG_INFODB_CTX               'IDBC'
 #define OB_TAG_MAP_PTE                  'Mpte'
 #define OB_TAG_MAP_VAD                  'Mvad'
 #define OB_TAG_MAP_VADEX                'Mvae'
@@ -74,14 +74,20 @@
 
 typedef struct tdOB {
     // internal object manager functionality below: (= do not use unless absolutely necessary)
-    DWORD _magic;                        // magic value - OB_HEADER_MAGIC
+    DWORD _magic;                           // magic value - OB_HEADER_MAGIC
     union {
-        DWORD _tag;                      // tag - 2 chars, no null terminator
+        DWORD _tag;                         // tag - 2 chars, no null terminator
         CHAR _tagCh[4];
     };
-    VOID(*_pfnRef_0)(_In_ PVOID pOb);    // callback - object specific cleanup before free
-    VOID(*_pfnRef_1)(_In_ PVOID pOb);    // callback - when object reach refcount 1 (not initial)
-    DWORD _count;                        // reference count
+    union {
+        VOID(*_pfnRef_0)(_In_ PVOID pOb);   // callback - object specific cleanup before free
+        QWORD _Filler1;
+    };
+    union {
+        VOID(*_pfnRef_1)(_In_ PVOID pOb);   // callback - when object reach refcount 1 (not initial)
+        QWORD _Filler2;
+    };
+    DWORD _count;                           // reference count
     // external object manager functionality below: (= ok to use)
     DWORD cbData;
 } OB, *POB;
@@ -707,7 +713,6 @@ PVOID ObCacheMap_RemoveByKey(_In_opt_ POB_CACHEMAP pcm, _In_ QWORD qwKey);
 // ----------------------------------------------------------------------------
 
 typedef struct tdOB_STRMAP *POB_STRMAP;
-typedef struct tdOB_STRWMAP *POB_STRWMAP;
 
 // Strings in OB_STRMAP are considered to be CASE SENSITIVE.
 #define OB_STRMAP_FLAGS_CASE_SENSITIVE         0x00
@@ -719,6 +724,11 @@ typedef struct tdOB_STRWMAP *POB_STRWMAP;
 // Assign temporary string values to destinations at time of push.
 // NB! values will become invalid after OB_STRMAP DECREF/FINALIZE!
 #define OB_STRMAP_FLAGS_STR_ASSIGN_TEMPORARY   0x02
+
+// Assign offset in number of bytes to string pointers at finalize stage
+// instead of pointers. Offset is counted from base of multi-string.
+// incompatible with OB_STRMAP_FLAGS_STR_ASSIGN_TEMPORARY option.
+#define OB_STRMAP_FLAGS_STR_ASSIGN_OFFSET      0x04
 
 //
 // STRMAP BELOW:

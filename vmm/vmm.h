@@ -93,6 +93,9 @@
 
 #define VMM_PID_PROCESS_CLONE_WITH_KERNELMEMORY 0x80000000      // Combine with PID to create a shallowly cloned process with fUserOnly = FALSE
 
+#define CONTAINING_RECORD64(address, type, field)   ((QWORD)(address) - (QWORD)(&((type*)0)->field))
+#define CONTAINING_RECORD32(address, type, field)   ((DWORD)((DWORD)(QWORD)(address) - (DWORD)(QWORD)(&((type *)0)->field)))
+
 static const LPSTR VMM_MEMORYMODEL_TOSTRING[4] = { "N/A", "X86", "X86PAE", "X64" };
 
 typedef enum tdVMM_MEMORYMODEL_TP {
@@ -163,6 +166,18 @@ typedef struct tdVMMWIN_OBJECT_TYPE_TABLE {
         };
     };
 } VMMWIN_OBJECT_TYPE_TABLE, *PVMMWIN_OBJECT_TYPE_TABLE;
+
+
+
+// ----------------------------------------------------------------------------
+// VMM 64/32-bit quirks below:
+// ----------------------------------------------------------------------------
+
+#if _WIN64 || __amd64__
+#define PROCESS_MAGIC_HANDLE_THRESHOLD              0xffffffff00000000
+#else
+#define PROCESS_MAGIC_HANDLE_THRESHOLD              0xc0000000
+#endif
 
 
 
@@ -468,12 +483,12 @@ typedef struct tdVMM_MAP_SERVICEENTRY {
     DWORD dwOrdinal;
     DWORD dwStartType;
     SERVICE_STATUS ServiceStatus;
-    LPSTR uszServiceName;
-    LPSTR uszDisplayName;
-    LPSTR uszPath;
-    LPSTR uszUserTp;
-    LPSTR uszUserAcct;
-    LPSTR uszImagePath;
+    union { LPSTR uszServiceName; QWORD _vaReservedServiceName; };
+    union { LPSTR uszDisplayName; QWORD _vaReservedDisplayName; };
+    union { LPSTR uszPath;        QWORD _vaReservedPath;        };
+    union { LPSTR uszUserTp;      QWORD _vaReservedUserTp;      };
+    union { LPSTR uszUserAcct;    QWORD _vaReservedUserAcct;    };
+    union { LPSTR uszImagePath;   QWORD _vaReservedImagePath;   };
     DWORD dwPID;
     DWORD _FutureUse;
     QWORD _Reserved;
@@ -1079,7 +1094,7 @@ typedef struct tdVMM_KERNELINFO {
     VMMWIN_OPTIONAL_KERNEL_CONTEXT opt;
 } VMM_KERNELINFO;
 
-typedef NTSTATUS VMMFN_RtlDecompressBuffer(
+typedef NTSTATUS WINAPI VMMFN_RtlDecompressBuffer(
     USHORT CompressionFormat,
     PUCHAR UncompressedBuffer,
     ULONG  UncompressedBufferSize,

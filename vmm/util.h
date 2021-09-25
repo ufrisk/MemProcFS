@@ -173,7 +173,7 @@ VOID Util_GuidToString(_In_reads_(16) PBYTE pb, _Out_writes_(37) LPSTR szGUID);
 int Util_qsort_DWORD(const void *pdw1, const void *pdw2);
 int Util_qsort_QWORD(const void *pqw1, const void *pqw2);
 
-typedef int(*UTIL_QFIND_CMP_PFN)(_In_ PVOID pvFind, _In_ PVOID pvEntry);
+typedef int(*UTIL_QFIND_CMP_PFN)(_In_ QWORD qwFind, _In_ QWORD qwEntry);
 
 /*
 * Generic table search function to be used together with Util_qfind.
@@ -183,7 +183,7 @@ int Util_qfind_CmpFindTableQWORD(_In_ PVOID pvFind, _In_ PVOID pvEntry);
 
 /*
 * Find an entry in a sorted array in an efficient way - O(log2(n)).
-* -- pvFind
+* -- qwFind
 * -- cMap
 * -- pvMap
 * -- cbEntry
@@ -192,11 +192,11 @@ int Util_qfind_CmpFindTableQWORD(_In_ PVOID pvFind, _In_ PVOID pvEntry);
 * -- return = the entry found or NULL on failure.
 */
 _Success_(return != NULL)
-PVOID Util_qfind_ex(_In_ PVOID pvFind, _In_ DWORD cMap, _In_ PVOID pvMap, _In_ DWORD cbEntry, _In_ UTIL_QFIND_CMP_PFN pfnCmp, _Out_opt_ PDWORD piMapOpt);
+PVOID Util_qfind_ex(_In_ QWORD qwFind, _In_ DWORD cMap, _In_ PVOID pvMap, _In_ DWORD cbEntry, _In_ UTIL_QFIND_CMP_PFN pfnCmp, _Out_opt_ PDWORD piMapOpt);
 
 /*
 * Find an entry in a sorted array in an efficient way - O(log2(n)).
-* -- pvFind
+* -- qwFind
 * -- cMap
 * -- pvMap
 * -- cbEntry
@@ -204,7 +204,7 @@ PVOID Util_qfind_ex(_In_ PVOID pvFind, _In_ DWORD cMap, _In_ PVOID pvMap, _In_ D
 * -- return = the entry found or NULL on failure.
 */
 _Success_(return != NULL)
-PVOID Util_qfind(_In_ PVOID pvFind, _In_ DWORD cMap, _In_ PVOID pvMap, _In_ DWORD cbEntry, _In_ UTIL_QFIND_CMP_PFN pfnCmp);
+PVOID Util_qfind(_In_ QWORD qwFind, _In_ DWORD cMap, _In_ PVOID pvMap, _In_ DWORD cbEntry, _In_ UTIL_QFIND_CMP_PFN pfnCmp);
 
 /*
 * Utility functions for read/write towards different underlying data representations.

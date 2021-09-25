@@ -29,13 +29,13 @@ typedef struct tdOB_COMPRESSED {
 
 #include <VersionHelpers.h>
 
-typedef NTSTATUS OB_COMPRESSED_RtlGetCompressionWorkSpaceSize(
+typedef NTSTATUS WINAPI OB_COMPRESSED_RtlGetCompressionWorkSpaceSize(
     USHORT CompressionFormatAndEngine,
     PULONG CompressBufferWorkSpaceSize,
     PULONG CompressFragmentWorkSpaceSize
 );
 
-typedef NTSTATUS OB_COMPRESSED_RtlCompressBuffer(
+typedef NTSTATUS WINAPI OB_COMPRESSED_RtlCompressBuffer(
     USHORT CompressionFormatAndEngine,
     PUCHAR UncompressedBuffer,
     ULONG  UncompressedBufferSize,
@@ -46,7 +46,7 @@ typedef NTSTATUS OB_COMPRESSED_RtlCompressBuffer(
     PVOID  WorkSpace
 );
 
-typedef NTSTATUS OB_COMPRESSED_RtlDecompressBuffer(
+typedef NTSTATUS WINAPI OB_COMPRESSED_RtlDecompressBuffer(
     USHORT CompressionFormat,
     PUCHAR UncompressedBuffer,
     ULONG  UncompressedBufferSize,

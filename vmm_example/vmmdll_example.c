@@ -1104,7 +1104,7 @@ int main(_In_ int argc, _In_ char* argv[])
         printf("         vaNameFunction: %016llx\n", oThunkInfoIAT.vaNameFunction);
         printf("         vaNameModule:   %016llx\n", oThunkInfoIAT.vaNameModule);
     } else {
-        printf("FAIL:    VMMDLL_WinGetThunkInfoEAT\n");
+        printf("FAIL:    VMMDLL_WinGetThunkInfoIATU\n");
         return 1;
     }
 

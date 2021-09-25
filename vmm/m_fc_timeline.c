@@ -31,7 +31,7 @@ NTSTATUS M_FcTimeline_ReadInfo(_In_ DWORD dwTimelineType, _Out_ PBYTE pb, _In_ D
     cbOffsetBuffer = pObMap->pMap[0].cuszOffset;
     if((cbOffsetBuffer > cbOffset) || (cbOffset - cbOffsetBuffer > 0x10000)) { goto fail; }
     cszuBuffer = 0x01000000;
-    if(!(szuBuffer = LocalAlloc(0, cszuBuffer))) { goto fail; }
+    if(!(szuBuffer = LocalAlloc(0, (SIZE_T)cszuBuffer))) { goto fail; }
     for(i = 0, o = 0; (i < pObMap->cMap) && (o < cszuBuffer - 0x1000); i++) {
         pe = pObMap->pMap + i;
         Util_FileTime2String(pe->ft, szTime);
@@ -39,7 +39,7 @@ NTSTATUS M_FcTimeline_ReadInfo(_In_ DWORD dwTimelineType, _Out_ PBYTE pb, _In_ D
         dwEntryAction = (pe->ac <= FC_TIMELINE_ACTION_MAX) ? pe->ac : FC_TIMELINE_ACTION_NONE;
         o += snprintf(
             szuBuffer + o,
-            cszuBuffer - o,
+            (SIZE_T)(cszuBuffer - o),
             "%s  %-*s %s%10u%10u %16llx %s\n",
             szTime,
             6,

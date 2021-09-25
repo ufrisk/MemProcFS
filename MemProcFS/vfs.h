@@ -10,7 +10,7 @@
 
 typedef unsigned __int64                QWORD, *PQWORD;
 
-typedef int(*PFN_VFSLIST_CALLBACK)(_In_ PWIN32_FIND_DATAW pFindData, _In_opt_ PVOID ctx);
+typedef int(__stdcall *PFN_VFSLIST_CALLBACK)(_In_ PWIN32_FIND_DATAW pFindData, _In_opt_ PVOID ctx);
 
 #define CHARUTIL_FLAG_NONE                      0x0000
 #define CHARUTIL_FLAG_ALLOC                     0x0001

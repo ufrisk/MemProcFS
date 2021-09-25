@@ -15,7 +15,7 @@ VmmPycVmm_process_list(PyObj_Vmm *self, PyObject *args)
     Py_BEGIN_ALLOW_THREADS;
     result =
         VMMDLL_PidList(NULL, &cPIDs) &&
-        (pPIDs = LocalAlloc(LMEM_ZEROINIT, cPIDs * sizeof(DWORD))) &&
+        (pPIDs = LocalAlloc(LMEM_ZEROINIT, (SIZE_T)(cPIDs * sizeof(DWORD)))) &&
         VMMDLL_PidList(pPIDs, &cPIDs);
     Py_END_ALLOW_THREADS;
     if(!result) {

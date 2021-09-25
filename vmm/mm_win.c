@@ -86,6 +86,7 @@ typedef struct td_BTREE_NODE_ENTRY32 {
 
 typedef struct td_BTREE_NODE_ENTRY64 {
     DWORD k;
+    DWORD _Filler;
     QWORD vaLeaf;
 } _BTREE_NODE_ENTRY64;
 
@@ -104,6 +105,7 @@ typedef struct td_BTREE64 {
     WORD cEntries;
     BYTE  cLevel;
     BYTE  fLeaf;
+    DWORD _Filler;
     QWORD vaLeftChild;
     union {
         _BTREE_LEAF_ENTRY LeafEntries[0];

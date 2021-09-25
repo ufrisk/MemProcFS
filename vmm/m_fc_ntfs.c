@@ -526,7 +526,7 @@ VOID FcNtfs_FinalizeMerge1(_In_ PFCNTFS_SETUP_CONTEXT ctx)
 PFCNTFS FcNtfs_FinalizeCreateSynthenticDir(_In_ PFCNTFS_SETUP_CONTEXT ctx, _In_ DWORD dwMftRecordNumber, _In_ LPSTR uszName, _In_ BOOL fRootDir)
 {
     PFCNTFS pNtfs, pNtfs_Coll;
-    QWORD cuszName = strlen(uszName);
+    SIZE_T cuszName = strlen(uszName);
     if(!(pNtfs = LocalAlloc(LMEM_ZEROINIT, sizeof(FCNTFS) + cuszName + 1))) { return NULL; }
     memcpy(pNtfs->uszName, uszName, cuszName + 1);
     pNtfs->dwMftRecordNumber = dwMftRecordNumber;
@@ -825,7 +825,7 @@ BOOL FcNtfsMap_CreateInternal(_In_ LPSTR szSqlCount, _In_ LPSTR szSqlSelect, _In
     rc = Fc_SqlQueryN(szSqlCount, cQueryValues, pqwQueryValues, 2, pqwResult, NULL);
     if((rc != SQLITE_OK) || (pqwResult[0] > 0x00010000) || (pqwResult[1] > 0x01000000)) { goto fail; }
     cbuMultiText = (DWORD)(1 + pqwResult[0] + pqwResult[1]);
-    pObNtfsMap = Ob_Alloc('Mntf', LMEM_ZEROINIT, sizeof(FCOB_MAP_NTFS) + pqwResult[0] * sizeof(FC_MAP_NTFSENTRY) + cbuMultiText, NULL, NULL);
+    pObNtfsMap = Ob_Alloc('Mntf', LMEM_ZEROINIT, (SIZE_T)(sizeof(FCOB_MAP_NTFS) + pqwResult[0] * sizeof(FC_MAP_NTFSENTRY) + cbuMultiText), NULL, NULL);
     if(!pObNtfsMap) { goto fail; }
     pObNtfsMap->uszMultiText = (LPSTR)((PBYTE)pObNtfsMap + sizeof(FCOB_MAP_NTFS) + pqwResult[0] * sizeof(FC_MAP_NTFSENTRY));
     pObNtfsMap->cbuMultiText = cbuMultiText;
@@ -985,7 +985,7 @@ PBYTE M_FcNtfs_ReadInfoSingle(_In_ PFC_MAP_NTFSENTRY peNtfs, _Out_ PDWORD pcsz)
     LPSTR sz = NULL;
     LPSTR uszTextName;
     DWORD cszHexAscii;
-    QWORD csz = 0;
+    SIZE_T csz = 0;
     BYTE pbr[0x400];
     BYTE szHexAscii[0xC00];
     //----
@@ -1129,14 +1129,14 @@ NTSTATUS M_FcNtfs_ReadInfoAll(_Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRea
     cbOffsetBuffer = pObNtfsMap->pMap[0].cszuOffset;
     if((cbOffsetBuffer > cbOffset) || (cbOffset - cbOffsetBuffer > 0x10000)) { goto fail; }
     cszuBuffer = 0x01000000;
-    if(!(szuBuffer = LocalAlloc(0, cszuBuffer))) { goto fail; }
+    if(!(szuBuffer = LocalAlloc(0, (SIZE_T)cszuBuffer))) { goto fail; }
     for(i = 0, o = 0; (i < pObNtfsMap->cMap) && (o < cszuBuffer - 0x1000); i++) {
         pe = pObNtfsMap->pMap + i;
         Util_FileTime2String(pe->ftCreate, szTimeCreate);
         Util_FileTime2String(pe->ftModify, szTimeModify);
         o += snprintf(
             szuBuffer + o,
-            cszuBuffer - o,
+            (SIZE_T)(cszuBuffer - o),
             "%6llx%12llx %8x %s : %s %12llx %3x %c %s\n",
             pe->qwId,
             pe->pa,
@@ -1180,7 +1180,7 @@ VOID M_FcNtfs_PathStripMftInfo(_In_ LPSTR uszPath, _Out_writes_(MAX_PATH) LPSTR 
     strncpy_s(uszPathStripped, MAX_PATH, uszPath, _TRUNCATE);
     if(!(usz = strstr(uszPath, "\\$_INFO"))) { return; }
     cch = (QWORD)usz - (QWORD)uszPath;
-    strncpy_s(uszPathStripped + cch, MAX_PATH - cch, usz + 7, _TRUNCATE);
+    strncpy_s(uszPathStripped + cch, MAX_PATH - (DWORD)cch, usz + 7, _TRUNCATE);
     if(CharUtil_StrEndsWith(uszPathStripped, "\\mftinfo.txt", TRUE)) {
         if(pfTxt) { *pfTxt = TRUE; }
         uszPathStripped[strlen(uszPathStripped) - 12] = 0;

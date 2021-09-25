@@ -7,7 +7,7 @@ CC=gcc
 CFLAGS	+= -I. -I../includes -D LINUX -D_FILE_OFFSET_BITS=64 -L. -l:vmm.so -pthread `pkg-config fuse --cflags --libs`
 #CFLAGS  += -g -O0 -Wextra
 CFLAGS  += -fPIE -pie -fstack-protector -D_FORTIFY_SOURCE=2 -O1 -Wl,-z,noexecstack
-CFLAGS	+= -Wall -Wno-multichar -Wno-unused-variable -Wno-unused-parameter
+CFLAGS	+= -Wall -Wno-multichar -Wno-unused-variable -Wno-unused-parameter -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast
 LDFLAGS += -Wl,-rpath,'$$ORIGIN' -ldl
 DEPS = vfs.h
 OBJ  = oscompatibility.o charutil.o vfslist.o memprocfs.o vfsfuse.o ob/ob_cachemap.o ob/ob_core.o ob/ob_map.o ob/ob_set.o

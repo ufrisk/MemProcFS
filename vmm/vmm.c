@@ -1028,7 +1028,7 @@ PVMM_PROCESS VmmProcessCreateEntry(_In_ BOOL fTotalRefresh, _In_ DWORD dwPID, _I
     if(!pProcess) {
         pProcess = (PVMM_PROCESS)Ob_Alloc(OB_TAG_VMM_PROCESS, LMEM_ZEROINIT, sizeof(VMM_PROCESS), VmmProcess_CloseObCallback, NULL);
         if(!pProcess) { goto fail; }
-        InitializeCriticalSectionAndSpinCount(&pProcess->LockUpdate, 4096);
+        if(!InitializeCriticalSectionAndSpinCount(&pProcess->LockUpdate, 4096)) { goto fail; }
         InitializeCriticalSection(&pProcess->LockPlugin);
         InitializeCriticalSection(&pProcess->Map.LockUpdateThreadExtendedInfo);
         InitializeCriticalSection(&pProcess->Map.LockUpdateMapEvil);
@@ -1217,7 +1217,7 @@ DWORD VmmWork_MainWorkerLoop_ThreadProc(PVMMWORK_THREAD_CONTEXT ctx)
     PVMMWORK_UNIT pu;
     while(ctxVmm->Work.fEnabled) {
         if((pu = (PVMMWORK_UNIT)ObSet_Pop(ctxVmm->Work.psUnit))) {
-            pu->pfn(pu->ctx);
+            ((DWORD(*)(LPVOID))pu->pfn)(pu->ctx);
             if(pu->hEventFinish) {
                 SetEvent(pu->hEventFinish);
             }
@@ -1406,9 +1406,9 @@ VOID VmmWriteScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_ PPMEM_SCATTER pp
     DWORD i;
     QWORD qwPA_PTE = 0, qwPagedPA = 0;
     PMEM_SCATTER pMEM;
-    BOOL fProcessMagicHandle = ((QWORD)pProcess >= 0xffffffff00000000);
+    BOOL fProcessMagicHandle = ((SIZE_T)pProcess >= PROCESS_MAGIC_HANDLE_THRESHOLD);
     // 0: 'magic' process handle
-    if(fProcessMagicHandle && !(pProcess = VmmProcessGet((DWORD)(0-(QWORD)pProcess)))) { return; }
+    if(fProcessMagicHandle && !(pProcess = VmmProcessGet((DWORD)(0-(SIZE_T)pProcess)))) { return; }
     // 1: virt2phys translation
     for(i = 0; i < cpMEMsVirt; i++) {
         pMEM = ppMEMsVirt[i];
@@ -1555,9 +1555,9 @@ VOID VmmReadScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_updates_(cpMEMsVir
     BOOL fPaging = !(VMM_FLAG_NOPAGING & (flags | ctxVmm->flags));
     BOOL fAltAddrPte = VMM_FLAG_ALTADDR_VA_PTE & flags;
     BOOL fZeropadOnFail = VMM_FLAG_ZEROPAD_ON_FAIL & (flags | ctxVmm->flags);
-    BOOL fProcessMagicHandle = ((QWORD)pProcess >= 0xffffffff00000000);
+    BOOL fProcessMagicHandle = ((SIZE_T)pProcess >= PROCESS_MAGIC_HANDLE_THRESHOLD);
     // 0: 'magic' process handle
-    if(fProcessMagicHandle && !(pProcess = VmmProcessGet((DWORD)(0-(QWORD)pProcess)))) { return; }
+    if(fProcessMagicHandle && !(pProcess = VmmProcessGet((DWORD)(0-(SIZE_T)pProcess)))) { return; }
     // 1: allocate / set up buffers (if needed)
     if(cpMEMsVirt < 0x20) {
         ZeroMemory(pbBufferSmall, sizeof(pbBufferSmall));
@@ -2114,8 +2114,9 @@ BOOL VmmMap_GetVad(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_VAD *ppObVadMap,
     return *ppObVadMap != NULL;
 }
 
-int VmmMap_GetVadEntry_CmpFind(_In_ QWORD vaFind, _In_ PVMM_MAP_VADENTRY pEntry)
+int VmmMap_GetVadEntry_CmpFind(_In_ QWORD vaFind, _In_ QWORD qwEntry)
 {
+    PVMM_MAP_VADENTRY pEntry = (PVMM_MAP_VADENTRY)qwEntry;
     if(pEntry->vaStart > vaFind) { return -1; }
     if(pEntry->vaEnd < vaFind) { return 1; }
     return 0;
@@ -2130,7 +2131,7 @@ int VmmMap_GetVadEntry_CmpFind(_In_ QWORD vaFind, _In_ PVMM_MAP_VADENTRY pEntry)
 PVMM_MAP_VADENTRY VmmMap_GetVadEntry(_In_opt_ PVMMOB_MAP_VAD pVadMap, _In_ QWORD va)
 {
     if(!pVadMap) { return NULL; }
-    return Util_qfind((PVOID)va, pVadMap->cMap, pVadMap->pMap, sizeof(VMM_MAP_VADENTRY), (int(*)(PVOID, PVOID))VmmMap_GetVadEntry_CmpFind);
+    return Util_qfind(va, pVadMap->cMap, pVadMap->pMap, sizeof(VMM_MAP_VADENTRY), VmmMap_GetVadEntry_CmpFind);
 }
 
 /*
@@ -2148,10 +2149,12 @@ BOOL VmmMap_GetModule(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_MODULE *ppObM
     return *ppObModuleMap != NULL;
 }
 
-int VmmMap_HashTableLookup_CmpFind(_In_ DWORD qwHash, _In_ PDWORD pdwEntry)
+int VmmMap_HashTableLookup_CmpFind(_In_ QWORD qwHash, _In_ QWORD qwEntry)
 {
-    if(*pdwEntry > qwHash) { return -1; }
-    if(*pdwEntry < qwHash) { return 1; }
+    DWORD dwHash = (DWORD)qwHash;
+    PDWORD pdwEntry = (PDWORD)qwEntry;
+    if(*pdwEntry > dwHash) { return -1; }
+    if(*pdwEntry < dwHash) { return 1; }
     return 0;
 }
 
@@ -2165,7 +2168,7 @@ PVMM_MAP_MODULEENTRY VmmMap_GetModuleEntry(_In_ PVMMOB_MAP_MODULE pModuleMap, _I
 {
     QWORD qwHash, *pqwHashIndex;
     qwHash = CharUtil_HashNameFsU(uszModuleName, 0);
-    pqwHashIndex = (PQWORD)Util_qfind((PVOID)qwHash, pModuleMap->cMap, pModuleMap->pHashTableLookup, sizeof(QWORD), (int(*)(PVOID, PVOID))VmmMap_HashTableLookup_CmpFind);
+    pqwHashIndex = (PQWORD)Util_qfind(qwHash, pModuleMap->cMap, pModuleMap->pHashTableLookup, sizeof(QWORD), VmmMap_HashTableLookup_CmpFind);
     return pqwHashIndex ? &pModuleMap->pMap[*pqwHashIndex >> 32] : NULL;
 }
 
@@ -2234,7 +2237,7 @@ BOOL VmmMap_GetEATEntryIndexU(_In_ PVMMOB_MAP_EAT pEatMap, _In_ LPSTR uszFunctio
 {
     QWORD qwHash, *pqwHashIndex;
     qwHash = (DWORD)CharUtil_Hash64U(uszFunctionName, TRUE);
-    pqwHashIndex = (PQWORD)Util_qfind((PVOID)qwHash, pEatMap->cMap, pEatMap->pHashTableLookup, sizeof(QWORD), (int(*)(PVOID, PVOID))VmmMap_HashTableLookup_CmpFind);
+    pqwHashIndex = (PQWORD)Util_qfind(qwHash, pEatMap->cMap, pEatMap->pHashTableLookup, sizeof(QWORD), VmmMap_HashTableLookup_CmpFind);
     *pdwEntryIndex = pqwHashIndex ? *pqwHashIndex >> 32 : 0;
     return (pqwHashIndex != NULL) && (*pdwEntryIndex < pEatMap->cMap);
 }
@@ -2284,10 +2287,11 @@ BOOL VmmMap_GetThread(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_THREAD *ppObT
     return *ppObThreadMap ? TRUE : FALSE;
 }
 
-int VmmMap_GetThreadEntry_CmpFind(_In_ DWORD dwTID, _In_ PVMM_MAP_THREADENTRY pEntry)
+int VmmMap_GetThreadEntry_CmpFind(_In_ QWORD dwTID, _In_ QWORD qwEntry)
 {
-    if(pEntry->dwTID > dwTID) { return -1; }
-    if(pEntry->dwTID < dwTID) { return 1; }
+    PVMM_MAP_THREADENTRY pEntry = (PVMM_MAP_THREADENTRY)qwEntry;
+    if(pEntry->dwTID > (DWORD)dwTID) { return -1; }
+    if(pEntry->dwTID < (DWORD)dwTID) { return 1; }
     return 0;
 }
 
@@ -2299,8 +2303,7 @@ int VmmMap_GetThreadEntry_CmpFind(_In_ DWORD dwTID, _In_ PVMM_MAP_THREADENTRY pE
 */
 PVMM_MAP_THREADENTRY VmmMap_GetThreadEntry(_In_ PVMMOB_MAP_THREAD pThreadMap, _In_ DWORD dwTID)
 {
-    QWORD qwTID = dwTID;
-    return Util_qfind((PVOID)qwTID, pThreadMap->cMap, pThreadMap->pMap, sizeof(VMM_MAP_THREADENTRY), (int(*)(PVOID, PVOID))VmmMap_GetThreadEntry_CmpFind);
+    return Util_qfind((QWORD)dwTID, pThreadMap->cMap, pThreadMap->pMap, sizeof(VMM_MAP_THREADENTRY), VmmMap_GetThreadEntry_CmpFind);
 }
 
 /*

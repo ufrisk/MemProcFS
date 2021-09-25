@@ -45,7 +45,7 @@ typedef uint16_t                            WCHAR, *PWCHAR, *LPWSTR, *LPCWSTR;
 typedef uint32_t                            DWORD, *PDWORD, *LPDWORD, NTSTATUS, ULONG, *PULONG, ULONG32;
 typedef long long unsigned int              QWORD, *PQWORD, ULONG64, *PULONG64, ULONG_PTR;
 typedef uint64_t                            DWORD64, *PDWORD64, LARGE_INTEGER, *PLARGE_INTEGER, ULONGLONG, FILETIME, *PFILETIME;
-typedef uint64_t                            SIZE_T, *PSIZE_T;
+typedef size_t                              SIZE_T, *PSIZE_T;
 typedef struct _M128A { ULONGLONG Low; LONGLONG High; } M128A, *PM128A;
 typedef void *OVERLAPPED, *LPOVERLAPPED;
 typedef struct tdEXCEPTION_RECORD32 { CHAR sz[80]; } EXCEPTION_RECORD32;

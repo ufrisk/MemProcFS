@@ -14,8 +14,7 @@ PyObject* VmmPyc_MemReadScatter(_In_ DWORD dwPID, _In_ LPSTR szFN, PyObject *arg
 {
     PyObject *pyListSrc, *pyListItemSrc, *pyListDst, *pyDict;
     BOOL result;
-    DWORD cMEMs, flags = 0;
-    ULONG64 i;
+    DWORD i, cMEMs, flags = 0;
     PMEM_SCATTER pMEM;
     PPMEM_SCATTER ppMEMs = NULL;
     if(!PyArg_ParseTuple(args, "O!|k", &PyList_Type, &pyListSrc, &flags)) { // borrowed reference

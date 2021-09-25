@@ -26,14 +26,23 @@
 #define OB_STRUMAP_IS_VALID(p)           (p && (p->ObHdr._magic == OB_HEADER_MAGIC) && (p->ObHdr._tag == OB_TAG_CORE_STRMAP))
 
 typedef struct tdOB_STRMAP_PTRENTRY {
-    LPSTR *pusz;
-    LPWSTR *pwsz;
+    union {
+        LPSTR *pusz;
+        QWORD _Filler1;
+    };
+    union {
+        LPWSTR *pwsz;
+        QWORD _Filler2;
+    };
     DWORD *pcbu;
     DWORD *pcbw;
 } OB_STRMAP_PTRENTRY, *POB_STRMAP_PTRENTRY;
 
 typedef struct tdOB_STRMAP_UNICODEENTRY {
-    struct tdOB_STRMAP_UNICODEENTRY *FLink;
+    union {
+        struct tdOB_STRMAP_UNICODEENTRY *FLink;
+        QWORD _Filler;
+    };
     QWORD va;
     OB_STRMAP_PTRENTRY p;
     union {
@@ -43,7 +52,10 @@ typedef struct tdOB_STRMAP_UNICODEENTRY {
 } OB_STRMAP_UNICODEENTRY, *POB_STRMAP_UNICODEENTRY;
 
 typedef struct tdOB_STRMAP_SUBENTRY {
-    struct tdOB_STRMAP_SUBENTRY *FLink;
+    union {
+        struct tdOB_STRMAP_SUBENTRY *FLink;
+        QWORD _Filler;
+    };
     OB_STRMAP_PTRENTRY e[OB_STRMAP_SUBENTRY_SIZE];
 } OB_STRMAP_SUBENTRY, *POB_STRMAP_SUBENTRY;
 

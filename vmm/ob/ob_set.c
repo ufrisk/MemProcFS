@@ -20,11 +20,17 @@
 #define OB_SET_ENTRIES_STORE            0x200
 
 typedef struct tdOB_SET_TABLE_ENTRY {
-    PQWORD pValues;                 // ptr to QWORD[0x200]
+    union {
+        PQWORD pValues;                 // ptr to QWORD[OB_SET_ENTRIES_STORE]
+        QWORD _Filler;
+    };
 } OB_SET_TABLE_ENTRY, *POB_SET_TABLE_ENTRY;
 
 typedef struct tdOB_SET_TABLE_DIRECTORY_ENTRY {
-    POB_SET_TABLE_ENTRY pTable;    // ptr to OB_SET_TABLE_ENTRY[0x20]
+    union {
+        POB_SET_TABLE_ENTRY pTable;     // ptr to OB_SET_TABLE_ENTRY[OB_SET_ENTRIES_TABLE]
+        QWORD _Filler;
+    };
 } OB_SET_TABLE_DIRECTORY_ENTRY, *POB_SET_TABLE_DIRECTORY_ENTRY;
 
 typedef struct tdOB_SET {

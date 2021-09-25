@@ -471,7 +471,7 @@ PVMMOB_MAP_EVIL VmmEvil_Initialize(_In_opt_ PVMM_PROCESS pProcess)
     if(ctxVmm->EvilContext.cProgressPercent == 100) { ctxVmm->EvilContext.cProgressPercent = 0; }
     if(ctxVmm->EvilContext.cProgressPercent == 0) {
         ctxVmm->EvilContext.cProgressPercent = 1;
-        VmmWork(VmmEvil_InitializeAll_ThreadProc, NULL, NULL);
+        VmmWork((LPTHREAD_START_ROUTINE)VmmEvil_InitializeAll_ThreadProc, NULL, NULL);
     }
     LeaveCriticalSection(&ctxVmm->LockMaster);
     return NULL;

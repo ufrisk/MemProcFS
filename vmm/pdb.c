@@ -118,19 +118,19 @@ const LPSTR szVMMWIN_PDB_FUNCTIONS[] = {
 };
 
 typedef struct tdVMMWIN_PDB_FUNCTIONS {
-    DWORD(*SymGetOptions)(VOID);
-    DWORD(*SymSetOptions)(_In_ DWORD SymOptions);
-    BOOL(*SymInitialize)(_In_ HANDLE hProcess, _In_opt_ PCSTR UserSearchPath, _In_ BOOL fInvadeProcess);
-    BOOL(*SymCleanup)(_In_ HANDLE hProcess);
-    BOOL(*SymFindFileInPath)(_In_ HANDLE hprocess, _In_opt_ PCSTR SearchPath, _In_ PCSTR FileName, _In_opt_ PVOID id, _In_ DWORD two, _In_ DWORD three, _In_ DWORD flags, _Out_writes_(MAX_PATH + 1) PSTR FoundFile, _In_opt_ PFINDFILEINPATHCALLBACK callback, _In_opt_ PVOID context);
-    DWORD64(*SymLoadModuleEx)(_In_ HANDLE hProcess, _In_opt_ HANDLE hFile, _In_opt_ PCSTR ImageName, _In_opt_ PCSTR ModuleName, _In_ DWORD64 BaseOfDll, _In_ DWORD DllSize, _In_opt_ PMODLOAD_DATA Data, _In_opt_ DWORD Flags);
-    BOOL(*SymUnloadModule64)(_In_ HANDLE hProcess, _In_ DWORD64 BaseOfDll);
-    BOOL(*SymEnumSymbols)(_In_ HANDLE hProcess, _In_ ULONG64 BaseOfDll, _In_opt_ PCSTR Mask, _In_ PSYM_ENUMERATESYMBOLS_CALLBACK EnumSymbolsCallback, _In_opt_ PVOID UserContext);
-    BOOL(*SymEnumTypesByName)(_In_ HANDLE hProcess, _In_ ULONG64 BaseOfDll, _In_opt_ PCSTR mask, _In_ PSYM_ENUMERATESYMBOLS_CALLBACK EnumSymbolsCallback, _In_opt_ PVOID UserContext);
-    BOOL(*SymGetTypeFromName)(_In_ HANDLE hProcess, _In_ ULONG64 BaseOfDll, _In_ PCSTR Name, _Inout_ PSYMBOL_INFO);
-    BOOL(*SymGetTypeInfo)(_In_ HANDLE hProcess, _In_ DWORD64 ModBase, _In_ ULONG TypeId, _In_ IMAGEHLP_SYMBOL_TYPE_INFO GetType, _Out_ PVOID pInfo);
-    BOOL(*SymGetTypeInfoEx)(_In_ HANDLE hProcess, _In_ DWORD64 ModBase, _Inout_ PIMAGEHLP_GET_TYPE_INFO_PARAMS Params);
-    BOOL(*SymFromAddr)(_In_ HANDLE hProcess, _In_ DWORD64 Address, _Out_ PDWORD64 Displacement, _Out_ PSYMBOL_INFO Symbol);
+    DWORD(WINAPI *SymGetOptions)(VOID);
+    DWORD(WINAPI *SymSetOptions)(_In_ DWORD SymOptions);
+    BOOL(WINAPI *SymInitialize)(_In_ HANDLE hProcess, _In_opt_ PCSTR UserSearchPath, _In_ BOOL fInvadeProcess);
+    BOOL(WINAPI *SymCleanup)(_In_ HANDLE hProcess);
+    BOOL(WINAPI *SymFindFileInPath)(_In_ HANDLE hprocess, _In_opt_ PCSTR SearchPath, _In_ PCSTR FileName, _In_opt_ PVOID id, _In_ DWORD two, _In_ DWORD three, _In_ DWORD flags, _Out_writes_(MAX_PATH + 1) PSTR FoundFile, _In_opt_ PFINDFILEINPATHCALLBACK callback, _In_opt_ PVOID context);
+    DWORD64(WINAPI *SymLoadModuleEx)(_In_ HANDLE hProcess, _In_opt_ HANDLE hFile, _In_opt_ PCSTR ImageName, _In_opt_ PCSTR ModuleName, _In_ DWORD64 BaseOfDll, _In_ DWORD DllSize, _In_opt_ PMODLOAD_DATA Data, _In_opt_ DWORD Flags);
+    BOOL(WINAPI *SymUnloadModule64)(_In_ HANDLE hProcess, _In_ DWORD64 BaseOfDll);
+    BOOL(WINAPI *SymEnumSymbols)(_In_ HANDLE hProcess, _In_ ULONG64 BaseOfDll, _In_opt_ PCSTR Mask, _In_ PSYM_ENUMERATESYMBOLS_CALLBACK EnumSymbolsCallback, _In_opt_ PVOID UserContext);
+    BOOL(WINAPI *SymEnumTypesByName)(_In_ HANDLE hProcess, _In_ ULONG64 BaseOfDll, _In_opt_ PCSTR mask, _In_ PSYM_ENUMERATESYMBOLS_CALLBACK EnumSymbolsCallback, _In_opt_ PVOID UserContext);
+    BOOL(WINAPI *SymGetTypeFromName)(_In_ HANDLE hProcess, _In_ ULONG64 BaseOfDll, _In_ PCSTR Name, _Inout_ PSYMBOL_INFO);
+    BOOL(WINAPI *SymGetTypeInfo)(_In_ HANDLE hProcess, _In_ DWORD64 ModBase, _In_ ULONG TypeId, _In_ IMAGEHLP_SYMBOL_TYPE_INFO GetType, _Out_ PVOID pInfo);
+    BOOL(WINAPI *SymGetTypeInfoEx)(_In_ HANDLE hProcess, _In_ DWORD64 ModBase, _Inout_ PIMAGEHLP_GET_TYPE_INFO_PARAMS Params);
+    BOOL(WINAPI *SymFromAddr)(_In_ HANDLE hProcess, _In_ DWORD64 Address, _Out_ PDWORD64 Displacement, _Out_ PSYMBOL_INFO Symbol);
 } VMMWIN_PDB_FUNCTIONS, *PVMMWIN_PDB_FUNCTIONS;
 
 typedef struct tdOB_PDB_CONTEXT {
@@ -145,7 +145,7 @@ typedef struct tdOB_PDB_CONTEXT {
     QWORD qwLoadAddressNext;
     union {
         VMMWIN_PDB_FUNCTIONS pfn;
-        QWORD vafn[sizeof(VMMWIN_PDB_FUNCTIONS) / sizeof(PVOID)];
+        PVOID vafn[sizeof(VMMWIN_PDB_FUNCTIONS) / sizeof(PVOID)];
     };
 } OB_PDB_CONTEXT, *POB_PDB_CONTEXT;
 
@@ -433,7 +433,7 @@ BOOL PDB_GetSymbolOffset(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _Out
         }
         if(0 == *pdwSymbolOffset) {
             // 32-bit & 64-bit fallback: use slower algo since it's working ...
-            ctxOb->pfn.SymEnumSymbols(ctxOb->hSym, pObPdbEntry->qwLoadAddress, szSymbolName, PDB_GetSymbolOffset_Callback, pdwSymbolOffset);
+            ctxOb->pfn.SymEnumSymbols(ctxOb->hSym, pObPdbEntry->qwLoadAddress, szSymbolName, (PSYM_ENUMERATESYMBOLS_CALLBACK)PDB_GetSymbolOffset_Callback, pdwSymbolOffset);
         }
     }
     LeaveCriticalSection(&ctxOb->Lock);
@@ -501,7 +501,7 @@ BOOL PDB_GetSymbolFromOffset(_In_opt_ PDB_HANDLE hPDB, _In_ DWORD dwSymbolOffset
         if(ctxOb->pfn.SymFromAddr(ctxOb->hSym, pObPdbEntry->qwLoadAddress + dwSymbolOffset, &qwDisplacement, &SymbolInfo.si)) {
             if(szSymbolName) {
                 cch = min(MAX_PATH - 1, SymbolInfo.si.NameLen);
-                memcpy(szSymbolName, SymbolInfo.si.Name, cch);
+                memcpy(szSymbolName, SymbolInfo.si.Name, (SIZE_T)cch);
                 szSymbolName[cch] = 0;
             }
             if(pdwSymbolDisplacement) {
@@ -595,7 +595,7 @@ BOOL PDB_GetTypeSizeShort(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _Out_
 /*
 * Callback function for PDB_GetTypeChildOffset()
 */
-BOOL PDB_GetTypeChildOffset_Callback(_In_ PSYMBOL_INFO pSymInfo, _In_ ULONG SymbolSize, _In_ PDWORD pdwTypeId)
+BOOL WINAPI PDB_GetTypeChildOffset_Callback(_In_ PSYMBOL_INFO pSymInfo, _In_ ULONG SymbolSize, _In_ PDWORD pdwTypeId)
 {
     *pdwTypeId = pSymInfo->Index;
     pSymInfo->Index;
@@ -629,7 +629,7 @@ BOOL PDB_GetTypeChildOffset(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _In
     if(!(pObPdbEntry = ObMap_GetByKey(ctxOb->pmPdbByHash, hPDB))) { goto fail; }
     EnterCriticalSection(&ctxOb->Lock);
     if(!PDB_LoadEnsureEx(ctxOb, pObPdbEntry)) { goto fail_lock; }
-    if(!ctxOb->pfn.SymEnumTypesByName(ctxOb->hSym, pObPdbEntry->qwLoadAddress, szTypeName, PDB_GetTypeChildOffset_Callback, &dwTypeId) || !dwTypeId) { goto fail_lock; }
+    if(!ctxOb->pfn.SymEnumTypesByName(ctxOb->hSym, pObPdbEntry->qwLoadAddress, szTypeName, (PSYM_ENUMERATESYMBOLS_CALLBACK)PDB_GetTypeChildOffset_Callback, &dwTypeId) || !dwTypeId) { goto fail_lock; }
     if(!ctxOb->pfn.SymGetTypeInfo(ctxOb->hSym, pObPdbEntry->qwLoadAddress, dwTypeId, TI_GET_CHILDRENCOUNT, &cTypeChildren) || !cTypeChildren) { goto fail_lock; }
     if(!(pFindChildren = LocalAlloc(LMEM_ZEROINIT, sizeof(TI_FINDCHILDREN_PARAMS) + cTypeChildren * sizeof(ULONG)))) { goto fail_lock; }
     pFindChildren->Count = cTypeChildren;
@@ -881,7 +881,7 @@ VOID PDB_Initialize(_In_opt_ PPE_CODEVIEW_INFO pPdbInfoOpt, _In_ BOOL fInitializ
         goto fail;
     }
     for(i = 0; i < sizeof(VMMWIN_PDB_FUNCTIONS) / sizeof(PVOID); i++) {
-        ctx->vafn[i] = (QWORD)GetProcAddress(ctx->hModuleDbgHelp, szVMMWIN_PDB_FUNCTIONS[i]);
+        ctx->vafn[i] = GetProcAddress(ctx->hModuleDbgHelp, szVMMWIN_PDB_FUNCTIONS[i]);
         if(!ctx->vafn[i]) {
             PDB_PrintError("Reason: Could not load function(s) from symsrv.dll/dbghelp.dll.");
             goto fail;
@@ -1073,7 +1073,8 @@ VOID PDB_DisplayTypeNt_DoWork(_Inout_ PPDB_DT_CONTEXT ctxDT, _In_ BYTE iLevel, _
     PPDB_DT_INFO pe, pInfo = NULL;
     WCHAR wszBuffer[0x20];
     LPWSTR wszName, wszFormat;
-    QWORD v, oln, cbType, cbTypeLast = 0, qwBitBase = 0, cbData, vaData;
+    SIZE_T oln;
+    QWORD v, cbType, cbTypeLast = 0, qwBitBase = 0, cbData, vaData;
     if(!(pInfo = LocalAlloc(LMEM_ZEROINIT, cInfo * sizeof(PDB_DT_INFO)))) { goto fail; }
     // 1: fetch info about "children" into INFO struct array.
     IP1.SizeOfStruct = sizeof(IMAGEHLP_GET_TYPE_INFO_PARAMS);
@@ -1153,7 +1154,7 @@ VOID PDB_DisplayTypeNt_DoWork(_Inout_ PPDB_DT_CONTEXT ctxDT, _In_ BYTE iLevel, _
         // type: complex or ordinary?
         if(pe->dwTag == SymTagUDT) {
             oln += _snwprintf_s(ctxDT->wszln + oln, MAX_PATH - oln, _TRUNCATE, L"%s", pe->wszTypeName);
-            ctxDT->csz += _snprintf_s(ctxDT->szu8 + ctxDT->csz, ctxDT->cszMax - ctxDT->csz, _TRUNCATE, "%S\n", ctxDT->wszln);   // commit line to result utf-8 result string
+            ctxDT->csz += _snprintf_s(ctxDT->szu8 + ctxDT->csz, (SIZE_T)(ctxDT->cszMax - ctxDT->csz), _TRUNCATE, "%S\n", ctxDT->wszln);   // commit line to result utf-8 result string
             oln = 0;
             if(pe->dwChildCount && (iLevel < ctxDT->iLevelMax) && (!pbMEM || (pe->dwOffset + pe->qwLength <= cbMEM))) {
                 PDB_DisplayTypeNt_DoWork(ctxDT, iLevel + 1, pe->dwTypeIndex, pe->dwChildCount, pe->wszTypeName, (pbMEM ? pbMEM + pe->dwOffset : NULL), (pbMEM ? cbMEM - pe->dwOffset : 0));
@@ -1168,7 +1169,7 @@ VOID PDB_DisplayTypeNt_DoWork(_Inout_ PPDB_DT_CONTEXT ctxDT, _In_ BYTE iLevel, _
             // optional data:
             if(pbMEM && ((pe->dwTag == SymTagBaseType) || (pe->dwTag == SymTagPointerType)) && ((cbType == 1) || (cbType == 2) || (cbType == 4) || (cbType == 8))) {
                 v = 0;
-                memcpy((PBYTE)&v, pbMEM + pe->dwOffset, cbType);
+                memcpy((PBYTE)&v, pbMEM + pe->dwOffset, (SIZE_T)cbType);
                 if(pe->qwBitFieldLength) {
                     v = v >> qwBitBase;
                     v = v & ((1ULL << pe->qwBitFieldLength) - 1);
@@ -1200,7 +1201,7 @@ VOID PDB_DisplayTypeNt_DoWork(_Inout_ PPDB_DT_CONTEXT ctxDT, _In_ BYTE iLevel, _
         }
         // commit line to result buffer:
         if(oln) {
-            ctxDT->csz += _snprintf_s(ctxDT->szu8 + ctxDT->csz, ctxDT->cszMax - ctxDT->csz, _TRUNCATE, "%S\n", ctxDT->wszln);   // commit line to result utf-8 result string
+            ctxDT->csz += _snprintf_s(ctxDT->szu8 + ctxDT->csz, (SIZE_T)(ctxDT->cszMax - ctxDT->csz), _TRUNCATE, "%S\n", ctxDT->wszln);   // commit line to result utf-8 result string
         }
         cbTypeLast = cbType;
         qwBitBase += pe->qwBitFieldLength;
@@ -1297,15 +1298,15 @@ BOOL PDB_DisplayTypeNt(
     // call worker function:
     if(pbMEM) {
         szFormat = ctxVmm->f32 ? "dt nt!%s  0x%08llX\n" : "dt nt!%s  0x%016llX\n";
-        ctxDT.csz += snprintf(ctxDT.szu8 + ctxDT.csz, ctxDT.cszMax - ctxDT.csz, szFormat, SymbolInfoType.si.Name, vaType);
+        ctxDT.csz += snprintf(ctxDT.szu8 + ctxDT.csz, (SIZE_T)(ctxDT.cszMax - ctxDT.csz), szFormat, SymbolInfoType.si.Name, vaType);
     } else {
-        ctxDT.csz += snprintf(ctxDT.szu8 + ctxDT.csz, ctxDT.cszMax - ctxDT.csz, "dt nt!%s\n", SymbolInfoType.si.Name);
+        ctxDT.csz += snprintf(ctxDT.szu8 + ctxDT.csz, (SIZE_T)(ctxDT.cszMax - ctxDT.csz), "dt nt!%s\n", SymbolInfoType.si.Name);
     }
     PDB_DisplayTypeNt_DoWork(&ctxDT, 0, SymbolInfoType.si.TypeIndex, cTypeChildren, NULL, pbMEM, (pbMEM ? SymbolInfoType.si.Size : 0));
     // append optional hexascii:
     if(fHexAscii && pbMEM && ctxDT.csz) {
         szFormat = ctxVmm->f32 ? "\n---\n\ndb  0x%08llX  L%03X\n" : "\n---\n\ndb  0x%016llX  L%03X\n";
-        ctxDT.csz += snprintf(ctxDT.szu8 + ctxDT.csz, ctxDT.cszMax - ctxDT.csz, szFormat, vaType, SymbolInfoType.si.Size);
+        ctxDT.csz += snprintf(ctxDT.szu8 + ctxDT.csz, (SIZE_T)(ctxDT.cszMax - ctxDT.csz), szFormat, vaType, SymbolInfoType.si.Size);
         cbHexAscii = (DWORD)(ctxDT.cszMax - ctxDT.csz);
         if(Util_FillHexAscii(pbMEM, min(0x2000, SymbolInfoType.si.Size), 0, ctxDT.szu8 + ctxDT.csz, &cbHexAscii)) {
             ctxDT.csz += cbHexAscii;
@@ -1328,7 +1329,7 @@ BOOL PDB_DisplayTypeNt(
                 if(!cbSubType || !szSubType) { break; }
                 vaType -= cbSubType;
                 if(PDB_DisplayTypeNt(szSubType, 2, vaType, fHexAscii, FALSE, &szSubTypeResult, NULL, NULL)) {
-                    ctxDT.csz += snprintf(ctxDT.szu8 + ctxDT.csz, ctxDT.cszMax - ctxDT.csz, "\n======\n\n%s", szSubTypeResult);
+                    ctxDT.csz += snprintf(ctxDT.szu8 + ctxDT.csz, (SIZE_T)(ctxDT.cszMax - ctxDT.csz), "\n======\n\n%s", szSubTypeResult);
                     LocalFree(szSubTypeResult);
                 }
             }
@@ -1336,8 +1337,8 @@ BOOL PDB_DisplayTypeNt(
     }
     // set output
     if(pszResult) {
-        if(!ctxDT.csz || !(*pszResult = LocalAlloc(0, ctxDT.csz + 1))) { goto fail; }
-        memcpy(*pszResult, ctxDT.szu8, ctxDT.csz + 1);
+        if(!ctxDT.csz || !(*pszResult = LocalAlloc(0, (SIZE_T)(ctxDT.csz + 1)))) { goto fail; }
+        memcpy(*pszResult, ctxDT.szu8, (SIZE_T)(ctxDT.csz + 1));
     }
     if(pcbResult) { *pcbResult = (DWORD)(ctxDT.csz + 1); }
     fResult = TRUE;

@@ -48,7 +48,7 @@ NTSTATUS LdrModules_ReadFile_EAT(_In_ PVMM_PROCESS pProcess, _In_ PVMMOB_MAP_EAT
     cEnd = (DWORD)min(pEatMap->cMap - 1, (cb + cbOffset + cbLINELENGTH - 1) / cbLINELENGTH);
     cbMax = 1 + (1 + cEnd - cStart) * cbLINELENGTH;
     if(!pEatMap->cMap || (cStart > pEatMap->cMap)) { return VMMDLL_STATUS_END_OF_FILE; }
-    if(!(sz = LocalAlloc(LMEM_ZEROINIT, cbMax))) { return VMMDLL_STATUS_FILE_INVALID; }
+    if(!(sz = LocalAlloc(LMEM_ZEROINIT, (SIZE_T)cbMax))) { return VMMDLL_STATUS_FILE_INVALID; }
     for(i = cStart; i <= cEnd; i++) {
         pe = pEatMap->pMap + i;
         o += Util_usnprintf_ln(
@@ -82,7 +82,7 @@ NTSTATUS LdrModules_ReadFile_IAT(_In_ PVMM_PROCESS pProcess, _In_ PVMMOB_MAP_IAT
     cEnd = (DWORD)min(pIatMap->cMap - 1, (cb + cbOffset + cbLINELENGTH - 1) / cbLINELENGTH);
     cbMax = 1 + (1 + cEnd - cStart) * cbLINELENGTH;
     if(!pIatMap->cMap || (cStart > pIatMap->cMap)) { return VMMDLL_STATUS_END_OF_FILE; }
-    if(!(sz = LocalAlloc(LMEM_ZEROINIT, cbMax))) { return VMMDLL_STATUS_FILE_INVALID; }
+    if(!(sz = LocalAlloc(LMEM_ZEROINIT, (SIZE_T)cbMax))) { return VMMDLL_STATUS_FILE_INVALID; }
     for(i = cStart; i <= cEnd; i++) {
         pe = pIatMap->pMap + i;
         o += Util_usnprintf_ln(
@@ -116,7 +116,7 @@ NTSTATUS LdrModules_ReadFile_Directories(_In_ PVMM_PROCESS pProcess, _In_ QWORD 
     cEnd = (DWORD)min(16 - 1, (cb + cbOffset + cbLINELENGTH - 1) / cbLINELENGTH);
     cbMax = 1 + (1 + cEnd - cStart) * cbLINELENGTH;
     if(cStart > 16) { return VMMDLL_STATUS_END_OF_FILE; }
-    if(!(sz = LocalAlloc(LMEM_ZEROINIT, cbMax))) { return VMMDLL_STATUS_FILE_INVALID; }
+    if(!(sz = LocalAlloc(LMEM_ZEROINIT, (SIZE_T)cbMax))) { return VMMDLL_STATUS_FILE_INVALID; }
     for(i = cStart; i <= min(15, cEnd); i++) {
         o += Util_usnprintf_ln(
             sz + o,
@@ -151,7 +151,7 @@ NTSTATUS LdrModules_ReadFile_Sections(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaM
     cEnd = (DWORD)min(cSections - 1, (cb + cbOffset + cbLINELENGTH - 1) / cbLINELENGTH);
     cbMax = 1 + (1 + cEnd - cStart) * cbLINELENGTH;
     if(!cSections || (cStart > cSections)) { return VMMDLL_STATUS_END_OF_FILE; }
-    if(!(sz = LocalAlloc(LMEM_ZEROINIT, cbMax))) { goto fail; }
+    if(!(sz = LocalAlloc(LMEM_ZEROINIT, (SIZE_T)cbMax))) { goto fail; }
     if(!(pSections = LocalAlloc(LMEM_ZEROINIT, cSections * sizeof(IMAGE_SECTION_HEADER)))) { goto fail; }
     if(!PE_SectionGetAll(pProcess, vaModuleBase, cSections, pSections)) { goto fail; }
     for(i = cStart; i <= cEnd; i++) {

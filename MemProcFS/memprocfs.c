@@ -40,7 +40,7 @@ CHAR GetMountPoint(_In_ DWORD argc, _In_ char* argv[])
 * function should happen to get stuck.
 * -- pv
 */
-VOID MemProcFsCtrlHandler_TryShutdownThread(PVOID pv)
+DWORD WINAPI MemProcFsCtrlHandler_TryShutdownThread(PVOID pv)
 {
     __try {
         VfsDokan_Close(g_VfsMountPoint);
@@ -54,6 +54,7 @@ VOID MemProcFsCtrlHandler_TryShutdownThread(PVOID pv)
             VMMDLL_Close();
         }
     } __except(EXCEPTION_EXECUTE_HANDLER) { ; }
+    return 1;
 }
 
 /*
@@ -68,7 +69,7 @@ BOOL WINAPI MemProcFsCtrlHandler(DWORD fdwCtrlType)
 	HANDLE hThread;
     if (fdwCtrlType == CTRL_C_EVENT) {
         printf("CTRL+C detected - shutting down ...\n");
-        hThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)MemProcFsCtrlHandler_TryShutdownThread, NULL, 0, NULL);
+        hThread = CreateThread(NULL, 0, MemProcFsCtrlHandler_TryShutdownThread, NULL, 0, NULL);
 		if(hThread) { WaitForSingleObject(hThread, INFINITE); }
         TerminateProcess(GetCurrentProcess(), 1);
         Sleep(1000);
@@ -180,7 +181,7 @@ int main(_In_ int argc, _In_ char* argv[])
         LcClose(g_hLC_RemoteFS);
         g_hLC_RemoteFS = NULL;
     }
-    CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)MemProcFsCtrlHandler_TryShutdownThread, NULL, 0, NULL);
+    CreateThread(NULL, 0, MemProcFsCtrlHandler_TryShutdownThread, NULL, 0, NULL);
     Sleep(250);
     TerminateProcess(GetCurrentProcess(), 1);
     Sleep(500);

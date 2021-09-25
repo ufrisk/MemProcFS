@@ -59,7 +59,7 @@ typedef uint16_t                            WCHAR, *PWCHAR, *LPWSTR, *LPCWSTR;
 typedef uint32_t                            DWORD, *PDWORD, *LPDWORD, NTSTATUS, ULONG, *PULONG, ULONG32;
 typedef long long unsigned int              QWORD, *PQWORD, ULONG64, *PULONG64, ULONG_PTR;
 typedef uint64_t                            DWORD64, *PDWORD64, LARGE_INTEGER, *PLARGE_INTEGER, ULONGLONG, FILETIME, *PFILETIME;
-typedef uint64_t                            SIZE_T, *PSIZE_T;
+typedef size_t                              SIZE_T, *PSIZE_T;
 typedef struct _M128A                       { ULONGLONG Low; LONGLONG High; } M128A, *PM128A;
 typedef void                                *OVERLAPPED, *LPOVERLAPPED;
 typedef struct tdEXCEPTION_RECORD32         { CHAR sz[80]; } EXCEPTION_RECORD32;
@@ -68,6 +68,7 @@ typedef struct tdSID                        { BYTE pb[12]; } SID, *PSID;
 typedef DWORD(*PTHREAD_START_ROUTINE)(PVOID);
 typedef DWORD(*LPTHREAD_START_ROUTINE)(PVOID);
 typedef int(*_CoreCrtNonSecureSearchSortCompareFunction)(void const *, void const *);
+#define WINAPI
 #define errno_t                             int
 #define CONST                               const
 #define TRUE                                1
@@ -171,10 +172,10 @@ typedef int(*_CoreCrtNonSecureSearchSortCompareFunction)(void const *, void cons
 #define ExitThread(dwExitCode)              (pthread_exit(dwExitCode))
 #define ExitProcess(c)                      (exit(c ? EXIT_SUCCESS : EXIT_FAILURE))
 #define Sleep(dwMilliseconds)               (usleep(1000*dwMilliseconds))
-#define fopen_s(ppFile, szFile, szAttr)     ((*ppFile = fopen(szFile, szAttr)) ? 0 : 1)
+#define fopen_s(ppFile, szFile, szAttr)     ((*ppFile = fopen64(szFile, szAttr)) ? 0 : 1)
 #define ZeroMemory(pb, cb)                  (memset(pb, 0, cb))
-#define _ftelli64(f)                        (ftello(f))
-#define _fseeki64(f, o, w)                  (fseeko(f, o, w))
+#define _ftelli64(f)                        (ftello64(f))
+#define _fseeki64(f, o, w)                  (fseeko64(f, o, w))
 #define _chsize_s(fd, cb)                   (ftruncate64(fd, cb))
 #define _fileno(f)                          (fileno(f))
 #define InterlockedAdd64(p, v)              (__sync_add_and_fetch(p, v))

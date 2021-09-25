@@ -78,7 +78,7 @@ BOOL PE_GetThunkInfoIAT(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In
     DWORD c, j;
     LPSTR szNameFunction, szNameModule;
     // load both 32/64 bit ntHeader (only one will be valid)
-    if(!(ntHeader64 = PE_HeaderGetVerify(pProcess, vaModuleBase, pbModuleHeader, &f32))) { goto fail; }
+    if(!(ntHeader64 = (PIMAGE_NT_HEADERS64)PE_HeaderGetVerify(pProcess, vaModuleBase, pbModuleHeader, &f32))) { goto fail; }
     ntHeader32 = (PIMAGE_NT_HEADERS32)ntHeader64;
     cbModule = f32 ?
         ntHeader32->OptionalHeader.SizeOfImage :
@@ -171,7 +171,7 @@ BOOL PE_GetThunkInfoEAT(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In
     PBYTE pbExportDirectory = NULL;
     QWORD vaRVAAddrNames, vaNameOrdinals, vaRVAAddrFunctions;
     BOOL f32;
-    if(!(ntHeader64 = PE_HeaderGetVerify(pProcess, vaModuleBase, pbModuleHeader, &f32))) { goto cleanup; }
+    if(!(ntHeader64 = (PIMAGE_NT_HEADERS64)PE_HeaderGetVerify(pProcess, vaModuleBase, pbModuleHeader, &f32))) { goto cleanup; }
     if(f32) { // 32-bit PE
         ntHeader32 = (PIMAGE_NT_HEADERS32)ntHeader64;
         vaExportDirectory = vaModuleBase + ntHeader32->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress;

@@ -267,5 +267,8 @@ v1.1-v2.10
 * Support for remote agent-based memory analysis.
 * Map kernel memory space into csrss.exe process (to make win32k easier to access).
 
-Latest:
-* Support for Windows Server 2022
+[v4.3](https://github.com/ufrisk/MemProcFS/releases/tag/v4.3)
+* Support for Windows Server 2022.
+* Support for Active Memory and Full Bitmap Microsoft Crash Dump files.
+* 32-bit support for Windows and Linux (no 32-bit binary release yet).<br>
+  Many thanks to @JosiahWhite for helping out getting me going and showing this was possible!

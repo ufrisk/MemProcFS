@@ -23,7 +23,10 @@ VFSLIST_CONTEXT g_ctxVfsList = { 0 };
 
 typedef struct tdVFSLIST_DIRECTORY {
     QWORD magic;
-    struct tdVFSLIST_DIRECTORY *FLink;
+    union {
+        struct tdVFSLIST_DIRECTORY *FLink;
+        QWORD _Filler;
+    };
     DWORD cFiles;
     WIN32_FIND_DATAW pFiles[VFSLIST_CONFIG_FILELIST_ITEMS];
 } VFSLIST_DIRECTORY, *PVFSLIST_DIRECTORY;

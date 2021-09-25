@@ -74,14 +74,20 @@
 
 typedef struct tdOB {
     // internal object manager functionality below: (= do not use unless absolutely necessary)
-    DWORD _magic;                        // magic value - OB_HEADER_MAGIC
+    DWORD _magic;                           // magic value - OB_HEADER_MAGIC
     union {
-        DWORD _tag;                      // tag - 2 chars, no null terminator
+        DWORD _tag;                         // tag - 2 chars, no null terminator
         CHAR _tagCh[4];
     };
-    VOID(*_pfnRef_0)(_In_ PVOID pOb);    // callback - object specific cleanup before free
-    VOID(*_pfnRef_1)(_In_ PVOID pOb);    // callback - when object reach refcount 1 (not initial)
-    DWORD _count;                        // reference count
+    union {
+        VOID(*_pfnRef_0)(_In_ PVOID pOb);   // callback - object specific cleanup before free
+        QWORD _Filler1;
+    };
+    union {
+        VOID(*_pfnRef_1)(_In_ PVOID pOb);   // callback - when object reach refcount 1 (not initial)
+        QWORD _Filler2;
+    };
+    DWORD _count;                           // reference count
     // external object manager functionality below: (= ok to use)
     DWORD cbData;
 } OB, *POB;

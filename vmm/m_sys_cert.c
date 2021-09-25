@@ -231,7 +231,7 @@ NTSTATUS MSysCert_Read_InfoFile2(_In_ POB_MAP pmCertificates, _In_ PVMMOB_MAP_US
     cEnd = (DWORD)min(cCertificates - 1, (cb + cbOffset + cbLINELENGTH - 1) / cbLINELENGTH);
     cbMax = 1 + (1 + cEnd - cStart) * cbLINELENGTH;
     if(!cCertificates || (cStart > cCertificates)) { return VMMDLL_STATUS_END_OF_FILE; }
-    if(!(sz = LocalAlloc(LMEM_ZEROINIT, cbMax))) { return VMMDLL_STATUS_FILE_INVALID; }
+    if(!(sz = LocalAlloc(LMEM_ZEROINIT, (SIZE_T)cbMax))) { return VMMDLL_STATUS_FILE_INVALID; }
     for(i = cStart; i <= cEnd; i++) {
         peOb = ObMap_GetByIndex(pmCertificates, (DWORD)i);
         fWellKnown = InfoDB_CertIsWellKnown(peOb->qwIdMapKey);

@@ -59,7 +59,7 @@ NTSTATUS MemMap_Read_VadExMap2(_In_ PVMM_PROCESS pProcess, _In_ DWORD oVadExPage
     if(!VmmMap_GetVadEx(pProcess, &pObMap, VMM_VADMAP_TP_FULL, iPage, cPage)) { return VMMDLL_STATUS_FILE_INVALID; }
     cPage = pObMap->cMap;
     cbMax = 1 + pObMap->cMap * cbLINELENGTH;
-    if(!(sz = LocalAlloc(LMEM_ZEROINIT, cbMax))) { Ob_DECREF(pObMap); return VMMDLL_STATUS_FILE_INVALID; }
+    if(!(sz = LocalAlloc(LMEM_ZEROINIT, (SIZE_T)cbMax))) { Ob_DECREF(pObMap); return VMMDLL_STATUS_FILE_INVALID; }
     for(i = 0; i < pObMap->cMap; i++) {
         pex = pObMap->pMap + i;
         pVad = pex->peVad;
@@ -93,8 +93,9 @@ NTSTATUS MemMap_Read_VadExMap2(_In_ PVMM_PROCESS pProcess, _In_ DWORD oVadExPage
     return nt;
 }
 
-int MemMap_Read_VadExMap_CmpFind(_In_ QWORD vaBase, _In_ PVMM_MAP_VADENTRY pEntry)
+int MemMap_Read_VadExMap_CmpFind(_In_ QWORD vaBase, _In_ QWORD qwEntry)
 {
+    PVMM_MAP_VADENTRY pEntry = (PVMM_MAP_VADENTRY)qwEntry;
     if(pEntry->vaStart < vaBase) { return 1; }
     if(pEntry->vaStart > vaBase) { return -1; }
     return 0;
@@ -112,7 +113,7 @@ NTSTATUS MemMap_Read_VadExMap(_In_ PVMM_PROCESS pProcess, _In_ LPSTR uszFile, _O
     }
     if(uszFile[0] == '0' && uszFile[1] == 'x' && VmmMap_GetVad(pProcess, &pObVadMap, VMM_VADMAP_TP_CORE)) {
         vaVad = Util_GetNumericA(uszFile);
-        peVad = Util_qfind((PVOID)vaVad, pObVadMap->cMap, pObVadMap->pMap, sizeof(VMM_MAP_VADENTRY), (int(*)(PVOID, PVOID))MemMap_Read_VadExMap_CmpFind);
+        peVad = Util_qfind(vaVad, pObVadMap->cMap, pObVadMap->pMap, sizeof(VMM_MAP_VADENTRY), MemMap_Read_VadExMap_CmpFind);
         if(peVad) {
             nt = MemMap_Read_VadExMap2(pProcess, peVad->cVadExPagesBase, peVad->cVadExPages, pb, cb, pcbRead, cbOffset);
         }
