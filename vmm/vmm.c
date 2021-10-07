@@ -2183,16 +2183,22 @@ PVMM_MAP_MODULEENTRY VmmMap_GetModuleEntry(_In_ PVMMOB_MAP_MODULE pModuleMap, _I
 * -- return
 */
 _Success_(return)
-BOOL VmmMap_GetModuleEntryEx(_In_opt_ PVMM_PROCESS pProcessOpt, _In_opt_ DWORD dwPidOpt, _In_ LPSTR uszModuleName, _Out_ PVMMOB_MAP_MODULE *ppObModuleMap, _Out_ PVMM_MAP_MODULEENTRY *pModuleEntry)
+BOOL VmmMap_GetModuleEntryEx(_In_opt_ PVMM_PROCESS pProcessOpt, _In_opt_ DWORD dwPidOpt, _In_opt_ LPSTR uszModuleName, _Out_ PVMMOB_MAP_MODULE *ppObModuleMap, _Out_ PVMM_MAP_MODULEENTRY *pModuleEntry)
 {
     PVMM_PROCESS pObProcess = pProcessOpt ? Ob_INCREF(pProcessOpt) : VmmProcessGet(dwPidOpt);
     *ppObModuleMap = NULL;
     *pModuleEntry = NULL;
-    if(VmmMap_GetModule(pObProcess, ppObModuleMap)) {
-        *pModuleEntry = VmmMap_GetModuleEntry(*ppObModuleMap, uszModuleName);
-        Ob_DECREF_NULL(&pObProcess);
+    if(pObProcess && VmmMap_GetModule(pObProcess, ppObModuleMap)) {
+        if(uszModuleName && uszModuleName[0]) {
+            *pModuleEntry = VmmMap_GetModuleEntry(*ppObModuleMap, uszModuleName);
+        } else if((*ppObModuleMap)->cMap) {
+            *pModuleEntry = (*ppObModuleMap)->pMap;
+        }
     }
-    return *pModuleEntry != NULL;
+    Ob_DECREF(pObProcess);
+    if(*pModuleEntry) { return TRUE; }
+    Ob_DECREF_NULL(ppObModuleMap);
+    return FALSE;
 }
 
 /*

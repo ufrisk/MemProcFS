@@ -1883,7 +1883,7 @@ PVMM_MAP_MODULEENTRY VmmMap_GetModuleEntry(_In_ PVMMOB_MAP_MODULE pModuleMap, _I
 * -- return
 */
 _Success_(return)
-BOOL VmmMap_GetModuleEntryEx(_In_opt_ PVMM_PROCESS pProcessOpt, _In_opt_ DWORD dwPidOpt, _In_ LPSTR uszModuleName, _Out_ PVMMOB_MAP_MODULE *ppObModuleMap, _Out_ PVMM_MAP_MODULEENTRY *pModuleEntry);
+BOOL VmmMap_GetModuleEntryEx(_In_opt_ PVMM_PROCESS pProcessOpt, _In_opt_ DWORD dwPidOpt, _In_opt_ LPSTR uszModuleName, _Out_ PVMMOB_MAP_MODULE *ppObModuleMap, _Out_ PVMM_MAP_MODULEENTRY *pModuleEntry);
 
 /*
 * Retrieve the process unloaded module map.

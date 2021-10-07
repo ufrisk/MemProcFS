@@ -1268,7 +1268,7 @@ _Success_(return) BOOL VMMDLL_Map_GetModuleW(_In_ DWORD dwPID, _Out_writes_bytes
 }
 
 _Success_(return)
-BOOL VMMDLL_Map_GetModuleFromName_Impl(_In_ DWORD dwPID, _In_ LPSTR uszModuleName, _Out_writes_bytes_opt_(*pcbDst) PVMMDLL_MAP_MODULEENTRY peDst, _Inout_opt_ PDWORD pcbDst, _In_ BOOL fWideChar)
+BOOL VMMDLL_Map_GetModuleFromName_Impl(_In_ DWORD dwPID, _In_opt_ LPSTR uszModuleName, _Out_writes_bytes_opt_(*pcbDst) PVMMDLL_MAP_MODULEENTRY peDst, _Inout_opt_ PDWORD pcbDst, _In_ BOOL fWideChar)
 {
     BOOL f, fResult = FALSE;
     DWORD o = 0, cbDst = 0, cbDstStr, cbTMP;
@@ -1310,16 +1310,18 @@ fail:
     return fResult;
 }
 
-_Success_(return) BOOL VMMDLL_Map_GetModuleFromNameU(_In_ DWORD dwPID, _In_ LPSTR uszModuleName, _Out_writes_bytes_opt_(*pcbModuleMapEntry) PVMMDLL_MAP_MODULEENTRY pModuleMapEntry, _Inout_opt_ PDWORD pcbModuleMapEntry)
+_Success_(return) BOOL VMMDLL_Map_GetModuleFromNameU(_In_ DWORD dwPID, _In_opt_ LPSTR uszModuleName, _Out_writes_bytes_opt_(*pcbModuleMapEntry) PVMMDLL_MAP_MODULEENTRY pModuleMapEntry, _Inout_opt_ PDWORD pcbModuleMapEntry)
 {
     CALL_IMPLEMENTATION_VMM(STATISTICS_ID_VMMDLL_Map_GetModuleFromName, VMMDLL_Map_GetModuleFromName_Impl(dwPID, uszModuleName, pModuleMapEntry, pcbModuleMapEntry, FALSE))
 }
 
-_Success_(return) BOOL VMMDLL_Map_GetModuleFromNameW(_In_ DWORD dwPID, _In_ LPWSTR wszModuleName, _Out_writes_bytes_opt_(*pcbModuleMapEntry) PVMMDLL_MAP_MODULEENTRY pModuleMapEntry, _Inout_opt_ PDWORD pcbModuleMapEntry)
+_Success_(return) BOOL VMMDLL_Map_GetModuleFromNameW(_In_ DWORD dwPID, _In_opt_ LPWSTR wszModuleName, _Out_writes_bytes_opt_(*pcbModuleMapEntry) PVMMDLL_MAP_MODULEENTRY pModuleMapEntry, _Inout_opt_ PDWORD pcbModuleMapEntry)
 {
-    LPSTR uszModuleName;
+    LPSTR uszModuleName = NULL;
     BYTE pbBuffer[MAX_PATH];
-    if(!CharUtil_WtoU(wszModuleName, -1, pbBuffer, sizeof(pbBuffer), &uszModuleName, NULL, 0)) { return FALSE; }
+    if(wszModuleName) {
+        if(!CharUtil_WtoU(wszModuleName, -1, pbBuffer, sizeof(pbBuffer), &uszModuleName, NULL, 0)) { return FALSE; }
+    }
     CALL_IMPLEMENTATION_VMM(STATISTICS_ID_VMMDLL_Map_GetModuleFromName, VMMDLL_Map_GetModuleFromName_Impl(dwPID, uszModuleName, pModuleMapEntry, pcbModuleMapEntry, TRUE))
 }
 
