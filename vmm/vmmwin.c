@@ -3622,9 +3622,9 @@ VOID VmmWinProcess_OffsetLocator32(_In_ PVMM_PROCESS pSystemProcess)
             }
         }
         // SeAuditProcessCreationInfo candidate pointers by looking at SMSS.
-        // Offset is located between PEB+0x044 and PEB+0x04C as observed so far.
+        // Offset is located between PEB+0x040 and PEB+0x058 as observed so far.
         // Look at some extra offsets just in case for the future.
-        for(i = po->PEB + 0x044; i < po->PEB + 0x058; i += 4) {
+        for(i = po->PEB + 0x040; i < po->PEB + 0x058; i += 4) {
             vaP = *(PDWORD)(pbSMSS + i);
             if(VMM_KADDR32_4(vaP) && !ObSet_Exists(psObVa, vaP)) {
                 ObSet_Push(psObOff, (i << 16) | 2);

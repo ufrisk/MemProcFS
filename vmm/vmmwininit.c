@@ -431,9 +431,9 @@ cleanup:
 }
 
 /*
-* scans the relatively limited memory space 0x80000000-0x83ffffff for the base
+* scans the relatively limited memory space 0x80000000-0x847fffff for the base
 * of 'ntoskrnl.exe'. NB! this is a very non-optimized way of doing things and
-* should be improved upon to increase startup performance - but 64MB is not a
+* should be improved upon to increase startup performance - but 72MB is not a
 * huge amount of memory and it's only scanned at startup ...
 * -- pSystemProcess
 * -- return = virtual address of ntoskrnl.exe base if successful, otherwise 0.
@@ -445,8 +445,8 @@ DWORD VmmWinInit_FindNtosScan32(_In_ PVMM_PROCESS pSystemProcess)
     CHAR szModuleName[MAX_PATH] = { 0 };
     PIMAGE_DOS_HEADER pDosHeader;
     PIMAGE_NT_HEADERS pNtHeader;
-    if(!(pb = LocalAlloc(LMEM_ZEROINIT, 0x04000000))) { return 0; }
-    for(p = 0; p < 0x04000000; p += 0x1000) {
+    if(!(pb = LocalAlloc(LMEM_ZEROINIT, 0x04800000))) { return 0; }
+    for(p = 0; p < 0x04800000; p += 0x1000) {
         // read 8MB chunks when required.
         if(0 == p % 0x00800000) {
             VmmReadEx(pSystemProcess, 0x80000000ULL + p, pb + p, 0x00800000, NULL, 0);
@@ -803,10 +803,9 @@ VOID VmmWinInit_VersionNumber(_In_ PVMM_PROCESS pProcessSMSS)
     } else if(PDB_GetSymbolDWORD(PDB_HANDLE_KERNEL, "NtBuildNumber", PVMM_PROCESS_SYSTEM, &ctxVmm->kernel.dwVersionBuild)) {
         ctxVmm->kernel.dwVersionBuild = (WORD)ctxVmm->kernel.dwVersionBuild;
         if(ctxVmm->kernel.dwVersionBuild) {
-            if(ctxVmm->kernel.dwVersionBuild > 20348) {         // 11
-                ctxVmm->kernel.dwVersionMajor = 11;
-            } else if(ctxVmm->kernel.dwVersionBuild >= 10240) { //10
+            if(ctxVmm->kernel.dwVersionBuild >= 10240) {        // 10 (incl. win11)
                 ctxVmm->kernel.dwVersionMajor = 10;
+                ctxVmm->kernel.dwVersionMinor = 0;
             } else if(ctxVmm->kernel.dwVersionBuild >= 9100) {  // 8
                 ctxVmm->kernel.dwVersionMajor = 6;
                 ctxVmm->kernel.dwVersionMinor = 3;
@@ -920,21 +919,23 @@ BOOL VmmWinInit_TryInitialize(_In_opt_ QWORD paDTBOpt)
     HANDLE hThreadInitializeAsync;
     PVMM_PROCESS pObSystemProcess = NULL, pObProcess = NULL;
     // Fetch Directory Base (DTB (PML4)) and initialize Memory Model.
-    if(paDTBOpt) {
-        if(!VmmWinInit_DTB_Validate(paDTBOpt)) {
-            vmmprintfv("VmmWinInit_TryInitialize: Initialization Failed. Unable to verify user-supplied (0x%016llx) DTB. #1\n", paDTBOpt);
-            goto fail;
-        }
-    } else if(LcGetOption(ctxMain->hLC, LC_OPT_MEMORYINFO_OS_DTB, &paDTBOpt)) {
+
+    QWORD vaKERN1 = 0, vaKERN2;
+    LcGetOption(ctxMain->hLC, LC_OPT_MEMORYINFO_OS_KERNELBASE, &vaKERN1);
+    LcGetOption(ctxMain->hLC, LC_OPT_MEMORYINFO_OS_KERNELHINT, &vaKERN2);
+
+    if(paDTBOpt && !VmmWinInit_DTB_Validate(paDTBOpt)) {
+        vmmprintfv("VmmWinInit_TryInitialize: Initialization Failed. Unable to verify user-supplied (0x%016llx) DTB. #1\n", paDTBOpt);
+        goto fail;
+    }
+    if(!ctxVmm->kernel.paDTB && LcGetOption(ctxMain->hLC, LC_OPT_MEMORYINFO_OS_DTB, &paDTBOpt)) {
         if(!VmmWinInit_DTB_Validate(paDTBOpt)) {
             vmmprintfv("VmmWinInit_TryInitialize: Warning: Unable to verify crash-dump supplied DTB. (0x%016llx) #1\n", paDTBOpt);
-            goto fail;
         }
-    } else if(!ctxVmm->kernel.paDTB) {
-        if(!VmmWinInit_DTB_FindValidate()) {
-            vmmprintfv("VmmWinInit_TryInitialize: Initialization Failed. Unable to locate valid DTB. #2\n");
-            goto fail;
-        }
+    }
+    if(!ctxVmm->kernel.paDTB && !VmmWinInit_DTB_FindValidate()) {
+        vmmprintfv("VmmWinInit_TryInitialize: Initialization Failed. Unable to locate valid DTB. #2\n");
+        goto fail;
     }
     vmmprintfvv_fn("INFO: DTB  located at: %016llx. MemoryModel: %s\n", ctxVmm->kernel.paDTB, VMM_MEMORYMODEL_TOSTRING[ctxVmm->tpMemoryModel]);
     // Fetch 'ntoskrnl.exe' base address
