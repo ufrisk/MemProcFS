@@ -209,7 +209,7 @@ VOID VmmWinInit_TryInitializeKernelOptionalValues()
 */
 VOID VmmWinInit_FindNtosScan64_SmallPageWalk_DoWork(_In_ QWORD paTable, _In_ QWORD vaBase, _In_ QWORD vaMin, _In_ QWORD vaMax, _In_ BYTE iPML, _In_ POB_SET psvaKernelCandidates)
 {
-    const QWORD PML_REGION_SIZE[5] = { 0, 12, 21, 30, 39 };
+    static const QWORD PML_REGION_SIZE[5] = { 0, 12, 21, 30, 39 };
     QWORD i, j, pte, vaCurrent;
     PVMMOB_CACHE_MEM pObPTEs = NULL;
     BOOL f;
