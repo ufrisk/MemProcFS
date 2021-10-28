@@ -275,3 +275,4 @@ v1.1-v2.10
 
 Latest:
 * API: VMMDLL_Map_GetModuleFromName() support optional module name for primary module.
+* Windows 11 networking fixes.
