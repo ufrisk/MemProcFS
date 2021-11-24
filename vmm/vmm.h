@@ -435,6 +435,66 @@ typedef struct tdVMM_MAP_KDRIVERENTRY {
     QWORD MajorFunction[28];
 } VMM_MAP_KDRIVERENTRY, *PVMM_MAP_KDRIVERENTRY;
 
+typedef enum tdVMM_MAP_POOL_TP {
+    VMM_MAP_POOL_TP_Unknown        = 0,
+    VMM_MAP_POOL_TP_NonPagedPool   = 1,
+    VMM_MAP_POOL_TP_NonPagedPoolNx = 2,
+    VMM_MAP_POOL_TP_PagedPool      = 3
+} VMM_MAP_POOL_TP;
+
+typedef enum tdVMM_MAP_POOL_TPSS {
+    VMM_MAP_POOL_TPSS_UNKNOWN = 0,
+    VMM_MAP_POOL_TPSS_NA      = 1,
+    VMM_MAP_POOL_TPSS_BIG     = 2,
+    VMM_MAP_POOL_TPSS_LARGE   = 3,
+    VMM_MAP_POOL_TPSS_VS      = 4,
+    VMM_MAP_POOL_TPSS_LFH     = 5
+} VMM_MAP_POOL_TPSS;
+
+static LPCSTR VMM_POOL_TP_STRING[] = {
+    "Unknown",
+    "NonPaged",
+    "NonPagedNx",
+    "Paged"
+};
+
+static LPCSTR VMM_POOL_TPSS_STRING[] = {
+    "Unk",
+    "Std",
+    "Big",
+    "Lrg",
+    "Vs ",
+    "Lfh"
+};
+
+typedef struct tdVMM_MAP_POOLENTRYTAG {
+    union {
+        CHAR szTag[5];
+        struct {
+            DWORD dwTag;
+            DWORD _Filler;
+            DWORD cEntry;
+            DWORD iTag2Map;
+        };
+        OB_COUNTER_ENTRY ce;
+    };
+} VMM_MAP_POOLENTRYTAG, *PVMM_MAP_POOLENTRYTAG;
+
+typedef struct tdVMM_MAP_POOLENTRY {
+    QWORD va;
+    union {
+        CHAR szTag[5];
+        struct {
+            DWORD dwTag;
+            BYTE _Filler;
+            BYTE fAlloc;
+            BYTE tpPool;    // VMM_MAP_POOL_TP
+            BYTE tpSS;      // VMM_MAP_POOL_TPSS
+        };
+    };
+    DWORD cb;
+} VMM_MAP_POOLENTRY, *PVMM_MAP_POOLENTRY;
+
 typedef struct tdVMM_MAP_NETENTRY {
     DWORD dwPID;
     DWORD dwState;
@@ -645,6 +705,15 @@ typedef struct tdVMMOB_MAP_KDRIVER {
     DWORD cMap;                     // # map entries.
     VMM_MAP_KDRIVERENTRY pMap[];    // map entries.
 } VMMOB_MAP_KDRIVER, *PVMMOB_MAP_KDRIVER;
+
+typedef struct tdVMMOB_MAP_POOL {
+    OB ObHdr;
+    PDWORD piTag2Map;               // dword map array (size: cMap): tag index to map index.
+    PVMM_MAP_POOLENTRYTAG pTag;
+    DWORD cTag;
+    DWORD cMap;                     // # map entries.
+    VMM_MAP_POOLENTRY pMap[];       // map entries.
+} VMMOB_MAP_POOL, *PVMMOB_MAP_POOL;
 
 typedef struct tdVMMOB_MAP_NET {
     OB ObHdr;
@@ -1177,6 +1246,8 @@ typedef struct tdVMM_CONTEXT {
     POB_CONTAINER pObCMapNet;
     POB_CONTAINER pObCMapObject;
     POB_CONTAINER pObCMapKDriver;
+    POB_CONTAINER pObCMapPoolAll;
+    POB_CONTAINER pObCMapPoolBig;
     POB_CONTAINER pObCMapService;
     POB_CONTAINER pObCInfoDB;
     POB_CONTAINER pObCCachePrefetchEPROCESS;
@@ -1993,6 +2064,36 @@ BOOL VmmMap_GetObject(_Out_ PVMMOB_MAP_OBJECT *ppObObjectMap);
 */
 _Success_(return)
 BOOL VmmMap_GetKDriver(_Out_ PVMMOB_MAP_KDRIVER *ppObKDriverMap);
+
+/*
+* Retrieve the index of a VMM_MAP_POOLENTRYTAG within the PVMMOB_MAP_POOL.
+* -- pPoolMap
+* -- dwPoolTag
+* -- pdwTagIndex
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetPoolTag(_In_ PVMMOB_MAP_POOL pPoolMap, _In_ DWORD dwPoolTag, _Out_ PDWORD pdwTagIndex);
+
+/*
+* Retrieve the index of a VMM_MAP_POOLENTRY within the PVMMOB_MAP_POOL.
+* -- pPoolMap
+* -- vaPoolEntry
+* -- pdwEntryIndex
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetPoolEntry(_In_ PVMMOB_MAP_POOL pPoolMap, _In_ QWORD vaPoolEntry, _Out_ PDWORD pdwEntryIndex);
+
+/*
+* Retrieve the POOL map.
+* CALLER DECREF: ppObPoolMap
+* -- ppObPoolMap
+* -- fAll = TRUE: retrieve all pools; FALSE: retrieve big page pool only.
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetPool(_Out_ PVMMOB_MAP_POOL *ppObPoolMap, _In_ BOOL fAll);
 
 /*
 * Retrieve the NETWORK CONNECTION map

@@ -15,10 +15,9 @@
 LPCSTR szMSYSNET_README =
 "Information about the sys net module                                         \n" \
 "====================================                                         \n" \
-"The sys/net module tries to enumerate and list active TCP connections in     \n" \
-"Windows 7 and later (x64 only).  It currently does not support listening TCP \n" \
-"ports or UDP ports. This functionality is planned for the future. Also, it's \n" \
-"not supporting 32-bit or Windows Vista/XP (future support less likely).      \n" \
+"The sys/net module tries to enumerate and list network connections in        \n" \
+"Windows 7 and later (x64 only).                                              \n" \
+"Future 32-bit and Windows XP/Vista support is less likely.                   \n" \
 "For more information please visit: https://github.com/ufrisk/MemProcFS/wiki  \n";
 
 // ----------------------------------------------------------------------------
@@ -69,7 +68,7 @@ NTSTATUS MSysNet_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbR
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PVMMOB_MAP_NET pObNetMap;
     if(!_stricmp(ctx->uszPath, "readme.txt")) {
-        return Util_VfsReadFile_FromPBYTE((PBYTE)szMSYSNET_README, strlen(szMSYSNET_README), pb, cb, pcbRead, cbOffset);
+        return Util_VfsReadFile_FromStrA(szMSYSNET_README, pb, cb, pcbRead, cbOffset);
     }
     if(VmmMap_GetNet(&pObNetMap)) {
         if(!_stricmp(ctx->uszPath, "netstat.txt")) {

@@ -40,7 +40,7 @@ NTSTATUS Virt2Phys_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pc
     Virt2PhysInfo.va = pProcess->pObPersistent->Plugin.vaVirt2Phys;
     VmmVirt2PhysGetInformation(pProcess, &Virt2PhysInfo);
     if(!_stricmp(ctx->uszPath, "readme.txt")) {
-        return Util_VfsReadFile_FromPBYTE((PBYTE)szMVIRT2PHYS_README, strlen(szMVIRT2PHYS_README), pb, cb, pcbRead, cbOffset);
+        return Util_VfsReadFile_FromStrA(szMVIRT2PHYS_README, pb, cb, pcbRead, cbOffset);
     }
     if(!_stricmp(ctx->uszPath, "virt.txt")) {
         switch(ctxVmm->tpMemoryModel) {

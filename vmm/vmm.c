@@ -11,6 +11,7 @@
 #include "vmmwin.h"
 #include "vmmwindef.h"
 #include "vmmwinobj.h"
+#include "vmmwinpool.h"
 #include "vmmwinreg.h"
 #include "vmmwinsvc.h"
 #include "vmmevil.h"
@@ -1718,6 +1719,8 @@ VOID VmmClose()
     Ob_DECREF_NULL(&ctxVmm->pObCMapNet);
     Ob_DECREF_NULL(&ctxVmm->pObCMapObject);
     Ob_DECREF_NULL(&ctxVmm->pObCMapKDriver);
+    Ob_DECREF_NULL(&ctxVmm->pObCMapPoolAll);
+    Ob_DECREF_NULL(&ctxVmm->pObCMapPoolBig);
     Ob_DECREF_NULL(&ctxVmm->pObCMapService);
     Ob_DECREF_NULL(&ctxVmm->pObCInfoDB);
     Ob_DECREF_NULL(&ctxVmm->pObCCachePrefetchEPROCESS);
@@ -2041,6 +2044,8 @@ BOOL VmmInitialize()
     ctxVmm->pObCMapNet = ObContainer_New();
     ctxVmm->pObCMapObject = ObContainer_New();
     ctxVmm->pObCMapKDriver = ObContainer_New();
+    ctxVmm->pObCMapPoolAll = ObContainer_New();
+    ctxVmm->pObCMapPoolBig = ObContainer_New();
     ctxVmm->pObCMapService = ObContainer_New();
     ctxVmm->pObCInfoDB = ObContainer_New();
     ctxVmm->pObCCachePrefetchEPROCESS = ObContainer_New();
@@ -2400,6 +2405,59 @@ BOOL VmmMap_GetKDriver(_Out_ PVMMOB_MAP_KDRIVER *ppObKDriverMap)
         *ppObKDriverMap = VmmWinObjKDrv_Initialize();
     }
     return *ppObKDriverMap != NULL;
+}
+
+/*
+* Retrieve the index of a VMM_MAP_POOLENTRYTAG within the PVMMOB_MAP_POOL.
+* -- pPoolMap
+* -- dwPoolTag
+* -- pdwTagIndex
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetPoolTag(_In_ PVMMOB_MAP_POOL pPoolMap, _In_ DWORD dwPoolTag, _Out_ PDWORD pdwTagIndex)
+{
+    PVMM_MAP_POOLENTRYTAG pet;
+    if(!(pet = Util_qfind((QWORD)dwPoolTag, pPoolMap->cTag, pPoolMap->pTag, sizeof(VMM_MAP_POOLENTRYTAG), Util_qfind_CmpFindTableDWORD))) {
+        dwPoolTag = _byteswap_ulong(dwPoolTag);
+        pet = Util_qfind((QWORD)dwPoolTag, pPoolMap->cTag, pPoolMap->pTag, sizeof(VMM_MAP_POOLENTRYTAG), Util_qfind_CmpFindTableDWORD);
+    }
+    if(!pet) { return FALSE; }
+    *pdwTagIndex = (DWORD)(((QWORD)pet - (QWORD)pPoolMap->pTag) / sizeof(VMM_MAP_POOLENTRYTAG));
+    return TRUE;
+}
+
+/*
+* Retrieve the index of a VMM_MAP_POOLENTRY within the PVMMOB_MAP_POOL.
+* -- pPoolMap
+* -- vaPoolEntry
+* -- pdwEntryIndex
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetPoolEntry(_In_ PVMMOB_MAP_POOL pPoolMap, _In_ QWORD vaPoolEntry, _Out_ PDWORD pdwEntryIndex)
+{
+    PVMM_MAP_POOLENTRY pe = Util_qfind(vaPoolEntry, pPoolMap->cMap, pPoolMap->pMap, sizeof(VMM_MAP_POOLENTRY), Util_qfind_CmpFindTableQWORD);
+    if(!pe) { return FALSE; }
+    *pdwEntryIndex = (DWORD)(((QWORD)pe - (QWORD)pPoolMap->pMap) / sizeof(VMM_MAP_POOLENTRY));
+    return TRUE;
+}
+
+/*
+* Retrieve the POOL map.
+* CALLER DECREF: ppObPoolMap
+* -- ppObPoolMap
+* -- fAll = TRUE: retrieve all pools; FALSE: retrieve big page pool only.
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetPool(_Out_ PVMMOB_MAP_POOL *ppObPoolMap, _In_ BOOL fAll)
+{
+    *ppObPoolMap = fAll ? ObContainer_GetOb(ctxVmm->pObCMapPoolAll) : ObContainer_GetOb(ctxVmm->pObCMapPoolBig);
+    if(!*ppObPoolMap) {
+        *ppObPoolMap = VmmWinPool_Initialize(fAll);
+    }
+    return *ppObPoolMap != NULL;
 }
 
 /*

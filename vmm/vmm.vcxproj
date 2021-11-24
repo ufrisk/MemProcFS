@@ -249,6 +249,7 @@
     <ClInclude Include="vmmwindef.h" />
     <ClInclude Include="vmmwininit.h" />
     <ClInclude Include="vmmwinobj.h" />
+    <ClInclude Include="vmmwinpool.h" />
     <ClInclude Include="vmmwinreg.h" />
     <ClInclude Include="vmmwinsvc.h" />
   </ItemGroup>
@@ -284,6 +285,7 @@
     <ClCompile Include="m_sys_mem.c" />
     <ClCompile Include="m_sys_net.c" />
     <ClCompile Include="m_sys_obj.c" />
+    <ClCompile Include="m_sys_pool.c" />
     <ClCompile Include="m_sys_proc.c" />
     <ClCompile Include="m_sys_svc.c" />
     <ClCompile Include="m_sys_syscall.c" />
@@ -297,6 +299,7 @@
     <ClCompile Include="ob\ob_compressed.c" />
     <ClCompile Include="ob\ob_container.c" />
     <ClCompile Include="ob\ob_core.c" />
+    <ClCompile Include="ob\ob_counter.c" />
     <ClCompile Include="ob\ob_map.c" />
     <ClCompile Include="ob\ob_memfile.c" />
     <ClCompile Include="ob\ob_set.c" />
@@ -319,6 +322,7 @@
     <ClCompile Include="m_virt2phys.c" />
     <ClCompile Include="vmmwininit.c" />
     <ClCompile Include="vmmwinobj.c" />
+    <ClCompile Include="vmmwinpool.c" />
     <ClCompile Include="vmmwinreg.c" />
     <ClCompile Include="vmmwinsvc.c" />
   </ItemGroup>

@@ -273,6 +273,8 @@ v1.1-v2.10
 * 32-bit support for Windows and Linux (no 32-bit binary release yet).<br>
   Many thanks to [@JosiahWhite](https://github.com/JosiahWhite) for helping out getting me going and showing this was possible!
 
-Latest:
-* API: VMMDLL_Map_GetModuleFromName() support optional module name for primary module.
-* Windows 11 networking fixes.
+[v4.4](https://github.com/ufrisk/MemProcFS/releases/tag/v4.4)
+* Bug fixes: large modules no longer missing.
+* Initial support for [kernel pool parsing](https://github.com/ufrisk/MemProcFS/wiki/FS_SysInfo_Pool).
+  Thank you [@yarden_shafir](https://twitter.com/yarden_shafir) for the excellent [BlackHat talk](https://i.blackhat.com/USA21/Wednesday-Handouts/us-21-Windows-Heap-Backed-Pool-The-Good-The-Bad-And-The-Encoded.pdf) and [PoolViewer](https://github.com/yardenshafir/PoolViewer) tool.
+* Better network connection recovery.

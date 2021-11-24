@@ -69,6 +69,7 @@ VOID VmmWinObj_Refresh()
         LeaveCriticalSection(&ctx->LockUpdate);
     }
     ObContainer_SetOb(ctxVmm->pObCMapObject, NULL);
+    ObContainer_SetOb(ctxVmm->pObCMapKDriver, NULL);
 }
 
 

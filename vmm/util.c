@@ -180,10 +180,10 @@ NTSTATUS Util_VfsReadFile_FromPBYTE(_In_opt_ PBYTE pbFile, _In_ QWORD cbFile, _O
     return *pcbRead ? UTIL_NTSTATUS_SUCCESS : UTIL_NTSTATUS_END_OF_FILE;
 }
 
-NTSTATUS Util_VfsReadFile_FromStrA(_In_opt_ LPSTR szFile, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS Util_VfsReadFile_FromStrA(_In_opt_ LPCSTR szFile, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     if(!szFile) { return UTIL_NTSTATUS_END_OF_FILE; }
-    return Util_VfsReadFile_FromPBYTE(szFile, strlen(szFile), pb, cb, pcbRead, cbOffset);
+    return Util_VfsReadFile_FromPBYTE((PBYTE)szFile, strlen(szFile), pb, cb, pcbRead, cbOffset);
 }
 
 NTSTATUS Util_VfsReadFile_FromMEM(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD vaMEM, _In_ QWORD cbMEM, _In_ QWORD flags, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
@@ -448,10 +448,19 @@ int Util_qsort_QWORD(const void *pqw1, const void *pqw2)
         (qw1 > qw2) ? 1 : 0;
 }
 
-int Util_qfind_CmpFindTableQWORD(_In_ PVOID pvFind, _In_ PVOID pvEntry)
+int Util_qfind_CmpFindTableDWORD(_In_ QWORD qwFindIn, _In_ QWORD qwEntryIn)
 {
-    QWORD qwKey = (QWORD)pvFind;
-    QWORD qwEntry = *(PQWORD)pvEntry;
+    DWORD dwKey = (DWORD)qwFindIn;
+    DWORD dwEntry = *(PDWORD)qwEntryIn;
+    if(dwEntry > dwKey) { return -1; }
+    if(dwEntry < dwKey) { return 1; }
+    return 0;
+}
+
+int Util_qfind_CmpFindTableQWORD(_In_ QWORD qwFindIn, _In_ QWORD qwEntryIn)
+{
+    QWORD qwKey = (QWORD)qwFindIn;
+    QWORD qwEntry = *(PQWORD)qwEntryIn;
     if(qwEntry > qwKey) { return -1; }
     if(qwEntry < qwKey) { return 1; }
     return 0;
@@ -511,8 +520,9 @@ PVOID Util_qfind(_In_ QWORD qwFind, _In_ DWORD cMap, _In_ PVOID pvMap, _In_ DWOR
 }
 
 _Success_(return)
-BOOL Util_VfsHelper_GetIdDir(_In_ LPSTR uszPath, _Out_ PDWORD pdwID, _Out_ LPSTR *puszSubPath)
+BOOL Util_VfsHelper_GetIdDir(_In_ LPSTR uszPath, _In_ BOOL fHex, _Out_ PDWORD pdwID, _Out_opt_ LPSTR *puszSubPath)
 {
+    CHAR c;
     DWORD i = 0, iSubPath = 0;
     // 1: Check if starting with PID/NAME/BY-ID/BY-NAME
     if(!_strnicmp(uszPath, "pid\\", 4)) {
@@ -523,6 +533,8 @@ BOOL Util_VfsHelper_GetIdDir(_In_ LPSTR uszPath, _Out_ PDWORD pdwID, _Out_ LPSTR
         i = 6;
     } else if(!_strnicmp(uszPath, "by-name\\", 8)) {
         i = 8;
+    } else if(!_strnicmp(uszPath, "by-tag\\", 7)) {
+        i = 7;
     } else {
         return FALSE;
     }
@@ -530,11 +542,20 @@ BOOL Util_VfsHelper_GetIdDir(_In_ LPSTR uszPath, _Out_ PDWORD pdwID, _Out_ LPSTR
     while((i < MAX_PATH) && uszPath[i] && (uszPath[i] != '\\')) { i++; }
     iSubPath = ((i < MAX_PATH - 1) && (uszPath[i] == '\\')) ? (i + 1) : i;
     i--;
-    while((uszPath[i] >= '0') && (uszPath[i] <= '9')) { i--; }
-    i++;
-    if(!((uszPath[i] >= '0') && (uszPath[i] <= '9'))) { return FALSE; }
-    *pdwID = strtoul(uszPath + i, NULL, 10);
-    *puszSubPath = uszPath + iSubPath;
+    if(fHex) {
+        while((c = uszPath[i]) && (((c >= '0') && (c <= '9')) || ((c >= 'a') && (c <= 'f')) || ((c >= 'A') && (c <= 'F')))) { i--; }
+        i++;
+        if(!((c = uszPath[i]) && (((c >= '0') && (c <= '9')) || ((c >= 'a') && (c <= 'f')) || ((c >= 'A') && (c <= 'F'))))) { return FALSE; }
+        *pdwID = strtoul(uszPath + i, NULL, 16);
+    } else {
+        while((c = uszPath[i]) && (c >= '0') && (c <= '9')) { i--; }
+        i++;
+        if(!((c = uszPath[i]) && (c >= '0') && (c <= '9'))) { return FALSE; }
+        *pdwID = strtoul(uszPath + i, NULL, 10);
+    }
+    if(puszSubPath) {
+        *puszSubPath = uszPath + iSubPath;
+    }
     return TRUE;
 }
 
@@ -594,7 +615,67 @@ NTSTATUS Util_VfsLineFixed_Read(
         }
         // line:
         iMapEntry = i - cHeader;
-        pvMapEntry = (PBYTE)pMap + (i - cHeader) * cbEntry;
+        pvMapEntry = (PBYTE)pMap + iMapEntry * cbEntry;
+        pfnCallback(ctx, cbLineLength, (DWORD)iMapEntry, pvMapEntry, usz + o);
+        o += cbLineLength;
+    }
+    nt = Util_VfsReadFile_FromPBYTE(usz, cbMax - 1, pb, cb, pcbRead, cbOffset - cStart * cbLineLength);
+    LocalFree(usz);
+    return nt;
+}
+
+/*
+* FixedLineRead: Read from a file dynamically created from a custom generator
+* callback function using using a callback function to populate individual lines
+* (excluding header).
+* -- pfnCallback = callback function to populate individual lines.
+* -- ctx = optional context to 'pfn' callback function.
+* -- cbLineLength = line length, including newline, excluding null terminator.
+* -- wszHeader = optional header line.
+* -- pMap = 'map context' for single entry callback function.
+* -- cMap = max number of entries entry callback function will generate.
+* -- pfnMap = callback function to retrieve entry.
+* -- pb
+* -- cb
+* -- pcbRead
+* -- cbOffset
+* -- return
+*/
+NTSTATUS Util_VfsLineFixedMapCustom_Read(
+    _In_ UTIL_VFSLINEFIXED_PFN_CB pfnCallback,
+    _Inout_opt_ PVOID ctx,
+    _In_ DWORD cbLineLength,
+    _In_opt_ LPSTR uszHeader,
+    _In_ PVOID ctxMap,
+    _In_ DWORD cMap,
+    _In_ UTIL_VFSLINEFIXED_MAP_PFN_CB pfnMap,
+    _Out_writes_to_(cb, *pcbRead) PBYTE pb,
+    _In_ DWORD cb,
+    _Out_ PDWORD pcbRead,
+    _In_ QWORD cbOffset
+) {
+    LPSTR usz;
+    NTSTATUS nt;
+    PVOID pvMapEntry;
+    QWORD i, iMapEntry, o = 0, cbMax, cStart, cEnd, cHeader;
+    cHeader = (uszHeader && ctxMain->cfg.fFileInfoHeader) ? 2 : 0;
+    cStart = (DWORD)(cbOffset / cbLineLength);
+    cEnd = (DWORD)min(cHeader + cMap - 1, (cb + cbOffset + cbLineLength - 1) / cbLineLength);
+    cbMax = 1 + (1 + cEnd - cStart) * cbLineLength;
+    if(!cHeader && !cMap) { return VMMDLL_STATUS_END_OF_FILE; }
+    if((cStart > cHeader + cMap)) { return VMMDLL_STATUS_END_OF_FILE; }
+    if(!(usz = LocalAlloc(LMEM_ZEROINIT, (SIZE_T)cbMax))) { return VMMDLL_STATUS_FILE_INVALID; }
+    for(i = cStart; i <= cEnd; i++) {
+        // header:
+        if(i < cHeader) {
+            o += i ?
+                Util_usnprintf_ln(usz + o, cbLineLength, "%.*s", (DWORD)strlen(uszHeader), UTIL_VFSLINEFIXED_LINEPAD512) :
+                Util_usnprintf_ln(usz + o, cbLineLength, "%s", uszHeader);
+            continue;
+        }
+        // line:
+        iMapEntry = i - cHeader;
+        pvMapEntry = pfnMap(ctxMap, (DWORD)iMapEntry);
         pfnCallback(ctx, cbLineLength, (DWORD)iMapEntry, pvMapEntry, usz + o);
         o += cbLineLength;
     }

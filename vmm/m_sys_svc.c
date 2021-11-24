@@ -189,7 +189,7 @@ NTSTATUS MSysSvc_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbR
         );
         goto finish;
     }
-    if(Util_VfsHelper_GetIdDir(ctx->uszPath, &dwSvcId, &uszSvcSubPath)) {
+    if(Util_VfsHelper_GetIdDir(ctx->uszPath, FALSE, &dwSvcId, &uszSvcSubPath)) {
         qwSvcId = dwSvcId;
         pe = Util_qfind(qwSvcId, pObSvcMap->cMap, pObSvcMap->pMap, sizeof(VMM_MAP_SERVICEENTRY), MSysSvc_InfoFromPath_Filter);
         if(pe) {
@@ -240,7 +240,7 @@ BOOL MSysSvc_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
         }
         goto finish;
     }
-    if(Util_VfsHelper_GetIdDir(ctx->uszPath, &dwSvcId, &uszSvcSubPath)) {
+    if(Util_VfsHelper_GetIdDir(ctx->uszPath, FALSE, &dwSvcId, &uszSvcSubPath)) {
         qwSvcId = dwSvcId;
         pe = Util_qfind(qwSvcId, pObSvcMap->cMap, pObSvcMap->pMap, sizeof(VMM_MAP_SERVICEENTRY), MSysSvc_InfoFromPath_Filter);
         if(pe) {

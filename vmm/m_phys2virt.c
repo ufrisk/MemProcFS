@@ -164,7 +164,7 @@ NTSTATUS Phys2Virt_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pc
     PVMMOB_PHYS2VIRT_INFORMATION pObPhys2Virt = NULL;
     PVMM_PROCESS pProcess = (PVMM_PROCESS)ctx->pProcess;
     if(!_stricmp(ctx->uszPath, "readme.txt")) {
-        return Util_VfsReadFile_FromPBYTE((PBYTE)szMPHYS2VIRT_README, strlen(szMPHYS2VIRT_README), pb, cb, pcbRead, cbOffset);
+        return Util_VfsReadFile_FromStrA(szMPHYS2VIRT_README, pb, cb, pcbRead, cbOffset);
     }
     if(pProcess) {
         if(!_stricmp(ctx->uszPath, "phys.txt")) {

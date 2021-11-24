@@ -516,7 +516,7 @@ VOID VmmWinLdrModule_Initialize64(_In_ PVMM_PROCESS pProcess, _Inout_ POB_MAP pm
             if(!VmmRead(pProcess, vaModuleLdr64, pbLdrModule64, sizeof(LDR_MODULE64))) { continue; }
         }
         if(!pLdrModule64->BaseAddress || (pLdrModule64->BaseAddress & 0xfff)) { continue; }
-        if(!pLdrModule64->SizeOfImage || (pLdrModule64->SizeOfImage >= 0x10000000)) { continue; }
+        if(!pLdrModule64->SizeOfImage || (pLdrModule64->SizeOfImage >= 0x40000000)) { continue; }
         if(!pLdrModule64->BaseDllName.Length || pLdrModule64->BaseDllName.Length >= 0x1000) { continue; }
         ZeroMemory(&oModule, sizeof(VMM_MAP_MODULEENTRY));
         oModule.vaBase = pLdrModule64->BaseAddress;

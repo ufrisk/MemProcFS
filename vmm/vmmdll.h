@@ -7,7 +7,7 @@
 // (c) Ulf Frisk, 2018-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-// Header Version: 4.3.3
+// Header Version: 4.4
 //
 
 #include "leechcore.h"
@@ -703,6 +703,7 @@ BOOL VMMDLL_MemVirt2Phys(_In_ DWORD dwPID, _In_ ULONG64 qwVA, _Out_ PULONG64 pqw
 #define VMMDLL_MAP_HEAP_VERSION             2
 #define VMMDLL_MAP_THREAD_VERSION           3
 #define VMMDLL_MAP_HANDLE_VERSION           2
+#define VMMDLL_MAP_POOL_VERSION             1
 #define VMMDLL_MAP_NET_VERSION              3
 #define VMMDLL_MAP_PHYSMEM_VERSION          2
 #define VMMDLL_MAP_USER_VERSION             2
@@ -899,6 +900,49 @@ typedef struct tdVMMDLL_MAP_HANDLEENTRY {
     union { LPSTR  uszType; LPWSTR wszType; QWORD _Pad1; }; // U/W dependant
 } VMMDLL_MAP_HANDLEENTRY, *PVMMDLL_MAP_HANDLEENTRY;
 
+typedef enum tdVMMDLL_MAP_POOL_TYPE {
+    VMMDLL_MAP_POOL_TYPE_Unknown         = 0,
+    VMMDLL_MAP_POOL_TYPE_NonPagedPool    = 1,
+    VMMDLL_MAP_POOL_TYPE_NonPagedPoolNx  = 2,
+    VMMDLL_MAP_POOL_TYPE_PagedPool       = 3
+} VMMDLL_MAP_POOL_TYPE;
+
+typedef enum tdVMM_MAP_POOL_TYPE_SUBSEGMENT {
+    VMM_MAP_POOL_TYPE_SUBSEGMENT_UNKNOWN = 0,
+    VMM_MAP_POOL_TYPE_SUBSEGMENT_NA      = 1,
+    VMM_MAP_POOL_TYPE_SUBSEGMENT_BIG     = 2,
+    VMM_MAP_POOL_TYPE_SUBSEGMENT_LARGE   = 3,
+    VMM_MAP_POOL_TYPE_SUBSEGMENT_VS      = 4,
+    VMM_MAP_POOL_TYPE_SUBSEGMENT_LFH     = 5
+} VMM_MAP_POOL_TYPE_SUBSEGMENT;
+
+typedef struct tdVMMDLL_MAP_POOLENTRYTAG {
+    union {
+        CHAR szTag[5];
+        struct {
+            DWORD dwTag;
+            DWORD _Filler;
+            DWORD cEntry;
+            DWORD iTag2Map;
+        };
+    };
+} VMMDLL_MAP_POOLENTRYTAG, *PVMMDLL_MAP_POOLENTRYTAG;
+
+typedef struct tdVMMDLL_MAP_POOLENTRY {
+    QWORD va;
+    union {
+        CHAR szTag[5];
+        struct {
+            DWORD dwTag;
+            BYTE _Filler;
+            BYTE fAlloc;
+            BYTE tpPool;    // VMMDLL_MAP_POOL_TYPE
+            BYTE tpSS;      // VMMDLL_MAP_POOL_TYPE_SUBSEGMENT
+        };
+    };
+    DWORD cb;
+} VMMDLL_MAP_POOLENTRY, *PVMMDLL_MAP_POOLENTRY;
+
 typedef struct tdVMMDLL_MAP_NETENTRY {
     DWORD dwPID;
     DWORD dwState;
@@ -1046,6 +1090,16 @@ typedef struct tdVMMDLL_MAP_HANDLE {
     DWORD cMap;                     // # map entries.
     VMMDLL_MAP_HANDLEENTRY pMap[];  // map entries.
 } VMMDLL_MAP_HANDLE, *PVMMDLL_MAP_HANDLE;
+
+typedef struct tdVMMDLL_MAP_POOL {
+    DWORD dwVersion;
+    DWORD _Reserved1[7];
+    PDWORD piTag2Map;               // dword map array (size: cMap): tag index to map index.
+    PVMMDLL_MAP_POOLENTRYTAG pTag;  // tag entries.
+    DWORD cTag;                     // # tag entries.
+    DWORD cMap;                     // # map entries.
+    VMMDLL_MAP_POOLENTRY pMap[];    // map entries.
+} VMMDLL_MAP_POOL, *PVMMDLL_MAP_POOL;
 
 typedef struct tdVMMDLL_MAP_NET {
     DWORD dwVersion;
@@ -1242,10 +1296,22 @@ EXPORTED_FUNCTION
 _Success_(return) BOOL VMMDLL_Map_GetPhysMem(_Out_writes_bytes_opt_(*pcbPhysMemMap) PVMMDLL_MAP_PHYSMEM pPhysMemMap, _Inout_ PDWORD pcbPhysMemMap);
 
 /*
+* Retrieve the pool map - consisting of kernel allocated pool entries.
+* The pool map pMap is sorted by allocation virtual address.
+* The pool map pTag is sorted by pool tag.
+* NB! The pool map may contain both false negatives/positives.
+* -- pPoolMap = buffer of minimum byte length *pcbPoolMap or NULL.
+* -- pcbPoolMap = pointer to byte count of pPoolMap buffer.
+* -- return = success/fail.
+*/
+EXPORTED_FUNCTION
+_Success_(return) BOOL VMMDLL_Map_GetPool(_Out_writes_bytes_opt_(*pcbPoolMap) PVMMDLL_MAP_POOL pPoolMap, _Inout_ PDWORD pcbPoolMap);
+
+/*
 * Retrieve the network connection map - consisting of active network connections,
 * listening sockets and other networking functionality.
 * -- pNetMap = buffer of minimum byte length *pcbNetMap or NULL.
-* -- pcbNetMap = pointer to byte count of pNetrMap buffer.
+* -- pcbNetMap = pointer to byte count of pNetMap buffer.
 * -- return = success/fail.
 */
 EXPORTED_FUNCTION

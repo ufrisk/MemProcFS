@@ -177,9 +177,15 @@ typedef int(*UTIL_QFIND_CMP_PFN)(_In_ QWORD qwFind, _In_ QWORD qwEntry);
 
 /*
 * Generic table search function to be used together with Util_qfind.
+* Finds an entry in a sorted DWORD table.
+*/
+int Util_qfind_CmpFindTableDWORD(_In_ QWORD qwFind, _In_ QWORD qwEntry);
+
+/*
+* Generic table search function to be used together with Util_qfind.
 * Finds an entry in a sorted QWORD table.
 */
-int Util_qfind_CmpFindTableQWORD(_In_ PVOID pvFind, _In_ PVOID pvEntry);
+int Util_qfind_CmpFindTableQWORD(_In_ QWORD pvFind, _In_ QWORD pvEntry);
 
 /*
 * Find an entry in a sorted array in an efficient way - O(log2(n)).
@@ -211,7 +217,7 @@ PVOID Util_qfind(_In_ QWORD qwFind, _In_ DWORD cMap, _In_ PVOID pvMap, _In_ DWOR
 */
 NTSTATUS Util_VfsReadFile_FromZERO(_In_ QWORD cbFile, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsReadFile_FromPBYTE(_In_opt_ PBYTE pbFile, _In_ QWORD cbFile, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
-NTSTATUS Util_VfsReadFile_FromStrA(_In_opt_ LPSTR szFile, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
+NTSTATUS Util_VfsReadFile_FromStrA(_In_opt_ LPCSTR szFile, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsReadFile_FromMEM(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD vaMEM, _In_ QWORD cbMEM, _In_ QWORD flags, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsReadFile_FromObData(_In_opt_ POB_DATA pData, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsReadFile_FromObCompressed(_In_opt_ POB_COMPRESSED pdc, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
@@ -234,12 +240,13 @@ VOID Util_VfsTimeStampFile(_In_opt_ PVMM_PROCESS pProcess, _Out_ PVMMDLL_VFS_FIL
 * Retrieve PID / ID number from path (in base10). This is commonly used to
 * parse pid from process name in the 'name' / 'pid' folders.
 * -- uszPath
+* -- fHex
 * -- pdwID
 * -- puszSubPath
 * -- return
 */
 _Success_(return)
-BOOL Util_VfsHelper_GetIdDir(_In_ LPSTR uszPath, _Out_ PDWORD pdwID, _Out_ LPSTR *puszSubPath);
+BOOL Util_VfsHelper_GetIdDir(_In_ LPSTR uszPath, _In_ BOOL fHex, _Out_ PDWORD pdwID, _Out_opt_ LPSTR *puszSubPath);
 
 #define UTIL_VFSLINEFIXED_LINECOUNT(c)            (c + (ctxMain->cfg.fFileInfoHeader ? 2ULL : 0ULL))
 
@@ -285,6 +292,47 @@ NTSTATUS Util_VfsLineFixed_Read(
     _In_ PVOID pMap,
     _In_ DWORD cMap,
     _In_ DWORD cbEntry,
+    _Out_writes_to_(cb, *pcbRead) PBYTE pb,
+    _In_ DWORD cb,
+    _Out_ PDWORD pcbRead,
+    _In_ QWORD cbOffset
+);
+
+/*
+* Util_VfsLineFixedMapCustom_Read: Callback function to retrieve an entry.
+* -- pMap
+* -- iMap
+*/
+typedef PVOID(*UTIL_VFSLINEFIXED_MAP_PFN_CB)(
+    _In_ PVOID ctxMap,
+    _In_ DWORD iMap
+    );
+
+/*
+* Util_VfsLineFixedMapCustom_Read: Read from a file dynamically created from a
+* custom generator callback function using using a callback function to
+* populate individual lines (excluding header).
+* -- pfnCallback = callback function to populate individual lines.
+* -- ctx = optional context to 'pfn' callback function.
+* -- cbLineLength = line length, including newline, excluding null terminator.
+* -- wszHeader = optional header line.
+* -- ctxMap = 'map context' for single entry callback function.
+* -- cMap = max number of entries entry callback function will generate.
+* -- pfnMap = callback function to retrieve entry.
+* -- pb
+* -- cb
+* -- pcbRead
+* -- cbOffset
+* -- return
+*/
+NTSTATUS Util_VfsLineFixedMapCustom_Read(
+    _In_ UTIL_VFSLINEFIXED_PFN_CB pfnCallback,
+    _Inout_opt_ PVOID ctx,
+    _In_ DWORD cbLineLength,
+    _In_opt_ LPSTR uszHeader,
+    _In_ PVOID ctxMap,
+    _In_ DWORD cMap,
+    _In_ UTIL_VFSLINEFIXED_MAP_PFN_CB pfnMap,
     _Out_writes_to_(cb, *pcbRead) PBYTE pb,
     _In_ DWORD cb,
     _Out_ PDWORD pcbRead,

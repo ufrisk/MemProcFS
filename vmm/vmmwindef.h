@@ -454,4 +454,21 @@ typedef struct {
     _PHYSICAL_MEMORY_RUN64 Run[_PHYSICAL_MEMORY_MAX_RUNS];
 } _PHYSICAL_MEMORY_DESCRIPTOR64, *_PPHYSICAL_MEMORY_DESCRIPTOR64;
 
+typedef struct {
+    DWORD PreviousSize : 9;
+    DWORD PoolIndex    : 7;
+    DWORD BlockSize    : 9;
+    DWORD PoolType     : 7;
+    DWORD PoolTag;
+} _POOL_HEADER32, *_PPOOL_HEADER32;
+
+typedef struct {
+    DWORD PreviousSize : 8;
+    DWORD PoolIndex : 8;
+    DWORD BlockSize : 8;
+    DWORD PoolType : 8;
+    DWORD PoolTag;
+    QWORD ProcessBilled;
+} _POOL_HEADER64, *_PPOOL_HEADER64;
+
 #endif /* __VMMWINDEF_H__ */

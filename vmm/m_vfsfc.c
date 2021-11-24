@@ -44,7 +44,7 @@ NTSTATUS M_VfsFc_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbR
 {
     BYTE btp;
     if(!_stricmp(ctx->uszPath, "readme.txt")) {
-        return Util_VfsReadFile_FromPBYTE((PBYTE)szMFC_README, strlen(szMFC_README), pb, cb, pcbRead, cbOffset);
+        return Util_VfsReadFile_FromStrA(szMFC_README, pb, cb, pcbRead, cbOffset);
     }
     if(!_stricmp(ctx->uszPath, "progress_percent.txt")) {
         return Util_VfsReadFile_FromNumber(ctxFc ? ctxFc->cProgressPercent : 0, pb, cb, pcbRead, cbOffset);

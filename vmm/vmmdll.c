@@ -687,7 +687,7 @@ BOOL VMMDLL_VfsList_Impl(_In_ LPSTR uszPath, _Inout_ PHANDLE pFileList)
     PVMM_PROCESS pObProcess;
     if(!ctxVmm || !VMMDLL_VfsList_IsHandleValid(pFileList)) { return FALSE; }
     if(uszPath[0] == '\\') { uszPath++; }
-    if(Util_VfsHelper_GetIdDir(uszPath, &dwPID, &wszSubPath)) {
+    if(Util_VfsHelper_GetIdDir(uszPath, FALSE, &dwPID, &wszSubPath)) {
         if(!(pObProcess = VmmProcessGet(dwPID))) { return FALSE; }
         PluginManager_List(pObProcess, wszSubPath, pFileList);
         Ob_DECREF(pObProcess);
@@ -808,7 +808,7 @@ NTSTATUS VMMDLL_VfsRead_Impl(LPSTR uszPath, _Out_writes_to_(cb, *pcbRead) PBYTE 
     PVMM_PROCESS pObProcess;
     if(!ctxVmm) { return VMM_STATUS_FILE_INVALID; }
     if(uszPath[0] == '\\') { uszPath++; }
-    if(Util_VfsHelper_GetIdDir(uszPath, &dwPID, &uszSubPath)) {
+    if(Util_VfsHelper_GetIdDir(uszPath, FALSE, &dwPID, &uszSubPath)) {
         if(!(pObProcess = VmmProcessGet(dwPID))) { return VMM_STATUS_FILE_INVALID; }
         nt = PluginManager_Read(pObProcess, uszSubPath, pb, cb, pcbRead, cbOffset);
         Ob_DECREF(pObProcess);
@@ -842,7 +842,7 @@ NTSTATUS VMMDLL_VfsWrite_Impl(_In_ LPSTR uszPath, _In_reads_(cb) PBYTE pb, _In_ 
     PVMM_PROCESS pObProcess;
     if(!ctxVmm) { return VMM_STATUS_FILE_INVALID; }
     if(uszPath[0] == '\\') { uszPath++; }
-    if(Util_VfsHelper_GetIdDir(uszPath, &dwPID, &uszSubPath)) {
+    if(Util_VfsHelper_GetIdDir(uszPath, FALSE, &dwPID, &uszSubPath)) {
         if(!(pObProcess = VmmProcessGet(dwPID))) { return VMM_STATUS_FILE_INVALID; }
         nt = PluginManager_Write(pObProcess, uszSubPath, pb, cb, pcbWrite, cbOffset);
         Ob_DECREF(pObProcess);
@@ -1688,6 +1688,45 @@ BOOL VMMDLL_Map_GetPhysMem(_Out_writes_bytes_opt_(*pcbPhysMemMap) PVMMDLL_MAP_PH
     CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_Map_GetPhysMem,
         VMMDLL_Map_GetPhysMem_Impl(pPhysMemMap, pcbPhysMemMap))
+}
+
+_Success_(return)
+BOOL VMMDLL_Map_GetPool_Impl(_Out_writes_bytes_opt_(*pcbMapDst) PVMMDLL_MAP_POOL pMapDst, _Inout_ PDWORD pcbMapDst)
+{
+    BOOL fResult = FALSE;
+    DWORD cbDst = 0, cbDstData, cbDstDataMap, cbDstDataTag;
+    PVMMOB_MAP_POOL pObMap = NULL;
+    if(!VmmMap_GetPool(&pObMap, TRUE)) { goto fail; }
+    cbDstDataMap = pObMap->cMap * sizeof(VMMDLL_MAP_POOLENTRY);
+    cbDstDataTag = pObMap->cTag * sizeof(VMMDLL_MAP_POOLENTRYTAG);
+    cbDstData = cbDstDataMap + cbDstDataTag + pObMap->cMap * sizeof(DWORD);
+    cbDst = sizeof(VMMDLL_MAP_POOL) + cbDstData;
+    if(pMapDst) {
+        if(*pcbMapDst < cbDst) { goto fail; }
+        ZeroMemory(pMapDst, sizeof(VMMDLL_MAP_POOL));
+        pMapDst->dwVersion = VMMDLL_MAP_POOL_VERSION;
+        pMapDst->cMap = pObMap->cMap;
+        memcpy(pMapDst->pMap, pObMap->pMap, cbDstData);
+        // tag
+        pMapDst->cTag = pObMap->cTag;
+        pMapDst->pTag = (PVMMDLL_MAP_POOLENTRYTAG)(pMapDst->pMap + pMapDst->cMap);
+        // tag index
+        pMapDst->piTag2Map = (PDWORD)((QWORD)pMapDst->pTag + cbDstDataTag);
+    }
+    fResult = TRUE;
+fail:
+    *pcbMapDst = cbDst;
+    Ob_DECREF(pObMap);
+    return fResult;
+
+}
+
+_Success_(return)
+BOOL VMMDLL_Map_GetPool(_Out_writes_bytes_opt_(*pcbPoolMap) PVMMDLL_MAP_POOL pPoolMap, _Inout_ PDWORD pcbPoolMap)
+{
+    CALL_IMPLEMENTATION_VMM(
+        STATISTICS_ID_VMMDLL_Map_GetPhysMem,
+        VMMDLL_Map_GetPool_Impl(pPoolMap, pcbPoolMap))
 }
 
 _Success_(return)

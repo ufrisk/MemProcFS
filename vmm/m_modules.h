@@ -32,9 +32,10 @@ VOID M_Conf_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_Sys_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_SysCert_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_SysDriver_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
-VOID M_SysMem_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI);
+VOID M_SysMem_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_SysNet_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_SysObj_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
+VOID M_SysPool_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_SysProc_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_SysSvc_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_SysSyscall_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
@@ -88,6 +89,7 @@ VOID(*g_pfnModulesAllInternal[])(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo) = {
     M_SysMem_Initialize,
     M_SysNet_Initialize,
     M_SysObj_Initialize,
+    M_SysPool_Initialize,
     M_SysProc_Initialize,
     M_SysSvc_Initialize,
     M_SysTask_Initialize,
