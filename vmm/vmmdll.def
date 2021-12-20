@@ -36,6 +36,14 @@ EXPORTS
     VMMDLL_MemPrefetchPages
     VMMDLL_MemWrite
     VMMDLL_MemVirt2Phys
+
+    VMMDLL_Scatter_Initialize
+    VMMDLL_Scatter_Prepare
+    VMMDLL_Scatter_PrepareEx
+    VMMDLL_Scatter_ExecuteRead
+    VMMDLL_Scatter_Read
+    VMMDLL_Scatter_Clear
+    VMMDLL_Scatter_CloseHandle
     
     VMMDLL_PidList
     VMMDLL_PidGetFromName

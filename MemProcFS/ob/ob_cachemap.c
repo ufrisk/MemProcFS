@@ -239,7 +239,7 @@ POB_CACHEMAP ObCacheMap_New(_In_ DWORD cMaxEntries, _In_opt_ BOOL(*pfnValidEntry
     POB_CACHEMAP pObCacheMap;
     if(!cMaxEntries) { return NULL; }
     if((flags & OB_MAP_FLAGS_OBJECT_OB) && (flags & OB_MAP_FLAGS_OBJECT_LOCALFREE)) { return NULL; }
-    pObCacheMap = Ob_Alloc(OB_TAG_CORE_CACHEMAP, LMEM_ZEROINIT, sizeof(OB_CACHEMAP), _ObCacheMap_ObCloseCallback, NULL);
+    pObCacheMap = Ob_Alloc(OB_TAG_CORE_CACHEMAP, LMEM_ZEROINIT, sizeof(OB_CACHEMAP), (OB_CLEANUP_CB)_ObCacheMap_ObCloseCallback, NULL);
     if(!pObCacheMap) { return NULL; }
     InitializeSRWLock(&pObCacheMap->LockSRW);
     pObCacheMap->cMax = cMaxEntries;

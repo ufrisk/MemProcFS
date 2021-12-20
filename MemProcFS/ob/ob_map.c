@@ -30,7 +30,10 @@
 
 typedef struct tdOB_MAP_ENTRY {
     QWORD k;
-    PVOID v;
+    union {
+        PVOID v;
+        QWORD _Filler;
+    };
 } OB_MAP_ENTRY, *POB_MAP_ENTRY, **PPOB_MAP_ENTRY;
 
 typedef struct tdOB_MAP {
@@ -119,19 +122,19 @@ VOID _ObMap_ObCloseCallback(_In_ POB_MAP pObMap)
     }
 }
 
-inline POB_MAP_ENTRY _ObMap_GetFromIndex(_In_ POB_MAP pm, _In_ DWORD iEntry)
+POB_MAP_ENTRY _ObMap_GetFromIndex(_In_ POB_MAP pm, _In_ DWORD iEntry)
 {
     if(!iEntry || (iEntry >= pm->c)) { return NULL; }
     return &pm->Directory[OB_MAP_INDEX_DIRECTORY(iEntry)][OB_MAP_INDEX_TABLE(iEntry)][OB_MAP_INDEX_STORE(iEntry)];
 }
 
-inline QWORD _ObMap_GetFromEntryIndex(_In_ POB_MAP pm, _In_ BOOL fValueHash, _In_ DWORD iEntry)
+QWORD _ObMap_GetFromEntryIndex(_In_ POB_MAP pm, _In_ BOOL fValueHash, _In_ DWORD iEntry)
 {
     POB_MAP_ENTRY pe = _ObMap_GetFromIndex(pm, iEntry);
     return pe ? (fValueHash ? (QWORD)pe->v : pe->k) : 0;
 }
 
-inline VOID _ObMap_SetHashIndex(_In_ POB_MAP pm, _In_ BOOL fValueHash, _In_ DWORD iHash, _In_ DWORD iEntry)
+VOID _ObMap_SetHashIndex(_In_ POB_MAP pm, _In_ BOOL fValueHash, _In_ DWORD iHash, _In_ DWORD iEntry)
 {
     if(fValueHash) {
         pm->pHashMapValue[iHash] = iEntry;
@@ -206,7 +209,7 @@ BOOL _ObMap_GetEntryIndexFromKeyOrValue(_In_ POB_MAP pm, _In_ BOOL fValueHash, _
 // ObMap_GetKey, 
 //-----------------------------------------------------------------------------
 
-inline BOOL _ObMap_Exists(_In_ POB_MAP pm, _In_ BOOL fValueHash, _In_ QWORD kv)
+BOOL _ObMap_Exists(_In_ POB_MAP pm, _In_ BOOL fValueHash, _In_ QWORD kv)
 {
     if((!fValueHash && !pm->fKey) || (fValueHash && !kv)) { return FALSE; }
     return _ObMap_GetEntryIndexFromKeyOrValue(pm, fValueHash, kv, NULL);
@@ -716,7 +719,7 @@ POB_MAP ObMap_New(_In_ QWORD flags)
 {
     POB_MAP pObMap;
     if((flags & OB_MAP_FLAGS_OBJECT_OB) && (flags & OB_MAP_FLAGS_OBJECT_LOCALFREE)) { return NULL; }
-    pObMap = Ob_Alloc(OB_TAG_CORE_MAP, LMEM_ZEROINIT, sizeof(OB_MAP), _ObMap_ObCloseCallback, NULL);
+    pObMap = Ob_Alloc(OB_TAG_CORE_MAP, LMEM_ZEROINIT, sizeof(OB_MAP), (OB_CLEANUP_CB)_ObMap_ObCloseCallback, NULL);
     if(!pObMap) { return NULL; }
     InitializeSRWLock(&pObMap->LockSRW);
     pObMap->c = 1;      // item zero is reserved - hence the initialization of count to 1

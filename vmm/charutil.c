@@ -379,6 +379,21 @@ fail:
     return FALSE;
 }
 
+_Success_(return)
+BOOL CharUtil_WtoW(_In_opt_ LPWSTR wsz, _In_ DWORD cch, _Maybenull_ _Writable_bytes_(cbBuffer) PBYTE pbBuffer, _In_ DWORD cbBuffer, _Out_opt_ LPWSTR *pwsz, _Out_opt_ PDWORD pcbw, _In_ DWORD flags)
+{
+    // NB!
+    // This function is assumed to be rarely used. Due to this it's implemented
+    // by calling CharUtil_WtoU and CharUtil_UtoW which is slightly ineffective.
+    LPSTR usz;
+    DWORD cbu;
+    BYTE pbBufferInternal[MAX_PATH * 2];
+    return
+        CharUtil_WtoU(wsz, cch, pbBufferInternal, sizeof(pbBufferInternal), &usz, &cbu, CHARUTIL_FLAG_TRUNCATE) &&
+        CharUtil_UtoW(usz, -1, pbBuffer, cbBuffer, pwsz, pcbw, flags);
+}
+
+
 VOID CharUtil_EscapeJSON2(_In_ CHAR ch, _Out_writes_(2) PCHAR chj)
 {
     chj[0] = '\\';
@@ -979,6 +994,24 @@ DWORD CharUtil_HashNameFsW(_In_ LPCWSTR wsz, _In_opt_ DWORD iSuffix)
 
 
 
+/*
+* Replace all characters in a string.
+* -- sz
+* -- chOld
+* -- chNew
+*/
+VOID CharUtil_ReplaceAllA(_Inout_ LPSTR sz, _In_ CHAR chOld, _In_ CHAR chNew)
+{
+    CHAR c;
+    DWORD i = 0;
+    while((c = sz[i++])) {
+        if(c == chOld) {
+            sz[i - 1] = chNew;
+        }
+    }
+}
+
+
 
 /*
 * Split the string usz into two at the last (back)slash which is removed.
@@ -1140,13 +1173,39 @@ BOOL CharUtil_StrEndsWith(_In_opt_ LPSTR usz, _In_opt_ LPSTR uszEndsWith, _In_ B
         (0 == strcmp(usz + cch - cchEndsWith, uszEndsWith));
 }
 
-int CharUtil_CmpWU(_In_opt_ LPWSTR wsz, _In_opt_ LPSTR usz, _In_ BOOL fCaseInsensitive)
+/*
+* Compare a wide-char string to a utf-8 string.
+* NB! only the first 2*MAX_PATH characters are compared.
+* -- wsz1
+* -- usz2
+* -- return = 0 if equals, -1/1 otherwise.
+*/
+int CharUtil_CmpWU(_In_opt_ LPWSTR wsz1, _In_opt_ LPSTR usz2, _In_ BOOL fCaseInsensitive)
 {
-    LPSTR uszW;
-    BYTE pbBuffer[2 * MAX_PATH];
-    if(!wsz && !usz) { return 0; }
-    if(!wsz) { return -1; }
-    if(!usz) { return 1; }
-    if(!CharUtil_WtoU(wsz, -1, pbBuffer, sizeof(pbBuffer), &uszW, NULL, CHARUTIL_FLAG_TRUNCATE)) { return 1; }
-    return fCaseInsensitive ? _stricmp(usz, uszW) : strcmp(usz, uszW);
+    LPSTR usz1;
+    BYTE pbBuffer1[2 * MAX_PATH];
+    if(!wsz1 && !usz2) { return 0; }
+    if(!wsz1) { return -1; }
+    if(!usz2) { return 1; }
+    if(!CharUtil_WtoU(wsz1, -1, pbBuffer1, sizeof(pbBuffer1), &usz1, NULL, CHARUTIL_FLAG_TRUNCATE)) { return -1; }
+    return fCaseInsensitive ? _stricmp(usz1, usz2) : strcmp(usz1, usz2);
+}
+
+/*
+* Compare two wide-char strings.
+* NB! only the first 2*MAX_PATH characters are compared.
+* -- wsz1
+* -- wsz2
+* -- return = 0 if equals, -1/1 otherwise.
+*/
+int CharUtil_CmpWW(_In_opt_ LPWSTR wsz1, _In_opt_ LPWSTR wsz2, _In_ BOOL fCaseInsensitive)
+{
+    LPSTR usz1, usz2;
+    BYTE pbBuffer1[2 * MAX_PATH], pbBuffer2[2 * MAX_PATH];
+    if(!wsz1 && !wsz2) { return 0; }
+    if(!wsz1) { return -1; }
+    if(!wsz2) { return 1; }
+    if(!CharUtil_WtoU(wsz1, -1, pbBuffer1, sizeof(pbBuffer1), &usz1, NULL, CHARUTIL_FLAG_TRUNCATE)) { return -1; }
+    if(!CharUtil_WtoU(wsz2, -1, pbBuffer2, sizeof(pbBuffer2), &usz2, NULL, CHARUTIL_FLAG_TRUNCATE)) { return 1; }
+    return fCaseInsensitive ? _stricmp(usz1, usz2) : strcmp(usz1, usz2);
 }

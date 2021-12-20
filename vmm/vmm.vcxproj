@@ -314,6 +314,7 @@
     <ClCompile Include="vmm.c" />
     <ClCompile Include="vmmdll.c" />
     <ClCompile Include="m_ldrmodules.c" />
+    <ClCompile Include="vmmdll_scatter.c" />
     <ClCompile Include="vmmevil.c" />
     <ClCompile Include="vmmnet.c" />
     <ClCompile Include="vmmproc.c" />

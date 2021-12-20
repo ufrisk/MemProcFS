@@ -24,9 +24,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="memprocfs.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="ob\ob_cachemap.c">
       <Filter>Source Files\ob</Filter>
     </ClCompile>
@@ -39,13 +36,19 @@
     <ClCompile Include="ob\ob_set.c">
       <Filter>Source Files\ob</Filter>
     </ClCompile>
-    <ClCompile Include="vfsdokan.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="vfslist.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="util.c">
+    <ClCompile Include="charutil.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="memprocfs_dokan.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="memprocfs_fuse.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="oscompatibility.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -79,5 +82,10 @@
     <ResourceCompile Include="MemProcFS.rc">
       <Filter>Resource Files</Filter>
     </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Makefile">
+      <Filter>Resource Files</Filter>
+    </None>
   </ItemGroup>
 </Project>

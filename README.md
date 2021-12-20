@@ -275,6 +275,11 @@ v1.1-v2.10
 
 [v4.4](https://github.com/ufrisk/MemProcFS/releases/tag/v4.4)
 * Bug fixes: large modules no longer missing.
-* Initial support for [kernel pool parsing](https://github.com/ufrisk/MemProcFS/wiki/FS_SysInfo_Pool).
+* Initial support for [kernel pool parsing](https://github.com/ufrisk/MemProcFS/wiki/FS_SysInfo_Pool).<br>
   Thank you [@yarden_shafir](https://twitter.com/yarden_shafir) for the excellent [BlackHat talk](https://i.blackhat.com/USA21/Wednesday-Handouts/us-21-Windows-Heap-Backed-Pool-The-Good-The-Bad-And-The-Encoded.pdf) and [PoolViewer](https://github.com/yardenshafir/PoolViewer) tool.
 * Better network connection recovery.
+
+[v4.5](https://github.com/ufrisk/MemProcFS/releases/tag/v4.5)
+* Merge memprocfs (Windows) and memprocfs_fuse (Linux) projects.
+* New VMMDLL_Scatter_* API to simplify C/C++ ReadScatter use.
+* Pool parsing bug fixes.

@@ -5,7 +5,13 @@
 //
 #ifndef __CHARUTIL_H__
 #define __CHARUTIL_H__
-#include "vfs.h"
+
+#ifdef _WIN32
+#include <Windows.h>
+typedef unsigned __int64                QWORD, *PQWORD;
+#else
+#include "oscompatibility.h"
+#endif /* _WIN32 */
 
 #define CHARUTIL_FLAG_NONE                      0x0000
 #define CHARUTIL_FLAG_ALLOC                     0x0001
@@ -73,20 +79,31 @@ BOOL CharUtil_WtoU(
 * Convert UTF-8 string into a Windows Wide-Char string.
 * Function support usz == pbBuffer - usz will then become overwritten.
 * CALLER LOCALFREE (if *pusz != pbBuffer): *pusz
-* -- usz = the string to convert.
+* -- usz/wsz = the string to convert.
 * -- cch = -1 for null-terminated string; or max number of chars (excl. null).
 * -- pbBuffer = optional buffer to place the result in.
 * -- cbBuffer
-* -- pusz = if set to null: function calculate length only and return TRUE.
+* -- pwsz = if set to null: function calculate length only and return TRUE.
             result wide-string, either as (*pwsz == pbBuffer) or LocalAlloc'ed
 *           buffer that caller is responsible for free.
-* -- pcbu = byte length (including terminating null) of wide-char string.
+* -- pcbw = byte length (including terminating null) of wide-char string.
 * -- flags = CHARUTIL_FLAG_NONE, CHARUTIL_FLAG_ALLOC or CHARUTIL_FLAG_TRUNCATE
 * -- return
 */
 _Success_(return)
 BOOL CharUtil_UtoW(
     _In_opt_ LPSTR usz,
+    _In_ DWORD cch,
+    _Maybenull_ _Writable_bytes_(cbBuffer) PBYTE pbBuffer,
+    _In_ DWORD cbBuffer,
+    _Out_opt_ LPWSTR *pwsz,
+    _Out_opt_ PDWORD pcbw,
+    _In_ DWORD flags
+);
+
+_Success_(return)
+BOOL CharUtil_WtoW(
+    _In_opt_ LPWSTR wsz,
     _In_ DWORD cch,
     _Maybenull_ _Writable_bytes_(cbBuffer) PBYTE pbBuffer,
     _In_ DWORD cbBuffer,
@@ -207,7 +224,7 @@ DWORD CharUtil_FixFsNameU(
 * -- sz
 * -- wsz
 * -- cwsz
-* -- cch = number of bytes/wchars in usz/sz/wsz
+* -- cch = number of bytes/wchars in usz/sz/wsz or _TRUNCATE
 * -- iSuffix
 * -- fUpper
 * -- return = number of bytes written (including terminating NULL).
@@ -218,10 +235,18 @@ DWORD CharUtil_FixFsName(
     _In_opt_ LPCSTR usz,
     _In_opt_ LPCSTR sz,
     _In_opt_ LPCWSTR wsz,
-    _In_opt_ DWORD cch,
+    _In_ DWORD cch,
     _In_opt_ DWORD iSuffix,
     _In_ BOOL fUpper
 );
+
+/*
+* Replace all characters in a string.
+* -- sz
+* -- chOld
+* -- chNew
+*/
+VOID CharUtil_ReplaceAllA(_Inout_ LPSTR sz, _In_ CHAR chOld, _In_ CHAR chNew);
 
 /*
 * Split a "path" string into two at the first slash/backslash character.
@@ -274,10 +299,20 @@ BOOL CharUtil_StrEndsWith(_In_opt_ LPSTR usz, _In_opt_ LPSTR uszEndsWith, _In_ B
 
 /*
 * Compare a wide-char string to a utf-8 string.
-* -- wsz
-* -- usz
+* NB! only the first 2*MAX_PATH characters are compared.
+* -- wsz1
+* -- usz2
 * -- return = 0 if equals, -1/1 otherwise.
 */
-int CharUtil_CmpWU(_In_opt_ LPWSTR wsz, _In_opt_ LPSTR usz, _In_ BOOL fCaseInsensitive);
+int CharUtil_CmpWU(_In_opt_ LPWSTR wsz1, _In_opt_ LPSTR usz2, _In_ BOOL fCaseInsensitive);
+
+/*
+* Compare two wide-char strings.
+* NB! only the first 2*MAX_PATH characters are compared.
+* -- wsz1
+* -- wsz2
+* -- return = 0 if equals, -1/1 otherwise.
+*/
+int CharUtil_CmpWW(_In_opt_ LPWSTR wsz1, _In_opt_ LPWSTR wsz2, _In_ BOOL fCaseInsensitive);
 
 #endif /* __CHARUTIL_H__ */

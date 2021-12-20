@@ -8,6 +8,7 @@
 #include "oscompatibility.h"
 #include "leechcore.h"
 #include "ob/ob.h"
+#include "ob/ob_tag.h"
 
 #ifndef STRINGIZE2
 #define STRINGIZE2(s) #s
@@ -486,13 +487,14 @@ typedef struct tdVMM_MAP_POOLENTRY {
         CHAR szTag[5];
         struct {
             DWORD dwTag;
-            BYTE _Filler;
+            BYTE _ReservedZero;
             BYTE fAlloc;
             BYTE tpPool;    // VMM_MAP_POOL_TP
             BYTE tpSS;      // VMM_MAP_POOL_TPSS
         };
     };
     DWORD cb;
+    DWORD _Filler;
 } VMM_MAP_POOLENTRY, *PVMM_MAP_POOLENTRY;
 
 typedef struct tdVMM_MAP_NETENTRY {

@@ -20,11 +20,17 @@
 #define OB_SET_ENTRIES_STORE            0x200
 
 typedef struct tdOB_SET_TABLE_ENTRY {
-    PQWORD pValues;                 // ptr to QWORD[0x200]
+    union {
+        PQWORD pValues;                 // ptr to QWORD[OB_SET_ENTRIES_STORE]
+        QWORD _Filler;
+    };
 } OB_SET_TABLE_ENTRY, *POB_SET_TABLE_ENTRY;
 
 typedef struct tdOB_SET_TABLE_DIRECTORY_ENTRY {
-    POB_SET_TABLE_ENTRY pTable;    // ptr to OB_SET_TABLE_ENTRY[0x20]
+    union {
+        POB_SET_TABLE_ENTRY pTable;     // ptr to OB_SET_TABLE_ENTRY[OB_SET_ENTRIES_TABLE]
+        QWORD _Filler;
+    };
 } OB_SET_TABLE_DIRECTORY_ENTRY, *POB_SET_TABLE_DIRECTORY_ENTRY;
 
 typedef struct tdOB_SET {
@@ -104,7 +110,7 @@ VOID _ObSet_ObCloseCallback(_In_ POB_SET pObSet)
 */
 POB_SET ObSet_New()
 {
-    POB_SET pObSet = Ob_Alloc(OB_TAG_CORE_SET, LMEM_ZEROINIT, sizeof(OB_SET), _ObSet_ObCloseCallback, NULL);
+    POB_SET pObSet = Ob_Alloc(OB_TAG_CORE_SET, LMEM_ZEROINIT, sizeof(OB_SET), (OB_CLEANUP_CB)_ObSet_ObCloseCallback, NULL);
     if(!pObSet) { return NULL; }
     InitializeSRWLock(&pObSet->LockSRW);
     pObSet->c = 1;     // item zero is reserved - hence the initialization of count to 1
@@ -114,7 +120,7 @@ POB_SET ObSet_New()
     return pObSet;
 }
 
-inline QWORD _ObSet_GetValueFromIndex(_In_ POB_SET pvs, _In_ DWORD iValue)
+QWORD _ObSet_GetValueFromIndex(_In_ POB_SET pvs, _In_ DWORD iValue)
 {
     WORD iDirectory = (iValue >> 14) & (OB_SET_ENTRIES_DIRECTORY - 1);
     WORD iTable = (iValue >> 9) & (OB_SET_ENTRIES_TABLE - 1);
@@ -125,7 +131,7 @@ inline QWORD _ObSet_GetValueFromIndex(_In_ POB_SET pvs, _In_ DWORD iValue)
         pvs->pTable0[iTable].pValues[iValueStore];
 }
 
-inline VOID _ObSet_SetValueFromIndex(_In_ POB_SET pvs, _In_ DWORD iValue, _In_ QWORD qwValue)
+VOID _ObSet_SetValueFromIndex(_In_ POB_SET pvs, _In_ DWORD iValue, _In_ QWORD qwValue)
 {
     WORD iDirectory = (iValue >> 14) & (OB_SET_ENTRIES_DIRECTORY - 1);
     WORD iTable = (iValue >> 9) & (OB_SET_ENTRIES_TABLE - 1);
@@ -137,12 +143,12 @@ inline VOID _ObSet_SetValueFromIndex(_In_ POB_SET pvs, _In_ DWORD iValue, _In_ Q
     }
 }
 
-inline DWORD _ObSet_GetIndexFromHash(_In_ POB_SET pvs, _In_ DWORD iHash)
+DWORD _ObSet_GetIndexFromHash(_In_ POB_SET pvs, _In_ DWORD iHash)
 {
     return pvs->fLargeMode ? pvs->pHashMapLarge[iHash] : pvs->pHashMapSmall[iHash];
 }
 
-inline VOID _ObSet_SetHashIndex(_In_ POB_SET pvs, _In_ DWORD iHash, _In_ DWORD iValue)
+VOID _ObSet_SetHashIndex(_In_ POB_SET pvs, _In_ DWORD iHash, _In_ DWORD iValue)
 {
     if(pvs->fLargeMode) {
         pvs->pHashMapLarge[iHash] = iValue;
@@ -206,7 +212,7 @@ BOOL _ObSet_GetIndexFromValue(_In_ POB_SET pvs, _In_ QWORD v, _Out_opt_ PDWORD p
     }
 }
 
-inline BOOL _ObSet_Exists(_In_ POB_SET pvs, _In_ QWORD value)
+BOOL _ObSet_Exists(_In_ POB_SET pvs, _In_ QWORD value)
 {
     return _ObSet_GetIndexFromValue(pvs, value, NULL, NULL);
 }
@@ -516,59 +522,4 @@ VOID ObSet_Push_PageAlign(_In_opt_ POB_SET pvs, _In_ QWORD a, _In_ DWORD cb)
 DWORD ObSet_Size(_In_opt_ POB_SET pvs)
 {
     OB_SET_CALL_SYNCHRONIZED_IMPLEMENTATION_READ(pvs, DWORD, 0, pvs->c - 1)
-}
-
-
-_Success_(return)
-BOOL _ObSet_FileSave(_In_ POB_SET pvs, _In_ LPWSTR wszFileName)
-{
-    QWORD v = 0;
-    CHAR szBuffer[18] = { 0 };
-    HANDLE hFile = INVALID_HANDLE_VALUE;
-    hFile = CreateFileW(wszFileName, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-    if(hFile == INVALID_HANDLE_VALUE) { return FALSE; }
-    while(v = ObSet_GetNext(pvs, v)) {
-        snprintf(szBuffer, 18, "%016llx\n", v);
-        WriteFile(hFile, szBuffer, 17, NULL, NULL);
-    }
-    CloseHandle(hFile);
-    return TRUE;
-}
-
-/*
-* Save the contents of an ObSet to a disk file.
-* The resulting disk file may be read with ObSet_FileLoad().
-* -- pvs
-* -- wszFileName = save file to create.
-* -- return
-*/
-_Success_(return)
-BOOL ObSet_FileSave(_In_opt_ POB_SET pvs, _In_ LPWSTR wszFileName)
-{
-    OB_SET_CALL_SYNCHRONIZED_IMPLEMENTATION_READ(pvs, BOOL, FALSE, _ObSet_FileSave(pvs, wszFileName))
-}
-
-/*
-* Load the contents of an ObSet disk file into the supplied set.
-* -- pvs
-* -- wszFileName = file previously saved by ObSet_FileSave().
-* -- return
-*/
-_Success_(return)
-BOOL ObSet_FileLoad(_In_opt_ POB_SET pvs, _In_ LPWSTR wszFileName)
-{
-    QWORD v;
-    DWORD cbRead;
-    HANDLE hFile = INVALID_HANDLE_VALUE;
-    CHAR szBuffer[18] = { 0 };
-    if(!OB_SET_IS_VALID(pvs)) { return FALSE; }
-    hFile = CreateFileW(wszFileName, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-    if(hFile == INVALID_HANDLE_VALUE) { return FALSE; }
-    while(ReadFile(hFile, szBuffer, 17, &cbRead, NULL) && (cbRead == 17)) {
-        if((v = strtoull(szBuffer, NULL, 16))) {
-            ObSet_Push(pvs, v);
-        }
-    }
-    CloseHandle(hFile);
-    return TRUE;
 }

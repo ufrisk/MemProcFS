@@ -3,6 +3,7 @@
 // (c) Ulf Frisk, 2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
+#ifdef LINUX
 #include "oscompatibility.h"
 #include <stdatomic.h>
 #include <sys/syscall.h>
@@ -151,3 +152,5 @@ QWORD GetTickCount64()
     clock_gettime(CLOCK_MONOTONIC_COARSE, &ts);
     return ts.tv_sec * 1000 + ts.tv_nsec / (1000 * 1000);
 }
+
+#endif /* LINUX */

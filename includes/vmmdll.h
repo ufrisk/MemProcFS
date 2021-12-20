@@ -7,7 +7,7 @@
 // (c) Ulf Frisk, 2018-2021
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-// Header Version: 4.4
+// Header Version: 4.5
 //
 
 #include "leechcore.h"
@@ -687,6 +687,103 @@ BOOL VMMDLL_MemVirt2Phys(_In_ DWORD dwPID, _In_ ULONG64 qwVA, _Out_ PULONG64 pqw
 
 
 //-----------------------------------------------------------------------------
+// SIMPLIFIED EASIER TO USE READ SCATTER MEMORY FUNCTIONALITY BELOW:
+// The flow is as following:
+// 1. Call VMMDLL_Scatter_Initialize to initialize handle.
+// 2. Populate memory ranges with multiple calls to VMMDLL_Scatter_Prepare
+//    and/or VMMDLL_Scatter_PrepareEx functions. The memory buffer given to
+//    VMMDLL_Scatter_PrepareEx will be populated with contents in step (3).
+// 3. Retrieve the memory by calling VMMDLL_Scatter_ExecuteRead function.
+// 4. If VMMDLL_Scatter_Prepare was used (i.e. not VMMDLL_Scatter_PrepareEx)
+//    then retrieve the memory read in (3).
+// 5. Clear the handle for reuse by calling VMMDLL_Scatter_Clear alternatively
+//    Close the handle to free resources with VMMDLL_Scatter_CloseHandle.
+// NB! buffers given to VMMDLL_Scatter_PrepareEx must not be free'd before
+//     handle is closed since it may be used internally.
+// NB! VMMDLL_Scatter_ExecuteRead may be called at a later point in time to
+//     update (re-read) previously read data.
+// NB! larger reads (up to 1 GB max) are supported but not recommended.
+//-----------------------------------------------------------------------------
+typedef HANDLE      VMMDLL_SCATTER_HANDLE;
+
+/*
+* Initialize a scatter handle which is used to call VMMDLL_Scatter_* functions.
+* CALLER CLOSE: VMMDLL_Scatter_CloseHandle(return)
+* -- dwPID - PID of target process, (DWORD)-1 to read physical memory.
+* -- flags = optional flags as given by VMMDLL_FLAG_*
+* -- return = handle to be used in VMMDLL_Scatter_* functions.
+*/
+EXPORTED_FUNCTION _Success_(return != NULL)
+VMMDLL_SCATTER_HANDLE VMMDLL_Scatter_Initialize(_In_ DWORD dwPID, _In_ DWORD flags);
+
+/*
+* Prepare (add) a memory range for reading. The memory may after a call to
+* VMMDLL_Scatter_ExecuteRead() be retrieved with VMMDLL_Scatter_Read().
+* -- hS
+* -- va = start address of the memory range to read.
+* -- cb = size of memory range to read.
+* -- return
+*/
+EXPORTED_FUNCTION _Success_(return)
+BOOL VMMDLL_Scatter_Prepare(_In_ VMMDLL_SCATTER_HANDLE hS, _In_ QWORD va, _In_ DWORD cb);
+
+/*
+* Prepare (add) a memory range for reading. The buffer pb and the read length
+* *pcbRead will be populated when VMMDLL_Scatter_ExecuteRead() is later called.
+* NB! the buffer pb must not be deallocated before VMMDLL_Scatter_CloseHandle()
+*     has been called since it's used internally by the scatter functionality!
+* -- hS
+* -- va = start address of the memory range to read.
+* -- cb = size of memory range to read.
+* -- pb = buffer to populate with read memory when calling VMMDLL_Scatter_ExecuteRead()
+* -- pcbRead = pointer to be populated with number of bytes successfully read.
+* -- return
+*/
+EXPORTED_FUNCTION _Success_(return)
+BOOL VMMDLL_Scatter_PrepareEx(_In_ VMMDLL_SCATTER_HANDLE hS, _In_ QWORD va, _In_ DWORD cb, _Out_writes_opt_(cb) PBYTE pb, _Out_opt_ PDWORD pcbRead);
+
+/*
+* Retrieve the memory ranges previously populated with calls to the
+* VMMDLL_Scatter_Prepare* functions.
+* -- hS
+* -- return
+*/
+EXPORTED_FUNCTION _Success_(return)
+BOOL VMMDLL_Scatter_ExecuteRead(_In_ VMMDLL_SCATTER_HANDLE hS);
+
+/*
+* Read out memory in previously populated ranges. This function should only be
+* called after the memory has been retrieved using VMMDLL_Scatter_ExecuteRead().
+* -- hS
+* -- va
+* -- cb
+* -- pb
+* -- pcbRead
+* -- return
+*/
+EXPORTED_FUNCTION _Success_(return)
+BOOL VMMDLL_Scatter_Read(_In_ VMMDLL_SCATTER_HANDLE hS, _In_ QWORD va, _In_ DWORD cb, _Out_writes_opt_(cb) PBYTE pb, _Out_opt_ PDWORD pcbRead);
+
+/*
+* Clear/Reset the handle for use in another subsequent read scatter operation.
+* -- hS = the scatter handle to clear for reuse.
+* -- dwPID
+* -- flags
+* -- return
+*/
+EXPORTED_FUNCTION _Success_(return)
+BOOL VMMDLL_Scatter_Clear(_In_ VMMDLL_SCATTER_HANDLE hS, _In_ DWORD dwPID, _In_ DWORD flags);
+
+/*
+* Close the scatter handle and free the resources it uses.
+* -- hS = the scatter handle to close.
+*/
+EXPORTED_FUNCTION
+VOID VMMDLL_Scatter_CloseHandle(_In_opt_ _Post_ptr_invalid_ VMMDLL_SCATTER_HANDLE hS);
+
+
+
+//-----------------------------------------------------------------------------
 // VMM PROCESS MAP FUNCTIONALITY BELOW:
 // Functionality for retrieving process related collections of items such as
 // page table map (PTE), virtual address descriptor map (VAD), loaded modules,
@@ -934,13 +1031,14 @@ typedef struct tdVMMDLL_MAP_POOLENTRY {
         CHAR szTag[5];
         struct {
             DWORD dwTag;
-            BYTE _Filler;
+            BYTE _ReservedZero;
             BYTE fAlloc;
             BYTE tpPool;    // VMMDLL_MAP_POOL_TYPE
             BYTE tpSS;      // VMMDLL_MAP_POOL_TYPE_SUBSEGMENT
         };
     };
     DWORD cb;
+    DWORD _Filler;
 } VMMDLL_MAP_POOLENTRY, *PVMMDLL_MAP_POOLENTRY;
 
 typedef struct tdVMMDLL_MAP_NETENTRY {

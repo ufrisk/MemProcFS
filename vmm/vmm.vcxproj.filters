@@ -347,6 +347,9 @@
     <ClCompile Include="ob\ob_counter.c">
       <Filter>Source Files\ob</Filter>
     </ClCompile>
+    <ClCompile Include="vmmdll_scatter.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="vmmdll.def">

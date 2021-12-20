@@ -5,17 +5,24 @@
 //
 #ifndef __OB_H__
 #define __OB_H__
-#include <windows.h>
 
+#ifdef _WIN32
+#include <Windows.h>
 typedef unsigned __int64                QWORD, *PQWORD;
+#else
+#include "../oscompatibility.h"
+#endif /* _WIN32 */
+
 #define OB_DEBUG
 #define OB_HEADER_MAGIC                 0x0c0efefe
 
 #define OB_TAG_CORE_CONTAINER           'ObCo'
 #define OB_TAG_CORE_COMPRESSED          'ObCp'
+#define OB_TAG_CORE_COUNTER             'ObCn'
 #define OB_TAG_CORE_DATA                'ObDa'
 #define OB_TAG_CORE_SET                 'ObSe'
 #define OB_TAG_CORE_MAP                 'ObMa'
+#define OB_TAG_CORE_MEMFILE             'ObMF'
 #define OB_TAG_CORE_CACHEMAP            'ObMc'
 #define OB_TAG_CORE_STRMAP              'ObMs'
 
@@ -39,17 +46,25 @@ typedef unsigned __int64                QWORD, *PQWORD;
 
 typedef struct tdOB {
     // internal object manager functionality below: (= do not use unless absolutely necessary)
-    DWORD _magic;                        // magic value - OB_HEADER_MAGIC
+    DWORD _magic;                           // magic value - OB_HEADER_MAGIC
     union {
-        DWORD _tag;                      // tag - 2 chars, no null terminator
+        DWORD _tag;                         // tag - 2 chars, no null terminator
         CHAR _tagCh[4];
     };
-    VOID(*_pfnRef_0)(_In_ PVOID pOb);    // callback - object specific cleanup before free
-    VOID(*_pfnRef_1)(_In_ PVOID pOb);    // callback - when object reach refcount 1 (not initial)
-    DWORD _count;                        // reference count
+    union {
+        VOID(*_pfnRef_0)(_In_ PVOID pOb);   // callback - object specific cleanup before free
+        QWORD _Filler1;
+    };
+    union {
+        VOID(*_pfnRef_1)(_In_ PVOID pOb);   // callback - when object reach refcount 1 (not initial)
+        QWORD _Filler2;
+    };
+    DWORD _count;                           // reference count
     // external object manager functionality below: (= ok to use)
     DWORD cbData;
 } OB, *POB;
+
+typedef VOID(*OB_CLEANUP_CB)(_In_ PVOID pOb);
 
 /*
 * Allocate a new object manager memory object.
@@ -62,14 +77,15 @@ typedef struct tdOB {
 * -- pfnRef_1 = optional callback for when object reach refcount = 1 at DECREF.
 * -- return = allocated object on success, with refcount = 1, - NULL on fail.
 */
-PVOID Ob_Alloc(_In_ DWORD tag, _In_ UINT uFlags, _In_ SIZE_T uBytes, _In_opt_ VOID(*pfnRef_0)(_In_ PVOID pOb), _In_opt_ VOID(*pfnRef_1)(_In_ PVOID pOb));
+PVOID Ob_Alloc(_In_ DWORD tag, _In_ UINT uFlags, _In_ SIZE_T uBytes, _In_opt_ OB_CLEANUP_CB pfnRef_0, _In_opt_ OB_CLEANUP_CB pfnRef_1);
 
 /*
 * Increase the reference count of a object by one.
 * -- pOb
 * -- return
 */
-PVOID Ob_INCREF(_In_opt_ PVOID pOb);
+PVOID Ob_XINCREF(_In_opt_ PVOID pOb);
+#define Ob_INCREF(pOb)          (Ob_XINCREF((PVOID)pOb))
 
 /*
 * Decrease the reference count of an object manager object by one.
@@ -78,7 +94,8 @@ PVOID Ob_INCREF(_In_opt_ PVOID pOb);
 * -- pOb
 * -- return = pObIn if pObIn is valid and refcount > 0 after decref.
 */
-PVOID Ob_DECREF(_In_opt_ PVOID pOb);
+PVOID Ob_XDECREF(_In_opt_ PVOID pOb);
+#define Ob_DECREF(pOb)          (Ob_XDECREF((PVOID)pOb))
 
 /*
 * Decrease the reference count of a object manager object. If the reference
@@ -86,13 +103,8 @@ PVOID Ob_DECREF(_In_opt_ PVOID pOb);
 * Also set the incoming pointer to NULL.
 * -- ppOb
 */
-inline VOID Ob_DECREF_NULL(_In_opt_ PVOID *ppOb)
-{
-    if(ppOb) {
-        Ob_DECREF(*ppOb);
-        *ppOb = NULL;
-    }
-}
+VOID Ob_XDECREF_NULL(_In_opt_ PVOID *ppOb);
+#define Ob_DECREF_NULL(pOb)     (Ob_XDECREF_NULL((PVOID*)pOb))
 
 /*
 * Checks if pObIn is a valid object manager object with the specified tag.
@@ -112,10 +124,10 @@ BOOL Ob_VALID_TAG(_In_ PVOID pObIn, _In_ DWORD tag);
 typedef struct tdOB_DATA {
     OB ObHdr;
     union {
-        BYTE pb[];
-        CHAR sz[];
-        DWORD pdw[];
-        QWORD pqw[];
+        BYTE pb[0];
+        CHAR sz[0];
+        DWORD pdw[0];
+        QWORD pqw[0];
     };
 } OB_DATA, *POB_DATA;
 
@@ -280,25 +292,6 @@ BOOL ObSet_Remove(_In_opt_ POB_SET pvs, _In_ QWORD value);
 VOID ObSet_Clear(_In_opt_ POB_SET pvs);
 
 /*
-* Save the contents of an ObSet to a disk file.
-* The resulting disk file may be read with ObSet_FileLoad().
-* -- pvs
-* -- wszFileName = save file to create.
-* -- return
-*/
-_Success_(return)
-BOOL ObSet_FileSave(_In_opt_ POB_SET pvs, _In_ LPWSTR wszFileName);
-
-/*
-* Load the contents of an ObSet disk file into the supplied set.
-* -- pvs
-* -- wszFileName = file previously saved by ObSet_FileSave().
-* -- return
-*/
-_Success_(return)
-BOOL ObSet_FileLoad(_In_opt_ POB_SET pvs, _In_ LPWSTR wszFileName);
-
-/*
 * Remove the "last" value in a way that is safe for concurrent iterations of
 * values in the set.
 * -- pvs
@@ -367,7 +360,7 @@ typedef struct tdOB_MAP *POB_MAP;
 /*
 * Create a new map. A map (ObMap) provides atomic map operations and ways
 * to optionally map key values to values, pointers or object manager objects.
-* The ObSet is an object manager object and must be DECREF'ed when required.
+* The ObMap is an object manager object and must be DECREF'ed when required.
 * CALLER DECREF: return
 * -- flags = defined by OB_MAP_FLAGS_*
 * -- return
@@ -677,13 +670,13 @@ PVOID ObCacheMap_RemoveByKey(_In_opt_ POB_CACHEMAP pcm, _In_ QWORD qwKey);
 
 // ----------------------------------------------------------------------------
 // STRMAP FUNCTIONALITY BELOW:
-//
-// The strmap is created and populated with strings (ascii and wide-char)
+// 
+// The strmap is created and populated with strings (utf-8, ascii and wide-char)
 // in an optimal way removing duplicates. Upon finalization the string map
 // results in a multi-string and an update of string references will happen.
 //
 // References to the strings will only be valid after a successful call to
-// finalize_DECREF_NULL().
+// FinalizeAlloc_DECREF_NULL() or FinalizeBuffer()
 //
 // The strmap is only meant to be an interim object to be used for creation
 // of multi-string values and should not be kept as a long-lived object.
@@ -694,61 +687,118 @@ PVOID ObCacheMap_RemoveByKey(_In_opt_ POB_CACHEMAP pcm, _In_ QWORD qwKey);
 typedef struct tdOB_STRMAP *POB_STRMAP;
 
 // Strings in OB_STRMAP are considered to be CASE SENSITIVE.
-#define OB_STRMAP_FLAGS_CASE_SENSITIVE          0x00
+#define OB_STRMAP_FLAGS_CASE_SENSITIVE         0x00
 
 // Strings in OB_STRMAP are considered to be CASE INSENSITIVE. The case is
 // preserved for 1st unique entry added; subsequent entries will use 1st entry.
-#define OB_STRMAP_FLAGS_CASE_INSENSITIVE        0x01
+#define OB_STRMAP_FLAGS_CASE_INSENSITIVE       0x01
 
 // Assign temporary string values to destinations at time of push.
 // NB! values will become invalid after OB_STRMAP DECREF/FINALIZE!
-#define OB_STRMAP_FLAGS_STR_ASSIGN_TEMPORARY    0x02
+#define OB_STRMAP_FLAGS_STR_ASSIGN_TEMPORARY   0x02
+
+// Assign offset in number of bytes to string pointers at finalize stage
+// instead of pointers. Offset is counted from base of multi-string.
+// incompatible with OB_STRMAP_FLAGS_STR_ASSIGN_TEMPORARY option.
+#define OB_STRMAP_FLAGS_STR_ASSIGN_OFFSET      0x04
+
+//
+// STRMAP BELOW:
+//
 
 /*
-* Create a new strmap. A strmap (ObStrMap) provides an easy way to add new
-* strings to a multi-string in an efficient way. The ObStrMap is not meant
-* to be a long-term object - it's supposed to be finalized and decommissioned
-* by calling ObStrMap_Finalize_DECREF_NULL().
-* The ObStrMap is an object manager object and must be DECREF'ed when required.
-* CALLER DECREF: return
-* -- flags = defined by OB_STRMAP_FLAGS_*
-* -- return
+* Push / Insert into the ObStrMap.
+* -- psm
+* -- usz
+* -- return = TRUE on insertion, FALSE otherwise.
 */
-POB_STRMAP ObStrMap_New(_In_ QWORD flags);
+_Success_(return)
+BOOL ObStrMap_PushU(_In_opt_ POB_STRMAP psm, _In_opt_ LPSTR usz);
 
 /*
 * Push / Insert into the ObStrMap.
 * -- psm
 * -- sz
-* -- pwszDst
-* -- pcchDst
 * -- return = TRUE on insertion, FALSE otherwise.
 */
 _Success_(return)
-BOOL ObStrMap_PushA(_In_opt_ POB_STRMAP psm, _In_opt_ LPSTR sz, _Out_opt_ LPWSTR *pwszDst, _Out_opt_ PDWORD pcchDst);
+BOOL ObStrMap_PushA(_In_opt_ POB_STRMAP psm, _In_opt_ LPSTR sz);
+
+/*
+* Push / Insert into the ObStrMap.
+* -- psm
+* -- wsz
+* -- return = TRUE on insertion, FALSE otherwise.
+*/
+_Success_(return)
+BOOL ObStrMap_PushW(_In_opt_ POB_STRMAP psm, _In_opt_ LPWSTR wsz);
+
+/*
+* Push / Insert into the ObStrMap.
+* -- psm
+* -- usz
+* -- puszDst
+* -- pcbuDst
+* -- return = TRUE on insertion, FALSE otherwise.
+*/
+_Success_(return)
+BOOL ObStrMap_PushPtrUU(_In_opt_ POB_STRMAP psm, _In_opt_ LPSTR usz, _Out_opt_ LPSTR *puszDst, _Out_opt_ PDWORD pcbuDst);
+
+/*
+* Push / Insert into the ObStrMap.
+* -- psm
+* -- sz
+* -- puszDst
+* -- pcbuDst
+* -- return = TRUE on insertion, FALSE otherwise.
+*/
+_Success_(return)
+BOOL ObStrMap_PushPtrAU(_In_opt_ POB_STRMAP psm, _In_opt_ LPSTR sz, _Out_opt_ LPSTR *puszDst, _Out_opt_ PDWORD pcbuDst);
+
+/*
+* Push / Insert into the ObStrMap.
+* -- psm
+* -- wsz
+* -- puszDst
+* -- pcbuDst
+* -- return = TRUE on insertion, FALSE otherwise.
+*/
+_Success_(return)
+BOOL ObStrMap_PushPtrWU(_In_opt_ POB_STRMAP psm, _In_opt_ LPWSTR wsz, _Out_opt_ LPSTR *puszDst, _Out_opt_ PDWORD pcbuDst);
+
+/*
+* Push / Insert into the ObStrMap.
+* -- psm
+* -- usz
+* -- pwszDst
+* -- pcbwDst
+* -- return = TRUE on insertion, FALSE otherwise.
+*/
+_Success_(return)
+BOOL ObStrMap_PushPtrUW(_In_opt_ POB_STRMAP psm, _In_opt_ LPSTR usz, _Out_opt_ LPWSTR *pwszDst, _Out_opt_ PDWORD pcbwDst);
 
 /*
 * Push / Insert into the ObStrMap.
 * -- psm
 * -- wsz
 * -- pwszDst
-* -- pcchDst
+* -- pcbwDst
 * -- return = TRUE on insertion, FALSE otherwise.
 */
 _Success_(return)
-BOOL ObStrMap_Push(_In_opt_ POB_STRMAP psm, _In_opt_ LPWSTR wsz, _Out_opt_ LPWSTR *pwszDst, _Out_opt_ PDWORD pcchDst);
+BOOL ObStrMap_PushPtrWW(_In_opt_ POB_STRMAP psm, _In_opt_ LPWSTR wsz, _Out_opt_ LPWSTR *pwszDst, _Out_opt_ PDWORD pcbwDst);
 
 /*
-* Push / Insert max 2048 characters into ObStrMap using a swprintf_s syntax.
+* Push / Insert into the ObStrMap. Result pointer is dependant on fWideChar flag.
 * -- psm
-* -- pwszDst
-* -- pcchDst
-* -- wszFormat
-* -- ...
+* -- usz
+* -- puszDst = ptr to utf-8 _OR_ wide string depending on fWideChar
+* -- pcbuDst = # bytes required to hold *puszDst
+* -- fWideChar
 * -- return = TRUE on insertion, FALSE otherwise.
 */
 _Success_(return)
-BOOL ObStrMap_Push_swprintf_s(_In_opt_ POB_STRMAP psm, _Out_opt_ LPWSTR *pwszDst, _Out_opt_ PDWORD pcchDst, _In_z_ _Printf_format_string_ wchar_t const *const wszFormat, ...);
+BOOL ObStrMap_PushPtrUXUW(_In_opt_ POB_STRMAP psm, _In_opt_ LPSTR usz, _Out_opt_ LPSTR *puszDst, _Out_opt_ PDWORD pcbuDst, BOOL fWideChar);
 
 /*
 * Push a UNICODE_OBJECT Pointer for delayed resolve at finalize stage.
@@ -756,12 +806,12 @@ BOOL ObStrMap_Push_swprintf_s(_In_opt_ POB_STRMAP psm, _Out_opt_ LPWSTR *pwszDst
 * -- psm
 * -- f32 = 32-bit/64-bit unicode object.
 * -- vaUnicodeObject
-* -- pwszDst
-* -- pcchDst
-* -- return = TRUE on initial validation success (NB! no guarantee for success).
+* -- puszDst
+* -- pcbuDst
+* -- return = TRUE on validation success (NB! no guarantee for final success).
 */
 _Success_(return)
-BOOL ObStrMap_Push_UnicodeObject(_In_opt_ POB_STRMAP psm, _In_ BOOL f32, _In_ QWORD vaUnicodeObject, _Out_opt_ LPWSTR *pwszDst, _Out_opt_ PDWORD pcchDst);
+BOOL ObStrMap_Push_UnicodeObject(_In_opt_ POB_STRMAP psm, _In_ BOOL f32, _In_ QWORD vaUnicodeObject, _Out_opt_ LPSTR *puszDst, _Out_opt_ PDWORD pcbuDst);
 
 /*
 * Push a UNICODE_OBJECT Buffer for delayed resolve at finalize stage.
@@ -769,12 +819,25 @@ BOOL ObStrMap_Push_UnicodeObject(_In_opt_ POB_STRMAP psm, _In_ BOOL f32, _In_ QW
 * -- psm
 * -- cbUnicodeBuffer.
 * -- vaUnicodeBuffer
-* -- pwszDst
-* -- pcchDst
-* -- return = TRUE on initial validation success (NB! no guarantee for success).
+* -- puszDst
+* -- pcbuDst
+* -- return = TRUE on validation success (NB! no guarantee for final success).
 */
 _Success_(return)
-BOOL ObStrMap_Push_UnicodeBuffer(_In_opt_ POB_STRMAP psm, _In_ WORD cbUnicodeBuffer, _In_ QWORD vaUnicodeBuffer, _Out_opt_ LPWSTR *pwszDst, _Out_opt_ PDWORD pcchDst);
+BOOL ObStrMap_Push_UnicodeBuffer(_In_opt_ POB_STRMAP psm, _In_ WORD cbUnicodeBuffer, _In_ QWORD vaUnicodeBuffer, _Out_opt_ LPSTR *puszDst, _Out_opt_ PDWORD pcbuDst);
+
+/*
+* Push / Insert max 2048 char-bytes into ObStrMap using a snprintf_s syntax.
+* All szFormat and all string-arguments are assumed to be utf-8 encoded.
+* -- psm
+* -- puszDst
+* -- pcbuDst
+* -- uszFormat
+* -- ...
+* -- return = TRUE on insertion, FALSE otherwise.
+*/
+_Success_(return)
+BOOL ObStrMap_PushUU_snprintf_s(_In_opt_ POB_STRMAP psm, _Out_opt_ LPSTR *puszDst, _Out_opt_ PDWORD pcbuDst, _In_z_ _Printf_format_string_ char const *const uszFormat, ...);
 
 /*
 * Finalize the ObStrMap. Create and assign the MultiStr and assign each
@@ -783,20 +846,88 @@ BOOL ObStrMap_Push_UnicodeBuffer(_In_opt_ POB_STRMAP psm, _In_ WORD cbUnicodeBuf
 * Also decrease the reference count of the object. If the reference count
 * reaches zero the object will be cleaned up.
 * Also set the incoming pointer to NULL.
-* CALLER LOCALFREE: *pwszMultiStr
-* -- ppsm
-* -- pwszMultiStr
+* CALLER LOCALFREE: *ppbMultiStr
+* -- ppObStrMap
+* -- ppbMultiStr
 * -- pcbMultiStr
 * -- return
 */
 _Success_(return)
-BOOL ObStrMap_Finalize_DECREF_NULL(_In_opt_ PVOID *ppsm, _Out_ LPWSTR *pwszMultiStr, _Out_ PDWORD pcbMultiStr);
+BOOL ObStrMap_FinalizeAllocU_DECREF_NULL(_In_opt_ POB_STRMAP *ppObStrMap, _Out_ PBYTE *ppbMultiStr, _Out_ PDWORD pcbMultiStr);
+
+/*
+* Finalize the ObStrMap. Create and assign the MultiStr and assign each
+* previously added string reference to a pointer location within the MultiStr.
+* ---
+* Also decrease the reference count of the object. If the reference count
+* reaches zero the object will be cleaned up.
+* Also set the incoming pointer to NULL.
+* CALLER LOCALFREE: *ppbMultiStr
+* -- ppObStrMap
+* -- ppbMultiStr
+* -- pcbMultiStr
+* -- return
+*/
+_Success_(return)
+BOOL ObStrMap_FinalizeAllocW_DECREF_NULL(_In_opt_ POB_STRMAP *ppObStrMap, _Out_ PBYTE *ppbMultiStr, _Out_ PDWORD pcbMultiStr);
+
+/*
+* Finalize the ObStrMap. Write the MultiStr into the supplied buffer and assign
+* previously added string reference to a pointer location within the MultiStr.
+* -- psm
+* -- cbuMultiStr
+* -- pbMultiStr = NULL for size query
+* -- pcbMultiStr
+* -- return
+*/
+_Success_(return)
+BOOL ObStrMap_FinalizeBufferU(_In_opt_ POB_STRMAP psm, _In_ DWORD cbMultiStr, _Out_writes_bytes_opt_(cbMultiStr) PBYTE pbMultiStr, _Out_ PDWORD pcbMultiStr);
+
+/*
+* Finalize the ObStrMap. Write the MultiStr into the supplied buffer and assign
+* previously added string reference to a pointer location within the MultiStr.
+* -- psm
+* -- cbMultiStr
+* -- pbMultiStr = NULL for size query
+* -- pcbMultiStr
+* -- return
+*/
+_Success_(return)
+BOOL ObStrMap_FinalizeBufferW(_In_opt_ POB_STRMAP psm, _In_ DWORD cbMultiStr, _Out_writes_bytes_opt_(cbMultiStr) PBYTE pbMultiStr, _Out_ PDWORD pcbMultiStr);
+
+/*
+* Finalize the ObStrMap as either UTF-8 or Wide. Write the MultiStr into the
+* supplied buffer and assign previously added string reference to a pointer
+* location within the MultiStr.
+* -- psm
+* -- cbMultiStr
+* -- pbMultiStr = NULL for size query
+* -- pcbMultiStr
+* -- fWideChar
+* -- return
+*/
+_Success_(return)
+BOOL ObStrMap_FinalizeBufferXUW(_In_opt_ POB_STRMAP psm, _In_ DWORD cbMultiStr, _Out_writes_bytes_opt_(cbMultiStr) PBYTE pbMultiStr, _Out_ PDWORD pcbMultiStr, _In_ BOOL fWideChar);
+
+/*
+* Create a new strmap. A strmap (ObStrMap) provides an easy way to add new
+* strings to a multi-string in an efficient way. The ObStrMap is not meant
+* to be a long-term object - it's supposed to be finalized and possibly
+* decommissioned by calling any of the ObStrMap_Finalize*() functions.
+* The ObStrMap is an object manager object and must be DECREF'ed when required.
+* CALLER DECREF: return
+* -- flags
+* -- return
+*/
+_Success_(return != NULL)
+POB_STRMAP ObStrMap_New(_In_ QWORD flags);
 
 
 
 // ----------------------------------------------------------------------------
 // COMPRESSED DATA OBJECT FUNCTIONALITY BELOW:
 //
+// The ObCompressed is an object manager object and must be DECREF'ed when required.
 // ----------------------------------------------------------------------------
 
 typedef struct tdOB_COMPRESSED *POB_COMPRESSED;
@@ -804,7 +935,6 @@ typedef struct tdOB_COMPRESSED *POB_COMPRESSED;
 /*
 * Create a new compressed buffer object from a byte buffer.
 * CALLER DECREF: return
-* -- pcm
 * -- pb
 * -- cb
 * -- return
@@ -815,7 +945,6 @@ POB_COMPRESSED ObCompressed_NewFromByte(_In_reads_(cb) PBYTE pb, _In_ DWORD cb);
 /*
 * Create a new compressed buffer object from a zero terminated string.
 * CALLER DECREF: return
-* -- pcm
 * -- sz
 * -- return
 */
@@ -837,5 +966,211 @@ DWORD ObCompress_Size(_In_opt_ POB_COMPRESSED pdc);
 */
 _Success_(return != NULL)
 POB_DATA ObCompressed_GetData(_In_opt_ POB_COMPRESSED pdc);
+
+
+
+// ----------------------------------------------------------------------------
+// MEMORY BACKED FILE FUNCTIONALITY BELOW:
+// 
+// The memfile is a growing memory backed file that may be read and appended.
+// The memfile will be automatically (de)compressed when it's required for
+// optimal performance. This object is typically implementing a generated
+// output file - such as some forensic JSON data output.
+//
+// The ObMemFile is an object manager object and must be DECREF'ed when required.
+// ----------------------------------------------------------------------------
+
+typedef struct tdOB_MEMFILE *POB_MEMFILE;
+
+/*
+* Create a new empty memory file.
+* CALLER DECREF: return
+* -- return
+*/
+_Success_(return != NULL)
+POB_MEMFILE ObMemFile_New();
+
+/*
+* Retrieve byte count of the ObMemFile.
+* -- pmf
+* -- return
+*/
+QWORD ObMemFile_Size(_In_opt_ POB_MEMFILE pmf);
+
+/*
+* Append binary data to the ObMemFile.
+* -- pmf
+* -- pb
+* -- cb
+* -- return
+*/
+_Success_(return)
+BOOL ObMemFile_Append(_In_opt_ POB_MEMFILE pmf, _In_reads_(cb) PBYTE pb, _In_ QWORD cb);
+
+/*
+* Append a string (ansi or utf-8) to the ObMemFile.
+* -- pmf
+* -- sz
+* -- return
+*/
+_Success_(return)
+BOOL ObMemFile_AppendString(_In_opt_ POB_MEMFILE pmf, _In_opt_z_ LPSTR sz);
+
+/*
+* Read data 'as file' from the ObMemFile.
+* -- pmf
+* -- pb
+* -- cb
+* -- pcbRad
+* -- cbOffset
+* -- return
+*/
+_Success_(return == 0)
+NTSTATUS ObMemFile_ReadFile(_In_opt_ POB_MEMFILE pmf, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
+
+
+
+// ----------------------------------------------------------------------------
+// COUNTER FUNCTIONALITY BELOW
+// 
+// The counter is a auto-growing object that allows counting an unknown amount
+// of objects. Counting operations are thread-safe and atomic.
+// 
+// When counting is completed the counted objects may be retrieved sorted.
+//
+// The ObCounter is an object manager object and must be DECREF'ed when required.
+// ----------------------------------------------------------------------------
+
+typedef struct tdOB_COUNTER *POB_COUNTER;
+
+typedef struct tdOB_COUNTER_ENTRY {
+    QWORD k;
+    QWORD v;
+} OB_COUNTER_ENTRY, *POB_COUNTER_ENTRY, **PPOB_COUNTER_ENTRY;
+
+#define OB_COUNTER_FLAGS_SHOW_ZERO      0x01
+#define OB_COUNTER_FLAGS_ALLOW_NEGATIVE 0x02
+
+/*
+* Create a new counter. A counter (ObCounter) provides atomic counting operations.
+* The ObCounter is an object manager object and must be DECREF'ed when required.
+* CALLER DECREF: return
+* -- flags = defined by OB_COUNTER_FLAGS_*
+* -- return
+*/
+POB_COUNTER ObCounter_New(_In_ QWORD flags);
+
+/*
+* Retrieve the number of counted keys the ObCounter.
+* -- pc
+* -- return
+*/
+DWORD ObCounter_Size(_In_opt_ POB_COUNTER pc);
+
+/*
+* Retrieve the total count of the ObCounter.
+* NB! The resulting count may overflow on large counts!
+* -- pc
+* -- return
+*/
+QWORD ObCounter_CountAll(_In_opt_ POB_COUNTER pc);
+
+/*
+* Check if the counted key exists in the ObCounter.
+* -- pc
+* -- k
+* -- return
+*/
+BOOL ObCounter_Exists(_In_opt_ POB_COUNTER pc, _In_ QWORD k);
+
+/*
+* Get the count of a specific key.
+* -- pc
+* -- k
+* -- return = the counted value after the action, zero on fail.
+*/
+QWORD ObCounter_Get(_In_opt_ POB_COUNTER pc, _In_ QWORD k);
+
+/*
+* Remove a specific key.
+* -- pc
+* -- k
+* -- return = the count of the removed key, zero in fail.
+*/
+QWORD ObCounter_Del(_In_opt_ POB_COUNTER pc, _In_ QWORD k);
+
+/*
+* Set the count of a specific key.
+* -- pc
+* -- k
+* -- v
+* -- return = the counted value after the action, zero on fail.
+*/
+QWORD ObCounter_Set(_In_opt_ POB_COUNTER pc, _In_ QWORD k, _In_ QWORD v);
+
+/*
+* Add the count v of a specific key.
+* -- pc
+* -- k
+* -- v
+* -- return = the counted value after the action, zero on fail.
+*/
+QWORD ObCounter_Add(_In_opt_ POB_COUNTER pc, _In_ QWORD k, _In_ QWORD v);
+
+/*
+* Increment the count of a specific key with 1.
+* -- pc
+* -- k
+* -- return = the counted value after the action, zero on fail.
+*/
+QWORD ObCounter_Inc(_In_opt_ POB_COUNTER pc, _In_ QWORD k);
+
+/*
+* Subtract the count v of a specific key.
+* -- pc
+* -- k
+* -- v
+* -- return = the counted value after the action, zero on fail.
+*/
+QWORD ObCounter_Sub(_In_opt_ POB_COUNTER pc, _In_ QWORD k, _In_ QWORD v);
+
+/*
+* Decrement the count of a specific key with 1.
+* -- pc
+* -- k
+* -- return = the counted value after the action, zero on fail.
+*/
+QWORD ObCounter_Dec(_In_opt_ POB_COUNTER pc, _In_ QWORD k);
+
+/*
+* Retrieve all counts in an unsorted table.
+* -- pc
+* -- cEntries
+* -- pEntries
+* -- return
+*/
+_Success_(return)
+BOOL ObCounter_GetAll(_In_opt_ POB_COUNTER pc, _In_ DWORD cEntries, _Out_writes_opt_(cEntries) POB_COUNTER_ENTRY pEntries);
+
+/*
+* Retrieve all counts in a sorted table.
+* -- pc
+* -- cEntries
+* -- pEntries
+* -- return
+*/
+_Success_(return)
+BOOL ObCounter_GetAllSortedByKey(_In_opt_ POB_COUNTER pc, _In_ DWORD cEntries, _Out_writes_opt_(cEntries) POB_COUNTER_ENTRY pEntries);
+
+/*
+* Retrieve all counts in a sorted table.
+* -- pc
+* -- cEntries
+* -- pEntries
+* -- return
+*/
+_Success_(return)
+BOOL ObCounter_GetAllSortedByCount(_In_opt_ POB_COUNTER pc, _In_ DWORD cEntries, _Out_writes_opt_(cEntries) POB_COUNTER_ENTRY pEntries);
+
 
 #endif /* __OB_H__ */

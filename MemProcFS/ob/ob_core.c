@@ -61,7 +61,7 @@ PVOID Ob_Alloc(_In_ DWORD tag, _In_ UINT uFlags, _In_ SIZE_T uBytes, _In_opt_ VO
 * -- pOb
 * -- return
 */
-PVOID Ob_INCREF(_In_opt_ PVOID pObIn)
+PVOID Ob_XINCREF(_In_opt_ PVOID pObIn)
 {
     POB pOb = (POB)pObIn;
     if(pOb) {
@@ -81,7 +81,7 @@ PVOID Ob_INCREF(_In_opt_ PVOID pObIn)
 * -- pObIn
 * -- return = pObIn if pObIn is valid and refcount > 0 after decref.
 */
-PVOID Ob_DECREF(_In_opt_ PVOID pObIn)
+PVOID Ob_XDECREF(_In_opt_ PVOID pObIn)
 {
     POB pOb = (POB)pObIn;
     DWORD c;
@@ -115,6 +115,20 @@ PVOID Ob_DECREF(_In_opt_ PVOID pObIn)
 }
 
 /*
+* Decrease the reference count of a object manager object. If the reference
+* count reaches zero the object will be cleaned up.
+* Also set the incoming pointer to NULL.
+* -- ppOb
+*/
+VOID Ob_XDECREF_NULL(_In_opt_ PVOID *ppOb)
+{
+    if(ppOb) {
+        Ob_DECREF(*ppOb);
+        *ppOb = NULL;
+    }
+}
+
+/*
 * Checks if pObIn is a valid object manager object with the specified tag.
 * -- pObIn
 * -- tag
@@ -139,7 +153,7 @@ _Success_(return != NULL)
 POB_DATA ObData_New(_In_ PBYTE pb, _In_ DWORD cb)
 {
     POB_DATA pObData = NULL;
-    if(pObData = Ob_Alloc(OB_TAG_CORE_DATA, 0, sizeof(OB) + cb, NULL, NULL)) {
+    if((pObData = Ob_Alloc(OB_TAG_CORE_DATA, 0, sizeof(OB) + cb, NULL, NULL))) {
         memcpy(pObData->pb, pb, cb);
     }
     return pObData;

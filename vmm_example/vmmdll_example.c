@@ -67,8 +67,8 @@ VOID LocalFree(HANDLE hMem)
 // Ensure only one is active below at one single time!
 // INITIALIZE_FROM_FILE contains file name to a raw memory dump.
 // ----------------------------------------------------------------------------
-//#define _INITIALIZE_FROM_FILE    "Z:\\x64\\WIN10-X64-1909-18363-1.core"
-#define _INITIALIZE_FROM_FILE    "/mnt/c/Dumps/WIN7-x64-SP1-1.pmem"
+#define _INITIALIZE_FROM_FILE    "Z:\\x64\\WIN10-X64-1909-18363-1.core"
+//#define _INITIALIZE_FROM_FILE    "/mnt/c/Dumps/WIN7-x64-SP1-1.pmem"
 //#define _INITIALIZE_FROM_FPGA
 
 // ----------------------------------------------------------------------------
@@ -220,6 +220,24 @@ int main(_In_ int argc, _In_ char* argv[])
         }
     }
 #endif /* _INITIALIZE_FROM_FPGA */
+    
+    // Retrieve PID of explorer.exe
+    // NB! if multiple explorer.exe exists only one will be returned by this
+    // specific function call. Please see .h file for additional information
+    // about how to retrieve the complete list of PIDs in the system by using
+    // the function PCILeech_VmmProcessListPIDs instead.
+    printf("------------------------------------------------------------\n");
+    printf("#04: Get PID from the first 'explorer.exe' process found.   \n");
+    ShowKeyPress();
+    printf("CALL:    VMMDLL_PidGetFromName\n");
+    result = VMMDLL_PidGetFromName("explorer.exe", &dwPID);
+    if(result) {
+        printf("SUCCESS: VMMDLL_PidGetFromName\n");
+        printf("         PID = %i\n", dwPID);
+    } else {
+        printf("FAIL:    VMMDLL_PidGetFromName\n");
+        return 1;
+    }
     
 
     // Read physical memory at physical address 0x1000 and display the first
@@ -631,7 +649,7 @@ int main(_In_ int argc, _In_ char* argv[])
         LocalFree(pThreadMap);
         pThreadMap = NULL;
     }
-#endif /* _WIN32 */
+#endif
 
 
     // HANDLES: Retrieve handle information about handles in the explorer.exe
@@ -1278,6 +1296,121 @@ int main(_In_ int argc, _In_ char* argv[])
             );
         }
     }
+
+
+    // Retrieve Pool Tag Map
+    printf("------------------------------------------------------------\n");
+    printf("#33: Retrieve Pool Tag Map                                  \n");
+    ShowKeyPress();
+    DWORD iPoolTagEntry = 0, iPoolEntry = 0;
+    DWORD cbPoolMap = 0;
+    PVMMDLL_MAP_POOL pPoolMap = NULL;
+    PVMMDLL_MAP_POOLENTRY pPoolEntry;
+    PVMMDLL_MAP_POOLENTRYTAG pPoolTag;
+    printf("CALL:    VMMDLL_Map_GetPool\n");
+    result = VMMDLL_Map_GetPool(NULL, &cbPoolMap);
+    if(!result) {
+        printf("FAIL:    VMMDLL_Map_GetPool #1.\n");
+        return 1;
+    }
+    pPoolMap = LocalAlloc(LMEM_ZEROINIT, cbPoolMap);
+    if(!pPoolMap) {
+        printf("FAIL:    OutOfMemory\n");
+        return 1;
+    }
+    result = VMMDLL_Map_GetPool(pPoolMap, &cbPoolMap);
+    if(!result) {
+        printf("FAIL:    VMMDLL_Map_GetPool #2\n");
+        return 1;
+    }
+    if(pPoolMap->dwVersion != VMMDLL_MAP_POOL_VERSION) {
+        printf("FAIL:    VMMDLL_Map_GetPool - BAD VERSION\n");
+        return 1;
+    }
+    if(result) {
+        // print all pool tag addresses consisting of TcpE - TCP Endpoint
+        // NB! The retrieval of the pool tag consiting of the first TcpE
+        // entry is very inefficient (scanning approach) for simplicity.
+        // For better performance a BTREE approach in the by-tag sorted
+        // tag table would be better.
+        printf("Scanning for 'TcpE' tag...\n");
+        for(iPoolTagEntry = 0; iPoolTagEntry < pPoolMap->cTag; iPoolTagEntry++) {
+            if(pPoolMap->pTag[iPoolTagEntry].dwTag == 0x45706354) {     // 0x45706354 == EpcT (TcpE in reverse)
+                pPoolTag = &pPoolMap->pTag[iPoolTagEntry];
+                for(i = 0; i < pPoolTag->cEntry; i++) {
+                    iPoolEntry = pPoolMap->piTag2Map[pPoolTag->iTag2Map + i];
+                    pPoolEntry = &pPoolMap->pMap[iPoolEntry];
+                    printf("Pool Entry TcpE va = %llx size = %4x\n", pPoolEntry->va, pPoolEntry->cb);
+                }
+                break;
+            }
+        }
+        printf("SUCCESS: VMMDLL_Map_GetPool\n");
+    }
+    LocalFree(pPoolMap);
+    pPoolMap = NULL;
+
+
+    // Read virtual memory from multiple locations in one efficient sweep
+    // using the VMMDLL_Scatter_* API functions.
+    printf("------------------------------------------------------------\n");
+    printf("#34: Read Scatter from 3+1 addresses in one efficient go.   \n");
+    ShowKeyPress();
+    VMMDLL_SCATTER_HANDLE hS = NULL;
+    QWORD vaNt, vaHal, vaCi, vaBeep;
+    BYTE pbNt[0x400];
+    DWORD cbNt = 0, cbCi = 0;
+    vaNt = VMMDLL_ProcessGetModuleBaseU(4, "ntoskrnl.exe");
+    vaHal = VMMDLL_ProcessGetModuleBaseU(4, "hal.dll");
+    vaCi = VMMDLL_ProcessGetModuleBaseU(4, "CI.DLL");
+    vaBeep = VMMDLL_ProcessGetModuleBaseU(4, "beep.sys");
+    // 34.1: CREATE SCATTER HANDLE
+    printf("CALL:    VMMDLL_Scatter_Initialize\n");
+    hS = VMMDLL_Scatter_Initialize(4, VMMDLL_FLAG_NOCACHE | VMMDLL_FLAG_NOPAGING_IO);
+    if(result) {
+        printf("SUCCESS: VMMDLL_Scatter_Initialize\n");
+    } else {
+        printf("FAIL:    VMMDLL_Scatter_Initialize\n");
+        return 1;
+    }
+    // 34.2: PREPARE / REGISTER MEMORY RANGES TO READ
+    printf("CALL:    VMMDLL_Scatter_Prepare\n");
+    result = VMMDLL_Scatter_PrepareEx(hS, vaNt, 0x400, pbNt, &cbNt);
+    printf("%s:    VMMDLL_Scatter_PrepareEx\n", (result ? "SUCCESS" : "FAIL"));
+    result = VMMDLL_Scatter_Prepare(hS, vaHal, 0x400);
+    printf("%s:    VMMDLL_Scatter_Prepare\n", (result ? "SUCCESS" : "FAIL"));
+    result = VMMDLL_Scatter_Prepare(hS, vaCi, 0x2000);
+    printf("%s:    VMMDLL_Scatter_Prepare\n", (result ? "SUCCESS" : "FAIL"));
+    result = VMMDLL_Scatter_Prepare(hS, vaBeep + 0xff0, 0x3000);
+    printf("%s:    VMMDLL_Scatter_Prepare\n", (result ? "SUCCESS" : "FAIL"));
+    //34.3: READ MEMORY FROM BACKEND IN AN EFFICIENT SWEEP
+    printf("CALL:    VMMDLL_Scatter_ExecuteRead\n");
+    result = VMMDLL_Scatter_ExecuteRead(hS);
+    if(result) {
+        printf("SUCCESS: VMMDLL_Scatter_ExecuteRead\n");
+    } else {
+        printf("FAIL:    VMMDLL_Scatter_ExecuteRead\n");
+        return 1;
+    }
+    // 34.4: Nt which was provided as a buffer to VMMDLL_Scatter_PrepareEx call
+    //       should now be populated!
+    if(cbNt) {
+        printf("NTOSKRNL.EXE HEADER READ VIA VMMDLL_Scatter_PrepareEx / VMMDLL_Scatter_ExecuteRead:\n");
+        PrintHexAscii(pbNt, cbNt);
+    }
+    // 34.5: try read memory from other ranges as well.
+    printf("CALL:    VMMDLL_Scatter_Read\n");
+    result = VMMDLL_Scatter_Read(hS, vaCi, 0x400, pbPage1, &cbCi);
+    if(result) {
+        printf("SUCCESS: VMMDLL_Scatter_Read\n");
+        PrintHexAscii(pbPage1, cbCi);
+    } else {
+        printf("FAIL:    VMMDLL_Scatter_Read\n");
+    }
+    // 34.5: Close and clean-up
+    printf("CALL:    VMMDLL_Scatter_CloseHandle\n");
+    VMMDLL_Scatter_CloseHandle(hS);
+    hS = NULL;
 
 
     // Finish everything and exit!

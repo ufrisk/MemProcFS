@@ -264,41 +264,44 @@ typedef struct tdVMMWINPOOL_CTX_POOLSTORE {
     VMM_MAP_POOLENTRY e[VMMWINPOOL_CTX_POOLSTORE_MAX];
 } VMMWINPOOL_CTX_POOLSTORE, *PVMMWINPOOL_CTX_POOLSTORE;
 
+/*
+* Push an entry onto the pool store lists.
+* NB! va, pbPoolBlock, cbPoolEntry should _INCLUDE_ pool header!
+*/
 VOID VmmWinPool_AllPool_PushItem(
     _In_ PVMMWINPOOL_CTX_POOLSTORE *ppStore,
     _In_ VMM_MAP_POOL_TP tp,
     _In_ VMM_MAP_POOL_TPSS tpSS,
     _In_ QWORD va,
-    _In_ PBYTE pbPoolEntry,
-    _In_ DWORD cbPoolEntry,
+    _In_ PBYTE pbPoolBlock,
+    _In_ DWORD cbPoolBlock,
     _In_ BOOL fAlloc
 ) {
     PVMMWINPOOL_CTX_POOLSTORE pStore, pStoreNext;
     PVMM_MAP_POOLENTRY pe;
-    DWORD i, cbHdr = 0, dwTag = 0;
+    DWORD i, cbHdr = 0, cbPoolEntryHdr, dwTag = 0;
     CHAR c;
     BOOL fBadTag = FALSE, f32 = ctxVmm->f32;
     DWORD cbBigPoolThreshold = f32 ? 0xff0 : 0xfe0;
-    if(cbPoolEntry < cbBigPoolThreshold) {
+    if(cbPoolBlock < cbBigPoolThreshold) {
         cbHdr = f32 ? 8 : 16;
-        if(cbPoolEntry < cbHdr) { return; }
-        if(0 == *(PQWORD)pbPoolEntry) { return; }
+        if(cbPoolBlock < cbHdr) { return; }
+        if(0 == *(PQWORD)pbPoolBlock) { return; }
         // sanity check: pool header len != alloc len
-        if(f32) {
-            if(cbPoolEntry != 8 * (*(PWORD)(pbPoolEntry + 2) & 0x1ff)) { return; }
-        } else {
-            if(cbPoolEntry != 16 * pbPoolEntry[2]) { return; }
+        cbPoolEntryHdr = f32 ? (8 * (*(PWORD)(pbPoolBlock + 2) & 0x1ff)) : (16 * pbPoolBlock[2]);
+        if(cbPoolBlock != cbPoolEntryHdr) {
+            if((tp != VMM_MAP_POOL_TPSS_VS) || (cbPoolBlock != cbPoolEntryHdr + cbHdr)) { return; }
         }
         // sanity check: bad tag _and_ not allocated
         for(i = 4; i < 8; i++) {
-            c = pbPoolEntry[i];
+            c = pbPoolBlock[i];
             if(c < 32 || c > 126) { fBadTag = TRUE; }
         }
         if(fBadTag) {
             if(!fAlloc) { return; }
-            if(0 == *(PDWORD)pbPoolEntry) { return; }
+            if(0 == *(PDWORD)pbPoolBlock) { return; }
         }
-        dwTag = *(PDWORD)(pbPoolEntry + 4);
+        dwTag = *(PDWORD)(pbPoolBlock + 4);
     }
     // get and grow store (if required)
     pStore = *ppStore;
@@ -317,8 +320,8 @@ VOID VmmWinPool_AllPool_PushItem(
     pe->fAlloc = fAlloc ? 1 : 0;
     pe->tpPool = tp;
     pe->dwTag = dwTag;
-    pe->va = va;
-    pe->cb = cbPoolEntry;
+    pe->va = va + cbHdr;
+    pe->cb = cbPoolBlock - cbHdr;
     pStore->c++;
 }
 
@@ -838,7 +841,7 @@ VOID VmmWinPool_AllPool1903_5_VS_DoWork(
     _In_ DWORD cb,
     _In_ PVMMWINPOOL_HEAP_PAGE_SEGMENT pPgSeg
 ) {
-    DWORD cbPoolHdr, oVsChunkHdr, cbChunkSize, oBlock, cbBlock;
+    DWORD cbPoolHdr, oVsChunkHdr, cbChunkSize, oBlock, cbBlock, cbAdjust;
     QWORD vaBlock, vaChunkHeader;
     WORD wSize, wSignature;
     BOOL fAlloc;
@@ -881,8 +884,16 @@ VOID VmmWinPool_AllPool1903_5_VS_DoWork(
             oBlock = oVsChunkHdr + ctx->po->_HEAP_VS_CHUNK_HEADER.cb;
             cbBlock = cbChunkSize - ctx->po->_HEAP_VS_CHUNK_HEADER.cb;
             vaBlock = va + oBlock;
+            if((cbBlock < 0xff0) && (((vaBlock & 0xfff) + cbBlock) > 0x1040)) {
+                // block crosses page boundary -> pool header will be found at
+                // start of new page - adjust block size and address!
+                cbAdjust = 0x1000 - vaBlock & 0xfff;
+                oBlock += cbAdjust;
+                cbBlock -= cbAdjust;
+                vaBlock += cbAdjust;
+            }
             if(((vaBlock & ~0xfff) == ((vaBlock + cbBlock - cbPoolHdr) & ~0xfff)) || (cbBlock >= 0xff0)) {
-                // nb! allocation (excl. chunkhdr/poolhdr) does not cross page boundary
+                // nb! allocation (excl. chunkhdr) does not cross page boundary
                 if((cbBlock < ctx->po->cbBigPoolThreshold) || ((vaBlock & 0xfff) < ctx->po->cbBigPoolThreshold)) {
                     // Larger [0xff0+] Vs allocations are also visible in big pool table - so skip these duplicates!
                     VmmWinPool_AllPool_PushItem(&ctx->pVs, pPgSeg->pHeap->tpPool, VMM_MAP_POOL_TPSS_VS, vaBlock, pb + oBlock, cbBlock, TRUE);

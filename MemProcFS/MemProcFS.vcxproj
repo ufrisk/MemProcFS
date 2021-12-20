@@ -214,13 +214,14 @@
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="memprocfs.c" />
+    <ClCompile Include="charutil.c" />
+    <ClCompile Include="memprocfs_dokan.c" />
+    <ClCompile Include="memprocfs_fuse.c" />
     <ClCompile Include="ob\ob_cachemap.c" />
     <ClCompile Include="ob\ob_core.c" />
     <ClCompile Include="ob\ob_map.c" />
     <ClCompile Include="ob\ob_set.c" />
-    <ClCompile Include="util.c" />
-    <ClCompile Include="vfsdokan.c" />
+    <ClCompile Include="oscompatibility.c" />
     <ClCompile Include="vfslist.c" />
   </ItemGroup>
   <ItemGroup>
@@ -235,6 +236,9 @@
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="MemProcFS.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Makefile" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
