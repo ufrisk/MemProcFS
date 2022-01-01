@@ -6,7 +6,7 @@
 // The compressed data object (ObCompressed) is thread safe.
 // The ObCompressed is an object manager object and must be DECREF'ed when required.
 //
-// (c) Ulf Frisk, 2021
+// (c) Ulf Frisk, 2021-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "ob.h"

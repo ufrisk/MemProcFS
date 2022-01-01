@@ -1,7 +1,7 @@
 // vmmdll.c : implementation of core dynamic link library (dll) functionality
 // of the virtual memory manager (VMM) for The Memory Process File System.
 //
-// (c) Ulf Frisk, 2018-2021
+// (c) Ulf Frisk, 2018-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

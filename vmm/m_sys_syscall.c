@@ -3,7 +3,7 @@
 // The '/sys/syscall' module is responsible for displaying the Windows syscall table
 // a.k.a. the System Service Dispatch Table (SSDT).
 //
-// (c) Ulf Frisk, 2020-2021
+// (c) Ulf Frisk, 2020-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "pluginmanager.h"

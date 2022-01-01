@@ -1,6 +1,6 @@
 // vmmpyc_kernel.c : implementation of the kernel functionality for vmmpyc.
 //
-// (c) Ulf Frisk, 2021
+// (c) Ulf Frisk, 2021-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmmpyc.h"

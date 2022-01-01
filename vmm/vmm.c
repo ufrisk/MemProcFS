@@ -1,6 +1,6 @@
 // vmm.c : implementation of functions related to virtual memory management support.
 //
-// (c) Ulf Frisk, 2018-2021
+// (c) Ulf Frisk, 2018-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -1607,7 +1607,7 @@ VOID VmmReadScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_updates_(cpMEMsVir
         iPA++;
         pIoPA->version = MEM_SCATTER_VERSION;
         pIoPA->qwA = qwPA;
-        pIoPA->cb = 0x1000;
+        pIoPA->cb = pIoVA->cb;
         pIoPA->pb = pIoVA->pb;
         pIoPA->f = FALSE;
         MEM_SCATTER_STACK_PUSH(pIoPA, (QWORD)pIoVA);

@@ -1,3 +1,8 @@
+// vmmpyc_vmm.c : implementation of core functionality for vmmpyc.
+//
+// (c) Ulf Frisk, 2021-2022
+// Author: Ulf Frisk, pcileech@frizk.net
+//
 #include "vmmpyc.h"
 
 PyObject *g_pPyType_Vmm = NULL;

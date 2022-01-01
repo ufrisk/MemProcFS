@@ -2,7 +2,7 @@
 // 
 // This API is a wrapper API around the VMMDLL_MemReadScatter API call.
 //
-// (c) Ulf Frisk, 2021
+// (c) Ulf Frisk, 2021-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -55,6 +55,7 @@ BOOL VMMDLL_Scatter_PrepareInternal(_In_ PSCATTER_CONTEXT ctx, _In_ QWORD va, _I
     if(pb) { ZeroMemory(pb, cb); }
     if(pcbRead) { *pcbRead = 0; }
     // validity checks
+    if(va + cb < va) { return FALSE; }
     if(ctx->fExecuteRead) { return FALSE; }
     if(!cb) { return TRUE; }
     if((cb >= SCATTER_MAX_SIZE) || ((ctx->cPageTotal << 12) + cb > SCATTER_MAX_SIZE)) { return FALSE; }
@@ -88,7 +89,12 @@ BOOL VMMDLL_Scatter_PrepareInternal(_In_ PSCATTER_CONTEXT ctx, _In_ QWORD va, _I
     for(i = 0; i < cMEMsRequired; i++) {
         if((pMEM = ObMap_GetByKey(ctx->pmMEMs, vaMEM | 1))) {
             // pre-existing MEM
-            ;
+            if(pMEM->cb != 0x1000) {
+                // pre-existing MEM was a tiny MEM -> since we have two reads
+                // subscribing to this MEM we 'upgrade' it to a full MEM.
+                pMEM->qwA = pMEM->qwA & ~0xfff;
+                pMEM->cb = 0x1000;
+            }
         } else {
             // new MEM
             if(!pr || (pr->cMEMs <= iNewMEM)) {
@@ -98,6 +104,15 @@ BOOL VMMDLL_Scatter_PrepareInternal(_In_ PSCATTER_CONTEXT ctx, _In_ QWORD va, _I
             pMEM = pr->MEMs + iNewMEM;
             iNewMEM++;
             pMEM->qwA = vaMEM;
+            if((cMEMsRequired == 1) && (cb <= 0x400)) {
+                // single-page small read -> optimize MEM for small read.
+                // NB! buffer allocation still remains 0x1000 even if not all is used for now.
+                pMEM->cb = (cb + 15) & ~0x7;
+                pMEM->qwA = va & ~0x7;
+                if((pMEM->qwA & 0xfff) + pMEM->cb > 0x1000) {
+                    pMEM->qwA = (pMEM->qwA & ~0xfff) + 0x1000 - pMEM->cb;
+                }
+            }
             if(!ObMap_Push(ctx->pmMEMs, vaMEM | 1, pMEM)) {
                 // should never happen!
                 return FALSE;
@@ -206,33 +221,46 @@ VOID VMMDLL_Scatter_CloseHandle(_In_opt_ _Post_ptr_invalid_ VMMDLL_SCATTER_HANDL
 _Success_(return)
 BOOL VMMDLL_Scatter_ReadInternal(_In_ PSCATTER_CONTEXT ctx, _In_ QWORD va, _In_ DWORD cb, _Out_writes_opt_(cb) PBYTE pb, _Out_opt_ PDWORD pcbRead)
 {
-    DWORD cbChunk, cbReadTotal = 0;
     PMEM_SCATTER pMEM;
+    BOOL fResultFirst = FALSE;
+    DWORD cbChunk, cbReadTotal = 0;
+    if(va + cb < va) { return FALSE; }
     if(!ctx->fExecuteRead) { return FALSE; }
-    // 1st item may not be page aligned
-    if(va & 0xfff) {
+    // 1st item may not be page aligned or may be 'tiny' sized MEM:
+    {
         cbChunk = min(cb, 0x1000 - (va & 0xfff));
         pMEM = ObMap_GetByKey(ctx->pmMEMs, (va & ~0xfff) | 1);
         if(pMEM && pMEM->f) {
-            cbReadTotal += cbChunk;
-            if(pb) {
-                memcpy(pb, pMEM->pb + (va & 0xfff), cbChunk);
-                pb += cbChunk;
+            if(pMEM->cb == 0x1000) {
+                // normal page-sized MEM:
+                if(pb) {
+                    memcpy(pb, pMEM->pb + (va & 0xfff), cbChunk);
+                    pb += cbChunk;
+                }
+                cbReadTotal += cbChunk;
+                fResultFirst = TRUE;
+            } else if((va >= pMEM->qwA) && (va + cb <= pMEM->qwA + pMEM->cb) && (va - pMEM->qwA <= cb)) {
+                // tiny MEM with in-range read:
+                if(pb) {
+                    memcpy(pb, pMEM->pb + (va - pMEM->qwA), cbChunk);
+                    pb += cbChunk;
+                }
+                cbReadTotal += cbChunk;
+                fResultFirst = TRUE;
             }
-        } else {
-            if(pb) {
-                ZeroMemory(pb, cbChunk);
-                pb += cbChunk;
-            }
+        }
+        if(!fResultFirst && pb) {
+            ZeroMemory(pb, cbChunk);
+            pb += cbChunk;
         }
         va += cbChunk;
         cb -= cbChunk;
     }
-    // page aligned va onwards
+    // page aligned va onwards (read from normal page-sized MEMs):
     while(cb) {
         cbChunk = min(cb, 0x1000);
         pMEM = ObMap_GetByKey(ctx->pmMEMs, va | 1);
-        if(pMEM && pMEM->f) {
+        if(pMEM && pMEM->f && (pMEM->cb == 0x1000)) {
             cbReadTotal += cbChunk;
             if(pb) {
                 if(pb != pMEM->pb) {
@@ -303,7 +331,7 @@ BOOL VMMDLL_Scatter_ExecuteReadInternal(_In_ PSCATTER_CONTEXT ctx)
         }
     }
     // read scatter
-    VMMDLL_MemReadScatter(ctx->dwPID, ppMEMs, ctx->cPageTotal, ctx->dwReadFlags);
+    VMMDLL_MemReadScatter(ctx->dwPID, ppMEMs, ctx->cPageTotal, ctx->dwReadFlags | VMMDLL_FLAG_NO_PREDICTIVE_READ);
     ctx->fExecuteRead = TRUE;
     // range fixup (if required)
     pRange = ctx->pRanges;

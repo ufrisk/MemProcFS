@@ -89,6 +89,9 @@
     <ClCompile Include="oscompatibility.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="vmmpyc_scattermemory.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="vmmpyc.rc">

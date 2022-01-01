@@ -1,6 +1,6 @@
 // mm_x86pae.c : implementation of the x86 PAE (Physical Address Extension) 32-bit protected mode memory model.
 //
-// (c) Ulf Frisk, 2018-2021
+// (c) Ulf Frisk, 2018-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmm.h"

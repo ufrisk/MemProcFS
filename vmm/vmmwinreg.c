@@ -1,6 +1,6 @@
 // vmmwinreg.c : implementation of functionality related to the Windows registry.
 //
-// (c) Ulf Frisk, 2019-2021
+// (c) Ulf Frisk, 2019-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 // Registry key parsing partly built on documentation found at:

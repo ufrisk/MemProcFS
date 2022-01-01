@@ -1,6 +1,6 @@
 // vmmwinsvc.c : implementation of functionality related to Windows service manager (SCM).
 //
-// (c) Ulf Frisk, 2020-2021
+// (c) Ulf Frisk, 2020-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmmwinsvc.h"

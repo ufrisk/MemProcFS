@@ -1,6 +1,6 @@
 // vmmwinobj.c : implementation related to Windows Objects.
 //
-// (c) Ulf Frisk, 2020-2021
+// (c) Ulf Frisk, 2020-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

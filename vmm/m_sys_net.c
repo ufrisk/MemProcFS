@@ -5,7 +5,7 @@
 //
 // The module is a provider of forensic timelining information.
 //
-// (c) Ulf Frisk, 2020-2021
+// (c) Ulf Frisk, 2020-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmm.h"

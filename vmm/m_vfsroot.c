@@ -3,7 +3,7 @@
 //               In practice this is the implementation of the root files:
 //               'memory.dmp' and 'memory.pmem' only.
 //
-// (c) Ulf Frisk, 2020-2021
+// (c) Ulf Frisk, 2020-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "pluginmanager.h"

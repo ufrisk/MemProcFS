@@ -1,6 +1,6 @@
 // mm.h : definitions related to the core memory manager.
 //
-// (c) Ulf Frisk, 2018-2021
+// (c) Ulf Frisk, 2018-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __MM_H__

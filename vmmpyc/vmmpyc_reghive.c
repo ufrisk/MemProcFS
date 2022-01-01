@@ -1,6 +1,6 @@
 // vmmpyc_reghive.c : implementation of registry hive functionality for vmmpyc.
 //
-// (c) Ulf Frisk, 2021
+// (c) Ulf Frisk, 2021-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmmpyc.h"

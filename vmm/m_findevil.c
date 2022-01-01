@@ -1,6 +1,6 @@
 // m_findevil.c : implementation of the find evil built-in module.
 //
-// (c) Ulf Frisk, 2020-2021
+// (c) Ulf Frisk, 2020-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "pluginmanager.h"

@@ -1,6 +1,6 @@
 // vmmpyc.c : implementation MemProcFS/VMM Python API
 //
-// (c) Ulf Frisk, 2018-2021
+// (c) Ulf Frisk, 2018-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmmpyc.h"
@@ -130,7 +130,7 @@ PyObject* PyInit_vmmpyc(void)
 #ifdef _WIN32
         VmmPycPlugin_InitializeType,
 #endif /* _WIN32 */
-        VmmPycPhysicalMemory_InitializeType,
+        VmmPycPhysicalMemory_InitializeType, VmmPycScatterMemory_InitializeType,
         VmmPycVirtualMemory_InitializeType, VmmPycRegMemory_InitializeType,
         VmmPycRegHive_InitializeType, VmmPycRegKey_InitializeType, VmmPycRegValue_InitializeType,
         VmmPycProcess_InitializeType, VmmPycProcessMaps_InitializeType,

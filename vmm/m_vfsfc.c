@@ -1,6 +1,6 @@
 // m_vfsfc.c : implementation of forensic info & startup module.
 //
-// (c) Ulf Frisk, 2020-2021
+// (c) Ulf Frisk, 2020-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

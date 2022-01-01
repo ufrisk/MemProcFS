@@ -2,7 +2,7 @@
 //         used for debug symbols and automatic retrieval from the Microsoft
 //         Symbol Server. (Windows exclusive functionality).
 //
-// (c) Ulf Frisk, 2019-2021
+// (c) Ulf Frisk, 2019-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "pdb.h"

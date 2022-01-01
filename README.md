@@ -283,3 +283,8 @@ v1.1-v2.10
 * Merge memprocfs (Windows) and memprocfs_fuse (Linux) projects.
 * New VMMDLL_Scatter_* API to simplify C/C++ ReadScatter use.
 * Pool parsing bug fixes.
+
+Latest:
+* New ReadScatter API for Python.
+* VMMDLL_Scatter_* API efficiency improvements for some smaller reads.
+* Visual Studio 2022 Support.

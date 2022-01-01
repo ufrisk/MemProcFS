@@ -1,6 +1,6 @@
 // m_threadinfo.c : implementation of the thread info built-in module.
 //
-// (c) Ulf Frisk, 2019-2021
+// (c) Ulf Frisk, 2019-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "pluginmanager.h"

@@ -1,7 +1,7 @@
 // memprocfs_dokan.c : implementation of core functionality for the Memory Process File System
 // This is just a thin loader for the virtual memory manager dll which contains the logic.
 //
-// (c) Ulf Frisk, 2018-2021
+// (c) Ulf Frisk, 2018-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifdef _WIN32

@@ -3,7 +3,7 @@
 // The 'sys/drivers' module lists various aspects of drivers from the windows
 // kernel object manager.
 //
-// (c) Ulf Frisk, 2021
+// (c) Ulf Frisk, 2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmm.h"

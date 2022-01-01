@@ -1,6 +1,6 @@
 // mm_x64.c : implementation of the x64 / IA32e / long-mode paging / memory model.
 //
-// (c) Ulf Frisk, 2018-2021
+// (c) Ulf Frisk, 2018-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmm.h"

@@ -1,6 +1,6 @@
-// vmmpyc_physicalmemory.c : implementation or physical memory.
+// vmmpyc_physicalmemory.c : implementation or physical memory for vmmpyc.
 //
-// (c) Ulf Frisk, 2021
+// (c) Ulf Frisk, 2021-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmmpyc.h"
@@ -8,7 +8,7 @@
 PyObject *g_pPyType_PhysicalMemory = NULL;
 
 // ([DWORD], (DWORD)) -> [{...}]
-static PyObject *
+static PyObject*
 VmmPycPhysicalMemory_read(PyObj_PhysicalMemory *self, PyObject *args)
 {
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "PhysicalMemory.read(): Not initialized."); }
@@ -16,7 +16,7 @@ VmmPycPhysicalMemory_read(PyObj_PhysicalMemory *self, PyObject *args)
 }
 
 // (ULONG64, DWORD, (ULONG64)) -> PBYTE
-static PyObject *
+static PyObject*
 VmmPycPhysicalMemory_read_scatter(PyObj_PhysicalMemory *self, PyObject *args)
 {
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "PhysicalMemory.read_scatter(): Not initialized."); }
@@ -24,11 +24,23 @@ VmmPycPhysicalMemory_read_scatter(PyObj_PhysicalMemory *self, PyObject *args)
 }
 
 // (ULONG64, PBYTE) -> None
-static PyObject *
+static PyObject*
 VmmPycPhysicalMemory_write(PyObj_PhysicalMemory *self, PyObject *args)
 {
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "PhysicalMemory.write(): Not initialized."); }
     return VmmPyc_MemWrite((DWORD)-1, "PhysicalMemory.write()", args);
+}
+
+// ((DWORD)) -> PyObj_ScatterMemory
+static PyObject*
+VmmPycPhysicalMemory_scatter_initialize(PyObj_PhysicalMemory *self, PyObject *args)
+{
+    DWORD dwReadFlags = 0;
+    if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "PhysicalMemory.scatter_initialize(): Not initialized."); }
+    if(!PyArg_ParseTuple(args, "|k", &dwReadFlags)) { // borrowed reference
+        return PyErr_Format(PyExc_RuntimeError, "PhysicalMemory.scatter_initialize(): Illegal argument.");
+    }
+    return (PyObject*)VmmPycScatterMemory_InitializeInternal((DWORD)-1, dwReadFlags);
 }
 
 //-----------------------------------------------------------------------------
@@ -70,6 +82,7 @@ BOOL VmmPycPhysicalMemory_InitializeType(PyObject * pModule)
         {"read", (PyCFunction)VmmPycPhysicalMemory_read, METH_VARARGS, "Read contigious physical memory."},
         {"read_scatter", (PyCFunction)VmmPycPhysicalMemory_read_scatter, METH_VARARGS, "Read scatter physical 4kB memory pages."},
         {"write", (PyCFunction)VmmPycPhysicalMemory_write, METH_VARARGS, "Write contigious physical memory."},
+        {"scatter_initialize", (PyCFunction)VmmPycPhysicalMemory_scatter_initialize, METH_VARARGS, "Initialize a Scatter memory object used for efficient reads."},
         {NULL, NULL, 0, NULL}
     };
     static PyMemberDef PyMembers[] = {

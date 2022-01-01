@@ -6,7 +6,7 @@
 // 
 // The scheduled tasks module is supported on Windows 8.0 and above.
 //
-// (c) Ulf Frisk, 2021
+// (c) Ulf Frisk, 2021-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmm.h"

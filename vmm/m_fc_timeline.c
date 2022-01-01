@@ -2,7 +2,7 @@
 //
 // REQUIRE: FORENSIC SUB-SYSTEM INIT: TIMELINE
 //
-// (c) Ulf Frisk, 2020-2021
+// (c) Ulf Frisk, 2020-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

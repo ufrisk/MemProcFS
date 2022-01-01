@@ -1,6 +1,6 @@
 // vmmpyc_regkey.c : implementation of registry key functionality for vmmpyc.
 //
-// (c) Ulf Frisk, 2021
+// (c) Ulf Frisk, 2021-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmmpyc.h"

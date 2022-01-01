@@ -1,6 +1,6 @@
 // vmmpyc_virtualmemory.c : implementation of process virtual memory for vmmpyc.
 //
-// (c) Ulf Frisk, 2021
+// (c) Ulf Frisk, 2021-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmmpyc.h"
@@ -15,7 +15,7 @@ VmmPycVirtualMemory_read(PyObj_VirtualMemory *self, PyObject *args)
     return VmmPyc_MemRead(self->dwPID, "VirtualMemory.read()", args);
 }
 
-// (ULONG64, DWORD, (ULONG64)) -> PBYTE
+// (ULONG64, DWORD, (ULONG64)) -> [{...}]
 static PyObject*
 VmmPycVirtualMemory_read_scatter(PyObj_VirtualMemory *self, PyObject *args)
 {
@@ -46,6 +46,18 @@ VmmPycVirtualMemory_virt2phys(PyObj_VirtualMemory *self, PyObject *args)
     Py_END_ALLOW_THREADS;
     if(!result) { return PyErr_Format(PyExc_RuntimeError, "VirtualMemory.virt2phys(): Failed."); }
     return PyLong_FromUnsignedLongLong(pa);
+}
+
+// ((DWORD)) -> PyObj_ScatterMemory
+static PyObject*
+VmmPycVirtualMemory_scatter_initialize(PyObj_VirtualMemory *self, PyObject *args)
+{
+    DWORD dwReadFlags = 0;
+    if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "VirtualMemory.scatter_initialize(): Not initialized."); }
+    if(!PyArg_ParseTuple(args, "|k", &dwReadFlags)) { // borrowed reference
+        return PyErr_Format(PyExc_RuntimeError, "VirtualMemory.scatter_initialize(): Illegal argument.");
+    }
+    return (PyObject*)VmmPycScatterMemory_InitializeInternal(self->dwPID, dwReadFlags);
 }
 
 //-----------------------------------------------------------------------------
@@ -91,6 +103,7 @@ BOOL VmmPycVirtualMemory_InitializeType(PyObject *pModule)
         {"read", (PyCFunction)VmmPycVirtualMemory_read, METH_VARARGS, "Read contigious virtual memory."},
         {"read_scatter", (PyCFunction)VmmPycVirtualMemory_read_scatter, METH_VARARGS, "Read scatter virtual 4kB memory pages."},
         {"write", (PyCFunction)VmmPycVirtualMemory_write, METH_VARARGS, "Write contigious virtual memory."},
+        {"scatter_initialize", (PyCFunction)VmmPycVirtualMemory_scatter_initialize, METH_VARARGS, "Initialize a Scatter memory object used for efficient reads."},
         {NULL, NULL, 0, NULL}
     };
     static PyMemberDef PyMembers[] = {

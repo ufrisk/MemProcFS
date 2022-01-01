@@ -1,6 +1,6 @@
 // pluginmanager.c : implementation of the plugin manager for memory process file system plugins.
 //
-// (c) Ulf Frisk, 2018-2021
+// (c) Ulf Frisk, 2018-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "pluginmanager.h"

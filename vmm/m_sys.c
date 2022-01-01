@@ -3,7 +3,7 @@
 // The '/sys' module is responsible for displaying various informational files
 // at the path '/sys/'
 //
-// (c) Ulf Frisk, 2019-2021
+// (c) Ulf Frisk, 2019-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmm.h"

@@ -2,7 +2,7 @@
 //                systems. Contains functions for detecting DTB and Memory Model
 //                as well as the Windows kernel base and core functionality.
 //
-// (c) Ulf Frisk, 2018-2021
+// (c) Ulf Frisk, 2018-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

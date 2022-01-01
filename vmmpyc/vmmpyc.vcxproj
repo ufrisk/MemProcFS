@@ -28,21 +28,21 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
     <SpectreMitigation>false</SpectreMitigation>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
     <SpectreMitigation>false</SpectreMitigation>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
     <SpectreMitigation>false</SpectreMitigation>
@@ -50,7 +50,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
     <SpectreMitigation>false</SpectreMitigation>
@@ -77,13 +77,13 @@
     <OutDir>$(SolutionDir)files\</OutDir>
     <IntDir>$(SolutionDir)files\temp\$(ProjectName)\</IntDir>
     <TargetExt>.pyd</TargetExt>
-    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(WindowsSDK_IncludePath);C:\Program Files (x86)\Microsoft Visual Studio\Shared\Python37_64\include\;C:\Program Files\Python37\include;$(SolutionDir)includes;</IncludePath>
-    <LibraryPath>$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);$(NETFXKitsDir)Lib\um\x64;$(WindowsSDK_LibraryPath_x64);$(NETFXKitsDir)Lib\um\x64;C:\Program Files (x86)\Microsoft Visual Studio\Shared\Python37_64\libs;C:\Program Files\Python37\libs;$(SolutionDir)includes\lib64;</LibraryPath>
+    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(WindowsSDK_IncludePath);C:\Program Files (x86)\Microsoft Visual Studio\Shared\Python39_64\include\;C:\Program Files\Python39\include;$(SolutionDir)includes;</IncludePath>
+    <LibraryPath>$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);$(NETFXKitsDir)Lib\um\x64;$(WindowsSDK_LibraryPath_x64);$(NETFXKitsDir)Lib\um\x64;C:\Program Files (x86)\Microsoft Visual Studio\Shared\Python39_64\libs;C:\Program Files\Python39\libs;$(SolutionDir)includes\lib64;</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <TargetExt>.pyd</TargetExt>
-    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(WindowsSDK_IncludePath);C:\Program Files (x86)\Microsoft Visual Studio\Shared\Python37_86\include\;C:\Program Files (x86)\Python37\include;$(SolutionDir)includes;</IncludePath>
-    <LibraryPath>$(VC_LibraryPath_x86);$(WindowsSDK_LibraryPath_x86);$(NETFXKitsDir)Lib\um\x86;$(WindowsSDK_LibraryPath_x86);$(NETFXKitsDir)Lib\um\x64;C:\Program Files (x86)\Microsoft Visual Studio\Shared\Python37_86\libs;C:\Program Files (x86)\Python37\libs;$(SolutionDir)includes\lib32;</LibraryPath>
+    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(WindowsSDK_IncludePath);C:\Program Files (x86)\Microsoft Visual Studio\Shared\Python39_86\include\;C:\Program Files (x86)\Python39\include;$(SolutionDir)includes;</IncludePath>
+    <LibraryPath>$(VC_LibraryPath_x86);$(WindowsSDK_LibraryPath_x86);$(NETFXKitsDir)Lib\um\x86;$(WindowsSDK_LibraryPath_x86);$(NETFXKitsDir)Lib\um\x64;C:\Program Files (x86)\Microsoft Visual Studio\Shared\Python39_86\libs;C:\Program Files (x86)\Python39\libs;$(SolutionDir)includes\lib32;</LibraryPath>
     <OutDir>$(SolutionDir)files\$(PlatformShortName)\</OutDir>
     <IntDir>$(SolutionDir)files\temp\$(ProjectName)\$(PlatformShortName)\</IntDir>
   </PropertyGroup>
@@ -91,13 +91,13 @@
     <OutDir>$(SolutionDir)files\</OutDir>
     <IntDir>$(SolutionDir)files\temp\$(ProjectName)\</IntDir>
     <TargetExt>.pyd</TargetExt>
-    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(WindowsSDK_IncludePath);C:\Program Files (x86)\Microsoft Visual Studio\Shared\Python37_64\include\;C:\Program Files\Python37\include;$(SolutionDir)includes;</IncludePath>
-    <LibraryPath>$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);$(NETFXKitsDir)Lib\um\x64;$(WindowsSDK_LibraryPath_x64);$(NETFXKitsDir)Lib\um\x64;C:\Program Files (x86)\Microsoft Visual Studio\Shared\Python37_64\libs;C:\Program Files\Python37\libs;$(SolutionDir)includes\lib64;</LibraryPath>
+    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(WindowsSDK_IncludePath);C:\Program Files (x86)\Microsoft Visual Studio\Shared\Python39_64\include\;C:\Program Files\Python39\include;$(SolutionDir)includes;</IncludePath>
+    <LibraryPath>$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);$(NETFXKitsDir)Lib\um\x64;$(WindowsSDK_LibraryPath_x64);$(NETFXKitsDir)Lib\um\x64;C:\Program Files (x86)\Microsoft Visual Studio\Shared\Python39_64\libs;C:\Program Files\Python39\libs;$(SolutionDir)includes\lib64;</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <TargetExt>.pyd</TargetExt>
-    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(WindowsSDK_IncludePath);C:\Program Files (x86)\Microsoft Visual Studio\Shared\Python37_86\include\;C:\Program Files (x86)\Python37\include;$(SolutionDir)includes;</IncludePath>
-    <LibraryPath>$(VC_LibraryPath_x86);$(WindowsSDK_LibraryPath_x86);$(NETFXKitsDir)Lib\um\x86;$(WindowsSDK_LibraryPath_x86);$(NETFXKitsDir)Lib\um\x64;C:\Program Files (x86)\Microsoft Visual Studio\Shared\Python37_86\libs;C:\Program Files (x86)\Python37\libs;$(SolutionDir)includes\lib32;</LibraryPath>
+    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);$(WindowsSDK_IncludePath);C:\Program Files (x86)\Microsoft Visual Studio\Shared\Python39_86\include\;C:\Program Files (x86)\Python39\include;$(SolutionDir)includes;</IncludePath>
+    <LibraryPath>$(VC_LibraryPath_x86);$(WindowsSDK_LibraryPath_x86);$(NETFXKitsDir)Lib\um\x86;$(WindowsSDK_LibraryPath_x86);$(NETFXKitsDir)Lib\um\x64;C:\Program Files (x86)\Microsoft Visual Studio\Shared\Python39_86\libs;C:\Program Files (x86)\Python39\libs;$(SolutionDir)includes\lib32;</LibraryPath>
     <OutDir>$(SolutionDir)files\$(PlatformShortName)\</OutDir>
     <IntDir>$(SolutionDir)files\temp\$(ProjectName)\$(PlatformShortName)\</IntDir>
   </PropertyGroup>
@@ -107,6 +107,7 @@
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
       <ConformanceMode>true</ConformanceMode>
+      <CompileAs>CompileAsC</CompileAs>
     </ClCompile>
     <Link>
       <AdditionalDependencies>leechcore.lib;vmm.lib;Ws2_32.lib</AdditionalDependencies>
@@ -130,6 +131,7 @@
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
       <ConformanceMode>true</ConformanceMode>
+      <CompileAs>CompileAsC</CompileAs>
     </ClCompile>
     <Link>
       <AdditionalDependencies>leechcore.lib;vmm.lib;Ws2_32.lib</AdditionalDependencies>
@@ -156,6 +158,7 @@
       <SDLCheck>true</SDLCheck>
       <ConformanceMode>true</ConformanceMode>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <CompileAs>CompileAsC</CompileAs>
     </ClCompile>
     <Link>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
@@ -186,6 +189,7 @@
       <SDLCheck>true</SDLCheck>
       <ConformanceMode>true</ConformanceMode>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <CompileAs>CompileAsC</CompileAs>
     </ClCompile>
     <Link>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
@@ -229,6 +233,7 @@
     <ClCompile Include="vmmpyc_regkey.c" />
     <ClCompile Include="vmmpyc_regmemory.c" />
     <ClCompile Include="vmmpyc_regvalue.c" />
+    <ClCompile Include="vmmpyc_scattermemory.c" />
     <ClCompile Include="vmmpyc_util.c" />
     <ClCompile Include="vmmpyc_vfs.c" />
     <ClCompile Include="vmmpyc_virtualmemory.c" />

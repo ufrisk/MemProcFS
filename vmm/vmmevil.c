@@ -1,6 +1,6 @@
 // evil.c : implementation of functionality related to the "Evil" functionality.
 //
-// (c) Ulf Frisk, 2020-2021
+// (c) Ulf Frisk, 2020-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmmevil.h"

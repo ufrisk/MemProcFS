@@ -1,6 +1,6 @@
 // vmmpyc.h : definitions related to the MemProcFS/VMM Python API
 //
-// (c) Ulf Frisk, 2021
+// (c) Ulf Frisk, 2021-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __VMMPYC_H__
@@ -121,6 +121,14 @@ typedef struct tdPyObj_PhysicalMemory {
     PyObject_HEAD
     BOOL fValid;
 } PyObj_PhysicalMemory;
+
+typedef struct tdPyObj_ScatterMemory {
+    PyObject_HEAD
+    BOOL fValid;
+    DWORD dwPID;
+    DWORD dwReadFlags;
+    VMMDLL_SCATTER_HANDLE hScatter;
+} PyObj_ScatterMemory;
 
 typedef struct tdPyObj_Module {
     PyObject_HEAD
@@ -250,6 +258,7 @@ _Success_(return) BOOL VmmPycRegKey_InitializeType(PyObject *pModule);
 _Success_(return) BOOL VmmPycRegValue_InitializeType(PyObject *pModule);
 _Success_(return) BOOL VmmPycPlugin_InitializeType(PyObject *pModule);
 _Success_(return) BOOL VmmPycPhysicalMemory_InitializeType(PyObject *pModule);
+_Success_(return) BOOL VmmPycScatterMemory_InitializeType(PyObject *pModule);
 _Success_(return) BOOL VmmPycVirtualMemory_InitializeType(PyObject *pModule);
 _Success_(return) BOOL VmmPycRegMemory_InitializeType(PyObject *pModule);
 
@@ -258,6 +267,7 @@ PyObj_Pdb* VmmPycPdb_InitializeInternal2(_In_ LPSTR szModule);
 PyObj_Vfs* VmmPycVfs_InitializeInternal();
 PyObj_Maps* VmmPycMaps_InitializeInternal();
 PyObj_PhysicalMemory* VmmPycPhysicalMemory_InitializeInternal();
+PyObj_ScatterMemory *VmmPycScatterMemory_InitializeInternal(_In_ DWORD dwPID, _In_ DWORD dwReadFlags);
 PyObj_Kernel* VmmPycKernel_InitializeInternal();
 PyObj_Process* VmmPycProcess_InitializeInternal(_In_ DWORD dwPID, _In_ BOOL fVerify);
 PyObj_ProcessMaps* VmmPycProcessMaps_InitializeInternal(_In_ DWORD dwPID);

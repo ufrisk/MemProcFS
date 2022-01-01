@@ -1,10 +1,13 @@
 // vmmpycplugin.c : implementation of the python wrapper native MemProcFS plugin.
 // NB! this is a special plugin since it's not residing in the plugin directory.
 //
-// (c) Ulf Frisk, 2018-2021
+// (c) Ulf Frisk, 2018-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmmpyc.h"
+#ifdef _WIN32
+#pragma warning( disable : 4996)
+#endif /* _WIN32 */
 
 static BOOL g_fPythonStandalone = FALSE;
 PyObject *g_pPyType_VmmPycPlugin = NULL;

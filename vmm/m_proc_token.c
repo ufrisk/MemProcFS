@@ -1,6 +1,6 @@
 // m_proc_token.c : implementation of the proc/token info built-in module.
 //
-// (c) Ulf Frisk, 2019-2021
+// (c) Ulf Frisk, 2019-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "pluginmanager.h"
