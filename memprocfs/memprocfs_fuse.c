@@ -234,7 +234,7 @@ int main(_In_ int argc, _In_ char* argv[])
         printf("MemProcFS: Error file system plugins in vmm.dll!\n");
         return 1;
     }
-    VfsList_Initialize(VMMDLL_VfsListU, 500, 128);
+    VfsList_Initialize(VMMDLL_VfsListU, 500, 128, FALSE);
     Vfs_InitializeAndMount_DisplayInfo(szMountPoint);
     // hand over control to FUSE.
     LPSTR szArgListFuse[] = { argv[0], szMountPoint, "-f" };

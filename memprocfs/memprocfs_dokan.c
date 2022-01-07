@@ -423,16 +423,20 @@ VOID VfsDokan_InitializeAndMount(_In_ CHAR chMountPoint)
     PDOKAN_OPERATIONS pDokanOperations = NULL;
     WCHAR wszMountPoint[] = { 'M', ':', '\\', 0 };
     SYSTEMTIME SystemTimeNow;
-    int(*fnDokanMain)(PDOKAN_OPTIONS, PDOKAN_OPERATIONS);
+    VOID(WINAPI *pfnDokanInit)();
+    int(WINAPI *pfnDokanMain)(PDOKAN_OPTIONS, PDOKAN_OPERATIONS);
+    VOID(WINAPI *pfnDokanShutdown)();
     // allocate
-    hModuleDokan = LoadLibraryExA("dokan1.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    hModuleDokan = LoadLibraryExA("dokan2.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
     if(!hModuleDokan) {
         printf("MOUNT: Failed. The required DOKANY file system library is not installed. \n");
         printf("Please download from : https://github.com/dokan-dev/dokany/releases/latest\n");
         goto fail;
     }
-    fnDokanMain = (int(*)(PDOKAN_OPTIONS, PDOKAN_OPERATIONS))GetProcAddress(hModuleDokan, "DokanMain");
-    if(!fnDokanMain) {
+    pfnDokanInit = (VOID(WINAPI*)())GetProcAddress(hModuleDokan, "DokanInit");
+    pfnDokanMain = (int(WINAPI*)(PDOKAN_OPTIONS, PDOKAN_OPERATIONS))GetProcAddress(hModuleDokan, "DokanMain");
+    pfnDokanShutdown = (VOID(WINAPI*)())GetProcAddress(hModuleDokan, "DokanShutdown");
+    if(!pfnDokanMain || !pfnDokanInit || !pfnDokanShutdown) {
         printf("MOUNT: Failed. The required DOKANY file system library is not installed. \n");
         printf("Please download from : https://github.com/dokan-dev/dokany/releases/latest\n");
         goto fail;
@@ -455,7 +459,6 @@ VOID VfsDokan_InitializeAndMount(_In_ CHAR chMountPoint)
     pDokanOptions->Version = DOKAN_VERSION;
     pDokanOptions->Options |= DOKAN_OPTION_NETWORK;
     pDokanOptions->UNCName = L"MemProcFS";
-    pDokanOptions->ThreadCount = 10;
     wszMountPoint[0] = chMountPoint;
     pDokanOptions->MountPoint = wszMountPoint;
     pDokanOptions->Timeout = 60000;
@@ -468,11 +471,13 @@ VOID VfsDokan_InitializeAndMount(_In_ CHAR chMountPoint)
     // print system information to console
     VfsDokan_InitializeAndMount_DisplayInfo(wszMountPoint);
     // mount file system
-    status = fnDokanMain(pDokanOptions, pDokanOperations);
+    pfnDokanInit();
+    status = pfnDokanMain(pDokanOptions, pDokanOperations);
     while(ctxVfs && ctxVfs->fInitialized && (status == DOKAN_SUCCESS)) {
         printf("MOUNT: ReMounting as drive %S\n", pDokanOptions->MountPoint);
-        status = fnDokanMain(pDokanOptions, pDokanOperations);
+        status = pfnDokanMain(pDokanOptions, pDokanOperations);
     }
+    pfnDokanShutdown();
     if(status == -5) {
         printf("MOUNT: Failed: drive busy/already mounted.\n");
     } else {
@@ -654,7 +659,7 @@ int main(_In_ int argc, _In_ char* argv[])
             return 1;
         }
     }
-    VfsList_Initialize(MemProcFS_VfsListU, 500, 128);
+    VfsList_Initialize(MemProcFS_VfsListU, 500, 128, FALSE);
     SetConsoleCtrlHandler(MemProcFsCtrlHandler, TRUE);
     g_VfsMountPoint = GetMountPoint(argc, argv);
     VfsDokan_InitializeAndMount(g_VfsMountPoint);

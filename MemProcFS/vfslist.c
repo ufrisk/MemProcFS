@@ -13,6 +13,8 @@ typedef struct tdVFSLIST_CONTEXT {
     time_t time_default;
     POB_CACHEMAP pcm;
     VFS_LIST_U_PFN pfnVfsListU;
+    BOOL fSingleThread;
+    CRITICAL_SECTION Lock;
 } VFSLIST_CONTEXT, *PVFSLIST_CONTEXT;
 
 VFSLIST_CONTEXT g_ctxVfsList = { 0 };
@@ -123,7 +125,7 @@ VOID VfsList_AddDirectory(_Inout_ HANDLE hFileList, _In_ LPSTR uszName, _In_opt_
 PVFSLISTOB_DIRECTORY VfsList_GetDirectory(_In_ LPSTR uszPath)
 {
     QWORD i = 0, qwHash;
-    PVFSLISTOB_DIRECTORY pObDir;
+    PVFSLISTOB_DIRECTORY pObDir = NULL;
     VMMDLL_VFS_FILELIST2 VfsFileList;
     CHAR c, uszPathCopy[3 * MAX_PATH];
     // 1: try fetch from cache:
@@ -131,13 +133,21 @@ PVFSLISTOB_DIRECTORY VfsList_GetDirectory(_In_ LPSTR uszPath)
     if((pObDir = ObCacheMap_GetByKey(g_ctxVfsList.pcm, qwHash))) {
         return pObDir;
     }
+    if(g_ctxVfsList.fSingleThread) {
+        EnterCriticalSection(&g_ctxVfsList.Lock);
+        if((pObDir = ObCacheMap_GetByKey(g_ctxVfsList.pcm, qwHash))) {
+            LeaveCriticalSection(&g_ctxVfsList.Lock);
+            return pObDir;
+        }
+    }
     // 2: replace forward-slash with backward slash for MemProcFS compatibility
     strncpy_s(uszPathCopy, sizeof(uszPathCopy), uszPath, _TRUNCATE);
     while((c = uszPathCopy[i++])) {
         if(c == '/') { uszPathCopy[i - 1] = '\\'; }
     }
     // 3: create new:
-    if(!(pObDir = Ob_Alloc('VFSD', LMEM_ZEROINIT, sizeof(VFSLISTOB_DIRECTORY), (VOID(*)(PVOID))VfsList_CallbackCleanup_ObDirectory, NULL))) { return NULL; }
+    pObDir = Ob_Alloc('VFSD', LMEM_ZEROINIT, sizeof(VFSLISTOB_DIRECTORY), (VOID(*)(PVOID))VfsList_CallbackCleanup_ObDirectory, NULL);
+    if(!pObDir) { goto fail; }
     pObDir->Dir.magic = VFSLIST_CONFIG_FILELIST_MAGIC;
     VfsFileList.dwVersion = VMMDLL_VFS_FILELIST_VERSION;
     VfsFileList.h = (HANDLE)&pObDir->Dir;
@@ -147,8 +157,11 @@ PVFSLISTOB_DIRECTORY VfsList_GetDirectory(_In_ LPSTR uszPath)
         pObDir->tc64 = GetTickCount64();
         pObDir->qwHash = qwHash;
         ObCacheMap_Push(g_ctxVfsList.pcm, qwHash, pObDir, 0);
+        if(g_ctxVfsList.fSingleThread) { LeaveCriticalSection(&g_ctxVfsList.Lock); }
         return pObDir;
     }
+fail:
+    if(g_ctxVfsList.fSingleThread) { LeaveCriticalSection(&g_ctxVfsList.Lock); }
     Ob_DECREF(pObDir);
     return NULL;
 }
@@ -210,6 +223,18 @@ BOOL VfsList_GetSingle(_In_ LPSTR uszPath, _In_ LPSTR uszFile, _Out_ PVFS_ENTRY 
         Ob_DECREF(pObDir);
     }
     return FALSE;
+}
+
+/*
+* Clear cached directory entries and/or files.
+* -- uszPath = the directory path to clear including/excluding file name.
+*/
+VOID VfsList_Clear(_In_ LPSTR uszPath)
+{
+    CHAR uszPathSplit[3 * MAX_PATH] = { 0 };
+    CharUtil_PathSplitLastEx(uszPath, uszPathSplit, _countof(uszPathSplit));
+    Ob_DECREF(ObCacheMap_RemoveByKey(g_ctxVfsList.pcm, CharUtil_HashPathFsU(uszPath)));
+    Ob_DECREF(ObCacheMap_RemoveByKey(g_ctxVfsList.pcm, CharUtil_HashPathFsU(uszPathSplit)));
 }
 
 #ifdef _WIN32
@@ -289,6 +314,8 @@ BOOL VfsList_ListDirectoryW(_In_ LPWSTR wszPath, _In_opt_ PVOID ctx, _In_opt_ PF
 */
 BOOL VfsList_ValidEntry(_Inout_ PQWORD qwContext, _In_ QWORD qwKey, _In_ PVFSLISTOB_DIRECTORY pvObject)
 {
+    UNREFERENCED_PARAMETER(qwContext);
+    UNREFERENCED_PARAMETER(qwKey);
     return pvObject->tc64 + g_ctxVfsList.qwCacheValidMs > GetTickCount64();
 }
 
@@ -298,6 +325,9 @@ BOOL VfsList_ValidEntry(_Inout_ PQWORD qwContext, _In_ QWORD qwKey, _In_ PVFSLIS
 void VfsList_Close()
 {
     Ob_DECREF(g_ctxVfsList.pcm);
+    if(g_ctxVfsList.fSingleThread) {
+        DeleteCriticalSection(&g_ctxVfsList.Lock);
+    }
     ZeroMemory(&g_ctxVfsList, sizeof(VFSLIST_CONTEXT));
 }
 
@@ -306,10 +336,11 @@ void VfsList_Close()
 * -- pfnVfsListU
 * -- dwCacheValidMs
 * -- cCacheMaxEntries
+* -- fSingleThread = pfnVfsListU is single-threaded
 * -- return
 */
 _Success_(return)
-BOOL VfsList_Initialize(_In_ VFS_LIST_U_PFN pfnVfsListU, _In_ DWORD dwCacheValidMs, _In_ DWORD cCacheMaxEntries)
+BOOL VfsList_Initialize(_In_ VFS_LIST_U_PFN pfnVfsListU, _In_ DWORD dwCacheValidMs, _In_ DWORD cCacheMaxEntries, _In_ BOOL fSingleThread)
 {
     g_ctxVfsList.pcm = ObCacheMap_New(
         cCacheMaxEntries,
@@ -319,6 +350,10 @@ BOOL VfsList_Initialize(_In_ VFS_LIST_U_PFN pfnVfsListU, _In_ DWORD dwCacheValid
     if(!g_ctxVfsList.pcm) { return FALSE; }
     g_ctxVfsList.qwCacheValidMs = dwCacheValidMs;
     g_ctxVfsList.pfnVfsListU = pfnVfsListU;
+    if(fSingleThread) {
+        InitializeCriticalSection(&g_ctxVfsList.Lock);
+        g_ctxVfsList.fSingleThread = TRUE;
+    }
 #ifdef _WIN32
     SYSTEMTIME SystemTimeNow;
     GetSystemTime(&SystemTimeNow);
