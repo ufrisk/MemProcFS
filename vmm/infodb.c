@@ -37,7 +37,7 @@ sqlite3 *InfoDB_SqlReserve(_In_ POB_INFODB_CONTEXT ctx)
     DWORD iWaitNum = 0;
     iWaitNum = WaitForMultipleObjects(INFODB_SQL_POOL_CONNECTION_NUM, ctx->hEvent, FALSE, INFINITE) - WAIT_OBJECT_0;
     if(iWaitNum >= INFODB_SQL_POOL_CONNECTION_NUM) {
-        vmmprintf_fn("FATAL DATABASE ERROR: WaitForMultipleObjects ERROR: 0x%08x\n", (DWORD)(iWaitNum + WAIT_OBJECT_0));
+        VmmLog(MID_INFODB, LOGLEVEL_CRITICAL, "DATABASE ERROR: WaitForMultipleObjects ERROR: 0x%08x", (DWORD)(iWaitNum + WAIT_OBJECT_0));
         return NULL;
     }
     return ctx->hSql[iWaitNum];
@@ -414,7 +414,7 @@ VOID InfoDB_Initialize_DoWork()
     Util_GetPathLib(szDbPathFile);
     strncat_s(szDbPathFile, sizeof(szDbPathFile), "info.db", _TRUNCATE);
     if(SQLITE_CONFIG_MULTITHREAD != sqlite3_threadsafe()) {
-        vmmprintf_fn("CRITICAL: WRONG SQLITE THREADING MODE - TERMINATING!\n");
+        VmmLog(MID_INFODB, LOGLEVEL_CRITICAL, "WRONG SQLITE THREADING MODE - TERMINATING!");
         ExitProcess(0);
     }
     for(i = 0; i < INFODB_SQL_POOL_CONNECTION_NUM; i++) {

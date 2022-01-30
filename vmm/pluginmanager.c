@@ -9,6 +9,7 @@
 #include "util.h"
 #include "vmm.h"
 #include "vmmdll.h"
+#include "vmmlog.h"
 #include "m_modules.h"
 
 //
@@ -37,6 +38,7 @@ typedef struct tdPLUGIN_ENTRY {
     struct tdPLUGIN_ENTRY *FLinkAll;
     struct tdPLUGIN_ENTRY *FLinkNotify;
     struct tdPLUGIN_ENTRY *FLinkForensic;
+    DWORD MID;          // module id (used by logging)
     HMODULE hDLL;
     CHAR uszName[32];
     DWORD dwNameHash;
@@ -185,7 +187,7 @@ BOOL PluginManager_ModuleExists(_In_ PPLUGIN_TREE pTree, _In_ LPSTR uszPath) {
     return pTreePlugin->pPlugin && !uszSubPath[0];
 }
 
-VOID PluginManager_ContextInitialize(_Out_ PVMMDLL_PLUGIN_CONTEXT ctx, PPLUGIN_ENTRY pModule, _In_opt_ PVMM_PROCESS pProcess, _In_opt_ LPSTR uszPath)
+VOID PluginManager_ContextInitialize(_Out_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PPLUGIN_ENTRY pModule, _In_opt_ PVMM_PROCESS pProcess, _In_opt_ LPSTR uszPath)
 {
     ctx->magic = VMMDLL_PLUGIN_CONTEXT_MAGIC;
     ctx->wVersion = VMMDLL_PLUGIN_CONTEXT_VERSION;
@@ -195,6 +197,7 @@ VOID PluginManager_ContextInitialize(_Out_ PVMMDLL_PLUGIN_CONTEXT ctx, PPLUGIN_E
     ctx->uszModule = pModule->uszName;
     ctx->uszPath = uszPath;
     ctx->ctxM = pModule->ctxM;
+    ctx->MID = pModule->MID;
 }
 
 VOID PluginManager_List(_In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR uszPath, _Inout_ PHANDLE pFileList)
@@ -447,7 +450,7 @@ DWORD PluginManager_FcLogJSON(_In_ VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_FORENSI
 BOOL PluginManager_Register(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo)
 {
     DWORD iPluginNameStart;
-    LPSTR uszPluginName;
+    LPSTR uszPluginName, uszLogName;
     PPLUGIN_ENTRY pModule;
     PPLUGIN_TREE pPluginTreeEntry;
     // 1: tests if plugin is valid
@@ -464,6 +467,7 @@ BOOL PluginManager_Register(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo)
     if(!pRegInfo->reg_info.fRootModule && !pRegInfo->reg_info.fProcessModule) { return FALSE; }
     // 2: register plugin
     pModule->hDLL = pRegInfo->hDLL;
+    pModule->MID = InterlockedIncrement(&ctxVmm->PluginManager.dwNextMID);
     strncpy_s(pModule->uszName, 32, uszPluginName, _TRUNCATE);
     pModule->dwNameHash = CharUtil_HashNameFsU(pModule->uszName, TRUE);
     pModule->fRootModule = pRegInfo->reg_info.fRootModule;
@@ -488,7 +492,7 @@ BOOL PluginManager_Register(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo)
         ctxVmm->PluginManager.fc.hEvent[ctxVmm->PluginManager.fc.cEvent] = CreateEvent(NULL, TRUE, TRUE, NULL);
         pModule->fc.phEventIngestFinish = ctxVmm->PluginManager.fc.hEvent[ctxVmm->PluginManager.fc.cEvent++];
     }
-    vmmprintfv("PluginManager: Loaded %s module: '%s'\n", (pModule->hDLL ? " native " : "built-in"), pRegInfo->reg_info.uszPathName);
+    VmmLog(MID_PLUGIN, LOGLEVEL_VERBOSE, "MODULE_LOAD: %s module: '%s'", (pModule->hDLL ? " native " : "built-in"), pRegInfo->reg_info.uszPathName);
     if(pModule->pfnNotify) {
         pModule->FLinkNotify = (PPLUGIN_ENTRY)ctxVmm->PluginManager.FLinkNotify;
         ctxVmm->PluginManager.FLinkNotify = pModule;
@@ -513,6 +517,15 @@ BOOL PluginManager_Register(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo)
             pPluginTreeEntry->pPlugin = pModule;
         }
     }
+    // 4: register module id with logging sub-system
+    if(pModule->MID > 2) {
+        uszLogName = pModule->uszName;
+    } else if(pModule->MID == 2) {
+        uszLogName = "process";
+    } else {
+        uszLogName = "root";
+    }
+    VmmLog_RegisterModule(pModule->MID, uszLogName, (pModule->hDLL ? TRUE : FALSE));
     return TRUE;
 }
 
@@ -597,10 +610,10 @@ VOID PluginManager_Initialize_Python()
         }
         if(!hDllPython3X) {
             ZeroMemory(ctxMain->cfg.szPythonPath, MAX_PATH);
-            vmmprintf(
+            VmmLog(MID_PLUGIN, LOGLEVEL_INFO,
                 fBitnessFail ?
-                "PluginManager: Python initialization failed. Unable to load 32-bit Python. 64-bit required.\n" :
-                "PluginManager: Python initialization failed. Python 3.6 or later not found on user specified path.\n"
+                "PluginManager: Python initialization failed. Unable to load 32-bit Python. 64-bit required." :
+                "PluginManager: Python initialization failed. Python 3.6 or later not found on user specified path."
             );
             return;
         }
@@ -648,10 +661,10 @@ VOID PluginManager_Initialize_Python()
     }
     // 5: Python is not found?
     if(0 == ctxMain->cfg.szPythonPath[0]) {
-        vmmprintf(
+        VmmLog(MID_PLUGIN, LOGLEVEL_INFO,
             fBitnessFail ?
-            "PluginManager: Python initialization failed. Unable to load 32-bit Python. 64-bit required.\n" :
-            "PluginManager: Python initialization failed. Python 3.6 or later not found.\n"
+            "Python initialization failed. Unable to load 32-bit Python. 64-bit required." :
+            "Python initialization failed. Python 3.6 or later not found."
         );
         goto fail;
     }
@@ -662,12 +675,12 @@ VOID PluginManager_Initialize_Python()
     // 7: process 'special status' python plugin manager.
     hDllPyPlugin = LoadLibraryA("vmmpyc.pyd");
     if(!hDllPyPlugin) {
-        vmmprintf("PluginManager: Python plugin manager failed to load.\n");
+        VmmLog(MID_PLUGIN, LOGLEVEL_WARNING, "Python plugin manager failed to load.");
         goto fail;
     }
     pfnInitializeVmmPlugin = (VOID(*)(PVMMDLL_PLUGIN_REGINFO))GetProcAddress(hDllPyPlugin, "InitializeVmmPlugin");
     if(!pfnInitializeVmmPlugin) {
-        vmmprintf("PluginManager: Python plugin manager failed to load due to corrupt DLL.\n");
+        VmmLog(MID_PLUGIN, LOGLEVEL_WARNING, "Python plugin manager failed to load due to corrupt DLL.");
         goto fail;
     }
     PluginManager_Initialize_RegInfoInit(&ri, hDllPyPlugin);
@@ -676,10 +689,10 @@ VOID PluginManager_Initialize_Python()
     ri.python.hReservedDllPython3 = hDllPython3;
     pfnInitializeVmmPlugin(&ri);
     if(!PluginManager_ModuleExistsDll(hDllPyPlugin)) {
-        vmmprintf("PluginManager: Python plugin manager failed to load due to internal error.\n");
+        VmmLog(MID_PLUGIN, LOGLEVEL_WARNING, "Python plugin manager failed to load due to internal error.");
         return;
     }
-    vmmprintfv("PluginManager: Python plugin loaded.\n");
+    VmmLog(MID_PLUGIN, LOGLEVEL_VERBOSE, "PluginManager: Python plugin loaded.");
     if(hDllPython3X) { FreeLibrary(hDllPython3X); }
     return;
 fail:
@@ -708,20 +721,20 @@ VOID PluginManager_Initialize_ExternalDlls()
             strcat_s(szPath, MAX_PATH, FindData.cFileName);
             hDLL = LoadLibraryExA(szPath, 0, 0);
             if(!hDLL) {
-                vmmprintfvv("PluginManager: FAIL: Load DLL: '%s' - missing dependencies?\n", FindData.cFileName);
+                VmmLog(MID_PLUGIN, LOGLEVEL_DEBUG, "FAIL: Load DLL: '%s' - missing dependencies?", FindData.cFileName);
                 continue;
             }
-            vmmprintfvv("PluginManager: Load DLL: '%s'\n", FindData.cFileName);
+            VmmLog(MID_PLUGIN, LOGLEVEL_DEBUG, "Load DLL: '%s'", FindData.cFileName);
             pfnInitializeVmmPlugin = (VOID(*)(PVMMDLL_PLUGIN_REGINFO))GetProcAddress(hDLL, "InitializeVmmPlugin");
             if(!pfnInitializeVmmPlugin) {
-                vmmprintfvv("PluginManager: UnLoad DLL: '%s' - Plugin Entry Point not found.\n", FindData.cFileName);
+                VmmLog(MID_PLUGIN, LOGLEVEL_DEBUG, "UnLoad DLL: '%s' - Plugin Entry Point not found", FindData.cFileName);
                 FreeLibrary(hDLL);
                 continue;
             }
             PluginManager_Initialize_RegInfoInit(&ri, hDLL);
             pfnInitializeVmmPlugin(&ri);
             if(!PluginManager_ModuleExistsDll(hDLL)) {
-                vmmprintfvv("PluginManager: UnLoad DLL: '%s' - not registered with plugin manager.\n", FindData.cFileName);
+                VmmLog(MID_PLUGIN, LOGLEVEL_DEBUG, "UnLoad DLL: '%s' - not registered with plugin manager", FindData.cFileName);
                 FreeLibrary(hDLL);
                 continue;
             }
@@ -756,6 +769,8 @@ BOOL PluginManager_Initialize()
     PluginManager_Initialize_ExternalDlls();
     // 5: process 'special status' python plugin manager.
     PluginManager_Initialize_Python();
+    // 6: refresh logging (module specific overrides not yet applied may exist)
+    VmmLog_LevelRefresh();
     LeaveCriticalSection(&ctxVmm->LockMaster);
     return TRUE;
 fail:

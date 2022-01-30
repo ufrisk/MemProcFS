@@ -170,7 +170,7 @@ VOID VmmCache_CallbackRefCount1(PVMMOB_CACHE_MEM pOb)
     PVMM_CACHE_TABLE t;
     t = VmmCacheTableGet(((POB)pOb)->_tag);
     if(!t) {
-        vmmprintf_fn("ERROR - SHOULD NOT HAPPEN - INVALID OBJECT TAG %02X\n", ((POB)pOb)->_tag);
+        VmmLog(MID_VMM, LOGLEVEL_CRITICAL, "ERROR - SHOULD NOT HAPPEN - INVALID OBJECT TAG %02X", ((POB)pOb)->_tag);
         return;
     }
     if(!t->fActive) { return; }
@@ -203,7 +203,7 @@ PVMMOB_CACHE_MEM VmmCacheReserve(_In_ DWORD dwTblTag)
         // reclaim existing entries by clearing the oldest cache region.
         VmmCacheClearPartial(dwTblTag);
         if(++cLoopProtect == VMM_CACHE_REGIONS) {
-            vmmprintf_fn("ERROR - SHOULD NOT HAPPEN - CACHE %04X DRAINED OF ENTRIES\n", dwTblTag);
+            VmmLog(MID_VMM, LOGLEVEL_WARNING, "SHOULD NOT HAPPEN - CACHE %04X DRAINED OF ENTRIES", dwTblTag);
             Sleep(10);
         }
     }
@@ -225,7 +225,7 @@ VOID VmmCacheReserveReturn(_In_opt_ PVMMOB_CACHE_MEM pOb)
     if(!pOb) { return; }
     t = VmmCacheTableGet(((POB)pOb)->_tag);
     if(!t) {
-        vmmprintf_fn("ERROR - SHOULD NOT HAPPEN - INVALID OBJECT TAG %02X\n", ((POB)pOb)->_tag);
+        VmmLog(MID_VMM, LOGLEVEL_CRITICAL, "ERROR - SHOULD NOT HAPPEN - INVALID OBJECT TAG %02X", ((POB)pOb)->_tag);
         return;
     }
     if(!t->fActive || !pOb->h.f || (pOb->h.qwA == MEM_SCATTER_ADDR_INVALID)) {
@@ -1728,6 +1728,7 @@ VOID VmmClose()
     Ob_DECREF_NULL(&ctxVmm->pObCacheMapEAT);
     Ob_DECREF_NULL(&ctxVmm->pObCacheMapIAT);
     Ob_DECREF_NULL(&ctxVmm->pObCacheMapWinObjDisplay);
+    VmmLog_Close();
     DeleteCriticalSection(&ctxVmm->LockMaster);
     DeleteCriticalSection(&ctxVmm->LockPlugin);
     DeleteCriticalSection(&ctxVmm->LockUpdateMap);
@@ -2059,6 +2060,218 @@ BOOL VmmInitialize()
 fail:
     VmmClose();
     return FALSE;
+}
+
+
+
+// ----------------------------------------------------------------------------
+// SEARCH MEMORY FUNCTIONALITY BELOW:
+// ----------------------------------------------------------------------------
+
+typedef struct tdVMM_MEMORY_SEARCH_INTERNAL_CONTEXT {
+    PVMM_PROCESS pProcess;
+    POB_SET psvaResult;
+    BOOL fMask;
+    DWORD cb;
+    BYTE pb[0x00100000];    // 1MB
+} VMM_MEMORY_SEARCH_INTERNAL_CONTEXT, *PVMM_MEMORY_SEARCH_INTERNAL_CONTEXT;
+
+/*
+* Search data inside region.
+*/
+_Success_(return)
+BOOL VmmSearch_SearchRegion(_In_ PVMM_MEMORY_SEARCH_INTERNAL_CONTEXT ctxi, _In_ PVMM_MEMORY_SEARCH_CONTEXT ctxs)
+{
+    BYTE v;
+    QWORD va, oMax;
+    DWORD o, i, cbRead;
+    BOOL fMaskFail, f4 = (ctxs->cbSearch >= 4);
+    if(ctxs->fAbortRequested || !ctxVmm->Work.fEnabled) {
+        ctxs->fAbortRequested = TRUE;
+        return FALSE;
+    }
+    ctxs->cbReadTotal += ctxi->cb;
+    VmmReadEx(ctxi->pProcess, ctxs->vaCurrent, ctxi->pb, ctxi->cb, &cbRead, ctxs->ReadFlags | VMM_FLAG_ZEROPAD_ON_FAIL);
+    if(!cbRead) { return TRUE; }
+    if(ctxi->fMask) {
+        // mask search
+        f4 = f4 && (0 == *(PDWORD)ctxs->pbSearchSkipMask);
+        oMax = ctxi->cb - ctxs->cbSearch;
+        for(o = 0; o <= oMax; o += ctxs->cbAlign) {
+            if(f4) {
+                if(*(PDWORD)ctxs->pbSearch != *(PDWORD)(ctxi->pb + o)) { continue; }
+            } else {
+                v = ctxs->pbSearchSkipMask[0];
+                if((ctxs->pbSearch[0] | v) != (ctxi->pb[o] | v)) { continue; }
+            }
+            fMaskFail = FALSE;
+            for(i = 0; i < ctxs->cbSearch; i++) {
+                v = ctxs->pbSearchSkipMask[i];
+                if((ctxs->pbSearch[i] | v) != (ctxi->pb[o + i] | v)) {
+                    fMaskFail = TRUE;
+                    break;
+                }
+            }
+            if(fMaskFail) { continue; }
+            // match located!
+            ctxs->cResult++;
+            va = ctxs->vaCurrent + o;
+            if(ctxs->pfnResultOptCB) {
+                if(!ctxs->pfnResultOptCB(ctxs, va)) { return FALSE; }
+            } else {
+                if(!ObSet_Push(ctxi->psvaResult, va)) { return FALSE; }
+            }
+        }
+    } else {
+        // no-mask search
+        oMax = ctxi->cb - ctxs->cbSearch;
+        for(o = 0; o <= oMax; o += ctxs->cbAlign) {
+            if(f4) {
+                if(*(PDWORD)ctxs->pbSearch != *(PDWORD)(ctxi->pb + o)) { continue; }
+            } else {
+                if(ctxs->pbSearch[0] != ctxi->pb[o]) { continue; }
+            }
+            if(memcmp(ctxi->pb + o, ctxs->pbSearch, ctxs->cbSearch)) { continue; }
+            // match located!
+            ctxs->cResult++;
+            va = ctxs->vaCurrent + o;
+            if(ctxs->pfnResultOptCB) {
+                if(!ctxs->pfnResultOptCB(ctxs, va)) { return FALSE; }
+            } else {
+                if(ctxs->cResult < 0x00100000) {
+                    if(!ObSet_Push(ctxi->psvaResult, va)) { return FALSE; }
+                }
+            }
+        }
+    }
+    return TRUE;
+}
+
+/*
+* Search a physical/virtual address range.
+*/
+_Success_(return)
+BOOL VmmSearch_SearchRange(_In_ PVMM_MEMORY_SEARCH_INTERNAL_CONTEXT ctxi, _In_ PVMM_MEMORY_SEARCH_CONTEXT ctxs, _In_ QWORD vaMax)
+{
+    while(ctxs->vaCurrent < vaMax) {
+        ctxi->cb = (DWORD)min(0x00100000, vaMax + 1 - ctxs->vaCurrent);
+        if(!VmmSearch_SearchRegion(ctxi, ctxs)) { return FALSE; }
+        ctxs->vaCurrent += ctxi->cb;
+    }
+    return TRUE;
+}
+
+/*
+* Search virtual address space by walking either PTEs or VADs.
+*/
+_Success_(return)
+BOOL VmmSearch_VirtPteVad(_In_ PVMM_MEMORY_SEARCH_INTERNAL_CONTEXT ctxi, _In_ PVMM_MEMORY_SEARCH_CONTEXT ctxs)
+{
+    BOOL fResult = FALSE;
+    DWORD ie = 0;
+    QWORD cbPTE, vaMax;
+    PVMMOB_MAP_PTE pObPTE = NULL;
+    PVMMOB_MAP_VAD pObVAD = NULL;
+    PVMM_MAP_PTEENTRY pePTE;
+    PVMM_MAP_VADENTRY peVAD;
+    ctxs->cResult = 0;
+    ctxs->cbReadTotal = 0;
+    ctxs->vaCurrent = ctxs->vaMin;
+    if(ctxs->fForceVAD || (ctxi->pProcess->fUserOnly && !ctxs->fForcePTE)) {
+        // VAD method:
+        if(!VmmMap_GetVad(ctxi->pProcess, &pObVAD, VMM_VADMAP_TP_CORE)) { goto fail; }
+        for(ie = 0; ie < pObVAD->cMap; ie++) {
+            peVAD = pObVAD->pMap + ie;
+            if(peVAD->vaStart + peVAD->vaEnd < ctxs->vaMin) { continue; }   // skip entries below min address
+            if(peVAD->vaStart > ctxs->vaMax) { break; }                     // break if entry above max address
+            if(peVAD->vaEnd - peVAD->vaStart > 0x40000000) { continue; }    // don't process 1GB+ entries
+            if(ctxs->pfnFilterOptCB && !ctxs->pfnFilterOptCB(ctxs, NULL, peVAD)) { continue; }
+            // TODO: is peVAD->vaEnd == 0xfff ????
+            ctxs->vaCurrent = max(ctxs->vaCurrent, peVAD->vaStart);
+            vaMax = min(ctxs->vaMax, peVAD->vaEnd);
+            if(!VmmSearch_SearchRange(ctxi, ctxs, vaMax)) { goto fail; }
+        }
+    } else {
+        // PTE method:
+        if(!VmmMap_GetPte(ctxi->pProcess, &pObPTE, FALSE)) { goto fail; }
+        for(ie = 0; ie < pObPTE->cMap; ie++) {
+            pePTE = pObPTE->pMap + ie;
+            cbPTE = pePTE->cPages << 12;
+            if(pePTE->vaBase + cbPTE < ctxs->vaMin) { continue; }           // skip entries below min address
+            if(pePTE->vaBase > ctxs->vaMax) { break; }                      // break if entry above max address
+            if(cbPTE > 0x40000000) { continue; }                            // don't process 1GB+ entries
+            if(ctxs->pfnFilterOptCB && !ctxs->pfnFilterOptCB(ctxs, pePTE, NULL)) { continue; }
+            ctxs->vaCurrent = max(ctxs->vaCurrent, pePTE->vaBase);
+            vaMax = min(ctxs->vaMax, pePTE->vaBase + cbPTE - 1);
+            if(!VmmSearch_SearchRange(ctxi, ctxs, vaMax)) { goto fail; }
+        }
+    }
+    fResult = TRUE;
+fail:
+    Ob_DECREF(pObPTE);
+    Ob_DECREF(pObVAD);
+    return fResult;
+}
+
+/*
+* Search for binary data in an address space specified by the parameter pctx.
+* For more information about the different search parameters please see the
+* struct definition: VMM_MEMORY_SEARCH_CONTEXT
+* Search may take a long time. It's not recommended to run this interactively.
+* To cancel a search prematurely set the fAbortRequested flag in pctx and
+* wait a short while.
+* CALLER DECREF: ppObAddressResult
+* -- pProcess
+* -- ctxs
+* -- ppObAddress
+* -- return
+*/
+_Success_(return)
+BOOL VmmSearch(_In_opt_ PVMM_PROCESS pProcess, _Inout_ PVMM_MEMORY_SEARCH_CONTEXT ctxs, _Out_opt_ POB_DATA *ppObAddressResult)
+{
+    static BYTE pbZERO[sizeof(ctxs->pbSearch)] = {0};
+    BOOL fResult = FALSE;
+    PVMM_MEMORY_SEARCH_INTERNAL_CONTEXT ctxi = NULL;
+    // 1: sanity checks and fix-ups
+    if(ppObAddressResult) { *ppObAddressResult = NULL; }
+    ctxs->vaMin = ctxs->vaMin & ~0xfff;
+    ctxs->vaMax = (ctxs->vaMax - 1) | 0xfff;
+    if(ctxs->fAbortRequested || !ctxs->cbSearch || (ctxs->cbSearch > sizeof(ctxs->pbSearch))) { goto fail; }
+    if(ctxs->vaMax < ctxs->vaMin) { goto fail; }
+    if(!memcmp(ctxs->pbSearch, pbZERO, ctxs->cbSearch)) { goto fail; }
+    if(!ctxs->cbAlign) { ctxs->cbAlign = 1; }
+    if(!ctxs->vaMax) {
+        if(!pProcess) {
+            ctxs->vaMax = ctxMain->dev.paMax;
+        } else if(ctxVmm->tpMemoryModel == VMMDLL_MEMORYMODEL_X64) {
+            ctxs->vaMax = (QWORD)-1;
+        } else {
+            ctxs->vaMax = (DWORD)-1;
+        }
+    }
+    // 2: allocate
+    if(!(ctxi = LocalAlloc(0, sizeof(VMM_MEMORY_SEARCH_INTERNAL_CONTEXT)))) { goto fail; }
+    if(!(ctxi->psvaResult = ObSet_New())) { goto fail; }
+    ctxi->pProcess = pProcess;
+    ctxi->fMask = (memcmp(ctxs->pbSearchSkipMask, pbZERO, ctxs->cbSearch) ? TRUE : FALSE);
+    // 3: perform search
+    if(pProcess && (ctxs->fForcePTE || ctxs->fForceVAD || (ctxVmm->tpMemoryModel == VMMDLL_MEMORYMODEL_X64))) {
+        fResult = VmmSearch_VirtPteVad(ctxi, ctxs);
+    } else {
+        ctxs->vaCurrent = ctxs->vaMin;
+        fResult = VmmSearch_SearchRange(ctxi, ctxs, ctxs->vaMax);
+    }
+    // 4: finish
+    if(fResult && ppObAddressResult) {
+        *ppObAddressResult = ObSet_GetAll(ctxi->psvaResult);
+        fResult = (*ppObAddressResult ? TRUE : FALSE);
+    }
+fail:
+    if(ctxi) {
+        Ob_DECREF(ctxi->psvaResult);
+        LocalFree(ctxi);
+    }
+    return fResult;
 }
 
 

@@ -56,12 +56,12 @@ POBFILEMODULES_MODULECACHE M_FileModules_GetModuleCache(_In_ PVMMDLL_PLUGIN_CONT
         for(iModule = 0; iModule < pObModuleMap->cMap; iModule++) {
             VmmReadEx(pProcess, pObModuleMap->pMap[iModule].vaBase, pbPage, 0x1000, &cbPageRead, VMM_FLAG_FORCECACHE_READ);
             if(cbPageRead != 0x1000) {
-                vmmprintfvv_fn("Skipping module: '%s' - paged/invalid?\n", pObModuleMap->pMap[iModule].uszText);
+                VmmLog(ctx->MID, LOGLEVEL_DEBUG, "Skipping module: '%s' - paged/invalid?", pObModuleMap->pMap[iModule].uszText);
                 continue;
             }
             pObCache->File[pObCache->cFiles].cb = PE_FileRaw_Size(pProcess, pObModuleMap->pMap[iModule].vaBase, pbPage);
             if(!pObCache->File[pObCache->cFiles].cb) {
-                vmmprintfvv_fn("Skipping module: '%s' - paged/invalid?\n", pObModuleMap->pMap[iModule].uszText);
+                VmmLog(ctx->MID, LOGLEVEL_DEBUG, "Skipping module: '%s' - paged/invalid?", pObModuleMap->pMap[iModule].uszText);
                 continue;
             }
             strncpy_s(pObCache->File[pObCache->cFiles].uszName, MAX_PATH, pObModuleMap->pMap[iModule].uszText, _TRUNCATE);

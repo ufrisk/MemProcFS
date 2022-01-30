@@ -30,7 +30,7 @@ BOOL MmX64_TlbPageTableVerify(_Inout_ PBYTE pb, _In_ QWORD pa, _In_ BOOL fSelfRe
             // we clear this faulty entry. If too may bad PTEs are found this
             // is most probably not a page table - zero it out but let it
             // remain in cache to prevent performance degrading reloads...
-            vmmprintfvv_fn("VMM: BAD PTE %016llx at PA: %016llx i: %i\n", *(ptes + i), pa, i);
+            VmmLog(MID_VMM, LOGLEVEL_DEBUG, "BAD_PTE %016llx at PA: %016llx i: %i", *(ptes + i), pa, i);
             *(ptes + i) = (QWORD)0;
             c++;
             if(c > 16) { break; }
@@ -41,7 +41,7 @@ BOOL MmX64_TlbPageTableVerify(_Inout_ PBYTE pb, _In_ QWORD pa, _In_ BOOL fSelfRe
     }
     if((c > 16) || (fSelfRefReq && !fSelfRef)) {
         if(ctxVmm) {
-            vmmprintfvv_fn("VMM: BAD PT PAGE at PA: %016llx\n", pa);
+            VmmLog(MID_VMM, LOGLEVEL_DEBUG, "BAD_PT_PAGE at PA: %016llx", pa);
         }
         ZeroMemory(pb, 4096);
         return FALSE;

@@ -58,7 +58,7 @@ sqlite3* Fc_SqlReserve()
         iWaitNum = WaitForMultipleObjects(FC_SQL_POOL_CONNECTION_NUM, ctxFc->db.hEvent, FALSE, INFINITE) - WAIT_OBJECT_0;
     }
     if(iWaitNum >= FC_SQL_POOL_CONNECTION_NUM) {
-        vmmprintf_fn("FATAL DATABASE ERROR: WaitForMultipleObjects ERROR: 0x%08x\n", (DWORD)(iWaitNum + WAIT_OBJECT_0));
+        VmmLog(MID_FORENSIC, LOGLEVEL_CRITICAL, "FATAL DATABASE ERROR: WaitForMultipleObjects ERROR: 0x%08x\n", (DWORD)(iWaitNum + WAIT_OBJECT_0));
         return NULL;
     }
     return ctxFc->db.hSql[iWaitNum];
@@ -251,7 +251,7 @@ VOID FcTimeline_Callback_PluginEntryAddBySQL(_In_ HANDLE hTimeline, _In_ DWORD c
         snprintf(szSql, sizeof(szSql), "INSERT INTO timeline_data(tp, id_str, ft, ac, pid, data32, data64) SELECT %i, %s;", ctx->dwId, pszEntrySql[i]);
         rc = sqlite3_exec(ctx->hSql, szSql, NULL, NULL, NULL);
         if(rc != SQLITE_OK) {
-            vmmprintfvv_fn("BAD SQL CODE=0x%x SQL=%s\n", rc, szSql);
+            VmmLog(MID_FORENSIC, LOGLEVEL_DEBUG, "BAD SQL CODE=0x%x SQL=%s\n", rc, szSql);
         }
     }
 }
@@ -330,7 +330,7 @@ BOOL FcTimeline_Initialize()
     };
     for(i = 0; i < sizeof(szTIMELINE_SQL1) / sizeof(LPCSTR); i++) {
         if(SQLITE_OK != (rc = Fc_SqlExec(szTIMELINE_SQL1[i]))) {
-            vmmprintf_fn("FAIL INITIALIZE TIMELINE WITH SQLITE ERROR CODE %i, QUERY: %s\n", rc, szTIMELINE_SQL1[i]);
+            VmmLog(MID_FORENSIC, LOGLEVEL_WARNING, "FAIL INITIALIZE TIMELINE WITH SQLITE ERROR CODE %i, QUERY: %s\n", rc, szTIMELINE_SQL1[i]);
             goto fail;
         }
     }
@@ -354,7 +354,7 @@ BOOL FcTimeline_Initialize()
     };
     for(i = 0; i < sizeof(szTIMELINE_SQL2) / sizeof(LPCSTR); i++) {
         if(SQLITE_OK != (rc = Fc_SqlExec(szTIMELINE_SQL2[i]))) {
-            vmmprintf_fn("FAIL INITIALIZE TIMELINE WITH SQLITE ERROR CODE %i, QUERY: %s\n", rc, szTIMELINE_SQL2[i]);
+            VmmLog(MID_FORENSIC, LOGLEVEL_WARNING, "FAIL INITIALIZE TIMELINE WITH SQLITE ERROR CODE %i, QUERY: %s\n", rc, szTIMELINE_SQL2[i]);
             goto fail;
         }
     }
@@ -367,7 +367,7 @@ BOOL FcTimeline_Initialize()
     ctxFc->Timeline.cTp = (DWORD)v + 1;
     for(k = 1; k < ctxFc->Timeline.cTp; k++) {
         if(SQLITE_DONE != (rc = Fc_SqlQueryN(szTIMELINE_SQL_TIMELINE_UPD_UTF8, 3, (QWORD[]) { k, k, k }, 0, NULL, NULL))) {
-            vmmprintf_fn("FAIL INITIALIZE TIMELINE WITH SQLITE ERROR CODE %i, QUERY: %s\n", rc, szTIMELINE_SQL_TIMELINE_UPD_UTF8);
+            VmmLog(MID_FORENSIC, LOGLEVEL_WARNING, "FAIL INITIALIZE TIMELINE WITH SQLITE ERROR CODE %i, QUERY: %s\n", rc, szTIMELINE_SQL_TIMELINE_UPD_UTF8);
             goto fail;
         }
     }
@@ -591,7 +591,7 @@ VOID FcScanPhysmem()
     for(paBase = 0; paBase < ctxMain->dev.paMax; paBase += 0x1000 * FC_PHYSMEM_NUM_CHUNKS) {
         iChunk++;
         if(!ctxVmm->Work.fEnabled) { goto fail; }
-        vmmprintfvv_fn("PhysicalAddress=%016llx\n", paBase);
+        VmmLog(MID_FORENSIC, LOGLEVEL_DEBUG, "PhysicalAddress=%016llx\n", paBase);
         // 2.1: fetch new physical data in separate thread:
         ctx = ctx2 + (iChunk % 2);
         ctx->e.paBase = paBase;
@@ -882,7 +882,7 @@ BOOL FcInitialize_Impl(_In_ DWORD dwDatabaseType, _In_ BOOL fForceReInit)
 {
     DWORD i;
     if(ctxMain->dev.fVolatile) {
-        vmmprintf("WARNING: FORENSIC mode on volatile memory is not recommended due to memory drift/smear.\n");
+        VmmLog(MID_FORENSIC, LOGLEVEL_WARNING, "FORENSIC mode on volatile memory is not recommended due to memory drift/smear.\n");
     }
     if(!dwDatabaseType || (dwDatabaseType > FC_DATABASE_TYPE_MAX)) { return FALSE; }
     if(ctxFc && !fForceReInit) { return FALSE; }
@@ -896,11 +896,11 @@ BOOL FcInitialize_Impl(_In_ DWORD dwDatabaseType, _In_ BOOL fForceReInit)
     if(!(ctxFc->FileJSON.pReg = ObMemFile_New())) { goto fail; }
     // 2: SQLITE INIT:
     if(SQLITE_CONFIG_MULTITHREAD != sqlite3_threadsafe()) {
-        vmmprintf_fn("CRITICAL: WRONG SQLITE THREADING MODE - TERMINATING!\n");
+        VmmLog(MID_FORENSIC, LOGLEVEL_CRITICAL, "WRONG SQLITE THREADING MODE - TERMINATING!\n");
         ExitProcess(0);
     }
     if(!FcInitialize_SetPath(dwDatabaseType)) {
-        vmmprintf("FORENSIC: Fail. Unable to set Sqlite path.\n");
+        VmmLog(MID_FORENSIC, LOGLEVEL_WARNING, "Unable to set Sqlite path.\n");
         goto fail;
     }
     ctxFc->db.fSingleThread = TRUE;     // single thread during INSERT-bound init phase

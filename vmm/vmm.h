@@ -7,6 +7,7 @@
 #define __VMM_H__
 #include "oscompatibility.h"
 #include "leechcore.h"
+#include "vmmlog.h"
 #include "ob/ob.h"
 #include "ob/ob_tag.h"
 
@@ -955,7 +956,6 @@ typedef struct tdVMM_MEMORYMODEL_FUNCTIONS {
 // ----------------------------------------------------------------------------
 
 typedef struct tdVmmConfig {
-    CHAR szMountPoint[1];
     QWORD paCR3;
     DWORD tpForensicMode;                 // command line forensic mode
     // flags below
@@ -974,6 +974,8 @@ typedef struct tdVmmConfig {
     CHAR szPageFile[10][MAX_PATH];
     CHAR szMemMap[MAX_PATH];
     CHAR szMemMapStr[2048];
+    CHAR szLogFile[MAX_PATH];
+    CHAR szLogLevel[MAX_PATH];
 } VMMCONFIG, *PVMMCONFIG;
 
 typedef struct tdVMM_STATISTICS {
@@ -1236,6 +1238,7 @@ typedef struct tdVMM_CONTEXT {
             DWORD cEvent;
             HANDLE hEvent[MAXIMUM_WAIT_OBJECTS];
         } fc;
+        DWORD dwNextMID;
     } PluginManager;
     CRITICAL_SECTION LockUpdateMap;     // lock for global maps - such as MapUser
     CRITICAL_SECTION LockUpdateModule;  // lock for internal modules
@@ -1300,23 +1303,7 @@ typedef struct tdVMM_MAIN_CONTEXT {
 extern PVMM_CONTEXT ctxVmm;
 extern PVMM_MAIN_CONTEXT ctxMain;
 
-#define vmmprintf(format, ...)          { if(ctxMain->cfg.fVerboseDll)       { printf(format, ##__VA_ARGS__); } }
-#define vmmprintfv(format, ...)         { if(ctxMain->cfg.fVerbose)          { printf(format, ##__VA_ARGS__); } }
-#define vmmprintfvv(format, ...)        { if(ctxMain->cfg.fVerboseExtra)     { printf(format, ##__VA_ARGS__); } }
-#define vmmprintfvvv(format, ...)       { if(ctxMain->cfg.fVerboseExtraTlp)  { printf(format, ##__VA_ARGS__); } }
-#define vmmprintf_fn(format, ...)       vmmprintf("%s: "format, __func__, ##__VA_ARGS__);
-#define vmmprintfv_fn(format, ...)      vmmprintfv("%s: "format, __func__, ##__VA_ARGS__);
-#define vmmprintfvv_fn(format, ...)     vmmprintfvv("%s: "format, __func__, ##__VA_ARGS__);
-#define vmmprintfvvv_fn(format, ...)    vmmprintfvvv("%s: "format, __func__, ##__VA_ARGS__);
 
-#define vmmwprintf(format, ...)          { if(ctxMain->cfg.fVerboseDll)       { wprintf(format, ##__VA_ARGS__); } }
-#define vmmwprintfv(format, ...)         { if(ctxMain->cfg.fVerbose)          { wprintf(format, ##__VA_ARGS__); } }
-#define vmmwprintfvv(format, ...)        { if(ctxMain->cfg.fVerboseExtra)     { wprintf(format, ##__VA_ARGS__); } }
-#define vmmwprintfvvv(format, ...)       { if(ctxMain->cfg.fVerboseExtraTlp)  { wprintf(format, ##__VA_ARGS__); } }
-#define vmmwprintf_fn(format, ...)       vmmwprintf(L"%S: "format, __func__, ##__VA_ARGS__);
-#define vmmwprintfv_fn(format, ...)      vmmwprintfv(L"%S: "format, __func__, ##__VA_ARGS__);
-#define vmmwprintfvv_fn(format, ...)     vmmwprintfvv(L"%S: "format, __func__, ##__VA_ARGS__);
-#define vmmwprintfvvv_fn(format, ...)    vmmwprintfvvv(L"%S: "format, __func__, ##__VA_ARGS__);
 
 // ----------------------------------------------------------------------------
 // INITIALIZE/CLOSE FUNCTIONALITY BELOW:
@@ -1632,6 +1619,53 @@ VOID VmmVirt2PhysGetInformation(_Inout_ PVMM_PROCESS pProcess, _Inout_ PVMM_VIRT
 * -- return
 */
 PVMMOB_PHYS2VIRT_INFORMATION VmmPhys2VirtGetInformation(_In_ PVMM_PROCESS pProcess, _In_ QWORD paTarget);
+
+/*
+* Memory Search Context used to configure a search by the VmmSearch() function.
+*/
+typedef struct tdVMM_MEMORY_SEARCH_CONTEXT {
+    QWORD _Filler1;
+    BOOL fAbortRequested;       // may be set by caller to abort processing prematurely.
+    DWORD cMaxResult;           // # max result entries. '0' = 1 entry. max 0x10000 entries.
+    DWORD cbAlign;              // byte-align at 2^x - 0, 1, 2, 4, 8, 16, .. bytes.
+    DWORD cbSearch;             // number of bytes to search (1-32).
+    BYTE pbSearch[32];
+    BYTE pbSearchSkipMask[32];  // skip bitmask '0' = match, '1' = wildcard.
+    QWORD vaMin;                // min address to search (page-aligned).
+    QWORD vaMax;                // max address to search (page-aligned), if 0 max memory is assumed.
+    QWORD vaCurrent;            // current address (may be read by caller).
+    DWORD _Filler2;
+    DWORD cResult;              // number of search hits.
+    QWORD cbReadTotal;          // total number of bytes read.
+    // optional result callback function.
+    // use of callback function disable ordinary result in ppObAddressResult.
+    // return = continue search(TRUE), abort search(FALSE).
+    BOOL(*pfnResultOptCB)(_In_ struct tdVMM_MEMORY_SEARCH_CONTEXT *ctxs, _In_ QWORD va);
+    // non-recommended features:
+    QWORD ReadFlags;            // read flags as in VMM_FLAG_*
+    BOOL fForcePTE;             // force PTE method for virtual address reads.
+    BOOL fForceVAD;             // force VAD method for virtual address reads.
+    // optional filter callback function for virtual address reads:
+    // for ranges inbetween vaMin:vaMax callback with pte or vad entry.
+    // return: read from range(TRUE), do not read from range(FALSE).
+    BOOL(*pfnFilterOptCB)(_In_ struct tdVMM_MEMORY_SEARCH_CONTEXT *ctxs, _In_opt_ PVMM_MAP_PTEENTRY pePte, _In_opt_ PVMM_MAP_VADENTRY peVad);
+} VMM_MEMORY_SEARCH_CONTEXT, *PVMM_MEMORY_SEARCH_CONTEXT;
+
+/*
+* Search for binary data in an address space specified by the parameter pctx.
+* For more information about the different search parameters please see the
+* struct definition: VMM_MEMORY_SEARCH_CONTEXT
+* Search may take a long time. It's not recommended to run this interactively.
+* To cancel a search prematurely set the fAbortRequested flag in pctx and
+* wait a short while.
+* CALLER DECREF: ppObAddressResult
+* -- pProcess
+* -- ctxs
+* -- ppObAddress
+* -- return
+*/
+_Success_(return)
+BOOL VmmSearch(_In_opt_ PVMM_PROCESS pProcess, _Inout_ PVMM_MEMORY_SEARCH_CONTEXT ctxs, _Out_opt_ POB_DATA *ppObAddressResult);
 
 
 

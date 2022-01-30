@@ -56,7 +56,6 @@ _Success_(return)
 BOOL VmmDll_ConfigIntialize(_In_ DWORD argc, _In_ char* argv[])
 {
     char* argv2[3];
-    CHAR chMountMount = '\0';
     DWORD i = 0, iPageFile;
     if((argc == 2) && argv[1][0] && (argv[1][0] != '-')) {
         // click to open -> only 1 argument ...
@@ -141,7 +140,14 @@ BOOL VmmDll_ConfigIntialize(_In_ DWORD argc, _In_ char* argv[])
             i += 2;
             continue;
         } else if(0 == _stricmp(argv[i], "-mount")) {
-            chMountMount = argv[i + 1][0];
+            i += 2;
+            continue;
+        } else if(0 == _stricmp(argv[i], "-logfile")) {
+            strcpy_s(ctxMain->cfg.szLogFile, MAX_PATH, argv[i + 1]);
+            i += 2;
+            continue;
+        } else if(0 == _stricmp(argv[i], "-loglevel")) {
+            strcpy_s(ctxMain->cfg.szLogLevel, MAX_PATH, argv[i + 1]);
             i += 2;
             continue;
         } else if(0 == _strnicmp(argv[i], "-pagefile", 9)) {
@@ -154,11 +160,6 @@ BOOL VmmDll_ConfigIntialize(_In_ DWORD argc, _In_ char* argv[])
         } else {
             return FALSE;
         }
-    }
-    if((chMountMount > 'A' && chMountMount < 'Z') || (chMountMount > 'a' && chMountMount < 'z')) {
-        ctxMain->cfg.szMountPoint[0] = chMountMount;
-    } else {
-        ctxMain->cfg.szMountPoint[0] = 'M';
     }
     if(ctxMain->dev.paMax && (ctxMain->dev.paMax < 0x00100000)) { return FALSE; }
     if(!ctxMain->dev.paMax && (ctxMain->cfg.szMemMap[0] || ctxMain->cfg.szMemMapStr[0])) {
@@ -174,6 +175,7 @@ BOOL VmmDll_ConfigIntialize(_In_ DWORD argc, _In_ char* argv[])
     ctxMain->dev.dwPrintfVerbosity |= ctxMain->cfg.fVerbose ? LC_CONFIG_PRINTF_V : 0;
     ctxMain->dev.dwPrintfVerbosity |= ctxMain->cfg.fVerboseExtra ? LC_CONFIG_PRINTF_VV : 0;
     ctxMain->dev.dwPrintfVerbosity |= ctxMain->cfg.fVerboseExtraTlp ? LC_CONFIG_PRINTF_VVV : 0;
+    VmmLog_LevelRefresh();
     return (ctxMain->dev.szDevice[0] != 0);
 }
 
@@ -223,6 +225,10 @@ VOID VmmDll_PrintHelp()
         "          in output. Option has no value. Example: -vv                         \n" \
         "   -vvv : super verbose option. Show all data transferred such as PCIe TLPs.   \n" \
         "          Option has no value. Example: -vvv                                   \n" \
+        "   -logfile : specify an optional log file.                                    \n" \
+        "   -loglevel : specify the log verbosity level as a comma-separated list.      \n" \
+        "          Please consult https://github.com/ufrisk/MemProcFS/wiki for details. \n" \
+        "          example: -loglevel 4,f:5,f:VMM:6                                     \n" \
         "   -cr3 : base address of kernel/process page table (PML4) / CR3 CPU register. \n" \
         "   -max : memory max address, valid range: 0x0 .. 0xffffffffffffffff           \n" \
         "          default: auto-detect (max supported by device / target system).      \n" \
@@ -238,7 +244,7 @@ VOID VmmDll_PrintHelp()
         "          Example: -pythonpath \"C:\\Program Files\\Python37\"                 \n" \
         "   -pythondisable : prevent/disable the python plugin sub-system from loading. \n" \
         "          Example: -pythondisable                                              \n" \
-        "   -mount : drive letter to mount The Memory Process File system at.           \n" \
+        "   -mount : drive letter/path to mount The Memory Process File system at.      \n" \
         "          default: M   Example: -mount Q                                       \n" \
         "   -norefresh : disable automatic cache and processes refreshes even when      \n" \
         "          running against a live memory target - such as PCIe FPGA or live     \n" \
@@ -357,6 +363,8 @@ BOOL VMMDLL_InitializeEx(_In_ DWORD argc, _In_ LPSTR argv[], _Out_opt_ PPLC_CONF
     DWORD cbMemMap = 0;
     PBYTE pbMemMap = NULL;
     PLC_CONFIG_ERRORINFO pLcErrorInfo = NULL;
+    LPSTR uszUserText;
+    BYTE pbBuffer[3 * MAX_PATH];
     if(ppLcErrorInfo) { *ppLcErrorInfo = NULL; }
     if(!(ctxMain = LocalAlloc(LMEM_ZEROINIT, sizeof(VMM_MAIN_CONTEXT)))) { return FALSE; }
     // initialize configuration
@@ -368,8 +376,8 @@ BOOL VMMDLL_InitializeEx(_In_ DWORD argc, _In_ LPSTR argv[], _Out_opt_ PPLC_CONF
     if(!(ctxMain->hLC = LcCreateEx(&ctxMain->dev, &pLcErrorInfo))) {
 #ifdef _WIN32
         if(pLcErrorInfo && (pLcErrorInfo->dwVersion == LC_CONFIG_ERRORINFO_VERSION)) {
-            if(pLcErrorInfo->cwszUserText) {
-                vmmwprintf(L"MESSAGE FROM MEMORY ACQUISITION DEVICE:\n=======================================\n%s\n", pLcErrorInfo->wszUserText);
+            if(pLcErrorInfo->cwszUserText && CharUtil_WtoU(pLcErrorInfo->wszUserText, -1, pbBuffer, sizeof(pbBuffer), &uszUserText, NULL, 0)) {
+                vmmprintf("MESSAGE FROM MEMORY ACQUISITION DEVICE:\n=======================================\n%s\n", uszUserText);
             }
             if(ctxMain->cfg.fUserInteract && pLcErrorInfo->fUserInputRequest) {
                 LcMemFree(pLcErrorInfo);
@@ -606,21 +614,25 @@ BOOL VMMDLL_ConfigSet(_In_ ULONG64 fOption, _In_ ULONG64 qwValue)
         case VMMDLL_OPT_CORE_PRINTF_ENABLE:
             LcSetOption(ctxMain->hLC, fOption, qwValue);
             ctxMain->cfg.fVerboseDll = qwValue ? TRUE : FALSE;
+            VmmLog_LevelRefresh();
             PluginManager_Notify(VMMDLL_PLUGIN_NOTIFY_VERBOSITYCHANGE, NULL, 0);
             return TRUE;
         case VMMDLL_OPT_CORE_VERBOSE:
             LcSetOption(ctxMain->hLC, fOption, qwValue);
             ctxMain->cfg.fVerbose = qwValue ? TRUE : FALSE;
+            VmmLog_LevelRefresh();
             PluginManager_Notify(VMMDLL_PLUGIN_NOTIFY_VERBOSITYCHANGE, NULL, 0);
             return TRUE;
         case VMMDLL_OPT_CORE_VERBOSE_EXTRA:
             LcSetOption(ctxMain->hLC, fOption, qwValue);
             ctxMain->cfg.fVerboseExtra = qwValue ? TRUE : FALSE;
+            VmmLog_LevelRefresh();
             PluginManager_Notify(VMMDLL_PLUGIN_NOTIFY_VERBOSITYCHANGE, NULL, 0);
             return TRUE;
         case VMMDLL_OPT_CORE_VERBOSE_EXTRA_TLP:
             LcSetOption(ctxMain->hLC, fOption, qwValue);
             ctxMain->cfg.fVerboseExtraTlp = qwValue ? TRUE : FALSE;
+            VmmLog_LevelRefresh();
             PluginManager_Notify(VMMDLL_PLUGIN_NOTIFY_VERBOSITYCHANGE, NULL, 0);
             return TRUE;
         case VMMDLL_OPT_CONFIG_IS_PAGING_ENABLED:
@@ -1039,6 +1051,37 @@ BOOL VMMDLL_MemVirt2Phys(_In_ DWORD dwPID, _In_ ULONG64 qwVA, _Out_ PULONG64 pqw
     CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_MemVirt2Phys,
         VMMDLL_MemVirt2Phys_Impl(dwPID, qwVA, pqwPA))
+}
+
+_Success_(return)
+BOOL VMMDLL_MemSearch_Impl(_In_ DWORD dwPID, _Inout_ PVMMDLL_MEM_SEARCH_CONTEXT ctx, _Out_ PQWORD *ppva, _Out_ PDWORD pcva)
+{
+    BOOL fResult = FALSE;
+    POB_DATA pObData = NULL;
+    PVMM_PROCESS pObProcess = NULL;
+    if(!(pObProcess = VmmProcessGet(dwPID))) { goto fail; }
+    if(!VmmSearch(pObProcess, (PVMM_MEMORY_SEARCH_CONTEXT)ctx, &pObData)) { goto fail; }
+    if(pObData) {
+        if(!(*ppva = LocalAlloc(0, pObData->ObHdr.cbData))) { goto fail; }
+        memcpy(ppva, pObData->pqw, pObData->ObHdr.cbData);
+        *pcva = pObData->ObHdr.cbData / sizeof(QWORD);
+    }
+    fResult = TRUE;
+fail:
+    Ob_DECREF(pObProcess);
+    Ob_DECREF(pObData);
+    return fResult;
+}
+
+_Success_(return)
+BOOL VMMDLL_MemSearch(_In_ DWORD dwPID, _Inout_ PVMMDLL_MEM_SEARCH_CONTEXT ctx, _Out_ PQWORD *ppva, _Out_ PDWORD pcva)
+{
+    *pcva = 0;
+    *ppva = NULL;
+    if(ctx->dwVersion == VMMDLL_MEM_SEARCH_VERSION) { return FALSE; }
+    CALL_IMPLEMENTATION_VMM(
+        STATISTICS_ID_VMMDLL_MemSearch,
+        VMMDLL_MemSearch_Impl(dwPID, ctx, ppva, pcva))
 }
 
 //-----------------------------------------------------------------------------
@@ -1705,6 +1748,7 @@ BOOL VMMDLL_Map_GetPool_Impl(_Out_writes_bytes_opt_(*pcbMapDst) PVMMDLL_MAP_POOL
         if(*pcbMapDst < cbDst) { goto fail; }
         ZeroMemory(pMapDst, sizeof(VMMDLL_MAP_POOL));
         pMapDst->dwVersion = VMMDLL_MAP_POOL_VERSION;
+        pMapDst->cbTotal = cbDst;
         pMapDst->cMap = pObMap->cMap;
         memcpy(pMapDst->pMap, pObMap->pMap, cbDstData);
         // tag
@@ -1718,15 +1762,56 @@ fail:
     *pcbMapDst = cbDst;
     Ob_DECREF(pObMap);
     return fResult;
-
 }
 
 _Success_(return)
 BOOL VMMDLL_Map_GetPool(_Out_writes_bytes_opt_(*pcbPoolMap) PVMMDLL_MAP_POOL pPoolMap, _Inout_ PDWORD pcbPoolMap)
 {
     CALL_IMPLEMENTATION_VMM(
-        STATISTICS_ID_VMMDLL_Map_GetPhysMem,
+        STATISTICS_ID_VMMDLL_Map_GetPool,
         VMMDLL_Map_GetPool_Impl(pPoolMap, pcbPoolMap))
+}
+
+_Success_(return)
+BOOL VMMDLL_Map_GetPoolEx_Impl(_Out_ PVMMDLL_MAP_POOL* ppPoolMap, _In_ DWORD flags)
+{
+    DWORD cbDst = 0, cbDstData, cbDstDataMap, cbDstDataTag;
+    PVMMDLL_MAP_POOL pMapDst = NULL;
+    PVMMOB_MAP_POOL pObMap = NULL;
+    if(!VmmMap_GetPool(&pObMap, (flags != VMMDLL_POOLMAP_FLAG_BIG))) { goto fail; }
+    cbDstDataMap = pObMap->cMap * sizeof(VMMDLL_MAP_POOLENTRY);
+    cbDstDataTag = pObMap->cTag * sizeof(VMMDLL_MAP_POOLENTRYTAG);
+    cbDstData = cbDstDataMap + cbDstDataTag + pObMap->cMap * sizeof(DWORD);
+    cbDst = sizeof(VMMDLL_MAP_POOL) + cbDstData;
+    if(!(pMapDst = LocalAlloc(0, cbDst))) { goto fail; }
+    if(pMapDst) {
+        ZeroMemory(pMapDst, sizeof(VMMDLL_MAP_POOL));
+        pMapDst->dwVersion = VMMDLL_MAP_POOL_VERSION;
+        pMapDst->cbTotal = cbDst;
+        pMapDst->cMap = pObMap->cMap;
+        memcpy(pMapDst->pMap, pObMap->pMap, cbDstData);
+        // tag
+        pMapDst->cTag = pObMap->cTag;
+        pMapDst->pTag = (PVMMDLL_MAP_POOLENTRYTAG)(pMapDst->pMap + pMapDst->cMap);
+        // tag index
+        pMapDst->piTag2Map = (PDWORD)((QWORD)pMapDst->pTag + cbDstDataTag);
+    }
+    *ppPoolMap = pMapDst;
+    Ob_DECREF(pObMap);
+    return TRUE;
+fail:
+    *ppPoolMap = NULL;
+    LocalFree(pMapDst);
+    Ob_DECREF(pObMap);
+    return FALSE;
+}
+
+_Success_(return)
+BOOL VMMDLL_Map_GetPoolEx(_Out_ PVMMDLL_MAP_POOL* ppPoolMap, _In_ DWORD flags)
+{
+    CALL_IMPLEMENTATION_VMM(
+        STATISTICS_ID_VMMDLL_Map_GetPoolEx,
+        VMMDLL_Map_GetPoolEx_Impl(ppPoolMap, flags))
 }
 
 _Success_(return)
@@ -2247,6 +2332,34 @@ ULONG64 VMMDLL_ProcessGetProcAddressW(_In_ DWORD dwPID, _In_ LPWSTR wszModuleNam
     BYTE pbBuffer[MAX_PATH];
     if(!CharUtil_WtoU(wszModuleName, -1, pbBuffer, sizeof(pbBuffer), &uszModuleName, NULL, 0)) { return FALSE; }
     return VMMDLL_ProcessGetProcAddressU(dwPID, uszModuleName, szFunctionName);
+}
+
+
+
+//-----------------------------------------------------------------------------
+// LOGGING FUNCTIONALITY BELOW:
+//-----------------------------------------------------------------------------
+
+VOID VMMDLL_LogEx(_In_opt_ VMMDLL_MODULE_ID MID, _In_ VMMDLL_LOGLEVEL dwLogLevel, _In_z_ _Printf_format_string_ LPSTR uszFormat, va_list arglist)
+{
+    QWORD tm;
+    if(!ctxVmm) { return; }
+    if(MID & 0x80000000) {
+        if((MID < VMMDLL_MID_MAIN) && (MID > VMMDLL_MID_PYTHON)) {
+            return;
+        }
+    }
+    tm = Statistics_CallStart();
+    VmmLogEx2((DWORD)MID, dwLogLevel, uszFormat, arglist);
+    Statistics_CallEnd(STATISTICS_ID_VMMDLL_Log, tm);
+}
+
+VOID VMMDLL_Log(_In_opt_ VMMDLL_MODULE_ID MID, _In_ VMMDLL_LOGLEVEL dwLogLevel, _In_z_ _Printf_format_string_ LPSTR uszFormat, ...)
+{
+    va_list arglist;
+    va_start(arglist, uszFormat);
+    VMMDLL_LogEx((DWORD)MID, dwLogLevel, uszFormat, arglist);
+    va_end(arglist);
 }
 
 

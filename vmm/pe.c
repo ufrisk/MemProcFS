@@ -610,7 +610,7 @@ BOOL PE_FileRaw_Read(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _Out_ 
     for(iRegion = 0; iRegion < PERegions.cRegions; iRegion++) {
         cbOffsetBuffer = PERegions.Region[iRegion].cbOffsetFile - cbOffset;
         if(cbOffsetBuffer + PERegions.Region[iRegion].cb > cb) {
-            vmmprintf_fn("WARNING: SHOULD NOT HAPPEN! potential buffer overflow avoided reading module at PID=%i BASE=%016llx\n", pProcess->dwPID, vaModuleBase);
+            VmmLog(MID_PE, LOGLEVEL_WARNING, "SHOULD NOT HAPPEN! potential buffer overflow avoided reading module at PID=%i BASE=%016llx", pProcess->dwPID, vaModuleBase);
             continue;
         }
         VmmReadEx(
@@ -644,7 +644,7 @@ BOOL PE_FileRaw_Write(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_r
     for(iRegion = 0; iRegion < PERegions.cRegions; iRegion++) {
         cbOffsetBuffer = PERegions.Region[iRegion].cbOffsetFile - cbOffset;
         if(cbOffsetBuffer + PERegions.Region[iRegion].cb > cb) {
-            vmmprintf_fn("WARNING: SHOULD NOT HAPPEN! potential buffer overflow avoided writing module at PID=%i BASE=%016llx\n", pProcess->dwPID, vaModuleBase);
+            VmmLog(MID_PE, LOGLEVEL_WARNING, "SHOULD NOT HAPPEN! potential buffer overflow avoided writing module at PID=%i BASE=%016llx", pProcess->dwPID, vaModuleBase);
             continue;
         }
         VmmWrite(

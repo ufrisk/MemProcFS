@@ -350,23 +350,18 @@ BOOL VmmWinReg_HiveWrite(_In_ POB_REGISTRY_HIVE pRegistryHive, _In_ DWORD ra, _I
 VOID VmmWinReg_FuzzHiveOffsets_PrintResultVerbose(_In_ PBYTE pb, _In_ DWORD cb)
 {
     PVMMWIN_REGISTRY_OFFSET po = &ctxVmm->pRegistry->Offset;
-    if(ctxMain->cfg.fVerboseExtra) {
-        vmmprintfvv_fn("\n");
-        vmmprintfvv(
-            "    CM.Sig   %03X, CM.Len0   %03X, CM.StorMap0  %03X, CM.StorSmallDir0 %03X, CM.BaseBlock %03X \n",
-            po->CM.Signature, po->CM.Length0, po->CM.StorageMap0, po->CM.StorageSmallDir0, po->CM.BaseBlock);
-        vmmprintfvv(
-            "                  CM.Len1   %03X, CM.StorMap1  %03X, CM.StorSmallDir1 %03X, HE._Size     %03X \n",
-            po->CM.Length1, po->CM.StorageMap1, po->CM.StorageSmallDir1, po->HE._Size);
-        vmmprintfvv(
-            "    CM.FLinkAll %03X, CM._Size  %03X, CM.FileFull  %03X, CM.FileUserPath  %03X, CM.HiveRoot  %03X \n",
-            po->CM.FLinkAll, po->CM._Size, po->CM.FileFullPathOpt, po->CM.FileUserNameOpt, po->CM.HiveRootPathOpt);
-        vmmprintfvv(
-            "    BB.Sig   %03X, BB.Length %03X, BB.FileName  %03X, BB.Major         %03X, BB.Minor     %03X \n",
-            po->BB.Signature, po->BB.Length, po->BB.FileName, po->BB.Major, po->BB.Minor);
-        Util_PrintHexAscii(pb, cb, 0);
-        vmmprintfvv("----------------\n");
-    }
+    VmmLog(MID_REGISTRY, LOGLEVEL_DEBUG,
+        "CM.Sig   %03X, CM.Len0   %03X, CM.StorMap0  %03X, CM.StorSmallDir0 %03X, CM.BaseBlock %03X",
+        po->CM.Signature, po->CM.Length0, po->CM.StorageMap0, po->CM.StorageSmallDir0, po->CM.BaseBlock);
+    VmmLog(MID_REGISTRY, LOGLEVEL_DEBUG,
+        "              CM.Len1   %03X, CM.StorMap1  %03X, CM.StorSmallDir1 %03X, HE._Size     %03X",
+        po->CM.Length1, po->CM.StorageMap1, po->CM.StorageSmallDir1, po->HE._Size);
+    VmmLog(MID_REGISTRY, LOGLEVEL_DEBUG,
+        "CM.FLAll %03X, CM._Size  %03X, CM.FileFull  %03X, CM.FileUserPath  %03X, CM.HiveRoot  %03X",
+        po->CM.FLinkAll, po->CM._Size, po->CM.FileFullPathOpt, po->CM.FileUserNameOpt, po->CM.HiveRootPathOpt);
+    VmmLog(MID_REGISTRY, LOGLEVEL_DEBUG,
+        "BB.Sig   %03X, BB.Length %03X, BB.FileName  %03X, BB.Major         %03X, BB.Minor     %03X",
+        po->BB.Signature, po->BB.Length, po->BB.FileName, po->BB.Major, po->BB.Minor);
 }
 
 /*
@@ -807,7 +802,7 @@ VOID VmmWinReg_EnumHive64_Post(_In_ PVMM_PROCESS pProcess, _In_opt_ POB_MAP pHiv
         (szHiveFileNameLong[0] ? szHiveFileNameLong : "unknown"));
     // 4: Attach and Return
     ObMap_Push(pHiveMap, pObHive->vaCMHIVE, pObHive);
-    vmmprintfvv_fn("%04i %s\n", ObMap_Size(pHiveMap), pObHive->uszName);
+    VmmLog(MID_REGISTRY, LOGLEVEL_DEBUG, "HIVE_ENUM: %04i: %s", ObMap_Size(pHiveMap), pObHive->uszName);
     Ob_DECREF(pObHive);
 }
 
@@ -881,7 +876,7 @@ VOID VmmWinReg_EnumHive32_Post(_In_ PVMM_PROCESS pProcess, _In_opt_ POB_MAP pHiv
         (szHiveFileNameLong[0] ? szHiveFileNameLong : "unknown"));
     // 4: Attach and Return
     ObMap_Push(pHiveMap, pObHive->vaCMHIVE, pObHive);                   // pRegistry->pmHive takes responsibility for pObHive reference
-    vmmprintfvv_fn("%04i %s\n", ObMap_Size(pHiveMap), pObHive->uszName);
+    VmmLog(MID_REGISTRY, LOGLEVEL_DEBUG, "HIVE_ENUM: %04i: %s", ObMap_Size(pHiveMap), pObHive->uszName);
 }
 
 /*
@@ -1339,10 +1334,10 @@ POB_REGISTRY_KEY VmmWinReg_KeyInitializeCreateKey(_In_ POB_REGISTRY_HIVE pHive, 
 	pObKey->qwHashKeyThis = VmmWinReg_KeyHashName(pnk, iSuffix) + ((pObKey->qwHashKeyParent >> 13) | (pObKey->qwHashKeyParent << 51));
 	// 7: store to cache
     if(!ObMap_Push(pHive->Snapshot.pmKeyOffset, oCell, pObKey)) {
-        vmmprintf_fn("SHOULD NOT HAPPEN #1 \n");
+        VmmLog(MID_REGISTRY, LOGLEVEL_WARNING, "SHOULD NOT HAPPEN #1");
     }
     if(!ObMap_Push(pHive->Snapshot.pmKeyHash, pObKey->qwHashKeyThis, pObKey)) {
-        vmmprintf_fn("SHOULD NOT HAPPEN #2 \n");
+        VmmLog(MID_REGISTRY, LOGLEVEL_WARNING, "SHOULD NOT HAPPEN #2");
     }
     VmmWinReg_KeyInitializeCreateKey_AddChild(pObKeyParent, oCell);
 	Ob_DECREF(pObKeyParent);
@@ -1444,7 +1439,7 @@ BOOL VmmWinReg_KeyInitialize(_In_ POB_REGISTRY_HIVE pHive)
                 continue;
             }
             if(dwSignature != REG_SIGNATURE_HBIN) {
-                vmmprintfvv_fn("BAD HBIN HEADER: Hive=%016llx HBin=%08x Sig=%08x \n", pHive->vaCMHIVE, ((iSV << 31) | iHbin), dwSignature);
+                VmmLog(MID_REGISTRY, LOGLEVEL_DEBUG, "BAD HBIN HEADER: Hive=%016llx HBin=%08x Sig=%08x", pHive->vaCMHIVE, ((iSV << 31) | iHbin), dwSignature);
                 iHbin += 0x1000;
                 continue;
             }

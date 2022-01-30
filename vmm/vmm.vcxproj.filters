@@ -132,6 +132,9 @@
     <ClInclude Include="vmmwinpool.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="vmmlog.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="vmmdll.c">
@@ -348,6 +351,12 @@
       <Filter>Source Files\ob</Filter>
     </ClCompile>
     <ClCompile Include="vmmdll_scatter.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="m_proc_search.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmlog.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

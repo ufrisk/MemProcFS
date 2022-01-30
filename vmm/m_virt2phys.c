@@ -132,40 +132,6 @@ NTSTATUS Virt2Phys_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pc
 }
 
 /*
-* Write to the "virt" virtual file - update stored persistent address.
-* -- ctx
-* -- pb
-* -- cb
-* -- pcbWrite
-* -- cbOffset
-* -- return
-*/
-NTSTATUS Virt2Phys_WriteVA(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
-{
-    PVMM_PROCESS pProcess = (PVMM_PROCESS)ctx->pProcess;
-    CHAR szBuffer[17];
-    VMM_MEMORYMODEL_TP tp = ctxVmm->tpMemoryModel;
-    if((tp == VMM_MEMORYMODEL_X64) && (cbOffset < 16)) {
-        *pcbWrite = cb;
-        snprintf(szBuffer, 17, "%016llx", pProcess->pObPersistent->Plugin.vaVirt2Phys);
-        cb = (DWORD)min(16 - cbOffset, cb);
-        memcpy(szBuffer + cbOffset, pb, cb);
-        szBuffer[16] = 0;
-        pProcess->pObPersistent->Plugin.vaVirt2Phys = strtoull(szBuffer, NULL, 16);
-    } else if ((tp == VMM_MEMORYMODEL_X86) || (tp == VMM_MEMORYMODEL_X86PAE)) {
-        *pcbWrite = cb;
-        snprintf(szBuffer, 9, "%08x", (DWORD)pProcess->pObPersistent->Plugin.vaVirt2Phys);
-        cb = (DWORD)min(8 - cbOffset, cb);
-        memcpy(szBuffer + cbOffset, pb, cb);
-        szBuffer[8] = 0;
-        pProcess->pObPersistent->Plugin.vaVirt2Phys = strtoul(szBuffer, NULL, 16);
-    } else {
-        *pcbWrite = 0;
-    }
-    return VMMDLL_STATUS_SUCCESS;
-}
-
-/*
 * Write : function as specified by the module manager. The module manager will
 * call into this callback function whenever a write shall occur from a "file".
 * -- ctx
@@ -181,7 +147,14 @@ NTSTATUS Virt2Phys_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBYTE p
     PVMM_PROCESS pProcess = (PVMM_PROCESS)ctx->pProcess;
     VMM_VIRT2PHYS_INFORMATION Virt2PhysInfo = { 0 };
     if(!_stricmp(ctx->uszPath, "virt.txt")) {
-        return Virt2Phys_WriteVA(ctx, pb, cb, pcbWrite, cbOffset);
+        if(ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_X64) {
+            return Util_VfsWriteFile_QWORD(&pProcess->pObPersistent->Plugin.vaVirt2Phys, pb, cb, pcbWrite, cbOffset, 0, 0);
+        } else if((ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_X86) || (ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_X86PAE)) {
+            return Util_VfsWriteFile_DWORD((PDWORD)&pProcess->pObPersistent->Plugin.vaVirt2Phys, pb, cb, pcbWrite, cbOffset, 0, 0);
+        } else {
+            *pcbWrite = 0;
+            return VMMDLL_STATUS_SUCCESS;
+        }
     }
     Virt2PhysInfo.va = pProcess->pObPersistent->Plugin.vaVirt2Phys;
     VmmVirt2PhysGetInformation(pProcess, &Virt2PhysInfo);

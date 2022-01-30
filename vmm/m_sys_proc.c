@@ -69,7 +69,7 @@ DWORD MSysProc_Tree_ProcessItems(_In_ PMSYSPROC_TREE_ENTRY pProcessEntry, _In_ P
     BOOL fWinNativeProc, fStateTerminated, fAccountUser = FALSE;
     PVMMWIN_USER_PROCESS_PARAMETERS pu;
     if((cb > 0x01000000) || (cb < 0x00040000)) {
-        vmmprintf_fn("WARNING: BUFFER MAY BE TOO SMALL - SHOULD NOT HAPPEN! %i\n", cb);
+        VmmLog(MID_PE, LOGLEVEL_WARNING, "BUFFER MAY BE TOO SMALL - SHOULD NOT HAPPEN! %i", cb);
         return 0;
     }
     fStateTerminated = (pProcessEntry->pObProcess->dwState != 0);
@@ -154,7 +154,7 @@ int MSysProc_Tree_CmpSort(PMSYSPROC_TREE_ENTRY a, PMSYSPROC_TREE_ENTRY b)
 }
 
 _Success_(return)
-BOOL MSysProc_Tree(_In_ BOOL fVerbose, _Out_ PBYTE * ppb, _Out_ PDWORD pcb)
+BOOL MSysProc_Tree(_In_ BOOL fVerbose, _Out_ PBYTE *ppb, _Out_ PDWORD pcb)
 {
     BOOL fResult = FALSE;
     PVMM_PROCESS pObProcess = NULL;

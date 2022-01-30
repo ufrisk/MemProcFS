@@ -391,7 +391,7 @@ VOID MmWin_MemCompress_InitializeVirtualStorePageFileNumber_Old(_Inout_ PMMWIN_C
     // 1: SetUp and locate nt!MiSystemPartition/nt!.data
     if(!(pObSet = ObSet_New())) { goto finish; }
     if(!PE_SectionGetFromName(pSystemProcess, ctxVmm->kernel.vaBase, ".data", &oSectionHeader)) {
-        vmmprintfv_fn("CANNOT READ ntoskrnl.exe .data SECTION from PE header.\n");
+        VmmLog(MID_VMM, LOGLEVEL_VERBOSE, "VirtualStorePageFileNumber: CANNOT READ ntoskrnl.exe.data SECTION from PE header");
         goto finish;
     }
     if(oSectionHeader.Misc.VirtualSize > 0x00100000) { goto finish; }
@@ -399,7 +399,7 @@ VOID MmWin_MemCompress_InitializeVirtualStorePageFileNumber_Old(_Inout_ PMMWIN_C
     cb = oSectionHeader.Misc.VirtualSize;
     if(!(pb = LocalAlloc(0, cb))) { goto finish; }
     if(!VmmRead(pSystemProcess, va, pb, cb)) {
-        vmmprintfv_fn("CANNOT READ ntoskrnl.exe .data SECTION.\n");
+        VmmLog(MID_VMM, LOGLEVEL_VERBOSE, "VirtualStorePageFileNumber: CANNOT READ ntoskrnl.exe .data SECTION.\n");
         goto finish;
     }
     if(ctxVmm->f32) {
@@ -453,7 +453,7 @@ VOID MmWin_MemCompress_InitializeVirtualStorePageFileNumber_Old(_Inout_ PMMWIN_C
             goto finish;
         }
     }
-    vmmprintfv_fn("WARN! did not find virtual store number - fallback to default.\n");
+    VmmLog(MID_VMM, LOGLEVEL_VERBOSE, "VirtualStorePageFileNumber: WARN! did not find virtual store number - fallback to default");
 finish:
     LocalFree(pb);
     Ob_DECREF(pObSet);
@@ -551,11 +551,11 @@ VOID MmWin_MemCompress_Initialize_NoPdb64()
     if(!(pObSystemProcess = VmmProcessGet(4))) { goto finish; }
     if(!(pObSet = ObSet_New())) { goto finish; }
     if(!PE_SectionGetFromName(pObSystemProcess, ctxVmm->kernel.vaBase, "CACHEALI", &oSectionHeader)) {
-        vmmprintfv_fn("CANNOT READ ntoskrnl.exe CACHEALI SECTION from PE header.\n");
+        VmmLog(MID_VMM, LOGLEVEL_VERBOSE, "MemCompress_Initialize_NoPdb64: CANNOT READ ntoskrnl.exe CACHEALI SECTION from PE header");
         goto finish;
     }
     if(!VmmRead(pObSystemProcess, ctxVmm->kernel.vaBase + oSectionHeader.VirtualAddress, pbPage, 0x1000)) {
-        vmmprintfv_fn("CANNOT READ ntoskrnl.exe CACHEALI SECTION.\n");
+        VmmLog(MID_VMM, LOGLEVEL_VERBOSE, "MemCompress_Initialize_NoPdb64: CANNOT READ ntoskrnl.exe CACHEALI SECTION");
         goto finish;
     }
     // 2: Verify SMGLOBALS / _SMKM_STORE_METADATA (pool hdr: 'smSa')
@@ -583,7 +583,7 @@ VOID MmWin_MemCompress_Initialize_NoPdb64()
             ctx->MemCompress.fValid = TRUE;
             ctx->MemCompress.vaSmGlobals = vaSmGlobals;
             ctx->MemCompress.vaKeyToStoreTree = vaKeyToStoreTree;
-            vmmprintfv("Windows 10 Memory Compression Initialize #1 - SmGlobals located at: %16llx Pf: %i \n", ctx->MemCompress.vaSmGlobals, ctx->MemCompress.dwPageFileNumber);
+            VmmLog(MID_VMM, LOGLEVEL_VERBOSE, "Windows 10 Memory Compression Initialize #1 - SmGlobals located at: %16llx Pf: %i", ctx->MemCompress.vaSmGlobals, ctx->MemCompress.dwPageFileNumber);
             break;
         }
     }
@@ -713,16 +713,16 @@ typedef struct td_ST_PAGE_RECORD {
 
 BOOL MmWin_MemCompress_LogError(_In_ PMMWINX64_COMPRESS_CONTEXT ctx, _In_ LPSTR sz)
 {
-    vmmprintfvv(
-        "MmWin_CompressedPage: FAIL: %s\n" \
-        "  va= %016llx ep= %016llx pgk=%08x ism=%04x vas=%016llx \n" \
-        "  pte=%016llx oep=%016llx rgk=%08x pid=%04x vat=%016llx \n" \
-        "  pgr=%016llx rgn=%016llx rgo=%08x cbc=%04x rga=%016llx\n",
-        sz,
-        ctx->e.va, ctx->e.vaEPROCESS, ctx->e.dwPageKey, ctx->e.iSmkm, ctx->e.vaSmkmStore,
-        ctx->e.PTE, ctx->e.vaOwnerEPROCESS, ctx->e.dwRegionKey, ctx->pProcess->dwPID, ((PMMWIN_CONTEXT)ctxVmm->pMmContext)->MemCompress.vaKeyToStoreTree,
-        ctx->e.vaPageRecord, ctx->e.vaRegion, ctx->e.cbRegionOffset, ctx->e.cbCompressedData, (ctx->e.vaRegion + ctx->e.cbRegionOffset)
-    );
+    VmmLog(MID_VMM, LOGLEVEL_DEBUG, "MmWin_CompressedPage: FAIL: %s", sz);
+    VmmLog(MID_VMM, LOGLEVEL_DEBUG,
+        "  va= %016llx ep= %016llx pgk=%08x ism=%04x vas=%016llx",
+        ctx->e.va, ctx->e.vaEPROCESS, ctx->e.dwPageKey, ctx->e.iSmkm, ctx->e.vaSmkmStore);
+    VmmLog(MID_VMM, LOGLEVEL_DEBUG,
+        "  pte=%016llx oep=%016llx rgk=%08x pid=%04x vat=%016llx",
+        ctx->e.PTE, ctx->e.vaOwnerEPROCESS, ctx->e.dwRegionKey, ctx->pProcess->dwPID, ((PMMWIN_CONTEXT)ctxVmm->pMmContext)->MemCompress.vaKeyToStoreTree);
+    VmmLog(MID_VMM, LOGLEVEL_DEBUG,
+        "  pte=%016llx oep=%016llx rgk=%08x pid=%04x vat=%016llx",
+        ctx->e.vaPageRecord, ctx->e.vaRegion, ctx->e.cbRegionOffset, ctx->e.cbCompressedData, (ctx->e.vaRegion + ctx->e.cbRegionOffset));
     return FALSE;
 }
 
@@ -1489,9 +1489,9 @@ VOID MmWin_PagingInitialize(_In_ BOOL fModeFull)
         for(i = 0; i < 10; i++) {
             if(ctxMain->cfg.szPageFile[i][0]) {
                 if(fopen_s(&ctx->pPageFile[i], ctxMain->cfg.szPageFile[i], "rb")) {
-                    vmmprintfv("WARNING: CANNOT OPEN PAGE FILE #%i '%s'\n", i, ctxMain->cfg.szPageFile[i]);
+                    VmmLog(MID_VMM, LOGLEVEL_VERBOSE, "WARNING: CANNOT OPEN PAGE FILE #%i '%s'", i, ctxMain->cfg.szPageFile[i]);
                 } else {
-                    vmmprintfvv("Successfully opened page file #%i '%s'\n", i, ctxMain->cfg.szPageFile[i]);
+                    VmmLog(MID_VMM, LOGLEVEL_DEBUG, "Successfully opened page file #%i '%s'", i, ctxMain->cfg.szPageFile[i]);
                 }
             }
         }

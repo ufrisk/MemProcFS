@@ -842,7 +842,7 @@ QWORD VmmWinInit_FindSystemEPROCESS(_In_ PVMM_PROCESS pSystemProcess)
             vaSystemEPROCESS &= 0xffffffff;
         }
         pSystemProcess->win.EPROCESS.va = vaSystemEPROCESS;
-        vmmprintfvv_fn("INFO: PsInitialSystemProcess located at %016llx.\n", vaPsInitialSystemProcess);
+        VmmLog(MID_CORE, LOGLEVEL_DEBUG, "PsInitialSystemProcess located at %016llx", vaPsInitialSystemProcess);
         goto success;
     }
     // 2: fail - paging? try to retrive using PDB subsystem - this may take some time to initialize
@@ -866,7 +866,7 @@ QWORD VmmWinInit_FindSystemEPROCESS(_In_ PVMM_PROCESS pSystemProcess)
     }
     return 0;
 success:
-    vmmprintfvv_fn("INFO: EPROCESS located at %016llx.\n", vaSystemEPROCESS);
+    VmmLog(MID_CORE, LOGLEVEL_DEBUG, "EPROCESS located at %016llx", vaSystemEPROCESS);
     return vaSystemEPROCESS;
 }
 
@@ -925,36 +925,36 @@ BOOL VmmWinInit_TryInitialize(_In_opt_ QWORD paDTBOpt)
     LcGetOption(ctxMain->hLC, LC_OPT_MEMORYINFO_OS_KERNELHINT, &vaKERN2);
 
     if(paDTBOpt && !VmmWinInit_DTB_Validate(paDTBOpt)) {
-        vmmprintfv("VmmWinInit_TryInitialize: Initialization Failed. Unable to verify user-supplied (0x%016llx) DTB. #1\n", paDTBOpt);
+        VmmLog(MID_CORE, LOGLEVEL_CRITICAL, "Initialization Failed. Unable to verify user-supplied (0x%016llx) DTB. #1", paDTBOpt);
         goto fail;
     }
     if(!ctxVmm->kernel.paDTB && LcGetOption(ctxMain->hLC, LC_OPT_MEMORYINFO_OS_DTB, &paDTBOpt)) {
         if(!VmmWinInit_DTB_Validate(paDTBOpt)) {
-            vmmprintfv("VmmWinInit_TryInitialize: Warning: Unable to verify crash-dump supplied DTB. (0x%016llx) #1\n", paDTBOpt);
+            VmmLog(MID_CORE, LOGLEVEL_WARNING, "Unable to verify crash-dump supplied DTB. (0x%016llx) #1", paDTBOpt);
         }
     }
     if(!ctxVmm->kernel.paDTB && !VmmWinInit_DTB_FindValidate()) {
-        vmmprintfv("VmmWinInit_TryInitialize: Initialization Failed. Unable to locate valid DTB. #2\n");
+        VmmLog(MID_CORE, LOGLEVEL_CRITICAL, "Initialization Failed. Unable to locate valid DTB. #2");
         goto fail;
     }
-    vmmprintfvv_fn("INFO: DTB  located at: %016llx. MemoryModel: %s\n", ctxVmm->kernel.paDTB, VMM_MEMORYMODEL_TOSTRING[ctxVmm->tpMemoryModel]);
+    VmmLog(MID_CORE, LOGLEVEL_DEBUG, "DTB  located at: %016llx. MemoryModel: %s", ctxVmm->kernel.paDTB, VMM_MEMORYMODEL_TOSTRING[ctxVmm->tpMemoryModel]);
     // Fetch 'ntoskrnl.exe' base address
     if(!(pObSystemProcess = VmmWinInit_FindNtosScan())) {
-        vmmprintfv("VmmWinInit_TryInitialize: Initialization Failed. Unable to locate ntoskrnl.exe. #3\n");
+        VmmLog(MID_CORE, LOGLEVEL_CRITICAL, "Initialization Failed. Unable to locate ntoskrnl.exe. #3");
         goto fail;
     }
-    vmmprintfvv_fn("INFO: NTOS located at: %016llx.\n", ctxVmm->kernel.vaBase);
+    VmmLog(MID_CORE, LOGLEVEL_DEBUG, "NTOS located at: %016llx", ctxVmm->kernel.vaBase);
     // Initialize Paging (Limited Mode)
     MmWin_PagingInitialize(FALSE);
     // Locate System EPROCESS
     pObSystemProcess->win.EPROCESS.va = VmmWinInit_FindSystemEPROCESS(pObSystemProcess);
     if(!pObSystemProcess->win.EPROCESS.va) {
-        vmmprintfv_fn("Initialization Failed. Unable to locate EPROCESS. #4\n");
+        VmmLog(MID_CORE, LOGLEVEL_CRITICAL, "Initialization Failed. Unable to locate EPROCESS. #4");
         goto fail;
     }
     // Enumerate processes
     if(!VmmWinProcess_Enumerate(pObSystemProcess, TRUE, NULL)) {
-        vmmprintfv("VmmWinInit: Initialization Failed. Unable to walk EPROCESS. #5\n");
+        VmmLog(MID_CORE, LOGLEVEL_CRITICAL, "Initialization Failed. Unable to walk EPROCESS. #5");
         goto fail;
     }
     ctxVmm->tpSystem = (VMM_MEMORYMODEL_X64 == ctxVmm->tpMemoryModel) ? VMM_SYSTEM_WINDOWS_X64 : VMM_SYSTEM_WINDOWS_X86;

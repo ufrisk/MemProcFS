@@ -1086,7 +1086,7 @@ _Success_(return == STATUS_SUCCESS)
 NTSTATUS M_MiniDump_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     if(!_stricmp(ctxP->uszPath, "readme.txt")) {
-        return Util_VfsReadFile_FromPBYTE((PBYTE)szMMINIDUMP_README, strlen(szMMINIDUMP_README), pb, cb, pcbRead, cbOffset);
+        return Util_VfsReadFile_FromStrA(szMMINIDUMP_README, pb, cb, pcbRead, cbOffset);
     }
     if(!_stricmp(ctxP->uszPath, "minidump.dmp")) {
         return M_MiniDump_ReadMiniDump(ctxP, pb, cb, pcbRead, cbOffset);
@@ -1111,8 +1111,7 @@ BOOL M_MiniDump_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList
 
 VOID M_MiniDump_Close(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
 {
-    POB_MAP ctxM = (POB_MAP)ctxP->ctxM;
-    Ob_DECREF(ctxM);
+    Ob_DECREF(ctxP->ctxM);
 }
 
 /*

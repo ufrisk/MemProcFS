@@ -96,21 +96,6 @@ BOOL Util_FillHexAscii(_In_reads_opt_(cb) PBYTE pb, _In_ DWORD cb, _In_ DWORD cb
     return TRUE;
 }
 
-VOID Util_PrintHexAscii(_In_reads_(cb) PBYTE pb, _In_ DWORD cb, _In_ DWORD cbInitialOffset)
-{
-    DWORD szMax = 0;
-    LPSTR sz;
-    if(cb > 0x10000) {
-        vmmprintf("Large output. Only displaying first 65kB.\n");
-        cb = 0x10000 - cbInitialOffset;
-    }
-    Util_FillHexAscii(pb, cb, cbInitialOffset, NULL, &szMax);
-    if(!(sz = LocalAlloc(0, szMax))) { return; }
-    Util_FillHexAscii(pb, cb, cbInitialOffset, sz, &szMax);
-    vmmprintf("%s", sz);
-    LocalFree(sz);
-}
-
 VOID Util_AsciiFileNameFix(_In_ LPSTR sz, _In_ CHAR chDefault)
 {
     DWORD i = 0;
@@ -166,7 +151,7 @@ size_t Util_usnprintf_ln(
 
 NTSTATUS Util_VfsReadFile_FromZERO(_In_ QWORD cbFile, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
-    if(cbOffset > cbFile) { return UTIL_NTSTATUS_END_OF_FILE; }
+    if(cbOffset > cbFile) { *pcbRead = 0; return UTIL_NTSTATUS_END_OF_FILE; }
     *pcbRead = (DWORD)min(cb, cbFile - cbOffset);
     ZeroMemory(pb, *pcbRead);
     return *pcbRead ? UTIL_NTSTATUS_SUCCESS : UTIL_NTSTATUS_END_OF_FILE;
@@ -174,9 +159,32 @@ NTSTATUS Util_VfsReadFile_FromZERO(_In_ QWORD cbFile, _Out_writes_to_(cb, *pcbRe
 
 NTSTATUS Util_VfsReadFile_FromPBYTE(_In_opt_ PBYTE pbFile, _In_ QWORD cbFile, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
-    if(!pbFile || (cbOffset > cbFile)) { return UTIL_NTSTATUS_END_OF_FILE; }
+    if(!pbFile || (cbOffset > cbFile)) { *pcbRead = 0; return UTIL_NTSTATUS_END_OF_FILE; }
     *pcbRead = (DWORD)min(cb, cbFile - cbOffset);
     memcpy(pb, pbFile + cbOffset, *pcbRead);
+    return *pcbRead ? UTIL_NTSTATUS_SUCCESS : UTIL_NTSTATUS_END_OF_FILE;
+}
+
+NTSTATUS Util_VfsReadFile_FromHEXASCII(_In_opt_ PBYTE pbFile, _In_ QWORD cbFile, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+{
+    BYTE v;
+    QWORD cbFileHex, oHex, oTarget;
+    cbFileHex = (QWORD)cbFile << 1;
+    if(!pbFile || (cbOffset > cbFileHex)) { *pcbRead = 0; return UTIL_NTSTATUS_END_OF_FILE; }
+    if(cbOffset + cb > cbFileHex) {
+        cb = (DWORD)(cbFileHex - cbOffset);
+    }
+    for(oHex = 0; oHex < cb; oHex++) {
+        oTarget = (cbOffset + oHex) >> 1;
+        v = pbFile[oTarget];
+        if((cbOffset + oHex) & 1) {
+            v = v & 0xf;
+        } else {
+            v = v >> 4;
+        }
+        pb[oHex] = v + ((v >= 10) ? ('a' - 10) : '0');
+    }
+    *pcbRead = cb;
     return *pcbRead ? UTIL_NTSTATUS_SUCCESS : UTIL_NTSTATUS_END_OF_FILE;
 }
 
@@ -302,11 +310,47 @@ NTSTATUS Util_VfsWriteFile_PBYTE(_Inout_ PBYTE pbTarget, _In_ DWORD cbTarget, _I
     if(cbOffset + cb > cbTarget) {
         cb = (DWORD)(cbTarget - cbOffset);
     }
-    memcpy(pbTarget, pb, cb);
+    memcpy(pbTarget + cbOffset, pb, cb);
     if(fTerminatingNULL) {
         pbTarget[min(cbTarget - 1, cb)] = 0;
     }
     *pcbWrite = cb;
+    return UTIL_NTSTATUS_SUCCESS;
+}
+
+NTSTATUS Util_VfsWriteFile_HEXASCII(_Inout_ PBYTE pbTarget, _In_ DWORD cbTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
+{
+    BYTE v;
+    DWORD cbWrite = 0;
+    QWORD cbTargetHex, oHex, oTarget;
+    cbTargetHex = (QWORD)cbTarget << 1;
+    if(cbOffset >= cbTargetHex) {
+        *pcbWrite = 0;
+        return UTIL_NTSTATUS_END_OF_FILE;
+    }
+    if(cbOffset + cb > cbTargetHex) {
+        cb = (DWORD)(cbTargetHex - cbOffset);
+    }
+    for(oHex = 0; oHex < cb; oHex++) {
+        oTarget = (cbOffset + oHex) >> 1;
+        v = pb[oHex];
+        if((v >= '0') && (v <= '9')) {
+            v = v - '0';
+        } else if((v >= 'a') && (v <= 'f')) {
+            v = v + 10 - 'a';
+        } else if((v >= 'A') && (v <= 'F')) {
+            v = v + 10 - 'A';
+        } else {
+            break;
+        }
+        if((cbOffset + oHex) & 1) {
+            pbTarget[oTarget] = (pbTarget[oTarget] & 0xf0) | v;
+        } else {
+            pbTarget[oTarget] = (pbTarget[oTarget] & 0x0f) | (v << 4);
+        }
+        cbWrite++;
+    }
+    *pcbWrite = cbWrite;
     return UTIL_NTSTATUS_SUCCESS;
 }
 
@@ -353,6 +397,27 @@ NTSTATUS Util_VfsWriteFile_DWORD(_Inout_ PDWORD pdwTarget, _In_reads_(cb) PBYTE 
     return UTIL_NTSTATUS_SUCCESS;
 }
 
+NTSTATUS Util_VfsWriteFile_QWORD(_Inout_ PQWORD pqwTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset, _In_ QWORD qwMinAllow, _In_opt_ QWORD qwMaxAllow)
+{
+    QWORD qw;
+    BYTE pbBuffer[17];
+    if(cbOffset > 16) { return UTIL_NTSTATUS_END_OF_FILE; }
+    if(cbOffset < 16) {
+        snprintf(pbBuffer, 17, "%016llx", *pqwTarget);
+        cb = (DWORD)min(16 - cbOffset, cb);
+        memcpy(pbBuffer + cbOffset, pb, cb);
+        pbBuffer[16] = 0;
+        qw = strtoull(pbBuffer, NULL, 16);
+        qw = max(qw, qwMinAllow);
+        if(qwMaxAllow) {
+            qw = min(qw, qwMaxAllow);
+        }
+        *pqwTarget = qw;
+    }
+    *pcbWrite = cb;
+    return UTIL_NTSTATUS_SUCCESS;
+}
+
 VOID Util_VfsTimeStampFile(_In_opt_ PVMM_PROCESS pProcess, _Out_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
 {
     pExInfo->dwVersion = VMMDLL_VFS_FILELIST_EXINFO_VERSION;
@@ -375,6 +440,19 @@ LPSTR Util_StrDupA(_In_opt_ LPSTR sz)
         memcpy(szDup, sz, cch);
     }
     return szDup;
+}
+
+QWORD Util_FileTimeNow()
+{
+    QWORD ftNow;
+#ifdef _WIN32
+    SYSTEMTIME SystemTimeNow;
+    GetSystemTime(&SystemTimeNow);
+    SystemTimeToFileTime(&SystemTimeNow, (LPFILETIME)&ftNow);
+#else
+    ftNow = (time(NULL) * 10000000) + 116444736000000000;
+#endif /* _WIN32 */
+    return (QWORD)ftNow;
 }
 
 VOID Util_FileTime2String(_In_ QWORD ft, _Out_writes_(24) LPSTR szTime)

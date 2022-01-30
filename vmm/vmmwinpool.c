@@ -887,7 +887,7 @@ VOID VmmWinPool_AllPool1903_5_VS_DoWork(
             if((cbBlock < 0xff0) && (((vaBlock & 0xfff) + cbBlock) > 0x1040)) {
                 // block crosses page boundary -> pool header will be found at
                 // start of new page - adjust block size and address!
-                cbAdjust = 0x1000 - vaBlock & 0xfff;
+                cbAdjust = 0x1000 - (vaBlock & 0xfff);
                 oBlock += cbAdjust;
                 cbBlock -= cbAdjust;
                 vaBlock += cbAdjust;

@@ -1,4 +1,4 @@
-// m_vmemd.h : implementation related to the vmemd native plugin module for the
+// m_vmemd.c : implementation related to the vmemd native plugin module for the
 // memory process file system.
 //
 // (c) Ulf Frisk, 2018-2022
@@ -338,5 +338,5 @@ VOID InitializeVmmPlugin(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo)
     pRegInfo->reg_fn.pfnList = VMemD_List;                      // List function supported.
     pRegInfo->reg_fn.pfnRead = VMemD_Read;                      // Read function supported.
     pRegInfo->reg_fn.pfnWrite = VMemD_WritePte;                 // Write function supported.
-    pRegInfo->pfnPluginManager_Register(pRegInfo);              // Register with the plugin maanger.
+    pRegInfo->pfnPluginManager_Register(pRegInfo);              // Register with the plugin manager.
 }

@@ -289,3 +289,8 @@ v1.1-v2.10
 * VMMDLL_Scatter_* API efficiency improvements for some smaller reads.
 * Visual Studio 2022 Support.
 * Upgrade to [Dokany2](https://github.com/dokan-dev/dokany/releases) (NB! Dokany2 will have to be installed!).
+
+[v4.7](https://github.com/ufrisk/MemProcFS/releases/tag/v4.7)
+* New memory search functionality (file system and API).
+* New/improved logging sub-system.
+* Minor API updates.

@@ -61,18 +61,6 @@ BOOL Util_HashSHA256(_In_reads_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_wr
 VOID Util_DeleteFileU(_In_ LPSTR uszPathFile);
 
 /*
-* Print a maximum of 8192 bytes of binary data as hexascii on the screen.
-* -- pb
-* -- cb
-* -- cbInitialOffset = offset, must be max 0x1000 and multiple of 0x10.
-*/
-VOID Util_PrintHexAscii(
-    _In_reads_(cb) PBYTE pb,
-    _In_ DWORD cb,
-    _In_ DWORD cbInitialOffset
-);
-
-/*
 * Fill a human readable hex ascii memory dump into the caller supplied sz buffer.
 * -- pb = bytes (may only be NULL if sz is NULL for size query).
 * -- cb
@@ -146,6 +134,11 @@ VOID Util_GetPathLib(_Out_writes_(MAX_PATH) PCHAR szPath);
 LPSTR Util_StrDupA(_In_opt_ LPSTR sz);
 
 /*
+* Retrieve the current time as FILETIME.
+*/
+QWORD Util_FileTimeNow();
+
+/*
 * Convert a FILETIME (ft) into a human readable string.
 * -- ft = the FILETIME in UTC time zone.
 * -- szTime = time in format '2020-01-01 23:59:59 UCT' (23 chars).
@@ -217,6 +210,7 @@ PVOID Util_qfind(_In_ QWORD qwFind, _In_ DWORD cMap, _In_ PVOID pvMap, _In_ DWOR
 */
 NTSTATUS Util_VfsReadFile_FromZERO(_In_ QWORD cbFile, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsReadFile_FromPBYTE(_In_opt_ PBYTE pbFile, _In_ QWORD cbFile, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
+NTSTATUS Util_VfsReadFile_FromHEXASCII(_In_opt_ PBYTE pbFile, _In_ QWORD cbFile, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsReadFile_FromStrA(_In_opt_ LPCSTR szFile, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsReadFile_FromMEM(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD vaMEM, _In_ QWORD cbMEM, _In_ QWORD flags, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsReadFile_FromObData(_In_opt_ POB_DATA pData, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
@@ -232,7 +226,9 @@ NTSTATUS Util_VfsReadFile_usnprintf_ln(_Out_writes_to_(cb, *pcbRead) PBYTE pb, _
 NTSTATUS Util_VfsWriteFile_BOOL(_Inout_ PBOOL pfTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsWriteFile_09(_Inout_ PDWORD pdwTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsWriteFile_DWORD(_Inout_ PDWORD pdwTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset, _In_ DWORD dwMinAllow, _In_opt_ DWORD dwMaxAllow);
+NTSTATUS Util_VfsWriteFile_QWORD(_Inout_ PQWORD pqwTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset, _In_ QWORD qwMinAllow, _In_opt_ QWORD qwMaxAllow);
 NTSTATUS Util_VfsWriteFile_PBYTE(_Inout_ PBYTE pbTarget, _In_ DWORD cbTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset, _In_ BOOL fTerminatingNULL);
+NTSTATUS Util_VfsWriteFile_HEXASCII(_Inout_ PBYTE pbTarget, _In_ DWORD cbTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset);
 DWORD Util_ResourceSize(_In_ LPWSTR wszResourceName);
 VOID Util_VfsTimeStampFile(_In_opt_ PVMM_PROCESS pProcess, _Out_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo);
 

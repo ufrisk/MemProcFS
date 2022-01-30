@@ -36,6 +36,7 @@ EXPORTS
     VMMDLL_MemPrefetchPages
     VMMDLL_MemWrite
     VMMDLL_MemVirt2Phys
+    VMMDLL_MemSearch
 
     VMMDLL_Scatter_Initialize
     VMMDLL_Scatter_Prepare
@@ -51,6 +52,7 @@ EXPORTS
     VMMDLL_Map_GetNetW
     VMMDLL_Map_GetPfn
     VMMDLL_Map_GetPool
+    VMMDLL_Map_GetPoolEx
     VMMDLL_Map_GetPhysMem
     VMMDLL_Map_GetUsersU
     VMMDLL_Map_GetUsersW
@@ -106,4 +108,7 @@ EXPORTS
     VMMDLL_PdbTypeChildOffset
     
     VMMDLL_UtilFillHexAscii
+
+    VMMDLL_Log
+    VMMDLL_LogEx
     

@@ -365,8 +365,7 @@ VOID FcNtfs_IngestMftEntry(_In_ PFCNTFS_SETUP_CONTEXT ctx, _In_ QWORD qwPhysical
         ObSet_Push(ctx->psDirFile, (QWORD)pNtfs);
     }
     // Debug output:
-    vmmprintfvv_fn(
-        "   %08x:%04x %12llx %8lli : %c : %s \n",
+    VmmLog(MID_FORENSIC, LOGLEVEL_DEBUG, "   %08x:%04x %12llx %8lli : %c : %s \n",
         pNtfs->Setup.dwParentRecordNumber,
         pNtfs->Setup.wParentSeqenceNumber,
         pNtfs->pa,

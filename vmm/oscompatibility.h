@@ -172,6 +172,7 @@ typedef int(*_CoreCrtNonSecureSearchSortCompareFunction)(void const *, void cons
 #define ExitThread(dwExitCode)              (pthread_exit(dwExitCode))
 #define ExitProcess(c)                      (exit(c ? EXIT_SUCCESS : EXIT_FAILURE))
 #define Sleep(dwMilliseconds)               (usleep(1000*dwMilliseconds))
+#define _fsopen(szFile, szMode, dwAttr)     fopen(szFile, szMode)
 #define fopen_s(ppFile, szFile, szAttr)     ((*ppFile = fopen64(szFile, szAttr)) ? 0 : 1)
 #define ZeroMemory(pb, cb)                  (memset(pb, 0, cb))
 #define _ftelli64(f)                        (ftello64(f))

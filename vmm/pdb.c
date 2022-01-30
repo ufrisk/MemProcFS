@@ -20,7 +20,9 @@ VOID PDB_PrintError(_In_ LPSTR szErrorMessage)
     PVMM_PROCESS pObSystemProcess;
     InfoDB_IsValidSymbols(&fInfoDB_Ntos, NULL);
     if(fInfoDB_Ntos) {
-        vmmprintf("WARNING: Functionality may be limited. Extended debug information disabled.\n         Partial offline fallback symbols in use.\n         %s\n", szErrorMessage);
+        VmmLog(MID_PDB, LOGLEVEL_WARNING, "Functionality may be limited. Extended debug information disabled");
+        VmmLog(MID_PDB, LOGLEVEL_WARNING, "Partial offline fallback symbols in use");
+        VmmLog(MID_PDB, LOGLEVEL_WARNING, "%s\n", szErrorMessage);
         return;
     }
     if(InfoDB_IsInitialized()) {
@@ -28,9 +30,13 @@ VOID PDB_PrintError(_In_ LPSTR szErrorMessage)
             PE_GetTimeDateStampCheckSum(pObSystemProcess, ctxVmm->kernel.vaBase, &dwTimeDateStamp, NULL);
             Ob_DECREF_NULL(&pObSystemProcess);
         }
-        vmmprintf("WARNING: Functionality may be limited. Extended debug information disabled.\n         Offline symbols unavailable - ID: %08X%X\n         %s\n", dwTimeDateStamp, (DWORD)ctxVmm->kernel.cbSize, szErrorMessage);
+        VmmLog(MID_PDB, LOGLEVEL_WARNING, "Functionality may be limited. Extended debug information disabled");
+        VmmLog(MID_PDB, LOGLEVEL_WARNING, "Offline symbols unavailable - ID: %08X%X", dwTimeDateStamp, (DWORD)ctxVmm->kernel.cbSize);
+        VmmLog(MID_PDB, LOGLEVEL_WARNING, "%s\n", szErrorMessage);
     } else {
-        vmmprintf("WARNING: Functionality may be limited. Extended debug information disabled.\n         Offline symbols unavailable - file 'info.db' not found.\n         %s\n", szErrorMessage);
+        VmmLog(MID_PDB, LOGLEVEL_WARNING, "Functionality may be limited. Extended debug information disabled");
+        VmmLog(MID_PDB, LOGLEVEL_WARNING, "Offline symbols unavailable - file 'info.db' not found");
+        VmmLog(MID_PDB, LOGLEVEL_WARNING, "%s\n", szErrorMessage);
     }
 }
 
@@ -759,7 +765,8 @@ DWORD PDB_Initialize_Async_Kernel_ThreadProc(LPVOID lpParameter)
         PDB_PrintError("Reason: Unable to download kernel symbols to cache from Symbol Server.");
         goto fail;
     }
-    vmmprintfvv_fn("Initialization of debug symbol .pdb functionality completed.\n    [ %s ]\n", ctxMain->pdb.szSymbolPath);
+    VmmLog(MID_PDB, LOGLEVEL_DEBUG, "Initialization of debug symbol .pdb functionality completed");
+    VmmLog(MID_PDB, LOGLEVEL_DEBUG, "[ %s ]", ctxMain->pdb.szSymbolPath);
     ctxOb->fDisabled = FALSE;
     dwReturnStatus = 1;
     // fall-through to fail for cleanup
