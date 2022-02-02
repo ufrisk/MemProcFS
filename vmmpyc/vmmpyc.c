@@ -93,7 +93,7 @@ PyObject* VmmPyc_MemWrite(_In_ DWORD dwPID, _In_ LPSTR szFN, PyObject *args)
     ULONG64 va;
     DWORD cb;
     PBYTE pb;
-    if(!PyArg_ParseTuple(args, "Ky#", &dwPID, &va, &pb, &cb)) {
+    if(!PyArg_ParseTuple(args, "Ky#", &va, &pb, &cb)) {
         return PyErr_Format(PyExc_RuntimeError, "%s: Illegal argument.", szFN);
     }
     if(cb == 0) {

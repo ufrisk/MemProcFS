@@ -1184,7 +1184,7 @@ BOOL VmmWinUnloadedModule_Initialize(_In_ PVMM_PROCESS pProcess)
 PVMMWIN_USER_PROCESS_PARAMETERS VmmWin_UserProcessParameters_Get(_In_ PVMM_PROCESS pProcess)
 {
     BOOL f;
-    LPWSTR wszTMP;
+    LPWSTR wszTMP = NULL;
     QWORD vaUserProcessParameters = 0;
     PVMMWIN_USER_PROCESS_PARAMETERS pu = &pProcess->pObPersistent->UserProcessParams;
     if(pu->fProcessed || pProcess->dwState) { return pu; }
@@ -1204,9 +1204,11 @@ PVMMWIN_USER_PROCESS_PARAMETERS VmmWin_UserProcessParameters_Get(_In_ PVMM_PROCE
             VmmReadAllocUnicodeString(pProcess, ctxVmm->f32, 0, vaUserProcessParameters + (ctxVmm->f32 ? 0x030 : 0x050), 0x400, &wszTMP, NULL);      // DllPath (mutually exclusive with ImagePathName?)
         }
         CharUtil_WtoU(wszTMP, 0x400, NULL, 0, &pu->uszImagePathName, &pu->cbuImagePathName, CHARUTIL_FLAG_ALLOC);
+        LocalFree(wszTMP); wszTMP = NULL;
         // CommandLine
         VmmReadAllocUnicodeString(pProcess, ctxVmm->f32, 0, vaUserProcessParameters + (ctxVmm->f32 ? 0x040 : 0x070), 0x800, &wszTMP, NULL);
         CharUtil_WtoU(wszTMP, 0x800, NULL, 0, &pu->uszCommandLine, &pu->cbuCommandLine, CHARUTIL_FLAG_ALLOC);
+        LocalFree(wszTMP); wszTMP = NULL;
     }
     pu->fProcessed = TRUE;
     LeaveCriticalSection(&pProcess->LockUpdate);
@@ -2676,6 +2678,7 @@ PVMMOB_MAP_PHYSMEM VmmWinPhysMemMap_InitializeFromRegistry_DoWork()
         }
         if((pObPhysMemMap->pMap[i].pa & 0xfff) || (pObPhysMemMap->pMap[i].cb & 0xfff)) { goto fail; }
     }
+    LocalFree(pbData);
     return pObPhysMemMap;
 fail:
     Ob_DECREF(pObPhysMemMap);

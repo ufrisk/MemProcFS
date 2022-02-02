@@ -105,7 +105,7 @@ NTSTATUS MSearch_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_reads_(cb) PBYTE pb
     DWORD dw;
     QWORD qw;
     BYTE pbSearchBuffer[32];
-    *pcbWrite = 0;
+    *pcbWrite = cb;
     if(!(pObCtx = MSearch_ContextGet(ctxP))) { return VMMDLL_STATUS_FILE_INVALID; }
     if(!_stricmp(ctxP->uszPath, "reset.txt")) {
         fReset = FALSE;

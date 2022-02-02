@@ -169,6 +169,7 @@ NTSTATUS Util_VfsReadFile_FromHEXASCII(_In_opt_ PBYTE pbFile, _In_ QWORD cbFile,
 {
     BYTE v;
     QWORD cbFileHex, oHex, oTarget;
+    static LPCSTR szALPHABET= "0123456789abcdef";
     cbFileHex = (QWORD)cbFile << 1;
     if(!pbFile || (cbOffset > cbFileHex)) { *pcbRead = 0; return UTIL_NTSTATUS_END_OF_FILE; }
     if(cbOffset + cb > cbFileHex) {
@@ -182,7 +183,7 @@ NTSTATUS Util_VfsReadFile_FromHEXASCII(_In_opt_ PBYTE pbFile, _In_ QWORD cbFile,
         } else {
             v = v >> 4;
         }
-        pb[oHex] = v + ((v >= 10) ? ('a' - 10) : '0');
+        pb[oHex] = szALPHABET[v];
     }
     *pcbRead = cb;
     return *pcbRead ? UTIL_NTSTATUS_SUCCESS : UTIL_NTSTATUS_END_OF_FILE;
