@@ -7,7 +7,7 @@
 // (c) Ulf Frisk, 2018-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-// Header Version: 4.7
+// Header Version: 4.7.2
 //
 
 #include "leechcore.h"
@@ -1520,30 +1520,37 @@ _Success_(return) BOOL VMMDLL_Map_GetServicesW(_Out_writes_bytes_opt_(*pcbServic
 // MEMORY SEARCH FUNCTIONALITY:
 //-----------------------------------------------------------------------------
 
-#define VMMDLL_MEM_SEARCH_VERSION           0xfe3e0001
+#define VMMDLL_MEM_SEARCH_VERSION           0xfe3e0002
+#define VMMDLL_MEM_SEARCH_MAX               16
+
+typedef struct tdVMMDLL_MEM_SEARCH_CONTEXT_SEARCHENTRY {
+    DWORD cbAlign;              // byte-align at 2^x - 0, 1, 2, 4, 8, 16, .. bytes.
+    DWORD cb;                   // number of bytes to search (1-32).
+    BYTE pb[32];
+    BYTE pbSkipMask[32];        // skip bitmask '0' = match, '1' = wildcard.
+} VMMDLL_MEM_SEARCH_CONTEXT_SEARCHENTRY, *PVMMDLL_MEM_SEARCH_CONTEXT_SEARCHENTRY;
 
 /*
 * Context to populate and use in the VMMDLL_MemSearch() function.
 */
 typedef struct tdVMMDLL_MEM_SEARCH_CONTEXT {
     DWORD dwVersion;
-    DWORD _Filler1;
+    DWORD _Filler[2];
     BOOL fAbortRequested;       // may be set by caller to abort processing prematurely.
     DWORD cMaxResult;           // # max result entries. '0' = 1 entry. max 0x10000 entries.
-    DWORD cbAlign;              // byte-align at 2^x - 0, 1, 2, 4, 8, 16, .. bytes.
-    DWORD cbSearch;             // number of bytes to search (1-32).
-    BYTE pbSearch[32];
-    BYTE pbSearchSkipMask[32];  // skip bitmask '0' = match, '1' = wildcard.
+    DWORD cSearch;              // number of valid search entries
+    VMMDLL_MEM_SEARCH_CONTEXT_SEARCHENTRY search[VMMDLL_MEM_SEARCH_MAX];
     QWORD vaMin;                // min address to search (page-aligned).
     QWORD vaMax;                // max address to search (page-aligned), if 0 max memory is assumed.
     QWORD vaCurrent;            // current address (may be read by caller).
     DWORD _Filler2;
     DWORD cResult;              // number of search hits.
     QWORD cbReadTotal;          // total number of bytes read.
+    PVOID pvUserPtrOpt;         // optional pointer set by caller (used for context passing to callbacks)
     // optional result callback function.
     // use of callback function disable ordinary result in ppObAddressResult.
     // return = continue search(TRUE), abort search(FALSE).
-    BOOL(*pfnResultOptCB)(_In_ struct tdVMMDLL_MEM_SEARCH_CONTEXT *ctx, _In_ QWORD va);
+    BOOL(*pfnResultOptCB)(_In_ struct tdVMMDLL_MEM_SEARCH_CONTEXT *ctx, _In_ QWORD va, _In_ DWORD iSearch);
     // non-recommended features:
     QWORD ReadFlags;            // read flags as in VMMDLL_FLAG_*
     BOOL fForcePTE;             // force PTE method for virtual address reads.
@@ -1569,7 +1576,7 @@ typedef struct tdVMMDLL_MEM_SEARCH_CONTEXT {
 * -- return
 */
 EXPORTED_FUNCTION _Success_(return)
-BOOL VMMDLL_MemSearch(_In_ DWORD dwPID, _Inout_ PVMMDLL_MEM_SEARCH_CONTEXT ctx, _Out_ PQWORD *ppva, _Out_ PDWORD pcva);
+BOOL VMMDLL_MemSearch(_In_ DWORD dwPID, _Inout_ PVMMDLL_MEM_SEARCH_CONTEXT ctx, _Out_opt_ PQWORD *ppva, _Out_opt_ PDWORD pcva);
 
 
 

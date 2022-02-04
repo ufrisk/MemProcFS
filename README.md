@@ -294,3 +294,7 @@ v1.1-v2.10
 * New memory search functionality (file system and API).
 * New/improved logging sub-system.
 * Minor API updates.
+
+Latest:
+* Bug fixes.
+* Search API update.

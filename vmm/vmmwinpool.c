@@ -1137,7 +1137,7 @@ VOID VmmWinPool_AllPool7_ProcessSingleRange(_In_ PVMMWINPOOL7_CTX ctx, _In_ PVMM
         // check: index / block size / process billed
         if(dwPoolIndex) { goto next; }
         if(dwBlockSize < 2) { goto next; }
-        if(fPrev && (dwPrevBlockSize != dwPreviousSize)) { goto next; }
+        if(fPrev && dwPreviousSize && (dwPrevBlockSize != dwPreviousSize)) { goto next; }
         if(qwProcessBilled && !fPrev && !VMM_KADDR64_8(qwProcessBilled) && !VMM_UADDR64_8(qwProcessBilled)) { goto next; }
         // check: pool type
         f = FALSE;
@@ -1174,7 +1174,7 @@ VOID VmmWinPool_AllPool7_ProcessSingleRange(_In_ PVMMWINPOOL7_CTX ctx, _In_ PVMM
         dwPrevBlockSize = dwBlockSize;
         fPrev = TRUE;
         continue;
-    next:
+next:
         o += cbBlock;
         fPrev = FALSE;
     }

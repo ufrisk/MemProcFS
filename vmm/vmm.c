@@ -2071,7 +2071,7 @@ fail:
 typedef struct tdVMM_MEMORY_SEARCH_INTERNAL_CONTEXT {
     PVMM_PROCESS pProcess;
     POB_SET psvaResult;
-    BOOL fMask;
+    BOOL fMask[VMM_MEMORY_SEARCH_MAX];
     DWORD cb;
     BYTE pb[0x00100000];    // 1MB
 } VMM_MEMORY_SEARCH_INTERNAL_CONTEXT, *PVMM_MEMORY_SEARCH_INTERNAL_CONTEXT;
@@ -2084,8 +2084,9 @@ BOOL VmmSearch_SearchRegion(_In_ PVMM_MEMORY_SEARCH_INTERNAL_CONTEXT ctxi, _In_ 
 {
     BYTE v;
     QWORD va, oMax;
-    DWORD o, i, cbRead;
-    BOOL fMaskFail, f4 = (ctxs->cbSearch >= 4);
+    DWORD o, i, iS, cbRead;
+    BOOL fMaskFail, f4;
+    PVMM_MEMORY_SEARCH_CONTEXT_SEARCHENTRY pS;
     if(ctxs->fAbortRequested || !ctxVmm->Work.fEnabled) {
         ctxs->fAbortRequested = TRUE;
         return FALSE;
@@ -2093,53 +2094,59 @@ BOOL VmmSearch_SearchRegion(_In_ PVMM_MEMORY_SEARCH_INTERNAL_CONTEXT ctxi, _In_ 
     ctxs->cbReadTotal += ctxi->cb;
     VmmReadEx(ctxi->pProcess, ctxs->vaCurrent, ctxi->pb, ctxi->cb, &cbRead, ctxs->ReadFlags | VMM_FLAG_ZEROPAD_ON_FAIL);
     if(!cbRead) { return TRUE; }
-    if(ctxi->fMask) {
-        // mask search
-        f4 = f4 && (0 == *(PDWORD)ctxs->pbSearchSkipMask);
-        oMax = ctxi->cb - ctxs->cbSearch;
-        for(o = 0; o <= oMax; o += ctxs->cbAlign) {
-            if(f4) {
-                if(*(PDWORD)ctxs->pbSearch != *(PDWORD)(ctxi->pb + o)) { continue; }
-            } else {
-                v = ctxs->pbSearchSkipMask[0];
-                if((ctxs->pbSearch[0] | v) != (ctxi->pb[o] | v)) { continue; }
-            }
-            fMaskFail = FALSE;
-            for(i = 0; i < ctxs->cbSearch; i++) {
-                v = ctxs->pbSearchSkipMask[i];
-                if((ctxs->pbSearch[i] | v) != (ctxi->pb[o + i] | v)) {
-                    fMaskFail = TRUE;
-                    break;
+    for(iS = 0; iS < ctxs->cSearch; iS++) {
+        pS = ctxs->search + iS;
+        f4 = (pS->cb >= 4);
+        if(ctxi->fMask[iS]) {
+            // mask search
+            f4 = f4 && (0 == *(PDWORD)pS->pbSkipMask);
+            oMax = ctxi->cb - pS->cb;
+            for(o = 0; o <= oMax; o += pS->cbAlign) {
+                if(f4) {
+                    if(*(PDWORD)pS->pb != *(PDWORD)(ctxi->pb + o)) { continue; }
+                } else {
+                    v = pS->pbSkipMask[0];
+                    if((pS->pb[0] | v) != (ctxi->pb[o] | v)) { continue; }
+                }
+                fMaskFail = FALSE;
+                for(i = 0; i < pS->cb; i++) {
+                    v = pS->pbSkipMask[i];
+                    if((pS->pb[i] | v) != (ctxi->pb[o + i] | v)) {
+                        fMaskFail = TRUE;
+                        break;
+                    }
+                }
+                if(fMaskFail) { continue; }
+                // match located!
+                va = ctxs->vaCurrent + o;
+                if(ctxs->pfnResultOptCB) {
+                    if(!ctxs->pfnResultOptCB(ctxs, va, iS)) { return FALSE; }
+                } else {
+                    ctxs->cResult++;
+                    if(ctxs->cResult < 0x00100000) {
+                        if(!ObSet_Push(ctxi->psvaResult, va)) { return FALSE; }
+                    }
                 }
             }
-            if(fMaskFail) { continue; }
-            // match located!
-            ctxs->cResult++;
-            va = ctxs->vaCurrent + o;
-            if(ctxs->pfnResultOptCB) {
-                if(!ctxs->pfnResultOptCB(ctxs, va)) { return FALSE; }
-            } else {
-                if(!ObSet_Push(ctxi->psvaResult, va)) { return FALSE; }
-            }
-        }
-    } else {
-        // no-mask search
-        oMax = ctxi->cb - ctxs->cbSearch;
-        for(o = 0; o <= oMax; o += ctxs->cbAlign) {
-            if(f4) {
-                if(*(PDWORD)ctxs->pbSearch != *(PDWORD)(ctxi->pb + o)) { continue; }
-            } else {
-                if(ctxs->pbSearch[0] != ctxi->pb[o]) { continue; }
-            }
-            if(memcmp(ctxi->pb + o, ctxs->pbSearch, ctxs->cbSearch)) { continue; }
-            // match located!
-            ctxs->cResult++;
-            va = ctxs->vaCurrent + o;
-            if(ctxs->pfnResultOptCB) {
-                if(!ctxs->pfnResultOptCB(ctxs, va)) { return FALSE; }
-            } else {
-                if(ctxs->cResult < 0x00100000) {
-                    if(!ObSet_Push(ctxi->psvaResult, va)) { return FALSE; }
+        } else {
+            // no-mask search
+            oMax = ctxi->cb - pS->cb;
+            for(o = 0; o <= oMax; o += pS->cbAlign) {
+                if(f4) {
+                    if(*(PDWORD)pS->pb != *(PDWORD)(ctxi->pb + o)) { continue; }
+                } else {
+                    if(pS->pb[0] != ctxi->pb[o]) { continue; }
+                }
+                if(memcmp(ctxi->pb + o, pS->pb, pS->cb)) { continue; }
+                // match located!
+                va = ctxs->vaCurrent + o;
+                if(ctxs->pfnResultOptCB) {
+                    if(!ctxs->pfnResultOptCB(ctxs, va, iS)) { return FALSE; }
+                } else {
+                    ctxs->cResult++;
+                    if(ctxs->cResult < 0x00100000) {
+                        if(!ObSet_Push(ctxi->psvaResult, va)) { return FALSE; }
+                    }
                 }
             }
         }
@@ -2157,6 +2164,10 @@ BOOL VmmSearch_SearchRange(_In_ PVMM_MEMORY_SEARCH_INTERNAL_CONTEXT ctxi, _In_ P
         ctxi->cb = (DWORD)min(0x00100000, vaMax + 1 - ctxs->vaCurrent);
         if(!VmmSearch_SearchRegion(ctxi, ctxs)) { return FALSE; }
         ctxs->vaCurrent += ctxi->cb;
+        if(!ctxs->vaCurrent) {
+            ctxs->vaCurrent = 0xfffffffffffff000;
+            break;
+        }
     }
     return TRUE;
 }
@@ -2229,17 +2240,21 @@ fail:
 _Success_(return)
 BOOL VmmSearch(_In_opt_ PVMM_PROCESS pProcess, _Inout_ PVMM_MEMORY_SEARCH_CONTEXT ctxs, _Out_opt_ POB_DATA *ppObAddressResult)
 {
-    static BYTE pbZERO[sizeof(ctxs->pbSearch)] = {0};
+    static BYTE pbZERO[sizeof(ctxs->search[0].pb)] = {0};
+    DWORD iS;
     BOOL fResult = FALSE;
     PVMM_MEMORY_SEARCH_INTERNAL_CONTEXT ctxi = NULL;
     // 1: sanity checks and fix-ups
     if(ppObAddressResult) { *ppObAddressResult = NULL; }
     ctxs->vaMin = ctxs->vaMin & ~0xfff;
     ctxs->vaMax = (ctxs->vaMax - 1) | 0xfff;
-    if(ctxs->fAbortRequested || !ctxs->cbSearch || (ctxs->cbSearch > sizeof(ctxs->pbSearch))) { goto fail; }
-    if(ctxs->vaMax < ctxs->vaMin) { goto fail; }
-    if(!memcmp(ctxs->pbSearch, pbZERO, ctxs->cbSearch)) { goto fail; }
-    if(!ctxs->cbAlign) { ctxs->cbAlign = 1; }
+    if(ctxs->fAbortRequested || (ctxs->vaMax < ctxs->vaMin)) { goto fail; }
+    if(!ctxs->cSearch || ctxs->cSearch > VMM_MEMORY_SEARCH_MAX) { goto fail; }
+    for(iS = 0; iS < ctxs->cSearch; iS++) {
+        if(!ctxs->search[iS].cb || (ctxs->search[iS].cb > sizeof(ctxs->search[iS].pb))) { goto fail; }
+        if(!memcmp(ctxs->search[iS].pb, pbZERO, ctxs->search[iS].cb)) { goto fail; }
+        if(!ctxs->search[iS].cbAlign) { ctxs->search[iS].cbAlign = 1; }
+    }
     if(!ctxs->vaMax) {
         if(!pProcess) {
             ctxs->vaMax = ctxMain->dev.paMax;
@@ -2253,7 +2268,9 @@ BOOL VmmSearch(_In_opt_ PVMM_PROCESS pProcess, _Inout_ PVMM_MEMORY_SEARCH_CONTEX
     if(!(ctxi = LocalAlloc(0, sizeof(VMM_MEMORY_SEARCH_INTERNAL_CONTEXT)))) { goto fail; }
     if(!(ctxi->psvaResult = ObSet_New())) { goto fail; }
     ctxi->pProcess = pProcess;
-    ctxi->fMask = (memcmp(ctxs->pbSearchSkipMask, pbZERO, ctxs->cbSearch) ? TRUE : FALSE);
+    for(iS = 0; iS < ctxs->cSearch; iS++) {
+        ctxi->fMask[iS] = (memcmp(ctxs->search[iS].pbSkipMask, pbZERO, ctxs->search[iS].cb) ? TRUE : FALSE);
+    }
     // 3: perform search
     if(pProcess && (ctxs->fForcePTE || ctxs->fForceVAD || (ctxVmm->tpMemoryModel == VMMDLL_MEMORYMODEL_X64))) {
         fResult = VmmSearch_VirtPteVad(ctxi, ctxs);

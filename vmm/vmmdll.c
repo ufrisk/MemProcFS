@@ -1054,7 +1054,7 @@ BOOL VMMDLL_MemVirt2Phys(_In_ DWORD dwPID, _In_ ULONG64 qwVA, _Out_ PULONG64 pqw
 }
 
 _Success_(return)
-BOOL VMMDLL_MemSearch_Impl(_In_ DWORD dwPID, _Inout_ PVMMDLL_MEM_SEARCH_CONTEXT ctx, _Out_ PQWORD *ppva, _Out_ PDWORD pcva)
+BOOL VMMDLL_MemSearch_Impl(_In_ DWORD dwPID, _Inout_ PVMMDLL_MEM_SEARCH_CONTEXT ctx, _Out_opt_ PQWORD *ppva, _Out_opt_ PDWORD pcva)
 {
     BOOL fResult = FALSE;
     POB_DATA pObData = NULL;
@@ -1062,9 +1062,13 @@ BOOL VMMDLL_MemSearch_Impl(_In_ DWORD dwPID, _Inout_ PVMMDLL_MEM_SEARCH_CONTEXT 
     if(!(pObProcess = VmmProcessGet(dwPID))) { goto fail; }
     if(!VmmSearch(pObProcess, (PVMM_MEMORY_SEARCH_CONTEXT)ctx, &pObData)) { goto fail; }
     if(pObData) {
-        if(!(*ppva = LocalAlloc(0, pObData->ObHdr.cbData))) { goto fail; }
-        memcpy(ppva, pObData->pqw, pObData->ObHdr.cbData);
-        *pcva = pObData->ObHdr.cbData / sizeof(QWORD);
+        if(ppva) {
+            if(!(*ppva = LocalAlloc(0, pObData->ObHdr.cbData))) { goto fail; }
+            memcpy(ppva, pObData->pqw, pObData->ObHdr.cbData);
+        }
+        if(pcva) {
+            *pcva = pObData->ObHdr.cbData / sizeof(QWORD);
+        }
     }
     fResult = TRUE;
 fail:
@@ -1074,11 +1078,12 @@ fail:
 }
 
 _Success_(return)
-BOOL VMMDLL_MemSearch(_In_ DWORD dwPID, _Inout_ PVMMDLL_MEM_SEARCH_CONTEXT ctx, _Out_ PQWORD *ppva, _Out_ PDWORD pcva)
+BOOL VMMDLL_MemSearch(_In_ DWORD dwPID, _Inout_ PVMMDLL_MEM_SEARCH_CONTEXT ctx, _Out_opt_ PQWORD *ppva, _Out_opt_ PDWORD pcva)
 {
-    *pcva = 0;
-    *ppva = NULL;
-    if(ctx->dwVersion == VMMDLL_MEM_SEARCH_VERSION) { return FALSE; }
+    if(pcva) { *pcva = 0; }
+    if(ppva) { *ppva = NULL; }
+    if(ctx->dwVersion != VMMDLL_MEM_SEARCH_VERSION) { return FALSE; }
+    if(sizeof(VMMDLL_MEM_SEARCH_CONTEXT) != sizeof(VMM_MEMORY_SEARCH_CONTEXT)) { return FALSE; }
     CALL_IMPLEMENTATION_VMM(
         STATISTICS_ID_VMMDLL_MemSearch,
         VMMDLL_MemSearch_Impl(dwPID, ctx, ppva, pcva))
