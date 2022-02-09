@@ -407,7 +407,7 @@ QWORD VmmWinInit_FindNtosScanHint64(_In_ PVMM_PROCESS pSystemProcess, _In_ QWORD
             // check for (1) MZ+NT header, (2) POOLCODE section, (3) ntoskrnl.exe module name (if possible to read)
             pDosHeader = (PIMAGE_DOS_HEADER)(pb + p);                       // DOS header
             if(pDosHeader->e_magic != IMAGE_DOS_SIGNATURE) { continue; }    // DOS header signature (MZ)
-            if(pDosHeader->e_lfanew > 0x800) { continue; }
+            if((pDosHeader->e_lfanew < 0) || (pDosHeader->e_lfanew > 0x800)) { continue; }
             pNtHeader = (PIMAGE_NT_HEADERS64)(pb + p + pDosHeader->e_lfanew); // NT header
             if(pNtHeader->Signature != IMAGE_NT_SIGNATURE) { continue; }    // NT header signature
             for(o = 0; o < 0x1000; o += 8) {
@@ -440,34 +440,35 @@ cleanup:
 */
 DWORD VmmWinInit_FindNtosScan32(_In_ PVMM_PROCESS pSystemProcess)
 {
-    DWORD o, p, vaNtosTry = 0;
+    DWORD vaBase, ova;
+    DWORD o, vaNtosTry = 0;
     PBYTE pb;
     CHAR szModuleName[MAX_PATH] = { 0 };
     PIMAGE_DOS_HEADER pDosHeader;
     PIMAGE_NT_HEADERS pNtHeader;
-    if(!(pb = LocalAlloc(LMEM_ZEROINIT, 0x04800000))) { return 0; }
-    for(p = 0; p < 0x04800000; p += 0x1000) {
-        // read 8MB chunks when required.
-        if(0 == p % 0x00800000) {
-            VmmReadEx(pSystemProcess, 0x80000000ULL + p, pb + p, 0x00800000, NULL, 0);
+    if(!(pb = LocalAlloc(LMEM_ZEROINIT, 0x00800000))) { return 0; }
+    for(vaBase = 0x80000000; vaBase < 0x88000000; vaBase += 0x1000) {
+        ova = vaBase % 0x00800000;
+        if(ova == 0) {
+            VmmReadEx(pSystemProcess, vaBase, pb, 0x00800000, NULL, 0);
         }
         // check for (1) MZ+NT header, (2) POOLCODE section, (3) ntoskrnl.exe module name (if possible to read)
-        pDosHeader = (PIMAGE_DOS_HEADER)(pb + p);                       // DOS header
-        if(pDosHeader->e_magic != IMAGE_DOS_SIGNATURE) { continue; }    // DOS header signature (MZ)
-        if(pDosHeader->e_lfanew > 0x800) { continue; }
-        pNtHeader = (PIMAGE_NT_HEADERS)(pb + p + pDosHeader->e_lfanew); // NT header
-        if(pNtHeader->Signature != IMAGE_NT_SIGNATURE) { continue; }    // NT header signature
+        pDosHeader = (PIMAGE_DOS_HEADER)(pb + ova);                         // DOS header
+        if(pDosHeader->e_magic != IMAGE_DOS_SIGNATURE) { continue; }        // DOS header signature (MZ)
+        if((pDosHeader->e_lfanew < 0) || (pDosHeader->e_lfanew > 0x800)) { continue; }
+        pNtHeader = (PIMAGE_NT_HEADERS)(pb + ova + pDosHeader->e_lfanew);   // NT header
+        if(pNtHeader->Signature != IMAGE_NT_SIGNATURE) { continue; }        // NT header signature
         for(o = 0; o < 0x800; o += 8) {
-            if(*(PQWORD)(pb + p + o) == 0x45444F434C4F4F50) {           // POOLCODE
-                if(!PE_GetModuleNameEx(pSystemProcess, 0x80000000ULL + p, FALSE, pb + p, szModuleName, _countof(szModuleName), NULL)) {
-                    vaNtosTry = 0x80000000 + p;
+            if(*(PQWORD)(pb + ova + o) == 0x45444F434C4F4F50) {             // POOLCODE
+                if(!PE_GetModuleNameEx(pSystemProcess, vaBase + ova, FALSE, pb + ova, szModuleName, _countof(szModuleName), NULL)) {
+                    vaNtosTry = vaBase;
                     continue;
                 }
-                if(_stricmp(szModuleName, "ntoskrnl.exe")) {            // not ntoskrnl.exe
+                if(_stricmp(szModuleName, "ntoskrnl.exe")) {                // not ntoskrnl.exe
                     continue;
                 }
                 LocalFree(pb);
-                return 0x80000000 + p;
+                return vaBase;
             }
         }
     }

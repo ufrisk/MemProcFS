@@ -18,7 +18,7 @@ PIMAGE_NT_HEADERS PE_HeaderGetVerify(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD 
     }
     dosHeader = (PIMAGE_DOS_HEADER)pbModuleHeader; // dos header.
     if(!dosHeader || dosHeader->e_magic != IMAGE_DOS_SIGNATURE) { return NULL; }
-    if(dosHeader->e_lfanew > 0x800) { return NULL; }
+    if((dosHeader->e_lfanew < 0) || (dosHeader->e_lfanew > 0x800)) { return NULL; }
     ntHeader = (PIMAGE_NT_HEADERS)(pbModuleHeader + dosHeader->e_lfanew); // nt header
     if(!ntHeader || ntHeader->Signature != IMAGE_NT_SIGNATURE) { return NULL; }
     if((ntHeader->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC) && (ntHeader->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR32_MAGIC)) { return NULL; }

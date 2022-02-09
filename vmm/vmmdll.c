@@ -2050,7 +2050,7 @@ _Success_(return)
 BOOL VMMDLL_PidList_Impl(_Out_writes_opt_(*pcPIDs) PDWORD pPIDs, _Inout_ PULONG64 pcPIDs)
 {
     VmmProcessListPIDs(pPIDs, (PSIZE_T)pcPIDs, 0);
-    return TRUE;
+    return (*pcPIDs ? TRUE : FALSE);
 }
 
 _Success_(return)
