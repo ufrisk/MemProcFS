@@ -121,6 +121,23 @@ class vmm_example
         ulong paBaseKernel32;
         result = vmm.MemVirt2Phys(dwExplorerPID, mModuleKernel32.vaBase, out paBaseKernel32);
 
+        // read two independent chunks of memory in one single efficient call.
+        // also use the nocache flag.
+        IntPtr hS;
+        if(vmm.Scatter_Initialize(dwExplorerPID, vmm.FLAG_NOCACHE, out hS))
+        {
+            // prepare multiple ranges to read
+            vmm.Scatter_Prepare(hS, mModuleKernel32.vaBase, 0x100);
+            vmm.Scatter_Prepare(hS, mModuleKernel32.vaBase + 0x2000, 0x100);
+            // execute actual read operation to underlying system
+            vmm.Scatter_Execute(hS);
+            byte[] pbKernel32_100_1 = vmm.Scatter_Read(hS, mModuleKernel32.vaBase, 0x80);
+            byte[] pbKernel32_100_2 = vmm.Scatter_Read(hS, mModuleKernel32.vaBase + 0x2000, 0x100);
+            // clean up scatter handle hS (free native memory)
+            // NB! hS handle should not be used after this!
+            vmm.Scatter_CloseHandle(ref hS);
+        }
+
         // load .pdb of kernel32 from microsoft symbol server and query it
         // also do some lookups for kernel symbols.
         string szPdbModuleName = "";

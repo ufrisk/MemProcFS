@@ -14,7 +14,7 @@ using System.Collections.Generic;
  *  (c) Ulf Frisk, 2020-2022
  *  Author: Ulf Frisk, pcileech@frizk.net
  *  
- *  Version 3.10
+ *  Version 4.7
  *  
  */
 
@@ -526,6 +526,52 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_MemVirt2Phys")]
         public static extern bool MemVirt2Phys(uint dwPID, ulong qwVA, out ulong pqwPA);
+
+
+
+        //---------------------------------------------------------------------
+        // MEMORY NEW SCATTER READ/WRITE FUNCTIONALITY BELOW:
+        //---------------------------------------------------------------------
+
+        public static bool Scatter_Initialize(uint pid, uint flags, out IntPtr hS)
+        {
+            hS = vmmi.VMMDLL_Scatter_Initialize(pid, flags);
+            return hS != IntPtr.Zero;
+        }
+
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Scatter_Prepare")]
+        public static extern bool Scatter_Prepare(IntPtr hS, ulong qwA, uint cb);
+
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Scatter_ExecuteRead")]
+        public static extern bool Scatter_Execute(IntPtr hS);
+
+        public static unsafe byte[] Scatter_Read(IntPtr hS, ulong qwA, uint cb)
+        {
+            uint cbRead;
+            byte[] data = new byte[cb];
+            fixed (byte* pb = data)
+            {
+                if (!vmmi.VMMDLL_Scatter_Read(hS, qwA, cb, pb, out cbRead))
+                {
+                    return null;
+                }
+            }
+            if (cbRead != cb)
+            {
+                Array.Resize<byte>(ref data, (int)cbRead);
+            }
+            return data;
+        }
+
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Scatter_Clear")]
+        public static extern bool Scatter_Clear(IntPtr hS, uint dwPID, uint flags);
+
+        public static void Scatter_CloseHandle(ref IntPtr hS)
+        {
+            vmmi.VMMDLL_Scatter_CloseHandle(hS);
+            hS = IntPtr.Zero;
+        }
+
 
 
 
@@ -1932,6 +1978,43 @@ namespace vmmsharp
             ulong qwA,
             byte* pb,
             uint cb);
+
+
+
+        // MEMORY NEW SCATTER READ/WRITE FUNCTIONALITY BELOW:
+
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Scatter_Initialize")]
+        internal static extern unsafe IntPtr VMMDLL_Scatter_Initialize(
+            uint dwPID,
+            uint flags);
+
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Scatter_Prepare")]
+        internal static extern unsafe bool VMMDLL_Scatter_Prepare(
+            IntPtr hS,
+            ulong va,
+            uint cb);
+
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Scatter_ExecuteRead")]
+        internal static extern unsafe bool VMMDLL_Scatter_Execute(
+            IntPtr hS);
+
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Scatter_Read")]
+        internal static extern unsafe bool VMMDLL_Scatter_Read(
+            IntPtr hS,
+            ulong va,
+            uint cb,
+            byte* pb,
+            out uint pcbRead);
+
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Scatter_Clear")]
+        internal static extern unsafe bool VMMDLL_Scatter_Clear(
+            IntPtr hS,
+            uint dwPID,
+            uint flags);
+
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Scatter_CloseHandle")]
+        internal static extern unsafe void VMMDLL_Scatter_CloseHandle(
+            IntPtr hS);
 
 
 
