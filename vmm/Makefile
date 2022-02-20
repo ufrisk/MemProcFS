@@ -13,8 +13,10 @@ CFLAGS  += -Wall -Wno-format-truncation -Wno-enum-compare -Wno-pointer-sign -Wno
 CFLAGS  += -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast
 LDFLAGS += -Wl,-rpath,'$$ORIGIN' -g -ldl -shared
 DEPS = vmmdll.h
-OBJ = oscompatibility.o charutil.o util.o pe.o vmm.o vmmdll.o mm_x64.o       \
-      mm_x86.o mm_x86pae.o mm_pfn.o mm_vad.o mm_win.o pdb.o pluginmanager.o  \
+OBJ = oscompatibility.o charutil.o util.o pe.o vmm.o vmmdll.o                \
+      vmmdll_scatter.o                                                       \
+	  mm_x64.o mm_x86.o mm_x86pae.o mm_pfn.o mm_vad.o mm_win.o               \
+      pdb.o pluginmanager.o                                                  \
 	  ob/ob_cachemap.o ob/ob_compressed.o ob/ob_container.o ob/ob_core.o     \
 	  ob/ob_counter.o ob/ob_map.o ob/ob_memfile.o ob/ob_set.o ob/ob_strmap.o \
 	  statistics.o sysquery.o vmmevil.o vmmlog.o vmmnet.o vmmproc.o          \
