@@ -298,4 +298,5 @@ v1.1-v2.10
 Latest:
 * Bug fixes.
 * Search API update.
-* C# support for New Scatter API.
+* New WriteScatter API.
+* C# support for New Scatter API and Search API.
