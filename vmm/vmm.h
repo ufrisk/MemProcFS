@@ -1519,6 +1519,21 @@ VOID VmmReadScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_updates_(cpMEMsVir
 VOID VmmReadScatterPhysical(_Inout_ PPMEM_SCATTER ppMEMsPhys, _In_ DWORD cpMEMsPhys, _In_ QWORD flags);
 
 /*
+* Scatter write virtual memory. Non contiguous 4096-byte pages.
+* -- pProcess
+* -- ppMEMsVirt
+* -- cpMEMsVirt
+*/
+VOID VmmWriteScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_ PPMEM_SCATTER ppMEMsVirt, _In_ DWORD cpMEMsVirt);
+
+/*
+* Scatter write physical memory. Non contiguous 4096-byte pages.
+* -- ppMEMsPhys
+* -- cpMEMsPhys
+*/
+VOID VmmWriteScatterPhysical(_Inout_ PPMEM_SCATTER ppMEMsPhys, _In_ DWORD cpMEMsPhys);
+
+/*
 * Read a memory segment as a file. This function is mainly a helper function
 * for various file system functionality.
 * -- pProcess = NULL=='physical memory read', PTR=='virtual memory read'

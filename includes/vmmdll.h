@@ -7,7 +7,7 @@
 // (c) Ulf Frisk, 2018-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-// Header Version: 4.7.2
+// Header Version: 4.8
 //
 
 #include "leechcore.h"
@@ -669,6 +669,19 @@ EXPORTED_FUNCTION
 DWORD VMMDLL_MemReadScatter(_In_ DWORD dwPID, _Inout_ PPMEM_SCATTER ppMEMs, _In_ DWORD cpMEMs, _In_ DWORD flags);
 
 /*
+* Write memory in various non-contigious locations specified by the pointers to
+* the items in the ppMEMs array. Result for each unit of work will be given
+* individually. No upper limit of number of items to write Max size of each
+* unit of work is one 4k page (4096 bytes). Writes must not cross 4k page boundaries.
+* -- dwPID - PID of target process, (DWORD)-1 to write physical memory.
+* -- ppMEMs = array of scatter read headers.
+* -- cpMEMs = count of ppMEMs.
+* -- return = the number of hopefully successfully written items.
+*/
+EXPORTED_FUNCTION
+DWORD VMMDLL_MemWriteScatter(_In_ DWORD dwPID, _Inout_ PPMEM_SCATTER ppMEMs, _In_ DWORD cpMEMs);
+
+/*
 * Read a single 4096-byte page of memory.
 * -- dwPID - PID of target process, (DWORD)-1 to read physical memory.
 * -- qwA
@@ -751,7 +764,7 @@ BOOL VMMDLL_MemVirt2Phys(_In_ DWORD dwPID, _In_ ULONG64 qwVA, _Out_ PULONG64 pqw
 // 2. Populate memory ranges with multiple calls to VMMDLL_Scatter_Prepare
 //    and/or VMMDLL_Scatter_PrepareEx functions. The memory buffer given to
 //    VMMDLL_Scatter_PrepareEx will be populated with contents in step (3).
-// 3. Retrieve the memory by calling VMMDLL_Scatter_ExecuteRead function.
+// 3. Retrieve the memory by calling VMMDLL_Scatter_Execute function.
 // 4. If VMMDLL_Scatter_Prepare was used (i.e. not VMMDLL_Scatter_PrepareEx)
 //    then retrieve the memory read in (3).
 // 5. Clear the handle for reuse by calling VMMDLL_Scatter_Clear alternatively
@@ -776,7 +789,7 @@ VMMDLL_SCATTER_HANDLE VMMDLL_Scatter_Initialize(_In_ DWORD dwPID, _In_ DWORD fla
 
 /*
 * Prepare (add) a memory range for reading. The memory may after a call to
-* VMMDLL_Scatter_ExecuteRead() be retrieved with VMMDLL_Scatter_Read().
+* VMMDLL_Scatter_Execute*() be retrieved with VMMDLL_Scatter_Read().
 * -- hS
 * -- va = start address of the memory range to read.
 * -- cb = size of memory range to read.
@@ -787,7 +800,7 @@ BOOL VMMDLL_Scatter_Prepare(_In_ VMMDLL_SCATTER_HANDLE hS, _In_ QWORD va, _In_ D
 
 /*
 * Prepare (add) a memory range for reading. The buffer pb and the read length
-* *pcbRead will be populated when VMMDLL_Scatter_ExecuteRead() is later called.
+* *pcbRead will be populated when VMMDLL_Scatter_Execute*() is later called.
 * NB! the buffer pb must not be deallocated before VMMDLL_Scatter_CloseHandle()
 *     has been called since it's used internally by the scatter functionality!
 * -- hS
@@ -799,6 +812,29 @@ BOOL VMMDLL_Scatter_Prepare(_In_ VMMDLL_SCATTER_HANDLE hS, _In_ QWORD va, _In_ D
 */
 EXPORTED_FUNCTION _Success_(return)
 BOOL VMMDLL_Scatter_PrepareEx(_In_ VMMDLL_SCATTER_HANDLE hS, _In_ QWORD va, _In_ DWORD cb, _Out_writes_opt_(cb) PBYTE pb, _Out_opt_ PDWORD pcbRead);
+
+/*
+* Prepare (add) a memory range for writing. The memory is later written when
+* calling VMMDLL_Scatter_Execute(). Writing takes place before reading.
+* -- hS
+* -- va = start address of the memory range to write.
+* -- pb = data to write.
+* -- cb = size of memory range to write.
+* -- return
+*/
+EXPORTED_FUNCTION _Success_(return)
+BOOL VMMDLL_Scatter_PrepareWrite(_In_ VMMDLL_SCATTER_HANDLE hS, _In_ QWORD va, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb);
+
+/*
+* Retrieve and Write memory previously populated.
+* Write any memory prepared with VMMDLL_Scatter_PrepareWrite function (1st).
+* Retrieve the memory ranges previously populated with calls to the
+* VMMDLL_Scatter_Prepare* functions (2nd).
+* -- hS
+* -- return
+*/
+EXPORTED_FUNCTION _Success_(return)
+BOOL VMMDLL_Scatter_Execute(_In_ VMMDLL_SCATTER_HANDLE hS);
 
 /*
 * Retrieve the memory ranges previously populated with calls to the

@@ -946,6 +946,36 @@ DWORD VMMDLL_MemReadScatter(_In_ DWORD dwPID, _Inout_ PPMEM_SCATTER ppMEMs, _In_
         VMMDLL_MemReadScatter_Impl(dwPID, ppMEMs, cpMEMs, flags))
 }
 
+DWORD VMMDLL_MemWriteScatter_Impl(_In_ DWORD dwPID, _Inout_ PPMEM_SCATTER ppMEMs, _In_ DWORD cpMEMs)
+{
+    DWORD i, cMEMs;
+    PVMM_PROCESS pObProcess = NULL;
+    if(!ctxVmm) { return 0; }
+    if(dwPID == -1) {
+        VmmWriteScatterPhysical(ppMEMs, cpMEMs);
+    } else {
+        pObProcess = VmmProcessGet(dwPID);
+        if(!pObProcess) { return 0; }
+        VmmWriteScatterVirtual(pObProcess, ppMEMs, cpMEMs);
+        Ob_DECREF(pObProcess);
+    }
+    for(i = 0, cMEMs = 0; i < cpMEMs; i++) {
+        if(ppMEMs[i]->f) {
+            cMEMs++;
+        }
+    }
+    return cMEMs;
+}
+
+DWORD VMMDLL_MemWriteScatter(_In_ DWORD dwPID, _Inout_ PPMEM_SCATTER ppMEMs, _In_ DWORD cpMEMs)
+{
+    CALL_IMPLEMENTATION_VMM_RETURN(
+        STATISTICS_ID_VMMDLL_MemWriteScatter,
+        DWORD,
+        0,
+        VMMDLL_MemWriteScatter_Impl(dwPID, ppMEMs, cpMEMs))
+}
+
 _Success_(return)
 BOOL VMMDLL_MemReadEx_Impl(_In_ DWORD dwPID, _In_ ULONG64 qwA, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbReadOpt, _In_ ULONG64 flags)
 {
@@ -1064,7 +1094,7 @@ BOOL VMMDLL_MemSearch_Impl(_In_ DWORD dwPID, _Inout_ PVMMDLL_MEM_SEARCH_CONTEXT 
     if(pObData) {
         if(ppva) {
             if(!(*ppva = LocalAlloc(0, pObData->ObHdr.cbData))) { goto fail; }
-            memcpy(ppva, pObData->pqw, pObData->ObHdr.cbData);
+            memcpy(*ppva, pObData->pqw, pObData->ObHdr.cbData);
         }
         if(pcva) {
             *pcva = pObData->ObHdr.cbData / sizeof(QWORD);

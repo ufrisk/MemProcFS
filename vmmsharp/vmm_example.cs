@@ -167,6 +167,12 @@ class vmm_example
             byte[] RegValueData = vmm.RegValueRead(RegEnum.wszFullPathKey + "\\" + RegEnum.ValueList[0].name, out RegValueType);
         }
 
+        // search efficiently in explorer.exe for "This program cannot be run in DOS mode"
+        // (in essence perform a search for PE headers).
+        // The search function may take up quite a lot of performance / time depending on memory amount.
+        // There is also a vmm.MemSearchM function which allows for searching multiple strings at a time.
+        ulong[] vaExplorerPE = vmm.MemSearch1(dwExplorerPID, System.Text.Encoding.ASCII.GetBytes("cannot be run in DOS mode"), 0, 0x7fffffffffff);
+
 
 
         // CLOSE

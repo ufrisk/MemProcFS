@@ -22,17 +22,28 @@ typedef struct tdSCATTER_RANGE {
     MEM_SCATTER MEMs[0];
 } SCATTER_RANGE, *PSCATTER_RANGE;
 
+typedef struct tdSCATTER_RANGE_WRITE {
+    struct tdSCATTER_RANGE_WRITE *FLink;
+    QWORD va;
+    DWORD cb;
+    BYTE pb[0];
+} SCATTER_RANGE_WRITE, *PSCATTER_RANGE_WRITE;
+
 typedef struct tdSCATTER_CONTEXT {
     QWORD qwMagic;
     SRWLOCK LockSRW;
     DWORD dwReadFlags;
-    BOOL fExecuteRead;
+    BOOL fExecute;          // read/write is already executed
     DWORD dwPID;
     DWORD cPageTotal;
     DWORD cPageAlloc;
     POB_MAP pmMEMs;
     PBYTE pbBuffer;
     PSCATTER_RANGE pRanges;
+    struct {
+        DWORD cPage;
+        PSCATTER_RANGE_WRITE pRanges;
+    } wr;
 } SCATTER_CONTEXT, *PSCATTER_CONTEXT;
 
 #define SCATTER_CALL_SYNCHRONIZED_IMPLEMENTATION(hS, fn) {                                      \
@@ -56,7 +67,7 @@ BOOL VMMDLL_Scatter_PrepareInternal(_In_ PSCATTER_CONTEXT ctx, _In_ QWORD va, _I
     if(pcbRead) { *pcbRead = 0; }
     // validity checks
     if(va + cb < va) { return FALSE; }
-    if(ctx->fExecuteRead) { return FALSE; }
+    if(ctx->fExecute) { return FALSE; }
     if(!cb) { return TRUE; }
     if((cb >= SCATTER_MAX_SIZE) || ((ctx->cPageTotal << 12) + cb > SCATTER_MAX_SIZE)) { return FALSE; }
     // count MEMs (required and pre-existing)
@@ -128,9 +139,32 @@ BOOL VMMDLL_Scatter_PrepareInternal(_In_ PSCATTER_CONTEXT ctx, _In_ QWORD va, _I
     return TRUE;
 }
 
+_Success_(return)
+BOOL VMMDLL_Scatter_PrepareWriteInternal(_In_ PSCATTER_CONTEXT ctx, _In_ QWORD va, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb)
+{
+    DWORD cMEMsRequired;
+    PSCATTER_RANGE_WRITE pRangeWr;
+    // validity checks
+    if(va + cb < va) { return FALSE; }
+    if(ctx->fExecute) { return FALSE; }
+    if(!cb) { return TRUE; }
+    if((cb >= SCATTER_MAX_SIZE) || ((ctx->wr.cPage << 12) + cb > SCATTER_MAX_SIZE)) { return FALSE; }
+    // alloc and store in context
+    if(!(pRangeWr = LocalAlloc(0, sizeof(SCATTER_RANGE_WRITE) + cb))) { return FALSE; }
+    pRangeWr->va = va;
+    pRangeWr->cb = cb;
+    memcpy(pRangeWr->pb, pb, cb);
+    pRangeWr->FLink = ctx->wr.pRanges;
+    ctx->wr.pRanges = pRangeWr->FLink;
+    // up # of write MEMs required
+    cMEMsRequired = ((va & 0xfff) + cb + 0xfff) >> 12;
+    ctx->wr.cPage += cMEMsRequired;
+    return TRUE;
+}
+
 /*
 * Prepare (add) a memory range for reading. The buffer pb and the read length
-* *pcbRead will be populated when VMMDLL_Scatter_ExecuteRead() is later called.
+* *pcbRead will be populated when VMMDLL_Scatter_Execute*() is later called.
 * NB! the buffer pb must not be deallocated before VMMDLL_Scatter_CloseHandle()
 *     has been called since it's used internally by the scatter functionality!
 * -- hS
@@ -148,7 +182,7 @@ BOOL VMMDLL_Scatter_PrepareEx(_In_ VMMDLL_SCATTER_HANDLE hS, _In_ QWORD va, _In_
 
 /*
 * Prepare (add) a memory range for reading. The memory may after a call to
-* VMMDLL_Scatter_ExecuteRead() be retrieved with VMMDLL_Scatter_Read().
+* VMMDLL_Scatter_Execute*() be retrieved with VMMDLL_Scatter_Read().
 * -- hS
 * -- va = start address of the memory range to read.
 * -- cb = size of memory range to read.
@@ -160,23 +194,46 @@ BOOL VMMDLL_Scatter_Prepare(_In_ VMMDLL_SCATTER_HANDLE hS, _In_ QWORD va, _In_ D
     SCATTER_CALL_SYNCHRONIZED_IMPLEMENTATION(hS, VMMDLL_Scatter_PrepareInternal((PSCATTER_CONTEXT)hS, va, cb, NULL, NULL));
 }
 
+/*
+* Prepare (add) a memory range for writing. The memory is later written when
+* calling VMMDLL_Scatter_Execute(). Writing takes place before reading.
+* -- hS
+* -- va = start address of the memory range to write.
+* -- pb = data to write.
+* -- cb = size of memory range to write.
+* -- return
+*/
+_Success_(return)
+BOOL VMMDLL_Scatter_PrepareWrite(_In_ VMMDLL_SCATTER_HANDLE hS, _In_ QWORD va, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb)
+{
+    SCATTER_CALL_SYNCHRONIZED_IMPLEMENTATION(hS, VMMDLL_Scatter_PrepareWriteInternal((PSCATTER_CONTEXT)hS, va, pb, cb));
+}
+
 _Success_(return)
 BOOL VMMDLL_Scatter_ClearInternal(_In_ PSCATTER_CONTEXT ctx, _In_ DWORD dwPID, _In_ DWORD flags)
 {
-    PSCATTER_RANGE pRange, pRangeNext = ctx->pRanges;
-    ctx->fExecuteRead = FALSE;
+    PSCATTER_RANGE pRangeRd, pRangeRdNext = ctx->pRanges;
+    PSCATTER_RANGE_WRITE pRangeWr, pRangeWrNext = ctx->wr.pRanges;
+    ctx->fExecute = FALSE;
     ctx->dwPID = dwPID;
     ctx->dwReadFlags = flags;
     ctx->cPageTotal = 0;
     ctx->cPageAlloc = 0;
     ctx->pRanges = NULL;
+    ctx->wr.cPage = 0;
+    ctx->wr.pRanges = NULL;
     ObMap_Clear(ctx->pmMEMs);
     LocalFree(ctx->pbBuffer);
     ctx->pbBuffer = NULL;
-    while(pRangeNext) {
-        pRange = pRangeNext;
-        pRangeNext = pRange->FLink;
-        LocalFree(pRange);
+    while(pRangeRdNext) {
+        pRangeRd = pRangeRdNext;
+        pRangeRdNext = pRangeRd->FLink;
+        LocalFree(pRangeRd);
+    }
+    while(pRangeWrNext) {
+        pRangeWr = pRangeWrNext;
+        pRangeWrNext = pRangeWr->FLink;
+        LocalFree(pRangeWr);
     }
     return TRUE;
 }
@@ -201,7 +258,8 @@ BOOL VMMDLL_Scatter_Clear(_In_ VMMDLL_SCATTER_HANDLE hS, _In_ DWORD dwPID, _In_ 
 VOID VMMDLL_Scatter_CloseHandle(_In_opt_ _Post_ptr_invalid_ VMMDLL_SCATTER_HANDLE hS)
 {
     PSCATTER_CONTEXT ctx = (PSCATTER_CONTEXT)hS;
-    PSCATTER_RANGE pRange, pRangeNext;
+    PSCATTER_RANGE pRangeRd, pRangeRdNext;
+    PSCATTER_RANGE_WRITE pRangeWr, pRangeWrNext;
     if(!ctx || (ctx->qwMagic != SCATTER_CONTEXT_MAGIC)) { return; }
     AcquireSRWLockExclusive(&ctx->LockSRW);
     ctx->qwMagic = 0;
@@ -209,11 +267,17 @@ VOID VMMDLL_Scatter_CloseHandle(_In_opt_ _Post_ptr_invalid_ VMMDLL_SCATTER_HANDL
     // dealloc / free
     Ob_DECREF(ctx->pmMEMs);
     LocalFree(ctx->pbBuffer);
-    pRangeNext = ctx->pRanges;
-    while(pRangeNext) {
-        pRange = pRangeNext;
-        pRangeNext = pRange->FLink;
-        LocalFree(pRange);
+    pRangeRdNext = ctx->pRanges;
+    while(pRangeRdNext) {
+        pRangeRd = pRangeRdNext;
+        pRangeRdNext = pRangeRd->FLink;
+        LocalFree(pRangeRd);
+    }
+    pRangeWrNext = ctx->wr.pRanges;
+    while(pRangeWrNext) {
+        pRangeWr = pRangeWrNext;
+        pRangeWrNext = pRangeWr->FLink;
+        LocalFree(pRangeWr);
     }
     LocalFree(ctx);
 }
@@ -225,7 +289,7 @@ BOOL VMMDLL_Scatter_ReadInternal(_In_ PSCATTER_CONTEXT ctx, _In_ QWORD va, _In_ 
     BOOL fResultFirst = FALSE;
     DWORD cbChunk, cbReadTotal = 0;
     if(va + cb < va) { return FALSE; }
-    if(!ctx->fExecuteRead) { return FALSE; }
+    if(!ctx->fExecute) { return FALSE; }
     // 1st item may not be page aligned or may be 'tiny' sized MEM:
     {
         cbChunk = min(cb, 0x1000 - (va & 0xfff));
@@ -300,7 +364,7 @@ BOOL VMMDLL_Scatter_Read(_In_ VMMDLL_SCATTER_HANDLE hS, _In_ QWORD va, _In_ DWOR
 }
 
 /*
-* ExecuteRead - internal synchronized function.
+* ExecuteReadInternal - internal synchronized function.
 */
 _Success_(return)
 BOOL VMMDLL_Scatter_ExecuteReadInternal(_In_ PSCATTER_CONTEXT ctx)
@@ -313,7 +377,7 @@ BOOL VMMDLL_Scatter_ExecuteReadInternal(_In_ PSCATTER_CONTEXT ctx)
     if(!ctx->cPageTotal || (ctx->cPageTotal != ObMap_Size(ctx->pmMEMs))) { return FALSE; }
     // alloc (if required)
     cbBuffer = (ctx->cPageTotal - ctx->cPageAlloc) * 0x1000;
-    if(!ctx->fExecuteRead) {
+    if(!ctx->fExecute) {
         cbBufferAlloc = cbBuffer + ctx->cPageTotal * sizeof(PMEM_SCATTER);
         if(!(ctx->pbBuffer = LocalAlloc(LMEM_ZEROINIT, cbBufferAlloc))) { return FALSE; }
     }
@@ -325,14 +389,14 @@ BOOL VMMDLL_Scatter_ExecuteReadInternal(_In_ PSCATTER_CONTEXT ctx)
         if(!pMEM->pb) {
             pMEM->pb = ctx->pbBuffer + oBufferAllocMEM;
             oBufferAllocMEM += 0x1000;
-        } else if(ctx->fExecuteRead) {
+        } else if(ctx->fExecute) {
             pMEM->f = FALSE;
             ZeroMemory(pMEM->pb, 0x1000);
         }
     }
     // read scatter
     VMMDLL_MemReadScatter(ctx->dwPID, ppMEMs, ctx->cPageTotal, ctx->dwReadFlags | VMMDLL_FLAG_NO_PREDICTIVE_READ);
-    ctx->fExecuteRead = TRUE;
+    ctx->fExecute = TRUE;
     // range fixup (if required)
     pRange = ctx->pRanges;
     while(pRange) {
@@ -345,6 +409,77 @@ BOOL VMMDLL_Scatter_ExecuteReadInternal(_In_ PSCATTER_CONTEXT ctx)
 }
 
 /*
+* ExecuteWriteInternal - internal synchronized function.
+*/
+_Success_(return)
+BOOL VMMDLL_Scatter_ExecuteWriteInternal(_In_ PSCATTER_CONTEXT ctx)
+{
+    PBYTE pbBuffer = NULL;
+    DWORD i, cMEMs;
+    PMEM_SCATTER pMEM, pMEMs;
+    PPMEM_SCATTER ppMEMs;
+    QWORD va = 0;
+    DWORD cb = 0;
+    PBYTE pb = NULL;
+    PSCATTER_RANGE_WRITE pRange;
+    // validate
+    if(!ctx->wr.cPage) { return FALSE; }
+    // alloc
+    cMEMs = ctx->wr.cPage;
+    if(!(pbBuffer = LocalAlloc(LMEM_ZEROINIT, cMEMs * (sizeof(PMEM_SCATTER) + sizeof(MEM_SCATTER))))) { return FALSE; }
+    ppMEMs = (PPMEM_SCATTER)pbBuffer;
+    pMEMs = (PMEM_SCATTER)(pbBuffer + cMEMs * (sizeof(PMEM_SCATTER)));
+    // populate MEMs
+    pRange = ctx->wr.pRanges;
+    va = pRange->va;
+    cb = pRange->cb;
+    pb = pRange->pb;
+    for(i = 0; i < cMEMs; i++) {
+        if(!cb) {
+            pRange = pRange->FLink;
+            if(!pRange) { goto fail; }  // MEM depletion should not happen!
+            va = pRange->va;
+            cb = pRange->cb;
+            pb = pRange->pb;
+        }
+        pMEM = pMEMs + i;
+        ppMEMs[i] = pMEM;
+        pMEM->version = MEM_SCATTER_VERSION;
+        pMEM->qwA = va;
+        pMEM->pb = pb;
+        if(va & 0xfff) {
+            pMEM->cb = min(cb, 0x1000 - (va & 0xfff));
+        } else {
+            pMEM->cb = min(cb, 0x1000);
+        }
+        va += pMEM->cb;
+        cb -= pMEM->cb;
+        pb += pMEM->cb;
+    }
+    if(cb || pRange) { goto fail; }     // leftover data should not happen!
+    // write scatter
+    VMMDLL_MemWriteScatter(ctx->dwPID, ppMEMs, cMEMs);
+    // finish
+    LocalFree(pbBuffer);
+    return TRUE;
+fail:
+    LocalFree(pbBuffer);
+    return FALSE;
+}
+
+/*
+* ExecuteInternal - internal synchronized function for both read/write.
+*/
+_Success_(return)
+BOOL VMMDLL_Scatter_ExecuteInternal(_In_ PSCATTER_CONTEXT ctx)
+{
+    BOOL fRd, fWr;
+    fWr = VMMDLL_Scatter_ExecuteWriteInternal(ctx);
+    fRd = VMMDLL_Scatter_ExecuteReadInternal(ctx);
+    return fRd || fWr;
+}
+
+/*
 * Retrieve the memory ranges previously populated with calls to the
 * VMMDLL_Scatter_Prepare* functions.
 * -- hS
@@ -354,6 +489,20 @@ _Success_(return)
 BOOL VMMDLL_Scatter_ExecuteRead(_In_ VMMDLL_SCATTER_HANDLE hS)
 {
     SCATTER_CALL_SYNCHRONIZED_IMPLEMENTATION(hS, VMMDLL_Scatter_ExecuteReadInternal((PSCATTER_CONTEXT)hS));
+}
+
+/*
+* Retrieve and Write memory previously populated.
+* Write any memory prepared with VMMDLL_Scatter_PrepareWrite function (1st).
+* Retrieve the memory ranges previously populated with calls to the
+* VMMDLL_Scatter_Prepare* functions (2nd).
+* -- hS
+* -- return
+*/
+_Success_(return)
+BOOL VMMDLL_Scatter_Execute(_In_ VMMDLL_SCATTER_HANDLE hS)
+{
+    SCATTER_CALL_SYNCHRONIZED_IMPLEMENTATION(hS, VMMDLL_Scatter_ExecuteInternal((PSCATTER_CONTEXT)hS));
 }
 
 /*

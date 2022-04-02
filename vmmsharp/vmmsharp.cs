@@ -574,12 +574,75 @@ namespace vmmsharp
 
 
 
-
         //---------------------------------------------------------------------
-        // PROCESS FUNCTIONALITY BELOW:
+        // MEMORY SEARCH FUNCTIONALITY BELOW:
         //---------------------------------------------------------------------
 
-        public struct PROCESS_INFORMATION
+        public struct VMMDLL_MEM_SEARCHENTRY
+        {
+            public uint cbAlign;
+            public byte[] pbSearch;
+            public byte[] pbSearchSkipMask;
+        }
+
+        public static unsafe ulong[] MemSearchM(uint pid, VMMDLL_MEM_SEARCHENTRY[] search, ulong vaMin = 0, ulong vaMax = 0xffffffffffffffff, uint cMaxResult = 0x10000, uint ReadFlags = 0)
+        {
+            // checks:
+            if (search == null || search.Length == 0 || search.Length > 16) { return new ulong[0]; }
+            // check search items and convert:
+            vmmi.VMMDLL_MEM_SEARCH_CONTEXT_SEARCHENTRY[] es = new vmmi.VMMDLL_MEM_SEARCH_CONTEXT_SEARCHENTRY[16];
+            for (int i = 0; i < search.Length; i++)
+            {
+                if (search[i].pbSearch == null || search[i].pbSearch.Length == 0 || search[i].pbSearch.Length > 32) { return new ulong[0]; }
+                if ((search[i].pbSearchSkipMask != null) && (search[i].pbSearchSkipMask.Length > search[i].pbSearch.Length)) { return new ulong[0]; }
+                es[i].cbAlign = search[i].cbAlign;
+                es[i].cb = (uint)search[i].pbSearch.Length;
+                es[i].pb = new byte[32];
+                search[i].pbSearch.CopyTo(es[i].pb, 0);
+                if(search[i].pbSearchSkipMask != null && search[i].pbSearchSkipMask.Length > 0)
+                {
+                    es[i].pbSkipMask = new byte[32];
+                    search[i].pbSearchSkipMask.CopyTo(es[i].pbSkipMask, 0);
+                }
+            }
+            // initialize search struct:
+            vmmi.VMMDLL_MEM_SEARCH_CONTEXT ctx = new vmmi.VMMDLL_MEM_SEARCH_CONTEXT();
+            ctx.dwVersion = vmmi.VMMDLL_MEM_SEARCH_VERSION;
+            ctx.cMaxResult = cMaxResult;
+            ctx.cSearch = 1;
+            ctx.vaMin = vaMin;
+            ctx.vaMax = vaMax;
+            ctx.ReadFlags = ReadFlags;
+            ctx.search = es;
+            // perform native search:
+            uint pcva;
+            IntPtr ppva;
+            if (!vmmi.VMMDLL_MemSearch(pid, ref ctx, out ppva, out pcva)) { return new ulong[0]; }
+            ulong[] result = new ulong[pcva];
+            for (int i = 0; i < pcva; i++)
+            {
+                result[i] = Marshal.PtrToStructure<ulong>(IntPtr.Add(ppva, i * 8));
+            }
+            vmmi.VMMDLL_MemFree((byte*)ppva.ToPointer());
+            return result;
+        }
+
+        public static unsafe ulong[] MemSearch1(uint pid, byte[] pbSearch, ulong vaMin = 0, ulong vaMax = 0xffffffffffffffff, uint cMaxResult = 0x10000, uint ReadFlags = 0, byte[] pbSearchSkipMask = null, uint cbAlign = 1)
+        {
+            VMMDLL_MEM_SEARCHENTRY[] es = new VMMDLL_MEM_SEARCHENTRY[1];
+            es[0].cbAlign = cbAlign;
+            es[0].pbSearch = pbSearch;
+            es[0].pbSearchSkipMask = pbSearchSkipMask;
+            return MemSearchM(pid, es, vaMin, vaMax, cMaxResult, ReadFlags);
+        }
+
+
+
+    //---------------------------------------------------------------------
+    // PROCESS FUNCTIONALITY BELOW:
+    //---------------------------------------------------------------------
+
+    public struct PROCESS_INFORMATION
         {
             public bool fValid;
             public uint tpMemoryModel;
@@ -1890,6 +1953,7 @@ namespace vmmsharp
         internal static uint VMMDLL_MAP_USER_VERSION =       2;
         internal static uint VMMDLL_MAP_PFN_VERSION =        1;
         internal static uint VMMDLL_MAP_SERVICE_VERSION =    3;
+        internal static uint VMMDLL_MEM_SEARCH_VERSION =     0xfe3e0002;
 
 
 
@@ -1912,8 +1976,8 @@ namespace vmmsharp
 
         // VFS (VIRTUAL FILE SYSTEM) FUNCTIONALITY BELOW:
 
-        internal static uint VMMDLL_VFS_FILELIST_EXINFO_VERSION =   1;
-        internal static uint VMMDLL_VFS_FILELIST_VERSION =          2;
+        internal static uint VMMDLL_VFS_FILELIST_EXINFO_VERSION = 1;
+        internal static uint VMMDLL_VFS_FILELIST_VERSION = 2;
 
         [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
         internal struct VMMDLL_VFS_FILELIST
@@ -2304,9 +2368,9 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetUnloadedModuleW")]
         internal static extern unsafe bool VMMDLL_Map_GetUnloadedModule(uint dwPid, byte* pModuleMap, ref uint pcbModuleMap);
-        
-        
-        
+
+
+
         // VMMDLL_Map_GetEAT
 
         [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
@@ -2538,9 +2602,9 @@ namespace vmmsharp
         internal static extern unsafe bool VMMDLL_Map_GetNet(
             byte* pNetMap,
             ref uint pcbNetMap);
-        
-        
-        
+
+
+
         // VMMDLL_Map_GetPhysMem
 
         [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
@@ -2549,7 +2613,7 @@ namespace vmmsharp
             internal ulong pa;
             internal ulong cb;
         }
-        
+
         [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
         internal struct VMMDLL_MAP_PHYSMEM
         {
@@ -2738,5 +2802,50 @@ namespace vmmsharp
             out uint lpType,
             byte* lpData,
             ref uint lpcbData);
+
+
+
+        // MEMORY SEARCH FUNCTIONALITY BELOW:
+
+        [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        internal struct VMMDLL_MEM_SEARCH_CONTEXT_SEARCHENTRY
+        {
+            internal uint cbAlign;
+            internal uint cb;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)] internal byte[] pb;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)] internal byte[] pbSkipMask;
+        }
+
+        [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        internal struct VMMDLL_MEM_SEARCH_CONTEXT
+        {
+            internal uint dwVersion;
+            internal uint _Filler01;
+            internal uint _Filler02;
+            internal bool fAbortRequested;
+            internal uint cMaxResult;
+            internal uint cSearch;
+            [MarshalAs(UnmanagedType.ByValArray, ArraySubType = UnmanagedType.Struct, SizeConst = 16)] internal vmmi.VMMDLL_MEM_SEARCH_CONTEXT_SEARCHENTRY[] search;
+            internal ulong vaMin;
+            internal ulong vaMax;
+            internal ulong vaCurrent;
+            internal uint _Filler2;
+            internal uint cResult;
+            internal ulong cbReadTotal;
+            internal IntPtr pvUserPtrOpt;
+            internal IntPtr pfnResultOptCB;
+            internal ulong ReadFlags;
+            internal bool fForcePTE;
+            internal bool fForceVAD;
+            internal IntPtr pfnFilterOptCB;
+        }
+
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_MemSearch")]
+        internal static extern unsafe bool VMMDLL_MemSearch(
+            uint dwPID,
+            ref VMMDLL_MEM_SEARCH_CONTEXT ctx,
+            out IntPtr ppva,
+            out uint pcva);
+
     }
 }
