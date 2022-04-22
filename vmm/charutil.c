@@ -766,6 +766,7 @@ DWORD CharUtil_FixFsNameU(_Out_writes_(cbuDst) LPSTR uszDst, _In_ DWORD cbuDst, 
 * characters with '_'. Also optionally add a suffix between 1-9 and fix
 * upper-case letters. One of [usz, sz, wsz] must be valid.
 * -- uszOut
+* -- cbuDst
 * -- usz
 * -- sz
 * -- wsz
@@ -776,17 +777,18 @@ DWORD CharUtil_FixFsNameU(_Out_writes_(cbuDst) LPSTR uszDst, _In_ DWORD cbuDst, 
 * -- return = number of bytes written (including terminating NULL).
 */
 _Success_(return != 0)
-DWORD CharUtil_FixFsName(_Out_writes_(2*MAX_PATH) LPSTR uszOut, _In_opt_ LPCSTR usz, _In_opt_ LPCSTR sz, _In_opt_ LPCWSTR wsz, _In_ DWORD cch, _In_opt_ DWORD iSuffix, _In_ BOOL fUpper)
+DWORD CharUtil_FixFsName(_Out_writes_(cbuDst) LPSTR uszOut, _In_ DWORD cbuDst, _In_opt_ LPCSTR usz, _In_opt_ LPCSTR sz, _In_opt_ LPCWSTR wsz, _In_ DWORD cch, _In_opt_ DWORD iSuffix, _In_ BOOL fUpper)
 {
     UCHAR c;
     DWORD i = 0;
     LPSTR uszTMP;
     uszOut[0] = 0;
     // 1: convert correct size utf-8
+    if(cbuDst < 5) { return 0; }
     if(!sz && !usz && !wsz) { return 0; }
-    if(sz && !CharUtil_AtoU((LPSTR)sz, cch, (PBYTE)uszOut, 2 * MAX_PATH - 3, &uszTMP, NULL, CHARUTIL_FLAG_TRUNCATE)) { return 0; }
-    if(wsz && !CharUtil_WtoU((LPWSTR)wsz, cch, (PBYTE)uszOut, 2 * MAX_PATH - 3, &uszTMP, NULL, CHARUTIL_FLAG_TRUNCATE)) { return 0; }
-    if(usz && !CharUtil_UtoU((LPSTR)usz, cch, (PBYTE)uszOut, 2 * MAX_PATH - 3, &uszTMP, NULL, CHARUTIL_FLAG_TRUNCATE)) { return 0; }
+    if(sz && !CharUtil_AtoU((LPSTR)sz, cch, (PBYTE)uszOut, cbuDst - 4, &uszTMP, NULL, CHARUTIL_FLAG_TRUNCATE)) { return 0; }
+    if(wsz && !CharUtil_WtoU((LPWSTR)wsz, cch, (PBYTE)uszOut, cbuDst - 4, &uszTMP, NULL, CHARUTIL_FLAG_TRUNCATE)) { return 0; }
+    if(usz && !CharUtil_UtoU((LPSTR)usz, cch, (PBYTE)uszOut, cbuDst - 4, &uszTMP, NULL, CHARUTIL_FLAG_TRUNCATE)) { return 0; }
     // 2: replace bad/uppercase chars
     if(fUpper) {
         while((c = uszOut[i])) {
@@ -974,21 +976,21 @@ DWORD CharUtil_Internal_HashFs(_In_ LPSTR usz)
 DWORD CharUtil_HashNameFsU(_In_ LPCSTR usz, _In_opt_ DWORD iSuffix)
 {
     CHAR uszFs[2*MAX_PATH];
-    if(!CharUtil_FixFsName(uszFs, usz, NULL, NULL, -1, iSuffix, TRUE)) { return 0; }
+    if(!CharUtil_FixFsName(uszFs, sizeof(uszFs), usz, NULL, NULL, -1, iSuffix, TRUE)) { return 0; }
     return CharUtil_Internal_HashFs(uszFs);
 }
 
 DWORD CharUtil_HashNameFsA(_In_ LPCSTR sz, _In_opt_ DWORD iSuffix)
 {
     CHAR uszFs[2 * MAX_PATH];
-    if(!CharUtil_FixFsName(uszFs, NULL, sz, NULL, -1, iSuffix, TRUE)) { return 0; }
+    if(!CharUtil_FixFsName(uszFs, sizeof(uszFs), NULL, sz, NULL, -1, iSuffix, TRUE)) { return 0; }
     return CharUtil_Internal_HashFs(uszFs);
 }
 
 DWORD CharUtil_HashNameFsW(_In_ LPCWSTR wsz, _In_opt_ DWORD iSuffix)
 {
     CHAR uszFs[2 * MAX_PATH];
-    if(!CharUtil_FixFsName(uszFs, NULL, NULL, wsz, -1, iSuffix, TRUE)) { return 0; }
+    if(!CharUtil_FixFsName(uszFs, sizeof(uszFs), NULL, NULL, wsz, -1, iSuffix, TRUE)) { return 0; }
     return CharUtil_Internal_HashFs(uszFs);
 }
 

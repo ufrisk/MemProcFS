@@ -816,7 +816,7 @@ BOOL VmmWinLdrModule_Initialize_Name(_In_ PVMM_PROCESS pProcess, _Inout_ PVMMOB_
         }
         // name from pe embedded
         if(!uszName[0] && PE_GetModuleName(pProcess, pe->vaBase, szNamePE, MAX_PATH)) {
-            CharUtil_FixFsName(uszName, NULL, szNamePE, NULL, MAX_PATH, 0, FALSE);
+            CharUtil_FixFsName(uszName, sizeof(uszName), NULL, szNamePE, NULL, MAX_PATH, 0, FALSE);
         }
         // name from VAD not feasible due to deadlock risk when initializing VAD names.
         // set prefix, fix fullname and commit to strmap

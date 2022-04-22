@@ -220,6 +220,7 @@ DWORD CharUtil_FixFsNameU(
 * characters with '_'. Also optionally add a suffix between 1-9 and fix
 * upper-case letters. One of [usz, sz, wsz] must be valid.
 * -- uszOut
+* -- cbuDst
 * -- usz
 * -- sz
 * -- wsz
@@ -231,7 +232,8 @@ DWORD CharUtil_FixFsNameU(
 */
 _Success_(return != 0)
 DWORD CharUtil_FixFsName(
-    _Out_writes_(2*MAX_PATH) LPSTR uszOut,
+    _Out_writes_(cbuDst) LPSTR uszOut,
+    _In_ DWORD cbuDst,
     _In_opt_ LPCSTR usz,
     _In_opt_ LPCSTR sz,
     _In_opt_ LPCWSTR wsz,

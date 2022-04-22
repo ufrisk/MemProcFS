@@ -237,6 +237,9 @@ BOOL InfoDB_SymbolOffset(_In_ LPSTR szModule, _In_ LPSTR szSymbolName, _Out_ PDW
     }
 fail:
     Ob_DECREF(pObCtx);
+    if(!fResult) {
+        VmmLog(MID_INFODB, LOGLEVEL_TRACE, "Missing SymbolOffset: %s", szSymbolName);
+    }
     return fResult;
 }
 
@@ -326,6 +329,9 @@ BOOL InfoDB_TypeSize(_In_ LPSTR szModule, _In_ LPSTR szTypeName, _Out_ PDWORD pd
     }
 fail:
     Ob_DECREF(pObCtx);
+    if(!fResult) {
+        VmmLog(MID_INFODB, LOGLEVEL_TRACE, "Missing TypeSize: %s", szTypeName);
+    }
     return fResult;
 }
 
@@ -348,14 +354,16 @@ BOOL InfoDB_TypeChildOffset(_In_ LPSTR szModule, _In_ LPSTR szTypeName, _In_ LPS
     if(!(pObCtx = ObContainer_GetOb(ctxVmm->pObCInfoDB)) || !pObCtx->dwPdbId_NT) { goto fail; }
     qwHash1 = CharUtil_Hash32A(szTypeName, FALSE);
     qwHash2 = CharUtil_Hash32U(uszTypeChildName, FALSE);
-    qwHash = ((qwHash2 << 32) + qwHash1 + ((QWORD)pObCtx->dwPdbId_NT << 32)) & 0x7fffffffffffffff;
+    qwHash = ((qwHash2 << 32) + qwHash1 + pObCtx->dwPdbId_NT + ((QWORD)pObCtx->dwPdbId_NT << 32)) & 0x7fffffffffffffff;
     if(SQLITE_OK == InfoDB_SqlQueryN(pObCtx, "SELECT data FROM type_child WHERE hash = ?", 1, &qwHash, 1, &qwResult, NULL)) {
         *pdwTypeOffset = (DWORD)qwResult;
         fResult = TRUE;
     }
-
 fail:
     Ob_DECREF(pObCtx);
+    if(!fResult) {
+        VmmLog(MID_INFODB, LOGLEVEL_TRACE, "Missing TypeChildOffset: %s.%s", szTypeName, uszTypeChildName);
+    }
     return fResult;
 }
 

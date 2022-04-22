@@ -1203,8 +1203,8 @@ DWORD VmmWinReg_KeyHashName(_In_ PREG_CM_KEY_NODE pnk, _In_ DWORD iSuffix)
     DWORD i, c, dwHash = 0;
     CHAR uszBuffer[2 * MAX_PATH];
     c = (pnk->Flags & REG_CM_KEY_NODE_FLAGS_COMP_NAME) ?
-        CharUtil_FixFsName(uszBuffer, NULL, pnk->szName, NULL, pnk->NameLength, iSuffix, TRUE) :
-        CharUtil_FixFsName(uszBuffer, NULL, NULL, pnk->wszName, pnk->NameLength, iSuffix, TRUE);
+        CharUtil_FixFsName(uszBuffer, sizeof(uszBuffer), NULL, pnk->szName, NULL, pnk->NameLength, iSuffix, TRUE) :
+        CharUtil_FixFsName(uszBuffer, sizeof(uszBuffer), NULL, NULL, pnk->wszName, pnk->NameLength, iSuffix, TRUE);
     if(c) { c--; }
     for(i = 0; i < c; i++) {
         dwHash = ((dwHash >> 13) | (dwHash << 19)) + uszBuffer[i];
@@ -1849,9 +1849,9 @@ VOID VmmWinReg_KeyInfo(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pKey,
     pKeyInfo->fActive = pKey->dwCellHead >> 31;
     pKeyInfo->ftLastWrite = pKey->pKey->LastWriteTime;
     if(pKey->pKey->Flags & REG_CM_KEY_NODE_FLAGS_COMP_NAME) {
-        pKeyInfo->cbuName = CharUtil_FixFsName(pKeyInfo->uszName, NULL, pKey->pKey->szName, NULL, pKey->pKey->NameLength, pKey->iSuffix, FALSE);
+        pKeyInfo->cbuName = CharUtil_FixFsName(pKeyInfo->uszName, sizeof(pKeyInfo->uszName), NULL, pKey->pKey->szName, NULL, pKey->pKey->NameLength, pKey->iSuffix, FALSE);
     } else {
-        pKeyInfo->cbuName = CharUtil_FixFsName(pKeyInfo->uszName, NULL, NULL, pKey->pKey->wszName, pKey->pKey->NameLength, pKey->iSuffix, FALSE);
+        pKeyInfo->cbuName = CharUtil_FixFsName(pKeyInfo->uszName, sizeof(pKeyInfo->uszName), NULL, NULL, pKey->pKey->wszName, pKey->pKey->NameLength, pKey->iSuffix, FALSE);
     }
 }
 
@@ -1977,9 +1977,9 @@ VOID VmmWinReg_ValueInfo(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_VALUE p
         strcpy_s(pValueInfo->uszName, _countof(pValueInfo->uszName), "(Default)");
         pValueInfo->cbuName = 10;
     } else if(pValue->pValue->Flags & REG_CM_KEY_VALUE_FLAGS_COMP_NAME) {
-        pValueInfo->cbuName = CharUtil_FixFsName(pValueInfo->uszName, NULL, pValue->pValue->szName, NULL, pValue->pValue->NameLength, 0, FALSE);
+        pValueInfo->cbuName = CharUtil_FixFsName(pValueInfo->uszName, sizeof(pValueInfo->uszName), NULL, pValue->pValue->szName, NULL, pValue->pValue->NameLength, 0, FALSE);
     } else {
-        pValueInfo->cbuName = CharUtil_FixFsName(pValueInfo->uszName, NULL, NULL, pValue->pValue->wszName, pValue->pValue->NameLength, 0, FALSE);
+        pValueInfo->cbuName = CharUtil_FixFsName(pValueInfo->uszName, sizeof(pValueInfo->uszName), NULL, NULL, pValue->pValue->wszName, pValue->pValue->NameLength, 0, FALSE);
     }
 }
 

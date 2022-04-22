@@ -317,7 +317,7 @@ VOID FcNtfs_IngestMftEntry(_In_ PFCNTFS_SETUP_CONTEXT ctx, _In_ QWORD qwPhysical
         if(pa->Type == NTFS_ATTR_TYPE_FILE_NAME) {
             pfnC = (PNTFS_FILE_NAME)(pb + oA + pa->AttrOffset);
             if((pfnC->NameSpace != NTFS_FILENAME_NAMESPACE_DOS) && (pa->AttrLength >= 42 + pfnC->NameLength * sizeof(WCHAR))) {
-                if(!pfn || (pfnC->SizeReal > pfn->SizeReal)) {
+                if(!pfn || (pfnC->SizeReal > pfn->SizeAllocated)) {
                     pfn = pfnC;
                 }
             }
@@ -329,6 +329,7 @@ VOID FcNtfs_IngestMftEntry(_In_ PFCNTFS_SETUP_CONTEXT ctx, _In_ QWORD qwPhysical
     qwHashDuplicateCheck = (((QWORD)pr->MftRecordNumber << 32) ^ pr->LogFileSequenceNumber);
     if(ObMap_ExistsKey(ctx->pmDuplicate, qwHashDuplicateCheck)) { return; }
     // Create NTFS object and populate:
+    if(!pfn->NameLength) { return; }
     if(!CharUtil_WtoU(pfn->Name, pfn->NameLength, NULL, 0, NULL, &cbuName, 0)) { return; }
     if(!(pNtfs = LocalAlloc(LMEM_ZEROINIT, sizeof(FCNTFS) + cbuName))) { return; }
     if(!CharUtil_WtoU(pfn->Name, pfn->NameLength, pNtfs->uszName, cbuName, NULL, &cbuName, CHARUTIL_FLAG_STR_BUFONLY)) { return; }
@@ -1279,7 +1280,7 @@ VOID M_FcNtfs_ListDirectory(_In_ LPSTR uszPath, _Inout_ PHANDLE pFileList)
     for(i = 0; i < pObNtfsMap->cMap; i++) {
         pe = pObNtfsMap->pMap + i;
         uszTextName = CharUtil_PathSplitLast(pe->uszText);
-        if(!CharUtil_FixFsName(uszNameFix, uszTextName, NULL, NULL, -1, pe->dwTextSeq, FALSE)) { continue; }
+        if(!CharUtil_FixFsName(uszNameFix, sizeof(uszNameFix), uszTextName, NULL, NULL, -1, pe->dwTextSeq, FALSE)) { continue; }
         FileExInfo.qwCreationTime = pe->ftCreate;
         FileExInfo.qwLastWriteTime = pe->ftModify;
         FileExInfo.qwLastAccessTime = pe->ftRead;
