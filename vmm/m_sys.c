@@ -17,6 +17,7 @@ VOID MSys_QueryTimeZone(_Out_writes_(49) LPSTR uszTimeZone, _In_ BOOL fLine)
 {
     int iTimeZoneActiveBias = 0;
     CHAR uszTimeZoneName[0x20] = { 0 };
+    uszTimeZone[0] = 0;
     if(SysQuery_TimeZone(uszTimeZoneName, &iTimeZoneActiveBias)) {
         if(iTimeZoneActiveBias % 60) {
             if(fLine) {
@@ -115,7 +116,7 @@ VOID MSys_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In
     Util_FileTime2String(SysQuery_TimeCurrent(), szTimeCurrent);
     MSys_QueryTimeZone(szTimeZone, FALSE);
     VmmWinReg_ValueQuery2("HKLM\\SYSTEM\\ControlSet001\\Control\\ComputerName\\ComputerName\\ComputerName", NULL, pbComputerName, sizeof(pbComputerName) - 2, NULL);
-    snprintf(usz, sizeof(usz), "architecture:[%s] version:[%i.%i.%i] time-boot:[%s] time-current:[%s], timezone[%s]",
+    snprintf(usz, sizeof(usz), "architecture:[%s] version:[%i.%i.%i] time-boot:[%s] time-current:[%s], timezone:[%s]",
         VMM_MEMORYMODEL_TOSTRING[ctxVmm->tpMemoryModel],
         ctxVmm->kernel.dwVersionMajor, ctxVmm->kernel.dwVersionMinor, ctxVmm->kernel.dwVersionBuild,
         szTimeBoot, szTimeCurrent, szTimeZone

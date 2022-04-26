@@ -330,6 +330,7 @@ fail:
 */
 int VmmEvil_InitializeMap_CmpSort(PVMM_MAP_EVILENTRY a, PVMM_MAP_EVILENTRY b)
 {
+    QWORD v_a, v_b;
     if(a->tp != b->tp) {
         return a->tp - b->tp;
     }
@@ -338,6 +339,11 @@ int VmmEvil_InitializeMap_CmpSort(PVMM_MAP_EVILENTRY a, PVMM_MAP_EVILENTRY b)
     }
     if(a->va != b->va) {
         return (a->va < b->va) ? -1 : 1;
+    }
+    v_a = a->VAD_PATCHED_PE.pa + a->VAD_PATCHED_PE.paProto + a->VAD_PATCHED_PE.wPatchOffset + a->oVadEx;
+    v_b = b->VAD_PATCHED_PE.pa + b->VAD_PATCHED_PE.paProto + b->VAD_PATCHED_PE.wPatchOffset + b->oVadEx;
+    if(v_a != v_b) {
+        return (v_a < v_b) ? -1 : 1;
     }
     return 0;
 }

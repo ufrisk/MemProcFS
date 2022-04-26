@@ -1438,7 +1438,7 @@ VOID VmmWriteScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_ PPMEM_SCATTER pp
 VOID VmmReadScatterPhysical(_Inout_ PPMEM_SCATTER ppMEMsPhys, _In_ DWORD cpMEMsPhys, _In_ QWORD flags)
 {
     QWORD tp;   // 0 = normal, 1 = already read, 2 = cache hit, 3 = speculative read
-    BOOL fCache, fCacheRecent;
+    BOOL fCache, fCacheRecent, fCachePut, fCacheForce;
     PMEM_SCATTER pMEM;
     DWORD i, c, cSpeculative;
     PVMMOB_CACHE_MEM pObCacheEntry, pObReservedMEM;
@@ -1446,6 +1446,8 @@ VOID VmmReadScatterPhysical(_Inout_ PPMEM_SCATTER ppMEMsPhys, _In_ DWORD cpMEMsP
     PVMMOB_CACHE_MEM ppObCacheSpeculative[0x18];
     fCache = !(VMM_FLAG_NOCACHE & (flags | ctxVmm->flags));
     fCacheRecent = fCache && (VMM_FLAG_CACHE_RECENT_ONLY & flags);
+    fCachePut = !(VMM_FLAG_NOCACHEPUT & flags);
+    fCacheForce = (VMM_FLAG_FORCECACHE_READ & flags) && !(VMM_FLAG_FORCECACHE_READ_DISABLE & (flags | ctxVmm->flags));
     // 1: cache read
     if(fCache) {
         c = 0, cSpeculative = 0;
@@ -1475,7 +1477,7 @@ VOID VmmReadScatterPhysical(_Inout_ PPMEM_SCATTER ppMEMsPhys, _In_ DWORD cpMEMsP
             }
         }
         // all found in cache _OR_ only cached reads allowed -> restore mem stack and return!
-        if((c == cpMEMsPhys) || (VMM_FLAG_FORCECACHE_READ & flags)) {
+        if((c == cpMEMsPhys) || fCacheForce) {
             for(i = 0; i < cpMEMsPhys; i++) {
                 MEM_SCATTER_STACK_POP(ppMEMsPhys[i]);
             }
@@ -1483,7 +1485,7 @@ VOID VmmReadScatterPhysical(_Inout_ PPMEM_SCATTER ppMEMsPhys, _In_ DWORD cpMEMsP
         }
     }
     // 2: speculative future read if negligible performance loss
-    if(fCache && cSpeculative && (cSpeculative < 0x18) && !(flags & VMMDLL_FLAG_NO_PREDICTIVE_READ)) {
+    if(fCache && fCachePut && cSpeculative && (cSpeculative < 0x18) && !(flags & VMMDLL_FLAG_NO_PREDICTIVE_READ)) {
         for(i = 0; i < cpMEMsPhys; i++) {
             pMEM = ppMEMsPhys[i];
             if(1 != MEM_SCATTER_STACK_PEEK(pMEM, 1)) {
@@ -1509,7 +1511,7 @@ VOID VmmReadScatterPhysical(_Inout_ PPMEM_SCATTER ppMEMsPhys, _In_ DWORD cpMEMsP
         for(i = 0; i < cpMEMsPhys; i++) {
             pMEM = ppMEMsPhys[i];
             tp = MEM_SCATTER_STACK_POP(pMEM);
-            if(!(VMM_FLAG_NOCACHEPUT & flags)) {
+            if(fCachePut) {
                 if(tp == 4) {   // 4 == speculative & backed by cache reserved
                     VmmCacheReserveReturn(ppObCacheSpeculative[i]);
                 }
@@ -2022,6 +2024,11 @@ BOOL VmmInitialize()
     ctxVmm = (PVMM_CONTEXT)LocalAlloc(LMEM_ZEROINIT, sizeof(VMM_CONTEXT));
     if(!ctxVmm) { goto fail; }
     ctxVmm->hModuleVmmOpt = GetModuleHandleA("vmm");
+    if(ctxMain->cfg.tpForensicMode && !ctxMain->dev.fVolatile && !ctxMain->dev.fRemote) {
+        // forensic mode for local static files disables the forcache
+        // read pattern to achieve greater forensic file consistency.
+        ctxVmm->flags |= VMM_FLAG_FORCECACHE_READ_DISABLE;
+    }
     // 2: CACHE INIT: Process Table
     if(!VmmProcessTableCreateInitial()) { goto fail; }
     // 3: CACHE INIT: Translation Lookaside Buffer (TLB) Cache Table

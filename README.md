@@ -300,3 +300,4 @@ Latest:
 * Search API update.
 * New WriteScatter API.
 * C# support for New Scatter API and Search API.
+* Forensic file consistency when analyzing local file with -forensic start-up option.

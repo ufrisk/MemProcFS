@@ -37,6 +37,11 @@ LPCSTR szMFC_README =
 "Note! MemProcFS forensics may take some time to initialize. Once intialized \n" \
 "sub-directories under the forensic directory will show up automatically.    \n" \
 "                                                                            \n" \
+"FORENSIC FILE CONSISTENCY: Due to MemProcFS fast multi-threading & caching  \n" \
+"forensic results may differ (primarily different order). To avoid this start\n" \
+"MemProcFS with the -forensic <mode> startup option. If targeting memory from\n" \
+"local file greater consistency will be enabled from the start.              \n" \
+"                                                                            \n" \
 "For additional information about MemProcFS forensics check out the guide at:\n" \
 "https://github.com/ufrisk/MemProcFS/wiki                                    \n";
 
