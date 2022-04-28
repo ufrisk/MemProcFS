@@ -460,6 +460,9 @@ BOOL MWinReg_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
                     VMMDLL_VfsList_AddDirectory(pFileList, pObUserMap->pMap[i].uszText, &FileExInfo);
                 }
                 Ob_DECREF_NULL(&pObUserMap);
+                VMMDLL_VfsList_AddDirectory(pFileList, "LocalSystem", &FileExInfo);
+                VMMDLL_VfsList_AddDirectory(pFileList, "LocalService", &FileExInfo);
+                VMMDLL_VfsList_AddDirectory(pFileList, "NetworkService", &FileExInfo);
             }
             if(!_stricmp(uszPath, "HKU")) {
                 FileExInfo.fCompressed = TRUE;

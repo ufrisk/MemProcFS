@@ -1083,7 +1083,7 @@ BOOL VmmWinPool_AllPool7_RangeInit(_In_ PVMMWINPOOL7_CTX ctx)
     }
     if(VmmMap_GetObject(&pObObj)) {
         for(i = 0; i < pObObj->cMap; i++) {
-            ObSet_Push(psvaOb, pObHnd->pMap[i].vaObject & ~0x1fffff);   // 2MB align
+            ObSet_Push(psvaOb, pObObj->pMap[i].va & ~0x1fffff);         // 2MB align
         }
     }
     // 2: sort and populate 2MB ranges

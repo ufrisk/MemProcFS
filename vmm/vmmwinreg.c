@@ -1676,7 +1676,7 @@ success:
 _Success_(return)
 BOOL VmmWinReg_PathHiveGetByFullPath(_In_ LPSTR uszPathFull, _Out_ POB_REGISTRY_HIVE *ppHive, _Out_writes_(MAX_PATH) LPSTR uszPathKeyValue)
 {
-    BOOL fUser = FALSE, fOrphan = FALSE;
+    BOOL fUser = FALSE, fUserSystem = FALSE, fOrphan = FALSE;
     DWORD i;
     LPSTR usz, uszPath2;
     CHAR uszPath1[MAX_PATH];
@@ -1693,7 +1693,17 @@ BOOL VmmWinReg_PathHiveGetByFullPath(_In_ LPSTR uszPathFull, _Out_ POB_REGISTRY_
         strncpy_s(uszPathKeyValue, MAX_PATH, fOrphan ? "ORPHAN\\" : "ROOT\\", _TRUNCATE);
         strncat_s(uszPathKeyValue, MAX_PATH, uszPath2, _TRUNCATE);
         if(fUser) {
-            if(VmmMap_GetUser(&pObUserMap)) {
+            if(strstr("LocalSystem", uszPath1)) { fUserSystem = TRUE;  strncpy_s(uszPath1, sizeof(uszPath1), "DEFAULT-USER_.DEFAULT", _TRUNCATE); }
+            if(strstr("LocalService", uszPath1)) { fUserSystem = TRUE;  strncpy_s(uszPath1, sizeof(uszPath1), "NTUSERDAT-USER_S-1-5-19", _TRUNCATE); }
+            if(strstr("NetworkService", uszPath1)) { fUserSystem = TRUE;  strncpy_s(uszPath1, sizeof(uszPath1), "NTUSERDAT-USER_S-1-5-20", _TRUNCATE); }
+            if(fUserSystem) {
+                while((pObHive = VmmWinReg_HiveGetNext(pObHive))) {
+                    if(strstr(pObHive->uszName, uszPath1)) {
+                        *ppHive = pObHive;
+                        return TRUE;                // CALLER DECREF: *ppHive
+                    }
+                }
+            } else if(VmmMap_GetUser(&pObUserMap)) {
                 for(i = 0; i < pObUserMap->cMap; i++) {
                     if(strstr(pObUserMap->pMap[i].uszText, uszPath1)) {
                         *ppHive = VmmWinReg_HiveGetByAddress(pObUserMap->pMap[i].vaRegHive);
