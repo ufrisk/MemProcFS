@@ -3,8 +3,8 @@
 
 #define VERSION_MAJOR               4
 #define VERSION_MINOR               7
-#define VERSION_REVISION            11
-#define VERSION_BUILD               61
+#define VERSION_REVISION            12
+#define VERSION_BUILD               62
 
 #define VER_FILE_DESCRIPTION_STR    "MemProcFS : Plugin vmemd"
 #define VER_FILE_VERSION            VERSION_MAJOR, VERSION_MINOR, VERSION_REVISION, VERSION_BUILD

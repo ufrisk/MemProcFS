@@ -290,7 +290,7 @@ VOID VmmWinPool_AllPool_PushItem(
         // sanity check: pool header len != alloc len
         cbPoolEntryHdr = f32 ? (8 * (*(PWORD)(pbPoolBlock + 2) & 0x1ff)) : (16 * pbPoolBlock[2]);
         if(cbPoolBlock != cbPoolEntryHdr) {
-            if((tp != VMM_MAP_POOL_TPSS_VS) || (cbPoolBlock != cbPoolEntryHdr + cbHdr)) { return; }
+            if((tpSS != VMM_MAP_POOL_TPSS_VS) || (cbPoolBlock != cbPoolEntryHdr + cbHdr)) { return; }
         }
         // sanity check: bad tag _and_ not allocated
         for(i = 4; i < 8; i++) {
