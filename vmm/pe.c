@@ -543,7 +543,7 @@ BOOL PE_FileRaw_FileRegions(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleB
             pRegions->Region[pRegions->cRegions].cbOffsetFile = cbFileSectionStart;
             pRegions->Region[pRegions->cRegions].cb = cbFileSectionEnd - cbFileSectionStart;
             pRegions->cbTotalSize = max(pRegions->cbTotalSize, pSection->PointerToRawData + pSection->SizeOfRawData);
-            if((pRegions->cbTotalSize > 0x02000000) || (pRegions->Region[pRegions->cRegions].cb > 0x02000000)) { return FALSE; } // large binaries >32MB not supported.
+            if((pRegions->cbTotalSize > PE_MAX_SUPPORTED_SIZE) || (pRegions->Region[pRegions->cRegions].cb > PE_MAX_SUPPORTED_SIZE)) { return FALSE; }  // above max supported size (may be indication of corrupt data)
             pRegions->cRegions++;
         }
     }
@@ -585,7 +585,7 @@ DWORD PE_FileRaw_Size(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _
     for(cbModuleFile = 0, iSection = 0; iSection < cSections; iSection++) {
         cbModuleFile = max(cbModuleFile, pSections[iSection].PointerToRawData + pSections[iSection].SizeOfRawData);
     }
-    if(cbModuleFile > 0x02000000) { return 0; } // >32MB not supported (may be error / corrupt indata)
+    if(cbModuleFile > PE_MAX_SUPPORTED_SIZE) { return 0; }  // above max supported size (may be indication of corrupt data)
     return cbModuleFile;
 }
 

@@ -217,7 +217,7 @@ PVMMOB_MAP_IAT VmmWinIAT_Initialize_DoWork(_In_ PVMM_PROCESS pProcess, _In_ PVMM
     PVMMOB_MAP_IAT pObIAT = NULL;
     PVMM_MAP_IATENTRY pe;
     // Load the module
-    if(pModule->cbImageSize > 0x02000000) { goto fail; }
+    if(pModule->cbImageSize > PE_MAX_SUPPORTED_SIZE) { goto fail; }    // above max supported size (may be indication of corrupt data)
     cbModule = pModule->cbImageSize;
     if(!(pbModule = LocalAlloc(LMEM_ZEROINIT, cbModule))) { goto fail; }
     VmmReadEx(pProcess, pModule->vaBase, pbModule, cbModule, &cbRead, 0);
@@ -2886,6 +2886,9 @@ PVMMOB_MAP_USER VmmWinUser_Initialize_DoWork()
         ZeroMemory(e, sizeof(VMMWINUSER_CONTEXT_ENTRY));
         szUser = StrStrIA(pObHive->uszName, "-USER_S-");
         szNtdat = StrStrIA(pObHive->uszName, "-ntuserdat-");
+        if(!szNtdat && StrStrIA(pObHive->uszName, "_ntuser.dat")) {
+            szNtdat = StrStrIA(pObHive->uszName, "-unknown-");
+        }
         if(!szNtdat && !szUser) { continue; }
         if(!szUser && !StrStrIA(szNtdat, "-unknown")) { continue; }
         if(szUser && ((strlen(szUser) < 20) || StrStrIA(szUser, "Classes"))) { continue; }

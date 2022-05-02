@@ -787,6 +787,19 @@ VOID VmmWinReg_EnumHive64_Post(_In_ PVMM_PROCESS pProcess, _In_opt_ POB_MAP pHiv
             CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR | CHARUTIL_FLAG_STR_BUFONLY
         );
     }
+    if(!pObHive->uszHiveRootPath[0] && po->CM.FileUserNameOpt && *(PQWORD)(pbData + po->CM.FileUserNameOpt)) {  // _CMHIVE.FileUserName (as backup to _CMHIVE.HiveRootPath)
+        VmmReadWtoU(
+            pProcess,
+            *(PQWORD)(pbData + po->CM.FileUserNameOpt + 8),
+            min(*(PWORD)(pbData + po->CM.FileUserNameOpt), 2 * _countof(pObHive->uszHiveRootPath) - 2),
+            VMM_FLAG_ZEROPAD_ON_FAIL,
+            (PBYTE)pObHive->uszHiveRootPath,
+            sizeof(pObHive->uszHiveRootPath),
+            NULL,
+            NULL,
+            CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR | CHARUTIL_FLAG_STR_BUFONLY
+        );
+    }
     // 3: Post processing
     if(strlen(pObHive->uszHiveRootPath) > 10) {
         CharUtil_UtoU(pObHive->uszHiveRootPath + 10, -1, szHiveFileNameLong, sizeof(szHiveFileNameLong), NULL, NULL, CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR | CHARUTIL_FLAG_STR_BUFONLY);
@@ -853,6 +866,19 @@ VOID VmmWinReg_EnumHive32_Post(_In_ PVMM_PROCESS pProcess, _In_opt_ POB_MAP pHiv
             pProcess,
             *(PDWORD)(pbData + po->CM.HiveRootPathOpt + 4),
             min(*(PWORD)(pbData + po->CM.HiveRootPathOpt), 2 * _countof(pObHive->uszHiveRootPath) - 2),
+            VMM_FLAG_ZEROPAD_ON_FAIL,
+            (PBYTE)pObHive->uszHiveRootPath,
+            sizeof(pObHive->uszHiveRootPath),
+            NULL,
+            NULL,
+            CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR | CHARUTIL_FLAG_STR_BUFONLY
+        );
+    }
+    if(!pObHive->uszHiveRootPath[0] && po->CM.FileUserNameOpt && *(PQWORD)(pbData + po->CM.FileUserNameOpt)) {  // _CMHIVE.FileUserName (as backup to _CMHIVE.HiveRootPath)
+        VmmReadWtoU(
+            pProcess,
+            *(PDWORD)(pbData + po->CM.FileUserNameOpt + 4),
+            min(*(PWORD)(pbData + po->CM.FileUserNameOpt), 2 * _countof(pObHive->uszHiveRootPath) - 2),
             VMM_FLAG_ZEROPAD_ON_FAIL,
             (PBYTE)pObHive->uszHiveRootPath,
             sizeof(pObHive->uszHiveRootPath),
@@ -1404,7 +1430,7 @@ BOOL VmmWinReg_KeyInitializeRootKey(_In_ POB_REGISTRY_HIVE pHive)
             cbKey = (cbCell > 4) ? cbCell - 4 : 0;
 			if((cbKey < sizeof(REG_CM_KEY_NODE)) || (i + cbCell > 0x1000)) { break; }
             pnk = (PREG_CM_KEY_NODE)(pHive->Snapshot._DUAL[0].pb + i + 4);
-            if((pnk->Signature != REG_CM_KEY_SIGNATURE_KEYNODE) || (pnk->Flags != (REG_CM_KEY_NODE_FLAGS_HIVE_ENTRY | REG_CM_KEY_NODE_FLAGS_COMP_NAME))) {
+            if((pnk->Signature != REG_CM_KEY_SIGNATURE_KEYNODE) || !(pnk->Flags & REG_CM_KEY_NODE_FLAGS_HIVE_ENTRY) || !(pnk->Flags & REG_CM_KEY_NODE_FLAGS_COMP_NAME)) {
                 i += cbCell;
                 continue;
             }

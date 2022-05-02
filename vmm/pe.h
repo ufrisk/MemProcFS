@@ -9,6 +9,8 @@
 #define __PE_H__
 #include "vmm.h"
 
+#define PE_MAX_SUPPORTED_SIZE           0x20000000      // >256MB not supported (may be error / corrupt indata)
+
 static const LPCSTR  PE_DATA_DIRECTORIES[16]  = {  "EXPORT",  "IMPORT",  "RESOURCE",  "EXCEPTION",  "SECURITY",  "BASERELOC",  "DEBUG",  "ARCHITECTURE",  "GLOBALPTR",  "TLS",  "LOAD_CONFIG",  "BOUND_IMPORT",  "IAT",  "DELAY_IMPORT",  "COM_DESCRIPTOR",  "RESERVED" };
 
 typedef struct tdPE_CODEVIEW {
