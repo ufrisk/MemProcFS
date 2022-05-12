@@ -1189,12 +1189,15 @@ BOOL VmmWinUnloadedModule_Initialize(_In_ PVMM_PROCESS pProcess)
 
 PVMMWIN_USER_PROCESS_PARAMETERS VmmWin_UserProcessParameters_Get(_In_ PVMM_PROCESS pProcess)
 {
-    BOOL f;
+    BOOL f, f32 = ctxVmm->f32;
     LPWSTR wszTMP = NULL;
-    QWORD vaUserProcessParameters = 0;
+    DWORD i, cEnv = 0;
+    LPWSTR wszEnv;
+    QWORD vaEnv = 0, vaUserProcessParameters = 0;
     PVMMWIN_USER_PROCESS_PARAMETERS pu = &pProcess->pObPersistent->UserProcessParams;
     if(pu->fProcessed || pProcess->dwState) { return pu; }
     EnterCriticalSection(&pProcess->LockUpdate);
+    if(pu->fProcessed || pProcess->dwState) { LeaveCriticalSection(&pProcess->LockUpdate); return pu; }
     if(ctxVmm->f32) {
         f = pProcess->win.vaPEB &&
             VmmRead(pProcess, pProcess->win.vaPEB + 0x10, (PBYTE)&vaUserProcessParameters, sizeof(DWORD)) &&
@@ -1206,15 +1209,28 @@ PVMMWIN_USER_PROCESS_PARAMETERS VmmWin_UserProcessParameters_Get(_In_ PVMM_PROCE
     }
     if(f) {
         // ImagePathName or DllPath
-        if(!VmmReadAllocUnicodeString(pProcess, ctxVmm->f32, 0, vaUserProcessParameters + (ctxVmm->f32 ? 0x038 : 0x060), 0x400, &wszTMP, NULL)) {    // ImagePathName
-            VmmReadAllocUnicodeString(pProcess, ctxVmm->f32, 0, vaUserProcessParameters + (ctxVmm->f32 ? 0x030 : 0x050), 0x400, &wszTMP, NULL);      // DllPath (mutually exclusive with ImagePathName?)
+        if(!VmmReadAllocUnicodeStringAsUTF8(pProcess, f32, 0, vaUserProcessParameters + (f32 ? 0x038 : 0x060), 0x400, &pu->uszImagePathName, &pu->cbuImagePathName)) {  // ImagePathName
+            VmmReadAllocUnicodeStringAsUTF8(pProcess, f32, 0, vaUserProcessParameters + (f32 ? 0x030 : 0x050), 0x400, &pu->uszImagePathName, &pu->cbuImagePathName);    // DllPath (mutually exclusive with ImagePathName?)
         }
-        CharUtil_WtoU(wszTMP, 0x400, NULL, 0, &pu->uszImagePathName, &pu->cbuImagePathName, CHARUTIL_FLAG_ALLOC);
-        LocalFree(wszTMP); wszTMP = NULL;
-        // CommandLine
-        VmmReadAllocUnicodeString(pProcess, ctxVmm->f32, 0, vaUserProcessParameters + (ctxVmm->f32 ? 0x040 : 0x070), 0x800, &wszTMP, NULL);
-        CharUtil_WtoU(wszTMP, 0x800, NULL, 0, &pu->uszCommandLine, &pu->cbuCommandLine, CHARUTIL_FLAG_ALLOC);
-        LocalFree(wszTMP); wszTMP = NULL;
+        VmmReadAllocUnicodeStringAsUTF8(pProcess, f32, 0, vaUserProcessParameters + (f32 ? 0x040 : 0x070), 0x800, &pu->uszCommandLine, &pu->cbuCommandLine);
+        VmmReadAllocUnicodeStringAsUTF8(pProcess, f32, 0, vaUserProcessParameters + (f32 ? 0x070 : 0x0b0), 0x800, &pu->uszWindowTitle, &pu->cbuWindowTitle);
+    }
+    if(f && (ctxVmm->kernel.dwVersionBuild >= 6000)) {
+        // Environment (multi-str)
+        VmmRead(pProcess, vaUserProcessParameters + (f32 ? 0x048 : 0x080), (PBYTE)&vaEnv, (f32 ? 4 : 8));   // Environment
+        VmmRead(pProcess, vaUserProcessParameters + (f32 ? 0x290 : 0x3f0), (PBYTE)&cEnv, sizeof(DWORD));    // EnvironmentSize
+        if(vaEnv && (cEnv > 0x10) && (cEnv < 0x10000) && VmmReadAlloc(pProcess, vaEnv, (PBYTE *)&wszEnv, cEnv, 0)) {
+            cEnv = (cEnv >> 1);     // bytes to wchar_count
+            for(i = 0; i < cEnv; i++) {
+                if(!wszEnv[i]) {
+                    wszEnv[i] = '\n';
+                    i++;
+                    continue;
+                }
+            }
+            CharUtil_WtoU(wszEnv, -1, NULL, 0, &pu->uszEnvironment, &pu->cbuEnvironment, CHARUTIL_FLAG_ALLOC);
+            LocalFree(wszEnv);
+        }
     }
     pu->fProcessed = TRUE;
     LeaveCriticalSection(&pProcess->LockUpdate);
@@ -3287,7 +3303,6 @@ VOID VmmWinProcess_Enumerate_PostProcessing(_In_ PVMM_PROCESS pSystemProcess)
 {
     DWORD i;
     LPSTR uszPathKernel;
-    LPWSTR wszPathKernel;
     POB_SET pObPrefetchAddr = NULL;
     PVMM_PROCESS pObProcess = NULL;
     PVMMOB_PROCESS_TABLE ptObCurrent = NULL, ptObNew = NULL;
@@ -3309,13 +3324,10 @@ VOID VmmWinProcess_Enumerate_PostProcessing(_In_ PVMM_PROCESS pSystemProcess)
         if(!pProcPers->fIsPostProcessingComplete) {
             pProcPers->fIsPostProcessingComplete = TRUE;
             uszPathKernel = NULL;
-            if(VmmReadAllocUnicodeString(pSystemProcess, ctxVmm->f32, VMM_FLAG_FORCECACHE_READ, VMM_EPROCESS_PTR(pObProcess, ctxVmm->offset.EPROCESS.SeAuditProcessCreationInfo), 0x400, &wszPathKernel, NULL)) {
-                if(CharUtil_WtoU(wszPathKernel, 0x400, NULL, 0, &uszPathKernel, NULL, CHARUTIL_FLAG_ALLOC)) {
-                    if(memcmp(uszPathKernel, "\\Device\\", 8)) {
-                        LocalFree(uszPathKernel); uszPathKernel = NULL;
-                    }
+            if(VmmReadAllocUnicodeStringAsUTF8(pSystemProcess, ctxVmm->f32, VMM_FLAG_FORCECACHE_READ, VMM_EPROCESS_PTR(pObProcess, ctxVmm->offset.EPROCESS.SeAuditProcessCreationInfo), 0x400, &uszPathKernel, NULL)) {
+                if(memcmp(uszPathKernel, "\\Device\\", 8)) {
+                    LocalFree(uszPathKernel); uszPathKernel = NULL;
                 }
-                LocalFree(wszPathKernel); wszPathKernel = NULL;
             }
             if(!uszPathKernel) {
                 // Fail - use EPROCESS name

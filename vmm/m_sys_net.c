@@ -18,7 +18,8 @@ LPCSTR szMSYSNET_README =
 "The sys/net module tries to enumerate and list network connections in        \n" \
 "Windows 7 and later (x64 only).                                              \n" \
 "Future 32-bit and Windows XP/Vista support is less likely.                   \n" \
-"For more information please visit: https://github.com/ufrisk/MemProcFS/wiki  \n";
+"---                                                                          \n" \
+"Documentation: https://github.com/ufrisk/MemProcFS/wiki/FS_SysInfo_Network   \n";
 
 // ----------------------------------------------------------------------------
 // Net functionality below:

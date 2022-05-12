@@ -278,9 +278,10 @@
     <ClCompile Include="m_handle.c" />
     <ClCompile Include="m_memmap.c" />
     <ClCompile Include="m_minidump.c" />
+    <ClCompile Include="m_misc_bitlocker.c" />
     <ClCompile Include="m_phys2virt.c" />
-    <ClCompile Include="m_proc_search.c" />
     <ClCompile Include="m_proc_token.c" />
+    <ClCompile Include="m_search.c" />
     <ClCompile Include="m_sys.c" />
     <ClCompile Include="m_sys_cert.c" />
     <ClCompile Include="m_sys_driver.c" />

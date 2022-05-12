@@ -234,7 +234,7 @@ BOOL MemMap_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
                     _countof(uszPath1) - 1,
                     ctxVmm->f32 ? "0x%08llx%s%s.txt" : "0x%016llx%s%s.txt",
                     pObVadMap->pMap[iVad].vaStart,
-                    pObVadMap->pMap[iVad].uszText ? "-" : "",
+                    (pObVadMap->pMap[iVad].uszText && pObVadMap->pMap[iVad].uszText[0]) ? "-" : "",
                     pObVadMap->pMap[iVad].uszText ? CharUtil_PathSplitLast(pObVadMap->pMap[iVad].uszText) : ""
                 );
                 VMMDLL_VfsList_AddFile(pFileList, uszPath1, pObVadMap->pMap[iVad].cVadExPages * MEMMAP_VADEX_LINELENGTH, NULL);

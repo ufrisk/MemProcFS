@@ -16,7 +16,8 @@ LPCSTR szMPHYS2VIRT_README =
     "'virt' (per process).                                                        \n" \
     "The phys2virt module may take time to execute  - especially if using the root\n" \
     "module (scan all process page tables) instead of individual processes.       \n" \
-    "For more information please visit: https://github.com/ufrisk/MemProcFS/wiki  \n";
+    "---                                                                          \n" \
+    "Documentation: https://github.com/ufrisk/MemProcFS/wiki/FS_Phys2Virt         \n";
 
 typedef struct tdM_PHYS2VIRT_MULTIENTRY {
     DWORD dwPID;

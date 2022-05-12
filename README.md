@@ -295,9 +295,11 @@ v1.1-v2.10
 * New/improved logging sub-system.
 * Minor API updates.
 
-Latest:
+[v4.8](https://github.com/ufrisk/MemProcFS/releases/tag/v4.8)
 * Bug fixes.
-* Search API update.
 * New WriteScatter API.
+* Process environment variables.
 * C# support for New Scatter API and Search API.
 * Forensic file consistency when analyzing local file with -forensic start-up option.
+* [Search](https://github.com/ufrisk/MemProcFS/wiki/FS_Search) updates.
+* [Bitlocker](https://github.com/ufrisk/MemProcFS/wiki/FS_BitLocker) key recovery.

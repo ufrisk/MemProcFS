@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 16
-VisualStudioVersion = 16.0.30320.27
+# Visual Studio Version 17
+VisualStudioVersion = 17.2.32505.173
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "memprocfs", "memprocfs\memprocfs.vcxproj", "{A9CE6DD1-A834-4FFD-A4C2-50D9D2F14BFD}"
 	ProjectSection(ProjectDependencies) = postProject
@@ -34,14 +34,14 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "vmm_example", "vmm_example\
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "plugins.pym_procstruct", "plugins.pym_procstruct", "{7BEEEE90-F2CC-4ADD-BA8B-82599E3D1408}"
 	ProjectSection(SolutionItems) = preProject
-		files\plugins\pym_procstruct\__init__.py = files\plugins\pym_procstruct\__init__.py
 		files\plugins\pym_procstruct\pym_procstruct.py = files\plugins\pym_procstruct\pym_procstruct.py
+		files\plugins\pym_procstruct\__init__.py = files\plugins\pym_procstruct\__init__.py
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "dissect.cstruct", "dissect.cstruct", "{A8B68178-FE06-42E2-80C9-2C936973B5FA}"
 	ProjectSection(SolutionItems) = preProject
-		files\dissect\cstruct\__init__.py = files\dissect\cstruct\__init__.py
 		files\dissect\cstruct\cstruct.py = files\dissect\cstruct\cstruct.py
+		files\dissect\cstruct\__init__.py = files\dissect\cstruct\__init__.py
 	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "leechcore", "..\LeechCore\leechcore\leechcore.vcxproj", "{3476ABD2-5DEA-43E6-A676-8BE25F74535A}"
@@ -83,11 +83,9 @@ Global
 		{9E47796D-B834-470E-B437-0754BC14DF09}.Debug|x64.ActiveCfg = Debug|x64
 		{9E47796D-B834-470E-B437-0754BC14DF09}.Debug|x64.Build.0 = Debug|x64
 		{9E47796D-B834-470E-B437-0754BC14DF09}.Debug|x86.ActiveCfg = Debug|Win32
-		{9E47796D-B834-470E-B437-0754BC14DF09}.Debug|x86.Build.0 = Debug|Win32
 		{9E47796D-B834-470E-B437-0754BC14DF09}.Release|x64.ActiveCfg = Release|x64
 		{9E47796D-B834-470E-B437-0754BC14DF09}.Release|x64.Build.0 = Release|x64
 		{9E47796D-B834-470E-B437-0754BC14DF09}.Release|x86.ActiveCfg = Release|Win32
-		{9E47796D-B834-470E-B437-0754BC14DF09}.Release|x86.Build.0 = Release|Win32
 		{45CC506E-E97A-45B8-8050-B2C5BC8A4B15}.Debug|x64.ActiveCfg = Debug|x64
 		{45CC506E-E97A-45B8-8050-B2C5BC8A4B15}.Debug|x64.Build.0 = Debug|x64
 		{45CC506E-E97A-45B8-8050-B2C5BC8A4B15}.Debug|x86.ActiveCfg = Debug|Win32
@@ -105,9 +103,9 @@ Global
 		{3476ABD2-5DEA-43E6-A676-8BE25F74535A}.Release|x86.ActiveCfg = Release|Win32
 		{3476ABD2-5DEA-43E6-A676-8BE25F74535A}.Release|x86.Build.0 = Release|Win32
 		{3CDF36DD-2B04-4876-B4BF-29FED2386E6A}.Debug|x64.ActiveCfg = Debug|x64
-		{3CDF36DD-2B04-4876-B4BF-29FED2386E6A}.Debug|x86.ActiveCfg = Debug|Win32
+		{3CDF36DD-2B04-4876-B4BF-29FED2386E6A}.Debug|x86.ActiveCfg = Debug|x64
 		{3CDF36DD-2B04-4876-B4BF-29FED2386E6A}.Release|x64.ActiveCfg = Release|x64
-		{3CDF36DD-2B04-4876-B4BF-29FED2386E6A}.Release|x86.ActiveCfg = Release|Win32
+		{3CDF36DD-2B04-4876-B4BF-29FED2386E6A}.Release|x86.ActiveCfg = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -22,7 +22,8 @@ OBJ = oscompatibility.o charutil.o util.o pe.o vmm.o vmmdll.o                \
 	  statistics.o sysquery.o vmmevil.o vmmlog.o vmmnet.o vmmproc.o          \
 	  vmmwininit.o vmmwin.o vmmwinobj.o vmmwinpool.o vmmwinreg.o vmmwinsvc.o \
 	  m_file_handles_vads.o m_file_modules.o m_findevil.o m_handle.o         \
-	  m_ldrmodules.o m_memmap.o m_phys2virt.o m_proc_search.o m_conf.o       \
+	  m_misc_bitlocker.o                                                     \
+	  m_ldrmodules.o m_memmap.o m_phys2virt.o m_search.o m_conf.o            \
 	  m_vfsproc.o m_vfsroot.o m_vfsfc.o m_virt2phys.o m_winreg.o             \
 	  m_minidump.o m_thread.o m_sys.o m_sys_driver.o m_sys_mem.o m_sys_net.o \
 	  m_sys_obj.o m_sys_pool.c m_sys_proc.o m_sys_svc.o m_sys_task.o         \

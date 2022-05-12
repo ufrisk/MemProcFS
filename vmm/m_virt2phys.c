@@ -16,7 +16,8 @@ LPCSTR szMVIRT2PHYS_README =
     "- map  - page map with info about paging structures            [read-only]   \n" \
     "- pt_* - 4kB pages with binary data containing page tables     [read-write]  \n" \
     "- page - the 4kB aligned virtual memory addressed by virt      [read-write]  \n" \
-    "For more information please visit : https://github.com/ufrisk/MemProcFS/wiki \n";
+    "---                                                                          \n" \
+    "Documentation: https://github.com/ufrisk/MemProcFS/wiki/FS_Phys2Virt         \n";
 
 /*
 * Read : function as specified by the module manager. The module manager will

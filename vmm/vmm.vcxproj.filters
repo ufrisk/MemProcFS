@@ -353,11 +353,14 @@
     <ClCompile Include="vmmdll_scatter.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="m_proc_search.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="vmmlog.c">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="m_misc_bitlocker.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="m_search.c">
+      <Filter>Source Files\modules</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

@@ -867,6 +867,8 @@ VOID VmmProcessStatic_CloseObCallback(_In_ PVOID pVmmOb)
     LocalFree(pProcessStatic->uszPathKernel);
     LocalFree(pProcessStatic->UserProcessParams.uszCommandLine);
     LocalFree(pProcessStatic->UserProcessParams.uszImagePathName);
+    LocalFree(pProcessStatic->UserProcessParams.uszWindowTitle);
+    LocalFree(pProcessStatic->UserProcessParams.uszEnvironment);
 }
 
 /*
@@ -1942,7 +1944,7 @@ BOOL VmmReadAllocUnicodeString_Size(_In_ PVMM_PROCESS pProcess, _In_ BOOL f32, _
         (*pcbStr = *(PWORD)pb) &&                                   // size != 0
         (*pcbStr > 1) &&                                            // size > 1
         (*pvaStr = f32 ? *(PDWORD)(pb + 4) : *(PQWORD)(pb + 8)) &&  // string address != 0
-        !(*pvaStr & (f32 ? 3 : 7));                                 // non alignment
+        !(*pvaStr & 1);                                             // non alignment
 }
 
 _Success_(return)
@@ -1962,6 +1964,17 @@ BOOL VmmReadAllocUnicodeString(_In_ PVMM_PROCESS pProcess, _In_ BOOL f32, _In_ Q
         }
     }
     return FALSE;
+}
+
+_Success_(return)
+BOOL VmmReadAllocUnicodeStringAsUTF8(_In_ PVMM_PROCESS pProcess, _In_ BOOL f32, _In_ QWORD flags, _In_ QWORD vaUS, _In_ DWORD cchMax, _Out_opt_ LPSTR *pusz, _Out_opt_ PDWORD pcbu)
+{
+    BOOL f;
+    LPWSTR wszTMP = NULL;
+    f = VmmReadAllocUnicodeString(pProcess, f32, 0, vaUS, cchMax, &wszTMP, NULL) &&
+        CharUtil_WtoU(wszTMP, cchMax, NULL, 0, pusz, pcbu, CHARUTIL_FLAG_ALLOC);
+    LocalFree(wszTMP);
+    return f;
 }
 
 _Success_(return)

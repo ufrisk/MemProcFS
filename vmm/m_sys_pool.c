@@ -24,7 +24,9 @@ LPCSTR szMSYSPOOL_README =
 "Win10_1903+ work is largely based on work by Yarden Shafir @yarden_shafir    \n" \
 "Please check out the excellent blackhat talk and poolviwer tools at:         \n" \
 "https://i.blackhat.com/USA21/Wednesday-Handouts/us-21-Windows-Heap-Backed-Pool-The-Good-The-Bad-And-The-Encoded.pdf \n" \
-"https://github.com/yardenshafir/PoolViewer                                   \n";
+"https://github.com/yardenshafir/PoolViewer                                   \n" \
+"---                                                                          \n" \
+"Documentation: https://github.com/ufrisk/MemProcFS/wiki/FS_SysInfo_Pool      \n";
 
 #define MSYSPOOL_LINELENGTH      58ULL
 #define MSYSPOOL_LINEHEADER      "       #  Tag A         Address      Size Type Pool"

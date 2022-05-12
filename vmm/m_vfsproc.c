@@ -4,6 +4,7 @@
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "pluginmanager.h"
+#include "vmmwin.h"
 #include "util.h"
 
 
@@ -22,6 +23,7 @@ NTSTATUS MVfsProc_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcb
     BYTE pbBuffer[0x800] = { 0 };
     LPSTR uszPath = ctx->uszPath;
     PVMM_PROCESS pProcess = ctx->pProcess;
+    PVMMWIN_USER_PROCESS_PARAMETERS pUserProcessParams = VmmWin_UserProcessParameters_Get(pProcess);    // don't free
     // read memory from "memory.vmem" file
     if(!_stricmp(uszPath, "memory.vmem")) {
         cbMemSize = (ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_X64) ? 1ULL << 48 : 1ULL << 32;
@@ -65,11 +67,17 @@ NTSTATUS MVfsProc_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcb
         if(!_stricmp(uszPath, "name-long.txt")) {
             return Util_VfsReadFile_FromPBYTE(pProcess->pObPersistent->uszNameLong, pProcess->pObPersistent->cuszNameLong, pb, cb, pcbRead, cbOffset);
         }
-        if(!_stricmp(uszPath, "win-cmdline.txt")) {
-            return Util_VfsReadFile_FromPBYTE(pProcess->pObPersistent->UserProcessParams.uszCommandLine, max(1, pProcess->pObPersistent->UserProcessParams.cbuCommandLine) - 1, pb, cb, pcbRead, cbOffset);
-        }
         if(!_stricmp(uszPath, "win-path.txt")) {
             return Util_VfsReadFile_FromPBYTE(pProcess->pObPersistent->uszPathKernel, pProcess->pObPersistent->cuszPathKernel, pb, cb, pcbRead, cbOffset);
+        }
+        if(!_stricmp(uszPath, "win-cmdline.txt")) {
+            return Util_VfsReadFile_FromPBYTE(pUserProcessParams->uszCommandLine, max(1, pUserProcessParams->cbuCommandLine) - 1, pb, cb, pcbRead, cbOffset);
+        }
+        if(!_stricmp(uszPath, "win-environment.txt")) {
+            return Util_VfsReadFile_FromPBYTE(pUserProcessParams->uszEnvironment, max(1, pUserProcessParams->cbuEnvironment) - 1, pb, cb, pcbRead, cbOffset);
+        }
+        if(!_stricmp(uszPath, "win-title.txt")) {
+            return Util_VfsReadFile_FromPBYTE(pUserProcessParams->uszWindowTitle, max(1, pUserProcessParams->cbuWindowTitle) - 1, pb, cb, pcbRead, cbOffset);
         }
     }
     if(ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X64) {
@@ -118,9 +126,11 @@ NTSTATUS MVfsProc_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBYTE pb
         !_stricmp(uszPath, "state.txt") ||
         !_stricmp(uszPath, "name-long") ||
         !_stricmp(uszPath, "win-cmdline.txt") ||
+        !_stricmp(uszPath, "win-environment.txt") ||
         !_stricmp(uszPath, "win-eprocess.txt") ||
         !_stricmp(uszPath, "win-path.txt") ||
-        !_stricmp(uszPath, "win-peb.txt");
+        !_stricmp(uszPath, "win-peb.txt") ||
+        !_stricmp(uszPath, "win-title.txt");
     if(fFound) {
         *pcbWrite = 0;
         return VMM_STATUS_SUCCESS;
@@ -135,12 +145,19 @@ NTSTATUS MVfsProc_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBYTE pb
 
 VOID MVfsProc_List_OsSpecific(_In_ PVMM_PROCESS pProcess, _In_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo, _Inout_ PHANDLE pFileList)
 {
+    PVMMWIN_USER_PROCESS_PARAMETERS pUserProcessParams = VmmWin_UserProcessParameters_Get(pProcess);    // don't free
     // WINDOWS - 32 & 64-bit
     if((ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X64) || (ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X86)) {
         VMMDLL_VfsList_AddFile(pFileList, "name-long.txt", pProcess->pObPersistent->cuszNameLong, pExInfo);
         VMMDLL_VfsList_AddFile(pFileList, "win-path.txt", pProcess->pObPersistent->cuszPathKernel, pExInfo);
-        if(pProcess->pObPersistent->UserProcessParams.uszCommandLine) {
-            VMMDLL_VfsList_AddFile(pFileList, "win-cmdline.txt", max(1, pProcess->pObPersistent->UserProcessParams.cbuCommandLine) - 1, pExInfo);
+        if(pUserProcessParams->uszCommandLine) {
+            VMMDLL_VfsList_AddFile(pFileList, "win-cmdline.txt", max(1, pUserProcessParams->cbuCommandLine) - 1, pExInfo);
+        }
+        if(pUserProcessParams->uszEnvironment) {
+            VMMDLL_VfsList_AddFile(pFileList, "win-environment.txt", max(1, pUserProcessParams->cbuEnvironment) - 1, pExInfo);
+        }
+        if(pUserProcessParams->uszWindowTitle) {
+            VMMDLL_VfsList_AddFile(pFileList, "win-title.txt", max(1, pUserProcessParams->cbuWindowTitle) - 1, pExInfo);
         }
         VMMDLL_VfsList_AddFile(pFileList, "time-create.txt", 24, pExInfo);
         if(pProcess->dwState) {

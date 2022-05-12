@@ -766,8 +766,12 @@ typedef struct tdVMMWIN_USER_PROCESS_PARAMETERS {
     BOOL fProcessed;
     DWORD cbuImagePathName;
     DWORD cbuCommandLine;
-    LPSTR uszImagePathName;         // UTF8 version of wszImagePathName
-    LPSTR uszCommandLine;           // UTF8 version of wszCommandLine
+    DWORD cbuWindowTitle;
+    DWORD cbuEnvironment;
+    LPSTR uszImagePathName;
+    LPSTR uszCommandLine;
+    LPSTR uszWindowTitle;
+    LPSTR uszEnvironment;
 } VMMWIN_USER_PROCESS_PARAMETERS, *PVMMWIN_USER_PROCESS_PARAMETERS;
 
 #define VMM_PHYS2VIRT_INFORMATION_MAX_PROCESS_RESULT    4
@@ -1446,6 +1450,22 @@ BOOL VmmReadAlloc(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Out_ PBYTE *p
 */
 _Success_(return)
 BOOL VmmReadAllocUnicodeString(_In_ PVMM_PROCESS pProcess, _In_ BOOL f32, _In_ QWORD flags, _In_ QWORD vaUS, _In_ DWORD cchMax, _Out_opt_ LPWSTR *pwsz, _Out_opt_ PDWORD pcch);
+
+/*
+* Read a Windows _UNICODE_STRING from into the function allocated buffer pusz.
+* The allocated buffer is guaranteed to be UTF8 and NULL terminated.
+* CALLER LocalFree: pusz
+* -- pProcess
+* -- f32 = 32/64-bit _UNICODE_STRING.
+* -- flags =  = flags as in VMM_FLAG_*
+* -- vaUS
+* -- cchMax = -1 for null-terminated string; or max number of chars (excl. null).
+* -- pusz = function allocated buffer - caller is responsible for LocalFree!
+* -- pcbu = byte length (including terminating null) of utf-8 string.
+* -- return
+*/
+_Success_(return)
+BOOL VmmReadAllocUnicodeStringAsUTF8(_In_ PVMM_PROCESS pProcess, _In_ BOOL f32, _In_ QWORD flags, _In_ QWORD vaUS, _In_ DWORD cchMax, _Out_opt_ LPSTR *pusz, _Out_opt_ PDWORD pcbu);
 
 /*
 * Combines VmmRead2() and CharUtil_WtoU().
