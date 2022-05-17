@@ -28,14 +28,6 @@
 #define OB_MAP_INDEX_TABLE(i)       ((i >> 8) & (OB_MAP_ENTRIES_TABLE - 1))
 #define OB_MAP_INDEX_STORE(i)       (i & (OB_MAP_ENTRIES_STORE - 1))
 
-typedef struct tdOB_MAP_ENTRY {
-    QWORD k;
-    union {
-        PVOID v;
-        QWORD _Filler;
-    };
-} OB_MAP_ENTRY, *POB_MAP_ENTRY, **PPOB_MAP_ENTRY;
-
 typedef struct tdOB_MAP {
     OB ObHdr;
     SRWLOCK LockSRW;
@@ -598,8 +590,52 @@ BOOL ObMap_Clear(_In_opt_ POB_MAP pm)
 
 
 //-----------------------------------------------------------------------------
+// SORT FUNCTIONALITY BELOW:
+// ObMap_SortEntryIndex
+//-----------------------------------------------------------------------------
+
+_Success_(return)
+BOOL _ObMap_SortEntryIndex(_In_ POB_MAP pm, _In_ _CoreCrtNonSecureSearchSortCompareFunction pfnSort)
+{
+    DWORD iEntry;
+    POB_MAP_ENTRY pSort;
+    if(!(pSort = LocalAlloc(0, pm->c * sizeof(OB_MAP_ENTRY)))) { return FALSE; }
+    // sort map
+    for(iEntry = 1; iEntry < pm->c; iEntry++) {
+        memcpy(pSort + iEntry, &pm->Directory[OB_MAP_INDEX_DIRECTORY(iEntry)][OB_MAP_INDEX_TABLE(iEntry)][OB_MAP_INDEX_STORE(iEntry)], sizeof(OB_MAP_ENTRY));
+    }
+    qsort(pSort + 1, pm->c - 1, sizeof(OB_MAP_ENTRY), pfnSort);
+    for(iEntry = 1; iEntry < pm->c; iEntry++) {
+        memcpy(&pm->Directory[OB_MAP_INDEX_DIRECTORY(iEntry)][OB_MAP_INDEX_TABLE(iEntry)][OB_MAP_INDEX_STORE(iEntry)], pSort + iEntry, sizeof(OB_MAP_ENTRY));
+    }
+    LocalFree(pSort);
+    // update hash maps
+    ZeroMemory(pm->pHashMapKey, pm->cHashMax * sizeof(DWORD));
+    ZeroMemory(pm->pHashMapValue, pm->cHashMax * sizeof(DWORD));
+    for(iEntry = 1; iEntry < pm->c; iEntry++) {
+        _ObMap_InsertHash(pm, TRUE, iEntry);
+        _ObMap_InsertHash(pm, FALSE, iEntry);
+    }
+    return TRUE;
+}
+
+/*
+* Sort the ObMap entry index by a sort compare function.
+* NB! The items sorted by the sort function are const OB_MAP_ENTRY* objects
+*     which points to the underlying map object key/value.
+* -- pm
+* -- pfnSort = sort function callback. const void* == const OB_MAP_ENTRY*
+* -- return
+*/
+_Success_(return)
+BOOL ObMap_SortEntryIndex(_In_opt_ POB_MAP pm, _In_ _CoreCrtNonSecureSearchSortCompareFunction pfnSort)
+{
+    OB_MAP_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(pm, BOOL, FALSE, _ObMap_SortEntryIndex(pm, pfnSort))
+}
+
+//-----------------------------------------------------------------------------
 // CREATE / INSERT FUNCTIONALITY BELOW:
-// ObMap_New, ObMap_Push
+// ObMap_New, ObMap_Push, ObMap_PushCopy, ObMap_New
 //-----------------------------------------------------------------------------
 
 /*

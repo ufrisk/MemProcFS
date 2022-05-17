@@ -160,7 +160,7 @@ typedef int(*_CoreCrtNonSecureSearchSortCompareFunction)(void const *, void cons
 #define strnlen_s(s, maxcount)              (strnlen(s, maxcount))
 #define strcpy_s(dst, len, src)             (strncpy(dst, src, len))
 #define strncpy_s(dst, len, src, srclen)    (strncpy(dst, src, min((QWORD)(max(1, len)) - 1, (QWORD)(srclen))))
-#define strncat_s(dst, dstlen, src, srclen) (strncat(dst, src, min((((strlen(dst) + 1 >= (QWORD)(dstlen)) || ((QWORD)(dstlen) == 0)) ? 0 : ((QWORD)(dstlen) - strlen(dst) - 1)), (QWORD)(srclen))))
+#define strncat_s(dst, dstlen, src, srclen) (strncat(dst, src, min((((strlen(dst) + 1 >= (size_t)(dstlen)) || ((size_t)(dstlen) == 0)) ? 0 : ((size_t)(dstlen) - strlen(dst) - 1)), (size_t)(srclen))))
 #define strcat_s(dst, dstlen, src)          (strncat_s(dst, dstlen, src, _TRUNCATE))
 #define _vsnprintf_s(dst, len, cnt, fmt, a) (vsnprintf(dst, min((QWORD)(len), (QWORD)(cnt)), fmt, a))
 #define _stricmp(s1, s2)                    (strcasecmp(s1, s2))
@@ -234,6 +234,7 @@ DWORD InterlockedAdd(DWORD *Addend, DWORD Value);
 BOOL GetExitCodeThread(_In_ HANDLE hThread, _Out_ LPDWORD lpExitCode);
 BOOL FileTimeToSystemTime(_In_ PFILETIME lpFileTime, _Out_ PSYSTEMTIME lpSystemTime);
 VOID GetSystemTimeAsFileTime(PFILETIME lpSystemTimeAsFileTime);
+errno_t tmpnam_s(char *_Buffer, ssize_t _Size);
 
 HANDLE CreateThread(
     PVOID    lpThreadAttributes,
@@ -537,6 +538,7 @@ VOID AcquireSRWLockExclusive(_Inout_ PSRWLOCK SRWLock);
 VOID ReleaseSRWLockExclusive(_Inout_ PSRWLOCK SRWLock);
 #define AcquireSRWLockShared    AcquireSRWLockExclusive
 #define ReleaseSRWLockShared    ReleaseSRWLockExclusive
+#define SRWLOCK_INIT            { 0 }
 
 
 

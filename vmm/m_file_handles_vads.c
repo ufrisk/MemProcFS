@@ -55,6 +55,7 @@ BOOL M_FileHandlesVads_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFi
         while((pObFile = ObMap_Pop(pmObFiles))) {
             Util_PathPrependVA(uszAddressPath, pObFile->va, ctxVmm->f32, pObFile->uszName);
             VMMDLL_VfsList_AddFile(pFileList, uszAddressPath, pObFile->cb, NULL);
+            Ob_DECREF(pObFile);
         }
         Ob_DECREF_NULL(&pmObFiles);
     }

@@ -28,6 +28,7 @@
 #define OB_TAG_MAP_PFN                  'Mpfn'
 #define OB_TAG_MAP_EVIL                 'Mevl'
 #define OB_TAG_MAP_TASK                 'Mtsk'
+#define OB_TAG_MAP_WEB                  'Mweb'
 #define OB_TAG_MOD_MINIDUMP_CTX         'mMDx'
 #define OB_TAG_MOD_SEARCH_CTX           'mSHx'
 #define OB_TAG_OBJ_ERROR                'Oerr'

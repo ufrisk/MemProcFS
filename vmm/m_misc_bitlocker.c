@@ -429,7 +429,7 @@ NTSTATUS MBDE_ReadInternal(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ POB_MAP pmObBD
     return VMMDLL_STATUS_FILE_INVALID;
 }
 
-NTSTATUS MBDE_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset)
+NTSTATUS MBDE_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     POB_MAP pmObBDE = MBDE_ContextFetch(ctxP);

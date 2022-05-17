@@ -32,6 +32,7 @@
 #define VMM_PROCESS_OS_ALLOC_PTR_MAX            0x4    // max number of operating system specific pointers that must be free'd
 #define VMM_MEMMAP_ENTRIES_MAX                  0x4000
 
+#define VMM_MEMMAP_PAGE_A                       0x0000000000000001
 #define VMM_MEMMAP_PAGE_W                       0x0000000000000002
 #define VMM_MEMMAP_PAGE_NS                      0x0000000000000004
 #define VMM_MEMMAP_PAGE_NX                      0x8000000000000000
@@ -263,6 +264,12 @@ typedef struct tdVMM_MAP_VADEXENTRY {
     } proto;
     PVMM_MAP_VADENTRY peVad;
 } VMM_MAP_VADEXENTRY, *PVMM_MAP_VADEXENTRY;
+
+#define MMVAD_IS_FLAG_P(peVad)          (peVad->fPrivateMemory)
+#define MMVAD_IS_FLAG_R(peVad)          (((peVad->Protection & 7) == 1) || ((peVad->Protection & 7) == 3) || ((peVad->Protection & 7) == 4) || ((peVad->Protection & 7) == 6))
+#define MMVAD_IS_FLAG_W(peVad)          ((peVad->Protection & 4) ? TRUE : FALSE)
+#define MMVAD_IS_FLAG_X(peVad)          ((peVad->Protection & 2) ? TRUE : FALSE)
+#define MMVAD_IS_FLAG_CW(peVad)         (((peVad->Protection & 7) == 5) || ((peVad->Protection & 7) == 7)
 
 typedef enum tdVMM_MODULE_TP {
     VMM_MODULE_TP_NORMAL = 0,

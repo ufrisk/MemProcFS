@@ -55,6 +55,7 @@ VOID VmmEvil_ProcessScan_VadNoImageExecuteEntry(_In_ PVMM_PROCESS pProcess, _In_
     PVMM_MAP_VADEXENTRY peVadEx;
     PVMMOB_MAP_VADEX pObVadExMap = NULL;
     VMM_EVIL_TP tp;
+    BOOL fPteA;
     peVad = pVadMap->pMap + iVad;
     // 1: check for PE header (injected PE)
     cbPE = PE_GetSize(pProcess, peVad->vaStart);
@@ -66,8 +67,9 @@ VOID VmmEvil_ProcessScan_VadNoImageExecuteEntry(_In_ PVMM_PROCESS pProcess, _In_
     for(iVadEx = 0; iVadEx < pObVadExMap->cMap; iVadEx++) {
         peVadEx = pObVadExMap->pMap + iVadEx;
         qwHwPte = (peVadEx->tp == VMM_PTE_TP_HARDWARE) ? peVadEx->pte : 0;
-        if(!qwHwPte || (qwHwPte & VMM_MEMMAP_PAGE_NX)) { continue; }
-        if(qwHwPte & VMM_MEMMAP_PAGE_W) {
+        fPteA = qwHwPte & VMM_MEMMAP_PAGE_A;
+        if(fPteA && (qwHwPte & VMM_MEMMAP_PAGE_NX)) { continue; }
+        if((fPteA && (qwHwPte & VMM_MEMMAP_PAGE_W)) || (!fPteA && MMVAD_IS_FLAG_W(peVad))) {
             if(cEvilRWX >= VMMEVIL_MAXCOUNT_VAD_EXECUTE) { continue; }
             cEvilRWX++;
             tp = peVad->fPrivateMemory ? VMM_EVIL_TP_VAD_PRIVATE_RWX : VMM_EVIL_TP_VAD_NOIMAGE_RWX;
@@ -149,6 +151,11 @@ VOID VmmEvil_ProcessScan_VadNoImageExecute(_In_ PVMM_PROCESS pProcess, _Inout_ P
             fRX = pObPteMap->pMap[iPte].fPage && !(pObPteMap->pMap[iPte].fPage & VMM_MEMMAP_PAGE_NX);
             fRWX = fRX && pObPteMap->pMap[iPte].fPage && (pObPteMap->pMap[iPte].fPage & VMM_MEMMAP_PAGE_W);
             iPte++;
+        }
+        // check if vad is p-rwx-
+        if(MMVAD_IS_FLAG_P(peVad) && MMVAD_IS_FLAG_R(peVad) && MMVAD_IS_FLAG_W(peVad) && MMVAD_IS_FLAG_X(peVad)) {
+            fRX = TRUE,
+            fRWX = TRUE;
         }
         // vad has hw executable page -> investigate closer
         if(fRX) {

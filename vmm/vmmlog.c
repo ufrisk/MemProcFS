@@ -233,14 +233,14 @@ VOID VmmLog_LevelRefresh()
         if(fModuleName) {
             for(dwMID = 1; dwMID < ctxLog.iModuleNameNext; dwMID++) {
                 pmi = VmmLog_GetModuleInfo(dwMID);
-                if(pmi->uszName && !strcmp(pmi->uszName, szModuleName)) {
+                if(pmi->uszName && !_stricmp(pmi->uszName, szModuleName)) {
                     dwTokenMID = dwMID;
                     break;
                 }
             }
             for(dwMID = MID_NA; dwMID <= MID_MAX; dwMID++) {
                 pmi = VmmLog_GetModuleInfo(dwMID);
-                if(pmi->uszName && !strcmp(pmi->uszName, szModuleName)) {
+                if(pmi->uszName && !_stricmp(pmi->uszName, szModuleName)) {
                     dwTokenMID = dwMID;
                     break;
                 }

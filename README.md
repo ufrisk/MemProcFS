@@ -303,3 +303,7 @@ v1.1-v2.10
 * Forensic file consistency when analyzing local file with -forensic start-up option.
 * [Search](https://github.com/ufrisk/MemProcFS/wiki/FS_Search) updates.
 * [Bitlocker](https://github.com/ufrisk/MemProcFS/wiki/FS_BitLocker) key recovery.
+
+Latest:
+* Bug fixes.
+* [Web history](https://github.com/ufrisk/MemProcFS/wiki/FS_Web) plugin.

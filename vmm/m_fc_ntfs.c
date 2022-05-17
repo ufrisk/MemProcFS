@@ -24,7 +24,7 @@ static LPSTR FC_SQL_SCHEMA_NTFS =
     "CREATE TABLE ntfs ( id INTEGER PRIMARY KEY, id_parent INTEGER, id_str INTEGER, hash INTEGER, hash_parent INTEGER, addr_phys INTEGER, inode INTEGER, mft_flags INTEGER, depth INTEGER, size_file INTEGER, size_fileres INTEGER, time_create INTEGER, time_modify INTEGER, time_read INTEGER, name_seq INTEGER, oln_u INTEGER, oln_j INTEGER );" \
     "CREATE INDEX idx_ntfs_hash ON ntfs(hash); " \
     "CREATE INDEX idx_ntfs_hash_parent ON ntfs(hash_parent); " \
-    "CREATE INDEX idx_oln_u ON ntfs(oln_u); " \
+    "CREATE INDEX idx_ntfs_oln_u ON ntfs(oln_u); " \
     "CREATE VIEW v_ntfs AS SELECT * FROM ntfs, str WHERE ntfs.id_str = str.id; ";
 
 //-----------------------------------------------------------------------------

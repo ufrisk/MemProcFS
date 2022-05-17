@@ -504,4 +504,11 @@ NTSTATUS OSCOMPAT_RtlDecompressBuffer(USHORT CompressionFormat, PUCHAR Uncompres
     return VMM_STATUS_UNSUCCESSFUL;
 }
 
+errno_t tmpnam_s(char *_Buffer, ssize_t _Size)
+{
+    if(_Size < 32) { return -1; }
+    snprintf(_Buffer, _Size, "/tmp/vmm-%x%x", (uint32_t)((uint64_t)_Buffer >> 12), rand());
+    return 0;
+}
+
 #endif /* LINUX */

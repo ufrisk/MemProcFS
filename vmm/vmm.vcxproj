@@ -279,6 +279,7 @@
     <ClCompile Include="m_memmap.c" />
     <ClCompile Include="m_minidump.c" />
     <ClCompile Include="m_misc_bitlocker.c" />
+    <ClCompile Include="m_misc_web.c" />
     <ClCompile Include="m_phys2virt.c" />
     <ClCompile Include="m_proc_token.c" />
     <ClCompile Include="m_search.c" />

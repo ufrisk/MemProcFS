@@ -357,6 +357,11 @@ typedef struct tdOB_MAP *POB_MAP;
 #define OB_MAP_FLAGS_OBJECT_LOCALFREE   0x02
 #define OB_MAP_FLAGS_NOKEY              0x04
 
+typedef struct tdOB_MAP_ENTRY {
+    QWORD k;
+    union { PVOID v; QWORD _Filler; };
+} OB_MAP_ENTRY, *POB_MAP_ENTRY, **PPOB_MAP_ENTRY;
+
 /*
 * Create a new map. A map (ObMap) provides atomic map operations and ways
 * to optionally map key values to values, pointers or object manager objects.
@@ -571,6 +576,17 @@ POB_SET ObMap_FilterSet(_In_opt_ POB_MAP pm, _In_opt_ VOID(*pfnFilter)(_In_ QWOR
 * -- return = number of entries removed.
 */
 DWORD ObMap_RemoveByFilter(_In_opt_ POB_MAP pm, _In_opt_ BOOL(*pfnFilter)(_In_ QWORD k, _In_ PVOID v));
+
+/*
+* Sort the ObMap entry index by a sort compare function.
+* NB! The items sorted by the sort function are const OB_MAP_ENTRY* objects
+*     which points to the underlying map object key/value.
+* -- pm
+* -- pfnSort = sort function callback. const void* == const OB_MAP_ENTRY*
+* -- return
+*/
+_Success_(return)
+BOOL ObMap_SortEntryIndex(_In_opt_ POB_MAP pm, _In_ _CoreCrtNonSecureSearchSortCompareFunction pfnSort);
 
 
 

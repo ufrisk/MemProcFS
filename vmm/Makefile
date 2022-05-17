@@ -6,7 +6,7 @@
 #       . (current), ../files, ../../LeechCore*/files
 #
 CC=gcc
-CFLAGS  += -std=c11 -I. -I../includes -D LINUX -D _GNU_SOURCE -D SQLITE_THREADSAFE=2 -shared -fPIC -l:leechcore.so -fvisibility=hidden -L. -lm -pthread `pkg-config liblz4 openssl --libs --cflags`
+CFLAGS  += -std=c11 -I. -I../includes -D LINUX -D _GNU_SOURCE -D SQLITE_THREADSAFE=2 -D SQLITE_CORE -shared -fPIC -l:leechcore.so -fvisibility=hidden -L. -lm -pthread `pkg-config liblz4 openssl --libs --cflags`
 #CFLAGS  += -g -O0
 CFLAGS  += -fPIE -fPIC -pie -fstack-protector -D_FORTIFY_SOURCE=2 -O1 -Wl,-z,noexecstack
 CFLAGS  += -Wall -Wno-format-truncation -Wno-enum-compare -Wno-pointer-sign -Wno-multichar -Wno-unused-variable -Wno-unused-value
@@ -22,7 +22,7 @@ OBJ = oscompatibility.o charutil.o util.o pe.o vmm.o vmmdll.o                \
 	  statistics.o sysquery.o vmmevil.o vmmlog.o vmmnet.o vmmproc.o          \
 	  vmmwininit.o vmmwin.o vmmwinobj.o vmmwinpool.o vmmwinreg.o vmmwinsvc.o \
 	  m_file_handles_vads.o m_file_modules.o m_findevil.o m_handle.o         \
-	  m_misc_bitlocker.o                                                     \
+	  m_misc_bitlocker.o m_misc_web.o                                        \
 	  m_ldrmodules.o m_memmap.o m_phys2virt.o m_search.o m_conf.o            \
 	  m_vfsproc.o m_vfsroot.o m_vfsfc.o m_virt2phys.o m_winreg.o             \
 	  m_minidump.o m_thread.o m_sys.o m_sys_driver.o m_sys_mem.o m_sys_net.o \

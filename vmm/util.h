@@ -244,7 +244,8 @@ VOID Util_VfsTimeStampFile(_In_opt_ PVMM_PROCESS pProcess, _Out_ PVMMDLL_VFS_FIL
 _Success_(return)
 BOOL Util_VfsHelper_GetIdDir(_In_ LPSTR uszPath, _In_ BOOL fHex, _Out_ PDWORD pdwID, _Out_opt_ LPSTR *puszSubPath);
 
-#define UTIL_VFSLINEFIXED_LINECOUNT(c)            (c + (ctxMain->cfg.fFileInfoHeader ? 2ULL : 0ULL))
+#define UTIL_VFSLINEFIXED_LINECOUNT(c)                  (c + (ctxMain->cfg.fFileInfoHeader ? 2ULL : 0ULL))
+#define UTIL_VFSLINEVARIABLE_BYTECOUNT(c, pdwo, szHdr)  ((c ? (pdwo[c - 1]) : 0) + (ctxMain->cfg.fFileInfoHeader ? 2 * strlen(szHdr) + 2 : 0ULL))
 
 /*
 * FixedLineRead: Callback function to populate a fixed-length line in a
@@ -263,6 +264,36 @@ typedef VOID(*UTIL_VFSLINEFIXED_PFN_CB)(
     _In_ PVOID pe,
     _Out_writes_(cbLineLength + 1) LPSTR szu8
     );
+
+/*
+* VariableLineRead: Read from a file dynamically created from a map/array object
+* using a callback function to populate individual lines (excluding header).
+* -- pfnCallback = callback function to populate individual lines.
+* -- ctx = optional context to 'pfn' callback function.
+* -- uszHeader = optional header line.
+* -- pMap = an array of entries (usually 'pMap' in a map).
+* -- cMap = number of pMap entries.
+* -- cbEntry = byte length of each entry.
+* -- pdwLineOffset = array of line end offsets (excl. header).
+* -- pb
+* -- cb
+* -- pcbRead
+* -- cbOffset
+* -- return
+*/
+NTSTATUS Util_VfsLineVariable_Read(
+    _In_ UTIL_VFSLINEFIXED_PFN_CB pfnCallback,
+    _Inout_opt_ PVOID ctx,
+    _In_opt_ LPSTR uszHeader,
+    _In_ PVOID pMap,
+    _In_ DWORD cMap,
+    _In_ DWORD cbEntry,
+    _In_reads_(cMap + 1) PDWORD pdwLineOffset,
+    _Out_writes_to_(cb, *pcbRead) PBYTE pb,
+    _In_ DWORD cb,
+    _Out_ PDWORD pcbRead,
+    _In_ QWORD cbOffset
+);
 
 /*
 * FixedLineRead: Read from a file dynamically created from a map/array object

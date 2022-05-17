@@ -146,7 +146,7 @@ size_t Util_usnprintf_ln(
 }
 
 #define UTIL_NTSTATUS_SUCCESS                      ((NTSTATUS)0x00000000L)
-#define VMMDLL_STATUS_FILE_INVALID                 ((NTSTATUS)0xC0000098L)
+#define UTIL_NTSTATUS_FILE_INVALID                 ((NTSTATUS)0xC0000098L)
 #define UTIL_NTSTATUS_END_OF_FILE                  ((NTSTATUS)0xC0000011L)
 
 NTSTATUS Util_VfsReadFile_FromZERO(_In_ QWORD cbFile, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
@@ -645,12 +645,117 @@ BOOL Util_VfsHelper_GetIdDir(_In_ LPSTR uszPath, _In_ BOOL fHex, _Out_ PDWORD pd
     "-----------------------------------------------------"
 
 /*
+* VariableLineRead: Read from a file dynamically created from a map/array object
+* using a callback function to populate individual lines (excluding header).
+* -- pfnCallback = callback function to populate individual lines.
+* -- ctx = optional context to 'pfn' callback function.
+* -- uszHeader = optional header line.
+* -- pMap = an array of entries (usually 'pMap' in a map).
+* -- cMap = number of pMap entries.
+* -- cbEntry = byte length of each entry.
+* -- pdwLineOffset = array of line end offsets (excl. header).
+* -- pb
+* -- cb
+* -- pcbRead
+* -- cbOffset
+* -- return
+*/
+NTSTATUS Util_VfsLineVariable_Read(
+    _In_ UTIL_VFSLINEFIXED_PFN_CB pfnCallback,
+    _Inout_opt_ PVOID ctx,
+    _In_opt_ LPSTR uszHeader,
+    _In_ PVOID pMap,
+    _In_ DWORD cMap,
+    _In_ DWORD cbEntry,
+    _In_reads_(cMap + 1) PDWORD pdwLineOffset,
+    _Out_writes_to_(cb, *pcbRead) PBYTE pb,
+    _In_ DWORD cb,
+    _Out_ PDWORD pcbRead,
+    _In_ QWORD cbOffset
+) {
+    NTSTATUS nt = UTIL_NTSTATUS_SUCCESS;
+    DWORD ie, iStep;
+    DWORD cbLineLength, cbLineStartOffset;
+    DWORD cbHeaderLine;
+    DWORD cbRead, cbReadTotal = 0;
+    CHAR szu[0x1000];
+    PVOID pvMapEntry;
+    *pcbRead = 0;
+    // header parse
+    if(uszHeader && ctxMain->cfg.fFileInfoHeader && (cbOffset < 0x400)) {
+        cbHeaderLine = uszHeader ? ((DWORD)strlen(uszHeader) + 1) : 0;
+        if(cbOffset < 2ULL * cbHeaderLine) {
+            _snprintf_s(szu, sizeof(szu), _TRUNCATE, "%s\n%.*s\n", uszHeader, cbHeaderLine - 1, UTIL_VFSLINEFIXED_LINEPAD512);
+            nt = Util_VfsReadFile_FromPBYTE(szu, 2ULL * cbHeaderLine, pb, cb, &cbRead, cbOffset);
+            pb += cbRead;
+            cb -= cbRead;
+            cbOffset += cbRead;
+            cbReadTotal += cbRead;
+            if(!cb) {
+                *pcbRead = cbReadTotal;
+                return nt;
+            }
+        }
+        cbOffset -= 2ULL * cbHeaderLine;
+    }
+    // find base efficiently
+    if(!cMap) { goto finish; }
+    if(cbOffset >= pdwLineOffset[cMap - 1]) { nt = STATUS_END_OF_FILE;  goto finish; }
+    ie = cMap / 2;
+    iStep = cMap / 4;
+    while(iStep > 1) {
+        if(cbOffset <= pdwLineOffset[ie]) {
+            if((ie >= iStep) && (cbOffset <= pdwLineOffset[ie - iStep])) { ie -= iStep; }
+        } else {
+            if((ie + iStep < cMap) && (cbOffset > pdwLineOffset[ie + iStep])) { ie += iStep; }
+        }
+        iStep = iStep / 2;
+    }
+    while(TRUE) {
+        if(ie) {
+            if(cbOffset == pdwLineOffset[ie - 1]) { break; }
+            if(cbOffset < pdwLineOffset[ie - 1]) { ie--; continue; }
+        }
+        if((ie < cMap - 1) && (cbOffset > pdwLineOffset[ie])) { ie++; continue; }
+        break;
+    }
+    // parse lines
+    while(cb && (ie < cMap)) {
+        pvMapEntry = (PBYTE)pMap + ie * (QWORD)cbEntry;
+        cbLineStartOffset = ie ? pdwLineOffset[ie - 1] : 0;
+        cbLineLength = pdwLineOffset[ie] - cbLineStartOffset;
+        if((cbOffset == cbLineStartOffset) && (cb > cbLineLength)) {
+            // entry fits into line
+            pfnCallback(ctx, cbLineLength, ie, pvMapEntry, (LPSTR)pb);
+            pb += cbLineLength;
+            cb -= cbLineLength;
+            cbOffset += cbLineLength;
+            cbReadTotal += cbLineLength;
+            nt = UTIL_NTSTATUS_SUCCESS;
+        } else {
+            // partial line
+            if(cbLineLength + 1ULL > sizeof(szu)) { return UTIL_NTSTATUS_FILE_INVALID; }
+            pfnCallback(ctx, cbLineLength, ie, pvMapEntry, szu);
+            nt = Util_VfsReadFile_FromPBYTE(szu, cbLineLength, pb, cb, &cbRead, cbOffset - cbLineStartOffset);
+            pb += cbRead;
+            cb -= cbRead;
+            cbOffset += cbRead;
+            cbReadTotal += cbRead;
+        }
+        ie++;
+    }
+finish:
+    *pcbRead = cbReadTotal;
+    return nt;
+}
+
+/*
 * FixedLineRead: Read from a file dynamically created from a map/array object
 * using a callback function to populate individual lines (excluding header).
 * -- pfnCallback = callback function to populate individual lines.
 * -- ctx = optional context to 'pfn' callback function.
 * -- cbLineLength = line length, including newline, excluding null terminator.
-* -- wszHeader = optional header line.
+* -- uszHeader = optional header line.
 * -- pMap = an array of entries (usually 'pMap' in a map).
 * -- cMap = number of pMap entries.
 * -- cbEntry = byte length of each entry.

@@ -149,12 +149,13 @@ DWORD InfoDB_GetPdbId(_In_ POB_INFODB_CONTEXT ctx, _In_ QWORD vaModuleBase)
     if(!(pObSystemProcess = VmmProcessGet(4))) { goto fail; }
     if(!PE_GetCodeViewInfo(pObSystemProcess, vaModuleBase, NULL, &CodeViewInfo)) { goto fail; }
     qwEndGUID = *(PQWORD)(CodeViewInfo.CodeView.Guid + 8);
-    _snprintf_s(szAgeGUID, sizeof(szAgeGUID), _TRUNCATE, "%08X%02X%02X%16llX%X",
+    _snprintf_s(szAgeGUID, sizeof(szAgeGUID), _TRUNCATE, "%08X%04X%04X%016llX%X",
         *(PDWORD)(CodeViewInfo.CodeView.Guid + 0),
         *(PWORD)(CodeViewInfo.CodeView.Guid + 4),
         *(PWORD)(CodeViewInfo.CodeView.Guid + 6),
         (QWORD)_byteswap_uint64(qwEndGUID),
         CodeViewInfo.CodeView.Age);
+    VmmLog(MID_INFODB, LOGLEVEL_TRACE, "AGEGUID=%s va=0x%llx", szAgeGUID, vaModuleBase);
     rc = sqlite3_prepare_v2(hSql, "SELECT id FROM pdb WHERE guidage = ?", -1, &hStmt, 0);
     if(rc != SQLITE_OK) { goto fail; }
     sqlite3_bind_text(hStmt, 1, szAgeGUID, -1, NULL);
@@ -162,6 +163,7 @@ DWORD InfoDB_GetPdbId(_In_ POB_INFODB_CONTEXT ctx, _In_ QWORD vaModuleBase)
     if(rc != SQLITE_ROW) { goto fail; }
     dwPdbId = (DWORD)sqlite3_column_int(hStmt, 0);
 fail:
+    VmmLog(MID_INFODB, LOGLEVEL_VERBOSE, "INIT: %s: va=0x%llx", (dwPdbId ? "SUCCESS" : "FAIL"), vaModuleBase);
     sqlite3_finalize(hStmt);
     InfoDB_SqlReserveReturn(ctx, hSql);
     Ob_DECREF(pObSystemProcess);

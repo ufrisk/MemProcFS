@@ -10,8 +10,8 @@
 #include "vmmdll.h"
 
 #define MTHREAD_INFOFILE_LENGTH  740ULL
-#define MTHREAD_LINELENGTH       186ULL
-#define MTHREAD_LINEHEADER       "   #    PID     TID          ETHREAD Status/Prio   ExitSt    Start Address                 TEB          StackBase         StackLimit  CreateTime                 ExitTime"
+#define MTHREAD_LINELENGTH       222ULL
+#define MTHREAD_LINEHEADER       "   #    PID     TID          ETHREAD Status/Prio   ExitSt     StartAddress   InstructionPtr                 TEB          StackBase           StackPtr         StackLimit  CreateTime                 ExitTime"
 
 
 _Success_(return == 0)
@@ -74,7 +74,7 @@ VOID MThread_ReadLine_Callback(_Inout_opt_ PVOID ctx, _In_ DWORD cbLineLength, _
     Util_FileTime2String(pe->ftCreateTime, szTimeCreate);
     Util_FileTime2String(pe->ftExitTime, szTimeExit);
     Util_usnprintf_ln(szu8, cbLineLength,
-        "%04x%7i%8i %16llx %2x %2x %2x %2x %8x %16llx -- %16llx : %16llx > %16llx [%s :: %s]",
+        "%04x%7i%8i %16llx %2x %2x %2x %2x %8x %16llx %16llx -- %16llx : %16llx > %16llx > %16llx [%s :: %s]",
         ie,
         pe->dwPID,
         pe->dwTID,
@@ -85,8 +85,10 @@ VOID MThread_ReadLine_Callback(_Inout_opt_ PVOID ctx, _In_ DWORD cbLineLength, _
         pe->bPriority,
         pe->dwExitStatus,
         pe->vaStartAddress,
+        pe->vaRIP,
         pe->vaTeb,
         pe->vaStackBaseUser,
+        pe->vaRSP,
         pe->vaStackLimitUser,
         szTimeCreate,
         szTimeExit

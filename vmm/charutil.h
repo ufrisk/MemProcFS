@@ -166,12 +166,12 @@ BOOL CharUtil_WtoJ(
 * -- fUpper
 * -- return
 */
-DWORD CharUtil_Hash32U(_In_ LPCSTR usz, _In_ BOOL fUpper);
-DWORD CharUtil_Hash32A(_In_ LPCSTR sz, _In_ BOOL fUpper);
-DWORD CharUtil_Hash32W(_In_ LPCWSTR wsz, _In_ BOOL fUpper);
-QWORD CharUtil_Hash64U(_In_ LPCSTR usz, _In_ BOOL fUpper);
-QWORD CharUtil_Hash64A(_In_ LPCSTR sz, _In_ BOOL fUpper);
-QWORD CharUtil_Hash64W(_In_ LPCWSTR wsz, _In_ BOOL fUpper);
+DWORD CharUtil_Hash32U(_In_opt_ LPCSTR usz, _In_ BOOL fUpper);
+DWORD CharUtil_Hash32A(_In_opt_ LPCSTR sz, _In_ BOOL fUpper);
+DWORD CharUtil_Hash32W(_In_opt_ LPCWSTR wsz, _In_ BOOL fUpper);
+QWORD CharUtil_Hash64U(_In_opt_ LPCSTR usz, _In_ BOOL fUpper);
+QWORD CharUtil_Hash64A(_In_opt_ LPCSTR sz, _In_ BOOL fUpper);
+QWORD CharUtil_Hash64W(_In_opt_ LPCWSTR wsz, _In_ BOOL fUpper);
 
 /*
 * Hash a name string in a way that is supported by the file system.
