@@ -307,3 +307,5 @@ v1.1-v2.10
 Latest:
 * Bug fixes.
 * [Web history](https://github.com/ufrisk/MemProcFS/wiki/FS_Web) plugin.
+* Process child/parent parsing improvements.
+* Additional FindEvil detection vectors.

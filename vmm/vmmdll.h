@@ -893,7 +893,7 @@ VOID VMMDLL_Scatter_CloseHandle(_In_opt_ _Post_ptr_invalid_ VMMDLL_SCATTER_HANDL
 #define VMMDLL_MAP_EAT_VERSION              2
 #define VMMDLL_MAP_IAT_VERSION              2
 #define VMMDLL_MAP_HEAP_VERSION             2
-#define VMMDLL_MAP_THREAD_VERSION           3
+#define VMMDLL_MAP_THREAD_VERSION           4
 #define VMMDLL_MAP_HANDLE_VERSION           2
 #define VMMDLL_MAP_POOL_VERSION             2
 #define VMMDLL_MAP_NET_VERSION              3
@@ -1074,7 +1074,8 @@ typedef struct tdVMMDLL_MAP_THREADENTRY {
     DWORD dwUserTime;
     DWORD dwKernelTime;
     UCHAR bSuspendCount;
-    UCHAR _FutureUse1[3];
+    UCHAR bWaitReason;
+    UCHAR _FutureUse1[2];
     DWORD _FutureUse2[15];
 } VMMDLL_MAP_THREADENTRY, *PVMMDLL_MAP_THREADENTRY;
 

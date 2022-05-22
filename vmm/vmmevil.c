@@ -14,6 +14,26 @@
 
 #define VMM_MAP_EVILENTRY_HASH(dwPID, tp, va)       (((QWORD)dwPID << 32) ^ ((QWORD)tp << 56) ^ (DWORD)(va >> 16) ^ va)
 
+#define ROT13H_SYSTEM       0x282da577
+#define ROT13H_REGISTRY     0x29a8afbd
+#define ROT13H_MEMCOMPRESS  0x5de1c912
+#define ROT13H_SMSS         0xdff94c0e
+#define ROT13H_CSRSS        0x230d4c0f
+#define ROT13H_WINLOGON     0x6c916b9f
+#define ROT13H_WININIT      0xedffa2df
+#define ROT13H_SERVICES     0x7679dad9
+#define ROT13H_SVCHOST      0xe3040ac3
+#define ROT13H_SIHOST       0x2903f2af
+#define ROT13H_LSASS        0x2bc94c0f
+#define ROT13H_USERINIT     0xf2a982de
+#define ROT13H_EXPLORER     0x2c99bb9e
+#define ROT13H_CMD          0xdfd051ab
+#define ROT13H_POWERSHELL   0x1b896fad
+
+#define VMMEVIL_IS_PARENT_PROCESS_STRICT(pChild, pParent)       (pChild && pParent && (pChild->dwPPID == pParent->dwPID) && \
+                                                                VmmProcess_GetCreateTimeOpt(pChild) && VmmProcess_GetCreateTimeOpt(pParent) && \
+                                                                (VmmProcess_GetCreateTimeOpt(pChild) > VmmProcess_GetCreateTimeOpt(pParent)))
+
 /*
 * Helper function to create an entry and add it to the pmEvil map.
 * The map holds the reference; the returned data must _NOT_ be free'd.
@@ -307,6 +327,88 @@ VOID VmmEvil_ProcessScan_PebMasquerade(_In_ PVMM_PROCESS pProcess, _Inout_ POB_M
     VmmEvil_AddEvil_NoVadReq(pmEvil, pProcess, VMM_EVIL_TP_PEB_MASQUERADE, 0, 0, 0, FALSE);
 }
 
+/*
+* Locate well known processes with bad users - i.e. cmd running as system.
+*/
+VOID VmmEvil_ProcessScan_BadUser(_In_ PVMM_PROCESS pProcess, _Inout_ POB_MAP pmEvil)
+{
+    CHAR uszUserName[18];
+    PVMM_PROCESS pObProcessWithToken;
+    BOOL fRequireWellKnown, fWellKnown;
+    DWORD dwHProcess = CharUtil_Hash32A(pProcess->szName, TRUE);
+    switch(dwHProcess) {
+        case ROT13H_SYSTEM:
+        case ROT13H_REGISTRY:
+        case ROT13H_MEMCOMPRESS:
+        case ROT13H_SMSS:
+        case ROT13H_CSRSS:
+        case ROT13H_WINLOGON:
+        case ROT13H_WININIT:
+        case ROT13H_SERVICES:
+        case ROT13H_LSASS:
+            fRequireWellKnown = TRUE; break;
+        case ROT13H_SIHOST:
+        case ROT13H_EXPLORER:
+        case ROT13H_POWERSHELL:
+        case ROT13H_CMD:
+            fRequireWellKnown = FALSE; break;
+        default:
+            return;
+    }
+    pObProcessWithToken = pProcess->win.TOKEN.fInitialized ? Ob_INCREF(pProcess) : VmmProcessGetEx(NULL, pProcess->dwPID, VMM_FLAG_PROCESS_TOKEN);
+    if(pObProcessWithToken && pObProcessWithToken->win.TOKEN.fSID) {
+        if(VmmWinUser_GetName(&pObProcessWithToken->win.TOKEN.SID, uszUserName, 17, &fWellKnown)) {
+            if((fRequireWellKnown && !fWellKnown) || (!fRequireWellKnown && fWellKnown)) {
+                VmmEvil_AddEvil_NoVadReq(pmEvil, pProcess, VMM_EVIL_TP_PROC_USER, 0, 0, 0, FALSE);
+            }
+        }
+    }
+    Ob_DECREF(pObProcessWithToken);
+}
+
+/*
+* Locate well known processes with bad parents.
+*/
+VOID VmmEvil_ProcessScan_BadParent(_In_ PVMM_PROCESS pProcess, _Inout_ POB_MAP pmEvil)
+{
+    DWORD dwH, dwHProcess;
+    BOOL fBad = FALSE;
+    PVMM_PROCESS pObParentProcess = NULL;
+    if((pObParentProcess = VmmProcessGetEx(NULL, pProcess->dwPPID, VMM_FLAG_PROCESS_SHOW_TERMINATED))) {
+        if(VMMEVIL_IS_PARENT_PROCESS_STRICT(pProcess, pObParentProcess)) {
+            dwH = CharUtil_Hash32A(pObParentProcess->szName, TRUE);
+            dwHProcess = CharUtil_Hash32A(pProcess->szName, TRUE);
+            switch(dwHProcess) {
+                case ROT13H_SYSTEM:
+                    fBad = TRUE; break;
+                case ROT13H_MEMCOMPRESS:
+                case ROT13H_REGISTRY:
+                case ROT13H_SMSS:
+                    fBad = (dwH != ROT13H_SYSTEM); break;
+                case ROT13H_CSRSS:
+                case ROT13H_WINLOGON:
+                case ROT13H_WININIT:
+                    fBad = (dwH != ROT13H_SMSS); break;
+                case ROT13H_SERVICES:
+                    fBad = (dwH != ROT13H_WININIT); break;
+                case ROT13H_SVCHOST:
+                    fBad = (dwH != ROT13H_SERVICES); break;
+                case ROT13H_SIHOST:
+                    fBad = (dwH != ROT13H_SVCHOST); break;
+                case ROT13H_LSASS:
+                    fBad = (dwH != ROT13H_WININIT); break;
+                case ROT13H_USERINIT:
+                    fBad = (dwH != ROT13H_WINLOGON); break;
+                default:
+                    break;
+            }
+            if(fBad) {
+                VmmEvil_AddEvil_NoVadReq(pmEvil, pProcess, VMM_EVIL_TP_PROC_PARENT, 0, 0, 0, FALSE);
+            }
+        }
+        Ob_DECREF(pObParentProcess);
+    }
+}
 
 /*
 * Scan a process for evil. Multiple scans are undertaken. The function may have
@@ -327,6 +429,8 @@ VOID VmmEvil_ProcessScan(_In_ PVMM_PROCESS pProcess, _Inout_ POB_MAP pmEvil)
     // update result with interesting module entries.
     VmmEvil_ProcessScan_Modules(pProcess, pmEvil);
     // update with other process-related findings:
+    VmmEvil_ProcessScan_BadParent(pProcess, pmEvil);
+    VmmEvil_ProcessScan_BadUser(pProcess, pmEvil);
     VmmEvil_ProcessScan_PebMasquerade(pProcess, pmEvil);
 fail:
     Ob_DECREF(psObInjectedPE);
@@ -432,9 +536,12 @@ DWORD VmmEvil_InitializeAll_ThreadProc(_In_opt_ PVOID pv)
     VmmProcessListPIDs(pPIDs, &cPIDs, 0);
     for(i = 0; i < cPIDs; i++) {
         ctxVmm->EvilContext.cProgressPercent = min(99, max(1, (BYTE)(i * 100 / cPIDs)));
-        if(!(pObProcess = VmmProcessGet(pPIDs[i])) || pObProcess->dwState || !pObProcess->fUserOnly) { continue; }
-        VmmEvil_InitializeProcess(pObProcess, pmObEvilAll);
-        Ob_DECREF_NULL(&pObProcess);
+        if((pObProcess = VmmProcessGet(pPIDs[i]))) {
+            if(!pObProcess->dwState && pObProcess->fUserOnly) {
+                VmmEvil_InitializeProcess(pObProcess, pmObEvilAll);
+            }
+            Ob_DECREF_NULL(&pObProcess);
+        }
     }
     pObEvilMap = VmmEvil_InitializeMap(pmObEvilAll);
     ObContainer_SetOb(ctxVmm->pObCMapEvil, pObEvilMap);

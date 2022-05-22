@@ -32,6 +32,7 @@ VOID VmmWinInit_TryInitializeThreading()
         PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTHREAD", "SuspendCount", &pti->oSuspendCount) &&
         PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTHREAD", "Priority", &pti->oPriority) &&
         PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTHREAD", "BasePriority", &pti->oBasePriority) &&
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTHREAD", "WaitReason", &pti->oWaitReason) &&
         PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTHREAD", "Teb", &pti->oTeb) &&
         PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTHREAD", "TrapFrame", &pti->oTrapFrame) &&
         PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTHREAD", "KernelTime", &pti->oKernelTime) &&

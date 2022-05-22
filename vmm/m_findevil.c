@@ -25,7 +25,9 @@ LPCSTR szM_FINDEVIL_README =
 "Find Evil is currently able to detect:                                       \n" \
 "- Injected PE:    Non-loader loaded .dll with intact PE header.              \n" \
 "                  Low false positive ratio.                                  \n" \
-"- NoLink PROC:    Processes not linked by the _EPROCESS linked list.         \n" \
+"- PROC NoLink:    Processes not linked by the _EPROCESS linked list.         \n" \
+"- PROC Parent:    Suspicious non-standard parent process.                    \n" \
+"- PROC User:      Suspicious non-standard user.                              \n" \
 "- Bad PEB/LDR:    No ordinary modules located in the PEB/LDR_DATA structures \n" \
 "                  indicates corruption; due to malware or paged out memory.  \n" \
 "- PEB Masquerade: PEB user-mode image path differs from kernel image path.   \n" \

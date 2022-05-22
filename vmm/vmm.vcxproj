@@ -275,12 +275,14 @@
     <ClCompile Include="m_file_handles_vads.c" />
     <ClCompile Include="m_file_modules.c" />
     <ClCompile Include="m_findevil.c" />
-    <ClCompile Include="m_handle.c" />
-    <ClCompile Include="m_memmap.c" />
-    <ClCompile Include="m_minidump.c" />
     <ClCompile Include="m_misc_bitlocker.c" />
     <ClCompile Include="m_misc_web.c" />
     <ClCompile Include="m_phys2virt.c" />
+    <ClCompile Include="m_proc_handle.c" />
+    <ClCompile Include="m_proc_ldrmodules.c" />
+    <ClCompile Include="m_proc_memmap.c" />
+    <ClCompile Include="m_proc_minidump.c" />
+    <ClCompile Include="m_proc_thread.c" />
     <ClCompile Include="m_proc_token.c" />
     <ClCompile Include="m_search.c" />
     <ClCompile Include="m_sys.c" />
@@ -294,7 +296,6 @@
     <ClCompile Include="m_sys_svc.c" />
     <ClCompile Include="m_sys_syscall.c" />
     <ClCompile Include="m_sys_task.c" />
-    <ClCompile Include="m_thread.c" />
     <ClCompile Include="m_vfsfc.c" />
     <ClCompile Include="m_vfsproc.c" />
     <ClCompile Include="m_vfsroot.c" />
@@ -317,7 +318,6 @@
     <ClCompile Include="util.c" />
     <ClCompile Include="vmm.c" />
     <ClCompile Include="vmmdll.c" />
-    <ClCompile Include="m_ldrmodules.c" />
     <ClCompile Include="vmmdll_scatter.c" />
     <ClCompile Include="vmmevil.c" />
     <ClCompile Include="vmmlog.c" />

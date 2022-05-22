@@ -471,4 +471,59 @@ typedef struct {
     QWORD ProcessBilled;
 } _POOL_HEADER64, *_PPOOL_HEADER64;
 
+static LPCSTR _KTHREAD_STATE_STR[] = {
+    "Init",
+    "Ready",
+    "Running",
+    "Standby",
+    "Term",
+    "Waiting",
+    "Transit",
+    "DeffRdy",
+    "GateWt"
+};
+
+static LPCSTR _KWAIT_REASON_STR[] = {
+   "Executive",
+   "FreePage",
+   "PageIn",
+   "PoolAllocation",
+   "DelayExecution",
+   "Suspended",
+   "UserRequest",
+   "WrExecutive",
+   "WrFreePage",
+   "WrPageIn",
+   "WrPoolAllocation",
+   "WrDelayExecution",
+   "WrSuspended",
+   "WrUserRequest",
+   "WrSpare0",
+   "WrQueue",
+   "WrLpcReceive",
+   "WrLpcReply",
+   "WrVirtualMemory",
+   "WrPageOut",
+   "WrRendezvous",
+   "WrKeyedEvent",
+   "WrTerminated",
+   "WrProcessInSwap",
+   "WrCpuRateControl",
+   "WrCalloutStack",
+   "WrKernel",
+   "WrResource",
+   "WrPushLock",
+   "WrMutex",
+   "WrQuantumEnd",
+   "WrDispatchInt",
+   "WrPreempted",
+   "WrYieldExecution",
+   "WrFastMutex",
+   "WrGuardedMutex",
+   "WrRundown",
+   "WrAlertByThreadId",
+   "WrDeferredPreempt",
+   "WrPhysicalFault"
+};
+
 #endif /* __VMMWINDEF_H__ */

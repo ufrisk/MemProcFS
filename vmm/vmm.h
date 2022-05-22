@@ -372,7 +372,8 @@ typedef struct tdVMM_MAP_THREADENTRY {
     DWORD dwUserTime;
     DWORD dwKernelTime;
     UCHAR bSuspendCount;
-    UCHAR _FutureUse1[3];
+    UCHAR bWaitReason;
+    UCHAR _FutureUse1[2];
     DWORD _FutureUse2[15];
 } VMM_MAP_THREADENTRY, *PVMM_MAP_THREADENTRY;
 
@@ -569,20 +570,24 @@ typedef enum tdVMM_EVIL_TP {            // EVIL types - sorted by "evilness"
     VMM_EVIL_TP_PE_NA           = 0,    // _NA
     VMM_EVIL_TP_PE_INJECTED     = 1,    // MODULE
     VMM_EVIL_TP_PROC_NOLINK     = 2,    // _NA
-    VMM_EVIL_TP_PEB_MASQUERADE  = 3,    // _NA
-    VMM_EVIL_TP_PEB_BAD_LDR     = 4,    // _NA
-    VMM_EVIL_TP_PE_NOTLINKED    = 5,    // MODULE
-    VMM_EVIL_TP_VAD_PATCHED_PE  = 6,    // VADEX
-    VMM_EVIL_TP_VAD_PRIVATE_RWX = 7,    // VADEX
-    VMM_EVIL_TP_VAD_NOIMAGE_RWX = 8,    // VADEX
-    VMM_EVIL_TP_VAD_PRIVATE_RX  = 9,    // VADEX
-    VMM_EVIL_TP_VAD_NOIMAGE_RX  = 10,   // VADEX
+    VMM_EVIL_TP_PROC_PARENT     = 3,    // _NA
+    VMM_EVIL_TP_PROC_USER       = 4,    // _NA
+    VMM_EVIL_TP_PEB_MASQUERADE  = 5,    // _NA
+    VMM_EVIL_TP_PEB_BAD_LDR     = 6,    // _NA
+    VMM_EVIL_TP_PE_NOTLINKED    = 7,    // MODULE
+    VMM_EVIL_TP_VAD_PATCHED_PE  = 8,    // VADEX
+    VMM_EVIL_TP_VAD_PRIVATE_RWX = 9,    // VADEX
+    VMM_EVIL_TP_VAD_NOIMAGE_RWX = 10,   // VADEX
+    VMM_EVIL_TP_VAD_PRIVATE_RX  = 11,   // VADEX
+    VMM_EVIL_TP_VAD_NOIMAGE_RX  = 12,   // VADEX
 } VMM_EVIL_TP;
 
 static LPCSTR VMM_EVIL_TP_STRING[] = {
     "UNKNOWN    ",
     "PE_INJECT  ",
     "PROC_NOLINK",
+    "PROC_PARENT",
+    "PROC_USER  ",
     "PEB_MASQ   ",
     "PEB_BAD_LDR",
     "PE_NOLINK  ",
@@ -1059,6 +1064,7 @@ typedef struct tdVMM_OFFSET_ETHREAD {
     WORD oRunningOpt;
     WORD oPriority;
     WORD oBasePriority;
+    WORD oWaitReason;
     WORD oTeb;
     WORD oTrapFrame;
     WORD oKernelTime;

@@ -296,9 +296,9 @@ BOOL VmmNet_TcpE_GetAddressEPs(_In_ PVMMNET_CONTEXT ctx, _In_ PVMM_PROCESS pSyst
     if(pPoolMap) {
         for(i = 0; i < 3; i++) {
             switch(i) {
-                case 0:  o = 0x10; dwPoolTag = 'TcpE'; break;
-                case 1:  o = 0x10; dwPoolTag = 'TTcb'; break;
-                default: o = 0x50; dwPoolTag = 'TcTW'; break;
+                case 0:  o = 0x00; dwPoolTag = 'TcpE'; break;
+                case 1:  o = 0x00; dwPoolTag = 'TTcb'; break;
+                default: o = 0x40; dwPoolTag = 'TcTW'; break;
             }
             if(VmmMap_GetPoolTag(pPoolMap, dwPoolTag, &iPoolTag)) {
                 pePoolTag = pPoolMap->pTag + iPoolTag;

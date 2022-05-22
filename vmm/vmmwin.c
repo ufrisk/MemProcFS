@@ -1745,6 +1745,7 @@ VOID VmmWinThread_Initialize_DoWork_Pre(_In_ PVMM_PROCESS pSystemProcess, _In_op
     if(ot->oRunningOpt) { e->bRunning = *(PUCHAR)(pb + ot->oRunningOpt); }
     e->bPriority = *(PUCHAR)(pb + ot->oPriority);
     e->bBasePriority = *(PUCHAR)(pb + ot->oBasePriority);
+    e->bWaitReason = *(PUCHAR)(pb + ot->oWaitReason);
     e->vaTeb = VMM_PTR_OFFSET(f32, pb, ot->oTeb);
     e->ftCreateTime = *(PQWORD)(pb + ot->oCreateTime);
     e->ftExitTime = *(PQWORD)(pb + ot->oExitTime);
@@ -2843,8 +2844,10 @@ BOOL VmmWinUser_GetName(_In_opt_ PSID pSID, _Out_writes_(cbuName) LPSTR uszName,
     }
     // 2: Try lookup name from Well Known SID
     f = LookupAccountSidA(NULL, pSID, szNameBuffer, &cszNameBuffer, szDomainBuffer, &cszDomainBuffer, &eUse);
-    if(cszDomainBuffer != MAX_PATH) {
-        return f && CharUtil_AtoU(szNameBuffer, -1, (PBYTE)uszName, cbuName, NULL, NULL, CHARUTIL_FLAG_TRUNCATE | CHARUTIL_FLAG_STR_BUFONLY);
+    if(f && (cszDomainBuffer != MAX_PATH)) {
+        f = CharUtil_AtoU(szNameBuffer, -1, (PBYTE)uszName, cbuName, NULL, NULL, CHARUTIL_FLAG_TRUNCATE | CHARUTIL_FLAG_STR_BUFONLY);
+        if(pfAccountWellKnown) { *pfAccountWellKnown = f; }
+        return f;
     }
     return FALSE;
 }

@@ -36,6 +36,7 @@ const LPSTR szMSYSPROC_WHITELIST_WINDOWS_PATHS_AND_BINARIES[] = {
 typedef struct tdMSYSPROC_TREE_ENTRY {
     DWORD dwPPID;
     DWORD dwPID;
+    QWORD ftCreate;
     BYTE iLevel;
     BOOL fProcessed;
     PVMM_PROCESS pObProcess;
@@ -67,6 +68,7 @@ DWORD MSysProc_Tree_ProcessItems(_In_ PMSYSPROC_TREE_ENTRY pProcessEntry, _In_ P
     CHAR szUserName[17], szTimeCRE[24], szTimeEXIT[24];
     DWORD i, o = 0;
     BOOL fWinNativeProc, fStateTerminated, fAccountUser = FALSE;
+    BOOL fPPID, fTime;
     PVMMWIN_USER_PROCESS_PARAMETERS pu;
     if((cb > 0x01000000) || (cb < 0x00040000)) {
         VmmLog(MID_PE, LOGLEVEL_WARNING, "BUFFER MAY BE TOO SMALL - SHOULD NOT HAPPEN! %i", cb);
@@ -138,7 +140,9 @@ DWORD MSysProc_Tree_ProcessItems(_In_ PMSYSPROC_TREE_ENTRY pProcessEntry, _In_ P
     // 2: fetch and process sub-items (child processes)
     for(i = 0; i < cList; i++) {
         if(pList[i].fProcessed) { continue; }
-        if(pList[i].dwPPID == pProcessEntry->dwPID) {
+        fPPID = (pList[i].dwPPID == pProcessEntry->dwPID);
+        fTime = !pList[i].ftCreate || !pProcessEntry->ftCreate || (pProcessEntry->ftCreate < pList[i].ftCreate) || (pList[i].dwPPID == 4);
+        if(fPPID && fTime) {
             o += MSysProc_Tree_ProcessItems(pList + i, pList, cList, pb + o, cb - o, iLevel + 1, fVerbose);
         }
     }
@@ -147,7 +151,7 @@ DWORD MSysProc_Tree_ProcessItems(_In_ PMSYSPROC_TREE_ENTRY pProcessEntry, _In_ P
 
 int MSysProc_Tree_CmpSort(PMSYSPROC_TREE_ENTRY a, PMSYSPROC_TREE_ENTRY b)
 {
-    if(a->dwPPID - b->dwPPID) {
+    if(a->dwPPID == b->dwPPID) {
         return a->dwPID - b->dwPID;
     }
     return a->dwPPID - b->dwPPID;
@@ -171,6 +175,7 @@ BOOL MSysProc_Tree(_In_ BOOL fVerbose, _Out_ PBYTE *ppb, _Out_ PDWORD pcb)
         pPidEntry = pPidList + iPidList++;
         pPidEntry->dwPID = pObProcess->dwPID;
         pPidEntry->dwPPID = pObProcess->dwPPID;
+        pPidEntry->ftCreate = VmmProcess_GetCreateTimeOpt(pObProcess);
         pPidEntry->pObProcess = (PVMM_PROCESS)Ob_INCREF(pObProcess);    // INCREF process object and assign to array
     }
     Ob_DECREF_NULL(&pObProcess);

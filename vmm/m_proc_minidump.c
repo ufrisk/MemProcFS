@@ -1122,7 +1122,7 @@ VOID M_MiniDump_Close(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
 * operating system or architecture is unsupported.
 * -- pPluginRegInfo
 */
-VOID M_MiniDump_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
+VOID M_ProcMiniDump_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if(!((pRI->tpSystem == VMM_SYSTEM_WINDOWS_X64) || (pRI->tpSystem == VMM_SYSTEM_WINDOWS_X86))) { return; }

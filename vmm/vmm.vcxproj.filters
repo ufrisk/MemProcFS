@@ -170,9 +170,6 @@
     <ClCompile Include="m_winreg.c">
       <Filter>Source Files\modules</Filter>
     </ClCompile>
-    <ClCompile Include="m_ldrmodules.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
     <ClCompile Include="m_virt2phys.c">
       <Filter>Source Files\modules</Filter>
     </ClCompile>
@@ -200,9 +197,6 @@
     <ClCompile Include="mm_win.c">
       <Filter>Source Files\mm</Filter>
     </ClCompile>
-    <ClCompile Include="m_memmap.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
     <ClCompile Include="m_file_handles_vads.c">
       <Filter>Source Files\modules</Filter>
     </ClCompile>
@@ -220,9 +214,6 @@
     </ClCompile>
     <ClCompile Include="mm_pfn.c">
       <Filter>Source Files\mm</Filter>
-    </ClCompile>
-    <ClCompile Include="m_minidump.c">
-      <Filter>Source Files\modules</Filter>
     </ClCompile>
     <ClCompile Include="fc.c">
       <Filter>Source Files</Filter>
@@ -278,9 +269,6 @@
     <ClCompile Include="vmmevil.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="m_handle.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
     <ClCompile Include="m_sys.c">
       <Filter>Source Files\modules</Filter>
     </ClCompile>
@@ -306,9 +294,6 @@
       <Filter>Source Files\modules</Filter>
     </ClCompile>
     <ClCompile Include="m_sys_syscall.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
-    <ClCompile Include="m_thread.c">
       <Filter>Source Files\modules</Filter>
     </ClCompile>
     <ClCompile Include="ob\ob_compressed.c">
@@ -363,6 +348,21 @@
       <Filter>Source Files\modules</Filter>
     </ClCompile>
     <ClCompile Include="m_misc_web.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="m_proc_handle.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="m_proc_ldrmodules.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="m_proc_memmap.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="m_proc_minidump.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="m_proc_thread.c">
       <Filter>Source Files\modules</Filter>
     </ClCompile>
   </ItemGroup>

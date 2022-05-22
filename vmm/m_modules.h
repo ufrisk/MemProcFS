@@ -61,13 +61,13 @@ VOID M_FcThread_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 */
 VOID M_FileHandlesVads_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_FileModules_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
-VOID M_Handle_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
-VOID M_LdrModules_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
-VOID M_MemMap_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
-VOID M_MiniDump_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
+VOID M_ProcHandle_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
+VOID M_ProcLdrModules_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
+VOID M_ProcMemMap_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
+VOID M_ProcMiniDump_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_ProcToken_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
+VOID M_ProcThread_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_Search_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
-VOID M_Thread_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 
 VOID(*g_pfnModulesAllInternal[])(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo) = {
     // core modules
@@ -78,13 +78,13 @@ VOID(*g_pfnModulesAllInternal[])(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo) = {
     M_FileHandlesVads_Initialize,
     M_FileModules_Initialize,
     M_FindEvil_Initialize,
-    M_Handle_Initialize,
-    M_LdrModules_Initialize,
-    M_MemMap_Initialize,
-    M_MiniDump_Initialize,
     M_Phys2Virt_Initialize,
+    M_ProcHandle_Initialize,
+    M_ProcLdrModules_Initialize,
+    M_ProcMemMap_Initialize,
+    M_ProcMiniDump_Initialize,
+    M_ProcThread_Initialize,
     M_Search_Initialize,
-    M_Thread_Initialize,
     M_Virt2Phys_Initialize,
     // global modules
     M_BDE_Initialize,

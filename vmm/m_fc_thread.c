@@ -12,12 +12,16 @@
 #include "vmm.h"
 #include "pluginmanager.h"
 #include "util.h"
+#include "vmmwindef.h"
 
 static LPSTR FC_SQL_SCHEMA_THREAD =
     "DROP TABLE IF EXISTS thread; " \
-    "CREATE TABLE thread(id INTEGER PRIMARY KEY AUTOINCREMENT, id_str INTEGER, pid INT, tid INT, ethread INTEGER, teb INTEGER, state INT, exitstatus INT, running INT, prio INT, priobase INT, startaddr INTEGER, stackbase_u INTEGER, stacklimit_u INTEGER, stackbase_k INTEGER, stacklimit_k INTEGER, trapframe INTEGER, sp INTEGER, ip INTEGER, time_create INTEGER, time_exit INTEGER); " \
+    "CREATE TABLE thread(id INTEGER PRIMARY KEY AUTOINCREMENT, id_str INTEGER, pid INT, tid INT, ethread INTEGER, teb INTEGER, state INT, exitstatus INT, running INT, prio INT, priobase INT, waitreason INT, startaddr INTEGER, stackbase_u INTEGER, stacklimit_u INTEGER, stackbase_k INTEGER, stacklimit_k INTEGER, trapframe INTEGER, sp INTEGER, ip INTEGER, time_create INTEGER, time_exit INTEGER); " \
     "DROP VIEW IF EXISTS v_thread; " \
     "CREATE VIEW v_thread AS SELECT t.*, str.* FROM thread t, str WHERE t.id_str = str.id; ";
+
+#define MFCTHREAD_GET_STR_STATE(pe)           ((pe->bState < (sizeof(_KTHREAD_STATE_STR) / sizeof(LPCSTR))) ? _KTHREAD_STATE_STR[pe->bState] : "Unknown")
+#define MFCTHREAD_GET_STR_WAIT_REASON(pe)     ((pe->bWaitReason < (sizeof(_KWAIT_REASON_STR) / sizeof(LPCSTR))) ? _KWAIT_REASON_STR[pe->bWaitReason] : "Unknown")
 
 VOID M_FcThread_FcInitialize_ThreadProc(_In_ PVMM_PROCESS pProcess, _In_ PVOID pv)
 {
@@ -31,7 +35,7 @@ VOID M_FcThread_FcInitialize_ThreadProc(_In_ PVMM_PROCESS pProcess, _In_ PVOID p
     FCSQL_INSERTSTRTABLE SqlStrInsert;
     if(!VmmMap_GetThread(pProcess, &pObThreadMap)) { goto fail; }
     if(!(hSql = Fc_SqlReserve())) { goto fail; }
-    if(SQLITE_OK != sqlite3_prepare_v2(hSql, "INSERT INTO thread (id_str, pid, tid, ethread, teb, state, exitstatus, running, prio, priobase, startaddr, stackbase_u, stacklimit_u, stackbase_k, stacklimit_k, trapframe, sp, ip, time_create, time_exit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", -1, &hStmt, NULL)) { goto fail; }
+    if(SQLITE_OK != sqlite3_prepare_v2(hSql, "INSERT INTO thread (id_str, pid, tid, ethread, teb, state, exitstatus, running, prio, priobase, waitreason, startaddr, stackbase_u, stacklimit_u, stackbase_k, stacklimit_k, trapframe, sp, ip, time_create, time_exit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", -1, &hStmt, NULL)) { goto fail; }
     if(SQLITE_OK != sqlite3_prepare_v2(hSql, "INSERT INTO str (id, cbu, cbj, sz) VALUES (?, ?, ?, ?);", -1, &hStmtStr, NULL)) { goto fail; }
     sqlite3_exec(hSql, "BEGIN TRANSACTION", NULL, NULL, NULL);
     for(i = 0; i < pObThreadMap->cMap; i++) {
@@ -50,6 +54,7 @@ VOID M_FcThread_FcInitialize_ThreadProc(_In_ PVMM_PROCESS pProcess, _In_ PVOID p
             (QWORD)pe->bRunning,
             (QWORD)pe->bPriority,
             (QWORD)pe->bBasePriority,
+            (QWORD)pe->bWaitReason,
             pe->vaStartAddress,
             pe->vaStackBaseUser,
             pe->vaStackLimitUser,
@@ -121,7 +126,7 @@ VOID M_FcThread_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSO
         for(i = 0; i < pObThreadMap->cMap; i++) {
             pe = pObThreadMap->pMap + i;
             Util_FileTime2String(pe->ftCreateTime, szTime);
-            o = snprintf(usz, _countof(usz), "state:[%x %x %x] prio:[%x %x] start:[%s]", pe->bState, pe->bRunning, pe->dwExitStatus, pe->bBasePriority, pe->bPriority, szTime);
+            o = snprintf(usz, _countof(usz), "state:[%i %s] wait:[%i %s] status:[%x %x] prio:[%x %x] start:[%s]", pe->bState, MFCTHREAD_GET_STR_STATE(pe), pe->bWaitReason, MFCTHREAD_GET_STR_WAIT_REASON(pe), pe->bRunning, pe->dwExitStatus, pe->bBasePriority, pe->bPriority, szTime);
             if(pe->ftExitTime) {
                 Util_FileTime2String(pe->ftExitTime, szTime);
                 snprintf(usz + o, _countof(usz) - 0, " stop:[%s]", szTime);

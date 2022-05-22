@@ -8,26 +8,30 @@
 #include "util.h"
 #include "vmm.h"
 #include "vmmdll.h"
+#include "vmmwindef.h"
 
-#define MTHREAD_INFOFILE_LENGTH  740ULL
-#define MTHREAD_LINELENGTH       222ULL
-#define MTHREAD_LINEHEADER       "   #    PID     TID          ETHREAD Status/Prio   ExitSt     StartAddress   InstructionPtr                 TEB          StackBase           StackPtr         StackLimit  CreateTime                 ExitTime"
+#define MTHREAD_INFOFILE_LENGTH  803ULL
+#define MTHREAD_LINELENGTH       250ULL
+#define MTHREAD_LINEHEADER       "   #    PID     TID          ETHREAD Status     WaitReason           Prio      ExitSt     StartAddress   InstructionPtr                 TEB          StackBase           StackPtr         StackLimit  CreateTime                 ExitTime"
 
+#define MTHREAD_GET_STR_STATE(pe)           ((pe->bState < (sizeof(_KTHREAD_STATE_STR) / sizeof(LPCSTR))) ? _KTHREAD_STATE_STR[pe->bState] : "Unknown")
+#define MTHREAD_GET_STR_WAIT_REASON(pe)     ((pe->bWaitReason < (sizeof(_KWAIT_REASON_STR) / sizeof(LPCSTR))) ? _KWAIT_REASON_STR[pe->bWaitReason] : "Unknown")
 
 _Success_(return == 0)
-NTSTATUS MThread_Read_ThreadInfo(_In_ PVMM_MAP_THREADENTRY pThreadEntry, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MThread_Read_ThreadInfo(_In_ PVMM_MAP_THREADENTRY pe, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     CHAR sz[MTHREAD_INFOFILE_LENGTH + 1];
     CHAR szTimeCreate[32] = { 0 }, szTimeExit[32] = { 0 };
-    Util_FileTime2String(pThreadEntry->ftCreateTime, szTimeCreate);
-    Util_FileTime2String(pThreadEntry->ftExitTime, szTimeExit);
+    Util_FileTime2String(pe->ftCreateTime, szTimeCreate);
+    Util_FileTime2String(pe->ftExitTime, szTimeExit);
     snprintf(
         sz,
         MTHREAD_INFOFILE_LENGTH + 1,
         "PID:           %21i\n" \
         "TID:           %21i\n" \
         "ExitStatus:    %21x\n" \
-        "State:         %21x\n" \
+        "State:         %21x %-7s\n" \
+        "WaitReason:    %21x %-17s\n" \
         "SuspendCount:  %21x\n" \
         "Running:       %21x\n" \
         "Priority:      %21x\n" \
@@ -44,24 +48,25 @@ NTSTATUS MThread_Read_ThreadInfo(_In_ PVMM_MAP_THREADENTRY pThreadEntry, _Out_wr
         "InstructionPointer: %16llx\n" \
         "CreateTime:  %-23s\n" \
         "ExitTime:    %-23s\n",
-        pThreadEntry->dwPID,
-        pThreadEntry->dwTID,
-        pThreadEntry->dwExitStatus,
-        pThreadEntry->bState,
-        pThreadEntry->bSuspendCount,
-        pThreadEntry->bRunning,
-        pThreadEntry->bPriority,
-        pThreadEntry->bBasePriority,
-        pThreadEntry->vaETHREAD,
-        pThreadEntry->vaTeb,
-        pThreadEntry->vaStartAddress,
-        pThreadEntry->vaStackBaseUser,
-        pThreadEntry->vaStackLimitUser,
-        pThreadEntry->vaStackBaseKernel,
-        pThreadEntry->vaStackLimitKernel,
-        pThreadEntry->vaTrapFrame,
-        pThreadEntry->vaRSP,
-        pThreadEntry->vaRIP,
+        pe->dwPID,
+        pe->dwTID,
+        pe->dwExitStatus,
+        pe->bState, MTHREAD_GET_STR_STATE(pe),
+        pe->bWaitReason, MTHREAD_GET_STR_WAIT_REASON(pe),
+        pe->bSuspendCount,
+        pe->bRunning,
+        pe->bPriority,
+        pe->bBasePriority,
+        pe->vaETHREAD,
+        pe->vaTeb,
+        pe->vaStartAddress,
+        pe->vaStackBaseUser,
+        pe->vaStackLimitUser,
+        pe->vaStackBaseKernel,
+        pe->vaStackLimitKernel,
+        pe->vaTrapFrame,
+        pe->vaRSP,
+        pe->vaRIP,
         szTimeCreate,
         szTimeExit
     );
@@ -74,12 +79,15 @@ VOID MThread_ReadLine_Callback(_Inout_opt_ PVOID ctx, _In_ DWORD cbLineLength, _
     Util_FileTime2String(pe->ftCreateTime, szTimeCreate);
     Util_FileTime2String(pe->ftExitTime, szTimeExit);
     Util_usnprintf_ln(szu8, cbLineLength,
-        "%04x%7i%8i %16llx %2x %2x %2x %2x %8x %16llx %16llx -- %16llx : %16llx > %16llx > %16llx [%s :: %s]",
+        "%04x%7i%8i %16llx %1x %-7s %2i %-17s %2x %2x %2x %8x %16llx %16llx -- %16llx : %16llx > %16llx > %16llx [%s :: %s]",
         ie,
         pe->dwPID,
         pe->dwTID,
         pe->vaETHREAD,
         pe->bState,
+        MTHREAD_GET_STR_STATE(pe),
+        pe->bWaitReason,
+        MTHREAD_GET_STR_WAIT_REASON(pe),
         pe->bRunning,
         pe->bBasePriority,
         pe->bPriority,
@@ -274,7 +282,7 @@ fail:
 * operating system or architecture is unsupported.
 * -- pPluginRegInfo
 */
-VOID M_Thread_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
+VOID M_ProcThread_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if(!((pRI->tpSystem == VMM_SYSTEM_WINDOWS_X64) || (pRI->tpSystem == VMM_SYSTEM_WINDOWS_X86))) { return; }

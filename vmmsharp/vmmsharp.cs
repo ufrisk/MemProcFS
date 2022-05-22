@@ -14,7 +14,7 @@ using System.Collections.Generic;
  *  (c) Ulf Frisk, 2020-2022
  *  Author: Ulf Frisk, pcileech@frizk.net
  *  
- *  Version 4.7
+ *  Version 4.8
  *  
  */
 
@@ -1034,6 +1034,7 @@ namespace vmmsharp
             public uint dwUserTime;
             public uint dwKernelTime;
             public byte bSuspendCount;
+            public byte bWaitReason;
         }
 
         public struct MAP_HANDLEENTRY
@@ -1507,6 +1508,7 @@ namespace vmmsharp
                     e.dwUserTime = n.dwUserTime;
                     e.dwKernelTime = n.dwKernelTime;
                     e.bSuspendCount = n.bSuspendCount;
+                    e.bWaitReason = n.bWaitReason;
                     m[i] = e;
                 }
                 return m;
@@ -1946,7 +1948,7 @@ namespace vmmsharp
         internal static uint VMMDLL_MAP_EAT_VERSION =        2;
         internal static uint VMMDLL_MAP_IAT_VERSION =        2;
         internal static uint VMMDLL_MAP_HEAP_VERSION =       2;
-        internal static uint VMMDLL_MAP_THREAD_VERSION =     3;
+        internal static uint VMMDLL_MAP_THREAD_VERSION =     4;
         internal static uint VMMDLL_MAP_HANDLE_VERSION =     2;
         internal static uint VMMDLL_MAP_NET_VERSION =        3;
         internal static uint VMMDLL_MAP_PHYSMEM_VERSION =    2;
@@ -2500,7 +2502,8 @@ namespace vmmsharp
             internal uint dwUserTime;
             internal uint dwKernelTime;
             internal byte bSuspendCount;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)] internal byte[] _FutureUse1;
+            internal byte bWaitReason;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)] internal byte[] _FutureUse1;
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 15)] internal uint[] _FutureUse2;
         }
 
