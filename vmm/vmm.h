@@ -177,7 +177,7 @@ typedef struct tdVMMWIN_OBJECT_TYPE_TABLE {
 // VMM 64/32-bit quirks below:
 // ----------------------------------------------------------------------------
 
-#if _WIN64 || __amd64__
+#if _WIN64 || __amd64__ || __aarch64__
 #define PROCESS_MAGIC_HANDLE_THRESHOLD              0xffffffff00000000
 #else
 #define PROCESS_MAGIC_HANDLE_THRESHOLD              0xc0000000
