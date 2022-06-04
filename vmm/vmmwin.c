@@ -1212,8 +1212,8 @@ PVMMWIN_USER_PROCESS_PARAMETERS VmmWin_UserProcessParameters_Get(_In_ PVMM_PROCE
         if(!VmmReadAllocUnicodeStringAsUTF8(pProcess, f32, 0, vaUserProcessParameters + (f32 ? 0x038 : 0x060), 0x400, &pu->uszImagePathName, &pu->cbuImagePathName)) {  // ImagePathName
             VmmReadAllocUnicodeStringAsUTF8(pProcess, f32, 0, vaUserProcessParameters + (f32 ? 0x030 : 0x050), 0x400, &pu->uszImagePathName, &pu->cbuImagePathName);    // DllPath (mutually exclusive with ImagePathName?)
         }
-        VmmReadAllocUnicodeStringAsUTF8(pProcess, f32, 0, vaUserProcessParameters + (f32 ? 0x040 : 0x070), 0x800, &pu->uszCommandLine, &pu->cbuCommandLine);
-        VmmReadAllocUnicodeStringAsUTF8(pProcess, f32, 0, vaUserProcessParameters + (f32 ? 0x070 : 0x0b0), 0x800, &pu->uszWindowTitle, &pu->cbuWindowTitle);
+        VmmReadAllocUnicodeStringAsUTF8(pProcess, f32, 0, vaUserProcessParameters + (f32 ? 0x040 : 0x070), 0x00010000, &pu->uszCommandLine, &pu->cbuCommandLine);
+        VmmReadAllocUnicodeStringAsUTF8(pProcess, f32, 0, vaUserProcessParameters + (f32 ? 0x070 : 0x0b0), 0x00010000, &pu->uszWindowTitle, &pu->cbuWindowTitle);
     }
     if(f && (ctxVmm->kernel.dwVersionBuild >= 6000)) {
         // Environment (multi-str)

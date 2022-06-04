@@ -422,6 +422,7 @@ VOID VfsDokan_InitializeAndMount(_In_ CHAR chMountPoint)
     PDOKAN_OPTIONS pDokanOptions = NULL;
     PDOKAN_OPERATIONS pDokanOperations = NULL;
     WCHAR wszMountPoint[] = { 'M', ':', '\\', 0 };
+    WCHAR wszUnc[] = { '\\', 'M', 'e', 'm', 'P', 'r', 'o', 'c', 'F', 'S', '\\', 'M', 0};
     SYSTEMTIME SystemTimeNow;
     VOID(WINAPI *pfnDokanInit)();
     int(WINAPI *pfnDokanMain)(PDOKAN_OPTIONS, PDOKAN_OPERATIONS);
@@ -458,7 +459,8 @@ VOID VfsDokan_InitializeAndMount(_In_ CHAR chMountPoint)
     // set options
     pDokanOptions->Version = DOKAN_VERSION;
     pDokanOptions->Options |= DOKAN_OPTION_NETWORK;
-    pDokanOptions->UNCName = L"MemProcFS";
+    wszUnc[11] = chMountPoint;
+    pDokanOptions->UNCName = wszUnc;
     wszMountPoint[0] = chMountPoint;
     pDokanOptions->MountPoint = wszMountPoint;
     pDokanOptions->Timeout = 60000;
