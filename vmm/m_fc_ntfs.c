@@ -616,10 +616,10 @@ VOID FcNtfs_Finalize_DatabaseAdd(_In_ PFCNTFS_FINALIZE_CONTEXT ctx, _In_ PFCNTFS
     if(!Fc_SqlInsertStr(ctx->st_str, uszPathName + 1, &SqlStrInsert)) { return; }
     sqlite3_reset(ctx->st);
     sqlite3_bind_int64(ctx->st, 1, id);
-    sqlite3_bind_int64(ctx->st, 2, pe->pParent ? pe->pParent->iMap : -1);
+    sqlite3_bind_int64(ctx->st, 2, pe->pParent ? pe->pParent->iMap : (QWORD)-1);
     sqlite3_bind_int64(ctx->st, 3, SqlStrInsert.id);
     sqlite3_bind_int64(ctx->st, 4, pe->qwHashThis);
-    sqlite3_bind_int64(ctx->st, 5, pe->pParent ? pe->pParent->qwHashThis : -1);
+    sqlite3_bind_int64(ctx->st, 5, pe->pParent ? pe->pParent->qwHashThis : (QWORD)-1);
     sqlite3_bind_int64(ctx->st, 6, pe->pa);
     sqlite3_bind_int64(ctx->st, 7, pe->dwMftRecordNumber);
     sqlite3_bind_int64(ctx->st, 8, pe->Flags);

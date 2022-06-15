@@ -508,18 +508,18 @@ fail:
 */
 CHAR GetMountPoint(_In_ DWORD argc, _In_ char* argv[])
 {
-    CHAR chMountMount = 'M';
+    CHAR chMountPoint = 'M';
     DWORD i = 1;
     for(i = 0; i < argc - 1; i++) {
         if(0 == strcmp(argv[i], "-mount")) {
-            chMountMount = argv[i + 1][0];
+            chMountPoint = argv[i + 1][0];
             break;
         }
     }
-    if((chMountMount > 'A' && chMountMount < 'Z') || (chMountMount > 'a' && chMountMount < 'z')) {
-        return chMountMount;
+    if(chMountPoint >= 'a' && chMountPoint <= 'z') {
+        chMountPoint = chMountPoint - 'a' + 'A';
     }
-    return 'M';
+    return chMountPoint;
 }
 
 /*
@@ -630,6 +630,11 @@ int main(_In_ int argc, _In_ char* argv[])
     LPSTR *szArgs = NULL;
     LC_CMD_AGENT_VFS_REQ Req = { 0 };
     g_hLC_RemoteFS = 0;
+    g_VfsMountPoint = GetMountPoint(argc, argv);
+    if(g_VfsMountPoint < 'A' || g_VfsMountPoint > 'Z') {
+        printf("MemProcFS: Invalid -mount specified (only A-Z allowed).\n");
+        return 1;
+    }
     LoadLibraryA("leechcore.dll");
     if(!(szArgs = LocalAlloc(LMEM_ZEROINIT, (argc + 1ULL) * sizeof(LPSTR)))) {
         printf("MemProcFS: Out of memory!\n");
@@ -663,7 +668,6 @@ int main(_In_ int argc, _In_ char* argv[])
     }
     VfsList_Initialize(MemProcFS_VfsListU, 500, 128, FALSE);
     SetConsoleCtrlHandler(MemProcFsCtrlHandler, TRUE);
-    g_VfsMountPoint = GetMountPoint(argc, argv);
     VfsDokan_InitializeAndMount(g_VfsMountPoint);
     if(g_hLC_RemoteFS) {
         LcClose(g_hLC_RemoteFS);

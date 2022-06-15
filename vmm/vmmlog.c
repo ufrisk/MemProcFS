@@ -38,7 +38,9 @@ static LPCSTR VMMLOG_MID_STR[] = {
     "NET",
     "PE",
     "PDB",
-    "INFODB"
+    "INFODB",
+    "HEAP",
+    "OFFSET"
 };
 
 typedef struct tdVMMLOG_MODULE_MODULEINFO {
@@ -334,6 +336,24 @@ VOID VmmLogHexAsciiEx(_In_ DWORD dwMID, _In_ VMMLOG_LEVEL dwLogLevel, _In_reads_
 }
 
 /*
+* Check whether the MID/LogLevel will log to any output.
+* -- dwMID = module ID (MID)
+* -- dwLogLevel = log level as defined by LOGLEVEL_*
+* -- return = TRUE(will log), FALSE(will NOT log).
+*/
+BOOL VmmLogIsActive(_In_ DWORD dwMID, _In_ VMMLOG_LEVEL dwLogLevel)
+{
+    PVMMLOG_CONTEXT_MODULEINFO pmi;
+    BOOL fD = FALSE, fF = FALSE;
+    // sanity checks, get module info object and check if logs should happen to display/file:
+    if((dwLogLevel < LOGLEVEL_NONE) || (dwLogLevel > LOGLEVEL_ALL) || (dwLogLevel > g_VmmLogLevelFilter)) { return FALSE; }
+    if(!(pmi = VmmLog_GetModuleInfo(dwMID))) { return FALSE; }
+    fD = ((dwLogLevel <= ctxLog.dwLevelD) || (dwLogLevel <= pmi->dwLevelD));                    // log to display
+    fF = ((dwLogLevel <= ctxLog.dwLevelF) || (dwLogLevel <= pmi->dwLevelF)) && ctxLog.pFile;    // log to file
+    return fD || fF;
+}
+
+/*
 * Log a message using a va_list. Whether the message is displayed and/or saved
 * to log file depends on the internal logging setup.
 * -- dwMID = module ID (MID)
@@ -354,7 +374,7 @@ VOID VmmLogEx2(_In_ DWORD dwMID, _In_ VMMLOG_LEVEL dwLogLevel, _In_z_ _Printf_fo
     // sanity checks, get module info object and check if logs should happen to display/file:
     if((dwLogLevel < LOGLEVEL_NONE) || (dwLogLevel > LOGLEVEL_ALL) || (dwLogLevel > g_VmmLogLevelFilter)) { return; }
     if(!(pmi = VmmLog_GetModuleInfo(dwMID))) { return; }
-    fD = ((dwLogLevel <= ctxLog.dwLevelD) || (dwLogLevel <= pmi->dwLevelD));                    // log to displayh
+    fD = ((dwLogLevel <= ctxLog.dwLevelD) || (dwLogLevel <= pmi->dwLevelD));                    // log to display
     fF = ((dwLogLevel <= ctxLog.dwLevelF) || (dwLogLevel <= pmi->dwLevelF)) && ctxLog.pFile;    // log to file
     if(!fD && !fF) { return; }
     // create message part of the log (allocate buffer if required)

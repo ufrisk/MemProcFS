@@ -86,6 +86,7 @@
 #define VMM_UADDR64_8(va)                       ((va) && (((va) & 0xffff800000000007) == 0))
 #define VMM_UADDR64_16(va)                      ((va) && (((va) & 0xffff80000000000f) == 0))
 #define VMM_UADDR64_PAGE(va)                    ((va) && (((va) & 0xffff800000000fff) == 0))
+
 #define VMM_KADDR(va)                           (ctxVmm->f32 ? VMM_KADDR32(va) : VMM_KADDR64(va))
 #define VMM_KADDR_4_8(va)                       (ctxVmm->f32 ? VMM_KADDR32_4(va) : VMM_KADDR64_8(va))
 #define VMM_KADDR_8_16(va)                      (ctxVmm->f32 ? VMM_KADDR32_8(va) : VMM_KADDR64_16(va))
@@ -94,6 +95,15 @@
 #define VMM_UADDR_4_8(va)                       (ctxVmm->f32 ? VMM_UADDR32_4(va) : VMM_UADDR64_8(va))
 #define VMM_UADDR_8_16(va)                      (ctxVmm->f32 ? VMM_UADDR32_8(va) : VMM_UADDR64_16(va))
 #define VMM_UADDR_PAGE(va)                      (ctxVmm->f32 ? VMM_UADDR32_PAGE(va) : VMM_UADDR64_PAGE(va))
+
+#define VMM_KADDR_DUAL(f32, va)                 (f32 ? VMM_KADDR32(va) : VMM_KADDR64(va))
+#define VMM_KADDR_DUAL_4_8(f32, va)             (f32 ? VMM_KADDR32_4(va) : VMM_KADDR64_8(va))
+#define VMM_KADDR_DUAL_8_16(f32, va)            (f32 ? VMM_KADDR32_8(va) : VMM_KADDR64_16(va))
+#define VMM_KADDR_DUAL_PAGE(f32, va)            (f32 ? VMM_KADDR32_PAGE(va) : VMM_KADDR64_PAGE(va))
+#define VMM_UADDR_DUAL(f32, va)                 (f32 ? VMM_UADDR32(va) : VMM_UADDR64(va))
+#define VMM_UADDR_DUAL_4_8(f32, va)             (f32 ? VMM_UADDR32_4(va) : VMM_UADDR64_8(va))
+#define VMM_UADDR_DUAL_8_16(f32, va)            (f32 ? VMM_UADDR32_8(va) : VMM_UADDR64_16(va))
+#define VMM_UADDR_DUAL_PAGE(f32, va)            (f32 ? VMM_UADDR32_PAGE(va) : VMM_UADDR64_PAGE(va))
 
 #define VMM_PID_PROCESS_CLONE_WITH_KERNELMEMORY 0x80000000      // Combine with PID to create a shallowly cloned process with fUserOnly = FALSE
 
@@ -335,18 +345,86 @@ typedef struct tdVMM_MAP_IATENTRY {
     } Thunk;
 } VMM_MAP_IATENTRY, *PVMM_MAP_IATENTRY;
 
+typedef enum tdVMM_HEAP_TP {
+    VMM_HEAP_TP_NA  = 0,
+    VMM_HEAP_TP_NT  = 1,
+    VMM_HEAP_TP_SEG = 2,
+} VMM_HEAP_TP, *PVMM_HEAP_TP;
+
+static LPCSTR VMM_HEAP_TP_STR[] = {
+    "NA",
+    "Nt",
+    "Segment"
+};
+
+typedef enum tdVMM_HEAP_SEGMENT_TP {
+    VMM_HEAP_SEGMENT_TP_NA          = 0,
+    VMM_HEAP_SEGMENT_TP_NT_SEGMENT  = 1,
+    VMM_HEAP_SEGMENT_TP_NT_LFH      = 2,
+    VMM_HEAP_SEGMENT_TP_NT_LARGE    = 3,
+    VMM_HEAP_SEGMENT_TP_NT_NA       = 4,
+    VMM_HEAP_SEGMENT_TP_SEG_HEAP    = 5,    // _SEGMENT_HEAP
+    VMM_HEAP_SEGMENT_TP_SEG_SEGMENT = 6,    // _HEAP_PAGE_SEGMENT
+    VMM_HEAP_SEGMENT_TP_SEG_LARGE   = 7,    // _HEAP_LARGE_ALLOC_DATA
+    VMM_HEAP_SEGMENT_TP_SEG_NA      = 8,
+} VMM_HEAP_SEGMENT_TP, *PVMM_HEAP_SEGMENT_TP;
+
+static LPCSTR VMM_HEAP_SEGMENT_TP_STR[] = {
+    "NA",
+    "NtSegment",
+    "NtLfh",
+    "NtLarge",
+    "NtNA",
+    "SegHeap",
+    "SegSegment",
+    "SegLarge",
+    "SegNA",
+};
+
+typedef struct tdVMM_MAP_HEAP_SEGMENTENTRY {
+    QWORD va;
+    DWORD cb;
+    VMM_HEAP_SEGMENT_TP tp : 16;
+    DWORD iHeap : 16;
+} VMM_MAP_HEAP_SEGMENTENTRY, *PVMM_MAP_HEAP_SEGMENTENTRY;
+
 typedef struct tdVMM_MAP_HEAPENTRY {
-    QWORD vaHeapSegment;
-    union {
-        struct {
-            DWORD cPages;
-            DWORD cPagesUnCommitted : 24;
-            DWORD HeapId : 7;
-            DWORD fPrimary : 1;
-        };
-        QWORD qwHeapData;
-    };
+    QWORD va;
+    VMM_HEAP_TP tp;
+    BOOL f32;
+    DWORD iHeap;
+    DWORD dwHeapNum;
 } VMM_MAP_HEAPENTRY, *PVMM_MAP_HEAPENTRY;
+
+typedef enum tdVMM_HEAPALLOC_TP {
+    VMM_HEAPALLOC_TP_NA         = 0,
+    VMM_HEAPALLOC_TP_NT_HEAP    = 1,
+    VMM_HEAPALLOC_TP_NT_LFH     = 2,
+    VMM_HEAPALLOC_TP_NT_LARGE   = 3,
+    VMM_HEAPALLOC_TP_NT_NA      = 4,
+    VMM_HEAPALLOC_TP_SEG_VS     = 5,
+    VMM_HEAPALLOC_TP_SEG_LFH    = 6,
+    VMM_HEAPALLOC_TP_SEG_LARGE  = 7,
+    VMM_HEAPALLOC_TP_SEG_NA     = 8,
+} VMM_HEAPALLOC_TP, *PVMM_HEAPALLOC_TP;
+
+static LPCSTR VMM_HEAPALLOC_TP_STR[] = {
+    "NA",
+    "Nt",
+    "NtLfh",
+    "NtLarge",
+    "NtNA",
+    "SegVs",
+    "SegLfh",
+    "SegLarge",
+    "SegNA",
+};
+
+typedef struct tdVMM_MAP_HEAPALLOCENTRY {
+    QWORD va;
+    DWORD cb;
+    VMM_HEAPALLOC_TP tp;
+} VMM_MAP_HEAPALLOCENTRY, *PVMM_MAP_HEAPALLOCENTRY;
 
 typedef struct tdVMM_MAP_THREADENTRY {
     DWORD dwTID;
@@ -684,9 +762,19 @@ typedef struct tdVMMOB_MAP_IAT {
 
 typedef struct tdVMMOB_MAP_HEAP {
     OB ObHdr;
-    DWORD cMap;                      // # map entries.
-    VMM_MAP_HEAPENTRY pMap[];        // map entries.
+    PVMM_MAP_HEAP_SEGMENTENTRY pSegments;   // heap segment entries.
+    DWORD cSegments;                        // # heap segment entries.
+    DWORD cMap;                             // # map entries.
+    VMM_MAP_HEAPENTRY pMap[];               // map entries.
 } VMMOB_MAP_HEAP, *PVMMOB_MAP_HEAP;
+
+typedef struct tdVMMOB_MAP_HEAPALLOC {
+    OB ObHdr;
+    PVMMOB_MAP_HEAP pHeapMap;
+    PVMM_MAP_HEAPENTRY pHeapEntry;
+    DWORD cMap;                     // # map entries.
+    VMM_MAP_HEAPALLOCENTRY pMap[];  // map entries.
+} VMMOB_MAP_HEAPALLOC, *PVMMOB_MAP_HEAPALLOC;
 
 typedef struct tdVMMOB_MAP_THREAD {
     OB ObHdr;
@@ -773,6 +861,28 @@ typedef struct tdVMMOB_MAP_EVIL {
 // ----------------------------------------------------------------------------
 // VMM process object/struct related definitions below:
 // ----------------------------------------------------------------------------
+
+typedef enum tdVMM_PROCESS_INTEGRITY_LEVEL {
+    VMM_PROCESS_INTEGRITY_LEVEL_UNKNOWN     = 0,
+    VMM_PROCESS_INTEGRITY_LEVEL_UNTRUSTED   = 1,
+    VMM_PROCESS_INTEGRITY_LEVEL_LOW         = 2,
+    VMM_PROCESS_INTEGRITY_LEVEL_MEDIUM      = 3,
+    VMM_PROCESS_INTEGRITY_LEVEL_MEDIUMPLUS  = 4,
+    VMM_PROCESS_INTEGRITY_LEVEL_HIGH        = 5,
+    VMM_PROCESS_INTEGRITY_LEVEL_SYSTEM      = 6,
+    VMM_PROCESS_INTEGRITY_LEVEL_PROTECTED   = 7,
+} VMM_PROCESS_INTEGRITY_LEVEL;
+
+static LPCSTR VMM_PROCESS_INTEGRITY_LEVEL_STR[] = {
+    "---",
+    "Untrusted",
+    "Low",
+    "Medium",
+    "MediumPlus",
+    "High",
+    "System",
+    "Protected"
+};
 
 typedef struct tdVMMWIN_USER_PROCESS_PARAMETERS {
     BOOL fProcessed;
@@ -866,16 +976,19 @@ typedef struct tdVMM_PROCESS {
         } EPROCESS;
         struct {
             BOOL fInitialized;
-            BOOL fSID;
             DWORD dwHashSID;
             DWORD dwSessionId;
+            DWORD dwUserAndGroupCount;
+            QWORD vaUserAndGroups;
             QWORD va;
             QWORD qwLUID;
             LPSTR szSID;
+            BOOL fSidUserValid;
             union {
                 SID SID;
-                BYTE pbSID[SECURITY_MAX_SID_SIZE];
-            };
+                BYTE pb[SECURITY_MAX_SID_SIZE];
+            } SidUser;
+            VMM_PROCESS_INTEGRITY_LEVEL IntegrityLevel;
         } TOKEN;
     } win;
     struct {
@@ -982,6 +1095,8 @@ typedef struct tdVmmConfig {
     BOOL fVerboseExtraTlp;
     BOOL fDisableBackgroundRefresh;
     BOOL fDisableSymbolServerOnStartup;
+    BOOL fDisableSymbols;
+    BOOL fDisableInfoDB;
     BOOL fDisablePython;
     BOOL fWaitInitialize;
     BOOL fUserInteract;
@@ -1046,9 +1161,12 @@ typedef struct tdVMM_OFFSET_EPROCESS {
         WORD CreateTime;
         WORD ExitTime;
         WORD Token;
+        WORD TOKEN_cb;
         WORD TOKEN_TokenId;
         WORD TOKEN_SessionId;
         WORD TOKEN_UserAndGroups;
+        WORD TOKEN_UserAndGroupCount;
+        WORD TOKEN_IntegrityLevelIndex;
         WORD KernelTime;
         WORD UserTime;
     } opt;
@@ -1137,10 +1255,64 @@ typedef struct tdVMM_OFFSET_FILE {
     } _SUBSECTION;
 } VMM_OFFSET_FILE, *PVMM_OFFSET_FILE;
 
+typedef struct tdVMM_OFFSET_HEAP {
+    BOOL fValid;
+    struct {
+        struct {
+            WORD VirtualAllocdBlocks;
+            WORD Encoding;
+            WORD FrontEndHeap;
+            WORD FrontEndHeapType;
+        } HEAP;
+        struct {
+            WORD FirstEntry;
+            WORD LastValidEntry;
+        } HEAP_SEGMENT;
+        struct {
+            WORD Signature;
+            WORD EncodedOffsets;
+            WORD BusyBitmap;
+            WORD BitmapData;
+        } HEAP_USERDATA_HEADER;
+    } nt;
+    struct {
+        struct {
+            WORD cb;
+            WORD SegContexts;
+            WORD LargeAllocMetadata;
+            WORD LargeReservedPages;
+        } SEGMENT_HEAP;
+        struct {
+            WORD cb;
+            WORD UnitShift;
+            WORD FirstDescriptorIndex;
+            WORD SegmentListHead;
+        } HEAP_SEG_CONTEXT;
+        struct {
+            WORD cb;
+        } HEAP_PAGE_SEGMENT;
+        struct {
+            WORD cb;
+            WORD TreeSignature;
+            WORD RangeFlags;
+            WORD UnitSize;
+        } HEAP_PAGE_RANGE_DESCRIPTOR;
+        struct {
+            WORD BlockOffsets;
+            WORD BlockBitmap;
+        } HEAP_LFH_SUBSEGMENT;
+        struct {
+            WORD cb;
+        } HEAP_VS_CHUNK_HEADER;
+    } seg;
+} VMM_OFFSET_HEAP, *PVMM_OFFSET_HEAP;
+
 typedef struct tdVMM_OFFSET {
     VMM_OFFSET_EPROCESS EPROCESS;
     VMM_OFFSET_ETHREAD ETHREAD;
     VMM_OFFSET_FILE FILE;
+    VMM_OFFSET_HEAP HEAP32;
+    VMM_OFFSET_HEAP HEAP64;
     struct { WORD cb; } _OBJECT_HEADER_CREATOR_INFO;
     struct { WORD cb; } _OBJECT_HEADER_NAME_INFO;
     struct { WORD cb; } _OBJECT_HEADER_HANDLE_INFO;
@@ -1277,6 +1449,7 @@ typedef struct tdVMM_CONTEXT {
     POB_CONTAINER pObCCachePrefetchRegistry;
     POB_CACHEMAP pObCacheMapEAT;
     POB_CACHEMAP pObCacheMapIAT;
+    POB_CACHEMAP pObCacheMapHeapAlloc;
     POB_CACHEMAP pObCacheMapWinObjDisplay;
     // page caches
     struct {
@@ -2003,6 +2176,7 @@ BOOL VmmMap_GetVad(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_VAD *ppObVadMap,
 * -- va
 * -- return = PTR to VADENTRY or NULL on fail. Must not be used out of pVadMap scope.
 */
+_Success_(return != NULL)
 PVMM_MAP_VADENTRY VmmMap_GetVadEntry(_In_opt_ PVMMOB_MAP_VAD pVadMap, _In_ QWORD va);
 
 /*
@@ -2100,6 +2274,32 @@ BOOL VmmMap_GetIAT(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pModule
 */
 _Success_(return)
 BOOL VmmMap_GetHeap(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_HEAP *ppObHeapMap);
+
+/*
+* Retrieve a single PVMM_MAP_HEAPENTRY for a given HeapMap and heap virtual address.
+* -- pHeapMap
+* -- vaHeap = virtual address of heap OR heap id.
+* -- return = PTR to VMM_MAP_HEAPENTRY or NULL on fail. Must not be used out of pHeapMap scope.
+*/
+PVMM_MAP_HEAPENTRY VmmMap_GetHeapEntry(_In_ PVMMOB_MAP_HEAP pHeapMap, _In_ QWORD vaHeap);
+
+/*
+* Retrieve the heap alloc map. (memory allocations in the specified heap).
+* CALLER DECREF: ppObHeapAllocMap
+* -- pProcess
+* -- ppObHeapAllocMap
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetHeapAlloc(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaHeap, _Out_ PVMMOB_MAP_HEAPALLOC *ppObHeapAllocMap);
+
+/*
+* Retrieve a single PVMM_MAP_HEAPALLOCENTRY for a given HeapAllocMap and a memory allocation address.
+* -- pHeapAllocMap
+* -- vaAlloc
+* -- return = PTR to PVMM_MAP_HEAPALLOCENTRY or NULL on fail. Must not be used out of pHeapAllocMap scope.
+*/
+PVMM_MAP_HEAPALLOCENTRY VmmMap_GetHeapAllocEntry(_In_ PVMMOB_MAP_HEAPALLOC pHeapAllocMap, _In_ QWORD vaAlloc);
 
 /*
 * Retrieve the thread map.

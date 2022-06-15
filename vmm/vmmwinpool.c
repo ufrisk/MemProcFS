@@ -334,7 +334,7 @@ VOID VmmWinPool_AllPool_PushItem(
 * -- return
 */
 _Success_(return != NULL)
-PVMMOB_MAP_POOL VmmWinPool_AllPool_CreateMap(_In_ PVMMOB_MAP_POOL pPoolBig, _In_reads_(cStore) PVMMWINPOOL_CTX_POOLSTORE * ppStore, _In_ DWORD cStore)
+PVMMOB_MAP_POOL VmmWinPool_AllPool_CreateMap(_In_ PVMMOB_MAP_POOL pPoolBig, _In_reads_(cStore) PVMMWINPOOL_CTX_POOLSTORE *ppStore, _In_ DWORD cStore)
 {
     PVMMWINPOOL_CTX_POOLSTORE pStore;
     PVMMOB_MAP_POOL pObPool = NULL;
@@ -550,7 +550,7 @@ BOOL VmmWinPool_AllPool1903_Offsets(_In_ PVMM_PROCESS pSystemProcess, _Out_ PVMM
         PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_EX_POOL_HEAP_MANAGER_STATE", "NumberOfPools", &po->_EX_POOL_HEAP_MANAGER_STATE.oNumberOfPools) &&
         PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_EX_POOL_HEAP_MANAGER_STATE", "PoolNode", &po->_EX_POOL_HEAP_MANAGER_STATE.oPoolNode) &&
         PDB_GetTypeChildOffset(PDB_HANDLE_KERNEL, "_EX_POOL_HEAP_MANAGER_STATE", "SpecialHeaps", &po->_EX_POOL_HEAP_MANAGER_STATE.oSpecialHeaps) &&
-        PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_EX_HEAP_POOL_NODE", &po->_EX_HEAP_POOL_NODE.cb) && (po->_EX_HEAP_POOL_NODE.cb < 0x10000) &&
+        PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_EX_HEAP_POOL_NODE", &po->_EX_HEAP_POOL_NODE.cb) && (po->_EX_HEAP_POOL_NODE.cb < 0x4000) &&
         PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_SEGMENT_HEAP", &po->_SEGMENT_HEAP.cb) &&
         PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SEGMENT_HEAP", "SegContexts", &po->_SEGMENT_HEAP.oSegContexts) &&
         PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_HEAP_SEG_CONTEXT", &po->_HEAP_SEG_CONTEXT.cb) &&

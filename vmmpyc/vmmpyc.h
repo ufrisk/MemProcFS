@@ -214,6 +214,7 @@ typedef struct tdPyObj_VmmPycPlugin {
 } PyObj_VmmPycPlugin;
 
 int PyDict_SetItemDWORD_DECREF(PyObject *dp, DWORD key, PyObject *item);
+int PyDict_SetItemQWORD_DECREF(PyObject *dp, QWORD key, PyObject *item);
 int PyDict_SetItemString_DECREF(PyObject *dp, const char *key, PyObject *item);
 int PyDict_SetItemUnicode_DECREF(PyObject *dp, PyObject *key_nodecref, PyObject *item);
 int PyList_Append_DECREF(PyObject *dp, PyObject *item);
@@ -249,6 +250,7 @@ _Success_(return) BOOL VmmPycPdb_InitializeType(PyObject *pModule);
 _Success_(return) BOOL VmmPycVfs_InitializeType(PyObject *pModule);
 _Success_(return) BOOL VmmPycMaps_InitializeType(PyObject *pModule);
 _Success_(return) BOOL VmmPycKernel_InitializeType(PyObject *pModule);
+_Success_(return) BOOL VmmPycKernelMaps_InitializeType(PyObject *pModule);
 _Success_(return) BOOL VmmPycModule_InitializeType(PyObject *pModule);
 _Success_(return) BOOL VmmPycModuleMaps_InitializeType(PyObject *pModule);
 _Success_(return) BOOL VmmPycProcess_InitializeType(PyObject *pModule);

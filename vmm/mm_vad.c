@@ -974,12 +974,12 @@ VOID MmVad_ExtendedInfoFetch(_In_ PVMM_PROCESS pSystemProcess, _In_ PVMM_PROCESS
     }
     // [ heap map parse ]
     if(VmmMap_GetHeap(pProcess, &pObHeapMap)) {
-        for(i = 0; i < pObHeapMap->cMap; i++) {
-            if((peVad = VmmMap_GetVadEntry(pVadMap, pObHeapMap->pMap[i].vaHeapSegment))) {
+        for(i = 0; i < pObHeapMap->cSegments; i++) {
+            if((peVad = VmmMap_GetVadEntry(pVadMap, pObHeapMap->pSegments[i].va))) {
                 peVad->fHeap = 1;
-                peVad->HeapNum = pObHeapMap->pMap[i].HeapId;
+                peVad->HeapNum = pObHeapMap->pSegments[i].iHeap;
                 if(peVad->cbuText < 2) {
-                    ObStrMap_PushUU_snprintf_s(psmOb, &peVad->uszText, &peVad->cbuText, "HEAP-%02X", peVad->HeapNum);
+                    ObStrMap_PushUU_snprintf_s(psmOb, &peVad->uszText, &peVad->cbuText, "HEAP-%02X [%s]", peVad->HeapNum, VMM_HEAP_SEGMENT_TP_STR[pObHeapMap->pSegments[i].tp]);
                 }
             }
         }

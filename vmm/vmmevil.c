@@ -356,8 +356,8 @@ VOID VmmEvil_ProcessScan_BadUser(_In_ PVMM_PROCESS pProcess, _Inout_ POB_MAP pmE
             return;
     }
     pObProcessWithToken = pProcess->win.TOKEN.fInitialized ? Ob_INCREF(pProcess) : VmmProcessGetEx(NULL, pProcess->dwPID, VMM_FLAG_PROCESS_TOKEN);
-    if(pObProcessWithToken && pObProcessWithToken->win.TOKEN.fSID) {
-        if(VmmWinUser_GetName(&pObProcessWithToken->win.TOKEN.SID, uszUserName, 17, &fWellKnown)) {
+    if(pObProcessWithToken && pObProcessWithToken->win.TOKEN.fSidUserValid) {
+        if(VmmWinUser_GetName(&pObProcessWithToken->win.TOKEN.SidUser.SID, uszUserName, 17, &fWellKnown)) {
             if((fRequireWellKnown && !fWellKnown) || (!fRequireWellKnown && fWellKnown)) {
                 VmmEvil_AddEvil_NoVadReq(pmEvil, pProcess, VMM_EVIL_TP_PROC_USER, 0, 0, 0, FALSE);
             }

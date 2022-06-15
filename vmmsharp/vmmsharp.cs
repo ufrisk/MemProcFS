@@ -14,7 +14,7 @@ using System.Collections.Generic;
  *  (c) Ulf Frisk, 2020-2022
  *  Author: Ulf Frisk, pcileech@frizk.net
  *  
- *  Version 4.8
+ *  Version 4.9
  *  
  */
 
@@ -662,6 +662,7 @@ namespace vmmsharp
             public uint dwSessionId;
             public ulong qwLUID;
             public string szSID;
+            public uint IntegrityLevel;
         }
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_PidGetFromName")]
@@ -717,6 +718,7 @@ namespace vmmsharp
                 e.dwSessionId = n.dwSessionId;
                 e.qwLUID = n.qwLUID;
                 e.szSID = n.szSID;
+                e.IntegrityLevel = n.IntegrityLevel;
                 return e;
             }
         }
@@ -1002,11 +1004,31 @@ namespace vmmsharp
 
         public struct MAP_HEAPENTRY
         {
-            public ulong vaHeapSegment;
-            public uint cPages;
-            public uint cPagesUnCommitted;
-            public uint HeapId;
-            public bool fPrimary;
+            public ulong va;
+            public uint tpHeap;
+            public bool f32;
+            public uint iHeapNum;
+        }
+
+        public struct MAP_HEAPSEGMENTENTRY
+        {
+            public ulong va;
+            public uint cb;
+            public uint tpHeapSegment;
+            public uint iHeapNum;
+        }
+
+        public struct MAP_HEAP
+        {
+            public MAP_HEAPENTRY[] heaps;
+            public MAP_HEAPSEGMENTENTRY[] segments;
+        }
+
+        public struct MAP_HEAPALLOCENTRY
+        {
+            public ulong va;
+            public uint cb;
+            public uint tp;
         }
 
         public struct MAP_THREADENTRY
@@ -1079,7 +1101,18 @@ namespace vmmsharp
             public ulong pa;
             public ulong cb;
         }
-        
+
+        public struct MAP_POOLENTRY
+        {
+            public ulong va;
+            public uint cb;
+            public uint fAlloc;
+            public uint tpPool;
+            public uint tpSS;
+            public uint dwTag;
+            public string sTag;
+        }
+
         public struct MAP_USERENTRY
         {
             public string szSID;
@@ -1436,34 +1469,62 @@ namespace vmmsharp
             }
         }
 
-        public static unsafe MAP_HEAPENTRY[] Map_GetHeap(uint pid)
+        public static unsafe MAP_HEAP Map_GetHeap(uint pid)
         {
-            bool result;
-            uint cb = 0;
+            IntPtr pHeapMap = IntPtr.Zero;
             int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_HEAP));
             int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_HEAPENTRY));
-            result = vmmi.VMMDLL_Map_GetHeap(pid, null, ref cb);
-            if (!result || (cb == 0)) { return new MAP_HEAPENTRY[0]; }
-            fixed (byte* pb = new byte[cb])
+            int cbSEGENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_HEAPSEGMENTENTRY));
+            MAP_HEAP Heap;
+            Heap.heaps = new MAP_HEAPENTRY[0];
+            Heap.segments = new MAP_HEAPSEGMENTENTRY[0];
+            if(!vmmi.VMMDLL_Map_GetHeapEx(pid, out pHeapMap)) { goto fail; }
+            vmmi.VMMDLL_MAP_HEAP nM = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_HEAP>(pHeapMap);
+            if (nM.dwVersion != vmmi.VMMDLL_MAP_HEAP_VERSION) { goto fail; }
+            Heap.heaps = new MAP_HEAPENTRY[nM.cMap];
+            for (int i = 0; i < nM.cMap; i++)
             {
-                result = vmmi.VMMDLL_Map_GetHeap(pid, pb, ref cb);
-                if (!result) { return new MAP_HEAPENTRY[0]; }
-                vmmi.VMMDLL_MAP_HEAP pm = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_HEAP>((System.IntPtr)pb);
-                if (pm.dwVersion != vmmi.VMMDLL_MAP_HEAP_VERSION) { return new MAP_HEAPENTRY[0]; }
-                MAP_HEAPENTRY[] m = new MAP_HEAPENTRY[pm.cMap];
-                for (int i = 0; i < pm.cMap; i++)
-                {
-                    vmmi.VMMDLL_MAP_HEAPENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_HEAPENTRY>((System.IntPtr)(pb + cbMAP + i * cbENTRY));
-                    MAP_HEAPENTRY e;
-                    e.vaHeapSegment = n.vaHeapSegment;
-                    e.cPages = n.cPages;
-                    e.cPagesUnCommitted = n.cPagesUnCommitted_HeapId_fPrimary & 0x00ffffff;
-                    e.HeapId = (n.cPagesUnCommitted_HeapId_fPrimary >> 24) & 0x7f;
-                    e.fPrimary = (n.cPagesUnCommitted_HeapId_fPrimary >> 31) == 1;
-                    m[i] = e;
-                }
-                return m;
+                vmmi.VMMDLL_MAP_HEAPENTRY nH = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_HEAPENTRY>((System.IntPtr)(pHeapMap.ToInt64() + cbMAP + i * cbENTRY));
+                Heap.heaps[i].va = nH.va;
+                Heap.heaps[i].f32 = nH.f32;
+                Heap.heaps[i].tpHeap = nH.tp;
+                Heap.heaps[i].iHeapNum = nH.dwHeapNum;
             }
+            Heap.segments = new MAP_HEAPSEGMENTENTRY[nM.cSegments];
+            for (int i = 0; i < nM.cMap; i++)
+            {
+                vmmi.VMMDLL_MAP_HEAPSEGMENTENTRY nH = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_HEAPSEGMENTENTRY>((System.IntPtr)(nM.pSegments.ToInt64() + i * cbSEGENTRY));
+                Heap.segments[i].va = nH.va;
+                Heap.segments[i].cb = nH.cb;
+                Heap.segments[i].tpHeapSegment = nH.tp;
+                Heap.segments[i].iHeapNum = nH.iHeap;
+            }
+        fail:
+            vmmi.VMMDLL_MemFree((byte*)pHeapMap.ToPointer());
+            return Heap;
+        }
+
+        public static unsafe MAP_HEAPALLOCENTRY[] Map_GetHeapAlloc(uint pid, ulong vaHeapOrHeapNum)
+        {
+            IntPtr pHeapAllocMap = IntPtr.Zero;
+            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_HEAPALLOC));
+            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_HEAPALLOCENTRY));
+            if (!vmmi.VMMDLL_Map_GetHeapAllocEx(pid, vaHeapOrHeapNum, out pHeapAllocMap)) { return new MAP_HEAPALLOCENTRY[0]; }
+            vmmi.VMMDLL_MAP_HEAPALLOC nM = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_HEAPALLOC>(pHeapAllocMap);
+            if (nM.dwVersion != vmmi.VMMDLL_MAP_HEAPALLOC_VERSION) {
+                vmmi.VMMDLL_MemFree((byte*)pHeapAllocMap.ToPointer());
+                return new MAP_HEAPALLOCENTRY[0];
+            }
+            MAP_HEAPALLOCENTRY[] m = new MAP_HEAPALLOCENTRY[nM.cMap];
+            for (int i = 0; i < nM.cMap; i++)
+            {
+                vmmi.VMMDLL_MAP_HEAPALLOCENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_HEAPALLOCENTRY>((System.IntPtr)(pHeapAllocMap.ToInt64() + cbMAP + i * cbENTRY));
+                m[i].va = n.va;
+                m[i].cb = n.cb;
+                m[i].tp = n.tp;
+            }
+            vmmi.VMMDLL_MemFree((byte*)pHeapAllocMap.ToPointer());
+            return m;
         }
 
         public static unsafe MAP_THREADENTRY[] Map_GetThread(uint pid)
@@ -1618,6 +1679,39 @@ namespace vmmsharp
                 return m;
             }
         }
+
+
+        public static unsafe MAP_POOLENTRY[] Map_GetPool()
+        {
+            byte[] tag = { 0, 0, 0, 0};
+            IntPtr pN = IntPtr.Zero;
+            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_POOL));
+            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_POOLENTRY));
+            if (!vmmi.VMMDLL_Map_GetPoolEx(out pN, 0)) { return new MAP_POOLENTRY[0]; }
+            vmmi.VMMDLL_MAP_POOL nM = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_POOL>(pN);
+            if (nM.dwVersion != vmmi.VMMDLL_MAP_POOL_VERSION) {
+                vmmi.VMMDLL_MemFree((byte*)pN.ToPointer());
+                return new MAP_POOLENTRY[0];
+            }
+            MAP_POOLENTRY[] eM = new MAP_POOLENTRY[nM.cMap];
+            for (int i = 0; i < nM.cMap; i++)
+            {
+                vmmi.VMMDLL_MAP_POOLENTRY nE = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_POOLENTRY>((System.IntPtr)(pN.ToInt64() + cbMAP + i * cbENTRY));
+                eM[i].va = nE.va;
+                eM[i].cb = nE.cb;
+                eM[i].tpPool = nE.tpPool;
+                eM[i].tpSS = nE.tpSS;
+                eM[i].dwTag = nE.dwTag;
+                tag[0] = (byte)((nE.dwTag >> 00) & 0xff);
+                tag[1] = (byte)((nE.dwTag >> 08) & 0xff);
+                tag[2] = (byte)((nE.dwTag >> 16) & 0xff);
+                tag[3] = (byte)((nE.dwTag >> 24) & 0xff);
+                eM[i].sTag = System.Text.Encoding.ASCII.GetString(tag);
+            }
+            vmmi.VMMDLL_MemFree((byte*)pN.ToPointer());
+            return eM;
+        }
+
 
         public static unsafe MAP_USERENTRY[] Map_GetUsers()
         {
@@ -1947,11 +2041,13 @@ namespace vmmsharp
         internal static uint VMMDLL_MAP_UNLOADEDMODULE_VERSION = 2;
         internal static uint VMMDLL_MAP_EAT_VERSION =        2;
         internal static uint VMMDLL_MAP_IAT_VERSION =        2;
-        internal static uint VMMDLL_MAP_HEAP_VERSION =       2;
+        internal static uint VMMDLL_MAP_HEAP_VERSION =       4;
+        internal static uint VMMDLL_MAP_HEAPALLOC_VERSION =  1;
         internal static uint VMMDLL_MAP_THREAD_VERSION =     4;
         internal static uint VMMDLL_MAP_HANDLE_VERSION =     2;
         internal static uint VMMDLL_MAP_NET_VERSION =        3;
         internal static uint VMMDLL_MAP_PHYSMEM_VERSION =    2;
+        internal static uint VMMDLL_MAP_POOL_VERSION =       2;
         internal static uint VMMDLL_MAP_USER_VERSION =       2;
         internal static uint VMMDLL_MAP_PFN_VERSION =        1;
         internal static uint VMMDLL_MAP_SERVICE_VERSION =    3;
@@ -2090,7 +2186,7 @@ namespace vmmsharp
         internal static extern unsafe bool VMMDLL_PidList(byte* pPIDs, ref ulong pcPIDs);
 
         internal static ulong VMMDLL_PROCESS_INFORMATION_MAGIC =        0xc0ffee663df9301e;
-        internal static ushort VMMDLL_PROCESS_INFORMATION_VERSION =     6;
+        internal static ushort VMMDLL_PROCESS_INFORMATION_VERSION =     7;
 
         [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential, CharSet = CharSet.Ansi)]
         internal struct VMMDLL_PROCESS_INFORMATION
@@ -2116,6 +2212,7 @@ namespace vmmsharp
             internal uint dwSessionId;
             internal ulong qwLUID;
             [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] internal string szSID;
+            internal uint IntegrityLevel;
         }
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_ProcessGetInformation")]
@@ -2453,24 +2550,64 @@ namespace vmmsharp
         [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
         internal struct VMMDLL_MAP_HEAPENTRY
         {
-            internal ulong vaHeapSegment;
-            internal uint cPages;
-            internal uint cPagesUnCommitted_HeapId_fPrimary;
+            internal ulong va;
+            internal uint tp;
+            internal bool f32;
+            internal uint iHeap;
+            internal uint dwHeapNum;
+        }
+
+        [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        internal struct VMMDLL_MAP_HEAPSEGMENTENTRY
+        {
+            internal ulong va;
+            internal uint cb;
+            internal ushort tp;
+            internal ushort iHeap;
         }
 
         [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
         internal struct VMMDLL_MAP_HEAP
         {
             internal uint dwVersion;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)] internal uint[] _Reserved1;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 7)] internal uint[] _Reserved1;
+            internal IntPtr pSegments;
+            internal uint cSegments;
             internal uint cMap;
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetHeap")]
-        internal static extern unsafe bool VMMDLL_Map_GetHeap(
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetHeapEx")]
+        internal static extern unsafe bool VMMDLL_Map_GetHeapEx(
             uint dwPid,
-            byte* pHeapMap,
-            ref uint pcbHeapMap);
+            out IntPtr ppHeapMap);
+
+
+
+        // VMMDLL_Map_GetHeapAlloc
+
+        [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        internal struct VMMDLL_MAP_HEAPALLOCENTRY
+        {
+            internal ulong va;
+            internal uint cb;
+            internal uint tp;
+        }
+
+        [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        internal struct VMMDLL_MAP_HEAPALLOC
+        {
+            internal uint dwVersion;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 7)] internal uint[] _Reserved1;
+            internal IntPtr _Reserved20;
+            internal IntPtr _Reserved21;
+            internal uint cMap;
+        }
+
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetHeapAllocEx")]
+        internal static extern unsafe bool VMMDLL_Map_GetHeapAllocEx(
+            uint dwPid,
+            ulong qwHeapNumOrAddress,
+            out IntPtr ppHeapAllocMap);
 
 
 
@@ -2630,6 +2767,40 @@ namespace vmmsharp
         internal static extern unsafe bool VMMDLL_Map_GetPhysMem(
             byte* pNetMap,
             ref uint pcbNetMap);
+
+
+
+        // VMMDLL_Map_GetPool
+
+        [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        internal struct VMMDLL_MAP_POOLENTRY
+        {
+            internal ulong va;
+            internal uint dwTag;
+            internal byte _ReservedZero;
+            internal byte fAlloc;
+            internal byte tpPool;
+            internal byte tpSS;
+            internal uint cb;
+            internal uint _Filler;
+        }
+
+        [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        internal struct VMMDLL_MAP_POOL
+        {
+            internal uint dwVersion;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 6)] internal uint[] _Reserved1;
+            internal uint cbTotal;
+            internal IntPtr _piTag2Map;
+            internal IntPtr _pTag;
+            internal uint cTag;
+            internal uint cMap;
+        }
+
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetPoolEx")]
+        internal static extern unsafe bool VMMDLL_Map_GetPoolEx(
+            out IntPtr ppHeapAllocMap,
+            uint flags);
 
 
 

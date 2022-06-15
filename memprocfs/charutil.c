@@ -828,10 +828,11 @@ DWORD CharUtil_FixFsName(_Out_writes_(cbuDst) LPSTR uszOut, _In_ DWORD cbuDst, _
 * -- fUpper
 * -- return
 */
-QWORD CharUtil_Hash64U(_In_ LPCSTR usz, _In_ BOOL fUpper)
+QWORD CharUtil_Hash64U(_In_opt_ LPCSTR usz, _In_ BOOL fUpper)
 {
     CHAR c;
     QWORD i = 0, qwHash = 0;
+    if(!usz) { return 0; }
     if(fUpper) {
         while(TRUE) {
             c = usz[i++];
@@ -850,11 +851,12 @@ QWORD CharUtil_Hash64U(_In_ LPCSTR usz, _In_ BOOL fUpper)
     }
 }
 
-QWORD CharUtil_Hash64A(_In_ LPCSTR sz, _In_ BOOL fUpper)
+QWORD CharUtil_Hash64A(_In_opt_ LPCSTR sz, _In_ BOOL fUpper)
 {
     LPSTR usz;
     QWORD qwHash = 0;
     BYTE pbBuffer[MAX_PATH];
+    if(!sz) { return 0; }
     if(CharUtil_IsAnsiA(sz)) {
         return CharUtil_Hash64U(sz, fUpper);
     }
@@ -865,13 +867,14 @@ QWORD CharUtil_Hash64A(_In_ LPCSTR sz, _In_ BOOL fUpper)
     return qwHash;
 }
 
-QWORD CharUtil_Hash64W(_In_ LPCWSTR wsz, _In_ BOOL fUpper)
+QWORD CharUtil_Hash64W(_In_opt_ LPCWSTR wsz, _In_ BOOL fUpper)
 {
     CHAR c;
     LPSTR usz;
     QWORD i = 0, qwHash = 0;
     BYTE pbBuffer[MAX_PATH];
     PUSHORT pus = (PUSHORT)wsz;
+    if(!wsz) { return 0; }
     if(CharUtil_IsAnsiW(wsz)) {
         while(TRUE) {
             c = (CHAR)pus[i++];
@@ -889,10 +892,11 @@ QWORD CharUtil_Hash64W(_In_ LPCWSTR wsz, _In_ BOOL fUpper)
     return qwHash;
 }
 
-DWORD CharUtil_Hash32U(_In_ LPCSTR usz, _In_ BOOL fUpper)
+DWORD CharUtil_Hash32U(_In_opt_ LPCSTR usz, _In_ BOOL fUpper)
 {
     CHAR c;
     DWORD i = 0, dwHash = 0;
+    if(!usz) { return 0; }
     if(fUpper) {
         while(TRUE) {
             c = usz[i++];
@@ -911,11 +915,12 @@ DWORD CharUtil_Hash32U(_In_ LPCSTR usz, _In_ BOOL fUpper)
     }
 }
 
-DWORD CharUtil_Hash32A(_In_ LPCSTR sz, _In_ BOOL fUpper)
+DWORD CharUtil_Hash32A(_In_opt_ LPCSTR sz, _In_ BOOL fUpper)
 {
     LPSTR usz;
     DWORD dwHash = 0;
     BYTE pbBuffer[MAX_PATH];
+    if(!sz) { return 0; }
     if(CharUtil_IsAnsiA(sz)) {
         return CharUtil_Hash32U(sz, fUpper);
     }
@@ -926,13 +931,14 @@ DWORD CharUtil_Hash32A(_In_ LPCSTR sz, _In_ BOOL fUpper)
     return dwHash;
 }
 
-DWORD CharUtil_Hash32W(_In_ LPCWSTR wsz, _In_ BOOL fUpper)
+DWORD CharUtil_Hash32W(_In_opt_ LPCWSTR wsz, _In_ BOOL fUpper)
 {
     CHAR c;
     LPSTR usz;
     DWORD i = 0, dwHash = 0;
     BYTE pbBuffer[MAX_PATH];
     PUSHORT pus = (PUSHORT)wsz;
+    if(!wsz) { return 0; }
     if(CharUtil_IsAnsiW(wsz)) {
         while(TRUE) {
             c = (CHAR)pus[i++];

@@ -1,4 +1,4 @@
-// m_files_modules.c : implementation of the 'files/modules' built-in module.
+// m_file_modules.c : implementation of the 'files/modules' built-in module.
 //
 // (c) Ulf Frisk, 2019-2022
 // Author: Ulf Frisk, pcileech@frizk.net

@@ -243,6 +243,7 @@
     <ClInclude Include="vmm.h" />
     <ClInclude Include="vmmdll.h" />
     <ClInclude Include="vmmevil.h" />
+    <ClInclude Include="vmmheap.h" />
     <ClInclude Include="vmmlog.h" />
     <ClInclude Include="vmmnet.h" />
     <ClInclude Include="vmmproc.h" />
@@ -279,6 +280,7 @@
     <ClCompile Include="m_misc_web.c" />
     <ClCompile Include="m_phys2virt.c" />
     <ClCompile Include="m_proc_handle.c" />
+    <ClCompile Include="m_proc_heap.c" />
     <ClCompile Include="m_proc_ldrmodules.c" />
     <ClCompile Include="m_proc_memmap.c" />
     <ClCompile Include="m_proc_minidump.c" />
@@ -320,6 +322,7 @@
     <ClCompile Include="vmmdll.c" />
     <ClCompile Include="vmmdll_scatter.c" />
     <ClCompile Include="vmmevil.c" />
+    <ClCompile Include="vmmheap.c" />
     <ClCompile Include="vmmlog.c" />
     <ClCompile Include="vmmnet.c" />
     <ClCompile Include="vmmproc.c" />

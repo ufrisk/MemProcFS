@@ -80,7 +80,7 @@ class vmm_example
         // retrieve PID of explorer.exe (it's assumed it's started, otherwise example will fail)
         uint dwExplorerPID;
         vmm.PidGetFromName("explorer.exe", out dwExplorerPID);
-
+        
         // get kernel path of explorer.exe
         string strKernel32KernelPath = vmm.ProcessGetInformationString(dwExplorerPID, vmm.VMMDLL_PROCESS_INFORMATION_OPT_STRING_PATH_KERNEL);
 
@@ -105,11 +105,13 @@ class vmm_example
         vmm.MAP_EATINFO EatInfo;
         vmm.MAP_EATENTRY[] mEAT = vmm.Map_GetEAT(dwExplorerPID, "kernel32.dll", out EatInfo);
         vmm.MAP_IATENTRY[] mIAT = vmm.Map_GetIAT(dwExplorerPID, "kernel32.dll");
-        vmm.MAP_HEAPENTRY[] mHeaps = vmm.Map_GetHeap(dwExplorerPID);
+        vmm.MAP_HEAP mHeap = vmm.Map_GetHeap(dwExplorerPID);
+        vmm.MAP_HEAPALLOCENTRY[] mHeapAlloc = vmm.Map_GetHeapAlloc(dwExplorerPID, 2);
         vmm.MAP_THREADENTRY[] mThreads = vmm.Map_GetThread(dwExplorerPID);
         vmm.MAP_HANDLEENTRY[] mHandles = vmm.Map_GetHandle(dwExplorerPID);
         vmm.MAP_NETENTRY[] mNetworkConnections = vmm.Map_GetNet();
         vmm.MAP_PHYSMEMENTRY[] mPhysMemRanges = vmm.Map_GetPhysMem();
+        vmm.MAP_POOLENTRY[] mPoolAllocations = vmm.Map_GetPool();
         vmm.MAP_USERENTRY[] mUsers = vmm.Map_GetUsers();
         vmm.MAP_SERVICEENTRY[] mServices = vmm.Map_GetServices();
         vmm.MAP_PFNENTRY[] mPfn = vmm.Map_GetPfn(1, 2, 1024);

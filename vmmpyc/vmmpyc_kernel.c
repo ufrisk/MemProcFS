@@ -7,6 +7,15 @@
 
 PyObject *g_pPyType_Kernel = NULL;
 
+// -> *PyLong
+static PyObject*
+VmmPycKernel_build(PyObj_Kernel *self, void *closure)
+{
+    QWORD qwBuild = 0;
+    VMMDLL_ConfigGet(VMMDLL_OPT_WIN_VERSION_BUILD, &qwBuild);
+    return PyLong_FromLongLong(qwBuild);
+}
+
 // -> *PyObj_Process
 static PyObject*
 VmmPycKernel_process(PyObj_Kernel *self, void *closure)
@@ -62,6 +71,7 @@ BOOL VmmPycKernel_InitializeType(PyObject *pModule)
         {NULL}
     };
     static PyGetSetDef PyGetSet[] = {
+        {"build", (getter)VmmPycKernel_build, (setter)NULL, "build number", NULL},
         {"process", (getter)VmmPycKernel_process, (setter)NULL, "system process", NULL},
         {NULL}
     };

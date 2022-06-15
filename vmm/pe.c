@@ -461,6 +461,7 @@ BOOL PE_GetCodeViewInfo(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase,
             LocalFree(pbDebugDirectory);
             return TRUE;
         }
+        ZeroMemory(pCodeViewInfo, sizeof(PE_CODEVIEW_INFO));
     }
 fail:
     ZeroMemory(pCodeViewInfo, sizeof(PE_CODEVIEW_INFO));

@@ -20,7 +20,7 @@
 
 #define MSYSPROC_TREE_LINE_LENGTH                   112
 #define MSYSPROC_TREE_LINE_LENGTH_VERBOSE_BASE      64
-#define MSYSPROC_TREE_LINE_LENGTH_VERBOSE_HEADER    85
+#define MSYSPROC_TREE_LINE_LENGTH_VERBOSE_HEADER    97
 
 const LPSTR szMSYSPROC_WHITELIST_WINDOWS_PATHS_AND_BINARIES[] = {
     "\\Windows\\System32\\",
@@ -57,8 +57,8 @@ VOID MSysProc_Tree_ProcessItems_GetUserName(_In_ PVMM_PROCESS pProcess, _Out_wri
 {
     BOOL f, fWellKnownAccount = FALSE;
     uszUserName[0] = 0;
-    f = pProcess->win.TOKEN.fSID &&
-        VmmWinUser_GetName(&pProcess->win.TOKEN.SID, uszUserName, 17, &fWellKnownAccount);
+    f = pProcess->win.TOKEN.fSidUserValid &&
+        VmmWinUser_GetName(&pProcess->win.TOKEN.SidUser.SID, uszUserName, 17, &fWellKnownAccount);
     *fAccountUser = f && !fWellKnownAccount;
 }
 
@@ -133,6 +133,9 @@ DWORD MSysProc_Tree_ProcessItems(_In_ PMSYSPROC_TREE_ENTRY pProcessEntry, _In_ P
         if(szTimeCRE[0] != ' ') {
             o += snprintf(pb + o, cb - o, "%63s%s -> %s\n", "", szTimeCRE, szTimeEXIT);
         }
+        if(pProcessEntry->pObProcess->win.TOKEN.IntegrityLevel) {
+            o += snprintf(pb + o, cb - o, "%63s%s\n", "", VMM_PROCESS_INTEGRITY_LEVEL_STR[pProcessEntry->pObProcess->win.TOKEN.IntegrityLevel]);
+        }
         o += snprintf(pb + o, cb - o, "\n");
     }
     pProcessEntry->iLevel = iLevel;
@@ -172,19 +175,21 @@ BOOL MSysProc_Tree(_In_ BOOL fVerbose, _Out_ PBYTE *ppb, _Out_ PDWORD pcb)
     if(!cPidList) { return FALSE; }
     if(!(pPidList = LocalAlloc(LMEM_ZEROINIT, cPidList * sizeof(MSYSPROC_TREE_ENTRY)))) { return FALSE; }
     while((iPidList < cPidList) && (pObProcess = VmmProcessGetNext(pObProcess, VMM_FLAG_PROCESS_SHOW_TERMINATED | VMM_FLAG_PROCESS_TOKEN))) {
-        pPidEntry = pPidList + iPidList++;
+        pPidEntry = pPidList + iPidList;
         pPidEntry->dwPID = pObProcess->dwPID;
         pPidEntry->dwPPID = pObProcess->dwPPID;
         pPidEntry->ftCreate = VmmProcess_GetCreateTimeOpt(pObProcess);
         pPidEntry->pObProcess = (PVMM_PROCESS)Ob_INCREF(pObProcess);    // INCREF process object and assign to array
+        iPidList++;
     }
     Ob_DECREF_NULL(&pObProcess);
+    cPidList = iPidList;
     pb = LocalAlloc(0, cb);
     if(pb) {
         // 3: iterate over top level items - processes with no parent
         qsort(pPidList, cPidList, sizeof(MSYSPROC_TREE_ENTRY), (int(*)(const void *, const void *))MSysProc_Tree_CmpSort);
         o = snprintf(pb, cb, fVerbose ?
-            "  Process                   Pid Parent   Flag User             Path / Command / Time\n------------------------------------------------------------------------------------\n" :
+            "  Process                   Pid Parent   Flag User             Path / Command / Time / Integrity\n------------------------------------------------------------------------------------------------\n" :
             "  Process                   Pid Parent   Flag User             Create Time              Exit Time              \n---------------------------------------------------------------------------------------------------------------\n");
         // 3.1 process items
         for(i = 0; i < cPidList; i++) {
@@ -225,6 +230,9 @@ VOID MSysProc_ListTree_ProcessUserParams_CallbackAction(_In_ PVMM_PROCESS pProce
     }
     if(VmmProcess_GetCreateTimeOpt(pProcess)) {
         c += MSYSPROC_TREE_LINE_LENGTH_VERBOSE_BASE + 23 + 4 + 23;
+    }
+    if(pProcess->win.TOKEN.IntegrityLevel) {
+        c += MSYSPROC_TREE_LINE_LENGTH_VERBOSE_BASE + (DWORD)strlen(VMM_PROCESS_INTEGRITY_LEVEL_STR[pProcess->win.TOKEN.IntegrityLevel]);
     }
     InterlockedAdd(pcTotalBytes, c);
 }

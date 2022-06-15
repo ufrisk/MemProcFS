@@ -19,6 +19,8 @@
 #define OB_TAG_MAP_POOL                 'Mpol'
 #define OB_TAG_MAP_THREAD               'Mthr'
 #define OB_TAG_MAP_HANDLE               'Mhnd'
+#define OB_TAG_MAP_HEAP                 'Mhp_'
+#define OB_TAG_MAP_HEAPALLOC            'MhpA'
 #define OB_TAG_MAP_OBJECT               'Mobj'
 #define OB_TAG_MAP_KDRIVER              'Mdrv'
 #define OB_TAG_MAP_PHYSMEM              'Mmem'

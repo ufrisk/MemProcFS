@@ -1,4 +1,4 @@
-// m_vfsroot.h : implementation of virtual file system root - not including
+// m_vfsroot.c : implementation of virtual file system root - not including
 //               sub-modules and the special /name/ and /pid/ folders.
 //               In practice this is the implementation of the root files:
 //               'memory.dmp' and 'memory.pmem' only.

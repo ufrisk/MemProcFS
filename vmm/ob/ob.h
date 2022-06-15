@@ -61,7 +61,7 @@ typedef struct tdOB {
     };
     DWORD _count;                           // reference count
     // external object manager functionality below: (= ok to use)
-    DWORD cbData;
+    DWORD cbData;                           // data byte count (excl. OB header)
 } OB, *POB;
 
 typedef VOID(*OB_CLEANUP_CB)(_In_ PVOID pOb);

@@ -1,4 +1,4 @@
-// m_ldrmodules.c : implementation of the ldrmodules built-in module.
+// m_proc_ldrmodules.c : implementation of the ldrmodules built-in module.
 //
 // (c) Ulf Frisk, 2018-2022
 // Author: Ulf Frisk, pcileech@frizk.net

@@ -7,7 +7,7 @@
 // (c) Ulf Frisk, 2018-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-// Header Version: 4.8
+// Header Version: 4.9
 //
 
 #include "leechcore.h"
@@ -96,8 +96,11 @@ typedef uint16_t                            WCHAR, *PWCHAR, *LPWSTR, *LPCWSTR;
 *              Page files are in constant flux - do not use if time diff
 *              between memory dump and page files are more than few minutes.
 *              Example: 'pagefile0 swapfile.sys'
-*    -symbolserverdisable = disable symbol server until user change.
+*    -disable-python = prevent the python plugin sub-system from loading.
+*    -disable-symbolserver = disable symbol server until user change.
 *              This parameter will take precedence over registry settings.
+*    -disable-symbols = disable symbol lookups from .pdb files.
+*    -disable-infodb = disable the infodb and any symbol lookups via it.
 *    -waitinitialize = Wait for initialization to complete before returning.
 *              Normal use is that some initialization is done asynchronously
 *              and may not be completed when initialization call is completed.
@@ -892,7 +895,8 @@ VOID VMMDLL_Scatter_CloseHandle(_In_opt_ _Post_ptr_invalid_ VMMDLL_SCATTER_HANDL
 #define VMMDLL_MAP_UNLOADEDMODULE_VERSION   2
 #define VMMDLL_MAP_EAT_VERSION              2
 #define VMMDLL_MAP_IAT_VERSION              2
-#define VMMDLL_MAP_HEAP_VERSION             2
+#define VMMDLL_MAP_HEAP_VERSION             4
+#define VMMDLL_MAP_HEAPALLOC_VERSION        1
 #define VMMDLL_MAP_THREAD_VERSION           4
 #define VMMDLL_MAP_HANDLE_VERSION           2
 #define VMMDLL_MAP_POOL_VERSION             2
@@ -1042,13 +1046,56 @@ typedef struct tdVMMDLL_MAP_IATENTRY {
     } Thunk;
 } VMMDLL_MAP_IATENTRY, *PVMMDLL_MAP_IATENTRY;
 
+typedef enum tdVMMDLL_HEAP_TP {
+    VMMDLL_HEAP_TP_NA   = 0,
+    VMMDLL_HEAP_TP_NT   = 1,
+    VMMDLL_HEAP_TP_SEG  = 2,
+} VMMDLL_HEAP_TP, *PVMMDLL_HEAP_TP;
+
+typedef enum tdVMMDLL_HEAP_SEGMENT_TP {
+    VMMDLL_HEAP_SEGMENT_TP_NA           = 0,
+    VMMDLL_HEAP_SEGMENT_TP_NT_SEGMENT   = 1,
+    VMMDLL_HEAP_SEGMENT_TP_NT_LFH       = 2,
+    VMMDLL_HEAP_SEGMENT_TP_NT_LARGE     = 3,
+    VMMDLL_HEAP_SEGMENT_TP_NT_NA        = 4,
+    VMMDLL_HEAP_SEGMENT_TP_SEG_HEAP     = 5,
+    VMMDLL_HEAP_SEGMENT_TP_SEG_SEGMENT  = 6,
+    VMMDLL_HEAP_SEGMENT_TP_SEG_LARGE    = 7,
+    VMMDLL_HEAP_SEGMENT_TP_SEG_NA       = 8,
+} VMMDLL_HEAP_SEGMENT_TP, *PVMMDLL_HEAP_SEGMENT_TP;
+
+typedef struct tdVMMDLL_MAP_HEAP_SEGMENTENTRY {
+    QWORD va;
+    DWORD cb;
+    VMMDLL_HEAP_SEGMENT_TP tp : 16;
+    DWORD iHeap : 16;
+} VMMDLL_MAP_HEAP_SEGMENTENTRY, *PVMMDLL_MAP_HEAP_SEGMENTENTRY;
+
 typedef struct tdVMMDLL_MAP_HEAPENTRY {
-    QWORD vaHeapSegment;
-    DWORD cPages;
-    DWORD cPagesUnCommitted : 24;
-    DWORD HeapId : 7;
-    DWORD fPrimary : 1;
+    QWORD va;
+    VMMDLL_HEAP_TP tp;
+    BOOL f32;
+    DWORD iHeap;
+    DWORD dwHeapNum;
 } VMMDLL_MAP_HEAPENTRY, *PVMMDLL_MAP_HEAPENTRY;
+
+typedef enum tdVMMDLL_HEAPALLOC_TP {
+    VMMDLL_HEAPALLOC_TP_NA          = 0,
+    VMMDLL_HEAPALLOC_TP_NT_HEAP     = 1,
+    VMMDLL_HEAPALLOC_TP_NT_LFH      = 2,
+    VMMDLL_HEAPALLOC_TP_NT_LARGE    = 3,
+    VMMDLL_HEAPALLOC_TP_NT_NA       = 4,
+    VMMDLL_HEAPALLOC_TP_SEG_VS      = 5,
+    VMMDLL_HEAPALLOC_TP_SEG_LFH     = 6,
+    VMMDLL_HEAPALLOC_TP_SEG_LARGE   = 7,
+    VMMDLL_HEAPALLOC_TP_SEG_NA      = 8,
+} VMMDLL_HEAPALLOC_TP, *PVMMDLL_HEAPALLOC_TP;
+
+typedef struct tdVMMDLL_MAP_HEAPALLOCENTRY {
+    QWORD va;
+    DWORD cb;
+    VMMDLL_HEAPALLOC_TP tp;
+} VMMDLL_MAP_HEAPALLOCENTRY, *PVMMDLL_MAP_HEAPALLOCENTRY;
 
 typedef struct tdVMMDLL_MAP_THREADENTRY {
     DWORD dwTID;
@@ -1267,10 +1314,20 @@ typedef struct tdVMMDLL_MAP_IAT {
 
 typedef struct tdVMMDLL_MAP_HEAP {
     DWORD dwVersion;
-    DWORD _Reserved1[8];
-    DWORD cMap;                     // # map entries.
-    VMMDLL_MAP_HEAPENTRY pMap[];    // map entries.
+    DWORD _Reserved1[7];
+    PVMMDLL_MAP_HEAP_SEGMENTENTRY pSegments;    // heap segment entries.
+    DWORD cSegments;                            // # heap segment entries.
+    DWORD cMap;                                 // # map entries.
+    VMMDLL_MAP_HEAPENTRY pMap[];                // map entries.
 } VMMDLL_MAP_HEAP, *PVMMDLL_MAP_HEAP;
+
+typedef struct tdVMMDLL_MAP_HEAPALLOC {
+    DWORD dwVersion;
+    DWORD _Reserved1[7];
+    PVOID _Reserved2[2];
+    DWORD cMap;                         // # map entries.
+    VMMDLL_MAP_HEAPALLOCENTRY pMap[];   // map entries.
+} VMMDLL_MAP_HEAPALLOC, *PVMMDLL_MAP_HEAPALLOC;
 
 typedef struct tdVMMDLL_MAP_THREAD {
     DWORD dwVersion;
@@ -1338,7 +1395,7 @@ typedef struct tdVMMDLL_MAP_SERVICE {
 * Retrieve the memory map entries based on hardware page tables (PTE) for the
 * process. If pPteMap is set to NULL the number of bytes required will be
 * returned in parameter pcbPteMap.
-* Entries returned are sorted on VMMDLL_MAP_PTEENTRY.vaBase
+* Entries returned are sorted on VMMDLL_MAP_PTEENTRY.va
 * -- dwPID
 * -- pPteMap = buffer of minimum byte length *pcbPteMap or NULL.
 * -- pcbPteMap = pointer to byte count of pPteMap buffer.
@@ -1448,15 +1505,25 @@ _Success_(return) BOOL VMMDLL_Map_GetIATU(_In_ DWORD dwPID, _In_ LPSTR  uszModul
 _Success_(return) BOOL VMMDLL_Map_GetIATW(_In_ DWORD dwPID, _In_ LPWSTR wszModuleName, _Out_writes_bytes_opt_(*pcbIatMap) PVMMDLL_MAP_IAT pIatMap, _Inout_ PDWORD pcbIatMap);
 
 /*
-* Retrieve the heaps for the specified process. If pHeapMap is set to NULL
-* the number of bytes required will be returned in parameter pcbHeapMap.
+* Retrieve the heaps for the specified process.
+* CALLER VMMDLL_MemFree: *ppHeapMap
 * -- dwPID
-* -- pHeapMap = buffer of minimum byte length *pcbHeapMap or NULL.
-* -- pcbHeapMap = pointer to byte count of pHeapMap buffer.
+* -- ppHeapMap =  ptr to receive result on success. must be free'd with VMMDLL_MemFree().
 * -- return = success/fail.
 */
 EXPORTED_FUNCTION
-_Success_(return) BOOL VMMDLL_Map_GetHeap(_In_ DWORD dwPID, _Out_writes_bytes_opt_(*pcbHeapMap) PVMMDLL_MAP_HEAP pHeapMap, _Inout_ PDWORD pcbHeapMap);
+_Success_(return) BOOL VMMDLL_Map_GetHeapEx(_In_ DWORD dwPID, _Out_ PVMMDLL_MAP_HEAP *ppHeapMap);
+
+/*
+* Retrieve heap allocations for the specified process heap.
+* CALLER VMMDLL_MemFree: *ppHeapAllocMap
+* -- dwPID
+* -- qwHeapNumOrAddress = number or virtual address of heap to retrieve allocations from.
+* -- ppHeapAllocMap =  ptr to receive result on success. must be free'd with VMMDLL_MemFree().
+* -- return = success/fail.
+*/
+EXPORTED_FUNCTION
+_Success_(return) BOOL VMMDLL_Map_GetHeapAllocEx(_In_ DWORD dwPID, _In_ QWORD qwHeapNumOrAddress, _Out_ PVMMDLL_MAP_HEAPALLOC *ppHeapAllocMap);
 
 /*
 * Retrieve the threads for the specified process. If pThreadMap is set to NULL
@@ -1498,6 +1565,9 @@ _Success_(return) BOOL VMMDLL_Map_GetPhysMem(_Out_writes_bytes_opt_(*pcbPhysMemM
 * The pool map pMap is sorted by allocation virtual address.
 * The pool map pTag is sorted by pool tag.
 * NB! The pool map may contain both false negatives/positives.
+* NB! The pool map relies on debug symbols. Please ensure supporting files
+*     symsrv.dll, dbghelp.dll and info.db (found in the binary distribution)
+*     is put alongside vmm.dll. (On Linux the .dll files aren't necessary).
 * -- pPoolMap = buffer of minimum byte length *pcbPoolMap or NULL.
 * -- pcbPoolMap = pointer to byte count of pPoolMap buffer.
 * -- return = success/fail.
@@ -1510,6 +1580,9 @@ _Success_(return) BOOL VMMDLL_Map_GetPool(_Out_writes_bytes_opt_(*pcbPoolMap) PV
 * The pool map pMap is sorted by allocation virtual address.
 * The pool map pTag is sorted by pool tag.
 * NB! The pool map may contain both false negatives/positives.
+* NB! The pool map relies on debug symbols. Please ensure supporting files
+*     symsrv.dll, dbghelp.dll and info.db (found in the binary distribution)
+*     is put alongside vmm.dll. (On Linux the .dll files aren't necessary).
 * CALLER VMMDLL_MemFree: *ppPoolMap
 * -- ppPoolMap = ptr to receive result on success. must be free'd with VMMDLL_MemFree().
 * -- flags = VMMDLL_POOLMAP_FLAG*
@@ -1740,7 +1813,18 @@ EXPORTED_FUNCTION _Success_(return)
 BOOL VMMDLL_PidList(_Out_writes_opt_(*pcPIDs) PDWORD pPIDs, _Inout_ PULONG64 pcPIDs); 
 
 #define VMMDLL_PROCESS_INFORMATION_MAGIC        0xc0ffee663df9301e
-#define VMMDLL_PROCESS_INFORMATION_VERSION      6
+#define VMMDLL_PROCESS_INFORMATION_VERSION      7
+
+typedef enum tdVMMDLL_PROCESS_INTEGRITY_LEVEL {
+    VMMDLL_PROCESS_INTEGRITY_LEVEL_UNKNOWN      = 0,
+    VMMDLL_PROCESS_INTEGRITY_LEVEL_UNTRUSTED    = 1,
+    VMMDLL_PROCESS_INTEGRITY_LEVEL_LOW          = 2,
+    VMMDLL_PROCESS_INTEGRITY_LEVEL_MEDIUM       = 3,
+    VMMDLL_PROCESS_INTEGRITY_LEVEL_MEDIUMPLUS   = 4,
+    VMMDLL_PROCESS_INTEGRITY_LEVEL_HIGH         = 5,
+    VMMDLL_PROCESS_INTEGRITY_LEVEL_SYSTEM       = 6,
+    VMMDLL_PROCESS_INTEGRITY_LEVEL_PROTECTED    = 7,
+} VMMDLL_PROCESS_INTEGRITY_LEVEL;
 
 typedef struct tdVMMDLL_PROCESS_INFORMATION {
     ULONG64 magic;
@@ -1765,6 +1849,7 @@ typedef struct tdVMMDLL_PROCESS_INFORMATION {
         DWORD dwSessionId;
         ULONG64 qwLUID;
         CHAR szSID[MAX_PATH];
+        VMMDLL_PROCESS_INTEGRITY_LEVEL IntegrityLevel;
     } win;
 } VMMDLL_PROCESS_INFORMATION, *PVMMDLL_PROCESS_INFORMATION;
 

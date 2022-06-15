@@ -130,6 +130,8 @@ VOID MFindEvil_ReadLineCB(_Inout_opt_ PVOID ctx, _In_ DWORD cbLineLength, _In_ D
             MFindEvil_Read_FindEvil_LnTpVadEx(pObProcess, pe, (WORD)ie, uszBuffer);
             break;
         case VMM_EVIL_TP_PROC_NOLINK:
+        case VMM_EVIL_TP_PROC_PARENT:
+        case VMM_EVIL_TP_PROC_USER:
         case VMM_EVIL_TP_PEB_MASQUERADE:
         case VMM_EVIL_TP_PEB_BAD_LDR:
             // no description on these

@@ -88,11 +88,20 @@ BOOL VmmDll_ConfigIntialize(_In_ DWORD argc, _In_ char* argv[])
             ctxMain->cfg.fVerboseExtraTlp = TRUE;
             i++;
             continue;
-        } else if(0 == _stricmp(argv[i], "-symbolserverdisable")) {
+        } else if(0 == _stricmp(argv[i], "-disable-symbolserver")) {
             ctxMain->cfg.fDisableSymbolServerOnStartup = TRUE;
             i++;
             continue;
-        } else if(0 == _stricmp(argv[i], "-pythondisable")) {
+        } else if(0 == _stricmp(argv[i], "-disable-symbols")) {
+            ctxMain->cfg.fDisableSymbolServerOnStartup = TRUE;
+            ctxMain->cfg.fDisableSymbols = TRUE;
+            i++;
+            continue;
+        } else if(0 == _stricmp(argv[i], "-disable-infodb")) {
+            ctxMain->cfg.fDisableInfoDB = TRUE;
+            i++;
+            continue;
+        } else if(0 == _stricmp(argv[i], "-disable-python")) {
             ctxMain->cfg.fDisablePython = TRUE;
             i++;
             continue;
@@ -242,16 +251,20 @@ VOID VmmDll_PrintHelp()
         "   -pythonpath : specify the path to a python 3 installation for Windows.      \n" \
         "          The path given should be to the directory that contain: python.dll   \n" \
         "          Example: -pythonpath \"C:\\Program Files\\Python37\"                 \n" \
-        "   -pythondisable : prevent/disable the python plugin sub-system from loading. \n" \
-        "          Example: -pythondisable                                              \n" \
+        "   -disable-python : prevent/disable the python plugin sub-system from loading.\n" \
+        "          Example: -disable-python                                             \n" \
+        "   -disable-symbolserver : disable any integrations with the Microsoft Symbol  \n" \
+        "          Server used by the debugging .pdb symbol subsystem. Functionality    \n" \
+        "          will be limited if this is activated. Example: -disable-symbolserver \n" \
+        "   -disable-symbols : disable symbol lookups from .pdb files.                  \n" \
+        "          Example: -disable-symbols                                            \n" \
+        "   -disable-infodb : disable the infodb and any symbol lookups via it.         \n" \
+        "          Example: -disable-infodb                                             \n" \
         "   -mount : drive letter/path to mount The Memory Process File system at.      \n" \
         "          default: M   Example: -mount Q                                       \n" \
         "   -norefresh : disable automatic cache and processes refreshes even when      \n" \
         "          running against a live memory target - such as PCIe FPGA or live     \n" \
         "          driver acquired memory. This is not recommended. Example: -norefresh \n" \
-        "   -symbolserverdisable : disable any integrations with the Microsoft Symbol   \n" \
-        "          Server used by the debugging .pdb symbol subsystem. Functionality    \n" \
-        "          will be limited if this is activated. Example: -symbolserverdisable  \n" \
         "   -waitinitialize : wait debugging .pdb symbol subsystem to fully start before\n" \
         "          mounting file system and fully starting MemProcFS.                   \n" \
         "   -userinteract = allow vmm.dll to, on the console, query the user for        \n" \
@@ -921,7 +934,7 @@ DWORD VMMDLL_MemReadScatter_Impl(_In_ DWORD dwPID, _Inout_ PPMEM_SCATTER ppMEMs,
     DWORD i, cMEMs;
     PVMM_PROCESS pObProcess = NULL;
     if(!ctxVmm) { return 0; }
-    if(dwPID == -1) {
+    if(dwPID == (DWORD)-1) {
         VmmReadScatterPhysical(ppMEMs, cpMEMs, flags);
     } else {
         pObProcess = VmmProcessGet(dwPID);
@@ -951,7 +964,7 @@ DWORD VMMDLL_MemWriteScatter_Impl(_In_ DWORD dwPID, _Inout_ PPMEM_SCATTER ppMEMs
     DWORD i, cMEMs;
     PVMM_PROCESS pObProcess = NULL;
     if(!ctxVmm) { return 0; }
-    if(dwPID == -1) {
+    if(dwPID == (DWORD)-1) {
         VmmWriteScatterPhysical(ppMEMs, cpMEMs);
     } else {
         pObProcess = VmmProcessGet(dwPID);
@@ -980,7 +993,7 @@ _Success_(return)
 BOOL VMMDLL_MemReadEx_Impl(_In_ DWORD dwPID, _In_ ULONG64 qwA, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbReadOpt, _In_ ULONG64 flags)
 {
     PVMM_PROCESS pObProcess = NULL;
-    if(dwPID != -1) {
+    if(dwPID != (DWORD)-1) {
         pObProcess = VmmProcessGet(dwPID);
         if(!pObProcess) { return FALSE; }
     }
@@ -1047,7 +1060,7 @@ BOOL VMMDLL_MemWrite_Impl(_In_ DWORD dwPID, _In_ ULONG64 qwA, _In_reads_(cb) PBY
 {
     BOOL result;
     PVMM_PROCESS pObProcess = NULL;
-    if(dwPID != -1) {
+    if(dwPID != (DWORD)-1) {
         pObProcess = VmmProcessGet(dwPID);
         if(!pObProcess) { return FALSE; }
     }
@@ -1605,37 +1618,58 @@ _Success_(return) BOOL VMMDLL_Map_GetIATW(_In_ DWORD dwPID, _In_ LPWSTR wszModul
 }
 
 _Success_(return)
-BOOL VMMDLL_Map_GetHeap_Impl(_In_ DWORD dwPID, _Out_writes_bytes_opt_(*pcbMapDst) PVMMDLL_MAP_HEAP pMapDst, _Inout_ PDWORD pcbMapDst)
+BOOL VMMDLL_Map_GetHeapEx_Impl(_In_ DWORD dwPID, _Out_ PVMMDLL_MAP_HEAP *ppHeapMap)
 {
-    BOOL fResult = FALSE;
-    DWORD cbDst = 0, cbDstData;
     PVMMOB_MAP_HEAP pObMapSrc = NULL;
     PVMM_PROCESS pObProcess = NULL;
+    *ppHeapMap = NULL;
     if(!(pObProcess = VmmProcessGet(dwPID))) { goto fail; }
     if(!VmmMap_GetHeap(pObProcess, &pObMapSrc)) { goto fail; }
-    cbDstData = pObMapSrc->cMap * sizeof(VMMDLL_MAP_HEAPENTRY);
-    cbDst = sizeof(VMMDLL_MAP_HEAP) + cbDstData;
-    if(pMapDst) {
-        if(*pcbMapDst < cbDst) { goto fail; }
-        ZeroMemory(pMapDst, sizeof(VMMDLL_MAP_HEAP));
-        pMapDst->dwVersion = VMMDLL_MAP_HEAP_VERSION;
-        pMapDst->cMap = pObMapSrc->cMap;
-        memcpy(pMapDst->pMap, pObMapSrc->pMap, cbDstData);
-    }
-    fResult = TRUE;
+    if(!(*ppHeapMap = LocalAlloc(0, (SIZE_T)32 + pObMapSrc->ObHdr.cbData))) { goto fail; }
+    memcpy(*ppHeapMap, pObMapSrc, (SIZE_T)32 + pObMapSrc->ObHdr.cbData);
+    ZeroMemory(*ppHeapMap, 32);
+    (*ppHeapMap)->dwVersion = VMMDLL_MAP_HEAP_VERSION;
+    (*ppHeapMap)->pSegments = (PVMMDLL_MAP_HEAP_SEGMENTENTRY)((*ppHeapMap)->pMap + (*ppHeapMap)->cMap);
 fail:
-    *pcbMapDst = cbDst;
     Ob_DECREF(pObProcess);
     Ob_DECREF(pObMapSrc);
-    return fResult;
+    return *ppHeapMap ? TRUE : FALSE;
 }
 
 _Success_(return)
-BOOL VMMDLL_Map_GetHeap(_In_ DWORD dwPID, _Out_writes_bytes_opt_(*pcbHeapMap) PVMMDLL_MAP_HEAP pHeapMap, _Inout_ PDWORD pcbHeapMap)
+BOOL VMMDLL_Map_GetHeapEx(_In_ DWORD dwPID, _Out_ PVMMDLL_MAP_HEAP *ppHeapMap)
 {
     CALL_IMPLEMENTATION_VMM(
-        STATISTICS_ID_VMMDLL_Map_GetHeap,
-        VMMDLL_Map_GetHeap_Impl(dwPID, pHeapMap, pcbHeapMap))
+        STATISTICS_ID_VMMDLL_Map_GetHeapEx,
+        VMMDLL_Map_GetHeapEx_Impl(dwPID, ppHeapMap))
+}
+
+_Success_(return)
+BOOL VMMDLL_Map_GetHeapAllocEx_Impl(_In_ DWORD dwPID, _In_ QWORD qwHeapNumOrAddress, _Out_ PVMMDLL_MAP_HEAPALLOC *ppHeapAllocMap)
+{
+    PVMMOB_MAP_HEAPALLOC pObMapSrc = NULL;
+    PVMM_PROCESS pObProcess = NULL;
+    *ppHeapAllocMap = NULL;
+    if(!(pObProcess = VmmProcessGet(dwPID))) { goto fail; }
+    if(!VmmMap_GetHeapAlloc(pObProcess, qwHeapNumOrAddress, &pObMapSrc)) { goto fail; }
+    if(!(*ppHeapAllocMap = LocalAlloc(0, (SIZE_T)32 + pObMapSrc->ObHdr.cbData))) { goto fail; }
+    memcpy(*ppHeapAllocMap, pObMapSrc, (SIZE_T)32 + pObMapSrc->ObHdr.cbData);
+    ZeroMemory(*ppHeapAllocMap, 32);
+    (*ppHeapAllocMap)->dwVersion = VMMDLL_MAP_HEAPALLOC_VERSION;
+    (*ppHeapAllocMap)->_Reserved2[0] = 0;
+    (*ppHeapAllocMap)->_Reserved2[1] = 0;
+fail:
+    Ob_DECREF(pObProcess);
+    Ob_DECREF(pObMapSrc);
+    return *ppHeapAllocMap ? TRUE : FALSE;
+}
+
+_Success_(return)
+BOOL VMMDLL_Map_GetHeapAllocEx(_In_ DWORD dwPID, _In_ QWORD qwHeapNumOrAddress, _Out_ PVMMDLL_MAP_HEAPALLOC *ppHeapAllocMap)
+{
+    CALL_IMPLEMENTATION_VMM(
+        STATISTICS_ID_VMMDLL_Map_GetHeapAllocEx,
+        VMMDLL_Map_GetHeapAllocEx_Impl(dwPID, qwHeapNumOrAddress, ppHeapAllocMap))
 }
 
 _Success_(return)
@@ -2163,6 +2197,7 @@ BOOL VMMDLL_ProcessGetInformation_Impl(_In_ DWORD dwPID, _Inout_opt_ PVMMDLL_PRO
         if(pObProcess->win.TOKEN.szSID) {
             strncpy_s(pInfo->win.szSID, sizeof(pInfo->win.szSID), pObProcess->win.TOKEN.szSID, _TRUNCATE);
         }
+        pInfo->win.IntegrityLevel = pObProcess->win.TOKEN.IntegrityLevel;
     }
     Ob_DECREF(pObProcess);
     return TRUE;

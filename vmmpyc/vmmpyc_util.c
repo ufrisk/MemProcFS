@@ -77,6 +77,15 @@ int PyDict_SetItemDWORD_DECREF(PyObject *dp, DWORD key, PyObject *item)
     return i;
 }
 
+int PyDict_SetItemQWORD_DECREF(PyObject *dp, QWORD key, PyObject *item)
+{
+    PyObject *pyObjectKey = PyLong_FromUnsignedLongLong(key);
+    int i = PyDict_SetItem(dp, pyObjectKey, item);
+    Py_XDECREF(pyObjectKey);
+    Py_XDECREF(item);
+    return i;
+}
+
 int PyDict_SetItemString_DECREF(PyObject *dp, const char *key, PyObject *item)
 {
     int i = PyDict_SetItemString(dp, key, item);

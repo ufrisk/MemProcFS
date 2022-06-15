@@ -301,6 +301,15 @@ VmmPycProcess_sid(PyObj_Process *self, void *closure)
     return PyUnicode_FromFormat("%s", self->Info.win.szSID);
 }
 
+// -> DWORD
+static PyObject*
+VmmPycProcess_integrity(PyObj_Process *self, void *closure)
+{
+    PyObject *pyErr;
+    if((pyErr = VmmPycProcess_EnsureInfo(self, "integrity"))) { return pyErr; }
+    return PyLong_FromUnsignedLong(self->Info.win.IntegrityLevel);
+}
+
 //-----------------------------------------------------------------------------
 // VmmPycProcess INITIALIZATION AND CORE FUNCTIONALITY BELOW:
 //-----------------------------------------------------------------------------
@@ -374,7 +383,8 @@ BOOL VmmPycProcess_InitializeType(PyObject *pModule)
         {"luid", (getter)VmmPycProcess_luid, (setter)NULL, "token LUID.", NULL},
         {"session", (getter)VmmPycProcess_session, (setter)NULL, "token session.", NULL},
         {"sid", (getter)VmmPycProcess_sid, (setter)NULL, "token SID.", NULL},
-        {"sid", (getter)VmmPycProcess_cmdline, (setter)NULL, "command line.", NULL},
+        {"integrity", (getter)VmmPycProcess_integrity, (setter)NULL, "integrity level.", NULL},
+        {"cmdline", (getter)VmmPycProcess_cmdline, (setter)NULL, "command line.", NULL},
         {"pathkernel", (getter)VmmPycProcess_pathkernel, (setter)NULL, "kernel path.", NULL},
         {"pathuser", (getter)VmmPycProcess_pathuser, (setter)NULL, "user mode path.", NULL},
         {"memory", (getter)VmmPycProcess_memory, (setter)NULL, "virtual memory.", NULL},

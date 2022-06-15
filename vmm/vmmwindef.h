@@ -526,4 +526,88 @@ static LPCSTR _KWAIT_REASON_STR[] = {
    "WrPhysicalFault"
 };
 
+// more extensive definition of the Windows LDR_DATA_TABLE_ENTRY struct.
+typedef struct _LDR_MODULE64 {
+    LIST_ENTRY64        InLoadOrderModuleList;
+    LIST_ENTRY64        InMemoryOrderModuleList;
+    LIST_ENTRY64        InInitializationOrderModuleList;
+    QWORD               BaseAddress;
+    QWORD               EntryPoint;
+    ULONG               SizeOfImage;
+    ULONG               _Filler1;
+    UNICODE_STRING64    FullDllName;
+    UNICODE_STRING64    BaseDllName;
+    ULONG               Flags;
+    SHORT               LoadCount;
+    SHORT               TlsIndex;
+    LIST_ENTRY64        HashTableEntry;
+    ULONG               TimeDateStamp;
+    ULONG               _Filler2;
+} LDR_MODULE64, *PLDR_MODULE64;
+
+typedef struct _LDR_MODULE32 {
+    LIST_ENTRY32        InLoadOrderModuleList;
+    LIST_ENTRY32        InMemoryOrderModuleList;
+    LIST_ENTRY32        InInitializationOrderModuleList;
+    DWORD               BaseAddress;
+    DWORD               EntryPoint;
+    ULONG               SizeOfImage;
+    UNICODE_STRING32    FullDllName;
+    UNICODE_STRING32    BaseDllName;
+    ULONG               Flags;
+    SHORT               LoadCount;
+    SHORT               TlsIndex;
+    LIST_ENTRY32        HashTableEntry;
+    ULONG               TimeDateStamp;
+} LDR_MODULE32, *PLDR_MODULE32;
+
+typedef struct _PEB_LDR_DATA32 {
+    BYTE Reserved1[8];
+    DWORD Reserved2;
+    LIST_ENTRY32 InLoadOrderModuleList;
+    LIST_ENTRY32 InMemoryOrderModuleList;
+    LIST_ENTRY32 InInitializationOrderModuleList;
+} PEB_LDR_DATA32, *PPEB_LDR_DATA32;
+
+typedef struct _PEB_LDR_DATA64 {
+    BYTE Reserved1[8];
+    QWORD Reserved2;
+    LIST_ENTRY64 InLoadOrderModuleList;
+    LIST_ENTRY64 InMemoryOrderModuleList;
+    LIST_ENTRY64 InInitializationOrderModuleList;
+} PEB_LDR_DATA64, *PPEB_LDR_DATA64;
+
+typedef struct _PEB32 {
+    BYTE Reserved1[2];
+    BYTE BeingDebugged;
+    BYTE Reserved2[1];
+    DWORD Reserved3[2];
+    DWORD Ldr;
+    DWORD ProcessParameters;
+    DWORD SubSystemData;
+    DWORD ProcessHeap;
+    DWORD Unknown1[27];
+    DWORD NumberOfHeaps;
+    DWORD MaximumNumberOfHeaps;
+    DWORD ProcessHeaps;
+    // ...
+} PEB32, *PPEB32;
+
+typedef struct _PEB64 {
+    BYTE Reserved1[2];
+    BYTE BeingDebugged;
+    BYTE Reserved2[1];
+    DWORD _Filler;
+    QWORD Reserved3[2];
+    QWORD Ldr;
+    QWORD ProcessParameters;
+    QWORD SubSystemData;
+    QWORD ProcessHeap;
+    QWORD Unknown1[22];
+    DWORD NumberOfHeaps;
+    DWORD MaximumNumberOfHeaps;
+    QWORD ProcessHeaps;
+    // ...
+} PEB64, *PPEB64;
+
 #endif /* __VMMWINDEF_H__ */

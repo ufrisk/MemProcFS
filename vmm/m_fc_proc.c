@@ -41,7 +41,7 @@ PVOID MFcProc_FcInitialize(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
         // build and insert string data into 'str' table.
         if(!Fc_SqlInsertStr(hStmtStr, pObProcess->pObPersistent->uszNameLong, &SqlStrInsert[0])) { goto fail_transact; }
         if(!Fc_SqlInsertStr(hStmtStr, pObProcess->pObPersistent->uszPathKernel, &SqlStrInsert[1])) { goto fail_transact; }
-        if(!pObProcess->win.TOKEN.fSID || !VmmWinUser_GetName(&pObProcess->win.TOKEN.SID, uszUserName, MAX_PATH, &fWellKnownAccount)) { uszUserName[0] = 0; }
+        if(!pObProcess->win.TOKEN.fSidUserValid || !VmmWinUser_GetName(&pObProcess->win.TOKEN.SidUser.SID, uszUserName, MAX_PATH, &fWellKnownAccount)) { uszUserName[0] = 0; }
         if(!Fc_SqlInsertStr(hStmtStr, uszUserName, &SqlStrInsert[2])) { goto fail_transact; }
         _snprintf_s(uszFullInfo, 2048 - 2, 2048 - 3, "%s [%s%s] %s", pObProcess->pObPersistent->uszNameLong, (fWellKnownAccount ? "*" : ""), uszUserName, pObProcess->pObPersistent->uszPathKernel);
         if(!Fc_SqlInsertStr(hStmtStr, uszFullInfo, &SqlStrInsert[3])) { goto fail_transact; }
@@ -102,12 +102,13 @@ VOID MFcProc_FcTimeline(
 VOID MFcProc_LogHeap(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd, _In_ VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData), _In_ PVMMOB_MAP_HEAP pMap)
 {
     DWORD i;
-    PVMM_MAP_HEAPENTRY pe;
-    for(i = 0; i < pMap->cMap; i++) {
-        pe = pMap->pMap + i;
+    PVMM_MAP_HEAP_SEGMENTENTRY peR;
+    for(i = 0; i < pMap->cSegments; i++) {
+        peR = pMap->pSegments + i;
         pd->i = i;
-        pd->va[0] = pe->vaHeapSegment;
-        pd->qwNum[0] = (QWORD)pe->cPages << 12;
+        pd->va[0] = peR->va;
+        pd->va[1] = pMap->pMap[peR->iHeap].va;
+        pd->qwNum[0] = peR->cb;
         pfnLogJSON(pd);
     }
 }
@@ -116,8 +117,8 @@ VOID MFcProc_LogProcess_GetUserName(_In_ PVMM_PROCESS pProcess, _Out_writes_(17)
 {
     BOOL f, fWellKnownAccount = FALSE;
     uszUserName[0] = 0;
-    f = pProcess->win.TOKEN.fSID &&
-        VmmWinUser_GetName(&pProcess->win.TOKEN.SID, uszUserName, 17, &fWellKnownAccount);
+    f = pProcess->win.TOKEN.fSidUserValid &&
+        VmmWinUser_GetName(&pProcess->win.TOKEN.SidUser.SID, uszUserName, 17, &fWellKnownAccount);
     *fAccountUser = f && !fWellKnownAccount;
 }
 
@@ -125,7 +126,7 @@ VOID MFcProc_LogProcess(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd, _In_ VOID(*pfn
 {
     QWORD o;
     BOOL fStateTerminated, fAccountUser = FALSE;
-    CHAR usz[1024], szUserName[17], szTimeCRE[24], szTimeEXIT[24];
+    CHAR usz[2024], szUserName[17], szTimeCRE[24], szTimeEXIT[24];
     PVMMWIN_USER_PROCESS_PARAMETERS pu = VmmWin_UserProcessParameters_Get(pProcess);
     pd->i = pProcess->dwPID;
     pd->vaObj = pProcess->win.EPROCESS.va;
@@ -136,7 +137,7 @@ VOID MFcProc_LogProcess(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd, _In_ VOID(*pfn
     fStateTerminated = (pProcess->dwState != 0);
     MFcProc_LogProcess_GetUserName(pProcess, szUserName, &fAccountUser);
     Util_FileTime2String(VmmProcess_GetCreateTimeOpt(pProcess), szTimeCRE);
-    o = snprintf(usz, _countof(usz), "flags:[%s%c%c%c] user:[%s] upath:[%s] cmd:[%s] createtime:[%s]",
+    o = _snprintf_s(usz, _countof(usz), _TRUNCATE, "flags:[%s%c%c%c] user:[%s] upath:[%s] cmd:[%s] createtime:[%s]",
         pProcess->win.fWow64 ? "32" : "  ",
         pProcess->win.EPROCESS.fNoLink ? 'E' : ' ',
         fStateTerminated ? 'T' : ' ',
@@ -148,7 +149,10 @@ VOID MFcProc_LogProcess(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd, _In_ VOID(*pfn
     );
     if(VmmProcess_GetExitTimeOpt(pProcess)) {
         Util_FileTime2String(VmmProcess_GetExitTimeOpt(pProcess), szTimeEXIT);
-        snprintf(usz + o, (SIZE_T)(_countof(usz) - o), " exittime:[%s]", szTimeEXIT);
+        o += _snprintf_s(usz + o, (SIZE_T)(_countof(usz) - o), _TRUNCATE, " exittime:[%s]", szTimeEXIT);
+    }
+    if(pProcess->win.TOKEN.IntegrityLevel) {
+        o += _snprintf_s(usz + o, (SIZE_T)(_countof(usz) - o), _TRUNCATE, " integrity:[%i]", pProcess->win.TOKEN.IntegrityLevel);
     }
     pd->usz[1] = usz;
     pfnLogJSON(pd);

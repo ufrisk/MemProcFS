@@ -304,8 +304,11 @@ v1.1-v2.10
 * [Search](https://github.com/ufrisk/MemProcFS/wiki/FS_Search) updates.
 * [Bitlocker](https://github.com/ufrisk/MemProcFS/wiki/FS_BitLocker) key recovery.
 
-Latest:
+[v4.9](https://github.com/ufrisk/MemProcFS/releases/tag/v4.9)
 * Bug fixes.
-* [Web history](https://github.com/ufrisk/MemProcFS/wiki/FS_Web) plugin.
-* Process child/parent parsing improvements.
+* Python and C# API updates.
 * Additional FindEvil detection vectors.
+* Process child/parent parsing improvements.
+* Process integrity levels and full SID list.
+* [Heap parsing](https://github.com/ufrisk/MemProcFS/wiki/FS_Process_Heaps).
+* [Web history](https://github.com/ufrisk/MemProcFS/wiki/FS_Web) plugin.

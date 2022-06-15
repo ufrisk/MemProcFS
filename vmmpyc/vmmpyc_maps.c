@@ -10,6 +10,64 @@
 
 PyObject *g_pPyType_Maps = NULL;
 
+LPSTR VmmPycMaps_PoolTagHelper(_In_ DWORD dwTag, _In_reads_(5) LPSTR szBuffer)
+{
+    *(PDWORD)szBuffer = dwTag;
+    if(szBuffer[0] < 32 || szBuffer[0] > 126) { szBuffer[0] = '?'; }
+    if(szBuffer[1] < 32 || szBuffer[1] > 126) { szBuffer[1] = '?'; }
+    if(szBuffer[2] < 32 || szBuffer[2] > 126) { szBuffer[2] = '?'; }
+    if(szBuffer[3] < 32 || szBuffer[3] > 126) { szBuffer[3] = '?'; }
+    szBuffer[4] = 0;
+    return szBuffer;
+}
+
+// () -> {'va': {...}, 'tag': {...}}
+static PyObject *
+VmmPycMaps_pool(PyObj_Maps *self, PyObject *args)
+{
+    PyObject *pyDictResult, *pyDictResultVA, *pyDictResultTag, *pyDictTag, *pyDict;
+    BOOL result;
+    DWORD iTag, iTagEntry;
+    PVMMDLL_MAP_POOLENTRY pe;
+    PVMMDLL_MAP_POOLENTRYTAG pTag;
+    PVMMDLL_MAP_POOL pPoolMap = NULL;
+    CHAR szBuffer[5] = { 0 };
+    if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Maps.pool(): Not initialized."); }
+    if(!(pyDictResult = PyDict_New())) { return PyErr_NoMemory(); }
+    if(!(pyDictResultVA = PyDict_New())) { return PyErr_NoMemory(); } PyDict_SetItemString_DECREF(pyDictResult, "va", pyDictResultVA);
+    if(!(pyDictResultTag = PyDict_New())) { return PyErr_NoMemory(); } PyDict_SetItemString_DECREF(pyDictResult, "tag", pyDictResultTag);
+    Py_BEGIN_ALLOW_THREADS;
+    result = VMMDLL_Map_GetPoolEx(&pPoolMap, VMMDLL_POOLMAP_FLAG_ALL);
+    Py_END_ALLOW_THREADS;
+    if(!result || (pPoolMap->dwVersion != VMMDLL_MAP_POOL_VERSION)) {
+        Py_DECREF(pyDictResult);
+        VMMDLL_MemFree(pPoolMap);
+        return PyErr_Format(PyExc_RuntimeError, "Maps.pool(): Failed.");
+    }
+    for(iTag = 0; iTag < pPoolMap->cTag; iTag++) {
+        pTag = pPoolMap->pTag + iTag;
+        if((pyDictTag = PyDict_New())) {
+            for(iTagEntry = 0; iTagEntry < pTag->cEntry; iTagEntry++) {
+                pe = pPoolMap->pMap + pPoolMap->piTag2Map[pTag->iTag2Map + iTagEntry];
+                if((pyDict = PyDict_New())) {
+                    PyDict_SetItemString_DECREF(pyDict, "va", PyLong_FromUnsignedLongLong(pe->va));
+                    PyDict_SetItemString_DECREF(pyDict, "cb", PyLong_FromUnsignedLong(pe->cb));
+                    PyDict_SetItemString_DECREF(pyDict, "alloc", PyBool_FromLong(pe->fAlloc));
+                    PyDict_SetItemString_DECREF(pyDict, "tpPool", PyLong_FromUnsignedLong(pe->tpPool));
+                    PyDict_SetItemString_DECREF(pyDict, "tpSS", PyLong_FromUnsignedLong(pe->tpSS));
+                    PyDict_SetItemString_DECREF(pyDict, "dwTag", PyLong_FromUnsignedLong(pe->dwTag));
+                    PyDict_SetItemString_DECREF(pyDict, "tag", PyUnicode_FromString(VmmPycMaps_PoolTagHelper(pe->dwTag, szBuffer)));
+                    Py_IncRef(pyDict); PyDict_SetItemQWORD_DECREF(pyDictTag, pe->va, pyDict);
+                    PyDict_SetItemQWORD_DECREF(pyDictResultVA, pe->va, pyDict);
+                }
+            }
+            PyDict_SetItemUnicode_DECREF(pyDictResultTag, PyUnicode_FromString(VmmPycMaps_PoolTagHelper(pTag->dwTag, szBuffer)), pyDictTag);
+        }
+    }
+    VMMDLL_MemFree(pPoolMap);
+    return pyDictResult;
+}
+
 // () -> [{...}]
 static PyObject*
 VmmPycMaps_net(PyObj_Maps *self, PyObject *args)
@@ -278,11 +336,12 @@ _Success_(return)
 BOOL VmmPycMaps_InitializeType(PyObject *pModule)
 {
     static PyMethodDef PyMethods[] = {
-        {"net", (PyCFunction)VmmPycMaps_net, METH_VARARGS, "Retrieve the etwork connection map."},
         {"memmap", (PyCFunction)VmmPycMaps_memmap, METH_VARARGS, "Retrieve the physical memory map."},
-        {"user", (PyCFunction)VmmPycMaps_user, METH_VARARGS, "Retrieve the non-well known users."},
-        {"service", (PyCFunction)VmmPycMaps_service, METH_VARARGS, "Retrieve services from the service control manager (SCM)."},
+        {"net", (PyCFunction)VmmPycMaps_net, METH_VARARGS, "Retrieve the etwork connection map."},
         {"pfn", (PyCFunction)VmmPycMaps_pfn, METH_VARARGS, "Retrieve page frame number (PFN) information for select page frame numbers."},
+        {"pool", (PyCFunction)VmmPycMaps_pool, METH_VARARGS, "Retrieve kernel pool allocations."},
+        {"service", (PyCFunction)VmmPycMaps_service, METH_VARARGS, "Retrieve services from the service control manager (SCM)."},
+        {"user", (PyCFunction)VmmPycMaps_user, METH_VARARGS, "Retrieve the non-well known users."},
         {NULL, NULL, 0, NULL}
     };
     static PyMemberDef PyMembers[] = {

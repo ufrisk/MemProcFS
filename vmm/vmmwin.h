@@ -56,15 +56,6 @@ _Success_(return)
 BOOL VmmWinUnloadedModule_Initialize(_In_ PVMM_PROCESS pProcess);
 
 /*
-* Initialize the meap map containing information about the process heaps in the
-* specific process. This is performed by a PEB walk/scan of in-process memory
-* structures. This may be unreliable if a process is obfuscated or tampered.
-* -- pProcess
-* -- return
-*/
-BOOL VmmWinHeap_Initialize(_In_ PVMM_PROCESS pProcess);
-
-/*
 * Initialize the thread map for a specific process.
 * NB! The threading sub-system is dependent on pdb symbols and may take a small
 * amount of time before it's available after system startup.
@@ -121,8 +112,28 @@ BOOL VmmWinProcess_Enumerate(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fRefres
 */
 POB_SET VmmWinProcess_Enumerate_FindNoLinkProcesses();
 
-typedef VOID(*VMMWIN_LISTTRAVERSE_PRE_CB)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb, _In_ QWORD vaFLink, _In_ QWORD vaBLink, _In_ POB_SET pVSetAddress, _Inout_ PBOOL pfValidEntry, _Inout_ PBOOL pfValidFLink, _Inout_ PBOOL pfValidBLink);
-typedef VOID(*VMMWIN_LISTTRAVERSE_POST_CB)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb);
+typedef VOID(*VMMWIN_LISTTRAVERSE_PRE_CB)(
+    _In_ PVMM_PROCESS pProcess,
+    _In_opt_ PVOID ctx,
+    _In_ QWORD va,
+    _In_ PBYTE pb,
+    _In_ DWORD cb,
+    _In_ QWORD vaFLink,
+    _In_ QWORD vaBLink,
+    _In_ POB_SET pVSetAddress,
+    _Inout_ PBOOL pfValidEntry,
+    _Inout_ PBOOL pfValidFLink,
+    _Inout_ PBOOL pfValidBLink,
+    _In_ WORD iInitialEntry         // entry is from index: iInitialEntry in array pvaDataStart
+);
+typedef VOID(*VMMWIN_LISTTRAVERSE_POST_CB)(
+    _In_ PVMM_PROCESS pProcess,
+    _In_opt_ PVOID ctx,
+    _In_ QWORD va,
+    _In_ PBYTE pb,
+    _In_ DWORD cb,
+    _In_ WORD iInitialEntry         // entry is from index: iInitialEntry in array pvaDataStart
+);
 
 /*
 * Walk a windows linked list in an efficient way that minimize IO requests to

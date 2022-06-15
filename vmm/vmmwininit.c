@@ -12,6 +12,7 @@
 #include "pe.h"
 #include "pdb.h"
 #include "util.h"
+#include "vmmlog.h"
 #include "vmmwin.h"
 #include "vmmwinobj.h"
 #include "vmmwinreg.h"
@@ -92,9 +93,12 @@ VOID VmmWinInit_TryInitializeKernelOptionalValues()
             ctxVmm->offset.EPROCESS.opt.UserTime = (WORD)dwo;
         }
         // TOKEN
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_TOKEN", "UserAndGroups", &ctxVmm->offset.EPROCESS.opt.TOKEN_UserAndGroups);
+        PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_TOKEN", &ctxVmm->offset.EPROCESS.opt.TOKEN_cb);
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_TOKEN", "IntegrityLevelIndex", &ctxVmm->offset.EPROCESS.opt.TOKEN_IntegrityLevelIndex);
         PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_TOKEN", "SessionId", &ctxVmm->offset.EPROCESS.opt.TOKEN_SessionId);
         PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_TOKEN", "TokenId", &ctxVmm->offset.EPROCESS.opt.TOKEN_TokenId);
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_TOKEN", "UserAndGroups", &ctxVmm->offset.EPROCESS.opt.TOKEN_UserAndGroups);
+        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_TOKEN", "UserAndGroupCount", &ctxVmm->offset.EPROCESS.opt.TOKEN_UserAndGroupCount);
     }
     // Optional _FILE_OBJECT related offsets
     if(!ctxVmm->offset.FILE.fValid) {
@@ -200,9 +204,87 @@ VOID VmmWinInit_TryInitializeKernelOptionalValues()
 }
 
 /*
+* Log heap offsets
+*/
+VOID VmmWinInit_InitializeOffsetStatic_Heap_Print(_In_ BOOL f32, _In_ PVMM_OFFSET_HEAP po)
+{
+    if(!VmmLogIsActive(MID_OFFSET, LOGLEVEL_6_TRACE)) { return; }
+    VmmLog(MID_OFFSET, LOGLEVEL_6_TRACE, "HEAP: %s(%s)", (po->fValid ? "SUCCESS" : "FAIL"), (f32 ? "32" : "64"));
+    VmmLog(MID_OFFSET, LOGLEVEL_6_TRACE, "  _HEAP: Encoding: %03x VirtualAllocdBlocks: %03x FrontEndHeap: %03x FrontEndHeapType: %03x" ,
+        po->nt.HEAP.Encoding, po->nt.HEAP.VirtualAllocdBlocks, po->nt.HEAP.FrontEndHeap, po->nt.HEAP.FrontEndHeapType);
+    VmmLog(MID_OFFSET, LOGLEVEL_6_TRACE, "  _HEAP_SEGMENT: FirstEntry(%03x FirstEntry(%03x",
+        po->nt.HEAP_SEGMENT.FirstEntry, po->nt.HEAP_SEGMENT.LastValidEntry);
+    VmmLog(MID_OFFSET, LOGLEVEL_6_TRACE, "  _HEAP_USERDATA_HEADER: Signature: %03x EncodedOffsets: %03x BusyBitmap: %03x BitmapData: %03x",
+        po->nt.HEAP_USERDATA_HEADER.Signature, po->nt.HEAP_USERDATA_HEADER.EncodedOffsets, po->nt.HEAP_USERDATA_HEADER.BusyBitmap, po->nt.HEAP_USERDATA_HEADER.BitmapData);
+    VmmLog(MID_OFFSET, LOGLEVEL_6_TRACE, "  _SEGMENT_HEAP: LargeAllocMetadata: %03x LargeReservedPages: %03x SegContexts: %03x",
+        po->seg.SEGMENT_HEAP.LargeAllocMetadata, po->seg.SEGMENT_HEAP.LargeReservedPages, po->seg.SEGMENT_HEAP.SegContexts);
+    VmmLog(MID_OFFSET, LOGLEVEL_6_TRACE, "  _HEAP_SEG_CONTEXT: SegmentListHead: %03x UnitShift: %03x FirstDescriptorIndex: %03x",
+        po->seg.HEAP_SEG_CONTEXT.SegmentListHead, po->seg.HEAP_SEG_CONTEXT.UnitShift, po->seg.HEAP_SEG_CONTEXT.FirstDescriptorIndex);
+    VmmLog(MID_OFFSET, LOGLEVEL_6_TRACE, "  _HEAP_PAGE_RANGE_DESCRIPTOR: TreeSignature: %03x RangeFlags: %03x UnitSize: %03x",
+        po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.TreeSignature, po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.RangeFlags, po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.UnitSize);
+    VmmLog(MID_OFFSET, LOGLEVEL_6_TRACE, "  _HEAP_LFH_SUBSEGMENT: BlockOffsets: %03x BlockBitmap: %03x",
+        po->seg.HEAP_LFH_SUBSEGMENT.BlockOffsets, po->seg.HEAP_LFH_SUBSEGMENT.BlockBitmap);
+    VmmLog(MID_OFFSET, LOGLEVEL_6_TRACE, "  _SEGMENT_HEAP %03x _HEAP_SEG_CONTEXT %03x _HEAP_PAGE_SEGMENT %03x _HEAP_PAGE_RANGE_DESCRIPTOR %03x _HEAP_VS_CHUNK_HEADER %03x ",
+        po->seg.SEGMENT_HEAP.cb, po->seg.HEAP_SEG_CONTEXT.cb, po->seg.HEAP_PAGE_SEGMENT.cb, po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.cb, po->seg.HEAP_VS_CHUNK_HEADER.cb);
+}
+
+/*
+* Initialization of heap offsets statically based on build number.
+*/
+VOID VmmWinInit_InitializeOffsetStatic_Heap()
+{
+    DWORD i;
+    BOOL f32;
+    PDB_HANDLE hPDB;
+    PVMM_OFFSET_HEAP po;
+    for(i = 0; i < 2; i++) {
+        if(ctxVmm->f32) {
+            if(i) { return; }
+            f32 = TRUE;
+            hPDB = PDB_HANDLE_NTDLL;
+            po = &ctxVmm->offset.HEAP32;
+        } else {
+            f32 = i ? FALSE : TRUE;
+            hPDB = f32 ? PDB_HANDLE_NTDLL_WOW64 : PDB_HANDLE_NTDLL;
+            po = f32 ? &ctxVmm->offset.HEAP32 : &ctxVmm->offset.HEAP64;
+        }
+        // NT HEAP:
+        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP", "Encoding", &po->nt.HEAP.Encoding);
+        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP", "VirtualAllocdBlocks", &po->nt.HEAP.VirtualAllocdBlocks);
+        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP", "FrontEndHeap", &po->nt.HEAP.FrontEndHeap);
+        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP", "FrontEndHeapType", &po->nt.HEAP.FrontEndHeapType);
+        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP_SEGMENT", "FirstEntry", &po->nt.HEAP_SEGMENT.FirstEntry);
+        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP_SEGMENT", "LastValidEntry", &po->nt.HEAP_SEGMENT.LastValidEntry);
+        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP_USERDATA_HEADER", "Signature", &po->nt.HEAP_USERDATA_HEADER.Signature);
+        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP_USERDATA_HEADER", "EncodedOffsets", &po->nt.HEAP_USERDATA_HEADER.EncodedOffsets);
+        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP_USERDATA_HEADER", "BusyBitmap", &po->nt.HEAP_USERDATA_HEADER.BusyBitmap);
+        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP_USERDATA_HEADER", "BitmapData", &po->nt.HEAP_USERDATA_HEADER.BitmapData);
+        // SEGMENT HEAP:
+        PDB_GetTypeChildOffsetShort(hPDB, "_SEGMENT_HEAP", "LargeAllocMetadata", &po->seg.SEGMENT_HEAP.LargeAllocMetadata);
+        PDB_GetTypeChildOffsetShort(hPDB, "_SEGMENT_HEAP", "LargeReservedPages", &po->seg.SEGMENT_HEAP.LargeReservedPages);
+        PDB_GetTypeChildOffsetShort(hPDB, "_SEGMENT_HEAP", "SegContexts", &po->seg.SEGMENT_HEAP.SegContexts);
+        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP_SEG_CONTEXT", "SegmentListHead", &po->seg.HEAP_SEG_CONTEXT.SegmentListHead);
+        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP_SEG_CONTEXT", "UnitShift", &po->seg.HEAP_SEG_CONTEXT.UnitShift);
+        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP_SEG_CONTEXT", "FirstDescriptorIndex", &po->seg.HEAP_SEG_CONTEXT.FirstDescriptorIndex);
+        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP_PAGE_RANGE_DESCRIPTOR", "TreeSignature", &po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.TreeSignature);
+        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP_PAGE_RANGE_DESCRIPTOR", "RangeFlags", &po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.RangeFlags);
+        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP_PAGE_RANGE_DESCRIPTOR", "UnitSize", &po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.UnitSize);
+        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP_LFH_SUBSEGMENT", "BlockOffsets", &po->seg.HEAP_LFH_SUBSEGMENT.BlockOffsets);
+        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP_LFH_SUBSEGMENT", "BlockBitmap", &po->seg.HEAP_LFH_SUBSEGMENT.BlockBitmap);
+        PDB_GetTypeSizeShort(hPDB, "_SEGMENT_HEAP", &po->seg.SEGMENT_HEAP.cb);
+        PDB_GetTypeSizeShort(hPDB, "_HEAP_SEG_CONTEXT", &po->seg.HEAP_SEG_CONTEXT.cb);
+        PDB_GetTypeSizeShort(hPDB, "_HEAP_PAGE_SEGMENT", &po->seg.HEAP_PAGE_SEGMENT.cb);
+        PDB_GetTypeSizeShort(hPDB, "_HEAP_PAGE_RANGE_DESCRIPTOR", &po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.cb);
+        PDB_GetTypeSizeShort(hPDB, "_HEAP_VS_CHUNK_HEADER", &po->seg.HEAP_VS_CHUNK_HEADER.cb);
+        po->fValid = po->nt.HEAP.VirtualAllocdBlocks || po->nt.HEAP.FrontEndHeap || po->seg.SEGMENT_HEAP.cb;
+        VmmWinInit_InitializeOffsetStatic_Heap_Print(f32, po);
+    }
+}
+
+/*
 * Helper/Worker function for VmmWinInit_FindNtosScan64_SmallPageWalk().
 * -- paTable = set to: physical address of PML4
-* -- vaBase = set to 0
+* -- va = set to 0
 * -- vaMin = 0xFFFFF80000000000 (if windows kernel)
 * -- vaMax = 0xFFFFF803FFFFFFFF (if windows kernel)
 * -- iPML = set to 4
@@ -289,7 +371,7 @@ VOID VmmWinInit_FindNtosScan64_SmallPageWalk(_In_ PVMM_PROCESS pSystemProcess, _
 * for the first occurence of large 2MB pages. This is usually 'ntoskrnl.exe' if
 * the OS is Windows. 'ntoskrnl.exe'.
 * -- paTable = set to: physical address of PML4
-* -- vaBase = set to 0
+* -- va = set to 0
 * -- vaMin = 0xFFFFF80000000000 (if windows kernel)
 * -- vaMax = 0xFFFFF803FFFFFFFF (if windows kernel)
 * -- iPML = set to 4
@@ -884,6 +966,7 @@ DWORD VmmWinInit_TryInitialize_Async(LPVOID lpParameter)
     PDB_Initialize_WaitComplete();
     MmWin_PagingInitialize(TRUE);   // initialize full paging (memcompression)
     VmmWinInit_TryInitializeThreading();
+    VmmWinInit_InitializeOffsetStatic_Heap();
     VmmWinInit_TryInitializeKernelOptionalValues();
     // locate no-link processes [only in non-volatile memory due to performance].
     if(!ctxMain->dev.fVolatile && (psObNoLinkEPROCESS = VmmWinProcess_Enumerate_FindNoLinkProcesses())) {

@@ -51,10 +51,10 @@ sqlite3 *InfoDB_SqlReserve(_In_ POB_INFODB_CONTEXT ctx)
 * -- return = always NULL.
 */
 _Success_(return != NULL)
-sqlite3 *InfoDB_SqlReserveReturn(_In_ POB_INFODB_CONTEXT ctx, _In_opt_ sqlite3 *hSql)
+sqlite3 *InfoDB_SqlReserveReturn(_In_opt_ POB_INFODB_CONTEXT ctx, _In_opt_ sqlite3 *hSql)
 {
     DWORD i;
-    if(!hSql) { return NULL; }
+    if(!ctx || !hSql) { return NULL; }
     for(i = 0; i < INFODB_SQL_POOL_CONNECTION_NUM; i++) {
         if(ctx->hSql[i] == hSql) {
             SetEvent(ctx->hEvent[i]);
@@ -309,37 +309,89 @@ BOOL InfoDB_SymbolPTR(_In_ LPSTR szModule, _In_ QWORD vaModuleBase, _In_ LPSTR s
 }
 
 /*
-* Query the InfoDB for the size of a type. Currently only szModule values
-* of 'nt' or 'ntoskrnl' is supported.
+* Query the InfoDB for a static size populated in the static_type_size table.
 * -- szModule
 * -- szTypeName
 * -- pdwTypeSize
 * -- return
 */
 _Success_(return)
-BOOL InfoDB_TypeSize(_In_ LPSTR szModule, _In_ LPSTR szTypeName, _Out_ PDWORD pdwTypeSize)
+BOOL InfoDB_TypeSize_Static(_In_ LPSTR szModule, _In_ LPSTR szTypeName, _Out_ PDWORD pdwTypeSize)
 {
-    BOOL fResult = FALSE;
+    int r, rc = SQLITE_ERROR;
+    sqlite3_stmt *hStmt = NULL;
+    sqlite3 *hSql = NULL;
     POB_INFODB_CONTEXT pObCtx = NULL;
-    QWORD qwHash, qwResult = 0;
-    if(strcmp(szModule, "nt") && strcmp(szModule, "ntoskrnl")) { goto fail; }
-    if(!(pObCtx = ObContainer_GetOb(ctxVmm->pObCInfoDB)) || !pObCtx->dwPdbId_NT) { goto fail; }
-    qwHash = CharUtil_Hash32A(szTypeName, FALSE) + ((QWORD)pObCtx->dwPdbId_NT << 32);
-    if(SQLITE_OK == InfoDB_SqlQueryN(pObCtx, "SELECT data FROM type_size WHERE hash = ?", 1, &qwHash, 1, &qwResult, NULL)) {
-        *pdwTypeSize = (DWORD)qwResult;
-        fResult = TRUE;
+    DWORD dwArch = ctxVmm->f32 ? 32 : 64;
+    *pdwTypeSize = 0;
+    if(!(pObCtx = ObContainer_GetOb(ctxVmm->pObCInfoDB))) { goto fail; }
+    hSql = InfoDB_SqlReserve(pObCtx);
+    if(!ctxVmm->f32 && (szModule[0] == 'w')) {
+        // wow64 modules start with 'w' (wntdll == 32-bit ntdll on a 64-bit system) -> use the 32-bit offset instead.
+        szModule = szModule + 1;
+        dwArch = 32;
+    }
+    if(hSql) {
+        rc = sqlite3_prepare_v2(hSql, "SELECT value FROM static_type_size WHERE module = ? AND type = ? AND arch = ? AND build <= ? ORDER BY build DESC LIMIT 1", -1, &hStmt, 0);
+        if(rc != SQLITE_OK) { goto fail; }
+        sqlite3_bind_text(hStmt, 1, szModule, -1, NULL);
+        sqlite3_bind_text(hStmt, 2, szTypeName, -1, NULL);
+        sqlite3_bind_int(hStmt, 3, dwArch);
+        sqlite3_bind_int(hStmt, 4, ctxVmm->kernel.dwVersionBuild);
+        rc = sqlite3_step(hStmt);
+        if(rc != SQLITE_ROW) { goto fail; }
+        r = sqlite3_column_int(hStmt, 0);
+        if(r < 0) { rc = SQLITE_ERROR; goto fail; }
+        *pdwTypeSize = r;
+        rc = SQLITE_OK;
     }
 fail:
+    sqlite3_finalize(hStmt);
+    InfoDB_SqlReserveReturn(pObCtx, hSql);
     Ob_DECREF(pObCtx);
-    if(!fResult) {
-        VmmLog(MID_INFODB, LOGLEVEL_TRACE, "Missing TypeSize: %s", szTypeName);
+    if(rc == SQLITE_OK) {
+        return TRUE;
     }
-    return fResult;
+    VmmLog(MID_INFODB, LOGLEVEL_TRACE, "Missing TypeSize(Static): %s!%s", szModule, szTypeName);
+    return FALSE;
 }
 
 /*
-* Query the InfoDB for the offset of a child inside a type - often inside a struct.
-* Currently only szModule values of 'nt' or 'ntoskrnl' is supported.
+* Query the InfoDB for the size of a type.
+* Support for 'nt', 'tcpip'.
+* -- szModule
+* -- szTypeName
+* -- pdwTypeSize
+* -- return
+*/
+_Success_(return)
+BOOL InfoDB_TypeSize_Dynamic(_In_ LPSTR szModule, _In_ LPSTR szTypeName, _Out_ PDWORD pdwTypeSize)
+{
+    DWORD dwPdbId = 0;
+    QWORD qwHash, qwResult = 0;
+    POB_INFODB_CONTEXT pObCtx = NULL;
+    if(!(pObCtx = ObContainer_GetOb(ctxVmm->pObCInfoDB))) { goto fail; }
+    if(!strcmp(szModule, "nt") || !strcmp(szModule, "ntoskrnl")) {
+        dwPdbId = pObCtx->dwPdbId_NT;
+    } else if(!strcmp(szModule, "tcpip")) {
+        dwPdbId = InfoDB_EnsureTcpIp(pObCtx);
+    }
+    if(!dwPdbId) { goto fail; }
+    qwHash = CharUtil_Hash32A(szTypeName, FALSE) + ((QWORD)dwPdbId << 32);
+    if(SQLITE_OK == InfoDB_SqlQueryN(pObCtx, "SELECT data FROM type_size WHERE hash = ?", 1, &qwHash, 1, &qwResult, NULL)) {
+        *pdwTypeSize = (DWORD)qwResult;
+        Ob_DECREF(pObCtx);
+        return TRUE;
+    }
+fail:
+    VmmLog(MID_INFODB, LOGLEVEL_TRACE, "Missing TypeSize(Dynamic): %s!%s", szModule, szTypeName);
+    Ob_DECREF(pObCtx);
+    return FALSE;
+}
+
+/*
+* Query the InfoDB for the static offset of a child inside a type - often inside a struct.
+* Support for nt/ntoskrnl/tcpip.
 * -- szModule
 * -- szTypeName
 * -- uszTypeChildName
@@ -347,26 +399,81 @@ fail:
 * -- return
 */
 _Success_(return)
-BOOL InfoDB_TypeChildOffset(_In_ LPSTR szModule, _In_ LPSTR szTypeName, _In_ LPSTR uszTypeChildName, _Out_ PDWORD pdwTypeOffset)
+BOOL InfoDB_TypeChildOffset_Static(_In_ LPSTR szModule, _In_ LPSTR szTypeName, _In_ LPSTR uszTypeChildName, _Out_ PDWORD pdwTypeOffset)
 {
-    BOOL fResult = FALSE;
+    int r, rc = SQLITE_ERROR;
+    sqlite3_stmt *hStmt = NULL;
+    sqlite3 *hSql = NULL;
     POB_INFODB_CONTEXT pObCtx = NULL;
-    QWORD qwHash, qwHash1, qwHash2, qwResult = 0;
-    if(strcmp(szModule, "nt") && strcmp(szModule, "ntoskrnl")) { goto fail; }
-    if(!(pObCtx = ObContainer_GetOb(ctxVmm->pObCInfoDB)) || !pObCtx->dwPdbId_NT) { goto fail; }
-    qwHash1 = CharUtil_Hash32A(szTypeName, FALSE);
-    qwHash2 = CharUtil_Hash32U(uszTypeChildName, FALSE);
-    qwHash = ((qwHash2 << 32) + qwHash1 + pObCtx->dwPdbId_NT + ((QWORD)pObCtx->dwPdbId_NT << 32)) & 0x7fffffffffffffff;
-    if(SQLITE_OK == InfoDB_SqlQueryN(pObCtx, "SELECT data FROM type_child WHERE hash = ?", 1, &qwHash, 1, &qwResult, NULL)) {
-        *pdwTypeOffset = (DWORD)qwResult;
-        fResult = TRUE;
+    DWORD dwArch = ctxVmm->f32 ? 32 : 64;
+    *pdwTypeOffset = 0;
+    if(!(pObCtx = ObContainer_GetOb(ctxVmm->pObCInfoDB))) { goto fail; }
+    hSql = InfoDB_SqlReserve(pObCtx);
+    if(!ctxVmm->f32 && (szModule[0] == 'w')) {
+        // wow64 modules start with 'w' (wntdll == 32-bit ntdll on a 64-bit system) -> use the 32-bit offset instead.
+        szModule = szModule + 1;
+        dwArch = 32;
+    }
+    if(hSql) {
+        rc = sqlite3_prepare_v2(hSql, "SELECT value FROM static_type_child WHERE module = ? AND type = ? AND child = ? AND arch = ? AND build <= ? ORDER BY build DESC LIMIT 1", -1, &hStmt, 0);
+        if(rc != SQLITE_OK) { goto fail; }
+        rc = sqlite3_bind_text(hStmt, 1, szModule, -1, NULL);
+        rc = sqlite3_bind_text(hStmt, 2, szTypeName, -1, NULL);
+        rc = sqlite3_bind_text(hStmt, 3, uszTypeChildName, -1, NULL);
+        rc = sqlite3_bind_int(hStmt, 4, dwArch);
+        rc = sqlite3_bind_int(hStmt, 5, ctxVmm->kernel.dwVersionBuild);
+        rc = sqlite3_step(hStmt);
+        if(rc != SQLITE_ROW) { goto fail; }
+        r = sqlite3_column_int(hStmt, 0);
+        if(r < 0) { rc = SQLITE_ERROR; goto fail; }
+        *pdwTypeOffset = r;
+        rc = SQLITE_OK;
     }
 fail:
+    sqlite3_finalize(hStmt);
+    InfoDB_SqlReserveReturn(pObCtx, hSql);
     Ob_DECREF(pObCtx);
-    if(!fResult) {
-        VmmLog(MID_INFODB, LOGLEVEL_TRACE, "Missing TypeChildOffset: %s.%s", szTypeName, uszTypeChildName);
+    if(rc == SQLITE_OK) {
+        return TRUE;
     }
-    return fResult;
+    VmmLog(MID_INFODB, LOGLEVEL_TRACE, "Missing TypeChildOffset(Static): %s.%s", szTypeName, uszTypeChildName);
+    return FALSE;
+}
+
+/*
+* Query the InfoDB for the offset of a child inside a type - often inside a struct.
+* Support for nt/ntoskrnl/tcpip.
+* -- szModule
+* -- szTypeName
+* -- uszTypeChildName
+* -- pdwTypeOffset = offset relative to type base.
+* -- return
+*/
+_Success_(return)
+BOOL InfoDB_TypeChildOffset_Dynamic(_In_ LPSTR szModule, _In_ LPSTR szTypeName, _In_ LPSTR uszTypeChildName, _Out_ PDWORD pdwTypeOffset)
+{
+    DWORD dwPdbId = 0;
+    POB_INFODB_CONTEXT pObCtx = NULL;
+    QWORD qwHash, qwHash1, qwHash2, qwResult = 0;
+    if(!(pObCtx = ObContainer_GetOb(ctxVmm->pObCInfoDB))) { goto fail; }
+    if(!strcmp(szModule, "nt") || !strcmp(szModule, "ntoskrnl")) {
+        dwPdbId = pObCtx->dwPdbId_NT;
+    } else if(!strcmp(szModule, "tcpip")) {
+        dwPdbId = InfoDB_EnsureTcpIp(pObCtx);
+    }
+    if(!dwPdbId) { goto fail; }
+    qwHash1 = CharUtil_Hash32A(szTypeName, FALSE);
+    qwHash2 = CharUtil_Hash32U(uszTypeChildName, FALSE);
+    qwHash = ((qwHash2 << 32) + qwHash1 + dwPdbId + ((QWORD)dwPdbId << 32)) & 0x7fffffffffffffff;
+    if(SQLITE_OK == InfoDB_SqlQueryN(pObCtx, "SELECT data FROM type_child WHERE hash = ?", 1, &qwHash, 1, &qwResult, NULL)) {
+        *pdwTypeOffset = (DWORD)qwResult;
+        Ob_DECREF(pObCtx);
+        return TRUE;
+    }
+fail:
+    VmmLog(MID_INFODB, LOGLEVEL_TRACE, "Missing TypeChildOffset(Dynamic): %s.%s", szTypeName, uszTypeChildName);
+    Ob_DECREF(pObCtx);
+    return FALSE;
 }
 
 /*
@@ -444,6 +551,10 @@ fail:
 VOID InfoDB_Initialize()
 {
     if(ObContainer_Exists(ctxVmm->pObCInfoDB)) { return; }
+    if(ctxMain->cfg.fDisableInfoDB) {
+        VmmLog(MID_INFODB, LOGLEVEL_INFO, "Info database disabled by user");
+        return;
+    }
     EnterCriticalSection(&ctxVmm->LockMaster);
     if(!ObContainer_Exists(ctxVmm->pObCInfoDB)) {
         InfoDB_Initialize_DoWork();

@@ -7,6 +7,7 @@
 #include "vmm.h"
 #include "mm.h"
 #include "pdb.h"
+#include "vmmheap.h"
 #include "vmmproc.h"
 #include "vmmwin.h"
 #include "vmmwindef.h"
@@ -629,18 +630,26 @@ BOOL VmmCachePrefetchPages5(_In_opt_ PVMM_PROCESS pProcess, _In_opt_ POB_MAP pmP
 VOID VmmProcess_TokenTryEnsure(_In_ PVMMOB_PROCESS_TABLE pt)
 {
     BOOL f, f32 = ctxVmm->f32;
-    DWORD j, i = 0, iM, cbHdr, cb;
+    DWORD j, i = 0, iM, cbHdr, cb, dwIntegrityLevelIndex;
     QWORD va, *pva = NULL;
     BYTE pb[0x1000];
     PVMM_PROCESS *ppProcess = NULL, pObSystemProcess = NULL;
     PVMM_OFFSET_EPROCESS oep = &ctxVmm->offset.EPROCESS;
+    LPSTR szSidIntegrity = NULL;
+    BOOL fSidIntegrity;
+    VMM_PROCESS_INTEGRITY_LEVEL IntegrityLevel;
+    union {
+        SID SID;
+        BYTE pb[SECURITY_MAX_SID_SIZE];
+    } SidIntegrity;
     f = oep->opt.TOKEN_TokenId &&                                               // token offsets/symbols initialized.
         (pObSystemProcess = VmmProcessGet(4)) &&
-        (pva = LocalAlloc(LMEM_ZEROINIT, pt->c * sizeof(QWORD))) &&
+        (pva = LocalAlloc(LMEM_ZEROINIT, pt->c * 2 * sizeof(QWORD))) &&
         (ppProcess = LocalAlloc(LMEM_ZEROINIT, pt->c * sizeof(PVMM_PROCESS)));
     if(!f) { goto fail; }
     cbHdr = f32 ? 0x2c : 0x5c;
-    cb = cbHdr + oep->opt.TOKEN_UserAndGroups + 8;
+    cb = cbHdr + oep->opt.TOKEN_cb;
+    if((cb > 0x1000) || !oep->opt.TOKEN_cb) { goto fail; }
     // 1: Get Process and Token VA:
     iM = pt->_iFLink;
     while(iM && i < pt->c) {
@@ -657,43 +666,81 @@ VOID VmmProcess_TokenTryEnsure(_In_ PVMMOB_PROCESS_TABLE pt)
     // 2: Read Token:
     VmmCachePrefetchPages4(pObSystemProcess, (DWORD)pt->c, pva, cb, 0);
     for(i = 0; i < pt->c; i++) {
-        f = pva[i] && VmmRead2(pObSystemProcess, pva[i], pb, cb, VMM_FLAG_FORCECACHE_READ) &&
-            (pva[i] = VMM_PTR_OFFSET(f32, pb, cb - 8)) &&
-            VMM_KADDR(pva[i]);
-        if(f) {
-            for(j = 0, f = FALSE; !f && (j < cbHdr); j += (f32 ? 0x08 : 0x10)) {
-                f = VMM_POOLTAG_SHORT(*(PDWORD)(pb + j), 'Toke');
-            }
-            if(f) {
-                ppProcess[i]->win.TOKEN.qwLUID = *(PQWORD)(pb + cbHdr + ctxVmm->offset.EPROCESS.opt.TOKEN_TokenId);
-                ppProcess[i]->win.TOKEN.dwSessionId = *(PDWORD)(pb + cbHdr + ctxVmm->offset.EPROCESS.opt.TOKEN_SessionId);
-            }
+        if(!pva[i] || !VmmRead2(pObSystemProcess, pva[i], pb, cb, VMM_FLAG_FORCECACHE_READ)) { continue; }
+        // 2.1: fetch TOKEN.UserAndGroups (user id [_SID_AND_ATTRIBUTES])
+        pva[i] = VMM_PTR_OFFSET(f32, pb + cbHdr, oep->opt.TOKEN_UserAndGroups);
+        if(!VMM_KADDR(pva[i])) { pva[i] = 0; continue; }
+        ppProcess[i]->win.TOKEN.vaUserAndGroups = pva[i];
+        // 2.2: fetch various offsets
+        for(j = 0, f = FALSE; !f && (j < cbHdr); j += (f32 ? 0x08 : 0x10)) {
+            f = VMM_POOLTAG_SHORT(*(PDWORD)(pb + j), 'Toke');
         }
-        if(!f) { pva[i] = 0; }
+        if(!f) { pva[i] = 0; continue; }
+        ppProcess[i]->win.TOKEN.qwLUID = *(PQWORD)(pb + cbHdr + ctxVmm->offset.EPROCESS.opt.TOKEN_TokenId);
+        ppProcess[i]->win.TOKEN.dwSessionId = *(PDWORD)(pb + cbHdr + ctxVmm->offset.EPROCESS.opt.TOKEN_SessionId);
+        if(ctxVmm->offset.EPROCESS.opt.TOKEN_UserAndGroupCount) {
+            ppProcess[i]->win.TOKEN.dwUserAndGroupCount = *(PDWORD)(pb + cbHdr + ctxVmm->offset.EPROCESS.opt.TOKEN_UserAndGroupCount);
+        }
+        if(ctxVmm->offset.EPROCESS.opt.TOKEN_IntegrityLevelIndex) {
+            dwIntegrityLevelIndex = *(PDWORD)(pb + cbHdr + ctxVmm->offset.EPROCESS.opt.TOKEN_IntegrityLevelIndex);
+            if(dwIntegrityLevelIndex > ppProcess[i]->win.TOKEN.dwUserAndGroupCount) { dwIntegrityLevelIndex = 0; }
+        }
+        // 2.3: fetch TOKEN.UserAndGroups+dwIntegrityLevelIndex (integrity level [_SID_AND_ATTRIBUTES])
+        if(dwIntegrityLevelIndex) {
+            va = VMM_PTR_OFFSET(f32, pb + cbHdr, oep->opt.TOKEN_UserAndGroups) + dwIntegrityLevelIndex * (f32 ? 8ULL : 16ULL);
+            if(VMM_KADDR(va)) { pva[pt->c + i] = va; }
+        }
     }
-    // 3: Read SID ptr:
-    VmmCachePrefetchPages4(pObSystemProcess, (DWORD)pt->c, pva, 8, 0);
+    // 3: Read SID user & integrity ptr:
+    VmmCachePrefetchPages4(pObSystemProcess, 2 * (DWORD)pt->c, pva, 8, 0);
     for(i = 0; i < pt->c; i++) {
+        // user:
         f = pva[i] && VmmRead2(pObSystemProcess, pva[i], pb, 8, VMM_FLAG_FORCECACHE_READ) &&
-            (pva[i] = VMM_PTR_OFFSET(f32, pb, 0)) &&
-            VMM_KADDR(pva[i]);
-        if(!f) { pva[i] = 0; };
+            (va = VMM_PTR_OFFSET(f32, pb, 0)) &&
+            VMM_KADDR(va);
+        pva[i] = f ? va : 0;
+        // integrity:
+        f = pva[pt->c + i] && VmmRead2(pObSystemProcess, pva[pt->c + i], pb, 8, VMM_FLAG_FORCECACHE_READ) &&
+            (va = VMM_PTR_OFFSET(f32, pb, 0)) &&
+            VMM_KADDR(va);
+        pva[pt->c + i] = f ? va : 0;
     }
-    // 4: Get SID:
-    VmmCachePrefetchPages4(pObSystemProcess, (DWORD)pt->c, pva, SECURITY_MAX_SID_SIZE, 0);
+    // 4: Get SID user & integrity:
+    VmmCachePrefetchPages4(pObSystemProcess, 2 * (DWORD)pt->c, pva, SECURITY_MAX_SID_SIZE, 0);
     for(i = 0; i < pt->c; i++) {
         if(!ppProcess[i]) { continue; }
-        ppProcess[i]->win.TOKEN.fSID =
+        // user:
+        ppProcess[i]->win.TOKEN.fSidUserValid =
             (va = pva[i]) &&
-            VmmRead2(pObSystemProcess, va, (PBYTE)&ppProcess[i]->win.TOKEN.pbSID, SECURITY_MAX_SID_SIZE, VMM_FLAG_FORCECACHE_READ) &&
-            IsValidSid(&ppProcess[i]->win.TOKEN.SID);
+            VmmRead2(pObSystemProcess, va, ppProcess[i]->win.TOKEN.SidUser.pb, SECURITY_MAX_SID_SIZE, VMM_FLAG_FORCECACHE_READ) &&
+            IsValidSid(&ppProcess[i]->win.TOKEN.SidUser.SID);
+        // integrity:
+        fSidIntegrity =
+            (va = pva[pt->c + i]) &&
+            VmmRead2(pObSystemProcess, va, SidIntegrity.pb, SECURITY_MAX_SID_SIZE, VMM_FLAG_FORCECACHE_READ) &&
+            IsValidSid(&SidIntegrity.SID) &&
+            ConvertSidToStringSidA(&SidIntegrity.SID, &szSidIntegrity);
+        if(fSidIntegrity) {
+            // https://redcanary.com/blog/process-integrity-levels/
+            IntegrityLevel = VMM_PROCESS_INTEGRITY_LEVEL_UNKNOWN;
+            if(!strcmp(szSidIntegrity, "S-1-16-16384")) { IntegrityLevel = VMM_PROCESS_INTEGRITY_LEVEL_SYSTEM;     } else
+            if(!strcmp(szSidIntegrity, "S-1-16-0"))     { IntegrityLevel = VMM_PROCESS_INTEGRITY_LEVEL_UNTRUSTED;  } else
+            if(!strcmp(szSidIntegrity, "S-1-16-4096"))  { IntegrityLevel = VMM_PROCESS_INTEGRITY_LEVEL_LOW;        } else
+            if(!strcmp(szSidIntegrity, "S-1-16-8192"))  { IntegrityLevel = VMM_PROCESS_INTEGRITY_LEVEL_MEDIUM;     } else
+            if(!strcmp(szSidIntegrity, "S-1-16-8448"))  { IntegrityLevel = VMM_PROCESS_INTEGRITY_LEVEL_MEDIUMPLUS; } else
+            if(!strcmp(szSidIntegrity, "S-1-16-12288")) { IntegrityLevel = VMM_PROCESS_INTEGRITY_LEVEL_HIGH;       } else
+            if(!strcmp(szSidIntegrity, "S-1-16-20480")) { IntegrityLevel = VMM_PROCESS_INTEGRITY_LEVEL_PROTECTED;  };
+            ppProcess[i]->win.TOKEN.IntegrityLevel = IntegrityLevel;
+            LocalFree(szSidIntegrity); szSidIntegrity = NULL;
+        }
     }
     // 5: finish up:
     for(i = 0; i < pt->c; i++) {
+        // 5.1: user
         if(!ppProcess[i]) { continue; }
-        ppProcess[i]->win.TOKEN.fSID =
-            ppProcess[i]->win.TOKEN.fSID &&
-            ConvertSidToStringSidA(&ppProcess[i]->win.TOKEN.SID, &ppProcess[i]->win.TOKEN.szSID) &&
+        ppProcess[i]->win.TOKEN.fSidUserValid =
+            ppProcess[i]->win.TOKEN.fSidUserValid &&
+            ConvertSidToStringSidA(&ppProcess[i]->win.TOKEN.SidUser.SID, &ppProcess[i]->win.TOKEN.szSID) &&
             (ppProcess[i]->win.TOKEN.dwHashSID = Util_HashStringA(ppProcess[i]->win.TOKEN.szSID));
         ppProcess[i]->win.TOKEN.fInitialized = TRUE;
     }
@@ -1416,8 +1463,8 @@ VOID VmmWriteScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_ PPMEM_SCATTER pp
     for(i = 0; i < cpMEMsVirt; i++) {
         pMEM = ppMEMsVirt[i];
         MEM_SCATTER_STACK_PUSH(pMEM, pMEM->qwA);
-        if(pMEM->f || (pMEM->qwA == -1)) {
-            pMEM->qwA = -1;
+        if(pMEM->f || (pMEM->qwA == (QWORD)-1)) {
+            pMEM->qwA = (QWORD)-1;
             continue;
         }
         if(VmmVirt2Phys(pProcess, pMEM->qwA, &qwPA_PTE)) {
@@ -1427,7 +1474,7 @@ VOID VmmWriteScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_ PPMEM_SCATTER pp
         // paged "read" also translate virtual -> physical for some
         // types of paged memory such as transition and prototype.
         ctxVmm->fnMemoryModel.pfnPagedRead(pProcess, pMEM->qwA, qwPA_PTE, NULL, &qwPagedPA, NULL, 0);
-        pMEM->qwA = qwPagedPA ? qwPagedPA : -1;
+        pMEM->qwA = qwPagedPA ? qwPagedPA : (QWORD)-1;
     }
     // write to physical addresses
     VmmWriteScatterPhysical(ppMEMsVirt, cpMEMsVirt);
@@ -1580,7 +1627,7 @@ VOID VmmReadScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_updates_(cpMEMsVir
     for(iVA = 0, iPA = 0; iVA < cpMEMsVirt; iVA++) {
         pIoVA = ppMEMsVirt[iVA];
         // MEMORY READ ALREADY COMPLETED
-        if(pIoVA->f || (pIoVA->qwA == 0) || (pIoVA->qwA == -1)) {
+        if(pIoVA->f || (pIoVA->qwA == 0) || (pIoVA->qwA == (QWORD)-1)) {
             if(!pIoVA->f && fZeropadOnFail) {
                 ZeroMemory(pIoVA->pb, pIoVA->cb);
             }
@@ -1731,6 +1778,7 @@ VOID VmmClose()
     Ob_DECREF_NULL(&ctxVmm->pObCCachePrefetchRegistry);
     Ob_DECREF_NULL(&ctxVmm->pObCacheMapEAT);
     Ob_DECREF_NULL(&ctxVmm->pObCacheMapIAT);
+    Ob_DECREF_NULL(&ctxVmm->pObCacheMapHeapAlloc);
     Ob_DECREF_NULL(&ctxVmm->pObCacheMapWinObjDisplay);
     VmmLog_Close();
     DeleteCriticalSection(&ctxVmm->LockMaster);
@@ -2383,6 +2431,7 @@ int VmmMap_GetVadEntry_CmpFind(_In_ QWORD vaFind, _In_ QWORD qwEntry)
 * -- va
 * -- return = PTR to VADENTRY or NULL on fail. Must not be used out of pVadMap scope.
 */
+_Success_(return != NULL)
 PVMM_MAP_VADENTRY VmmMap_GetVadEntry(_In_opt_ PVMMOB_MAP_VAD pVadMap, _In_ QWORD va)
 {
     if(!pVadMap) { return NULL; }
@@ -2528,9 +2577,64 @@ BOOL VmmMap_GetIAT(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pModule
 _Success_(return)
 BOOL VmmMap_GetHeap(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_HEAP *ppObHeapMap)
 {
-    if(!pProcess->Map.pObHeap && !VmmWinHeap_Initialize(pProcess)) { return FALSE; }
+    if(!pProcess->Map.pObHeap && !VmmHeap_Initialize(pProcess)) { return FALSE; }
     *ppObHeapMap = Ob_INCREF(pProcess->Map.pObHeap);
     return *ppObHeapMap != NULL;
+}
+
+int VmmMap_GetHeapEntry_CmpFind(_In_ QWORD va, _In_ QWORD qwEntry)
+{
+    PVMM_MAP_HEAPENTRY pEntry = (PVMM_MAP_HEAPENTRY)qwEntry;
+    return (pEntry->va > va) ? -1 : ((pEntry->va < va) ? 1 : 0);
+}
+
+/*
+* Retrieve a single PVMM_MAP_HEAPENTRY for a given HeapMap and heap virtual address.
+* -- pHeapMap
+* -- vaHeap = virtual address of heap OR heap id.
+* -- return = PTR to VMM_MAP_HEAPENTRY or NULL on fail. Must not be used out of pHeapMap scope.
+*/
+PVMM_MAP_HEAPENTRY VmmMap_GetHeapEntry(_In_ PVMMOB_MAP_HEAP pHeapMap, _In_ QWORD vaHeap)
+{
+    DWORD i;
+    if(vaHeap > 0x1000) {
+        return Util_qfind(vaHeap, pHeapMap->cMap, pHeapMap->pMap, sizeof(VMM_MAP_HEAPENTRY), VmmMap_GetHeapEntry_CmpFind);
+    }
+    for(i = 0; i < pHeapMap->cMap; i++) {
+        if(pHeapMap->pMap[i].iHeap == (DWORD)vaHeap) { return pHeapMap->pMap + i; }
+    }
+    return NULL;
+}
+
+/*
+* Retrieve the heap alloc map. (memory allocations in the specified heap).
+* CALLER DECREF: ppObHeapAllocMap
+* -- pProcess
+* -- ppObHeapAllocMap
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetHeapAlloc(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaHeap, _Out_ PVMMOB_MAP_HEAPALLOC *ppObHeapAllocMap)
+{
+    *ppObHeapAllocMap = VmmHeapAlloc_Initialize(pProcess, vaHeap);
+    return *ppObHeapAllocMap != NULL;
+}
+
+int VmmMap_GetHeapAllocEntry_CmpFind(_In_ QWORD va, _In_ QWORD qwEntry)
+{
+    PVMM_MAP_HEAPALLOCENTRY pEntry = (PVMM_MAP_HEAPALLOCENTRY)qwEntry;
+    return (pEntry->va > va) ? -1 : ((pEntry->va < va) ? 1 : 0);
+}
+
+/*
+* Retrieve a single PVMM_MAP_HEAPALLOCENTRY for a given HeapAllocMap and a memory allocation address.
+* -- pHeapAllocMap
+* -- vaAlloc
+* -- return = PTR to PVMM_MAP_HEAPALLOCENTRY or NULL on fail. Must not be used out of pHeapAllocMap scope.
+*/
+PVMM_MAP_HEAPALLOCENTRY VmmMap_GetHeapAllocEntry(_In_ PVMMOB_MAP_HEAPALLOC pHeapAllocMap, _In_ QWORD vaAlloc)
+{
+    return Util_qfind(vaAlloc, pHeapAllocMap->cMap, pHeapAllocMap->pMap, sizeof(VMM_MAP_HEAPALLOCENTRY), VmmMap_GetHeapAllocEntry_CmpFind);
 }
 
 /*
@@ -2551,9 +2655,7 @@ BOOL VmmMap_GetThread(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_THREAD *ppObT
 int VmmMap_GetThreadEntry_CmpFind(_In_ QWORD dwTID, _In_ QWORD qwEntry)
 {
     PVMM_MAP_THREADENTRY pEntry = (PVMM_MAP_THREADENTRY)qwEntry;
-    if(pEntry->dwTID > (DWORD)dwTID) { return -1; }
-    if(pEntry->dwTID < (DWORD)dwTID) { return 1; }
-    return 0;
+    return (pEntry->dwTID > dwTID) ? -1 : ((pEntry->dwTID < dwTID) ? 1 : 0);
 }
 
 /*

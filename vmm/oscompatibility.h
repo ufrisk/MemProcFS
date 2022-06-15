@@ -313,7 +313,7 @@ typedef struct _IMAGE_DOS_HEADER {
     WORD   e_oemid;
     WORD   e_oeminfo;
     WORD   e_res2[10];
-    DWORD  e_lfanew;
+    LONG   e_lfanew;
 } IMAGE_DOS_HEADER, *PIMAGE_DOS_HEADER;
 
 typedef struct _IMAGE_FILE_HEADER {

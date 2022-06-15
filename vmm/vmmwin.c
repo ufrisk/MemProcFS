@@ -353,90 +353,6 @@ PVMMOB_MAP_IAT VmmWinIAT_Initialize(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MO
 
 #define VMMPROCWINDOWS_MAX_MODULES      512
 
-// more extensive definition of the Windows LDR_DATA_TABLE_ENTRY struct.
-typedef struct _LDR_MODULE64 {
-    LIST_ENTRY64        InLoadOrderModuleList;
-    LIST_ENTRY64        InMemoryOrderModuleList;
-    LIST_ENTRY64        InInitializationOrderModuleList;
-    QWORD               BaseAddress;
-    QWORD               EntryPoint;
-    ULONG               SizeOfImage;
-    ULONG               _Filler1;
-    UNICODE_STRING64    FullDllName;
-    UNICODE_STRING64    BaseDllName;
-    ULONG               Flags;
-    SHORT               LoadCount;
-    SHORT               TlsIndex;
-    LIST_ENTRY64        HashTableEntry;
-    ULONG               TimeDateStamp;
-    ULONG               _Filler2;
-} LDR_MODULE64, *PLDR_MODULE64;
-
-typedef struct _LDR_MODULE32 {
-    LIST_ENTRY32        InLoadOrderModuleList;
-    LIST_ENTRY32        InMemoryOrderModuleList;
-    LIST_ENTRY32        InInitializationOrderModuleList;
-    DWORD               BaseAddress;
-    DWORD               EntryPoint;
-    ULONG               SizeOfImage;
-    UNICODE_STRING32    FullDllName;
-    UNICODE_STRING32    BaseDllName;
-    ULONG               Flags;
-    SHORT               LoadCount;
-    SHORT               TlsIndex;
-    LIST_ENTRY32        HashTableEntry;
-    ULONG               TimeDateStamp;
-} LDR_MODULE32, *PLDR_MODULE32;
-
-typedef struct _PEB_LDR_DATA32 {
-    BYTE Reserved1[8];
-    DWORD Reserved2;
-    LIST_ENTRY32 InLoadOrderModuleList;
-    LIST_ENTRY32 InMemoryOrderModuleList;
-    LIST_ENTRY32 InInitializationOrderModuleList;
-} PEB_LDR_DATA32, *PPEB_LDR_DATA32;
-
-typedef struct _PEB_LDR_DATA64 {
-    BYTE Reserved1[8];
-    QWORD Reserved2;
-    LIST_ENTRY64 InLoadOrderModuleList;
-    LIST_ENTRY64 InMemoryOrderModuleList;
-    LIST_ENTRY64 InInitializationOrderModuleList;
-} PEB_LDR_DATA64, *PPEB_LDR_DATA64;
-
-typedef struct _PEB32 {
-    BYTE Reserved1[2];
-    BYTE BeingDebugged;
-    BYTE Reserved2[1];
-    DWORD Reserved3[2];
-    DWORD Ldr;
-    DWORD ProcessParameters;
-    DWORD SubSystemData;
-    DWORD ProcessHeap;
-    DWORD Unknown1[27];
-    DWORD NumberOfHeaps;
-    DWORD MaximumNumberOfHeaps;
-    DWORD ProcessHeaps;
-    // ...
-} PEB32, *PPEB32;
-
-typedef struct _PEB64 {
-    BYTE Reserved1[2];
-    BYTE BeingDebugged;
-    BYTE Reserved2[1];
-    DWORD _Filler;
-    QWORD Reserved3[2];
-    QWORD Ldr;
-    QWORD ProcessParameters;
-    QWORD SubSystemData;
-    QWORD ProcessHeap;
-    QWORD Unknown1[22];
-    DWORD NumberOfHeaps;
-    DWORD MaximumNumberOfHeaps;
-    QWORD ProcessHeaps;
-    // ...
-} PEB64, *PPEB64;
-
 typedef struct tdVMMWIN_LDRMODULES_CONTEXT {
     DWORD cwszTextTotal;
     DWORD cModules;
@@ -973,7 +889,7 @@ QWORD VmmWinUnloadedModule_vaNtdllUnloadedArray(_In_ PVMM_PROCESS pProcess, _In_
     PVMMOB_MAP_MODULE pObModuleMap = NULL;
     // 1: fetch cached
     vaUnloadedArray = f32 ? ctxVmm->ContextUnloadedModule.vaNtdll32 : ctxVmm->ContextUnloadedModule.vaNtdll64;
-    if(-1 == (DWORD)vaUnloadedArray) { return 0; }
+    if((DWORD)vaUnloadedArray == (DWORD)-1) { return 0; }
     if(vaUnloadedArray) { return vaUnloadedArray; }
     // 2: fetch ntdll module
     if(!VmmMap_GetModuleEntryEx(pProcess, 0, "ntdll.dll", &pObModuleMap, &peModule)) { goto fail; }
@@ -996,9 +912,9 @@ QWORD VmmWinUnloadedModule_vaNtdllUnloadedArray(_In_ PVMM_PROCESS pProcess, _In_
     }
     // 3: commit to cache
     if(f32) {
-        ctxVmm->ContextUnloadedModule.vaNtdll32 = vaUnloadedArray ? (DWORD)vaUnloadedArray : -1;
+        ctxVmm->ContextUnloadedModule.vaNtdll32 = vaUnloadedArray ? (DWORD)vaUnloadedArray : (DWORD)-1;
     } else {
-        ctxVmm->ContextUnloadedModule.vaNtdll64 = vaUnloadedArray ? vaUnloadedArray : -1;
+        ctxVmm->ContextUnloadedModule.vaNtdll64 = vaUnloadedArray ? vaUnloadedArray : (QWORD)-1;
     }
 fail:
     Ob_DECREF(pObModuleMap);
@@ -1253,8 +1169,8 @@ PVMMWIN_USER_PROCESS_PARAMETERS VmmWin_UserProcessParameters_Get(_In_ PVMM_PROCE
 * Map a tag into the sorted memory map in O(log2) operations. Supply only one of szTag or wszTag.
 * -- pProcess
 * -- psm
-* -- vaBase
-* -- vaLimit = limit == vaBase + size (== top address in range +1)
+* -- va
+* -- vaLimit = limit == va + size (== top address in range +1)
 * -- uszTag
 * -- fWoW64
 */
@@ -1423,277 +1339,6 @@ BOOL VmmWinPte_InitializeMapText(_In_ PVMM_PROCESS pProcess)
     }
     LeaveCriticalSection(&pProcess->LockUpdate);
     return pProcess->Map.pObPte->fTagScan;
-}
-
-// ----------------------------------------------------------------------------
-// HEAP FUNCTIONALITY BELOW:
-// ----------------------------------------------------------------------------
-
-typedef struct tdVMMWIN_HEAP_SEGMENT64 {
-    QWORD HeapEntry[2];
-    DWORD SegmentSignature;
-    DWORD SegmentFlags;
-    LIST_ENTRY64 _ListEntry;
-    QWORD Heap;
-    QWORD BaseAddress;
-    QWORD NumberOfPages;
-    QWORD FirstEntry;
-    QWORD LastValidEntry;
-    DWORD NumberOfUnCommittedPages;
-    DWORD NumberOfUnCommittedRanges;
-    DWORD SegmentAllocatorBackTraceIndex;
-    DWORD Reserved;
-    LIST_ENTRY64 UCRSegmentList;
-} VMMWIN_HEAP_SEGMENT64, *PVMMWIN_HEAP_SEGMENT64;
-
-typedef struct tdVMMWIN_HEAP_SEGMENT32 {
-    DWORD HeapEntry[2];
-    DWORD SegmentSignature;
-    DWORD SegmentFlags;
-    LIST_ENTRY32 _ListEntry;
-    DWORD Heap;
-    DWORD BaseAddress;
-    DWORD NumberOfPages;
-    DWORD FirstEntry;
-    DWORD LastValidEntry;
-    DWORD NumberOfUnCommittedPages;
-    DWORD NumberOfUnCommittedRanges;
-    DWORD SegmentAllocatorBackTraceIndex;
-    DWORD Reserved;
-    LIST_ENTRY32 UCRSegmentList;
-} VMMWIN_HEAP_SEGMENT32, *PVMMWIN_HEAP_SEGMENT32;
-
-typedef struct tdVMMWIN_HEAP_SEGMENT32_XP {
-    DWORD HeapEntry[2];
-    DWORD SegmentSignature;
-    DWORD SegmentFlags;
-    DWORD Heap;
-    DWORD LargestUnCommittedRange;
-    DWORD BaseAddress;
-    DWORD NumberOfPages;
-    DWORD FirstEntry;
-    DWORD LastValidEntry;
-    DWORD NumberOfUnCommittedPages;
-    DWORD NumberOfUnCommittedRanges;
-    DWORD UnCommittedRanges;
-    WORD AllocatorBackTraceIndex;
-    WORD Reserved;
-    DWORD LastEntryInSegment;
-} VMMWIN_HEAP_SEGMENT32_XP, *PVMMWIN_HEAP_SEGMENT32_XP;
-
-typedef struct tdVMMWIN_HEAP_CONTEXT {
-    DWORD iHeap;
-    POB_MAP pm;
-} VMMWIN_HEAP_CONTEXT, *PVMMWIN_HEAP_CONTEXT;
-
-VOID VmmWinHeap_Initialize32_Pre_XP(_In_ PVMM_PROCESS pProcess, _In_ PVMMWIN_HEAP_CONTEXT ctx, _In_ QWORD vaHeaps[], _In_ DWORD cHeaps)
-{
-    QWORD i;
-    VMM_MAP_HEAPENTRY e = { 0 };
-    VMMWIN_HEAP_SEGMENT32_XP h = { 0 };
-    VmmCachePrefetchPages4(pProcess, cHeaps, vaHeaps, sizeof(VMMWIN_HEAP_SEGMENT32_XP), 0);
-    for(i = 0; i < cHeaps; i++) {
-        if(!VmmRead(pProcess, vaHeaps[i], (PBYTE)&h, sizeof(VMMWIN_HEAP_SEGMENT32_XP))) { continue; }
-        if((h.SegmentSignature != 0xeeffeeff) || (h.NumberOfPages >= 0x00f00000)) { continue; }
-        e.HeapId = ctx->iHeap; ctx->iHeap++;
-        e.fPrimary = 1;
-        e.cPages = h.NumberOfPages;
-        e.cPagesUnCommitted = h.NumberOfUnCommittedPages;
-        ObMap_Push(ctx->pm, vaHeaps[i], (PVOID)e.qwHeapData);
-    }
-}
-
-VOID VmmWinHeap_Initialize32_Pre(_In_ PVMM_PROCESS pProcess, _In_opt_ PVMMWIN_HEAP_CONTEXT ctx, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb, _In_ QWORD vaFLink, _In_ QWORD vaBLink, _In_ POB_SET pVSetAddress, _Inout_ PBOOL pfValidEntry, _Inout_ PBOOL pfValidFLink, _Inout_ PBOOL pfValidBLink)
-{
-    QWORD v;
-    VMM_MAP_HEAPENTRY e = { 0 };
-    PVMMWIN_HEAP_SEGMENT32 h = (PVMMWIN_HEAP_SEGMENT32)pb;
-    if(!ctx || (h->SegmentSignature != 0xffeeffee) || (h->NumberOfPages >= 0x00f00000)) { return; }
-    *pfValidFLink = VMM_UADDR32_4(vaFLink);
-    *pfValidBLink = VMM_UADDR32_4(vaBLink);
-    *pfValidEntry = *pfValidFLink || *pfValidBLink;
-    if((v = (QWORD)ObMap_GetByKey(ctx->pm, h->Heap))) {
-        e.qwHeapData = v;
-        e.fPrimary = 0;
-    } else {
-        e.HeapId = ctx->iHeap; ctx->iHeap++;
-        e.fPrimary = 1;
-    }
-    e.cPages = h->NumberOfPages;
-    e.cPagesUnCommitted = h->NumberOfUnCommittedPages;
-    ObMap_Push(ctx->pm, va, (PVOID)e.qwHeapData);
-}
-
-VOID VmmWinHeap_Initialize64_Pre(_In_ PVMM_PROCESS pProcess, _In_opt_ PVMMWIN_HEAP_CONTEXT ctx, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb, _In_ QWORD vaFLink, _In_ QWORD vaBLink, _In_ POB_SET pVSetAddress, _Inout_ PBOOL pfValidEntry, _Inout_ PBOOL pfValidFLink, _Inout_ PBOOL pfValidBLink)
-{
-    QWORD v;
-    VMM_MAP_HEAPENTRY e = { 0 };
-    PVMMWIN_HEAP_SEGMENT64 h = (PVMMWIN_HEAP_SEGMENT64)pb;
-    if(!ctx || (h->SegmentSignature != 0xffeeffee) || (h->NumberOfPages >= 0x00f00000)) { return; }
-    *pfValidFLink = VMM_UADDR64_8(vaFLink);
-    *pfValidBLink = VMM_UADDR64_8(vaBLink);
-    *pfValidEntry = *pfValidFLink || *pfValidBLink;
-    if((v = (QWORD)ObMap_GetByKey(ctx->pm, h->Heap))) {
-        e.qwHeapData = v;
-        e.fPrimary = 0;
-    } else {
-        e.HeapId = ctx->iHeap; ctx->iHeap++;
-        e.fPrimary = 1;
-    }
-    e.cPages = (DWORD)h->NumberOfPages;
-    e.cPagesUnCommitted = h->NumberOfUnCommittedPages;
-    ObMap_Push(ctx->pm, va, (PVOID)e.qwHeapData);
-}
-
-int VmmWinHeap_Initialize_CmpHeapEntry(PVMM_MAP_HEAPENTRY v1, PVMM_MAP_HEAPENTRY v2)
-{
-    return
-        (v1->vaHeapSegment < v2->vaHeapSegment) ? -1 :
-        (v1->vaHeapSegment > v2->vaHeapSegment) ? 1 : 0;
-}
-
-/*
-* Identify and scan for 64-bit heaps in a process memory space and commit the
-* result to the pProcess memory map.
-* NB! The 32-bit variant below is NOT robust. It will fail a lot of times
-* especially on older versions - but it will fail silently without causing
-* harm except a few extra reads. Probably due to bad hardcoded values. It's
-* primarily heap-header analysis that is failing. But it seems to mostly work
-* on newer windows versions.
-* NB! Must be called in thread-safe way.
-*/
-VOID VmmWinHeap_Initialize32(_In_ PVMM_PROCESS pProcess, _In_ BOOL fWow64)
-{
-    BOOL f;
-    BYTE pbPEB32[sizeof(PEB32)];
-    PPEB32 pPEB32 = (PPEB32)pbPEB32;
-    DWORD i, cHeaps, vaHeaps[0x80];
-    QWORD vaHeapPrimary, vaHeaps64[0x80] = { 0 };
-    PVMMOB_MAP_HEAP pObHeapMap;
-    VMMWIN_HEAP_CONTEXT ctx = { 0 };
-    // 1: Read PEB
-    if(!fWow64 && !pProcess->win.vaPEB) { return; }
-    if(fWow64 && !pProcess->win.vaPEB32) { return; }
-    if(!VmmRead(pProcess, (fWow64 ? pProcess->win.vaPEB32 : pProcess->win.vaPEB), pbPEB32, sizeof(PEB32))) { return; }
-    vaHeapPrimary = pPEB32->ProcessHeap;
-    cHeaps = pPEB32->NumberOfHeaps;
-    if(cHeaps > 0x80) { return; } // probably not valid
-    // 2: Read heap array
-    f = (cHeaps <= 0x80) &&
-        VmmRead(pProcess, pPEB32->ProcessHeaps, (PBYTE)vaHeaps, sizeof(DWORD) * cHeaps) &&
-        (vaHeaps[0] == vaHeapPrimary);
-    if(!f) { return; }
-    for(i = 0; i < cHeaps; i++) {
-        vaHeaps64[i] = vaHeaps[i];
-    }
-    // 3: Traverse heap linked list
-    if(!(ctx.pm = ObMap_New(0))) { return; }
-    if(ctxVmm->kernel.dwVersionBuild <= 2600) {
-        // WINXP
-        VmmWinHeap_Initialize32_Pre_XP(pProcess, &ctx, vaHeaps64, cHeaps);
-    } else {
-        // VISTA+
-        VmmWin_ListTraversePrefetch(
-            pProcess,
-            TRUE,
-            &ctx,
-            cHeaps,
-            vaHeaps64,
-            0x0c,
-            sizeof(VMMWIN_HEAP_SEGMENT32),
-            (VMMWIN_LISTTRAVERSE_PRE_CB)VmmWinHeap_Initialize32_Pre,
-            NULL,
-            NULL
-        );
-    }
-    // 4: allocate and set result
-    cHeaps = ObMap_Size(ctx.pm);
-    if((pObHeapMap = Ob_Alloc('HeaM', 0, sizeof(VMMOB_MAP_HEAP) + cHeaps * sizeof(VMM_MAP_HEAPENTRY), NULL, NULL))) {
-        pObHeapMap->cMap = cHeaps;
-        while(cHeaps) {
-            cHeaps--;
-            pObHeapMap->pMap[cHeaps].qwHeapData = (QWORD)ObMap_PopWithKey(ctx.pm, &pObHeapMap->pMap[cHeaps].vaHeapSegment);
-        }
-        qsort(pObHeapMap->pMap, pObHeapMap->cMap, sizeof(VMM_MAP_HEAPENTRY), (int(*)(const void *, const void *))VmmWinHeap_Initialize_CmpHeapEntry);
-        pProcess->Map.pObHeap = pObHeapMap;
-    }
-    Ob_DECREF(ctx.pm);
-}
-
-/*
-* Identify and scan for 64-bit heaps in a process memory space and commit the
-* result to the pProcess memory map.
-* NB! WINXP is not supported.
-* NB! Must be called in thread-safe way.
-*/
-VOID VmmWinHeap_Initialize64(_In_ PVMM_PROCESS pProcess)
-{
-    BOOL f;
-    BYTE pbPEB64[sizeof(PEB64)];
-    PPEB64 pPEB64 = (PPEB64)pbPEB64;
-    DWORD cHeaps;
-    QWORD vaHeapPrimary, vaHeaps[0x80];
-    PVMMOB_MAP_HEAP pObHeapMap;
-    VMMWIN_HEAP_CONTEXT ctx = { 0 };
-    // 1: Read PEB
-    f = pProcess->win.vaPEB && VmmRead(pProcess, pProcess->win.vaPEB, pbPEB64, sizeof(PEB64));
-    if(!f) { return; }
-    vaHeapPrimary = pPEB64->ProcessHeap;
-    cHeaps = pPEB64->NumberOfHeaps;
-    // 2: Read heap array
-    f = (cHeaps <= 0x80) &&
-        VmmRead(pProcess, pPEB64->ProcessHeaps, (PBYTE)vaHeaps, sizeof(QWORD) * cHeaps) &&
-        (vaHeaps[0] == vaHeapPrimary);
-    if(!f) { return; }
-    // 3: Traverse heap linked list
-    if(!(ctx.pm = ObMap_New(0))) { return; }
-    VmmWin_ListTraversePrefetch(
-        pProcess,
-        FALSE,
-        &ctx,
-        cHeaps,
-        vaHeaps,
-        0x18,
-        sizeof(VMMWIN_HEAP_SEGMENT64),
-        (VMMWIN_LISTTRAVERSE_PRE_CB)VmmWinHeap_Initialize64_Pre,
-        NULL,
-        NULL
-    );
-    // 4: allocate and set result
-    cHeaps = ObMap_Size(ctx.pm);
-    if((pObHeapMap = Ob_Alloc('HeaM', 0, sizeof(VMMOB_MAP_HEAP) + cHeaps * sizeof(VMM_MAP_HEAPENTRY), NULL, NULL))) {
-        pObHeapMap->cMap = cHeaps;
-        while(cHeaps) {
-            cHeaps--;
-            pObHeapMap->pMap[cHeaps].qwHeapData = (QWORD)ObMap_PopWithKey(ctx.pm, &pObHeapMap->pMap[cHeaps].vaHeapSegment);
-        }
-        qsort(pObHeapMap->pMap, pObHeapMap->cMap, sizeof(VMM_MAP_HEAPENTRY), (int(*)(const void *, const void *))VmmWinHeap_Initialize_CmpHeapEntry);
-        pProcess->Map.pObHeap = pObHeapMap;     // pProcess take reference responsibility
-    }
-    Ob_DECREF(ctx.pm);
-}
-
-/*
-* Initialize the meap map containing information about the process heaps in the
-* specific process. This is performed by a PEB walk/scan of in-process memory
-* structures. This may be unreliable if a process is obfuscated or tampered.
-* -- pProcess
-* -- return
-*/
-BOOL VmmWinHeap_Initialize(_In_ PVMM_PROCESS pProcess)
-{
-    if(pProcess->Map.pObHeap) { return TRUE; }
-    VmmTlbSpider(pProcess);
-    EnterCriticalSection(&pProcess->LockUpdate);
-    if(!pProcess->Map.pObHeap) {
-        if((ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X86) || ((ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X64) && pProcess->win.fWow64)) {
-            VmmWinHeap_Initialize32(pProcess, pProcess->win.fWow64);
-        } else if(ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X64) {
-            VmmWinHeap_Initialize64(pProcess);
-        }
-    }
-    LeaveCriticalSection(&pProcess->LockUpdate);
-    return pProcess->Map.pObHeap ? TRUE : FALSE;
 }
 
 // ----------------------------------------------------------------------------
@@ -3033,12 +2678,11 @@ VOID VmmWinUser_Refresh()
 VOID VmmWinProcess_OffsetLocator_Print()
 {
     PVMM_OFFSET_EPROCESS po = &ctxVmm->offset.EPROCESS;
-    VMMLOG_LEVEL dwLogLevel = po->fValid ? LOGLEVEL_DEBUG : LOGLEVEL_WARNING;
-    VmmLog(MID_PROCESS, dwLogLevel, "OK: %s",
+    VmmLog(MID_PROCESS, LOGLEVEL_DEBUG, "OK: %s",
         (po->fValid ? "TRUE" : "FALSE"));
-    VmmLog(MID_PROCESS, dwLogLevel, "    PID:  %03x PPID: %03x STAT: %03x DTB:  %03x DTBU: %03x NAME: %03x PEB: %03x",
+    VmmLog(MID_PROCESS, LOGLEVEL_DEBUG, "    PID:  %03x PPID: %03x STAT: %03x DTB:  %03x DTBU: %03x NAME: %03x PEB: %03x",
         po->PID, po->PPID, po->State, po->DTB, po->DTB_User, po->Name, po->PEB);
-    VmmLog(MID_PROCESS, dwLogLevel, "    FLnk: %03x BLnk: %03x oMax: %03x SeAu: %03x VadR: %03x ObjT: %03x WoW: %03x",
+    VmmLog(MID_PROCESS, LOGLEVEL_DEBUG, "    FLnk: %03x BLnk: %03x oMax: %03x SeAu: %03x VadR: %03x ObjT: %03x WoW: %03x",
         po->FLink, po->BLink, po->cbMaxOffset, po->SeAuditProcessCreationInfo, po->VadRoot, po->ObjectTable, po->Wow64Process);
 }
 
@@ -3108,7 +2752,7 @@ VOID VmmWinProcess_OffsetLocator64(_In_ PVMM_PROCESS pSystemProcess)
     if(*(PDWORD)(pbSYSTEM + 0x04)) { return; }
     po->State = 0x04;
     // find offset PML4 (static for now)
-    if(pSystemProcess->paDTB != (0xfffffffffffff000 & *(PQWORD)(pbSYSTEM + 0x28))) { return; }
+    if(0xffff800000000000 & *(PQWORD)(pbSYSTEM + 0x28)) { return; }
     po->DTB = 0x28;
     // find offset for Name
     for(i = 0, f = FALSE; i < VMMPROC_EPROCESS64_MAX_SIZE - 8; i += 8) {
@@ -3489,6 +3133,7 @@ BOOL VmmWinProcess_Enum64(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fTotalRefr
         if(!po->fValid) {
             VmmLog(MID_PROCESS, LOGLEVEL_INFO, "Unable to fuzz EPROCESS offsets - trying debug symbols");
             VmmWinProcess_OffsetLocatorSYMSERV(pSystemProcess);
+            VmmWinProcess_OffsetLocator_Print();
         }
         if(!po->fValid) {
             VmmLog(MID_PROCESS, LOGLEVEL_CRITICAL, "Unable to locate EPROCESS offsets");
@@ -3914,6 +3559,12 @@ BOOL VmmWinProcess_Enumerate(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fRefres
 
 #define VMMWIN_LISTTRAVERSEPREFETCH_LOOPPROTECT_MAX         0x1000
 
+// use the topmost 4 bits to store additional information about 
+// the initial array index which started this list walk.
+#define VMMWIN_LISTTRAVERSEPREFETCH_EXVA_CREATE(va, id)     (((QWORD)id << 48) | (va & 0x0000ffffffffffff))
+#define VMMWIN_LISTTRAVERSEPREFETCH_EXVA_GET_VA(exva)       (((exva & 0x0000800000000000) ? 0xffff000000000000 : 0) | (exva & 0x0000ffffffffffff))
+#define VMMWIN_LISTTRAVERSEPREFETCH_EXVA_GET_ID(exva)       ((WORD)(exva >> 48))
+
 /*
 * Walk a windows linked list in an efficient way that minimize IO requests to
 * the the device. This is advantageous for latency reasons. The function return
@@ -3921,6 +3572,7 @@ BOOL VmmWinProcess_Enumerate(_In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fRefres
 * if the list should be walked again at a later time.
 * The callback function must only return FALSE on severe errors when the list
 * should no longer be continued to be walked in the direction.
+* The function keeps track of the initial array index if it's below 0xffff.
 * CALLER_DECREF: return
 * -- pProcess
 * -- f32
@@ -3945,7 +3597,8 @@ VOID VmmWin_ListTraversePrefetch(
     _In_opt_ VMMWIN_LISTTRAVERSE_POST_CB pfnCallback_Post,
     _In_opt_ POB_CONTAINER pPrefetchAddressContainer
 ) {
-    QWORD vaData;
+    WORD idData;
+    QWORD vaData, exvaData;
     DWORD cbReadData;
     PBYTE pbData = NULL;
     QWORD vaFLink, vaBLink;
@@ -3963,36 +3616,41 @@ VOID VmmWin_ListTraversePrefetch(
     if(!(pbData = LocalAlloc(0, cbData))) { goto fail; }
     while(cvaDataStart) {
         cvaDataStart--;
-        ObSet_Push(pObSet_vaAll, pvaDataStart[cvaDataStart]);
-        ObSet_Push(pObSet_vaTry1, pvaDataStart[cvaDataStart]);
+        if(ObSet_Push(pObSet_vaAll, pvaDataStart[cvaDataStart])) {
+            ObSet_Push(pObSet_vaTry1, VMMWIN_LISTTRAVERSEPREFETCH_EXVA_CREATE(pvaDataStart[cvaDataStart], cvaDataStart));
+        }
     }
     // 3: Initial list walk
     fTry1 = TRUE;
     while(TRUE) {
         if(fTry1) {
-            vaData = ObSet_Pop(pObSet_vaTry1);
-            if(!vaData && (0 == ObSet_Size(pObSet_vaTry2))) { break; }
-            if(!vaData) {
+            exvaData = ObSet_Pop(pObSet_vaTry1);
+            if(!exvaData && (0 == ObSet_Size(pObSet_vaTry2))) { break; }
+            if(!exvaData) {
                 VmmCachePrefetchPages3(pProcess, pObSet_vaAll, cbData, 0);
                 fTry1 = FALSE;
                 continue;
             }
+            vaData = VMMWIN_LISTTRAVERSEPREFETCH_EXVA_GET_VA(exvaData);
+            idData = VMMWIN_LISTTRAVERSEPREFETCH_EXVA_GET_ID(exvaData);
             VmmReadEx(pProcess, vaData, pbData, cbData, &cbReadData, VMM_FLAG_FORCECACHE_READ);
             if(cbReadData != cbData) {
-                ObSet_Push(pObSet_vaTry2, vaData);
+                ObSet_Push(pObSet_vaTry2, exvaData);
                 continue;
             }
         } else {
-            vaData = ObSet_Pop(pObSet_vaTry2);
-            if(!vaData && (0 == ObSet_Size(pObSet_vaTry1))) { break; }
-            if(!vaData) { fTry1 = TRUE; continue; }
+            exvaData = ObSet_Pop(pObSet_vaTry2);
+            if(!exvaData && (0 == ObSet_Size(pObSet_vaTry1))) { break; }
+            if(!exvaData) { fTry1 = TRUE; continue; }
+            vaData = VMMWIN_LISTTRAVERSEPREFETCH_EXVA_GET_VA(exvaData);
+            idData = VMMWIN_LISTTRAVERSEPREFETCH_EXVA_GET_ID(exvaData);
             if(!VmmRead(pProcess, vaData, pbData, cbData)) { continue; }
         }
         vaFLink = f32 ? *(PDWORD)(pbData + oListStart + 0) : *(PQWORD)(pbData + oListStart + 0);
         vaBLink = f32 ? *(PDWORD)(pbData + oListStart + 4) : *(PQWORD)(pbData + oListStart + 8);
         if(pfnCallback_Pre) {
             fValidEntry = FALSE; fValidFLink = FALSE; fValidBLink = FALSE;
-            pfnCallback_Pre(pProcess, ctx, vaData, pbData, cbData, vaFLink, vaBLink, pObSet_vaAll, &fValidEntry, &fValidFLink, &fValidBLink);
+            pfnCallback_Pre(pProcess, ctx, vaData, pbData, cbData, vaFLink, vaBLink, pObSet_vaAll, &fValidEntry, &fValidFLink, &fValidBLink, idData);
         } else {
             if(f32) {
                 fValidFLink = !(vaFLink & 0x03);
@@ -4004,17 +3662,15 @@ VOID VmmWin_ListTraversePrefetch(
             fValidEntry = fValidFLink || fValidBLink;
         }
         if(fValidEntry) {
-            ObSet_Push(pObSet_vaValid, vaData);
+            ObSet_Push(pObSet_vaValid, exvaData);
         }
         vaFLink -= oListStart;
         vaBLink -= oListStart;
-        if(fValidFLink && !ObSet_Exists(pObSet_vaAll, vaFLink)) {
-            ObSet_Push(pObSet_vaAll, vaFLink);
-            ObSet_Push(pObSet_vaTry1, vaFLink);
+        if(fValidFLink && ObSet_Push(pObSet_vaAll, vaFLink)) {
+            ObSet_Push(pObSet_vaTry1, VMMWIN_LISTTRAVERSEPREFETCH_EXVA_CREATE(vaFLink, idData));
         }
-        if(fValidBLink && !ObSet_Exists(pObSet_vaAll, vaBLink)) {
-            ObSet_Push(pObSet_vaAll, vaBLink);
-            ObSet_Push(pObSet_vaTry1, vaBLink);
+        if(fValidBLink && ObSet_Push(pObSet_vaAll, vaBLink)) {
+            ObSet_Push(pObSet_vaTry1, VMMWIN_LISTTRAVERSEPREFETCH_EXVA_CREATE(vaBLink, idData));
         }
     }
     // 4: Prefetch additional gathered addresses into cache.
@@ -4022,9 +3678,11 @@ VOID VmmWin_ListTraversePrefetch(
     // 5: 2nd main list walk. Call into optional pfnCallback_Post to do the main
     //    processing of the list items.
     if(pfnCallback_Post) {
-        while((vaData = ObSet_Pop(pObSet_vaValid))) {
+        while((exvaData = ObSet_Pop(pObSet_vaValid))) {
+            vaData = VMMWIN_LISTTRAVERSEPREFETCH_EXVA_GET_VA(exvaData);
+            idData = VMMWIN_LISTTRAVERSEPREFETCH_EXVA_GET_ID(exvaData);
             if(VmmRead(pProcess, vaData, pbData, cbData)) {
-                pfnCallback_Post(pProcess, ctx, vaData, pbData, cbData);
+                pfnCallback_Post(pProcess, ctx, vaData, pbData, cbData, idData);
             }
         }
     }

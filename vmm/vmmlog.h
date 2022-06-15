@@ -8,16 +8,25 @@
 #include "vmm.h"
 
 typedef enum tdVMMLOG_LEVEL {
-    LOGLEVEL_NONE      = 0, // do not use!
-    LOGLEVEL_CRITICAL  = 1, // critical stopping error
-    LOGLEVEL_WARNING   = 2, // severe warning error
-    LOGLEVEL_INFO      = 3, // normal message
-    LOGLEVEL_VERBOSE   = 4, // verbose message (visible with -v)
-    LOGLEVEL_DEBUG     = 5, // debug message (visible with -vv)
-    LOGLEVEL_TRACE     = 6, // trace message
-    LOGLEVEL_ALL       = 7, // do not use!
+    LOGLEVEL_NONE       = 0, // do not use!
+    LOGLEVEL_0_NONE     = 0,
+    LOGLEVEL_CRITICAL   = 1, // critical stopping error
+    LOGLEVEL_1_CRITICAL = 1,
+    LOGLEVEL_WARNING    = 2, // severe warning error
+    LOGLEVEL_2_WARNING  = 2,
+    LOGLEVEL_INFO       = 3, // normal message
+    LOGLEVEL_3_INFO     = 3,
+    LOGLEVEL_VERBOSE    = 4, // verbose message (visible with -v)
+    LOGLEVEL_4_VERBOSE  = 4,
+    LOGLEVEL_DEBUG      = 5, // debug message (visible with -vv)
+    LOGLEVEL_5_DEBUG    = 5,
+    LOGLEVEL_TRACE      = 6, // trace message
+    LOGLEVEL_6_TRACE    = 6,
+    LOGLEVEL_ALL        = 7, // do not use!
+    LOGLEVEL_7_ALL      = 7,
 } VMMLOG_LEVEL;
 
+// NB! also update VMMLOG_MID_STR in vmmlog.c when adding new built-in types.
 #define MID_NA           0x80000000
 #define MID_MAIN         0x80000001
 #define MID_PYTHON       0x80000002
@@ -32,7 +41,9 @@ typedef enum tdVMMLOG_LEVEL {
 #define MID_PE           0x80000018
 #define MID_PDB          0x80000019
 #define MID_INFODB       0x8000001a
-#define MID_MAX          0x8000001a
+#define MID_HEAP         0x8000001b
+#define MID_OFFSET       0x8000001c
+#define MID_MAX          0x8000001c
 
 extern VMMLOG_LEVEL g_VmmLogLevelFilter;
 
@@ -72,6 +83,14 @@ VOID VmmLog_LevelSet(_In_opt_ DWORD dwMID, _In_ VMMLOG_LEVEL dwLogLevel, _In_ BO
 * -- fExternal = externally loaded module (dll/so).
 */
 VOID VmmLog_RegisterModule(_In_ DWORD dwMID, _In_ LPSTR uszModuleName, _In_ BOOL fExternal);
+
+/*
+* Check whether the MID/LogLevel will log to any output.
+* -- dwMID = module ID (MID)
+* -- dwLogLevel = log level as defined by LOGLEVEL_*
+* -- return = TRUE(will log), FALSE(will NOT log).
+*/
+BOOL VmmLogIsActive(_In_ DWORD dwMID, _In_ VMMLOG_LEVEL dwLogLevel);
 
 /*
 * Log a message "printf" style followed by a hexascii printout.

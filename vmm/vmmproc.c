@@ -8,6 +8,7 @@
 #include "vmmproc.h"
 #include "vmmwin.h"
 #include "vmmwininit.h"
+#include "vmmheap.h"
 #include "vmmnet.h"
 #include "vmmwinobj.h"
 #include "vmmwinpool.h"
@@ -151,6 +152,7 @@ BOOL VmmProcRefresh_Medium()
     VmmNet_Refresh();
     VmmWinObj_Refresh();
     MmPfn_Refresh();
+    VmmHeapAlloc_Refresh();
     PluginManager_Notify(VMMDLL_PLUGIN_NOTIFY_REFRESH_MEDIUM, NULL, 0);
     LeaveCriticalSection(&ctxVmm->LockMaster);
     return TRUE;

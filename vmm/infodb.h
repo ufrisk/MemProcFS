@@ -63,19 +63,29 @@ _Success_(return)
 BOOL InfoDB_SymbolPTR(_In_ LPSTR szModule, _In_ QWORD vaModuleBase, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_ PVOID pv);
 
 /*
-* Query the InfoDB for the size of a type.
-* Currently only szModule values of 'nt' or 'ntoskrnl' is supported.
+* Query the InfoDB for a static size populated in the static_type_size table.
 * -- szModule
 * -- szTypeName
 * -- pdwTypeSize
 * -- return
 */
 _Success_(return)
-BOOL InfoDB_TypeSize(_In_ LPSTR szModule, _In_ LPSTR szTypeName, _Out_ PDWORD pdwTypeSize);
+BOOL InfoDB_TypeSize_Static(_In_ LPSTR szModule, _In_ LPSTR szTypeName, _Out_ PDWORD pdwTypeSize);
 
 /*
-* Query the InfoDB for the offset of a child inside a type - often inside a struct.
+* Query the InfoDB for the size of a type.
 * Currently only szModule values of 'nt' or 'ntoskrnl' is supported.
+* Support for nt/ntoskrnl/tcpip.
+* -- szModule
+* -- szTypeName
+* -- pdwTypeSize
+* -- return
+*/
+_Success_(return)
+BOOL InfoDB_TypeSize_Dynamic(_In_ LPSTR szModule, _In_ LPSTR szTypeName, _Out_ PDWORD pdwTypeSize);
+
+/*
+* Query the InfoDB for the static offset of a child inside a type - often inside a struct.
 * -- szModule
 * -- szTypeName
 * -- uszTypeChildName
@@ -83,7 +93,19 @@ BOOL InfoDB_TypeSize(_In_ LPSTR szModule, _In_ LPSTR szTypeName, _Out_ PDWORD pd
 * -- return
 */
 _Success_(return)
-BOOL InfoDB_TypeChildOffset(_In_ LPSTR szModule, _In_ LPSTR szTypeName, _In_ LPSTR uszTypeChildName, _Out_ PDWORD pdwTypeOffset);
+BOOL InfoDB_TypeChildOffset_Static(_In_ LPSTR szModule, _In_ LPSTR szTypeName, _In_ LPSTR uszTypeChildName, _Out_ PDWORD pdwTypeOffset);
+
+/*
+* Query the InfoDB for the offset of a child inside a type - often inside a struct.
+* Support for nt/ntoskrnl/tcpip.
+* -- szModule
+* -- szTypeName
+* -- uszTypeChildName
+* -- pdwTypeOffset = offset relative to type base.
+* -- return
+*/
+_Success_(return)
+BOOL InfoDB_TypeChildOffset_Dynamic(_In_ LPSTR szModule, _In_ LPSTR szTypeName, _In_ LPSTR uszTypeChildName, _Out_ PDWORD pdwTypeOffset);
 
 /*
 * Return whether the InfoDB symbols are ok or not.

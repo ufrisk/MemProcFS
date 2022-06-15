@@ -407,8 +407,8 @@ BOOL VmmWinSvc_ResolveStrAll(_In_ PVMM_PROCESS pProcessSvc, _In_ PVMMOB_MAP_SERV
             fProcessUser =
                 pe->dwPID &&
                 (pObProcessUser = VmmProcessGetEx(NULL, pe->dwPID, VMM_FLAG_PROCESS_TOKEN)) &&
-                pObProcessUser->win.TOKEN.fInitialized && pObProcessUser->win.TOKEN.fSID &&
-                VmmWinUser_GetName(&pObProcessUser->win.TOKEN.SID, usz, sizeof(usz), NULL);
+                pObProcessUser->win.TOKEN.fInitialized && pObProcessUser->win.TOKEN.fSidUserValid &&
+                VmmWinUser_GetName(&pObProcessUser->win.TOKEN.SidUser.SID, usz, sizeof(usz), NULL);
             ObStrMap_PushPtrUU(pObStrMap, fProcessUser ? usz : NULL, &pe->uszUserAcct, NULL);
             Ob_DECREF_NULL(&pObProcessUser);
         }

@@ -135,6 +135,9 @@
     <ClInclude Include="vmmlog.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="vmmheap.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="vmmdll.c">
@@ -364,6 +367,12 @@
     </ClCompile>
     <ClCompile Include="m_proc_thread.c">
       <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="m_proc_heap.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmheap.c">
+      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

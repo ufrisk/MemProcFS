@@ -862,7 +862,7 @@ _Success_(return)
 BOOL VmmWinObjMgr_Initialize_ObjectNameExtInfo(_In_ PVMM_PROCESS pSystemProcess, _Inout_ POB_STRMAP pStrMap, _Inout_ PVMM_MAP_OBJECTENTRY pe, _In_ PVMM_WINOBJ_SETUP_OBJECT pes, _In_ BOOL fForce)
 {
     WCHAR wsz[0x201];
-    if(pes->ExtInfo.cchName == -1) { return TRUE; }
+    if(pes->ExtInfo.cchName == (DWORD)-1) { return TRUE; }
     pe->ExtInfo.ft = pes->ExtInfo.ft;
     if(pes->ExtInfo.vaName && VmmRead2(pSystemProcess, pes->ExtInfo.vaName, (PBYTE)wsz, min(0x400, pes->ExtInfo.cchName << 1), VMM_FLAG_FORCECACHE_READ)) {
         wsz[min(0x200, pes->ExtInfo.cchName)] = 0;
@@ -885,7 +885,7 @@ _Success_(return)
 BOOL VmmWinObjMgr_Initialize_ObjectName(_In_ PVMM_PROCESS pSystemProcess, _Inout_ POB_STRMAP pStrMap, _Inout_ PVMM_MAP_OBJECTENTRY pe, _In_ PVMM_WINOBJ_SETUP_OBJECT pes, _In_ BOOL fForce)
 {
     WCHAR wsz[0x201];
-    if(pes->cchName == -1) { return TRUE; }
+    if(pes->cchName == (DWORD)-1) { return TRUE; }
     if(pes->vaName && VmmRead2(pSystemProcess, pes->vaName, (PBYTE)wsz, min(0x400, pes->cchName << 1), VMM_FLAG_FORCECACHE_READ)) {
         wsz[min(0x200, pes->cchName)] = 0;
         ObStrMap_PushPtrWU(pStrMap, wsz, &pe->uszName, &pe->cbuName);
@@ -1342,7 +1342,7 @@ BOOL VmmWinObjDisplay_Get(_In_ LPSTR szTypeName, _In_ QWORD vaObject, _In_ BOOL 
         pOb->va = vaObject;
         ObCacheMap_Push(ctxVmm->pObCacheMapWinObjDisplay, vaObject, pOb, 0);
     }
-    if((pOb->cbObj == -1) || (pOb->cbHdr == -1)) { goto fail; }
+    if((pOb->cbObj == (DWORD)-1) || (pOb->cbHdr == (DWORD)-1)) { goto fail; }
     // 2: fetch object data (if required)
     if(!pOb->cbObj || (fDataObj && !pOb->pdcObj)) {
         if(!PDB_DisplayTypeNt(szTypeName, 1, vaObject, TRUE, FALSE, (fDataObj ? &szData : NULL), &pOb->cbObj, &pOb->cbType)) { goto fail; }

@@ -291,6 +291,6 @@ BOOL Statistics_CallToString(_Out_opt_ LPSTR *psz, _Out_ PDWORD pcsz)
             );
         }
     }
-    LocalFree(pLcStatistics);
+    LcMemFree(pLcStatistics);
     return TRUE;
 }

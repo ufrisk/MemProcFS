@@ -9,9 +9,13 @@
 #include "vmmdll.h"
 #include "vmmwin.h"
 #include "vmmwindef.h"
+#include <sddl.h>
 
 #define MPROCTOKEN_PRIVILEGE_LINELENGTH     60ULL
 #define MPROCTOKEN_PRIVILEGE_LINEHEADER     "   #    PID Flags Privilege Name"
+
+#define MPROCTOKEN_ALLSID_LINELENGTH     256ULL
+#define MPROCTOKEN_ALLSID_LINEHEADER     "   #    PID Display Name                                                     SID"
 
 static LPCSTR szTOKEN_NAMES[] = {
     "",
@@ -94,6 +98,43 @@ VOID MProcToken_PrivilegeReadLine_Callback(_In_ PVMM_PROCESS pProcess, _In_ DWOR
     Util_usnprintf_ln(szu8, cbLineLength, "");
 }
 
+typedef struct tdMPROCTOKEN_ALLSID_CONTEXT {
+    PVMM_PROCESS pProcess;
+    PVMM_PROCESS pSystemProcess;
+    PBYTE pbUserAndGroups;
+} MPROCTOKEN_ALLSID_CONTEXT, *PMPROCTOKEN_ALLSID_CONTEXT;
+
+VOID MProcToken_AllSidReadLine_Callback(_In_ PMPROCTOKEN_ALLSID_CONTEXT ctx, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVOID pvNotUsed, _Out_writes_(cbLineLength + 1) LPSTR szu8)
+{
+    union {
+        SID SID;
+        BYTE pb[SECURITY_MAX_SID_SIZE];
+    } Sid;
+    QWORD vaSid;
+    LPSTR szSid = NULL;
+    SID_NAME_USE eUse;
+    CHAR szNameBuffer[MAX_PATH], szBuffer[MAX_PATH] = { 0 };
+    DWORD cszNameBuffer = _countof(szNameBuffer);
+    DWORD cszBuffer = _countof(szBuffer);
+    vaSid = VMM_PTR_OFFSET(ctxVmm->f32, ctx->pbUserAndGroups, ie * (ctxVmm->f32 ? 8ULL : 16ULL));
+    if(!VmmRead(ctx->pSystemProcess, vaSid, Sid.pb, SECURITY_MAX_SID_SIZE)) { goto fail; }
+    if(!ConvertSidToStringSidA(&Sid.SID, &szSid)) { goto fail; }
+    if(LookupAccountSidA(NULL, &Sid.SID, szNameBuffer, &cszNameBuffer, szBuffer, &cszBuffer, &eUse)) {
+        if(szBuffer[0]) { strncat_s(szBuffer, _countof(szBuffer), "\\", _TRUNCATE); }
+        strncat_s(szBuffer, _countof(szBuffer), szNameBuffer, _TRUNCATE);
+    } else {
+        strncpy_s(szBuffer, _countof(szBuffer), "---", _TRUNCATE);
+    }
+fail:
+    Util_usnprintf_ln(szu8, cbLineLength, "%04x%7i %-64.64s %s",
+        ie,
+        ctx->pProcess->dwPID,
+        szBuffer[0] ? szBuffer : "---",
+        szSid ? szSid : "---"
+    );
+    LocalFree(szSid);
+}
+
 /*
 * Read : function as specified by the module manager. The module manager will
 * call into this callback function whenever a read shall occur from a "file".
@@ -112,15 +153,28 @@ NTSTATUS MProcToken_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *p
     PVMM_PROCESS pObProcess = NULL;
     SEP_TOKEN_PRIVILEGES SepTokenPrivileges;
     DWORD cSepTokenPrivileges;
+    LPCSTR sz;
+    MPROCTOKEN_ALLSID_CONTEXT ctxAllSid = { 0 };
     if(!(pObProcess = VmmProcessGetEx(NULL, ctx->dwPID, VMM_FLAG_PROCESS_TOKEN))) { goto fail; }
-    if(!pObProcess->win.TOKEN.fInitialized || !pObProcess->win.TOKEN.fSID) { goto fail; }
+    if(!pObProcess->win.TOKEN.fInitialized || !pObProcess->win.TOKEN.fSidUserValid) { goto fail; }
     if(!_stricmp(ctx->uszPath, "sid.txt")) {
         nt = Util_VfsReadFile_FromPBYTE(
             (PBYTE)pObProcess->win.TOKEN.szSID,
             pObProcess->win.TOKEN.szSID ? strlen(pObProcess->win.TOKEN.szSID) : 0,
             pb, cb, pcbRead, cbOffset);
+    } else if(!_stricmp(ctx->uszPath, "sid-all.txt")) {
+        if(pObProcess->win.TOKEN.dwUserAndGroupCount && VmmReadAlloc(PVMM_PROCESS_SYSTEM, pObProcess->win.TOKEN.vaUserAndGroups, &ctxAllSid.pbUserAndGroups, pObProcess->win.TOKEN.dwUserAndGroupCount * (ctxVmm->f32 ? 8 : 16), 0)) {
+            ctxAllSid.pProcess = pObProcess;
+            ctxAllSid.pSystemProcess = VmmProcessGet(4);
+            nt = Util_VfsLineFixed_Read(
+                (UTIL_VFSLINEFIXED_PFN_CB)MProcToken_AllSidReadLine_Callback, &ctxAllSid, MPROCTOKEN_ALLSID_LINELENGTH, MPROCTOKEN_ALLSID_LINEHEADER,
+                (PVOID)ctxAllSid.pbUserAndGroups /*dummy*/, pObProcess->win.TOKEN.dwUserAndGroupCount, 0,
+                pb, cb, pcbRead, cbOffset
+            );
+            Ob_DECREF(ctxAllSid.pSystemProcess);
+        }
     } else if(!_stricmp(ctx->uszPath, "user.txt")) {
-        VmmWinUser_GetName(&pObProcess->win.TOKEN.SID, uszBuffer, MAX_PATH, NULL);
+        VmmWinUser_GetName(&pObProcess->win.TOKEN.SidUser.SID, uszBuffer, MAX_PATH, NULL);
         nt = Util_VfsReadFile_FromPBYTE(uszBuffer, strlen(uszBuffer), pb, cb, pcbRead, cbOffset);
     } else if(!_stricmp(ctx->uszPath, "luid.txt")) {
         nt = Util_VfsReadFile_FromQWORD(pObProcess->win.TOKEN.qwLUID, pb, cb, pcbRead, cbOffset, FALSE);
@@ -134,6 +188,9 @@ NTSTATUS MProcToken_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *p
                 pb, cb, pcbRead, cbOffset
             );
         }
+    } else if(!_stricmp(ctx->uszPath, "integrity.txt")) {
+        sz = VMM_PROCESS_INTEGRITY_LEVEL_STR[pObProcess->win.TOKEN.IntegrityLevel];
+        nt = Util_VfsReadFile_FromPBYTE((PBYTE)sz, strlen(sz), pb, cb, pcbRead, cbOffset);
     }
 fail:
     Ob_DECREF(pObProcess);
@@ -156,17 +213,21 @@ BOOL MProcToken_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
     PVMM_PROCESS pObProcess = NULL;
     SEP_TOKEN_PRIVILEGES SepTokenPrivileges;
     if(!(pObProcess = VmmProcessGetEx(NULL, ctx->dwPID, VMM_FLAG_PROCESS_TOKEN))) { goto fail; }
-    if(!pObProcess->win.TOKEN.fInitialized || !pObProcess->win.TOKEN.fSID) { goto fail; }
+    if(!pObProcess->win.TOKEN.fInitialized || !pObProcess->win.TOKEN.fSidUserValid) { goto fail; }
     if(pObProcess->win.TOKEN.szSID) {
         VMMDLL_VfsList_AddFile(pFileList, "sid.txt", strlen(pObProcess->win.TOKEN.szSID), NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "sid-all.txt", UTIL_VFSLINEFIXED_LINECOUNT(pObProcess->win.TOKEN.dwUserAndGroupCount) * MPROCTOKEN_ALLSID_LINELENGTH, NULL);
     }
-    if(VmmWinUser_GetName(&pObProcess->win.TOKEN.SID, uszBuffer, MAX_PATH, NULL)) {
+    if(VmmWinUser_GetName(&pObProcess->win.TOKEN.SidUser.SID, uszBuffer, MAX_PATH, NULL)) {
         VMMDLL_VfsList_AddFile(pFileList, "user.txt", strlen(uszBuffer), NULL);
     }
     VMMDLL_VfsList_AddFile(pFileList, "luid.txt", 16, NULL);
     VMMDLL_VfsList_AddFile(pFileList, "session.txt", 8, NULL);
     if(MProcToken_PrivilegeGet(pObProcess->win.TOKEN.va, &SepTokenPrivileges, &cSepTokenPrivileges)) {
         VMMDLL_VfsList_AddFile(pFileList, "privileges.txt", UTIL_VFSLINEFIXED_LINECOUNT(cSepTokenPrivileges) * MPROCTOKEN_PRIVILEGE_LINELENGTH, NULL);
+    }
+    if(pObProcess->win.TOKEN.IntegrityLevel) {
+        VMMDLL_VfsList_AddFile(pFileList, "integrity.txt", strlen(VMM_PROCESS_INTEGRITY_LEVEL_STR[pObProcess->win.TOKEN.IntegrityLevel]), NULL);
     }
     fResult = TRUE;
 fail:

@@ -346,6 +346,7 @@ BOOL VmmNet_TcpE_Enumerate(_In_ PVMMNET_CONTEXT ctx, _In_ PVMM_PROCESS pSystemPr
         pe->Dst.port = _byteswap_ushort(*(PWORD)(pb + po->PortDst));
         pe->Src.port = _byteswap_ushort(*(PWORD)(pb + po->PortSrc));
         pe->dwState = *(PWORD)(pb + po->State);
+        if(pe->dwState > 13) { continue; }
         pe->vaObj = va;
         pe->ftTime = ftTime;
         pe->_Reserved1 = *(PQWORD)(pb + po->INET_AF);       // vaINET_AF
@@ -990,7 +991,6 @@ VOID VmmNet_Initialize_Context(_In_ PVMM_PROCESS pSystemProcess)
 {
     BOOL fResult = FALSE;
     QWORD va;
-    PDB_HANDLE hPDB = 0;
     PVMMNET_CONTEXT ctx = NULL;
     PVMMOB_MAP_MODULE pObModuleMap = NULL;
     PVMM_MAP_MODULEENTRY peModuleTcpip;
@@ -998,33 +998,21 @@ VOID VmmNet_Initialize_Context(_In_ PVMM_PROCESS pSystemProcess)
     // 1: fetch tcpip.sys info
     if(!VmmMap_GetModuleEntryEx(pSystemProcess, 0, "tcpip.sys", &pObModuleMap, &peModuleTcpip)) { goto fail; }
     ctx->vaModuleTcpip = peModuleTcpip->vaBase;
-    // 2: fetch optional pdb handle
-    if((hPDB = PDB_GetHandleFromModuleAddress(pSystemProcess, ctx->vaModuleTcpip))) {
-        PDB_LoadEnsure(hPDB);
-    }
+    // 2: ensure load of tcp handle
+    PDB_LoadEnsure(PDB_GetHandleFromModuleAddress(pSystemProcess, ctx->vaModuleTcpip));
     // 4: retrieve pdb information
-    if(hPDB) {
-        PDB_GetSymbolPTR(hPDB, "PartitionTable", pSystemProcess, &ctx->vaPartitionTable);
-        PDB_GetSymbolDWORD(hPDB, "PartitionCount", pSystemProcess, &ctx->cPartition);
-    } else {
-        InfoDB_SymbolPTR("tcpip", ctx->vaModuleTcpip, "PartitionTable", pSystemProcess, &ctx->vaPartitionTable);
-        InfoDB_SymbolDWORD("tcpip", ctx->vaModuleTcpip, "PartitionCount", pSystemProcess, &ctx->cPartition);
-    }
+    PDB_GetSymbolPTR2(PDB_HANDLE_TCPIP, ctx->vaModuleTcpip, "PartitionTable", pSystemProcess, &ctx->vaPartitionTable);
+    PDB_GetSymbolDWORD2(PDB_HANDLE_TCPIP, ctx->vaModuleTcpip, "PartitionCount", pSystemProcess, &ctx->cPartition);
     if(!VMM_KADDR(ctx->vaPartitionTable) || !ctx->cPartition || (ctx->cPartition > 64)) { goto fail; }
     // 3: retrieve TcpPortPool / UdpPortPool
     if(ctxVmm->kernel.dwVersionBuild <= 10586) {
-        if(hPDB) {
-            PDB_GetSymbolPTR(hPDB, "TcpPortPool", pSystemProcess, &ctx->vaTcpPortPool);
-            PDB_GetSymbolPTR(hPDB, "UdpPortPool", pSystemProcess, &ctx->vaUdpPortPool);
-        } else {
-            InfoDB_SymbolPTR("tcpip", ctx->vaModuleTcpip, "TcpPortPool", pSystemProcess, &ctx->vaTcpPortPool);
-            InfoDB_SymbolPTR("tcpip", ctx->vaModuleTcpip, "UdpPortPool", pSystemProcess, &ctx->vaUdpPortPool);
-        }
+        PDB_GetSymbolPTR2(PDB_HANDLE_TCPIP, ctx->vaModuleTcpip, "TcpPortPool", pSystemProcess, &ctx->vaTcpPortPool);
+        PDB_GetSymbolPTR2(PDB_HANDLE_TCPIP, ctx->vaModuleTcpip, "UdpPortPool", pSystemProcess, &ctx->vaUdpPortPool);
     } else {
-        if(PDB_GetSymbolPTR(hPDB, "TcpCompartmentSet", pSystemProcess, &va) || InfoDB_SymbolPTR("tcpip", ctx->vaModuleTcpip, "TcpCompartmentSet", pSystemProcess, &va)) {
+        if(PDB_GetSymbolPTR2(PDB_HANDLE_TCPIP, ctx->vaModuleTcpip, "TcpCompartmentSet", pSystemProcess, &va)) {
             ctx->vaTcpPortPool = VmmNet_Initialize_Context_PortPool(pSystemProcess, va, 'TcCo');
         }
-        if(PDB_GetSymbolPTR(hPDB, "UdpCompartmentSet", pSystemProcess, &va) || InfoDB_SymbolPTR("tcpip", ctx->vaModuleTcpip, "UdpCompartmentSet", pSystemProcess, &va)) {
+        if(PDB_GetSymbolPTR2(PDB_HANDLE_TCPIP, ctx->vaModuleTcpip, "UdpCompartmentSet", pSystemProcess, &va)) {
             ctx->vaUdpPortPool = VmmNet_Initialize_Context_PortPool(pSystemProcess, va, 'UdCo');
         }
     }

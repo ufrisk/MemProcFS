@@ -82,6 +82,145 @@ BOOL PDB_GetSymbolPTR(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _In_ PV
     return PDB_GetSymbolPBYTE(hPDB, szSymbolName, pProcess, (PBYTE)pv, (ctxVmm->f32 ? sizeof(DWORD) : sizeof(QWORD)));
 }
 
+/*
+* Read memory at the PDB acquired symbol offset and virtual address base.
+* -- hPDB
+* -- vaBase
+* -- szSymbolName = wildcard symbol name
+* -- pProcess
+* -- pb
+* -- cb
+* -- return
+*/
+_Success_(return)
+BOOL PDB_GetSymbolPBYTE2(_In_opt_ PDB_HANDLE hPDB, _In_ QWORD vaBase, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb)
+{
+    DWORD dwSymbolOffset;
+    if(!PDB_GetSymbolOffset(hPDB, szSymbolName, &dwSymbolOffset)) { return FALSE; }
+    return VmmRead(pProcess, vaBase + dwSymbolOffset, pb, cb);
+}
+
+/*
+* Read memory pointed to at the PDB acquired symbol offset and virtual address base.
+* -- hPDB
+* -- vaBase
+* -- szSymbolName
+* -- pProcess
+* -- pqw
+* -- return
+*/
+_Success_(return)
+BOOL PDB_GetSymbolQWORD2(_In_opt_ PDB_HANDLE hPDB, _In_ QWORD vaBase, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_ PQWORD pqw)
+{
+    return PDB_GetSymbolPBYTE2(hPDB, vaBase, szSymbolName, pProcess, (PBYTE)pqw, sizeof(QWORD));
+}
+
+/*
+* Read memory pointed to at the PDB acquired symbol offset and virtual address base.
+* -- hPDB
+* -- vaBase
+* -- szSymbolName
+* -- pProcess
+* -- pdw
+* -- return
+*/
+_Success_(return)
+BOOL PDB_GetSymbolDWORD2(_In_opt_ PDB_HANDLE hPDB, _In_ QWORD vaBase, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_ PDWORD pdw)
+{
+    return PDB_GetSymbolPBYTE2(hPDB, vaBase, szSymbolName, pProcess, (PBYTE)pdw, sizeof(DWORD));
+}
+
+/*
+* Read memory pointed to at the PDB acquired symbol offset and virtual address base.
+* -- hPDB
+* -- vaBase
+* -- szSymbolName
+* -- pProcess
+* -- pv = PDWORD on 32-bit and PQWORD on 64-bit _operating_system_ architecture.
+* -- return
+*/
+_Success_(return)
+BOOL PDB_GetSymbolPTR2(_In_opt_ PDB_HANDLE hPDB, _In_ QWORD vaBase, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_ PVOID pv)
+{
+    return PDB_GetSymbolPBYTE2(hPDB, vaBase, szSymbolName, pProcess, (PBYTE)pv, (ctxVmm->f32 ? sizeof(DWORD) : sizeof(QWORD)));
+}
+
+/*
+* Retrieve a module name given a magic hPDB. If no match is made NULL is returned.
+* -- hPDB = magic PDB handle.
+* -- return
+*/
+_Success_(return != NULL)
+LPSTR PDB_ModuleNameFromHandleMagic(_In_ PDB_HANDLE hPDB)
+{
+    switch(hPDB) {
+        case PDB_HANDLE_KERNEL:      return "nt";
+        case PDB_HANDLE_TCPIP:       return "tcpip";
+        case PDB_HANDLE_NTDLL:       return "ntdll";
+        case PDB_HANDLE_NTDLL_WOW64: return "wntdll";
+        default:                     return NULL;
+    }
+}
+
+/*
+* Wrapper for Query the InfoDB for the offset of a symbol.
+* NB! Query must be done with magic PDB handle to succeed.
+* -- hPDB = magic PDB handle.
+* -- szSymbolName
+* -- pdwSymbolOffset
+* -- return
+*/
+_Success_(return)
+BOOL PDB_InfoDB_SymbolOffset(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _Out_ PDWORD pdwSymbolOffset)
+{
+    LPSTR szModule = PDB_ModuleNameFromHandleMagic(hPDB);
+    if(!szModule) { return FALSE; }
+    return InfoDB_SymbolOffset(szModule, szSymbolName, pdwSymbolOffset);
+}
+
+/*
+* Wrapper for Query the InfoDB for the size of a type.
+* NB! Query must be done with magic PDB handle to succeed.
+* -- hPDB = magic PDB handle.
+* -- szTypeName
+* -- pdwTypeSize
+* -- fDynamic = dynamic(TRUE) or static(FALSE) type InfoDB lookup.
+* -- return
+*/
+_Success_(return)
+BOOL PDB_InfoDB_TypeSize(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _Out_ PDWORD pdwTypeSize, _In_ BOOL fDynamic)
+{
+    LPSTR szModule = PDB_ModuleNameFromHandleMagic(hPDB);
+    if(!szModule) { return FALSE; }
+    if(fDynamic) {
+        return InfoDB_TypeSize_Dynamic(szModule, szTypeName, pdwTypeSize);
+    } else {
+        return InfoDB_TypeSize_Static(szModule, szTypeName, pdwTypeSize);
+    }
+}
+
+/*
+* Wrapper for Query the InfoDB for the offset of a child inside a type - often inside a struct.
+* NB! Query must be done with magic PDB handle to succeed.
+* -- hPDB = magic PDB handle.
+* -- szTypeName
+* -- uszTypeChildName
+* -- pdwTypeOffset = offset relative to type base.
+* -- fDynamic = dynamic(TRUE) or static(FALSE) type InfoDB lookup.
+* -- return
+*/
+_Success_(return)
+BOOL PDB_InfoDB_TypeChildOffset(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _In_ LPSTR uszTypeChildName, _Out_ PDWORD pdwTypeOffset, _In_ BOOL fDynamic)
+{
+    LPSTR szModule = PDB_ModuleNameFromHandleMagic(hPDB);
+    if(!szModule) { return FALSE; }
+    if(fDynamic) {
+        return InfoDB_TypeChildOffset_Dynamic(szModule, szTypeName, uszTypeChildName, pdwTypeOffset);
+    } else {
+        return InfoDB_TypeChildOffset_Static(szModule, szTypeName, uszTypeChildName, pdwTypeOffset);
+    }
+}
+
 #ifdef _WIN32
 #include <winreg.h>
 #include <io.h>
@@ -321,6 +460,17 @@ fail:
 }
 
 /*
+* Get a valid PDB handle given an ordinary or magic PDB handle.
+* -- hPDB = ordinary or magic PDB handle.
+* -- return = ordinary PDB handle (or 0 on fail).
+*/
+PDB_HANDLE PDB_GetHandleFromHandleMagic(_In_ PDB_HANDLE hPDB)
+{
+    LPSTR szModule = PDB_ModuleNameFromHandleMagic(hPDB);
+    return szModule ? PDB_GetHandleFromModuleName(szModule) : hPDB;
+}
+
+/*
 * Ensure that the PDB_ENTRY have its symbols loaded into memory.
 * NB! this function must be called in a single-threaded context!
 * -- pPdbEntry
@@ -354,8 +504,8 @@ BOOL PDB_LoadEnsure(_In_opt_ PDB_HANDLE hPDB)
     POB_PDB_CONTEXT ctxOb = PDB_GetContext();
     PPDB_ENTRY pObPdbEntry = NULL;
     BOOL fResult = FALSE;
-    if(!ctxOb || ctxOb->fDisabled || !hPDB) { goto fail; }
-    if(hPDB == PDB_HANDLE_KERNEL) { hPDB = PDB_GetHandleFromModuleName("ntoskrnl"); }
+    if(!ctxOb || ctxOb->fDisabled) { goto fail; }
+    if(!(hPDB = PDB_GetHandleFromHandleMagic(hPDB))) { goto fail; }
     if(!(pObPdbEntry = ObMap_GetByKey(ctxOb->pmPdbByHash, hPDB))) { goto fail; }
     EnterCriticalSection(&ctxOb->Lock);
     fResult = PDB_LoadEnsureEx(ctxOb, pObPdbEntry);
@@ -380,8 +530,8 @@ BOOL PDB_GetModuleInfo(_In_opt_ PDB_HANDLE hPDB, _Out_writes_opt_(MAX_PATH) LPST
     POB_PDB_CONTEXT ctxOb = PDB_GetContext();
     PPDB_ENTRY pObPdbEntry = NULL;
     BOOL fResult = FALSE;
-    if(!ctxOb || ctxOb->fDisabled || !hPDB) { goto fail; }
-    if(hPDB == PDB_HANDLE_KERNEL) { hPDB = PDB_GetHandleFromModuleName("ntoskrnl"); }
+    if(!ctxOb || ctxOb->fDisabled) { goto fail; }
+    if(!(hPDB = PDB_GetHandleFromHandleMagic(hPDB))) { goto fail; }
     if(!(pObPdbEntry = ObMap_GetByKey(ctxOb->pmPdbByHash, hPDB))) { goto fail; }
     if(szModuleName) {
         strncpy_s(szModuleName, MAX_PATH, pObPdbEntry->szModuleName, MAX_PATH - 1);
@@ -424,9 +574,9 @@ BOOL PDB_GetSymbolOffset(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _Out
     SYMBOL_INFO SymbolInfo = { 0 };
     PPDB_ENTRY pObPdbEntry = NULL;
     *pdwSymbolOffset = 0;
-    if((hPDB == PDB_HANDLE_KERNEL) && InfoDB_SymbolOffset("nt", szSymbolName, pdwSymbolOffset)) { return TRUE; }
-    if(!ctxOb || ctxOb->fDisabled || !hPDB) { goto fail; }
-    if(hPDB == PDB_HANDLE_KERNEL) { hPDB = PDB_GetHandleFromModuleName("ntoskrnl"); }
+    if(PDB_InfoDB_SymbolOffset(hPDB, szSymbolName, pdwSymbolOffset)) { Ob_DECREF(ctxOb); return TRUE; }
+    if(!ctxOb || ctxOb->fDisabled) { goto fail; }
+    if(!(hPDB = PDB_GetHandleFromHandleMagic(hPDB))) { goto fail; }
     if(!(pObPdbEntry = ObMap_GetByKey(ctxOb->pmPdbByHash, hPDB))) { goto fail; }
     EnterCriticalSection(&ctxOb->Lock);
     if(PDB_LoadEnsureEx(ctxOb, pObPdbEntry)) {
@@ -469,7 +619,8 @@ BOOL PDB_GetSymbolAddress(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _Ou
     if(hPDB == PDB_HANDLE_KERNEL) {
         *pvaSymbolAddress = ctxVmm->kernel.vaBase + cbSymbolOffset;
     } else {
-        if(!ctxOb || ctxOb->fDisabled || !hPDB) { goto fail; }
+        if(!ctxOb || ctxOb->fDisabled) { goto fail; }
+        if(!(hPDB = PDB_GetHandleFromHandleMagic(hPDB))) { goto fail; }
         if(!(pObPdbEntry = ObMap_GetByKey(ctxOb->pmPdbByHash, hPDB))) { goto fail; }
         *pvaSymbolAddress = pObPdbEntry->vaModuleBase + cbSymbolOffset;
     }
@@ -497,8 +648,8 @@ BOOL PDB_GetSymbolFromOffset(_In_opt_ PDB_HANDLE hPDB, _In_ DWORD dwSymbolOffset
     QWORD cch, qwDisplacement;
     PPDB_ENTRY pObPdbEntry = NULL;
     BOOL fResult = FALSE;
-    if(!ctxOb || ctxOb->fDisabled || !hPDB) { goto fail; }
-    if(hPDB == PDB_HANDLE_KERNEL) { hPDB = PDB_GetHandleFromModuleName("ntoskrnl"); }
+    if(!ctxOb || ctxOb->fDisabled) { goto fail; }
+    if(!(hPDB = PDB_GetHandleFromHandleMagic(hPDB))) { goto fail; }
     if(!(pObPdbEntry = ObMap_GetByKey(ctxOb->pmPdbByHash, hPDB))) { goto fail; }
     EnterCriticalSection(&ctxOb->Lock);
     if(PDB_LoadEnsureEx(ctxOb, pObPdbEntry)) {
@@ -546,7 +697,8 @@ BOOL PDB_GetSymbolPBYTE(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _In_ 
     if(hPDB == PDB_HANDLE_KERNEL) {
         va = ctxVmm->kernel.vaBase + dwSymbolOffset;
     } else {
-        if(!ctxOb || ctxOb->fDisabled || !hPDB) { goto fail; }
+        if(!ctxOb || ctxOb->fDisabled) { goto fail; }
+        if(!(hPDB = PDB_GetHandleFromHandleMagic(hPDB))) { goto fail; }
         if(!(pObPdbEntry = ObMap_GetByKey(ctxOb->pmPdbByHash, hPDB))) { goto fail; }
         va = pObPdbEntry->vaModuleBase + dwSymbolOffset;
     }
@@ -566,15 +718,14 @@ fail:
 * -- return
 */
 _Success_(return)
-BOOL PDB_GetTypeSize(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _Out_ PDWORD pdwTypeSize)
+BOOL PDB_GetTypeSize_Internal(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _Out_ PDWORD pdwTypeSize)
 {
     POB_PDB_CONTEXT ctxOb = PDB_GetContext();
     SYMBOL_INFO SymbolInfo = { 0 };
     PPDB_ENTRY pObPdbEntry = NULL;
     BOOL fResult = FALSE;
-    if((hPDB == PDB_HANDLE_KERNEL) && InfoDB_TypeSize("nt", szTypeName, pdwTypeSize)) { return TRUE; }
-    if(!ctxOb || ctxOb->fDisabled || !hPDB) { goto fail; }
-    if(hPDB == PDB_HANDLE_KERNEL) { hPDB = PDB_GetHandleFromModuleName("ntoskrnl"); }
+    if(!ctxOb || ctxOb->fDisabled) { goto fail; }
+    if(!(hPDB = PDB_GetHandleFromHandleMagic(hPDB))) { goto fail; }
     if(!(pObPdbEntry = ObMap_GetByKey(ctxOb->pmPdbByHash, hPDB))) { goto fail; }
     EnterCriticalSection(&ctxOb->Lock);
     if(PDB_LoadEnsureEx(ctxOb, pObPdbEntry)) {
@@ -587,6 +738,24 @@ fail:
     Ob_DECREF(pObPdbEntry);
     Ob_DECREF(ctxOb);
     return fResult;
+}
+
+/*
+* Query the PDB for the size of a type. If szTypeName contains wildcard '?*'
+* characters and matches multiple types the size of the 1st type is returned.
+* -- hPDB
+* -- szTypeName = wildcard type name
+* -- pdwTypeSize
+* -- return
+*/
+_Success_(return)
+BOOL PDB_GetTypeSize(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _Out_ PDWORD pdwTypeSize)
+{
+    // lookup hierarchy (1): InfoDB dynamic (cached pdb), (2): Full PDB, (3): InfoDB static (build# based).
+    return
+        PDB_InfoDB_TypeSize(hPDB, szTypeName, pdwTypeSize, TRUE) ||
+        PDB_GetTypeSize_Internal(hPDB, szTypeName, pdwTypeSize) ||
+        PDB_InfoDB_TypeSize(hPDB, szTypeName, pdwTypeSize, FALSE);
 }
 
 _Success_(return)
@@ -619,7 +788,7 @@ BOOL WINAPI PDB_GetTypeChildOffset_Callback(_In_ PSYMBOL_INFO pSymInfo, _In_ ULO
 * -- return
 */
 _Success_(return)
-BOOL PDB_GetTypeChildOffset(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _In_ LPSTR uszTypeChildName, _Out_ PDWORD pdwTypeOffset)
+BOOL PDB_GetTypeChildOffset_Internal(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _In_ LPSTR uszTypeChildName, _Out_ PDWORD pdwTypeOffset)
 {
     POB_PDB_CONTEXT ctxOb = PDB_GetContext();
     BOOL fResult = FALSE;
@@ -629,9 +798,8 @@ BOOL PDB_GetTypeChildOffset(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _In
     PPDB_ENTRY pObPdbEntry = NULL;
     DWORD dwTypeId, cTypeChildren, iTypeChild;
     TI_FINDCHILDREN_PARAMS *pFindChildren = NULL;
-    if((hPDB == PDB_HANDLE_KERNEL) && InfoDB_TypeChildOffset("nt", szTypeName, uszTypeChildName, pdwTypeOffset)) { return TRUE; }
-    if(!ctxOb || ctxOb->fDisabled || !hPDB) { goto fail; }
-    if(hPDB == PDB_HANDLE_KERNEL) { hPDB = PDB_GetHandleFromModuleName("ntoskrnl"); }
+    if(!ctxOb || ctxOb->fDisabled) { goto fail; }
+    if(!(hPDB = PDB_GetHandleFromHandleMagic(hPDB))) { goto fail; }
     if(!(pObPdbEntry = ObMap_GetByKey(ctxOb->pmPdbByHash, hPDB))) { goto fail; }
     EnterCriticalSection(&ctxOb->Lock);
     if(!PDB_LoadEnsureEx(ctxOb, pObPdbEntry)) { goto fail_lock; }
@@ -658,6 +826,26 @@ fail:
     Ob_DECREF(pObPdbEntry);
     Ob_DECREF(ctxOb);
     return fResult;
+}
+
+/*
+* Query the PDB for the offset of a child inside a type - often inside a struct.
+* If szTypeName contains wildcard '?*' characters and matches multiple types the
+* first type is queried for children. The child name must match exactly.
+* -- hPDB
+* -- szTypeName = wildcard type name.
+* -- uszTypeChildName = exact match of child name.
+* -- pdwTypeOffset = offset relative to type base.
+* -- return
+*/
+_Success_(return)
+BOOL PDB_GetTypeChildOffset(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _In_ LPSTR uszTypeChildName, _Out_ PDWORD pdwTypeOffset)
+{
+    // lookup hierarchy (1): InfoDB dynamic (cached pdb), (2): Full PDB, (3): InfoDB static (build# based).
+    return
+        PDB_InfoDB_TypeChildOffset(hPDB, szTypeName, uszTypeChildName, pdwTypeOffset, TRUE) ||
+        PDB_GetTypeChildOffset_Internal(hPDB, szTypeName, uszTypeChildName, pdwTypeOffset) ||
+        PDB_InfoDB_TypeChildOffset(hPDB, szTypeName, uszTypeChildName, pdwTypeOffset, FALSE);
 }
 
 _Success_(return)
@@ -838,6 +1026,10 @@ VOID PDB_ConfigChange()
 {
     HKEY hKey;
     CHAR szLocalPath[MAX_PATH] = { 0 };
+    if(ctxMain->cfg.fDisableSymbols) {
+        VmmLog(MID_PDB, LOGLEVEL_INFO, "Debug symbols disabled by user");
+        return;
+    }
     // update new values in registry
     if(ERROR_SUCCESS == RegCreateKeyExA(HKEY_CURRENT_USER, "Software\\UlfFrisk\\MemProcFS", 0, NULL, 0, KEY_ALL_ACCESS, NULL, &hKey, NULL)) {
         Util_GetPathDll(szLocalPath, ctxVmm->hModuleVmmOpt);
@@ -871,6 +1063,10 @@ VOID PDB_Initialize(_In_opt_ PPE_CODEVIEW_INFO pPdbInfoOpt, _In_ BOOL fInitializ
     CHAR szPathSymSrv[MAX_PATH], szPathDbgHelp[MAX_PATH];
     PVMMWIN_PDB_INITIALIZE_KERNEL_PARAMETERS pKernelParameters = NULL;
     if(ctxMain->pdb.fInitialized) { return; }
+    if(ctxMain->cfg.fDisableSymbols) {
+        VmmLog(MID_PDB, LOGLEVEL_INFO, "Debug symbols disabled by user");
+        return;
+    }
     PDB_Initialize_InitialValues();
     if(!ctxMain->pdb.fEnable) { goto fail; }
     if(!(ctx = Ob_Alloc(OB_TAG_PDB_CTX, LMEM_ZEROINIT, sizeof(OB_PDB_CONTEXT), PDB_CallbackCleanup_ObPdbContext, NULL))) { goto fail; }
@@ -1381,24 +1577,24 @@ VOID PDB_Initialize(_In_opt_ PPE_CODEVIEW_INFO pPdbInfoOpt, _In_ BOOL fInitializ
 
 _Success_(return) BOOL PDB_GetSymbolOffset(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _Out_ PDWORD pdwSymbolOffset)
 { 
-    return (hPDB == PDB_HANDLE_KERNEL) && InfoDB_SymbolOffset("nt", szSymbolName, pdwSymbolOffset);
+    return PDB_InfoDB_SymbolOffset(hPDB, szSymbolName, pdwSymbolOffset);
 }
 
 _Success_(return) BOOL PDB_GetTypeSize(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _Out_ PDWORD pdwTypeSize)
 {
-    return (hPDB == PDB_HANDLE_KERNEL) && InfoDB_TypeSize("nt", szTypeName, pdwTypeSize);
+    return PDB_InfoDB_TypeSize(hPDB, szTypeName, pdwTypeSize, TRUE) || PDB_InfoDB_TypeSize(hPDB, szTypeName, pdwTypeSize, FALSE);
 }
 
 _Success_(return) BOOL PDB_GetTypeChildOffset(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _In_ LPSTR uszTypeChildName, _Out_ PDWORD pdwTypeOffset)
 {
-    return (hPDB == PDB_HANDLE_KERNEL) && InfoDB_TypeChildOffset("nt", szTypeName, uszTypeChildName, pdwTypeOffset);
+    return PDB_InfoDB_TypeChildOffset(hPDB, szTypeName, uszTypeChildName, pdwTypeOffset, TRUE) || PDB_InfoDB_TypeChildOffset(hPDB, szTypeName, uszTypeChildName, pdwTypeOffset, FALSE);
 }
 
 _Success_(return) BOOL PDB_GetSymbolAddress(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _Out_ PQWORD pvaSymbolAddress)
 {
     DWORD dwSymbolOffset;
     *pvaSymbolAddress = 0;
-    if((hPDB == PDB_HANDLE_KERNEL) && InfoDB_SymbolOffset("nt", szSymbolName, &dwSymbolOffset)) {
+    if((hPDB == PDB_HANDLE_KERNEL) && PDB_InfoDB_SymbolOffset(hPDB, szSymbolName, &dwSymbolOffset)) {
         *pvaSymbolAddress = ctxVmm->kernel.vaBase + dwSymbolOffset;
         return TRUE;
     }

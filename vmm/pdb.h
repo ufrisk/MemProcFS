@@ -13,6 +13,9 @@
 typedef QWORD                               PDB_HANDLE;
 
 #define PDB_HANDLE_KERNEL                   ((PDB_HANDLE)-1)
+#define PDB_HANDLE_TCPIP                    ((PDB_HANDLE)-2)
+#define PDB_HANDLE_NTDLL                    ((PDB_HANDLE)-3)
+#define PDB_HANDLE_NTDLL_WOW64              ((PDB_HANDLE)-4)
 
 /*
 * Initialize the PDB sub-system. This should ideally be done on Vmm Init().
@@ -76,6 +79,15 @@ BOOL PDB_LoadEnsure(_In_opt_ PDB_HANDLE hPDB);
 */
 _Success_(return)
 BOOL PDB_GetModuleInfo(_In_opt_ PDB_HANDLE hPDB, _Out_writes_opt_(MAX_PATH) LPSTR szModuleName, _Out_opt_ PQWORD pvaModuleBase, _Out_opt_ PDWORD pcbModuleSize);
+
+
+
+//-----------------------------------------------------------------------------
+// SYMBOL FUNCTIONALITY BELOW:
+// Symbol lookups come in two variants:
+// (1) relies on the loaded base stored at load-time.
+// (2) relies on a user-supplied base (for infodb lookups with magic handle).
+//-----------------------------------------------------------------------------
 
 /*
 * Query the PDB for the offset of a symbol.
@@ -154,6 +166,61 @@ BOOL PDB_GetSymbolDWORD(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _In_ 
 */
 _Success_(return)
 BOOL PDB_GetSymbolPTR(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_ PVOID pv);
+
+/*
+* Read memory at the PDB acquired symbol offset and virtual address base.
+* -- hPDB
+* -- vaBase
+* -- szSymbolName = wildcard symbol name
+* -- pProcess
+* -- pb
+* -- cb
+* -- return
+*/
+_Success_(return)
+BOOL PDB_GetSymbolPBYTE2(_In_opt_ PDB_HANDLE hPDB, _In_ QWORD vaBase, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb);
+
+/*
+* Read memory pointed to at the PDB acquired symbol offset and virtual address base.
+* -- hPDB
+* -- vaBase
+* -- szSymbolName
+* -- pProcess
+* -- pqw
+* -- return
+*/
+_Success_(return)
+BOOL PDB_GetSymbolQWORD2(_In_opt_ PDB_HANDLE hPDB, _In_ QWORD vaBase, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_ PQWORD pqw);
+
+/*
+* Read memory pointed to at the PDB acquired symbol offset and virtual address base.
+* -- hPDB
+* -- vaBase
+* -- szSymbolName
+* -- pProcess
+* -- pdw
+* -- return
+*/
+_Success_(return)
+BOOL PDB_GetSymbolDWORD2(_In_opt_ PDB_HANDLE hPDB, _In_ QWORD vaBase, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_ PDWORD pdw);
+
+/*
+* Read memory pointed to at the PDB acquired symbol offset and virtual address base.
+* -- hPDB
+* -- vaBase
+* -- szSymbolName
+* -- pProcess
+* -- pv = PDWORD on 32-bit and PQWORD on 64-bit _operating_system_ architecture.
+* -- return
+*/
+_Success_(return)
+BOOL PDB_GetSymbolPTR2(_In_opt_ PDB_HANDLE hPDB, _In_ QWORD vaBase, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_ PVOID pv);
+
+
+
+//-----------------------------------------------------------------------------
+// TYPE INFORMATION BELOW:
+//-----------------------------------------------------------------------------
 
 /*
 * Query the PDB for the size of a type. If szTypeName contains wildcard '?*'
