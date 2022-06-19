@@ -38,13 +38,6 @@ DWORD Util_GetNumDigits(_In_ DWORD dwNumber);
 QWORD Util_GetNumericA(_In_ LPSTR sz);
 
 /*
-* Hash a string with the ROT13 algorithm.
-* -- sz
-* -- return
-*/
-DWORD Util_HashStringA(_In_opt_ LPCSTR sz);
-
-/*
 * SHA256 hash data.
 * -- pbData
 * -- cbData

@@ -303,7 +303,7 @@ typedef struct tdVMMWIN_PDB_INITIALIZE_KERNEL_PARAMETERS {
 QWORD PDB_HashPdb(_In_ LPSTR szPdbName, _In_reads_(16) PBYTE pbPdbGUID, _In_ DWORD dwPdbAge)
 {
     QWORD qwHash = 0;
-    qwHash = Util_HashStringA(szPdbName);
+    qwHash = CharUtil_Hash32A(szPdbName, TRUE);
     qwHash = dwPdbAge + ((qwHash >> 13) | (qwHash << 51));
     qwHash = *(PQWORD)pbPdbGUID + ((qwHash >> 13) | (qwHash << 51));
     qwHash = *(PQWORD)(pbPdbGUID + 8) + ((qwHash >> 13) | (qwHash << 51));

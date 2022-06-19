@@ -9,6 +9,7 @@
 #include "vmmdll.h"
 #include "vmmwin.h"
 #include "vmmwindef.h"
+#include "charutil.h"
 #include <sddl.h>
 
 #define MPROCTOKEN_PRIVILEGE_LINELENGTH     60ULL
@@ -101,6 +102,7 @@ VOID MProcToken_PrivilegeReadLine_Callback(_In_ PVMM_PROCESS pProcess, _In_ DWOR
 typedef struct tdMPROCTOKEN_ALLSID_CONTEXT {
     PVMM_PROCESS pProcess;
     PVMM_PROCESS pSystemProcess;
+    PVMMOB_MAP_USER pUserMap;
     PBYTE pbUserAndGroups;
 } MPROCTOKEN_ALLSID_CONTEXT, *PMPROCTOKEN_ALLSID_CONTEXT;
 
@@ -111,19 +113,43 @@ VOID MProcToken_AllSidReadLine_Callback(_In_ PMPROCTOKEN_ALLSID_CONTEXT ctx, _In
         BYTE pb[SECURITY_MAX_SID_SIZE];
     } Sid;
     QWORD vaSid;
-    LPSTR szSid = NULL;
+    LPSTR szRid, szSid = NULL;
     SID_NAME_USE eUse;
     CHAR szNameBuffer[MAX_PATH], szBuffer[MAX_PATH] = { 0 };
-    DWORD cszNameBuffer = _countof(szNameBuffer);
+    DWORD i, cszNameBuffer = _countof(szNameBuffer);
     DWORD cszBuffer = _countof(szBuffer);
     vaSid = VMM_PTR_OFFSET(ctxVmm->f32, ctx->pbUserAndGroups, ie * (ctxVmm->f32 ? 8ULL : 16ULL));
     if(!VmmRead(ctx->pSystemProcess, vaSid, Sid.pb, SECURITY_MAX_SID_SIZE)) { goto fail; }
     if(!ConvertSidToStringSidA(&Sid.SID, &szSid)) { goto fail; }
+    // display name from winapi lookup:
     if(LookupAccountSidA(NULL, &Sid.SID, szNameBuffer, &cszNameBuffer, szBuffer, &cszBuffer, &eUse)) {
         if(szBuffer[0]) { strncat_s(szBuffer, _countof(szBuffer), "\\", _TRUNCATE); }
         strncat_s(szBuffer, _countof(szBuffer), szNameBuffer, _TRUNCATE);
-    } else {
-        strncpy_s(szBuffer, _countof(szBuffer), "---", _TRUNCATE);
+    }
+    // display name from user:
+    if(!szBuffer[0] && ctx->pUserMap) {
+        for(i = 0; i < ctx->pUserMap->cMap; i++) {
+            if(!strcmp(szSid, ctx->pUserMap->pMap[i].szSID)) {
+                strncat_s(szBuffer, _countof(szBuffer), ctx->pUserMap->pMap[i].uszText, _TRUNCATE);
+            }
+        }
+    }
+    // display name from well known rid:
+    if(!szBuffer[0] && !strncmp(szSid, "S-1-5-21-", 9)) {
+        szRid = NULL;
+        if(!szRid && CharUtil_StrEndsWith(szSid, "-500", FALSE)) { szRid = "DOMAIN_USER_RID_ADMIN"; }
+        if(!szRid && CharUtil_StrEndsWith(szSid, "-501", FALSE)) { szRid = "DOMAIN_USER_RID_GUEST"; }
+        if(!szRid && CharUtil_StrEndsWith(szSid, "-513", FALSE)) { szRid = "DOMAIN_GROUP_RID_USERS"; }
+        if(!szRid && CharUtil_StrEndsWith(szSid, "-514", FALSE)) { szRid = "DOMAIN_GROUP_RID_GUESTS"; }
+        if(!szRid && CharUtil_StrEndsWith(szSid, "-515", FALSE)) { szRid = "DOMAIN_GROUP_RID_COMPUTERS"; }
+        if(!szRid && CharUtil_StrEndsWith(szSid, "-516", FALSE)) { szRid = "DOMAIN_GROUP_RID_CONTROLLERS"; }
+        if(!szRid && CharUtil_StrEndsWith(szSid, "-517", FALSE)) { szRid = "DOMAIN_GROUP_RID_CERT_ADMINS"; }
+        if(!szRid && CharUtil_StrEndsWith(szSid, "-518", FALSE)) { szRid = "DOMAIN_GROUP_RID_SCHEMA_ADMINS"; }
+        if(!szRid && CharUtil_StrEndsWith(szSid, "-519", FALSE)) { szRid = "DOMAIN_GROUP_RID_ENTERPRISE_ADMINS"; }
+        if(!szRid && CharUtil_StrEndsWith(szSid, "-520", FALSE)) { szRid = "DOMAIN_GROUP_RID_POLICY_ADMINS"; }
+        if(szRid) {
+            strncat_s(szBuffer, _countof(szBuffer), szRid, _TRUNCATE);
+        }
     }
 fail:
     Util_usnprintf_ln(szu8, cbLineLength, "%04x%7i %-64.64s %s",
@@ -166,12 +192,14 @@ NTSTATUS MProcToken_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *p
         if(pObProcess->win.TOKEN.dwUserAndGroupCount && VmmReadAlloc(PVMM_PROCESS_SYSTEM, pObProcess->win.TOKEN.vaUserAndGroups, &ctxAllSid.pbUserAndGroups, pObProcess->win.TOKEN.dwUserAndGroupCount * (ctxVmm->f32 ? 8 : 16), 0)) {
             ctxAllSid.pProcess = pObProcess;
             ctxAllSid.pSystemProcess = VmmProcessGet(4);
+            VmmMap_GetUser(&ctxAllSid.pUserMap);
             nt = Util_VfsLineFixed_Read(
                 (UTIL_VFSLINEFIXED_PFN_CB)MProcToken_AllSidReadLine_Callback, &ctxAllSid, MPROCTOKEN_ALLSID_LINELENGTH, MPROCTOKEN_ALLSID_LINEHEADER,
                 (PVOID)ctxAllSid.pbUserAndGroups /*dummy*/, pObProcess->win.TOKEN.dwUserAndGroupCount, 0,
                 pb, cb, pcbRead, cbOffset
             );
             Ob_DECREF(ctxAllSid.pSystemProcess);
+            Ob_DECREF(ctxAllSid.pUserMap);
         }
     } else if(!_stricmp(ctx->uszPath, "user.txt")) {
         VmmWinUser_GetName(&pObProcess->win.TOKEN.SidUser.SID, uszBuffer, MAX_PATH, NULL);

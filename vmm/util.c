@@ -24,18 +24,6 @@ QWORD Util_GetNumericA(_In_ LPSTR sz)
     }
 }
 
-DWORD Util_HashStringA(_In_opt_ LPCSTR sz)
-{
-    CHAR c;
-    DWORD i = 0, dwHash = 0;
-    if(!sz) { return 0; }
-    while(TRUE) {
-        c = sz[i++];
-        if(!c) { return dwHash; }
-        dwHash = ((dwHash >> 13) | (dwHash << 19)) + c;
-    }
-}
-
 #define Util_2HexChar(x) (((((x) & 0xf) <= 9) ? '0' : ('a' - 10)) + ((x) & 0xf))
 
 _Success_(return)

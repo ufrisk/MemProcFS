@@ -457,7 +457,9 @@ BOOL MWinReg_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
         if(!_stricmp(uszPath, "HKU") || !_stricmp(uszPath, "HKU\\ORPHAN")) {
             if(VmmMap_GetUser(&pObUserMap)) {
                 for(i = 0; i < pObUserMap->cMap; i++) {
-                    VMMDLL_VfsList_AddDirectory(pFileList, pObUserMap->pMap[i].uszText, &FileExInfo);
+                    if(pObUserMap->pMap[i].vaRegHive) {
+                        VMMDLL_VfsList_AddDirectory(pFileList, pObUserMap->pMap[i].uszText, &FileExInfo);
+                    }
                 }
                 Ob_DECREF_NULL(&pObUserMap);
                 VMMDLL_VfsList_AddDirectory(pFileList, "LocalSystem", &FileExInfo);

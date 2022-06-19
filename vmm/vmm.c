@@ -741,7 +741,7 @@ VOID VmmProcess_TokenTryEnsure(_In_ PVMMOB_PROCESS_TABLE pt)
         ppProcess[i]->win.TOKEN.fSidUserValid =
             ppProcess[i]->win.TOKEN.fSidUserValid &&
             ConvertSidToStringSidA(&ppProcess[i]->win.TOKEN.SidUser.SID, &ppProcess[i]->win.TOKEN.szSID) &&
-            (ppProcess[i]->win.TOKEN.dwHashSID = Util_HashStringA(ppProcess[i]->win.TOKEN.szSID));
+            (ppProcess[i]->win.TOKEN.dwHashSID = CharUtil_Hash32A(ppProcess[i]->win.TOKEN.szSID, FALSE));
         ppProcess[i]->win.TOKEN.fInitialized = TRUE;
     }
 fail:

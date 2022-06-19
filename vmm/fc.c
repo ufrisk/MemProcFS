@@ -886,6 +886,7 @@ BOOL FcInitialize_Impl(_In_ DWORD dwDatabaseType, _In_ BOOL fForceReInit)
     }
     if(!dwDatabaseType || (dwDatabaseType > FC_DATABASE_TYPE_MAX)) { return FALSE; }
     if(ctxFc && !fForceReInit) { return FALSE; }
+    ctxMain->cfg.tpForensicMode = dwDatabaseType;
     PDB_Initialize_WaitComplete();
     // 1: ALLOCATE AND INITIALIZE.
     if(ctxFc) { FcClose(); }

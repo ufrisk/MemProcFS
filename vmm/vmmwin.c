@@ -2475,7 +2475,7 @@ BOOL VmmWinUser_GetName(_In_opt_ PSID pSID, _Out_writes_(cbuName) LPSTR uszName,
     if(pfAccountWellKnown) { *pfAccountWellKnown = FALSE; }
     // 1: Try lookup name from User Map
     if(!ConvertSidToStringSidA(pSID, &szSID)) { return FALSE; }
-    dwHashSID = Util_HashStringA(szSID);
+    dwHashSID = CharUtil_Hash32A(szSID, FALSE);
     LocalFree(szSID);
     if(VmmMap_GetUser(&pObUser)) {
         for(i = 0; i < pObUser->cMap; i++) {
@@ -2509,10 +2509,124 @@ VOID VmmWinUser_CloseObCallback(_In_ PVOID pVmmUserMap)
     for(i = 0; i < pOb->cMap; i++) {
         if((pe = pOb->pMap + i)) {
             LocalFree(pe->pSID);
-            LocalFree(pe->szSID);
         }
     }
     LocalFree(pOb->pbMultiText);
+}
+
+/*
+* Fill the pmOb map with user information grabbed from the SOFTWARE hive profiles:
+* HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList
+* -- pmOb
+*/
+VOID VmmWinUser_Initialize_DoWork_ProfileReg(_In_ POB_MAP pmOb)
+{
+    BOOL f;
+    DWORD dwType, cbBuffer;
+    BYTE pbBuffer[MAX_PATH];
+    BYTE szBufferPath[MAX_PATH];
+    POB_REGISTRY_HIVE pObHive = NULL;
+    POB_REGISTRY_KEY pObKeyParent, pObKey;
+    POB_REGISTRY_VALUE pObValue;
+    POB_MAP pmObKeys;
+    VMM_REGISTRY_KEY_INFO KeyInfo;
+    VMM_MAP_USERENTRY e;
+    if(VmmWinReg_KeyHiveGetByFullPath("HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProfileList", &pObHive, &pObKeyParent)) {
+        pmObKeys = VmmWinReg_KeyList(pObHive, pObKeyParent);
+        while((pObKey = ObMap_Pop(pmObKeys))) {
+            VmmWinReg_KeyInfo(pObHive, pObKey, &KeyInfo);
+            if(_strnicmp(KeyInfo.uszName, "S-1-5-21-", 9)) { continue; }
+            e.dwHashSID = CharUtil_Hash32A(KeyInfo.uszName, FALSE);
+            if(ObMap_ExistsKey(pmOb, e.dwHashSID)) { continue; }
+            f = (pObValue = VmmWinReg_KeyValueGetByName(pObHive, pObKey, "ProfileImagePath")) &&
+                VmmWinReg_ValueQuery4(pObHive, pObValue, &dwType, pbBuffer, sizeof(pbBuffer), &cbBuffer) &&
+                ((dwType == REG_SZ) || (dwType == REG_EXPAND_SZ)) &&
+                CharUtil_WtoU((LPWSTR)pbBuffer, cbBuffer / 2, szBufferPath, sizeof(szBufferPath), NULL, NULL, CHARUTIL_FLAG_TRUNCATE | CHARUTIL_FLAG_STR_BUFONLY);
+            if(!f) { continue; }
+            e.cbSID = 0;
+            e.cbuText = 0;
+            e.pSID = NULL;
+            e.szSID = _strdup(KeyInfo.uszName);
+            e.uszText = _strdup(CharUtil_PathSplitLast(szBufferPath));
+            e.vaRegHive = 0;
+            ObMap_PushCopy(pmOb, e.dwHashSID, &e, sizeof(VMM_MAP_USERENTRY));
+        }
+        Ob_DECREF(pmObKeys);
+        Ob_DECREF(pObKeyParent);
+        Ob_DECREF(pObHive);
+    }
+}
+
+/*
+* Fill the pmOb map with user information by walking potential user hives.
+* -- pmOb
+*/
+VOID VmmWinUser_Initialize_DoWork_UserHive(_In_ POB_MAP pmOb)
+{
+    BOOL f;
+    VMM_MAP_USERENTRY e;
+    DWORD i, dwType, cbBuffer;
+    BYTE pbBuffer[MAX_PATH];
+    CHAR szBufferUser[MAX_PATH];
+    WCHAR wszBufferSymlink[MAX_PATH];
+    LPSTR szHiveUser, szHiveNtdat;
+    LPWSTR wszSymlinkSid, wszSymlinkUser;
+    POB_REGISTRY_HIVE pObHive = NULL;
+    while((pObHive = VmmWinReg_HiveGetNext(pObHive))) {
+        szBufferUser[0] = 0;
+        ZeroMemory(&e, sizeof(VMM_MAP_USERENTRY));
+        szHiveUser = StrStrIA(pObHive->uszName, "-USER_S-");
+        szHiveNtdat = StrStrIA(pObHive->uszName, "-ntuserdat-");
+        if(!szHiveNtdat && StrStrIA(pObHive->uszName, "_ntuser.dat")) {
+            szHiveNtdat = StrStrIA(pObHive->uszName, "-unknown-");
+        }
+        if(!szHiveNtdat && !szHiveUser) { continue; }
+        if(!szHiveUser && !StrStrIA(szHiveNtdat, "-unknown")) { continue; }
+        if(szHiveUser && ((strlen(szHiveUser) < 20) || StrStrIA(szHiveUser, "Classes"))) { continue; }
+        // get username
+        f = VmmWinReg_ValueQuery1(pObHive, "ROOT\\Volatile Environment\\USERNAME", &dwType, NULL, pbBuffer, sizeof(pbBuffer) - 2, &cbBuffer, 0) &&
+            (dwType == REG_SZ) &&
+            CharUtil_WtoU((LPWSTR)pbBuffer, cbBuffer / 2, szBufferUser, sizeof(szBufferUser), NULL, NULL, CHARUTIL_FLAG_TRUNCATE | CHARUTIL_FLAG_STR_BUFONLY);
+        if(!f && (ctxVmm->kernel.dwVersionBuild > 2600)) { continue; }  // allow missing USERNAME only if WinXP
+        // get sid
+        if(szHiveUser) {
+            ConvertStringSidToSidA(szHiveUser + 6, &e.pSID);
+        }
+        if(!e.pSID) {
+            i = 0;
+            if(!VmmWinReg_ValueQuery1(pObHive, "ROOT\\Software\\Classes\\SymbolicLinkValue", &dwType, NULL, (PBYTE)wszBufferSymlink, sizeof(wszBufferSymlink) - 2, NULL, 0) || (dwType != REG_LINK)) { continue; }
+            wszBufferSymlink[MAX_PATH - 1] = 0;
+            if(!(wszSymlinkSid = wcsstr(wszBufferSymlink, L"\\S-"))) { continue; }
+            if(wcslen(wszSymlinkSid) < 20) { continue; }
+            while(wszSymlinkSid[i] && (wszSymlinkSid[i] != L'_') && ++i);
+            wszSymlinkSid[i] = 0;
+            if(!ConvertStringSidToSidW(wszSymlinkSid + 1, &e.pSID) || !e.pSID) { continue; }
+        }
+        // get username - WinXP only
+        if(!szBufferUser[0] && (ctxVmm->kernel.dwVersionBuild <= 2600)) {
+            i = 0;
+            wszSymlinkUser = wszBufferSymlink + 10;
+            while(wszSymlinkUser[i] && (wszSymlinkUser[i] != L'\\') && ++i);
+            if(i == 0) { continue; }
+            wszSymlinkUser[i] = 0;
+            CharUtil_WtoU(wszSymlinkUser, -1, szBufferUser, sizeof(szBufferUser), NULL, NULL, CHARUTIL_FLAG_TRUNCATE | CHARUTIL_FLAG_STR_BUFONLY);
+        }
+        if(!szBufferUser[0]) { continue; }
+        // get length and hash of sid string
+        e.vaRegHive = pObHive->vaCMHIVE;
+        e.cbSID = GetLengthSid(e.pSID);
+        if(!e.cbSID || !ConvertSidToStringSidA(e.pSID, &e.szSID) || !e.szSID) {
+            LocalFree(e.pSID);
+            continue;
+        }
+        e.dwHashSID = CharUtil_Hash32A(e.szSID, FALSE);
+        if(ObMap_ExistsKey(pmOb, e.dwHashSID)) {
+            LocalFree(e.pSID);
+            continue;
+        }
+        e.uszText = _strdup(szBufferUser);
+        ObMap_PushCopy(pmOb, e.dwHashSID, &e, sizeof(VMM_MAP_USERENTRY));
+    }
 }
 
 /*
@@ -2523,112 +2637,46 @@ VOID VmmWinUser_CloseObCallback(_In_ PVOID pVmmUserMap)
 */
 PVMMOB_MAP_USER VmmWinUser_Initialize_DoWork()
 {
-    BOOL f;
-    BYTE pbBuffer[MAX_PATH];
-    typedef struct tdVMMWINUSER_CONTEXT_ENTRY {
-        PSID pSID;
-        DWORD cbSID;
-        LPSTR szSID;
-        DWORD dwHashSID;
-        QWORD vaHive;
-        CHAR uszUser[MAX_PATH];
-    } VMMWINUSER_CONTEXT_ENTRY, *PVMMWINUSER_CONTEXT_ENTRY;
-    DWORD i, dwType;
-    LPSTR szNtdat, szUser;
-    LPWSTR wszSymlinkSid, wszSymlinkUser;
-    WCHAR wszSymlinkValue[MAX_PATH];
-    POB_REGISTRY_HIVE pObHive = NULL;
-    POB_SET pObSet = NULL;
-    PVMMWINUSER_CONTEXT_ENTRY e = NULL;
-    PVMMOB_MAP_USER pObMapUser = NULL;
-    PVMM_MAP_USERENTRY pe;
+    DWORD i;
+    POB_MAP pmOb = NULL;
     POB_STRMAP psmOb = NULL;
-    if(!(pObSet = ObSet_New())) { goto fail; }
-    // 1: user hive enumeration
-    while((pObHive = VmmWinReg_HiveGetNext(pObHive))) {
-        if(!e && !(e = LocalAlloc(0, sizeof(VMMWINUSER_CONTEXT_ENTRY)))) { continue; }
-        ZeroMemory(e, sizeof(VMMWINUSER_CONTEXT_ENTRY));
-        szUser = StrStrIA(pObHive->uszName, "-USER_S-");
-        szNtdat = StrStrIA(pObHive->uszName, "-ntuserdat-");
-        if(!szNtdat && StrStrIA(pObHive->uszName, "_ntuser.dat")) {
-            szNtdat = StrStrIA(pObHive->uszName, "-unknown-");
-        }
-        if(!szNtdat && !szUser) { continue; }
-        if(!szUser && !StrStrIA(szNtdat, "-unknown")) { continue; }
-        if(szUser && ((strlen(szUser) < 20) || StrStrIA(szUser, "Classes"))) { continue; }
-        // get username
-        f = VmmWinReg_ValueQuery1(pObHive, "ROOT\\Volatile Environment\\USERNAME", &dwType, NULL, pbBuffer, sizeof(pbBuffer) - 2, NULL, 0) &&
-            (dwType == REG_SZ) &&
-            CharUtil_WtoU((LPWSTR)pbBuffer, -1, e->uszUser, sizeof(e->uszUser), NULL, NULL, CHARUTIL_FLAG_TRUNCATE | CHARUTIL_FLAG_STR_BUFONLY);
-        if(!f && (ctxVmm->kernel.dwVersionBuild > 2600)) { continue; }  // allow missing USERNAME only if WinXP
-        // get sid
-        if(szUser) {
-            ConvertStringSidToSidA(szUser + 6, &e->pSID);
-        }
-        if(!e->pSID) {
-            i = 0;
-            ZeroMemory(wszSymlinkValue, sizeof(wszSymlinkValue));
-            if(!VmmWinReg_ValueQuery1(pObHive, "ROOT\\Software\\Classes\\SymbolicLinkValue", &dwType, NULL, (PBYTE)wszSymlinkValue, sizeof(wszSymlinkValue) - 2, NULL, 0) || (dwType != REG_LINK)) { continue; }
-            if(!(wszSymlinkSid = wcsstr(wszSymlinkValue, L"\\S-"))) { continue; }
-            if(wcslen(wszSymlinkSid) < 20) { continue; }
-            while(wszSymlinkSid[i] && (wszSymlinkSid[i] != L'_') && ++i);
-            wszSymlinkSid[i] = 0;
-            if(!ConvertStringSidToSidW(wszSymlinkSid + 1, &e->pSID) || !e->pSID) { continue; }
-        }
-        // get username - WinXP only
-        if(!e->uszUser[0]) {
-            i = 0;
-            wszSymlinkUser = wszSymlinkValue + 10;
-            while(wszSymlinkUser[i] && (wszSymlinkUser[i] != L'\\') && ++i);
-            if(i == 0) { continue; }
-            wszSymlinkUser[i] = 0;
-            CharUtil_WtoU(wszSymlinkUser, -1, e->uszUser, sizeof(e->uszUser), NULL, NULL, CHARUTIL_FLAG_TRUNCATE | CHARUTIL_FLAG_STR_BUFONLY);
-        }
-        // get length and hash of sid string
-        e->vaHive = pObHive->vaCMHIVE;
-        e->cbSID = GetLengthSid(e->pSID);
-        if(!e->cbSID || !ConvertSidToStringSidA(e->pSID, &e->szSID) || !e->szSID) {
-            LocalFree(e->pSID);
-            continue;
-        }
-        e->dwHashSID = Util_HashStringA(e->szSID);
-        // store context in map
-        ObSet_Push(pObSet, (QWORD)e);
-        e = NULL;
+    PVMM_MAP_USERENTRY pe, peDst, peSrc;
+    PVMMOB_MAP_USER pObMapUser = NULL;
+    if(!(pmOb = ObMap_New(OB_MAP_FLAGS_OBJECT_LOCALFREE))) { goto fail; }
+    // 1: user hive enumeration (from user registry hives)
+    VmmWinUser_Initialize_DoWork_UserHive(pmOb);
+    // 2: user profile enumeration (from software hive)
+    //    this is quite performance intense (and will slow down start-up) ->
+    //    avoid loading users using this method for now (unless command line forensic mode).
+    if(ctxMain->cfg.tpForensicMode) {
+        VmmWinUser_Initialize_DoWork_ProfileReg(pmOb);
     }
-    LocalFree(e);
-    // 2: create user map and assign data
-    if(!(psmOb = ObStrMap_New(0))) { goto fail; }
-    if(!(pObMapUser = Ob_Alloc(OB_TAG_MAP_USER, LMEM_ZEROINIT, sizeof(VMMOB_MAP_USER) + ObSet_Size(pObSet) * sizeof(VMM_MAP_USERENTRY), VmmWinUser_CloseObCallback, NULL))) { goto fail; }
-    pObMapUser->cMap = ObSet_Size(pObSet);
+    // 3: create user map and assign data
+    if(!(psmOb = ObStrMap_New(OB_STRMAP_FLAGS_CASE_INSENSITIVE))) { goto fail; }
+    if(!(pObMapUser = Ob_Alloc(OB_TAG_MAP_USER, LMEM_ZEROINIT, sizeof(VMMOB_MAP_USER) + ObMap_Size(pmOb) * sizeof(VMM_MAP_USERENTRY), VmmWinUser_CloseObCallback, NULL))) { goto fail; }
+    pObMapUser->cMap = ObMap_Size(pmOb);
     for(i = 0; i < pObMapUser->cMap; i++) {
-        if(!(e = (PVMMWINUSER_CONTEXT_ENTRY)ObSet_Pop(pObSet))) { goto fail; }
-        pe = pObMapUser->pMap + i;
-        pe->pSID = e->pSID;
-        pe->cbSID = e->cbSID;
-        pe->szSID = e->szSID;
-        pe->dwHashSID = e->dwHashSID;
-        pe->vaRegHive = e->vaHive;
+        peSrc = ObMap_GetByIndex(pmOb, i);
+        peDst = pObMapUser->pMap + i;
+        peDst->dwHashSID = peSrc->dwHashSID;
+        peDst->vaRegHive = peSrc->vaRegHive;
+        peDst->pSID = peSrc->pSID; peSrc->pSID = NULL;
         // strmap below:
-        ObStrMap_PushPtrUU(psmOb, e->uszUser, &pe->uszText, &pe->cbuText);
-        LocalFree(e);
+        ObStrMap_PushPtrUU(psmOb, peSrc->szSID, &peDst->szSID, &peDst->cbSID);
+        ObStrMap_PushPtrUU(psmOb, peSrc->uszText, &peDst->uszText, &peDst->cbuText);
     }
-    // finish & return
     ObStrMap_FinalizeAllocU_DECREF_NULL(&psmOb, &pObMapUser->pbMultiText, &pObMapUser->cbMultiText);
-    Ob_DECREF(pObSet);
-    return pObMapUser;
+    // fall-through to cleanup & return
 fail:
-    Ob_DECREF(pObMapUser);
-    Ob_DECREF(psmOb);
-    if(pObSet) {
-        while((e = (PVMMWINUSER_CONTEXT_ENTRY)ObSet_Pop(pObSet))) {
-            LocalFree(e->pSID);
-            LocalFree(e->szSID);
-            LocalFree(e);
-        }
-        Ob_DECREF(pObSet);
+    while((pe = ObMap_Pop(pmOb))) {
+        LocalFree(pe->uszText);
+        LocalFree(pe->szSID);
+        LocalFree(pe->pSID);
+        LocalFree(pe);
     }
-    return NULL;
+    Ob_DECREF(pmOb);
+    Ob_DECREF(psmOb);
+    return pObMapUser;
 }
 
 /*

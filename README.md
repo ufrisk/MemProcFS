@@ -312,3 +312,6 @@ v1.1-v2.10
 * Process integrity levels and full SID list.
 * [Heap parsing](https://github.com/ufrisk/MemProcFS/wiki/FS_Process_Heaps).
 * [Web history](https://github.com/ufrisk/MemProcFS/wiki/FS_Web) plugin.
+
+Latest:
+* Additional info in [token/sid-all.txt](https://github.com/ufrisk/MemProcFS/wiki/FS_Process_Token).
