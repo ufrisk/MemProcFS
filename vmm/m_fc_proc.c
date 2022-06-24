@@ -124,10 +124,17 @@ VOID MFcProc_LogProcess_GetUserName(_In_ PVMM_PROCESS pProcess, _Out_writes_(17)
 
 VOID MFcProc_LogProcess(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd, _In_ VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData), PVMM_PROCESS pProcess)
 {
-    QWORD o;
+    SIZE_T o;
     BOOL fStateTerminated, fAccountUser = FALSE;
-    CHAR usz[2024], szUserName[17], szTimeCRE[24], szTimeEXIT[24];
+    CHAR uszBuffer[1024], szUserName[17], szTimeCRE[24], szTimeEXIT[24];
     PVMMWIN_USER_PROCESS_PARAMETERS pu = VmmWin_UserProcessParameters_Get(pProcess);
+    SIZE_T cbu = sizeof(uszBuffer);
+    LPSTR usz = uszBuffer;
+    if(pu->cbuImagePathName + pu->cbuCommandLine > sizeof(uszBuffer) - 512) {
+        cbu = pu->cbuImagePathName + pu->cbuCommandLine + 512;
+        usz = LocalAlloc(0, cbu);
+        if(!usz) { return; }
+    }
     pd->i = pProcess->dwPID;
     pd->vaObj = pProcess->win.EPROCESS.va;
     pd->qwNum[1] = pProcess->dwPPID;
@@ -137,7 +144,7 @@ VOID MFcProc_LogProcess(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd, _In_ VOID(*pfn
     fStateTerminated = (pProcess->dwState != 0);
     MFcProc_LogProcess_GetUserName(pProcess, szUserName, &fAccountUser);
     Util_FileTime2String(VmmProcess_GetCreateTimeOpt(pProcess), szTimeCRE);
-    o = _snprintf_s(usz, _countof(usz), _TRUNCATE, "flags:[%s%c%c%c] user:[%s] upath:[%s] cmd:[%s] createtime:[%s]",
+    o = _snprintf_s(usz, cbu, _TRUNCATE, "flags:[%s%c%c%c] user:[%s] upath:[%s] cmd:[%s] createtime:[%s]",
         pProcess->win.fWow64 ? "32" : "  ",
         pProcess->win.EPROCESS.fNoLink ? 'E' : ' ',
         fStateTerminated ? 'T' : ' ',
@@ -149,13 +156,14 @@ VOID MFcProc_LogProcess(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd, _In_ VOID(*pfn
     );
     if(VmmProcess_GetExitTimeOpt(pProcess)) {
         Util_FileTime2String(VmmProcess_GetExitTimeOpt(pProcess), szTimeEXIT);
-        o += _snprintf_s(usz + o, (SIZE_T)(_countof(usz) - o), _TRUNCATE, " exittime:[%s]", szTimeEXIT);
+        o += _snprintf_s(usz + o, cbu - o, _TRUNCATE, " exittime:[%s]", szTimeEXIT);
     }
     if(pProcess->win.TOKEN.IntegrityLevel) {
-        o += _snprintf_s(usz + o, (SIZE_T)(_countof(usz) - o), _TRUNCATE, " integrity:[%i]", pProcess->win.TOKEN.IntegrityLevel);
+        o += _snprintf_s(usz + o, cbu - o, _TRUNCATE, " integrity:[%i]", pProcess->win.TOKEN.IntegrityLevel);
     }
     pd->usz[1] = usz;
     pfnLogJSON(pd);
+    if(usz != uszBuffer) { LocalFree(usz); }
 }
 
 VOID MFcProc_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))

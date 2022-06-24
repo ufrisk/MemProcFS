@@ -223,7 +223,7 @@ typedef enum tdVMMDLL_SYSTEM_TP {
 } VMMDLL_SYSTEM_TP;
 
 /*
-* Set a device specific option value. Please see defines VMMDLL_OPT_* for infor-
+* Get a device specific option value. Please see defines VMMDLL_OPT_* for infor-
 * mation about valid option values. Please note that option values may overlap
 * between different device types with different meanings.
 * -- fOption

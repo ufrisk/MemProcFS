@@ -2546,8 +2546,13 @@ VOID VmmWinUser_Initialize_DoWork_ProfileReg(_In_ POB_MAP pmOb)
             e.cbSID = 0;
             e.cbuText = 0;
             e.pSID = NULL;
-            e.szSID = _strdup(KeyInfo.uszName);
-            e.uszText = _strdup(CharUtil_PathSplitLast(szBufferPath));
+            if(!CharUtil_UtoU(KeyInfo.uszName, -1, NULL, 0, &e.szSID, NULL, CHARUTIL_FLAG_ALLOC)) {
+                continue;
+            }
+            if(!CharUtil_UtoU(szBufferPath, -1, NULL, 0, &e.uszText, NULL, CHARUTIL_FLAG_ALLOC)) {
+                LocalFree(e.szSID);
+                continue;
+            }
             e.vaRegHive = 0;
             ObMap_PushCopy(pmOb, e.dwHashSID, &e, sizeof(VMM_MAP_USERENTRY));
         }
@@ -2624,7 +2629,10 @@ VOID VmmWinUser_Initialize_DoWork_UserHive(_In_ POB_MAP pmOb)
             LocalFree(e.pSID);
             continue;
         }
-        e.uszText = _strdup(szBufferUser);
+        if(!CharUtil_UtoU(szBufferUser, -1, NULL, 0, &e.uszText, NULL, CHARUTIL_FLAG_ALLOC)) {
+            LocalFree(e.pSID);
+            continue;
+        }
         ObMap_PushCopy(pmOb, e.dwHashSID, &e, sizeof(VMM_MAP_USERENTRY));
     }
 }
