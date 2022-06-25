@@ -48,6 +48,55 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "leechcore", "..\LeechCore\l
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "vmmsharp", "vmmsharp\vmmsharp.csproj", "{3CDF36DD-2B04-4876-B4BF-29FED2386E6A}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "vmmjava", "vmmjava", "{1390A2F3-1ECE-4A66-8B60-6FDCB599BE63}"
+	ProjectSection(SolutionItems) = preProject
+		vmmjava\VmmExample.java = vmmjava\VmmExample.java
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "vmm", "vmm", "{F64725D0-147F-43D1-95AE-FDE1E8C1EDCD}"
+	ProjectSection(SolutionItems) = preProject
+		vmmjava\vmm\IVmm.java = vmmjava\vmm\IVmm.java
+		vmmjava\vmm\IVmmMemScatterMemory.java = vmmjava\vmm\IVmmMemScatterMemory.java
+		vmmjava\vmm\IVmmModule.java = vmmjava\vmm\IVmmModule.java
+		vmmjava\vmm\IVmmPdb.java = vmmjava\vmm\IVmmPdb.java
+		vmmjava\vmm\IVmmProcess.java = vmmjava\vmm\IVmmProcess.java
+		vmmjava\vmm\IVmmRegHive.java = vmmjava\vmm\IVmmRegHive.java
+		vmmjava\vmm\IVmmRegKey.java = vmmjava\vmm\IVmmRegKey.java
+		vmmjava\vmm\IVmmRegValue.java = vmmjava\vmm\IVmmRegValue.java
+		vmmjava\vmm\VmmException.java = vmmjava\vmm\VmmException.java
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "entry", "entry", "{D65E9BD1-4BB8-4418-BC41-82884843D377}"
+	ProjectSection(SolutionItems) = preProject
+		vmmjava\vmm\entry\VmmMap_HandleEntry.java = vmmjava\vmm\entry\VmmMap_HandleEntry.java
+		vmmjava\vmm\entry\VmmMap_HeapAllocEntry.java = vmmjava\vmm\entry\VmmMap_HeapAllocEntry.java
+		vmmjava\vmm\entry\VmmMap_HeapEntry.java = vmmjava\vmm\entry\VmmMap_HeapEntry.java
+		vmmjava\vmm\entry\VmmMap_HeapMap.java = vmmjava\vmm\entry\VmmMap_HeapMap.java
+		vmmjava\vmm\entry\VmmMap_HeapSegmentEntry.java = vmmjava\vmm\entry\VmmMap_HeapSegmentEntry.java
+		vmmjava\vmm\entry\VmmMap_MemMapEntry.java = vmmjava\vmm\entry\VmmMap_MemMapEntry.java
+		vmmjava\vmm\entry\VmmMap_ModuleDataDirectory.java = vmmjava\vmm\entry\VmmMap_ModuleDataDirectory.java
+		vmmjava\vmm\entry\VmmMap_ModuleExport.java = vmmjava\vmm\entry\VmmMap_ModuleExport.java
+		vmmjava\vmm\entry\VmmMap_ModuleImport.java = vmmjava\vmm\entry\VmmMap_ModuleImport.java
+		vmmjava\vmm\entry\VmmMap_ModuleSection.java = vmmjava\vmm\entry\VmmMap_ModuleSection.java
+		vmmjava\vmm\entry\VmmMap_NetEntry.java = vmmjava\vmm\entry\VmmMap_NetEntry.java
+		vmmjava\vmm\entry\VmmMap_PoolEntry.java = vmmjava\vmm\entry\VmmMap_PoolEntry.java
+		vmmjava\vmm\entry\VmmMap_PoolMap.java = vmmjava\vmm\entry\VmmMap_PoolMap.java
+		vmmjava\vmm\entry\VmmMap_PteEntry.java = vmmjava\vmm\entry\VmmMap_PteEntry.java
+		vmmjava\vmm\entry\VmmMap_ServiceEntry.java = vmmjava\vmm\entry\VmmMap_ServiceEntry.java
+		vmmjava\vmm\entry\VmmMap_ThreadEntry.java = vmmjava\vmm\entry\VmmMap_ThreadEntry.java
+		vmmjava\vmm\entry\VmmMap_UnloadedModuleEntry.java = vmmjava\vmm\entry\VmmMap_UnloadedModuleEntry.java
+		vmmjava\vmm\entry\VmmMap_UserEntry.java = vmmjava\vmm\entry\VmmMap_UserEntry.java
+		vmmjava\vmm\entry\VmmMap_VadEntry.java = vmmjava\vmm\entry\VmmMap_VadEntry.java
+		vmmjava\vmm\entry\VmmMap_VadExEntry.java = vmmjava\vmm\entry\VmmMap_VadExEntry.java
+		vmmjava\vmm\entry\Vmm_VfsListEntry.java = vmmjava\vmm\entry\Vmm_VfsListEntry.java
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "internal", "internal", "{A8744524-49F8-4CAA-BD85-7C1EACA1164F}"
+	ProjectSection(SolutionItems) = preProject
+		vmmjava\vmm\internal\VmmImpl.java = vmmjava\vmm\internal\VmmImpl.java
+		vmmjava\vmm\internal\VmmNative.java = vmmjava\vmm\internal\VmmNative.java
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -113,6 +162,9 @@ Global
 	GlobalSection(NestedProjects) = preSolution
 		{7BEEEE90-F2CC-4ADD-BA8B-82599E3D1408} = {50E46B01-0786-4222-B8C8-8D1612DA8A3B}
 		{A8B68178-FE06-42E2-80C9-2C936973B5FA} = {50E46B01-0786-4222-B8C8-8D1612DA8A3B}
+		{F64725D0-147F-43D1-95AE-FDE1E8C1EDCD} = {1390A2F3-1ECE-4A66-8B60-6FDCB599BE63}
+		{D65E9BD1-4BB8-4418-BC41-82884843D377} = {F64725D0-147F-43D1-95AE-FDE1E8C1EDCD}
+		{A8744524-49F8-4CAA-BD85-7C1EACA1164F} = {F64725D0-147F-43D1-95AE-FDE1E8C1EDCD}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {CE6C3AA7-477A-4329-B4E3-5F219ACF4063}

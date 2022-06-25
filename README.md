@@ -13,7 +13,7 @@ Use your favorite tools to analyze memory - use your favorite hex editors, your 
 <p align="center"><img src="https://github.com/ufrisk/MemProcFS/wiki/resources/proc_base3.png" height="190"/><img src="https://github.com/ufrisk/MemProcFS/wiki/resources/pciescreamer.jpeg" height="190"/><img src="https://github.com/ufrisk/MemProcFS/wiki/resources/proc_modules.png" height="190"/></p>
 
 
-Include MemProcFS in your C/C++, C# or Python programming projects! Everything in MemProcFS is exposed via an easy-to-use API for use in your own projects! The Plugin friendly architecture allows users to easily extend MemProcFS with native C .DLL plugins or Python .py plugins - providing additional analysis capabilities!
+Include MemProcFS in your [C/C++](https://github.com/ufrisk/MemProcFS/wiki/API_C), [C#](https://github.com/ufrisk/MemProcFS/wiki/API_CSharp), [Java](https://github.com/ufrisk/MemProcFS/wiki/API_Java) or [Python](https://github.com/ufrisk/MemProcFS/wiki/API_Python) programming projects! Everything in MemProcFS is exposed via an easy-to-use API for use in your own projects! The Plugin friendly architecture allows users to easily extend MemProcFS with native C .DLL plugins or Python .py plugins - providing additional analysis capabilities!
 
 MemProcFS is available on Python pip. Just type `pip install memprocfs` and you're ready to go! Please see the [Python API documentation](https://github.com/ufrisk/MemProcFS/wiki/API_Python) and the [YouTube demo](https://youtu.be/pLFU1lxBNM0) for examples and usage!
 
@@ -29,9 +29,9 @@ No matter if you have no prior knowledge of memory analysis or are an advanced u
 
 <p align="center"><img src="https://github.com/ufrisk/MemProcFS/wiki/resources/proc_procstruct.png" height="225"/><img src="https://github.com/ufrisk/MemProcFS/wiki/resources/proc_virt2phys.png" height="225"/></p>
 
-Extensive Python, C# and C/C++ API:
+Extensive Python, Java, C# and C/C++ API:
 ===============================
-Everything in MemProcFS is exposed as APIs. APIs exist for both C/C++ `vmmdll.h`, C# `vmmsharp.cs` and Python `memprocfs.py`. The file system itself is made available virtually via the API without the need to mount it. SIt is possible to read both virtual process memory as well as physical memory! The example below shows reading 0x20 bytes from physical address 0x1000:
+Everything in MemProcFS is exposed as APIs. APIs exist for both C/C++ `vmmdll.h`, C# `vmmsharp.cs`, Java and Python `memprocfs.py`. The file system itself is made available virtually via the API without the need to mount it. SIt is possible to read both virtual process memory as well as physical memory! The example below shows reading 0x20 bytes from physical address 0x1000:
 ```
 >>> import memprocfs
 >>> vmm = memprocfs.Vmm(['-device', 'c:/temp/win10_memdump.raw'])
@@ -47,8 +47,6 @@ Anyone is able to extend MemProcFS with custom plugins! It is as easy as droppin
 Installing:
 ===========
 <b>Get the latest [binaries, modules and configuration files](https://github.com/ufrisk/MemProcFS/releases/latest) from the latest release.</b> Alternatively clone the repository and build from source.
-
-MemProcFS is dependent on the [LeechCore project](https://github.com/ufrisk/LeechCore) for memory acquisition. The necessary _leechcore.dll_ / _leechcore.so_ file is already pre-built and included together with the pre-built binaries.
 
 ## Windows
 Mounting the file system requires the <b>Dokany file system library</b> to be installed. Please download and install the latest version of Dokany version 2 at: https://github.com/dokan-dev/dokany/releases/latest It is recommended to download and install the <b>DokanSetup_redist</b> version.
@@ -93,24 +91,9 @@ Building:
 
 Detailed build instructions may be found in the [Wiki](https://github.com/ufrisk/MemProcFS/wiki) in the [Building](https://github.com/ufrisk/MemProcFS/wiki/Dev_Building) section.
 
-Current Limitations & Future Development:
-=========================================
-MemProcFS is currently limited to analyzing Windows (32-bit and 64-bit XP to 10) memory dumps.
-
-Some features are missing in Linux version (compressed windows memory and offline symbols). This both limits and degrades the analysis on Linux systems. These features are planned for future versions.
-
-Please find some ideas for possible future expansions of the memory process file system listed below. This is a list of ideas - not a list of features that will be implemented. Even though some items are put as prioritized there is no guarantee that they will be implemented in a timely fashion.
-
-### Prioritized items:
-- More/new plugins.
-
-### Other items:
-- Hash lookup of executable memory pages in DB.
-- Forensic mode more analysis tasks.
-
 License:
 ========
-The project source code is released under: GNU Affero General Public License v3.0. Some bundled dependencies and plugins are released under GPLv3. Some bundled Microsoft redistributable binaries are released under separate licenses. Alternative licensing may be possible.
+The project source code is released under: GNU Affero General Public License v3.0. Some bundled dependencies and plugins are released under GPLv3. Some bundled Microsoft redistributable binaries are released under separate licenses. Alternative closed-source licensing may be possible upon request.
 
 Contributing:
 =============
@@ -314,4 +297,6 @@ v1.1-v2.10
 * [Web history](https://github.com/ufrisk/MemProcFS/wiki/FS_Web) plugin.
 
 Latest:
+* Bug fixes.
+* [Java API](https://github.com/ufrisk/MemProcFS/wiki/API_Java).
 * Additional info in [token/sid-all.txt](https://github.com/ufrisk/MemProcFS/wiki/FS_Process_Token).
