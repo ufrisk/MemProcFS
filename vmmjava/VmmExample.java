@@ -1,6 +1,5 @@
 import vmm.*;
 import vmm.entry.*;
-import vmm.internal.VmmImpl;
 
 import java.util.*;
 
@@ -17,13 +16,13 @@ public class VmmExample {
 		// arguments are as they are given on the command line.
 		// also required is to specify the path to the native MemProcFS files
 		// important! remember to close the vmm object after use to free up native resources!
-		String strPathToNativeBinaries = "C:\\Program Files\\MemProcFS";
+		String strPathToNativeBinaries = "C:\\Github\\MemProcFS";
 		String[] argv = {"-printf", "-device", "c:\\dumps\\WIN7-X64-SP1-1.pmem"};
 		IVmm vmm = IVmm.initializeVmm(strPathToNativeBinaries, argv);
 
 		// Get/Set option
-		vmm.setConfig(VmmImpl.OPT_CORE_PRINTF_ENABLE, 1);
-		long build = vmm.getConfig(VmmImpl.OPT_WIN_VERSION_BUILD);
+		vmm.setConfig(IVmm.OPT_CORE_PRINTF_ENABLE, 1);
+		long build = vmm.getConfig(IVmm.OPT_WIN_VERSION_BUILD);
 		
 		// VFS init / list / read / write
 		List<Vmm_VfsListEntry> vfs_directory_listing = vmm.vfsList("\\sys\\");
