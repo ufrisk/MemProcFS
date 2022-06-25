@@ -17,7 +17,7 @@ public class VmmExample {
 		// arguments are as they are given on the command line.
 		// also required is to specify the path to the native MemProcFS files
 		// important! remember to close the vmm object after use to free up native resources!
-		String strPathToNativeBinaries = "C:\\Github\\MemProcFS-dev\\files";
+		String strPathToNativeBinaries = "C:\\Program Files\\MemProcFS";
 		String[] argv = {"-printf", "-device", "c:\\dumps\\WIN7-X64-SP1-1.pmem"};
 		IVmm vmm = IVmm.initializeVmm(strPathToNativeBinaries, argv);
 
