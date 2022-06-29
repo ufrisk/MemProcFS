@@ -49,7 +49,7 @@ Installing:
 <b>Get the latest [binaries, modules and configuration files](https://github.com/ufrisk/MemProcFS/releases/latest) from the latest release.</b> Alternatively clone the repository and build from source.
 
 ## Windows
-Mounting the file system requires the <b>Dokany file system library</b> to be installed. Please download and install the latest version of Dokany version 2 at: https://github.com/dokan-dev/dokany/releases/latest It is recommended to download and install the <b>DokanSetup_redist</b> version.
+Mounting the file system requires the <b>Dokany file system library</b> to be installed. Please download and install the latest version of Dokany version 2 at: https://github.com/dokan-dev/dokany/releases/latest
 
 Python support requires Python 3.6 or later. The user may specify the path to the Python installation with the command line parameter `-pythonhome`, alternatively download [Python 3.7 - Windows x86-64 embeddable zip file](https://www.python.org/downloads/windows/) and unzip its contents into the `files/python` folder when using Python modules in the file system. To use the Python API a normal 64-bit Python 3.6 or later installation for Windows is required.
 
