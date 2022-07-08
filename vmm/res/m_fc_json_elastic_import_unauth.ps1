@@ -51,53 +51,36 @@ $ELK_CONFIG_NDJSON = '
 {"attributes":{"description":"","hits":0,"kibanaSavedObjectMeta":{"searchSourceJSON":"{\"query\":{\"language\":\"kuery\",\"query\":\"\"},\"filter\":[]}"},"optionsJSON":"{\"hidePanelTitles\":false,\"useMargins\":true}","panelsJSON":"[{\"version\":\"7.12.0\",\"gridData\":{\"x\":0,\"y\":0,\"w\":24,\"h\":15,\"i\":\"19af6e34-72c1-4725-9418-66f44364e001\"},\"panelIndex\":\"19af6e34-72c1-4725-9418-66f44364e001\",\"embeddableConfig\":{\"enhancements\":{}},\"panelRefName\":\"panel_0\"},{\"version\":\"7.12.0\",\"gridData\":{\"x\":24,\"y\":0,\"w\":24,\"h\":15,\"i\":\"e5f86f51-8322-4135-ab7f-75b33dc549dd\"},\"panelIndex\":\"e5f86f51-8322-4135-ab7f-75b33dc549dd\",\"embeddableConfig\":{\"enhancements\":{}},\"panelRefName\":\"panel_1\"},{\"version\":\"7.12.0\",\"gridData\":{\"x\":0,\"y\":15,\"w\":24,\"h\":15,\"i\":\"0ad29a40-c5b8-4a06-9b88-fb6be0b45ebb\"},\"panelIndex\":\"0ad29a40-c5b8-4a06-9b88-fb6be0b45ebb\",\"embeddableConfig\":{\"enhancements\":{}},\"panelRefName\":\"panel_2\"},{\"version\":\"7.12.0\",\"gridData\":{\"x\":24,\"y\":15,\"w\":24,\"h\":15,\"i\":\"434de7bf-8b59-484e-b567-8e6f7f235435\"},\"panelIndex\":\"434de7bf-8b59-484e-b567-8e6f7f235435\",\"embeddableConfig\":{\"enhancements\":{}},\"panelRefName\":\"panel_3\"},{\"version\":\"7.12.0\",\"gridData\":{\"x\":0,\"y\":30,\"w\":24,\"h\":15,\"i\":\"6fb16d83-906c-4cd2-809b-ccd8ce4ca448\"},\"panelIndex\":\"6fb16d83-906c-4cd2-809b-ccd8ce4ca448\",\"embeddableConfig\":{\"enhancements\":{}},\"panelRefName\":\"panel_4\"},{\"version\":\"7.12.0\",\"gridData\":{\"x\":24,\"y\":30,\"w\":24,\"h\":15,\"i\":\"21f7112d-b622-4ac5-a559-e06ed0fc6aec\"},\"panelIndex\":\"21f7112d-b622-4ac5-a559-e06ed0fc6aec\",\"embeddableConfig\":{\"savedVis\":{\"title\":\"forensic_general_processname_vis\",\"description\":\"\",\"type\":\"table\",\"params\":{\"perPage\":500,\"showPartialRows\":false,\"showMetricsAtAllLevels\":false,\"showTotal\":false,\"showToolbar\":false,\"totalFunc\":\"sum\",\"percentageCol\":\"\"},\"uiState\":{},\"data\":{\"aggs\":[{\"id\":\"1\",\"enabled\":true,\"type\":\"count\",\"params\":{},\"schema\":\"metric\"},{\"id\":\"2\",\"enabled\":true,\"type\":\"terms\",\"params\":{\"field\":\"desc.keyword\",\"orderBy\":\"1\",\"order\":\"desc\",\"size\":500,\"otherBucket\":false,\"otherBucketLabel\":\"Other\",\"missingBucket\":false,\"missingBucketLabel\":\"Missing\"},\"schema\":\"bucket\"},{\"id\":\"3\",\"enabled\":true,\"type\":\"terms\",\"params\":{\"field\":\"pid.keyword\",\"orderBy\":\"1\",\"order\":\"desc\",\"size\":1,\"otherBucket\":false,\"otherBucketLabel\":\"Other\",\"missingBucket\":false,\"missingBucketLabel\":\"Missing\"},\"schema\":\"bucket\"}],\"searchSource\":{\"query\":{\"query\":\"\",\"language\":\"lucene\"},\"filter\":[]},\"savedSearchId\":\"ea455940-9ba3-11eb-900a-8d859ec6b571\"}},\"enhancements\":{},\"vis\":{\"params\":{\"colWidth\":[{\"colIndex\":0,\"width\":750.6666666666667}],\"sort\":{\"columnIndex\":null,\"direction\":null}}},\"table\":null},\"panelRefName\":\"panel_5\"}]","timeRestore":false,"title":"MemProcFS_Malware_Hunt","version":1},"coreMigrationVersion":"7.12.0","id":"6520ba30-9b98-11eb-900a-8d859ec6b571","migrationVersion":{"dashboard":"7.11.0"},"references":[{"id":"ea455940-9ba3-11eb-900a-8d859ec6b571","name":"search_0","type":"search"},{"id":"6e3cf360-9b96-11eb-900a-8d859ec6b571","name":"panel_0","type":"search"},{"id":"bf29b280-9b97-11eb-900a-8d859ec6b571","name":"panel_1","type":"visualization"},{"id":"1edf5860-9b98-11eb-900a-8d859ec6b571","name":"panel_2","type":"visualization"},{"id":"c2c787d0-9b99-11eb-900a-8d859ec6b571","name":"panel_3","type":"visualization"},{"id":"0e805660-9b9b-11eb-900a-8d859ec6b571","name":"panel_4","type":"visualization"},{"id":"67226440-a3b4-11eb-ab24-5dbd4da3470c","name":"panel_5","type":"visualization"}],"type":"dashboard","updated_at":"2021-04-22T21:54:20.748Z","version":"WzE2ODYzMSw0XQ=="}
 {"exportedCount":35,"missingRefCount":0,"missingReferences":[]}'
 
-add-type @"
-    using System.Net;
-    using System.Security.Cryptography.X509Certificates;
-    public class TrustAllCertsPolicy : ICertificatePolicy {
-        public bool CheckValidationResult(
-            ServicePoint srvPoint, X509Certificate certificate,
-            WebRequest request, int certificateProblem) {
-            return true;
-        }
-    }
-"@
-
 
 #----------------------------------------------------------------------------------------------------------------------------
 # MemProcFS_ELK_Manual_Bulk_Import function is based on MIT-licensed work from:
 # https://github.com/gorkemcnr/elasticsearch-powershell-bulkimport/blob/master/BulkElasticSearchImport.psm1
 #----------------------------------------------------------------------------------------------------------------------------
 
-function MemProcFS_ELK_Manual_Bulk_Import([string]$filePath, [int]$maxLineCount, [string]$url, [string]$credentials_basicauth)
+function MemProcFS_ELK_Manual_Bulk_Import([string]$filePath, [int]$maxLineCount, [string]$url, [string]$username, [string]$password)
 {
     if(!$url) {
-        Write-host -ForegroundColor Yellow '[*] You Need To Specify: MemProcFS_ELK_Manual_Bulk_Import "general.json" 10000 "https://localhost:9200/mp_general/_bulk"'
+        Write-host -ForegroundColor Yellow '[*] You Need To Specify: MemProcFS_ELK_Manual_Bulk_Import "general.json" 10000 "http://localhost:9200/mp_general/_bulk"'
         return
     }
 
     Add-Type -AssemblyName System.Net.Http
     $httpClient = New-Object System.Net.Http.Httpclient
     $method =  New-Object System.Net.Http.HttpMethod("POST")
-    $contentType = New-Object System.Net.Http.Headers.MediaTypeHeaderValue("application/x-ndjson")
-    $authorization_header = New-Object System.Net.Http.Headers.AuthenticationHeaderValue("Basic", "$credentials_basicauth")
+    $contentType = New-Object System.Net.Http.Headers.MediaTypeHeaderValue("application/x-ndjson");
 
     function BulkRequest([string]$url, [System.Text.StringBuilder]$bulkIndexLines) {	
 	    $message = New-Object System.Net.Http.HttpRequestMessage($method, $url)
 	    $message.Content = New-Object System.Net.Http.StringContent($bulkIndexLines.ToString())
 	    $message.Content.Headers.Clear()
-	    $message.Content.Headers.ContentType = $contentType
-        $message.Headers.Authorization = $authorization_header
+	    $message.Content.Headers.ContentType = $contentType 
 	    #Write-host $message
 	    $response = $httpClient.SendAsync($message).Result
-        try {
-	        [void]$response.EnsureSuccessStatusCode()
-        } catch {
-            Write-Host -ForegroundColor Red "[*] Unable to connect to ElasticSearch in Bulk Import."
-            return
-        }
+	    #Write-host $response
+	    [void]$response.EnsureSuccessStatusCode()
     }
 
+	$encodedCredentials = [System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes($username + ":" + $password))	 	
 	$httpClient.DefaultRequestHeaders.Authorization = New-Object System.Net.Http.Headers.AuthenticationHeaderValue("Basic", $encodedCredentials);
     $url = [Uri]::new([Uri]::new($url)).ToString() 
 	$newLine = "`r`n" 	
@@ -132,23 +115,21 @@ function MemProcFS_ELK_Manual_Bulk_Import([string]$filePath, [int]$maxLineCount,
 	}
 }
 
-function MemProcFS_ELK_ImportIndex([string]$sysid, [string]$indexName, [string]$filePath, [string]$credentials_basicauth)
+function MemProcFS_ELK_ImportIndex([string]$sysid, [string]$indexName, [string]$filePath, [string]$username, [string]$password)
 {
-    # 1: verify previous index (if exist)
+    # 1: verify / create index
     try {
-        $Headers = @{ Authorization = "Basic $credentials_basicauth" }
-        $rest_result = Invoke-RestMethod -uri https://localhost:9200/$indexName/_search?q=sys.keyword:$sysid -Headers $Headers
+        $rest_result = Invoke-RestMethod -uri http://localhost:9200/$indexName/_search?q=sys.keyword:$sysid
         if($rest_result.hits.total.value -gt 0) {
             Write-Host -ForegroundColor Yellow "[*] Index: $indexName System: $sysid Previously Loaded"
             return
         }
     } catch {}
-
-    # 2: load new index
     Write-Host -ForegroundColor Yellow "[*] Missing Index: $indexName System: $sysid"
     Write-Host -ForegroundColor Yellow "[*] Creating Index: $indexName System: $sysid"
-    MemProcFS_ELK_Manual_Bulk_Import $filePath 10000 "https://localhost:9200/$indexName/_bulk" $credentials_basicauth
+    MemProcFS_ELK_Manual_Bulk_Import $filePath 10000 "http://localhost:9200/$indexName/_bulk" $username $password
 }
+
 
 function MemProcFS_ELKImport()
 {
@@ -158,24 +139,12 @@ function MemProcFS_ELKImport()
     $sysid = Get-Content -Path $MEMPROCFS_JSON_ROOT\..\..\sys\unique-tag.txt
 
     #--------------------------------------------------------------------------
-    # RETRIEVE CRECENTIALS FOR ELASTICSEARCH
-    #--------------------------------------------------------------------------
-    Write-Host -ForegroundColor Yellow    "[*] Please enter your elasticsearch credentials (username + password)"
-    $credential = Get-Credential
-    $username = $credential.Username
-    $password = $credential.GetNetworkCredential().Password
-    $credentials = "$($username):$($password)"
-    $credentials_basicauth = [System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes($credentials))
-
-    #--------------------------------------------------------------------------
     # VERIFY ELASTICSEARCH AND KIBANA AVAILABILITY
     #--------------------------------------------------------------------------
     try {
-        $Headers = @{ Authorization = "Basic $credentials_basicauth" }
-        [System.Net.ServicePointManager]::CertificatePolicy = New-Object TrustAllCertsPolicy
-        $status = Invoke-WebRequest -Uri https://localhost:9200/ -UseBasicParsing -Headers $Headers
+        $status = Invoke-WebRequest -Uri http://localhost:9200/ -UseBasicParsing
     } catch {
-        Write-Host -ForegroundColor Red    "[*] Unable to connect to ElasticSearch at https://localhost:9200/"
+        Write-Host -ForegroundColor Red "[*] Unable to connect to ElasticSearch at http://localhost:9200/"
         break
     }
     try {
@@ -190,8 +159,7 @@ function MemProcFS_ELKImport()
     #--------------------------------------------------------------------------
     try {
         Write-Host -ForegroundColor Yellow "[*] Checking Hunting Dashboards Loaded in Kibana"
-        $Headers = @{ Authorization = "Basic $credentials_basicauth" }
-        $request_forensichunting = Invoke-RestMethod -Uri http://localhost:5601/api/kibana/dashboards/export?dashboard=db207340-9898-11eb-900a-8d859ec6b571 -UseBasicParsing -Headers $Headers
+        $request_forensichunting = Invoke-RestMethod -Uri http://localhost:5601/api/kibana/dashboards/export?dashboard=db207340-9898-11eb-900a-8d859ec6b571 -UseBasicParsing
         if($request_forensichunting.objects[0].error.statusCode -eq 404) {
             throw "No Hunting Dashboards Loaded in Kibana"
         }
@@ -204,26 +172,21 @@ function MemProcFS_ELKImport()
         Rename-Item -Path $temp_file -NewName $temp_file_ndjson
         Set-Content -Path $temp_file_ndjson -Value $ELK_CONFIG_NDJSON
         $run = 'curl.exe -X POST http://localhost:5601/api/saved_objects/_import?overwrite=true -H "kbn-xsrf: true" --form file="@' + $temp_file_ndjson + '"'
-        if($credentials -eq $null) {
-            Write-Host -ForegroundColor Green $run
-        } else {
-            $run_redacted = $run + ' --user "' + $username + ':[redacted]"'
-            $run = $run + ' --user "' + $credentials + '"'
-            Write-Host -ForegroundColor Green $run_redacted
-        }
+        Write-Host -ForegroundColor Green $run
         $result = Invoke-Expression $run 2>&1
         Remove-Item -Path $temp_file_ndjson
+        #if($result) { Write-Host -ForegroundColor Red "[*]" $result break }
     }
 
     #--------------------------------------------------------------------------
     # IMPORT DATA
     #--------------------------------------------------------------------------
-    $jsonFilePath_general  = $MEMPROCFS_JSON_ROOT + "\general.json"
+    $jsonFilePath_general = $MEMPROCFS_JSON_ROOT + "\general.json"
     $jsonFilePath_timeline = $MEMPROCFS_JSON_ROOT + "\timeline.json"
     $jsonFilePath_registry = $MEMPROCFS_JSON_ROOT + "\registry.json"
-    MemProcFS_ELK_ImportIndex $sysid "mp_general"  $jsonFilePath_general  $credentials_basicauth
-    MemProcFS_ELK_ImportIndex $sysid "mp_timeline" $jsonFilePath_timeline $credentials_basicauth
-    MemProcFS_ELK_ImportIndex $sysid "mp_registry" $jsonFilePath_registry $credentials_basicauth
+    MemProcFS_ELK_ImportIndex $sysid "mp_general" $jsonFilePath_general
+    MemProcFS_ELK_ImportIndex $sysid "mp_timeline" $jsonFilePath_timeline
+    MemProcFS_ELK_ImportIndex $sysid "mp_registry" $jsonFilePath_registry
 
     Write-Host -ForegroundColor Green "[*] ELK Import Finished! To search visit: http://localhost:5601"
 }

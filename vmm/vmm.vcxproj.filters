@@ -385,6 +385,9 @@
     <None Include="Makefile">
       <Filter>Resource Files</Filter>
     </None>
+    <None Include="..\..\..\MemProcFS-dev\vmm\res\m_fc_json_elastic_import_unauth.ps1">
+      <Filter>Resource Files\res</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="vmm.rc">

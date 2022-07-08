@@ -300,3 +300,4 @@ Latest:
 * Bug fixes.
 * [Java API](https://github.com/ufrisk/MemProcFS/wiki/API_Java).
 * Additional info in [token/sid-all.txt](https://github.com/ufrisk/MemProcFS/wiki/FS_Process_Token).
+* ElasticSearch authentication for JSON import added.

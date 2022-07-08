@@ -159,7 +159,7 @@ VOID MFcProc_LogProcess(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd, _In_ VOID(*pfn
         o += _snprintf_s(usz + o, cbu - o, _TRUNCATE, " exittime:[%s]", szTimeEXIT);
     }
     if(pProcess->win.TOKEN.IntegrityLevel) {
-        o += _snprintf_s(usz + o, cbu - o, _TRUNCATE, " integrity:[%i]", pProcess->win.TOKEN.IntegrityLevel);
+        o += _snprintf_s(usz + o, cbu - o, _TRUNCATE, " integrity:[%s]", VMM_PROCESS_INTEGRITY_LEVEL_STR[pProcess->win.TOKEN.IntegrityLevel]);
     }
     pd->usz[1] = usz;
     pfnLogJSON(pd);

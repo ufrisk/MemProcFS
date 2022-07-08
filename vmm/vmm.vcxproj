@@ -336,6 +336,7 @@
     <ClCompile Include="vmmwinsvc.c" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="..\..\..\MemProcFS-dev\vmm\res\m_fc_json_elastic_import_unauth.ps1" />
     <None Include="Makefile" />
     <None Include="res\m_fc_json_elastic_import.ps1" />
     <None Include="vmmdll.def" />
