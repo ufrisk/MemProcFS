@@ -12,6 +12,7 @@
 
 #include <Windows.h>
 #include <stdio.h>
+#define VMM_LIBRARY_FILETYPE                ".dll"
 #define STATUS_SUCCESS                      ((NTSTATUS)0x00000000L)
 #define STATUS_UNSUCCESSFUL                 ((NTSTATUS)0xC0000001L)
 #define STATUS_END_OF_FILE                  ((NTSTATUS)0xC0000011L)
@@ -43,7 +44,7 @@ typedef unsigned __int64                    QWORD, *PQWORD;
 #include <arpa/inet.h>
 #include <openssl/sha.h>
 
-#define LC_LIBRARY_FILETYPE                 ".so"
+#define VMM_LIBRARY_FILETYPE                ".so"
 
 typedef void                                VOID, *PVOID, *LPVOID;
 typedef void                                *HANDLE, **PHANDLE, *HMODULE, *FARPROC;
@@ -90,6 +91,7 @@ typedef int(*_CoreCrtNonSecureSearchSortCompareFunction)(void const *, void cons
 #define STILL_ACTIVE                        (0x00000103L)
 #define INVALID_FILE_SIZE                   (0xffffffffL)
 #define _TRUNCATE                           ((SIZE_T)-1LL)
+#define HEAP_ZERO_MEMORY                    0x00000008  
 #define CONSOLE_SCREEN_BUFFER_INFO          PVOID    // TODO: remove this dummy
 #define SOCKET                              int
 #define INVALID_SOCKET	                    -1
@@ -112,35 +114,37 @@ typedef int(*_CoreCrtNonSecureSearchSortCompareFunction)(void const *, void cons
 //-----------------------------------------------------------------------------
 // SAL DEFINES BELOW:
 //-----------------------------------------------------------------------------
-#define _In_
-#define _In_z_
-#define _Out_
-#define _Inout_
-#define _Inout_opt_
-#define _In_opt_
-#define _In_opt_z_
-#define _Out_opt_
 #define _Check_return_opt_
 #define _Frees_ptr_opt_
-#define _Post_ptr_invalid_
-#define _Printf_format_string_
+#define _In_
+#define _In_count_(x)
+#define _In_opt_
+#define _In_opt_z_
 #define _In_reads_(x)
 #define _In_reads_opt_(x)
-#define _Out_writes_(x)
-#define __bcount(x)
+#define _In_z_
+#define _Inout_
 #define _Inout_bytecount_(x)
 #define _Inout_count_(x)
+#define _Inout_opt_
 #define _Inout_updates_(x)
-#define _Inout_updates_opt_(x)
 #define _Inout_updates_bytes_(x)
+#define _Inout_updates_opt_(x)
+#define _Maybenull_
+#define _Out_
+#define _Out_opt_
+#define _Out_writes_(x)
+#define _Out_writes_bytes_(x)
 #define _Out_writes_bytes_opt_(x)
 #define _Out_writes_opt_(x)
 #define _Out_writes_to_(x,y)
 #define _Out_writes_z_(x)
-#define _Maybenull_
+#define _Post_ptr_invalid_
+#define _Printf_format_string_
 #define _Success_(x)
 #define _When_(x,y)
 #define _Writable_bytes_(x)
+#define __bcount(x)
 
 #define UNREFERENCED_PARAMETER(x)
 
@@ -150,7 +154,7 @@ typedef int(*_CoreCrtNonSecureSearchSortCompareFunction)(void const *, void cons
 #define _byteswap_ulong(v)                  (bswap_32(v))
 #define _byteswap_uint64(v)                 (bswap_64(v))
 #ifndef _rotr
-#define _rotr(v,c)                        ((((DWORD)v) >> ((DWORD)c) | (DWORD)((DWORD)v) << (32 - (DWORD)c)))
+#define _rotr(v,c)                          ((((DWORD)v) >> ((DWORD)c) | (DWORD)((DWORD)v) << (32 - (DWORD)c)))
 #endif /* _rotr */
 #define _rotr16(v,c)                        ((((WORD)v) >> ((WORD)c) | (WORD)((WORD)v) << (16 - (WORD)c)))
 #define _rotr64(v,c)                        ((((QWORD)v) >> ((QWORD)c) | (QWORD)((QWORD)v) << (64 - (QWORD)c)))
@@ -159,14 +163,14 @@ typedef int(*_CoreCrtNonSecureSearchSortCompareFunction)(void const *, void cons
 #define sprintf_s(s, maxcount, ...)         (snprintf(s, maxcount, __VA_ARGS__))
 #define strnlen_s(s, maxcount)              (strnlen(s, maxcount))
 #define strcpy_s(dst, len, src)             (strncpy(dst, src, len))
-#define strncpy_s(dst, len, src, srclen)    (strncpy(dst, src, min((QWORD)(max(1, len)) - 1, (QWORD)(srclen))))
+#define strncpy_s(dst, len, src, srclen)    (strncpy(dst, src, min((size_t)(max(1, len)) - 1, (size_t)(srclen))))
 #define strncat_s(dst, dstlen, src, srclen) (strncat(dst, src, min((((strlen(dst) + 1 >= (size_t)(dstlen)) || ((size_t)(dstlen) == 0)) ? 0 : ((size_t)(dstlen) - strlen(dst) - 1)), (size_t)(srclen))))
 #define strcat_s(dst, dstlen, src)          (strncat_s(dst, dstlen, src, _TRUNCATE))
-#define _vsnprintf_s(dst, len, cnt, fmt, a) (vsnprintf(dst, min((QWORD)(len), (QWORD)(cnt)), fmt, a))
+#define _vsnprintf_s(dst, len, cnt, fmt, a) (vsnprintf(dst, min((size_t)(len), (size_t)(cnt)), fmt, a))
 #define _stricmp(s1, s2)                    (strcasecmp(s1, s2))
 #define _strnicmp(s1, s2, maxcount)         (strncasecmp(s1, s2, maxcount))
 #define strtok_s(s, d, c)                   (strtok_r(s, d, c))
-#define _snprintf_s(s,l,c,...)              (snprintf(s,min((QWORD)(l), (QWORD)(c)),__VA_ARGS__))
+#define _snprintf_s(s,l,c,...)              (snprintf(s,min((size_t)(l), (size_t)(c)),__VA_ARGS__))
 #define sscanf_s(s, f, ...)                 (sscanf(s, f, __VA_ARGS__))
 #define SwitchToThread()                    (sched_yield())
 #define ExitThread(dwExitCode)              (pthread_exit(dwExitCode))
@@ -188,6 +192,7 @@ typedef int(*_CoreCrtNonSecureSearchSortCompareFunction)(void const *, void cons
 #define closesocket(s)                      close(s)
 #define FreeLibrary(h)
 #define GetModuleHandleA(s)		            NULL
+#define HeapAlloc(hHeap, dwFlags, dwBytes)  malloc(dwBytes)
 
 HMODULE LoadLibraryA(LPSTR lpFileName);
 FARPROC GetProcAddress(HMODULE hModule, LPSTR lpProcName);
@@ -246,11 +251,12 @@ HANDLE CreateThread(
 );
 
 BOOL CloseHandle(_In_ HANDLE hObject);
-BOOL ResetEvent(_In_ HANDLE hEvent);
-BOOL SetEvent(_In_ HANDLE hEvent);
+BOOL ResetEvent(_In_ HANDLE hEventIngestPhys);
+BOOL SetEvent(_In_ HANDLE hEventIngestPhys);
 HANDLE CreateEvent(_In_opt_ PVOID lpEventAttributes, _In_ BOOL bManualReset, _In_ BOOL bInitialState, _In_opt_ PVOID lpName);
 DWORD WaitForMultipleObjects(_In_ DWORD nCount, HANDLE *lpHandles, _In_ BOOL bWaitAll, _In_ DWORD dwMilliseconds);
 DWORD WaitForSingleObject(_In_ HANDLE hHandle, _In_ DWORD dwMilliseconds);
+int _vscprintf(_In_z_ _Printf_format_string_ char const *const _Format, va_list _ArgList);
 
 // for some unexplainable reasons the gcc on -O2 will optimize out functionality
 // and destroy the proper workings on some functions due to an unexplainable

@@ -13,7 +13,7 @@ static BOOL VmmPycRegValue_EnsureValue(PyObj_RegValue *self)
     DWORD cb = sizeof(self->Value.pb);
     if(self->fValue) { return TRUE; }
     Py_BEGIN_ALLOW_THREADS;
-    result = VMMDLL_WinReg_QueryValueExU(self->uszPath, &self->tp, self->Value.pb, &cb);
+    result = VMMDLL_WinReg_QueryValueExU(self->pyVMM->hVMM, self->uszPath, &self->tp, self->Value.pb, &cb);
     Py_END_ALLOW_THREADS;
     if(result) {
         if(cb < sizeof(self->Value.pb)) {
@@ -22,7 +22,7 @@ static BOOL VmmPycRegValue_EnsureValue(PyObj_RegValue *self)
             self->cb = cb;
         } else {
             Py_BEGIN_ALLOW_THREADS;
-            result = VMMDLL_WinReg_QueryValueExU(self->uszPath, &self->tp, NULL, &cb);
+            result = VMMDLL_WinReg_QueryValueExU(self->pyVMM->hVMM, self->uszPath, &self->tp, NULL, &cb);
             Py_END_ALLOW_THREADS;
             self->fValueData = FALSE;
             self->fValue = result;
@@ -66,7 +66,7 @@ VmmPycRegValue_value(PyObj_RegValue *self, PyObject *args)
     cb = self->cb;
     if(!(pb = LocalAlloc(LMEM_ZEROINIT, cb))) { return PyErr_NoMemory(); }
     Py_BEGIN_ALLOW_THREADS;
-    result = VMMDLL_WinReg_QueryValueExU(self->uszPath, NULL, pb, &cb);
+    result = VMMDLL_WinReg_QueryValueExU(self->pyVMM->hVMM, self->uszPath, NULL, pb, &cb);
     Py_END_ALLOW_THREADS;
     if(!result) {
         LocalFree(pb);
@@ -151,7 +151,7 @@ VmmPycRegValue_InternalValueString(PyObj_RegValue *self, PyObject *args, _In_ LP
         memcpy(pb, self->Value.pb, cb);
     } else {
         Py_BEGIN_ALLOW_THREADS;
-        result = VMMDLL_WinReg_QueryValueExU(self->uszPath, NULL, pb, &cb);
+        result = VMMDLL_WinReg_QueryValueExU(self->pyVMM->hVMM, self->uszPath, NULL, pb, &cb);
         Py_END_ALLOW_THREADS;
         if(!result) {
             LocalFree(pb);
@@ -204,7 +204,7 @@ VmmPycRegValue_parent(PyObj_RegValue *self, void *closure)
     if(!Util_PathSplitLastEx(self->uszPath, uszParentPath, sizeof(uszParentPath))) {
         return PyErr_Format(PyExc_RuntimeError, "RegValue.parent: No parent key.");
     }
-    return (PyObject*)VmmPycRegKey_InitializeInternal(uszParentPath, FALSE);
+    return (PyObject*)VmmPycRegKey_InitializeInternal(self->pyVMM, uszParentPath, FALSE);
 }
 
 // -> STR
@@ -229,11 +229,12 @@ VmmPycRegValue_path(PyObj_RegValue *self, void *closure)
 //-----------------------------------------------------------------------------
 
 PyObj_RegValue*
-VmmPycRegValue_InitializeInternal(_In_ LPSTR uszFullPathKeyValue, _In_ BOOL fVerify)
+VmmPycRegValue_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_ LPSTR uszFullPathKeyValue, _In_ BOOL fVerify)
 {
     DWORD cch = 0;
     PyObj_RegValue *pyObj;
     if(!(pyObj = PyObject_New(PyObj_RegValue, (PyTypeObject*)g_pPyType_RegValue))) { return NULL; }
+    Py_INCREF(pyVMM); pyObj->pyVMM = pyVMM;
     pyObj->fValid = TRUE;
     pyObj->fValue = FALSE;
     pyObj->fValueData = FALSE;
@@ -265,6 +266,7 @@ VmmPycRegValue_dealloc(PyObj_RegValue *self)
 {
     self->fValid = FALSE;
     Py_XDECREF(self->pyName);
+    Py_XDECREF(self->pyVMM); self->pyVMM = NULL;
 }
 
 _Success_(return)

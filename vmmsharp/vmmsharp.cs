@@ -14,7 +14,7 @@ using System.Collections.Generic;
  *  (c) Ulf Frisk, 2020-2022
  *  Author: Ulf Frisk, pcileech@frizk.net
  *  
- *  Version 4.9
+ *  Version 5.0
  *  
  */
 
@@ -276,51 +276,51 @@ namespace vmmsharp
         }
     }
 
-    public static class vmm
+    public class Vmm : IDisposable
     {
         //---------------------------------------------------------------------
         // CORE FUNCTIONALITY BELOW:
         //---------------------------------------------------------------------
 
-        public static ulong OPT_CORE_PRINTF_ENABLE =             0x4000000100000000;  // RW
-        public static ulong OPT_CORE_VERBOSE =                   0x4000000200000000;  // RW
-        public static ulong OPT_CORE_VERBOSE_EXTRA =             0x4000000300000000;  // RW
-        public static ulong OPT_CORE_VERBOSE_EXTRA_TLP =         0x4000000400000000;  // RW
-        public static ulong OPT_CORE_MAX_NATIVE_ADDRESS =        0x4000000800000000;  // R
+        public static ulong OPT_CORE_PRINTF_ENABLE = 0x4000000100000000;  // RW
+        public static ulong OPT_CORE_VERBOSE = 0x4000000200000000;  // RW
+        public static ulong OPT_CORE_VERBOSE_EXTRA = 0x4000000300000000;  // RW
+        public static ulong OPT_CORE_VERBOSE_EXTRA_TLP = 0x4000000400000000;  // RW
+        public static ulong OPT_CORE_MAX_NATIVE_ADDRESS = 0x4000000800000000;  // R
 
-        public static ulong OPT_CORE_SYSTEM =                    0x2000000100000000;  // R
-        public static ulong OPT_CORE_MEMORYMODEL =               0x2000000200000000;  // R
+        public static ulong OPT_CORE_SYSTEM = 0x2000000100000000;  // R
+        public static ulong OPT_CORE_MEMORYMODEL = 0x2000000200000000;  // R
 
-        public static ulong OPT_CONFIG_IS_REFRESH_ENABLED =      0x2000000300000000;  // R - 1/0
-        public static ulong OPT_CONFIG_TICK_PERIOD =             0x2000000400000000;  // RW - base tick period in ms
-        public static ulong OPT_CONFIG_READCACHE_TICKS =         0x2000000500000000;  // RW - memory cache validity period (in ticks)
-        public static ulong OPT_CONFIG_TLBCACHE_TICKS =          0x2000000600000000;  // RW - page table (tlb) cache validity period (in ticks)
+        public static ulong OPT_CONFIG_IS_REFRESH_ENABLED = 0x2000000300000000;  // R - 1/0
+        public static ulong OPT_CONFIG_TICK_PERIOD = 0x2000000400000000;  // RW - base tick period in ms
+        public static ulong OPT_CONFIG_READCACHE_TICKS = 0x2000000500000000;  // RW - memory cache validity period (in ticks)
+        public static ulong OPT_CONFIG_TLBCACHE_TICKS = 0x2000000600000000;  // RW - page table (tlb) cache validity period (in ticks)
         public static ulong OPT_CONFIG_PROCCACHE_TICKS_PARTIAL = 0x2000000700000000; // RW - process refresh (partial) period (in ticks)
-        public static ulong OPT_CONFIG_PROCCACHE_TICKS_TOTAL =   0x2000000800000000;  // RW - process refresh (full) period (in ticks)
-        public static ulong OPT_CONFIG_VMM_VERSION_MAJOR =       0x2000000900000000;  // R
-        public static ulong OPT_CONFIG_VMM_VERSION_MINOR =       0x2000000A00000000;  // R
-        public static ulong OPT_CONFIG_VMM_VERSION_REVISION =    0x2000000B00000000;  // R
+        public static ulong OPT_CONFIG_PROCCACHE_TICKS_TOTAL = 0x2000000800000000;  // RW - process refresh (full) period (in ticks)
+        public static ulong OPT_CONFIG_VMM_VERSION_MAJOR = 0x2000000900000000;  // R
+        public static ulong OPT_CONFIG_VMM_VERSION_MINOR = 0x2000000A00000000;  // R
+        public static ulong OPT_CONFIG_VMM_VERSION_REVISION = 0x2000000B00000000;  // R
         public static ulong OPT_CONFIG_STATISTICS_FUNCTIONCALL = 0x2000000C00000000; // RW - enable function call statistics (.status/statistics_fncall file)
-        public static ulong OPT_CONFIG_IS_PAGING_ENABLED =       0x2000000D00000000;  // RW - 1/0
+        public static ulong OPT_CONFIG_IS_PAGING_ENABLED = 0x2000000D00000000;  // RW - 1/0
 
-        public static ulong OPT_WIN_VERSION_MAJOR =              0x2000010100000000;  // R
-        public static ulong OPT_WIN_VERSION_MINOR =              0x2000010200000000;  // R
-        public static ulong OPT_WIN_VERSION_BUILD =              0x2000010300000000;  // R
+        public static ulong OPT_WIN_VERSION_MAJOR = 0x2000010100000000;  // R
+        public static ulong OPT_WIN_VERSION_MINOR = 0x2000010200000000;  // R
+        public static ulong OPT_WIN_VERSION_BUILD = 0x2000010300000000;  // R
 
-        public static ulong OPT_FORENSIC_MODE =                  0x2000020100000000;  // RW - enable/retrieve forensic mode type [0-4].
+        public static ulong OPT_FORENSIC_MODE = 0x2000020100000000;  // RW - enable/retrieve forensic mode type [0-4].
 
-        public static ulong OPT_REFRESH_ALL =                    0x2001ffff00000000;  // W - refresh all caches
-        public static ulong OPT_REFRESH_FREQ_FAST =              0x2001040000000000;  // W - refresh fast frequency (including partial process listings)
-        public static ulong OPT_REFRESH_FREQ_MEDIUM =            0x2001000100000000;  // W - refresh medium frequency (including full process listings)
-        public static ulong OPT_REFRESH_FREQ_SLOW =              0x2001001000000000;  // W - refresh slow frequency (including registry)
-        public static ulong OPT_REFRESH_READ =                   0x2001000200000000;  // W - refresh physical read cache
-        public static ulong OPT_REFRESH_TLB =                    0x2001000400000000;  // W - refresh page table (TLB) cache
-        public static ulong OPT_REFRESH_PAGING =                 0x2001000800000000;  // W - refresh virtual memory 'paging' cache
-        public static ulong OPT_REFRESH_USER =                   0x2001002000000000;  // W
-        public static ulong OPT_REFRESH_PHYSMEMMAP =             0x2001004000000000;  // W
-        public static ulong OPT_REFRESH_PFN =                    0x2001008000000000;  // W
-        public static ulong OPT_REFRESH_OBJ =                    0x2001010000000000;  // W
-        public static ulong OPT_REFRESH_NET =                    0x2001020000000000;  // W
+        public static ulong OPT_REFRESH_ALL = 0x2001ffff00000000;  // W - refresh all caches
+        public static ulong OPT_REFRESH_FREQ_FAST = 0x2001040000000000;  // W - refresh fast frequency (including partial process listings)
+        public static ulong OPT_REFRESH_FREQ_MEDIUM = 0x2001000100000000;  // W - refresh medium frequency (including full process listings)
+        public static ulong OPT_REFRESH_FREQ_SLOW = 0x2001001000000000;  // W - refresh slow frequency (including registry)
+        public static ulong OPT_REFRESH_READ = 0x2001000200000000;  // W - refresh physical read cache
+        public static ulong OPT_REFRESH_TLB = 0x2001000400000000;  // W - refresh page table (TLB) cache
+        public static ulong OPT_REFRESH_PAGING = 0x2001000800000000;  // W - refresh virtual memory 'paging' cache
+        public static ulong OPT_REFRESH_USER = 0x2001002000000000;  // W
+        public static ulong OPT_REFRESH_PHYSMEMMAP = 0x2001004000000000;  // W
+        public static ulong OPT_REFRESH_PFN = 0x2001008000000000;  // W
+        public static ulong OPT_REFRESH_OBJ = 0x2001010000000000;  // W
+        public static ulong OPT_REFRESH_NET = 0x2001020000000000;  // W
 
 
         public enum MEMORYMODEL_TP
@@ -339,17 +339,29 @@ namespace vmmsharp
             SYSTEM_WINDOWS_X86 = 4
         }
 
-        public static unsafe bool Initialize(out lc.CONFIG_ERRORINFO ConfigErrorInfo, params string[] args)
+        private bool disposed = false;
+        private IntPtr hVMM = IntPtr.Zero;
+
+        // private zero-argument constructor - do not use!
+        private Vmm()
+        {
+        }
+
+        private static unsafe IntPtr Initialize(out lc.CONFIG_ERRORINFO ConfigErrorInfo, params string[] args)
         {
             IntPtr pLcErrorInfo;
             int cbERROR_INFO = System.Runtime.InteropServices.Marshal.SizeOf(typeof(lci.LC_CONFIG_ERRORINFO));
-            bool fResult = vmmi.VMMDLL_InitializeEx(args.Length, args, out pLcErrorInfo);
+            IntPtr hVMM = vmmi.VMMDLL_InitializeEx(args.Length, args, out pLcErrorInfo);
             long vaLcCreateErrorInfo = pLcErrorInfo.ToInt64();
             ConfigErrorInfo = new lc.CONFIG_ERRORINFO();
             ConfigErrorInfo.strUserText = "";
+            if (hVMM.ToInt64() == 0)
+            {
+                throw new Exception("VMM INIT FAILED.");
+            }
             if (vaLcCreateErrorInfo == 0)
             {
-                return fResult;
+                return hVMM;
             }
             lci.LC_CONFIG_ERRORINFO e = Marshal.PtrToStructure<lci.LC_CONFIG_ERRORINFO>(pLcErrorInfo);
             if (e.dwVersion == lc.CONFIG_ERRORINFO_VERSION)
@@ -362,23 +374,60 @@ namespace vmmsharp
                 }
             }
             lci.LcMemFree(pLcErrorInfo);
-            return fResult;
+            return hVMM;
         }
 
-        public static bool Initialize(params string[] args)
+        public Vmm(out lc.CONFIG_ERRORINFO ConfigErrorInfo, params string[] args)
+        {
+            this.hVMM = Vmm.Initialize(out ConfigErrorInfo, args);
+        }
+
+        public Vmm(params string[] args)
         {
             lc.CONFIG_ERRORINFO ErrorInfo;
-            return Initialize(out ErrorInfo, args);
+            this.hVMM = Vmm.Initialize(out ErrorInfo, args);
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Close")]
-        public static extern bool Close();
+        ~Vmm()
+        {
+            Dispose(disposing: false);
+        }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_ConfigGet")]
-        public static extern bool ConfigGet(ulong fOption, out ulong pqwValue);
+        public void Dispose()
+        {
+            Dispose(disposing: true);
+            GC.SuppressFinalize(this);
+        }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_ConfigSet")]
-        public static extern bool ConfigSet(ulong fOption, ulong qwValue);
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!this.disposed)
+            {
+                vmmi.VMMDLL_Close(hVMM);
+                hVMM = IntPtr.Zero;
+                disposed = true;
+            }
+        }
+
+        public void Close()
+        {
+            Dispose(disposing: true);
+        }
+
+        public static void CloseAll()
+        {
+            vmmi.VMMDLL_CloseAll();
+        }
+
+        public bool ConfigGet(ulong fOption, out ulong pqwValue)
+        {
+            return vmmi.VMMDLL_ConfigGet(hVMM, fOption, out pqwValue);
+        }
+
+        public bool ConfigSet(ulong fOption, ulong qwValue)
+        {
+            return vmmi.VMMDLL_ConfigSet(hVMM, fOption, qwValue);
+        }
 
         //---------------------------------------------------------------------
         // VFS (VIRTUAL FILE SYSTEM) FUNCTIONALITY BELOW:
@@ -400,7 +449,7 @@ namespace vmmsharp
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate bool VfsCallBack_AddDirectory(ulong h, [MarshalAs(UnmanagedType.LPUTF8Str)] string wszName, IntPtr pExInfo);
 
-        public static bool VfsList(string wszPath, ulong h, VfsCallBack_AddFile CallbackFile, VfsCallBack_AddDirectory CallbackDirectory)
+        public bool VfsList(string wszPath, ulong h, VfsCallBack_AddFile CallbackFile, VfsCallBack_AddDirectory CallbackDirectory)
         {
             vmmi.VMMDLL_VFS_FILELIST FileList;
             FileList.dwVersion = vmmi.VMMDLL_VFS_FILELIST_VERSION;
@@ -408,16 +457,16 @@ namespace vmmsharp
             FileList._Reserved = 0;
             FileList.pfnAddFile = Marshal.GetFunctionPointerForDelegate(CallbackFile);
             FileList.pfnAddDirectory = Marshal.GetFunctionPointerForDelegate(CallbackDirectory);
-            return vmmi.VMMDLL_VfsList(wszPath, ref FileList);
+            return vmmi.VMMDLL_VfsList(hVMM, wszPath, ref FileList);
         }
 
-        public static unsafe uint VfsRead(string wszFileName, uint cb, ulong cbOffset, out byte[] pbData)
+        public unsafe uint VfsRead(string wszFileName, uint cb, ulong cbOffset, out byte[] pbData)
         {
             uint nt, cbRead = 0;
             byte[] data = new byte[cb];
             fixed (byte* pb = data)
             {
-                nt = vmmi.VMMDLL_VfsRead(wszFileName, pb, cb, out cbRead, cbOffset);
+                nt = vmmi.VMMDLL_VfsRead(hVMM, wszFileName, pb, cb, out cbRead, cbOffset);
                 pbData = new byte[cbRead];
                 if (cbRead > 0)
                 {
@@ -427,37 +476,43 @@ namespace vmmsharp
             }
         }
 
-        public static unsafe uint VfsWrite(string wszFileName, byte[] pbData, ulong cbOffset)
+        public unsafe uint VfsWrite(string wszFileName, byte[] pbData, ulong cbOffset)
         {
             uint cbRead = 0;
             fixed (byte* pb = pbData)
             {
-                return vmmi.VMMDLL_VfsWrite(wszFileName, pb, (uint)pbData.Length, out cbRead, cbOffset);
+                return vmmi.VMMDLL_VfsWrite(hVMM, wszFileName, pb, (uint)pbData.Length, out cbRead, cbOffset);
             }
         }
+
+
 
         //---------------------------------------------------------------------
         // PLUGIN FUNCTIONALITY BELOW:
         //---------------------------------------------------------------------
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_InitializePlugins")]
-        public static extern bool InitializePlugins();
+        public bool InitializePlugins()
+        {
+            return vmmi.VMMDLL_InitializePlugins(hVMM);
+        }
+
+
 
         //---------------------------------------------------------------------
         // MEMORY READ/WRITE FUNCTIONALITY BELOW:
         //---------------------------------------------------------------------
 
-        public static uint PID_PROCESS_WITH_KERNELMEMORY =  0x80000000;      // Combine with dwPID to enable process kernel memory (NB! use with extreme care).
+        public static uint PID_PROCESS_WITH_KERNELMEMORY = 0x80000000;      // Combine with dwPID to enable process kernel memory (NB! use with extreme care).
 
-        public static uint FLAG_NOCACHE =                   0x0001;  // do not use the data cache (force reading from memory acquisition device)
-        public static uint FLAG_ZEROPAD_ON_FAIL =           0x0002;  // zero pad failed physical memory reads and report success if read within range of physical memory.
-        public static uint FLAG_FORCECACHE_READ =           0x0008;  // force use of cache - fail non-cached pages - only valid for reads, invalid with VMM_FLAG_NOCACHE/VMM_FLAG_ZEROPAD_ON_FAIL.
-        public static uint FLAG_NOPAGING =                  0x0010;  // do not try to retrieve memory from paged out memory from pagefile/compressed (even if possible)
-        public static uint FLAG_NOPAGING_IO =               0x0020;  // do not try to retrieve memory from paged out memory if read would incur additional I/O (even if possible).
-        public static uint FLAG_NOCACHEPUT =                0x0100;  // do not write back to the data cache upon successful read from memory acquisition device.
-        public static uint FLAG_CACHE_RECENT_ONLY =         0x0200;  // only fetch from the most recent active cache region when reading.
+        public static uint FLAG_NOCACHE = 0x0001;  // do not use the data cache (force reading from memory acquisition device)
+        public static uint FLAG_ZEROPAD_ON_FAIL = 0x0002;  // zero pad failed physical memory reads and report success if read within range of physical memory.
+        public static uint FLAG_FORCECACHE_READ = 0x0008;  // force use of cache - fail non-cached pages - only valid for reads, invalid with VMM_FLAG_NOCACHE/VMM_FLAG_ZEROPAD_ON_FAIL.
+        public static uint FLAG_NOPAGING = 0x0010;  // do not try to retrieve memory from paged out memory from pagefile/compressed (even if possible)
+        public static uint FLAG_NOPAGING_IO = 0x0020;  // do not try to retrieve memory from paged out memory if read would incur additional I/O (even if possible).
+        public static uint FLAG_NOCACHEPUT = 0x0100;  // do not write back to the data cache upon successful read from memory acquisition device.
+        public static uint FLAG_CACHE_RECENT_ONLY = 0x0200;  // only fetch from the most recent active cache region when reading.
 
-        public static unsafe MEM_SCATTER[] MemReadScatter(uint pid, uint flags, params ulong[] qwA)
+        public unsafe MEM_SCATTER[] MemReadScatter(uint pid, uint flags, params ulong[] qwA)
         {
             int i;
             long vappMEMs, vapMEM;
@@ -474,7 +529,7 @@ namespace vmmsharp
                 Marshal.WriteInt64(pMEM_qwA, (long)(qwA[i] & ~(ulong)0xfff));
             }
             MEM_SCATTER[] MEMs = new MEM_SCATTER[qwA.Length];
-            vmmi.VMMDLL_MemReadScatter(pid, pppMEMs, (uint)MEMs.Length, flags);
+            vmmi.VMMDLL_MemReadScatter(hVMM, pid, pppMEMs, (uint)MEMs.Length, flags);
             for (i = 0; i < MEMs.Length; i++)
             {
                 pMEM = Marshal.ReadIntPtr(new IntPtr(vappMEMs + i * 8));
@@ -488,13 +543,20 @@ namespace vmmsharp
             return MEMs;
         }
 
-        public static unsafe byte[] MemRead(uint pid, ulong qwA, uint cb, uint flags = 0)
+        public VmmScatter Scatter_Initialize(uint pid, uint flags)
+        {
+            IntPtr hS = vmmi.VMMDLL_Scatter_Initialize(hVMM, pid, flags);
+            if (hS.ToInt64() == 0) { return null; }
+            return new VmmScatter(hS);
+        }
+
+        public unsafe byte[] MemRead(uint pid, ulong qwA, uint cb, uint flags = 0)
         {
             uint cbRead;
             byte[] data = new byte[cb];
             fixed (byte* pb = data)
             {
-                if(!vmmi.VMMDLL_MemReadEx(pid, qwA, pb, cb, out cbRead, flags))
+                if (!vmmi.VMMDLL_MemReadEx(hVMM, pid, qwA, pb, cb, out cbRead, flags))
                 {
                     return null;
                 }
@@ -506,70 +568,27 @@ namespace vmmsharp
             return data;
         }
 
-        public static unsafe bool MemPrefetchPages(uint pid, ulong[] qwA)
+        public unsafe bool MemPrefetchPages(uint pid, ulong[] qwA)
         {
             byte[] data = new byte[qwA.Length * sizeof(ulong)];
             System.Buffer.BlockCopy(qwA, 0, data, 0, data.Length);
             fixed (byte* pb = data)
             {
-                return vmmi.VMMDLL_MemPrefetchPages(pid, pb, (uint)qwA.Length);
+                return vmmi.VMMDLL_MemPrefetchPages(hVMM, pid, pb, (uint)qwA.Length);
             }
         }
 
-        public static unsafe bool MemWrite(uint pid, ulong qwA, byte[] data)
+        public unsafe bool MemWrite(uint pid, ulong qwA, byte[] data)
         {
             fixed (byte* pb = data)
             {
-                return vmmi.VMMDLL_MemWrite(pid, qwA, pb, (uint)data.Length);
+                return vmmi.VMMDLL_MemWrite(hVMM, pid, qwA, pb, (uint)data.Length);
             }
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_MemVirt2Phys")]
-        public static extern bool MemVirt2Phys(uint dwPID, ulong qwVA, out ulong pqwPA);
-
-
-
-        //---------------------------------------------------------------------
-        // MEMORY NEW SCATTER READ/WRITE FUNCTIONALITY BELOW:
-        //---------------------------------------------------------------------
-
-        public static bool Scatter_Initialize(uint pid, uint flags, out IntPtr hS)
+        public bool MemVirt2Phys(uint dwPID, ulong qwVA, out ulong pqwPA)
         {
-            hS = vmmi.VMMDLL_Scatter_Initialize(pid, flags);
-            return hS != IntPtr.Zero;
-        }
-
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Scatter_Prepare")]
-        public static extern bool Scatter_Prepare(IntPtr hS, ulong qwA, uint cb);
-
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Scatter_ExecuteRead")]
-        public static extern bool Scatter_Execute(IntPtr hS);
-
-        public static unsafe byte[] Scatter_Read(IntPtr hS, ulong qwA, uint cb)
-        {
-            uint cbRead;
-            byte[] data = new byte[cb];
-            fixed (byte* pb = data)
-            {
-                if (!vmmi.VMMDLL_Scatter_Read(hS, qwA, cb, pb, out cbRead))
-                {
-                    return null;
-                }
-            }
-            if (cbRead != cb)
-            {
-                Array.Resize<byte>(ref data, (int)cbRead);
-            }
-            return data;
-        }
-
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Scatter_Clear")]
-        public static extern bool Scatter_Clear(IntPtr hS, uint dwPID, uint flags);
-
-        public static void Scatter_CloseHandle(ref IntPtr hS)
-        {
-            vmmi.VMMDLL_Scatter_CloseHandle(hS);
-            hS = IntPtr.Zero;
+            return vmmi.VMMDLL_MemVirt2Phys(hVMM, dwPID, qwVA, out pqwPA);
         }
 
 
@@ -585,7 +604,7 @@ namespace vmmsharp
             public byte[] pbSearchSkipMask;
         }
 
-        public static unsafe ulong[] MemSearchM(uint pid, VMMDLL_MEM_SEARCHENTRY[] search, ulong vaMin = 0, ulong vaMax = 0xffffffffffffffff, uint cMaxResult = 0x10000, uint ReadFlags = 0)
+        public unsafe ulong[] MemSearchM(uint pid, VMMDLL_MEM_SEARCHENTRY[] search, ulong vaMin = 0, ulong vaMax = 0xffffffffffffffff, uint cMaxResult = 0x10000, uint ReadFlags = 0)
         {
             // checks:
             if (search == null || search.Length == 0 || search.Length > 16) { return new ulong[0]; }
@@ -599,7 +618,7 @@ namespace vmmsharp
                 es[i].cb = (uint)search[i].pbSearch.Length;
                 es[i].pb = new byte[32];
                 search[i].pbSearch.CopyTo(es[i].pb, 0);
-                if(search[i].pbSearchSkipMask != null && search[i].pbSearchSkipMask.Length > 0)
+                if (search[i].pbSearchSkipMask != null && search[i].pbSearchSkipMask.Length > 0)
                 {
                     es[i].pbSkipMask = new byte[32];
                     search[i].pbSearchSkipMask.CopyTo(es[i].pbSkipMask, 0);
@@ -617,7 +636,7 @@ namespace vmmsharp
             // perform native search:
             uint pcva;
             IntPtr ppva;
-            if (!vmmi.VMMDLL_MemSearch(pid, ref ctx, out ppva, out pcva)) { return new ulong[0]; }
+            if (!vmmi.VMMDLL_MemSearch(hVMM, pid, ref ctx, out ppva, out pcva)) { return new ulong[0]; }
             ulong[] result = new ulong[pcva];
             for (int i = 0; i < pcva; i++)
             {
@@ -627,7 +646,7 @@ namespace vmmsharp
             return result;
         }
 
-        public static unsafe ulong[] MemSearch1(uint pid, byte[] pbSearch, ulong vaMin = 0, ulong vaMax = 0xffffffffffffffff, uint cMaxResult = 0x10000, uint ReadFlags = 0, byte[] pbSearchSkipMask = null, uint cbAlign = 1)
+        public unsafe ulong[] MemSearch1(uint pid, byte[] pbSearch, ulong vaMin = 0, ulong vaMax = 0xffffffffffffffff, uint cMaxResult = 0x10000, uint ReadFlags = 0, byte[] pbSearchSkipMask = null, uint cbAlign = 1)
         {
             VMMDLL_MEM_SEARCHENTRY[] es = new VMMDLL_MEM_SEARCHENTRY[1];
             es[0].cbAlign = cbAlign;
@@ -638,11 +657,11 @@ namespace vmmsharp
 
 
 
-    //---------------------------------------------------------------------
-    // PROCESS FUNCTIONALITY BELOW:
-    //---------------------------------------------------------------------
+        //---------------------------------------------------------------------
+        // PROCESS FUNCTIONALITY BELOW:
+        //---------------------------------------------------------------------
 
-    public struct PROCESS_INFORMATION
+        public struct PROCESS_INFORMATION
         {
             public bool fValid;
             public uint tpMemoryModel;
@@ -665,18 +684,20 @@ namespace vmmsharp
             public uint IntegrityLevel;
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_PidGetFromName")]
-        public static extern bool PidGetFromName([MarshalAs(UnmanagedType.LPStr)] string szProcName, out uint pdwPID);
+        public bool PidGetFromName(string szProcName, out uint pdwPID)
+        {
+            return vmmi.VMMDLL_PidGetFromName(hVMM, szProcName, out pdwPID);
+        }
 
-        public static unsafe uint[] PidList()
+        public unsafe uint[] PidList()
         {
             bool result;
             ulong c = 0;
-            result = vmmi.VMMDLL_PidList(null, ref c);
+            result = vmmi.VMMDLL_PidList(hVMM, null, ref c);
             if (!result || (c == 0)) { return new uint[0]; }
             fixed (byte* pb = new byte[c * 4])
             {
-                result = vmmi.VMMDLL_PidList(pb, ref c);
+                result = vmmi.VMMDLL_PidList(hVMM, pb, ref c);
                 if (!result || (c == 0)) { return new uint[0]; }
                 uint[] m = new uint[c];
                 for (ulong i = 0; i < c; i++)
@@ -687,7 +708,7 @@ namespace vmmsharp
             }
         }
 
-        public static unsafe PROCESS_INFORMATION ProcessGetInformation(uint pid)
+        public unsafe PROCESS_INFORMATION ProcessGetInformation(uint pid)
         {
             bool result;
             ulong cbENTRY = (ulong)System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_PROCESS_INFORMATION));
@@ -695,7 +716,7 @@ namespace vmmsharp
             {
                 Marshal.WriteInt64(new IntPtr(pb + 0), (long)vmmi.VMMDLL_PROCESS_INFORMATION_MAGIC);
                 Marshal.WriteInt16(new IntPtr(pb + 8), (short)vmmi.VMMDLL_PROCESS_INFORMATION_VERSION);
-                result = vmmi.VMMDLL_ProcessGetInformation(pid, pb, ref cbENTRY);
+                result = vmmi.VMMDLL_ProcessGetInformation(hVMM, pid, pb, ref cbENTRY);
                 if (!result) { return new PROCESS_INFORMATION(); }
                 vmmi.VMMDLL_PROCESS_INFORMATION n = Marshal.PtrToStructure<vmmi.VMMDLL_PROCESS_INFORMATION>((System.IntPtr)pb);
                 if (n.wVersion != vmmi.VMMDLL_PROCESS_INFORMATION_VERSION) { return new PROCESS_INFORMATION(); }
@@ -727,9 +748,9 @@ namespace vmmsharp
         public static uint VMMDLL_PROCESS_INFORMATION_OPT_STRING_PATH_USER_IMAGE = 2;
         public static uint VMMDLL_PROCESS_INFORMATION_OPT_STRING_CMDLINE = 3;
 
-        public static unsafe string ProcessGetInformationString(uint pid, uint fOptionString)
+        public unsafe string ProcessGetInformationString(uint pid, uint fOptionString)
         {
-            byte* pb = vmmi.VMMDLL_ProcessGetInformationString(pid, fOptionString);
+            byte* pb = vmmi.VMMDLL_ProcessGetInformationString(hVMM, pid, fOptionString);
             if (pb == null) { return ""; }
             string s = Marshal.PtrToStringAnsi((System.IntPtr)pb);
             vmmi.VMMDLL_MemFree(pb);
@@ -757,7 +778,7 @@ namespace vmmsharp
             public uint Size;
         }
 
-        public static unsafe IMAGE_DATA_DIRECTORY[] ProcessGetDirectories(uint pid, string wszModule)
+        public unsafe IMAGE_DATA_DIRECTORY[] ProcessGetDirectories(uint pid, string wszModule)
         {
             string[] PE_DATA_DIRECTORIES = new string[16] { "EXPORT", "IMPORT", "RESOURCE", "EXCEPTION", "SECURITY", "BASERELOC", "DEBUG", "ARCHITECTURE", "GLOBALPTR", "TLS", "LOAD_CONFIG", "BOUND_IMPORT", "IAT", "DELAY_IMPORT", "COM_DESCRIPTOR", "RESERVED" };
             bool result;
@@ -765,8 +786,8 @@ namespace vmmsharp
             uint cbENTRY = (uint)System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_IMAGE_DATA_DIRECTORY));
             fixed (byte* pb = new byte[16 * cbENTRY])
             {
-                result = vmmi.VMMDLL_ProcessGetDirectories(pid, wszModule, pb, 16, out cData);
-                if (!result || (cData != 16)) { return new IMAGE_DATA_DIRECTORY[0]; }
+                result = vmmi.VMMDLL_ProcessGetDirectories(hVMM, pid, wszModule, pb);
+                if (!result) { return new IMAGE_DATA_DIRECTORY[0]; }
                 IMAGE_DATA_DIRECTORY[] m = new IMAGE_DATA_DIRECTORY[16];
                 for (int i = 0; i < 16; i++)
                 {
@@ -781,16 +802,16 @@ namespace vmmsharp
             }
         }
 
-        public static unsafe IMAGE_SECTION_HEADER[] ProcessGetSections(uint pid, string wszModule)
+        public unsafe IMAGE_SECTION_HEADER[] ProcessGetSections(uint pid, string wszModule)
         {
             bool result;
             uint cData;
             uint cbENTRY = (uint)System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_IMAGE_SECTION_HEADER));
-            result = vmmi.VMMDLL_ProcessGetSections(pid, wszModule, null, 0, out cData);
-            if(!result || (cData == 0)) { return new IMAGE_SECTION_HEADER[0]; }
+            result = vmmi.VMMDLL_ProcessGetSections(hVMM, pid, wszModule, null, 0, out cData);
+            if (!result || (cData == 0)) { return new IMAGE_SECTION_HEADER[0]; }
             fixed (byte* pb = new byte[cData * cbENTRY])
             {
-                result = vmmi.VMMDLL_ProcessGetSections(pid, wszModule, pb, cData, out cData);
+                result = vmmi.VMMDLL_ProcessGetSections(hVMM, pid, wszModule, pb, cData, out cData);
                 if (!result || (cData == 0)) { return new IMAGE_SECTION_HEADER[0]; }
                 IMAGE_SECTION_HEADER[] m = new IMAGE_SECTION_HEADER[cData];
                 for (int i = 0; i < cData; i++)
@@ -813,11 +834,15 @@ namespace vmmsharp
             }
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_ProcessGetProcAddressW")]
-        public static extern ulong ProcessGetProcAddress(uint pid, [MarshalAs(UnmanagedType.LPWStr)] string wszModuleName, [MarshalAs(UnmanagedType.LPStr)] string szFunctionName);
+        public ulong ProcessGetProcAddress(uint pid, string wszModuleName, string szFunctionName)
+        {
+            return vmmi.VMMDLL_ProcessGetProcAddress(hVMM, pid, wszModuleName, szFunctionName);
+        }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_ProcessGetModuleBaseW")]
-        public static extern ulong ProcessGetModuleBase(uint pid, [MarshalAs(UnmanagedType.LPWStr)] string wszModuleName);
+        public ulong ProcessGetModuleBase(uint pid, string wszModuleName)
+        {
+            return vmmi.VMMDLL_ProcessGetModuleBase(hVMM, pid, wszModuleName);
+        }
 
 
 
@@ -825,13 +850,13 @@ namespace vmmsharp
         // WINDOWS SPECIFIC DEBUGGING / SYMBOL FUNCTIONALITY BELOW:
         //---------------------------------------------------------------------
 
-        public static unsafe bool PdbLoad(uint pid, ulong vaModuleBase, out string szModuleName)
+        public unsafe bool PdbLoad(uint pid, ulong vaModuleBase, out string szModuleName)
         {
             szModuleName = "";
             byte[] data = new byte[260];
             fixed (byte* pb = data)
             {
-                bool result = vmmi.VMMDLL_PdbLoad(pid, vaModuleBase, pb);
+                bool result = vmmi.VMMDLL_PdbLoad(hVMM, pid, vaModuleBase, pb);
                 if(!result) { return false; }
                 szModuleName = Encoding.UTF8.GetString(data);
                 szModuleName = szModuleName.Substring(0, szModuleName.IndexOf((char)0));
@@ -839,14 +864,14 @@ namespace vmmsharp
             return true;
         }
 
-        public static unsafe bool PdbSymbolName(string szModule, ulong cbSymbolAddressOrOffset, out string szSymbolName, out uint pdwSymbolDisplacement)
+        public unsafe bool PdbSymbolName(string szModule, ulong cbSymbolAddressOrOffset, out string szSymbolName, out uint pdwSymbolDisplacement)
         {
             szSymbolName = "";
             pdwSymbolDisplacement = 0;
             byte[] data = new byte[260];
             fixed (byte* pb = data)
             {
-                bool result = vmmi.VMMDLL_PdbSymbolName(szModule, cbSymbolAddressOrOffset, pb, out pdwSymbolDisplacement);
+                bool result = vmmi.VMMDLL_PdbSymbolName(hVMM, szModule, cbSymbolAddressOrOffset, pb, out pdwSymbolDisplacement);
                 if (!result) { return false; }
                 szSymbolName = Encoding.UTF8.GetString(data);
                 szSymbolName = szSymbolName.Substring(0, szSymbolName.IndexOf((char)0));
@@ -854,16 +879,20 @@ namespace vmmsharp
             return true;
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_PdbSymbolAddress")]
-        public static extern bool PdbSymbolAddress([MarshalAs(UnmanagedType.LPStr)] string szModule, [MarshalAs(UnmanagedType.LPStr)] string szSymbolName, out ulong pvaSymbolAddress);
+        public bool PdbSymbolAddress(string szModule, string szSymbolName, out ulong pvaSymbolAddress)
+        {
+            return vmmi.VMMDLL_PdbSymbolAddress(hVMM, szModule, szSymbolName, out pvaSymbolAddress);
+        }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_PdbTypeSize")]
-        public static extern bool PdbTypeSize([MarshalAs(UnmanagedType.LPStr)] string szModule, [MarshalAs(UnmanagedType.LPStr)] string szTypeName, out uint pcbTypeSize);
+        public bool PdbTypeSize(string szModule, string szTypeName, out uint pcbTypeSize)
+        {
+            return vmmi.VMMDLL_PdbTypeSize(hVMM, szModule, szTypeName, out pcbTypeSize);
+        }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_PdbTypeChildOffset")]
-        public static extern bool PdbTypeChildOffset([MarshalAs(UnmanagedType.LPStr)] string szModule, [MarshalAs(UnmanagedType.LPStr)] string szTypeName, [MarshalAs(UnmanagedType.LPStr)] string wszTypeChildName, out uint pcbTypeChildOffset);
-
-
+        public bool PdbTypeChildOffset(string szModule, string szTypeName, string wszTypeChildName, out uint pcbTypeChildOffset)
+        {
+            return vmmi.VMMDLL_PdbTypeChildOffset(hVMM, szModule, szTypeName, wszTypeChildName, out pcbTypeChildOffset);
+        }
 
 
 
@@ -1181,310 +1210,277 @@ namespace vmmsharp
             public byte priority;
         }
 
-        public static unsafe MAP_PTEENTRY[] Map_GetPte(uint pid, bool fIdentifyModules = true)
+        public unsafe MAP_PTEENTRY[] Map_GetPte(uint pid, bool fIdentifyModules = true)
         {
-            bool result;
-            uint cb = 0;
             int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_PTE));
             int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_PTEENTRY));
-            result = vmmi.VMMDLL_Map_GetPte(pid, null, ref cb, fIdentifyModules);
-            if (!result || (cb == 0)) { return new MAP_PTEENTRY[0]; }
-            fixed (byte* pb = new byte[cb])
+            IntPtr pMap = IntPtr.Zero;
+            MAP_PTEENTRY[] m = new MAP_PTEENTRY[0];
+            if (!vmmi.VMMDLL_Map_GetPte(hVMM, pid, fIdentifyModules, out pMap)) { goto fail; }
+            vmmi.VMMDLL_MAP_PTE nM = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_PTE>(pMap);
+            if (nM.dwVersion != vmmi.VMMDLL_MAP_PTE_VERSION) { goto fail; }
+            m = new MAP_PTEENTRY[nM.cMap];
+            for (int i = 0; i < nM.cMap; i++)
             {
-                result = vmmi.VMMDLL_Map_GetPte(pid, pb, ref cb, fIdentifyModules);
-                if (!result) { return new MAP_PTEENTRY[0]; }
-                vmmi.VMMDLL_MAP_PTE pm = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_PTE>((System.IntPtr)pb);
-                if (pm.dwVersion != vmmi.VMMDLL_MAP_PTE_VERSION) { return new MAP_PTEENTRY[0]; }
-                MAP_PTEENTRY[] m = new MAP_PTEENTRY[pm.cMap];
-                for (int i = 0; i < pm.cMap; i++)
-                {
-                    vmmi.VMMDLL_MAP_PTEENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_PTEENTRY>((System.IntPtr)(pb + cbMAP + i * cbENTRY));
-                    MAP_PTEENTRY e;
-                    e.vaBase = n.vaBase;
-                    e.vaEnd = n.vaBase + (n.cPages << 12) - 1;
-                    e.cbSize = n.cPages << 12;
-                    e.cPages = n.cPages;
-                    e.fPage = n.fPage;
-                    e.fWoW64 = n.fWoW64;
-                    e.wszText = n.wszText;
-                    e.cSoftware = n.cSoftware;
-                    m[i] = e;
-                }
-                return m;
+                vmmi.VMMDLL_MAP_PTEENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_PTEENTRY>((System.IntPtr)(pMap.ToInt64() + cbMAP + i * cbENTRY));
+                MAP_PTEENTRY e;
+                e.vaBase = n.vaBase;
+                e.vaEnd = n.vaBase + (n.cPages << 12) - 1;
+                e.cbSize = n.cPages << 12;
+                e.cPages = n.cPages;
+                e.fPage = n.fPage;
+                e.fWoW64 = n.fWoW64;
+                e.wszText = n.wszText;
+                e.cSoftware = n.cSoftware;
+                m[i] = e;
             }
+        fail:
+            vmmi.VMMDLL_MemFree((byte*)pMap.ToPointer());
+            return m;
         }
 
-        public static unsafe MAP_VADENTRY[] Map_GetVad(uint pid, bool fIdentifyModules = true)
+        public unsafe MAP_VADENTRY[] Map_GetVad(uint pid, bool fIdentifyModules = true)
         {
-            bool result;
-            uint cb = 0;
             int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_VAD));
             int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_VADENTRY));
-            result = vmmi.VMMDLL_Map_GetVad(pid, null, ref cb, fIdentifyModules);
-            if (!result || (cb == 0)) { return new MAP_VADENTRY[0]; }
-            fixed (byte* pb = new byte[cb])
+            IntPtr pMap = IntPtr.Zero;
+            MAP_VADENTRY[] m = new MAP_VADENTRY[0];
+            if (!vmmi.VMMDLL_Map_GetVad(hVMM, pid, fIdentifyModules, out pMap)) { goto fail; }
+            vmmi.VMMDLL_MAP_VAD nM = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_VAD>(pMap);
+            if (nM.dwVersion != vmmi.VMMDLL_MAP_VAD_VERSION) { goto fail; }
+            m = new MAP_VADENTRY[nM.cMap];
+            for (int i = 0; i < nM.cMap; i++)
             {
-                result = vmmi.VMMDLL_Map_GetVad(pid, pb, ref cb, fIdentifyModules);
-                if (!result) { return new MAP_VADENTRY[0]; }
-                vmmi.VMMDLL_MAP_VAD pm = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_VAD>((System.IntPtr)pb);
-                if (pm.dwVersion != vmmi.VMMDLL_MAP_VAD_VERSION) { return new MAP_VADENTRY[0]; }
-                MAP_VADENTRY[] m = new MAP_VADENTRY[pm.cMap];
-                for (int i = 0; i < pm.cMap; i++)
-                {
-                    vmmi.VMMDLL_MAP_VADENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_VADENTRY>((System.IntPtr)(pb + cbMAP + i * cbENTRY));
-                    MAP_VADENTRY e;
-                    e.vaStart = n.vaStart;
-                    e.vaEnd = n.vaEnd;
-                    e.cbSize = n.vaEnd + 1 - n.vaStart;
-                    e.vaVad = n.vaVad;
-                    e.VadType = n.dw0 & 0x07;
-                    e.Protection = (n.dw0 >> 3) & 0x1f;
-                    e.fImage = ((n.dw0 >> 8) & 1) == 1;
-                    e.fFile = ((n.dw0 >> 9) & 1) == 1;
-                    e.fPageFile = ((n.dw0 >> 10) & 1) == 1;
-                    e.fPrivateMemory = ((n.dw0 >> 11) & 1) == 1;
-                    e.fTeb = ((n.dw0 >> 12) & 1) == 1;
-                    e.fStack = ((n.dw0 >> 13) & 1) == 1;
-                    e.fSpare = (n.dw0 >> 14) & 0x03;
-                    e.HeapNum = (n.dw0 >> 16) & 0x1f;
-                    e.fHeap = ((n.dw0 >> 23) & 1) == 1;
-                    e.cwszDescription = (n.dw0 >> 24) & 0xff;
-                    e.CommitCharge = n.dw1 & 0x7fffffff;
-                    e.MemCommit = ((n.dw1 >> 31) & 1) == 1;
-                    e.u2 = n.u2;
-                    e.cbPrototypePte = n.cbPrototypePte;
-                    e.vaPrototypePte = n.vaPrototypePte;
-                    e.vaSubsection = n.vaSubsection;
-                    e.wszText = n.wszText;
-                    e.vaFileObject = n.vaFileObject;
-                    e.cVadExPages = n.cVadExPages;
-                    e.cVadExPagesBase = n.cVadExPagesBase;
-                    m[i] = e;
-                }
-                return m;
+                vmmi.VMMDLL_MAP_VADENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_VADENTRY>((System.IntPtr)(pMap.ToInt64() + cbMAP + i * cbENTRY));
+                MAP_VADENTRY e;
+                e.vaStart = n.vaStart;
+                e.vaEnd = n.vaEnd;
+                e.cbSize = n.vaEnd + 1 - n.vaStart;
+                e.vaVad = n.vaVad;
+                e.VadType = n.dw0 & 0x07;
+                e.Protection = (n.dw0 >> 3) & 0x1f;
+                e.fImage = ((n.dw0 >> 8) & 1) == 1;
+                e.fFile = ((n.dw0 >> 9) & 1) == 1;
+                e.fPageFile = ((n.dw0 >> 10) & 1) == 1;
+                e.fPrivateMemory = ((n.dw0 >> 11) & 1) == 1;
+                e.fTeb = ((n.dw0 >> 12) & 1) == 1;
+                e.fStack = ((n.dw0 >> 13) & 1) == 1;
+                e.fSpare = (n.dw0 >> 14) & 0x03;
+                e.HeapNum = (n.dw0 >> 16) & 0x1f;
+                e.fHeap = ((n.dw0 >> 23) & 1) == 1;
+                e.cwszDescription = (n.dw0 >> 24) & 0xff;
+                e.CommitCharge = n.dw1 & 0x7fffffff;
+                e.MemCommit = ((n.dw1 >> 31) & 1) == 1;
+                e.u2 = n.u2;
+                e.cbPrototypePte = n.cbPrototypePte;
+                e.vaPrototypePte = n.vaPrototypePte;
+                e.vaSubsection = n.vaSubsection;
+                e.wszText = n.wszText;
+                e.vaFileObject = n.vaFileObject;
+                e.cVadExPages = n.cVadExPages;
+                e.cVadExPagesBase = n.cVadExPagesBase;
+                m[i] = e;
             }
+        fail:
+            vmmi.VMMDLL_MemFree((byte*)pMap.ToPointer());
+            return m;
         }
 
-        public static unsafe MAP_VADEXENTRY[] Map_GetVadEx(uint pid, uint oPages, uint cPages)
+        public unsafe MAP_VADEXENTRY[] Map_GetVadEx(uint pid, uint oPages, uint cPages)
         {
-            bool result;
-            uint cb = 0;
             int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_VADEX));
             int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_VADEXENTRY));
-            result = vmmi.VMMDLL_Map_GetVadEx(pid, null, ref cb, oPages, cPages);
-            if (!result || (cb == 0)) { return new MAP_VADEXENTRY[0]; }
-            fixed (byte* pb = new byte[cb])
+            IntPtr pMap = IntPtr.Zero;
+            MAP_VADEXENTRY[] m = new MAP_VADEXENTRY[0];
+            if (!vmmi.VMMDLL_Map_GetVadEx(hVMM, pid, oPages, cPages, out pMap)) { goto fail; }
+            vmmi.VMMDLL_MAP_VADEX nM = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_VADEX>(pMap);
+            if (nM.dwVersion != vmmi.VMMDLL_MAP_VADEX_VERSION) { goto fail; }
+            m = new MAP_VADEXENTRY[nM.cMap];
+            for (int i = 0; i < nM.cMap; i++)
             {
-                result = vmmi.VMMDLL_Map_GetVadEx(pid, pb, ref cb, oPages, cPages);
-                if (!result) { return new MAP_VADEXENTRY[0]; }
-                vmmi.VMMDLL_MAP_VADEX pm = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_VADEX>((System.IntPtr)pb);
-                if (pm.dwVersion != vmmi.VMMDLL_MAP_VADEX_VERSION) { return new MAP_VADEXENTRY[0]; }
-                MAP_VADEXENTRY[] m = new MAP_VADEXENTRY[pm.cMap];
-                for (int i = 0; i < pm.cMap; i++)
-                {
-                    vmmi.VMMDLL_MAP_VADEXENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_VADEXENTRY>((System.IntPtr)(pb + cbMAP + i * cbENTRY));
-                    MAP_VADEXENTRY e;
-                    e.tp = n.tp;
-                    e.iPML = n.iPML;
-                    e.va = n.va;
-                    e.pa = n.pa;
-                    e.pte = n.pte;
-                    e.proto.tp = n.proto_tp;
-                    e.proto.pa = n.proto_pa;
-                    e.proto.pte = n.proto_pte;
-                    e.vaVadBase = n.vaVadBase;
-                    m[i] = e;
-                }
-                return m;
+                vmmi.VMMDLL_MAP_VADEXENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_VADEXENTRY>((System.IntPtr)(pMap.ToInt64() + cbMAP + i * cbENTRY));
+                MAP_VADEXENTRY e;
+                e.tp = n.tp;
+                e.iPML = n.iPML;
+                e.va = n.va;
+                e.pa = n.pa;
+                e.pte = n.pte;
+                e.proto.tp = n.proto_tp;
+                e.proto.pa = n.proto_pa;
+                e.proto.pte = n.proto_pte;
+                e.vaVadBase = n.vaVadBase;
+                m[i] = e;
             }
+        fail:
+            vmmi.VMMDLL_MemFree((byte*)pMap.ToPointer());
+            return m;
         }
 
-        public static unsafe MAP_MODULEENTRY[] Map_GetModule(uint pid)
+        public unsafe MAP_MODULEENTRY[] Map_GetModule(uint pid)
         {
-            bool result;
-            uint cb = 0;
             int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_MODULE));
             int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_MODULEENTRY));
-            result = vmmi.VMMDLL_Map_GetModule(pid, null, ref cb);
-            if(!result || (cb == 0)) { return new MAP_MODULEENTRY[0]; }
-            fixed(byte* pb = new byte[cb])
+            IntPtr pMap = IntPtr.Zero;
+            MAP_MODULEENTRY[] m = new MAP_MODULEENTRY[0];
+            if (!vmmi.VMMDLL_Map_GetModule(hVMM, pid, out pMap)) { goto fail; }
+            vmmi.VMMDLL_MAP_MODULE nM = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_MODULE>(pMap);
+            if (nM.dwVersion != vmmi.VMMDLL_MAP_MODULE_VERSION) { goto fail; }
+            m = new MAP_MODULEENTRY[nM.cMap];
+            for (int i = 0; i < nM.cMap; i++)
             {
-                result = vmmi.VMMDLL_Map_GetModule(pid, pb, ref cb);
-                if(!result) { return new MAP_MODULEENTRY[0]; }
-                vmmi.VMMDLL_MAP_MODULE pm = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_MODULE>((System.IntPtr)pb);
-                if(pm.dwVersion != vmmi.VMMDLL_MAP_MODULE_VERSION) { return new MAP_MODULEENTRY[0]; }
-                MAP_MODULEENTRY[] m = new MAP_MODULEENTRY[pm.cMap];
-                for (int i = 0; i < pm.cMap; i++)
-                {
-                    vmmi.VMMDLL_MAP_MODULEENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_MODULEENTRY>((System.IntPtr)(pb + cbMAP + i * cbENTRY));
-                    MAP_MODULEENTRY e;
-                    e.fValid = true;
-                    e.vaBase = n.vaBase;
-                    e.vaEntry = n.vaEntry;
-                    e.cbImageSize = n.cbImageSize;
-                    e.fWow64 = n.fWow64;
-                    e.wszText = n.wszText;
-                    e.wszFullName = n.wszFullName;
-                    e.tp = n.tp;
-                    e.cbFileSizeRaw = n.cbFileSizeRaw;
-                    e.cSection = n.cSection;
-                    e.cEAT = n.cEAT;
-                    e.cIAT = n.cIAT;
-                    m[i] = e;
-                }
-                return m;
-            }
-        }
-
-        public static unsafe MAP_MODULEENTRY Map_GetModuleFromName(uint pid, string wszModuleName)
-        {
-            bool result;
-            uint cbENTRY = 0;
-            result = vmmi.VMMDLL_Map_GetModuleFromName(pid, wszModuleName, null, ref cbENTRY);
-            if (!result || (cbENTRY == 0)) { return new MAP_MODULEENTRY(); }
-            fixed (byte* pb = new byte[cbENTRY])
-            {
-                result = vmmi.VMMDLL_Map_GetModuleFromName(pid, wszModuleName, pb, ref cbENTRY);
-                if (!result) { return new MAP_MODULEENTRY(); }
-                vmmi.VMMDLL_MAP_MODULEENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_MODULEENTRY>((System.IntPtr)pb);
+                vmmi.VMMDLL_MAP_MODULEENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_MODULEENTRY>((System.IntPtr)(pMap.ToInt64() + cbMAP + i * cbENTRY));
                 MAP_MODULEENTRY e;
                 e.fValid = true;
                 e.vaBase = n.vaBase;
                 e.vaEntry = n.vaEntry;
                 e.cbImageSize = n.cbImageSize;
                 e.fWow64 = n.fWow64;
-                e.wszText = wszModuleName;
+                e.wszText = n.wszText;
                 e.wszFullName = n.wszFullName;
                 e.tp = n.tp;
                 e.cbFileSizeRaw = n.cbFileSizeRaw;
                 e.cSection = n.cSection;
                 e.cEAT = n.cEAT;
                 e.cIAT = n.cIAT;
-                return e;
+                m[i] = e;
             }
+        fail:
+            vmmi.VMMDLL_MemFree((byte*)pMap.ToPointer());
+            return m;
         }
 
-        public static unsafe MAP_UNLOADEDMODULEENTRY[] Map_GetUnloadedModule(uint pid)
+        public unsafe MAP_MODULEENTRY Map_GetModuleFromName(uint pid, string wszModuleName)
         {
-            bool result;
-            uint cb = 0;
+            IntPtr pMap = IntPtr.Zero;
+            MAP_MODULEENTRY e = new MAP_MODULEENTRY();
+            if (!vmmi.VMMDLL_Map_GetModuleFromName(hVMM, pid, wszModuleName, out pMap)) { goto fail; }
+            vmmi.VMMDLL_MAP_MODULEENTRY nM = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_MODULEENTRY>(pMap);
+            e.fValid = true;
+            e.vaBase = nM.vaBase;
+            e.vaEntry = nM.vaEntry;
+            e.cbImageSize = nM.cbImageSize;
+            e.fWow64 = nM.fWow64;
+            e.wszText = wszModuleName;
+            e.wszFullName = nM.wszFullName;
+            e.tp = nM.tp;
+            e.cbFileSizeRaw = nM.cbFileSizeRaw;
+            e.cSection = nM.cSection;
+            e.cEAT = nM.cEAT;
+            e.cIAT = nM.cIAT;
+        fail:
+            vmmi.VMMDLL_MemFree((byte*)pMap.ToPointer());
+            return e;
+        }
+
+        public unsafe MAP_UNLOADEDMODULEENTRY[] Map_GetUnloadedModule(uint pid)
+        {
             int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_UNLOADEDMODULE));
             int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_UNLOADEDMODULEENTRY));
-            result = vmmi.VMMDLL_Map_GetUnloadedModule(pid, null, ref cb);
-            if (!result || (cb == 0)) { return new MAP_UNLOADEDMODULEENTRY[0]; }
-            fixed (byte* pb = new byte[cb])
+            IntPtr pMap = IntPtr.Zero;
+            MAP_UNLOADEDMODULEENTRY[] m = new MAP_UNLOADEDMODULEENTRY[0];
+            if (!vmmi.VMMDLL_Map_GetUnloadedModule(hVMM, pid, out pMap)) { goto fail; }
+            vmmi.VMMDLL_MAP_UNLOADEDMODULE nM = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_UNLOADEDMODULE>(pMap);
+            if (nM.dwVersion != vmmi.VMMDLL_MAP_UNLOADEDMODULE_VERSION) { goto fail; }
+            m = new MAP_UNLOADEDMODULEENTRY[nM.cMap];
+            for (int i = 0; i < nM.cMap; i++)
             {
-                result = vmmi.VMMDLL_Map_GetUnloadedModule(pid, pb, ref cb);
-                if (!result) { return new MAP_UNLOADEDMODULEENTRY[0]; }
-                vmmi.VMMDLL_MAP_UNLOADEDMODULE pm = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_UNLOADEDMODULE>((System.IntPtr)pb);
-                if (pm.dwVersion != vmmi.VMMDLL_MAP_UNLOADEDMODULE_VERSION) { return new MAP_UNLOADEDMODULEENTRY[0]; }
-                MAP_UNLOADEDMODULEENTRY[] m = new MAP_UNLOADEDMODULEENTRY[pm.cMap];
-                for (int i = 0; i < pm.cMap; i++)
-                {
-                    vmmi.VMMDLL_MAP_UNLOADEDMODULEENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_UNLOADEDMODULEENTRY>((System.IntPtr)(pb + cbMAP + i * cbENTRY));
-                    MAP_UNLOADEDMODULEENTRY e;
-                    e.vaBase = n.vaBase;
-                    e.cbImageSize = n.cbImageSize;
-                    e.fWow64 = n.fWow64;
-                    e.wszText = n.wszText;
-                    e.dwCheckSum = n.dwCheckSum;
-                    e.dwTimeDateStamp = n.dwTimeDateStamp;
-                    e.ftUnload = n.ftUnload;
-                    m[i] = e;
-                }
-                return m;
+                vmmi.VMMDLL_MAP_UNLOADEDMODULEENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_UNLOADEDMODULEENTRY>((System.IntPtr)(pMap.ToInt64() + cbMAP + i * cbENTRY));
+                MAP_UNLOADEDMODULEENTRY e;
+                e.vaBase = n.vaBase;
+                e.cbImageSize = n.cbImageSize;
+                e.fWow64 = n.fWow64;
+                e.wszText = n.wszText;
+                e.dwCheckSum = n.dwCheckSum;
+                e.dwTimeDateStamp = n.dwTimeDateStamp;
+                e.ftUnload = n.ftUnload;
+                m[i] = e;
             }
+        fail:
+            vmmi.VMMDLL_MemFree((byte*)pMap.ToPointer());
+            return m;
         }
 
-        public static unsafe MAP_EATENTRY[] Map_GetEAT(uint pid, string wszModule, out MAP_EATINFO EatInfo)
+        public unsafe MAP_EATENTRY[] Map_GetEAT(uint pid, string wszModule, out MAP_EATINFO EatInfo)
         {
-            bool result;
-            uint cb = 0;
+            EatInfo = new MAP_EATINFO();
             int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_EAT));
             int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_EATENTRY));
-            EatInfo = new MAP_EATINFO();
-            result = vmmi.VMMDLL_Map_GetEAT(pid, wszModule, null, ref cb);
-            if (!result || (cb == 0)) { return new MAP_EATENTRY[0]; }
-            fixed (byte* pb = new byte[cb])
+            IntPtr pMap = IntPtr.Zero;
+            MAP_EATENTRY[] m = new MAP_EATENTRY[0];
+            if (!vmmi.VMMDLL_Map_GetEAT(hVMM, pid, wszModule, out pMap)) { goto fail; }
+            vmmi.VMMDLL_MAP_EAT nM = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_EAT>(pMap);
+            if (nM.dwVersion != vmmi.VMMDLL_MAP_EAT_VERSION) { goto fail; }
+            m = new MAP_EATENTRY[nM.cMap];
+            for (int i = 0; i < nM.cMap; i++)
             {
-                result = vmmi.VMMDLL_Map_GetEAT(pid, wszModule, pb, ref cb);
-                if (!result) { return new MAP_EATENTRY[0]; }
-                vmmi.VMMDLL_MAP_EAT pm = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_EAT>((System.IntPtr)pb);
-                if (pm.dwVersion != vmmi.VMMDLL_MAP_EAT_VERSION) { return new MAP_EATENTRY[0]; }
-                MAP_EATENTRY[] m = new MAP_EATENTRY[pm.cMap];
-                for (int i = 0; i < pm.cMap; i++)
-                {
-                    vmmi.VMMDLL_MAP_EATENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_EATENTRY>((System.IntPtr)(pb + cbMAP + i * cbENTRY));
-                    MAP_EATENTRY e;
-                    e.vaFunction = n.vaFunction;
-                    e.dwOrdinal = n.dwOrdinal;
-                    e.oFunctionsArray = n.oFunctionsArray;
-                    e.oNamesArray = n.oNamesArray;
-                    e.wszFunction = n.wszFunction;
-                    m[i] = e;
-                }
-                EatInfo.fValid = true;
-                EatInfo.vaModuleBase = pm.vaModuleBase;
-                EatInfo.vaAddressOfFunctions = pm.vaAddressOfFunctions;
-                EatInfo.vaAddressOfNames = pm.vaAddressOfNames;
-                EatInfo.cNumberOfFunctions = pm.cNumberOfFunctions;
-                EatInfo.cNumberOfNames = pm.cNumberOfNames;
-                EatInfo.dwOrdinalBase = pm.dwOrdinalBase;
-                return m;
+                vmmi.VMMDLL_MAP_EATENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_EATENTRY>((System.IntPtr)(pMap.ToInt64() + cbMAP + i * cbENTRY));
+                MAP_EATENTRY e;
+                e.vaFunction = n.vaFunction;
+                e.dwOrdinal = n.dwOrdinal;
+                e.oFunctionsArray = n.oFunctionsArray;
+                e.oNamesArray = n.oNamesArray;
+                e.wszFunction = n.wszFunction;
+                m[i] = e;
             }
+            EatInfo.fValid = true;
+            EatInfo.vaModuleBase = nM.vaModuleBase;
+            EatInfo.vaAddressOfFunctions = nM.vaAddressOfFunctions;
+            EatInfo.vaAddressOfNames = nM.vaAddressOfNames;
+            EatInfo.cNumberOfFunctions = nM.cNumberOfFunctions;
+            EatInfo.cNumberOfNames = nM.cNumberOfNames;
+            EatInfo.dwOrdinalBase = nM.dwOrdinalBase;
+        fail:
+            vmmi.VMMDLL_MemFree((byte*)pMap.ToPointer());
+            return m;
         }
 
-        public static unsafe MAP_IATENTRY[] Map_GetIAT(uint pid, string wszModule)
+        public unsafe MAP_IATENTRY[] Map_GetIAT(uint pid, string wszModule)
         {
-            bool result;
-            uint cb = 0;
             int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_IAT));
             int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_IATENTRY));
-            result = vmmi.VMMDLL_Map_GetIAT(pid, wszModule, null, ref cb);
-            if (!result || (cb == 0)) { return new MAP_IATENTRY[0]; }
-            fixed (byte* pb = new byte[cb])
+            IntPtr pMap = IntPtr.Zero;
+            MAP_IATENTRY[] m = new MAP_IATENTRY[0];
+            if (!vmmi.VMMDLL_Map_GetIAT(hVMM, pid, wszModule, out pMap)) { goto fail; }
+            vmmi.VMMDLL_MAP_IAT nM = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_IAT>(pMap);
+            if (nM.dwVersion != vmmi.VMMDLL_MAP_IAT_VERSION) { goto fail; }
+            m = new MAP_IATENTRY[nM.cMap];
+            for (int i = 0; i < nM.cMap; i++)
             {
-                result = vmmi.VMMDLL_Map_GetIAT(pid, wszModule, pb, ref cb);
-                if (!result) { return new MAP_IATENTRY[0]; }
-                vmmi.VMMDLL_MAP_IAT pm = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_IAT>((System.IntPtr)pb);
-                if (pm.dwVersion != vmmi.VMMDLL_MAP_IAT_VERSION) { return new MAP_IATENTRY[0]; }
-                MAP_IATENTRY[] m = new MAP_IATENTRY[pm.cMap];
-                for (int i = 0; i < pm.cMap; i++)
-                {
-                    vmmi.VMMDLL_MAP_IATENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_IATENTRY>((System.IntPtr)(pb + cbMAP + i * cbENTRY));
-                    MAP_IATENTRY e;
-                    e.vaFunction = n.vaFunction;
-                    e.wszFunction = n.wszFunction;
-                    e.wszModule = n.wszModule;
-                    e.f32 = n.f32;
-                    e.wHint = n.wHint;
-                    e.rvaFirstThunk = n.rvaFirstThunk;
-                    e.rvaOriginalFirstThunk = n.rvaOriginalFirstThunk;
-                    e.rvaNameModule = n.rvaNameModule;
-                    e.rvaNameFunction = n.rvaNameFunction;
-                    e.vaModule = pm.vaModuleBase;
-                    m[i] = e;
-                }
-                return m;
+                vmmi.VMMDLL_MAP_IATENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_IATENTRY>((System.IntPtr)(pMap.ToInt64() + cbMAP + i * cbENTRY));
+                MAP_IATENTRY e;
+                e.vaFunction = n.vaFunction;
+                e.wszFunction = n.wszFunction;
+                e.wszModule = n.wszModule;
+                e.f32 = n.f32;
+                e.wHint = n.wHint;
+                e.rvaFirstThunk = n.rvaFirstThunk;
+                e.rvaOriginalFirstThunk = n.rvaOriginalFirstThunk;
+                e.rvaNameModule = n.rvaNameModule;
+                e.rvaNameFunction = n.rvaNameFunction;
+                e.vaModule = nM.vaModuleBase;
+                m[i] = e;
             }
+        fail:
+            vmmi.VMMDLL_MemFree((byte*)pMap.ToPointer());
+            return m;
         }
 
-        public static unsafe MAP_HEAP Map_GetHeap(uint pid)
+        public unsafe MAP_HEAP Map_GetHeap(uint pid)
         {
-            IntPtr pHeapMap = IntPtr.Zero;
+            IntPtr pMap = IntPtr.Zero;
             int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_HEAP));
             int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_HEAPENTRY));
             int cbSEGENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_HEAPSEGMENTENTRY));
             MAP_HEAP Heap;
             Heap.heaps = new MAP_HEAPENTRY[0];
             Heap.segments = new MAP_HEAPSEGMENTENTRY[0];
-            if(!vmmi.VMMDLL_Map_GetHeapEx(pid, out pHeapMap)) { goto fail; }
-            vmmi.VMMDLL_MAP_HEAP nM = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_HEAP>(pHeapMap);
+            if(!vmmi.VMMDLL_Map_GetHeap(hVMM, pid, out pMap)) { goto fail; }
+            vmmi.VMMDLL_MAP_HEAP nM = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_HEAP>(pMap);
             if (nM.dwVersion != vmmi.VMMDLL_MAP_HEAP_VERSION) { goto fail; }
             Heap.heaps = new MAP_HEAPENTRY[nM.cMap];
             for (int i = 0; i < nM.cMap; i++)
             {
-                vmmi.VMMDLL_MAP_HEAPENTRY nH = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_HEAPENTRY>((System.IntPtr)(pHeapMap.ToInt64() + cbMAP + i * cbENTRY));
+                vmmi.VMMDLL_MAP_HEAPENTRY nH = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_HEAPENTRY>((System.IntPtr)(pMap.ToInt64() + cbMAP + i * cbENTRY));
                 Heap.heaps[i].va = nH.va;
                 Heap.heaps[i].f32 = nH.f32;
                 Heap.heaps[i].tpHeap = nH.tp;
@@ -1500,16 +1496,16 @@ namespace vmmsharp
                 Heap.segments[i].iHeapNum = nH.iHeap;
             }
         fail:
-            vmmi.VMMDLL_MemFree((byte*)pHeapMap.ToPointer());
+            vmmi.VMMDLL_MemFree((byte*)pMap.ToPointer());
             return Heap;
         }
 
-        public static unsafe MAP_HEAPALLOCENTRY[] Map_GetHeapAlloc(uint pid, ulong vaHeapOrHeapNum)
+        public unsafe MAP_HEAPALLOCENTRY[] Map_GetHeapAlloc(uint pid, ulong vaHeapOrHeapNum)
         {
             IntPtr pHeapAllocMap = IntPtr.Zero;
             int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_HEAPALLOC));
             int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_HEAPALLOCENTRY));
-            if (!vmmi.VMMDLL_Map_GetHeapAllocEx(pid, vaHeapOrHeapNum, out pHeapAllocMap)) { return new MAP_HEAPALLOCENTRY[0]; }
+            if (!vmmi.VMMDLL_Map_GetHeapAlloc(hVMM, pid, vaHeapOrHeapNum, out pHeapAllocMap)) { return new MAP_HEAPALLOCENTRY[0]; }
             vmmi.VMMDLL_MAP_HEAPALLOC nM = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_HEAPALLOC>(pHeapAllocMap);
             if (nM.dwVersion != vmmi.VMMDLL_MAP_HEAPALLOC_VERSION) {
                 vmmi.VMMDLL_MemFree((byte*)pHeapAllocMap.ToPointer());
@@ -1527,167 +1523,150 @@ namespace vmmsharp
             return m;
         }
 
-        public static unsafe MAP_THREADENTRY[] Map_GetThread(uint pid)
+        public unsafe MAP_THREADENTRY[] Map_GetThread(uint pid)
         {
-            bool result;
-            uint cb = 0;
             int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_THREAD));
             int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_THREADENTRY));
-            result = vmmi.VMMDLL_Map_GetThread(pid, null, ref cb);
-            if (!result || (cb == 0)) { return new MAP_THREADENTRY[0]; }
-            fixed (byte* pb = new byte[cb])
+            IntPtr pMap = IntPtr.Zero;
+            MAP_THREADENTRY[] m = new MAP_THREADENTRY[0];
+            if (!vmmi.VMMDLL_Map_GetThread(hVMM, pid, out pMap)) { goto fail; }
+            vmmi.VMMDLL_MAP_THREAD nM = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_THREAD>(pMap);
+            if (nM.dwVersion != vmmi.VMMDLL_MAP_THREAD_VERSION) { goto fail; }
+            m = new MAP_THREADENTRY[nM.cMap];
+            for (int i = 0; i < nM.cMap; i++)
             {
-                result = vmmi.VMMDLL_Map_GetThread(pid, pb, ref cb);
-                if (!result) { return new MAP_THREADENTRY[0]; }
-                vmmi.VMMDLL_MAP_THREAD pm = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_THREAD>((System.IntPtr)pb);
-                if (pm.dwVersion != vmmi.VMMDLL_MAP_THREAD_VERSION) { return new MAP_THREADENTRY[0]; }
-                MAP_THREADENTRY[] m = new MAP_THREADENTRY[pm.cMap];
-                for (int i = 0; i < pm.cMap; i++)
-                {
-                    vmmi.VMMDLL_MAP_THREADENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_THREADENTRY>((System.IntPtr)(pb + cbMAP + i * cbENTRY));
-                    MAP_THREADENTRY e;
-                    e.dwTID = n.dwTID;
-                    e.dwPID = n.dwPID;
-                    e.dwExitStatus = n.dwExitStatus;
-                    e.bState = n.bState;
-                    e.bRunning = n.bRunning;
-                    e.bPriority = n.bPriority;
-                    e.bBasePriority = n.bBasePriority;
-                    e.vaETHREAD = n.vaETHREAD;
-                    e.vaTeb = n.vaTeb;
-                    e.ftCreateTime = n.ftCreateTime;
-                    e.ftExitTime = n.ftExitTime;
-                    e.vaStartAddress = n.vaStartAddress;
-                    e.vaStackBaseUser = n.vaStackBaseUser;
-                    e.vaStackLimitUser = n.vaStackLimitUser;
-                    e.vaStackBaseKernel = n.vaStackBaseKernel;
-                    e.vaStackLimitKernel = n.vaStackLimitKernel;
-                    e.vaTrapFrame = n.vaTrapFrame;
-                    e.vaRIP = n.vaRIP;
-                    e.vaRSP = n.vaRSP;
-                    e.qwAffinity = n.qwAffinity;
-                    e.dwUserTime = n.dwUserTime;
-                    e.dwKernelTime = n.dwKernelTime;
-                    e.bSuspendCount = n.bSuspendCount;
-                    e.bWaitReason = n.bWaitReason;
-                    m[i] = e;
-                }
-                return m;
+                vmmi.VMMDLL_MAP_THREADENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_THREADENTRY>((System.IntPtr)(pMap.ToInt64() + cbMAP + i * cbENTRY));
+                MAP_THREADENTRY e;
+                e.dwTID = n.dwTID;
+                e.dwPID = n.dwPID;
+                e.dwExitStatus = n.dwExitStatus;
+                e.bState = n.bState;
+                e.bRunning = n.bRunning;
+                e.bPriority = n.bPriority;
+                e.bBasePriority = n.bBasePriority;
+                e.vaETHREAD = n.vaETHREAD;
+                e.vaTeb = n.vaTeb;
+                e.ftCreateTime = n.ftCreateTime;
+                e.ftExitTime = n.ftExitTime;
+                e.vaStartAddress = n.vaStartAddress;
+                e.vaStackBaseUser = n.vaStackBaseUser;
+                e.vaStackLimitUser = n.vaStackLimitUser;
+                e.vaStackBaseKernel = n.vaStackBaseKernel;
+                e.vaStackLimitKernel = n.vaStackLimitKernel;
+                e.vaTrapFrame = n.vaTrapFrame;
+                e.vaRIP = n.vaRIP;
+                e.vaRSP = n.vaRSP;
+                e.qwAffinity = n.qwAffinity;
+                e.dwUserTime = n.dwUserTime;
+                e.dwKernelTime = n.dwKernelTime;
+                e.bSuspendCount = n.bSuspendCount;
+                e.bWaitReason = n.bWaitReason;
+                m[i] = e;
             }
+        fail:
+            vmmi.VMMDLL_MemFree((byte*)pMap.ToPointer());
+            return m;
         }
 
-        public static unsafe MAP_HANDLEENTRY[] Map_GetHandle(uint pid)
+        public unsafe MAP_HANDLEENTRY[] Map_GetHandle(uint pid)
         {
-            bool result;
-            uint cb = 0;
             int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_HANDLE));
             int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_HANDLEENTRY));
-            result = vmmi.VMMDLL_Map_GetHandle(pid, null, ref cb);
-            if (!result || (cb == 0)) { return new MAP_HANDLEENTRY[0]; }
-            fixed (byte* pb = new byte[cb])
+            IntPtr pMap = IntPtr.Zero;
+            MAP_HANDLEENTRY[] m = new MAP_HANDLEENTRY[0];
+            if (!vmmi.VMMDLL_Map_GetHandle(hVMM, pid, out pMap)) { goto fail; }
+            vmmi.VMMDLL_MAP_HANDLE nM = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_HANDLE>(pMap);
+            if (nM.dwVersion != vmmi.VMMDLL_MAP_HANDLE_VERSION) { goto fail; }
+            m = new MAP_HANDLEENTRY[nM.cMap];
+            for (int i = 0; i < nM.cMap; i++)
             {
-                result = vmmi.VMMDLL_Map_GetHandle(pid, pb, ref cb);
-                if (!result) { return new MAP_HANDLEENTRY[0]; }
-                vmmi.VMMDLL_MAP_HANDLE pm = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_HANDLE>((System.IntPtr)pb);
-                if (pm.dwVersion != vmmi.VMMDLL_MAP_HANDLE_VERSION) { return new MAP_HANDLEENTRY[0]; }
-                MAP_HANDLEENTRY[] m = new MAP_HANDLEENTRY[pm.cMap];
-                for (int i = 0; i < pm.cMap; i++)
-                {
-                    vmmi.VMMDLL_MAP_HANDLEENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_HANDLEENTRY>((System.IntPtr)(pb + cbMAP + i * cbENTRY));
-                    MAP_HANDLEENTRY e;
-                    e.vaObject = n.vaObject;
-                    e.dwHandle = n.dwHandle;
-                    e.dwGrantedAccess = n.dwGrantedAccess_iType & 0x00ffffff;
-                    e.iType = n.dwGrantedAccess_iType >> 24;
-                    e.qwHandleCount = n.qwHandleCount;
-                    e.qwPointerCount = n.qwPointerCount;
-                    e.vaObjectCreateInfo = n.vaObjectCreateInfo;
-                    e.vaSecurityDescriptor = n.vaSecurityDescriptor;
-                    e.wszText = n.wszText;
-                    e.dwPID = n.dwPID;
-                    e.dwPoolTag = n.dwPoolTag;
-                    e.wszType = n.wszType;
-                    m[i] = e;
-                }
-                return m;
+                vmmi.VMMDLL_MAP_HANDLEENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_HANDLEENTRY>((System.IntPtr)(pMap.ToInt64() + cbMAP + i * cbENTRY));
+                MAP_HANDLEENTRY e;
+                e.vaObject = n.vaObject;
+                e.dwHandle = n.dwHandle;
+                e.dwGrantedAccess = n.dwGrantedAccess_iType & 0x00ffffff;
+                e.iType = n.dwGrantedAccess_iType >> 24;
+                e.qwHandleCount = n.qwHandleCount;
+                e.qwPointerCount = n.qwPointerCount;
+                e.vaObjectCreateInfo = n.vaObjectCreateInfo;
+                e.vaSecurityDescriptor = n.vaSecurityDescriptor;
+                e.wszText = n.wszText;
+                e.dwPID = n.dwPID;
+                e.dwPoolTag = n.dwPoolTag;
+                e.wszType = n.wszType;
+                m[i] = e;
             }
+        fail:
+            vmmi.VMMDLL_MemFree((byte*)pMap.ToPointer());
+            return m;
         }
 
-        public static unsafe MAP_NETENTRY[] Map_GetNet()
+        public unsafe MAP_NETENTRY[] Map_GetNet()
         {
-            bool result;
-            uint cb = 0;
             int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_NET));
             int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_NETENTRY));
-            result = vmmi.VMMDLL_Map_GetNet(null, ref cb);
-            if (!result || (cb == 0)) { return new MAP_NETENTRY[0]; }
-            fixed (byte* pb = new byte[cb])
+            IntPtr pMap = IntPtr.Zero;
+            MAP_NETENTRY[] m = new MAP_NETENTRY[0];
+            if (!vmmi.VMMDLL_Map_GetNet(hVMM, out pMap)) { goto fail; }
+            vmmi.VMMDLL_MAP_NET nM = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_NET>(pMap);
+            if (nM.dwVersion != vmmi.VMMDLL_MAP_NET_VERSION) { goto fail; }
+            m = new MAP_NETENTRY[nM.cMap];
+            for (int i = 0; i < nM.cMap; i++)
             {
-                result = vmmi.VMMDLL_Map_GetNet(pb, ref cb);
-                if (!result) { return new MAP_NETENTRY[0]; }
-                vmmi.VMMDLL_MAP_NET pm = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_NET>((System.IntPtr)pb);
-                if (pm.dwVersion != vmmi.VMMDLL_MAP_NET_VERSION) { return new MAP_NETENTRY[0]; }
-                MAP_NETENTRY[] m = new MAP_NETENTRY[pm.cMap];
-                for (int i = 0; i < pm.cMap; i++)
-                {
-                    vmmi.VMMDLL_MAP_NETENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_NETENTRY>((System.IntPtr)(pb + cbMAP + i * cbENTRY));
-                    MAP_NETENTRY e;
-                    e.dwPID = n.dwPID;
-                    e.dwState = n.dwState;
-                    e.dwPoolTag = n.dwPoolTag;
-                    e.AF = n.AF;
-                    e.src.fValid = n.src_fValid;
-                    e.src.port = n.src_port;
-                    e.src.pbAddr = n.src_pbAddr;
-                    e.src.wszText = n.src_wszText;
-                    e.dst.fValid = n.dst_fValid;
-                    e.dst.port = n.dst_port;
-                    e.dst.pbAddr = n.dst_pbAddr;
-                    e.dst.wszText = n.dst_wszText;
-                    e.vaObj = n.vaObj;
-                    e.ftTime = n.ftTime;
-                    e.wszText = n.wszText;
-                    m[i] = e;
-                }
-                return m;
+                vmmi.VMMDLL_MAP_NETENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_NETENTRY>((System.IntPtr)(pMap.ToInt64() + cbMAP + i * cbENTRY));
+                MAP_NETENTRY e;
+                e.dwPID = n.dwPID;
+                e.dwState = n.dwState;
+                e.dwPoolTag = n.dwPoolTag;
+                e.AF = n.AF;
+                e.src.fValid = n.src_fValid;
+                e.src.port = n.src_port;
+                e.src.pbAddr = n.src_pbAddr;
+                e.src.wszText = n.src_wszText;
+                e.dst.fValid = n.dst_fValid;
+                e.dst.port = n.dst_port;
+                e.dst.pbAddr = n.dst_pbAddr;
+                e.dst.wszText = n.dst_wszText;
+                e.vaObj = n.vaObj;
+                e.ftTime = n.ftTime;
+                e.wszText = n.wszText;
+                m[i] = e;
             }
+        fail:
+            vmmi.VMMDLL_MemFree((byte*)pMap.ToPointer());
+            return m;
         }
 
-        public static unsafe MAP_PHYSMEMENTRY[] Map_GetPhysMem()
+        public unsafe MAP_PHYSMEMENTRY[] Map_GetPhysMem()
         {
-            bool result;
-            uint cb = 0;
             int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_PHYSMEM));
             int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_PHYSMEMENTRY));
-            result = vmmi.VMMDLL_Map_GetPhysMem(null, ref cb);
-            if (!result || (cb == 0)) { return new MAP_PHYSMEMENTRY[0]; }
-            fixed (byte* pb = new byte[cb])
+            IntPtr pMap = IntPtr.Zero;
+            MAP_PHYSMEMENTRY[] m = new MAP_PHYSMEMENTRY[0];
+            if (!vmmi.VMMDLL_Map_GetPhysMem(hVMM, out pMap)) { goto fail; }
+            vmmi.VMMDLL_MAP_PHYSMEM nM = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_PHYSMEM>(pMap);
+            if (nM.dwVersion != vmmi.VMMDLL_MAP_PHYSMEM_VERSION) { goto fail; }
+            m = new MAP_PHYSMEMENTRY[nM.cMap];
+            for (int i = 0; i < nM.cMap; i++)
             {
-                result = vmmi.VMMDLL_Map_GetPhysMem(pb, ref cb);
-                if (!result) { return new MAP_PHYSMEMENTRY[0]; }
-                vmmi.VMMDLL_MAP_PHYSMEM pm = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_PHYSMEM>((System.IntPtr)pb);
-                if (pm.dwVersion != vmmi.VMMDLL_MAP_PHYSMEM_VERSION) { return new MAP_PHYSMEMENTRY[0]; }
-                MAP_PHYSMEMENTRY[] m = new MAP_PHYSMEMENTRY[pm.cMap];
-                for (int i = 0; i < pm.cMap; i++)
-                {
-                    vmmi.VMMDLL_MAP_PHYSMEMENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_PHYSMEMENTRY>((System.IntPtr)(pb + cbMAP + i * cbENTRY));
-                    MAP_PHYSMEMENTRY e;
-                    e.pa = n.pa;
-                    e.cb = n.cb;
-                    m[i] = e;
-                }
-                return m;
+                vmmi.VMMDLL_MAP_PHYSMEMENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_PHYSMEMENTRY>((System.IntPtr)(pMap.ToInt64() + cbMAP + i * cbENTRY));
+                MAP_PHYSMEMENTRY e;
+                e.pa = n.pa;
+                e.cb = n.cb;
+                m[i] = e;
             }
+        fail:
+            vmmi.VMMDLL_MemFree((byte*)pMap.ToPointer());
+            return m;
         }
 
-
-        public static unsafe MAP_POOLENTRY[] Map_GetPool()
+        public unsafe MAP_POOLENTRY[] Map_GetPool()
         {
             byte[] tag = { 0, 0, 0, 0};
             IntPtr pN = IntPtr.Zero;
             int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_POOL));
             int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_POOLENTRY));
-            if (!vmmi.VMMDLL_Map_GetPoolEx(out pN, 0)) { return new MAP_POOLENTRY[0]; }
+            if (!vmmi.VMMDLL_Map_GetPool(hVMM, out pN, 0)) { return new MAP_POOLENTRY[0]; }
             vmmi.VMMDLL_MAP_POOL nM = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_POOL>(pN);
             if (nM.dwVersion != vmmi.VMMDLL_MAP_POOL_VERSION) {
                 vmmi.VMMDLL_MemFree((byte*)pN.ToPointer());
@@ -1712,78 +1691,69 @@ namespace vmmsharp
             return eM;
         }
 
-
-        public static unsafe MAP_USERENTRY[] Map_GetUsers()
+        public unsafe MAP_USERENTRY[] Map_GetUsers()
         {
-            bool result;
-            uint cb = 0;
             int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_USER));
             int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_USERENTRY));
-            result = vmmi.VMMDLL_Map_GetUsers(null, ref cb);
-            if (!result || (cb == 0)) { return new MAP_USERENTRY[0]; }
-            fixed (byte* pb = new byte[cb])
+            IntPtr pMap = IntPtr.Zero;
+            MAP_USERENTRY[] m = new MAP_USERENTRY[0];
+            if (!vmmi.VMMDLL_Map_GetUsers(hVMM, out pMap)) { goto fail; }
+            vmmi.VMMDLL_MAP_USER nM = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_USER>(pMap);
+            if (nM.dwVersion != vmmi.VMMDLL_MAP_USER_VERSION) { goto fail; }
+            m = new MAP_USERENTRY[nM.cMap];
+            for (int i = 0; i < nM.cMap; i++)
             {
-                result = vmmi.VMMDLL_Map_GetUsers(pb, ref cb);
-                if (!result) { return new MAP_USERENTRY[0]; }
-                vmmi.VMMDLL_MAP_USER pm = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_USER>((System.IntPtr)pb);
-                if (pm.dwVersion != vmmi.VMMDLL_MAP_USER_VERSION) { return new MAP_USERENTRY[0]; }
-                MAP_USERENTRY[] m = new MAP_USERENTRY[pm.cMap];
-                for (int i = 0; i < pm.cMap; i++)
-                {
-                    vmmi.VMMDLL_MAP_USERENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_USERENTRY>((System.IntPtr)(pb + cbMAP + i * cbENTRY));
-                    MAP_USERENTRY e;
-                    e.szSID = n.wszSID;
-                    e.wszText = n.wszText;
-                    e.vaRegHive = n.vaRegHive;
-                    m[i] = e;
-                }
-                return m;
+                vmmi.VMMDLL_MAP_USERENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_USERENTRY>((System.IntPtr)(pMap.ToInt64() + cbMAP + i * cbENTRY));
+                MAP_USERENTRY e;
+                e.szSID = n.wszSID;
+                e.wszText = n.wszText;
+                e.vaRegHive = n.vaRegHive;
+                m[i] = e;
             }
+        fail:
+            vmmi.VMMDLL_MemFree((byte*)pMap.ToPointer());
+            return m;
         }
 
-        public static unsafe MAP_SERVICEENTRY[] Map_GetServices()
+        public unsafe MAP_SERVICEENTRY[] Map_GetServices()
         {
-            bool result;
-            uint cb = 0;
             int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_SERVICE));
             int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_SERVICEENTRY));
-            result = vmmi.VMMDLL_Map_GetServices(null, ref cb);
-            if (!result || (cb == 0)) { return new MAP_SERVICEENTRY[0]; }
-            fixed (byte* pb = new byte[cb])
+            IntPtr pMap = IntPtr.Zero;
+            MAP_SERVICEENTRY[] m = new MAP_SERVICEENTRY[0];
+            if (!vmmi.VMMDLL_Map_GetServices(hVMM, out pMap)) { goto fail; }
+            vmmi.VMMDLL_MAP_SERVICE nM = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_SERVICE>(pMap);
+            if (nM.dwVersion != vmmi.VMMDLL_MAP_SERVICE_VERSION) { goto fail; }
+            m = new MAP_SERVICEENTRY[nM.cMap];
+            for (int i = 0; i < nM.cMap; i++)
             {
-                result = vmmi.VMMDLL_Map_GetServices(pb, ref cb);
-                if (!result) { return new MAP_SERVICEENTRY[0]; }
-                vmmi.VMMDLL_MAP_SERVICE pm = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_SERVICE>((System.IntPtr)pb);
-                if (pm.dwVersion != vmmi.VMMDLL_MAP_SERVICE_VERSION) { return new MAP_SERVICEENTRY[0]; }
-                MAP_SERVICEENTRY[] m = new MAP_SERVICEENTRY[pm.cMap];
-                for (int i = 0; i < pm.cMap; i++)
-                {
-                    vmmi.VMMDLL_MAP_SERVICEENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_SERVICEENTRY>((System.IntPtr)(pb + cbMAP + i * cbENTRY));
-                    MAP_SERVICEENTRY e;
-                    e.vaObj = n.vaObj;
-                    e.dwPID = n.dwPID;
-                    e.dwOrdinal = n.dwOrdinal;
-                    e.wszServiceName = n.wszServiceName;
-                    e.wszDisplayName = n.wszDisplayName;
-                    e.wszPath = n.wszPath;
-                    e.wszUserTp = n.wszUserTp;
-                    e.wszUserAcct = n.wszUserAcct;
-                    e.wszImagePath = n.wszImagePath;
-                    e.dwStartType = n.dwStartType;
-                    e.dwServiceType = n.dwServiceType;
-                    e.dwCurrentState = n.dwCurrentState;
-                    e.dwControlsAccepted = n.dwControlsAccepted;
-                    e.dwWin32ExitCode = n.dwWin32ExitCode;
-                    e.dwServiceSpecificExitCode = n.dwServiceSpecificExitCode;
-                    e.dwCheckPoint = n.dwCheckPoint;
-                    e.dwWaitHint = n.dwWaitHint;
-                    m[i] = e;
-                }
-                return m;
+                vmmi.VMMDLL_MAP_SERVICEENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_SERVICEENTRY>((System.IntPtr)(pMap.ToInt64() + cbMAP + i * cbENTRY));
+                MAP_SERVICEENTRY e;
+                e.vaObj = n.vaObj;
+                e.dwPID = n.dwPID;
+                e.dwOrdinal = n.dwOrdinal;
+                e.wszServiceName = n.wszServiceName;
+                e.wszDisplayName = n.wszDisplayName;
+                e.wszPath = n.wszPath;
+                e.wszUserTp = n.wszUserTp;
+                e.wszUserAcct = n.wszUserAcct;
+                e.wszImagePath = n.wszImagePath;
+                e.dwStartType = n.dwStartType;
+                e.dwServiceType = n.dwServiceType;
+                e.dwCurrentState = n.dwCurrentState;
+                e.dwControlsAccepted = n.dwControlsAccepted;
+                e.dwWin32ExitCode = n.dwWin32ExitCode;
+                e.dwServiceSpecificExitCode = n.dwServiceSpecificExitCode;
+                e.dwCheckPoint = n.dwCheckPoint;
+                e.dwWaitHint = n.dwWaitHint;
+                m[i] = e;
             }
+        fail:
+            vmmi.VMMDLL_MemFree((byte*)pMap.ToPointer());
+            return m;
         }
 
-        public static unsafe MAP_PFNENTRY[] Map_GetPfn(params uint[] pfns)
+        public unsafe MAP_PFNENTRY[] Map_GetPfn(params uint[] pfns)
         {
             bool result;
             uint cbPfns;
@@ -1798,8 +1768,8 @@ namespace vmmsharp
                 fixed (byte* pb = new byte[cbPfns])
                 {
                     result =
-                        vmmi.VMMDLL_Map_GetPfn(pbPfns, (uint)pfns.Length, null, ref cbPfns) &&
-                        vmmi.VMMDLL_Map_GetPfn(pbPfns, (uint)pfns.Length, pb, ref cbPfns);
+                        vmmi.VMMDLL_Map_GetPfn(hVMM, pbPfns, (uint)pfns.Length, null, ref cbPfns) &&
+                        vmmi.VMMDLL_Map_GetPfn(hVMM, pbPfns, (uint)pfns.Length, pb, ref cbPfns);
                     if (!result) { return new MAP_PFNENTRY[0]; }
                     vmmi.VMMDLL_MAP_PFN pm = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_PFN>((System.IntPtr)pb);
                     if (pm.dwVersion != vmmi.VMMDLL_MAP_PFN_VERSION) { return new MAP_PFNENTRY[0]; }
@@ -1866,42 +1836,43 @@ namespace vmmsharp
             public List<REGISTRY_VALUE_ENUM> ValueList;
         }
 
-        public static unsafe REGISTRY_HIVE_INFORMATION[] RegHiveList()
+        public unsafe REGISTRY_HIVE_INFORMATION[] RegHiveList()
         {
             bool result;
             uint cHives;
             int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_REGISTRY_HIVE_INFORMATION));
-            result = vmmi.VMMDLL_WinReg_HiveList(null, 0, out cHives);
+            result = vmmi.VMMDLL_WinReg_HiveList(hVMM, null, 0, out cHives);
             if (!result || (cHives == 0)) { return new REGISTRY_HIVE_INFORMATION[0]; }
             fixed (byte* pb = new byte[cHives * cbENTRY])
             {
-                result = vmmi.VMMDLL_WinReg_HiveList(pb, cHives, out cHives);
+                result = vmmi.VMMDLL_WinReg_HiveList(hVMM, pb, cHives, out cHives);
                 if (!result) { return new REGISTRY_HIVE_INFORMATION[0]; }
                 REGISTRY_HIVE_INFORMATION[] m = new REGISTRY_HIVE_INFORMATION[cHives];
                 for (int i = 0; i < cHives; i++)
                 {
                     vmmi.VMMDLL_REGISTRY_HIVE_INFORMATION n = Marshal.PtrToStructure<vmmi.VMMDLL_REGISTRY_HIVE_INFORMATION>((System.IntPtr)(pb + i * cbENTRY));
                     REGISTRY_HIVE_INFORMATION e;
+                    if(n.wVersion != vmmi.VMMDLL_REGISTRY_HIVE_INFORMATION_VERSION) { return new REGISTRY_HIVE_INFORMATION[0]; }
                     e.vaCMHIVE = n.vaCMHIVE;
                     e.vaHBASE_BLOCK = n.vaHBASE_BLOCK;
                     e.cbLength = n.cbLength;
-                    e.szName = System.Text.Encoding.UTF8.GetString(n.szName);
+                    e.szName = System.Text.Encoding.UTF8.GetString(n.uszName);
                     e.szName = e.szName.Substring(0, e.szName.IndexOf((char)0));
-                    e.szNameShort = n.wszNameShort;
-                    e.szHiveRootPath = n.wszHiveRootPath;
+                    e.szNameShort = System.Text.Encoding.UTF8.GetString(n.uszNameShort);
+                    e.szHiveRootPath = System.Text.Encoding.UTF8.GetString(n.uszHiveRootPath);
                     m[i] = e;
                 }
                 return m;
             }
         }
 
-        public static unsafe byte[] RegHiveRead(ulong vaCMHIVE, uint ra, uint cb, uint flags = 0)
+        public unsafe byte[] RegHiveRead(ulong vaCMHIVE, uint ra, uint cb, uint flags = 0)
         {
             uint cbRead;
             byte[] data = new byte[cb];
             fixed (byte* pb = data)
             {
-                if(!vmmi.VMMDLL_WinReg_HiveReadEx(vaCMHIVE, ra, pb, cb, out cbRead, flags))
+                if(!vmmi.VMMDLL_WinReg_HiveReadEx(hVMM, vaCMHIVE, ra, pb, cb, out cbRead, flags))
                 {
                     return null;
                 }
@@ -1914,15 +1885,15 @@ namespace vmmsharp
         }
 
 
-        public static unsafe bool RegHiveWrite(ulong vaCMHIVE, uint ra, byte[] data)
+        public unsafe bool RegHiveWrite(ulong vaCMHIVE, uint ra, byte[] data)
         {
             fixed (byte* pb = data)
             {
-                return vmmi.VMMDLL_WinReg_HiveWrite(vaCMHIVE, ra, pb, (uint)data.Length);
+                return vmmi.VMMDLL_WinReg_HiveWrite(hVMM, vaCMHIVE, ra, pb, (uint)data.Length);
             }
         }
 
-        public static unsafe REGISTRY_ENUM RegEnum(string wszFullPathKey)
+        public unsafe REGISTRY_ENUM RegEnum(string wszFullPathKey)
         {
             uint i, cchName, lpType, cbData = 0;
             ulong ftLastWriteTime;
@@ -1934,7 +1905,7 @@ namespace vmmsharp
             {
                 i = 0;
                 cchName = 0x800;
-                while (vmmi.VMMDLL_WinReg_EnumKeyExW(wszFullPathKey, i, pb, ref cchName, out ftLastWriteTime))
+                while (vmmi.VMMDLL_WinReg_EnumKeyExW(hVMM, wszFullPathKey, i, pb, ref cchName, out ftLastWriteTime))
                 {
                     REGISTRY_KEY_ENUM e = new REGISTRY_KEY_ENUM();
                     e.ftLastWriteTime = ftLastWriteTime;
@@ -1945,7 +1916,7 @@ namespace vmmsharp
                 }
                 i = 0;
                 cchName = 0x800;
-                while (vmmi.VMMDLL_WinReg_EnumValueW(wszFullPathKey, i, pb, ref cchName, out lpType, null, ref cbData))
+                while (vmmi.VMMDLL_WinReg_EnumValueW(hVMM, wszFullPathKey, i, pb, ref cchName, out lpType, null, ref cbData))
                 {
                     REGISTRY_VALUE_ENUM e = new REGISTRY_VALUE_ENUM();
                     e.type = lpType;
@@ -1959,11 +1930,11 @@ namespace vmmsharp
             return re;
         }
 
-        public static unsafe byte[] RegValueRead(string wszFullPathKeyValue, out uint tp)
+        public unsafe byte[] RegValueRead(string wszFullPathKeyValue, out uint tp)
         {
             bool result;
             uint cb = 0;
-            result = vmmi.VMMDLL_WinReg_QueryValueExW(wszFullPathKeyValue, out tp, null, ref cb);
+            result = vmmi.VMMDLL_WinReg_QueryValueExW(hVMM, wszFullPathKeyValue, out tp, null, ref cb);
             if(!result)
             {
                 return null;
@@ -1971,9 +1942,95 @@ namespace vmmsharp
             byte[] data = new byte[cb];
             fixed (byte* pb = data)
             {
-                result = vmmi.VMMDLL_WinReg_QueryValueExW(wszFullPathKeyValue, out tp, pb, ref cb);
+                result = vmmi.VMMDLL_WinReg_QueryValueExW(hVMM, wszFullPathKeyValue, out tp, pb, ref cb);
                 return result ? data : null;
             }
+        }
+    }
+
+    public class VmmScatter : IDisposable
+    {
+        //---------------------------------------------------------------------
+        // MEMORY NEW SCATTER READ/WRITE FUNCTIONALITY BELOW:
+        //---------------------------------------------------------------------
+        bool disposed = false;
+        IntPtr hS = IntPtr.Zero;
+
+        private VmmScatter()
+        {
+            ;
+        }
+
+        internal VmmScatter(IntPtr hS)
+        {
+            this.hS = hS;
+        }
+
+        ~VmmScatter()
+        {
+            Dispose(disposing: false);
+        }
+
+        public void Dispose()
+        {
+            Dispose(disposing: true);
+            GC.SuppressFinalize(this);
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!this.disposed)
+            {
+                vmmi.VMMDLL_Scatter_CloseHandle(hS);
+                hS = IntPtr.Zero;
+                disposed = true;
+            }
+        }
+
+        public void Close()
+        {
+            Dispose(disposing: true);
+        }
+
+        public unsafe byte[] Read(ulong qwA, uint cb)
+        {
+            uint cbRead;
+            byte[] data = new byte[cb];
+            fixed (byte* pb = data)
+            {
+                if (!vmmi.VMMDLL_Scatter_Read(hS, qwA, cb, pb, out cbRead))
+                {
+                    return null;
+                }
+            }
+            if (cbRead != cb)
+            {
+                Array.Resize<byte>(ref data, (int)cbRead);
+            }
+            return data;
+        }
+
+        public bool Prepare(ulong qwA, uint cb)
+        {
+            return vmmi.VMMDLL_Scatter_Prepare(hS, qwA, cb);
+        }
+
+        public unsafe bool PrepareWrite(ulong qwA, byte[] data)
+        {
+            fixed (byte* pb = data)
+            {
+                return vmmi.VMMDLL_Scatter_PrepareWrite(hS, qwA, pb, (uint)data.Length);
+            }
+        }
+
+        public bool Execute()
+        {
+            return vmmi.VMMDLL_Scatter_Execute(hS);
+        }
+
+        public bool Clear(uint dwPID, uint flags)
+        {
+            return vmmi.VMMDLL_Scatter_Clear(hS, dwPID, flags);
         }
     }
 
@@ -2052,22 +2109,37 @@ namespace vmmsharp
         internal static uint VMMDLL_MAP_PFN_VERSION =        1;
         internal static uint VMMDLL_MAP_SERVICE_VERSION =    3;
         internal static uint VMMDLL_MEM_SEARCH_VERSION =     0xfe3e0002;
+        internal static uint VMMDLL_REGISTRY_HIVE_INFORMATION_VERSION = 4;
 
 
-
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Initialize")]
-        internal static extern bool VMMDLL_Initialize(
-            int argc,
-            string[] argv);
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_InitializeEx")]
-        internal static extern bool VMMDLL_InitializeEx(
+        internal static extern IntPtr VMMDLL_InitializeEx(
             int argc,
             string[] argv,
             out IntPtr ppLcErrorInfo);
 
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_CloseAll")]
+        public static extern void VMMDLL_CloseAll();
+
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Close")]
+        public static extern void VMMDLL_Close(
+            IntPtr hVMM);
+
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_ConfigGet")]
+        public static extern bool VMMDLL_ConfigGet(
+            IntPtr hVMM,
+            ulong fOption,
+            out ulong pqwValue);
+
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_ConfigSet")]
+        public static extern bool VMMDLL_ConfigSet(
+            IntPtr hVMM,
+            ulong fOption,
+            ulong qwValue);
+
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_MemFree")]
-        internal static extern unsafe bool VMMDLL_MemFree(
+        internal static extern unsafe void VMMDLL_MemFree(
             byte* pvMem);
 
 
@@ -2089,11 +2161,13 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_VfsListU")]
         internal static extern unsafe bool VMMDLL_VfsList(
+            IntPtr hVMM,
             [MarshalAs(UnmanagedType.LPUTF8Str)] string wcsPath,
             ref VMMDLL_VFS_FILELIST pFileList);
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_VfsReadU")]
         internal static extern unsafe uint VMMDLL_VfsRead(
+            IntPtr hVMM,
             [MarshalAs(UnmanagedType.LPUTF8Str)] string wcsFileName,
             byte* pb,
             uint cb,
@@ -2102,6 +2176,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_VfsWriteU")]
         internal static extern unsafe uint VMMDLL_VfsWrite(
+            IntPtr hVMM,
             [MarshalAs(UnmanagedType.LPUTF8Str)] string wcsFileName,
             byte* pb,
             uint cb,
@@ -2110,10 +2185,18 @@ namespace vmmsharp
 
 
 
+        // PLUGIN FUNCTIONALITY BELOW:
+
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_InitializePlugins")]
+        public static extern bool VMMDLL_InitializePlugins(IntPtr hVMM);
+
+
+
         // MEMORY READ/WRITE FUNCTIONALITY BELOW:
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_MemReadScatter")]
         internal static extern unsafe uint VMMDLL_MemReadScatter(
+            IntPtr hVMM,
             uint dwPID,
             IntPtr ppMEMs,
             uint cpMEMs,
@@ -2121,6 +2204,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_MemReadEx")]
         internal static extern unsafe bool VMMDLL_MemReadEx(
+            IntPtr hVMM,
             uint dwPID,
             ulong qwA,
             byte* pb,
@@ -2130,16 +2214,26 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_MemPrefetchPages")]
         internal static extern unsafe bool VMMDLL_MemPrefetchPages(
+            IntPtr hVMM,
             uint dwPID,
             byte* pPrefetchAddresses,
             uint cPrefetchAddresses);
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_MemWrite")]
         internal static extern unsafe bool VMMDLL_MemWrite(
+            IntPtr hVMM,
             uint dwPID,
             ulong qwA,
             byte* pb,
             uint cb);
+
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_MemVirt2Phys")]
+        public static extern bool VMMDLL_MemVirt2Phys(
+            IntPtr hVMM,
+            uint dwPID,
+            ulong qwVA,
+            out ulong pqwPA
+            );
 
 
 
@@ -2147,6 +2241,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Scatter_Initialize")]
         internal static extern unsafe IntPtr VMMDLL_Scatter_Initialize(
+            IntPtr hVMM,
             uint dwPID,
             uint flags);
 
@@ -2156,7 +2251,18 @@ namespace vmmsharp
             ulong va,
             uint cb);
 
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Scatter_PrepareWrite")]
+        internal static extern unsafe bool VMMDLL_Scatter_PrepareWrite(
+            IntPtr hS,
+            ulong va,
+            byte* pb,
+            uint cb);
+
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Scatter_ExecuteRead")]
+        internal static extern unsafe bool VMMDLL_Scatter_ExecuteRead(
+            IntPtr hS);
+
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Scatter_Execute")]
         internal static extern unsafe bool VMMDLL_Scatter_Execute(
             IntPtr hS);
 
@@ -2167,6 +2273,9 @@ namespace vmmsharp
             uint cb,
             byte* pb,
             out uint pcbRead);
+
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Scatter_Clear")]
+        public static extern bool SVMMDLL_Scatter_Clear(IntPtr hS, uint dwPID, uint flags);
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Scatter_Clear")]
         internal static extern unsafe bool VMMDLL_Scatter_Clear(
@@ -2183,7 +2292,16 @@ namespace vmmsharp
         // PROCESS FUNCTIONALITY BELOW:
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_PidList")]
-        internal static extern unsafe bool VMMDLL_PidList(byte* pPIDs, ref ulong pcPIDs);
+        internal static extern unsafe bool VMMDLL_PidList(IntPtr hVMM, byte* pPIDs, ref ulong pcPIDs);
+
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_PidGetFromName")]
+        public static extern bool VMMDLL_PidGetFromName(IntPtr hVMM, [MarshalAs(UnmanagedType.LPStr)] string szProcName, out uint pdwPID);
+
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_ProcessGetProcAddressW")]
+        public static extern ulong VMMDLL_ProcessGetProcAddress(IntPtr hVMM, uint pid, [MarshalAs(UnmanagedType.LPWStr)] string wszModuleName, [MarshalAs(UnmanagedType.LPStr)] string szFunctionName);
+
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_ProcessGetModuleBaseW")]
+        public static extern ulong VMMDLL_ProcessGetModuleBase(IntPtr hVMM, uint pid, [MarshalAs(UnmanagedType.LPWStr)] string wszModuleName);
 
         internal static ulong VMMDLL_PROCESS_INFORMATION_MAGIC =        0xc0ffee663df9301e;
         internal static ushort VMMDLL_PROCESS_INFORMATION_VERSION =     7;
@@ -2217,12 +2335,14 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_ProcessGetInformation")]
         internal static extern unsafe bool VMMDLL_ProcessGetInformation(
+            IntPtr hVMM,
             uint dwPID,
             byte* pProcessInformation,
             ref ulong pcbProcessInformation);
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_ProcessGetInformationString")]
         internal static extern unsafe byte* VMMDLL_ProcessGetInformationString(
+            IntPtr hVMM,
             uint dwPID,
             uint fOptionString);
 
@@ -2250,14 +2370,14 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_ProcessGetDirectoriesW")]
         internal static extern unsafe bool VMMDLL_ProcessGetDirectories(
+            IntPtr hVMM,
             uint dwPID,
             [MarshalAs(UnmanagedType.LPWStr)] string wszModule,
-            byte* pData,
-            uint cData,
-            out uint pcData);
+            byte* pData);
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_ProcessGetSectionsW")]
         internal static extern unsafe bool VMMDLL_ProcessGetSections(
+            IntPtr hVMM,
             uint dwPID,
             [MarshalAs(UnmanagedType.LPWStr)] string wszModule,
             byte* pData,
@@ -2270,16 +2390,41 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_PdbLoad")]
         internal static extern unsafe bool VMMDLL_PdbLoad(
+            IntPtr hVMM,
             uint dwPID,
             ulong vaModuleBase,
             byte* pModuleMapEntry);
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_PdbSymbolName")]
         internal static extern unsafe bool VMMDLL_PdbSymbolName(
+            IntPtr hVMM,
             [MarshalAs(UnmanagedType.LPStr)] string szModule,
             ulong cbSymbolAddressOrOffset,
             byte* szSymbolName,
             out uint pdwSymbolDisplacement);
+
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_PdbSymbolAddress")]
+        public static extern bool VMMDLL_PdbSymbolAddress(
+            IntPtr hVMM,
+            [MarshalAs(UnmanagedType.LPStr)] string szModule,
+            [MarshalAs(UnmanagedType.LPStr)] string szSymbolName,
+            out ulong pvaSymbolAddress);
+
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_PdbTypeSize")]
+        public static extern bool VMMDLL_PdbTypeSize(
+            IntPtr hVMM,
+            [MarshalAs(UnmanagedType.LPStr)] string szModule,
+            [MarshalAs(UnmanagedType.LPStr)] string szTypeName,
+            out uint pcbTypeSize);
+
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_PdbTypeChildOffset")]
+        public static extern bool VMMDLL_PdbTypeChildOffset(
+            IntPtr hVMM,
+            [MarshalAs(UnmanagedType.LPStr)] string szModule,
+            [MarshalAs(UnmanagedType.LPStr)] string szTypeName,
+            [MarshalAs(UnmanagedType.LPStr)] string wszTypeChildName,
+            out uint pcbTypeChildOffset);
+
 
 
 
@@ -2310,10 +2455,10 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetPteW")]
         internal static extern unsafe bool VMMDLL_Map_GetPte(
+            IntPtr hVMM,
             uint dwPid,
-            byte* pPteMap,
-            ref uint pcbPteMap,
-            bool fIdentifyModules);
+            bool fIdentifyModules,
+            out IntPtr ppPteMap);
 
 
 
@@ -2353,10 +2498,10 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetVadW")]
         internal static extern unsafe bool VMMDLL_Map_GetVad(
+            IntPtr hVMM,
             uint dwPid,
-            byte* pVadMap,
-            ref uint pcbVadMap,
-            bool fIdentifyModules);
+            bool fIdentifyModules,
+            out IntPtr ppVadMap);
 
 
 
@@ -2387,11 +2532,11 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetVadEx")]
         internal static extern unsafe bool VMMDLL_Map_GetVadEx(
+            IntPtr hVMM,
             uint dwPid,
-            byte* pVadMap,
-            ref uint pcbVadMap,
             uint oPage,
-            uint cPage);
+            uint cPage,
+            out IntPtr ppVadExMap);
 
 
 
@@ -2427,16 +2572,19 @@ namespace vmmsharp
         }
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetModuleW")]
-        internal static extern unsafe bool VMMDLL_Map_GetModule(uint dwPid, byte* pModuleMap, ref uint pcbModuleMap);
+        internal static extern unsafe bool VMMDLL_Map_GetModule(
+            IntPtr hVMM,
+            uint dwPid,
+            out IntPtr ppModuleMap);
 
         // VMMDLL_Map_GetModuleFromName
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetModuleFromNameW")]
         internal static extern unsafe bool VMMDLL_Map_GetModuleFromName(
+            IntPtr hVMM,
             uint dwPID,
             [MarshalAs(UnmanagedType.LPWStr)] string wszModuleName,
-            byte* pModuleMapEntry,
-            ref uint pcbModuleMapEntry);
+            out IntPtr ppModuleMapEntry);
 
 
 
@@ -2466,7 +2614,10 @@ namespace vmmsharp
         }
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetUnloadedModuleW")]
-        internal static extern unsafe bool VMMDLL_Map_GetUnloadedModule(uint dwPid, byte* pModuleMap, ref uint pcbModuleMap);
+        internal static extern unsafe bool VMMDLL_Map_GetUnloadedModule(
+            IntPtr hVMM,
+            uint dwPid,
+            out IntPtr ppModuleMap);
 
 
 
@@ -2500,10 +2651,10 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetEATW")]
         internal static extern unsafe bool VMMDLL_Map_GetEAT(
+            IntPtr hVMM,
             uint dwPid,
             [MarshalAs(UnmanagedType.LPWStr)] string wszModuleName,
-            byte* pEatMap,
-            ref uint pcbEatMap);
+            out IntPtr ppEatMap);
 
 
 
@@ -2538,10 +2689,10 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetIATW")]
         internal static extern unsafe bool VMMDLL_Map_GetIAT(
+            IntPtr hVMM,
             uint dwPid,
             [MarshalAs(UnmanagedType.LPWStr)] string wszModuleName,
-            byte* pIatMap,
-            ref uint pcbIatMap);
+            out IntPtr ppIatMap);
 
 
 
@@ -2576,8 +2727,9 @@ namespace vmmsharp
             internal uint cMap;
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetHeapEx")]
-        internal static extern unsafe bool VMMDLL_Map_GetHeapEx(
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetHeap")]
+        internal static extern unsafe bool VMMDLL_Map_GetHeap(
+            IntPtr hVMM,
             uint dwPid,
             out IntPtr ppHeapMap);
 
@@ -2603,8 +2755,9 @@ namespace vmmsharp
             internal uint cMap;
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetHeapAllocEx")]
-        internal static extern unsafe bool VMMDLL_Map_GetHeapAllocEx(
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetHeapAlloc")]
+        internal static extern unsafe bool VMMDLL_Map_GetHeapAlloc(
+            IntPtr hVMM,
             uint dwPid,
             ulong qwHeapNumOrAddress,
             out IntPtr ppHeapAllocMap);
@@ -2654,9 +2807,9 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetThread")]
         internal static extern unsafe bool VMMDLL_Map_GetThread(
+            IntPtr hVMM,
             uint dwPid,
-            byte* pThreadMap,
-            ref uint pcbThreadMap);
+            out IntPtr ppThreadMap);
 
 
 
@@ -2692,9 +2845,9 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetHandleW")]
         internal static extern unsafe bool VMMDLL_Map_GetHandle(
+            IntPtr hVMM,
             uint dwPid,
-            byte* pHandleMap,
-            ref uint pcbHandleMap);
+            out IntPtr ppHandleMap);
 
 
 
@@ -2740,8 +2893,8 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetNetW")]
         internal static extern unsafe bool VMMDLL_Map_GetNet(
-            byte* pNetMap,
-            ref uint pcbNetMap);
+            IntPtr hVMM,
+            out IntPtr ppNetMap);
 
 
 
@@ -2765,8 +2918,8 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetPhysMem")]
         internal static extern unsafe bool VMMDLL_Map_GetPhysMem(
-            byte* pNetMap,
-            ref uint pcbNetMap);
+            IntPtr hVMM,
+            out IntPtr ppPhysMemMap);
 
 
 
@@ -2797,8 +2950,9 @@ namespace vmmsharp
             internal uint cMap;
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetPoolEx")]
-        internal static extern unsafe bool VMMDLL_Map_GetPoolEx(
+        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetPool")]
+        internal static extern unsafe bool VMMDLL_Map_GetPool(
+            IntPtr hVMM,
             out IntPtr ppHeapAllocMap,
             uint flags);
 
@@ -2828,8 +2982,8 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetUsersW")]
         internal static extern unsafe bool VMMDLL_Map_GetUsers(
-            byte* pbUserMap,
-            ref uint pcbUserMap);
+            IntPtr hVMM,
+            out IntPtr ppUserMap);
 
 
 
@@ -2873,8 +3027,8 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetServicesW")]
         internal static extern unsafe bool VMMDLL_Map_GetServices(
-            byte* pbServiceMap,
-            ref uint pcbServiceMap);
+            IntPtr hVMM,
+            out IntPtr ppServiceMap);
 
 
 
@@ -2905,6 +3059,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetPfn")]
         internal static extern unsafe bool VMMDLL_Map_GetPfn(
+            IntPtr hVMM,
             byte* pPfns,
             uint cPfns,
             byte* pPfnMap,
@@ -2914,30 +3069,32 @@ namespace vmmsharp
 
         // REGISTRY FUNCTIONALITY BELOW:
 
-        [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
         internal struct VMMDLL_REGISTRY_HIVE_INFORMATION
         {
             internal ulong magic;
             internal ushort wVersion;
             internal ushort wSize;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x14)] internal byte[] _FutureReserved1;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x34)] internal byte[] _FutureReserved1;
             internal ulong vaCMHIVE;
             internal ulong vaHBASE_BLOCK;
             internal uint cbLength;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 128)] internal byte[] szName;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 33)] internal string wszNameShort;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] internal string wszHiveRootPath;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 128)] internal byte[] uszName;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 33)] internal byte[] uszNameShort;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 260)] internal byte[] uszHiveRootPath;
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x10)] internal ulong[] _FutureReserved;
         }
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_WinReg_HiveList")]
         internal static extern unsafe bool VMMDLL_WinReg_HiveList(
+            IntPtr hVMM,
             byte* pHives,
             uint cHives,
             out uint pcHives);
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_WinReg_HiveReadEx")]
         internal static extern unsafe bool VMMDLL_WinReg_HiveReadEx(
+            IntPtr hVMM,
             ulong vaCMHive,
             uint ra,
             byte* pb,
@@ -2947,6 +3104,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_WinReg_HiveWrite")]
         internal static extern unsafe bool VMMDLL_WinReg_HiveWrite(
+            IntPtr hVMM,
             ulong vaCMHive,
             uint ra,
             byte* pb,
@@ -2954,6 +3112,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_WinReg_EnumKeyExW")]
         internal static extern unsafe bool VMMDLL_WinReg_EnumKeyExW(
+            IntPtr hVMM,
             [MarshalAs(UnmanagedType.LPWStr)] string wszFullPathKey,
             uint dwIndex,
             byte* lpName,
@@ -2962,6 +3121,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_WinReg_EnumValueW")]
         internal static extern unsafe bool VMMDLL_WinReg_EnumValueW(
+            IntPtr hVMM,
             [MarshalAs(UnmanagedType.LPWStr)] string wszFullPathKey,
             uint dwIndex,
             byte* lpValueName,
@@ -2972,6 +3132,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_WinReg_QueryValueExW")]
         internal static extern unsafe bool VMMDLL_WinReg_QueryValueExW(
+            IntPtr hVMM,
             [MarshalAs(UnmanagedType.LPWStr)] string wszFullPathKeyValue,
             out uint lpType,
             byte* lpData,
@@ -3016,6 +3177,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_MemSearch")]
         internal static extern unsafe bool VMMDLL_MemSearch(
+            IntPtr hVMM,
             uint dwPID,
             ref VMMDLL_MEM_SEARCH_CONTEXT ctx,
             out IntPtr ppva,

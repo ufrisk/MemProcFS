@@ -23,7 +23,7 @@
 #include <stdarg.h>
 
 #define OB_STRMAP_SUBENTRY_SIZE         0x10
-#define OB_STRUMAP_IS_VALID(p)           (p && (p->ObHdr._magic == OB_HEADER_MAGIC) && (p->ObHdr._tag == OB_TAG_CORE_STRMAP))
+#define OB_STRUMAP_IS_VALID(p)          (p && (p->ObHdr._magic2 == OB_HEADER_MAGIC) && (p->ObHdr._magic1 == OB_HEADER_MAGIC) && (p->ObHdr._tag == OB_TAG_CORE_STRMAP))
 
 typedef struct tdOB_STRMAP_PTRENTRY {
     union {
@@ -451,8 +451,8 @@ VOID _ObStrMap_FinalizeDoWork_UnicodeResolve(_In_ POB_STRMAP psm)
     BYTE pbBuffer[sizeof(UNICODE_STRING64)];
     if(psm->fFinalized) { return; }
     if(!psm->pUnicodeObjectListHead && !psm->pUnicodeBufferListHead) { return; }
-    if(!(psObPrefetch = ObSet_New())) { return; }
-    if(!(pObSystemProcess = VmmProcessGet(4))) { goto fail; }
+    if(!(psObPrefetch = ObSet_New(psm->ObHdr.H))) { return; }
+    if(!(pObSystemProcess = VmmProcessGet(psm->ObHdr.H, 4))) { goto fail; }
     // resolve unicode object pointers:
     if(psm->pUnicodeObjectListHead) {
         pu = psm->pUnicodeObjectListHead;
@@ -460,10 +460,10 @@ VOID _ObStrMap_FinalizeDoWork_UnicodeResolve(_In_ POB_STRMAP psm)
             ObSet_Push_PageAlign(psObPrefetch, pu->va, pu->f32 ? sizeof(UNICODE_STRING32) : sizeof(UNICODE_STRING64));
             pu = pu->FLink;
         }
-        VmmCachePrefetchPages(pObSystemProcess, psObPrefetch, 0);
+        VmmCachePrefetchPages(psm->ObHdr.H, pObSystemProcess, psObPrefetch, 0);
         pu = psm->pUnicodeObjectListHead;
         while(pu) {
-            if(VmmRead2(pObSystemProcess, pu->va, pbBuffer, pu->f32 ? sizeof(UNICODE_STRING32) : sizeof(UNICODE_STRING64), VMM_FLAG_FORCECACHE_READ)) {
+            if(VmmRead2(psm->ObHdr.H, pObSystemProcess, pu->va, pbBuffer, pu->f32 ? sizeof(UNICODE_STRING32) : sizeof(UNICODE_STRING64), VMM_FLAG_FORCECACHE_READ)) {
                 f = pu->f32 ?
                     _ObStrMap_Push_UnicodeBuffer(psm, ((PUNICODE_STRING32)pbBuffer)->Length, ((PUNICODE_STRING32)pbBuffer)->Buffer, pu->p.pusz, pu->p.pcbu) :
                     _ObStrMap_Push_UnicodeBuffer(psm, ((PUNICODE_STRING64)pbBuffer)->Length, ((PUNICODE_STRING64)pbBuffer)->Buffer, pu->p.pusz, pu->p.pcbu);
@@ -482,11 +482,11 @@ VOID _ObStrMap_FinalizeDoWork_UnicodeResolve(_In_ POB_STRMAP psm)
             ObSet_Push_PageAlign(psObPrefetch, pu->va, pu->cb);
             pu = pu->FLink;
         }
-        VmmCachePrefetchPages(pObSystemProcess, psObPrefetch, 0);
+        VmmCachePrefetchPages(psm->ObHdr.H, pObSystemProcess, psObPrefetch, 0);
         pu = psm->pUnicodeBufferListHead;
         while(pu) {
             wsz[0] = 0;
-            if(VmmRead2(pObSystemProcess, pu->va, (PBYTE)wsz, pu->cb, VMM_FLAG_FORCECACHE_READ)) {
+            if(VmmRead2(psm->ObHdr.H, pObSystemProcess, pu->va, (PBYTE)wsz, pu->cb, VMM_FLAG_FORCECACHE_READ)) {
                 wsz[pu->cb >> 1] = 0;
             }
             _ObStrMap_PushPtr(psm, NULL, NULL, (LPWSTR)wsz, pu->p.pusz, pu->p.pcbu, NULL, NULL);
@@ -578,9 +578,16 @@ BOOL _ObStrMap_FinalizeAlloc_DoWork(_In_ POB_STRMAP psm, _Out_ PBYTE *ppbMultiSt
     f = _ObStrMap_Finalize_FillBuffer(psm, 0, NULL, &cb, fWideChar) &&
         (pb = LocalAlloc(0, cb)) &&
         _ObStrMap_Finalize_FillBuffer(psm, cb, pb, &cb, fWideChar);
-    *ppbMultiStr = f ? pb : NULL;
-    *pcbMultiStr = f ? cb : 0;
-    return f;
+    if(f) {
+        *ppbMultiStr = pb;
+        *pcbMultiStr = cb;
+        return TRUE;
+    } else {
+        LocalFree(pb);
+        *ppbMultiStr = NULL;
+        *pcbMultiStr = 0;
+        return FALSE;
+    }
 }
 
 _Success_(return)
@@ -685,18 +692,19 @@ BOOL ObStrMap_FinalizeBufferXUW(_In_opt_ POB_STRMAP psm, _In_ DWORD cbMultiStr, 
 * decommissioned by calling any of the ObStrMap_Finalize*() functions.
 * The ObStrMap is an object manager object and must be DECREF'ed when required.
 * CALLER DECREF: return
+* -- H
 * -- flags
 * -- return
 */
 _Success_(return != NULL)
-POB_STRMAP ObStrMap_New(_In_ QWORD flags)
+POB_STRMAP ObStrMap_New(_In_opt_ VMM_HANDLE H, _In_ QWORD flags)
 {
     POB_STRMAP pObStrMap = NULL;
     POB_STRMAP_ENTRY pStrEntry = NULL;
     if((flags & OB_STRMAP_FLAGS_STR_ASSIGN_TEMPORARY) && (flags & OB_STRMAP_FLAGS_STR_ASSIGN_OFFSET)) { goto fail; }
-    if(!(pObStrMap = Ob_Alloc(OB_TAG_CORE_STRMAP, LMEM_ZEROINIT, sizeof(OB_STRMAP), (OB_CLEANUP_CB)_ObStrMap_ObCloseCallback, NULL))) { goto fail; }
+    if(!(pObStrMap = Ob_AllocEx(H, OB_TAG_CORE_STRMAP, LMEM_ZEROINIT, sizeof(OB_STRMAP), (OB_CLEANUP_CB)_ObStrMap_ObCloseCallback, NULL))) { goto fail; }
     if(!(pStrEntry = LocalAlloc(LMEM_ZEROINIT, sizeof(OB_STRMAP_ENTRY) + 1))) { goto fail; }        // "" entry
-    if(!(pObStrMap->pm = ObMap_New(0))) { goto fail; }
+    if(!(pObStrMap->pm = ObMap_New(H, 0))) { goto fail; }
     pObStrMap->fCaseInsensitive = (flags & OB_STRMAP_FLAGS_CASE_INSENSITIVE) ? TRUE : FALSE;
     pObStrMap->fStrAssignTemporary = (flags & OB_STRMAP_FLAGS_STR_ASSIGN_TEMPORARY) ? TRUE : FALSE;
     pObStrMap->fStrAssignOffset = (flags & OB_STRMAP_FLAGS_STR_ASSIGN_OFFSET) ? TRUE : FALSE;

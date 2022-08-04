@@ -35,6 +35,7 @@ typedef struct tdVMMVFS_CONFIG {
 
 PVMMVFS_CONFIG ctxVfs;
 HANDLE g_hLC_RemoteFS;
+VMM_HANDLE g_hVMM;
 
 CHAR g_VfsMountPoint = 'M';
 
@@ -62,7 +63,7 @@ _Success_(return) BOOL MemProcFS_VfsListU(_In_ LPSTR uszPath, _Inout_ PVMMDLL_VF
     PVMMDLL_VFS_FILELISTBLOB pVfsList;
     PVMMDLL_VFS_FILELISTBLOB_ENTRY pe;
     if(!g_hLC_RemoteFS) {
-        return VMMDLL_VfsListU(uszPath, pFileList);
+        return VMMDLL_VfsListU(g_hVMM, uszPath, pFileList);
     }
     ZeroMemory(&Req, sizeof(LC_CMD_AGENT_VFS_REQ));
     Req.dwVersion = LC_CMD_AGENT_VFS_REQ_VERSION;
@@ -99,7 +100,7 @@ NTSTATUS MemProcFS_VfsReadW(_In_ LPWSTR wszFileName, _Out_writes_to_(cb, *pcbRea
     LC_CMD_AGENT_VFS_REQ Req;
     PLC_CMD_AGENT_VFS_RSP pRsp = NULL;
     if(!g_hLC_RemoteFS) {
-        return VMMDLL_VfsReadW(wszFileName, pb, cb, pcbRead, cbOffset);
+        return VMMDLL_VfsReadW(g_hVMM, wszFileName, pb, cb, pcbRead, cbOffset);
     }
     // Remote MemProcFS below:
     ZeroMemory(&Req, sizeof(LC_CMD_AGENT_VFS_REQ));
@@ -132,7 +133,7 @@ NTSTATUS MemProcFS_VfsWriteW(_In_ LPWSTR wszFileName, _In_reads_(cb) PBYTE pb, _
     PLC_CMD_AGENT_VFS_REQ pReq = NULL;
     PLC_CMD_AGENT_VFS_RSP pRsp = NULL;
     if(!g_hLC_RemoteFS) {
-        return VMMDLL_VfsWriteW(wszFileName, pb, cb, pcbWrite, cbOffset);
+        return VMMDLL_VfsWriteW(g_hVMM, wszFileName, pb, cb, pcbWrite, cbOffset);
     }
     // Remote MemProcFS below:
     *pcbWrite = 0;
@@ -170,7 +171,7 @@ BOOL MemProcFS_ConfigGet(_In_ ULONG64 fOption, _Out_ PULONG64 pqwValue)
     PLC_CMD_AGENT_VFS_RSP pRsp = NULL;
     *pqwValue = 0;
     if(!g_hLC_RemoteFS) {
-        return VMMDLL_ConfigGet(fOption, pqwValue);
+        return VMMDLL_ConfigGet(g_hVMM, fOption, pqwValue);
     }
     // Remote MemProcFS below:
     Req.dwVersion = LC_CMD_AGENT_VFS_REQ_VERSION;
@@ -199,7 +200,7 @@ BOOL MemProcFS_ConfigSet(_In_ ULONG64 fOption, _In_ ULONG64 qwValue)
     BOOL fResult;
     PLC_CMD_AGENT_VFS_REQ pReq = NULL;
     if(!g_hLC_RemoteFS) {
-        return VMMDLL_ConfigSet(fOption, qwValue);
+        return VMMDLL_ConfigSet(g_hVMM, fOption, qwValue);
     }
     // Remote MemProcFS below:
     if(!(pReq = LocalAlloc(LMEM_ZEROINIT, sizeof(LC_CMD_AGENT_VFS_REQ) + sizeof(QWORD)))) { return FALSE; }
@@ -539,7 +540,7 @@ DWORD WINAPI MemProcFsCtrlHandler_TryShutdownThread(PVOID pv)
             LcClose(g_hLC_RemoteFS);
             g_hLC_RemoteFS = NULL;
         } else {
-            VMMDLL_Close();
+            VMMDLL_Close(g_hVMM);
         }
     } __except(EXCEPTION_EXECUTE_HANDLER) { ; }
     return 1;
@@ -654,13 +655,13 @@ int main(_In_ int argc, _In_ char* argv[])
         if(argc > 2) {
             szArgs[argc++] = "-userinteract";
         }
-        result = VMMDLL_Initialize(argc, szArgs);
-        if(!result) {
+        g_hVMM = VMMDLL_Initialize(argc, szArgs);
+        if(!g_hVMM) {
             // any error message will already be shown by the InitializeReserved function.
             return 1;
         }
-        VMMDLL_ConfigSet(VMMDLL_OPT_CONFIG_STATISTICS_FUNCTIONCALL, 1);
-        result = VMMDLL_InitializePlugins();
+        VMMDLL_ConfigSet(g_hVMM, VMMDLL_OPT_CONFIG_STATISTICS_FUNCTIONCALL, 1);
+        result = VMMDLL_InitializePlugins(g_hVMM);
         if(!result) {
             printf("MemProcFS: Error file system plugins in vmm.dll!\n");
             return 1;

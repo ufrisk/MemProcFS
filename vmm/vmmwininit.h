@@ -12,18 +12,20 @@
 
 /*
 * Try initialize not yet initialized values in the optional windows kernel
-* context ctxVmm->kernel.opt
+* context H->vmm.kernel.opt
 * This function should be run once the system is fully up and running.
 * This is a best-effort function, uninitialized values will remain zero.
+* -- H
 */
-VOID VmmWinInit_TryInitializeKernelOptionalValues();
+VOID VmmWinInit_TryInitializeKernelOptionalValues(_In_ VMM_HANDLE H);
 
 /*
 * Try initialize the VMM from scratch with new WINDOWS support.
+* -- H
 * -- paDTB
 * -- return
 */
 _Success_(return)
-BOOL VmmWinInit_TryInitialize(_In_opt_ QWORD paDTB);
+BOOL VmmWinInit_TryInitialize(_In_ VMM_HANDLE H, _In_opt_ QWORD paDTB);
 
 #endif /* __VMMWININIT_H__ */

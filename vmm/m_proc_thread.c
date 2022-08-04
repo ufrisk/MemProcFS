@@ -18,7 +18,7 @@
 #define MTHREAD_GET_STR_WAIT_REASON(pe)     ((pe->bWaitReason < (sizeof(_KWAIT_REASON_STR) / sizeof(LPCSTR))) ? _KWAIT_REASON_STR[pe->bWaitReason] : "Unknown")
 
 _Success_(return == 0)
-NTSTATUS MThread_Read_ThreadInfo(_In_ PVMM_MAP_THREADENTRY pe, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MThread_Read_ThreadInfo(_In_ VMM_HANDLE H, _In_ PVMM_MAP_THREADENTRY pe, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     CHAR sz[MTHREAD_INFOFILE_LENGTH + 1];
     CHAR szTimeCreate[32] = { 0 }, szTimeExit[32] = { 0 };
@@ -73,7 +73,7 @@ NTSTATUS MThread_Read_ThreadInfo(_In_ PVMM_MAP_THREADENTRY pe, _Out_writes_to_(c
     return Util_VfsReadFile_FromPBYTE(sz, MTHREAD_INFOFILE_LENGTH, pb, cb, pcbRead, cbOffset);
 }
 
-VOID MThread_ReadLine_Callback(_Inout_opt_ PVOID ctx, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVMM_MAP_THREADENTRY pe, _Out_writes_(cbLineLength + 1) LPSTR szu8)
+VOID MThread_ReadLineCB(_In_ VMM_HANDLE H, _Inout_opt_ PVOID ctx, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVMM_MAP_THREADENTRY pe, _Out_writes_(cbLineLength + 1) LPSTR szu8)
 {
     CHAR szTimeCreate[24], szTimeExit[24];
     Util_FileTime2String(pe->ftCreateTime, szTimeCreate);
@@ -106,7 +106,8 @@ VOID MThread_ReadLine_Callback(_Inout_opt_ PVOID ctx, _In_ DWORD cbLineLength, _
 /*
 * Read : function as specified by the module manager. The module manager will
 * call into this callback function whenever a read shall occur from a "file".
-* -- ctx
+* -- H
+* -- ctxP
 * -- pb
 * -- cb
 * -- pcbRead
@@ -114,7 +115,7 @@ VOID MThread_ReadLine_Callback(_Inout_opt_ PVOID ctx, _In_ DWORD cbLineLength, _
 * -- return
 */
 _Success_(return == 0)
-NTSTATUS MThread_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MThread_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PVMMOB_MAP_THREAD pObThreadMap = NULL;
@@ -122,39 +123,39 @@ NTSTATUS MThread_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbR
     LPSTR uszSubPath;
     DWORD dwTID;
     PVMM_MAP_THREADENTRY pe;
-    if(!VmmMap_GetThread(ctx->pProcess, &pObThreadMap)) { return VMMDLL_STATUS_FILE_INVALID; }
+    if(!VmmMap_GetThread(H, ctxP->pProcess, &pObThreadMap)) { return VMMDLL_STATUS_FILE_INVALID; }
     // module root - thread info file
-    if(!_stricmp(ctx->uszPath, "threads.txt")) {
+    if(!_stricmp(ctxP->uszPath, "threads.txt")) {
         nt = Util_VfsLineFixed_Read(
-            (UTIL_VFSLINEFIXED_PFN_CB)MThread_ReadLine_Callback, NULL, MTHREAD_LINELENGTH, MTHREAD_LINEHEADER,
+            H, (UTIL_VFSLINEFIXED_PFN_CB)MThread_ReadLineCB, NULL, MTHREAD_LINELENGTH, MTHREAD_LINEHEADER,
             pObThreadMap->pMap, pObThreadMap->cMap, sizeof(VMM_MAP_THREADENTRY),
             pb, cb, pcbRead, cbOffset
         );
         goto finish;
     }
     // individual thread file
-    uszSubPath = CharUtil_PathSplitFirst(ctx->uszPath, uszThreadName, _countof(uszThreadName));
-    if(uszSubPath && (dwTID = (DWORD)Util_GetNumericA(ctx->uszPath)) && (pe = VmmMap_GetThreadEntry(pObThreadMap, dwTID))) {
+    uszSubPath = CharUtil_PathSplitFirst(ctxP->uszPath, uszThreadName, _countof(uszThreadName));
+    if(uszSubPath && (dwTID = (DWORD)Util_GetNumericA(ctxP->uszPath)) && (pe = VmmMap_GetThreadEntry(H, pObThreadMap, dwTID))) {
         if(!_stricmp(uszSubPath, "info.txt")) {
-            nt = MThread_Read_ThreadInfo(pe, pb, cb, pcbRead, cbOffset);
+            nt = MThread_Read_ThreadInfo(H, pe, pb, cb, pcbRead, cbOffset);
             goto finish;
         }
         // individual thread files backed by user-mode memory below:
         if(!_stricmp(uszSubPath, "teb")) {
-            nt = VmmReadAsFile((PVMM_PROCESS)ctx->pProcess, pe->vaTeb, 0x1000, pb, cb, pcbRead, cbOffset);
+            nt = VmmReadAsFile(H, (PVMM_PROCESS)ctxP->pProcess, pe->vaTeb, 0x1000, pb, cb, pcbRead, cbOffset);
             goto finish;
         }
         if(!_stricmp(uszSubPath, "stack")) {
-            nt = VmmReadAsFile((PVMM_PROCESS)ctx->pProcess, pe->vaStackLimitUser, pe->vaStackBaseUser - pe->vaStackLimitUser, pb, cb, pcbRead, cbOffset);
+            nt = VmmReadAsFile(H, (PVMM_PROCESS)ctxP->pProcess, pe->vaStackLimitUser, pe->vaStackBaseUser - pe->vaStackLimitUser, pb, cb, pcbRead, cbOffset);
             goto finish;
         }
         // individual thread files backed by kernel memory below:
         if(!_stricmp(uszSubPath, "ethread")) {
-            nt = VmmReadAsFile(PVMM_PROCESS_SYSTEM, pe->vaETHREAD, ctxVmm->offset.ETHREAD.oMax, pb, cb, pcbRead, cbOffset);
+            nt = VmmReadAsFile(H, PVMM_PROCESS_SYSTEM, pe->vaETHREAD, H->vmm.offset.ETHREAD.oMax, pb, cb, pcbRead, cbOffset);
             goto finish;
         }
         if(!_stricmp(uszSubPath, "kstack")) {
-            nt = VmmReadAsFile(PVMM_PROCESS_SYSTEM, pe->vaStackLimitKernel, pe->vaStackBaseKernel - pe->vaStackLimitKernel, pb, cb, pcbRead, cbOffset);
+            nt = VmmReadAsFile(H, PVMM_PROCESS_SYSTEM, pe->vaStackLimitKernel, pe->vaStackBaseKernel - pe->vaStackLimitKernel, pb, cb, pcbRead, cbOffset);
             goto finish;
         }
     }
@@ -166,14 +167,15 @@ finish:
 /*
 * Write : function as specified by the module manager. The module manager will
 * call into this callback function whenever a write shall occur from a "file".
-* -- ctx
+* -- H
+* -- ctxP
 * -- pb
 * -- cb
 * -- pcbWrite
 * -- cbOffset
 * -- return
 */
-NTSTATUS MThread_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
+NTSTATUS MThread_Write(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PVMMOB_MAP_THREAD pObThreadMap = NULL;
@@ -181,26 +183,26 @@ NTSTATUS MThread_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBYTE pb,
     LPSTR uszSubPath;
     DWORD dwTID;
     PVMM_MAP_THREADENTRY pe;
-    if(!VmmMap_GetThread(ctx->pProcess, &pObThreadMap)) { return VMMDLL_STATUS_FILE_INVALID; }
+    if(!VmmMap_GetThread(H, ctxP->pProcess, &pObThreadMap)) { return VMMDLL_STATUS_FILE_INVALID; }
     // individual thread file
-    uszSubPath = CharUtil_PathSplitFirst(ctx->uszPath, uszThreadName, sizeof(uszThreadName));
-    if(uszSubPath && (dwTID = (DWORD)Util_GetNumericA(ctx->uszPath)) && (pe = VmmMap_GetThreadEntry(pObThreadMap, dwTID))) {
+    uszSubPath = CharUtil_PathSplitFirst(ctxP->uszPath, uszThreadName, sizeof(uszThreadName));
+    if(uszSubPath && (dwTID = (DWORD)Util_GetNumericA(ctxP->uszPath)) && (pe = VmmMap_GetThreadEntry(H, pObThreadMap, dwTID))) {
         // individual thread files backed by user-mode memory below:
         if(!_stricmp(uszSubPath, "teb")) {
-            nt = VmmWriteAsFile((PVMM_PROCESS)ctx->pProcess, pe->vaTeb, 0x1000, pb, cb, pcbWrite, cbOffset);
+            nt = VmmWriteAsFile(H, (PVMM_PROCESS)ctxP->pProcess, pe->vaTeb, 0x1000, pb, cb, pcbWrite, cbOffset);
             goto finish;
         }
         if(!_stricmp(uszSubPath, "stack")) {
-            nt = VmmWriteAsFile((PVMM_PROCESS)ctx->pProcess, pe->vaStackLimitUser, pe->vaStackBaseUser - pe->vaStackLimitUser, pb, cb, pcbWrite, cbOffset);
+            nt = VmmWriteAsFile(H, (PVMM_PROCESS)ctxP->pProcess, pe->vaStackLimitUser, pe->vaStackBaseUser - pe->vaStackLimitUser, pb, cb, pcbWrite, cbOffset);
             goto finish;
         }
         // individual thread files backed by kernel memory below:
         if(!_stricmp(uszSubPath, "ethread")) {
-            nt = VmmWriteAsFile(PVMM_PROCESS_SYSTEM, pe->vaETHREAD, ctxVmm->offset.ETHREAD.oMax, pb, cb, pcbWrite, cbOffset);
+            nt = VmmWriteAsFile(H, PVMM_PROCESS_SYSTEM, pe->vaETHREAD, H->vmm.offset.ETHREAD.oMax, pb, cb, pcbWrite, cbOffset);
             goto finish;
         }
         if(!_stricmp(uszSubPath, "kstack")) {
-            nt = VmmWriteAsFile(PVMM_PROCESS_SYSTEM, pe->vaStackLimitKernel, pe->vaStackBaseKernel - pe->vaStackLimitKernel, pb, cb, pcbWrite, cbOffset);
+            nt = VmmWriteAsFile(H, PVMM_PROCESS_SYSTEM, pe->vaStackLimitKernel, pe->vaStackBaseKernel - pe->vaStackLimitKernel, pb, cb, pcbWrite, cbOffset);
             goto finish;
         }
     }
@@ -228,36 +230,37 @@ VOID MThread_List_TimeStampFile(_In_ PVMM_MAP_THREADENTRY pThreadEntry, _Out_ PV
 * List : function as specified by the module manager. The module manager will
 * call into this callback function whenever a list directory shall occur from
 * the given module.
-* -- ctx
+* -- H
+* -- ctxP
 * -- pFileList
 * -- return
 */
-BOOL MThread_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
+BOOL MThread_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList)
 {
     DWORD i, dwTID, cbStack;
     CHAR uszBuffer[32] = { 0 };
     PVMMOB_MAP_THREAD pObThreadMap = NULL;
     PVMM_MAP_THREADENTRY pe;
     VMMDLL_VFS_FILELIST_EXINFO ExInfo = { 0 };
-    if(!VmmMap_GetThread(ctx->pProcess, &pObThreadMap)) { goto fail; }
+    if(!VmmMap_GetThread(H, ctxP->pProcess, &pObThreadMap)) { goto fail; }
     // module root - list thread map
-    if(!ctx->uszPath[0]) {
+    if(!ctxP->uszPath[0]) {
         for(i = 0; i < pObThreadMap->cMap; i++) {
             pe = pObThreadMap->pMap + i;
             MThread_List_TimeStampFile(pe, &ExInfo);
             _snprintf_s(uszBuffer, _countof(uszBuffer), 32, "%i", pe->dwTID);
             VMMDLL_VfsList_AddDirectory(pFileList, uszBuffer, &ExInfo);
         }
-        VMMDLL_VfsList_AddFile(pFileList, "threads.txt", UTIL_VFSLINEFIXED_LINECOUNT(pObThreadMap->cMap) * MTHREAD_LINELENGTH, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "threads.txt", UTIL_VFSLINEFIXED_LINECOUNT(H, pObThreadMap->cMap) * MTHREAD_LINELENGTH, NULL);
         Ob_DECREF_NULL(&pObThreadMap);
         return TRUE;
     }
     // specific thread
-    if(!(dwTID = (DWORD)Util_GetNumericA(ctx->uszPath))) { goto fail; }
-    if(!(pe = VmmMap_GetThreadEntry(pObThreadMap, dwTID))) { goto fail; }
+    if(!(dwTID = (DWORD)Util_GetNumericA(ctxP->uszPath))) { goto fail; }
+    if(!(pe = VmmMap_GetThreadEntry(H, pObThreadMap, dwTID))) { goto fail; }
     MThread_List_TimeStampFile(pe, &ExInfo);
     VMMDLL_VfsList_AddFile(pFileList, "info.txt", MTHREAD_INFOFILE_LENGTH, &ExInfo);
-    VMMDLL_VfsList_AddFile(pFileList, "ethread", ctxVmm->offset.ETHREAD.oMax, &ExInfo);
+    VMMDLL_VfsList_AddFile(pFileList, "ethread", H->vmm.offset.ETHREAD.oMax, &ExInfo);
     if(pe->vaTeb) {
         VMMDLL_VfsList_AddFile(pFileList, "teb", 0x1000, &ExInfo);
     }
@@ -280,9 +283,10 @@ fail:
 * shall call the supplied pfnPluginManager_Register function.
 * NB! the module does not have to register itself - for example if the target
 * operating system or architecture is unsupported.
-* -- pPluginRegInfo
+* -- H
+* -- pRI
 */
-VOID M_ProcThread_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
+VOID M_ProcThread_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if(!((pRI->tpSystem == VMM_SYSTEM_WINDOWS_X64) || (pRI->tpSystem == VMM_SYSTEM_WINDOWS_X86))) { return; }
@@ -292,5 +296,5 @@ VOID M_ProcThread_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     pRI->reg_fn.pfnList = MThread_List;                                 // List function supported
     pRI->reg_fn.pfnRead = MThread_Read;                                 // Read function supported
     pRI->reg_fn.pfnWrite = MThread_Write;                               // Write function supported
-    pRI->pfnPluginManager_Register(pRI);
+    pRI->pfnPluginManager_Register(H, pRI);
 }

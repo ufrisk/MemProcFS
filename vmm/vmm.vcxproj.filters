@@ -138,6 +138,9 @@
     <ClInclude Include="vmmheap.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="vmmwork.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="vmmdll.c">
@@ -373,6 +376,24 @@
     </ClCompile>
     <ClCompile Include="vmmheap.c">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmdll_core.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmwork.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="m_fc_csv.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="m_fc_handle.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="m_fc_sys.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="m_sys_user.c">
+      <Filter>Source Files\modules</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

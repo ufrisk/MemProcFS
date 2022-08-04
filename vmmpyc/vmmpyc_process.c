@@ -15,7 +15,7 @@ VmmPycProcess_cmdline(PyObj_Process *self, PyObject *args)
     LPSTR sz;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Process.cmdline(): Not initialized."); }
     Py_BEGIN_ALLOW_THREADS;
-    sz = VMMDLL_ProcessGetInformationString(self->dwPID, VMMDLL_PROCESS_INFORMATION_OPT_STRING_CMDLINE);
+    sz = VMMDLL_ProcessGetInformationString(self->pyVMM->hVMM, self->dwPID, VMMDLL_PROCESS_INFORMATION_OPT_STRING_CMDLINE);
     Py_END_ALLOW_THREADS;
     if(!sz) { return PyErr_Format(PyExc_RuntimeError, "Process.cmdline(): Failed."); }
     pyUnicode = PyUnicode_DecodeUTF8(sz, strlen(sz), NULL);
@@ -31,7 +31,7 @@ VmmPycProcess_pathuser(PyObj_Process *self, PyObject *args)
     LPSTR sz;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Process.pathuser(): Not initialized."); }
     Py_BEGIN_ALLOW_THREADS;
-    sz = VMMDLL_ProcessGetInformationString(self->dwPID, VMMDLL_PROCESS_INFORMATION_OPT_STRING_PATH_USER_IMAGE);
+    sz = VMMDLL_ProcessGetInformationString(self->pyVMM->hVMM, self->dwPID, VMMDLL_PROCESS_INFORMATION_OPT_STRING_PATH_USER_IMAGE);
     Py_END_ALLOW_THREADS;
     if(!sz) { return PyErr_Format(PyExc_RuntimeError, "Process.pathuser(): Failed."); }
     pyUnicode = PyUnicode_DecodeUTF8(sz, strlen(sz), NULL);
@@ -47,7 +47,7 @@ VmmPycProcess_pathkernel(PyObj_Process *self, PyObject *args)
     LPSTR sz;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Process.pathkernel(): Not initialized."); }
     Py_BEGIN_ALLOW_THREADS;
-    sz = VMMDLL_ProcessGetInformationString(self->dwPID, VMMDLL_PROCESS_INFORMATION_OPT_STRING_PATH_KERNEL);
+    sz = VMMDLL_ProcessGetInformationString(self->pyVMM->hVMM, self->dwPID, VMMDLL_PROCESS_INFORMATION_OPT_STRING_PATH_KERNEL);
     Py_END_ALLOW_THREADS;
     if(!sz) { return PyErr_Format(PyExc_RuntimeError, "Process.pathkernel(): Failed."); }
     pyUnicode = PyUnicode_DecodeUTF8(sz, strlen(sz), NULL);
@@ -61,29 +61,24 @@ VmmPycProcess_module_list(PyObj_Process *self, PyObject *args)
 {
     PyObject *pyList, *pyObjModule;
     BOOL result;
-    DWORD cbModuleMap = 0;
     ULONG64 i;
     PVMMDLL_MAP_MODULE pModuleMap = NULL;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Process.module_list(): Not initialized."); }
     if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
     Py_BEGIN_ALLOW_THREADS;
-    result =
-        VMMDLL_Map_GetModuleU(self->dwPID, NULL, &cbModuleMap) &&
-        cbModuleMap &&
-        (pModuleMap = LocalAlloc(0, cbModuleMap)) &&
-        VMMDLL_Map_GetModuleU(self->dwPID, pModuleMap, &cbModuleMap);
+    result = VMMDLL_Map_GetModuleU(self->pyVMM->hVMM, self->dwPID, &pModuleMap);
     Py_END_ALLOW_THREADS;
     if(!result || (pModuleMap->dwVersion != VMMDLL_MAP_MODULE_VERSION)) {
         Py_DECREF(pyList);
-        LocalFree(pModuleMap);
+        VMMDLL_MemFree(pModuleMap);
         return PyErr_Format(PyExc_RuntimeError, "Process.module_list(): Failed.");
     }
     for(i = 0; i < pModuleMap->cMap; i++) {
-        if((pyObjModule = (PyObject*)VmmPycModule_InitializeInternal(self->dwPID, pModuleMap->pMap + i))) {
+        if((pyObjModule = (PyObject*)VmmPycModule_InitializeInternal(self->pyVMM, self->dwPID, pModuleMap->pMap + i))) {
             PyList_Append_DECREF(pyList, pyObjModule);
         }
     }
-    LocalFree(pModuleMap);
+    VMMDLL_MemFree(pModuleMap);
     return pyList;
 }
 
@@ -93,7 +88,6 @@ VmmPycProcess_module(PyObj_Process *self, PyObject *args)
 {
     PyObject *pyObjModule;
     BOOL result;
-    DWORD cbModule = 0;
     LPSTR uszModuleName = NULL;
     PVMMDLL_MAP_MODULEENTRY pe = NULL;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Process.module(): Not initialized."); }
@@ -101,18 +95,14 @@ VmmPycProcess_module(PyObj_Process *self, PyObject *args)
         return PyErr_Format(PyExc_RuntimeError, "Process.module(): Illegal argument.");
     }
     Py_BEGIN_ALLOW_THREADS;
-    result =
-        VMMDLL_Map_GetModuleFromNameU(self->dwPID, uszModuleName, NULL, &cbModule) &&
-        cbModule &&
-        (pe = LocalAlloc(0, cbModule)) &&
-        VMMDLL_Map_GetModuleFromNameU(self->dwPID, uszModuleName, pe, &cbModule);
+    result = VMMDLL_Map_GetModuleFromNameU(self->pyVMM->hVMM, self->dwPID, uszModuleName, &pe);
     Py_END_ALLOW_THREADS;
     if(!result) {
-        LocalFree(pe);
+        VMMDLL_MemFree(pe);
         return PyErr_Format(PyExc_RuntimeError, "Process.module(): Failed.");
     }
-    pyObjModule = (PyObject*)VmmPycModule_InitializeInternal(self->dwPID, pe);
-    LocalFree(pe);
+    pyObjModule = (PyObject*)VmmPycModule_InitializeInternal(self->pyVMM, self->dwPID, pe);
+    VMMDLL_MemFree(pe);
     return pyObjModule ? pyObjModule : PyErr_Format(PyExc_RuntimeError, "Process.module(): Failed.");
 }
 
@@ -121,7 +111,7 @@ static PyObject*
 VmmPycProcess_memory(PyObj_Process *self, void *closure)
 {
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Process.memory: Not initialized."); }
-    return (PyObject*)VmmPycVirtualMemory_InitializeInternal(self->dwPID);
+    return (PyObject*)VmmPycVirtualMemory_InitializeInternal(self->pyVMM, self->dwPID);
 }
 
 // -> *PyObj_ProcessMaps
@@ -129,7 +119,7 @@ static PyObject*
 VmmPycProcess_maps(PyObj_Process *self, void *closure)
 {
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Process.maps: Not initialized."); }
-    return (PyObject *)VmmPycProcessMaps_InitializeInternal(self->dwPID);
+    return (PyObject *)VmmPycProcessMaps_InitializeInternal(self->pyVMM, self->dwPID);
 }
 
 //-----------------------------------------------------------------------------
@@ -148,7 +138,7 @@ VmmPycProcess_EnsureInfo(_Inout_ PyObj_Process *self, _In_ LPSTR szFN)
     ZeroMemory(&self->Info, sizeof(VMMDLL_PROCESS_INFORMATION));
     self->Info.magic = VMMDLL_PROCESS_INFORMATION_MAGIC;
     self->Info.wVersion = VMMDLL_PROCESS_INFORMATION_VERSION;
-    result = VMMDLL_ProcessGetInformation(self->dwPID, &self->Info, &cbInfo);
+    result = VMMDLL_ProcessGetInformation(self->pyVMM->hVMM, self->dwPID, &self->Info, &cbInfo);
     Py_END_ALLOW_THREADS;
     if(!result) {
         return PyErr_Format(PyExc_RuntimeError, "Process.%s: Failed.", szFN);
@@ -315,22 +305,24 @@ VmmPycProcess_integrity(PyObj_Process *self, void *closure)
 //-----------------------------------------------------------------------------
 
 PyObj_Process*
-VmmPycProcess_InitializeInternal(_In_ DWORD dwPID, _In_ BOOL fVerify)
+VmmPycProcess_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_ DWORD dwPID, _In_ BOOL fVerify)
 {
-    PyObj_Process *pyObjProc;
-    DWORD cbModuleMap = 0;
+    PyObj_Process *pyObj;
+    PVMMDLL_MAP_MODULE pModuleMap = NULL;
     BOOL fResult;
     if(fVerify) {
         Py_BEGIN_ALLOW_THREADS;
-        fResult = VMMDLL_Map_GetModuleU(dwPID, NULL, &cbModuleMap);
+        fResult = VMMDLL_Map_GetModuleU(pyVMM->hVMM, dwPID, &pModuleMap);
         Py_END_ALLOW_THREADS;
         if(!fResult) { return NULL; }
+        VMMDLL_MemFree(pModuleMap);
     }
-    if(!(pyObjProc = PyObject_New(PyObj_Process, (PyTypeObject*)g_pPyType_Process))) { return NULL; }
-    pyObjProc->fValid = TRUE;
-    pyObjProc->dwPID = dwPID;
-    pyObjProc->fValidInfo = FALSE;
-    return pyObjProc;
+    if(!(pyObj = PyObject_New(PyObj_Process, (PyTypeObject*)g_pPyType_Process))) { return NULL; }
+    Py_INCREF(pyVMM); pyObj->pyVMM = pyVMM;
+    pyObj->fValid = TRUE;
+    pyObj->dwPID = dwPID;
+    pyObj->fValidInfo = FALSE;
+    return pyObj;
 }
 
 static PyObject*
@@ -352,6 +344,7 @@ static void
 VmmPycProcess_dealloc(PyObj_Process *self)
 {
     self->fValid = FALSE;
+    Py_XDECREF(self->pyVMM); self->pyVMM = NULL;
 }
 
 _Success_(return)

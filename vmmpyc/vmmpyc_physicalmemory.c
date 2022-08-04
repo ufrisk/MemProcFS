@@ -12,7 +12,7 @@ static PyObject*
 VmmPycPhysicalMemory_read(PyObj_PhysicalMemory *self, PyObject *args)
 {
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "PhysicalMemory.read(): Not initialized."); }
-    return VmmPyc_MemRead((DWORD)-1, "PhysicalMemory.read()", args);
+    return VmmPyc_MemRead(self->pyVMM->hVMM, (DWORD)-1, "PhysicalMemory.read()", args);
 }
 
 // (ULONG64, DWORD, (ULONG64)) -> PBYTE
@@ -20,7 +20,7 @@ static PyObject*
 VmmPycPhysicalMemory_read_scatter(PyObj_PhysicalMemory *self, PyObject *args)
 {
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "PhysicalMemory.read_scatter(): Not initialized."); }
-    return VmmPyc_MemReadScatter((DWORD)-1, "PhysicalMemory.read_scatter()", args);
+    return VmmPyc_MemReadScatter(self->pyVMM->hVMM, (DWORD)-1, "PhysicalMemory.read_scatter()", args);
 }
 
 // (ULONG64, PBYTE) -> None
@@ -28,7 +28,7 @@ static PyObject*
 VmmPycPhysicalMemory_write(PyObj_PhysicalMemory *self, PyObject *args)
 {
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "PhysicalMemory.write(): Not initialized."); }
-    return VmmPyc_MemWrite((DWORD)-1, "PhysicalMemory.write()", args);
+    return VmmPyc_MemWrite(self->pyVMM->hVMM, (DWORD)-1, "PhysicalMemory.write()", args);
 }
 
 // ((DWORD)) -> PyObj_ScatterMemory
@@ -40,7 +40,7 @@ VmmPycPhysicalMemory_scatter_initialize(PyObj_PhysicalMemory *self, PyObject *ar
     if(!PyArg_ParseTuple(args, "|k", &dwReadFlags)) { // borrowed reference
         return PyErr_Format(PyExc_RuntimeError, "PhysicalMemory.scatter_initialize(): Illegal argument.");
     }
-    return (PyObject*)VmmPycScatterMemory_InitializeInternal((DWORD)-1, dwReadFlags);
+    return (PyObject*)VmmPycScatterMemory_InitializeInternal(self->pyVMM, (DWORD)-1, dwReadFlags);
 }
 
 //-----------------------------------------------------------------------------
@@ -48,10 +48,11 @@ VmmPycPhysicalMemory_scatter_initialize(PyObj_PhysicalMemory *self, PyObject *ar
 //-----------------------------------------------------------------------------
 
 PyObj_PhysicalMemory*
-VmmPycPhysicalMemory_InitializeInternal()
+VmmPycPhysicalMemory_InitializeInternal(_In_ PyObj_Vmm *pyVMM)
 {
     PyObj_PhysicalMemory *pyObj;
     if(!(pyObj = PyObject_New(PyObj_PhysicalMemory, (PyTypeObject *)g_pPyType_PhysicalMemory))) { return NULL; }
+    Py_INCREF(pyVMM); pyObj->pyVMM = pyVMM;
     pyObj->fValid = TRUE;
     return pyObj;
 }
@@ -73,6 +74,7 @@ static void
 VmmPycPhysicalMemory_dealloc(PyObj_PhysicalMemory *self)
 {
     self->fValid = FALSE;
+    Py_XDECREF(self->pyVMM); self->pyVMM = NULL;
 }
 
 _Success_(return)

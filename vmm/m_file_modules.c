@@ -28,7 +28,7 @@ typedef struct tdOBFILEMODULES_MODULECACHE {
 * -- pFileList
 * -- return
 */
-POBFILEMODULES_MODULECACHE M_FileModules_GetModuleCache(_In_ PVMMDLL_PLUGIN_CONTEXT ctx)
+POBFILEMODULES_MODULECACHE M_FileModules_GetModuleCache(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctx)
 {
     BOOL result = FALSE;
     DWORD iModule, cVad = 0;
@@ -42,26 +42,26 @@ POBFILEMODULES_MODULECACHE M_FileModules_GetModuleCache(_In_ PVMMDLL_PLUGIN_CONT
     pObCache = ObContainer_GetOb(pProcess->Plugin.pObCPeDumpDirCache);
     // 2: set up cache (if needed)
     if(!pObCache) {
-        if(!VmmMap_GetModule(pProcess, &pObModuleMap)) { goto fail; }
-        pObCache = Ob_Alloc('MPeD', LMEM_ZEROINIT, sizeof(OBFILEMODULES_MODULECACHE) + ((QWORD)pObModuleMap->cMap + cVad) * sizeof(FILEMODULES_FILENTRY), NULL, NULL);
+        if(!VmmMap_GetModule(H, pProcess, &pObModuleMap)) { goto fail; }
+        pObCache = Ob_AllocEx(H, 'MPeD', LMEM_ZEROINIT, sizeof(OBFILEMODULES_MODULECACHE) + ((QWORD)pObModuleMap->cMap + cVad) * sizeof(FILEMODULES_FILENTRY), NULL, NULL);
         if(!pObCache) { goto fail; }
         // Load module bases (PE header) memory into cache with one single call.
-        if(!(pObSet_ModuleBaseAddresses = ObSet_New())) { goto fail; }
+        if(!(pObSet_ModuleBaseAddresses = ObSet_New(H))) { goto fail; }
         for(iModule = 0; iModule < pObModuleMap->cMap; iModule++) {
             ObSet_Push(pObSet_ModuleBaseAddresses, pObModuleMap->pMap[iModule].vaBase);
         }
-        VmmCachePrefetchPages(pProcess, pObSet_ModuleBaseAddresses, 0);
+        VmmCachePrefetchPages(H, pProcess, pObSet_ModuleBaseAddresses, 0);
         // Build file listing information cache (only from in-cache items).
         ZeroMemory(pbPage, 0x1000);
         for(iModule = 0; iModule < pObModuleMap->cMap; iModule++) {
-            VmmReadEx(pProcess, pObModuleMap->pMap[iModule].vaBase, pbPage, 0x1000, &cbPageRead, VMM_FLAG_FORCECACHE_READ);
+            VmmReadEx(H, pProcess, pObModuleMap->pMap[iModule].vaBase, pbPage, 0x1000, &cbPageRead, VMM_FLAG_FORCECACHE_READ);
             if(cbPageRead != 0x1000) {
-                VmmLog(ctx->MID, LOGLEVEL_DEBUG, "Skipping module: '%s' - paged/invalid?", pObModuleMap->pMap[iModule].uszText);
+                VmmLog(H, ctx->MID, LOGLEVEL_DEBUG, "Skipping module: '%s' - paged/invalid?", pObModuleMap->pMap[iModule].uszText);
                 continue;
             }
-            pObCache->File[pObCache->cFiles].cb = PE_FileRaw_Size(pProcess, pObModuleMap->pMap[iModule].vaBase, pbPage);
+            pObCache->File[pObCache->cFiles].cb = PE_FileRaw_Size(H, pProcess, pObModuleMap->pMap[iModule].vaBase, pbPage);
             if(!pObCache->File[pObCache->cFiles].cb) {
-                VmmLog(ctx->MID, LOGLEVEL_DEBUG, "Skipping module: '%s' - paged/invalid?", pObModuleMap->pMap[iModule].uszText);
+                VmmLog(H, ctx->MID, LOGLEVEL_DEBUG, "Skipping module: '%s' - paged/invalid?", pObModuleMap->pMap[iModule].uszText);
                 continue;
             }
             strncpy_s(pObCache->File[pObCache->cFiles].uszName, MAX_PATH, pObModuleMap->pMap[iModule].uszText, _TRUNCATE);
@@ -79,18 +79,19 @@ fail:
 * List : function as specified by the module manager. The module manager will
 * call into this callback function whenever a list directory shall occur from
 * the given module.
-* -- ctx
+* -- H
+* -- ctxP
 * -- pFileList
 * -- return
 */
 _Success_(return)
-BOOL M_FileModules_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
+BOOL M_FileModules_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList)
 {
     BOOL result = FALSE;
     DWORD iModule;
     POBFILEMODULES_MODULECACHE pObCache = NULL;
-    if(ctx->uszPath[0]) { return FALSE; }
-    if(!(pObCache = M_FileModules_GetModuleCache(ctx))) { return FALSE; }
+    if(ctxP->uszPath[0]) { return FALSE; }
+    if(!(pObCache = M_FileModules_GetModuleCache(H, ctxP))) { return FALSE; }
     for(iModule = 0; iModule < pObCache->cFiles; iModule++) {
         VMMDLL_VfsList_AddFile(pFileList, pObCache->File[iModule].uszName, pObCache->File[iModule].cb, NULL);
     }
@@ -101,22 +102,23 @@ BOOL M_FileModules_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileLi
 /*
 * Read : function as specified by the module manager. The module manager will
 * call into this callback function whenever a read shall occur from a "file".
-* -- ctx
+* -- H
+* -- ctxP
 * -- pb
 * -- cb
 * -- pcbRead
 * -- cbOffset
 * -- return
 */
-NTSTATUS M_FileModules_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS M_FileModules_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     BOOL f;
     PVMM_MAP_MODULEENTRY pModule = NULL;
     PVMMOB_MAP_MODULE pObModuleMap = NULL;
     *pcbRead = 0;
     f = (cbOffset <= 0x02000000) &&
-        VmmMap_GetModuleEntryEx((PVMM_PROCESS)ctx->pProcess, 0, ctx->uszPath, &pObModuleMap, &pModule) &&
-        PE_FileRaw_Read(ctx->pProcess, pModule->vaBase, pb, cb, pcbRead, (DWORD)cbOffset);
+        VmmMap_GetModuleEntryEx(H, (PVMM_PROCESS)ctxP->pProcess, 0, ctxP->uszPath, &pObModuleMap, &pModule) &&
+        PE_FileRaw_Read(H, ctxP->pProcess, pModule->vaBase, pb, cb, pcbRead, (DWORD)cbOffset);
     Ob_DECREF_NULL(&pObModuleMap);
     return f ? VMMDLL_STATUS_SUCCESS : VMMDLL_STATUS_FILE_INVALID;
 }
@@ -129,22 +131,23 @@ NTSTATUS M_FileModules_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb,
 * and are shared between all processes. A write in one process is most likely
 * to affect all processes with this specific module loaded!
 * Writing may crash the target system!
-* -- ctx
+* -- H
+* -- ctxP
 * -- pb
 * -- cb
 * -- pcbWrite
 * -- cbOffset
 * -- return
 */
-NTSTATUS M_FileModules_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
+NTSTATUS M_FileModules_Write(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
 {
     BOOL f;
     PVMM_MAP_MODULEENTRY pModule = NULL;
     PVMMOB_MAP_MODULE pObModuleMap = NULL;
     *pcbWrite = 0;
     f = (cbOffset <= 0x02000000) &&
-        VmmMap_GetModuleEntryEx((PVMM_PROCESS)ctx->pProcess, 0, ctx->uszPath, &pObModuleMap, &pModule) &&
-        PE_FileRaw_Write(ctx->pProcess, pModule->vaBase, pb, cb, pcbWrite, (DWORD)cbOffset);
+        VmmMap_GetModuleEntryEx(H, (PVMM_PROCESS)ctxP->pProcess, 0, ctxP->uszPath, &pObModuleMap, &pModule) &&
+        PE_FileRaw_Write(H, ctxP->pProcess, pModule->vaBase, pb, cb, pcbWrite, (DWORD)cbOffset);
     Ob_DECREF_NULL(&pObModuleMap);
     return f ? VMMDLL_STATUS_SUCCESS : VMMDLL_STATUS_FILE_INVALID;
 }
@@ -155,9 +158,10 @@ NTSTATUS M_FileModules_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBY
 * shall call the supplied pfnPluginManager_Register function.
 * NB! the module does not have to register itself - for example if the target
 * operating system or architecture is unsupported.
-* -- pPluginRegInfo
+* -- H
+* -- pRI
 */
-VOID M_FileModules_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
+VOID M_FileModules_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if((pRI->tpSystem != VMM_SYSTEM_WINDOWS_X64) && (pRI->tpSystem != VMM_SYSTEM_WINDOWS_X86)) { return; }
@@ -166,5 +170,5 @@ VOID M_FileModules_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     pRI->reg_fn.pfnList = M_FileModules_List;                           // List function supported
     pRI->reg_fn.pfnRead = M_FileModules_Read;                           // Read function supported
     pRI->reg_fn.pfnWrite = M_FileModules_Write;                         // Write function supported
-    pRI->pfnPluginManager_Register(pRI);
+    pRI->pfnPluginManager_Register(H, pRI);
 }

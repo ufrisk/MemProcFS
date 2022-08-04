@@ -55,20 +55,20 @@ typedef struct tdOB_VMMVFS_DUMP_CONTEXT {
 * -- pSystemProcess
 * -- ctx
 */
-VOID MVfsRoot_EnsureProcessorContext0(_In_ PVMM_PROCESS pSystemProcess, _In_ POB_VMMVFS_DUMP_CONTEXT ctx)
+VOID MVfsRoot_EnsureProcessorContext0(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_ POB_VMMVFS_DUMP_CONTEXT ctx)
 {
     BOOL f;
     QWORD va, vaContextKPRCB;
-    if(ctxVmm->f32) { return; }
+    if(H->vmm.f32) { return; }
     f = (va = *(PQWORD)(ctx->KDBG.pb + KDBG64_KiProcessorBlock)) &&
         VMM_KADDR64_16(va) &&
-        VmmRead(pSystemProcess, va, (PBYTE)&va, sizeof(QWORD)) &&
+        VmmRead(H, pSystemProcess, va, (PBYTE)&va, sizeof(QWORD)) &&
         VMM_KADDR64_16(va) &&
         (va = va + *(PWORD)(ctx->KDBG.pb + KDBG64_ContextKPRCB)) &&
-        VmmRead(pSystemProcess, va, (PBYTE)&vaContextKPRCB, sizeof(QWORD)) &&
+        VmmRead(H, pSystemProcess, va, (PBYTE)&vaContextKPRCB, sizeof(QWORD)) &&
         VMM_KADDR64_16(vaContextKPRCB);
     if(f) {
-        if(VmmVirt2Phys(pSystemProcess, vaContextKPRCB + 0x038, &ctx->KiInitialPCR_Context.pa)) {
+        if(VmmVirt2Phys(H, pSystemProcess, vaContextKPRCB + 0x038, &ctx->KiInitialPCR_Context.pa)) {
             ctx->KiInitialPCR_Context.cb = 0x10;
             *(PWORD)(ctx->KiInitialPCR_Context.pb + 0x00) = 0x10;   // SegCs
             *(PWORD)(ctx->KiInitialPCR_Context.pb + 0x02) = 0x2b;   // SegDs
@@ -84,22 +84,23 @@ VOID MVfsRoot_EnsureProcessorContext0(_In_ PVMM_PROCESS pSystemProcess, _In_ POB
     }
 }
 
-VOID MVfsRoot_KdbgDecryptRun(_Inout_ PQWORD pqw)
+VOID MVfsRoot_KdbgDecryptRun(_In_ VMM_HANDLE H, _Inout_ PQWORD pqw)
 {
-    QWORD v = *pqw ^ ctxVmm->kernel.opt.KDBG.qwKiWaitNever;
-    v = _rotl64(v, (UCHAR)ctxVmm->kernel.opt.KDBG.qwKiWaitNever);
-    v = v ^ ctxVmm->kernel.opt.KDBG.vaKdpDataBlockEncoded;
+    QWORD v = *pqw ^ H->vmm.kernel.opt.KDBG.qwKiWaitNever;
+    v = _rotl64(v, (UCHAR)H->vmm.kernel.opt.KDBG.qwKiWaitNever);
+    v = v ^ H->vmm.kernel.opt.KDBG.vaKdpDataBlockEncoded;
     v = _byteswap_uint64(v);
-    *pqw = v ^ ctxVmm->kernel.opt.KDBG.qwKiWaitAlways;
+    *pqw = v ^ H->vmm.kernel.opt.KDBG.qwKiWaitAlways;
 }
 
 /*
 * Load KDBG (KDebuggerDataBlock) and optionally (if required) decrypt it.
 * Decryption most often needs to be done on x64 Win8+.
+* -- H
 * -- pSystemProcess
 * -- ctx
 */
-VOID MVfsRoot_KdbgLoadAndDecrypt(_In_ PVMM_PROCESS pSystemProcess, _In_ POB_VMMVFS_DUMP_CONTEXT ctx)
+VOID MVfsRoot_KdbgLoadAndDecrypt(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_ POB_VMMVFS_DUMP_CONTEXT ctx)
 {
     DWORD i;
     union {
@@ -109,25 +110,25 @@ VOID MVfsRoot_KdbgLoadAndDecrypt(_In_ PVMM_PROCESS pSystemProcess, _In_ POB_VMMV
             DWORD cb;
         };
     } hdr;
-    if(ctxVmm->f32 || !ctxVmm->kernel.opt.KDBG.va) { return; }
-    if(!VmmVirt2Phys(pSystemProcess, ctxVmm->kernel.opt.KDBG.va, &ctx->KDBG.pa)) { return; }
-    if(!VmmRead(pSystemProcess, ctxVmm->kernel.opt.KDBG.va + 0x10, (PBYTE)&hdr.qw, sizeof(QWORD))) { return; }
+    if(H->vmm.f32 || !H->vmm.kernel.opt.KDBG.va) { return; }
+    if(!VmmVirt2Phys(H, pSystemProcess, H->vmm.kernel.opt.KDBG.va, &ctx->KDBG.pa)) { return; }
+    if(!VmmRead(H, pSystemProcess, H->vmm.kernel.opt.KDBG.va + 0x10, (PBYTE)&hdr.qw, sizeof(QWORD))) { return; }
     if(hdr.magic == 0x4742444b) {
         // load decrypted and return
-        if((hdr.cb > sizeof(ctx->KDBG.pb)) || !VmmRead(pSystemProcess, ctxVmm->kernel.opt.KDBG.va, ctx->KDBG.pb, hdr.cb)) { return; }
-        if(!VmmVirt2Phys(pSystemProcess, ctxVmm->kernel.opt.KDBG.va, &ctx->KDBG.pa)) { return; }
+        if((hdr.cb > sizeof(ctx->KDBG.pb)) || !VmmRead(H, pSystemProcess, H->vmm.kernel.opt.KDBG.va, ctx->KDBG.pb, hdr.cb)) { return; }
+        if(!VmmVirt2Phys(H, pSystemProcess, H->vmm.kernel.opt.KDBG.va, &ctx->KDBG.pa)) { return; }
         ctx->KDBG.cb = hdr.cb;
         ctx->KDBG.fEncrypted = FALSE;
         return;
     }
     // encrypted - try decrypt
-    if(!ctxVmm->kernel.opt.KDBG.vaKdpDataBlockEncoded || !ctxVmm->kernel.opt.KDBG.qwKiWaitAlways || !ctxVmm->kernel.opt.KDBG.qwKiWaitNever) { return; }
-    if(!VmmVirt2Phys(pSystemProcess, ctxVmm->kernel.opt.KDBG.vaKdpDataBlockEncoded, &ctx->KDBG.paKdpDataBlockEncoded)) { return; }
-    MVfsRoot_KdbgDecryptRun(&hdr.qw);
+    if(!H->vmm.kernel.opt.KDBG.vaKdpDataBlockEncoded || !H->vmm.kernel.opt.KDBG.qwKiWaitAlways || !H->vmm.kernel.opt.KDBG.qwKiWaitNever) { return; }
+    if(!VmmVirt2Phys(H, pSystemProcess, H->vmm.kernel.opt.KDBG.vaKdpDataBlockEncoded, &ctx->KDBG.paKdpDataBlockEncoded)) { return; }
+    MVfsRoot_KdbgDecryptRun(H, &hdr.qw);
     if((hdr.magic != 0x4742444b) || (hdr.cb > sizeof(ctx->KDBG.pb)) || (hdr.cb & 0x07)) { return; }
-    if(!VmmRead(pSystemProcess, ctxVmm->kernel.opt.KDBG.va, ctx->KDBG.pb, hdr.cb)) { return; }
+    if(!VmmRead(H, pSystemProcess, H->vmm.kernel.opt.KDBG.va, ctx->KDBG.pb, hdr.cb)) { return; }
     for(i = 0; i < hdr.cb; i += 8) {
-        MVfsRoot_KdbgDecryptRun((PQWORD)(ctx->KDBG.pb + i));
+        MVfsRoot_KdbgDecryptRun(H, (PQWORD)(ctx->KDBG.pb + i));
     }
     ctx->KDBG.cb = hdr.cb;
     // set physical memory overlay struct for decrypted KDBG
@@ -140,48 +141,48 @@ VOID MVfsRoot_KdbgLoadAndDecrypt(_In_ PVMM_PROCESS pSystemProcess, _In_ POB_VMMV
     ctx->KDBG.fEncrypted = TRUE;
 }
 
-VOID MVfsRoot_InitializeDumpContext_SetMemory(_In_ POB_VMMVFS_DUMP_CONTEXT ctx)
+VOID MVfsRoot_InitializeDumpContext_SetMemory(_In_ VMM_HANDLE H, _In_ POB_VMMVFS_DUMP_CONTEXT ctx)
 {
     _PPHYSICAL_MEMORY_DESCRIPTOR32 pMd32 = (_PPHYSICAL_MEMORY_DESCRIPTOR32)(ctx->Hdr.pb + 0x064);
     _PPHYSICAL_MEMORY_DESCRIPTOR64 pMd64 = (_PPHYSICAL_MEMORY_DESCRIPTOR64)(ctx->Hdr.pb + 0x088);
-    if(ctxVmm->f32) {
+    if(H->vmm.f32) {
         pMd32->NumberOfRuns = 1;
-        pMd32->NumberOfPages = (DWORD)(ctxMain->dev.paMax / 0x1000);
+        pMd32->NumberOfPages = (DWORD)(H->dev.paMax / 0x1000);
         pMd32->Run[0].BasePage = 0;
-        pMd32->Run[0].PageCount = (DWORD)(ctxMain->dev.paMax / 0x1000);
+        pMd32->Run[0].PageCount = (DWORD)(H->dev.paMax / 0x1000);
     } else {
         pMd64->Reserved1 = 0;
         pMd64->Reserved2 = 0;
         pMd64->NumberOfRuns = 1;
-        pMd64->NumberOfPages = (DWORD)(ctxMain->dev.paMax / 0x1000);
+        pMd64->NumberOfPages = (DWORD)(H->dev.paMax / 0x1000);
         pMd64->Run[0].BasePage = 0;
-        pMd64->Run[0].PageCount = ctxMain->dev.paMax / 0x1000;
+        pMd64->Run[0].PageCount = H->dev.paMax / 0x1000;
     }
 }
 
-VOID MVfsRoot_InitializeDumpContext64(_In_ PVMM_PROCESS pSystemProcess, _In_ POB_VMMVFS_DUMP_CONTEXT ctx)
+VOID MVfsRoot_InitializeDumpContext64(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_ POB_VMMVFS_DUMP_CONTEXT ctx)
 {
     PBYTE pb = ctx->Hdr.pb;
     QWORD ftMin, ftMax;
-    ftMin = ctxVmm->kernel.opt.ftBootTime;
-    ftMax = SysQuery_TimeCurrent();
+    ftMin = H->vmm.kernel.opt.ftBootTime;
+    ftMax = SysQuery_TimeCurrent(H);
     *(PDWORD)(pb + 0x000) = 0x45474150;                         // Signature #1
     *(PDWORD)(pb + 0x004) = 0x34365544;                         // Signature #2
     *(PDWORD)(pb + 0x008) = 0x0000000F;                         // DumpVersion
-    *(PDWORD)(pb + 0x00c) = ctxVmm->kernel.dwVersionBuild;      // BuildNo
-    *(PQWORD)(pb + 0x010) = ctxVmm->kernel.paDTB;
-    *(PQWORD)(pb + 0x018) = ctxVmm->kernel.opt.vaPfnDatabase;
-    *(PQWORD)(pb + 0x020) = ctxVmm->kernel.opt.vaPsLoadedModuleListExp;
+    *(PDWORD)(pb + 0x00c) = H->vmm.kernel.dwVersionBuild;      // BuildNo
+    *(PQWORD)(pb + 0x010) = H->vmm.kernel.paDTB;
+    *(PQWORD)(pb + 0x018) = H->vmm.kernel.opt.vaPfnDatabase;
+    *(PQWORD)(pb + 0x020) = H->vmm.kernel.opt.vaPsLoadedModuleListExp;
     *(PQWORD)(pb + 0x028) = pSystemProcess->win.EPROCESS.va;
     *(PDWORD)(pb + 0x030) = 0x8664;                             // MachineImageType = AMD64
-    *(PDWORD)(pb + 0x034) = max(1, ctxVmm->kernel.opt.cCPUs);
+    *(PDWORD)(pb + 0x034) = max(1, H->vmm.kernel.opt.cCPUs);
     *(PDWORD)(pb + 0x038) = 0xDEADDEAD;                         // BugCheckCode
     *(PQWORD)(pb + 0x040) = 1;                                  // BugCheck1
     *(PQWORD)(pb + 0x048) = 2;                                  // BugCheck2
     *(PQWORD)(pb + 0x050) = 3;                                  // BugCheck3
     *(PQWORD)(pb + 0x058) = 4;                                  // BugCheck4
-    *(PQWORD)(pb + 0x080) = ctxVmm->kernel.opt.KDBG.va;         // KDBG
-    MVfsRoot_InitializeDumpContext_SetMemory(ctx);
+    *(PQWORD)(pb + 0x080) = H->vmm.kernel.opt.KDBG.va;         // KDBG
+    MVfsRoot_InitializeDumpContext_SetMemory(H, ctx);
     ZeroMemory(pb + 0x348, 3000);                               // ContextRecord
     *(PWORD)(pb + 0x348 + 0x038) = 0x10;                        // SegCs
     *(PWORD)(pb + 0x348 + 0x03a) = 0x2b;                        // SegDs
@@ -189,7 +190,7 @@ VOID MVfsRoot_InitializeDumpContext64(_In_ PVMM_PROCESS pSystemProcess, _In_ POB
     *(PWORD)(pb + 0x348 + 0x03e) = 0x53;                        // SegFs
     *(PWORD)(pb + 0x348 + 0x040) = 0x2b;                        // SegGs
     *(PWORD)(pb + 0x348 + 0x042) = 0x00;                        // SegSs
-    *(PQWORD)(pb + 0x348 + 0x098) = ctxVmm->kernel.vaBase;      // Rsp
+    *(PQWORD)(pb + 0x348 + 0x098) = H->vmm.kernel.vaBase;      // Rsp
     ZeroMemory(pb + 0xf00, 152);                                // ExceptionRecord
     ZeroMemory(pb + 0xfb0, 128);                                // Comment
     snprintf(
@@ -201,7 +202,7 @@ VOID MVfsRoot_InitializeDumpContext64(_In_ PVMM_PROCESS pSystemProcess, _In_ POB
         VERSION_REVISION,
         VERSION_BUILD);
     *(PDWORD)(pb + 0xf98) = 1;
-    *(PQWORD)(pb + 0xfa0) = 0x2000 + ctxMain->dev.paMax;
+    *(PQWORD)(pb + 0xfa0) = 0x2000 + H->dev.paMax;
     *(PQWORD)(pb + 0xfa8) = ftMax;
     *(PQWORD)(pb + 0x1030) = ftMax - ftMin;
     *(PDWORD)(pb + 0x1038) = 0;
@@ -211,31 +212,31 @@ VOID MVfsRoot_InitializeDumpContext64(_In_ PVMM_PROCESS pSystemProcess, _In_ POB
     ctx->fInitialized = TRUE;
 }
 
-VOID MVfsRoot_InitializeDumpContext32(PVMM_PROCESS pSystemProcess, POB_VMMVFS_DUMP_CONTEXT ctx)
+VOID MVfsRoot_InitializeDumpContext32(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, POB_VMMVFS_DUMP_CONTEXT ctx)
 {
     PBYTE pb = ctx->Hdr.pb;
     //PDUMP_HEADER32 pd = &ctx->Hdr._32;
     QWORD ftMin, ftMax;
-    ftMin = ctxVmm->kernel.opt.ftBootTime;
-    ftMax = SysQuery_TimeCurrent();
+    ftMin = H->vmm.kernel.opt.ftBootTime;
+    ftMax = SysQuery_TimeCurrent(H);
     *(PDWORD)(pb + 0x000) = 0x45474150;                         // Signature #1
     *(PDWORD)(pb + 0x004) = 0x504d5544;                         // Signature #2
     *(PDWORD)(pb + 0x008) = 0x0000000F;                         // DumpVersion
-    *(PDWORD)(pb + 0x00c) = ctxVmm->kernel.dwVersionBuild;      // BuildNo
-    *(PDWORD)(pb + 0x010) = (DWORD)ctxVmm->kernel.paDTB;
-    *(PDWORD)(pb + 0x014) = (DWORD)ctxVmm->kernel.opt.vaPfnDatabase;
-    *(PDWORD)(pb + 0x018) = (DWORD)ctxVmm->kernel.opt.vaPsLoadedModuleListExp;
+    *(PDWORD)(pb + 0x00c) = H->vmm.kernel.dwVersionBuild;      // BuildNo
+    *(PDWORD)(pb + 0x010) = (DWORD)H->vmm.kernel.paDTB;
+    *(PDWORD)(pb + 0x014) = (DWORD)H->vmm.kernel.opt.vaPfnDatabase;
+    *(PDWORD)(pb + 0x018) = (DWORD)H->vmm.kernel.opt.vaPsLoadedModuleListExp;
     *(PDWORD)(pb + 0x01c) = (DWORD)pSystemProcess->win.EPROCESS.va;
     *(PDWORD)(pb + 0x020) = 0x014c;                             // MachineImageType = I386
-    *(PDWORD)(pb + 0x024) = max(1, ctxVmm->kernel.opt.cCPUs);
+    *(PDWORD)(pb + 0x024) = max(1, H->vmm.kernel.opt.cCPUs);
     *(PDWORD)(pb + 0x028) = 0xDEADDEAD;                         // BugCheckCode
     *(PDWORD)(pb + 0x02c) = 1;                                  // BugCheck1
     *(PDWORD)(pb + 0x030) = 2;                                  // BugCheck2
     *(PDWORD)(pb + 0x034) = 3;                                  // BugCheck3
     *(PDWORD)(pb + 0x038) = 4;                                  // BugCheck4
-    *(PBYTE)(pb + 0x05c) = (ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_X86PAE) ? 1 : 0;   // PAE or NOT.
-    *(PDWORD)(pb + 0x060) = (DWORD)ctxVmm->kernel.opt.KDBG.va;  // KDBG
-    MVfsRoot_InitializeDumpContext_SetMemory(ctx);
+    *(PBYTE)(pb + 0x05c) = (H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X86PAE) ? 1 : 0;   // PAE or NOT.
+    *(PDWORD)(pb + 0x060) = (DWORD)H->vmm.kernel.opt.KDBG.va;  // KDBG
+    MVfsRoot_InitializeDumpContext_SetMemory(H, ctx);
     ZeroMemory(pb + 0x320, 1200);                               // ContextRecord
     ZeroMemory(pb + 0x7d0, 80);                                 // ExceptionRecord
     ZeroMemory(pb + 0x820, 128);                                // Comment
@@ -248,7 +249,7 @@ VOID MVfsRoot_InitializeDumpContext32(PVMM_PROCESS pSystemProcess, POB_VMMVFS_DU
         VERSION_REVISION,
         VERSION_BUILD);
     *(PDWORD)(pb + 0xf88) = 1;
-    *(PQWORD)(pb + 0xfa0) = 0x2000 + ctxMain->dev.paMax;
+    *(PQWORD)(pb + 0xfa0) = 0x2000 + H->dev.paMax;
     *(PQWORD)(pb + 0xfc0) = ftMax;
     *(PQWORD)(pb + 0xfb8) = ftMax - ftMin;
     *(PDWORD)(pb + 0xf8c) = 0;
@@ -258,7 +259,7 @@ VOID MVfsRoot_InitializeDumpContext32(PVMM_PROCESS pSystemProcess, POB_VMMVFS_DU
     ctx->fInitialized = TRUE;
 }
 
-VOID MVfsRoot_InitializeDumpContext(POB_VMMVFS_DUMP_CONTEXT ctx)
+VOID MVfsRoot_InitializeDumpContext(_In_ VMM_HANDLE H, POB_VMMVFS_DUMP_CONTEXT ctx)
 {
     PVMM_PROCESS pObSystemProcess = NULL;
     DWORD cbDumpHeader;
@@ -267,12 +268,12 @@ VOID MVfsRoot_InitializeDumpContext(POB_VMMVFS_DUMP_CONTEXT ctx)
     //    The crash dump header is simply copied verbatim - except mem regions.
     //    Crash dump headers are always assumed to be correct and the dump files
     //    are assumed to have a decrypted KDBG block.
-    ctx->cbHdr = ctxVmm->f32 ? 0x1000 : 0x2000;
-    if(LcCommand(ctxMain->hLC, LC_CMD_FILE_DUMPHEADER_GET, 0, NULL, &pbDumpHeader, &cbDumpHeader)) {
+    ctx->cbHdr = H->vmm.f32 ? 0x1000 : 0x2000;
+    if(LcCommand(H->hLC, LC_CMD_FILE_DUMPHEADER_GET, 0, NULL, &pbDumpHeader, &cbDumpHeader)) {
         if(cbDumpHeader == ctx->cbHdr) {
             memcpy(ctx->Hdr.pb, pbDumpHeader, ctx->cbHdr);
             LocalFree(pbDumpHeader);
-            MVfsRoot_InitializeDumpContext_SetMemory(ctx);
+            MVfsRoot_InitializeDumpContext_SetMemory(H, ctx);
             ctx->fInitialized = TRUE;
             return;
         }
@@ -280,16 +281,16 @@ VOID MVfsRoot_InitializeDumpContext(POB_VMMVFS_DUMP_CONTEXT ctx)
     }
     // 2: Load optional required values in a best-effort way and decrypt KDBG
     //    if necessary and possible.
-    if(!(pObSystemProcess = VmmProcessGet(4))) { return; }
-    VmmWinInit_TryInitializeKernelOptionalValues();
-    MVfsRoot_KdbgLoadAndDecrypt(pObSystemProcess, ctx);
-    MVfsRoot_EnsureProcessorContext0(pObSystemProcess, ctx);
+    if(!(pObSystemProcess = VmmProcessGet(H, 4))) { return; }
+    VmmWinInit_TryInitializeKernelOptionalValues(H);
+    MVfsRoot_KdbgLoadAndDecrypt(H, pObSystemProcess, ctx);
+    MVfsRoot_EnsureProcessorContext0(H, pObSystemProcess, ctx);
     // 3: Initialize dump headers
     memset(ctx->Hdr.pb, 'X', ctx->cbHdr);
-    if(ctxVmm->f32) {
-        MVfsRoot_InitializeDumpContext32(pObSystemProcess, ctx);
+    if(H->vmm.f32) {
+        MVfsRoot_InitializeDumpContext32(H, pObSystemProcess, ctx);
     } else {
-        MVfsRoot_InitializeDumpContext64(pObSystemProcess, ctx);
+        MVfsRoot_InitializeDumpContext64(H, pObSystemProcess, ctx);
     }
     Ob_DECREF(pObSystemProcess);
 }
@@ -302,28 +303,29 @@ VOID MVfsRoot_CallbackCleanup_ObVmmVfsDumpContext(POB_VMMVFS_DUMP_CONTEXT pOb)
 /*
 * Retrieve the module context object.
 * CALLER DECREF: return
+* -- H
 * -- return
 */
-POB_VMMVFS_DUMP_CONTEXT MVfsRoot_GetDumpContext()
+POB_VMMVFS_DUMP_CONTEXT MVfsRoot_GetDumpContext(_In_ VMM_HANDLE H)
 {
     POB_VMMVFS_DUMP_CONTEXT ctx;
     // 1: fetch context or create initial context if required
-    if(!(ctx = (POB_VMMVFS_DUMP_CONTEXT)Ob_INCREF(ctxVmm->pObVfsDumpContext))) {
-        EnterCriticalSection(&ctxVmm->LockMaster);
-        if(!(ctx = (POB_VMMVFS_DUMP_CONTEXT)Ob_INCREF(ctxVmm->pObVfsDumpContext))) {
-            ctx = (POB_VMMVFS_DUMP_CONTEXT)Ob_Alloc(OB_TAG_VMMVFS_DUMPCONTEXT, LMEM_ZEROINIT, sizeof(OB_VMMVFS_DUMP_CONTEXT), NULL, NULL);
+    if(!(ctx = (POB_VMMVFS_DUMP_CONTEXT)Ob_INCREF(H->vmm.pObVfsDumpContext))) {
+        EnterCriticalSection(&H->vmm.LockMaster);
+        if(!(ctx = (POB_VMMVFS_DUMP_CONTEXT)Ob_INCREF(H->vmm.pObVfsDumpContext))) {
+            ctx = (POB_VMMVFS_DUMP_CONTEXT)Ob_AllocEx(H, OB_TAG_VMMVFS_DUMPCONTEXT, LMEM_ZEROINIT, sizeof(OB_VMMVFS_DUMP_CONTEXT), NULL, NULL);
             if(ctx) {
                 InitializeCriticalSection(&ctx->Lock);
-                ctxVmm->pObVfsDumpContext = Ob_INCREF(ctx);
+                H->vmm.pObVfsDumpContext = Ob_INCREF(ctx);
             }
         }
-        LeaveCriticalSection(&ctxVmm->LockMaster);
+        LeaveCriticalSection(&H->vmm.LockMaster);
     }
     // 2: initialize context (if required)
     if(ctx && !ctx->fInitialized) {
         EnterCriticalSection(&ctx->Lock);
         if(!ctx->fInitialized) {
-            MVfsRoot_InitializeDumpContext(ctx);
+            MVfsRoot_InitializeDumpContext(H, ctx);
         }
         LeaveCriticalSection(&ctx->Lock);
     }
@@ -332,14 +334,15 @@ POB_VMMVFS_DUMP_CONTEXT MVfsRoot_GetDumpContext()
 
 /*
 * Read from memory dump files in the virtual file system root.
-* -- ctx
+* -- H
+* -- ctxP
 * -- pb
 * -- cb
 * -- pcbRead
 * -- cbOffset
 * -- return
 */
-NTSTATUS MVfsRoot_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MVfsRoot_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMM_STATUS_FILE_INVALID;
     POB_VMMVFS_DUMP_CONTEXT pObDumpCtx = NULL;
@@ -347,12 +350,12 @@ NTSTATUS MVfsRoot_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcb
     DWORD io, cbHead = 0, cbReadMem = 0;
     DWORD cbOverlayOffset, cbOverlay;
     QWORD cbOverlayAdjust;
-    if(!_stricmp(ctx->uszPath, "memory.pmem")) {
-        VmmReadEx(NULL, cbOffset, pb, cb, pcbRead, VMM_FLAG_ZEROPAD_ON_FAIL);
+    if(!_stricmp(ctxP->uszPath, "memory.pmem")) {
+        VmmReadEx(H, NULL, cbOffset, pb, cb, pcbRead, VMM_FLAG_ZEROPAD_ON_FAIL);
         return VMM_STATUS_SUCCESS;
     }
-    if(!_stricmp(ctx->uszPath, "memory.dmp")) {
-        if(!(pObDumpCtx = MVfsRoot_GetDumpContext())) { goto finish; }
+    if(!_stricmp(ctxP->uszPath, "memory.dmp")) {
+        if(!(pObDumpCtx = MVfsRoot_GetDumpContext(H))) { goto finish; }
         // read dump header
         if(cbOffset < pObDumpCtx->cbHdr) {
             cbHead = min(cb, pObDumpCtx->cbHdr - (DWORD)cbOffset);
@@ -368,7 +371,7 @@ NTSTATUS MVfsRoot_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcb
         }
         cbOffset -= pObDumpCtx->cbHdr;
         // read memory
-        VmmReadEx(NULL, cbOffset, pb, cb, &cbReadMem, VMM_FLAG_ZEROPAD_ON_FAIL);
+        VmmReadEx(H, NULL, cbOffset, pb, cb, &cbReadMem, VMM_FLAG_ZEROPAD_ON_FAIL);
         if(pcbRead) { *pcbRead = cbHead + cbReadMem; }
         // overlay decrypted KDBG, KdpDataBlockEncoded (if encrypted) and ProcessorContext0
         for(io = 0; io < sizeof(pObDumpCtx->OVERLAY) / sizeof(VMMVFS_DUMP_CONTEXT_OVERLAY); io++) {
@@ -399,25 +402,26 @@ finish:
 * write-capable backend device/driver. Also the crash dump header in microsoft
 * crash dumps aren't writable. This write function does not account for any
 * overlayed memory - such as decrypted KDBG.
-* -- ctx
+* -- H
+* -- ctxP
 * -- pb
 * -- cb
 * -- pcbWrite
 * -- cbOffset
 * -- return
 */
-NTSTATUS MVfsRoot_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
+NTSTATUS MVfsRoot_Write(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
 {
     BOOL fResult;
     DWORD cbHeaderSize;
-    if(!_stricmp(ctx->uszPath, "memory.pmem")) {
+    if(!_stricmp(ctxP->uszPath, "memory.pmem")) {
         *pcbWrite = cb;
-        fResult = VmmWrite(NULL, cbOffset, pb, cb);
+        fResult = VmmWrite(H, NULL, cbOffset, pb, cb);
         return fResult ? VMM_STATUS_SUCCESS : VMM_STATUS_FILE_SYSTEM_LIMITATION;
     }
-    if(!_stricmp(ctx->uszPath, "memory.dmp")) {
+    if(!_stricmp(ctxP->uszPath, "memory.dmp")) {
         *pcbWrite = cb;
-        cbHeaderSize = ctxVmm->f32 ? 0x1000 : 0x2000;
+        cbHeaderSize = H->vmm.f32 ? 0x1000 : 0x2000;
         if(cbOffset + cb <= cbHeaderSize) {
             return VMM_STATUS_SUCCESS;
         }
@@ -426,7 +430,7 @@ NTSTATUS MVfsRoot_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBYTE pb
             cb -= (DWORD)(cbHeaderSize - cbOffset);
             cbOffset = cbHeaderSize;
         }
-        fResult = VmmWrite(NULL, cbOffset, pb, cb);
+        fResult = VmmWrite(H, NULL, cbOffset, pb, cb);
         return fResult ? VMM_STATUS_SUCCESS : VMM_STATUS_FILE_SYSTEM_LIMITATION;
     }
     return VMM_STATUS_FILE_INVALID;
@@ -440,13 +444,13 @@ NTSTATUS MVfsRoot_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBYTE pb
 * -- pFileList
 * -- return
 */
-BOOL MVfsRoot_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
+BOOL MVfsRoot_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList)
 {
-    if(!ctx->uszPath[0]) {
+    if(!ctxP->uszPath[0]) {
         VMMDLL_VfsList_AddDirectory(pFileList, "name", NULL);
         VMMDLL_VfsList_AddDirectory(pFileList, "pid", NULL);
-        VMMDLL_VfsList_AddFile(pFileList, "memory.pmem", ctxMain->dev.paMax, NULL);
-        VMMDLL_VfsList_AddFile(pFileList, "memory.dmp", ctxMain->dev.paMax + (ctxVmm->f32 ? 0x1000 : 0x2000), NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "memory.pmem", H->dev.paMax, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "memory.dmp", H->dev.paMax + (H->vmm.f32 ? 0x1000 : 0x2000), NULL);
     }
     return TRUE;
 }
@@ -457,16 +461,17 @@ BOOL MVfsRoot_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 * shall call the supplied pfnPluginManager_Register function.
 * NB! the module does not have to register itself - for example if the target
 * operating system or architecture is unsupported.
-* -- pPluginRegInfo
+* -- H
+* -- pRI
 */
-VOID M_VfsRoot_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
+VOID M_VfsRoot_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     strcpy_s(pRI->reg_info.uszPathName, 128, "\\");                      // module name
     pRI->reg_info.fRootModule = TRUE;                                    // root module
     pRI->reg_fn.pfnList = MVfsRoot_List;                                 // List function supported
     pRI->reg_fn.pfnRead = MVfsRoot_Read;                                 // Read function supported
-    if(ctxMain->dev.fWritable) {
+    if(H->dev.fWritable) {
         pRI->reg_fn.pfnWrite = MVfsRoot_Write;                           // Write function supported
     }
-    pRI->pfnPluginManager_Register(pRI);
+    pRI->pfnPluginManager_Register(H, pRI);
 }

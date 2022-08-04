@@ -13,7 +13,7 @@ VmmPycModuleMaps_directories(PyObj_ModuleMaps *self, PyObject *args)
 {
     PyObject *pyList, *pyDict;
     BOOL result;
-    DWORD i, cDirectories;
+    DWORD i;
     PIMAGE_DATA_DIRECTORY pe, pDirectories = NULL;
     LPCSTR DIRECTORIES[16] = { "EXPORT", "IMPORT", "RESOURCE", "EXCEPTION", "SECURITY", "BASERELOC", "DEBUG", "ARCHITECTURE", "GLOBALPTR", "TLS", "LOAD_CONFIG", "BOUND_IMPORT", "IAT", "DELAY_IMPORT", "COM_DESCRIPTOR", "RESERVED" };
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "ModuleMaps.directories(): Not initialized."); }
@@ -21,7 +21,7 @@ VmmPycModuleMaps_directories(PyObj_ModuleMaps *self, PyObject *args)
     Py_BEGIN_ALLOW_THREADS;
     result =
         (pDirectories = LocalAlloc(0, 16 * sizeof(IMAGE_DATA_DIRECTORY))) &&
-        VMMDLL_ProcessGetDirectoriesU(self->dwPID, self->uszModule, pDirectories, 16, &cDirectories);
+        VMMDLL_ProcessGetDirectoriesU(self->pyVMM->hVMM, self->dwPID, self->uszModule, pDirectories);
     Py_END_ALLOW_THREADS;
     if(!result) {
         Py_DECREF(pyList);
@@ -56,10 +56,10 @@ VmmPycModuleMaps_sections(PyObj_ModuleMaps *self, PyObject *args)
     if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
     Py_BEGIN_ALLOW_THREADS;
     result =
-        VMMDLL_ProcessGetSectionsU(self->dwPID, self->uszModule, NULL, 0, &cSections) &&
+        VMMDLL_ProcessGetSectionsU(self->pyVMM->hVMM, self->dwPID, self->uszModule, NULL, 0, &cSections) &&
         cSections &&
         (pSections = LocalAlloc(0, cSections * sizeof(IMAGE_SECTION_HEADER))) &&
-        VMMDLL_ProcessGetSectionsU(self->dwPID, self->uszModule, pSections, cSections, &cSections);
+        VMMDLL_ProcessGetSectionsU(self->pyVMM->hVMM, self->dwPID, self->uszModule, pSections, cSections, &cSections);
     Py_END_ALLOW_THREADS;
     if(!result) {
         Py_DECREF(pyList);
@@ -95,7 +95,7 @@ VmmPycModuleMaps_eat(PyObj_ModuleMaps *self, PyObject *args)
 {
     PyObject *pyDictTop, *pyList, *pyDict;
     BOOL result;
-    DWORD i, cbEatMap = 0;
+    DWORD i;
     PVMMDLL_MAP_EATENTRY pe;
     PVMMDLL_MAP_EAT pEatMap = NULL;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "ModuleMaps.eat(): Not initialized."); }
@@ -103,14 +103,12 @@ VmmPycModuleMaps_eat(PyObj_ModuleMaps *self, PyObject *args)
     if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
     Py_BEGIN_ALLOW_THREADS;
     result =
-        VMMDLL_Map_GetEATU(self->dwPID, self->uszModule, NULL, &cbEatMap) &&
-        (pEatMap = LocalAlloc(0, cbEatMap)) &&
-        VMMDLL_Map_GetEATU(self->dwPID, self->uszModule, pEatMap, &cbEatMap) &&
+        VMMDLL_Map_GetEATU(self->pyVMM->hVMM, self->dwPID, self->uszModule, &pEatMap) &&
         (pEatMap->dwVersion == VMMDLL_MAP_EAT_VERSION);
     Py_END_ALLOW_THREADS;
     if(!result) {
         Py_DECREF(pyList);
-        LocalFree(pEatMap);
+        VMMDLL_MemFree(pEatMap);
         return PyErr_Format(PyExc_RuntimeError, "ModuleMaps.eat(): Failed.");
     }
     for(i = 0; i < pEatMap->cMap; i++) {
@@ -133,7 +131,7 @@ VmmPycModuleMaps_eat(PyObj_ModuleMaps *self, PyObject *args)
     PyDict_SetItemString_DECREF(pyDictTop, "c-afn", PyLong_FromUnsignedLong(pEatMap->cNumberOfFunctions));
     PyDict_SetItemString_DECREF(pyDictTop, "c-anm", PyLong_FromUnsignedLong(pEatMap->cNumberOfNames));
     PyDict_SetItemString_DECREF(pyDictTop, "e", pyList);
-    LocalFree(pEatMap);
+    VMMDLL_MemFree(pEatMap);
     return pyDictTop;
 }
 
@@ -143,21 +141,19 @@ VmmPycModuleMaps_iat(PyObj_ModuleMaps *self, PyObject *args)
 {
     PyObject *pyList, *pyDict;
     BOOL result;
-    DWORD i, cbIatMap = 0;
+    DWORD i;
     PVMMDLL_MAP_IATENTRY pe;
     PVMMDLL_MAP_IAT pIatMap = NULL;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "ModuleMaps.iat(): Not initialized."); }
     if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
     Py_BEGIN_ALLOW_THREADS;
     result =
-        VMMDLL_Map_GetIATU(self->dwPID, self->uszModule, NULL, &cbIatMap) &&
-        (pIatMap = LocalAlloc(0, cbIatMap)) &&
-        VMMDLL_Map_GetIATU(self->dwPID, self->uszModule, pIatMap, &cbIatMap) &&
+        VMMDLL_Map_GetIATU(self->pyVMM->hVMM, self->dwPID, self->uszModule, &pIatMap) &&
         (pIatMap->dwVersion == VMMDLL_MAP_IAT_VERSION);
     Py_END_ALLOW_THREADS;
     if(!result) {
         Py_DECREF(pyList);
-        LocalFree(pIatMap);
+        VMMDLL_MemFree(pIatMap);
         return PyErr_Format(PyExc_RuntimeError, "ModuleMaps.iat(): Failed.");
     }
     for(i = 0; i < pIatMap->cMap; i++) {
@@ -177,7 +173,7 @@ VmmPycModuleMaps_iat(PyObj_ModuleMaps *self, PyObject *args)
             PyList_Append_DECREF(pyList, pyDict);
         }
     }
-    LocalFree(pIatMap);
+    VMMDLL_MemFree(pIatMap);
     return pyList;
 }
 
@@ -186,14 +182,15 @@ VmmPycModuleMaps_iat(PyObj_ModuleMaps *self, PyObject *args)
 //-----------------------------------------------------------------------------
 
 PyObj_ModuleMaps*
-VmmPycModuleMaps_InitializeInternal(_In_ DWORD dwPID, _In_ LPSTR uszModule)
+VmmPycModuleMaps_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_ DWORD dwPID, _In_ LPSTR uszModule)
 {
-    PyObj_ModuleMaps *pyObjModuleMaps;
-    if(!(pyObjModuleMaps = PyObject_New(PyObj_ModuleMaps, (PyTypeObject*)g_pPyType_ModuleMaps))) { return NULL; }
-    pyObjModuleMaps->fValid = TRUE;
-    pyObjModuleMaps->dwPID = dwPID;
-    strncpy_s(pyObjModuleMaps->uszModule, _countof(pyObjModuleMaps->uszModule), uszModule, _TRUNCATE);
-    return pyObjModuleMaps;
+    PyObj_ModuleMaps *pyObj;
+    if(!(pyObj = PyObject_New(PyObj_ModuleMaps, (PyTypeObject*)g_pPyType_ModuleMaps))) { return NULL; }
+    Py_INCREF(pyVMM); pyObj->pyVMM = pyVMM;
+    pyObj->fValid = TRUE;
+    pyObj->dwPID = dwPID;
+    strncpy_s(pyObj->uszModule, _countof(pyObj->uszModule), uszModule, _TRUNCATE);
+    return pyObj;
 }
 
 static PyObject*
@@ -218,6 +215,7 @@ static void
 VmmPycModuleMaps_dealloc(PyObj_ModuleMaps *self)
 {
     self->fValid = FALSE;
+    Py_XDECREF(self->pyVMM); self->pyVMM = NULL;
 }
 
 _Success_(return)

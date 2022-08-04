@@ -24,7 +24,7 @@ VmmPycRegMemory_read(PyObj_RegMemory *self, PyObject *args)
     pb = LocalAlloc(0, cb);
     if(!pb) { return PyErr_NoMemory(); }
     Py_BEGIN_ALLOW_THREADS;
-    result = VMMDLL_WinReg_HiveReadEx(self->vaCMHive, ra, pb, cb, &cbRead, flags);
+    result = VMMDLL_WinReg_HiveReadEx(self->pyVMM->hVMM, self->vaCMHive, ra, pb, cb, &cbRead, flags);
     Py_END_ALLOW_THREADS;
     if(!result) {
         LocalFree(pb);
@@ -50,7 +50,7 @@ VmmPycRegMemory_write(PyObj_RegMemory *self, PyObject *args)
         return Py_BuildValue("s", NULL);    // zero-byte write is always successful.
     }
     Py_BEGIN_ALLOW_THREADS;
-    result = VMMDLL_WinReg_HiveWrite(self->vaCMHive, ra, pb, (DWORD)cb);
+    result = VMMDLL_WinReg_HiveWrite(self->pyVMM->hVMM, self->vaCMHive, ra, pb, (DWORD)cb);
     Py_END_ALLOW_THREADS;
     if(!result) { return PyErr_Format(PyExc_RuntimeError, "RegMemory.write(): Failed."); }
     return Py_BuildValue("s", NULL);        // None returned on success.
@@ -61,10 +61,11 @@ VmmPycRegMemory_write(PyObj_RegMemory *self, PyObject *args)
 //-----------------------------------------------------------------------------
 
 PyObj_RegMemory*
-VmmPycRegMemory_InitializeInternal(_In_ QWORD vaCMHive)
+VmmPycRegMemory_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_ QWORD vaCMHive)
 {
     PyObj_RegMemory *pyObj;
     if(!(pyObj = PyObject_New(PyObj_RegMemory, (PyTypeObject*)g_pPyType_RegMemory))) { return NULL; }
+    Py_INCREF(pyVMM); pyObj->pyVMM = pyVMM;
     pyObj->fValid = TRUE;
     pyObj->vaCMHive = vaCMHive;
     return pyObj;
@@ -89,6 +90,7 @@ static void
 VmmPycRegMemory_dealloc(PyObj_RegMemory *self)
 {
     self->fValid = FALSE;
+    Py_XDECREF(self->pyVMM); self->pyVMM = NULL;
 }
 
 _Success_(return)

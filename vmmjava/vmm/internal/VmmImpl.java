@@ -24,10 +24,8 @@ public class VmmImpl implements IVmm
 	//-----------------------------------------------------------------------------
 	// INITIALIZATION FUNCTIONALITY BELOW:
 	//-----------------------------------------------------------------------------
-	
-	private static final Object objLock = new Object();
-	private static String vmmNativeLibraryPath = null;
-	private static VmmImpl vmmActive = null;
+	private Pointer hVMM = null;
+	private String vmmNativeLibraryPath = null;
 	
 	/*
 	 * Do not allow direct class instantiation from outside.
@@ -36,24 +34,22 @@ public class VmmImpl implements IVmm
 	{
 	}
 	
+	private VmmImpl(String vmmNativeLibraryPath, String argv[])
+	{
+			System.setProperty("jna.library.path", vmmNativeLibraryPath);
+			hVMM = VmmNative.INSTANCE.VMMDLL_Initialize(argv.length, argv);
+			if(hVMM == null) { throw new VmmException("Vmm Init: failed in native code."); }
+			VmmNative.INSTANCE.VMMDLL_InitializePlugins(hVMM);
+			this.vmmNativeLibraryPath = vmmNativeLibraryPath;
+	}
+	
 	public static IVmm Initialize(String vmmNativeLibraryPath, String argv[])
 	{
-		synchronized(objLock) {
-			if(vmmActive != null) {
-				throw new VmmException("vmm already initialized - close before re-initialize!");
-			}
-			System.setProperty("jna.library.path", vmmNativeLibraryPath);
-			boolean f = VmmNative.INSTANCE.VMMDLL_Initialize(argv.length, argv);
-			if(!f) { throw new VmmException("Vmm Init: failed in native code."); }
-			VmmNative.INSTANCE.VMMDLL_InitializePlugins();
-			VmmImpl.vmmNativeLibraryPath = vmmNativeLibraryPath;
-			VmmImpl.vmmActive = new VmmImpl();
-		}
-		return VmmImpl.vmmActive;
+		return new VmmImpl(vmmNativeLibraryPath, argv);
 	}
 	
 	public boolean isValid() {
-		return vmmActive != null;
+		return hVMM != null;
 	}
 
 	public String getNativeLibraryPath() {
@@ -62,12 +58,8 @@ public class VmmImpl implements IVmm
 	
 	public void close()
 	{
-		synchronized(objLock) {
-			if(vmmActive != null) {
-				VmmNative.INSTANCE.VMMDLL_Close();
-				vmmActive = null;
-			}
-		}
+		VmmNative.INSTANCE.VMMDLL_Close(hVMM);
+		hVMM = null;
 	}
 	
 	/*
@@ -87,7 +79,7 @@ public class VmmImpl implements IVmm
 	@Override
 	public String toString()
 	{
-		return (vmmActive != null) ? "Vmm" : "VmmNotValid";
+		return (hVMM != null) ? "Vmm" : "VmmNotValid";
 	}
 	
 	
@@ -99,14 +91,14 @@ public class VmmImpl implements IVmm
 	public long getConfig(long fOption)
 	{
 		LongByReference pqw = new LongByReference();
-		boolean f = VmmNative.INSTANCE.VMMDLL_ConfigGet(fOption, pqw);
+		boolean f = VmmNative.INSTANCE.VMMDLL_ConfigGet(hVMM, fOption, pqw);
 		if(!f) { throw new VmmException(); }
 		return pqw.getValue(); 
 	}
 	
 	public void setConfig(long fOption, long qw)
 	{
-		boolean f = VmmNative.INSTANCE.VMMDLL_ConfigSet(fOption, qw);
+		boolean f = VmmNative.INSTANCE.VMMDLL_ConfigSet(hVMM, fOption, qw);
 		if(!f) { throw new VmmException(); }
 	}
 	
@@ -158,7 +150,7 @@ public class VmmImpl implements IVmm
 				result.add(e);
 			}
 		};
-		boolean f = VmmNative.INSTANCE.VMMDLL_VfsListU(_utilStringToCString(path), vfs);
+		boolean f = VmmNative.INSTANCE.VMMDLL_VfsListU(hVMM, _utilStringToCString(path), vfs);
 		if(!f) { throw new VmmException(); }
 		return result;
 	}
@@ -167,7 +159,7 @@ public class VmmImpl implements IVmm
 	{
 		IntByReference pcbRead = new IntByReference();
 		Pointer pb = new Memory(size);
-		VmmNative.INSTANCE.VMMDLL_VfsReadU(_utilStringToCString(file), pb, size, pcbRead, offset);
+		VmmNative.INSTANCE.VMMDLL_VfsReadU(hVMM, _utilStringToCString(file), pb, size, pcbRead, offset);
 		if(0 == pcbRead.getValue()) { throw new VmmException(); }
 		size = Math.min(size, pcbRead.getValue());
 		byte[] result = new byte[size];
@@ -186,7 +178,7 @@ public class VmmImpl implements IVmm
 		IntByReference pcbWrite = new IntByReference();
 		Pointer pb = new Memory(data.length);
 		pb.write(0, data, 0, data.length);
-		VmmNative.INSTANCE.VMMDLL_VfsWriteU(_utilStringToCString(file), pb, data.length, pcbWrite, offset);
+		VmmNative.INSTANCE.VMMDLL_VfsWriteU(hVMM, _utilStringToCString(file), pb, data.length, pcbWrite, offset);
 		if(0 == pcbWrite.getValue()) { throw new VmmException(); }
 	}
 	
@@ -293,7 +285,7 @@ public class VmmImpl implements IVmm
 	{
 		IntByReference pcbRead = new IntByReference();
 		Pointer pb = new Memory(size);
-		boolean f = VmmNative.INSTANCE.VMMDLL_MemReadEx(pid, va, pb, size, pcbRead, flags);
+		boolean f = VmmNative.INSTANCE.VMMDLL_MemReadEx(hVMM, pid, va, pb, size, pcbRead, flags);
 		if(!f) { throw new VmmException(); }
 		size = Math.min(size, pcbRead.getValue());
 		byte[] result = new byte[size];
@@ -305,27 +297,27 @@ public class VmmImpl implements IVmm
 	{
 		Pointer pb = new Memory(data.length);
 		pb.write(0, data, 0, data.length);
-		boolean f = VmmNative.INSTANCE.VMMDLL_MemWrite(pid, va, pb, data.length);
+		boolean f = VmmNative.INSTANCE.VMMDLL_MemWrite(hVMM, pid, va, pb, data.length);
 		if(!f) { throw new VmmException(); }
 	}
 	
 	public void _memPrefetchPages(int pid, long[] vas)
 	{
-		boolean f = VmmNative.INSTANCE.VMMDLL_MemPrefetchPages(pid, vas, vas.length);
+		boolean f = VmmNative.INSTANCE.VMMDLL_MemPrefetchPages(hVMM, pid, vas, vas.length);
 		if(!f) { throw new VmmException(); }		
 	}
 	
 	public long _memVirtualToPhysical(int pid, long va)
 	{
 		LongByReference pa = new LongByReference();
-		boolean f = VmmNative.INSTANCE.VMMDLL_MemVirt2Phys(pid, va, pa);
+		boolean f = VmmNative.INSTANCE.VMMDLL_MemVirt2Phys(hVMM, pid, va, pa);
 		if(!f) { throw new VmmException(); }
 		return pa.getValue();
 	}
 
 	public IVmmMemScatterMemory _memScatterInitialize(int pid, int flags)
 	{
-		Pointer hS = VmmNative.INSTANCE.VMMDLL_Scatter_Initialize(pid, flags);
+		Pointer hS = VmmNative.INSTANCE.VMMDLL_Scatter_Initialize(hVMM, pid, flags);
 		if(hS == null) { throw new VmmException(); }
 		return new VmmMemScatterMemoryImpl(hS, pid, flags);
 	}
@@ -371,7 +363,7 @@ public class VmmImpl implements IVmm
 		
 		private VmmPdbImpl(int dwPID, long vaModuleBase) {
 			byte[] szModuleName = new byte[VmmNative.MAX_PATH];
-			boolean f = VmmNative.INSTANCE.VMMDLL_PdbLoad(dwPID, vaModuleBase, szModuleName);
+			boolean f = VmmNative.INSTANCE.VMMDLL_PdbLoad(hVMM, dwPID, vaModuleBase, szModuleName);
 			if(!f) { throw new VmmException(); }
 			this.pdbName = Native.toString(szModuleName);
 		}
@@ -391,7 +383,7 @@ public class VmmImpl implements IVmm
 
 		public long getSymbolAddress(String strSymbol) {
 			LongByReference pvaSymbolAddress = new LongByReference();
-			boolean f = VmmNative.INSTANCE.VMMDLL_PdbSymbolAddress(pdbName, strSymbol, pvaSymbolAddress);
+			boolean f = VmmNative.INSTANCE.VMMDLL_PdbSymbolAddress(hVMM, pdbName, strSymbol, pvaSymbolAddress);
 			if(!f) { throw new VmmException(); }
 			return pvaSymbolAddress.getValue();
 		}
@@ -399,21 +391,21 @@ public class VmmImpl implements IVmm
 		public String getSymbolName(long vaSymbolOrOffset) {
 			IntByReference pdwSymbolDisplacement = new IntByReference();
 			byte[] szSymbolName = new byte[VmmNative.MAX_PATH];
-			boolean f = VmmNative.INSTANCE.VMMDLL_PdbSymbolName(pdbName, vaSymbolOrOffset, szSymbolName, pdwSymbolDisplacement);
+			boolean f = VmmNative.INSTANCE.VMMDLL_PdbSymbolName(hVMM, pdbName, vaSymbolOrOffset, szSymbolName, pdwSymbolDisplacement);
 			if(!f) { throw new VmmException(); }
 			return Native.toString(szSymbolName);
 		}
 
 		public int getTypeChildOffset(String strTypeName, String strChild) {
 			IntByReference pcbTypeChildOffset = new IntByReference();
-			boolean f = VmmNative.INSTANCE.VMMDLL_PdbTypeChildOffset(pdbName, strTypeName, strChild, pcbTypeChildOffset);
+			boolean f = VmmNative.INSTANCE.VMMDLL_PdbTypeChildOffset(hVMM, pdbName, strTypeName, strChild, pcbTypeChildOffset);
 			if(!f) { throw new VmmException(); }
 			return pcbTypeChildOffset.getValue();
 		}
 
 		public int getTypeSize(String strTypeName) {
 			IntByReference pcbTypeSize = new IntByReference();
-			boolean f = VmmNative.INSTANCE.VMMDLL_PdbTypeSize(pdbName, strTypeName, pcbTypeSize);
+			boolean f = VmmNative.INSTANCE.VMMDLL_PdbTypeSize(hVMM, pdbName, strTypeName, pcbTypeSize);
 			if(!f) { throw new VmmException(); }
 			return pcbTypeSize.getValue();
 		}
@@ -448,13 +440,10 @@ public class VmmImpl implements IVmm
 	
 	public List<VmmMap_MemMapEntry> mapPhysicalMemory()
 	{
-		IntByReference pcbMap = new IntByReference();
-		boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetPhysMem(null, pcbMap);
+		PointerByReference pptr = new PointerByReference();
+		boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetPhysMem(hVMM, pptr);
 		if(!f) { throw new VmmException(); }
-		Pointer ptr = new Memory(pcbMap.getValue());
-		f = VmmNative.INSTANCE.VMMDLL_Map_GetPhysMem(ptr, pcbMap);
-		if(!f) { throw new VmmException(); }
-		VmmNative.VMMDLL_MAP_PHYSMEM pMap = new VmmNative.VMMDLL_MAP_PHYSMEM(ptr);
+		VmmNative.VMMDLL_MAP_PHYSMEM pMap = new VmmNative.VMMDLL_MAP_PHYSMEM(pptr.getValue());
 		// process result:
 		ArrayList<VmmMap_MemMapEntry> result = new ArrayList<VmmMap_MemMapEntry>();
 		for(VmmNative.VMMDLL_MAP_PHYSMEM_ENTRY n : pMap.pMap) {
@@ -463,18 +452,16 @@ public class VmmImpl implements IVmm
 			e.cb = n.cb;
 			result.add(e);
 		}
+		VmmNative.INSTANCE.VMMDLL_MemFree(pptr.getValue());
 		return result;
 	}
 	
 	public List<VmmMap_NetEntry> mapNet()
 	{
-		IntByReference pcbMap = new IntByReference();
-		boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetNetU(null, pcbMap);
+		PointerByReference pptr = new PointerByReference();
+		boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetNetU(hVMM, pptr);
 		if(!f) { throw new VmmException(); }
-		Pointer ptr = new Memory(pcbMap.getValue());
-		f = VmmNative.INSTANCE.VMMDLL_Map_GetNetU(ptr, pcbMap);
-		if(!f) { throw new VmmException(); }
-		VmmNative.VMMDLL_MAP_NET pMap = new VmmNative.VMMDLL_MAP_NET(ptr);
+		VmmNative.VMMDLL_MAP_NET pMap = new VmmNative.VMMDLL_MAP_NET(pptr.getValue());
 		// process result:
 		ArrayList<VmmMap_NetEntry> result = new ArrayList<VmmMap_NetEntry>();
 		for(VmmNative.VMMDLL_MAP_NETENTRY n : pMap.pMap) {
@@ -494,18 +481,16 @@ public class VmmImpl implements IVmm
 			e.dstStr = n.Dst.uszText;
 			result.add(e);
 		}
+		VmmNative.INSTANCE.VMMDLL_MemFree(pptr.getValue());
 		return result;
 	}
 	
 	public List<VmmMap_UserEntry> mapUser()
 	{
-		IntByReference pcbMap = new IntByReference();
-		boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetUsersU(null, pcbMap);
+		PointerByReference pptr = new PointerByReference();
+		boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetUsersU(hVMM, pptr);
 		if(!f) { throw new VmmException(); }
-		Pointer ptr = new Memory(pcbMap.getValue());
-		f = VmmNative.INSTANCE.VMMDLL_Map_GetUsersU(ptr, pcbMap);
-		if(!f) { throw new VmmException(); }
-		VmmNative.VMMDLL_MAP_USER pMap = new VmmNative.VMMDLL_MAP_USER(ptr);
+		VmmNative.VMMDLL_MAP_USER pMap = new VmmNative.VMMDLL_MAP_USER(pptr.getValue());
 		// process result:
 		ArrayList<VmmMap_UserEntry> result = new ArrayList<VmmMap_UserEntry>();
 		for(VmmNative.VMMDLL_MAP_USERENTRY n : pMap.pMap) {
@@ -515,18 +500,16 @@ public class VmmImpl implements IVmm
 			e.vaRegHive = n.vaRegHive;
 			result.add(e);
 		}
+		VmmNative.INSTANCE.VMMDLL_MemFree(pptr.getValue());
 		return result;
 	}
 	
 	public List<VmmMap_ServiceEntry> mapService()
 	{
-		IntByReference pcbMap = new IntByReference();
-		boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetServicesU(null, pcbMap);
+		PointerByReference pptr = new PointerByReference();
+		boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetServicesU(hVMM, pptr);
 		if(!f) { throw new VmmException(); }
-		Pointer ptr = new Memory(pcbMap.getValue());
-		f = VmmNative.INSTANCE.VMMDLL_Map_GetServicesU(ptr, pcbMap);
-		if(!f) { throw new VmmException(); }
-		VmmNative.VMMDLL_MAP_SERVICE pMap = new VmmNative.VMMDLL_MAP_SERVICE(ptr);
+		VmmNative.VMMDLL_MAP_SERVICE pMap = new VmmNative.VMMDLL_MAP_SERVICE(pptr.getValue());
 		// process result:
 		ArrayList<VmmMap_ServiceEntry> result = new ArrayList<VmmMap_ServiceEntry>();
 		for(VmmNative.VMMDLL_MAP_SERVICEENTRY n : pMap.pMap) {
@@ -550,13 +533,14 @@ public class VmmImpl implements IVmm
 			e.dwWaitHint = n.ServiceStatus.dwWaitHint;
 			result.add(e);
 		}
+		VmmNative.INSTANCE.VMMDLL_MemFree(pptr.getValue());
 		return result;
 	}
 	
 	public VmmMap_PoolMap mapPool()
 	{
 		PointerByReference pptr = new PointerByReference();
-		boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetPoolEx(pptr, VmmNative.VMMDLL_POOLMAP_FLAG_ALL);
+		boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetPool(hVMM, pptr, VmmNative.VMMDLL_POOLMAP_FLAG_ALL);
 		if(!f) { throw new VmmException(); }
 		VmmNative.VMMDLL_MAP_POOL pMap = new VmmNative.VMMDLL_MAP_POOL(pptr.getValue());
 		// process result:
@@ -605,12 +589,12 @@ public class VmmImpl implements IVmm
 		 */
 		private void ensure() {
 			if(this.info == null) {
-				IntByReference pcbInfo = new IntByReference();
+				LongByReference pcbInfo = new LongByReference();
 				VmmNative.VMMDLL_PROCESS_INFORMATION pInfo = new VmmNative.VMMDLL_PROCESS_INFORMATION();
 				pcbInfo.setValue(Native.getNativeSize(VmmNative.VMMDLL_PROCESS_INFORMATION.class, pInfo));
 				pInfo.magic = VmmNative.MMDLL_PROCESS_INFORMATION_MAGIC;
 				pInfo.wVersion = VmmNative.VMMDLL_PROCESS_INFORMATION_VERSION;
-				boolean f = VmmNative.INSTANCE.VMMDLL_ProcessGetInformation(pid, pInfo, pcbInfo);
+				boolean f = VmmNative.INSTANCE.VMMDLL_ProcessGetInformation(hVMM, pid, pInfo, pcbInfo);
 				if(!f) { throw new VmmException(); }
 				if(pInfo.wVersion != VmmNative.VMMDLL_PROCESS_INFORMATION_VERSION) { throw new VmmException("Bad Version"); }
 				this.info = pInfo;
@@ -651,13 +635,10 @@ public class VmmImpl implements IVmm
 		}
 
 		public List<VmmMap_HandleEntry> mapHandle() {
-			IntByReference pcbMap = new IntByReference();
-			boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetHandleU(pid, null, pcbMap);
+			PointerByReference pptr = new PointerByReference();
+			boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetHandleU(hVMM, pid, pptr);
 			if(!f) { throw new VmmException(); }
-			Pointer ptr = new Memory(pcbMap.getValue());
-			f = VmmNative.INSTANCE.VMMDLL_Map_GetHandleU(pid, ptr, pcbMap);
-			if(!f) { throw new VmmException(); }
-			VmmNative.VMMDLL_MAP_HANDLE pMap = new VmmNative.VMMDLL_MAP_HANDLE(ptr);
+			VmmNative.VMMDLL_MAP_HANDLE pMap = new VmmNative.VMMDLL_MAP_HANDLE(pptr.getValue());
 			// process result:
 			ArrayList<VmmMap_HandleEntry> result = new ArrayList<VmmMap_HandleEntry>();
 			for(VmmNative.VMMDLL_MAP_HANDLEENTRY n : pMap.pMap) {
@@ -675,12 +656,13 @@ public class VmmImpl implements IVmm
 				e.type = n.uszType;
 				result.add(e);
 			}
+			VmmNative.INSTANCE.VMMDLL_MemFree(pptr.getValue());
 			return result;
 		}
 
 		public List<VmmMap_HeapAllocEntry> mapHeapAlloc(long qwHeapNumOrAddress) {
 			PointerByReference pptr = new PointerByReference();
-			boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetHeapAllocEx(pid, qwHeapNumOrAddress, pptr);
+			boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetHeapAlloc(hVMM, pid, qwHeapNumOrAddress, pptr);
 			if(!f) { throw new VmmException(); }
 			VmmNative.VMMDLL_MAP_HEAPALLOC pMap = new VmmNative.VMMDLL_MAP_HEAPALLOC(pptr.getValue());
 			// process result:
@@ -699,7 +681,7 @@ public class VmmImpl implements IVmm
 
 		public VmmMap_HeapMap mapHeap() {
 			PointerByReference pptr = new PointerByReference();
-			boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetHeapEx(pid, pptr);
+			boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetHeap(hVMM, pid, pptr);
 			if(!f) { throw new VmmException(); }
 			VmmNative.VMMDLL_MAP_HEAP pMap = new VmmNative.VMMDLL_MAP_HEAP(pptr.getValue());
 			// process result:
@@ -728,13 +710,10 @@ public class VmmImpl implements IVmm
 		}
 
 		public List<VmmMap_PteEntry> mapPte() {
-			IntByReference pcbMap = new IntByReference();
-			boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetPteU(pid, null, pcbMap, true);
+			PointerByReference pptr = new PointerByReference();
+			boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetPteU(hVMM, pid, true, pptr);
 			if(!f) { throw new VmmException(); }
-			Pointer ptr = new Memory(pcbMap.getValue());
-			f = VmmNative.INSTANCE.VMMDLL_Map_GetPteU(pid, ptr, pcbMap, true);
-			if(!f) { throw new VmmException(); }
-			VmmNative.VMMDLL_MAP_PTE pMap = new VmmNative.VMMDLL_MAP_PTE(ptr);
+			VmmNative.VMMDLL_MAP_PTE pMap = new VmmNative.VMMDLL_MAP_PTE(pptr.getValue());
 			// process result:
 			ArrayList<VmmMap_PteEntry> result = new ArrayList<VmmMap_PteEntry>();
 			for(VmmNative.VMMDLL_MAP_PTEENTRY n : pMap.pMap) {
@@ -747,17 +726,15 @@ public class VmmImpl implements IVmm
 				e.cSoftware = n.cSoftware;
 				result.add(e);
 			}
+			VmmNative.INSTANCE.VMMDLL_MemFree(pptr.getValue());
 			return result;
 		}
 
 		public List<VmmMap_ThreadEntry> mapThread() {
-			IntByReference pcbMap = new IntByReference();
-			boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetThread(pid, null, pcbMap);
+			PointerByReference pptr = new PointerByReference();
+			boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetThread(hVMM, pid, pptr);
 			if(!f) { throw new VmmException(); }
-			Pointer ptr = new Memory(pcbMap.getValue());
-			f = VmmNative.INSTANCE.VMMDLL_Map_GetThread(pid, ptr, pcbMap);
-			if(!f) { throw new VmmException(); }
-			VmmNative.VMMDLL_MAP_THREAD pMap = new VmmNative.VMMDLL_MAP_THREAD(ptr);
+			VmmNative.VMMDLL_MAP_THREAD pMap = new VmmNative.VMMDLL_MAP_THREAD(pptr.getValue());
 			// process result:
 			ArrayList<VmmMap_ThreadEntry> result = new ArrayList<VmmMap_ThreadEntry>();
 			for(VmmNative.VMMDLL_MAP_THREADENTRY n : pMap.pMap) {
@@ -788,17 +765,15 @@ public class VmmImpl implements IVmm
 				e.bWaitReason = n.bWaitReason;
 				result.add(e);
 			}
+			VmmNative.INSTANCE.VMMDLL_MemFree(pptr.getValue());
 			return result;
 		}
 
 		public List<VmmMap_UnloadedModuleEntry> mapUnloadedModule() {
-			IntByReference pcbMap = new IntByReference();
-			boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetUnloadedModuleU(pid, null, pcbMap);
+			PointerByReference pptr = new PointerByReference();
+			boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetUnloadedModuleU(hVMM, pid, pptr);
 			if(!f) { throw new VmmException(); }
-			Pointer ptr = new Memory(pcbMap.getValue());
-			f = VmmNative.INSTANCE.VMMDLL_Map_GetUnloadedModuleU(pid, ptr, pcbMap);
-			if(!f) { throw new VmmException(); }
-			VmmNative.VMMDLL_MAP_UNLOADEDMODULE pMap = new VmmNative.VMMDLL_MAP_UNLOADEDMODULE(ptr);
+			VmmNative.VMMDLL_MAP_UNLOADEDMODULE pMap = new VmmNative.VMMDLL_MAP_UNLOADEDMODULE(pptr.getValue());
 			// process result:
 			ArrayList<VmmMap_UnloadedModuleEntry> result = new ArrayList<VmmMap_UnloadedModuleEntry>();
 			for(VmmNative.VMMDLL_MAP_UNLOADEDMODULEENTRY n : pMap.pMap) {
@@ -812,17 +787,15 @@ public class VmmImpl implements IVmm
 				e.ftUnload = n.ftUnload;
 				result.add(e);
 			}
+			VmmNative.INSTANCE.VMMDLL_MemFree(pptr.getValue());
 			return result;
 		}
 
 		public List<VmmMap_VadEntry> mapVad() {
-			IntByReference pcbMap = new IntByReference();
-			boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetVadU(pid, null, pcbMap, true);
+			PointerByReference pptr = new PointerByReference();
+			boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetVadU(hVMM, pid, true, pptr);
 			if(!f) { throw new VmmException(); }
-			Pointer ptr = new Memory(pcbMap.getValue());
-			f = VmmNative.INSTANCE.VMMDLL_Map_GetVadU(pid, ptr, pcbMap, true);
-			if(!f) { throw new VmmException(); }
-			VmmNative.VMMDLL_MAP_VAD pMap = new VmmNative.VMMDLL_MAP_VAD(ptr);
+			VmmNative.VMMDLL_MAP_VAD pMap = new VmmNative.VMMDLL_MAP_VAD(pptr.getValue());
 			// process result:
 			ArrayList<VmmMap_VadEntry> result = new ArrayList<VmmMap_VadEntry>();
 			for(VmmNative.VMMDLL_MAP_VADENTRY n : pMap.pMap) {
@@ -842,17 +815,15 @@ public class VmmImpl implements IVmm
 				e.cVadExPagesBase = n.cVadExPagesBase;
 				result.add(e);
 			}
+			VmmNative.INSTANCE.VMMDLL_MemFree(pptr.getValue());
 			return result;
 		}
 
 		public List<VmmMap_VadExEntry> mapVadEx(int oPage, int cPage) {
-			IntByReference pcbMap = new IntByReference();
-			boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetVadEx(pid, null, pcbMap, oPage, cPage);
+			PointerByReference pptr = new PointerByReference();
+			boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetVadEx(hVMM, pid, oPage, cPage, pptr);
 			if(!f) { throw new VmmException(); }
-			Pointer ptr = new Memory(pcbMap.getValue());
-			f = VmmNative.INSTANCE.VMMDLL_Map_GetVadEx(pid, ptr, pcbMap, oPage, cPage);
-			if(!f) { throw new VmmException(); }
-			VmmNative.VMMDLL_MAP_VADEX pMap = new VmmNative.VMMDLL_MAP_VADEX(ptr);
+			VmmNative.VMMDLL_MAP_VADEX pMap = new VmmNative.VMMDLL_MAP_VADEX(pptr.getValue());
 			// process result:
 			ArrayList<VmmMap_VadExEntry> result = new ArrayList<VmmMap_VadExEntry>();
 			for(VmmNative.VMMDLL_MAP_VADEXENTRY n : pMap.pMap) {
@@ -868,6 +839,7 @@ public class VmmImpl implements IVmm
 				e.vaVadBase = n.vaVadBase;
 				result.add(e);
 			}
+			VmmNative.INSTANCE.VMMDLL_MemFree(pptr.getValue());
 			return result;
 		}
 
@@ -927,15 +899,24 @@ public class VmmImpl implements IVmm
 		}
 
 		public String getPathUser() {
-			return VmmNative.INSTANCE.VMMDLL_ProcessGetInformationString(pid, VmmNative.VMMDLL_PROCESS_INFORMATION_OPT_STRING_PATH_USER_IMAGE);
+			Pointer p = VmmNative.INSTANCE.VMMDLL_ProcessGetInformationString(hVMM, pid, VmmNative.VMMDLL_PROCESS_INFORMATION_OPT_STRING_PATH_USER_IMAGE);
+			String s = p.getString(0);
+			VmmNative.INSTANCE.VMMDLL_MemFree(p);
+			return s;
 		}
 		
 		public String getCmdLine() {
-			return VmmNative.INSTANCE.VMMDLL_ProcessGetInformationString(pid, VmmNative.VMMDLL_PROCESS_INFORMATION_OPT_STRING_CMDLINE);
+			Pointer p = VmmNative.INSTANCE.VMMDLL_ProcessGetInformationString(hVMM, pid, VmmNative.VMMDLL_PROCESS_INFORMATION_OPT_STRING_CMDLINE);
+			String s = p.getString(0);
+			VmmNative.INSTANCE.VMMDLL_MemFree(p);
+			return s;
 		}
 
 		public String getPathKernel() {
-			return VmmNative.INSTANCE.VMMDLL_ProcessGetInformationString(pid, VmmNative.VMMDLL_PROCESS_INFORMATION_OPT_STRING_PATH_KERNEL);
+			Pointer p  = VmmNative.INSTANCE.VMMDLL_ProcessGetInformationString(hVMM, pid, VmmNative.VMMDLL_PROCESS_INFORMATION_OPT_STRING_PATH_KERNEL);
+			String s = p.getString(0);
+			VmmNative.INSTANCE.VMMDLL_MemFree(p);
+			return s;
 		}
 
 		public int getTpMemoryModel() {
@@ -972,29 +953,25 @@ public class VmmImpl implements IVmm
 		}
 
 		public IVmmModule moduleGet(String name) {
-			IntByReference pcbMap = new IntByReference();
-			boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetModuleFromNameU(pid, name, null, pcbMap);
+			PointerByReference pptr = new PointerByReference();
+			boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetModuleFromNameU(hVMM, pid, name, pptr);
 			if(!f) { throw new VmmException(); }
-			Pointer ptr = new Memory(pcbMap.getValue());
-			f = VmmNative.INSTANCE.VMMDLL_Map_GetModuleFromNameU(pid, name, ptr, pcbMap);
-			if(!f) { throw new VmmException(); }
-			VmmNative.VMMDLL_MAP_MODULEENTRY pEntry = new VmmNative.VMMDLL_MAP_MODULEENTRY(ptr);
+			VmmNative.VMMDLL_MAP_MODULEENTRY pEntry = new VmmNative.VMMDLL_MAP_MODULEENTRY(pptr.getValue());
+			VmmNative.INSTANCE.VMMDLL_MemFree(pptr.getValue());
 			return new VmmImpl.VmmModuleImpl(this, pEntry);
 		}
 
 		public List<IVmmModule> moduleGetAll() {
-			IntByReference pcbMap = new IntByReference();
-			boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetModuleU(pid, null, pcbMap);
+			PointerByReference pptr = new PointerByReference();
+			boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetModuleU(hVMM, pid, pptr);
 			if(!f) { throw new VmmException(); }
-			Pointer ptr = new Memory(pcbMap.getValue());
-			f = VmmNative.INSTANCE.VMMDLL_Map_GetModuleU(pid, ptr, pcbMap);
-			if(!f) { throw new VmmException(); }
-			VmmNative.VMMDLL_MAP_MODULE pMap = new VmmNative.VMMDLL_MAP_MODULE(ptr);
+			VmmNative.VMMDLL_MAP_MODULE pMap = new VmmNative.VMMDLL_MAP_MODULE(pptr.getValue());
 			// process result:
 			ArrayList<IVmmModule> result = new ArrayList<IVmmModule>();
 			for(VmmNative.VMMDLL_MAP_MODULEENTRY n : pMap.pMap) {
 				result.add(new VmmImpl.VmmModuleImpl(this, n));
 			}
+			VmmNative.INSTANCE.VMMDLL_MemFree(pptr.getValue());
 			return result;
 		}
 	}
@@ -1015,7 +992,7 @@ public class VmmImpl implements IVmm
 	public IVmmProcess processGet(String name)
 	{
 		IntByReference pdwPID = new IntByReference();
-		boolean f = VmmNative.INSTANCE.VMMDLL_PidGetFromName(_utilStringToCString(name), pdwPID);
+		boolean f = VmmNative.INSTANCE.VMMDLL_PidGetFromName(hVMM, _utilStringToCString(name), pdwPID);
 		if(!f) { throw new VmmException(); }
 		return new VmmProcessImpl(pdwPID.getValue()); 
 	}
@@ -1023,10 +1000,10 @@ public class VmmImpl implements IVmm
 	public List<IVmmProcess> processGetAll()
 	{
 		LongByReference pcPIDs = new LongByReference();
-		boolean f = VmmNative.INSTANCE.VMMDLL_PidList(null, pcPIDs);
+		boolean f = VmmNative.INSTANCE.VMMDLL_PidList(hVMM, null, pcPIDs);
 		if(!f) { throw new VmmException(); }
 		int[] pids = new int[(int)pcPIDs.getValue()];
-		f = VmmNative.INSTANCE.VMMDLL_PidList(pids, pcPIDs);
+		f = VmmNative.INSTANCE.VMMDLL_PidList(hVMM, pids, pcPIDs);
 		if(!f) { throw new VmmException(); }
 		// process result:
 		ArrayList<IVmmProcess> result = new ArrayList<IVmmProcess>();
@@ -1106,15 +1083,14 @@ public class VmmImpl implements IVmm
 		}
 		
 		public long getProcAddress(String szFunctionName) {
-			return VmmNative.INSTANCE.VMMDLL_ProcessGetProcAddressU(pid, module.uszText, szFunctionName);
+			return VmmNative.INSTANCE.VMMDLL_ProcessGetProcAddressU(hVMM, pid, module.uszText, szFunctionName);
 		}
 
 		@Override
 		public List<VmmMap_ModuleDataDirectory> mapDataDirectory() {
 			final String[] DIRECTORIES = { "EXPORT", "IMPORT", "RESOURCE", "EXCEPTION", "SECURITY", "BASERELOC", "DEBUG", "ARCHITECTURE", "GLOBALPTR", "TLS", "LOAD_CONFIG", "BOUND_IMPORT", "IAT", "DELAY_IMPORT", "COM_DESCRIPTOR", "RESERVED" };
-			IntByReference pcData = new IntByReference();
 			VmmNative.IMAGE_DATA_DIRECTORY[] aData = new VmmNative.IMAGE_DATA_DIRECTORY[16];
-			boolean f = VmmNative.INSTANCE.VMMDLL_ProcessGetDirectoriesU(pid, module.uszText, aData, 16, pcData);
+			boolean f = VmmNative.INSTANCE.VMMDLL_ProcessGetDirectoriesU(hVMM, pid, module.uszText, aData);
 			if(!f) { throw new VmmException(); }
 			// process result:
 			ArrayList<VmmMap_ModuleDataDirectory> result = new ArrayList<VmmMap_ModuleDataDirectory>();
@@ -1132,11 +1108,11 @@ public class VmmImpl implements IVmm
 		
 		public List<VmmMap_ModuleSection> mapSection() {
 			IntByReference pcData = new IntByReference();
-			boolean f = VmmNative.INSTANCE.VMMDLL_ProcessGetSectionsU(pid, module.uszText, null, 0, pcData);
+			boolean f = VmmNative.INSTANCE.VMMDLL_ProcessGetSectionsU(hVMM, pid, module.uszText, null, 0, pcData);
 			if(!f) { throw new VmmException(); }
 			int cData = pcData.getValue();
 			VmmNative.IMAGE_SECTION_HEADER[] aData = new VmmNative.IMAGE_SECTION_HEADER[cData];
-			f = VmmNative.INSTANCE.VMMDLL_ProcessGetSectionsU(pid, module.uszText, aData, cData, pcData);
+			f = VmmNative.INSTANCE.VMMDLL_ProcessGetSectionsU(hVMM, pid, module.uszText, aData, cData, pcData);
 			if(!f) { throw new VmmException(); }
 			// process result:
 			ArrayList<VmmMap_ModuleSection> result = new ArrayList<VmmMap_ModuleSection>();
@@ -1158,13 +1134,10 @@ public class VmmImpl implements IVmm
 		}
 
 		public List<VmmMap_ModuleExport> mapExport() {
-			IntByReference pcbMap = new IntByReference();
-			boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetEATU(pid, module.uszText, null, pcbMap);
+			PointerByReference pptr = new PointerByReference();
+			boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetEATU(hVMM, pid, module.uszText, pptr);
 			if(!f) { throw new VmmException(); }
-			Pointer ptr = new Memory(pcbMap.getValue());
-			f = VmmNative.INSTANCE.VMMDLL_Map_GetEATU(pid, module.uszText, ptr, pcbMap);
-			if(!f) { throw new VmmException(); }
-			VmmNative.VMMDLL_MAP_EAT pMap = new VmmNative.VMMDLL_MAP_EAT(ptr);
+			VmmNative.VMMDLL_MAP_EAT pMap = new VmmNative.VMMDLL_MAP_EAT(pptr.getValue());
 			// process result:
 			ArrayList<VmmMap_ModuleExport> result = new ArrayList<VmmMap_ModuleExport>();
 			for(VmmNative.VMMDLL_MAP_EATENTRY n : pMap.pMap) {
@@ -1177,17 +1150,15 @@ public class VmmImpl implements IVmm
 				e.uszModule = module.uszText;
 				result.add(e);
 			}
+			VmmNative.INSTANCE.VMMDLL_MemFree(pptr.getValue());
 			return result;
 		}
 
 		public List<VmmMap_ModuleImport> mapImport() {
-			IntByReference pcbMap = new IntByReference();
-			boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetIATU(pid, module.uszText, null, pcbMap);
+			PointerByReference pptr = new PointerByReference();
+			boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetIATU(hVMM, pid, module.uszText, pptr);
 			if(!f) { throw new VmmException(); }
-			Pointer ptr = new Memory(pcbMap.getValue());
-			f = VmmNative.INSTANCE.VMMDLL_Map_GetIATU(pid, module.uszText, ptr, pcbMap);
-			if(!f) { throw new VmmException(); }
-			VmmNative.VMMDLL_MAP_IAT pMap = new VmmNative.VMMDLL_MAP_IAT(ptr);
+			VmmNative.VMMDLL_MAP_IAT pMap = new VmmNative.VMMDLL_MAP_IAT(pptr.getValue());
 			// process result:
 			ArrayList<VmmMap_ModuleImport> result = new ArrayList<VmmMap_ModuleImport>();
 			for(VmmNative.VMMDLL_MAP_IATENTRY n : pMap.pMap) {
@@ -1203,6 +1174,7 @@ public class VmmImpl implements IVmm
 				e.rvaNameFunction = n.rvaNameFunction;
 				result.add(e);
 			}
+			VmmNative.INSTANCE.VMMDLL_MemFree(pptr.getValue());
 			return result;
 		}
 
@@ -1261,7 +1233,7 @@ public class VmmImpl implements IVmm
 		public byte[] memRead(int ra, int size, int flags) {
 			IntByReference pcbRead = new IntByReference();
 			Pointer pb = new Memory(size);
-			boolean f = VmmNative.INSTANCE.VMMDLL_WinReg_HiveReadEx(hive.vaCMHIVE, ra, pb, size, pcbRead, flags);
+			boolean f = VmmNative.INSTANCE.VMMDLL_WinReg_HiveReadEx(hVMM, hive.vaCMHIVE, ra, pb, size, pcbRead, flags);
 			if(!f) { throw new VmmException(); }
 			size = Math.min(size, pcbRead.getValue());
 			byte[] result = new byte[size];
@@ -1270,7 +1242,7 @@ public class VmmImpl implements IVmm
 		}
 
 		public void memWrite(int ra, byte[] data) {
-			boolean f = VmmNative.INSTANCE.VMMDLL_WinReg_HiveWrite(hive.vaCMHIVE, ra, data, data.length);
+			boolean f = VmmNative.INSTANCE.VMMDLL_WinReg_HiveWrite(hVMM, hive.vaCMHIVE, ra, data, data.length);
 			if(!f) { throw new VmmException(); }
 		}
 
@@ -1322,7 +1294,7 @@ public class VmmImpl implements IVmm
 			byte[] lpName = new byte[VmmNative.MAX_PATH];
 			IntByReference lpcchName = new IntByReference(VmmNative.MAX_PATH);
 			HashMap<String, IVmmRegKey> result = new HashMap<String, IVmmRegKey>();
-			while(VmmNative.INSTANCE.VMMDLL_WinReg_EnumKeyExU(strPath, i, lpName, lpcchName, null)) {
+			while(VmmNative.INSTANCE.VMMDLL_WinReg_EnumKeyExU(hVMM, strPath, i, lpName, lpcchName, null)) {
 				String strName = Native.toString(lpName);
 				result.put(strName, new VmmRegKeyImpl(strPath + "\\" + strName));
 				i++;
@@ -1336,7 +1308,7 @@ public class VmmImpl implements IVmm
 			IntByReference lpcchValueName = new IntByReference(VmmNative.MAX_PATH);
 			IntByReference lpType = new IntByReference();
 			HashMap<String, IVmmRegValue> result = new HashMap<String, IVmmRegValue>();
-			while(VmmNative.INSTANCE.VMMDLL_WinReg_EnumValueU(strPath, i, lpValueName, lpcchValueName, lpType, null, null)) {
+			while(VmmNative.INSTANCE.VMMDLL_WinReg_EnumValueU(hVMM, strPath, i, lpValueName, lpcchValueName, lpType, null, null)) {
 				String strName = Native.toString(lpValueName);
 				result.put(strName, new VmmRegValueImpl(strPath + "\\" + strName, lpType.getValue()));
 				i++;
@@ -1347,7 +1319,7 @@ public class VmmImpl implements IVmm
 		public long getTime() {
 			IntByReference cch = new IntByReference();
 			LongByReference lpftLastWriteTime = new LongByReference();
-			boolean f = VmmNative.INSTANCE.VMMDLL_WinReg_EnumKeyExU(strPath, -1, null, cch, lpftLastWriteTime);
+			boolean f = VmmNative.INSTANCE.VMMDLL_WinReg_EnumKeyExU(hVMM, strPath, -1, null, cch, lpftLastWriteTime);
 			if(!f) { throw new VmmException(); }
 			return lpftLastWriteTime.getValue();
 		}
@@ -1377,10 +1349,10 @@ public class VmmImpl implements IVmm
 		public byte[] getValue() {
 			IntByReference lpType = new IntByReference();
 			IntByReference lpcbData = new IntByReference();
-			boolean f = VmmNative.INSTANCE.VMMDLL_WinReg_QueryValueExU(strPath, lpType, null, lpcbData);
+			boolean f = VmmNative.INSTANCE.VMMDLL_WinReg_QueryValueExU(hVMM, strPath, lpType, null, lpcbData);
 			if(!f) { throw new VmmException(); }
 			byte[] data = new byte[lpcbData.getValue()];
-			f = VmmNative.INSTANCE.VMMDLL_WinReg_QueryValueExU(strPath, lpType, data, lpcbData);
+			f = VmmNative.INSTANCE.VMMDLL_WinReg_QueryValueExU(hVMM, strPath, lpType, data, lpcbData);
 			if(!f) { throw new VmmException(); }
 			return data;
 		}
@@ -1418,11 +1390,11 @@ public class VmmImpl implements IVmm
 
 	public List<IVmmRegHive> regHive() {
 		IntByReference pcHives = new IntByReference();
-		boolean f = VmmNative.INSTANCE.VMMDLL_WinReg_HiveList(null, 0, pcHives);
+		boolean f = VmmNative.INSTANCE.VMMDLL_WinReg_HiveList(hVMM, null, 0, pcHives);
 		if(!f) { throw new VmmException(); }
 		int cHives = pcHives.getValue();
 		VMMDLL_REGISTRY_HIVE_INFORMATION[] pHives = new VMMDLL_REGISTRY_HIVE_INFORMATION[cHives];
-		f = VmmNative.INSTANCE.VMMDLL_WinReg_HiveList(pHives, cHives, pcHives);
+		f = VmmNative.INSTANCE.VMMDLL_WinReg_HiveList(hVMM, pHives, cHives, pcHives);
 		if(!f) { throw new VmmException(); }
 		cHives = pcHives.getValue();
 		ArrayList<IVmmRegHive> result = new ArrayList<IVmmRegHive>();
@@ -1434,7 +1406,7 @@ public class VmmImpl implements IVmm
 
 	public IVmmRegKey regKey(String strFullPath) {
 		IntByReference lpcchName = new IntByReference();
-		boolean f = VmmNative.INSTANCE.VMMDLL_WinReg_EnumKeyExU(strFullPath, -1, null, lpcchName, null);
+		boolean f = VmmNative.INSTANCE.VMMDLL_WinReg_EnumKeyExU(hVMM, strFullPath, -1, null, lpcchName, null);
 		if(!f) { return null; }
 		return new VmmRegKeyImpl(strFullPath);
 	}
@@ -1442,7 +1414,7 @@ public class VmmImpl implements IVmm
 	public IVmmRegValue regValue(String strFullPath) {
 		IntByReference lpType = new IntByReference();
 		IntByReference lpcbData = new IntByReference();
-		boolean f = VmmNative.INSTANCE.VMMDLL_WinReg_QueryValueExU(strFullPath, lpType, null, lpcbData);
+		boolean f = VmmNative.INSTANCE.VMMDLL_WinReg_QueryValueExU(hVMM, strFullPath, lpType, null, lpcbData);
 		if(!f) { return null; }
 		return new VmmRegValueImpl(strFullPath, lpType.getValue());
 	}

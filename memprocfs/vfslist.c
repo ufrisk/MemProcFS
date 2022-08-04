@@ -363,3 +363,4 @@ BOOL VfsList_Initialize(_In_ VFS_LIST_U_PFN pfnVfsListU, _In_ DWORD dwCacheValid
 #endif /* _WIN32 */
     return TRUE;
 }
+

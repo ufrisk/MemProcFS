@@ -147,6 +147,14 @@ VOID Util_FileTime2String(_In_ QWORD ft, _Out_writes_(24) LPSTR szTime);
 BOOL Util_FileTime2JSON(_In_ QWORD ft, _Out_writes_(21) LPSTR szTime);
 
 /*
+* Convert a FILETIME (ft) into a CSV string.
+* -- ft = the FILETIME in UTC time zone.
+* -- szTime = time in format '"2020-01-01 23:59:59"' (21 chars).
+* -- return
+*/
+VOID Util_FileTime2CSV(_In_ QWORD ft, _Out_writes_(22) LPSTR szTime);
+
+/*
 * Convert a GUID in byte format to a GUID in string format.
 * -- pbGUID = 16-byte GUID value.
 * -- szGUID = 37-byte buffer to receive GUID string.
@@ -205,7 +213,7 @@ NTSTATUS Util_VfsReadFile_FromZERO(_In_ QWORD cbFile, _Out_writes_to_(cb, *pcbRe
 NTSTATUS Util_VfsReadFile_FromPBYTE(_In_opt_ PBYTE pbFile, _In_ QWORD cbFile, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsReadFile_FromHEXASCII(_In_opt_ PBYTE pbFile, _In_ QWORD cbFile, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsReadFile_FromStrA(_In_opt_ LPCSTR szFile, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
-NTSTATUS Util_VfsReadFile_FromMEM(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD vaMEM, _In_ QWORD cbMEM, _In_ QWORD flags, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
+NTSTATUS Util_VfsReadFile_FromMEM(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _In_ QWORD vaMEM, _In_ QWORD cbMEM, _In_ QWORD flags, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsReadFile_FromObData(_In_opt_ POB_DATA pData, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsReadFile_FromObCompressed(_In_opt_ POB_COMPRESSED pdc, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsReadFile_FromObCompressedStrA(_In_opt_ POB_COMPRESSED pdc, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
@@ -214,7 +222,7 @@ NTSTATUS Util_VfsReadFile_FromQWORD(_In_ QWORD qwValue, _Out_writes_to_(cb, *pcb
 NTSTATUS Util_VfsReadFile_FromDWORD(_In_ DWORD dwValue, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset, _In_ BOOL fPrefix);
 NTSTATUS Util_VfsReadFile_FromBOOL(_In_ BOOL fValue, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsReadFile_FromFILETIME(_In_ QWORD ftValue, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
-NTSTATUS Util_VfsReadFile_FromResource(_In_ LPWSTR wszResourceName, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
+NTSTATUS Util_VfsReadFile_FromResource(_In_ VMM_HANDLE H, _In_ LPWSTR wszResourceName, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsReadFile_usnprintf_ln(_Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset, _In_ QWORD cszLineLength, _In_z_ _Printf_format_string_ LPSTR uszFormat, ...);
 NTSTATUS Util_VfsWriteFile_BOOL(_Inout_ PBOOL pfTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset);
 NTSTATUS Util_VfsWriteFile_09(_Inout_ PDWORD pdwTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset);
@@ -222,8 +230,8 @@ NTSTATUS Util_VfsWriteFile_DWORD(_Inout_ PDWORD pdwTarget, _In_reads_(cb) PBYTE 
 NTSTATUS Util_VfsWriteFile_QWORD(_Inout_ PQWORD pqwTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset, _In_ QWORD qwMinAllow, _In_opt_ QWORD qwMaxAllow);
 NTSTATUS Util_VfsWriteFile_PBYTE(_Inout_ PBYTE pbTarget, _In_ DWORD cbTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset, _In_ BOOL fTerminatingNULL);
 NTSTATUS Util_VfsWriteFile_HEXASCII(_Inout_ PBYTE pbTarget, _In_ DWORD cbTarget, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset);
-DWORD Util_ResourceSize(_In_ LPWSTR wszResourceName);
-VOID Util_VfsTimeStampFile(_In_opt_ PVMM_PROCESS pProcess, _Out_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo);
+DWORD Util_ResourceSize(_In_ VMM_HANDLE H, _In_ LPWSTR wszResourceName);
+VOID Util_VfsTimeStampFile(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _Out_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo);
 
 /*
 * Retrieve PID / ID number from path (in base10). This is commonly used to
@@ -237,13 +245,14 @@ VOID Util_VfsTimeStampFile(_In_opt_ PVMM_PROCESS pProcess, _Out_ PVMMDLL_VFS_FIL
 _Success_(return)
 BOOL Util_VfsHelper_GetIdDir(_In_ LPSTR uszPath, _In_ BOOL fHex, _Out_ PDWORD pdwID, _Out_opt_ LPSTR *puszSubPath);
 
-#define UTIL_VFSLINEFIXED_LINECOUNT(c)                  (c + (ctxMain->cfg.fFileInfoHeader ? 2ULL : 0ULL))
-#define UTIL_VFSLINEVARIABLE_BYTECOUNT(c, pdwo, szHdr)  ((c ? (pdwo[c - 1]) : 0) + (ctxMain->cfg.fFileInfoHeader ? 2 * strlen(szHdr) + 2 : 0ULL))
+#define UTIL_VFSLINEFIXED_LINECOUNT(H, c)                  (c + (H->cfg.fFileInfoHeader ? 2ULL : 0ULL))
+#define UTIL_VFSLINEVARIABLE_BYTECOUNT(H, c, pdwo, szHdr)  ((c ? (pdwo[c - 1]) : 0) + (H->cfg.fFileInfoHeader ? 2 * strlen(szHdr) + 2 : 0ULL))
 
 /*
 * FixedLineRead: Callback function to populate a fixed-length line in a
 * dynamically created file. Line data should be written in utf-8 with the
 * function: Util_snwprintf_u8ln(). Line data MUST ALWAYS be written!
+* -- H = VMM handle.
 * -- ctx = optional context.
 * -- cbLineLength = line length including newline, excluding null terminator.
 * -- ie = line index.
@@ -251,6 +260,7 @@ BOOL Util_VfsHelper_GetIdDir(_In_ LPSTR uszPath, _In_ BOOL fHex, _Out_ PDWORD pd
 * -- szu8 = utf-8 string to write line data into.
 */
 typedef VOID(*UTIL_VFSLINEFIXED_PFN_CB)(
+    _In_ VMM_HANDLE H,
     _Inout_opt_ PVOID ctx,
     _In_ DWORD cbLineLength,
     _In_ DWORD ie,
@@ -261,6 +271,7 @@ typedef VOID(*UTIL_VFSLINEFIXED_PFN_CB)(
 /*
 * VariableLineRead: Read from a file dynamically created from a map/array object
 * using a callback function to populate individual lines (excluding header).
+* -- H = VMM handle.
 * -- pfnCallback = callback function to populate individual lines.
 * -- ctx = optional context to 'pfn' callback function.
 * -- uszHeader = optional header line.
@@ -275,6 +286,7 @@ typedef VOID(*UTIL_VFSLINEFIXED_PFN_CB)(
 * -- return
 */
 NTSTATUS Util_VfsLineVariable_Read(
+    _In_ VMM_HANDLE H,
     _In_ UTIL_VFSLINEFIXED_PFN_CB pfnCallback,
     _Inout_opt_ PVOID ctx,
     _In_opt_ LPSTR uszHeader,
@@ -291,6 +303,7 @@ NTSTATUS Util_VfsLineVariable_Read(
 /*
 * FixedLineRead: Read from a file dynamically created from a map/array object
 * using a callback function to populate individual lines (excluding header).
+* -- H = VMM handle.
 * -- pfnCallback = callback function to populate individual lines.
 * -- ctx = optional context to 'pfn' callback function.
 * -- cbLineLength = line length, including newline, excluding null terminator.
@@ -305,6 +318,7 @@ NTSTATUS Util_VfsLineVariable_Read(
 * -- return
 */
 NTSTATUS Util_VfsLineFixed_Read(
+    _In_ VMM_HANDLE H,
     _In_ UTIL_VFSLINEFIXED_PFN_CB pfnCallback,
     _Inout_opt_ PVOID ctx,
     _In_ DWORD cbLineLength,
@@ -320,10 +334,12 @@ NTSTATUS Util_VfsLineFixed_Read(
 
 /*
 * Util_VfsLineFixedMapCustom_Read: Callback function to retrieve an entry.
+* -- H
 * -- pMap
 * -- iMap
 */
 typedef PVOID(*UTIL_VFSLINEFIXED_MAP_PFN_CB)(
+    _In_ VMM_HANDLE H,
     _In_ PVOID ctxMap,
     _In_ DWORD iMap
     );
@@ -332,6 +348,7 @@ typedef PVOID(*UTIL_VFSLINEFIXED_MAP_PFN_CB)(
 * Util_VfsLineFixedMapCustom_Read: Read from a file dynamically created from a
 * custom generator callback function using using a callback function to
 * populate individual lines (excluding header).
+* -- H = VMM handle.
 * -- pfnCallback = callback function to populate individual lines.
 * -- ctx = optional context to 'pfn' callback function.
 * -- cbLineLength = line length, including newline, excluding null terminator.
@@ -346,6 +363,7 @@ typedef PVOID(*UTIL_VFSLINEFIXED_MAP_PFN_CB)(
 * -- return
 */
 NTSTATUS Util_VfsLineFixedMapCustom_Read(
+    _In_ VMM_HANDLE H,
     _In_ UTIL_VFSLINEFIXED_PFN_CB pfnCallback,
     _Inout_opt_ PVOID ctx,
     _In_ DWORD cbLineLength,

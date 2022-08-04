@@ -15,6 +15,7 @@ typedef unsigned __int64                QWORD, *PQWORD;
 
 #define OB_DEBUG
 #define OB_HEADER_MAGIC                 0x0c0efefe
+typedef struct tdVMM_HANDLE             *VMM_HANDLE;
 
 #define OB_TAG_CORE_CONTAINER           'ObCo'
 #define OB_TAG_CORE_COMPRESSED          'ObCp'
@@ -46,9 +47,9 @@ typedef unsigned __int64                QWORD, *PQWORD;
 
 typedef struct tdOB {
     // internal object manager functionality below: (= do not use unless absolutely necessary)
-    DWORD _magic;                           // magic value - OB_HEADER_MAGIC
+    DWORD _magic1;                          // magic value - OB_HEADER_MAGIC
     union {
-        DWORD _tag;                         // tag - 2 chars, no null terminator
+        DWORD _tag;                         // tag - 4 chars, no null terminator
         CHAR _tagCh[4];
     };
     union {
@@ -59,12 +60,29 @@ typedef struct tdOB {
         VOID(*_pfnRef_1)(_In_ PVOID pOb);   // callback - when object reach refcount 1 (not initial)
         QWORD _Filler2;
     };
+    DWORD _Filler3[5];
     DWORD _count;                           // reference count
     // external object manager functionality below: (= ok to use)
+    union { VMM_HANDLE H; QWORD _Filler4; };// vmm user handle (supplied at alloc)
     DWORD cbData;                           // data byte count (excl. OB header)
+    DWORD _magic2;                          // magic value - OB_HEADER_MAGIC
 } OB, *POB;
 
 typedef VOID(*OB_CLEANUP_CB)(_In_ PVOID pOb);
+
+/*
+* Allocate a new object manager memory object.
+* -- H = an optional handle to embed as OB.H in the header.
+* -- tag = tag identifying the type of object.
+* -- uFlags = flags as given by LocalAlloc.
+* -- uBytes = bytes of object (_including_ object headers).
+* -- pfnRef_0 = optional callback for cleanup o be called before object is destroyed.
+*               (if object contains objects which references should be decremented
+                 before destruction of this 'parent' object).
+* -- pfnRef_1 = optional callback for when object reach refcount = 1 at DECREF.
+* -- return = allocated object on success, with refcount = 1, - NULL on fail.
+*/
+PVOID Ob_AllocEx(_In_opt_ VMM_HANDLE H, _In_ DWORD tag, _In_ UINT uFlags, _In_ SIZE_T uBytes, _In_opt_ OB_CLEANUP_CB pfnRef_0, _In_opt_ OB_CLEANUP_CB pfnRef_1);
 
 /*
 * Allocate a new object manager memory object.
@@ -77,7 +95,10 @@ typedef VOID(*OB_CLEANUP_CB)(_In_ PVOID pOb);
 * -- pfnRef_1 = optional callback for when object reach refcount = 1 at DECREF.
 * -- return = allocated object on success, with refcount = 1, - NULL on fail.
 */
-PVOID Ob_Alloc(_In_ DWORD tag, _In_ UINT uFlags, _In_ SIZE_T uBytes, _In_opt_ OB_CLEANUP_CB pfnRef_0, _In_opt_ OB_CLEANUP_CB pfnRef_1);
+inline PVOID Ob_Alloc(_In_ DWORD tag, _In_ UINT uFlags, _In_ SIZE_T uBytes, _In_opt_ OB_CLEANUP_CB pfnRef_0, _In_opt_ OB_CLEANUP_CB pfnRef_1)
+{
+    return Ob_AllocEx(NULL, tag, uFlags, uBytes, pfnRef_0, pfnRef_1);
+}
 
 /*
 * Increase the reference count of a object by one.
@@ -136,12 +157,13 @@ typedef struct tdOB_DATA {
 * to the number of bytes in the data buffer supplied to this function.
 * May also be created with Ob_Alloc with size: sizeof(OB_HDR) + length of data.
 * CALLER DECREF: return
+* -- H
 * -- pb
 * -- cb
 * -- return
 */
 _Success_(return != NULL)
-POB_DATA ObData_New(_In_ PBYTE pb, _In_ DWORD cb);
+POB_DATA ObData_New(_In_opt_ VMM_HANDLE H, _In_ PBYTE pb, _In_ DWORD cb);
 
 
 
@@ -216,9 +238,10 @@ typedef struct tdOB_SET *POB_SET;
 * ways to store unique 64-bit (or smaller) numbers as a set.
 * The ObSet is an object manager object and must be DECREF'ed when required.
 * CALLER DECREF: return
+* -- H
 * -- return
 */
-POB_SET ObSet_New();
+POB_SET ObSet_New(_In_opt_ VMM_HANDLE H);
 
 /*
 * Retrieve the number of items in the given ObSet.
@@ -367,10 +390,11 @@ typedef struct tdOB_MAP_ENTRY {
 * to optionally map key values to values, pointers or object manager objects.
 * The ObMap is an object manager object and must be DECREF'ed when required.
 * CALLER DECREF: return
+* -- H
 * -- flags = defined by OB_MAP_FLAGS_*
 * -- return
 */
-POB_MAP ObMap_New(_In_ QWORD flags);
+POB_MAP ObMap_New(_In_opt_ VMM_HANDLE H, _In_ QWORD flags);
 
 /*
 * Retrieve the number of objects in the ObMap.
@@ -549,6 +573,8 @@ QWORD ObMap_GetKey(_In_opt_ POB_MAP pm, _In_ PVOID pvObject);
 */
 VOID ObMap_FilterSet_FilterAllKey(_In_ QWORD k, _In_ PVOID v, _Inout_ POB_SET ps);
 
+typedef VOID(*OB_MAP_FILTER_PFN)(_In_ QWORD k, _In_ PVOID v, _Inout_opt_ PVOID ctx);
+
 /*
 * Filter map objects into a generic context by using a user-supplied filter function.
 * -- pm
@@ -557,25 +583,39 @@ VOID ObMap_FilterSet_FilterAllKey(_In_ QWORD k, _In_ PVOID v, _Inout_ POB_SET ps
 * -- return
 */
 _Success_(return)
-BOOL ObMap_Filter(_In_opt_ POB_MAP pm, _Inout_opt_ PVOID ctx, _In_opt_ VOID(*pfnFilter)(_In_ QWORD k, _In_ PVOID v, _Inout_opt_ PVOID ctx));
+BOOL ObMap_Filter(_In_opt_ POB_MAP pm, _Inout_opt_ PVOID ctx, _In_opt_ OB_MAP_FILTER_PFN pfnFilter);
+
+typedef VOID(*OB_MAP_FILTERSET_PFN)(_In_ QWORD k, _In_ PVOID v, _Inout_ POB_SET ps);
 
 /*
 * Filter map objects into a POB_SET by using a user-supplied filter function.
 * CALLER DECREF: return
 * -- pm
-* -- pfnFilter
+* -- pfnFilterSet
 * -- return = POB_SET consisting of values gathered by the pfnFilter function.
 */
 _Success_(return != NULL)
-POB_SET ObMap_FilterSet(_In_opt_ POB_MAP pm, _In_opt_ VOID(*pfnFilter)(_In_ QWORD k, _In_ PVOID v, _Inout_ POB_SET ps));
+POB_SET ObMap_FilterSet(_In_opt_ POB_MAP pm, _In_opt_ OB_MAP_FILTERSET_PFN pfnFilterSet);
+
+/*
+* Callback function for pfnFilter in ObMap_RemoveByFilter().
+* -- H
+* -- k
+* -- v
+*/
+typedef BOOL(*OB_MAP_FILTER_REMOVE_PFN_CB)(
+    _In_opt_ VMM_HANDLE H,
+    _In_ QWORD k,
+    _In_ PVOID v
+);
 
 /*
 * Remove map objects using a user-supplied filter function.
 * -- pm
-* -- pfnFilter = decision making function: [pfnFilter(k,v)->TRUE(remove)|FALSE(keep)]
+* -- pfnFilter = decision making function: [pfnFilter(H,k,v)->TRUE(remove)|FALSE(keep)]
 * -- return = number of entries removed.
 */
-DWORD ObMap_RemoveByFilter(_In_opt_ POB_MAP pm, _In_opt_ BOOL(*pfnFilter)(_In_ QWORD k, _In_ PVOID v));
+DWORD ObMap_RemoveByFilter(_In_opt_ POB_MAP pm, _In_opt_ OB_MAP_FILTER_REMOVE_PFN_CB pfnFilter);
 
 /*
 * Sort the ObMap entry index by a sort compare function.
@@ -611,10 +651,25 @@ typedef struct tdOB_CACHEMAP *POB_CACHEMAP;
 #define OB_CACHEMAP_FLAGS_OBJECT_LOCALFREE   0x02
 
 /*
+* Callback function for the pfnValidEntry in ObCacheMap_New()
+* -- H
+* -- qwContext
+* -- qwKey
+* -- pbObject
+*/
+typedef BOOL(*OB_CACHEMAP_VALIDENTRY_PFN_CB)(
+    _In_opt_ VMM_HANDLE H,
+    _Inout_ PQWORD qwContext,
+    _In_ QWORD qwKey,
+    _In_ PVOID pvObject
+);
+
+/*
 * Create a new cached map. A cached map (ObCacheMap) provides atomic map
 * operations on cached objects.
 * The ObCacheMap is an object manager object and must be DECREF'ed when required.
 * CALLER DECREF: return
+* -- H
 * -- cMaxEntries = max entries in the cache, if more entries are added the
 *       least recently accessed item will be removed from the cache map.
 * -- pfnValidEntry = validation callback function (if any).
@@ -622,8 +677,9 @@ typedef struct tdOB_CACHEMAP *POB_CACHEMAP;
 * -- return
 */
 POB_CACHEMAP ObCacheMap_New(
+    _In_opt_ VMM_HANDLE H,
     _In_ DWORD cMaxEntries,
-    _In_opt_ BOOL(*pfnValidEntry)(_Inout_ PQWORD qwContext, _In_ QWORD qwKey, _In_ PVOID pvObject),
+    _In_opt_ OB_CACHEMAP_VALIDENTRY_PFN_CB pfnValidEntry,
     _In_ QWORD flags
 );
 
@@ -932,11 +988,12 @@ BOOL ObStrMap_FinalizeBufferXUW(_In_opt_ POB_STRMAP psm, _In_ DWORD cbMultiStr, 
 * decommissioned by calling any of the ObStrMap_Finalize*() functions.
 * The ObStrMap is an object manager object and must be DECREF'ed when required.
 * CALLER DECREF: return
+* -- H
 * -- flags
 * -- return
 */
 _Success_(return != NULL)
-POB_STRMAP ObStrMap_New(_In_ QWORD flags);
+POB_STRMAP ObStrMap_New(_In_opt_ VMM_HANDLE H, _In_ QWORD flags);
 
 
 
@@ -948,24 +1005,33 @@ POB_STRMAP ObStrMap_New(_In_ QWORD flags);
 
 typedef struct tdOB_COMPRESSED *POB_COMPRESSED;
 
+#define OB_COMPRESSED_CACHED_ENTRIES_MAX        0x40
+#define OB_COMPRESSED_CACHED_ENTRIES_MAXSIZE    0x00100000
+
 /*
 * Create a new compressed buffer object from a byte buffer.
+* It's strongly recommended to supply a global cache map to use.
 * CALLER DECREF: return
+* -- H
+* -- pcmg = optional global (per VMM_HANDLE) cache map to use.
 * -- pb
 * -- cb
 * -- return
 */
 _Success_(return != NULL)
-POB_COMPRESSED ObCompressed_NewFromByte(_In_reads_(cb) PBYTE pb, _In_ DWORD cb);
+POB_COMPRESSED ObCompressed_NewFromByte(_In_opt_ VMM_HANDLE H, _In_opt_ POB_CACHEMAP pcmg, _In_reads_(cb) PBYTE pb, _In_ DWORD cb);
 
 /*
 * Create a new compressed buffer object from a zero terminated string.
+* It's strongly recommended to supply a global cache map to use.
 * CALLER DECREF: return
+* -- H
+* -- pcmg = optional global (per VMM_HANDLE) cache map to use.
 * -- sz
 * -- return
 */
 _Success_(return != NULL)
-POB_COMPRESSED ObCompress_NewFromStrA(_In_ LPSTR sz);
+POB_COMPRESSED ObCompress_NewFromStrA(_In_opt_ VMM_HANDLE H, _In_opt_ POB_CACHEMAP pcmg, _In_ LPSTR sz);
 
 /*
 * Retrieve the uncompressed size of the compressed data object.
@@ -1000,11 +1066,14 @@ typedef struct tdOB_MEMFILE *POB_MEMFILE;
 
 /*
 * Create a new empty memory file.
+* It's strongly recommended to supply a global cache map to use.
 * CALLER DECREF: return
+* -- H
+* -- pcmg = optional global (per VMM_HANDLE) cache map to use.
 * -- return
 */
 _Success_(return != NULL)
-POB_MEMFILE ObMemFile_New();
+POB_MEMFILE ObMemFile_New(_In_opt_ VMM_HANDLE H, _In_opt_ POB_CACHEMAP pcmg);
 
 /*
 * Retrieve byte count of the ObMemFile.
@@ -1031,6 +1100,16 @@ BOOL ObMemFile_Append(_In_opt_ POB_MEMFILE pmf, _In_reads_(cb) PBYTE pb, _In_ QW
 */
 _Success_(return)
 BOOL ObMemFile_AppendString(_In_opt_ POB_MEMFILE pmf, _In_opt_z_ LPSTR sz);
+
+/*
+* Append a string (ansi or utf-8) to the ObMemFile.
+* -- H
+* -- uszFormat
+* -- arglist
+* -- return = the number of bytes appended (excluding terminating null).
+*/
+_Success_(return != 0)
+SIZE_T ObMemFile_AppendStringEx(_In_opt_ POB_MEMFILE pmf, _In_z_ _Printf_format_string_ LPSTR uszFormat, _In_ va_list arglist);
 
 /*
 * Read data 'as file' from the ObMemFile.
@@ -1071,10 +1150,11 @@ typedef struct tdOB_COUNTER_ENTRY {
 * Create a new counter. A counter (ObCounter) provides atomic counting operations.
 * The ObCounter is an object manager object and must be DECREF'ed when required.
 * CALLER DECREF: return
+* -- H
 * -- flags = defined by OB_COUNTER_FLAGS_*
 * -- return
 */
-POB_COUNTER ObCounter_New(_In_ QWORD flags);
+POB_COUNTER ObCounter_New(_In_opt_ VMM_HANDLE H, _In_ QWORD flags);
 
 /*
 * Retrieve the number of counted keys the ObCounter.

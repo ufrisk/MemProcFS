@@ -45,17 +45,20 @@ typedef struct tdPE_THUNKINFO_EAT {
 
 /*
 * Retrieve the size of the module given its base.
+* -- H
 * -- pProcess
 * -- vaModuleBase = PE module base address.
 * -- return = success: size of module. fail: 0.
 */
 QWORD PE_GetSize(
+    _In_ VMM_HANDLE H,
     _In_ PVMM_PROCESS pProcess,
     _In_opt_ QWORD vaModuleBase
 );
 
 /*
 * Retrieve the TimeDateStamp and CheckSum from the PE header.
+* -- H
 * -- pProcess
 * -- vaModuleBase = PE module base address.
 * -- pdwTimeDateStamp
@@ -64,6 +67,7 @@ QWORD PE_GetSize(
 */
 _Success_(return)
 BOOL PE_GetTimeDateStampCheckSum(
+    _In_ VMM_HANDLE H,
     _In_ PVMM_PROCESS pProcess,
     _In_opt_ QWORD vaModuleBase,
     _Out_opt_ PDWORD pdwTimeDateStamp,
@@ -73,11 +77,13 @@ BOOL PE_GetTimeDateStampCheckSum(
 /*
 * Lookup the virtual address of an exported function or symbol in the module supplied.
 * Similar to Windows 'GetProcAddress'.
+* -- H
 * -- pProcess
 * -- vaModuleBase = PE module base address.
 * -- return = success: virtual address of function / symbol. fail: 0.
 */
 QWORD PE_GetProcAddress(
+    _In_ VMM_HANDLE H,
     _In_ PVMM_PROCESS pProcess,
     _In_ QWORD vaModuleBase,
     _In_ LPSTR lpProcName
@@ -86,6 +92,7 @@ QWORD PE_GetProcAddress(
 /*
 * Lookup the virtual address of an exported function or symbol in the module supplied
 * among with additional information returned in the pThunkInfoEAT struct.
+* -- H
 * -- pProcess
 * -- vaModuleBase = PE module base address.
 * -- szProcName
@@ -94,6 +101,7 @@ QWORD PE_GetProcAddress(
 */
 _Success_(return)
 BOOL PE_GetThunkInfoEAT(
+    _In_ VMM_HANDLE H,
     _In_ PVMM_PROCESS pProcess,
     _In_ QWORD vaModuleBase,
     _In_ LPSTR szProcName,
@@ -103,6 +111,7 @@ BOOL PE_GetThunkInfoEAT(
 /*
 * Retrieve an import address table (IAT) entry for a specific function.
 * This may be useful for IAT patching functionality.
+* -- H
 * -- pProcess
 * -- vaModuleBase
 * -- szImportModuleName
@@ -112,6 +121,7 @@ BOOL PE_GetThunkInfoEAT(
 */
 _Success_(return)
 BOOL PE_GetThunkInfoIAT(
+    _In_ VMM_HANDLE H,
     _In_ PVMM_PROCESS pProcess,
     _In_ QWORD vaModuleBase,
     _In_ LPSTR szImportModuleName,
@@ -121,6 +131,7 @@ BOOL PE_GetThunkInfoIAT(
 
 /*
 * Retrieve the module name and optionally the module size.
+* -- H
 * -- pProcess
 * -- vaModuleBase
 * -- fOnFailDummyName
@@ -131,23 +142,25 @@ BOOL PE_GetThunkInfoIAT(
 * -- return
 */
 _Success_(return)
-BOOL PE_GetModuleNameEx(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ BOOL fOnFailDummyName, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt, _Out_writes_(cszModuleName) PCHAR szModuleName, _In_ DWORD cszModuleName, _Out_opt_ PDWORD pdwSize);
+BOOL PE_GetModuleNameEx(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ BOOL fOnFailDummyName, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt, _Out_writes_(cszModuleName) PCHAR szModuleName, _In_ DWORD cszModuleName, _Out_opt_ PDWORD pdwSize);
 _Success_(return)
-BOOL PE_GetModuleName(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _Out_writes_(cszModuleName) PCHAR szModuleName, _In_ DWORD cszModuleName);
+BOOL PE_GetModuleName(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _Out_writes_(cszModuleName) PCHAR szModuleName, _In_ DWORD cszModuleName);
 
 /*
 * Retrieve the number of sections in the module given by either the module base
 * virtual address or a pre-retrieved pbModuleHeader of size 0x1000.
+* -- H
 * -- pProcess
 * -- vaModuleBase = PE module base address (unless pbModuleHeaderOpt is specified)
 * -- pbModuleHeaderOpt = Optional buffer containing module header (MZ) page.
 * -- return = success: number of sections. fail: 0.
 */
-WORD PE_SectionGetNumberOfEx(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt);
-WORD PE_SectionGetNumberOf(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase);
+WORD PE_SectionGetNumberOfEx(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt);
+WORD PE_SectionGetNumberOf(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase);
 
 /*
 * Retrieve a single section header given its name.
+* -- H
 * -- pProcess
 * -- vaModuleBase
 * -- szSectionName
@@ -156,6 +169,7 @@ WORD PE_SectionGetNumberOf(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBa
 */
 _Success_(return)
 BOOL PE_SectionGetFromName(
+    _In_ VMM_HANDLE H,
     _In_ PVMM_PROCESS pProcess,
     _In_ QWORD vaModuleBase,
     _In_ LPSTR szSectionName,
@@ -164,6 +178,7 @@ BOOL PE_SectionGetFromName(
 
 /*
 * Retrieve all sections.
+* -- H
 * -- pProcess
 * -- vaModuleBase
 * -- cSections
@@ -172,6 +187,7 @@ BOOL PE_SectionGetFromName(
 */
 _Success_(return)
 BOOL PE_SectionGetAll(
+    _In_ VMM_HANDLE H,
     _In_ PVMM_PROCESS pProcess,
     _In_ QWORD vaModuleBase,
     _In_ DWORD cSections,
@@ -181,33 +197,36 @@ BOOL PE_SectionGetAll(
 /*
 * Retrieve the number of export address table (EAT) entries - i.e. the number
 * of functions that the module is exporting.
+* -- H
 * -- pProcess
 * -- vaModuleBase = PE module base address (unless pbModuleHeaderOpt is specified)
 * -- pbModuleHaderOpt = Optional buffer containing module header (MZ) page.
 * -- return = success: number of entries. fail: 0.
 */
-DWORD PE_EatGetNumberOfEx(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt);
-inline DWORD PE_EatGetNumberOf(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase)
+DWORD PE_EatGetNumberOfEx(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt);
+inline DWORD PE_EatGetNumberOf(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase)
 {
-    return PE_EatGetNumberOfEx(pProcess, vaModuleBase, NULL);
+    return PE_EatGetNumberOfEx(H, pProcess, vaModuleBase, NULL);
 }
 
 /*
 * Retrieve the number of import address table (IAT) entries - i.e. the number
 * of functions that the module is importing.
+* -- H
 * -- pProcess
 * -- vaModuleBase = PE module base address (unless pbModuleHeaderOpt is specified)
 * -- pbModuleHaderOpt = Optional buffer containing module header (MZ) page.
 * -- return = success: number of entries. fail: 0.
 */
-DWORD PE_IatGetNumberOfEx(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt);
-inline DWORD PE_IatGetNumberOf(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase)
+DWORD PE_IatGetNumberOfEx(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt);
+inline DWORD PE_IatGetNumberOf(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase)
 {
-    return PE_IatGetNumberOfEx(pProcess, vaModuleBase, NULL);
+    return PE_IatGetNumberOfEx(H, pProcess, vaModuleBase, NULL);
 }
 
 /*
 * Retrieve info about the PE directories.
+* -- H
 * -- pProcess
 * -- vaModuleBase = PE module base address (unless pbModuleHeaderOpt is specified)
 * -- pbModuleHeaderOpt = Optional buffer containing module header (MZ) page.
@@ -215,6 +234,7 @@ inline DWORD PE_IatGetNumberOf(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModu
 */
 _Success_(return)
 BOOL PE_DirectoryGetAll(
+    _In_ VMM_HANDLE H,
     _In_ PVMM_PROCESS pProcess,
     _In_opt_ QWORD vaModuleBase,
     _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt,
@@ -223,6 +243,7 @@ BOOL PE_DirectoryGetAll(
 
 /*
 * Retrieve the offset of a PE directory - i.e. the VirtualAddress of the directory.
+* -- H
 * -- pProcess
 * -- vaModuleBase = PE module base address (unless pbModuleHeaderOpt is specified)
 * -- pbModuleHeaderOpt = Optional buffer containing module header (MZ) page.
@@ -230,6 +251,7 @@ BOOL PE_DirectoryGetAll(
 * -- return = the offset in bytes from PE base or 0 on fail.
 */
 DWORD PE_DirectoryGetOffset(
+    _In_ VMM_HANDLE H,
     _In_ PVMM_PROCESS pProcess,
     _In_opt_ QWORD vaModuleBase,
     _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt,
@@ -238,6 +260,7 @@ DWORD PE_DirectoryGetOffset(
 
 /*
 * Retrieve PDB debugging information from a single module.
+* -- H
 * -- pProcess
 * -- vaModulebase
 * -- pbModuleHeaderOpt
@@ -246,6 +269,7 @@ DWORD PE_DirectoryGetOffset(
 */
 _Success_(return)
 BOOL PE_GetCodeViewInfo(
+    _In_ VMM_HANDLE H,
     _In_ PVMM_PROCESS pProcess,
     _In_opt_ QWORD vaModuleBase,
     _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt,
@@ -255,12 +279,14 @@ BOOL PE_GetCodeViewInfo(
 /*
 * Retrieve the raw size of the 'file' estimation that is possible to rebuild
 * using PE sections from memory.
+* -- H
 * -- pProcess
 * -- vaModuleBase = PE module base address (unless pbModuleHeaderOpt is specified)
 * -- pbModuleHaderOpt = Optional buffer containing module header (MZ) page.
 * -- return = success: size of file. fail: 0.
 */
 DWORD PE_FileRaw_Size(
+    _In_ VMM_HANDLE H,
     _In_ PVMM_PROCESS pProcess,
     _In_opt_ QWORD vaModuleBase,
     _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt
@@ -268,6 +294,7 @@ DWORD PE_FileRaw_Size(
 
 /*
 * Read part of a, from memory, best-effort re-constructed PE file.
+* -- H
 * -- pProcess
 * -- vaModuleBase = PE module base address.
 * -- pb
@@ -278,6 +305,7 @@ DWORD PE_FileRaw_Size(
 */
 _Success_(return)
 BOOL PE_FileRaw_Read(
+    _In_ VMM_HANDLE H,
     _In_ PVMM_PROCESS pProcess,
     _In_ QWORD vaModuleBase,
     _Out_ PBYTE pb,
@@ -290,6 +318,7 @@ BOOL PE_FileRaw_Read(
 * Write to the underlying pages which supports this re-constructed PE file.
 * This is normally not recommended and will be very dangerous since it is most
 * likely to affect all instances - in all processes - of the PE file written to.
+* -- H
 * -- pProcess
 * -- vaModuleBase = PE module base address.
 * -- pb
@@ -300,6 +329,7 @@ BOOL PE_FileRaw_Read(
 */
 _Success_(return)
 BOOL PE_FileRaw_Write(
+    _In_ VMM_HANDLE H,
     _In_ PVMM_PROCESS pProcess,
     _In_ QWORD vaModuleBase,
     _In_reads_(cb) PBYTE pb,

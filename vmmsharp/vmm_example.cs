@@ -26,7 +26,7 @@ class vmm_example
         ulong ft = 0;
         if(pExInfo != IntPtr.Zero)
         {
-            vmm.VMMDLL_VFS_FILELIST_EXINFO n = Marshal.PtrToStructure<vmm.VMMDLL_VFS_FILELIST_EXINFO>(pExInfo);
+            Vmm.VMMDLL_VFS_FILELIST_EXINFO n = Marshal.PtrToStructure<Vmm.VMMDLL_VFS_FILELIST_EXINFO>(pExInfo);
             ft = n.ftLastWriteTime;
         }
         Console.WriteLine("VFS LIST CALLBACK: HANDLE: " + h + " FILE: '" + wszName + "' SIZE '" + cb + "'\tFileWriteTime " + ft);
@@ -38,7 +38,7 @@ class vmm_example
         ulong ft = 0;
         if (pExInfo != IntPtr.Zero)
         {
-            vmm.VMMDLL_VFS_FILELIST_EXINFO n = Marshal.PtrToStructure<vmm.VMMDLL_VFS_FILELIST_EXINFO>(pExInfo);
+            Vmm.VMMDLL_VFS_FILELIST_EXINFO n = Marshal.PtrToStructure<Vmm.VMMDLL_VFS_FILELIST_EXINFO>(pExInfo);
             ft = n.ftLastWriteTime;
         }
         Console.WriteLine("VFS LIST CALLBACK: HANDLE: " + h + " FILE: '" + wszName + "'\tFileWriteTime " + ft);
@@ -50,17 +50,17 @@ class vmm_example
         bool result;
         uint nt;
         // initialize vmm with verbose mode with fpga device
-        //vmm.Initialize("-printf", "-v", "-device", "fpga");
+        //vmm vmm = new vmm("-printf", "-v", "-device", "fpga");
 
         // initialize vmm with verbose mode with dump file
-        vmm.Initialize("-printf", "-v", "-device", "c:\\dumps\\WIN7-X64-SP1-1.pmem");
+        Vmm vmm = new Vmm("-printf", "-v", "-device", "c:\\dumps\\WIN7-X64-SP1-1.pmem");
 
         // get / set vmm config options
         ulong ulOptionMM, ulOptionVV;
-        result = vmm.ConfigGet(vmm.OPT_CORE_MEMORYMODEL, out ulOptionMM);
-        result = vmm.ConfigGet(vmm.OPT_CORE_VERBOSE_EXTRA, out ulOptionVV);
-        result = vmm.ConfigSet(vmm.OPT_CORE_VERBOSE_EXTRA, 1);
-        result = vmm.ConfigGet(vmm.OPT_CORE_VERBOSE_EXTRA, out ulOptionVV);
+        result = vmm.ConfigGet(Vmm.OPT_CORE_MEMORYMODEL, out ulOptionMM);
+        result = vmm.ConfigGet(Vmm.OPT_CORE_VERBOSE_EXTRA, out ulOptionVV);
+        result = vmm.ConfigSet(Vmm.OPT_CORE_VERBOSE_EXTRA, 1);
+        result = vmm.ConfigGet(Vmm.OPT_CORE_VERBOSE_EXTRA, out ulOptionVV);
 
         // initialize plugins (required for vfs)
         vmm.InitializePlugins();
@@ -82,39 +82,39 @@ class vmm_example
         vmm.PidGetFromName("explorer.exe", out dwExplorerPID);
         
         // get kernel path of explorer.exe
-        string strKernel32KernelPath = vmm.ProcessGetInformationString(dwExplorerPID, vmm.VMMDLL_PROCESS_INFORMATION_OPT_STRING_PATH_KERNEL);
+        string strKernel32KernelPath = vmm.ProcessGetInformationString(dwExplorerPID, Vmm.VMMDLL_PROCESS_INFORMATION_OPT_STRING_PATH_KERNEL);
 
         // retrieve process information of explorer.exe
-        vmm.PROCESS_INFORMATION ProcInfo = vmm.ProcessGetInformation(dwExplorerPID);
+        Vmm.PROCESS_INFORMATION ProcInfo = vmm.ProcessGetInformation(dwExplorerPID);
 
         // get procaddress of kernel32.dll!GetTickCount64 and module base
         ulong vaTickCount64 = vmm.ProcessGetProcAddress(dwExplorerPID, "kernel32.dll", "GetTickCount64");
         ulong vaKernel32Base = vmm.ProcessGetModuleBase(dwExplorerPID, "kernel32.dll");
 
         // retrieve Directories/Sections/IAT/EAT from kernel32.dll of explorer.exe
-        vmm.IMAGE_DATA_DIRECTORY[] DIRs = vmm.ProcessGetDirectories(dwExplorerPID, "kernel32.dll");
-        vmm.IMAGE_SECTION_HEADER[] SECTIONs = vmm.ProcessGetSections(dwExplorerPID, "kernel32.dll");
+        Vmm.IMAGE_DATA_DIRECTORY[] DIRs = vmm.ProcessGetDirectories(dwExplorerPID, "kernel32.dll");
+        Vmm.IMAGE_SECTION_HEADER[] SECTIONs = vmm.ProcessGetSections(dwExplorerPID, "kernel32.dll");
 
         // retrieve different "map" structures related to explorer.exe and the system.
-        vmm.MAP_PTEENTRY[] mPte = vmm.Map_GetPte(dwExplorerPID);
-        vmm.MAP_VADENTRY[] mVad = vmm.Map_GetVad(dwExplorerPID);
-        vmm.MAP_VADEXENTRY[] mVadEx = vmm.Map_GetVadEx(dwExplorerPID, 0, 10);
-        vmm.MAP_MODULEENTRY[] mModule = vmm.Map_GetModule(dwExplorerPID);
-        vmm.MAP_MODULEENTRY mModuleKernel32 = vmm.Map_GetModuleFromName(dwExplorerPID, "kernel32.dll");
-        vmm.MAP_UNLOADEDMODULEENTRY[] mUnloadedModule = vmm.Map_GetUnloadedModule(dwExplorerPID);
-        vmm.MAP_EATINFO EatInfo;
-        vmm.MAP_EATENTRY[] mEAT = vmm.Map_GetEAT(dwExplorerPID, "kernel32.dll", out EatInfo);
-        vmm.MAP_IATENTRY[] mIAT = vmm.Map_GetIAT(dwExplorerPID, "kernel32.dll");
-        vmm.MAP_HEAP mHeap = vmm.Map_GetHeap(dwExplorerPID);
-        vmm.MAP_HEAPALLOCENTRY[] mHeapAlloc = vmm.Map_GetHeapAlloc(dwExplorerPID, 2);
-        vmm.MAP_THREADENTRY[] mThreads = vmm.Map_GetThread(dwExplorerPID);
-        vmm.MAP_HANDLEENTRY[] mHandles = vmm.Map_GetHandle(dwExplorerPID);
-        vmm.MAP_NETENTRY[] mNetworkConnections = vmm.Map_GetNet();
-        vmm.MAP_PHYSMEMENTRY[] mPhysMemRanges = vmm.Map_GetPhysMem();
-        vmm.MAP_POOLENTRY[] mPoolAllocations = vmm.Map_GetPool();
-        vmm.MAP_USERENTRY[] mUsers = vmm.Map_GetUsers();
-        vmm.MAP_SERVICEENTRY[] mServices = vmm.Map_GetServices();
-        vmm.MAP_PFNENTRY[] mPfn = vmm.Map_GetPfn(1, 2, 1024);
+        Vmm.MAP_PTEENTRY[] mPte = vmm.Map_GetPte(dwExplorerPID);
+        Vmm.MAP_VADENTRY[] mVad = vmm.Map_GetVad(dwExplorerPID);
+        Vmm.MAP_VADEXENTRY[] mVadEx = vmm.Map_GetVadEx(dwExplorerPID, 0, 10);
+        Vmm.MAP_MODULEENTRY[] mModule = vmm.Map_GetModule(dwExplorerPID);
+        Vmm.MAP_MODULEENTRY mModuleKernel32 = vmm.Map_GetModuleFromName(dwExplorerPID, "kernel32.dll");
+        Vmm.MAP_UNLOADEDMODULEENTRY[] mUnloadedModule = vmm.Map_GetUnloadedModule(dwExplorerPID);
+        Vmm.MAP_EATINFO EatInfo;
+        Vmm.MAP_EATENTRY[] mEAT = vmm.Map_GetEAT(dwExplorerPID, "kernel32.dll", out EatInfo);
+        Vmm.MAP_IATENTRY[] mIAT = vmm.Map_GetIAT(dwExplorerPID, "kernel32.dll");
+        Vmm.MAP_HEAP mHeap = vmm.Map_GetHeap(dwExplorerPID);
+        Vmm.MAP_HEAPALLOCENTRY[] mHeapAlloc = vmm.Map_GetHeapAlloc(dwExplorerPID, 2);
+        Vmm.MAP_THREADENTRY[] mThreads = vmm.Map_GetThread(dwExplorerPID);
+        Vmm.MAP_HANDLEENTRY[] mHandles = vmm.Map_GetHandle(dwExplorerPID);
+        Vmm.MAP_NETENTRY[] mNetworkConnections = vmm.Map_GetNet();
+        Vmm.MAP_PHYSMEMENTRY[] mPhysMemRanges = vmm.Map_GetPhysMem();
+        Vmm.MAP_POOLENTRY[] mPoolAllocations = vmm.Map_GetPool();
+        Vmm.MAP_USERENTRY[] mUsers = vmm.Map_GetUsers();
+        Vmm.MAP_SERVICEENTRY[] mServices = vmm.Map_GetServices();
+        Vmm.MAP_PFNENTRY[] mPfn = vmm.Map_GetPfn(1, 2, 1024);
 
         // read first 128 bytes of kernel32.dll
         byte[] dataKernel32MZ = vmm.MemRead(dwExplorerPID, mModuleKernel32.vaBase, 128, 0);
@@ -125,19 +125,19 @@ class vmm_example
 
         // read two independent chunks of memory in one single efficient call.
         // also use the nocache flag.
-        IntPtr hS;
-        if(vmm.Scatter_Initialize(dwExplorerPID, vmm.FLAG_NOCACHE, out hS))
+        VmmScatter scatter = vmm.Scatter_Initialize(dwExplorerPID, Vmm.FLAG_NOCACHE);
+        if(scatter != null)
         {
             // prepare multiple ranges to read
-            vmm.Scatter_Prepare(hS, mModuleKernel32.vaBase, 0x100);
-            vmm.Scatter_Prepare(hS, mModuleKernel32.vaBase + 0x2000, 0x100);
+            scatter.Prepare(mModuleKernel32.vaBase, 0x100);
+            scatter.Prepare(mModuleKernel32.vaBase + 0x2000, 0x100);
             // execute actual read operation to underlying system
-            vmm.Scatter_Execute(hS);
-            byte[] pbKernel32_100_1 = vmm.Scatter_Read(hS, mModuleKernel32.vaBase, 0x80);
-            byte[] pbKernel32_100_2 = vmm.Scatter_Read(hS, mModuleKernel32.vaBase + 0x2000, 0x100);
+            scatter.Execute();
+            byte[] pbKernel32_100_1 = scatter.Read(mModuleKernel32.vaBase, 0x80);
+            byte[] pbKernel32_100_2 = scatter.Read(mModuleKernel32.vaBase + 0x2000, 0x100);
             // clean up scatter handle hS (free native memory)
             // NB! hS handle should not be used after this!
-            vmm.Scatter_CloseHandle(ref hS);
+            scatter.Close();
         }
 
         // load .pdb of kernel32 from microsoft symbol server and query it
@@ -157,12 +157,12 @@ class vmm_example
         result = vmm.PdbTypeChildOffset("nt", "_IMAGE_NT_HEADERS64", "OptionalHeader", out oOptionalHeaders);
 
         // WINDOWS REGISTRY QUERY / READ / WRITE
-        vmm.REGISTRY_HIVE_INFORMATION[] RegHives = vmm.RegHiveList();
+        Vmm.REGISTRY_HIVE_INFORMATION[] RegHives = vmm.RegHiveList();
         if(RegHives.Length > 0)
         {
             byte[] RegHiveData = vmm.RegHiveRead(RegHives[0].vaCMHIVE, 0x1000, 0x100, 0);
         }
-        vmm.REGISTRY_ENUM RegEnum = vmm.RegEnum("HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion");
+        Vmm.REGISTRY_ENUM RegEnum = vmm.RegEnum("HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion");
         if(RegEnum.ValueList.Count > 0)
         {
             uint RegValueType;

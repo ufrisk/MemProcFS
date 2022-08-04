@@ -22,29 +22,30 @@ LPCSTR szMVIRT2PHYS_README =
 /*
 * Read : function as specified by the module manager. The module manager will
 * call into this callback function whenever a read shall occur from a "file".
-* -- ctx
+* -- H
+* -- ctxP
 * -- pb
 * -- cb
 * -- pcbRead
 * -- cbOffset
 * -- return
 */
-NTSTATUS Virt2Phys_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS Virt2Phys_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     BYTE iPML = 0;
     DWORD cbBuffer;
     PBYTE pbSourceData;
     BYTE pbBuffer[0x1000];
     PVMMOB_CACHE_MEM pObPT = NULL;
-    PVMM_PROCESS pProcess = (PVMM_PROCESS)ctx->pProcess;
+    PVMM_PROCESS pProcess = (PVMM_PROCESS)ctxP->pProcess;
     VMM_VIRT2PHYS_INFORMATION Virt2PhysInfo = { 0 };
     Virt2PhysInfo.va = pProcess->pObPersistent->Plugin.vaVirt2Phys;
-    VmmVirt2PhysGetInformation(pProcess, &Virt2PhysInfo);
-    if(!_stricmp(ctx->uszPath, "readme.txt")) {
+    VmmVirt2PhysGetInformation(H, pProcess, &Virt2PhysInfo);
+    if(!_stricmp(ctxP->uszPath, "readme.txt")) {
         return Util_VfsReadFile_FromStrA(szMVIRT2PHYS_README, pb, cb, pcbRead, cbOffset);
     }
-    if(!_stricmp(ctx->uszPath, "virt.txt")) {
-        switch(ctxVmm->tpMemoryModel) {
+    if(!_stricmp(ctxP->uszPath, "virt.txt")) {
+        switch(H->vmm.tpMemoryModel) {
             case VMM_MEMORYMODEL_X64:
                 return Util_VfsReadFile_FromQWORD(Virt2PhysInfo.va, pb, cb, pcbRead, cbOffset, FALSE);
             case VMM_MEMORYMODEL_X86:
@@ -54,11 +55,11 @@ NTSTATUS Virt2Phys_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pc
                 return VMMDLL_STATUS_FILE_INVALID;
         }
     }
-    if(!_stricmp(ctx->uszPath, "phys.txt")) {
+    if(!_stricmp(ctxP->uszPath, "phys.txt")) {
         return Util_VfsReadFile_FromQWORD(Virt2PhysInfo.pas[0], pb, cb, pcbRead, cbOffset, FALSE);
     }
-    if(!_stricmp(ctx->uszPath, "map.txt")) {
-        switch(ctxVmm->tpMemoryModel) {
+    if(!_stricmp(ctxP->uszPath, "map.txt")) {
+        switch(H->vmm.tpMemoryModel) {
             case VMM_MEMORYMODEL_X64:
                 cbBuffer = snprintf(
                     (LPSTR)pbBuffer,
@@ -107,26 +108,26 @@ NTSTATUS Virt2Phys_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pc
         return Util_VfsReadFile_FromPBYTE(pbBuffer, cbBuffer, pb, cb, pcbRead, cbOffset);
     }
     // "page table" or data page
-    if(!_stricmp(ctx->uszPath, "pt_pml4.mem")) { iPML = 4; }
-    if(!_stricmp(ctx->uszPath, "pt_pdpt.mem")) { iPML = 3; }
-    if(!_stricmp(ctx->uszPath, "pt_pd.mem")) { iPML = 2; }
-    if(!_stricmp(ctx->uszPath, "pt_pt.mem")) { iPML = 1; }
-    if((ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_X86) && (iPML > 2)) { return VMMDLL_STATUS_FILE_INVALID; }
-    if((ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_X86PAE) && (iPML > 3)) { return VMMDLL_STATUS_FILE_INVALID; }
+    if(!_stricmp(ctxP->uszPath, "pt_pml4.mem")) { iPML = 4; }
+    if(!_stricmp(ctxP->uszPath, "pt_pdpt.mem")) { iPML = 3; }
+    if(!_stricmp(ctxP->uszPath, "pt_pd.mem")) { iPML = 2; }
+    if(!_stricmp(ctxP->uszPath, "pt_pt.mem")) { iPML = 1; }
+    if((H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X86) && (iPML > 2)) { return VMMDLL_STATUS_FILE_INVALID; }
+    if((H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X86PAE) && (iPML > 3)) { return VMMDLL_STATUS_FILE_INVALID; }
     ZeroMemory(pbBuffer, 0x1000);
     pbSourceData = pbBuffer;
     if(iPML && (Virt2PhysInfo.pas[iPML] & ~0xfff)) {
-        pObPT = VmmTlbGetPageTable(Virt2PhysInfo.pas[iPML] & ~0xfff, FALSE);
+        pObPT = VmmTlbGetPageTable(H, Virt2PhysInfo.pas[iPML] & ~0xfff, FALSE);
         if(pObPT) {
             memcpy(pbSourceData, pObPT->pb, 0x1000);
             Ob_DECREF(pObPT);
             pObPT = NULL;
         }
     }
-    if(!_stricmp(ctx->uszPath, "page.mem") && (Virt2PhysInfo.pas[0] & ~0xfff)) {
-        VmmReadPage(NULL, Virt2PhysInfo.pas[0] & ~0xfff, pbBuffer);
+    if(!_stricmp(ctxP->uszPath, "page.mem") && (Virt2PhysInfo.pas[0] & ~0xfff)) {
+        VmmReadPage(H, NULL, Virt2PhysInfo.pas[0] & ~0xfff, pbBuffer);
     }
-    if(iPML || !_stricmp(ctx->uszPath, "page.mem")) {
+    if(iPML || !_stricmp(ctxP->uszPath, "page.mem")) {
         return Util_VfsReadFile_FromPBYTE(pbSourceData, 0x1000, pb, cb, pcbRead, cbOffset);
     }
     return VMMDLL_STATUS_FILE_INVALID;
@@ -135,22 +136,23 @@ NTSTATUS Virt2Phys_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pc
 /*
 * Write : function as specified by the module manager. The module manager will
 * call into this callback function whenever a write shall occur from a "file".
-* -- ctx
+* -- H
+* -- ctxP
 * -- pb
 * -- cb
 * -- pcbWrite
 * -- cbOffset
 * -- return
 */
-NTSTATUS Virt2Phys_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
+NTSTATUS Virt2Phys_Write(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
 {
     DWORD i;
-    PVMM_PROCESS pProcess = (PVMM_PROCESS)ctx->pProcess;
+    PVMM_PROCESS pProcess = (PVMM_PROCESS)ctxP->pProcess;
     VMM_VIRT2PHYS_INFORMATION Virt2PhysInfo = { 0 };
-    if(!_stricmp(ctx->uszPath, "virt.txt")) {
-        if(ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_X64) {
+    if(!_stricmp(ctxP->uszPath, "virt.txt")) {
+        if(H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X64) {
             return Util_VfsWriteFile_QWORD(&pProcess->pObPersistent->Plugin.vaVirt2Phys, pb, cb, pcbWrite, cbOffset, 0, 0);
-        } else if((ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_X86) || (ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_X86PAE)) {
+        } else if((H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X86) || (H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X86PAE)) {
             return Util_VfsWriteFile_DWORD((PDWORD)&pProcess->pObPersistent->Plugin.vaVirt2Phys, pb, cb, pcbWrite, cbOffset, 0, 0);
         } else {
             *pcbWrite = 0;
@@ -158,18 +160,18 @@ NTSTATUS Virt2Phys_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBYTE p
         }
     }
     Virt2PhysInfo.va = pProcess->pObPersistent->Plugin.vaVirt2Phys;
-    VmmVirt2PhysGetInformation(pProcess, &Virt2PhysInfo);
+    VmmVirt2PhysGetInformation(H, pProcess, &Virt2PhysInfo);
     i = 0xff;
-    if(!_stricmp(ctx->uszPath, "pt_pml4.mem")) { i = 4; }
-    if(!_stricmp(ctx->uszPath, "pt_pdpt.mem")) { i = 3; }
-    if(!_stricmp(ctx->uszPath, "pt_pd.mem")) { i = 2; }
-    if(!_stricmp(ctx->uszPath, "pt_pt.mem")) { i = 1; }
-    if(!_stricmp(ctx->uszPath, "page.mem")) { i = 0; }
+    if(!_stricmp(ctxP->uszPath, "pt_pml4.mem")) { i = 4; }
+    if(!_stricmp(ctxP->uszPath, "pt_pdpt.mem")) { i = 3; }
+    if(!_stricmp(ctxP->uszPath, "pt_pd.mem")) { i = 2; }
+    if(!_stricmp(ctxP->uszPath, "pt_pt.mem")) { i = 1; }
+    if(!_stricmp(ctxP->uszPath, "page.mem")) { i = 0; }
     if(i > 4) { return VMMDLL_STATUS_FILE_INVALID; }
     if(Virt2PhysInfo.pas[i] < 0x1000) { return VMMDLL_STATUS_FILE_INVALID; }
     if(cbOffset > 0x1000) { return VMMDLL_STATUS_END_OF_FILE; }
     *pcbWrite = (DWORD)min(cb, 0x1000 - cbOffset);
-    VmmWrite(NULL, Virt2PhysInfo.pas[i] + cbOffset, pb, *pcbWrite);
+    VmmWrite(H, NULL, Virt2PhysInfo.pas[i] + cbOffset, pb, *pcbWrite);
     return *pcbWrite ? VMMDLL_STATUS_SUCCESS : VMMDLL_STATUS_END_OF_FILE;
 }
 
@@ -177,18 +179,19 @@ NTSTATUS Virt2Phys_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_reads_(cb) PBYTE p
 * List : function as specified by the module manager. The module manager will
 * call into this callback function whenever a list directory shall occur from
 * the given module.
+* -- H
 * -- ctx
 * -- pFileList
 * -- return
 */
-BOOL Virt2Phys_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
+BOOL Virt2Phys_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList)
 {
-    if(ctx->uszPath[0]) {
+    if(ctxP->uszPath[0]) {
         // only list in module root directory.
         // not root directory == error for this module.
         return FALSE;
     }
-    switch(ctxVmm->tpMemoryModel) {
+    switch(H->vmm.tpMemoryModel) {
         case VMM_MEMORYMODEL_X64:
             VMMDLL_VfsList_AddFile(pFileList, "virt.txt", 16, NULL);
             VMMDLL_VfsList_AddFile(pFileList, "phys.txt", 16, NULL);
@@ -229,9 +232,10 @@ BOOL Virt2Phys_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 * shall call the supplied pfnPluginManager_Register function.
 * NB! the module does not have to register itself - for example if the target
 * operating system or architecture is unsupported.
-* -- pPluginRegInfo
+* -- H
+* -- pRI
 */
-VOID M_Virt2Phys_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
+VOID M_Virt2Phys_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if(!((pRI->tpMemoryModel == VMM_MEMORYMODEL_X64) || (pRI->tpMemoryModel == VMM_MEMORYMODEL_X86) || (pRI->tpMemoryModel == VMM_MEMORYMODEL_X86PAE))) { return; }
@@ -240,5 +244,5 @@ VOID M_Virt2Phys_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     pRI->reg_fn.pfnList = Virt2Phys_List;                                // List function supported
     pRI->reg_fn.pfnRead = Virt2Phys_Read;                                // Read function supported
     pRI->reg_fn.pfnWrite = Virt2Phys_Write;                              // Write function supported
-    pRI->pfnPluginManager_Register(pRI);
+    pRI->pfnPluginManager_Register(H, pRI);
 }

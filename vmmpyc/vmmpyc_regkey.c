@@ -13,7 +13,7 @@ static BOOL VmmPycRegKey_EnsureLastWrite(PyObj_RegKey *self)
     BOOL result = FALSE;
     if(!self->ftLastWrite) {
         Py_BEGIN_ALLOW_THREADS;
-        result = VMMDLL_WinReg_EnumKeyExU(self->uszPath, -1, NULL, &cch, (PFILETIME)&self->ftLastWrite);
+        result = VMMDLL_WinReg_EnumKeyExU(self->pyVMM->hVMM, self->uszPath, -1, NULL, &cch, (PFILETIME)&self->ftLastWrite);
         Py_END_ALLOW_THREADS;
     }
     return result || self->ftLastWrite;
@@ -57,10 +57,10 @@ VmmPycRegKey_values(PyObj_RegKey *self, void *closure)
     while(TRUE) {
         Py_BEGIN_ALLOW_THREADS;
         cch = MAX_PATH;
-        fResult = VMMDLL_WinReg_EnumValueU(self->uszPath, i++, uszValueName, &cch, NULL, NULL, NULL);
+        fResult = VMMDLL_WinReg_EnumValueU(self->pyVMM->hVMM, self->uszPath, i++, uszValueName, &cch, NULL, NULL, NULL);
         Py_END_ALLOW_THREADS;
         if(!fResult) { break; }
-        PyList_Append_DECREF(pyList, (PyObject*)VmmPycRegValue_InitializeInternal(usz, FALSE));
+        PyList_Append_DECREF(pyList, (PyObject*)VmmPycRegValue_InitializeInternal(self->pyVMM, usz, FALSE));
     }
     return pyList;
 }
@@ -84,10 +84,10 @@ VmmPycRegKey_values_dict(PyObj_RegKey *self, void *closure)
     while(TRUE) {
         Py_BEGIN_ALLOW_THREADS;
         cch = MAX_PATH;
-        fResult = VMMDLL_WinReg_EnumValueU(self->uszPath, i++, uszValueName, &cch, NULL, NULL, NULL);
+        fResult = VMMDLL_WinReg_EnumValueU(self->pyVMM->hVMM, self->uszPath, i++, uszValueName, &cch, NULL, NULL, NULL);
         Py_END_ALLOW_THREADS;
         if(!fResult) { break; }
-        if((pyObjValue = VmmPycRegValue_InitializeInternal(usz, FALSE))) {
+        if((pyObjValue = VmmPycRegValue_InitializeInternal(self->pyVMM, usz, FALSE))) {
             PyDict_SetItemUnicode_DECREF(pyDict, pyObjValue->pyName, (PyObject*)pyObjValue);
         }
     }
@@ -112,10 +112,10 @@ VmmPycRegKey_subkeys(PyObj_RegKey *self, void *closure)
     while(TRUE) {
         Py_BEGIN_ALLOW_THREADS;
         cch = MAX_PATH;
-        fResult = VMMDLL_WinReg_EnumKeyExU(self->uszPath, i++, uszKeyName, &cch, NULL);
+        fResult = VMMDLL_WinReg_EnumKeyExU(self->pyVMM->hVMM, self->uszPath, i++, uszKeyName, &cch, NULL);
         Py_END_ALLOW_THREADS;
         if(!fResult) { break; }
-        PyList_Append_DECREF(pyList, (PyObject*)VmmPycRegKey_InitializeInternal(usz, FALSE));
+        PyList_Append_DECREF(pyList, (PyObject*)VmmPycRegKey_InitializeInternal(self->pyVMM, usz, FALSE));
     }
     return pyList;
 }
@@ -139,10 +139,10 @@ VmmPycRegKey_subkeys_dict(PyObj_RegKey *self, void *closure)
     while(TRUE) {
         Py_BEGIN_ALLOW_THREADS;
         cch = MAX_PATH;
-        fResult = VMMDLL_WinReg_EnumKeyExU(self->uszPath, i++, uszKeyName, &cch, NULL);
+        fResult = VMMDLL_WinReg_EnumKeyExU(self->pyVMM->hVMM, self->uszPath, i++, uszKeyName, &cch, NULL);
         Py_END_ALLOW_THREADS;
         if(!fResult) { break; }
-        if((pyObjKey = VmmPycRegKey_InitializeInternal(usz, FALSE))) {
+        if((pyObjKey = VmmPycRegKey_InitializeInternal(self->pyVMM, usz, FALSE))) {
             PyDict_SetItemUnicode_DECREF(pyDict, pyObjKey->pyName, (PyObject*)pyObjKey);
         }
     }
@@ -158,7 +158,7 @@ VmmPycRegKey_parent(PyObj_RegKey *self, void *closure)
     if(!Util_PathSplitLastEx(self->uszPath, uszParentPath, sizeof(uszParentPath))) {
         return PyErr_Format(PyExc_RuntimeError, "RegKey.parent: No parent key.");
     }
-    return (PyObject*)VmmPycRegKey_InitializeInternal(uszParentPath, FALSE);
+    return (PyObject*)VmmPycRegKey_InitializeInternal(self->pyVMM, uszParentPath, FALSE);
 }
 
 // -> STR
@@ -183,12 +183,13 @@ VmmPycRegKey_path(PyObj_RegKey *self, void *closure)
 //-----------------------------------------------------------------------------
 
 PyObj_RegKey*
-VmmPycRegKey_InitializeInternal(_In_ LPSTR uszFullPathKey, _In_ BOOL fVerify)
+VmmPycRegKey_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_ LPSTR uszFullPathKey, _In_ BOOL fVerify)
 {
     PyObj_RegKey *pyObj;
-    if(!(pyObj = PyObject_New(PyObj_RegKey, (PyTypeObject*)g_pPyType_RegKey))) { return NULL; }
+    if(!(pyObj = PyObject_New(PyObj_RegKey, (PyTypeObject*)g_pPyType_RegKey))) { return NULL; }    
+    Py_INCREF(pyVMM); pyObj->pyVMM = pyVMM;
     pyObj->fValid = TRUE;
-    pyObj->ftLastWrite = 0;
+    pyObj->ftLastWrite = 0;    
     strncpy_s(pyObj->uszPath, _countof(pyObj->uszPath), uszFullPathKey, _TRUNCATE);
     pyObj->pyName = PyUnicode_FromString(Util_PathSplitLastU(pyObj->uszPath));
     if(fVerify && !VmmPycRegKey_EnsureLastWrite(pyObj)) {
@@ -217,6 +218,7 @@ VmmPycRegKey_dealloc(PyObj_RegKey *self)
 {
     self->fValid = FALSE;
     Py_XDECREF(self->pyName);
+    Py_XDECREF(self->pyVMM); self->pyVMM = NULL;
 }
 
 _Success_(return)

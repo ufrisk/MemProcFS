@@ -12,7 +12,7 @@
 #define OB_COUNTER_ENTRIES_DIRECTORY    0x100
 #define OB_COUNTER_ENTRIES_TABLE        0x200
 #define OB_COUNTER_ENTRIES_STORE        0x100
-#define OB_COUNTER_IS_VALID(p)          (p && (p->ObHdr._magic == OB_HEADER_MAGIC) && (p->ObHdr._tag == OB_TAG_CORE_COUNTER))
+#define OB_COUNTER_IS_VALID(p)          (p && (p->ObHdr._magic2 == OB_HEADER_MAGIC) && (p->ObHdr._magic1 == OB_HEADER_MAGIC) && (p->ObHdr._tag == OB_TAG_CORE_COUNTER))
 #define OB_COUNTER_TABLE_MAX_CAPACITY   OB_COUNTER_ENTRIES_DIRECTORY * OB_COUNTER_ENTRIES_TABLE * OB_COUNTER_ENTRIES_STORE
 #define OB_COUNTER_HASH_FUNCTION(v)     (13 * (v + _rotr16((WORD)v, 9) + _rotr((DWORD)v, 17) + _rotr64(v, 31)))
 
@@ -531,13 +531,14 @@ BOOL _ObCounter_Push(_In_ POB_COUNTER pm, _In_ QWORD k, _In_ QWORD v)
 * Create a new counter. A counter (ObCounter) provides atomic counting operations.
 * The ObCounter is an object manager object and must be DECREF'ed when required.
 * CALLER DECREF: return
+* -- H
 * -- flags = defined by OB_COUNTER_FLAGS_*
 * -- return
 */
-POB_COUNTER ObCounter_New(_In_ QWORD flags)
+POB_COUNTER ObCounter_New(_In_opt_ VMM_HANDLE H, _In_ QWORD flags)
 {
     POB_COUNTER pObCounter;
-    pObCounter = Ob_Alloc(OB_TAG_CORE_COUNTER, LMEM_ZEROINIT, sizeof(OB_COUNTER), (OB_CLEANUP_CB)_ObCounter_ObCloseCallback, NULL);
+    pObCounter = Ob_AllocEx(H, OB_TAG_CORE_COUNTER, LMEM_ZEROINIT, sizeof(OB_COUNTER), (OB_CLEANUP_CB)_ObCounter_ObCloseCallback, NULL);
     if(!pObCounter) { return NULL; }
     InitializeSRWLock(&pObCounter->LockSRW);
     pObCounter->c = 1;      // item zero is reserved - hence the initialization of count to 1

@@ -12,7 +12,7 @@ static PyObject*
 VmmPycVirtualMemory_read(PyObj_VirtualMemory *self, PyObject *args)
 {
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "VirtualMemory.read(): Not initialized."); }
-    return VmmPyc_MemRead(self->dwPID, "VirtualMemory.read()", args);
+    return VmmPyc_MemRead(self->pyVMM->hVMM, self->dwPID, "VirtualMemory.read()", args);
 }
 
 // (ULONG64, DWORD, (ULONG64)) -> [{...}]
@@ -20,7 +20,7 @@ static PyObject*
 VmmPycVirtualMemory_read_scatter(PyObj_VirtualMemory *self, PyObject *args)
 {
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "VirtualMemory.read_scatter(): Not initialized."); }
-    return VmmPyc_MemReadScatter(self->dwPID, "VirtualMemory.read_scatter()", args);
+    return VmmPyc_MemReadScatter(self->pyVMM->hVMM, self->dwPID, "VirtualMemory.read_scatter()", args);
 }
 
 // (ULONG64, PBYTE) -> None
@@ -28,7 +28,7 @@ static PyObject*
 VmmPycVirtualMemory_write(PyObj_VirtualMemory *self, PyObject *args)
 {
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "VirtualMemory.write(): Not initialized."); }
-    return VmmPyc_MemWrite(self->dwPID, "VirtualMemory.write()", args);
+    return VmmPyc_MemWrite(self->pyVMM->hVMM, self->dwPID, "VirtualMemory.write()", args);
 }
 
 // (ULONG64) -> ULONG64
@@ -42,7 +42,7 @@ VmmPycVirtualMemory_virt2phys(PyObj_VirtualMemory *self, PyObject *args)
         return PyErr_Format(PyExc_RuntimeError, "VirtualMemory.virt2phys(): Illegal argument.");
     }
     Py_BEGIN_ALLOW_THREADS;
-    result = VMMDLL_MemVirt2Phys(self->dwPID, va, &pa);
+    result = VMMDLL_MemVirt2Phys(self->pyVMM->hVMM, self->dwPID, va, &pa);
     Py_END_ALLOW_THREADS;
     if(!result) { return PyErr_Format(PyExc_RuntimeError, "VirtualMemory.virt2phys(): Failed."); }
     return PyLong_FromUnsignedLongLong(pa);
@@ -57,7 +57,7 @@ VmmPycVirtualMemory_scatter_initialize(PyObj_VirtualMemory *self, PyObject *args
     if(!PyArg_ParseTuple(args, "|k", &dwReadFlags)) { // borrowed reference
         return PyErr_Format(PyExc_RuntimeError, "VirtualMemory.scatter_initialize(): Illegal argument.");
     }
-    return (PyObject*)VmmPycScatterMemory_InitializeInternal(self->dwPID, dwReadFlags);
+    return (PyObject*)VmmPycScatterMemory_InitializeInternal(self->pyVMM, self->dwPID, dwReadFlags);
 }
 
 //-----------------------------------------------------------------------------
@@ -65,10 +65,11 @@ VmmPycVirtualMemory_scatter_initialize(PyObj_VirtualMemory *self, PyObject *args
 //-----------------------------------------------------------------------------
 
 PyObj_VirtualMemory*
-VmmPycVirtualMemory_InitializeInternal(_In_ DWORD dwPID)
+VmmPycVirtualMemory_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_ DWORD dwPID)
 {
     PyObj_VirtualMemory *pyObj;
     if(!(pyObj = PyObject_New(PyObj_VirtualMemory, (PyTypeObject*)g_pPyType_VirtualMemory))) { return NULL; }
+    Py_INCREF(pyVMM); pyObj->pyVMM = pyVMM;
     pyObj->fValid = TRUE;
     pyObj->dwPID = dwPID;
     return pyObj;
@@ -93,6 +94,7 @@ static void
 VmmPycVirtualMemory_dealloc(PyObj_VirtualMemory *self)
 {
     self->fValid = FALSE;
+    Py_XDECREF(self->pyVMM); self->pyVMM = NULL;
 }
 
 _Success_(return)

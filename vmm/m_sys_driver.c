@@ -7,15 +7,18 @@
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmm.h"
+#include "fc.h"
 #include "charutil.h"
 #include "util.h"
 #include "pluginmanager.h"
 #include "vmmwinobj.h"
 #include "vmmwindef.h"
 
-#define MSYSDRIVER_DRV_LINELENGTH                  128ULL
+static LPSTR MSYSDRIVER_CSV_DRIVERS = "Name,ObjectAddress,Size,Start,End,ServiceKey,DriverName,DriverPath\n";
+
+#define MSYSDRIVER_DRV_LINELENGTH                  256ULL
 #define MSYSDRIVER_IRP_LINELENGTH                  88ULL
-#define MSYSDRIVER_DRV_LINEHEADER     "   #   Object Address Driver               Size Drv Range: Start-End              Service Key      Driver Name"
+#define MSYSDRIVER_DRV_LINEHEADER     "   #   Object Address Driver               Size Drv Range: Start-End              Service Key      Driver Name                      Driver Path"
 #define MSYSDRIVER_IRP_LINEHEADER     "   # Driver            # IRP_MJ_*                          Address Target Module"
 
 #define MSYSDRIVER_IRP_STR (LPCSTR[]){ \
@@ -67,7 +70,7 @@ int MSysDriver_PteCmpFind(_In_ QWORD va, _In_ QWORD qwEntry)
 /*
 * Line callback function to print a single driver/irp line.
 */
-VOID MSysDriver_IrpReadLine_Callback(_In_ PMSYSDRIVER_IRP_CONTEXT ctx, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVOID pv, _Out_writes_(cbLineLength + 1) LPSTR usz)
+VOID MSysDriver_IrpReadLineCB(_In_ VMM_HANDLE H, _In_ PMSYSDRIVER_IRP_CONTEXT ctx, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVOID pv, _Out_writes_(cbLineLength + 1) LPSTR usz)
 {
     PVMM_MAP_PTEENTRY pePte;
     PVMM_MAP_KDRIVERENTRY pe;
@@ -78,7 +81,7 @@ VOID MSysDriver_IrpReadLine_Callback(_In_ PMSYSDRIVER_IRP_CONTEXT ctx, _In_ DWOR
     iIrp = ie % 28;
     pe = ctx->pDrvMap->pMap + iDrv;
     vaIrp = pe->MajorFunction[iIrp];
-    if(vaIrp == ctxVmm->kernel.opt.vaIopInvalidDeviceRequest) {
+    if(vaIrp == H->vmm.kernel.opt.vaIopInvalidDeviceRequest) {
         uszTxt = "---";
     } else if((vaIrp >= pe->vaStart) && (vaIrp < pe->vaStart + pe->cbDriverSize)) {
         uszTxt = pe->uszName;
@@ -96,10 +99,12 @@ VOID MSysDriver_IrpReadLine_Callback(_In_ PMSYSDRIVER_IRP_CONTEXT ctx, _In_ DWOR
     );
 }
 
-VOID MSysDriver_DrvReadLine_Callback(_Inout_opt_ PVOID ctx, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVMM_MAP_KDRIVERENTRY pe, _Out_writes_(cbLineLength + 1) LPSTR usz)
+VOID MSysDriver_DrvReadLineCB(_In_ VMM_HANDLE H, _In_ POB_MAP pmModuleByVA, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVMM_MAP_KDRIVERENTRY pe, _Out_writes_(cbLineLength + 1) LPSTR usz)
 {
+    PVMMOB_MAP_MODULE pObModuleMap = NULL;
+    PVMM_MAP_MODULEENTRY peModule = ObMap_GetByKey(pmModuleByVA, pe->vaStart);
     Util_usnprintf_ln(usz, cbLineLength,
-        "%04x %16llx %-16.16s %8llx %16llx-%16llx %-16.16s %s",
+        "%04x %16llx %-16.16s %8llx %16llx-%16llx %-16.16s %-32.32s %s",
         ie,
         pe->va,
         pe->uszName,
@@ -107,7 +112,8 @@ VOID MSysDriver_DrvReadLine_Callback(_Inout_opt_ PVOID ctx, _In_ DWORD cbLineLen
         pe->vaStart,
         pe->cbDriverSize ? (pe->vaStart + pe->cbDriverSize - 1) : pe->vaStart,
         pe->uszServiceKeyName,
-        pe->uszPath
+        pe->uszPath,
+        (peModule && peModule->uszFullName) ? peModule->uszFullName : ""
     );
 }
 
@@ -129,77 +135,111 @@ BOOL MSysDriver_EntryFromPath(_In_ LPSTR uszPath, _In_ PVMMOB_MAP_KDRIVER pDrvMa
     return FALSE;
 }
 
-NTSTATUS MSysDriver_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MSysDriver_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
-    PVMM_MAP_KDRIVERENTRY pe;
+    PVMM_MAP_KDRIVERENTRY peDriver;
     PVMMOB_MAP_PTE pObPteMap = NULL;
     PVMMOB_MAP_KDRIVER pObDrvMap = NULL;
     PVMM_PROCESS pObSystemProcess = NULL;
     MSYSDRIVER_IRP_CONTEXT IrpCtx = { 0 };
-    if(!VmmMap_GetKDriver(&pObDrvMap)) { goto cleanup; }
-    if(!_stricmp(ctx->uszPath, "drivers.txt")) {
+    PVMMOB_MAP_MODULE pObModuleMap = NULL;
+    POB_MAP pmObModuleByVA = NULL;
+    CHAR uszBuffer[MAX_PATH];
+    LPSTR uszPath;
+    if(!VmmMap_GetKDriver(H, &pObDrvMap)) { goto cleanup; }
+    if(!(pObSystemProcess = VmmProcessGet(H, 4))) { goto cleanup; }
+    if(!_stricmp(ctxP->uszPath, "drivers.txt")) {
+        if(VmmMap_GetModule(H, pObSystemProcess, &pObModuleMap)) {
+            VmmMap_GetModuleEntryEx3(H, pObModuleMap, &pmObModuleByVA);
+        }
         nt = Util_VfsLineFixed_Read(
-            (UTIL_VFSLINEFIXED_PFN_CB)MSysDriver_DrvReadLine_Callback, NULL, MSYSDRIVER_DRV_LINELENGTH, MSYSDRIVER_DRV_LINEHEADER,
+            H, (UTIL_VFSLINEFIXED_PFN_CB)MSysDriver_DrvReadLineCB, pmObModuleByVA, MSYSDRIVER_DRV_LINELENGTH, MSYSDRIVER_DRV_LINEHEADER,
             pObDrvMap->pMap, pObDrvMap->cMap, sizeof(VMM_MAP_KDRIVERENTRY),
             pb, cb, pcbRead, cbOffset
         );
         goto cleanup;
     }
-    if(!_stricmp(ctx->uszPath, "driver_irp.txt")) {
-        if(!(pObSystemProcess = VmmProcessGet(4))) { goto cleanup; }
-        if(!VmmMap_GetPte(pObSystemProcess, &pObPteMap, TRUE)) { goto cleanup; }
+    if(!_stricmp(ctxP->uszPath, "driver_irp.txt")) {
+        if(!VmmMap_GetPte(H, pObSystemProcess, &pObPteMap, TRUE)) { goto cleanup; }
         IrpCtx.pDrvMap = pObDrvMap;
         IrpCtx.pPteMap = pObPteMap;
         nt = Util_VfsLineFixed_Read(
-            (UTIL_VFSLINEFIXED_PFN_CB)MSysDriver_IrpReadLine_Callback, &IrpCtx, MSYSDRIVER_IRP_LINELENGTH, MSYSDRIVER_IRP_LINEHEADER,
+            H, (UTIL_VFSLINEFIXED_PFN_CB)MSysDriver_IrpReadLineCB, &IrpCtx, MSYSDRIVER_IRP_LINELENGTH, MSYSDRIVER_IRP_LINEHEADER,
             pObDrvMap->pMap, pObDrvMap->cMap * 28ULL, 0,
             pb, cb, pcbRead, cbOffset
         );
         goto cleanup;
     }
-    if(!_strnicmp("by-name\\", ctx->uszPath, 8)) {
-        if(MSysDriver_EntryFromPath(ctx->uszPath, pObDrvMap, &pe, NULL)) {
-            nt = VmmWinObjDisplay_VfsRead(ctx->uszPath, ctxVmm->ObjectTypeTable.tpDriver, pe->va, pb, cb, pcbRead, cbOffset);
-            goto cleanup;
+    if(!_strnicmp("by-name\\", ctxP->uszPath, 8)) {
+        if(MSysDriver_EntryFromPath(ctxP->uszPath, pObDrvMap, &peDriver, NULL)) {
+            uszPath = CharUtil_PathSplitNext(ctxP->uszPath);
+            uszPath = CharUtil_PathSplitNext(uszPath);
+            if(strstr(uszPath, "\\")) {
+                // module directory
+                _snprintf_s(uszBuffer, _countof(uszBuffer), _TRUNCATE, "modules\\%s", uszPath);
+                nt = PluginManager_Read(H, pObSystemProcess, uszBuffer, pb, cb, pcbRead, cbOffset);
+            } else {
+                // driver object directory
+                nt = VmmWinObjDisplay_VfsRead(H, ctxP->uszPath, H->vmm.ObjectTypeTable.tpDriver, peDriver->va, pb, cb, pcbRead, cbOffset);
+            }
         }
+        goto cleanup;
     }
 cleanup:
     Ob_DECREF(pObDrvMap);
     Ob_DECREF(pObPteMap);
+    Ob_DECREF(pObModuleMap);
+    Ob_DECREF(pmObModuleByVA);
     Ob_DECREF(pObSystemProcess);
     return nt;
 }
 
-BOOL MSysDriver_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
+BOOL MSysDriver_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList)
 {
     DWORD i;
+    CHAR uszBuffer[MAX_PATH];
     LPSTR uszPath;
-    PVMM_MAP_KDRIVERENTRY pe;
+    PVMM_MAP_KDRIVERENTRY peDriver;
     PVMMOB_MAP_KDRIVER pObDrvMap = NULL;
-    if(!VmmMap_GetKDriver(&pObDrvMap)) { goto finish; }
-    if(!ctx->uszPath[0]) {
+    PVMM_MAP_MODULEENTRY peModule;
+    PVMMOB_MAP_MODULE pObModuleMap = NULL;
+    PVMM_PROCESS pObSystemProcess = NULL;
+    if(!VmmMap_GetKDriver(H, &pObDrvMap)) { goto finish; }
+    if(!ctxP->uszPath[0]) {
         VMMDLL_VfsList_AddDirectory(pFileList, "by-name", NULL);
-        VMMDLL_VfsList_AddFile(pFileList, "drivers.txt", UTIL_VFSLINEFIXED_LINECOUNT(pObDrvMap->cMap) * MSYSDRIVER_DRV_LINELENGTH, NULL);
-        VMMDLL_VfsList_AddFile(pFileList, "driver_irp.txt", UTIL_VFSLINEFIXED_LINECOUNT(pObDrvMap->cMap * 28ULL) * MSYSDRIVER_IRP_LINELENGTH, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "drivers.txt", UTIL_VFSLINEFIXED_LINECOUNT(H, pObDrvMap->cMap) * MSYSDRIVER_DRV_LINELENGTH, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "driver_irp.txt", UTIL_VFSLINEFIXED_LINECOUNT(H, pObDrvMap->cMap * 28ULL) * MSYSDRIVER_IRP_LINELENGTH, NULL);
         goto finish;
     }
-    if(!_stricmp(ctx->uszPath, "by-name")) {
+    if(!_stricmp(ctxP->uszPath, "by-name")) {
         for(i = 0; i < pObDrvMap->cMap; i++) {
             VMMDLL_VfsList_AddDirectory(pFileList, pObDrvMap->pMap[i].uszName, NULL);
         }
         goto finish;
     }
-    if(MSysDriver_EntryFromPath(ctx->uszPath, pObDrvMap, &pe, &uszPath) && uszPath[0]) {
-        VmmWinObjDisplay_VfsList(ctxVmm->ObjectTypeTable.tpDriver, pe->va, pFileList);
+    if(MSysDriver_EntryFromPath(ctxP->uszPath, pObDrvMap, &peDriver, &uszPath) && uszPath[0] && (pObSystemProcess = VmmProcessGet(H, 4))) {
+        uszPath = CharUtil_PathSplitNext(uszPath);
+        if(0 == uszPath[0]) {
+            VmmWinObjDisplay_VfsList(H, H->vmm.ObjectTypeTable.tpDriver, peDriver->va, pFileList);
+            if(VmmMap_GetModule(H, pObSystemProcess, &pObModuleMap) && (peModule = VmmMap_GetModuleEntryEx2(H, pObModuleMap, peDriver->vaStart))) {
+                VMMDLL_VfsList_AddDirectory(pFileList, peModule->uszText, NULL);
+            }
+        } else {
+            // forward link to module:
+            _snprintf_s(uszBuffer, _countof(uszBuffer), _TRUNCATE, "modules\\%s\\", uszPath);
+            PluginManager_List(H, pObSystemProcess, uszBuffer, pFileList);
+        }
         goto finish;
     }
 finish:
     Ob_DECREF(pObDrvMap);
+    Ob_DECREF(pObModuleMap);
+    Ob_DECREF(pObSystemProcess);
     return TRUE;
 }
 
-VOID MSysDriver_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
+VOID MSysDriver_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
 {
     PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd;
     PVMMOB_MAP_KDRIVER pObDrvMap = NULL;
@@ -209,7 +249,7 @@ VOID MSysDriver_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSO
     if(ctxP->pProcess || !(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)))) { return; }
     pd->dwVersion = VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION;
     pd->szjType = "driver";
-    if(VmmMap_GetKDriver(&pObDrvMap)) {
+    if(VmmMap_GetKDriver(H, &pObDrvMap)) {
         for(i = 0; i < pObDrvMap->cMap; i++) {
             pe = pObDrvMap->pMap + i;
             pd->i = i;
@@ -220,14 +260,55 @@ VOID MSysDriver_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSO
             pd->usz[0] = pe->uszName;
             snprintf(usz, sizeof(usz), "svc:[%s] path:[%s]", pe->uszServiceKeyName, pe->uszPath);
             pd->usz[1] = usz;
-            pfnLogJSON(pd);
+            pfnLogJSON(H, pd);
         }
     }
     Ob_DECREF(pObDrvMap);
     LocalFree(pd);
 }
 
-VOID M_SysDriver_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
+PVOID MSysDriver_FcInitialize(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
+{
+    FcFileAppend(H, "drivers.csv", MSYSDRIVER_CSV_DRIVERS);
+    return NULL;
+}
+
+VOID MSysDriver_FcLogCSV(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VMMDLL_CSV_HANDLE hCSV)
+{
+    PVMM_PROCESS pSystemProcess = (PVMM_PROCESS)ctxP->pProcess;
+    PVMM_MAP_KDRIVERENTRY pe;
+    PVMMOB_MAP_KDRIVER pObDriverMap = NULL;
+    PVMMOB_MAP_MODULE pObModuleMap = NULL;
+    PVMM_MAP_MODULEENTRY peModule;
+    POB_MAP pmObModuleByVA = NULL;
+    DWORD i;
+    if(!pSystemProcess || (pSystemProcess->dwPID != 4)) { return; }
+    if(!VmmMap_GetKDriver(H, &pObDriverMap)) { return; }
+    if(VmmMap_GetModule(H, pSystemProcess, &pObModuleMap)) {
+        VmmMap_GetModuleEntryEx3(H, pObModuleMap, &pmObModuleByVA);
+    }
+    for(i = 0; i < pObDriverMap->cMap; i++) {
+        pe = pObDriverMap->pMap + i;
+        peModule = (PVMM_MAP_MODULEENTRY)ObMap_GetByKey(pmObModuleByVA, pe->vaStart);
+        //"Name,ObjectAddress,Size,Start,End,ServiceKey,DriverName,DriverPath"
+        FcCsv_Reset(hCSV);
+        FcFileAppend(H, "drivers.csv", "%s,0x%llx,0x%llx,0x%llx,0x%llx,%s,%s,%s\n",
+            FcCsv_String(hCSV, pe->uszName),
+            pe->va,
+            pe->cbDriverSize,
+            pe->vaStart,
+            pe->cbDriverSize ? (pe->vaStart + pe->cbDriverSize - 1) : pe->vaStart,
+            FcCsv_String(hCSV, pe->uszServiceKeyName),
+            FcCsv_String(hCSV, pe->uszPath),
+            (peModule && peModule->uszFullName) ? FcCsv_String(hCSV, peModule->uszFullName) : ""
+        );
+    }
+    Ob_DECREF(pObDriverMap);
+    Ob_DECREF(pObModuleMap);
+    Ob_DECREF(pmObModuleByVA);
+}
+
+VOID M_SysDriver_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if((pRI->tpSystem != VMM_SYSTEM_WINDOWS_X64) && (pRI->tpSystem != VMM_SYSTEM_WINDOWS_X86)) { return; }
@@ -236,6 +317,8 @@ VOID M_SysDriver_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     pRI->reg_info.fRootModule = TRUE;                               // module shows in root directory
     pRI->reg_fn.pfnList = MSysDriver_List;                          // List function supported
     pRI->reg_fn.pfnRead = MSysDriver_Read;                          // Read function supported
+    pRI->reg_fnfc.pfnInitialize = MSysDriver_FcInitialize;          // Forensic initialize function supported
+    pRI->reg_fnfc.pfnLogCSV = MSysDriver_FcLogCSV;                  // CSV log function supported
     pRI->reg_fnfc.pfnLogJSON = MSysDriver_FcLogJSON;                // JSON log function supported
-    pRI->pfnPluginManager_Register(pRI);
+    pRI->pfnPluginManager_Register(H, pRI);
 }

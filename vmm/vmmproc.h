@@ -18,19 +18,20 @@
 * A slower more comprehensive refresh layer does not equal that the lower
 * faster refresh layers are run automatically - user has to refresh them too.
 */
-_Success_(return) BOOL VmmProcRefresh_MEM();
-_Success_(return) BOOL VmmProcRefresh_TLB();
-_Success_(return) BOOL VmmProcRefresh_Fast();
-_Success_(return) BOOL VmmProcRefresh_Medium();
-_Success_(return) BOOL VmmProcRefresh_Slow();
+_Success_(return) BOOL VmmProcRefresh_MEM(_In_ VMM_HANDLE H);
+_Success_(return) BOOL VmmProcRefresh_TLB(_In_ VMM_HANDLE H);
+_Success_(return) BOOL VmmProcRefresh_Fast(_In_ VMM_HANDLE H);
+_Success_(return) BOOL VmmProcRefresh_Medium(_In_ VMM_HANDLE H);
+_Success_(return) BOOL VmmProcRefresh_Slow(_In_ VMM_HANDLE H);
 
 /*
 * Tries to automatically identify the operating system given by the supplied
 * memory device (fpga hardware or file). If an operating system is successfully
 * identified a VMM_CONTEXT will be created and stored within the PCILEECH_CONTEXT.
 * If the VMM fails to identify an operating system FALSE is returned.
+* -- H
 * -- return
 */
-BOOL VmmProcInitialize();
+BOOL VmmProcInitialize(_In_ VMM_HANDLE H);
 
 #endif /* __VMMPROC_H__ */

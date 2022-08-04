@@ -12,6 +12,8 @@
 #define FUSE_USE_VERSION 30
 #include <fuse.h>
 
+VMM_HANDLE g_hVMM = NULL;
+
 //-----------------------------------------------------------------------------
 // FUSE FILE SYSTEM FUNCTIONALITY BELOW:
 //-----------------------------------------------------------------------------
@@ -88,7 +90,7 @@ static int vfs_read(const char *uszPath, char *buffer, size_t size, off_t offset
         if(c == '/') { uszPathCopy[i - 1] = '\\'; }
     }
     // 2: read
-    nt = VMMDLL_VfsReadU((LPSTR)uszPathCopy, (PBYTE)buffer, size, &readlength, offset);
+    nt = VMMDLL_VfsReadU(g_hVMM, (LPSTR)uszPathCopy, (PBYTE)buffer, size, &readlength, offset);
     return ((nt == VMMDLL_STATUS_SUCCESS) || (nt == VMMDLL_STATUS_END_OF_FILE)) ? (int)readlength : 0;
 }
 
@@ -109,7 +111,7 @@ static int vfs_write(const char *uszPath, const char *buffer, size_t size, off_t
         if(c == '/') { uszPathCopy[i - 1] = '\\'; }
     }
     // 2: write
-    nt = VMMDLL_VfsWriteU((LPSTR)uszPathCopy, (PBYTE)buffer, size, &writelength, offset);
+    nt = VMMDLL_VfsWriteU(g_hVMM, (LPSTR)uszPathCopy, (PBYTE)buffer, size, &writelength, offset);
     return ((nt == VMMDLL_STATUS_SUCCESS) || (nt == VMMDLL_STATUS_END_OF_FILE)) ? (int)size : 0;
 }
 
@@ -124,6 +126,27 @@ static struct fuse_operations vfs_operations = {
 int vfs_initialize_and_mount_displayinfo(int argc, char *argv[])
 {
     return fuse_main(argc, argv, &vfs_operations, NULL);
+}
+
+
+
+//-----------------------------------------------------------------------------
+// LOCAL/REMOTE WRAPPER FUNCTIONS BELOW:
+//-----------------------------------------------------------------------------
+
+/*
+* WRAPPER FUNCTION AROUND LOCAL/REMOTE VMMDLL_VfsListU
+* List a directory of files in MemProcFS. Directories and files will be listed
+* by callbacks into functions supplied in the pFileList parameter.
+* If information of an individual file is needed it's neccessary to list all
+* files in its directory.
+* -- uszPath
+* -- pFileList
+* -- return
+*/
+_Success_(return) BOOL MemProcFS_VfsListU(_In_ LPSTR uszPath, _Inout_ PVMMDLL_VFS_FILELIST2 pFileList)
+{
+    return VMMDLL_VfsListU(g_hVMM, uszPath, pFileList);
 }
 
 
@@ -161,15 +184,15 @@ VOID Vfs_InitializeAndMount_DisplayInfo(_In_ LPSTR uszMountPoint)
     ULONG64 qwVersionWinMajor = 0, qwVersionWinMinor = 0, qwVersionWinBuild = 0;
     ULONG64 qwUniqueSystemId = 0, iMemoryModel;
     // get vmm.dll versions
-    VMMDLL_ConfigGet(VMMDLL_OPT_CONFIG_VMM_VERSION_MAJOR, &qwVersionVmmMajor);
-    VMMDLL_ConfigGet(VMMDLL_OPT_CONFIG_VMM_VERSION_MINOR, &qwVersionVmmMinor);
-    VMMDLL_ConfigGet(VMMDLL_OPT_CONFIG_VMM_VERSION_REVISION, &qwVersionVmmRevision);
+    VMMDLL_ConfigGet(g_hVMM, VMMDLL_OPT_CONFIG_VMM_VERSION_MAJOR, &qwVersionVmmMajor);
+    VMMDLL_ConfigGet(g_hVMM, VMMDLL_OPT_CONFIG_VMM_VERSION_MINOR, &qwVersionVmmMinor);
+    VMMDLL_ConfigGet(g_hVMM, VMMDLL_OPT_CONFIG_VMM_VERSION_REVISION, &qwVersionVmmRevision);
     // get operating system versions
-    VMMDLL_ConfigGet(VMMDLL_OPT_CORE_MEMORYMODEL, &iMemoryModel);
-    VMMDLL_ConfigGet(VMMDLL_OPT_WIN_VERSION_MAJOR, &qwVersionWinMajor);
-    VMMDLL_ConfigGet(VMMDLL_OPT_WIN_VERSION_MINOR, &qwVersionWinMinor);
-    VMMDLL_ConfigGet(VMMDLL_OPT_WIN_VERSION_BUILD, &qwVersionWinBuild);
-    VMMDLL_ConfigGet(VMMDLL_OPT_WIN_SYSTEM_UNIQUE_ID, &qwUniqueSystemId);
+    VMMDLL_ConfigGet(g_hVMM, VMMDLL_OPT_CORE_MEMORYMODEL, &iMemoryModel);
+    VMMDLL_ConfigGet(g_hVMM, VMMDLL_OPT_WIN_VERSION_MAJOR, &qwVersionWinMajor);
+    VMMDLL_ConfigGet(g_hVMM, VMMDLL_OPT_WIN_VERSION_MINOR, &qwVersionWinMinor);
+    VMMDLL_ConfigGet(g_hVMM, VMMDLL_OPT_WIN_VERSION_BUILD, &qwVersionWinBuild);
+    VMMDLL_ConfigGet(g_hVMM, VMMDLL_OPT_WIN_SYSTEM_UNIQUE_ID, &qwUniqueSystemId);
     printf("\n" \
         "=============== MemProcFS - THE MEMORY PROCESS FILE SYSTEM ===============\n" \
         " - Author:           Ulf Frisk - pcileech@frizk.net                     \n" \
@@ -208,7 +231,6 @@ int main(_In_ int argc, _In_ char* argv[])
 {
     // MAIN FUNCTION PROPER BELOW:
     int i;
-    BOOL result;
     LPSTR szMountPoint = NULL, *szArgs = NULL;
     GetMountPoint(argc, argv, &szMountPoint);
     if(!szMountPoint || (szMountPoint[0] != '/')) {
@@ -223,18 +245,17 @@ int main(_In_ int argc, _In_ char* argv[])
         szArgs[i] = argv[i];
     }
     szArgs[0] = "-printf";
-    result = VMMDLL_Initialize(argc, szArgs);
-    if(!result) {
+    g_hVMM = VMMDLL_Initialize(argc, szArgs);
+    if(!g_hVMM) {
         // any error message will already be shown by the InitializeReserved function.
         return 1;
     }
-    VMMDLL_ConfigSet(VMMDLL_OPT_CONFIG_STATISTICS_FUNCTIONCALL, 1);
-    result = VMMDLL_InitializePlugins();
-    if(!result) {
+    VMMDLL_ConfigSet(g_hVMM, VMMDLL_OPT_CONFIG_STATISTICS_FUNCTIONCALL, 1);
+    if(!VMMDLL_InitializePlugins(g_hVMM)) {
         printf("MemProcFS: Error file system plugins in vmm.dll!\n");
         return 1;
     }
-    VfsList_Initialize(VMMDLL_VfsListU, 500, 128, FALSE);
+    VfsList_Initialize(MemProcFS_VfsListU, 500, 128, FALSE);
     Vfs_InitializeAndMount_DisplayInfo(szMountPoint);
     // hand over control to FUSE.
     LPSTR szArgListFuse[] = { argv[0], szMountPoint, "-f" };

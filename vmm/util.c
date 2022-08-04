@@ -110,7 +110,7 @@ size_t Util_usnprintf_ln_impl(
     // 2: write to buffer
     csz = _vsnprintf_s(uszBuffer, (SIZE_T)cszLineLength, _TRUNCATE, uszFormat, arglist);
     if((csz < 0) && (csz != -1)) { csz = 0; }   // error & not _TRUNCATE
-    if(csz < cszLineLength - 1) {
+    if((QWORD)csz < cszLineLength - 1) {
         memset(uszBuffer + csz, ' ', (SIZE_T)(cszLineLength - 1 - csz));
     }
     uszBuffer[cszLineLength - 1] = '\n';
@@ -183,7 +183,7 @@ NTSTATUS Util_VfsReadFile_FromStrA(_In_opt_ LPCSTR szFile, _Out_writes_to_(cb, *
     return Util_VfsReadFile_FromPBYTE((PBYTE)szFile, strlen(szFile), pb, cb, pcbRead, cbOffset);
 }
 
-NTSTATUS Util_VfsReadFile_FromMEM(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD vaMEM, _In_ QWORD cbMEM, _In_ QWORD flags, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS Util_VfsReadFile_FromMEM(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _In_ QWORD vaMEM, _In_ QWORD cbMEM, _In_ QWORD flags, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = UTIL_NTSTATUS_END_OF_FILE;
     PBYTE pbMEM;
@@ -191,7 +191,7 @@ NTSTATUS Util_VfsReadFile_FromMEM(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD vaM
         vaMEM += cbOffset;
         cbMEM -= cbOffset;
         if((cbMEM < 0x04000000) && (pbMEM = LocalAlloc(0, (SIZE_T)cbMEM))) {
-            if(VmmRead2(pProcess, vaMEM, pbMEM, (DWORD)cbMEM, flags)) {
+            if(VmmRead2(H, pProcess, vaMEM, pbMEM, (DWORD)cbMEM, flags)) {
                 nt = Util_VfsReadFile_FromPBYTE(pbMEM, cbMEM, pb, cb, pcbRead, 0);
             }
             LocalFree(pbMEM);
@@ -407,12 +407,12 @@ NTSTATUS Util_VfsWriteFile_QWORD(_Inout_ PQWORD pqwTarget, _In_reads_(cb) PBYTE 
     return UTIL_NTSTATUS_SUCCESS;
 }
 
-VOID Util_VfsTimeStampFile(_In_opt_ PVMM_PROCESS pProcess, _Out_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
+VOID Util_VfsTimeStampFile(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _Out_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
 {
     pExInfo->dwVersion = VMMDLL_VFS_FILELIST_EXINFO_VERSION;
     pExInfo->fCompressed = pProcess && pProcess->dwState;
-    pExInfo->qwCreationTime = VmmProcess_GetCreateTimeOpt(pProcess);
-    pExInfo->qwLastWriteTime = (pProcess && pProcess->dwState) ? VmmProcess_GetExitTimeOpt(pProcess) : 0;
+    pExInfo->qwCreationTime = VmmProcess_GetCreateTimeOpt(H, pProcess);
+    pExInfo->qwLastWriteTime = (pProcess && pProcess->dwState) ? VmmProcess_GetExitTimeOpt(H, pProcess) : 0;
     if(!pExInfo->qwLastWriteTime) {
         pExInfo->qwLastWriteTime = pExInfo->qwCreationTime;
     }
@@ -479,6 +479,24 @@ BOOL Util_FileTime2JSON(_In_ QWORD ft, _Out_writes_(21) LPSTR szTime)
         SystemTime.wSecond
     );
     return TRUE;
+}
+
+VOID Util_FileTime2CSV(_In_ QWORD ft, _Out_writes_(22) LPSTR szTime)
+{
+    SYSTEMTIME SystemTime;
+    if((ft < 0x0100000000000000) || (ft > 0x0200000000000000)) {
+        szTime[0] = 0;
+        return;
+    }
+    FileTimeToSystemTime((PFILETIME)&ft, &SystemTime);
+    sprintf_s(szTime, 22, "\"%04i-%02i-%02i %02i:%02i:%02i\"",
+        SystemTime.wYear,
+        SystemTime.wMonth,
+        SystemTime.wDay,
+        SystemTime.wHour,
+        SystemTime.wMinute,
+        SystemTime.wSecond
+    );
 }
 
 VOID Util_GuidToString(_In_reads_(16) PBYTE pb, _Out_writes_(37) LPSTR szGUID)
@@ -639,6 +657,7 @@ BOOL Util_VfsHelper_GetIdDir(_In_ LPSTR uszPath, _In_ BOOL fHex, _Out_ PDWORD pd
 /*
 * VariableLineRead: Read from a file dynamically created from a map/array object
 * using a callback function to populate individual lines (excluding header).
+* -- H = VMM handle.
 * -- pfnCallback = callback function to populate individual lines.
 * -- ctx = optional context to 'pfn' callback function.
 * -- uszHeader = optional header line.
@@ -653,6 +672,7 @@ BOOL Util_VfsHelper_GetIdDir(_In_ LPSTR uszPath, _In_ BOOL fHex, _Out_ PDWORD pd
 * -- return
 */
 NTSTATUS Util_VfsLineVariable_Read(
+    _In_ VMM_HANDLE H,
     _In_ UTIL_VFSLINEFIXED_PFN_CB pfnCallback,
     _Inout_opt_ PVOID ctx,
     _In_opt_ LPSTR uszHeader,
@@ -674,7 +694,7 @@ NTSTATUS Util_VfsLineVariable_Read(
     PVOID pvMapEntry;
     *pcbRead = 0;
     // header parse
-    if(uszHeader && ctxMain->cfg.fFileInfoHeader && (cbOffset < 0x400)) {
+    if(uszHeader && H->cfg.fFileInfoHeader && (cbOffset < 0x400)) {
         cbHeaderLine = uszHeader ? ((DWORD)strlen(uszHeader) + 1) : 0;
         if(cbOffset < 2ULL * cbHeaderLine) {
             _snprintf_s(szu, sizeof(szu), _TRUNCATE, "%s\n%.*s\n", uszHeader, cbHeaderLine - 1, UTIL_VFSLINEFIXED_LINEPAD512);
@@ -718,7 +738,7 @@ NTSTATUS Util_VfsLineVariable_Read(
         cbLineLength = pdwLineOffset[ie] - cbLineStartOffset;
         if((cbOffset == cbLineStartOffset) && (cb > cbLineLength)) {
             // entry fits into line
-            pfnCallback(ctx, cbLineLength, ie, pvMapEntry, (LPSTR)pb);
+            pfnCallback(H, ctx, cbLineLength, ie, pvMapEntry, (LPSTR)pb);
             pb += cbLineLength;
             cb -= cbLineLength;
             cbOffset += cbLineLength;
@@ -727,7 +747,7 @@ NTSTATUS Util_VfsLineVariable_Read(
         } else {
             // partial line
             if(cbLineLength + 1ULL > sizeof(szu)) { return UTIL_NTSTATUS_FILE_INVALID; }
-            pfnCallback(ctx, cbLineLength, ie, pvMapEntry, szu);
+            pfnCallback(H, ctx, cbLineLength, ie, pvMapEntry, szu);
             nt = Util_VfsReadFile_FromPBYTE(szu, cbLineLength, pb, cb, &cbRead, cbOffset - cbLineStartOffset);
             pb += cbRead;
             cb -= cbRead;
@@ -744,6 +764,7 @@ finish:
 /*
 * FixedLineRead: Read from a file dynamically created from a map/array object
 * using a callback function to populate individual lines (excluding header).
+* -- H = VMM handle.
 * -- pfnCallback = callback function to populate individual lines.
 * -- ctx = optional context to 'pfn' callback function.
 * -- cbLineLength = line length, including newline, excluding null terminator.
@@ -758,6 +779,7 @@ finish:
 * -- return
 */
 NTSTATUS Util_VfsLineFixed_Read(
+    _In_ VMM_HANDLE H,
     _In_ UTIL_VFSLINEFIXED_PFN_CB pfnCallback,
     _Inout_opt_ PVOID ctx,
     _In_ DWORD cbLineLength,
@@ -774,7 +796,7 @@ NTSTATUS Util_VfsLineFixed_Read(
     NTSTATUS nt;
     PVOID pvMapEntry;
     QWORD i, iMapEntry, o = 0, cbMax, cStart, cEnd, cHeader;
-    cHeader = (uszHeader && ctxMain->cfg.fFileInfoHeader) ? 2 : 0;
+    cHeader = (uszHeader && H->cfg.fFileInfoHeader) ? 2 : 0;
     cStart = (DWORD)(cbOffset / cbLineLength);
     cEnd = (DWORD)min(cHeader + cMap - 1, (cb + cbOffset + cbLineLength - 1) / cbLineLength);
     cbMax = 1 + (1 + cEnd - cStart) * cbLineLength;
@@ -792,7 +814,7 @@ NTSTATUS Util_VfsLineFixed_Read(
         // line:
         iMapEntry = i - cHeader;
         pvMapEntry = (PBYTE)pMap + iMapEntry * cbEntry;
-        pfnCallback(ctx, cbLineLength, (DWORD)iMapEntry, pvMapEntry, usz + o);
+        pfnCallback(H, ctx, cbLineLength, (DWORD)iMapEntry, pvMapEntry, usz + o);
         o += cbLineLength;
     }
     nt = Util_VfsReadFile_FromPBYTE(usz, cbMax - 1, pb, cb, pcbRead, cbOffset - cStart * cbLineLength);
@@ -804,6 +826,7 @@ NTSTATUS Util_VfsLineFixed_Read(
 * FixedLineRead: Read from a file dynamically created from a custom generator
 * callback function using using a callback function to populate individual lines
 * (excluding header).
+* -- H = VMM handle.
 * -- pfnCallback = callback function to populate individual lines.
 * -- ctx = optional context to 'pfn' callback function.
 * -- cbLineLength = line length, including newline, excluding null terminator.
@@ -818,6 +841,7 @@ NTSTATUS Util_VfsLineFixed_Read(
 * -- return
 */
 NTSTATUS Util_VfsLineFixedMapCustom_Read(
+    _In_ VMM_HANDLE H,
     _In_ UTIL_VFSLINEFIXED_PFN_CB pfnCallback,
     _Inout_opt_ PVOID ctx,
     _In_ DWORD cbLineLength,
@@ -834,7 +858,7 @@ NTSTATUS Util_VfsLineFixedMapCustom_Read(
     NTSTATUS nt;
     PVOID pvMapEntry;
     QWORD i, iMapEntry, o = 0, cbMax, cStart, cEnd, cHeader;
-    cHeader = (uszHeader && ctxMain->cfg.fFileInfoHeader) ? 2 : 0;
+    cHeader = (uszHeader && H->cfg.fFileInfoHeader) ? 2 : 0;
     cStart = (DWORD)(cbOffset / cbLineLength);
     cEnd = (DWORD)min(cHeader + cMap - 1, (cb + cbOffset + cbLineLength - 1) / cbLineLength);
     cbMax = 1 + (1 + cEnd - cStart) * cbLineLength;
@@ -851,8 +875,8 @@ NTSTATUS Util_VfsLineFixedMapCustom_Read(
         }
         // line:
         iMapEntry = i - cHeader;
-        pvMapEntry = pfnMap(ctxMap, (DWORD)iMapEntry);
-        pfnCallback(ctx, cbLineLength, (DWORD)iMapEntry, pvMapEntry, usz + o);
+        pvMapEntry = pfnMap(H, ctxMap, (DWORD)iMapEntry);
+        pfnCallback(H, ctx, cbLineLength, (DWORD)iMapEntry, pvMapEntry, usz + o);
         o += cbLineLength;
     }
     nt = Util_VfsReadFile_FromPBYTE(usz, cbMax - 1, pb, cb, pcbRead, cbOffset - cStart * cbLineLength);
@@ -902,23 +926,23 @@ VOID Util_GetPathDll(_Out_writes_(MAX_PATH) PCHAR szPath, _In_opt_ HMODULE hModu
     }
 }
 
-DWORD Util_ResourceSize(_In_ LPWSTR wszResourceName)
+DWORD Util_ResourceSize(_In_ VMM_HANDLE H, _In_ LPWSTR wszResourceName)
 {
     HRSRC hRes;
-    if(!(hRes = FindResource(ctxVmm->hModuleVmmOpt, wszResourceName, RT_RCDATA))) { return 0; }
-    return SizeofResource(ctxVmm->hModuleVmmOpt, hRes);
+    if(!(hRes = FindResource(H->vmm.hModuleVmmOpt, wszResourceName, RT_RCDATA))) { return 0; }
+    return SizeofResource(H->vmm.hModuleVmmOpt, hRes);
 }
 
-NTSTATUS Util_VfsReadFile_FromResource(_In_ LPWSTR wszResourceName, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS Util_VfsReadFile_FromResource(_In_ VMM_HANDLE H, _In_ LPWSTR wszResourceName, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     HRSRC hRes;
     HGLOBAL hResGlobal;
     DWORD cbRes;
     PBYTE pbRes;
-    if(!(hRes = FindResource(ctxVmm->hModuleVmmOpt, wszResourceName, RT_RCDATA))) { goto fail; }
-    if(!(hResGlobal = LoadResource(ctxVmm->hModuleVmmOpt, hRes))) { goto fail; }
+    if(!(hRes = FindResource(H->vmm.hModuleVmmOpt, wszResourceName, RT_RCDATA))) { goto fail; }
+    if(!(hResGlobal = LoadResource(H->vmm.hModuleVmmOpt, hRes))) { goto fail; }
     if(!(pbRes = (PBYTE)LockResource(hResGlobal))) { goto fail; }
-    cbRes = SizeofResource(ctxVmm->hModuleVmmOpt, hRes);
+    cbRes = SizeofResource(H->vmm.hModuleVmmOpt, hRes);
     return Util_VfsReadFile_FromPBYTE(pbRes, cbRes, pb, cb, pcbRead, cbOffset);
 fail:
     return VMMDLL_STATUS_FILE_INVALID;
@@ -947,9 +971,9 @@ BOOL Util_HashSHA256(_In_reads_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_wr
     if(BCryptFinishHash(hHash, pbHash, 32, 0)) { goto fail; }
     fResult = TRUE;
 fail:
-    if(hAlg) { BCryptCloseAlgorithmProvider(hAlg, 0); }
     if(hHash) { BCryptDestroyHash(hHash); }
     LocalFree(pbHashObject);
+    if(hAlg) { BCryptCloseAlgorithmProvider(hAlg, 0); }
     return fResult;
 }
 
@@ -995,6 +1019,6 @@ VOID Util_DeleteFileU(_In_ LPSTR uszPathFile)
     remove(uszPathFile);
 }
 
-DWORD Util_ResourceSize(_In_ LPWSTR wszResourceName) { return 0; }
-NTSTATUS Util_VfsReadFile_FromResource(_In_ LPWSTR wszResourceName, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset) { return VMMDLL_STATUS_FILE_INVALID; }
+DWORD Util_ResourceSize(_In_ VMM_HANDLE H, _In_ LPWSTR wszResourceName) { return 0; }
+NTSTATUS Util_VfsReadFile_FromResource(_In_ VMM_HANDLE H, _In_ LPWSTR wszResourceName, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset) { return VMMDLL_STATUS_FILE_INVALID; }
 #endif /* LINUX */

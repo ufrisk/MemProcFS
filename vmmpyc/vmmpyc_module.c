@@ -18,7 +18,7 @@ VmmPycModule_procaddress(PyObj_Module *self, PyObject *args)
         return PyErr_Format(PyExc_RuntimeError, "Module.procaddress(): Illegal argument.");
     }
     Py_BEGIN_ALLOW_THREADS;
-    va = VMMDLL_ProcessGetProcAddressU(self->dwPID, self->ModuleEntry.uszText, uszProcName);
+    va = VMMDLL_ProcessGetProcAddressU(self->pyVMM->hVMM, self->dwPID, self->ModuleEntry.uszText, uszProcName);
     Py_END_ALLOW_THREADS;
     return va ?
         PyLong_FromUnsignedLongLong(va) :
@@ -31,7 +31,7 @@ VmmPycModule_pdb(PyObj_Module *self, void *closure)
 {
     PyObject *pyObjPdb;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Module.pdb: Not initialized."); }
-    pyObjPdb = (PyObject *)VmmPycPdb_InitializeInternal1(self->dwPID, self->ModuleEntry.vaBase);
+    pyObjPdb = (PyObject *)VmmPycPdb_InitializeInternal1(self->pyVMM, self->dwPID, self->ModuleEntry.vaBase);
     return pyObjPdb ? pyObjPdb : PyErr_Format(PyExc_RuntimeError, "Module.pdb: Not initialized.");
 }
 
@@ -40,7 +40,7 @@ static PyObject*
 VmmPycModule_maps(PyObj_Module *self, void *closure)
 {
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Module.maps: Not initialized."); }
-    return (PyObject*)VmmPycModuleMaps_InitializeInternal(self->dwPID, self->ModuleEntry.uszText);
+    return (PyObject*)VmmPycModuleMaps_InitializeInternal(self->pyVMM, self->dwPID, self->ModuleEntry.uszText);
 }
 
 // -> PyObj_Process
@@ -48,7 +48,7 @@ static PyObject*
 VmmPycModule_process(PyObj_Module *self, void *closure)
 {
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Module.process: Not initialized."); }
-    return (PyObject*)VmmPycProcess_InitializeInternal(self->dwPID, FALSE);
+    return (PyObject*)VmmPycProcess_InitializeInternal(self->pyVMM, self->dwPID, FALSE);
 }
 
 // -> STR
@@ -72,18 +72,19 @@ VmmPycModule_fullname(PyObj_Module *self, void *closure)
 //-----------------------------------------------------------------------------
 
 PyObj_Module*
-VmmPycModule_InitializeInternal(_In_ DWORD dwPID, _In_ PVMMDLL_MAP_MODULEENTRY pe)
+VmmPycModule_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_ DWORD dwPID, _In_ PVMMDLL_MAP_MODULEENTRY pe)
 {
-    PyObj_Module *pyM;
-    if(!(pyM = PyObject_New(PyObj_Module, (PyTypeObject*)g_pPyType_Module))) { return NULL; }
-    pyM->fValid = TRUE;
-    pyM->dwPID = dwPID;
-    memcpy(&pyM->ModuleEntry, pe, sizeof(VMMDLL_MAP_MODULEENTRY));
-    strncpy_s(pyM->uszText, _countof(pyM->uszText), pe->uszText, _TRUNCATE);
-    strncpy_s(pyM->uszFullName, _countof(pyM->uszFullName), pe->uszFullName, _TRUNCATE);
-    pyM->ModuleEntry.uszText = pyM->uszText;
-    pyM->ModuleEntry.uszFullName = pyM->uszFullName;
-    return pyM;
+    PyObj_Module *pyObj;
+    if(!(pyObj = PyObject_New(PyObj_Module, (PyTypeObject*)g_pPyType_Module))) { return NULL; }
+    Py_INCREF(pyVMM); pyObj->pyVMM = pyVMM;
+    pyObj->fValid = TRUE;
+    pyObj->dwPID = dwPID;
+    memcpy(&pyObj->ModuleEntry, pe, sizeof(VMMDLL_MAP_MODULEENTRY));
+    strncpy_s(pyObj->uszText, _countof(pyObj->uszText), pe->uszText, _TRUNCATE);
+    strncpy_s(pyObj->uszFullName, _countof(pyObj->uszFullName), pe->uszFullName, _TRUNCATE);
+    pyObj->ModuleEntry.uszText = pyObj->uszText;
+    pyObj->ModuleEntry.uszFullName = pyObj->uszFullName;
+    return pyObj;
 }
 
 static PyObject*
@@ -108,6 +109,7 @@ static void
 VmmPycModule_dealloc(PyObj_Module *self)
 {
     self->fValid = FALSE;
+    Py_XDECREF(self->pyVMM); self->pyVMM = NULL;
 }
 
 _Success_(return)

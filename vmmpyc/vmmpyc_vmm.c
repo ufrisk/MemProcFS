@@ -13,15 +13,15 @@ VmmPycVmm_process_list(PyObj_Vmm *self, PyObject *args)
 {
     PyObject *pyList;
     BOOL result;
-    ULONG64 cPIDs = 0;
+    SIZE_T cPIDs = 0;
     DWORD i, *pPIDs = NULL;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Vmm.process_list(): Not initialized."); }
     if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
     Py_BEGIN_ALLOW_THREADS;
     result =
-        VMMDLL_PidList(NULL, &cPIDs) &&
+        VMMDLL_PidList(self->hVMM, NULL, &cPIDs) &&
         (pPIDs = LocalAlloc(LMEM_ZEROINIT, (SIZE_T)(cPIDs * sizeof(DWORD)))) &&
-        VMMDLL_PidList(pPIDs, &cPIDs);
+        VMMDLL_PidList(self->hVMM, pPIDs, &cPIDs);
     Py_END_ALLOW_THREADS;
     if(!result) {
         Py_DECREF(pyList);
@@ -29,7 +29,7 @@ VmmPycVmm_process_list(PyObj_Vmm *self, PyObject *args)
         return PyErr_Format(PyExc_RuntimeError, "Vmm.process_list(): Failed.");
     }
     for(i = 0; i < cPIDs; i++) {
-        PyList_Append_DECREF(pyList, (PyObject*)VmmPycProcess_InitializeInternal(pPIDs[i], FALSE));
+        PyList_Append_DECREF(pyList, (PyObject*)VmmPycProcess_InitializeInternal(self, pPIDs[i], FALSE));
     }
     LocalFree(pPIDs);
     return pyList;
@@ -46,7 +46,7 @@ VmmPycVmm_process(PyObj_Vmm *self, PyObject *args)
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Vmm.process(): Not initialized."); }
     if(PyArg_ParseTuple(args, "k", &dwPID)) {
         // argument: by-pid:
-        pyObjProcess = (PyObject*)VmmPycProcess_InitializeInternal(dwPID, TRUE);
+        pyObjProcess = (PyObject*)VmmPycProcess_InitializeInternal(self, dwPID, TRUE);
         if(!pyObjProcess) {
             return PyErr_Format(PyExc_RuntimeError, "Vmm.process(): No such process - %i.", dwPID);
         }
@@ -58,10 +58,10 @@ VmmPycVmm_process(PyObj_Vmm *self, PyObject *args)
         return PyErr_Format(PyExc_RuntimeError, "Vmm.process(): Illegal argument.");
     }
     Py_BEGIN_ALLOW_THREADS;
-    result = VMMDLL_PidGetFromName(szProcessName, &dwPID);
+    result = VMMDLL_PidGetFromName(self->hVMM, szProcessName, &dwPID);
     Py_END_ALLOW_THREADS;
     if(!result) { return PyErr_Format(PyExc_RuntimeError, "Vmm.process(): Failed."); }
-    return (PyObject*)VmmPycProcess_InitializeInternal(dwPID, FALSE);
+    return (PyObject*)VmmPycProcess_InitializeInternal(self, dwPID, FALSE);
 }
 
 // (PBYTE, (DWORD)) -> STR
@@ -98,23 +98,6 @@ VmmPycVmm_hex(PyObj_Vmm *self, PyObject *args)
     return pyString;
 }
 
-// -> None
-static PyObject*
-VmmPycVmm_initialize_plugins(PyObj_Vmm *self, PyObject *args)
-{
-    BOOL result;
-    if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Vmm.initialize_plugins(): Not initialized."); }
-    Py_BEGIN_ALLOW_THREADS;
-    result = VMMDLL_InitializePlugins();
-    Py_END_ALLOW_THREADS;
-    if(!result) { return PyErr_Format(PyExc_RuntimeError, "Vmm.initialize_plugins(): Initialization of plugin subsystem failed."); }
-    // success! initialize plugin-dependant members (vfs):
-    if(!self->pyObjVfs) {
-        self->pyObjVfs = (PyObject*)VmmPycVfs_InitializeInternal();
-    }
-    return Py_BuildValue("s", NULL);    // None returned on success.
-}
-
 // (ULONG64) -> ULONG64
 static PyObject*
 VmmPycVmm_get_config(PyObj_Vmm *self, PyObject *args)
@@ -126,7 +109,7 @@ VmmPycVmm_get_config(PyObj_Vmm *self, PyObject *args)
         return PyErr_Format(PyExc_RuntimeError, "Vmm.get_config(): Illegal argument.");
     }
     Py_BEGIN_ALLOW_THREADS;
-    result = VMMDLL_ConfigGet(fOption, &qwValue);
+    result = VMMDLL_ConfigGet(self->hVMM, fOption, &qwValue);
     Py_END_ALLOW_THREADS;
     if(!result) { return PyErr_Format(PyExc_RuntimeError, "Vmm.get_config(): Unable to retrieve value for option."); }
     return PyLong_FromUnsignedLongLong(qwValue);
@@ -143,7 +126,7 @@ VmmPycVmm_set_config(PyObj_Vmm *self, PyObject *args)
         return PyErr_Format(PyExc_RuntimeError, "Vmm.set_config(): Illegal argument.");
     }
     Py_BEGIN_ALLOW_THREADS;
-    result = VMMDLL_ConfigSet(fOption, qwValue);
+    result = VMMDLL_ConfigSet(self->hVMM, fOption, qwValue);
     Py_END_ALLOW_THREADS;
     if(!result) { return PyErr_Format(PyExc_RuntimeError, "Vmm.set_config(): Unable to set value for option."); }
     return Py_BuildValue("s", NULL);    // None returned on success.
@@ -160,12 +143,12 @@ VmmPycVmm_reg_hive_list(PyObj_Vmm *self, PyObject *args)
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Vmm.reg_hive_list(): Not initialized."); }
     if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
     Py_BEGIN_ALLOW_THREADS;
-    VMMDLL_WinReg_HiveList(NULL, 0, &cHives);
+    VMMDLL_WinReg_HiveList(self->hVMM, NULL, 0, &cHives);
     result =
-        VMMDLL_WinReg_HiveList(NULL, 0, &cHives) &&
+        VMMDLL_WinReg_HiveList(self->hVMM, NULL, 0, &cHives) &&
         cHives &&
         (pHives = LocalAlloc(0, cHives * sizeof(VMMDLL_REGISTRY_HIVE_INFORMATION))) &&
-        VMMDLL_WinReg_HiveList(pHives, cHives, &cHives);
+        VMMDLL_WinReg_HiveList(self->hVMM, pHives, cHives, &cHives);
     Py_END_ALLOW_THREADS;
     if(!result) {
         Py_DECREF(pyList);
@@ -173,7 +156,7 @@ VmmPycVmm_reg_hive_list(PyObj_Vmm *self, PyObject *args)
         return PyErr_Format(PyExc_RuntimeError, "Vmm.reg_hive_list(): Failed.");
     }
     for(i = 0; i < cHives; i++) {
-        if((pyHive = (PyObject*)VmmPycRegHive_InitializeInternal(pHives + i))) {
+        if((pyHive = (PyObject*)VmmPycRegHive_InitializeInternal(self, pHives + i))) {
             PyList_Append_DECREF(pyList, pyHive);
         }
     }
@@ -191,7 +174,7 @@ VmmPycVmm_reg_key(PyObj_Vmm *self, PyObject *args)
     if(!PyArg_ParseTuple(args, "s", &uszName) || !uszName) {
         return PyErr_Format(PyExc_RuntimeError, "Vmm.reg_key(): Illegal argument.");
     }
-    pyObj = (PyObject*)VmmPycRegKey_InitializeInternal(uszName, TRUE);
+    pyObj = (PyObject*)VmmPycRegKey_InitializeInternal(self, uszName, TRUE);
     if(!pyObj && (pyUnicodeName = PyUnicode_FromString(uszName))) {
         pyObj = PyErr_Format(PyExc_RuntimeError, "Vmm.reg_key('%U'): Failed.", pyUnicodeName);
         Py_XDECREF(pyObj);
@@ -209,7 +192,7 @@ VmmPycVmm_reg_value(PyObj_Vmm *self, PyObject *args)
     if(!PyArg_ParseTuple(args, "s", &uszName) || !uszName) {
         return PyErr_Format(PyExc_RuntimeError, "Vmm.reg_value(): Illegal argument.");
     }
-    pyObj = (PyObject *)VmmPycRegValue_InitializeInternal(uszName, TRUE);
+    pyObj = (PyObject *)VmmPycRegValue_InitializeInternal(self, uszName, TRUE);
     if(!pyObj && (pyUnicodeName = PyUnicode_FromString(uszName))) {
         pyObj = PyErr_Format(PyExc_RuntimeError, "Vmm.reg_value('%U'): Failed.", pyUnicodeName);
         Py_XDECREF(pyUnicodeName);
@@ -222,7 +205,7 @@ static PyObject*
 VmmPycVmm_maps(PyObj_Vmm *self, void *closure)
 {
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Vmm.maps: Not initialized."); }
-    return (PyObject*)VmmPycMaps_InitializeInternal();
+    return (PyObject*)VmmPycMaps_InitializeInternal(self);
 }
 
 //-----------------------------------------------------------------------------
@@ -241,7 +224,6 @@ VmmPycVmm_init(PyObj_Vmm *self, PyObject *args, PyObject *kwds)
     DWORD PARAM_OFFSET = 2;
     static char *kwlist[] = { "args", NULL };
     PyObject *pyListSrc = NULL, *pyString, **pyBytesDstArgs, *pyObjProcessTest;
-    BOOL result;
     DWORD i, cDstArgs;
     LPSTR *pszDstArgs;
     self->fVmmCoreOpenType = FALSE;
@@ -275,34 +257,44 @@ VmmPycVmm_init(PyObj_Vmm *self, PyObject *args, PyObject *kwds)
             pszDstArgs[i] = pyBytesDstArgs[i] ? PyBytes_AsString(pyBytesDstArgs[i]) : "";
         }
         Py_BEGIN_ALLOW_THREADS;
-        result = VMMDLL_Initialize(cDstArgs, pszDstArgs);
-        if(result) {
-            VMMDLL_InitializePlugins();
+        self->hVMM = VMMDLL_Initialize(cDstArgs, pszDstArgs);
+        if(self->hVMM) {
+            VMMDLL_InitializePlugins(self->hVMM);
         }
         Py_END_ALLOW_THREADS;
         for(i = PARAM_OFFSET; i < cDstArgs; i++) {
             Py_XDECREF(pyBytesDstArgs[i]);
         }
-        if(!result) {
+        if(!self->hVMM) {
             PyErr_SetString(PyExc_TypeError, "Vmm.init(): Initialization of vmm failed.");
             return -1;
         }
         self->fVmmCoreOpenType = TRUE;
         // initialize vfs:
         if(!self->pyObjVfs) {
-            self->pyObjVfs = (PyObject *)VmmPycVfs_InitializeInternal();
+            self->pyObjVfs = (PyObject *)VmmPycVfs_InitializeInternal(self);
         }
     } else {    // INITIALIZE EXISTING VMM (CHECK IF EXISTING IS VALID)
-        pyObjProcessTest = (PyObject*)VmmPycProcess_InitializeInternal(4, TRUE);
+        self->hVMM = g_PluginVMM;
+        pyObjProcessTest = (PyObject*)VmmPycProcess_InitializeInternal(self, 4, TRUE);
         if(!pyObjProcessTest) {
             PyErr_SetString(PyExc_TypeError, "Vmm.init(): Initialization of existing vmm failed - please initialize with startup options.");
             return -1;
         }
+        if(g_PluginVMM_LoadedOnce) {
+            PyErr_SetString(PyExc_TypeError, "Vmm.init(): Initialization of existing vmm failed - only allowed once per process.");
+            return -1;
+        }
+        if(!g_PluginVMM) {
+            PyErr_SetString(PyExc_TypeError, "Vmm.init(): Missing VMM handle.");
+            return -1;
+        }
+        g_PluginVMM_LoadedOnce = TRUE;
         Py_DECREF(pyObjProcessTest);
     }
     // success - initialize type object and return!
-    self->pyObjKernel = (PyObject*)VmmPycKernel_InitializeInternal();
-    self->pyObjMemory = (PyObject*)VmmPycPhysicalMemory_InitializeInternal();
+    self->pyObjKernel = (PyObject*)VmmPycKernel_InitializeInternal(self);
+    self->pyObjMemory = (PyObject*)VmmPycPhysicalMemory_InitializeInternal(self);
     self->fValid = TRUE;
     return 0;
 }
@@ -314,7 +306,7 @@ VmmPycVmm_dealloc(PyObj_Vmm *self)
         self->fValid = FALSE;
         if(self->fVmmCoreOpenType) {
             Py_BEGIN_ALLOW_THREADS;
-            VMMDLL_Close();
+            VMMDLL_Close(self->hVMM);
             Py_END_ALLOW_THREADS;
         }
     }
@@ -337,7 +329,6 @@ BOOL VmmPycVmm_InitializeType(PyObject *pModule)
 {
     static PyMethodDef PyMethods[] = {
         {"close", (PyCFunction)VmmPycVmm_close, METH_VARARGS, "Close the VMM."},
-        {"initialize_plugins", (PyCFunction)VmmPycVmm_initialize_plugins, METH_VARARGS, "Initialize plugin sub-system."},
         {"get_config", (PyCFunction)VmmPycVmm_get_config, METH_VARARGS, "Get configuration value."},
         {"set_config", (PyCFunction)VmmPycVmm_set_config, METH_VARARGS, "Set configuration value."},
         {"process_list", (PyCFunction)VmmPycVmm_process_list, METH_VARARGS, "List processes."},

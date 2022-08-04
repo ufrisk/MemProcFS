@@ -12,36 +12,39 @@
 #include "util.h"
 #include "vmmwindef.h"
 #include "vmmwininit.h"
+#include "ob/ob.h"
+#include "ob/ob_tag.h"
 
-VOID PDB_PrintError(_In_ LPSTR szErrorMessage)
+VOID PDB_PrintError(_In_ VMM_HANDLE H, _In_ LPSTR szErrorMessage)
 {
     BOOL fInfoDB_Ntos;
     DWORD dwTimeDateStamp = 0;
     PVMM_PROCESS pObSystemProcess;
-    InfoDB_IsValidSymbols(&fInfoDB_Ntos, NULL);
+    InfoDB_IsValidSymbols(H, &fInfoDB_Ntos, NULL);
     if(fInfoDB_Ntos) {
-        VmmLog(MID_PDB, LOGLEVEL_WARNING, "Functionality may be limited. Extended debug information disabled");
-        VmmLog(MID_PDB, LOGLEVEL_WARNING, "Partial offline fallback symbols in use");
-        VmmLog(MID_PDB, LOGLEVEL_WARNING, "%s\n", szErrorMessage);
+        VmmLog(H, MID_PDB, LOGLEVEL_WARNING, "Functionality may be limited. Extended debug information disabled");
+        VmmLog(H, MID_PDB, LOGLEVEL_WARNING, "Partial offline fallback symbols in use");
+        VmmLog(H, MID_PDB, LOGLEVEL_WARNING, "%s\n", szErrorMessage);
         return;
     }
-    if(InfoDB_IsInitialized()) {
-        if((pObSystemProcess = VmmProcessGet(4))) {
-            PE_GetTimeDateStampCheckSum(pObSystemProcess, ctxVmm->kernel.vaBase, &dwTimeDateStamp, NULL);
+    if(InfoDB_IsInitialized(H)) {
+        if((pObSystemProcess = VmmProcessGet(H, 4))) {
+            PE_GetTimeDateStampCheckSum(H, pObSystemProcess, H->vmm.kernel.vaBase, &dwTimeDateStamp, NULL);
             Ob_DECREF_NULL(&pObSystemProcess);
         }
-        VmmLog(MID_PDB, LOGLEVEL_WARNING, "Functionality may be limited. Extended debug information disabled");
-        VmmLog(MID_PDB, LOGLEVEL_WARNING, "Offline symbols unavailable - ID: %08X%X", dwTimeDateStamp, (DWORD)ctxVmm->kernel.cbSize);
-        VmmLog(MID_PDB, LOGLEVEL_WARNING, "%s\n", szErrorMessage);
+        VmmLog(H, MID_PDB, LOGLEVEL_WARNING, "Functionality may be limited. Extended debug information disabled");
+        VmmLog(H, MID_PDB, LOGLEVEL_WARNING, "Offline symbols unavailable - ID: %08X%X", dwTimeDateStamp, (DWORD)H->vmm.kernel.cbSize);
+        VmmLog(H, MID_PDB, LOGLEVEL_WARNING, "%s\n", szErrorMessage);
     } else {
-        VmmLog(MID_PDB, LOGLEVEL_WARNING, "Functionality may be limited. Extended debug information disabled");
-        VmmLog(MID_PDB, LOGLEVEL_WARNING, "Offline symbols unavailable - file 'info.db' not found");
-        VmmLog(MID_PDB, LOGLEVEL_WARNING, "%s\n", szErrorMessage);
+        VmmLog(H, MID_PDB, LOGLEVEL_WARNING, "Functionality may be limited. Extended debug information disabled");
+        VmmLog(H, MID_PDB, LOGLEVEL_WARNING, "Offline symbols unavailable - file 'info.db' not found");
+        VmmLog(H, MID_PDB, LOGLEVEL_WARNING, "%s\n", szErrorMessage);
     }
 }
 
 /*
 * Read memory pointed to at the PDB acquired symbol offset.
+* -- H
 * -- hPDB
 * -- szSymbolName
 * -- pProcess
@@ -49,13 +52,14 @@ VOID PDB_PrintError(_In_ LPSTR szErrorMessage)
 * -- return
 */
 _Success_(return)
-BOOL PDB_GetSymbolQWORD(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_ PQWORD pqw)
+BOOL PDB_GetSymbolQWORD(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_ PQWORD pqw)
 {
-    return PDB_GetSymbolPBYTE(hPDB, szSymbolName, pProcess, (PBYTE)pqw, sizeof(QWORD));
+    return PDB_GetSymbolPBYTE(H, hPDB, szSymbolName, pProcess, (PBYTE)pqw, sizeof(QWORD));
 }
 
 /*
 * Read memory pointed to at the PDB acquired symbol offset.
+* -- H
 * -- hPDB
 * -- szSymbolName
 * -- pProcess
@@ -63,13 +67,14 @@ BOOL PDB_GetSymbolQWORD(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _In_ 
 * -- return
 */
 _Success_(return)
-BOOL PDB_GetSymbolDWORD(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_ PDWORD pdw)
+BOOL PDB_GetSymbolDWORD(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_ PDWORD pdw)
 {
-    return PDB_GetSymbolPBYTE(hPDB, szSymbolName, pProcess, (PBYTE)pdw, sizeof(DWORD));
+    return PDB_GetSymbolPBYTE(H, hPDB, szSymbolName, pProcess, (PBYTE)pdw, sizeof(DWORD));
 }
 
 /*
 * Read memory pointed to at the PDB acquired symbol offset.
+* -- H
 * -- hPDB
 * -- szSymbolName
 * -- pProcess
@@ -77,13 +82,14 @@ BOOL PDB_GetSymbolDWORD(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _In_ 
 * -- return
 */
 _Success_(return)
-BOOL PDB_GetSymbolPTR(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_ PVOID pv)
+BOOL PDB_GetSymbolPTR(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_ PVOID pv)
 {
-    return PDB_GetSymbolPBYTE(hPDB, szSymbolName, pProcess, (PBYTE)pv, (ctxVmm->f32 ? sizeof(DWORD) : sizeof(QWORD)));
+    return PDB_GetSymbolPBYTE(H, hPDB, szSymbolName, pProcess, (PBYTE)pv, (H->vmm.f32 ? sizeof(DWORD) : sizeof(QWORD)));
 }
 
 /*
 * Read memory at the PDB acquired symbol offset and virtual address base.
+* -- H
 * -- hPDB
 * -- vaBase
 * -- szSymbolName = wildcard symbol name
@@ -93,15 +99,16 @@ BOOL PDB_GetSymbolPTR(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _In_ PV
 * -- return
 */
 _Success_(return)
-BOOL PDB_GetSymbolPBYTE2(_In_opt_ PDB_HANDLE hPDB, _In_ QWORD vaBase, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb)
+BOOL PDB_GetSymbolPBYTE2(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ QWORD vaBase, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb)
 {
     DWORD dwSymbolOffset;
-    if(!PDB_GetSymbolOffset(hPDB, szSymbolName, &dwSymbolOffset)) { return FALSE; }
-    return VmmRead(pProcess, vaBase + dwSymbolOffset, pb, cb);
+    if(!PDB_GetSymbolOffset(H, hPDB, szSymbolName, &dwSymbolOffset)) { return FALSE; }
+    return VmmRead(H, pProcess, vaBase + dwSymbolOffset, pb, cb);
 }
 
 /*
 * Read memory pointed to at the PDB acquired symbol offset and virtual address base.
+* -- H
 * -- hPDB
 * -- vaBase
 * -- szSymbolName
@@ -110,13 +117,14 @@ BOOL PDB_GetSymbolPBYTE2(_In_opt_ PDB_HANDLE hPDB, _In_ QWORD vaBase, _In_ LPSTR
 * -- return
 */
 _Success_(return)
-BOOL PDB_GetSymbolQWORD2(_In_opt_ PDB_HANDLE hPDB, _In_ QWORD vaBase, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_ PQWORD pqw)
+BOOL PDB_GetSymbolQWORD2(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ QWORD vaBase, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_ PQWORD pqw)
 {
-    return PDB_GetSymbolPBYTE2(hPDB, vaBase, szSymbolName, pProcess, (PBYTE)pqw, sizeof(QWORD));
+    return PDB_GetSymbolPBYTE2(H, hPDB, vaBase, szSymbolName, pProcess, (PBYTE)pqw, sizeof(QWORD));
 }
 
 /*
 * Read memory pointed to at the PDB acquired symbol offset and virtual address base.
+* -- H
 * -- hPDB
 * -- vaBase
 * -- szSymbolName
@@ -125,13 +133,14 @@ BOOL PDB_GetSymbolQWORD2(_In_opt_ PDB_HANDLE hPDB, _In_ QWORD vaBase, _In_ LPSTR
 * -- return
 */
 _Success_(return)
-BOOL PDB_GetSymbolDWORD2(_In_opt_ PDB_HANDLE hPDB, _In_ QWORD vaBase, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_ PDWORD pdw)
+BOOL PDB_GetSymbolDWORD2(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ QWORD vaBase, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_ PDWORD pdw)
 {
-    return PDB_GetSymbolPBYTE2(hPDB, vaBase, szSymbolName, pProcess, (PBYTE)pdw, sizeof(DWORD));
+    return PDB_GetSymbolPBYTE2(H, hPDB, vaBase, szSymbolName, pProcess, (PBYTE)pdw, sizeof(DWORD));
 }
 
 /*
 * Read memory pointed to at the PDB acquired symbol offset and virtual address base.
+* -- H
 * -- hPDB
 * -- vaBase
 * -- szSymbolName
@@ -140,9 +149,9 @@ BOOL PDB_GetSymbolDWORD2(_In_opt_ PDB_HANDLE hPDB, _In_ QWORD vaBase, _In_ LPSTR
 * -- return
 */
 _Success_(return)
-BOOL PDB_GetSymbolPTR2(_In_opt_ PDB_HANDLE hPDB, _In_ QWORD vaBase, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_ PVOID pv)
+BOOL PDB_GetSymbolPTR2(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ QWORD vaBase, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_ PVOID pv)
 {
-    return PDB_GetSymbolPBYTE2(hPDB, vaBase, szSymbolName, pProcess, (PBYTE)pv, (ctxVmm->f32 ? sizeof(DWORD) : sizeof(QWORD)));
+    return PDB_GetSymbolPBYTE2(H, hPDB, vaBase, szSymbolName, pProcess, (PBYTE)pv, (H->vmm.f32 ? sizeof(DWORD) : sizeof(QWORD)));
 }
 
 /*
@@ -165,22 +174,24 @@ LPSTR PDB_ModuleNameFromHandleMagic(_In_ PDB_HANDLE hPDB)
 /*
 * Wrapper for Query the InfoDB for the offset of a symbol.
 * NB! Query must be done with magic PDB handle to succeed.
+* -- H
 * -- hPDB = magic PDB handle.
 * -- szSymbolName
 * -- pdwSymbolOffset
 * -- return
 */
 _Success_(return)
-BOOL PDB_InfoDB_SymbolOffset(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _Out_ PDWORD pdwSymbolOffset)
+BOOL PDB_InfoDB_SymbolOffset(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _Out_ PDWORD pdwSymbolOffset)
 {
     LPSTR szModule = PDB_ModuleNameFromHandleMagic(hPDB);
     if(!szModule) { return FALSE; }
-    return InfoDB_SymbolOffset(szModule, szSymbolName, pdwSymbolOffset);
+    return InfoDB_SymbolOffset(H, szModule, szSymbolName, pdwSymbolOffset);
 }
 
 /*
 * Wrapper for Query the InfoDB for the size of a type.
 * NB! Query must be done with magic PDB handle to succeed.
+* 
 * -- hPDB = magic PDB handle.
 * -- szTypeName
 * -- pdwTypeSize
@@ -188,20 +199,21 @@ BOOL PDB_InfoDB_SymbolOffset(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, 
 * -- return
 */
 _Success_(return)
-BOOL PDB_InfoDB_TypeSize(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _Out_ PDWORD pdwTypeSize, _In_ BOOL fDynamic)
+BOOL PDB_InfoDB_TypeSize(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _Out_ PDWORD pdwTypeSize, _In_ BOOL fDynamic)
 {
     LPSTR szModule = PDB_ModuleNameFromHandleMagic(hPDB);
     if(!szModule) { return FALSE; }
     if(fDynamic) {
-        return InfoDB_TypeSize_Dynamic(szModule, szTypeName, pdwTypeSize);
+        return InfoDB_TypeSize_Dynamic(H, szModule, szTypeName, pdwTypeSize);
     } else {
-        return InfoDB_TypeSize_Static(szModule, szTypeName, pdwTypeSize);
+        return InfoDB_TypeSize_Static(H, szModule, szTypeName, pdwTypeSize);
     }
 }
 
 /*
 * Wrapper for Query the InfoDB for the offset of a child inside a type - often inside a struct.
 * NB! Query must be done with magic PDB handle to succeed.
+* -- H
 * -- hPDB = magic PDB handle.
 * -- szTypeName
 * -- uszTypeChildName
@@ -210,14 +222,14 @@ BOOL PDB_InfoDB_TypeSize(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _Out_ 
 * -- return
 */
 _Success_(return)
-BOOL PDB_InfoDB_TypeChildOffset(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _In_ LPSTR uszTypeChildName, _Out_ PDWORD pdwTypeOffset, _In_ BOOL fDynamic)
+BOOL PDB_InfoDB_TypeChildOffset(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _In_ LPSTR uszTypeChildName, _Out_ PDWORD pdwTypeOffset, _In_ BOOL fDynamic)
 {
     LPSTR szModule = PDB_ModuleNameFromHandleMagic(hPDB);
     if(!szModule) { return FALSE; }
     if(fDynamic) {
-        return InfoDB_TypeChildOffset_Dynamic(szModule, szTypeName, uszTypeChildName, pdwTypeOffset);
+        return InfoDB_TypeChildOffset_Dynamic(H, szModule, szTypeName, uszTypeChildName, pdwTypeOffset);
     } else {
-        return InfoDB_TypeChildOffset_Static(szModule, szTypeName, uszTypeChildName, pdwTypeOffset);
+        return InfoDB_TypeChildOffset_Static(H, szModule, szTypeName, uszTypeChildName, pdwTypeOffset);
     }
 }
 
@@ -294,11 +306,12 @@ typedef struct tdOB_PDB_CONTEXT {
     };
 } OB_PDB_CONTEXT, *POB_PDB_CONTEXT;
 
-typedef struct tdVMMWIN_PDB_INITIALIZE_KERNEL_PARAMETERS {
+typedef struct tdOB_PDB_INITIALIZE_KERNEL_PARAMETERS {
+    OB ObHdr;
     PHANDLE phEventThreadStarted;
     BOOL fPdbInfo;
     PE_CODEVIEW_INFO PdbInfo;
-} VMMWIN_PDB_INITIALIZE_KERNEL_PARAMETERS, *PVMMWIN_PDB_INITIALIZE_KERNEL_PARAMETERS;
+} OB_PDB_INITIALIZE_KERNEL_PARAMETERS, *POB_PDB_INITIALIZE_KERNEL_PARAMETERS;
 
 QWORD PDB_HashPdb(_In_ LPSTR szPdbName, _In_reads_(16) PBYTE pbPdbGUID, _In_ DWORD dwPdbAge)
 {
@@ -326,29 +339,30 @@ VOID PDB_CallbackCleanup_ObPdbEntry(PPDB_ENTRY pOb)
 */
 VOID PDB_CallbackCleanup_ObPdbContext(POB_PDB_CONTEXT ctx)
 {
-    if(ctx->hSym) {
-        ctx->pfn.SymCleanup(ctx->hSym);
-    }
+    if(ctx->hSym) { ctx->pfn.SymCleanup(ctx->hSym); }
     Ob_DECREF(ctx->pmPdbByHash);
     Ob_DECREF(ctx->pmPdbByModule);
-    if(ctx->hModuleDbgHelp) { FreeLibrary(ctx->hModuleDbgHelp); }
     if(ctx->hModuleSymSrv) { FreeLibrary(ctx->hModuleSymSrv); }
+    if(ctx->hModuleDbgHelp) { FreeLibrary(ctx->hModuleDbgHelp); }
+    DeleteCriticalSection(&ctx->Lock);
 }
 
 /*
 * Retrieve the current PDB context
 * CALLER DECREF: return
+* -- H
 * -- return
 */
-POB_PDB_CONTEXT PDB_GetContext()
+POB_PDB_CONTEXT PDB_GetContext(_In_ VMM_HANDLE H)
 {
-    return Ob_INCREF(ctxVmm->pObPdbContext);
+    return Ob_INCREF(H->vmm.pObPdbContext);
 }
 
 
 /*
 * Add a module to the PDB database and return its handle.
 * NB! The PDB for the added module won't be loaded until required.
+* -- H
 * -- vaModuleBase
 * -- cbModuleSize = optional size of the module (required if using GetSymbolFromAddress functionality).
 * -- szModuleName
@@ -357,16 +371,16 @@ POB_PDB_CONTEXT PDB_GetContext()
 * -- dwPdbAge
 * -- return = The PDB handle on success (no need to close handle); or zero on fail.
 */
-PDB_HANDLE PDB_AddModuleEntry(_In_ QWORD vaModuleBase, _In_opt_ DWORD cbModuleSize, _In_ LPSTR szModuleName, _In_ LPSTR szPdbName, _In_reads_(16) PBYTE pbPdbGUID, _In_ DWORD dwPdbAge)
+PDB_HANDLE PDB_AddModuleEntry(_In_ VMM_HANDLE H, _In_ QWORD vaModuleBase, _In_opt_ DWORD cbModuleSize, _In_ LPSTR szModuleName, _In_ LPSTR szPdbName, _In_reads_(16) PBYTE pbPdbGUID, _In_ DWORD dwPdbAge)
 {
-    POB_PDB_CONTEXT ctxOb = PDB_GetContext();
+    POB_PDB_CONTEXT ctxOb = PDB_GetContext(H);
     PPDB_ENTRY pObPdbEntry;
     QWORD qwPdbHash = 0;
     if(!ctxOb) { return 0; }
     qwPdbHash = PDB_HashPdb(szPdbName, pbPdbGUID, dwPdbAge);
     EnterCriticalSection(&ctxOb->Lock);
     if(!ObMap_ExistsKey(ctxOb->pmPdbByHash, qwPdbHash)) {
-        pObPdbEntry = Ob_Alloc(OB_TAG_PDB_ENTRY, LMEM_ZEROINIT, sizeof(PDB_ENTRY), PDB_CallbackCleanup_ObPdbEntry, NULL);
+        pObPdbEntry = Ob_AllocEx(H, OB_TAG_PDB_ENTRY, LMEM_ZEROINIT, sizeof(PDB_ENTRY), PDB_CallbackCleanup_ObPdbEntry, NULL);
         if(!pObPdbEntry) { goto fail; }
         pObPdbEntry->dwAge = dwPdbAge;
         pObPdbEntry->qwHash = qwPdbHash;
@@ -394,9 +408,9 @@ fail:
 * -- vaModuleBase
 * -- return = The PDB handle on success (no need to close handle); or zero on fail.
 */
-PDB_HANDLE PDB_GetHandleFromModuleAddress(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase)
+PDB_HANDLE PDB_GetHandleFromModuleAddress(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase)
 {
-    POB_PDB_CONTEXT ctxOb = PDB_GetContext();
+    POB_PDB_CONTEXT ctxOb = PDB_GetContext(H);
     PPDB_ENTRY pObPdbEntry = 0;
     PE_CODEVIEW_INFO CodeViewInfo = { 0 };
     DWORD i, iMax;
@@ -417,13 +431,14 @@ PDB_HANDLE PDB_GetHandleFromModuleAddress(_In_ PVMM_PROCESS pProcess, _In_ QWORD
     }
     Ob_DECREF_NULL(&ctxOb);
     // retrieve codeview and add to .pdb database.
-    if(!(cbModuleSize = PE_GetSize(pProcess, vaModuleBase)) || (cbModuleSize > 0x04000000)) { return 0; }
-    if(!PE_GetCodeViewInfo(pProcess, vaModuleBase, NULL, &CodeViewInfo)) { return 0; }
+    if(!(cbModuleSize = PE_GetSize(H, pProcess, vaModuleBase)) || (cbModuleSize > 0x04000000)) { return 0; }
+    if(!PE_GetCodeViewInfo(H, pProcess, vaModuleBase, NULL, &CodeViewInfo)) { return 0; }
     strcpy_s(szModuleName, MAX_PATH, CodeViewInfo.CodeView.PdbFileName);
     if((szPdbText = strstr(szModuleName, ".pdb"))) {
         szPdbText[0] = 0;
     }
     return PDB_AddModuleEntry(
+        H,
         vaModuleBase,
         (DWORD)cbModuleSize,
         szModuleName,
@@ -437,12 +452,13 @@ PDB_HANDLE PDB_GetHandleFromModuleAddress(_In_ PVMM_PROCESS pProcess, _In_ QWORD
 * Retrieve a PDB handle from an already added module.
 * NB! If multiple modules exists with the same name the 1st module to be added
 *     is returned.
+* -- H
 * -- szModuleName
 * -- return = The PDB handle on success (no need to close handle); or zero on fail.
 */
-PDB_HANDLE PDB_GetHandleFromModuleName(_In_ LPSTR szModuleName)
+PDB_HANDLE PDB_GetHandleFromModuleName(_In_ VMM_HANDLE H, _In_ LPSTR szModuleName)
 {
-    POB_PDB_CONTEXT ctxOb = PDB_GetContext();
+    POB_PDB_CONTEXT ctxOb = PDB_GetContext(H);
     PPDB_ENTRY pObPdbEntry = NULL;
     QWORD qwHashPdb = 0;
     DWORD dwHashModule;
@@ -461,13 +477,14 @@ fail:
 
 /*
 * Get a valid PDB handle given an ordinary or magic PDB handle.
+* -- H
 * -- hPDB = ordinary or magic PDB handle.
 * -- return = ordinary PDB handle (or 0 on fail).
 */
-PDB_HANDLE PDB_GetHandleFromHandleMagic(_In_ PDB_HANDLE hPDB)
+PDB_HANDLE PDB_GetHandleFromHandleMagic(_In_ VMM_HANDLE H, _In_ PDB_HANDLE hPDB)
 {
     LPSTR szModule = PDB_ModuleNameFromHandleMagic(hPDB);
-    return szModule ? PDB_GetHandleFromModuleName(szModule) : hPDB;
+    return szModule ? PDB_GetHandleFromModuleName(H, szModule) : hPDB;
 }
 
 /*
@@ -495,17 +512,18 @@ fail:
 
 /*
 * Ensure that the PDB_HANDLE have its symbols loaded into memory.
+* -- H
 * -- hPDB
 * -- return
 */
 _Success_(return)
-BOOL PDB_LoadEnsure(_In_opt_ PDB_HANDLE hPDB)
+BOOL PDB_LoadEnsure(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB)
 {
-    POB_PDB_CONTEXT ctxOb = PDB_GetContext();
+    POB_PDB_CONTEXT ctxOb = PDB_GetContext(H);
     PPDB_ENTRY pObPdbEntry = NULL;
     BOOL fResult = FALSE;
     if(!ctxOb || ctxOb->fDisabled) { goto fail; }
-    if(!(hPDB = PDB_GetHandleFromHandleMagic(hPDB))) { goto fail; }
+    if(!(hPDB = PDB_GetHandleFromHandleMagic(H, hPDB))) { goto fail; }
     if(!(pObPdbEntry = ObMap_GetByKey(ctxOb->pmPdbByHash, hPDB))) { goto fail; }
     EnterCriticalSection(&ctxOb->Lock);
     fResult = PDB_LoadEnsureEx(ctxOb, pObPdbEntry);
@@ -518,6 +536,7 @@ fail:
 
 /*
 * Return module information given a PDB handle.
+* -- H
 * -- hPDB
 * -- szModuleName = buffer to receive module name upon success.
 * -- pvaModuleBase
@@ -525,13 +544,13 @@ fail:
 * -- return
 */
 _Success_(return)
-BOOL PDB_GetModuleInfo(_In_opt_ PDB_HANDLE hPDB, _Out_writes_opt_(MAX_PATH) LPSTR szModuleName, _Out_opt_ PQWORD pvaModuleBase, _Out_opt_ PDWORD pcbModuleSize)
+BOOL PDB_GetModuleInfo(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _Out_writes_opt_(MAX_PATH) LPSTR szModuleName, _Out_opt_ PQWORD pvaModuleBase, _Out_opt_ PDWORD pcbModuleSize)
 {
-    POB_PDB_CONTEXT ctxOb = PDB_GetContext();
+    POB_PDB_CONTEXT ctxOb = PDB_GetContext(H);
     PPDB_ENTRY pObPdbEntry = NULL;
     BOOL fResult = FALSE;
     if(!ctxOb || ctxOb->fDisabled) { goto fail; }
-    if(!(hPDB = PDB_GetHandleFromHandleMagic(hPDB))) { goto fail; }
+    if(!(hPDB = PDB_GetHandleFromHandleMagic(H, hPDB))) { goto fail; }
     if(!(pObPdbEntry = ObMap_GetByKey(ctxOb->pmPdbByHash, hPDB))) { goto fail; }
     if(szModuleName) {
         strncpy_s(szModuleName, MAX_PATH, pObPdbEntry->szModuleName, MAX_PATH - 1);
@@ -562,25 +581,26 @@ BOOL PDB_GetSymbolOffset_Callback(_In_ PSYMBOL_INFO pSymInfo, _In_ ULONG SymbolS
 
 /*
 * Query the PDB for the offset of a symbol.
+* -- H
 * -- hPDB
 * -- szSymbolName
 * -- pdwSymbolOffset
 * -- return
 */
 _Success_(return)
-BOOL PDB_GetSymbolOffset(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _Out_ PDWORD pdwSymbolOffset)
+BOOL PDB_GetSymbolOffset(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _Out_ PDWORD pdwSymbolOffset)
 {
-    POB_PDB_CONTEXT ctxOb = PDB_GetContext();
+    POB_PDB_CONTEXT ctxOb = PDB_GetContext(H);
     SYMBOL_INFO SymbolInfo = { 0 };
     PPDB_ENTRY pObPdbEntry = NULL;
     *pdwSymbolOffset = 0;
-    if(PDB_InfoDB_SymbolOffset(hPDB, szSymbolName, pdwSymbolOffset)) { Ob_DECREF(ctxOb); return TRUE; }
+    if(PDB_InfoDB_SymbolOffset(H, hPDB, szSymbolName, pdwSymbolOffset)) { Ob_DECREF(ctxOb); return TRUE; }
     if(!ctxOb || ctxOb->fDisabled) { goto fail; }
-    if(!(hPDB = PDB_GetHandleFromHandleMagic(hPDB))) { goto fail; }
+    if(!(hPDB = PDB_GetHandleFromHandleMagic(H, hPDB))) { goto fail; }
     if(!(pObPdbEntry = ObMap_GetByKey(ctxOb->pmPdbByHash, hPDB))) { goto fail; }
     EnterCriticalSection(&ctxOb->Lock);
     if(PDB_LoadEnsureEx(ctxOb, pObPdbEntry)) {
-        if(!ctxVmm->f32) {
+        if(!H->vmm.f32) {
             // 64-bit: use faster algo
             SymbolInfo.SizeOfStruct = sizeof(SYMBOL_INFO);
             if(ctxOb->pfn.SymGetTypeFromName(ctxOb->hSym, pObPdbEntry->qwLoadAddress, szSymbolName, &SymbolInfo)) {
@@ -603,24 +623,25 @@ fail:
 * Query the PDB for the offset of a symbol and return its virtual address. If
 * szSymbolName contains wildcard '?*' characters and matches multiple symbols
 * the virtual address of the 1st symbol is returned.
+* -- H
 * -- hPDB
 * -- szSymbolName = wildcard symbol name
 * -- pvaSymbolAddress
 * -- return
 */
 _Success_(return)
-BOOL PDB_GetSymbolAddress(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _Out_ PQWORD pvaSymbolAddress)
+BOOL PDB_GetSymbolAddress(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _Out_ PQWORD pvaSymbolAddress)
 {
-    POB_PDB_CONTEXT ctxOb = PDB_GetContext();
+    POB_PDB_CONTEXT ctxOb = PDB_GetContext(H);
     PPDB_ENTRY pObPdbEntry = NULL;
     DWORD cbSymbolOffset;
     BOOL fResult = FALSE;
-    if(!PDB_GetSymbolOffset(hPDB, szSymbolName, &cbSymbolOffset)) { goto fail; }
+    if(!PDB_GetSymbolOffset(H, hPDB, szSymbolName, &cbSymbolOffset)) { goto fail; }
     if(hPDB == PDB_HANDLE_KERNEL) {
-        *pvaSymbolAddress = ctxVmm->kernel.vaBase + cbSymbolOffset;
+        *pvaSymbolAddress = H->vmm.kernel.vaBase + cbSymbolOffset;
     } else {
         if(!ctxOb || ctxOb->fDisabled) { goto fail; }
-        if(!(hPDB = PDB_GetHandleFromHandleMagic(hPDB))) { goto fail; }
+        if(!(hPDB = PDB_GetHandleFromHandleMagic(H, hPDB))) { goto fail; }
         if(!(pObPdbEntry = ObMap_GetByKey(ctxOb->pmPdbByHash, hPDB))) { goto fail; }
         *pvaSymbolAddress = pObPdbEntry->vaModuleBase + cbSymbolOffset;
     }
@@ -634,6 +655,7 @@ fail:
 /*
 * Query the PDB for the closest symbol name given an offset from the module
 * base address.
+* -- H
 * -- hPDB
 * -- dwSymbolOffset = the offset from the module base to query.
 * -- szSymbolName = buffer to receive the name of the symbol.
@@ -641,15 +663,15 @@ fail:
 * -- return
 */
 _Success_(return)
-BOOL PDB_GetSymbolFromOffset(_In_opt_ PDB_HANDLE hPDB, _In_ DWORD dwSymbolOffset, _Out_writes_opt_(MAX_PATH) LPSTR szSymbolName, _Out_opt_ PDWORD pdwSymbolDisplacement)
+BOOL PDB_GetSymbolFromOffset(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ DWORD dwSymbolOffset, _Out_writes_opt_(MAX_PATH) LPSTR szSymbolName, _Out_opt_ PDWORD pdwSymbolDisplacement)
 {
-    POB_PDB_CONTEXT ctxOb = PDB_GetContext();
+    POB_PDB_CONTEXT ctxOb = PDB_GetContext(H);
     SYMBOL_INFO_PACKAGE SymbolInfo = { 0 };
     QWORD cch, qwDisplacement;
     PPDB_ENTRY pObPdbEntry = NULL;
     BOOL fResult = FALSE;
     if(!ctxOb || ctxOb->fDisabled) { goto fail; }
-    if(!(hPDB = PDB_GetHandleFromHandleMagic(hPDB))) { goto fail; }
+    if(!(hPDB = PDB_GetHandleFromHandleMagic(H, hPDB))) { goto fail; }
     if(!(pObPdbEntry = ObMap_GetByKey(ctxOb->pmPdbByHash, hPDB))) { goto fail; }
     EnterCriticalSection(&ctxOb->Lock);
     if(PDB_LoadEnsureEx(ctxOb, pObPdbEntry)) {
@@ -678,6 +700,7 @@ fail:
 * Read memory at the PDB acquired symbol offset. If szSymbolName contains
 * wildcard '?*' characters and matches multiple symbols the offset of the
 * 1st symbol is used to read the memory.
+* -- H
 * -- hPDB
 * -- szSymbolName = wildcard symbol name
 * -- pProcess
@@ -686,23 +709,23 @@ fail:
 * -- return
 */
 _Success_(return)
-BOOL PDB_GetSymbolPBYTE(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb)
+BOOL PDB_GetSymbolPBYTE(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb)
 {
-    POB_PDB_CONTEXT ctxOb = PDB_GetContext();
+    POB_PDB_CONTEXT ctxOb = PDB_GetContext(H);
     PPDB_ENTRY pObPdbEntry = NULL;
     DWORD dwSymbolOffset;
     QWORD va;
     BOOL fResult = FALSE;
-    if(!PDB_GetSymbolOffset(hPDB, szSymbolName, &dwSymbolOffset)) { goto fail; }
+    if(!PDB_GetSymbolOffset(H, hPDB, szSymbolName, &dwSymbolOffset)) { goto fail; }
     if(hPDB == PDB_HANDLE_KERNEL) {
-        va = ctxVmm->kernel.vaBase + dwSymbolOffset;
+        va = H->vmm.kernel.vaBase + dwSymbolOffset;
     } else {
         if(!ctxOb || ctxOb->fDisabled) { goto fail; }
-        if(!(hPDB = PDB_GetHandleFromHandleMagic(hPDB))) { goto fail; }
+        if(!(hPDB = PDB_GetHandleFromHandleMagic(H, hPDB))) { goto fail; }
         if(!(pObPdbEntry = ObMap_GetByKey(ctxOb->pmPdbByHash, hPDB))) { goto fail; }
         va = pObPdbEntry->vaModuleBase + dwSymbolOffset;
     }
-    fResult = VmmRead(pProcess, va, pb, cb);
+    fResult = VmmRead(H, pProcess, va, pb, cb);
 fail:
     Ob_DECREF(pObPdbEntry);
     Ob_DECREF(ctxOb);
@@ -712,20 +735,21 @@ fail:
 /*
 * Query the PDB for the size of a type. If szTypeName contains wildcard '?*'
 * characters and matches multiple types the size of the 1st type is returned.
+* -- H
 * -- hPDB
 * -- szTypeName = wildcard type name
 * -- pdwTypeSize
 * -- return
 */
 _Success_(return)
-BOOL PDB_GetTypeSize_Internal(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _Out_ PDWORD pdwTypeSize)
+BOOL PDB_GetTypeSize_Internal(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _Out_ PDWORD pdwTypeSize)
 {
-    POB_PDB_CONTEXT ctxOb = PDB_GetContext();
+    POB_PDB_CONTEXT ctxOb = PDB_GetContext(H);
     SYMBOL_INFO SymbolInfo = { 0 };
     PPDB_ENTRY pObPdbEntry = NULL;
     BOOL fResult = FALSE;
     if(!ctxOb || ctxOb->fDisabled) { goto fail; }
-    if(!(hPDB = PDB_GetHandleFromHandleMagic(hPDB))) { goto fail; }
+    if(!(hPDB = PDB_GetHandleFromHandleMagic(H, hPDB))) { goto fail; }
     if(!(pObPdbEntry = ObMap_GetByKey(ctxOb->pmPdbByHash, hPDB))) { goto fail; }
     EnterCriticalSection(&ctxOb->Lock);
     if(PDB_LoadEnsureEx(ctxOb, pObPdbEntry)) {
@@ -743,26 +767,27 @@ fail:
 /*
 * Query the PDB for the size of a type. If szTypeName contains wildcard '?*'
 * characters and matches multiple types the size of the 1st type is returned.
+* -- H
 * -- hPDB
 * -- szTypeName = wildcard type name
 * -- pdwTypeSize
 * -- return
 */
 _Success_(return)
-BOOL PDB_GetTypeSize(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _Out_ PDWORD pdwTypeSize)
+BOOL PDB_GetTypeSize(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _Out_ PDWORD pdwTypeSize)
 {
     // lookup hierarchy (1): InfoDB dynamic (cached pdb), (2): Full PDB, (3): InfoDB static (build# based).
     return
-        PDB_InfoDB_TypeSize(hPDB, szTypeName, pdwTypeSize, TRUE) ||
-        PDB_GetTypeSize_Internal(hPDB, szTypeName, pdwTypeSize) ||
-        PDB_InfoDB_TypeSize(hPDB, szTypeName, pdwTypeSize, FALSE);
+        PDB_InfoDB_TypeSize(H, hPDB, szTypeName, pdwTypeSize, TRUE) ||
+        PDB_GetTypeSize_Internal(H, hPDB, szTypeName, pdwTypeSize) ||
+        PDB_InfoDB_TypeSize(H, hPDB, szTypeName, pdwTypeSize, FALSE);
 }
 
 _Success_(return)
-BOOL PDB_GetTypeSizeShort(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _Out_ PWORD pwTypeSize)
+BOOL PDB_GetTypeSizeShort(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _Out_ PWORD pwTypeSize)
 {
     DWORD dwTypeSize;
-    if(!PDB_GetTypeSize(hPDB, szTypeName, &dwTypeSize) || (dwTypeSize > 0xffff)) { return FALSE; }
+    if(!PDB_GetTypeSize(H, hPDB, szTypeName, &dwTypeSize) || (dwTypeSize > 0xffff)) { return FALSE; }
     if(pwTypeSize) { *pwTypeSize = (WORD)dwTypeSize; }
     return TRUE;
 }
@@ -781,6 +806,7 @@ BOOL WINAPI PDB_GetTypeChildOffset_Callback(_In_ PSYMBOL_INFO pSymInfo, _In_ ULO
 * Query the PDB for the offset of a child inside a type - often inside a struct.
 * If szTypeName contains wildcard '?*' characters and matches multiple types the
 * first type is queried for children. The child name must match exactly.
+* -- H
 * -- hPDB
 * -- szTypeName = wildcard type name.
 * -- uszTypeChildName = exact match of child name.
@@ -788,9 +814,9 @@ BOOL WINAPI PDB_GetTypeChildOffset_Callback(_In_ PSYMBOL_INFO pSymInfo, _In_ ULO
 * -- return
 */
 _Success_(return)
-BOOL PDB_GetTypeChildOffset_Internal(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _In_ LPSTR uszTypeChildName, _Out_ PDWORD pdwTypeOffset)
+BOOL PDB_GetTypeChildOffset_Internal(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _In_ LPSTR uszTypeChildName, _Out_ PDWORD pdwTypeOffset)
 {
-    POB_PDB_CONTEXT ctxOb = PDB_GetContext();
+    POB_PDB_CONTEXT ctxOb = PDB_GetContext(H);
     BOOL fResult = FALSE;
     LPWSTR wszTypeChildSymName;
     LPSTR uszTypeChildSymName;
@@ -799,7 +825,7 @@ BOOL PDB_GetTypeChildOffset_Internal(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szType
     DWORD dwTypeId, cTypeChildren, iTypeChild;
     TI_FINDCHILDREN_PARAMS *pFindChildren = NULL;
     if(!ctxOb || ctxOb->fDisabled) { goto fail; }
-    if(!(hPDB = PDB_GetHandleFromHandleMagic(hPDB))) { goto fail; }
+    if(!(hPDB = PDB_GetHandleFromHandleMagic(H, hPDB))) { goto fail; }
     if(!(pObPdbEntry = ObMap_GetByKey(ctxOb->pmPdbByHash, hPDB))) { goto fail; }
     EnterCriticalSection(&ctxOb->Lock);
     if(!PDB_LoadEnsureEx(ctxOb, pObPdbEntry)) { goto fail_lock; }
@@ -832,6 +858,7 @@ fail:
 * Query the PDB for the offset of a child inside a type - often inside a struct.
 * If szTypeName contains wildcard '?*' characters and matches multiple types the
 * first type is queried for children. The child name must match exactly.
+* -- H
 * -- hPDB
 * -- szTypeName = wildcard type name.
 * -- uszTypeChildName = exact match of child name.
@@ -839,20 +866,20 @@ fail:
 * -- return
 */
 _Success_(return)
-BOOL PDB_GetTypeChildOffset(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _In_ LPSTR uszTypeChildName, _Out_ PDWORD pdwTypeOffset)
+BOOL PDB_GetTypeChildOffset(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _In_ LPSTR uszTypeChildName, _Out_ PDWORD pdwTypeOffset)
 {
     // lookup hierarchy (1): InfoDB dynamic (cached pdb), (2): Full PDB, (3): InfoDB static (build# based).
     return
-        PDB_InfoDB_TypeChildOffset(hPDB, szTypeName, uszTypeChildName, pdwTypeOffset, TRUE) ||
-        PDB_GetTypeChildOffset_Internal(hPDB, szTypeName, uszTypeChildName, pdwTypeOffset) ||
-        PDB_InfoDB_TypeChildOffset(hPDB, szTypeName, uszTypeChildName, pdwTypeOffset, FALSE);
+        PDB_InfoDB_TypeChildOffset(H, hPDB, szTypeName, uszTypeChildName, pdwTypeOffset, TRUE) ||
+        PDB_GetTypeChildOffset_Internal(H, hPDB, szTypeName, uszTypeChildName, pdwTypeOffset) ||
+        PDB_InfoDB_TypeChildOffset(H, hPDB, szTypeName, uszTypeChildName, pdwTypeOffset, FALSE);
 }
 
 _Success_(return)
-BOOL PDB_GetTypeChildOffsetShort(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _In_ LPSTR uszTypeChildName, _Out_ PWORD pwTypeOffset)
+BOOL PDB_GetTypeChildOffsetShort(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _In_ LPSTR uszTypeChildName, _Out_ PWORD pwTypeOffset)
 {
     DWORD dwTypeOffset;
-    if(!PDB_GetTypeChildOffset(hPDB, szTypeName, uszTypeChildName, &dwTypeOffset) || (dwTypeOffset > 0xffff)) { return FALSE; }
+    if(!PDB_GetTypeChildOffset(H, hPDB, szTypeName, uszTypeChildName, &dwTypeOffset) || (dwTypeOffset > 0xffff)) { return FALSE; }
     if(pwTypeOffset) { *pwTypeOffset = (WORD)dwTypeOffset; }
     return TRUE;
 }
@@ -866,25 +893,25 @@ BOOL PDB_GetTypeChildOffsetShort(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName
 /*
 * Cleanup the PDB sub-system. This should ideally be done on Vmm Close().
 */
-VOID PDB_Close()
+VOID PDB_Close(_In_ VMM_HANDLE H)
 {
-    Ob_DECREF_NULL(&ctxVmm->pObPdbContext);
-    ctxMain->pdb.fInitialized = FALSE;
+    Ob_DECREF_NULL(&H->vmm.pObPdbContext);
+    H->pdb.fInitialized = FALSE;
 }
 
 /*
 * 
 */
 _Success_(return)
-BOOL PDB_Initialize_Async_Kernel_ScanForPdbInfo(_In_ PVMM_PROCESS pSystemProcess, _Out_ PPE_CODEVIEW_INFO pCodeViewInfo)
+BOOL PDB_Initialize_Async_Kernel_ScanForPdbInfo(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _Out_ PPE_CODEVIEW_INFO pCodeViewInfo)
 {
     PBYTE pb = NULL;
     DWORD i, cbRead;
     PPE_CODEVIEW pPdb;
     ZeroMemory(pCodeViewInfo, sizeof(PE_CODEVIEW_INFO));
-    if(!ctxVmm->kernel.vaBase) { return FALSE; }
+    if(!H->vmm.kernel.vaBase) { return FALSE; }
     if(!(pb = LocalAlloc(0, 0x00800000))) { return FALSE; }
-    VmmReadEx(pSystemProcess, ctxVmm->kernel.vaBase, pb, 0x00800000, &cbRead, VMM_FLAG_ZEROPAD_ON_FAIL);
+    VmmReadEx(H, pSystemProcess, H->vmm.kernel.vaBase, pb, 0x00800000, &cbRead, VMM_FLAG_ZEROPAD_ON_FAIL);
     // 1: search for pdb debug information adn extract offset of PsInitialSystemProcess
     for(i = 0; i < 0x00800000 - sizeof(PE_CODEVIEW); i += 4) {
         pPdb = (PPE_CODEVIEW)(pb + i);
@@ -905,10 +932,10 @@ BOOL PDB_Initialize_Async_Kernel_ScanForPdbInfo(_In_ PVMM_PROCESS pSystemProcess
     return FALSE;
 }
 
-VOID PDB_Initialize_WaitComplete()
+VOID PDB_Initialize_WaitComplete(_In_ VMM_HANDLE H)
 {
-    POB_PDB_CONTEXT ctxOb = PDB_GetContext();
-    if(ctxOb && ctxMain->pdb.fEnable) {
+    POB_PDB_CONTEXT ctxOb = PDB_GetContext(H);
+    if(ctxOb && H->pdb.fEnable) {
         EnterCriticalSection(&ctxOb->Lock);
         LeaveCriticalSection(&ctxOb->Lock);
     }
@@ -921,172 +948,169 @@ VOID PDB_Initialize_WaitComplete()
 * Once this initializtion is successfully completed the fDisabled flag will be
 * removed - allowing other threads to use the PDB subsystem.
 * If the initialization fails it's assume the PDB system should be disabled.
-* -- hEventThreadStart
-* -- return
+* -- H
+* -- 
 */
-DWORD PDB_Initialize_Async_Kernel_ThreadProc(LPVOID lpParameter)
+VOID PDB_Initialize_Async_Kernel_ThreadProc(_In_ VMM_HANDLE H, _In_ POB_PDB_INITIALIZE_KERNEL_PARAMETERS pKernelParameters)
 {
-    POB_PDB_CONTEXT ctxOb = PDB_GetContext();
-    PVMMWIN_PDB_INITIALIZE_KERNEL_PARAMETERS pKernelParameters = (PVMMWIN_PDB_INITIALIZE_KERNEL_PARAMETERS)lpParameter;
+    POB_PDB_CONTEXT ctxOb = PDB_GetContext(H);
     DWORD dwReturnStatus = 0;
     PVMM_PROCESS pObSystemProcess = NULL;
     PPDB_ENTRY pObKernelEntry = NULL;
     QWORD qwPdbHash;
-    if(!ctxOb) { return 0; }
+    if(!ctxOb) { return; }
     EnterCriticalSection(&ctxOb->Lock);
     SetEvent(*pKernelParameters->phEventThreadStarted);
-    if(!(pObSystemProcess = VmmProcessGet(4))) { goto fail; }
+    if(!(pObSystemProcess = VmmProcessGet(H, 4))) { goto fail; }
     pKernelParameters->fPdbInfo = pKernelParameters->fPdbInfo ||
-        PE_GetCodeViewInfo(pObSystemProcess, ctxVmm->kernel.vaBase, NULL, &pKernelParameters->PdbInfo) ||
-        PDB_Initialize_Async_Kernel_ScanForPdbInfo(pObSystemProcess, &pKernelParameters->PdbInfo);
+        PE_GetCodeViewInfo(H, pObSystemProcess, H->vmm.kernel.vaBase, NULL, &pKernelParameters->PdbInfo) ||
+        PDB_Initialize_Async_Kernel_ScanForPdbInfo(H, pObSystemProcess, &pKernelParameters->PdbInfo);
     if(!pKernelParameters->fPdbInfo) {
-        PDB_PrintError("Reason: Unable to locate debugging information in kernel image.");
+        PDB_PrintError(H, "Reason: Unable to locate debugging information in kernel image.");
         goto fail;
     }
-    qwPdbHash = PDB_AddModuleEntry(ctxVmm->kernel.vaBase, (DWORD)ctxVmm->kernel.cbSize, "ntoskrnl", pKernelParameters->PdbInfo.CodeView.PdbFileName, pKernelParameters->PdbInfo.CodeView.Guid, pKernelParameters->PdbInfo.CodeView.Age);
+    qwPdbHash = PDB_AddModuleEntry(H, H->vmm.kernel.vaBase, (DWORD)H->vmm.kernel.cbSize, "ntoskrnl", pKernelParameters->PdbInfo.CodeView.PdbFileName, pKernelParameters->PdbInfo.CodeView.Guid, pKernelParameters->PdbInfo.CodeView.Age);
     pObKernelEntry = ObMap_GetByKey(ctxOb->pmPdbByHash, qwPdbHash);
     if(!pObKernelEntry) {
-        PDB_PrintError("Reason: Failed creating initial PDB entry.");
+        PDB_PrintError(H, "Reason: Failed creating initial PDB entry.");
         goto fail;
     }
     if(!PDB_LoadEnsureEx(ctxOb, pObKernelEntry)) {
-        PDB_PrintError("Reason: Unable to download kernel symbols to cache from Symbol Server.");
+        PDB_PrintError(H, "Reason: Unable to download kernel symbols to cache from Symbol Server.");
         goto fail;
     }
-    VmmLog(MID_PDB, LOGLEVEL_DEBUG, "Initialization of debug symbol .pdb functionality completed");
-    VmmLog(MID_PDB, LOGLEVEL_DEBUG, "[ %s ]", ctxMain->pdb.szSymbolPath);
+    VmmLog(H, MID_PDB, LOGLEVEL_DEBUG, "Initialization of debug symbol .pdb functionality completed");
+    VmmLog(H, MID_PDB, LOGLEVEL_DEBUG, "[ %s ]", H->pdb.szSymbolPath);
     ctxOb->fDisabled = FALSE;
-    dwReturnStatus = 1;
     // fall-through to fail for cleanup
 fail:
     LeaveCriticalSection(&ctxOb->Lock);
     Ob_DECREF(pObKernelEntry);
     Ob_DECREF(pObSystemProcess);
-    LocalFree(pKernelParameters);
     Ob_DECREF(ctxOb);
-    return dwReturnStatus;
 }
 
-VOID PDB_Initialize_InitialValues()
+VOID PDB_Initialize_InitialValues(_In_ VMM_HANDLE H)
 {
-    HKEY hKey;
+    HKEY hKey = NULL;
     DWORD cbData, dwEnableSymbols, dwEnableSymbolServer;
     // 1: try load values from registry
-    if(!ctxMain->pdb.fInitialized) {
-        ctxMain->pdb.fEnable = 1;
-        ctxMain->pdb.fServerEnable = !ctxMain->cfg.fDisableSymbolServerOnStartup;
+    if(!H->pdb.fInitialized) {
+        H->pdb.fEnable = 1;
+        H->pdb.fServerEnable = !H->cfg.fDisableSymbolServerOnStartup;
     }
-    ctxMain->pdb.szLocal[0] = 0;
-    ctxMain->pdb.szServer[0] = 0;
-    dwEnableSymbols = ctxMain->pdb.fEnable ? 1 : 0;
-    dwEnableSymbolServer = ctxMain->pdb.fServerEnable ? 1 : 0;
+    H->pdb.szLocal[0] = 0;
+    H->pdb.szServer[0] = 0;
+    dwEnableSymbols = H->pdb.fEnable ? 1 : 0;
+    dwEnableSymbolServer = H->pdb.fServerEnable ? 1 : 0;
     if(ERROR_SUCCESS == RegOpenKeyExA(HKEY_CURRENT_USER, "Software\\UlfFrisk\\MemProcFS", 0, KEY_READ, &hKey)) {
-        cbData = _countof(ctxMain->pdb.szLocal) - 1;
-        RegQueryValueExA(hKey, "SymbolCache", NULL, NULL, (PBYTE)ctxMain->pdb.szLocal, &cbData);
-        if(cbData < 3) { ctxMain->pdb.szLocal[0] = 0; }
-        cbData = _countof(ctxMain->pdb.szServer) - 1;
-        RegQueryValueExA(hKey, "SymbolServer", NULL, NULL, (PBYTE)ctxMain->pdb.szServer, &cbData);
-        if(cbData < 3) { ctxMain->pdb.szServer[0] = 0; }
-        if(ctxMain->pdb.fEnable) {
+        cbData = _countof(H->pdb.szLocal) - 1;
+        RegQueryValueExA(hKey, "SymbolCache", NULL, NULL, (PBYTE)H->pdb.szLocal, &cbData);
+        if(cbData < 3) { H->pdb.szLocal[0] = 0; }
+        cbData = _countof(H->pdb.szServer) - 1;
+        RegQueryValueExA(hKey, "SymbolServer", NULL, NULL, (PBYTE)H->pdb.szServer, &cbData);
+        if(cbData < 3) { H->pdb.szServer[0] = 0; }
+        if(H->pdb.fEnable) {
             cbData = sizeof(DWORD);
             RegQueryValueExA(hKey, "SymbolEnable", NULL, NULL, (PBYTE)&dwEnableSymbols, &cbData);
         }
-        if(ctxMain->pdb.fServerEnable) {
+        if(H->pdb.fServerEnable) {
             cbData = sizeof(DWORD);
             RegQueryValueExA(hKey, "SymbolServerEnable", NULL, NULL, (PBYTE)&dwEnableSymbolServer, &cbData);
         }
-        RegCloseKey(hKey);
     }
+    if(hKey) { RegCloseKey(hKey); hKey = NULL; }
     // 2: set default values (if not already loaded from registry)
-    if(!ctxMain->pdb.szLocal[0]) {
-        Util_GetPathDll(ctxMain->pdb.szLocal, ctxVmm->hModuleVmmOpt);
-        strncat_s(ctxMain->pdb.szLocal, _countof(ctxMain->pdb.szLocal), "Symbols", _TRUNCATE);
+    if(!H->pdb.szLocal[0]) {
+        Util_GetPathDll(H->pdb.szLocal, H->vmm.hModuleVmmOpt);
+        strncat_s(H->pdb.szLocal, _countof(H->pdb.szLocal), "Symbols", _TRUNCATE);
     }
-    if(!ctxMain->pdb.szServer[0]) {
-        strncpy_s(ctxMain->pdb.szServer, _countof(ctxMain->pdb.szServer), "https://msdl.microsoft.com/download/symbols", _TRUNCATE);
+    if(!H->pdb.szServer[0]) {
+        strncpy_s(H->pdb.szServer, _countof(H->pdb.szServer), "https://msdl.microsoft.com/download/symbols", _TRUNCATE);
     }
     // 3: set final values
-    ctxMain->pdb.fEnable = (dwEnableSymbols == 1);
-    ctxMain->pdb.fServerEnable = (dwEnableSymbolServer == 1);
-    strncpy_s(ctxMain->pdb.szSymbolPath, _countof(ctxMain->pdb.szSymbolPath), "srv*", _TRUNCATE);
-    strncat_s(ctxMain->pdb.szSymbolPath, _countof(ctxMain->pdb.szSymbolPath), ctxMain->pdb.szLocal, _TRUNCATE);
-    if(ctxMain->pdb.fServerEnable) {
-        strncat_s(ctxMain->pdb.szSymbolPath, _countof(ctxMain->pdb.szSymbolPath), "*", _TRUNCATE);
-        strncat_s(ctxMain->pdb.szSymbolPath, _countof(ctxMain->pdb.szSymbolPath), ctxMain->pdb.szServer, _TRUNCATE);
+    H->pdb.fEnable = (dwEnableSymbols == 1);
+    H->pdb.fServerEnable = (dwEnableSymbolServer == 1);
+    strncpy_s(H->pdb.szSymbolPath, _countof(H->pdb.szSymbolPath), "srv*", _TRUNCATE);
+    strncat_s(H->pdb.szSymbolPath, _countof(H->pdb.szSymbolPath), H->pdb.szLocal, _TRUNCATE);
+    if(H->pdb.fServerEnable) {
+        strncat_s(H->pdb.szSymbolPath, _countof(H->pdb.szSymbolPath), "*", _TRUNCATE);
+        strncat_s(H->pdb.szSymbolPath, _countof(H->pdb.szSymbolPath), H->pdb.szServer, _TRUNCATE);
     }
-    ctxMain->pdb.fInitialized = TRUE;
+    H->pdb.fInitialized = TRUE;
 }
 
 /*
 * Update the PDB configuration. The PDB syb-system will be reloaded on
 * configuration changes - which may cause a short interruption for any
 * caller.
+* -- H
 */
-VOID PDB_ConfigChange()
+VOID PDB_ConfigChange(_In_ VMM_HANDLE H)
 {
     HKEY hKey;
     CHAR szLocalPath[MAX_PATH] = { 0 };
-    if(ctxMain->cfg.fDisableSymbols) {
-        VmmLog(MID_PDB, LOGLEVEL_INFO, "Debug symbols disabled by user");
+    if(H->cfg.fDisableSymbols) {
+        VmmLog(H, MID_PDB, LOGLEVEL_INFO, "Debug symbols disabled by user");
         return;
     }
     // update new values in registry
     if(ERROR_SUCCESS == RegCreateKeyExA(HKEY_CURRENT_USER, "Software\\UlfFrisk\\MemProcFS", 0, NULL, 0, KEY_ALL_ACCESS, NULL, &hKey, NULL)) {
-        Util_GetPathDll(szLocalPath, ctxVmm->hModuleVmmOpt);
-        if(strncmp(szLocalPath, ctxMain->pdb.szLocal, strlen(szLocalPath) - 1) && !_access_s(ctxMain->pdb.szLocal, 06)) {
-            RegSetValueExA(hKey, "SymbolCache", 0, REG_SZ, (PBYTE)ctxMain->pdb.szLocal, (DWORD)strlen(ctxMain->pdb.szLocal));
+        Util_GetPathDll(szLocalPath, H->vmm.hModuleVmmOpt);
+        if(strncmp(szLocalPath, H->pdb.szLocal, strlen(szLocalPath) - 1) && !_access_s(H->pdb.szLocal, 06)) {
+            RegSetValueExA(hKey, "SymbolCache", 0, REG_SZ, (PBYTE)H->pdb.szLocal, (DWORD)strlen(H->pdb.szLocal));
         } else {
             RegSetValueExA(hKey, "SymbolCache", 0, REG_SZ, (PBYTE)"", 0);
         }
-        if((!strncmp("http://", ctxMain->pdb.szServer, 7) || !strncmp("https://", ctxMain->pdb.szServer, 8)) && !strstr(ctxMain->pdb.szServer, "msdl.microsoft.com")) {
-            RegSetValueExA(hKey, "SymbolServer", 0, REG_SZ, (PBYTE)ctxMain->pdb.szServer, (DWORD)strlen(ctxMain->pdb.szServer));
+        if((!strncmp("http://", H->pdb.szServer, 7) || !strncmp("https://", H->pdb.szServer, 8)) && !strstr(H->pdb.szServer, "msdl.microsoft.com")) {
+            RegSetValueExA(hKey, "SymbolServer", 0, REG_SZ, (PBYTE)H->pdb.szServer, (DWORD)strlen(H->pdb.szServer));
         } else {
             RegSetValueExA(hKey, "SymbolServer", 0, REG_SZ, (PBYTE)"", 0);
         }
         RegCloseKey(hKey);
     }
     // refresh values and reload!
-    EnterCriticalSection(&ctxVmm->LockMaster);
-    PDB_Close();
-    PDB_Initialize(NULL, FALSE);
-    LeaveCriticalSection(&ctxVmm->LockMaster);
+    EnterCriticalSection(&H->vmm.LockMaster);
+    PDB_Close(H);
+    PDB_Initialize(H, NULL, FALSE);
+    LeaveCriticalSection(&H->vmm.LockMaster);
 }
 
 /*
 * Initialize the PDB sub-system. This should ideally be done on Vmm Init()
 */
-VOID PDB_Initialize(_In_opt_ PPE_CODEVIEW_INFO pPdbInfoOpt, _In_ BOOL fInitializeKernelAsync)
+VOID PDB_Initialize(_In_ VMM_HANDLE H, _In_opt_ PPE_CODEVIEW_INFO pPdbInfoOpt, _In_ BOOL fInitializeKernelAsync)
 {
     HANDLE hEventThreadStarted = 0;
     POB_PDB_CONTEXT ctx = NULL;
     DWORD i, dwSymOptions;
     CHAR szPathSymSrv[MAX_PATH], szPathDbgHelp[MAX_PATH];
-    PVMMWIN_PDB_INITIALIZE_KERNEL_PARAMETERS pKernelParameters = NULL;
-    if(ctxMain->pdb.fInitialized) { return; }
-    if(ctxMain->cfg.fDisableSymbols) {
-        VmmLog(MID_PDB, LOGLEVEL_INFO, "Debug symbols disabled by user");
+    POB_PDB_INITIALIZE_KERNEL_PARAMETERS pObKernelParameters = NULL;
+    if(H->pdb.fInitialized) { return; }
+    if(H->cfg.fDisableSymbols) {
+        VmmLog(H, MID_PDB, LOGLEVEL_INFO, "Debug symbols disabled by user");
         return;
     }
-    PDB_Initialize_InitialValues();
-    if(!ctxMain->pdb.fEnable) { goto fail; }
-    if(!(ctx = Ob_Alloc(OB_TAG_PDB_CTX, LMEM_ZEROINIT, sizeof(OB_PDB_CONTEXT), PDB_CallbackCleanup_ObPdbContext, NULL))) { goto fail; }
-    if(!(ctx->pmPdbByHash = ObMap_New(OB_MAP_FLAGS_OBJECT_OB))) { goto fail; }
-    if(!(ctx->pmPdbByModule = ObMap_New(OB_MAP_FLAGS_OBJECT_OB))) { goto fail; }
+    PDB_Initialize_InitialValues(H);
+    if(!H->pdb.fEnable) { goto fail; }
+    if(!(ctx = Ob_AllocEx(H, OB_TAG_PDB_CTX, LMEM_ZEROINIT, sizeof(OB_PDB_CONTEXT), PDB_CallbackCleanup_ObPdbContext, NULL))) { goto fail; }
+    if(!(ctx->pmPdbByHash = ObMap_New(H, OB_MAP_FLAGS_OBJECT_OB))) { goto fail; }
+    if(!(ctx->pmPdbByModule = ObMap_New(H, OB_MAP_FLAGS_OBJECT_OB))) { goto fail; }
     // 1: dynamic load of dbghelp.dll and symsrv.dll from directory of vmm.dll - i.e. not from system32
-    Util_GetPathDll(szPathSymSrv, ctxVmm->hModuleVmmOpt);
-    Util_GetPathDll(szPathDbgHelp, ctxVmm->hModuleVmmOpt);
+    Util_GetPathDll(szPathSymSrv, H->vmm.hModuleVmmOpt);
+    Util_GetPathDll(szPathDbgHelp, H->vmm.hModuleVmmOpt);
     strncat_s(szPathSymSrv, MAX_PATH, "symsrv.dll", _TRUNCATE);
     strncat_s(szPathDbgHelp, MAX_PATH, "dbghelp.dll", _TRUNCATE);
     ctx->hModuleSymSrv = LoadLibraryA(szPathSymSrv);
     ctx->hModuleDbgHelp = LoadLibraryA(szPathDbgHelp);
     if(!ctx->hModuleSymSrv || !ctx->hModuleDbgHelp) {
-        PDB_PrintError("Reason: Could not load PDB required files - symsrv.dll/dbghelp.dll.");
+        PDB_PrintError(H, "Reason: Could not load PDB required files - symsrv.dll/dbghelp.dll.");
         goto fail;
     }
     for(i = 0; i < sizeof(VMMWIN_PDB_FUNCTIONS) / sizeof(PVOID); i++) {
         ctx->vafn[i] = GetProcAddress(ctx->hModuleDbgHelp, szVMMWIN_PDB_FUNCTIONS[i]);
         if(!ctx->vafn[i]) {
-            PDB_PrintError("Reason: Could not load function(s) from symsrv.dll/dbghelp.dll.");
+            PDB_PrintError(H, "Reason: Could not load function(s) from symsrv.dll/dbghelp.dll.");
             goto fail;
         }
     }
@@ -1099,37 +1123,38 @@ VOID PDB_Initialize(_In_opt_ PPE_CODEVIEW_INFO pPdbInfoOpt, _In_ BOOL fInitializ
     dwSymOptions |= SYMOPT_IGNORE_NT_SYMPATH;
     dwSymOptions |= SYMOPT_UNDNAME;
     ctx->pfn.SymSetOptions(dwSymOptions);
-    if(!ctx->pfn.SymInitialize(ctx->hSym, ctxMain->pdb.szSymbolPath, FALSE)) {
-        PDB_PrintError("Reason: Failed to initialize Symbol Handler / dbghelp.dll.");
+    if(!ctx->pfn.SymInitialize(ctx->hSym, H->pdb.szSymbolPath, FALSE)) {
+        PDB_PrintError(H, "Reason: Failed to initialize Symbol Handler / dbghelp.dll.");
         ctx->hSym = NULL;
         goto fail;
     }
     // success - finish up and load kernel .pdb async (to optimize startup time).
     // pdb subsystem won't be fully initialized until before the kernel is loaded.
     if(!(hEventThreadStarted = CreateEvent(NULL, TRUE, FALSE, NULL))) { goto fail; }
-    if(!(pKernelParameters = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMWIN_PDB_INITIALIZE_KERNEL_PARAMETERS)))) { goto fail; }
-    pKernelParameters->phEventThreadStarted = &hEventThreadStarted;
+    if(!(pObKernelParameters = Ob_AllocEx(H, OB_TAG_PDB_KERNEL_CONTEXT, LMEM_ZEROINIT, sizeof(OB_PDB_INITIALIZE_KERNEL_PARAMETERS), NULL, NULL))) { goto fail; }
+    pObKernelParameters->phEventThreadStarted = &hEventThreadStarted;
     if(pPdbInfoOpt) {
-        pKernelParameters->fPdbInfo = TRUE;
-        memcpy(&pKernelParameters->PdbInfo, pPdbInfoOpt, sizeof(PE_CODEVIEW_INFO));
+        pObKernelParameters->fPdbInfo = TRUE;
+        memcpy(&pObKernelParameters->PdbInfo, pPdbInfoOpt, sizeof(PE_CODEVIEW_INFO));
     }
     InitializeCriticalSection(&ctx->Lock);
     ctx->qwLoadAddressNext = VMMWIN_PDB_LOAD_ADDRESS_BASE;
     ctx->fDisabled = TRUE;
-    ctxVmm->pObPdbContext = (POB)ctx;
+    H->vmm.pObPdbContext = (POB)ctx;
     if(fInitializeKernelAsync) {
-        VmmWork((LPTHREAD_START_ROUTINE)PDB_Initialize_Async_Kernel_ThreadProc, (LPVOID)pKernelParameters, NULL);
-        WaitForSingleObject(hEventThreadStarted, 500);  // wait for async thread initialize thread to start (and acquire PDB lock).
+        VmmWork_Ob(H, (PVMM_WORK_START_ROUTINE_OB_PFN)PDB_Initialize_Async_Kernel_ThreadProc, (POB)pObKernelParameters, NULL, VMMWORK_FLAG_PRIO_NORMAL);
+        WaitForSingleObject(hEventThreadStarted, 1000);  // wait for async thread initialize thread to start (and acquire PDB lock).
     } else {
-        PDB_Initialize_Async_Kernel_ThreadProc(pKernelParameters); // synchronous call
+        PDB_Initialize_Async_Kernel_ThreadProc(H, pObKernelParameters); // synchronous call
     }
     CloseHandle(hEventThreadStarted);
+    Ob_DECREF(pObKernelParameters);
     return;
 fail:
     if(hEventThreadStarted) { CloseHandle(hEventThreadStarted); }
+    Ob_DECREF(pObKernelParameters);
     Ob_DECREF(ctx);
-    LocalFree(pKernelParameters);
-    ctxMain->pdb.fEnable = FALSE;
+    H->pdb.fEnable = FALSE;
 }
 
 
@@ -1218,7 +1243,7 @@ LPWSTR PDB_DisplayTypeNt_GetTypeName(_In_ PPDB_DT_INFO pDT, _In_ QWORD cbType)
 * text buffer in the ctxDT context. This function makes multiple and possible
 * also recursive lookups against dbghelp.dll.
 */
-VOID PDB_DisplayTypeNt_DoWork(_Inout_ PPDB_DT_CONTEXT ctxDT, _In_ BYTE iLevel, _In_ DWORD dwTypeIndex, _In_ DWORD dwChildCount, _In_ LPWSTR wszTypeName, _In_opt_ PBYTE pbMEM, _In_ DWORD cbMEM)
+VOID PDB_DisplayTypeNt_DoWork(_In_ VMM_HANDLE H, _Inout_ PPDB_DT_CONTEXT ctxDT, _In_ BYTE iLevel, _In_ DWORD dwTypeIndex, _In_ DWORD dwChildCount, _In_ LPWSTR wszTypeName, _In_opt_ PBYTE pbMEM, _In_ DWORD cbMEM)
 {
     static const IMAGEHLP_SYMBOL_TYPE_INFO _INFO1_ReqKinds[] = {
         TI_GET_SYMNAME,
@@ -1360,7 +1385,7 @@ VOID PDB_DisplayTypeNt_DoWork(_Inout_ PPDB_DT_CONTEXT ctxDT, _In_ BYTE iLevel, _
             ctxDT->csz += _snprintf_s(ctxDT->szu8 + ctxDT->csz, (SIZE_T)(ctxDT->cszMax - ctxDT->csz), _TRUNCATE, "%S\n", ctxDT->wszln);   // commit line to result utf-8 result string
             oln = 0;
             if(pe->dwChildCount && (iLevel < ctxDT->iLevelMax) && (!pbMEM || (pe->dwOffset + pe->qwLength <= cbMEM))) {
-                PDB_DisplayTypeNt_DoWork(ctxDT, iLevel + 1, pe->dwTypeIndex, pe->dwChildCount, pe->wszTypeName, (pbMEM ? pbMEM + pe->dwOffset : NULL), (pbMEM ? cbMEM - pe->dwOffset : 0));
+                PDB_DisplayTypeNt_DoWork(H, ctxDT, iLevel + 1, pe->dwTypeIndex, pe->dwChildCount, pe->wszTypeName, (pbMEM ? pbMEM + pe->dwOffset : NULL), (pbMEM ? cbMEM - pe->dwOffset : 0));
             }
         } else {
             wszBuffer[0] = 0;
@@ -1393,9 +1418,9 @@ VOID PDB_DisplayTypeNt_DoWork(_Inout_ PPDB_DT_CONTEXT ctxDT, _In_ BYTE iLevel, _
             // _UNICODE_STRING special case:
             if(pbMEM && (dwChildCount == 3) && (i == 2) && wszTypeName && !wcscmp(L"_UNICODE_STRING", wszTypeName)) {
                 cbData = *(PWORD)pbMEM;
-                vaData = ctxVmm->f32 ? *(PDWORD)(pbMEM + 4) : *(PQWORD)(pbMEM + 8);
-                if(VMM_KADDR(vaData) && cbData && !(cbData & 1) && (cbData < MAX_PATH * 2)) {
-                    if(VmmRead(PVMM_PROCESS_SYSTEM, vaData, (PBYTE)ctxDT->wszBuffer, (DWORD)cbData)) {
+                vaData = H->vmm.f32 ? *(PDWORD)(pbMEM + 4) : *(PQWORD)(pbMEM + 8);
+                if(VMM_KADDR(H->vmm.f32, vaData) && cbData && !(cbData & 1) && (cbData < MAX_PATH * 2)) {
+                    if(VmmRead(H, PVMM_PROCESS_SYSTEM, vaData, (PBYTE)ctxDT->wszBuffer, (DWORD)cbData)) {
                         ctxDT->wszBuffer[cbData >> 1] = 0;
                         oln += _snwprintf_s(ctxDT->wszln + oln, MAX_PATH - oln, _TRUNCATE, L" - %s", ctxDT->wszBuffer);
                     }
@@ -1426,6 +1451,7 @@ fail:
 * a human readable utf-8 string. Caller is responsible for LocalFree().
 * Please also note that this function is single-threaded by an internal lock.
 * CALLER LocalFree: *pszResult
+* -- H
 * -- szTypeName = the name of the type - only types within ntosknl.exe are allowed.
 * -- cLevelMax = recurse into sub-types to cLevelMax.
 * -- vaType = optional kernel address in SYSTEM process address space where to
@@ -1441,6 +1467,7 @@ fail:
 */
 _Success_(return)
 BOOL PDB_DisplayTypeNt(
+    _In_ VMM_HANDLE H,
     _In_ LPSTR szTypeName,
     _In_ BYTE cLevelMax,
     _In_opt_ QWORD vaType,
@@ -1450,7 +1477,7 @@ BOOL PDB_DisplayTypeNt(
     _Out_opt_ PDWORD pcbResult,
     _Out_opt_ PDWORD pcbType
 ) {
-    POB_PDB_CONTEXT ctxOb = PDB_GetContext();
+    POB_PDB_CONTEXT ctxOb = PDB_GetContext(H);
     BOOL fResult = FALSE;
     PDB_HANDLE hPDB;
     SYMBOL_INFO_PACKAGE SymbolInfoType = { 0 };
@@ -1467,13 +1494,13 @@ BOOL PDB_DisplayTypeNt(
         Ob_DECREF(ctxOb);
         return FALSE;
     }
-    hPDB = PDB_GetHandleFromModuleName("ntoskrnl");
+    hPDB = PDB_GetHandleFromModuleName(H, "ntoskrnl");
     if(!(pObPdbEntry = ObMap_GetByKey(ctxOb->pmPdbByHash, hPDB))) { return FALSE; }
     EnterCriticalSection(&ctxOb->Lock);
     if(!PDB_LoadEnsureEx(ctxOb, pObPdbEntry)) { goto fail; }
     // flag: object header -> type == _OBJECT_HEADER + adjust va type base.
     if(fObjHeader) { szTypeName = "_OBJECT_HEADER"; }
-    if(fObjHeader && vaType) { vaType -= ctxVmm->f32 ? sizeof(OBJECT_HEADER32) : sizeof(OBJECT_HEADER64); }
+    if(fObjHeader && vaType) { vaType -= H->vmm.f32 ? sizeof(OBJECT_HEADER32) : sizeof(OBJECT_HEADER64); }
     // fetch type data:
     SymbolInfoType.si.SizeOfStruct = sizeof(SYMBOL_INFO);
     SymbolInfoType.si.MaxNameLen = MAX_SYM_NAME;
@@ -1491,24 +1518,24 @@ BOOL PDB_DisplayTypeNt(
     ctxDT.szu8[0] = 0;
     if(!ctxDT.szu8) { goto fail; }
     // fetch optional type memory (if possible):
-    if(VMM_KADDR_4_8(vaType) && (SymbolInfoType.si.Size >= 4) && (SymbolInfoType.si.Size < 0x2000)) {
+    if(VMM_KADDR_4_8(H->vmm.f32, vaType) && (SymbolInfoType.si.Size >= 4) && (SymbolInfoType.si.Size < 0x2000)) {
         if((pbMEM = LocalAlloc(0, SymbolInfoType.si.Size))) {
-            if(!VmmRead(PVMM_PROCESS_SYSTEM, vaType, pbMEM, SymbolInfoType.si.Size)) {
+            if(!VmmRead(H, PVMM_PROCESS_SYSTEM, vaType, pbMEM, SymbolInfoType.si.Size)) {
                 pbMEM = LocalFree(pbMEM);
             }
         }
     }
     // call worker function:
     if(pbMEM) {
-        szFormat = ctxVmm->f32 ? "dt nt!%s  0x%08llX\n" : "dt nt!%s  0x%016llX\n";
+        szFormat = H->vmm.f32 ? "dt nt!%s  0x%08llX\n" : "dt nt!%s  0x%016llX\n";
         ctxDT.csz += snprintf(ctxDT.szu8 + ctxDT.csz, (SIZE_T)(ctxDT.cszMax - ctxDT.csz), szFormat, SymbolInfoType.si.Name, vaType);
     } else {
         ctxDT.csz += snprintf(ctxDT.szu8 + ctxDT.csz, (SIZE_T)(ctxDT.cszMax - ctxDT.csz), "dt nt!%s\n", SymbolInfoType.si.Name);
     }
-    PDB_DisplayTypeNt_DoWork(&ctxDT, 0, SymbolInfoType.si.TypeIndex, cTypeChildren, NULL, pbMEM, (pbMEM ? SymbolInfoType.si.Size : 0));
+    PDB_DisplayTypeNt_DoWork(H, &ctxDT, 0, SymbolInfoType.si.TypeIndex, cTypeChildren, NULL, pbMEM, (pbMEM ? SymbolInfoType.si.Size : 0));
     // append optional hexascii:
     if(fHexAscii && pbMEM && ctxDT.csz) {
-        szFormat = ctxVmm->f32 ? "\n---\n\ndb  0x%08llX  L%03X\n" : "\n---\n\ndb  0x%016llX  L%03X\n";
+        szFormat = H->vmm.f32 ? "\n---\n\ndb  0x%08llX  L%03X\n" : "\n---\n\ndb  0x%016llX  L%03X\n";
         ctxDT.csz += snprintf(ctxDT.szu8 + ctxDT.csz, (SIZE_T)(ctxDT.cszMax - ctxDT.csz), szFormat, vaType, SymbolInfoType.si.Size);
         cbHexAscii = (DWORD)(ctxDT.cszMax - ctxDT.csz);
         if(Util_FillHexAscii(pbMEM, min(0x2000, SymbolInfoType.si.Size), 0, ctxDT.szu8 + ctxDT.csz, &cbHexAscii)) {
@@ -1516,22 +1543,22 @@ BOOL PDB_DisplayTypeNt(
         }
     }
     // flag: object header: special processing:
-    if(fObjHeader && pbMEM && ctxVmm->offset._OBJECT_HEADER_CREATOR_INFO.cb) {
+    if(fObjHeader && pbMEM && H->vmm.offset._OBJECT_HEADER_CREATOR_INFO.cb) {
         for(i = 0; i < 9; i++) {
-            if(((1 << i) & (ctxVmm->f32 ? ((POBJECT_HEADER32)pbMEM)->InfoMask : ((POBJECT_HEADER64)pbMEM)->InfoMask)) || (i == 8)) {
+            if(((1 << i) & (H->vmm.f32 ? ((POBJECT_HEADER32)pbMEM)->InfoMask : ((POBJECT_HEADER64)pbMEM)->InfoMask)) || (i == 8)) {
                 switch(i) {
-                    case 0: szSubType = "_OBJECT_HEADER_CREATOR_INFO"; cbSubType = ctxVmm->offset._OBJECT_HEADER_CREATOR_INFO.cb; break;        // 0x01
-                    case 1: szSubType = "_OBJECT_HEADER_NAME_INFO";    cbSubType = ctxVmm->offset._OBJECT_HEADER_NAME_INFO.cb;    break;        // 0x02
-                    case 2: szSubType = "_OBJECT_HEADER_HANDLE_INFO";  cbSubType = ctxVmm->offset._OBJECT_HEADER_HANDLE_INFO.cb;  break;        // 0x04
-                    case 3: szSubType = "_OBJECT_HEADER_QUOTA_INFO";   cbSubType = ctxVmm->offset._OBJECT_HEADER_QUOTA_INFO.cb;   break;        // 0x08
-                    case 4: szSubType = "_OBJECT_HEADER_PROCESS_INFO"; cbSubType = ctxVmm->offset._OBJECT_HEADER_PROCESS_INFO.cb; break;        // 0x10
-                    case 6: szSubType = "_OBJECT_HEADER_AUDIT_INFO";   cbSubType = ctxVmm->offset._OBJECT_HEADER_AUDIT_INFO.cb;   break;        // 0x40
-                    case 8: szSubType = "_POOL_HEADER";                cbSubType = ctxVmm->offset._POOL_HEADER.cb;                break;        // ---
+                    case 0: szSubType = "_OBJECT_HEADER_CREATOR_INFO"; cbSubType = H->vmm.offset._OBJECT_HEADER_CREATOR_INFO.cb; break;        // 0x01
+                    case 1: szSubType = "_OBJECT_HEADER_NAME_INFO";    cbSubType = H->vmm.offset._OBJECT_HEADER_NAME_INFO.cb;    break;        // 0x02
+                    case 2: szSubType = "_OBJECT_HEADER_HANDLE_INFO";  cbSubType = H->vmm.offset._OBJECT_HEADER_HANDLE_INFO.cb;  break;        // 0x04
+                    case 3: szSubType = "_OBJECT_HEADER_QUOTA_INFO";   cbSubType = H->vmm.offset._OBJECT_HEADER_QUOTA_INFO.cb;   break;        // 0x08
+                    case 4: szSubType = "_OBJECT_HEADER_PROCESS_INFO"; cbSubType = H->vmm.offset._OBJECT_HEADER_PROCESS_INFO.cb; break;        // 0x10
+                    case 6: szSubType = "_OBJECT_HEADER_AUDIT_INFO";   cbSubType = H->vmm.offset._OBJECT_HEADER_AUDIT_INFO.cb;   break;        // 0x40
+                    case 8: szSubType = "_POOL_HEADER";                cbSubType = H->vmm.offset._POOL_HEADER.cb;                break;        // ---
                     default: szSubType = NULL; cbSubType = 0; break;
                 }
                 if(!cbSubType || !szSubType) { break; }
                 vaType -= cbSubType;
-                if(PDB_DisplayTypeNt(szSubType, 2, vaType, fHexAscii, FALSE, &szSubTypeResult, NULL, NULL)) {
+                if(PDB_DisplayTypeNt(H, szSubType, 2, vaType, fHexAscii, FALSE, &szSubTypeResult, NULL, NULL)) {
                     ctxDT.csz += snprintf(ctxDT.szu8 + ctxDT.csz, (SIZE_T)(ctxDT.cszMax - ctxDT.csz), "\n======\n\n%s", szSubTypeResult);
                     LocalFree(szSubTypeResult);
                 }
@@ -1559,65 +1586,65 @@ fail:
 
 #include "pdb.h"
 
-VOID PDB_Initialize_WaitComplete() { return; }
-VOID PDB_Close() { return; }
-VOID PDB_ConfigChange() { return; }
-PDB_HANDLE PDB_GetHandleFromModuleAddress(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase) { return 0; }
-PDB_HANDLE PDB_GetHandleFromModuleName(_In_ LPSTR szModuleName) { return 0; }
-_Success_(return) BOOL PDB_LoadEnsure(_In_opt_ PDB_HANDLE hPDB) { return FALSE; }
-_Success_(return) BOOL PDB_GetModuleInfo(_In_opt_ PDB_HANDLE hPDB, _Out_writes_opt_(MAX_PATH) LPSTR szModuleName, _Out_opt_ PQWORD pvaModuleBase, _Out_opt_ PDWORD pcbModuleSize) { return FALSE; }
-_Success_(return) BOOL PDB_GetSymbolFromOffset(_In_opt_ PDB_HANDLE hPDB, _In_ DWORD dwSymbolOffset, _Out_writes_opt_(MAX_PATH) LPSTR szSymbolName, _Out_opt_ PDWORD pdwSymbolDisplacement) { return FALSE; }
-_Success_(return) BOOL PDB_DisplayTypeNt(_In_ LPSTR szTypeName, _In_ BYTE cLevelMax, _In_opt_ QWORD vaType, _In_ BOOL fHexAscii, _In_ BOOL fObjHeader, _Out_opt_ LPSTR * pszResult, _Out_opt_ PDWORD pcbResult, _Out_opt_ PDWORD pcbType) { return FALSE; }
+VOID PDB_Initialize_WaitComplete(_In_ VMM_HANDLE H) { return; }
+VOID PDB_Close(_In_ VMM_HANDLE H) { return; }
+VOID PDB_ConfigChange(_In_ VMM_HANDLE H) { return; }
+PDB_HANDLE PDB_GetHandleFromModuleAddress(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase) { return 0; }
+PDB_HANDLE PDB_GetHandleFromModuleName(_In_ VMM_HANDLE H, _In_ LPSTR szModuleName) { return 0; }
+_Success_(return) BOOL PDB_LoadEnsure(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB) { return FALSE; }
+_Success_(return) BOOL PDB_GetModuleInfo(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _Out_writes_opt_(MAX_PATH) LPSTR szModuleName, _Out_opt_ PQWORD pvaModuleBase, _Out_opt_ PDWORD pcbModuleSize) { return FALSE; }
+_Success_(return) BOOL PDB_GetSymbolFromOffset(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ DWORD dwSymbolOffset, _Out_writes_opt_(MAX_PATH) LPSTR szSymbolName, _Out_opt_ PDWORD pdwSymbolDisplacement) { return FALSE; }
+_Success_(return) BOOL PDB_DisplayTypeNt(_In_ VMM_HANDLE H, _In_ LPSTR szTypeName, _In_ BYTE cLevelMax, _In_opt_ QWORD vaType, _In_ BOOL fHexAscii, _In_ BOOL fObjHeader, _Out_opt_ LPSTR * pszResult, _Out_opt_ PDWORD pcbResult, _Out_opt_ PDWORD pcbType) { return FALSE; }
 
-VOID PDB_Initialize(_In_opt_ PPE_CODEVIEW_INFO pPdbInfoOpt, _In_ BOOL fInitializeKernelAsync)
+VOID PDB_Initialize(_In_ VMM_HANDLE H, _In_opt_ PPE_CODEVIEW_INFO pPdbInfoOpt, _In_ BOOL fInitializeKernelAsync)
 {
-    PDB_PrintError("Full symbol support only available on Windows.");
+    PDB_PrintError(H, "Full symbol support only available on Windows.");
     return;
 }
 
-_Success_(return) BOOL PDB_GetSymbolOffset(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _Out_ PDWORD pdwSymbolOffset)
+_Success_(return) BOOL PDB_GetSymbolOffset(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _Out_ PDWORD pdwSymbolOffset)
 { 
-    return PDB_InfoDB_SymbolOffset(hPDB, szSymbolName, pdwSymbolOffset);
+    return PDB_InfoDB_SymbolOffset(H, hPDB, szSymbolName, pdwSymbolOffset);
 }
 
-_Success_(return) BOOL PDB_GetTypeSize(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _Out_ PDWORD pdwTypeSize)
+_Success_(return) BOOL PDB_GetTypeSize(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _Out_ PDWORD pdwTypeSize)
 {
-    return PDB_InfoDB_TypeSize(hPDB, szTypeName, pdwTypeSize, TRUE) || PDB_InfoDB_TypeSize(hPDB, szTypeName, pdwTypeSize, FALSE);
+    return PDB_InfoDB_TypeSize(H, hPDB, szTypeName, pdwTypeSize, TRUE) || PDB_InfoDB_TypeSize(H, hPDB, szTypeName, pdwTypeSize, FALSE);
 }
 
-_Success_(return) BOOL PDB_GetTypeChildOffset(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _In_ LPSTR uszTypeChildName, _Out_ PDWORD pdwTypeOffset)
+_Success_(return) BOOL PDB_GetTypeChildOffset(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _In_ LPSTR uszTypeChildName, _Out_ PDWORD pdwTypeOffset)
 {
-    return PDB_InfoDB_TypeChildOffset(hPDB, szTypeName, uszTypeChildName, pdwTypeOffset, TRUE) || PDB_InfoDB_TypeChildOffset(hPDB, szTypeName, uszTypeChildName, pdwTypeOffset, FALSE);
+    return PDB_InfoDB_TypeChildOffset(H, hPDB, szTypeName, uszTypeChildName, pdwTypeOffset, TRUE) || PDB_InfoDB_TypeChildOffset(H, hPDB, szTypeName, uszTypeChildName, pdwTypeOffset, FALSE);
 }
 
-_Success_(return) BOOL PDB_GetSymbolAddress(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _Out_ PQWORD pvaSymbolAddress)
+_Success_(return) BOOL PDB_GetSymbolAddress(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _Out_ PQWORD pvaSymbolAddress)
 {
     DWORD dwSymbolOffset;
     *pvaSymbolAddress = 0;
-    if((hPDB == PDB_HANDLE_KERNEL) && PDB_InfoDB_SymbolOffset(hPDB, szSymbolName, &dwSymbolOffset)) {
-        *pvaSymbolAddress = ctxVmm->kernel.vaBase + dwSymbolOffset;
+    if((hPDB == PDB_HANDLE_KERNEL) && PDB_InfoDB_SymbolOffset(H, hPDB, szSymbolName, &dwSymbolOffset)) {
+        *pvaSymbolAddress = H->vmm.kernel.vaBase + dwSymbolOffset;
         return TRUE;
     }
     return FALSE;
 }
-_Success_(return) BOOL PDB_GetSymbolPBYTE(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb)
+_Success_(return) BOOL PDB_GetSymbolPBYTE(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb)
 {
     QWORD vaSymbolAddress = 0;
-    return PDB_GetSymbolAddress(hPDB, szSymbolName, &vaSymbolAddress) && VmmRead(pProcess, vaSymbolAddress, pb, cb);
+    return PDB_GetSymbolAddress(H, hPDB, szSymbolName, &vaSymbolAddress) && VmmRead(H, pProcess, vaSymbolAddress, pb, cb);
 }
 
-_Success_(return) BOOL PDB_GetTypeSizeShort(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _Out_ PWORD pwTypeSize)
+_Success_(return) BOOL PDB_GetTypeSizeShort(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _Out_ PWORD pwTypeSize)
 {
     DWORD dwTypeSize = 0;
-    if(!PDB_GetTypeSize(hPDB, szTypeName, &dwTypeSize)) { return FALSE; }
+    if(!PDB_GetTypeSize(H, hPDB, szTypeName, &dwTypeSize)) { return FALSE; }
     *pwTypeSize = (WORD)dwTypeSize;
     return TRUE;
 }
 
-_Success_(return) BOOL PDB_GetTypeChildOffsetShort(_In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _In_ LPSTR uszTypeChildName, _Out_ PWORD pwTypeOffset)
+_Success_(return) BOOL PDB_GetTypeChildOffsetShort(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ LPSTR szTypeName, _In_ LPSTR uszTypeChildName, _Out_ PWORD pwTypeOffset)
 {
     DWORD dwTypeOffset = 0;
-    if(!PDB_GetTypeChildOffset(hPDB, szTypeName, uszTypeChildName, &dwTypeOffset)) { return FALSE; }
+    if(!PDB_GetTypeChildOffset(H, hPDB, szTypeName, uszTypeChildName, &dwTypeOffset)) { return FALSE; }
     *pwTypeOffset = (WORD)dwTypeOffset;
     return TRUE;
 }

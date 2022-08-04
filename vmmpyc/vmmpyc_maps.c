@@ -37,7 +37,7 @@ VmmPycMaps_pool(PyObj_Maps *self, PyObject *args)
     if(!(pyDictResultVA = PyDict_New())) { return PyErr_NoMemory(); } PyDict_SetItemString_DECREF(pyDictResult, "va", pyDictResultVA);
     if(!(pyDictResultTag = PyDict_New())) { return PyErr_NoMemory(); } PyDict_SetItemString_DECREF(pyDictResult, "tag", pyDictResultTag);
     Py_BEGIN_ALLOW_THREADS;
-    result = VMMDLL_Map_GetPoolEx(&pPoolMap, VMMDLL_POOLMAP_FLAG_ALL);
+    result = VMMDLL_Map_GetPool(self->pyVMM->hVMM, &pPoolMap, VMMDLL_POOLMAP_FLAG_ALL);
     Py_END_ALLOW_THREADS;
     if(!result || (pPoolMap->dwVersion != VMMDLL_MAP_POOL_VERSION)) {
         Py_DECREF(pyDictResult);
@@ -74,22 +74,18 @@ VmmPycMaps_net(PyObj_Maps *self, PyObject *args)
 {
     PyObject *pyList, *pyDictTcpE;
     BOOL result;
-    DWORD i, dwIpVersion, cbNetMap = 0;
+    DWORD i, dwIpVersion;
     PVMMDLL_MAP_NET pNetMap = NULL;
     PVMMDLL_MAP_NETENTRY pe;
     CHAR szTime[24];
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Maps.net(): Not initialized."); }
     if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
     Py_BEGIN_ALLOW_THREADS;
-    result =
-        VMMDLL_Map_GetNetU(NULL, &cbNetMap) &&
-        cbNetMap &&
-        (pNetMap = LocalAlloc(0, cbNetMap)) &&
-        VMMDLL_Map_GetNetU(pNetMap, &cbNetMap);
+    result = VMMDLL_Map_GetNetU(self->pyVMM->hVMM, &pNetMap);
     Py_END_ALLOW_THREADS;
     if(!result || (pNetMap->dwVersion != VMMDLL_MAP_NET_VERSION)) {
         Py_DECREF(pyList);
-        LocalFree(pNetMap);
+        VMMDLL_MemFree(pNetMap);
         return PyErr_Format(PyExc_RuntimeError, "Maps.net(): Failed.");
     }
     // add tcp endpoint entries to TcpE list
@@ -123,22 +119,17 @@ VmmPycMaps_memmap(PyObj_Maps *self, PyObject *args)
 {
     PyObject *pyList, *pyList_MemRange;
     BOOL result;
-    DWORD cbPhysMemMap = 0;
     ULONG64 i;
     PVMMDLL_MAP_PHYSMEM pPhysMemMap = NULL;
     PVMMDLL_MAP_PHYSMEMENTRY pe;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Maps.memmap(): Not initialized."); }
     if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
     Py_BEGIN_ALLOW_THREADS;
-    result =
-        VMMDLL_Map_GetPhysMem(NULL, &cbPhysMemMap) &&
-        cbPhysMemMap &&
-        (pPhysMemMap = LocalAlloc(0, cbPhysMemMap)) &&
-        VMMDLL_Map_GetPhysMem(pPhysMemMap, &cbPhysMemMap);
+    result = VMMDLL_Map_GetPhysMem(self->pyVMM->hVMM, &pPhysMemMap);
     Py_END_ALLOW_THREADS;
     if(!result || (pPhysMemMap->dwVersion != VMMDLL_MAP_PHYSMEM_VERSION)) {
         Py_DECREF(pyList);
-        LocalFree(pPhysMemMap);
+        VMMDLL_MemFree(pPhysMemMap);
         return PyErr_Format(PyExc_RuntimeError, "Maps.memmap(): Failed.");
     }
     for(i = 0; i < pPhysMemMap->cMap; i++) {
@@ -149,7 +140,7 @@ VmmPycMaps_memmap(PyObj_Maps *self, PyObject *args)
             PyList_Append_DECREF(pyList, pyList_MemRange);
         }
     }
-    LocalFree(pPhysMemMap);
+    VMMDLL_MemFree(pPhysMemMap);
     return pyList;
 }
 
@@ -184,9 +175,9 @@ VmmPycMaps_pfn(PyObj_Maps *self, PyObject *args)
     // call c-dll for vmm
     Py_BEGIN_ALLOW_THREADS;
     result =
-        VMMDLL_Map_GetPfn(pPfns, cPfns, NULL, &cbPfnMap) &&
+        VMMDLL_Map_GetPfn(self->pyVMM->hVMM, pPfns, cPfns, NULL, &cbPfnMap) &&
         (pPfnMap = LocalAlloc(0, cbPfnMap)) &&
-        VMMDLL_Map_GetPfn(pPfns, cPfns, pPfnMap, &cbPfnMap);
+        VMMDLL_Map_GetPfn(self->pyVMM->hVMM, pPfns, cPfns, pPfnMap, &cbPfnMap);
     Py_END_ALLOW_THREADS;
     if(!result || (pPfnMap->dwVersion != VMMDLL_MAP_PFN_VERSION)) {
         LocalFree(pPfnMap);
@@ -218,22 +209,17 @@ VmmPycMaps_user(PyObj_Maps *self, PyObject *args)
 {
     PyObject *pyList, *pyDict;
     BOOL result;
-    DWORD cbUserMap = 0;
     ULONG64 i;
     PVMMDLL_MAP_USER pUserMap = NULL;
     PVMMDLL_MAP_USERENTRY pe;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Maps.user(): Not initialized."); }
     if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
     Py_BEGIN_ALLOW_THREADS;
-    result =
-        VMMDLL_Map_GetUsersU(NULL, &cbUserMap) &&
-        cbUserMap &&
-        (pUserMap = LocalAlloc(0, cbUserMap)) &&
-        VMMDLL_Map_GetUsersU(pUserMap, &cbUserMap);
+    result = VMMDLL_Map_GetUsersU(self->pyVMM->hVMM, &pUserMap);
     Py_END_ALLOW_THREADS;
     if(!result || (pUserMap->dwVersion != VMMDLL_MAP_USER_VERSION)) {
         Py_DECREF(pyList);
-        LocalFree(pUserMap);
+        VMMDLL_MemFree(pUserMap);;
         return PyErr_Format(PyExc_RuntimeError, "Maps.user(): Failed.");
     }
     for(i = 0; i < pUserMap->cMap; i++) {
@@ -245,7 +231,7 @@ VmmPycMaps_user(PyObj_Maps *self, PyObject *args)
             PyList_Append_DECREF(pyList, pyDict);
         }
     }
-    LocalFree(pUserMap);
+    VMMDLL_MemFree(pUserMap);
     return pyList;
 }
 
@@ -255,22 +241,17 @@ VmmPycMaps_service(PyObj_Maps *self, PyObject *args)
 {
     PyObject *pyDictResult, *pyDict;
     BOOL result;
-    DWORD cbServiceMap = 0;
     ULONG64 i;
     PVMMDLL_MAP_SERVICE pServiceMap = NULL;
     PVMMDLL_MAP_SERVICEENTRY pe;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Maps.service(): Not initialized."); }
     if(!(pyDictResult = PyDict_New())) { return PyErr_NoMemory(); }
     Py_BEGIN_ALLOW_THREADS;
-    result =
-        VMMDLL_Map_GetServicesU(NULL, &cbServiceMap) &&
-        cbServiceMap &&
-        (pServiceMap = LocalAlloc(0, cbServiceMap)) &&
-        VMMDLL_Map_GetServicesU(pServiceMap, &cbServiceMap);
+    result = VMMDLL_Map_GetServicesU(self->pyVMM->hVMM, &pServiceMap);
     Py_END_ALLOW_THREADS;
     if(!result || (pServiceMap->dwVersion != VMMDLL_MAP_SERVICE_VERSION)) {
         Py_DECREF(pyDictResult);
-        LocalFree(pServiceMap);
+        VMMDLL_MemFree(pServiceMap);
         return PyErr_Format(PyExc_RuntimeError, "Maps.service(): Failed.");
     }
     for(i = 0; i < pServiceMap->cMap; i++) {
@@ -296,7 +277,7 @@ VmmPycMaps_service(PyObj_Maps *self, PyObject *args)
             PyDict_SetItemDWORD_DECREF(pyDictResult, pe->dwOrdinal, pyDict);
         }
     }
-    LocalFree(pServiceMap);
+    VMMDLL_MemFree(pServiceMap);
     return pyDictResult;
 }
 
@@ -305,10 +286,11 @@ VmmPycMaps_service(PyObj_Maps *self, PyObject *args)
 //-----------------------------------------------------------------------------
 
 PyObj_Maps*
-VmmPycMaps_InitializeInternal()
+VmmPycMaps_InitializeInternal(_In_ PyObj_Vmm *pyVMM)
 {
     PyObj_Maps *pyObj;
     if(!(pyObj = PyObject_New(PyObj_Maps, (PyTypeObject*)g_pPyType_Maps))) { return NULL; }
+    Py_INCREF(pyVMM); pyObj->pyVMM = pyVMM;
     pyObj->fValid = TRUE;
     return pyObj;
 }

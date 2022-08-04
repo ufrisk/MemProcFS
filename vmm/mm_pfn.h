@@ -84,19 +84,22 @@ typedef struct tdMMPFNOB_MAP {
 
 /*
 * Initialize the PFN (page frame number) subsystem.
+* -- H
 * -- pSystemProcess
 */
-VOID MmPfn_Initialize(_In_ PVMM_PROCESS pSystemProcess);
+VOID MmPfn_Initialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess);
 
 /*
 * Refresh the PFN (page frame number) subsystem.
 * This should be performed after each process list refresh.
+* -- H
 */
-VOID MmPfn_Refresh();
+VOID MmPfn_Refresh(_In_ VMM_HANDLE H);
 
 /*
 * Retrieve information about a sequential number of PFNs.
 * CALLER DECREF: pObPfnMap
+* -- H
 * -- dwPfnStart = starting PFN. PFN = physical address / 0x1000.
 * -- cPfn
 * -- ppObPfnMap
@@ -104,13 +107,14 @@ VOID MmPfn_Refresh();
 * -- return
 */
 _Success_(return)
-BOOL MmPfn_Map_GetPfn(_In_ DWORD dwPfnStart, _In_ DWORD cPfn, _Out_ PMMPFNOB_MAP *ppObPfnMap, _In_ BOOL fExtended);
+BOOL MmPfn_Map_GetPfn(_In_ VMM_HANDLE H, _In_ DWORD dwPfnStart, _In_ DWORD cPfn, _Out_ PMMPFNOB_MAP *ppObPfnMap, _In_ BOOL fExtended);
 
 /*
 * Retrieve information about scattered PFNs. The PFNs are returned in order of
 * in which they are stored in the psPfn set.
 * NB! POB_SET does not support ZERO, for PFN zero use 0x8000000000000000.
 * CALLER DECREF: pObPfnMap
+* -- H
 * -- psPfn = Set of PFNs. PFN = physical address / 0x1000.
 * -- cPfn
 * -- ppObPfnMap
@@ -118,6 +122,6 @@ BOOL MmPfn_Map_GetPfn(_In_ DWORD dwPfnStart, _In_ DWORD cPfn, _Out_ PMMPFNOB_MAP
 * -- return
 */
 _Success_(return)
-BOOL MmPfn_Map_GetPfnScatter(_In_ POB_SET psPfn, _Out_ PMMPFNOB_MAP *ppObPfnMap, _In_ BOOL fExtended);
+BOOL MmPfn_Map_GetPfnScatter(_In_ VMM_HANDLE H, _In_ POB_SET psPfn, _Out_ PMMPFNOB_MAP *ppObPfnMap, _In_ BOOL fExtended);
 
 #endif /* __MM_PFN_H__ */

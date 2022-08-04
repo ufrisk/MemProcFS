@@ -12,6 +12,9 @@
 static BOOL g_fPythonStandalone = FALSE;
 PyObject *g_pPyType_VmmPycPlugin = NULL;
 
+VMM_HANDLE g_PluginVMM = NULL;
+BOOL g_PluginVMM_LoadedOnce = FALSE;
+
 //-----------------------------------------------------------------------------
 // PY2C PYTHON CALLBACK FUNCTIONALITY BELOW:
 //-----------------------------------------------------------------------------
@@ -62,7 +65,7 @@ BOOL PY2C_Util_TranslatePathDelimiterU(_Out_writes_(3 * MAX_PATH) LPSTR dst, LPS
     return FALSE;
 }
 
-BOOL PY2C_Callback_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
+BOOL PY2C_Callback_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList)
 {
     BOOL result = FALSE;
     PyObject *args = NULL, *pyList = NULL, *pyDict, *pyPid = NULL, *pyPath = NULL, *pyBytes_Name;
@@ -72,10 +75,10 @@ BOOL PY2C_Callback_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileLi
     SIZE_T i, cList;
     CHAR uszPathBuffer[3 * MAX_PATH];
     if(!ctxPY2C->fInitialized) { return FALSE; }
-    if(!PY2C_Util_TranslatePathDelimiterU(uszPathBuffer, ctx->uszPath)) { return FALSE; }
+    if(!PY2C_Util_TranslatePathDelimiterU(uszPathBuffer, ctxP->uszPath)) { return FALSE; }
     gstate = PyGILState_Ensure();
     if(!(pyPath = PyUnicode_FromString(uszPathBuffer))) { goto pyfail; }
-    pyPid = (ctx->dwPID == -1) ? NULL : PyLong_FromUnsignedLong(ctx->dwPID);
+    pyPid = (ctxP->dwPID == -1) ? NULL : PyLong_FromUnsignedLong(ctxP->dwPID);
     args = Py_BuildValue("OO", (pyPid ? pyPid : Py_None), pyPath);
     if(!args) { goto pyfail; }
     pyList = PyObject_CallObject(ctxPY2C->fnList, args);
@@ -110,17 +113,17 @@ pyfail:
     return result;
 }
 
-NTSTATUS PY2C_Callback_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset)
+NTSTATUS PY2C_Callback_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PyObject *args = NULL, *pyBytes = NULL, *pyPid = NULL, *pyPath = NULL;
     PyGILState_STATE gstate;
     CHAR uszPathBuffer[3 * MAX_PATH];
     if(!ctxPY2C->fInitialized) { return VMMDLL_STATUS_FILE_INVALID; }
-    if(!PY2C_Util_TranslatePathDelimiterU(uszPathBuffer, ctx->uszPath)) { return VMMDLL_STATUS_FILE_INVALID; }
+    if(!PY2C_Util_TranslatePathDelimiterU(uszPathBuffer, ctxP->uszPath)) { return VMMDLL_STATUS_FILE_INVALID; }
     gstate = PyGILState_Ensure();
     if(!(pyPath = PyUnicode_FromString(uszPathBuffer))) { goto pyfail; }
-    pyPid = (ctx->dwPID == -1) ? NULL : PyLong_FromUnsignedLong(ctx->dwPID);
+    pyPid = (ctxP->dwPID == -1) ? NULL : PyLong_FromUnsignedLong(ctxP->dwPID);
     args = Py_BuildValue("OOkK",
         pyPid ? pyPid : Py_None,
         pyPath,
@@ -144,7 +147,7 @@ pyfail:
     return nt;
 }
 
-NTSTATUS PY2C_Callback_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ ULONG64 cbOffset)
+NTSTATUS PY2C_Callback_Write(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ ULONG64 cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PyObject *args = NULL, *pyLong = NULL, *pyPid = NULL, *pyPath = NULL;
@@ -152,10 +155,10 @@ NTSTATUS PY2C_Callback_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ LPVOID pb, _I
     CHAR uszPathBuffer[3 * MAX_PATH];
     *pcbWrite = 0;
     if(!ctxPY2C->fInitialized) { return VMMDLL_STATUS_FILE_INVALID; }
-    if(!PY2C_Util_TranslatePathDelimiterU(uszPathBuffer, ctx->uszPath)) { return VMMDLL_STATUS_FILE_INVALID; }
+    if(!PY2C_Util_TranslatePathDelimiterU(uszPathBuffer, ctxP->uszPath)) { return VMMDLL_STATUS_FILE_INVALID; }
     gstate = PyGILState_Ensure();
     if(!(pyPath = PyUnicode_FromString(uszPathBuffer))) { goto pyfail; }
-    pyPid = (ctx->dwPID == -1) ? NULL : PyLong_FromUnsignedLong(ctx->dwPID);
+    pyPid = (ctxP->dwPID == -1) ? NULL : PyLong_FromUnsignedLong(ctxP->dwPID);
     args = Py_BuildValue("OOy#K",
         pyPid ? pyPid : Py_None,
         pyPath,
@@ -177,7 +180,7 @@ pyfail:
     return nt;
 }
 
-VOID PY2C_Callback_Notify(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent)
+VOID PY2C_Callback_Notify(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent)
 {
     PyObject *args, *pyResult = NULL;
     PyGILState_STATE gstate;
@@ -261,11 +264,11 @@ VOID Util_GetPathDll(_Out_writes_(MAX_PATH) PWCHAR wszPath, _In_opt_ HMODULE hMo
 VOID VmmPyPlugin_UpdateVerbosity()
 {
     ULONG64 f;
-    VMMDLL_ConfigGet(VMMDLL_OPT_CORE_PRINTF_ENABLE, &f); ctxPY2C->fPrintf = f ? TRUE : FALSE;
+    VMMDLL_ConfigGet(g_PluginVMM, VMMDLL_OPT_CORE_PRINTF_ENABLE, &f); ctxPY2C->fPrintf = f ? TRUE : FALSE;
     if(ctxPY2C->fPrintf) {
-        VMMDLL_ConfigGet(VMMDLL_OPT_CORE_VERBOSE, &f); ctxPY2C->fVerbose = f ? TRUE : FALSE;
-        VMMDLL_ConfigGet(VMMDLL_OPT_CORE_VERBOSE_EXTRA, &f); ctxPY2C->fVerboseExtra = f ? TRUE : FALSE;
-        VMMDLL_ConfigGet(VMMDLL_OPT_CORE_VERBOSE_EXTRA_TLP, &f); ctxPY2C->fVerboseExtraTlp = f ? TRUE : FALSE;
+        VMMDLL_ConfigGet(g_PluginVMM, VMMDLL_OPT_CORE_VERBOSE, &f); ctxPY2C->fVerbose = f ? TRUE : FALSE;
+        VMMDLL_ConfigGet(g_PluginVMM, VMMDLL_OPT_CORE_VERBOSE_EXTRA, &f); ctxPY2C->fVerboseExtra = f ? TRUE : FALSE;
+        VMMDLL_ConfigGet(g_PluginVMM, VMMDLL_OPT_CORE_VERBOSE_EXTRA_TLP, &f); ctxPY2C->fVerboseExtraTlp = f ? TRUE : FALSE;
     } else {
         ctxPY2C->fVerbose = FALSE;
         ctxPY2C->fVerboseExtra = FALSE;
@@ -398,15 +401,20 @@ fail:
     return FALSE;
 }
 
-BOOL VmmPyPlugin_PythonInitialize(_In_ HMODULE hDllPython, _In_ HMODULE hDllModule, _In_ BOOL fPythonStandalone)
+BOOL VmmPyPlugin_PythonInitialize(_In_ VMM_HANDLE H, _In_ HMODULE hDllPython, _In_ HMODULE hDllModule, _In_ BOOL fPythonStandalone)
 {
+    BOOL f;
+    if(g_PluginVMM) { return FALSE; }
+    g_PluginVMM = H;
     g_fPythonStandalone = fPythonStandalone;
-    return fPythonStandalone ?
+    f = fPythonStandalone ?
         VmmPyPlugin_PythonInitializeStandalone() :
         VmmPyPlugin_PythonInitializeEmbedded(hDllPython, hDllModule);
+    if(!f) { g_PluginVMM = NULL; }
+    return f;
 }
 
-VOID PYTHON_Close(_In_ PVMMDLL_PLUGIN_CONTEXT ctx)
+VOID PYTHON_Close(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctx)
 {
     __try {
         PY2C_Callback_Close();
@@ -416,6 +424,7 @@ VOID PYTHON_Close(_In_ PVMMDLL_PLUGIN_CONTEXT ctx)
             Py_FinalizeEx();
         } __except(EXCEPTION_EXECUTE_HANDLER) { ; }
     }
+    g_PluginVMM = NULL;
 }
 
 /*
@@ -425,13 +434,15 @@ VOID PYTHON_Close(_In_ PVMMDLL_PLUGIN_CONTEXT ctx)
 * after the DLL is loaded. The DLL then must fill the appropriate information
 * into the supplied struct and call the pfnPluginManager_Register function to
 * register itself with the plugin manager.
+* -- H
 * -- pRegInfo
 */
 __declspec(dllexport)
-VOID InitializeVmmPlugin(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo)
+VOID InitializeVmmPlugin(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_REGINFO pRegInfo)
 {
+    if(g_PluginVMM) { return; }
     if((pRegInfo->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRegInfo->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
-    if(VmmPyPlugin_PythonInitialize(pRegInfo->python.hReservedDllPython3X, pRegInfo->hDLL, pRegInfo->python.fPythonStandalone)) {
+    if(VmmPyPlugin_PythonInitialize(H, pRegInfo->python.hReservedDllPython3X, pRegInfo->hDLL, pRegInfo->python.fPythonStandalone)) {
         strcpy_s(pRegInfo->reg_info.uszPathName, 128, "py");    // module name - 'py'.
         pRegInfo->reg_info.fRootModule = TRUE;                  // module shows in root directory.
         pRegInfo->reg_info.fProcessModule = TRUE;               // module shows in process directory.
@@ -440,6 +451,6 @@ VOID InitializeVmmPlugin(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo)
         pRegInfo->reg_fn.pfnWrite = PY2C_Callback_Write;        // Write function supported.
         pRegInfo->reg_fn.pfnNotify = PY2C_Callback_Notify;      // Notify function supported.
         pRegInfo->reg_fn.pfnClose = PYTHON_Close;               // Close module handle.
-        pRegInfo->pfnPluginManager_Register(pRegInfo);          // Register with the plugin maanger.
+        pRegInfo->pfnPluginManager_Register(H, pRegInfo);       // Register with the plugin maanger.
     }
 }

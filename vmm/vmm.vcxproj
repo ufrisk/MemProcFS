@@ -254,6 +254,7 @@
     <ClInclude Include="vmmwinpool.h" />
     <ClInclude Include="vmmwinreg.h" />
     <ClInclude Include="vmmwinsvc.h" />
+    <ClInclude Include="vmmwork.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="charutil.c" />
@@ -266,11 +267,14 @@
     <ClCompile Include="mm_x86.c" />
     <ClCompile Include="mm_x86pae.c" />
     <ClCompile Include="m_conf.c" />
+    <ClCompile Include="m_fc_csv.c" />
+    <ClCompile Include="m_fc_handle.c" />
     <ClCompile Include="m_fc_json.c" />
     <ClCompile Include="m_fc_module.c" />
     <ClCompile Include="m_fc_ntfs.c" />
     <ClCompile Include="m_fc_proc.c" />
     <ClCompile Include="m_fc_registry.c" />
+    <ClCompile Include="m_fc_sys.c" />
     <ClCompile Include="m_fc_thread.c" />
     <ClCompile Include="m_fc_timeline.c" />
     <ClCompile Include="m_file_handles_vads.c" />
@@ -298,6 +302,7 @@
     <ClCompile Include="m_sys_svc.c" />
     <ClCompile Include="m_sys_syscall.c" />
     <ClCompile Include="m_sys_task.c" />
+    <ClCompile Include="m_sys_user.c" />
     <ClCompile Include="m_vfsfc.c" />
     <ClCompile Include="m_vfsproc.c" />
     <ClCompile Include="m_vfsroot.c" />
@@ -320,6 +325,7 @@
     <ClCompile Include="util.c" />
     <ClCompile Include="vmm.c" />
     <ClCompile Include="vmmdll.c" />
+    <ClCompile Include="vmmdll_core.c" />
     <ClCompile Include="vmmdll_scatter.c" />
     <ClCompile Include="vmmevil.c" />
     <ClCompile Include="vmmheap.c" />
@@ -334,6 +340,7 @@
     <ClCompile Include="vmmwinpool.c" />
     <ClCompile Include="vmmwinreg.c" />
     <ClCompile Include="vmmwinsvc.c" />
+    <ClCompile Include="vmmwork.c" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\MemProcFS-dev\vmm\res\m_fc_json_elastic_import_unauth.ps1" />

@@ -4,7 +4,7 @@
 // (c) Ulf Frisk, 2018-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-#include <Windows.h>
+#include "oscompatibility.h"
 #include <stdio.h>
 #include <vmmdll.h>
 
@@ -30,24 +30,24 @@ BOOL VMemD_GetBaseAndTypeFromFileName(_In_ LPSTR usz, _Out_ PQWORD pva, _Out_ PB
     return TRUE;
 }
 
-VOID VMemD_Util_FileNameU(_Out_writes_(64) LPSTR uszOut, _In_ LPWSTR wsz)
+VOID VMemD_Util_FileNameU(_Out_writes_(64) LPSTR uszOut, _In_ LPSTR usz)
 {
     WCHAR ch;
     DWORD i = 0;
-    while(wsz[i]) {
-        if(wsz[i] == '\\') {
-            wsz += i + 1ULL;
+    while(usz[i]) {
+        if(usz[i] == '\\') {
+            usz += i + 1ULL;
             i = 0;
             continue;
         }
         if(i == 62) {
-            wsz += 1;
+            usz += 1;
             continue;
         }
         i++;
     }
     i = 0;
-    while((ch = wsz[i])) {
+    while((ch = usz[i])) {
         uszOut[i] = ((ch < 128) && (UTIL_ASCIIFILENAME_ALLOW[ch] == '0')) ? '_' : ch;
         i++;
     }
@@ -115,20 +115,17 @@ int VMemD_ReadVad_CmpFind(_In_ QWORD vaFind, _In_ PVMMDLL_MAP_VADENTRY pEntry)
 /*
 * Read/Write virtual memory inside a memory map entry of PTE-type.
 */
-NTSTATUS VMemD_ReadWritePte(_In_ DWORD dwPID, _In_ QWORD vaBase, _In_ BOOL fRead, _Out_writes_bytes_(*pcbReadWrite) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbReadWrite, _In_ ULONG64 cbOffset)
+NTSTATUS VMemD_ReadWritePte(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ QWORD vaBase, _In_ BOOL fRead, _Out_writes_bytes_(*pcbReadWrite) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbReadWrite, _In_ ULONG64 cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     BOOL result;
     QWORD cbMax;
-    DWORD cbPteMap = 0;
     PVMMDLL_MAP_PTE pPteMap = NULL;
     PVMMDLL_MAP_PTEENTRY pe = NULL;
     // read memory from "vmemd" directory file - "pte mapped"
     *pcbReadWrite = 0;
     result =
-        VMMDLL_Map_GetPte(dwPID, NULL, &cbPteMap, FALSE) &&
-        (pPteMap = LocalAlloc(0, cbPteMap)) &&
-        VMMDLL_Map_GetPte(dwPID, pPteMap, &cbPteMap, FALSE) &&
+        VMMDLL_Map_GetPteU(H, dwPID, FALSE, &pPteMap) &&
         (pe = VMemD_Util_qfind((PVOID)vaBase, pPteMap->cMap, pPteMap->pMap, sizeof(VMMDLL_MAP_PTEENTRY), (int(*)(PVOID, PVOID))VMemD_ReadPte_CmpFind));
     if(!result) { goto fail; }
     if(pe->vaBase + (pe->cPages << 12) <= vaBase + cbOffset) {
@@ -137,36 +134,32 @@ NTSTATUS VMemD_ReadWritePte(_In_ DWORD dwPID, _In_ QWORD vaBase, _In_ BOOL fRead
     }
     cbMax = min((pe->vaBase + (pe->cPages << 12)), (vaBase + cb + cbOffset)) - (vaBase + cbOffset);   // min(entry_top_addr, request_top_addr) - request_start_addr
     if(fRead) {
-        result = VMMDLL_MemReadEx(dwPID, vaBase + cbOffset, pb, (DWORD)min(cb, cbMax), NULL, VMMDLL_FLAG_ZEROPAD_ON_FAIL);
+        result = VMMDLL_MemReadEx(H, dwPID, vaBase + cbOffset, pb, (DWORD)min(cb, cbMax), NULL, VMMDLL_FLAG_ZEROPAD_ON_FAIL);
         *pcbReadWrite = (DWORD)min(cb, cbMax);
         nt = (result && *pcbReadWrite) ? VMMDLL_STATUS_SUCCESS : VMMDLL_STATUS_END_OF_FILE;
     } else {
-        VMMDLL_MemWrite(dwPID, vaBase + cbOffset, pb, (DWORD)min(cb, cbMax));
+        VMMDLL_MemWrite(H, dwPID, vaBase + cbOffset, pb, (DWORD)min(cb, cbMax));
         *pcbReadWrite = cb;
         nt = VMMDLL_STATUS_SUCCESS;
     }
 fail:
-    LocalFree(pPteMap);
+    VMMDLL_MemFree(pPteMap);
     return nt;
 }
 
 /*
 * Read/Write virtual memory inside a memory map entry of VAD-type.
 */
-NTSTATUS VMemD_ReadWriteVad(_In_ DWORD dwPID, _In_ QWORD vaBase, _In_ BOOL fRead, _Out_writes_bytes_(*pcbReadWrite) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbReadWrite, _In_ ULONG64 cbOffset)
+NTSTATUS VMemD_ReadWriteVad(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ QWORD vaBase, _In_ BOOL fRead, _Out_writes_bytes_(*pcbReadWrite) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbReadWrite, _In_ ULONG64 cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     BOOL result;
     QWORD cbMax;
-    DWORD cbVadMap = 0;
     PVMMDLL_MAP_VAD pVadMap = NULL;
     PVMMDLL_MAP_VADENTRY pe = NULL;
     // read memory from "vmemd" directory file - "pte mapped"
     *pcbReadWrite = 0;
-    result =
-        VMMDLL_Map_GetVad(dwPID, NULL, &cbVadMap, FALSE) &&
-        (pVadMap = LocalAlloc(0, cbVadMap)) &&
-        VMMDLL_Map_GetVad(dwPID, pVadMap, &cbVadMap, FALSE) &&
+    result = VMMDLL_Map_GetVadU(H, dwPID, FALSE, &pVadMap) &&
         (pe = VMemD_Util_qfind((PVOID)vaBase, pVadMap->cMap, pVadMap->pMap, sizeof(VMMDLL_MAP_VADENTRY), (int(*)(PVOID, PVOID))VMemD_ReadVad_CmpFind));
     if(!result) { goto fail; }
     if(pe->vaEnd <= vaBase + cbOffset) {
@@ -175,68 +168,71 @@ NTSTATUS VMemD_ReadWriteVad(_In_ DWORD dwPID, _In_ QWORD vaBase, _In_ BOOL fRead
     }
     cbMax = min(pe->vaEnd + 1, (vaBase + cb + cbOffset)) - (vaBase + cbOffset);   // min(entry_top_addr, request_top_addr) - request_start_addr
     if(fRead) {
-        result = VMMDLL_MemReadEx(dwPID, vaBase + cbOffset, pb, (DWORD)min(cb, cbMax), NULL, VMMDLL_FLAG_ZEROPAD_ON_FAIL);
+        result = VMMDLL_MemReadEx(H, dwPID, vaBase + cbOffset, pb, (DWORD)min(cb, cbMax), NULL, VMMDLL_FLAG_ZEROPAD_ON_FAIL);
         *pcbReadWrite = (DWORD)min(cb, cbMax);
         nt = (result && *pcbReadWrite) ? VMMDLL_STATUS_SUCCESS : VMMDLL_STATUS_END_OF_FILE;
     } else {
-        VMMDLL_MemWrite(dwPID, vaBase + cbOffset, pb, (DWORD)min(cb, cbMax));
+        VMMDLL_MemWrite(H, dwPID, vaBase + cbOffset, pb, (DWORD)min(cb, cbMax));
         *pcbReadWrite = cb;
         nt = VMMDLL_STATUS_SUCCESS;
     }
 fail:
-    LocalFree(pVadMap);
+    VMMDLL_MemFree(pVadMap);
     return nt;
 }
 
 /*
 * Read : function as specified by the module manager. The module manager will
 * call into this callback function whenever a read shall occur from a "file".
-* -- ctx
+* -- H
+* -- ctxP
 * -- pb
 * -- cb
 * -- pcbRead
 * -- cbOffset
 * -- return
 */
-NTSTATUS VMemD_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset)
+NTSTATUS VMemD_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset)
 {
     BOOL fVad;
     QWORD vaBase;
-    if(!VMemD_GetBaseAndTypeFromFileName(ctx->uszPath, &vaBase, &fVad)) { return VMMDLL_STATUS_FILE_INVALID; }
+    if(!VMemD_GetBaseAndTypeFromFileName(ctxP->uszPath, &vaBase, &fVad)) { return VMMDLL_STATUS_FILE_INVALID; }
     return fVad ?
-        VMemD_ReadWriteVad(ctx->dwPID, vaBase, TRUE, pb, cb, pcbRead, cbOffset) :
-        VMemD_ReadWritePte(ctx->dwPID, vaBase, TRUE, pb, cb, pcbRead, cbOffset);
+        VMemD_ReadWriteVad(H, ctxP->dwPID, vaBase, TRUE, pb, cb, pcbRead, cbOffset) :
+        VMemD_ReadWritePte(H, ctxP->dwPID, vaBase, TRUE, pb, cb, pcbRead, cbOffset);
 }
 
 /*
 * Write : function as specified by the module manager. The module manager will
 * call into this callback function whenever a write shall occur from a "file".
-* -- ctx
+* -- H
+* -- ctxP
 * -- pb
 * -- cb
 * -- pcbWrite
 * -- cbOffset
 * -- return
 */
-NTSTATUS VMemD_WritePte(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ ULONG64 cbOffset)
+NTSTATUS VMemD_WritePte(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ ULONG64 cbOffset)
 {
     BOOL fVad;
     QWORD vaBase;
-    if(!VMemD_GetBaseAndTypeFromFileName(ctx->uszPath, &vaBase, &fVad)) { return VMMDLL_STATUS_FILE_INVALID; }
+    if(!VMemD_GetBaseAndTypeFromFileName(ctxP->uszPath, &vaBase, &fVad)) { return VMMDLL_STATUS_FILE_INVALID; }
     return fVad ?
-        VMemD_ReadWriteVad(ctx->dwPID, vaBase, FALSE, pb, cb, pcbWrite, cbOffset) :
-        VMemD_ReadWritePte(ctx->dwPID, vaBase, FALSE, pb, cb, pcbWrite, cbOffset);
+        VMemD_ReadWriteVad(H, ctxP->dwPID, vaBase, FALSE, pb, cb, pcbWrite, cbOffset) :
+        VMemD_ReadWritePte(H, ctxP->dwPID, vaBase, FALSE, pb, cb, pcbWrite, cbOffset);
 }
 
 /*
 * List : function as specified by the module manager. The module manager will
 * call into this callback function whenever a list directory shall occur from
 * the given module.
-* -- ctx
+* -- H
+* -- ctxP
 * -- pFileList
 * -- return
 */
-BOOL VMemD_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
+BOOL VMemD_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList)
 {
     BOOL f, fResult = FALSE;
     DWORD iVad, iPte, cbPteMap = 0, cbVadMap = 0;
@@ -244,41 +240,36 @@ BOOL VMemD_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
     PVMMDLL_MAP_PTEENTRY pPte = NULL;
     PVMMDLL_MAP_VAD pVadMap = NULL;
     PVMMDLL_MAP_VADENTRY pVad = NULL;
-    WCHAR wszBufferFileName[MAX_PATH] = { 0 };
+    CHAR uszBufferFileName[MAX_PATH] = { 0 };
     CHAR uszInfo[64] = { 0 };
     // Retrieve mandatory memory map based on hardware page tables.
-    f = VMMDLL_Map_GetPte(ctx->dwPID, NULL, &cbPteMap, TRUE) &&
-        (pPteMap = LocalAlloc(0, cbPteMap));
-    f = f && VMMDLL_Map_GetPte(ctx->dwPID, pPteMap, &cbPteMap, TRUE);
-    if(!f) { goto fail; }
+    if(!VMMDLL_Map_GetPteU(H, ctxP->dwPID, TRUE, &pPteMap)) { goto fail; }
     // Retrieve optional memory map based on virtual address descriptors (VADs).
-    f = VMMDLL_Map_GetVad(ctx->dwPID, NULL, &cbVadMap, TRUE) &&
-        (pVadMap = LocalAlloc(0, cbVadMap)) &&
-        VMMDLL_Map_GetVad(ctx->dwPID, pVadMap, &cbVadMap, TRUE);
+    f = VMMDLL_Map_GetVadU(H, ctxP->dwPID, TRUE, &pVadMap);
     // Display VadMap entries in the file system (if any)
     for(iVad = 0; (f && (iVad < pVadMap->cMap)); iVad++) {
         pVad = pVadMap->pMap + iVad;
-        VMemD_Util_FileNameU(uszInfo, pVad->wszText);
+        VMemD_Util_FileNameU(uszInfo, pVad->uszText);
         if(g_VMemD_TpMemoryModel == VMMDLL_MEMORYMODEL_X64) {
-            swprintf_s(
-                wszBufferFileName,
+            sprintf_s(
+                uszBufferFileName,
                 MAX_PATH - 1,
-                L"0x%016llx%s%S.vvmem",
+                "0x%016llx%s%s.vvmem",
                 pVad->vaStart,
-                uszInfo[0] ? L"-" : L"",
+                uszInfo[0] ? "-" : "",
                 uszInfo
             );
         } else if((g_VMemD_TpMemoryModel == VMMDLL_MEMORYMODEL_X86) || (g_VMemD_TpMemoryModel == VMMDLL_MEMORYMODEL_X86PAE)) {
-            swprintf_s(
-                wszBufferFileName,
+            sprintf_s(
+                uszBufferFileName,
                 MAX_PATH - 1,
-                L"0x%08lx%s%S.vvmem",
+                "0x%08x%s%s.vvmem",
                 (DWORD)pVad->vaStart,
-                uszInfo[0] ? L"-" : L"",
+                uszInfo[0] ? "-" : "",
                 uszInfo
             );
         }
-        VMMDLL_VfsList_AddFileW(pFileList, wszBufferFileName, pVad->vaEnd + 1 - pVad->vaStart, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, uszBufferFileName, pVad->vaEnd + 1 - pVad->vaStart, NULL);
     }
     // Display PteMap entries in the file system unless already part of Vad
     for(iPte = 0, iVad = 0; iPte < pPteMap->cMap; iPte++) {
@@ -287,32 +278,32 @@ BOOL VMemD_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
             while((iVad < pVadMap->cMap) && (pVadMap->pMap[iVad].vaEnd < pPte->vaBase) && ++iVad);
             if((iVad < pVadMap->cMap) && (pVadMap->pMap[iVad].vaStart <= pPte->vaBase) && (pVadMap->pMap[iVad].vaEnd >= pPte->vaBase)) { continue; }
         }
-        VMemD_Util_FileNameU(uszInfo, pPte->wszText);
+        VMemD_Util_FileNameU(uszInfo, pPte->uszText);
         if(g_VMemD_TpMemoryModel == VMMDLL_MEMORYMODEL_X64) {
-            swprintf_s(
-                wszBufferFileName,
+            sprintf_s(
+                uszBufferFileName,
                 MAX_PATH - 1,
-                L"0x%016llx%s%S.vmem",
+                "0x%016llx%s%s.vmem",
                 pPte->vaBase,
-                uszInfo[0] ? L"-" : L"",
+                uszInfo[0] ? "-" : "",
                 uszInfo
             );
         } else if((g_VMemD_TpMemoryModel == VMMDLL_MEMORYMODEL_X86) || (g_VMemD_TpMemoryModel == VMMDLL_MEMORYMODEL_X86PAE)) {
-            swprintf_s(
-                wszBufferFileName,
+            sprintf_s(
+                uszBufferFileName,
                 MAX_PATH - 1,
-                L"0x%08lx%s%S.vmem",
+                "0x%08x%s%s.vmem",
                 (DWORD)pPte->vaBase,
-                uszInfo[0] ? L"-" : L"",
+                uszInfo[0] ? "-" : "",
                 uszInfo
             );
         }
-        VMMDLL_VfsList_AddFileW(pFileList, wszBufferFileName, pPte->cPages << 12, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, uszBufferFileName, pPte->cPages << 12, NULL);
     }
     fResult = TRUE;
 fail:
-    LocalFree(pPteMap);
-    LocalFree(pVadMap);
+    VMMDLL_MemFree(pPteMap);
+    VMMDLL_MemFree(pVadMap);
     return fResult;
 }
 
@@ -323,10 +314,11 @@ fail:
 * after the DLL is loaded. The DLL then must fill the appropriate information
 * into the supplied struct and call the pfnPluginManager_Register function to
 * register itself with the plugin manager.
+* -- H
 * -- pRegInfo
 */
-__declspec(dllexport)
-VOID InitializeVmmPlugin(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo)
+EXPORTED_FUNCTION
+VOID InitializeVmmPlugin(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_REGINFO pRegInfo)
 {
     if((pRegInfo->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRegInfo->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     // Ensure that the plugin support the memory model that is used. The plugin
@@ -338,5 +330,5 @@ VOID InitializeVmmPlugin(_In_ PVMMDLL_PLUGIN_REGINFO pRegInfo)
     pRegInfo->reg_fn.pfnList = VMemD_List;                      // List function supported.
     pRegInfo->reg_fn.pfnRead = VMemD_Read;                      // Read function supported.
     pRegInfo->reg_fn.pfnWrite = VMemD_WritePte;                 // Write function supported.
-    pRegInfo->pfnPluginManager_Register(pRegInfo);              // Register with the plugin manager.
+    pRegInfo->pfnPluginManager_Register(H, pRegInfo);           // Register with the plugin manager.
 }

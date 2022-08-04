@@ -92,10 +92,10 @@ static LPCSTR szMBDE_MODE_STR[] = {
 
 /*
 * Update a key with display information.
-* -- ctx
+* -- ctxBDE
 * -- pk
 */
-VOID MBDE_ContextKeyUpdate(_In_ PMBDE_CONTEXT ctx, _In_ PMBDE_KEY pk)
+VOID MBDE_ContextKeyUpdate(_In_ PMBDE_CONTEXT ctxBDE, _In_ PMBDE_KEY pk)
 {
     DWORD o, i = 0;
     CHAR szKey1[129], szKey2[129];
@@ -115,7 +115,7 @@ VOID MBDE_ContextKeyUpdate(_In_ PMBDE_CONTEXT ctx, _In_ PMBDE_KEY pk)
         szMBDE_MODE_STR[pk->dwMode],
         2 * pk->cbKey, szKey1
     );
-    if((pk->dwMode == MBDE_MODE_AES128_DIFFUSER) || (pk->dwMode == MBDE_MODE_AES256_DIFFUSER) || ctx->fWin8) {
+    if((pk->dwMode == MBDE_MODE_AES128_DIFFUSER) || (pk->dwMode == MBDE_MODE_AES256_DIFFUSER) || ctxBDE->fWin8) {
         snprintf(pk->szTXT + o, _countof(pk->szTXT) - o, "Tweak:   %.*s\n", 2 * pk->cbKey, szKey2);
     }
 }
@@ -123,39 +123,40 @@ VOID MBDE_ContextKeyUpdate(_In_ PMBDE_CONTEXT ctx, _In_ PMBDE_KEY pk)
 /*
 * Add a key context. This is usually a recovered bitlocker AES key.
 * In case of Win8 it may be a partial key if elephant diffuser is used.
-* -- ctx
+* -- H
+* -- ctxBDE
 * -- peKey
 * -- pbKeyBlob
 */
-VOID MBDE_ContextKeyAdd(_In_ PMBDE_CONTEXT ctx, _In_ PMBDE_KEY peKey, _In_ PBYTE pbKeyBlob)
+VOID MBDE_ContextKeyAdd(_In_ VMM_HANDLE H, _In_ PMBDE_CONTEXT ctxBDE, _In_ PMBDE_KEY peKey, _In_ PBYTE pbKeyBlob)
 {
     PMBDE_KEY pk;
     if(!(pk = LocalAlloc(0, sizeof(MBDE_KEY) + peKey->cbBlob))) { return; }
-    if(!ObMap_Push(ctx->pmBDE, peKey->va, pk)) {
+    if(!ObMap_Push(ctxBDE->pmBDE, peKey->va, pk)) {
         LocalFree(pk);
         return;
     }
     memcpy(pk, peKey, sizeof(MBDE_KEY));
     memcpy(pk->pbBlob, pbKeyBlob, peKey->cbBlob);
-    MBDE_ContextKeyUpdate(ctx, pk);
-    VmmLog(ctx->ctxP->MID, LOGLEVEL_TRACE, "Key located at %llx", pk->va);
+    MBDE_ContextKeyUpdate(ctxBDE, pk);
+    VmmLog(H, ctxBDE->ctxP->MID, LOGLEVEL_TRACE, "Key located at %llx", pk->va);
 }
 
 /*
 * Merge any Win8 diffuser keys. In Win8 and early win10 keys are split between
 * two different key blobs. There is a pointer which ties keys together. Merge
 * these key blobs into two different versions - one correct and one fail.
-* -- ctx
+* -- ctxBDE
 */
-VOID MBDE_Win8_PostProcess(_In_ PMBDE_CONTEXT ctx)
+VOID MBDE_Win8_PostProcess(_In_ VMM_HANDLE H, _In_ PMBDE_CONTEXT ctxBDE)
 {
     PMBDE_KEY pKey1 = NULL, pKey2;
     QWORD va1 = 0, va2 = 0;
-    while((pKey1 = ObMap_GetNext(ctx->pmBDE, pKey1))) {
-        va1 = VMM_PTR_OFFSET_DUAL(ctxVmm->f32, pKey1->pbBlob, 0x10, 8);
+    while((pKey1 = ObMap_GetNext(ctxBDE->pmBDE, pKey1))) {
+        va1 = VMM_PTR_OFFSET_DUAL(H->vmm.f32, pKey1->pbBlob, 0x10, 8);
         pKey2 = NULL;
-        while((pKey2 = ObMap_GetNext(ctx->pmBDE, pKey2))) {
-            va2 = VMM_PTR_OFFSET_DUAL(ctxVmm->f32, pKey2->pbBlob, 0x10, 8);
+        while((pKey2 = ObMap_GetNext(ctxBDE->pmBDE, pKey2))) {
+            va2 = VMM_PTR_OFFSET_DUAL(H->vmm.f32, pKey2->pbBlob, 0x10, 8);
             if((pKey1 == pKey2) || (va1 != va2) || pKey1->fWin8Merge || pKey2->fWin8Merge) { continue; }
             // pointer match - merge keys in two different ways!
             if(pKey1->dwMode == MBDE_MODE_AES128) { pKey1->dwMode = MBDE_MODE_AES128_DIFFUSER; }
@@ -164,11 +165,11 @@ VOID MBDE_Win8_PostProcess(_In_ PMBDE_CONTEXT ctx)
             if(pKey2->dwMode == MBDE_MODE_AES256) { pKey2->dwMode = MBDE_MODE_AES256_DIFFUSER; }
             memcpy(pKey1->pbKey2, pKey2->pbKey1, 32);
             memcpy(pKey2->pbKey2, pKey1->pbKey1, 32);
-            MBDE_ContextKeyUpdate(ctx, pKey1);
-            MBDE_ContextKeyUpdate(ctx, pKey2);
+            MBDE_ContextKeyUpdate(ctxBDE, pKey1);
+            MBDE_ContextKeyUpdate(ctxBDE, pKey2);
             pKey1->fWin8Merge = TRUE;
             pKey2->fWin8Merge = TRUE;
-            VmmLog(ctx->ctxP->MID, LOGLEVEL_TRACE, "Keys updated at %llx %llx", pKey1->va, pKey2->va);
+            VmmLog(H, ctxBDE->ctxP->MID, LOGLEVEL_TRACE, "Keys updated at %llx %llx", pKey1->va, pKey2->va);
             return;
         }
     }
@@ -176,18 +177,19 @@ VOID MBDE_Win8_PostProcess(_In_ PMBDE_CONTEXT ctx)
 
 /*
 * Parse a Win10 14393+ bitlocker key.
-* -- ctx
+* -- H
+* -- ctxBDE
 * -- pe
 * -- pb
 */
-VOID MBDE_Win10(_In_ PMBDE_CONTEXT ctx, _In_ PVMM_MAP_POOLENTRY pe, _In_ PBYTE pb)
+VOID MBDE_Win10(_In_ VMM_HANDLE H, _In_ PMBDE_CONTEXT ctxBDE, _In_ PVMM_MAP_POOLENTRY pe, _In_ PBYTE pb)
 {
     MBDE_KEY e = { 0 };
     MBDE_OFFSET o = { 0 };
     DWORD i, dw, cbKey, dwMode;
-    BOOL fWin8 = (ctxVmm->kernel.dwVersionBuild < 14393);
+    BOOL fWin8 = (H->vmm.kernel.dwVersionBuild < 14393);
     if(pe->cb > 0x1000) { return; }
-    if(ctxVmm->f32) {
+    if(H->vmm.f32) {
         // 32-bit
         if(pe->cb < (fWin8 ? 0x268UL : 0x400UL)) { return; }
         o.o0 = 0x50; o.o1 = 0x54; o.o2 = 0x78; o.o3 = 0x98;
@@ -204,7 +206,7 @@ VOID MBDE_Win10(_In_ PMBDE_CONTEXT ctx, _In_ PVMM_MAP_POOLENTRY pe, _In_ PBYTE p
             // length/signature:
             dw = *(PDWORD)(pb + i + o.o0);
             if((dw != 0x10) && (dw != 0x20) && (dw != 0x40)) {
-                VmmLog(ctx->ctxP->MID, LOGLEVEL_TRACE, "Failed candidate at %llx (signature)", pe->va);
+                VmmLog(H, ctxBDE->ctxP->MID, LOGLEVEL_TRACE, "Failed candidate at %llx (signature)", pe->va);
                 return;
             }
             // mode & length:
@@ -228,7 +230,7 @@ VOID MBDE_Win10(_In_ PMBDE_CONTEXT ctx, _In_ PVMM_MAP_POOLENTRY pe, _In_ PBYTE p
                 }
             }
             if(!dwMode || (e.dwMode && (e.dwMode != dwMode))) {
-                VmmLog(ctx->ctxP->MID, LOGLEVEL_TRACE, "Failed candidate at %llx (mode #1)", pe->va);
+                VmmLog(H, ctxBDE->ctxP->MID, LOGLEVEL_TRACE, "Failed candidate at %llx (mode #1)", pe->va);
                 return;
             }
             e.cbKey = cbKey;
@@ -237,7 +239,7 @@ VOID MBDE_Win10(_In_ PMBDE_CONTEXT ctx, _In_ PVMM_MAP_POOLENTRY pe, _In_ PBYTE p
             if(memcmp(e.pbKey1, pbMBDE_ZERO32, 32)) {
                 // pre-existing key - this is a tweak key (diffuser)
                 if((e.dwMode == MBDE_MODE_AES128_XTS) || (e.dwMode == MBDE_MODE_AES256_XTS)) {
-                    VmmLog(ctx->ctxP->MID, LOGLEVEL_TRACE, "Failed candidate at %llx (mode #2)", pe->va);
+                    VmmLog(H, ctxBDE->ctxP->MID, LOGLEVEL_TRACE, "Failed candidate at %llx (mode #2)", pe->va);
                     return;
                 }
                 e.dwMode = (e.cbKey == 16) ? MBDE_MODE_AES128_DIFFUSER : MBDE_MODE_AES256_DIFFUSER;
@@ -250,24 +252,25 @@ VOID MBDE_Win10(_In_ PMBDE_CONTEXT ctx, _In_ PVMM_MAP_POOLENTRY pe, _In_ PBYTE p
     }
     // finish:
     if(!memcmp(e.pbKey1, pbMBDE_ZERO32, 32)) {
-        VmmLog(ctx->ctxP->MID, LOGLEVEL_TRACE, "Failed candidate at %llx (no key found)", pe->va);
+        VmmLog(H, ctxBDE->ctxP->MID, LOGLEVEL_TRACE, "Failed candidate at %llx (no key found)", pe->va);
         return;
     }
-    MBDE_ContextKeyAdd(ctx, &e, pb);
+    MBDE_ContextKeyAdd(H, ctxBDE, &e, pb);
 }
 
 /*
 * Parse a Win7 bitlocker key.
-* -- ctx
+* -- H
+* -- ctxBDE
 * -- pe
 * -- pb
 */
-VOID MBDE_Win7(_In_ PMBDE_CONTEXT ctx, _In_ PVMM_MAP_POOLENTRY pe, _In_ PBYTE pb)
+VOID MBDE_Win7(_In_ VMM_HANDLE H, _In_ PMBDE_CONTEXT ctxBDE, _In_ PVMM_MAP_POOLENTRY pe, _In_ PBYTE pb)
 {
     MBDE_KEY e = { 0 };
     MBDE_OFFSET o = { 0 };
     // 1: initialize static offsets
-    if(ctxVmm->f32) {
+    if(H->vmm.f32) {
         if(pe->cb == 0x1f0) { o.o0 = 0x10; o.o1 = 0x18; o.o2 = 0; }
         if(pe->cb == 0x3c8) { o.o0 = 0x10; o.o1 = 0x18; o.o2 = 0x1f0; }
     } else {
@@ -275,12 +278,12 @@ VOID MBDE_Win7(_In_ PMBDE_CONTEXT ctx, _In_ PVMM_MAP_POOLENTRY pe, _In_ PBYTE pb
         if(pe->cb == 0x3e0) { o.o0 = 0x1c; o.o1 = 0x20; o.o2 = 0x200; }
     }
     if(!o.o0) {
-        VmmLog(ctx->ctxP->MID, LOGLEVEL_TRACE, "Failed candidate at %llx [%i] (length)", pe->va, pe->cb);
+        VmmLog(H, ctxBDE->ctxP->MID, LOGLEVEL_TRACE, "Failed candidate at %llx [%i] (length)", pe->va, pe->cb);
         return;
     }
     // 2: parse mode & key
     if((pb[o.o0] > 0x03) || (pb[o.o0 + 1] != 0x80)) {
-        VmmLog(ctx->ctxP->MID, LOGLEVEL_TRACE, "Failed candidate at %llx (mode)", pe->va);
+        VmmLog(H, ctxBDE->ctxP->MID, LOGLEVEL_TRACE, "Failed candidate at %llx (mode)", pe->va);
         return;
     }
     e.va = pe->va;
@@ -291,29 +294,30 @@ VOID MBDE_Win7(_In_ PMBDE_CONTEXT ctx, _In_ PVMM_MAP_POOLENTRY pe, _In_ PBYTE pb
     if((e.dwMode == MBDE_MODE_AES128_DIFFUSER) || (e.dwMode == MBDE_MODE_AES256_DIFFUSER)) {
         memcpy(e.pbKey2, pb + o.o2, e.cbKey);
     }
-    MBDE_ContextKeyAdd(ctx, &e, pb);
+    MBDE_ContextKeyAdd(H, ctxBDE, &e, pb);
 }
 
 /*
 * Pool scanner function - locates bitlocker pool tags and send them onwards
 * for analysis in os-dependent pfnCB callback function.
-* -- ctx
+* -- H
+* -- ctxBDE
 * -- dwPoolTag
 * -- pfnCB
 */
-VOID MBDE_PoolScan(_In_ PMBDE_CONTEXT ctx, _In_ DWORD dwPoolTag, _In_ VOID(*pfnCB)(PMBDE_CONTEXT, PVMM_MAP_POOLENTRY, PBYTE))
+VOID MBDE_PoolScan(_In_ VMM_HANDLE H, _In_ PMBDE_CONTEXT ctxBDE, _In_ DWORD dwPoolTag, _In_ VOID(*pfnCB)(VMM_HANDLE H, PMBDE_CONTEXT, PVMM_MAP_POOLENTRY, PBYTE))
 {
     DWORD i, j;
     BYTE pb[4096];
     PVMM_MAP_POOLENTRY pe;
     PVMM_MAP_POOLENTRYTAG pTag;
-    for(i = 0; i < ctx->pPoolMap->cTag; i++) {
-        pTag = ctx->pPoolMap->pTag + i;
+    for(i = 0; i < ctxBDE->pPoolMap->cTag; i++) {
+        pTag = ctxBDE->pPoolMap->pTag + i;
         if(pTag->dwTag == dwPoolTag) {
             for(j = 0; j < pTag->cEntry; j++) {
-                pe = ctx->pPoolMap->pMap + ctx->pPoolMap->piTag2Map[pTag->iTag2Map + j];
-                if((pe->cb < sizeof(pb)) && VmmRead(PVMM_PROCESS_SYSTEM, pe->va, pb, pe->cb)) {
-                    pfnCB(ctx, pe, pb);
+                pe = ctxBDE->pPoolMap->pMap + ctxBDE->pPoolMap->piTag2Map[pTag->iTag2Map + j];
+                if((pe->cb < sizeof(pb)) && VmmRead(H, PVMM_PROCESS_SYSTEM, pe->va, pb, pe->cb)) {
+                    pfnCB(H, ctxBDE, pe, pb);
                 }
             }
             return;
@@ -324,54 +328,57 @@ VOID MBDE_PoolScan(_In_ PMBDE_CONTEXT ctx, _In_ DWORD dwPoolTag, _In_ VOID(*pfnC
 /*
 * Build a new context with results.
 * CALLER DECREF: return
+* -- H
 * -- ctxP
 * -- return
 */
-POB_MAP MBDE_ContextFetch_DoWork(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
+POB_MAP MBDE_ContextFetch_DoWork(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
 {
-    MBDE_CONTEXT ctx = { 0 };
-    VmmLog(ctxP->MID, LOGLEVEL_TRACE, "Initialization started");
+    MBDE_CONTEXT ctxBDE = { 0 };
+    DWORD dwBuild = H->vmm.kernel.dwVersionBuild;
+    VmmLog(H, ctxP->MID, LOGLEVEL_TRACE, "Initialization started");
     // 1: context init
-    ctx.ctxP = ctxP;
-    ctx.pmBDE = ObMap_New(OB_MAP_FLAGS_OBJECT_LOCALFREE);
-    VmmMap_GetPool(&ctx.pPoolMap, TRUE);
-    if(!ctx.pmBDE || !ctx.pPoolMap) {
-        VmmLog(ctxP->MID, LOGLEVEL_VERBOSE, "Initialization failed: POOL/OOM");
+    ctxBDE.ctxP = ctxP;
+    ctxBDE.pmBDE = ObMap_New(H, OB_MAP_FLAGS_OBJECT_LOCALFREE);
+    VmmMap_GetPool(H, &ctxBDE.pPoolMap, TRUE);
+    if(!ctxBDE.pmBDE || !ctxBDE.pPoolMap) {
+        VmmLog(H, ctxP->MID, LOGLEVEL_VERBOSE, "Initialization failed: POOL/OOM");
         goto fail;
     }
     // 2: dispatch
-    if(ctxVmm->kernel.dwVersionBuild >= 14393) {
-        MBDE_PoolScan(&ctx, 'enoN', MBDE_Win10);
-    } else if(ctxVmm->kernel.dwVersionBuild >= 9200) {
-        ctx.fWin8 = TRUE;
-        MBDE_PoolScan(&ctx, 'bgnC', MBDE_Win10);
-        MBDE_Win8_PostProcess(&ctx);
-    } else if(ctxVmm->kernel.dwVersionBuild >= 7600) {
-        MBDE_PoolScan(&ctx, 'cEVF', MBDE_Win7);
+    if(dwBuild >= 14393) {
+        MBDE_PoolScan(H, &ctxBDE, 'enoN', MBDE_Win10);
+    } else if(dwBuild >= 9200) {
+        ctxBDE.fWin8 = TRUE;
+        MBDE_PoolScan(H, &ctxBDE, 'bgnC', MBDE_Win10);
+        MBDE_Win8_PostProcess(H, &ctxBDE);
+    } else if(dwBuild >= 7600) {
+        MBDE_PoolScan(H, &ctxBDE, 'cEVF', MBDE_Win7);
     }
-    VmmLog(ctxP->MID, LOGLEVEL_TRACE, "Initialization completed");
+    VmmLog(H, ctxP->MID, LOGLEVEL_TRACE, "Initialization completed");
 fail:
-    Ob_DECREF(ctx.pPoolMap);
-    return ctx.pmBDE;
+    Ob_DECREF(ctxBDE.pPoolMap);
+    return ctxBDE.pmBDE;
 }
 
 /*
 * Fetch, and if required, build a new context with results.
 * CALLER DECREF: return
+* -- H
 * -- ctxP
 * -- return
 */
-POB_MAP MBDE_ContextFetch(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
+POB_MAP MBDE_ContextFetch(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
 {
     POB_MAP pmObBDE = ObContainer_GetOb((POB_CONTAINER)ctxP->ctxM);
     if(!pmObBDE) {
-        EnterCriticalSection(&ctxVmm->LockPlugin);
+        EnterCriticalSection(&H->vmm.LockPlugin);
         pmObBDE = ObContainer_GetOb((POB_CONTAINER)ctxP->ctxM);
         if(!pmObBDE) {
-            pmObBDE = MBDE_ContextFetch_DoWork(ctxP);
+            pmObBDE = MBDE_ContextFetch_DoWork(H, ctxP);
             ObContainer_SetOb((POB_CONTAINER)ctxP->ctxM, pmObBDE);
         }
-        LeaveCriticalSection(&ctxVmm->LockPlugin);
+        LeaveCriticalSection(&H->vmm.LockPlugin);
     }
     return pmObBDE;
 }
@@ -382,7 +389,7 @@ POB_MAP MBDE_ContextFetch(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
 // PLUGIN ACCESS FUNCTIONALITY BELOW:
 // ----------------------------------------------------------------------------
 
-VOID MBDE_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
+VOID MBDE_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
 {
     DWORD i, cKey = 0;
     PMBDE_KEY pKey = NULL;
@@ -390,7 +397,7 @@ VOID MBDE_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In
     CHAR szDislocker[MAX_PATH];
     PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd = NULL;
     if(ctxP->pProcess) { return; }
-    if(!(pmObBDE = MBDE_ContextFetch(ctxP))) { goto fail; }
+    if(!(pmObBDE = MBDE_ContextFetch(H, ctxP))) { goto fail; }
     if(!(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)))) { goto fail; }
     pd->dwVersion = VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION;
     pd->szjType = "bitlocker";
@@ -402,14 +409,14 @@ VOID MBDE_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In
         pd->vaObj = pKey->va;
         pd->usz[0] = szMBDE_MODE_STR[pKey->dwMode];
         pd->usz[1] = szDislocker;
-        pfnLogJSON(pd);
+        pfnLogJSON(H, pd);
     }
 fail:
     Ob_DECREF(pmObBDE);
     LocalFree(pd);
 }
 
-NTSTATUS MBDE_ReadInternal(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ POB_MAP pmObBDE, _Out_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset)
+NTSTATUS MBDE_ReadInternal(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ POB_MAP pmObBDE, _Out_ LPVOID pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset)
 {
     PMBDE_KEY pKey = NULL;
     if(0 == _stricmp("readme.txt", ctxP->uszPath)) {
@@ -429,22 +436,22 @@ NTSTATUS MBDE_ReadInternal(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ POB_MAP pmObBD
     return VMMDLL_STATUS_FILE_INVALID;
 }
 
-NTSTATUS MBDE_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset)
+NTSTATUS MBDE_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
-    POB_MAP pmObBDE = MBDE_ContextFetch(ctxP);
+    POB_MAP pmObBDE = MBDE_ContextFetch(H, ctxP);
     *pcbRead = 0;
     if(pmObBDE) {
-        nt = MBDE_ReadInternal(ctxP, pmObBDE, pb, cb, pcbRead, cbOffset);
+        nt = MBDE_ReadInternal(H, ctxP, pmObBDE, pb, cb, pcbRead, cbOffset);
     }
     Ob_DECREF(pmObBDE);
     return nt;
 }
 
-BOOL MBDE_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList)
+BOOL MBDE_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList)
 {
     PMBDE_KEY pKey = NULL;
-    POB_MAP pmObBDE = MBDE_ContextFetch(ctxP);
+    POB_MAP pmObBDE = MBDE_ContextFetch(H, ctxP);
     if(!ctxP->uszPath[0]) {
         VMMDLL_VfsList_AddFile(pFileList, "readme.txt", strlen(szMBDE_README), NULL);
         while((pKey = ObMap_GetNext(pmObBDE, pKey))) {
@@ -457,19 +464,19 @@ BOOL MBDE_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList)
     return TRUE;
 }
 
-VOID MBDE_Notify(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent)
+VOID MBDE_Notify(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent)
 {
     if(fEvent == VMMDLL_PLUGIN_NOTIFY_REFRESH_SLOW) {
         ObContainer_SetOb((POB_CONTAINER)ctxP->ctxM, NULL);
     }
 }
 
-VOID MBDE_Close(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
+VOID MBDE_Close(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
 {
     Ob_DECREF((POB_CONTAINER)ctxP->ctxM);
 }
 
-VOID M_BDE_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
+VOID M_BDE_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     // the bitlocker plugin is only supported on: 64-bit Windows or 32-bit Windows 10 14393 or later.
@@ -483,5 +490,5 @@ VOID M_BDE_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     pRI->reg_fn.pfnNotify = MBDE_Notify;                            // Notify function supported.
     pRI->reg_fn.pfnClose = MBDE_Close;                              // Close function supported.
     pRI->reg_fnfc.pfnLogJSON = MBDE_FcLogJSON;                      // JSON log function supported
-    pRI->pfnPluginManager_Register(pRI);                            // Register with the plugin manager
+    pRI->pfnPluginManager_Register(H, pRI);                            // Register with the plugin manager
 }

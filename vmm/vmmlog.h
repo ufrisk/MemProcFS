@@ -26,12 +26,13 @@ typedef enum tdVMMLOG_LEVEL {
     LOGLEVEL_7_ALL      = 7,
 } VMMLOG_LEVEL;
 
-// NB! also update VMMLOG_MID_STR in vmmlog.c when adding new built-in types.
+// NB! also update VMMLOG_MID_STR when adding new built-in types.
 #define MID_NA           0x80000000
 #define MID_MAIN         0x80000001
 #define MID_PYTHON       0x80000002
+#define MID_DEBUG        0x80000003
 #define MID_CORE         0x80000010
-#define MID_VMMDLL       0x80000011
+#define MID_API          0x80000011
 #define MID_VMM          0x80000012
 #define MID_PROCESS      0x80000013
 #define MID_FORENSIC     0x80000014
@@ -43,57 +44,89 @@ typedef enum tdVMMLOG_LEVEL {
 #define MID_INFODB       0x8000001a
 #define MID_HEAP         0x8000001b
 #define MID_OFFSET       0x8000001c
-#define MID_MAX          0x8000001c
+#define MID_EVIL         0x8000001d
+#define MID_MAX          0x8000001d
 
-extern VMMLOG_LEVEL g_VmmLogLevelFilter;
+// max 8 chars long!
+static LPCSTR VMMLOG_MID_STR[] = {
+    "N/A",
+    // externally exposed built-in modules:
+    "MAIN",
+    "PYTHON",
+    "DEBUG",
+    "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A",
+    // vmm internal built-in module:
+    "CORE",
+    "API",
+    "VMM",
+    "PROCESS",
+    "FORENSIC",
+    "REGISTRY",
+    "PLUGIN",
+    "NET",
+    "PE",
+    "PDB",
+    "INFODB",
+    "HEAP",
+    "OFFSET",
+    "EVIL"
+};
 
 /*
 * Refresh the display logging settings from settings.
-* This function must be called at least once _before_ logging anything!
+* NB! This function must be called at least once _before_ logging anything!
+* -- H
 */
-VOID VmmLog_LevelRefresh();
+VOID VmmLog_LevelRefresh(_In_ VMM_HANDLE H);
 
 /*
 * Close and clean-up internal logging data structures.
+* This should only be done last at system exit before shut-down.
+* -- H
 */
-VOID VmmLog_Close();
+VOID VmmLog_Close(_In_ VMM_HANDLE H);
 
 /*
 * Get the log level for either display (on-screen) or file.
+* -- H
 * -- dwMID = specify MID (other than 0) to get specific module level override.
 * -- fDisplay
 * -- return
 */
-VMMLOG_LEVEL VmmLog_LevelGet(_In_opt_ DWORD dwMID, _In_ BOOL fDisplay);
+VMMLOG_LEVEL VmmLog_LevelGet(_In_ VMM_HANDLE H, _In_opt_ DWORD dwMID, _In_ BOOL fDisplay);
 
 /*
 * Set the log level for either display (on-screen) or file.
+* -- H
 * -- dwMID = specify MID (other than 0) to set specific module level override.
 * -- dwLogLevel
 * -- fDisplay = TRUE(display), FALSE(file)
 * -- fSetOrIncrease = TRUE(set), FALSE(increase)
 */
-VOID VmmLog_LevelSet(_In_opt_ DWORD dwMID, _In_ VMMLOG_LEVEL dwLogLevel, _In_ BOOL fDisplay, _In_ BOOL fSetOrIncrease);
+VOID VmmLog_LevelSet(_In_ VMM_HANDLE H, _In_opt_ DWORD dwMID, _In_ VMMLOG_LEVEL dwLogLevel, _In_ BOOL fDisplay, _In_ BOOL fSetOrIncrease);
 
 /*
 * Register a new module ID (MID) with the log database.
 * This function should be called in a single-threaded context by the plugin manager.
+* -- H
 * -- dwMID = the module ID (MID) to register
 * -- uszModuleName
 * -- fExternal = externally loaded module (dll/so).
 */
-VOID VmmLog_RegisterModule(_In_ DWORD dwMID, _In_ LPSTR uszModuleName, _In_ BOOL fExternal);
+VOID VmmLog_RegisterModule(_In_ VMM_HANDLE H, _In_ DWORD dwMID, _In_ LPSTR uszModuleName, _In_ BOOL fExternal);
 
 /*
 * Check whether the MID/LogLevel will log to any output.
+* -- H
 * -- dwMID = module ID (MID)
 * -- dwLogLevel = log level as defined by LOGLEVEL_*
 * -- return = TRUE(will log), FALSE(will NOT log).
 */
-BOOL VmmLogIsActive(_In_ DWORD dwMID, _In_ VMMLOG_LEVEL dwLogLevel);
+BOOL VmmLogIsActive(_In_ VMM_HANDLE H, _In_ DWORD dwMID, _In_ VMMLOG_LEVEL dwLogLevel);
 
 /*
 * Log a message "printf" style followed by a hexascii printout.
+* -- H
 * -- dwMID = module ID (MID)
 * -- dwLogLevel = log level as defined by LOGLEVEL_*
 * -- pb = binary to log
@@ -103,6 +136,7 @@ BOOL VmmLogIsActive(_In_ DWORD dwMID, _In_ VMMLOG_LEVEL dwLogLevel);
 * -- ...
 */
 VOID VmmLogHexAsciiEx(
+    _In_ VMM_HANDLE H,
     _In_ DWORD dwMID,
     _In_ VMMLOG_LEVEL dwLogLevel,
     _In_reads_(cb) PBYTE pb,
@@ -115,36 +149,39 @@ VOID VmmLogHexAsciiEx(
 /*
 * Log a message "printf" style. Whether the message is displayed and/or saved
 * to log file depends on the internal logging setup.
+* -- H
 * -- dwMID = module ID (MID)
 * -- dwLogLevel = log level as defined by LOGLEVEL_*
 * -- uszFormat
 * -- ...
 */
-VOID VmmLogEx(_In_ DWORD dwMID, _In_ VMMLOG_LEVEL dwLogLevel, _In_z_ _Printf_format_string_ LPSTR uszFormat, ...);
+VOID VmmLogEx(_In_ VMM_HANDLE H, _In_ DWORD dwMID, _In_ VMMLOG_LEVEL dwLogLevel, _In_z_ _Printf_format_string_ LPSTR uszFormat, ...);
 
 /*
 * Log a message using a va_list. Whether the message is displayed and/or saved
 * to log file depends on the internal logging setup.
+* -- H
 * -- dwMID = module ID (MID)
 * -- dwLogLevel = log level as defined by LOGLEVEL_*
 * -- uszFormat
 * -- arglist
 */
-VOID VmmLogEx2(_In_ DWORD dwMID, _In_ VMMLOG_LEVEL dwLogLevel, _In_z_ _Printf_format_string_ LPSTR uszFormat, va_list arglist);
+VOID VmmLogEx2(_In_ VMM_HANDLE H, _In_ DWORD dwMID, _In_ VMMLOG_LEVEL dwLogLevel, _In_z_ _Printf_format_string_ LPSTR uszFormat, va_list arglist);
 
 /*
 * Log amessage "printf" style.
+* -- H
 * -- dwMID
 * -- dwLogLevel
 * -- format
 * -- ...
 */
-#define VmmLog(dwMID, dwLogLevel, format, ...)          { if(dwLogLevel <= g_VmmLogLevelFilter) { VmmLogEx(dwMID, dwLogLevel, format, ##__VA_ARGS__); } }
+#define VmmLog(H, dwMID, dwLogLevel, format, ...)          { if(dwLogLevel <= (VMMLOG_LEVEL)H->logfilter) { VmmLogEx(H, dwMID, dwLogLevel, format, ##__VA_ARGS__); } }
 
 /*
 * printf a message to the console if allowed (i.e. not suppressed in a dll context).
 * NB! VmmLog* functions are preferred if possible!
 */
-#define vmmprintf(format, ...)          { if(ctxMain->cfg.fVerboseDll)       { printf(format, ##__VA_ARGS__); } }
+#define vmmprintf(H, format, ...)          { if(H->cfg.fVerboseDll)       { printf(format, ##__VA_ARGS__); } }
 
 #endif /* __VMMLOG_H__ */

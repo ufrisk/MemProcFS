@@ -6,6 +6,8 @@
 #define __VMMWINDEF_H__
 #include "oscompatibility.h"
 
+#define O32_FILE_OBJECT_DeviceObject                    0x004
+#define O64_FILE_OBJECT_DeviceObject                    0x008
 #define O32_FILE_OBJECT_SectionObjectPointer            0x014
 #define O64_FILE_OBJECT_SectionObjectPointer            0x028
 #define O32_FILE_OBJECT_PrivateCacheMap                 0x018

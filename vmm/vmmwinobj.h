@@ -65,47 +65,54 @@ typedef struct tdOB_VMMWINOBJ_FILE {
 
 /*
 * Initialize the Object sub-system. This should ideally be done on Vmm Init().
+* -- H
 */
-VOID VmmWinObj_Initialize();
+VOID VmmWinObj_Initialize(_In_ VMM_HANDLE H);
 
 /*
 * Create an object manager map and assign to the global vmm context upon success.
 * CALLER DECREF: return
+* -- H
 * -- return
 */
-PVMMOB_MAP_OBJECT VmmWinObjMgr_Initialize();
+PVMMOB_MAP_OBJECT VmmWinObjMgr_Initialize(_In_ VMM_HANDLE H);
 
 /*
 * Refresh the Object sub-system.
+* -- H
 */
-VOID VmmWinObj_Refresh();
+VOID VmmWinObj_Refresh(_In_ VMM_HANDLE H);
 
 /*
 * Cleanup the Object sub-system. This should ideally be done on Vmm Close().
+* -- H
 */
-VOID VmmWinObj_Close();
+VOID VmmWinObj_Close(_In_ VMM_HANDLE H);
 
 /*
 * Retrieve an object from the object cache.
 * CALLER DECREF: return
+* -- H
 * -- va = virtual address of the object to retrieve.
 * -- return = the object, NULL if not found in cache.
 */
-POB_VMMWINOBJ_OBJECT VmmWinObj_Get(_In_ QWORD va);
+POB_VMMWINOBJ_OBJECT VmmWinObj_Get(_In_ VMM_HANDLE H, _In_ QWORD va);
 
 /*
 * Retrieve all _FILE_OBJECT related to a process.
 * CALLER DECREF: *ppmObFiles
+* -- H
 * -- pProcess
 * -- ppmObFiles
 * -- fHandles = TRUE = files from handles, FALSE = files from VADs
 * -- return
 */
 _Success_(return)
-BOOL VmmWinObjFile_GetByProcess(_In_ PVMM_PROCESS pProcess, _Out_ POB_MAP *ppmObFiles, _In_ BOOL fHandles);
+BOOL VmmWinObjFile_GetByProcess(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _Out_ POB_MAP *ppmObFiles, _In_ BOOL fHandles);
 
 /*
 * Read a contigious amount of file data and report the number of bytes read.
+* -- H
 * -- pFile
 * -- cbOffset
 * -- pb
@@ -114,24 +121,19 @@ BOOL VmmWinObjFile_GetByProcess(_In_ PVMM_PROCESS pProcess, _Out_ POB_MAP *ppmOb
 * -- return = the number of bytes read.
 */
 _Success_(return != 0)
-DWORD VmmWinObjFile_Read(_In_ POB_VMMWINOBJ_FILE pFile, _In_ QWORD cbOffset, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb, _In_ QWORD fVmmRead);
-
-/*
-* Create an object manager map and assign to the global vmm context upon success.
-* CALLER DECREF: return
-* -- return
-*/
-PVMMOB_MAP_OBJECT VmmWinObjMgr_Initialize();
+DWORD VmmWinObjFile_Read(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_FILE pFile, _In_ QWORD cbOffset, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb, _In_ QWORD fVmmRead);
 
 /*
 * Create an kernel driver map and assign to the global vmm context upon success.
 * CALLER DECREF: return
+* -- H
 * -- return
 */
-PVMMOB_MAP_KDRIVER VmmWinObjKDrv_Initialize();
+PVMMOB_MAP_KDRIVER VmmWinObjKDrv_Initialize(_In_ VMM_HANDLE H);
 
 /*
 * Vfs Read: helper function to read object files in an object information dir.
+* -- H
 * -- uszPathFile
 * -- iTypeIndex = the object type index in the ObjectTypeTable
 * -- vaObject
@@ -141,14 +143,15 @@ PVMMOB_MAP_KDRIVER VmmWinObjKDrv_Initialize();
 * -- cbOffset
 * -- return
 */
-NTSTATUS VmmWinObjDisplay_VfsRead(_In_ LPSTR uszPathFile, _In_opt_ DWORD iTypeIndex, _In_ QWORD vaObject, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
+NTSTATUS VmmWinObjDisplay_VfsRead(_In_ VMM_HANDLE H, _In_ LPSTR uszPathFile, _In_opt_ DWORD iTypeIndex, _In_ QWORD vaObject, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 
 /*
 * Vfs List: helper function to list object files in an object information dir.
+* -- H
 * -- iTypeIndex = the object type index in the ObjectTypeTable
 * -- vaObject
 * -- pFileList
 */
-VOID VmmWinObjDisplay_VfsList(_In_opt_ DWORD iTypeIndex, _In_ QWORD vaObject, _Inout_ PHANDLE pFileList);
+VOID VmmWinObjDisplay_VfsList(_In_ VMM_HANDLE H, _In_opt_ DWORD iTypeIndex, _In_ QWORD vaObject, _Inout_ PHANDLE pFileList);
 
 #endif /* __VMMWINOBJ_H__ */

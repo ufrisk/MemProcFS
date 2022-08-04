@@ -81,6 +81,7 @@ BOOL CloseHandle(_In_ HANDLE hObject)
     if(hi->magic != OSCOMPATIBILITY_HANDLE_INTERNAL) { return FALSE; }
     switch(hi->type) {
         case OSCOMPATIBILITY_HANDLE_TYPE_THREAD:
+            pthread_join(((PHANDLE_INTERNAL_THREAD)hi)->thread, NULL);
             break;
         case OSCOMPATIBILITY_HANDLE_TYPE_EVENT:
             SetEvent(hObject);
@@ -127,6 +128,7 @@ HANDLE CreateThread(
     status = pthread_create(&thread, NULL, lpStartAddress, lpParameter);
     if(status) { return NULL;}
     ph = malloc(sizeof(HANDLE_INTERNAL_THREAD));
+    if(!ph) { return NULL; }
     ph->magic = OSCOMPATIBILITY_HANDLE_INTERNAL;
     ph->type = OSCOMPATIBILITY_HANDLE_TYPE_THREAD;
     ph->thread = thread;
@@ -421,17 +423,17 @@ DWORD WaitForMultipleObjects(_In_ DWORD nCount, HANDLE *lpHandles, _In_ BOOL bWa
 
 }
 
-BOOL SetEvent(_In_ HANDLE hEvent)
+BOOL SetEvent(_In_ HANDLE hEventIngestPhys)
 {
-    PHANDLE_INTERNAL_EVENT2 ph = (PHANDLE_INTERNAL_EVENT2)hEvent;
+    PHANDLE_INTERNAL_EVENT2 ph = (PHANDLE_INTERNAL_EVENT2)hEventIngestPhys;
     if((ph->magic != OSCOMPATIBILITY_HANDLE_INTERNAL) || (ph->type != OSCOMPATIBILITY_HANDLE_TYPE_EVENT)) { return FALSE; }
     ReleaseSRWLockExclusive(&ph->SRWLock);
     return TRUE;
 }
 
-BOOL ResetEvent(_In_ HANDLE hEvent)
+BOOL ResetEvent(_In_ HANDLE hEventIngestPhys)
 {
-    PHANDLE_INTERNAL_EVENT2 ph = (PHANDLE_INTERNAL_EVENT2)hEvent;
+    PHANDLE_INTERNAL_EVENT2 ph = (PHANDLE_INTERNAL_EVENT2)hEventIngestPhys;
     if((ph->magic != OSCOMPATIBILITY_HANDLE_INTERNAL) || (ph->type != OSCOMPATIBILITY_HANDLE_TYPE_EVENT)) { return FALSE; }
     return AcquireSRWLockExclusive_Try(&ph->SRWLock);
 }
@@ -509,6 +511,14 @@ errno_t tmpnam_s(char *_Buffer, ssize_t _Size)
     if(_Size < 32) { return -1; }
     snprintf(_Buffer, _Size, "/tmp/vmm-%x%x", (uint32_t)((uint64_t)_Buffer >> 12), rand());
     return 0;
+}
+
+int _vscprintf(_In_z_ _Printf_format_string_ char const *const _Format, va_list _ArgList)
+{
+    char *sz = NULL;
+    int len = vasprintf(&sz, _Format, _ArgList);
+    free(sz);
+    return len;
 }
 
 #endif /* LINUX */

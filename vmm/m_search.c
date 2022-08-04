@@ -32,14 +32,14 @@ typedef struct tdMOB_SEARCH_CONTEXT {
     POB_DATA pObDataResult;
 } MOB_SEARCH_CONTEXT, *PMOB_SEARCH_CONTEXT;
 
-VOID MSearch_ContextUpdate(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_opt_ PMOB_SEARCH_CONTEXT ctxS)
+VOID MSearch_ContextUpdate(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_opt_ PMOB_SEARCH_CONTEXT ctxS)
 {
-    EnterCriticalSection(&ctxVmm->LockPlugin);
+    EnterCriticalSection(&H->vmm.LockPlugin);
     if(!ctxS || !ObMap_Exists((POB_MAP)ctxP->ctxM, ctxS)) {
         Ob_DECREF(ObMap_RemoveByKey((POB_MAP)ctxP->ctxM, ctxP->dwPID));
         if(ctxS) { ObMap_Push((POB_MAP)ctxP->ctxM, ctxP->dwPID, ctxS); }
     }
-    LeaveCriticalSection(&ctxVmm->LockPlugin);
+    LeaveCriticalSection(&H->vmm.LockPlugin);
 }
 
 VOID MSearch_ContextCleanup1_CB(PVOID pOb)
@@ -55,27 +55,27 @@ VOID MSearch_ContextCleanup_CB(PVOID pOb)
 /*
 * CALLER DECREF: return
 */
-PMOB_SEARCH_CONTEXT MSearch_ContextGet(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
+PMOB_SEARCH_CONTEXT MSearch_ContextGet(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
 {
     PMOB_SEARCH_CONTEXT pObCtx = NULL;
-    EnterCriticalSection(&ctxVmm->LockPlugin);
+    EnterCriticalSection(&H->vmm.LockPlugin);
     pObCtx = ObMap_GetByKey((POB_MAP)ctxP->ctxM, ctxP->dwPID);
-    LeaveCriticalSection(&ctxVmm->LockPlugin);
-    if(!pObCtx && (pObCtx = Ob_Alloc(OB_TAG_MOD_SEARCH_CTX, LMEM_ZEROINIT, sizeof(MOB_SEARCH_CONTEXT), MSearch_ContextCleanup_CB, MSearch_ContextCleanup1_CB))) {
+    LeaveCriticalSection(&H->vmm.LockPlugin);
+    if(!pObCtx && (pObCtx = Ob_AllocEx(H, OB_TAG_MOD_SEARCH_CTX, LMEM_ZEROINIT, sizeof(MOB_SEARCH_CONTEXT), MSearch_ContextCleanup_CB, MSearch_ContextCleanup1_CB))) {
         pObCtx->sctx.cSearch = 1;
         pObCtx->sctx.search[0].cbAlign = 1;
         if(ctxP->pProcess) {
             // virtual memory search in process address space
             pObCtx->dwPID = ((PVMM_PROCESS)ctxP->pProcess)->dwPID;
             if(((PVMM_PROCESS)ctxP->pProcess)->fUserOnly) {
-                pObCtx->sctx.vaMax = ctxVmm->f32 ? 0x7fffffff : 0x7fffffffffff;
+                pObCtx->sctx.vaMax = H->vmm.f32 ? 0x7fffffff : 0x7fffffffffff;
             } else {
-                pObCtx->sctx.vaMax = ctxVmm->f32 ? 0xffffffff : 0xffffffffffffffff;
+                pObCtx->sctx.vaMax = H->vmm.f32 ? 0xffffffff : 0xffffffffffffffff;
             }
         } else {
             // physical memory search
             pObCtx->dwPID = 0;
-            pObCtx->sctx.vaMax = ctxMain->dev.paMax - 1;
+            pObCtx->sctx.vaMax = H->dev.paMax - 1;
         }
     }
     return pObCtx;
@@ -84,32 +84,31 @@ PMOB_SEARCH_CONTEXT MSearch_ContextGet(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
 /*
 * Perform the memory search in an async worker thread
 */
-DWORD WINAPI MSearch_PerformSeach_ThreadProc(_In_ PMOB_SEARCH_CONTEXT ctxS)
+VOID MSearch_PerformSeach_ThreadProc(_In_ VMM_HANDLE H, _In_ PMOB_SEARCH_CONTEXT ctxS)
 {
     PVMM_PROCESS pObProcess = NULL;
     if(!ctxS->dwPID) {
-        VmmSearch(NULL, &ctxS->sctx, &ctxS->pObDataResult);
-    } else if((pObProcess = VmmProcessGet(ctxS->dwPID))) {
-        VmmSearch(pObProcess, &ctxS->sctx, &ctxS->pObDataResult);
+        VmmSearch(H, NULL, &ctxS->sctx, &ctxS->pObDataResult);
+    } else if((pObProcess = VmmProcessGet(H, ctxS->dwPID))) {
+        VmmSearch(H, pObProcess, &ctxS->sctx, &ctxS->pObDataResult);
     }
     ctxS->fCompleted = TRUE;
     ctxS->fActive = FALSE;
-    Ob_DECREF(ctxS);
     Ob_DECREF(pObProcess);
-    return 0;
 }
 
 /*
 * Write : function as specified by the module manager. The module manager will
 * call into this callback function whenever a write shall occur from a "file".
-* -- ctx
+* -- H
+* -- ctxP
 * -- pb
 * -- cb
 * -- pcbWrite
 * -- cbOffset
 * -- return
 */
-NTSTATUS MSearch_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
+NTSTATUS MSearch_Write(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_SUCCESS;
     PMOB_SEARCH_CONTEXT pObCtx = NULL;
@@ -118,14 +117,14 @@ NTSTATUS MSearch_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_reads_(cb) PBYTE pb
     QWORD qw;
     BYTE pbSearchBuffer[32];
     *pcbWrite = cb;
-    if(!(pObCtx = MSearch_ContextGet(ctxP))) { return VMMDLL_STATUS_FILE_INVALID; }
+    if(!(pObCtx = MSearch_ContextGet(H, ctxP))) { return VMMDLL_STATUS_FILE_INVALID; }
     if(!_stricmp(ctxP->uszPath, "reset.txt")) {
         fReset = FALSE;
         nt = Util_VfsWriteFile_BOOL(&fReset, pb, cb, pcbWrite, cbOffset);
         if(fReset) {
             // removal via context update will clear up objects and also
             // cancel / abort any running tasks via the object refcount.
-            MSearch_ContextUpdate(ctxP, NULL);
+            MSearch_ContextUpdate(H, ctxP, NULL);
         }
     }
     if(!pObCtx->fActive && !pObCtx->fCompleted) {
@@ -135,40 +134,40 @@ NTSTATUS MSearch_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_reads_(cb) PBYTE pb
             if((dw != pObCtx->sctx.search[0].cbAlign) && (0 == (dw & (dw - 1)))) {
                 if(dw == 0) { dw = 1; }
                 // update (if ok) within critical section
-                EnterCriticalSection(&ctxVmm->LockPlugin);
+                EnterCriticalSection(&H->vmm.LockPlugin);
                 if(!pObCtx->fActive && !pObCtx->fCompleted) {
                     pObCtx->sctx.search[0].cbAlign = dw;
-                    MSearch_ContextUpdate(ctxP, pObCtx);
+                    MSearch_ContextUpdate(H, ctxP, pObCtx);
                 }
-                LeaveCriticalSection(&ctxVmm->LockPlugin);
+                LeaveCriticalSection(&H->vmm.LockPlugin);
             }
         }
         if(!_stricmp(ctxP->uszPath, "addr-max.txt")) {
             qw = pObCtx->sctx.vaMax;
-            nt = Util_VfsWriteFile_QWORD(&qw, pb, cb, pcbWrite, cbOffset + (ctxVmm->f32 ? 8 : 0), 1, 0);
+            nt = Util_VfsWriteFile_QWORD(&qw, pb, cb, pcbWrite, cbOffset + (H->vmm.f32 ? 8 : 0), 1, 0);
             qw = (qw - 1) | 0xfff;
             if((qw != pObCtx->sctx.vaMax)) {
                 // update (if ok) within critical section
-                EnterCriticalSection(&ctxVmm->LockPlugin);
+                EnterCriticalSection(&H->vmm.LockPlugin);
                 if(!pObCtx->fActive && !pObCtx->fCompleted) {
                     pObCtx->sctx.vaMax = qw;
-                    MSearch_ContextUpdate(ctxP, pObCtx);
+                    MSearch_ContextUpdate(H, ctxP, pObCtx);
                 }
-                LeaveCriticalSection(&ctxVmm->LockPlugin);
+                LeaveCriticalSection(&H->vmm.LockPlugin);
             }
         }
         if(!_stricmp(ctxP->uszPath, "addr-min.txt")) {
             qw = pObCtx->sctx.vaMin;
-            nt = Util_VfsWriteFile_QWORD(&qw, pb, cb, pcbWrite, cbOffset + (ctxVmm->f32 ? 8 : 0), 0, 0);
+            nt = Util_VfsWriteFile_QWORD(&qw, pb, cb, pcbWrite, cbOffset + (H->vmm.f32 ? 8 : 0), 0, 0);
             qw = qw & ~0xfff;
             if((qw != pObCtx->sctx.vaMin)) {
                 // update (if ok) within critical section
-                EnterCriticalSection(&ctxVmm->LockPlugin);
+                EnterCriticalSection(&H->vmm.LockPlugin);
                 if(!pObCtx->fActive && !pObCtx->fCompleted) {
                     pObCtx->sctx.vaMin = qw;
-                    MSearch_ContextUpdate(ctxP, pObCtx);
+                    MSearch_ContextUpdate(H, ctxP, pObCtx);
                 }
-                LeaveCriticalSection(&ctxVmm->LockPlugin);
+                LeaveCriticalSection(&H->vmm.LockPlugin);
             }
         }
         if(!_stricmp(ctxP->uszPath, "search-skip-bitmask.txt")) {
@@ -176,13 +175,13 @@ NTSTATUS MSearch_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_reads_(cb) PBYTE pb
             nt = Util_VfsWriteFile_HEXASCII(pbSearchBuffer, 32, pb, cb, pcbWrite, cbOffset);
             if(*pcbWrite) {
                 // update (if ok) within critical section
-                EnterCriticalSection(&ctxVmm->LockPlugin);
+                EnterCriticalSection(&H->vmm.LockPlugin);
                 if(!pObCtx->fActive && !pObCtx->fCompleted) {
                     pObCtx->sctx.search[0].cb = max(pObCtx->sctx.search[0].cb, (*pcbWrite + 1) >> 1);
                     memcpy(pObCtx->sctx.search[0].pbSkipMask, pbSearchBuffer, 32);
-                    MSearch_ContextUpdate(ctxP, pObCtx);
+                    MSearch_ContextUpdate(H, ctxP, pObCtx);
                 }
-                LeaveCriticalSection(&ctxVmm->LockPlugin);
+                LeaveCriticalSection(&H->vmm.LockPlugin);
             }
         }
         if(!_stricmp(ctxP->uszPath, "search.txt")) {
@@ -190,19 +189,19 @@ NTSTATUS MSearch_Write(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_reads_(cb) PBYTE pb
             nt = Util_VfsWriteFile_HEXASCII(pbSearchBuffer, 32, pb, cb, pcbWrite, cbOffset);
             if(*pcbWrite) {
                 // update (if ok) within critical section
-                EnterCriticalSection(&ctxVmm->LockPlugin);
+                EnterCriticalSection(&H->vmm.LockPlugin);
                 if(!pObCtx->fActive && !pObCtx->fCompleted) {
                     pObCtx->sctx.search[0].cb = (*pcbWrite + 1) >> 1;
                     memcpy(pObCtx->sctx.search[0].pb, pbSearchBuffer, 32);
-                    MSearch_ContextUpdate(ctxP, pObCtx);
+                    MSearch_ContextUpdate(H, ctxP, pObCtx);
                     // start search by queuing the search onto a work item
                     // in a separate thread. also increase refcount since
                     // worker thread is responsible for its own DECREF.
                     pObCtx->sctx.fAbortRequested = FALSE;
                     pObCtx->fActive = TRUE;
-                    VmmWork((LPTHREAD_START_ROUTINE)MSearch_PerformSeach_ThreadProc, Ob_INCREF(pObCtx), NULL);
+                    VmmWork_Ob(H, (PVMM_WORK_START_ROUTINE_OB_PFN)MSearch_PerformSeach_ThreadProc, (POB)pObCtx, NULL, VMMWORK_FLAG_PRIO_NORMAL);
                 }
-                LeaveCriticalSection(&ctxVmm->LockPlugin);
+                LeaveCriticalSection(&H->vmm.LockPlugin);
             }
         }
     }
@@ -249,34 +248,35 @@ NTSTATUS MSearch_ReadStatus(_In_ PMOB_SEARCH_CONTEXT ctxS, _Out_writes_to_(cb, *
     }
 }
 
-VOID MSearch_ReadLine_CB(_Inout_opt_ PVOID ctx, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PQWORD pe, _Out_writes_(cbLineLength + 1) LPSTR szu8)
+VOID MSearch_ReadLine_CB(_In_ VMM_HANDLE H, _Inout_opt_ PVOID ctx, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PQWORD pe, _Out_writes_(cbLineLength + 1) LPSTR szu8)
 {
-    Util_usnprintf_ln(szu8, cbLineLength, ctxVmm->f32 ? "%08x" : "%016llx", *pe);
+    Util_usnprintf_ln(szu8, cbLineLength, H->vmm.f32 ? "%08x" : "%016llx", *pe);
 }
 
 /*
 * Read : function as specified by the module manager. The module manager will
 * call into this callback function whenever a read shall occur from a "file".
-* -- ctx
+* -- H
+* -- ctxP
 * -- pb
 * -- cb
 * -- pcbRead
 * -- cbOffset
 * -- return
 */
-NTSTATUS MSearch_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MSearch_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PMOB_SEARCH_CONTEXT pObCtx = NULL;
-    if(!(pObCtx = MSearch_ContextGet(ctxP))) { return VMMDLL_STATUS_FILE_INVALID; }
+    if(!(pObCtx = MSearch_ContextGet(H, ctxP))) { return VMMDLL_STATUS_FILE_INVALID; }
     if(!_stricmp(ctxP->uszPath, "readme.txt")) {
         nt = Util_VfsReadFile_FromStrA(szSEARCH_README, pb, cb, pcbRead, cbOffset);
     } else if(!_stricmp(ctxP->uszPath, "addr-max.txt")) {
-        nt = ctxVmm->f32 ?
+        nt = H->vmm.f32 ?
             Util_VfsReadFile_FromDWORD((DWORD)pObCtx->sctx.vaMax, pb, cb, pcbRead, cbOffset, FALSE) :
             Util_VfsReadFile_FromQWORD((QWORD)pObCtx->sctx.vaMax, pb, cb, pcbRead, cbOffset, FALSE);
     } else if(!_stricmp(ctxP->uszPath, "addr-min.txt")) {
-        nt = ctxVmm->f32 ?
+        nt = H->vmm.f32 ?
             Util_VfsReadFile_FromDWORD((DWORD)pObCtx->sctx.vaMin, pb, cb, pcbRead, cbOffset, FALSE) :
             Util_VfsReadFile_FromQWORD((QWORD)pObCtx->sctx.vaMin, pb, cb, pcbRead, cbOffset, FALSE);
     } else if(!_stricmp(ctxP->uszPath, "align.txt")) {
@@ -287,7 +287,7 @@ NTSTATUS MSearch_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcb
         nt = VMMDLL_STATUS_END_OF_FILE;
         if(pObCtx->pObDataResult) {
             nt = Util_VfsLineFixed_Read(
-                (UTIL_VFSLINEFIXED_PFN_CB)MSearch_ReadLine_CB, NULL, ctxVmm->f32 ? 9 : 17, NULL,
+                H, (UTIL_VFSLINEFIXED_PFN_CB)MSearch_ReadLine_CB, NULL, H->vmm.f32 ? 9 : 17, NULL,
                 pObCtx->pObDataResult->pqw, pObCtx->pObDataResult->ObHdr.cbData / sizeof(QWORD), sizeof(QWORD),
                 pb, cb, pcbRead, cbOffset
             );
@@ -307,22 +307,23 @@ NTSTATUS MSearch_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcb
 * List : function as specified by the module manager. The module manager will
 * call into this callback function whenever a list directory shall occur from
 * the given module.
-* -- ctx
+* -- H
+* -- ctxP
 * -- pFileList
 * -- return
 */
-BOOL MSearch_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList)
+BOOL MSearch_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList)
 {
     DWORD cbResult = 0;
     PMOB_SEARCH_CONTEXT pObCtx = NULL;
     if(ctxP->uszPath[0]) { return FALSE; }
-    if(!(pObCtx = MSearch_ContextGet(ctxP))) { return FALSE; }
-    VMMDLL_VfsList_AddFile(pFileList, "addr-max.txt", ctxVmm->f32 ? 8 : 16, NULL);
-    VMMDLL_VfsList_AddFile(pFileList, "addr-min.txt", ctxVmm->f32 ? 8 : 16, NULL);
+    if(!(pObCtx = MSearch_ContextGet(H, ctxP))) { return FALSE; }
+    VMMDLL_VfsList_AddFile(pFileList, "addr-max.txt", H->vmm.f32 ? 8 : 16, NULL);
+    VMMDLL_VfsList_AddFile(pFileList, "addr-min.txt", H->vmm.f32 ? 8 : 16, NULL);
     VMMDLL_VfsList_AddFile(pFileList, "align.txt", 3, NULL);
     VMMDLL_VfsList_AddFile(pFileList, "readme.txt", strlen(szSEARCH_README), NULL);
     VMMDLL_VfsList_AddFile(pFileList, "reset.txt", 1, NULL);
-    cbResult = pObCtx->pObDataResult ? ((ctxVmm->f32 ? 9ULL : 17ULL) * pObCtx->pObDataResult->ObHdr.cbData / sizeof(QWORD)) : 0;
+    cbResult = pObCtx->pObDataResult ? ((H->vmm.f32 ? 9ULL : 17ULL) * pObCtx->pObDataResult->ObHdr.cbData / sizeof(QWORD)) : 0;
     VMMDLL_VfsList_AddFile(pFileList, "result.txt", cbResult, NULL);
     VMMDLL_VfsList_AddFile(pFileList, "search.txt", pObCtx->sctx.search[0].cb * 2ULL, NULL);
     VMMDLL_VfsList_AddFile(pFileList, "search-skip-bitmask.txt", pObCtx->sctx.search[0].cb * 2ULL, NULL);
@@ -333,7 +334,7 @@ BOOL MSearch_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList)
     return TRUE;
 }
 
-VOID MSearch_Close(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
+VOID MSearch_Close(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
 {
     Ob_DECREF(ctxP->ctxM);
 }
@@ -344,12 +345,13 @@ VOID MSearch_Close(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
 * shall call the supplied pfnPluginManager_Register function.
 * NB! the module does not have to register itself - for example if the target
 * operating system or architecture is unsupported.
+* -- H
 * -- pRI
 */
-VOID M_Search_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
+VOID M_Search_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
-    if(!(pRI->reg_info.ctxM = (PVMMDLL_PLUGIN_INTERNAL_CONTEXT)ObMap_New(OB_MAP_FLAGS_OBJECT_OB))) { return; }
+    if(!(pRI->reg_info.ctxM = (PVMMDLL_PLUGIN_INTERNAL_CONTEXT)ObMap_New(H, OB_MAP_FLAGS_OBJECT_OB))) { return; }
     pRI->reg_fn.pfnList = MSearch_List;                             // List function supported
     pRI->reg_fn.pfnRead = MSearch_Read;                             // Read function supported
     pRI->reg_fn.pfnWrite = MSearch_Write;                           // Write function supported
@@ -357,11 +359,11 @@ VOID M_Search_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     strcpy_s(pRI->reg_info.uszPathName, 128, "\\search");
     pRI->reg_info.fRootModule = FALSE;
     pRI->reg_info.fProcessModule = TRUE;
-    pRI->pfnPluginManager_Register(pRI);
+    pRI->pfnPluginManager_Register(H, pRI);
     // register root plugin (physical memory search)
     pRI->reg_fn.pfnClose = MSearch_Close;                           // Close function supported (but should only be called once on unload so put it here...)
     strcpy_s(pRI->reg_info.uszPathName, 128, "\\misc\\search");
     pRI->reg_info.fRootModule = TRUE;
     pRI->reg_info.fProcessModule = FALSE;
-    pRI->pfnPluginManager_Register(pRI);
+    pRI->pfnPluginManager_Register(H, pRI);
 }

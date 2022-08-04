@@ -10,7 +10,7 @@
 //-----------------------------------------------------------------------------
 
 // ([DWORD], (DWORD)) -> [{...}]
-PyObject* VmmPyc_MemReadScatter(_In_ DWORD dwPID, _In_ LPSTR szFN, PyObject *args)
+PyObject* VmmPyc_MemReadScatter(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ LPSTR szFN, PyObject *args)
 {
     PyObject *pyListSrc, *pyListItemSrc, *pyListDst, *pyDict;
     BOOL result;
@@ -37,7 +37,7 @@ PyObject* VmmPyc_MemReadScatter(_In_ DWORD dwPID, _In_ LPSTR szFN, PyObject *arg
     }
     // call c-dll for vmm
     Py_BEGIN_ALLOW_THREADS;
-    result = VMMDLL_MemReadScatter(dwPID, ppMEMs, cMEMs, flags);
+    result = VMMDLL_MemReadScatter(H, dwPID, ppMEMs, cMEMs, flags);
     Py_END_ALLOW_THREADS;
     if(!result) {
         LcMemFree(ppMEMs);
@@ -62,7 +62,7 @@ PyObject* VmmPyc_MemReadScatter(_In_ DWORD dwPID, _In_ LPSTR szFN, PyObject *arg
 }
 
 // (ULONG64, DWORD, (ULONG64)) -> PBYTE
-PyObject* VmmPyc_MemRead(_In_ DWORD dwPID, _In_ LPSTR szFN, PyObject *args)
+PyObject* VmmPyc_MemRead(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ LPSTR szFN, PyObject *args)
 {
     PyObject *pyBytes;
     BOOL result;
@@ -75,7 +75,7 @@ PyObject* VmmPyc_MemRead(_In_ DWORD dwPID, _In_ LPSTR szFN, PyObject *args)
     pb = LocalAlloc(0, cb);
     if(!pb) { return PyErr_NoMemory(); }
     Py_BEGIN_ALLOW_THREADS;
-    result = VMMDLL_MemReadEx(dwPID, qwA, pb, cb, &cbRead, flags);
+    result = VMMDLL_MemReadEx(H, dwPID, qwA, pb, cb, &cbRead, flags);
     Py_END_ALLOW_THREADS;
     if(!result) {
         LocalFree(pb);
@@ -87,7 +87,7 @@ PyObject* VmmPyc_MemRead(_In_ DWORD dwPID, _In_ LPSTR szFN, PyObject *args)
 }
 
 // (ULONG64, PBYTE) -> None
-PyObject* VmmPyc_MemWrite(_In_ DWORD dwPID, _In_ LPSTR szFN, PyObject *args)
+PyObject* VmmPyc_MemWrite(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ LPSTR szFN, PyObject *args)
 {
     BOOL result;
     ULONG64 va;
@@ -100,7 +100,7 @@ PyObject* VmmPyc_MemWrite(_In_ DWORD dwPID, _In_ LPSTR szFN, PyObject *args)
         return Py_BuildValue("s", NULL);    // zero-byte write is always successful.
     }
     Py_BEGIN_ALLOW_THREADS;
-    result = VMMDLL_MemWrite(dwPID, va, pb, (DWORD)cb);
+    result = VMMDLL_MemWrite(H, dwPID, va, pb, (DWORD)cb);
     Py_END_ALLOW_THREADS;
     if(!result) { return PyErr_Format(PyExc_RuntimeError, "%s: Failed.", szFN); }
     return Py_BuildValue("s", NULL);    // None returned on success.

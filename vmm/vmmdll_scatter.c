@@ -32,6 +32,7 @@ typedef struct tdSCATTER_RANGE_WRITE {
 typedef struct tdSCATTER_CONTEXT {
     QWORD qwMagic;
     SRWLOCK LockSRW;
+    VMM_HANDLE H;
     DWORD dwReadFlags;
     BOOL fExecute;          // read/write is already executed
     DWORD dwPID;
@@ -395,7 +396,7 @@ BOOL VMMDLL_Scatter_ExecuteReadInternal(_In_ PSCATTER_CONTEXT ctx)
         }
     }
     // read scatter
-    VMMDLL_MemReadScatter(ctx->dwPID, ppMEMs, ctx->cPageTotal, ctx->dwReadFlags | VMMDLL_FLAG_NO_PREDICTIVE_READ);
+    VMMDLL_MemReadScatter(ctx->H, ctx->dwPID, ppMEMs, ctx->cPageTotal, ctx->dwReadFlags | VMMDLL_FLAG_NO_PREDICTIVE_READ);
     ctx->fExecute = TRUE;
     // range fixup (if required)
     pRange = ctx->pRanges;
@@ -458,7 +459,7 @@ BOOL VMMDLL_Scatter_ExecuteWriteInternal(_In_ PSCATTER_CONTEXT ctx)
     }
     if(cb || pRange) { goto fail; }     // leftover data should not happen!
     // write scatter
-    VMMDLL_MemWriteScatter(ctx->dwPID, ppMEMs, cMEMs);
+    VMMDLL_MemWriteScatter(ctx->H, ctx->dwPID, ppMEMs, cMEMs);
     // finish
     LocalFree(pbBuffer);
     return TRUE;
@@ -508,19 +509,21 @@ BOOL VMMDLL_Scatter_Execute(_In_ VMMDLL_SCATTER_HANDLE hS)
 /*
 * Initialize a scatter handle which is used to call VMMDLL_Scatter_* functions.
 * CALLER CLOSE: VMMDLL_Scatter_CloseHandle(return)
+* -- H
 * -- dwPID - PID of target process, (DWORD)-1 to read physical memory.
 * -- flags = optional flags as given by VMMDLL_FLAG_*
 * -- return = handle to be used in VMMDLL_Scatter_* functions.
 */
 _Success_(return != NULL)
-VMMDLL_SCATTER_HANDLE VMMDLL_Scatter_Initialize(_In_ DWORD dwPID, _In_ DWORD flags)
+VMMDLL_SCATTER_HANDLE VMMDLL_Scatter_Initialize(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ DWORD flags)
 {
     PSCATTER_CONTEXT ctx = NULL;
     if(!(ctx = LocalAlloc(LMEM_ZEROINIT, sizeof(SCATTER_CONTEXT)))) { goto fail; }
     ctx->qwMagic = SCATTER_CONTEXT_MAGIC;
+    ctx->H = H;
     ctx->dwPID = dwPID;
     ctx->dwReadFlags = flags;
-    if(!(ctx->pmMEMs = ObMap_New(OB_MAP_FLAGS_OBJECT_VOID))) { goto fail; }
+    if(!(ctx->pmMEMs = ObMap_New(NULL, OB_MAP_FLAGS_OBJECT_VOID))) { goto fail; }
     return ctx;
 fail:
     VMMDLL_Scatter_CloseHandle((VMMDLL_SCATTER_HANDLE)ctx);

@@ -8,13 +8,13 @@
 #include "vmm.h"
 #include "pe.h"
 
-PIMAGE_NT_HEADERS PE_HeaderGetVerify(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _Inout_ PBYTE pbModuleHeader, _Out_opt_ PBOOL pfHdr32)
+PIMAGE_NT_HEADERS PE_HeaderGetVerify(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _Inout_ PBYTE pbModuleHeader, _Out_opt_ PBOOL pfHdr32)
 {
     PIMAGE_DOS_HEADER dosHeader;
     PIMAGE_NT_HEADERS ntHeader;
     if(pfHdr32) { *pfHdr32 = FALSE; }
     if(vaModuleBase) {
-        if(!VmmReadPage(pProcess, vaModuleBase, pbModuleHeader)) { return NULL; }
+        if(!VmmReadPage(H, pProcess, vaModuleBase, pbModuleHeader)) { return NULL; }
     }
     dosHeader = (PIMAGE_DOS_HEADER)pbModuleHeader; // dos header.
     if(!dosHeader || dosHeader->e_magic != IMAGE_DOS_SIGNATURE) { return NULL; }
@@ -26,13 +26,13 @@ PIMAGE_NT_HEADERS PE_HeaderGetVerify(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD 
     return ntHeader;
 }
 
-QWORD PE_GetSize(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase)
+QWORD PE_GetSize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase)
 {
     BYTE pbHeader[0x1000] = { 0 };
     PIMAGE_NT_HEADERS ntHeader;
     DWORD cbSize;
     BOOL f32;
-    ntHeader = PE_HeaderGetVerify(pProcess, vaModuleBase, pbHeader, &f32);
+    ntHeader = PE_HeaderGetVerify(H, pProcess, vaModuleBase, pbHeader, &f32);
     if(!ntHeader) { return 0; }
     cbSize = f32 ?
         ((PIMAGE_NT_HEADERS32)ntHeader)->OptionalHeader.SizeOfImage :
@@ -42,13 +42,13 @@ QWORD PE_GetSize(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase)
 }
 
 _Success_(return)
-BOOL PE_GetTimeDateStampCheckSum(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _Out_opt_ PDWORD pdwTimeDateStamp, _Out_opt_ PDWORD pdwCheckSum)
+BOOL PE_GetTimeDateStampCheckSum(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _Out_opt_ PDWORD pdwTimeDateStamp, _Out_opt_ PDWORD pdwCheckSum)
 {
     BYTE pbHeader[0x1000] = { 0 };
     PIMAGE_NT_HEADERS ntHeader;
     BOOL f32;
     DWORD dwTimeDateStamp, dwCheckSum;
-    ntHeader = PE_HeaderGetVerify(pProcess, vaModuleBase, pbHeader, &f32);
+    ntHeader = PE_HeaderGetVerify(H, pProcess, vaModuleBase, pbHeader, &f32);
     if(!ntHeader) { return FALSE; }
     if(f32) {
         dwCheckSum = ((PIMAGE_NT_HEADERS32)ntHeader)->OptionalHeader.CheckSum;
@@ -63,7 +63,7 @@ BOOL PE_GetTimeDateStampCheckSum(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaMo
 }
 
 _Success_(return)
-BOOL PE_GetThunkInfoIAT(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ LPSTR szImportModuleName, _In_ LPSTR szImportProcName, _Out_ PPE_THUNKINFO_IAT pThunkInfoIAT)
+BOOL PE_GetThunkInfoIAT(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ LPSTR szImportModuleName, _In_ LPSTR szImportProcName, _Out_ PPE_THUNKINFO_IAT pThunkInfoIAT)
 {
     BYTE pbModuleHeader[0x1000] = { 0 };
     PIMAGE_NT_HEADERS64 ntHeader64;
@@ -78,7 +78,7 @@ BOOL PE_GetThunkInfoIAT(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In
     DWORD c, j;
     LPSTR szNameFunction, szNameModule;
     // load both 32/64 bit ntHeader (only one will be valid)
-    if(!(ntHeader64 = (PIMAGE_NT_HEADERS64)PE_HeaderGetVerify(pProcess, vaModuleBase, pbModuleHeader, &f32))) { goto fail; }
+    if(!(ntHeader64 = (PIMAGE_NT_HEADERS64)PE_HeaderGetVerify(H, pProcess, vaModuleBase, pbModuleHeader, &f32))) { goto fail; }
     ntHeader32 = (PIMAGE_NT_HEADERS32)ntHeader64;
     cbModule = f32 ?
         ntHeader32->OptionalHeader.SizeOfImage :
@@ -89,7 +89,7 @@ BOOL PE_GetThunkInfoIAT(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In
         ntHeader64->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress;
     if(!oImportDirectory || (oImportDirectory >= cbModule)) { goto fail;  }
     if(!(pbModule = LocalAlloc(LMEM_ZEROINIT, cbModule))) { goto fail; }
-    VmmReadEx(pProcess, vaModuleBase, pbModule, cbModule, &cbRead, VMM_FLAG_ZEROPAD_ON_FAIL);
+    VmmReadEx(H, pProcess, vaModuleBase, pbModule, cbModule, &cbRead, VMM_FLAG_ZEROPAD_ON_FAIL);
     if(cbRead <= 0x2000) { goto fail; }
     // Walk imported modules / functions
     pIID = (PIMAGE_IMPORT_DESCRIPTOR)(pbModule + oImportDirectory);
@@ -157,7 +157,7 @@ fail:
 }
 
 _Success_(return)
-BOOL PE_GetThunkInfoEAT(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ LPSTR szProcName, _Out_ PPE_THUNKINFO_EAT pThunkInfoEAT)
+BOOL PE_GetThunkInfoEAT(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ LPSTR szProcName, _Out_ PPE_THUNKINFO_EAT pThunkInfoEAT)
 {
     BYTE pbModuleHeader[0x1000] = { 0 };
     PIMAGE_NT_HEADERS32 ntHeader32;
@@ -171,7 +171,7 @@ BOOL PE_GetThunkInfoEAT(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In
     PBYTE pbExportDirectory = NULL;
     QWORD vaRVAAddrNames, vaNameOrdinals, vaRVAAddrFunctions;
     BOOL f32;
-    if(!(ntHeader64 = (PIMAGE_NT_HEADERS64)PE_HeaderGetVerify(pProcess, vaModuleBase, pbModuleHeader, &f32))) { goto cleanup; }
+    if(!(ntHeader64 = (PIMAGE_NT_HEADERS64)PE_HeaderGetVerify(H, pProcess, vaModuleBase, pbModuleHeader, &f32))) { goto cleanup; }
     if(f32) { // 32-bit PE
         ntHeader32 = (PIMAGE_NT_HEADERS32)ntHeader64;
         vaExportDirectory = vaModuleBase + ntHeader32->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress;
@@ -182,7 +182,7 @@ BOOL PE_GetThunkInfoEAT(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In
     }
     if((cbExportDirectory < sizeof(IMAGE_EXPORT_DIRECTORY)) || (cbExportDirectory > 0x01000000) || (vaExportDirectory == vaModuleBase) || (vaExportDirectory > vaModuleBase + 0x80000000)) { goto cleanup; }
     if(!(pbExportDirectory = LocalAlloc(0, cbExportDirectory))) { goto cleanup; }
-    VmmReadEx(pProcess, vaExportDirectory, pbExportDirectory, cbExportDirectory, &cbRead, VMM_FLAG_ZEROPAD_ON_FAIL);
+    VmmReadEx(H, pProcess, vaExportDirectory, pbExportDirectory, cbExportDirectory, &cbRead, VMM_FLAG_ZEROPAD_ON_FAIL);
     if(!cbRead) { goto cleanup; }
     PIMAGE_EXPORT_DIRECTORY exp = (PIMAGE_EXPORT_DIRECTORY)pbExportDirectory;
     if(!exp || !exp->NumberOfNames || !exp->AddressOfNames) { goto cleanup; }
@@ -216,41 +216,41 @@ cleanup:
     return FALSE;
 }
 
-QWORD PE_GetProcAddress(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ LPSTR lpProcName)
+QWORD PE_GetProcAddress(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ LPSTR lpProcName)
 {
     PE_THUNKINFO_EAT oThunkInfoEAT = { 0 };
-    PE_GetThunkInfoEAT(pProcess, vaModuleBase, lpProcName, &oThunkInfoEAT);
+    PE_GetThunkInfoEAT(H, pProcess, vaModuleBase, lpProcName, &oThunkInfoEAT);
     return oThunkInfoEAT.vaFunction;
 }
 
-WORD PE_SectionGetNumberOfEx(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt)
+WORD PE_SectionGetNumberOfEx(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt)
 {
     BOOL f32;
     BYTE pbModuleHeader[0x1000] = { 0 };
     WORD cSections;
     PIMAGE_NT_HEADERS ntHeader;
     // load nt header either by using optionally supplied module header or by fetching from memory.
-    ntHeader = pbModuleHeaderOpt ? PE_HeaderGetVerify(pProcess, 0, pbModuleHeaderOpt, &f32) : PE_HeaderGetVerify(pProcess, vaModuleBase, pbModuleHeader, &f32);
+    ntHeader = pbModuleHeaderOpt ? PE_HeaderGetVerify(H, pProcess, 0, pbModuleHeaderOpt, &f32) : PE_HeaderGetVerify(H, pProcess, vaModuleBase, pbModuleHeader, &f32);
     if(!ntHeader) { return 0; }
     cSections = f32 ? ((PIMAGE_NT_HEADERS32)ntHeader)->FileHeader.NumberOfSections : ((PIMAGE_NT_HEADERS64)ntHeader)->FileHeader.NumberOfSections;
     if(cSections > 0x40) { return 0; }
     return cSections;
 }
 
-WORD PE_SectionGetNumberOf(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase)
+WORD PE_SectionGetNumberOf(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase)
 {
-    return PE_SectionGetNumberOfEx(pProcess, vaModuleBase, NULL);
+    return PE_SectionGetNumberOfEx(H, pProcess, vaModuleBase, NULL);
 }
 
 _Success_(return)
-BOOL PE_SectionGetAll(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ DWORD cSections, _Out_writes_(cSections) PIMAGE_SECTION_HEADER pSections)
+BOOL PE_SectionGetAll(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ DWORD cSections, _Out_writes_(cSections) PIMAGE_SECTION_HEADER pSections)
 {
     BOOL f32;
     BYTE pbModuleHeader[0x1000] = { 0 };
     PIMAGE_NT_HEADERS ntHeader;
     PIMAGE_SECTION_HEADER pSectionBase;
     DWORD cSectionsHdr;
-    if(!(ntHeader = PE_HeaderGetVerify(pProcess, vaModuleBase, pbModuleHeader, &f32))) { return FALSE; }
+    if(!(ntHeader = PE_HeaderGetVerify(H, pProcess, vaModuleBase, pbModuleHeader, &f32))) { return FALSE; }
     pSectionBase = f32 ?
         (PIMAGE_SECTION_HEADER)((QWORD)ntHeader + sizeof(IMAGE_NT_HEADERS32)) :
         (PIMAGE_SECTION_HEADER)((QWORD)ntHeader + sizeof(IMAGE_NT_HEADERS64));
@@ -262,14 +262,14 @@ BOOL PE_SectionGetAll(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ 
 }
 
 _Success_(return)
-BOOL PE_SectionGetFromName(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ LPSTR szSectionName, _Out_ PIMAGE_SECTION_HEADER pSection)
+BOOL PE_SectionGetFromName(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ LPSTR szSectionName, _Out_ PIMAGE_SECTION_HEADER pSection)
 {
     BOOL f32;
     BYTE pbModuleHeader[0x1000] = { 0 };
     PIMAGE_NT_HEADERS ntHeader;
     PIMAGE_SECTION_HEADER pSectionBase;
     DWORD i, cSections;
-    if(!(ntHeader = PE_HeaderGetVerify(pProcess, vaModuleBase, pbModuleHeader, &f32))) { return FALSE; }
+    if(!(ntHeader = PE_HeaderGetVerify(H, pProcess, vaModuleBase, pbModuleHeader, &f32))) { return FALSE; }
     pSectionBase = f32 ?
         (PIMAGE_SECTION_HEADER)((QWORD)ntHeader + sizeof(IMAGE_NT_HEADERS32)) :
         (PIMAGE_SECTION_HEADER)((QWORD)ntHeader + sizeof(IMAGE_NT_HEADERS64));
@@ -290,14 +290,14 @@ BOOL PE_SectionGetFromName(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, 
     return FALSE;
 }
 
-DWORD PE_IatGetNumberOfEx(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt)
+DWORD PE_IatGetNumberOfEx(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt)
 {
     BOOL f32;
     BYTE pbModuleHeader[0x1000] = { 0 };
     PIMAGE_NT_HEADERS ntHeader;
     DWORD cbImportDirectory, cbImportAddressTable, cIatEntries, cModules;
     // load nt header either by using optionally supplied module header or by fetching from memory.
-    ntHeader = pbModuleHeaderOpt ? PE_HeaderGetVerify(pProcess, 0, pbModuleHeaderOpt, &f32) : PE_HeaderGetVerify(pProcess, vaModuleBase, pbModuleHeader, &f32);
+    ntHeader = pbModuleHeaderOpt ? PE_HeaderGetVerify(H, pProcess, 0, pbModuleHeaderOpt, &f32) : PE_HeaderGetVerify(H, pProcess, vaModuleBase, pbModuleHeader, &f32);
     if(!ntHeader) { return 0; }
     // Calculate the number of functions in the import address table (IAT).
     // Number of functions = # IAT entries - # Imported modules
@@ -312,7 +312,7 @@ DWORD PE_IatGetNumberOfEx(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBas
     return cIatEntries - min(cIatEntries, cModules);
 }
 
-DWORD PE_EatGetNumberOfEx(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt)
+DWORD PE_EatGetNumberOfEx(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt)
 {
     BOOL f32;
     BYTE pbModuleHeader[0x1000] = { 0 };
@@ -321,21 +321,21 @@ DWORD PE_EatGetNumberOfEx(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBas
     IMAGE_EXPORT_DIRECTORY hdrExportDirectory;
     // load both 32/64 bit ntHeader unless already supplied in parameter (only one of 32/64 bit hdr will be valid)
     // load nt header either by using optionally supplied module header or by fetching from memory.
-    ntHeader = pbModuleHeaderOpt ? PE_HeaderGetVerify(pProcess, 0, pbModuleHeaderOpt, &f32) : PE_HeaderGetVerify(pProcess, vaModuleBase, pbModuleHeader, &f32);
+    ntHeader = pbModuleHeaderOpt ? PE_HeaderGetVerify(H, pProcess, 0, pbModuleHeaderOpt, &f32) : PE_HeaderGetVerify(H, pProcess, vaModuleBase, pbModuleHeader, &f32);
     if(!ntHeader) { return 0; }
     // Calculate the number of functions in the export address table (EAT).
     va = f32 ?
         ((PIMAGE_NT_HEADERS32)ntHeader)->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress :
         ((PIMAGE_NT_HEADERS64)ntHeader)->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress;
     vaExportDirectory = va ? vaModuleBase + va : 0;
-    if(vaExportDirectory && VmmRead(pProcess, vaExportDirectory, (PBYTE)&hdrExportDirectory, sizeof(IMAGE_EXPORT_DIRECTORY)) && (hdrExportDirectory.NumberOfFunctions < 0x00010000)) {
+    if(vaExportDirectory && VmmRead(H, pProcess, vaExportDirectory, (PBYTE)&hdrExportDirectory, sizeof(IMAGE_EXPORT_DIRECTORY)) && (hdrExportDirectory.NumberOfFunctions < 0x00010000)) {
         return hdrExportDirectory.NumberOfFunctions;
     }
     return 0;
 }
 
 _Success_(return)
-BOOL PE_GetModuleNameEx(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ BOOL fOnFailDummyName, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt, _Out_writes_(cszModuleName) PCHAR szModuleName, _In_ DWORD cszModuleName, _Out_opt_ PDWORD pdwSize)
+BOOL PE_GetModuleNameEx(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ BOOL fOnFailDummyName, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt, _Out_writes_(cszModuleName) PCHAR szModuleName, _In_ DWORD cszModuleName, _Out_opt_ PDWORD pdwSize)
 {
     BOOL f32;
     BYTE pbModuleHeader[0x1000] = { 0 };
@@ -348,7 +348,7 @@ BOOL PE_GetModuleNameEx(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In
     BYTE pbExportDirectory[sizeof(IMAGE_EXPORT_DIRECTORY)];
     // load both 32/64 bit ntHeader unless already supplied in parameter (only one of 32/64 bit hdr will be valid)
     // load nt header either by using optionally supplied module header or by fetching from memory.
-    ntHeader = pbModuleHeaderOpt ? PE_HeaderGetVerify(pProcess, 0, pbModuleHeaderOpt, &f32) : PE_HeaderGetVerify(pProcess, vaModuleBase, pbModuleHeader, &f32);
+    ntHeader = pbModuleHeaderOpt ? PE_HeaderGetVerify(H, pProcess, 0, pbModuleHeaderOpt, &f32) : PE_HeaderGetVerify(H, pProcess, vaModuleBase, pbModuleHeader, &f32);
     if(!ntHeader) { return FALSE; }
     if(!f32) { // 64-bit PE
         ntHeader64 = (PIMAGE_NT_HEADERS64)ntHeader;
@@ -364,11 +364,11 @@ BOOL PE_GetModuleNameEx(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In
         cbImageSize = ntHeader32->OptionalHeader.SizeOfImage;
     }
     if((cbExportDirectory < sizeof(IMAGE_EXPORT_DIRECTORY)) || (vaExportDirectory == vaModuleBase) || (cbExportDirectory > cbImageSize)) { goto fail; }
-    if(!VmmRead(pProcess, vaExportDirectory, pbExportDirectory, sizeof(IMAGE_EXPORT_DIRECTORY))) { goto fail; }
+    if(!VmmRead(H, pProcess, vaExportDirectory, pbExportDirectory, sizeof(IMAGE_EXPORT_DIRECTORY))) { goto fail; }
     exp = (PIMAGE_EXPORT_DIRECTORY)pbExportDirectory;
     if(!exp || !exp->Name || exp->Name > cbImageSize) { goto fail; }
     szModuleName[cszModuleName - 1] = 0;
-    if(!VmmRead(pProcess, vaModuleBase + exp->Name, szModuleName, cszModuleName - 1)) { goto fail; }
+    if(!VmmRead(H, pProcess, vaModuleBase + exp->Name, szModuleName, cszModuleName - 1)) { goto fail; }
     return TRUE;
 fail:
     if(fOnFailDummyName) {
@@ -379,19 +379,19 @@ fail:
 }
 
 _Success_(return)
-BOOL PE_GetModuleName(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _Out_writes_(cszModuleName) PCHAR szModuleName, _In_ DWORD cszModuleName)
+BOOL PE_GetModuleName(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _Out_writes_(cszModuleName) PCHAR szModuleName, _In_ DWORD cszModuleName)
 {
-    return PE_GetModuleNameEx(pProcess, vaModuleBase, FALSE, NULL, szModuleName, cszModuleName, NULL);
+    return PE_GetModuleNameEx(H, pProcess, vaModuleBase, FALSE, NULL, szModuleName, cszModuleName, NULL);
 }
 
-DWORD PE_DirectoryGetOffset(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt, _In_ DWORD dwDirectory)
+DWORD PE_DirectoryGetOffset(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt, _In_ DWORD dwDirectory)
 {
     BOOL f32;
     PIMAGE_NT_HEADERS ntHeader;
     BYTE pbModuleHeader[0x1000] = { 0 };
     // load both 32/64 bit ntHeader unless already supplied in parameter (only one of 32/64 bit hdr will be valid)
     // load nt header either by using optionally supplied module header or by fetching from memory.
-    ntHeader = pbModuleHeaderOpt ? PE_HeaderGetVerify(pProcess, 0, pbModuleHeaderOpt, &f32) : PE_HeaderGetVerify(pProcess, vaModuleBase, pbModuleHeader, &f32);
+    ntHeader = pbModuleHeaderOpt ? PE_HeaderGetVerify(H, pProcess, 0, pbModuleHeaderOpt, &f32) : PE_HeaderGetVerify(H, pProcess, vaModuleBase, pbModuleHeader, &f32);
     if(!ntHeader) { return 0; }
     return f32 ?
         ((PIMAGE_NT_HEADERS32)ntHeader)->OptionalHeader.DataDirectory[dwDirectory].VirtualAddress :
@@ -399,14 +399,14 @@ DWORD PE_DirectoryGetOffset(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleB
 }
 
 _Success_(return)
-BOOL PE_DirectoryGetAll(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt, _Out_writes_(IMAGE_NUMBEROF_DIRECTORY_ENTRIES) PIMAGE_DATA_DIRECTORY pDirectories)
+BOOL PE_DirectoryGetAll(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt, _Out_writes_(IMAGE_NUMBEROF_DIRECTORY_ENTRIES) PIMAGE_DATA_DIRECTORY pDirectories)
 {
     BOOL f32;
     PIMAGE_NT_HEADERS ntHeader;
     BYTE pbModuleHeader[0x1000] = { 0 };
     // load both 32/64 bit ntHeader unless already supplied in parameter (only one of 32/64 bit hdr will be valid)
     // load nt header either by using optionally supplied module header or by fetching from memory.
-    ntHeader = pbModuleHeaderOpt ? PE_HeaderGetVerify(pProcess, 0, pbModuleHeaderOpt, &f32) : PE_HeaderGetVerify(pProcess, vaModuleBase, pbModuleHeader, &f32);
+    ntHeader = pbModuleHeaderOpt ? PE_HeaderGetVerify(H, pProcess, 0, pbModuleHeaderOpt, &f32) : PE_HeaderGetVerify(H, pProcess, vaModuleBase, pbModuleHeader, &f32);
     if(!ntHeader) { return FALSE; }
     if(f32) {
         memcpy(pDirectories, ((PIMAGE_NT_HEADERS32)ntHeader)->OptionalHeader.DataDirectory, IMAGE_NUMBEROF_DIRECTORY_ENTRIES * sizeof(IMAGE_DATA_DIRECTORY));
@@ -417,7 +417,7 @@ BOOL PE_DirectoryGetAll(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase,
 }
 
 _Success_(return)
-BOOL PE_GetCodeViewInfo(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt, _Out_ PPE_CODEVIEW_INFO pCodeViewInfo)
+BOOL PE_GetCodeViewInfo(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt, _Out_ PPE_CODEVIEW_INFO pCodeViewInfo)
 {
     BOOL f, f32;
     BYTE pbModuleHeader[0x1000] = { 0 };
@@ -431,7 +431,7 @@ BOOL PE_GetCodeViewInfo(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase,
     ZeroMemory(pCodeViewInfo, sizeof(PE_CODEVIEW_INFO));
     // load both 32/64 bit ntHeader unless already supplied in parameter (only one of 32/64 bit hdr will be valid)
     // load nt header either by using optionally supplied module header or by fetching from memory.
-    ntHeader = pbModuleHeaderOpt ? PE_HeaderGetVerify(pProcess, 0, pbModuleHeaderOpt, &f32) : PE_HeaderGetVerify(pProcess, vaModuleBase, pbModuleHeader, &f32);
+    ntHeader = pbModuleHeaderOpt ? PE_HeaderGetVerify(H, pProcess, 0, pbModuleHeaderOpt, &f32) : PE_HeaderGetVerify(H, pProcess, vaModuleBase, pbModuleHeader, &f32);
     if(!ntHeader) { return FALSE; }
     if(!f32) { // 64-bit PE
         ntHeader64 = (PIMAGE_NT_HEADERS64)ntHeader;
@@ -446,7 +446,7 @@ BOOL PE_GetCodeViewInfo(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase,
     }
     if((cbDebugDirectory < sizeof(IMAGE_DEBUG_DIRECTORY)) || (vaDebugDirectory == vaModuleBase) || (cbDebugDirectory > cbImageSize)) { goto fail; }
     if(!(pbDebugDirectory = LocalAlloc(0, cbDebugDirectory))) { goto fail; }
-    if(!VmmRead(pProcess, vaDebugDirectory, pbDebugDirectory, cbDebugDirectory)) { goto fail; }
+    if(!VmmRead(H, pProcess, vaDebugDirectory, pbDebugDirectory, cbDebugDirectory)) { goto fail; }
     for(i = 0, iMax = cbDebugDirectory / sizeof(IMAGE_DEBUG_DIRECTORY); i < iMax; i++) {
         pDebugDirectory = ((PIMAGE_DEBUG_DIRECTORY)pbDebugDirectory) + i;
         f = !pDebugDirectory->Characteristics &&
@@ -454,7 +454,7 @@ BOOL PE_GetCodeViewInfo(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase,
             (pDebugDirectory->SizeOfData <= sizeof(PE_CODEVIEW)) &&
             (pDebugDirectory->SizeOfData > 24) &&
             (pDebugDirectory->AddressOfRawData + pDebugDirectory->SizeOfData < cbImageSize) &&
-            VmmRead(pProcess, vaModuleBase + pDebugDirectory->AddressOfRawData, (PBYTE)&pCodeViewInfo->CodeView, pDebugDirectory->SizeOfData) &&
+            VmmRead(H, pProcess, vaModuleBase + pDebugDirectory->AddressOfRawData, (PBYTE)&pCodeViewInfo->CodeView, pDebugDirectory->SizeOfData) &&
             (pCodeViewInfo->CodeView.Signature == 0x53445352) &&
             (pCodeViewInfo->SizeCodeView = pDebugDirectory->SizeOfData);
         if(f) {
@@ -490,6 +490,7 @@ typedef struct tdPE_SECTION_FILEREGIONS_RAW {
 * Retrieve the 'raw' section file regions from a PE header. The sections are
 * optionally retrieved between the cbStartOpt and cbSizeOpt address/sizes.
 * This is useful when reconstructing PE files from in-memory items.
+* -- H
 * -- pProcess
 * -- vaModuleBase = PE module base address (unless pbModuleHeaderOpt is specified)
 * -- pbModuleHaderOpt = Optional buffer containing module header (MZ) page.
@@ -499,7 +500,7 @@ typedef struct tdPE_SECTION_FILEREGIONS_RAW {
 * -- return
 */
 _Success_(return)
-BOOL PE_FileRaw_FileRegions(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt, _In_ DWORD cbFileRegionStart, _In_ DWORD cbFileRegionSize, _Out_ PPE_SECTION_FILEREGIONS_RAW pRegions)
+BOOL PE_FileRaw_FileRegions(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt, _In_ DWORD cbFileRegionStart, _In_ DWORD cbFileRegionSize, _Out_ PPE_SECTION_FILEREGIONS_RAW pRegions)
 {
     BOOL f32, fRegionInScope, fRegionInScopeAll;
     BYTE pbModuleHeader[0x1000] = { 0 };
@@ -512,7 +513,7 @@ BOOL PE_FileRaw_FileRegions(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleB
     DWORD cbFileSectionStart, cbFileSectionEnd;
     PIMAGE_SECTION_HEADER pSections, pSection;
     // 1: load nt header and section base
-    ntHeader = pbModuleHeaderOpt ? PE_HeaderGetVerify(pProcess, 0, pbModuleHeaderOpt, &f32) : PE_HeaderGetVerify(pProcess, vaModuleBase, pbModuleHeader, &f32);
+    ntHeader = pbModuleHeaderOpt ? PE_HeaderGetVerify(H, pProcess, 0, pbModuleHeaderOpt, &f32) : PE_HeaderGetVerify(H, pProcess, vaModuleBase, pbModuleHeader, &f32);
     if(!ntHeader) { return FALSE; }
     if(f32) { // 32-bit PE
         ntHeader32 = (PIMAGE_NT_HEADERS32)ntHeader;
@@ -560,7 +561,7 @@ BOOL PE_FileRaw_FileRegions(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleB
     return TRUE;
 }
 
-DWORD PE_FileRaw_Size(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt)
+DWORD PE_FileRaw_Size(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt)
 {
     BOOL f32;
     BYTE pbModuleHeader[0x1000] = { 0 };
@@ -570,7 +571,7 @@ DWORD PE_FileRaw_Size(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _
     DWORD cSections, cbModuleFile, iSection;
     PIMAGE_SECTION_HEADER pSections;
     // 1: load nt header and section base
-    ntHeader = pbModuleHeaderOpt ? PE_HeaderGetVerify(pProcess, 0, pbModuleHeaderOpt, &f32) : PE_HeaderGetVerify(pProcess, vaModuleBase, pbModuleHeader, &f32);
+    ntHeader = pbModuleHeaderOpt ? PE_HeaderGetVerify(H, pProcess, 0, pbModuleHeaderOpt, &f32) : PE_HeaderGetVerify(H, pProcess, vaModuleBase, pbModuleHeader, &f32);
     if(!ntHeader) { return FALSE; }
     if(f32) { // 32-bit PE
         ntHeader32 = (PIMAGE_NT_HEADERS32)ntHeader;
@@ -591,14 +592,14 @@ DWORD PE_FileRaw_Size(_In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _
 }
 
 _Success_(return)
-BOOL PE_FileRaw_Read(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ DWORD cbOffset)
+BOOL PE_FileRaw_Read(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ DWORD cbOffset)
 {
     BOOL result;
     DWORD iRegion;
     PE_SECTION_FILEREGIONS_RAW PERegions;
     DWORD cbOffsetBuffer, cbRead;
     *pcbRead = 0;
-    result = PE_FileRaw_FileRegions(pProcess, vaModuleBase, NULL, cbOffset, cb, &PERegions);
+    result = PE_FileRaw_FileRegions(H, pProcess, vaModuleBase, NULL, cbOffset, cb, &PERegions);
     if(!result) { return FALSE; }
     ZeroMemory(pb, cb);
     if(cbOffset + cb > PERegions.cbTotalSize) {
@@ -611,10 +612,11 @@ BOOL PE_FileRaw_Read(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _Out_ 
     for(iRegion = 0; iRegion < PERegions.cRegions; iRegion++) {
         cbOffsetBuffer = PERegions.Region[iRegion].cbOffsetFile - cbOffset;
         if(cbOffsetBuffer + PERegions.Region[iRegion].cb > cb) {
-            VmmLog(MID_PE, LOGLEVEL_WARNING, "SHOULD NOT HAPPEN! potential buffer overflow avoided reading module at PID=%i BASE=%016llx", pProcess->dwPID, vaModuleBase);
+            VmmLog(H, MID_PE, LOGLEVEL_WARNING, "SHOULD NOT HAPPEN! potential buffer overflow avoided reading module at PID=%i BASE=%016llx", pProcess->dwPID, vaModuleBase);
             continue;
         }
         VmmReadEx(
+            H,
             pProcess,
             vaModuleBase + PERegions.Region[iRegion].cbOffsetVMem,
             pb + cbOffsetBuffer,
@@ -627,13 +629,13 @@ BOOL PE_FileRaw_Read(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _Out_ 
 }
 
 _Success_(return)
-BOOL PE_FileRaw_Write(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ DWORD cbOffset)
+BOOL PE_FileRaw_Write(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ DWORD cbOffset)
 {
     BOOL result;
     DWORD iRegion, cbOffsetBuffer;
     PE_SECTION_FILEREGIONS_RAW PERegions;
     *pcbWrite = 0;
-    result = PE_FileRaw_FileRegions(pProcess, vaModuleBase, NULL, cbOffset, cb, &PERegions);
+    result = PE_FileRaw_FileRegions(H, pProcess, vaModuleBase, NULL, cbOffset, cb, &PERegions);
     if(!result) { return FALSE; }
     if(cbOffset + cb > PERegions.cbTotalSize) {
         if(cbOffset >= PERegions.cbTotalSize) {
@@ -645,10 +647,11 @@ BOOL PE_FileRaw_Write(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_r
     for(iRegion = 0; iRegion < PERegions.cRegions; iRegion++) {
         cbOffsetBuffer = PERegions.Region[iRegion].cbOffsetFile - cbOffset;
         if(cbOffsetBuffer + PERegions.Region[iRegion].cb > cb) {
-            VmmLog(MID_PE, LOGLEVEL_WARNING, "SHOULD NOT HAPPEN! potential buffer overflow avoided writing module at PID=%i BASE=%016llx", pProcess->dwPID, vaModuleBase);
+            VmmLog(H, MID_PE, LOGLEVEL_WARNING, "SHOULD NOT HAPPEN! potential buffer overflow avoided writing module at PID=%i BASE=%016llx", pProcess->dwPID, vaModuleBase);
             continue;
         }
         VmmWrite(
+            H,
             pProcess,
             vaModuleBase + PERegions.Region[iRegion].cbOffsetVMem,
             pb + cbOffsetBuffer,

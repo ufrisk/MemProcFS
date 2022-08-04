@@ -12,6 +12,7 @@
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "ob.h"
+#include <stdio.h>
 
 #define OB_MEMFILE_ENTRIES_DIRECTORY    0x200
 #define OB_MEMFILE_ENTRIES_TABLE        0x200
@@ -21,7 +22,7 @@
 #define OB_MEMFILE_INDEX_DIRECTORY(cb)  (((cb) >> 25) & 0x1ff)
 #define OB_MEMFILE_INDEX_TABLE(cb)      (((cb) >> 16) & 0x1ff)
 
-#define OB_MEMFILE_IS_VALID(p)          (p && (p->ObHdr._magic == OB_HEADER_MAGIC) && (p->ObHdr._tag == OB_TAG_CORE_MEMFILE))
+#define OB_MEMFILE_IS_VALID(p)          (p && (p->ObHdr._magic2 == OB_HEADER_MAGIC) && (p->ObHdr._magic1 == OB_HEADER_MAGIC) && (p->ObHdr._tag == OB_TAG_CORE_MEMFILE))
 
 #define NTSTATUS_SUCCESS                ((NTSTATUS)0x00000000L)
 #define NTSTATUS_END_OF_FILE            ((NTSTATUS)0xC0000011L)
@@ -31,6 +32,7 @@ typedef struct tdOB_MEMFILE {
     OB ObHdr;
     SRWLOCK LockSRW;
     QWORD cb;
+    POB_CACHEMAP pcm;
     POB_COMPRESSED* Directory[OB_MEMFILE_ENTRIES_DIRECTORY];
     POB_COMPRESSED Table0[OB_MEMFILE_ENTRIES_TABLE];
     BYTE pbBuffer[OB_MEMFILE_BUFSIZE];
@@ -68,6 +70,7 @@ VOID _ObMemFile_ObCloseCallback(_In_ POB_MEMFILE pmf)
     for(i = 1; i < OB_MEMFILE_ENTRIES_DIRECTORY && pmf->Directory[i]; i++) {
         LocalFree(pmf->Directory[i]);
     }
+    Ob_DECREF(pmf->pcm);
 }
 
 _Success_(return == 0)
@@ -129,7 +132,7 @@ BOOL _ObMemFile_Compress(_In_ POB_MEMFILE pmf)
         pmf->Directory[iDirectory] = LocalAlloc(LMEM_ZEROINIT, OB_MEMFILE_ENTRIES_TABLE * sizeof(POB_COMPRESSED));
         if(!pmf->Directory[iDirectory]) { goto fail; }
     }
-    pmf->Directory[iDirectory][iTable] = ObCompressed_NewFromByte(pmf->pbBuffer, OB_MEMFILE_BUFSIZE);
+    pmf->Directory[iDirectory][iTable] = ObCompressed_NewFromByte(pmf->ObHdr.H, pmf->pcm, pmf->pbBuffer, OB_MEMFILE_BUFSIZE);
     if(!pmf->Directory[iDirectory][iTable]) { goto fail; }
     return TRUE;
 fail:
@@ -160,6 +163,38 @@ BOOL _ObMemFile_Append(_In_ POB_MEMFILE pmf, _In_reads_(cbData) PBYTE pbData, _I
     return TRUE;
 }
 
+_Success_(return != 0)
+SIZE_T _ObMemFile_AppendStringEx(_In_ POB_MEMFILE pmf, _In_z_ _Printf_format_string_ LPSTR uszFormat, _In_ va_list arglist)
+{
+    BOOL f = FALSE;
+    int cch1, cch2;
+    PBYTE pbBuffer;
+    QWORD oBuffer, cbCopy, cbData;
+    va_list arglist_copy;
+    va_copy(arglist_copy, arglist);
+    cch1 = _vscprintf(uszFormat, arglist_copy);
+    if(cch1 <= 0) { return 0; }
+    cbData = (QWORD)cch1 + 1;
+    oBuffer = pmf->cb % OB_MEMFILE_BUFSIZE;
+    cbCopy = min(cbData, OB_MEMFILE_BUFSIZE - oBuffer);
+    // 1: try efficient direct write into buffer if it fits!
+    if(cbData == cbCopy) {
+        cch2 = _vsnprintf_s(pmf->pbBuffer + oBuffer, (SIZE_T)cbCopy, _TRUNCATE, uszFormat, arglist);
+        if(cch1 != cch2) { return 0; }
+        pmf->cb += (QWORD)cch2;
+        return (SIZE_T)cch2;
+    }
+    // 2: data too large to fit buffer - allocate and write bytes
+    if((pbBuffer = LocalAlloc(0, (SIZE_T)cbData))) {
+        cch2 = _vsnprintf_s(pbBuffer, (SIZE_T)cbData, _TRUNCATE, uszFormat, arglist);
+        if(cch1 == cch2) {
+            f = _ObMemFile_Append(pmf, pbBuffer, (QWORD)cch2);
+        }
+        LocalFree(pbBuffer);
+    }
+    return f ? (SIZE_T)cch2 : 0;
+}
+
 /*
 * Append binary data to the ObMemFile.
 * -- pmf
@@ -187,6 +222,19 @@ BOOL ObMemFile_AppendString(_In_opt_ POB_MEMFILE pmf, _In_opt_z_ LPSTR sz)
 }
 
 /*
+* Append a string (ansi or utf-8) to the ObMemFile.
+* -- H
+* -- uszFormat
+* -- arglist
+* -- return = the number of bytes appended (excluding terminating null).
+*/
+_Success_(return != 0)
+SIZE_T ObMemFile_AppendStringEx(_In_opt_ POB_MEMFILE pmf, _In_z_ _Printf_format_string_ LPSTR uszFormat, _In_ va_list arglist)
+{
+    OB_MEMFILE_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(pmf, SIZE_T, 0, _ObMemFile_AppendStringEx(pmf, uszFormat, arglist));
+}
+
+/*
 * Retrieve byte count of the ObMemFile.
 * -- pmf
 * -- return
@@ -198,15 +246,19 @@ QWORD ObMemFile_Size(_In_opt_ POB_MEMFILE pmf)
 
 /*
 * Create a new empty memory file.
+* It's strongly recommended to supply a global cache map to use.
 * CALLER DECREF: return
+* -- H
+* -- pcmg = optional global (per VMM_HANDLE) cache map to use.
 * -- return
 */
 _Success_(return != NULL)
-POB_MEMFILE ObMemFile_New()
+POB_MEMFILE ObMemFile_New(_In_opt_ VMM_HANDLE H, _In_opt_ POB_CACHEMAP pcmg)
 {
-    POB_MEMFILE pObMemFile = Ob_Alloc(OB_TAG_CORE_MEMFILE, LMEM_ZEROINIT, sizeof(OB_MEMFILE), (OB_CLEANUP_CB)_ObMemFile_ObCloseCallback, NULL);
+    POB_MEMFILE pObMemFile = Ob_AllocEx(H, OB_TAG_CORE_MEMFILE, LMEM_ZEROINIT, sizeof(OB_MEMFILE), (OB_CLEANUP_CB)_ObMemFile_ObCloseCallback, NULL);
     if(pObMemFile) {
         pObMemFile->Directory[0] = pObMemFile->Table0;
+        pObMemFile->pcm = Ob_INCREF(pcmg);
     }
     return pObMemFile;
 }

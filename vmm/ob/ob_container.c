@@ -12,7 +12,7 @@
 //
 #include "ob.h"
 
-#define OB_CONTAINER_IS_VALID(p)        (p && (p->ObHdr._magic == OB_HEADER_MAGIC) && (p->ObHdr._tag == OB_TAG_CORE_CONTAINER))
+#define OB_CONTAINER_IS_VALID(p)        (p && (p->ObHdr._magic2 == OB_HEADER_MAGIC) && (p->ObHdr._magic1 == OB_HEADER_MAGIC) && (p->ObHdr._tag == OB_TAG_CORE_CONTAINER))
 
 /*
 * Object Container object manager cleanup function to be called when reference
@@ -39,7 +39,7 @@ POB_CONTAINER ObContainer_New()
     POB_CONTAINER pObContainer = Ob_Alloc(OB_TAG_CORE_CONTAINER, LMEM_ZEROINIT, sizeof(OB_CONTAINER), (OB_CLEANUP_CB)ObContainer_ObCloseCallback, NULL);
     if(!pObContainer) { return NULL; }
     if(!InitializeCriticalSectionAndSpinCount(&pObContainer->Lock, 4096)) {
-        LocalFree(pObContainer);
+        Ob_DECREF(pObContainer);
         return NULL;
     }
     return pObContainer;

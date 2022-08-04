@@ -77,7 +77,7 @@ VmmPycVfs_list(PyObj_Vfs *self, PyObject *args)
     hFileList.pfnAddDirectory = VmmPycVfs_list_AddDirectory;
     hFileList.dwVersion = VMMDLL_VFS_FILELIST_VERSION;
     uszPath = Util_ReplaceSlashAlloc(uszPathPython);
-    result = uszPath && VMMDLL_VfsListU(uszPath, &hFileList);
+    result = uszPath && VMMDLL_VfsListU(self->pyVMM->hVMM, uszPath, &hFileList);
     LocalFree(uszPath);
     pE = *(PVMMPYCVFS_LIST*)hFileList.h;
     Py_END_ALLOW_THREADS;
@@ -122,7 +122,7 @@ VmmPycVfs_read(PyObj_Vfs *self, PyObject *args)
     if(!(pb = LocalAlloc(0, cb))) { return PyErr_NoMemory(); }
     Py_BEGIN_ALLOW_THREADS;
     uszPath = Util_ReplaceSlashAlloc(uszPathPython);
-    nt = VMMDLL_VfsReadU(uszPath, pb, cb, &cbRead, cbOffset);
+    nt = VMMDLL_VfsReadU(self->pyVMM->hVMM, uszPath, pb, cb, &cbRead, cbOffset);
     LocalFree(uszPath);
     Py_END_ALLOW_THREADS;
     if(nt != VMMDLL_STATUS_SUCCESS) {
@@ -156,7 +156,7 @@ VmmPycVfs_write(PyObj_Vfs *self, PyObject *args)
     }
     Py_BEGIN_ALLOW_THREADS;
     uszPath = Util_ReplaceSlashAlloc(uszPathPython);
-    result = uszPath && (VMMDLL_STATUS_SUCCESS == VMMDLL_VfsWriteU(uszPath, pb, (DWORD)cb, &cbWritten, cbOffset));
+    result = uszPath && (VMMDLL_STATUS_SUCCESS == VMMDLL_VfsWriteU(self->pyVMM->hVMM, uszPath, pb, (DWORD)cb, &cbWritten, cbOffset));
     LocalFree(uszPath);
     Py_END_ALLOW_THREADS;
     if(!result) {
@@ -170,12 +170,13 @@ VmmPycVfs_write(PyObj_Vfs *self, PyObject *args)
 //-----------------------------------------------------------------------------
 
 PyObj_Vfs*
-VmmPycVfs_InitializeInternal()
+VmmPycVfs_InitializeInternal(_In_ PyObj_Vmm *pyVMM)
 {
-    PyObj_Vfs *pyObjVfs;
-    if(!(pyObjVfs = PyObject_New(PyObj_Vfs, (PyTypeObject *)g_pPyType_Vfs))) { return NULL; }
-    pyObjVfs->fValid = TRUE;
-    return pyObjVfs;
+    PyObj_Vfs *pyObj;
+    if(!(pyObj = PyObject_New(PyObj_Vfs, (PyTypeObject *)g_pPyType_Vfs))) { return NULL; }
+    Py_INCREF(pyVMM); pyObj->pyVMM = pyVMM;
+    pyObj->fValid = TRUE;
+    return pyObj;
 }
 
 static PyObject*
@@ -195,6 +196,7 @@ static void
 VmmPycVfs_dealloc(PyObj_Vfs *self)
 {
     self->fValid = FALSE;
+    Py_XDECREF(self->pyVMM); self->pyVMM = NULL;
 }
 
 _Success_(return)

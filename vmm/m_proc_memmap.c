@@ -21,12 +21,12 @@
 #define MEMMAP_VAD_LINEHEADER_X86       "   #    PID  ObjAddr    Pages     Commit Range Start-End   Type  FLAGS  Description"
 #define MEMMAP_VAD_LINEHEADER_X64       "   #    PID   Object Address    Pages     Commit      Range Start-End              Type  FLAGS  Description"
 
-VOID MemMap_VadReadLine_Callback(_In_ PVMM_PROCESS pProcess, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVMM_MAP_VADENTRY pe, _Out_writes_(cbLineLength + 1) LPSTR usz)
+VOID MemMap_VadReadLineCB(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVMM_MAP_VADENTRY pe, _Out_writes_(cbLineLength + 1) LPSTR usz)
 {
     CHAR szProtection[7] = { 0 };
     MmVad_StrProtectionFlags(pe, szProtection);
     Util_usnprintf_ln(usz, cbLineLength,
-        (ctxVmm->f32 ? "%04x%7i %08x %8x %8x %i %08x-%08x %s %s %s" : "%04x%7i %016llx %8x %8x %i %016llx-%016llx %s %s %s"),
+        (H->vmm.f32 ? "%04x%7i %08x %8x %8x %i %08x-%08x %s %s %s" : "%04x%7i %016llx %8x %8x %i %016llx-%016llx %s %s %s"),
         ie,
         pProcess->dwPID,
         pe->vaVad,
@@ -42,7 +42,7 @@ VOID MemMap_VadReadLine_Callback(_In_ PVMM_PROCESS pProcess, _In_ DWORD cbLineLe
 }
 
 _Success_(return == 0)
-NTSTATUS MemMap_Read_VadExMap2(_In_ PVMM_PROCESS pProcess, _In_ DWORD oVadExPages, _In_ DWORD cVadExPagesMax, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MemMap_Read_VadExMap2(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ DWORD oVadExPages, _In_ DWORD cVadExPagesMax, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt;
     LPSTR sz;
@@ -56,7 +56,7 @@ NTSTATUS MemMap_Read_VadExMap2(_In_ PVMM_PROCESS pProcess, _In_ DWORD oVadExPage
     cbLINELENGTH = MEMMAP_VADEX_LINELENGTH;
     iPage = (DWORD)(cbOffset / cbLINELENGTH) + oVadExPages;
     cPage = (DWORD)min((cb + cbOffset + cbLINELENGTH - 1) / cbLINELENGTH, cVadExPagesMax - (iPage - oVadExPages));
-    if(!VmmMap_GetVadEx(pProcess, &pObMap, VMM_VADMAP_TP_FULL, iPage, cPage)) { return VMMDLL_STATUS_FILE_INVALID; }
+    if(!VmmMap_GetVadEx(H, pProcess, &pObMap, VMM_VADMAP_TP_FULL, iPage, cPage)) { return VMMDLL_STATUS_FILE_INVALID; }
     cPage = pObMap->cMap;
     cbMax = 1 + pObMap->cMap * cbLINELENGTH;
     if(!(sz = LocalAlloc(LMEM_ZEROINIT, (SIZE_T)cbMax))) { Ob_DECREF(pObMap); return VMMDLL_STATUS_FILE_INVALID; }
@@ -102,20 +102,20 @@ int MemMap_Read_VadExMap_CmpFind(_In_ QWORD vaBase, _In_ QWORD qwEntry)
 }
 
 _Success_(return == 0)
-NTSTATUS MemMap_Read_VadExMap(_In_ PVMM_PROCESS pProcess, _In_ LPSTR uszFile, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MemMap_Read_VadExMap(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ LPSTR uszFile, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     QWORD vaVad;
     PVMM_MAP_VADENTRY peVad;
     PVMMOB_MAP_VAD pObVadMap = NULL;
     if(!_stricmp(uszFile, "_vad-v.txt")) {
-        return MemMap_Read_VadExMap2(pProcess, 0, 0xffffffff, pb, cb, pcbRead, cbOffset);
+        return MemMap_Read_VadExMap2(H, pProcess, 0, 0xffffffff, pb, cb, pcbRead, cbOffset);
     }
-    if(uszFile[0] == '0' && uszFile[1] == 'x' && VmmMap_GetVad(pProcess, &pObVadMap, VMM_VADMAP_TP_CORE)) {
+    if(uszFile[0] == '0' && uszFile[1] == 'x' && VmmMap_GetVad(H, pProcess, &pObVadMap, VMM_VADMAP_TP_CORE)) {
         vaVad = Util_GetNumericA(uszFile);
         peVad = Util_qfind(vaVad, pObVadMap->cMap, pObVadMap->pMap, sizeof(VMM_MAP_VADENTRY), MemMap_Read_VadExMap_CmpFind);
         if(peVad) {
-            nt = MemMap_Read_VadExMap2(pProcess, peVad->cVadExPagesBase, peVad->cVadExPages, pb, cb, pcbRead, cbOffset);
+            nt = MemMap_Read_VadExMap2(H, pProcess, peVad->cVadExPagesBase, peVad->cVadExPages, pb, cb, pcbRead, cbOffset);
         }
         Ob_DECREF_NULL(&pObVadMap);
         return nt;
@@ -123,10 +123,10 @@ NTSTATUS MemMap_Read_VadExMap(_In_ PVMM_PROCESS pProcess, _In_ LPSTR uszFile, _O
     return nt;
 }
 
-VOID MemMap_PteReadLine_Callback(_In_ PVMM_PROCESS pProcess, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVMM_MAP_PTEENTRY pe, _Out_writes_(cbLineLength + 1) LPSTR szu8)
+VOID MemMap_PteReadLine_Callback(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVMM_MAP_PTEENTRY pe, _Out_writes_(cbLineLength + 1) LPSTR szu8)
 {
     Util_usnprintf_ln(szu8, cbLineLength,
-        ctxVmm->f32 ? "%04x%7i %8x %08x-%08x %cr%c%c%s%s" : "%04x%7i %8x %016llx-%016llx %cr%c%c%s%s",
+        H->vmm.f32 ? "%04x%7i %8x %08x-%08x %cr%c%c%s%s" : "%04x%7i %8x %016llx-%016llx %cr%c%c%s%s",
         ie,
         pProcess->dwPID,
         (DWORD)pe->cPages,
@@ -143,7 +143,8 @@ VOID MemMap_PteReadLine_Callback(_In_ PVMM_PROCESS pProcess, _In_ DWORD cbLineLe
 /*
 * Read : function as specified by the module manager. The module manager will
 * call into this callback function whenever a read shall occur from a "file".
-* -- ctx
+* -- H
+* -- ctxP
 * -- pb
 * -- cb
 * -- pcbRead
@@ -151,43 +152,44 @@ VOID MemMap_PteReadLine_Callback(_In_ PVMM_PROCESS pProcess, _In_ DWORD cbLineLe
 * -- return
 */
 _Success_(return == 0)
-NTSTATUS MemMap_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MemMap_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
+    BOOL f32 = H->vmm.f32;
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     LPSTR uszFile;
     CHAR uszPath1[MAX_PATH];
-    PVMMOB_MAP_PTE pObMemMapPte = NULL;
-    PVMMOB_MAP_VAD pObMemMapVad = NULL;
+    PVMMOB_MAP_PTE pObPteMap = NULL;
+    PVMMOB_MAP_VAD pObVadMap = NULL;
     // read page table memory map.
-    if(!_stricmp(ctx->uszPath, "pte.txt")) {
-        if(VmmMap_GetPte(ctx->pProcess, &pObMemMapPte, TRUE)) {
+    if(!_stricmp(ctxP->uszPath, "pte.txt")) {
+        if(VmmMap_GetPte(H, ctxP->pProcess, &pObPteMap, TRUE)) {
             nt = Util_VfsLineFixed_Read(
-                (UTIL_VFSLINEFIXED_PFN_CB)MemMap_PteReadLine_Callback, ctx->pProcess,
-                (ctxVmm->f32 ? MEMMAP_PTE_LINELENGTH_X86 : MEMMAP_PTE_LINELENGTH_X64),
-                (ctxVmm->f32 ? MEMMAP_PTE_LINEHEADER_X86 : MEMMAP_PTE_LINEHEADER_X64),
-                pObMemMapPte->pMap, pObMemMapPte->cMap, sizeof(VMM_MAP_PTEENTRY),
+                H, (UTIL_VFSLINEFIXED_PFN_CB)MemMap_PteReadLine_Callback, ctxP->pProcess,
+                (f32 ? MEMMAP_PTE_LINELENGTH_X86 : MEMMAP_PTE_LINELENGTH_X64),
+                (f32 ? MEMMAP_PTE_LINEHEADER_X86 : MEMMAP_PTE_LINEHEADER_X64),
+                pObPteMap->pMap, pObPteMap->cMap, sizeof(VMM_MAP_PTEENTRY),
                 pb, cb, pcbRead, cbOffset
             );
-            Ob_DECREF(pObMemMapPte);
+            Ob_DECREF_NULL(&pObPteMap);
         }
         return nt;
     }
-    if(!_stricmp(ctx->uszPath, "vad.txt")) {
-        if(VmmMap_GetVad(ctx->pProcess, &pObMemMapVad, VMM_VADMAP_TP_FULL)) {
+    if(!_stricmp(ctxP->uszPath, "vad.txt")) {
+        if(VmmMap_GetVad(H, ctxP->pProcess, &pObVadMap, VMM_VADMAP_TP_FULL)) {
             nt = Util_VfsLineFixed_Read(
-                (UTIL_VFSLINEFIXED_PFN_CB)MemMap_VadReadLine_Callback, ctx->pProcess,
-                (ctxVmm->f32 ? MEMMAP_VAD_LINELENGTH_X86 : MEMMAP_VAD_LINELENGTH_X64),
-                (ctxVmm->f32 ? MEMMAP_VAD_LINEHEADER_X86 : MEMMAP_VAD_LINEHEADER_X64),
-                pObMemMapVad->pMap, pObMemMapVad->cMap, sizeof(VMM_MAP_VADENTRY),
+                H, (UTIL_VFSLINEFIXED_PFN_CB)MemMap_VadReadLineCB, ctxP->pProcess,
+                (f32 ? MEMMAP_VAD_LINELENGTH_X86 : MEMMAP_VAD_LINELENGTH_X64),
+                (f32 ? MEMMAP_VAD_LINEHEADER_X86 : MEMMAP_VAD_LINEHEADER_X64),
+                pObVadMap->pMap, pObVadMap->cMap, sizeof(VMM_MAP_VADENTRY),
                 pb, cb, pcbRead, cbOffset
             );
-            Ob_DECREF(pObMemMapVad);
+            Ob_DECREF(pObVadMap);
         }
         return nt;
     }
-    uszFile = CharUtil_PathSplitFirst(ctx->uszPath, uszPath1, sizeof(uszPath1));
+    uszFile = CharUtil_PathSplitFirst(ctxP->uszPath, uszPath1, sizeof(uszPath1));
     if(!_stricmp(uszPath1, "vad-v") && uszFile[0]) {
-        return MemMap_Read_VadExMap(ctx->pProcess, uszFile, pb, cb, pcbRead, cbOffset);
+        return MemMap_Read_VadExMap(H, ctxP->pProcess, uszFile, pb, cb, pcbRead, cbOffset);
 
     }
     return nt;
@@ -197,42 +199,44 @@ NTSTATUS MemMap_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRe
 * List : function as specified by the module manager. The module manager will
 * call into this callback function whenever a list directory shall occur from
 * the given module.
-* -- ctx
+* -- H
+* -- ctxP
 * -- pFileList
 * -- return
 */
-BOOL MemMap_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
+BOOL MemMap_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList)
 {
+    BOOL f32 = H->vmm.f32;
     DWORD iVad, cbLine;
     LPSTR uszFile;
     CHAR uszPath1[MAX_PATH];
     PVMMOB_MAP_PTE pObPteMap = NULL;
     PVMMOB_MAP_VAD pObVadMap = NULL;
-    if(!ctx->uszPath[0]) {
+    if(!ctxP->uszPath[0]) {
         // list page table memory map.
-        if(VmmMap_GetPte(ctx->pProcess, &pObPteMap, FALSE)) {
-            cbLine = ctxVmm->f32 ? MEMMAP_PTE_LINELENGTH_X86 : MEMMAP_PTE_LINELENGTH_X64;
-            VMMDLL_VfsList_AddFile(pFileList, "pte.txt", UTIL_VFSLINEFIXED_LINECOUNT(pObPteMap->cMap) * cbLine, NULL);
+        if(VmmMap_GetPte(H, ctxP->pProcess, &pObPteMap, FALSE)) {
+            cbLine = f32 ? MEMMAP_PTE_LINELENGTH_X86 : MEMMAP_PTE_LINELENGTH_X64;
+            VMMDLL_VfsList_AddFile(pFileList, "pte.txt", UTIL_VFSLINEFIXED_LINECOUNT(H, pObPteMap->cMap) * cbLine, NULL);
             Ob_DECREF_NULL(&pObPteMap);
         }
         // list vad & and extended vad map directory
         VMMDLL_VfsList_AddDirectory(pFileList, "vad-v", NULL);
-        if(VmmMap_GetVad(ctx->pProcess, &pObVadMap, VMM_VADMAP_TP_CORE)) {
-            cbLine = ctxVmm->f32 ? MEMMAP_VAD_LINELENGTH_X86 : MEMMAP_VAD_LINELENGTH_X64;
-            VMMDLL_VfsList_AddFile(pFileList, "vad.txt", UTIL_VFSLINEFIXED_LINECOUNT(pObVadMap->cMap) * cbLine, NULL);
+        if(VmmMap_GetVad(H, ctxP->pProcess, &pObVadMap, VMM_VADMAP_TP_CORE)) {
+            cbLine = f32 ? MEMMAP_VAD_LINELENGTH_X86 : MEMMAP_VAD_LINELENGTH_X64;
+            VMMDLL_VfsList_AddFile(pFileList, "vad.txt", UTIL_VFSLINEFIXED_LINECOUNT(H, pObVadMap->cMap) * cbLine, NULL);
             Ob_DECREF_NULL(&pObVadMap);
         }
         return TRUE;
     }
-    uszFile = CharUtil_PathSplitFirst(ctx->uszPath, uszPath1, sizeof(uszPath1));
+    uszFile = CharUtil_PathSplitFirst(ctxP->uszPath, uszPath1, sizeof(uszPath1));
     if(!_stricmp(uszPath1, "vad-v") && !uszFile[0]) {
-        if(VmmMap_GetVad(ctx->pProcess, &pObVadMap, VMM_VADMAP_TP_FULL)) {
+        if(VmmMap_GetVad(H, ctxP->pProcess, &pObVadMap, VMM_VADMAP_TP_FULL)) {
             VMMDLL_VfsList_AddFile(pFileList, "_vad-v.txt", pObVadMap->cPage * MEMMAP_VADEX_LINELENGTH, NULL);
             for(iVad = 0; iVad < pObVadMap->cMap; iVad++) {
                 sprintf_s(
                     uszPath1,
                     _countof(uszPath1) - 1,
-                    ctxVmm->f32 ? "0x%08llx%s%s.txt" : "0x%016llx%s%s.txt",
+                    f32 ? "0x%08llx%s%s.txt" : "0x%016llx%s%s.txt",
                     pObVadMap->pMap[iVad].vaStart,
                     (pObVadMap->pMap[iVad].uszText && pObVadMap->pMap[iVad].uszText[0]) ? "-" : "",
                     pObVadMap->pMap[iVad].uszText ? CharUtil_PathSplitLast(pObVadMap->pMap[iVad].uszText) : ""
@@ -248,7 +252,7 @@ BOOL MemMap_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
 /*
 * Forensic JSON log:
 */
-VOID MemMap_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
+VOID MemMap_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
 {
     PVMM_PROCESS pProcess = ctxP->pProcess;
     PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd;
@@ -265,7 +269,7 @@ VOID MemMap_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_
     // 1: PTEs
     pd->fHex[0] = TRUE;
     usz[1] = 'r'; usz[6] = ' ';
-    if(VmmMap_GetPte(pProcess, &pObPteMap, TRUE)) {
+    if(VmmMap_GetPte(H, pProcess, &pObPteMap, TRUE)) {
         for(i = 0; i < pObPteMap->cMap; i++) {
             pep = pObPteMap->pMap + i;
             usz[0] = pep->fPage & VMM_MEMMAP_PAGE_NS ? '-' : 's';
@@ -278,13 +282,13 @@ VOID MemMap_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_
             pd->va[1] = pep->vaBase + (pep->cPages << 12) - 1;
             pd->usz[0] = usz;
             pd->usz[1] = pep->uszText;
-            pfnLogJSON(pd);
+            pfnLogJSON(H, pd);
         }
     }
     // 2: VADs
     pd->szjType = "vad";
     pd->fHex[1] = TRUE;
-    if(VmmMap_GetVad(pProcess, &pObVadMap, VMM_VADMAP_TP_FULL)) {
+    if(VmmMap_GetVad(H, pProcess, &pObVadMap, VMM_VADMAP_TP_FULL)) {
         for(i = 0; i < pObVadMap->cMap; i++) {
             pev = pObVadMap->pMap + i;
             MmVad_StrProtectionFlags(pev, usz);
@@ -298,7 +302,7 @@ VOID MemMap_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_
             pd->va[1] = pev->vaEnd;
             pd->usz[0] = (LPSTR)MmVad_StrType(pev);
             pd->usz[1] = usz;
-            pfnLogJSON(pd);
+            pfnLogJSON(H, pd);
         }
     }
     Ob_DECREF(pObVadMap);
@@ -314,7 +318,7 @@ VOID MemMap_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_
 * operating system or architecture is unsupported.
 * -- pPluginRegInfo
 */
-VOID M_ProcMemMap_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
+VOID M_ProcMemMap_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if(!((pRI->tpMemoryModel == VMM_MEMORYMODEL_X64) || (pRI->tpMemoryModel == VMM_MEMORYMODEL_X86) || (pRI->tpMemoryModel == VMM_MEMORYMODEL_X86PAE))) { return; }
@@ -324,5 +328,5 @@ VOID M_ProcMemMap_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     pRI->reg_fn.pfnList = MemMap_List;                                  // List function supported
     pRI->reg_fn.pfnRead = MemMap_Read;                                  // Read function supported
     pRI->reg_fnfc.pfnLogJSON = MemMap_FcLogJSON;                        // JSON log function supported
-    pRI->pfnPluginManager_Register(pRI);
+    pRI->pfnPluginManager_Register(H, pRI);
 }

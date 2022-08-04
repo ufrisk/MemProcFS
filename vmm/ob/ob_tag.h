@@ -8,6 +8,7 @@
 
 #include "ob.h"
 
+#define OB_TAG_FORENSIC_FILE            'Ffil'
 #define OB_TAG_INFODB_CTX               'IDBC'
 #define OB_TAG_MAP_PTE                  'Mpte'
 #define OB_TAG_MAP_VAD                  'Mvad'
@@ -31,6 +32,9 @@
 #define OB_TAG_MAP_EVIL                 'Mevl'
 #define OB_TAG_MAP_TASK                 'Mtsk'
 #define OB_TAG_MAP_WEB                  'Mweb'
+#define OB_TAG_MOD_CERTIFICATES         'mCer'
+#define OB_TAG_MOD_FCNTFS_CTX           'mFnt'
+#define OB_TAG_MOD_FCTIMELINE           'mFtl'
 #define OB_TAG_MOD_MINIDUMP_CTX         'mMDx'
 #define OB_TAG_MOD_SEARCH_CTX           'mSHx'
 #define OB_TAG_OBJ_ERROR                'Oerr'
@@ -38,15 +42,21 @@
 #define OB_TAG_OBJ_DISPLAY              'Odis'
 #define OB_TAG_PDB_CTX                  'PdbC'
 #define OB_TAG_PDB_ENTRY                'PdbE'
+#define OB_TAG_PDB_KERNEL_CONTEXT       'PdbK'
 #define OB_TAG_PFN_CONTEXT              'PfnC'
 #define OB_TAG_PFN_PROC_TABLE           'PfnT'
 #define OB_TAG_REG_HIVE                 'Rhve'
 #define OB_TAG_REG_KEY                  'Rkey'
 #define OB_TAG_REG_KEYVALUE             'Rval'
+#define OB_TAG_VAD_MEM                  'MmSt'
+#define OB_TAG_WORK_PER_PROCESS         'WrkP'
+#define OB_TAG_WORK_WORKUNIT            'WrkU'
 #define OB_TAG_VMM_PROCESS              'Ps__'
 #define OB_TAG_VMM_PROCESS_CLONE        'PsC_'
 #define OB_TAG_VMM_PROCESS_PERSISTENT   'PsSt'
 #define OB_TAG_VMM_PROCESSTABLE         'PsTb'
+#define OB_TAG_VMM_VIRT2PHYS            'PsVP'
+#define OB_TAB_VMMDLL_EXTERNALMEM       'EXTM'
 #define OB_TAG_VMMVFS_DUMPCONTEXT       'CDmp'
 
 #endif /* __OB_TAG_H__ */

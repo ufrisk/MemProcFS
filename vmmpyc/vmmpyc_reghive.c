@@ -14,7 +14,7 @@ VmmPycRegHive_rootkey(PyObj_RegHive *self, PyObject *args)
     CHAR uszPathKey[MAX_PATH];
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "RegHive.rootkey: Not initialized."); }
     _snprintf_s(uszPathKey, sizeof(uszPathKey), _TRUNCATE, "0x%016llx\\ROOT", self->Info.vaCMHIVE);
-    return (PyObject*)VmmPycRegKey_InitializeInternal(uszPathKey, FALSE);
+    return (PyObject*)VmmPycRegKey_InitializeInternal(self->pyVMM, uszPathKey, FALSE);
 }
 
 // -> ObjRegKey
@@ -24,7 +24,7 @@ VmmPycRegHive_orphankey(PyObj_RegHive *self, PyObject *args)
     CHAR uszPathKey[MAX_PATH];
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "RegHive.orphankey: Not initialized."); }
     _snprintf_s(uszPathKey, sizeof(uszPathKey), _TRUNCATE, "0x%016llx\\ORPHAN", self->Info.vaCMHIVE);
-    return (PyObject*)VmmPycRegKey_InitializeInternal(uszPathKey, FALSE);
+    return (PyObject*)VmmPycRegKey_InitializeInternal(self->pyVMM, uszPathKey, FALSE);
 }
 
 // -> *PyObj_RegMemory
@@ -32,7 +32,7 @@ static PyObject*
 VmmPycRegHive_memory(PyObj_RegHive *self, void *closure)
 {
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "RegHive.memory: Not initialized."); }
-    return (PyObject*)VmmPycRegMemory_InitializeInternal(self->Info.vaCMHIVE);
+    return (PyObject*)VmmPycRegMemory_InitializeInternal(self->pyVMM, self->Info.vaCMHIVE);
 }
 
 //-----------------------------------------------------------------------------
@@ -40,13 +40,14 @@ VmmPycRegHive_memory(PyObj_RegHive *self, void *closure)
 //-----------------------------------------------------------------------------
 
 PyObj_RegHive*
-VmmPycRegHive_InitializeInternal(_In_ PVMMDLL_REGISTRY_HIVE_INFORMATION pInfo)
+VmmPycRegHive_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_ PVMMDLL_REGISTRY_HIVE_INFORMATION pInfo)
 {
-    PyObj_RegHive *pyHive;
-    if(!(pyHive = PyObject_New(PyObj_RegHive, (PyTypeObject*)g_pPyType_RegHive))) { return NULL; }
-    pyHive->fValid = TRUE;
-    memcpy(&pyHive->Info, pInfo, sizeof(VMMDLL_REGISTRY_HIVE_INFORMATION));
-    return pyHive;
+    PyObj_RegHive *pyObj;
+    if(!(pyObj = PyObject_New(PyObj_RegHive, (PyTypeObject*)g_pPyType_RegHive))) { return NULL; }
+    Py_INCREF(pyVMM); pyObj->pyVMM = pyVMM;
+    pyObj->fValid = TRUE;
+    memcpy(&pyObj->Info, pInfo, sizeof(VMMDLL_REGISTRY_HIVE_INFORMATION));
+    return pyObj;
 }
 
 static PyObject*
@@ -71,6 +72,7 @@ static void
 VmmPycRegHive_dealloc(PyObj_RegHive *self)
 {
     self->fValid = FALSE;
+    Py_XDECREF(self->pyVMM); self->pyVMM = NULL;
 }
 
 _Success_(return)

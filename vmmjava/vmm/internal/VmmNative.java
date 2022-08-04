@@ -45,18 +45,20 @@ interface VmmNative extends Library {
 	
 	
 	
-	boolean VMMDLL_Initialize(int argc, String argv[]);
-	boolean VMMDLL_Close();
+	Pointer VMMDLL_Initialize(int argc, String argv[]);
+	void VMMDLL_Close(Pointer hVMM);
+	void VMMDLL_CloseAll();
+	long VMMDLL_MemSize(Pointer pvMem);
 	void VMMDLL_MemFree(Pointer pvMem);
 	
 	
 	
-	boolean VMMDLL_ConfigGet(long fOption, LongByReference pqwValue);
-	boolean VMMDLL_ConfigSet(long fOption, long qwValue);
+	boolean VMMDLL_ConfigGet(Pointer hVMM, long fOption, LongByReference pqwValue);
+	boolean VMMDLL_ConfigSet(Pointer hVMM, long fOption, long qwValue);
 	
 	
 	
-	boolean VMMDLL_InitializePlugins();
+	boolean VMMDLL_InitializePlugins(Pointer hVMM);
 	
 	
 	
@@ -74,20 +76,20 @@ interface VmmNative extends Library {
 		}
 	}
 	
-	boolean VMMDLL_VfsListU(byte[] uszPath, VMMDLL_VFS_FILELIST2 pFileList);
-	int VMMDLL_VfsReadU(byte[] uszFileName, Pointer pb, int cb, IntByReference pcbRead, long cbOffset);
-	int VMMDLL_VfsWriteU(byte[] uszFileName, Pointer pb, int cb, IntByReference pcbWrite, long cbOffset);
+	boolean VMMDLL_VfsListU(Pointer hVMM, byte[] uszPath, VMMDLL_VFS_FILELIST2 pFileList);
+	int VMMDLL_VfsReadU(Pointer hVMM, byte[] uszFileName, Pointer pb, int cb, IntByReference pcbRead, long cbOffset);
+	int VMMDLL_VfsWriteU(Pointer hVMM, byte[] uszFileName, Pointer pb, int cb, IntByReference pcbWrite, long cbOffset);
 	
 	
 	
-	boolean VMMDLL_MemReadEx(int dwPID, long qwA, Pointer pb, int cb, IntByReference pcbReadOpt, int flags);
-	boolean VMMDLL_MemPrefetchPages(int dwPID, long[] pPrefetchAddresses, int cPrefetchAddresses);
-	boolean VMMDLL_MemWrite(int dwPID, long qwA, Pointer pb, int cb);
-	boolean VMMDLL_MemVirt2Phys(int dwPID, long qwVA, LongByReference pqwPA);
+	boolean VMMDLL_MemReadEx(Pointer hVMM, int dwPID, long qwA, Pointer pb, int cb, IntByReference pcbReadOpt, int flags);
+	boolean VMMDLL_MemPrefetchPages(Pointer hVMM, int dwPID, long[] pPrefetchAddresses, int cPrefetchAddresses);
+	boolean VMMDLL_MemWrite(Pointer hVMM, int dwPID, long qwA, Pointer pb, int cb);
+	boolean VMMDLL_MemVirt2Phys(Pointer hVMM, int dwPID, long qwVA, LongByReference pqwPA);
 	
 	
 	
-	Pointer VMMDLL_Scatter_Initialize(int dwPID, int flags);
+	Pointer VMMDLL_Scatter_Initialize(Pointer hVMM, int dwPID, int flags);
 	boolean VMMDLL_Scatter_Prepare(Pointer hS, long va, int cb);
 	boolean VMMDLL_Scatter_PrepareWrite(Pointer hS, long va, Pointer pb, int cb);
 	boolean VMMDLL_Scatter_Execute(Pointer hS);
@@ -97,8 +99,8 @@ interface VmmNative extends Library {
 	
 	
 	
-	boolean VMMDLL_PidGetFromName(byte[] szProcName, IntByReference pdwPID);
-	boolean VMMDLL_PidList(int[] pPIDs, LongByReference pcPIDs);
+	boolean VMMDLL_PidGetFromName(Pointer hVMM, byte[] szProcName, IntByReference pdwPID);
+	boolean VMMDLL_PidList(Pointer hVMM, int[] pPIDs, LongByReference pcPIDs);
 	
 	
 	
@@ -128,7 +130,7 @@ interface VmmNative extends Library {
 		}
 	}
 	
-	boolean VMMDLL_Map_GetPhysMem(Pointer pPhysMemMap, IntByReference pcbPhysMemMap);
+	boolean VMMDLL_Map_GetPhysMem(Pointer hVMM, PointerByReference ppPhysMemMap);
 	
 	
 	
@@ -177,7 +179,7 @@ interface VmmNative extends Library {
 		}
 	}
 	
-	boolean VMMDLL_Map_GetNetU(Pointer pNetMap, IntByReference pcbNetMap);
+	boolean VMMDLL_Map_GetNetU(Pointer hVMM, PointerByReference ppPhysMemMap);
 	
 	
 	
@@ -210,7 +212,7 @@ interface VmmNative extends Library {
 		}
 	}
 	
-	boolean VMMDLL_Map_GetUsersU(Pointer pUserMap, IntByReference pcbUserMap);
+	boolean VMMDLL_Map_GetUsersU(Pointer hVMM, PointerByReference ppUserMap);
 	
 	
 	
@@ -262,7 +264,7 @@ interface VmmNative extends Library {
 		}
 	}
 	
-	boolean VMMDLL_Map_GetServicesU(Pointer pServiceMap, IntByReference pcbServiceMap);
+	boolean VMMDLL_Map_GetServicesU(Pointer hVMM, PointerByReference ppServiceMap);
 	
 	
 	
@@ -299,7 +301,7 @@ interface VmmNative extends Library {
 		}
 	}
 	
-	boolean VMMDLL_Map_GetPoolEx(PointerByReference pServiceMap, int flags);
+	boolean VMMDLL_Map_GetPool(Pointer hVMM, PointerByReference ppPoolMap, int flags);
 	
 	
 	
@@ -340,7 +342,7 @@ interface VmmNative extends Library {
 		}
 	}
 	
-	boolean VMMDLL_Map_GetHandleU(int dwPID, Pointer pHandleMap, IntByReference pcbHandleMap);
+	boolean VMMDLL_Map_GetHandleU(Pointer hVMM, int dwPID, PointerByReference ppHandleMap);
 	
 	
 	
@@ -385,7 +387,7 @@ interface VmmNative extends Library {
 		}
 	}
 	
-	boolean VMMDLL_Map_GetHeapEx(int dwPID, PointerByReference ppHeapMap);
+	boolean VMMDLL_Map_GetHeap(Pointer hVMM, int dwPID, PointerByReference ppHeapMap);
 	
 	
 	
@@ -415,7 +417,7 @@ interface VmmNative extends Library {
 		}
 	}
 	
-	boolean VMMDLL_Map_GetHeapAllocEx(int dwPID, long qwHeapNumOrAddress, PointerByReference ppHeapAllocMap);
+	boolean VMMDLL_Map_GetHeapAlloc(Pointer hVMM, int dwPID, long qwHeapNumOrAddress, PointerByReference ppHeapAllocMap);
 
 	
 	
@@ -451,7 +453,7 @@ interface VmmNative extends Library {
 		}
 	}
 	
-	boolean VMMDLL_Map_GetPteU(int dwPID, Pointer pPteMap, IntByReference pcbPteMap, boolean fIdentifyModules);
+	boolean VMMDLL_Map_GetPteU(Pointer hVMM, int dwPID, boolean fIdentifyModules, PointerByReference ppPteMap);
 	
 	
 	
@@ -503,7 +505,7 @@ interface VmmNative extends Library {
 		}
 	}
 	
-	boolean VMMDLL_Map_GetThread(int dwPID, Pointer pThreadMap, IntByReference pcbThreadMap);
+	boolean VMMDLL_Map_GetThread(Pointer hVMM, int dwPID, PointerByReference ppThreadMap);
 	
 
 	
@@ -539,7 +541,7 @@ interface VmmNative extends Library {
 		}
 	}
 	
-	boolean VMMDLL_Map_GetUnloadedModuleU(int dwPID, Pointer pUnloadedModuleMap, IntByReference pcbUnloadedModuleMap);
+	boolean VMMDLL_Map_GetUnloadedModuleU(Pointer hVMM, int dwPID, PointerByReference ppUnloadedModuleMap);
 	
 
 	
@@ -584,7 +586,7 @@ interface VmmNative extends Library {
 		}
 	}
 	
-	boolean VMMDLL_Map_GetVadU(int dwPID, Pointer pVadMap, IntByReference pcbVadMap, boolean fIdentifyModules);
+	boolean VMMDLL_Map_GetVadU(Pointer hVMM, int dwPID, boolean fIdentifyModules, PointerByReference ppVadMap);
 
 	
 	
@@ -620,7 +622,7 @@ interface VmmNative extends Library {
 		}
 	}
 	
-	boolean VMMDLL_Map_GetVadEx(int dwPID, Pointer pVadExMap, IntByReference pcbVadExMap, int oPage, int cPage);
+	boolean VMMDLL_Map_GetVadEx(Pointer hVMM, int dwPID, int oPage, int cPage, PointerByReference ppVadExMap);
 	
 	
 	
@@ -655,8 +657,8 @@ interface VmmNative extends Library {
 		public int IntegrityLevel;
 	}
 	
-	boolean VMMDLL_ProcessGetInformation(int dwPID, VMMDLL_PROCESS_INFORMATION pProcessInformation, IntByReference pcbProcessInformation);
-	String VMMDLL_ProcessGetInformationString(int dwPID, int fOptionString);
+	boolean VMMDLL_ProcessGetInformation(Pointer hVMM, int dwPID, VMMDLL_PROCESS_INFORMATION pProcessInformation, LongByReference pcbProcessInformation);
+	Pointer VMMDLL_ProcessGetInformationString(Pointer hVMM, int dwPID, int fOptionString);
 	
 
 	
@@ -710,12 +712,12 @@ interface VmmNative extends Library {
 		}
 	}
 	
-	boolean VMMDLL_Map_GetModuleU(int dwPID, Pointer pModuleMap, IntByReference pcbModuleMap);
-	boolean VMMDLL_Map_GetModuleFromNameU(int dwPID, String uszModuleName, Pointer pModuleMapEntry, IntByReference pcbModuleMap);
+	boolean VMMDLL_Map_GetModuleU(Pointer hVMM, int dwPID, PointerByReference ppModuleMap);
+	boolean VMMDLL_Map_GetModuleFromNameU(Pointer hVMM, int dwPID, String uszModuleName, PointerByReference ppModuleMapEntry);
 	
 	
 	
-	long VMMDLL_ProcessGetProcAddressU(int dwPID, String uszModuleName, String szFunctionName);
+	long VMMDLL_ProcessGetProcAddressU(Pointer hVMM, int dwPID, String uszModuleName, String szFunctionName);
 	
 	
 	
@@ -755,7 +757,7 @@ interface VmmNative extends Library {
 		}
 	}
 	
-	boolean VMMDLL_Map_GetEATU(int dwPID, String uszModuleName, Pointer pEatMap, IntByReference pcbEatMap);
+	boolean VMMDLL_Map_GetEATU(Pointer hVMM, int dwPID, String uszModuleName, PointerByReference ppEatMap);
 	
 	
 	
@@ -797,7 +799,7 @@ interface VmmNative extends Library {
 		}
 	}
 	
-	boolean VMMDLL_Map_GetIATU(int dwPID, String uszModuleName, Pointer pIatMap, IntByReference pcbIatMap);
+	boolean VMMDLL_Map_GetIATU(Pointer hVMM, int dwPID, String uszModuleName, PointerByReference ppIatMap);
 	
 	
 	
@@ -807,7 +809,7 @@ interface VmmNative extends Library {
 		public int Size;
 	}
 	
-	boolean VMMDLL_ProcessGetDirectoriesU(int dwPID, String uszModule, IMAGE_DATA_DIRECTORY[] pData, int cData, IntByReference pcData);
+	boolean VMMDLL_ProcessGetDirectoriesU(Pointer hVMM, int dwPID, String uszModule, IMAGE_DATA_DIRECTORY[] pData);
 	
 	
 	
@@ -825,15 +827,15 @@ interface VmmNative extends Library {
 		public int Characteristics;
 	}
 	
-	boolean VMMDLL_ProcessGetSectionsU(int dwPID, String uszModule, IMAGE_SECTION_HEADER[] pData, int cData, IntByReference pcData);
+	boolean VMMDLL_ProcessGetSectionsU(Pointer hVMM, int dwPID, String uszModule, IMAGE_SECTION_HEADER[] pData, int cData, IntByReference pcData);
 	
 	
 	
-	boolean VMMDLL_PdbLoad(int dwPID, long vaModuleBase, byte[] szModuleName);
-	boolean VMMDLL_PdbSymbolName(String szModule, long cbSymbolAddressOrOffset, byte[] szModuleName, IntByReference pdwSymbolDisplacement);
-	boolean VMMDLL_PdbSymbolAddress(String szModule, String szTypeName, LongByReference pcbTypeSize);
-	boolean VMMDLL_PdbTypeSize(String szModule, String szTypeName, IntByReference pcbTypeSize);
-	boolean VMMDLL_PdbTypeChildOffset(String szModule, String uszTypeName, String uszTypeChildName, IntByReference pdwSymbolDisplacement);
+	boolean VMMDLL_PdbLoad(Pointer hVMM, int dwPID, long vaModuleBase, byte[] szModuleName);
+	boolean VMMDLL_PdbSymbolName(Pointer hVMM, String szModule, long cbSymbolAddressOrOffset, byte[] szModuleName, IntByReference pdwSymbolDisplacement);
+	boolean VMMDLL_PdbSymbolAddress(Pointer hVMM, String szModule, String szTypeName, LongByReference pcbTypeSize);
+	boolean VMMDLL_PdbTypeSize(Pointer hVMM, String szModule, String szTypeName, IntByReference pcbTypeSize);
+	boolean VMMDLL_PdbTypeChildOffset(Pointer hVMM, String szModule, String uszTypeName, String uszTypeChildName, IntByReference pdwSymbolDisplacement);
 	
 	
 	
@@ -842,7 +844,7 @@ interface VmmNative extends Library {
 		public long magic;
 		public short wVersion;
 		public short wSize;
-		public byte[] _FutureReserved1 = new byte[0x14];
+		public byte[] _FutureReserved1 = new byte[0x34];
 		public long vaCMHIVE;
 		public long vaHBASE_BLOCK;
 		public int cbLength;
@@ -852,10 +854,10 @@ interface VmmNative extends Library {
 		public long[] _FutureReserved = new long[0x10];
 	}
 	
-	boolean VMMDLL_WinReg_HiveList(VMMDLL_REGISTRY_HIVE_INFORMATION[] pHives, int cHives, IntByReference pcHives);
-	boolean VMMDLL_WinReg_HiveReadEx(long vaCMHive, int ra, Pointer ptr, int cb, IntByReference pcbReadOpt, long flags);
-	boolean VMMDLL_WinReg_HiveWrite(long vaCMHive, int ra, byte[] pb, int cb);
-	boolean VMMDLL_WinReg_EnumKeyExU(String uszFullPathKey, int dwIndex, byte[] lpName, IntByReference lpcchName, LongByReference lpftLastWriteTime);
-	boolean VMMDLL_WinReg_EnumValueU(String uszFullPathKey, int dwIndex, byte[] lpValueName, IntByReference lpcchValueName, IntByReference lpType, byte[] lpData, IntByReference lpcbData);
-	boolean VMMDLL_WinReg_QueryValueExU(String uszFullPathKeyValue, IntByReference lpType, byte[] lpData, IntByReference lpcbData);
+	boolean VMMDLL_WinReg_HiveList(Pointer hVMM, VMMDLL_REGISTRY_HIVE_INFORMATION[] pHives, int cHives, IntByReference pcHives);
+	boolean VMMDLL_WinReg_HiveReadEx(Pointer hVMM, long vaCMHive, int ra, Pointer ptr, int cb, IntByReference pcbReadOpt, long flags);
+	boolean VMMDLL_WinReg_HiveWrite(Pointer hVMM, long vaCMHive, int ra, byte[] pb, int cb);
+	boolean VMMDLL_WinReg_EnumKeyExU(Pointer hVMM, String uszFullPathKey, int dwIndex, byte[] lpName, IntByReference lpcchName, LongByReference lpftLastWriteTime);
+	boolean VMMDLL_WinReg_EnumValueU(Pointer hVMM, String uszFullPathKey, int dwIndex, byte[] lpValueName, IntByReference lpcchValueName, IntByReference lpType, byte[] lpData, IntByReference lpcbData);
+	boolean VMMDLL_WinReg_QueryValueExU(Pointer hVMM, String uszFullPathKeyValue, IntByReference lpType, byte[] lpData, IntByReference lpcbData);
 }

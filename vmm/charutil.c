@@ -699,6 +699,104 @@ fail:
     return FALSE;
 }
 
+/*
+* Convert UTF-8 string into a CSV compatible string.
+* If source string contain either comma(,) space( ) doublequote(") it will be
+* treated as a CSV string and be put into double quotes at start/end.
+* Function support usz == pbBuffer - usz will then become overwritten.
+* CALLER LOCALFREE (if *pvsz != pbBuffer): *pvsz
+* -- usz = the string to convert.
+* -- cch = -1 for null-terminated string; or max number of chars (excl. null).
+* -- pbBuffer = optional buffer to place the result in.
+* -- cbBuffer
+* -- pvsz = if set to null: function calculate length only and return TRUE.
+            result utf-8 string, either as (*pvsz == pbBuffer) or LocalAlloc'ed
+*           buffer that caller is responsible for free.
+* -- pcbv = byte length (including terminating null) of utf-8 string.
+* -- flags = CHARUTIL_FLAG_NONE, CHARUTIL_FLAG_ALLOC or CHARUTIL_FLAG_TRUNCATE
+* -- return
+*/
+_Success_(return)
+BOOL CharUtil_UtoCSV(_In_opt_ LPSTR usz, _In_ DWORD cch, _Maybenull_ _Writable_bytes_(cbBuffer) PBYTE pbBuffer, _In_ DWORD cbBuffer, _Out_opt_ LPSTR *pvsz, _Out_opt_ PDWORD pcbv, _In_ DWORD flags)
+{
+    UCHAR c;
+    LPSTR vsz;
+    DWORD iu, iv, n, cbu = 0, cbv = 0;
+    BOOL fCSV = FALSE;
+    BOOL fTruncate = flags & CHARUTIL_FLAG_TRUNCATE;
+    if(pcbv) { *pcbv = 0; }
+    if(pvsz) { *pvsz = NULL; }
+    if(!usz) { usz = ""; }
+    if(cch > CHARUTIL_CONVERT_MAXSIZE) { cch = CHARUTIL_CONVERT_MAXSIZE; }
+    // 1: utf-8 byte-length:
+    if(fTruncate && (!cbBuffer || (flags & CHARUTIL_FLAG_ALLOC))) { goto fail; }
+    while((cbu < cch) && (c = usz[cbu])) {
+        if(c & 0x80) {
+            // utf-8 char:
+            n = 0;
+            if((c & 0xe0) == 0xc0) { n = 2; }
+            if((c & 0xf0) == 0xe0) { n = 3; }
+            if((c & 0xf8) == 0xf0) { n = 4; }
+            if(!n) { goto fail; }                                            // invalid char-encoding
+            if(cbu + n > cch) { break; }
+            if(fTruncate && (cbv + n >= cbBuffer)) { break; }
+            if((n > 1) && ((usz[cbu + 1] & 0xc0) != 0x80)) { goto fail; }    // invalid char-encoding
+            if((n > 2) && ((usz[cbu + 2] & 0xc0) != 0x80)) { goto fail; }    // invalid char-encoding
+            if((n > 3) && ((usz[cbu + 3] & 0xc0) != 0x80)) { goto fail; }    // invalid char-encoding
+            cbu += n;
+            cbv += n;
+        } else if(c == '"' || c == ' ' || c == ',') {
+            n = (c == '"') ? 2 : 1;
+            if(!fCSV) { n += 2; }
+            if(fTruncate && (cbv + n >= cbBuffer)) { break; }
+            fCSV = TRUE;
+            cbu += 1;
+            cbv += n;
+        } else {
+            if(fTruncate && (cbv + 1 >= cbBuffer)) { break; }
+            cbu += 1;
+            cbv += 1;
+        }
+    }
+    cbu++;
+    cbv++;
+    if(pcbv) { *pcbv = cbv; }
+    // 2: return on length-request or alloc-fail
+    if(!pvsz) {
+        if(!(flags & CHARUTIL_FLAG_STR_BUFONLY)) { return TRUE; }   // success: length request
+        if(flags & CHARUTIL_FLAG_ALLOC) { return FALSE; }
+    }
+    if(!(flags & CHARUTIL_FLAG_ALLOC) && (!pbBuffer || (cbBuffer < cbv))) { goto fail; } // fail: insufficient buffer space
+    vsz = (pbBuffer && (cbBuffer >= cbv)) ? pbBuffer : LocalAlloc(0, cbv);
+    if(!vsz) { goto fail; }                                                 // fail: failed buffer space allocation
+    // 3: populate with CSV UTF-8 string
+    iu = cbu - 2; iv = cbv - 2;
+    if(fCSV) { vsz[iv--] = '"'; }
+    while(iv < 0x7fffffff) {
+        if(!iv && fCSV) {
+            vsz[0] = '"';
+            break;
+        }
+        c = usz[iu--];
+        if(c == '"') {
+            vsz[iv--] = '"';
+        }
+        if(c < 0x20) {
+            c = '?';
+        }
+        vsz[iv--] = c;
+    }
+    vsz[cbv - 1] = 0;
+    if(pvsz) { *pvsz = vsz; }
+    return TRUE;
+fail:
+    if(!(flags ^ CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR) && pbBuffer && cbBuffer) {
+        if(pvsz) { *pvsz = (LPSTR)pbBuffer; }
+        if(pcbv) { *pcbv = 1; }
+        pbBuffer[0] = 0;
+    }
+    return FALSE;
+}
 
 
 
@@ -1179,6 +1277,23 @@ BOOL CharUtil_StrEndsWith(_In_opt_ LPSTR usz, _In_opt_ LPSTR uszEndsWith, _In_ B
     return fCaseInsensitive ?
         (0 == _stricmp(usz + cch - cchEndsWith, uszEndsWith)) :
         (0 == strcmp(usz + cch - cchEndsWith, uszEndsWith));
+}
+
+/*
+* Checks if a string starts with a certain substring.
+* -- usz
+* -- uszStartsWith
+* -- fCaseInsensitive
+* -- return
+*/
+BOOL CharUtil_StrStartsWith(_In_opt_ LPSTR usz, _In_opt_ LPSTR uszStartsWith, _In_ BOOL fCaseInsensitive)
+{
+    if(!usz || !uszStartsWith) { return FALSE; }
+    if(fCaseInsensitive) {
+        return (0 == _strnicmp(usz, uszStartsWith, strlen(uszStartsWith)));
+    } else {
+        return (0 == strncmp(usz, uszStartsWith, strlen(uszStartsWith)));
+    }
 }
 
 /*

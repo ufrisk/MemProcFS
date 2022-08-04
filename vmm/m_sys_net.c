@@ -33,9 +33,9 @@ LPCSTR szMSYSNET_README =
 
 
 
-VOID MSysNet_ReadLine_Callback(_Inout_opt_ PVOID ctx, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVMM_MAP_NETENTRY pe, _Out_writes_(cbLineLength + 1) LPSTR szu8)
+VOID MSysNet_ReadLineCB(_In_ VMM_HANDLE H, _Inout_opt_ PVOID ctx, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVMM_MAP_NETENTRY pe, _Out_writes_(cbLineLength + 1) LPSTR szu8)
 {
-    PVMM_PROCESS pObProcess = VmmProcessGet(pe->dwPID);
+    PVMM_PROCESS pObProcess = VmmProcessGet(H, pe->dwPID);
     Util_usnprintf_ln(szu8, cbLineLength,
         "%04x%7i %s %s",
         ie,
@@ -46,10 +46,10 @@ VOID MSysNet_ReadLine_Callback(_Inout_opt_ PVOID ctx, _In_ DWORD cbLineLength, _
     Ob_DECREF(pObProcess);
 }
 
-VOID MSysNet_ReadLineVerbose_Callback(_Inout_opt_ PVOID ctx, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVMM_MAP_NETENTRY pe, _Out_writes_(cbLineLength + 1) LPSTR szu8)
+VOID MSysNet_ReadLineVerboseCB(_In_ VMM_HANDLE H, _Inout_opt_ PVOID ctx, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVMM_MAP_NETENTRY pe, _Out_writes_(cbLineLength + 1) LPSTR szu8)
 {
     CHAR szTime[24];
-    PVMM_PROCESS pObProcess = VmmProcessGet(pe->dwPID);
+    PVMM_PROCESS pObProcess = VmmProcessGet(H, pe->dwPID);
     Util_FileTime2String(pe->ftTime, szTime);
     Util_usnprintf_ln(szu8, cbLineLength,
         "%04x%7i %s %-20s %s  %016llx  %s",
@@ -64,24 +64,24 @@ VOID MSysNet_ReadLineVerbose_Callback(_Inout_opt_ PVOID ctx, _In_ DWORD cbLineLe
     Ob_DECREF(pObProcess);
 }
 
-NTSTATUS MSysNet_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MSysNet_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PVMMOB_MAP_NET pObNetMap;
-    if(!_stricmp(ctx->uszPath, "readme.txt")) {
+    if(!_stricmp(ctxP->uszPath, "readme.txt")) {
         return Util_VfsReadFile_FromStrA(szMSYSNET_README, pb, cb, pcbRead, cbOffset);
     }
-    if(VmmMap_GetNet(&pObNetMap)) {
-        if(!_stricmp(ctx->uszPath, "netstat.txt")) {
+    if(VmmMap_GetNet(H, &pObNetMap)) {
+        if(!_stricmp(ctxP->uszPath, "netstat.txt")) {
             nt = Util_VfsLineFixed_Read(
-                (UTIL_VFSLINEFIXED_PFN_CB)MSysNet_ReadLine_Callback, NULL, MSYSNET_LINELENGTH, MSYSNET_LINEHEADER,
+                H, (UTIL_VFSLINEFIXED_PFN_CB)MSysNet_ReadLineCB, NULL, MSYSNET_LINELENGTH, MSYSNET_LINEHEADER,
                 pObNetMap->pMap, pObNetMap->cMap, sizeof(VMM_MAP_NETENTRY),
                 pb, cb, pcbRead, cbOffset
             );
         }
-        if(!_stricmp(ctx->uszPath, "netstat-v.txt")) {
+        if(!_stricmp(ctxP->uszPath, "netstat-v.txt")) {
             nt = Util_VfsLineFixed_Read(
-                (UTIL_VFSLINEFIXED_PFN_CB)MSysNet_ReadLineVerbose_Callback, NULL, MSYSNET_LINELENGTH_VERBOSE, MSYSNET_LINEHEADER_VERBOSE,
+                H, (UTIL_VFSLINEFIXED_PFN_CB)MSysNet_ReadLineVerboseCB, NULL, MSYSNET_LINELENGTH_VERBOSE, MSYSNET_LINEHEADER_VERBOSE,
                 pObNetMap->pMap, pObNetMap->cMap, sizeof(VMM_MAP_NETENTRY),
                 pb, cb, pcbRead, cbOffset
             );
@@ -91,40 +91,41 @@ NTSTATUS MSysNet_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbR
     return nt;
 }
 
-BOOL MSysNet_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
+BOOL MSysNet_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList)
 {
     PVMMOB_MAP_NET pObNetMap;
-    if(ctx->uszPath[0]) { return FALSE; }
+    if(ctxP->uszPath[0]) { return FALSE; }
     VMMDLL_VfsList_AddFile(pFileList, "readme.txt", strlen(szMSYSNET_README), NULL);
-    if(VmmMap_GetNet(&pObNetMap)) {
-        VMMDLL_VfsList_AddFile(pFileList, "netstat.txt", UTIL_VFSLINEFIXED_LINECOUNT(pObNetMap->cMap) * MSYSNET_LINELENGTH, NULL);
-        VMMDLL_VfsList_AddFile(pFileList, "netstat-v.txt", UTIL_VFSLINEFIXED_LINECOUNT(pObNetMap->cMap) * MSYSNET_LINELENGTH_VERBOSE, NULL);
+    if(VmmMap_GetNet(H, &pObNetMap)) {
+        VMMDLL_VfsList_AddFile(pFileList, "netstat.txt", UTIL_VFSLINEFIXED_LINECOUNT(H, pObNetMap->cMap) * MSYSNET_LINELENGTH, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "netstat-v.txt", UTIL_VFSLINEFIXED_LINECOUNT(H, pObNetMap->cMap) * MSYSNET_LINELENGTH_VERBOSE, NULL);
         Ob_DECREF(pObNetMap);
     }
     return TRUE;
 }
 
 VOID MSysNet_Timeline(
+    _In_ VMM_HANDLE H,
     _In_opt_ PVOID ctxfc,
     _In_ HANDLE hTimeline,
-    _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPSTR uszText),
-    _In_ VOID(*pfnEntryAddBySql)(_In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPSTR *pszEntrySql)
+    _In_ VOID(*pfnAddEntry)(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPSTR uszText),
+    _In_ VOID(*pfnEntryAddBySql)(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPSTR *pszEntrySql)
 ) {
     DWORD i;
     PVMM_MAP_NETENTRY pe;
     PVMMOB_MAP_NET pObNetMap;
-    if(VmmMap_GetNet(&pObNetMap)) {
+    if(VmmMap_GetNet(H, &pObNetMap)) {
         for(i = 0; i < pObNetMap->cMap; i++) {
             pe = pObNetMap->pMap + i;
             if(pe->ftTime && pe->uszText[0]) {
-                pfnAddEntry(hTimeline, pe->ftTime, FC_TIMELINE_ACTION_CREATE, pe->dwPID, 0, pe->vaObj, pe->uszText);
+                pfnAddEntry(H, hTimeline, pe->ftTime, FC_TIMELINE_ACTION_CREATE, pe->dwPID, 0, pe->vaObj, pe->uszText);
             }
         }
         Ob_DECREF(pObNetMap);
     }
 }
 
-VOID MSysNet_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
+VOID MSysNet_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
 {
     PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd;
     PVMMOB_MAP_NET pObNetMap = NULL;
@@ -135,11 +136,11 @@ VOID MSysNet_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(
     if(ctxP->pProcess || !(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)))) { return; }
     pd->dwVersion = VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION;
     pd->szjType = "net";
-    if(VmmMap_GetNet(&pObNetMap)) {
+    if(VmmMap_GetNet(H, &pObNetMap)) {
         for(i = 0; i < pObNetMap->cMap; i++) {
             pe = pObNetMap->pMap + i;
             szu[0] = 0;
-            if((pObProcess = VmmProcessGet(pe->dwPID))) {
+            if((pObProcess = VmmProcessGet(H, pe->dwPID))) {
                 Util_FileTime2String(pe->ftTime, szTime);
                 snprintf(szu, _countof(szu), "proc:[%s] time:[%s] path:[%s]",
                     pObProcess ? pObProcess->pObPersistent->uszNameLong : "",
@@ -152,14 +153,14 @@ VOID MSysNet_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(
             pd->vaObj = pe->vaObj;
             pd->usz[0] = pe->uszText;
             pd->usz[1] = szu;
-            pfnLogJSON(pd);
+            pfnLogJSON(H, pd);
         }
     }
     Ob_DECREF(pObNetMap);
     LocalFree(pd);
 }
 
-VOID M_SysNet_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
+VOID M_SysNet_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if((pRI->tpSystem != VMM_SYSTEM_WINDOWS_X64) && (pRI->tpSystem != VMM_SYSTEM_WINDOWS_X86)) { return; }
@@ -170,6 +171,6 @@ VOID M_SysNet_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     pRI->reg_fnfc.pfnTimeline = MSysNet_Timeline;               // Timeline supported
     pRI->reg_fnfc.pfnLogJSON = MSysNet_FcLogJSON;               // JSON log function supported
     memcpy(pRI->reg_info.sTimelineNameShort, "Net", 4);
-    strncpy_s(pRI->reg_info.uszTimelineFile, 32, "timeline_net.txt", _TRUNCATE);
-    pRI->pfnPluginManager_Register(pRI);
+    strncpy_s(pRI->reg_info.uszTimelineFile, 32, "timeline_net", _TRUNCATE);
+    pRI->pfnPluginManager_Register(H, pRI);
 }

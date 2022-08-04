@@ -96,7 +96,7 @@ typedef struct tdMWEB_CONTEXT {
 * -- tpAction
 * -- szSql
 */
-VOID FcWeb_AddEntryFromDB(_In_ PMWEB_CONTEXT ctx, VMM_MAP_WEB_TPBROWSER tpBrowser, VMM_MAP_WEB_TPACTION tpAction, _In_ LPSTR szSql)
+VOID FcWeb_AddEntryFromDB(_In_ VMM_HANDLE H, _In_ PMWEB_CONTEXT ctx, VMM_MAP_WEB_TPBROWSER tpBrowser, VMM_MAP_WEB_TPACTION tpAction, _In_ LPSTR szSql)
 {
     QWORD qwHash;
     PVMM_MAP_WEBENTRY pe;
@@ -145,15 +145,17 @@ VOID FcWeb_AddEntryFromDB(_In_ PMWEB_CONTEXT ctx, VMM_MAP_WEB_TPBROWSER tpBrowse
 // WEB BROWSER SPECIFIC PARSING below:
 // ----------------------------------------------------------------------------
 
-VOID FcWeb_FF_Places(_In_ PMWEB_CONTEXT ctx)
+VOID FcWeb_FF_Places(_In_ VMM_HANDLE H, _In_ PMWEB_CONTEXT ctx)
 {
     FcWeb_AddEntryFromDB(
+        H,
         ctx,
         VMM_MAP_WEB_TPBROWSER_FIREFOX,
         VMM_MAP_WEB_TPACTION_BROWSE,
         "SELECT 0, last_visit_date, url, title from moz_places WHERE last_visit_date > 0"
     );
     FcWeb_AddEntryFromDB(
+        H,
         ctx,
         VMM_MAP_WEB_TPBROWSER_FIREFOX,
         VMM_MAP_WEB_TPACTION_DOWNLOAD,
@@ -161,16 +163,18 @@ VOID FcWeb_FF_Places(_In_ PMWEB_CONTEXT ctx)
     );
 }
 
-VOID FcWeb_Chrome_History(_In_ PMWEB_CONTEXT ctx)
+VOID FcWeb_Chrome_History(_In_ VMM_HANDLE H, _In_ PMWEB_CONTEXT ctx)
 {
     VMM_MAP_WEB_TPBROWSER tpBrowser = strstr(ctx->pProcess->szName, "chrome") ? VMM_MAP_WEB_TPBROWSER_CHROME : VMM_MAP_WEB_TPBROWSER_MSEDGE;
     FcWeb_AddEntryFromDB(
+        H,
         ctx,
         tpBrowser,
         VMM_MAP_WEB_TPACTION_BROWSE,
         "SELECT v.visit_time, 0, u.url, u.title FROM visits v, urls u WHERE v.url = u.id AND v.visit_time > 0"
     );
     FcWeb_AddEntryFromDB(
+        H,
         ctx,
         tpBrowser,
         VMM_MAP_WEB_TPACTION_DOWNLOAD,
@@ -186,10 +190,11 @@ VOID FcWeb_Chrome_History(_In_ PMWEB_CONTEXT ctx)
 
 /*
 * Dispatch a file for analysis to the appropriate browser tanalysis functions.
+* -- H
 * -- ctx
 * -- pfnCB = analysis callback function.
 */
-VOID FcWeb_LoadSqliteDispatch(_In_ PMWEB_CONTEXT ctx, _In_ VOID(*pfnCB)(_In_ PMWEB_CONTEXT ctx))
+VOID FcWeb_LoadSqliteDispatch(_In_ VMM_HANDLE H, _In_ PMWEB_CONTEXT ctx, _In_ VOID(*pfnCB)(_In_ VMM_HANDLE H, _In_ PMWEB_CONTEXT ctx))
 {
     int rc;
     DWORD cbDB;
@@ -199,17 +204,17 @@ VOID FcWeb_LoadSqliteDispatch(_In_ PMWEB_CONTEXT ctx, _In_ VOID(*pfnCB)(_In_ PMW
     FILE *phFile = NULL;
     // 1: sanity checks
     if((ctx->pFile->cb < 0x1000) || (ctx->pFile->cb > 0x04000000)) { goto fail; }
-    VmmWinObjFile_Read(ctx->pFile, 0, pbTest, sizeof(pbTest) - 1, 0);
+    VmmWinObjFile_Read(H, ctx->pFile, 0, pbTest, sizeof(pbTest) - 1, 0);
     if(pbTest != (PBYTE)strstr((LPCSTR)pbTest, "SQLite ")) { goto fail; }
     // 2: read file handle into memory
     cbDB = (DWORD)ctx->pFile->cb;
     if(!(pbDB = LocalAlloc(0, cbDB))) { goto fail; }
-    cbDB = VmmWinObjFile_Read(ctx->pFile, 0, pbDB, cbDB, 0);
+    cbDB = VmmWinObjFile_Read(H, ctx->pFile, 0, pbDB, cbDB, 0);
     // 3: create and write to temp file
     if(tmpnam_s(szFile, MAX_PATH)) { goto fail; }
     strncat_s(szFile, _countof(szFile), ".vmmsqlite3.tmp", _TRUNCATE);
     if(fopen_s(&phFile, szFile, "wb")) {
-        VmmLog(ctx->MID, LOGLEVEL_DEBUG, "fail open temp file: %s", szFile);
+        VmmLog(H, ctx->MID, LOGLEVEL_DEBUG, "fail open temp file: %s", szFile);
         goto fail;
     }
     fwrite(pbDB, 1, cbDB, phFile);
@@ -219,9 +224,9 @@ VOID FcWeb_LoadSqliteDispatch(_In_ PMWEB_CONTEXT ctx, _In_ VOID(*pfnCB)(_In_ PMW
     CharUtil_ReplaceAllA(szURI, '\\', '/');
     rc = sqlite3_open_v2(szURI, &ctx->hDB, SQLITE_OPEN_URI | SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX | SQLITE_OPEN_EXCLUSIVE, NULL);
     if(rc == SQLITE_OK) {
-        pfnCB(ctx);
+        pfnCB(H, ctx);
     } else {
-        VmmLog(ctx->MID, LOGLEVEL_DEBUG, "fail sqlite3 open: rc=%i db='%s'", rc, ctx->pFile->uszName);
+        VmmLog(H, ctx->MID, LOGLEVEL_DEBUG, "fail sqlite3 open: rc=%i db='%s'", rc, ctx->pFile->uszName);
     }
 fail:
     sqlite3_close(ctx->hDB); ctx->hDB = NULL;
@@ -235,23 +240,24 @@ fail:
 * -- pProcess
 * -- ctx
 */
-VOID MWeb_Initialize_ThreadProc(_In_ PVMM_PROCESS pProcess, _In_ PVOID pvCtxInit)
+VOID MWeb_Initialize_ThreadProc(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVOID pvCtxInit)
 {
     BOOL fAnalyze;
     QWORD qwHashFile;
     POB_MAP pmObFiles;
     POB_VMMWINOBJ_FILE pObFile;
     PMWEB_CONTEXT ctx = pvCtxInit;
-    if(!VmmWinObjFile_GetByProcess(pProcess, &pmObFiles, TRUE)) { return; }
-    VmmLog(ctx->MID, LOGLEVEL_TRACE, "process: pid=%i", pProcess->dwPID);
+    if(!VmmWinObjFile_GetByProcess(H, pProcess, &pmObFiles, TRUE)) { return; }
+    VmmLog(H, ctx->MID, LOGLEVEL_TRACE, "process: pid=%i", pProcess->dwPID);
     while((pObFile = ObMap_Pop(pmObFiles))) {
         if(pObFile->fData) {
-            VmmLog(ctx->MID, LOGLEVEL_TRACE, "handle:  pid=%i handle=%s", pProcess->dwPID, pObFile->uszName);
+            VmmLog(H, ctx->MID, LOGLEVEL_TRACE, "handle:  pid=%i handle=%s", pProcess->dwPID, pObFile->uszName);
             // check if already processed (multiple handles often exists)
             qwHashFile = pObFile->cb + pProcess->dwPID;
             qwHashFile = qwHashFile + (qwHashFile << 32) + CharUtil_Hash64U(pObFile->uszName, FALSE);
             if(!ObSet_Push(ctx->psFileProcessed, qwHashFile)) {
                 // already processed another handle to same file
+                Ob_DECREF(pObFile);
                 continue;
             }
             // lock & prepare:
@@ -262,16 +268,16 @@ VOID MWeb_Initialize_ThreadProc(_In_ PVMM_PROCESS pProcess, _In_ PVOID pvCtxInit
             // dispatch to analysis:
             fAnalyze = FALSE;
             if((fAnalyze = !strcmp(pObFile->uszName, "places.sqlite"))) {    // firefox 'places.sqlite'
-                FcWeb_LoadSqliteDispatch(ctx, FcWeb_FF_Places);
+                FcWeb_LoadSqliteDispatch(H, ctx, FcWeb_FF_Places);
             }
             //if((fAnalyze = !strcmp(pObFile->uszName, "cookies.sqlite"))) {    // firefox cookies.sqlite
             //    FcWeb_LoadSqliteDispatch(&ctx, FcWeb_FF_Cookies);
             //}
             if((fAnalyze = !strcmp(pObFile->uszName, "History"))) {          // chrome/edge 'History'
-                FcWeb_LoadSqliteDispatch(ctx, FcWeb_Chrome_History);
+                FcWeb_LoadSqliteDispatch(H, ctx, FcWeb_Chrome_History);
             }
             if(fAnalyze) {
-                VmmLog(ctx->MID, LOGLEVEL_DEBUG, "analyze: pid=%i db=%s", pProcess->dwPID, pObFile->uszName);
+                VmmLog(H, ctx->MID, LOGLEVEL_DEBUG, "analyze: pid=%i db=%s", pProcess->dwPID, pObFile->uszName);
             }
             // finish:
             ctx->pFile = NULL;
@@ -284,7 +290,7 @@ VOID MWeb_Initialize_ThreadProc(_In_ PVMM_PROCESS pProcess, _In_ PVOID pvCtxInit
     Ob_DECREF(pmObFiles);
 }
 
-BOOL MWeb_CriteriaSupportedBrowserProcess(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx)
+BOOL MWeb_CriteriaSupportedBrowserProcess(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx)
 {
     if(pProcess->dwState != 0) { return FALSE; }
     return
@@ -307,9 +313,10 @@ int MWeb_Initialize_CmpSort(POB_MAP_ENTRY p1, POB_MAP_ENTRY p2)
 
 /*
 * Initialize a new web map in a single-threaded context.
+* -- H
 * -- ctxP
 */
-VOID MWeb_Initialize_DoWork(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
+VOID MWeb_Initialize_DoWork(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
 {
     BOOL fResult = FALSE;
     DWORD i, cMap, cbDataStr, cbData, cbOffset = 0;
@@ -318,16 +325,16 @@ VOID MWeb_Initialize_DoWork(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
     PVMMOB_MAP_WEB pObMap = NULL;
     // 1: INIT:
     ctxInit.MID = ctxP->MID;
-    if(!(ctxInit.psFileProcessed = ObSet_New())) { goto fail; }
-    if(!(ctxInit.pm = ObMap_New(OB_MAP_FLAGS_OBJECT_LOCALFREE))) { goto fail; }
-    if(!(ctxInit.psm = ObStrMap_New(OB_STRMAP_FLAGS_CASE_SENSITIVE))) { goto fail; }
+    if(!(ctxInit.psFileProcessed = ObSet_New(H))) { goto fail; }
+    if(!(ctxInit.pm = ObMap_New(H, OB_MAP_FLAGS_OBJECT_LOCALFREE))) { goto fail; }
+    if(!(ctxInit.psm = ObStrMap_New(H, OB_STRMAP_FLAGS_CASE_SENSITIVE))) { goto fail; }
     // 2: DISPATCH TO ANALYSIS:
-    VmmProcessActionForeachParallel(&ctxInit, MWeb_CriteriaSupportedBrowserProcess, MWeb_Initialize_ThreadProc);
+    if(!VmmWork_ProcessActionForeachParallel_Void(H, 0, &ctxInit, MWeb_CriteriaSupportedBrowserProcess, MWeb_Initialize_ThreadProc)) { goto fail; }
     // 3: CREATE MAP / FINALIZE:
     if(!ObStrMap_FinalizeBufferU(ctxInit.psm, 0, NULL, &cbDataStr)) { goto fail; }
     cMap = ObMap_Size(ctxInit.pm);
     cbData = sizeof(VMMOB_MAP_WEB) + cMap * (sizeof(VMM_MAP_WEBENTRY) + sizeof(DWORD)) + cbDataStr;
-    if(!(pObMap = Ob_Alloc(OB_TAG_MAP_WEB, LMEM_ZEROINIT, cbData, NULL, NULL))) { goto fail; }
+    if(!(pObMap = Ob_AllocEx(H, OB_TAG_MAP_WEB, LMEM_ZEROINIT, cbData, NULL, NULL))) { goto fail; }
     pObMap->cMap = cMap;
     pObMap->pdwLineOffset = (PDWORD)(pObMap->pMap + pObMap->cMap);
     pObMap->pbMultiText = (LPSTR)((QWORD)pObMap + cbData - cbDataStr);
@@ -347,7 +354,7 @@ fail:
     Ob_DECREF(ctxInit.pm);
     Ob_DECREF(ctxInit.psm);
     Ob_DECREF(ctxInit.psFileProcessed);
-    if(!fResult && (pObMap = Ob_Alloc(OB_TAG_MAP_WEB, LMEM_ZEROINIT, sizeof(VMMOB_MAP_WEB), NULL, NULL))) {
+    if(!fResult && (pObMap = Ob_AllocEx(H, OB_TAG_MAP_WEB, LMEM_ZEROINIT, sizeof(VMMOB_MAP_WEB), NULL, NULL))) {
         pObMap->pdwLineOffset = &pObMap->cMap;
         ObContainer_SetOb((POB_CONTAINER)ctxP->ctxM, pObMap);
         Ob_DECREF(pObMap);
@@ -357,16 +364,17 @@ fail:
 /*
 * Fetch the 'WebMap' object.
 * CALLER DECREF: return
+* -- H
 * -- ctxP
 * -- return
 */
-PVMMOB_MAP_WEB MWeb_GetWebMap(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
+PVMMOB_MAP_WEB MWeb_GetWebMap(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
 {
     static SRWLOCK LockSRW = SRWLOCK_INIT;
     PVMMOB_MAP_WEB pOb;
     if((pOb = ObContainer_GetOb((POB_CONTAINER)ctxP->ctxM))) { return pOb; }
     AcquireSRWLockExclusive(&LockSRW);
-    MWeb_Initialize_DoWork(ctxP);
+    MWeb_Initialize_DoWork(H, ctxP);
     ReleaseSRWLockExclusive(&LockSRW);
     return ObContainer_GetOb((POB_CONTAINER)ctxP->ctxM);
 }
@@ -380,7 +388,7 @@ PVMMOB_MAP_WEB MWeb_GetWebMap(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
 /*
 * Generate a single line in the web.txt file.
 */
-VOID MWeb_ReadLine_CB(_In_ PVMMOB_MAP_WEB pObWebMap, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVOID pv, _Out_writes_(cbLineLength + 1) LPSTR szu8)
+VOID MWeb_ReadLine_CB(_In_ VMM_HANDLE H, _In_ PVMMOB_MAP_WEB pObWebMap, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVOID pv, _Out_writes_(cbLineLength + 1) LPSTR szu8)
 {
     PVMM_MAP_WEBENTRY pe = pObWebMap->pMap + ie;
     CHAR szTime[24];
@@ -398,17 +406,17 @@ VOID MWeb_ReadLine_CB(_In_ PVMMOB_MAP_WEB pObWebMap, _In_ DWORD cbLineLength, _I
     );
 }
 
-NTSTATUS MWeb_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MWeb_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PVMMOB_MAP_WEB pObWebMap = NULL;
-    if(!(pObWebMap = MWeb_GetWebMap(ctxP))) { goto finish; }
+    if(!(pObWebMap = MWeb_GetWebMap(H, ctxP))) { goto finish; }
     if(!_stricmp("readme.txt", ctxP->uszPath)) {
         return VMMDLL_UtilVfsReadFile_FromPBYTE(szMWEB_README, strlen(szMWEB_README), pb, cb, pcbRead, cbOffset);
     }
     if(!_stricmp(ctxP->uszPath, "web.txt")) {
         nt = Util_VfsLineVariable_Read(
-            (UTIL_VFSLINEFIXED_PFN_CB)MWeb_ReadLine_CB, pObWebMap, MWEB_LINEHEADER,
+            H, (UTIL_VFSLINEFIXED_PFN_CB)MWeb_ReadLine_CB, pObWebMap, MWEB_LINEHEADER,
             pObWebMap->pMap, pObWebMap->cMap, sizeof(VMM_MAP_WEBENTRY), pObWebMap->pdwLineOffset,
             pb, cb, pcbRead, cbOffset
         );
@@ -419,13 +427,13 @@ finish:
     return nt;
 }
 
-BOOL MWeb_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList)
+BOOL MWeb_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList)
 {
     PVMMOB_MAP_WEB pObWebMap = NULL;
-    if(!(pObWebMap = MWeb_GetWebMap(ctxP))) { goto finish; }
+    if(!(pObWebMap = MWeb_GetWebMap(H, ctxP))) { goto finish; }
     if(!ctxP->uszPath[0]) {
         VMMDLL_VfsList_AddFile(pFileList, "readme.txt", strlen(szMWEB_README), NULL);
-        VMMDLL_VfsList_AddFile(pFileList, "web.txt", UTIL_VFSLINEVARIABLE_BYTECOUNT(pObWebMap->cMap, pObWebMap->pdwLineOffset, MWEB_LINEHEADER), NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "web.txt", UTIL_VFSLINEVARIABLE_BYTECOUNT(H, pObWebMap->cMap, pObWebMap->pdwLineOffset, MWEB_LINEHEADER), NULL);
         goto finish;
     }
 finish:
@@ -433,19 +441,19 @@ finish:
     return TRUE;
 }
 
-VOID MWeb_Notify(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent)
+VOID MWeb_Notify(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent)
 {
     if(fEvent == VMMDLL_PLUGIN_NOTIFY_REFRESH_SLOW) {
         ObContainer_SetOb((POB_CONTAINER)ctxP->ctxM, NULL);
     }
 }
 
-VOID MWeb_Close(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
+VOID MWeb_Close(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
 {
     Ob_DECREF(ctxP->ctxM);
 }
 
-VOID MWeb_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
+VOID MWeb_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
 {
     DWORD ie;
     PVMM_MAP_WEBENTRY pe = NULL;
@@ -453,7 +461,7 @@ VOID MWeb_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In
     PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd = NULL;
     CHAR usz[2048], szTime[24];
     if(ctxP->pProcess) { return; }
-    if(!(pObWebMap = MWeb_GetWebMap(ctxP))) { goto fail; }
+    if(!(pObWebMap = MWeb_GetWebMap(H, ctxP))) { goto fail; }
     if(!(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)))) { goto fail; }
     pd->dwVersion = VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION;
     pd->szjType = "web";
@@ -469,7 +477,7 @@ VOID MWeb_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In
         pd->dwPID = pe->dwPID;
         pd->usz[0] = pe->uszUrl;
         pd->usz[1] = usz;
-        pfnLogJSON(pd);
+        pfnLogJSON(H, pd);
     }
 fail:
     Ob_DECREF(pObWebMap);
@@ -477,10 +485,11 @@ fail:
 }
 
 VOID MWeb_FcTimeline(
+    _In_ VMM_HANDLE H,
     _In_opt_ PVOID ctxfc,
     _In_ HANDLE hTimeline,
-    _In_ VOID(*pfnAddEntry)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPSTR uszText),
-    _In_ VOID(*pfnEntryAddBySql)(_In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPSTR *pszEntrySql)
+    _In_ VOID(*pfnAddEntry)(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPSTR uszText),
+    _In_ VOID(*pfnEntryAddBySql)(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPSTR *pszEntrySql)
 ) {
     PVMMOB_MAP_WEB pWebMap = (PVMMOB_MAP_WEB)ctxfc;
     PVMM_MAP_WEBENTRY pe;
@@ -497,26 +506,26 @@ VOID MWeb_FcTimeline(
             pe->uszInfo);
         if(cch > 10) {
             if(pe->ftCreate) {
-                pfnAddEntry(hTimeline, pe->ftCreate, FC_TIMELINE_ACTION_CREATE, pe->dwPID, 0, 0, usz);
+                pfnAddEntry(H, hTimeline, pe->ftCreate, FC_TIMELINE_ACTION_CREATE, pe->dwPID, 0, 0, usz);
             }
             if(pe->ftAccess && (pe->ftAccess != pe->ftCreate)) {
-                pfnAddEntry(hTimeline, pe->ftAccess, FC_TIMELINE_ACTION_READ, pe->dwPID, 0, 0, usz);
+                pfnAddEntry(H, hTimeline, pe->ftAccess, FC_TIMELINE_ACTION_READ, pe->dwPID, 0, 0, usz);
             }
         }
     }
 }
 
-VOID MWeb_FcFinalize(_In_opt_ PVOID ctxfc)
+VOID MWeb_FcFinalize(_In_ VMM_HANDLE H, _In_opt_ PVOID ctxfc)
 {
     Ob_DECREF(ctxfc);
 }
 
-PVOID MWeb_FcInitialize(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
+PVOID MWeb_FcInitialize(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
 {
-    return MWeb_GetWebMap(ctxP);
+    return MWeb_GetWebMap(H, ctxP);
 }
 
-VOID M_MiscWeb_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
+VOID M_MiscWeb_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if((pRI->tpSystem != VMM_SYSTEM_WINDOWS_X64) && (pRI->tpSystem != VMM_SYSTEM_WINDOWS_X86)) { return; }
@@ -534,6 +543,6 @@ VOID M_MiscWeb_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     pRI->reg_fnfc.pfnTimeline = MWeb_FcTimeline;                                // Forensic timelining supported
     pRI->reg_fnfc.pfnFinalize = MWeb_FcFinalize;                                // Forensic finalize function supported
     memcpy(pRI->reg_info.sTimelineNameShort, "WEB", 4);
-    strncpy_s(pRI->reg_info.uszTimelineFile, 32, "timeline_web.txt", _TRUNCATE);
-    pRI->pfnPluginManager_Register(pRI);
+    strncpy_s(pRI->reg_info.uszTimelineFile, 32, "timeline_web", _TRUNCATE);
+    pRI->pfnPluginManager_Register(H, pRI);
 }

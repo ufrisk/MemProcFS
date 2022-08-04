@@ -9,19 +9,21 @@
 
 /*
 * Retrieve the current system time as FILETIME.
+* -- H
 * -- return
 */
 _Success_(return != 0)
-QWORD SysQuery_TimeCurrent();
+QWORD SysQuery_TimeCurrent(_In_ VMM_HANDLE H);
 
 /*
 * Query the system for current time zone and its bias in minutes against UCT.
 * NB! individual sessions connected remotely may have other time zones.
+* -- H
 * -- uszTimeZone = full name text representation - ex: 'Eastern Standard Time'.
 * -- piActiveBias = bias against UCT in minutes - ex: (CET=UCT+1=-60).
 * -- return
 */
 _Success_(return)
-BOOL SysQuery_TimeZone(_Out_writes_opt_(32) LPSTR uszTimeZone, _Out_opt_ int *piActiveBias);
+BOOL SysQuery_TimeZone(_In_ VMM_HANDLE H, _Out_writes_opt_(32) LPSTR uszTimeZone, _Out_opt_ int *piActiveBias);
 
 #endif /* __SYSQUERY_H__ */

@@ -21,7 +21,7 @@ VmmPycPdb_symbol_name(PyObj_Pdb *self, PyObject *args)
         return PyErr_Format(PyExc_RuntimeError, "Pdb.symbol_name(): Illegal argument.");
     }
     Py_BEGIN_ALLOW_THREADS;
-    result = VMMDLL_PdbSymbolName(self->szModule, cbSymbolAddressOrOffset, szSymbolName, &dwSymbolDisplacement);
+    result = VMMDLL_PdbSymbolName(self->pyVMM->hVMM, self->szModule, cbSymbolAddressOrOffset, szSymbolName, &dwSymbolDisplacement);
     Py_END_ALLOW_THREADS;
     if(!result) {
         return PyErr_Format(PyExc_RuntimeError, "Pdb.symbol_name(): Failed.");
@@ -45,7 +45,7 @@ VmmPycPdb_symbol_address(PyObj_Pdb *self, PyObject *args)
         return PyErr_Format(PyExc_RuntimeError, "Pdb.symbol_address(): Illegal argument.");
     }
     Py_BEGIN_ALLOW_THREADS;
-    result = VMMDLL_PdbSymbolAddress(self->szModule, uszTypeName, &vaSymbol);
+    result = VMMDLL_PdbSymbolAddress(self->pyVMM->hVMM, self->szModule, uszTypeName, &vaSymbol);
     Py_END_ALLOW_THREADS;
     if(!result) {
         return PyErr_Format(PyExc_RuntimeError, "Pdb.symbol_address(): Failed.");
@@ -65,7 +65,7 @@ VmmPycPdb_type_size(PyObj_Pdb *self, PyObject *args)
         return PyErr_Format(PyExc_RuntimeError, "Pdb.type_size(): Illegal argument.");
     }
     Py_BEGIN_ALLOW_THREADS;
-    result = VMMDLL_PdbTypeSize(self->szModule, uszTypeName, &dwSize);
+    result = VMMDLL_PdbTypeSize(self->pyVMM->hVMM, self->szModule, uszTypeName, &dwSize);
     Py_END_ALLOW_THREADS;
     if(!result) {
         return PyErr_Format(PyExc_RuntimeError, "Pdb.type_size(): Failed.");
@@ -86,7 +86,7 @@ VmmPycPdb_type_child_offset(PyObj_Pdb *self, PyObject *args)
         return PyErr_Format(PyExc_RuntimeError, "Pdb.type_child_offset(): Illegal argument.");
     }
     Py_BEGIN_ALLOW_THREADS;
-    result = VMMDLL_PdbTypeChildOffset(self->szModule, uszTypeName, uszTypeChildName, &dwChildOffset);
+    result = VMMDLL_PdbTypeChildOffset(self->pyVMM->hVMM, self->szModule, uszTypeName, uszTypeChildName, &dwChildOffset);
     Py_END_ALLOW_THREADS;
     if(!result) {
         return PyErr_Format(PyExc_RuntimeError, "Pdb.type_child_offset(): Failed.");
@@ -99,25 +99,26 @@ VmmPycPdb_type_child_offset(PyObj_Pdb *self, PyObject *args)
 //-----------------------------------------------------------------------------
 
 PyObj_Pdb*
-VmmPycPdb_InitializeInternal2(_In_ LPSTR szModule)
+VmmPycPdb_InitializeInternal2(_In_ PyObj_Vmm *pyVMM, _In_ LPSTR szModule)
 {
     PyObj_Pdb *pyObjPdb;
     if(!(pyObjPdb = PyObject_New(PyObj_Pdb, (PyTypeObject*)g_pPyType_Pdb))) { return NULL; }
     strncpy_s(pyObjPdb->szModule, MAX_PATH, szModule, _TRUNCATE);
+    Py_INCREF(pyVMM); pyObjPdb->pyVMM = pyVMM;
     pyObjPdb->fValid = TRUE;
     return pyObjPdb;
 }
 
 PyObj_Pdb*
-VmmPycPdb_InitializeInternal1(_In_ DWORD dwPID, _In_ QWORD vaModuleBase)
+VmmPycPdb_InitializeInternal1(_In_ PyObj_Vmm *pyVMM, _In_ DWORD dwPID, _In_ QWORD vaModuleBase)
 {
     BOOL result;
     CHAR szModule[MAX_PATH];
     Py_BEGIN_ALLOW_THREADS;
-    result = VMMDLL_PdbLoad(dwPID, vaModuleBase, szModule);
+    result = VMMDLL_PdbLoad(pyVMM->hVMM, dwPID, vaModuleBase, szModule);
     Py_END_ALLOW_THREADS;
     if(!result) { return NULL; }
-    return VmmPycPdb_InitializeInternal2(szModule);
+    return VmmPycPdb_InitializeInternal2(pyVMM, szModule);
 }
 
 static PyObject*
@@ -138,6 +139,7 @@ static void
 VmmPycPdb_dealloc(PyObj_Pdb *self)
 {
     self->fValid = FALSE;
+    Py_XDECREF(self->pyVMM); self->pyVMM = NULL;
 }
 
 _Success_(return)

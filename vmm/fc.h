@@ -25,16 +25,25 @@
 typedef struct tdFCSQL_INSERTSTRTABLE {
     QWORD id;
     DWORD cbu;      // UTF-8 byte count (excl. NULL)
-    DWORD cbj;      // JSON byte count (excl. NULL)
+    DWORD cbj;      // JSON byte count  (excl. NULL)
+    DWORD cbv;      // CSV byte count   (excl. NULL)
 } FCSQL_INSERTSTRTABLE, *PFCSQL_INSERTSTRTABLE;
 
 typedef struct tdFC_TIMELINE_INFO {
     DWORD dwId;
     DWORD dwFileSizeUTF8;
     DWORD dwFileSizeJSON;
+    DWORD dwFileSizeCSV;
     CHAR szNameShort[7];        // 6 chars + NULL
-    CHAR uszNameFile[32];
+    CHAR uszNameFileTXT[32];
+    CHAR uszNameFileCSV[32];
 } FC_TIMELINE_INFO, *PFC_TIMELINE_INFO;
+
+typedef struct tdFCOB_FILE {
+    OB ObHdr;
+    CHAR uszName[MAX_PATH];
+    POB_MEMFILE pmf;
+} FCOB_FILE, *PFCOB_FILE;
 
 typedef struct tdFC_CONTEXT {
     BOOL fInitStart;
@@ -46,7 +55,7 @@ typedef struct tdFC_CONTEXT {
         CHAR uszDatabasePath[MAX_PATH];     // database filsystem path
         CHAR szuDatabase[MAX_PATH];         // Sqlite3 database path in UTF-8
         BOOL fSingleThread;                 // enforce single-thread access (used during insert-bound init phase)
-        HANDLE hEvent[FC_SQL_POOL_CONNECTION_NUM];
+        HANDLE hEventIngestPhys[FC_SQL_POOL_CONNECTION_NUM];
         sqlite3 *hSql[FC_SQL_POOL_CONNECTION_NUM];
         QWORD qwIdStr;
     } db;
@@ -56,20 +65,16 @@ typedef struct tdFC_CONTEXT {
     } Timeline;
     struct {
         POB_MEMFILE pGen;
-        POB_MEMFILE pGenVerbose;
         POB_MEMFILE pReg;
     } FileJSON;
+    struct {
+        POB_MAP pm;         // map of PFCOB_FILE
+    } FileCSV;
 } FC_CONTEXT, *PFC_CONTEXT;
 
 #define FC_JSONDATA_INIT_PIDTYPE(pd, pid, tp)   { ZeroMemory(pd, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)); pd->dwVersion = VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION; pd->dwPID = pid; pd->szjType = tp; }
 
-
-
-// ----------------------------------------------------------------------------
-// FC global variable below:
-// ----------------------------------------------------------------------------
-
-extern PFC_CONTEXT ctxFc;
+static const LPSTR szFC_SQL_STR_INSERT = "INSERT INTO str (id, cbu, cbj, cbv, sz) VALUES (?, ?, ?, ?, ?);";
 
 
 
@@ -85,17 +90,27 @@ extern PFC_CONTEXT ctxFc;
 
 /*
 * Initialize (or re-initialize) the forensic sub-system.
+* -- H
 * -- dwDatabaseType = database type as specified by: FC_DATABASE_TYPE_*
 * -- fForceReInit
 * -- return
 */
 _Success_(return)
-BOOL FcInitialize(_In_ DWORD dwDatabaseType, _In_ BOOL fForceReInit);
+BOOL FcInitialize(_In_ VMM_HANDLE H, _In_ DWORD dwDatabaseType, _In_ BOOL fForceReInit);
+
+/*
+* Interrupt forensic sub-system sql queries (to allow for smooth termination)
+* Cleanup will still have to be done by FcClose() once threads are shutdown.
+* -- H
+*/
+VOID FcInterrupt(_In_ VMM_HANDLE H);
 
 /*
 * Close the forensic sub-system.
+* This should be done after threading has been shut down.
+* -- H
 */
-VOID FcClose();
+VOID FcClose(_In_ VMM_HANDLE H);
 
 
 
@@ -105,33 +120,37 @@ VOID FcClose();
 
 /*
 * Retrieve an SQLITE database handle. The retrieved handle must be
-* returned with Fc_SqlReserveReturn().
+* returned with Fc_SqlReserveReturn(H, ).
+* -- H
 * -- return = an SQLITE handle, or NULL on error.
 */
 _Success_(return != NULL)
-sqlite3* Fc_SqlReserve();
+sqlite3* Fc_SqlReserve(_In_ VMM_HANDLE H);
 
 /*
 * Return a SQLITE database handle previously retrieved with Fc_SqlReserve()
 * so that other threads may use it.
+* -- H
 * -- hSql = the SQLITE database handle.
 * -- return = always NULL.
 */
 _Success_(return != NULL)
-sqlite3* Fc_SqlReserveReturn(_In_opt_ sqlite3 *hSql);
+sqlite3* Fc_SqlReserveReturn(_In_ VMM_HANDLE H, _In_opt_ sqlite3 *hSql);
 
 /*
 * Execute a single SQLITE database SQL query and return the SQLITE result code.
+* -- H
 * -- szSql
 * -- return = sqlite return code.
 */
 _Success_(return == SQLITE_OK)
-int Fc_SqlExec(_In_ LPSTR szSql);
+int Fc_SqlExec(_In_ VMM_HANDLE H, _In_ LPSTR szSql);
 
 /*
 * Execute a single SQLITE database SQL query and return all results as numeric
 * 64-bit results in an array that must have capacity to hold all values.
 * result and the SQLITE result code.
+* -- H
 * -- szSql
 * -- cQueryValue = nummber of numeric query arguments-
 * -- pqwQueryValues = array of 64-bit query arguments-
@@ -142,6 +161,7 @@ int Fc_SqlExec(_In_ LPSTR szSql);
 */
 _Success_(return == SQLITE_OK)
 int Fc_SqlQueryN(
+    _In_ VMM_HANDLE H,
     _In_ LPSTR szSql,
     _In_ DWORD cQueryValues,
     _In_reads_(cQueryValues) PQWORD pqwQueryValues,
@@ -154,6 +174,7 @@ int Fc_SqlQueryN(
 * Helper function to insert a string into the database 'str' table.
 * Wide-Char string must not exceed 2048 characters. Only one of utf-8
 * and wide-char string is inserted (preferential treatment to utf-8).
+* -- H
 * -- hStmt
 * -- usz = utf-8 string to be inserted
 * -- pThis
@@ -161,6 +182,7 @@ int Fc_SqlQueryN(
 */
 _Success_(return)
 BOOL Fc_SqlInsertStr(
+    _In_ VMM_HANDLE H, 
     _In_ sqlite3_stmt *hStmt,
     _In_ LPSTR usz,
     _Out_ PFCSQL_INSERTSTRTABLE pThis
@@ -186,12 +208,50 @@ int Fc_SqlBindMultiInt64(
 
 
 
+//-----------------------------------------------------------------------------
+// FC FILE FUNCTIONALITY BELOW:
+//-----------------------------------------------------------------------------
+
+/*
+* Append text data to a memory-backed forensics file.
+* All text should be UTF-8 encoded.
+* -- H
+* -- uszFileName
+* -- uszFormat
+* -- ..
+* -- return = the number of bytes appended (excluding terminating null).
+*/
+_Success_(return != 0)
+SIZE_T FcFileAppend(_In_ VMM_HANDLE H, _In_ LPSTR uszFileName, _In_z_ _Printf_format_string_ LPSTR uszFormat, ...);
+
+/*
+* Append text data to a memory-backed forensics file.
+* All text should be UTF-8 encoded.
+* -- H
+* -- uszFileName
+* -- uszFormat
+* -- arglist
+* -- return = the number of bytes appended (excluding terminating null).
+*/
+_Success_(return != 0)
+SIZE_T FcFileAppendEx(_In_ VMM_HANDLE H, _In_ LPSTR uszFileName, _In_z_ _Printf_format_string_ LPSTR uszFormat, _In_ va_list arglist);
+
+/*
+* Helper functions to ease CSV string conversions destined for FcFileAppend().
+*/
+VOID FcCsv_Reset(_In_ VMMDLL_CSV_HANDLE h);
+LPSTR FcCsv_String(_In_ VMMDLL_CSV_HANDLE h, _In_opt_ LPSTR usz);
+LPSTR FcCsv_FileTime(_In_ VMMDLL_CSV_HANDLE h, _In_ QWORD ft);
+
+
+
 // ----------------------------------------------------------------------------
 // FC TIMELINING FUNCTIONALITY BELOW:
 // ----------------------------------------------------------------------------
 
 #define FC_LINELENGTH_TIMELINE_UTF8             74
 #define FC_LINELENGTH_TIMELINE_JSON             170
+#define FC_LINELENGTH_TIMELINE_CSV              75
 
 #define FC_TIMELINE_ACTION_NONE                 0
 #define FC_TIMELINE_ACTION_CREATE               1
@@ -204,7 +264,7 @@ static LPCSTR FC_TIMELINE_ACTION_STR[FC_TIMELINE_ACTION_MAX + 1] = {
     "---",
     "CRE",
     "MOD",
-    "RD ",
+    "RD",
     "DEL",
 };
 
@@ -218,6 +278,8 @@ typedef struct tdFC_MAP_TIMELINEENTRY {
     QWORD data64;
     QWORD cuszOffset;               // offset to start of "line" in bytes (utf-8)
     QWORD cjszOffset;               // offset to start of "line" in bytes (json)
+    QWORD cvszOffset;               // offset to start of "line" in bytes (csv)
+    DWORD cvszText;                 // CSV   BYTE count not including terminating null
     DWORD cuszText;                 // UTF-8 BYTE count not including terminating null
     LPSTR uszText;                  // UTF-8 LPSTR pointed into FCOB_MAP_TIMELINE.uszMultiText
 } FC_MAP_TIMELINEENTRY, *PFC_MAP_TIMELINEENTRY;
@@ -230,8 +292,15 @@ typedef struct tdFCOB_MAP_TIMELINE {
     FC_MAP_TIMELINEENTRY pMap[];    // map entries.
 } FCOB_MAP_TIMELINE, *PFCOB_MAP_TIMELINE;
 
+typedef enum tdFC_FORMAT_TYPE {
+    FC_FORMAT_TYPE_UTF8 = 0,
+    FC_FORMAT_TYPE_JSON = 1,
+    FC_FORMAT_TYPE_CSV  = 2,
+} FC_FORMAT_TYPE;
+
 /*
 * Retrieve a timeline map object consisting of timeline data.
+* -- H
 * -- dwTimelineType = the timeline type, 0 for all.
 * -- qwId = the minimum timeline id of the entries to retrieve.
 * -- cId = the number of timeline entries to retrieve.
@@ -240,6 +309,7 @@ typedef struct tdFCOB_MAP_TIMELINE {
 */
 _Success_(return)
 BOOL FcTimelineMap_GetFromIdRange(
+    _In_ VMM_HANDLE H,
     _In_ DWORD dwTimelineType,
     _In_ QWORD qwId,
     _In_ QWORD cId,
@@ -249,16 +319,18 @@ BOOL FcTimelineMap_GetFromIdRange(
 /*
 * Retrieve the minimum timeline id that exists within a byte range inside a
 * timeline file of a specific type.
+* -- H
 * -- dwTimelineType = the timeline type, 0 for all.
-* -- fJSON = is JSON type, otherwise UTF8 type.
+* -- tpFormat = FC_FORMAT_TYPE_UTF8, FC_FORMAT_TYPE_JSON or FC_FORMAT_TYPE_CSV.
 * -- qwFilePos = the file position.
 * -- pqwId = pointer to receive the result id.
 * -- return
 */
 _Success_(return)
 BOOL FcTimeline_GetIdFromPosition(
+    _In_ VMM_HANDLE H,
     _In_ DWORD dwTimelineType,
-    _In_ BOOL fJSON,
+    _In_ FC_FORMAT_TYPE tpFormat,
     _In_ QWORD qwFilePos,
     _Out_ PQWORD pqwId
 );

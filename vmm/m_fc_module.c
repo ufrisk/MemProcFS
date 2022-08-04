@@ -12,118 +12,49 @@
 #include "vmm.h"
 #include "pe.h"
 #include "pluginmanager.h"
+#include "charutil.h"
 #include "util.h"
 
-VOID MFcModule_LogEAT(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd, _In_ VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData), _In_ PVMM_PROCESS pProcess, PVMM_MAP_MODULEENTRY peM)
-{
-    PVMMOB_MAP_EAT pObEatMap = NULL;
-    PVMM_MAP_EATENTRY pe;
-    DWORD i;
-    if(VmmMap_GetEAT(pProcess, peM, &pObEatMap)) {
-        for(i = 0; i < pObEatMap->cMap; i++) {
-            pe = pObEatMap->pMap + i;
-            pd->i = i;
-            pd->va[0] = pe->vaFunction;
-            pd->qwNum[1] = pe->dwOrdinal;
-            pd->qwHex[0] = pe->vaFunction - peM->vaBase;
-            pd->usz[0] = peM->uszText;
-            pd->usz[1] = pe->uszFunction;
-            pfnLogJSON(pd);
-        }
-    }
-    Ob_DECREF(pObEatMap);
-}
+static LPSTR MFCMODULE_CSV_MODULES = "PID,Name,Wow64,Size,Start,End,#Imports,#Exports,#Sections,Path,KernelPath,PdbPath,PdbAge,PdbHexGUID\n";
+static LPSTR MFCMODULE_CSV_UNLOADEDMODULES = "PID,ModuleName,UnloadTime,Wow64,Size,Start,End\n";
 
-VOID MFcModule_LogIAT(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd, _In_ VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData), _In_ PVMM_PROCESS pProcess, PVMM_MAP_MODULEENTRY peM)
-{
-    PVMMOB_MAP_IAT pObIatMap = NULL;
-    PVMM_MAP_IATENTRY pe;
-    DWORD i;
-    CHAR usz[MAX_PATH];
-    if(VmmMap_GetIAT(pProcess, peM, &pObIatMap)) {
-        for(i = 0; i < pObIatMap->cMap; i++) {
-            pe = pObIatMap->pMap + i;
-            snprintf(usz, _countof(usz), "%s!%s", pe->uszModule, pe->uszFunction);
-            pd->i = i;
-            pd->va[0] = pe->vaFunction;
-            pd->usz[0] = peM->uszText;
-            pd->usz[1] = usz;
-            pfnLogJSON(pd);
-        }
-    }
-    Ob_DECREF(pObIatMap);
-}
-
-VOID MFcModule_LogDirectory(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd, _In_ VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData), _In_ PVMM_PROCESS pProcess, PVMM_MAP_MODULEENTRY peM)
-{
-    DWORD i;
-    PIMAGE_DATA_DIRECTORY pe;
-    IMAGE_DATA_DIRECTORY Directory[IMAGE_NUMBEROF_DIRECTORY_ENTRIES];
-    if(!PE_DirectoryGetAll(pProcess, peM->vaBase, NULL, Directory)) { return; }
-    for(i = 0; i < 16; i++) {
-        pe = Directory + i;
-        if(pe->VirtualAddress) {
-            pd->va[0] = peM->vaBase + pe->VirtualAddress;
-            pd->va[1] = pe->VirtualAddress;
-            pd->qwNum[0] = pe->Size;
-            pd->usz[0] = (LPSTR)PE_DATA_DIRECTORIES[i];
-            pfnLogJSON(pd);
-        }
-    }
-}
-
-VOID MFcModule_LogSection(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd, _In_ VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData), _In_ PVMM_PROCESS pProcess, PVMM_MAP_MODULEENTRY peM)
-{
-    DWORD i, cSections;
-    CHAR usz[32];
-    PIMAGE_SECTION_HEADER pSections = NULL;
-    PIMAGE_SECTION_HEADER pe;
-    cSections = PE_SectionGetNumberOf(pProcess, peM->vaBase);
-    if(!cSections || !(pSections = LocalAlloc(LMEM_ZEROINIT, cSections * sizeof(IMAGE_SECTION_HEADER)))) { return; }
-    if(PE_SectionGetAll(pProcess, peM->vaBase, cSections, pSections)) {
-        for(i = 0; i < cSections; i++) {
-            pe = pSections + i;
-            pd->i = i;
-            pd->va[0] = peM->vaBase + pe->VirtualAddress;
-            pd->qwNum[0] = pe->Misc.VirtualSize;
-            pd->qwHex[0] = pe->VirtualAddress;
-            pd->qwHex[1] = pe->Misc.VirtualSize;
-            pe->Misc.VirtualSize = 0;   // effectively null-terminates pe->Name
-            snprintf(usz, sizeof(usz), "%s %c%c%c",
-                pe->Name,
-                (pe->Characteristics & IMAGE_SCN_MEM_READ) ? 'r' : '-',
-                (pe->Characteristics & IMAGE_SCN_MEM_WRITE) ? 'w' : '-',
-                (pe->Characteristics & IMAGE_SCN_MEM_EXECUTE) ? 'x' : '-');
-            pd->usz[0] = peM->uszText;
-            pd->usz[1] = usz;
-            pfnLogJSON(pd);
-        }
-    }
-    LocalFree(pSections);
-}
-
-VOID MFcModule_LogCodeView(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd, _In_ VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData), _In_ PVMM_PROCESS pProcess, PVMM_MAP_MODULEENTRY peM)
+_Success_(return)
+BOOL MFcModule_GetCodeView(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, PVMM_MAP_MODULEENTRY peM, _Out_writes_(33) LPSTR szGUID, _Out_writes_(MAX_PATH) LPSTR szPdbFileName, _Out_ PDWORD pdwAge)
 {
     LPCSTR szHEX_ALPHABET = "0123456789ABCDEF";
-    CHAR usz[MAX_PATH], szGuidHEX[33] = { 0 };
-    DWORD i, j;
     BYTE b;
+    DWORD i, j;
     PE_CODEVIEW_INFO CodeViewInfo = { 0 };
-    if(!PE_GetCodeViewInfo(pProcess, peM->vaBase, NULL, &CodeViewInfo)) { return; }
+    szGUID[0] = 0;
+    szPdbFileName[0] = 0;
+    *pdwAge = 0;
+    if(!PE_GetCodeViewInfo(H, pProcess, peM->vaBase, NULL, &CodeViewInfo)) { return FALSE; }
     // guid -> hex
     for(i = 0, j = 0; i < 16; i++) {
         b = CodeViewInfo.CodeView.Guid[i];
-        szGuidHEX[j++] = szHEX_ALPHABET[b >> 4];
-        szGuidHEX[j++] = szHEX_ALPHABET[b & 7];
+        szGUID[j++] = szHEX_ALPHABET[b >> 4];
+        szGUID[j++] = szHEX_ALPHABET[b & 7];
     }
-    snprintf(usz, sizeof(usz), "AGE=[%i] GUID=[%s] PDB=[%s]", CodeViewInfo.CodeView.Age, szGuidHEX, CodeViewInfo.CodeView.PdbFileName);
-    pd->qwNum[0] = CodeViewInfo.CodeView.Age;
-    pd->usz[0] = peM->uszText;
-    pd->usz[1] = usz;
-    pfnLogJSON(pd);
+    szGUID[32] = 0;
+    strncpy_s(szPdbFileName, MAX_PATH, CodeViewInfo.CodeView.PdbFileName, _TRUNCATE);
+    *pdwAge = CodeViewInfo.CodeView.Age;
+    return TRUE;
 }
 
-VOID MFcModule_LogModule(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd, _In_ VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData), PVMMOB_MAP_MODULE pMap)
+VOID MFcModule_LogCodeView(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData), _In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY peM)
+{
+    DWORD dwAge;
+    CHAR usz[MAX_PATH], szGUID[33], szPdbFileName[MAX_PATH];
+    if(MFcModule_GetCodeView(H, pProcess, peM, szGUID, szPdbFileName, &dwAge)) {
+        snprintf(usz, sizeof(usz), "AGE=[%i] GUID=[%s] PDB=[%s]", dwAge, szGUID, szPdbFileName);
+        pd->qwNum[0] = dwAge;
+        pd->usz[0] = peM->uszText;
+        pd->usz[1] = usz;
+        pfnLogJSON(H, pd);
+    }
+}
+
+VOID MFcModule_LogModule(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData), _In_ PVMMOB_MAP_MODULE pMap)
 {
     DWORD i;
     PVMM_MAP_MODULEENTRY pe;
@@ -136,11 +67,11 @@ VOID MFcModule_LogModule(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd, _In_ VOID(*pf
         pd->va[0] = pe->vaBase;
         pd->va[1] = pe->vaBase + pe->cbImageSize - 1;
         pd->usz[0] = pe->uszText;
-        pfnLogJSON(pd);
+        pfnLogJSON(H, pd);
     }
 }
 
-VOID MFcModule_LogUnloadedModule(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd, _In_ VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData), PVMMOB_MAP_UNLOADEDMODULE pMap)
+VOID MFcModule_LogUnloadedModule(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData), PVMMOB_MAP_UNLOADEDMODULE pMap)
 {
     DWORD i;
     PVMM_MAP_UNLOADEDMODULEENTRY pe;
@@ -153,11 +84,11 @@ VOID MFcModule_LogUnloadedModule(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd, _In_ 
         pd->va[0] = pe->vaBase;
         pd->va[1] = pe->vaBase + pe->cbImageSize - 1;
         pd->usz[0] = pe->uszText;
-        pfnLogJSON(pd);
+        pfnLogJSON(H, pd);
     }
 }
 
-VOID MFcModule_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
+VOID MFcModule_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
 {
     PVMM_PROCESS pProcess = ctxP->pProcess;
     PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd;
@@ -168,60 +99,137 @@ VOID MFcModule_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON
     if(!pProcess || !(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)))) { return; }
     // loaded modules:
     FC_JSONDATA_INIT_PIDTYPE(pd, pProcess->dwPID, "module");
-    if(VmmMap_GetModule(pProcess, &pObModuleMap)) {
-        MFcModule_LogModule(pd, pfnLogJSON, pObModuleMap);
+    if(VmmMap_GetModule(H, pProcess, &pObModuleMap)) {
+        if(H->fAbort) { goto fail; }
+        MFcModule_LogModule(H, pd, pfnLogJSON, pObModuleMap);
     }
     // unloaded modules:
     FC_JSONDATA_INIT_PIDTYPE(pd, pProcess->dwPID, "unloadedmodule");
-    if(VmmMap_GetUnloadedModule(pProcess, &pObUnloadedModuleMap)) {
-        MFcModule_LogUnloadedModule(pd, pfnLogJSON, pObUnloadedModuleMap);
+    if(VmmMap_GetUnloadedModule(H, pProcess, &pObUnloadedModuleMap)) {
+        if(H->fAbort) { goto fail; }
+        MFcModule_LogUnloadedModule(H, pd, pfnLogJSON, pObUnloadedModuleMap);
     }
     // pdb debug info / codeview:
     FC_JSONDATA_INIT_PIDTYPE(pd, pProcess->dwPID, "codeview");
     for(i = 0; i < pObModuleMap->cMap; i++) {
+        if(H->fAbort) { goto fail; }
         peM = pObModuleMap->pMap + i;
-        MFcModule_LogCodeView(pd, pfnLogJSON, pProcess, peM);
+        MFcModule_LogCodeView(H, pd, pfnLogJSON, pProcess, peM);
     }
-    // data directories:
-    FC_JSONDATA_INIT_PIDTYPE(pd, pProcess->dwPID, "datadir"); pd->fVerbose = TRUE;
-    for(i = 0; i < pObModuleMap->cMap; i++) {
-        peM = pObModuleMap->pMap + i;
-        MFcModule_LogDirectory(pd, pfnLogJSON, pProcess, peM);
-    }
-    // sections:
-    FC_JSONDATA_INIT_PIDTYPE(pd, pProcess->dwPID, "section"); pd->fVerbose = TRUE;
-    for(i = 0; i < pObModuleMap->cMap; i++) {
-        peM = pObModuleMap->pMap + i;
-        MFcModule_LogSection(pd, pfnLogJSON, pProcess, peM);
-    }
-    // imports:
-    FC_JSONDATA_INIT_PIDTYPE(pd, pProcess->dwPID, "import"); pd->fVerbose = TRUE;
-    for(i = 0; i < pObModuleMap->cMap; i++) {
-        peM = pObModuleMap->pMap + i;
-        MFcModule_LogIAT(pd, pfnLogJSON, pProcess, peM);
-    }
-    // exports:
-    FC_JSONDATA_INIT_PIDTYPE(pd, pProcess->dwPID, "export"); pd->fVerbose = TRUE;
-    for(i = 0; i < pObModuleMap->cMap; i++) {
-        peM = pObModuleMap->pMap + i;
-        MFcModule_LogEAT(pd, pfnLogJSON, pProcess, peM);
-    }
+fail:
     Ob_DECREF(pObModuleMap);
     Ob_DECREF(pObUnloadedModuleMap);
     LocalFree(pd);
 }
 
+VOID MFcModule_LogModuleCSV(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ VMMDLL_CSV_HANDLE hCSV, _In_ PVMMOB_MAP_MODULE pMap)
+{
+    BOOL fSuppressDriver;
+    DWORD i;
+    PVMM_MAP_MODULEENTRY pe;
+    DWORD dwAge;
+    CHAR szGUID[33], szPdbFileName[MAX_PATH];
+    PVMM_MAP_VADENTRY peVad = NULL;
+    PVMMOB_MAP_VAD pObVadMap = NULL;
+    VmmMap_GetVad(H, pProcess, &pObVadMap, VMM_VADMAP_TP_FULL);
+    fSuppressDriver = !_stricmp(pProcess->szName, "csrss.exe") || !_stricmp(pProcess->szName, "Registry");
+    for(i = 0; i < pMap->cMap; i++) {
+        pe = pMap->pMap + i;
+        if(fSuppressDriver && CharUtil_StrEndsWith(pe->uszText, ".sys", FALSE)) { continue; }
+        if(!MFcModule_GetCodeView(H, pProcess, pe, szGUID, szPdbFileName, &dwAge)) {
+            dwAge = 0;
+            szGUID[0] = 0;
+            szPdbFileName[0] = 0;
+        }
+        peVad = VmmMap_GetVadEntry(H, pObVadMap, pe->vaBase);
+        //"PID,Name,Wow64,Size,Start,End,#Imports,#Exports,#Sections,Path,KernelPath,PdbPath,PdbAge,PdbHexGUID"
+        FcCsv_Reset(hCSV);
+        FcFileAppend(H, "modules.csv", "%i,%s,%i,0x%x,0x%llx,0x%llx,%i,%i,%i,%s,%s,%s,%i,%s\n",
+            pProcess->dwPID,
+            FcCsv_String(hCSV, pe->uszText),
+            pe->fWoW64 ? 1 : 0,
+            pe->cbImageSize,
+            pe->vaBase,
+            pe->vaBase + pe->cbImageSize - 1,
+            pe->cIAT,
+            pe->cEAT,
+            pe->cSection,
+            FcCsv_String(hCSV, pe->uszFullName),
+            peVad ? FcCsv_String(hCSV, peVad->uszText) : "",
+            FcCsv_String(hCSV, szPdbFileName),
+            dwAge,
+            FcCsv_String(hCSV, szGUID)
+        );
+    }
+    Ob_DECREF(pObVadMap);
+}
+
+VOID MFcModule_LogUnloadedModuleCSV(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ VMMDLL_CSV_HANDLE hCSV, _In_ PVMMOB_MAP_UNLOADEDMODULE pMap)
+{
+    DWORD i;
+    CHAR vszTimeUnload[24];
+    PVMM_MAP_UNLOADEDMODULEENTRY pe;
+    for(i = 0; i < pMap->cMap; i++) {
+        pe = pMap->pMap + i;
+        Util_FileTime2CSV(pe->ftUnload, vszTimeUnload);
+        //"PID,ModuleName,UnloadTime,Wow64,Size,Start,End"
+        FcCsv_Reset(hCSV);
+        FcFileAppend(H, "unloaded_modules.csv", "%i,%s,%s,%i,0x%x,0x%llx,0x%llx\n",
+            pProcess->dwPID,
+            FcCsv_String(hCSV, pe->uszText),
+            vszTimeUnload,
+            pe->fWoW64 ? 1 : 0,
+            pe->cbImageSize,
+            pe->vaBase,
+            pe->vaBase + pe->cbImageSize - 1
+        );
+    }
+}
+
+VOID MFcModule_FcLogCSV(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VMMDLL_CSV_HANDLE hCSV)
+{
+    PVMM_PROCESS pProcess = ctxP->pProcess;
+    PVMMOB_MAP_UNLOADEDMODULE pObUnloadedModuleMap = NULL;
+    PVMMOB_MAP_MODULE pObModuleMap = NULL;
+    if(!pProcess) { return; }
+    // loaded modules:
+    if(VmmMap_GetModule(H, pProcess, &pObModuleMap)) {
+        if(H->fAbort) { goto fail; }
+        MFcModule_LogModuleCSV(H, pProcess, hCSV, pObModuleMap);
+    }
+    // unloaded modules:
+    if(VmmMap_GetUnloadedModule(H, pProcess, &pObUnloadedModuleMap)) {
+        if(H->fAbort) { goto fail; }
+        if(_stricmp(pProcess->szName, "csrss.exe") && _stricmp(pProcess->szName, "Registry")) {
+            MFcModule_LogUnloadedModuleCSV(H, pProcess, hCSV, pObUnloadedModuleMap);
+        }
+    }
+fail:
+    Ob_DECREF(pObModuleMap);
+    Ob_DECREF(pObUnloadedModuleMap);
+}
+
+PVOID MFcModule_FcInitialize(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
+{
+    FcFileAppend(H, "modules.csv", MFCMODULE_CSV_MODULES);
+    FcFileAppend(H, "unloaded_modules.csv", MFCMODULE_CSV_UNLOADEDMODULES);
+    return NULL;
+}
+
 /*
 * Plugin initialization / registration function called by the plugin manager.
+* -- H
 * -- pRI
 */
-VOID M_FcModule_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
+VOID M_FcModule_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if((pRI->tpSystem != VMM_SYSTEM_WINDOWS_X64) && (pRI->tpSystem != VMM_SYSTEM_WINDOWS_X86)) { return; }
     strcpy_s(pRI->reg_info.uszPathName, 128, "\\forensic\\hidden\\module");     // module name
     pRI->reg_info.fRootModule = TRUE;                                           // module shows in root directory
     pRI->reg_info.fRootModuleHidden = TRUE;                                     // module hidden by default
+    pRI->reg_fnfc.pfnInitialize = MFcModule_FcInitialize;                       // Forensic initialize supported
+    pRI->reg_fnfc.pfnLogCSV = MFcModule_FcLogCSV;                               // CSV log function supported
     pRI->reg_fnfc.pfnLogJSON = MFcModule_FcLogJSON;                             // JSON log function supported
-    pRI->pfnPluginManager_Register(pRI);
+    pRI->pfnPluginManager_Register(H, pRI);
 }

@@ -25,15 +25,6 @@
 #endif /* _WIN32 */
 
 // ----------------------------------------------------------------------------
-// VMM global variables below:
-// ----------------------------------------------------------------------------
-
-PVMM_CONTEXT ctxVmm = NULL;
-PVMM_MAIN_CONTEXT ctxMain = NULL;
-
-
-
-// ----------------------------------------------------------------------------
 // CACHE FUNCTIONALITY:
 // PHYSICAL MEMORY CACHING FOR READS AND PAGE TABLES
 // ----------------------------------------------------------------------------
@@ -43,15 +34,18 @@ PVMM_MAIN_CONTEXT ctxMain = NULL;
 /*
 * Retrieve cache table from ctxVmm given a specific tag.
 */
-PVMM_CACHE_TABLE VmmCacheTableGet(_In_ DWORD wTblTag)
+PVMM_CACHE_TABLE VmmCacheTableGet(_In_ VMM_HANDLE H, _In_ DWORD wTblTag)
 {
     switch(wTblTag) {
         case VMM_CACHE_TAG_PHYS:
-            return &ctxVmm->Cache.PHYS;
+            H->vmm.Cache.PHYS.cMaxMems = VMM_CACHE_REGION_MEMS_PHYS;
+            return &H->vmm.Cache.PHYS;
         case VMM_CACHE_TAG_TLB:
-            return &ctxVmm->Cache.TLB;
+            H->vmm.Cache.TLB.cMaxMems = VMM_CACHE_REGION_MEMS_TLB;
+            return &H->vmm.Cache.TLB;
         case VMM_CACHE_TAG_PAGING:
-            return &ctxVmm->Cache.PAGING;
+            H->vmm.Cache.PAGING.cMaxMems = VMM_CACHE_REGION_MEMS_PAGING;
+            return &H->vmm.Cache.PAGING;
         default:
             return NULL;
     }
@@ -61,14 +55,14 @@ PVMM_CACHE_TABLE VmmCacheTableGet(_In_ DWORD wTblTag)
 * Clear the oldest region of all InUse entries and make it the new active region.
 * -- wTblTag
 */
-VOID VmmCacheClearPartial(_In_ DWORD dwTblTag)
+VOID VmmCacheClearPartial(_In_ VMM_HANDLE H, _In_ DWORD dwTblTag)
 {
     PVMM_CACHE_TABLE t;
     PVMMOB_CACHE_MEM pOb;
     PSLIST_ENTRY e;
     DWORD iR;
     PVMM_PROCESS pObProcess = NULL;
-    t = VmmCacheTableGet(dwTblTag);
+    t = VmmCacheTableGet(H, dwTblTag);
     if(!t || !t->fActive) { return; }
     EnterCriticalSection(&t->Lock);
     iR = (t->iR + (VMM_CACHE_REGIONS - 1)) % VMM_CACHE_REGIONS;
@@ -87,7 +81,7 @@ VOID VmmCacheClearPartial(_In_ DWORD dwTblTag)
     LeaveCriticalSection(&t->Lock);
     // 2: if tlb cache clear -> update process 'is spider done' flag
     if(t->fAllActiveRegions && (dwTblTag == VMM_CACHE_TAG_TLB)) {
-        while((pObProcess = VmmProcessGetNext(pObProcess, 0))) {
+        while((pObProcess = VmmProcessGetNext(H, pObProcess, 0))) {
             if(pObProcess->fTlbSpiderDone) {
                 EnterCriticalSection(&pObProcess->LockUpdate);
                 pObProcess->fTlbSpiderDone = FALSE;
@@ -101,11 +95,11 @@ VOID VmmCacheClearPartial(_In_ DWORD dwTblTag)
 * Clear the specified cache from all entries.
 * -- dwTblTag
 */
-VOID VmmCacheClear(_In_ DWORD dwTblTag)
+VOID VmmCacheClear(_In_ VMM_HANDLE H, _In_ DWORD dwTblTag)
 {
     DWORD i;
     for(i = 0; i < VMM_CACHE_REGIONS; i++) {
-        VmmCacheClearPartial(dwTblTag);
+        VmmCacheClearPartial(H, dwTblTag);
     }
 }
 
@@ -117,12 +111,12 @@ VOID VmmCacheClear(_In_ DWORD dwTblTag)
 * -- fCurrentRegionOnly = only retrieve from the currently active cache region.
 * -- return
 */
-PVMMOB_CACHE_MEM VmmCacheGetEx(_In_ DWORD dwTblTag, _In_ QWORD qwA, _In_ BOOL fCurrentRegionOnly)
+PVMMOB_CACHE_MEM VmmCacheGetEx(_In_ VMM_HANDLE H, _In_ DWORD dwTblTag, _In_ QWORD qwA, _In_ BOOL fCurrentRegionOnly)
 {
     PVMM_CACHE_TABLE t;
     DWORD iB, iR, iRB, iRC;
     PVMMOB_CACHE_MEM pOb;
-    t = VmmCacheTableGet(dwTblTag);
+    t = VmmCacheTableGet(H, dwTblTag);
     if(!t || !t->fActive) { return NULL; }
     iB = VMM_CACHE_GET_BUCKET(qwA);
     iRB = t->iR;
@@ -151,27 +145,17 @@ PVMMOB_CACHE_MEM VmmCacheGetEx(_In_ DWORD dwTblTag, _In_ QWORD qwA, _In_ BOOL fC
 * -- qwA
 * -- return
 */
-PVMMOB_CACHE_MEM VmmCacheGet(_In_ DWORD dwTblTag, _In_ QWORD qwA)
+PVMMOB_CACHE_MEM VmmCacheGet(_In_ VMM_HANDLE H, _In_ DWORD dwTblTag, _In_ QWORD qwA)
 {
-    return VmmCacheGetEx(dwTblTag, qwA, FALSE);
-}
-
-BOOL VmmCacheExists(_In_ DWORD dwTblTag, _In_ QWORD qwA)
-{
-    BOOL result;
-    PVMMOB_CACHE_MEM pOb;
-    pOb = VmmCacheGetEx(dwTblTag, qwA, FALSE);
-    result = pOb != NULL;
-    Ob_DECREF(pOb);
-    return result;
+    return VmmCacheGetEx(H, dwTblTag, qwA, FALSE);
 }
 
 VOID VmmCache_CallbackRefCount1(PVMMOB_CACHE_MEM pOb)
 {
-    PVMM_CACHE_TABLE t;
-    t = VmmCacheTableGet(((POB)pOb)->_tag);
+    VMM_HANDLE H = ((POB)pOb)->H;
+    PVMM_CACHE_TABLE t = VmmCacheTableGet(H, ((POB)pOb)->_tag);
     if(!t) {
-        VmmLog(MID_VMM, LOGLEVEL_CRITICAL, "ERROR - SHOULD NOT HAPPEN - INVALID OBJECT TAG %02X", ((POB)pOb)->_tag);
+        VmmLog(H, MID_VMM, LOGLEVEL_CRITICAL, "ERROR - SHOULD NOT HAPPEN - INVALID OBJECT TAG %02X", ((POB)pOb)->_tag);
         return;
     }
     if(!t->fActive) { return; }
@@ -179,18 +163,18 @@ VOID VmmCache_CallbackRefCount1(PVMMOB_CACHE_MEM pOb)
     InterlockedPushEntrySList(&t->R[pOb->iR].ListHeadEmpty, &pOb->SListEmpty);
 }
 
-PVMMOB_CACHE_MEM VmmCacheReserve(_In_ DWORD dwTblTag)
+PVMMOB_CACHE_MEM VmmCacheReserve(_In_ VMM_HANDLE H, _In_ DWORD dwTblTag)
 {
     PVMM_CACHE_TABLE t;
     PVMMOB_CACHE_MEM pOb;
     PSLIST_ENTRY e;
     WORD cLoopProtect = 0;
-    t = VmmCacheTableGet(dwTblTag);
+    t = VmmCacheTableGet(H, dwTblTag);
     if(!t || !t->fActive) { return NULL; }
     while(!(e = InterlockedPopEntrySList(&t->R[t->iR].ListHeadEmpty))) {
-        if(QueryDepthSList(&t->R[t->iR].ListHeadTotal) < VMM_CACHE_REGION_MEMS) {
+        if(QueryDepthSList(&t->R[t->iR].ListHeadTotal) < t->cMaxMems) {
             // below max threshold -> create new
-            pOb = Ob_Alloc(t->tag, LMEM_ZEROINIT, sizeof(VMMOB_CACHE_MEM), NULL, (OB_CLEANUP_CB)VmmCache_CallbackRefCount1);
+            pOb = Ob_AllocEx(H, t->tag, LMEM_ZEROINIT, sizeof(VMMOB_CACHE_MEM), NULL, (OB_CLEANUP_CB)VmmCache_CallbackRefCount1);
             if(!pOb) { return NULL; }
             pOb->iR = t->iR;
             pOb->h.version = MEM_SCATTER_VERSION;
@@ -202,9 +186,9 @@ PVMMOB_CACHE_MEM VmmCacheReserve(_In_ DWORD dwTblTag)
             return pOb;         // return fresh object - refcount = 2.
         }
         // reclaim existing entries by clearing the oldest cache region.
-        VmmCacheClearPartial(dwTblTag);
+        VmmCacheClearPartial(H, dwTblTag);
         if(++cLoopProtect == VMM_CACHE_REGIONS) {
-            VmmLog(MID_VMM, LOGLEVEL_WARNING, "SHOULD NOT HAPPEN - CACHE %04X DRAINED OF ENTRIES", dwTblTag);
+            VmmLog(H, MID_VMM, LOGLEVEL_WARNING, "SHOULD NOT HAPPEN - CACHE %04X DRAINED OF ENTRIES", dwTblTag);
             Sleep(10);
         }
     }
@@ -218,15 +202,16 @@ PVMMOB_CACHE_MEM VmmCacheReserve(_In_ DWORD dwTblTag)
 * Return an entry retrieved with VmmCacheReserve to the cache.
 * NB! no other items may be returned with this function!
 * FUNCTION DECREF: pOb
+* -- H
 * -- pOb
 */
-VOID VmmCacheReserveReturn(_In_opt_ PVMMOB_CACHE_MEM pOb)
+VOID VmmCacheReserveReturn(_In_ VMM_HANDLE H, _In_opt_ PVMMOB_CACHE_MEM pOb)
 {
     PVMM_CACHE_TABLE t;
     if(!pOb) { return; }
-    t = VmmCacheTableGet(((POB)pOb)->_tag);
+    t = VmmCacheTableGet(H, ((POB)pOb)->_tag);
     if(!t) {
-        VmmLog(MID_VMM, LOGLEVEL_CRITICAL, "ERROR - SHOULD NOT HAPPEN - INVALID OBJECT TAG %02X", ((POB)pOb)->_tag);
+        VmmLog(H, MID_VMM, LOGLEVEL_CRITICAL, "ERROR - SHOULD NOT HAPPEN - INVALID OBJECT TAG %02X", ((POB)pOb)->_tag);
         return;
     }
     if(!t->fActive || !pOb->h.f || (pOb->h.qwA == MEM_SCATTER_ADDR_INVALID)) {
@@ -247,13 +232,13 @@ VOID VmmCacheReserveReturn(_In_opt_ PVMMOB_CACHE_MEM pOb)
     ReleaseSRWLockExclusive(&t->R[pOb->iR].LockSRW);
 }
 
-VOID VmmCacheClose(_In_ DWORD dwTblTag)
+VOID VmmCacheClose(_In_ VMM_HANDLE H, _In_ DWORD dwTblTag)
 {
     PVMM_CACHE_TABLE t;
     PVMMOB_CACHE_MEM pOb;
     PSLIST_ENTRY e;
     DWORD iR;
-    t = VmmCacheTableGet(dwTblTag);
+    t = VmmCacheTableGet(H, dwTblTag);
     if(!t || !t->fActive) { return; }
     t->fActive = FALSE;
     EnterCriticalSection(&t->Lock);
@@ -278,17 +263,32 @@ VOID VmmCacheClose(_In_ DWORD dwTblTag)
     DeleteCriticalSection(&t->Lock);
 }
 
-VOID VmmCacheInitialize(_In_ DWORD dwTblTag)
+VOID VmmCacheInitialize(_In_ VMM_HANDLE H, _In_ DWORD dwTblTag)
 {
-    DWORD iR;
+    DWORD iR, iMEM;
     PVMM_CACHE_TABLE t;
-    t = VmmCacheTableGet(dwTblTag);
+    PVMMOB_CACHE_MEM pOb;
+    t = VmmCacheTableGet(H, dwTblTag);
     if(!t || t->fActive) { return; }
     for(iR = 0; iR < VMM_CACHE_REGIONS; iR++) {
         InitializeSRWLock(&t->R[iR].LockSRW);
         InitializeSListHead(&t->R[iR].ListHeadEmpty);
         InitializeSListHead(&t->R[iR].ListHeadInUse);
         InitializeSListHead(&t->R[iR].ListHeadTotal);
+        if(VMM_CACHE_REGION_MEMS_INITALLOC) {
+            for(iMEM = 0; iMEM < t->cMaxMems; iMEM++) {
+                pOb = Ob_AllocEx(H, dwTblTag, LMEM_ZEROINIT, sizeof(VMMOB_CACHE_MEM), NULL, (OB_CLEANUP_CB)VmmCache_CallbackRefCount1);
+                if(!pOb) { continue; }
+                pOb->iR = iR;
+                pOb->h.version = MEM_SCATTER_VERSION;
+                pOb->h.cb = 0x1000;
+                pOb->h.pb = pOb->pb;
+                pOb->h.qwA = MEM_SCATTER_ADDR_INVALID;
+                Ob_INCREF(pOb);
+                InterlockedPushEntrySList(&t->R[iR].ListHeadEmpty, &pOb->SListEmpty);
+                InterlockedPushEntrySList(&t->R[iR].ListHeadTotal, &pOb->SListTotal);
+            }
+        }
     }
     InitializeCriticalSection(&t->Lock);
     t->tag = dwTblTag;
@@ -298,13 +298,13 @@ VOID VmmCacheInitialize(_In_ DWORD dwTblTag)
 /*
 * Invalidate a cache entry (if exists)
 */
-VOID VmmCacheInvalidate_2(_In_ DWORD dwTblTag, _In_ QWORD qwA)
+VOID VmmCacheInvalidate_2(_In_ VMM_HANDLE H, _In_ DWORD dwTblTag, _In_ QWORD qwA)
 {
     PVMM_CACHE_TABLE t;
     PVMMOB_CACHE_MEM pOb;
-    t = VmmCacheTableGet(dwTblTag);
+    t = VmmCacheTableGet(H, dwTblTag);
     if(!t || !t->fActive) { return; }
-    while((pOb = VmmCacheGet(dwTblTag, qwA))) {
+    while((pOb = VmmCacheGet(H, dwTblTag, qwA))) {
         AcquireSRWLockExclusive(&t->R[pOb->iR].LockSRW);
         // remove from bucket list
         if(pOb->FLink) {
@@ -322,36 +322,36 @@ VOID VmmCacheInvalidate_2(_In_ DWORD dwTblTag, _In_ QWORD qwA)
     }
 }
 
-VOID VmmCacheInvalidate(_In_ QWORD pa)
+VOID VmmCacheInvalidate(_In_ VMM_HANDLE H, _In_ QWORD pa)
 {
-    VmmCacheInvalidate_2(VMM_CACHE_TAG_TLB, pa);
-    VmmCacheInvalidate_2(VMM_CACHE_TAG_PHYS, pa);
+    VmmCacheInvalidate_2(H, VMM_CACHE_TAG_TLB, pa);
+    VmmCacheInvalidate_2(H, VMM_CACHE_TAG_PHYS, pa);
 }
 
-PVMMOB_CACHE_MEM VmmCacheGet_FromDeviceOnMiss(_In_ DWORD dwTblTag, _In_ DWORD dwTblTagSecondaryOpt, _In_ QWORD qwA)
+PVMMOB_CACHE_MEM VmmCacheGet_FromDeviceOnMiss(_In_ VMM_HANDLE H, _In_ DWORD dwTblTag, _In_ DWORD dwTblTagSecondaryOpt, _In_ QWORD qwA)
 {
     PVMMOB_CACHE_MEM pObMEM, pObReservedMEM;
     PMEM_SCATTER pMEM;
-    pObMEM = VmmCacheGet(dwTblTag, qwA);
+    pObMEM = VmmCacheGet(H, dwTblTag, qwA);
     if(pObMEM) { return pObMEM; }
-    if((pObReservedMEM = VmmCacheReserve(dwTblTag))) {
+    if((pObReservedMEM = VmmCacheReserve(H, dwTblTag))) {
         pMEM = &pObReservedMEM->h;
         pMEM->qwA = qwA;
-        if(dwTblTagSecondaryOpt && (pObMEM = VmmCacheGet(dwTblTagSecondaryOpt, qwA))) {
+        if(dwTblTagSecondaryOpt && (pObMEM = VmmCacheGet(H, dwTblTagSecondaryOpt, qwA))) {
             pMEM->f = TRUE;
             memcpy(pMEM->pb, pObMEM->pb, 0x1000);
             Ob_DECREF(pObMEM);
             pObMEM = NULL;
         }
         if(!pMEM->f) {
-            LcReadScatter(ctxMain->hLC, 1, &pMEM);
+            LcReadScatter(H->hLC, 1, &pMEM);
         }
         if(pMEM->f) {
             Ob_INCREF(pObReservedMEM);
-            VmmCacheReserveReturn(pObReservedMEM);
+            VmmCacheReserveReturn(H, pObReservedMEM);
             return pObReservedMEM;
         }
-        VmmCacheReserveReturn(pObReservedMEM);
+        VmmCacheReserveReturn(H, pObReservedMEM);
     }
     return NULL;
 }
@@ -359,27 +359,28 @@ PVMMOB_CACHE_MEM VmmCacheGet_FromDeviceOnMiss(_In_ DWORD dwTblTag, _In_ DWORD dw
 /*
 * Retrieve a page table from a given physical address (if possible).
 * CALLER DECREF: return
+* -- H
 * -- pa
 * -- fCacheOnly
 * -- return = Cache entry on success, NULL on fail.
 */
-PVMMOB_CACHE_MEM VmmTlbGetPageTable(_In_ QWORD pa, _In_ BOOL fCacheOnly)
+PVMMOB_CACHE_MEM VmmTlbGetPageTable(_In_ VMM_HANDLE H, _In_ QWORD pa, _In_ BOOL fCacheOnly)
 {
     PVMMOB_CACHE_MEM pObMEM;
-    pObMEM = VmmCacheGet(VMM_CACHE_TAG_TLB, pa);
+    pObMEM = VmmCacheGet(H, VMM_CACHE_TAG_TLB, pa);
     if(pObMEM) {
-        InterlockedIncrement64(&ctxVmm->stat.cTlbCacheHit);
+        InterlockedIncrement64(&H->vmm.stat.cTlbCacheHit);
         return pObMEM;
     }
     if(fCacheOnly) { return NULL; }
     // try retrieve from (1) TLB cache, (2) PHYS cache, (3) device
-    pObMEM = VmmCacheGet_FromDeviceOnMiss(VMM_CACHE_TAG_TLB, VMM_CACHE_TAG_PHYS, pa);
+    pObMEM = VmmCacheGet_FromDeviceOnMiss(H, VMM_CACHE_TAG_TLB, VMM_CACHE_TAG_PHYS, pa);
     if(!pObMEM) {
-        InterlockedIncrement64(&ctxVmm->stat.cTlbReadFail);
+        InterlockedIncrement64(&H->vmm.stat.cTlbReadFail);
         return NULL;
     }
-    InterlockedIncrement64(&ctxVmm->stat.cTlbReadSuccess);
-    if(VmmTlbPageTableVerify(pObMEM->h.pb, pObMEM->h.qwA, FALSE)) {
+    InterlockedIncrement64(&H->vmm.stat.cTlbReadSuccess);
+    if(VmmTlbPageTableVerify(H, pObMEM->h.pb, pObMEM->h.qwA, FALSE)) {
         return pObMEM;
     }
     Ob_DECREF(pObMEM);
@@ -391,6 +392,7 @@ PVMMOB_CACHE_MEM VmmTlbGetPageTable(_In_ QWORD pa, _In_ BOOL fCacheOnly)
 * The successfully translated Physical Address (PA) is returned in ppa.
 * Upon fail the PTE will be returned in ppa (if possible) - which may be used
 * to further lookup virtual memory in case of PageFile or Win10 MemCompression.
+* -- H
 * -- paDTB
 * -- fUserOnly
 * -- va
@@ -398,11 +400,11 @@ PVMMOB_CACHE_MEM VmmTlbGetPageTable(_In_ QWORD pa, _In_ BOOL fCacheOnly)
 * -- return
 */
 _Success_(return)
-BOOL VmmVirt2PhysEx(_In_ QWORD paDTB, _In_ BOOL fUserOnly, _In_ QWORD va, _Out_ PQWORD ppa)
+BOOL VmmVirt2PhysEx(_In_ VMM_HANDLE H, _In_ QWORD paDTB, _In_ BOOL fUserOnly, _In_ QWORD va, _Out_ PQWORD ppa)
 {
     *ppa = 0;
-    if(ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_NA) { return FALSE; }
-    return ctxVmm->fnMemoryModel.pfnVirt2Phys(paDTB, fUserOnly, -1, va, ppa);
+    if(H->vmm.tpMemoryModel == VMM_MEMORYMODEL_NA) { return FALSE; }
+    return H->vmm.fnMemoryModel.pfnVirt2Phys(H, paDTB, fUserOnly, -1, va, ppa);
 }
 
 /*
@@ -410,50 +412,54 @@ BOOL VmmVirt2PhysEx(_In_ QWORD paDTB, _In_ BOOL fUserOnly, _In_ QWORD va, _Out_ 
 * The successfully translated Physical Address (PA) is returned in ppa.
 * Upon fail the PTE will be returned in ppa (if possible) - which may be used
 * to further lookup virtual memory in case of PageFile or Win10 MemCompression.
+* -- H
 * -- pProcess
 * -- va
 * -- ppa
 * -- return
 */
 _Success_(return)
-BOOL VmmVirt2Phys(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD va, _Out_ PQWORD ppa)
+BOOL VmmVirt2Phys(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _In_ QWORD va, _Out_ PQWORD ppa)
 {
     *ppa = 0;
-    if(!pProcess || (ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_NA)) { return FALSE; }
-    return ctxVmm->fnMemoryModel.pfnVirt2Phys(pProcess->paDTB, pProcess->fUserOnly, -1, va, ppa);
+    if(!pProcess || (H->vmm.tpMemoryModel == VMM_MEMORYMODEL_NA)) { return FALSE; }
+    return H->vmm.fnMemoryModel.pfnVirt2Phys(H, pProcess->paDTB, pProcess->fUserOnly, -1, va, ppa);
 }
 
 /*
 * Spider the TLB (page table cache) to load all page table pages into the cache.
 * This is done to speed up various subsequent virtual memory accesses.
 * NB! pages may fall out of the cache if it's in heavy use or doe to timing.
+* -- H
 * -- pProcess
 */
-VOID VmmTlbSpider(_In_ PVMM_PROCESS pProcess)
+VOID VmmTlbSpider(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
 {
-    if(ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_NA) { return; }
-    ctxVmm->fnMemoryModel.pfnTlbSpider(pProcess);
+    if(H->vmm.tpMemoryModel == VMM_MEMORYMODEL_NA) { return; }
+    H->vmm.fnMemoryModel.pfnTlbSpider(H, pProcess);
 }
 
 /*
 * Try verify that a supplied page table in pb is valid by analyzing it.
+* -- H
 * -- pb = 0x1000 bytes containing the page table page.
 * -- pa = physical address if the page table page.
 * -- fSelfRefReq = is a self referential entry required to be in the map? (PML4 for Windows).
 */
-BOOL VmmTlbPageTableVerify(_Inout_ PBYTE pb, _In_ QWORD pa, _In_ BOOL fSelfRefReq)
+BOOL VmmTlbPageTableVerify(_In_ VMM_HANDLE H, _Inout_ PBYTE pb, _In_ QWORD pa, _In_ BOOL fSelfRefReq)
 {
-    if(ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_NA) { return FALSE; }
-    return ctxVmm->fnMemoryModel.pfnTlbPageTableVerify(pb, pa, fSelfRefReq);
+    if(H->vmm.tpMemoryModel == VMM_MEMORYMODEL_NA) { return FALSE; }
+    return H->vmm.fnMemoryModel.pfnTlbPageTableVerify(H, pb, pa, fSelfRefReq);
 }
 
 /*
 * Prefetch a set of physical addresses contained in pTlbPrefetch into the Tlb.
 * NB! pTlbPrefetch must not be updated/altered during the function call.
+* -- H
 * -- pProcess
 * -- pTlbPrefetch = the page table addresses to prefetch (on entry) and empty set on exit.
 */
-VOID VmmTlbPrefetch(_In_ POB_SET pTlbPrefetch)
+VOID VmmTlbPrefetch(_In_ VMM_HANDLE H, _In_ POB_SET pTlbPrefetch)
 {
     QWORD pbTlb = 0;
     DWORD cTlbs, i = 0;
@@ -464,16 +470,16 @@ VOID VmmTlbPrefetch(_In_ POB_SET pTlbPrefetch)
     if(!(ppObMEMs = LocalAlloc(0, cTlbs * sizeof(PVMMOB_CACHE_MEM)))) { goto fail; }
     while((cTlbs = min(0x2000, ObSet_Size(pTlbPrefetch)))) {   // protect cache bleed -> max 0x2000 pages/round
         for(i = 0; i < cTlbs; i++) {
-            ppObMEMs[i] = VmmCacheReserve(VMM_CACHE_TAG_TLB);
+            ppObMEMs[i] = VmmCacheReserve(H, VMM_CACHE_TAG_TLB);
             ppMEMs[i] = &ppObMEMs[i]->h;
             ppMEMs[i]->qwA = ObSet_Pop(pTlbPrefetch);
         }
-        LcReadScatter(ctxMain->hLC, cTlbs, ppMEMs);
+        LcReadScatter(H->hLC, cTlbs, ppMEMs);
         for(i = 0; i < cTlbs; i++) {
-            if(ppMEMs[i]->f && !VmmTlbPageTableVerify(ppMEMs[i]->pb, ppMEMs[i]->qwA, FALSE)) {
+            if(ppMEMs[i]->f && !VmmTlbPageTableVerify(H, ppMEMs[i]->pb, ppMEMs[i]->qwA, FALSE)) {
                 ppMEMs[i]->f = FALSE;  // "fail" invalid page table read
             }
-            VmmCacheReserveReturn(ppObMEMs[i]);
+            VmmCacheReserveReturn(H, ppObMEMs[i]);
         }
     }
 fail:
@@ -486,25 +492,26 @@ fail:
 * is useful when reading data from somewhat known addresses over higher latency
 * connections.
 * NB! pPrefetchPages must not be updated/altered during the function call.
+* -- H
 * -- pProcess
 * -- pPrefetchPages
 * -- flags
 */
-VOID VmmCachePrefetchPages(_In_opt_ PVMM_PROCESS pProcess, _In_opt_ POB_SET pPrefetchPages, _In_ QWORD flags)
+VOID VmmCachePrefetchPages(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _In_opt_ POB_SET pPrefetchPages, _In_ QWORD flags)
 {
     QWORD qwA = 0;
     DWORD cPages, iMEM = 0;
     PPMEM_SCATTER ppMEMs = NULL;
     cPages = ObSet_Size(pPrefetchPages);
-    if(!cPages || (ctxVmm->flags & VMM_FLAG_NOCACHE)) { return; }
+    if(!cPages || (H->vmm.flags & VMM_FLAG_NOCACHE)) { return; }
     if(!LcAllocScatter1(cPages, &ppMEMs)) { return; }
     while((qwA = ObSet_GetNext(pPrefetchPages, qwA))) {
         ppMEMs[iMEM++]->qwA = qwA & ~0xfff;
     }
     if(pProcess) {
-        VmmReadScatterVirtual(pProcess, ppMEMs, iMEM, flags | VMM_FLAG_CACHE_RECENT_ONLY);
+        VmmReadScatterVirtual(H, pProcess, ppMEMs, iMEM, flags | VMM_FLAG_CACHE_RECENT_ONLY);
     } else {
-        VmmReadScatterPhysical(ppMEMs, iMEM, flags | VMM_FLAG_CACHE_RECENT_ONLY);
+        VmmReadScatterPhysical(H, ppMEMs, iMEM, flags | VMM_FLAG_CACHE_RECENT_ONLY);
     }
     LcMemFree(ppMEMs);
 }
@@ -512,22 +519,23 @@ VOID VmmCachePrefetchPages(_In_opt_ PVMM_PROCESS pProcess, _In_opt_ POB_SET pPre
 /*
 * Prefetch a set of addresses. This is useful when reading data from somewhat
 * known addresses over higher latency connections.
+* -- H
 * -- pProcess
 * -- cAddresses
 * -- ... = variable list of total cAddresses of addresses of type QWORD.
 */
-VOID VmmCachePrefetchPages2(_In_opt_ PVMM_PROCESS pProcess, _In_ DWORD cAddresses, ...)
+VOID VmmCachePrefetchPages2(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _In_ DWORD cAddresses, ...)
 {
     va_list arguments;
     POB_SET pObSet = NULL;
-    if(!cAddresses || !(pObSet = ObSet_New())) { return; }
+    if(!cAddresses || !(pObSet = ObSet_New(H))) { return; }
     va_start(arguments, cAddresses);
     while(cAddresses) {
         ObSet_Push(pObSet, va_arg(arguments, QWORD) & ~0xfff);
         cAddresses--;
     }
     va_end(arguments);
-    VmmCachePrefetchPages(pProcess, pObSet, 0);
+    VmmCachePrefetchPages(H, pProcess, pObSet, 0);
     Ob_DECREF(pObSet);
 }
 
@@ -536,51 +544,54 @@ VOID VmmCachePrefetchPages2(_In_opt_ PVMM_PROCESS pProcess, _In_ DWORD cAddresse
 * the cache by first converting them to page aligned pages. This is used when
 * reading data from somewhat known addresses over higher latency connections.
 * NB! pPrefetchPagesNonPageAligned must not be altered during the function call.
+* -- H
 * -- pProcess
 * -- pPrefetchPagesNonPageAligned
 * -- cb
 * -- flags
 */
-VOID VmmCachePrefetchPages3(_In_opt_ PVMM_PROCESS pProcess, _In_opt_ POB_SET pPrefetchPagesNonPageAligned, _In_ DWORD cb, _In_ QWORD flags)
+VOID VmmCachePrefetchPages3(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _In_opt_ POB_SET pPrefetchPagesNonPageAligned, _In_ DWORD cb, _In_ QWORD flags)
 {
     QWORD qwA = 0;
     POB_SET pObSetAlign;
     if(!cb || !pPrefetchPagesNonPageAligned) { return; }
     if(0 == ObSet_Size(pPrefetchPagesNonPageAligned)) { return; }
-    if(!(pObSetAlign = ObSet_New())) { return; }
+    if(!(pObSetAlign = ObSet_New(H))) { return; }
     while((qwA = ObSet_GetNext(pPrefetchPagesNonPageAligned, qwA))) {
         ObSet_Push_PageAlign(pObSetAlign, qwA, cb);
     }
-    VmmCachePrefetchPages(pProcess, pObSetAlign, flags);
+    VmmCachePrefetchPages(H, pProcess, pObSetAlign, flags);
     Ob_DECREF(pObSetAlign);
 }
 
 /*
 * Prefetch an array of optionally non-page aligned addresses. This is useful
 * when reading data from somewhat known addresses over higher latency connections.
+* -- H
 * -- pProcess
 * -- cAddresses
 * -- pqwAddresses = array of addresses to fetch
 * -- cb
 * -- flags
 */
-VOID VmmCachePrefetchPages4(_In_opt_ PVMM_PROCESS pProcess, _In_ DWORD cAddresses, _In_ PQWORD pqwAddresses, _In_ DWORD cb, _In_ QWORD flags)
+VOID VmmCachePrefetchPages4(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _In_ DWORD cAddresses, _In_ PQWORD pqwAddresses, _In_ DWORD cb, _In_ QWORD flags)
 {
     POB_SET pObSet = NULL;
-    if(!cAddresses || !(pObSet = ObSet_New())) { return; }
+    if(!cAddresses || !(pObSet = ObSet_New(H))) { return; }
     while(cAddresses) {
         cAddresses--;
         if(pqwAddresses[cAddresses]) {
             ObSet_Push_PageAlign(pObSet, pqwAddresses[cAddresses], cb);
         }
     }
-    VmmCachePrefetchPages(pProcess, pObSet, 0);
+    VmmCachePrefetchPages(H, pProcess, pObSet, 0);
     Ob_DECREF(pObSet);
 }
 
 /*
 * Prefetch memory of optionally non-page aligned addresses which are derived
 * from pmPrefetchObjects by the pfnFilter filter function.
+* -- H
 * -- pProcess
 * -- pmPrefetch = map of objects.
 * -- cb
@@ -588,11 +599,11 @@ VOID VmmCachePrefetchPages4(_In_opt_ PVMM_PROCESS pProcess, _In_ DWORD cAddresse
 * -- pfnFilter = filter as required by ObMap_FilterSet function.
 * -- return = at least one object is found to be prefetched into cache.
 */
-BOOL VmmCachePrefetchPages5(_In_opt_ PVMM_PROCESS pProcess, _In_opt_ POB_MAP pmPrefetch, _In_ DWORD cb, _In_ QWORD flags, _In_ VOID(*pfnFilter)(_In_ QWORD k, _In_ PVOID v, _Inout_ POB_SET ps))
+BOOL VmmCachePrefetchPages5(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _In_opt_ POB_MAP pmPrefetch, _In_ DWORD cb, _In_ QWORD flags, _In_ VOID(*pfnFilter)(_In_ QWORD k, _In_ PVOID v, _Inout_ POB_SET ps))
 {
     POB_SET psObCache = ObMap_FilterSet(pmPrefetch, pfnFilter);
     BOOL fResult = ObSet_Size(psObCache) > 0;
-    VmmCachePrefetchPages3(pProcess, psObCache, cb, flags);
+    VmmCachePrefetchPages3(H, pProcess, psObCache, cb, flags);
     Ob_DECREF(psObCache);
     return fResult;
 }
@@ -627,14 +638,14 @@ BOOL VmmCachePrefetchPages5(_In_opt_ PVMM_PROCESS pProcess, _In_opt_ POB_MAP pmP
 // ----------------------------------------------------------------------------
 
 #ifdef _WIN32
-VOID VmmProcess_TokenTryEnsure(_In_ PVMMOB_PROCESS_TABLE pt)
+VOID VmmProcess_TokenTryEnsure(_In_ VMM_HANDLE H, _In_ PVMMOB_PROCESS_TABLE pt)
 {
-    BOOL f, f32 = ctxVmm->f32;
+    BOOL f, f32 = H->vmm.f32;
     DWORD j, i = 0, iM, cbHdr, cb, dwIntegrityLevelIndex;
     QWORD va, *pva = NULL;
     BYTE pb[0x1000];
     PVMM_PROCESS *ppProcess = NULL, pObSystemProcess = NULL;
-    PVMM_OFFSET_EPROCESS oep = &ctxVmm->offset.EPROCESS;
+    PVMM_OFFSET_EPROCESS poe = &H->vmm.offset.EPROCESS;
     LPSTR szSidIntegrity = NULL;
     BOOL fSidIntegrity;
     VMM_PROCESS_INTEGRITY_LEVEL IntegrityLevel;
@@ -642,20 +653,20 @@ VOID VmmProcess_TokenTryEnsure(_In_ PVMMOB_PROCESS_TABLE pt)
         SID SID;
         BYTE pb[SECURITY_MAX_SID_SIZE];
     } SidIntegrity;
-    f = oep->opt.TOKEN_TokenId &&                                               // token offsets/symbols initialized.
-        (pObSystemProcess = VmmProcessGet(4)) &&
+    f = poe->opt.TOKEN_TokenId &&                                               // token offsets/symbols initialized.
+        (pObSystemProcess = VmmProcessGet(H, 4)) &&
         (pva = LocalAlloc(LMEM_ZEROINIT, pt->c * 2 * sizeof(QWORD))) &&
         (ppProcess = LocalAlloc(LMEM_ZEROINIT, pt->c * sizeof(PVMM_PROCESS)));
     if(!f) { goto fail; }
     cbHdr = f32 ? 0x2c : 0x5c;
-    cb = cbHdr + oep->opt.TOKEN_cb;
-    if((cb > 0x1000) || !oep->opt.TOKEN_cb) { goto fail; }
+    cb = cbHdr + poe->opt.TOKEN_cb;
+    if((cb > 0x1000) || !poe->opt.TOKEN_cb) { goto fail; }
     // 1: Get Process and Token VA:
     iM = pt->_iFLink;
     while(iM && i < pt->c) {
         if((ppProcess[i] = pt->_M[iM]) && !ppProcess[i]->win.TOKEN.fInitialized) {
-            va = VMM_PTR_OFFSET(f32, ppProcess[i]->win.EPROCESS.pb, oep->opt.Token) & (f32 ? ~0x7 : ~0xf);
-            if(VMM_KADDR(va)) {
+            va = VMM_PTR_OFFSET(f32, ppProcess[i]->win.EPROCESS.pb, poe->opt.Token) & (f32 ? ~0x7 : ~0xf);
+            if(VMM_KADDR(f32, va)) {
                 ppProcess[i]->win.TOKEN.va = va;
                 pva[i] = va - cbHdr; // adjust for _OBJECT_HEADER and Pool Header
             }
@@ -664,60 +675,60 @@ VOID VmmProcess_TokenTryEnsure(_In_ PVMMOB_PROCESS_TABLE pt)
         i++;
     }
     // 2: Read Token:
-    VmmCachePrefetchPages4(pObSystemProcess, (DWORD)pt->c, pva, cb, 0);
+    VmmCachePrefetchPages4(H, pObSystemProcess, (DWORD)pt->c, pva, cb, 0);
     for(i = 0; i < pt->c; i++) {
-        if(!pva[i] || !VmmRead2(pObSystemProcess, pva[i], pb, cb, VMM_FLAG_FORCECACHE_READ)) { continue; }
+        if(!pva[i] || !VmmRead2(H, pObSystemProcess, pva[i], pb, cb, VMM_FLAG_FORCECACHE_READ)) { continue; }
         // 2.1: fetch TOKEN.UserAndGroups (user id [_SID_AND_ATTRIBUTES])
-        pva[i] = VMM_PTR_OFFSET(f32, pb + cbHdr, oep->opt.TOKEN_UserAndGroups);
-        if(!VMM_KADDR(pva[i])) { pva[i] = 0; continue; }
+        pva[i] = VMM_PTR_OFFSET(f32, pb + cbHdr, poe->opt.TOKEN_UserAndGroups);
+        if(!VMM_KADDR(f32, pva[i])) { pva[i] = 0; continue; }
         ppProcess[i]->win.TOKEN.vaUserAndGroups = pva[i];
         // 2.2: fetch various offsets
         for(j = 0, f = FALSE; !f && (j < cbHdr); j += (f32 ? 0x08 : 0x10)) {
             f = VMM_POOLTAG_SHORT(*(PDWORD)(pb + j), 'Toke');
         }
         if(!f) { pva[i] = 0; continue; }
-        ppProcess[i]->win.TOKEN.qwLUID = *(PQWORD)(pb + cbHdr + ctxVmm->offset.EPROCESS.opt.TOKEN_TokenId);
-        ppProcess[i]->win.TOKEN.dwSessionId = *(PDWORD)(pb + cbHdr + ctxVmm->offset.EPROCESS.opt.TOKEN_SessionId);
-        if(ctxVmm->offset.EPROCESS.opt.TOKEN_UserAndGroupCount) {
-            ppProcess[i]->win.TOKEN.dwUserAndGroupCount = *(PDWORD)(pb + cbHdr + ctxVmm->offset.EPROCESS.opt.TOKEN_UserAndGroupCount);
+        ppProcess[i]->win.TOKEN.qwLUID = *(PQWORD)(pb + cbHdr + poe->opt.TOKEN_TokenId);
+        ppProcess[i]->win.TOKEN.dwSessionId = *(PDWORD)(pb + cbHdr + poe->opt.TOKEN_SessionId);
+        if(poe->opt.TOKEN_UserAndGroupCount) {
+            ppProcess[i]->win.TOKEN.dwUserAndGroupCount = *(PDWORD)(pb + cbHdr + poe->opt.TOKEN_UserAndGroupCount);
         }
-        if(ctxVmm->offset.EPROCESS.opt.TOKEN_IntegrityLevelIndex) {
-            dwIntegrityLevelIndex = *(PDWORD)(pb + cbHdr + ctxVmm->offset.EPROCESS.opt.TOKEN_IntegrityLevelIndex);
+        if(poe->opt.TOKEN_IntegrityLevelIndex) {
+            dwIntegrityLevelIndex = *(PDWORD)(pb + cbHdr + poe->opt.TOKEN_IntegrityLevelIndex);
             if(dwIntegrityLevelIndex > ppProcess[i]->win.TOKEN.dwUserAndGroupCount) { dwIntegrityLevelIndex = 0; }
         }
         // 2.3: fetch TOKEN.UserAndGroups+dwIntegrityLevelIndex (integrity level [_SID_AND_ATTRIBUTES])
         if(dwIntegrityLevelIndex) {
-            va = VMM_PTR_OFFSET(f32, pb + cbHdr, oep->opt.TOKEN_UserAndGroups) + dwIntegrityLevelIndex * (f32 ? 8ULL : 16ULL);
-            if(VMM_KADDR(va)) { pva[pt->c + i] = va; }
+            va = VMM_PTR_OFFSET(f32, pb + cbHdr, poe->opt.TOKEN_UserAndGroups) + dwIntegrityLevelIndex * (f32 ? 8ULL : 16ULL);
+            if(VMM_KADDR(f32, va)) { pva[pt->c + i] = va; }
         }
     }
     // 3: Read SID user & integrity ptr:
-    VmmCachePrefetchPages4(pObSystemProcess, 2 * (DWORD)pt->c, pva, 8, 0);
+    VmmCachePrefetchPages4(H, pObSystemProcess, 2 * (DWORD)pt->c, pva, 8, 0);
     for(i = 0; i < pt->c; i++) {
         // user:
-        f = pva[i] && VmmRead2(pObSystemProcess, pva[i], pb, 8, VMM_FLAG_FORCECACHE_READ) &&
+        f = pva[i] && VmmRead2(H, pObSystemProcess, pva[i], pb, 8, VMM_FLAG_FORCECACHE_READ) &&
             (va = VMM_PTR_OFFSET(f32, pb, 0)) &&
-            VMM_KADDR(va);
+            VMM_KADDR(f32, va);
         pva[i] = f ? va : 0;
         // integrity:
-        f = pva[pt->c + i] && VmmRead2(pObSystemProcess, pva[pt->c + i], pb, 8, VMM_FLAG_FORCECACHE_READ) &&
+        f = pva[pt->c + i] && VmmRead2(H, pObSystemProcess, pva[pt->c + i], pb, 8, VMM_FLAG_FORCECACHE_READ) &&
             (va = VMM_PTR_OFFSET(f32, pb, 0)) &&
-            VMM_KADDR(va);
+            VMM_KADDR(f32, va);
         pva[pt->c + i] = f ? va : 0;
     }
     // 4: Get SID user & integrity:
-    VmmCachePrefetchPages4(pObSystemProcess, 2 * (DWORD)pt->c, pva, SECURITY_MAX_SID_SIZE, 0);
+    VmmCachePrefetchPages4(H, pObSystemProcess, 2 * (DWORD)pt->c, pva, SECURITY_MAX_SID_SIZE, 0);
     for(i = 0; i < pt->c; i++) {
         if(!ppProcess[i]) { continue; }
         // user:
         ppProcess[i]->win.TOKEN.fSidUserValid =
             (va = pva[i]) &&
-            VmmRead2(pObSystemProcess, va, ppProcess[i]->win.TOKEN.SidUser.pb, SECURITY_MAX_SID_SIZE, VMM_FLAG_FORCECACHE_READ) &&
+            VmmRead2(H, pObSystemProcess, va, ppProcess[i]->win.TOKEN.SidUser.pb, SECURITY_MAX_SID_SIZE, VMM_FLAG_FORCECACHE_READ) &&
             IsValidSid(&ppProcess[i]->win.TOKEN.SidUser.SID);
         // integrity:
         fSidIntegrity =
             (va = pva[pt->c + i]) &&
-            VmmRead2(pObSystemProcess, va, SidIntegrity.pb, SECURITY_MAX_SID_SIZE, VMM_FLAG_FORCECACHE_READ) &&
+            VmmRead2(H, pObSystemProcess, va, SidIntegrity.pb, SECURITY_MAX_SID_SIZE, VMM_FLAG_FORCECACHE_READ) &&
             IsValidSid(&SidIntegrity.SID) &&
             ConvertSidToStringSidA(&SidIntegrity.SID, &szSidIntegrity);
         if(fSidIntegrity) {
@@ -751,41 +762,43 @@ fail:
 }
 #endif /* _WIN32 */
 #ifdef LINUX
-VOID VmmProcess_TokenTryEnsure(_In_ PVMMOB_PROCESS_TABLE pt) { return; }
+VOID VmmProcess_TokenTryEnsure(_In_ VMM_HANDLE H, _In_ PVMMOB_PROCESS_TABLE pt) { return; }
 #endif /* LINUX */
 
 /*
 * Global Synchronization/Lock of VmmProcess_TokenTryEnsure()
+* -- H
 * -- pt
 * -- pProcess
 */
-VOID VmmProcess_TokenTryEnsureLock(_In_ PVMMOB_PROCESS_TABLE pt, _In_ PVMM_PROCESS pProcess)
+VOID VmmProcess_TokenTryEnsureLock(_In_ VMM_HANDLE H, _In_ PVMMOB_PROCESS_TABLE pt, _In_ PVMM_PROCESS pProcess)
 {
     if(pProcess->win.TOKEN.fInitialized) { return; }
-    EnterCriticalSection(&ctxVmm->LockMaster);
+    EnterCriticalSection(&H->vmm.LockMaster);
     if(!pProcess->win.TOKEN.fInitialized) {
-        VmmProcess_TokenTryEnsure(pt);
+        VmmProcess_TokenTryEnsure(H, pt);
     }
-    LeaveCriticalSection(&ctxVmm->LockMaster);
+    LeaveCriticalSection(&H->vmm.LockMaster);
 }
 
 /*
 * Retrieve a process for a given PID and optional PVMMOB_PROCESS_TABLE.
 * CALLER DECREF: return
+* -- H
 * -- pt
 * -- dwPID
 * -- flags = 0 (recommended) or VMM_FLAG_PROCESS_TOKEN.
 * -- return
 */
-PVMM_PROCESS VmmProcessGetEx(_In_opt_ PVMMOB_PROCESS_TABLE pt, _In_ DWORD dwPID, _In_ QWORD flags)
+PVMM_PROCESS VmmProcessGetEx(_In_ VMM_HANDLE H, _In_opt_ PVMMOB_PROCESS_TABLE pt, _In_ DWORD dwPID, _In_ QWORD flags)
 {
-    BOOL fToken = ((flags | ctxVmm->flags) & VMM_FLAG_PROCESS_TOKEN);
+    BOOL fToken = ((flags | H->vmm.flags) & VMM_FLAG_PROCESS_TOKEN);
     PVMM_PROCESS pObProcess, pObProcessClone;
     PVMMOB_PROCESS_TABLE pObTable;
     DWORD i, iStart;
     if(!pt) {
-        pObTable = (PVMMOB_PROCESS_TABLE)ObContainer_GetOb(ctxVmm->pObCPROC);
-        pObProcess = VmmProcessGetEx(pObTable, dwPID, flags);
+        pObTable = (PVMMOB_PROCESS_TABLE)ObContainer_GetOb(H->vmm.pObCPROC);
+        pObProcess = VmmProcessGetEx(H, pObTable, dwPID, flags);
         Ob_DECREF(pObTable);
         return pObProcess;
     }
@@ -794,7 +807,7 @@ PVMM_PROCESS VmmProcessGetEx(_In_opt_ PVMMOB_PROCESS_TABLE pt, _In_ DWORD dwPID,
         if(!pt->_M[i]) { goto fail; }
         if(pt->_M[i]->dwPID == dwPID) {
             pObProcess = (PVMM_PROCESS)Ob_INCREF(pt->_M[i]);
-            if(pObProcess && fToken && !pObProcess->win.TOKEN.fInitialized) { VmmProcess_TokenTryEnsureLock(pt, pObProcess); }
+            if(pObProcess && fToken && !pObProcess->win.TOKEN.fInitialized) { VmmProcess_TokenTryEnsureLock(H, pt, pObProcess); }
             return pObProcess;
         }
         if(++i == VMM_PROCESSTABLE_ENTRIES_MAX) { i = 0; }
@@ -802,8 +815,8 @@ PVMM_PROCESS VmmProcessGetEx(_In_opt_ PVMMOB_PROCESS_TABLE pt, _In_ DWORD dwPID,
     }
 fail:
     if(dwPID & VMM_PID_PROCESS_CLONE_WITH_KERNELMEMORY) {
-        if((pObProcess = VmmProcessGetEx(pt, dwPID & ~VMM_PID_PROCESS_CLONE_WITH_KERNELMEMORY, flags))) {
-            if((pObProcessClone = VmmProcessClone(pObProcess))) {
+        if((pObProcess = VmmProcessGetEx(H, pt, dwPID & ~VMM_PID_PROCESS_CLONE_WITH_KERNELMEMORY, flags))) {
+            if((pObProcessClone = VmmProcessClone(H, pObProcess))) {
                 pObProcessClone->fUserOnly = FALSE;
             }
             Ob_DECREF(pObProcess);
@@ -816,12 +829,13 @@ fail:
 /*
 * Retrieve a process for a given PID.
 * CALLER DECREF: return
+* -- H
 * -- dwPID
 * -- return = a process struct, or NULL if not found.
 */
-inline PVMM_PROCESS VmmProcessGet(_In_ DWORD dwPID)
+inline PVMM_PROCESS VmmProcessGet(_In_ VMM_HANDLE H, _In_ DWORD dwPID)
 {
-    return VmmProcessGetEx(NULL, dwPID, 0);
+    return VmmProcessGetEx(H, NULL, dwPID, 0);
 }
 
 /*
@@ -831,22 +845,23 @@ inline PVMM_PROCESS VmmProcessGet(_In_ DWORD dwPID)
 * to it.
 * FUNCTION DECREF: pProcess
 * CALLER DECREF: return
+* -- H
 * -- pt
 * -- pProcess = a process struct, or NULL if first.
 *    NB! function DECREF's  pProcess and must not be used after call!
 * -- flags = 0 (recommended) or VMM_FLAG_PROCESS_[TOKEN|SHOW_TERMINATED].
 * -- return = a process struct, or NULL if not found.
 */
-PVMM_PROCESS VmmProcessGetNextEx(_In_opt_ PVMMOB_PROCESS_TABLE pt, _In_opt_ PVMM_PROCESS pProcess, _In_ QWORD flags)
+PVMM_PROCESS VmmProcessGetNextEx(_In_ VMM_HANDLE H, _In_opt_ PVMMOB_PROCESS_TABLE pt, _In_opt_ PVMM_PROCESS pProcess, _In_ QWORD flags)
 {
-    BOOL fToken = ((flags | ctxVmm->flags) & VMM_FLAG_PROCESS_TOKEN);
-    BOOL fShowTerminated = ((flags | ctxVmm->flags) & VMM_FLAG_PROCESS_SHOW_TERMINATED);
+    BOOL fToken = ((flags | H->vmm.flags) & VMM_FLAG_PROCESS_TOKEN);
+    BOOL fShowTerminated = ((flags | H->vmm.flags) & VMM_FLAG_PROCESS_SHOW_TERMINATED);
     PVMM_PROCESS pProcessNew;
     DWORD i, iStart;
     if(!pt) {
-        pt = (PVMMOB_PROCESS_TABLE)ObContainer_GetOb(ctxVmm->pObCPROC);
+        pt = (PVMMOB_PROCESS_TABLE)ObContainer_GetOb(H->vmm.pObCPROC);
         if(!pt) { goto fail; }
-        pProcessNew = VmmProcessGetNextEx(pt, pProcess, flags);
+        pProcessNew = VmmProcessGetNextEx(H, pt, pProcess, flags);
         Ob_DECREF(pt);
         return pProcessNew;
     }
@@ -858,7 +873,7 @@ restart:
         Ob_DECREF(pProcess);
         pProcess = pProcessNew;
         if(pProcess && pProcess->dwState && !fShowTerminated) { goto restart; }
-        if(pProcess && fToken && !pProcess->win.TOKEN.fInitialized) { VmmProcess_TokenTryEnsureLock(pt, pProcess); }
+        if(pProcess && fToken && !pProcess->win.TOKEN.fInitialized) { VmmProcess_TokenTryEnsureLock(H, pt, pProcess); }
         return pProcess;
     }
     i = iStart = pProcess->dwPID % VMM_PROCESSTABLE_ENTRIES_MAX;
@@ -872,7 +887,7 @@ restart:
             Ob_DECREF(pProcess);
             pProcess = pProcessNew;
             if(pProcess && pProcess->dwState && !fShowTerminated) { goto restart; }
-            if(pProcess && fToken && !pProcess->win.TOKEN.fInitialized) { VmmProcess_TokenTryEnsureLock(pt, pProcess); }
+            if(pProcess && fToken && !pProcess->win.TOKEN.fInitialized) { VmmProcess_TokenTryEnsureLock(H, pt, pProcess); }
             return pProcess;
         }
         if(++i == VMM_PROCESSTABLE_ENTRIES_MAX) { i = 0; }
@@ -889,14 +904,15 @@ fail:
 * previous process is terminated while having a reference to it.
 * FUNCTION DECREF: pProcess
 * CALLER DECREF: return
+* -- H
 * -- pProcess = a process struct, or NULL if first.
 *    NB! function DECREF's  pProcess and must not be used after call!
 * -- flags = 0 (recommended) or VMM_FLAG_PROCESS_[TOKEN|SHOW_TERMINATED]
 * -- return = a process struct, or NULL if not found.
 */
-PVMM_PROCESS VmmProcessGetNext(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD flags)
+PVMM_PROCESS VmmProcessGetNext(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _In_ QWORD flags)
 {
-    return VmmProcessGetNextEx(NULL, pProcess, flags);
+    return VmmProcessGetNextEx(H, NULL, pProcess, flags);
 }
 
 /*
@@ -922,11 +938,11 @@ VOID VmmProcessStatic_CloseObCallback(_In_ PVOID pVmmOb)
 * Object manager callback before 'static process' object cleanup
 * decrease refcount of any internal objects.
 */
-VOID VmmProcessStatic_Initialize(_In_ PVMM_PROCESS pProcess)
+VOID VmmProcessStatic_Initialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
 {
     EnterCriticalSection(&pProcess->LockUpdate);
     Ob_DECREF_NULL(&pProcess->pObPersistent);
-    pProcess->pObPersistent = Ob_Alloc(OB_TAG_VMM_PROCESS_PERSISTENT, LMEM_ZEROINIT, sizeof(VMMOB_PROCESS_PERSISTENT), VmmProcessStatic_CloseObCallback, NULL);
+    pProcess->pObPersistent = Ob_AllocEx(H, OB_TAG_VMM_PROCESS_PERSISTENT, LMEM_ZEROINIT, sizeof(VMMOB_PROCESS_PERSISTENT), VmmProcessStatic_CloseObCallback, NULL);
     if(pProcess->pObPersistent) {
         pProcess->pObPersistent->pObCMapVadPrefetch = ObContainer_New();
         pProcess->pObPersistent->pObCLdrModulesPrefetch32 = ObContainer_New();
@@ -1007,14 +1023,15 @@ VOID VmmProcessTable_CloseObCallback(_In_ PVOID pVmmOb)
 * user-mode process.
 * NB! USE WITH EXTREME CARE - MAY CRASH VMM IF USED MORE GENERALLY!
 * CALLER DECREF: return
+* -- H
 * -- pProcess
 * -- return
 */
-PVMM_PROCESS VmmProcessClone(_In_ PVMM_PROCESS pProcess)
+PVMM_PROCESS VmmProcessClone(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
 {
     PVMM_PROCESS pObProcessClone;
     if(pProcess->pObProcessCloneParent) { return NULL; }
-    pObProcessClone = (PVMM_PROCESS)Ob_Alloc(OB_TAG_VMM_PROCESS_CLONE, LMEM_ZEROINIT, sizeof(VMM_PROCESS), VmmProcessClone_CloseObCallback, NULL);
+    pObProcessClone = (PVMM_PROCESS)Ob_AllocEx(H, OB_TAG_VMM_PROCESS_CLONE, LMEM_ZEROINIT, sizeof(VMM_PROCESS), VmmProcessClone_CloseObCallback, NULL);
     if(!pObProcessClone) { return NULL; }
     memcpy((PBYTE)pObProcessClone + sizeof(OB), (PBYTE)pProcess + sizeof(OB), pProcess->ObHdr.cbData);
     pObProcessClone->pObProcessCloneParent = Ob_INCREF(pProcess);
@@ -1029,7 +1046,9 @@ PVMM_PROCESS VmmProcessClone(_In_ PVMM_PROCESS pProcess)
 * Create a new process object. New process object are created in a separate
 * data structure and won't become visible to the "Process" functions until
 * after the VmmProcessCreateFinish have been called.
+* NB! REQUIRE SINGLE THREAD: [H->vmm.LockMaster]
 * CALLER DECREF: return
+* -- H
 * -- fTotalRefresh = create a completely new entry - i.e. do not copy any form
 *                    of data from the old entry such as module and memory maps.
 * -- dwPID
@@ -1043,7 +1062,7 @@ PVMM_PROCESS VmmProcessClone(_In_ PVMM_PROCESS pProcess)
 * -- cbEPROCESS
 * -- return
 */
-PVMM_PROCESS VmmProcessCreateEntry(_In_ BOOL fTotalRefresh, _In_ DWORD dwPID, _In_ DWORD dwPPID, _In_ DWORD dwState, _In_ QWORD paDTB, _In_ QWORD paDTB_UserOpt, _In_ CHAR szName[16], _In_ BOOL fUserOnly, _In_reads_opt_(cbEPROCESS) PBYTE pbEPROCESS, _In_ DWORD cbEPROCESS)
+PVMM_PROCESS VmmProcessCreateEntry(_In_ VMM_HANDLE H, _In_ BOOL fTotalRefresh, _In_ DWORD dwPID, _In_ DWORD dwPPID, _In_ DWORD dwState, _In_ QWORD paDTB, _In_ QWORD paDTB_UserOpt, _In_ CHAR szName[16], _In_ BOOL fUserOnly, _In_reads_opt_(cbEPROCESS) PBYTE pbEPROCESS, _In_ DWORD cbEPROCESS)
 {
     PVMMOB_PROCESS_TABLE ptOld = NULL, ptNew = NULL;
     QWORD i, iStart, cEmpty = 0, cValid = 0;
@@ -1052,31 +1071,31 @@ PVMM_PROCESS VmmProcessCreateEntry(_In_ BOOL fTotalRefresh, _In_ DWORD dwPID, _I
     BOOL result;
     // 1: Sanity check DTB
     if(dwState == 0) {
-        pObDTB = VmmTlbGetPageTable(paDTB & ~0xfff, FALSE);
+        pObDTB = VmmTlbGetPageTable(H, paDTB & ~0xfff, FALSE);
         if(!pObDTB) { goto fail; }
-        result = VmmTlbPageTableVerify(pObDTB->h.pb, paDTB, (ctxVmm->tpSystem == VMM_SYSTEM_WINDOWS_X64));
+        result = VmmTlbPageTableVerify(H, pObDTB->h.pb, paDTB, (H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_X64));
         Ob_DECREF(pObDTB);
         if(!result) { goto fail; }
     }
     // 2: Allocate new 'Process Table' (if not already existing)
-    ptOld = (PVMMOB_PROCESS_TABLE)ObContainer_GetOb(ctxVmm->pObCPROC);
+    ptOld = (PVMMOB_PROCESS_TABLE)ObContainer_GetOb(H->vmm.pObCPROC);
     if(!ptOld) { goto fail; }
     ptNew = (PVMMOB_PROCESS_TABLE)ObContainer_GetOb(ptOld->pObCNewPROC);
     if(!ptNew) {
-        ptNew = (PVMMOB_PROCESS_TABLE)Ob_Alloc(OB_TAG_VMM_PROCESSTABLE, LMEM_ZEROINIT, sizeof(VMMOB_PROCESS_TABLE), VmmProcessTable_CloseObCallback, NULL);
+        ptNew = (PVMMOB_PROCESS_TABLE)Ob_AllocEx(H, OB_TAG_VMM_PROCESSTABLE, LMEM_ZEROINIT, sizeof(VMMOB_PROCESS_TABLE), VmmProcessTable_CloseObCallback, NULL);
         if(!ptNew) { goto fail; }
         ptNew->pObCNewPROC = ObContainer_New();
         ObContainer_SetOb(ptOld->pObCNewPROC, ptNew);
     }
     // 3: Sanity check - process to create not already in 'new' table.
-    pProcess = VmmProcessGetEx(ptNew, dwPID, 0);
+    pProcess = VmmProcessGetEx(H, ptNew, dwPID, 0);
     if(pProcess) { goto fail; }
     // 4: Prepare existing item, or create new item, for new PID
     if(!fTotalRefresh) {
-        pProcess = VmmProcessGetEx(ptOld, dwPID, 0);
+        pProcess = VmmProcessGetEx(H, ptOld, dwPID, 0);
     }
     if(!pProcess) {
-        pProcess = (PVMM_PROCESS)Ob_Alloc(OB_TAG_VMM_PROCESS, LMEM_ZEROINIT, sizeof(VMM_PROCESS), VmmProcess_CloseObCallback, NULL);
+        pProcess = (PVMM_PROCESS)Ob_AllocEx(H, OB_TAG_VMM_PROCESS, LMEM_ZEROINIT, sizeof(VMM_PROCESS), VmmProcess_CloseObCallback, NULL);
         if(!pProcess) { goto fail; }
         if(!InitializeCriticalSectionAndSpinCount(&pProcess->LockUpdate, 4096)) { goto fail; }
         InitializeCriticalSection(&pProcess->LockPlugin);
@@ -1099,11 +1118,11 @@ PVMM_PROCESS VmmProcessCreateEntry(_In_ BOOL fTotalRefresh, _In_ DWORD dwPID, _I
             memcpy(pProcess->win.EPROCESS.pb, pbEPROCESS, pProcess->win.EPROCESS.cb);
         }
         // attach pre-existing static process info entry or create new
-        pProcessOld = VmmProcessGet(dwPID);
+        pProcessOld = VmmProcessGet(H, dwPID);
         if(pProcessOld) {
             pProcess->pObPersistent = (PVMMOB_PROCESS_PERSISTENT)Ob_INCREF(pProcessOld->pObPersistent);
         } else {
-            VmmProcessStatic_Initialize(pProcess);
+            VmmProcessStatic_Initialize(H, pProcess);
         }
         Ob_DECREF(pProcessOld);
         pProcessOld = NULL;
@@ -1135,11 +1154,12 @@ fail:
 /*
 * Activate the pending, not yet active, processes added by VmmProcessCreateEntry.
 * This will also clear any previous processes.
+* -- H
 */
-VOID VmmProcessCreateFinish()
+VOID VmmProcessCreateFinish(_In_ VMM_HANDLE H)
 {
     PVMMOB_PROCESS_TABLE ptNew, ptOld;
-    if(!(ptOld = ObContainer_GetOb(ctxVmm->pObCPROC))) {
+    if(!(ptOld = ObContainer_GetOb(H->vmm.pObCPROC))) {
         return;
     }
     if(!(ptNew = ObContainer_GetOb(ptOld->pObCNewPROC))) {
@@ -1147,17 +1167,18 @@ VOID VmmProcessCreateFinish()
         return;
     }
     // Replace "existing" old process table with new.
-    ObContainer_SetOb(ctxVmm->pObCPROC, ptNew);
+    ObContainer_SetOb(H->vmm.pObCPROC, ptNew);
     Ob_DECREF(ptNew);
     Ob_DECREF(ptOld);
 }
 
 /*
 * Clear the TLB spider flag in all process objects.
+* -- H
 */
-VOID VmmProcessTlbClear()
+VOID VmmProcessTlbClear(_In_ VMM_HANDLE H)
 {
-    PVMMOB_PROCESS_TABLE pt = (PVMMOB_PROCESS_TABLE)ObContainer_GetOb(ctxVmm->pObCPROC);
+    PVMMOB_PROCESS_TABLE pt = (PVMMOB_PROCESS_TABLE)ObContainer_GetOb(H->vmm.pObCPROC);
     PVMM_PROCESS pProcess;
     WORD iProcess;
     if(!pt) { return; }
@@ -1174,34 +1195,37 @@ VOID VmmProcessTlbClear()
 
 /*
 * Query process for its creation time.
+* -- H
 * -- pProcess
 * -- return = time as FILETIME or 0 on error.
 */
-QWORD VmmProcess_GetCreateTimeOpt(_In_opt_ PVMM_PROCESS pProcess)
+QWORD VmmProcess_GetCreateTimeOpt(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess)
 {
-    return (pProcess && ctxVmm->offset.EPROCESS.opt.CreateTime) ? *(PQWORD)(pProcess->win.EPROCESS.pb + ctxVmm->offset.EPROCESS.opt.CreateTime) : 0;
+    return (pProcess && H->vmm.offset.EPROCESS.opt.CreateTime) ? *(PQWORD)(pProcess->win.EPROCESS.pb + H->vmm.offset.EPROCESS.opt.CreateTime) : 0;
 }
 
 /*
 * Query process for its exit time.
+* -- H
 * -- pProcess
 * -- return = time as FILETIME or 0 on error.
 */
-QWORD VmmProcess_GetExitTimeOpt(_In_opt_ PVMM_PROCESS pProcess)
+QWORD VmmProcess_GetExitTimeOpt(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess)
 {
-    return (pProcess && ctxVmm->offset.EPROCESS.opt.ExitTime) ? *(PQWORD)(pProcess->win.EPROCESS.pb + ctxVmm->offset.EPROCESS.opt.ExitTime) : 0;
+    return (pProcess && H->vmm.offset.EPROCESS.opt.ExitTime) ? *(PQWORD)(pProcess->win.EPROCESS.pb + H->vmm.offset.EPROCESS.opt.ExitTime) : 0;
 }
 
 /*
 * List the PIDs and put them into the supplied table.
+* -- H
 * -- pPIDs = user allocated DWORD array to receive result, or NULL.
 * -- pcPIDs = ptr to number of DWORDs in pPIDs on entry - number of PIDs in system on exit.
-* -- flags = 0 (recommended) or VMM_FLAG_PROCESS_SHOW_TERMINATED (_only_ if default setting in ctxVmm->flags should be overridden)
+* -- flags = 0 (recommended) or VMM_FLAG_PROCESS_SHOW_TERMINATED (_only_ if default setting in H->vmm.flags should be overridden)
 */
-VOID VmmProcessListPIDs(_Out_writes_opt_(*pcPIDs) PDWORD pPIDs, _Inout_ PSIZE_T pcPIDs, _In_ QWORD flags)
+VOID VmmProcessListPIDs(_In_ VMM_HANDLE H, _Out_writes_opt_(*pcPIDs) PDWORD pPIDs, _Inout_ PSIZE_T pcPIDs, _In_ QWORD flags)
 {
-    PVMMOB_PROCESS_TABLE pt = (PVMMOB_PROCESS_TABLE)ObContainer_GetOb(ctxVmm->pObCPROC);
-    BOOL fShowTerminated = ((flags | ctxVmm->flags) & VMM_FLAG_PROCESS_SHOW_TERMINATED);
+    PVMMOB_PROCESS_TABLE pt = (PVMMOB_PROCESS_TABLE)ObContainer_GetOb(H->vmm.pObCPROC);
+    BOOL fShowTerminated = ((flags | H->vmm.flags) & VMM_FLAG_PROCESS_SHOW_TERMINATED);
     PVMM_PROCESS pProcess;
     WORD iProcess;
     DWORD i = 0;
@@ -1233,232 +1257,47 @@ VOID VmmProcessListPIDs(_Out_writes_opt_(*pcPIDs) PDWORD pPIDs, _Inout_ PSIZE_T 
 
 /*
 * Create the initial process table at startup.
+* -- H
 */
-BOOL VmmProcessTableCreateInitial()
+BOOL VmmProcessTableCreateInitial(_In_ VMM_HANDLE H)
 {
-    PVMMOB_PROCESS_TABLE pt = (PVMMOB_PROCESS_TABLE)Ob_Alloc(OB_TAG_VMM_PROCESSTABLE, LMEM_ZEROINIT, sizeof(VMMOB_PROCESS_TABLE), VmmProcessTable_CloseObCallback, NULL);
+    PVMMOB_PROCESS_TABLE pt = (PVMMOB_PROCESS_TABLE)Ob_AllocEx(H, OB_TAG_VMM_PROCESSTABLE, LMEM_ZEROINIT, sizeof(VMMOB_PROCESS_TABLE), VmmProcessTable_CloseObCallback, NULL);
     if(!pt) { return FALSE; }
     pt->pObCNewPROC = ObContainer_New();
-    ctxVmm->pObCPROC = ObContainer_New();
-    ObContainer_SetOb(ctxVmm->pObCPROC, pt);
+    H->vmm.pObCPROC = ObContainer_New();
+    ObContainer_SetOb(H->vmm.pObCPROC, pt);
     Ob_DECREF(pt);
     return TRUE;
 }
 
-// ----------------------------------------------------------------------------
-// WORK (THREAD POOL) API:
-// The 'Work' thread pool contain by default 32 threads which is waiting to
-// receive work scheduled by calling the VmmWork function.
-// ----------------------------------------------------------------------------
 
-typedef struct tdVMMWORK_UNIT {
-    LPTHREAD_START_ROUTINE pfn;     // function to call
-    PVOID ctx;                      // optional function parameter
-    HANDLE hEventFinish;            // optional event to set when upon work completion
-} VMMWORK_UNIT, *PVMMWORK_UNIT;
-
-typedef struct tdVMMWORK_THREAD_CONTEXT {
-    HANDLE hEventWakeup;
-    HANDLE hThread;
-} VMMWORK_THREAD_CONTEXT, *PVMMWORK_THREAD_CONTEXT;
-
-DWORD VmmWork_MainWorkerLoop_ThreadProc(PVMMWORK_THREAD_CONTEXT ctx)
-{
-    PVMMWORK_UNIT pu;
-    while(ctxVmm->Work.fEnabled) {
-        if((pu = (PVMMWORK_UNIT)ObSet_Pop(ctxVmm->Work.psUnit))) {
-            ((DWORD(*)(LPVOID))pu->pfn)(pu->ctx);
-            if(pu->hEventFinish) {
-                SetEvent(pu->hEventFinish);
-            }
-            LocalFree(pu);
-        } else {
-            ResetEvent(ctx->hEventWakeup);
-            ObSet_Push(ctxVmm->Work.psThreadAvail, (QWORD)ctx);
-            WaitForSingleObject(ctx->hEventWakeup, INFINITE);
-        }
-    }
-    ObSet_Remove(ctxVmm->Work.psThreadAll, (QWORD)ctx);
-    CloseHandle(ctx->hEventWakeup);
-    CloseHandle(ctx->hThread);
-    LocalFree(ctx);
-    return 1;
-}
-
-VOID VmmWork_Initialize()
-{
-    PVMMWORK_THREAD_CONTEXT p;
-    ctxVmm->Work.fEnabled = TRUE;
-    ctxVmm->Work.psUnit = ObSet_New();
-    ctxVmm->Work.psThreadAll = ObSet_New();
-    ctxVmm->Work.psThreadAvail = ObSet_New();
-    while(ObSet_Size(ctxVmm->Work.psThreadAll) < VMM_WORK_THREADPOOL_NUM_THREADS) {
-        if((p = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMWORK_THREAD_CONTEXT)))) {
-            p->hEventWakeup = CreateEvent(NULL, TRUE, FALSE, NULL);
-            p->hThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)VmmWork_MainWorkerLoop_ThreadProc, p, 0, NULL);
-            ObSet_Push(ctxVmm->Work.psThreadAll, (QWORD)p);
-        }
-    }
-}
-
-VOID VmmWork_Close()
-{
-    PVMMWORK_UNIT pu;
-    PVMMWORK_THREAD_CONTEXT pt = NULL;
-    ctxVmm->Work.fEnabled = FALSE;
-    while(ObSet_Size(ctxVmm->Work.psThreadAll)) {
-        while((pt = (PVMMWORK_THREAD_CONTEXT)ObSet_GetNext(ctxVmm->Work.psThreadAll, (QWORD)pt))) {
-            SetEvent(pt->hEventWakeup);
-        }
-        SwitchToThread();
-    }
-    while((pu = (PVMMWORK_UNIT)ObSet_Pop(ctxVmm->Work.psUnit))) {
-        if(pu->hEventFinish) {
-            SetEvent(pu->hEventFinish);
-        }
-        LocalFree(pu);
-    }
-    Ob_DECREF_NULL(&ctxVmm->Work.psUnit);
-    Ob_DECREF_NULL(&ctxVmm->Work.psThreadAll);
-    Ob_DECREF_NULL(&ctxVmm->Work.psThreadAvail);
-}
-
-VOID VmmWork(_In_ LPTHREAD_START_ROUTINE pfn, _In_opt_ PVOID ctx, _In_opt_ HANDLE hEventFinish)
-{
-    PVMMWORK_UNIT pu;
-    PVMMWORK_THREAD_CONTEXT pt;
-    if((pu = LocalAlloc(0, sizeof(VMMWORK_UNIT)))) {
-        pu->pfn = pfn;
-        pu->ctx = ctx;
-        pu->hEventFinish = hEventFinish;
-        ObSet_Push(ctxVmm->Work.psUnit, (QWORD)pu);
-        if((pt = (PVMMWORK_THREAD_CONTEXT)ObSet_Pop(ctxVmm->Work.psThreadAvail))) {
-            SetEvent(pt->hEventWakeup);
-        }
-    }
-}
-
-VOID VmmWorkWaitMultiple(_In_opt_ PVOID ctx, _In_ DWORD cWork, ...)
-{
-    DWORD i;
-    va_list arguments;
-    HANDLE hEventFinish[MAXIMUM_WAIT_OBJECTS] = { 0 };
-    if(cWork > MAXIMUM_WAIT_OBJECTS) { return; }
-    va_start(arguments, cWork);
-    for(i = 0; i < cWork; i++) {
-        hEventFinish[i] = CreateEvent(NULL, TRUE, FALSE, NULL);
-        VmmWork(va_arg(arguments, LPTHREAD_START_ROUTINE), ctx, hEventFinish[i]);
-    }
-    va_end(arguments);
-    WaitForMultipleObjects(cWork, hEventFinish, TRUE, INFINITE);
-    for(i = 0; i < cWork; i++) {
-        if(hEventFinish[i]) {
-            CloseHandle(hEventFinish[i]);
-        }
-    }
-}
-
-// ----------------------------------------------------------------------------
-// PROCESS PARALLELIZATION FUNCTIONALITY:
-// ----------------------------------------------------------------------------
-
-typedef struct tdVMM_PROCESS_ACTION_FOREACH {
-    HANDLE hEventFinish;
-    VOID(*pfnAction)(_In_ PVMM_PROCESS pProcess, _In_ PVOID ctx);
-    PVOID ctxAction;
-    DWORD cRemainingWork;       // set to dwPIDs count on entry and decremented as-goes - when zero FinishEvent is set.
-    DWORD iPID;                 // set to dwPIDs count on entry and decremented as-goes
-    DWORD dwPIDs[];
-} VMM_PROCESS_ACTION_FOREACH, *PVMM_PROCESS_ACTION_FOREACH;
-
-DWORD VmmProcessActionForeachParallel_ThreadProc(PVMM_PROCESS_ACTION_FOREACH ctx)
-{
-    PVMM_PROCESS pObProcess = VmmProcessGet(ctx->dwPIDs[InterlockedDecrement(&ctx->iPID)]);
-    if(pObProcess) {
-        ctx->pfnAction(pObProcess, ctx->ctxAction);
-        Ob_DECREF(pObProcess);
-    }
-    if(0 == InterlockedDecrement(&ctx->cRemainingWork)) {
-        SetEvent(ctx->hEventFinish);
-    }
-    return 1;
-}
-
-BOOL VmmProcessActionForeachParallel_CriteriaActiveOnly(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx)
-{
-    return pProcess->dwState == 0;
-}
-
-BOOL VmmProcessActionForeachParallel_CriteriaActiveUserOnly(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx)
-{
-    return (pProcess->dwState == 0) && pProcess->fUserOnly;
-}
-
-VOID VmmProcessActionForeachParallel(_In_opt_ PVOID ctxAction, _In_opt_ BOOL(*pfnCriteria)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx), _In_ VOID(*pfnAction)(_In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx))
-{
-    DWORD i, cProcess;
-    PVMM_PROCESS pObProcess = NULL;
-    POB_SET pObProcessSelectedSet = NULL;
-    PVMM_PROCESS_ACTION_FOREACH ctx = NULL;
-    // 1: select processes to queue using criteria function
-    if(!(pObProcessSelectedSet = ObSet_New())) { goto fail; }
-    while((pObProcess = VmmProcessGetNext(pObProcess, VMM_FLAG_PROCESS_SHOW_TERMINATED))) {
-        if(!pfnCriteria || pfnCriteria(pObProcess, ctx)) {
-            ObSet_Push(pObProcessSelectedSet, pObProcess->dwPID);
-        }
-    }
-    if(!(cProcess = ObSet_Size(pObProcessSelectedSet))) { goto fail; }
-    // 2: set up context for worker function
-    if(!(ctx = LocalAlloc(LMEM_ZEROINIT, sizeof(VMM_PROCESS_ACTION_FOREACH) + cProcess * sizeof(DWORD)))) { goto fail; }
-    if(!(ctx->hEventFinish = CreateEvent(NULL, TRUE, FALSE, NULL))) { goto fail; }
-    ctx->pfnAction = pfnAction;
-    ctx->ctxAction = ctxAction;
-    ctx->cRemainingWork = cProcess;
-    ctx->iPID = cProcess;
-    for(i = 0; i < cProcess; i++) {
-        ctx->dwPIDs[i] = (DWORD)ObSet_Pop(pObProcessSelectedSet);
-    }
-    // 3: parallelize onto worker threads and wait for completion
-    for(i = 0; i < cProcess; i++) {
-        VmmWork((PTHREAD_START_ROUTINE)VmmProcessActionForeachParallel_ThreadProc, ctx, NULL);
-    }
-    WaitForSingleObject(ctx->hEventFinish, INFINITE);
-fail:
-    Ob_DECREF(pObProcessSelectedSet);
-    if(ctx) {
-        if(ctx->hEventFinish) {
-            CloseHandle(ctx->hEventFinish);
-        }
-        LocalFree(ctx);
-    }
-}
 
 // ----------------------------------------------------------------------------
 // INTERNAL VMMU FUNCTIONALITY: VIRTUAL MEMORY ACCESS.
 // ----------------------------------------------------------------------------
 
-VOID VmmWriteScatterPhysical(_Inout_ PPMEM_SCATTER ppMEMsPhys, _In_ DWORD cpMEMsPhys)
+VOID VmmWriteScatterPhysical(_In_ VMM_HANDLE H, _Inout_ PPMEM_SCATTER ppMEMsPhys, _In_ DWORD cpMEMsPhys)
 {
     DWORD i;
     PMEM_SCATTER pMEM;
-    LcWriteScatter(ctxMain->hLC, cpMEMsPhys, ppMEMsPhys);
+    LcWriteScatter(H->hLC, cpMEMsPhys, ppMEMsPhys);
     for(i = 0; i < cpMEMsPhys; i++) {
         pMEM = ppMEMsPhys[i];
-        InterlockedIncrement64(&ctxVmm->stat.cPhysWrite);
+        InterlockedIncrement64(&H->vmm.stat.cPhysWrite);
         if(pMEM->f && MEM_SCATTER_ADDR_ISVALID(pMEM)) {
-            VmmCacheInvalidate(pMEM->qwA & ~0xfff);
+            VmmCacheInvalidate(H, pMEM->qwA & ~0xfff);
         }
     }
 }
 
-VOID VmmWriteScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_ PPMEM_SCATTER ppMEMsVirt, _In_ DWORD cpMEMsVirt)
+VOID VmmWriteScatterVirtual(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _Inout_ PPMEM_SCATTER ppMEMsVirt, _In_ DWORD cpMEMsVirt)
 {
     DWORD i;
     QWORD qwPA_PTE = 0, qwPagedPA = 0;
     PMEM_SCATTER pMEM;
     BOOL fProcessMagicHandle = ((SIZE_T)pProcess >= PROCESS_MAGIC_HANDLE_THRESHOLD);
     // 0: 'magic' process handle
-    if(fProcessMagicHandle && !(pProcess = VmmProcessGet((DWORD)(0-(SIZE_T)pProcess)))) { return; }
+    if(fProcessMagicHandle && !(pProcess = VmmProcessGet(H, (DWORD)(0-(SIZE_T)pProcess)))) { return; }
     // 1: virt2phys translation
     for(i = 0; i < cpMEMsVirt; i++) {
         pMEM = ppMEMsVirt[i];
@@ -1467,36 +1306,38 @@ VOID VmmWriteScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_ PPMEM_SCATTER pp
             pMEM->qwA = (QWORD)-1;
             continue;
         }
-        if(VmmVirt2Phys(pProcess, pMEM->qwA, &qwPA_PTE)) {
+        if(VmmVirt2Phys(H, pProcess, pMEM->qwA, &qwPA_PTE)) {
             pMEM->qwA = qwPA_PTE;
             continue;
         }
         // paged "read" also translate virtual -> physical for some
         // types of paged memory such as transition and prototype.
-        ctxVmm->fnMemoryModel.pfnPagedRead(pProcess, pMEM->qwA, qwPA_PTE, NULL, &qwPagedPA, NULL, 0);
+        H->vmm.fnMemoryModel.pfnPagedRead(H, pProcess, pMEM->qwA, qwPA_PTE, NULL, &qwPagedPA, NULL, 0);
         pMEM->qwA = qwPagedPA ? qwPagedPA : (QWORD)-1;
     }
     // write to physical addresses
-    VmmWriteScatterPhysical(ppMEMsVirt, cpMEMsVirt);
+    VmmWriteScatterPhysical(H, ppMEMsVirt, cpMEMsVirt);
     for(i = 0; i < cpMEMsVirt; i++) {
         ppMEMsVirt[i]->qwA = MEM_SCATTER_STACK_POP(ppMEMsVirt[i]);
     }
     if(fProcessMagicHandle) { Ob_DECREF(pProcess); }
 }
 
-VOID VmmReadScatterPhysical(_Inout_ PPMEM_SCATTER ppMEMsPhys, _In_ DWORD cpMEMsPhys, _In_ QWORD flags)
+#define VMM_READ_PHYSICAL_SPECULATIVE_PAGES     8
+
+VOID VmmReadScatterPhysical(_In_ VMM_HANDLE H, _Inout_ PPMEM_SCATTER ppMEMsPhys, _In_ DWORD cpMEMsPhys, _In_ QWORD flags)
 {
     QWORD tp;   // 0 = normal, 1 = already read, 2 = cache hit, 3 = speculative read
     BOOL fCache, fCacheRecent, fCachePut, fCacheForce;
     PMEM_SCATTER pMEM;
     DWORD i, c, cSpeculative;
     PVMMOB_CACHE_MEM pObCacheEntry, pObReservedMEM;
-    PMEM_SCATTER ppMEMsSpeculative[0x18];
-    PVMMOB_CACHE_MEM ppObCacheSpeculative[0x18];
-    fCache = !(VMM_FLAG_NOCACHE & (flags | ctxVmm->flags));
+    PMEM_SCATTER ppMEMsSpeculative[VMM_READ_PHYSICAL_SPECULATIVE_PAGES];
+    PVMMOB_CACHE_MEM ppObCacheSpeculative[VMM_READ_PHYSICAL_SPECULATIVE_PAGES];
+    fCache = !(VMM_FLAG_NOCACHE & (flags | H->vmm.flags));
     fCacheRecent = fCache && (VMM_FLAG_CACHE_RECENT_ONLY & flags);
     fCachePut = !(VMM_FLAG_NOCACHEPUT & flags);
-    fCacheForce = (VMM_FLAG_FORCECACHE_READ & flags) && !(VMM_FLAG_FORCECACHE_READ_DISABLE & (flags | ctxVmm->flags));
+    fCacheForce = (VMM_FLAG_FORCECACHE_READ & flags) && !(VMM_FLAG_FORCECACHE_READ_DISABLE & (flags | H->vmm.flags));
     // 1: cache read
     if(fCache) {
         c = 0, cSpeculative = 0;
@@ -1509,19 +1350,19 @@ VOID VmmReadScatterPhysical(_Inout_ PPMEM_SCATTER ppMEMsPhys, _In_ DWORD cpMEMsP
                 continue;
             }
             // retrieve from cache (if found)
-            if((pMEM->cb == 0x1000) && (pObCacheEntry = VmmCacheGetEx(VMM_CACHE_TAG_PHYS, pMEM->qwA, fCacheRecent))) {
+            if((pMEM->cb == 0x1000) && (pObCacheEntry = VmmCacheGetEx(H, VMM_CACHE_TAG_PHYS, pMEM->qwA, fCacheRecent))) {
                 // in cache - copy data into requester and set as completed!
                 MEM_SCATTER_STACK_PUSH(pMEM, 2);    // 2: cache read
                 pMEM->f = TRUE;
                 memcpy(pMEM->pb, pObCacheEntry->pb, 0x1000);
                 Ob_DECREF(pObCacheEntry);
-                InterlockedIncrement64(&ctxVmm->stat.cPhysCacheHit);
+                InterlockedIncrement64(&H->vmm.stat.cPhysCacheHit);
                 c++;
                 continue;
             }
             MEM_SCATTER_STACK_PUSH(pMEM, 1);        // 1: normal read
             // add to potential speculative read map if read is small enough...
-            if(cSpeculative < 0x18) {
+            if(cSpeculative < VMM_READ_PHYSICAL_SPECULATIVE_PAGES) {
                 ppMEMsSpeculative[cSpeculative++] = pMEM;
             }
         }
@@ -1534,15 +1375,15 @@ VOID VmmReadScatterPhysical(_Inout_ PPMEM_SCATTER ppMEMsPhys, _In_ DWORD cpMEMsP
         }
     }
     // 2: speculative future read if negligible performance loss
-    if(fCache && fCachePut && cSpeculative && (cSpeculative < 0x18) && !(flags & VMMDLL_FLAG_NO_PREDICTIVE_READ)) {
+    if(fCache && fCachePut && cSpeculative && (cSpeculative < VMM_READ_PHYSICAL_SPECULATIVE_PAGES) && !(flags & VMMDLL_FLAG_NO_PREDICTIVE_READ)) {
         for(i = 0; i < cpMEMsPhys; i++) {
             pMEM = ppMEMsPhys[i];
             if(1 != MEM_SCATTER_STACK_PEEK(pMEM, 1)) {
                 MEM_SCATTER_STACK_POP(pMEM);
             }
         }
-        while(cSpeculative < 0x18) {
-            if((ppObCacheSpeculative[cSpeculative] = VmmCacheReserve(VMM_CACHE_TAG_PHYS))) {
+        while(cSpeculative < VMM_READ_PHYSICAL_SPECULATIVE_PAGES) {
+            if((ppObCacheSpeculative[cSpeculative] = VmmCacheReserve(H, VMM_CACHE_TAG_PHYS))) {
                 pMEM = ppMEMsSpeculative[cSpeculative] = &ppObCacheSpeculative[cSpeculative]->h;
                 MEM_SCATTER_STACK_PUSH(pMEM, 4);
                 pMEM->f = FALSE;
@@ -1554,7 +1395,7 @@ VOID VmmReadScatterPhysical(_Inout_ PPMEM_SCATTER ppMEMsPhys, _In_ DWORD cpMEMsP
         cpMEMsPhys = cSpeculative;
     }
     // 3: read!
-    LcReadScatter(ctxMain->hLC, cpMEMsPhys, ppMEMsPhys);
+    LcReadScatter(H->hLC, cpMEMsPhys, ppMEMsPhys);
     // 4: cache put
     if(fCache) {
         for(i = 0; i < cpMEMsPhys; i++) {
@@ -1562,14 +1403,14 @@ VOID VmmReadScatterPhysical(_Inout_ PPMEM_SCATTER ppMEMsPhys, _In_ DWORD cpMEMsP
             tp = MEM_SCATTER_STACK_POP(pMEM);
             if(fCachePut) {
                 if(tp == 4) {   // 4 == speculative & backed by cache reserved
-                    VmmCacheReserveReturn(ppObCacheSpeculative[i]);
+                    VmmCacheReserveReturn(H, ppObCacheSpeculative[i]);
                 }
                 if((tp == 1) && pMEM->f) { // 1 = normal read
-                    if((pObReservedMEM = VmmCacheReserve(VMM_CACHE_TAG_PHYS))) {
+                    if((pObReservedMEM = VmmCacheReserve(H, VMM_CACHE_TAG_PHYS))) {
                         pObReservedMEM->h.f = TRUE;
                         pObReservedMEM->h.qwA = pMEM->qwA;
                         memcpy(pObReservedMEM->h.pb, pMEM->pb, 0x1000);
-                        VmmCacheReserveReturn(pObReservedMEM);
+                        VmmCacheReserveReturn(H, pObReservedMEM);
                     }
                 }
             }
@@ -1580,11 +1421,11 @@ VOID VmmReadScatterPhysical(_Inout_ PPMEM_SCATTER ppMEMsPhys, _In_ DWORD cpMEMsP
         pMEM = ppMEMsPhys[i];
         if(pMEM->f) {
             // success
-            InterlockedIncrement64(&ctxVmm->stat.cPhysReadSuccess);
+            InterlockedIncrement64(&H->vmm.stat.cPhysReadSuccess);
         } else {
             // fail
-            InterlockedIncrement64(&ctxVmm->stat.cPhysReadFail);
-            if((flags & VMM_FLAG_ZEROPAD_ON_FAIL) && (pMEM->qwA < ctxMain->dev.paMax)) {
+            InterlockedIncrement64(&H->vmm.stat.cPhysReadFail);
+            if((flags & VMM_FLAG_ZEROPAD_ON_FAIL) && (pMEM->qwA < H->dev.paMax)) {
                 ZeroMemory(pMEM->pb, pMEM->cb);
                 pMEM->f = TRUE;
             }
@@ -1592,7 +1433,7 @@ VOID VmmReadScatterPhysical(_Inout_ PPMEM_SCATTER ppMEMsPhys, _In_ DWORD cpMEMsP
     }
 }
 
-VOID VmmReadScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_updates_(cpMEMsVirt) PPMEM_SCATTER ppMEMsVirt, _In_ DWORD cpMEMsVirt, _In_ QWORD flags)
+VOID VmmReadScatterVirtual(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _Inout_updates_(cpMEMsVirt) PPMEM_SCATTER ppMEMsVirt, _In_ DWORD cpMEMsVirt, _In_ QWORD flags)
 {
     // NB! the buffers pIoPA / ppMEMsPhys are used for both:
     //     - physical memory (grows from 0 upwards)
@@ -1604,12 +1445,12 @@ VOID VmmReadScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_updates_(cpMEMsVir
     PBYTE pbBufferMEMs, pbBufferLarge = NULL;
     PMEM_SCATTER pIoPA, pIoVA;
     PPMEM_SCATTER ppMEMsPhys = NULL;
-    BOOL fPaging = !(VMM_FLAG_NOPAGING & (flags | ctxVmm->flags));
+    BOOL fPaging = !(VMM_FLAG_NOPAGING & (flags | H->vmm.flags));
     BOOL fAltAddrPte = VMM_FLAG_ALTADDR_VA_PTE & flags;
-    BOOL fZeropadOnFail = VMM_FLAG_ZEROPAD_ON_FAIL & (flags | ctxVmm->flags);
+    BOOL fZeropadOnFail = VMM_FLAG_ZEROPAD_ON_FAIL & (flags | H->vmm.flags);
     BOOL fProcessMagicHandle = ((SIZE_T)pProcess >= PROCESS_MAGIC_HANDLE_THRESHOLD);
     // 0: 'magic' process handle
-    if(fProcessMagicHandle && !(pProcess = VmmProcessGet((DWORD)(0-(SIZE_T)pProcess)))) { return; }
+    if(fProcessMagicHandle && !(pProcess = VmmProcessGet(H, (DWORD)(0-(SIZE_T)pProcess)))) { return; }
     // 1: allocate / set up buffers (if needed)
     if(cpMEMsVirt < 0x20) {
         ZeroMemory(pbBufferSmall, sizeof(pbBufferSmall));
@@ -1635,10 +1476,10 @@ VOID VmmReadScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_updates_(cpMEMsVir
         }
         // PHYSICAL MEMORY
         qwPA = 0;
-        fVirt2Phys = !fAltAddrPte && VmmVirt2Phys(pProcess, pIoVA->qwA, &qwPA);
+        fVirt2Phys = !fAltAddrPte && VmmVirt2Phys(H, pProcess, pIoVA->qwA, &qwPA);
         // PAGED MEMORY
-        if(!fVirt2Phys && fPaging && (pIoVA->cb == 0x1000) && ctxVmm->fnMemoryModel.pfnPagedRead) {
-            if(ctxVmm->fnMemoryModel.pfnPagedRead(pProcess, (fAltAddrPte ? 0 : pIoVA->qwA), (fAltAddrPte ? pIoVA->qwA : qwPA), pIoVA->pb, &qwPagedPA, NULL, flags)) {
+        if(!fVirt2Phys && fPaging && (pIoVA->cb == 0x1000) && H->vmm.fnMemoryModel.pfnPagedRead) {
+            if(H->vmm.fnMemoryModel.pfnPagedRead(H, pProcess, (fAltAddrPte ? 0 : pIoVA->qwA), (fAltAddrPte ? pIoVA->qwA : qwPA), pIoVA->pb, &qwPagedPA, NULL, flags)) {
                 pIoVA->f = TRUE;
                 continue;
             }
@@ -1665,7 +1506,7 @@ VOID VmmReadScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_updates_(cpMEMsVir
     }
     // 3: read and check result
     if(iPA) {
-        VmmReadScatterPhysical(ppMEMsPhys, iPA, flags);
+        VmmReadScatterPhysical(H, ppMEMsPhys, iPA, flags);
         while(iPA > 0) {
             iPA--;
             ((PMEM_SCATTER)MEM_SCATTER_STACK_POP(ppMEMsPhys[iPA]))->f = ppMEMsPhys[iPA]->f;
@@ -1682,10 +1523,10 @@ VOID VmmReadScatterVirtual(_In_ PVMM_PROCESS pProcess, _Inout_updates_(cpMEMsVir
 * -- pProcess
 * -- pVirt2PhysInfo
 */
-VOID VmmVirt2PhysGetInformation(_Inout_ PVMM_PROCESS pProcess, _Inout_ PVMM_VIRT2PHYS_INFORMATION pVirt2PhysInfo)
+VOID VmmVirt2PhysGetInformation(_In_ VMM_HANDLE H, _Inout_ PVMM_PROCESS pProcess, _Inout_ PVMM_VIRT2PHYS_INFORMATION pVirt2PhysInfo)
 {
-    if(ctxVmm->tpMemoryModel == VMM_MEMORYMODEL_NA) { return; }
-    ctxVmm->fnMemoryModel.pfnVirt2PhysGetInformation(pProcess, pVirt2PhysInfo);
+    if(H->vmm.tpMemoryModel == VMM_MEMORYMODEL_NA) { return; }
+    H->vmm.fnMemoryModel.pfnVirt2PhysGetInformation(H, pProcess, pVirt2PhysInfo);
 }
 
 /*
@@ -1696,12 +1537,13 @@ VOID VmmVirt2PhysGetInformation(_Inout_ PVMM_PROCESS pProcess, _Inout_ PVMM_VIRT
 * a previously stored address will be used.
 * It's not possible to use this function to retrieve multiple targeted
 * addresses in parallell.
-* -- CALLER DECREF: return
+* CALLER DECREF: return
+* -- H
 * -- pProcess
 * -- paTarget = targeted physical address (or 0 if use previously saved).
 * -- return
 */
-PVMMOB_PHYS2VIRT_INFORMATION VmmPhys2VirtGetInformation(_In_ PVMM_PROCESS pProcess, _In_ QWORD paTarget)
+PVMMOB_PHYS2VIRT_INFORMATION VmmPhys2VirtGetInformation(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD paTarget)
 {
     PVMMOB_PHYS2VIRT_INFORMATION pObP2V = NULL;
     if(paTarget) {
@@ -1716,11 +1558,11 @@ PVMMOB_PHYS2VIRT_INFORMATION VmmPhys2VirtGetInformation(_In_ PVMM_PROCESS pProce
         pObP2V = ObContainer_GetOb(pProcess->Plugin.pObCPhys2Virt);
         if(paTarget && (!pObP2V || (pObP2V->paTarget != paTarget))) {
             Ob_DECREF_NULL(&pObP2V);
-            pObP2V = Ob_Alloc('PAVA', LMEM_ZEROINIT, sizeof(VMMOB_PHYS2VIRT_INFORMATION), NULL, NULL);
+            pObP2V = Ob_AllocEx(H, OB_TAG_VMM_VIRT2PHYS, LMEM_ZEROINIT, sizeof(VMMOB_PHYS2VIRT_INFORMATION), NULL, NULL);
             pObP2V->paTarget = paTarget;
             pObP2V->dwPID = pProcess->dwPID;
-            if(ctxVmm->fnMemoryModel.pfnPhys2VirtGetInformation) {
-                ctxVmm->fnMemoryModel.pfnPhys2VirtGetInformation(pProcess, pObP2V);
+            if(H->vmm.fnMemoryModel.pfnPhys2VirtGetInformation) {
+                H->vmm.fnMemoryModel.pfnPhys2VirtGetInformation(H, pProcess, pObP2V);
                 ObContainer_SetOb(pProcess->Plugin.pObCPhys2Virt, pObP2V);
             }
         }
@@ -1730,7 +1572,7 @@ PVMMOB_PHYS2VIRT_INFORMATION VmmPhys2VirtGetInformation(_In_ PVMM_PROCESS pProce
         EnterCriticalSection(&pProcess->LockUpdate);
         pObP2V = ObContainer_GetOb(pProcess->Plugin.pObCPhys2Virt);
         if(!pObP2V) {
-            pObP2V = Ob_Alloc('PAVA', LMEM_ZEROINIT, sizeof(VMMOB_PHYS2VIRT_INFORMATION), NULL, NULL);
+            pObP2V = Ob_AllocEx(H, OB_TAG_VMM_VIRT2PHYS, LMEM_ZEROINIT, sizeof(VMMOB_PHYS2VIRT_INFORMATION), NULL, NULL);
             pObP2V->dwPID = pProcess->dwPID;
             ObContainer_SetOb(pProcess->Plugin.pObCPhys2Virt, pObP2V);
         }
@@ -1743,54 +1585,55 @@ PVMMOB_PHYS2VIRT_INFORMATION VmmPhys2VirtGetInformation(_In_ PVMM_PROCESS pProce
 // PUBLICALLY VISIBLE FUNCTIONALITY RELATED TO VMMU.
 // ----------------------------------------------------------------------------
 
-VOID VmmClose()
+VOID VmmClose(_In_ VMM_HANDLE H)
 {
-    if(!ctxVmm) { return; }
-    if(ctxVmm->PluginManager.FLinkAll) { PluginManager_Close(); }
-    VmmWork_Close();
-    VmmWinObj_Close();
-    VmmWinReg_Close();
-    VmmNet_Close();
-    PDB_Close();
-    Ob_DECREF_NULL(&ctxVmm->pObVfsDumpContext);
-    Ob_DECREF_NULL(&ctxVmm->pObPfnContext);
-    Ob_DECREF_NULL(&ctxVmm->pObCPROC);
-    if(ctxVmm->fnMemoryModel.pfnClose) {
-        ctxVmm->fnMemoryModel.pfnClose();
+    static SRWLOCK LockSRW = SRWLOCK_INIT;
+    if(!H || !H->vmm.fInitializationStatus) { return; }
+    AcquireSRWLockExclusive(&LockSRW);
+    if(H->vmm.PluginManager.FLinkAll) { PluginManager_Close(H); }
+    VmmWinObj_Close(H);
+    VmmWinReg_Close(H);
+    VmmNet_Close(H);
+    PDB_Close(H);
+    Ob_DECREF_NULL(&H->vmm.pObVfsDumpContext);
+    Ob_DECREF_NULL(&H->vmm.pObPfnContext);
+    Ob_DECREF_NULL(&H->vmm.pObCPROC);
+    if(H->vmm.fnMemoryModel.pfnClose) {
+        H->vmm.fnMemoryModel.pfnClose(H);
     }
-    MmWin_PagingClose();
-    VmmCacheClose(VMM_CACHE_TAG_PHYS);
-    VmmCacheClose(VMM_CACHE_TAG_TLB);
-    VmmCacheClose(VMM_CACHE_TAG_PAGING);
-    Ob_DECREF_NULL(&ctxVmm->Cache.PAGING_FAILED);
-    Ob_DECREF_NULL(&ctxVmm->Cache.pmPrototypePte);
-    Ob_DECREF_NULL(&ctxVmm->pObCMapPhysMem);
-    Ob_DECREF_NULL(&ctxVmm->pObCMapEvil);
-    Ob_DECREF_NULL(&ctxVmm->pObCMapUser);
-    Ob_DECREF_NULL(&ctxVmm->pObCMapNet);
-    Ob_DECREF_NULL(&ctxVmm->pObCMapObject);
-    Ob_DECREF_NULL(&ctxVmm->pObCMapKDriver);
-    Ob_DECREF_NULL(&ctxVmm->pObCMapPoolAll);
-    Ob_DECREF_NULL(&ctxVmm->pObCMapPoolBig);
-    Ob_DECREF_NULL(&ctxVmm->pObCMapService);
-    Ob_DECREF_NULL(&ctxVmm->pObCInfoDB);
-    Ob_DECREF_NULL(&ctxVmm->pObCCachePrefetchEPROCESS);
-    Ob_DECREF_NULL(&ctxVmm->pObCCachePrefetchRegistry);
-    Ob_DECREF_NULL(&ctxVmm->pObCacheMapEAT);
-    Ob_DECREF_NULL(&ctxVmm->pObCacheMapIAT);
-    Ob_DECREF_NULL(&ctxVmm->pObCacheMapHeapAlloc);
-    Ob_DECREF_NULL(&ctxVmm->pObCacheMapWinObjDisplay);
-    VmmLog_Close();
-    DeleteCriticalSection(&ctxVmm->LockMaster);
-    DeleteCriticalSection(&ctxVmm->LockPlugin);
-    DeleteCriticalSection(&ctxVmm->LockUpdateMap);
-    DeleteCriticalSection(&ctxVmm->LockUpdateModule);
-    LocalFree(ctxVmm->ObjectTypeTable.pbMultiText);
-    LocalFree(ctxVmm);
-    ctxVmm = NULL;
+    MmWin_PagingClose(H);
+    VmmCacheClose(H, VMM_CACHE_TAG_PHYS);
+    VmmCacheClose(H, VMM_CACHE_TAG_TLB);
+    VmmCacheClose(H, VMM_CACHE_TAG_PAGING);
+    Ob_DECREF_NULL(&H->vmm.Cache.PAGING_FAILED);
+    Ob_DECREF_NULL(&H->vmm.Cache.pmPrototypePte);
+    Ob_DECREF_NULL(&H->vmm.pObCMapPhysMem);
+    Ob_DECREF_NULL(&H->vmm.pObCMapEvil);
+    Ob_DECREF_NULL(&H->vmm.pObCMapUser);
+    Ob_DECREF_NULL(&H->vmm.pObCMapNet);
+    Ob_DECREF_NULL(&H->vmm.pObCMapObject);
+    Ob_DECREF_NULL(&H->vmm.pObCMapKDriver);
+    Ob_DECREF_NULL(&H->vmm.pObCMapPoolAll);
+    Ob_DECREF_NULL(&H->vmm.pObCMapPoolBig);
+    Ob_DECREF_NULL(&H->vmm.pObCMapService);
+    Ob_DECREF_NULL(&H->vmm.pObCInfoDB);
+    Ob_DECREF_NULL(&H->vmm.pObCCachePrefetchEPROCESS);
+    Ob_DECREF_NULL(&H->vmm.pObCCachePrefetchRegistry);
+    Ob_DECREF_NULL(&H->vmm.pObCacheMapEAT);
+    Ob_DECREF_NULL(&H->vmm.pObCacheMapIAT);
+    Ob_DECREF_NULL(&H->vmm.pObCacheMapHeapAlloc);
+    Ob_DECREF_NULL(&H->vmm.pObCacheMapWinObjDisplay);
+    Ob_DECREF_NULL(&H->vmm.pObCacheMapObCompressedShared);
+    DeleteCriticalSection(&H->vmm.LockMaster);
+    DeleteCriticalSection(&H->vmm.LockPlugin);
+    DeleteCriticalSection(&H->vmm.LockUpdateMap);
+    DeleteCriticalSection(&H->vmm.LockUpdateModule);
+    LocalFree(H->vmm.ObjectTypeTable.pbMultiText);
+    ZeroMemory(&H->vmm, sizeof(VMM_CONTEXT));
+    ReleaseSRWLockExclusive(&LockSRW);
 }
 
-VOID VmmWriteEx(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _In_ PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbWrite)
+VOID VmmWriteEx(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _In_ PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbWrite)
 {
     DWORD i = 0, oA = 0, cbWrite = 0, cbP, cMEMs;
     PBYTE pbBuffer;
@@ -1814,9 +1657,9 @@ VOID VmmWriteEx(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _In_ PBYTE pb, _
     }
     // write and count result
     if(pProcess) {
-        VmmWriteScatterVirtual(pProcess, ppMEMs, cMEMs);
+        VmmWriteScatterVirtual(H, pProcess, ppMEMs, cMEMs);
     } else {
-        VmmWriteScatterPhysical(ppMEMs, cMEMs);
+        VmmWriteScatterPhysical(H, ppMEMs, cMEMs);
     }
     if(pcbWrite) {
         for(i = 0; i < cMEMs; i++) {
@@ -1829,14 +1672,14 @@ VOID VmmWriteEx(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _In_ PBYTE pb, _
     LocalFree(pbBuffer);
 }
 
-BOOL VmmWrite(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _In_reads_(cb) PBYTE pb, _In_ DWORD cb)
+BOOL VmmWrite(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _In_reads_(cb) PBYTE pb, _In_ DWORD cb)
 {
     DWORD cbWrite;
-    VmmWriteEx(pProcess, qwA, pb, cb, &cbWrite);
+    VmmWriteEx(H, pProcess, qwA, pb, cb, &cbWrite);
     return (cbWrite == cb);
 }
 
-VOID VmmReadEx(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbReadOpt, _In_ QWORD flags)
+VOID VmmReadEx(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbReadOpt, _In_ QWORD flags)
 {
     DWORD cbP, cMEMs, cbRead = 0;
     PBYTE pbBuffer;
@@ -1868,9 +1711,9 @@ VOID VmmReadEx(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Out_writes_(cb) 
     }
     // Read VMM and handle result
     if(pProcess) {
-        VmmReadScatterVirtual(pProcess, ppMEMs, cMEMs, flags);
+        VmmReadScatterVirtual(H, pProcess, ppMEMs, cMEMs, flags);
     } else {
-        VmmReadScatterPhysical(ppMEMs, cMEMs, flags);
+        VmmReadScatterPhysical(H, ppMEMs, cMEMs, flags);
     }
     for(i = 0; i < cMEMs; i++) {
         if(pMEMs[i].f) {
@@ -1906,7 +1749,7 @@ VOID VmmReadEx(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Out_writes_(cb) 
 #define STATUS_SUCCESS                   ((NTSTATUS)0x00000000L)
 #define STATUS_END_OF_FILE               ((NTSTATUS)0xC0000011L)
 
-NTSTATUS VmmReadAsFile(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwMemoryAddress, _In_ QWORD cbMemorySize, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS VmmReadAsFile(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwMemoryAddress, _In_ QWORD cbMemorySize, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     QWORD cbMax;
     if(cbMemorySize <= cbOffset) {
@@ -1918,11 +1761,11 @@ NTSTATUS VmmReadAsFile(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwMemoryAddres
     if(!*pcbRead) {
         return STATUS_END_OF_FILE;
     }
-    VmmReadEx(pProcess, qwMemoryAddress + cbOffset, pb, *pcbRead, NULL, VMM_FLAG_ZEROPAD_ON_FAIL);
+    VmmReadEx(H, pProcess, qwMemoryAddress + cbOffset, pb, *pcbRead, NULL, VMM_FLAG_ZEROPAD_ON_FAIL);
     return STATUS_SUCCESS;
 }
 
-NTSTATUS VmmWriteAsFile(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwMemoryAddress, _In_ QWORD cbMemorySize, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
+NTSTATUS VmmWriteAsFile(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwMemoryAddress, _In_ QWORD cbMemorySize, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
 {
     QWORD cbMax;
     if(cbMemorySize <= cbOffset) {
@@ -1934,13 +1777,13 @@ NTSTATUS VmmWriteAsFile(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwMemoryAddre
     if(!*pcbWrite) {
         return STATUS_END_OF_FILE;
     }
-    VmmWriteEx(pProcess, qwMemoryAddress + cbOffset, pb, *pcbWrite, NULL);
+    VmmWriteEx(H, pProcess, qwMemoryAddress + cbOffset, pb, *pcbWrite, NULL);
     return STATUS_SUCCESS;
 }
 
 
 _Success_(return)
-BOOL VmmReadWtoU(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _In_ DWORD cb, _In_ QWORD flagsRead, _Maybenull_ _Writable_bytes_(cbBuffer) PBYTE pbBuffer, _In_ DWORD cbBuffer, _Out_opt_ LPSTR *pusz, _Out_opt_ PDWORD pcbu, _In_ DWORD flagsChar)
+BOOL VmmReadWtoU(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _In_ DWORD cb, _In_ QWORD flagsRead, _Maybenull_ _Writable_bytes_(cbBuffer) PBYTE pbBuffer, _In_ DWORD cbBuffer, _Out_opt_ LPSTR *pusz, _Out_opt_ PDWORD pcbu, _In_ DWORD flagsChar)
 {
     BOOL fResult = FALSE;
     BYTE pbBufferTMP[2 * MAX_PATH + 2] = { 0 };
@@ -1949,7 +1792,7 @@ BOOL VmmReadWtoU(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _In_ DWORD cb, 
     if(cb > sizeof(pbBufferTMP)) {
         if(!(pb = LocalAlloc(0, cb))) { goto fail; }
     }
-    VmmReadEx(pProcess, qwA, pb, cb, &cbRead, flagsRead);
+    VmmReadEx(H, pProcess, qwA, pb, cb, &cbRead, flagsRead);
     if(cbRead != cb) {
         if(cbBuffer && pbBuffer) { pbBuffer[0] = 0; }
         goto fail;
@@ -1966,11 +1809,11 @@ fail:
 }
 
 _Success_(return)
-BOOL VmmReadAlloc(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Out_ PBYTE *ppb, _In_ DWORD cb, _In_ QWORD flags)
+BOOL VmmReadAlloc(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Out_ PBYTE *ppb, _In_ DWORD cb, _In_ QWORD flags)
 {
     PBYTE pb;
     if(!(pb = LocalAlloc(0, cb + 2ULL))) { return FALSE; }
-    if(!VmmRead2(pProcess, qwA, pb, cb, flags)) {
+    if(!VmmRead2(H, pProcess, qwA, pb, cb, flags)) {
         LocalFree(pb);
         return FALSE;
     }
@@ -1981,11 +1824,11 @@ BOOL VmmReadAlloc(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Out_ PBYTE *p
 }
 
 _Success_(return)
-BOOL VmmReadAllocUnicodeString_Size(_In_ PVMM_PROCESS pProcess, _In_ BOOL f32, _In_ QWORD flags, _In_ QWORD vaUS, _Out_ PQWORD pvaStr, _Out_ PWORD pcbStr)
+BOOL VmmReadAllocUnicodeString_Size(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ BOOL f32, _In_ QWORD flags, _In_ QWORD vaUS, _Out_ PQWORD pvaStr, _Out_ PWORD pcbStr)
 {
     BYTE pb[16];
     DWORD cbRead;
-    VmmReadEx(pProcess, vaUS, pb, (f32 ? 8 : 16), &cbRead, flags);
+    VmmReadEx(H, pProcess, vaUS, pb, (f32 ? 8 : 16), &cbRead, flags);
     return
         (cbRead == (f32 ? 8 : 16)) &&                               // read ok
         (*(PWORD)pb <= *(PWORD)(pb + 2)) &&                         // size max >= size
@@ -1996,17 +1839,17 @@ BOOL VmmReadAllocUnicodeString_Size(_In_ PVMM_PROCESS pProcess, _In_ BOOL f32, _
 }
 
 _Success_(return)
-BOOL VmmReadAllocUnicodeString(_In_ PVMM_PROCESS pProcess, _In_ BOOL f32, _In_ QWORD flags, _In_ QWORD vaUS, _In_ DWORD cchMax, _Out_opt_ LPWSTR *pwsz, _Out_opt_ PDWORD pcch)
+BOOL VmmReadAllocUnicodeString(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ BOOL f32, _In_ QWORD flags, _In_ QWORD vaUS, _In_ DWORD cchMax, _Out_opt_ LPWSTR *pwsz, _Out_opt_ PDWORD pcch)
 {
     WORD cbStr;
     QWORD vaStr;
     if(pcch) { *pcch = 0; }
     if(pwsz) { *pwsz = NULL; }
-    if(VmmReadAllocUnicodeString_Size(pProcess, f32, 0, vaUS, &vaStr, &cbStr)) {
+    if(VmmReadAllocUnicodeString_Size(H, pProcess, f32, 0, vaUS, &vaStr, &cbStr)) {
         if(cchMax && (cbStr > (cchMax << 1))) {
             cbStr = (WORD)(cchMax << 1);
         }
-        if(!pwsz || VmmReadAlloc(pProcess, vaStr, (PBYTE *)pwsz, cbStr, flags)) {
+        if(!pwsz || VmmReadAlloc(H, pProcess, vaStr, (PBYTE *)pwsz, cbStr, flags)) {
             if(pcch) { *pcch = cbStr >> 1; }
             return TRUE;
         }
@@ -2015,118 +1858,121 @@ BOOL VmmReadAllocUnicodeString(_In_ PVMM_PROCESS pProcess, _In_ BOOL f32, _In_ Q
 }
 
 _Success_(return)
-BOOL VmmReadAllocUnicodeStringAsUTF8(_In_ PVMM_PROCESS pProcess, _In_ BOOL f32, _In_ QWORD flags, _In_ QWORD vaUS, _In_ DWORD cchMax, _Out_opt_ LPSTR *pusz, _Out_opt_ PDWORD pcbu)
+BOOL VmmReadAllocUnicodeStringAsUTF8(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ BOOL f32, _In_ QWORD flags, _In_ QWORD vaUS, _In_ DWORD cchMax, _Out_opt_ LPSTR *pusz, _Out_opt_ PDWORD pcbu)
 {
     BOOL f;
     LPWSTR wszTMP = NULL;
-    f = VmmReadAllocUnicodeString(pProcess, f32, 0, vaUS, cchMax, &wszTMP, NULL) &&
+    f = VmmReadAllocUnicodeString(H, pProcess, f32, 0, vaUS, cchMax, &wszTMP, NULL) &&
         CharUtil_WtoU(wszTMP, cchMax, NULL, 0, pusz, pcbu, CHARUTIL_FLAG_ALLOC);
     LocalFree(wszTMP);
     return f;
 }
 
 _Success_(return)
-BOOL VmmRead(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb)
+BOOL VmmRead(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb)
 {
     DWORD cbRead;
-    VmmReadEx(pProcess, qwA, pb, cb, &cbRead, 0);
+    VmmReadEx(H, pProcess, qwA, pb, cb, &cbRead, 0);
     return (cbRead == cb);
 }
 
 _Success_(return)
-BOOL VmmRead2(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb, _In_ QWORD flags)
+BOOL VmmRead2(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb, _In_ QWORD flags)
 {
     DWORD cbRead;
-    VmmReadEx(pProcess, qwA, pb, cb, &cbRead, flags);
+    VmmReadEx(H, pProcess, qwA, pb, cb, &cbRead, flags);
     return (cbRead == cb);
 }
 
 _Success_(return)
-BOOL VmmReadPage(_In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Out_writes_(4096) PBYTE pbPage)
+BOOL VmmReadPage(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _In_ QWORD qwA, _Out_writes_(4096) PBYTE pbPage)
 {
     DWORD cb;
-    VmmReadEx(pProcess, qwA, pbPage, 0x1000, &cb, 0);
+    VmmReadEx(H, pProcess, qwA, pbPage, 0x1000, &cb, 0);
     return cb == 0x1000;
 }
 
-VOID VmmInitializeMemoryModel(_In_ VMM_MEMORYMODEL_TP tp)
+VOID VmmInitializeMemoryModel(_In_ VMM_HANDLE H, _In_ VMM_MEMORYMODEL_TP tp)
 {
     switch(tp) {
         case VMM_MEMORYMODEL_X64:
-            MmX64_Initialize();
+            MmX64_Initialize(H);
             break;
         case VMM_MEMORYMODEL_X86PAE:
-            MmX86PAE_Initialize();
+            MmX86PAE_Initialize(H);
             break;
         case VMM_MEMORYMODEL_X86:
-            MmX86_Initialize();
+            MmX86_Initialize(H);
             break;
         default:
-            if(ctxVmm->fnMemoryModel.pfnClose) {
-                ctxVmm->fnMemoryModel.pfnClose();
+            if(H->vmm.fnMemoryModel.pfnClose) {
+                H->vmm.fnMemoryModel.pfnClose(H);
             }
     }
 }
 
-VOID VmmInitializeFunctions()
+VOID VmmInitializeFunctions(_In_ VMM_HANDLE H)
 {
     HMODULE hNtDll = NULL;
     if((hNtDll = LoadLibraryA("ntdll.dll"))) {
-        ctxVmm->fn.RtlDecompressBufferOpt = (VMMFN_RtlDecompressBuffer*)GetProcAddress(hNtDll, "RtlDecompressBuffer");
+        H->vmm.fn.RtlDecompressBufferOpt = (VMMFN_RtlDecompressBuffer*)GetProcAddress(hNtDll, "RtlDecompressBuffer");
         FreeLibrary(hNtDll);
     }
     return;
 }
 
-BOOL VmmInitialize()
+BOOL VmmInitialize(_In_ VMM_HANDLE H)
 {
+    static SRWLOCK LockSRW = SRWLOCK_INIT;
+    AcquireSRWLockExclusive(&LockSRW);
     // 1: allocate & initialize
-    if(ctxVmm) { VmmClose(); }
-    ctxVmm = (PVMM_CONTEXT)LocalAlloc(LMEM_ZEROINIT, sizeof(VMM_CONTEXT));
-    if(!ctxVmm) { goto fail; }
-    ctxVmm->hModuleVmmOpt = GetModuleHandleA("vmm");
-    if(ctxMain->cfg.tpForensicMode && !ctxMain->dev.fVolatile && !ctxMain->dev.fRemote) {
+    if(H->vmm.fInitializationStatus) { VmmClose(H); }
+    ZeroMemory(&H->vmm, sizeof(VMM_CONTEXT));
+    H->vmm.hModuleVmmOpt = GetModuleHandleA("vmm");
+    if(H->cfg.tpForensicMode && !H->dev.fVolatile && !H->dev.fRemote) {
         // forensic mode for local static files disables the forcache
         // read pattern to achieve greater forensic file consistency.
-        ctxVmm->flags |= VMM_FLAG_FORCECACHE_READ_DISABLE;
+        H->vmm.flags |= VMM_FLAG_FORCECACHE_READ_DISABLE;
     }
     // 2: CACHE INIT: Process Table
-    if(!VmmProcessTableCreateInitial()) { goto fail; }
+    if(!VmmProcessTableCreateInitial(H)) { goto fail; }
     // 3: CACHE INIT: Translation Lookaside Buffer (TLB) Cache Table
-    VmmCacheInitialize(VMM_CACHE_TAG_TLB);
-    if(!ctxVmm->Cache.TLB.fActive) { goto fail; }
+    VmmCacheInitialize(H, VMM_CACHE_TAG_TLB);
+    if(!H->vmm.Cache.TLB.fActive) { goto fail; }
     // 4: CACHE INIT: Physical Memory Cache Table
-    VmmCacheInitialize(VMM_CACHE_TAG_PHYS);
-    if(!ctxVmm->Cache.PHYS.fActive) { goto fail; }
+    VmmCacheInitialize(H, VMM_CACHE_TAG_PHYS);
+    if(!H->vmm.Cache.PHYS.fActive) { goto fail; }
     // 5: CACHE INIT: Paged Memory Cache Table
-    VmmCacheInitialize(VMM_CACHE_TAG_PAGING);
-    if(!ctxVmm->Cache.PAGING.fActive) { goto fail; }
-    if(!(ctxVmm->Cache.PAGING_FAILED = ObSet_New())) { goto fail; }
+    VmmCacheInitialize(H, VMM_CACHE_TAG_PAGING);
+    if(!H->vmm.Cache.PAGING.fActive) { goto fail; }
+    if(!(H->vmm.Cache.PAGING_FAILED = ObSet_New(H))) { goto fail; }
     // 6: CACHE INIT: Prototype PTE Cache Map
-    if(!(ctxVmm->Cache.pmPrototypePte = ObMap_New(OB_MAP_FLAGS_OBJECT_OB))) { goto fail; }
-    // 7: WORKER THREADS INIT:
-    VmmWork_Initialize();
-    // 8: OTHER INIT:
-    ctxVmm->pObCMapPhysMem = ObContainer_New();
-    ctxVmm->pObCMapEvil = ObContainer_New();
-    ctxVmm->pObCMapUser = ObContainer_New();
-    ctxVmm->pObCMapNet = ObContainer_New();
-    ctxVmm->pObCMapObject = ObContainer_New();
-    ctxVmm->pObCMapKDriver = ObContainer_New();
-    ctxVmm->pObCMapPoolAll = ObContainer_New();
-    ctxVmm->pObCMapPoolBig = ObContainer_New();
-    ctxVmm->pObCMapService = ObContainer_New();
-    ctxVmm->pObCInfoDB = ObContainer_New();
-    ctxVmm->pObCCachePrefetchEPROCESS = ObContainer_New();
-    ctxVmm->pObCCachePrefetchRegistry = ObContainer_New();
-    InitializeCriticalSection(&ctxVmm->LockMaster);
-    InitializeCriticalSection(&ctxVmm->LockPlugin);
-    InitializeCriticalSection(&ctxVmm->LockUpdateMap);
-    InitializeCriticalSection(&ctxVmm->LockUpdateModule);
-    VmmInitializeFunctions();
+    if(!(H->vmm.Cache.pmPrototypePte = ObMap_New(H, OB_MAP_FLAGS_OBJECT_OB))) { goto fail; }
+    // 7: OTHER INIT:
+    H->vmm.pObCMapPhysMem = ObContainer_New();
+    H->vmm.pObCMapEvil = ObContainer_New();
+    H->vmm.pObCMapUser = ObContainer_New();
+    H->vmm.pObCMapNet = ObContainer_New();
+    H->vmm.pObCMapObject = ObContainer_New();
+    H->vmm.pObCMapKDriver = ObContainer_New();
+    H->vmm.pObCMapPoolAll = ObContainer_New();
+    H->vmm.pObCMapPoolBig = ObContainer_New();
+    H->vmm.pObCMapService = ObContainer_New();
+    H->vmm.pObCInfoDB = ObContainer_New();
+    H->vmm.pObCCachePrefetchEPROCESS = ObContainer_New();
+    H->vmm.pObCCachePrefetchRegistry = ObContainer_New();
+    H->vmm.pObCacheMapObCompressedShared = ObCacheMap_New(H, OB_COMPRESSED_CACHED_ENTRIES_MAX, NULL, OB_CACHEMAP_FLAGS_OBJECT_OB);
+    InitializeCriticalSection(&H->vmm.LockMaster);
+    InitializeCriticalSection(&H->vmm.LockPlugin);
+    InitializeCriticalSection(&H->vmm.LockUpdateMap);
+    InitializeCriticalSection(&H->vmm.LockUpdateModule);
+    VmmInitializeFunctions(H);
+    H->vmm.fInitializationStatus = TRUE;
+    ReleaseSRWLockExclusive(&LockSRW);
     return TRUE;
 fail:
-    VmmClose();
+    VmmClose(H);
+    ReleaseSRWLockExclusive(&LockSRW);
     return FALSE;
 }
 
@@ -2148,19 +1994,19 @@ typedef struct tdVMM_MEMORY_SEARCH_INTERNAL_CONTEXT {
 * Search data inside region.
 */
 _Success_(return)
-BOOL VmmSearch_SearchRegion(_In_ PVMM_MEMORY_SEARCH_INTERNAL_CONTEXT ctxi, _In_ PVMM_MEMORY_SEARCH_CONTEXT ctxs)
+BOOL VmmSearch_SearchRegion(_In_ VMM_HANDLE H, _In_ PVMM_MEMORY_SEARCH_INTERNAL_CONTEXT ctxi, _In_ PVMM_MEMORY_SEARCH_CONTEXT ctxs)
 {
     BYTE v;
     QWORD va, oMax;
     DWORD o, i, iS, cbRead;
     BOOL fMaskFail, f4;
     PVMM_MEMORY_SEARCH_CONTEXT_SEARCHENTRY pS;
-    if(ctxs->fAbortRequested || !ctxVmm->Work.fEnabled) {
+    if(ctxs->fAbortRequested || H->fAbort) {
         ctxs->fAbortRequested = TRUE;
         return FALSE;
     }
     ctxs->cbReadTotal += ctxi->cb;
-    VmmReadEx(ctxi->pProcess, ctxs->vaCurrent, ctxi->pb, ctxi->cb, &cbRead, ctxs->ReadFlags | VMM_FLAG_ZEROPAD_ON_FAIL);
+    VmmReadEx(H, ctxi->pProcess, ctxs->vaCurrent, ctxi->pb, ctxi->cb, &cbRead, ctxs->ReadFlags | VMM_FLAG_ZEROPAD_ON_FAIL);
     if(!cbRead) { return TRUE; }
     for(iS = 0; iS < ctxs->cSearch; iS++) {
         pS = ctxs->search + iS;
@@ -2226,11 +2072,11 @@ BOOL VmmSearch_SearchRegion(_In_ PVMM_MEMORY_SEARCH_INTERNAL_CONTEXT ctxi, _In_ 
 * Search a physical/virtual address range.
 */
 _Success_(return)
-BOOL VmmSearch_SearchRange(_In_ PVMM_MEMORY_SEARCH_INTERNAL_CONTEXT ctxi, _In_ PVMM_MEMORY_SEARCH_CONTEXT ctxs, _In_ QWORD vaMax)
+BOOL VmmSearch_SearchRange(_In_ VMM_HANDLE H, _In_ PVMM_MEMORY_SEARCH_INTERNAL_CONTEXT ctxi, _In_ PVMM_MEMORY_SEARCH_CONTEXT ctxs, _In_ QWORD vaMax)
 {
     while(ctxs->vaCurrent < vaMax) {
         ctxi->cb = (DWORD)min(0x00100000, vaMax + 1 - ctxs->vaCurrent);
-        if(!VmmSearch_SearchRegion(ctxi, ctxs)) { return FALSE; }
+        if(!VmmSearch_SearchRegion(H, ctxi, ctxs)) { return FALSE; }
         ctxs->vaCurrent += ctxi->cb;
         if(!ctxs->vaCurrent) {
             ctxs->vaCurrent = 0xfffffffffffff000;
@@ -2244,7 +2090,7 @@ BOOL VmmSearch_SearchRange(_In_ PVMM_MEMORY_SEARCH_INTERNAL_CONTEXT ctxi, _In_ P
 * Search virtual address space by walking either PTEs or VADs.
 */
 _Success_(return)
-BOOL VmmSearch_VirtPteVad(_In_ PVMM_MEMORY_SEARCH_INTERNAL_CONTEXT ctxi, _In_ PVMM_MEMORY_SEARCH_CONTEXT ctxs)
+BOOL VmmSearch_VirtPteVad(_In_ VMM_HANDLE H, _In_ PVMM_MEMORY_SEARCH_INTERNAL_CONTEXT ctxi, _In_ PVMM_MEMORY_SEARCH_CONTEXT ctxs)
 {
     BOOL fResult = FALSE;
     DWORD ie = 0;
@@ -2258,7 +2104,7 @@ BOOL VmmSearch_VirtPteVad(_In_ PVMM_MEMORY_SEARCH_INTERNAL_CONTEXT ctxi, _In_ PV
     ctxs->vaCurrent = ctxs->vaMin;
     if(ctxs->fForceVAD || (ctxi->pProcess->fUserOnly && !ctxs->fForcePTE)) {
         // VAD method:
-        if(!VmmMap_GetVad(ctxi->pProcess, &pObVAD, VMM_VADMAP_TP_CORE)) { goto fail; }
+        if(!VmmMap_GetVad(H, ctxi->pProcess, &pObVAD, VMM_VADMAP_TP_CORE)) { goto fail; }
         for(ie = 0; ie < pObVAD->cMap; ie++) {
             peVAD = pObVAD->pMap + ie;
             if(peVAD->vaStart + peVAD->vaEnd < ctxs->vaMin) { continue; }   // skip entries below min address
@@ -2268,11 +2114,11 @@ BOOL VmmSearch_VirtPteVad(_In_ PVMM_MEMORY_SEARCH_INTERNAL_CONTEXT ctxi, _In_ PV
             // TODO: is peVAD->vaEnd == 0xfff ????
             ctxs->vaCurrent = max(ctxs->vaCurrent, peVAD->vaStart);
             vaMax = min(ctxs->vaMax, peVAD->vaEnd);
-            if(!VmmSearch_SearchRange(ctxi, ctxs, vaMax)) { goto fail; }
+            if(!VmmSearch_SearchRange(H, ctxi, ctxs, vaMax)) { goto fail; }
         }
     } else {
         // PTE method:
-        if(!VmmMap_GetPte(ctxi->pProcess, &pObPTE, FALSE)) { goto fail; }
+        if(!VmmMap_GetPte(H, ctxi->pProcess, &pObPTE, FALSE)) { goto fail; }
         for(ie = 0; ie < pObPTE->cMap; ie++) {
             pePTE = pObPTE->pMap + ie;
             cbPTE = pePTE->cPages << 12;
@@ -2282,7 +2128,7 @@ BOOL VmmSearch_VirtPteVad(_In_ PVMM_MEMORY_SEARCH_INTERNAL_CONTEXT ctxi, _In_ PV
             if(ctxs->pfnFilterOptCB && !ctxs->pfnFilterOptCB(ctxs, pePTE, NULL)) { continue; }
             ctxs->vaCurrent = max(ctxs->vaCurrent, pePTE->vaBase);
             vaMax = min(ctxs->vaMax, pePTE->vaBase + cbPTE - 1);
-            if(!VmmSearch_SearchRange(ctxi, ctxs, vaMax)) { goto fail; }
+            if(!VmmSearch_SearchRange(H, ctxi, ctxs, vaMax)) { goto fail; }
         }
     }
     fResult = TRUE;
@@ -2306,7 +2152,7 @@ fail:
 * -- return
 */
 _Success_(return)
-BOOL VmmSearch(_In_opt_ PVMM_PROCESS pProcess, _Inout_ PVMM_MEMORY_SEARCH_CONTEXT ctxs, _Out_opt_ POB_DATA *ppObAddressResult)
+BOOL VmmSearch(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _Inout_ PVMM_MEMORY_SEARCH_CONTEXT ctxs, _Out_opt_ POB_DATA *ppObAddressResult)
 {
     static BYTE pbZERO[sizeof(ctxs->search[0].pb)] = {0};
     DWORD iS;
@@ -2325,8 +2171,8 @@ BOOL VmmSearch(_In_opt_ PVMM_PROCESS pProcess, _Inout_ PVMM_MEMORY_SEARCH_CONTEX
     }
     if(!ctxs->vaMax) {
         if(!pProcess) {
-            ctxs->vaMax = ctxMain->dev.paMax;
-        } else if(ctxVmm->tpMemoryModel == VMMDLL_MEMORYMODEL_X64) {
+            ctxs->vaMax = H->dev.paMax;
+        } else if(H->vmm.tpMemoryModel == VMMDLL_MEMORYMODEL_X64) {
             ctxs->vaMax = (QWORD)-1;
         } else {
             ctxs->vaMax = (DWORD)-1;
@@ -2334,17 +2180,17 @@ BOOL VmmSearch(_In_opt_ PVMM_PROCESS pProcess, _Inout_ PVMM_MEMORY_SEARCH_CONTEX
     }
     // 2: allocate
     if(!(ctxi = LocalAlloc(0, sizeof(VMM_MEMORY_SEARCH_INTERNAL_CONTEXT)))) { goto fail; }
-    if(!(ctxi->psvaResult = ObSet_New())) { goto fail; }
+    if(!(ctxi->psvaResult = ObSet_New(H))) { goto fail; }
     ctxi->pProcess = pProcess;
     for(iS = 0; iS < ctxs->cSearch; iS++) {
         ctxi->fMask[iS] = (memcmp(ctxs->search[iS].pbSkipMask, pbZERO, ctxs->search[iS].cb) ? TRUE : FALSE);
     }
     // 3: perform search
-    if(pProcess && (ctxs->fForcePTE || ctxs->fForceVAD || (ctxVmm->tpMemoryModel == VMMDLL_MEMORYMODEL_X64))) {
-        fResult = VmmSearch_VirtPteVad(ctxi, ctxs);
+    if(pProcess && (ctxs->fForcePTE || ctxs->fForceVAD || (H->vmm.tpMemoryModel == VMMDLL_MEMORYMODEL_X64))) {
+        fResult = VmmSearch_VirtPteVad(H, ctxi, ctxs);
     } else {
         ctxs->vaCurrent = ctxs->vaMin;
-        fResult = VmmSearch_SearchRange(ctxi, ctxs, ctxs->vaMax);
+        fResult = VmmSearch_SearchRange(H, ctxi, ctxs, ctxs->vaMax);
     }
     // 4: finish
     if(fResult && ppObAddressResult) {
@@ -2369,24 +2215,26 @@ fail:
 /*
 * Retrieve the PTE hardware page table memory map.
 * CALLER DECREF: ppObPteMap
+* -- H
 * -- pProcess
 * -- ppObPteMap
 * -- fExtendedText
 * -- return
 */
 _Success_(return)
-BOOL VmmMap_GetPte(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_PTE *ppObPteMap, _In_ BOOL fExtendedText)
+BOOL VmmMap_GetPte(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_PTE *ppObPteMap, _In_ BOOL fExtendedText)
 {
     return
-        (ctxVmm->tpMemoryModel != VMM_MEMORYMODEL_NA) &&
-        ctxVmm->fnMemoryModel.pfnPteMapInitialize(pProcess) &&
-        (!fExtendedText || VmmWinPte_InitializeMapText(pProcess)) &&
+        (H->vmm.tpMemoryModel != VMM_MEMORYMODEL_NA) &&
+        H->vmm.fnMemoryModel.pfnPteMapInitialize(H, pProcess) &&
+        (!fExtendedText || VmmWinPte_InitializeMapText(H, pProcess)) &&
         (*ppObPteMap = Ob_INCREF(pProcess->Map.pObPte));
 }
 
 /*
 * Retrieve the VAD extended memory map by range specified by iPage and cPage.
 * CALLER DECREF: ppObVadExMap
+* -- H
 * -- pProcess
 * -- ppObVadExMap
 * -- tpVmmVadMap = VMM_VADMAP_TP_*
@@ -2395,24 +2243,25 @@ BOOL VmmMap_GetPte(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_PTE *ppObPteMap,
 * -- return
 */
 _Success_(return)
-BOOL VmmMap_GetVadEx(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_VADEX *ppObVadExMap, _In_ VMM_VADMAP_TP tpVmmVadMap, _In_ DWORD iPage, _In_ DWORD cPage)
+BOOL VmmMap_GetVadEx(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_VADEX *ppObVadExMap, _In_ VMM_VADMAP_TP tpVmmVadMap, _In_ DWORD iPage, _In_ DWORD cPage)
 {
-    *ppObVadExMap = MmVadEx_MapInitialize(pProcess, tpVmmVadMap, iPage, cPage);
+    *ppObVadExMap = MmVadEx_MapInitialize(H, pProcess, tpVmmVadMap, iPage, cPage);
     return *ppObVadExMap != NULL;
 }
 
 /*
 * Retrieve the VAD memory map.
 * CALLER DECREF: ppObVadMap
+* -- H
 * -- pProcess
 * -- ppObVadMap
 * -- tpVmmVadMap = VMM_VADMAP_TP_*
 * -- return
 */
 _Success_(return)
-BOOL VmmMap_GetVad(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_VAD *ppObVadMap, _In_ VMM_VADMAP_TP tpVmmVadMap)
+BOOL VmmMap_GetVad(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_VAD *ppObVadMap, _In_ VMM_VADMAP_TP tpVmmVadMap)
 {
-    if(!MmVad_MapInitialize(pProcess, tpVmmVadMap, 0)) { return FALSE; }
+    if(!MmVad_MapInitialize(H, pProcess, tpVmmVadMap, 0)) { return FALSE; }
     *ppObVadMap = Ob_INCREF(pProcess->Map.pObVad);
     return *ppObVadMap != NULL;
 }
@@ -2427,12 +2276,13 @@ int VmmMap_GetVadEntry_CmpFind(_In_ QWORD vaFind, _In_ QWORD qwEntry)
 
 /*
 * Retrieve a single PVMM_MAP_VADENTRY for a given VadMap and address inside it.
+* -- H
 * -- pVadMap
 * -- va
 * -- return = PTR to VADENTRY or NULL on fail. Must not be used out of pVadMap scope.
 */
 _Success_(return != NULL)
-PVMM_MAP_VADENTRY VmmMap_GetVadEntry(_In_opt_ PVMMOB_MAP_VAD pVadMap, _In_ QWORD va)
+PVMM_MAP_VADENTRY VmmMap_GetVadEntry(_In_ VMM_HANDLE H, _In_opt_ PVMMOB_MAP_VAD pVadMap, _In_ QWORD va)
 {
     if(!pVadMap) { return NULL; }
     return Util_qfind(va, pVadMap->cMap, pVadMap->pMap, sizeof(VMM_MAP_VADENTRY), VmmMap_GetVadEntry_CmpFind);
@@ -2441,14 +2291,15 @@ PVMM_MAP_VADENTRY VmmMap_GetVadEntry(_In_opt_ PVMMOB_MAP_VAD pVadMap, _In_ QWORD
 /*
 * Retrieve the process module map.
 * CALLER DECREF: ppObModuleMap
+* -- H
 * -- pProcess
 * -- ppObModuleMap
 * -- return
 */
 _Success_(return)
-BOOL VmmMap_GetModule(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_MODULE *ppObModuleMap)
+BOOL VmmMap_GetModule(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_MODULE *ppObModuleMap)
 {
-    if(!pProcess->Map.pObModule && !VmmWinLdrModule_Initialize(pProcess, NULL)) { return FALSE; }
+    if(!pProcess->Map.pObModule && !VmmWinLdrModule_Initialize(H, pProcess, NULL)) { return FALSE; }
     *ppObModuleMap = Ob_INCREF(pProcess->Map.pObModule);
     return *ppObModuleMap != NULL;
 }
@@ -2464,11 +2315,13 @@ int VmmMap_HashTableLookup_CmpFind(_In_ QWORD qwHash, _In_ QWORD qwEntry)
 
 /*
 * Retrieve a single PVMM_MAP_MODULEENTRY for a given ModuleMap and module name inside it.
+* -- H
 * -- pModuleMap
 * -- uszModuleName
 * -- return = PTR to VMM_MAP_MODULEENTRY or NULL on fail. Must not be used out of pModuleMap scope.
 */
-PVMM_MAP_MODULEENTRY VmmMap_GetModuleEntry(_In_ PVMMOB_MAP_MODULE pModuleMap, _In_ LPSTR uszModuleName)
+_Success_(return != NULL)
+PVMM_MAP_MODULEENTRY VmmMap_GetModuleEntry(_In_ VMM_HANDLE H, _In_ PVMMOB_MAP_MODULE pModuleMap, _In_ LPSTR uszModuleName)
 {
     QWORD qwHash, *pqwHashIndex;
     qwHash = CharUtil_HashNameFsU(uszModuleName, 0);
@@ -2479,6 +2332,7 @@ PVMM_MAP_MODULEENTRY VmmMap_GetModuleEntry(_In_ PVMMOB_MAP_MODULE pModuleMap, _I
 /*
 * Retrieve a single VMM_MAP_MODULEENTRY for a given process and module name.
 * CALLER DECREF: ppObModuleMap
+* -- H
 * -- pProcessOpt
 * -- dwPidOpt
 * -- wszModuleName
@@ -2487,14 +2341,14 @@ PVMM_MAP_MODULEENTRY VmmMap_GetModuleEntry(_In_ PVMMOB_MAP_MODULE pModuleMap, _I
 * -- return
 */
 _Success_(return)
-BOOL VmmMap_GetModuleEntryEx(_In_opt_ PVMM_PROCESS pProcessOpt, _In_opt_ DWORD dwPidOpt, _In_opt_ LPSTR uszModuleName, _Out_ PVMMOB_MAP_MODULE *ppObModuleMap, _Out_ PVMM_MAP_MODULEENTRY *pModuleEntry)
+BOOL VmmMap_GetModuleEntryEx(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcessOpt, _In_opt_ DWORD dwPidOpt, _In_opt_ LPSTR uszModuleName, _Out_ PVMMOB_MAP_MODULE *ppObModuleMap, _Out_ PVMM_MAP_MODULEENTRY *pModuleEntry)
 {
-    PVMM_PROCESS pObProcess = pProcessOpt ? Ob_INCREF(pProcessOpt) : VmmProcessGet(dwPidOpt);
+    PVMM_PROCESS pObProcess = pProcessOpt ? Ob_INCREF(pProcessOpt) : VmmProcessGet(H, dwPidOpt);
     *ppObModuleMap = NULL;
     *pModuleEntry = NULL;
-    if(pObProcess && VmmMap_GetModule(pObProcess, ppObModuleMap)) {
+    if(pObProcess && VmmMap_GetModule(H, pObProcess, ppObModuleMap)) {
         if(uszModuleName && uszModuleName[0]) {
-            *pModuleEntry = VmmMap_GetModuleEntry(*ppObModuleMap, uszModuleName);
+            *pModuleEntry = VmmMap_GetModuleEntry(H, *ppObModuleMap, uszModuleName);
         } else if((*ppObModuleMap)->cMap) {
             *pModuleEntry = (*ppObModuleMap)->pMap;
         }
@@ -2506,16 +2360,59 @@ BOOL VmmMap_GetModuleEntryEx(_In_opt_ PVMM_PROCESS pProcessOpt, _In_opt_ DWORD d
 }
 
 /*
+* Retrieve a single PVMM_MAP_MODULEENTRY for a given ModuleMap and virtual address inside it.
+* -- H
+* -- pModuleMap
+* -- va = virtual address within the module range.
+* -- return = PTR to VMM_MAP_MODULEENTRY or NULL on fail. Must not be used out of pModuleMap scope.
+*/
+_Success_(return != NULL)
+PVMM_MAP_MODULEENTRY VmmMap_GetModuleEntryEx2(_In_ VMM_HANDLE H, _In_ PVMMOB_MAP_MODULE pModuleMap, _In_ QWORD va)
+{
+    DWORD i;
+    for(i = 0; i < pModuleMap->cMap; i++) {
+        if((pModuleMap->pMap[i].vaBase <= va) && (pModuleMap->pMap[i].vaBase + pModuleMap->pMap[i].cbImageSize > va)) {
+            return pModuleMap->pMap + i;
+        }
+    }
+    return NULL;
+}
+
+/*
+* Retrieve POB_MAP<k=vaBase, v=VMM_MAP_MODULEENTRY> for a given ModuleMap.
+* CALLER DECREF: *ppmObModuleEntryByVA
+* -- H
+* -- pModuleMap
+* -- ppmObModuleEntryByVA = map consisting of module entries keyed by va (only valid for duration of pModuleMap).
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetModuleEntryEx3(_In_ VMM_HANDLE H, _In_ PVMMOB_MAP_MODULE pModuleMap, _Out_ POB_MAP *ppmObModuleEntryByVA)
+{
+    DWORD i;
+    POB_MAP pmOb = NULL;
+    PVMM_MAP_MODULEENTRY pe;
+    if(!(pmOb = ObMap_New(H, OB_MAP_FLAGS_OBJECT_VOID))) { return FALSE; }
+    for(i = 0; i < pModuleMap->cMap; i++) {
+        pe = pModuleMap->pMap + i;
+        ObMap_Push(pmOb, pe->vaBase, pe);
+    }
+    *ppmObModuleEntryByVA = pmOb;
+    return TRUE;
+}
+
+/*
 * Retrieve the process unloaded module map.
 * CALLER DECREF: ppObUnloadedModuleMap
+* -- H
 * -- pProcess
 * -- ppObUnloadedModuleMap
 * -- return
 */
 _Success_(return)
-BOOL VmmMap_GetUnloadedModule(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_UNLOADEDMODULE *ppObUnloadedModuleMap)
+BOOL VmmMap_GetUnloadedModule(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_UNLOADEDMODULE *ppObUnloadedModuleMap)
 {
-    if(!pProcess->Map.pObUnloadedModule && !VmmWinUnloadedModule_Initialize(pProcess)) { return FALSE; }
+    if(!pProcess->Map.pObUnloadedModule && !VmmWinUnloadedModule_Initialize(H, pProcess)) { return FALSE; }
     *ppObUnloadedModuleMap = Ob_INCREF(pProcess->Map.pObUnloadedModule);
     return *ppObUnloadedModuleMap != NULL;
 }
@@ -2523,27 +2420,29 @@ BOOL VmmMap_GetUnloadedModule(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_UNLOA
 /*
 * Retrieve the process module export address table (EAT) map.
 * CALLER DECREF: ppObEatMap
+* -- H
 * -- pProcess
 * -- pModule
 * -- ppObEatMap
 * -- return
 */
 _Success_(return)
-BOOL VmmMap_GetEAT(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pModuleEntry, _Out_ PVMMOB_MAP_EAT *ppObEatMap)
+BOOL VmmMap_GetEAT(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pModuleEntry, _Out_ PVMMOB_MAP_EAT *ppObEatMap)
 {
-    *ppObEatMap = VmmWinEAT_Initialize(pProcess, pModuleEntry);
+    *ppObEatMap = VmmWinEAT_Initialize(H, pProcess, pModuleEntry);
     return *ppObEatMap != NULL;
 }
 
 /*
 * Retrieve the export entry index in pEatMap->pMap by function name.
+* -- H
 * -- pEatMap
 * -- uszFunctionName
 * -- pdwEntryIndex = pointer to receive the pEatMap->pMap index.
 * -- return
 */
 _Success_(return)
-BOOL VmmMap_GetEATEntryIndexU(_In_ PVMMOB_MAP_EAT pEatMap, _In_ LPSTR uszFunctionName, _Out_ PDWORD pdwEntryIndex)
+BOOL VmmMap_GetEATEntryIndexU(_In_ VMM_HANDLE H, _In_ PVMMOB_MAP_EAT pEatMap, _In_ LPSTR uszFunctionName, _Out_ PDWORD pdwEntryIndex)
 {
     QWORD qwHash, *pqwHashIndex;
     qwHash = (DWORD)CharUtil_Hash64U(uszFunctionName, TRUE);
@@ -2555,29 +2454,31 @@ BOOL VmmMap_GetEATEntryIndexU(_In_ PVMMOB_MAP_EAT pEatMap, _In_ LPSTR uszFunctio
 /*
 * Retrieve the process module import address table (IAT) map.
 * CALLER DECREF: ppObIatMap
+* -- H
 * -- pProcess
 * -- pModule
 * -- ppObIatMap
 * -- return
 */
 _Success_(return)
-BOOL VmmMap_GetIAT(_In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pModuleEntry, _Out_ PVMMOB_MAP_IAT *ppObIatMap)
+BOOL VmmMap_GetIAT(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pModuleEntry, _Out_ PVMMOB_MAP_IAT *ppObIatMap)
 {
-    *ppObIatMap = VmmWinIAT_Initialize(pProcess, pModuleEntry);
+    *ppObIatMap = VmmWinIAT_Initialize(H, pProcess, pModuleEntry);
     return *ppObIatMap != NULL;
 }
 
 /*
 * Retrieve the heap map.
 * CALLER DECREF: ppObHeapMap
+* -- H
 * -- pProcess
 * -- ppObHeapMap
 * -- return
 */
 _Success_(return)
-BOOL VmmMap_GetHeap(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_HEAP *ppObHeapMap)
+BOOL VmmMap_GetHeap(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_HEAP *ppObHeapMap)
 {
-    if(!pProcess->Map.pObHeap && !VmmHeap_Initialize(pProcess)) { return FALSE; }
+    if(!pProcess->Map.pObHeap && !VmmHeap_Initialize(H, pProcess)) { return FALSE; }
     *ppObHeapMap = Ob_INCREF(pProcess->Map.pObHeap);
     return *ppObHeapMap != NULL;
 }
@@ -2590,11 +2491,12 @@ int VmmMap_GetHeapEntry_CmpFind(_In_ QWORD va, _In_ QWORD qwEntry)
 
 /*
 * Retrieve a single PVMM_MAP_HEAPENTRY for a given HeapMap and heap virtual address.
+* -- H
 * -- pHeapMap
 * -- vaHeap = virtual address of heap OR heap id.
 * -- return = PTR to VMM_MAP_HEAPENTRY or NULL on fail. Must not be used out of pHeapMap scope.
 */
-PVMM_MAP_HEAPENTRY VmmMap_GetHeapEntry(_In_ PVMMOB_MAP_HEAP pHeapMap, _In_ QWORD vaHeap)
+PVMM_MAP_HEAPENTRY VmmMap_GetHeapEntry(_In_ VMM_HANDLE H, _In_ PVMMOB_MAP_HEAP pHeapMap, _In_ QWORD vaHeap)
 {
     DWORD i;
     if(vaHeap > 0x1000) {
@@ -2609,14 +2511,15 @@ PVMM_MAP_HEAPENTRY VmmMap_GetHeapEntry(_In_ PVMMOB_MAP_HEAP pHeapMap, _In_ QWORD
 /*
 * Retrieve the heap alloc map. (memory allocations in the specified heap).
 * CALLER DECREF: ppObHeapAllocMap
+* -- H
 * -- pProcess
 * -- ppObHeapAllocMap
 * -- return
 */
 _Success_(return)
-BOOL VmmMap_GetHeapAlloc(_In_ PVMM_PROCESS pProcess, _In_ QWORD vaHeap, _Out_ PVMMOB_MAP_HEAPALLOC *ppObHeapAllocMap)
+BOOL VmmMap_GetHeapAlloc(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD vaHeap, _Out_ PVMMOB_MAP_HEAPALLOC *ppObHeapAllocMap)
 {
-    *ppObHeapAllocMap = VmmHeapAlloc_Initialize(pProcess, vaHeap);
+    *ppObHeapAllocMap = VmmHeapAlloc_Initialize(H, pProcess, vaHeap);
     return *ppObHeapAllocMap != NULL;
 }
 
@@ -2628,11 +2531,12 @@ int VmmMap_GetHeapAllocEntry_CmpFind(_In_ QWORD va, _In_ QWORD qwEntry)
 
 /*
 * Retrieve a single PVMM_MAP_HEAPALLOCENTRY for a given HeapAllocMap and a memory allocation address.
+* -- H
 * -- pHeapAllocMap
 * -- vaAlloc
 * -- return = PTR to PVMM_MAP_HEAPALLOCENTRY or NULL on fail. Must not be used out of pHeapAllocMap scope.
 */
-PVMM_MAP_HEAPALLOCENTRY VmmMap_GetHeapAllocEntry(_In_ PVMMOB_MAP_HEAPALLOC pHeapAllocMap, _In_ QWORD vaAlloc)
+PVMM_MAP_HEAPALLOCENTRY VmmMap_GetHeapAllocEntry(_In_ VMM_HANDLE H, _In_ PVMMOB_MAP_HEAPALLOC pHeapAllocMap, _In_ QWORD vaAlloc)
 {
     return Util_qfind(vaAlloc, pHeapAllocMap->cMap, pHeapAllocMap->pMap, sizeof(VMM_MAP_HEAPALLOCENTRY), VmmMap_GetHeapAllocEntry_CmpFind);
 }
@@ -2640,14 +2544,15 @@ PVMM_MAP_HEAPALLOCENTRY VmmMap_GetHeapAllocEntry(_In_ PVMMOB_MAP_HEAPALLOC pHeap
 /*
 * Retrieve the thread map.
 * CALLER DECREF: ppObThreadMap
+* -- H
 * -- pProcess
 * -- ppObThreadMap
 * -- return
 */
 _Success_(return)
-BOOL VmmMap_GetThread(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_THREAD *ppObThreadMap)
+BOOL VmmMap_GetThread(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_THREAD *ppObThreadMap)
 {
-    if(!pProcess->Map.pObThread && !VmmWinThread_Initialize(pProcess)) { return FALSE; }
+    if(!pProcess->Map.pObThread && !VmmWinThread_Initialize(H, pProcess)) { return FALSE; }
     *ppObThreadMap = Ob_INCREF(pProcess->Map.pObThread);
     return *ppObThreadMap ? TRUE : FALSE;
 }
@@ -2660,11 +2565,12 @@ int VmmMap_GetThreadEntry_CmpFind(_In_ QWORD dwTID, _In_ QWORD qwEntry)
 
 /*
 * Retrieve a single PVMM_MAP_THREADENTRY for a given ThreadMap and ThreadID.
+* -- H
 * -- pThreadMap
 * -- dwTID
 * -- return = PTR to VMM_MAP_THREADENTRY or NULL on fail. Must not be used out of pThreadMap scope.
 */
-PVMM_MAP_THREADENTRY VmmMap_GetThreadEntry(_In_ PVMMOB_MAP_THREAD pThreadMap, _In_ DWORD dwTID)
+PVMM_MAP_THREADENTRY VmmMap_GetThreadEntry(_In_ VMM_HANDLE H, _In_ PVMMOB_MAP_THREAD pThreadMap, _In_ DWORD dwTID)
 {
     return Util_qfind((QWORD)dwTID, pThreadMap->cMap, pThreadMap->pMap, sizeof(VMM_MAP_THREADENTRY), VmmMap_GetThreadEntry_CmpFind);
 }
@@ -2672,15 +2578,16 @@ PVMM_MAP_THREADENTRY VmmMap_GetThreadEntry(_In_ PVMMOB_MAP_THREAD pThreadMap, _I
 /*
 * Retrieve the HANDLE map
 * CALLER DECREF: ppObHandleMap
+* -- H
 * -- pProcess
 * -- ppObHandleMap
 * -- fExtendedText
 * -- return
 */
 _Success_(return)
-BOOL VmmMap_GetHandle(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_HANDLE *ppObHandleMap, _In_ BOOL fExtendedText)
+BOOL VmmMap_GetHandle(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_HANDLE *ppObHandleMap, _In_ BOOL fExtendedText)
 {
-    if(!VmmWinHandle_Initialize(pProcess, fExtendedText)) { return FALSE; }
+    if(!VmmWinHandle_Initialize(H, pProcess, fExtendedText)) { return FALSE; }
     *ppObHandleMap = Ob_INCREF(pProcess->Map.pObHandle);
     return *ppObHandleMap != NULL;
 }
@@ -2688,28 +2595,30 @@ BOOL VmmMap_GetHandle(_In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_HANDLE *ppObH
 /*
 * Retrieve the EVIL map
 * CALLER DECREF: ppObEvilMap
+* -- H
 * -- pProcess = retrieve for specific process, or if NULL for all processes.
 * -- ppObEvilMap
 * -- return
 */
 _Success_(return)
-BOOL VmmMap_GetEvil(_In_opt_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_EVIL *ppObEvilMap)
+BOOL VmmMap_GetEvil(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_EVIL *ppObEvilMap)
 {
-    *ppObEvilMap = VmmEvil_Initialize(pProcess);
+    *ppObEvilMap = VmmEvil_Initialize(H, pProcess);
     return *ppObEvilMap != NULL;
 }
 
 /*
 * Retrieve the Physical Memory Map.
 * CALLER DECREF: ppObPhysMem
+* -- H
 * -- ppObPhysMem
 * -- return
 */
 _Success_(return)
-BOOL VmmMap_GetPhysMem(_Out_ PVMMOB_MAP_PHYSMEM *ppObPhysMem)
+BOOL VmmMap_GetPhysMem(_In_ VMM_HANDLE H, _Out_ PVMMOB_MAP_PHYSMEM *ppObPhysMem)
 {
-    if(!(*ppObPhysMem = ObContainer_GetOb(ctxVmm->pObCMapPhysMem))) {
-        *ppObPhysMem = VmmWinPhysMemMap_Initialize();
+    if(!(*ppObPhysMem = ObContainer_GetOb(H->vmm.pObCMapPhysMem))) {
+        *ppObPhysMem = VmmWinPhysMemMap_Initialize(H);
     }
     return *ppObPhysMem != NULL;
 }
@@ -2717,14 +2626,15 @@ BOOL VmmMap_GetPhysMem(_Out_ PVMMOB_MAP_PHYSMEM *ppObPhysMem)
 /*
 * Retrieve the USER map
 * CALLER DECREF: ppObUserMap
+* -- H
 * -- ppObUserMap
 * -- return
 */
 _Success_(return)
-BOOL VmmMap_GetUser(_Out_ PVMMOB_MAP_USER *ppObUserMap)
+BOOL VmmMap_GetUser(_In_ VMM_HANDLE H, _Out_ PVMMOB_MAP_USER *ppObUserMap)
 {
-    if(!(*ppObUserMap = ObContainer_GetOb(ctxVmm->pObCMapUser))) {
-        *ppObUserMap = VmmWinUser_Initialize();
+    if(!(*ppObUserMap = ObContainer_GetOb(H->vmm.pObCMapUser))) {
+        *ppObUserMap = VmmWinUser_Initialize(H);
     }
     return *ppObUserMap != NULL;
 }
@@ -2732,14 +2642,15 @@ BOOL VmmMap_GetUser(_Out_ PVMMOB_MAP_USER *ppObUserMap)
 /*
 * Retrieve the OBJECT MANAGER map
 * CALLER DECREF: ppObObjectMap
+* -- H
 * -- ppObObjectMap
 * -- return
 */
 _Success_(return)
-BOOL VmmMap_GetObject(_Out_ PVMMOB_MAP_OBJECT *ppObObjectMap)
+BOOL VmmMap_GetObject(_In_ VMM_HANDLE H, _Out_ PVMMOB_MAP_OBJECT *ppObObjectMap)
 {
-    if(!(*ppObObjectMap = ObContainer_GetOb(ctxVmm->pObCMapObject))) {
-        *ppObObjectMap = VmmWinObjMgr_Initialize();
+    if(!(*ppObObjectMap = ObContainer_GetOb(H->vmm.pObCMapObject))) {
+        *ppObObjectMap = VmmWinObjMgr_Initialize(H);
     }
     return *ppObObjectMap != NULL;
 }
@@ -2747,27 +2658,29 @@ BOOL VmmMap_GetObject(_Out_ PVMMOB_MAP_OBJECT *ppObObjectMap)
 /*
 * Retrieve the KERNEL DRIVER map
 * CALLER DECREF: ppObKDriverMap
+* -- H
 * -- ppObKDriverMap
 * -- return
 */
 _Success_(return)
-BOOL VmmMap_GetKDriver(_Out_ PVMMOB_MAP_KDRIVER *ppObKDriverMap)
+BOOL VmmMap_GetKDriver(_In_ VMM_HANDLE H, _Out_ PVMMOB_MAP_KDRIVER *ppObKDriverMap)
 {
-    if(!(*ppObKDriverMap = ObContainer_GetOb(ctxVmm->pObCMapKDriver))) {
-        *ppObKDriverMap = VmmWinObjKDrv_Initialize();
+    if(!(*ppObKDriverMap = ObContainer_GetOb(H->vmm.pObCMapKDriver))) {
+        *ppObKDriverMap = VmmWinObjKDrv_Initialize(H);
     }
     return *ppObKDriverMap != NULL;
 }
 
 /*
 * Retrieve the index of a VMM_MAP_POOLENTRYTAG within the PVMMOB_MAP_POOL.
+* -- H
 * -- pPoolMap
 * -- dwPoolTag
 * -- pdwTagIndex
 * -- return
 */
 _Success_(return)
-BOOL VmmMap_GetPoolTag(_In_ PVMMOB_MAP_POOL pPoolMap, _In_ DWORD dwPoolTag, _Out_ PDWORD pdwTagIndex)
+BOOL VmmMap_GetPoolTag(_In_ VMM_HANDLE H, _In_ PVMMOB_MAP_POOL pPoolMap, _In_ DWORD dwPoolTag, _Out_ PDWORD pdwTagIndex)
 {
     PVMM_MAP_POOLENTRYTAG pet;
     if(!(pet = Util_qfind((QWORD)dwPoolTag, pPoolMap->cTag, pPoolMap->pTag, sizeof(VMM_MAP_POOLENTRYTAG), Util_qfind_CmpFindTableDWORD))) {
@@ -2781,13 +2694,14 @@ BOOL VmmMap_GetPoolTag(_In_ PVMMOB_MAP_POOL pPoolMap, _In_ DWORD dwPoolTag, _Out
 
 /*
 * Retrieve the index of a VMM_MAP_POOLENTRY within the PVMMOB_MAP_POOL.
+* -- H
 * -- pPoolMap
 * -- vaPoolEntry
 * -- pdwEntryIndex
 * -- return
 */
 _Success_(return)
-BOOL VmmMap_GetPoolEntry(_In_ PVMMOB_MAP_POOL pPoolMap, _In_ QWORD vaPoolEntry, _Out_ PDWORD pdwEntryIndex)
+BOOL VmmMap_GetPoolEntry(_In_ VMM_HANDLE H, _In_ PVMMOB_MAP_POOL pPoolMap, _In_ QWORD vaPoolEntry, _Out_ PDWORD pdwEntryIndex)
 {
     PVMM_MAP_POOLENTRY pe = Util_qfind(vaPoolEntry, pPoolMap->cMap, pPoolMap->pMap, sizeof(VMM_MAP_POOLENTRY), Util_qfind_CmpFindTableQWORD);
     if(!pe) { return FALSE; }
@@ -2798,16 +2712,17 @@ BOOL VmmMap_GetPoolEntry(_In_ PVMMOB_MAP_POOL pPoolMap, _In_ QWORD vaPoolEntry, 
 /*
 * Retrieve the POOL map.
 * CALLER DECREF: ppObPoolMap
+* -- H
 * -- ppObPoolMap
 * -- fAll = TRUE: retrieve all pools; FALSE: retrieve big page pool only.
 * -- return
 */
 _Success_(return)
-BOOL VmmMap_GetPool(_Out_ PVMMOB_MAP_POOL *ppObPoolMap, _In_ BOOL fAll)
+BOOL VmmMap_GetPool(_In_ VMM_HANDLE H, _Out_ PVMMOB_MAP_POOL *ppObPoolMap, _In_ BOOL fAll)
 {
-    *ppObPoolMap = fAll ? ObContainer_GetOb(ctxVmm->pObCMapPoolAll) : ObContainer_GetOb(ctxVmm->pObCMapPoolBig);
+    *ppObPoolMap = fAll ? ObContainer_GetOb(H->vmm.pObCMapPoolAll) : ObContainer_GetOb(H->vmm.pObCMapPoolBig);
     if(!*ppObPoolMap) {
-        *ppObPoolMap = VmmWinPool_Initialize(fAll);
+        *ppObPoolMap = VmmWinPool_Initialize(H, fAll);
     }
     return *ppObPoolMap != NULL;
 }
@@ -2815,14 +2730,15 @@ BOOL VmmMap_GetPool(_Out_ PVMMOB_MAP_POOL *ppObPoolMap, _In_ BOOL fAll)
 /*
 * Retrieve the NETWORK CONNECTION map
 * CALLER DECREF: ppObNetMap
+* -- H
 * -- ppObNetMap
 * -- return
 */
 _Success_(return)
-BOOL VmmMap_GetNet(_Out_ PVMMOB_MAP_NET *ppObNetMap)
+BOOL VmmMap_GetNet(_In_ VMM_HANDLE H, _Out_ PVMMOB_MAP_NET *ppObNetMap)
 {
-    if(!(*ppObNetMap = ObContainer_GetOb(ctxVmm->pObCMapNet))) {
-        *ppObNetMap = VmmNet_Initialize();
+    if(!(*ppObNetMap = ObContainer_GetOb(H->vmm.pObCMapNet))) {
+        *ppObNetMap = VmmNet_Initialize(H);
     }
     return *ppObNetMap != NULL;
 }
@@ -2830,14 +2746,15 @@ BOOL VmmMap_GetNet(_Out_ PVMMOB_MAP_NET *ppObNetMap)
 /*
 * Retrieve the SERVICES map
 * CALLER DECREF: ppObServiceMap
+* -- H
 * -- ppObServiceMap
 * -- return
 */
 _Success_(return)
-BOOL VmmMap_GetService(_Out_ PVMMOB_MAP_SERVICE *ppObServiceMap)
+BOOL VmmMap_GetService(_In_ VMM_HANDLE H, _Out_ PVMMOB_MAP_SERVICE *ppObServiceMap)
 {
-    if(!(*ppObServiceMap = ObContainer_GetOb(ctxVmm->pObCMapService))) {
-        *ppObServiceMap = VmmWinSvc_Initialize();
+    if(!(*ppObServiceMap = ObContainer_GetOb(H->vmm.pObCMapService))) {
+        *ppObServiceMap = VmmWinSvc_Initialize(H);
     }
     return *ppObServiceMap != NULL;
 }

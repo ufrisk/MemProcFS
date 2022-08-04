@@ -20,7 +20,7 @@
 #define OB_MAP_ENTRIES_DIRECTORY    0x100
 #define OB_MAP_ENTRIES_TABLE        0x200
 #define OB_MAP_ENTRIES_STORE        0x100
-#define OB_MAP_IS_VALID(p)          (p && (p->ObHdr._magic == OB_HEADER_MAGIC) && (p->ObHdr._tag == OB_TAG_CORE_MAP))
+#define OB_MAP_IS_VALID(p)          (p && (p->ObHdr._magic2 == OB_HEADER_MAGIC) && (p->ObHdr._magic1 == OB_HEADER_MAGIC) && (p->ObHdr._tag == OB_TAG_CORE_MAP))
 #define OB_MAP_TABLE_MAX_CAPACITY   OB_MAP_ENTRIES_DIRECTORY * OB_MAP_ENTRIES_TABLE * OB_MAP_ENTRIES_STORE
 #define OB_MAP_HASH_FUNCTION(v)     (13 * (v + _rotr16((WORD)v, 9) + _rotr((DWORD)v, 17) + _rotr64(v, 31)))
 
@@ -283,7 +283,7 @@ QWORD _ObMap_GetKey(_In_ POB_MAP pm, _In_ PVOID pvObject)
 }
 
 _Success_(return)
-BOOL _ObMap_Filter(_In_ POB_MAP pm, _Inout_opt_ PVOID ctx, _In_ VOID(*pfnFilter)(_In_ QWORD k, _In_ PVOID v, _Inout_opt_ PVOID ctx))
+BOOL _ObMap_Filter(_In_ POB_MAP pm, _Inout_opt_ PVOID ctx, _In_ OB_MAP_FILTER_PFN pfnFilter)
 {
     DWORD iEntry;
     POB_MAP_ENTRY pEntry;
@@ -295,16 +295,16 @@ BOOL _ObMap_Filter(_In_ POB_MAP pm, _Inout_opt_ PVOID ctx, _In_ VOID(*pfnFilter)
 }
 
 _Success_(return != NULL)
-POB_SET _ObMap_FilterSet(_In_ POB_MAP pm, _In_opt_ VOID(*pfnFilter)(_In_ QWORD k, _In_ PVOID v, _Inout_ POB_SET ps))
+POB_SET _ObMap_FilterSet(_In_ POB_MAP pm, _In_opt_ OB_MAP_FILTERSET_PFN pfnFilterSet)
 {
     DWORD iEntry;
     POB_MAP_ENTRY pEntry;
     POB_SET pObSet;
-    if(!(pObSet = ObSet_New())) { return NULL; }
-    if(!pfnFilter) { return pObSet; }
+    if(!(pObSet = ObSet_New(pm->ObHdr.H))) { return NULL; }
+    if(!pfnFilterSet) { return pObSet; }
     for(iEntry = 1; iEntry < pm->c; iEntry++) {
         pEntry = &pm->Directory[OB_MAP_INDEX_DIRECTORY(iEntry)][OB_MAP_INDEX_TABLE(iEntry)][OB_MAP_INDEX_STORE(iEntry)];
-        pfnFilter(pEntry->k, pEntry->v, pObSet);
+        pfnFilterSet(pEntry->k, pEntry->v, pObSet);
     }
     return pObSet;
 }
@@ -414,7 +414,7 @@ QWORD ObMap_PeekKey(_In_opt_ POB_MAP pm)
 * -- return
 */
 _Success_(return)
-BOOL ObMap_Filter(_In_opt_ POB_MAP pm, _Inout_opt_ PVOID ctx, _In_opt_ VOID(*pfnFilter)(_In_ QWORD k, _In_ PVOID v, _Inout_opt_ PVOID ctx))
+BOOL ObMap_Filter(_In_opt_ POB_MAP pm, _Inout_opt_ PVOID ctx, _In_opt_ OB_MAP_FILTER_PFN pfnFilter)
 {
     if(!pfnFilter) { return FALSE; }
     OB_MAP_CALL_SYNCHRONIZED_IMPLEMENTATION_READ(pm, BOOL, FALSE, _ObMap_Filter(pm, ctx, pfnFilter));
@@ -424,13 +424,13 @@ BOOL ObMap_Filter(_In_opt_ POB_MAP pm, _Inout_opt_ PVOID ctx, _In_opt_ VOID(*pfn
 * Filter map objects into a POB_SET by using a user-supplied filter function.
 * CALLER DECREF: return
 * -- pm
-* -- pfnFilter
+* -- pfnFilterSet
 * -- return = POB_SET consisting of values gathered by the pfnFilter function.
 */
 _Success_(return != NULL)
-POB_SET ObMap_FilterSet(_In_opt_ POB_MAP pm, _In_opt_ VOID(*pfnFilter)(_In_ QWORD k, _In_ PVOID v, _Inout_ POB_SET ps))
+POB_SET ObMap_FilterSet(_In_opt_ POB_MAP pm, _In_opt_ OB_MAP_FILTERSET_PFN pfnFilterSet)
 {
-    OB_MAP_CALL_SYNCHRONIZED_IMPLEMENTATION_READ(pm, POB_SET, NULL, _ObMap_FilterSet(pm, pfnFilter));
+    OB_MAP_CALL_SYNCHRONIZED_IMPLEMENTATION_READ(pm, POB_SET, NULL, _ObMap_FilterSet(pm, pfnFilterSet));
 }
 
 /*
@@ -484,7 +484,7 @@ PVOID _ObMap_RemoveOrRemoveByKey(_In_ POB_MAP pm, _In_ BOOL fValueHash, _In_ QWO
     return _ObMap_RetrieveAndRemoveByEntryIndex(pm, iEntry, NULL);
 }
 
-DWORD _ObMap_RemoveByFilter(_In_ POB_MAP pm, _In_opt_ BOOL(*pfnFilter)(_In_ QWORD k, _In_ PVOID v))
+DWORD _ObMap_RemoveByFilter(_In_ POB_MAP pm, _In_opt_ OB_MAP_FILTER_REMOVE_PFN_CB pfnFilter)
 {
     DWORD cRemove = 0;
     DWORD iEntry;
@@ -493,7 +493,7 @@ DWORD _ObMap_RemoveByFilter(_In_ POB_MAP pm, _In_opt_ BOOL(*pfnFilter)(_In_ QWOR
     if(!pfnFilter) { return 0; }
     for(iEntry = pm->c - 1; iEntry; iEntry--) {
         pEntry = &pm->Directory[OB_MAP_INDEX_DIRECTORY(iEntry)][OB_MAP_INDEX_TABLE(iEntry)][OB_MAP_INDEX_STORE(iEntry)];
-        if(pfnFilter(pEntry->k, pEntry->v)) {
+        if(pfnFilter(pm->ObHdr.H, pEntry->k, pEntry->v)) {
             cRemove++;
             pv = _ObMap_RetrieveAndRemoveByEntryIndex(pm, iEntry, NULL);
             if(pm->fObjectsOb) { Ob_DECREF(pv); }
@@ -556,10 +556,10 @@ PVOID ObMap_RemoveByKey(_In_opt_ POB_MAP pm, _In_ QWORD qwKey)
 /*
 * Remove map objects using a user-supplied filter function.
 * -- pm
-* -- pfnFilter = decision making function, TRUE = keep, FALSE = remove.
+* -- pfnFilter = decision making function: [pfnFilter(H,k,v)->TRUE(remove)|FALSE(keep)]
 * -- return = number of entries removed.
 */
-DWORD ObMap_RemoveByFilter(_In_opt_ POB_MAP pm, _In_opt_ BOOL(*pfnFilter)(_In_ QWORD k, _In_ PVOID v))
+DWORD ObMap_RemoveByFilter(_In_opt_ POB_MAP pm, _In_opt_ OB_MAP_FILTER_REMOVE_PFN_CB pfnFilter)
 {
     OB_MAP_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(pm, DWORD, 0, _ObMap_RemoveByFilter(pm, pfnFilter));
 }
@@ -677,7 +677,7 @@ BOOL _ObMap_Push(_In_ POB_MAP pm, _In_ QWORD qwKey, _In_ PVOID pvObject)
     POB_MAP_ENTRY pe;
     DWORD iEntry = pm->c;
     if(!pvObject || _ObMap_Exists(pm, TRUE, (QWORD)pvObject) || _ObMap_Exists(pm, FALSE, qwKey)) { return FALSE; }
-    if(iEntry == OB_MAP_ENTRIES_DIRECTORY * OB_MAP_ENTRIES_TABLE * OB_MAP_ENTRIES_STORE) { return FALSE; }
+    if(iEntry == OB_MAP_TABLE_MAX_CAPACITY) { return FALSE; }
     if(iEntry == pm->cHashGrowThreshold) {
         if(!_ObMap_Grow(pm)) {
             return FALSE;
@@ -748,14 +748,15 @@ BOOL ObMap_PushCopy(_In_opt_ POB_MAP pm, _In_ QWORD qwKey, _In_ PVOID pvObject, 
 * to optionally map key values to values, pointers or object manager objects.
 * The ObMap is an object manager object and must be DECREF'ed when required.
 * CALLER DECREF: return
+* -- H
 * -- flags = defined by OB_MAP_FLAGS_*
 * -- return
 */
-POB_MAP ObMap_New(_In_ QWORD flags)
+POB_MAP ObMap_New(_In_opt_ VMM_HANDLE H, _In_ QWORD flags)
 {
     POB_MAP pObMap;
     if((flags & OB_MAP_FLAGS_OBJECT_OB) && (flags & OB_MAP_FLAGS_OBJECT_LOCALFREE)) { return NULL; }
-    pObMap = Ob_Alloc(OB_TAG_CORE_MAP, LMEM_ZEROINIT, sizeof(OB_MAP), (OB_CLEANUP_CB)_ObMap_ObCloseCallback, NULL);
+    pObMap = Ob_AllocEx(H, OB_TAG_CORE_MAP, LMEM_ZEROINIT, sizeof(OB_MAP), (OB_CLEANUP_CB)_ObMap_ObCloseCallback, NULL);
     if(!pObMap) { return NULL; }
     InitializeSRWLock(&pObMap->LockSRW);
     pObMap->c = 1;      // item zero is reserved - hence the initialization of count to 1

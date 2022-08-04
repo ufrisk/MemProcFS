@@ -107,10 +107,12 @@ int _VmmWinPool_qsort_PoolEntry(PVMM_MAP_POOLENTRY p1, PVMM_MAP_POOLENTRY p2)
 }
 
 _Success_(return != NULL)
-PVMMOB_MAP_POOL VmmWinPool_Initialize_BigPool_DoWork(_In_ PVMM_PROCESS pSystemProcess)
+PVMMOB_MAP_POOL VmmWinPool_Initialize_BigPool_DoWork(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess)
 {
+    BOOL f32 = H->vmm.f32;
+    DWORD dwVersionBuild = H->vmm.kernel.dwVersionBuild;
     DWORD i, j, o, cPoolBigTable = 0, iEntry, cbEntry = 0x10;
-    DWORD cTag, dwBuild, cTag2Map = 0;
+    DWORD cTag, cTag2Map = 0;
     QWORD cEntry;
     QWORD cbPool, va = 0, vaPoolBigTable = 0;
     PBYTE pb = NULL;
@@ -126,23 +128,23 @@ PVMMOB_MAP_POOL VmmWinPool_Initialize_BigPool_DoWork(_In_ PVMM_PROCESS pSystemPr
     P_BIGPOOL32_VISTA pbpVI32;
     P_BIGPOOL32_XP    pbpXP32;
     // 0: winxp big pool code is not working - return empty pool
-    if(ctxVmm->kernel.dwVersionBuild < 6000) {
-        return (PVMMOB_MAP_POOL)Ob_Alloc(OB_TAG_MAP_POOL, LMEM_ZEROINIT, sizeof(VMMOB_MAP_POOL), NULL, NULL);
+    if(dwVersionBuild < 6000) {
+        return (PVMMOB_MAP_POOL)Ob_AllocEx(H, OB_TAG_MAP_POOL, LMEM_ZEROINIT, sizeof(VMMOB_MAP_POOL), NULL, NULL);
     }
     // 1: initial sizes
-    if(!ctxVmm->f32) {
+    if(!f32) {
         cbEntry = 0x18;
-        if(ctxVmm->kernel.dwVersionBuild >= 20348) { cbEntry = 0x20; }  // SERVER-2022 / WIN11 and above
+        if(dwVersionBuild >= 20348) { cbEntry = 0x20; }  // SERVER-2022 / WIN11 and above
     }
     // 2: initial allocs
-    if(!(pObCnt = ObCounter_New(0))) { goto fail; }
-    if(!PDB_GetSymbolPTR(PDB_HANDLE_KERNEL, "PoolBigPageTable", pSystemProcess, (PVOID)&vaPoolBigTable)) { goto fail; }
-    if(!PDB_GetSymbolDWORD(PDB_HANDLE_KERNEL, "PoolBigPageTableSize", pSystemProcess, &cPoolBigTable)) { goto fail; }
-    if(!VMM_KADDR_PAGE(vaPoolBigTable) || (cPoolBigTable & 0xfff) || (cPoolBigTable > 0x01000000)) { goto fail; }
+    if(!(pObCnt = ObCounter_New(H, 0))) { goto fail; }
+    if(!PDB_GetSymbolPTR(H, PDB_HANDLE_KERNEL, "PoolBigPageTable", pSystemProcess, (PVOID)&vaPoolBigTable)) { goto fail; }
+    if(!PDB_GetSymbolDWORD(H, PDB_HANDLE_KERNEL, "PoolBigPageTableSize", pSystemProcess, &cPoolBigTable)) { goto fail; }
+    if(!VMM_KADDR_PAGE(f32, vaPoolBigTable) || (cPoolBigTable & 0xfff) || (cPoolBigTable > 0x01000000)) { goto fail; }
     if(!(pb = LocalAlloc(0, (SIZE_T)cbEntry * cPoolBigTable))) { goto fail; }
-    VmmReadEx(pSystemProcess, vaPoolBigTable, pb, cbEntry * cPoolBigTable, NULL, VMM_FLAG_ZEROPAD_ON_FAIL);
+    VmmReadEx(H, pSystemProcess, vaPoolBigTable, pb, cbEntry * cPoolBigTable, NULL, VMM_FLAG_ZEROPAD_ON_FAIL);
     // 3: count entries
-    if(ctxVmm->f32) {
+    if(f32) {
         for(i = 0, o = 0; i < cPoolBigTable; i++) {
             if(VMM_KADDR32(*(PDWORD)(pb + o))) {
                 ObCounter_Inc(pObCnt, (QWORD)(*(PDWORD)(pb + o + 4)));
@@ -165,14 +167,14 @@ PVMMOB_MAP_POOL VmmWinPool_Initialize_BigPool_DoWork(_In_ PVMM_PROCESS pSystemPr
     cbPool += (DWORD)cEntry * sizeof(VMM_MAP_POOLENTRY);
     cbPool += cTag * sizeof(VMM_MAP_POOLENTRYTAG);
     cbPool += (DWORD)cEntry * sizeof(DWORD);
-    if(!(pObPool = Ob_Alloc(OB_TAG_MAP_POOL, LMEM_ZEROINIT, (SIZE_T)cbPool, NULL, NULL))) { goto fail; }
+    if(!(pObPool = Ob_AllocEx(H, OB_TAG_MAP_POOL, LMEM_ZEROINIT, (SIZE_T)cbPool, NULL, NULL))) { goto fail; }
     pObPool->cTag = cTag;
     pObPool->cMap = (DWORD)cEntry;
     pObPool->pTag = (PVMM_MAP_POOLENTRYTAG)(pObPool->pMap + pObPool->cMap);
     pObPool->piTag2Map = (PDWORD)(pObPool->pTag + pObPool->cTag);
     // 5: fill tags sorted by pool tag and set up shortcut hashmap
     if(!ObCounter_GetAllSortedByKey(pObCnt, pObPool->cTag, (POB_COUNTER_ENTRY)pObPool->pTag)) { goto fail; }
-    if(!(pmObTag = ObMap_New(OB_MAP_FLAGS_OBJECT_VOID))) { goto fail; }
+    if(!(pmObTag = ObMap_New(H, OB_MAP_FLAGS_OBJECT_VOID))) { goto fail; }
     for(i = 0; i < pObPool->cTag; i++) {
         peTag = pObPool->pTag + i;
         cTag2Map += peTag->cEntry;
@@ -180,19 +182,18 @@ PVMMOB_MAP_POOL VmmWinPool_Initialize_BigPool_DoWork(_In_ PVMM_PROCESS pSystemPr
         ObMap_Push(pmObTag, 0x100000000 | peTag->dwTag, peTag);
     }
     // 6: populate map entries (os dependent)
-    dwBuild = ctxVmm->kernel.dwVersionBuild;
-    if(ctxVmm->f32) {
+    if(f32) {
         for(i = 0, j = 0, o = 0; i < cPoolBigTable; i++) {
             va = *(PDWORD)(pb + o);
             if(VMM_KADDR32(va)) {
                 pePool = pObPool->pMap + j;
                 pePool->va = va;
                 pePool->dwTag = *(PDWORD)(pb + o + 4);
-                if(dwBuild >= 10240) {
+                if(dwVersionBuild >= 10240) {
                     pbp1032 = (P_BIGPOOL32_10)(pb + o);
                     pePool->tpPool = VmmWinPool_PoolTypeConvert(pbp1032->PoolType);
                     pePool->cb = pbp1032->NumberOfBytes;
-                } else if(dwBuild >= 6000) {
+                } else if(dwVersionBuild >= 6000) {
                     pbpVI32 = (P_BIGPOOL32_VISTA)(pb + o);
                     pePool->tpPool = VmmWinPool_PoolTypeConvert(pbpVI32->PoolType);
                     pePool->cb = pbpVI32->NumberOfBytes;
@@ -212,7 +213,7 @@ PVMMOB_MAP_POOL VmmWinPool_Initialize_BigPool_DoWork(_In_ PVMM_PROCESS pSystemPr
                 pePool = pObPool->pMap + j;
                 pePool->va = va;
                 pePool->dwTag = *(PDWORD)(pb + o + 8);
-                if(dwBuild >= 10240) {
+                if(dwVersionBuild >= 10240) {
                     pbp1064 = (P_BIGPOOL64_10)(pb + o);
                     pePool->tpPool = VmmWinPool_PoolTypeConvert(pbp1064->PoolType);
                     pePool->cb = (DWORD)min(0xffffffff, pbp1064->NumberOfBytes);
@@ -269,6 +270,7 @@ typedef struct tdVMMWINPOOL_CTX_POOLSTORE {
 * NB! va, pbPoolBlock, cbPoolEntry should _INCLUDE_ pool header!
 */
 VOID VmmWinPool_AllPool_PushItem(
+    _In_ VMM_HANDLE H,
     _In_ PVMMWINPOOL_CTX_POOLSTORE *ppStore,
     _In_ VMM_MAP_POOL_TP tp,
     _In_ VMM_MAP_POOL_TPSS tpSS,
@@ -281,7 +283,7 @@ VOID VmmWinPool_AllPool_PushItem(
     PVMM_MAP_POOLENTRY pe;
     DWORD i, cbHdr = 0, cbPoolEntryHdr, dwTag = 0;
     CHAR c;
-    BOOL fBadTag = FALSE, f32 = ctxVmm->f32;
+    BOOL fBadTag = FALSE, f32 = H->vmm.f32;
     DWORD cbBigPoolThreshold = f32 ? 0xff0 : 0xfe0;
     if(cbPoolBlock < cbBigPoolThreshold) {
         cbHdr = f32 ? 8 : 16;
@@ -328,13 +330,14 @@ VOID VmmWinPool_AllPool_PushItem(
 /*
 * Create the pool map.
 * CALLER DECREF: return
+* -- H
 * -- pPoolBig
 * -- ppStore
 * -- cStore
 * -- return
 */
 _Success_(return != NULL)
-PVMMOB_MAP_POOL VmmWinPool_AllPool_CreateMap(_In_ PVMMOB_MAP_POOL pPoolBig, _In_reads_(cStore) PVMMWINPOOL_CTX_POOLSTORE *ppStore, _In_ DWORD cStore)
+PVMMOB_MAP_POOL VmmWinPool_AllPool_CreateMap(_In_ VMM_HANDLE H, _In_ PVMMOB_MAP_POOL pPoolBig, _In_reads_(cStore) PVMMWINPOOL_CTX_POOLSTORE *ppStore, _In_ DWORD cStore)
 {
     PVMMWINPOOL_CTX_POOLSTORE pStore;
     PVMMOB_MAP_POOL pObPool = NULL;
@@ -346,7 +349,7 @@ PVMMOB_MAP_POOL VmmWinPool_AllPool_CreateMap(_In_ PVMMOB_MAP_POOL pPoolBig, _In_
     PVMM_MAP_POOLENTRYTAG peTag;
     // 1: count tags and entries
     cEntry = pPoolBig->cMap;
-    if(!(pObCnt = ObCounter_New(0))) { goto fail; }
+    if(!(pObCnt = ObCounter_New(H, 0))) { goto fail; }
     for(i = 0; i < pPoolBig->cTag; i++) {
         ObCounter_Set(pObCnt, (QWORD)pPoolBig->pTag[i].dwTag, (QWORD)pPoolBig->pTag[i].cEntry);
     }
@@ -367,14 +370,14 @@ PVMMOB_MAP_POOL VmmWinPool_AllPool_CreateMap(_In_ PVMMOB_MAP_POOL pPoolBig, _In_
     cbPool += cTag * sizeof(VMM_MAP_POOLENTRYTAG);
     cbPool += (DWORD)cEntry * sizeof(DWORD);
     if(cbPool > 0x80000000) { goto fail; }
-    if(!(pObPool = Ob_Alloc(OB_TAG_MAP_POOL, LMEM_ZEROINIT, (SIZE_T)cbPool, NULL, NULL))) { goto fail; }
+    if(!(pObPool = Ob_AllocEx(H, OB_TAG_MAP_POOL, LMEM_ZEROINIT, (SIZE_T)cbPool, NULL, NULL))) { goto fail; }
     pObPool->cTag = cTag;
     pObPool->cMap = cEntry;
     pObPool->pTag = (PVMM_MAP_POOLENTRYTAG)(pObPool->pMap + pObPool->cMap);
     pObPool->piTag2Map = (PDWORD)(pObPool->pTag + pObPool->cTag);
     // 3: fill tags sorted by pool tag and set up shortcut hashmap
     if(!ObCounter_GetAllSortedByKey(pObCnt, pObPool->cTag, (POB_COUNTER_ENTRY)pObPool->pTag)) { goto fail; }
-    if(!(pmObTag = ObMap_New(OB_MAP_FLAGS_OBJECT_VOID))) { goto fail; }
+    if(!(pmObTag = ObMap_New(H, OB_MAP_FLAGS_OBJECT_VOID))) { goto fail; }
     for(i = 0; i < pObPool->cTag; i++) {
         peTag = pObPool->pTag + i;
         cTag2Map += peTag->cEntry;
@@ -530,12 +533,12 @@ typedef union td_HEAP_VS_CHUNK_HEADER_SIZE64 {
 } _HEAP_VS_CHUNK_HEADER_SIZE64, *P_HEAP_VS_CHUNK_HEADER_SIZE64;
 
 _Success_(return)
-BOOL VmmWinPool_AllPool1903_Offsets(_In_ PVMM_PROCESS pSystemProcess, _Out_ PVMMWINPOOL_OFFSETS po)
+BOOL VmmWinPool_AllPool1903_Offsets(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _Out_ PVMMWINPOOL_OFFSETS po)
 {
     // static initialization:
     po->_EX_POOL_HEAP_MANAGER_STATE.oHeapKey = 0;
     po->_EX_HEAP_POOL_NODE.oHeaps = 0;
-    if(ctxVmm->f32) {
+    if(H->vmm.f32) {
         po->cbBigPoolThreshold = 0xff0;
         po->_EX_POOL_HEAP_MANAGER_STATE.oLfhKey = 4;
         po->_HEAP_VS_CHUNK_HEADER.cb = 8;
@@ -546,24 +549,24 @@ BOOL VmmWinPool_AllPool1903_Offsets(_In_ PVMM_PROCESS pSystemProcess, _Out_ PVMM
     }
     // dynamic symbol-based initialization:
     BOOL f =
-        PDB_GetSymbolAddress(PDB_HANDLE_KERNEL, "ExPoolState", &po->vaExPoolState) &&
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_EX_POOL_HEAP_MANAGER_STATE", "NumberOfPools", &po->_EX_POOL_HEAP_MANAGER_STATE.oNumberOfPools) &&
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_EX_POOL_HEAP_MANAGER_STATE", "PoolNode", &po->_EX_POOL_HEAP_MANAGER_STATE.oPoolNode) &&
-        PDB_GetTypeChildOffset(PDB_HANDLE_KERNEL, "_EX_POOL_HEAP_MANAGER_STATE", "SpecialHeaps", &po->_EX_POOL_HEAP_MANAGER_STATE.oSpecialHeaps) &&
-        PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_EX_HEAP_POOL_NODE", &po->_EX_HEAP_POOL_NODE.cb) && (po->_EX_HEAP_POOL_NODE.cb < 0x4000) &&
-        PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_SEGMENT_HEAP", &po->_SEGMENT_HEAP.cb) &&
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SEGMENT_HEAP", "SegContexts", &po->_SEGMENT_HEAP.oSegContexts) &&
-        PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_HEAP_SEG_CONTEXT", &po->_HEAP_SEG_CONTEXT.cb) &&
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_HEAP_SEG_CONTEXT", "UnitShift", &po->_HEAP_SEG_CONTEXT.oUnitShift) &&
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_HEAP_SEG_CONTEXT", "FirstDescriptorIndex", &po->_HEAP_SEG_CONTEXT.oFirstDescriptorIndex) &&
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_HEAP_SEG_CONTEXT", "SegmentListHead", &po->_HEAP_SEG_CONTEXT.oSegmentListHead) &&
-        PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_HEAP_PAGE_SEGMENT", &po->_HEAP_PAGE_SEGMENT.cb) && (po->_HEAP_PAGE_SEGMENT.cb <= 0x2000) &&
-        PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_HEAP_PAGE_RANGE_DESCRIPTOR", &po->_HEAP_PAGE_RANGE_DESCRIPTOR.cb) && (256 * po->_HEAP_PAGE_RANGE_DESCRIPTOR.cb == po->_HEAP_PAGE_SEGMENT.cb) &&
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_HEAP_PAGE_RANGE_DESCRIPTOR", "UnitSize", &po->_HEAP_PAGE_RANGE_DESCRIPTOR.oUnitSize) &&
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_HEAP_PAGE_RANGE_DESCRIPTOR", "RangeFlags", &po->_HEAP_PAGE_RANGE_DESCRIPTOR.oRangeFlags) &&
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_HEAP_PAGE_RANGE_DESCRIPTOR", "TreeSignature", &po->_HEAP_PAGE_RANGE_DESCRIPTOR.oTreeSignature) &&
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_HEAP_LFH_SUBSEGMENT", "BlockOffsets", &po->_HEAP_LFH_SUBSEGMENT.oBlockOffsets) &&
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_HEAP_LFH_SUBSEGMENT", "BlockBitmap", &po->_HEAP_LFH_SUBSEGMENT.oBlockBitmap);
+        PDB_GetSymbolAddress(H, PDB_HANDLE_KERNEL, "ExPoolState", &po->vaExPoolState) &&
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_EX_POOL_HEAP_MANAGER_STATE", "NumberOfPools", &po->_EX_POOL_HEAP_MANAGER_STATE.oNumberOfPools) &&
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_EX_POOL_HEAP_MANAGER_STATE", "PoolNode", &po->_EX_POOL_HEAP_MANAGER_STATE.oPoolNode) &&
+        PDB_GetTypeChildOffset(H, PDB_HANDLE_KERNEL, "_EX_POOL_HEAP_MANAGER_STATE", "SpecialHeaps", &po->_EX_POOL_HEAP_MANAGER_STATE.oSpecialHeaps) &&
+        PDB_GetTypeSizeShort(H, PDB_HANDLE_KERNEL, "_EX_HEAP_POOL_NODE", &po->_EX_HEAP_POOL_NODE.cb) && (po->_EX_HEAP_POOL_NODE.cb < 0x4000) &&
+        PDB_GetTypeSizeShort(H, PDB_HANDLE_KERNEL, "_SEGMENT_HEAP", &po->_SEGMENT_HEAP.cb) &&
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_SEGMENT_HEAP", "SegContexts", &po->_SEGMENT_HEAP.oSegContexts) &&
+        PDB_GetTypeSizeShort(H, PDB_HANDLE_KERNEL, "_HEAP_SEG_CONTEXT", &po->_HEAP_SEG_CONTEXT.cb) &&
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_HEAP_SEG_CONTEXT", "UnitShift", &po->_HEAP_SEG_CONTEXT.oUnitShift) &&
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_HEAP_SEG_CONTEXT", "FirstDescriptorIndex", &po->_HEAP_SEG_CONTEXT.oFirstDescriptorIndex) &&
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_HEAP_SEG_CONTEXT", "SegmentListHead", &po->_HEAP_SEG_CONTEXT.oSegmentListHead) &&
+        PDB_GetTypeSizeShort(H, PDB_HANDLE_KERNEL, "_HEAP_PAGE_SEGMENT", &po->_HEAP_PAGE_SEGMENT.cb) && (po->_HEAP_PAGE_SEGMENT.cb <= 0x2000) &&
+        PDB_GetTypeSizeShort(H, PDB_HANDLE_KERNEL, "_HEAP_PAGE_RANGE_DESCRIPTOR", &po->_HEAP_PAGE_RANGE_DESCRIPTOR.cb) && (256 * po->_HEAP_PAGE_RANGE_DESCRIPTOR.cb == po->_HEAP_PAGE_SEGMENT.cb) &&
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_HEAP_PAGE_RANGE_DESCRIPTOR", "UnitSize", &po->_HEAP_PAGE_RANGE_DESCRIPTOR.oUnitSize) &&
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_HEAP_PAGE_RANGE_DESCRIPTOR", "RangeFlags", &po->_HEAP_PAGE_RANGE_DESCRIPTOR.oRangeFlags) &&
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_HEAP_PAGE_RANGE_DESCRIPTOR", "TreeSignature", &po->_HEAP_PAGE_RANGE_DESCRIPTOR.oTreeSignature) &&
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_HEAP_LFH_SUBSEGMENT", "BlockOffsets", &po->_HEAP_LFH_SUBSEGMENT.oBlockOffsets) &&
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_HEAP_LFH_SUBSEGMENT", "BlockBitmap", &po->_HEAP_LFH_SUBSEGMENT.oBlockBitmap);
     return f;
 }
 
@@ -572,8 +575,9 @@ BOOL VmmWinPool_AllPool1903_Offsets(_In_ PVMM_PROCESS pSystemProcess, _Out_ PVMM
 * heaps as well as the HeapKey and LfhKey.
 */
 _Success_(return)
-BOOL VmmWinPool_AllPool1903_1_HeapMgr(PVMMWINPOOL_CTX ctx, PVMMWINPOOL_OFFSETS poff)
+BOOL VmmWinPool_AllPool1903_1_HeapMgr(_In_ VMM_HANDLE H, PVMMWINPOOL_CTX ctx, PVMMWINPOOL_OFFSETS poff)
 {
+    BOOL f32 = H->vmm.f32;
     DWORD i, iPoolNode, cPools = 0;
     QWORD va = 0, oBase = 0, vaBase = 0, vaHeapGlobals = 0;
     PVMMWINPOOL_HEAP pHeap;
@@ -582,18 +586,18 @@ BOOL VmmWinPool_AllPool1903_1_HeapMgr(PVMMWINPOOL_CTX ctx, PVMMWINPOOL_OFFSETS p
     ObSet_Push_PageAlign(ctx->psPrefetch, poff->vaExPoolState, 8);
     ObSet_Push_PageAlign(ctx->psPrefetch, poff->vaExPoolState + poff->_EX_POOL_HEAP_MANAGER_STATE.oNumberOfPools, 4);
     ObSet_Push_PageAlign(ctx->psPrefetch, poff->vaExPoolState + poff->_EX_POOL_HEAP_MANAGER_STATE.oSpecialHeaps, 0x20);
-    VmmCachePrefetchPages(ctx->pSystemProcess, ctx->psPrefetch, 0);
+    VmmCachePrefetchPages(H, ctx->pSystemProcess, ctx->psPrefetch, 0);
     // 1.1 - va heap globals
-    VmmReadEx(ctx->pSystemProcess, poff->vaExPoolState, (PBYTE)&vaHeapGlobals, ctxVmm->f32 ? 4 : 8, NULL, VMM_FLAG_FORCECACHE_READ);
-    if(!VMM_KADDR_4_8(vaHeapGlobals)) { goto fail; }
+    VmmReadEx(H, ctx->pSystemProcess, poff->vaExPoolState, (PBYTE)&vaHeapGlobals, f32 ? 4 : 8, NULL, VMM_FLAG_FORCECACHE_READ);
+    if(!VMM_KADDR_4_8(f32, vaHeapGlobals)) { goto fail; }
     // 1.2 - # pools
-    VmmReadEx(ctx->pSystemProcess, poff->vaExPoolState + poff->_EX_POOL_HEAP_MANAGER_STATE.oNumberOfPools, (PBYTE)&cPools, 4, NULL, VMM_FLAG_FORCECACHE_READ);
+    VmmReadEx(H, ctx->pSystemProcess, poff->vaExPoolState + poff->_EX_POOL_HEAP_MANAGER_STATE.oNumberOfPools, (PBYTE)&cPools, 4, NULL, VMM_FLAG_FORCECACHE_READ);
     if(!cPools || cPools > 64) { goto fail; }
     // 1.3 - special heaps
     for(i = 0; i < 4; i++) {
-        VmmReadEx(ctx->pSystemProcess, poff->vaExPoolState + poff->_EX_POOL_HEAP_MANAGER_STATE.oSpecialHeaps, ctx->pb, 0x20, NULL, VMM_FLAG_FORCECACHE_READ);
-        va = ctxVmm->f32 ? *(PDWORD)(ctx->pb + i * 4ULL) : *(PQWORD)(ctx->pb + i * 8ULL);
-        if(VMM_KADDR_PAGE(va) && (pHeap = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMWINPOOL_HEAP)))) {
+        VmmReadEx(H, ctx->pSystemProcess, poff->vaExPoolState + poff->_EX_POOL_HEAP_MANAGER_STATE.oSpecialHeaps, ctx->pb, 0x20, NULL, VMM_FLAG_FORCECACHE_READ);
+        va = f32 ? *(PDWORD)(ctx->pb + i * 4ULL) : *(PQWORD)(ctx->pb + i * 8ULL);
+        if(VMM_KADDR_PAGE(f32, va) && (pHeap = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMWINPOOL_HEAP)))) {
             pHeap->va = va;
             pHeap->fSpecial = TRUE;
             pHeap->iPoolNode = (DWORD)-1;
@@ -610,18 +614,18 @@ BOOL VmmWinPool_AllPool1903_1_HeapMgr(PVMMWINPOOL_CTX ctx, PVMMWINPOOL_OFFSETS p
     ObSet_Clear(ctx->psPrefetch);
     ObSet_Push_PageAlign(ctx->psPrefetch, vaHeapGlobals, 0x10);
     ObSet_Push_PageAlign(ctx->psPrefetch, poff->vaExPoolState + poff->_EX_POOL_HEAP_MANAGER_STATE.oPoolNode, cPools * poff->_EX_HEAP_POOL_NODE.cb);
-    VmmCachePrefetchPages(ctx->pSystemProcess, ctx->psPrefetch, 0);
+    VmmCachePrefetchPages(H, ctx->pSystemProcess, ctx->psPrefetch, 0);
     // 2.1 - heap globals
-    if(!VmmRead2(ctx->pSystemProcess, vaHeapGlobals, ctx->pb, 0x10, VMM_FLAG_FORCECACHE_READ)) { goto fail; }
-    ctx->qwKeyHeap = VMM_PTR_OFFSET_DUAL(ctxVmm->f32, ctx->pb, 0, 0);
-    ctx->qwKeyLfh = VMM_PTR_OFFSET_DUAL(ctxVmm->f32, ctx->pb, 4, 8);
+    if(!VmmRead2(H, ctx->pSystemProcess, vaHeapGlobals, ctx->pb, 0x10, VMM_FLAG_FORCECACHE_READ)) { goto fail; }
+    ctx->qwKeyHeap = VMM_PTR_OFFSET_DUAL(f32, ctx->pb, 0, 0);
+    ctx->qwKeyLfh = VMM_PTR_OFFSET_DUAL(f32, ctx->pb, 4, 8);
     // 2.2 - pool heaps
     vaBase = poff->vaExPoolState + poff->_EX_POOL_HEAP_MANAGER_STATE.oPoolNode;
-    VmmReadEx(ctx->pSystemProcess, vaBase, ctx->pb, cPools * poff->_EX_HEAP_POOL_NODE.cb, NULL, VMM_FLAG_FORCECACHE_READ);
+    VmmReadEx(H, ctx->pSystemProcess, vaBase, ctx->pb, cPools * poff->_EX_HEAP_POOL_NODE.cb, NULL, VMM_FLAG_FORCECACHE_READ);
     for(iPoolNode = 0; iPoolNode < cPools; iPoolNode++) {
         for(i = 0; i < 4; i++) {
-            va = ctxVmm->f32 ? *(PDWORD)(ctx->pb + oBase + i * 4ULL) : *(PQWORD)(ctx->pb + oBase + i * 8ULL);
-            if(VMM_KADDR_PAGE(va) && (pHeap = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMWINPOOL_HEAP)))) {
+            va = f32 ? *(PDWORD)(ctx->pb + oBase + i * 4ULL) : *(PQWORD)(ctx->pb + oBase + i * 8ULL);
+            if(VMM_KADDR_PAGE(f32, va) && (pHeap = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMWINPOOL_HEAP)))) {
                 pHeap->va = va;
                 pHeap->fSpecial = FALSE;
                 pHeap->iPoolNode = iPoolNode;
@@ -646,8 +650,9 @@ fail:
 * TODO: PARSE LargeAllocMetadata
 */
 _Success_(return)
-BOOL VmmWinPool_AllPool1903_2_HeapFillSegmentHeap(PVMMWINPOOL_CTX ctx)
+BOOL VmmWinPool_AllPool1903_2_HeapFillSegmentHeap(_In_ VMM_HANDLE H, PVMMWINPOOL_CTX ctx)
 {
+    BOOL f32 = H->vmm.f32;
     PVMMWINPOOL_HEAP peHeap;
     PVMMWINPOOL_HEAP_PAGE_SEGMENT pePgSeg;
     POB_SET psvaObPrefetch = NULL;
@@ -657,20 +662,20 @@ BOOL VmmWinPool_AllPool1903_2_HeapFillSegmentHeap(PVMMWINPOOL_CTX ctx)
     // 1: prefetch
     if(!(cSegHeap = ObMap_Size(ctx->pmHeap))) { return FALSE; }
     if(!(psvaObPrefetch = ObMap_FilterSet(ctx->pmHeap, ObMap_FilterSet_FilterAllKey))) { return FALSE; }
-    VmmCachePrefetchPages3(ctx->pSystemProcess, psvaObPrefetch, ctx->po->_SEGMENT_HEAP.cb, 0);
+    VmmCachePrefetchPages3(H, ctx->pSystemProcess, psvaObPrefetch, ctx->po->_SEGMENT_HEAP.cb, 0);
     Ob_DECREF_NULL(&psvaObPrefetch);
     // 2: iterate nt!_SEGMENT_HEAP -> FETCH ADDR nt!_HEAP_PAGE_SEGMENT
     for(iSegHeap = 0; iSegHeap < cSegHeap; iSegHeap++) {
         peHeap = ObMap_GetByIndex(ctx->pmHeap, iSegHeap);
-        if(!VmmRead2(ctx->pSystemProcess, peHeap->va, ctx->pb, ctx->po->_SEGMENT_HEAP.cb, VMMDLL_FLAG_FORCECACHE_READ)) { continue; }
-        if(*(PDWORD)(ctx->pb + (ctxVmm->f32 ? 8 : 16)) != 0xddeeddee) { continue; }   // _SEGMENT_HEAP.Signature == 0xddeeddee
+        if(!VmmRead2(H, ctx->pSystemProcess, peHeap->va, ctx->pb, ctx->po->_SEGMENT_HEAP.cb, VMMDLL_FLAG_FORCECACHE_READ)) { continue; }
+        if(*(PDWORD)(ctx->pb + (f32 ? 8 : 16)) != 0xddeeddee) { continue; }   // _SEGMENT_HEAP.Signature == 0xddeeddee
         for(iSegHeapCtx = 0; iSegHeapCtx < 2; iSegHeapCtx++) {
             oBase = ctx->po->_SEGMENT_HEAP.oSegContexts + iSegHeapCtx * ctx->po->_HEAP_SEG_CONTEXT.cb;
             ucUnitShift = *(PUCHAR)(ctx->pb + oBase + ctx->po->_HEAP_SEG_CONTEXT.oUnitShift);
             ucFirstDescriptorIndex = *(PUCHAR)(ctx->pb + oBase + ctx->po->_HEAP_SEG_CONTEXT.oFirstDescriptorIndex);
             for(i = 0; i < 2; i++) {
-                va = VMM_PTR_OFFSET_DUAL(ctxVmm->f32, ctx->pb + oBase + ctx->po->_HEAP_SEG_CONTEXT.oSegmentListHead, i * 4ULL, i * 8ULL);
-                if(VMM_KADDR_PAGE(va) && !ObMap_ExistsKey(ctx->pmPgSeg, va) && (pePgSeg = LocalAlloc(0, sizeof(VMMWINPOOL_HEAP_PAGE_SEGMENT)))) {
+                va = VMM_PTR_OFFSET_DUAL(f32, ctx->pb + oBase + ctx->po->_HEAP_SEG_CONTEXT.oSegmentListHead, i * 4ULL, i * 8ULL);
+                if(VMM_KADDR_PAGE(f32, va) && !ObMap_ExistsKey(ctx->pmPgSeg, va) && (pePgSeg = LocalAlloc(0, sizeof(VMMWINPOOL_HEAP_PAGE_SEGMENT)))) {
                     pePgSeg->va = va;
                     pePgSeg->pHeap = peHeap;
                     pePgSeg->ucUnitShift = ucUnitShift;
@@ -689,7 +694,7 @@ BOOL VmmWinPool_AllPool1903_2_HeapFillSegmentHeap(PVMMWINPOOL_CTX ctx)
 * next following likely addresses in FLink, BLink list - segments are usually
 * located 1MB apart.
 */
-VOID VmmWinPool_AllPool1903_3_HeapFillPageSegment_Prefetch(_In_ PVMMWINPOOL_CTX ctx, _In_ POB_SET psva)
+VOID VmmWinPool_AllPool1903_3_HeapFillPageSegment_Prefetch(_In_ VMM_HANDLE H, _In_ PVMMWINPOOL_CTX ctx, _In_ POB_SET psva)
 {
     QWORD va;
     DWORD i, j, iMax, cb;
@@ -704,30 +709,32 @@ VOID VmmWinPool_AllPool1903_3_HeapFillPageSegment_Prefetch(_In_ PVMMWINPOOL_CTX 
             ObSet_Push_PageAlign(ctx->psPrefetch, va - j * 0x00100000ULL, cb);
         }
     }
-    VmmCachePrefetchPages(ctx->pSystemProcess, ctx->psPrefetch, 0);
+    VmmCachePrefetchPages(H, ctx->pSystemProcess, ctx->psPrefetch, 0);
 }
 
 /*
 * Process a single segment candidate.
+* -- H
 * -- ctx
 * -- psvaNext
 * -- va
 * -- return = TRUE if processed, FALSE if memory read fail - i.e. read retry after prefetch is recommended
 */
-BOOL VmmWinPool_AllPool1903_3_HeapFillPageSegment_ProcessSingleCandidate(_In_ PVMMWINPOOL_CTX ctx, _In_ POB_SET psvaNext, _In_ QWORD va)
+BOOL VmmWinPool_AllPool1903_3_HeapFillPageSegment_ProcessSingleCandidate(_In_ VMM_HANDLE H, _In_ PVMMWINPOOL_CTX ctx, _In_ POB_SET psvaNext, _In_ QWORD va)
 {
+    BOOL f32 = H->vmm.f32;
     QWORD i, vaNext, vaSignature;
     PVMMWINPOOL_HEAP_PAGE_SEGMENT pe, peNext;
     if(!(pe = ObMap_GetByKey(ctx->pmPgSeg, va))) { return TRUE; }
-    if(!VmmRead2(ctx->pSystemProcess, pe->va, pe->pb, ctx->po->_HEAP_PAGE_SEGMENT.cb, VMMDLL_FLAG_FORCECACHE_READ)) { return FALSE; }
+    if(!VmmRead2(H, ctx->pSystemProcess, pe->va, pe->pb, ctx->po->_HEAP_PAGE_SEGMENT.cb, VMMDLL_FLAG_FORCECACHE_READ)) { return FALSE; }
     // signature check
-    vaSignature = VMM_PTR_OFFSET_DUAL(ctxVmm->f32, pe->pb, 8, 16) ^ ctx->qwKeyHeap ^ va ^ 0xa2e64eada2e64ead;
-    if(!VMM_KADDR_4_8(vaSignature)) { return TRUE; }
+    vaSignature = VMM_PTR_OFFSET_DUAL(f32, pe->pb, 8, 16) ^ ctx->qwKeyHeap ^ va ^ 0xa2e64eada2e64ead;
+    if(!VMM_KADDR_4_8(f32, vaSignature)) { return TRUE; }
     pe->fValid = TRUE;
     // flink/blink
     for(i = 0; i < 2; i++) {
-        vaNext = VMM_PTR_OFFSET_DUAL(ctxVmm->f32, pe->pb, i * 4, i * 8);
-        if(VMM_KADDR_PAGE(vaNext) && !ObMap_ExistsKey(ctx->pmPgSeg, vaNext) && (peNext = LocalAlloc(0, sizeof(VMMWINPOOL_HEAP_PAGE_SEGMENT)))) {
+        vaNext = VMM_PTR_OFFSET_DUAL(f32, pe->pb, i * 4, i * 8);
+        if(VMM_KADDR_PAGE(f32, vaNext) && !ObMap_ExistsKey(ctx->pmPgSeg, vaNext) && (peNext = LocalAlloc(0, sizeof(VMMWINPOOL_HEAP_PAGE_SEGMENT)))) {
             peNext->va = vaNext;
             peNext->pHeap = pe->pHeap;
             peNext->ucUnitShift = pe->ucUnitShift;
@@ -743,24 +750,24 @@ BOOL VmmWinPool_AllPool1903_3_HeapFillPageSegment_ProcessSingleCandidate(_In_ PV
 /*
 * fetch and parse [nt!_HEAP_PAGE_SEGMENT]
 */
-VOID VmmWinPool_AllPool1903_3_HeapFillPageSegment(_In_ PVMMWINPOOL_CTX ctx)
+VOID VmmWinPool_AllPool1903_3_HeapFillPageSegment(_In_ VMM_HANDLE H, _In_ PVMMWINPOOL_CTX ctx)
 {
     QWORD va;
     POB_SET psvaObTry1 = NULL, psvaObTry2 = NULL;
-    if(!(psvaObTry2 = ObSet_New())) { goto fail; }
+    if(!(psvaObTry2 = ObSet_New(H))) { goto fail; }
     if(!(psvaObTry1 = ObMap_FilterSet(ctx->pmPgSeg, ObMap_FilterSet_FilterAllKey))) { goto fail; }
     while(TRUE) {
         // try1 items
         while((va = ObSet_Pop(psvaObTry1))) {
-            if(!VmmWinPool_AllPool1903_3_HeapFillPageSegment_ProcessSingleCandidate(ctx, psvaObTry1, va)) {
+            if(!VmmWinPool_AllPool1903_3_HeapFillPageSegment_ProcessSingleCandidate(H, ctx, psvaObTry1, va)) {
                 ObSet_Push(psvaObTry2, va);
             }
         }
         // prefetch & try2 items
         if(!ObSet_Size(psvaObTry2)) { break; }
-        VmmWinPool_AllPool1903_3_HeapFillPageSegment_Prefetch(ctx, psvaObTry2);
+        VmmWinPool_AllPool1903_3_HeapFillPageSegment_Prefetch(H, ctx, psvaObTry2);
         while((va = ObSet_Pop(psvaObTry2))) {
-            VmmWinPool_AllPool1903_3_HeapFillPageSegment_ProcessSingleCandidate(ctx, psvaObTry1, va);
+            VmmWinPool_AllPool1903_3_HeapFillPageSegment_ProcessSingleCandidate(H, ctx, psvaObTry1, va);
         }
     }
 fail:
@@ -773,7 +780,7 @@ fail:
 * maps and return its unit size.
 * TODO: add support for LargePool.
 */
-UCHAR VmmWinPool_AllPool1903_4_HeapPageRangeDescriptor_SingleDescriptor(_In_ PVMMWINPOOL_CTX ctx, _In_ PVMMWINPOOL_HEAP_PAGE_SEGMENT pPgSeg, _In_ DWORD iRD)
+UCHAR VmmWinPool_AllPool1903_4_HeapPageRangeDescriptor_SingleDescriptor(_In_ VMM_HANDLE H, _In_ PVMMWINPOOL_CTX ctx, _In_ PVMMWINPOOL_HEAP_PAGE_SEGMENT pPgSeg, _In_ DWORD iRD)
 {
     QWORD vaRange;
     UCHAR ucUnitSize, ucRangeFlags;
@@ -782,7 +789,7 @@ UCHAR VmmWinPool_AllPool1903_4_HeapPageRangeDescriptor_SingleDescriptor(_In_ PVM
     oRD = ctx->po->_HEAP_PAGE_RANGE_DESCRIPTOR.cb * iRD;
     ucUnitSize   = *(PUCHAR)(pPgSeg->pb + oRD + ctx->po->_HEAP_PAGE_RANGE_DESCRIPTOR.oUnitSize);
     ucRangeFlags = *(PUCHAR)(pPgSeg->pb + oRD + ctx->po->_HEAP_PAGE_RANGE_DESCRIPTOR.oRangeFlags);
-    if(ctxVmm->f32) { ucRangeFlags &= 0x1f; }
+    if(H->vmm.f32) { ucRangeFlags &= 0x1f; }
     vaRange = pPgSeg->va + iRD * (1ULL << pPgSeg->ucUnitShift);
     cbRange = ucUnitSize * (1ULL << pPgSeg->ucUnitShift);
     if(ucUnitSize == 0) { return 1; }
@@ -815,7 +822,7 @@ UCHAR VmmWinPool_AllPool1903_4_HeapPageRangeDescriptor_SingleDescriptor(_In_ PVM
 * TODO: add support for LargePool.
 */
 _Success_(return)
-BOOL VmmWinPool_AllPool1903_4_HeapPageRangeDescriptor(PVMMWINPOOL_CTX ctx)
+BOOL VmmWinPool_AllPool1903_4_HeapPageRangeDescriptor(_In_ VMM_HANDLE H, PVMMWINPOOL_CTX ctx)
 {
     DWORD iPgSeg, cPgSegMax, iRD;
     PVMMWINPOOL_HEAP_PAGE_SEGMENT pePgSeg;
@@ -825,7 +832,7 @@ BOOL VmmWinPool_AllPool1903_4_HeapPageRangeDescriptor(PVMMWINPOOL_CTX ctx)
         if(!pePgSeg || !pePgSeg->fValid) { continue; }
         iRD = pePgSeg->ucFirstDescriptorIndex;
         while(iRD < 256) {
-            iRD += VmmWinPool_AllPool1903_4_HeapPageRangeDescriptor_SingleDescriptor(ctx, pePgSeg, iRD);
+            iRD += VmmWinPool_AllPool1903_4_HeapPageRangeDescriptor_SingleDescriptor(H, ctx, pePgSeg, iRD);
         }
     }
     return ObMap_Size(ctx->pmLfh) || ObMap_Size(ctx->pmVs);
@@ -835,12 +842,14 @@ BOOL VmmWinPool_AllPool1903_4_HeapPageRangeDescriptor(PVMMWINPOOL_CTX ctx)
 * Parse the vs heap segment - [nt!_HEAP_VS_SUBSEGMENT] // [nt!_HEAP_VS_CHUNK_HEADER]
 */
 VOID VmmWinPool_AllPool1903_5_VS_DoWork(
+    _In_ VMM_HANDLE H,
     _In_ PVMMWINPOOL_CTX ctx,
     _In_ QWORD va,
     _In_ PBYTE pb,
     _In_ DWORD cb,
     _In_ PVMMWINPOOL_HEAP_PAGE_SEGMENT pPgSeg
 ) {
+    BOOL f32 = H->vmm.f32;
     DWORD cbPoolHdr, oVsChunkHdr, cbChunkSize, oBlock, cbBlock, cbAdjust;
     QWORD vaBlock, vaChunkHeader;
     WORD wSize, wSignature;
@@ -848,7 +857,7 @@ VOID VmmWinPool_AllPool1903_5_VS_DoWork(
     P_HEAP_VS_CHUNK_HEADER_SIZE32 pChunkSize32;
     P_HEAP_VS_CHUNK_HEADER_SIZE64 pChunkSize64;
     // 32/64-bit dependent offsets:
-    if(ctxVmm->f32) {
+    if(f32) {
         cbPoolHdr = 8;
         oVsChunkHdr = 0x18;
         wSize = *(PWORD)(ctx->pb + 0x14);
@@ -866,7 +875,7 @@ VOID VmmWinPool_AllPool1903_5_VS_DoWork(
     // loop over pool entries
     while(oVsChunkHdr + 0x30 < cb) {
         vaChunkHeader = va + oVsChunkHdr;
-        if(ctxVmm->f32) {
+        if(f32) {
             pChunkSize32 = (P_HEAP_VS_CHUNK_HEADER_SIZE32)(pb + oVsChunkHdr);
             pChunkSize32->HeaderBits = (DWORD)(pChunkSize32->HeaderBits ^ vaChunkHeader ^ ctx->qwKeyHeap);
             fAlloc = (pChunkSize32->Allocated & 1) ? TRUE : FALSE;
@@ -896,7 +905,7 @@ VOID VmmWinPool_AllPool1903_5_VS_DoWork(
                 // nb! allocation (excl. chunkhdr) does not cross page boundary
                 if((cbBlock < ctx->po->cbBigPoolThreshold) || ((vaBlock & 0xfff) < ctx->po->cbBigPoolThreshold)) {
                     // Larger [0xff0+] Vs allocations are also visible in big pool table - so skip these duplicates!
-                    VmmWinPool_AllPool_PushItem(&ctx->pVs, pPgSeg->pHeap->tpPool, VMM_MAP_POOL_TPSS_VS, vaBlock, pb + oBlock, cbBlock, TRUE);
+                    VmmWinPool_AllPool_PushItem(H, &ctx->pVs, pPgSeg->pHeap->tpPool, VMM_MAP_POOL_TPSS_VS, vaBlock, pb + oBlock, cbBlock, TRUE);
                 }
             }
         }
@@ -908,6 +917,7 @@ VOID VmmWinPool_AllPool1903_5_VS_DoWork(
 * Parse the low fragmentation heap segment - [nt!_HEAP_LFH_SUBSEGMENT]
 */
 VOID VmmWinPool_AllPool1903_5_LFH_DoWork(
+    _In_ VMM_HANDLE H,
     _In_ PVMMWINPOOL_CTX ctx,
     _In_ QWORD va,
     _In_ PBYTE pb,
@@ -930,7 +940,7 @@ VOID VmmWinPool_AllPool1903_5_LFH_DoWork(
         oBlock = oFirstBlock + iBlock * cbBlockSize;
         if((oBlock & 0xfff) + cbBlockSize > 0x1000) { continue; }   // block do not cross page boundaries
         ucBits = pbBitmap[iBlock >> 2] >> ((iBlock & 0x3) << 1);
-        VmmWinPool_AllPool_PushItem(&ctx->pLfh, pPgSeg->pHeap->tpPool, VMM_MAP_POOL_TPSS_LFH, va + oBlock, pb + oBlock, cbBlockSize, ((ucBits & 3) == 1));
+        VmmWinPool_AllPool_PushItem(H, &ctx->pLfh, pPgSeg->pHeap->tpPool, VMM_MAP_POOL_TPSS_LFH, va + oBlock, pb + oBlock, cbBlockSize, ((ucBits & 3) == 1));
     }
 }
 
@@ -939,7 +949,7 @@ VOID VmmWinPool_AllPool1903_5_LFH_DoWork(
 * This should be done in a fairly efficient by fetching around 8MB LFH/VS data
 * per read call to the underlying system.
 */
-VOID VmmWinPool_AllPool1903_5_LFHVS(_In_ PVMMWINPOOL_CTX ctx, _In_ BOOL fVS)
+VOID VmmWinPool_AllPool1903_5_LFHVS(_In_ VMM_HANDLE H, _In_ PVMMWINPOOL_CTX ctx, _In_ BOOL fVS)
 {
     DWORD i, iSS, iPrefetchBase = 0, cMax;
     QWORD cbPrefetch = 0;
@@ -949,22 +959,22 @@ VOID VmmWinPool_AllPool1903_5_LFHVS(_In_ PVMMWINPOOL_CTX ctx, _In_ BOOL fVS)
     PVMMWINPOOL_HEAP_LFH_VS pe;
     pbBuffer = fVS ? ctx->pb : ctx->pb + VMMWINPOOL_PREFETCH_BUFFER_SIZE;
     pmVsLfh = fVS ? ctx->pmVs : ctx->pmLfh;
-    if(!(psObPrefetch = ObSet_New())) { return; }
+    if(!(psObPrefetch = ObSet_New(H))) { return; }
     cMax = ObMap_Size(pmVsLfh);
     for(iSS = 0; iSS < cMax; iSS++) {
         pe = ObMap_GetByIndex(pmVsLfh, iSS);
         ObSet_Push_PageAlign(psObPrefetch, pe->va, pe->cb);
         cbPrefetch += pe->cb;
         if((cbPrefetch > VMMWINPOOL_PREFETCH_BUFFER_SIZE) || (iSS + 1 == cMax)) {
-            VmmCachePrefetchPages(ctx->pSystemProcess, psObPrefetch, 0);
+            VmmCachePrefetchPages(H, ctx->pSystemProcess, psObPrefetch, 0);
             for(i = iPrefetchBase; i <= iSS; i++) {
                 pe = ObMap_GetByIndex(pmVsLfh, i);
                 if(pe->cb > VMMWINPOOL_PREFETCH_BUFFER_SIZE) { continue; }
-                VmmReadEx(ctx->pSystemProcess, pe->va, pbBuffer, pe->cb, NULL, VMM_FLAG_FORCECACHE_READ | VMM_FLAG_ZEROPAD_ON_FAIL);
+                VmmReadEx(H, ctx->pSystemProcess, pe->va, pbBuffer, pe->cb, NULL, VMM_FLAG_FORCECACHE_READ | VMM_FLAG_ZEROPAD_ON_FAIL);
                 if(fVS) {
-                    VmmWinPool_AllPool1903_5_VS_DoWork(ctx, pe->va, pbBuffer, pe->cb, pe->pPgSeg);
+                    VmmWinPool_AllPool1903_5_VS_DoWork(H, ctx, pe->va, pbBuffer, pe->cb, pe->pPgSeg);
                 } else {
-                    VmmWinPool_AllPool1903_5_LFH_DoWork(ctx, pe->va, pbBuffer, pe->cb, pe->pPgSeg);
+                    VmmWinPool_AllPool1903_5_LFH_DoWork(H, ctx, pe->va, pbBuffer, pe->cb, pe->pPgSeg);
                 }
             }
             ObSet_Clear(psObPrefetch);
@@ -975,27 +985,28 @@ VOID VmmWinPool_AllPool1903_5_LFHVS(_In_ PVMMWINPOOL_CTX ctx, _In_ BOOL fVS)
     Ob_DECREF(psObPrefetch);
 }
 
-DWORD WINAPI VmmWinPool_AllPool1903_5_LFH(_In_ PVOID lpThreadParam)
+DWORD WINAPI VmmWinPool_AllPool1903_5_LFH(_In_ VMM_HANDLE H, _In_ PVOID lpThreadParam)
 {
-    VmmWinPool_AllPool1903_5_LFHVS(lpThreadParam, FALSE);
+    VmmWinPool_AllPool1903_5_LFHVS(H, lpThreadParam, FALSE);
     return 0;
 }
 
-DWORD WINAPI VmmWinPool_AllPool1903_5_VS(_In_ PVOID lpThreadParam)
+DWORD WINAPI VmmWinPool_AllPool1903_5_VS(_In_ VMM_HANDLE H, _In_ PVOID lpThreadParam)
 {
-    VmmWinPool_AllPool1903_5_LFHVS(lpThreadParam, TRUE);
+    VmmWinPool_AllPool1903_5_LFHVS(H, lpThreadParam, TRUE);
     return 0;
 }
 
 /*
 * Create a pool map containing all pool entries on Windows 10 1809 and above.
 * CALLER DECREF: return
+* -- H
 * -- pSystemProcess
 * -- pPoolBig
 * -- return
 */
 _Success_(return != NULL)
-PVMMOB_MAP_POOL VmmWinPool_AllPool1903_DoWork(_In_ PVMM_PROCESS pSystemProcess, _In_ PVMMOB_MAP_POOL pPoolBig)
+PVMMOB_MAP_POOL VmmWinPool_AllPool1903_DoWork(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_ PVMMOB_MAP_POOL pPoolBig)
 {
     PVMMOB_MAP_POOL pObPoolAll = NULL;
     PVMMWINPOOL_CTX ctx = NULL;
@@ -1003,25 +1014,25 @@ PVMMOB_MAP_POOL VmmWinPool_AllPool1903_DoWork(_In_ PVMM_PROCESS pSystemProcess, 
     PVMMWINPOOL_CTX_POOLSTORE pStore;
     // 1: alloc & init
     if(!(ctx = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMWINPOOL_CTX)))) { goto fail; }
-    if(!(ctx->pmHeap = ObMap_New(OB_MAP_FLAGS_OBJECT_LOCALFREE))) { goto fail; }
-    if(!(ctx->pmPgSeg = ObMap_New(OB_MAP_FLAGS_OBJECT_LOCALFREE))) { goto fail; }
-    if(!(ctx->pmLfh = ObMap_New(OB_MAP_FLAGS_OBJECT_LOCALFREE))) { goto fail; }
-    if(!(ctx->pmVs = ObMap_New(OB_MAP_FLAGS_OBJECT_LOCALFREE))) { goto fail; }
-    if(!(ctx->psPrefetch = ObSet_New())) { goto fail; }
+    if(!(ctx->pmHeap = ObMap_New(H, OB_MAP_FLAGS_OBJECT_LOCALFREE))) { goto fail; }
+    if(!(ctx->pmPgSeg = ObMap_New(H, OB_MAP_FLAGS_OBJECT_LOCALFREE))) { goto fail; }
+    if(!(ctx->pmLfh = ObMap_New(H, OB_MAP_FLAGS_OBJECT_LOCALFREE))) { goto fail; }
+    if(!(ctx->pmVs = ObMap_New(H, OB_MAP_FLAGS_OBJECT_LOCALFREE))) { goto fail; }
+    if(!(ctx->psPrefetch = ObSet_New(H))) { goto fail; }
     if(!(ctx->pVs = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMWINPOOL_CTX_POOLSTORE)))) { goto fail; }
     if(!(ctx->pLfh = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMWINPOOL_CTX_POOLSTORE)))) { goto fail; }
     ctx->pSystemProcess = pSystemProcess;
     ctx->po = &off;
     // 2: do work in different stages
-    if(!VmmWinPool_AllPool1903_Offsets(pSystemProcess, &off)) { goto fail; }
-    if(!VmmWinPool_AllPool1903_1_HeapMgr(ctx, &off)) { goto fail; }
-    if(!VmmWinPool_AllPool1903_2_HeapFillSegmentHeap(ctx)) { goto fail; }
-    VmmWinPool_AllPool1903_3_HeapFillPageSegment(ctx);
-    if(!VmmWinPool_AllPool1903_4_HeapPageRangeDescriptor(ctx)) { goto fail; }
+    if(!VmmWinPool_AllPool1903_Offsets(H, pSystemProcess, &off)) { goto fail; }
+    if(!VmmWinPool_AllPool1903_1_HeapMgr(H, ctx, &off)) { goto fail; }
+    if(!VmmWinPool_AllPool1903_2_HeapFillSegmentHeap(H, ctx)) { goto fail; }
+    VmmWinPool_AllPool1903_3_HeapFillPageSegment(H, ctx);
+    if(!VmmWinPool_AllPool1903_4_HeapPageRangeDescriptor(H, ctx)) { goto fail; }
     // 3: fetch LFH and VS heap allocations in two separate threads
-    VmmWorkWaitMultiple(ctx, 2, VmmWinPool_AllPool1903_5_LFH, VmmWinPool_AllPool1903_5_VS);
+    VmmWorkWaitMultiple_Void(H, ctx, 2, VmmWinPool_AllPool1903_5_LFH, VmmWinPool_AllPool1903_5_VS);
     // 4: create pool map given the lfh, vs and big pool entries
-    pObPoolAll = VmmWinPool_AllPool_CreateMap(pPoolBig, (PVMMWINPOOL_CTX_POOLSTORE[2]){ ctx->pLfh, ctx->pVs }, 2);
+    pObPoolAll = VmmWinPool_AllPool_CreateMap(H, pPoolBig, (PVMMWINPOOL_CTX_POOLSTORE[2]){ ctx->pLfh, ctx->pVs }, 2);
 fail:
     if(ctx) {
         while(ctx->pVs) {
@@ -1064,7 +1075,7 @@ typedef struct tdVMMWINPOOL7_CTX {
 } VMMWINPOOL7_CTX, *PVMMWINPOOL7_CTX;
 
 _Success_(return)
-BOOL VmmWinPool_AllPool7_RangeInit(_In_ PVMMWINPOOL7_CTX ctx)
+BOOL VmmWinPool_AllPool7_RangeInit(_In_ VMM_HANDLE H, _In_ PVMMWINPOOL7_CTX ctx)
 {
     BOOL fResult = FALSE;
     QWORD va, vaPteTop = 0;
@@ -1074,14 +1085,14 @@ BOOL VmmWinPool_AllPool7_RangeInit(_In_ PVMMWINPOOL7_CTX ctx)
     POB_SET psvaOb = NULL;
     PVMMOB_MAP_HANDLE pObHnd = NULL;
     PVMMOB_MAP_OBJECT pObObj = NULL;
-    if(!(psvaOb = ObSet_New())) { goto fail; }
+    if(!(psvaOb = ObSet_New(H))) { goto fail; }
     // 1: fetch sorted handle & object addresses (which are residing inside the pool):
-    if(VmmMap_GetHandle(ctx->pSystemProcess, &pObHnd, FALSE)) {
+    if(VmmMap_GetHandle(H, ctx->pSystemProcess, &pObHnd, FALSE)) {
         for(i = 0; i < pObHnd->cMap; i++) {
             ObSet_Push(psvaOb, pObHnd->pMap[i].vaObject & ~0x1fffff);   // 2MB align
         }
     }
-    if(VmmMap_GetObject(&pObObj)) {
+    if(VmmMap_GetObject(H, &pObObj)) {
         for(i = 0; i < pObObj->cMap; i++) {
             ObSet_Push(psvaOb, pObObj->pMap[i].va & ~0x1fffff);         // 2MB align
         }
@@ -1107,9 +1118,9 @@ fail:
     return fResult;
 }
 
-VOID VmmWinPool_AllPool7_ProcessSingleRange(_In_ PVMMWINPOOL7_CTX ctx, _In_ PVMMWINPOOL7_RANGE pe, _In_ PBYTE pb)
+VOID VmmWinPool_AllPool7_ProcessSingleRange(_In_ VMM_HANDLE H, _In_ PVMMWINPOOL7_CTX ctx, _In_ PVMMWINPOOL7_RANGE pe, _In_ PBYTE pb)
 {
-    BOOL f, fTagBad, fPrev = FALSE, f32 = ctxVmm->f32;
+    BOOL f, fTagBad, fPrev = FALSE, f32 = H->vmm.f32;
     CHAR ch;
     DWORD cbBlock = f32 ? 8 : 16;
     DWORD i, o = 0, dwPrevBlockSize = 0;
@@ -1161,6 +1172,7 @@ VOID VmmWinPool_AllPool7_ProcessSingleRange(_In_ PVMMWINPOOL7_CTX ctx, _In_ PVMM
         }
         // add pool entry!
         VmmWinPool_AllPool_PushItem(
+            H,
             &ctx->pStore,
             pe->tp,
             VMM_MAP_POOL_TPSS_NA,
@@ -1184,25 +1196,25 @@ next:
 * Process ranges within ctx->pmRange in a fairly efficient way.
 */
 _Success_(return)
-BOOL VmmWinPool_AllPool7_ProcessRanges(_In_ PVMMWINPOOL7_CTX ctx)
+BOOL VmmWinPool_AllPool7_ProcessRanges(_In_ VMM_HANDLE H, _In_ PVMMWINPOOL7_CTX ctx)
 {
     DWORD iRP, iR, cR, iPrefetchBase = 0;
     QWORD cbPrefetch = 0;
     PVMMWINPOOL7_RANGE pe;
     POB_SET psObPrefetch = NULL;
-    if(!(psObPrefetch = ObSet_New())) { return FALSE; }
+    if(!(psObPrefetch = ObSet_New(H))) { return FALSE; }
     cR = ObMap_Size(ctx->pmRange);
     for(iRP = 0; iRP < cR; iRP++) {
         pe = ObMap_GetByIndex(ctx->pmRange, iRP);
         ObSet_Push_PageAlign(psObPrefetch, pe->va, pe->cb);
         cbPrefetch += pe->cb;
         if((cbPrefetch > VMMWINPOOL_PREFETCH_BUFFER_SIZE) || (iRP + 1 == cR)) {
-            VmmCachePrefetchPages(ctx->pSystemProcess, psObPrefetch, 0);
+            VmmCachePrefetchPages(H, ctx->pSystemProcess, psObPrefetch, 0);
             for(iR = iPrefetchBase; iR <= iRP; iR++) {
                 pe = ObMap_GetByIndex(ctx->pmRange, iR);
                 if(pe->cb > 0x00200000) { continue; }
-                VmmReadEx(ctx->pSystemProcess, pe->va, ctx->pbBuffer2M, pe->cb, NULL, VMM_FLAG_FORCECACHE_READ | VMM_FLAG_ZEROPAD_ON_FAIL);
-                VmmWinPool_AllPool7_ProcessSingleRange(ctx, pe, ctx->pbBuffer2M);
+                VmmReadEx(H, ctx->pSystemProcess, pe->va, ctx->pbBuffer2M, pe->cb, NULL, VMM_FLAG_FORCECACHE_READ | VMM_FLAG_ZEROPAD_ON_FAIL);
+                VmmWinPool_AllPool7_ProcessSingleRange(H, ctx, pe, ctx->pbBuffer2M);
             }
             ObSet_Clear(psObPrefetch);
             iPrefetchBase = iRP + 1;
@@ -1216,25 +1228,26 @@ BOOL VmmWinPool_AllPool7_ProcessRanges(_In_ PVMMWINPOOL7_CTX ctx)
 /*
 * Create a pool map containing all pool entries on Windows Vista to Windows10_1809
 * CALLER DECREF: return
+* -- H
 * -- pSystemProcess
 * -- pPoolBig
 * -- return
 */
 _Success_(return != NULL)
-PVMMOB_MAP_POOL VmmWinPool_AllPool7_DoWork(_In_ PVMM_PROCESS pSystemProcess, _In_ PVMMOB_MAP_POOL pPoolBig)
+PVMMOB_MAP_POOL VmmWinPool_AllPool7_DoWork(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_ PVMMOB_MAP_POOL pPoolBig)
 {
     PVMMOB_MAP_POOL pObPoolAll = NULL;
     PVMMWINPOOL7_CTX ctx = NULL;
     PVMMWINPOOL_CTX_POOLSTORE pStore;
     // 1: alloc & init
     if(!(ctx = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMWINPOOL7_CTX)))) { goto fail; }
-    if(!(ctx->pmRange = ObMap_New(OB_MAP_FLAGS_OBJECT_LOCALFREE))) { goto fail; }
+    if(!(ctx->pmRange = ObMap_New(H, OB_MAP_FLAGS_OBJECT_LOCALFREE))) { goto fail; }
     if(!(ctx->pStore = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMWINPOOL_CTX_POOLSTORE)))) { goto fail; }
     ctx->pSystemProcess = pSystemProcess;
     //if(!VmmWinPool_AllPool7_Offset(ctx)) { goto fail; }
-    if(!VmmWinPool_AllPool7_RangeInit(ctx)) { goto fail; }
-    if(!VmmWinPool_AllPool7_ProcessRanges(ctx)) { goto fail; }
-    pObPoolAll = VmmWinPool_AllPool_CreateMap(pPoolBig, &ctx->pStore, 1);
+    if(!VmmWinPool_AllPool7_RangeInit(H, ctx)) { goto fail; }
+    if(!VmmWinPool_AllPool7_ProcessRanges(H, ctx)) { goto fail; }
+    pObPoolAll = VmmWinPool_AllPool_CreateMap(H, pPoolBig, &ctx->pStore, 1);
 fail:
     if(ctx) {
         while(ctx->pStore) {
@@ -1257,53 +1270,55 @@ fail:
 /*
 * Create a pool map containing all pool entries.
 * CALLER DECREF: return
+* -- H
 * -- pSystemProcess
 * -- pPoolBig
 * -- return
 */
 _Success_(return != NULL)
-PVMMOB_MAP_POOL VmmWinPool_Initialize_AllPool_DoWork(_In_ PVMM_PROCESS pSystemProcess, _In_ PVMMOB_MAP_POOL pPoolBig)
+PVMMOB_MAP_POOL VmmWinPool_Initialize_AllPool_DoWork(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_ PVMMOB_MAP_POOL pPoolBig)
 {
-    return (ctxVmm->kernel.dwVersionBuild >= 18362) ?
-        VmmWinPool_AllPool1903_DoWork(pSystemProcess, pPoolBig) :   // 1903+
-        VmmWinPool_AllPool7_DoWork(pSystemProcess, pPoolBig);       // XP->1809
+    return (H->vmm.kernel.dwVersionBuild >= 18362) ?
+        VmmWinPool_AllPool1903_DoWork(H, pSystemProcess, pPoolBig) :   // 1903+
+        VmmWinPool_AllPool7_DoWork(H, pSystemProcess, pPoolBig);       // XP->1809
 }
 
 /*
 * Create a pool map and assign to the global vmm context upon success.
 * CALLER DECREF: return
+* -- H
 * -- fAll = TRUE: retrieve all pools; FALSE: retrieve big page pool only.
 * -- return
 */
-PVMMOB_MAP_POOL VmmWinPool_Initialize(_In_ BOOL fAll)
+PVMMOB_MAP_POOL VmmWinPool_Initialize(_In_ VMM_HANDLE H, _In_ BOOL fAll)
 {
     PVMM_PROCESS pObSystemProcess = NULL;
     PVMMOB_MAP_POOL pObPoolBig = NULL, pObPoolAll = NULL;
-    if(fAll && (pObPoolAll = ObContainer_GetOb(ctxVmm->pObCMapPoolAll))) { return pObPoolAll; }
-    if((pObPoolBig = ObContainer_GetOb(ctxVmm->pObCMapPoolBig)) && !fAll) { return pObPoolBig; }
+    if(fAll && (pObPoolAll = ObContainer_GetOb(H->vmm.pObCMapPoolAll))) { return pObPoolAll; }
+    if((pObPoolBig = ObContainer_GetOb(H->vmm.pObCMapPoolBig)) && !fAll) { return pObPoolBig; }
     // fetch big pool map (if required)
-    if(!pObPoolBig && (pObSystemProcess = VmmProcessGet(4))) {
-        EnterCriticalSection(&ctxVmm->LockUpdateMap);
-        if(!(pObPoolBig = ObContainer_GetOb(ctxVmm->pObCMapPoolBig))) {
-            pObPoolBig = VmmWinPool_Initialize_BigPool_DoWork(pObSystemProcess);
-            ObContainer_SetOb(ctxVmm->pObCMapPoolBig, pObPoolBig);
+    if(!pObPoolBig && (pObSystemProcess = VmmProcessGet(H, 4))) {
+        EnterCriticalSection(&H->vmm.LockUpdateMap);
+        if(!(pObPoolBig = ObContainer_GetOb(H->vmm.pObCMapPoolBig))) {
+            pObPoolBig = VmmWinPool_Initialize_BigPool_DoWork(H, pObSystemProcess);
+            ObContainer_SetOb(H->vmm.pObCMapPoolBig, pObPoolBig);
         }
-        LeaveCriticalSection(&ctxVmm->LockUpdateMap);
+        LeaveCriticalSection(&H->vmm.LockUpdateMap);
         Ob_DECREF_NULL(&pObSystemProcess);
     }
     if(!fAll || !pObPoolBig) { return pObPoolBig; }
     // fetch all pool map
-    if(!pObPoolAll && (pObSystemProcess = VmmProcessGet(4))) {
-        EnterCriticalSection(&ctxVmm->LockUpdateMap);
-        if(!(pObPoolAll = ObContainer_GetOb(ctxVmm->pObCMapPoolAll))) {
-            pObPoolAll = VmmWinPool_Initialize_AllPool_DoWork(pObSystemProcess, pObPoolBig);
+    if(!pObPoolAll && (pObSystemProcess = VmmProcessGet(H, 4))) {
+        EnterCriticalSection(&H->vmm.LockUpdateMap);
+        if(!(pObPoolAll = ObContainer_GetOb(H->vmm.pObCMapPoolAll))) {
+            pObPoolAll = VmmWinPool_Initialize_AllPool_DoWork(H, pObSystemProcess, pObPoolBig);
             if(!pObPoolAll) {
                 // if all pool map fail - fallback to big pool map
                 pObPoolAll = Ob_INCREF(pObPoolBig);
             }
-            ObContainer_SetOb(ctxVmm->pObCMapPoolAll, pObPoolAll);
+            ObContainer_SetOb(H->vmm.pObCMapPoolAll, pObPoolAll);
         }
-        LeaveCriticalSection(&ctxVmm->LockUpdateMap);
+        LeaveCriticalSection(&H->vmm.LockUpdateMap);
         Ob_DECREF_NULL(&pObSystemProcess);
     }
     Ob_DECREF(pObPoolBig);
@@ -1312,9 +1327,10 @@ PVMMOB_MAP_POOL VmmWinPool_Initialize(_In_ BOOL fAll)
 
 /*
 * Refresh the Pool sub-system.
+* -- H
 */
-VOID VmmWinPool_Refresh()
+VOID VmmWinPool_Refresh(_In_ VMM_HANDLE H)
 {
-    ObContainer_SetOb(ctxVmm->pObCMapPoolAll, NULL);
-    ObContainer_SetOb(ctxVmm->pObCMapPoolBig, NULL);
+    ObContainer_SetOb(H->vmm.pObCMapPoolAll, NULL);
+    ObContainer_SetOb(H->vmm.pObCMapPoolBig, NULL);
 }

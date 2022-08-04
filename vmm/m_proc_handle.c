@@ -13,11 +13,11 @@
 #define MHANDLE_LINELENGTH       222ULL
 #define MHANDLE_LINEHEADER       "   #    PID  Handle Object Address   Access Type             Description"
 
-VOID MHandle_ReadLine_Callback(_Inout_opt_ PVOID ctx, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVMM_MAP_HANDLEENTRY pe, _Out_writes_(cbLineLength + 1) LPSTR szu8)
+VOID MHandle_ReadLine_CB(_In_ VMM_HANDLE H, _Inout_opt_ PVOID ctx, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVMM_MAP_HANDLEENTRY pe, _Out_writes_(cbLineLength + 1) LPSTR szu8)
 {
     PVMMWIN_OBJECT_TYPE pOT;
     CHAR szType[32] = { 0 };
-    if((pOT = VmmWin_ObjectTypeGet((BYTE)pe->iType))) {
+    if((pOT = VmmWin_ObjectTypeGet(H, (BYTE)pe->iType))) {
         snprintf(szType, _countof(szType), "%s", pOT->usz);
         szType[16] = 0;
     } else {
@@ -66,7 +66,8 @@ PVMM_MAP_HANDLEENTRY MHandle_HandleFromPath(_In_ LPSTR uszPath, _In_ PVMMOB_MAP_
 /*
 * Read : function as specified by the module manager. The module manager will
 * call into this callback function whenever a read shall occur from a "file".
-* -- ctx
+* -- H
+* -- ctxP
 * -- pb
 * -- cb
 * -- pcbRead
@@ -74,21 +75,21 @@ PVMM_MAP_HANDLEENTRY MHandle_HandleFromPath(_In_ LPSTR uszPath, _In_ PVMMOB_MAP_
 * -- return
 */
 _Success_(return == 0)
-NTSTATUS MHandle_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MHandle_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PVMMOB_MAP_HANDLE pObHandleMap = NULL;
     PVMM_MAP_HANDLEENTRY pe;
-    if(VmmMap_GetHandle(ctx->pProcess, &pObHandleMap, TRUE)) {
-        if(!_stricmp(ctx->uszPath, "handles.txt")) {
+    if(VmmMap_GetHandle(H, ctxP->pProcess, &pObHandleMap, TRUE)) {
+        if(!_stricmp(ctxP->uszPath, "handles.txt")) {
             nt = Util_VfsLineFixed_Read(
-                (UTIL_VFSLINEFIXED_PFN_CB)MHandle_ReadLine_Callback, NULL, MHANDLE_LINELENGTH, MHANDLE_LINEHEADER,
+                H, (UTIL_VFSLINEFIXED_PFN_CB)MHandle_ReadLine_CB, NULL, MHANDLE_LINELENGTH, MHANDLE_LINEHEADER,
                 pObHandleMap->pMap, pObHandleMap->cMap, sizeof(VMM_MAP_HANDLEENTRY),
                 pb, cb, pcbRead, cbOffset
             );
         }
-        if((pe = MHandle_HandleFromPath(ctx->uszPath, pObHandleMap))) {
-            nt = VmmWinObjDisplay_VfsRead(ctx->uszPath, pe->iType, pe->vaObject, pb, cb, pcbRead, cbOffset);
+        if((pe = MHandle_HandleFromPath(ctxP->uszPath, pObHandleMap))) {
+            nt = VmmWinObjDisplay_VfsRead(H, ctxP->uszPath, pe->iType, pe->vaObject, pb, cb, pcbRead, cbOffset);
         }
     }
     Ob_DECREF(pObHandleMap);
@@ -99,37 +100,38 @@ NTSTATUS MHandle_Read(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbR
 * List : function as specified by the module manager. The module manager will
 * call into this callback function whenever a list directory shall occur from
 * the given module.
-* -- ctx
+* -- H
+* -- ctxP
 * -- pFileList
 * -- return
 */
-BOOL MHandle_List(_In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Inout_ PHANDLE pFileList)
+BOOL MHandle_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList)
 {
     DWORD i;
     CHAR usz[MAX_PATH];
     PVMMWIN_OBJECT_TYPE ptp;
     PVMM_MAP_HANDLEENTRY pe;
     PVMMOB_MAP_HANDLE pObHandleMap = NULL;
-    if(!ctx->uszPath[0]) {
-        if(VmmMap_GetHandle(ctx->pProcess, &pObHandleMap, FALSE)) {
-            VMMDLL_VfsList_AddFile(pFileList, "handles.txt", UTIL_VFSLINEFIXED_LINECOUNT(pObHandleMap->cMap) * MHANDLE_LINELENGTH, NULL);
+    if(!ctxP->uszPath[0]) {
+        if(VmmMap_GetHandle(H, ctxP->pProcess, &pObHandleMap, FALSE)) {
+            VMMDLL_VfsList_AddFile(pFileList, "handles.txt", UTIL_VFSLINEFIXED_LINECOUNT(H, pObHandleMap->cMap) * MHANDLE_LINELENGTH, NULL);
             VMMDLL_VfsList_AddDirectory(pFileList, "by-id", NULL);
         }
         goto finish;
     }
-    if(!VmmMap_GetHandle(ctx->pProcess, &pObHandleMap, TRUE)) { return TRUE; }
-    if(!_stricmp(ctx->uszPath, "by-id")) {
+    if(!VmmMap_GetHandle(H, ctxP->pProcess, &pObHandleMap, TRUE)) { return TRUE; }
+    if(!_stricmp(ctxP->uszPath, "by-id")) {
         for(i = 0; i < pObHandleMap->cMap; i++) {
             pe = pObHandleMap->pMap + i;
-            if((ptp = VmmWin_ObjectTypeGet((BYTE)pe->iType)) && ptp->usz) {
+            if((ptp = VmmWin_ObjectTypeGet(H, (BYTE)pe->iType)) && ptp->usz) {
                 _snprintf_s(usz, MAX_PATH, _TRUNCATE, "%05X-%s", pe->dwHandle, ptp->usz);
                 VMMDLL_VfsList_AddDirectory(pFileList, usz, NULL);
             }
         }
         goto finish;
     }
-    if((pe = MHandle_HandleFromPath(ctx->uszPath, pObHandleMap))) {
-        VmmWinObjDisplay_VfsList(pe->iType, pe->vaObject, pFileList);
+    if((pe = MHandle_HandleFromPath(ctxP->uszPath, pObHandleMap))) {
+        VmmWinObjDisplay_VfsList(H, pe->iType, pe->vaObject, pFileList);
         goto finish;
     }
 finish:
@@ -140,7 +142,7 @@ finish:
 /*
 * Forensic JSON log:
 */
-VOID MHandle_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
+VOID MHandle_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
 {
     PVMM_PROCESS pProcess = ctxP->pProcess;
     PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd;
@@ -153,11 +155,11 @@ VOID MHandle_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(
     pd->dwVersion = VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION;
     pd->dwPID = pProcess->dwPID;
     pd->szjType = "handle";
-    if(VmmMap_GetHandle(ctxP->pProcess, &pObHandleMap, TRUE)) {
+    if(VmmMap_GetHandle(H, ctxP->pProcess, &pObHandleMap, TRUE)) {
         for(i = 0; i < pObHandleMap->cMap; i++) {
             pe = pObHandleMap->pMap + i;
             // get type:
-            if((pOT = VmmWin_ObjectTypeGet((BYTE)pe->iType))) {
+            if((pOT = VmmWin_ObjectTypeGet(H, (BYTE)pe->iType))) {
                 snprintf(uszType, _countof(uszType), "%s", pOT->usz);
             } else {
                 *(PDWORD)szTypePool = pe->dwPoolTag;
@@ -171,7 +173,7 @@ VOID MHandle_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(
             pd->qwHex[1] = pe->dwGrantedAccess;
             pd->usz[0] = uszType;
             pd->usz[1] = pe->uszText;
-            pfnLogJSON(pd);
+            pfnLogJSON(H, pd);
         }
     }
     Ob_DECREF(pObHandleMap);
@@ -186,7 +188,7 @@ VOID MHandle_FcLogJSON(_In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(
 * operating system or architecture is unsupported.
 * -- pPluginRegInfo
 */
-VOID M_ProcHandle_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
+VOID M_ProcHandle_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if(!((pRI->tpSystem == VMM_SYSTEM_WINDOWS_X64) || (pRI->tpSystem == VMM_SYSTEM_WINDOWS_X86))) { return; }
@@ -196,5 +198,5 @@ VOID M_ProcHandle_Initialize(_Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     pRI->reg_fn.pfnList = MHandle_List;                                 // List function supported
     pRI->reg_fn.pfnRead = MHandle_Read;                                 // Read function supported
     pRI->reg_fnfc.pfnLogJSON = MHandle_FcLogJSON;                       // JSON log function supported
-    pRI->pfnPluginManager_Register(pRI);
+    pRI->pfnPluginManager_Register(H, pRI);
 }

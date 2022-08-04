@@ -20,49 +20,51 @@
 
 /*
 * Try initialize threading - this is dependent on available PDB symbols.
+* -- H
 */
-VOID VmmWinInit_TryInitializeThreading()
+VOID VmmWinInit_TryInitializeThreading(_In_ VMM_HANDLE H)
 {
     BOOL f;
     DWORD cbEThread = 0;
-    PVMM_OFFSET_ETHREAD pti = &ctxVmm->offset.ETHREAD;
-    f = PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_EPROCESS", "ThreadListHead", &pti->oThreadListHeadKP) &&
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTHREAD", "StackBase", &pti->oStackBase) &&
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTHREAD", "StackLimit", &pti->oStackLimit) &&
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTHREAD", "State", &pti->oState) &&
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTHREAD", "SuspendCount", &pti->oSuspendCount) &&
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTHREAD", "Priority", &pti->oPriority) &&
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTHREAD", "BasePriority", &pti->oBasePriority) &&
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTHREAD", "WaitReason", &pti->oWaitReason) &&
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTHREAD", "Teb", &pti->oTeb) &&
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTHREAD", "TrapFrame", &pti->oTrapFrame) &&
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTHREAD", "KernelTime", &pti->oKernelTime) &&
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTHREAD", "UserTime", &pti->oUserTime) &&
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTHREAD", "Affinity", &pti->oAffinity) &&
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_ETHREAD", "CreateTime", &pti->oCreateTime) &&
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_ETHREAD", "ExitTime", &pti->oExitTime) &&
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_ETHREAD", "ExitStatus", &pti->oExitStatus) &&
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_ETHREAD", "StartAddress", &pti->oStartAddress) &&
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_ETHREAD", "ThreadListEntry", &pti->oThreadListEntry) &&
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_ETHREAD", "Cid", &pti->oCid) &&
-        PDB_GetTypeSize(PDB_HANDLE_KERNEL, "_ETHREAD", &cbEThread) &&
-        (PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTRAP_FRAME", "Rip", &pti->oTrapRip) || PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTRAP_FRAME", "Eip", &pti->oTrapRip)) &&
-        (PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTRAP_FRAME", "Rsp", &pti->oTrapRsp) || PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTRAP_FRAME", "HardwareEsp", &pti->oTrapRsp));
-    PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTHREAD", "Process", &pti->oProcessOpt);   // optional - does not exist in xp.
-    PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_KTHREAD", "Running", &pti->oRunningOpt);   // optional - does not exist in vista/xp.
+    PVMM_OFFSET_ETHREAD pti = &H->vmm.offset.ETHREAD;
+    f = PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_EPROCESS", "ThreadListHead", &pti->oThreadListHeadKP) &&
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTHREAD", "StackBase", &pti->oStackBase) &&
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTHREAD", "StackLimit", &pti->oStackLimit) &&
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTHREAD", "State", &pti->oState) &&
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTHREAD", "SuspendCount", &pti->oSuspendCount) &&
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTHREAD", "Priority", &pti->oPriority) &&
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTHREAD", "BasePriority", &pti->oBasePriority) &&
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTHREAD", "WaitReason", &pti->oWaitReason) &&
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTHREAD", "Teb", &pti->oTeb) &&
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTHREAD", "TrapFrame", &pti->oTrapFrame) &&
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTHREAD", "KernelTime", &pti->oKernelTime) &&
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTHREAD", "UserTime", &pti->oUserTime) &&
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTHREAD", "Affinity", &pti->oAffinity) &&
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_ETHREAD", "CreateTime", &pti->oCreateTime) &&
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_ETHREAD", "ExitTime", &pti->oExitTime) &&
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_ETHREAD", "ExitStatus", &pti->oExitStatus) &&
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_ETHREAD", "StartAddress", &pti->oStartAddress) &&
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_ETHREAD", "ThreadListEntry", &pti->oThreadListEntry) &&
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_ETHREAD", "Cid", &pti->oCid) &&
+        PDB_GetTypeSize(H, PDB_HANDLE_KERNEL, "_ETHREAD", &cbEThread) &&
+        (PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTRAP_FRAME", "Rip", &pti->oTrapRip) || PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTRAP_FRAME", "Eip", &pti->oTrapRip)) &&
+        (PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTRAP_FRAME", "Rsp", &pti->oTrapRsp) || PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTRAP_FRAME", "HardwareEsp", &pti->oTrapRsp));
+    PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTHREAD", "Process", &pti->oProcessOpt);   // optional - does not exist in xp.
+    PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTHREAD", "Running", &pti->oRunningOpt);   // optional - does not exist in vista/xp.
     pti->oMax = (WORD)(cbEThread + 8);
-    pti->oTebStackBase = ctxVmm->f32 ? 0x004 : 0x008;
-    pti->oTebStackLimit = ctxVmm->f32 ? 0x008 : 0x010;
-    ctxVmm->fThreadMapEnabled = f;
+    pti->oTebStackBase = H->vmm.f32 ? 0x004 : 0x008;
+    pti->oTebStackLimit = H->vmm.f32 ? 0x008 : 0x010;
+    H->vmm.fThreadMapEnabled = f;
 }
 
 /*
 * Try initialize not yet initialized values in the optional windows kernel
-* context ctxVmm->kernel.opt
+* context H->vmm.kernel.opt
 * This function should be run once the system is fully up and running.
 * This is a best-effort function, uninitialized values will remain zero.
+* -- H
 */
-VOID VmmWinInit_TryInitializeKernelOptionalValues()
+VOID VmmWinInit_TryInitializeKernelOptionalValues(_In_ VMM_HANDLE H)
 {
     BOOL f;
     PVMM_PROCESS pObSystemProcess = NULL;
@@ -72,217 +74,219 @@ VOID VmmWinInit_TryInitializeKernelOptionalValues()
     DWORD oKdpDataBlockEncoded, dwKDBG, dwo;
     BYTE bKdpDataBlockEncoded;
     PVMM_OFFSET_FILE pof;
-    if(ctxVmm->kernel.opt.fInitialized) { return; }
-    if(!(pObSystemProcess = VmmProcessGet(4))) { return; }
+    if(H->vmm.kernel.opt.fInitialized) { return; }
+    if(!(pObSystemProcess = VmmProcessGet(H, 4))) { return; }
     // Optional EPROCESS and _TOKEN offsets
-    if(!ctxVmm->offset.EPROCESS.opt.Token) {
+    if(!H->vmm.offset.EPROCESS.opt.Token) {
         // EPROCESS / KPROCESS
-        if(PDB_GetTypeChildOffset(PDB_HANDLE_KERNEL, "_EPROCESS", "Token", &dwo) && (dwo < pObSystemProcess->win.EPROCESS.cb - 8)) {
-            ctxVmm->offset.EPROCESS.opt.Token = (WORD)dwo;
+        if(PDB_GetTypeChildOffset(H, PDB_HANDLE_KERNEL, "_EPROCESS", "Token", &dwo) && (dwo < pObSystemProcess->win.EPROCESS.cb - 8)) {
+            H->vmm.offset.EPROCESS.opt.Token = (WORD)dwo;
         }
-        if(PDB_GetTypeChildOffset(PDB_HANDLE_KERNEL, "_EPROCESS", "CreateTime", &dwo) && (dwo < pObSystemProcess->win.EPROCESS.cb - 8)) {
-            ctxVmm->offset.EPROCESS.opt.CreateTime = (WORD)dwo;
+        if(PDB_GetTypeChildOffset(H, PDB_HANDLE_KERNEL, "_EPROCESS", "CreateTime", &dwo) && (dwo < pObSystemProcess->win.EPROCESS.cb - 8)) {
+            H->vmm.offset.EPROCESS.opt.CreateTime = (WORD)dwo;
         }
-        if(PDB_GetTypeChildOffset(PDB_HANDLE_KERNEL, "_EPROCESS", "ExitTime", &dwo) && (dwo < pObSystemProcess->win.EPROCESS.cb - 8)) {
-            ctxVmm->offset.EPROCESS.opt.ExitTime = (WORD)dwo;
+        if(PDB_GetTypeChildOffset(H, PDB_HANDLE_KERNEL, "_EPROCESS", "ExitTime", &dwo) && (dwo < pObSystemProcess->win.EPROCESS.cb - 8)) {
+            H->vmm.offset.EPROCESS.opt.ExitTime = (WORD)dwo;
         }
-        if(PDB_GetTypeChildOffset(PDB_HANDLE_KERNEL, "_KPROCESS", "KernelTime", &dwo) && (dwo < pObSystemProcess->win.EPROCESS.cb - 8)) {
-            ctxVmm->offset.EPROCESS.opt.KernelTime = (WORD)dwo;
+        if(PDB_GetTypeChildOffset(H, PDB_HANDLE_KERNEL, "_KPROCESS", "KernelTime", &dwo) && (dwo < pObSystemProcess->win.EPROCESS.cb - 8)) {
+            H->vmm.offset.EPROCESS.opt.KernelTime = (WORD)dwo;
         }
-        if(PDB_GetTypeChildOffset(PDB_HANDLE_KERNEL, "_KPROCESS", "UserTime", &dwo) && (dwo < pObSystemProcess->win.EPROCESS.cb - 8)) {
-            ctxVmm->offset.EPROCESS.opt.UserTime = (WORD)dwo;
+        if(PDB_GetTypeChildOffset(H, PDB_HANDLE_KERNEL, "_KPROCESS", "UserTime", &dwo) && (dwo < pObSystemProcess->win.EPROCESS.cb - 8)) {
+            H->vmm.offset.EPROCESS.opt.UserTime = (WORD)dwo;
         }
         // TOKEN
-        PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_TOKEN", &ctxVmm->offset.EPROCESS.opt.TOKEN_cb);
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_TOKEN", "IntegrityLevelIndex", &ctxVmm->offset.EPROCESS.opt.TOKEN_IntegrityLevelIndex);
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_TOKEN", "SessionId", &ctxVmm->offset.EPROCESS.opt.TOKEN_SessionId);
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_TOKEN", "TokenId", &ctxVmm->offset.EPROCESS.opt.TOKEN_TokenId);
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_TOKEN", "UserAndGroups", &ctxVmm->offset.EPROCESS.opt.TOKEN_UserAndGroups);
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_TOKEN", "UserAndGroupCount", &ctxVmm->offset.EPROCESS.opt.TOKEN_UserAndGroupCount);
+        PDB_GetTypeSizeShort(H, PDB_HANDLE_KERNEL, "_TOKEN", &H->vmm.offset.EPROCESS.opt.TOKEN_cb);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_TOKEN", "IntegrityLevelIndex", &H->vmm.offset.EPROCESS.opt.TOKEN_IntegrityLevelIndex);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_TOKEN", "SessionId", &H->vmm.offset.EPROCESS.opt.TOKEN_SessionId);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_TOKEN", "TokenId", &H->vmm.offset.EPROCESS.opt.TOKEN_TokenId);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_TOKEN", "UserAndGroups", &H->vmm.offset.EPROCESS.opt.TOKEN_UserAndGroups);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_TOKEN", "UserAndGroupCount", &H->vmm.offset.EPROCESS.opt.TOKEN_UserAndGroupCount);
     }
     // Optional _FILE_OBJECT related offsets
-    if(!ctxVmm->offset.FILE.fValid) {
-        pof = &ctxVmm->offset.FILE;
+    if(!H->vmm.offset.FILE.fValid) {
+        pof = &H->vmm.offset.FILE;
         // _FILE_OBJECT
-        PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_FILE_OBJECT", &pof->_FILE_OBJECT.cb);
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_FILE_OBJECT", "DeviceObject", &pof->_FILE_OBJECT.oDeviceObject);
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_FILE_OBJECT", "SectionObjectPointer", &pof->_FILE_OBJECT.oSectionObjectPointer);
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_FILE_OBJECT", "FileName", &pof->_FILE_OBJECT.oFileName);
-        pof->_FILE_OBJECT.oFileNameBuffer       = pof->_FILE_OBJECT.oFileName + (ctxVmm->f32 ? 4 : 8);
+        PDB_GetTypeSizeShort(H, PDB_HANDLE_KERNEL, "_FILE_OBJECT", &pof->_FILE_OBJECT.cb);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_FILE_OBJECT", "DeviceObject", &pof->_FILE_OBJECT.oDeviceObject);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_FILE_OBJECT", "SectionObjectPointer", &pof->_FILE_OBJECT.oSectionObjectPointer);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_FILE_OBJECT", "FileName", &pof->_FILE_OBJECT.oFileName);
+        pof->_FILE_OBJECT.oFileNameBuffer       = pof->_FILE_OBJECT.oFileName + (H->vmm.f32 ? 4 : 8);
         // _SECTION_OBJECT_POINTERS
-        PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_SECTION_OBJECT_POINTERS", &pof->_SECTION_OBJECT_POINTERS.cb);
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SECTION_OBJECT_POINTERS", "DataSectionObject", &pof->_SECTION_OBJECT_POINTERS.oDataSectionObject);
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SECTION_OBJECT_POINTERS", "SharedCacheMap", &pof->_SECTION_OBJECT_POINTERS.oSharedCacheMap);
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SECTION_OBJECT_POINTERS", "ImageSectionObject", &pof->_SECTION_OBJECT_POINTERS.oImageSectionObject);
+        PDB_GetTypeSizeShort(H, PDB_HANDLE_KERNEL, "_SECTION_OBJECT_POINTERS", &pof->_SECTION_OBJECT_POINTERS.cb);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_SECTION_OBJECT_POINTERS", "DataSectionObject", &pof->_SECTION_OBJECT_POINTERS.oDataSectionObject);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_SECTION_OBJECT_POINTERS", "SharedCacheMap", &pof->_SECTION_OBJECT_POINTERS.oSharedCacheMap);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_SECTION_OBJECT_POINTERS", "ImageSectionObject", &pof->_SECTION_OBJECT_POINTERS.oImageSectionObject);
         // _VACB
-        PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_VACB", &pof->_VACB.cb);
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_VACB", "BaseAddress", &pof->_VACB.oBaseAddress);
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_VACB", "SharedCacheMap", &pof->_VACB.oSharedCacheMap);
+        PDB_GetTypeSizeShort(H, PDB_HANDLE_KERNEL, "_VACB", &pof->_VACB.cb);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_VACB", "BaseAddress", &pof->_VACB.oBaseAddress);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_VACB", "SharedCacheMap", &pof->_VACB.oSharedCacheMap);
         // _SHARED_CACHE_MAP
-        PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_SHARED_CACHE_MAP", &pof->_SHARED_CACHE_MAP.cb);
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SHARED_CACHE_MAP", "FileSize", &pof->_SHARED_CACHE_MAP.oFileSize);
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SHARED_CACHE_MAP", "SectionSize", &pof->_SHARED_CACHE_MAP.oSectionSize);
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SHARED_CACHE_MAP", "ValidDataLength", &pof->_SHARED_CACHE_MAP.oValidDataLength);
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SHARED_CACHE_MAP", "InitialVacbs", &pof->_SHARED_CACHE_MAP.oInitialVacbs);
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SHARED_CACHE_MAP", "Vacbs", &pof->_SHARED_CACHE_MAP.oVacbs);
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SHARED_CACHE_MAP", "FileObjectFastRef", &pof->_SHARED_CACHE_MAP.oFileObjectFastRef);
+        PDB_GetTypeSizeShort(H, PDB_HANDLE_KERNEL, "_SHARED_CACHE_MAP", &pof->_SHARED_CACHE_MAP.cb);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_SHARED_CACHE_MAP", "FileSize", &pof->_SHARED_CACHE_MAP.oFileSize);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_SHARED_CACHE_MAP", "SectionSize", &pof->_SHARED_CACHE_MAP.oSectionSize);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_SHARED_CACHE_MAP", "ValidDataLength", &pof->_SHARED_CACHE_MAP.oValidDataLength);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_SHARED_CACHE_MAP", "InitialVacbs", &pof->_SHARED_CACHE_MAP.oInitialVacbs);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_SHARED_CACHE_MAP", "Vacbs", &pof->_SHARED_CACHE_MAP.oVacbs);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_SHARED_CACHE_MAP", "FileObjectFastRef", &pof->_SHARED_CACHE_MAP.oFileObjectFastRef);
         // _CONTROL_AREA
-        PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_CONTROL_AREA", &pof->_CONTROL_AREA.cb);
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_CONTROL_AREA", "Segment", &pof->_CONTROL_AREA.oSegment);
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_CONTROL_AREA", "FilePointer", &pof->_CONTROL_AREA.oFilePointer);
+        PDB_GetTypeSizeShort(H, PDB_HANDLE_KERNEL, "_CONTROL_AREA", &pof->_CONTROL_AREA.cb);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_CONTROL_AREA", "Segment", &pof->_CONTROL_AREA.oSegment);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_CONTROL_AREA", "FilePointer", &pof->_CONTROL_AREA.oFilePointer);
         // _SEGMENT
-        PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_SEGMENT", &pof->_SEGMENT.cb);
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SEGMENT", "ControlArea", &pof->_SEGMENT.oControlArea);
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SEGMENT", "SizeOfSegment", &pof->_SEGMENT.oSizeOfSegment);
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SEGMENT", "PrototypePte", &pof->_SEGMENT.oPrototypePte);
+        PDB_GetTypeSizeShort(H, PDB_HANDLE_KERNEL, "_SEGMENT", &pof->_SEGMENT.cb);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_SEGMENT", "ControlArea", &pof->_SEGMENT.oControlArea);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_SEGMENT", "SizeOfSegment", &pof->_SEGMENT.oSizeOfSegment);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_SEGMENT", "PrototypePte", &pof->_SEGMENT.oPrototypePte);
         // _SUBSECTION
-        PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_SUBSECTION", &pof->_SUBSECTION.cb);
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SUBSECTION", "ControlArea", &pof->_SUBSECTION.oControlArea);
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SUBSECTION", "NextSubsection", &pof->_SUBSECTION.oNextSubsection);
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SUBSECTION", "NumberOfFullSectors", &pof->_SUBSECTION.oNumberOfFullSectors);
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SUBSECTION", "PtesInSubsection", &pof->_SUBSECTION.oPtesInSubsection);
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SUBSECTION", "StartingSector", &pof->_SUBSECTION.oStartingSector);
-        PDB_GetTypeChildOffsetShort(PDB_HANDLE_KERNEL, "_SUBSECTION", "SubsectionBase", &pof->_SUBSECTION.oSubsectionBase);
+        PDB_GetTypeSizeShort(H, PDB_HANDLE_KERNEL, "_SUBSECTION", &pof->_SUBSECTION.cb);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_SUBSECTION", "ControlArea", &pof->_SUBSECTION.oControlArea);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_SUBSECTION", "NextSubsection", &pof->_SUBSECTION.oNextSubsection);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_SUBSECTION", "NumberOfFullSectors", &pof->_SUBSECTION.oNumberOfFullSectors);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_SUBSECTION", "PtesInSubsection", &pof->_SUBSECTION.oPtesInSubsection);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_SUBSECTION", "StartingSector", &pof->_SUBSECTION.oStartingSector);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_SUBSECTION", "SubsectionBase", &pof->_SUBSECTION.oSubsectionBase);
         pof->fValid = pof->_SUBSECTION.cb ? TRUE : FALSE;
     }
     // cpu count
-    if(!ctxVmm->kernel.opt.cCPUs) {
-        PDB_GetSymbolDWORD(PDB_HANDLE_KERNEL, "KiTotalCpuSetCount", pObSystemProcess, &ctxVmm->kernel.opt.cCPUs);
-        if(ctxVmm->kernel.opt.cCPUs > 128) { ctxVmm->kernel.opt.cCPUs = 0; }
+    if(!H->vmm.kernel.opt.cCPUs) {
+        PDB_GetSymbolDWORD(H, PDB_HANDLE_KERNEL, "KiTotalCpuSetCount", pObSystemProcess, &H->vmm.kernel.opt.cCPUs);
+        if(H->vmm.kernel.opt.cCPUs > 128) { H->vmm.kernel.opt.cCPUs = 0; }
     }
-    if(!ctxVmm->kernel.opt.cCPUs && VmmWinReg_KeyHiveGetByFullPath("HKLM\\HARDWARE\\DESCRIPTION\\System\\CentralProcessor", &pObHive, &pObKey)) {
-        pmObSubkeys = VmmWinReg_KeyList(pObHive, pObKey);
-        ctxVmm->kernel.opt.cCPUs = ObMap_Size(pmObSubkeys);
+    if(!H->vmm.kernel.opt.cCPUs && VmmWinReg_KeyHiveGetByFullPath(H, "HKLM\\HARDWARE\\DESCRIPTION\\System\\CentralProcessor", &pObHive, &pObKey)) {
+        pmObSubkeys = VmmWinReg_KeyList(H, pObHive, pObKey);
+        H->vmm.kernel.opt.cCPUs = ObMap_Size(pmObSubkeys);
     }
     // pfn database & pfn subsystem initialize
-    if(!ctxVmm->kernel.opt.vaPfnDatabase) {
-        PDB_GetSymbolPTR(PDB_HANDLE_KERNEL, "MmPfnDatabase", pObSystemProcess, &ctxVmm->kernel.opt.vaPfnDatabase);
+    if(!H->vmm.kernel.opt.vaPfnDatabase) {
+        PDB_GetSymbolPTR(H, PDB_HANDLE_KERNEL, "MmPfnDatabase", pObSystemProcess, &H->vmm.kernel.opt.vaPfnDatabase);
     }
-    MmPfn_Initialize(pObSystemProcess);
+    MmPfn_Initialize(H, pObSystemProcess);
     // PsLoadedModuleListExp
-    if(!ctxVmm->kernel.opt.vaPsLoadedModuleListExp) {
-        PDB_GetSymbolAddress(PDB_HANDLE_KERNEL, "PsLoadedModuleList", &ctxVmm->kernel.opt.vaPsLoadedModuleListExp);
+    if(!H->vmm.kernel.opt.vaPsLoadedModuleListExp) {
+        PDB_GetSymbolAddress(H, PDB_HANDLE_KERNEL, "PsLoadedModuleList", &H->vmm.kernel.opt.vaPsLoadedModuleListExp);
     }
     // MmUnloadedDrivers / MmLastUnloadedDriver
-    if(!ctxVmm->kernel.opt.vaMmUnloadedDrivers || !ctxVmm->kernel.opt.vaMmLastUnloadedDriver) {
-        PDB_GetSymbolAddress(PDB_HANDLE_KERNEL, "MmUnloadedDrivers", &ctxVmm->kernel.opt.vaMmUnloadedDrivers);
-        PDB_GetSymbolAddress(PDB_HANDLE_KERNEL, "MmLastUnloadedDriver", &ctxVmm->kernel.opt.vaMmLastUnloadedDriver);
+    if(!H->vmm.kernel.opt.vaMmUnloadedDrivers || !H->vmm.kernel.opt.vaMmLastUnloadedDriver) {
+        PDB_GetSymbolAddress(H, PDB_HANDLE_KERNEL, "MmUnloadedDrivers", &H->vmm.kernel.opt.vaMmUnloadedDrivers);
+        PDB_GetSymbolAddress(H, PDB_HANDLE_KERNEL, "MmLastUnloadedDriver", &H->vmm.kernel.opt.vaMmLastUnloadedDriver);
     }
     // KdDebuggerDataBlock (KDBG)
-    if(!ctxVmm->kernel.opt.KDBG.va && PDB_GetSymbolAddress(PDB_HANDLE_KERNEL, "KdDebuggerDataBlock", &ctxVmm->kernel.opt.KDBG.va)) {
-        f = !ctxVmm->f32 &&
-            VmmRead(pObSystemProcess, ctxVmm->kernel.opt.KDBG.va + 0x10, (PBYTE)&dwKDBG, sizeof(DWORD)) && (dwKDBG != 0x4742444b) &&
-            PDB_GetSymbolOffset(PDB_HANDLE_KERNEL, "KdpDataBlockEncoded", &oKdpDataBlockEncoded) &&
-            PDB_GetSymbolPBYTE(PDB_HANDLE_KERNEL, "KdpDataBlockEncoded", pObSystemProcess, &bKdpDataBlockEncoded, 1) &&
+    if(!H->vmm.kernel.opt.KDBG.va && PDB_GetSymbolAddress(H, PDB_HANDLE_KERNEL, "KdDebuggerDataBlock", &H->vmm.kernel.opt.KDBG.va)) {
+        f = !H->vmm.f32 &&
+            VmmRead(H, pObSystemProcess, H->vmm.kernel.opt.KDBG.va + 0x10, (PBYTE)&dwKDBG, sizeof(DWORD)) && (dwKDBG != 0x4742444b) &&
+            PDB_GetSymbolOffset(H, PDB_HANDLE_KERNEL, "KdpDataBlockEncoded", &oKdpDataBlockEncoded) &&
+            PDB_GetSymbolPBYTE(H, PDB_HANDLE_KERNEL, "KdpDataBlockEncoded", pObSystemProcess, &bKdpDataBlockEncoded, 1) &&
             (bKdpDataBlockEncoded == 1);
         if(f) {
-            ctxVmm->kernel.opt.KDBG.vaKdpDataBlockEncoded = ctxVmm->kernel.vaBase + oKdpDataBlockEncoded;
-            PDB_GetSymbolQWORD(PDB_HANDLE_KERNEL, "KiWaitAlways", pObSystemProcess, &ctxVmm->kernel.opt.KDBG.qwKiWaitAlways);
-            PDB_GetSymbolQWORD(PDB_HANDLE_KERNEL, "KiWaitNever", pObSystemProcess, &ctxVmm->kernel.opt.KDBG.qwKiWaitNever);
+            H->vmm.kernel.opt.KDBG.vaKdpDataBlockEncoded = H->vmm.kernel.vaBase + oKdpDataBlockEncoded;
+            PDB_GetSymbolQWORD(H, PDB_HANDLE_KERNEL, "KiWaitAlways", pObSystemProcess, &H->vmm.kernel.opt.KDBG.qwKiWaitAlways);
+            PDB_GetSymbolQWORD(H, PDB_HANDLE_KERNEL, "KiWaitNever", pObSystemProcess, &H->vmm.kernel.opt.KDBG.qwKiWaitNever);
         }
     }
     // IopInvalidDeviceRequest
-    if(!ctxVmm->kernel.opt.vaIopInvalidDeviceRequest) {
-        PDB_GetSymbolAddress(PDB_HANDLE_KERNEL, "IopInvalidDeviceRequest", &ctxVmm->kernel.opt.vaIopInvalidDeviceRequest);
+    if(!H->vmm.kernel.opt.vaIopInvalidDeviceRequest) {
+        PDB_GetSymbolAddress(H, PDB_HANDLE_KERNEL, "IopInvalidDeviceRequest", &H->vmm.kernel.opt.vaIopInvalidDeviceRequest);
     }
     // _OBJECT_HEADER InfoMask headers:
-    PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_OBJECT_HEADER_CREATOR_INFO", &ctxVmm->offset._OBJECT_HEADER_CREATOR_INFO.cb);
-    PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_OBJECT_HEADER_NAME_INFO",    &ctxVmm->offset._OBJECT_HEADER_NAME_INFO.cb);
-    PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_OBJECT_HEADER_HANDLE_INFO",  &ctxVmm->offset._OBJECT_HEADER_HANDLE_INFO.cb);
-    PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_OBJECT_HEADER_QUOTA_INFO",   &ctxVmm->offset._OBJECT_HEADER_QUOTA_INFO.cb);
-    PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_OBJECT_HEADER_PROCESS_INFO", &ctxVmm->offset._OBJECT_HEADER_PROCESS_INFO.cb);
-    PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_OBJECT_HEADER_AUDIT_INFO",   &ctxVmm->offset._OBJECT_HEADER_AUDIT_INFO.cb);
-    PDB_GetTypeSizeShort(PDB_HANDLE_KERNEL, "_POOL_HEADER",                &ctxVmm->offset._POOL_HEADER.cb);
+    PDB_GetTypeSizeShort(H, PDB_HANDLE_KERNEL, "_OBJECT_HEADER_CREATOR_INFO", &H->vmm.offset._OBJECT_HEADER_CREATOR_INFO.cb);
+    PDB_GetTypeSizeShort(H, PDB_HANDLE_KERNEL, "_OBJECT_HEADER_NAME_INFO",    &H->vmm.offset._OBJECT_HEADER_NAME_INFO.cb);
+    PDB_GetTypeSizeShort(H, PDB_HANDLE_KERNEL, "_OBJECT_HEADER_HANDLE_INFO",  &H->vmm.offset._OBJECT_HEADER_HANDLE_INFO.cb);
+    PDB_GetTypeSizeShort(H, PDB_HANDLE_KERNEL, "_OBJECT_HEADER_QUOTA_INFO",   &H->vmm.offset._OBJECT_HEADER_QUOTA_INFO.cb);
+    PDB_GetTypeSizeShort(H, PDB_HANDLE_KERNEL, "_OBJECT_HEADER_PROCESS_INFO", &H->vmm.offset._OBJECT_HEADER_PROCESS_INFO.cb);
+    PDB_GetTypeSizeShort(H, PDB_HANDLE_KERNEL, "_OBJECT_HEADER_AUDIT_INFO",   &H->vmm.offset._OBJECT_HEADER_AUDIT_INFO.cb);
+    PDB_GetTypeSizeShort(H, PDB_HANDLE_KERNEL, "_POOL_HEADER",                &H->vmm.offset._POOL_HEADER.cb);
     // Other:
-    PDB_GetSymbolQWORD(PDB_HANDLE_KERNEL, "KeBootTime", pObSystemProcess, &ctxVmm->kernel.opt.ftBootTime);
+    PDB_GetSymbolQWORD(H, PDB_HANDLE_KERNEL, "KeBootTime", pObSystemProcess, &H->vmm.kernel.opt.ftBootTime);
     // Cleanup
     Ob_DECREF(pObKey);
     Ob_DECREF(pObHive);
     Ob_DECREF(pmObSubkeys);
     Ob_DECREF(pObSystemProcess);
-    ctxVmm->kernel.opt.fInitialized = TRUE;
+    H->vmm.kernel.opt.fInitialized = TRUE;
 }
 
 /*
 * Log heap offsets
 */
-VOID VmmWinInit_InitializeOffsetStatic_Heap_Print(_In_ BOOL f32, _In_ PVMM_OFFSET_HEAP po)
+VOID VmmWinInit_InitializeOffsetStatic_Heap_Print(_In_ VMM_HANDLE H, _In_ BOOL f32, _In_ PVMM_OFFSET_HEAP po)
 {
-    if(!VmmLogIsActive(MID_OFFSET, LOGLEVEL_6_TRACE)) { return; }
-    VmmLog(MID_OFFSET, LOGLEVEL_6_TRACE, "HEAP: %s(%s)", (po->fValid ? "SUCCESS" : "FAIL"), (f32 ? "32" : "64"));
-    VmmLog(MID_OFFSET, LOGLEVEL_6_TRACE, "  _HEAP: Encoding: %03x VirtualAllocdBlocks: %03x FrontEndHeap: %03x FrontEndHeapType: %03x" ,
+    if(!VmmLogIsActive(H, MID_OFFSET, LOGLEVEL_6_TRACE)) { return; }
+    VmmLog(H, MID_OFFSET, LOGLEVEL_6_TRACE, "HEAP: %s(%s)", (po->fValid ? "SUCCESS" : "FAIL"), (f32 ? "32" : "64"));
+    VmmLog(H, MID_OFFSET, LOGLEVEL_6_TRACE, "  _HEAP: Encoding: %03x VirtualAllocdBlocks: %03x FrontEndHeap: %03x FrontEndHeapType: %03x" ,
         po->nt.HEAP.Encoding, po->nt.HEAP.VirtualAllocdBlocks, po->nt.HEAP.FrontEndHeap, po->nt.HEAP.FrontEndHeapType);
-    VmmLog(MID_OFFSET, LOGLEVEL_6_TRACE, "  _HEAP_SEGMENT: FirstEntry(%03x FirstEntry(%03x",
+    VmmLog(H, MID_OFFSET, LOGLEVEL_6_TRACE, "  _HEAP_SEGMENT: FirstEntry(%03x FirstEntry(%03x",
         po->nt.HEAP_SEGMENT.FirstEntry, po->nt.HEAP_SEGMENT.LastValidEntry);
-    VmmLog(MID_OFFSET, LOGLEVEL_6_TRACE, "  _HEAP_USERDATA_HEADER: Signature: %03x EncodedOffsets: %03x BusyBitmap: %03x BitmapData: %03x",
+    VmmLog(H, MID_OFFSET, LOGLEVEL_6_TRACE, "  _HEAP_USERDATA_HEADER: Signature: %03x EncodedOffsets: %03x BusyBitmap: %03x BitmapData: %03x",
         po->nt.HEAP_USERDATA_HEADER.Signature, po->nt.HEAP_USERDATA_HEADER.EncodedOffsets, po->nt.HEAP_USERDATA_HEADER.BusyBitmap, po->nt.HEAP_USERDATA_HEADER.BitmapData);
-    VmmLog(MID_OFFSET, LOGLEVEL_6_TRACE, "  _SEGMENT_HEAP: LargeAllocMetadata: %03x LargeReservedPages: %03x SegContexts: %03x",
+    VmmLog(H, MID_OFFSET, LOGLEVEL_6_TRACE, "  _SEGMENT_HEAP: LargeAllocMetadata: %03x LargeReservedPages: %03x SegContexts: %03x",
         po->seg.SEGMENT_HEAP.LargeAllocMetadata, po->seg.SEGMENT_HEAP.LargeReservedPages, po->seg.SEGMENT_HEAP.SegContexts);
-    VmmLog(MID_OFFSET, LOGLEVEL_6_TRACE, "  _HEAP_SEG_CONTEXT: SegmentListHead: %03x UnitShift: %03x FirstDescriptorIndex: %03x",
+    VmmLog(H, MID_OFFSET, LOGLEVEL_6_TRACE, "  _HEAP_SEG_CONTEXT: SegmentListHead: %03x UnitShift: %03x FirstDescriptorIndex: %03x",
         po->seg.HEAP_SEG_CONTEXT.SegmentListHead, po->seg.HEAP_SEG_CONTEXT.UnitShift, po->seg.HEAP_SEG_CONTEXT.FirstDescriptorIndex);
-    VmmLog(MID_OFFSET, LOGLEVEL_6_TRACE, "  _HEAP_PAGE_RANGE_DESCRIPTOR: TreeSignature: %03x RangeFlags: %03x UnitSize: %03x",
+    VmmLog(H, MID_OFFSET, LOGLEVEL_6_TRACE, "  _HEAP_PAGE_RANGE_DESCRIPTOR: TreeSignature: %03x RangeFlags: %03x UnitSize: %03x",
         po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.TreeSignature, po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.RangeFlags, po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.UnitSize);
-    VmmLog(MID_OFFSET, LOGLEVEL_6_TRACE, "  _HEAP_LFH_SUBSEGMENT: BlockOffsets: %03x BlockBitmap: %03x",
+    VmmLog(H, MID_OFFSET, LOGLEVEL_6_TRACE, "  _HEAP_LFH_SUBSEGMENT: BlockOffsets: %03x BlockBitmap: %03x",
         po->seg.HEAP_LFH_SUBSEGMENT.BlockOffsets, po->seg.HEAP_LFH_SUBSEGMENT.BlockBitmap);
-    VmmLog(MID_OFFSET, LOGLEVEL_6_TRACE, "  _SEGMENT_HEAP %03x _HEAP_SEG_CONTEXT %03x _HEAP_PAGE_SEGMENT %03x _HEAP_PAGE_RANGE_DESCRIPTOR %03x _HEAP_VS_CHUNK_HEADER %03x ",
+    VmmLog(H, MID_OFFSET, LOGLEVEL_6_TRACE, "  _SEGMENT_HEAP %03x _HEAP_SEG_CONTEXT %03x _HEAP_PAGE_SEGMENT %03x _HEAP_PAGE_RANGE_DESCRIPTOR %03x _HEAP_VS_CHUNK_HEADER %03x ",
         po->seg.SEGMENT_HEAP.cb, po->seg.HEAP_SEG_CONTEXT.cb, po->seg.HEAP_PAGE_SEGMENT.cb, po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.cb, po->seg.HEAP_VS_CHUNK_HEADER.cb);
 }
 
 /*
 * Initialization of heap offsets statically based on build number.
+* -- H
 */
-VOID VmmWinInit_InitializeOffsetStatic_Heap()
+VOID VmmWinInit_InitializeOffsetStatic_Heap(_In_ VMM_HANDLE H)
 {
     DWORD i;
     BOOL f32;
     PDB_HANDLE hPDB;
     PVMM_OFFSET_HEAP po;
     for(i = 0; i < 2; i++) {
-        if(ctxVmm->f32) {
+        if(H->vmm.f32) {
             if(i) { return; }
             f32 = TRUE;
             hPDB = PDB_HANDLE_NTDLL;
-            po = &ctxVmm->offset.HEAP32;
+            po = &H->vmm.offset.HEAP32;
         } else {
             f32 = i ? FALSE : TRUE;
             hPDB = f32 ? PDB_HANDLE_NTDLL_WOW64 : PDB_HANDLE_NTDLL;
-            po = f32 ? &ctxVmm->offset.HEAP32 : &ctxVmm->offset.HEAP64;
+            po = f32 ? &H->vmm.offset.HEAP32 : &H->vmm.offset.HEAP64;
         }
         // NT HEAP:
-        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP", "Encoding", &po->nt.HEAP.Encoding);
-        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP", "VirtualAllocdBlocks", &po->nt.HEAP.VirtualAllocdBlocks);
-        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP", "FrontEndHeap", &po->nt.HEAP.FrontEndHeap);
-        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP", "FrontEndHeapType", &po->nt.HEAP.FrontEndHeapType);
-        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP_SEGMENT", "FirstEntry", &po->nt.HEAP_SEGMENT.FirstEntry);
-        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP_SEGMENT", "LastValidEntry", &po->nt.HEAP_SEGMENT.LastValidEntry);
-        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP_USERDATA_HEADER", "Signature", &po->nt.HEAP_USERDATA_HEADER.Signature);
-        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP_USERDATA_HEADER", "EncodedOffsets", &po->nt.HEAP_USERDATA_HEADER.EncodedOffsets);
-        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP_USERDATA_HEADER", "BusyBitmap", &po->nt.HEAP_USERDATA_HEADER.BusyBitmap);
-        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP_USERDATA_HEADER", "BitmapData", &po->nt.HEAP_USERDATA_HEADER.BitmapData);
+        PDB_GetTypeChildOffsetShort(H, hPDB, "_HEAP", "Encoding", &po->nt.HEAP.Encoding);
+        PDB_GetTypeChildOffsetShort(H, hPDB, "_HEAP", "VirtualAllocdBlocks", &po->nt.HEAP.VirtualAllocdBlocks);
+        PDB_GetTypeChildOffsetShort(H, hPDB, "_HEAP", "FrontEndHeap", &po->nt.HEAP.FrontEndHeap);
+        PDB_GetTypeChildOffsetShort(H, hPDB, "_HEAP", "FrontEndHeapType", &po->nt.HEAP.FrontEndHeapType);
+        PDB_GetTypeChildOffsetShort(H, hPDB, "_HEAP_SEGMENT", "FirstEntry", &po->nt.HEAP_SEGMENT.FirstEntry);
+        PDB_GetTypeChildOffsetShort(H, hPDB, "_HEAP_SEGMENT", "LastValidEntry", &po->nt.HEAP_SEGMENT.LastValidEntry);
+        PDB_GetTypeChildOffsetShort(H, hPDB, "_HEAP_USERDATA_HEADER", "Signature", &po->nt.HEAP_USERDATA_HEADER.Signature);
+        PDB_GetTypeChildOffsetShort(H, hPDB, "_HEAP_USERDATA_HEADER", "EncodedOffsets", &po->nt.HEAP_USERDATA_HEADER.EncodedOffsets);
+        PDB_GetTypeChildOffsetShort(H, hPDB, "_HEAP_USERDATA_HEADER", "BusyBitmap", &po->nt.HEAP_USERDATA_HEADER.BusyBitmap);
+        PDB_GetTypeChildOffsetShort(H, hPDB, "_HEAP_USERDATA_HEADER", "BitmapData", &po->nt.HEAP_USERDATA_HEADER.BitmapData);
         // SEGMENT HEAP:
-        PDB_GetTypeChildOffsetShort(hPDB, "_SEGMENT_HEAP", "LargeAllocMetadata", &po->seg.SEGMENT_HEAP.LargeAllocMetadata);
-        PDB_GetTypeChildOffsetShort(hPDB, "_SEGMENT_HEAP", "LargeReservedPages", &po->seg.SEGMENT_HEAP.LargeReservedPages);
-        PDB_GetTypeChildOffsetShort(hPDB, "_SEGMENT_HEAP", "SegContexts", &po->seg.SEGMENT_HEAP.SegContexts);
-        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP_SEG_CONTEXT", "SegmentListHead", &po->seg.HEAP_SEG_CONTEXT.SegmentListHead);
-        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP_SEG_CONTEXT", "UnitShift", &po->seg.HEAP_SEG_CONTEXT.UnitShift);
-        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP_SEG_CONTEXT", "FirstDescriptorIndex", &po->seg.HEAP_SEG_CONTEXT.FirstDescriptorIndex);
-        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP_PAGE_RANGE_DESCRIPTOR", "TreeSignature", &po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.TreeSignature);
-        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP_PAGE_RANGE_DESCRIPTOR", "RangeFlags", &po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.RangeFlags);
-        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP_PAGE_RANGE_DESCRIPTOR", "UnitSize", &po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.UnitSize);
-        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP_LFH_SUBSEGMENT", "BlockOffsets", &po->seg.HEAP_LFH_SUBSEGMENT.BlockOffsets);
-        PDB_GetTypeChildOffsetShort(hPDB, "_HEAP_LFH_SUBSEGMENT", "BlockBitmap", &po->seg.HEAP_LFH_SUBSEGMENT.BlockBitmap);
-        PDB_GetTypeSizeShort(hPDB, "_SEGMENT_HEAP", &po->seg.SEGMENT_HEAP.cb);
-        PDB_GetTypeSizeShort(hPDB, "_HEAP_SEG_CONTEXT", &po->seg.HEAP_SEG_CONTEXT.cb);
-        PDB_GetTypeSizeShort(hPDB, "_HEAP_PAGE_SEGMENT", &po->seg.HEAP_PAGE_SEGMENT.cb);
-        PDB_GetTypeSizeShort(hPDB, "_HEAP_PAGE_RANGE_DESCRIPTOR", &po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.cb);
-        PDB_GetTypeSizeShort(hPDB, "_HEAP_VS_CHUNK_HEADER", &po->seg.HEAP_VS_CHUNK_HEADER.cb);
+        PDB_GetTypeChildOffsetShort(H, hPDB, "_SEGMENT_HEAP", "LargeAllocMetadata", &po->seg.SEGMENT_HEAP.LargeAllocMetadata);
+        PDB_GetTypeChildOffsetShort(H, hPDB, "_SEGMENT_HEAP", "LargeReservedPages", &po->seg.SEGMENT_HEAP.LargeReservedPages);
+        PDB_GetTypeChildOffsetShort(H, hPDB, "_SEGMENT_HEAP", "SegContexts", &po->seg.SEGMENT_HEAP.SegContexts);
+        PDB_GetTypeChildOffsetShort(H, hPDB, "_HEAP_SEG_CONTEXT", "SegmentListHead", &po->seg.HEAP_SEG_CONTEXT.SegmentListHead);
+        PDB_GetTypeChildOffsetShort(H, hPDB, "_HEAP_SEG_CONTEXT", "UnitShift", &po->seg.HEAP_SEG_CONTEXT.UnitShift);
+        PDB_GetTypeChildOffsetShort(H, hPDB, "_HEAP_SEG_CONTEXT", "FirstDescriptorIndex", &po->seg.HEAP_SEG_CONTEXT.FirstDescriptorIndex);
+        PDB_GetTypeChildOffsetShort(H, hPDB, "_HEAP_PAGE_RANGE_DESCRIPTOR", "TreeSignature", &po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.TreeSignature);
+        PDB_GetTypeChildOffsetShort(H, hPDB, "_HEAP_PAGE_RANGE_DESCRIPTOR", "RangeFlags", &po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.RangeFlags);
+        PDB_GetTypeChildOffsetShort(H, hPDB, "_HEAP_PAGE_RANGE_DESCRIPTOR", "UnitSize", &po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.UnitSize);
+        PDB_GetTypeChildOffsetShort(H, hPDB, "_HEAP_LFH_SUBSEGMENT", "BlockOffsets", &po->seg.HEAP_LFH_SUBSEGMENT.BlockOffsets);
+        PDB_GetTypeChildOffsetShort(H, hPDB, "_HEAP_LFH_SUBSEGMENT", "BlockBitmap", &po->seg.HEAP_LFH_SUBSEGMENT.BlockBitmap);
+        PDB_GetTypeSizeShort(H, hPDB, "_SEGMENT_HEAP", &po->seg.SEGMENT_HEAP.cb);
+        PDB_GetTypeSizeShort(H, hPDB, "_HEAP_SEG_CONTEXT", &po->seg.HEAP_SEG_CONTEXT.cb);
+        PDB_GetTypeSizeShort(H, hPDB, "_HEAP_PAGE_SEGMENT", &po->seg.HEAP_PAGE_SEGMENT.cb);
+        PDB_GetTypeSizeShort(H, hPDB, "_HEAP_PAGE_RANGE_DESCRIPTOR", &po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.cb);
+        PDB_GetTypeSizeShort(H, hPDB, "_HEAP_VS_CHUNK_HEADER", &po->seg.HEAP_VS_CHUNK_HEADER.cb);
         po->fValid = po->nt.HEAP.VirtualAllocdBlocks || po->nt.HEAP.FrontEndHeap || po->seg.SEGMENT_HEAP.cb;
-        VmmWinInit_InitializeOffsetStatic_Heap_Print(f32, po);
+        VmmWinInit_InitializeOffsetStatic_Heap_Print(H, f32, po);
     }
 }
 
 /*
 * Helper/Worker function for VmmWinInit_FindNtosScan64_SmallPageWalk().
+* -- H
 * -- paTable = set to: physical address of PML4
 * -- va = set to 0
 * -- vaMin = 0xFFFFF80000000000 (if windows kernel)
@@ -290,16 +294,16 @@ VOID VmmWinInit_InitializeOffsetStatic_Heap()
 * -- iPML = set to 4
 * -- psvaKernelCandidates
 */
-VOID VmmWinInit_FindNtosScan64_SmallPageWalk_DoWork(_In_ QWORD paTable, _In_ QWORD vaBase, _In_ QWORD vaMin, _In_ QWORD vaMax, _In_ BYTE iPML, _In_ POB_SET psvaKernelCandidates)
+VOID VmmWinInit_FindNtosScan64_SmallPageWalk_DoWork(_In_ VMM_HANDLE H, _In_ QWORD paTable, _In_ QWORD vaBase, _In_ QWORD vaMin, _In_ QWORD vaMax, _In_ BYTE iPML, _In_ POB_SET psvaKernelCandidates)
 {
     static const QWORD PML_REGION_SIZE[5] = { 0, 12, 21, 30, 39 };
     QWORD i, j, pte, vaCurrent;
     PVMMOB_CACHE_MEM pObPTEs = NULL;
     BOOL f;
-    pObPTEs = VmmTlbGetPageTable(paTable, FALSE);
+    pObPTEs = VmmTlbGetPageTable(H, paTable, FALSE);
     if(!pObPTEs) { return; }
     if(iPML == 4) {
-        if(!VmmTlbPageTableVerify(pObPTEs->pb, paTable, TRUE)) { goto finish; }
+        if(!VmmTlbPageTableVerify(H, pObPTEs->pb, paTable, TRUE)) { goto finish; }
         vaBase = 0;
     }
     for(i = 0; i < 512; i++) {
@@ -322,7 +326,7 @@ VOID VmmWinInit_FindNtosScan64_SmallPageWalk_DoWork(_In_ QWORD paTable, _In_ QWO
             }
         }
         if(pte & 0x80) { continue; }                        // PS (large page) -> NOT VALID
-        VmmWinInit_FindNtosScan64_SmallPageWalk_DoWork(pte & 0x0000fffffffff000, vaCurrent, vaMin, vaMax, iPML - 1, psvaKernelCandidates);
+        VmmWinInit_FindNtosScan64_SmallPageWalk_DoWork(H, pte & 0x0000fffffffff000, vaCurrent, vaMin, vaMax, iPML - 1, psvaKernelCandidates);
     }
 finish:
     Ob_DECREF(pObPTEs);
@@ -336,22 +340,23 @@ finish:
 * - page #0 be read/write
 * - page #1-#32 be read/execute
 * - page starts with MZ and contains POOLCODE
+* -- H
 * -- pSystemProcess
 * -- vaMin = 0xFFFFF80000000000
 * -- vaMax = 0xFFFFF803FFFFFFFF
 * -- pvaBase
 * -- pcbSize
 */
-VOID VmmWinInit_FindNtosScan64_SmallPageWalk(_In_ PVMM_PROCESS pSystemProcess, _In_ QWORD vaMin, _In_ QWORD vaMax, _Inout_ PQWORD pvaBase, _Inout_ PQWORD pcbSize)
+VOID VmmWinInit_FindNtosScan64_SmallPageWalk(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_ QWORD vaMin, _In_ QWORD vaMax, _Inout_ PQWORD pvaBase, _Inout_ PQWORD pcbSize)
 {
     QWORD o, va;
     BYTE pb[4096];
     POB_SET psObKernelVa = NULL;
-    if(!(psObKernelVa = ObSet_New())) { return; }
-    VmmWinInit_FindNtosScan64_SmallPageWalk_DoWork(pSystemProcess->paDTB, 0, vaMin, vaMax, 4, psObKernelVa);
-    VmmCachePrefetchPages(pSystemProcess, psObKernelVa, 0);
+    if(!(psObKernelVa = ObSet_New(H))) { return; }
+    VmmWinInit_FindNtosScan64_SmallPageWalk_DoWork(H, pSystemProcess->paDTB, 0, vaMin, vaMax, 4, psObKernelVa);
+    VmmCachePrefetchPages(H, pSystemProcess, psObKernelVa, 0);
     while((va = ObSet_Pop(psObKernelVa))) {
-        if(VmmReadPage(pSystemProcess, va, pb)) {
+        if(VmmReadPage(H, pSystemProcess, va, pb)) {
             if(pb[0] != 'M' || pb[1] != 'Z') { continue; }
             for(o = 0; o < 0x1000; o += 8) {
                 if(*(PQWORD)(pb + o) == 0x45444F434C4F4F50) { // POOLCODE
@@ -370,6 +375,7 @@ VOID VmmWinInit_FindNtosScan64_SmallPageWalk(_In_ PVMM_PROCESS pSystemProcess, _
 * Scan a page table hierarchy between virtual addresses between vaMin and vaMax
 * for the first occurence of large 2MB pages. This is usually 'ntoskrnl.exe' if
 * the OS is Windows. 'ntoskrnl.exe'.
+* -- H
 * -- paTable = set to: physical address of PML4
 * -- va = set to 0
 * -- vaMin = 0xFFFFF80000000000 (if windows kernel)
@@ -378,17 +384,17 @@ VOID VmmWinInit_FindNtosScan64_SmallPageWalk(_In_ PVMM_PROCESS pSystemProcess, _
 * -- pvaBase
 * -- pcbSize
 */
-VOID VmmWinInit_FindNtosScan64_LargePageWalk(_In_ QWORD paTable, _In_ QWORD vaBase, _In_ QWORD vaMin, _In_ QWORD vaMax, _In_ BYTE iPML, _Inout_ PQWORD pvaBase, _Inout_ PQWORD pcbSize)
+VOID VmmWinInit_FindNtosScan64_LargePageWalk(_In_ VMM_HANDLE H, _In_ QWORD paTable, _In_ QWORD vaBase, _In_ QWORD vaMin, _In_ QWORD vaMax, _In_ BYTE iPML, _Inout_ PQWORD pvaBase, _Inout_ PQWORD pcbSize)
 {
     const QWORD PML_REGION_SIZE[5] = { 0, 12, 21, 30, 39 };
     QWORD i, pte, vaCurrent;
     PVMMOB_CACHE_MEM pObPTEs = NULL;
-    pObPTEs = VmmTlbGetPageTable(paTable, FALSE);
+    pObPTEs = VmmTlbGetPageTable(H, paTable, FALSE);
     if(!pObPTEs) { return; }
     if(iPML == 4) {
         *pvaBase = 0;
         *pcbSize = 0;
-        if(!VmmTlbPageTableVerify(pObPTEs->pb, paTable, TRUE)) { goto finish; }
+        if(!VmmTlbPageTableVerify(H, pObPTEs->pb, paTable, TRUE)) { goto finish; }
         vaBase = 0;
     }
     for(i = 0; i < 512; i++) {
@@ -408,7 +414,7 @@ VOID VmmWinInit_FindNtosScan64_LargePageWalk(_In_ QWORD paTable, _In_ QWORD vaBa
             continue;
         } else {
             if(pte & 0x80) { continue; }    // PS = 1
-            VmmWinInit_FindNtosScan64_LargePageWalk(pte & 0x0000fffffffff000, vaCurrent, vaMin, vaMax, iPML - 1, pvaBase, pcbSize);
+            VmmWinInit_FindNtosScan64_LargePageWalk(H, pte & 0x0000fffffffff000, vaCurrent, vaMin, vaMax, iPML - 1, pvaBase, pcbSize);
         }
     }
 finish:
@@ -420,10 +426,11 @@ finish:
 * be unknown. This functions walks the page table in the area in which ntoskrnl
 * is loaded looking for 2MB large pages. If an area in 2MB pages are found it
 * is scanned for the ntoskrnl.exe base.
+* -- H
 * -- pSystemProcess
 * -- return = virtual address of ntoskrnl.exe base if successful, otherwise 0.
 */
-QWORD VmmWinInit_FindNtosScan64(PVMM_PROCESS pSystemProcess)
+QWORD VmmWinInit_FindNtosScan64(_In_ VMM_HANDLE H, PVMM_PROCESS pSystemProcess)
 {
     PBYTE pb;
     QWORD p, o, vaCurrentMin, vaBase, cbSize;
@@ -432,9 +439,9 @@ QWORD VmmWinInit_FindNtosScan64(PVMM_PROCESS pSystemProcess)
     while(TRUE) {
         vaBase = 0;
         cbSize = 0;
-        VmmWinInit_FindNtosScan64_LargePageWalk(pSystemProcess->paDTB, 0, vaCurrentMin, 0xFFFFF807FFFFFFFF, 4, &vaBase, &cbSize);
+        VmmWinInit_FindNtosScan64_LargePageWalk(H, pSystemProcess->paDTB, 0, vaCurrentMin, 0xFFFFF807FFFFFFFF, 4, &vaBase, &cbSize);
         if(!vaBase) {
-            VmmWinInit_FindNtosScan64_SmallPageWalk(pSystemProcess, vaCurrentMin, 0xFFFFF807FFFFFFFF, &vaBase, &cbSize);
+            VmmWinInit_FindNtosScan64_SmallPageWalk(H, pSystemProcess, vaCurrentMin, 0xFFFFF807FFFFFFFF, &vaBase, &cbSize);
         }
         if(!vaBase) { return 0; }
         vaCurrentMin = vaBase + cbSize;
@@ -442,13 +449,13 @@ QWORD VmmWinInit_FindNtosScan64(PVMM_PROCESS pSystemProcess)
         if(cbSize <= 0x00400000) { continue; }  // too small
         // try locate ntoskrnl.exe base inside suggested area
         if(!(pb = (PBYTE)LocalAlloc(0, (DWORD)cbSize))) { return 0; }
-        VmmReadEx(pSystemProcess, vaBase, pb, (DWORD)cbSize, NULL, 0);
+        VmmReadEx(H, pSystemProcess, vaBase, pb, (DWORD)cbSize, NULL, 0);
         for(p = 0; p < cbSize; p += 0x1000) {
             // check for (1) MZ header, (2) POOLCODE section, (3) ntoskrnl.exe module name
             if(*(PWORD)(pb + p) != 0x5a4d) { continue; } // MZ header
             for(o = 0; o < 0x1000; o += 8) {
                 if(*(PQWORD)(pb + p + o) == 0x45444F434C4F4F50) { // POOLCODE
-                    PE_GetModuleNameEx(pSystemProcess, vaBase + p, FALSE, pb + p, szModuleName, _countof(szModuleName), NULL);
+                    PE_GetModuleNameEx(H, pSystemProcess, vaBase + p, FALSE, pb + p, szModuleName, _countof(szModuleName), NULL);
                     if(!_stricmp(szModuleName, "ntoskrnl.exe")) {
                         LocalFree(pb);
                         return vaBase + p;
@@ -465,10 +472,11 @@ QWORD VmmWinInit_FindNtosScan64(PVMM_PROCESS pSystemProcess)
 * Locate the virtual base address of 'ntoskrnl.exe' given any address inside
 * the kernel. Localization will be done by a scan-back method. A maximum of
 * 32MB will be scanned back.
+* -- H
 * -- pSystemProcess
 * -- return = virtual address of ntoskrnl.exe base if successful, otherwise 0
 */
-QWORD VmmWinInit_FindNtosScanHint64(_In_ PVMM_PROCESS pSystemProcess, _In_ QWORD vaHint)
+QWORD VmmWinInit_FindNtosScanHint64(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_ QWORD vaHint)
 {
     PBYTE pb;
     QWORD vaBase, o, p, vaNtosTry = 0;
@@ -480,7 +488,7 @@ QWORD VmmWinInit_FindNtosScanHint64(_In_ PVMM_PROCESS pSystemProcess, _In_ QWORD
     if(!pb) { goto cleanup; }
     // Scan back in 2MB chunks a time, (ntoskrnl.exe is loaded in 2MB pages except in low memory situations).
     for(vaBase = vaHint & ~0x1fffff; vaBase + 0x02000000 > vaHint; vaBase -= 0x200000) {
-        VmmReadEx(pSystemProcess, vaBase, pb, 0x200000, &cbRead, 0);
+        VmmReadEx(H, pSystemProcess, vaBase, pb, 0x200000, &cbRead, 0);
         // Only fail here if all virtual memory in read fails. reason is that kernel is
         // properly mapped in memory (with NX MZ header in separate page) with empty
         // space before next valid kernel pages when running Virtualization Based Security.
@@ -495,7 +503,7 @@ QWORD VmmWinInit_FindNtosScanHint64(_In_ PVMM_PROCESS pSystemProcess, _In_ QWORD
             if(pNtHeader->Signature != IMAGE_NT_SIGNATURE) { continue; }    // NT header signature
             for(o = 0; o < 0x1000; o += 8) {
                 if(*(PQWORD)(pb + p + o) == 0x45444F434C4F4F50) {           // POOLCODE
-                    if(!PE_GetModuleNameEx(pSystemProcess, vaBase + p, FALSE, pb + p, szModuleName, _countof(szModuleName), NULL)) {
+                    if(!PE_GetModuleNameEx(H, pSystemProcess, vaBase + p, FALSE, pb + p, szModuleName, _countof(szModuleName), NULL)) {
                         vaNtosTry = vaBase + p;
                         continue;
                     }
@@ -518,10 +526,11 @@ cleanup:
 * of 'ntoskrnl.exe'. NB! this is a very non-optimized way of doing things and
 * should be improved upon to increase startup performance - but 72MB is not a
 * huge amount of memory and it's only scanned at startup ...
+* -- H
 * -- pSystemProcess
 * -- return = virtual address of ntoskrnl.exe base if successful, otherwise 0.
 */
-DWORD VmmWinInit_FindNtosScan32(_In_ PVMM_PROCESS pSystemProcess)
+DWORD VmmWinInit_FindNtosScan32(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess)
 {
     DWORD vaBase, ova;
     DWORD o, vaNtosTry = 0;
@@ -533,7 +542,7 @@ DWORD VmmWinInit_FindNtosScan32(_In_ PVMM_PROCESS pSystemProcess)
     for(vaBase = 0x80000000; vaBase < 0x88000000; vaBase += 0x1000) {
         ova = vaBase % 0x00800000;
         if(ova == 0) {
-            VmmReadEx(pSystemProcess, vaBase, pb, 0x00800000, NULL, 0);
+            VmmReadEx(H, pSystemProcess, vaBase, pb, 0x00800000, NULL, 0);
         }
         // check for (1) MZ+NT header, (2) POOLCODE section, (3) ntoskrnl.exe module name (if possible to read)
         pDosHeader = (PIMAGE_DOS_HEADER)(pb + ova);                         // DOS header
@@ -543,7 +552,7 @@ DWORD VmmWinInit_FindNtosScan32(_In_ PVMM_PROCESS pSystemProcess)
         if(pNtHeader->Signature != IMAGE_NT_SIGNATURE) { continue; }        // NT header signature
         for(o = 0; o < 0x800; o += 8) {
             if(*(PQWORD)(pb + ova + o) == 0x45444F434C4F4F50) {             // POOLCODE
-                if(!PE_GetModuleNameEx(pSystemProcess, (QWORD)vaBase + ova, FALSE, pb + ova, szModuleName, _countof(szModuleName), NULL)) {
+                if(!PE_GetModuleNameEx(H, pSystemProcess, (QWORD)vaBase + ova, FALSE, pb + ova, szModuleName, _countof(szModuleName), NULL)) {
                     vaNtosTry = vaBase;
                     continue;
                 }
@@ -561,42 +570,43 @@ DWORD VmmWinInit_FindNtosScan32(_In_ PVMM_PROCESS pSystemProcess)
 
 /*
 * Scan for the 'ntoskrnl.exe' by using the DTB and memory model information
-* from the ctxVmm. Return the system process (if found).
+* from the vmm handle. Return the system process (if found).
 * CALLER DECREF: return
+* -- H
 * -- return = system process - NB! CALLER must DECREF!
 */
-PVMM_PROCESS VmmWinInit_FindNtosScan()
+PVMM_PROCESS VmmWinInit_FindNtosScan(_In_ VMM_HANDLE H)
 {
     QWORD vaKernelBase = 0, cbKernelSize, vaKernelHint;
     PVMM_PROCESS pObSystemProcess = NULL;
     // 1: Pre-initialize System PID (required by VMM)
-    pObSystemProcess = VmmProcessCreateEntry(TRUE, 4, 0, 0, ctxVmm->kernel.paDTB, 0, "System         ", FALSE, NULL, 0);
+    pObSystemProcess = VmmProcessCreateEntry(H, TRUE, 4, 0, 0, H->vmm.kernel.paDTB, 0, "System         ", FALSE, NULL, 0);
     if(!pObSystemProcess) { return NULL; }
-    VmmProcessCreateFinish();
+    VmmProcessCreateFinish(H);
     // 2: Spider DTB to speed things up.
-    VmmTlbSpider(pObSystemProcess);
+    VmmTlbSpider(H, pObSystemProcess);
     // 3: Find the base of 'ntoskrnl.exe'
-    if(VMM_MEMORYMODEL_X64 == ctxVmm->tpMemoryModel) {
-        LcGetOption(ctxMain->hLC, LC_OPT_MEMORYINFO_OS_KERNELBASE, &vaKernelBase);
+    if(VMM_MEMORYMODEL_X64 == H->vmm.tpMemoryModel) {
+        LcGetOption(H->hLC, LC_OPT_MEMORYINFO_OS_KERNELBASE, &vaKernelBase);
         if(!vaKernelBase) {
-            vaKernelHint = ctxVmm->kernel.vaEntry;
-            if(!vaKernelHint) { LcGetOption(ctxMain->hLC, LC_OPT_MEMORYINFO_OS_KERNELHINT, &vaKernelHint); }
-            if(!vaKernelHint) { LcGetOption(ctxMain->hLC, LC_OPT_MEMORYINFO_OS_PsActiveProcessHead, &vaKernelHint); }
-            if(!vaKernelHint) { LcGetOption(ctxMain->hLC, LC_OPT_MEMORYINFO_OS_PsLoadedModuleList, &vaKernelHint); }
+            vaKernelHint = H->vmm.kernel.vaEntry;
+            if(!vaKernelHint) { LcGetOption(H->hLC, LC_OPT_MEMORYINFO_OS_KERNELHINT, &vaKernelHint); }
+            if(!vaKernelHint) { LcGetOption(H->hLC, LC_OPT_MEMORYINFO_OS_PsActiveProcessHead, &vaKernelHint); }
+            if(!vaKernelHint) { LcGetOption(H->hLC, LC_OPT_MEMORYINFO_OS_PsLoadedModuleList, &vaKernelHint); }
             if(vaKernelHint) {
-                vaKernelBase = VmmWinInit_FindNtosScanHint64(pObSystemProcess, vaKernelHint);
+                vaKernelBase = VmmWinInit_FindNtosScanHint64(H, pObSystemProcess, vaKernelHint);
             }
         }
         if(!vaKernelBase) {
-            vaKernelBase = VmmWinInit_FindNtosScan64(pObSystemProcess);
+            vaKernelBase = VmmWinInit_FindNtosScan64(H, pObSystemProcess);
         }
     } else {
-        vaKernelBase = VmmWinInit_FindNtosScan32(pObSystemProcess);
+        vaKernelBase = VmmWinInit_FindNtosScan32(H, pObSystemProcess);
     }
     if(!vaKernelBase) { goto fail; }
-    cbKernelSize = PE_GetSize(pObSystemProcess, vaKernelBase);
-    ctxVmm->kernel.vaBase = vaKernelBase;
-    ctxVmm->kernel.cbSize = cbKernelSize;
+    cbKernelSize = PE_GetSize(H, pObSystemProcess, vaKernelBase);
+    H->vmm.kernel.vaBase = vaKernelBase;
+    H->vmm.kernel.cbSize = cbKernelSize;
     return pObSystemProcess;
 fail:
     Ob_DECREF(pObSystemProcess);
@@ -646,14 +656,14 @@ BOOL VmmWinInit_DTB_FindValidate_X86PAE(_In_ QWORD pa, _In_reads_(0x1000) PBYTE 
 }
 
 _Success_(return)
-BOOL VmmWinInit_DTB_FindValidate_X64(_In_ QWORD pa, _In_reads_(0x1000) PBYTE pbPage)
+BOOL VmmWinInit_DTB_FindValidate_X64(_In_ VMM_HANDLE H, _In_ QWORD pa, _In_reads_(0x1000) PBYTE pbPage)
 {
     DWORD cKernelValid = 0, i;
     DWORD cUserZero = 0, cKernelZero = 0;
     QWORD *ptes, paMax;
     BOOL fSelfRef = FALSE;
     ptes = (PQWORD)pbPage;
-    paMax = ctxMain->dev.paMax;
+    paMax = H->dev.paMax;
     // check for user-mode page table with PDPT below max physical address and not NX.
     if((ptes[0] & 1) && ((ptes[0] & 0x0000fffffffff000) > paMax)) { return FALSE; }
     for(i = 0; i < 256; i++) {      // user-mode
@@ -675,10 +685,10 @@ BOOL VmmWinInit_DTB_FindValidate_X64(_In_ QWORD pa, _In_reads_(0x1000) PBYTE pbP
 * Find and validate the low stub (loaded <1MB if exists). The low stub almost
 * always exists on real hardware. It may be missing on virtual machines though.
 * Upon success both the PML4 and 'ntoskrnl.exe' KernelEntry point are located.
-* The PML4 is stored as the ctxVmm->kernel.paDTB and the KernelEntry is stored
-* as ctxVmm->kernel.vaHintOpt
+* The PML4 is stored as the H->vmm.kernel.paDTB and the KernelEntry is stored
+* as H->vmm.kernel.vaHintOpt
 */
-BOOL VmmWinInit_DTB_FindValidate_X64_LowStub(_In_ PBYTE pbLowStub1M)
+BOOL VmmWinInit_DTB_FindValidate_X64_LowStub(_In_ VMM_HANDLE H, _In_ PBYTE pbLowStub1M)
 {
     DWORD o = 0;
     while(o < 0x100000) {
@@ -686,8 +696,8 @@ BOOL VmmWinInit_DTB_FindValidate_X64_LowStub(_In_ PBYTE pbLowStub1M)
         if(0x00000001000600E9 != (0xffffffffffff00ff & *(PQWORD)(pbLowStub1M + o + 0x000))) { continue; } // START BYTES
         if(0xfffff80000000000 != (0xfffff80000000003 & *(PQWORD)(pbLowStub1M + o + 0x070))) { continue; } // KERNEL ENTRY
         if(0xffffff0000000fff & *(PQWORD)(pbLowStub1M + o + 0x0a0)) { continue; }                         // PML4
-        ctxVmm->kernel.vaEntry = *(PQWORD)(pbLowStub1M + o + 0x070);
-        ctxVmm->kernel.paDTB = *(PQWORD)(pbLowStub1M + o + 0x0a0);
+        H->vmm.kernel.vaEntry = *(PQWORD)(pbLowStub1M + o + 0x070);
+        H->vmm.kernel.paDTB = *(PQWORD)(pbLowStub1M + o + 0x0a0);
         return TRUE;
     }
     return FALSE;
@@ -696,11 +706,12 @@ BOOL VmmWinInit_DTB_FindValidate_X64_LowStub(_In_ PBYTE pbLowStub1M)
 /*
 * Tries to locate the Directory Table Base and the Memory Model by using various
 * detection and scanning functions. Upon success memory model and kernel DTB is
-* returned in the ctxVmm context.
--- return
+* returned in the vmm handle.
+* -- H
+* -- return
 */
 _Success_(return)
-BOOL VmmWinInit_DTB_FindValidate()
+BOOL VmmWinInit_DTB_FindValidate(_In_ VMM_HANDLE H)
 {
     DWORD pa;
     QWORD paDTB = 0;
@@ -708,20 +719,20 @@ BOOL VmmWinInit_DTB_FindValidate()
     if(!(pb16M = LocalAlloc(LMEM_ZEROINIT, 0x01000000))) { return FALSE; }
     // 1: try locate DTB via X64 low stub in lower 1MB -
     //    avoiding normally reserved memory at a0000-fffff.
-    LcRead(ctxMain->hLC, 0x1000, 0x9f000, pb16M + 0x1000);
-    if(VmmWinInit_DTB_FindValidate_X64_LowStub(pb16M)) {
-        VmmInitializeMemoryModel(VMM_MEMORYMODEL_X64);
-        paDTB = ctxVmm->kernel.paDTB;
+    LcRead(H->hLC, 0x1000, 0x9f000, pb16M + 0x1000);
+    if(VmmWinInit_DTB_FindValidate_X64_LowStub(H, pb16M)) {
+        VmmInitializeMemoryModel(H, VMM_MEMORYMODEL_X64);
+        paDTB = H->vmm.kernel.paDTB;
     }
     // 2: try locate DTB by scanning in lower 16MB
     // X64
     if(!paDTB) {
         for(pa = 0; pa < 0x01000000; pa += 0x1000) {
             if(pa == 0x00100000) {
-                LcRead(ctxMain->hLC, 0x00100000, 0x00f00000, pb16M + 0x00100000);
+                LcRead(H->hLC, 0x00100000, 0x00f00000, pb16M + 0x00100000);
             }
-            if(VmmWinInit_DTB_FindValidate_X64(pa, pb16M + pa)) {
-                VmmInitializeMemoryModel(VMM_MEMORYMODEL_X64);
+            if(VmmWinInit_DTB_FindValidate_X64(H, pa, pb16M + pa)) {
+                VmmInitializeMemoryModel(H, VMM_MEMORYMODEL_X64);
                 paDTB = pa;
                 break;
             }
@@ -731,7 +742,7 @@ BOOL VmmWinInit_DTB_FindValidate()
     if(!paDTB) {
         for(pa = 0; pa < 0x01000000; pa += 0x1000) {
             if(VmmWinInit_DTB_FindValidate_X86PAE(pa, pb16M + pa)) {
-                VmmInitializeMemoryModel(VMM_MEMORYMODEL_X86PAE);
+                VmmInitializeMemoryModel(H, VMM_MEMORYMODEL_X86PAE);
                 paDTB = pa;
                 break;
             }
@@ -741,7 +752,7 @@ BOOL VmmWinInit_DTB_FindValidate()
     if(!paDTB) {
         for(pa = 0; pa < 0x01000000; pa += 0x1000) {
             if(VmmWinInit_DTB_FindValidate_X86(pa, pb16M + pa)) {
-                VmmInitializeMemoryModel(VMM_MEMORYMODEL_X86);
+                VmmInitializeMemoryModel(H, VMM_MEMORYMODEL_X86);
                 paDTB = pa;
                 break;
             }
@@ -749,40 +760,41 @@ BOOL VmmWinInit_DTB_FindValidate()
     }
     LocalFree(pb16M);
     if(!paDTB) { return FALSE; }
-    ctxVmm->kernel.paDTB = paDTB;
+    H->vmm.kernel.paDTB = paDTB;
     return TRUE;
 }
 
 /*
 * Validate a DTB supplied by the user. The memory model will be detected and
-* the result will be stored in the ctxVmm context upon success.
+* the result will be stored in the vmm handle upon success.
+* -- H
 * -- paDTB
 * -- return
 */
-BOOL VmmWinInit_DTB_Validate(QWORD paDTB)
+BOOL VmmWinInit_DTB_Validate(_In_ VMM_HANDLE H, _In_ QWORD paDTB)
 {
     BYTE pb[0x1000];
     paDTB = paDTB & ~0xfff;
-    if(!LcRead(ctxMain->hLC, paDTB, 0x1000, pb)) { return FALSE; }
-    if(VmmWinInit_DTB_FindValidate_X64(paDTB, pb)) {
-        VmmInitializeMemoryModel(VMM_MEMORYMODEL_X64);
-        ctxVmm->kernel.paDTB = paDTB;
+    if(!LcRead(H->hLC, paDTB, 0x1000, pb)) { return FALSE; }
+    if(VmmWinInit_DTB_FindValidate_X64(H, paDTB, pb)) {
+        VmmInitializeMemoryModel(H, VMM_MEMORYMODEL_X64);
+        H->vmm.kernel.paDTB = paDTB;
         return TRUE;
     }
     if(VmmWinInit_DTB_FindValidate_X86PAE(paDTB, pb)) {
-        VmmInitializeMemoryModel(VMM_MEMORYMODEL_X86PAE);
-        ctxVmm->kernel.paDTB = paDTB;
+        VmmInitializeMemoryModel(H, VMM_MEMORYMODEL_X86PAE);
+        H->vmm.kernel.paDTB = paDTB;
         return TRUE;
     }
     if(VmmWinInit_DTB_FindValidate_X86(paDTB, pb)) {
-        VmmInitializeMemoryModel(VMM_MEMORYMODEL_X86);
-        ctxVmm->kernel.paDTB = paDTB;
+        VmmInitializeMemoryModel(H, VMM_MEMORYMODEL_X86);
+        H->vmm.kernel.paDTB = paDTB;
         return TRUE;
     }
     return FALSE;
 }
 
-BOOL VmmWinInit_FindPsLoadedModuleListKDBG(_In_ PVMM_PROCESS pSystemProcess)
+BOOL VmmWinInit_FindPsLoadedModuleListKDBG(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess)
 {
     PBYTE pbData = NULL, pbKDBG;
     IMAGE_SECTION_HEADER SectionHeader;
@@ -790,53 +802,53 @@ BOOL VmmWinInit_FindPsLoadedModuleListKDBG(_In_ PVMM_PROCESS pSystemProcess)
     QWORD va, va64 = 0;
     // 1: Try locate 'PsLoadedModuleList' by querying the microsoft crash dump
     //    file used. This will fail if another memory acqusition device is used.
-    if(LcGetOption(ctxMain->hLC, LC_OPT_MEMORYINFO_OS_PsLoadedModuleList, &va) && va) {
-        LcGetOption(ctxMain->hLC, LC_OPT_MEMORYINFO_OS_PFN, &ctxVmm->kernel.opt.vaPfnDatabase);
-        LcGetOption(ctxMain->hLC, LC_OPT_MEMORYINFO_OS_KdDebuggerDataBlock, &ctxVmm->kernel.opt.KDBG.va);
-        if(ctxVmm->f32 && VmmRead(pSystemProcess, va, (PBYTE)&va32, 4) && (va32 > 0x80000000)) {
-            ctxVmm->kernel.opt.vaPsLoadedModuleListExp = va;
-            ctxVmm->kernel.vaPsLoadedModuleListPtr = va32;
+    if(LcGetOption(H->hLC, LC_OPT_MEMORYINFO_OS_PsLoadedModuleList, &va) && va) {
+        LcGetOption(H->hLC, LC_OPT_MEMORYINFO_OS_PFN, &H->vmm.kernel.opt.vaPfnDatabase);
+        LcGetOption(H->hLC, LC_OPT_MEMORYINFO_OS_KdDebuggerDataBlock, &H->vmm.kernel.opt.KDBG.va);
+        if(H->vmm.f32 && VmmRead(H, pSystemProcess, va, (PBYTE)&va32, 4) && (va32 > 0x80000000)) {
+            H->vmm.kernel.opt.vaPsLoadedModuleListExp = va;
+            H->vmm.kernel.vaPsLoadedModuleListPtr = va32;
             return TRUE;
         }
-        if(!ctxVmm->f32 && VmmRead(pSystemProcess, va, (PBYTE)&va64, 8) && (va64 > 0xffff800000000000)) {
-            ctxVmm->kernel.opt.vaPsLoadedModuleListExp = va;
-            ctxVmm->kernel.vaPsLoadedModuleListPtr = va64;
+        if(!H->vmm.f32 && VmmRead(H, pSystemProcess, va, (PBYTE)&va64, 8) && (va64 > 0xffff800000000000)) {
+            H->vmm.kernel.opt.vaPsLoadedModuleListExp = va;
+            H->vmm.kernel.vaPsLoadedModuleListPtr = va64;
             return TRUE;
         }
     }
     //    (optionally) Locate the PFN database:
     //    The PFN database is static on before Windows 10 x64 1607/14393.
-    if(!ctxVmm->f32 && (ctxVmm->kernel.dwVersionBuild < 14393)) {
-        ctxVmm->kernel.opt.vaPfnDatabase = 0xfffffa8000000000;
+    if(!H->vmm.f32 && (H->vmm.kernel.dwVersionBuild < 14393)) {
+        H->vmm.kernel.opt.vaPfnDatabase = 0xfffffa8000000000;
     }
     // 2: Try locate 'PsLoadedModuleList' by exported kernel symbol. If this is
     //    possible _and_ the system is 64-bit it's most probably Windows 10 and
     //    KDBG will be encrypted so no need to continue looking for it.
-    ctxVmm->kernel.vaPsLoadedModuleListPtr = PE_GetProcAddress(pSystemProcess, ctxVmm->kernel.vaBase, "PsLoadedModuleList");
-    if(ctxVmm->kernel.vaPsLoadedModuleListPtr && !ctxVmm->f32) {
-        ctxVmm->kernel.opt.vaPsLoadedModuleListExp = ctxVmm->kernel.vaPsLoadedModuleListPtr;
+    H->vmm.kernel.vaPsLoadedModuleListPtr = PE_GetProcAddress(H, pSystemProcess, H->vmm.kernel.vaBase, "PsLoadedModuleList");
+    if(H->vmm.kernel.vaPsLoadedModuleListPtr && !H->vmm.f32) {
+        H->vmm.kernel.opt.vaPsLoadedModuleListExp = H->vmm.kernel.vaPsLoadedModuleListPtr;
         return TRUE;
     }
     // 3: Try locate 'KDBG' by looking in 'ntoskrnl.exe' '.text' section. This
     //    is the normal way of finding it on 64-bit Windows below Windows 10.
     //    This also works on 32-bit Windows versions - so use this method for
     //    simplicity rather than using a separate 32-bit method.
-    if(!ctxVmm->kernel.opt.KDBG.va && (ctxVmm->f32 || ctxVmm->kernel.dwVersionMajor < 10)) {
-        if(!PE_SectionGetFromName(pSystemProcess, ctxVmm->kernel.vaBase, ".data", &SectionHeader)) { goto fail; }
+    if(!H->vmm.kernel.opt.KDBG.va && (H->vmm.f32 || H->vmm.kernel.dwVersionMajor < 10)) {
+        if(!PE_SectionGetFromName(H, pSystemProcess, H->vmm.kernel.vaBase, ".data", &SectionHeader)) { goto fail; }
         if((SectionHeader.Misc.VirtualSize > 0x00100000) || (SectionHeader.VirtualAddress > 0x01000000)) { goto fail; }
         if(!(pbData = LocalAlloc(LMEM_ZEROINIT, SectionHeader.Misc.VirtualSize))) { goto fail; }
-        VmmReadEx(pSystemProcess, ctxVmm->kernel.vaBase + SectionHeader.VirtualAddress, pbData, SectionHeader.Misc.VirtualSize, NULL, 0);
+        VmmReadEx(H, pSystemProcess, H->vmm.kernel.vaBase + SectionHeader.VirtualAddress, pbData, SectionHeader.Misc.VirtualSize, NULL, 0);
         for(o = 16; o <= SectionHeader.Misc.VirtualSize - 0x290; o += 4) {
             if(*(PDWORD)(pbData + o) == 0x4742444b) { // KDBG tag
                 pbKDBG = pbData + o - 16;
-                if(ctxVmm->kernel.vaBase != *(PQWORD)(pbKDBG + 0x18)) { continue; }
+                if(H->vmm.kernel.vaBase != *(PQWORD)(pbKDBG + 0x18)) { continue; }
                 // fetch PsLoadedModuleList
                 va = *(PQWORD)(pbKDBG + 0x48);
-                if((va < ctxVmm->kernel.vaBase) || (va > ctxVmm->kernel.vaBase + ctxVmm->kernel.cbSize)) { goto fail; }
-                if(!VmmRead(pSystemProcess, va, (PBYTE)&ctxVmm->kernel.vaPsLoadedModuleListPtr, ctxVmm->f32 ? 4 : 8)) { goto fail; }
-                ctxVmm->kernel.opt.vaPsLoadedModuleListExp = va;
+                if((va < H->vmm.kernel.vaBase) || (va > H->vmm.kernel.vaBase + H->vmm.kernel.cbSize)) { goto fail; }
+                if(!VmmRead(H, pSystemProcess, va, (PBYTE)&H->vmm.kernel.vaPsLoadedModuleListPtr, H->vmm.f32 ? 4 : 8)) { goto fail; }
+                H->vmm.kernel.opt.vaPsLoadedModuleListExp = va;
                 // finish!
-                ctxVmm->kernel.opt.KDBG.va = ctxVmm->kernel.vaBase + SectionHeader.VirtualAddress + o - 16;
+                H->vmm.kernel.opt.KDBG.va = H->vmm.kernel.vaBase + SectionHeader.VirtualAddress + o - 16;
                 LocalFree(pbData);
                 return TRUE;
             }
@@ -844,64 +856,65 @@ BOOL VmmWinInit_FindPsLoadedModuleListKDBG(_In_ PVMM_PROCESS pSystemProcess)
     }
     // 4: Try locate by querying the PDB for symbols. At this point the PDB
     //    subsystem may not be fully initialized yet so wait for it to init.
-    PDB_Initialize_WaitComplete();
-    if(PDB_GetSymbolPTR(PDB_HANDLE_KERNEL, "PsLoadedModuleList", pSystemProcess, &ctxVmm->kernel.vaPsLoadedModuleListPtr)) {
-        PDB_GetSymbolAddress(PDB_HANDLE_KERNEL, "PsLoadedModuleList", &ctxVmm->kernel.opt.vaPsLoadedModuleListExp);
+    PDB_Initialize_WaitComplete(H);
+    if(PDB_GetSymbolPTR(H, PDB_HANDLE_KERNEL, "PsLoadedModuleList", pSystemProcess, &H->vmm.kernel.vaPsLoadedModuleListPtr)) {
+        PDB_GetSymbolAddress(H, PDB_HANDLE_KERNEL, "PsLoadedModuleList", &H->vmm.kernel.opt.vaPsLoadedModuleListExp);
         return TRUE;
     }
 fail:
     LocalFree(pbData);
-    return (0 != ctxVmm->kernel.vaPsLoadedModuleListPtr);
+    return (0 != H->vmm.kernel.vaPsLoadedModuleListPtr);
 }
 
 /*
 * Retrieve the operating system versioning information by looking at values in
 * the PEB of the process 'smss.exe'.
+* -- H
 * -- pProcessSMSS
 * -- return
 */
-VOID VmmWinInit_VersionNumber(_In_ PVMM_PROCESS pProcessSMSS)
+VOID VmmWinInit_VersionNumber(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcessSMSS)
 {
     BOOL fRead;
     BYTE pbPEB[0x130];
     PVMM_PROCESS pObProcess = NULL;
-    fRead = VmmRead(pProcessSMSS, pProcessSMSS->win.vaPEB, pbPEB, 0x130);
+    fRead = VmmRead(H, pProcessSMSS, pProcessSMSS->win.vaPEB, pbPEB, 0x130);
     if(!fRead) { // failed (paging?) - try to read from crss.exe / lsass.exe / winlogon.exe
-        while((pObProcess = VmmProcessGetNext(pObProcess, 0))) {
+        while((pObProcess = VmmProcessGetNext(H, pObProcess, 0))) {
             if(!strcmp("crss.exe", pObProcess->szName) || !strcmp("lsass.exe", pObProcess->szName) || !strcmp("winlogon.exe", pObProcess->szName)) {
-                if((fRead = VmmRead(pObProcess, pObProcess->win.vaPEB, pbPEB, 0x130))) { break; }
+                if((fRead = VmmRead(H, pObProcess, pObProcess->win.vaPEB, pbPEB, 0x130))) { break; }
             }
         }
         Ob_DECREF_NULL(&pObProcess);
     }
     if(fRead) {
-        if(ctxVmm->f32) {
-            ctxVmm->kernel.dwVersionMajor = *(PDWORD)(pbPEB + 0x0a4);
-            ctxVmm->kernel.dwVersionMinor = *(PDWORD)(pbPEB + 0x0a8);
-            ctxVmm->kernel.dwVersionBuild = *(PWORD)(pbPEB + 0x0ac);
+        if(H->vmm.f32) {
+            H->vmm.kernel.dwVersionMajor = *(PDWORD)(pbPEB + 0x0a4);
+            H->vmm.kernel.dwVersionMinor = *(PDWORD)(pbPEB + 0x0a8);
+            H->vmm.kernel.dwVersionBuild = *(PWORD)(pbPEB + 0x0ac);
         } else {
-            ctxVmm->kernel.dwVersionMajor = *(PDWORD)(pbPEB + 0x118);
-            ctxVmm->kernel.dwVersionMinor = *(PDWORD)(pbPEB + 0x11c);
-            ctxVmm->kernel.dwVersionBuild = *(PWORD)(pbPEB + 0x120);
+            H->vmm.kernel.dwVersionMajor = *(PDWORD)(pbPEB + 0x118);
+            H->vmm.kernel.dwVersionMinor = *(PDWORD)(pbPEB + 0x11c);
+            H->vmm.kernel.dwVersionBuild = *(PWORD)(pbPEB + 0x120);
         }
-    } else if(PDB_GetSymbolDWORD(PDB_HANDLE_KERNEL, "NtBuildNumber", PVMM_PROCESS_SYSTEM, &ctxVmm->kernel.dwVersionBuild)) {
-        ctxVmm->kernel.dwVersionBuild = (WORD)ctxVmm->kernel.dwVersionBuild;
-        if(ctxVmm->kernel.dwVersionBuild) {
-            if(ctxVmm->kernel.dwVersionBuild >= 10240) {        // 10 (incl. win11)
-                ctxVmm->kernel.dwVersionMajor = 10;
-                ctxVmm->kernel.dwVersionMinor = 0;
-            } else if(ctxVmm->kernel.dwVersionBuild >= 9100) {  // 8
-                ctxVmm->kernel.dwVersionMajor = 6;
-                ctxVmm->kernel.dwVersionMinor = 3;
-            } else if(ctxVmm->kernel.dwVersionBuild >= 7600) {  // 7
-                ctxVmm->kernel.dwVersionMajor = 6;
-                ctxVmm->kernel.dwVersionMinor = 1;
-            } else if(ctxVmm->kernel.dwVersionBuild >= 6000) {  // VISTA
-                ctxVmm->kernel.dwVersionMajor = 6;
-                ctxVmm->kernel.dwVersionMinor = 0;
+    } else if(PDB_GetSymbolDWORD(H, PDB_HANDLE_KERNEL, "NtBuildNumber", PVMM_PROCESS_SYSTEM, &H->vmm.kernel.dwVersionBuild)) {
+        H->vmm.kernel.dwVersionBuild = (WORD)H->vmm.kernel.dwVersionBuild;
+        if(H->vmm.kernel.dwVersionBuild) {
+            if(H->vmm.kernel.dwVersionBuild >= 10240) {        // 10 (incl. win11)
+                H->vmm.kernel.dwVersionMajor = 10;
+                H->vmm.kernel.dwVersionMinor = 0;
+            } else if(H->vmm.kernel.dwVersionBuild >= 9100) {  // 8
+                H->vmm.kernel.dwVersionMajor = 6;
+                H->vmm.kernel.dwVersionMinor = 3;
+            } else if(H->vmm.kernel.dwVersionBuild >= 7600) {  // 7
+                H->vmm.kernel.dwVersionMajor = 6;
+                H->vmm.kernel.dwVersionMinor = 1;
+            } else if(H->vmm.kernel.dwVersionBuild >= 6000) {  // VISTA
+                H->vmm.kernel.dwVersionMajor = 6;
+                H->vmm.kernel.dwVersionMinor = 0;
             } else {                                            // XP
-                ctxVmm->kernel.dwVersionMajor = 5;
-                ctxVmm->kernel.dwVersionMinor = 1;
+                H->vmm.kernel.dwVersionMajor = 5;
+                H->vmm.kernel.dwVersionMinor = 1;
             }
         }
     }
@@ -910,178 +923,178 @@ VOID VmmWinInit_VersionNumber(_In_ PVMM_PROCESS pProcessSMSS)
 /*
 * Helper fucntion to VmmWinInit_TryInitialize. Tries to locate the EPROCESS of
 * the SYSTEM process and return it.
+* -- H
 * -- pSystemProcess
 * -- return
 */
-QWORD VmmWinInit_FindSystemEPROCESS(_In_ PVMM_PROCESS pSystemProcess)
+QWORD VmmWinInit_FindSystemEPROCESS(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess)
 {
-    BOOL f32 = ctxVmm->f32;
+    BOOL f32 = H->vmm.f32;
     IMAGE_SECTION_HEADER SectionHeader;
     BYTE pbALMOSTRO[0x80], pbSYSTEM[0x300];
     QWORD i, vaPsInitialSystemProcess, vaSystemEPROCESS;
     // 1: try locate System EPROCESS by PsInitialSystemProcess exported symbol (works on all win versions)
-    vaPsInitialSystemProcess = PE_GetProcAddress(pSystemProcess, ctxVmm->kernel.vaBase, "PsInitialSystemProcess");
-    if(VmmRead(pSystemProcess, vaPsInitialSystemProcess, (PBYTE)& vaSystemEPROCESS, 8)) {
-        if((VMM_MEMORYMODEL_X86 == ctxVmm->tpMemoryModel) || (VMM_MEMORYMODEL_X86PAE == ctxVmm->tpMemoryModel)) {
+    vaPsInitialSystemProcess = PE_GetProcAddress(H, pSystemProcess, H->vmm.kernel.vaBase, "PsInitialSystemProcess");
+    if(VmmRead(H, pSystemProcess, vaPsInitialSystemProcess, (PBYTE)& vaSystemEPROCESS, 8)) {
+        if((VMM_MEMORYMODEL_X86 == H->vmm.tpMemoryModel) || (VMM_MEMORYMODEL_X86PAE == H->vmm.tpMemoryModel)) {
             vaSystemEPROCESS &= 0xffffffff;
         }
         pSystemProcess->win.EPROCESS.va = vaSystemEPROCESS;
-        VmmLog(MID_CORE, LOGLEVEL_DEBUG, "PsInitialSystemProcess located at %016llx", vaPsInitialSystemProcess);
+        VmmLog(H, MID_CORE, LOGLEVEL_DEBUG, "PsInitialSystemProcess located at %016llx", vaPsInitialSystemProcess);
         goto success;
     }
     // 2: fail - paging? try to retrive using PDB subsystem - this may take some time to initialize
     //           and download symbols - but it's better than failing totally ...
-    InfoDB_Initialize();
-    PDB_Initialize(NULL, FALSE);
-    PDB_GetSymbolPTR(PDB_HANDLE_KERNEL, "PsInitialSystemProcess", pSystemProcess, &vaSystemEPROCESS);
+    InfoDB_Initialize(H);
+    PDB_Initialize(H, NULL, FALSE);
+    PDB_GetSymbolPTR(H, PDB_HANDLE_KERNEL, "PsInitialSystemProcess", pSystemProcess, &vaSystemEPROCESS);
     if(vaSystemEPROCESS) { goto success; }
     // 3: fail - paging? (or not windows) - this should ideally not happen - but it happens rarely...
     //    try scan beginning of ALMOSTRO section for pointers and validate (working on pre-win10 only)
-    if(!PE_SectionGetFromName(pSystemProcess, ctxVmm->kernel.vaBase, "ALMOSTRO", &SectionHeader)) { return 0; }
-    if(!VmmRead(pSystemProcess, ctxVmm->kernel.vaBase + SectionHeader.VirtualAddress, pbALMOSTRO, sizeof(pbALMOSTRO))) { return 0; }
+    if(!PE_SectionGetFromName(H, pSystemProcess, H->vmm.kernel.vaBase, "ALMOSTRO", &SectionHeader)) { return 0; }
+    if(!VmmRead(H, pSystemProcess, H->vmm.kernel.vaBase + SectionHeader.VirtualAddress, pbALMOSTRO, sizeof(pbALMOSTRO))) { return 0; }
     for(i = 0; i < sizeof(pbALMOSTRO); i += f32 ? 4 : 8) {
         vaSystemEPROCESS = f32 ? *(PDWORD)(pbALMOSTRO + i) : *(PQWORD)(pbALMOSTRO + i);
         if(f32 ? VMM_KADDR32_8(vaSystemEPROCESS) : VMM_KADDR64_16(vaSystemEPROCESS)) {
-            if(VmmRead(pSystemProcess, vaSystemEPROCESS, pbSYSTEM, sizeof(pbSYSTEM))) {
-                if(f32 && ((*(PDWORD)(pbSYSTEM + 0x18) & ~0xf) == ctxVmm->kernel.paDTB)) { goto success; }      // 32-bit EPROCESS DTB at fixed offset
-                if(!f32 && ((*(PQWORD)(pbSYSTEM + 0x28) & ~0xf) == ctxVmm->kernel.paDTB)) { goto success; }     // 64-bit EPROCESS DTB at fixed offset
+            if(VmmRead(H, pSystemProcess, vaSystemEPROCESS, pbSYSTEM, sizeof(pbSYSTEM))) {
+                if(f32 && ((*(PDWORD)(pbSYSTEM + 0x18) & ~0xf) == H->vmm.kernel.paDTB)) { goto success; }      // 32-bit EPROCESS DTB at fixed offset
+                if(!f32 && ((*(PQWORD)(pbSYSTEM + 0x28) & ~0xf) == H->vmm.kernel.paDTB)) { goto success; }     // 64-bit EPROCESS DTB at fixed offset
             }
         }
     }
     return 0;
 success:
-    VmmLog(MID_CORE, LOGLEVEL_DEBUG, "EPROCESS located at %016llx", vaSystemEPROCESS);
+    VmmLog(H, MID_CORE, LOGLEVEL_DEBUG, "EPROCESS located at %016llx", vaSystemEPROCESS);
     return vaSystemEPROCESS;
 }
 
 /*
 * Async initialization of remaining actions in VmmWinInit_TryInitialize.
-* -- lpParameter
+* -- H
+* -- qwNotUsed
 * -- return
 */
-DWORD VmmWinInit_TryInitialize_Async(LPVOID lpParameter)
+VOID VmmWinInit_TryInitialize_Async(_In_ VMM_HANDLE H, _In_ QWORD qwNotUsed)
 {
     POB_SET psObNoLinkEPROCESS = NULL;
     PVMM_PROCESS pObSystemProcess = NULL;
-    PDB_Initialize_WaitComplete();
-    MmWin_PagingInitialize(TRUE);   // initialize full paging (memcompression)
-    VmmWinInit_TryInitializeThreading();
-    VmmWinInit_InitializeOffsetStatic_Heap();
-    VmmWinInit_TryInitializeKernelOptionalValues();
+    PDB_Initialize_WaitComplete(H);
+    MmWin_PagingInitialize(H, TRUE);   // initialize full paging (memcompression)
+    VmmWinInit_TryInitializeThreading(H);
+    VmmWinInit_InitializeOffsetStatic_Heap(H);
+    VmmWinInit_TryInitializeKernelOptionalValues(H);
     // locate no-link processes [only in non-volatile memory due to performance].
-    if(!ctxMain->dev.fVolatile && (psObNoLinkEPROCESS = VmmWinProcess_Enumerate_FindNoLinkProcesses())) {
-        if((pObSystemProcess = VmmProcessGet(4))) {
-            VmmWinProcess_Enumerate(pObSystemProcess, FALSE, psObNoLinkEPROCESS);
+    if(!H->dev.fVolatile && (psObNoLinkEPROCESS = VmmWinProcess_Enumerate_FindNoLinkProcesses(H))) {
+        if((pObSystemProcess = VmmProcessGet(H, 4))) {
+            VmmWinProcess_Enumerate(H, pObSystemProcess, FALSE, psObNoLinkEPROCESS);
         }
         Ob_DECREF(psObNoLinkEPROCESS);
         Ob_DECREF(pObSystemProcess);
     }
-    return 1;
 }
 
 /*
 * Initialize the "system unique tag" - i.e. an unique system-dependent id.
+* -- H
 */
-VOID VmmWinInit_TryInitialize_SystemUniqueTag()
+VOID VmmWinInit_TryInitialize_SystemUniqueTag(_In_ VMM_HANDLE H)
 {
     BYTE pbSHA256[32] = { 0 };
     PVMM_PROCESS pObSystemProcess = NULL;
-    if((pObSystemProcess = VmmProcessGet(4))) {
+    if((pObSystemProcess = VmmProcessGet(H, 4))) {
         Util_HashSHA256(pObSystemProcess->win.EPROCESS.pb, pObSystemProcess->win.EPROCESS.cb, pbSHA256);
-        ctxVmm->dwSystemUniqueId = *(PDWORD)pbSHA256;
-        snprintf(ctxVmm->szSystemUniqueTag, _countof(ctxVmm->szSystemUniqueTag), "%i_%x", ctxVmm->kernel.dwVersionBuild, ctxVmm->dwSystemUniqueId);
+        H->vmm.dwSystemUniqueId = *(PDWORD)pbSHA256;
+        snprintf(H->vmm.szSystemUniqueTag, _countof(H->vmm.szSystemUniqueTag), "%i_%x", H->vmm.kernel.dwVersionBuild, H->vmm.dwSystemUniqueId);
     }
     Ob_DECREF(pObSystemProcess);
 }
 
 /*
 * Try initialize the VMM from scratch with new WINDOWS support.
+* -- H
 * -- paDTBOpt
 * -- return
 */
-BOOL VmmWinInit_TryInitialize(_In_opt_ QWORD paDTBOpt)
+BOOL VmmWinInit_TryInitialize(_In_ VMM_HANDLE H, _In_opt_ QWORD paDTBOpt)
 {
-    HANDLE hThreadInitializeAsync;
     PVMM_PROCESS pObSystemProcess = NULL, pObProcess = NULL;
     // Fetch Directory Base (DTB (PML4)) and initialize Memory Model.
 
     QWORD vaKERN1 = 0, vaKERN2;
-    LcGetOption(ctxMain->hLC, LC_OPT_MEMORYINFO_OS_KERNELBASE, &vaKERN1);
-    LcGetOption(ctxMain->hLC, LC_OPT_MEMORYINFO_OS_KERNELHINT, &vaKERN2);
+    LcGetOption(H->hLC, LC_OPT_MEMORYINFO_OS_KERNELBASE, &vaKERN1);
+    LcGetOption(H->hLC, LC_OPT_MEMORYINFO_OS_KERNELHINT, &vaKERN2);
 
-    if(paDTBOpt && !VmmWinInit_DTB_Validate(paDTBOpt)) {
-        VmmLog(MID_CORE, LOGLEVEL_CRITICAL, "Initialization Failed. Unable to verify user-supplied (0x%016llx) DTB. #1", paDTBOpt);
+    if(paDTBOpt && !VmmWinInit_DTB_Validate(H, paDTBOpt)) {
+        VmmLog(H, MID_CORE, LOGLEVEL_CRITICAL, "Initialization Failed. Unable to verify user-supplied (0x%016llx) DTB. #1", paDTBOpt);
         goto fail;
     }
-    if(!ctxVmm->kernel.paDTB && LcGetOption(ctxMain->hLC, LC_OPT_MEMORYINFO_OS_DTB, &paDTBOpt)) {
-        if(!VmmWinInit_DTB_Validate(paDTBOpt)) {
-            VmmLog(MID_CORE, LOGLEVEL_WARNING, "Unable to verify crash-dump supplied DTB. (0x%016llx) #1", paDTBOpt);
+    if(!H->vmm.kernel.paDTB && LcGetOption(H->hLC, LC_OPT_MEMORYINFO_OS_DTB, &paDTBOpt)) {
+        if(!VmmWinInit_DTB_Validate(H, paDTBOpt)) {
+            VmmLog(H, MID_CORE, LOGLEVEL_WARNING, "Unable to verify crash-dump supplied DTB. (0x%016llx) #1", paDTBOpt);
         }
     }
-    if(!ctxVmm->kernel.paDTB && !VmmWinInit_DTB_FindValidate()) {
-        VmmLog(MID_CORE, LOGLEVEL_CRITICAL, "Initialization Failed. Unable to locate valid DTB. #2");
+    if(!H->vmm.kernel.paDTB && !VmmWinInit_DTB_FindValidate(H)) {
+        VmmLog(H, MID_CORE, LOGLEVEL_CRITICAL, "Initialization Failed. Unable to locate valid DTB. #2");
         goto fail;
     }
-    VmmLog(MID_CORE, LOGLEVEL_DEBUG, "DTB  located at: %016llx. MemoryModel: %s", ctxVmm->kernel.paDTB, VMM_MEMORYMODEL_TOSTRING[ctxVmm->tpMemoryModel]);
+    VmmLog(H, MID_CORE, LOGLEVEL_DEBUG, "DTB  located at: %016llx. MemoryModel: %s", H->vmm.kernel.paDTB, VMM_MEMORYMODEL_TOSTRING[H->vmm.tpMemoryModel]);
     // Fetch 'ntoskrnl.exe' base address
-    if(!(pObSystemProcess = VmmWinInit_FindNtosScan())) {
-        VmmLog(MID_CORE, LOGLEVEL_CRITICAL, "Initialization Failed. Unable to locate ntoskrnl.exe. #3");
+    if(!(pObSystemProcess = VmmWinInit_FindNtosScan(H))) {
+        VmmLog(H, MID_CORE, LOGLEVEL_CRITICAL, "Initialization Failed. Unable to locate ntoskrnl.exe. #3");
         goto fail;
     }
-    VmmLog(MID_CORE, LOGLEVEL_DEBUG, "NTOS located at: %016llx", ctxVmm->kernel.vaBase);
+    VmmLog(H, MID_CORE, LOGLEVEL_DEBUG, "NTOS located at: %016llx", H->vmm.kernel.vaBase);
     // Initialize Paging (Limited Mode)
-    MmWin_PagingInitialize(FALSE);
+    MmWin_PagingInitialize(H, FALSE);
     // Locate System EPROCESS
-    pObSystemProcess->win.EPROCESS.va = VmmWinInit_FindSystemEPROCESS(pObSystemProcess);
+    pObSystemProcess->win.EPROCESS.va = VmmWinInit_FindSystemEPROCESS(H, pObSystemProcess);
     if(!pObSystemProcess->win.EPROCESS.va) {
-        VmmLog(MID_CORE, LOGLEVEL_CRITICAL, "Initialization Failed. Unable to locate EPROCESS. #4");
+        VmmLog(H, MID_CORE, LOGLEVEL_CRITICAL, "Initialization Failed. Unable to locate EPROCESS. #4");
         goto fail;
     }
     // Enumerate processes
-    if(!VmmWinProcess_Enumerate(pObSystemProcess, TRUE, NULL)) {
-        VmmLog(MID_CORE, LOGLEVEL_CRITICAL, "Initialization Failed. Unable to walk EPROCESS. #5");
+    if(!VmmWinProcess_Enumerate(H, pObSystemProcess, TRUE, NULL)) {
+        VmmLog(H, MID_CORE, LOGLEVEL_CRITICAL, "Initialization Failed. Unable to walk EPROCESS. #5");
         goto fail;
     }
-    ctxVmm->tpSystem = (VMM_MEMORYMODEL_X64 == ctxVmm->tpMemoryModel) ? VMM_SYSTEM_WINDOWS_X64 : VMM_SYSTEM_WINDOWS_X86;
+    H->vmm.tpSystem = (VMM_MEMORYMODEL_X64 == H->vmm.tpMemoryModel) ? VMM_SYSTEM_WINDOWS_X64 : VMM_SYSTEM_WINDOWS_X86;
     // Retrieve operating system version information from 'smss.exe' process
     // Optionally retrieve PID of Registry process
-    while((pObProcess = VmmProcessGetNext(pObProcess, 0))) {
+    while((pObProcess = VmmProcessGetNext(H, pObProcess, 0))) {
         if(pObProcess->dwPPID == 4) {
             if(!memcmp("Registry", pObProcess->szName, 9)) {
-                ctxVmm->kernel.dwPidRegistry = pObProcess->dwPID;
+                H->vmm.kernel.dwPidRegistry = pObProcess->dwPID;
             }
             if(!_stricmp("smss.exe", pObProcess->szName)) {
-                VmmWinInit_VersionNumber(pObProcess);
+                VmmWinInit_VersionNumber(H, pObProcess);
             }
         }
     }
     // Initialization functionality:
-    InfoDB_Initialize();
-    PDB_Initialize(NULL, TRUE);                                 // Async init of PDB subsystem.
-    VmmWinInit_FindPsLoadedModuleListKDBG(pObSystemProcess);    // Find PsLoadedModuleList and possibly KDBG.
-    VmmWinObj_Initialize();                                     // Windows Objects Manager.
-    VmmWinReg_Initialize();                                     // Registry.
-    VmmWinInit_TryInitialize_SystemUniqueTag();
+    InfoDB_Initialize(H);
+    PDB_Initialize(H, NULL, TRUE);                              // Async init of PDB subsystem.
+    VmmWinInit_FindPsLoadedModuleListKDBG(H, pObSystemProcess); // Find PsLoadedModuleList and possibly KDBG.
+    VmmWinObj_Initialize(H);                                    // Windows Objects Manager.
+    VmmWinReg_Initialize(H);                                    // Registry.
+    VmmWinInit_TryInitialize_SystemUniqueTag(H);
     // Async Initialization functionality:
-    hThreadInitializeAsync = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)VmmWinInit_TryInitialize_Async, (LPVOID)NULL, 0, NULL);
-    if(hThreadInitializeAsync) {
-        if(ctxMain->cfg.fWaitInitialize) {
-            WaitForSingleObject(hThreadInitializeAsync, INFINITE);
-        }
-        CloseHandle(hThreadInitializeAsync);
+    if(H->cfg.fWaitInitialize) {
+        VmmWinInit_TryInitialize_Async(H, 0);                   // synchronous initialization
+    } else {
+        VmmWork_Value(H, VmmWinInit_TryInitialize_Async, 0, 0, VMMWORK_FLAG_PRIO_NORMAL); // async initialization
     }
     // return
     Ob_DECREF(pObSystemProcess);
-    vmmprintf(
+    vmmprintf(H,
         "Initialized %i-bit Windows %i.%i.%i\n",
-        (ctxVmm->f32 ? 32 : 64),
-        ctxVmm->kernel.dwVersionMajor,
-        ctxVmm->kernel.dwVersionMinor,
-        ctxVmm->kernel.dwVersionBuild);
+        (H->vmm.f32 ? 32 : 64),
+        H->vmm.kernel.dwVersionMajor,
+        H->vmm.kernel.dwVersionMinor,
+        H->vmm.kernel.dwVersionBuild);
     return TRUE;
 fail:
-    VmmInitializeMemoryModel(VMM_MEMORYMODEL_NA); // clean memory model
-    ZeroMemory(&ctxVmm->kernel, sizeof(VMM_KERNELINFO));
+    VmmInitializeMemoryModel(H, VMM_MEMORYMODEL_NA); // clean memory model
+    ZeroMemory(&H->vmm.kernel, sizeof(VMM_KERNELINFO));
     Ob_DECREF(pObSystemProcess);
     return FALSE;
 }

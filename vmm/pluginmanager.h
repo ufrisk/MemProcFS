@@ -12,35 +12,41 @@
 
 /*
 * Initialize built-in and external modules.
+* -- H
+* -- return
 */
-BOOL PluginManager_Initialize();
+BOOL PluginManager_Initialize(_In_ VMM_HANDLE H);
 
 /*
 * Close built-in and external modules, free their resources and unload loaded
 * DLLs from memory.
+* -- H
 */
-VOID PluginManager_Close();
+VOID PluginManager_Close(_In_ VMM_HANDLE H);
 
 /*
 * Set/Change the visibility of an already registered plugin. Depending on other
 * plugins registered in the path parent paths may change as well.
+* -- H
 * -- fRoot = TRUE: root, FALSE: process.
 * -- uszPluginPath
 * -- fVisible
 */
-VOID PluginManager_SetVisibility(_In_ BOOL fRoot, _In_ LPSTR uszPluginPath, _In_ BOOL fVisible);
+VOID PluginManager_SetVisibility(_In_ VMM_HANDLE H, _In_ BOOL fRoot, _In_ LPSTR uszPluginPath, _In_ BOOL fVisible);
 
 /*
 * Send a List command down the module chain to the appropriate module.
+* -- H
 * -- pProcess
 * -- uszPath
 * -- pFileList
 * -- return
 */
-VOID PluginManager_List(_In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR uszPath, _Inout_ PHANDLE pFileList);
+VOID PluginManager_List(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR uszPath, _Inout_ PHANDLE pFileList);
 
 /*
 * Send a Read command down the module chain to the appropriate module.
+* -- H
 * -- pProcess
 * -- uszPath
 * -- pb
@@ -49,10 +55,11 @@ VOID PluginManager_List(_In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR uszPath, _Ino
 * -- cbOffset
 * -- return
 */
-NTSTATUS PluginManager_Read(_In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR uszPath, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
+NTSTATUS PluginManager_Read(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR uszPath, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 
 /*
 * Send a Write command down the module chain to the appropriate module.
+* -- H
 * -- pProcess
 * -- uszPath
 * -- pb
@@ -61,44 +68,60 @@ NTSTATUS PluginManager_Read(_In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR uszPath, 
 * -- cbOffset
 * -- return
 */
-NTSTATUS PluginManager_Write(_In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR uszPath, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset);
+NTSTATUS PluginManager_Write(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR uszPath, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset);
 
 /*
 * Send a notification event to plugins that registered to receive notifications.
 * Officially supported events are listed in vmmdll.h!VMMDLL_PLUGIN_EVENT_*
+* -- H
 * -- fEvent = the event to send.
 * -- pvEvent = optional binary object related to the event.
 * -- cbEvent = length in bytes of pvEvent (if any).
 * -- return = (always return TRUE).
 */
-BOOL PluginManager_Notify(_In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent);
+BOOL PluginManager_Notify(_In_ VMM_HANDLE H, _In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent);
 
 /*
 * Initialize plugins with forensic mode capabilities.
+* -- H
 */
-VOID PluginManager_FcInitialize();
+VOID PluginManager_FcInitialize(_In_ VMM_HANDLE H);
 
 /*
 * Finalize plugins with forensic mode capabilities.
+* -- H
 */
-VOID PluginManager_FcFinalize();
+VOID PluginManager_FcFinalize(_In_ VMM_HANDLE H);
 
 /*
 * Ingest physical memory into plugins with forensic mode capabilities.
 * NB! must only be called in single-threaded context!
+* -- H
 * -- pIngestPhysmem
 */
-VOID PluginManager_FcIngestPhysmem(_In_ PVMMDLL_PLUGIN_FORENSIC_INGEST_PHYSMEM pIngestPhysmem);
+VOID PluginManager_FcIngestPhysmem(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_INGEST_PHYSMEM pIngestPhysmem);
 
 /*
-* All ingestion actions are completed.
+* Ingest virtual memory into plugins with forensic mode capabilities.
+* -- H
+* -- pProcess
+* -- va
+* -- pb
+* -- cb
 */
-VOID PluginManager_FcIngestFinalize();
+VOID PluginManager_FcIngestVirtmem(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb);
+
+/*
+* All ingestion actions (physical & virtual) are completed.
+* -- H
+*/
+VOID PluginManager_FcIngestFinalize(_In_ VMM_HANDLE H);
 
 /*
 * Register plugins with timelining capabilities with the timeline manager
 * and call into each plugin to allow them to add their timelining entries.
 * NB! This function is meant to be called by the core forensic subsystem only.
+* -- H
 * -- pfnRegister = callback function to register timeline module.
 * -- pfnClose = function to close the timeline handle.
 * -- pfnEntryAdd = callback function to call to add a timelining entry.
@@ -107,18 +130,29 @@ VOID PluginManager_FcIngestFinalize();
 *      id_str, ft, ac, pid, data32, data64 (in order and without SELECT statement).
 */
 VOID PluginManager_FcTimeline(
-    _In_ HANDLE(*pfnRegister)(_In_reads_(6) LPSTR sNameShort, _In_reads_(32) LPSTR szFileUTF8),
-    _In_ VOID(*pfnClose)(_In_ HANDLE hTimeline),
-    _In_ VOID(*pfnEntryAdd)(_In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPSTR uszText),
-    _In_ VOID(*pfnEntryAddBySql)(_In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPSTR *pszEntrySql)
+    _In_ VMM_HANDLE H,
+    _In_ HANDLE(*pfnRegister)(_In_ VMM_HANDLE H, _In_reads_(6) LPSTR sNameShort, _In_reads_(32) LPSTR szFileUTF8),
+    _In_ VOID(*pfnClose)(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline),
+    _In_ VOID(*pfnEntryAdd)(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPSTR uszText),
+    _In_ VOID(*pfnEntryAddBySql)(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPSTR *pszEntrySql)
 );
+
+/*
+* Call each plugin capable of forensic csv log. Plugins may be process or global.
+* NB! This function is meant to be called by the core forensic subsystem only.
+* -- H
+* -- hCSV
+* -- return = 0 (to make function compatible with LPTHREAD_START_ROUTINE).
+*/
+DWORD PluginManager_FcLogCSV(_In_ VMM_HANDLE H, _In_ VMMDLL_CSV_HANDLE hCSV);
 
 /*
 * Call each plugin capable of forensic json log. Plugins may be process or global.
 * NB! This function is meant to be called by the core forensic subsystem only.
+* -- H
 * -- pfnAddEntry = callback function to call to add a json entry.
 * -- return = 0 (to make function compatible with LPTHREAD_START_ROUTINE).
 */
-DWORD PluginManager_FcLogJSON(_In_ VOID(*pfnAddEntry)(_In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData));
+DWORD PluginManager_FcLogJSON(_In_ VMM_HANDLE H, _In_ VOID(*pfnAddEntry)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData));
 
 #endif /* __PLUGINMANAGER_H__ */

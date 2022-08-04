@@ -110,14 +110,15 @@ VmmPycScatterMemory_close(PyObj_ScatterMemory *self, PyObject *args)
 //-----------------------------------------------------------------------------
 
 PyObj_ScatterMemory*
-VmmPycScatterMemory_InitializeInternal(_In_ DWORD dwPID, _In_ DWORD dwReadFlags)
+VmmPycScatterMemory_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_ DWORD dwPID, _In_ DWORD dwReadFlags)
 {
     PyObj_ScatterMemory *pyObj;
     if(!(pyObj = PyObject_New(PyObj_ScatterMemory, (PyTypeObject*)g_pPyType_ScatterMemory))) { return NULL; }
+    Py_INCREF(pyVMM); pyObj->pyVMM = pyVMM;
     pyObj->fValid = TRUE;
     pyObj->dwPID = dwPID;
     pyObj->dwReadFlags = dwReadFlags;
-    pyObj->hScatter = VMMDLL_Scatter_Initialize(dwPID, dwReadFlags);
+    pyObj->hScatter = VMMDLL_Scatter_Initialize(pyVMM->hVMM, dwPID, dwReadFlags);
     if(!pyObj->hScatter) {
         Py_DECREF(pyObj);
         return NULL;
@@ -149,6 +150,7 @@ VmmPycScatterMemory_dealloc(PyObj_ScatterMemory *self)
 {
     self->fValid = FALSE;
     VMMDLL_Scatter_CloseHandle(self->hScatter);
+    Py_XDECREF(self->pyVMM); self->pyVMM = NULL;
 }
 
 _Success_(return)
