@@ -317,7 +317,7 @@ fail:
 * -- H
 * -- pRegInfo
 */
-EXPORTED_FUNCTION
+EXPORTED_FUNCTION __declspec(dllexport)
 VOID InitializeVmmPlugin(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_REGINFO pRegInfo)
 {
     if((pRegInfo->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRegInfo->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }

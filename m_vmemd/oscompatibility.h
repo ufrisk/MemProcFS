@@ -146,13 +146,14 @@ typedef int(*_CoreCrtNonSecureSearchSortCompareFunction)(void const *, void cons
 
 #define UNREFERENCED_PARAMETER(x)
 
+#define __declspec(dllexport)
 #define max(a, b)                           (((a) > (b)) ? (a) : (b))
 #define min(a, b)                           (((a) < (b)) ? (a) : (b))
 #define _byteswap_ushort(v)                 (bswap_16(v))
 #define _byteswap_ulong(v)                  (bswap_32(v))
 #define _byteswap_uint64(v)                 (bswap_64(v))
 #ifndef _rotr
-#define _rotr(v,c)                        ((((DWORD)v) >> ((DWORD)c) | (DWORD)((DWORD)v) << (32 - (DWORD)c)))
+#define _rotr(v,c)                          ((((DWORD)v) >> ((DWORD)c) | (DWORD)((DWORD)v) << (32 - (DWORD)c)))
 #endif /* _rotr */
 #define _rotr16(v,c)                        ((((WORD)v) >> ((WORD)c) | (WORD)((WORD)v) << (16 - (WORD)c)))
 #define _rotr64(v,c)                        ((((QWORD)v) >> ((QWORD)c) | (QWORD)((QWORD)v) << (64 - (QWORD)c)))
@@ -161,14 +162,14 @@ typedef int(*_CoreCrtNonSecureSearchSortCompareFunction)(void const *, void cons
 #define sprintf_s(s, maxcount, ...)         (snprintf(s, maxcount, __VA_ARGS__))
 #define strnlen_s(s, maxcount)              (strnlen(s, maxcount))
 #define strcpy_s(dst, len, src)             (strncpy(dst, src, len))
-#define strncpy_s(dst, len, src, srclen)    (strncpy(dst, src, min((QWORD)(max(1, len)) - 1, (QWORD)(srclen))))
+#define strncpy_s(dst, len, src, srclen)    (strncpy(dst, src, min((size_t)(max(1, len)) - 1, (size_t)(srclen))))
 #define strncat_s(dst, dstlen, src, srclen) (strncat(dst, src, min((((strlen(dst) + 1 >= (size_t)(dstlen)) || ((size_t)(dstlen) == 0)) ? 0 : ((size_t)(dstlen) - strlen(dst) - 1)), (size_t)(srclen))))
 #define strcat_s(dst, dstlen, src)          (strncat_s(dst, dstlen, src, _TRUNCATE))
-#define _vsnprintf_s(dst, len, cnt, fmt, a) (vsnprintf(dst, min((QWORD)(len), (QWORD)(cnt)), fmt, a))
+#define _vsnprintf_s(dst, len, cnt, fmt, a) (vsnprintf(dst, min((size_t)(len), (size_t)(cnt)), fmt, a))
 #define _stricmp(s1, s2)                    (strcasecmp(s1, s2))
 #define _strnicmp(s1, s2, maxcount)         (strncasecmp(s1, s2, maxcount))
 #define strtok_s(s, d, c)                   (strtok_r(s, d, c))
-#define _snprintf_s(s,l,c,...)              (snprintf(s,min((QWORD)(l), (QWORD)(c)),__VA_ARGS__))
+#define _snprintf_s(s,l,c,...)              (snprintf(s,min((size_t)(l), (size_t)(c)),__VA_ARGS__))
 #define sscanf_s(s, f, ...)                 (sscanf(s, f, __VA_ARGS__))
 #define SwitchToThread()                    (sched_yield())
 #define ExitThread(dwExitCode)              (pthread_exit(dwExitCode))
