@@ -1779,7 +1779,7 @@ namespace vmmsharp
                         vmmi.VMMDLL_MAP_PFNENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_PFNENTRY>((System.IntPtr)(pb + cbMAP + i * cbENTRY));
                         MAP_PFNENTRY e = new MAP_PFNENTRY();
                         e.dwPfn = n.dwPfn;
-                        e.tp = (MAP_PFN_TYPE)(n._u3 & 0x07);
+                        e.tp = (MAP_PFN_TYPE)((n._u3 >> 16) & 0x07);
                         e.tpExtended = (MAP_PFN_TYPEEXTENDED)n.tpExtended;
                         e.vaPte = n.vaPte;
                         e.OriginalPte = n.OriginalPte;
