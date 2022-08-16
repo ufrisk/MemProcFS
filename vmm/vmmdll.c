@@ -1344,7 +1344,7 @@ _Success_(return) BOOL VMMDLL_Map_GetEATW(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _
     LPSTR uszModuleName;
     BYTE pbBuffer[MAX_PATH];
     if(!CharUtil_WtoU(wszModuleName, -1, pbBuffer, sizeof(pbBuffer), &uszModuleName, NULL, 0)) { return FALSE; }
-    return VMMDLL_Map_GetEATU(H, dwPID, uszModuleName, ppEatMap);
+    CALL_IMPLEMENTATION_VMM(H, STATISTICS_ID_VMMDLL_Map_GetEAT, VMMDLL_Map_GetEAT_Impl(H, dwPID, uszModuleName, ppEatMap, TRUE))
 }
 
 _Success_(return) BOOL VMMDLL_Map_GetIATU(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ LPSTR  uszModuleName, _Out_ PVMMDLL_MAP_IAT *ppIatMap)

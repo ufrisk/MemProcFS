@@ -3120,7 +3120,7 @@ VOID VmmWinProcess_Enumerate_PostProcessing(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS
             pProcPers->fIsPostProcessingComplete = TRUE;
             uszPathKernel = NULL;
             if(VmmReadAllocUnicodeStringAsUTF8(H, pSystemProcess, f32, VMM_FLAG_FORCECACHE_READ, VMM_EPROCESS_PTR(f32, pObProcess, H->vmm.offset.EPROCESS.SeAuditProcessCreationInfo), 0x400, &uszPathKernel, NULL)) {
-                if(memcmp(uszPathKernel, "\\Device\\", 8)) {
+                if(!CharUtil_StrStartsWith(uszPathKernel, "\\Device\\", TRUE)) {
                     LocalFree(uszPathKernel); uszPathKernel = NULL;
                 }
             }

@@ -180,7 +180,7 @@ int main(_In_ int argc, _In_ char* argv[])
     ShowKeyPress();
     printf("CALL:    VMMDLL_Initialize\n");
     hVMM = VMMDLL_Initialize(3, (LPSTR[]) { "", "-device", "fpga" });
-    if(result) {
+    if(hVMM) {
         printf("SUCCESS: VMMDLL_Initialize\n");
     } else {
         printf("FAIL:    VMMDLL_Initialize\n");
