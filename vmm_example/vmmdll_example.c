@@ -225,25 +225,7 @@ int main(_In_ int argc, _In_ char* argv[])
         }
     }
 #endif /* _INITIALIZE_FROM_FPGA */
-    
-    // Retrieve PID of explorer.exe
-    // NB! if multiple explorer.exe exists only one will be returned by this
-    // specific function call. Please see .h file for additional information
-    // about how to retrieve the complete list of PIDs in the system by using
-    // the function PCILeech_VmmProcessListPIDs instead.
-    printf("------------------------------------------------------------\n");
-    printf("# Get PID from the first 'explorer.exe' process found.      \n");
-    ShowKeyPress();
-    printf("CALL:    VMMDLL_PidGetFromName\n");
-    result = VMMDLL_PidGetFromName(hVMM, "explorer.exe", &dwPID);
-    if(result) {
-        printf("SUCCESS: VMMDLL_PidGetFromName\n");
-        printf("         PID = %i\n", dwPID);
-    } else {
-        printf("FAIL:    VMMDLL_PidGetFromName\n");
-        return 1;
-    }
-    
+       
     
     // Read physical memory at physical address 0x1000 and display the first
     // 0x100 bytes on-screen.

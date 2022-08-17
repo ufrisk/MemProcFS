@@ -156,7 +156,7 @@ BOOL VMMDLL_Scatter_PrepareWriteInternal(_In_ PSCATTER_CONTEXT ctx, _In_ QWORD v
     pRangeWr->cb = cb;
     memcpy(pRangeWr->pb, pb, cb);
     pRangeWr->FLink = ctx->wr.pRanges;
-    ctx->wr.pRanges = pRangeWr->FLink;
+    ctx->wr.pRanges = pRangeWr;
     // up # of write MEMs required
     cMEMsRequired = ((va & 0xfff) + cb + 0xfff) >> 12;
     ctx->wr.cPage += cMEMsRequired;
@@ -457,7 +457,7 @@ BOOL VMMDLL_Scatter_ExecuteWriteInternal(_In_ PSCATTER_CONTEXT ctx)
         cb -= pMEM->cb;
         pb += pMEM->cb;
     }
-    if(cb || pRange) { goto fail; }     // leftover data should not happen!
+    if(cb || (pRange && pRange->FLink)) { goto fail; }  // leftover data should not happen!
     // write scatter
     VMMDLL_MemWriteScatter(ctx->H, ctx->dwPID, ppMEMs, cMEMs);
     // finish
