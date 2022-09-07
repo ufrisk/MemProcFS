@@ -5,9 +5,6 @@
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmmpyc.h"
-#ifdef _WIN32
-#pragma warning( disable : 4996)
-#endif /* _WIN32 */
 
 static BOOL g_fPythonStandalone = FALSE;
 PyObject *g_pPyType_VmmPycPlugin = NULL;
@@ -18,6 +15,9 @@ BOOL g_PluginVMM_LoadedOnce = FALSE;
 //-----------------------------------------------------------------------------
 // PY2C PYTHON CALLBACK FUNCTIONALITY BELOW:
 //-----------------------------------------------------------------------------
+
+#ifdef _WIN32
+#pragma warning( disable : 4996)
 
 typedef struct tdPY2C_CONTEXT {
     BOOL fPrintf;
@@ -454,3 +454,5 @@ VOID InitializeVmmPlugin(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_REGINFO pRegInfo
         pRegInfo->pfnPluginManager_Register(H, pRegInfo);       // Register with the plugin maanger.
     }
 }
+
+#endif /* _WIN32 */
