@@ -276,7 +276,7 @@ namespace vmmsharp
         }
     }
 
-    public class Vmm : IDisposable
+    public sealed class Vmm : IDisposable
     {
         //---------------------------------------------------------------------
         // CORE FUNCTIONALITY BELOW:
@@ -399,7 +399,7 @@ namespace vmmsharp
             GC.SuppressFinalize(this);
         }
 
-        protected virtual void Dispose(bool disposing)
+        private void Dispose(bool disposing)
         {
             if (!this.disposed)
             {
