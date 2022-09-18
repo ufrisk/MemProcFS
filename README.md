@@ -203,4 +203,8 @@ v1.1-v3.10
 * Major release with new features to support parallel analysis tasks.
 * Breaking API changes and major updates.
 * Extended forensic analysis capabilties and [CSV file](https://github.com/ufrisk/MemProcFS/wiki/FS_Forensic_CSV) support.
+* Linux plugin support.
 * New [Java API](https://github.com/ufrisk/MemProcFS/wiki/API_Java).
+
+Latest:
+* Symbol updates.

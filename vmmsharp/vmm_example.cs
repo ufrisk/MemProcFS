@@ -135,6 +135,14 @@ class vmm_example
             scatter.Execute();
             byte[] pbKernel32_100_1 = scatter.Read(mModuleKernel32.vaBase, 0x80);
             byte[] pbKernel32_100_2 = scatter.Read(mModuleKernel32.vaBase + 0x2000, 0x100);
+            // if scatter object is to be reused for additional reads after a
+            // Execute() call it should be cleared before preparing new ranges.
+            scatter.Clear(dwExplorerPID, Vmm.FLAG_NOCACHE);
+            scatter.Prepare(mModuleKernel32.vaBase + 0x3000, 0x100);
+            scatter.Prepare(mModuleKernel32.vaBase + 0x4000, 0x100);
+            scatter.Execute();
+            byte[] pbKernel32_100_3 = scatter.Read(mModuleKernel32.vaBase + 0x3000, 0x100);
+            byte[] pbKernel32_100_4 = scatter.Read(mModuleKernel32.vaBase + 0x4000, 0x100);
             // clean up scatter handle hS (free native memory)
             // NB! hS handle should not be used after this!
             scatter.Close();
