@@ -13,7 +13,10 @@ typedef unsigned __int64                QWORD, *PQWORD;
 #include "../oscompatibility.h"
 #endif /* _WIN32 */
 
+// OB_DEBUG is not working (as currently coded) with arm32 due to alignment issues.
+#if _WIN32 || _WIN64 || __i386__ || __amd64__ || __aarch64__
 #define OB_DEBUG
+#endif /* _WIN32 || _WIN64 || __i386__ || __amd64__ || __aarch64__ */
 #define OB_HEADER_MAGIC                 0x0c0efefe
 
 #define OB_TAG_CORE_CONTAINER           'ObCo'

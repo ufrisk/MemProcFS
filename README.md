@@ -207,4 +207,5 @@ v1.1-v3.10
 * New [Java API](https://github.com/ufrisk/MemProcFS/wiki/API_Java).
 
 Latest:
+* Bug fixes.
 * Symbol updates.
