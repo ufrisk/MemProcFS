@@ -601,7 +601,7 @@ finish:
 VOID MmWin_MemCompress_Initialize(_In_ VMM_HANDLE H)
 {
     DWORD vaKeyToStoreTree32;
-    QWORD vaKeyToStoreTree64;
+    QWORD vaKeyToStoreTree64, va;
     PVMM_PROCESS pObSystemProcess = NULL, pObProcess = NULL;
     PMMWIN_CONTEXT ctx = H->vmm.pMmContext;
     if(H->vmm.kernel.dwVersionMajor < 10) { goto fail; }
@@ -621,6 +621,15 @@ VOID MmWin_MemCompress_Initialize(_In_ VMM_HANDLE H)
         goto fail;
     }
     if(!(pObSystemProcess = VmmProcessGet(H, 4))) { goto fail; }
+    if(H->vmm.kernel.dwVersionBuild >= 22601) {
+        // WIN11 22H2+: SmGlobals data is mostly moved into external allocation (pool tag: 'SmPa').
+        // This is referenced by a (list?) in 'SmGlobals'+8 -> Use the 'SmPa' as SmGlobals instead!
+        if(!VmmRead(H, pObSystemProcess, ctx->MemCompress.vaSmGlobals + 8, (PBYTE)&va, sizeof(QWORD))) { goto fail; }
+        if(!VMM_KADDR64_8(va)) { goto fail; }
+        ctx->MemCompress.vaSmGlobals = va - 0x7a8;
+    }
+    // WIN10 and WIN11 21H2: most data is stored in the large global 'SmGlobals'
+    // incl. vaKeyToStoreTree which is referenced from SmGlobals (pool tag: 'smBt').
     if(H->vmm.f32) {
         MmWin_MemCompress_InitializeOffsets32(H);
         if(!VmmRead(H, pObSystemProcess, ctx->MemCompress.vaSmGlobals + 0x0f4, (PBYTE)&vaKeyToStoreTree32, sizeof(DWORD))) { goto fail; }
@@ -715,18 +724,25 @@ typedef struct td_ST_PAGE_RECORD {
     DWORD NextKey;
 } _ST_PAGE_RECORD, *P_ST_PAGE_RECORD;
 
-BOOL MmWin_MemCompress_LogError(_In_ VMM_HANDLE H, _In_ PMMWINX64_COMPRESS_CONTEXT ctx, _In_ LPSTR sz)
+/*
+* Log a memory compression error.
+* -- H
+* -- ctx
+* -- szError
+* -- return = FALSE
+*/
+BOOL MmWin_MemCompress_LogError(_In_ VMM_HANDLE H, _In_ PMMWINX64_COMPRESS_CONTEXT ctx, _In_ LPSTR szError)
 {
-    VmmLog(H, MID_VMM, LOGLEVEL_DEBUG, "MmWin_CompressedPage: FAIL: %s", sz);
     VmmLog(H, MID_VMM, LOGLEVEL_DEBUG,
-        "  va= %016llx ep= %016llx pgk=%08x ism=%04x vas=%016llx",
-        ctx->e.va, ctx->e.vaEPROCESS, ctx->e.dwPageKey, ctx->e.iSmkm, ctx->e.vaSmkmStore);
-    VmmLog(H, MID_VMM, LOGLEVEL_DEBUG,
-        "  pte=%016llx oep=%016llx rgk=%08x pid=%04x vat=%016llx",
-        ctx->e.PTE, ctx->e.vaOwnerEPROCESS, ctx->e.dwRegionKey, ctx->pProcess->dwPID, H->vmm.pMmContext->MemCompress.vaKeyToStoreTree);
-    VmmLog(H, MID_VMM, LOGLEVEL_DEBUG,
-        "  pte=%016llx oep=%016llx rgk=%08x pid=%04x vat=%016llx",
-        ctx->e.vaPageRecord, ctx->e.vaRegion, ctx->e.cbRegionOffset, ctx->e.cbCompressedData, (ctx->e.vaRegion + ctx->e.cbRegionOffset));
+        "MmWin_CompressedPage: FAIL: %s\n" \
+        "            va= %016llx ep= %016llx pgk=%08x ism=%04x vas=%016llx\n" \
+        "            pte=%016llx oep=%016llx rgk=%08x pid=%04x vat=%016llx\n" \
+        "            pgr=%016llx var=%016llx rgo=%08x cbC=%04x cbR=%016llx",
+        szError,
+        ctx->e.va, ctx->e.vaEPROCESS, ctx->e.dwPageKey, ctx->e.iSmkm, ctx->e.vaSmkmStore,
+        ctx->e.PTE, ctx->e.vaOwnerEPROCESS, ctx->e.dwRegionKey, ctx->pProcess->dwPID, H->vmm.pMmContext->MemCompress.vaKeyToStoreTree,
+        ctx->e.vaPageRecord, ctx->e.vaRegion, ctx->e.cbRegionOffset, ctx->e.cbCompressedData, (ctx->e.vaRegion + ctx->e.cbRegionOffset)
+    );
     return FALSE;
 }
 
@@ -766,7 +782,7 @@ BOOL MmWin_MemCompress2_SmkmStoreMetadata32(_In_ VMM_HANDLE H, _In_ PMMWINX64_CO
     // 1: 1st level fetch virtual address to 2nd level of 32x32 array
     if(!VmmRead2(H, ctx->pSystemProcess, H->vmm.pMmContext->MemCompress.vaSmGlobals + (ctx->e.iSmkm >> 5) * sizeof(DWORD), (PBYTE)&va, sizeof(DWORD), ctx->fVmmRead)) { return MmWin_MemCompress_LogError(H, ctx, "#21 Read"); }
     if(!VMM_KADDR32_8(va)) { return MmWin_MemCompress_LogError(H, ctx, "#22 NoKADDR"); }
-    // 2: 2nd fetch values (_SMKM_STORE_METADATA) from 2nd level of 32x32 array.
+    // 2: 2nd fetch values (_SMKM_STORE_METADATA) from 2nd level of 32x32 array. (2nd level pool tag: 'smSa')
     if(!VmmRead2(H, ctx->pSystemProcess, va + (ctx->e.iSmkm & 0x1f) * sizeof(_SMKM_STORE_METADATA32), (PBYTE)&MetaData, sizeof(_SMKM_STORE_METADATA32), ctx->fVmmRead)) { return MmWin_MemCompress_LogError(H, ctx, "#23 Read"); }
     if(MetaData.vaEPROCESS && !VMM_KADDR32_8(MetaData.vaEPROCESS)) { return MmWin_MemCompress_LogError(H, ctx, "#24 NoKADDR"); }
     if(!VMM_KADDR32_PAGE(MetaData.vaSmkmStore)) { return MmWin_MemCompress_LogError(H, ctx, "#25 NoKADDR"); }
@@ -936,7 +952,7 @@ BOOL MmWin_MemCompress4_CompressedRegionData(_In_ VMM_HANDLE H, _In_ PMMWINX64_C
     }
     if(PageRecord.Key == 0xffffffff) {
         // TODO: implement support
-        return MmWin_MemCompress_LogError(H, ctx, "#42 InvalidPageRecord");
+        return MmWin_MemCompress_LogError(H, ctx, "#42 UnsupportedPageRecord");
     }
     ctx->e.cbCompressedData = (PageRecord.CompressedSize == 0x1000) ? 0x1000 : PageRecord.CompressedSize & 0xfff;
     if(H->vmm.f32) {

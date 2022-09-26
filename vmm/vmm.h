@@ -1464,6 +1464,7 @@ typedef struct tdVMM_CONTEXT {
     CRITICAL_SECTION LockUpdateMap;     // lock for global maps - such as MapUser
     CRITICAL_SECTION LockUpdateModule;  // lock for internal modules
     struct {                            // lightweight SRW locks
+        SRWLOCK VmmPaging;
         SRWLOCK WinObjDisplay;
     } LockSRW;
     POB_CONTAINER pObCMapPhysMem;
