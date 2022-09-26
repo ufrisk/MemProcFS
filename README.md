@@ -206,6 +206,6 @@ v1.1-v3.10
 * Linux plugin support.
 * New [Java API](https://github.com/ufrisk/MemProcFS/wiki/API_Java).
 
-Latest:
-* Bug fixes.
-* Symbol updates.
+[v5.1](https://github.com/ufrisk/MemProcFS/releases/tag/v5.1)
+* Support for Windows 11 22H2.
+* Text & Binary-only views at '/misc/view/'.
