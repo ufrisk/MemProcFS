@@ -13,6 +13,7 @@ info.db
 /files/vmm_example.exe
 /files/lib
 /files/temp
+/files/ARM64
 /files/x86/lib
 /files/x86/vmm_example.exe
 /vmmsharp/obj

@@ -209,3 +209,7 @@ v1.1-v3.10
 [v5.1](https://github.com/ufrisk/MemProcFS/releases/tag/v5.1)
 * Support for Windows 11 22H2.
 * Text & Binary-only views at '/misc/view/'.
+
+Latest:
+* FPGA performance improvements.
+* [ARM64 Windows support](https://github.com/ufrisk/MemProcFS/wiki/_ARM64).

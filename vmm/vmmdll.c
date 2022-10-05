@@ -1878,8 +1878,8 @@ BOOL VMMDLL_ProcessGetInformation_Impl(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _Ino
     pInfo->magic = VMMDLL_PROCESS_INFORMATION_MAGIC;
     pInfo->wVersion = VMMDLL_PROCESS_INFORMATION_VERSION;
     pInfo->wSize = sizeof(VMMDLL_PROCESS_INFORMATION);
-    pInfo->tpMemoryModel = H->vmm.tpMemoryModel;
-    pInfo->tpSystem = H->vmm.tpSystem;
+    pInfo->tpMemoryModel = (VMMDLL_MEMORYMODEL_TP)H->vmm.tpMemoryModel;
+    pInfo->tpSystem = (VMMDLL_SYSTEM_TP)H->vmm.tpSystem;
     pInfo->fUserOnly = pObProcess->fUserOnly;
     pInfo->dwPID = dwPID;
     pInfo->dwPPID = pObProcess->dwPPID;
@@ -1901,7 +1901,7 @@ BOOL VMMDLL_ProcessGetInformation_Impl(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _Ino
         if(pObProcess->win.TOKEN.szSID) {
             strncpy_s(pInfo->win.szSID, sizeof(pInfo->win.szSID), pObProcess->win.TOKEN.szSID, _TRUNCATE);
         }
-        pInfo->win.IntegrityLevel = pObProcess->win.TOKEN.IntegrityLevel;
+        pInfo->win.IntegrityLevel = (VMMDLL_PROCESS_INTEGRITY_LEVEL)pObProcess->win.TOKEN.IntegrityLevel;
     }
     Ob_DECREF(pObProcess);
     return TRUE;
@@ -2124,7 +2124,7 @@ BOOL VMMDLL_LogEx2_Impl(_In_ VMM_HANDLE H, _In_opt_ VMMDLL_MODULE_ID MID, _In_ V
             return FALSE;
         }
     }
-    VmmLogEx2(H, (DWORD)MID, dwLogLevel, uszFormat, arglist);
+    VmmLogEx2(H, (DWORD)MID, (VMMLOG_LEVEL)dwLogLevel, uszFormat, arglist);
     return TRUE;
 }
 

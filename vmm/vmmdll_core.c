@@ -262,9 +262,9 @@ VOID VmmDllCore_PrintHelp(_In_ VMM_HANDLE H)
         "   -memmap : specify a physical memory map given in a file or specify 'auto'.  \n" \
         "          example: -memmap c:\\temp\\my_custom_memory_map.txt                  \n" \
         "          example: -memmap auto                                                \n" \
-        "   -pagefile0..9 : specify specify page file / swap file. By default pagefile  \n" \
-        "          have index 0 - example: -pagefile0 pagefile.sys while swapfile have  \n" \
-        "          have index 1 - example: -pagefile1 swapfile.sys                      \n" \
+        "   -pagefile0..9 : specify page file / swap file. By default pagefile have     \n" \
+        "          index 0 - example: -pagefile0 pagefile.sys while swapfile have       \n" \
+        "          index 1 - example: -pagefile1 swapfile.sys                           \n" \
         "   -pythonpath : specify the path to a python 3 installation for Windows.      \n" \
         "          The path given should be to the directory that contain: python.dll   \n" \
         "          Example: -pythonpath \"C:\\Program Files\\Python37\"                 \n" \

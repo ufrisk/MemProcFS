@@ -701,8 +701,8 @@ VOID PluginManager_Initialize_RegInfoInit(_In_ VMM_HANDLE H, _Out_ PVMMDLL_PLUGI
     pRI->wVersion = VMMDLL_PLUGIN_REGINFO_VERSION;
     pRI->wSize = sizeof(VMMDLL_PLUGIN_REGINFO);
     pRI->hDLL = hDLL;
-    pRI->tpMemoryModel = H->vmm.tpMemoryModel;
-    pRI->tpSystem = H->vmm.tpSystem;
+    pRI->tpMemoryModel = (VMMDLL_MEMORYMODEL_TP)H->vmm.tpMemoryModel;
+    pRI->tpSystem = (VMMDLL_SYSTEM_TP)H->vmm.tpSystem;
     pRI->pfnPluginManager_Register = PluginManager_Register;
     pRI->sysinfo.f32 = H->vmm.f32;
     pRI->sysinfo.dwVersionMajor = H->vmm.kernel.dwVersionMajor;

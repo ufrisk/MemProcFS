@@ -233,7 +233,7 @@ int main(_In_ int argc, _In_ char* argv[])
     int i;
     LPSTR szMountPoint = NULL, *szArgs = NULL;
     GetMountPoint(argc, argv, &szMountPoint);
-    if(!szMountPoint || (szMountPoint[0] != '/')) {
+    if((argc > 2) && (!szMountPoint || !szMountPoint[0])) {
         printf("MemProcFS: no mount point specified - specify with: ./memprocfs -mount /dir/to/mount\n");
         return 1;
     }

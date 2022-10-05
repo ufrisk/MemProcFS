@@ -715,7 +715,7 @@ VOID VmmHeapAlloc_NtInitLfhUserData(_In_ VMM_HANDLE H, _In_ PVMMHEAPNT_CTX ctx, 
                     vaChunk -= cbUnitSize;
                     cbChunk = 8;
                 }
-                VmmHeapAlloc_PushItem(H, &ctx->pStore, VMM_HEAP_SEGMENT_TP_NT_LFH, vaChunk, cbChunk);
+                VmmHeapAlloc_PushItem(H, &ctx->pStore, VMM_HEAPALLOC_TP_NT_LFH, vaChunk, cbChunk);
             }
         }
         iBit += 32;
