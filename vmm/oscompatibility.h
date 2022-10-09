@@ -138,6 +138,7 @@ typedef int(*_CoreCrtNonSecureSearchSortCompareFunction)(void const *, void cons
 #define _Out_writes_bytes_opt_(x)
 #define _Out_writes_opt_(x)
 #define _Out_writes_to_(x,y)
+#define _Out_writes_to_opt_(x,y)
 #define _Out_writes_z_(x)
 #define _Post_ptr_invalid_
 #define _Printf_format_string_

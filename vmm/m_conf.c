@@ -76,7 +76,7 @@ NTSTATUS MConf_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_wr
     }
     if(!_stricmp(ctxP->uszPath, "statistics.txt")) {
         cPageReadTotal = H->vmm.stat.page.cPrototype + H->vmm.stat.page.cTransition + H->vmm.stat.page.cDemandZero + H->vmm.stat.page.cVAD + H->vmm.stat.page.cCacheHit + H->vmm.stat.page.cPageFile + H->vmm.stat.page.cCompressed;
-        cPageFailTotal = H->vmm.stat.page.cFailCacheHit + H->vmm.stat.page.cFailVAD + H->vmm.stat.page.cFailPageFile + H->vmm.stat.page.cFailCompressed + H->vmm.stat.page.cFail;
+        cPageFailTotal = H->vmm.stat.page.cFailCacheHit + H->vmm.stat.page.cFailVAD + H->vmm.stat.page.cFailFileMapped + H->vmm.stat.page.cFailPageFile + H->vmm.stat.page.cFailCompressed + H->vmm.stat.page.cFail;
         cchBuffer = snprintf(szBuffer, 0x800,
             "VMM STATISTICS   (4kB PAGES / COUNTS - HEXADECIMAL)\n" \
             "===================================================\n" \
@@ -97,6 +97,7 @@ NTSTATUS MConf_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_wr
             "  READ FAIL:                    %16llx\n" \
             "    Cache:                      %16llx\n" \
             "    VAD:                        %16llx\n" \
+            "    FileMapped:                 %16llx\n" \
             "    PageFile:                   %16llx\n" \
             "    Compressed:                 %16llx\n" \
             "TLB (PAGE TABLES):                    \n" \
@@ -109,7 +110,7 @@ NTSTATUS MConf_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_wr
             "PROCESS FULL REFRESH:           %16llx\n",
             H->vmm.stat.cPhysCacheHit, H->vmm.stat.cPhysReadSuccess, H->vmm.stat.cPhysReadFail, H->vmm.stat.cPhysWrite,
             cPageReadTotal, H->vmm.stat.page.cPrototype, H->vmm.stat.page.cTransition, H->vmm.stat.page.cDemandZero, H->vmm.stat.page.cVAD, H->vmm.stat.page.cCacheHit, H->vmm.stat.page.cPageFile, H->vmm.stat.page.cCompressed,
-            cPageFailTotal, H->vmm.stat.page.cFailCacheHit, H->vmm.stat.page.cFailVAD, H->vmm.stat.page.cFailPageFile, H->vmm.stat.page.cFailCompressed,
+            cPageFailTotal, H->vmm.stat.page.cFailCacheHit, H->vmm.stat.page.cFailVAD, H->vmm.stat.page.cFailFileMapped, H->vmm.stat.page.cFailPageFile, H->vmm.stat.page.cFailCompressed,
             H->vmm.stat.cTlbCacheHit, H->vmm.stat.cTlbReadSuccess, H->vmm.stat.cTlbReadFail,
             H->vmm.stat.cPhysRefreshCache, H->vmm.stat.cTlbRefreshCache, H->vmm.stat.cProcessRefreshPartial, H->vmm.stat.cProcessRefreshFull
         );
@@ -301,7 +302,7 @@ BOOL MConf_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHA
         VMMDLL_VfsList_AddFile(pFileList, "config_symbolcache.txt", strlen(H->pdb.szLocal), NULL);
         VMMDLL_VfsList_AddFile(pFileList, "config_symbolserver.txt", strlen(H->pdb.szServer), NULL);
         VMMDLL_VfsList_AddFile(pFileList, "config_symbolserver_enable.txt", 1, NULL);
-        VMMDLL_VfsList_AddFile(pFileList, "statistics.txt", 1103, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "statistics.txt", 1446, NULL);
         VMMDLL_VfsList_AddFile(pFileList, "config_printf_enable.txt", 1, NULL);
         VMMDLL_VfsList_AddFile(pFileList, "config_printf_v.txt", 1, NULL);
         VMMDLL_VfsList_AddFile(pFileList, "config_printf_vv.txt", 1, NULL);

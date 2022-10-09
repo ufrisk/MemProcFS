@@ -509,6 +509,95 @@ VOID InfoDB_IsValidSymbols(_In_ VMM_HANDLE H, _Out_opt_ PBOOL pfNtos, _Out_opt_ 
 }
 
 /*
+* Lookup well known SIDs from the database.
+* This is preferred over system lookups due to english names.
+* -- H
+* -- szSID = a SID in string format (i.e. S-1-5-19)
+* -- szName = buffer of length *pcbName to receive user name on success.
+* -- pcbName
+* -- szDomain = buffer of length *pcbDomain to receive domain name on success.
+* -- pcbDomain
+* -- return = the well known username on success, NULL on fail.
+*/
+_Success_(return)
+BOOL InfoDB_SidToUser_Wellknown(
+    _In_ VMM_HANDLE H,
+    _In_ LPSTR szSID,
+    _Out_writes_to_opt_(*pcbName, *pcbName + 1) LPSTR szName,
+    _Inout_ LPDWORD pcbName,
+    _Out_writes_to_opt_(*pcbDomain, *pcbDomain + 1) LPSTR szDomain,
+    _Inout_ LPDWORD pcbDomain
+) {
+    BOOL fResult = FALSE;
+    int rc = SQLITE_ERROR;
+    POB_INFODB_CONTEXT pObCtx = NULL;
+    sqlite3 *hSql = NULL;
+    sqlite3_stmt *hStmt = NULL;
+    DWORD cbDomain = 0, cbName = 0;
+    LPSTR szRID, szQueryResult;
+    // 1: check built-in well known domain RIDs
+    if(CharUtil_StrStartsWith(szSID, "S-1-5-21-", FALSE)) {
+        szRID = NULL;
+        if(!szRID && CharUtil_StrEndsWith(szSID, "-500", FALSE)) { szRID = "DOMAIN_USER_RID_ADMIN"; }
+        if(!szRID && CharUtil_StrEndsWith(szSID, "-501", FALSE)) { szRID = "DOMAIN_USER_RID_GUEST"; }
+        if(!szRID && CharUtil_StrEndsWith(szSID, "-513", FALSE)) { szRID = "DOMAIN_GROUP_RID_USERS"; }
+        if(!szRID && CharUtil_StrEndsWith(szSID, "-514", FALSE)) { szRID = "DOMAIN_GROUP_RID_GUESTS"; }
+        if(!szRID && CharUtil_StrEndsWith(szSID, "-515", FALSE)) { szRID = "DOMAIN_GROUP_RID_COMPUTERS"; }
+        if(!szRID && CharUtil_StrEndsWith(szSID, "-516", FALSE)) { szRID = "DOMAIN_GROUP_RID_CONTROLLERS"; }
+        if(!szRID && CharUtil_StrEndsWith(szSID, "-517", FALSE)) { szRID = "DOMAIN_GROUP_RID_CERT_ADMINS"; }
+        if(!szRID && CharUtil_StrEndsWith(szSID, "-518", FALSE)) { szRID = "DOMAIN_GROUP_RID_SCHEMA_ADMINS"; }
+        if(!szRID && CharUtil_StrEndsWith(szSID, "-519", FALSE)) { szRID = "DOMAIN_GROUP_RID_ENTERPRISE_ADMINS"; }
+        if(!szRID && CharUtil_StrEndsWith(szSID, "-520", FALSE)) { szRID = "DOMAIN_GROUP_RID_POLICY_ADMINS"; }
+        if(szRID) {
+            cbDomain = (DWORD)strlen("DOMAIN") + 1;
+            cbName = (DWORD)strlen(szRID) + 1;
+            if((szName && (*pcbName < cbName)) || (szDomain && (*pcbDomain < cbDomain))) {
+                goto fail_size;
+            }
+            if(szDomain) {
+                strncpy_s(szDomain, *pcbDomain, "DOMAIN", cbDomain);
+            }
+            if(szName) {
+                szQueryResult = (LPSTR)sqlite3_column_text(hStmt, 1);
+                strncpy_s(szName, *pcbName, szRID, cbName);
+            }
+            goto finish;
+        }
+    }
+    // 2: lookup from well known SIDs in database
+    if(!(pObCtx = ObContainer_GetOb(H->vmm.pObCInfoDB))) { goto fail; }
+    if(!(hSql = InfoDB_SqlReserve(H, pObCtx))) { goto fail; }
+    rc = sqlite3_prepare_v2(hSql, "SELECT domain, name FROM sid WHERE sid = ?", -1, &hStmt, 0);
+    if(rc != SQLITE_OK) { goto fail; }
+    rc = sqlite3_bind_text(hStmt, 1, szSID, -1, NULL);
+    rc = sqlite3_step(hStmt);
+    if(rc != SQLITE_ROW) { goto fail; }
+    cbDomain = sqlite3_column_bytes(hStmt, 0) + 1;
+    cbName = sqlite3_column_bytes(hStmt, 1) + 1;
+    if((szName && (*pcbName < cbName)) || (szDomain && (*pcbDomain < cbDomain))) {
+        goto fail_size;
+    }
+    if(szDomain) {
+        szQueryResult = (LPSTR)sqlite3_column_text(hStmt, 0);
+        strncpy_s(szDomain, *pcbDomain, szQueryResult, cbDomain);
+    }
+    if(szName) {
+        szQueryResult = (LPSTR)sqlite3_column_text(hStmt, 1);
+        strncpy_s(szName, *pcbName, szQueryResult, cbName);
+    }
+finish:
+    fResult = TRUE;
+fail_size:
+    *pcbName = cbName;
+    *pcbDomain = cbDomain;
+fail:
+    sqlite3_finalize(hStmt);
+    InfoDB_SqlReserveReturn(pObCtx, hSql);
+    Ob_DECREF(pObCtx);
+    return fResult;
+}
+
+/*
 * Return if the InfoDB have been successfully initialized.
 * Will return fail on no-init or failure to init (missing info.db file).
 * -- H

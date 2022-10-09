@@ -2555,10 +2555,17 @@ BOOL VmmWinUser_GetName(_In_ VMM_HANDLE H, _In_opt_ PSID pSID, _Out_writes_(cbuN
     PVMMOB_MAP_USER pObUser = NULL;
     if(!pSID) { return FALSE; }
     if(pfAccountWellKnown) { *pfAccountWellKnown = FALSE; }
-    // 1: Try lookup name from User Map
+    // 1: Try lookup from well known database
     if(!ConvertSidToStringSidA(pSID, &szSID)) { return FALSE; }
+    f = InfoDB_SidToUser_Wellknown(H, szSID, szNameBuffer, &cszNameBuffer, szDomainBuffer, &cszDomainBuffer);
     dwHashSID = CharUtil_Hash32A(szSID, FALSE);
     LocalFree(szSID);
+    szSID = NULL;
+    if(f) {
+        if(pfAccountWellKnown) { *pfAccountWellKnown = TRUE; }
+        return CharUtil_AtoU(szNameBuffer, -1, (PBYTE)uszName, cbuName, NULL, NULL, CHARUTIL_FLAG_TRUNCATE | CHARUTIL_FLAG_STR_BUFONLY);
+    }
+    // 1: Try lookup name from User Map
     if(VmmMap_GetUser(H, &pObUser)) {
         for(i = 0; i < pObUser->cMap; i++) {
             if(dwHashSID != pObUser->pMap[i].dwHashSID) { continue; }

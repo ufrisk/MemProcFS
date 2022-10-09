@@ -30,6 +30,7 @@
 #define MMWINX86PAE_PTE_PAGE_KEY_COMPRESSED(H, pte) (DWORD)(((MMWINX86PAE_PTE_PAGE_FILE_NUMBER(H, pte) << 0x1c) | MMWINX86PAE_PTE_PAGE_FILE_OFFSET(pte)))
 
 #define MMWINX64_PTE_IS_HARDWARE(pte)               (pte & 0x01)
+#define MMWINX64_PTE_IS_FILE_BACKED(H, pte)         (((pte & 0xffff80000000000f) == 0xffff800000000000) && (H->vmm.kernel.dwVersionBuild >= 22621))
 #define MMWINX64_PTE_TRANSITION(pte)                (((pte & 0x0c01) == 0x0800) ? ((pte & 0xffffdffffffff000) | 0x005) : 0)
 #define MMWINX64_PTE_PROTOTYPE(pte)                 (((pte & 0x8000000000070401) == 0x8000000000000400) ? ((pte >> 16) | 0xffff000000000000) : 0)
 #define MMWINX64_PTE_PAGE_FILE_NUMBER(H, pte)       ((pte >> (((H->vmm.kernel.dwVersionBuild >= 17134) ? 12 : 1))) & 0x0f)
@@ -1449,6 +1450,15 @@ BOOL MmWinX64_ReadPaged(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ 
             InterlockedIncrement64(&H->vmm.stat.page.cDemandZero);
             return TRUE;
         }
+        return FALSE;
+    }
+    // File backed memory (not currently supported) - to support this access to
+    // the file system is needed or in case if a MS binary it may be resolved
+    // by using the symbol server. Memory pointed to is filed backed by types:
+    // MmCa - control area: _CONTROL_AREA
+    // MmCi - image control area.
+    if(MMWINX64_PTE_IS_FILE_BACKED(H, pte)) {
+        InterlockedIncrement64(&H->vmm.stat.page.cFailFileMapped);
         return FALSE;
     }
     // retrive from page file or compressed store

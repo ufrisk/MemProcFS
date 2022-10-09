@@ -1150,6 +1150,7 @@ typedef struct tdVMM_STATISTICS {
         QWORD cCompressed;
         QWORD cFailCacheHit;
         QWORD cFailVAD;
+        QWORD cFailFileMapped;
         QWORD cFailPageFile;
         QWORD cFailCompressed;
         QWORD cFail;

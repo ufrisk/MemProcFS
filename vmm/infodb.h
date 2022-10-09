@@ -125,6 +125,27 @@ BOOL InfoDB_TypeChildOffset_Dynamic(_In_ VMM_HANDLE H, _In_ LPSTR szModule, _In_
 VOID InfoDB_IsValidSymbols(_In_ VMM_HANDLE H, _Out_opt_ PBOOL pfNtos, _Out_opt_ PBOOL pfTcpIp);
 
 /*
+* Lookup well known SIDs from the database.
+* This is preferred over system lookups due to english names.
+* -- H
+* -- szSID = a SID in string format (i.e. S-1-5-19)
+* -- szName = buffer of length *pcbName to receive user name on success.
+* -- pcbName
+* -- szDomain = buffer of length *pcbDomain to receive domain name on success.
+* -- pcbDomain
+* -- return = the well known username on success, NULL on fail.
+*/
+_Success_(return)
+BOOL InfoDB_SidToUser_Wellknown(
+    _In_ VMM_HANDLE H,
+    _In_ LPSTR szSID,
+    _Out_writes_to_opt_(*pcbName, *pcbName + 1) LPSTR szName,
+    _Inout_ LPDWORD pcbName,
+    _Out_writes_to_opt_(*pcbDomain, *pcbDomain + 1) LPSTR szDomain,
+    _Inout_ LPDWORD pcbDomain
+);
+
+/*
 * Return if the InfoDB have been successfully initialized.
 * Will return fail on no-init or failure to init (missing info.db file).
 * -- H

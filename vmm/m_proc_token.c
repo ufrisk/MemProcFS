@@ -10,6 +10,7 @@
 #include "vmmwin.h"
 #include "vmmwindef.h"
 #include "charutil.h"
+#include "infodb.h"
 #include <sddl.h>
 
 #define MPROCTOKEN_PRIVILEGE_LINELENGTH     60ULL
@@ -113,7 +114,7 @@ VOID MProcToken_AllSidReadLineCB(_In_ VMM_HANDLE H, _In_ PMPROCTOKEN_ALLSID_CONT
         BYTE pb[SECURITY_MAX_SID_SIZE];
     } Sid;
     QWORD vaSid;
-    LPSTR szRid, szSid = NULL;
+    LPSTR szSid = NULL;
     SID_NAME_USE eUse;
     CHAR szNameBuffer[MAX_PATH], szBuffer[MAX_PATH] = { 0 };
     DWORD i, cszNameBuffer = _countof(szNameBuffer);
@@ -121,8 +122,8 @@ VOID MProcToken_AllSidReadLineCB(_In_ VMM_HANDLE H, _In_ PMPROCTOKEN_ALLSID_CONT
     vaSid = VMM_PTR_OFFSET(H->vmm.f32, ctx->pbUserAndGroups, ie * (H->vmm.f32 ? 8ULL : 16ULL));
     if(!VmmRead(H, ctx->pSystemProcess, vaSid, Sid.pb, SECURITY_MAX_SID_SIZE)) { goto fail; }
     if(!ConvertSidToStringSidA(&Sid.SID, &szSid)) { goto fail; }
-    // display name from winapi lookup:
-    if(LookupAccountSidA(NULL, &Sid.SID, szNameBuffer, &cszNameBuffer, szBuffer, &cszBuffer, &eUse)) {
+    // display name from infodb/winapi lookup:
+    if(InfoDB_SidToUser_Wellknown(H, szSid, szNameBuffer, &cszNameBuffer, szBuffer, &cszBuffer) || LookupAccountSidA(NULL, &Sid.SID, szNameBuffer, &cszNameBuffer, szBuffer, &cszBuffer, &eUse)) {
         if(szBuffer[0]) { strncat_s(szBuffer, _countof(szBuffer), "\\", _TRUNCATE); }
         strncat_s(szBuffer, _countof(szBuffer), szNameBuffer, _TRUNCATE);
     }
@@ -132,23 +133,6 @@ VOID MProcToken_AllSidReadLineCB(_In_ VMM_HANDLE H, _In_ PMPROCTOKEN_ALLSID_CONT
             if(!strcmp(szSid, ctx->pUserMap->pMap[i].szSID)) {
                 strncat_s(szBuffer, _countof(szBuffer), ctx->pUserMap->pMap[i].uszText, _TRUNCATE);
             }
-        }
-    }
-    // display name from well known rid:
-    if(!szBuffer[0] && !strncmp(szSid, "S-1-5-21-", 9)) {
-        szRid = NULL;
-        if(!szRid && CharUtil_StrEndsWith(szSid, "-500", FALSE)) { szRid = "DOMAIN_USER_RID_ADMIN"; }
-        if(!szRid && CharUtil_StrEndsWith(szSid, "-501", FALSE)) { szRid = "DOMAIN_USER_RID_GUEST"; }
-        if(!szRid && CharUtil_StrEndsWith(szSid, "-513", FALSE)) { szRid = "DOMAIN_GROUP_RID_USERS"; }
-        if(!szRid && CharUtil_StrEndsWith(szSid, "-514", FALSE)) { szRid = "DOMAIN_GROUP_RID_GUESTS"; }
-        if(!szRid && CharUtil_StrEndsWith(szSid, "-515", FALSE)) { szRid = "DOMAIN_GROUP_RID_COMPUTERS"; }
-        if(!szRid && CharUtil_StrEndsWith(szSid, "-516", FALSE)) { szRid = "DOMAIN_GROUP_RID_CONTROLLERS"; }
-        if(!szRid && CharUtil_StrEndsWith(szSid, "-517", FALSE)) { szRid = "DOMAIN_GROUP_RID_CERT_ADMINS"; }
-        if(!szRid && CharUtil_StrEndsWith(szSid, "-518", FALSE)) { szRid = "DOMAIN_GROUP_RID_SCHEMA_ADMINS"; }
-        if(!szRid && CharUtil_StrEndsWith(szSid, "-519", FALSE)) { szRid = "DOMAIN_GROUP_RID_ENTERPRISE_ADMINS"; }
-        if(!szRid && CharUtil_StrEndsWith(szSid, "-520", FALSE)) { szRid = "DOMAIN_GROUP_RID_POLICY_ADMINS"; }
-        if(szRid) {
-            strncat_s(szBuffer, _countof(szBuffer), szRid, _TRUNCATE);
         }
     }
 fail:

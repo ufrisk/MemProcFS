@@ -211,5 +211,6 @@ v1.1-v3.10
 * Text & Binary-only views at '/misc/view/'.
 
 Latest:
+* Bug fixes.
 * FPGA performance improvements.
 * [ARM64 Windows support](https://github.com/ufrisk/MemProcFS/wiki/_ARM64).

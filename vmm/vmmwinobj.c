@@ -730,7 +730,7 @@ typedef struct tdVMM_WINOBJ_SETUP_OBJECT {
     DWORD cchName;
     QWORD vaName;
     struct {
-        DWORD cchName;
+        WORD cchName;
         QWORD vaName;
         QWORD ft;
     } ExtInfo;
@@ -827,13 +827,13 @@ VOID VmmWinObjMgr_Initialize_ProcessObject(_In_ VMM_HANDLE H, _Inout_ PVMM_WINOB
         if(H->vmm.f32) {
             pus32 = (PUNICODE_STRING32)(pb + 8);
             if(!(pus32->Length & 1) && (pus32->Length < 0x200) && VMM_KADDR32(pus32->Buffer)) {
-                pe->ExtInfo.cchName = pus32->Length;
+                pe->ExtInfo.cchName = pus32->Length >> 1;
                 pe->ExtInfo.vaName = pus32->Buffer;
             }
         } else {
             pus64 = (PUNICODE_STRING64)(pb + 8);
             if(!(pus64->Length & 1) && (pus64->Length < 0x200) && VMM_KADDR64(pus64->Buffer)) {
-                pe->ExtInfo.cchName = pus64->Length;
+                pe->ExtInfo.cchName = pus64->Length >> 1;
                 pe->ExtInfo.vaName = pus64->Buffer;
             }
         }
@@ -874,24 +874,14 @@ fail:
     LocalFree(pe);
 }
 
-_Success_(return)
-BOOL VmmWinObjMgr_Initialize_ObjectNameExtInfo(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _Inout_ POB_STRMAP pStrMap, _Inout_ PVMM_MAP_OBJECTENTRY pe, _In_ PVMM_WINOBJ_SETUP_OBJECT pes, _In_ BOOL fForce)
+VOID VmmWinObjMgr_Initialize_ObjectNameExtInfo(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _Inout_ POB_STRMAP pStrMap, _Inout_ PVMM_MAP_OBJECTENTRY pe, _In_ PVMM_WINOBJ_SETUP_OBJECT pes)
 {
-    WCHAR wsz[0x201];
-    if(pes->ExtInfo.cchName == (DWORD)-1) { return TRUE; }
     pe->ExtInfo.ft = pes->ExtInfo.ft;
-    if(pes->ExtInfo.vaName && VmmRead2(H, pSystemProcess, pes->ExtInfo.vaName, (PBYTE)wsz, min(0x400, pes->ExtInfo.cchName << 1), VMM_FLAG_FORCECACHE_READ)) {
-        wsz[min(0x200, pes->ExtInfo.cchName)] = 0;
-        ObStrMap_PushPtrWU(pStrMap, wsz, &pe->ExtInfo.usz, NULL);
-        pes->ExtInfo.cchName = -1;
-        return TRUE;
-    }
-    if(!pes->ExtInfo.vaName || fForce) {
+    if(pes->ExtInfo.vaName) {
+        ObStrMap_Push_UnicodeBuffer(pStrMap, min(0x200, pes->ExtInfo.cchName << 1), pes->ExtInfo.vaName, &pe->ExtInfo.usz, NULL);
+    } else {
         ObStrMap_PushPtrWU(pStrMap, NULL, &pe->ExtInfo.usz, NULL);
-        pes->ExtInfo.cchName = -1;
-        return TRUE;
     }
-    return FALSE;
 }
 
 /*
@@ -934,9 +924,7 @@ BOOL VmmWinObjMgr_Initialize_ObMapLookupStr(_In_ VMM_HANDLE H, _Inout_ PVMMOB_MA
         if(!VmmWinObjMgr_Initialize_ObjectName(H, ctxInit->pSystemProcess, pObStrMap, pe, pes, FALSE)) {
             ObSet_Push_PageAlign(ctxInit->psvaPrefetch, pes->vaName, pes->cchName << 1);
         }
-        if(!VmmWinObjMgr_Initialize_ObjectNameExtInfo(H, ctxInit->pSystemProcess, pObStrMap, pe, pes, FALSE)) {
-            ObSet_Push_PageAlign(ctxInit->psvaPrefetch, pes->ExtInfo.vaName, pes->ExtInfo.cchName << 1);
-        }
+        VmmWinObjMgr_Initialize_ObjectNameExtInfo(H, ctxInit->pSystemProcess, pObStrMap, pe, pes);
     }
     if(ObSet_Size(ctxInit->psvaPrefetch)) {
         VmmCachePrefetchPages(H, ctxInit->pSystemProcess, ctxInit->psvaPrefetch, 0);
@@ -944,7 +932,6 @@ BOOL VmmWinObjMgr_Initialize_ObMapLookupStr(_In_ VMM_HANDLE H, _Inout_ PVMMOB_MA
             pe = pMap->pMap + i;
             pes = (PVMM_WINOBJ_SETUP_OBJECT)pe->_Reserved;
             VmmWinObjMgr_Initialize_ObjectName(H, ctxInit->pSystemProcess, pObStrMap, pe, pes, TRUE);
-            VmmWinObjMgr_Initialize_ObjectNameExtInfo(H, ctxInit->pSystemProcess, pObStrMap, pe, pes, TRUE);
         }
     }
     if(!ObStrMap_FinalizeAllocU_DECREF_NULL(&pObStrMap, &pMap->pbMultiText, &pMap->cbMultiText)) { return FALSE; }
