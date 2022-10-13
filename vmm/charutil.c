@@ -728,7 +728,11 @@ BOOL CharUtil_UtoCSV(_In_opt_ LPSTR usz, _In_ DWORD cch, _Maybenull_ _Writable_b
     if(pvsz) { *pvsz = NULL; }
     if(!usz) { usz = ""; }
     if(cch > CHARUTIL_CONVERT_MAXSIZE) { cch = CHARUTIL_CONVERT_MAXSIZE; }
-    // 1: utf-8 byte-length:
+    // 1: csv byte-length:
+    if(usz[0] == '\0') {
+        fCSV = TRUE;
+        cbv += 2;
+    }
     if(fTruncate && (!cbBuffer || (flags & CHARUTIL_FLAG_ALLOC))) { goto fail; }
     while((cbu < cch) && (c = usz[cbu])) {
         if(c & 0x80) {
