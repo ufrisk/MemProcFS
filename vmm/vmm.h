@@ -2080,6 +2080,17 @@ PVMM_PROCESS VmmProcessGetEx(_In_ VMM_HANDLE H, _In_opt_ PVMMOB_PROCESS_TABLE pt
 PVMM_PROCESS VmmProcessGet(_In_ VMM_HANDLE H, _In_ DWORD dwPID);
 
 /*
+* Retrieve processes sorted in a map keyed by either EPROCESS or PID.
+* CALLER DECREF: return
+* -- H
+* -- fByEPROCESS = TRUE: keyed by vaEPROCESS, FALSE: keyed by PID.
+* -- flags = 0 (recommended) or VMM_FLAG_PROCESS_[TOKEN|SHOW_TERMINATED].
+* -- return
+*/
+_Success_(return != NULL)
+POB_MAP VmmProcessGetAll(_In_ VMM_HANDLE H, _In_ BOOL fByEPROCESS, _In_ QWORD flags);
+
+/*
 * Retrieve the next process given a process and a process table. This may be
 * useful when iterating over a process list. NB! Listing of next item may fail
 * prematurely if the previous process is terminated while having a reference

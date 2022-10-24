@@ -839,6 +839,46 @@ inline PVMM_PROCESS VmmProcessGet(_In_ VMM_HANDLE H, _In_ DWORD dwPID)
 }
 
 /*
+* Retrieve processes sorted in a map keyed by either EPROCESS or PID.
+* CALLER DECREF: return
+* -- H
+* -- fByEPROCESS = TRUE: keyed by vaEPROCESS, FALSE: keyed by PID.
+* -- flags = 0 (recommended) or VMM_FLAG_PROCESS_[TOKEN|SHOW_TERMINATED].
+* -- return
+*/
+_Success_(return != NULL)
+POB_MAP VmmProcessGetAll(_In_ VMM_HANDLE H, _In_ BOOL fByEPROCESS, _In_ QWORD flags)
+{
+    BOOL fShowTerminated = ((flags | H->vmm.flags) & VMM_FLAG_PROCESS_SHOW_TERMINATED);
+    BOOL fToken = ((flags | H->vmm.flags) & VMM_FLAG_PROCESS_TOKEN);
+    PVMMOB_PROCESS_TABLE ptOb = NULL;
+    POB_MAP pmOb = NULL;
+    PVMM_PROCESS pProcess = NULL;
+    WORD iProcess = 0;
+    DWORD i = 0;
+    QWORD qwKey = 0;
+    if(!(pmOb = ObMap_New(H, OB_MAP_FLAGS_OBJECT_OB))) { goto fail; }
+    if(!(ptOb = (PVMMOB_PROCESS_TABLE)ObContainer_GetOb(H->vmm.pObCPROC))) { goto fail; }
+    iProcess = ptOb->_iFLink;
+    pProcess = ptOb->_M[iProcess];
+    while(pProcess) {
+        if(!pProcess->dwState || fShowTerminated) {
+            if(pProcess && fToken && !pProcess->win.TOKEN.fInitialized) { VmmProcess_TokenTryEnsureLock(H, ptOb, pProcess); }
+            qwKey = fByEPROCESS ? pProcess->win.EPROCESS.va : pProcess->dwPID;
+            ObMap_Push(pmOb, qwKey, pProcess);
+            i++;
+        }
+        iProcess = ptOb->_iFLinkM[iProcess];
+        pProcess = ptOb->_M[iProcess];
+        if(!pProcess || (iProcess == ptOb->_iFLink)) { break; }
+    }
+    Ob_INCREF(pmOb);
+fail:
+    Ob_DECREF(ptOb);
+    return Ob_DECREF(pmOb);
+}
+
+/*
 * Retrieve the next process given a process and a process table. This may be
 * useful when iterating over a process list. NB! Listing of next item may fail
 * prematurely if the previous process is terminated while having a reference

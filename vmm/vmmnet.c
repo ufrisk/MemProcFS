@@ -121,64 +121,66 @@ int VmmNet_TcpE_CmpSort(PVMM_MAP_NETENTRY a, PVMM_MAP_NETENTRY b)
 * -- H
 * -- ctx
 * -- pSystemProcess
-* -- vaTcpE_UdpA - virtual address of a TCP ENDPOINT entry (TcpE).
+* -- vaTcpE - virtual address of a TCP ENDPOINT entry (TcpE).
+* -- return
 */
-VOID VmmNet_TcpE_Fuzz(_In_ VMM_HANDLE H, _In_ PVMMNET_CONTEXT ctx, _In_ PVMM_PROCESS pSystemProcess, _In_ QWORD vaTcpE)
+_Success_(return);
+BOOL VmmNet_TcpE_Fuzz(_In_ VMM_HANDLE H, _In_ PVMMNET_CONTEXT ctx, _In_ PVMM_PROCESS pSystemProcess, _In_ QWORD vaTcpE)
 {
     BOOL f;
     QWORD o, va;
     DWORD dwPoolTagInNl;
-    BYTE pb[0x300];
-    PVMM_PROCESS pObProcess = NULL;
+    BYTE pb[0x380];
     PVMMNET_OFFSET_TcpE po = &ctx->oTcpE;
+    POB_MAP pmObProcessAll = NULL;
     if(po->_fValid || po->_fProcessedTry) { goto fail; }
     po->_fProcessedTry = TRUE;
-    if(!VmmRead(H, pSystemProcess, vaTcpE, pb, 0x300)) { goto fail; }
+    if(!VmmRead2(H, pSystemProcess, vaTcpE, pb, 0x380, VMM_FLAG_ZEROPAD_ON_FAIL)) { goto fail; }
+    if(!(pmObProcessAll = VmmProcessGetAll(H, TRUE, VMM_FLAG_PROCESS_SHOW_TERMINATED))) { goto fail; }
     // Search for EPROCESS value in TcpE struct
-    while((pObProcess = VmmProcessGetNext(H, pObProcess, VMM_FLAG_PROCESS_SHOW_TERMINATED))) {
-        for(o = 0x80; o < 0x300; o += 8) {
-            va = *(PQWORD)(pb + o);
-            if(!VMM_KADDR64_16(va)) { continue; }
-            if(va == pObProcess->win.EPROCESS.va) {
-                po->EProcess = (WORD)o;
-                // INET_AF offset:
-                f = VMM_KADDR64_16(*(PQWORD)(pb + 0x10)) &&
-                    VmmRead(H, pSystemProcess, *(PQWORD)(pb + 0x10) - 0x0c, (PBYTE)&dwPoolTagInNl, 4) &&
-                    (dwPoolTagInNl == 'lNnI');
-                po->INET_AF = f ? 0x10 : 0x18;
-                // INET_AF AF offset
-                po->INET_AF_AF = (H->vmm.kernel.dwVersionBuild < 9200) ? 0x14 : 0x18;  // VISTA-WIN7 or WIN8+
-                // check for state offset
-                po->State = (*(PDWORD)(pb + 0x6c) <= 13) ? 0x6c : 0x68;
-                if(H->vmm.kernel.dwVersionBuild >= 22000) {
-                    po->State = 0x70;
-                }
-                // static or relative offsets
-                po->INET_Addr = po->INET_AF + 0x08;
-                po->FLink = 0x40;
-                po->PortSrc = po->State + 0x04;
-                po->PortDst = po->State + 0x06;
-                po->Time = po->EProcess + 0x10;
-                po->_Size = po->Time + 8;
-                po->_fValid = TRUE;
-                // print result
-                if(H->cfg.fVerboseExtra) {
-                    VmmLog(H, MID_NET, LOGLEVEL_DEBUG, "FuzzTcpE: 0x%016llx", vaTcpE);
-                    VmmLog(H, MID_NET, LOGLEVEL_DEBUG,
-                        "  _Size %03X, InetAF  %03X, InetAFAF %03X, InetAddr %03X, FLinkAll %03X",
-                        po->_Size, po->INET_AF, po->INET_AF_AF, po->INET_Addr, po->FLink);
-                    VmmLog(H, MID_NET, LOGLEVEL_DEBUG,
-                        "  State %03X, SrcPort %03X, DstPort  %03X, EProcess %03X, Time  %03X",
-                        po->State, po->PortSrc, po->PortDst, po->EProcess, po->Time);
-                    VmmLogHexAsciiEx(H, MID_NET, LOGLEVEL_DEBUG, pb, 0x300, 0, "");
-                }
-                Ob_DECREF(pObProcess);
-                return;
+    for(o = 0x80; o < 0x380; o += 8) {
+        va = *(PQWORD)(pb + o);
+        if(!VMM_KADDR64_16(va)) { continue; }
+        if(ObMap_ExistsKey(pmObProcessAll, va)) {
+            po->EProcess = (WORD)o;
+            // INET_AF offset:
+            f = VMM_KADDR64_16(*(PQWORD)(pb + 0x10)) &&
+                VmmRead(H, pSystemProcess, *(PQWORD)(pb + 0x10) - 0x0c, (PBYTE)&dwPoolTagInNl, 4) &&
+                (dwPoolTagInNl == 'lNnI');
+            po->INET_AF = f ? 0x10 : 0x18;
+            // INET_AF AF offset
+            po->INET_AF_AF = (H->vmm.kernel.dwVersionBuild < 9200) ? 0x14 : 0x18;  // VISTA-WIN7 or WIN8+
+            // check for state offset
+            po->State = (*(PDWORD)(pb + 0x6c) <= 13) ? 0x6c : 0x68;
+            if(H->vmm.kernel.dwVersionBuild == 22000) {
+                po->State = 0x70;
             }
+            // static or relative offsets
+            po->INET_Addr = po->INET_AF + 0x08;
+            po->FLink = 0x40;
+            po->PortSrc = po->State + 0x04;
+            po->PortDst = po->State + 0x06;
+            po->Time = po->EProcess + 0x10;
+            po->_Size = po->Time + 8;
+            po->_fValid = TRUE;
+            // print result
+            if(H->cfg.fVerboseExtra) {
+                VmmLog(H, MID_NET, LOGLEVEL_DEBUG, "FuzzTcpE: 0x%016llx", vaTcpE);
+                VmmLog(H, MID_NET, LOGLEVEL_DEBUG,
+                    "  _Size %03X, InetAF  %03X, InetAFAF %03X, InetAddr %03X, FLinkAll %03X",
+                    po->_Size, po->INET_AF, po->INET_AF_AF, po->INET_Addr, po->FLink);
+                VmmLog(H, MID_NET, LOGLEVEL_DEBUG,
+                    "  State %03X, SrcPort %03X, DstPort  %03X, EProcess %03X, Time  %03X",
+                    po->State, po->PortSrc, po->PortDst, po->EProcess, po->Time);
+                VmmLogHexAsciiEx(H, MID_NET, LOGLEVEL_DEBUG, pb, 0x300, 0, "");
+            }
+            Ob_DECREF(pmObProcessAll);
+            return TRUE;
         }
     }
 fail:
-    Ob_DECREF(pObProcess);
+    Ob_DECREF(pmObProcessAll);
+    return FALSE;
 }
 
 /*
@@ -202,7 +204,7 @@ BOOL VmmNet_TcpE_GetAddressEPs(_In_ VMM_HANDLE H, _In_ PVMMNET_CONTEXT ctx, _In_
     PBYTE pbPartitionTable = NULL, pbTcHT = NULL;
     POB_SET pObTcHT = NULL, pObHTab_TcpE = NULL, pObTcpE = NULL;
     PRTL_DYNAMIC_HASH_TABLE pTcpHT;
-    DWORD iPoolTag, dwPoolTag;
+    DWORD dwPoolTag;
     PVMM_MAP_POOLENTRYTAG pePoolTag;
     if(!(pObTcHT = ObSet_New(H))) { goto fail; }
     if(!(pObHTab_TcpE = ObSet_New(H))) { goto fail; }
@@ -298,12 +300,11 @@ BOOL VmmNet_TcpE_GetAddressEPs(_In_ VMM_HANDLE H, _In_ PVMMNET_CONTEXT ctx, _In_
     if(pPoolMap) {
         for(i = 0; i < 3; i++) {
             switch(i) {
-                case 0:  o = 0x00; dwPoolTag = 'TcpE'; break;
-                case 1:  o = 0x00; dwPoolTag = 'TTcb'; break;
+                case 0:  o = 0x00; dwPoolTag = 'TTcb'; break;
+                case 1:  o = 0x00; dwPoolTag = 'TcpE'; break;
                 default: o = 0x40; dwPoolTag = 'TcTW'; break;
             }
-            if(VmmMap_GetPoolTag(H, pPoolMap, dwPoolTag, &iPoolTag)) {
-                pePoolTag = pPoolMap->pTag + iPoolTag;
+            if(VmmMap_GetPoolTag(H, pPoolMap, dwPoolTag, &pePoolTag)) {
                 for(j = 0; j < pePoolTag->cEntry; j++) {
                     iEntry = pPoolMap->piTag2Map[pePoolTag->iTag2Map + j];
                     ObSet_Push(psvaOb_TcpE, pPoolMap->pMap[iEntry].va + o);
@@ -379,7 +380,11 @@ BOOL VmmNet_TcpE_Enumerate(_In_ VMM_HANDLE H, _In_ PVMMNET_CONTEXT ctx, _In_ PVM
         VmmReadEx(H, pSystemProcess, vaINET_AF - 0x10, pb, 0x30, &cbRead, VMM_FLAG_FORCECACHE_READ);
         if(0x30 != cbRead) { continue; }
         if(*(PDWORD)(pb + 0x04) != 'lNnI') {
-            VmmLog(H, MID_NET, LOGLEVEL_DEBUG, "UNEXPECTED POOL HDR: '%c%c%c%c' EXPECT: 'InNl' AT VA: 0x%016llx", pb[4], pb[5], pb[6], pb[7], vaINET_AF);
+            if(H->vmm.kernel.dwVersionBuild < 22000) {
+                // on win11 this is very common (and expected). This happens
+                // when a non-supported 'TcpE' is parsed instead of a 'TTcb'.
+                VmmLog(H, MID_NET, LOGLEVEL_DEBUG, "UNEXPECTED POOL HDR: '%c%c%c%c' EXPECT: 'InNl' AT VA: 0x%016llx", pb[4], pb[5], pb[6], pb[7], vaINET_AF);
+            }
             continue;
         }
         pe->AF = *(PWORD)(pb + 0x10 + po->INET_AF_AF);
@@ -478,7 +483,7 @@ BOOL VmmNet_TcpTW_Enumerate(_In_ VMM_HANDLE H, _In_ PVMMNET_CONTEXT ctx, _In_ PV
         // 2.1 fetch INET_AF
         VmmReadEx(H, pSystemProcess, vaINET_AF - 0x10, pb, 0x30, &cbRead, VMM_FLAG_FORCECACHE_READ);
         if(0x30 != cbRead) { continue; }
-        if(*(PDWORD)(pb + 0x04) != 'lNnI') {
+        if((*(PDWORD)(pb + 0x04) != 'lNnI') && ((*(PDWORD)(pb + 0x04) != 'lTnI'))) {
             VmmLog(H, MID_NET, LOGLEVEL_DEBUG, "UNEXPECTED POOL HDR: '%c%c%c%c' EXPECT: 'InNl' AT VA: 0x%016llx", pb[4], pb[5], pb[6], pb[7], vaINET_AF);
             continue;
         }
@@ -747,7 +752,7 @@ DWORD VmmNet_InPP_DoWork(_In_ VMM_HANDLE H, PVOID lpThreadParameter)
     PVMMNET_CONTEXT ctx = actx->ctx;
     PVMM_PROCESS pSystemProcess = actx->pSystemProcess;
     POB_MAP pmNetEntries = actx->pmNetEntries;
-    DWORD cbInPPe, oInPPe, oInPA = 0, o, oFLink, tag, iPoolTag, iEntry;
+    DWORD cbInPPe, oInPPe, oInPA = 0, o, oFLink, tag, iEntry;
     QWORD i, j, va;
     BYTE pb[0x2000], pb2[0x20];
     POB_SET psObPA = NULL, psObPreEP = NULL, psObEP = NULL, psObEP_Next = NULL, psObEP_SWAP;
@@ -820,8 +825,7 @@ DWORD VmmNet_InPP_DoWork(_In_ VMM_HANDLE H, PVOID lpThreadParameter)
     // fetch candidate addresses for endpoints / listeners from pool tagging
     if(actx->pPoolMap) {
         for(i = 0; i < 2; i++) {
-            if(VmmMap_GetPoolTag(H, actx->pPoolMap, (i ? 'TcpL' : 'UdpA'), &iPoolTag)) {
-                pePoolTag = actx->pPoolMap->pTag + iPoolTag;
+            if(VmmMap_GetPoolTag(H, actx->pPoolMap, (i ? 'TcpL' : 'UdpA'), &pePoolTag)) {
                 for(j = 0; j < pePoolTag->cEntry; j++) {
                     iEntry = actx->pPoolMap->piTag2Map[pePoolTag->iTag2Map + j];
                     ObSet_Push(psObEP, actx->pPoolMap->pMap[iEntry].va);
