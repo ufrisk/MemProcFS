@@ -204,7 +204,7 @@ BOOL VmmNet_TcpE_GetAddressEPs(_In_ VMM_HANDLE H, _In_ PVMMNET_CONTEXT ctx, _In_
     PBYTE pbPartitionTable = NULL, pbTcHT = NULL;
     POB_SET pObTcHT = NULL, pObHTab_TcpE = NULL, pObTcpE = NULL;
     PRTL_DYNAMIC_HASH_TABLE pTcpHT;
-    DWORD dwPoolTag;
+    DWORD iPoolTag, dwPoolTag;
     PVMM_MAP_POOLENTRYTAG pePoolTag;
     if(!(pObTcHT = ObSet_New(H))) { goto fail; }
     if(!(pObHTab_TcpE = ObSet_New(H))) { goto fail; }
@@ -304,7 +304,8 @@ BOOL VmmNet_TcpE_GetAddressEPs(_In_ VMM_HANDLE H, _In_ PVMMNET_CONTEXT ctx, _In_
                 case 1:  o = 0x00; dwPoolTag = 'TcpE'; break;
                 default: o = 0x40; dwPoolTag = 'TcTW'; break;
             }
-            if(VmmMap_GetPoolTag(H, pPoolMap, dwPoolTag, &pePoolTag)) {
+            if(VmmMap_GetPoolTag(H, pPoolMap, dwPoolTag, &iPoolTag)) {
+                pePoolTag = pPoolMap->pTag + iPoolTag;
                 for(j = 0; j < pePoolTag->cEntry; j++) {
                     iEntry = pPoolMap->piTag2Map[pePoolTag->iTag2Map + j];
                     ObSet_Push(psvaOb_TcpE, pPoolMap->pMap[iEntry].va + o);
@@ -483,7 +484,7 @@ BOOL VmmNet_TcpTW_Enumerate(_In_ VMM_HANDLE H, _In_ PVMMNET_CONTEXT ctx, _In_ PV
         // 2.1 fetch INET_AF
         VmmReadEx(H, pSystemProcess, vaINET_AF - 0x10, pb, 0x30, &cbRead, VMM_FLAG_FORCECACHE_READ);
         if(0x30 != cbRead) { continue; }
-        if((*(PDWORD)(pb + 0x04) != 'lNnI') && ((*(PDWORD)(pb + 0x04) != 'lTnI'))) {
+        if(*(PDWORD)(pb + 0x04) != 'lNnI') {
             VmmLog(H, MID_NET, LOGLEVEL_DEBUG, "UNEXPECTED POOL HDR: '%c%c%c%c' EXPECT: 'InNl' AT VA: 0x%016llx", pb[4], pb[5], pb[6], pb[7], vaINET_AF);
             continue;
         }
@@ -752,7 +753,7 @@ DWORD VmmNet_InPP_DoWork(_In_ VMM_HANDLE H, PVOID lpThreadParameter)
     PVMMNET_CONTEXT ctx = actx->ctx;
     PVMM_PROCESS pSystemProcess = actx->pSystemProcess;
     POB_MAP pmNetEntries = actx->pmNetEntries;
-    DWORD cbInPPe, oInPPe, oInPA = 0, o, oFLink, tag, iEntry;
+    DWORD cbInPPe, oInPPe, oInPA = 0, o, oFLink, tag, iPoolTag, iEntry;
     QWORD i, j, va;
     BYTE pb[0x2000], pb2[0x20];
     POB_SET psObPA = NULL, psObPreEP = NULL, psObEP = NULL, psObEP_Next = NULL, psObEP_SWAP;
@@ -825,7 +826,8 @@ DWORD VmmNet_InPP_DoWork(_In_ VMM_HANDLE H, PVOID lpThreadParameter)
     // fetch candidate addresses for endpoints / listeners from pool tagging
     if(actx->pPoolMap) {
         for(i = 0; i < 2; i++) {
-            if(VmmMap_GetPoolTag(H, actx->pPoolMap, (i ? 'TcpL' : 'UdpA'), &pePoolTag)) {
+            if(VmmMap_GetPoolTag(H, actx->pPoolMap, (i ? 'TcpL' : 'UdpA'), &iPoolTag)) {
+                pePoolTag = actx->pPoolMap->pTag + iPoolTag;
                 for(j = 0; j < pePoolTag->cEntry; j++) {
                     iEntry = actx->pPoolMap->piTag2Map[pePoolTag->iTag2Map + j];
                     ObSet_Push(psObEP, actx->pPoolMap->pMap[iEntry].va);
