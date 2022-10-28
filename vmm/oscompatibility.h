@@ -140,6 +140,7 @@ typedef int(*_CoreCrtNonSecureSearchSortCompareFunction)(void const *, void cons
 #define _Out_writes_to_(x,y)
 #define _Out_writes_to_opt_(x,y)
 #define _Out_writes_z_(x)
+#define _Outptr_
 #define _Post_ptr_invalid_
 #define _Printf_format_string_
 #define _Success_(x)
@@ -173,6 +174,7 @@ typedef int(*_CoreCrtNonSecureSearchSortCompareFunction)(void const *, void cons
 #define strtok_s(s, d, c)                   (strtok_r(s, d, c))
 #define _snprintf_s(s,l,c,...)              (snprintf(s,min((size_t)(l), (size_t)(c)),__VA_ARGS__))
 #define sscanf_s(s, f, ...)                 (sscanf(s, f, __VA_ARGS__))
+#define StrStrIA(s, f)                      (strcasestr(s, f))
 #define SwitchToThread()                    (sched_yield())
 #define ExitThread(dwExitCode)              (pthread_exit(dwExitCode))
 #define ExitProcess(c)                      (exit(c ? EXIT_SUCCESS : EXIT_FAILURE))
@@ -197,6 +199,12 @@ typedef int(*_CoreCrtNonSecureSearchSortCompareFunction)(void const *, void cons
 
 HMODULE LoadLibraryA(LPSTR lpFileName);
 FARPROC GetProcAddress(HMODULE hModule, LPSTR lpProcName);
+
+// SID
+_Success_(return) BOOL IsValidSid(_In_opt_ PSID pSID);
+_Success_(return) BOOL ConvertSidToStringSidA(_In_opt_ PSID pSID, _Outptr_ LPSTR *pszSid);
+_Success_(return) BOOL ConvertStringSidToSidA(_In_opt_ LPSTR szSID, _Outptr_ PSID *ppSID);
+#define LookupAccountSidA(lpSystemName, Sid, Name, cchName, ReferencedDomainName, cchReferencedDomainName, peUse)       (FALSE)
 
 // CRITICAL SECTION
 #ifndef _LINUX_DEF_CRITICAL_SECTION

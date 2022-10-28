@@ -97,6 +97,11 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "internal", "internal", "{A8
 		vmmjava\vmm\internal\VmmNative.java = vmmjava\vmm\internal\VmmNative.java
 	EndProjectSection
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{99570206-7FB9-41C4-87C9-69064B8069FA}"
+	ProjectSection(SolutionItems) = preProject
+		README.md = README.md
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|ARM64 = Debug|ARM64

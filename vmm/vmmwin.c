@@ -2532,7 +2532,6 @@ VOID VmmWinPhysMemMap_Refresh(_In_ VMM_HANDLE H)
 // well known and system-specific.
 // ----------------------------------------------------------------------------
 
-#ifdef _WIN32
 /*
 * Retrieve the account name of the user account given a SID.
 * NB! Names for well known SIDs will be given in the language of the system
@@ -2666,10 +2665,8 @@ VOID VmmWinUser_Initialize_DoWork_UserHive(_In_ VMM_HANDLE H, _In_ POB_MAP pmOb)
     VMM_MAP_USERENTRY e;
     DWORD i, dwType, cbBuffer;
     BYTE pbBuffer[MAX_PATH];
-    CHAR szBufferUser[MAX_PATH];
-    WCHAR wszBufferSymlink[MAX_PATH];
-    LPSTR szHiveUser, szHiveNtdat;
-    LPWSTR wszSymlinkSid, wszSymlinkUser;
+    CHAR szBufferUser[MAX_PATH], szBufferSymlink[MAX_PATH];
+    LPSTR szHiveUser, szHiveNtdat, szSymlinkUser, szSymlinkSid = "";
     POB_REGISTRY_HIVE pObHive = NULL;
     while((pObHive = VmmWinReg_HiveGetNext(H, pObHive))) {
         szBufferUser[0] = 0;
@@ -2693,28 +2690,28 @@ VOID VmmWinUser_Initialize_DoWork_UserHive(_In_ VMM_HANDLE H, _In_ POB_MAP pmOb)
         }
         if(!e.pSID) {
             i = 0;
-            if(!VmmWinReg_ValueQuery1(H, pObHive, "ROOT\\Software\\Classes\\SymbolicLinkValue", &dwType, NULL, (PBYTE)wszBufferSymlink, sizeof(wszBufferSymlink) - 2, NULL, 0) || (dwType != REG_LINK)) { continue; }
-            wszBufferSymlink[MAX_PATH - 1] = 0;
-            if(!(wszSymlinkSid = wcsstr(wszBufferSymlink, L"\\S-"))) { continue; }
-            if(wcslen(wszSymlinkSid) < 20) { continue; }
-            while(wszSymlinkSid[i] && (wszSymlinkSid[i] != L'_') && ++i);
-            wszSymlinkSid[i] = 0;
-            if(!ConvertStringSidToSidW(wszSymlinkSid + 1, &e.pSID) || !e.pSID) { continue; }
+            f = VmmWinReg_ValueQuery1(H, pObHive, "ROOT\\Software\\Classes\\SymbolicLinkValue", &dwType, NULL, (PBYTE)pbBuffer, sizeof(pbBuffer) - 2, &cbBuffer, 0) &&
+                (dwType == REG_LINK) &&
+                CharUtil_WtoU((LPWSTR)pbBuffer, cbBuffer / 2, szBufferSymlink, sizeof(szBufferSymlink), NULL, NULL, CHARUTIL_FLAG_TRUNCATE | CHARUTIL_FLAG_STR_BUFONLY) &&
+                (szSymlinkSid = strstr(szBufferSymlink, "\\S-"));
+            if(!f || (strlen(szSymlinkSid) < 20)) { continue; }
+            while(szSymlinkSid[i] && (szSymlinkSid[i] != '_') && ++i);
+            szSymlinkSid[i] = 0;
+            if(!ConvertStringSidToSidA(szSymlinkSid + 1, &e.pSID) || !e.pSID) { continue; }
         }
         // get username - WinXP only
         if(!szBufferUser[0] && (H->vmm.kernel.dwVersionBuild <= 2600)) {
             i = 0;
-            wszSymlinkUser = wszBufferSymlink + 10;
-            while(wszSymlinkUser[i] && (wszSymlinkUser[i] != L'\\') && ++i);
+            szSymlinkUser = szBufferSymlink + 10;
+            while(szSymlinkUser[i] && (szSymlinkUser[i] != '\\') && ++i);
             if(i == 0) { continue; }
-            wszSymlinkUser[i] = 0;
-            CharUtil_WtoU(wszSymlinkUser, -1, szBufferUser, sizeof(szBufferUser), NULL, NULL, CHARUTIL_FLAG_TRUNCATE | CHARUTIL_FLAG_STR_BUFONLY);
+            szSymlinkUser[i] = 0;
+            CharUtil_UtoU(szSymlinkUser, -1, szBufferUser, sizeof(szBufferUser), NULL, NULL, CHARUTIL_FLAG_TRUNCATE | CHARUTIL_FLAG_STR_BUFONLY);
         }
         if(!szBufferUser[0]) { continue; }
         // get length and hash of sid string
         e.vaRegHive = pObHive->vaCMHIVE;
-        e.cbSID = GetLengthSid(e.pSID);
-        if(!e.cbSID || !ConvertSidToStringSidA(e.pSID, &e.szSID) || !e.szSID) {
+        if(!ConvertSidToStringSidA(e.pSID, &e.szSID) || !e.szSID) {
             LocalFree(e.pSID);
             continue;
         }
@@ -2805,12 +2802,6 @@ PVMMOB_MAP_USER VmmWinUser_Initialize(_In_ VMM_HANDLE H)
     LeaveCriticalSection(&H->vmm.LockUpdateMap);
     return pObUser;
 }
-
-#endif /* _WIN32 */
-#ifdef LINUX
-_Success_(return) BOOL VmmWinUser_GetName(_In_ VMM_HANDLE H, _In_opt_ PSID pSID, _Out_writes_(cbuName) LPSTR uszName, _In_ DWORD cbuName, _Out_opt_ PBOOL pfAccountWellKnown) { return FALSE; }
-PVMMOB_MAP_USER VmmWinUser_Initialize(_In_ VMM_HANDLE H) { return NULL; }
-#endif /* LINUX */
 
 /*
 * Refresh the user map.

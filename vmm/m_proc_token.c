@@ -11,7 +11,9 @@
 #include "vmmwindef.h"
 #include "charutil.h"
 #include "infodb.h"
+#ifdef _WIN32
 #include <sddl.h>
+#endif /* _WIN32 */
 
 #define MPROCTOKEN_PRIVILEGE_LINELENGTH     60ULL
 #define MPROCTOKEN_PRIVILEGE_LINEHEADER     "   #    PID Flags Privilege Name"

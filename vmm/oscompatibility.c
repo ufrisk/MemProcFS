@@ -223,6 +223,95 @@ BOOL FileTimeToSystemTime(_In_ PFILETIME lpFileTime, _Out_ PSYSTEMTIME pSystemTi
     return TRUE;
 }
 
+
+
+// ----------------------------------------------------------------------------
+// SID functionality below:
+// ----------------------------------------------------------------------------
+
+_Success_(return)
+BOOL ConvertStringSidToSidA(_In_opt_ LPSTR szSID, _Outptr_ PSID *ppSID)
+{
+    BYTE c = 0;
+    DWORD i, csz;
+    PBYTE pbSID = NULL;
+    if(!szSID || !ppSID) { return FALSE; }
+    if(strncmp(szSID, "S-1-", 4)) { return FALSE; }
+    szSID += 4;
+    csz = (DWORD)strlen(szSID);
+    for(i = 0; i < csz; i++) {
+        if(szSID[i] == '-') {
+            if(szSID[i - 1] == '-') { return FALSE; }
+            c++;
+        }
+    }
+    if((c == 0) || (c > SID_MAX_SUB_AUTHORITIES) || (szSID[csz - 1] == '-')) { return FALSE; }
+    if(!(pbSID = LocalAlloc(0, 8 + c * sizeof(DWORD)))) { return FALSE; }
+    *ppSID = (PSID)pbSID;
+    *(PQWORD)pbSID = _byteswap_uint64(strtoull(szSID, NULL, 10));
+    pbSID[0] = 1;
+    pbSID[1] = c;
+    pbSID += sizeof(QWORD);
+    while(TRUE) {
+        while(TRUE) {
+            szSID += 1;
+            if(szSID[0] == 0) { return TRUE; }
+            if(szSID[0] == '-') { szSID += 1; break; }
+        }
+        *(PDWORD)pbSID = strtoul(szSID, NULL, 10);
+        pbSID += sizeof(DWORD);
+    }
+}
+
+/*
+* Linux compatible function of WIN32 API function ConvertSidToStringSidA()
+* CALLER LocalFree: *pszSid
+* -- pSID
+* -- pszSID
+* -- return
+*/
+_Success_(return)
+BOOL ConvertSidToStringSidA(_In_opt_ PSID pSID, _Outptr_ LPSTR *pszSid)
+{
+    PBYTE pbSID = (PBYTE)pSID;
+    DWORD dwVersion, c, o, cbSID;
+    QWORD qwAuthority;
+    LPSTR szSID;
+    if(!pSID) { return FALSE; }
+    dwVersion = pbSID[0];
+    if(dwVersion != 1) { return FALSE; }
+    c = pbSID[1];
+    if((c == 0) || (c > SID_MAX_SUB_AUTHORITIES)) { return FALSE; }
+    qwAuthority = _byteswap_uint64(*(PQWORD)(pbSID)) & 0x0000ffffffffffff;
+    cbSID = 64 + c * 12;
+    if(!(szSID = LocalAlloc(0, cbSID))) { return FALSE; }
+    o = snprintf(szSID, cbSID, "S-1-%llu", qwAuthority);
+    pbSID += 8;
+    while(c) {
+        o += snprintf(szSID + o, cbSID - o, "-%u", *(PDWORD)pbSID);
+        pbSID += 4;
+        c--;
+    }
+    *pszSid = szSID;
+    return TRUE;
+}
+
+/*
+* Linux compatible function of WIN32 API function ConvertSidToStringSidA()
+* -- pSID
+* -- return
+*/
+_Success_(return)
+BOOL IsValidSid(_In_opt_ PSID pSID)
+{
+    LPSTR szSID = NULL;
+    BOOL fResult = ConvertSidToStringSidA(pSID, &szSID);
+    LocalFree(szSID);
+    return fResult;
+}
+
+
+
 // ----------------------------------------------------------------------------
 // CRITICAL_SECTION functionality below:
 // ----------------------------------------------------------------------------
@@ -500,9 +589,41 @@ PSLIST_ENTRY InterlockedPushEntrySList(_Inout_ PSLIST_HEADER ListHead, _Inout_ P
 // VARIOUS FUNCTIONALITY BELOW:
 // ----------------------------------------------------------------------------
 
+/*
+* Linux implementation of ntdll!RtlDecompressBuffer for COMPRESS_ALGORITHM_XPRESS:
+* Dynamically load libMSCompression.so (if it exists) and use it. If library does
+* not exist then fail gracefully (i.e. don't support XPRESS decompress).
+* https://github.com/coderforlife/ms-compress   (License: GPLv3)
+*/
 NTSTATUS OSCOMPAT_RtlDecompressBuffer(USHORT CompressionFormat, PUCHAR UncompressedBuffer, ULONG  UncompressedBufferSize, PUCHAR CompressedBuffer, ULONG  CompressedBufferSize, PULONG FinalUncompressedSize)
 {
-    // TODO: not implemented yet
+    int rc;
+    void* lib_mscompress;
+    SIZE_T cbOut;
+    static BOOL fFirst = TRUE;
+    static SRWLOCK LockSRW = SRWLOCK_INIT;
+    static int(*pfn_xpress_decompress)(PBYTE pbIn, SIZE_T cbIn, PBYTE pbOut, SIZE_T *pcbOut) = NULL;
+    if(CompressionFormat != 3) { return VMM_STATUS_UNSUCCESSFUL; } // 3 == COMPRESS_ALGORITHM_XPRESS
+    if(fFirst) {
+        AcquireSRWLockExclusive(&LockSRW);
+        if(fFirst) {
+            fFirst = FALSE;
+            lib_mscompress = dlopen("libMSCompression.so", RTLD_NOW);
+            if(lib_mscompress) {
+                pfn_xpress_decompress = (int(*)(PBYTE,SIZE_T,PBYTE,SIZE_T*))dlsym(lib_mscompress, "xpress_decompress");
+            }
+        }
+        ReleaseSRWLockExclusive(&LockSRW);
+    }
+    *FinalUncompressedSize = 0;
+    if(pfn_xpress_decompress) {
+        cbOut = UncompressedBufferSize;
+        rc = pfn_xpress_decompress(CompressedBuffer, CompressedBufferSize, UncompressedBuffer, &cbOut);
+        if(rc == 0) {
+            *FinalUncompressedSize = cbOut;
+            return VMM_STATUS_SUCCESS;
+        }
+    }
     return VMM_STATUS_UNSUCCESSFUL;
 }
 

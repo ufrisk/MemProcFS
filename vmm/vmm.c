@@ -637,11 +637,10 @@ BOOL VmmCachePrefetchPages5(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _
 // The process table object (only used internally): VMMOB_PROCESS_TABLE
 // ----------------------------------------------------------------------------
 
-#ifdef _WIN32
 VOID VmmProcess_TokenTryEnsure(_In_ VMM_HANDLE H, _In_ PVMMOB_PROCESS_TABLE pt)
 {
     BOOL f, f32 = H->vmm.f32;
-    DWORD j, i = 0, iM, cbHdr, cb, dwIntegrityLevelIndex;
+    DWORD j, i = 0, iM, cbHdr, cb, dwIntegrityLevelIndex = 0;
     QWORD va, *pva = NULL;
     BYTE pb[0x1000];
     PVMM_PROCESS *ppProcess = NULL, pObSystemProcess = NULL;
@@ -760,10 +759,6 @@ fail:
     LocalFree(ppProcess);
     Ob_DECREF(pObSystemProcess);
 }
-#endif /* _WIN32 */
-#ifdef LINUX
-VOID VmmProcess_TokenTryEnsure(_In_ VMM_HANDLE H, _In_ PVMMOB_PROCESS_TABLE pt) { return; }
-#endif /* LINUX */
 
 /*
 * Global Synchronization/Lock of VmmProcess_TokenTryEnsure()

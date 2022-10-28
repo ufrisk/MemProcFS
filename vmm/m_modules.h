@@ -91,6 +91,7 @@ VOID(*g_pfnModulesAllInternal[])(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_REGINFO 
     M_ProcMemMap_Initialize,
     M_ProcMiniDump_Initialize,
     M_ProcThread_Initialize,
+    M_ProcToken_Initialize,
     M_Search_Initialize,
     M_Virt2Phys_Initialize,
     // global modules
@@ -121,8 +122,6 @@ VOID(*g_pfnModulesAllInternal[])(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_REGINFO 
     M_FcSys_Initialize,
     M_FcThread_Initialize,
 #ifdef _WIN32
-    // windows-only per-process modules
-    M_ProcToken_Initialize,         // req: winapi
     // windows-only global modules
     M_SysCert_Initialize,           // req: winapi
     M_SysSyscall_Initialize,        // req: full symbols
