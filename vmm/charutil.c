@@ -1265,6 +1265,60 @@ QWORD CharUtil_HashPathFsW(_In_ LPCWSTR wszPath)
 }
 
 /*
+* Compare multiple strings with a CharUtil_Str* compare function.
+* If at least one comparison is TRUE return TRUE - otherwise FALSE.
+* -- pfnStrCmp
+* -- usz1
+* -- fCaseInsensitive
+* -- cStr
+* -- 
+* ...
+* -- return
+*/
+BOOL CharUtil_StrCmpAny(_In_opt_ CHARUTIL_STRCMP_PFN pfnStrCmp, _In_opt_ LPSTR usz1, _In_ BOOL fCaseInsensitive, _In_ DWORD cStr, ...)
+{
+    va_list arglist;
+    if(!pfnStrCmp) { return FALSE; }
+    va_start(arglist, cStr);
+    while(cStr) {
+        if(pfnStrCmp(usz1, va_arg(arglist, LPSTR), fCaseInsensitive)) {
+            va_end(arglist);
+            return TRUE;
+        }
+        cStr--;
+    }
+    va_end(arglist);
+    return FALSE;
+}
+
+/*
+* Compare multiple strings with a CharUtil_Str* compare function.
+* If all comparisons are TRUE return TRUE - otherwise FALSE.
+* -- pfnStrCmp
+* -- usz1
+* -- fCaseInsensitive
+* -- cStr
+* --
+* ...
+* -- return
+*/
+BOOL CharUtil_StrCmpAll(_In_opt_ CHARUTIL_STRCMP_PFN pfnStrCmp, _In_opt_ LPSTR usz1, _In_ BOOL fCaseInsensitive, _In_ DWORD cStr, ...)
+{
+    va_list arglist;
+    if(!pfnStrCmp) { return FALSE; }
+    va_start(arglist, cStr);
+    while(cStr) {
+        if(!pfnStrCmp(usz1, va_arg(arglist, LPSTR), fCaseInsensitive)) {
+            va_end(arglist);
+            return FALSE;
+        }
+        cStr--;
+    }
+    va_end(arglist);
+    return TRUE;
+}
+
+/*
 * Checks if a string ends with a certain substring.
 * -- usz
 * -- uszEndsWith
@@ -1299,6 +1353,25 @@ BOOL CharUtil_StrStartsWith(_In_opt_ LPSTR usz, _In_opt_ LPSTR uszStartsWith, _I
         return (0 == strncmp(usz, uszStartsWith, strlen(uszStartsWith)));
     }
 }
+
+/*
+* Checks if a string equals another string.
+* -- usz1
+* -- usz2
+* -- fCaseInsensitive
+* -- return
+*/
+BOOL CharUtil_StrEquals(_In_opt_ LPSTR usz, _In_opt_ LPSTR usz2, _In_ BOOL fCaseInsensitive)
+{
+    if(!usz || !usz2) { return FALSE; }
+    if(fCaseInsensitive) {
+        return (0 == _stricmp(usz, usz2));
+    } else {
+        return (0 == strcmp(usz, usz2));
+    }
+}
+
+
 
 /*
 * Compare a wide-char string to a utf-8 string.

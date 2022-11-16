@@ -5,6 +5,11 @@
 // simplify reading multiple memory regions in one single efficient call to
 // the underlying hardware/software. This will greatly speed up latency-bound
 // memory regions.
+// 
+// vmmpyc_scattermemory supports read/write of:
+//  - virtual memory.
+//  - physical memory.
+//  - vm guest physical memory.
 //
 // (c) Ulf Frisk, 2022
 // Author: Ulf Frisk, pcileech@frizk.net
@@ -110,15 +115,20 @@ VmmPycScatterMemory_close(PyObj_ScatterMemory *self, PyObject *args)
 //-----------------------------------------------------------------------------
 
 PyObj_ScatterMemory*
-VmmPycScatterMemory_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_ DWORD dwPID, _In_ DWORD dwReadFlags)
+VmmPycScatterMemory_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_opt_ VMMVM_HANDLE hVM, _In_opt_ DWORD dwPID, _In_ DWORD dwReadFlags)
 {
     PyObj_ScatterMemory *pyObj;
     if(!(pyObj = PyObject_New(PyObj_ScatterMemory, (PyTypeObject*)g_pPyType_ScatterMemory))) { return NULL; }
     Py_INCREF(pyVMM); pyObj->pyVMM = pyVMM;
     pyObj->fValid = TRUE;
+    pyObj->hVM = hVM;
     pyObj->dwPID = dwPID;
     pyObj->dwReadFlags = dwReadFlags;
-    pyObj->hScatter = VMMDLL_Scatter_Initialize(pyVMM->hVMM, dwPID, dwReadFlags);
+    if(hVM) {
+        pyObj->hScatter = VMMDLL_VmScatterInitialize(pyVMM->hVMM, hVM);
+    } else {
+        pyObj->hScatter = VMMDLL_Scatter_Initialize(pyVMM->hVMM, dwPID, dwReadFlags);
+    }
     if(!pyObj->hScatter) {
         Py_DECREF(pyObj);
         return NULL;

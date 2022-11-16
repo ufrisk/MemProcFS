@@ -2635,7 +2635,6 @@ VOID VmmWinUser_Initialize_DoWork_ProfileReg(_In_ VMM_HANDLE H, _In_ POB_MAP pmO
                 CharUtil_WtoU((LPWSTR)pbBuffer, cbBuffer / 2, szBufferPath, sizeof(szBufferPath), NULL, NULL, CHARUTIL_FLAG_TRUNCATE | CHARUTIL_FLAG_STR_BUFONLY);
             Ob_DECREF_NULL(&pObValue);
             if(!f) { continue; }
-            e.cbSID = 0;
             e.cbuText = 0;
             e.pSID = NULL;
             if(!CharUtil_UtoU(KeyInfo.uszName, -1, NULL, 0, &e.szSID, NULL, CHARUTIL_FLAG_ALLOC)) {
@@ -2762,7 +2761,7 @@ PVMMOB_MAP_USER VmmWinUser_Initialize_DoWork(_In_ VMM_HANDLE H)
         peDst->vaRegHive = peSrc->vaRegHive;
         peDst->pSID = peSrc->pSID; peSrc->pSID = NULL;
         // strmap below:
-        ObStrMap_PushPtrUU(psmOb, peSrc->szSID, &peDst->szSID, &peDst->cbSID);
+        ObStrMap_PushPtrUU(psmOb, peSrc->szSID, &peDst->szSID, NULL);
         ObStrMap_PushPtrUU(psmOb, peSrc->uszText, &peDst->uszText, &peDst->cbuText);
     }
     ObStrMap_FinalizeAllocU_DECREF_NULL(&psmOb, &pObMapUser->pbMultiText, &pObMapUser->cbMultiText);

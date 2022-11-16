@@ -104,6 +104,10 @@ NTSTATUS MConf_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_wr
             "  CACHE HIT:                    %16llx\n" \
             "  RETRIEVED:                    %16llx\n" \
             "  FAILED:                       %16llx\n" \
+            "GUEST-PHYSICAL MEMORY:                \n" \
+            "  READ SUCESS:                  %16llx\n" \
+            "  READ FAIL:                    %16llx\n" \
+            "  WRITE:                        %16llx\n" \
             "PHYSICAL MEMORY REFRESH:        %16llx\n" \
             "TLB MEMORY REFRESH:             %16llx\n" \
             "PROCESS PARTIAL REFRESH:        %16llx\n" \
@@ -112,6 +116,7 @@ NTSTATUS MConf_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_wr
             cPageReadTotal, H->vmm.stat.page.cPrototype, H->vmm.stat.page.cTransition, H->vmm.stat.page.cDemandZero, H->vmm.stat.page.cVAD, H->vmm.stat.page.cCacheHit, H->vmm.stat.page.cPageFile, H->vmm.stat.page.cCompressed,
             cPageFailTotal, H->vmm.stat.page.cFailCacheHit, H->vmm.stat.page.cFailVAD, H->vmm.stat.page.cFailFileMapped, H->vmm.stat.page.cFailPageFile, H->vmm.stat.page.cFailCompressed,
             H->vmm.stat.cTlbCacheHit, H->vmm.stat.cTlbReadSuccess, H->vmm.stat.cTlbReadFail,
+            H->vmm.stat.cGpaReadSuccess, H->vmm.stat.cGpaReadFail, H->vmm.stat.cGpaWrite,
             H->vmm.stat.cPhysRefreshCache, H->vmm.stat.cTlbRefreshCache, H->vmm.stat.cProcessRefreshPartial, H->vmm.stat.cProcessRefreshFull
         );
         return Util_VfsReadFile_FromPBYTE(szBuffer, cchBuffer, pb, cb, pcbRead, cbOffset);
@@ -302,7 +307,7 @@ BOOL MConf_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHA
         VMMDLL_VfsList_AddFile(pFileList, "config_symbolcache.txt", strlen(H->pdb.szLocal), NULL);
         VMMDLL_VfsList_AddFile(pFileList, "config_symbolserver.txt", strlen(H->pdb.szServer), NULL);
         VMMDLL_VfsList_AddFile(pFileList, "config_symbolserver_enable.txt", 1, NULL);
-        VMMDLL_VfsList_AddFile(pFileList, "statistics.txt", 1446, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "statistics.txt", 1632, NULL);
         VMMDLL_VfsList_AddFile(pFileList, "config_printf_enable.txt", 1, NULL);
         VMMDLL_VfsList_AddFile(pFileList, "config_printf_v.txt", 1, NULL);
         VMMDLL_VfsList_AddFile(pFileList, "config_printf_vv.txt", 1, NULL);

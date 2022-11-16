@@ -5,6 +5,7 @@
 //
 
 #include "vmmdll.h"
+#include "vmmdll_core.h"
 #include "pluginmanager.h"
 #include "charutil.h"
 #include "util.h"
@@ -19,6 +20,7 @@
 #include "vmmnet.h"
 #include "vmmwinobj.h"
 #include "vmmwinreg.h"
+#include "vmmvm.h"
 #include "mm_pfn.h"
 
 // tags for external allocations:
@@ -38,6 +40,7 @@
 #define OB_TAG_API_MAP_USER             'USER'
 #define OB_TAG_API_MAP_VAD              'VAD '
 #define OB_TAG_API_MAP_VAD_EX           'VADX'
+#define OB_TAG_API_MAP_VM               'VM  '
 #define OB_TAG_API_MODULE_FROM_NAME     'MODN'
 #define OB_TAG_API_PROCESS_STRING       'PSTR'
 #define OB_TAG_API_SEARCH               'SRCH'
@@ -46,29 +49,6 @@
 //-----------------------------------------------------------------------------
 // INITIALIZATION FUNCTIONALITY BELOW:
 //-----------------------------------------------------------------------------
-
-/*
-* Close all VMM_HANDLE and clean up everything! No VMM_HANDLE will be valid
-* after this function has been called.
-*/
-VOID VmmDllCore_CloseAll();
-
-/*
-* Close a VMM_HANDLE and clean up everything! The VMM_HANDLE will not be valid
-* after this function has been called.
-* -- H
-*/
-VOID VmmDllCore_Close(_In_opt_ _Post_ptr_invalid_ VMM_HANDLE H);
-
-/*
-* Initialize MemProcFS from user parameters. Upon success a VMM_HANDLE is returned.
-* -- argc
-* -- argv
-* -- ppLcErrorInfo
-* -- return
-*/
-_Success_(return != NULL)
-VMM_HANDLE VmmDllCore_Initialize(_In_ DWORD argc, _In_ LPSTR argv[], _Out_opt_ PPLC_CONFIG_ERRORINFO ppLcErrorInfo);
 
 EXPORTED_FUNCTION _Success_(return != NULL)
 VMM_HANDLE VMMDLL_InitializeEx(_In_ DWORD argc, _In_ LPSTR argv[], _Out_opt_ PPLC_CONFIG_ERRORINFO ppLcErrorInfo)
@@ -85,9 +65,7 @@ VMM_HANDLE VMMDLL_Initialize(_In_ DWORD argc, _In_ LPSTR argv[])
 EXPORTED_FUNCTION
 VOID VMMDLL_Close(_In_opt_ _Post_ptr_invalid_ VMM_HANDLE H)
 {
-    if(H && (H->magic == VMM_MAGIC)) {
-        VmmDllCore_Close(H);
-    }
+    VmmDllCore_Close(H);
 }
 
 EXPORTED_FUNCTION
@@ -103,24 +81,6 @@ VOID VMMDLL_CloseAll()
 // serialize access to it over the VMM LockMaster. This master lock is shared
 // with internal VMM housekeeping functionality.
 // ----------------------------------------------------------------------------
-
-/*
-* Verify that the supplied handle is valid and also check it out.
-* This must be called by each external access which requires a VMM_HANDLE.
-* Each successful VmmDllCore_HandleReserveExternal() call must be matched by
-* a matched call to VmmDllCore_HandleReturnExternal() after completion.
-* -- H
-* -- return
-*/
-_Success_(return)
-BOOL VmmDllCore_HandleReserveExternal(_In_opt_ VMM_HANDLE H);
-
-/*
-* Return a handle successfully reserved with a previous call to the function:
-* VmmDllCore_HandleReserveExternal()
-* -- H
-*/
-VOID VmmDllCore_HandleReturnExternal(_In_ VMM_HANDLE H);
 
 #define CALL_IMPLEMENTATION_VMM(H, id, fn) {                                    \
     QWORD tm;                                                                   \
@@ -143,32 +103,6 @@ VOID VmmDllCore_HandleReturnExternal(_In_ VMM_HANDLE H);
     VmmDllCore_HandleReturnExternal(H);                                         \
     return retVal;                                                              \
 }
-
-/*
-* Query the size of memory allocated by the VMMDLL.
-* -- pvMem
-* -- return = number of bytes required to hold memory allocation.
-*/
-_Success_(return != 0)
-SIZE_T VmmDllCore_MemSizeExternal(_In_ PVOID pvMem);
-
-/*
-* Free memory allocated by the VMMDLL.
-* -- pvMem
-*/
-VOID VmmDllCore_MemFreeExternal(_Frees_ptr_opt_ PVOID pvMem);
-
-/*
-* Allocate "external" memory to be free'd only by VMMDLL_MemFree // VmmDllCore_MemFreeExternal.
-* CALLER VMMDLL_MemFree(return)
-* -- H
-* -- tag = tag identifying the type of object.
-* -- cb = total size to allocate (not guaranteed to be zero-filled).
-* -- cbHdr = size of header (guaranteed to be zero-filled).
-* -- return
-*/
-_Success_(return != NULL)
-PVOID VmmDllCore_MemAllocExternal(_In_ VMM_HANDLE H, _In_ DWORD tag, _In_ SIZE_T cb, _In_ SIZE_T cbHdr);
 
 /*
 * Query the size of memory allocated by the VMMDLL.
@@ -1679,16 +1613,13 @@ BOOL VMMDLL_Map_GetUsers_Impl(_In_ VMM_HANDLE H, _Out_ PVMMDLL_MAP_USER *ppMapDs
     pMapDst->dwVersion = VMMDLL_MAP_USER_VERSION;
     pMapDst->cMap = pObMapSrc->cMap;
     for(i = 0; i < pMapDst->cMap; i++) {
+        peSrc = pObMapSrc->pMap + i;
         peDst = pMapDst->pMap + i;
-        peDst->vaRegHive = pObMapSrc->pMap[i].vaRegHive;
+        peDst->vaRegHive = peSrc->vaRegHive;
         // strmap below:
-        for(i = 0; i < pMapDst->cMap; i++) {
-            peSrc = pObMapSrc->pMap + i;
-            peDst = pMapDst->pMap + i;
-            f = ObStrMap_PushPtrUXUW(psmOb, peSrc->uszText, &peDst->uszText, NULL, fWideChar) &&
-                ObStrMap_PushPtrUXUW(psmOb, peSrc->szSID, &peDst->uszSID, NULL, fWideChar);
-            if(!f) { goto fail; }
-        }
+        f = ObStrMap_PushPtrUXUW(psmOb, peSrc->uszText, &peDst->uszText, NULL, fWideChar) &&
+            ObStrMap_PushPtrUXUW(psmOb, peSrc->szSID, &peDst->uszSID, NULL, fWideChar);
+        if(!f) { goto fail; }
     }
     pMapDst->pbMultiText = ((PBYTE)pMapDst->pMap) + cbDstData;
     ObStrMap_FinalizeBufferXUW(psmOb, cbDstStr, pMapDst->pbMultiText, &pMapDst->cbMultiText, fWideChar);
@@ -1708,6 +1639,61 @@ _Success_(return) BOOL VMMDLL_Map_GetUsersU(_In_ VMM_HANDLE H, _Out_ PVMMDLL_MAP
 _Success_(return) BOOL VMMDLL_Map_GetUsersW(_In_ VMM_HANDLE H, _Out_ PVMMDLL_MAP_USER *ppUserMap)
 {
     CALL_IMPLEMENTATION_VMM(H, STATISTICS_ID_VMMDLL_Map_GetUsers, VMMDLL_Map_GetUsers_Impl(H, ppUserMap, TRUE))
+}
+
+_Success_(return) BOOL VMMDLL_Map_GetVM_Impl(_In_ VMM_HANDLE H, _Out_ PVMMDLL_MAP_VM *ppMapDst, _In_ BOOL fWideChar)
+{
+    BOOL f, fResult = FALSE;
+    DWORD i, cbDst = 0, cbDstData, cbDstStr;
+    PVMMDLL_MAP_VMENTRY peDst;
+    PVMM_MAP_VMENTRY peSrc;
+    PVMMOB_MAP_VM pObMapSrc = NULL;
+    PVMMDLL_MAP_VM pMapDst = NULL;
+    POB_STRMAP psmOb = NULL;
+    *ppMapDst = NULL;
+    if(sizeof(VMMDLL_MAP_VMENTRY) != sizeof(VMM_MAP_VMENTRY)) { goto fail; }
+    // 1: fetch map [and populate strings]:
+    if(!(psmOb = ObStrMap_New(H, 0))) { goto fail; }
+    if(!VmmMap_GetVM(H, &pObMapSrc)) { goto fail; }
+    for(i = 0; i < pObMapSrc->cMap; i++) {
+        peSrc = pObMapSrc->pMap + i;
+        ObStrMap_PushU(psmOb, peSrc->uszName);
+    }
+    // 2: byte count & alloc:
+    if(!ObStrMap_FinalizeBufferXUW(psmOb, 0, NULL, &cbDstStr, fWideChar)) { goto fail; }
+    cbDstData = pObMapSrc->cMap * sizeof(VMMDLL_MAP_VMENTRY);
+    cbDst = sizeof(VMMDLL_MAP_VM) + cbDstData + cbDstStr;
+    if(!(pMapDst = VmmDllCore_MemAllocExternal(H, OB_TAG_API_MAP_VM, cbDst, sizeof(VMMDLL_MAP_VM)))) { goto fail; }    // VMMDLL_MemFree()
+    // 3: fill map [if required]:
+    pMapDst->dwVersion = VMMDLL_MAP_VM_VERSION;
+    pMapDst->cMap = pObMapSrc->cMap;
+    for(i = 0; i < pMapDst->cMap; i++) {
+        peSrc = pObMapSrc->pMap + i;
+        peDst = pMapDst->pMap + i;
+        memcpy(peDst, peSrc, sizeof(VMMDLL_MAP_VMENTRY));
+        // strmap below:
+        f = ObStrMap_PushPtrUXUW(psmOb, peSrc->uszName, &peDst->uszName, NULL, fWideChar);
+        if(!f) { goto fail; }
+    }
+    pMapDst->pbMultiText = ((PBYTE)pMapDst->pMap) + cbDstData;
+    ObStrMap_FinalizeBufferXUW(psmOb, cbDstStr, pMapDst->pbMultiText, &pMapDst->cbMultiText, fWideChar);
+    *ppMapDst = pMapDst;
+fail:
+    if(pMapDst && !*ppMapDst) { VMMDLL_MemFree(pMapDst); pMapDst = NULL; }
+    Ob_DECREF(pObMapSrc);
+    Ob_DECREF(psmOb);
+    return *ppMapDst ? TRUE : FALSE;
+
+}
+
+_Success_(return) BOOL VMMDLL_Map_GetVMU(_In_ VMM_HANDLE H, _Out_ PVMMDLL_MAP_VM *ppVmMap)
+{
+    CALL_IMPLEMENTATION_VMM(H, STATISTICS_ID_VMMDLL_Map_GetVM, VMMDLL_Map_GetVM_Impl(H, ppVmMap, FALSE))
+}
+
+_Success_(return) BOOL VMMDLL_Map_GetVMW(_In_ VMM_HANDLE H, _Out_ PVMMDLL_MAP_VM *ppVmMap)
+{
+    CALL_IMPLEMENTATION_VMM(H, STATISTICS_ID_VMMDLL_Map_GetVM, VMMDLL_Map_GetVM_Impl(H, ppVmMap, TRUE))
 }
 
 _Success_(return)
@@ -2519,6 +2505,118 @@ BOOL VMMDLL_PdbTypeChildOffset(_In_ VMM_HANDLE H, _In_ LPSTR szModule, _In_ LPST
         VMMDLL_PdbTypeChildOffset_Impl(H, szModule, uszTypeName, uszTypeChildName, pcbTypeChildOffset))
 }
 
+
+
+//-----------------------------------------------------------------------------
+// VMM VM FUNCTIONALITY BELOW:
+//-----------------------------------------------------------------------------
+
+/*
+* Retrieve a VMM handle given a VM handle.
+* This VMM handle should be closed by calling VMMDLL_Close().
+* -- hVMM
+* -- hVM
+* -- return
+*/
+EXPORTED_FUNCTION _Success_(return != NULL)
+VMM_HANDLE VMMDLL_VmGetVmmHandle(_In_ VMM_HANDLE H, _In_ VMMVM_HANDLE HVM)
+{
+    CALL_IMPLEMENTATION_VMM_RETURN(H,
+        STATISTICS_ID_VMMDLL_VmGetVmmHandle,
+        VMM_HANDLE,
+        NULL,
+        VmmVm_RetrieveNewVmmHandle(H, HVM))
+}
+
+DWORD VMMDLL_VmMemReadScatter_impl(_In_ VMM_HANDLE H, _In_ VMMVM_HANDLE HVM, _Inout_ PPMEM_SCATTER ppMEMsGPA, _In_ DWORD cpMEMsGPA, _In_ DWORD flags)
+{
+    DWORD i, cMEMs;
+    VmmVm_ReadScatterGPA(H, HVM, ppMEMsGPA, cpMEMsGPA);
+    for(i = 0, cMEMs = 0; i < cpMEMsGPA; i++) {
+        if(ppMEMsGPA[i]->f) {
+            cMEMs++;
+        }
+    }
+    return cMEMs;
+}
+
+DWORD VMMDLL_VmMemReadScatter(_In_ VMM_HANDLE H, _In_ VMMVM_HANDLE HVM, _Inout_ PPMEM_SCATTER ppMEMsGPA, _In_ DWORD cpMEMsGPA, _In_ DWORD flags)
+{
+    CALL_IMPLEMENTATION_VMM_RETURN(
+        H,
+        STATISTICS_ID_VMMDLL_VmMemReadScatter,
+        DWORD,
+        0,
+        VMMDLL_VmMemReadScatter_impl(H, HVM, ppMEMsGPA, cpMEMsGPA, flags))
+}
+
+DWORD VMMDLL_VmMemWriteScatter_Impl(_In_ VMM_HANDLE H, _In_ VMMVM_HANDLE HVM, _Inout_ PPMEM_SCATTER ppMEMsGPA, _In_ DWORD cpMEMsGPA)
+{
+    DWORD i, cMEMs;
+    VmmVm_WriteScatterGPA(H, HVM, ppMEMsGPA, cpMEMsGPA);
+    for(i = 0, cMEMs = 0; i < cpMEMsGPA; i++) {
+        if(ppMEMsGPA[i]->f) {
+            cMEMs++;
+        }
+    }
+    return cMEMs;
+}
+
+DWORD VMMDLL_VmMemWriteScatter(_In_ VMM_HANDLE H, _In_ VMMVM_HANDLE HVM, _Inout_ PPMEM_SCATTER ppMEMsGPA, _In_ DWORD cpMEMsGPA)
+{
+    CALL_IMPLEMENTATION_VMM_RETURN(
+        H,
+        STATISTICS_ID_VMMDLL_VmMemWriteScatter,
+        DWORD,
+        0,
+        VMMDLL_VmMemWriteScatter_Impl(H, HVM, ppMEMsGPA, cpMEMsGPA))
+}
+
+_Success_(return)
+BOOL VMMDLL_VmMemRead_Impl(_In_ VMM_HANDLE H, _In_ VMMVM_HANDLE HVM, _In_ ULONG64 qwGPA, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb)
+{
+    DWORD cbRead = 0;
+    VmmVm_Read(H, HVM, qwGPA, pb, cb, &cbRead);
+    return (cbRead == cb);
+}
+
+_Success_(return)
+BOOL VMMDLL_VmMemRead(_In_ VMM_HANDLE H, _In_ VMMVM_HANDLE HVM, _In_ ULONG64 qwGPA, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb)
+{
+    CALL_IMPLEMENTATION_VMM_RETURN(
+        H,
+        STATISTICS_ID_VMMDLL_VmMemRead,
+        DWORD,
+        0,
+        VMMDLL_VmMemRead_Impl(H, HVM, qwGPA, pb, cb))
+}
+
+_Success_(return)
+BOOL VMMDLL_VmMemWrite_Impl(_In_ VMM_HANDLE H, _In_ VMMVM_HANDLE HVM, _In_ ULONG64 qwGPA, _In_reads_(cb) PBYTE pb, _In_ DWORD cb)
+{
+    DWORD cbWrite = 0;
+    VmmVm_Write(H, HVM, qwGPA, pb, cb, &cbWrite);
+    return (cbWrite == cb);
+}
+
+_Success_(return)
+BOOL VMMDLL_VmMemWrite(_In_ VMM_HANDLE H, _In_ VMMVM_HANDLE HVM, _In_ ULONG64 qwGPA, _In_reads_(cb) PBYTE pb, _In_ DWORD cb)
+{
+    CALL_IMPLEMENTATION_VMM_RETURN(
+        H,
+        STATISTICS_ID_VMMDLL_VmMemWrite,
+        DWORD,
+        0,
+        VMMDLL_VmMemWrite_Impl(H, HVM, qwGPA, pb, cb))
+}
+
+_Success_(return)
+BOOL VMMDLL_VmMemGPA2Phys(_In_ VMM_HANDLE H, _In_ VMMVM_HANDLE HVM, _In_ ULONG64 qwGPA, _Out_ PULONG64 pqwPA)
+{
+    CALL_IMPLEMENTATION_VMM(H,
+        STATISTICS_ID_VMMDLL_VmMemGPA2Phys,
+        VmmVm_GPA2PA(H, HVM, qwGPA, pqwPA))
+}
 
 
 

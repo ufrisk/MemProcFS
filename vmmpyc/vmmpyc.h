@@ -134,6 +134,7 @@ typedef struct tdPyObj_ScatterMemory {
     PyObject_HEAD
     BOOL fValid;
     PyObj_Vmm *pyVMM;
+    VMMVM_HANDLE hVM;
     DWORD dwPID;
     DWORD dwReadFlags;
     VMMDLL_SCATTER_HANDLE hScatter;
@@ -180,6 +181,14 @@ typedef struct tdPyObj_ProcessMaps {
     PyObj_Vmm *pyVMM;
     DWORD dwPID;
 } PyObj_ProcessMaps;
+
+typedef struct tdPyObj_VirtualMachine {
+    PyObject_HEAD
+    BOOL fValid;
+    PyObj_Vmm *pyVMM;
+    PyObject *pyName;   // unicode object
+    VMMDLL_MAP_VMENTRY eVM;
+} PyObj_VirtualMachine;
 
 typedef struct tdPyObj_VirtualMemory {
     PyObject_HEAD
@@ -269,7 +278,6 @@ _Success_(return) BOOL VmmPycPdb_InitializeType(PyObject *pModule);
 _Success_(return) BOOL VmmPycVfs_InitializeType(PyObject *pModule);
 _Success_(return) BOOL VmmPycMaps_InitializeType(PyObject *pModule);
 _Success_(return) BOOL VmmPycKernel_InitializeType(PyObject *pModule);
-_Success_(return) BOOL VmmPycKernelMaps_InitializeType(PyObject *pModule);
 _Success_(return) BOOL VmmPycModule_InitializeType(PyObject *pModule);
 _Success_(return) BOOL VmmPycModuleMaps_InitializeType(PyObject *pModule);
 _Success_(return) BOOL VmmPycProcess_InitializeType(PyObject *pModule);
@@ -281,6 +289,7 @@ _Success_(return) BOOL VmmPycPlugin_InitializeType(PyObject *pModule);
 _Success_(return) BOOL VmmPycPhysicalMemory_InitializeType(PyObject *pModule);
 _Success_(return) BOOL VmmPycScatterMemory_InitializeType(PyObject *pModule);
 _Success_(return) BOOL VmmPycVirtualMemory_InitializeType(PyObject *pModule);
+_Success_(return) BOOL VmmPycVirtualMachine_InitializeType(PyObject *pModule);
 _Success_(return) BOOL VmmPycRegMemory_InitializeType(PyObject *pModule);
 
 PyObj_Pdb* VmmPycPdb_InitializeInternal1(_In_ PyObj_Vmm *pyVMM, _In_ DWORD dwPID, _In_ QWORD vaModuleBase);
@@ -288,17 +297,19 @@ PyObj_Pdb* VmmPycPdb_InitializeInternal2(_In_ PyObj_Vmm *pyVMM, _In_ LPSTR szMod
 PyObj_Vfs* VmmPycVfs_InitializeInternal(_In_ PyObj_Vmm *pyVMM);
 PyObj_Maps* VmmPycMaps_InitializeInternal(_In_ PyObj_Vmm *pyVMM);
 PyObj_PhysicalMemory* VmmPycPhysicalMemory_InitializeInternal(_In_ PyObj_Vmm *pyVMM);
-PyObj_ScatterMemory *VmmPycScatterMemory_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_ DWORD dwPID, _In_ DWORD dwReadFlags);
+PyObj_ScatterMemory *VmmPycScatterMemory_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_opt_ VMMVM_HANDLE hVM, _In_opt_ DWORD dwPID, _In_ DWORD dwReadFlags);
 PyObj_Kernel* VmmPycKernel_InitializeInternal(_In_ PyObj_Vmm *pyVMM);
 PyObj_Process* VmmPycProcess_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_ DWORD dwPID, _In_ BOOL fVerify);
 PyObj_ProcessMaps* VmmPycProcessMaps_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_ DWORD dwPID);
 PyObj_VirtualMemory* VmmPycVirtualMemory_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_ DWORD dwPID);
+PyObj_VirtualMachine* VmmPycVirtualMachine_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_ PVMMDLL_MAP_VMENTRY pVM);
 PyObj_Module* VmmPycModule_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_ DWORD dwPID, _In_ PVMMDLL_MAP_MODULEENTRY pe);
 PyObj_ModuleMaps* VmmPycModuleMaps_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_ DWORD dwPID, _In_ LPSTR uszModule);
 PyObj_RegHive* VmmPycRegHive_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_ PVMMDLL_REGISTRY_HIVE_INFORMATION pInfo);
 PyObj_RegMemory* VmmPycRegMemory_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_ QWORD vaCMHive);
 PyObj_RegKey* VmmPycRegKey_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_ LPSTR uszFullPathKey, _In_ BOOL fVerify);
 PyObj_RegValue* VmmPycRegValue_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_ LPSTR uszFullPathKeyValue, _In_ BOOL fVerify);
+PyObj_Vmm *VmmPycVmm_InitializeInternal2(_In_ PyObj_Vmm *pyVMM, _In_ VMM_HANDLE hVMM);
 
 PyObject* VmmPyc_MemReadScatter(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ LPSTR szFN, PyObject *args);
 PyObject* VmmPyc_MemRead(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ LPSTR szFN, PyObject *args);

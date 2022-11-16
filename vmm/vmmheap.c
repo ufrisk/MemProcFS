@@ -355,7 +355,7 @@ fail:
         Ob_DECREF(ctx->pHeapMap);
         LocalFree(ctx);
     }
-    VmmLog(H, MID_HEAP, LOGLEVEL_6_TRACE, "INIT HEAPALLOCMAP END: pid=%5i heap=%llx alloc=%x", pProcess->dwPID, vaHeap, (pObAlloc ? pObAlloc->cMap : 0));
+    VmmLog(H, MID_HEAP, LOGLEVEL_6_TRACE, "INIT HEAPALLOCMAP END:   pid=%5i heap=%llx count=%i", pProcess->dwPID, vaHeap, (pObAlloc ? pObAlloc->cMap : 0));
     return pObAlloc;
 }
 
@@ -1299,12 +1299,12 @@ int VmmHeap_qsort_HeapEntry(PVMM_MAP_HEAPENTRY p1, PVMM_MAP_HEAPENTRY p2)
 */
 VOID VmmHeap_Initialize_DoWork(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
 {
-    QWORD qwScatterPre = 0, qwScatterPost = 0;
     VMMHEAP_INIT_CONTEXT ctxInit = { 0 };
     PVMMOB_MAP_HEAP pObHeapMap;
     PVMM_MAP_HEAPENTRY peH;
     PVMM_MAP_HEAP_SEGMENTENTRY peR;
     DWORD i, cbData, cHeaps, cSegments;
+    QWORD qwScatterPre = 0, qwScatterPost = 0;
     BOOL fLog = VmmLogIsActive(H, MID_HEAP, LOGLEVEL_6_TRACE);
     // init:
     if(fLog) {
@@ -1360,7 +1360,7 @@ fail:
     Ob_DECREF(ctxInit.psPrefetch);
     if(fLog) {
         LcGetOption(H->hLC, LC_OPT_CORE_STATISTICS_CALL_COUNT | LC_STATISTICS_ID_READSCATTER, &qwScatterPost);
-        VmmLog(H, MID_HEAP, LOGLEVEL_6_TRACE, "INIT HEAPMAP END:   pid=%5i scatter=%lli", pProcess->dwPID, qwScatterPost - qwScatterPre);
+        VmmLog(H, MID_HEAP, LOGLEVEL_6_TRACE, "INIT HEAPMAP END:   pid=%5i count=%i scatter=%lli", pProcess->dwPID, (pProcess->Map.pObHeap ? pProcess->Map.pObHeap->cMap : 0), qwScatterPost - qwScatterPre);
     }
 }
 

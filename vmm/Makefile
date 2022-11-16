@@ -7,7 +7,12 @@
 #
 CC=gcc
 CFLAGS  += -std=c11 -I. -I../includes -D LINUX -D _GNU_SOURCE -D SQLITE_THREADSAFE=2 -D SQLITE_CORE -shared -fPIC -l:leechcore.so -fvisibility=hidden -L. -lm -pthread `pkg-config liblz4 openssl --libs --cflags`
-#CFLAGS  += -g -O0 -Wextra -Wno-unused-parameter -Wno-cast-function-type
+# DEBUG FLAGS BELOW
+# export ASAN_OPTIONS=strict_string_checks=1:detect_stack_use_after_return=1:check_initialization_order=1:strict_init_order=1:detect_invalid_pointer_pairs=2
+# CFLAGS  += -g -O0 -Wextra -Wno-unused-parameter -Wno-cast-function-type
+# CFLAGS  += -fsanitize=address -fsanitize=leak -fno-omit-frame-pointer -fsanitize=undefined -fsanitize=bounds-strict -fsanitize=float-divide-by-zero -fsanitize=float-cast-overflow
+# CFLAGS  += -fsanitize=pointer-compare -fsanitize=pointer-subtract -fanalyzer
+# DEBUG FLAGS ABOVE
 CFLAGS  += -fPIE -fPIC -pie -fstack-protector -D_FORTIFY_SOURCE=2 -O1 -Wl,-z,noexecstack
 CFLAGS  += -Wall -Wno-format-truncation -Wno-enum-compare -Wno-pointer-sign -Wno-multichar -Wno-unused-variable -Wno-unused-value
 CFLAGS  += -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast
@@ -19,8 +24,8 @@ OBJ = oscompatibility.o charutil.o util.o pe.o vmmdll.o vmmdll_core.o vmmdll_sca
 	  ob/ob_cachemap.o ob/ob_compressed.o ob/ob_container.o ob/ob_core.o     \
 	  ob/ob_counter.o ob/ob_map.o ob/ob_memfile.o ob/ob_set.o ob/ob_strmap.o \
 	  statistics.o sysquery.o vmmevil.o vmmheap.o vmmlog.o vmmnet.o          \
-	  vmmproc.o vmmwininit.o vmmwin.o vmmwinobj.o vmmwinpool.o vmmwinreg.o   \
-	  vmmwinsvc.o vmmwork.o                                                  \
+	  vmmproc.o vmmvm.o vmmwininit.o vmmwin.o vmmwinobj.o vmmwinpool.o       \
+	  vmmwinreg.o vmmwinsvc.o vmmwork.o                                      \
 	  m_vfsfc.o m_vfsproc.o m_vfsroot.o m_conf.o m_winreg.o                  \
 	  m_fc_csv.o m_fc_handle.o m_fc_json.o m_fc_module.o m_fc_ntfs.o         \
 	  m_fc_proc.o m_fc_registry.o m_fc_sys.o m_fc_thread.o m_fc_timeline.o   \
@@ -30,7 +35,7 @@ OBJ = oscompatibility.o charutil.o util.o pe.o vmmdll.o vmmdll_core.o vmmdll_sca
 	  m_proc_memmap.o m_proc_minidump.o m_proc_thread.o m_proc_token.o       \
 	  m_search.o m_sys.o m_sys_driver.o m_sys_mem.o m_sys_net.o m_sys_obj.o  \
 	  m_sys_pool.c m_sys_proc.o m_sys_svc.o m_sys_task.o m_sys_user.o        \
-	  m_virt2phys.o
+	  m_virt2phys.o m_vm.o
 
 %.o: %.c $(DEPS)
 	$(CC) -c -o $@ $< $(CFLAGS)

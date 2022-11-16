@@ -6,7 +6,7 @@ Easy trivial point and click memory analysis without the need for complicated co
 
 Analyze memory dump files, <b>live memory</b> via DumpIt or WinPMEM, <b>live memory in read-write mode</b> from virtual machines or from [PCILeech](https://github.com/ufrisk/pcileech/) [FPGA](https://github.com/ufrisk/pcileech-fpga/) hardware devices!
 
-It's even possible to connect to a remote LeechAgent memory acquisition agent over a secured connection - allowing for remote live memory incident response - even over higher latency low band-width connections! Peek into Virtual Machines with [LiveCloudKd](https://github.com/ufrisk/LeechCore/wiki/Device_LiveCloudKd) or [VMWare](https://github.com/ufrisk/LeechCore/wiki/Device_VMWare)!
+It's even possible to connect to a remote LeechAgent memory acquisition agent over a secured connection - allowing for remote live memory incident response - even over higher latency low band-width connections! Peek into [Virtual Machines with MemProcFS](https://github.com/ufrisk/MemProcFS/wiki/VM), [LiveCloudKd](https://github.com/ufrisk/LeechCore/wiki/Device_LiveCloudKd) or [VMWare](https://github.com/ufrisk/LeechCore/wiki/Device_VMWare)!
 
 Use your favorite tools to analyze memory - use your favorite hex editors, your python and powershell scripts, WinDbg or your favorite disassemblers and debuggers - all will work trivally with MemProcFS by just reading and writing files!
 
@@ -210,8 +210,11 @@ v1.1-v3.10
 * Support for Windows 11 22H2.
 * Text & Binary-only views at '/misc/view/'.
 
-Latest:
+[v5.2](https://github.com/ufrisk/MemProcFS/releases/tag/v5.2)
 * Bug fixes.
-* FPGA performance improvements.
-* Linux feature additions (memcompress, token).
 * [ARM64 Windows support](https://github.com/ufrisk/MemProcFS/wiki/_ARM64).
+* FPGA performance improvements.
+* [Virtual Machine support](https://github.com/ufrisk/MemProcFS/wiki/VM) (experimental).
+* Device tree information in /sys/drivers.
+* Linux feature additions: memcompress and token.
+* Manual download of debug symbols (PDBs) on offline systems (Windows only).

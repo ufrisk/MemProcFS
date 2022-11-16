@@ -6,6 +6,7 @@
 
 #include "vmmdll.h"
 #include "vmmproc.h"
+#include "vmmvm.h"
 #include "vmmwin.h"
 #include "vmmwininit.h"
 #include "vmmheap.h"
@@ -24,9 +25,20 @@
 // ----------------------------------------------------------------------------
 
 /*
+* Initialize a "Physical Only" instance with extremely limited analysis capabilities.
+* -- H
+* -- return
+*/
+BOOL VmmProcUserTryInitializePhysical(_In_ VMM_HANDLE H)
+{
+    VmmInitializeMemoryModel(H, VMM_MEMORYMODEL_NA);
+    H->vmm.tpSystem = VMM_SYSTEM_UNKNOWN_PHYSICAL;
+    return TRUE;
+}
+
+/*
 * Try initialize from user supplied CR3/PML4 supplied in parameter at startup.
 * -- H
-* -- ctx
 * -- return
 */
 BOOL VmmProcUserCR3TryInitialize64(_In_ VMM_HANDLE H)
@@ -170,6 +182,7 @@ BOOL VmmProcRefresh_Slow(_In_ VMM_HANDLE H)
     VmmWinSvc_Refresh(H);
     VmmWinPool_Refresh(H);
     VmmWinPhysMemMap_Refresh(H);
+    VmmVm_Refresh(H);
     PluginManager_Notify(H, VMMDLL_PLUGIN_NOTIFY_REFRESH_SLOW, NULL, 0);
     LeaveCriticalSection(&H->vmm.LockMaster);
     return TRUE;
@@ -238,6 +251,9 @@ BOOL VmmProcInitialize(_In_ VMM_HANDLE H)
 {
     BOOL result = FALSE;
     if(!VmmInitialize(H)) { return FALSE; }
+    if(H->cfg.fPhysicalOnlyMemory) {
+        return VmmProcUserTryInitializePhysical(H);
+    }
     // 1: try initialize 'windows' with an optionally supplied CR3
     result = VmmWinInit_TryInitialize(H, H->cfg.paCR3);
     if(!result) {

@@ -223,7 +223,8 @@ LPSTR FcCsv_FileTime(_In_ VMMDLL_CSV_HANDLE h, _In_ QWORD ft)
 LPSTR FcCsv_String(_In_ VMMDLL_CSV_HANDLE h, _In_opt_ LPSTR usz)
 {
     DWORD o, cbv = 0;
-    if(!usz || !CharUtil_UtoCSV(usz, -1, NULL, 0, NULL, &cbv, 0)) { return ""; }
+    if(!usz) { usz = ""; }
+    if(!CharUtil_UtoCSV(usz, -1, NULL, 0, NULL, &cbv, 0)) { return ""; }
     if(h && (sizeof(h->pb) - h->o > cbv)) {
         o = h->o;
         if(!CharUtil_UtoCSV(usz, -1, h->pb + o, sizeof(h->pb) - h->o, NULL, &cbv, CHARUTIL_FLAG_STR_BUFONLY)) { return ""; }
@@ -986,6 +987,7 @@ VOID FcInitialize_ThreadProc(_In_ VMM_HANDLE H, _In_ QWORD qwNotUsed)
 {
     BOOL fResult = FALSE;
     VMMDLL_CSV_HANDLE hCSV = NULL;
+    PVMMOB_MAP_VM pObVmMap = NULL;
     PVMMOB_MAP_EVIL pObEvilMap = NULL;
     HANDLE hEventAsyncLogCSV = 0, hEventAsyncLogJSON = 0, hEventAsyncIngestVirtmem = 0, hEventAsyncIngestVirtmemKernel = 0;
     QWORD tmStart = Statistics_CallStart(H);
@@ -999,6 +1001,8 @@ VOID FcInitialize_ThreadProc(_In_ VMM_HANDLE H, _In_ QWORD qwNotUsed)
     if(!(hEventAsyncIngestVirtmem = CreateEvent(NULL, TRUE, TRUE, NULL))) { goto fail; }
     if(!(hEventAsyncIngestVirtmemKernel = CreateEvent(NULL, TRUE, TRUE, NULL))) { goto fail; }
     PluginManager_Notify(H, VMMDLL_PLUGIN_NOTIFY_FORENSIC_INIT, NULL, 0);
+    VmmMap_GetVM(H, &pObVmMap);                 // force fetch VMs before starting forensic actions.
+    Ob_DECREF_NULL(&pObVmMap);
     VmmMap_GetEvil(H, NULL, &pObEvilMap);       // start findevil (in 'async' mode)
     Ob_DECREF_NULL(&pObEvilMap);
     PluginManager_FcInitialize(H);              // 0-10%

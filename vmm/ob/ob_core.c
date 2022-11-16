@@ -119,16 +119,18 @@ PVOID Ob_XDECREF(_In_opt_ PVOID pObIn)
 }
 
 /*
-* Decrease the reference count of a object manager object. If the reference
-* count reaches zero the object will be cleaned up.
+* Decrease the reference count of a object manager object.
+* If the reference count reaches zero the object will be cleaned up.
 * Also set the incoming pointer to NULL.
 * -- ppOb
 */
 VOID Ob_XDECREF_NULL(_In_opt_ PVOID *ppOb)
 {
+    POB pOb;
     if(ppOb) {
-        Ob_DECREF(*ppOb);
+        pOb = (POB)*ppOb;
         *ppOb = NULL;
+        Ob_DECREF(pOb);
     }
 }
 

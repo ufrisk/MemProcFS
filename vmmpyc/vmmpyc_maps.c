@@ -281,6 +281,33 @@ VmmPycMaps_service(PyObj_Maps *self, PyObject *args)
     return pyDictResult;
 }
 
+// () -> [VmmPycVirtualMachine, ...]
+static PyObject*
+VmmPycMaps_virtualmachines(PyObj_Maps *self, PyObject *args)
+{
+    PyObject *pyList;
+    BOOL result;
+    ULONG64 i;
+    PVMMDLL_MAP_VM pVmMemMap = NULL;
+    PyObj_VirtualMachine *pyVirtualMachine;
+    if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Maps.virtualmachines(): Not initialized."); }
+    if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
+    Py_BEGIN_ALLOW_THREADS;
+    result = VMMDLL_Map_GetVMU(self->pyVMM->hVMM, &pVmMemMap);
+    Py_END_ALLOW_THREADS;
+    if(!result || (pVmMemMap->dwVersion != VMMDLL_MAP_VM_VERSION)) {
+        Py_DECREF(pyList);
+        VMMDLL_MemFree(pVmMemMap);
+        return PyErr_Format(PyExc_RuntimeError, "Maps.virtualmachines(): Failed.");
+    }
+    for(i = 0; i < pVmMemMap->cMap; i++) {
+        pyVirtualMachine = VmmPycVirtualMachine_InitializeInternal(self->pyVMM, pVmMemMap->pMap + i);
+        PyList_Append_DECREF(pyList, (PyObject*)pyVirtualMachine);
+    }
+    VMMDLL_MemFree(pVmMemMap);
+    return pyList;
+}
+
 //-----------------------------------------------------------------------------
 // VmmPycMaps INITIALIZATION AND CORE FUNCTIONALITY BELOW:
 //-----------------------------------------------------------------------------
@@ -324,6 +351,7 @@ BOOL VmmPycMaps_InitializeType(PyObject *pModule)
         {"pool", (PyCFunction)VmmPycMaps_pool, METH_VARARGS, "Retrieve kernel pool allocations."},
         {"service", (PyCFunction)VmmPycMaps_service, METH_VARARGS, "Retrieve services from the service control manager (SCM)."},
         {"user", (PyCFunction)VmmPycMaps_user, METH_VARARGS, "Retrieve the non-well known users."},
+        {"virtualmachines", (PyCFunction)VmmPycMaps_virtualmachines, METH_VARARGS, "Retrieve virtual machines."},
         {NULL, NULL, 0, NULL}
     };
     static PyMemberDef PyMembers[] = {

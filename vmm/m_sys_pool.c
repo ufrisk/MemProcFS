@@ -86,9 +86,10 @@ NTSTATUS MSysPool_ReadSingle(_In_ VMM_HANDLE H, _In_ LPSTR uszPathFile, _In_ PVM
 
 NTSTATUS MSysPool_Read2(_In_ VMM_HANDLE H, _In_ LPSTR uszPath, _In_ PVMMOB_MAP_POOL pmPool, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
-    DWORD iEntry, iTag, dwTag = (DWORD)-1;
+    DWORD dwTag = (DWORD)-1;
     QWORD vaEntry;
     CHAR usz[MAX_PATH];
+    PVMM_MAP_POOLENTRY pePool;
     MSYSPOOL_MAP_CONTEXT ctxMap;
     if(uszPath[0] == '\\') { uszPath += 1; }
     // general allocations file
@@ -102,12 +103,11 @@ NTSTATUS MSysPool_Read2(_In_ VMM_HANDLE H, _In_ LPSTR uszPath, _In_ PVMMOB_MAP_P
     // by-tag allocations file
     if(CharUtil_StrEndsWith(uszPath, "allocations.txt", TRUE)) {
         Util_VfsHelper_GetIdDir(uszPath, TRUE, &dwTag, NULL);
-        if(!VmmMap_GetPoolTag(H, pmPool, dwTag, &iTag)) { return VMMDLL_STATUS_FILE_INVALID; }
+        if(!VmmMap_GetPoolTag(H, pmPool, dwTag, &ctxMap.pePoolTag)) { return VMMDLL_STATUS_FILE_INVALID; }
         ctxMap.pmPool = pmPool;
-        ctxMap.pePoolTag = pmPool->pTag + iTag;
         return Util_VfsLineFixedMapCustom_Read(
             H, (UTIL_VFSLINEFIXED_PFN_CB)MSysPool_ReadLineCB, NULL, MSYSPOOL_LINELENGTH, MSYSPOOL_LINEHEADER,
-            &ctxMap, pmPool->pTag[iTag].cEntry, MSysPool_ReadLineGetEntryCB,
+            &ctxMap, ctxMap.pePoolTag->cEntry, MSysPool_ReadLineGetEntryCB,
             pb, cb, pcbRead, cbOffset
         );
     }
@@ -116,8 +116,8 @@ NTSTATUS MSysPool_Read2(_In_ VMM_HANDLE H, _In_ LPSTR uszPath, _In_ PVMMOB_MAP_P
     uszPath = CharUtil_PathSplitNext(uszPath);
     uszPath = CharUtil_PathSplitFirst(uszPath, usz, _countof(usz));
     vaEntry = strtoull(usz, NULL, 16);
-    if(!uszPath[0] || !VmmMap_GetPoolEntry(H, pmPool, vaEntry, &iEntry)) { return VMMDLL_STATUS_FILE_INVALID; }
-    return MSysPool_ReadSingle(H, uszPath, pmPool->pMap + iEntry, pb, cb, pcbRead, cbOffset);
+    if(!uszPath[0] || !VmmMap_GetPoolEntry(H, pmPool, vaEntry, &pePool)) { return VMMDLL_STATUS_FILE_INVALID; }
+    return MSysPool_ReadSingle(H, uszPath, pePool, pb, cb, pcbRead, cbOffset);
 }
 
 NTSTATUS MSysPool_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
@@ -150,10 +150,11 @@ BOOL MSysPool_ListSingle(_In_ VMM_HANDLE H, _In_ PVMM_MAP_POOLENTRY pe, _Inout_ 
 BOOL MSysPool_List2(_In_ VMM_HANDLE H, _In_ LPSTR uszPath, _In_ PVMMOB_MAP_POOL pmPool, _Inout_ PHANDLE pFileList)
 {
     QWORD vaEntry;
-    DWORD i, iEntry, iTag, iTagEntry, dwTag = (DWORD)-1;
+    DWORD i, iEntry, iTagEntry, dwTag = (DWORD)-1;
     LPSTR uszSubPath = NULL;
     CHAR usz[MAX_PATH], c1, c2, c3, c4;
     PVMM_MAP_POOLENTRYTAG pePoolTag;
+    PVMM_MAP_POOLENTRY pePool;
     if(uszPath[0] == '\\') { uszPath += 1; }
     // root directory
     if(!uszPath[0]) {
@@ -179,21 +180,20 @@ BOOL MSysPool_List2(_In_ VMM_HANDLE H, _In_ LPSTR uszPath, _In_ PVMMOB_MAP_POOL 
         if(!uszSubPath) { return FALSE; }
         // sub-path-dir
         if(!uszSubPath[0]) {
-            if(!VmmMap_GetPoolTag(H, pmPool, dwTag, &iTag)) { return FALSE; }
-            pePoolTag = pmPool->pTag + iTag;
+            if(!VmmMap_GetPoolTag(H, pmPool, dwTag, &pePoolTag)) { return FALSE; }
             for(iTagEntry = 0; iTagEntry < pePoolTag->cEntry; iTagEntry++) {
                 iEntry = pmPool->piTag2Map[pePoolTag->iTag2Map + iTagEntry];
                 _snprintf_s(usz, MAX_PATH, _TRUNCATE, "%llx", pmPool->pMap[iEntry].va);
                 VMMDLL_VfsList_AddDirectory(pFileList, usz, NULL);
             }
-            VMMDLL_VfsList_AddFile(pFileList, "allocations.txt", UTIL_VFSLINEFIXED_LINECOUNT(H, pmPool->pTag[iTag].cEntry) * MSYSPOOL_LINELENGTH, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, "allocations.txt", UTIL_VFSLINEFIXED_LINECOUNT(H, pePoolTag->cEntry) * MSYSPOOL_LINELENGTH, NULL);
             return TRUE;
         }
         // single
         uszSubPath = CharUtil_PathSplitFirst(uszSubPath, usz, _countof(usz));
         vaEntry = strtoull(usz, NULL, 16);
-        if(uszSubPath[0] || !VmmMap_GetPoolEntry(H, pmPool, vaEntry, &iEntry)) { return FALSE; }
-        return MSysPool_ListSingle(H, pmPool->pMap + iEntry, pFileList);
+        if(uszSubPath[0] || !VmmMap_GetPoolEntry(H, pmPool, vaEntry, &pePool)) { return FALSE; }
+        return MSysPool_ListSingle(H, pePool, pFileList);
     }
     return FALSE;
 }

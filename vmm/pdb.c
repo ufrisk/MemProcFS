@@ -22,9 +22,10 @@ VOID PDB_PrintError(_In_ VMM_HANDLE H, _In_ LPSTR szErrorMessage)
     PVMM_PROCESS pObSystemProcess;
     InfoDB_IsValidSymbols(H, &fInfoDB_Ntos, NULL);
     if(fInfoDB_Ntos) {
-        VmmLog(H, MID_PDB, LOGLEVEL_WARNING, "Functionality may be limited. Extended debug information disabled");
-        VmmLog(H, MID_PDB, LOGLEVEL_WARNING, "Partial offline fallback symbols in use");
-        VmmLog(H, MID_PDB, LOGLEVEL_WARNING, "%s\n", szErrorMessage);
+        VmmLog(H, MID_SYMBOL, LOGLEVEL_WARNING, "Functionality may be limited. Extended debug information disabled.");
+        VmmLog(H, MID_SYMBOL, LOGLEVEL_WARNING, "Partial offline fallback symbols in use.");
+        VmmLog(H, MID_SYMBOL, LOGLEVEL_WARNING, "For additional information use startup option: -loglevel symbol:4");
+        VmmLog(H, MID_SYMBOL, LOGLEVEL_WARNING, "%s\n", szErrorMessage);
         return;
     }
     if(InfoDB_IsInitialized(H)) {
@@ -32,13 +33,13 @@ VOID PDB_PrintError(_In_ VMM_HANDLE H, _In_ LPSTR szErrorMessage)
             PE_GetTimeDateStampCheckSum(H, pObSystemProcess, H->vmm.kernel.vaBase, &dwTimeDateStamp, NULL);
             Ob_DECREF_NULL(&pObSystemProcess);
         }
-        VmmLog(H, MID_PDB, LOGLEVEL_WARNING, "Functionality may be limited. Extended debug information disabled");
-        VmmLog(H, MID_PDB, LOGLEVEL_WARNING, "Offline symbols unavailable - ID: %08X%X", dwTimeDateStamp, (DWORD)H->vmm.kernel.cbSize);
-        VmmLog(H, MID_PDB, LOGLEVEL_WARNING, "%s\n", szErrorMessage);
+        VmmLog(H, MID_SYMBOL, LOGLEVEL_WARNING, "Functionality may be limited. Extended debug information disabled.");
+        VmmLog(H, MID_SYMBOL, LOGLEVEL_WARNING, "Offline symbols unavailable - ID: %08X%X", dwTimeDateStamp, (DWORD)H->vmm.kernel.cbSize);
+        VmmLog(H, MID_SYMBOL, LOGLEVEL_WARNING, "%s\n", szErrorMessage);
     } else {
-        VmmLog(H, MID_PDB, LOGLEVEL_WARNING, "Functionality may be limited. Extended debug information disabled");
-        VmmLog(H, MID_PDB, LOGLEVEL_WARNING, "Offline symbols unavailable - file 'info.db' not found");
-        VmmLog(H, MID_PDB, LOGLEVEL_WARNING, "%s\n", szErrorMessage);
+        VmmLog(H, MID_SYMBOL, LOGLEVEL_WARNING, "Functionality may be limited. Extended debug information disabled.");
+        VmmLog(H, MID_SYMBOL, LOGLEVEL_WARNING, "Offline symbols unavailable - file 'info.db' not found.");
+        VmmLog(H, MID_SYMBOL, LOGLEVEL_WARNING, "%s\n", szErrorMessage);
     }
 }
 
@@ -241,7 +242,6 @@ BOOL PDB_InfoDB_TypeChildOffset(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In
 
 #define VMMWIN_PDB_LOAD_ADDRESS_STEP    0x10000000;
 #define VMMWIN_PDB_LOAD_ADDRESS_BASE    0x0000511f00000000;
-#define VMMWIN_PDB_FAKEPROCHANDLE       (HANDLE)0x00005fed6fed7fed
 
 typedef struct tdPDB_ENTRY {
     OB ObHdr;
@@ -490,16 +490,36 @@ PDB_HANDLE PDB_GetHandleFromHandleMagic(_In_ VMM_HANDLE H, _In_ PDB_HANDLE hPDB)
 /*
 * Ensure that the PDB_ENTRY have its symbols loaded into memory.
 * NB! this function must be called in a single-threaded context!
+* -- H
+* -- ctx
 * -- pPdbEntry
 * -- return
 */
 _Success_(return)
-BOOL PDB_LoadEnsureEx(POB_PDB_CONTEXT ctx, _In_ PPDB_ENTRY pPdbEntry)
+BOOL PDB_LoadEnsureEx(_In_ VMM_HANDLE H, _In_ POB_PDB_CONTEXT ctx, _In_ PPDB_ENTRY pPdbEntry)
 {
+    CHAR szPdbGuidAge[66];
     CHAR szPdbPath[MAX_PATH + 1];
     if(!ctx || pPdbEntry->fLoadFailed) { return FALSE; }
     if(pPdbEntry->qwLoadAddress) { return TRUE; }
-    if(!ctx->pfn.SymFindFileInPath(ctx->hSym, NULL, pPdbEntry->szName, pPdbEntry->pbGUID, pPdbEntry->dwAge, 0, SSRVOPT_GUIDPTR, szPdbPath, NULL, NULL)) { goto fail; }
+    if(!ctx->pfn.SymFindFileInPath(ctx->hSym, NULL, pPdbEntry->szName, pPdbEntry->pbGUID, pPdbEntry->dwAge, 0, SSRVOPT_GUIDPTR, szPdbPath, NULL, NULL)) {
+        if(VmmLogIsActive(H, MID_SYMBOL, LOGLEVEL_4_VERBOSE)) {
+            if(CharUtil_StrCmpAny(CharUtil_StrEquals, pPdbEntry->szName, FALSE, 8, "ntkrnlmp.pdb", "ntkrnlpa.pdb", "ntkrpamp.pdb", "ntmarta.pdb", "ntoskrnl.pdb", "tcpip.pdb", "ntdll.pdb", "wntdll.pdb")) {
+                _snprintf_s(szPdbGuidAge, _countof(szPdbGuidAge), _TRUNCATE, "%08X%04X%04X%02X%02X%02X%02X%02X%02X%02X%02X%i",
+                    *(PDWORD)(pPdbEntry->pbGUID + 0), *(PWORD)(pPdbEntry->pbGUID + 4), *(PWORD)(pPdbEntry->pbGUID + 6),
+                    pPdbEntry->pbGUID[8], pPdbEntry->pbGUID[9], pPdbEntry->pbGUID[10], pPdbEntry->pbGUID[11],
+                    pPdbEntry->pbGUID[12], pPdbEntry->pbGUID[13], pPdbEntry->pbGUID[14], pPdbEntry->pbGUID[15],
+                    pPdbEntry->dwAge
+                );
+                VmmLog(H, MID_SYMBOL, LOGLEVEL_4_VERBOSE, "Unable to download required debug symbols %s - manual download possible.", pPdbEntry->szName);
+                VmmLog(H, MID_SYMBOL, LOGLEVEL_4_VERBOSE, "Download from:");
+                VmmLog(H, MID_SYMBOL, LOGLEVEL_4_VERBOSE, "  https://msdl.microsoft.com/download/symbols/%s/%s/%s", pPdbEntry->szName, szPdbGuidAge, pPdbEntry->szName);
+                VmmLog(H, MID_SYMBOL, LOGLEVEL_4_VERBOSE, "Download to:");
+                VmmLog(H, MID_SYMBOL, LOGLEVEL_4_VERBOSE, "  %s\\%s\\%s\\%s", H->pdb.szLocal, pPdbEntry->szName, szPdbGuidAge, pPdbEntry->szName);
+            }
+        }
+        goto fail;
+    }
     pPdbEntry->szPath = Util_StrDupA(szPdbPath);
     pPdbEntry->qwLoadAddress = ctx->pfn.SymLoadModuleEx(ctx->hSym, NULL, szPdbPath, NULL, ctx->qwLoadAddressNext, pPdbEntry->cbModuleSize, NULL, 0);
     ctx->qwLoadAddressNext += VMMWIN_PDB_LOAD_ADDRESS_STEP;
@@ -526,7 +546,7 @@ BOOL PDB_LoadEnsure(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB)
     if(!(hPDB = PDB_GetHandleFromHandleMagic(H, hPDB))) { goto fail; }
     if(!(pObPdbEntry = ObMap_GetByKey(ctxOb->pmPdbByHash, hPDB))) { goto fail; }
     EnterCriticalSection(&ctxOb->Lock);
-    fResult = PDB_LoadEnsureEx(ctxOb, pObPdbEntry);
+    fResult = PDB_LoadEnsureEx(H, ctxOb, pObPdbEntry);
     LeaveCriticalSection(&ctxOb->Lock);
 fail:
     Ob_DECREF(pObPdbEntry);
@@ -599,7 +619,7 @@ BOOL PDB_GetSymbolOffset(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ LPSTR
     if(!(hPDB = PDB_GetHandleFromHandleMagic(H, hPDB))) { goto fail; }
     if(!(pObPdbEntry = ObMap_GetByKey(ctxOb->pmPdbByHash, hPDB))) { goto fail; }
     EnterCriticalSection(&ctxOb->Lock);
-    if(PDB_LoadEnsureEx(ctxOb, pObPdbEntry)) {
+    if(PDB_LoadEnsureEx(H, ctxOb, pObPdbEntry)) {
         if(!H->vmm.f32) {
             // 64-bit: use faster algo
             SymbolInfo.SizeOfStruct = sizeof(SYMBOL_INFO);
@@ -674,7 +694,7 @@ BOOL PDB_GetSymbolFromOffset(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ D
     if(!(hPDB = PDB_GetHandleFromHandleMagic(H, hPDB))) { goto fail; }
     if(!(pObPdbEntry = ObMap_GetByKey(ctxOb->pmPdbByHash, hPDB))) { goto fail; }
     EnterCriticalSection(&ctxOb->Lock);
-    if(PDB_LoadEnsureEx(ctxOb, pObPdbEntry)) {
+    if(PDB_LoadEnsureEx(H, ctxOb, pObPdbEntry)) {
         SymbolInfo.si.SizeOfStruct = sizeof(SYMBOL_INFO);
         SymbolInfo.si.MaxNameLen = MAX_SYM_NAME;
         if(ctxOb->pfn.SymFromAddr(ctxOb->hSym, pObPdbEntry->qwLoadAddress + dwSymbolOffset, &qwDisplacement, &SymbolInfo.si)) {
@@ -752,7 +772,7 @@ BOOL PDB_GetTypeSize_Internal(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ 
     if(!(hPDB = PDB_GetHandleFromHandleMagic(H, hPDB))) { goto fail; }
     if(!(pObPdbEntry = ObMap_GetByKey(ctxOb->pmPdbByHash, hPDB))) { goto fail; }
     EnterCriticalSection(&ctxOb->Lock);
-    if(PDB_LoadEnsureEx(ctxOb, pObPdbEntry)) {
+    if(PDB_LoadEnsureEx(H, ctxOb, pObPdbEntry)) {
         SymbolInfo.SizeOfStruct = sizeof(SYMBOL_INFO);
         fResult = ctxOb->pfn.SymGetTypeFromName(ctxOb->hSym, pObPdbEntry->qwLoadAddress, szTypeName, &SymbolInfo) && SymbolInfo.Size;
         *pdwTypeSize = SymbolInfo.Size;
@@ -828,7 +848,7 @@ BOOL PDB_GetTypeChildOffset_Internal(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB
     if(!(hPDB = PDB_GetHandleFromHandleMagic(H, hPDB))) { goto fail; }
     if(!(pObPdbEntry = ObMap_GetByKey(ctxOb->pmPdbByHash, hPDB))) { goto fail; }
     EnterCriticalSection(&ctxOb->Lock);
-    if(!PDB_LoadEnsureEx(ctxOb, pObPdbEntry)) { goto fail_lock; }
+    if(!PDB_LoadEnsureEx(H, ctxOb, pObPdbEntry)) { goto fail_lock; }
     if(!ctxOb->pfn.SymEnumTypesByName(ctxOb->hSym, pObPdbEntry->qwLoadAddress, szTypeName, (PSYM_ENUMERATESYMBOLS_CALLBACK)PDB_GetTypeChildOffset_Callback, &dwTypeId) || !dwTypeId) { goto fail_lock; }
     if(!ctxOb->pfn.SymGetTypeInfo(ctxOb->hSym, pObPdbEntry->qwLoadAddress, dwTypeId, TI_GET_CHILDRENCOUNT, &cTypeChildren) || !cTypeChildren) { goto fail_lock; }
     if(!(pFindChildren = LocalAlloc(LMEM_ZEROINIT, sizeof(TI_FINDCHILDREN_PARAMS) + cTypeChildren * sizeof(ULONG)))) { goto fail_lock; }
@@ -949,7 +969,7 @@ VOID PDB_Initialize_WaitComplete(_In_ VMM_HANDLE H)
 * removed - allowing other threads to use the PDB subsystem.
 * If the initialization fails it's assume the PDB system should be disabled.
 * -- H
-* -- 
+* -- pKernelParameters
 */
 VOID PDB_Initialize_Async_Kernel_ThreadProc(_In_ VMM_HANDLE H, _In_ POB_PDB_INITIALIZE_KERNEL_PARAMETERS pKernelParameters)
 {
@@ -975,12 +995,12 @@ VOID PDB_Initialize_Async_Kernel_ThreadProc(_In_ VMM_HANDLE H, _In_ POB_PDB_INIT
         PDB_PrintError(H, "Reason: Failed creating initial PDB entry.");
         goto fail;
     }
-    if(!PDB_LoadEnsureEx(ctxOb, pObKernelEntry)) {
+    if(!PDB_LoadEnsureEx(H, ctxOb, pObKernelEntry)) {
         PDB_PrintError(H, "Reason: Unable to download kernel symbols to cache from Symbol Server.");
         goto fail;
     }
-    VmmLog(H, MID_PDB, LOGLEVEL_DEBUG, "Initialization of debug symbol .pdb functionality completed");
-    VmmLog(H, MID_PDB, LOGLEVEL_DEBUG, "[ %s ]", H->pdb.szSymbolPath);
+    VmmLog(H, MID_SYMBOL, LOGLEVEL_DEBUG, "Initialization of debug symbol .pdb functionality completed");
+    VmmLog(H, MID_SYMBOL, LOGLEVEL_DEBUG, "[ %s ]", H->pdb.szSymbolPath);
     ctxOb->fDisabled = FALSE;
     // fall-through to fail for cleanup
 fail:
@@ -1051,7 +1071,7 @@ VOID PDB_ConfigChange(_In_ VMM_HANDLE H)
     HKEY hKey;
     CHAR szLocalPath[MAX_PATH] = { 0 };
     if(H->cfg.fDisableSymbols) {
-        VmmLog(H, MID_PDB, LOGLEVEL_INFO, "Debug symbols disabled by user");
+        VmmLog(H, MID_SYMBOL, LOGLEVEL_INFO, "Debug symbols disabled by user");
         return;
     }
     // update new values in registry
@@ -1088,7 +1108,7 @@ VOID PDB_Initialize(_In_ VMM_HANDLE H, _In_opt_ PPE_CODEVIEW_INFO pPdbInfoOpt, _
     POB_PDB_INITIALIZE_KERNEL_PARAMETERS pObKernelParameters = NULL;
     if(H->pdb.fInitialized) { return; }
     if(H->cfg.fDisableSymbols) {
-        VmmLog(H, MID_PDB, LOGLEVEL_INFO, "Debug symbols disabled by user");
+        VmmLog(H, MID_SYMBOL, LOGLEVEL_INFO, "Debug symbols disabled by user");
         return;
     }
     PDB_Initialize_InitialValues(H);
@@ -1115,7 +1135,7 @@ VOID PDB_Initialize(_In_ VMM_HANDLE H, _In_opt_ PPE_CODEVIEW_INFO pPdbInfoOpt, _
         }
     }
     // 2: initialize dbghelp.dll
-    ctx->hSym = VMMWIN_PDB_FAKEPROCHANDLE;
+    ctx->hSym = (HANDLE)H;                      // fake handle - set this to H
     dwSymOptions = ctx->pfn.SymGetOptions();
     dwSymOptions &= ~SYMOPT_DEFERRED_LOADS;
     dwSymOptions &= ~SYMOPT_LOAD_LINES;
@@ -1497,7 +1517,7 @@ BOOL PDB_DisplayTypeNt(
     hPDB = PDB_GetHandleFromModuleName(H, "ntoskrnl");
     if(!(pObPdbEntry = ObMap_GetByKey(ctxOb->pmPdbByHash, hPDB))) { return FALSE; }
     EnterCriticalSection(&ctxOb->Lock);
-    if(!PDB_LoadEnsureEx(ctxOb, pObPdbEntry)) { goto fail; }
+    if(!PDB_LoadEnsureEx(H, ctxOb, pObPdbEntry)) { goto fail; }
     // flag: object header -> type == _OBJECT_HEADER + adjust va type base.
     if(fObjHeader) { szTypeName = "_OBJECT_HEADER"; }
     if(fObjHeader && vaType) { vaType -= H->vmm.f32 ? sizeof(OBJECT_HEADER32) : sizeof(OBJECT_HEADER64); }

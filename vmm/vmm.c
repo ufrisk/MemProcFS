@@ -9,6 +9,7 @@
 #include "pdb.h"
 #include "vmmheap.h"
 #include "vmmproc.h"
+#include "vmmvm.h"
 #include "vmmwin.h"
 #include "vmmwindef.h"
 #include "vmmwinobj.h"
@@ -1316,9 +1317,9 @@ VOID VmmWriteScatterPhysical(_In_ VMM_HANDLE H, _Inout_ PPMEM_SCATTER ppMEMsPhys
     DWORD i;
     PMEM_SCATTER pMEM;
     LcWriteScatter(H->hLC, cpMEMsPhys, ppMEMsPhys);
+    InterlockedAdd64(&H->vmm.stat.cPhysWrite, cpMEMsPhys);
     for(i = 0; i < cpMEMsPhys; i++) {
         pMEM = ppMEMsPhys[i];
-        InterlockedIncrement64(&H->vmm.stat.cPhysWrite);
         if(pMEM->f && MEM_SCATTER_ADDR_ISVALID(pMEM)) {
             VmmCacheInvalidate(H, pMEM->qwA & ~0xfff);
         }
@@ -1626,6 +1627,7 @@ VOID VmmClose(_In_ VMM_HANDLE H)
     if(!H || !H->vmm.fInitializationStatus) { return; }
     AcquireSRWLockExclusive(&LockSRW);
     if(H->vmm.PluginManager.FLinkAll) { PluginManager_Close(H); }
+    VmmVm_Close(H);
     VmmWinObj_Close(H);
     VmmWinReg_Close(H);
     VmmNet_Close(H);
@@ -1645,8 +1647,10 @@ VOID VmmClose(_In_ VMM_HANDLE H)
     Ob_DECREF_NULL(&H->vmm.pObCMapPhysMem);
     Ob_DECREF_NULL(&H->vmm.pObCMapEvil);
     Ob_DECREF_NULL(&H->vmm.pObCMapUser);
+    Ob_DECREF_NULL(&H->vmm.pObCMapVM);
     Ob_DECREF_NULL(&H->vmm.pObCMapNet);
     Ob_DECREF_NULL(&H->vmm.pObCMapObject);
+    Ob_DECREF_NULL(&H->vmm.pObCMapKDevice);
     Ob_DECREF_NULL(&H->vmm.pObCMapKDriver);
     Ob_DECREF_NULL(&H->vmm.pObCMapPoolAll);
     Ob_DECREF_NULL(&H->vmm.pObCMapPoolBig);
@@ -1987,8 +1991,10 @@ BOOL VmmInitialize(_In_ VMM_HANDLE H)
     H->vmm.pObCMapPhysMem = ObContainer_New();
     H->vmm.pObCMapEvil = ObContainer_New();
     H->vmm.pObCMapUser = ObContainer_New();
+    H->vmm.pObCMapVM = ObContainer_New();
     H->vmm.pObCMapNet = ObContainer_New();
     H->vmm.pObCMapObject = ObContainer_New();
+    H->vmm.pObCMapKDevice = ObContainer_New();
     H->vmm.pObCMapKDriver = ObContainer_New();
     H->vmm.pObCMapPoolAll = ObContainer_New();
     H->vmm.pObCMapPoolBig = ObContainer_New();
@@ -2675,6 +2681,22 @@ BOOL VmmMap_GetUser(_In_ VMM_HANDLE H, _Out_ PVMMOB_MAP_USER *ppObUserMap)
 }
 
 /*
+* Retrieve the VM map
+* CALLER DECREF: ppObVmMap
+* -- H
+* -- ppObVmMap
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetVM(_In_ VMM_HANDLE H, _Out_ PVMMOB_MAP_VM *ppObVmMap)
+{
+    if(!(*ppObVmMap = ObContainer_GetOb(H->vmm.pObCMapVM))) {
+        *ppObVmMap = VmmVm_Initialize(H);
+    }
+    return *ppObVmMap != NULL;
+}
+
+/*
 * Retrieve the OBJECT MANAGER map
 * CALLER DECREF: ppObObjectMap
 * -- H
@@ -2688,6 +2710,22 @@ BOOL VmmMap_GetObject(_In_ VMM_HANDLE H, _Out_ PVMMOB_MAP_OBJECT *ppObObjectMap)
         *ppObObjectMap = VmmWinObjMgr_Initialize(H);
     }
     return *ppObObjectMap != NULL;
+}
+
+/*
+* Retrieve the KERNEL DEVICE map
+* CALLER DECREF: ppObKDeviceMap
+* -- H
+* -- ppObKDeviceMap
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetKDevice(_In_ VMM_HANDLE H, _Out_ PVMMOB_MAP_KDEVICE *ppObKDeviceMap)
+{
+    if(!(*ppObKDeviceMap = ObContainer_GetOb(H->vmm.pObCMapKDevice))) {
+        *ppObKDeviceMap = VmmWinObjKDev_Initialize(H);
+    }
+    return *ppObKDeviceMap != NULL;
 }
 
 /*
@@ -2706,25 +2744,54 @@ BOOL VmmMap_GetKDriver(_In_ VMM_HANDLE H, _Out_ PVMMOB_MAP_KDRIVER *ppObKDriverM
     return *ppObKDriverMap != NULL;
 }
 
+int VmmMap_GetKDriverEntry_CmpFind(_In_ QWORD vaFind, _In_ QWORD qwEntry)
+{
+    PVMM_MAP_KDRIVERENTRY pEntry = (PVMM_MAP_KDRIVERENTRY)qwEntry;
+    if(vaFind < pEntry->vaStart) { return -1; }
+    if(vaFind >= pEntry->vaStart + pEntry->cbDriverSize) { return 1; }
+    return 0;
+}
+
 /*
-* Retrieve the index of a VMM_MAP_POOLENTRYTAG within the PVMMOB_MAP_POOL.
+* Retrieve a single PVMM_MAP_KDRIVERENTRY for a given KDriverMap and virtual address.
+* The virtual address may be address of _DRIVER_OBJECT or inside the driver module range.
+* -- H
+* -- pKDriverMap
+* -- va = virtual address of the object to retrieve.
+* -- return = PTR to VMM_MAP_KDRIVERENTRY or NULL on fail. Must not be used out of pKDriverMap scope.
+*/
+_Success_(return != NULL)
+PVMM_MAP_KDRIVERENTRY VmmMap_GetKDriverEntry(_In_ VMM_HANDLE H, _In_ PVMMOB_MAP_KDRIVER pKDriverMap, _In_ QWORD va)
+{
+    DWORD i;
+    PVMM_MAP_KDRIVERENTRY pe;
+    if((pe = (PVMM_MAP_KDRIVERENTRY)Util_qfind(va, pKDriverMap->cMap, pKDriverMap->pMap, sizeof(VMM_MAP_KDRIVERENTRY), VmmMap_GetKDriverEntry_CmpFind))) { return pe; }
+    for(i = 0; i < pKDriverMap->cMap; i++) {
+        if(pKDriverMap->pMap[i].va == va) {
+            return pKDriverMap->pMap + i;
+        }
+    }
+    return NULL;
+}
+
+/*
+* Retrieve VMM_MAP_POOLENTRYTAG within the PVMMOB_MAP_POOL.
 * -- H
 * -- pPoolMap
 * -- dwPoolTag
-* -- pdwTagIndex
+* -- ppePoolTag
 * -- return
 */
 _Success_(return)
-BOOL VmmMap_GetPoolTag(_In_ VMM_HANDLE H, _In_ PVMMOB_MAP_POOL pPoolMap, _In_ DWORD dwPoolTag, _Out_ PDWORD pdwTagIndex)
+BOOL VmmMap_GetPoolTag(_In_ VMM_HANDLE H, _In_ PVMMOB_MAP_POOL pPoolMap, _In_ DWORD dwPoolTag, _Out_ PVMM_MAP_POOLENTRYTAG *ppePoolTag)
 {
     PVMM_MAP_POOLENTRYTAG pet;
     if(!(pet = Util_qfind((QWORD)dwPoolTag, pPoolMap->cTag, pPoolMap->pTag, sizeof(VMM_MAP_POOLENTRYTAG), Util_qfind_CmpFindTableDWORD))) {
         dwPoolTag = _byteswap_ulong(dwPoolTag);
         pet = Util_qfind((QWORD)dwPoolTag, pPoolMap->cTag, pPoolMap->pTag, sizeof(VMM_MAP_POOLENTRYTAG), Util_qfind_CmpFindTableDWORD);
     }
-    if(!pet) { return FALSE; }
-    *pdwTagIndex = (DWORD)(((QWORD)pet - (QWORD)pPoolMap->pTag) / sizeof(VMM_MAP_POOLENTRYTAG));
-    return TRUE;
+    *ppePoolTag = pet;
+    return pet ? TRUE : FALSE;
 }
 
 /*
@@ -2732,16 +2799,14 @@ BOOL VmmMap_GetPoolTag(_In_ VMM_HANDLE H, _In_ PVMMOB_MAP_POOL pPoolMap, _In_ DW
 * -- H
 * -- pPoolMap
 * -- vaPoolEntry
-* -- pdwEntryIndex
+* -- ppePoolEntry
 * -- return
 */
 _Success_(return)
-BOOL VmmMap_GetPoolEntry(_In_ VMM_HANDLE H, _In_ PVMMOB_MAP_POOL pPoolMap, _In_ QWORD vaPoolEntry, _Out_ PDWORD pdwEntryIndex)
+BOOL VmmMap_GetPoolEntry(_In_ VMM_HANDLE H, _In_ PVMMOB_MAP_POOL pPoolMap, _In_ QWORD vaPoolEntry, _Out_ PVMM_MAP_POOLENTRY *ppePoolEntry)
 {
-    PVMM_MAP_POOLENTRY pe = Util_qfind(vaPoolEntry, pPoolMap->cMap, pPoolMap->pMap, sizeof(VMM_MAP_POOLENTRY), Util_qfind_CmpFindTableQWORD);
-    if(!pe) { return FALSE; }
-    *pdwEntryIndex = (DWORD)(((QWORD)pe - (QWORD)pPoolMap->pMap) / sizeof(VMM_MAP_POOLENTRY));
-    return TRUE;
+    *ppePoolEntry = Util_qfind(vaPoolEntry, pPoolMap->cMap, pPoolMap->pMap, sizeof(VMM_MAP_POOLENTRY), Util_qfind_CmpFindTableQWORD);
+    return *ppePoolEntry ? TRUE : FALSE;
 }
 
 /*

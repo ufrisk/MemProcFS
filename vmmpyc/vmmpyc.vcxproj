@@ -236,6 +236,7 @@
     <ClCompile Include="vmmpyc_scattermemory.c" />
     <ClCompile Include="vmmpyc_util.c" />
     <ClCompile Include="vmmpyc_vfs.c" />
+    <ClCompile Include="vmmpyc_virtualmachine.c" />
     <ClCompile Include="vmmpyc_virtualmemory.c" />
     <ClCompile Include="vmmpyc_vmm.c" />
   </ItemGroup>

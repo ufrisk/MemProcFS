@@ -17,6 +17,7 @@
 #include "fc.h"
 #include "statistics.h"
 #include "version.h"
+#include "pluginmanager.h"
 
 //-----------------------------------------------------------------------------
 // INITIALIZATION AND CLOSE FUNCTIONALITY BELOW:
@@ -25,15 +26,47 @@
 //-----------------------------------------------------------------------------
 
 // globals below:
-#define VMM_HANDLE_MAX_COUNT            32
-static POB_MAP g_VMMDLL_ALLOCMAP_EXT    = NULL;
-static SRWLOCK g_VMMDLL_CORE_LOCK_SRW   = SRWLOCK_INIT;
-static POB_MAP g_VMMDLL_CORE_ALLHANDLE  = NULL;
-static DWORD g_VMMDLL_CORE_HANDLE_COUNT = 0;
+#define VMM_HANDLE_MAX_COUNT                64
+static BOOL g_VMMDLL_INITIALIZED            = FALSE;
+static POB_MAP g_VMMDLL_ALLOCMAP_EXT        = NULL;
+static CRITICAL_SECTION g_VMMDLL_CORE_LOCK  = { 0 };
+static POB_MAP g_VMMDLL_CORE_ALLHANDLE      = NULL;
+static DWORD g_VMMDLL_CORE_HANDLE_COUNT     = 0;
 static VMM_HANDLE g_VMMDLL_CORE_HANDLES[VMM_HANDLE_MAX_COUNT] = { 0 };
 
 // forward declarations below:
 VOID VmmDllCore_MemLeakFindExternal(_In_ VMM_HANDLE H);
+VOID VmmDllCore_CloseHandle(_In_opt_ _Post_ptr_invalid_ VMM_HANDLE H, _In_ BOOL fForceCloseAll);
+
+/*
+* Initialize the global variables g_VMMDLL_*.
+* This function should only be called from DllMain.
+* NB! it's ok to leak the initialized globals since the leak will be minor only.
+*/
+VOID VmmDllCore_InitializeGlobals()
+{
+    if(!g_VMMDLL_INITIALIZED) {
+        g_VMMDLL_INITIALIZED = TRUE;
+        InitializeCriticalSection(&g_VMMDLL_CORE_LOCK);
+        g_VMMDLL_ALLOCMAP_EXT = ObMap_New(NULL, OB_MAP_FLAGS_OBJECT_OB);
+    }
+}
+
+#ifdef _WIN32
+BOOL WINAPI DllMain(_In_ HINSTANCE hinstDLL, _In_ DWORD fdwReason, _In_ PVOID lpvReserved)
+{    
+    if(fdwReason == DLL_PROCESS_ATTACH) {
+        VmmDllCore_InitializeGlobals();
+    }
+    return TRUE;
+}
+#endif /* _WIN32 */
+#ifdef LINUX
+__attribute__((constructor)) VOID VmmAttach()
+{
+    VmmDllCore_InitializeGlobals();
+}
+#endif /* LINUX */
 
 /*
 * Verify that the supplied handle is valid and also check it out.
@@ -49,7 +82,7 @@ BOOL VmmDllCore_HandleReserveExternal(_In_opt_ VMM_HANDLE H)
     DWORD i = 0;
     BOOL fResult = FALSE;
     if(!H || ((SIZE_T)H < 0x10000)) { return FALSE;}
-    AcquireSRWLockShared(&g_VMMDLL_CORE_LOCK_SRW);
+    EnterCriticalSection(&g_VMMDLL_CORE_LOCK);
     for(i = 0; i < g_VMMDLL_CORE_HANDLE_COUNT; i++) {
         if(g_VMMDLL_CORE_HANDLES[i] == H) {
             InterlockedIncrement(&H->cThreadExternal);
@@ -57,7 +90,7 @@ BOOL VmmDllCore_HandleReserveExternal(_In_opt_ VMM_HANDLE H)
             break;
         }
     }
-    ReleaseSRWLockShared(&g_VMMDLL_CORE_LOCK_SRW);
+    LeaveCriticalSection(&g_VMMDLL_CORE_LOCK);
     return fResult;
 }
 
@@ -66,9 +99,28 @@ BOOL VmmDllCore_HandleReserveExternal(_In_opt_ VMM_HANDLE H)
 * VmmDllCore_HandleReserveExternal()
 * -- H
 */
-VOID VmmDllCore_HandleReturnExternal(_In_ VMM_HANDLE H)
+VOID VmmDllCore_HandleReturnExternal(_In_opt_ VMM_HANDLE H)
 {
-    InterlockedDecrement(&H->cThreadExternal);
+    if(H) {
+        InterlockedDecrement(&H->cThreadExternal);
+    }
+}
+
+/*
+* Duplicate a VMM_HANDLE (increase its handle count).
+* NB! this does not "reserve" the handle itself!.
+* -- H
+* -- return = duplicated handle (with increased dwHandleCount).
+*/
+_Success_(return != NULL)
+VMM_HANDLE VmmDllCore_HandleDuplicate(_In_ VMM_HANDLE H)
+{
+    if(VmmDllCore_HandleReserveExternal(H)) {
+        InterlockedIncrement(&H->dwHandleCount);
+        VmmDllCore_HandleReturnExternal(H);
+        return H;
+    }
+    return NULL;
 }
 
 /*
@@ -112,6 +164,84 @@ BOOL VmmDllCore_HandleAdd(_In_ VMM_HANDLE H)
 }
 
 /*
+* Close all instances of a single child VMM. This is done async speed up closing
+* of multiple child VMMs and also support timout messages in caller function.
+*/
+VOID VmmDllCore_CloseHandle_VmmChildCloseSingle_ThreadProc(_In_ VMM_HANDLE H, _In_ PVOID hChildVmm)
+{
+    VmmDllCore_CloseHandle((VMM_HANDLE)hChildVmm, TRUE);
+}
+
+/*
+* Close/shutdown all child VMMs. Also wait for the child VMMs to shutdown.
+* -- H
+*/
+VOID VmmDllCore_CloseHandle_VmmChildCloseAll(_In_ VMM_HANDLE H)
+{
+    QWORD i, tc, tcStart;
+    VMM_HANDLE hChild = NULL;
+    AcquireSRWLockExclusive(&H->childvmm.LockSRW);
+    // Only call function once per VMM_HANDLE (fAbort flag).
+    if(H->childvmm.fAbort) { goto finish; }
+    H->childvmm.fAbort = TRUE;
+    if(H->childvmm.c == 0) { goto finish; }
+    // Initiate close/shutdown of child VMMs.
+    for(i = 0; i < VMM_HANDLE_VM_CHILD_MAX_COUNT; i++) {
+        if(H->childvmm.h[i]) {
+            VmmWork_Void(H, VmmDllCore_CloseHandle_VmmChildCloseSingle_ThreadProc, H->childvmm.h[i], NULL, VMMWORK_FLAG_PRIO_NORMAL);
+        }
+    }
+    // Wait for child VMMs to close/shutdown.
+    tcStart = GetTickCount64();
+    while(H->childvmm.c) {
+        tc = GetTickCount64();
+        if((tc - tcStart) > 45000) {
+            tcStart = GetTickCount64();
+            VmmLog(H, MID_CORE, LOGLEVEL_1_CRITICAL, "Shutdown waiting for long running child VMMs (%i).", H->childvmm.c);
+        }
+        ReleaseSRWLockExclusive(&H->childvmm.LockSRW);
+        SwitchToThread();
+        AcquireSRWLockExclusive(&H->childvmm.LockSRW);
+    }
+finish:
+    ReleaseSRWLockExclusive(&H->childvmm.LockSRW);
+}
+
+/*
+* Detach this VMM instance from the parent VMM (if any).
+* -- H
+*/
+VOID VmmDllCore_CloseHandle_VmmParentDetach(_In_ VMM_HANDLE H)
+{
+    DWORD i, iMax = 0;
+    // VMM_HANDLE of parent is always valid since parent shutdown will
+    // wait for its child count to reach zero before doing a shutdown.
+    // NB! after decrement of hParent->childvmm.c parent may not be valid.
+    VMM_HANDLE hParent = H->childvmm.hParent;
+    if(hParent) {
+        AcquireSRWLockExclusive(&hParent->childvmm.LockSRW);
+        for(i = 0; i < VMM_HANDLE_VM_CHILD_MAX_COUNT; i++) {
+            if(H == hParent->childvmm.h[i]) {
+                hParent->childvmm.h[i] = 0;
+                if(hParent->childvmm.iMax == i) {
+                    hParent->childvmm.iMax = iMax;
+                }
+                hParent->childvmm.c--;
+                H->childvmm.hParent = NULL;
+                ReleaseSRWLockExclusive(&hParent->childvmm.LockSRW);
+                PluginManager_Notify(hParent, VMMDLL_PLUGIN_NOTIFY_VM_ATTACH_DETACH, NULL, 0);
+                return;
+            }
+            if(hParent->childvmm.h[i]) {
+                iMax = i;
+            }
+        }
+        H->childvmm.hParent = NULL;
+        ReleaseSRWLockExclusive(&hParent->childvmm.LockSRW);
+    }
+}
+
+/*
 * Close a VMM_HANDLE and clean up everything! The VMM_HANDLE will not be valid
 * after this function has been called. Function call may take some time since
 * it's dependent on thread-stoppage (which may take time) to do a clean cleanup.
@@ -120,59 +250,93 @@ BOOL VmmDllCore_HandleAdd(_In_ VMM_HANDLE H)
 *   (2) wait for worker threads to exit (done on abort) when completed no
 *       threads except this one should access the handle.
 *   (3) shut down Forensic > Vmm > LeechCore > Threading > Log
-* NB! Function is to be called behind exclusive lock g_VMMDLL_CORE_LOCK_SRW.
 * -- H = a VMM_HANDLE fully or partially initialized
+* -- fForceCloseAll = TRUE: disregard handle count. FALSE: adhere to handle count.
 */
-VOID VmmDllCore_CloseHandle(_In_opt_ _Post_ptr_invalid_ VMM_HANDLE H)
+VOID VmmDllCore_CloseHandle(_In_opt_ _Post_ptr_invalid_ VMM_HANDLE H, _In_ BOOL fForceCloseAll)
 {
+    BOOL fCloseHandle = FALSE;
     QWORD tc, tcStart;
-    if(H) {
-        // 1: Remove handle from external allow-list. This will stop external
-        //    API calls using the handle.
-        VmmDllCore_HandleRemove(H);
-        // 2: Set the abort flag. This will cause internal threading shutdown.
-        H->fAbort = TRUE;
-        H->magic = 0;
-        // 3: Abort work multithreading & forensic database queries (to speed up termination)
-        VmmWork_Interrupt(H);
-        FcInterrupt(H);
-        // 4: Wait for multi-threading to shut down
-        tcStart = GetTickCount64();
-        while(H->cThreadExternal) {
-            tc = GetTickCount64();
-            if((tc - tcStart) > 30000) {
-                tcStart = GetTickCount64();
-                VmmLog(H, MID_CORE, LOGLEVEL_1_CRITICAL, "Shutdown waiting for long running external thread (%i).", H->cThreadExternal);
-                VmmWork_Interrupt(H);
-                FcInterrupt(H);
-            }
-            SwitchToThread();
-        }
-        while(H->cThreadInternal) {
-            tc = GetTickCount64();
-            if((tc - tcStart) > 30000) {
-                tcStart = GetTickCount64();
-                VmmLog(H, MID_CORE, LOGLEVEL_1_CRITICAL, "Shutdown waiting for long running internal thread (%i).", H->cThreadExternal);
-                VmmWork_Interrupt(H);
-                FcInterrupt(H);
-            }
-            SwitchToThread();
-        }
-        // 5: Close forensic sub-system.
-        FcClose(H);
-        // Close vmm sub-system.
-        VmmClose(H);
-        // Close leechcore
-        LcClose(H->hLC);
-        // Close work (multi-threading)
-        VmmWork_Close(H);
-        // Warn external (api-user) memory leaks
-        VmmDllCore_MemLeakFindExternal(H);
-        // Close logging (last)
-        Statistics_CallSetEnabled(H, FALSE);
-        VmmLog_Close(H);
-        LocalFree(H);
+    // Verify & decrement handle count.
+    // If handle count > 0 (after decrement) return.
+    // If handle count == 0 -> close and clean-up.
+    // (this is done with help of HandleReserveExternal//HandleReturnExternal logic).
+    if(!H) { return; }
+    EnterCriticalSection(&g_VMMDLL_CORE_LOCK);
+    if(!VmmDllCore_HandleReserveExternal(H)) {
+        LeaveCriticalSection(&g_VMMDLL_CORE_LOCK);
+        return;
     }
+    InterlockedDecrement(&H->dwHandleCount);
+    if(fForceCloseAll || (0 == H->dwHandleCount)) {
+        fCloseHandle = TRUE;
+        H->dwHandleCount = 0;
+        // Remove handle from external allow-list.
+        // This will stop external API calls using the handle.
+        // This will also stop additional close calls using the handle.
+        VmmDllCore_HandleRemove(H);
+    }
+    VmmDllCore_HandleReturnExternal(H);
+    LeaveCriticalSection(&g_VMMDLL_CORE_LOCK);
+    // Return if handle should not be closed - i.e. if handle count is > 0.
+    if(!fCloseHandle) { return; }
+    // Close/shutdown child VMMs and wait for all to close.
+    // This should be done _before_ main fAbort is set (due to work use).
+    VmmDllCore_CloseHandle_VmmChildCloseAll(H);
+    tcStart = GetTickCount64();
+    while(H->childvmm.c) {
+        tc = GetTickCount64();
+        if((tc - tcStart) > 30000) {
+            tcStart = GetTickCount64();
+            VmmLog(H, MID_CORE, LOGLEVEL_1_CRITICAL, "Shutdown waiting for long running VM childs (%i).", H->childvmm.c);
+        }
+        SwitchToThread();
+    }
+    // Set the abort flag. This will cause internal threading shutdown.
+    H->fAbort = TRUE;
+    H->magic = 0;
+    // Abort work multithreading & forensic database queries (to speed up termination)
+    VmmWork_Interrupt(H);
+    FcInterrupt(H);
+    // Wait for multi-threading to shut down.
+    tcStart = GetTickCount64();
+    while(H->cThreadExternal) {
+        tc = GetTickCount64();
+        if((tc - tcStart) > 30000) {
+            tcStart = GetTickCount64();
+            VmmLog(H, MID_CORE, LOGLEVEL_1_CRITICAL, "Shutdown waiting for long running external thread (%i).", H->cThreadExternal);
+            VmmWork_Interrupt(H);
+            FcInterrupt(H);
+        }
+        SwitchToThread();
+    }
+    tcStart = GetTickCount64();
+    while(H->cThreadInternal) {
+        tc = GetTickCount64();
+        if((tc - tcStart) > 30000) {
+            tcStart = GetTickCount64();
+            VmmLog(H, MID_CORE, LOGLEVEL_1_CRITICAL, "Shutdown waiting for long running internal thread (%i).", H->cThreadInternal);
+            VmmWork_Interrupt(H);
+            FcInterrupt(H);
+        }
+        SwitchToThread();
+    }
+    // Close forensic sub-system.
+    FcClose(H);
+    // Close vmm sub-system.
+    VmmClose(H);
+    // Close leechcore
+    LcClose(H->hLC);
+    // Close work (multi-threading)
+    VmmWork_Close(H);
+    // Warn external (api-user) memory leaks
+    VmmDllCore_MemLeakFindExternal(H);
+    // Detach this VMM instance from parent VMM (if any)
+    VmmDllCore_CloseHandle_VmmParentDetach(H);
+    // Close logging (last)
+    Statistics_CallSetEnabled(H, FALSE);
+    VmmLog_Close(H);
+    LocalFree(H);
 }
 
 /*
@@ -182,9 +346,7 @@ VOID VmmDllCore_CloseHandle(_In_opt_ _Post_ptr_invalid_ VMM_HANDLE H)
 */
 VOID VmmDllCore_Close(_In_opt_ _Post_ptr_invalid_ VMM_HANDLE H)
 {
-    AcquireSRWLockExclusive(&g_VMMDLL_CORE_LOCK_SRW);
-    VmmDllCore_CloseHandle(H);
-    ReleaseSRWLockExclusive(&g_VMMDLL_CORE_LOCK_SRW);
+    VmmDllCore_CloseHandle(H, FALSE);
 }
 
 /*
@@ -194,11 +356,13 @@ VOID VmmDllCore_Close(_In_opt_ _Post_ptr_invalid_ VMM_HANDLE H)
 VOID VmmDllCore_CloseAll()
 {
     VMM_HANDLE H;
-    AcquireSRWLockExclusive(&g_VMMDLL_CORE_LOCK_SRW);
-    while((H = g_VMMDLL_CORE_HANDLES[0])) {
-        VmmDllCore_CloseHandle(H);
+    while(TRUE) {
+        EnterCriticalSection(&g_VMMDLL_CORE_LOCK);
+        H = g_VMMDLL_CORE_HANDLES[0];
+        LeaveCriticalSection(&g_VMMDLL_CORE_LOCK);
+        if(!H) { return; }
+        VmmDllCore_CloseHandle(H, TRUE);
     }
-    ReleaseSRWLockExclusive(&g_VMMDLL_CORE_LOCK_SRW);
 }
 
 /*
@@ -287,6 +451,9 @@ VOID VmmDllCore_PrintHelp(_In_ VMM_HANDLE H)
         "   -userinteract = allow vmm.dll to, on the console, query the user for        \n" \
         "          information such as, but not limited to, leechcore device options.   \n" \
         "          Default: user interaction = disabled.                                \n" \
+        "   -vm        : virtual machine (VM) parsing.                                  \n" \
+        "   -vm-basic  : virtual machine (VM) parsing (physical memory only).           \n" \
+        "   -vm-nested : virtual machine (VM) parsing (including nested VMs).           \n" \
         "   -forensic : start a forensic scan of the physical memory immediately after  \n" \
         "          startup if possible. Allowed parameter values range from 0-4.        \n" \
         "          Note! forensic mode is not available for live memory.                \n" \
@@ -324,107 +491,111 @@ BOOL VmmDllCore_InitializeConfig(_In_ VMM_HANDLE H, _In_ DWORD argc, _In_ char *
         return VmmDllCore_InitializeConfig(H, 3, argv2);
     }
     while(i < argc) {
+        // "single argument" parameters below:
         if(0 == _stricmp(argv[i], "")) {
-            i++;
-            continue;
-        } else if(0 == _stricmp(argv[i], "-printf")) {
-            H->cfg.fVerboseDll = TRUE;
-            i++;
-            continue;
-        } else if(0 == _stricmp(argv[i], "-userinteract")) {
-            H->cfg.fUserInteract = TRUE;
-            i++;
-            continue;
-        } else if(0 == _stricmp(argv[i], "-v")) {
-            H->cfg.fVerbose = TRUE;
-            i++;
-            continue;
-        } else if(0 == _stricmp(argv[i], "-vv")) {
-            H->cfg.fVerboseExtra = TRUE;
-            i++;
-            continue;
-        } else if(0 == _stricmp(argv[i], "-vvv")) {
-            H->cfg.fVerboseExtraTlp = TRUE;
-            i++;
-            continue;
-        } else if(0 == _stricmp(argv[i], "-disable-symbolserver")) {
-            H->cfg.fDisableSymbolServerOnStartup = TRUE;
-            i++;
-            continue;
+            i++; continue;
+        } else if(0 == _stricmp(argv[i], "-_internal_physical_memory_only")) {
+            H->cfg.fPhysicalOnlyMemory = TRUE;
+            i++; continue;
+        } else if(0 == _stricmp(argv[i], "-disable-infodb")) {
+            H->cfg.fDisableInfoDB = TRUE;
+            i++; continue;
+        } else if(0 == _stricmp(argv[i], "-disable-python")) {
+            H->cfg.fDisablePython = TRUE;
+            i++; continue;
         } else if(0 == _stricmp(argv[i], "-disable-symbols")) {
             H->cfg.fDisableSymbolServerOnStartup = TRUE;
             H->cfg.fDisableSymbols = TRUE;
-            i++;
-            continue;
-        } else if(0 == _stricmp(argv[i], "-disable-infodb")) {
-            H->cfg.fDisableInfoDB = TRUE;
-            i++;
-            continue;
-        } else if(0 == _stricmp(argv[i], "-disable-python")) {
-            H->cfg.fDisablePython = TRUE;
-            i++;
-            continue;
+            i++; continue;
+        } else if(0 == _stricmp(argv[i], "-disable-symbolserver")) {
+            H->cfg.fDisableSymbolServerOnStartup = TRUE;
+            i++; continue;
         } else if(0 == _stricmp(argv[i], "-norefresh")) {
             H->cfg.fDisableBackgroundRefresh = TRUE;
-            i++;
-            continue;
+            i++; continue;
+        } else if(0 == _stricmp(argv[i], "-printf")) {
+            H->cfg.fVerboseDll = TRUE;
+            i++; continue;
+        } else if(0 == _stricmp(argv[i], "-userinteract")) {
+            H->cfg.fUserInteract = TRUE;
+            i++; continue;
+        } else if(0 == _stricmp(argv[i], "-v")) {
+            H->cfg.fVerbose = TRUE;
+            i++; continue;
+        } else if(0 == _stricmp(argv[i], "-vv")) {
+            H->cfg.fVerboseExtra = TRUE;
+            i++; continue;
+        } else if(0 == _stricmp(argv[i], "-vvv")) {
+            H->cfg.fVerboseExtraTlp = TRUE;
+            i++; continue;
         } else if(0 == _stricmp(argv[i], "-waitinitialize")) {
             H->cfg.fWaitInitialize = TRUE;
-            i++;
-            continue;
+            i++; continue;
+        } else if(0 == _stricmp(argv[i], "-vm")) {
+            H->cfg.fVM = TRUE;
+            H->cfg.fVMNested = FALSE;
+            H->cfg.fVMPhysicalOnly = FALSE;
+            i++; continue;
+        } else if(0 == _stricmp(argv[i], "-vm-basic")) {
+            H->cfg.fVM = TRUE;
+            H->cfg.fVMNested = FALSE;
+            H->cfg.fVMPhysicalOnly = TRUE;
+            i++; continue;
+        } else if(0 == _stricmp(argv[i], "-vm-nested")) {
+            H->cfg.fVM = TRUE;
+            H->cfg.fVMNested = TRUE;
+            H->cfg.fVMPhysicalOnly = FALSE;
+            i++; continue;
+        // "dual argument" parameters below:
         } else if(i + 1 >= argc) {
             return FALSE;
+        } else if(0 == _stricmp(argv[i], "-_internal_vmm_parent")) {
+            H->cfg.qwParentVmmHandle = Util_GetNumericA(argv[i + 1]);
+            H->cfg.fDisablePython = TRUE;
+            i += 2; continue;
         } else if(0 == _stricmp(argv[i], "-cr3")) {
             H->cfg.paCR3 = Util_GetNumericA(argv[i + 1]);
-            i += 2;
-            continue;
+            i += 2; continue;
+        } else if((0 == _stricmp(argv[i], "-device")) || (0 == strcmp(argv[i], "-z"))) {
+            strcpy_s(H->dev.szDevice, MAX_PATH, argv[i + 1]);
+            i += 2; continue;
         } else if(0 == _stricmp(argv[i], "-forensic")) {
             H->cfg.tpForensicMode = (DWORD)Util_GetNumericA(argv[i + 1]);
             if(H->cfg.tpForensicMode > FC_DATABASE_TYPE_MAX) { return FALSE; }
-            i += 2;
-            continue;
-        } else if(0 == _stricmp(argv[i], "-max")) {
-            H->dev.paMax = Util_GetNumericA(argv[i + 1]);
-            i += 2;
-            continue;
-        } else if((0 == _stricmp(argv[i], "-device")) || (0 == strcmp(argv[i], "-z"))) {
-            strcpy_s(H->dev.szDevice, MAX_PATH, argv[i + 1]);
-            i += 2;
-            continue;
-        } else if(0 == _stricmp(argv[i], "-remote")) {
-            strcpy_s(H->dev.szRemote, MAX_PATH, argv[i + 1]);
-            i += 2;
-            continue;
-        } else if(0 == _stricmp(argv[i], "-memmap")) {
-            strcpy_s(H->cfg.szMemMap, MAX_PATH, argv[i + 1]);
-            i += 2;
-            continue;
-        } else if(0 == _stricmp(argv[i], "-memmap-str")) {
-            strcpy_s(H->cfg.szMemMapStr, _countof(H->cfg.szMemMapStr), argv[i + 1]);
-            i += 2;
-            continue;
-        } else if(0 == _stricmp(argv[i], "-pythonpath")) {
-            strcpy_s(H->cfg.szPythonPath, MAX_PATH, argv[i + 1]);
-            i += 2;
-            continue;
-        } else if(0 == _stricmp(argv[i], "-mount")) {
-            i += 2;
-            continue;
+            if(H->cfg.tpForensicMode) {
+                H->cfg.fWaitInitialize = TRUE;
+                H->cfg.fVM = TRUE;
+            }
+            i += 2; continue;
         } else if(0 == _stricmp(argv[i], "-logfile")) {
             strcpy_s(H->cfg.szLogFile, MAX_PATH, argv[i + 1]);
-            i += 2;
-            continue;
+            i += 2; continue;
         } else if(0 == _stricmp(argv[i], "-loglevel")) {
             strcpy_s(H->cfg.szLogLevel, MAX_PATH, argv[i + 1]);
-            i += 2;
-            continue;
+            i += 2; continue;
+        } else if(0 == _stricmp(argv[i], "-max")) {
+            H->dev.paMax = Util_GetNumericA(argv[i + 1]);
+            i += 2; continue;
+        } else if(0 == _stricmp(argv[i], "-memmap")) {
+            strcpy_s(H->cfg.szMemMap, MAX_PATH, argv[i + 1]);
+            i += 2; continue;
+        } else if(0 == _stricmp(argv[i], "-memmap-str")) {
+            strcpy_s(H->cfg.szMemMapStr, _countof(H->cfg.szMemMapStr), argv[i + 1]);
+            i += 2; continue;
+        } else if(0 == _stricmp(argv[i], "-mount")) {
+            i += 2; continue;
         } else if(0 == _strnicmp(argv[i], "-pagefile", 9)) {
             iPageFile = argv[i][9] - '0';
             if(iPageFile < 10) {
                 strcpy_s(H->cfg.szPageFile[iPageFile], MAX_PATH, argv[i + 1]);
             }
-            i += 2;
-            continue;
+            i += 2; continue;
+        } else if(0 == _stricmp(argv[i], "-pythonpath")) {
+            strcpy_s(H->cfg.szPythonPath, MAX_PATH, argv[i + 1]);
+            i += 2; continue;
+        } else if(0 == _stricmp(argv[i], "-remote")) {
+            strcpy_s(H->dev.szRemote, MAX_PATH, argv[i + 1]);
+            i += 2; continue;
         } else {
             return FALSE;
         }
@@ -518,13 +689,50 @@ VMM_HANDLE VmmDllCore_InitializeRequestUserInput(_In_ _Post_ptr_invalid_ VMM_HAN
     }
     // 3: try re-initialize with new user input.
     //    (and close earlier partially initialized handle).
-    AcquireSRWLockExclusive(&g_VMMDLL_CORE_LOCK_SRW);
-    VmmDllCore_CloseHandle(H);
-    ReleaseSRWLockExclusive(&g_VMMDLL_CORE_LOCK_SRW);
+    VmmDllCore_CloseHandle(H, FALSE);
     return VMMDLL_InitializeEx(argc, argv, NULL);
 }
 
 #endif /* _WIN32 */
+
+/*
+* Attach a VMM_HANDLE to its parent.
+* (This may fail if parent already have VMM_HANDLE_VM_CHILD_MAX_COUNT attached).
+* -- H
+* -- hParent
+* -- return
+*/
+_Success_(return)
+BOOL VmmDllCore_Initialize_HandleAttachParent(_In_ VMM_HANDLE H, _In_ VMM_HANDLE hParent)
+{
+    DWORD iBase, iChild;
+    BOOL fResult = FALSE;
+    if(!VmmDllCore_HandleReserveExternal(hParent)) { return FALSE; }
+    AcquireSRWLockExclusive(&H->childvmm.LockSRW);
+    AcquireSRWLockExclusive(&hParent->childvmm.LockSRW);
+    if(!H->fAbort && !H->childvmm.fAbort && !hParent->fAbort && !hParent->childvmm.fAbort) {
+        hParent->childvmm.dwCreateCount++;
+        for(iBase = 0; iBase < VMM_HANDLE_VM_CHILD_MAX_COUNT; iBase++) {
+            iChild = (iBase + hParent->childvmm.dwCreateCount) % VMM_HANDLE_VM_CHILD_MAX_COUNT;
+            if(!hParent->childvmm.h[iChild]) {
+                H->childvmm.hParent = hParent;
+                H->childvmm.dwParentIndex = iChild;
+                hParent->childvmm.iMax = max(hParent->childvmm.iMax, iChild);
+                hParent->childvmm.h[iChild] = H;
+                hParent->childvmm.c++;
+                fResult = TRUE;
+                break;
+            }
+        }
+    }
+    ReleaseSRWLockExclusive(&hParent->childvmm.LockSRW);
+    ReleaseSRWLockExclusive(&H->childvmm.LockSRW);
+    VmmDllCore_HandleReturnExternal(hParent);
+    if(fResult) {
+        PluginManager_Notify(hParent, VMMDLL_PLUGIN_NOTIFY_VM_ATTACH_DETACH, H, 0);
+    }
+    return fResult;
+}
 
 /*
 * Initialize MemProcFS from user parameters. Upon success a VMM_HANDLE is returned.
@@ -545,27 +753,41 @@ VMM_HANDLE VmmDllCore_Initialize(_In_ DWORD argc, _In_ LPSTR argv[], _Out_opt_ P
     PLC_CONFIG_ERRORINFO pLcErrorInfo = NULL;
     LPSTR uszUserText;
     BYTE pbBuffer[3 * MAX_PATH];
-    AcquireSRWLockExclusive(&g_VMMDLL_CORE_LOCK_SRW);
     if(ppLcErrorInfo) { *ppLcErrorInfo = NULL; }
-    if(!g_VMMDLL_ALLOCMAP_EXT) {
-        // allocate a shared global alloc map once at 1st init. (ok to "leak" this).
-        if(!(g_VMMDLL_ALLOCMAP_EXT = ObMap_New(NULL, OB_MAP_FLAGS_OBJECT_OB))) { goto fail; }
-    }
-    if(!(H = LocalAlloc(LMEM_ZEROINIT, sizeof(struct tdVMM_HANDLE)))) { goto fail; }
-    H->magic = VMM_MAGIC;
-    // 1: initialize configuration from command line
-    //    after config initialization call vmmprintf should work regardless of
+    // 1: allocate VMM_HANDLE object and initialize command line configuration.
+    //    After config initialization call vmmprintf should work regardless of
     //    success/fail.
+    if(!(H = LocalAlloc(LMEM_ZEROINIT, sizeof(struct tdVMM_HANDLE)))) { goto fail_prelock; }
+    H->magic = VMM_MAGIC;
+    H->dwHandleCount = 1;
     if(!VmmDllCore_InitializeConfig(H, (DWORD)argc, argv)) {
         VmmDllCore_PrintHelp(H);
-        goto fail;
+        goto fail_prelock;
     }
-    // 9: upon success add handle to external allow-list.
+    // 2: If vmm is supposed to be created with a parent check conditions and retrieve the parent handle.
+    if(H->cfg.fVM && (sizeof(PVOID) < 8)) {
+        vmmprintf(H, "MemProcFS: VM parsing is only available on 64-bit due to resource constraints.\n");
+        goto fail_prelock;
+    }
+    if(H->cfg.qwParentVmmHandle) {
+        if(sizeof(PVOID) < 8) {
+            vmmprintf(H, "MemProcFS: Failed to create child VMM: Only allowed in 64-bit mode).\n");
+            goto fail_prelock;
+        }
+        if(!VmmDllCore_HandleReserveExternal((VMM_HANDLE)H->cfg.qwParentVmmHandle)) {
+            vmmprintf(H, "MemProcFS: Failed to create child VMM: Bad parent handle).\n");
+            goto fail_prelock;
+        }
+        VmmDllCore_HandleReturnExternal((VMM_HANDLE)H->cfg.qwParentVmmHandle);
+    }
+    // 3: Acquire global shared lock (for remainder of initialization).
+    EnterCriticalSection(&g_VMMDLL_CORE_LOCK);
+    // 4: upon success add handle to external allow-list.
     if(!VmmDllCore_HandleAdd(H)) {
         vmmprintf(H, "MemProcFS: Failed to add handle to external allow-list (max %i concurrent tasks allowed).\n", g_VMMDLL_CORE_HANDLE_COUNT);
         goto fail;
     }
-    // 2: initialize LeechCore memory acquisition device
+    // 5: initialize LeechCore memory acquisition device
     if(!(H->hLC = LcCreateEx(&H->dev, &pLcErrorInfo))) {
 #ifdef _WIN32
         if(pLcErrorInfo && (pLcErrorInfo->dwVersion == LC_CONFIG_ERRORINFO_VERSION)) {
@@ -574,9 +796,9 @@ VMM_HANDLE VmmDllCore_Initialize(_In_ DWORD argc, _In_ LPSTR argv[], _Out_opt_ P
             }
             if(H->cfg.fUserInteract && pLcErrorInfo->fUserInputRequest) {
                 LcMemFree(pLcErrorInfo);
+                LeaveCriticalSection(&g_VMMDLL_CORE_LOCK);
                 // the request user input function will force a re-initialization upon
                 // success and free/discard the earlier partially initialized handle.
-                ReleaseSRWLockExclusive(&g_VMMDLL_CORE_LOCK_SRW);
                 return VmmDllCore_InitializeRequestUserInput(H, argc, argv);
             }
         }
@@ -584,9 +806,9 @@ VMM_HANDLE VmmDllCore_Initialize(_In_ DWORD argc, _In_ LPSTR argv[], _Out_opt_ P
         vmmprintf(H, "MemProcFS: Failed to connect to memory acquisition device.\n");
         goto fail;
     }
-    // 3: initialize/(refresh) the logging sub-system
+    // 6: initialize/(refresh) the logging sub-system
     VmmLog_LevelRefresh(H);
-    // 4: Set LeechCore MemMap (if exists and not auto - i.e. from file)
+    // 7: Set LeechCore MemMap (if exists and not auto - i.e. from file)
     if(H->cfg.szMemMap[0] && _stricmp(H->cfg.szMemMap, "auto")) {
         f = (pbMemMap = LocalAlloc(LMEM_ZEROINIT, 0x01000000)) &&
             !fopen_s(&hFile, H->cfg.szMemMap, "rb") && hFile &&
@@ -608,37 +830,40 @@ VMM_HANDLE VmmDllCore_Initialize(_In_ DWORD argc, _In_ LPSTR argv[], _Out_opt_ P
             goto fail;
         }
     }
-    // 5: initialize work (multi-threading sub-system).
+    // 8: initialize work (multi-threading sub-system).
     if(!VmmWork_Initialize(H)) {
         vmmprintf(H, "MemProcFS: Failed to initialize work multi-threading.\n");
         goto fail;
     }
-    // 6: device context (H->dev) is initialized from here onwards - device functionality is working!
+    // 9: device context (H->dev) is initialized from here onwards - device functionality is working!
     //    try initialize vmm subsystem.
     if(!VmmProcInitialize(H)) {
         vmmprintf(H, "MOUNT: INFO: PROC file system not mounted.\n");
         goto fail;
     }
-    // 7: vmm context (H->vmm) is initialized from here onwards - vmm functionality is working!
-    //    set LeechCore MemMap (if auto).
+    // 10: vmm context (H->vmm) is initialized from here onwards - vmm functionality is working!
+    //     set LeechCore MemMap (if auto).
     if(H->cfg.szMemMap[0] && !_stricmp(H->cfg.szMemMap, "auto")) {
         if(!VmmDllCore_InitializeMemMapAuto(H)) {
             vmmprintf(H, "MemProcFS: Failed to load initial memory map from: '%s'.\n", H->cfg.szMemMap);
             goto fail;
         }
     }
-    // 8: initialize forensic mode (if set by user parameter).
-    if(H->cfg.tpForensicMode) {
-        if(!FcInitialize(H, H->cfg.tpForensicMode, FALSE)) {
-            if(H->dev.fVolatile) {
-                vmmprintf(H, "MemProcFS: Failed to initialize forensic mode - volatile (live) memory not supported - please use memory dump!\n");
-            } else {
-                vmmprintf(H, "MemProcFS: Failed to initialize forensic mode.\n");
-            }
+    // 11: add this vmm instance to the parent vmm instance (if any)
+    if(H->cfg.qwParentVmmHandle) {
+        if(!VmmDllCore_Initialize_HandleAttachParent(H, (VMM_HANDLE)H->cfg.qwParentVmmHandle)) {
+            vmmprintf(H, "MemProcFS: Failed attaching to parent VMM.\n");
             goto fail;
         }
     }
-    ReleaseSRWLockExclusive(&g_VMMDLL_CORE_LOCK_SRW);
+    // 12: initialize forensic mode (if set by user parameter).
+    if(H->cfg.tpForensicMode) {
+        if(!FcInitialize(H, H->cfg.tpForensicMode, FALSE)) {
+            vmmprintf(H, "MemProcFS: Failed to initialize forensic mode.\n");
+            goto fail;
+        }
+    }
+    LeaveCriticalSection(&g_VMMDLL_CORE_LOCK);
     return H;
 fail:
     if(ppLcErrorInfo) {
@@ -646,8 +871,11 @@ fail:
     } else {
         LcMemFree(pLcErrorInfo);
     }
-    VmmDllCore_CloseHandle(H);
-    ReleaseSRWLockExclusive(&g_VMMDLL_CORE_LOCK_SRW);
+    LeaveCriticalSection(&g_VMMDLL_CORE_LOCK);
+    VmmDllCore_CloseHandle(H, FALSE);
+    return NULL;
+fail_prelock:
+    LocalFree(H);
     return NULL;
 }
 

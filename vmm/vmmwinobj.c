@@ -1042,6 +1042,13 @@ PVMMOB_MAP_OBJECT VmmWinObjMgr_Initialize_DoWork(_In_ VMM_HANDLE H)
     VMM_WINOBJ_SETUP_CONTEXT ctxInit = { 0 };
     BYTE pb[0x70];
     PVMMOB_MAP_OBJECT pObObjectMap = NULL;
+    QWORD qwScatterPre = 0, qwScatterPost = 0;
+    BOOL fLog = VmmLogIsActive(H, MID_OBJECT, LOGLEVEL_6_TRACE);
+    // statistics init
+    if(fLog) {
+        VmmLog(H, MID_OBJECT, LOGLEVEL_6_TRACE, "INIT OBJECTMAP START:");
+        LcGetOption(H->hLC, LC_OPT_CORE_STATISTICS_CALL_COUNT | LC_STATISTICS_ID_READSCATTER, &qwScatterPre);
+    }
     // 1: INIT
     if(!VmmWin_ObjectTypeGet(H, 3)) { goto fail; }     // ensure type table initialization
     if(!(ctxInit.pSystemProcess = VmmProcessGet(H, 4))) { goto fail; }
@@ -1114,6 +1121,10 @@ PVMMOB_MAP_OBJECT VmmWinObjMgr_Initialize_DoWork(_In_ VMM_HANDLE H)
     if(!VmmWinObjMgr_Initialize_ObMapLookupStr(H, pObObjectMap, &ctxInit)) { goto fail; }
     Ob_INCREF(pObObjectMap);
 fail:
+    if(fLog) {
+        LcGetOption(H->hLC, LC_OPT_CORE_STATISTICS_CALL_COUNT | LC_STATISTICS_ID_READSCATTER, &qwScatterPost);
+        VmmLog(H, MID_OBJECT, LOGLEVEL_6_TRACE, "INIT OBJECTMAP END:   count=%i scatter=%lli", (pObObjectMap ? pObObjectMap->cMap : 0), qwScatterPost - qwScatterPre);
+    }
     for(i = 0; i < 2; i++) {
         Ob_DECREF(ctxInit.psObj[i]);
         Ob_DECREF(ctxInit.psDirEntry[i]);
@@ -1195,9 +1206,9 @@ int VmmWinObjKDrv_Initialize_DoWork_CmpSort(_In_ PVMM_MAP_KDRIVERENTRY a, _In_ P
 PVMMOB_MAP_KDRIVER VmmWinObjKDrv_Initialize_DoWork(_In_ VMM_HANDLE H)
 {
     BOOL f32 = H->vmm.f32;
-    DWORD i, j, cDriver, iObMapDriverBase;
+    DWORD i, j, cDriver = 0, iObMapDriverBase;
     PVMM_PROCESS pObSystemProcess = NULL;
-    PVMMOB_MAP_KDRIVER pObMap = NULL;
+    PVMMOB_MAP_KDRIVER pObDriverMap = NULL;
     PVMMOB_MAP_OBJECT pObObjMap = NULL;
     PVMM_MAP_OBJECTENTRY peObj;
     PVMM_MAP_KDRIVERENTRY pe;
@@ -1206,6 +1217,13 @@ PVMMOB_MAP_KDRIVER VmmWinObjKDrv_Initialize_DoWork(_In_ VMM_HANDLE H)
     BYTE pbBuffer[sizeof(DRIVER_OBJECT64)];
     PDRIVER_OBJECT32 pD32 = (PDRIVER_OBJECT32)pbBuffer;
     PDRIVER_OBJECT64 pD64 = (PDRIVER_OBJECT64)pbBuffer;
+    QWORD qwScatterPre = 0, qwScatterPost = 0;
+    BOOL fLog = VmmLogIsActive(H, MID_OBJECT, LOGLEVEL_6_TRACE);
+    // statistics init
+    if(fLog) {
+        VmmLog(H, MID_OBJECT, LOGLEVEL_6_TRACE, "INIT KDRIVERMAP START:");
+        LcGetOption(H->hLC, LC_OPT_CORE_STATISTICS_CALL_COUNT | LC_STATISTICS_ID_READSCATTER, &qwScatterPre);
+    }
     // 1: pre-init
     if(!(pObSystemProcess = VmmProcessGet(H, 4))) { goto fail; }
     if(!(psObPrefetch = ObSet_New(H))) { goto fail; }
@@ -1213,13 +1231,13 @@ PVMMOB_MAP_KDRIVER VmmWinObjKDrv_Initialize_DoWork(_In_ VMM_HANDLE H)
     if(!VmmMap_GetObject(H, &pObObjMap)) { goto fail; }
     // 2: alloc object
     cDriver = pObObjMap->cType[H->vmm.ObjectTypeTable.tpDriver];
-    pObMap = Ob_AllocEx(H, OB_TAG_MAP_KDRIVER, LMEM_ZEROINIT, sizeof(VMMOB_MAP_KDRIVER) + cDriver * sizeof(VMM_MAP_KDRIVERENTRY), (OB_CLEANUP_CB)VmmWinObjKDrv_ObCloseCallback, NULL);
-    if(!pObMap) { goto fail; }
-    pObMap->cMap = cDriver;
+    pObDriverMap = Ob_AllocEx(H, OB_TAG_MAP_KDRIVER, LMEM_ZEROINIT, sizeof(VMMOB_MAP_KDRIVER) + cDriver * sizeof(VMM_MAP_KDRIVERENTRY), (OB_CLEANUP_CB)VmmWinObjKDrv_ObCloseCallback, NULL);
+    if(!pObDriverMap) { goto fail; }
+    pObDriverMap->cMap = cDriver;
     // 3: get initial data from object map and prefetch
     iObMapDriverBase = pObObjMap->iTypeSortBase[H->vmm.ObjectTypeTable.tpDriver];
     for(i = 0; i < cDriver; i++) {
-        pe = pObMap->pMap + i;
+        pe = pObDriverMap->pMap + i;
         peObj = pObObjMap->pMap + pObObjMap->piTypeSort[iObMapDriverBase + i];
         ObSet_Push_PageAlign(psObPrefetch, peObj->va, sizeof(DRIVER_OBJECT64));
         ObStrMap_PushPtrUU(psmObText, peObj->uszName, &pe->uszName, NULL);
@@ -1230,7 +1248,7 @@ PVMMOB_MAP_KDRIVER VmmWinObjKDrv_Initialize_DoWork(_In_ VMM_HANDLE H)
     ObSet_Clear(psObPrefetch);
     // 4: fetch driver objects and populate
     for(i = 0; i < cDriver; i++) {
-        pe = pObMap->pMap + i;
+        pe = pObDriverMap->pMap + i;
         if(!VmmRead2(H, pObSystemProcess, pe->va, pbBuffer, (f32 ? sizeof(DRIVER_OBJECT32) : sizeof(DRIVER_OBJECT64)), VMM_FLAG_FORCECACHE_READ)) { continue; }
         if(f32) {
             if(VMM_KADDR32(pD32->DriverStart) && (pD32->DriverSize < 0x10000000)) {
@@ -1248,7 +1266,7 @@ PVMMOB_MAP_KDRIVER VmmWinObjKDrv_Initialize_DoWork(_In_ VMM_HANDLE H)
                 pe->vaStart = pD64->DriverStart;
                 pe->cbDriverSize = pD64->DriverSize;
             }
-            pe->vaDeviceObject = VMM_KADDR32_8(pD64->DeviceObject) ? pD64->DeviceObject : 0;
+            pe->vaDeviceObject = VMM_KADDR64_16(pD64->DeviceObject) ? pD64->DeviceObject : 0;
             for(j = 0; j < 28; j++) {
                 pe->MajorFunction[j] = pD64->MajorFunction[j];
             }
@@ -1256,21 +1274,25 @@ PVMMOB_MAP_KDRIVER VmmWinObjKDrv_Initialize_DoWork(_In_ VMM_HANDLE H)
             ObStrMap_Push_UnicodeBuffer(psmObText, pD64->DriverName.Length, pD64->DriverName.Buffer, &pe->uszPath, NULL);
         }
     }
-    if(!ObStrMap_FinalizeAllocU_DECREF_NULL(&psmObText, &pObMap->pbMultiText, &pObMap->cbMultiText)) { goto fail; }
+    if(!ObStrMap_FinalizeAllocU_DECREF_NULL(&psmObText, &pObDriverMap->pbMultiText, &pObDriverMap->cbMultiText)) { goto fail; }
     for(i = 0; i < cDriver; i++) {
-        pe = pObMap->pMap + i;
-        if(!pe->uszName) { pe->uszName = (LPSTR)pObMap->pbMultiText; }
-        if(!pe->uszPath) { pe->uszPath = (LPSTR)pObMap->pbMultiText; }
-        if(!pe->uszServiceKeyName) { pe->uszServiceKeyName = (PBYTE)pObMap->pbMultiText; }
+        pe = pObDriverMap->pMap + i;
+        if(!pe->uszName) { pe->uszName = (LPSTR)pObDriverMap->pbMultiText; }
+        if(!pe->uszPath) { pe->uszPath = (LPSTR)pObDriverMap->pbMultiText; }
+        if(!pe->uszServiceKeyName) { pe->uszServiceKeyName = (PBYTE)pObDriverMap->pbMultiText; }
     }
-    qsort(pObMap->pMap, pObMap->cMap, sizeof(VMM_MAP_KDRIVERENTRY), (int(*)(void const *, void const *))VmmWinObjKDrv_Initialize_DoWork_CmpSort);
-    Ob_INCREF(pObMap);
+    qsort(pObDriverMap->pMap, pObDriverMap->cMap, sizeof(VMM_MAP_KDRIVERENTRY), (int(*)(void const *, void const *))VmmWinObjKDrv_Initialize_DoWork_CmpSort);
+    Ob_INCREF(pObDriverMap);
 fail:
+    if(fLog) {
+        LcGetOption(H->hLC, LC_OPT_CORE_STATISTICS_CALL_COUNT | LC_STATISTICS_ID_READSCATTER, &qwScatterPost);
+        VmmLog(H, MID_OBJECT, LOGLEVEL_6_TRACE, "INIT KDRIVERMAP END:   count=%i scatter=%lli", (pObDriverMap ? pObDriverMap->cMap : 0), qwScatterPost - qwScatterPre);
+    }
     Ob_DECREF(pObSystemProcess);
     Ob_DECREF(psObPrefetch);
     Ob_DECREF(psmObText);
     Ob_DECREF(pObObjMap);
-    return Ob_DECREF(pObMap);
+    return Ob_DECREF(pObDriverMap);
 }
 
 /*
@@ -1294,6 +1316,378 @@ PVMMOB_MAP_KDRIVER VmmWinObjKDrv_Initialize(_In_ VMM_HANDLE H)
     ObContainer_SetOb(H->vmm.pObCMapKDriver, pObKDriver);
     LeaveCriticalSection(&H->vmm.LockUpdateMap);
     return pObKDriver;
+}
+
+
+
+//-----------------------------------------------------------------------------
+// WINDOWS OBJECT MANAGER: KERNEL DEVICE FUNCTIONALITY BELOW:
+//-----------------------------------------------------------------------------
+
+typedef struct tdVMMWINDEV_INIT_CONTEXT {
+    PVMM_PROCESS pSystemProcess;
+    PVMMOB_MAP_OBJECT pObjectMap;
+    PVMMOB_MAP_KDRIVER pDriverMap;
+    POB_STRMAP psmDevice;
+    POB_MAP pmDevice;
+} VMMWINDEV_INIT_CONTEXT, *PVMMWINDEV_INIT_CONTEXT;
+
+/*
+* Add a new device to the device initialization context. If the device already
+* is added this function will fail.
+*/
+_Success_(return)
+BOOL VmmWinObjKDev_Initialize_X_AddDevice(
+    _In_ VMM_HANDLE H,
+    _In_ PVMMWINDEV_INIT_CONTEXT ctx,
+    _In_ QWORD va,
+    _In_opt_ PVMM_MAP_KDRIVERENTRY peDriver,
+    _In_opt_ PVMM_MAP_OBJECTENTRY peObject
+) {
+    PVMM_MAP_KDEVICEENTRY pe;
+    if(!ObMap_ExistsKey(ctx->pmDevice, va) && (pe = LocalAlloc(LMEM_ZEROINIT, sizeof(VMM_MAP_KDEVICEENTRY)))) {
+        pe->va = va;
+        pe->pDriver = peDriver;
+        pe->pObject = peObject;
+        if(ObMap_Push(ctx->pmDevice, pe->va, pe)) {
+            return TRUE;
+        }
+        LocalFree(pe);
+    }
+    return FALSE;
+}
+
+/*
+* Fetch and add initial device object data from driver and object maps.
+*/
+VOID VmmWinObjKDev_Initialize_1_CreateFromDriverAndObject(_In_ VMM_HANDLE H, _In_ PVMMWINDEV_INIT_CONTEXT ctx)
+{
+    DWORD i, cObjDev, iObjDevBase;
+    PVMM_MAP_KDEVICEENTRY pe;
+    PVMM_MAP_OBJECTENTRY peObject;
+    PVMM_MAP_KDRIVERENTRY peDriver;
+    // 1: add devices from driver map
+    for(i = 0; i < ctx->pDriverMap->cMap; i++) {
+        peDriver = ctx->pDriverMap->pMap + i;
+        if(peDriver->vaDeviceObject) {
+            VmmWinObjKDev_Initialize_X_AddDevice(H, ctx, peDriver->vaDeviceObject, peDriver, NULL);
+        }
+    }
+    // 2: add/update devices from object map
+    cObjDev = ctx->pObjectMap->cType[H->vmm.ObjectTypeTable.tpDevice];
+    iObjDevBase = ctx->pObjectMap->iTypeSortBase[H->vmm.ObjectTypeTable.tpDevice];
+    for(i = 0; i < cObjDev; i++) {
+        peObject = ctx->pObjectMap->pMap + ctx->pObjectMap->piTypeSort[iObjDevBase + i];
+        if((pe = ObMap_GetByKey(ctx->pmDevice, peObject->va))) {
+            pe->pObject = peObject;
+        } else {
+            VmmWinObjKDev_Initialize_X_AddDevice(H, ctx, peObject->va, NULL, peObject);
+        }
+    }
+}
+
+/*
+* Fetch device object data from memory (and also add new devices found).
+*/
+VOID VmmWinObjKDev_Initialize_2_FetchAndCreate(_In_ VMM_HANDLE H, _In_ PVMMWINDEV_INIT_CONTEXT ctx)
+{
+    QWORD va;
+    LPSTR szDeviceType;
+    BYTE pbDevice[sizeof(DEVICE_OBJECT64)];
+    PDEVICE_OBJECT32 po32 = (PDEVICE_OBJECT32)pbDevice;
+    PDEVICE_OBJECT64 po64 = (PDEVICE_OBJECT64)pbDevice;
+    PVMM_MAP_KDEVICEENTRY pe;
+    POB_SET psPrefetch1 = NULL, psPrefetch2 = NULL, psTMP;
+    DWORD cbDevice = H->vmm.f32 ? sizeof(DEVICE_OBJECT32) : sizeof(DEVICE_OBJECT64);
+    if(!(psPrefetch1 = ObSet_New(H))) { goto fail; }
+    if(!(psPrefetch2 = ObMap_FilterSet(ctx->pmDevice, ObMap_FilterSet_FilterAllKey))) { goto fail; }
+    while(ObSet_Size(psPrefetch2)) {
+        psTMP = psPrefetch2; psPrefetch2 = psPrefetch1; psPrefetch1 = psTMP;    // swap address/prefetch sets
+        VmmCachePrefetchPages3(H, ctx->pSystemProcess, psPrefetch1, cbDevice, 0);
+        while((va = ObSet_Pop(psPrefetch1))) {
+            if(!(pe = ObMap_GetByKey(ctx->pmDevice, va))) { goto fail_entry; }
+            if(!VmmRead2(H, ctx->pSystemProcess, va, pbDevice, cbDevice, VMM_FLAG_FORCECACHE_READ)) { goto fail_entry; }
+            if(H->vmm.f32) {
+                if(po32->Type != 3) { continue; }
+                if(po32->Size < sizeof(DEVICE_OBJECT32)) { goto fail_entry; }
+                if(!pe->pDriver) {
+                    pe->pDriver = VmmMap_GetKDriverEntry(H, ctx->pDriverMap, po32->DriverObject);
+                }
+                if(!pe->pDriver) { continue; }
+                if(po32->DriverObject != pe->pDriver->va) { goto fail_entry; }
+                pe->dwDeviceType = po32->DeviceType;
+                if(VMM_KADDR32_8(po32->NextDevice)) {
+                    if(VmmWinObjKDev_Initialize_X_AddDevice(H, ctx, po32->NextDevice, pe->pDriver, NULL)) {
+                        ObSet_Push(psPrefetch2, po32->NextDevice);
+                    }
+                }
+                if(VMM_KADDR32_8(po32->AttachedDevice)) {
+                    pe->vaAttachedDevice = po32->AttachedDevice;
+                    if(VmmWinObjKDev_Initialize_X_AddDevice(H, ctx, po32->AttachedDevice, NULL, NULL)) {
+                        ObSet_Push(psPrefetch2, po32->AttachedDevice);
+                    }
+                }
+                if(VMM_KADDR32_8(po32->Vpb)) {
+                    pe->_Reserved_vaVpb = po32->Vpb;
+                }
+            } else {
+                if(po64->Type != 3) { continue; }
+                if(po64->Size < sizeof(DEVICE_OBJECT64)) { goto fail_entry; }
+                if(!pe->pDriver) {
+                    pe->pDriver = VmmMap_GetKDriverEntry(H, ctx->pDriverMap, po64->DriverObject);
+                }
+                if(!pe->pDriver) { continue; }
+                if(po64->DriverObject != pe->pDriver->va) { goto fail_entry; }
+                pe->dwDeviceType = po64->DeviceType;
+                if(VMM_KADDR64_16(po64->NextDevice)) {
+                    if(VmmWinObjKDev_Initialize_X_AddDevice(H, ctx, po64->NextDevice, pe->pDriver, NULL)) {
+                        ObSet_Push(psPrefetch2, po64->NextDevice);
+                    }
+                }
+                if(VMM_KADDR64_16(po64->AttachedDevice)) {
+                    pe->vaAttachedDevice = po64->AttachedDevice;
+                    if(VmmWinObjKDev_Initialize_X_AddDevice(H, ctx, po64->AttachedDevice, NULL, NULL)) {
+                        ObSet_Push(psPrefetch2, po64->AttachedDevice);
+                    }
+                }
+                if(VMM_KADDR64_16(po64->Vpb)) {
+                    pe->_Reserved_vaVpb = po64->Vpb;
+                }
+            }
+            // add device type string:
+            szDeviceType = (pe->dwDeviceType < sizeof(FILE_DEVICE_STR) / sizeof(LPSTR)) ? (LPSTR)FILE_DEVICE_STR[pe->dwDeviceType] : "---";
+            ObStrMap_PushPtrAU(ctx->psmDevice, szDeviceType, &pe->szDeviceType, NULL);
+            continue;
+fail_entry:
+            ObMap_RemoveByKey(ctx->pmDevice, va);
+        }
+    }
+fail:
+    Ob_DECREF(psPrefetch1);
+    Ob_DECREF(psPrefetch2);
+}
+
+VOID VmmWinObjKDev_Initialize_3_AttachAndSort_FilterSet(_In_ QWORD k, _In_ PVOID v, _Inout_ POB_SET ps)
+{
+    if(!((PVMM_MAP_KDEVICEENTRY)v)->_Reserved_vaTopDevice) {
+        ObSet_Push(ps, k);
+    }
+}
+
+int VmmWinObjKDev_Initialize_3_AttachAndSort_CmpSort(_In_ POB_MAP_ENTRY p1, _In_ POB_MAP_ENTRY p2)
+{
+    PVMM_MAP_KDEVICEENTRY pe1 = (PVMM_MAP_KDEVICEENTRY)p1->v;
+    PVMM_MAP_KDEVICEENTRY pe2 = (PVMM_MAP_KDEVICEENTRY)p2->v;
+    QWORD v1 = pe1->_Reserved_vaTopDevice + pe1->iDepth;
+    QWORD v2 = pe2->_Reserved_vaTopDevice + pe2->iDepth;
+    if(v1 < v2) { return -1; }
+    if(v1 > v2) { return 1; }
+    return 0;
+}
+
+/*
+* Attach device objects to eachother (if possible) and sort the resulting map.
+*/
+VOID VmmWinObjKDev_Initialize_3_AttachAndSort(_In_ VMM_HANDLE H, _In_ PVMMWINDEV_INIT_CONTEXT ctx)
+{
+    QWORD va;
+    POB_SET ps1 = NULL, ps2 = NULL, psTMP;
+    PVMM_MAP_KDEVICEENTRY pe = NULL, peAttach;
+    // 1: init:
+    if(!(ps1 = ObSet_New(H))) { goto fail; }
+    if(!(ps2 = ObSet_New(H))) { goto fail; }
+    // 2: mark top devices & get remaining (non-top) devices:
+    while((pe = ObMap_GetNext(ctx->pmDevice, pe))) {
+        if(pe->vaAttachedDevice) {
+            ObSet_Push(ps1, pe->va);
+        } else {
+            pe->_Reserved_vaTopDevice = pe->va;
+        }
+    }
+    // 3: drain remaining devices iteratively:
+    while(ObSet_Size(ps1)) {
+        while((va = ObSet_Pop(ps1))) {
+            if(!(pe = ObMap_GetByKey(ctx->pmDevice, va))) {
+                continue;
+            }
+            if(!(peAttach = ObMap_GetByKey(ctx->pmDevice, pe->vaAttachedDevice))) {
+                continue;
+            }
+            if(peAttach->_Reserved_vaTopDevice) {
+                pe->_Reserved_vaTopDevice = peAttach->_Reserved_vaTopDevice;
+                pe->iDepth = peAttach->iDepth + 1;
+            } else {
+                ObSet_Push(ps2, va);
+            }
+        }
+        psTMP = ps1; ps1 = ps2; ps2 = psTMP;
+    }
+    // 4: sort
+    ObMap_SortEntryIndex(ctx->pmDevice, (_CoreCrtNonSecureSearchSortCompareFunction)VmmWinObjKDev_Initialize_3_AttachAndSort_CmpSort);
+fail:
+    Ob_DECREF(ps1);
+    Ob_DECREF(ps2);
+}
+
+VOID VmmWinObjKDev_Initialize_4_FetchVpb_FilterSet(_In_ QWORD k, _In_ PVMM_MAP_KDEVICEENTRY v, _Inout_ POB_SET ps)
+{
+    if(v->_Reserved_vaVpb) {
+        ObSet_Push(ps, v->_Reserved_vaVpb);
+    }
+}
+
+/*
+* Fetch and process any volume parameter blocks (VPBs) for additional info.
+*/
+VOID VmmWinObjKDev_Initialize_4_FetchVpb(_In_ VMM_HANDLE H, _In_ PVMMWINDEV_INIT_CONTEXT ctx)
+{
+    POB_SET psPrefetch = NULL;
+    BYTE pbVpb[sizeof(VPB64)];
+    PVPB32 po32 = (PVPB32)pbVpb;
+    PVPB64 po64 = (PVPB64)pbVpb;
+    DWORD cbVpb = H->vmm.f32 ? sizeof(VPB32) : sizeof(VPB64);
+    PVMM_MAP_KDEVICEENTRY pe = NULL;
+    LPWSTR wszVolumeInfo;
+    QWORD vaVpb;
+    WORD wZERO = 0;
+    // 1: prefetch vpb
+    if((psPrefetch = ObMap_FilterSet(ctx->pmDevice, (OB_MAP_FILTERSET_PFN)VmmWinObjKDev_Initialize_4_FetchVpb_FilterSet))) {
+        VmmCachePrefetchPages3(H, ctx->pSystemProcess, psPrefetch, cbVpb, 0);
+        Ob_DECREF_NULL(&psPrefetch);
+    }
+    // 2: iterate all object and fetch vpb if required.
+    while((pe = ObMap_GetNext(ctx->pmDevice, pe))) {
+        vaVpb = pe->_Reserved_vaVpb;
+        pe->vaFileSystemDevice = 0;
+        pe->uszVolumeInfo = NULL;
+        wszVolumeInfo = (LPWSTR)&wZERO;
+        if(VmmRead2(H, ctx->pSystemProcess, vaVpb, pbVpb, cbVpb, VMM_FLAG_FORCECACHE_READ)) {
+            if(H->vmm.f32) {
+                if((po32->RealDevice == pe->va) && VMM_KADDR32_8(po32->DeviceObject)) {
+                    pe->vaFileSystemDevice = po32->DeviceObject;
+                    po32->VolumeLabel[31] = 0;
+                    wszVolumeInfo = po32->VolumeLabel;
+                }
+            } else {
+                if((po64->RealDevice == pe->va) && VMM_KADDR64_16(po64->DeviceObject)) {
+                    pe->vaFileSystemDevice = po64->DeviceObject;
+                    po64->VolumeLabel[31] = 0;
+                    wszVolumeInfo = po64->VolumeLabel;
+                }
+            }
+        }
+        ObStrMap_PushPtrWU(ctx->psmDevice, wszVolumeInfo, &pe->uszVolumeInfo, NULL);
+    }
+}
+
+VOID VmmWinObjKDev_CallbackCleanup_ObMapKDevice(PVMMOB_MAP_KDEVICE pOb)
+{
+    Ob_DECREF(pOb->pMapDriver);
+    Ob_DECREF(pOb->pMapObject);
+    LocalFree(pOb->pbMultiText);
+}
+
+/*
+* Create the PVMMOB_MAP_KDEVICE map from device initialization data.
+* CALLER DECREF: return
+* -- H
+* -- ctx
+* -- return
+*/
+_Success_(return != NULL)
+PVMMOB_MAP_KDEVICE VmmWinObjKDev_Initialize_5_CreateMap(_In_ VMM_HANDLE H, _In_ PVMMWINDEV_INIT_CONTEXT ctx)
+{
+    DWORD i, cDevice;
+    PVMMOB_MAP_KDEVICE pObMap = NULL;
+    PVMM_MAP_KDEVICEENTRY peSrc, peDst;
+    cDevice = ObMap_Size(ctx->pmDevice);
+    pObMap = Ob_AllocEx(
+        H,
+        OB_TAG_MAP_KDEVICE,
+        LMEM_ZEROINIT,
+        sizeof(VMMOB_MAP_KDEVICE) + cDevice * sizeof(VMM_MAP_KDEVICEENTRY),
+        (OB_CLEANUP_CB)VmmWinObjKDev_CallbackCleanup_ObMapKDevice,
+        NULL);
+    if(!pObMap) { return NULL; }
+    if(!ObStrMap_FinalizeAllocU_DECREF_NULL(&ctx->psmDevice, &pObMap->pbMultiText, &pObMap->cbMultiText)) {
+        Ob_DECREF(pObMap);
+        return NULL;
+    }
+    pObMap->pMapDriver = Ob_INCREF(ctx->pDriverMap);
+    pObMap->pMapObject = Ob_INCREF(ctx->pObjectMap);
+    pObMap->cMap = cDevice;
+    for(i = 0; i < cDevice; i++) {
+        peDst = pObMap->pMap + i;
+        peSrc = ObMap_GetByIndex(ctx->pmDevice, i);
+        memcpy(peDst, peSrc, sizeof(VMM_MAP_KDEVICEENTRY));
+    }
+    return pObMap;
+}
+
+/*
+* Worker function to initialize a new kernel device map.
+* CALLER DECREF: return
+* -- H
+* -- return
+*/
+PVMMOB_MAP_KDEVICE VmmWinObjKDev_Initialize_DoWork(_In_ VMM_HANDLE H)
+{
+    BOOL f32 = H->vmm.f32;
+    VMMWINDEV_INIT_CONTEXT ctx = { 0 };
+    PVMMOB_MAP_KDEVICE pObDeviceMap = NULL;
+    QWORD qwScatterPre = 0, qwScatterPost = 0;
+    BOOL fLog = VmmLogIsActive(H, MID_OBJECT, LOGLEVEL_6_TRACE);
+    // statistics init
+    if(fLog) {
+        VmmLog(H, MID_OBJECT, LOGLEVEL_6_TRACE, "INIT KDEVICEMAP START:");
+        LcGetOption(H->hLC, LC_OPT_CORE_STATISTICS_CALL_COUNT | LC_STATISTICS_ID_READSCATTER, &qwScatterPre);
+    }
+    // init context
+    if(!(ctx.pSystemProcess = VmmProcessGet(H, 4))) { goto fail; }
+    if(!VmmMap_GetObject(H, &ctx.pObjectMap)) { goto fail; }
+    if(!VmmMap_GetKDriver(H, &ctx.pDriverMap)) { goto fail; }
+    if(!(ctx.pmDevice = ObMap_New(H, OB_MAP_FLAGS_OBJECT_LOCALFREE))) { goto fail; }
+    if(!(ctx.psmDevice = ObStrMap_New(H, OB_STRMAP_FLAGS_CASE_SENSITIVE))) { goto fail; }
+    // create, fetch, attach, sort and create map
+    VmmWinObjKDev_Initialize_1_CreateFromDriverAndObject(H, &ctx);
+    VmmWinObjKDev_Initialize_2_FetchAndCreate(H, &ctx);
+    VmmWinObjKDev_Initialize_3_AttachAndSort(H, &ctx);
+    VmmWinObjKDev_Initialize_4_FetchVpb(H, &ctx);
+    pObDeviceMap = VmmWinObjKDev_Initialize_5_CreateMap(H, &ctx);
+fail:
+    if(fLog) {
+        LcGetOption(H->hLC, LC_OPT_CORE_STATISTICS_CALL_COUNT | LC_STATISTICS_ID_READSCATTER, &qwScatterPost);
+        VmmLog(H, MID_OBJECT, LOGLEVEL_6_TRACE, "INIT KDEVICEMAP END:   count=%i scatter=%lli", (pObDeviceMap ? pObDeviceMap->cMap : 0), qwScatterPost - qwScatterPre);
+    }
+    Ob_DECREF(ctx.pmDevice);
+    Ob_DECREF(ctx.psmDevice);
+    Ob_DECREF(ctx.pObjectMap);
+    Ob_DECREF(ctx.pDriverMap);
+    Ob_DECREF(ctx.pSystemProcess);
+    return pObDeviceMap;
+}
+
+/*
+* Create an kernel device map and assign to the global vmm context upon success.
+* CALLER DECREF: return
+* -- H
+* -- return
+*/
+PVMMOB_MAP_KDEVICE VmmWinObjKDev_Initialize(_In_ VMM_HANDLE H)
+{
+    PVMMOB_MAP_KDEVICE pObKDevice = NULL;
+    if((pObKDevice = ObContainer_GetOb(H->vmm.pObCMapKDevice))) { return pObKDevice; }
+    EnterCriticalSection(&H->vmm.LockUpdateMap);
+    if((pObKDevice = ObContainer_GetOb(H->vmm.pObCMapKDevice))) {
+        LeaveCriticalSection(&H->vmm.LockUpdateMap);
+        return pObKDevice;
+    }
+    if(!(pObKDevice = VmmWinObjKDev_Initialize_DoWork(H))) {
+        pObKDevice = Ob_AllocEx(H, OB_TAG_MAP_KDEVICE, LMEM_ZEROINIT, sizeof(VMMOB_MAP_KDEVICE), NULL, NULL);
+    }
+    ObContainer_SetOb(H->vmm.pObCMapKDevice, pObKDevice);
+    LeaveCriticalSection(&H->vmm.LockUpdateMap);
+    return pObKDevice;
 }
 
 

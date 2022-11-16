@@ -13,6 +13,7 @@
 #include "pdb.h"
 #include "util.h"
 #include "vmmlog.h"
+#include "vmmvm.h"
 #include "vmmwin.h"
 #include "vmmwinobj.h"
 #include "vmmwinreg.h"
@@ -991,6 +992,7 @@ VOID VmmWinInit_TryInitialize_Async(_In_ VMM_HANDLE H, _In_ QWORD qwNotUsed)
         Ob_DECREF(psObNoLinkEPROCESS);
         Ob_DECREF(pObSystemProcess);
     }
+    Ob_DECREF(VmmVm_Initialize(H));
 }
 
 /*
@@ -1072,7 +1074,7 @@ BOOL VmmWinInit_TryInitialize(_In_ VMM_HANDLE H, _In_opt_ QWORD paDTBOpt)
     }
     // Initialization functionality:
     InfoDB_Initialize(H);
-    PDB_Initialize(H, NULL, TRUE);                              // Async init of PDB subsystem.
+    PDB_Initialize(H, NULL, !H->cfg.fWaitInitialize);           // Init of PDB subsystem (async/sync).
     VmmWinInit_FindPsLoadedModuleListKDBG(H, pObSystemProcess); // Find PsLoadedModuleList and possibly KDBG.
     VmmWinObj_Initialize(H);                                    // Windows Objects Manager.
     VmmWinReg_Initialize(H);                                    // Registry.

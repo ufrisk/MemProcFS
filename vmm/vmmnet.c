@@ -124,7 +124,7 @@ int VmmNet_TcpE_CmpSort(PVMM_MAP_NETENTRY a, PVMM_MAP_NETENTRY b)
 * -- vaTcpE - virtual address of a TCP ENDPOINT entry (TcpE).
 * -- return
 */
-_Success_(return);
+_Success_(return)
 BOOL VmmNet_TcpE_Fuzz(_In_ VMM_HANDLE H, _In_ PVMMNET_CONTEXT ctx, _In_ PVMM_PROCESS pSystemProcess, _In_ QWORD vaTcpE)
 {
     BOOL f;
@@ -204,7 +204,7 @@ BOOL VmmNet_TcpE_GetAddressEPs(_In_ VMM_HANDLE H, _In_ PVMMNET_CONTEXT ctx, _In_
     PBYTE pbPartitionTable = NULL, pbTcHT = NULL;
     POB_SET pObTcHT = NULL, pObHTab_TcpE = NULL, pObTcpE = NULL;
     PRTL_DYNAMIC_HASH_TABLE pTcpHT;
-    DWORD iPoolTag, dwPoolTag;
+    DWORD dwPoolTag;
     PVMM_MAP_POOLENTRYTAG pePoolTag;
     if(!(pObTcHT = ObSet_New(H))) { goto fail; }
     if(!(pObHTab_TcpE = ObSet_New(H))) { goto fail; }
@@ -304,8 +304,7 @@ BOOL VmmNet_TcpE_GetAddressEPs(_In_ VMM_HANDLE H, _In_ PVMMNET_CONTEXT ctx, _In_
                 case 1:  o = 0x00; dwPoolTag = 'TcpE'; break;
                 default: o = 0x40; dwPoolTag = 'TcTW'; break;
             }
-            if(VmmMap_GetPoolTag(H, pPoolMap, dwPoolTag, &iPoolTag)) {
-                pePoolTag = pPoolMap->pTag + iPoolTag;
+            if(VmmMap_GetPoolTag(H, pPoolMap, dwPoolTag, &pePoolTag)) {
                 for(j = 0; j < pePoolTag->cEntry; j++) {
                     iEntry = pPoolMap->piTag2Map[pePoolTag->iTag2Map + j];
                     ObSet_Push(psvaOb_TcpE, pPoolMap->pMap[iEntry].va + o);
@@ -753,7 +752,7 @@ DWORD VmmNet_InPP_DoWork(_In_ VMM_HANDLE H, PVOID lpThreadParameter)
     PVMMNET_CONTEXT ctx = actx->ctx;
     PVMM_PROCESS pSystemProcess = actx->pSystemProcess;
     POB_MAP pmNetEntries = actx->pmNetEntries;
-    DWORD cbInPPe, oInPPe, oInPA = 0, o, oFLink, tag, iPoolTag, iEntry;
+    DWORD cbInPPe, oInPPe, oInPA = 0, o, oFLink, tag, iEntry;
     QWORD i, j, va;
     BYTE pb[0x2000], pb2[0x20];
     POB_SET psObPA = NULL, psObPreEP = NULL, psObEP = NULL, psObEP_Next = NULL, psObEP_SWAP;
@@ -826,8 +825,7 @@ DWORD VmmNet_InPP_DoWork(_In_ VMM_HANDLE H, PVOID lpThreadParameter)
     // fetch candidate addresses for endpoints / listeners from pool tagging
     if(actx->pPoolMap) {
         for(i = 0; i < 2; i++) {
-            if(VmmMap_GetPoolTag(H, actx->pPoolMap, (i ? 'TcpL' : 'UdpA'), &iPoolTag)) {
-                pePoolTag = actx->pPoolMap->pTag + iPoolTag;
+            if(VmmMap_GetPoolTag(H, actx->pPoolMap, (i ? 'TcpL' : 'UdpA'), &pePoolTag)) {
                 for(j = 0; j < pePoolTag->cEntry; j++) {
                     iEntry = actx->pPoolMap->piTag2Map[pePoolTag->iTag2Map + j];
                     ObSet_Push(psObEP, actx->pPoolMap->pMap[iEntry].va);

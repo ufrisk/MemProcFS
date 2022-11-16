@@ -318,6 +318,37 @@ LPSTR CharUtil_PathSplitLast(_In_ LPSTR usz);
 LPSTR CharUtil_PathSplitLastEx(_In_ LPSTR usz, _Out_writes_(cbuPath) LPSTR uszPath, _In_ DWORD cbuPath);
 
 /*
+* Common typedef for a CharUtil_Str* comparison function.
+*/
+typedef BOOL(*CHARUTIL_STRCMP_PFN)(_In_opt_ LPSTR usz1, _In_opt_ LPSTR usz2, _In_ BOOL fCaseInsensitive);
+
+/*
+* Compare multiple strings with a CharUtil_Str* compare function.
+* If at least one comparison is TRUE return TRUE - otherwise FALSE.
+* -- pfnStrCmp
+* -- usz1
+* -- fCaseInsensitive
+* -- cStr
+* --
+* ...
+* -- return
+*/
+BOOL CharUtil_StrCmpAny(_In_opt_ CHARUTIL_STRCMP_PFN pfnStrCmp, _In_opt_ LPSTR usz1, _In_ BOOL fCaseInsensitive, _In_ DWORD cStr, ...);
+
+/*
+* Compare multiple strings with a CharUtil_Str* compare function.
+* If all comparisons are TRUE return TRUE - otherwise FALSE.
+* -- pfnStrCmp
+* -- usz1
+* -- fCaseInsensitive
+* -- cStr
+* --
+* ...
+* -- return
+*/
+BOOL CharUtil_StrCmpAll(_In_opt_ CHARUTIL_STRCMP_PFN pfnStrCmp, _In_opt_ LPSTR usz1, _In_ BOOL fCaseInsensitive, _In_ DWORD cStr, ...);
+
+/*
 * Checks if a string ends with a certain substring.
 * -- usz
 * -- uszEndsWith
@@ -334,6 +365,15 @@ BOOL CharUtil_StrEndsWith(_In_opt_ LPSTR usz, _In_opt_ LPSTR uszEndsWith, _In_ B
 * -- return
 */
 BOOL CharUtil_StrStartsWith(_In_opt_ LPSTR usz, _In_opt_ LPSTR uszStartsWith, _In_ BOOL fCaseInsensitive);
+
+/*
+* Checks if a string equals another string.
+* -- usz1
+* -- usz2
+* -- fCaseInsensitive
+* -- return
+*/
+BOOL CharUtil_StrEquals(_In_opt_ LPSTR usz, _In_opt_ LPSTR usz2, _In_ BOOL fCaseInsensitive);
 
 /*
 * Compare a wide-char string to a utf-8 string.

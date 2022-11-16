@@ -122,11 +122,20 @@ typedef enum tdVMM_MEMORYMODEL_TP {
 } VMM_MEMORYMODEL_TP;
 
 typedef enum tdVMM_SYSTEM_TP {
-    VMM_SYSTEM_UNKNOWN_X64  = 1,
-    VMM_SYSTEM_WINDOWS_X64  = 2,
-    VMM_SYSTEM_UNKNOWN_X86  = 3,
-    VMM_SYSTEM_WINDOWS_X86  = 4
+    VMM_SYSTEM_UNKNOWN_PHYSICAL = 0,
+    VMM_SYSTEM_UNKNOWN_X64      = 1,
+    VMM_SYSTEM_WINDOWS_X64      = 2,
+    VMM_SYSTEM_UNKNOWN_X86      = 3,
+    VMM_SYSTEM_WINDOWS_X86      = 4
 } VMM_SYSTEM_TP;
+
+static LPCSTR VMM_SYSTEM_TP_STRING[] = {
+    [VMM_SYSTEM_UNKNOWN_PHYSICAL] = "Physical",
+    [VMM_SYSTEM_UNKNOWN_X64] = "UnknownX64",
+    [VMM_SYSTEM_WINDOWS_X64] = "WindowsX64",
+    [VMM_SYSTEM_UNKNOWN_X86] = "UnknownX86",
+    [VMM_SYSTEM_WINDOWS_X86] = "WindowsX86",
+};
 
 typedef enum tdVMM_PTE_TP {
     VMM_PTE_TP_NA = 0,
@@ -528,6 +537,24 @@ typedef struct tdVMM_MAP_KDRIVERENTRY {
     QWORD MajorFunction[28];
 } VMM_MAP_KDRIVERENTRY, *PVMM_MAP_KDRIVERENTRY;
 
+typedef struct tdVMM_MAP_KDEVICEENTRY {
+    QWORD va;
+    DWORD iDepth;
+    DWORD dwDeviceType;             // FILE_DEVICE_*
+    LPSTR szDeviceType;
+    PVMM_MAP_OBJECTENTRY pObject;
+    PVMM_MAP_KDRIVERENTRY pDriver;
+    QWORD vaAttachedDevice;
+    union {
+        QWORD _Reserved_vaTopDevice;
+        QWORD vaFileSystemDevice;
+    };
+    union {
+        QWORD _Reserved_vaVpb;
+        LPSTR uszVolumeInfo;        // volume information (if any)
+    };
+} VMM_MAP_KDEVICEENTRY, *PVMM_MAP_KDEVICEENTRY;
+
 typedef enum tdVMM_MAP_POOL_TP {
     VMM_MAP_POOL_TP_Unknown        = 0,
     VMM_MAP_POOL_TP_NonPagedPool   = 1,
@@ -624,13 +651,37 @@ typedef struct tdVMM_MAP_PHYSMEMENTRY {
 
 typedef struct tdVMM_MAP_USERENTRY {
     PSID pSID;
-    DWORD cbSID;
+    DWORD _Filler;
     LPSTR szSID;
     DWORD dwHashSID;
     DWORD cbuText;                  // byte count of uszText including terminating null
     LPSTR uszText;                  // UTF-8 STR pointed into VMMOB_MAP_USER.pbMultiText
     QWORD vaRegHive;
 } VMM_MAP_USERENTRY, *PVMM_MAP_USERENTRY;
+
+typedef enum tdVMM_VM_TP {
+    VMM_VM_TP_UNKNOWN       = 0,
+    VMM_VM_TP_HV            = 1
+} VMM_VM_TP;
+
+static LPCSTR VMM_VM_TP_STRING[] = {
+    [VMM_VM_TP_UNKNOWN] = "VM Unknown",
+    [VMM_VM_TP_HV]      = "Hyper-V"
+};
+
+typedef struct tdVMM_MAP_VMENTRY {
+    VMMVM_HANDLE hVM;
+    LPSTR uszName;
+    QWORD gpaMax;
+    VMM_VM_TP tp;
+    BOOL fActive;
+    BOOL fReadOnly;
+    BOOL fPhysicalOnly;
+    DWORD dwPartitionID;
+    DWORD dwVersionBuild;
+    VMM_SYSTEM_TP tpSystem;
+    DWORD dwParentVmmMountID;
+} VMM_MAP_VMENTRY, *PVMM_MAP_VMENTRY;
 
 typedef struct tdVMM_MAP_SERVICEENTRY {
     QWORD vaObj;
@@ -819,6 +870,16 @@ typedef struct tdVMMOB_MAP_KDRIVER {
     VMM_MAP_KDRIVERENTRY pMap[];    // map entries.
 } VMMOB_MAP_KDRIVER, *PVMMOB_MAP_KDRIVER;
 
+typedef struct tdVMMOB_MAP_KDEVICE {
+    OB ObHdr;
+    PVMMOB_MAP_KDRIVER pMapDriver;
+    PVMMOB_MAP_OBJECT pMapObject;
+    PBYTE pbMultiText;              // UTF-8 multi-string pointed into by VMM_MAP_KDRIVERENTRY.usz*
+    DWORD cbMultiText;
+    DWORD cMap;                     // # map entries.
+    VMM_MAP_KDEVICEENTRY pMap[];    // map entries.
+} VMMOB_MAP_KDEVICE, *PVMMOB_MAP_KDEVICE;
+
 typedef struct tdVMMOB_MAP_POOL {
     OB ObHdr;
     PDWORD piTag2Map;               // dword map array (size: cMap): tag index to map index.
@@ -849,6 +910,14 @@ typedef struct tdVMMOB_MAP_USER {
     DWORD cMap;                     // # map entries.
     VMM_MAP_USERENTRY pMap[];       // map entries.
 } VMMOB_MAP_USER, *PVMMOB_MAP_USER;
+
+typedef struct tdVMMOB_MAP_VM {
+    OB ObHdr;
+    PBYTE pbMultiText;              // multi-str pointed into by VMM_MAP_USERENTRY.uszText
+    DWORD cbMultiText;
+    DWORD cMap;                     // # map entries.
+    VMM_MAP_VMENTRY pMap[];         // map entries.
+} VMMOB_MAP_VM, *PVMMOB_MAP_VM;
 
 typedef struct tdVMMOB_MAP_SERVICE {
     OB ObHdr;
@@ -1102,7 +1171,8 @@ typedef struct tdVMM_MEMORYMODEL_FUNCTIONS {
 
 typedef struct tdVMMCONFIG {
     QWORD paCR3;
-    DWORD tpForensicMode;                 // command line forensic mode
+    DWORD tpForensicMode;               // command line forensic mode
+    QWORD qwParentVmmHandle;            // internal use only (option: _vmm_parent)
     // flags below
     BOOL fVerboseDll;
     BOOL fVerbose;
@@ -1116,6 +1186,10 @@ typedef struct tdVMMCONFIG {
     BOOL fWaitInitialize;
     BOOL fUserInteract;
     BOOL fFileInfoHeader;
+    BOOL fPhysicalOnlyMemory;           // physical memory only - no windows analysis!
+    BOOL fVM;                           // parse virtual machines (resource intensive)
+    BOOL fVMNested;                     // parse virtual machines (very resource intensive)
+    BOOL fVMPhysicalOnly;               // parse virtual machines as physical memory only (less resource intense).
     // strings below
     CHAR szPythonPath[MAX_PATH];
     CHAR szPageFile[10][MAX_PATH];
@@ -1140,6 +1214,9 @@ typedef struct tdVMM_STATISTICS {
     QWORD cPhysReadFail;
     QWORD cPhysWrite;
     QWORD cPhysRefreshCache;
+    QWORD cGpaReadSuccess;
+    QWORD cGpaReadFail;
+    QWORD cGpaWrite;
     struct {
         QWORD cPrototype;
         QWORD cTransition;
@@ -1349,6 +1426,7 @@ typedef struct tdVMM_OFFSET {
 
 typedef struct tdVMMWINOBJ_CONTEXT          *PVMMWINOBJ_CONTEXT;
 typedef struct tdVMMWIN_REGISTRY_CONTEXT    *PVMMWIN_REGISTRY_CONTEXT;
+typedef struct tdVMMOB_VMGLOBAL_CONTEXT     *PVMMOB_VMGLOBAL_CONTEXT;
 
 typedef struct tdVMMWIN_OPTIONAL_KERNEL_CONTEXT {
     BOOL fInitialized;
@@ -1441,6 +1519,7 @@ typedef struct tdVMM_CONTEXT {
     POB pObPdbContext;
     PMMWIN_CONTEXT pMmContext;
     PVOID pNetContext;
+    PVMMOB_VMGLOBAL_CONTEXT pObVmGlobalContext;
     struct {
         BYTE cProgressPercent;
     } EvilContext;
@@ -1471,8 +1550,10 @@ typedef struct tdVMM_CONTEXT {
     POB_CONTAINER pObCMapPhysMem;
     POB_CONTAINER pObCMapEvil;
     POB_CONTAINER pObCMapUser;
+    POB_CONTAINER pObCMapVM;
     POB_CONTAINER pObCMapNet;
     POB_CONTAINER pObCMapObject;
+    POB_CONTAINER pObCMapKDevice;
     POB_CONTAINER pObCMapKDriver;
     POB_CONTAINER pObCMapPoolAll;
     POB_CONTAINER pObCMapPoolBig;
@@ -1497,12 +1578,31 @@ typedef struct tdVMM_CONTEXT {
     VMMWIN_OBJECT_TYPE_TABLE ObjectTypeTable;
 } VMM_CONTEXT, *PVMM_CONTEXT;
 
+#define VMM_HANDLE_VM_CHILD_MAX_COUNT           32
+
+typedef struct tdVMM_HANDLE_VM_CHILD {
+    BOOL fAbort;
+    SRWLOCK LockSRW;
+    // hParent does not carry "refcount" but should be safe to use since parent
+    // won't be deallocated when there are active childs (hParent->childvmm.c)
+    VMM_HANDLE hParent;
+    DWORD dwParentIndex;    // child index of hParent
+    DWORD dwCreateCount;    // create count (how many childs were ever created)
+    DWORD iMax;             // max index used in h[] array
+    DWORD c;                // count of valid VMM_HANDLE entries in h[] array
+    // h[] VMM_HANDLE array does not carry "refcount". Entries may be invalid
+    // and should only be used with VMMDLL_* functions which will do checks.
+    VMM_HANDLE h[VMM_HANDLE_VM_CHILD_MAX_COUNT];
+} VMM_HANDLE_VM_CHILD;
+
 typedef struct tdVMM_HANDLE {
     // core:
     QWORD magic;
     BOOL fAbort;
+    DWORD dwHandleCount;
     DWORD cThreadExternal;
     DWORD cThreadInternal;
+    VMM_HANDLE_VM_CHILD childvmm;
     PVMMWORK_CONTEXT work;
     // leechcore & config
     HANDLE hLC;
@@ -2080,17 +2180,6 @@ PVMM_PROCESS VmmProcessGetEx(_In_ VMM_HANDLE H, _In_opt_ PVMMOB_PROCESS_TABLE pt
 PVMM_PROCESS VmmProcessGet(_In_ VMM_HANDLE H, _In_ DWORD dwPID);
 
 /*
-* Retrieve processes sorted in a map keyed by either EPROCESS or PID.
-* CALLER DECREF: return
-* -- H
-* -- fByEPROCESS = TRUE: keyed by vaEPROCESS, FALSE: keyed by PID.
-* -- flags = 0 (recommended) or VMM_FLAG_PROCESS_[TOKEN|SHOW_TERMINATED].
-* -- return
-*/
-_Success_(return != NULL)
-POB_MAP VmmProcessGetAll(_In_ VMM_HANDLE H, _In_ BOOL fByEPROCESS, _In_ QWORD flags);
-
-/*
 * Retrieve the next process given a process and a process table. This may be
 * useful when iterating over a process list. NB! Listing of next item may fail
 * prematurely if the previous process is terminated while having a reference
@@ -2105,6 +2194,17 @@ POB_MAP VmmProcessGetAll(_In_ VMM_HANDLE H, _In_ BOOL fByEPROCESS, _In_ QWORD fl
 * -- return = a process struct, or NULL if not found.
 */
 PVMM_PROCESS VmmProcessGetNextEx(_In_ VMM_HANDLE H, _In_opt_ PVMMOB_PROCESS_TABLE pt, _In_opt_ PVMM_PROCESS pProcess, _In_ QWORD flags);
+
+/*
+* Retrieve processes sorted in a map keyed by either EPROCESS or PID.
+* CALLER DECREF: return
+* -- H
+* -- fByEPROCESS = TRUE: keyed by vaEPROCESS, FALSE: keyed by PID.
+* -- flags = 0 (recommended) or VMM_FLAG_PROCESS_[TOKEN|SHOW_TERMINATED].
+* -- return
+*/
+_Success_(return != NULL)
+POB_MAP VmmProcessGetAll(_In_ VMM_HANDLE H, _In_ BOOL fByEPROCESS, _In_ QWORD flags);
 
 /*
 * Retrieve the next process given a process. This may be useful when iterating
@@ -2523,6 +2623,16 @@ _Success_(return)
 BOOL VmmMap_GetObject(_In_ VMM_HANDLE H, _Out_ PVMMOB_MAP_OBJECT *ppObObjectMap);
 
 /*
+* Retrieve the KERNEL DEVICE map
+* CALLER DECREF: ppObKDeviceMap
+* -- H
+* -- ppObKDeviceMap
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetKDevice(_In_ VMM_HANDLE H, _Out_ PVMMOB_MAP_KDEVICE *ppObKDeviceMap);
+
+/*
 * Retrieve the KERNEL DRIVER map
 * CALLER DECREF: ppObKDriverMap
 * -- H
@@ -2533,26 +2643,38 @@ _Success_(return)
 BOOL VmmMap_GetKDriver(_In_ VMM_HANDLE H, _Out_ PVMMOB_MAP_KDRIVER *ppObKDriverMap);
 
 /*
-* Retrieve the index of a VMM_MAP_POOLENTRYTAG within the PVMMOB_MAP_POOL.
+* Retrieve a single PVMM_MAP_KDRIVERENTRY for a given KDriverMap and virtual address.
+* The virtual address may be address of _DRIVER_OBJECT or inside the driver module range.
+* -- H
+* -- pKDriverMap
+* -- va = virtual address of the object to retrieve.
+* -- return = PTR to VMM_MAP_KDRIVERENTRY or NULL on fail. Must not be used out of pKDriverMap scope.
+*/
+_Success_(return != NULL)
+PVMM_MAP_KDRIVERENTRY VmmMap_GetKDriverEntry(_In_ VMM_HANDLE H, _In_ PVMMOB_MAP_KDRIVER pKDriverMap, _In_ QWORD va);
+
+/*
+* Retrieve VMM_MAP_POOLENTRYTAG within the PVMMOB_MAP_POOL.
 * -- H
 * -- pPoolMap
 * -- dwPoolTag
-* -- pdwTagIndex
+* -- ppePoolTag
 * -- return
 */
 _Success_(return)
-BOOL VmmMap_GetPoolTag(_In_ VMM_HANDLE H, _In_ PVMMOB_MAP_POOL pPoolMap, _In_ DWORD dwPoolTag, _Out_ PDWORD pdwTagIndex);
+BOOL VmmMap_GetPoolTag(_In_ VMM_HANDLE H, _In_ PVMMOB_MAP_POOL pPoolMap, _In_ DWORD dwPoolTag, _Out_ PVMM_MAP_POOLENTRYTAG *ppePoolTag);
 
 /*
-* Retrieve the index of a VMM_MAP_POOLENTRY within the PVMMOB_MAP_POOL.
+* Retrieve a PVMM_MAP_POOLENTRY within the PVMMOB_MAP_POOL.
+* The entry is only valid as long as pPoolMap.
 * -- H
 * -- pPoolMap
 * -- vaPoolEntry
-* -- pdwEntryIndex
+* -- ppePoolEntry
 * -- return
 */
 _Success_(return)
-BOOL VmmMap_GetPoolEntry(_In_ VMM_HANDLE H, _In_ PVMMOB_MAP_POOL pPoolMap, _In_ QWORD vaPoolEntry, _Out_ PDWORD pdwEntryIndex);
+BOOL VmmMap_GetPoolEntry(_In_ VMM_HANDLE H, _In_ PVMMOB_MAP_POOL pPoolMap, _In_ QWORD vaPoolEntry, _Out_ PVMM_MAP_POOLENTRY *ppePoolEntry);
 
 /*
 * Retrieve the POOL map.
@@ -2594,6 +2716,16 @@ BOOL VmmMap_GetPhysMem(_In_ VMM_HANDLE H, _Out_ PVMMOB_MAP_PHYSMEM *ppObPhysMem)
 */
 _Success_(return)
 BOOL VmmMap_GetUser(_In_ VMM_HANDLE H, _Out_ PVMMOB_MAP_USER *ppObUserMap);
+
+/*
+* Retrieve the VM map
+* CALLER DECREF: ppObVmMap
+* -- H
+* -- ppObVmMap
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetVM(_In_ VMM_HANDLE H, _Out_ PVMMOB_MAP_VM *ppObVmMap);
 
 /*
 * Retrieve the SERVICES map

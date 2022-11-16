@@ -40,12 +40,14 @@ typedef enum tdVMMLOG_LEVEL {
 #define MID_PLUGIN       0x80000016
 #define MID_NET          0x80000017
 #define MID_PE           0x80000018
-#define MID_PDB          0x80000019
+#define MID_SYMBOL       0x80000019
 #define MID_INFODB       0x8000001a
 #define MID_HEAP         0x8000001b
 #define MID_OFFSET       0x8000001c
 #define MID_EVIL         0x8000001d
-#define MID_MAX          0x8000001d
+#define MID_OBJECT       0x8000001e
+#define MID_VM           0x8000001f
+#define MID_MAX          0x8000001f
 
 // max 8 chars long!
 static LPCSTR VMMLOG_MID_STR[] = {
@@ -65,11 +67,13 @@ static LPCSTR VMMLOG_MID_STR[] = {
     "PLUGIN",
     "NET",
     "PE",
-    "PDB",
+    "SYMBOL",
     "INFODB",
     "HEAP",
     "OFFSET",
-    "EVIL"
+    "EVIL",
+    "OBJECT",
+    "VM"
 };
 
 /*

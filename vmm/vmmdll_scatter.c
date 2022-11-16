@@ -33,9 +33,10 @@ typedef struct tdSCATTER_CONTEXT {
     QWORD qwMagic;
     SRWLOCK LockSRW;
     VMM_HANDLE H;
+    VMMVM_HANDLE HVM;
+    DWORD dwPID;
     DWORD dwReadFlags;
     BOOL fExecute;          // read/write is already executed
-    DWORD dwPID;
     DWORD cPageTotal;
     DWORD cPageAlloc;
     POB_MAP pmMEMs;
@@ -211,12 +212,14 @@ BOOL VMMDLL_Scatter_PrepareWrite(_In_ VMMDLL_SCATTER_HANDLE hS, _In_ QWORD va, _
 }
 
 _Success_(return)
-BOOL VMMDLL_Scatter_ClearInternal(_In_ PSCATTER_CONTEXT ctx, _In_ DWORD dwPID, _In_ DWORD flags)
+BOOL VMMDLL_Scatter_ClearInternal(_In_ PSCATTER_CONTEXT ctx, _In_opt_ DWORD dwPID, _In_ DWORD flags)
 {
     PSCATTER_RANGE pRangeRd, pRangeRdNext = ctx->pRanges;
     PSCATTER_RANGE_WRITE pRangeWr, pRangeWrNext = ctx->wr.pRanges;
     ctx->fExecute = FALSE;
-    ctx->dwPID = dwPID;
+    if(dwPID && !ctx->HVM) {
+        ctx->dwPID = dwPID;
+    }
     ctx->dwReadFlags = flags;
     ctx->cPageTotal = 0;
     ctx->cPageAlloc = 0;
@@ -242,12 +245,12 @@ BOOL VMMDLL_Scatter_ClearInternal(_In_ PSCATTER_CONTEXT ctx, _In_ DWORD dwPID, _
 /*
 * Clear/Reset the handle for use in another subsequent read scatter operation.
 * -- hS = the scatter handle to clear for reuse.
-* -- dwPID
+* -- dwPID = optional PID change.
 * -- flags
 * -- return
 */
 _Success_(return)
-BOOL VMMDLL_Scatter_Clear(_In_ VMMDLL_SCATTER_HANDLE hS, _In_ DWORD dwPID, _In_ DWORD flags)
+BOOL VMMDLL_Scatter_Clear(_In_ VMMDLL_SCATTER_HANDLE hS, _In_opt_ DWORD dwPID, _In_ DWORD flags)
 {
     SCATTER_CALL_SYNCHRONIZED_IMPLEMENTATION(hS, VMMDLL_Scatter_ClearInternal((PSCATTER_CONTEXT)hS, dwPID, flags));
 }
@@ -396,7 +399,11 @@ BOOL VMMDLL_Scatter_ExecuteReadInternal(_In_ PSCATTER_CONTEXT ctx)
         }
     }
     // read scatter
-    VMMDLL_MemReadScatter(ctx->H, ctx->dwPID, ppMEMs, ctx->cPageTotal, ctx->dwReadFlags | VMMDLL_FLAG_NO_PREDICTIVE_READ);
+    if(ctx->HVM) {
+        VMMDLL_VmMemReadScatter(ctx->H, ctx->HVM, ppMEMs, ctx->cPageTotal, 0);
+    } else {
+        VMMDLL_MemReadScatter(ctx->H, ctx->dwPID, ppMEMs, ctx->cPageTotal, ctx->dwReadFlags | VMMDLL_FLAG_NO_PREDICTIVE_READ);
+    }
     ctx->fExecute = TRUE;
     // range fixup (if required)
     pRange = ctx->pRanges;
@@ -459,7 +466,11 @@ BOOL VMMDLL_Scatter_ExecuteWriteInternal(_In_ PSCATTER_CONTEXT ctx)
     }
     if(cb || (pRange && pRange->FLink)) { goto fail; }  // leftover data should not happen!
     // write scatter
-    VMMDLL_MemWriteScatter(ctx->H, ctx->dwPID, ppMEMs, cMEMs);
+    if(ctx->HVM) {
+        VMMDLL_VmMemWriteScatter(ctx->H, ctx->HVM, ppMEMs, cMEMs);
+    } else {
+        VMMDLL_MemWriteScatter(ctx->H, ctx->dwPID, ppMEMs, cMEMs);
+    }
     // finish
     LocalFree(pbBuffer);
     return TRUE;
@@ -523,6 +534,30 @@ VMMDLL_SCATTER_HANDLE VMMDLL_Scatter_Initialize(_In_ VMM_HANDLE H, _In_ DWORD dw
     ctx->H = H;
     ctx->dwPID = dwPID;
     ctx->dwReadFlags = flags;
+    if(!(ctx->pmMEMs = ObMap_New(NULL, OB_MAP_FLAGS_OBJECT_VOID))) { goto fail; }
+    return ctx;
+fail:
+    VMMDLL_Scatter_CloseHandle((VMMDLL_SCATTER_HANDLE)ctx);
+    return NULL;
+}
+
+/*
+* Initialize a scatter handle which is used to efficiently read/write memory in
+* virtual machines (VMs).
+* CALLER CLOSE: VMMDLL_Scatter_CloseHandle(return)
+* -- hVMM
+* -- hVM = virtual machine handle; acquired from VMMDLL_Map_GetVM*)
+* -- flags = optional flags as given by VMMDLL_FLAG_*
+* -- return = handle to be used in VMMDLL_Scatter_* functions.
+*/
+EXPORTED_FUNCTION _Success_(return != NULL)
+VMMDLL_SCATTER_HANDLE VMMDLL_VmScatterInitialize(_In_ VMM_HANDLE H, _In_ VMMVM_HANDLE HVM)
+{
+    PSCATTER_CONTEXT ctx = NULL;
+    if(!(ctx = LocalAlloc(LMEM_ZEROINIT, sizeof(SCATTER_CONTEXT)))) { goto fail; }
+    ctx->qwMagic = SCATTER_CONTEXT_MAGIC;
+    ctx->H = H;
+    ctx->HVM = HVM;
     if(!(ctx->pmMEMs = ObMap_New(NULL, OB_MAP_FLAGS_OBJECT_VOID))) { goto fail; }
     return ctx;
 fail:

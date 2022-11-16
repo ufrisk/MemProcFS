@@ -15,11 +15,14 @@
 #include "vmmwindef.h"
 
 static LPSTR MSYSDRIVER_CSV_DRIVERS = "Name,ObjectAddress,Size,Start,End,ServiceKey,DriverName,DriverPath\n";
+static LPSTR MSYSDRIVER_CSV_DEVICES = "Name,ObjectAddress,Depth,AttachedDeviceAddress,DriverName,DriverPath,DriverObjectAddress,ExtraInfo\n";
 
 #define MSYSDRIVER_DRV_LINELENGTH                  256ULL
 #define MSYSDRIVER_IRP_LINELENGTH                  88ULL
+#define MSYSDRIVER_DEV_LINELENGTH                  200ULL
 #define MSYSDRIVER_DRV_LINEHEADER     "   #   Object Address Driver               Size Drv Range: Start-End              Service Key      Driver Name                      Driver Path"
 #define MSYSDRIVER_IRP_LINEHEADER     "   # Driver            # IRP_MJ_*                          Address Target Module"
+#define MSYSDRIVER_DEV_LINEHEADER     "   # Depth DeviceAddress     DeviceName                          DriverAddress DriverName       DeviceType / ExtraInfo"
 
 #define MSYSDRIVER_IRP_STR (LPCSTR[]){ \
     "CREATE",                   \
@@ -117,6 +120,51 @@ VOID MSysDriver_DrvReadLineCB(_In_ VMM_HANDLE H, _In_ POB_MAP pmModuleByVA, _In_
     );
 }
 
+/*
+* Retrieve device extra info to display (if any).
+* -- peDevice
+* -- uszDeviceExtraInfo
+* -- return = (same ptr as uszDeviceExtraInfo)
+*/
+LPSTR MSysDriver_DevGetExtraInfo(_In_ PVMM_MAP_KDEVICEENTRY peDevice, _Out_writes_(MAX_PATH) LPSTR uszDeviceExtraInfo)
+{
+    uszDeviceExtraInfo[0] = 0;
+    if(peDevice->vaFileSystemDevice) {
+        _snprintf_s(uszDeviceExtraInfo, MAX_PATH, _TRUNCATE,
+            "DeviceFS:[%llx] VolumeLabel:[%s]",
+            peDevice->vaFileSystemDevice,
+            peDevice->uszVolumeInfo[0] ? peDevice->uszVolumeInfo : ""
+        );
+    }
+    return uszDeviceExtraInfo;
+}
+
+/*
+* Line callback function to print a single device line.
+*/
+VOID MSysDriver_DevReadLineCB(_In_ VMM_HANDLE H, _In_ PVOID ctx, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVMM_MAP_KDEVICEENTRY pe, _Out_writes_(cbLineLength + 1) LPSTR usz)
+{
+    CHAR szFileDevice[40];
+    LPCSTR szINDENT[] = { "-", "--", "---", "----", "-----", "------" };
+    CHAR uszDeviceExtraInfo[MAX_PATH];
+    MSysDriver_DevGetExtraInfo(pe, uszDeviceExtraInfo);
+    _snprintf_s(szFileDevice, _countof(szFileDevice), _TRUNCATE, "%s(%i)", pe->szDeviceType, pe->dwDeviceType);
+    Util_usnprintf_ln(usz, cbLineLength,
+        "%04x %s %16llx%*s %-32.32s %16llx %-16.16s %s %c %s",
+        ie,
+        szINDENT[min(5, pe->iDepth)],
+        pe->va,
+        5 - min(5, pe->iDepth),
+        "",
+        (pe->pObject && pe->pObject->uszName[0]) ? pe->pObject->uszName : "---",
+        pe->pDriver->va,
+        pe->pDriver->uszName,
+        szFileDevice,
+        uszDeviceExtraInfo[0] ? '/' : ' ',
+        uszDeviceExtraInfo
+    );
+}
+
 _Success_(return)
 BOOL MSysDriver_EntryFromPath(_In_ LPSTR uszPath, _In_ PVMMOB_MAP_KDRIVER pDrvMap, _Out_ PVMM_MAP_KDRIVERENTRY *ppDrvMapEntry, _Out_opt_ LPSTR *puszPath)
 {
@@ -141,12 +189,22 @@ NTSTATUS MSysDriver_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _O
     PVMM_MAP_KDRIVERENTRY peDriver;
     PVMMOB_MAP_PTE pObPteMap = NULL;
     PVMMOB_MAP_KDRIVER pObDrvMap = NULL;
+    PVMMOB_MAP_KDEVICE pObDevMap = NULL;
     PVMM_PROCESS pObSystemProcess = NULL;
     MSYSDRIVER_IRP_CONTEXT IrpCtx = { 0 };
     PVMMOB_MAP_MODULE pObModuleMap = NULL;
     POB_MAP pmObModuleByVA = NULL;
     CHAR uszBuffer[MAX_PATH];
     LPSTR uszPath;
+    if(!_stricmp(ctxP->uszPath, "devices.txt")) {
+        if(!VmmMap_GetKDevice(H, &pObDevMap)) { goto cleanup; }
+        nt = Util_VfsLineFixed_Read(
+            H, (UTIL_VFSLINEFIXED_PFN_CB)MSysDriver_DevReadLineCB, NULL, MSYSDRIVER_DEV_LINELENGTH, MSYSDRIVER_DEV_LINEHEADER,
+            pObDevMap->pMap, pObDevMap->cMap, sizeof(VMM_MAP_KDEVICEENTRY),
+            pb, cb, pcbRead, cbOffset
+        );
+        goto cleanup;
+    }
     if(!VmmMap_GetKDriver(H, &pObDrvMap)) { goto cleanup; }
     if(!(pObSystemProcess = VmmProcessGet(H, 4))) { goto cleanup; }
     if(!_stricmp(ctxP->uszPath, "drivers.txt")) {
@@ -187,6 +245,7 @@ NTSTATUS MSysDriver_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _O
         goto cleanup;
     }
 cleanup:
+    Ob_DECREF(pObDevMap);
     Ob_DECREF(pObDrvMap);
     Ob_DECREF(pObPteMap);
     Ob_DECREF(pObModuleMap);
@@ -201,13 +260,16 @@ BOOL MSysDriver_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout
     CHAR uszBuffer[MAX_PATH];
     LPSTR uszPath;
     PVMM_MAP_KDRIVERENTRY peDriver;
+    PVMMOB_MAP_KDEVICE pObDevMap = NULL;
     PVMMOB_MAP_KDRIVER pObDrvMap = NULL;
     PVMM_MAP_MODULEENTRY peModule;
     PVMMOB_MAP_MODULE pObModuleMap = NULL;
     PVMM_PROCESS pObSystemProcess = NULL;
+    if(!VmmMap_GetKDevice(H, &pObDevMap)) { goto finish; }
     if(!VmmMap_GetKDriver(H, &pObDrvMap)) { goto finish; }
     if(!ctxP->uszPath[0]) {
         VMMDLL_VfsList_AddDirectory(pFileList, "by-name", NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "devices.txt", UTIL_VFSLINEFIXED_LINECOUNT(H, pObDevMap->cMap) * MSYSDRIVER_DEV_LINELENGTH, NULL);
         VMMDLL_VfsList_AddFile(pFileList, "drivers.txt", UTIL_VFSLINEFIXED_LINECOUNT(H, pObDrvMap->cMap) * MSYSDRIVER_DRV_LINELENGTH, NULL);
         VMMDLL_VfsList_AddFile(pFileList, "driver_irp.txt", UTIL_VFSLINEFIXED_LINECOUNT(H, pObDrvMap->cMap * 28ULL) * MSYSDRIVER_IRP_LINELENGTH, NULL);
         goto finish;
@@ -233,13 +295,49 @@ BOOL MSysDriver_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout
         goto finish;
     }
 finish:
+    Ob_DECREF(pObDevMap);
     Ob_DECREF(pObDrvMap);
     Ob_DECREF(pObModuleMap);
     Ob_DECREF(pObSystemProcess);
     return TRUE;
 }
 
-VOID MSysDriver_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
+VOID MSysDriver_FcLogJSON_Device(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
+{
+    PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd;
+    PVMMOB_MAP_KDEVICE pObDevMap = NULL;
+    PVMM_MAP_KDEVICEENTRY pe;
+    DWORD i;
+    CHAR usz[MAX_PATH];
+    CHAR uszDeviceExtraInfoBuffer[MAX_PATH];
+    if(ctxP->pProcess || !(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)))) { return; }
+    pd->dwVersion = VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION;
+    pd->szjType = "device";
+    pd->fNum[0] = TRUE;
+    if(VmmMap_GetKDevice(H, &pObDevMap)) {
+        for(i = 0; i < pObDevMap->cMap; i++) {
+            pe = pObDevMap->pMap + i;
+            pd->i = i;
+            pd->vaObj = pe->va;
+            pd->qwNum[0] = pe->iDepth;
+            pd->va[0] = pe->vaAttachedDevice;
+            pd->va[1] = pe->pDriver->va;
+            pd->usz[0] = ((pe->pObject && pe->pObject->uszName) ? pe->pObject->uszName : "");
+            MSysDriver_DevGetExtraInfo(pe, uszDeviceExtraInfoBuffer);
+            if(uszDeviceExtraInfoBuffer[0]) {
+                snprintf(usz, sizeof(usz), "driver:[%s] extrainfo:[%s]", pe->pDriver->uszPath, uszDeviceExtraInfoBuffer);
+            } else {
+                snprintf(usz, sizeof(usz), "driver:[%s]", pe->pDriver->uszPath);
+            }
+            pd->usz[1] = usz;
+            pfnLogJSON(H, pd);
+        }
+    }
+    Ob_DECREF(pObDevMap);
+    LocalFree(pd);
+}
+
+VOID MSysDriver_FcLogJSON_Driver(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
 {
     PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd;
     PVMMOB_MAP_KDRIVER pObDrvMap = NULL;
@@ -267,24 +365,55 @@ VOID MSysDriver_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _
     LocalFree(pd);
 }
 
+VOID MSysDriver_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
+{
+    if(ctxP->pProcess) { return; }
+    MSysDriver_FcLogJSON_Driver(H, ctxP, pfnLogJSON);
+    MSysDriver_FcLogJSON_Device(H, ctxP, pfnLogJSON);
+}
+
 PVOID MSysDriver_FcInitialize(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
 {
     FcFileAppend(H, "drivers.csv", MSYSDRIVER_CSV_DRIVERS);
+    FcFileAppend(H, "devices.csv", MSYSDRIVER_CSV_DEVICES);
     return NULL;
 }
 
-VOID MSysDriver_FcLogCSV(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VMMDLL_CSV_HANDLE hCSV)
+VOID MSysDriver_FcLogCSV_Device(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VMMDLL_CSV_HANDLE hCSV)
 {
-    PVMM_PROCESS pSystemProcess = (PVMM_PROCESS)ctxP->pProcess;
+    DWORD i;
+    PVMM_MAP_KDEVICEENTRY pe;
+    PVMMOB_MAP_KDEVICE pObDeviceMap = NULL;
+    CHAR uszDeviceExtraInfoBuffer[MAX_PATH];
+    if(!VmmMap_GetKDevice(H, &pObDeviceMap)) { return; }
+    for(i = 0; i < pObDeviceMap->cMap; i++) {
+        pe = pObDeviceMap->pMap + i;
+        //"Name,ObjectAddress,Depth,AttachedDeviceAddress,DriverName,DriverPath,DriverObjectAddress,ExtraInfo"
+        FcCsv_Reset(hCSV);
+        FcFileAppend(H, "devices.csv", "%s,0x%llx,%i,0x%llx,%s,%s,0x%llx,%s\n",
+            FcCsv_String(hCSV, ((pe->pObject && pe->pObject->uszName) ? pe->pObject->uszName : "")),
+            pe->va,
+            pe->iDepth,
+            pe->vaAttachedDevice,
+            FcCsv_String(hCSV, pe->pDriver->uszName),
+            FcCsv_String(hCSV, pe->pDriver->uszPath),
+            pe->pDriver->va,
+            MSysDriver_DevGetExtraInfo(pe, uszDeviceExtraInfoBuffer)
+        );
+    }
+    Ob_DECREF(pObDeviceMap);
+}
+
+VOID MSysDriver_FcLogCSV_Driver(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VMMDLL_CSV_HANDLE hCSV)
+{
     PVMM_MAP_KDRIVERENTRY pe;
     PVMMOB_MAP_KDRIVER pObDriverMap = NULL;
     PVMMOB_MAP_MODULE pObModuleMap = NULL;
     PVMM_MAP_MODULEENTRY peModule;
     POB_MAP pmObModuleByVA = NULL;
     DWORD i;
-    if(!pSystemProcess || (pSystemProcess->dwPID != 4)) { return; }
     if(!VmmMap_GetKDriver(H, &pObDriverMap)) { return; }
-    if(VmmMap_GetModule(H, pSystemProcess, &pObModuleMap)) {
+    if(VmmMap_GetModule(H, (PVMM_PROCESS)ctxP->pProcess, &pObModuleMap)) {
         VmmMap_GetModuleEntryEx3(H, pObModuleMap, &pmObModuleByVA);
     }
     for(i = 0; i < pObDriverMap->cMap; i++) {
@@ -306,6 +435,15 @@ VOID MSysDriver_FcLogCSV(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _I
     Ob_DECREF(pObDriverMap);
     Ob_DECREF(pObModuleMap);
     Ob_DECREF(pmObModuleByVA);
+}
+
+VOID MSysDriver_FcLogCSV(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VMMDLL_CSV_HANDLE hCSV)
+{
+    PVMM_PROCESS pSystemProcess = (PVMM_PROCESS)ctxP->pProcess;
+    if(pSystemProcess && (pSystemProcess->dwPID == 4)) {
+        MSysDriver_FcLogCSV_Driver(H, ctxP, hCSV);
+        MSysDriver_FcLogCSV_Device(H, ctxP, hCSV);
+    }
 }
 
 VOID M_SysDriver_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pRI)

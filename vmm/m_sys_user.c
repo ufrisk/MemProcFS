@@ -5,6 +5,7 @@
 // (c) Ulf Frisk, 2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
+#include "charutil.h"
 #include "pluginmanager.h"
 #include "util.h"
 
@@ -25,14 +26,16 @@ NTSTATUS MSysUser_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PVMMOB_MAP_USER pObUserMap = NULL;
-    if(VmmMap_GetUser(H, &pObUserMap)) {
-        nt = Util_VfsLineFixed_Read(
-            H, (UTIL_VFSLINEFIXED_PFN_CB)MSysUser_ReadLineCB, NULL, MSYSUSER_LINELENGTH, MSYSUSER_LINEHEADER,
-            pObUserMap->pMap, pObUserMap->cMap, sizeof(VMM_MAP_USERENTRY),
-            pb, cb, pcbRead, cbOffset
-        );
+    if(CharUtil_StrEquals(ctxP->uszPath, "users.txt", TRUE)) {
+        if(VmmMap_GetUser(H, &pObUserMap)) {
+            nt = Util_VfsLineFixed_Read(
+                H, (UTIL_VFSLINEFIXED_PFN_CB)MSysUser_ReadLineCB, NULL, MSYSUSER_LINELENGTH, MSYSUSER_LINEHEADER,
+                pObUserMap->pMap, pObUserMap->cMap, sizeof(VMM_MAP_USERENTRY),
+                pb, cb, pcbRead, cbOffset
+            );
+            Ob_DECREF(pObUserMap);
+        }
     }
-    Ob_DECREF(pObUserMap);
     return nt;
 }
 

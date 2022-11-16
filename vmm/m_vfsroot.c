@@ -355,6 +355,7 @@ NTSTATUS MVfsRoot_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out
         return VMM_STATUS_SUCCESS;
     }
     if(!_stricmp(ctxP->uszPath, "memory.dmp")) {
+        if((H->vmm.tpSystem != VMM_SYSTEM_WINDOWS_X64) && (H->vmm.tpSystem != VMM_SYSTEM_WINDOWS_X86)) { goto finish; }
         if(!(pObDumpCtx = MVfsRoot_GetDumpContext(H))) { goto finish; }
         // read dump header
         if(cbOffset < pObDumpCtx->cbHdr) {
@@ -420,6 +421,7 @@ NTSTATUS MVfsRoot_Write(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In
         return fResult ? VMM_STATUS_SUCCESS : VMM_STATUS_FILE_SYSTEM_LIMITATION;
     }
     if(!_stricmp(ctxP->uszPath, "memory.dmp")) {
+        if((H->vmm.tpSystem != VMM_SYSTEM_WINDOWS_X64) && (H->vmm.tpSystem != VMM_SYSTEM_WINDOWS_X86)) { return VMM_STATUS_FILE_INVALID; }
         *pcbWrite = cb;
         cbHeaderSize = H->vmm.f32 ? 0x1000 : 0x2000;
         if(cbOffset + cb <= cbHeaderSize) {
@@ -447,10 +449,14 @@ NTSTATUS MVfsRoot_Write(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In
 BOOL MVfsRoot_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList)
 {
     if(!ctxP->uszPath[0]) {
-        VMMDLL_VfsList_AddDirectory(pFileList, "name", NULL);
-        VMMDLL_VfsList_AddDirectory(pFileList, "pid", NULL);
         VMMDLL_VfsList_AddFile(pFileList, "memory.pmem", H->dev.paMax, NULL);
-        VMMDLL_VfsList_AddFile(pFileList, "memory.dmp", H->dev.paMax + (H->vmm.f32 ? 0x1000 : 0x2000), NULL);
+        if((H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_X64) || (H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_X86)) {
+            VMMDLL_VfsList_AddFile(pFileList, "memory.dmp", H->dev.paMax + (H->vmm.f32 ? 0x1000 : 0x2000), NULL);
+        }
+        if(H->vmm.tpSystem != VMM_SYSTEM_UNKNOWN_PHYSICAL) {
+            VMMDLL_VfsList_AddDirectory(pFileList, "name", NULL);
+            VMMDLL_VfsList_AddDirectory(pFileList, "pid", NULL);
+        }
     }
     return TRUE;
 }

@@ -1149,14 +1149,29 @@ VOID VmmWinPool_AllPool7_ProcessSingleRange(_In_ VMM_HANDLE H, _In_ PVMMWINPOOL7
         if(dwPoolIndex) { goto next; }
         if(dwBlockSize < 2) { goto next; }
         if(fPrev && dwPreviousSize && (dwPrevBlockSize != dwPreviousSize)) { goto next; }
-        if(qwProcessBilled && !fPrev && !VMM_KADDR64_8(qwProcessBilled) && !VMM_UADDR64_8(qwProcessBilled)) { goto next; }
+        if(qwProcessBilled && !fPrev) {
+            // strict pool tag checking:
+            for(i = 0; i <= 16; i += 8) {
+                ch = (CHAR)(dwPoolTag >> i);
+                if(((ch < 'a') || (ch > 'z')) && ((ch < 'A') || (ch > 'Z')) && (ch != ' ')) {
+                    goto next;
+                }
+            }
+        }
         // check: pool type
         f = FALSE;
-        if(pe->tp == VMM_MAP_POOL_TP_Unknown) {
-            pe->tp = (dwPoolType & 1) ? VMM_MAP_POOL_TP_PagedPool : VMM_MAP_POOL_TP_NonPagedPool;
-            f = TRUE;
-        } else if(pe->tp == VMM_MAP_POOL_TP_NonPagedPool) {
-            f = (dwPoolType & 1) ? FALSE : TRUE;
+        switch(pe->tp) {
+            case VMM_MAP_POOL_TP_Unknown:
+                pe->tp = (dwPoolType & 1) ? VMM_MAP_POOL_TP_PagedPool : VMM_MAP_POOL_TP_NonPagedPool;
+                f = TRUE;
+                break;
+            case VMM_MAP_POOL_TP_NonPagedPool:
+            case VMM_MAP_POOL_TP_NonPagedPoolNx:
+                f = (dwPoolType & 1) ? FALSE : TRUE;
+                break;
+            case VMM_MAP_POOL_TP_PagedPool:
+                f = (dwPoolType & 1) ? TRUE : FALSE;
+                break;
         }
         if(!f) { goto next; }
         // check: pool tag

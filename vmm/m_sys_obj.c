@@ -63,16 +63,21 @@ finish:
     return TRUE;
 }
 
-VOID MSysObj_GetFullPath(_In_ PVMM_MAP_OBJECTENTRY pe, _Out_writes_(MAX_PATH) LPSTR uszPath)
+/*
+* Retrieve the full path of an object entry.
+*/
+VOID MSysObj_GetFullPath(_In_opt_ PVMM_MAP_OBJECTENTRY pe, _Out_writes_(MAX_PATH) LPSTR uszPath)
 {
     DWORD i = 0;
     PVMM_MAP_OBJECTENTRY pea[0x20];
     uszPath[0] = 0;
-    pea[i++] = pe;
-    while((pe = pe->pParent) && (pea[i++] = pe) && (i < 0x20));
-    while(i && (pe = pea[--i])) {
-        strncat_s(uszPath, MAX_PATH, pe->uszName, _TRUNCATE);
-        if(i) { strncat_s(uszPath, MAX_PATH, "\\", _TRUNCATE); }
+    if(pe) {
+        pea[i++] = pe;
+        while((pe = pe->pParent) && (pea[i++] = pe) && (i < 0x20));
+        while(i && (pe = pea[--i])) {
+            strncat_s(uszPath, MAX_PATH, pe->uszName, _TRUNCATE);
+            if(i) { strncat_s(uszPath, MAX_PATH, "\\", _TRUNCATE); }
+        }
     }
 }
 
