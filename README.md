@@ -212,9 +212,9 @@ v1.1-v3.10
 
 [v5.2](https://github.com/ufrisk/MemProcFS/releases/tag/v5.2)
 * Bug fixes.
+* [Virtual Machine support](https://github.com/ufrisk/MemProcFS/wiki/VM).
 * [ARM64 Windows support](https://github.com/ufrisk/MemProcFS/wiki/_ARM64).
 * FPGA performance improvements.
-* [Virtual Machine support](https://github.com/ufrisk/MemProcFS/wiki/VM) (experimental).
 * Device tree information in /sys/drivers.
 * Linux feature additions: memcompress and token.
 * Manual download of debug symbols (PDBs) on offline systems (Windows only).
