@@ -1492,7 +1492,7 @@ typedef struct tdVMMDLL_MAP_SERVICE {
 /*
 * Retrieve the memory map entries based on hardware page tables (PTEs) for the process.
 * Entries returned are sorted on VMMDLL_MAP_PTEENTRY.va
-* CALLER FREE: VMMDLL_MemFree(*ppVadMap)
+* CALLER FREE: VMMDLL_MemFree(*ppPteMap)
 * -- hVMM
 * -- dwPID
 * -- fIdentifyModules = try identify modules as well (= slower)
