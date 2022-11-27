@@ -6,6 +6,8 @@
 #ifdef LINUX
 
 #include "vmmpyc.h"
+#include <link.h>
+#include <dlfcn.h>
 
 // ----------------------------------------------------------------------------
 // LocalAlloc/LocalFree BELOW:
@@ -48,6 +50,20 @@ BOOL FileTimeToSystemTime(_In_ PFILETIME lpFileTime, _Out_ PSYSTEMTIME pSystemTi
     pSystemTime->wSecond = t.tm_sec;
     pSystemTime->wMilliseconds = (*lpFileTime / 10000) % 1000;
     return TRUE;
+}
+
+DWORD GetModuleFileNameA(_In_opt_ HMODULE hModule, _Out_ LPSTR lpFilename, _In_ DWORD nSize)
+{
+    struct link_map *lm = NULL;
+    if(hModule) {
+        dlinfo(hModule, RTLD_DI_LINKMAP, &lm);
+        if(lm) {
+            strncpy(lpFilename, lm->l_name, nSize);
+            lpFilename[nSize - 1] = 0;
+            return strlen(lpFilename);
+        }
+    }
+    return readlink("/proc/self/exe", lpFilename, nSize);
 }
 
 #endif /* LINUX */

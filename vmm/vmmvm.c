@@ -352,7 +352,7 @@ VOID VmmVm_DoWork_4_NewVM_StartupVmm(_In_ VMM_HANDLE H, _In_ PVMMOB_VM_CONTEXT p
     }
     // 3: Try init Windows VM:
     if(!pVM->fPhysicalOnly) {
-        if(H->cfg.tpForensicMode) {
+        if(H->cfg.fVMNested && H->cfg.tpForensicMode) {
             szArg[cArg++] = "-forensic";
             szArg[cArg++] = "1";
         }
@@ -572,7 +572,7 @@ BOOL VmmVm_DoWork_1_AllocGlobalContext_GetOffsets(_In_ VMM_HANDLE H, _In_ PVMM_V
 VOID VmmVm_DoWork_1_AllocGlobalContext(_In_ VMM_HANDLE H)
 {
     PVMMOB_VMGLOBAL_CONTEXT pObVMG = NULL;
-    EnterCriticalSection(&H->vmm.LockUpdateMap);
+    EnterCriticalSection(&H->vmm.LockUpdateVM);
     if(H->vmm.pObVmGlobalContext) { goto fail; }
     if(!(pObVMG = Ob_AllocEx(H, OB_TAG_VM_GLOBAL, LMEM_ZEROINIT, sizeof(VMMOB_VMGLOBAL_CONTEXT), (OB_CLEANUP_CB)VmmVm_CallbackCleanup_ObVmGlobalContext, NULL))) { goto fail; }
     if(!VmmVm_DoWork_1_AllocGlobalContext_GetOffsets(H, &pObVMG->offset)) { goto fail; }
@@ -581,7 +581,7 @@ VOID VmmVm_DoWork_1_AllocGlobalContext(_In_ VMM_HANDLE H)
     H->vmm.pObVmGlobalContext = Ob_INCREF(pObVMG);
 fail:
     Ob_DECREF(pObVMG);
-    LeaveCriticalSection(&H->vmm.LockUpdateMap);
+    LeaveCriticalSection(&H->vmm.LockUpdateVM);
 }
 
 /*
@@ -1101,9 +1101,9 @@ PVMMOB_MAP_VM VmmVm_Initialize(_In_ VMM_HANDLE H)
     PVMMOB_MAP_VM pObVM = NULL;
     if(!H->cfg.fVM) { return NULL; }
     if((pObVM = ObContainer_GetOb(H->vmm.pObCMapVM))) { return pObVM; }
-    EnterCriticalSection(&H->vmm.LockUpdateMap);
+    EnterCriticalSection(&H->vmm.LockUpdateVM);
     if((pObVM = ObContainer_GetOb(H->vmm.pObCMapVM))) {
-        LeaveCriticalSection(&H->vmm.LockUpdateMap);
+        LeaveCriticalSection(&H->vmm.LockUpdateVM);
         return pObVM;
     }
     if(H->cfg.fVM) {
@@ -1114,6 +1114,6 @@ PVMMOB_MAP_VM VmmVm_Initialize(_In_ VMM_HANDLE H)
         pObVM = Ob_AllocEx(H, OB_TAG_VM_GLOBAL, LMEM_ZEROINIT, sizeof(VMMOB_MAP_VM), NULL, NULL);
         ObContainer_SetOb(H->vmm.pObCMapVM, pObVM);
     }
-    LeaveCriticalSection(&H->vmm.LockUpdateMap);
+    LeaveCriticalSection(&H->vmm.LockUpdateVM);
     return pObVM;
 }

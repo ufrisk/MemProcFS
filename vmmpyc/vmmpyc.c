@@ -127,9 +127,7 @@ PyObject* PyInit_vmmpyc(void)
     DWORD i;
     PyObject *pPyModule;
     BOOL(*pfnTYPE_INITIALIZERS[])(PyObject*) = {
-#ifdef _WIN32
         VmmPycPlugin_InitializeType,
-#endif /* _WIN32 */
         VmmPycPhysicalMemory_InitializeType, VmmPycScatterMemory_InitializeType,
         VmmPycVirtualMemory_InitializeType, VmmPycRegMemory_InitializeType,
         VmmPycRegHive_InitializeType, VmmPycRegKey_InitializeType, VmmPycRegValue_InitializeType,

@@ -292,6 +292,7 @@ BOOL VMMDLL_Scatter_ReadInternal(_In_ PSCATTER_CONTEXT ctx, _In_ QWORD va, _In_ 
     PMEM_SCATTER pMEM;
     BOOL fResultFirst = FALSE;
     DWORD cbChunk, cbReadTotal = 0;
+    if(pcbRead) { *pcbRead = 0; }
     if(va + cb < va) { return FALSE; }
     if(!ctx->fExecute) { return FALSE; }
     // 1st item may not be page aligned or may be 'tiny' sized MEM:

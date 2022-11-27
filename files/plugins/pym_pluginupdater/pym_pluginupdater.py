@@ -7,7 +7,7 @@
 #
 # https://github.com/ufrisk/
 #
-# (c) Ulf Frisk, 2019-2021
+# (c) Ulf Frisk, 2019-2022
 # Author: Ulf Frisk, pcileech@frizk.net
 #
 
@@ -69,7 +69,7 @@ PLUGIN INFORMATION
 text_desc_pypykatz = "The Pypykatz plugin for MemProcFS provides 'mimikatz' like functionality for MemProcFS"
 text_desc_regsecrets = "The RegSecrets plugin for MemProcFS provides 'mimikatz' like functionality for MemProcFS."
 
-plugin_dir = os.path.realpath(__file__ + '\\..\\..\\') + '\\pym_'
+plugin_dir = os.path.realpath(__file__ + os.sep + '..' + os.sep + '..' + os.sep) + os.sep + 'pym_'
 
 plugins = {
     'pypykatz': {
@@ -114,7 +114,7 @@ def PluginsUpdateInfoInstalledAndVersion():
     for name in plugins:
         plugin = plugins[name]
         try:
-            fd = open(plugin_dir + name + '\\version.txt')
+            fd = open(plugin_dir + name + os.sep + 'version.txt')
             plugin['version_installed'] = fd.readline()
             plugin['installed'] = True
             fd.close()
@@ -166,7 +166,7 @@ def WriteFile(pid, file_path, file_name, file_attr, bytes_data, bytes_offset):
     try:
         import urllib.request
         path_src = 'https://raw.githubusercontent.com/ufrisk/MemProcFS-plugins/master/files/plugins/pym_' + plugin_name + '/'
-        path_dst = '.\\plugins\\pym_' + plugin_name + '\\'
+        path_dst = '.' + os.sep + 'plugins' + os.sep + 'pym_' + plugin_name + os.sep
         try:
             os.mkdir(path_dst)
         except:

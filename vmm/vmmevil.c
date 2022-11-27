@@ -491,16 +491,20 @@ VOID VmmEvil_ProcessScan(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _Inout_ 
 {
     POB_SET psObInjectedPE = NULL;
     if(!pProcess->fUserOnly) { goto fail; }
-    if(!(psObInjectedPE = ObSet_New(H))) { goto fail; }
+    if(!(psObInjectedPE = ObSet_New(H))) { goto fail; }    
     // scan image vads for executable memory not matching prototype pages.
+    if(H->fAbort) { goto fail; }
     VmmEvil_ProcessScan_VadImageExecuteNoProto(H, pProcess, ctxEvil);
     // update result with execute pages in non image vads.
     // also commit to modules map as injected PE (if possible).
+    if(H->fAbort) { goto fail; }
     VmmEvil_ProcessScan_VadNoImageExecute(H, pProcess, ctxEvil, psObInjectedPE);
     VmmWinLdrModule_Initialize(H, pProcess, psObInjectedPE);
     // update result with interesting module entries.
+    if(H->fAbort) { goto fail; }
     VmmEvil_ProcessScan_Modules(H, pProcess, ctxEvil);
     // update with other process-related findings:
+    if(H->fAbort) { goto fail; }
     VmmEvil_ProcessScan_BadParent(H, pProcess, ctxEvil);
     VmmEvil_ProcessScan_BadUser(H, pProcess, ctxEvil);
     VmmEvil_ProcessScan_PebMasquerade(H, pProcess, ctxEvil);
@@ -575,6 +579,7 @@ fail:
 */
 VOID VmmEvil_KernelScan(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _Inout_ PVMMEVIL_INIT_CONTEXT ctxEvil)
 {
+    if(H->fAbort) { return; }
     VmmEvil_ProcessScan_KDriverPath(H, pSystemProcess, ctxEvil);
     VmmLog(H, MID_EVIL, LOGLEVEL_6_TRACE, "COMPLETED_KERNEL_SCAN");
 }
@@ -774,7 +779,7 @@ PVMMOB_MAP_EVIL VmmEvil_Initialize(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pPro
 VOID VmmEvil_InitializeAll_WaitFinish(_In_ VMM_HANDLE H)
 {
     Ob_DECREF(VmmEvil_Initialize(H, NULL));
-    while(H->vmm.EvilContext.cProgressPercent != 100) {
+    while(!H->fAbort && (H->vmm.EvilContext.cProgressPercent != 100)) {
         Sleep(50);
     }
 }

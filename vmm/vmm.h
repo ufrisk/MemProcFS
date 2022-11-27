@@ -1192,6 +1192,7 @@ typedef struct tdVMMCONFIG {
     BOOL fVMPhysicalOnly;               // parse virtual machines as physical memory only (less resource intense).
     // strings below
     CHAR szPythonPath[MAX_PATH];
+    CHAR szPythonExecuteFile[MAX_PATH];
     CHAR szPageFile[10][MAX_PATH];
     CHAR szMemMap[MAX_PATH];
     CHAR szMemMapStr[2048];
@@ -1543,6 +1544,7 @@ typedef struct tdVMM_CONTEXT {
     } PluginManager;
     CRITICAL_SECTION LockUpdateMap;     // lock for global maps - such as MapUser
     CRITICAL_SECTION LockUpdateModule;  // lock for internal modules
+    CRITICAL_SECTION LockUpdateVM;      // lock for vm map (vm parse is heavy - separate lock!)
     struct {                            // lightweight SRW locks
         SRWLOCK VmmPaging;
         SRWLOCK WinObjDisplay;

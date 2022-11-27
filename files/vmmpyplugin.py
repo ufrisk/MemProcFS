@@ -23,10 +23,10 @@
 #
 # https://github.com/ufrisk/
 #
-# (c) Ulf Frisk, 2018-2021
+# (c) Ulf Frisk, 2018-2022
 # Author: Ulf Frisk, pcileech@frizk.net
 #
-# Header Version: 3.9
+# Header Version: 4.0
 #
 
 import memprocfs
@@ -95,7 +95,8 @@ def VmmPyPlugin_InternalInitialize():
         VmmPyPlugin_InternalCallback_Read, 
         VmmPyPlugin_InternalCallback_Write, 
         VmmPyPlugin_InternalCallback_Notify, 
-        VmmPyPlugin_InternalCallback_Close)
+        VmmPyPlugin_InternalCallback_Close, 
+        VmmPyPlugin_InternalCallback_Exec)
 
 
 
@@ -251,6 +252,30 @@ def VmmPyPlugin_InternalCallback_Notify(fEvent, bytesData):
             module.Notify(fEvent, bytesData)
     if fEvent == memprocfs.PLUGIN_NOTIFY_REFRESH_SLOW:
         VmmPyPluginLight_InternalCallback_Refresh()
+
+
+
+def VmmPyPlugin_InternalCallback_Exec(str_code, int_flags):
+    """Internal Use Only!
+    Execute python code.
+
+    Keyword arguments:
+    str_code -- string: python code to execute.
+    int_flags -- int: flags (future use).
+    return -- string: result of code execution.
+    """
+    import io
+    from contextlib import redirect_stdout
+    try:
+        io_stdout = io.StringIO()
+        with redirect_stdout(io_stdout):
+            exec(str_code)
+        data_str = io_stdout.getvalue()
+    except Exception as e:
+        data_str = ''
+        if VmmPyPlugin_fPrintV:
+            print("------\nVmmPyPlugin_InternalCallback_Exec: Exception: " + str(e) + "\n------")
+    return data_str
 
 
 
@@ -412,7 +437,7 @@ def VmmPyPluginLight_InternalInitializePlugins():
     import threading
     global VmmPyPluginLight_registry
     VmmPyPluginLight_registry = {}
-    path = os.path.dirname(__file__) + '\\plugins\\'
+    path = os.path.dirname(__file__) + os.sep + 'plugins' + os.sep
     plugin_files = glob.glob(path + 'pyp_*.py')
     for plugin_file in plugin_files:
         df = plugin_file[plugin_file.index('pyp_')+4:-3].split('_') # [0]=ignore; [1]=root/user; [2]=dir; [3]=file

@@ -11,6 +11,15 @@
 #include "version.h"
 #define FUSE_USE_VERSION 30
 #include <fuse.h>
+#include <signal.h>
+
+typedef struct tdFUSE_INFO {
+    struct fuse* pfuse;
+    char* szMountPoint;
+    struct fuse_chan *pchan;
+} FUSE_INFO;
+
+FUSE_INFO g_FuseInfo = { 0 };
 
 VMM_HANDLE g_hVMM = NULL;
 
@@ -123,9 +132,15 @@ static struct fuse_operations vfs_operations = {
     .truncate = vfs_truncate,
 };
 
-int vfs_initialize_and_mount_displayinfo(int argc, char *argv[])
+int vfs_initialize_and_mount_displayinfo(char *szMountPoint)
 {
-    return fuse_main(argc, argv, &vfs_operations, NULL);
+    struct fuse_args fargs = { 0 };
+    g_FuseInfo.szMountPoint = szMountPoint;
+    g_FuseInfo.pchan = fuse_mount(g_FuseInfo.szMountPoint, &fargs);
+    if(!g_FuseInfo.pchan) { return -ENOENT; };
+    g_FuseInfo.pfuse = fuse_new(g_FuseInfo.pchan, &fargs, &vfs_operations, sizeof(vfs_operations), NULL);
+    if(!g_FuseInfo.pfuse) { return -ENOENT; };
+    return fuse_loop(g_FuseInfo.pfuse);
 }
 
 
@@ -156,12 +171,30 @@ _Success_(return) BOOL MemProcFS_VfsListU(_In_ LPSTR uszPath, _Inout_ PVMMDLL_VF
 //-----------------------------------------------------------------------------
 
 /*
+* SetConsoleCtrlHandler for the MemProcFS - clean up whenever CTRL+C is pressed.
+* If this is not here MemProcFS might not exit otherwise if there are lingering
+* threads most notably in the Python plugin functionality.
+* -- s
+* -- return
+*/
+void signal_handler_execute(int signo)
+{
+    if(signo == SIGINT) {
+        printf("CTRL+C detected - shutting down ...\n");
+        VMMDLL_CloseAll();
+        fuse_unmount(g_FuseInfo.szMountPoint, g_FuseInfo.pchan);
+        fuse_exit(g_FuseInfo.pfuse);
+    } 
+}
+
+/*
 * Retrieve the mount point of the FUSE file system given in the -mount parameter.
 * -- argc
 * -- argv
 * -- pszMountPoint
+* -- pfPythonExec
 */
-VOID GetMountPoint(_In_ DWORD argc, _In_ char *argv[], _Out_ LPSTR *pszMountPoint)
+VOID GetMountPoint(_In_ DWORD argc, _In_ char *argv[], _Out_ LPSTR *pszMountPoint, _Out_ PBOOL pfPythonExec)
 {
     char *argv2[3];
     DWORD i = 0;
@@ -171,10 +204,13 @@ VOID GetMountPoint(_In_ DWORD argc, _In_ char *argv[], _Out_ LPSTR *pszMountPoin
             *pszMountPoint = argv[i + 1];
             i += 2;
             continue;
-        } else {
-            i++;
+        }
+        if(0 == strcmp(argv[i], "-pythonexec")) {
+            *pfPythonExec = TRUE;
+            i += 2;
             continue;
         }
+        i++;
     }
 }
 
@@ -231,11 +267,14 @@ int main(_In_ int argc, _In_ char* argv[])
 {
     // MAIN FUNCTION PROPER BELOW:
     int i;
+    BOOL fPythonExec;
     LPSTR szMountPoint = NULL, *szArgs = NULL;
-    GetMountPoint(argc, argv, &szMountPoint);
+    GetMountPoint(argc, argv, &szMountPoint, &fPythonExec);
     if((argc > 2) && (!szMountPoint || !szMountPoint[0])) {
-        printf("MemProcFS: no mount point specified - specify with: ./memprocfs -mount /dir/to/mount\n");
-        return 1;
+        if(!fPythonExec || szMountPoint) {
+            printf("MemProcFS: no mount point specified - specify with: ./memprocfs -mount /dir/to/mount\n");
+            return 1;
+        }
     }
     if(!(szArgs = LocalAlloc(LMEM_ZEROINIT, (argc + 1ULL) * sizeof(LPSTR)))) {
         printf("MemProcFS: Out of memory!\n");
@@ -245,10 +284,17 @@ int main(_In_ int argc, _In_ char* argv[])
         szArgs[i] = argv[i];
     }
     szArgs[0] = "-printf";
+    // catch CTRL+C
+    signal(SIGINT, signal_handler_execute);
+    // Initialize MemProcFS
     g_hVMM = VMMDLL_Initialize(argc, szArgs);
     if(!g_hVMM) {
         // any error message will already be shown by the InitializeReserved function.
         return 1;
+    }
+    if(fPythonExec && !szMountPoint) {
+        VMMDLL_CloseAll();
+        return 0;
     }
     VMMDLL_ConfigSet(g_hVMM, VMMDLL_OPT_CONFIG_STATISTICS_FUNCTIONCALL, 1);
     if(!VMMDLL_InitializePlugins(g_hVMM)) {
@@ -257,9 +303,10 @@ int main(_In_ int argc, _In_ char* argv[])
     }
     VfsList_Initialize(MemProcFS_VfsListU, 500, 128, FALSE);
     Vfs_InitializeAndMount_DisplayInfo(szMountPoint);
+    // catch CTRL+C
+    signal(SIGINT, signal_handler_execute);
     // hand over control to FUSE.
-    LPSTR szArgListFuse[] = { argv[0], szMountPoint, "-f" };
-    return vfs_initialize_and_mount_displayinfo(3, szArgListFuse);
+    return vfs_initialize_and_mount_displayinfo(szMountPoint);
 }
 
 #endif /* LINUX */

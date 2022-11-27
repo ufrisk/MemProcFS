@@ -194,11 +194,10 @@ typedef int(*_CoreCrtNonSecureSearchSortCompareFunction)(void const *, void cons
 #define InetNtopA                           inet_ntop
 #define closesocket(s)                      close(s)
 #define FreeLibrary(h)
-#define GetModuleHandleA(s)		            NULL
 #define HeapAlloc(hHeap, dwFlags, dwBytes)  malloc(dwBytes)
 
 HMODULE LoadLibraryA(LPSTR lpFileName);
-FARPROC GetProcAddress(HMODULE hModule, LPSTR lpProcName);
+FARPROC GetProcAddress(_In_opt_ HMODULE hModule, _In_ LPSTR lpProcName);
 
 // SID
 _Success_(return) BOOL IsValidSid(_In_opt_ PSID pSID);
@@ -240,6 +239,8 @@ HANDLE FindFirstFileA(LPSTR lpFileName, LPWIN32_FIND_DATAA lpFindFileData);
 BOOL FindNextFileA(HANDLE hFindFile, LPWIN32_FIND_DATAA lpFindFileData);
 HANDLE LocalAlloc(DWORD uFlags, SIZE_T uBytes);
 VOID LocalFree(HANDLE hMem);
+DWORD GetModuleFileNameA(_In_opt_ HMODULE hModule, _Out_ LPSTR lpFilename, _In_ DWORD nSize);
+HMODULE GetModuleHandleA(_In_opt_ LPCSTR lpModuleName);
 QWORD GetTickCount64();
 BOOL QueryPerformanceFrequency(_Out_ LARGE_INTEGER *lpFrequency);
 BOOL QueryPerformanceCounter(_Out_ LARGE_INTEGER *lpPerformanceCount);

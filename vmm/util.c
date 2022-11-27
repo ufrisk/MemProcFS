@@ -912,8 +912,6 @@ VOID Util_GetPathLib(_Out_writes_(MAX_PATH) PCHAR szPath)
     }
 }
 
-#ifdef _WIN32
-
 VOID Util_GetPathDll(_Out_writes_(MAX_PATH) PCHAR szPath, _In_opt_ HMODULE hModule)
 {
     SIZE_T i;
@@ -925,6 +923,8 @@ VOID Util_GetPathDll(_Out_writes_(MAX_PATH) PCHAR szPath, _In_opt_ HMODULE hModu
         }
     }
 }
+
+#ifdef _WIN32
 
 DWORD Util_ResourceSize(_In_ VMM_HANDLE H, _In_ LPWSTR wszResourceName)
 {

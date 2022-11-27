@@ -218,3 +218,8 @@ v1.1-v3.10
 * Device tree information in /sys/drivers.
 * Linux feature additions: memcompress and token.
 * Manual download of debug symbols (PDBs) on offline systems (Windows only).
+
+Latest:
+* Bug fixes.
+* MemProcFS Python batch mode.
+* Linux Python plugin support.

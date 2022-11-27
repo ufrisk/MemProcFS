@@ -284,10 +284,6 @@ VmmPycVmm_init(PyObj_Vmm *self, PyObject *args, PyObject *kwds)
             return -1;
         }
         self->fVmmCoreOpenType = TRUE;
-        // initialize vfs:
-        if(!self->pyObjVfs) {
-            self->pyObjVfs = (PyObject*)VmmPycVfs_InitializeInternal(self);
-        }
     } else {    // INITIALIZE EXISTING VMM (CHECK IF EXISTING IS VALID)
         self->hVMM = g_PluginVMM;
         pyObjProcessTest = (PyObject*)VmmPycProcess_InitializeInternal(self, 4, TRUE);
@@ -302,6 +298,10 @@ VmmPycVmm_init(PyObj_Vmm *self, PyObject *args, PyObject *kwds)
             return -1;
         }
         g_PluginVMM_LoadedOnce = TRUE;
+    }
+    // initialize vfs:
+    if(!self->pyObjVfs) {
+        self->pyObjVfs = (PyObject*)VmmPycVfs_InitializeInternal(self);
     }
     // success - initialize type object and return!
     self->pyObjKernel = (PyObject*)VmmPycKernel_InitializeInternal(self);

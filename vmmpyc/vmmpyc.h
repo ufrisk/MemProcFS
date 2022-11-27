@@ -80,6 +80,7 @@ typedef struct _SYSTEMTIME {
 HANDLE LocalAlloc(DWORD uFlags, SIZE_T uBytes);
 VOID LocalFree(HANDLE hMem);
 BOOL FileTimeToSystemTime(_In_ PFILETIME lpFileTime, _Out_ PSYSTEMTIME lpSystemTime);
+DWORD GetModuleFileNameA(_In_opt_ HMODULE hModule, _Out_ LPSTR lpFilename, _In_ DWORD nSize);
 
 #endif /* LINUX */
 

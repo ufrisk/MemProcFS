@@ -429,6 +429,9 @@ VOID VmmDllCore_PrintHelp(_In_ VMM_HANDLE H)
         "   -pagefile0..9 : specify page file / swap file. By default pagefile have     \n" \
         "          index 0 - example: -pagefile0 pagefile.sys while swapfile have       \n" \
         "          index 1 - example: -pagefile1 swapfile.sys                           \n" \
+        "   -pythonexec : execute a python program in the memprocfs context at start-up.\n" \
+        "          If forensic mode is enabled wait for it to complete first.           \n" \
+        "          Example: -pythonexec C:\\Temp\\mypythonprogram.py                    \n" \
         "   -pythonpath : specify the path to a python 3 installation for Windows.      \n" \
         "          The path given should be to the directory that contain: python.dll   \n" \
         "          Example: -pythonpath \"C:\\Program Files\\Python37\"                 \n" \
@@ -589,6 +592,10 @@ BOOL VmmDllCore_InitializeConfig(_In_ VMM_HANDLE H, _In_ DWORD argc, _In_ char *
             if(iPageFile < 10) {
                 strcpy_s(H->cfg.szPageFile[iPageFile], MAX_PATH, argv[i + 1]);
             }
+            i += 2; continue;
+        } else if(0 == _stricmp(argv[i], "-pythonexec")) {
+            H->cfg.fWaitInitialize = TRUE;
+            strcpy_s(H->cfg.szPythonExecuteFile, MAX_PATH, argv[i + 1]);
             i += 2; continue;
         } else if(0 == _stricmp(argv[i], "-pythonpath")) {
             strcpy_s(H->cfg.szPythonPath, MAX_PATH, argv[i + 1]);
@@ -818,7 +825,7 @@ VMM_HANDLE VmmDllCore_Initialize(_In_ DWORD argc, _In_ LPSTR argv[], _Out_opt_ P
         LocalFree(pbMemMap);
         if(hFile) { fclose(hFile); }
         if(!f) {
-            vmmprintf(H, "MemProcFS: Failed to load initial memory map from: '%s'.\n", H->cfg.szMemMap);
+            VmmLog(H, MID_CORE, LOGLEVEL_CRITICAL, "Failed to load initial memory map from: '%s'.\n", H->cfg.szMemMap);
             goto fail;
         }
     }
@@ -826,44 +833,50 @@ VMM_HANDLE VmmDllCore_Initialize(_In_ DWORD argc, _In_ LPSTR argv[], _Out_opt_ P
         f = LcCommand(H->hLC, LC_CMD_MEMMAP_SET, (DWORD)strlen(H->cfg.szMemMapStr), H->cfg.szMemMapStr, NULL, NULL) &&
             LcGetOption(H->hLC, LC_OPT_CORE_ADDR_MAX, &H->dev.paMax);
         if(!f) {
-            vmmprintf(H, "MemProcFS: Failed to load command line argument memory map.\n");
+            VmmLog(H, MID_CORE, LOGLEVEL_CRITICAL, "Failed to load command line argument memory map.\n");
             goto fail;
         }
     }
     // 8: initialize work (multi-threading sub-system).
     if(!VmmWork_Initialize(H)) {
-        vmmprintf(H, "MemProcFS: Failed to initialize work multi-threading.\n");
+        VmmLog(H, MID_CORE, LOGLEVEL_CRITICAL, "Failed to initialize work multi-threading.\n");
         goto fail;
     }
     // 9: device context (H->dev) is initialized from here onwards - device functionality is working!
     //    try initialize vmm subsystem.
     if(!VmmProcInitialize(H)) {
-        vmmprintf(H, "MOUNT: INFO: PROC file system not mounted.\n");
+        VmmLog(H, MID_CORE, LOGLEVEL_CRITICAL, "Failed to initialize.\n");
         goto fail;
     }
     // 10: vmm context (H->vmm) is initialized from here onwards - vmm functionality is working!
     //     set LeechCore MemMap (if auto).
     if(H->cfg.szMemMap[0] && !_stricmp(H->cfg.szMemMap, "auto")) {
         if(!VmmDllCore_InitializeMemMapAuto(H)) {
-            vmmprintf(H, "MemProcFS: Failed to load initial memory map from: '%s'.\n", H->cfg.szMemMap);
+            VmmLog(H, MID_CORE, LOGLEVEL_CRITICAL, "Failed to load initial memory map from: '%s'.\n", H->cfg.szMemMap);
             goto fail;
         }
     }
     // 11: add this vmm instance to the parent vmm instance (if any)
     if(H->cfg.qwParentVmmHandle) {
         if(!VmmDllCore_Initialize_HandleAttachParent(H, (VMM_HANDLE)H->cfg.qwParentVmmHandle)) {
-            vmmprintf(H, "MemProcFS: Failed attaching to parent VMM.\n");
+            VmmLog(H, MID_CORE, LOGLEVEL_CRITICAL, "Failed attaching to parent VMM.\n");
             goto fail;
         }
     }
     // 12: initialize forensic mode (if set by user parameter).
     if(H->cfg.tpForensicMode) {
         if(!FcInitialize(H, H->cfg.tpForensicMode, FALSE)) {
-            vmmprintf(H, "MemProcFS: Failed to initialize forensic mode.\n");
+            VmmLog(H, MID_CORE, LOGLEVEL_CRITICAL, "Failed to initialize forensic mode.\n");
             goto fail;
         }
     }
+    // 13: leave global lock to avoid deadlocks in remaining tasks.
     LeaveCriticalSection(&g_VMMDLL_CORE_LOCK);
+    // 14: execute python code (if user option is set).
+    if(H->cfg.szPythonExecuteFile[0] && VmmDllCore_HandleReserveExternal(H)) {
+        PluginManager_PythonExecFile(H, H->cfg.szPythonExecuteFile);
+        VmmDllCore_HandleReturnExternal(H);
+    }
     return H;
 fail:
     if(ppLcErrorInfo) {

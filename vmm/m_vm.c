@@ -152,26 +152,16 @@ VOID MVM_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOI
     LocalFree(pd);
 }
 
-VOID MVM_Notify(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent)
-{
-    if(fEvent == VMMDLL_PLUGIN_NOTIFY_VM_ATTACH_DETACH) {
-        AcquireSRWLockShared(&H->childvmm.LockSRW);
-        PluginManager_SetVisibility(H, TRUE, "\\vm", (H->childvmm.c > 0));
-        ReleaseSRWLockShared(&H->childvmm.LockSRW);
-    }
-}
-
 VOID M_VM_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
+    if(!H->cfg.fVM) { return; }
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if((pRI->tpSystem != VMM_SYSTEM_WINDOWS_X64) && (pRI->tpSystem != VMM_SYSTEM_WINDOWS_X86)) { return; }
     strcpy_s(pRI->reg_info.uszPathName, 128, "\\vm");           // module name
     pRI->reg_info.fRootModule = TRUE;                           // module shows in root directory
-    pRI->reg_info.fRootModuleHidden = TRUE;                     // module is hidden from start
     pRI->reg_fn.pfnList = MVM_List;                             // List function supported
     pRI->reg_fn.pfnRead = MVM_Read;                             // Read function supported
     pRI->reg_fn.pfnWrite = MVM_Write;                           // Write function supported
-    pRI->reg_fn.pfnNotify = MVM_Notify;                         // Notify function supported
     pRI->reg_fnfc.pfnLogJSON = MVM_FcLogJSON;                   // JSON log function supported
     pRI->pfnPluginManager_Register(H, pRI);
 }

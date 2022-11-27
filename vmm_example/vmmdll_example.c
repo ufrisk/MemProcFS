@@ -1233,6 +1233,34 @@ int main(_In_ int argc, _In_ char* argv[])
     VMMDLL_MemFree(pPoolMap); pPoolMap = NULL;
 
 
+    // Retrieve virtual machine information and read VM memory.
+    // NB! MemProcFS must have been initialized with either of below options:
+    //     -forensic [1-4] -vm -vm-basic -vm-nested
+    printf("------------------------------------------------------------\n");
+    printf("# Retrieve Virtual Machine Map                              \n");
+    ShowKeyPress();
+    DWORD iVirtualMachineEntry = 0;
+    PVMMDLL_MAP_VM pVirtualMachineMap = NULL;
+    PVMMDLL_MAP_VMENTRY pVirtualMachineEntry;
+    printf("CALL:    VMMDLL_Map_GetVMU\n");
+    result = VMMDLL_Map_GetVMU(hVMM, &pVirtualMachineMap);
+    if(result) {
+        // print all VM names:
+        for(iVirtualMachineEntry = 0; iVirtualMachineEntry < pVirtualMachineMap->cMap; iVirtualMachineEntry++) {
+            pVirtualMachineEntry = pVirtualMachineMap->pMap + iVirtualMachineEntry;
+            printf("VM: %02i %02x %6i %s\n",
+                iVirtualMachineEntry,
+                pVirtualMachineEntry->dwPartitionID,
+                pVirtualMachineEntry->dwVersionBuild,
+                pVirtualMachineEntry->uszName
+            );
+        }
+        VMMDLL_MemFree(pVirtualMachineMap); pVirtualMachineMap = NULL;
+    } else {
+        printf("FAIL:    VMMDLL_Map_GetVMU.\n");
+    }
+
+
     // Read virtual memory from multiple locations in one efficient sweep
     // using the VMMDLL_Scatter_* API functions.
     printf("------------------------------------------------------------\n");

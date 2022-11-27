@@ -19,6 +19,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "python", "python", "{50E46B
 	ProjectSection(SolutionItems) = preProject
 		files\memprocfs.py = files\memprocfs.py
 		files\memprocfs_example.py = files\memprocfs_example.py
+		files\memprocfs_pythonexec_example.py = files\memprocfs_pythonexec_example.py
 		files\vmmpyplugin.py = files\vmmpyplugin.py
 	EndProjectSection
 EndProject

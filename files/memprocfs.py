@@ -1,13 +1,13 @@
 # memprocfs.py
 #
 # Fast and convenient python access towards the native vmm.dll and in some
-# cases linked pcileech.dll libraries.
+# cases linked leechcore.dll libraries.
 #
 # https://github.com/ufrisk/
 # https://github.com/ufrisk/MemProcFS
 # https://github.com/ufrisk/MemProcFS/wiki/API_Python
 #
-# (c) Ulf Frisk, 2021
+# (c) Ulf Frisk, 2021-2022
 # Author: Ulf Frisk, pcileech@frizk.net
 #
 # Header Version: 4.0

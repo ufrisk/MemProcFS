@@ -549,6 +549,76 @@ DWORD PluginManager_FcLogJSON(_In_ VMM_HANDLE H, _In_ VOID(*pfnLogJSON)(_In_ VMM
     return 0;
 }
 
+/*
+* Execute python code in the python plugin sub-system and retrieve its result.
+* -- CALLER LocalFree: *puszResultOfExec
+* -- H
+* -- uszPythonCodeToExec
+* -- puszResultOfExec
+* -- return
+*/
+_Success_(return)
+BOOL PluginManager_PythonExecCode(_In_ VMM_HANDLE H, _In_ LPSTR uszPythonCodeToExec, _Out_ LPSTR *puszResultOfExec)
+{
+    BOOL fResult = FALSE;
+    LPSTR uszSubPath;
+    PPLUGIN_TREE pTree = NULL;
+    BOOL(*pfnPY2C_Exec)(VMM_HANDLE, LPSTR, LPSTR*);
+    *puszResultOfExec = NULL;
+    if(PluginManager_Initialize(H)) {
+        PluginManager_GetTree(H->vmm.PluginManager.Root, "py", &pTree, &uszSubPath);
+    }
+    if(pTree && pTree->pPlugin && pTree->pPlugin->hDLL) {
+        if((pfnPY2C_Exec = (BOOL(*)(VMM_HANDLE, LPSTR, LPSTR*))GetProcAddress(pTree->pPlugin->hDLL, "PY2C_Exec"))) {
+            // wait for forensic mode to complete (if enabled and not completed already)
+            if(H->fc && H->fc->fInitStart) {
+                VmmLog(H, MID_PYTHON, LOGLEVEL_4_VERBOSE, "Python Code Execute: Wait for forensic mode to finish.")
+                while(!H->fAbort && !H->fc->fInitFinish) {
+                    Sleep(100);
+                }
+                VmmLog(H, MID_PYTHON, LOGLEVEL_4_VERBOSE, "Python Code Execute: Wait for forensic mode completed.")
+            }
+            // dispatch to python plugin to execute python code in vmm context.
+            if(!H->fAbort) {
+                fResult = pfnPY2C_Exec(H, uszPythonCodeToExec, puszResultOfExec);
+                if(!fResult) {
+                    VmmLog(H, MID_PYTHON, LOGLEVEL_1_CRITICAL, "Python Code Execute: Fail executing code.");
+                }
+            }
+        }
+    } else {
+        VmmLog(H, MID_PYTHON, LOGLEVEL_1_CRITICAL, "Python Code Execute: Fail - Unable to load Python plugin.");
+    }
+    return fResult;
+}
+
+/*
+* Execute python code in the python plugin sub-system and print it's result on-screen.
+* -- H
+* -- szPythonFileToExec
+*/
+VOID PluginManager_PythonExecFile(_In_ VMM_HANDLE H, _In_ LPSTR szPythonFileToExec)
+{
+    BOOL f;
+    FILE *hFile = NULL;
+    DWORD cbPythonProgram;
+    LPSTR uszResultOfExec = NULL;
+    PBYTE pbPythonProgram = NULL;
+    f = (pbPythonProgram = LocalAlloc(LMEM_ZEROINIT, 0x01000000)) &&
+        !fopen_s(&hFile, H->cfg.szPythonExecuteFile, "rb") && hFile &&
+        (cbPythonProgram = (DWORD)fread(pbPythonProgram, 1, 0x01000000, hFile)) && (cbPythonProgram < 0x01000000);
+    if(f) {
+        if(PluginManager_PythonExecCode(H, (LPSTR)pbPythonProgram, &uszResultOfExec) && uszResultOfExec) {
+            vmmprintf(H, "%s", uszResultOfExec);
+        }
+    } else {
+        VmmLog(H, MID_PYTHON, LOGLEVEL_1_CRITICAL, "Python Code Execute: Unable to read file: '%s'", H->cfg.szPythonExecuteFile);
+    }
+    LocalFree(uszResultOfExec);
+    LocalFree(pbPythonProgram);
+    if(hFile) { fclose(hFile); }
+}
+
 
 
 // ----------------------------------------------------------------------------
@@ -713,7 +783,18 @@ VOID PluginManager_Initialize_RegInfoInit(_In_ VMM_HANDLE H, _Out_ PVMMDLL_PLUGI
 #ifdef _WIN32
 VOID PluginManager_Initialize_Python(_In_ VMM_HANDLE H)
 {
-    LPSTR szPYTHON_VERSIONS_SUPPORTED[] = { "python315.dll", "python314.dll", "python313.dll", "python312.dll", "python311.dll", "python310.dll", "python39.dll", "python38.dll", "python37.dll", "python36.dll" };
+    LPSTR szPYTHON_VERSIONS_SUPPORTED[] = {
+        "python315.dll",
+        "python314.dll",
+        "python313.dll",
+        "python312.dll",
+        "python311.dll",
+        "python310.dll",
+        "python39.dll",
+        "python38.dll",
+        "python37.dll",
+        "python36.dll"
+    };
     DWORD cszPYTHON_VERSIONS_SUPPORTED = (sizeof(szPYTHON_VERSIONS_SUPPORTED) / sizeof(LPSTR));
     DWORD i;
     BOOL fBitnessFail = FALSE, fPythonStandalone = FALSE;
@@ -798,6 +879,7 @@ VOID PluginManager_Initialize_Python(_In_ VMM_HANDLE H)
     Util_GetPathDll(szPythonPath, hDllPython3X);
     strcat_s(szPythonPath, MAX_PATH, "python3.dll");
     hDllPython3 = LoadLibraryExA(szPythonPath, 0, LOAD_WITH_ALTERED_SEARCH_PATH);
+    VmmLog(H, MID_PLUGIN, LOGLEVEL_DEBUG, "PYTHON_PATH: %s", H->cfg.szPythonPath);
     // 7: process 'special status' python plugin manager.
     hDllPyPlugin = LoadLibraryA("vmmpyc.pyd");
     if(!hDllPyPlugin) {
@@ -871,7 +953,117 @@ VOID PluginManager_Initialize_ExternalDlls(_In_ VMM_HANDLE H)
 #endif /* _WIN32 */
 
 #ifdef LINUX
-VOID PluginManager_Initialize_Python(_In_ VMM_HANDLE H) { return; }
+VOID PluginManager_Initialize_Python(_In_ VMM_HANDLE H)
+{
+    struct link_map *lm;
+    LPSTR szPYTHON_VERSIONS_SUPPORTED[] = {
+        "libpython3.15.so.1", "libpython3.15.so",
+        "libpython3.14.so.1", "libpython3.14.so",
+        "libpython3.13.so.1", "libpython3.13.so",
+        "libpython3.12.so.1", "libpython3.12.so",
+        "libpython3.11.so.1", "libpython3.11.so",
+        "libpython3.10.so.1", "libpython3.10.so",
+        "libpython3.9.so.1", "libpython3.9.so",
+        "libpython3.8.so.1", "libpython3.8.so",
+        "libpython3.7.so.1", "libpython3.7.so",
+        "libpython3.6.so.1", "libpython3.6.so"
+    };
+    DWORD cszPYTHON_VERSIONS_SUPPORTED = (sizeof(szPYTHON_VERSIONS_SUPPORTED) / sizeof(LPSTR));
+    DWORD i;
+    BOOL fPythonStandalone = FALSE;
+    VMMDLL_PLUGIN_REGINFO ri;
+    CHAR szPythonPath[MAX_PATH];
+    HMODULE hDllPython3X = NULL, hDllPyPlugin = NULL;
+    VOID(*pfnInitializeVmmPlugin)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_REGINFO pRegInfo);
+    // 0: Verify that Python should be enabled
+    if(H->cfg.fDisablePython) { return; }
+    // 1: Locate Python by trying user-defined path
+    if(H->cfg.szPythonPath[0]) {
+        for(i = 0; i < cszPYTHON_VERSIONS_SUPPORTED; i++) {
+            ZeroMemory(szPythonPath, MAX_PATH);
+            strcpy_s(szPythonPath, MAX_PATH, H->cfg.szPythonPath);
+            strcat_s(szPythonPath, MAX_PATH, "/");
+            strcat_s(szPythonPath, MAX_PATH, szPYTHON_VERSIONS_SUPPORTED[i]);
+            hDllPython3X = dlopen(szPythonPath, RTLD_NOW | RTLD_GLOBAL);
+            if(hDllPython3X) { break; }
+        }
+        if(!hDllPython3X) {
+            ZeroMemory(H->cfg.szPythonPath, MAX_PATH);
+            VmmLog(H, MID_PLUGIN, LOGLEVEL_INFO, "Python initialization failed. Python 3.6 or later not found on user specified path.");
+            return;
+        }
+    }
+    // 2: If Python is already loaded - use it!
+    if(0 == H->cfg.szPythonPath[0]) {
+        for(i = 0; i < cszPYTHON_VERSIONS_SUPPORTED; i++) {
+            if((hDllPython3X = GetModuleHandleA(szPYTHON_VERSIONS_SUPPORTED[i]))) {
+                GetModuleFileNameA(hDllPython3X, szPythonPath, MAX_PATH);
+                hDllPython3X = dlopen(szPythonPath, RTLD_NOW | RTLD_GLOBAL);
+                if(hDllPython3X) {
+                    Util_GetPathDll(H->cfg.szPythonPath, hDllPython3X);
+                    fPythonStandalone = TRUE;
+                    break;
+                }
+            }
+        }
+    }
+    // 3: Try locate Python by checking the python36 sub-directory relative to the current executable (.exe).
+    if(0 == H->cfg.szPythonPath[0]) {
+        for(i = 0; i < cszPYTHON_VERSIONS_SUPPORTED; i++) {
+            ZeroMemory(szPythonPath, MAX_PATH);
+            Util_GetPathDll(szPythonPath, NULL);
+            strcat_s(szPythonPath, MAX_PATH, "python/");
+            strcat_s(szPythonPath, MAX_PATH, szPYTHON_VERSIONS_SUPPORTED[i]);
+            hDllPython3X = dlopen(szPythonPath, RTLD_NOW | RTLD_GLOBAL);
+            if(hDllPython3X) { break; }
+        }
+        if(hDllPython3X) {
+            Util_GetPathDll(H->cfg.szPythonPath, NULL);
+            strcat_s(H->cfg.szPythonPath, MAX_PATH, "python/");
+        }
+    }
+    // 4: Try locate Python by loading from the current path.
+    if(0 == H->cfg.szPythonPath[0]) {
+        for(i = 0; i < cszPYTHON_VERSIONS_SUPPORTED; i++) {
+            hDllPython3X = dlopen(szPYTHON_VERSIONS_SUPPORTED[i], RTLD_NOW | RTLD_GLOBAL);
+            if(hDllPython3X) { break; }
+        }
+        if(hDllPython3X) {
+            Util_GetPathDll(H->cfg.szPythonPath, hDllPython3X);
+        }
+    }
+    // 5: Python is not found?
+    if(0 == H->cfg.szPythonPath[0]) {
+        VmmLog(H, MID_PLUGIN, LOGLEVEL_INFO, "Python initialization failed. Python 3.6 or later not found.");
+        goto fail;
+    }
+    VmmLog(H, MID_PLUGIN, LOGLEVEL_DEBUG, "PYTHON_PATH: %s", H->cfg.szPythonPath);
+    // 7: process 'special status' python plugin manager.
+    hDllPyPlugin = dlopen("vmmpyc.so", RTLD_NOW | RTLD_GLOBAL);
+    if(!hDllPyPlugin) {
+        VmmLog(H, MID_PLUGIN, LOGLEVEL_WARNING, "Python plugin manager failed to load.");
+        goto fail;
+    }
+    pfnInitializeVmmPlugin = (VOID(*)(VMM_HANDLE, PVMMDLL_PLUGIN_REGINFO))GetProcAddress(hDllPyPlugin, "InitializeVmmPlugin");
+    if(!pfnInitializeVmmPlugin) {
+        VmmLog(H, MID_PLUGIN, LOGLEVEL_WARNING, "Python plugin manager failed to load due to corrupt DLL.");
+        goto fail;
+    }
+    PluginManager_Initialize_RegInfoInit(H, &ri, hDllPyPlugin);
+    ri.python.fPythonStandalone = fPythonStandalone;
+    ri.python.hReservedDllPython3X = NULL;
+    ri.python.hReservedDllPython3 = hDllPython3X;
+    pfnInitializeVmmPlugin(H, &ri);
+    if(!PluginManager_ModuleExistsDll(H, hDllPyPlugin)) {
+        VmmLog(H, MID_PLUGIN, LOGLEVEL_WARNING, "Python plugin manager failed to load due to internal error.");
+        return;
+    }
+    VmmLog(H, MID_PLUGIN, LOGLEVEL_VERBOSE, "PluginManager: Python plugin loaded.");
+    return;
+fail:
+    if(hDllPyPlugin) { dlclose(hDllPyPlugin); }
+    if(hDllPython3X) { dlclose(hDllPython3X); }
+}
 
 VOID PluginManager_Initialize_ExternalDlls(_In_ VMM_HANDLE H)
 {
@@ -929,7 +1121,7 @@ BOOL PluginManager_Initialize(_In_ VMM_HANDLE H)
     DWORD i;
     VMMDLL_PLUGIN_REGINFO ri;
     // 1: check if already initialized
-    if(H->vmm.PluginManager.FLinkAll) { return FALSE; }
+    if(H->vmm.PluginManager.FLinkAll) { return TRUE; }
     EnterCriticalSection(&H->vmm.LockMaster);
     if(H->vmm.PluginManager.FLinkAll) { goto fail; }
     // 2: set up root nodes of process plugin tree

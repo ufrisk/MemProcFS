@@ -1665,6 +1665,7 @@ VOID VmmClose(_In_ VMM_HANDLE H)
     Ob_DECREF_NULL(&H->vmm.pObCacheMapObCompressedShared);
     DeleteCriticalSection(&H->vmm.LockMaster);
     DeleteCriticalSection(&H->vmm.LockPlugin);
+    DeleteCriticalSection(&H->vmm.LockUpdateVM);
     DeleteCriticalSection(&H->vmm.LockUpdateMap);
     DeleteCriticalSection(&H->vmm.LockUpdateModule);
     LocalFree(H->vmm.ObjectTypeTable.pbMultiText);
@@ -2005,6 +2006,7 @@ BOOL VmmInitialize(_In_ VMM_HANDLE H)
     H->vmm.pObCacheMapObCompressedShared = ObCacheMap_New(H, OB_COMPRESSED_CACHED_ENTRIES_MAX, NULL, OB_CACHEMAP_FLAGS_OBJECT_OB);
     InitializeCriticalSection(&H->vmm.LockMaster);
     InitializeCriticalSection(&H->vmm.LockPlugin);
+    InitializeCriticalSection(&H->vmm.LockUpdateVM);
     InitializeCriticalSection(&H->vmm.LockUpdateMap);
     InitializeCriticalSection(&H->vmm.LockUpdateModule);
     VmmInitializeFunctions(H);

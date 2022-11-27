@@ -149,6 +149,15 @@ VmmPycProcess_EnsureInfo(_Inout_ PyObj_Process *self, _In_ LPSTR szFN)
 
 // -> DWORD
 static PyObject*
+VmmPycProcess_pid(PyObj_Process *self, void *closure)
+{
+    PyObject *pyErr;
+    if((pyErr = VmmPycProcess_EnsureInfo(self, "pid"))) { return pyErr; }
+    return PyLong_FromUnsignedLong(self->Info.dwPID);
+}
+
+// -> DWORD
+static PyObject*
 VmmPycProcess_ppid(PyObj_Process *self, void *closure)
 {
     PyObject *pyErr;
@@ -356,10 +365,10 @@ BOOL VmmPycProcess_InitializeType(PyObject *pModule)
         {NULL, NULL, 0, NULL}
     };
     static PyMemberDef PyMembers[] = {
-        {"pid", T_ULONG, offsetof(PyObj_Process, dwPID), READONLY, "PID"},
         {NULL}
     };
     static PyGetSetDef PyGetSet[] = {
+        {"pid", (getter)VmmPycProcess_pid, (setter)NULL, "pricess id (PID)", NULL},
         {"ppid", (getter)VmmPycProcess_ppid, (setter)NULL, "parent pid (PPID).", NULL},
         {"dtb", (getter)VmmPycProcess_dtb, (setter)NULL, "directory table base (DTB).", NULL},
         {"dtb_user", (getter)VmmPycProcess_dtb_user, (setter)NULL, "user directory table base (DTB).", NULL},

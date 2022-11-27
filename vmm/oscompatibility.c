@@ -9,6 +9,7 @@
 #include "util.h"
 #include <dlfcn.h>
 #include <fcntl.h>
+#include <link.h>
 #include <poll.h>
 #include <stdatomic.h>
 #include <sys/ioctl.h>
@@ -40,11 +41,14 @@ VOID LocalFree(HANDLE hMem)
 // LIBRARY FUNCTIONS BELOW:
 // ----------------------------------------------------------------------------
 
-FARPROC GetProcAddress(HMODULE hModule, LPSTR lpProcName)
+FARPROC GetProcAddress(_In_opt_ HMODULE hModule, _In_ LPSTR lpProcName)
 {
     if(!strcmp(lpProcName, "RtlDecompressBuffer")) {
         return OSCOMPAT_RtlDecompressBuffer;
     }
+    if(hModule && ((SIZE_T)hModule & 0xfff)) {
+        return dlsym(hModule, lpProcName);
+    } 
     return NULL;
 }
 
@@ -54,6 +58,51 @@ HMODULE LoadLibraryA(LPSTR lpFileName)
         return (HMODULE)0x1000;      // FAKE HMODULE
     }
     return 0;
+}
+
+DWORD GetModuleFileNameA(_In_opt_ HMODULE hModule, _Out_ LPSTR lpFilename, _In_ DWORD nSize)
+{
+    struct link_map *lm = NULL;
+    if(hModule && ((SIZE_T)hModule & 0xfff)) {
+        dlinfo(hModule, RTLD_DI_LINKMAP, &lm);
+        if(lm) {
+            strncpy(lpFilename, lm->l_name, nSize);
+            lpFilename[nSize - 1] = 0;
+            return strlen(lpFilename);
+        }
+    }
+    return readlink("/proc/self/exe", lpFilename, nSize);
+}
+
+typedef struct tdMODULE_CB_INFO {
+    LPCSTR lpModuleName;
+    HMODULE hModule;
+} MODULE_CB_INFO, *PMODULE_CB_INFO;
+
+int GetModuleHandleA_CB(struct dl_phdr_info *info, size_t size, void *data)
+{
+    PMODULE_CB_INFO ctx = (PMODULE_CB_INFO)data;
+    if(!ctx->lpModuleName && (info->dlpi_name[0] == 0)) {
+        //Dl_info dl;
+        //DWORD DEBUG1 = dladdr((void *)(info->dlpi_addr + info->dlpi_phdr[0].p_vaddr), &dl);
+        ctx->hModule = (HMODULE)info->dlpi_addr;
+        return 1;
+    }
+    if(ctx->lpModuleName && info->dlpi_name[0] && strstr(info->dlpi_name, ctx->lpModuleName)) {
+        //Dl_info dl;
+        //DWORD DEBUG1 = dladdr((void *)(info->dlpi_addr + info->dlpi_phdr[0].p_vaddr), &dl);
+        ctx->hModule = (HMODULE)info->dlpi_addr;
+        return 1;
+    }
+    return 0;
+}
+
+HMODULE GetModuleHandleA(_In_opt_ LPCSTR lpModuleName)
+{
+    MODULE_CB_INFO info = { 0 };
+    info.lpModuleName = lpModuleName;
+    dl_iterate_phdr(GetModuleHandleA_CB, (void*)&info);
+    return info.hModule;
 }
 
 // ----------------------------------------------------------------------------
