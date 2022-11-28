@@ -993,6 +993,7 @@ VOID FcInitialize_ThreadProc(_In_ VMM_HANDLE H, _In_ QWORD qwNotUsed)
     QWORD tmStart = Statistics_CallStart(H);
     QWORD tcStart = GetTickCount64();
     VmmLog(H, MID_FORENSIC, LOGLEVEL_4_VERBOSE, "INIT START");
+    VmmLog(H, MID_FORENSIC, LOGLEVEL_5_DEBUG, "INIT %i%% time=%llis", H->fc->cProgressPercent, ((GetTickCount64() - tcStart) / 1000));
     if(SQLITE_OK != Fc_SqlExec(H, FC_SQL_SCHEMA_STR)) { goto fail; }
     if(H->fAbort) { goto fail; }
     if(!(hCSV = LocalAlloc(LMEM_ZEROINIT, sizeof(struct tdVMMDLL_CSV_HANDLE)))) { goto fail; }
@@ -1007,6 +1008,7 @@ VOID FcInitialize_ThreadProc(_In_ VMM_HANDLE H, _In_ QWORD qwNotUsed)
     Ob_DECREF_NULL(&pObEvilMap);
     PluginManager_FcInitialize(H);              // 0-10%
     H->fc->cProgressPercent = 10;
+    VmmLog(H, MID_FORENSIC, LOGLEVEL_5_DEBUG, "INIT %i%% time=%llis", H->fc->cProgressPercent, ((GetTickCount64() - tcStart) / 1000));
     if(H->fAbort) { goto fail; }
     // parallel async init of: scan virtual per-process/kernel address space & init of json log
     VmmWork_Void(H, (PVMM_WORK_START_ROUTINE_PVOID_PFN)PluginManager_FcLogCSV, hCSV, hEventAsyncLogCSV, VMMWORK_FLAG_PRIO_LOW);
@@ -1201,7 +1203,7 @@ BOOL FcInitialize_Impl(_In_ VMM_HANDLE H, _In_ DWORD dwDatabaseType, _In_ BOOL f
     }
     H->cfg.tpForensicMode = dwDatabaseType;
     PDB_Initialize_WaitComplete(H);
-    if(H->fAbort) { goto fail; }
+    if(!PluginManager_Initialize(H)) { goto fail; }
     // 1: ALLOCATE AND INITIALIZE.
     if(H->fc) { FcClose(H); }
     if(!(H->fc = (PFC_CONTEXT)LocalAlloc(LMEM_ZEROINIT, sizeof(FC_CONTEXT)))) { goto fail; }
@@ -1223,8 +1225,8 @@ BOOL FcInitialize_Impl(_In_ VMM_HANDLE H, _In_ DWORD dwDatabaseType, _In_ BOOL f
         if(!(H->fc->db.hEventIngestPhys[i] = CreateEvent(NULL, FALSE, TRUE, NULL))) { goto fail; }
         if(SQLITE_OK != sqlite3_open_v2(H->fc->db.szuDatabase, &H->fc->db.hSql[i], SQLITE_OPEN_URI | SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_SHAREDCACHE | SQLITE_OPEN_NOMUTEX, NULL)) { goto fail; }
     }
-    VmmWork_Value(H, FcInitialize_ThreadProc, 0, 0, VMMWORK_FLAG_PRIO_LOW);
     H->fc->fInitStart = TRUE;
+    VmmWork_Value(H, FcInitialize_ThreadProc, 0, 0, VMMWORK_FLAG_PRIO_LOW);
     return TRUE;
 fail:
     FcClose(H);

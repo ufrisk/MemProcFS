@@ -946,7 +946,7 @@ VOID PluginManager_Initialize_ExternalDlls(_In_ VMM_HANDLE H)
                 FreeLibrary(hDLL);
                 continue;
             }
-        } while(FindNextFileA(hFindFile, &FindData));
+        } while(FindNextFileA(hFindFile, &FindData) && !H->fAbort);
         FindClose(hFindFile);
     }
 }
@@ -1086,7 +1086,7 @@ VOID PluginManager_Initialize_ExternalDlls(_In_ VMM_HANDLE H)
         return;
     }
     if(!dp) { return; }
-    while((ep = readdir(dp))) {
+    while((ep = readdir(dp)) && !H->fAbort) {
         if(!ep->d_name || (ep->d_name[0] != 'm') || (ep->d_name[1] != '_')) { continue; }
         if(!CharUtil_StrEndsWith(ep->d_name, VMM_LIBRARY_FILETYPE, TRUE)) { continue; }
 
@@ -1122,26 +1122,31 @@ BOOL PluginManager_Initialize(_In_ VMM_HANDLE H)
     VMMDLL_PLUGIN_REGINFO ri;
     // 1: check if already initialized
     if(H->vmm.PluginManager.FLinkAll) { return TRUE; }
-    EnterCriticalSection(&H->vmm.LockMaster);
-    if(H->vmm.PluginManager.FLinkAll) { goto fail; }
+    AcquireSRWLockExclusive(&H->vmm.LockSRW.PluginMgr);
+    if(H->vmm.PluginManager.FLinkAll) {
+        ReleaseSRWLockExclusive(&H->vmm.LockSRW.PluginMgr);
+        return TRUE;
+    }
     // 2: set up root nodes of process plugin tree
     H->vmm.PluginManager.Root = LocalAlloc(LMEM_ZEROINIT, sizeof(PLUGIN_TREE));
     H->vmm.PluginManager.Proc = LocalAlloc(LMEM_ZEROINIT, sizeof(PLUGIN_TREE));
     if(!H->vmm.PluginManager.Root || !H->vmm.PluginManager.Proc) { goto fail; }
     // 3: process built-in modules
     for(i = 0; i < sizeof(g_pfnModulesAllInternal) / sizeof(PVOID); i++) {
+        if(H->fAbort) { goto fail; }
         PluginManager_Initialize_RegInfoInit(H, &ri, NULL);
         g_pfnModulesAllInternal[i](H, &ri);
     }
     // 4: process dll modules
     PluginManager_Initialize_ExternalDlls(H);
     // 5: process 'special status' python plugin manager.
+    if(H->fAbort) { goto fail; }
     PluginManager_Initialize_Python(H);
     // 6: refresh logging (module specific overrides not yet applied may exist)
     VmmLog_LevelRefresh(H);
-    LeaveCriticalSection(&H->vmm.LockMaster);
+    ReleaseSRWLockExclusive(&H->vmm.LockSRW.PluginMgr);
     return TRUE;
 fail:
-    LeaveCriticalSection(&H->vmm.LockMaster);
+    ReleaseSRWLockExclusive(&H->vmm.LockSRW.PluginMgr);
     return FALSE;
 }

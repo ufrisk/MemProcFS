@@ -24,16 +24,21 @@
 #
 
 
-try:
-    print("--------------- START MEMPROCFS PYTHONEXEC EXAMPLE ---------------")
 
+print("--------------- START MEMPROCFS PYTHONEXEC EXAMPLE ---------------")
+
+
+try:
     print("")
     print("1. Processes by pid/name:")
     print("-------------------------")
     for process in vmm.process_list():
         print("%i: \t %s" % (process.pid, process.fullname))
+except Exception as e:
+    print("memprocfs_pythonexec_example.py: exception: " + str(e))
 
 
+try:
     print("")
     print("2. RWX memory [max 5 per process]")
     print("---------------------------------")
@@ -44,8 +49,11 @@ try:
                 print("%i: \t %s \t %s" % (process.pid, process.name, str(entry)))
                 crwx += 1
                 if crwx >= 5: break
+except Exception as e:
+    print("memprocfs_pythonexec_example.py: exception: " + str(e))
 
 
+try:
     print("")
     print("3. Copy CSV files from forensic mode (if enabled)")
     print("-------------------------------------------------")
@@ -63,8 +71,8 @@ try:
                     chunk = vmm.vfs.read(vfs_path, 0x00100000, offset)
                     offset += len(chunk)
                     file.write(chunk)
-
-    
-    print("---------------- END MEMPROCFS PYTHONEXEC EXAMPLE ----------------")
 except Exception as e:
     print("memprocfs_pythonexec_example.py: exception: " + str(e))
+
+
+print("---------------- END MEMPROCFS PYTHONEXEC EXAMPLE ----------------")

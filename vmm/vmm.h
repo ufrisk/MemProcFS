@@ -1548,6 +1548,7 @@ typedef struct tdVMM_CONTEXT {
     struct {                            // lightweight SRW locks
         SRWLOCK VmmPaging;
         SRWLOCK WinObjDisplay;
+        SRWLOCK PluginMgr;
     } LockSRW;
     POB_CONTAINER pObCMapPhysMem;
     POB_CONTAINER pObCMapEvil;
