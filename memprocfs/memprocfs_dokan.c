@@ -364,7 +364,7 @@ VOID VfsDokan_Close(_In_ CHAR chMountPoint)
     if(ctxVfs && ctxVfs->fInitialized) {
         ctxVfs->fInitialized = FALSE;
         if(wchMountPoint) {
-            hModuleDokan = LoadLibraryExA("dokan1.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+            hModuleDokan = LoadLibraryExA("dokan2.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
             if(hModuleDokan) {
                 pfnDokanUnmount = (BOOL(WINAPI *)(WCHAR))GetProcAddress(hModuleDokan, "DokanUnmount");
                 if(pfnDokanUnmount) {
@@ -483,7 +483,7 @@ VOID VfsDokan_InitializeAndMount(_In_ CHAR chMountPoint)
     pfnDokanShutdown();
     if(status == -5) {
         printf("MOUNT: Failed: drive busy/already mounted.\n");
-    } else {
+    } else if(status) {
         printf("MOUNT: Failed. Status Code: %i\n", status);
     }
 fail:
