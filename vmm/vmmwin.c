@@ -3172,26 +3172,31 @@ VOID VmmWinProcess_Enum64_Pre(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In
 VOID VmmWinProcess_Enum64_Post(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_opt_ PVMMWIN_ENUMERATE_EPROCESS_CONTEXT ctx, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb)
 {
     PVMM_OFFSET_EPROCESS po = &H->vmm.offset.EPROCESS;
-    PQWORD pqwDTB, pqwDTB_User, pqwPEB, pqwWow64Process;
+    QWORD qwDTB;
+    PQWORD pqwDTB_User, pqwPEB, pqwWow64Process;
     PDWORD pdwState, pdwPID, pdwPPID;
     LPSTR szName;
     BOOL fUser;
     PVMM_PROCESS pObProcess = NULL;
     if(!ctx || !VMM_KADDR64_16(va)) { return; }
+    qwDTB = *(PQWORD)(pb + po->DTB) & 0x00000ffffffff000;
     pdwState = (PDWORD)(pb + po->State);
     pdwPID = (PDWORD)(pb + po->PID);
     pdwPPID = (PDWORD)(pb + po->PPID);
-    pqwDTB = (PQWORD)(pb + po->DTB);
     pqwDTB_User = (PQWORD)(pb + po->DTB_User);
     szName = (LPSTR)(pb + po->Name);
     pqwPEB = (PQWORD)(pb + po->PEB);
     pqwWow64Process = (PQWORD)(pb + po->Wow64Process);
-    if(*pqwDTB & 0xfffff00000000000) { return; }   // NB! Fail if target system have more than 16TB of memory (unlikely)
+    if(qwDTB > H->dev.paMax) {
+        // NB! Fail above max memory
+        VmmLog(H, MID_PROCESS, LOGLEVEL_4_VERBOSE, "Bad DTB for PID: '%i' (0x%016llx)", *pdwPID, *(PQWORD)(pb + po->DTB));
+        return;
+    }
     if(ctx->pObSetPrefetchDTB) {    // prefetch any physical pages in ctx->pObSetPrefetchDTB on 1st run only
         VmmCachePrefetchPages(H, NULL, ctx->pObSetPrefetchDTB, 0);
         Ob_DECREF_NULL(&ctx->pObSetPrefetchDTB);
     }
-    if(*pdwPID && *pqwDTB && *(PQWORD)szName) {
+    if(*pdwPID && qwDTB && *(PQWORD)szName) {
         // treat csrss.exe as 'kernel' due to win32k mapping missing in System Process _AND_ treat MemCompression as 'user'
         fUser =
             !((*pdwPID == 4) || ((*pdwState == 0) && (*pqwPEB == 0)) || (*(PQWORD)szName == 0x78652e7373727363)) ||     // csrss.exe
@@ -3202,14 +3207,14 @@ VOID VmmWinProcess_Enum64_Post(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProce
             *pdwPID,
             *pdwPPID,
             *pdwState,
-            ~0xfff & *pqwDTB,
+            qwDTB,
             po->DTB_User ? (~0xfff & *pqwDTB_User) : 0,
             szName,
             fUser,
             pb,
             cb);
         if(!pObProcess) {
-            VmmLog(H, MID_PROCESS, LOGLEVEL_VERBOSE, "WARNING: PID '%i' already exists or bad DTB", *pdwPID);
+            VmmLog(H, MID_PROCESS, LOGLEVEL_4_VERBOSE, "PID '%i' already exists or bad DTB", *pdwPID);
             if(++ctx->cNewProcessCollision >= 8) {
                 return;
             }
@@ -3220,7 +3225,7 @@ VOID VmmWinProcess_Enum64_Post(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProce
         pObProcess->win.EPROCESS.fNoLink = ctx->fNoLinkEPROCESS;
         // PEB
         if(*pqwPEB & 0xfff) {
-            VmmLog(H, MID_PROCESS, LOGLEVEL_VERBOSE, "WARNING: Bad PEB alignment for PID: '%i' (0x%016llx)", *pdwPID, *pqwPEB);
+            VmmLog(H, MID_PROCESS, LOGLEVEL_4_VERBOSE, "Bad PEB alignment for PID: '%i' (0x%016llx)", *pdwPID, *pqwPEB);
         } else {
             pObProcess->win.vaPEB = *pqwPEB;
         }
@@ -3236,11 +3241,11 @@ VOID VmmWinProcess_Enum64_Post(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProce
     } else {
         szName[14] = 0; // in case of bad string data ...
     }
-    VmmLog(H, MID_PROCESS, LOGLEVEL_DEBUG, "%04i (%s) %08x %012llx %016llx %012llx %s",
+    VmmLog(H, MID_PROCESS, LOGLEVEL_5_DEBUG, "%04i (%s) %08x %012llx %016llx %012llx %s",
         ctx->cProc,
         !pObProcess ? "skip" : (pObProcess->dwState ? "exit" : "list"),
         *pdwPID,
-        ~0xfff & *pqwDTB,
+        qwDTB,
         va,
         *pqwPEB,
         szName);
@@ -3536,24 +3541,30 @@ VOID VmmWinProcess_Enum32_Pre(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In
 VOID VmmWinProcess_Enum32_Post(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_opt_ PVMMWIN_ENUMERATE_EPROCESS_CONTEXT ctx, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb)
 {
     PVMM_OFFSET_EPROCESS po = &H->vmm.offset.EPROCESS;
-    PDWORD pdwDTB, pdwDTB_User, pdwPEB;
+    DWORD dwDTB;
+    PDWORD pdwDTB_User, pdwPEB;
     PDWORD pdwState, pdwPID, pdwPPID;
     LPSTR szName;
     BOOL fUser;
     PVMM_PROCESS pObProcess = NULL;
     if(!ctx || !VMM_KADDR32_8(va)) { return; }
+    dwDTB = *(PDWORD)(pb + po->DTB) & 0xffffffe0;
     pdwState = (PDWORD)(pb + po->State);
     pdwPID = (PDWORD)(pb + po->PID);
     pdwPPID = (PDWORD)(pb + po->PPID);
-    pdwDTB = (PDWORD)(pb + po->DTB);
     pdwDTB_User = (PDWORD)(pb + po->DTB_User);
     szName = (LPSTR)(pb + po->Name);
     pdwPEB = (PDWORD)(pb + po->PEB);
+    if(dwDTB > H->dev.paMax) {
+        // NB! Fail above max memory
+        VmmLog(H, MID_PROCESS, LOGLEVEL_4_VERBOSE, "Bad DTB for PID: '%i' (0x%016llx)", *pdwPID, *(PQWORD)(pb + po->DTB));
+        return;
+    }
     if(ctx->pObSetPrefetchDTB) {    // prefetch any physical pages in ctx->pObSetPrefetchDTB on 1st run only
         VmmCachePrefetchPages(H, NULL, ctx->pObSetPrefetchDTB, 0);
         Ob_DECREF_NULL(&ctx->pObSetPrefetchDTB);
     }
-    if(*pdwPID && *pdwDTB && *(PQWORD)szName) {
+    if(*pdwPID && dwDTB && *(PQWORD)szName) {
         // treat csrss.exe as 'kernel' due to win32k mapping missing in System Process _AND_ treat MemCompression as 'user'
         fUser =
             !((*pdwPID == 4) || ((*pdwState == 0) && (*pdwPEB == 0)) || (*(PQWORD)szName == 0x78652e7373727363)) ||     // csrss.exe
@@ -3564,14 +3575,14 @@ VOID VmmWinProcess_Enum32_Post(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProce
             *pdwPID,
             *pdwPPID,
             *pdwState,
-            *pdwDTB & 0xffffffe0,
-            po->DTB_User ? (~0xfff & *pdwDTB_User) : 0,
+            dwDTB,
+            po->DTB_User ? (*pdwDTB_User & 0xffffffe0) : 0,
             szName,
             fUser,
             pb,
             cb);
         if(!pObProcess) {
-            VmmLog(H, MID_PROCESS, LOGLEVEL_VERBOSE, "WARNING: PID '%i' already exists or bad DTB", *pdwPID);
+            VmmLog(H, MID_PROCESS, LOGLEVEL_4_VERBOSE, "PID '%i' already exists or bad DTB", *pdwPID);
             if(++ctx->cNewProcessCollision >= 8) {
                 return;
             }
@@ -3582,7 +3593,7 @@ VOID VmmWinProcess_Enum32_Post(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProce
         pObProcess->win.EPROCESS.fNoLink = ctx->fNoLinkEPROCESS;
         // PEB
         if(*pdwPEB & 0xfff) {
-            VmmLog(H, MID_PROCESS, LOGLEVEL_VERBOSE, "WARNING: Bad PEB alignment for PID: '%i' (0x%08x)", *pdwPID, *pdwPEB);
+            VmmLog(H, MID_PROCESS, LOGLEVEL_4_VERBOSE, "Bad PEB alignment for PID: '%i' (0x%08x)", *pdwPID, *pdwPEB);
         } else {
             pObProcess->win.vaPEB = *pdwPEB;
             pObProcess->win.vaPEB32 = *pdwPEB;
@@ -3590,11 +3601,11 @@ VOID VmmWinProcess_Enum32_Post(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProce
     } else {
         szName[14] = 0; // in case of bad string data ...
     }
-    VmmLog(H, MID_PROCESS, LOGLEVEL_DEBUG, "%04i (%s) %08x %08x %08x %08x %s",
+    VmmLog(H, MID_PROCESS, LOGLEVEL_5_DEBUG, "%04i (%s) %08x %08x %08x %08x %s",
         ctx->cProc,
         !pObProcess ? "skip" : (pObProcess->dwState ? "exit" : "list"),
         *pdwPID,
-        *pdwDTB & 0xffffffe0,
+        dwDTB,
         (DWORD)va,
         *pdwPEB,
         szName);

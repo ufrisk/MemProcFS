@@ -1408,12 +1408,12 @@ VOID VmmWinObjKDev_Initialize_2_FetchAndCreate(_In_ VMM_HANDLE H, _In_ PVMMWINDE
             if(!(pe = ObMap_GetByKey(ctx->pmDevice, va))) { goto fail_entry; }
             if(!VmmRead2(H, ctx->pSystemProcess, va, pbDevice, cbDevice, VMM_FLAG_FORCECACHE_READ)) { goto fail_entry; }
             if(H->vmm.f32) {
-                if(po32->Type != 3) { continue; }
+                if(po32->Type != 3) { goto fail_entry; }
                 if(po32->Size < sizeof(DEVICE_OBJECT32)) { goto fail_entry; }
                 if(!pe->pDriver) {
                     pe->pDriver = VmmMap_GetKDriverEntry(H, ctx->pDriverMap, po32->DriverObject);
                 }
-                if(!pe->pDriver) { continue; }
+                if(!pe->pDriver) { goto fail_entry; }
                 if(po32->DriverObject != pe->pDriver->va) { goto fail_entry; }
                 pe->dwDeviceType = po32->DeviceType;
                 if(VMM_KADDR32_8(po32->NextDevice)) {
@@ -1431,12 +1431,12 @@ VOID VmmWinObjKDev_Initialize_2_FetchAndCreate(_In_ VMM_HANDLE H, _In_ PVMMWINDE
                     pe->_Reserved_vaVpb = po32->Vpb;
                 }
             } else {
-                if(po64->Type != 3) { continue; }
+                if(po64->Type != 3) { goto fail_entry; }
                 if(po64->Size < sizeof(DEVICE_OBJECT64)) { goto fail_entry; }
                 if(!pe->pDriver) {
                     pe->pDriver = VmmMap_GetKDriverEntry(H, ctx->pDriverMap, po64->DriverObject);
                 }
-                if(!pe->pDriver) { continue; }
+                if(!pe->pDriver) { goto fail_entry; }
                 if(po64->DriverObject != pe->pDriver->va) { goto fail_entry; }
                 pe->dwDeviceType = po64->DeviceType;
                 if(VMM_KADDR64_16(po64->NextDevice)) {
@@ -1460,6 +1460,7 @@ VOID VmmWinObjKDev_Initialize_2_FetchAndCreate(_In_ VMM_HANDLE H, _In_ PVMMWINDE
             continue;
 fail_entry:
             ObMap_RemoveByKey(ctx->pmDevice, va);
+            VmmLog(H, MID_OBJECT, LOGLEVEL_4_VERBOSE, "_DEVICE_OBJECT FAIL: va=%llx", va);
         }
     }
 fail:
