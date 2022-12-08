@@ -49,8 +49,10 @@ LPCSTR szM_FINDEVIL_README =
 VOID MFindEvil_Read_FindEvil_LnTpModule(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_EVILENTRY peEvil, _In_ WORD iLine, _Inout_updates_(MFINDEVIL_LINELENGTH_X64) LPSTR usz)
 {
     DWORD i;
-    PVMMOB_MAP_MODULE pObModuleMap = NULL;
     LPSTR uszModuleName = NULL;
+    PVMM_MAP_VADENTRY peVad = NULL;
+    PVMMOB_MAP_VAD pObVadMap = NULL;
+    PVMMOB_MAP_MODULE pObModuleMap = NULL;
     if(!pProcess) { return; }
     if(VmmMap_GetModule(H, pProcess, &pObModuleMap)) {
         for(i = 0; i < pObModuleMap->cMap; i++) {
@@ -60,8 +62,15 @@ VOID MFindEvil_Read_FindEvil_LnTpModule(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS
             }
         }
     }
-    strncat_s(usz, MFINDEVIL_LINELENGTH_X64, uszModuleName ? uszModuleName : "", _TRUNCATE);
+    if(VmmMap_GetVad(H, pProcess, &pObVadMap, VMM_VADMAP_TP_FULL)) {
+        peVad = VmmMap_GetVadEntry(H, pObVadMap, peEvil->va);
+    }
+    _snprintf_s(usz, MFINDEVIL_LINELENGTH_X64, _TRUNCATE, "Module:[%s] VAD:[%s]",
+        uszModuleName ? uszModuleName : "",
+        (peVad && peVad->cbuText) ? peVad->uszText : ""
+    );
     Ob_DECREF(pObModuleMap);
+    Ob_DECREF(pObVadMap);
 }
 
 VOID MFindEvil_Read_FindEvil_LnTpVadEx(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_EVILENTRY peEvil, _In_ WORD iLine, _Inout_updates_(MFINDEVIL_LINELENGTH_X64) LPSTR usz)
