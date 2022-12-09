@@ -29,8 +29,8 @@ OBJ = oscompatibility.o charutil.o util.o pe.o vmmdll.o vmmdll_core.o vmmdll_sca
 	  m_vfsfc.o m_vfsproc.o m_vfsroot.o m_conf.o m_winreg.o                  \
 	  m_fc_csv.o m_fc_handle.o m_fc_json.o m_fc_module.o m_fc_ntfs.o         \
 	  m_fc_proc.o m_fc_registry.o m_fc_sys.o m_fc_thread.o m_fc_timeline.o   \
-	  m_file_handles_vads.o m_file_modules.o                                 \
-	  m_findevil.o m_misc_bitlocker.o m_misc_web.o m_misc_view.o             \
+	  m_file_handles_vads.o m_file_modules.o m_findevil.o                    \
+	  m_misc_bitlocker.o m_misc_procinfo.o m_misc_web.o m_misc_view.o        \
 	  m_phys2virt.o m_proc_handle.o m_proc_heap.o m_proc_ldrmodules.o        \
 	  m_proc_memmap.o m_proc_minidump.o m_proc_thread.o m_proc_token.o       \
 	  m_search.o m_sys.o m_sys_driver.o m_sys_mem.o m_sys_net.o m_sys_obj.o  \

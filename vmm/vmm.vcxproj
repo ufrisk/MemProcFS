@@ -383,6 +383,7 @@
     <ClCompile Include="m_file_modules.c" />
     <ClCompile Include="m_findevil.c" />
     <ClCompile Include="m_misc_bitlocker.c" />
+    <ClCompile Include="m_misc_procinfo.c" />
     <ClCompile Include="m_misc_view.c" />
     <ClCompile Include="m_misc_web.c" />
     <ClCompile Include="m_phys2virt.c" />

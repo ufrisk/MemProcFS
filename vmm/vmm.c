@@ -971,22 +971,23 @@ VOID VmmProcessStatic_CloseObCallback(_In_ PVOID pVmmOb)
 }
 
 /*
-* Object manager callback before 'static process' object cleanup
-* decrease refcount of any internal objects.
+* Initialize a new static context that will remain between process refreshes.
+* This should only be done at first process initialization of that PID.
 */
-VOID VmmProcessStatic_Initialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
+_Success_(return)
+BOOL VmmProcessStatic_Initialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
 {
-    EnterCriticalSection(&pProcess->LockUpdate);
+    if(pProcess->pObPersistent) { return FALSE; }
+    if(!(pProcess->pObPersistent = Ob_AllocEx(H, OB_TAG_VMM_PROCESS_PERSISTENT, LMEM_ZEROINIT, sizeof(VMMOB_PROCESS_PERSISTENT), VmmProcessStatic_CloseObCallback, NULL))) { goto fail; }
+    if(!(pProcess->pObPersistent->pObCMapVadPrefetch = ObContainer_New())) { goto fail; }
+    if(!(pProcess->pObPersistent->pObCLdrModulesPrefetch32 = ObContainer_New())) { goto fail; }
+    if(!(pProcess->pObPersistent->pObCLdrModulesPrefetch64 = ObContainer_New())) { goto fail; }
+    if(!(pProcess->pObPersistent->pObCLdrModulesInjected = ObContainer_New())) { goto fail; }
+    if(!(pProcess->pObPersistent->pObCMapThreadPrefetch = ObContainer_New())) { goto fail; }
+    return TRUE;
+fail:
     Ob_DECREF_NULL(&pProcess->pObPersistent);
-    pProcess->pObPersistent = Ob_AllocEx(H, OB_TAG_VMM_PROCESS_PERSISTENT, LMEM_ZEROINIT, sizeof(VMMOB_PROCESS_PERSISTENT), VmmProcessStatic_CloseObCallback, NULL);
-    if(pProcess->pObPersistent) {
-        pProcess->pObPersistent->pObCMapVadPrefetch = ObContainer_New();
-        pProcess->pObPersistent->pObCLdrModulesPrefetch32 = ObContainer_New();
-        pProcess->pObPersistent->pObCLdrModulesPrefetch64 = ObContainer_New();
-        pProcess->pObPersistent->pObCLdrModulesInjected = ObContainer_New();
-        pProcess->pObPersistent->pObCMapThreadPrefetch = ObContainer_New();
-    }
-    LeaveCriticalSection(&pProcess->LockUpdate);
+    return FALSE;
 }
 
 /*
@@ -1090,7 +1091,7 @@ PVMM_PROCESS VmmProcessClone(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
 * -- dwPID
 * -- dwPPID = parent PID (if any)
 * -- dwState
-* -- paDTB
+* -- paDTB_Kernel
 * -- paDTB_UserOpt
 * -- szName
 * -- fUserOnly = user mode process (hide supervisor pages from view)
@@ -1098,20 +1099,22 @@ PVMM_PROCESS VmmProcessClone(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
 * -- cbEPROCESS
 * -- return
 */
-PVMM_PROCESS VmmProcessCreateEntry(_In_ VMM_HANDLE H, _In_ BOOL fTotalRefresh, _In_ DWORD dwPID, _In_ DWORD dwPPID, _In_ DWORD dwState, _In_ QWORD paDTB, _In_ QWORD paDTB_UserOpt, _In_ CHAR szName[16], _In_ BOOL fUserOnly, _In_reads_opt_(cbEPROCESS) PBYTE pbEPROCESS, _In_ DWORD cbEPROCESS)
+PVMM_PROCESS VmmProcessCreateEntry(_In_ VMM_HANDLE H, _In_ BOOL fTotalRefresh, _In_ DWORD dwPID, _In_ DWORD dwPPID, _In_ DWORD dwState, _In_ QWORD paDTB_Kernel, _In_ QWORD paDTB_UserOpt, _In_ CHAR szName[16], _In_ BOOL fUserOnly, _In_reads_opt_(cbEPROCESS) PBYTE pbEPROCESS, _In_ DWORD cbEPROCESS)
 {
     PVMMOB_PROCESS_TABLE ptOld = NULL, ptNew = NULL;
     QWORD i, iStart, cEmpty = 0, cValid = 0;
     PVMM_PROCESS pProcess = NULL, pProcessOld = NULL;
     PVMMOB_CACHE_MEM pObDTB = NULL;
-    BOOL result;
+    BOOL fValidDTB = FALSE;
     // 1: Sanity check DTB
     if(dwState == 0) {
-        pObDTB = VmmTlbGetPageTable(H, paDTB & ~0xfff, FALSE);
-        if(!pObDTB) { goto fail; }
-        result = VmmTlbPageTableVerify(H, pObDTB->h.pb, paDTB, (H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_X64));
-        Ob_DECREF(pObDTB);
-        if(!result) { goto fail; }
+        if((pObDTB = VmmTlbGetPageTable(H, paDTB_Kernel & ~0xfff, FALSE))) {
+            fValidDTB = VmmTlbPageTableVerify(H, pObDTB->h.pb, paDTB_Kernel, (H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_X64));
+            Ob_DECREF(pObDTB);
+        }
+        if(!fValidDTB) {
+            VmmLog(H, MID_PROCESS, LOGLEVEL_4_VERBOSE, "BAD DTB: PID=%i DTB=%016llx", dwPID, paDTB_Kernel);
+        }
     }
     // 2: Allocate new 'Process Table' (if not already existing)
     ptOld = (PVMMOB_PROCESS_TABLE)ObContainer_GetOb(H->vmm.pObCPROC);
@@ -1142,7 +1145,8 @@ PVMM_PROCESS VmmProcessCreateEntry(_In_ VMM_HANDLE H, _In_ BOOL fTotalRefresh, _
         pProcess->dwPID = dwPID;
         pProcess->dwPPID = dwPPID;
         pProcess->dwState = dwState;
-        pProcess->paDTB = paDTB;
+        pProcess->paDTB = fValidDTB ? paDTB_Kernel : 0;
+        pProcess->paDTB_Kernel = paDTB_Kernel;
         pProcess->paDTB_UserOpt = paDTB_UserOpt;
         pProcess->fUserOnly = fUserOnly;
         pProcess->fTlbSpiderDone = pProcess->fTlbSpiderDone;
@@ -1155,15 +1159,19 @@ PVMM_PROCESS VmmProcessCreateEntry(_In_ VMM_HANDLE H, _In_ BOOL fTotalRefresh, _
         }
         // attach pre-existing static process info entry or create new
         pProcessOld = VmmProcessGet(H, dwPID);
-        if(pProcessOld) {
+        if((pProcessOld = VmmProcessGet(H, dwPID))) {
             pProcess->pObPersistent = (PVMMOB_PROCESS_PERSISTENT)Ob_INCREF(pProcessOld->pObPersistent);
+            Ob_DECREF_NULL(&pProcessOld);
         } else {
-            VmmProcessStatic_Initialize(H, pProcess);
+            if(!VmmProcessStatic_Initialize(H, pProcess)) { goto fail; }
         }
-        Ob_DECREF(pProcessOld);
-        pProcessOld = NULL;
     }
-    // 5: Install new PID
+    // 5: Optional DTB user override:
+    if(pProcess->pObPersistent->paDTB_Override) {
+        pProcess->paDTB = pProcess->pObPersistent->paDTB_Override;
+        VmmLog(H, MID_PROCESS, LOGLEVEL_6_TRACE, "DTB OVERRIDE: PID=%i DTB=%016llx OLD_DTB=%016llx", dwPID, pProcess->paDTB, pProcess->paDTB_Kernel);
+    }
+    // 6: Install new PID
     i = iStart = dwPID % VMM_PROCESSTABLE_ENTRIES_MAX;
     while(TRUE) {
         if(!ptNew->_M[i]) {

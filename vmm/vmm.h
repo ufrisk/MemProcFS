@@ -704,6 +704,7 @@ typedef enum tdVMM_EVIL_TP {        // EVIL types - sorted by "evilness"
     VMM_EVIL_TP_PE_INJECTED,        // MODULE
     VMM_EVIL_TP_PROC_NOLINK,        // _NA
     VMM_EVIL_TP_PROC_PARENT,        // _NA
+    VMM_EVIL_TP_PROC_BAD_DTB,       // _NA
     VMM_EVIL_TP_PROC_USER,          // _NA
     VMM_EVIL_TP_PEB_MASQUERADE,     // _NA
     VMM_EVIL_TP_DRIVER_PATH,        // TEXT
@@ -722,6 +723,7 @@ static LPCSTR VMM_EVIL_TP_STRING[VMM_EVIL_TP_MAX] = {
     [VMM_EVIL_TP_PE_INJECTED]       = "PE_INJECT",
     [VMM_EVIL_TP_PROC_NOLINK]       = "PROC_NOLINK",
     [VMM_EVIL_TP_PROC_PARENT]       = "PROC_PARENT",
+    [VMM_EVIL_TP_PROC_BAD_DTB]      = "PROC_BAD_DTB",
     [VMM_EVIL_TP_PROC_USER]         = "PROC_USER",
     [VMM_EVIL_TP_PEB_MASQUERADE]    = "PEB_MASQ",
     [VMM_EVIL_TP_DRIVER_PATH]       = "DRIVER_PATH",
@@ -995,6 +997,7 @@ typedef struct tdVMMOB_PHYS2VIRT_INFORMATION {
 // thread safe ways. Use with extreme care!
 typedef struct tdVMMOB_PROCESS_PERSISTENT {
     OB ObHdr;
+    QWORD paDTB_Override;   // optional saved override of the paDTB (set by user).
     BOOL fIsPostProcessingComplete;
     POB_CONTAINER pObCMapVadPrefetch;
     POB_CONTAINER pObCLdrModulesPrefetch32;
@@ -1021,8 +1024,9 @@ typedef struct tdVMM_PROCESS {
     DWORD dwPID;
     DWORD dwPPID;
     DWORD dwState;                  // state of process, 0 = running
-    QWORD paDTB;
-    QWORD paDTB_UserOpt;
+    QWORD paDTB;                    // DTB: equals paDTB_Kernel - but may be overridden by user. 
+    QWORD paDTB_Kernel;             // DTB kernel: (default) as given by EPROCESS.
+    QWORD paDTB_UserOpt;            // DTB user: (optional) as given by EPROCESS.
     CHAR szName[16];
     BOOL fUserOnly;
     BOOL fTlbSpiderDone;

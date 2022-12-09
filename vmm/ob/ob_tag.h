@@ -8,6 +8,7 @@
 
 #include "ob.h"
 
+#define OB_TAG_CTX_MMISCINFO            'CMI '
 #define OB_TAG_FORENSIC_FILE            'Ffil'
 #define OB_TAG_INFODB_CTX               'IDBC'
 #define OB_TAG_MAP_PTE                  'Mpte'

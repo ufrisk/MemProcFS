@@ -186,4 +186,37 @@ QWORD Statistics_CallEnd(_In_ VMM_HANDLE H, _In_ DWORD fId, QWORD tmCallStart);
 _Success_(return)
 BOOL Statistics_CallToString(_In_ VMM_HANDLE H, _Out_opt_ LPSTR *psz, _Out_ PDWORD pcsz);
 
+
+
+// ----------------------------------------------------------------------------
+// CALL STATISTICS DEBUG/TRACE LOGGING BELOW:
+// ----------------------------------------------------------------------------
+
+typedef struct tdVMMSTATISTICS_LOG {
+    BOOL f;
+    DWORD dwPID;
+    DWORD dwMID;
+    VMMLOG_LEVEL dwLogLevel;
+    QWORD v[3];
+} VMMSTATISTICS_LOG, *PVMMSTATISTICS_LOG;
+
+/*
+* Start a call statistics logging session.
+* -- H
+* -- dwMID = module ID (MID)
+* -- dwLogLevel = log level as defined by LOGLEVEL_*
+* -- pProcess
+* -- pLogStatistics
+* -- uszText
+*/
+VOID VmmStatisticsLogStart(_In_ VMM_HANDLE H, _In_ DWORD dwMID, _In_ VMMLOG_LEVEL dwLogLevel, _In_opt_ PVMM_PROCESS pProcess, _Out_ PVMMSTATISTICS_LOG pStatisticsLog, _In_ LPSTR uszText);
+
+/*
+* End a statistics logging session.
+* -- H
+* -- pLogStatistics
+* -- uszText
+*/
+VOID VmmStatisticsLogEnd(_In_ VMM_HANDLE H, _In_ PVMMSTATISTICS_LOG pStatisticsLog, _In_ LPSTR uszText);
+
 #endif /* __STATISTICS_H__ */

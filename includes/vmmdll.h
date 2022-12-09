@@ -17,7 +17,7 @@
 // (c) Ulf Frisk, 2018-2022
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-// Header Version: 5.0
+// Header Version: 5.2
 //
 
 #include "leechcore.h"
@@ -215,6 +215,7 @@ VOID VMMDLL_MemFree(_Frees_ptr_opt_ PVOID pvMem);
 
 #define VMMDLL_OPT_FORENSIC_MODE                        0x2000020100000000  // RW - enable/retrieve forensic mode type [0-4].
 
+// REFRESH OPTIONS:
 #define VMMDLL_OPT_REFRESH_ALL                          0x2001ffff00000000  // W - refresh all caches
 #define VMMDLL_OPT_REFRESH_FREQ_MEM                     0x2001100000000000  // W - refresh memory cache (excl. TLB) [fully]
 #define VMMDLL_OPT_REFRESH_FREQ_MEM_PARTIAL             0x2001000200000000  // W - refresh memory cache (excl. TLB) [partial 33%/call]
@@ -223,6 +224,9 @@ VOID VMMDLL_MemFree(_Frees_ptr_opt_ PVOID pvMem);
 #define VMMDLL_OPT_REFRESH_FREQ_FAST                    0x2001040000000000  // W - refresh fast frequency - incl. partial process refresh
 #define VMMDLL_OPT_REFRESH_FREQ_MEDIUM                  0x2001000100000000  // W - refresh medium frequency - incl. full process refresh
 #define VMMDLL_OPT_REFRESH_FREQ_SLOW                    0x2001001000000000  // W - refresh slow frequency.
+
+// PROCESS OPTIONS: [LO-DWORD: Process PID]
+#define VMMDLL_OPT_PROCESS_DTB                          0x2002000100000000  // W - force set process directory table base.
 
 static LPCSTR VMMDLL_MEMORYMODEL_TOSTRING[4] = { "N/A", "X86", "X86PAE", "X64" };
 

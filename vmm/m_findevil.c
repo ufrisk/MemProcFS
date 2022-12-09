@@ -18,29 +18,9 @@ LPCSTR szM_FINDEVIL_README =
 "Find Evil currently detect some types of malware infection by memory analysis\n" \
 "and does not, at this moment, support anti-virus scans and custom yara rules.\n" \
 "---                                                                          \n" \
-"Find Evil is enabled for 64-bit Windows 10 to keep false positive ratio low. \n" \
+"Find Evil is enabled for 64-bit Windows 10+ to keep false positive ratio low.\n" \
 "Find Evil limit select findings per virtual address decriptor and process to \n" \
 "keep output manageable. Find Evil also limit findings on select processes.   \n" \
-"---                                                                          \n" \
-"Find Evil is currently able to detect:                                       \n" \
-"- Injected PE:    Non-loader loaded .dll with intact PE header.              \n" \
-"                  Low false positive ratio.                                  \n" \
-"- PROC NoLink:    Processes not linked by the _EPROCESS linked list.         \n" \
-"- PROC Parent:    Suspicious non-standard parent process.                    \n" \
-"- PROC User:      Suspicious non-standard user.                              \n" \
-"- Bad PEB/LDR:    No ordinary modules located in the PEB/LDR_DATA structures \n" \
-"                  indicates corruption; due to malware or paged out memory.  \n" \
-"- PEB Masquerade: PEB user-mode image path differs from kernel image path.   \n" \
-"- No-Link PE:     Loader loaded .dll with intact PE header not in PEB.       \n" \
-"                  May provide false positives on paged memory/corrupted PEB. \n" \
-"- Patched PE:     Loader loaded .dll - but modified after load time.         \n" \
-"                  High false positives on relocations on 32-bit binaries.    \n" \
-"- Private RX/RWX: Executable pages in non-shared memory such as stacks and   \n" \
-"                  heaps. May provide false positives on Just-In-Time (JIT)   \n" \
-"                  compiled code and should be used as an indicator only.     \n" \
-"- NoImage RX/RWX: Executable pages in shared memory other than loader-loaded \n" \
-"                  .dll memory such file backed memory. May provide false     \n" \
-"                  positives and should be used as an indicator only.         \n" \
 "---                                                                          \n" \
 "Documentation:    https://github.com/ufrisk/MemProcFS/wiki/FS_FindEvil       \n" \
 "---                                                                          \n" \
@@ -139,6 +119,7 @@ VOID MFindEvil_ReadLineCB(_In_ VMM_HANDLE H, _Inout_opt_ PVOID ctx, _In_ DWORD c
         case VMM_EVIL_TP_VAD_NOIMAGE_RWX:
             MFindEvil_Read_FindEvil_LnTpVadEx(H, pObProcess, pe, (WORD)ie, uszBuffer);
             break;
+        case VMM_EVIL_TP_PROC_BAD_DTB:
         case VMM_EVIL_TP_PROC_NOLINK:
         case VMM_EVIL_TP_PROC_PARENT:
         case VMM_EVIL_TP_PROC_USER:

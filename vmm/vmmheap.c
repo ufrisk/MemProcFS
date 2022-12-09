@@ -22,6 +22,7 @@
 #include "util.h"
 #include "charutil.h"
 #include "pdb.h"
+#include "statistics.h"
 
 #define VMMHEAP_MAX_HEAPS       0x80
 
@@ -1304,13 +1305,9 @@ VOID VmmHeap_Initialize_DoWork(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
     PVMM_MAP_HEAPENTRY peH;
     PVMM_MAP_HEAP_SEGMENTENTRY peR;
     DWORD i, cbData, cHeaps, cSegments;
-    QWORD qwScatterPre = 0, qwScatterPost = 0;
-    BOOL fLog = VmmLogIsActive(H, MID_HEAP, LOGLEVEL_6_TRACE);
+    VMMSTATISTICS_LOG Statistics = { 0 };
     // init:
-    if(fLog) {
-        VmmLog(H, MID_HEAP, LOGLEVEL_6_TRACE, "INIT HEAPMAP START: pid=%5i", pProcess->dwPID);
-        LcGetOption(H->hLC, LC_OPT_CORE_STATISTICS_CALL_COUNT | LC_STATISTICS_ID_READSCATTER, &qwScatterPre);
-    }
+    VmmStatisticsLogStart(H, MID_HEAP, LOGLEVEL_6_TRACE, pProcess, &Statistics, "INIT_HEAPMAP");
     ctxInit.pProcess = pProcess;
     if(!(ctxInit.psPrefetch = ObSet_New(H))) { goto fail; }
     if(!(ctxInit.pmeHeap = ObMap_New(H, OB_MAP_FLAGS_OBJECT_LOCALFREE))) { goto fail; }
@@ -1358,10 +1355,7 @@ fail:
     Ob_DECREF(ctxInit.pmeHeap);
     Ob_DECREF(ctxInit.pmeHeapSegment);
     Ob_DECREF(ctxInit.psPrefetch);
-    if(fLog) {
-        LcGetOption(H->hLC, LC_OPT_CORE_STATISTICS_CALL_COUNT | LC_STATISTICS_ID_READSCATTER, &qwScatterPost);
-        VmmLog(H, MID_HEAP, LOGLEVEL_6_TRACE, "INIT HEAPMAP END:   pid=%5i count=%i scatter=%lli", pProcess->dwPID, (pProcess->Map.pObHeap ? pProcess->Map.pObHeap->cMap : 0), qwScatterPost - qwScatterPre);
-    }
+    VmmStatisticsLogEnd(H, &Statistics, "INIT_HEAPMAP");
 }
 
 /*

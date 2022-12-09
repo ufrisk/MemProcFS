@@ -229,8 +229,23 @@ BOOL VMMDLL_ConfigGet_Impl(_In_ VMM_HANDLE H, _In_ ULONG64 fOption, _Out_ PULONG
 }
 
 _Success_(return)
+BOOL VMMDLL_ConfigSetProcess_Impl(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ ULONG64 fOption, _In_ ULONG64 qwValue)
+{
+    switch(fOption) {
+        case VMMDLL_OPT_PROCESS_DTB:
+            pProcess->pObPersistent->paDTB_Override = qwValue;
+            VmmProcRefresh_Slow(H);
+            return TRUE;
+        default:
+            return FALSE;
+    }
+}
+
+_Success_(return)
 BOOL VMMDLL_ConfigSet_Impl(_In_ VMM_HANDLE H, _In_ ULONG64 fOption, _In_ ULONG64 qwValue)
 {
+    BOOL fResult = FALSE;
+    PVMM_PROCESS pObProcess = NULL;
     if(!H || (H->magic != VMM_MAGIC)) { return FALSE; }
     // user-initiated refresh / cache flushes
     if((fOption & 0xffff000000000000) == 0x2001000000000000) {
@@ -261,6 +276,15 @@ BOOL VMMDLL_ConfigSet_Impl(_In_ VMM_HANDLE H, _In_ ULONG64 fOption, _In_ ULONG64
         }
         return TRUE;
     }
+    // per-process options:
+    if((fOption & 0xffff000000000000) == 0x2002000000000000) {
+        if((pObProcess = VmmProcessGet(H, fOption & 0xffffffff))) {
+            fResult = VMMDLL_ConfigSetProcess_Impl(H, pObProcess, fOption & 0xffffffff00000000, qwValue);
+            Ob_DECREF_NULL(&pObProcess);
+        }
+        return fResult;
+    }
+    // options:
     switch(fOption & 0xffffffff00000000) {
         case VMMDLL_OPT_CORE_PRINTF_ENABLE:
             LcSetOption(H->hLC, fOption, qwValue);

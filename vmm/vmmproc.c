@@ -175,6 +175,7 @@ BOOL VmmProcRefresh_Medium(_In_ VMM_HANDLE H)
 _Success_(return)
 BOOL VmmProcRefresh_Slow(_In_ VMM_HANDLE H)
 {
+    VmmProcRefresh_Medium(H);
     EnterCriticalSection(&H->vmm.LockMaster);
     H->vmm.tcRefreshSlow++;
     VmmWinReg_Refresh(H);
@@ -223,8 +224,8 @@ VOID VmmProcCacheUpdaterThread(_In_ VMM_HANDLE H, _In_ QWORD qwNotUsed)
         fRefreshTLB = !(i % H->vmm.ThreadProcCache.cTick_TLB);
         fRefreshMEM = !(i % H->vmm.ThreadProcCache.cTick_MEM);
         fRefreshSlow = !(i % H->vmm.ThreadProcCache.cTick_Slow);
-        fRefreshMedium = !(i % H->vmm.ThreadProcCache.cTick_Medium);
-        fRefreshFast = !(i % H->vmm.ThreadProcCache.cTick_Fast) && !fRefreshMedium;
+        fRefreshMedium = !(i % H->vmm.ThreadProcCache.cTick_Medium) && !fRefreshSlow;
+        fRefreshFast = !(i % H->vmm.ThreadProcCache.cTick_Fast) && !fRefreshSlow && !fRefreshMedium;
         // PHYS / TLB cache clear
         EnterCriticalSection(&H->vmm.LockMaster);
         if(fRefreshMEM) {

@@ -400,6 +400,18 @@ VOID VmmEvil_ProcessScan_PebMasquerade(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pPro
 }
 
 /*
+* Some malware may masquerade the proper paging base (DirectoryTableBase) in EPROCESS
+* to hide a process page tables. This will result in a running process having invalid
+* page tables (0 in MemProcFS implementation).
+*/
+VOID VmmEvil_ProcessScan_BadDTB(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _Inout_ PVMMEVIL_INIT_CONTEXT ctxEvil)
+{
+    if(!pProcess->paDTB) {
+        VmmEvil_AddEvil_NoVadReq(ctxEvil, pProcess, VMM_EVIL_TP_PROC_BAD_DTB, pProcess->paDTB_Kernel, 0, 0, NULL, FALSE);
+    }
+}
+
+/*
 * Locate well known processes with bad users - i.e. cmd running as system.
 */
 VOID VmmEvil_ProcessScan_BadUser(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _Inout_ PVMMEVIL_INIT_CONTEXT ctxEvil)
@@ -507,6 +519,7 @@ VOID VmmEvil_ProcessScan(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _Inout_ 
     if(H->fAbort) { goto fail; }
     VmmEvil_ProcessScan_BadParent(H, pProcess, ctxEvil);
     VmmEvil_ProcessScan_BadUser(H, pProcess, ctxEvil);
+    VmmEvil_ProcessScan_BadDTB(H, pProcess, ctxEvil);
     VmmEvil_ProcessScan_PebMasquerade(H, pProcess, ctxEvil);
     // scan for kernel related issues (system process)}
 fail:
