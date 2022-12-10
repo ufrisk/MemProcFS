@@ -4,6 +4,7 @@
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "pluginmanager.h"
+#include "vmmproc.h"
 #include "vmmwin.h"
 #include "util.h"
 
@@ -38,6 +39,13 @@ NTSTATUS MVfsProc_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out
             return Util_VfsReadFile_FromQWORD(pProcess->paDTB, pb, cb, pcbRead, cbOffset, FALSE);
         } else if((tpMemoryModel == VMM_MEMORYMODEL_X86) || (tpMemoryModel == VMM_MEMORYMODEL_X86PAE)) {
             return Util_VfsReadFile_FromDWORD((DWORD)pProcess->paDTB, pb, cb, pcbRead, cbOffset, FALSE);
+        }
+    }
+    if(!_stricmp(uszPath, "dtb-kernel.txt")) {
+        if(tpMemoryModel == VMM_MEMORYMODEL_X64) {
+            return Util_VfsReadFile_FromQWORD(pProcess->paDTB_Kernel, pb, cb, pcbRead, cbOffset, FALSE);
+        } else if((tpMemoryModel == VMM_MEMORYMODEL_X86) || (tpMemoryModel == VMM_MEMORYMODEL_X86PAE)) {
+            return Util_VfsReadFile_FromDWORD((DWORD)pProcess->paDTB_Kernel, pb, cb, pcbRead, cbOffset, FALSE);
         }
     }
     if(!_stricmp(uszPath, "dtb-user.txt")) {
@@ -117,13 +125,16 @@ NTSTATUS MVfsProc_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out
 */
 NTSTATUS MVfsProc_Write(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
 {
+    VMM_MEMORYMODEL_TP tpMemoryModel = H->vmm.tpMemoryModel;
+    NTSTATUS nt = VMM_STATUS_FILE_INVALID;
     BOOL fFound;
     QWORD cbMemSize;
     LPSTR uszPath = ctxP->uszPath;
     PVMM_PROCESS pProcess = ctxP->pProcess;
-    // read only files - report zero bytes written
+    // read only files - report zero bytes written:
     fFound =
-        !_stricmp(uszPath, "dtb.txt") ||
+        !_stricmp(uszPath, "dtb-kernel.txt") ||
+        !_stricmp(uszPath, "dtb-user.txt") ||
         !_stricmp(uszPath, "name.txt") ||
         !_stricmp(uszPath, "pid.txt") ||
         !_stricmp(uszPath, "ppid.txt") ||
@@ -139,10 +150,20 @@ NTSTATUS MVfsProc_Write(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In
         *pcbWrite = 0;
         return VMM_STATUS_SUCCESS;
     }
-    // write memory to "memory.vmem" file
+    // write memory to "memory.vmem" file:
     if(!_stricmp(uszPath, "memory.vmem")) {
         cbMemSize = (H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X64) ? 1ULL << 48 : 1ULL << 32;
         return VmmWriteAsFile(H, pProcess, 0, cbMemSize, pb, cb, pcbWrite, cbOffset);
+    }
+    // write to dtb (force set custom dtb):
+    if(!_stricmp(uszPath, "dtb.txt")) {
+        if(tpMemoryModel == VMM_MEMORYMODEL_X64) {
+            nt = Util_VfsWriteFile_QWORD(&pProcess->pObPersistent->paDTB_Override, pb, cb, pcbWrite, cbOffset, 0, 0);
+        } else if((tpMemoryModel == VMM_MEMORYMODEL_X86) || (tpMemoryModel == VMM_MEMORYMODEL_X86PAE)) {
+            nt = Util_VfsWriteFile_DWORD((PDWORD)&pProcess->pObPersistent->paDTB_Override, pb, cb, pcbWrite, cbOffset, 0, 0);
+        }
+        VmmProcRefresh_Slow(H);
+        return nt;
     }
     return VMM_STATUS_FILE_INVALID;
 }
@@ -212,10 +233,12 @@ BOOL MVfsProc_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ 
             VMMDLL_VfsList_AddFile(pFileList, "memory.vmem", 0x0001000000000000, &ExInfo);
             VMMDLL_VfsList_AddFile(pFileList, "dtb.txt", 16, &ExInfo);
             if(pProcess->paDTB_UserOpt) { VMMDLL_VfsList_AddFile(pFileList, "dtb-user.txt", 16, &ExInfo); }
+            if(pProcess->paDTB != pProcess->paDTB_Kernel) { VMMDLL_VfsList_AddFile(pFileList, "dtb-kernel.txt", 16, &ExInfo); }
         } else if(H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X86 || H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X86PAE) {
             VMMDLL_VfsList_AddFile(pFileList, "memory.vmem", 0x100000000, &ExInfo);
             VMMDLL_VfsList_AddFile(pFileList, "dtb.txt", 8, &ExInfo);
             if(pProcess->paDTB_UserOpt) { VMMDLL_VfsList_AddFile(pFileList, "dtb-user.txt", 8, &ExInfo); }
+            if(pProcess->paDTB != pProcess->paDTB_Kernel) { VMMDLL_VfsList_AddFile(pFileList, "dtb-kernel.txt", 8, &ExInfo); }
         }
         MVfsProc_List_OsSpecific(H, pProcess, &ExInfo, pFileList);
     }

@@ -162,8 +162,8 @@ VOID MMiscProcInfo_Notify(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _
         if((ctxOb = MMiscProcInfo_GetContext(H, ctxP))) {
             ctxOb->fAbort = TRUE;
             Ob_DECREF(ctxOb);
-            ObContainer_SetOb((POB_CONTAINER)ctxP->ctxM, NULL);
         }
+        ObContainer_SetOb((POB_CONTAINER)ctxP->ctxM, NULL);
     }
 }
 
