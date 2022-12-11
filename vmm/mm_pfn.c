@@ -156,16 +156,36 @@ VOID MmPfn_Map_GetPfn_GetVaX64(_In_ VMM_HANDLE H, _In_ POB_MMPFN_CONTEXT ctx, _I
     BOOL f;
     BYTE tp, pbPfn[0x30];
     PMMPFN_MAP_ENTRY pe;
-    DWORD i, c, iPfnNext, cbRead;
-    QWORD pa;
-    PVMMOB_CACHE_MEM pObPD = NULL;
+    DWORD i, c, iPfnNext;
+    QWORD pa, vaPfn;
+    struct {
+        QWORD va;
+        BYTE pb[0x1000];
+    } PageCache;
+restart_new_pml_level:
+    PageCache.va = 0;
     VmmCachePrefetchPages(H, pSystemProcess, psPrefetch, 0);
     ObSet_Clear(psPrefetch);
     for(i = 0, c = ObSet_Size(psPte); i < c; i++) {
         pe = (PMMPFN_MAP_ENTRY)ObSet_Get(psPte, i);
         if(!pe || !pe->AddressInfo.va) { continue; }
-        VmmReadEx(H, pSystemProcess, MMPFN_PFN_TO_VA(ctx, pe->AddressInfo.dwPfnPte[iPML]), pbPfn, ctx->_MMPFN.cb, &cbRead, 0);
-        f = cbRead &&
+        vaPfn = MMPFN_PFN_TO_VA(ctx, pe->AddressInfo.dwPfnPte[iPML]);
+        if(((vaPfn & 0xfff) + ctx->_MMPFN.cb) > 0x1000) {
+            // page-boundary pfn read -> perform single pfn read:
+            f = VmmRead(H, pSystemProcess, vaPfn, pbPfn, ctx->_MMPFN.cb);
+        } else {
+            // in-page pfn read -> perform page buffered read:
+            f = TRUE;
+            if(PageCache.va != (vaPfn & ~0xfff)) {
+                PageCache.va = vaPfn & ~0xfff;
+                if(!VmmRead(H, pSystemProcess, PageCache.va, PageCache.pb, 0x1000)) {
+                    PageCache.va = 0;
+                    f = FALSE;
+                }
+            }
+            memcpy(pbPfn, PageCache.pb + (vaPfn & 0xfff), ctx->_MMPFN.cb);
+        }
+        f = f &&
             (tp = (pbPfn[ctx->_MMPFN.ou3 + 2] & 0x7)) &&                                    // "PageLocation"
             ((tp == MmPfnTypeActive) || (pe->PageLocation == MmPfnTypeStandby) || (tp == MmPfnTypeModified) || (tp == MmPfnTypeModifiedNoWrite)) &&
             (iPfnNext = *(PDWORD)(pbPfn + ctx->_MMPFN.ou4)) &&                              // "Containing" PTE
@@ -197,7 +217,8 @@ VOID MmPfn_Map_GetPfn_GetVaX64(_In_ VMM_HANDLE H, _In_ POB_MMPFN_CONTEXT ctx, _I
         }
     }
     if(iPML < 3) {
-        MmPfn_Map_GetPfn_GetVaX64(H, ctx, pSystemProcess, psPte, psPrefetch, iPML + 1);
+        iPML++;
+        goto restart_new_pml_level;
     }
 }
 
@@ -301,17 +322,24 @@ BOOL MmPfn_Map_GetPfnScatter(_In_ VMM_HANDLE H, _In_ POB_SET psPfn, _Out_ PMMPFN
     PVMM_PROCESS pObSystemProcess = NULL;
     PMMPFNOB_MAP pObPfnMap = NULL;
     PMMPFN_MAP_ENTRY pe;
-    QWORD qw;
-    DWORD cPfn, i, tp, cbRead;
+    QWORD qw, vaPfn;
+    DWORD cPfn, i, tp;
     POB_SET psObEnrichAddress = NULL, psObPrefetch = NULL;
+    struct {
+        QWORD va;
+        BYTE pb[0x1000];
+    } PageCache;
     if(!ctx) { goto fail; }
     // initialization
+    PageCache.va = 0;
     if(!(cPfn = ObSet_Size(psPfn))) { goto fail; }
     if(!(pObSystemProcess = VmmProcessGet(H, 4))) { goto fail; }
-    if(!(psObEnrichAddress = ObSet_New(H))) { goto fail; }
     if(!(psObPrefetch = ObSet_New(H))) { goto fail; }
     if(!(pObPfnMap = Ob_AllocEx(H, OB_TAG_MAP_PFN, LMEM_ZEROINIT, sizeof(MMPFNOB_MAP) + cPfn * sizeof(MMPFN_MAP_ENTRY), NULL, NULL))) { goto fail; }
     pObPfnMap->cMap = cPfn;
+    if(fExtended) {
+        if(!(psObEnrichAddress = ObSet_New(H))) { goto fail; }
+    }
     // translate pfn# to pfn va and prefetch
     for(i = 0; i < cPfn; i++) {
         pe = pObPfnMap->pMap + i;
@@ -324,8 +352,21 @@ BOOL MmPfn_Map_GetPfnScatter(_In_ VMM_HANDLE H, _In_ POB_SET psPfn, _Out_ PMMPFN
     for(i = 0; i < cPfn; i++) {
         pe = pObPfnMap->pMap + i;
         if(pe->dwPfn > ctx->iPfnMax) { continue; }
-        VmmReadEx(H, pObSystemProcess, MMPFN_PFN_TO_VA(ctx, pe->dwPfn), pbPfn, ctx->_MMPFN.cb, &cbRead, 0);
-        if(!cbRead) { continue; }
+        vaPfn = MMPFN_PFN_TO_VA(ctx, pe->dwPfn);
+        if(((vaPfn & 0xfff) + ctx->_MMPFN.cb) > 0x1000) {
+            // page-boundary pfn read -> perform single pfn read:
+            if(!VmmRead(H, pObSystemProcess, vaPfn, pbPfn, ctx->_MMPFN.cb)) { continue; }
+        } else {
+            // in-page pfn read -> perform page buffered read:
+            if(PageCache.va != (vaPfn & ~0xfff)) {
+                PageCache.va = vaPfn & ~0xfff;
+                if(!VmmRead(H, pObSystemProcess, PageCache.va, PageCache.pb, 0x1000)) {
+                    PageCache.va = 0;
+                    continue;
+                }
+            }
+            memcpy(pbPfn, PageCache.pb + (vaPfn & 0xfff), ctx->_MMPFN.cb);
+        }
         pe->_u3 = *(PDWORD)(pbPfn + ctx->_MMPFN.ou3);
         qw = *(PQWORD)(pbPfn + ctx->_MMPFN.ou4);
         if(f32) {
@@ -359,7 +400,7 @@ BOOL MmPfn_Map_GetPfnScatter(_In_ VMM_HANDLE H, _In_ POB_SET psPfn, _Out_ PMMPFN
         }
     }
     // encrich result with virtual addresses and additional info
-    if(ObSet_Size(psObEnrichAddress)) {
+    if(fExtended && ObSet_Size(psObEnrichAddress)) {
         if(H->vmm.tpMemoryModel == VMMDLL_MEMORYMODEL_X64) {
             MmPfn_Map_GetPfn_GetVaX64(H, ctx, pObSystemProcess, psObEnrichAddress, psObPrefetch, 1);
         } else if(H->vmm.tpMemoryModel == VMMDLL_MEMORYMODEL_X86PAE) {

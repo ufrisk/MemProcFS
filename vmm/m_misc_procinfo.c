@@ -23,6 +23,8 @@ VOID MMiscProcInfo_Context_CallbackCleanup(POB_PMMISCINFO_CONTEXT pOb)
     Ob_DECREF(pOb->pDTB);
 }
 
+#define MMISCPROCINFO_MAP_NUM_PFNS      0x2000
+
 VOID MMiscProcInfo_InitializeDTB(_In_ VMM_HANDLE H, _In_ POB_PMMISCINFO_CONTEXT ctx)
 {
     BYTE pbDTB[0x1000];
@@ -43,8 +45,8 @@ VOID MMiscProcInfo_InitializeDTB(_In_ VMM_HANDLE H, _In_ POB_PMMISCINFO_CONTEXT 
     Ob_DECREF_NULL(&pObPfnMap);
     // 4: Walk PFN database:
     cPfnMax = (DWORD)(H->dev.paMax >> 12);
-    for(oPfn = 0; oPfn < cPfnMax; oPfn += 0x20000) {
-        cPfn = min(0x20000, cPfnMax - oPfn);
+    for(oPfn = 0; oPfn < cPfnMax; oPfn += MMISCPROCINFO_MAP_NUM_PFNS) {
+        cPfn = min(MMISCPROCINFO_MAP_NUM_PFNS, cPfnMax - oPfn);
         if(H->fAbort || ctx->fAbort) { goto fail; }
         ctx->dwProgressPercent = (DWORD)((100ULL * oPfn) / cPfnMax);
         if(!MmPfn_Map_GetPfn(H, oPfn, cPfn, &pObPfnMap, FALSE)) { goto fail; }
@@ -155,10 +157,11 @@ VOID MMiscProcInfo_Notify(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _
     POB_PMMISCINFO_CONTEXT ctxOb;
     if(fEvent == VMMDLL_PLUGIN_NOTIFY_REFRESH_SLOW) {
         if((ctxOb = MMiscProcInfo_GetContext(H, ctxP))) {
-            ctxOb->fAbort = TRUE;
+            if(ctxOb->fCompleted) {
+                ObContainer_SetOb((POB_CONTAINER)ctxP->ctxM, NULL);
+            }
             Ob_DECREF(ctxOb);
         }
-        ObContainer_SetOb((POB_CONTAINER)ctxP->ctxM, NULL);
     }
 }
 
