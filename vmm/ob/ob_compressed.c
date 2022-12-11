@@ -295,7 +295,7 @@ POB_COMPRESSED ObCompress_NewFromStrA(_In_opt_ VMM_HANDLE H, _In_opt_ POB_CACHEM
 {
     SIZE_T csz = strlen(sz);
     if(csz > 0x01000000) { return NULL; }
-    return ObCompressed_NewFromByte(H, pcmg, sz, (DWORD)csz + 1);
+    return ObCompressed_NewFromByte(H, pcmg, sz, (DWORD)csz);
 }
 
 /*

@@ -31,24 +31,16 @@ VOID MMiscProcInfo_InitializeDTB(_In_ VMM_HANDLE H, _In_ POB_PMMISCINFO_CONTEXT 
     DWORD cEntries = 0, i, oPfn, cPfn, cPfnMax;
     QWORD vaPfnPteSystem;
     PMMPFN_MAP_ENTRY pPfn;
-    PMMPFNOB_MAP pObPfnMap = NULL;
+    PMMPFNOB_MAP pObPfnMap = NULL, pObPfnMap2 = NULL;
     PVMM_PROCESS pObProcess = NULL;
     PVMM_PROCESS pObSystemProcess = NULL;
-    POB_MAP pmObProcessDTB_Kernel = NULL, pmObProcessDTB_User = NULL;
     // 1: INIT:
-    if(!(uszText = LocalAlloc(0, 0x00100000))) { goto fail; }
+    if(!(uszText = LocalAlloc(LMEM_ZEROINIT, 0x00100000))) { goto fail; }
     if(!(pObSystemProcess = VmmProcessGet(H, 4))) { goto fail; }
-    if(!(pmObProcessDTB_Kernel = ObMap_New(H, OB_MAP_FLAGS_OBJECT_OB))) { goto fail; }
-    if(!(pmObProcessDTB_User = ObMap_New(H, OB_MAP_FLAGS_OBJECT_OB))) { goto fail; }
     // 2: Get System DTB PFN:
     if(!MmPfn_Map_GetPfn(H, (DWORD)(pObSystemProcess->paDTB >> 12), 1, &pObPfnMap, FALSE) || (pObPfnMap->cMap != 1)) { goto fail; }
     vaPfnPteSystem = pObPfnMap->pMap[0].vaPte;
     Ob_DECREF_NULL(&pObPfnMap);
-    // 3: Create DTB to Process Map:
-    while((pObProcess = VmmProcessGetNext(H, pObProcess, VMM_FLAG_PROCESS_SHOW_TERMINATED))) {
-        if(pObProcess->paDTB_Kernel) { ObMap_Push(pmObProcessDTB_Kernel, pObProcess->paDTB_Kernel >> 12, pObProcess); }
-        if(pObProcess->paDTB_UserOpt) { ObMap_Push(pmObProcessDTB_User, pObProcess->paDTB_UserOpt >> 12, pObProcess); }
-    }
     // 4: Walk PFN database:
     cPfnMax = (DWORD)(H->dev.paMax >> 12);
     for(oPfn = 0; oPfn < cPfnMax; oPfn += 0x20000) {
@@ -60,12 +52,15 @@ VOID MMiscProcInfo_InitializeDTB(_In_ VMM_HANDLE H, _In_ POB_PMMISCINFO_CONTEXT 
             pPfn = pObPfnMap->pMap + i;
             if((pPfn->vaPte == vaPfnPteSystem) && (pPfn->PageLocation == MmPfnTypeActive)) {
                 if(oText > 0x00100000 - 0x1000) { goto fail; }
+                // verify dtb validity:
                 if(!VmmRead(H, NULL, (QWORD)pPfn->dwPfn << 12, pbDTB, 0x1000)) { continue; }
                 if(!VmmTlbPageTableVerify(H, pbDTB, (QWORD)pPfn->dwPfn << 12, TRUE)) { continue; }
-                Ob_DECREF_NULL(&pObProcess);
-                pObProcess = ObMap_GetByKey(pmObProcessDTB_Kernel, pPfn->dwPfn);
-                if(!pObProcess) {
-                    pObProcess = ObMap_GetByKey(pmObProcessDTB_User, pPfn->dwPfn);
+                // get process from pfn db:
+                if(MmPfn_Map_GetPfn(H, pPfn->dwPfn, 1, &pObPfnMap2, TRUE)) {
+                    if(pObPfnMap2->cMap) {
+                        pObProcess = VmmProcessGet(H, pObPfnMap2->pMap[0].AddressInfo.dwPid);
+                    }
+                    Ob_DECREF_NULL(&pObPfnMap2);
                 }
                 oText += _snprintf_s(uszText + oText, MAX_PATH, _TRUNCATE, "%04x%7i %16llx %16llx %s\n",
                     cEntries++,
@@ -74,6 +69,7 @@ VOID MMiscProcInfo_InitializeDTB(_In_ VMM_HANDLE H, _In_ POB_PMMISCINFO_CONTEXT 
                     pObProcess ? pObProcess->win.EPROCESS.va : 0,
                     pObProcess ? pObProcess->szName : "---"
                 );
+                Ob_DECREF_NULL(&pObProcess);
             }
         }
         Ob_DECREF_NULL(&pObPfnMap);
@@ -82,10 +78,9 @@ VOID MMiscProcInfo_InitializeDTB(_In_ VMM_HANDLE H, _In_ POB_PMMISCINFO_CONTEXT 
     ctx->fCompleted = TRUE;
     ctx->pDTB = ObCompress_NewFromStrA(H, H->vmm.pObCacheMapObCompressedShared, uszText);
 fail:
-    Ob_DECREF(pmObProcessDTB_Kernel);
-    Ob_DECREF(pmObProcessDTB_User);
     Ob_DECREF(pObSystemProcess);
     Ob_DECREF(pObProcess);
+    Ob_DECREF(pObPfnMap2);
     Ob_DECREF(pObPfnMap);
     LocalFree(uszText);
 }

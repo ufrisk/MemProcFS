@@ -1079,6 +1079,8 @@ PVMM_PROCESS VmmProcessClone(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
     return pObProcessClone;
 }
 
+#define VFSLIST_ASCII      "________________________________ !_#$%&'()_+,-._0123456789_;_=__@ABCDEFGHIJKLMNOPQRSTUVWXYZ[_]^_`abcdefghijklmnopqrstuvwxyz{_}~ "
+
 /*
 * Create a new process object. New process object are created in a separate
 * data structure and won't become visible to the "Process" functions until
@@ -1101,6 +1103,7 @@ PVMM_PROCESS VmmProcessClone(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
 */
 PVMM_PROCESS VmmProcessCreateEntry(_In_ VMM_HANDLE H, _In_ BOOL fTotalRefresh, _In_ DWORD dwPID, _In_ DWORD dwPPID, _In_ DWORD dwState, _In_ QWORD paDTB_Kernel, _In_ QWORD paDTB_UserOpt, _In_ CHAR szName[16], _In_ BOOL fUserOnly, _In_reads_opt_(cbEPROCESS) PBYTE pbEPROCESS, _In_ DWORD cbEPROCESS)
 {
+    UCHAR ch, ich;
     PVMMOB_PROCESS_TABLE ptOld = NULL, ptNew = NULL;
     QWORD i, iStart, cEmpty = 0, cValid = 0;
     PVMM_PROCESS pProcess = NULL, pProcessOld = NULL;
@@ -1140,8 +1143,15 @@ PVMM_PROCESS VmmProcessCreateEntry(_In_ VMM_HANDLE H, _In_ BOOL fTotalRefresh, _
         InitializeCriticalSection(&pProcess->LockPlugin);
         InitializeCriticalSection(&pProcess->Map.LockUpdateThreadExtendedInfo);
         InitializeCriticalSection(&pProcess->Map.LockUpdateMapEvil);
-        memcpy(pProcess->szName, szName, 16);
-        pProcess->szName[15] = 0;
+        // copy process short name in a nice way substituting any corrupt chars:
+        for(ich = 0; ich < 15; ich++) {
+            ch = szName[ich];
+            if(ch < 128) {
+                if(ch == 0) { break; }
+                ch = VFSLIST_ASCII[ch];
+            }
+            pProcess->szName[ich] = ch;
+        }
         pProcess->dwPID = dwPID;
         pProcess->dwPPID = dwPPID;
         pProcess->dwState = dwState;
