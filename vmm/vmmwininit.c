@@ -8,7 +8,6 @@
 
 #include "vmm.h"
 #include "mm.h"
-#include "mm_pfn.h"
 #include "pe.h"
 #include "pdb.h"
 #include "util.h"
@@ -160,7 +159,6 @@ VOID VmmWinInit_TryInitializeKernelOptionalValues(_In_ VMM_HANDLE H)
     if(!H->vmm.kernel.opt.vaPfnDatabase) {
         PDB_GetSymbolPTR(H, PDB_HANDLE_KERNEL, "MmPfnDatabase", pObSystemProcess, &H->vmm.kernel.opt.vaPfnDatabase);
     }
-    MmPfn_Initialize(H, pObSystemProcess);
     // PsLoadedModuleListExp
     if(!H->vmm.kernel.opt.vaPsLoadedModuleListExp) {
         PDB_GetSymbolAddress(H, PDB_HANDLE_KERNEL, "PsLoadedModuleList", &H->vmm.kernel.opt.vaPsLoadedModuleListExp);

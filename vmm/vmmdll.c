@@ -42,6 +42,7 @@
 #define OB_TAG_API_MAP_VAD_EX           'VADX'
 #define OB_TAG_API_MAP_VM               'VM  '
 #define OB_TAG_API_MODULE_FROM_NAME     'MODN'
+#define OB_TAG_API_PROCESS_INFORMATION  'PNFO'
 #define OB_TAG_API_PROCESS_STRING       'PSTR'
 #define OB_TAG_API_SEARCH               'SRCH'
 #define OB_TAG_API_VFS_LIST_BLOB        'VFSB'
@@ -1921,6 +1922,49 @@ _Success_(return)
 BOOL VMMDLL_ProcessGetInformation(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _Inout_opt_ PVMMDLL_PROCESS_INFORMATION pProcessInformation, _In_ PSIZE_T pcbProcessInformation)
 {
     CALL_IMPLEMENTATION_VMM(H, STATISTICS_ID_VMMDLL_ProcessGetInformation, VMMDLL_ProcessGetInformation_Impl(H, dwPID, pProcessInformation, pcbProcessInformation))
+}
+
+_Success_(return)
+BOOL VMMDLL_ProcessGetInformationAll_Impl(_In_ VMM_HANDLE H, _Out_ PVMMDLL_PROCESS_INFORMATION *ppProcInfoAll, _Out_ PDWORD pcProcInfo)
+{
+    DWORD i, cProcInfo = 0;
+    SIZE_T cbAlloc, cbProcInfo, cPIDs = 0;
+    PDWORD pdwPIDs = NULL;
+    PVMMDLL_PROCESS_INFORMATION pe, pProcInfoAll = NULL;
+    // 1: get pid-list
+    VmmProcessListPIDs(H, NULL, &cPIDs, VMM_FLAG_PROCESS_SHOW_TERMINATED);
+    if(!cPIDs) { goto fail; }
+    if(!(pdwPIDs = LocalAlloc(LMEM_ZEROINIT, cPIDs * sizeof(DWORD)))) { goto fail; }
+    VmmProcessListPIDs(H, pdwPIDs, &cPIDs, VMM_FLAG_PROCESS_SHOW_TERMINATED);
+    if(!cPIDs) { goto fail; }
+    cbAlloc = cPIDs * sizeof(VMMDLL_PROCESS_INFORMATION);
+    // 2: create and fill result array:
+    if(!(pProcInfoAll = VmmDllCore_MemAllocExternal(H, OB_TAG_API_PROCESS_INFORMATION, cbAlloc, cbAlloc))) { goto fail; }
+    for(i = 0; i < cPIDs; i++) {
+        pe = pProcInfoAll + cProcInfo;
+        pe->magic = VMMDLL_PROCESS_INFORMATION_MAGIC;
+        pe->wVersion = VMMDLL_PROCESS_INFORMATION_VERSION;
+        cbProcInfo = sizeof(VMMDLL_PROCESS_INFORMATION);
+        if(VMMDLL_ProcessGetInformation_Impl(H, pdwPIDs[i], pe, &cbProcInfo)) {
+            cProcInfo++;
+        }
+    }
+    *pcProcInfo = cProcInfo;
+    *ppProcInfoAll = pProcInfoAll;
+    LocalFree(pdwPIDs);
+    return TRUE;
+fail:
+    *pcProcInfo = 0;
+    *ppProcInfoAll = NULL;
+    VmmDllCore_MemFreeExternal(pProcInfoAll);
+    LocalFree(pdwPIDs);
+    return FALSE;
+}
+
+_Success_(return)
+BOOL VMMDLL_ProcessGetInformationAll(_In_ VMM_HANDLE H, _Out_ PVMMDLL_PROCESS_INFORMATION *ppProcessInformationAll, _Out_ PDWORD pcProcessInformation)
+{
+    CALL_IMPLEMENTATION_VMM(H, STATISTICS_ID_VMMDLL_ProcessGetInformationAll, VMMDLL_ProcessGetInformationAll_Impl(H, ppProcessInformationAll, pcProcessInformation))
 }
 
 BOOL VMMDLL_ProcessGetInformationString_Impl_CallbackCriteria(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVOID ctx)

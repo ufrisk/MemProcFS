@@ -327,6 +327,38 @@ int main(_In_ int argc, _In_ char* argv[])
         return 1;
     }
 
+
+    // Retrieve process information such as: name of the process, PML4 (DTB),
+    // PML4-USER (if exists) and Process State from _all_ processes.
+    // Active processes will have ProcessState = 0.
+    printf("------------------------------------------------------------\n");
+    printf("# Get Process Information from ALL PROCESSES.               \n");
+    ShowKeyPress();
+    DWORD cProcessInformation = 0;
+    PVMMDLL_PROCESS_INFORMATION pProcessInformationEntry, pProcessInformationAll = NULL;
+    printf("CALL:    VMMDLL_ProcessGetInformationAll\n");
+    result = VMMDLL_ProcessGetInformationAll(hVMM, &pProcessInformationAll, &cProcessInformation);
+    if(result) {
+        // print results upon success:
+        printf("SUCCESS: VMMDLL_ProcessGetInformationAll\n");
+        for(i = 0; i < cProcessInformation; i++) {
+            pProcessInformationEntry = &pProcessInformationAll[i];
+            printf("         --------------------------------------\n");
+            printf("         Name =                  %s\n", pProcessInformationEntry->szName);
+            printf("         LongName =              %s\n", pProcessInformationEntry->szNameLong);
+            printf("         PageDirectoryBase =     0x%016llx\n", pProcessInformationEntry->paDTB);
+            printf("         PageDirectoryBaseUser = 0x%016llx\n", pProcessInformationEntry->paDTB_UserOpt);
+            printf("         ProcessState =          0x%08x\n", pProcessInformationEntry->dwState);
+            printf("         PID =                   0x%08x\n", pProcessInformationEntry->dwPID);
+            printf("         ParentPID =             0x%08x\n", pProcessInformationEntry->dwPPID);
+        }
+        // free function allocated memory:
+        VMMDLL_MemFree(pProcessInformationAll);
+    } else {
+        printf("FAIL:    VMMDLL_ProcessGetInformationAll\n");
+        return 1;
+    }
+
     
     // Retrieve the memory map from the page table. This function also tries to
     // make additional parsing to identify modules and tag the memory map with

@@ -1520,8 +1520,8 @@ typedef struct tdVMM_CONTEXT {
     VMM_KERNELINFO kernel;
     VMM_OFFSET offset;
     POB pObVfsDumpContext;
-    POB pObPfnContext;
     POB pObPdbContext;
+    PVOID pMmPfnContext;
     PMMWIN_CONTEXT pMmContext;
     PVOID pNetContext;
     PVMMOB_VMGLOBAL_CONTEXT pObVmGlobalContext;

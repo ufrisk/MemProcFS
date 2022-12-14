@@ -85,6 +85,7 @@ EXPORTS
     VMMDLL_Map_GetHandleU
     VMMDLL_Map_GetHandleW
     VMMDLL_ProcessGetInformation
+    VMMDLL_ProcessGetInformationAll
     VMMDLL_ProcessGetInformationString
     
     VMMDLL_ProcessGetDirectoriesU

@@ -6,6 +6,7 @@
 
 #include "vmm.h"
 #include "mm.h"
+#include "mm_pfn.h"
 #include "pdb.h"
 #include "vmmheap.h"
 #include "vmmproc.h"
@@ -1651,11 +1652,11 @@ VOID VmmClose(_In_ VMM_HANDLE H)
     VmmNet_Close(H);
     PDB_Close(H);
     Ob_DECREF_NULL(&H->vmm.pObVfsDumpContext);
-    Ob_DECREF_NULL(&H->vmm.pObPfnContext);
     Ob_DECREF_NULL(&H->vmm.pObCPROC);
     if(H->vmm.fnMemoryModel.pfnClose) {
         H->vmm.fnMemoryModel.pfnClose(H);
     }
+    MmPfn_Close(H);
     MmWin_PagingClose(H);
     VmmCacheClose(H, VMM_CACHE_TAG_PHYS);
     VmmCacheClose(H, VMM_CACHE_TAG_TLB);
