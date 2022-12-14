@@ -1981,6 +1981,22 @@ BOOL VMMDLL_ProcessGetInformation(
     _In_ PSIZE_T pcbProcessInformation
 );
 
+/*
+* Retrieve various information from all processes (including terminated).
+* CALLER FREE : VMMDLL_MemFree(*ppProcessInformationAll)
+* -- hVMM
+* -- ptr to receive result array of pcProcessInformation items on success.
+*    Must be free'd with VMMDLL_MemFree().
+* -- ptr to DWORD to receive number of items processes on success.
+* -- return = success/fail.
+*/
+EXPORTED_FUNCTION _Success_(return)
+BOOL VMMDLL_ProcessGetInformationAll(
+    _In_ VMM_HANDLE hVMM,
+    _Out_ PVMMDLL_PROCESS_INFORMATION *ppProcessInformationAll,
+    _Out_ PDWORD pcProcessInformation
+);
+
 #define VMMDLL_PROCESS_INFORMATION_OPT_STRING_PATH_KERNEL           1
 #define VMMDLL_PROCESS_INFORMATION_OPT_STRING_PATH_USER_IMAGE       2
 #define VMMDLL_PROCESS_INFORMATION_OPT_STRING_CMDLINE               3

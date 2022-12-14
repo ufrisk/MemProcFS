@@ -1990,7 +1990,7 @@ BOOL VMMDLL_ProcessGetInformation(
 * -- ptr to DWORD to receive number of items processes on success.
 * -- return = success/fail.
 */
-_Success_(return)
+EXPORTED_FUNCTION _Success_(return)
 BOOL VMMDLL_ProcessGetInformationAll(
     _In_ VMM_HANDLE hVMM,
     _Out_ PVMMDLL_PROCESS_INFORMATION *ppProcessInformationAll,

@@ -83,11 +83,12 @@ typedef struct tdMMPFNOB_MAP {
 } MMPFNOB_MAP, *PMMPFNOB_MAP;
 
 /*
-* Initialize the PFN (page frame number) subsystem.
+* Close / Shutdown the PFN subsystem. This function should never be called when
+* there may be an active thread in the PFN subsystem. This function should only
+* be called on shutdown.
 * -- H
-* -- pSystemProcess
 */
-VOID MmPfn_Initialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess);
+VOID MmPfn_Close(_In_ VMM_HANDLE H);
 
 /*
 * Refresh the PFN (page frame number) subsystem.

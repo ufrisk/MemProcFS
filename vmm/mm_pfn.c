@@ -9,10 +9,10 @@
 #include "pdb.h"
 #include "util.h"
 
-typedef struct tdOB_MMPFN_CONTEXT {
-    OB ObHdr;
+typedef struct tdMMPFN_CONTEXT {
+    BOOL fValid;
+    SRWLOCK LockSRW;
     QWORD vaPfnDatabase;
-    CRITICAL_SECTION Lock;
     POB_CONTAINER pObCProcTableDTB;
     struct {
         WORD cb;
@@ -23,30 +23,34 @@ typedef struct tdOB_MMPFN_CONTEXT {
         WORD ou4;
     } _MMPFN;
     DWORD iPfnMax;
-} OB_MMPFN_CONTEXT, *POB_MMPFN_CONTEXT;
+} MMPFN_CONTEXT, *PMMPFN_CONTEXT;
 
 #define MMPFN_PFN_TO_VA(ctx, i)     (ctx->vaPfnDatabase + (QWORD)i * ctx->_MMPFN.cb)
 
-VOID MmPfn_CallbackCleanup_ObContext(POB_MMPFN_CONTEXT ctx)
+VOID MmPfn_Close(_In_ VMM_HANDLE H)
 {
+    PMMPFN_CONTEXT ctx = (PMMPFN_CONTEXT)H->vmm.pMmPfnContext;
+    if(!ctx) { return; }
+    H->vmm.pMmPfnContext = NULL;
     Ob_DECREF(ctx->pObCProcTableDTB);
-    DeleteCriticalSection(&ctx->Lock);
+    LocalFree(ctx);
 }
 
 VOID MmPfn_Refresh(_In_ VMM_HANDLE H)
 {
-    POB_MMPFN_CONTEXT ctx = (POB_MMPFN_CONTEXT)H->vmm.pObPfnContext;
+    PMMPFN_CONTEXT ctx = (PMMPFN_CONTEXT)H->vmm.pMmPfnContext;
     if(!ctx) { return; }
     ObContainer_SetOb(ctx->pObCProcTableDTB, NULL);
 }
 
-_Success_(return)
-BOOL MmPfn_Initialize_X64_Static(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_ POB_MMPFN_CONTEXT ctx)
+VOID MmPfn_InitializeContext_StaticX64(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_ PMMPFN_CONTEXT ctx)
 {
-    DWORD i, j, dwVersionBuild = H->vmm.kernel.dwVersionBuild;
+    DWORD iPte, iPfnSystem, dwVersionBuild = H->vmm.kernel.dwVersionBuild;
+    QWORD vaPteSystem, paDtbSystem, vaDtbSystem;
+    POB_SET psvaOb = NULL;
     PVMMOB_MAP_PTE pObMapPte = NULL;
-    PVMM_MAP_PTEENTRY pe1, pe2;
-    if(dwVersionBuild < 6000) { return FALSE; }
+    if(dwVersionBuild < 6000) { return; }
+    // 1: static offsets
     ctx->vaPfnDatabase = 0xFFFFFA8000000000;
     ctx->_MMPFN.oOriginalPte = 0x020;
     ctx->_MMPFN.oPteAddress = 0x010;
@@ -60,50 +64,80 @@ BOOL MmPfn_Initialize_X64_Static(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemPro
         ctx->_MMPFN.ou2 = 0x018;
         ctx->_MMPFN.ou3 = 0x020;
     }
-    if(dwVersionBuild < 14393) { return TRUE; }
-    // search for MmPfnDatabase virtual address on 14393+
-    if(VmmMap_GetPte(H, pSystemProcess, &pObMapPte, FALSE) && pObMapPte->cMap) {
-        for(i = pObMapPte->cMap; i; i--) {
-            pe1 = pObMapPte->pMap + i;
-            if(pe1->cPages > 0x10000000) {
-                for(j = i; j; j--) {
-                    pe2 = pObMapPte->pMap + j;
-                    if((pe1->vaBase & 0xfffffff000000000) != (pe2->vaBase & 0xfffffff000000000)) { break; }
-                    if((pe2->vaBase & 0x0000000fffffffff) == 0) {
-                        ctx->vaPfnDatabase = pe2->vaBase;
-                        Ob_DECREF(pObMapPte);
-                        return TRUE;
-                    }
-                }
+    if(dwVersionBuild < 14393) {
+        ctx->fValid = TRUE;
+        return;
+    }
+    // 2: MmPfnDatabase virtual address is randomized on 14393+
+    //    Search for candidates amongst PTEs starting at 4GB boundaries:
+    //    Verify candidates by using known kernel PML4 PFN as oracle:
+    if(!VmmMap_GetPte(H, pSystemProcess, &pObMapPte, FALSE)) { goto fail; }
+    if(!(psvaOb = ObSet_New(H))) { goto fail; }
+    // 2.1: search for candidates starting 4GB boundaries:
+    iPfnSystem = (DWORD)(H->vmm.kernel.paDTB >> 12);
+    for(iPte = 0; iPte < pObMapPte->cMap; iPte++) {
+        if(!(DWORD)pObMapPte->pMap[iPte].vaBase) {
+            ObSet_Push(psvaOb, pObMapPte->pMap[iPte].vaBase + iPfnSystem * ctx->_MMPFN.cb);
+        }
+    }
+    // 2.2: verify candidate is correct by using kernel PML4 PTE as oracle:
+    VmmCachePrefetchPages3(H, pSystemProcess, psvaOb, ctx->_MMPFN.cb, 0);
+    while((vaPteSystem = ObSet_Pop(psvaOb))) {
+        if(VmmRead(H, pSystemProcess, vaPteSystem + ctx->_MMPFN.oPteAddress, (PBYTE)&vaDtbSystem, 8) && VMM_KADDR64_8(vaDtbSystem)) {
+            vaDtbSystem = vaDtbSystem & ~0xfff;
+            if(VmmVirt2Phys(H, pSystemProcess, vaDtbSystem, &paDtbSystem) && (paDtbSystem == pSystemProcess->paDTB)) {
+                ctx->vaPfnDatabase = vaPteSystem - iPfnSystem * ctx->_MMPFN.cb;
+                ctx->fValid = TRUE;
+                break;
             }
         }
     }
+fail:
     Ob_DECREF(pObMapPte);
-    return FALSE;
+    Ob_DECREF(psvaOb);
 }
 
-VOID MmPfn_Initialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess)
+VOID MmPfn_InitializeContext(_In_ VMM_HANDLE H)
 {
-    BOOL f;
-    POB_MMPFN_CONTEXT ctx;
-    if(!(ctx = Ob_AllocEx(H, OB_TAG_PFN_CONTEXT, LMEM_ZEROINIT, sizeof(OB_MMPFN_CONTEXT), (OB_CLEANUP_CB)MmPfn_CallbackCleanup_ObContext, NULL))) { return; }
-    InitializeCriticalSection(&ctx->Lock);
-    ctx->pObCProcTableDTB = ObContainer_New();
-    f = PDB_GetSymbolPTR(H, PDB_HANDLE_KERNEL, "MmPfnDatabase", pSystemProcess, &ctx->vaPfnDatabase) &&
+    PMMPFN_CONTEXT ctx = NULL;
+    PVMM_PROCESS pObSystemProcess = NULL;
+    if(!(pObSystemProcess = VmmProcessGet(H, 4))) { goto fail; }
+    if(!(ctx = LocalAlloc(LMEM_ZEROINIT, sizeof(MMPFN_CONTEXT)))) { goto fail; }
+    if(!(ctx->pObCProcTableDTB = ObContainer_New())) { goto fail; }
+    ctx->iPfnMax = (DWORD)(H->dev.paMax >> 12);
+    ctx->fValid = PDB_GetSymbolPTR(H, PDB_HANDLE_KERNEL, "MmPfnDatabase", pObSystemProcess, &ctx->vaPfnDatabase) &&
         PDB_GetTypeSizeShort(H, PDB_HANDLE_KERNEL, "_MMPFN", &ctx->_MMPFN.cb) &&
         PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_MMPFN", "OriginalPte", &ctx->_MMPFN.oOriginalPte) &&
         PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_MMPFN", "PteAddress", &ctx->_MMPFN.oPteAddress) &&
         PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_MMPFN", "u2", &ctx->_MMPFN.ou2) &&
         PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_MMPFN", "u3", &ctx->_MMPFN.ou3) &&
         PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_MMPFN", "u4", &ctx->_MMPFN.ou4);
-    if(!f && (H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X64)) {
-        f = MmPfn_Initialize_X64_Static(H, pSystemProcess, ctx);
+    if(!ctx->fValid && (H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X64)) {
+        MmPfn_InitializeContext_StaticX64(H, pObSystemProcess, ctx);
     }
-    if(f && ctx->pObCProcTableDTB) {
-        ctx->iPfnMax = (DWORD)(H->dev.paMax >> 12);
-        H->vmm.pObPfnContext = Ob_INCREF(ctx);
+    H->vmm.pMmPfnContext = ctx;
+fail:
+    Ob_DECREF(pObSystemProcess);
+    if(ctx && (ctx != H->vmm.pMmPfnContext)) {
+        Ob_DECREF(ctx->pObCProcTableDTB);
+        LocalFree(ctx);
     }
-    Ob_DECREF(ctx);
+}
+
+_Success_(return != NULL)
+PMMPFN_CONTEXT MmPfn_GetContext(_In_ VMM_HANDLE H)
+{
+    PMMPFN_CONTEXT ctx;
+    static SRWLOCK LockSRW = SRWLOCK_INIT;
+    if(!H->vmm.pMmPfnContext) {
+        AcquireSRWLockExclusive(&LockSRW);
+        if(!H->vmm.pMmPfnContext) {
+            MmPfn_InitializeContext(H);
+        }
+        ReleaseSRWLockExclusive(&LockSRW);
+    }
+    ctx = (PMMPFN_CONTEXT)H->vmm.pMmPfnContext;
+    return (ctx && ctx->fValid) ? ctx : NULL;
 }
 
 /*
@@ -113,7 +147,7 @@ VOID MmPfn_Initialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess)
 * -- ctx
 * -- return
 */
-POB_MAP MmPfn_ProcDTB_Create(_In_ VMM_HANDLE H, _In_ POB_MMPFN_CONTEXT ctx)
+POB_MAP MmPfn_ProcDTB_Create(_In_ VMM_HANDLE H, _In_ PMMPFN_CONTEXT ctx)
 {
     POB_MAP pmOb = NULL;
     PVMM_PROCESS pObProcess = NULL;
@@ -135,23 +169,23 @@ POB_MAP MmPfn_ProcDTB_Create(_In_ VMM_HANDLE H, _In_ POB_MMPFN_CONTEXT ctx)
 * -- ctx
 * -- return
 */
-DWORD MmPfn_GetPidFromDTB(_In_ VMM_HANDLE H, _In_ POB_MMPFN_CONTEXT ctx, _In_ PVMM_PROCESS pSystemProcess, _In_ QWORD qwPfnDTB)
+DWORD MmPfn_GetPidFromDTB(_In_ VMM_HANDLE H, _In_ PMMPFN_CONTEXT ctx, _In_ PVMM_PROCESS pSystemProcess, _In_ QWORD qwPfnDTB)
 {
     DWORD dwPID = 0;
     POB_MAP pmObDtbPfn2Pid = NULL;
     if(!(pmObDtbPfn2Pid = ObContainer_GetOb(ctx->pObCProcTableDTB))) {
-        EnterCriticalSection(&ctx->Lock);
+        AcquireSRWLockExclusive(&ctx->LockSRW);
         if(!(pmObDtbPfn2Pid = ObContainer_GetOb(ctx->pObCProcTableDTB))) {
             pmObDtbPfn2Pid = MmPfn_ProcDTB_Create(H, ctx);
         }
-        LeaveCriticalSection(&ctx->Lock);
+        ReleaseSRWLockExclusive(&ctx->LockSRW);
     }
     dwPID = 0x7fffffff & (DWORD)(SIZE_T)ObMap_GetByKey(pmObDtbPfn2Pid, qwPfnDTB);
     Ob_DECREF(pmObDtbPfn2Pid);
     return dwPID;
 }
 
-VOID MmPfn_Map_GetPfn_GetVaX64(_In_ VMM_HANDLE H, _In_ POB_MMPFN_CONTEXT ctx, _In_ PVMM_PROCESS pSystemProcess, _In_ POB_SET psPte, _In_ POB_SET psPrefetch, _In_ BYTE iPML)
+VOID MmPfn_Map_GetPfn_GetVaX64(_In_ VMM_HANDLE H, _In_ PMMPFN_CONTEXT ctx, _In_ PVMM_PROCESS pSystemProcess, _In_ POB_SET psPte, _In_ POB_SET psPrefetch, _In_ BYTE iPML)
 {
     BOOL f;
     BYTE tp, pbPfn[0x30];
@@ -222,7 +256,7 @@ restart_new_pml_level:
     }
 }
 
-VOID MmPfn_Map_GetPfn_GetVaX86PAE(_In_ VMM_HANDLE H, _In_ POB_MMPFN_CONTEXT ctx, _In_ PVMM_PROCESS pSystemProcess, _In_ POB_SET psPte, _In_ POB_SET psPrefetch, _In_ BYTE iPML)
+VOID MmPfn_Map_GetPfn_GetVaX86PAE(_In_ VMM_HANDLE H, _In_ PMMPFN_CONTEXT ctx, _In_ PVMM_PROCESS pSystemProcess, _In_ POB_SET psPte, _In_ POB_SET psPrefetch, _In_ BYTE iPML)
 {
     BOOL f;
     BYTE tp, pbPfn[0x30];
@@ -268,7 +302,7 @@ VOID MmPfn_Map_GetPfn_GetVaX86PAE(_In_ VMM_HANDLE H, _In_ POB_MMPFN_CONTEXT ctx,
     }
 }
 
-VOID MmPfn_Map_GetPfn_GetVaX86(_In_ VMM_HANDLE H, _In_ POB_MMPFN_CONTEXT ctx, _In_ PVMM_PROCESS pSystemProcess, _In_ POB_SET psPte, _In_ POB_SET psPrefetch)
+VOID MmPfn_Map_GetPfn_GetVaX86(_In_ VMM_HANDLE H, _In_ PMMPFN_CONTEXT ctx, _In_ PVMM_PROCESS pSystemProcess, _In_ POB_SET psPte, _In_ POB_SET psPrefetch)
 {
     BOOL f;
     BYTE tp, pbPfn[0x30];
@@ -316,7 +350,7 @@ VOID MmPfn_Map_GetPfn_GetVaX86(_In_ VMM_HANDLE H, _In_ POB_MMPFN_CONTEXT ctx, _I
 _Success_(return)
 BOOL MmPfn_Map_GetPfnScatter(_In_ VMM_HANDLE H, _In_ POB_SET psPfn, _Out_ PMMPFNOB_MAP *ppObPfnMap, _In_ BOOL fExtended)
 {
-    POB_MMPFN_CONTEXT ctx = (POB_MMPFN_CONTEXT)H->vmm.pObPfnContext;
+    PMMPFN_CONTEXT ctx;
     BOOL f32 = H->vmm.f32;
     BYTE pbPfn[0x30] = { 0 };
     PVMM_PROCESS pObSystemProcess = NULL;
@@ -329,14 +363,14 @@ BOOL MmPfn_Map_GetPfnScatter(_In_ VMM_HANDLE H, _In_ POB_SET psPfn, _Out_ PMMPFN
         QWORD va;
         BYTE pb[0x1000];
     } PageCache;
-    if(!ctx) { goto fail; }
     // initialization
-    PageCache.va = 0;
+    if(!(ctx = MmPfn_GetContext(H))) { goto fail; }
     if(!(cPfn = ObSet_Size(psPfn))) { goto fail; }
     if(!(pObSystemProcess = VmmProcessGet(H, 4))) { goto fail; }
     if(!(psObPrefetch = ObSet_New(H))) { goto fail; }
     if(!(pObPfnMap = Ob_AllocEx(H, OB_TAG_MAP_PFN, LMEM_ZEROINIT, sizeof(MMPFNOB_MAP) + cPfn * sizeof(MMPFN_MAP_ENTRY), NULL, NULL))) { goto fail; }
     pObPfnMap->cMap = cPfn;
+    PageCache.va = 0;
     if(fExtended) {
         if(!(psObEnrichAddress = ObSet_New(H))) { goto fail; }
     }
