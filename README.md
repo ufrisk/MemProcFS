@@ -159,7 +159,7 @@ v1.1-v4.9
 * Manual download of debug symbols (PDBs) on offline systems (Windows only).
 </details>
 
-[v5.3](https://github.com/ufrisk/MemProcFS/releases/tag/v5.2)
+[v5.3](https://github.com/ufrisk/MemProcFS/releases/tag/v5.3)
 * Bug fixes and performance optimizations.
 * PE forwarded functions.
 * PE version information.
