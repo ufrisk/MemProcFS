@@ -1,6 +1,6 @@
 // infodb.c : implementation of the information read-only sqlite database.
 //
-// (c) Ulf Frisk, 2021-2022
+// (c) Ulf Frisk, 2021-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "infodb.h"
@@ -179,7 +179,7 @@ DWORD InfoDB_EnsureTcpIp(_In_ VMM_HANDLE H, _In_ POB_INFODB_CONTEXT ctx)
     PVMM_MAP_MODULEENTRY peModuleTcpip;
     if(!ctx->fPdbId_TcpIp_TryComplete) {
         EnterCriticalSection(&H->vmm.LockMaster);
-        if(!ctx->fPdbId_TcpIp_TryComplete && VmmMap_GetModuleEntryEx(H, NULL, 4, "tcpip.sys", &pObModuleMap, &peModuleTcpip)) {
+        if(!ctx->fPdbId_TcpIp_TryComplete && VmmMap_GetModuleEntryEx(H, NULL, 4, "tcpip.sys", 0, &pObModuleMap, &peModuleTcpip)) {
             ctx->dwPdbId_TcpIp = InfoDB_GetPdbId(H, ctx, peModuleTcpip->vaBase);
             ctx->fPdbId_TcpIp_TryComplete = TRUE;
             Ob_DECREF_NULL(&pObModuleMap);

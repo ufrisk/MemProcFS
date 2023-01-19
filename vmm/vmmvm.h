@@ -1,6 +1,6 @@
 // vmmvm.h : definitions related to virtual machine parsing functionality.
 //
-// (c) Ulf Frisk, 2022
+// (c) Ulf Frisk, 2022-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __VMMVM_H__
@@ -8,15 +8,17 @@
 #include "vmm.h"
 
 /*
-* Translate a virtual machine (VM) guest physical address (GPA) to a physical address (PA).
+* Translate a virtual machine (VM) guest physical address (GPA) to:
+* (1) Physical Address (PA) _OR_ (2) Virtual Address (VA) in 'vmmem' process.
 * -- hVMM
 * -- HVM
-* -- qwGPA
-* -- pqwPA
+* -- qwGPA = guest physical address to translate.
+* -- pPA = translated physical address (if exists).
+* -- pVA = translated virtual address inside 'vmmem' process (if exists).
 * -- return = success/fail.
 */
 _Success_(return)
-BOOL VmmVm_GPA2PA(_In_ VMM_HANDLE H, _In_ VMMVM_HANDLE HVM, _In_ ULONG64 qwGPA, _Out_ PULONG64 pqwPA);
+BOOL VmmVm_TranslateGPA(_In_ VMM_HANDLE H, _In_ VMMVM_HANDLE HVM, _In_ ULONG64 qwGPA, _Out_opt_ PULONG64 pPA, _Out_opt_ PULONG64 pVA);
 
 /*
 * Read guest physical address (GPA) memory.

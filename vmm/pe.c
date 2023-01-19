@@ -2,11 +2,12 @@
 //        in virtual address space. This may mostly (but not exclusively) be
 //        used by Windows functionality.
 //
-// (c) Ulf Frisk, 2018-2022
+// (c) Ulf Frisk, 2018-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmm.h"
 #include "pe.h"
+#include "charutil.h"
 
 PIMAGE_NT_HEADERS PE_HeaderGetVerify(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _Inout_ PBYTE pbModuleHeader, _Out_opt_ PBOOL pfHdr32)
 {
@@ -312,6 +313,30 @@ DWORD PE_IatGetNumberOfEx(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt
     return cIatEntries - min(cIatEntries, cModules);
 }
 
+_Success_(return != NULL)
+LPSTR PE_EatForwardedFunctionNameValidate(
+    _In_ LPSTR szForwardedFunction,
+    _Out_writes_opt_(cbModule) LPSTR szModule,
+    _In_ DWORD cbModule,
+    _Out_opt_ PDWORD pdwOrdinal
+)
+{
+    LPSTR szFunction = NULL;
+    if(pdwOrdinal) { *pdwOrdinal = 0; }
+    if(cbModule && szModule) { szModule[0] = 0; }
+    if(!CharUtil_IsAnsiFsA(szForwardedFunction)) { return NULL; }
+    szFunction = strrchr(szForwardedFunction, '.');
+    if(!szFunction || ((szFunction - szForwardedFunction) < 2)) { return NULL; }
+    szFunction++;
+    if(pdwOrdinal && (szFunction[0] == '#')) {
+        *pdwOrdinal = strtoul(szFunction + 1, NULL, 10);
+    }
+    if(cbModule && szModule) {
+        strncpy_s(szModule, cbModule, szForwardedFunction, (SIZE_T)(szFunction - szForwardedFunction));
+    }
+    return szFunction;
+}
+
 DWORD PE_EatGetNumberOfEx(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt)
 {
     BOOL f32;
@@ -384,18 +409,32 @@ BOOL PE_GetModuleName(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD 
     return PE_GetModuleNameEx(H, pProcess, vaModuleBase, FALSE, NULL, szModuleName, cszModuleName, NULL);
 }
 
-DWORD PE_DirectoryGetOffset(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt, _In_ DWORD dwDirectory)
+_Success_(return != 0)
+DWORD PE_DirectoryGetOffset(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt, _In_ DWORD dwDirectory, _Out_opt_ PDWORD pcbSizeOfDirectory)
 {
     BOOL f32;
+    DWORD cbSizeOfImage, cbOffsetDirectory, cbSizeOfDirectory;
     PIMAGE_NT_HEADERS ntHeader;
     BYTE pbModuleHeader[0x1000] = { 0 };
     // load both 32/64 bit ntHeader unless already supplied in parameter (only one of 32/64 bit hdr will be valid)
     // load nt header either by using optionally supplied module header or by fetching from memory.
     ntHeader = pbModuleHeaderOpt ? PE_HeaderGetVerify(H, pProcess, 0, pbModuleHeaderOpt, &f32) : PE_HeaderGetVerify(H, pProcess, vaModuleBase, pbModuleHeader, &f32);
     if(!ntHeader) { return 0; }
-    return f32 ?
-        ((PIMAGE_NT_HEADERS32)ntHeader)->OptionalHeader.DataDirectory[dwDirectory].VirtualAddress :
-        ((PIMAGE_NT_HEADERS64)ntHeader)->OptionalHeader.DataDirectory[dwDirectory].VirtualAddress;
+    if(f32) {
+        cbSizeOfImage = ((PIMAGE_NT_HEADERS32)ntHeader)->OptionalHeader.SizeOfImage;
+        cbOffsetDirectory = ((PIMAGE_NT_HEADERS32)ntHeader)->OptionalHeader.DataDirectory[dwDirectory].VirtualAddress;
+        cbSizeOfDirectory = ((PIMAGE_NT_HEADERS32)ntHeader)->OptionalHeader.DataDirectory[dwDirectory].Size;
+    } else {
+        cbSizeOfImage = ((PIMAGE_NT_HEADERS64)ntHeader)->OptionalHeader.SizeOfImage;
+        cbOffsetDirectory = ((PIMAGE_NT_HEADERS64)ntHeader)->OptionalHeader.DataDirectory[dwDirectory].VirtualAddress;
+        cbSizeOfDirectory = ((PIMAGE_NT_HEADERS64)ntHeader)->OptionalHeader.DataDirectory[dwDirectory].Size;
+    }
+    if((cbOffsetDirectory > 0x40000000) || (cbSizeOfDirectory > 0x40000000)) { return 0; }
+    if(cbOffsetDirectory + cbSizeOfDirectory > cbSizeOfImage) { return 0; }
+    if(pcbSizeOfDirectory) {
+        *pcbSizeOfDirectory = cbSizeOfDirectory;
+    }
+    return cbOffsetDirectory;
 }
 
 _Success_(return)
@@ -658,5 +697,142 @@ BOOL PE_FileRaw_Write(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD 
             PERegions.Region[iRegion].cb);
     }
     *pcbWrite = cb;
+    return TRUE;
+}
+
+/*
+* Ensure that the requested PVOID is inside the resource data directory and
+* that at least 0x800 remaining bytes in the buffer is available before end.
+*/
+PVOID PE_VsGetVersionInfo_EnsureBuffer(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD vaResourceDataDirectory, _In_ DWORD cbResourceDataDirectory, _In_bytecount_(0x1000) PBYTE pbBuffer, _Inout_ PDWORD poBuffer, _In_ DWORD oResourceDataDirectory)
+{
+    if((oResourceDataDirectory >= *poBuffer) && (oResourceDataDirectory < *poBuffer + 0x800)) {
+        return pbBuffer + oResourceDataDirectory - *poBuffer;
+    }
+    if(oResourceDataDirectory > cbResourceDataDirectory - 0x40) {
+        return NULL;
+    }
+    if(!VmmRead(H, pProcess, vaResourceDataDirectory + oResourceDataDirectory, pbBuffer, 0x1000)) {
+        return FALSE;
+    }
+    *poBuffer = oResourceDataDirectory;
+    return pbBuffer;
+}
+
+// linux compatible byte representations of static resource strings:
+static const BYTE PE_VERSIONINFO_VS_VERSION_INFO[]  = { 'V', 0, 'S', 0, '_', 0, 'V', 0, 'E', 0, 'R', 0, 'S', 0, 'I', 0, 'O', 0, 'N', 0, '_', 0, 'I', 0, 'N', 0, 'F', 0, 'O', 0, 0 };
+static const BYTE PE_VERSIONINFO_StringFileInfo[]   = { 'S', 0, 't', 0, 'r', 0, 'i', 0, 'n', 0, 'g', 0, 'F', 0, 'i', 0, 'l', 0, 'e', 0, 'I', 0, 'n', 0, 'f', 0, 'o' };
+static const BYTE PE_VERSIONINFO_CompanyName[]      = { 'C', 0, 'o', 0, 'm', 0, 'p', 0, 'a', 0, 'n', 0, 'y', 0, 'N', 0, 'a', 0, 'm', 0, 'e', 0 };
+static const BYTE PE_VERSIONINFO_FileVersion[]      = { 'F', 0, 'i', 0, 'l', 0, 'e', 0, 'V', 0, 'e', 0, 'r', 0, 's', 0, 'i', 0, 'o', 0, 'n', 0 };
+static const BYTE PE_VERSIONINFO_ProductName[]      = { 'P', 0, 'r', 0, 'o', 0, 'd', 0, 'u', 0, 'c', 0, 't', 0, 'N', 0, 'a', 0, 'm', 0, 'e', 0 };
+static const BYTE PE_VERSIONINFO_InternalName[]     = { 'I', 0, 'n', 0, 't', 0, 'e', 0, 'r', 0, 'n', 0, 'a', 0, 'l', 0, 'N', 0, 'a', 0, 'm', 0, 'e', 0 };
+static const BYTE PE_VERSIONINFO_LegalCopyright[]   = { 'L', 0, 'e', 0, 'g', 0, 'a', 0, 'l', 0, 'C', 0, 'o', 0, 'p', 0, 'y', 0, 'r', 0, 'i', 0, 'g', 0, 'h', 0, 't', 0 };
+static const BYTE PE_VERSIONINFO_ProductVersion[]   = { 'P', 0, 'r', 0, 'o', 0, 'd', 0, 'u', 0, 'c', 0, 't', 0, 'V', 0, 'e', 0, 'r', 0, 's', 0, 'i', 0, 'o', 0, 'n', 0 };
+static const BYTE PE_VERSIONINFO_FileDescription[]  = { 'F', 0, 'i', 0, 'l', 0, 'e', 0, 'D', 0, 'e', 0, 's', 0, 'c', 0, 'r', 0, 'i', 0, 'p', 0, 't', 0, 'i', 0, 'o', 0, 'n', 0 };
+static const BYTE PE_VERSIONINFO_OriginalFilename[] = { 'O', 0, 'r', 0, 'i', 0, 'g', 0, 'i', 0, 'n', 0, 'a', 0, 'l', 0, 'F', 0, 'i', 0, 'l', 0, 'e', 0, 'n', 0, 'a', 0, 'm', 0, 'e', 0 };
+
+#define PE_VERSIONINFO_ADDENTRY(psm, K, V, wszCMP, ppDstStr)      { if((*(PQWORD)K == *(PQWORD)wszCMP) && ((SIZE_T)V - (SIZE_T)K > sizeof(wszCMP)) && !memcmp(K, wszCMP, sizeof(wszCMP))) { ObStrMap_PushPtrWU(psm, V, ppDstStr, NULL); } }
+
+_Success_(return)
+BOOL PE_VsGetVersionInfo(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ POB_STRMAP psm, _In_ PVMM_MAP_MODULEENTRY_VERSIONINFO pMEVI)
+{
+    // Parsing VS_VERSIONINFO out of the resource data directory is quite
+    // horrible at least if doing securely with buffers and pointers.
+    // Lots of code :(
+    DWORD oBuffer = 0;
+    BYTE *pb, pbBuffer[0x1000];
+    DWORD cbResourceDataDirectory, oResourceDataDirectory;
+    QWORD vaResourceDataDirectory;
+    DWORD iLevel, i, cEntries;
+    PIMAGE_RESOURCE_DIRECTORY pImageResourceDirectory = (PIMAGE_RESOURCE_DIRECTORY)pbBuffer;
+    PIMAGE_RESOURCE_DIRECTORY_ENTRY pImageResourceDirectoryEntry = NULL;
+    DWORD oNext, oMax, oVsVersionInfo, o;
+    LPWSTR wszKey, wszValue;
+    oResourceDataDirectory = PE_DirectoryGetOffset(H, pProcess, vaModuleBase, NULL, IMAGE_DIRECTORY_ENTRY_RESOURCE, &cbResourceDataDirectory);
+    if(!oResourceDataDirectory || (cbResourceDataDirectory < 0x100)) { return FALSE; }
+    vaResourceDataDirectory = vaModuleBase + oResourceDataDirectory;
+    // 1: GRAB RT_VERSION (level1):
+    if(!VmmRead(H, pProcess, vaModuleBase + oResourceDataDirectory, pbBuffer, sizeof(pbBuffer))) { return FALSE; }
+    cEntries = pImageResourceDirectory->NumberOfNamedEntries + pImageResourceDirectory->NumberOfIdEntries;
+    if(sizeof(pbBuffer) < sizeof(IMAGE_RESOURCE_DIRECTORY) + cEntries * sizeof(IMAGE_RESOURCE_DIRECTORY_ENTRY)) {
+        cEntries = (sizeof(pbBuffer) - sizeof(IMAGE_RESOURCE_DIRECTORY)) / sizeof(IMAGE_RESOURCE_DIRECTORY_ENTRY);
+    }
+    for(i = 0; i < cEntries; i++) {
+        pImageResourceDirectoryEntry = (PIMAGE_RESOURCE_DIRECTORY_ENTRY)(pImageResourceDirectory + 1) + i;
+        if(pImageResourceDirectoryEntry->Name == 16) {
+            break;
+        }
+    }
+    if(!pImageResourceDirectoryEntry || (pImageResourceDirectoryEntry->Name != 16) || !pImageResourceDirectoryEntry->DataIsDirectory) { return FALSE; }
+    // 2: (level2 and level3/language):
+    for(iLevel = 2; iLevel <= 3; iLevel++) {
+        pImageResourceDirectory = (PIMAGE_RESOURCE_DIRECTORY)PE_VsGetVersionInfo_EnsureBuffer(H, pProcess, vaResourceDataDirectory, cbResourceDataDirectory, pbBuffer, &oBuffer, pImageResourceDirectoryEntry->OffsetToDirectory);
+        if(!pImageResourceDirectory) { return FALSE; }
+        if(0 == pImageResourceDirectory->NumberOfNamedEntries + pImageResourceDirectory->NumberOfIdEntries) { return FALSE; }
+        pImageResourceDirectoryEntry = (PIMAGE_RESOURCE_DIRECTORY_ENTRY)(pImageResourceDirectory + 1);
+        if(pImageResourceDirectoryEntry->DataIsDirectory == iLevel - 2) { return FALSE; }
+    }
+    // 3: fetch offset (from start of module) to VS_VERSIONINFO resource and sanity check:
+    pb = (PBYTE)PE_VsGetVersionInfo_EnsureBuffer(H, pProcess, vaResourceDataDirectory, cbResourceDataDirectory, pbBuffer, &oBuffer, pImageResourceDirectoryEntry->OffsetToData);
+    if(!pb) { return FALSE; }
+    oVsVersionInfo = *(PDWORD)pb - oResourceDataDirectory;          // offset inside resource directory of VS_VERSIONINFO struct
+    pb = (PBYTE)PE_VsGetVersionInfo_EnsureBuffer(H, pProcess, vaResourceDataDirectory, cbResourceDataDirectory, pbBuffer, &oBuffer, oVsVersionInfo);
+    if(!pb) { return FALSE; }
+    // 4: readjust pb buffer (it should be able to hold remaining data without having to do a memory read):
+    oMax = 0x1000 - ((SIZE_T)(pb - pbBuffer) & 0xfff);
+    // 5: validate VS_VERSIONINFO struct:
+    if(*(PWORD)pb > oMax) { return FALSE; }
+    oMax = min(oMax, *(PWORD)pb);
+    if(memcmp(pb + 6, PE_VERSIONINFO_VS_VERSION_INFO, sizeof(PE_VERSIONINFO_VS_VERSION_INFO))) { return FALSE; }
+    oNext = (6 + sizeof(PE_VERSIONINFO_VS_VERSION_INFO) + *(PWORD)(pb + 2) + 3) & 0xffc;
+    if(oNext + 2 > oMax) { return FALSE; }
+    pb += oNext; oMax -= oNext;
+    // 5: validate StringFileInfo:
+    if(*(PWORD)pb > oMax) { return FALSE; }
+    if(memcmp(pb + 6, PE_VERSIONINFO_StringFileInfo, sizeof(PE_VERSIONINFO_StringFileInfo))) { return FALSE; }
+    oNext = (6 + sizeof(PE_VERSIONINFO_StringFileInfo) + 3) & 0xffc;
+    if(oNext + 2 > oMax) { return FALSE; }
+    pb += oNext; oMax -= oNext;
+    // 6: validate StringTable:
+    if(*(PWORD)pb > oMax) { return FALSE; }
+    oNext = 0x18;
+    if(oNext + 16 > oMax) { return FALSE; }
+    pb += oNext; oMax -= oNext;
+    // 7: Iterate Strings in remaining table:
+    while(TRUE) {
+        oNext = (*(PWORD)pb + 3) & 0xffc;
+        if((oNext < 8) || (oNext + 10 > oMax)) { break; }
+        if(*(PWORD)(pb + 4) == 1) {
+            wszValue = NULL;
+            wszKey = (LPWSTR)(pb + 6);
+            // find end of key:
+            for(o = 6; (o < oNext) && *(PWORD)(pb + o); o += 2) {
+                ;
+            }
+            if(o < oNext) {
+                o += 2;
+                // find start of value:
+                for(; o < oNext; o += 2) {
+                    if(*(PWORD)(pb + o)) {
+                        wszValue = (LPWSTR)(pb + o);
+                        pb[oNext - 1] = 0;   // ensure null termination
+                        pb[oNext - 2] = 0;
+                        break;
+                    }
+                }
+            }
+            if(wszValue) {
+                PE_VERSIONINFO_ADDENTRY(psm, wszKey, wszValue, PE_VERSIONINFO_CompanyName,      &pMEVI->uszCompanyName);
+                PE_VERSIONINFO_ADDENTRY(psm, wszKey, wszValue, PE_VERSIONINFO_FileVersion,      &pMEVI->uszFileVersion);
+                PE_VERSIONINFO_ADDENTRY(psm, wszKey, wszValue, PE_VERSIONINFO_ProductName,      &pMEVI->uszProductName);
+                PE_VERSIONINFO_ADDENTRY(psm, wszKey, wszValue, PE_VERSIONINFO_InternalName,     &pMEVI->uszInternalName);
+                PE_VERSIONINFO_ADDENTRY(psm, wszKey, wszValue, PE_VERSIONINFO_LegalCopyright,   &pMEVI->uszLegalCopyright);
+                PE_VERSIONINFO_ADDENTRY(psm, wszKey, wszValue, PE_VERSIONINFO_ProductVersion,   &pMEVI->uszProductVersion);
+                PE_VERSIONINFO_ADDENTRY(psm, wszKey, wszValue, PE_VERSIONINFO_FileDescription,  &pMEVI->uszFileDescription);
+                PE_VERSIONINFO_ADDENTRY(psm, wszKey, wszValue, PE_VERSIONINFO_OriginalFilename, &pMEVI->uszOriginalFilename);
+            }
+        }
+        pb += oNext; oMax -= oNext;
+    }
     return TRUE;
 }

@@ -10,7 +10,7 @@
 // The segment heap is reliant on symbols and it will not be possible to parse
 // without symbols.s
 //
-// (c) Ulf Frisk, 2022
+// (c) Ulf Frisk, 2022-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -255,7 +255,7 @@ VOID VmmHeapAlloc_GetHeapKeys(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In
     if(pdwNtLfhKey && !PDB_GetSymbolDWORD(H, hPDB, "RtlpLFHKey", pProcess, pdwNtLfhKey))   { *pdwNtLfhKey = 0;  }
     if(!pqwSegHeapGbl && !pdwSegLfhKey && (!pqwNtHeapKey || *pqwNtHeapKey) && (!pdwNtLfhKey || *pdwNtLfhKey)) { return; }
     // try slow path: (load symbols via module list)
-    if(VmmMap_GetModuleEntryEx(H, pProcess, 0, "ntdll.dll", &pObModuleMap, &pNtdll)) {
+    if(VmmMap_GetModuleEntryEx(H, pProcess, 0, "ntdll.dll", 0, &pObModuleMap, &pNtdll)) {
         if(fWow != pNtdll->fWoW64) {
             pNtdll = NULL;
             for(i = 0; i < pObModuleMap->cMap; i++) {

@@ -3,7 +3,7 @@
 // The 'sys/drivers' module lists various aspects of drivers from the windows
 // kernel object manager.
 //
-// (c) Ulf Frisk, 2022
+// (c) Ulf Frisk, 2022-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmm.h"
@@ -208,7 +208,7 @@ NTSTATUS MSysDriver_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _O
     if(!VmmMap_GetKDriver(H, &pObDrvMap)) { goto cleanup; }
     if(!(pObSystemProcess = VmmProcessGet(H, 4))) { goto cleanup; }
     if(!_stricmp(ctxP->uszPath, "drivers.txt")) {
-        if(VmmMap_GetModule(H, pObSystemProcess, &pObModuleMap)) {
+        if(VmmMap_GetModule(H, pObSystemProcess, 0, &pObModuleMap)) {
             VmmMap_GetModuleEntryEx3(H, pObModuleMap, &pmObModuleByVA);
         }
         nt = Util_VfsLineFixed_Read(
@@ -284,7 +284,7 @@ BOOL MSysDriver_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout
         uszPath = CharUtil_PathSplitNext(uszPath);
         if(0 == uszPath[0]) {
             VmmWinObjDisplay_VfsList(H, H->vmm.ObjectTypeTable.tpDriver, peDriver->va, pFileList);
-            if(VmmMap_GetModule(H, pObSystemProcess, &pObModuleMap) && (peModule = VmmMap_GetModuleEntryEx2(H, pObModuleMap, peDriver->vaStart))) {
+            if(VmmMap_GetModule(H, pObSystemProcess, 0, &pObModuleMap) && (peModule = VmmMap_GetModuleEntryEx2(H, pObModuleMap, peDriver->vaStart))) {
                 VMMDLL_VfsList_AddDirectory(pFileList, peModule->uszText, NULL);
             }
         } else {
@@ -413,7 +413,7 @@ VOID MSysDriver_FcLogCSV_Driver(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT c
     POB_MAP pmObModuleByVA = NULL;
     DWORD i;
     if(!VmmMap_GetKDriver(H, &pObDriverMap)) { return; }
-    if(VmmMap_GetModule(H, (PVMM_PROCESS)ctxP->pProcess, &pObModuleMap)) {
+    if(VmmMap_GetModule(H, (PVMM_PROCESS)ctxP->pProcess, 0, &pObModuleMap)) {
         VmmMap_GetModuleEntryEx3(H, pObModuleMap, &pmObModuleByVA);
     }
     for(i = 0; i < pObDriverMap->cMap; i++) {

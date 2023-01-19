@@ -1,6 +1,6 @@
 // vmmlog.h : definitions of the vmm logging functionality.
 //
-// (c) Ulf Frisk, 2022
+// (c) Ulf Frisk, 2022-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __VMMLOG_H__
@@ -47,7 +47,8 @@ typedef enum tdVMMLOG_LEVEL {
 #define MID_EVIL         0x8000001d
 #define MID_OBJECT       0x8000001e
 #define MID_VM           0x8000001f
-#define MID_MAX          0x8000001f
+#define MID_MODULE       0x80000020
+#define MID_MAX          0x80000020
 
 // max 8 chars long!
 static LPCSTR VMMLOG_MID_STR[] = {
@@ -73,7 +74,8 @@ static LPCSTR VMMLOG_MID_STR[] = {
     "OFFSET",
     "EVIL",
     "OBJECT",
-    "VM"
+    "VM",
+    "MODULE"
 };
 
 /*

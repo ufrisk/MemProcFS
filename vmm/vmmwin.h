@@ -1,7 +1,7 @@
 // vmmwin.h : definitions related to windows operating system and processes.
 // parsing of virtual memory. Windows related features only.
 //
-// (c) Ulf Frisk, 2018-2022
+// (c) Ulf Frisk, 2018-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __VMMWIN_H__
@@ -50,6 +50,20 @@ BOOL VmmWinPte_InitializeMapText(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess);
 */
 _Success_(return)
 BOOL VmmWinLdrModule_Initialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _Inout_opt_ POB_SET psvaInjected);
+
+/*
+* Add DebugInfo to the modules unless already added.
+* -- H
+* -- pProcess
+*/
+VOID VmmWinLdrModule_EnrichDebugInfo(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess);
+
+/*
+* Add VersionInfo to the modules unless already added.
+* -- H
+* -- pProcess
+*/
+VOID VmmWinLdrModule_EnrichVersionInfo(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess);
 
 /*
 * Initialize the unloaded module map containing information about unloaded modules.

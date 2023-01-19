@@ -1,6 +1,6 @@
 // m_conf.c : implementation of the conf (configuration) built-in module.
 //
-// (c) Ulf Frisk, 2018-2022
+// (c) Ulf Frisk, 2018-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

@@ -14,10 +14,10 @@
 // To accomodate this significant changes have been done to the API which is
 // largely incompatible (but very similar) to the earlier API versions.
 //
-// (c) Ulf Frisk, 2018-2022
+// (c) Ulf Frisk, 2018-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-// Header Version: 5.2
+// Header Version: 5.3
 //
 
 #include "leechcore.h"
@@ -207,6 +207,7 @@ VOID VMMDLL_MemFree(_Frees_ptr_opt_ PVOID pvMem);
 #define VMMDLL_OPT_CONFIG_VMM_VERSION_REVISION          0x2000000B00000000  // R
 #define VMMDLL_OPT_CONFIG_STATISTICS_FUNCTIONCALL       0x2000000C00000000  // RW - enable function call statistics (.status/statistics_fncall file)
 #define VMMDLL_OPT_CONFIG_IS_PAGING_ENABLED             0x2000000D00000000  // RW - 1/0
+#define VMMDLL_OPT_CONFIG_DEBUG                         0x2000000E00000000  // W
 
 #define VMMDLL_OPT_WIN_VERSION_MAJOR                    0x2000010100000000  // R
 #define VMMDLL_OPT_WIN_VERSION_MINOR                    0x2000010200000000  // R
@@ -964,9 +965,9 @@ VOID VMMDLL_Scatter_CloseHandle(_In_opt_ _Post_ptr_invalid_ VMMDLL_SCATTER_HANDL
 #define VMMDLL_MAP_PTE_VERSION              2
 #define VMMDLL_MAP_VAD_VERSION              6
 #define VMMDLL_MAP_VADEX_VERSION            3
-#define VMMDLL_MAP_MODULE_VERSION           5
+#define VMMDLL_MAP_MODULE_VERSION           6
 #define VMMDLL_MAP_UNLOADEDMODULE_VERSION   2
-#define VMMDLL_MAP_EAT_VERSION              2
+#define VMMDLL_MAP_EAT_VERSION              3
 #define VMMDLL_MAP_IAT_VERSION              2
 #define VMMDLL_MAP_HEAP_VERSION             4
 #define VMMDLL_MAP_HEAPALLOC_VERSION        1
@@ -976,7 +977,7 @@ VOID VMMDLL_Scatter_CloseHandle(_In_opt_ _Post_ptr_invalid_ VMMDLL_SCATTER_HANDL
 #define VMMDLL_MAP_NET_VERSION              3
 #define VMMDLL_MAP_PHYSMEM_VERSION          2
 #define VMMDLL_MAP_USER_VERSION             2
-#define VMMDLL_MAP_VM_VERSION               1
+#define VMMDLL_MAP_VM_VERSION               2
 #define VMMDLL_MAP_SERVICE_VERSION          3
 
 // flags to check for existence in the fPage field of VMMDLL_MAP_PTEENTRY
@@ -987,6 +988,10 @@ VOID VMMDLL_Scatter_CloseHandle(_In_opt_ _Post_ptr_invalid_ VMMDLL_SCATTER_HANDL
 
 #define VMMDLL_POOLMAP_FLAG_ALL             0
 #define VMMDLL_POOLMAP_FLAG_BIG             1
+
+#define VMMDLL_MODULE_FLAG_NORMAL           0
+#define VMMDLL_MODULE_FLAG_DEBUGINFO        1
+#define VMMDLL_MODULE_FLAG_VERSIONINFO      2
 
 typedef enum tdVMMDLL_PTE_TP {
     VMMDLL_PTE_TP_NA = 0,
@@ -1064,6 +1069,25 @@ typedef enum tdVMMDLL_MODULE_TP {
     VMMDLL_MODULE_TP_INJECTED = 3,
 } VMMDLL_MODULE_TP;
 
+typedef struct tdVMMDLL_MAP_MODULEENTRY_DEBUGINFO {
+    DWORD dwAge;
+    DWORD _Reserved;
+    BYTE Guid[16];
+    union { LPSTR  uszGuid;             LPWSTR wszGuid;                 };
+    union { LPSTR  uszPdbFilename;      LPWSTR wszPdbFilename;          };
+} VMMDLL_MAP_MODULEENTRY_DEBUGINFO, *PVMMDLL_MAP_MODULEENTRY_DEBUGINFO;
+
+typedef struct tdVMMDLL_MAP_MODULEENTRY_VERSIONINFO {
+    union { LPSTR  uszCompanyName;      LPWSTR wszCompanyName;          };
+    union { LPSTR  uszFileDescription;  LPWSTR wszFileDescription;      };
+    union { LPSTR  uszFileVersion;      LPWSTR wszFileVersion;          };
+    union { LPSTR  uszInternalName;     LPWSTR wszInternalName;         };
+    union { LPSTR  uszLegalCopyright;   LPWSTR wszLegalCopyright;       };
+    union { LPSTR  uszOriginalFilename; LPWSTR wszFileOriginalFilename; };
+    union { LPSTR  uszProductName;      LPWSTR wszProductName;          };
+    union { LPSTR  uszProductVersion;   LPWSTR wszProductVersion;       };
+} VMMDLL_MAP_MODULEENTRY_VERSIONINFO, *PVMMDLL_MAP_MODULEENTRY_VERSIONINFO;
+
 typedef struct tdVMMDLL_MAP_MODULEENTRY {
     QWORD vaBase;
     QWORD vaEntry;
@@ -1079,7 +1103,9 @@ typedef struct tdVMMDLL_MAP_MODULEENTRY {
     DWORD cEAT;
     DWORD cIAT;
     DWORD _Reserved2;
-    QWORD _Reserved1[2];
+    QWORD _Reserved1[3];
+    PVMMDLL_MAP_MODULEENTRY_DEBUGINFO pExDebugInfo;         // not included by default - use VMMDLL_MODULE_FLAG_DEBUGINFO to include.
+    PVMMDLL_MAP_MODULEENTRY_VERSIONINFO pExVersionInfo;     // not included by default - use VMMDLL_MODULE_FLAG_VERSIONINFO to include.
 } VMMDLL_MAP_MODULEENTRY, *PVMMDLL_MAP_MODULEENTRY;
 
 typedef struct tdVMMDLL_MAP_UNLOADEDMODULEENTRY {
@@ -1101,6 +1127,7 @@ typedef struct tdVMMDLL_MAP_EATENTRY {
     DWORD oNamesArray;              // PIMAGE_EXPORT_DIRECTORY->AddressOfNames[oNamesArray]
     DWORD _FutureUse1;
     union { LPSTR  uszFunction; LPWSTR wszFunction; };      // U/W dependant
+    union { LPSTR  uszForwardedFunction; LPWSTR wszForwardedFunction; };    // U/W dependant (function or ordinal name if exists).
 } VMMDLL_MAP_EATENTRY, *PVMMDLL_MAP_EATENTRY;
 
 typedef struct tdVMMDLL_MAP_IATENTRY {
@@ -1303,7 +1330,8 @@ typedef struct tdVMMDLL_MAP_USERENTRY {
 
 typedef enum tdVMMDLL_VM_TP {
     VMMDLL_VM_TP_UNKNOWN = 0,
-    VMMDLL_VM_TP_HV = 1
+    VMMDLL_VM_TP_HV      = 1,
+    VMMDLL_VM_TP_HV_WHVP = 2
 } VMMDLL_VM_TP;
 
 typedef struct tdVMMDLL_MAP_VMENTRY {
@@ -1318,6 +1346,7 @@ typedef struct tdVMMDLL_MAP_VMENTRY {
     DWORD dwVersionBuild;
     VMMDLL_SYSTEM_TP tpSystem;
     DWORD dwParentVmmMountID;
+    DWORD dwVmMemPID;
 } VMMDLL_MAP_VMENTRY, *PVMMDLL_MAP_VMENTRY;
 
 typedef struct tdVMMDLL_MAP_SERVICEENTRY {
@@ -1385,7 +1414,8 @@ typedef struct tdVMMDLL_MAP_EAT {
     DWORD dwOrdinalBase;
     DWORD cNumberOfNames;
     DWORD cNumberOfFunctions;
-    DWORD _Reserved1[4];
+    DWORD cNumberOfForwardedFunctions;
+    DWORD _Reserved1[3];
     QWORD vaModuleBase;
     QWORD vaAddressOfFunctions;
     QWORD vaAddressOfNames;
@@ -1539,11 +1569,12 @@ BOOL VMMDLL_Map_GetVadEx(_In_ VMM_HANDLE hVMM, _In_ DWORD dwPID, _In_ DWORD oPag
 * -- hVMM
 * -- dwPID
 * -- ppModuleMap =  ptr to receive result on success. must be free'd with VMMDLL_MemFree().
+* -- flags = optional flags as specified by VMMDLL_MODULE_FLAG_*
 * -- return = success/fail.
 */
 EXPORTED_FUNCTION
-_Success_(return) BOOL VMMDLL_Map_GetModuleU(_In_ VMM_HANDLE hVMM, _In_ DWORD dwPID, _Out_ PVMMDLL_MAP_MODULE *ppModuleMap);
-_Success_(return) BOOL VMMDLL_Map_GetModuleW(_In_ VMM_HANDLE hVMM, _In_ DWORD dwPID, _Out_ PVMMDLL_MAP_MODULE *ppModuleMap);
+_Success_(return) BOOL VMMDLL_Map_GetModuleU(_In_ VMM_HANDLE hVMM, _In_ DWORD dwPID, _Out_ PVMMDLL_MAP_MODULE *ppModuleMap, _In_ DWORD flags);
+_Success_(return) BOOL VMMDLL_Map_GetModuleW(_In_ VMM_HANDLE hVMM, _In_ DWORD dwPID, _Out_ PVMMDLL_MAP_MODULE *ppModuleMap, _In_ DWORD flags);
 
 /*
 * Retrieve a module (.dll) entry given a process and module name.
@@ -1552,11 +1583,12 @@ _Success_(return) BOOL VMMDLL_Map_GetModuleW(_In_ VMM_HANDLE hVMM, _In_ DWORD dw
 * -- dwPID
 * -- [uw]szModuleName = module name (or ""/NULL for 1st module entry).
 * -- ppModuleMapEntry =  ptr to receive result on success. must be free'd with VMMDLL_MemFree().
+* -- flags = optional flags as specified by VMMDLL_MODULE_FLAG_*
 * -- return = success/fail.
 */
 EXPORTED_FUNCTION
-_Success_(return) BOOL VMMDLL_Map_GetModuleFromNameU(_In_ VMM_HANDLE hVMM, _In_ DWORD dwPID, _In_opt_ LPSTR  uszModuleName, _Out_ PVMMDLL_MAP_MODULEENTRY *ppModuleMapEntry);
-_Success_(return) BOOL VMMDLL_Map_GetModuleFromNameW(_In_ VMM_HANDLE hVMM, _In_ DWORD dwPID, _In_opt_ LPWSTR wszModuleName, _Out_ PVMMDLL_MAP_MODULEENTRY *ppModuleMapEntry);
+_Success_(return) BOOL VMMDLL_Map_GetModuleFromNameU(_In_ VMM_HANDLE hVMM, _In_ DWORD dwPID, _In_opt_ LPSTR  uszModuleName, _Out_ PVMMDLL_MAP_MODULEENTRY *ppModuleMapEntry, _In_ DWORD flags);
+_Success_(return) BOOL VMMDLL_Map_GetModuleFromNameW(_In_ VMM_HANDLE hVMM, _In_ DWORD dwPID, _In_opt_ LPWSTR wszModuleName, _Out_ PVMMDLL_MAP_MODULEENTRY *ppModuleMapEntry, _In_ DWORD flags);
 
 /*
 * Retrieve the unloaded modules (.dll/.sys) for the specified process.
@@ -2513,15 +2545,17 @@ EXPORTED_FUNCTION
 DWORD VMMDLL_VmMemWriteScatter(_In_ VMM_HANDLE hVMM, _In_ VMMVM_HANDLE hVM, _Inout_ PPMEM_SCATTER ppMEMsGPA, _In_ DWORD cpMEMsGPA);
 
 /*
-* Translate a virtual machine (VM) guest physical address (GPA) to a physical address (PA).
+* Translate a virtual machine (VM) guest physical address (GPA) to:
+* (1) Physical Address (PA) _OR_ (2) Virtual Address (VA) in 'vmmem' process.
 * -- hVMM
-* -- hVM
-* -- qwGPA
-* -- pqwPA
+* -- HVM
+* -- qwGPA = guest physical address to translate.
+* -- pPA = translated physical address (if exists).
+* -- pVA = translated virtual address inside 'vmmem' process (if exists).
 * -- return = success/fail.
 */
 EXPORTED_FUNCTION _Success_(return)
-BOOL VMMDLL_VmMemGPA2Phys(_In_ VMM_HANDLE hVMM, _In_ VMMVM_HANDLE hVM, _In_ ULONG64 qwGPA, _Out_ PULONG64 pqwPA);
+BOOL VMMDLL_VmMemTranslateGPA(_In_ VMM_HANDLE H, _In_ VMMVM_HANDLE hVM, _In_ ULONG64 qwGPA, _Out_opt_ PULONG64 pPA, _Out_opt_ PULONG64 pVA);
 
 
 

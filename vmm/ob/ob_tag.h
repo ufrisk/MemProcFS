@@ -1,6 +1,6 @@
 // ob.h : definitions of object tags.
 //
-// (c) Ulf Frisk, 2021-2022
+// (c) Ulf Frisk, 2021-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __OB_TAG_H__
@@ -46,6 +46,7 @@
 #define OB_TAG_PDB_CTX                  'PdbC'
 #define OB_TAG_PDB_ENTRY                'PdbE'
 #define OB_TAG_PDB_KERNEL_CONTEXT       'PdbK'
+#define OB_TAG_PDBPARSE_CONTEXT          'PdbS'
 #define OB_TAG_PFN_CONTEXT              'PfnC'
 #define OB_TAG_PFN_PROC_TABLE           'PfnT'
 #define OB_TAG_REG_HIVE                 'Rhve'

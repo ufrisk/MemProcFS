@@ -1,6 +1,6 @@
 // m_proc_minidump.c : implementation of the minidump built-in module.
 //
-// (c) Ulf Frisk, 2020-2022
+// (c) Ulf Frisk, 2020-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "pluginmanager.h"
@@ -580,7 +580,7 @@ POB_M_MINIDUMP_CONTEXT M_MiniDump_Initialize_Internal(_In_ VMM_HANDLE H, _In_ PV
     if(VmmMap_GetThread(H, pProcess, &pObThreadMap) && (!pObThreadMap->cMap || (pObThreadMap->cMap > 0x4000))) {   // THREAD = allowed to fail (due to dependency on debug symbols).
         Ob_DECREF_NULL(&pObThreadMap);
     }
-    if(!VmmMap_GetModule(H, pProcess, &pObModuleMap) || !pObModuleMap->cMap || (pObModuleMap->cMap > 0x4000)) { goto fail; }
+    if(!VmmMap_GetModule(H, pProcess, 0, &pObModuleMap) || !pObModuleMap->cMap || (pObModuleMap->cMap > 0x4000)) { goto fail; }
     if(!VmmMap_GetUnloadedModule(H, pProcess, &pObUnloadedModuleMap)) { goto fail; }
     if(!(ctx = Ob_AllocEx(H, OB_TAG_MOD_MINIDUMP_CTX, LMEM_ZEROINIT, sizeof(OB_M_MINIDUMP_CONTEXT), (OB_CLEANUP_CB)M_MiniDump_CallbackCleanup_ObMiniDumpContext, NULL))) { goto fail; }
     if(!(ctx->pb = LocalAlloc(LMEM_ZEROINIT, MINIDUMP_BUFFER_INITIAL))) { goto fail; }

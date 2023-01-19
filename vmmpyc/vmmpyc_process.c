@@ -1,6 +1,6 @@
 // vmmpyc_process.c : implementation of process functionality for vmmpyc.
 //
-// (c) Ulf Frisk, 2021-2022
+// (c) Ulf Frisk, 2021-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmmpyc.h"
@@ -66,7 +66,7 @@ VmmPycProcess_module_list(PyObj_Process *self, PyObject *args)
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Process.module_list(): Not initialized."); }
     if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
     Py_BEGIN_ALLOW_THREADS;
-    result = VMMDLL_Map_GetModuleU(self->pyVMM->hVMM, self->dwPID, &pModuleMap);
+    result = VMMDLL_Map_GetModuleU(self->pyVMM->hVMM, self->dwPID, &pModuleMap, 0);
     Py_END_ALLOW_THREADS;
     if(!result || (pModuleMap->dwVersion != VMMDLL_MAP_MODULE_VERSION)) {
         Py_DECREF(pyList);
@@ -95,7 +95,7 @@ VmmPycProcess_module(PyObj_Process *self, PyObject *args)
         return PyErr_Format(PyExc_RuntimeError, "Process.module(): Illegal argument.");
     }
     Py_BEGIN_ALLOW_THREADS;
-    result = VMMDLL_Map_GetModuleFromNameU(self->pyVMM->hVMM, self->dwPID, uszModuleName, &pe);
+    result = VMMDLL_Map_GetModuleFromNameU(self->pyVMM->hVMM, self->dwPID, uszModuleName, &pe, 0);
     Py_END_ALLOW_THREADS;
     if(!result) {
         VMMDLL_MemFree(pe);
@@ -321,7 +321,7 @@ VmmPycProcess_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_ DWORD dwPID, _In_ B
     BOOL fResult;
     if(fVerify) {
         Py_BEGIN_ALLOW_THREADS;
-        fResult = VMMDLL_Map_GetModuleU(pyVMM->hVMM, dwPID, &pModuleMap);
+        fResult = VMMDLL_Map_GetModuleU(pyVMM->hVMM, dwPID, &pModuleMap, 0);
         Py_END_ALLOW_THREADS;
         if(!fResult) { return NULL; }
         VMMDLL_MemFree(pModuleMap);

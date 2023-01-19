@@ -1,6 +1,6 @@
 // mm_x64.c : implementation of the x64 / IA32e / long-mode paging / memory model.
 //
-// (c) Ulf Frisk, 2018-2022
+// (c) Ulf Frisk, 2018-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmm.h"
@@ -215,6 +215,53 @@ BOOL MmX64_PteMapInitialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
     return TRUE;
 }
 
+VOID MmX64_Virt2PhysEx(_In_ VMM_HANDLE H, _In_ PVMM_V2P_ENTRY pV2Ps, _In_ DWORD cV2Ps, _In_ BOOL fUserOnly, _In_ BYTE iPML)
+{
+    BOOL fValidNextPT = FALSE;
+    DWORD iV2P;
+    QWORD pte, i, qwMask;
+    PVMM_V2P_ENTRY pV2P;
+    if(iPML == (BYTE)-1) { iPML = 4; }
+    VmmTlbGetPageTableEx(H, pV2Ps, cV2Ps, FALSE);
+    for(iV2P = 0; iV2P < cV2Ps; iV2P++) {
+        pV2P = pV2Ps + iV2P;
+        pV2P->paPT = 0;
+        if(!pV2P->pObPTE) {
+            continue;
+        }
+        if(pV2P->pa) {
+            Ob_DECREF_NULL(&pV2P->pObPTE);
+            continue;
+        }
+        i = 0x1ff & (pV2P->va >> MMX64_PAGETABLEMAP_PML_REGION_SIZE[iPML]);
+        pte = pV2P->pObPTE->pqw[i];
+        Ob_DECREF_NULL(&pV2P->pObPTE);
+        if(!MMX64_PTE_IS_VALID(pte, iPML)) {
+            if(iPML == 1) {
+                pV2P->pte = pte;
+                pV2P->fPaging = TRUE;
+            }
+            continue;
+        }
+        if(fUserOnly && !(pte & 0x04)) { continue; }            // SUPERVISOR PAGE & USER MODE REQ
+        if(pte & 0x000f000000000000) { continue; }              // RESERVED
+        if((iPML == 1) || (pte & 0x80) /* PS */) {
+            if(iPML == 4) { continue; }                         // NO SUPPORT IN PML4
+            qwMask = 0xffffffffffffffff << MMX64_PAGETABLEMAP_PML_REGION_SIZE[iPML];
+            pV2P->pa = pte & 0x0000fffffffff000 & qwMask;       // MASK AWAY BITS FOR 4kB/2MB/1GB PAGES
+            qwMask = qwMask ^ 0xffffffffffffffff;
+            pV2P->pa = pV2P->pa | (qwMask & pV2P->va);          // FILL LOWER ADDRESS BITS
+            pV2P->fPhys = TRUE;
+            continue;
+        }
+        pV2P->paPT = pte & 0x0000fffffffff000;
+        fValidNextPT = TRUE;
+    }
+    if(fValidNextPT && (iPML > 1)) {
+        MmX64_Virt2PhysEx(H, pV2Ps, cV2Ps, fUserOnly, iPML - 1);
+    }
+}
+
 _Success_(return)
 BOOL MmX64_Virt2Phys(_In_ VMM_HANDLE H, _In_ QWORD paPT, _In_ BOOL fUserOnly, _In_ BYTE iPML, _In_ QWORD va, _Out_ PQWORD ppa)
 {
@@ -381,6 +428,7 @@ VOID MmX64_Initialize(_In_ VMM_HANDLE H)
     }
     pfnsMemoryModel->pfnClose = MmX64_Close;
     pfnsMemoryModel->pfnVirt2Phys = MmX64_Virt2Phys;
+    pfnsMemoryModel->pfnVirt2PhysEx = MmX64_Virt2PhysEx;
     pfnsMemoryModel->pfnVirt2PhysVadEx = MmX64_Virt2PhysVadEx;
     pfnsMemoryModel->pfnVirt2PhysGetInformation = MmX64_Virt2PhysGetInformation;
     pfnsMemoryModel->pfnPhys2VirtGetInformation = MmX64_Phys2VirtGetInformation;

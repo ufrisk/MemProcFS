@@ -1,6 +1,6 @@
 // statistics.h : definitions of statistics related functionality.
 //
-// (c) Ulf Frisk, 2016-2022
+// (c) Ulf Frisk, 2016-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __STATISTICS_H__
@@ -67,7 +67,7 @@ typedef enum tdSTATISTICS_ID {
     STATISTICS_ID_VMMDLL_ProcessGetProcAddress,
     STATISTICS_ID_VMMDLL_ProcessGetModuleBase,
     STATISTICS_ID_VMMDLL_VmGetVmmHandle,
-    STATISTICS_ID_VMMDLL_VmMemGPA2Phys,
+    STATISTICS_ID_VMMDLL_VmMemTranslateGPA,
     STATISTICS_ID_VMMDLL_VmMemRead,
     STATISTICS_ID_VMMDLL_VmMemReadScatter,
     STATISTICS_ID_VMMDLL_VmMemWrite,
@@ -157,7 +157,7 @@ static LPCSTR STATISTICS_ID_STR[STATISTICS_ID_MAX] = {
     [STATISTICS_ID_VMMDLL_WinReg_EnumValueW]        = "VMMDLL_WinReg_EnumValueW",
     [STATISTICS_ID_VMMDLL_WinReg_QueryValueEx]      = "VMMDLL_WinReg_QueryValueEx",
     [STATISTICS_ID_VMMDLL_VmGetVmmHandle]           = "VMMDLL_VmGetVmmHandle",
-    [STATISTICS_ID_VMMDLL_VmMemGPA2Phys]            = "VMMDLL_VmMemGPA2Phys",
+    [STATISTICS_ID_VMMDLL_VmMemTranslateGPA]        = "VMMDLL_VmMemTranslateGPA",
     [STATISTICS_ID_VMMDLL_VmMemRead]                = "VMMDLL_VmMemRead",
     [STATISTICS_ID_VMMDLL_VmMemReadScatter]         = "VMMDLL_VmMemReadScatter",
     [STATISTICS_ID_VMMDLL_VmMemWrite]               = "VMMDLL_VmMemWrite",

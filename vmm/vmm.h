@@ -1,6 +1,6 @@
 // vmm.h : definitions related to virtual memory management support.
 //
-// (c) Ulf Frisk, 2018-2022
+// (c) Ulf Frisk, 2018-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __VMM_H__
@@ -106,6 +106,8 @@
 #define VMM_UADDR_DUAL_4_8(f32, va)             (f32 ? VMM_UADDR32_4(va) : VMM_UADDR64_8(va))
 #define VMM_UADDR_DUAL_8_16(f32, va)            (f32 ? VMM_UADDR32_8(va) : VMM_UADDR64_16(va))
 #define VMM_UADDR_DUAL_PAGE(f32, va)            (f32 ? VMM_UADDR32_PAGE(va) : VMM_UADDR64_PAGE(va))
+
+#define VMM_ALIGN_PAGE(a)                       ((a) & ~0xfff)
 
 #define VMM_PID_PROCESS_CLONE_WITH_KERNELMEMORY 0x80000000      // Combine with PID to create a shallowly cloned process with fUserOnly = FALSE
 
@@ -292,12 +294,35 @@ typedef struct tdVMM_MAP_VADEXENTRY {
 #define MMVAD_IS_FLAG_X(peVad)          ((peVad->Protection & 2) ? TRUE : FALSE)
 #define MMVAD_IS_FLAG_CW(peVad)         (((peVad->Protection & 7) == 5) || ((peVad->Protection & 7) == 7)
 
+#define VMM_MODULE_FLAG_NORMAL           0
+#define VMM_MODULE_FLAG_DEBUGINFO        1
+#define VMM_MODULE_FLAG_VERSIONINFO      2
+
 typedef enum tdVMM_MODULE_TP {
     VMM_MODULE_TP_NORMAL = 0,
     VMM_MODULE_TP_DATA = 1,
     VMM_MODULE_TP_NOTLINKED = 2,
     VMM_MODULE_TP_INJECTED = 3,
 } VMM_MODULE_TP;
+
+typedef struct tdVMM_MAP_MODULEENTRY_DEBUGINFO {
+    DWORD dwAge;
+    DWORD _Reserved;
+    BYTE Guid[16];
+    LPSTR uszGuid;
+    LPSTR uszPdbFilename;
+} VMM_MAP_MODULEENTRY_DEBUGINFO, *PVMM_MAP_MODULEENTRY_DEBUGINFO;
+
+typedef struct tdVMM_MAP_MODULEENTRY_VERSIONINFO {
+    LPSTR uszCompanyName;
+    LPSTR uszFileDescription;
+    LPSTR uszFileVersion;
+    LPSTR uszInternalName;
+    LPSTR uszLegalCopyright;
+    LPSTR uszOriginalFilename;
+    LPSTR uszProductName;
+    LPSTR uszProductVersion;
+} VMM_MAP_MODULEENTRY_VERSIONINFO, *PVMM_MAP_MODULEENTRY_VERSIONINFO;
 
 typedef struct tdVMM_MAP_MODULEENTRY {
     QWORD vaBase;
@@ -316,6 +341,9 @@ typedef struct tdVMM_MAP_MODULEENTRY {
     DWORD _Reserved2;
     QWORD _Reserved1;
     QWORD _Reserved3;
+    QWORD _Reserved4;
+    PVMM_MAP_MODULEENTRY_DEBUGINFO pExDebugInfo;
+    PVMM_MAP_MODULEENTRY_VERSIONINFO pExVersionInfo;
 } VMM_MAP_MODULEENTRY, *PVMM_MAP_MODULEENTRY;
 
 typedef struct tdVMM_MAP_UNLOADEDMODULEENTRY {
@@ -337,6 +365,7 @@ typedef struct tdVMM_MAP_EATENTRY {
     DWORD oNamesArray;              // PIMAGE_EXPORT_DIRECTORY->AddressOfNames[oNamesArray]
     DWORD cbuFunction;              // byte count of uszFunction (including terminating null)
     LPSTR uszFunction;              // UTF-8 string
+    LPSTR uszForwardedFunction;     // UTF-8 string
 } VMM_MAP_EATENTRY, *PVMM_MAP_EATENTRY;
 
 typedef struct tdVMM_MAP_IATENTRY {
@@ -660,13 +689,15 @@ typedef struct tdVMM_MAP_USERENTRY {
 } VMM_MAP_USERENTRY, *PVMM_MAP_USERENTRY;
 
 typedef enum tdVMM_VM_TP {
-    VMM_VM_TP_UNKNOWN       = 0,
-    VMM_VM_TP_HV            = 1
+    VMM_VM_TP_UNKNOWN           = 0,
+    VMM_VM_TP_HV                = 1,
+    VMM_VM_TP_HV_WHVP           = 2
 } VMM_VM_TP;
 
 static LPCSTR VMM_VM_TP_STRING[] = {
-    [VMM_VM_TP_UNKNOWN] = "VM Unknown",
-    [VMM_VM_TP_HV]      = "Hyper-V"
+    [VMM_VM_TP_UNKNOWN]         = "VM Unknown",
+    [VMM_VM_TP_HV]              = "Hyper-V",
+    [VMM_VM_TP_HV_WHVP]         = "Hyper-V WHVP",
 };
 
 typedef struct tdVMM_MAP_VMENTRY {
@@ -681,6 +712,7 @@ typedef struct tdVMM_MAP_VMENTRY {
     DWORD dwVersionBuild;
     VMM_SYSTEM_TP tpSystem;
     DWORD dwParentVmmMountID;
+    DWORD dwVmMemPID;
 } VMM_MAP_VMENTRY, *PVMM_MAP_VMENTRY;
 
 typedef struct tdVMM_MAP_SERVICEENTRY {
@@ -783,6 +815,12 @@ typedef struct tdVMMOB_MAP_VADEX {
 typedef struct tdVMMOB_MAP_MODULE {
     OB ObHdr;
     PQWORD pHashTableLookup;
+    PBYTE pbDebugInfo1;             // opaque extension: debug info
+    PBYTE pbDebugInfo2;             // opaque extension: debug info
+    PBYTE pbVersionInfo1;           // opaque extension: version info
+    PBYTE pbVersionInfo2;           // opaque extension: version info
+    BOOL fDebugInfo;
+    BOOL fVersionInfo;
     PBYTE pbMultiText;              //  UTF-8 multi-string into by VMM_MAP_MODULEENTRY.usz*
     DWORD cbMultiText;
     DWORD cMap;                     // # map entries.
@@ -804,6 +842,7 @@ typedef struct tdVMMOB_MAP_EAT {
     QWORD vaAddressOfFunctions;
     QWORD vaAddressOfNames;
     DWORD cNumberOfFunctions;
+    DWORD cNumberOfForwardedFunctions;
     DWORD cNumberOfNames;
     DWORD dwOrdinalBase;
     DWORD cbMultiText;
@@ -1143,6 +1182,25 @@ typedef struct tdVMM_CACHE_TABLE {
     VMM_CACHE_REGION R[VMM_CACHE_REGIONS];
 } VMM_CACHE_TABLE, *PVMM_CACHE_TABLE;
 
+/*
+* Struct used in efficient parallel virtual 2 physical (V2P) translation.
+*/
+typedef struct tdVMM_V2P_ENTRY {
+    // caller-set initial values below:
+    QWORD paPT;             // DTB (DirectoryTableBase) - caller set!
+    QWORD va;               // virtual address - caller set!
+    // translation results below:
+    BOOL fPhys;
+    BOOL fPaging;
+    QWORD pa;
+    QWORD pte;
+    // internals below:
+    PVMMOB_CACHE_MEM pObPTE;
+    struct tdVMM_V2P_ENTRY *FLink;
+    QWORD _paPDPT_PAE;      // internal use only
+    QWORD _Filler[8];       // filler to equal sizeof(MEM_SCATTER)
+} VMM_V2P_ENTRY, *PVMM_V2P_ENTRY;
+
 typedef struct tdVMM_VIRT2PHYS_INFORMATION {
     VMM_MEMORYMODEL_TP tpMemoryModel;
     QWORD va;
@@ -1154,6 +1212,7 @@ typedef struct tdVMM_VIRT2PHYS_INFORMATION {
 typedef struct tdVMM_MEMORYMODEL_FUNCTIONS {
     VOID(*pfnClose)(_In_ VMM_HANDLE H);
     BOOL(*pfnVirt2Phys)(_In_ VMM_HANDLE H, _In_ QWORD paDTB, _In_ BOOL fUserOnly, _In_ BYTE iPML, _In_ QWORD va, _Out_ PQWORD ppa);
+    VOID(*pfnVirt2PhysEx)(_In_ VMM_HANDLE H, _In_ PVMM_V2P_ENTRY pV2Ps, _In_ DWORD cV2Ps, _In_ BOOL fUserOnly, _In_ BYTE iPML);
     VOID(*pfnVirt2PhysVadEx)(_In_ VMM_HANDLE H, _In_ QWORD paPT, _Inout_ PVMMOB_MAP_VADEX pVadEx, _In_ BYTE iPML, _Inout_ PDWORD piVadEx);
     VOID(*pfnVirt2PhysGetInformation)(_In_ VMM_HANDLE H, _Inout_ PVMM_PROCESS pProcess, _Inout_ PVMM_VIRT2PHYS_INFORMATION pVirt2PhysInfo);
     VOID(*pfnPhys2VirtGetInformation)(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _Inout_ PVMMOB_PHYS2VIRT_INFORMATION pP2V);
@@ -1672,6 +1731,18 @@ PVMMOB_CACHE_MEM VmmCacheGet(_In_ VMM_HANDLE H, _In_ DWORD dwTblTag, _In_ QWORD 
 * -- return
 */
 PVMMOB_CACHE_MEM VmmTlbGetPageTable(_In_ VMM_HANDLE H, _In_ QWORD pa, _In_ BOOL fCacheOnly);
+
+/*
+* Retrieve multiple page tables (0x1000 bytes) via the TLB cache in parallel.
+* Page table address is retrieved from pV2Ps[i].paPT.
+* Result is put into pV2Ps[i].pObPTEs.
+* CALLER DECREF pV2Ps[0..N]->pObPTEs
+* -- H
+* -- pV2Ps
+* -- cV2Ps
+* -- fCacheOnly
+*/
+VOID VmmTlbGetPageTableEx(_In_ VMM_HANDLE H, _In_ PVMM_V2P_ENTRY pV2Ps, _In_ DWORD cV2Ps, _In_ BOOL fCacheOnly);
 
 /*
 * Check out an empty memory cache item from the cache. NB! once the item is
@@ -2440,11 +2511,12 @@ BOOL VmmMap_GetVadEx(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _Out_ PVMMOB
 * CALLER DECREF: ppObModuleMap
 * -- H
 * -- pProcess
+* -- flags = optional flag: VMM_MODULE_FLAG_*
 * -- ppObModuleMap
 * -- return
 */
 _Success_(return)
-BOOL VmmMap_GetModule(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_MODULE *ppObModuleMap);
+BOOL VmmMap_GetModule(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ DWORD flags, _Out_ PVMMOB_MAP_MODULE *ppObModuleMap);
 
 /*
 * Retrieve a single VMM_MAP_MODULEENTRY for a given ModuleMap and module name inside it.
@@ -2463,12 +2535,13 @@ PVMM_MAP_MODULEENTRY VmmMap_GetModuleEntry(_In_ VMM_HANDLE H, _In_ PVMMOB_MAP_MO
 * -- pProcessOpt
 * -- dwPidOpt
 * -- uszModuleName
+* -- flags = optional flag: VMM_MODULE_FLAG_*
 * -- ppObModuleMap
 * -- pModuleEntry
 * -- return
 */
 _Success_(return)
-BOOL VmmMap_GetModuleEntryEx(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcessOpt, _In_opt_ DWORD dwPidOpt, _In_opt_ LPSTR uszModuleName, _Out_ PVMMOB_MAP_MODULE *ppObModuleMap, _Out_ PVMM_MAP_MODULEENTRY *pModuleEntry);
+BOOL VmmMap_GetModuleEntryEx(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcessOpt, _In_opt_ DWORD dwPidOpt, _In_opt_ LPSTR uszModuleName, _In_ DWORD flags, _Out_ PVMMOB_MAP_MODULE *ppObModuleMap, _Out_ PVMM_MAP_MODULEENTRY *pModuleEntry);
 
 /*
 * Retrieve a single PVMM_MAP_MODULEENTRY for a given ModuleMap and virtual address inside it.

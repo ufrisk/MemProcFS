@@ -3,7 +3,7 @@
 // The '/sys/syscall' module is responsible for displaying the Windows syscall table
 // a.k.a. the System Service Dispatch Table (SSDT).
 //
-// (c) Ulf Frisk, 2020-2022
+// (c) Ulf Frisk, 2020-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "pluginmanager.h"
@@ -124,7 +124,7 @@ VOID MSyscall_Initialize(_In_ VMM_HANDLE H, PMSYSCALL_CONTEXT ctxM)
     }
     // fetch win32k infos
     if(!(pObProcessCsrss = MSyscall_GetProcessCsrss(H))) { goto fail_win32k; }
-    if(!VmmMap_GetModuleEntryEx(H, pObSystemProcess, 0, "win32k.sys", &pObModuleMap, &peModuleWin32k)) { goto fail_win32k; }
+    if(!VmmMap_GetModuleEntryEx(H, pObSystemProcess, 0, "win32k.sys", 0, &pObModuleMap, &peModuleWin32k)) { goto fail_win32k; }
     if(!(hPdbWin32k = PDB_GetHandleFromModuleAddress(H, pObProcessCsrss, peModuleWin32k->vaBase))) { goto fail_win32k; }
     // build text files in-memory (win32k)
     MSyscall_Initialize_BuildText(H, ctxM, pObProcessCsrss, 2, hPdbWin32k, peModuleWin32k->vaBase);

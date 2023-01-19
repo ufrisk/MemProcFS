@@ -2,7 +2,7 @@
 // 
 // This API is a wrapper API around the VMMDLL_MemReadScatter API call.
 //
-// (c) Ulf Frisk, 2021-2022
+// (c) Ulf Frisk, 2021-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

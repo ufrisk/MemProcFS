@@ -1,6 +1,6 @@
 // m_findevil.c : implementation of the find evil built-in module.
 //
-// (c) Ulf Frisk, 2020-2022
+// (c) Ulf Frisk, 2020-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "pluginmanager.h"
@@ -34,7 +34,7 @@ VOID MFindEvil_Read_FindEvil_LnTpModule(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS
     PVMMOB_MAP_VAD pObVadMap = NULL;
     PVMMOB_MAP_MODULE pObModuleMap = NULL;
     if(!pProcess) { return; }
-    if(VmmMap_GetModule(H, pProcess, &pObModuleMap)) {
+    if(VmmMap_GetModule(H, pProcess, 0, &pObModuleMap)) {
         for(i = 0; i < pObModuleMap->cMap; i++) {
             if(pObModuleMap->pMap[i].vaBase == peEvil->va) {
                 uszModuleName = pObModuleMap->pMap[i].uszFullName;

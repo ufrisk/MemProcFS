@@ -1,6 +1,6 @@
 // mm_x86pae.c : implementation of the x86 PAE (Physical Address Extension) 32-bit protected mode memory model.
 //
-// (c) Ulf Frisk, 2018-2022
+// (c) Ulf Frisk, 2018-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmm.h"
@@ -197,6 +197,88 @@ BOOL MmX86PAE_PteMapInitialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
     pProcess->Map.pObPte = pObMap;
     LeaveCriticalSection(&pProcess->LockUpdate);
     return TRUE;
+}
+
+VOID MmX86PAE_Virt2PhysEx(_In_ VMM_HANDLE H, _In_ PVMM_V2P_ENTRY pV2Ps, _In_ DWORD cV2Ps, _In_ BOOL fUserOnly, _In_ BYTE iPML)
+{
+    BOOL fValidNextPT = FALSE;
+    PBYTE pbPTEs;
+    DWORD iV2P;
+    QWORD pte, i, qwMask;
+    PVMM_V2P_ENTRY pV2P;
+    if(iPML == (BYTE)-1) { iPML = 3; }
+    if(iPML == 3) {
+        // PDPT:
+        for(iV2P = 0; iV2P < cV2Ps; iV2P++) {
+            pV2P = pV2Ps + iV2P;
+            pV2P->_paPDPT_PAE = pV2P->paPT;
+            pV2P->paPT = pV2P->paPT & 0x0000fffffffff000;
+        }
+        VmmTlbGetPageTableEx(H, pV2Ps, cV2Ps, FALSE);
+        for(iV2P = 0; iV2P < cV2Ps; iV2P++) {
+            pV2P = pV2Ps + iV2P;
+            pV2P->paPT = 0;
+            if(!pV2P->pObPTE) {
+                continue;
+            }
+            if(pV2P->pa) {
+                Ob_DECREF_NULL(&pV2P->pObPTE);
+                continue;
+            }
+            i = 0x1ff & (pV2P->va >> MMX86PAE_PAGETABLEMAP_PML_REGION_SIZE[iPML]);
+            if(i > 3) {                                         // MAX 4 ENTRIES IN PDPT
+                Ob_DECREF_NULL(&pV2P->pObPTE);
+                continue;
+            }
+            pbPTEs = pV2P->pObPTE->pb + (pV2P->_paPDPT_PAE & 0xfe0);    // ADJUST PDPT TO 32-BYTE BOUNDARY
+            pte = ((PQWORD)pbPTEs)[i];
+            Ob_DECREF_NULL(&pV2P->pObPTE);
+            if(!(pte & 0x01)) { continue; }                     // NOT VALID
+            if(pte & 0xffff0000000001e6) { continue; }          // RESERVED BITS IN PDPTE
+            pV2P->paPT = pte & 0x0000fffffffff000;
+            continue;
+        }
+        MmX86PAE_Virt2PhysEx(H, pV2Ps, cV2Ps, fUserOnly, 2);
+        return;
+    }
+    // PD and PT:
+    VmmTlbGetPageTableEx(H, pV2Ps, cV2Ps, FALSE);
+    for(iV2P = 0; iV2P < cV2Ps; iV2P++) {
+        pV2P = pV2Ps + iV2P;
+        pV2P->paPT = 0;
+        if(!pV2P->pObPTE) {
+            continue;
+        }
+        if(pV2P->pa) {
+            Ob_DECREF_NULL(&pV2P->pObPTE);
+            continue;
+        }
+        i = 0x1ff & (pV2P->va >> MMX86PAE_PAGETABLEMAP_PML_REGION_SIZE[iPML]);
+        pte = pV2P->pObPTE->pqw[i];
+        Ob_DECREF_NULL(&pV2P->pObPTE);
+        if(!MMX86PAE_PTE_IS_VALID(pte, iPML)) {
+            if(iPML == 1) {
+                pV2P->pte = pte;
+                pV2P->fPaging = TRUE;
+            }
+            continue;
+        }
+        if(fUserOnly && !(pte & 0x04)) { continue; }            // SUPERVISOR PAGE & USER MODE REQ
+        if(pte & 0x000f000000000000) { continue; }              // RESERVED
+        if((iPML == 1) || (pte & 0x80) /* PS */) {
+            qwMask = 0xffffffffffffffff << MMX86PAE_PAGETABLEMAP_PML_REGION_SIZE[iPML];
+            pV2P->pa = pte & 0x0000fffffffff000 & qwMask;       // MASK AWAY BITS FOR 4kB/2MB/1GB PAGES
+            qwMask = qwMask ^ 0xffffffffffffffff;
+            pV2P->pa = pV2P->pa | (qwMask & pV2P->va);          // FILL LOWER ADDRESS BITS
+            pV2P->fPhys = TRUE;
+            continue;
+        }
+        pV2P->paPT = pte & 0x0000fffffffff000;
+        fValidNextPT = TRUE;
+    }
+    if(fValidNextPT && (iPML == 2)) {
+        MmX86PAE_Virt2PhysEx(H, pV2Ps, cV2Ps, fUserOnly, 1);
+    }
 }
 
 _Success_(return)
@@ -407,6 +489,7 @@ VOID MmX86PAE_Initialize(_In_ VMM_HANDLE H)
     }
     pfnsMemoryModel->pfnClose = MmX86PAE_Close;
     pfnsMemoryModel->pfnVirt2Phys = MmX86PAE_Virt2Phys;
+    pfnsMemoryModel->pfnVirt2PhysEx = MmX86PAE_Virt2PhysEx;
     pfnsMemoryModel->pfnVirt2PhysVadEx = MmX86PAE_Virt2PhysVadEx;
     pfnsMemoryModel->pfnVirt2PhysGetInformation = MmX86PAE_Virt2PhysGetInformation;
     pfnsMemoryModel->pfnPhys2VirtGetInformation = MmX86PAE_Phys2VirtGetInformation;

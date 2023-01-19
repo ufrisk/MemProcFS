@@ -1,6 +1,6 @@
 // m_file_modules.c : implementation of the 'files/modules' built-in module.
 //
-// (c) Ulf Frisk, 2019-2022
+// (c) Ulf Frisk, 2019-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "pluginmanager.h"
@@ -42,7 +42,7 @@ POBFILEMODULES_MODULECACHE M_FileModules_GetModuleCache(_In_ VMM_HANDLE H, _In_ 
     pObCache = ObContainer_GetOb(pProcess->Plugin.pObCPeDumpDirCache);
     // 2: set up cache (if needed)
     if(!pObCache) {
-        if(!VmmMap_GetModule(H, pProcess, &pObModuleMap)) { goto fail; }
+        if(!VmmMap_GetModule(H, pProcess, 0, &pObModuleMap)) { goto fail; }
         pObCache = Ob_AllocEx(H, 'MPeD', LMEM_ZEROINIT, sizeof(OBFILEMODULES_MODULECACHE) + ((QWORD)pObModuleMap->cMap + cVad) * sizeof(FILEMODULES_FILENTRY), NULL, NULL);
         if(!pObCache) { goto fail; }
         // Load module bases (PE header) memory into cache with one single call.
@@ -117,7 +117,7 @@ NTSTATUS M_FileModules_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP,
     PVMMOB_MAP_MODULE pObModuleMap = NULL;
     *pcbRead = 0;
     f = (cbOffset <= 0x02000000) &&
-        VmmMap_GetModuleEntryEx(H, (PVMM_PROCESS)ctxP->pProcess, 0, ctxP->uszPath, &pObModuleMap, &pModule) &&
+        VmmMap_GetModuleEntryEx(H, (PVMM_PROCESS)ctxP->pProcess, 0, ctxP->uszPath, 0, &pObModuleMap, &pModule) &&
         PE_FileRaw_Read(H, ctxP->pProcess, pModule->vaBase, pb, cb, pcbRead, (DWORD)cbOffset);
     Ob_DECREF_NULL(&pObModuleMap);
     return f ? VMMDLL_STATUS_SUCCESS : VMMDLL_STATUS_FILE_INVALID;
@@ -146,7 +146,7 @@ NTSTATUS M_FileModules_Write(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP
     PVMMOB_MAP_MODULE pObModuleMap = NULL;
     *pcbWrite = 0;
     f = (cbOffset <= 0x02000000) &&
-        VmmMap_GetModuleEntryEx(H, (PVMM_PROCESS)ctxP->pProcess, 0, ctxP->uszPath, &pObModuleMap, &pModule) &&
+        VmmMap_GetModuleEntryEx(H, (PVMM_PROCESS)ctxP->pProcess, 0, ctxP->uszPath, 0, &pObModuleMap, &pModule) &&
         PE_FileRaw_Write(H, ctxP->pProcess, pModule->vaBase, pb, cb, pcbWrite, (DWORD)cbOffset);
     Ob_DECREF_NULL(&pObModuleMap);
     return f ? VMMDLL_STATUS_SUCCESS : VMMDLL_STATUS_FILE_INVALID;

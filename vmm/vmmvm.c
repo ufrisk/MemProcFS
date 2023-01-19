@@ -1,10 +1,19 @@
 // vmmvm.c : implementation related to virtual machine parsing functionality.
 //
-// Currently Full Hyper-V machines is supported.
-// Support for Hyper-V containers, sandboxes may be implemented in the future.
-// Support for other virtualization layers (VMWare, VirtualBox) may or may not
+// Currently supported virtual machines:
+//   - Hyper-V full VMs
+//   - Hyper-V containers (incl. sandbox)
+//   - Windows Hypervisor Platform aka EXO VMs (VMware/VirtualBox on Hyper-V)
+// 
+// Support for other virtualization layers (VMware, VirtualBox) may or may not
 // be implemented in the future as well.
-//
+// 
+// Primary OS versions that are supported (others may or may not work):
+// - Server2019
+// - Server2022
+// - Windows 10 19041
+// - Windows 11 22000
+// - Windows 11 22621
 //  
 // The Hyper-V implementation is largely based from the most excellent blog
 // entry by @gerhart_x (twitter.com/gerhart_x). Blog Entry:
@@ -13,12 +22,13 @@
 // Please also check out LiveCloudKd at: https://github.com/gerhart01/LiveCloudKd
 // 
 //
-// (c) Ulf Frisk, 2022
+// (c) Ulf Frisk, 2022-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
 #include "vmm.h"
 #include "vmmvm.h"
+#include "vmmwindef.h"
 #include "vmmdll_core.h"
 #include "charutil.h"
 #include "util.h"
@@ -27,16 +37,17 @@
 typedef struct tdVMMVM_VMHVTRANSLATE_GPAR {
     QWORD GpaPfnBase;
     QWORD GpaPfnTop;
-    QWORD vaGPAR;           // address of gpar
-    QWORD vaMB;             // address of memory block
+    QWORD va;               // address of GPAR / ExoRBTreeNode
+    QWORD vaMB;             // address of memory block / ExoVmMemRangePtr
     QWORD vaGPAA;           // address of gpa->pa translation array
+    QWORD vaVmMem;          // base address of GPAR in 'vmmem' process
 } VMMVM_VMHVTRANSLATE_GPAR, *PVMMVM_VMHVTRANSLATE_GPAR;
 
 typedef struct tdVMMVMOB_VMHVTRANSLATE_CONTEXT {
     OB ObHdr;
     QWORD vaGparArray;
-    DWORD cGparAll;
-    DWORD cGparValid;
+    DWORD cAll;
+    DWORD cValid;
     VMMVM_VMHVTRANSLATE_GPAR pGpar[0];
 } VMMVMOB_VMHVTRANSLATE_CONTEXT, *PVMMVMOB_VMHVTRANSLATE_CONTEXT;
 
@@ -50,8 +61,10 @@ typedef struct tdVMMOB_VM_CONTEXT {
     BOOL fReadOnly;
     BOOL fMarkShutdown;
     BOOL fPhysicalOnly;
+    DWORD dwPrcsPID;            // PID of 'vmmem' process in case of container.
     DWORD dwPartitionID;
     QWORD vaGparHandle;
+    QWORD vaHvpTreeRoot;
     QWORD gpaMax;
     VMM_VM_TP tp;
     DWORD dwParentVmmMountID;   // VMM mount id/index in parent VMM.
@@ -62,6 +75,9 @@ typedef struct tdVMMOB_VM_CONTEXT {
     VMM_HANDLE hVMM;
     PVMMVMOB_VMHVTRANSLATE_CONTEXT pTranslate;
     CHAR uszName[MAX_PATH];
+    BOOL fGpaPhysical;
+    BOOL fGpaVirtual;
+    BOOL fGpaHvp;
 } VMMOB_VM_CONTEXT, *PVMMOB_VM_CONTEXT;
 
 typedef struct tdVMM_VM_OFFSET {
@@ -72,6 +88,11 @@ typedef struct tdVMM_VM_OFFSET {
         DWORD Name;
         DWORD Id;
         DWORD HndGpar;
+        DWORD PrcsSignature;
+        DWORD PrcsHndVmMem;
+        DWORD HvpSignature;
+        DWORD HvpTreeRoot;
+        DWORD HvpHndVmMem;
     } prtn;
     struct {
         DWORD cb;
@@ -79,6 +100,7 @@ typedef struct tdVMM_VM_OFFSET {
         DWORD GpaPfnBase;
         DWORD GpaPfnTop;
         DWORD MB;
+        DWORD VmMemOffset;
     } gpar;
     struct {
         DWORD cb;
@@ -98,6 +120,7 @@ typedef struct tdVMMOB_VMGLOBAL_CONTEXT {
         // only valid during init!
         PVMM_PROCESS pSystemProcess;
         PVMMOB_MAP_POOL pBigPoolMap;
+        POB_MAP pmProcessByEPROCESS;
     } init;
 } VMMOB_VMGLOBAL_CONTEXT, *PVMMOB_VMGLOBAL_CONTEXT;
 
@@ -108,6 +131,16 @@ typedef struct tdVID_GPAR_HANDLE64 {
     DWORD cGpar;
     DWORD cGpar_Pre16299;
 } VID_GPAR_HANDLE64, *PVID_GPAR_HANDLE64;
+
+typedef struct tdVID_HVP_TREENODE {
+    RTL_BALANCED_NODE64 Tree;
+    QWORD FLinkRangeVA;                 // process virtual address range precedes this list entry.
+    QWORD BLinkRangeVA;
+    QWORD _Unknown[2];
+    QWORD qwRangePfnBase;
+    QWORD qwRangePfnTop;
+    QWORD vaHndPrtn;
+} VID_HVP_TREENODE, *PVID_HVP_TREENODE;
 
 /*
 * Cleanup a VM map.
@@ -143,6 +176,96 @@ VOID VmmVm_CallbackCleanup_ObVmGlobalContext(PVMMOB_VMGLOBAL_CONTEXT pOb)
 // VM MODULE INTERNAL INITIALIZATION & REFRESH FUNCTIONALITY BELOW:
 //-----------------------------------------------------------------------------
 
+_Success_(return)
+BOOL VmmVm_DoWork_NewHvMemTranslateHvp_TreeWalk(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_ PVMMOB_VM_CONTEXT pVM, _In_ QWORD vaTreeNode, _In_ PVMMVMOB_VMHVTRANSLATE_CONTEXT ctx)
+{
+    VID_HVP_TREENODE T;
+    PVMMVM_VMHVTRANSLATE_GPAR peT;
+    if(!vaTreeNode) { return TRUE; }
+    if(ctx->cValid >= ctx->cAll) { return FALSE; }
+    if(!VmmRead(H, pSystemProcess, vaTreeNode, (PBYTE)&T, sizeof(VID_HVP_TREENODE))) { return FALSE; }
+    if(T.vaHndPrtn != pVM->va) { return FALSE; }
+    if(!VMM_KADDR64_8(T.FLinkRangeVA)) { return FALSE; }
+    if(ctx->cValid && (ctx->pGpar[ctx->cValid - 1].GpaPfnTop > T.qwRangePfnBase)) { return FALSE; }
+    if(!VmmVm_DoWork_NewHvMemTranslateHvp_TreeWalk(H, pSystemProcess, pVM, T.Tree.Left, ctx)) { return FALSE; }
+    peT = &ctx->pGpar[ctx->cValid];
+    peT->va = vaTreeNode;
+    peT->GpaPfnBase = T.qwRangePfnBase;
+    peT->GpaPfnTop = T.qwRangePfnTop;
+    peT->vaMB = T.FLinkRangeVA - 0x10;
+    ctx->cValid++;
+    return VmmVm_DoWork_NewHvMemTranslateHvp_TreeWalk(H, pSystemProcess, pVM, T.Tree.Right, ctx);
+}
+
+/*
+* Create a new memory translation map for pVM for a Windows Hypervisor Platform
+* partition (i.e. VMware/VirtualBox on Hyper-V)
+* This should be done on both VM initialization and VM refresh.
+* REQUIRE: LOCK_SHARED(pVMG->LockSRW)
+* REQUIRE: LOCK_EXCLUSIVE(pVM->LockSRW)
+* -- H
+* -- pVMG
+* -- pVM
+* -- return = the max translatable memory address.
+*/
+_Success_(return != 0)
+QWORD VmmVm_DoWork_NewHvMemTranslateHvp(_In_ VMM_HANDLE H, _In_ PVMMOB_VMGLOBAL_CONTEXT pVMG, _In_ PVMMOB_VM_CONTEXT pVM)
+{
+    DWORD i, cRangeMax = 4;
+    VID_HVP_TREENODE T;
+    QWORD gpaMax = 0, vaPfnVmMem[2];
+    PVMMVMOB_VMHVTRANSLATE_CONTEXT ctxObT = NULL;
+    PVMMVM_VMHVTRANSLATE_GPAR peT = NULL;
+    // 1: On refresh - prefetch as much as possible!
+    if(pVM->fActive && pVM->pTranslate) {
+        ObSet_Clear(pVMG->psPrefetch);
+        for(i = 0; i < pVM->pTranslate->cValid; i++) {
+            ObSet_Push_PageAlign(pVMG->psPrefetch, pVM->pTranslate->pGpar[i].va, sizeof(VID_HVP_TREENODE));
+        }
+        VmmCachePrefetchPages(H, pVMG->init.pSystemProcess, pVMG->psPrefetch, 0);
+    }
+    // 2: Retrieve RBTreeNode, sanity check and check tree depth:
+    if(!VmmRead(H, pVMG->init.pSystemProcess, pVM->vaHvpTreeRoot, (PBYTE)&T, sizeof(VID_HVP_TREENODE))) { goto fail; }
+    if(!VMM_KADDR64_8(T.Tree.Children[0]) || !VMM_KADDR64_8(T.Tree.Children[1]) || (T.Tree.ParentValue & ~3)) { goto fail; }
+    while(T.Tree.Left) {
+        if(cRangeMax > 16384) { goto fail; }
+        if(!VmmRead(H, pVMG->init.pSystemProcess, T.Tree.Left, (PBYTE)&T, sizeof(VID_HVP_TREENODE))) { goto fail; }
+        cRangeMax <<= 1;
+    }
+    // 3: Allocate "GPAR" internal object:
+    ctxObT = Ob_AllocEx(H, OB_TAG_VM_CONTEXT, LMEM_ZEROINIT, sizeof(VMMVMOB_VMHVTRANSLATE_CONTEXT) + cRangeMax * sizeof(VMMVMOB_VMHVTRANSLATE_CONTEXT), NULL, NULL);
+    if(!ctxObT) { goto fail; }
+    ctxObT->cAll = cRangeMax;
+    // 4: Walk RB tree to retrieve ranges:
+    if(!VmmVm_DoWork_NewHvMemTranslateHvp_TreeWalk(H, pVMG->init.pSystemProcess, pVM, pVM->vaHvpTreeRoot, ctxObT)) {
+        goto fail;
+    }
+    if(!ctxObT->cValid) {
+        goto fail;
+    }
+    // 5: Retrieve 'vmmem'/'vmx' offsets for each memory range:
+    ObSet_Clear(pVMG->psPrefetch);
+    for(i = 0; i < ctxObT->cValid; i++) {
+        ObSet_Push_PageAlign(pVMG->psPrefetch, ctxObT->pGpar[i].vaMB, 0x10);
+    }
+    VmmCachePrefetchPages(H, pVMG->init.pSystemProcess, pVMG->psPrefetch, 0);
+    for(i = 0; i < ctxObT->cValid; i++) {
+        peT = ctxObT->pGpar + i;
+        if(!VmmRead(H, pVMG->init.pSystemProcess, peT->vaMB, (PBYTE)vaPfnVmMem, sizeof(vaPfnVmMem))) { goto fail; }
+        if(vaPfnVmMem[0] && ((vaPfnVmMem[1] - vaPfnVmMem[0]) == (peT->GpaPfnTop - peT->GpaPfnBase))) {
+            peT->vaVmMem = vaPfnVmMem[0] << 12;
+            VmmLog(H, MID_VM, LOGLEVEL_6_TRACE, "[%02X] MEMORY RANGE: [%10llx->%10llx] tree=%llx vmmem:(pid=%i va=%llx)", pVM->dwPartitionID, (peT->GpaPfnBase << 12), ((peT->GpaPfnTop << 12) + 0xfff), peT->va, pVM->dwPrcsPID, peT->vaVmMem);
+        }
+    }
+    // 6: update/assign to pVM context:
+    Ob_DECREF_NULL(&pVM->pTranslate);
+    pVM->pTranslate = Ob_INCREF(ctxObT);
+    gpaMax = (ctxObT->pGpar[ctxObT->cValid - 1].GpaPfnTop << 12) + 0xfff;
+fail:
+    Ob_DECREF(ctxObT);
+    return gpaMax;
+}
+
 /*
 * Create a new memory translation map for pVM.
 * This should be done on both VM initialization and VM refresh.
@@ -170,10 +293,10 @@ QWORD VmmVm_DoWork_NewHvMemTranslate(_In_ VMM_HANDLE H, _In_ PVMMOB_VMGLOBAL_CON
     if(pVM->fActive && pVM->pTranslate) {
         ObSet_Clear(pVMG->psPrefetch);
         ObSet_Push_PageAlign(pVMG->psPrefetch, pVM->vaGparHandle, sizeof(VID_GPAR_HANDLE64));
-        ObSet_Push_PageAlign(pVMG->psPrefetch, pVM->pTranslate->vaGparArray, pVM->pTranslate->cGparAll * sizeof(QWORD));
-        for(i = 0; i < pVM->pTranslate->cGparAll; i++) {
-            if(pVM->pTranslate->pGpar[i].vaGPAR) {
-                ObSet_Push_PageAlign(pVMG->psPrefetch, pVM->pTranslate->pGpar[i].vaGPAR, po->gpar.cb);
+        ObSet_Push_PageAlign(pVMG->psPrefetch, pVM->pTranslate->vaGparArray, pVM->pTranslate->cAll * sizeof(QWORD));
+        for(i = 0; i < pVM->pTranslate->cAll; i++) {
+            if(pVM->pTranslate->pGpar[i].va) {
+                ObSet_Push_PageAlign(pVMG->psPrefetch, pVM->pTranslate->pGpar[i].va, po->gpar.cb);
             }
             if(pVM->pTranslate->pGpar[i].vaMB) {
                 ObSet_Push_PageAlign(pVMG->psPrefetch, pVM->pTranslate->pGpar[i].vaMB, po->mb.cb);
@@ -196,7 +319,7 @@ QWORD VmmVm_DoWork_NewHvMemTranslate(_In_ VMM_HANDLE H, _In_ PVMMOB_VMGLOBAL_CON
         goto fail;
     }
     if(!GparHandle.cGpar || (GparHandle.cGpar > 0x800)) {
-        VmmLog(H, MID_VM, LOGLEVEL_6_TRACE, "FAIL: HvMemTranslate: Too many GPARs (%i). [VM=%llx]", GparHandle.cGpar, pVM->va);
+        VmmLog(H, MID_VM, LOGLEVEL_6_TRACE, "FAIL: HvMemTranslate: Too few/many GPARs (%i). [VM=%llx]", GparHandle.cGpar, pVM->va);
         goto fail;
     }
     // 3: Fetch GPAR array:
@@ -210,18 +333,19 @@ QWORD VmmVm_DoWork_NewHvMemTranslate(_In_ VMM_HANDLE H, _In_ PVMMOB_VMGLOBAL_CON
         ObSet_Push_PageAlign(pVMG->psPrefetch, pvaGparArray[i], pVMG->offset.gpar.cb);
     }
     // 4: Allocate GPAR internal object
-    if(!(ctxObT = Ob_AllocEx(H, OB_TAG_VM_CONTEXT, LMEM_ZEROINIT, sizeof(VMMVMOB_VMHVTRANSLATE_CONTEXT) + GparHandle.cGpar * sizeof(VMMVMOB_VMHVTRANSLATE_CONTEXT), NULL, NULL))) { goto fail; }
+    ctxObT = Ob_AllocEx(H, OB_TAG_VM_CONTEXT, LMEM_ZEROINIT, sizeof(VMMVMOB_VMHVTRANSLATE_CONTEXT) + GparHandle.cGpar * sizeof(VMMVMOB_VMHVTRANSLATE_CONTEXT), NULL, NULL);
+    if(!ctxObT) { goto fail; }
     ctxObT->vaGparArray = GparHandle.vaGparArray;
-    ctxObT->cGparAll = GparHandle.cGpar;
+    ctxObT->cAll = GparHandle.cGpar;
     // 5: Fetch GPARs:
     VmmCachePrefetchPages(H, pVMG->init.pSystemProcess, pVMG->psPrefetch, 0);
     ObSet_Clear(pVMG->psPrefetch);
-    for(i = 0; i < ctxObT->cGparAll; i++) {
+    for(i = 0; i < ctxObT->cAll; i++) {
         peT = ctxObT->pGpar + i;
-        peT->vaGPAR = pvaGparArray[i];
+        peT->va = pvaGparArray[i];
         if(!VmmRead2(H, pVMG->init.pSystemProcess, pvaGparArray[i], pb, po->gpar.cb, VMM_FLAG_FORCECACHE_READ)) { continue; }
         if('rapG' != *(PDWORD)(pb + po->gpar.Signature)) {  // Signature: 'Gpar'
-            VmmLog(H, MID_VM, LOGLEVEL_6_TRACE, "[%02X] FAIL: HvMemTranslate: Bad Signature. [GPAR=%llx]", pVM->dwPartitionID, peT->vaGPAR);
+            VmmLog(H, MID_VM, LOGLEVEL_6_TRACE, "[%02X] FAIL: HvMemTranslate: Bad Signature. [GPAR=%llx]", pVM->dwPartitionID, peT->va);
             goto fail;
         }
         peT->GpaPfnBase = *(PQWORD)(pb + po->gpar.GpaPfnBase);
@@ -231,52 +355,60 @@ QWORD VmmVm_DoWork_NewHvMemTranslate(_In_ VMM_HANDLE H, _In_ PVMMOB_VMGLOBAL_CON
         if((peT->GpaPfnBase < 0x100000) && (peT->GpaPfnBase >= 0xf0000)) { continue; }
         if(peT->GpaPfnBase == 0xfff800) { continue; }
         peT->vaMB = *(PQWORD)(pb + po->gpar.MB);
+        peT->vaVmMem = *(PQWORD)(pb + po->gpar.VmMemOffset);
+        if(!pVM->dwPrcsPID || !VMM_UADDR64_PAGE(peT->vaVmMem)) {
+            peT->vaVmMem = 0;
+        }
         if(!VMM_KADDR64_16(peT->vaMB)) { peT->vaMB = 0; continue; }
         ObSet_Push_PageAlign(pVMG->psPrefetch, peT->vaMB, pVMG->offset.mb.cb);
     }
     // 6: Fetch MemoryBlock for valid GPARs
+    //    _unless_ 'vmmem' process and valid offset exists:
     VmmCachePrefetchPages(H, pVMG->init.pSystemProcess, pVMG->psPrefetch, 0);
-    for(i = 0; i < ctxObT->cGparAll; i++) {
+    for(i = 0; i < ctxObT->cAll; i++) {
         peT = ctxObT->pGpar + i;
-        if(!peT->vaMB) { continue; }
-        if(!VmmRead2(H, pVMG->init.pSystemProcess, peT->vaMB, pb, po->mb.cb, VMM_FLAG_FORCECACHE_READ)) { continue; }
-        if('  bM' != *(PDWORD)(pb + po->mb.Signature)) { continue; }     // Signature: 'Mb  '
-        if(pVM->va != *(PQWORD)(pb + po->mb.HndPrtn)) { continue; }
-        peT->vaGPAA = *(PQWORD)(pb + po->mb.GPAA);
-        if(!VmmMap_GetPoolEntry(H, pVMG->init.pBigPoolMap, peT->vaGPAA, &pePool)) {
-            // DEBUG / TODO: is it a valid assumption vaGPAA is in big pool table?
-            VmmLog(H, MID_VM, LOGLEVEL_6_TRACE, "[%02X] WARN: HvMemTranslate: GPAA not in BigPoolTable. [GPAR=%llx,MB=%llx,GPAA=%llx]", pVM->dwPartitionID, peT->vaGPAR, peT->vaMB, peT->vaGPAA);
-            continue;
-        }
-        if((pePool->cb / cbGPAA_Entry) < (peT->GpaPfnTop + 1 - peT->GpaPfnBase)) {
-            VmmLog(H, MID_VM, LOGLEVEL_6_TRACE, "[%02X] FAIL: HvMemTranslate: cbGPAA too small. [GPAR=%llx,MB=%llx,GPAA=%llx]", pVM->dwPartitionID, peT->vaGPAR, peT->vaMB, peT->vaGPAA);
-            continue;
+        if(peT->vaVmMem) {
+            // 'vmmem' range:
+            pVM->fGpaVirtual = TRUE;
+        } else {
+            // MB range:
+            if(!peT->vaMB) { continue; }
+            if(!VmmRead2(H, pVMG->init.pSystemProcess, peT->vaMB, pb, po->mb.cb, VMM_FLAG_FORCECACHE_READ)) { continue; }
+            if('  bM' != *(PDWORD)(pb + po->mb.Signature)) { continue; }     // Signature: 'Mb  '
+            if(pVM->va != *(PQWORD)(pb + po->mb.HndPrtn)) { continue; }
+            peT->vaGPAA = *(PQWORD)(pb + po->mb.GPAA);
+            if(!VmmMap_GetPoolEntry(H, pVMG->init.pBigPoolMap, peT->vaGPAA, &pePool)) {
+                // DEBUG / TODO: is it a valid assumption vaGPAA is in big pool table?
+                VmmLog(H, MID_VM, LOGLEVEL_6_TRACE, "[%02X] WARN: HvMemTranslate: GPAA not in BigPoolTable. [GPAR=%llx,MB=%llx,GPAA=%llx]", pVM->dwPartitionID, peT->va, peT->vaMB, peT->vaGPAA);
+                continue;
+            }
+            if((pePool->cb / cbGPAA_Entry) < (peT->GpaPfnTop + 1 - peT->GpaPfnBase)) {
+                VmmLog(H, MID_VM, LOGLEVEL_6_TRACE, "[%02X] WARN: HvMemTranslate: cbGPAA too small. [GPAR=%llx,MB=%llx,GPAA=%llx]", pVM->dwPartitionID, peT->va, peT->vaMB, peT->vaGPAA);
+                continue;
+            }
+            pVM->fGpaPhysical = TRUE;
         }
         // check previous valid GPAR is at PFN below current.
-        if(ctxObT->cGparValid && (ctxObT->pGpar[ctxObT->cGparValid - 1].GpaPfnTop > peT->GpaPfnBase)) {
-            VmmLog(H, MID_VM, LOGLEVEL_6_TRACE, "[%02X] FAIL: HvMemTranslate: GPAR RANGE NOT INCREASING. [GPAR=%llx(%llx),GPAR_PREV=%llx(%llx)]",
-                pVM->dwPartitionID,
-                peT->vaGPAR, ctxObT->pGpar[ctxObT->cGparValid - 1].GpaPfnTop,
-                peT->vaGPAA, ctxObT->pGpar[ctxObT->cGparValid - 1].GpaPfnBase
-            );
-            goto fail;
+        // these are very common when a 'vmmem' process exists so don't log them
+        if(ctxObT->cValid && (ctxObT->pGpar[ctxObT->cValid - 1].GpaPfnTop > peT->GpaPfnBase)) {
+            break;
         }
         // move valid GPAR to front by switching entries (if required) and increase valid count.
-        if(ctxObT->cGparValid != i) {
+        if(ctxObT->cValid != i) {
             memcpy(pb, peT, sizeof(VMMVM_VMHVTRANSLATE_GPAR));
-            memcpy(peT, ctxObT->pGpar + ctxObT->cGparValid, sizeof(VMMVM_VMHVTRANSLATE_GPAR));
-            memcpy(ctxObT->pGpar + ctxObT->cGparValid, pb, sizeof(VMMVM_VMHVTRANSLATE_GPAR));
+            memcpy(peT, ctxObT->pGpar + ctxObT->cValid, sizeof(VMMVM_VMHVTRANSLATE_GPAR));
+            memcpy(ctxObT->pGpar + ctxObT->cValid, pb, sizeof(VMMVM_VMHVTRANSLATE_GPAR));
         }
-        ctxObT->cGparValid++;
+        ctxObT->cValid++;
         if(!pVM->fActive) {
-            VmmLog(H, MID_VM, LOGLEVEL_6_TRACE, "[%02X] MEMORY RANGE: [%10llx->%10llx] GPAR=%llx", pVM->dwPartitionID, (peT->GpaPfnBase << 12), ((peT->GpaPfnTop << 12) + 0xfff), peT->vaGPAR);
+            VmmLog(H, MID_VM, LOGLEVEL_6_TRACE, "[%02X] MEMORY RANGE: [%10llx->%10llx] GPAR=%llx vmmem:(pid=%i va=%llx)", pVM->dwPartitionID, (peT->GpaPfnBase << 12), ((peT->GpaPfnTop << 12) + 0xfff), peT->va, pVM->dwPrcsPID, peT->vaVmMem);
         }
     }
-    if(!ctxObT->cGparValid) { goto fail; }
+    if(!ctxObT->cValid) { goto fail; }
     // 7: update/assign to pVM context:
     Ob_DECREF_NULL(&pVM->pTranslate);
     pVM->pTranslate = Ob_INCREF(ctxObT);
-    gpaMax = (ctxObT->pGpar[ctxObT->cGparValid - 1].GpaPfnTop << 12) + 0xfff;
+    gpaMax = (ctxObT->pGpar[ctxObT->cValid - 1].GpaPfnTop << 12) + 0xfff;
 fail:
     LocalFree(pvaGparArray);
     Ob_DECREF(ctxObT);
@@ -307,6 +439,7 @@ VOID VmmVm_DoWork_5_CreateMap(_In_ VMM_HANDLE H, _In_ PVMMOB_VMGLOBAL_CONTEXT pV
         peDst->fPhysicalOnly = peObSrc->fPhysicalOnly;
         peDst->dwPartitionID = peObSrc->dwPartitionID;
         peDst->dwParentVmmMountID = peObSrc->dwParentVmmMountID;
+        peDst->dwVmMemPID = peObSrc->dwPrcsPID;
         peDst->gpaMax = peObSrc->gpaMax;
         ObStrMap_PushPtrUU(psmOb, peObSrc->uszName, &peDst->uszName, NULL);
         peDst->tpSystem = peObSrc->tpSystem;
@@ -352,12 +485,10 @@ VOID VmmVm_DoWork_4_NewVM_StartupVmm(_In_ VMM_HANDLE H, _In_ PVMMOB_VM_CONTEXT p
     }
     // 3: Try init Windows VM:
     if(!pVM->fPhysicalOnly) {
+        szArg[cArg++] = "-waitinitialize";
         if(H->cfg.fVMNested && H->cfg.tpForensicMode) {
             szArg[cArg++] = "-forensic";
             szArg[cArg++] = "1";
-        }
-        if(H->cfg.fWaitInitialize) {
-            szArg[cArg++] = "-waitinitialize";
         }
         hVMM = VMMDLL_Initialize(cArg, szArg);
         if(!hVMM) {
@@ -401,7 +532,8 @@ VOID VmmVm_DoWork_4_NewVM(_In_ VMM_HANDLE H, _In_ PVMMOB_VMGLOBAL_CONTEXT pVMG, 
     PVMM_VM_OFFSET po = &pVMG->offset;
     PBYTE pbPrtn = NULL;
     DWORD dwPrtnTp, dwPrtnID;
-    QWORD vaPrtnGparHandle;
+    QWORD vaPrtnGparHandle, vaHvpTreeRoot, vaHndVmMem;
+    PVMM_PROCESS pObVmmemProcess = NULL;
     PVMMOB_VM_CONTEXT ctx = NULL;
     // 1: verify and allocate initial VM context:
     if(!VmmReadAlloc(H, pVMG->init.pSystemProcess, vaPrtn, &pbPrtn, po->prtn.cb, VMM_FLAG_NOCACHE)) { goto fail; }
@@ -416,19 +548,60 @@ VOID VmmVm_DoWork_4_NewVM(_In_ VMM_HANDLE H, _In_ PVMMOB_VMGLOBAL_CONTEXT pVMG, 
         goto fail;
     }
     dwPrtnTp = *(PDWORD)(pbPrtn + po->prtn.Type);
-    if(((dwPrtnTp >> 16) != 0x0200)) {
-        Ob_DECREF_NULL(&ctx);
-        goto fail;
-    }
     ctx->va = vaPrtn;
     ctx->tp = VMM_VM_TP_HV;
     ctx->dwPartitionID = dwPrtnID;
     ctx->vaGparHandle = vaPrtnGparHandle;
+    if(((dwPrtnTp >> 16) == 0x0200)) {
+        // 2: check if vm/container has associated 'vmmem' process:
+        if(*(PQWORD)(pbPrtn + po->prtn.PrcsSignature) == 0x0000000073637250) {      // 'Prcs' tag
+            vaHndVmMem = *(PQWORD)(pbPrtn + po->prtn.PrcsHndVmMem);                 // EPROCESS handle of 'vmmem' process
+            if(VMM_KADDR64_16(vaHndVmMem)) {
+                if(!pVMG->init.pmProcessByEPROCESS) {
+                    pVMG->init.pmProcessByEPROCESS = VmmProcessGetAll(H, TRUE, 0);
+                }
+                pObVmmemProcess = ObMap_GetByKey(pVMG->init.pmProcessByEPROCESS, vaHndVmMem);
+                if(pObVmmemProcess) {
+                    ctx->dwPrcsPID = pObVmmemProcess->dwPID;
+                    Ob_DECREF_NULL(&pObVmmemProcess);
+                }
+            }
+        }
+    } else {
+        // 2: check of vm is a windows hypervisor platform vm (hvp vm) i.e. vmware on hyper-v:
+        if((*(PQWORD)(pbPrtn + po->prtn.PrcsSignature) == 0x0000000073637250) && (*(PQWORD)(pbPrtn + po->prtn.HvpSignature) == 0x0000000063677656)) {     // 'Prcs' and 'Vvgc' tags
+            vaHndVmMem = *(PQWORD)(pbPrtn + po->prtn.HvpHndVmMem);                 // EPROCESS handle of 'vmware-vmx' process
+            vaHvpTreeRoot = *(PQWORD)(pbPrtn + po->prtn.HvpTreeRoot);              // HVP partition RB Tree Root for memory translation
+            if(VMM_KADDR64_16(vaHndVmMem) && VMM_KADDR64_8(vaHvpTreeRoot)) {
+                if(!pVMG->init.pmProcessByEPROCESS) {
+                    pVMG->init.pmProcessByEPROCESS = VmmProcessGetAll(H, TRUE, 0);
+                }
+                pObVmmemProcess = ObMap_GetByKey(pVMG->init.pmProcessByEPROCESS, vaHndVmMem);
+                if(pObVmmemProcess) {
+                    ctx->dwPrcsPID = pObVmmemProcess->dwPID;
+                    Ob_DECREF_NULL(&pObVmmemProcess);
+                    ctx->vaHvpTreeRoot = vaHvpTreeRoot;
+                    ctx->tp = VMM_VM_TP_HV_WHVP;
+                    ctx->fGpaVirtual = TRUE;
+                    ctx->fGpaHvp = TRUE;
+                }
+            }
+        }
+        if(!ctx->fGpaHvp) {
+            Ob_DECREF_NULL(&ctx);
+            goto fail;
+        }
+    }
+    // 3: log entry:
     VmmLog(H, MID_VM, LOGLEVEL_6_TRACE, "[%02X] NEW VM LOCATED: va=%llx tp=%08x/%i/'%s' name='%s'", ctx->dwPartitionID, vaPrtn, dwPrtnTp, ctx->tp, VMM_VM_TP_STRING[ctx->tp], ctx->uszName);
-    // 2: Fetch memory translation info:
-    ctx->gpaMax = VmmVm_DoWork_NewHvMemTranslate(H, pVMG, ctx);
+    // 4: Fetch memory translation info:
+    if(ctx->fGpaHvp) {
+        ctx->gpaMax = VmmVm_DoWork_NewHvMemTranslateHvp(H, pVMG, ctx);
+    } else {
+        ctx->gpaMax = VmmVm_DoWork_NewHvMemTranslate(H, pVMG, ctx);
+    }
     if(!ctx->gpaMax || !ctx->pTranslate) { goto fail; }
-    // 3: Assign VM and try to start up child VMM.
+    // 5: Assign VM and try to start up child VMM.
     ctx->fActive = TRUE;
     if(!ObMap_Push(pVMG->pVmMap, ctx->va, ctx)) {
         Ob_DECREF(ObMap_RemoveByKey(pVMG->pVmMap, ctx->va));
@@ -512,11 +685,17 @@ VOID VmmVm_DoWork_2_RefreshVMs_SingleVM(_In_ VMM_HANDLE H, _In_ PVMMOB_VMGLOBAL_
     if(!VmmReadAlloc(H, pVMG->init.pSystemProcess, pVM->va, &pbPrtn, po->prtn.cb, 0)) { goto fail; }
     if('ntrP' != *(PDWORD)(pbPrtn + po->prtn.Signature)) { goto fail; }     // Signature: 'Prtn'
     if(pVM->dwPartitionID != *(PDWORD)(pbPrtn + po->prtn.Id)) { goto fail; }
-    if(pVM->vaGparHandle != *(PQWORD)(pbPrtn + po->prtn.HndGpar)) { goto fail; }
     dwPrtnTp = *(PDWORD)(pbPrtn + po->prtn.Type);
-    if(((dwPrtnTp >> 16) != 0x0200)) { goto fail; }
     // 2: Refresh memory translations:
-    pVM->gpaMax = VmmVm_DoWork_NewHvMemTranslate(H, pVMG, pVM);
+    if(pVM->fGpaHvp) {
+        pVM->vaHvpTreeRoot = *(PQWORD)(pbPrtn + po->prtn.HvpTreeRoot);
+        if(!VMM_KADDR64_8(pVM->vaHvpTreeRoot)) { goto fail; }
+        pVM->gpaMax = VmmVm_DoWork_NewHvMemTranslateHvp(H, pVMG, pVM);
+    } else {
+        if(((dwPrtnTp >> 16) != 0x0200)) { goto fail; }
+        if(pVM->vaGparHandle != *(PQWORD)(pbPrtn + po->prtn.HndGpar)) { goto fail; }
+        pVM->gpaMax = VmmVm_DoWork_NewHvMemTranslate(H, pVMG, pVM);
+    }
     if(!pVM->gpaMax || !pVM->pTranslate) { goto fail; }
     LocalFree(pbPrtn);
     return;
@@ -547,7 +726,15 @@ VOID VmmVm_DoWork_2_RefreshVMs(_In_ VMM_HANDLE H, _In_ PVMMOB_VMGLOBAL_CONTEXT p
 _Success_(return)
 BOOL VmmVm_DoWork_1_AllocGlobalContext_GetOffsets(_In_ VMM_HANDLE H, _In_ PVMM_VM_OFFSET po)
 {
-    return 
+    if(H->vmm.kernel.dwVersionBuild >= 19041) {
+        InfoDB_TypeChildOffset_Static(H, "hv", "_PRTN", "PrcsSignature", &po->prtn.PrcsSignature);
+        InfoDB_TypeChildOffset_Static(H, "hv", "_PRTN", "PrcsHndVmMem", &po->prtn.PrcsHndVmMem);
+        InfoDB_TypeChildOffset_Static(H, "hv", "_PRTN", "HvpHndVmMem", &po->prtn.HvpHndVmMem);
+        InfoDB_TypeChildOffset_Static(H, "hv", "_PRTN", "HvpSignature", &po->prtn.HvpSignature);
+        InfoDB_TypeChildOffset_Static(H, "hv", "_PRTN", "HvpTreeRoot", &po->prtn.HvpTreeRoot);
+        InfoDB_TypeChildOffset_Static(H, "hv", "_GPAR", "VmMem", &po->gpar.VmMemOffset);
+    }
+    return
         InfoDB_TypeSize_Static(H, "hv", "_PRTN", &po->prtn.cb) &&
         InfoDB_TypeSize_Static(H, "hv", "_GPAR", &po->gpar.cb) &&
         InfoDB_TypeSize_Static(H, "hv", "_MB", &po->mb.cb) &&
@@ -612,6 +799,7 @@ VOID VmmVm_DoWork_ThreadProc(_In_ VMM_HANDLE H, _In_ QWORD qwNotUsed)
     // TODO: if non-volatile memory -> create blacklist memory map to block
     //       various memory analysis tasks on child VM memory.
 fail:
+    Ob_DECREF_NULL(&pVMG->init.pmProcessByEPROCESS);
     Ob_DECREF_NULL(&pVMG->init.pBigPoolMap);
     Ob_DECREF_NULL(&pVMG->init.pSystemProcess);
     ReleaseSRWLockExclusive(&pVMG->LockSRW);
@@ -643,7 +831,7 @@ PVMMOB_VM_CONTEXT VmmVm_GetVmContext(_In_ VMM_HANDLE H, _In_ VMMVM_HANDLE HVM)
     return NULL;
 }
 
-int VmmVm_TranslateGPA2PA_HVFULL_CmpFind(_In_ QWORD gpa, _In_ QWORD qwEntry)
+int VmmVm_TranslateGPA_CmpFind(_In_ QWORD gpa, _In_ QWORD qwEntry)
 {
     PVMMVM_VMHVTRANSLATE_GPAR pGPAR = (PVMMVM_VMHVTRANSLATE_GPAR)qwEntry;
     if(pGPAR->GpaPfnTop <= gpa) { return 1; }
@@ -652,211 +840,177 @@ int VmmVm_TranslateGPA2PA_HVFULL_CmpFind(_In_ QWORD gpa, _In_ QWORD qwEntry)
 }
 
 /*
-* Translate MEMs in parallel using the full Hyper-V VM technique.
-* -- H
-* -- pVM
-* -- ppMEMsGPA
-* -- cpMEMsGPA
-* -- ppMEMs_Translate = MEMs used for translation - length of at least cpMEMsGPA.
+* Translate Guest Physical Addressess (GPAs) into Physical and Virtual addresses.
+* The array of physical translations are grown from the base of ppMEMsGPA and upwards.
+* The array of virtual  translations are grown from the top  of ppMEMsGPA and downwards.
 */
-VOID VmmVm_TranslateGPA2PA_HVFULL(_In_ VMM_HANDLE H, _In_ PVMMOB_VM_CONTEXT pVM, _Inout_ PPMEM_SCATTER ppMEMsGPA, _In_ DWORD cpMEMsGPA, _In_ PPMEM_SCATTER ppMEMs_Translate)
+VOID VmmVm_TranslateGPAEx(_In_ VMM_HANDLE H, _In_ PVMMOB_VM_CONTEXT pVM, _In_ DWORD cpMEMsGPA, _In_count_(cpMEMsGPA) PPMEM_SCATTER ppMEMsGPA, _Inout_count_(cpMEMsGPA) PPMEM_SCATTER ppMEMsPAVA, _Out_ PDWORD pcpMEMsPA, _Out_ PDWORD pcpMEMsVA)
 {
-    // TODO: INCREASE EFFICIENCY! IN MOST CASES ONLY 1-2 PMEM_SCATTER IS REQUIRED!!!!
-    BOOL fValid;
-    QWORD oTranslate, vaTranslateBase, vaTranslateBaseLast = (QWORD)-1;
-    QWORD iMEM = 0, iMEM_Translate = 0, oMEM_Translate;
-    PMEM_SCATTER pMEM, pMEM_Translate;
-    PVMMVM_VMHVTRANSLATE_GPAR pGpar;
+    QWORD qwPfn;
+    DWORD i, iMEM, iMEM_Translate = 0, cPA = 0, cVA = 0, cGPAA = 0;
+    PMEM_SCATTER pMEM, pMEM_Translate = NULL;
+    PVMMVM_VMHVTRANSLATE_GPAR pGpar = NULL;
     DWORD dwRecordSizeBits = (H->vmm.kernel.dwVersionBuild <= 10586) ? 3 : 4;
-    // 1: Walk each MEM and PUSH qwA, iTranslate, oTranslate to MEM stack.
-    for(iMEM = 0; iMEM < cpMEMsGPA; iMEM++) {
-        fValid = FALSE;
-        pMEM = ppMEMsGPA[iMEM];
-        MEM_SCATTER_STACK_PUSH(pMEM, pMEM->qwA);
-        if(MEM_SCATTER_ADDR_ISVALID(pMEM)) {
-            if((pGpar = Util_qfind(pMEM->qwA >> 12, pVM->pTranslate->cGparValid, pVM->pTranslate->pGpar, sizeof(VMMVM_VMHVTRANSLATE_GPAR), VmmVm_TranslateGPA2PA_HVFULL_CmpFind))) {
-                vaTranslateBase = pGpar->vaGPAA;
-                oTranslate = (((pMEM->qwA >> 12) - pGpar->GpaPfnBase) << dwRecordSizeBits); // Offset in bytes inside GPA array. A record is 16 bytes per page.
-                if(vaTranslateBase & 0xfff) {
-                    oTranslate += vaTranslateBase & 0xfff;
-                    vaTranslateBase = vaTranslateBase & ~0xfff;
-                }
-                vaTranslateBase += oTranslate & ~0xfff;
-                oTranslate = oTranslate & 0xfff;
-                fValid = TRUE;
-            }
-        }
-        if(fValid) {
-            if(iMEM_Translate && (vaTranslateBase == vaTranslateBaseLast)) {
-                iMEM_Translate--;
-            }
-            pMEM_Translate = ppMEMs_Translate[iMEM_Translate];
-            pMEM_Translate->f = FALSE;
-            pMEM_Translate->qwA = vaTranslateBase;
-            MEM_SCATTER_STACK_PUSH(pMEM, iMEM_Translate);       // index reference to pMEM_Translate.
-            MEM_SCATTER_STACK_PUSH(pMEM, oTranslate);           // byte offset in pMEM_Translate page.
-            vaTranslateBaseLast = vaTranslateBase;
-            iMEM_Translate++;
-        } else {
-            MEM_SCATTER_STACK_PUSH(pMEM, (QWORD)-1);
-            MEM_SCATTER_STACK_PUSH(pMEM, (QWORD)-1);
-        }
-    }
-    // 2: Fetch translation MEMs:
-    VmmReadScatterVirtual(H, PVMM_PROCESS_SYSTEM, ppMEMs_Translate, (DWORD)iMEM_Translate, 0);
-    // 3: Update MEMs with translated PAs:
+    PPMEM_SCATTER ppMEMs_Translate = NULL;
+    // 1: Translate GuestPhysical to Virtual & PhysicalGPAA
     for(iMEM = 0; iMEM < cpMEMsGPA; iMEM++) {
         pMEM = ppMEMsGPA[iMEM];
-        oMEM_Translate = MEM_SCATTER_STACK_POP(pMEM);
-        iMEM_Translate = MEM_SCATTER_STACK_POP(pMEM);
-        if((iMEM_Translate >= VMMVM_TRANSLATE_MEM_MAX) || (oMEM_Translate > 0xFF8)) {
-            pMEM->qwA = MEM_SCATTER_ADDR_INVALID;
+        if(pMEM->f || !MEM_SCATTER_ADDR_ISVALID(pMEM)) {
             continue;
         }
-        pMEM_Translate = ppMEMs_Translate[iMEM_Translate];
-        if(pMEM_Translate->f) {
-            pMEM->qwA = *(PQWORD)(pMEM_Translate->pb + oMEM_Translate) << 12;
-        } else {
-            pMEM->qwA = MEM_SCATTER_ADDR_INVALID;
+        qwPfn = pMEM->qwA >> 12;
+        if(!pGpar || (qwPfn < pGpar->GpaPfnBase) || (qwPfn > pGpar->GpaPfnTop)) {
+            pGpar = Util_qfind(qwPfn, pVM->pTranslate->cValid, pVM->pTranslate->pGpar, sizeof(VMMVM_VMHVTRANSLATE_GPAR), VmmVm_TranslateGPA_CmpFind);
+        }
+        if(!pGpar) {
+            continue;
+        }
+        // virtual address translation:
+        if(pGpar->vaVmMem) {
+            MEM_SCATTER_STACK_PUSH(pMEM, pMEM->qwA);
+            pMEM->qwA = pMEM->qwA - (pGpar->GpaPfnBase << 12) + pGpar->vaVmMem;
+            cVA++;
+            ppMEMsPAVA[cpMEMsGPA - cVA] = pMEM;
+            continue;
+        }
+        // physical address translation (into vaMB):
+        if(pGpar->vaGPAA) {
+            MEM_SCATTER_STACK_PUSH(pMEM, pMEM->qwA);
+            pMEM->qwA = pGpar->vaGPAA + ((qwPfn - pGpar->GpaPfnBase) << dwRecordSizeBits);  // MB.GPAA + byte offset inside GPA array. A record is 16 bytes/page on recent Windows versions.
+            ppMEMsPAVA[cPA] = pMEM;
+            if(!cPA || (VMM_ALIGN_PAGE(ppMEMsPAVA[cPA]->qwA) != VMM_ALIGN_PAGE(ppMEMsPAVA[cPA - 1]->qwA))) {
+                cGPAA++;
+            }
+            cPA++;
         }
     }
+    // 2: Translate GuestPhysical to Physical using the MemoryBlock GuestPhysicalAddressArray.
+    if(cPA) {
+        if(LcAllocScatter1(cGPAA, &ppMEMs_Translate)) {
+            for(i = 0; i < cPA; i++) {
+                if((i == 0) || (VMM_ALIGN_PAGE(ppMEMsPAVA[i]->qwA) != ppMEMs_Translate[iMEM_Translate - 1]->qwA)) {
+                    ppMEMs_Translate[iMEM_Translate]->qwA = VMM_ALIGN_PAGE(ppMEMsPAVA[i]->qwA);
+                    iMEM_Translate++;
+                }
+            }
+            VmmReadScatterVirtual(H, PVMM_PROCESS_SYSTEM, ppMEMs_Translate, iMEM_Translate, 0);
+            iMEM_Translate = 0;
+            for(i = 0; i < cPA; i++) {
+                pMEM = ppMEMsPAVA[i];
+                if((i == 0) || (VMM_ALIGN_PAGE(ppMEMsPAVA[i]->qwA) != ppMEMs_Translate[iMEM_Translate - 1]->qwA)) {
+                    pMEM_Translate = ppMEMs_Translate[iMEM_Translate];
+                    iMEM_Translate++;
+                }
+                if(pMEM_Translate->f) {
+                    pMEM->qwA = (*(PQWORD)(pMEM_Translate->pb + (pMEM->qwA & 0xfff))) << 12;
+                    pMEM->qwA += MEM_SCATTER_STACK_PEEK(pMEM, 1) & 0xfff;               // account for any non page-alignment on original address
+                } else {
+                    pMEM->qwA = (QWORD)-1;
+                }
+            }
+            LcMemFree(ppMEMs_Translate);
+        } else {
+            for(i = 0; i < cPA; i++) {
+                pMEM = ppMEMsPAVA[i];
+                pMEM->qwA = MEM_SCATTER_STACK_POP(pMEM);
+            }
+            cPA = 0;
+        }
+    }
+    *pcpMEMsPA = cPA;
+    *pcpMEMsVA = cVA;
 }
 
 /*
-* Translate multiple virtual machine (VM) guest physical addresses (GPAs) to physical addresses (PAs).
-* Upon success the translated address will be in 'qwA' field. Old 'qwA' will be pushed on MEM stack.
-* -- hVMM
-* -- pVM
-* -- ppMEMsGPA
-* -- cpMEMsGPA
-* -- return = success/fail.
+* Restore "stack" of MEMs set in GPA translation. Also update statistics.
 */
-_Success_(return)
-BOOL VmmVm_TranslateGPA2PA(_In_ VMM_HANDLE H, _In_ PVMMOB_VM_CONTEXT pVM, _Inout_ PPMEM_SCATTER ppMEMsGPA, _In_ DWORD cpMEMsGPA)
+VOID VmmVm_ReadScatterGPA_FinishTranslate_RestoreMEMs(_In_ VMM_HANDLE H, _In_ DWORD cpMEMsGPA, _Inout_ PPMEM_SCATTER ppMEMsGPA)
 {
+    DWORD iMEM;
     PMEM_SCATTER pMEM;
-    BOOL fValid = FALSE;
-    DWORD iMEM, cMEMsTranslate;
-    PPMEM_SCATTER ppMEMs_Translate;
-    // 1: Initial validity check:
-    //    - at least one (1) pMEM with valid address to translate
-    //    - all pMEMs have sufficient remaining stack depth
     for(iMEM = 0; iMEM < cpMEMsGPA; iMEM++) {
         pMEM = ppMEMsGPA[iMEM];
-        if(pMEM->iStack > MEM_SCATTER_STACK_SIZE - 4) {
-            return FALSE;
+        if(pMEM->f) {
+            InterlockedIncrement64(&H->vmm.stat.cGpaReadSuccess);
+        } else {
+            InterlockedIncrement64(&H->vmm.stat.cGpaReadFail);
         }
-        if(pMEM->qwA & 0xfff) {
-            pMEM->qwA = MEM_SCATTER_ADDR_INVALID;
-        }
-        fValid = fValid || MEM_SCATTER_ADDR_ISVALID(pMEM);
+        pMEM->qwA = MEM_SCATTER_STACK_POP(pMEM);
     }
-    if(!fValid) { return FALSE; }
-    // 2: Translate GPA to PA:
-    if(pVM->tp == VMM_VM_TP_HV) {
-        cMEMsTranslate = min(cpMEMsGPA, VMMVM_TRANSLATE_MEM_MAX);
-        if(!LcAllocScatter1(cMEMsTranslate, &ppMEMs_Translate)) { return FALSE; }
-        while(cpMEMsGPA) {
-            cMEMsTranslate = min(cpMEMsGPA, VMMVM_TRANSLATE_MEM_MAX);
-            VmmVm_TranslateGPA2PA_HVFULL(H, pVM, ppMEMsGPA, cMEMsTranslate, ppMEMs_Translate);
-            ppMEMsGPA += cMEMsTranslate;
-            cpMEMsGPA -= cMEMsTranslate;
-        }
-        LcMemFree(ppMEMs_Translate);
-        return TRUE;
-    }
-    // 3: fail on unsupported virtual machine type.
-    return FALSE;
-}
-
-/*
-* Translate a virtual machine (VM) guest physical address (GPA) to a physical address (PA).
-* -- hVMM
-* -- pVM
-* -- qwGPA
-* -- pqwPA
-* -- return = success/fail.
-*/
-_Success_(return)
-BOOL VmmVm_GPA2PA_DoWork(_In_ VMM_HANDLE H, _In_ PVMMOB_VM_CONTEXT pVM, _In_ ULONG64 qwGPA, _Out_ PULONG64 pqwPA)
-{
-    BOOL f = FALSE;
-    MEM_SCATTER MEM = { 0 };
-    PMEM_SCATTER pMEM = &MEM;
-    // create a dummy MEM and translate it with VmmVm_TranslateGPA2PA()
-    // which also properly verifies the validity of the HVM handle.
-    MEM.qwA = qwGPA;
-    f = VmmVm_TranslateGPA2PA(H, pVM, &pMEM, 1);
-    *pqwPA = MEM.qwA;
-    return f;
 }
 
 /*
 * Scatter read guest physical address (GPA) memory. Non contiguous 4096-byte pages.
+* Caching is avoided since it is being assumed to take place in upper layers.
 * -- H
 * -- pVM
 * -- ppMEMsGPA
-* -- cpMEMsVirt
+* -- cpMEMsGPA
 */
 VOID VmmVm_ReadScatterGPA_DoWork(_In_ VMM_HANDLE H, _In_ PVMMOB_VM_CONTEXT pVM, _Inout_ PPMEM_SCATTER ppMEMsGPA, _In_ DWORD cpMEMsGPA)
 {
-    DWORD iMEM;
-    PMEM_SCATTER pMEM;
-    if(pVM->tp == VMM_VM_TP_HV) {
-        // 1: Full Hyper-V VMs: call VmmVm_TranslateGPA2PA() to translate GPAs to PAs:
-        if(!VmmVm_TranslateGPA2PA(H, pVM, ppMEMsGPA, cpMEMsGPA)) { return; }
-        // 2: Call LeechCore directly to retrieve the data. This may be done since
-        //    caching is assumed to be handled by upstream layers so avoid calling
-        //    VmmReadScatterPhysical() to double cache things.
-        LcReadScatter(H->hLC, cpMEMsGPA, ppMEMsGPA);
-        // 3: Restore "stack" of pMEMs set by VmmVm_TranslateGPA2PA().
-        //    Also update statistics.
-        for(iMEM = 0; iMEM < cpMEMsGPA; iMEM++) {
-            pMEM = ppMEMsGPA[iMEM];
-            if(pMEM->f) {
-                InterlockedIncrement64(&H->vmm.stat.cGpaReadSuccess);
-            } else {
-                InterlockedIncrement64(&H->vmm.stat.cGpaReadFail);
-            }
-            pMEM->qwA = MEM_SCATTER_STACK_POP(pMEM);
-        }
-        return;
+    PMEM_SCATTER pMEM_Small[0x80];
+    PPMEM_SCATTER ppMEMsT = pMEM_Small;
+    DWORD cPA = 0, cVA = 0;
+    PVMM_PROCESS pObVmMemProcess = NULL;
+    if(cpMEMsGPA > 0x80) {
+        ppMEMsT = LocalAlloc(0, cpMEMsGPA * sizeof(PMEM_SCATTER));
+        if(!ppMEMsT) { return; }
     }
-    // TODO: support additional VM types.
+    VmmVm_TranslateGPAEx(H, pVM, cpMEMsGPA, ppMEMsGPA, ppMEMsT, &cPA, &cVA);
+    if(cVA) {
+        // read virtual memory from associated 'vmmem' process
+        if((pObVmMemProcess = VmmProcessGet(H, pVM->dwPrcsPID))) {
+            VmmReadScatterVirtual(H, pObVmMemProcess, ppMEMsT + cpMEMsGPA - cVA, cVA, VMM_FLAG_NOCACHE);
+            Ob_DECREF(pObVmMemProcess);
+        }
+        VmmVm_ReadScatterGPA_FinishTranslate_RestoreMEMs(H, cVA, ppMEMsT + cpMEMsGPA - cVA);
+    }
+    if(cPA) {
+        // read physical memory from leechcore
+        LcReadScatter(H->hLC, cPA, ppMEMsT);
+        VmmVm_ReadScatterGPA_FinishTranslate_RestoreMEMs(H, cPA, ppMEMsT);
+    }
+    if(ppMEMsT != pMEM_Small) {
+        LocalFree(ppMEMsT);
+    }
 }
 
 /*
 * Scatter write guest physical address (GPA) memory. Non contiguous 4096-byte pages.
+* Caching is avoided since it is being assumed to take place in upper layers.
 * -- H
 * -- pVM
 * -- ppMEMsGPA
-* -- cpMEMsVirt
+* -- cpMEMsGPA
 */
 VOID VmmVm_WriteScatterGPA_DoWork(_In_ VMM_HANDLE H, _In_ PVMMOB_VM_CONTEXT pVM, _Inout_ PPMEM_SCATTER ppMEMsGPA, _In_ DWORD cpMEMsGPA)
 {
-    DWORD iMEM;
-    PMEM_SCATTER pMEM;
-    if(pVM->fReadOnly) { return; }
-    if(pVM->tp == VMM_VM_TP_HV) {
-        // 1: Full Hyper-V VMs: call VmmVm_TranslateGPA2PA() to translate GPAs to PAs:
-        if(!VmmVm_TranslateGPA2PA(H, pVM, ppMEMsGPA, cpMEMsGPA)) { return; }
-        // 2: Call LeechCore directly to retrieve the data. This may be done since
-        //    caching is assumed to be handled by upstream layers so avoid calling
-        //    VmmWriteScatterPhysical() to double cache things.
-        LcWriteScatter(H->hLC, cpMEMsGPA, ppMEMsGPA);
-        // 3: Restore "stack" of pMEMs set by VmmVm_TranslateGPA2PA()
-        //    Also update statistics.
-        InterlockedAdd64(&H->vmm.stat.cGpaWrite, cpMEMsGPA);
-        for(iMEM = 0; iMEM < cpMEMsGPA; iMEM++) {
-            pMEM = ppMEMsGPA[iMEM];
-            if(MEM_SCATTER_ADDR_ISVALID(pMEM)) {
-                VmmCacheInvalidate(H, pMEM->qwA);
-            }
-            pMEM->qwA = MEM_SCATTER_STACK_POP(pMEM);
-        }
-        return;
+    PMEM_SCATTER pMEM_Small[0x80];
+    PPMEM_SCATTER ppMEMsT = pMEM_Small;
+    DWORD cPA = 0, cVA = 0;
+    PVMM_PROCESS pObVmMemProcess = NULL;
+    if(cpMEMsGPA > 0x80) {
+        ppMEMsT = LocalAlloc(0, cpMEMsGPA * sizeof(PMEM_SCATTER));
+        if(!ppMEMsT) { return; }
     }
-    // TODO: support additional VM types.
+    VmmVm_TranslateGPAEx(H, pVM, cpMEMsGPA, ppMEMsGPA, ppMEMsT, &cPA, &cVA);
+    if(cVA) {
+        // write virtual memory from associated 'vmmem' process
+        if((pObVmMemProcess = VmmProcessGet(H, pVM->dwPrcsPID))) {
+            VmmWriteScatterVirtual(H, pObVmMemProcess, ppMEMsT + cpMEMsGPA - cVA, cVA);
+            Ob_DECREF(pObVmMemProcess);
+        }
+        VmmVm_ReadScatterGPA_FinishTranslate_RestoreMEMs(H, cVA, ppMEMsT + cpMEMsGPA - cVA);
+    }
+    if(cPA) {
+        // write physical memory from leechcore
+        LcWriteScatter(H->hLC, cPA, ppMEMsT);
+        VmmVm_ReadScatterGPA_FinishTranslate_RestoreMEMs(H, cPA, ppMEMsT);
+    }
+    if(ppMEMsT != pMEM_Small) {
+        LocalFree(ppMEMsT);
+    }
 }
 
 
@@ -887,22 +1041,41 @@ VOID VmmVm_Refresh(_In_ VMM_HANDLE H)
 }
 
 /*
-* Translate a virtual machine (VM) guest physical address (GPA) to a physical address (PA).
+* Translate a virtual machine (VM) guest physical address (GPA) to:
+* (1) Physical Address (PA) _OR_ (2) Virtual Address (VA) in 'vmmem' process.
 * -- hVMM
 * -- HVM
-* -- qwGPA
-* -- pqwPA
+* -- qwGPA = guest physical address to translate.
+* -- pPA = translated physical address (if exists).
+* -- pVA = translated virtual address inside 'vmmem' process (if exists).
 * -- return = success/fail.
 */
 _Success_(return)
-BOOL VmmVm_GPA2PA(_In_ VMM_HANDLE H, _In_ VMMVM_HANDLE HVM, _In_ ULONG64 qwGPA, _Out_ PULONG64 pqwPA)
+BOOL VmmVm_TranslateGPA(_In_ VMM_HANDLE H, _In_ VMMVM_HANDLE HVM, _In_ ULONG64 qwGPA, _Out_opt_ PULONG64 pPA, _Out_opt_ PULONG64 pVA)
 {
     BOOL f = FALSE;
+    DWORD cPA, cVA;
+    MEM_SCATTER MEM = { 0 };
+    PMEM_SCATTER pMEM_PAVA = NULL, pMEM = &MEM;
     PVMMOB_VM_CONTEXT pObVM = NULL;
+    if(pPA) { *pPA = 0; }
+    if(pVA) { *pVA = 0; }
     if(!H->fAbort && (pObVM = VmmVm_GetVmContext(H, HVM))) {
         AcquireSRWLockShared(&pObVM->LockSRW);
         if(pObVM->fActive) {
-            f = VmmVm_GPA2PA_DoWork(H, pObVM, qwGPA, pqwPA);
+            VmmVm_TranslateGPAEx(H, pObVM, 1, &pMEM, &pMEM_PAVA, &cPA, &cVA);
+            if(cPA) {
+                if(pPA) {
+                    *pPA = pMEM_PAVA->qwA;
+                }
+                f = TRUE;
+            }
+            if(cVA) {
+                if(pVA) {
+                    *pVA = pMEM_PAVA->qwA;
+                }
+                f = TRUE;
+            }
         }
         ReleaseSRWLockShared(&pObVM->LockSRW);
         Ob_DECREF(pObVM);

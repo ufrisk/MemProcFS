@@ -1,6 +1,6 @@
 // mm_x86.c : implementation of the x86 32-bit protected mode memory model.
 //
-// (c) Ulf Frisk, 2018-2022
+// (c) Ulf Frisk, 2018-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmm.h"
@@ -146,6 +146,54 @@ BOOL MmX86_PteMapInitialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
     pProcess->Map.pObPte = pObMap;
     LeaveCriticalSection(&pProcess->LockUpdate);
     return TRUE;
+}
+
+VOID MmX86_Virt2PhysEx(_In_ VMM_HANDLE H, _In_ PVMM_V2P_ENTRY pV2Ps, _In_ DWORD cV2Ps, _In_ BOOL fUserOnly, _In_ BYTE iPML)
+{
+    BOOL fValidNextPT = FALSE;
+    DWORD pte, i, iV2P;
+    PVMM_V2P_ENTRY pV2P;
+    if(iPML == (BYTE)-1) { iPML = 2; }
+    VmmTlbGetPageTableEx(H, pV2Ps, cV2Ps, FALSE);
+    for(iV2P = 0; iV2P < cV2Ps; iV2P++) {
+        pV2P = pV2Ps + iV2P;
+        pV2P->paPT = 0;
+        if(!pV2P->pObPTE) {
+            continue;
+        }
+        if(pV2P->pa) {
+            Ob_DECREF_NULL(&pV2P->pObPTE);
+            continue;
+        }
+        i = 0x3ff & (pV2P->va >> MMX86_PAGETABLEMAP_PML_REGION_SIZE[iPML]);
+        pte = pV2P->pObPTE->pdw[i];
+        Ob_DECREF_NULL(&pV2P->pObPTE);
+        if(!MMX86_PTE_IS_VALID(pte, iPML)) {
+            if(iPML == 1) {
+                pV2P->pte = pte;
+                pV2P->fPaging = TRUE;
+            }
+            continue;
+        }
+        if(fUserOnly && !(pte & 0x04)) { continue; }            // SUPERVISOR PAGE & USER MODE REQ
+        if(iPML == 1) {     // 4kB PAGE:
+            pV2P->pa = pte & 0xfffff000;
+            pV2P->fPhys = TRUE;
+            continue;
+        }
+        if(pte & 0x80) {    // 4MB PAGE:
+            if(pte & 0x003e0000) { continue; }                  // RESERVED
+            pV2P->pa = (((QWORD)(pte & 0x0001e000)) << (32 - 13)) + (pte & 0xffc00000) + (pV2P->va & 0x003ff000);
+            pV2P->fPhys = TRUE;
+            continue;
+        }
+        // PD ENTRY:
+        pV2P->paPT = pte & 0xfffff000;
+        fValidNextPT = TRUE;
+    }
+    if(fValidNextPT && (iPML == 2)) {
+        MmX86_Virt2PhysEx(H, pV2Ps, cV2Ps, fUserOnly, 1);
+    }
 }
 
 _Success_(return)
@@ -320,6 +368,7 @@ VOID MmX86_Initialize(_In_ VMM_HANDLE H)
     }
     pfnsMemoryModel->pfnClose = MmX86_Close;
     pfnsMemoryModel->pfnVirt2Phys = MmX86_Virt2Phys;
+    pfnsMemoryModel->pfnVirt2PhysEx = MmX86_Virt2PhysEx;
     pfnsMemoryModel->pfnVirt2PhysVadEx = MmX86_Virt2PhysVadEx;
     pfnsMemoryModel->pfnVirt2PhysGetInformation = MmX86_Virt2PhysGetInformation;
     pfnsMemoryModel->pfnPhys2VirtGetInformation = MmX86_Phys2VirtGetInformation;

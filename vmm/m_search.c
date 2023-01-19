@@ -1,6 +1,6 @@
 // m_search.c : implementation of the virtual memory search built-in module.
 //
-// (c) Ulf Frisk, 2022
+// (c) Ulf Frisk, 2022-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmm.h"

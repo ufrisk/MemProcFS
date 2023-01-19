@@ -4,7 +4,7 @@
 //
 // NB! module generate forensic data only - no file system presence!
 //
-// (c) Ulf Frisk,2022
+// (c) Ulf Frisk,2022-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

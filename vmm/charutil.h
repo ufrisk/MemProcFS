@@ -1,6 +1,6 @@
 // charutil.h : definitions of various character/string utility functions.
 //
-// (c) Ulf Frisk, 2021-2022
+// (c) Ulf Frisk, 2021-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __CHARUTIL_H__
@@ -26,6 +26,7 @@ typedef unsigned __int64                QWORD, *PQWORD;
 */
 BOOL CharUtil_IsAnsiA(_In_ LPCSTR sz);
 BOOL CharUtil_IsAnsiW(_In_ LPCWSTR wsz);
+BOOL CharUtil_IsAnsiFsA(_In_ LPCSTR sz);
 
 /*
 * Convert Ascii (0-255) or Wide (16-bit LE) string into a UTF-8 string.

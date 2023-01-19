@@ -1,7 +1,7 @@
 // mm_pfn.c : implementation of Windows PFN (page frame number) functionality and
 //            related physical memory functionality.
 //
-// (c) Ulf Frisk, 2020-2022
+// (c) Ulf Frisk, 2020-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmm.h"
@@ -45,8 +45,8 @@ VOID MmPfn_Refresh(_In_ VMM_HANDLE H)
 
 VOID MmPfn_InitializeContext_StaticX64(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_ PMMPFN_CONTEXT ctx)
 {
-    DWORD iPte, iPfnSystem, dwVersionBuild = H->vmm.kernel.dwVersionBuild;
-    QWORD vaPteSystem, paDtbSystem, vaDtbSystem;
+    DWORD iPte, dwVersionBuild = H->vmm.kernel.dwVersionBuild;
+    QWORD iPfnSystem, vaPteSystem, paDtbSystem, vaDtbSystem;
     POB_SET psvaOb = NULL;
     PVMMOB_MAP_PTE pObMapPte = NULL;
     if(dwVersionBuild < 6000) { return; }
@@ -74,7 +74,7 @@ VOID MmPfn_InitializeContext_StaticX64(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSys
     if(!VmmMap_GetPte(H, pSystemProcess, &pObMapPte, FALSE)) { goto fail; }
     if(!(psvaOb = ObSet_New(H))) { goto fail; }
     // 2.1: search for candidates starting 4GB boundaries:
-    iPfnSystem = (DWORD)(H->vmm.kernel.paDTB >> 12);
+    iPfnSystem = H->vmm.kernel.paDTB >> 12;
     for(iPte = 0; iPte < pObMapPte->cMap; iPte++) {
         if(!(DWORD)pObMapPte->pMap[iPte].vaBase) {
             ObSet_Push(psvaOb, pObMapPte->pMap[iPte].vaBase + iPfnSystem * ctx->_MMPFN.cb);

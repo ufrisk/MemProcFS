@@ -674,6 +674,21 @@ typedef struct _PEB64 {
     // ...
 } PEB64, *PPEB64;
 
+typedef struct _RTL_BALANCED_NODE64 {
+    union {
+        QWORD Children[2];
+        struct { 
+            QWORD Left;
+            QWORD Right;
+        };
+    };
+    union {
+        UCHAR Red : 1;
+        UCHAR Balance : 2;
+        QWORD ParentValue;
+    };
+} RTL_BALANCED_NODE64, *PRTL_BALANCED_NODE64;
+
 static LPCSTR FILE_DEVICE_STR[] = {
     "---",
     "FILE_DEVICE_BEEP",

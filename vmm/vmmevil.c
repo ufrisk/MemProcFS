@@ -1,6 +1,6 @@
 // evil.c : implementation of functionality related to the "Evil" functionality.
 //
-// (c) Ulf Frisk, 2020-2022
+// (c) Ulf Frisk, 2020-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmmevil.h"
@@ -361,7 +361,7 @@ VOID VmmEvil_ProcessScan_Modules(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, 
     PVMM_MAP_MODULEENTRY pe;
     PVMMOB_MAP_MODULE pObModuleMap = NULL;
     if((pProcess->dwPPID == 4) && !memcmp("MemCompression", pProcess->szName, 15)) { return; }
-    if(!VmmMap_GetModule(H, pProcess, &pObModuleMap)) { return; }
+    if(!VmmMap_GetModule(H, pProcess, 0, &pObModuleMap)) { return; }
     for(i = 0; i < pObModuleMap->cMap; i++) {
         if(pObModuleMap->pMap[i].tp == VMM_MODULE_TP_NORMAL) {
             fBadLdr = FALSE;
@@ -556,7 +556,7 @@ VOID VmmEvil_ProcessScan_KDriverPath(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSyste
     DWORD iDriver, iPathAllow;
     BOOL fOK;
     if(!VmmMap_GetKDriver(H, &pObDriverMap)) { goto fail; }
-    if(!VmmMap_GetModule(H, pSystemProcess, &pObModuleMap)) { goto fail; }
+    if(!VmmMap_GetModule(H, pSystemProcess, 0, &pObModuleMap)) { goto fail; }
     if(!VmmMap_GetModuleEntryEx3(H, pObModuleMap, &pmObModuleByVA)) { goto fail; }
     for(iDriver = 0; iDriver < pObDriverMap->cMap; iDriver++) {
         peDriver = pObDriverMap->pMap + iDriver;

@@ -1,6 +1,6 @@
 // vmmwinsvc.c : implementation of functionality related to Windows service manager (SCM).
 //
-// (c) Ulf Frisk, 2020-2022
+// (c) Ulf Frisk, 2020-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmmwinsvc.h"
@@ -143,7 +143,7 @@ VOID VmmWinSvc_ListHeadFromPDB(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSvcProcess,
     DWORD dwoSymSvcDB = 0;
     pvaListHead[0] = 0;
     pvaListHead[1] = 0;
-    if(!VmmMap_GetModuleEntryEx(H, pSvcProcess, 0, "services.exe", &pObModuleMap, &peModuleServices)) { goto fail; }
+    if(!VmmMap_GetModuleEntryEx(H, pSvcProcess, 0, "services.exe", 0, &pObModuleMap, &peModuleServices)) { goto fail; }
     if(!(hPdbServices = PDB_GetHandleFromModuleAddress(H, pSvcProcess, peModuleServices->vaBase))) { goto fail; }
     if(!PDB_GetSymbolOffset(H, hPdbServices, "ServiceDatabase", &dwoSymSvcDB)) { goto fail; }
     if(!VmmRead(H, pSvcProcess, peModuleServices->vaBase + dwoSymSvcDB, pbSymSvcDB, sizeof(pbSymSvcDB))) { goto fail; }

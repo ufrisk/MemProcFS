@@ -1,6 +1,6 @@
 // vmmpyc_module.c : implementation of the modules functionality for vmmpyc.
 //
-// (c) Ulf Frisk, 2021-2022
+// (c) Ulf Frisk, 2021-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmmpyc.h"

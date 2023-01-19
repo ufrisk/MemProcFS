@@ -12,7 +12,7 @@
 //   functions whilst linux in general should use UTF-8 functions only. This
 //   example use UTF-8 functions throughout to have the best compatibility.
 //
-// (c) Ulf Frisk, 2018-2022
+// (c) Ulf Frisk, 2018-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -460,7 +460,7 @@ int main(_In_ int argc, _In_ char* argv[])
     ShowKeyPress();
     PVMMDLL_MAP_MODULE pModuleMap = NULL;
     printf("CALL:    VMMDLL_Map_GetModuleU\n");
-    result = VMMDLL_Map_GetModuleU(hVMM, dwPID, &pModuleMap);
+    result = VMMDLL_Map_GetModuleU(hVMM, dwPID, &pModuleMap, 0);
     if(!result) {
         printf("FAIL:    VMMDLL_Map_GetModuleU #1\n");
         return 1;
@@ -486,6 +486,43 @@ int main(_In_ int argc, _In_ char* argv[])
             );
         }
         VMMDLL_MemFree(pModuleMap); pModuleMap = NULL;
+    }
+
+
+    // Retrieve the list of loaded DLLs from the process and also include debug
+    // and versioning information. Extended information such as debug/versioning
+    // information is not included by default (included with flags) and require
+    // extra performance to fetch.
+    printf("------------------------------------------------------------\n");
+    printf("# Get Module Map with DEBUG & VERSION info of 'explorer.exe'.\n");
+    ShowKeyPress();
+    PVMMDLL_MAP_MODULE pModuleExMap = NULL;
+    printf("CALL:    VMMDLL_Map_GetModuleU\n");
+    result = VMMDLL_Map_GetModuleU(hVMM, dwPID, &pModuleExMap, VMMDLL_MODULE_FLAG_DEBUGINFO | VMMDLL_MODULE_FLAG_VERSIONINFO);
+    if(!result) {
+        printf("FAIL:    VMMDLL_Map_GetModuleU #1\n");
+        return 1;
+    }
+    if(pModuleExMap->dwVersion != VMMDLL_MAP_MODULE_VERSION) {
+        printf("FAIL:    VMMDLL_Map_GetModuleU - BAD VERSION\n");
+        VMMDLL_MemFree(pModuleExMap); pModuleExMap = NULL;
+        return 1;
+    }
+    {
+        printf("SUCCESS: VMMDLL_Map_GetModuleU\n");
+        printf("         MODULE_NAME                              PDB-PATH                         CompanyName                      FileDescription                  InternalName\n");
+        printf("         ================================================================================================================================================================\n");
+        for(i = 0; i < pModuleExMap->cMap; i++) {
+            printf(
+                "         %-40.40s %-32.32s %-32.32s %-32.32s %s\n",
+                pModuleExMap->pMap[i].uszText,
+                pModuleExMap->pMap[i].pExDebugInfo->uszPdbFilename,
+                pModuleExMap->pMap[i].pExVersionInfo->uszCompanyName,
+                pModuleExMap->pMap[i].pExVersionInfo->uszFileDescription,
+                pModuleExMap->pMap[i].pExVersionInfo->uszInternalName
+            );
+        }
+        VMMDLL_MemFree(pModuleExMap); pModuleExMap = NULL;
     }
 
 
@@ -533,7 +570,7 @@ int main(_In_ int argc, _In_ char* argv[])
     ShowKeyPress();
     printf("CALL:    VMMDLL_Map_GetModuleFromNameU\n");
     PVMMDLL_MAP_MODULEENTRY pModuleEntryExplorer;
-    result = VMMDLL_Map_GetModuleFromNameU(hVMM, dwPID, "explorer.exe", &pModuleEntryExplorer);
+    result = VMMDLL_Map_GetModuleFromNameU(hVMM, dwPID, "explorer.exe", &pModuleEntryExplorer, 0);
     if(result) {
         printf("SUCCESS: VMMDLL_Map_GetModuleFromNameU\n");
         printf("         MODULE_NAME                                 BASE             SIZE     ENTRY\n");
@@ -721,7 +758,7 @@ int main(_In_ int argc, _In_ char* argv[])
     ShowKeyPress();
     printf("CALL:    VMMDLL_Map_GetModuleFromNameU\n");
     PVMMDLL_MAP_MODULEENTRY pModuleEntryKernel32;
-    result = VMMDLL_Map_GetModuleFromNameU(hVMM, dwPID, "kernel32.dll", &pModuleEntryKernel32);
+    result = VMMDLL_Map_GetModuleFromNameU(hVMM, dwPID, "kernel32.dll", &pModuleEntryKernel32, 0);
     if(result) {
         printf("SUCCESS: VMMDLL_Map_GetModuleFromNameU\n");
         printf("         MODULE_NAME                                 BASE             SIZE     ENTRY\n");
@@ -899,15 +936,17 @@ int main(_In_ int argc, _In_ char* argv[])
     }
     {
         printf("SUCCESS: VMMDLL_Map_GetEATU\n");
-        printf("         #     ORD NAME\n");
-        printf("         =============================\n");
+        printf("         #  ORDINAL  ADDRESS NAME      ->ForwardedFunction\n");
+        printf("         =================================================\n");
         for(i = 0; i < pEatMap->cMap; i++) {
             pEatMapEntry = pEatMap->pMap + i;
             printf(
-                "         %04x %4x %s\n",
+                "         %04x %4x %12llx %s  ->%s\n",
                 i,
                 pEatMapEntry->dwOrdinal,
-                pEatMapEntry->uszFunction
+                pEatMapEntry->vaFunction,
+                pEatMapEntry->uszFunction,
+                pEatMapEntry->uszForwardedFunction
             );
         }
         VMMDLL_MemFree(pEatMap); pEatMap = NULL;

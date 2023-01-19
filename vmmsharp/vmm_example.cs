@@ -15,7 +15,7 @@ using vmmsharp;
  *  running it from within Visual Studio with breakpoints it should be fairly easy
  *  to follow the calls and have a look at the different return data.
  *  
- *  (c) Ulf Frisk, 2020-2022
+ *  (c) Ulf Frisk, 2020-2023
  *  Author: Ulf Frisk, pcileech@frizk.net
  *  
  */
@@ -69,7 +69,7 @@ class vmm_example
         result = vmm.VfsList("\\", 1, ExampleVfsCallBack_AddFile, ExampleVfsCallBack_AddDirectory);
         byte[] pbMemoryRead;
         nt = vmm.VfsRead("\\memory.pmem", 0x200, 0x1000, out pbMemoryRead);
-        nt = vmm.VfsWrite("\\memory.pmem, 0x200", pbMemoryRead, 0x1000);
+        nt = vmm.VfsWrite("\\memory.pmem", pbMemoryRead, 0x1000);
 
         // memory read : physical with scatter function (2 pages)
         MEM_SCATTER[] MEMsPhysical = vmm.MemReadScatter(0xffffffff, 0, 0x1000, 0x2000);
@@ -99,7 +99,8 @@ class vmm_example
         Vmm.MAP_PTEENTRY[] mPte = vmm.Map_GetPte(dwExplorerPID);
         Vmm.MAP_VADENTRY[] mVad = vmm.Map_GetVad(dwExplorerPID);
         Vmm.MAP_VADEXENTRY[] mVadEx = vmm.Map_GetVadEx(dwExplorerPID, 0, 10);
-        Vmm.MAP_MODULEENTRY[] mModule = vmm.Map_GetModule(dwExplorerPID);
+        Vmm.MAP_MODULEENTRY[] mModule = vmm.Map_GetModule(dwExplorerPID, false);
+        Vmm.MAP_MODULEENTRY[] mModuleExInfo = vmm.Map_GetModule(dwExplorerPID, true);
         Vmm.MAP_MODULEENTRY mModuleKernel32 = vmm.Map_GetModuleFromName(dwExplorerPID, "kernel32.dll");
         Vmm.MAP_UNLOADEDMODULEENTRY[] mUnloadedModule = vmm.Map_GetUnloadedModule(dwExplorerPID);
         Vmm.MAP_EATINFO EatInfo;

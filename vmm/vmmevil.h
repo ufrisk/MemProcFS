@@ -1,6 +1,6 @@
 // findevil.h : declarations of functionality related to the "Evil" functionality.
 //
-// (c) Ulf Frisk, 2020-2022
+// (c) Ulf Frisk, 2020-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

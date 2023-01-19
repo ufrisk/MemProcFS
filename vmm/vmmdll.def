@@ -110,7 +110,7 @@ EXPORTS
     VMMDLL_WinReg_QueryValueExW
 
     VMMDLL_VmGetVmmHandle
-    VMMDLL_VmMemGPA2Phys
+    VMMDLL_VmMemTranslateGPA
     VMMDLL_VmMemRead
     VMMDLL_VmMemReadScatter
     VMMDLL_VmMemWrite

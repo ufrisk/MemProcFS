@@ -11,10 +11,10 @@ using System.Collections.Generic;
  *  Please consult the C/C++ header files vmmdll.h and leechcore.h for information about
  *  parameters and API usage.
  *  
- *  (c) Ulf Frisk, 2020-2022
+ *  (c) Ulf Frisk, 2020-2023
  *  Author: Ulf Frisk, pcileech@frizk.net
  *  
- *  Version 5.0
+ *  Version 5.3
  *  
  */
 
@@ -970,6 +970,27 @@ namespace vmmsharp
         public static uint VMMDLL_MODULE_TP_NOTLINKED   = 2;
         public static uint VMMDLL_MODULE_TP_INJECTED    = 3;
 
+        public struct MODULEENTRY_DEBUGINFO
+        {
+            public bool fValid;
+            public uint dwAge;
+            public string wszGuid;
+            public string wszPdbFilename;
+        }
+
+        public struct MODULEENTRY_VERSIONINFO
+        {
+            public bool fValid;
+            public string wszCompanyName;
+            public string wszFileDescription;
+            public string wszFileVersion;
+            public string wszInternalName;
+            public string wszLegalCopyright;
+            public string wszFileOriginalFilename;
+            public string wszProductName;
+            public string wszProductVersion;
+        }
+
         public struct MAP_MODULEENTRY
         {
             public bool fValid;
@@ -984,6 +1005,8 @@ namespace vmmsharp
             public uint cSection;
             public uint cEAT;
             public uint cIAT;
+            public MODULEENTRY_DEBUGINFO DebugInfo;
+            public MODULEENTRY_VERSIONINFO VersionInfo;
         }
 
         public struct MAP_UNLOADEDMODULEENTRY
@@ -1004,6 +1027,7 @@ namespace vmmsharp
             public ulong vaAddressOfFunctions;
             public ulong vaAddressOfNames;
             public uint cNumberOfFunctions;
+            public uint cNumberOfForwardedFunctions;
             public uint cNumberOfNames;
             public uint dwOrdinalBase;
         }
@@ -1015,6 +1039,7 @@ namespace vmmsharp
             public uint oFunctionsArray;
             public uint oNamesArray;
             public string wszFunction;
+            public string wszForwardedFunction;
         }
 
         public struct MAP_IATENTRY
@@ -1316,13 +1341,14 @@ namespace vmmsharp
             return m;
         }
 
-        public unsafe MAP_MODULEENTRY[] Map_GetModule(uint pid)
+        public unsafe MAP_MODULEENTRY[] Map_GetModule(uint pid, bool fExtendedInfo)
         {
             int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_MODULE));
             int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_MODULEENTRY));
             IntPtr pMap = IntPtr.Zero;
             MAP_MODULEENTRY[] m = new MAP_MODULEENTRY[0];
-            if (!vmmi.VMMDLL_Map_GetModule(hVMM, pid, out pMap)) { goto fail; }
+            uint flags = fExtendedInfo ? (uint)0xff : 0;
+            if (!vmmi.VMMDLL_Map_GetModule(hVMM, pid, out pMap, flags)) { goto fail; }
             vmmi.VMMDLL_MAP_MODULE nM = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_MODULE>(pMap);
             if (nM.dwVersion != vmmi.VMMDLL_MAP_MODULE_VERSION) { goto fail; }
             m = new MAP_MODULEENTRY[nM.cMap];
@@ -1330,6 +1356,8 @@ namespace vmmsharp
             {
                 vmmi.VMMDLL_MAP_MODULEENTRY n = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_MODULEENTRY>((System.IntPtr)(pMap.ToInt64() + cbMAP + i * cbENTRY));
                 MAP_MODULEENTRY e;
+                MODULEENTRY_DEBUGINFO eDbg;
+                MODULEENTRY_VERSIONINFO eVer;
                 e.fValid = true;
                 e.vaBase = n.vaBase;
                 e.vaEntry = n.vaEntry;
@@ -1342,6 +1370,50 @@ namespace vmmsharp
                 e.cSection = n.cSection;
                 e.cEAT = n.cEAT;
                 e.cIAT = n.cIAT;
+                // Extended Debug Information:
+                if (n.pExDebugInfo.ToInt64() == 0)
+                {
+                    eDbg.fValid = false;
+                    eDbg.dwAge = 0;
+                    eDbg.wszGuid = "";
+                    eDbg.wszPdbFilename = "";
+                }
+                else
+                {
+                    vmmi.VMMDLL_MAP_MODULEENTRY_DEBUGINFO nDbg = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_MODULEENTRY_DEBUGINFO>(n.pExDebugInfo);
+                    eDbg.fValid = true;
+                    eDbg.dwAge = nDbg.dwAge;
+                    eDbg.wszGuid = nDbg.wszGuid;
+                    eDbg.wszPdbFilename = nDbg.wszPdbFilename;
+                }
+                e.DebugInfo = eDbg;
+                // Extended Version Information
+                if (n.pExDebugInfo.ToInt64() == 0)
+                {
+                    eVer.fValid = false;
+                    eVer.wszCompanyName = "";
+                    eVer.wszFileDescription = "";
+                    eVer.wszFileVersion = "";
+                    eVer.wszInternalName = "";
+                    eVer.wszLegalCopyright = "";
+                    eVer.wszFileOriginalFilename = "";
+                    eVer.wszProductName = "";
+                    eVer.wszProductVersion = "";
+                }
+                else
+                {
+                    vmmi.VMMDLL_MAP_MODULEENTRY_VERSIONINFO nVer = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_MODULEENTRY_VERSIONINFO>(n.pExVersionInfo);
+                    eVer.fValid = true;
+                    eVer.wszCompanyName = nVer.wszCompanyName;
+                    eVer.wszFileDescription = nVer.wszFileDescription;
+                    eVer.wszFileVersion = nVer.wszFileVersion;
+                    eVer.wszInternalName = nVer.wszInternalName;
+                    eVer.wszLegalCopyright = nVer.wszLegalCopyright;
+                    eVer.wszFileOriginalFilename = nVer.wszFileOriginalFilename;
+                    eVer.wszProductName = nVer.wszProductName;
+                    eVer.wszProductVersion = nVer.wszProductVersion;
+                }
+                e.VersionInfo = eVer;
                 m[i] = e;
             }
         fail:
@@ -1353,7 +1425,7 @@ namespace vmmsharp
         {
             IntPtr pMap = IntPtr.Zero;
             MAP_MODULEENTRY e = new MAP_MODULEENTRY();
-            if (!vmmi.VMMDLL_Map_GetModuleFromName(hVMM, pid, wszModuleName, out pMap)) { goto fail; }
+            if (!vmmi.VMMDLL_Map_GetModuleFromName(hVMM, pid, wszModuleName, out pMap, 0)) { goto fail; }
             vmmi.VMMDLL_MAP_MODULEENTRY nM = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_MODULEENTRY>(pMap);
             e.fValid = true;
             e.vaBase = nM.vaBase;
@@ -1420,6 +1492,7 @@ namespace vmmsharp
                 e.oFunctionsArray = n.oFunctionsArray;
                 e.oNamesArray = n.oNamesArray;
                 e.wszFunction = n.wszFunction;
+                e.wszForwardedFunction = n.wszForwardedFunction;
                 m[i] = e;
             }
             EatInfo.fValid = true;
@@ -1427,6 +1500,7 @@ namespace vmmsharp
             EatInfo.vaAddressOfFunctions = nM.vaAddressOfFunctions;
             EatInfo.vaAddressOfNames = nM.vaAddressOfNames;
             EatInfo.cNumberOfFunctions = nM.cNumberOfFunctions;
+            EatInfo.cNumberOfForwardedFunctions = nM.cNumberOfForwardedFunctions;
             EatInfo.cNumberOfNames = nM.cNumberOfNames;
             EatInfo.dwOrdinalBase = nM.dwOrdinalBase;
         fail:
@@ -2094,9 +2168,9 @@ namespace vmmsharp
         internal static uint VMMDLL_MAP_PTE_VERSION =        2;
         internal static uint VMMDLL_MAP_VAD_VERSION =        6;
         internal static uint VMMDLL_MAP_VADEX_VERSION =      3;
-        internal static uint VMMDLL_MAP_MODULE_VERSION =     5;
+        internal static uint VMMDLL_MAP_MODULE_VERSION =     6;
         internal static uint VMMDLL_MAP_UNLOADEDMODULE_VERSION = 2;
-        internal static uint VMMDLL_MAP_EAT_VERSION =        2;
+        internal static uint VMMDLL_MAP_EAT_VERSION =        3;
         internal static uint VMMDLL_MAP_IAT_VERSION =        2;
         internal static uint VMMDLL_MAP_HEAP_VERSION =       4;
         internal static uint VMMDLL_MAP_HEAPALLOC_VERSION =  1;
@@ -2541,6 +2615,28 @@ namespace vmmsharp
 
 
         // VMMDLL_Map_GetModule
+        [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        internal struct VMMDLL_MAP_MODULEENTRY_DEBUGINFO
+        {
+            internal uint dwAge;
+            internal uint _Reserved;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)] internal byte[] Guid;
+            [MarshalAs(UnmanagedType.LPWStr)] internal string wszGuid;
+            [MarshalAs(UnmanagedType.LPWStr)] internal string wszPdbFilename;
+        }
+
+        [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        internal struct VMMDLL_MAP_MODULEENTRY_VERSIONINFO
+        {
+            [MarshalAs(UnmanagedType.LPWStr)] internal string wszCompanyName;
+            [MarshalAs(UnmanagedType.LPWStr)] internal string wszFileDescription;
+            [MarshalAs(UnmanagedType.LPWStr)] internal string wszFileVersion;
+            [MarshalAs(UnmanagedType.LPWStr)] internal string wszInternalName;
+            [MarshalAs(UnmanagedType.LPWStr)] internal string wszLegalCopyright;
+            [MarshalAs(UnmanagedType.LPWStr)] internal string wszFileOriginalFilename;
+            [MarshalAs(UnmanagedType.LPWStr)] internal string wszProductName;
+            [MarshalAs(UnmanagedType.LPWStr)] internal string wszProductVersion;
+        }
 
         [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
         internal struct VMMDLL_MAP_MODULEENTRY
@@ -2559,7 +2655,9 @@ namespace vmmsharp
             internal uint cEAT;
             internal uint cIAT;
             internal uint _Reserved2;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)] internal ulong[] _Reserved1;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)] internal ulong[] _Reserved1;
+            internal IntPtr pExDebugInfo;
+            internal IntPtr pExVersionInfo;
         }
 
         internal struct VMMDLL_MAP_MODULE
@@ -2575,7 +2673,8 @@ namespace vmmsharp
         internal static extern unsafe bool VMMDLL_Map_GetModule(
             IntPtr hVMM,
             uint dwPid,
-            out IntPtr ppModuleMap);
+            out IntPtr ppModuleMap,
+            uint flags);
 
         // VMMDLL_Map_GetModuleFromName
 
@@ -2584,7 +2683,8 @@ namespace vmmsharp
             IntPtr hVMM,
             uint dwPID,
             [MarshalAs(UnmanagedType.LPWStr)] string wszModuleName,
-            out IntPtr ppModuleMapEntry);
+            out IntPtr ppModuleMapEntry,
+            uint flags);
 
 
 
@@ -2632,6 +2732,7 @@ namespace vmmsharp
             internal uint oNamesArray;
             internal uint _FutureUse1;
             [MarshalAs(UnmanagedType.LPWStr)] internal string wszFunction;
+            [MarshalAs(UnmanagedType.LPWStr)] internal string wszForwardedFunction;
         }
 
         internal struct VMMDLL_MAP_EAT
@@ -2640,7 +2741,8 @@ namespace vmmsharp
             internal uint dwOrdinalBase;
             internal uint cNumberOfNames;
             internal uint cNumberOfFunctions;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)] internal uint[] _Reserved1;
+            internal uint cNumberOfForwardedFunctions;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)] internal uint[] _Reserved1;
             internal ulong vaModuleBase;
             internal ulong vaAddressOfFunctions;
             internal ulong vaAddressOfNames;

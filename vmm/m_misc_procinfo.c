@@ -1,6 +1,6 @@
 // m_misc_procinfo.c : various process informational lists.
 //
-// (c) Ulf Frisk, 2022
+// (c) Ulf Frisk, 2022-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -156,11 +156,13 @@ VOID MMiscProcInfo_Notify(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _
 {
     POB_PMMISCINFO_CONTEXT ctxOb;
     if(fEvent == VMMDLL_PLUGIN_NOTIFY_REFRESH_SLOW) {
-        if((ctxOb = MMiscProcInfo_GetContext(H, ctxP))) {
-            if(ctxOb->fCompleted) {
-                ObContainer_SetOb((POB_CONTAINER)ctxP->ctxM, NULL);
+        if(ObContainer_Exists((POB_CONTAINER)ctxP->ctxM)) {
+            if((ctxOb = MMiscProcInfo_GetContext(H, ctxP))) {
+                if(ctxOb->fCompleted) {
+                    ObContainer_SetOb((POB_CONTAINER)ctxP->ctxM, NULL);
+                }
+                Ob_DECREF(ctxOb);
             }
-            Ob_DECREF(ctxOb);
         }
     }
 }

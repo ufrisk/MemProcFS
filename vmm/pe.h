@@ -2,7 +2,7 @@
 //        virtual address space. This may mostly (but not exclusively) be used
 //        by Windows functionality.
 //
-// (c) Ulf Frisk, 2018-2022
+// (c) Ulf Frisk, 2018-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __PE_H__
@@ -195,6 +195,23 @@ BOOL PE_SectionGetAll(
 );
 
 /*
+* Validate that the string provided in szForwardedFunction is a forwarded
+* function on the format: module.function or module.#ordinal (as given by EAT).
+* -- szForwardedFunction = forwarded function identifier as given by EAT.
+* -- szModule = optional buffer to receive module name.
+* -- cbModule = size of szModule buffer.
+* -- pdwOrdinal = ptr to receive ordinal if parsed data is on ordinal format.
+* -- return = function name or ordinal upon success. NULL on fail.
+*/
+_Success_(return != NULL)
+LPSTR PE_EatForwardedFunctionNameValidate(
+    _In_ LPSTR szForwardedFunction,
+    _Out_writes_opt_(cbModule) LPSTR szModule,
+    _In_ DWORD cbModule,
+    _Out_opt_ PDWORD pdwOrdinal
+);
+
+/*
 * Retrieve the number of export address table (EAT) entries - i.e. the number
 * of functions that the module is exporting.
 * -- H
@@ -248,14 +265,17 @@ BOOL PE_DirectoryGetAll(
 * -- vaModuleBase = PE module base address (unless pbModuleHeaderOpt is specified)
 * -- pbModuleHeaderOpt = Optional buffer containing module header (MZ) page.
 * -- dwDataDirectory = Data directory as specified by IMAGE_DIRECTORY_ENTRY_*
+* -- pcbSizeOfDirectory = size of data directory.
 * -- return = the offset in bytes from PE base or 0 on fail.
 */
+_Success_(return != 0)
 DWORD PE_DirectoryGetOffset(
     _In_ VMM_HANDLE H,
     _In_ PVMM_PROCESS pProcess,
     _In_opt_ QWORD vaModuleBase,
     _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt,
-    _In_ DWORD dwDirectory
+    _In_ DWORD dwDirectory,
+    _Out_opt_ PDWORD pcbSizeOfDirectory
 );
 
 /*
@@ -336,6 +356,25 @@ BOOL PE_FileRaw_Write(
     _In_ DWORD cb,
     _Out_ PDWORD pcbWrite,
     _In_ DWORD cbOffset
+);
+
+/*
+* Retieve the VS_VERSION_INFO struct from a module.
+* NULL entries may exist after 'psm' finalize even on success.
+* -- H
+* -- pProcess
+* -- vaModuleBase
+* -- psm
+* -- pMEVI
+* -- return
+*/
+_Success_(return)
+BOOL PE_VsGetVersionInfo(
+    _In_ VMM_HANDLE H,
+    _In_ PVMM_PROCESS pProcess,
+    _In_ QWORD vaModuleBase,
+    _In_ POB_STRMAP psm,
+    _In_ PVMM_MAP_MODULEENTRY_VERSIONINFO pMEVI
 );
 
 #endif /* __PE_H__ */

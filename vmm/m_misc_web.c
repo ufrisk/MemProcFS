@@ -1,6 +1,6 @@
 // m_misc_web.c : web browsing misc & forensic module.
 //
-// (c) Ulf Frisk, 2022
+// (c) Ulf Frisk, 2022-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

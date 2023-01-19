@@ -6,7 +6,7 @@ Easy trivial point and click memory analysis without the need for complicated co
 
 Analyze memory dump files, <b>live memory</b> via DumpIt or WinPMEM, <b>live memory in read-write mode</b> from virtual machines or from [PCILeech](https://github.com/ufrisk/pcileech/) [FPGA](https://github.com/ufrisk/pcileech-fpga/) hardware devices!
 
-It's even possible to connect to a remote LeechAgent memory acquisition agent over a secured connection - allowing for remote live memory incident response - even over higher latency low band-width connections! Peek into [Virtual Machines with MemProcFS](https://github.com/ufrisk/MemProcFS/wiki/VM), [LiveCloudKd](https://github.com/ufrisk/LeechCore/wiki/Device_LiveCloudKd) or [VMWare](https://github.com/ufrisk/LeechCore/wiki/Device_VMWare)!
+It's even possible to connect to a remote LeechAgent memory acquisition agent over a secured connection - allowing for remote live memory incident response - even over higher latency low band-width connections! Peek into [Virtual Machines with MemProcFS](https://github.com/ufrisk/MemProcFS/wiki/VM), [LiveCloudKd](https://github.com/ufrisk/LeechCore/wiki/Device_LiveCloudKd) or [VMware](https://github.com/ufrisk/LeechCore/wiki/Device_VMWare)!
 
 Use your favorite tools to analyze memory - use your favorite hex editors, your python and powershell scripts, WinDbg or your favorite disassemblers and debuggers - all will work trivally with MemProcFS by just reading and writing files!
 
@@ -135,69 +135,8 @@ Changelog:
 v1.0
 * Initial Release.
 
-v1.1-v3.10
+v1.1-v4.9
 * Various updates. Please see individual relases for more information.
-
-[v4.0](https://github.com/ufrisk/MemProcFS/releases/tag/v4.0)
-* Linux support (x64 and aarch64).
-* Separate releases for Windows and Linux.
-* API Changes and some incompatibilities.
-
-[v4.1](https://github.com/ufrisk/MemProcFS/releases/tag/v4.1)
-* Bug fixes.
-* Offline kernel symbols (partial support). This allows for more functionality in Linux mode and in Windows offline mode.
-
-[v4.2](https://github.com/ufrisk/MemProcFS/releases/tag/v4.2)
-* Support for VMWare live VM introspection.
-* Support for remote agent-based memory analysis.
-* Map kernel memory space into csrss.exe process (to make win32k easier to access).
-
-[v4.3](https://github.com/ufrisk/MemProcFS/releases/tag/v4.3)
-* Support for Windows Server 2022.
-* Support for Active Memory and Full Bitmap Microsoft Crash Dump files.
-* 32-bit support for Windows and Linux (no 32-bit binary release yet).<br>
-  Many thanks to [@JosiahWhite](https://github.com/JosiahWhite) for helping out getting me going and showing this was possible!
-
-[v4.4](https://github.com/ufrisk/MemProcFS/releases/tag/v4.4)
-* Bug fixes: large modules no longer missing.
-* Initial support for [kernel pool parsing](https://github.com/ufrisk/MemProcFS/wiki/FS_SysInfo_Pool).<br>
-  Thank you [@yarden_shafir](https://twitter.com/yarden_shafir) for the excellent [BlackHat talk](https://i.blackhat.com/USA21/Wednesday-Handouts/us-21-Windows-Heap-Backed-Pool-The-Good-The-Bad-And-The-Encoded.pdf) and [PoolViewer](https://github.com/yardenshafir/PoolViewer) tool.
-* Better network connection recovery.
-
-[v4.5](https://github.com/ufrisk/MemProcFS/releases/tag/v4.5)
-* Merge memprocfs (Windows) and memprocfs_fuse (Linux) projects.
-* New VMMDLL_Scatter_* API to simplify C/C++ ReadScatter use.
-* Pool parsing bug fixes.
-
-[v4.6](https://github.com/ufrisk/MemProcFS/releases/tag/v4.6)
-* New ReadScatter API for Python.
-* VMMDLL_Scatter_* API efficiency improvements for some smaller reads.
-* Visual Studio 2022 Support.
-* Upgrade to [Dokany2](https://github.com/dokan-dev/dokany/releases) (NB! Dokany2 will have to be installed!).
-
-[v4.7](https://github.com/ufrisk/MemProcFS/releases/tag/v4.7)
-* New memory search functionality (file system and API).
-* New/improved logging sub-system.
-* Minor API updates.
-
-[v4.8](https://github.com/ufrisk/MemProcFS/releases/tag/v4.8)
-* Bug fixes.
-* New WriteScatter API.
-* Process environment variables.
-* C# support for New Scatter API and Search API.
-* Forensic file consistency when analyzing local file with -forensic start-up option.
-* [Search](https://github.com/ufrisk/MemProcFS/wiki/FS_Search) updates.
-* [Bitlocker](https://github.com/ufrisk/MemProcFS/wiki/FS_BitLocker) key recovery.
-
-[v4.9](https://github.com/ufrisk/MemProcFS/releases/tag/v4.9)
-* Bug fixes.
-* Python and C# API updates.
-* Additional FindEvil detection vectors.
-* Process child/parent parsing improvements.
-* Process integrity levels and full SID list.
-* [Heap parsing](https://github.com/ufrisk/MemProcFS/wiki/FS_Process_Heaps).
-* [Web history](https://github.com/ufrisk/MemProcFS/wiki/FS_Web) plugin.
-</details>
 
 [v5.0](https://github.com/ufrisk/MemProcFS/releases/tag/v5.0)
 * Major release with new features to support parallel analysis tasks.
@@ -218,8 +157,13 @@ v1.1-v3.10
 * Device tree information in /sys/drivers.
 * Linux feature additions: memcompress and token.
 * Manual download of debug symbols (PDBs) on offline systems (Windows only).
+</details>
 
-Latest:
-* Bug fixes.
+[v5.3](https://github.com/ufrisk/MemProcFS/releases/tag/v5.2)
+* Bug fixes and performance optimizations.
+* PE forwarded functions.
+* PE version information.
 * MemProcFS Python batch mode.
 * Linux Python plugin support.
+* Hyper-V Container/Sandbox support.
+* Windows Hypervisor Platform support (VMware and VirtualBox on Hyper-V).

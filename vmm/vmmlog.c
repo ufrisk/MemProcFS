@@ -1,6 +1,6 @@
 // vmmlog.c : implementation of the vmm logging functionality.
 //
-// (c) Ulf Frisk, 2022
+// (c) Ulf Frisk, 2022-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmmlog.h"

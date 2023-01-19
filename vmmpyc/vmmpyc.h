@@ -1,6 +1,6 @@
 // vmmpyc.h : definitions related to the MemProcFS/VMM Python API
 //
-// (c) Ulf Frisk, 2021-2022
+// (c) Ulf Frisk, 2021-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __VMMPYC_H__

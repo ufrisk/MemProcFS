@@ -1,6 +1,6 @@
 // vmmpyc_modulemaps.c : implementation of the modules infomap functionality for vmmpyc.
 //
-// (c) Ulf Frisk, 2021-2022
+// (c) Ulf Frisk, 2021-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmmpyc.h"
@@ -121,6 +121,11 @@ VmmPycModuleMaps_eat(PyObj_ModuleMaps *self, PyObject *args)
             PyDict_SetItemString_DECREF(pyDict, "ofn", PyLong_FromUnsignedLong((DWORD)(pe->vaFunction - pEatMap->vaModuleBase)));
             PyDict_SetItemString_DECREF(pyDict, "va", PyLong_FromUnsignedLongLong(pe->vaFunction));
             PyDict_SetItemString_DECREF(pyDict, "fn", PyUnicode_FromString(pe->uszFunction));
+            if(pe->uszFunction && pe->uszFunction[0]) {
+                PyDict_SetItemString_DECREF(pyDict, "fwdfn", PyUnicode_FromString(pe->uszFunction));
+            } else {
+                PyDict_SetItemString_DECREF(pyDict, "fwdfn", Py_BuildValue("s", NULL));
+            }
             PyList_Append_DECREF(pyList, pyDict);
         }
     }
@@ -130,6 +135,7 @@ VmmPycModuleMaps_eat(PyObj_ModuleMaps *self, PyObject *args)
     PyDict_SetItemString_DECREF(pyDictTop, "ord-base", PyLong_FromUnsignedLong(pEatMap->dwOrdinalBase));
     PyDict_SetItemString_DECREF(pyDictTop, "c-afn", PyLong_FromUnsignedLong(pEatMap->cNumberOfFunctions));
     PyDict_SetItemString_DECREF(pyDictTop, "c-anm", PyLong_FromUnsignedLong(pEatMap->cNumberOfNames));
+    PyDict_SetItemString_DECREF(pyDictTop, "c-fwdfn", PyLong_FromUnsignedLong(pEatMap->cNumberOfForwardedFunctions));
     PyDict_SetItemString_DECREF(pyDictTop, "e", pyList);
     VMMDLL_MemFree(pEatMap);
     return pyDictTop;

@@ -1,6 +1,6 @@
 // vmmnet.c :  implementation of functionality related to the Windows networking.
 //
-// (c) Ulf Frisk, 2019-2022
+// (c) Ulf Frisk, 2019-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -1006,7 +1006,7 @@ VOID VmmNet_Initialize_Context(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProce
     PVMM_MAP_MODULEENTRY peModuleTcpip;
     if(!(ctx = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMNET_CONTEXT)))) { goto fail; }
     // 1: fetch tcpip.sys info
-    if(!VmmMap_GetModuleEntryEx(H, pSystemProcess, 0, "tcpip.sys", &pObModuleMap, &peModuleTcpip)) { goto fail; }
+    if(!VmmMap_GetModuleEntryEx(H, pSystemProcess, 0, "tcpip.sys", 0, &pObModuleMap, &peModuleTcpip)) { goto fail; }
     ctx->vaModuleTcpip = peModuleTcpip->vaBase;
     // 2: ensure load of tcp handle
     PDB_LoadEnsure(H, PDB_GetHandleFromModuleAddress(H, pSystemProcess, ctx->vaModuleTcpip));

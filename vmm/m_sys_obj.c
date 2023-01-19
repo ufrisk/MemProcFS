@@ -3,7 +3,7 @@
 // The 'sys/objects' module is responsible for displaying information about
 // the kernel object maanger.
 //
-// (c) Ulf Frisk, 2021-2022
+// (c) Ulf Frisk, 2021-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmm.h"

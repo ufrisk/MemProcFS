@@ -1,7 +1,7 @@
 // memprocfs_dokan.c : implementation of core functionality for the Memory Process File System
 // This is just a thin loader for the virtual memory manager dll which contains the logic.
 //
-// (c) Ulf Frisk, 2018-2022
+// (c) Ulf Frisk, 2018-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifdef _WIN32
@@ -571,6 +571,13 @@ BOOL WINAPI MemProcFsCtrlHandler(DWORD fdwCtrlType)
         TerminateProcess(GetCurrentProcess(), 1);
         Sleep(1000);
         ExitProcess(1);
+        return TRUE;
+    }
+    if(fdwCtrlType == CTRL_BREAK_EVENT) {
+        printf("CTRL+BREAK detected - refresh initiated ...\n");
+        VMMDLL_ConfigSet(g_hVMM, VMMDLL_OPT_REFRESH_ALL, 1);
+        VMMDLL_ConfigSet(g_hVMM, VMMDLL_OPT_CONFIG_DEBUG, 1);
+        printf("CTRL+BREAK finished ...\n");
         return TRUE;
     }
     return FALSE;

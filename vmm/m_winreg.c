@@ -1,6 +1,6 @@
 // m_winreg.c : implementation related to the WinReg built-in module.
 //
-// (c) Ulf Frisk, 2019-2022
+// (c) Ulf Frisk, 2019-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmm.h"

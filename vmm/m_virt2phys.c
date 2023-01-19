@@ -1,6 +1,6 @@
 // m_virt2phys.c : implementation of the virt2phys built-in module.
 //
-// (c) Ulf Frisk, 2018-2022
+// (c) Ulf Frisk, 2018-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "pluginmanager.h"

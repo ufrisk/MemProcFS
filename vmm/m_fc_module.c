@@ -4,7 +4,7 @@
 //
 // NB! module generate forensic data only - no file system presence!
 //
-// (c) Ulf Frisk, 2021-2022
+// (c) Ulf Frisk, 2021-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -15,44 +15,8 @@
 #include "charutil.h"
 #include "util.h"
 
-static LPSTR MFCMODULE_CSV_MODULES = "PID,Name,Wow64,Size,Start,End,#Imports,#Exports,#Sections,Path,KernelPath,PdbPath,PdbAge,PdbHexGUID\n";
-static LPSTR MFCMODULE_CSV_UNLOADEDMODULES = "PID,ModuleName,UnloadTime,Wow64,Size,Start,End\n";
-
-_Success_(return)
-BOOL MFcModule_GetCodeView(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, PVMM_MAP_MODULEENTRY peM, _Out_writes_(33) LPSTR szGUID, _Out_writes_(MAX_PATH) LPSTR szPdbFileName, _Out_ PDWORD pdwAge)
-{
-    LPCSTR szHEX_ALPHABET = "0123456789ABCDEF";
-    BYTE b;
-    DWORD i, j;
-    PE_CODEVIEW_INFO CodeViewInfo = { 0 };
-    szGUID[0] = 0;
-    szPdbFileName[0] = 0;
-    *pdwAge = 0;
-    if(!PE_GetCodeViewInfo(H, pProcess, peM->vaBase, NULL, &CodeViewInfo)) { return FALSE; }
-    // guid -> hex
-    for(i = 0, j = 0; i < 16; i++) {
-        b = CodeViewInfo.CodeView.Guid[i];
-        szGUID[j++] = szHEX_ALPHABET[b >> 4];
-        szGUID[j++] = szHEX_ALPHABET[b & 7];
-    }
-    szGUID[32] = 0;
-    strncpy_s(szPdbFileName, MAX_PATH, CodeViewInfo.CodeView.PdbFileName, _TRUNCATE);
-    *pdwAge = CodeViewInfo.CodeView.Age;
-    return TRUE;
-}
-
-VOID MFcModule_LogCodeView(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData), _In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY peM)
-{
-    DWORD dwAge;
-    CHAR usz[MAX_PATH], szGUID[33], szPdbFileName[MAX_PATH];
-    if(MFcModule_GetCodeView(H, pProcess, peM, szGUID, szPdbFileName, &dwAge)) {
-        snprintf(usz, sizeof(usz), "AGE=[%i] GUID=[%s] PDB=[%s]", dwAge, szGUID, szPdbFileName);
-        pd->qwNum[0] = dwAge;
-        pd->usz[0] = peM->uszText;
-        pd->usz[1] = usz;
-        pfnLogJSON(H, pd);
-    }
-}
+static LPSTR MFCMODULE_CSV_MODULES = "PID,Process,Name,Wow64,Size,Start,End,#Imports,#Exports,#Sections,Path,KernelPath,PdbPath,PdbAge,PdbHexGUID,VerCompanyName,VerFileDescription,VerFileVersion,VerInternalName,VerLegalCopyright,VerOriginalFilename,VerProductName,VerProductVersion\n";
+static LPSTR MFCMODULE_CSV_UNLOADEDMODULES = "PID,Process,ModuleName,UnloadTime,Wow64,Size,Start,End\n";
 
 VOID MFcModule_LogModule(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData), _In_ PVMMOB_MAP_MODULE pMap)
 {
@@ -67,6 +31,48 @@ VOID MFcModule_LogModule(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDAT
         pd->va[0] = pe->vaBase;
         pd->va[1] = pe->vaBase + pe->cbImageSize - 1;
         pd->usz[0] = pe->uszText;
+        pfnLogJSON(H, pd);
+    }
+}
+
+VOID MFcModule_LogModuleDebugInfo(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData), _In_ PVMMOB_MAP_MODULE pMap)
+{
+    DWORD i;
+    CHAR usz[MAX_PATH];
+    PVMM_MAP_MODULEENTRY pe;
+    for(i = 0; i < pMap->cMap; i++) {
+        pe = pMap->pMap + i;
+        snprintf(usz, sizeof(usz), "AGE=[%i] GUID=[%s] PDB=[%s]", pe->pExDebugInfo->dwAge, pe->pExDebugInfo->uszGuid, pe->pExDebugInfo->uszPdbFilename);
+        pd->i = i;
+        pd->qwNum[0] = pe->pExDebugInfo->dwAge;
+        pd->va[0] = pe->vaBase;
+        pd->usz[0] = pe->uszText;
+        pd->usz[1] = usz;
+        pfnLogJSON(H, pd);
+    }
+}
+
+VOID MFcModule_LogModuleVersionInfo(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData), _In_ PVMMOB_MAP_MODULE pMap)
+{
+    DWORD i;
+    CHAR usz[0x1000];
+    PVMM_MAP_MODULEENTRY pe;
+    for(i = 0; i < pMap->cMap; i++) {
+        pe = pMap->pMap + i;
+        snprintf(usz, sizeof(usz), "CompanyName=[%s] FileDescription=[%s] FileVersion=[%s] InternalName=[%s] LegalCopyright=[%s] OriginalFilename=[%s] ProductName=[%s] ProductVersion=[%s]",
+            pe->pExVersionInfo->uszCompanyName,
+            pe->pExVersionInfo->uszFileDescription,
+            pe->pExVersionInfo->uszFileVersion,
+            pe->pExVersionInfo->uszInternalName,
+            pe->pExVersionInfo->uszLegalCopyright,
+            pe->pExVersionInfo->uszOriginalFilename,
+            pe->pExVersionInfo->uszProductName,
+            pe->pExVersionInfo->uszProductVersion
+        );
+        pd->i = i;
+        pd->va[0] = pe->vaBase;
+        pd->usz[0] = pe->uszText;
+        pd->usz[1] = usz;
         pfnLogJSON(H, pd);
     }
 }
@@ -93,15 +99,25 @@ VOID MFcModule_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _I
     PVMM_PROCESS pProcess = ctxP->pProcess;
     PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd;
     PVMMOB_MAP_UNLOADEDMODULE pObUnloadedModuleMap = NULL;
-    PVMMOB_MAP_MODULE pObModuleMap = NULL;
-    PVMM_MAP_MODULEENTRY peM;
-    DWORD i;
+    PVMMOB_MAP_MODULE pObModuleMap = NULL, pObModuleMap_DebugInfo = NULL, pObModuleMap_VersionInfo = NULL;
     if(!pProcess || !(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)))) { return; }
     // loaded modules:
     FC_JSONDATA_INIT_PIDTYPE(pd, pProcess->dwPID, "module");
-    if(VmmMap_GetModule(H, pProcess, &pObModuleMap)) {
+    if(VmmMap_GetModule(H, pProcess, 0, &pObModuleMap)) {
         if(H->fAbort) { goto fail; }
         MFcModule_LogModule(H, pd, pfnLogJSON, pObModuleMap);
+    }
+    // module pdb debuginfo / codeview:
+    FC_JSONDATA_INIT_PIDTYPE(pd, pProcess->dwPID, "module-codeview");
+    if(VmmMap_GetModule(H, pProcess, VMM_MODULE_FLAG_DEBUGINFO, &pObModuleMap_DebugInfo)) {
+        if(H->fAbort) { goto fail; }
+        MFcModule_LogModuleDebugInfo(H, pd, pfnLogJSON, pObModuleMap_DebugInfo);
+    }
+    // module versioninfo
+    FC_JSONDATA_INIT_PIDTYPE(pd, pProcess->dwPID, "module-versioninfo");
+    if(VmmMap_GetModule(H, pProcess, VMM_MODULE_FLAG_VERSIONINFO, &pObModuleMap_VersionInfo)) {
+        if(H->fAbort) { goto fail; }
+        MFcModule_LogModuleVersionInfo(H, pd, pfnLogJSON, pObModuleMap_VersionInfo);
     }
     // unloaded modules:
     FC_JSONDATA_INIT_PIDTYPE(pd, pProcess->dwPID, "unloadedmodule");
@@ -109,16 +125,11 @@ VOID MFcModule_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _I
         if(H->fAbort) { goto fail; }
         MFcModule_LogUnloadedModule(H, pd, pfnLogJSON, pObUnloadedModuleMap);
     }
-    // pdb debug info / codeview:
-    FC_JSONDATA_INIT_PIDTYPE(pd, pProcess->dwPID, "codeview");
-    for(i = 0; i < pObModuleMap->cMap; i++) {
-        if(H->fAbort) { goto fail; }
-        peM = pObModuleMap->pMap + i;
-        MFcModule_LogCodeView(H, pd, pfnLogJSON, pProcess, peM);
-    }
 fail:
     Ob_DECREF(pObModuleMap);
     Ob_DECREF(pObUnloadedModuleMap);
+    Ob_DECREF(pObModuleMap_DebugInfo);
+    Ob_DECREF(pObModuleMap_VersionInfo);
     LocalFree(pd);
 }
 
@@ -127,8 +138,6 @@ VOID MFcModule_LogModuleCSV(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ 
     BOOL fSuppressDriver;
     DWORD i;
     PVMM_MAP_MODULEENTRY pe;
-    DWORD dwAge;
-    CHAR szGUID[33], szPdbFileName[MAX_PATH];
     PVMM_MAP_VADENTRY peVad = NULL;
     PVMMOB_MAP_VAD pObVadMap = NULL;
     VmmMap_GetVad(H, pProcess, &pObVadMap, VMM_VADMAP_TP_FULL);
@@ -136,16 +145,12 @@ VOID MFcModule_LogModuleCSV(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ 
     for(i = 0; i < pMap->cMap; i++) {
         pe = pMap->pMap + i;
         if(fSuppressDriver && CharUtil_StrEndsWith(pe->uszText, ".sys", FALSE)) { continue; }
-        if(!MFcModule_GetCodeView(H, pProcess, pe, szGUID, szPdbFileName, &dwAge)) {
-            dwAge = 0;
-            szGUID[0] = 0;
-            szPdbFileName[0] = 0;
-        }
         peVad = VmmMap_GetVadEntry(H, pObVadMap, pe->vaBase);
-        //"PID,Name,Wow64,Size,Start,End,#Imports,#Exports,#Sections,Path,KernelPath,PdbPath,PdbAge,PdbHexGUID"
+        //"PID,Process,Name,Wow64,Size,Start,End,#Imports,#Exports,#Sections,Path,KernelPath,PdbPath,PdbAge,PdbHexGUID,VerCompanyName,VerFileDescription,VerFileVersion,VerInternalName,VerLegalCopyright,VerOriginalFilename,VerProductName,VerProductVersion"
         FcCsv_Reset(hCSV);
-        FcFileAppend(H, "modules.csv", "%i,%s,%i,0x%x,0x%llx,0x%llx,%i,%i,%i,%s,%s,%s,%i,%s\n",
+        FcFileAppend(H, "modules.csv", "%i,%s,%s,%i,0x%x,0x%llx,0x%llx,%i,%i,%i,%s,%s,%s,%i,%s,%s,%s,%s,%s,%s,%s,%s,%s\n",
             pProcess->dwPID,
+            FcCsv_String(hCSV, pProcess->pObPersistent->uszNameLong),
             FcCsv_String(hCSV, pe->uszText),
             pe->fWoW64 ? 1 : 0,
             pe->cbImageSize,
@@ -156,9 +161,17 @@ VOID MFcModule_LogModuleCSV(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ 
             pe->cSection,
             FcCsv_String(hCSV, pe->uszFullName),
             peVad ? FcCsv_String(hCSV, peVad->uszText) : "",
-            FcCsv_String(hCSV, szPdbFileName),
-            dwAge,
-            FcCsv_String(hCSV, szGUID)
+            FcCsv_String(hCSV, pe->pExDebugInfo->uszPdbFilename),
+            pe->pExDebugInfo->dwAge,
+            FcCsv_String(hCSV, pe->pExDebugInfo->uszGuid),
+            FcCsv_String(hCSV, pe->pExVersionInfo->uszCompanyName),
+            FcCsv_String(hCSV, pe->pExVersionInfo->uszFileDescription),
+            FcCsv_String(hCSV, pe->pExVersionInfo->uszFileVersion),
+            FcCsv_String(hCSV, pe->pExVersionInfo->uszInternalName),
+            FcCsv_String(hCSV, pe->pExVersionInfo->uszLegalCopyright),
+            FcCsv_String(hCSV, pe->pExVersionInfo->uszOriginalFilename),
+            FcCsv_String(hCSV, pe->pExVersionInfo->uszProductName),
+            FcCsv_String(hCSV, pe->pExVersionInfo->uszProductVersion)
         );
     }
     Ob_DECREF(pObVadMap);
@@ -172,10 +185,11 @@ VOID MFcModule_LogUnloadedModuleCSV(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProces
     for(i = 0; i < pMap->cMap; i++) {
         pe = pMap->pMap + i;
         Util_FileTime2CSV(pe->ftUnload, vszTimeUnload);
-        //"PID,ModuleName,UnloadTime,Wow64,Size,Start,End"
+        //"PID,Process,ModuleName,UnloadTime,Wow64,Size,Start,End"
         FcCsv_Reset(hCSV);
-        FcFileAppend(H, "unloaded_modules.csv", "%i,%s,%s,%i,0x%x,0x%llx,0x%llx\n",
+        FcFileAppend(H, "unloaded_modules.csv", "%i,%s,%s,%s,%i,0x%x,0x%llx,0x%llx\n",
             pProcess->dwPID,
+            FcCsv_String(hCSV, pProcess->pObPersistent->uszNameLong),
             FcCsv_String(hCSV, pe->uszText),
             vszTimeUnload,
             pe->fWoW64 ? 1 : 0,
@@ -193,14 +207,14 @@ VOID MFcModule_FcLogCSV(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In
     PVMMOB_MAP_MODULE pObModuleMap = NULL;
     if(!pProcess) { return; }
     // loaded modules:
-    if(VmmMap_GetModule(H, pProcess, &pObModuleMap)) {
+    if(VmmMap_GetModule(H, pProcess, VMM_MODULE_FLAG_DEBUGINFO | VMM_MODULE_FLAG_VERSIONINFO, &pObModuleMap)) {
         if(H->fAbort) { goto fail; }
         MFcModule_LogModuleCSV(H, pProcess, hCSV, pObModuleMap);
     }
     // unloaded modules:
     if(VmmMap_GetUnloadedModule(H, pProcess, &pObUnloadedModuleMap)) {
         if(H->fAbort) { goto fail; }
-        if(_stricmp(pProcess->szName, "csrss.exe") && _stricmp(pProcess->szName, "Registry")) {
+        if(_stricmp(pProcess->szName, "csrss.exe") && _stricmp(pProcess->szName, "Registry") && _stricmp(pProcess->szName, "vmmem")) {
             MFcModule_LogUnloadedModuleCSV(H, pProcess, hCSV, pObUnloadedModuleMap);
         }
     }

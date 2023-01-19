@@ -2,7 +2,7 @@
 //         used for debug symbols and automatic retrieval from the Microsoft
 //         Symbol Server. (Windows exclusive functionality).
 //
-// (c) Ulf Frisk, 2019-2022
+// (c) Ulf Frisk, 2019-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "pdb.h"
@@ -240,8 +240,10 @@ BOOL PDB_InfoDB_TypeChildOffset(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In
 #define _NO_CVCONST_H
 #include <dbghelp.h>
 
-#define VMMWIN_PDB_LOAD_ADDRESS_STEP    0x10000000;
-#define VMMWIN_PDB_LOAD_ADDRESS_BASE    0x0000511f00000000;
+#define VMMWIN_PDB_LOAD_ADDRESS_STEP    0x10000000
+#define VMMWIN_PDB_LOAD_ADDRESS_BASE    0x0000511f00000000
+
+QWORD g_PDB_qwLoadAddressNext = VMMWIN_PDB_LOAD_ADDRESS_BASE;
 
 typedef struct tdPDB_ENTRY {
     OB ObHdr;
@@ -299,7 +301,6 @@ typedef struct tdOB_PDB_CONTEXT {
     CRITICAL_SECTION Lock;
     POB_MAP pmPdbByHash;
     POB_MAP pmPdbByModule;
-    QWORD qwLoadAddressNext;
     union {
         VMMWIN_PDB_FUNCTIONS pfn;
         PVOID vafn[sizeof(VMMWIN_PDB_FUNCTIONS) / sizeof(PVOID)];
@@ -498,6 +499,7 @@ PDB_HANDLE PDB_GetHandleFromHandleMagic(_In_ VMM_HANDLE H, _In_ PDB_HANDLE hPDB)
 _Success_(return)
 BOOL PDB_LoadEnsureEx(_In_ VMM_HANDLE H, _In_ POB_PDB_CONTEXT ctx, _In_ PPDB_ENTRY pPdbEntry)
 {
+    QWORD qwLoadAddress;
     CHAR szPdbGuidAge[66];
     CHAR szPdbPath[MAX_PATH + 1];
     if(!ctx || pPdbEntry->fLoadFailed) { return FALSE; }
@@ -521,8 +523,8 @@ BOOL PDB_LoadEnsureEx(_In_ VMM_HANDLE H, _In_ POB_PDB_CONTEXT ctx, _In_ PPDB_ENT
         goto fail;
     }
     pPdbEntry->szPath = Util_StrDupA(szPdbPath);
-    pPdbEntry->qwLoadAddress = ctx->pfn.SymLoadModuleEx(ctx->hSym, NULL, szPdbPath, NULL, ctx->qwLoadAddressNext, pPdbEntry->cbModuleSize, NULL, 0);
-    ctx->qwLoadAddressNext += VMMWIN_PDB_LOAD_ADDRESS_STEP;
+    qwLoadAddress = InterlockedAdd64(&g_PDB_qwLoadAddressNext, VMMWIN_PDB_LOAD_ADDRESS_STEP);
+    pPdbEntry->qwLoadAddress = ctx->pfn.SymLoadModuleEx(ctx->hSym, NULL, szPdbPath, NULL, qwLoadAddress, pPdbEntry->cbModuleSize, NULL, 0);
     if(!pPdbEntry->szPath || !pPdbEntry->qwLoadAddress) { goto fail; }
     return TRUE;
 fail:
@@ -1158,7 +1160,6 @@ VOID PDB_Initialize(_In_ VMM_HANDLE H, _In_opt_ PPE_CODEVIEW_INFO pPdbInfoOpt, _
         memcpy(&pObKernelParameters->PdbInfo, pPdbInfoOpt, sizeof(PE_CODEVIEW_INFO));
     }
     InitializeCriticalSection(&ctx->Lock);
-    ctx->qwLoadAddressNext = VMMWIN_PDB_LOAD_ADDRESS_BASE;
     ctx->fDisabled = TRUE;
     H->vmm.pObPdbContext = (POB)ctx;
     if(fInitializeKernelAsync) {

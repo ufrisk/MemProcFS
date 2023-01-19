@@ -1,7 +1,7 @@
 // memprocfs_fuse.c : implementation of core functionality for the Memory Process File System
 // This is just a thin loader for the virtual memory manager .so which contains the logic.
 //
-// (c) Ulf Frisk, 2021-2022
+// (c) Ulf Frisk, 2021-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifdef LINUX

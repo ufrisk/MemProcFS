@@ -1,6 +1,6 @@
 // charutil.c : implementation of various character/string utility functions.
 //
-// (c) Ulf Frisk, 2021-2022
+// (c) Ulf Frisk, 2021-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "charutil.h"
@@ -34,6 +34,19 @@ BOOL CharUtil_IsAnsiW(_In_ LPCWSTR wsz)
         c = wsz[i++];
         if(c == 0) { return TRUE; }
         if(c > 127) { return FALSE; }
+    }
+}
+
+BOOL CharUtil_IsAnsiFsA(_In_ LPCSTR sz)
+{
+    UCHAR c;
+    DWORD i = 0;
+    while(TRUE) {
+        c = sz[i++];
+        if(c == 0) { return TRUE; }
+        if(c > 127) { return FALSE; }
+        if(CHARUTIL_ANSIFILENAME_ALLOW[c] == '0') { return FALSE; }
+        if(i > MAX_PATH - 2) { return FALSE; }
     }
 }
 
