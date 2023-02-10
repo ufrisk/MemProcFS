@@ -323,6 +323,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="..\includes\leechcore.h" />
+    <ClInclude Include="..\includes\libpdbcrust.h" />
     <ClInclude Include="charutil.h" />
     <ClInclude Include="fc.h" />
     <ClInclude Include="infodb.h" />

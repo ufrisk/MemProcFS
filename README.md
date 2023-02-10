@@ -167,3 +167,6 @@ v1.1-v4.9
 * Linux Python plugin support.
 * Hyper-V Container/Sandbox support.
 * Windows Hypervisor Platform support (VMware and VirtualBox on Hyper-V).
+
+Latest:
+* Microsoft symbol server support on Linux.

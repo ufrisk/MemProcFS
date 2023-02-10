@@ -57,7 +57,18 @@ HMODULE LoadLibraryA(LPSTR lpFileName)
     if(!strcmp(lpFileName, "ntdll.dll")) {
         return (HMODULE)0x1000;      // FAKE HMODULE
     }
+    if(lpFileName[0] == '/') {
+        return dlopen(lpFileName, RTLD_NOW);
+    }
     return 0;
+}
+
+BOOL FreeLibrary(_In_ HMODULE hLibModule)
+{
+    if((SIZE_T)hLibModule && ((SIZE_T)hLibModule > 0x10000)) {
+        dlclose(hLibModule);
+    }
+    return TRUE;
 }
 
 DWORD GetModuleFileNameA(_In_opt_ HMODULE hModule, _Out_ LPSTR lpFilename, _In_ DWORD nSize)

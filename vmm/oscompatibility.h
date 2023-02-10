@@ -194,10 +194,10 @@ typedef int(*_CoreCrtNonSecureSearchSortCompareFunction)(void const *, void cons
 #define GetCurrentProcess()					((HANDLE)-1)
 #define InetNtopA                           inet_ntop
 #define closesocket(s)                      close(s)
-#define FreeLibrary(h)
 #define HeapAlloc(hHeap, dwFlags, dwBytes)  malloc(dwBytes)
 
 HMODULE LoadLibraryA(LPSTR lpFileName);
+BOOL FreeLibrary(_In_ HMODULE hLibModule);
 FARPROC GetProcAddress(_In_opt_ HMODULE hModule, _In_ LPSTR lpProcName);
 
 // SID

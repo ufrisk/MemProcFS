@@ -144,6 +144,9 @@
     <ClInclude Include="vmmvm.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\includes\libpdbcrust.h">
+      <Filter>Header Files\includes</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="vmmdll.c">
