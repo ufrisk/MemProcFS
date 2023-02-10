@@ -1195,8 +1195,8 @@ typedef struct tdVMM_V2P_ENTRY {
     QWORD pa;
     QWORD pte;
     // internals below:
-    PVMMOB_CACHE_MEM pObPTE;
-    struct tdVMM_V2P_ENTRY *FLink;
+    union { PVMMOB_CACHE_MEM pObPTE; QWORD _Filler32_1; };
+    union { struct tdVMM_V2P_ENTRY *FLink; QWORD _Filler32_2; };
     QWORD _paPDPT_PAE;      // internal use only
     QWORD _Filler[8];       // filler to equal sizeof(MEM_SCATTER)
 } VMM_V2P_ENTRY, *PVMM_V2P_ENTRY;
