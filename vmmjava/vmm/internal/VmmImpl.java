@@ -36,11 +36,22 @@ public class VmmImpl implements IVmm
 	
 	private VmmImpl(String vmmNativeLibraryPath, String argv[])
 	{
-			System.setProperty("jna.library.path", vmmNativeLibraryPath);
-			hVMM = VmmNative.INSTANCE.VMMDLL_Initialize(argv.length, argv);
-			if(hVMM == null) { throw new VmmException("Vmm Init: failed in native code."); }
-			VmmNative.INSTANCE.VMMDLL_InitializePlugins(hVMM);
-			this.vmmNativeLibraryPath = vmmNativeLibraryPath;
+		String[] argv_new = null;
+		if(argv.length < 2) {
+			throw new VmmException("Vmm Init: failed - too few arguments.");
+		}
+		if(argv[0].equals("") || argv[0].equals("-printf")) {
+			argv_new = argv;
+		} else {
+			argv_new = new String[argv.length + 1];
+			argv_new[0] = "";
+			System.arraycopy(argv, 0, argv_new, 1, argv.length);
+		}
+		System.setProperty("jna.library.path", vmmNativeLibraryPath);
+		hVMM = VmmNative.INSTANCE.VMMDLL_Initialize(argv_new.length, argv_new);
+		if(hVMM == null) { throw new VmmException("Vmm Init: failed in native code."); }
+		VmmNative.INSTANCE.VMMDLL_InitializePlugins(hVMM);
+		this.vmmNativeLibraryPath = vmmNativeLibraryPath;
 	}
 	
 	public static IVmm Initialize(String vmmNativeLibraryPath, String argv[])
@@ -537,10 +548,11 @@ public class VmmImpl implements IVmm
 		return result;
 	}
 	
-	public VmmMap_PoolMap mapPool()
+	public VmmMap_PoolMap mapPool(boolean isBigPoolOnly)
 	{
+		int flags = isBigPoolOnly ? VmmNative.VMMDLL_POOLMAP_FLAG_BIG : VmmNative.VMMDLL_POOLMAP_FLAG_ALL;
 		PointerByReference pptr = new PointerByReference();
-		boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetPool(hVMM, pptr, VmmNative.VMMDLL_POOLMAP_FLAG_ALL);
+		boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetPool(hVMM, pptr, flags);
 		if(!f) { throw new VmmException(); }
 		VmmNative.VMMDLL_MAP_POOL pMap = new VmmNative.VMMDLL_MAP_POOL(pptr.getValue());
 		// process result:
@@ -943,8 +955,8 @@ public class VmmImpl implements IVmm
 			return Native.toString(info.szSID);
 		}
 
-		public IVmmModule moduleGet(long va) {
-			for(IVmmModule m : moduleGetAll()) {
+		public IVmmModule moduleGet(long va, boolean isExtendedInfo) {
+			for(IVmmModule m : moduleGetAll(isExtendedInfo)) {
 				if((va >= m.getVaBase()) && (va <= m.getVaBase() + m.getSize())) {
 					return m;
 				}
@@ -952,24 +964,48 @@ public class VmmImpl implements IVmm
 			return null;
 		}
 
-		public IVmmModule moduleGet(String name) {
+		public IVmmModule moduleGet(String name, boolean isExtendedInfo) {
+			int flags = VmmNative.VMMDLL_MODULE_FLAG_NORMAL;
+			if(isExtendedInfo) {
+				flags = VmmNative.VMMDLL_MODULE_FLAG_DEBUGINFO + VmmNative.VMMDLL_MODULE_FLAG_VERSIONINFO;
+			}
 			PointerByReference pptr = new PointerByReference();
-			boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetModuleFromNameU(hVMM, pid, name, pptr);
+			boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetModuleFromNameU(hVMM, pid, name, pptr, flags);
 			if(!f) { throw new VmmException(); }
 			VmmNative.VMMDLL_MAP_MODULEENTRY pEntry = new VmmNative.VMMDLL_MAP_MODULEENTRY(pptr.getValue());
+			VmmNative.VMMDLL_MAP_MODULEENTRY_DEBUGINFO pDebugEntry = null;
+			if(pEntry.pExDebugInfo != 0) {
+				pDebugEntry = new VmmNative.VMMDLL_MAP_MODULEENTRY_DEBUGINFO(new PointerByReference(new Pointer(pEntry.pExDebugInfo)).getValue());
+			}
+			VmmNative.VMMDLL_MAP_MODULEENTRY_VERSIONINFO pVersionEntry = null;
+			if(pEntry.pExVersionInfo != 0) {
+				pVersionEntry = new VmmNative.VMMDLL_MAP_MODULEENTRY_VERSIONINFO(new PointerByReference(new Pointer(pEntry.pExVersionInfo)).getValue());
+			}
 			VmmNative.INSTANCE.VMMDLL_MemFree(pptr.getValue());
-			return new VmmImpl.VmmModuleImpl(this, pEntry);
+			return new VmmImpl.VmmModuleImpl(this, pEntry, pDebugEntry, pVersionEntry);
 		}
 
-		public List<IVmmModule> moduleGetAll() {
+		public List<IVmmModule> moduleGetAll(boolean isExtendedInfo) {
+			int flags = VmmNative.VMMDLL_MODULE_FLAG_NORMAL;
+			if(isExtendedInfo) {
+				flags = VmmNative.VMMDLL_MODULE_FLAG_DEBUGINFO + VmmNative.VMMDLL_MODULE_FLAG_VERSIONINFO;
+			}
 			PointerByReference pptr = new PointerByReference();
-			boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetModuleU(hVMM, pid, pptr);
+			boolean f = VmmNative.INSTANCE.VMMDLL_Map_GetModuleU(hVMM, pid, pptr, flags);
 			if(!f) { throw new VmmException(); }
 			VmmNative.VMMDLL_MAP_MODULE pMap = new VmmNative.VMMDLL_MAP_MODULE(pptr.getValue());
 			// process result:
 			ArrayList<IVmmModule> result = new ArrayList<IVmmModule>();
 			for(VmmNative.VMMDLL_MAP_MODULEENTRY n : pMap.pMap) {
-				result.add(new VmmImpl.VmmModuleImpl(this, n));
+				VmmNative.VMMDLL_MAP_MODULEENTRY_DEBUGINFO pDebugEntry = null;
+				if(n.pExDebugInfo != 0) {
+					pDebugEntry = new VmmNative.VMMDLL_MAP_MODULEENTRY_DEBUGINFO(new PointerByReference(new Pointer(n.pExDebugInfo)).getValue());
+				}
+				VmmNative.VMMDLL_MAP_MODULEENTRY_VERSIONINFO pVersionEntry = null;
+				if(n.pExVersionInfo != 0) {
+					pVersionEntry = new VmmNative.VMMDLL_MAP_MODULEENTRY_VERSIONINFO(new PointerByReference(new Pointer(n.pExVersionInfo)).getValue());
+				}
+				result.add(new VmmImpl.VmmModuleImpl(this, n, pDebugEntry, pVersionEntry));
 			}
 			VmmNative.INSTANCE.VMMDLL_MemFree(pptr.getValue());
 			return result;
@@ -1026,9 +1062,14 @@ public class VmmImpl implements IVmm
 		private IVmmProcess process;
 		private int pid;
 		private VmmNative.VMMDLL_MAP_MODULEENTRY module;
+		private VmmNative.VMMDLL_MAP_MODULEENTRY_DEBUGINFO debug;
+		private VmmNative.VMMDLL_MAP_MODULEENTRY_VERSIONINFO version;
 		
-		private VmmModuleImpl(IVmmProcess process, VmmNative.VMMDLL_MAP_MODULEENTRY module) {
+		
+		private VmmModuleImpl(IVmmProcess process, VmmNative.VMMDLL_MAP_MODULEENTRY module, VmmNative.VMMDLL_MAP_MODULEENTRY_DEBUGINFO debug, VmmNative.VMMDLL_MAP_MODULEENTRY_VERSIONINFO version) {
 			this.module = module;
+			this.debug = debug;
+			this.version = version;
 			this.process = process;
 			this.pid = process.getPID();
 		}
@@ -1081,7 +1122,35 @@ public class VmmImpl implements IVmm
 		public int getCountIAT() {
 			return module.cIAT;
 		}
+			
+		public Vmm_ModuleExDebugInfo getExDebugInfo() {
+			if(debug == null) {
+				return null;
+			}
+			Vmm_ModuleExDebugInfo n = new Vmm_ModuleExDebugInfo();
+			n.dwAge = debug.dwAge;
+			n.Guid = debug.uszGuid;
+			n.GuidBytes = debug.Guid;
+			n.PdbFilename = debug.uszPdbFilename;
+			return n;
+		}
 		
+		public Vmm_ModuleExVersionInfo getExVersionInfo() {
+			if(version == null) {
+				return null;
+			}
+			Vmm_ModuleExVersionInfo n = new Vmm_ModuleExVersionInfo();
+			n.CompanyName = version.uszCompanyName;
+			n.FileDescription = version.uszFileDescription;
+			n.FileVersion = version.uszFileVersion;
+			n.InternalName = version.uszInternalName;
+			n.LegalCopyright = version.uszLegalCopyright;
+			n.OriginalFilename = version.uszOriginalFilename;
+			n.ProductName = version.uszProductName;
+			n.ProductVersion = version.uszProductVersion;
+			return n;
+		}
+
 		public long getProcAddress(String szFunctionName) {
 			return VmmNative.INSTANCE.VMMDLL_ProcessGetProcAddressU(hVMM, pid, module.uszText, szFunctionName);
 		}
@@ -1147,6 +1216,7 @@ public class VmmImpl implements IVmm
 				e.oFunctionsArray = n.oFunctionsArray;
 				e.oNamesArray = n.oNamesArray;
 				e.uszFunction = n.uszFunction;
+				e.uszForwardedFunction = n.uszForwardedFunction;
 				e.uszModule = module.uszText;
 				result.add(e);
 			}

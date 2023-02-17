@@ -200,20 +200,20 @@ public interface IVmmProcess
 	 * @param va
 	 * @return
 	 */
-	public IVmmModule moduleGet(long va);
+	public IVmmModule moduleGet(long va, boolean isExtendedInfo);
 	
 	/**
 	 * Retrieve a module by its name.
 	 * @param name
 	 * @return
 	 */
-	public IVmmModule moduleGet(String name);
+	public IVmmModule moduleGet(String name, boolean isExtendedInfo);
 	
 	/**
 	 * Retrieve all modules loaded into the process.
 	 * @return
 	 */
-	public List<IVmmModule> moduleGetAll();
+	public List<IVmmModule> moduleGetAll(boolean isExtendedInfo);
 	
 	
 	

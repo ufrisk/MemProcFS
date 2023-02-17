@@ -94,6 +94,22 @@ public interface IVmmModule
 	 * @return
 	 */
 	public IVmmPdb getPdb();
+
+	/**
+	 * Retrieve debug directory information. The debug directory info requires
+	 * that the module has been initialized with <b>isExtendedInfo</b> but may
+	 * still fail if memory is unreadable - in which case null is returned.
+	 * @return
+	 */	
+	public Vmm_ModuleExDebugInfo getExDebugInfo();
+	
+	/**
+	 * Retrieve PE version info. The PE version info requires that the module
+	 * has been initialized with <b>isExtendedInfo</b> but may still fail if
+	 * memory is unreadable - in which case null is returned.
+	 * @return
+	 */	
+	public Vmm_ModuleExVersionInfo getExVersionInfo();
 	
 	
 	

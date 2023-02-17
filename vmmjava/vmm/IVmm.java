@@ -73,20 +73,77 @@ public interface IVmm
 	public static final long OPT_CONFIG_VMM_VERSION_REVISION 	= 0x2000000B00000000L;
 	public static final long OPT_CONFIG_STATISTICS_FUNCTIONCALL = 0x2000000C00000000L;
 	public static final long OPT_CONFIG_IS_PAGING_ENABLED 		= 0x2000000D00000000L;
+
 	
+	
+	/**
+	 * Retrieve the OS kernel major version.
+	 */
 	public static final long OPT_WIN_VERSION_MAJOR 				= 0x2000010100000000L;
+	
+	/**
+	 * Retrieve the OS kernel minor version.
+	 */
 	public static final long OPT_WIN_VERSION_MINOR 				= 0x2000010200000000L;
+	
+	/**
+	 * Retrieve the OS kernel build.
+	 */
 	public static final long OPT_WIN_VERSION_BUILD 				= 0x2000010300000000L;
+	
+	/**
+	 * Retrieve the MemProcFS generated system id.
+	 */
 	public static final long OPT_WIN_SYSTEM_UNIQUE_ID 			= 0x2000010400000000L;
 	
+	
+	
+	/**
+	 * Forensic mode.
+	 */
 	public static final long OPT_FORENSIC_MODE 					= 0x2000020100000000L;
 	
-	public static final long OPT_REFRESH_ALL 					= 0x2001ffff00000000L;
-	public static final long OPT_REFRESH_FREQ_MEM 				= 0x2001000200000000L;
-	public static final long OPT_REFRESH_FREQ_TLB 				= 0x2001000400000000L;
-	public static final long OPT_REFRESH_FREQ_FAST 				= 0x2001040000000000L;
-	public static final long OPT_REFRESH_FREQ_MEDIUM 			= 0x2001000100000000L;
-	public static final long OPT_REFRESH_FREQ_SLOW 				= 0x2001001000000000L;
+	
+	
+	/**
+	 * Total refresh.
+	 */
+	public static final long VMMDLL_OPT_REFRESH_ALL             = 0x2001ffff00000000L;
+	
+	/**
+	 * Refresh total memory caches.
+	 */
+	public static final long VMMDLL_OPT_REFRESH_FREQ_MEM        = 0x2001100000000000L;
+	
+	/**
+	 * Refresh partial (1/3) memory caches.
+	 */
+	public static final long VMMDLL_OPT_REFRESH_FREQ_MEM_PARTIAL= 0x2001000200000000L;
+	
+	/**
+	 * Refresh completely page table caches.
+	 */
+	public static final long VMMDLL_OPT_REFRESH_FREQ_TLB        = 0x2001080000000000L;
+	
+	/**
+	 * Refresh partial (1/3) of page table caches.
+	 */
+	public static final long VMMDLL_OPT_REFRESH_FREQ_TLB_PARTIAL= 0x2001000400000000L;
+	
+	/**
+	 * Refresh fast frequency (minor refresh).
+	 */
+	public static final long VMMDLL_OPT_REFRESH_FREQ_FAST       = 0x2001040000000000L;
+	
+	/**
+	 * Refresh medium frequency (medium refresh).
+	 */
+	public static final long VMMDLL_OPT_REFRESH_FREQ_MEDIUM     = 0x2001000100000000L;
+	
+	/**
+	 * Refresh slow frequency (maximum refresh).
+	 */
+	public static final long VMMDLL_OPT_REFRESH_FREQ_SLOW       = 0x2001001000000000L;
 	
 	/**
 	 * Get a device specific option value. Please see defines OPT_* for information
@@ -114,12 +171,37 @@ public interface IVmm
 	//     WITH CALL TO InitializePlugins(). 
 	//-----------------------------------------------------------------------------
 	
+	/**
+	 * List entries in a virtual directory in the virtual file system.
+	 * @param path
+	 * @return
+	 */
 	public List<Vmm_VfsListEntry> vfsList(String path);
 	
+	/**
+	 * Read a file in the virtual file system.
+	 * @param file
+	 * @param offset
+	 * @param size
+	 * @return
+	 */
 	public byte[] vfsRead(String file, long offset, int size);
 	
+	/**
+	 * Read a file as a String in the virtual file system.
+	 * @param file
+	 * @param offset
+	 * @param size
+	 * @return
+	 */
 	public String vfsReadString(String file, long offset, int size);
 	
+	/**
+	 * Write to a file in the virtual file system.
+	 * @param file
+	 * @param data
+	 * @param offset
+	 */
 	public void vfsWrite(String file, byte[] data, long offset);
 	
 	
@@ -261,9 +343,10 @@ public interface IVmm
 	
 	/**
 	 * Retrieve pool allocations sorted by virtual address and pool tag.
+	 * @param isBigPoolOnly true=only show entries from bigpool, false=show all entries.
 	 * @return
 	 */
-	public VmmMap_PoolMap mapPool();
+	public VmmMap_PoolMap mapPool(boolean isBigPoolOnly);
 	
 	
 	

@@ -22,14 +22,14 @@ interface VmmNative extends Library {
 	static final int VMMDLL_MAP_PTE_VERSION 		= 2;
 	static final int VMMDLL_MAP_VAD_VERSION 		= 6;
 	static final int VMMDLL_MAP_VADEX_VERSION 		= 3;
-	static final int VMMDLL_MAP_MODULE_VERSION 		= 5;
+	static final int VMMDLL_MAP_MODULE_VERSION 		= 6;
 	static final int VMMDLL_MAP_UNLOADEDMODULE_VERSION = 2;
-	static final int VMMDLL_MAP_EAT_VERSION 		= 2;
+	static final int VMMDLL_MAP_EAT_VERSION 		= 3;
 	static final int VMMDLL_MAP_IAT_VERSION 		= 2;
 	static final int VMMDLL_MAP_HEAP_VERSION 		= 4;
 	static final int VMMDLL_MAP_HEAPALLOC_VERSION 	= 1;
 	static final int VMMDLL_MAP_THREAD_VERSION 		= 4;
-	static final int VMMDLL_MAP_HANDLE_VERSION 		= 2;
+	static final int VMMDLL_MAP_HANDLE_VERSION 		= 3;
 	static final int VMMDLL_MAP_POOL_VERSION 		= 2;
 	static final int VMMDLL_MAP_NET_VERSION 		= 3;
 	static final int VMMDLL_MAP_PHYSMEM_VERSION 	= 2;
@@ -318,7 +318,7 @@ interface VmmNative extends Library {
 		public int _FutureUse2;
 		public int dwPID;
 		public byte[] dwPoolTag = new byte[4];
-		public int[] _FutureUse = new int[5];
+		public int[] _FutureUse = new int[7];
 		public String uszType;
 	}
 	
@@ -660,9 +660,58 @@ interface VmmNative extends Library {
 	boolean VMMDLL_ProcessGetInformation(Pointer hVMM, int dwPID, VMMDLL_PROCESS_INFORMATION pProcessInformation, LongByReference pcbProcessInformation);
 	Pointer VMMDLL_ProcessGetInformationString(Pointer hVMM, int dwPID, int fOptionString);
 	
-
 	
-	@Structure.FieldOrder({"vaBase", "vaEntry", "cbImageSize", "fWoW64", "uszText", "_Reserved3", "_Reserved4", "uszFullName", "tp", "cbFileSizeRaw", "cSection", "cEAT", "cIAT", "_Reserved2", "_Reserved1"})
+	
+	static final int VMMDLL_MODULE_FLAG_NORMAL           	= 0;
+	static final int VMMDLL_MODULE_FLAG_DEBUGINFO        	= 1;
+	static final int VMMDLL_MODULE_FLAG_VERSIONINFO      	= 2;
+	
+	@Structure.FieldOrder({"dwAge", "_Reserved", "Guid", "uszGuid", "uszPdbFilename"})
+	class VMMDLL_MAP_MODULEENTRY_DEBUGINFO extends Structure {
+		public int dwAge;
+		public int _Reserved;
+		public byte[] Guid = new byte[16];
+		public String uszGuid;
+		public String uszPdbFilename;
+		
+		
+		public VMMDLL_MAP_MODULEENTRY_DEBUGINFO()
+		{
+			super();
+		}
+		
+		VMMDLL_MAP_MODULEENTRY_DEBUGINFO(Pointer p)
+		{
+			super(p);
+			read();
+		}
+	}
+	
+	@Structure.FieldOrder({"uszCompanyName", "uszFileDescription", "uszFileVersion", "uszInternalName", "uszLegalCopyright", "uszOriginalFilename", "uszProductName", "uszProductVersion"})
+	class VMMDLL_MAP_MODULEENTRY_VERSIONINFO extends Structure {
+		public String uszCompanyName;
+		public String uszFileDescription;
+		public String uszFileVersion;
+		public String uszInternalName;
+		public String uszLegalCopyright;
+		public String uszOriginalFilename;
+		public String uszProductName;
+		public String uszProductVersion;
+		
+		
+		public VMMDLL_MAP_MODULEENTRY_VERSIONINFO()
+		{
+			super();
+		}
+		
+		VMMDLL_MAP_MODULEENTRY_VERSIONINFO(Pointer p)
+		{
+			super(p);
+			read();
+		}
+	}
+	
+	@Structure.FieldOrder({"vaBase", "vaEntry", "cbImageSize", "fWoW64", "uszText", "_Reserved3", "_Reserved4", "uszFullName", "tp", "cbFileSizeRaw", "cSection", "cEAT", "cIAT", "_Reserved2", "_Reserved1", "pExDebugInfo", "pExVersionInfo"})
 	class VMMDLL_MAP_MODULEENTRY extends Structure {
 		public long vaBase;
 		public long vaEntry;
@@ -678,7 +727,9 @@ interface VmmNative extends Library {
 		public int cEAT;
 		public int cIAT;
 		public int _Reserved2;
-		public long[] _Reserved1 = new long[2];
+		public long[] _Reserved1 = new long[3];
+		public long pExDebugInfo;
+		public long pExVersionInfo;
 		
 		public VMMDLL_MAP_MODULEENTRY()
 		{
@@ -712,8 +763,8 @@ interface VmmNative extends Library {
 		}
 	}
 	
-	boolean VMMDLL_Map_GetModuleU(Pointer hVMM, int dwPID, PointerByReference ppModuleMap);
-	boolean VMMDLL_Map_GetModuleFromNameU(Pointer hVMM, int dwPID, String uszModuleName, PointerByReference ppModuleMapEntry);
+	boolean VMMDLL_Map_GetModuleU(Pointer hVMM, int dwPID, PointerByReference ppModuleMap, int flags);
+	boolean VMMDLL_Map_GetModuleFromNameU(Pointer hVMM, int dwPID, String uszModuleName, PointerByReference ppModuleMapEntry, int flags);
 	
 	
 	
@@ -721,7 +772,7 @@ interface VmmNative extends Library {
 	
 	
 	
-	@Structure.FieldOrder({"vaFunction", "dwOrdinal", "oFunctionsArray", "oNamesArray", "_FutureUse1", "uszFunction"})
+	@Structure.FieldOrder({"vaFunction", "dwOrdinal", "oFunctionsArray", "oNamesArray", "_FutureUse1", "uszFunction", "uszForwardedFunction"})
 	class VMMDLL_MAP_EATENTRY extends Structure {
 		public long vaFunction;
 		public int dwOrdinal;
@@ -729,15 +780,17 @@ interface VmmNative extends Library {
 		public int oNamesArray;
 		public int _FutureUse1;
 		public String uszFunction;
+		public String uszForwardedFunction;
 	}
 	
-	@Structure.FieldOrder({"dwVersion", "dwOrdinalBase", "cNumberOfNames", "cNumberOfFunctions", "_Reserved1", "vaModuleBase", "vaAddressOfFunctions", "vaAddressOfNames", "pbMultiText", "cbMultiText", "cMap", "pMap"})
+	@Structure.FieldOrder({"dwVersion", "dwOrdinalBase", "cNumberOfNames", "cNumberOfFunctions", "cNumberOfForwardedFunctions", "_Reserved1", "vaModuleBase", "vaAddressOfFunctions", "vaAddressOfNames", "pbMultiText", "cbMultiText", "cMap", "pMap"})
 	class VMMDLL_MAP_EAT extends Structure {
 		public int dwVersion;
 		public int dwOrdinalBase;
 		public int cNumberOfNames;
 		public int cNumberOfFunctions;
-		public int[] _Reserved1 = new int[4];
+		public int cNumberOfForwardedFunctions;
+		public int[] _Reserved1 = new int[3];
 		public long vaModuleBase;
 		public long vaAddressOfFunctions;
 		public long vaAddressOfNames;
