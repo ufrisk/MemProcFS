@@ -237,9 +237,7 @@ public class VmmImpl implements IVmm
 
 		public void prepareWrite(long va, byte[] data) {
 			if(this.hS == null) { throw new VmmException(); }
-			Pointer pb = new Memory(data.length);
-			pb.write(0, data, 0, data.length);
-			boolean f = VmmNative.INSTANCE.VMMDLL_Scatter_PrepareWrite(pb, va, pb, data.length);
+			boolean f = VmmNative.INSTANCE.VMMDLL_Scatter_PrepareWrite(hS, va, data, data.length);
 			if(!f) { throw new VmmException(); }
 		}
 
@@ -258,13 +256,10 @@ public class VmmImpl implements IVmm
 		public byte[] read(long va, int size) {
 			if(this.hS == null) { throw new VmmException(); }
 			IntByReference pcbRead = new IntByReference();
-			Pointer pb = new Memory(size);
-			boolean f = VmmNative.INSTANCE.VMMDLL_Scatter_Read(hS, va, size, pb, pcbRead);
+			byte[] pbResult = new byte[size];
+			boolean f = VmmNative.INSTANCE.VMMDLL_Scatter_Read(hS, va, size, pbResult, pcbRead);
 			if(!f) { throw new VmmException(); }
-			size = Math.min(size, pcbRead.getValue());
-			byte[] result = new byte[size];
-			pb.read(0, result, 0, size);
-			return result;
+			return pbResult;
 		}
 
 		public void close() {
@@ -295,20 +290,15 @@ public class VmmImpl implements IVmm
 	public byte[] _memRead(int pid, long va, int size, int flags)
 	{
 		IntByReference pcbRead = new IntByReference();
-		Pointer pb = new Memory(size);
-		boolean f = VmmNative.INSTANCE.VMMDLL_MemReadEx(hVMM, pid, va, pb, size, pcbRead, flags);
+		byte[] pbResult = new byte[size];
+		boolean f = VmmNative.INSTANCE.VMMDLL_MemReadEx(hVMM, pid, va, pbResult, size, pcbRead, flags);
 		if(!f) { throw new VmmException(); }
-		size = Math.min(size, pcbRead.getValue());
-		byte[] result = new byte[size];
-		pb.read(0, result, 0, size);
-		return result;
+		return pbResult;
 	}
 	
 	public void _memWrite(int pid, long va, byte[] data)
 	{
-		Pointer pb = new Memory(data.length);
-		pb.write(0, data, 0, data.length);
-		boolean f = VmmNative.INSTANCE.VMMDLL_MemWrite(hVMM, pid, va, pb, data.length);
+		boolean f = VmmNative.INSTANCE.VMMDLL_MemWrite(hVMM, pid, va, data, data.length);
 		if(!f) { throw new VmmException(); }
 	}
 	

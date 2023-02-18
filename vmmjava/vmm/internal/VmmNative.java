@@ -82,18 +82,18 @@ interface VmmNative extends Library {
 	
 	
 	
-	boolean VMMDLL_MemReadEx(Pointer hVMM, int dwPID, long qwA, Pointer pb, int cb, IntByReference pcbReadOpt, int flags);
+	boolean VMMDLL_MemReadEx(Pointer hVMM, int dwPID, long qwA, byte[] pb, int cb, IntByReference pcbReadOpt, int flags);
 	boolean VMMDLL_MemPrefetchPages(Pointer hVMM, int dwPID, long[] pPrefetchAddresses, int cPrefetchAddresses);
-	boolean VMMDLL_MemWrite(Pointer hVMM, int dwPID, long qwA, Pointer pb, int cb);
+	boolean VMMDLL_MemWrite(Pointer hVMM, int dwPID, long qwA, byte[] pb, int cb);
 	boolean VMMDLL_MemVirt2Phys(Pointer hVMM, int dwPID, long qwVA, LongByReference pqwPA);
 	
 	
 	
 	Pointer VMMDLL_Scatter_Initialize(Pointer hVMM, int dwPID, int flags);
 	boolean VMMDLL_Scatter_Prepare(Pointer hS, long va, int cb);
-	boolean VMMDLL_Scatter_PrepareWrite(Pointer hS, long va, Pointer pb, int cb);
+	boolean VMMDLL_Scatter_PrepareWrite(Pointer hS, long va, byte[] pb, int cb);
 	boolean VMMDLL_Scatter_Execute(Pointer hS);
-	boolean VMMDLL_Scatter_Read(Pointer hS, long va, int cb, Pointer pb, IntByReference pcbRead);
+	boolean VMMDLL_Scatter_Read(Pointer hS, long va, int cb, byte[] pb, IntByReference pcbRead);
 	boolean VMMDLL_Scatter_Clear(Pointer hS, int pid, int flags);
 	void VMMDLL_Scatter_CloseHandle(Pointer hS);
 	

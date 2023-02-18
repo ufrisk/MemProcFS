@@ -34,6 +34,7 @@ public class VmmExample {
 		long[] physmem_prefetch = {0x1000, 0x10000, 0x20000};
 		vmm.memPrefetchPages(physmem_prefetch);
 		byte[] physmem_read = vmm.memRead(0x1000, 0x100);
+		byte[] physmem_read_withflags = vmm.memRead(0x1000, 0x100, IVmm.FLAG_NOCACHE | IVmm.FLAG_ZEROPAD_ON_FAIL);
 		//vmm.memWrite(0x400, physmem_read);
 		
 		// physical memory scatter efficient read/write
