@@ -5,8 +5,8 @@
 //
 
 #include "vmm.h"
-#include "mm.h"
-#include "mm_pfn.h"
+#include "mm/mm.h"
+#include "mm/mm_pfn.h"
 #include "pdb.h"
 #include "vmmheap.h"
 #include "vmmproc.h"

@@ -147,6 +147,7 @@ typedef enum tdVMM_PTE_TP {
     VMM_PTE_TP_DEMANDZERO = 4,
     VMM_PTE_TP_COMPRESSED = 5,
     VMM_PTE_TP_PAGEFILE = 6,
+    VMM_PTE_TP_FILE = 7,
 } VMM_PTE_TP, *PVMM_PTE_TP;
 
 // OBJECT TYPE table exists on Win7+ It's initialized on first use and it will
@@ -731,6 +732,8 @@ typedef struct tdVMM_MAP_SERVICEENTRY {
     QWORD _Reserved;
 } VMM_MAP_SERVICEENTRY, *PVMM_MAP_SERVICEENTRY;
 
+typedef DWORD                       VMM_MODULE_ID;
+
 typedef enum tdVMM_EVIL_TP {        // EVIL types - sorted by "evilness"
     VMM_EVIL_TP_PE_NA,              // _NA
     VMM_EVIL_TP_PE_INJECTED,        // MODULE
@@ -1261,6 +1264,7 @@ typedef struct tdVMMCONFIG {
     CHAR szMemMapStr[2048];
     CHAR szLogFile[MAX_PATH];
     CHAR szLogLevel[MAX_PATH];
+    CHAR szPathLibraryVmm[MAX_PATH];
 } VMMCONFIG, *PVMMCONFIG;
 
 typedef struct tdVMMCONFIG_PDB {
@@ -1601,9 +1605,9 @@ typedef struct tdVMM_CONTEXT {
         PVOID FLinkForensic;
         PVOID Root;
         PVOID Proc;
-        DWORD dwNextMID;
         DWORD cIngestPhysmem;
         DWORD cIngestVirtmem;
+        VMM_MODULE_ID NextMID;
     } PluginManager;
     CRITICAL_SECTION LockUpdateMap;     // lock for global maps - such as MapUser
     CRITICAL_SECTION LockUpdateModule;  // lock for internal modules

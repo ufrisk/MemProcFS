@@ -335,6 +335,7 @@ VOID VmmDllCore_CloseHandle(_In_opt_ _Post_ptr_invalid_ VMM_HANDLE H, _In_ BOOL 
     VmmDllCore_CloseHandle_VmmParentDetach(H);
     // Close logging (last)
     Statistics_CallSetEnabled(H, FALSE);
+    VmmLog(H, MID_CORE, LOGLEVEL_VERBOSE, "SHUTDOWN COMPLETED (%p).\n", H);
     VmmLog_Close(H);
     LocalFree(H);
 }
@@ -621,6 +622,9 @@ BOOL VmmDllCore_InitializeConfig(_In_ VMM_HANDLE H, _In_ DWORD argc, _In_ char *
     H->dev.dwPrintfVerbosity |= H->cfg.fVerbose ? LC_CONFIG_PRINTF_V : 0;
     H->dev.dwPrintfVerbosity |= H->cfg.fVerboseExtra ? LC_CONFIG_PRINTF_VV : 0;
     H->dev.dwPrintfVerbosity |= H->cfg.fVerboseExtraTlp ? LC_CONFIG_PRINTF_VVV : 0;
+    Util_GetPathLib(H->cfg.szPathLibraryVmm);
+    strncat_s(H->cfg.szPathLibraryVmm, _countof(H->cfg.szPathLibraryVmm), "vmm", _TRUNCATE);
+    strncat_s(H->cfg.szPathLibraryVmm, _countof(H->cfg.szPathLibraryVmm), VMM_LIBRARY_FILETYPE, _TRUNCATE);
     return (H->dev.szDevice[0] != 0);
 }
 

@@ -21,7 +21,7 @@
 #include "vmmwinobj.h"
 #include "vmmwinreg.h"
 #include "vmmvm.h"
-#include "mm_pfn.h"
+#include "mm/mm_pfn.h"
 
 // tags for external allocations:
 #define OB_TAG_API_MAP_EAT              'EAT '
@@ -1874,7 +1874,7 @@ _Success_(return) BOOL VMMDLL_Map_GetServicesW(_In_ VMM_HANDLE H, _Out_ PVMMDLL_
 }
 
 _Success_(return)
-BOOL VMMDLL_Map_GetPfn_Impl(_In_ VMM_HANDLE H, _In_ DWORD pPfns[], _In_ DWORD cPfns, _Out_writes_bytes_opt_(*pcbMapDst) PVMMDLL_MAP_PFN pMapDst, _Inout_ PDWORD pcbMapDst)
+BOOL VMMDLL_Map_GetPfn_Impl(_In_ VMM_HANDLE H, _In_reads_(cPfns) DWORD pPfns[], _In_ DWORD cPfns, _Out_writes_bytes_opt_(*pcbMapDst) PVMMDLL_MAP_PFN pMapDst, _Inout_ PDWORD pcbMapDst)
 {
     BOOL fResult = FALSE;
     POB_SET psObPfns = NULL;
@@ -1905,11 +1905,48 @@ fail:
 }
 
 _Success_(return)
-BOOL VMMDLL_Map_GetPfn(_In_ VMM_HANDLE H, _In_ DWORD pPfns[], _In_ DWORD cPfns, _Out_writes_bytes_opt_(*pcbPfnMap) PVMMDLL_MAP_PFN pPfnMap, _Inout_ PDWORD pcbPfnMap)
+BOOL VMMDLL_Map_GetPfnEx_Impl(_In_ VMM_HANDLE H, _In_reads_(cPfns) DWORD pPfns[], _In_ DWORD cPfns, _Out_ PVMMDLL_MAP_PFN *ppMapDst, _In_ DWORD flags)
+{
+    BOOL fResult = FALSE;
+    POB_SET psObPfns = NULL;
+    PMMPFNOB_MAP pObMapSrc = NULL;
+    PVMMDLL_MAP_PFN pMapDst = NULL;
+    DWORD i, cbDst = 0, cbDstData;
+    BOOL fExtended = flags & VMMDLL_PFN_FLAG_EXTENDED;
+    *ppMapDst = NULL;
+    cbDstData = cPfns * sizeof(VMMDLL_MAP_PFNENTRY);
+    cbDst = sizeof(VMMDLL_MAP_PFN) + cbDstData;
+    if(!(pMapDst = VmmDllCore_MemAllocExternal(H, OB_TAG_API_MAP_SERVICES, cbDst, sizeof(VMMDLL_MAP_PFN)))) { goto fail; }    // VMMDLL_MemFree()
+    if(!(psObPfns = ObSet_New(H))) { goto fail; }
+    for(i = 0; i < cPfns; i++) {
+        ObSet_Push(psObPfns, pPfns[i]);
+    }
+    if(!MmPfn_Map_GetPfnScatter(H, psObPfns, &pObMapSrc, fExtended)) { goto fail; }
+    ZeroMemory(pMapDst, cbDst);
+    pMapDst->dwVersion = VMMDLL_MAP_PFN_VERSION;
+    pMapDst->cMap = pObMapSrc->cMap;
+    memcpy(pMapDst->pMap, pObMapSrc->pMap, pMapDst->cMap * sizeof(VMMDLL_MAP_PFNENTRY));
+    *ppMapDst = pMapDst;
+fail:
+    if(pMapDst && !*ppMapDst) { VMMDLL_MemFree(pMapDst); pMapDst = NULL; }
+    Ob_DECREF(psObPfns);
+    Ob_DECREF(pObMapSrc);
+    return *ppMapDst ? TRUE : FALSE;
+}
+
+_Success_(return)
+BOOL VMMDLL_Map_GetPfn(_In_ VMM_HANDLE H, _In_reads_(cPfns) DWORD pPfns[], _In_ DWORD cPfns, _Out_writes_bytes_opt_(*pcbPfnMap) PVMMDLL_MAP_PFN pPfnMap, _Inout_ PDWORD pcbPfnMap)
 {
     CALL_IMPLEMENTATION_VMM(H,
         STATISTICS_ID_VMMDLL_Map_GetPfn,
         VMMDLL_Map_GetPfn_Impl(H, pPfns, cPfns, pPfnMap, pcbPfnMap))
+}
+
+BOOL VMMDLL_Map_GetPfnEx(_In_ VMM_HANDLE H, _In_reads_(cPfns) DWORD pPfns[], _In_ DWORD cPfns, _Out_ PVMMDLL_MAP_PFN *ppPfnMap, _In_ DWORD flags)
+{
+    CALL_IMPLEMENTATION_VMM(H,
+        STATISTICS_ID_VMMDLL_Map_GetPfnEx,
+        VMMDLL_Map_GetPfnEx_Impl(H, pPfns, cPfns, ppPfnMap, flags))
 }
 
 _Success_(return)

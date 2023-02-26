@@ -15,7 +15,7 @@
 #include "vmmwinpool.h"
 #include "vmmwinreg.h"
 #include "vmmwinsvc.h"
-#include "mm_pfn.h"
+#include "mm/mm_pfn.h"
 #include "pluginmanager.h"
 #include "statistics.h"
 #include "util.h"

@@ -17,3 +17,6 @@ info.db
 /files/x86/lib
 /files/x86/vmm_example.exe
 /vmmsharp/obj
+/vmmrust/memprocfs/target
+/vmmrust/memprocfs_example/target
+/vmmrust/m_example_plugin/target

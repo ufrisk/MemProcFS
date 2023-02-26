@@ -10,8 +10,8 @@
 #include "vmm.h"
 #include "vmmdll.h"
 #include "vmmlog.h"
-#include "m_modules.h"
 #include "fc.h"
+#include "modules/modules_init.h"
 
 //
 // This file contains functionality related to keeping track of plugins, both
@@ -667,7 +667,7 @@ BOOL PluginManager_Register(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_REGINFO pRegI
     pModule = (PPLUGIN_ENTRY)LocalAlloc(LMEM_ZEROINIT, sizeof(PLUGIN_ENTRY));
     if(!pModule) { return FALSE; }
     pModule->hDLL = pRegInfo->hDLL;
-    pModule->MID = InterlockedIncrement(&H->vmm.PluginManager.dwNextMID);
+    pModule->MID = InterlockedIncrement(&H->vmm.PluginManager.NextMID);
     strncpy_s(pModule->uszName, 32, uszPluginName, _TRUNCATE);
     pModule->dwNameHash = CharUtil_HashNameFsU(pModule->uszName, TRUE);
     pModule->fRootModule = pRegInfo->reg_info.fRootModule;
@@ -771,6 +771,7 @@ VOID PluginManager_Initialize_RegInfoInit(_In_ VMM_HANDLE H, _Out_ PVMMDLL_PLUGI
     pRI->wVersion = VMMDLL_PLUGIN_REGINFO_VERSION;
     pRI->wSize = sizeof(VMMDLL_PLUGIN_REGINFO);
     pRI->hDLL = hDLL;
+    pRI->uszPathVmmDLL = H->cfg.szPathLibraryVmm;
     pRI->tpMemoryModel = (VMMDLL_MEMORYMODEL_TP)H->vmm.tpMemoryModel;
     pRI->tpSystem = (VMMDLL_SYSTEM_TP)H->vmm.tpSystem;
     pRI->pfnPluginManager_Register = PluginManager_Register;

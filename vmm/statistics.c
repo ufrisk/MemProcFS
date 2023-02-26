@@ -142,26 +142,26 @@ BOOL Statistics_CallToString(_In_ VMM_HANDLE H, _Out_opt_ LPSTR *psz, _Out_ PDWO
 /*
 * Start a call statistics logging session.
 * -- H
-* -- dwMID = module ID (MID)
+* -- MID = module ID (MID)
 * -- dwLogLevel = log level as defined by LOGLEVEL_*
 * -- pProcess
 * -- ps
 * -- uszText
 */
-VOID VmmStatisticsLogStart(_In_ VMM_HANDLE H, _In_ DWORD dwMID, _In_ VMMLOG_LEVEL dwLogLevel, _In_opt_ PVMM_PROCESS pProcess, _Out_ PVMMSTATISTICS_LOG ps, _In_ LPSTR uszText)
+VOID VmmStatisticsLogStart(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_ VMMLOG_LEVEL dwLogLevel, _In_opt_ PVMM_PROCESS pProcess, _Out_ PVMMSTATISTICS_LOG ps, _In_ LPSTR uszText)
 {
-    ps->f = VmmLogIsActive(H, dwMID, dwLogLevel);
+    ps->f = VmmLogIsActive(H, MID, dwLogLevel);
     if(H->fAbort || !ps->f) { return; }
     ps->dwPID = pProcess ? pProcess->dwPID : 0;
-    ps->dwMID = dwMID;
+    ps->MID = MID;
     ps->dwLogLevel = dwLogLevel;
     ps->v[0] = GetTickCount64();
     LcGetOption(H->hLC, LC_OPT_CORE_STATISTICS_CALL_COUNT | LC_STATISTICS_ID_READSCATTER, &ps->v[1]);
     ps->v[2] = H->vmm.stat.cPhysReadSuccess;
     if(ps->dwPID) {
-        VmmLog(H, ps->dwMID, ps->dwLogLevel, "%s START: [pid=%i]", uszText, ps->dwPID);
+        VmmLog(H, ps->MID, ps->dwLogLevel, "%s START: [pid=%i]", uszText, ps->dwPID);
     } else {
-        VmmLog(H, ps->dwMID, ps->dwLogLevel, "%s START:", uszText);
+        VmmLog(H, ps->MID, ps->dwLogLevel, "%s START:", uszText);
     }
 }
 
@@ -179,8 +179,8 @@ VOID VmmStatisticsLogEnd(_In_ VMM_HANDLE H, _In_ PVMMSTATISTICS_LOG ps, _In_ LPS
     LcGetOption(H->hLC, LC_OPT_CORE_STATISTICS_CALL_COUNT | LC_STATISTICS_ID_READSCATTER, &v[1]);
     v[2] = H->vmm.stat.cPhysReadSuccess;
     if(ps->dwPID) {
-        VmmLog(H, ps->dwMID, ps->dwLogLevel, "%s END:   [pid=%i time=%llims scatter=0x%llx pages=0x%llx]", uszText, ps->dwPID, (v[0] - ps->v[0]), (v[1] - ps->v[1]), (v[2] - ps->v[2]));
+        VmmLog(H, ps->MID, ps->dwLogLevel, "%s END:   [pid=%i time=%llims scatter=0x%llx pages=0x%llx]", uszText, ps->dwPID, (v[0] - ps->v[0]), (v[1] - ps->v[1]), (v[2] - ps->v[2]));
     } else {
-        VmmLog(H, ps->dwMID, ps->dwLogLevel, "%s END:   [time=%llims scatter=0x%llx pages=0x%llx]", uszText, (v[0] - ps->v[0]), (v[1] - ps->v[1]), (v[2] - ps->v[2]));
+        VmmLog(H, ps->MID, ps->dwLogLevel, "%s END:   [time=%llims scatter=0x%llx pages=0x%llx]", uszText, (v[0] - ps->v[0]), (v[1] - ps->v[1]), (v[2] - ps->v[2]));
     }
 }

@@ -142,7 +142,7 @@ BOOL VMMDLL_Scatter_PrepareInternal(_In_ PSCATTER_CONTEXT ctx, _In_ QWORD va, _I
 }
 
 _Success_(return)
-BOOL VMMDLL_Scatter_PrepareWriteInternal(_In_ PSCATTER_CONTEXT ctx, _In_ QWORD va, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb)
+BOOL VMMDLL_Scatter_PrepareWriteInternal(_In_ PSCATTER_CONTEXT ctx, _In_ QWORD va, _In_reads_(cb) PBYTE pb, _In_ DWORD cb)
 {
     DWORD cMEMsRequired;
     PSCATTER_RANGE_WRITE pRangeWr;
@@ -206,7 +206,7 @@ BOOL VMMDLL_Scatter_Prepare(_In_ VMMDLL_SCATTER_HANDLE hS, _In_ QWORD va, _In_ D
 * -- return
 */
 _Success_(return)
-BOOL VMMDLL_Scatter_PrepareWrite(_In_ VMMDLL_SCATTER_HANDLE hS, _In_ QWORD va, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb)
+BOOL VMMDLL_Scatter_PrepareWrite(_In_ VMMDLL_SCATTER_HANDLE hS, _In_ QWORD va, _In_reads_(cb) PBYTE pb, _In_ DWORD cb)
 {
     SCATTER_CALL_SYNCHRONIZED_IMPLEMENTATION(hS, VMMDLL_Scatter_PrepareWriteInternal((PSCATTER_CONTEXT)hS, va, pb, cb));
 }

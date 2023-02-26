@@ -1,0 +1,24 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "cargo_debug_m_example_plugin",
+            "type": "shell",
+            "command": "cargo",
+            "args": ["build", "--manifest-path", "${workspaceRoot}/m_example_plugin/Cargo.toml"]
+        },
+        {
+            "label": "build_debug_m_example_plugin",
+            "dependsOn": ["cargo_debug_m_example_plugin"],
+            "type": "shell",
+            "windows": {
+                "command": "copy", // Could be any other shell command
+                "args": ["${workspaceRoot}\\m_example_plugin\\target\\debug\\m_example_plugin.dll", "${workspaceRoot}\\..\\files\\plugins\\m_vmmrust_plugin.dll"],
+            },
+            "linux": {
+                "command": "cp", // Could be any other shell command
+                "args": ["-f", "${workspaceRoot}/m_example_plugin/target/debug/libm_example_plugin.so", "${workspaceRoot}/../files/plugins/m_vmmrust_plugin.so", "/y"],
+            }
+        }
+    ]
+}

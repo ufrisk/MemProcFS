@@ -103,6 +103,39 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		README.md = README.md
 	EndProjectSection
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "vmmrust", "vmmrust", "{CA129E44-E6CB-4730-8CE0-B45894B01177}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "m_example_plugin", "m_example_plugin", "{0CA8FB8A-9763-4130-ADBD-C67EFF4897C7}"
+	ProjectSection(SolutionItems) = preProject
+		vmmrust\m_example_plugin\Cargo.toml = vmmrust\m_example_plugin\Cargo.toml
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "memprocfs", "memprocfs", "{626E4023-93CC-4D9B-A557-905FF349777F}"
+	ProjectSection(SolutionItems) = preProject
+		vmmrust\memprocfs\Cargo.toml = vmmrust\memprocfs\Cargo.toml
+		vmmrust\memprocfs\README.md = vmmrust\memprocfs\README.md
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "memprocfs_example", "memprocfs_example", "{30C76595-D55E-452F-A9C6-EFC23ADC36DF}"
+	ProjectSection(SolutionItems) = preProject
+		vmmrust\memprocfs_example\Cargo.toml = vmmrust\memprocfs_example\Cargo.toml
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{F634AD49-3F87-4AF4-AA2B-6F0F3560C210}"
+	ProjectSection(SolutionItems) = preProject
+		vmmrust\memprocfs_example\src\main.rs = vmmrust\memprocfs_example\src\main.rs
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{F36BD36B-329E-4A24-8522-FB31442439E6}"
+	ProjectSection(SolutionItems) = preProject
+		vmmrust\memprocfs\src\lib_memprocfs.rs = vmmrust\memprocfs\src\lib_memprocfs.rs
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{FDE47FDC-7D70-41DB-A2E9-3CC2D0B16FF0}"
+	ProjectSection(SolutionItems) = preProject
+		vmmrust\m_example_plugin\src\lib.rs = vmmrust\m_example_plugin\src\lib.rs
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|ARM64 = Debug|ARM64
@@ -197,6 +230,12 @@ Global
 		{F64725D0-147F-43D1-95AE-FDE1E8C1EDCD} = {1390A2F3-1ECE-4A66-8B60-6FDCB599BE63}
 		{D65E9BD1-4BB8-4418-BC41-82884843D377} = {F64725D0-147F-43D1-95AE-FDE1E8C1EDCD}
 		{A8744524-49F8-4CAA-BD85-7C1EACA1164F} = {F64725D0-147F-43D1-95AE-FDE1E8C1EDCD}
+		{0CA8FB8A-9763-4130-ADBD-C67EFF4897C7} = {CA129E44-E6CB-4730-8CE0-B45894B01177}
+		{626E4023-93CC-4D9B-A557-905FF349777F} = {CA129E44-E6CB-4730-8CE0-B45894B01177}
+		{30C76595-D55E-452F-A9C6-EFC23ADC36DF} = {CA129E44-E6CB-4730-8CE0-B45894B01177}
+		{F634AD49-3F87-4AF4-AA2B-6F0F3560C210} = {30C76595-D55E-452F-A9C6-EFC23ADC36DF}
+		{F36BD36B-329E-4A24-8522-FB31442439E6} = {626E4023-93CC-4D9B-A557-905FF349777F}
+		{FDE47FDC-7D70-41DB-A2E9-3CC2D0B16FF0} = {0CA8FB8A-9763-4130-ADBD-C67EFF4897C7}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {CE6C3AA7-477A-4329-B4E3-5F219ACF4063}

@@ -7,17 +7,11 @@
 // Windows may access both UTF-8 *U and Wide-Char *W versions of functions
 // while Linux may only access UTF-8 versions. Some functionality may also
 // be degraded or unavailable on Linux.
-// 
-// v5 API
-// ======
-// v5 of the API support multiple concurrent parallel analysis tasks.
-// To accomodate this significant changes have been done to the API which is
-// largely incompatible (but very similar) to the earlier API versions.
 //
 // (c) Ulf Frisk, 2018-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-// Header Version: 5.3
+// Header Version: 5.4
 //
 
 #include "leechcore.h"
@@ -485,7 +479,7 @@ BOOL VMMDLL_InitializePlugins(_In_ VMM_HANDLE hVMM);
 #define VMMDLL_PLUGIN_CONTEXT_MAGIC                 0xc0ffee663df9301c
 #define VMMDLL_PLUGIN_CONTEXT_VERSION               5
 #define VMMDLL_PLUGIN_REGINFO_MAGIC                 0xc0ffee663df9301d
-#define VMMDLL_PLUGIN_REGINFO_VERSION               15
+#define VMMDLL_PLUGIN_REGINFO_VERSION               16
 #define VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION     0xc0ee0002
 
 #define VMMDLL_PLUGIN_NOTIFY_VERBOSITYCHANGE        0x01
@@ -503,6 +497,8 @@ typedef struct tdVMMDLL_CSV_HANDLE                  *VMMDLL_CSV_HANDLE;
 
 #define VMMDLL_MID_MAIN                             ((VMMDLL_MODULE_ID)0x80000001)
 #define VMMDLL_MID_PYTHON                           ((VMMDLL_MODULE_ID)0x80000002)
+#define VMMDLL_MID_DEBUG                            ((VMMDLL_MODULE_ID)0x80000003)
+#define VMMDLL_MID_RUST                             ((VMMDLL_MODULE_ID)0x80000004)
 
 typedef struct tdVMMDLL_PLUGIN_CONTEXT {
     ULONG64 magic;
@@ -554,7 +550,8 @@ typedef struct tdVMMDLL_PLUGIN_REGINFO {
     VMMDLL_SYSTEM_TP tpSystem;
     HMODULE hDLL;
     BOOL(*pfnPluginManager_Register)(_In_ VMM_HANDLE H, struct tdVMMDLL_PLUGIN_REGINFO *pPluginRegInfo);
-    DWORD _Reserved[32];
+    LPSTR uszPathVmmDLL;
+    DWORD _Reserved[30];
     // python plugin information - not for general use
     struct {
         BOOL fPythonStandalone;
@@ -901,7 +898,7 @@ BOOL VMMDLL_Scatter_PrepareEx(_In_ VMMDLL_SCATTER_HANDLE hS, _In_ QWORD va, _In_
 * -- return
 */
 EXPORTED_FUNCTION _Success_(return)
-BOOL VMMDLL_Scatter_PrepareWrite(_In_ VMMDLL_SCATTER_HANDLE hS, _In_ QWORD va, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb);
+BOOL VMMDLL_Scatter_PrepareWrite(_In_ VMMDLL_SCATTER_HANDLE hS, _In_ QWORD va, _In_reads_(cb) PBYTE pb, _In_ DWORD cb);
 
 /*
 * Retrieve and Write memory previously populated.
@@ -1001,6 +998,7 @@ typedef enum tdVMMDLL_PTE_TP {
     VMMDLL_PTE_TP_DEMANDZERO = 4,
     VMMDLL_PTE_TP_COMPRESSED = 5,
     VMMDLL_PTE_TP_PAGEFILE = 6,
+    VMMDLL_PTE_TP_FILE = 7,
 } VMMDLL_PTE_TP, *PVMMDLL_PTE_TP;
 
 typedef struct tdVMMDLL_MAP_PTEENTRY {
@@ -1831,6 +1829,9 @@ BOOL VMMDLL_MemSearch(
 
 #define VMMDLL_MAP_PFN_VERSION              1
 
+#define VMMDLL_PFN_FLAG_NORMAL              0
+#define VMMDLL_PFN_FLAG_EXTENDED            1
+
 static LPCSTR VMMDLL_PFN_TYPE_TEXT[] = { "Zero", "Free", "Standby", "Modifiy", "ModNoWr", "Bad", "Active", "Transit" };
 static LPCSTR VMMDLL_PFN_TYPEEXTENDED_TEXT[] = { "-", "Unused", "ProcPriv", "PageTable", "LargePage", "DriverLock", "Shareable", "File" };
 
@@ -1919,10 +1920,29 @@ typedef struct tdVMMDLL_MAP_PFN {
 EXPORTED_FUNCTION _Success_(return)
 BOOL VMMDLL_Map_GetPfn(
     _In_ VMM_HANDLE hVMM,
-    _In_ DWORD pPfns[],
+    _In_reads_(cPfns) DWORD pPfns[],
     _In_ DWORD cPfns,
     _Out_writes_bytes_opt_(*pcbPfnMap) PVMMDLL_MAP_PFN pPfnMap,
     _Inout_ PDWORD pcbPfnMap
+);
+
+/*
+* Retrieve PFN information:
+* CALLER FREE: VMMDLL_MemFree(*ppPfnMap)
+* -- hVMM
+* -- pPfns = PFNs to retrieve.
+* -- cPfns = number of PFNs to retrieve.
+* -- ppPfnMap =  ptr to receive result on success. must be free'd with VMMDLL_MemFree().
+* -- flags = optional flags as specified by VMMDLL_PFN_FLAG_*
+* -- return = success/fail.
+*/
+EXPORTED_FUNCTION _Success_(return)
+BOOL VMMDLL_Map_GetPfnEx(
+    _In_ VMM_HANDLE hVMM,
+    _In_reads_(cPfns) DWORD pPfns[],
+    _In_ DWORD cPfns,
+    _Out_ PVMMDLL_MAP_PFN *ppPfnMap,
+    _In_ DWORD flags
 );
 
 

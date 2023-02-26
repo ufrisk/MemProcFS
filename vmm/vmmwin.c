@@ -13,7 +13,7 @@
 #include "util.h"
 #include "pdb.h"
 #include "pe.h"
-#include "mm.h"
+#include "mm/mm.h"
 #include "infodb.h"
 #include "statistics.h"
 #ifdef _WIN32

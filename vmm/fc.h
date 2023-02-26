@@ -16,7 +16,7 @@
 #define __FC_H__
 #include "oscompatibility.h"
 #include "vmm.h"
-#include "mm_pfn.h"
+#include "mm/mm_pfn.h"
 #include "sqlite/sqlite3.h"
 
 #define FC_SQL_POOL_CONNECTION_NUM          4

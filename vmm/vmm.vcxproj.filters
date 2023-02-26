@@ -37,6 +37,12 @@
     <Filter Include="Resource Files\res">
       <UniqueIdentifier>{36acfda3-7a80-4829-affe-6ab4d6ef5c9f}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\mm">
+      <UniqueIdentifier>{e6b89b0f-2ea4-4de1-b26d-49376653099f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\modules">
+      <UniqueIdentifier>{205ba541-835d-4dc2-a488-6113fe0438d1}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="vmmdll.h">
@@ -81,19 +87,10 @@
     <ClInclude Include="sysquery.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="m_modules.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="mm.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="vmmwindef.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="vmmwinobj.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="mm_pfn.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\includes\leechcore.h">
@@ -147,6 +144,21 @@
     <ClInclude Include="..\includes\libpdbcrust.h">
       <Filter>Header Files\includes</Filter>
     </ClInclude>
+    <ClInclude Include="mm\mm.h">
+      <Filter>Header Files\mm</Filter>
+    </ClInclude>
+    <ClInclude Include="mm\mm_pfn.h">
+      <Filter>Header Files\mm</Filter>
+    </ClInclude>
+    <ClInclude Include="modules\modules.h">
+      <Filter>Header Files\modules</Filter>
+    </ClInclude>
+    <ClInclude Include="modules\modules_init.h">
+      <Filter>Header Files\modules</Filter>
+    </ClInclude>
+    <ClInclude Include="vmmdll_core.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="vmmdll.c">
@@ -179,62 +191,17 @@
     <ClCompile Include="vmmwinreg.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="m_winreg.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
-    <ClCompile Include="m_virt2phys.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
-    <ClCompile Include="m_phys2virt.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
     <ClCompile Include="pdb.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="sysquery.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="mm_x86pae.c">
-      <Filter>Source Files\mm</Filter>
-    </ClCompile>
-    <ClCompile Include="mm_x64.c">
-      <Filter>Source Files\mm</Filter>
-    </ClCompile>
-    <ClCompile Include="mm_x86.c">
-      <Filter>Source Files\mm</Filter>
-    </ClCompile>
-    <ClCompile Include="mm_vad.c">
-      <Filter>Source Files\mm</Filter>
-    </ClCompile>
-    <ClCompile Include="mm_win.c">
-      <Filter>Source Files\mm</Filter>
-    </ClCompile>
-    <ClCompile Include="m_file_handles_vads.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
-    <ClCompile Include="m_file_modules.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
-    <ClCompile Include="m_vfsproc.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
-    <ClCompile Include="m_vfsroot.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
     <ClCompile Include="vmmwinobj.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="mm_pfn.c">
-      <Filter>Source Files\mm</Filter>
-    </ClCompile>
     <ClCompile Include="fc.c">
       <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="m_fc_ntfs.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
-    <ClCompile Include="m_fc_timeline.c">
-      <Filter>Source Files\modules</Filter>
     </ClCompile>
     <ClCompile Include="vmmnet.c">
       <Filter>Source Files</Filter>
@@ -254,23 +221,8 @@
     <ClCompile Include="ob\ob_set.c">
       <Filter>Source Files\ob</Filter>
     </ClCompile>
-    <ClCompile Include="m_fc_proc.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
-    <ClCompile Include="m_fc_registry.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
-    <ClCompile Include="m_fc_thread.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
     <ClCompile Include="vmmwinsvc.c">
       <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="m_findevil.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
-    <ClCompile Include="m_vfsfc.c">
-      <Filter>Source Files\modules</Filter>
     </ClCompile>
     <ClCompile Include="ob\ob_cachemap.c">
       <Filter>Source Files\ob</Filter>
@@ -281,50 +233,11 @@
     <ClCompile Include="vmmevil.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="m_sys.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
-    <ClCompile Include="m_sys_cert.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
-    <ClCompile Include="m_sys_driver.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
-    <ClCompile Include="m_sys_mem.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
-    <ClCompile Include="m_sys_net.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
-    <ClCompile Include="m_sys_obj.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
-    <ClCompile Include="m_sys_proc.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
-    <ClCompile Include="m_sys_svc.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
-    <ClCompile Include="m_sys_syscall.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
     <ClCompile Include="ob\ob_compressed.c">
       <Filter>Source Files\ob</Filter>
     </ClCompile>
-    <ClCompile Include="m_proc_token.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
     <ClCompile Include="ob\ob_memfile.c">
       <Filter>Source Files\ob</Filter>
-    </ClCompile>
-    <ClCompile Include="m_sys_task.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
-    <ClCompile Include="m_fc_module.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
-    <ClCompile Include="m_fc_json.c">
-      <Filter>Source Files\modules</Filter>
     </ClCompile>
     <ClCompile Include="charutil.c">
       <Filter>Source Files</Filter>
@@ -332,17 +245,11 @@
     <ClCompile Include="oscompatibility.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="m_conf.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
     <ClCompile Include="infodb.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="vmmwinpool.c">
       <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="m_sys_pool.c">
-      <Filter>Source Files\modules</Filter>
     </ClCompile>
     <ClCompile Include="ob\ob_counter.c">
       <Filter>Source Files\ob</Filter>
@@ -353,33 +260,6 @@
     <ClCompile Include="vmmlog.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="m_misc_bitlocker.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
-    <ClCompile Include="m_search.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
-    <ClCompile Include="m_misc_web.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
-    <ClCompile Include="m_proc_handle.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
-    <ClCompile Include="m_proc_ldrmodules.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
-    <ClCompile Include="m_proc_memmap.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
-    <ClCompile Include="m_proc_minidump.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
-    <ClCompile Include="m_proc_thread.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
-    <ClCompile Include="m_proc_heap.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
     <ClCompile Include="vmmheap.c">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -389,28 +269,160 @@
     <ClCompile Include="vmmwork.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="m_fc_csv.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
-    <ClCompile Include="m_fc_handle.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
-    <ClCompile Include="m_fc_sys.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
-    <ClCompile Include="m_sys_user.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
-    <ClCompile Include="m_misc_view.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
     <ClCompile Include="vmmvm.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="m_vm.c">
+    <ClCompile Include="mm\mm_pfn.c">
+      <Filter>Source Files\mm</Filter>
+    </ClCompile>
+    <ClCompile Include="mm\mm_vad.c">
+      <Filter>Source Files\mm</Filter>
+    </ClCompile>
+    <ClCompile Include="mm\mm_win.c">
+      <Filter>Source Files\mm</Filter>
+    </ClCompile>
+    <ClCompile Include="mm\mm_x64.c">
+      <Filter>Source Files\mm</Filter>
+    </ClCompile>
+    <ClCompile Include="mm\mm_x86.c">
+      <Filter>Source Files\mm</Filter>
+    </ClCompile>
+    <ClCompile Include="mm\mm_x86pae.c">
+      <Filter>Source Files\mm</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_conf.c">
       <Filter>Source Files\modules</Filter>
     </ClCompile>
-    <ClCompile Include="m_misc_procinfo.c">
+    <ClCompile Include="modules\m_fc_csv.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_fc_handle.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_fc_json.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_fc_module.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_fc_ntfs.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_fc_proc.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_fc_registry.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_fc_sys.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_fc_thread.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_fc_timeline.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_findevil.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_misc_bitlocker.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_misc_procinfo.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_misc_view.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_misc_web.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_phys2virt.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_proc_file_handles_vads.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_proc_file_modules.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_proc_handle.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_proc_heap.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_proc_ldrmodules.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_proc_memmap.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_proc_minidump.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_proc_thread.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_proc_token.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_search.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_sys.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_sys_cert.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_sys_driver.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_sys_mem.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_sys_net.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_sys_obj.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_sys_pool.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_sys_proc.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_sys_svc.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_sys_syscall.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_sys_task.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_sys_user.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_vfsfc.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_vfsproc.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_vfsroot.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_virt2phys.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_vm.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_winreg.c">
       <Filter>Source Files\modules</Filter>
     </ClCompile>
   </ItemGroup>

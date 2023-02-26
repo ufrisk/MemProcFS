@@ -1,0 +1,28 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "VmmRust API BINARY EXAMPLE (Debug)",
+            "type": "lldb",
+            "request": "launch",
+            "cargo": {
+                "args": ["build", "--manifest-path", "${workspaceRoot}/memprocfs_example/Cargo.toml"]
+            },
+            "program": "${workspaceRoot}/memprocfs_example/target/debug/memprocfs_example",
+            "args": [],
+            "cwd": "${workspaceRoot}",
+        },
+        {
+            "name": "VmmRust PLUGIN LIBRARY EXAMPLE (Debug)",
+            "type": "lldb",
+            "request": "launch",
+            "preLaunchTask": "build_debug_m_example_plugin",
+            "program": "${workspaceRoot}/../files/memprocfs",
+            "args": ["-device", "Z:\\x64\\WIN10-X64-1909-18363-1.core"],
+            "cwd": "${workspaceRoot}",
+        }
+    ]
+}

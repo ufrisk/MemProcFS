@@ -7,7 +7,6 @@
 //
 
 #include "vmm.h"
-#include "mm.h"
 #include "pe.h"
 #include "pdb.h"
 #include "util.h"
@@ -16,6 +15,7 @@
 #include "vmmwinobj.h"
 #include "vmmwinreg.h"
 #include "infodb.h"
+#include "mm/mm.h"
 
 /*
 * Try initialize threading - this is dependent on available PDB symbols.

@@ -143,7 +143,6 @@ VmmPycVmm_reg_hive_list(PyObj_Vmm *self, PyObject *args)
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Vmm.reg_hive_list(): Not initialized."); }
     if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
     Py_BEGIN_ALLOW_THREADS;
-    VMMDLL_WinReg_HiveList(self->hVMM, NULL, 0, &cHives);
     result =
         VMMDLL_WinReg_HiveList(self->hVMM, NULL, 0, &cHives) &&
         cHives &&

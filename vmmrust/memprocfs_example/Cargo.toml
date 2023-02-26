@@ -1,0 +1,9 @@
+[package]
+name = "memprocfs_example"
+version = "5.4.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+pretty-hex = "0.3.0"
+memprocfs = { path = "../memprocfs" }

@@ -8,34 +8,51 @@
 CC=gcc
 CFLAGS  += -std=c11 -I. -I../includes -D LINUX -D _GNU_SOURCE -D SQLITE_THREADSAFE=2 -D SQLITE_CORE -shared -fPIC -l:leechcore.so -fvisibility=hidden -L. -lm -pthread `pkg-config liblz4 openssl --libs --cflags`
 # DEBUG FLAGS BELOW
-# export ASAN_OPTIONS=strict_string_checks=1:detect_stack_use_after_return=1:check_initialization_order=1:strict_init_order=1:detect_invalid_pointer_pairs=2
-# CFLAGS  += -g -O0 -Wextra -Wno-unused-parameter -Wno-cast-function-type
-# CFLAGS  += -fsanitize=address -fsanitize=leak -fno-omit-frame-pointer -fsanitize=undefined -fsanitize=bounds-strict -fsanitize=float-divide-by-zero -fsanitize=float-cast-overflow
-# CFLAGS  += -fsanitize=pointer-compare -fsanitize=pointer-subtract -fanalyzer
+#export ASAN_OPTIONS=strict_string_checks=1:detect_stack_use_after_return=1:check_initialization_order=1:strict_init_order=1:detect_invalid_pointer_pairs=2
+#CFLAGS  += -g -O0 -Wextra -Wno-unused-parameter -Wno-cast-function-type
+#CFLAGS  += -fsanitize=address -fsanitize=leak -fno-omit-frame-pointer -fsanitize=undefined -fsanitize=bounds-strict -fsanitize=float-divide-by-zero -fsanitize=float-cast-overflow
+#CFLAGS  += -fsanitize=pointer-compare -fsanitize=pointer-subtract -fanalyzer
 # DEBUG FLAGS ABOVE
 CFLAGS  += -fPIE -fPIC -pie -fstack-protector -D_FORTIFY_SOURCE=2 -O1 -Wl,-z,noexecstack
 CFLAGS  += -Wall -Wno-format-truncation -Wno-enum-compare -Wno-pointer-sign -Wno-multichar -Wno-unused-variable -Wno-unused-value
 CFLAGS  += -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast
 LDFLAGS += -Wl,-rpath,'$$ORIGIN' -g -ldl -shared
 DEPS = vmmdll.h
-OBJ = oscompatibility.o charutil.o util.o pe.o vmmdll.o vmmdll_core.o vmmdll_scatter.o     \
-	  vmm.o mm_x64.o mm_x86.o mm_x86pae.o mm_pfn.o mm_vad.o mm_win.o fc.o    \
+OBJ = oscompatibility.o charutil.o util.o pe.o vmmdll.o vmmdll_core.o        \
+      vmmdll_scatter.o vmm.o fc.o                                            \
+	  mm/mm_x64.o mm/mm_x86.o mm/mm_x86pae.o mm/mm_pfn.o mm/mm_vad.o         \
+	  mm/mm_win.o                                                            \
 	  pluginmanager.o pdb.o infodb.o sqlite/sqlite3.o                        \
 	  ob/ob_cachemap.o ob/ob_compressed.o ob/ob_container.o ob/ob_core.o     \
 	  ob/ob_counter.o ob/ob_map.o ob/ob_memfile.o ob/ob_set.o ob/ob_strmap.o \
 	  statistics.o sysquery.o vmmevil.o vmmheap.o vmmlog.o vmmnet.o          \
 	  vmmproc.o vmmvm.o vmmwininit.o vmmwin.o vmmwinobj.o vmmwinpool.o       \
 	  vmmwinreg.o vmmwinsvc.o vmmwork.o                                      \
-	  m_vfsfc.o m_vfsproc.o m_vfsroot.o m_conf.o m_winreg.o                  \
-	  m_fc_csv.o m_fc_handle.o m_fc_json.o m_fc_module.o m_fc_ntfs.o         \
-	  m_fc_proc.o m_fc_registry.o m_fc_sys.o m_fc_thread.o m_fc_timeline.o   \
-	  m_file_handles_vads.o m_file_modules.o m_findevil.o                    \
-	  m_misc_bitlocker.o m_misc_procinfo.o m_misc_web.o m_misc_view.o        \
-	  m_phys2virt.o m_proc_handle.o m_proc_heap.o m_proc_ldrmodules.o        \
-	  m_proc_memmap.o m_proc_minidump.o m_proc_thread.o m_proc_token.o       \
-	  m_search.o m_sys.o m_sys_driver.o m_sys_mem.o m_sys_net.o m_sys_obj.o  \
-	  m_sys_pool.c m_sys_proc.o m_sys_svc.o m_sys_task.o m_sys_user.o        \
-	  m_virt2phys.o m_vm.o
+	  modules/m_vfsroot.o modules/m_vfsproc.o modules/m_vfsfc.o              \
+	  modules/m_conf.o modules/m_vm.o modules/m_winreg.o                     \
+	  modules/m_fc_csv.o modules/m_fc_handle.o modules/m_fc_json.o           \
+	  modules/m_fc_module.o modules/m_fc_ntfs.o modules/m_fc_proc.o          \
+	  modules/m_fc_registry.o modules/m_fc_sys.o modules/m_fc_thread.o       \
+	  modules/m_fc_timeline.o                                                \
+	  modules/m_misc_bitlocker.o modules/m_misc_procinfo.o                   \
+	  modules/m_misc_view.o modules/m_misc_web.o                             \
+	  modules/m_sys.o modules/m_sys_driver.o modules/m_sys_mem.o             \
+	  modules/m_sys_net.o modules/m_sys_obj.o modules/m_sys_pool.c           \
+	  modules/m_sys_proc.o modules/m_sys_svc.o modules/m_sys_syscall.o       \
+	  modules/m_sys_task.o modules/m_sys_user.o                              \
+	  modules/m_findevil.o modules/m_phys2virt.o modules/m_search.o          \
+	  modules/m_virt2phys.o                                                  \
+	  modules/m_proc_file_handles_vads.o modules/m_proc_file_modules.o       \
+	  modules/m_proc_handle.o modules/m_proc_heap.o                          \
+	  modules/m_proc_ldrmodules.o modules/m_proc_memmap.o                    \
+	  modules/m_proc_minidump.o modules/m_proc_thread.o                      \
+	  modules/m_proc_token.o
+
+
+
+
+
+
 
 %.o: %.c $(DEPS)
 	$(CC) -c -o $@ $< $(CFLAGS)

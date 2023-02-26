@@ -16,6 +16,7 @@ typedef unsigned __int64                QWORD, *PQWORD;
 // OB_DEBUG is not working (as currently coded) with arm32 due to alignment issues.
 #if _WIN32 || _WIN64 || __i386__ || __amd64__ || __aarch64__
 #define OB_DEBUG
+//#define OB_DEBUG_MEMZERO
 #endif /* _WIN32 || _WIN64 || __i386__ || __amd64__ || __aarch64__ */
 #define OB_HEADER_MAGIC                 0x0c0efefe
 typedef struct tdVMM_HANDLE             *VMM_HANDLE;

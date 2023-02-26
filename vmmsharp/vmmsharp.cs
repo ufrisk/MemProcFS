@@ -14,7 +14,7 @@ using System.Collections.Generic;
  *  (c) Ulf Frisk, 2020-2023
  *  Author: Ulf Frisk, pcileech@frizk.net
  *  
- *  Version 5.3
+ *  Version 5.4
  *  
  */
 
@@ -2175,7 +2175,7 @@ namespace vmmsharp
         internal static uint VMMDLL_MAP_HEAP_VERSION =       4;
         internal static uint VMMDLL_MAP_HEAPALLOC_VERSION =  1;
         internal static uint VMMDLL_MAP_THREAD_VERSION =     4;
-        internal static uint VMMDLL_MAP_HANDLE_VERSION =     2;
+        internal static uint VMMDLL_MAP_HANDLE_VERSION =     3;
         internal static uint VMMDLL_MAP_NET_VERSION =        3;
         internal static uint VMMDLL_MAP_PHYSMEM_VERSION =    2;
         internal static uint VMMDLL_MAP_POOL_VERSION =       2;
@@ -2931,7 +2931,7 @@ namespace vmmsharp
             internal uint _FutureUse2;
             internal uint dwPID;
             internal uint dwPoolTag;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 5)] internal uint[] _FutureUse;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 7)] internal uint[] _FutureUse;
             [MarshalAs(UnmanagedType.LPWStr)] internal string wszType;
         }
 

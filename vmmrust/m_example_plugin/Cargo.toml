@@ -1,0 +1,20 @@
+[package]
+name = "m_example_plugin"
+version = "5.4.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "m_example_plugin"
+path = "src/lib.rs"
+crate-type = ["cdylib"]
+
+[profile.release]
+codegen-units = 1
+opt-level = "z"
+panic = "abort"
+strip = true
+lto = true
+
+[dependencies]
+memprocfs = { path = "../memprocfs" }

@@ -1039,7 +1039,7 @@ VOID FcInitialize_ThreadProc(_In_ VMM_HANDLE H, _In_ QWORD qwNotUsed)
     H->fc->db.fSingleThread = FALSE;
     H->fc->fInitFinish = TRUE;
     if(H->fAbort) { goto fail; }
-    PluginManager_Notify(H, VMMDLL_PLUGIN_NOTIFY_FORENSIC_INIT, NULL, 100);
+    PluginManager_Notify(H, VMMDLL_PLUGIN_NOTIFY_FORENSIC_INIT, NULL, 0);
     PluginManager_Notify(H, VMMDLL_PLUGIN_NOTIFY_FORENSIC_INIT_COMPLETE, NULL, 0);
     Statistics_CallEnd(H, STATISTICS_ID_FORENSIC_FcInitialize, tmStart);
     fResult = TRUE;

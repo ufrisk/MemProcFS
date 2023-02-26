@@ -1,0 +1,19 @@
+[package]
+name = "memprocfs"
+version = "5.4.0"
+edition = "2021"
+description = "MemProcFS - Windows Physical Memory Analysis Framwork"
+homepage = "https://github.com/ufrisk/MemProcFS"
+repository = "https://github.com/ufrisk/MemProcFS"
+categories = ["external-ffi-bindings"]
+keywords = ["memory", "forensics", "dma", "pcileech", "memprocfs"]
+readme = "README.md"
+license = "AGPL-3.0-or-later"
+
+[lib]
+name = "memprocfs"
+path = "src/lib_memprocfs.rs"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+libloading = "0.7.4"
