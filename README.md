@@ -43,11 +43,11 @@ MemProcFS is dependent on packages, please do a `sudo apt-get install libusb-1.0
 
 
 
-Extensive Python, Java, C# and C/C++ API:
+Extensive Rust, Python, Java, C# and C/C++ API:
 ===============================
-Include MemProcFS in your [C/C++](https://github.com/ufrisk/MemProcFS/wiki/API_C), [C#](https://github.com/ufrisk/MemProcFS/wiki/API_CSharp), [Java](https://github.com/ufrisk/MemProcFS/wiki/API_Java) or [Python](https://github.com/ufrisk/MemProcFS/wiki/API_Python) programming projects! Everything in MemProcFS is exposed via an easy-to-use API for use in your own projects! The Plugin friendly architecture allows users to easily extend MemProcFS with native C .DLL plugins or Python plugins!
+Include MemProcFS in your [C/C++](https://github.com/ufrisk/MemProcFS/wiki/API_C), [C#](https://github.com/ufrisk/MemProcFS/wiki/API_CSharp), [Java](https://github.com/ufrisk/MemProcFS/wiki/API_Java), [Python](https://github.com/ufrisk/MemProcFS/wiki/API_Python) or [Rust](https://github.com/ufrisk/MemProcFS/wiki/API_Rust) programming projects! Everything in MemProcFS is exposed via an easy-to-use API for use in your own projects! The Plugin friendly architecture allows users to easily extend MemProcFS with native C .DLL plugins or Python plugins!
 
-Everything in MemProcFS is exposed as APIs. APIs exist for both C/C++ `vmmdll.h`, C# `vmmsharp.cs`, Java and Python `memprocfs.py`. The file system itself is made available virtually via the API without the need to mount it. SIt is possible to read both virtual process memory as well as physical memory! The example below shows reading 0x20 bytes from physical address 0x1000:
+Everything in MemProcFS is exposed as APIs. APIs exist for both C/C++ `vmmdll.h`, C# `vmmsharp.cs`, Java, Python `memprocfs.py` and Rust memprocfs crate. The file system itself is made available virtually via the API without the need to mount it. SIt is possible to read both virtual process memory as well as physical memory! The example below shows reading 0x20 bytes from physical address 0x1000:
 ```
 >>> import memprocfs
 >>> vmm = memprocfs.Vmm(['-device', 'c:/temp/win10_memdump.raw'])
@@ -86,7 +86,7 @@ Detailed build instructions may be found in the [Wiki](https://github.com/ufrisk
 
 License:
 ========
-The project source code is released under: GNU Affero General Public License v3.0. Some bundled dependencies and plugins are released under GPLv3. Some bundled Microsoft redistributable binaries are released under separate licenses. Alternative closed-source licensing may be possible upon request.
+The project source code is released under: GNU Affero General Public License v3.0. Some bundled dependencies and plugins are released under GPLv3. Some bundled Microsoft redistributable binaries are released under separate licenses. Alternative licensing may be possible upon request.
 
 
 
@@ -111,7 +111,6 @@ Links:
 
 Links - Related Projects:
 =========================
-* MemProcFSHunter: https://github.com/memprocfshunt/MemProcFSHunter
 * MemProcFS-Analyzer: https://github.com/evild3ad/MemProcFS-Analyzer
 
 
@@ -168,5 +167,6 @@ v1.1-v4.9
 * Hyper-V Container/Sandbox support.
 * Windows Hypervisor Platform support (VMware and VirtualBox on Hyper-V).
 
-Latest:
-* Microsoft symbol server support on Linux.
+[v5.4](https://github.com/ufrisk/MemProcFS/releases/tag/v5.4)
+* Rust API support.
+* Debug symbol support when running on Linux.
