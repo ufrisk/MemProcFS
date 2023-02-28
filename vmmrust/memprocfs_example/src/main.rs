@@ -107,12 +107,30 @@ pub fn main() {
 
 
         // Example: vmm.process_list():
-        // Retrieve all processes of the running system.
+        // Retrieve all processes of the running system as a Vec<process>
         println!("========================================");
         println!("Vmm.process_list():");
         if let Ok(process_all) = vmm.process_list() {
             for process in &*process_all {
                 print!("{process} ");
+            }
+            println!("");
+            // Example: Convert process list into a HashMap<K:pid, V:&VmmProcess>.
+            let process_map : std::collections::HashMap<u32, VmmProcess> = process_all.into_iter().map(|s| (s.pid, s)).collect();
+            for process in process_map {
+                print!("{},{} ", process.0, process.1);
+            }
+            println!("");
+        }
+
+
+        // Example: vmm.process_map():
+        // Retrieve all processes of the running system as a HashMap<pid, process>
+        println!("========================================");
+        println!("Vmm.process_map():");
+        if let Ok(process_all) = vmm.process_map() {
+            for process in process_all {
+                print!("<{},{}> ", process.0, process.1);
             }
             println!("");
         }
@@ -371,7 +389,7 @@ pub fn main() {
         // Example: vmm.reg_hive_read():
         // Read 0x100 bytes from the address 0x1000 in the software registry hive.
         println!("========================================");
-        println!("Vmm.reg_hive_read():");
+        println!("vmm.reg_hive_read():");
         if let Some(hive_software) = &hive_software {
             if let Ok(data_read) = hive_software.reg_hive_read(0x1000, 0x100, FLAG_NOCACHE | FLAG_ZEROPAD_ON_FAIL) {
                 println!("{:?}", data_read.hex_dump());
@@ -379,22 +397,133 @@ pub fn main() {
         }
 
 
-        // Example: vmm.mem_write():
+        // Example: vmm.reg_hive_write():
         // Write to the registry address 0x1000.
         // This have been commented out since this is extremely dangerous on live
         // systems and is likely to bluescreen / cause registry corruption.
+        /*
         println!("========================================");
-        println!("Vmm.reg_hive_write():");
+        println!("vmm.reg_hive_write():");
         if let Some(hive_software) = &hive_software {
             let data_to_write = [0x56u8, 0x4d, 0x4d, 0x52, 0x55, 0x53, 0x54].to_vec();
             let _r = hive_software.reg_hive_write(0x1000, &data_to_write);
+        }
+        */
+
+
+        // Example: vmm.reg_key()
+        // Retrieve the current version key given the full named path.
+        // Registry paths are case sensitive and use backslashes.
+        // Since this key will be used in following examples it's unwrap().
+        println!("========================================");
+        println!("vmm.reg_key():");
+        let reg_path = "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion";
+        println!("path: {reg_path}");
+        let vmmregkey = vmm.reg_key(reg_path).unwrap();
+        println!("{vmmregkey}");
+
+
+        // Example: vmm.reg_key()
+        // Retrieve the run key given the software hive address and hive path.
+        // Registry paths are case sensitive and use backslashes.
+        println!("========================================");
+        println!("vmm.reg_key():");
+        if let Some(hive_software) = &hive_software {
+            let reg_path = format!("0x{:x}\\ROOT\\Microsoft\\Windows\\CurrentVersion\\Run", hive_software.va);
+            println!("path: {reg_path}");
+            if let Ok(regkey) = vmm.reg_key(reg_path.as_str()) {
+                println!("{regkey}");
+            }
+        }
+
+
+        // Example: vmmregkey.parent()
+        println!("========================================");
+        println!("vmmregkey.parent():");
+        if let Ok(parentkey) = vmmregkey.parent() {
+            println!("{parentkey}");
+        }
+
+
+        // Example: vmmregkey.subkeys()
+        println!("========================================");
+        println!("vmmregkey.subkeys():");
+        if let Ok(key_all) = vmmregkey.subkeys() {
+            for key in key_all {
+                print!("{key} ") ;
+            }
+            println!("");
+        }
+
+
+        // Example: vmmregkey.subkeys_map()
+        println!("========================================");
+        println!("vmmregkey.subkeys_map():");
+        if let Ok(key_all) = vmmregkey.subkeys_map() {
+            for e in key_all {
+                print!("<{},{}> ", e.0, e.1) ;
+            }
+            println!("");
+        }
+
+
+        // Example: vmm.reg_value()
+        // Registry paths are case sensitive and use backslashes.
+        // Since this value will be used in following examples it's unwrap().
+        println!("========================================");
+        println!("vmm.reg_value():");
+        let reg_path = "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\ProgramFilesDir";
+        println!("path: {reg_path}");
+        let vmmregvalue = vmm.reg_value(reg_path).unwrap();
+        println!("{vmmregvalue} raw_type={} raw_size={}", vmmregvalue.raw_type, vmmregvalue.raw_size);
+
+
+        // Example: vmmregvalue.raw_value()
+        // Retrieve the raw underlying data backing the actual value.
+        println!("========================================");
+        println!("vmm.raw_value():");
+        if let Ok(raw_value) = vmmregvalue.raw_value() {
+            println!("{:?}", raw_value.hex_dump())
+        }
+
+
+        // Example: vmmregvalue.value()
+        // REG_SZ
+        println!("========================================");
+        println!("vmm.raw_value(): REG_SZ");
+        if let Ok(VmmRegValueType::REG_SZ(s)) = vmmregvalue.value() {
+            println!("REG_SZ: {s}");
+        }
+
+
+        // Example: vmmregvalue.value()
+        // REG_MULTI_SZ
+        println!("========================================");
+        println!("vmm.raw_value(): REG_MULTI_SZ");
+        if let Ok(regvalue) = vmm.reg_value("HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileAssociation\\UseLocalMachineSoftwareClassesWhenImpersonating") {
+            if let Ok(VmmRegValueType::REG_MULTI_SZ(multistr)) = regvalue.value() {
+                for s in multistr {
+                    println!("REG_MULTI_SZ: {s}");
+                }
+            }
+        }
+
+
+        // Example: vmmregvalue.value()
+        // REG_DWORD
+        println!("========================================");
+        println!("vmm.raw_value(): REG_DWORD");
+        if let Ok(regvalue) = vmm.reg_value("HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FSIASleepTimeInMs") {
+            if let Ok(VmmRegValueType::REG_DWORD(dw)) = regvalue.value() {
+                println!("REG_DWORD: 0x{:08x}", dw);
+            }
         }
 
 
 
 
 
-        
+
         // Example: vmm.process_from_name():
         // Retrieve the process object for 'explorer.exe'.
         // If explorer.exe does not exist just panic since the remainder of the

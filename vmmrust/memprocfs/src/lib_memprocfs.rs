@@ -40,9 +40,9 @@
 //! 
 //! 
 //! ## Example documentation
-//! Check out the example documentation, both in the form of the [example
-//! project](https://github.com/ufrisk/MemProcFS/tree/master/vmmrust/memprocfs_example)
-//! and the [example MemProcFS plugin](https://github.com/ufrisk/MemProcFS/tree/master/vmmrust/m_example_plugin)
+//! Check out the example documentation, both in the form of the
+//! [example project](https://github.com/ufrisk/MemProcFS/blob/master/vmmrust/memprocfs_example/src/main.rs)
+//! and the [example MemProcFS plugin](https://github.com/ufrisk/MemProcFS/blob/master/vmmrust/m_example_plugin/src/lib.rs).
 //! 
 //! 
 //! ## Project documentation
@@ -53,11 +53,7 @@
 //! * [PCILeech-FPGA](https://github.com/ufrisk/pcileech-fpga).
 //! 
 //! 
-//! ## License
-//! MemProcFS and its rust API is  open source under the [AGPL-3.0](https://github.com/ufrisk/MemProcFS/blob/master/LICENSE) license.
-//! 
-//! 
-//! # Support PCILeech/MemProcFS development:
+//! ## Support PCILeech/MemProcFS development:
 //! PCILeech and MemProcFS is free and open source!
 //! 
 //! I put a lot of time and energy into PCILeech and MemProcFS and related research to make this happen. Some aspects of the projects relate to hardware and I put quite some money into my projects and related research. If you think PCILeech and/or MemProcFS are awesome tools and/or if you had a use for them it's now possible to contribute by becoming a sponsor!
@@ -75,17 +71,12 @@
 //! * Email: pcileech@frizk.net
 //! 
 //! 
-//! ## Future work
-//! Functionality haven't yet made it into the API, but will be added in the near future!
-//! * Completed Registry API
-//! * Search API
-//! 
-//! 
 //! ## Get Started!
 //! Check out the [`Vmm`] documentation and the [example project](https://github.com/ufrisk/MemProcFS/tree/master/vmmrust/memprocfs_example)!
 //! 
 //! <b>Best wishes with your memory analysis Rust project!</b>
 
+use std::collections::HashMap;
 use std::ffi::{CStr, CString, c_char, c_int};
 use std::fmt;
 use serde::{Serialize, Deserialize};
@@ -248,13 +239,7 @@ pub const PLUGIN_NOTIFY_VM_ATTACH_DETACH            : u32 = 0x01000400;
 /// ```
 /// // Initialize MemProcFS VMM on a Windows system parsing a
 /// // memory dump and virtual machines inside it.
-/// let mut args = Vec::new();
-/// args.push("-printf");
-/// args.push("-v");
-/// args.push("-waitinitialize");
-/// args.push("-device");
-/// args.push("C:\\Dumps\\myfullmemorydump.dmp");
-/// args.push("-vm");
+/// let args = ["-printf", "-v", "-waitinitialize", "-device", "C:\\Dumps\\mem.dmp"].to_vec();
 /// if let Ok(vmm) = Vmm::new("C:\\MemProcFS\\vmm.dll", &args) {
 ///     ...
 ///     // The underlying native vmm is automatically closed 
@@ -265,9 +250,7 @@ pub const PLUGIN_NOTIFY_VM_ATTACH_DETACH            : u32 = 0x01000400;
 /// ```
 /// // Initialize MemProcFS VMM on a Linux system parsing live memory
 /// // retrieved from a PCILeech FPGA hardware device.
-/// let mut args = Vec::new();
-/// args.push("-device");
-/// args.push("fpga");
+/// let args = ["-device", "fpga"].to_vec();
 /// if let Ok(vmm) = Vmm::new("/home/user/memprocfs/vmm.so", &args) {
 ///     ...
 ///     // The underlying native vmm is automatically closed 
@@ -527,7 +510,7 @@ impl Vmm<'_> {
     /// }
     /// ```
     pub fn new_from_virtual_machine<'a>(vmm_parent : &'a Vmm, vm_entry : &VmmMapVirtualMachineEntry) -> ResultEx<Vmm<'a>> {
-        return crate::impl_new_from_virtual_machine(vmm_parent, vm_entry);
+        return impl_new_from_virtual_machine(vmm_parent, vm_entry);
     }
 
     /// Retrieve a single process by PID.
@@ -568,14 +551,31 @@ impl Vmm<'_> {
     /// 
     /// # Examples
     /// ```
-    /// if let Ok(process_all) = vmm.process_list() {
-    ///     for process in &*process_all {
-    ///         println!("{process} ");
-    ///     }
+    /// // Retrieve all processes (as a Vec).
+    /// process_all = vmm.process_list()?
+    /// for process in &*process_all {
+    ///     println!("{process} ");
     /// }
     /// ```
     pub fn process_list(&self) -> ResultEx<Vec<VmmProcess>> {
         return self.impl_process_list();
+    }
+
+    /// Retrieve all processes as a map.
+    /// 
+    /// K: PID,
+    /// V: VmmProcess
+    /// 
+    /// # Examples
+    /// ```
+    ///  // Retrieve all processes as (a HashMap).
+    /// process_all = vmm.process_map()?;
+    /// for process in process_all {
+    ///     println!("<{},{}> ", process.0, process.1);
+    /// }
+    /// ```
+    pub fn process_map(&self) -> ResultEx<HashMap<u32, VmmProcess>> {
+        return Ok(self.impl_process_list()?.into_iter().map(|s| (s.pid, s)).collect());
     }
 
     /// Get a numeric configuration value.
@@ -653,10 +653,9 @@ impl Vmm<'_> {
     /// 
     /// # Examples
     /// ```
-    /// if let Ok(net_all) = vmm.map_net() {
-    ///     for net in &*net_all {
-    ///         println!("{net}");
-    ///     }
+    /// let net_all vmm.map_net()?;
+    /// for net in &*net_all {
+    ///     println!("{net}");
     /// }
     /// ```
     pub fn map_net(&self) -> ResultEx<Vec<VmmMapNetEntry>> {
@@ -686,7 +685,7 @@ impl Vmm<'_> {
     /// Retrieve the kernel pool allocation info map.
     /// 
     /// # Arguments
-    /// * `is_bigpool_only` - xxxx.
+    /// * `is_bigpool_only` - Retrieve only entries from the big pool (faster).
     /// 
     /// # Examples
     /// ```
@@ -709,10 +708,9 @@ impl Vmm<'_> {
     /// 
     /// # Examples
     /// ```
-    /// if let Ok(service_all) = vmm.map_service() {
-    ///     for service in &*service_all {
-    ///         println!("{service} ");
-    ///     }
+    /// let service_all = vmm.map_service()?;
+    /// for service in &*service_all {
+    ///     println!("{service} ");
     /// }
     /// ```
     pub fn map_service(&self) -> ResultEx<Vec<VmmMapServiceEntry>> {
@@ -723,10 +721,9 @@ impl Vmm<'_> {
     /// 
     /// # Examples
     /// ```
-    /// if let Ok(user_all) = vmm.map_user() {
-    ///     for user in &*user_all {
-    ///         println!("{:x}:: {} :: {} :: {user}", user.va_reg_hive, user.sid, user.user);
-    ///     }
+    /// let user_all = vmm.map_user()?;
+    /// for user in &*user_all {
+    ///     println!("{:x}:: {} :: {} :: {user}", user.va_reg_hive, user.sid, user.user);
     /// }
     /// ```
     pub fn map_user(&self) -> ResultEx<Vec<VmmMapUserEntry>> {
@@ -737,9 +734,20 @@ impl Vmm<'_> {
     /// 
     /// # Examples
     /// ```
-    /// if let Ok(user_all) = vmm.map_user() {
-    ///     for user in &*user_all {
-    ///         println!("{:x}:: {} :: {} :: {user}", user.va_reg_hive, user.sid, user.user);
+    /// let virtualmachine_all = vmm.map_virtual_machine()?
+    /// for virtualmachine in &*virtualmachine_all {
+    ///     println!("{virtualmachine}");
+    ///     if virtualmachine.is_active {
+    ///         // for active vms it's possible to create a new vmm object for
+    ///         // the vm. it's possible to treat this as any other vmm object
+    ///         // to read memory, query processes etc.
+    ///         let vmm_vm = match Vmm::new_from_virtual_machine(&vmm, &virtualmachine) {
+    ///             Err(_) => continue,
+    ///             Ok(r) => r,
+    ///         };
+    ///         println!("vm max native address: {:#x} -> {:#x}",
+    ///                  CONFIG_OPT_CORE_MAX_NATIVE_ADDRESS,
+    ///                  vmm_vm.get_config(CONFIG_OPT_CORE_MAX_NATIVE_ADDRESS).unwrap_or(0));
     ///     }
     /// }
     /// ```
@@ -917,6 +925,56 @@ impl Vmm<'_> {
     pub fn reg_hive_list(&self) -> ResultEx<Vec<VmmRegHive>> {
         return self.impl_reg_hive_list();
     }
+
+    /// Retrieve a registry key by its path.
+    /// 
+    /// Registry keys may be addressed either by its full path or by hive address
+    /// and hive path. Both addressing modes are shown in the examples below.
+    /// Registry keys are case sensitive.
+    /// 
+    /// Check out the [`VmmRegKey`] struct for more detailed information.
+    /// 
+    /// # Examples
+    /// ```
+    /// // Retrieve a regkey by full path.
+    /// let regkey = vmm.reg_key("HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run")?
+    /// println!("{regkey");
+    /// ```
+    /// 
+    /// ```
+    /// // Retrieve a regkey by hive path.
+    /// // (SOFTWARE hive example address: 0xffffba061a908000).
+    /// let regkey = vmm.reg_key("0xffffba061a908000\\ROOT\\Microsoft\\Windows\\CurrentVersion\\Run")?
+    /// println!("{regkey");
+    /// ```
+    pub fn reg_key(&self, path : &str) -> ResultEx<VmmRegKey> {
+        return self.impl_reg_key(path);
+    }
+
+    /// Retrieve a registry value by its path.
+    /// 
+    /// Registry values may be addressed either by its full path or by hive
+    /// address and hive path. Both addressing modes are shown in the examples
+    /// below. Registry keys are case sensitive.
+    /// 
+    /// Check out the [`VmmRegValue`] struct for more detailed information.
+    /// 
+    /// # Examples
+    /// ```
+    /// // Retrieve a regvalue by full path.
+    /// let regvalue = vmm.reg_key("HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\ProgramFilesDir")?
+    /// println!("{regkey");
+    /// ```
+    /// 
+    /// ```
+    /// // Retrieve a regvalue by hive path.
+    /// // (SOFTWARE hive example address: 0xffffba061a908000).
+    /// let regvalue = vmm.reg_key("0xffffba061a908000\\ROOT\\Microsoft\\Windows\\CurrentVersion\\ProgramFilesDir")?
+    /// println!("{regkey");
+    /// ```
+    pub fn reg_value(&self, path : &str) -> ResultEx<VmmRegValue> {
+        return self.impl_reg_value(path);
+    }
 }
 
 
@@ -984,6 +1042,7 @@ impl VmmKernel<'_> {
         return VmmPdb { vmm : self.vmm, module : String::from("nt") };
     }
 }
+
 
 
 
@@ -1104,7 +1163,7 @@ impl VmmPdb<'_> {
 ///     // several reads/writes into one efficient call to the memory device.
 ///     println!("========================================");
 ///     println!("vmmprocess.mem_scatter() #1:");
-///     let mem_scatter = vmmprocess.mem_scatter(FLAG_NOCACHE | FLAG_ZEROPAD_ON_FAIL).unwrap();
+///     let mem_scatter = vmmprocess.mem_scatter(FLAG_NOCACHE | FLAG_ZEROPAD_ON_FAIL)?;
 ///     println!("mem_scatter = {mem_scatter}");
 ///     // Prepare three memory ranges to read.
 ///     let _r = mem_scatter.prepare(kernel32.va_base + 0x0000, 0x100);
@@ -2265,6 +2324,8 @@ impl VmmProcess<'_> {
 
 
 
+
+
 /// Registry Hive API.
 /// 
 /// The [`VmmRegHive`] info struct allows for access to the registry hive by
@@ -2325,6 +2386,234 @@ impl VmmRegHive<'_> {
     /// ```
     pub fn reg_hive_write(&self, ra : u32, data : &Vec<u8>) -> ResultEx<()> {
         return self.impl_reg_hive_write(ra, data);
+    }
+}
+
+/// Registry Key API
+/// 
+/// The [`VmmRegKey`] info struct represents a registry key and also have
+/// additional access methods for retrieving registry keys and values.
+/// 
+/// Registry keys may be addressed either by its full path or by hive address
+/// and hive path. Both addressing modes are shown in the examples below.
+/// Registry keys are case sensitive.
+/// 
+/// # Created By
+/// - `vmm.reg_key()`
+/// - `vmmregkey.parent()`
+/// - `vmmregkey.subkeys()`
+/// - `vmmregkey.subkeys_map()`
+/// - `vmmregvalue.parent()`
+/// 
+/// # Examples
+/// ```
+/// // Retrieve a regkey by full path.
+/// let regkey = vmm.reg_key("HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run")?
+/// println!("{regkey");
+/// ```
+/// 
+/// ```
+/// // Retrieve a regkey by hive path.
+/// // (SOFTWARE hive example address: 0xffffba061a908000).
+/// let regkey = vmm.reg_key("0xffffba061a908000\\ROOT\\Microsoft\\Windows\\CurrentVersion\\Run")?
+/// println!("{regkey");
+/// ```
+#[derive(Debug)]
+pub struct VmmRegKey<'a> {
+    vmm : &'a Vmm<'a>,
+    /// Key name.
+    pub name : String,
+    /// Path including key name.
+    pub path : String,
+    /// Last write timestamp in Windows filetime format.
+    pub ft_last_write : u64,
+}
+
+impl VmmRegKey<'_> {
+    /// Retrieve the parent registry key of this registry key.
+    /// 
+    /// # Examples
+    /// ```
+    /// let regkey_parent = regkey.parent()?
+    /// println!("{regkey_parent");
+    /// ```
+    pub fn parent(&self) -> ResultEx<VmmRegKey> {
+        return self.impl_parent();
+    }
+
+    /// Retrieve the registry subkeys of this registry key
+    /// 
+    /// # Examples
+    /// ```
+    /// // Retrieve all registry subkeys (as Vec).
+    /// let subkeys = regkey.subkeys()?
+    /// for key in subkeys {
+    ///     println!("{key}")
+    /// }
+    /// ```
+    pub fn subkeys(&self) -> ResultEx<Vec<VmmRegKey>> {
+        return self.impl_subkeys();
+    }
+
+    /// Retrieve the registry subkeys of this registry key as a map
+    /// 
+    /// K: String key name,
+    /// V: VmmRegKey
+    /// 
+    /// # Examples
+    /// ```
+    /// // Retrieve all registry subkeys (as HashMap).
+    /// let subkeys = regkey.subkeys_map()?
+    /// for e in subkeys {
+    ///     println!("{},{}", e.0, e.1)
+    /// }
+    /// ```
+    pub fn subkeys_map(&self) -> ResultEx<HashMap<String, VmmRegKey>> {
+        return Ok(self.impl_subkeys()?.into_iter().map(|s| (s.name.clone(), s)).collect());
+    }
+
+    /// Retrieve the registry values of this registry key
+    /// 
+    /// # Examples
+    /// ```
+    /// // Retrieve all registry values (as Vec).
+    /// let values = regkey.values()?
+    /// for value in values {
+    ///     println!("{value}")
+    /// }
+    /// ```
+    pub fn values(&self) -> ResultEx<Vec<VmmRegValue>> {
+        return self.impl_values();
+    }
+
+    /// Retrieve the registry values of this registry key as a map
+    /// 
+    /// K: String value name,
+    /// V: VmmRegValue
+    /// 
+    /// # Examples
+    /// ```
+    /// // Retrieve all registry values (as HashMap).
+    /// let values = regkey.values_map()?
+    /// for e in values {
+    ///     println!("{},{}", e.0, e.1)
+    /// }
+    /// ```
+    pub fn values_map(&self) -> ResultEx<HashMap<String, VmmRegValue>> {
+        return Ok(self.impl_values()?.into_iter().map(|s| (s.name.clone(), s)).collect());
+    }
+
+}
+
+#[allow(non_camel_case_types)]
+pub enum VmmRegValueType {
+    REG_NONE,
+    REG_SZ(String),
+    REG_EXPAND_SZ(String),
+    REG_BINARY(Vec<u8>),
+    REG_DWORD(u32),
+    REG_DWORD_BIG_ENDIAN(u32),
+    REG_LINK(String),
+    REG_MULTI_SZ(Vec<String>),
+    REG_RESOURCE_LIST(Vec<u8>),
+    REG_FULL_RESOURCE_DESCRIPTOR(Vec<u8>),
+    REG_RESOURCE_REQUIREMENTS_LIST(Vec<u8>),
+    REG_QWORD(u64),
+}
+
+/// Registry Value API
+/// 
+/// The [`VmmRegValue`] info struct represents a registry value and also have
+/// additional access methods for parent key and the value itself.
+/// 
+/// Registry values may be addressed either by its full path or by hive address
+/// and hive path. Both addressing modes are shown in the examples below.
+/// Registry values are case sensitive.
+/// 
+/// # Created By
+/// - `vmm.reg_value()`
+/// - `vmmregkey.values()`
+/// - `vmmregkey.values_map()`
+/// 
+/// # Examples
+/// ```
+/// // Retrieve a REG_SZ (string) reg value by its full path.
+/// let regpath = "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\ProgramFilesDir";
+/// let regvalue = vmm.reg_key(regpath)?
+/// println!("{regvalue}");
+/// if let Ok(VmmRegValueType::REG_SZ(s)) = regvalue.value() {
+///     println!("REG_SZ: {s}");
+/// }
+/// ```
+/// 
+/// ```
+/// // Retrieve a REG_DWORD reg value using the hive path.
+/// // (SOFTWARE hive example address: 0xffffba061a908000).
+/// let regpath = "0xffffba061a908000\\ROOT\\Microsoft\\.NETFramework\\Enable64Bit";
+/// let regvalue = vmm.reg_key(regpath)?
+/// if let Ok(VmmRegValueType::REG_DWORD(dw)) = regvalue.value() {
+///     println!("REG_DWORD: 0x{:08x}", dw);
+/// }
+/// ```
+#[derive(Debug)]
+pub struct VmmRegValue<'a> {
+    vmm : &'a Vmm<'a>,
+    /// Value name.
+    pub name : String,
+    /// Path including key name.
+    pub path : String,
+    /// The raw type as specified by Windows REG_* constants.
+    pub raw_type : u32,
+    /// The raw data size in bytes.
+    pub raw_size : u32,
+    raw_value : Option<Vec<u8>>,
+}
+
+impl VmmRegValue<'_> {
+    /// Retrieve the parent registry key.
+    /// 
+    /// # Examples
+    /// ```
+    /// let regkey_parent = regvalue.parent()?
+    /// println!("{regkey_parent");
+    /// ```
+    pub fn parent(&self) -> ResultEx<VmmRegKey> {
+        return self.impl_parent();
+    }
+
+    /// Retrieve the registry value.
+    /// 
+    /// The registry value is returned as [`VmmRegValueType`] enum containing
+    /// the relevant embedded value.
+    /// 
+    /// 
+    /// # Examples
+    /// ```
+    /// // Retrieve a REG_SZ (string) reg value.
+    /// if let Ok(VmmRegValueType::REG_SZ(s)) = regvalue.value() {
+    ///     println!("REG_SZ: {s}");
+    /// }
+    /// ```
+    /// 
+    /// ```
+    /// // Retrieve a REG_DWORD reg value.
+    /// if let Ok(VmmRegValueType::REG_DWORD(dw)) = regvalue.value() {
+    ///     println!("REG_DWORD: 0x{:08x}", dw);
+    /// }
+    /// ```
+    pub fn value(&self) -> ResultEx<VmmRegValueType> {
+        return self.impl_value();
+    }
+
+    /// Retrieve the raw value bytes backing the actual value.
+    /// 
+    /// # Examples
+    /// ```
+    /// let raw_value = vmmregvalue.raw_value()?;
+    /// println!("{:?}", raw_value.hex_dump());
+    /// ```
+    pub fn raw_value(&self) -> ResultEx<Vec<u8>> {
+        return self.impl_raw_value();
     }
 }
 
@@ -2666,6 +2955,9 @@ struct VmmNative {
     VMMDLL_WinReg_HiveList :        extern "C" fn(hVMM : usize, pHives : *mut CRegHive, cHives : u32, pcHives : *mut u32) -> bool,
     VMMDLL_WinReg_HiveReadEx :      extern "C" fn(hVMM : usize, vaCMHive : u64, ra : u32, pb : *mut u8, cb : u32, pcbReadOpt : *mut u32, flags : u64) -> bool,
     VMMDLL_WinReg_HiveWrite :       extern "C" fn(hVMM : usize, vaCMHive : u64, ra : u32, pb : *const u8, cb : u32) -> bool,
+    VMMDLL_WinReg_EnumKeyExU :      extern "C" fn(hVMM : usize, uszFullPathKey : *const c_char, dwIndex : u32, lpcchName : *mut c_char, lpcchName : *mut u32, lpftLastWriteTime : *mut u64) -> bool,
+    VMMDLL_WinReg_EnumValueU :      extern "C" fn(hVMM : usize, uszFullPathKey : *const c_char, dwIndex : u32, lpValueName : *mut c_char, lpcchValueName : *mut u32, lpType : *mut u32, lpcbData : *mut u32) -> bool,
+    VMMDLL_WinReg_QueryValueExU :   extern "C" fn(hVMM : usize, uszFullPathKeyValue : *const c_char, lpType : *mut u32, lpData : *mut u8, lpcbData : *mut u32) -> bool,
 
     VMMDLL_ProcessGetModuleBaseU :  extern "C" fn(hVMM : usize, pid : u32, uszModuleName : *const c_char) -> u64,
     VMMDLL_ProcessGetProcAddressU : extern "C" fn(hVMM : usize, pid : u32, uszModuleName : *const c_char, szFunctionName : *const c_char) -> u64,
@@ -2750,6 +3042,9 @@ fn impl_new<'a>(vmm_lib_path : &str, h_vmm_existing_opt : usize, args: &Vec<&str
         let VMMDLL_WinReg_HiveList = *lib.get(b"VMMDLL_WinReg_HiveList")?;
         let VMMDLL_WinReg_HiveReadEx = *lib.get(b"VMMDLL_WinReg_HiveReadEx")?;
         let VMMDLL_WinReg_HiveWrite = *lib.get(b"VMMDLL_WinReg_HiveWrite")?;
+        let VMMDLL_WinReg_EnumKeyExU = *lib.get(b"VMMDLL_WinReg_EnumKeyExU")?;
+        let VMMDLL_WinReg_EnumValueU = *lib.get(b"VMMDLL_WinReg_EnumValueU")?;
+        let VMMDLL_WinReg_QueryValueExU = *lib.get(b"VMMDLL_WinReg_QueryValueExU")?;
         let VMMDLL_ProcessGetModuleBaseU = *lib.get(b"VMMDLL_ProcessGetModuleBaseU")?;
         let VMMDLL_ProcessGetProcAddressU = *lib.get(b"VMMDLL_ProcessGetProcAddressU")?;
         let VMMDLL_ProcessGetInformation = *lib.get(b"VMMDLL_ProcessGetInformation")?;
@@ -2831,6 +3126,9 @@ fn impl_new<'a>(vmm_lib_path : &str, h_vmm_existing_opt : usize, args: &Vec<&str
             VMMDLL_WinReg_HiveList,
             VMMDLL_WinReg_HiveReadEx,
             VMMDLL_WinReg_HiveWrite,
+            VMMDLL_WinReg_EnumKeyExU,
+            VMMDLL_WinReg_EnumValueU,
+            VMMDLL_WinReg_QueryValueExU,
             VMMDLL_ProcessGetModuleBaseU,
             VMMDLL_ProcessGetProcAddressU,
             VMMDLL_ProcessGetInformation,
@@ -3460,7 +3758,7 @@ impl Vmm<'_> {
 
     fn impl_process_from_name(&self, process_name : &str) -> ResultEx<VmmProcess> {
         let mut pid = 0;
-        let sz_process_name = CString::new(process_name).unwrap();
+        let sz_process_name = CString::new(process_name)?;
         let r = (self.native.VMMDLL_PidGetFromName)(self.native.h, sz_process_name.as_ptr(), &mut pid);
         if !r {
             return Err(format!("VMMDLL_PidGetFromName: fail. Process '{process_name}' does not exist.").into());
@@ -3889,6 +4187,64 @@ impl Vmm<'_> {
             return Ok(result);
         }
     }
+
+    fn impl_reg_pathsplit(path : &str) -> ResultEx<(&str, &str)> {
+        let path = path.trim_end_matches('\\');
+        if let Some(split) = path.rsplit_once('\\') {
+            if (split.0.len() > 0) && (split.1.len() > 0) {
+                return Ok(split);
+            }
+        }
+        return Err("[err]".into());
+    }
+
+    fn impl_reg_key(&self, path : &str) -> ResultEx<VmmRegKey> {
+        let mut ftLastWrite = 0;
+        let mut cch = 0;
+        let c_path = CString::new(path)?;
+        let r = (self.native.VMMDLL_WinReg_EnumKeyExU)(self.native.h, c_path.as_ptr(), u32::MAX, std::ptr::null_mut(), &mut cch, &mut ftLastWrite);
+        if !r {
+            return Err("VMMDLL_WinReg_EnumKeyExU: fail.".into());
+        }
+        let pathname = Vmm::impl_reg_pathsplit(path)?;
+        let result = VmmRegKey {
+            vmm : &self,
+            name : String::from(pathname.1),
+            path : String::from(path),
+            ft_last_write : ftLastWrite,
+        };
+        return Ok(result);
+    }
+
+    fn impl_reg_value(&self, path : &str) -> ResultEx<VmmRegValue> {
+        let mut raw_value = None;
+        let mut raw_type = 0;
+        let mut v = [0u8; 64];
+        let mut raw_size = v.len() as u32;
+        let c_path = CString::new(path)?;
+        let r = (self.native.VMMDLL_WinReg_QueryValueExU)(self.native.h, c_path.as_ptr(), &mut raw_type, v.as_mut_ptr(), &mut raw_size);
+        if !r {
+            return Err("VMMDLL_WinReg_QueryValueExU: fail.".into());
+        }
+        if raw_size < v.len() as u32 {
+            raw_value = Some(v[0..raw_size as usize].to_vec());
+        } else {
+            let r = (self.native.VMMDLL_WinReg_QueryValueExU)(self.native.h, c_path.as_ptr(), std::ptr::null_mut(), std::ptr::null_mut(), &mut raw_size);
+            if !r {
+                return Err("VMMDLL_WinReg_QueryValueExU: fail.".into());
+            }
+        }
+        let pathname = Vmm::impl_reg_pathsplit(path)?;
+        let result = VmmRegValue {
+            vmm : &self,
+            name : String::from(pathname.1),
+            path : String::from(path),
+            raw_type,
+            raw_size,
+            raw_value,
+        };
+        return Ok(result);
+    }
 }
 
 impl VmmMapPoolEntry {
@@ -3998,6 +4354,50 @@ impl PartialEq for VmmRegHive<'_> {
     }
 }
 
+impl fmt::Display for VmmRegKey<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "VmmRegKey:{}", self.name)
+    }
+}
+
+impl PartialEq for VmmRegKey<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.name.eq(&other.name)
+    }
+}
+
+impl fmt::Display for VmmRegValueType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let v = match self {
+            VmmRegValueType::REG_NONE => "REG_NONE".to_string(),
+            VmmRegValueType::REG_SZ(r) => format!("REG_SZ({r})"),
+            VmmRegValueType::REG_EXPAND_SZ(_) => "REG_EXPAND_SZ".to_string(),
+            VmmRegValueType::REG_BINARY(_) => "REG_BINARY".to_string(),
+            VmmRegValueType::REG_DWORD(r) => format!("REG_DWORD(0x{:x})", r),
+            VmmRegValueType::REG_DWORD_BIG_ENDIAN(r) => format!("REG_DWORD_BIG_ENDIAN(0x{:x})", r),
+            VmmRegValueType::REG_LINK(r) => format!("REG_LINK({r})"),
+            VmmRegValueType::REG_MULTI_SZ(_) => "REG_MULTI_SZ".to_string(),
+            VmmRegValueType::REG_RESOURCE_LIST(_) => "REG_RESOURCE_LIST".to_string(),
+            VmmRegValueType::REG_FULL_RESOURCE_DESCRIPTOR(_) => "REG_FULL_RESOURCE_DESCRIPTOR".to_string(),
+            VmmRegValueType::REG_RESOURCE_REQUIREMENTS_LIST(_) => "REG_RESOURCE_REQUIREMENTS_LIST".to_string(),
+            VmmRegValueType::REG_QWORD(r) => format!("REG_QWORD(0x{:x})", r),
+        };
+        write!(f, "{v}")
+    }
+}
+
+impl fmt::Display for VmmRegValue<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "VmmRegValue:{}", self.name)
+    }
+}
+
+impl PartialEq for VmmRegValue<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.name.eq(&other.name)
+    }
+}
+
 impl VmmRegHive<'_> {
     fn impl_reg_hive_read(&self, ra : u32, size : usize, flags : u64) -> ResultEx<Vec<u8>> {
         let cb = u32::try_from(size)?;
@@ -4018,6 +4418,146 @@ impl VmmRegHive<'_> {
             return Err("VMMDLL_WinReg_HiveWrite: fail.".into());
         }
         return Ok(());
+    }
+}
+
+impl VmmRegKey<'_> {
+    fn impl_parent(&self) -> ResultEx<VmmRegKey> {        
+        let pathfile = Vmm::impl_reg_pathsplit(self.path.as_str())?;
+        let result = self.vmm.impl_reg_key(pathfile.0)?;
+        return Ok(result);
+    }
+
+    #[allow(unused_assignments)]
+    fn impl_subkeys(&self) -> ResultEx<Vec<VmmRegKey>> {
+        unsafe {
+            let mut ft_last_write = 0;
+            let mut cch = 0;
+            let mut i = 0;
+            let mut data = [0; MAX_PATH+1];
+            let c_path = CString::new(self.path.as_str())?;
+            let mut result = Vec::new();
+            loop {
+                cch = data.len() as u32 - 1;
+                let r = (self.vmm.native.VMMDLL_WinReg_EnumKeyExU)(self.vmm.native.h, c_path.as_ptr(), i, data.as_mut_ptr(), &mut cch, &mut ft_last_write);
+                if !r {
+                    break;
+                }
+                let name = String::from_utf8_lossy(CStr::from_ptr(data.as_ptr()).to_bytes()).to_string();
+                let path = format!("{}\\{}", self.path, name);
+                let e = VmmRegKey {
+                    vmm : self.vmm,
+                    name,
+                    path,
+                    ft_last_write,
+                };
+                result.push(e);
+                i += 1;
+            }
+            return Ok(result);
+        }
+    }
+
+    fn impl_values(&self) -> ResultEx<Vec<VmmRegValue>> {
+        return Err("Not implemented".into());
+    }
+}
+
+impl VmmRegValue<'_> {
+    fn impl_parent(&self) -> ResultEx<VmmRegKey> {        
+        let pathfile = Vmm::impl_reg_pathsplit(self.path.as_str())?;
+        let result = self.vmm.impl_reg_key(pathfile.0)?;
+        return Ok(result);
+    }
+
+    fn impl_raw_value(&self) -> ResultEx<Vec<u8>> {
+            if self.raw_value.is_some() {
+                return Ok(self.raw_value.as_ref().unwrap().clone());
+            }
+            // size larger than 64 bytes -> not cached in VmmRegValue.
+            if self.raw_size > 0x01000000 {
+                return Err("VmmRegKey size too large (>16MB).".into());
+            }
+            let mut raw_value = vec![0; self.raw_size as usize];
+            let c_path = CString::new(self.path.clone())?;
+            let mut raw_size = self.raw_size;
+            let r = (self.vmm.native.VMMDLL_WinReg_QueryValueExU)(self.vmm.native.h, c_path.as_ptr(), std::ptr::null_mut(), raw_value.as_mut_ptr(), &mut raw_size);
+            if !r {
+                return Err("VMMDLL_WinReg_QueryValueExU: fail.".into());
+            }
+            return Ok(raw_value);
+    }
+
+    fn impl_value(&self) -> ResultEx<VmmRegValueType> {
+        const REG_NONE                      : u32 = 0;
+        const REG_SZ                        : u32 = 1;
+        const REG_EXPAND_SZ                 : u32 = 2;
+        const REG_BINARY                    : u32 = 3;
+        const REG_DWORD                     : u32 = 4;
+        const REG_DWORD_BIG_ENDIAN          : u32 = 5;
+        const REG_LINK                      : u32 = 6;
+        const REG_MULTI_SZ                  : u32 = 7;
+        const REG_RESOURCE_LIST             : u32 = 8;
+        const REG_FULL_RESOURCE_DESCRIPTOR  : u32 = 9;
+        const REG_RESOURCE_REQUIREMENTS_LIST: u32 = 10;
+        const REG_QWORD                     : u32 = 11;
+        // Sanity checks and REG_NONE type:
+        if self.raw_type == REG_NONE {
+            return Ok(VmmRegValueType::REG_NONE);
+        }
+        if self.raw_type > REG_QWORD {
+            return Err("Unknown registry value type.".into());
+        }
+        // Get data using method call since data may be larger than cached data.
+        let raw_value = self.raw_value()?;
+        match self.raw_type {
+            REG_BINARY => return Ok(VmmRegValueType::REG_BINARY(raw_value)),
+            REG_RESOURCE_LIST => return Ok(VmmRegValueType::REG_RESOURCE_LIST(raw_value)),
+            REG_FULL_RESOURCE_DESCRIPTOR => return Ok(VmmRegValueType::REG_FULL_RESOURCE_DESCRIPTOR(raw_value)),
+            REG_RESOURCE_REQUIREMENTS_LIST => return Ok(VmmRegValueType::REG_RESOURCE_REQUIREMENTS_LIST(raw_value)),
+            _ => (),
+        };
+        if self.raw_type == REG_DWORD {
+            let v : [u8; 4] = raw_value.as_slice().try_into()?;
+            return Ok(VmmRegValueType::REG_DWORD(u32::from_le_bytes(v)));
+        }
+        if self.raw_type == REG_DWORD_BIG_ENDIAN {
+            let v : [u8; 4] = raw_value.as_slice().try_into()?;
+            return Ok(VmmRegValueType::REG_DWORD_BIG_ENDIAN(u32::from_be_bytes(v)));
+        }
+        if self.raw_type == REG_QWORD {
+            let v : [u8; 8] = raw_value.as_slice().try_into()?;
+            return Ok(VmmRegValueType::REG_QWORD(u64::from_le_bytes(v)));
+        }
+        // UTF16 below
+        if raw_value.len() % 2 == 1 {
+            return Err("Invalid size".into());
+        }
+        let mut raw_chars = vec![0u16; raw_value.len() / 2];
+        unsafe {
+            // this will only work on little-endian archs (which should be most)
+            std::ptr::copy_nonoverlapping(raw_value.as_ptr(), raw_chars.as_mut_ptr() as *mut u8, raw_value.len());
+        }
+        if self.raw_type == REG_MULTI_SZ {
+            let mut result_vec = Vec::new();
+            for raw_string in raw_chars.split(|v| *v == 0) {
+                if raw_string.len() > 0 {
+                    result_vec.push(String::from_utf16_lossy(raw_string));
+                }
+            }
+            return Ok(VmmRegValueType::REG_MULTI_SZ(result_vec));
+        }
+        // SZ EXPAND_SZ, LINK
+        let mut result_string = "".to_string();
+        if let Some(raw_string) = raw_chars.split(|v| *v == 0).next() {
+            result_string = String::from_utf16_lossy(raw_string);
+        }
+        match self.raw_type {
+            REG_SZ => return Ok(VmmRegValueType::REG_SZ(result_string)),
+            REG_EXPAND_SZ => return Ok(VmmRegValueType::REG_EXPAND_SZ(result_string)),
+            REG_LINK => return Ok(VmmRegValueType::REG_LINK(result_string)),
+            _ => return Err("[err]".into()),
+        };
     }
 }
 
@@ -4694,7 +5234,7 @@ impl VmmProcess<'_> {
     }
     
     fn impl_get_module_base(&self, module_name : &str) -> ResultEx<u64> {
-        let sz_module_name = CString::new(module_name).unwrap();
+        let sz_module_name = CString::new(module_name)?;
         let r = (self.vmm.native.VMMDLL_ProcessGetModuleBaseU)(self.vmm.native.h, self.pid, sz_module_name.as_ptr());
         if r == 0 {
             return Err("VMMDLL_ProcessGetModuleBaseU: fail.".into());
@@ -4703,8 +5243,8 @@ impl VmmProcess<'_> {
     }
 
     fn impl_get_proc_address(&self, module_name : &str, function_name : &str) -> ResultEx<u64> {
-        let sz_module_name = CString::new(module_name).unwrap();
-        let sz_function_name = CString::new(function_name).unwrap();
+        let sz_module_name = CString::new(module_name)?;
+        let sz_function_name = CString::new(function_name)?;
         let r = (self.vmm.native.VMMDLL_ProcessGetProcAddressU)(self.vmm.native.h, self.pid, sz_module_name.as_ptr(), sz_function_name.as_ptr());
         if r == 0 {
             return Err("VMMDLL_ProcessGetProcAddressU: fail.".into());
@@ -4909,7 +5449,7 @@ impl VmmProcess<'_> {
     fn impl_map_module_eat(&self, module_name : &str) -> ResultEx<Vec<VmmProcessMapEatEntry>> {
         unsafe {
             let mut structs = std::ptr::null_mut();
-            let sz_module_name = CString::new(module_name).unwrap();
+            let sz_module_name = CString::new(module_name)?;
             let r = (self.vmm.native.VMMDLL_Map_GetEATU)(self.vmm.native.h, self.pid, sz_module_name.as_ptr(), &mut structs);
             if !r {
                 return Err("VMMDLL_Map_GetEATU: fail.".into());
@@ -4944,7 +5484,7 @@ impl VmmProcess<'_> {
     fn impl_map_module_iat(&self, module_name : &str) -> ResultEx<Vec<VmmProcessMapIatEntry>> {
         unsafe {
             let mut structs = std::ptr::null_mut();
-            let sz_module_name = CString::new(module_name).unwrap();
+            let sz_module_name = CString::new(module_name)?;
             let r = (self.vmm.native.VMMDLL_Map_GetIATU)(self.vmm.native.h, self.pid, sz_module_name.as_ptr(), &mut structs);
             if !r {
                 return Err("VMMDLL_Map_GetIATU: fail.".into());
@@ -5190,7 +5730,7 @@ impl VmmProcess<'_> {
     }
 
     fn impl_map_module_data_directory(&self, module_name : &str) -> ResultEx<Vec<VmmProcessMapDirectoryEntry>> {
-        let sz_module_name = CString::new(module_name).unwrap();
+        let sz_module_name = CString::new(module_name)?;
         let mut data_directories = vec![CIMAGE_DATA_DIRECTORY::default(); 16];
         let r = (self.vmm.native.VMMDLL_ProcessGetDirectoriesU)(self.vmm.native.h, self.pid, sz_module_name.as_ptr(), data_directories.as_mut_ptr());
         if !r {
@@ -5211,7 +5751,7 @@ impl VmmProcess<'_> {
     }
 
     fn impl_map_module_section(&self, module_name : &str) -> ResultEx<Vec<VmmProcessSectionEntry>> {
-        let sz_module_name = CString::new(module_name).unwrap();
+        let sz_module_name = CString::new(module_name)?;
         let mut section_count = 0u32;
         let r = (self.vmm.native.VMMDLL_ProcessGetSectionsU)(self.vmm.native.h, self.pid, sz_module_name.as_ptr(), std::ptr::null_mut(), 0, &mut section_count);
         if !r {
