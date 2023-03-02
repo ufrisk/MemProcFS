@@ -1,4 +1,4 @@
-//! # The MemProcFS Rust API Documentation
+//! # The MemProcFS API Documentation
 //!
 //! The MemProcFS crate contains a wrapper API around the [MemProcFS physical
 //! memory analysis framework](https://github.com/ufrisk/MemProcFS). The native
