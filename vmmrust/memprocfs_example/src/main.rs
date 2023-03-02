@@ -481,7 +481,7 @@ pub fn main() {
         // Example: vmmregvalue.raw_value()
         // Retrieve the raw underlying data backing the actual value.
         println!("========================================");
-        println!("vmm.raw_value():");
+        println!("vmmregvalue.raw_value():");
         if let Ok(raw_value) = vmmregvalue.raw_value() {
             println!("{:?}", raw_value.hex_dump())
         }
@@ -490,7 +490,7 @@ pub fn main() {
         // Example: vmmregvalue.value()
         // REG_SZ
         println!("========================================");
-        println!("vmm.raw_value(): REG_SZ");
+        println!("vmmregvalue.value(): REG_SZ");
         if let Ok(VmmRegValueType::REG_SZ(s)) = vmmregvalue.value() {
             println!("REG_SZ: {s}");
         }
@@ -499,7 +499,7 @@ pub fn main() {
         // Example: vmmregvalue.value()
         // REG_MULTI_SZ
         println!("========================================");
-        println!("vmm.raw_value(): REG_MULTI_SZ");
+        println!("vmmregvalue.value(): REG_MULTI_SZ");
         if let Ok(regvalue) = vmm.reg_value("HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileAssociation\\UseLocalMachineSoftwareClassesWhenImpersonating") {
             if let Ok(VmmRegValueType::REG_MULTI_SZ(multistr)) = regvalue.value() {
                 for s in multistr {
@@ -512,7 +512,7 @@ pub fn main() {
         // Example: vmmregvalue.value()
         // REG_DWORD
         println!("========================================");
-        println!("vmm.raw_value(): REG_DWORD");
+        println!("vmmregvalue.value(): REG_DWORD");
         if let Ok(regvalue) = vmm.reg_value("HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FSIASleepTimeInMs") {
             if let Ok(VmmRegValueType::REG_DWORD(dw)) = regvalue.value() {
                 println!("REG_DWORD: 0x{:08x}", dw);
@@ -813,6 +813,62 @@ pub fn main() {
             for section in &*section_all {
                 println!("{section}");
             }
+        }
+
+
+
+
+
+
+        // Example: vmmprocess.search() #1: - asynchronous.
+        // Search process virtual memory efficiently.
+        // Search whole address space in asynchronous non-blocking mode and update.
+        // Search max 0x10000 hits (max allowed).
+        println!("========================================");
+        println!("vmmprocess.search()");
+        if let Ok(mut search) = vmmprocess.search(0, 0, 0x10000, 0) {
+            // add search term for MZ with no skip mask and page alignment (0x1000).
+            let search_term = ['M' as u8, 'Z' as u8];
+            let _search_term_id = search.add_search_ex(&search_term, None, 0x1000);
+            // start search async
+            search.start();
+            // optionally poll status until finished (it's possible to do other work here as well).
+            loop {
+                let r = search.poll();
+                println!("search poll status: completed={} va_current={:x} read_bytes={:x} results={}", r.is_completed, r.addr_current, r.total_read_bytes, r.total_results);
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                if r.is_completed {
+                    if r.is_completed_success {
+                        for e in &*r.result {
+                            // prints out the <address:search_term_id>
+                            print!("<{:x}:{}>\t", e.0, e.1);
+                        }
+                    }
+                    break;
+                }
+            }
+            // if poll isn't desirable it's possible to call result() and block until completion.
+            let _r = search.result();
+        }
+
+
+        // Example: vmmprocess.search() #2: - synchronous.
+        // Search process virtual memory efficiently.
+        // Search whole address space in synchronous blocking mode.
+        // Search max 0x10000 hits (max allowed).
+        println!("========================================");
+        println!("vmmprocess.search()");
+        if let Ok(mut search) = vmmprocess.search(0, u64::MAX, 0x10000, 0) {
+            // add search term for MZ with no skip mask and page alignment (0x1000).
+            let search_term = ['M' as u8, 'Z' as u8];
+            let _search_term_id = search.add_search_ex(&search_term, None, 0x1000);
+            let r = search.result();
+            println!("{r} count={}", r.result.len());
+            for e in &*r.result {
+                // prints out the <address:search_term_id>
+                print!("<{:x}:{}>\t", e.0, e.1);
+            }
+            println!("");
         }
 
 

@@ -21,8 +21,6 @@ processes in the form of the [`VmmProcess`](https://docs.rs/memprocfs/latest/mem
 Using the `Vmm` and `VmmProcess` it's possible to undertake a wide range of
 actions - such as reading/writing memory and retrieving various information.
 
-<b>Access the VFS</b> (Virtual File System) via the Rust API to get access to the full range of built-in and external plugins.
-
 <b>Read and write memory</b> by using the methods
 [`mem_read()`](https://docs.rs/memprocfs/latest/memprocfs/struct.VmmProcess.html#method.mem_read),
 [`mem_read_ex`](https://docs.rs/memprocfs/latest/memprocfs/struct.VmmProcess.html#method.mem_read_ex),
@@ -32,12 +30,16 @@ actions - such as reading/writing memory and retrieving various information.
 
 <b>Efficiently read and write memory</b> using the [`VmmScatterMemory`](https://docs.rs/memprocfs/latest/memprocfs/struct.VmmScatterMemory.html) struct.
 
+<b>Get info</b> about loaded modules, memory regions, registry, process handles, kernel pool allocations and much more!
+
+<b>Access the VFS</b> (Virtual File System) via the Rust API to get access to the full range of built-in and external plugins.
+
 The MemProcFS rust API supports creation of native MemProcFS plugins in the form of a library `.dll` or `.so` for the more advanced user.
 
 
 ## Examples
 
-```Rust
+```
 // Initialize MemProcFS on Linux targeting a live Windows system
 // by reading memory using a PCILeech PCIe FPGA hardware device.
 // After initialization list all processes.
@@ -50,7 +52,7 @@ if let Ok(process_all) = vmm.process_list() {
 }
 ```
 
-```Rust
+```
 // Initialize MemProcFS on Windows - analyzing a memory dump file.
 // Also trigger the forensic mode and scan for VMs.
 // List all processes in the virtual file system directory /name/.
@@ -58,7 +60,7 @@ let mut args = ["-printf", "-forensic", "1", "-vm",
                 "-device", "C:\\dumps\\memory.dmp"].to_vec();
 let vmm = Vmm::new("C:\\MemProcFS\\vmm.dll", &args)?
 if let Ok(vfs_all) = vmm.vfs_list("/name/") {
-    println!("Number of file/directory entries: {}.", vfs_all.len());
+    println!("Number of files/directories: {}.", vfs_all.len());
     for vfs in &*vfs_all {
         println!("{vfs}");
     }
@@ -67,9 +69,9 @@ if let Ok(vfs_all) = vmm.vfs_list("/name/") {
 
 
 ## Example projects
-Check out the example documentation, both in the form of the [example
-project](https://github.com/ufrisk/MemProcFS/blob/master/vmmrust/memprocfs_example/src/main.rs)
-and the [example MemProcFS plugin](https://github.com/ufrisk/MemProcFS/blob/master/vmmrust/m_example_plugin/src/lib.rs)
+Check out the
+[example project](https://github.com/ufrisk/MemProcFS/blob/master/vmmrust/memprocfs_example/src/main.rs) and the 
+[example MemProcFS plugin](https://github.com/ufrisk/MemProcFS/blob/master/vmmrust/m_example_plugin/src/lib.rs).
 
 
 ## Project documentation
@@ -99,6 +101,6 @@ Please feel free to contact me!
 
 
 ## Get Started!
-Check out the [MemProcFS Rust documentation](https://docs.rs/memprocfs/latest/memprocfs/) and the [example project](https://github.com/ufrisk/MemProcFS/tree/master/vmmrust/memprocfs_example)!
+Check out the [MemProcFS documentation](https://docs.rs/memprocfs/latest/memprocfs/) and the [example project](https://github.com/ufrisk/MemProcFS/tree/master/vmmrust/memprocfs_example)!
 
-<b>Best wishes with your memory analysis Rust project!</b>
+<b>Best wishes with your Rust memory analysis project!</b>

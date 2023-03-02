@@ -1,8 +1,8 @@
 [package]
 name = "memprocfs"
-version = "5.4.1"
+version = "5.4.2"
 edition = "2021"
-description = "MemProcFS - Windows Physical Memory Analysis Framwork"
+description = "MemProcFS - Physical Memory Analysis Framwork"
 homepage = "https://github.com/ufrisk/MemProcFS"
 repository = "https://github.com/ufrisk/MemProcFS"
 categories = ["external-ffi-bindings"]

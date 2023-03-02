@@ -3,11 +3,7 @@
 //! The MemProcFS crate contains a wrapper API around the [MemProcFS physical
 //! memory analysis framework](https://github.com/ufrisk/MemProcFS). The native
 //! libray in the form of `vmm.dll` or `vmm.so` must be downloaded or compiled
-//! in order to make use of the memprocfs rust crate.
-//! 
-//! The aim of the MemProcFS rust crate and rust API is to make MemProcFS usage
-//! as easy and smooth as possible on Rust! Please let me know what you think
-//! or if you have any improvement suggestions!
+//! in order to make use of the memprocfs crate.
 //! 
 //! Physical memory analysis may take place on memory dump files for forensic
 //! purposes. Analysis may also take place on live memory - either captured by
@@ -16,33 +12,41 @@
 //! 
 //! The base of the MemProcFS API is the [`Vmm`] struct. Once the native vmm
 //! has been initialized it's possible to retrieve processes in the form of
-//! the [`VmmProcess`] struct. Using the [`Vmm`] and [`VmmProcess`] it's
-//! possible to undertake a wide range of actions - such as reading/writing
-//! memory or retrieve various information.
+//! the [`VmmProcess`] struct. Using the `Vmm` and `VmmProcess` it's possible
+//! to undertake a wide range of actions - such as reading/writing memory or
+//! retrieve various information.
 //! 
 //! 
-//! <b>Read and write memory</b> by using the methods `mem_read()`,
-//! `mem_read_ex()`, `mem_write()` of the [`Vmm`] and [`VmmProcess`] structs.
-//! Virtual memory is read from individual processes. Physical memory is read
-//! from the base `vmm`.
+//! <b>Read and write memory</b> by using the methods
+//! [`mem_read()`](VmmProcess::mem_read()),
+//! [`mem_read_ex()`](VmmProcess::mem_read_ex()) and
+//! [`mem_write()`](VmmProcess::mem_write()).
+//! Virtual memory is read from [`VmmProcess`] struct.
+//! Physical memory is read from the [`Vmm`] struct.
 //! 
 //! <b>Efficiently read and write memory</b> using the [`VmmScatterMemory`]
-//! struct. The scatter struct is retrieved by calling `mem_scatter()` on
-//! either the base [`Vmm`] struct or the individual [`VmmProcess`] structs.
+//! struct. The scatter struct is retrieved by calling
+//! [`mem_scatter()`](VmmProcess::mem_scatter()) on either the base [`Vmm`]
+//! struct or the individual [`VmmProcess`] structs.
+//! 
+//! <b>Access information</b> about loaded modules, memory regions, registry,
+//! process handles, kernel pool allocations and much more!
 //! 
 //! <b>Access the Virtual File System</b> (VFS) using the Rust API to get access
 //! to the full range of built-in and external plugins. The VFS is accessed by
-//! using the methods `vmm.vfs_list()`, `vmm.vfs_read()`, `vmm.vfs_write()`
-//! on the [`Vmm`] struct.
+//! using the methods
+//! [`vfs_list()`](Vmm::vfs_list()), [`vfs_read()`](Vmm::vfs_read()) and
+//! [`vfs_write()`](Vmm::vfs_write()) on the [`Vmm`] struct.
 //! 
-//! The MemProcFS rust API supports creation of native MemProcFS plugins in
-//! the form of a library `.dll` or `.so` for the more advanced user.
+//! The MemProcFS crate and API also supports creation of native MemProcFS
+//! plugins in the form of a library `.dll` or `.so`.
 //! 
 //! 
-//! ## Example documentation
-//! Check out the example documentation, both in the form of the
-//! [example project](https://github.com/ufrisk/MemProcFS/blob/master/vmmrust/memprocfs_example/src/main.rs)
-//! and the [example MemProcFS plugin](https://github.com/ufrisk/MemProcFS/blob/master/vmmrust/m_example_plugin/src/lib.rs).
+//! ## Example projects
+//! Check out the
+//! [Example Project](https://github.com/ufrisk/MemProcFS/blob/master/vmmrust/memprocfs_example/src/main.rs)
+//! and the
+//! [Example Plugin](https://github.com/ufrisk/MemProcFS/blob/master/vmmrust/m_example_plugin/src/lib.rs).
 //! 
 //! 
 //! ## Project documentation
@@ -56,9 +60,16 @@
 //! ## Support PCILeech/MemProcFS development:
 //! PCILeech and MemProcFS is free and open source!
 //! 
-//! I put a lot of time and energy into PCILeech and MemProcFS and related research to make this happen. Some aspects of the projects relate to hardware and I put quite some money into my projects and related research. If you think PCILeech and/or MemProcFS are awesome tools and/or if you had a use for them it's now possible to contribute by becoming a sponsor!
+//! I put a lot of time and energy into PCILeech and MemProcFS and related
+//! research to make this happen. Some aspects of the projects relate to
+//! hardware and I put quite some money into my projects and related research.
+//! If you think PCILeech and/or MemProcFS are awesome tools and/or if you
+//! had a use for them it's now possible to contribute by becoming a sponsor!
 //! 
-//! If you like what I've created with PCIleech and MemProcFS with regards to DMA, Memory Analysis and Memory Forensics and would like to give something back to support future development please consider becoming a sponsor at: <https://github.com/sponsors/ufrisk>
+//! If you like what I've created with PCIleech and MemProcFS with regards to
+//! DMA, Memory Analysis and Memory Forensics and would like to give something
+//! back to support future development please consider becoming a sponsor at:
+//! <https://github.com/sponsors/ufrisk>
 //! 
 //! To all my sponsors, Thank You 💖
 //! 
@@ -72,9 +83,10 @@
 //! 
 //! 
 //! ## Get Started!
-//! Check out the [`Vmm`] documentation and the [example project](https://github.com/ufrisk/MemProcFS/tree/master/vmmrust/memprocfs_example)!
+//! Check out the [`Vmm`] documentation and the
+//! [Example Project](https://github.com/ufrisk/MemProcFS/tree/master/vmmrust/memprocfs_example)!
 //! 
-//! <b>Best wishes with your memory analysis Rust project!</b>
+//! <b>Best wishes with your memory analysis project!</b>
 
 use std::collections::HashMap;
 use std::ffi::{CStr, CString, c_char, c_int};
@@ -153,7 +165,7 @@ pub const CONFIG_OPT_CONFIG_VMM_VERSION_MAJOR       : u64 = 0x2000000900000000;
 pub const CONFIG_OPT_CONFIG_VMM_VERSION_MINOR       : u64 = 0x2000000A00000000;
 /// Get MemProcFS revision version.
 pub const CONFIG_OPT_CONFIG_VMM_VERSION_REVISION    : u64 = 0x2000000B00000000;
-/// Get/Set enable function call statistics (.status/statistics_fncall file)
+/// Get/Set enable function call statistics (.status/statistics_fncall file).
 pub const CONFIG_OPT_CONFIG_STATISTICS_FUNCTIONCALL : u64 = 0x2000000C00000000;
 /// Get/Set enable paging support 1/0.
 pub const CONFIG_OPT_CONFIG_IS_PAGING_ENABLED       : u64 = 0x2000000D00000000;
@@ -173,13 +185,13 @@ pub const CONFIG_OPT_FORENSIC_MODE                  : u64 = 0x2000020100000000;
 // REFRESH OPTIONS:
 /// Set - trigger refresh all caches.
 pub const CONFIG_OPT_REFRESH_ALL                    : u64 = 0x2001ffff00000000;
-/// Set - refresh memory cache (excl. TLB) (fully)
+/// Set - refresh memory cache (excl. TLB) (fully).
 pub const CONFIG_OPT_REFRESH_FREQ_MEM               : u64 = 0x2001100000000000;
-/// Set - refresh memory cache (excl. TLB) [partial 33%/call]
+/// Set - refresh memory cache (excl. TLB) [partial 33%/call].
 pub const CONFIG_OPT_REFRESH_FREQ_MEM_PARTIAL       : u64 = 0x2001000200000000;
 /// Set - refresh page table (TLB) cache (fully)
 pub const CONFIG_OPT_REFRESH_FREQ_TLB               : u64 = 0x2001080000000000;
-/// Set - refresh page table (TLB) cache [partial 33%/call]
+/// Set - refresh page table (TLB) cache [partial 33%/call].
 pub const CONFIG_OPT_REFRESH_FREQ_TLB_PARTIAL       : u64 = 0x2001000400000000;
 /// Set - refresh fast frequency - incl. partial process refresh.
 pub const CONFIG_OPT_REFRESH_FREQ_FAST              : u64 = 0x2001040000000000;
@@ -426,8 +438,11 @@ pub struct VmmMapVirtualMachineEntry {
 /// - `vmm.vfs_list()`
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VmmVfsEntry {
+    /// Name of the file or directory.
     pub name : String,
+    /// True if entry is a directory, False if entry is a file.
     pub is_directory : bool,
+    /// File size if file.
     pub size : u64,
 }
 
@@ -441,7 +456,7 @@ impl Vmm<'_> {
     /// 
     /// 
     /// # Arguments
-    /// * `vmm_lib_path` - The full path to the native vmm library - i.e. `vmm.dll` or `vmm.so`.
+    /// * `vmm_lib_path` - Full path to the native vmm library - i.e. `vmm.dll` or `vmm.so`.
     /// * `args` - MemProcFS command line arguments as a Vec<&str>.
     /// 
     /// MemProcFS command line argument documentation is found on the [MemProcFS wiki](https://github.com/ufrisk/MemProcFS/wiki/_CommandLine).
@@ -452,13 +467,7 @@ impl Vmm<'_> {
     /// ```
     /// // Initialize MemProcFS VMM on a Windows system parsing a
     /// // memory dump and virtual machines inside it.
-    /// let mut args = Vec::new();
-    /// args.push("-printf");
-    /// args.push("-v");
-    /// args.push("-waitinitialize");
-    /// args.push("-device");
-    /// args.push("C:\\Dumps\\myfullmemorydump.dmp");
-    /// args.push("-vm");
+    /// let args = ["-printf", "-v", "-waitinitialize", "-device", "C:\\Dumps\\mem.dmp"].to_vec();
     /// if let Ok(vmm) = Vmm::new("C:\\MemProcFS\\vmm.dll", &args) {
     ///     ...
     ///     // The underlying native vmm is automatically closed 
@@ -469,9 +478,7 @@ impl Vmm<'_> {
     /// ```
     /// // Initialize MemProcFS VMM on a Linux system parsing live memory
     /// // retrieved from a PCILeech FPGA hardware device.
-    /// let mut args = Vec::new();
-    /// args.push("-device");
-    /// args.push("fpga");
+    /// let args = ["-device", "-fpga"].to_vec();
     /// if let Ok(vmm) = Vmm::new("/home/user/memprocfs/vmm.so", &args) {
     ///     ...
     ///     // The underlying native vmm is automatically closed 
@@ -516,7 +523,7 @@ impl Vmm<'_> {
     /// Retrieve a single process by PID.
     /// 
     /// # Arguments
-    /// * `pid` - The process id (PID) of the process to retrieve.
+    /// * `pid` - Process id (PID) of the process to retrieve.
     /// 
     /// # Examples
     /// ```
@@ -581,7 +588,7 @@ impl Vmm<'_> {
     /// Get a numeric configuration value.
     /// 
     /// # Arguments
-    /// * `config_id` - As specified by one CONFIG_OPT_* constant marked as `Get`. (Optionally or'ed | with process pid for select options).
+    /// * `config_id` - As specified by a `CONFIG_OPT_*` constant marked as `Get`. (Optionally or'ed | with process pid for select options).
     /// 
     /// # Examples
     /// ```
@@ -594,7 +601,7 @@ impl Vmm<'_> {
     /// Set a numeric configuration value.
     /// 
     /// # Arguments
-    /// * `config_id` - As specified by one CONFIG_OPT_* constant marked as `Set`. (Optionally or'ed | with process pid for select options).
+    /// * `config_id` - As specified by a `CONFIG_OPT_*` constant marked as `Set`. (Optionally or'ed | with process pid for select options).
     /// * `config_value` - The config value to set.
     /// 
     /// # Examples
@@ -635,7 +642,7 @@ impl Vmm<'_> {
         self.impl_log(VMMDLL_MID_RUST, log_level, log_message);
     }
 
-    /// Retrieve the physical memory info map.
+    /// Retrieve the physical memory range info map.
     /// 
     /// # Examples
     /// ```
@@ -771,7 +778,7 @@ impl Vmm<'_> {
     /// 
     /// # Arguments
     /// * `pa` - Physical address to start reading from.
-    /// * `size` - The number of bytes to read.
+    /// * `size` - Number of bytes to read.
     /// 
     /// # Examples
     /// ```
@@ -796,8 +803,8 @@ impl Vmm<'_> {
     /// 
     /// # Arguments
     /// * `pa` - Physical address to start reading from.
-    /// * `size` - The number of bytes to read.
-    /// * `flags` - Any combination of FLAG_*.
+    /// * `size` - Number of bytes to read.
+    /// * `flags` - Any combination of `FLAG_*`.
     /// 
     /// # Examples
     /// ```
@@ -818,7 +825,7 @@ impl Vmm<'_> {
     /// Check out the [`VmmScatterMemory`] struct for more detailed information.
     /// 
     /// # Arguments
-    /// * `flags` - Any combination of FLAG_*.
+    /// * `flags` - Any combination of `FLAG_*`.
     /// 
     /// # Examples
     /// ```
@@ -853,7 +860,7 @@ impl Vmm<'_> {
     /// which may be files or directories.
     /// 
     /// # Arguments
-    /// * `path` - Vfs path to list directory contents in. Ex: /sys/
+    /// * `path` - VFS path to list directory contents in. Ex: /sys/
     /// 
     /// # Examples
     /// ```
@@ -878,7 +885,7 @@ impl Vmm<'_> {
     /// 
     /// # Arguments
     /// * `filename` - Full vfs path of the file to read. Ex: /sys/version.txt
-    /// * `size` - The number of bytes to read.
+    /// * `size` - Number of bytes to read.
     /// * `offset` - File offset.
     /// 
     /// # Examples
@@ -900,8 +907,8 @@ impl Vmm<'_> {
     /// to verify the `vfs_write()` with a `vfs_read()`.
     /// 
     /// # Arguments
-    /// * `filename` - Full vfs path of the file to write. Ex: /conf/config_printf_enable.txt
-    /// * `data` - The byte data to write.
+    /// * `filename` - Full VFS path of the file to write. Ex: /conf/config_printf_enable.txt
+    /// * `data` - Byte data to write.
     /// * `offset` - File offset.
     /// 
     /// # Examples
@@ -962,18 +969,49 @@ impl Vmm<'_> {
     /// # Examples
     /// ```
     /// // Retrieve a regvalue by full path.
-    /// let regvalue = vmm.reg_key("HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\ProgramFilesDir")?
+    /// let regpath = "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\ProgramFilesDir";
+    /// let regvalue = vmm.reg_key(regpath)?
     /// println!("{regkey");
     /// ```
     /// 
     /// ```
     /// // Retrieve a regvalue by hive path.
     /// // (SOFTWARE hive example address: 0xffffba061a908000).
-    /// let regvalue = vmm.reg_key("0xffffba061a908000\\ROOT\\Microsoft\\Windows\\CurrentVersion\\ProgramFilesDir")?
+    /// regpath = "0xffffba061a908000\\ROOT\\Microsoft\\Windows\\CurrentVersion\\ProgramFilesDir";
+    /// let regvalue = vmm.reg_key(regpath)?
     /// println!("{regkey");
     /// ```
     pub fn reg_value(&self, path : &str) -> ResultEx<VmmRegValue> {
         return self.impl_reg_value(path);
+    }
+
+    /// Retrieve a search struct for a physical memory search.
+    /// 
+    /// NB! This does not start the actual search yet. 
+    /// 
+    /// Check out the [`VmmRegValue`] struct for more detailed information.
+    /// 
+    /// 
+    /// # Arguments
+    /// * `addr_min` - Start search at this physical address.
+    /// * `addr_max` - End the search at this physical address. 0 is interpreted as u64::MAX.
+    /// * `num_results_max` - Max number of search hits to search for. Max allowed value is 0x10000.
+    /// * `flags` - Any combination of `FLAG_*`.
+    /// 
+    /// 
+    /// # Examples
+    /// ```
+    /// // Retrieve a VmmSearch for the entire physical memory.
+    /// let search = vmm.search(0, 0, 0x10000, 0)?
+    /// ```
+    /// 
+    /// ```
+    /// // Retrieve a VmmSearch for physical memory between 4GB and 8GB.
+    /// // Also stop at first search hit.
+    /// let search = vmm.search(0x100000000, 0x200000000, 1, 0)?
+    /// ```
+    pub fn search(&self, addr_min : u64, addr_max : u64, num_results_max : u32, flags : u64) -> ResultEx<VmmSearch> {
+        return VmmSearch::impl_new(&self, u32::MAX, addr_min, addr_max, num_results_max, flags);
     }
 }
 
@@ -2208,7 +2246,7 @@ impl VmmProcess<'_> {
     /// 
     /// # Arguments
     /// * `va` - Virtual address to start reading from.
-    /// * `size` - The number of bytes to read.
+    /// * `size` - Number of bytes to read.
     /// 
     /// # Examples
     /// ```
@@ -2233,8 +2271,8 @@ impl VmmProcess<'_> {
     /// 
     /// # Arguments
     /// * `va` - Virtual address to start reading from.
-    /// * `size` - The number of bytes to read.
-    /// * `flags` - Any combination of FLAG_*.
+    /// * `size` - Number of bytes to read.
+    /// * `flags` - Any combination of `FLAG_*`.
     /// 
     /// # Examples
     /// ```
@@ -2256,7 +2294,7 @@ impl VmmProcess<'_> {
     /// Check out the [`VmmScatterMemory`] struct for more detailed information.
     /// 
     /// # Arguments
-    /// * `flags` - Any combination of FLAG_*.
+    /// * `flags` - Any combination of `FLAG_*`.
     /// 
     /// # Examples
     /// ```
@@ -2319,6 +2357,35 @@ impl VmmProcess<'_> {
     pub fn pdb_from_module_address(&self, va_module_base : u64) -> ResultEx<VmmPdb> {
         return self.impl_pdb_from_module_address(va_module_base);
     }
+
+    /// Retrieve a search struct for process virtual memory.
+    /// 
+    /// NB! This does not start the actual search yet. 
+    /// 
+    /// Check out the [`VmmRegValue`] struct for more detailed information.
+    /// 
+    /// 
+    /// # Arguments
+    /// * `addr_min` - Start search at this virtual address.
+    /// * `addr_max` - End the search at this virtual address. 0 is interpreted as u64::MAX.
+    /// * `num_results_max` - Max number of search hits to search for. Max allowed value is 0x10000.
+    /// * `flags` - Any combination of `FLAG_*`.
+    /// 
+    /// 
+    /// # Examples
+    /// ```
+    /// // Retrieve a VmmSearch for the entire virtual memory.
+    /// let search = vmm.search(0, 0, 0x10000, 0)?
+    /// ```
+    /// 
+    /// ```
+    /// // Retrieve a VmmSearch for virtual memory. Stop at first hit.
+    /// // Also avoid using cached and paged out memory.
+    /// let search = vmm.search(0, 0, 1, FLAG_NOCACHE | FLAG_NOPAGING)?
+    /// ```
+    pub fn search(&self, addr_min : u64, addr_max : u64, num_results_max : u32, flags : u64) -> ResultEx<VmmSearch> {
+        return VmmSearch::impl_new(self.vmm, self.pid, addr_min, addr_max, num_results_max, flags);
+    }
 }
 
 
@@ -2358,7 +2425,7 @@ impl VmmRegHive<'_> {
     /// # Arguments
     /// * `ra` - Registry hive address to start reading from.
     /// * `size` - The number of bytes to read.
-    /// * `flags` - Any combination of FLAG_*.
+    /// * `flags` - Any combination of `FLAG_*`.
     /// 
     /// # Examples
     /// ```
@@ -2389,7 +2456,7 @@ impl VmmRegHive<'_> {
     }
 }
 
-/// Registry Key API
+/// Registry Key API.
 /// 
 /// The [`VmmRegKey`] info struct represents a registry key and also have
 /// additional access methods for retrieving registry keys and values.
@@ -2521,7 +2588,7 @@ pub enum VmmRegValueType {
     REG_QWORD(u64),
 }
 
-/// Registry Value API
+/// Registry Value API.
 /// 
 /// The [`VmmRegValue`] info struct represents a registry value and also have
 /// additional access methods for parent key and the value itself.
@@ -2614,6 +2681,223 @@ impl VmmRegValue<'_> {
     /// ```
     pub fn raw_value(&self) -> ResultEx<Vec<u8>> {
         return self.impl_raw_value();
+    }
+}
+
+
+
+
+
+
+/// Search API.
+/// 
+/// Search for binary keywords in physical or virtual memory.
+/// 
+/// Each keyword/term may be up to 32 bytes long. Up to 16 search terms may
+/// be used in the same search.
+/// 
+/// The search may optionally take place with a skipmask - i.e. a bitmask in
+/// which '1' would equal a wildcard bit.
+/// 
+/// The [`VmmSearch`] must be used as mut. Also see [`VmmSearchResult`].
+/// 
+/// The synchronous search workflow:
+/// 1) Acquire search object from `vmm.search()` or `vmmprocess.search()`.
+/// 2) Add 1-16 different search terms using `vmmsearch.add_search()` and/or
+///    `vmmsearch.add_search_ex()`.
+/// 3) Start the search and retrieve result (blocking) by calling
+///    `vmmsearch.result()`.
+/// 
+/// The asynchronous search workflow:
+/// 1) Acquire search object from `vmm.search()` or `vmmprocess.search()`.
+/// 2) Add 1-16 different search terms using `vmmsearch.add_search()` and/or
+///    `vmmsearch.add_search_ex()`.
+/// 3) Start the search in the background using `vmmsearch.start()`.
+/// 4) Optionally abort the search with `vmmsearch.abort()`.
+/// 5) Optionally poll status or result (if completed) using `vmmsearch.poll()`.
+/// 6) Optionally retrieve result (blocking) by calling `vmmsearch.result()`.
+/// 7) Search goes out of scope and is cleaned up. Any on-going searches may
+///    take a short while to terminate gracefully.
+/// 
+/// 
+/// # Created By
+/// - `vmm.search()`
+/// - `vmmprocess.search()`
+/// 
+/// # Examples
+/// ```
+/// // Fetch search struct for entire process virtual address space.
+/// // Max 256 search hits and avoid using the cache in this example.
+/// let mut vmmsearch = vmmprocess.search(0, 0, 256, FLAG_NOCACHE);
+/// // Search for 'MZ' - i.e. start at PE file at even 0x1000 alignment.
+/// let search_term = ['M' as u8, 'Z' as u8];
+/// let _search_term_id = vmmsearch.add_search_ex(&search_term, None, 0x1000);
+/// // Start search in async mode.
+/// vmmsearch.start();
+/// // Search is now running - it's possible to do other actions here.
+/// // It's possible to poll() to see current progress (or if finished).
+/// // It's possible to abort() to stop search.
+/// // It's possible to fetch result() which will block until search is finished.
+/// let search_result = vmmsearch.result();
+/// ```
+#[derive(Debug)]
+pub struct VmmSearch<'a> {
+    vmm : &'a Vmm<'a>,
+    pid : u32,
+    is_started : bool,
+    is_completed : bool,
+    is_completed_success : bool,
+    native_search : CVMMDLL_MEM_SEARCH_CONTEXT,
+    thread : Option<std::thread::JoinHandle<bool>>,
+    result : Vec<(u64, u32)>,
+}
+
+/// Info: Search Progress/Result.
+/// 
+/// Also see [`VmmSearch`].
+/// 
+/// # Created By
+/// - `vmmsearch.poll()`
+/// - `vmmsearch.result()`
+/// 
+/// # Examples
+/// ```
+/// // Retrieve a search progress/result in a non-blocking call.
+/// let searchresult = vmmsearch.poll();
+/// ```
+/// 
+/// ```
+/// // Retrieve a search result in a blocking call (until completed search).
+/// let searchresult = vmmsearch.result();
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VmmSearchResult {
+    // Indicates that the search has been started. i.e. start() or result() have been called.
+    pub is_started : bool,
+    // Indicates that the search has been completed.
+    pub is_completed : bool,
+    // If is_completed is true this indicates if the search was completed successfully.
+    pub is_completed_success : bool,
+    // Address to start searching from - default 0.
+    pub addr_min : u64,
+    // Address to stop searching at - default u64::MAX.
+    pub addr_max : u64,
+    // Current address being searched in search thread.
+    pub addr_current : u64,
+    // Number of bytes that have been procssed in search.
+    pub total_read_bytes : u64,
+    // Number of search results.
+    pub total_results : u32,
+    // The actual result. result.0 = address, result.1 = search_term_id.
+    pub result : Vec<(u64, u32)>,
+}
+
+impl VmmSearch<'_> {
+
+    /// Add a search term.
+    /// 
+    /// The search will later be performed using the whole search term and
+    /// without alignment requirements (align = 1 byte).
+    /// 
+    /// On success the `search_term_id` will be returned. This is the 2nd
+    /// field (`searchresulttuple.1`) in the search result tuple. This may be
+    /// useful if multiple searches are undertaken in one single search run.
+    /// 
+    /// # Arguments
+    /// * `search_bytes` - Byte data to search for. Max 32 bytes.
+    /// 
+    /// # Examples
+    /// ```
+    /// // add a search term for pointer references to address 0x7ffcec973308.
+    /// let search_term = [0x08, 0x33, 0x97, 0xec, 0xfc, 0x7f, 0x00, 0x00];
+    /// let search_term_id = vmmsearch.add_search(&search_term)?;
+    /// ```
+    pub fn add_search(&mut self, search_bytes : &[u8]) -> ResultEx<u32> {
+        return self.impl_add_search(search_bytes, None, 1);
+    }
+
+    /// Add a search term.
+    /// 
+    /// The search will later be performed using the search term with the
+    /// given alignment (typically 1, 2, 4, 8, 16, .. 0x1000) and an optional
+    /// skip bitmask in which bit '1' represents a search wildcard value.
+    /// 
+    /// On success the `search_term_id` will be returned. This is the 2nd
+    /// field (`searchresulttuple.1`) in the search result tuple. This may be
+    /// useful if multiple searches are undertaken in one single search run.
+    /// 
+    /// # Arguments
+    /// * `search_bytes` - Byte data to search for. Max 32 bytes.
+    /// * `search_skipmask` - Optional skipmask (see above). Max search_bytes.len().
+    /// * `byte_align` - Byte alignment (see above).
+    /// 
+    /// # Examples
+    /// ```
+    /// // Add a search term for pointer references to address 0x7ffcec973308.
+    /// // Pointers are 64-bit/8-byte aligned hence the 8-byte alignment.
+    /// let search_term = [0x08, 0x33, 0x97, 0xec, 0xfc, 0x7f, 0x00, 0x00];
+    /// let search_term_id = vmmsearch.add_search_ex(&search_term, None, 8)?;
+    /// ```
+    pub fn add_search_ex(&mut self, search_bytes : &[u8], search_skipmask : Option<&[u8]>, byte_align : u32) -> ResultEx<u32> {
+        return self.impl_add_search(search_bytes, search_skipmask, byte_align);
+    }
+
+    /// Start a search in asynchronous background thread.
+    /// 
+    /// This is useful since the search may take some time and other work may
+    /// be done while waiting for the result.
+    /// 
+    /// The search will start immediately and the progress (and result, if
+    /// finished) may be polled by calling [`poll()`](VmmSearch::poll()).
+    /// 
+    /// The result may be retrieved by a call to `poll()` or by a blocking
+    /// call to [`result()`](VmmSearch::result()) which will return when the
+    /// search is completed.
+    /// 
+    /// # Examples
+    /// ```
+    /// vmmsearch.start();
+    /// ```
+    pub fn start(&mut self) {
+        self.impl_start();
+    }
+
+    /// Abort an on-going search.
+    /// 
+    /// # Examples
+    /// ```
+    /// vmmsearch.abort();
+    /// ```
+    pub fn abort(&mut self) {
+        self.impl_abort();
+    }
+
+    /// Poll an on-going search for the status/result.
+    /// 
+    /// Also see [`VmmSearch`] and [`VmmSearchResult`].
+    /// 
+    /// # Examples
+    /// ```
+    /// search_status_and_result = vmmsearch.poll();
+    /// ```
+    pub fn poll(&mut self) -> VmmSearchResult {
+        return self.impl_poll();
+    }
+
+    /// Retrieve the search result.
+    /// 
+    /// If the search haven't yet been started it will be started.
+    /// The function is blocking and will wait for the search to complete
+    /// before the search results are returned.
+    /// 
+    /// Also see [`VmmSearch`] and [`VmmSearchResult`].
+    /// 
+    /// # Examples
+    /// ```
+    /// search_status_and_result = vmmsearch.poll();
+    /// ```
+    pub fn result(&mut self) -> VmmSearchResult {
+        return self.impl_result();
     }
 }
 
@@ -2935,6 +3219,7 @@ struct VmmNative {
     VMMDLL_MemFree :                extern "C" fn(pvMem : usize),
     
     VMMDLL_Log :                    extern "C" fn(hVMM : usize, MID : u32, dwLogLevel : u32, uszFormat : *const c_char, uszParam : *const c_char),
+    VMMDLL_MemSearch :              extern "C" fn(hVMM : usize, pid : u32, ctx : *mut CVMMDLL_MEM_SEARCH_CONTEXT, ppva : *mut u64, pcva : *mut u32) -> bool,
 
     VMMDLL_MemReadEx :              extern "C" fn(hVMM : usize, pid : u32, qwA : u64, pb : *mut u8, cb : u32, pcbReadOpt : *mut u32, flags : u64) -> bool,
     VMMDLL_MemWrite :               extern "C" fn(hVMM : usize, pid : u32, qwA : u64, pb : *const u8, cb : u32) -> bool,
@@ -3026,6 +3311,7 @@ fn impl_new<'a>(vmm_lib_path : &str, h_vmm_existing_opt : usize, args: &Vec<&str
         let VMMDLL_ConfigSet = *lib.get(b"VMMDLL_ConfigSet")?;
         let VMMDLL_MemFree = *lib.get(b"VMMDLL_MemFree")?;
         let VMMDLL_Log = *lib.get(b"VMMDLL_Log")?;
+        let VMMDLL_MemSearch = *lib.get(b"VMMDLL_MemSearch")?;
         let VMMDLL_MemReadEx = *lib.get(b"VMMDLL_MemReadEx")?;
         let VMMDLL_MemWrite = *lib.get(b"VMMDLL_MemWrite")?;
         let VMMDLL_MemVirt2Phys = *lib.get(b"VMMDLL_MemVirt2Phys")?;
@@ -3110,6 +3396,7 @@ fn impl_new<'a>(vmm_lib_path : &str, h_vmm_existing_opt : usize, args: &Vec<&str
             VMMDLL_ConfigSet,
             VMMDLL_MemFree,
             VMMDLL_Log,
+            VMMDLL_MemSearch,
             VMMDLL_MemReadEx,
             VMMDLL_MemWrite,
             VMMDLL_MemVirt2Phys,
@@ -3205,6 +3492,7 @@ fn impl_new_from_virtual_machine<'a>(vmm_parent : &'a Vmm, vm_entry : &VmmMapVir
 //=============================================================================
 
 const MAX_PATH                          : usize = 260;
+const VMMDLL_MEM_SEARCH_VERSION         : u32 = 0xfe3e0002;
 const VMMDLL_VFS_FILELIST_VERSION       : u32 = 2;
 const VMMDLL_MAP_EAT_VERSION            : u32 = 3;
 const VMMDLL_MAP_HANDLE_VERSION         : u32 = 3;
@@ -5874,6 +6162,199 @@ impl VmmScatterMemory<'_> {
             return Err("VMMDLL_Scatter_Clear: fail.".into());
         }
         return Ok(());
+    }
+}
+
+
+
+
+
+
+//=============================================================================
+// INTERNAL: VMM.SEARCH:
+//=============================================================================
+
+impl fmt::Display for VmmSearch<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "VmmSearch")
+    }
+}
+
+impl fmt::Display for VmmSearchResult {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "VmmSearchResult")
+    }
+}
+
+#[repr(C)]
+#[allow(non_snake_case)]
+#[derive(Debug, Default)]
+struct CVMMDLL_MEM_SEARCH_CONTEXT_SEARCHENTRY {
+    cbAlign : u32,
+    cb : u32,
+    pb : [u8; 32],
+    pbSkipMask : [u8; 32],
+}
+
+#[repr(C)]
+#[allow(non_snake_case)]
+#[derive(Debug, Default)]
+pub(crate) struct CVMMDLL_MEM_SEARCH_CONTEXT {
+    dwVersion : u32,
+    _Filler : [u32; 2],
+    fAbortRequested : u32,
+    cMaxResult : u32,
+    cSearch : u32,
+    search : [CVMMDLL_MEM_SEARCH_CONTEXT_SEARCHENTRY; 16],
+    vaMin : u64,
+    vaMax : u64,
+    vaCurrent : u64,
+    _Filler2 : u32,
+    cResult : u32,
+    cbReadTotal : u64,
+    pvUserPtrOpt : usize,
+    pfnResultOptCB : usize,
+    ReadFlags : u64,
+    fForcePTE : u32,
+    fForceVAD : u32,
+    pfnFilterOptCB : usize,
+}
+
+impl Drop for VmmSearch<'_> {
+    fn drop(&mut self) {
+        if self.is_started && !self.is_completed {
+            self.impl_abort();
+            let _r = self.impl_result();
+        }
+    }
+}
+
+// The below implementation is quite ugly, but it works since all methods are
+// serialized since they all require &mut self. Under no conditions should the
+// VmmSearch struct be accessed directly or non-mutable.
+impl VmmSearch<'_> {
+    fn impl_result(&mut self) -> VmmSearchResult {
+        if self.is_started == false {
+            self.impl_start();
+        }
+        if self.is_completed == false {
+            self.is_completed = true;
+            if let Some(thread) = self.thread.take() {
+                if let Ok(thread_result) = thread.join() {
+                    self.is_completed_success = thread_result;
+                }
+            }
+        }
+        return self.impl_poll();
+    }
+
+    fn impl_abort(&mut self) {
+        if self.is_started && !self.is_completed {
+            self.native_search.fAbortRequested = 1;
+        }
+    }
+
+    fn impl_start(&mut self) {
+        if self.is_started == false {
+            self.is_started = true;
+            // ugly code below - but it works ...
+            self.native_search.pvUserPtrOpt = std::ptr::addr_of!(self.result) as usize;
+            let pid = self.pid;
+            let native_h = self.vmm.native.h;
+            let pfn = self.vmm.native.VMMDLL_MemSearch;
+            let ptr = &mut self.native_search as *mut CVMMDLL_MEM_SEARCH_CONTEXT;
+            let ptr_wrap = ptr as usize;
+            let thread_handle = std::thread::spawn(move || {
+                let ptr = ptr_wrap as *mut CVMMDLL_MEM_SEARCH_CONTEXT;
+                (pfn)(native_h, pid, ptr, std::ptr::null_mut(), std::ptr::null_mut())
+            });
+            self.thread = Some(thread_handle);
+        }
+    }
+
+    fn impl_poll(&mut self) -> VmmSearchResult {
+        if self.is_started && !self.is_completed && self.thread.as_ref().unwrap().is_finished() {
+            return self.impl_result();
+        }
+        let result_vec = if self.is_completed_success { self.result.clone() } else { Vec::new() };
+        return VmmSearchResult {
+            is_started : self.is_started,
+            is_completed : self.is_completed,
+            is_completed_success : self.is_completed_success,
+            addr_min : self.native_search.vaMin,
+            addr_max : self.native_search.vaMax,
+            addr_current : self.native_search.vaCurrent,
+            total_read_bytes : self.native_search.cbReadTotal,
+            total_results : self.native_search.cResult,
+            result : result_vec,
+        }
+    }
+
+    fn impl_new<'a>(vmm : &'a Vmm<'a>, pid : u32, addr_min : u64, addr_max : u64, num_results_max : u32, flags : u64) -> ResultEx<VmmSearch<'a>> {
+        let num_results_max = std::cmp::min(0x10000, num_results_max);
+        let addr_min = addr_min & 0xfffffffffffff000;
+        let addr_max = addr_max & 0xfffffffffffff000;
+        if addr_max != 0 && addr_max <= addr_min {
+            return Err("search max address must be larger than min address".into());
+        }
+        let result_vec = Vec::new();
+        let mut native = CVMMDLL_MEM_SEARCH_CONTEXT::default();
+        native.dwVersion = VMMDLL_MEM_SEARCH_VERSION;
+        native.vaMin = addr_min;
+        native.vaMax = addr_max;
+        native.ReadFlags = flags;
+        native.cMaxResult = num_results_max;
+        native.pfnResultOptCB = VmmSearch::impl_search_cb as usize;
+        native.pvUserPtrOpt = std::ptr::addr_of!(result_vec) as usize;
+        //let ptr = result_vec::as_mut_ptr;
+        return Ok(VmmSearch {
+            vmm,
+            pid,
+            is_started : false,
+            is_completed : false,
+            is_completed_success : false,
+            native_search : native,
+            thread : None,
+            result : result_vec,
+        });
+    }
+
+    fn impl_add_search(&mut self, search_bytes : &[u8], search_skipmask : Option<&[u8]>, byte_align : u32) -> ResultEx<u32> {
+        if self.native_search.cSearch as usize >= self.native_search.search.len() {
+            return Err("Search max terms reached.".into());
+        }
+        if (search_bytes.len() == 0) || (search_bytes.len() > 32) {
+            return Err("Search invalid length: search_bytes.".into());
+        }
+        if byte_align > 0 {
+            if ((byte_align & (byte_align - 1)) != 0) || (byte_align > 0x1000) {
+                return Err("Search bad byte_align.".into());
+            }
+        }
+        if let Some(search_skipmask) = search_skipmask {
+            if search_skipmask.len() > search_bytes.len() {
+                return Err("Search invalid length: search_skipmask.".into());
+            }
+        }
+        let term = &mut self.native_search.search[self.native_search.cSearch as usize];
+        term.cbAlign = byte_align;
+        term.cb = search_bytes.len() as u32;
+        term.pb[0..search_bytes.len()].copy_from_slice(search_bytes);
+        if let Some(search_skipmask) = search_skipmask {
+            term.pbSkipMask[0..search_skipmask.len()].copy_from_slice(search_skipmask);
+        }
+        let result_index = self.native_search.cSearch;
+        self.native_search.cSearch += 1;
+        return Ok(result_index);
+    }
+
+    extern "C" fn impl_search_cb(ctx : usize, va : u64, i_search : u32) -> bool {
+        unsafe {
+            let ctx = ctx as *const CVMMDLL_MEM_SEARCH_CONTEXT;
+            let ptr_result_vec = (*ctx).pvUserPtrOpt as *mut Vec<(u64, u32)>;
+            (*ptr_result_vec).push((va, i_search));
+            return true;
+        }
     }
 }
 

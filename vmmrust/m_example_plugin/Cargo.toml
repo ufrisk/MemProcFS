@@ -1,6 +1,6 @@
 [package]
 name = "m_example_plugin"
-version = "5.4.1"
+version = "5.4.2"
 edition = "2021"
 publish = false
 
@@ -17,4 +17,5 @@ strip = true
 lto = true
 
 [dependencies]
-memprocfs = { path = "../memprocfs" }
+memprocfs = "*"
+# memprocfs = { path = "../memprocfs" }
