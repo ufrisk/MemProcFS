@@ -121,8 +121,8 @@ VmmPycModuleMaps_eat(PyObj_ModuleMaps *self, PyObject *args)
             PyDict_SetItemString_DECREF(pyDict, "ofn", PyLong_FromUnsignedLong((DWORD)(pe->vaFunction - pEatMap->vaModuleBase)));
             PyDict_SetItemString_DECREF(pyDict, "va", PyLong_FromUnsignedLongLong(pe->vaFunction));
             PyDict_SetItemString_DECREF(pyDict, "fn", PyUnicode_FromString(pe->uszFunction));
-            if(pe->uszFunction && pe->uszFunction[0]) {
-                PyDict_SetItemString_DECREF(pyDict, "fwdfn", PyUnicode_FromString(pe->uszFunction));
+            if(pe->uszForwardedFunction && pe->uszForwardedFunction[0]) {
+                PyDict_SetItemString_DECREF(pyDict, "fwdfn", PyUnicode_FromString(pe->uszForwardedFunction));
             } else {
                 PyDict_SetItemString_DECREF(pyDict, "fwdfn", Py_BuildValue("s", NULL));
             }
