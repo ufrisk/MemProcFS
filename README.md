@@ -45,9 +45,9 @@ MemProcFS is dependent on packages, please do a `sudo apt-get install libusb-1.0
 
 Extensive Python, Rust, Java, C# and C/C++ API:
 ===============================
-Include MemProcFS in your [C/C++](https://github.com/ufrisk/MemProcFS/wiki/API_C), [C#](https://github.com/ufrisk/MemProcFS/wiki/API_CSharp), [Java](https://github.com/ufrisk/MemProcFS/wiki/API_Java), [Python](https://github.com/ufrisk/MemProcFS/wiki/API_Python) or [Rust](https://github.com/ufrisk/MemProcFS/wiki/API_Rust) programming projects! Everything in MemProcFS is exposed via an easy-to-use API for use in your own projects! The Plugin friendly architecture allows users to easily extend MemProcFS with native C .DLL plugins or Python plugins!
+Include MemProcFS in your [C/C++](https://github.com/ufrisk/MemProcFS/wiki/API_C), [C#](https://github.com/ufrisk/MemProcFS/wiki/API_CSharp), [Java](https://github.com/ufrisk/MemProcFS/wiki/API_Java), [Python](https://github.com/ufrisk/MemProcFS/wiki/API_Python) or [Rust](https://github.com/ufrisk/MemProcFS/wiki/API_Rust) programming projects! Everything in MemProcFS is exposed via an easy-to-use API for use in your own projects! The Plugin friendly architecture allows users to easily extend MemProcFS with C/C++/Rust/Python plugins!
 
-Everything in MemProcFS is exposed as APIs. APIs exist for both C/C++ `vmmdll.h`, C# `vmmsharp.cs`, Java, Python `memprocfs.py` and [Rust memprocfs crate](https://crates.io/crates/memprocfs). The file system itself is made available virtually via the API without the need to mount it. SIt is possible to read both virtual process memory as well as physical memory! The example below shows reading 0x20 bytes from physical address 0x1000:
+Everything in MemProcFS is exposed as APIs. APIs exist for both C/C++ `vmmdll.h`, C# `vmmsharp.cs`, Java, Python [pip package](https://pypi.org/project/memprocfs/) and Rust [crate](https://crates.io/crates/memprocfs). The file system itself is made available virtually via the API without the need to mount it. It is possible to read both virtual process memory as well as physical memory! The example below shows reading 0x20 bytes from physical address 0x1000:
 ```
 >>> import memprocfs
 >>> vmm = memprocfs.Vmm(['-device', 'c:/temp/win10_memdump.raw'])
@@ -55,6 +55,8 @@ Everything in MemProcFS is exposed as APIs. APIs exist for both C/C++ `vmmdll.h`
 0000    e9 4d 06 00 01 00 00 00  01 00 00 00 3f 00 18 10   .M..........?...
 0010    00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ................
 ```
+
+MemProcFS is available as a Python pip package and it's easy to integrate in your [Jupyter Notebooks](https://github.com/ufrisk/MemProcFS/wiki/API_Python_Jupyter).
 
 
 
@@ -170,3 +172,6 @@ v1.1-v4.9
 [v5.4](https://github.com/ufrisk/MemProcFS/releases/tag/v5.4)
 * Rust API support.
 * Debug symbol support when running on Linux.
+
+Latest:
+* [Jupyter Notebook example](https://github.com/ufrisk/MemProcFS/wiki/API_Python_Jupyter)
