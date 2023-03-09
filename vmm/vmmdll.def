@@ -56,6 +56,7 @@ EXPORTS
     VMMDLL_Map_GetNetU
     VMMDLL_Map_GetNetW
     VMMDLL_Map_GetPfn
+    VMMDLL_Map_GetPfnEx
     VMMDLL_Map_GetPool
     VMMDLL_Map_GetPhysMem
     VMMDLL_Map_GetUsersU
