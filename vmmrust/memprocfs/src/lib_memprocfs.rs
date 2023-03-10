@@ -262,7 +262,7 @@ pub const PLUGIN_NOTIFY_VM_ATTACH_DETACH            : u32 = 0x01000400;
 /// ```
 /// // Initialize MemProcFS VMM on a Linux system parsing live memory
 /// // retrieved from a PCILeech FPGA hardware device.
-/// let args = ["-device", "fpga"].to_vec();
+/// let args = ["", "-device", "fpga"].to_vec();
 /// if let Ok(vmm) = Vmm::new("/home/user/memprocfs/vmm.so", &args) {
 ///     ...
 ///     // The underlying native vmm is automatically closed 
@@ -478,7 +478,7 @@ impl Vmm<'_> {
     /// ```
     /// // Initialize MemProcFS VMM on a Linux system parsing live memory
     /// // retrieved from a PCILeech FPGA hardware device.
-    /// let args = ["-device", "-fpga"].to_vec();
+    /// let args = ["", "-device", "fpga"].to_vec();
     /// if let Ok(vmm) = Vmm::new("/home/user/memprocfs/vmm.so", &args) {
     ///     ...
     ///     // The underlying native vmm is automatically closed 
