@@ -8,6 +8,33 @@
 use memprocfs::*;
 use pretty_hex::*;
 
+// Example C-struct used in examples with generic types.
+// Predominantly in _as() functions.
+#[repr(C)]
+#[derive(Debug, Default)]
+#[allow(non_camel_case_types)]
+struct IMAGE_DOS_HEADER {
+    e_magic : u16,
+    e_cblp : u16,
+    e_cp : u16,
+    e_crlc : u16,
+    e_cparhdr : u16,
+    e_minalloc : u16,
+    e_maxalloc : u16,
+    e_ss : u16,
+    e_sp : u16,
+    e_csum : u16,
+    e_ip : u16,
+    e_cs : u16,
+    e_lfarlc : u16,
+    e_ovno : u16,
+    e_res : [u16; 4],
+    e_oemid : u16,
+    e_oeminfo : u16,
+    e_res2 : [u16; 10],
+    e_lfanew : u32,
+}
+
 pub fn main() {
     let vmm_lib_path;
     let memdump_path;
@@ -908,6 +935,20 @@ pub fn main() {
         }
 
 
+        // Example: vmmprocess.mem_read_as():
+        // Read the C-struct IMAGE_DOS_HEADER from the beginning of explorer.exe!kernel32.dll with vmm flags.
+        // NB! any type may be read, it's possible to read u32, usize, etc.
+        // NB! any read data may contain null-backed bytes if flag
+        //     FLAG_ZEROPAD_ON_FAIL is used. Also it's recommended to use
+        //     #[repr(C)] when reading structs...
+        println!("========================================");
+        println!("vmmprocess.mem_read_as():");
+        if let Ok(mzhdr) = vmmprocess.mem_read_as::<IMAGE_DOS_HEADER>(kernel32.va_base, FLAG_NOCACHE) {
+            println!("explorer.exe!kernel32 e_magic:  {:x}", mzhdr.e_magic);
+            println!("explorer.exe!kernel32 e_lfanew: {:x}", mzhdr.e_lfanew);
+        }
+
+
         // Example: vmmprocess.mem_virt2phys():
         // Retrieve the physical base address of explorer.exe!kernel32.dll.
         println!("========================================");
@@ -946,6 +987,12 @@ pub fn main() {
                 println!("{:?}", data_read.hex_dump());
                 println!("-----------------------");
             }
+            // It's possible to read with generic types/structs as well:
+            if let Ok(mzhdr) = mem_scatter.read_as::<IMAGE_DOS_HEADER>(kernel32.va_base + 0x0000) {
+                println!("explorer.exe!kernel32 e_magic:  {:x}", mzhdr.e_magic);
+                println!("explorer.exe!kernel32 e_lfanew: {:x}", mzhdr.e_lfanew);
+                println!("-----------------------");
+            }
             // It's possible to do a re-read of the ranges by calling execute again!
             let _r = mem_scatter.execute();
             if let Ok(data_read) = mem_scatter.read(kernel32.va_base + 0x0000, 0x80) {
@@ -975,6 +1022,8 @@ pub fn main() {
             let mut memory_range_1 = (kernel32.va_base + 0x0000, vec![0u8; 0x100], 0u32);
             let mut memory_range_2 = (kernel32.va_base + 0x1000, vec![0u8; 0x100], 0u32);
             let mut memory_range_3 = (kernel32.va_base + 0x2000, vec![0u8; 0x100], 0u32);
+            // memory rances to read may also contain a generic type:
+            let mut memory_range_4 = (kernel32.va_base + 0x0000, IMAGE_DOS_HEADER::default(), 0u32);
             // Feed the ranges into a mutable VmmScatterMemory inside a
             // separate scope. The actual memory read will take place when
             // the VmmScatterMemory goes out of scope and are dropped.
@@ -984,6 +1033,7 @@ pub fn main() {
                 let _r = mem_scatter.prepare_ex(&mut memory_range_1);
                 let _r = mem_scatter.prepare_ex(&mut memory_range_2);
                 let _r = mem_scatter.prepare_ex(&mut memory_range_3);
+                let _r = mem_scatter.prepare_ex_as(&mut memory_range_4);
             }
             // Results should now be available in the memory ranges if the read
             // was successful. Note that there is no guarantee that memory is
@@ -993,6 +1043,10 @@ pub fn main() {
                 println!("{:?}", memory_range.1.hex_dump());
                 println!("-----------------------");
             }
+            println!("memory range: va={:x} tp=IMAGE_DOS_HEADER cb_read={:x}", memory_range_4.0, memory_range_4.2);
+            println!("explorer.exe!kernel32 e_magic:  {:x}", memory_range_4.1.e_magic);
+            println!("explorer.exe!kernel32 e_lfanew: {:x}", memory_range_4.1.e_lfanew);
+            println!("-----------------------");
         }
 
 

@@ -820,6 +820,38 @@ impl Vmm<'_> {
         return self.impl_mem_read(u32::MAX, pa, size, flags);
     }
 
+    /// Read a contigious physical memory chunk with flags as a type/struct.
+    /// 
+    /// Flags are constants named `FLAG_*`
+    /// 
+    /// Reading many memory chunks individually may be slow, especially if
+    /// reading takes place using hardware FPGA devices. In that case it's
+    /// better to use the `mem_scatter()` functionality for better performance.
+    /// 
+    /// 
+    /// # Arguments
+    /// * `pa` - Physical address to start reading from.
+    /// * `flags` - Any combination of `FLAG_*`.
+    /// 
+    /// # Examples
+    /// ```
+    /// // Read the C-struct IMAGE_DOS_HEADER from memory.
+    /// // Force reading the underlying memory device (skip data cache).
+    /// #[repr(C)]
+    /// struct IMAGE_DOS_HEADER {
+    ///     e_magic : u16,
+    /// 	...
+    ///     e_lfanew : u32,
+    /// }
+    /// if let Ok(doshdr) = vmm.mem_read_as::<IMAGE_DOS_HEADER>(pa_kernel32, FLAG_NOCACHE) {
+    ///     println!("e_magic:  {:x}", doshdr.e_magic);
+    ///     println!("e_lfanew: {:x}", doshdr.e_lfanew);
+    /// }
+    /// ```
+    pub fn mem_read_as<T>(&self, pa : u64, flags : u64) -> ResultEx<T> {
+        return self.impl_mem_read_as(u32::MAX, pa, flags);
+    }
+
     /// Create a scatter memory object for efficient physical memory reads.
     /// 
     /// Check out the [`VmmScatterMemory`] struct for more detailed information.
@@ -852,6 +884,25 @@ impl Vmm<'_> {
     /// ```
     pub fn mem_write(&self, pa : u64, data : &Vec<u8>) -> ResultEx<()> {
         return self.impl_mem_write(u32::MAX, pa, data);
+    }
+
+    /// Write a type/struct to physical memory.
+    /// 
+    /// The write is a best effort. Even of the write should fail it's not
+    /// certain that an error will be returned. To be absolutely certain that
+    /// a write has taken place follow up with a read.
+    /// 
+    /// # Arguments
+    /// * `pa` - Pnhysical address to start writing from.
+    /// * `data` - Data to write. In case of a struct repr(C) is recommended.
+    /// 
+    /// # Examples
+    /// ```
+    /// let data_to_write = [0x56, 0x4d, 0x4d, 0x52, 0x55, 0x53, 0x54];
+    /// let _r = vmm.mem_write_as(0x1000, &data_to_write);
+    /// ```
+    pub fn mem_write_as<T>(&self, pa : u64, data : &T) -> ResultEx<()> {
+        return self.impl_mem_write_as(u32::MAX, pa, data);
     }
 
     /// List a VFS (Virtual File System) directory.
@@ -1012,6 +1063,14 @@ impl Vmm<'_> {
     /// ```
     pub fn search(&self, addr_min : u64, addr_max : u64, num_results_max : u32, flags : u64) -> ResultEx<VmmSearch> {
         return VmmSearch::impl_new(&self, u32::MAX, addr_min, addr_max, num_results_max, flags);
+    }
+}
+
+impl VmmMapPoolEntry {
+    /// Retrieve the pool entry tag String.
+    pub fn tag_to_string(&self) -> String {
+        let tag_chars = [((self.tag >> 0) & 0xff) as u8, ((self.tag >> 8) & 0xff) as u8, ((self.tag >> 16) & 0xff) as u8, ((self.tag >> 24) & 0xff) as u8];
+        return String::from_utf8_lossy(&tag_chars).to_string();
     }
 }
 
@@ -1296,6 +1355,22 @@ impl <'a> VmmScatterMemory<'a> {
     pub fn prepare_ex(&mut self, data_to_read : &'a mut (u64, Vec<u8>, u32)) -> ResultEx<()> {
         return self.impl_prepare_ex(data_to_read);
     }
+
+    /// Prepare a memory range for reading according to method #2.
+    /// 
+    /// Once the `mem_scatter.execute()` call has been made the memory
+    /// read should (if successful) be found in the prepared tuple.
+    /// 
+    /// See the [`VmmScatterMemory`] struct for an example.
+    /// 
+    /// # Arguments
+    /// * `data_to_read` - Tuple with data to prepare as below:
+    ///   * `data_to_read.0` - Address to start read from.
+    ///   * `data_to_read.1` - Generic Type/Struct to fill with read data on success.
+    ///   * `data_to_read.2` - Bytes actually read on `mem_scatter.execute()` call. Should be zero at call to `mem_scatter.prepare_ex()`.
+    pub fn prepare_ex_as<T>(&mut self, data_to_read : &'a mut (u64, T, u32)) -> ResultEx<()> {
+        return self.impl_prepare_ex_as(data_to_read);
+    }
 }
 
 impl VmmScatterMemory<'_> {
@@ -1313,6 +1388,19 @@ impl VmmScatterMemory<'_> {
         return self.impl_prepare(va, size);
     }
 
+    /// Prepare a memory range for reading according to method #1.
+    /// 
+    /// Once the `mem_scatter.execute()` call has been made it's possible
+    /// to read the memory by calling `mem_scatter.read()`.
+    /// 
+    /// See the [`VmmScatterMemory`] struct for an example.
+    /// 
+    /// # Arguments
+    /// * `va` - Address to prepare to read from.
+    pub fn prepare_as<T>(&self, va : u64) -> ResultEx<()> {
+        return self.impl_prepare(va, std::mem::size_of::<T>());
+    }
+
     /// Prepare a memory range for writing.
     /// 
     /// Writing takes place on the call to `mem_scatter.execute()`.
@@ -1322,6 +1410,17 @@ impl VmmScatterMemory<'_> {
     /// * `data` - Data to write.
     pub fn prepare_write(&self, va : u64, data : &Vec<u8>) -> ResultEx<()> {
         return self.impl_prepare_write(va, data);
+    }
+
+    /// Prepare a memory range for writing.
+    /// 
+    /// Writing takes place on the call to `mem_scatter.execute()`.
+    /// 
+    /// # Arguments
+    /// * `va` - Address to prepare to write to.
+    /// * `data` - Data to write. In case of a struct repr(C) is recommended.
+    pub fn prepare_write_as<T>(&self, va : u64, data : &T) -> ResultEx<()> {
+        return self.impl_prepare_write_as(va, data);
     }
 
     /// Execute the scatter call to the underlying memory device.
@@ -1337,6 +1436,11 @@ impl VmmScatterMemory<'_> {
     /// Read memory prepared after the `execute()` call.
     pub fn read(&self, va : u64, size : usize) -> ResultEx<Vec<u8>> {
         return self.impl_read(va, size);
+    }
+
+    /// Read memory prepared after the `execute()` call.
+    pub fn read_as<T>(&self, va : u64) -> ResultEx<T> {
+        return self.impl_read_as(va);
     }
 
     /// Clear the scatter memory for additional read/writes.
@@ -1798,6 +1902,7 @@ pub struct VmmProcessMapThreadEntry {
     pub ft_create_time : u64,
     pub ft_exit_time : u64,
     pub va_start_address : u64,
+    pub va_win32_start_address : u64,
     pub va_stack_user_base : u64,
     pub va_stack_user_limit : u64,
     pub va_stack_kernel_base : u64,
@@ -2289,6 +2394,38 @@ impl VmmProcess<'_> {
         return self.vmm.impl_mem_read(self.pid, va, size, flags);
     }
 
+    /// Read a contigious virtual memory chunk with flags as a type/struct.
+    /// 
+    /// Flags are constants named `FLAG_*`
+    /// 
+    /// Reading many memory chunks individually may be slow, especially if
+    /// reading takes place using hardware FPGA devices. In that case it's
+    /// better to use the `mem_scatter()` functionality for better performance.
+    /// 
+    /// 
+    /// # Arguments
+    /// * `va` - Virtual address to start reading from.
+    /// * `flags` - Any combination of `FLAG_*`.
+    /// 
+    /// # Examples
+    /// ```
+    /// // Read the C-struct IMAGE_DOS_HEADER from memory.
+    /// // Force reading the underlying memory device (skip data cache).
+    /// #[repr(C)]
+    /// struct IMAGE_DOS_HEADER {
+    ///     e_magic : u16,
+    /// 	...
+    ///     e_lfanew : u32,
+    /// }
+    /// if let Ok(doshdr) = vmmprocess.mem_read_as::<IMAGE_DOS_HEADER>(va_kernel32, FLAG_NOCACHE) {
+    ///     println!("e_magic:  {:x}", doshdr.e_magic);
+    ///     println!("e_lfanew: {:x}", doshdr.e_lfanew);
+    /// }
+    /// ```
+    pub fn mem_read_as<T>(&self, va : u64, flags : u64) -> ResultEx<T> {
+        return self.vmm.impl_mem_read_as(self.pid, va, flags);
+    }
+
     /// Create a scatter memory object for efficient virtual memory reads.
     /// 
     /// Check out the [`VmmScatterMemory`] struct for more detailed information.
@@ -2338,6 +2475,26 @@ impl VmmProcess<'_> {
     /// ```
     pub fn mem_write(&self, va : u64, data : &Vec<u8>) -> ResultEx<()> {
         return self.vmm.impl_mem_write(self.pid, va, data);
+    }
+
+    /// Write a type/struct to virtual memory.
+    /// 
+    /// The write is a best effort. Even of the write should fail it's not
+    /// certain that an error will be returned. To be absolutely certain that
+    /// a write has taken place follow up with a read.
+    /// 
+    /// # Arguments
+    /// * `va` - Virtual address to start writing from.
+    /// * `data` - Data to write. In case of a struct repr(C) is recommended.
+    /// 
+    /// # Examples
+    /// ```
+    /// // Write data starting at the base of kernel32 (in the pe header).
+    /// let data_to_write = [0x56, 0x4d, 0x4d, 0x52, 0x55, 0x53, 0x54];
+    /// let _r = vmmprocess.mem_write_as(va_kernel32, &data_to_write);
+    /// ```
+    pub fn mem_write_as<T>(&self, va : u64, data : &T) -> ResultEx<()> {
+        return self.vmm.impl_mem_write_as(self.pid, va, data);
     }
 
     /// Retrieve PDB debugging for the module.
@@ -4361,6 +4518,19 @@ impl Vmm<'_> {
         return Ok(pb_result);
     }
 
+    fn impl_mem_read_as<T>(&self, pid : u32, va : u64, flags : u64) -> ResultEx<T> {
+        unsafe {
+            let cb = u32::try_from(std::mem::size_of::<T>())?;
+            let mut cb_read = 0;
+            let mut result : T = std::mem::zeroed();
+            let r = (self.native.VMMDLL_MemReadEx)(self.native.h, pid, va, &mut result as *mut _ as *mut u8, cb, &mut cb_read, flags);
+            if !r {
+                return Err("VMMDLL_MemReadEx: fail.".into());
+            }
+            return Ok(result);
+        }
+    }
+
     fn impl_mem_scatter(&self, pid : u32, flags : u64) -> ResultEx<VmmScatterMemory> {
         let flags = u32::try_from(flags)?;
         let r = (self.native.VMMDLL_Scatter_Initialize)(self.native.h, pid, flags);
@@ -4389,6 +4559,15 @@ impl Vmm<'_> {
         let cb = u32::try_from(data.len())?;
         let pb = data.as_ptr();
         let r = (self.native.VMMDLL_MemWrite)(self.native.h, pid, va, pb, cb);
+        if !r {
+            return Err("VMMDLL_MemWrite: fail.".into());
+        }
+        return Ok(());
+    }
+
+    fn impl_mem_write_as<T>(&self, pid : u32, va : u64, data : &T) -> ResultEx<()> {
+        let cb = u32::try_from(std::mem::size_of::<T>())?;
+        let r = (self.native.VMMDLL_MemWrite)(self.native.h, pid, va, data as *const _ as *const u8, cb);
         if !r {
             return Err("VMMDLL_MemWrite: fail.".into());
         }
@@ -4434,7 +4613,7 @@ impl Vmm<'_> {
         }
     }
 
-    pub fn impl_reg_hive_list(&self) -> ResultEx<Vec<VmmRegHive>> {
+    fn impl_reg_hive_list(&self) -> ResultEx<Vec<VmmRegHive>> {
         unsafe {
             let mut cHives = 0;
             let r = (self.native.VMMDLL_WinReg_HiveList)(self.native.h, std::ptr::null_mut(), 0, &mut cHives);
@@ -4532,13 +4711,6 @@ impl Vmm<'_> {
             raw_value,
         };
         return Ok(result);
-    }
-}
-
-impl VmmMapPoolEntry {
-    pub fn tag_to_string(&self) -> String {
-        let tag_chars = [((self.tag >> 0) & 0xff) as u8, ((self.tag >> 8) & 0xff) as u8, ((self.tag >> 16) & 0xff) as u8, ((self.tag >> 24) & 0xff) as u8];
-        return String::from_utf8_lossy(&tag_chars).to_string();
     }
 }
 
@@ -5360,7 +5532,8 @@ struct CThreadEntry {
     bSuspendCount : u8,
     bWaitReason : u8,
     _FutureUse1 : [u8; 2],
-    _FutureUse2 : [u32; 15],
+    _FutureUse2 : [u32; 13],
+    vaWin32StartAddress : u64,
 }
 
 #[repr(C)]
@@ -5876,6 +6049,7 @@ impl VmmProcess<'_> {
                     ft_create_time : ne.ftCreateTime,
                     ft_exit_time : ne.ftExitTime,
                     va_start_address : ne.vaStartAddress,
+                    va_win32_start_address : ne.vaWin32StartAddress,
                     va_stack_user_base : ne.vaStackBaseUser,
                     va_stack_user_limit : ne.vaStackLimitUser,
                     va_stack_kernel_base : ne.vaStackBaseKernel,
@@ -6103,12 +6277,25 @@ impl Drop for VmmScatterMemory<'_> {
 }
 
 impl <'a> VmmScatterMemory<'a> {
-    pub fn impl_prepare_ex(&mut self, data_to_read : &'a mut (u64, Vec<u8>, u32)) -> ResultEx<()> {
+    fn impl_prepare_ex(&mut self, data_to_read : &'a mut (u64, Vec<u8>, u32)) -> ResultEx<()> {
         if data_to_read.2 != 0 {
             return Err("data_to_read.2 not set to zero".into());
         }
         let cb = u32::try_from(data_to_read.1.len())?;
         let r = (self.vmm.native.VMMDLL_Scatter_PrepareEx)(self.hs, data_to_read.0, cb, data_to_read.1.as_mut_ptr(), &mut data_to_read.2);
+        if !r {
+            return Err("VMMDLL_Scatter_PrepareEx: fail.".into());
+        }
+        self.is_scatter_ex = true;
+        return Ok(());
+    }
+
+    fn impl_prepare_ex_as<T>(&mut self, data_to_read : &'a mut (u64, T, u32)) -> ResultEx<()> {
+        if data_to_read.2 != 0 {
+            return Err("data_to_read.2 not set to zero".into());
+        }
+        let cb = u32::try_from(std::mem::size_of::<T>())?;
+        let r = (self.vmm.native.VMMDLL_Scatter_PrepareEx)(self.hs, data_to_read.0, cb, &mut data_to_read.1 as *mut _ as *mut u8, &mut data_to_read.2);
         if !r {
             return Err("VMMDLL_Scatter_PrepareEx: fail.".into());
         }
@@ -6137,6 +6324,15 @@ impl VmmScatterMemory<'_> {
         return Ok(());
     }
 
+    fn impl_prepare_write_as<T>(&self, va : u64, data : &T) -> ResultEx<()> {
+        let cb = u32::try_from(std::mem::size_of::<T>())?;
+        let r = (self.vmm.native.VMMDLL_Scatter_PrepareWrite)(self.hs, va, data as *const _ as *const u8, cb);
+        if !r {
+            return Err("VMMDLL_Scatter_PrepareWrite: fail.".into());
+        }
+        return Ok(());
+    }
+
     fn impl_execute(&self) -> ResultEx<()> {
         let r = (self.vmm.native.VMMDLL_Scatter_Execute)(self.hs);
         if !r {
@@ -6154,6 +6350,19 @@ impl VmmScatterMemory<'_> {
             return Err("VMMDLL_Scatter_Read: fail.".into());
         }
         return Ok(pb_result);
+    }
+
+    fn impl_read_as<T>(&self, va : u64) -> ResultEx<T> {
+        unsafe {
+            let cb = u32::try_from(std::mem::size_of::<T>())?;
+            let mut cb_read = 0;
+            let mut result : T = std::mem::zeroed();
+            let r = (self.vmm.native.VMMDLL_Scatter_Read)(self.hs, va, cb, &mut result as *mut _ as *mut u8, &mut cb_read);
+            if !r {
+                return Err("VMMDLL_Scatter_Read: fail.".into());
+            }
+            return Ok(result);
+        }
     }
 
     fn impl_clear(&self) -> ResultEx<()> {
