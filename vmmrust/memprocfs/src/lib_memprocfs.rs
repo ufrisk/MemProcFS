@@ -89,7 +89,7 @@
 //! <b>Best wishes with your memory analysis project!</b>
 
 use std::collections::HashMap;
-use std::ffi::{CStr, CString, c_char, c_int};
+use std::ffi::{CStr, CString, c_char, c_int, c_void};
 use std::fmt;
 use serde::{Serialize, Deserialize};
 
@@ -788,8 +788,8 @@ impl Vmm<'_> {
     ///     println!("{:?}", data_read.hex_dump());
     /// }
     /// ```
-    pub fn mem_read(&self, pa : u64, size : usize) -> ResultEx<Vec<u8>> {
-        return self.impl_mem_read(u32::MAX, pa, size, 0);
+    pub fn mem_read<T>(&self, pa : u64) -> Option<T> {
+        return self.impl_mem_read_template(u32::MAX, pa, std::mem::size_of::<T>(), 0);
     }
 
     /// Read a contigious physical memory chunk with flags.
@@ -816,9 +816,6 @@ impl Vmm<'_> {
     ///     println!("{:?}", data_read.hex_dump());
     /// }
     /// ```
-    pub fn mem_read_ex(&self, pa : u64, size : usize, flags : u64) -> ResultEx<Vec<u8>> {
-        return self.impl_mem_read(u32::MAX, pa, size, flags);
-    }
 
     /// Create a scatter memory object for efficient physical memory reads.
     /// 
@@ -2256,8 +2253,8 @@ impl VmmProcess<'_> {
     ///     println!("{:?}", data_read.hex_dump());
     /// }
     /// ```
-    pub fn mem_read(&self, va : u64, size : usize) -> ResultEx<Vec<u8>> {
-        return self.vmm.impl_mem_read(self.pid, va, size, 0);
+    pub fn mem_read<T>(&self, va : u64, size : usize) -> Option<T> {
+        return self.vmm.impl_mem_read_template(self.pid, va, size, 0);
     }
 
     /// Read a contigious virtual memory chunk with flags.
@@ -2285,8 +2282,8 @@ impl VmmProcess<'_> {
     ///     println!("{:?}", data_read.hex_dump());
     /// }
     /// ```
-    pub fn mem_read_ex(&self, va : u64, size : usize, flags : u64) -> ResultEx<Vec<u8>> {
-        return self.vmm.impl_mem_read(self.pid, va, size, flags);
+    pub fn mem_read_ex<T>(&self, va : u64, size : usize, flags : u64) -> Option<T> {
+        return self.vmm.impl_mem_read_template(self.pid, va, size, flags);
     }
 
     /// Create a scatter memory object for efficient virtual memory reads.
@@ -3221,7 +3218,7 @@ struct VmmNative {
     VMMDLL_Log :                    extern "C" fn(hVMM : usize, MID : u32, dwLogLevel : u32, uszFormat : *const c_char, uszParam : *const c_char),
     VMMDLL_MemSearch :              extern "C" fn(hVMM : usize, pid : u32, ctx : *mut CVMMDLL_MEM_SEARCH_CONTEXT, ppva : *mut u64, pcva : *mut u32) -> bool,
 
-    VMMDLL_MemReadEx :              extern "C" fn(hVMM : usize, pid : u32, qwA : u64, pb : *mut u8, cb : u32, pcbReadOpt : *mut u32, flags : u64) -> bool,
+    VMMDLL_MemReadEx :              extern "C" fn(hVMM : usize, pid : u32, qwA : u64, pb : *mut c_void, cb : u32, pcbReadOpt : *mut u32, flags : u64) -> bool,
     VMMDLL_MemWrite :               extern "C" fn(hVMM : usize, pid : u32, qwA : u64, pb : *const u8, cb : u32) -> bool,
     VMMDLL_MemVirt2Phys :           extern "C" fn(hVMM : usize, pid : u32, qwA : u64, pqwPA : *mut u64) -> bool,
 
@@ -4350,16 +4347,19 @@ impl Vmm<'_> {
         }
     }
 
-    fn impl_mem_read(&self, pid : u32, va : u64, size : usize, flags : u64) -> ResultEx<Vec<u8>> {
-        let cb = u32::try_from(size)?;
+
+    fn impl_mem_read_template<T>(&self, pid : u32, va : u64, size : usize, flags : u64) -> Option<T> {
+        let cb = u32::try_from(size).unwrap();
         let mut cb_read = 0;
-        let mut pb_result = vec![0u8; size];
-        let r = (self.native.VMMDLL_MemReadEx)(self.native.h, pid, va, pb_result.as_mut_ptr(), cb, &mut cb_read, flags);
+        let mut pb_result: Option<T> = None;
+
+        let r = (self.native.VMMDLL_MemReadEx)(self.native.h, pid, va, &mut pb_result as *mut _ as *mut c_void, cb, &mut cb_read, flags);
         if !r {
-            return Err("VMMDLL_MemReadEx: fail.".into());
+            return None;
         }
-        return Ok(pb_result);
+        return pb_result;
     }
+
 
     fn impl_mem_scatter(&self, pid : u32, flags : u64) -> ResultEx<VmmScatterMemory> {
         let flags = u32::try_from(flags)?;
