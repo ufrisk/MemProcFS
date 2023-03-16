@@ -37,6 +37,7 @@ namespace vmmsharp
         public static ulong OPT_CORE_VERSION_MINOR =            0x4000000600000000;
         public static ulong OPT_CORE_VERSION_REVISION =         0x4000000700000000;
         public static ulong OPT_CORE_ADDR_MAX =                 0x1000000800000000;
+        public static ulong VMMDLL_OPT_CORE_LEECHCORE_HANDLE =  0x4000001000000000;
 
         public static ulong OPT_MEMORYINFO_VALID =              0x0200000100000000;
         public static ulong OPT_MEMORYINFO_FLAG_32BIT =         0x0200000300000000;
@@ -1099,6 +1100,7 @@ namespace vmmsharp
             public ulong ftCreateTime;
             public ulong ftExitTime;
             public ulong vaStartAddress;
+            public ulong vaWin32StartAddress;
             public ulong vaStackBaseUser;
             public ulong vaStackLimitUser;
             public ulong vaStackBaseKernel;
@@ -1623,6 +1625,7 @@ namespace vmmsharp
                 e.ftCreateTime = n.ftCreateTime;
                 e.ftExitTime = n.ftExitTime;
                 e.vaStartAddress = n.vaStartAddress;
+                e.vaWin32StartAddress = n.vaWin32StartAddress;
                 e.vaStackBaseUser = n.vaStackBaseUser;
                 e.vaStackLimitUser = n.vaStackLimitUser;
                 e.vaStackBaseKernel = n.vaStackBaseKernel;
@@ -2896,7 +2899,8 @@ namespace vmmsharp
             internal byte bSuspendCount;
             internal byte bWaitReason;
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)] internal byte[] _FutureUse1;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 15)] internal uint[] _FutureUse2;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 13)] internal uint[] _FutureUse2;
+            internal ulong vaWin32StartAddress;
         }
 
         [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]

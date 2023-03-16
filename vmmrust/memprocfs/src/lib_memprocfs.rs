@@ -143,6 +143,8 @@ pub const CONFIG_OPT_CORE_VERBOSE_EXTRA             : u64 = 0x4000000300000000;
 pub const CONFIG_OPT_CORE_VERBOSE_EXTRA_TLP         : u64 = 0x4000000400000000;
 /// Get max native physical memory address.
 pub const CONFIG_OPT_CORE_MAX_NATIVE_ADDRESS        : u64 = 0x4000000800000000;
+/// Get the LeechCore native handle. (void*) (do not close/free).
+pub const CONFIG_OPT_CORE_LEECHCORE_HANDLE          : u64 = 0x4000001000000000;
 /// Get the numeric system type according to VMM C-API.
 pub const CONFIG_OPT_CORE_SYSTEM                    : u64 = 0x2000000100000000;
 /// Get the numeric memory model type according to the VMM C-API.

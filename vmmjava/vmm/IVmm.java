@@ -58,6 +58,7 @@ public interface IVmm
 	public static final long OPT_CORE_VERBOSE_EXTRA 			= 0x4000000300000000L;
 	public static final long OPT_CORE_VERBOSE_EXTRA_TLP 		= 0x4000000400000000L;
 	public static final long OPT_CORE_MAX_NATIVE_ADDRESS 		= 0x4000000800000000L;
+	public static final long OPT_CORE_LEECHCORE_HANDLE          = 0x4000001000000000L;
 	
 	public static final long OPT_CORE_SYSTEM 					= 0x2000000100000000L;
 	public static final long OPT_CORE_MEMORYMODEL 				= 0x2000000200000000L;

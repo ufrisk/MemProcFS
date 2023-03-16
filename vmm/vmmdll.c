@@ -223,6 +223,9 @@ BOOL VMMDLL_ConfigGet_Impl(_In_ VMM_HANDLE H, _In_ ULONG64 fOption, _Out_ PULONG
         case VMMDLL_OPT_CORE_MAX_NATIVE_ADDRESS:
             *pqwValue = H->dev.paMax;
             return TRUE;
+        case VMMDLL_OPT_CORE_LEECHCORE_HANDLE:
+            *pqwValue = (ULONG64)H->hLC;
+            return TRUE;
         default:
             // non-recognized option - possibly a device option to pass along to leechcore.dll
             return LcGetOption(H->hLC, fOption, pqwValue);
