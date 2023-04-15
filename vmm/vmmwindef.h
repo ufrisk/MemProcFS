@@ -486,10 +486,93 @@ typedef struct tdMM_UNLOADED_DRIVER64
     QWORD               UnloadTime;
 } MM_UNLOADED_DRIVER64, *PMM_UNLOADED_DRIVER64;
 
+typedef union tdSEP_TOKEN_PRIVILEGES_TYPE {
+    QWORD qwValue;
+    struct {
+        QWORD fNA1 : 1;
+        QWORD fNA2 : 1;
+        QWORD fSeCreateTokenPrivilege : 1;
+        QWORD fSeAssignPrimaryTokenPrivilege : 1;
+        QWORD fSeLockMemoryPrivilege : 1;
+        QWORD fSeIncreafSeQuotaPrivilege : 1;
+        QWORD fSeMachineAccountPrivilege : 1;
+        QWORD fSeTcbPrivilege : 1;
+        QWORD fSefSecurityPrivilege : 1;
+        QWORD fSeTakeOwnershipPrivilege : 1;
+        QWORD fSeLoadDriverPrivilege : 1;
+        QWORD fSeSystemProfilePrivilege : 1;
+        QWORD fSeSystemtimePrivilege : 1;
+        QWORD fSeProfileSingleProcessPrivilege : 1;
+        QWORD fSeIncreafSeBafSePriorityPrivilege : 1;
+        QWORD fSeCreatePagefilePrivilege : 1;
+        QWORD fSeCreatePermanentPrivilege : 1;
+        QWORD fSeBackupPrivilege : 1;
+        QWORD fSeRestorePrivilege : 1;
+        QWORD fSeShutdownPrivilege : 1;
+        QWORD fSeDebugPrivilege : 1;
+        QWORD fSeAuditPrivilege : 1;
+        QWORD fSeSystemEnvironmentPrivilege : 1;
+        QWORD fSeChangeNotifyPrivilege : 1;
+        QWORD fSeRemoteShutdownPrivilege : 1;
+        QWORD fSeUndockPrivilege : 1;
+        QWORD fSeSyncAgentPrivilege : 1;
+        QWORD fSeEnableDelegationPrivilege : 1;
+        QWORD fSeManageVolumePrivilege : 1;
+        QWORD fSeImpersonatePrivilege : 1;
+        QWORD fSeCreateGlobalPrivilege : 1;
+        QWORD fSeTrustedCredManAccessPrivilege : 1;
+        QWORD fSeRelabelPrivilege : 1;
+        QWORD fSeIncreafSeWorkingfSetPrivilege : 1;
+        QWORD fSeTimeZonePrivilege : 1;
+        QWORD fSeCreateSymbolicLinkPrivilege : 1;
+        QWORD fSeDelegatefSessionUfSerImpersonatePrivilege : 1;
+    };
+} SEP_TOKEN_PRIVILEGES_TYPE;
+
+static LPCSTR SEP_TOKEN_PRIVILEGES_TYPE_STR[] = {
+    "",
+    "",
+    "SeCreateTokenPrivilege",                       // SE_CREATE_TOKEN_NAME
+    "SeAssignPrimaryTokenPrivilege",                // SE_ASSIGNPRIMARYTOKEN_NAME
+    "SeLockMemoryPrivilege",                        // SE_LOCK_MEMORY_NAME
+    "SeIncreaseQuotaPrivilege",                     // SE_INCREASE_QUOTA_NAME
+    "SeMachineAccountPrivilege",                    // SE_MACHINE_ACCOUNT_NAME
+    "SeTcbPrivilege",                               // SE_TCB_NAME
+    "SeSecurityPrivilege",                          // SE_SECURITY_NAME
+    "SeTakeOwnershipPrivilege",                     // SE_TAKE_OWNERSHIP_NAME
+    "SeLoadDriverPrivilege",                        // SE_LOAD_DRIVER_NAME
+    "SeSystemProfilePrivilege",                     // SE_SYSTEM_PROFILE_NAME
+    "SeSystemtimePrivilege",                        // SE_SYSTEMTIME_NAME
+    "SeProfileSingleProcessPrivilege",              // SE_PROF_SINGLE_PROCESS_NAME
+    "SeIncreaseBasePriorityPrivilege",              // SE_INC_BASE_PRIORITY_NAME
+    "SeCreatePagefilePrivilege",                    // SE_CREATE_PAGEFILE_NAME
+    "SeCreatePermanentPrivilege",                   // SE_CREATE_PERMANENT_NAME
+    "SeBackupPrivilege",                            // SE_BACKUP_NAME
+    "SeRestorePrivilege",                           // SE_RESTORE_NAME
+    "SeShutdownPrivilege",                          // SE_SHUTDOWN_NAME
+    "SeDebugPrivilege",                             // SE_DEBUG_NAME
+    "SeAuditPrivilege",                             // SE_AUDIT_NAME
+    "SeSystemEnvironmentPrivilege",                 // SE_SYSTEM_ENVIRONMENT_NAME
+    "SeChangeNotifyPrivilege",                      // SE_CHANGE_NOTIFY_NAME
+    "SeRemoteShutdownPrivilege",                    // SE_REMOTE_SHUTDOWN_NAME
+    "SeUndockPrivilege",                            // SE_UNDOCK_NAME
+    "SeSyncAgentPrivilege",                         // SE_SYNC_AGENT_NAME
+    "SeEnableDelegationPrivilege",                  // SE_ENABLE_DELEGATION_NAME
+    "SeManageVolumePrivilege",                      // SE_MANAGE_VOLUME_NAME
+    "SeImpersonatePrivilege",                       // SE_IMPERSONATE_NAME
+    "SeCreateGlobalPrivilege",                      // SE_CREATE_GLOBAL_NAME
+    "SeTrustedCredManAccessPrivilege",              // SE_TRUSTED_CREDMAN_ACCESS_NAME
+    "SeRelabelPrivilege",                           // SE_RELABEL_NAME
+    "SeIncreaseWorkingSetPrivilege",                // SE_INC_WORKING_SET_NAME
+    "SeTimeZonePrivilege",                          // SE_TIME_ZONE_NAME
+    "SeCreateSymbolicLinkPrivilege",                // SE_CREATE_SYMBOLIC_LINK_NAME
+    "SeDelegateSessionUserImpersonatePrivilege"     // SE_DELEGATE_SESSION_USER_IMPERSONATE_NAME
+};
+
 typedef struct tdSEP_TOKEN_PRIVILEGES {
-    QWORD Present;
-    QWORD Enabled;
-    QWORD EnabledByDefault;
+    SEP_TOKEN_PRIVILEGES_TYPE Present;
+    SEP_TOKEN_PRIVILEGES_TYPE Enabled;
+    SEP_TOKEN_PRIVILEGES_TYPE EnabledByDefault;
 } SEP_TOKEN_PRIVILEGES, *PSEP_TOKEN_PRIVILEGES;
 
 #define _PHYSICAL_MEMORY_MAX_RUNS   0x20

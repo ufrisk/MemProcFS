@@ -324,6 +324,7 @@
   <ItemGroup>
     <ClInclude Include="..\includes\leechcore.h" />
     <ClInclude Include="..\includes\libpdbcrust.h" />
+    <ClInclude Include="..\includes\vmmyara.h" />
     <ClInclude Include="charutil.h" />
     <ClInclude Include="fc.h" />
     <ClInclude Include="infodb.h" />
@@ -346,7 +347,6 @@
     <ClInclude Include="vmm.h" />
     <ClInclude Include="vmmdll.h" />
     <ClInclude Include="vmmdll_core.h" />
-    <ClInclude Include="vmmevil.h" />
     <ClInclude Include="vmmheap.h" />
     <ClInclude Include="vmmlog.h" />
     <ClInclude Include="vmmnet.h" />
@@ -360,6 +360,7 @@
     <ClInclude Include="vmmwinreg.h" />
     <ClInclude Include="vmmwinsvc.h" />
     <ClInclude Include="vmmwork.h" />
+    <ClInclude Include="vmmyarautil.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="charutil.c" />
@@ -372,7 +373,13 @@
     <ClCompile Include="mm\mm_x86.c" />
     <ClCompile Include="mm\mm_x86pae.c" />
     <ClCompile Include="modules\m_conf.c" />
+    <ClCompile Include="modules\m_evil_kern1.c" />
+    <ClCompile Include="modules\m_evil_proc1.c" />
+    <ClCompile Include="modules\m_evil_proc2.c" />
+    <ClCompile Include="modules\m_evil_proc3.c" />
+    <ClCompile Include="modules\m_evil_thread1.c" />
     <ClCompile Include="modules\m_fc_csv.c" />
+    <ClCompile Include="modules\m_fc_findevil.c" />
     <ClCompile Include="modules\m_fc_handle.c" />
     <ClCompile Include="modules\m_fc_json.c" />
     <ClCompile Include="modules\m_fc_module.c" />
@@ -382,7 +389,7 @@
     <ClCompile Include="modules\m_fc_sys.c" />
     <ClCompile Include="modules\m_fc_thread.c" />
     <ClCompile Include="modules\m_fc_timeline.c" />
-    <ClCompile Include="modules\m_findevil.c" />
+    <ClCompile Include="modules\m_fc_yara.c" />
     <ClCompile Include="modules\m_misc_bitlocker.c" />
     <ClCompile Include="modules\m_misc_procinfo.c" />
     <ClCompile Include="modules\m_misc_view.c" />
@@ -398,6 +405,7 @@
     <ClCompile Include="modules\m_proc_thread.c" />
     <ClCompile Include="modules\m_proc_token.c" />
     <ClCompile Include="modules\m_search.c" />
+    <ClCompile Include="modules\m_searchyara.c" />
     <ClCompile Include="modules\m_sys.c" />
     <ClCompile Include="modules\m_sys_cert.c" />
     <ClCompile Include="modules\m_sys_driver.c" />
@@ -436,7 +444,6 @@
     <ClCompile Include="vmmdll.c" />
     <ClCompile Include="vmmdll_core.c" />
     <ClCompile Include="vmmdll_scatter.c" />
-    <ClCompile Include="vmmevil.c" />
     <ClCompile Include="vmmheap.c" />
     <ClCompile Include="vmmlog.c" />
     <ClCompile Include="vmmnet.c" />
@@ -450,6 +457,8 @@
     <ClCompile Include="vmmwinreg.c" />
     <ClCompile Include="vmmwinsvc.c" />
     <ClCompile Include="vmmwork.c" />
+    <ClCompile Include="vmmyarautil.c" />
+    <ClCompile Include="vmmyarawrap.c" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\MemProcFS-dev\vmm\res\m_fc_json_elastic_import_unauth.ps1" />

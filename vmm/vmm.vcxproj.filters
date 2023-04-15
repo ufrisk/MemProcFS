@@ -114,9 +114,6 @@
     <ClInclude Include="sqlite\sqlite3ext.h">
       <Filter>Header Files\sqlite</Filter>
     </ClInclude>
-    <ClInclude Include="vmmevil.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="charutil.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -157,6 +154,12 @@
       <Filter>Header Files\modules</Filter>
     </ClInclude>
     <ClInclude Include="vmmdll_core.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\includes\vmmyara.h">
+      <Filter>Header Files\includes</Filter>
+    </ClInclude>
+    <ClInclude Include="vmmyarautil.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -229,9 +232,6 @@
     </ClCompile>
     <ClCompile Include="ob\ob_strmap.c">
       <Filter>Source Files\ob</Filter>
-    </ClCompile>
-    <ClCompile Include="vmmevil.c">
-      <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="ob\ob_compressed.c">
       <Filter>Source Files\ob</Filter>
@@ -321,9 +321,6 @@
       <Filter>Source Files\modules</Filter>
     </ClCompile>
     <ClCompile Include="modules\m_fc_timeline.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
-    <ClCompile Include="modules\m_findevil.c">
       <Filter>Source Files\modules</Filter>
     </ClCompile>
     <ClCompile Include="modules\m_misc_bitlocker.c">
@@ -423,6 +420,36 @@
       <Filter>Source Files\modules</Filter>
     </ClCompile>
     <ClCompile Include="modules\m_winreg.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmyarautil.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmyarawrap.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_evil_kern1.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_evil_proc1.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_evil_proc2.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_evil_proc3.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_evil_thread1.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_fc_findevil.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_fc_yara.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_searchyara.c">
       <Filter>Source Files\modules</Filter>
     </ClCompile>
   </ItemGroup>

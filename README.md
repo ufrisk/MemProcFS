@@ -173,5 +173,7 @@ v1.1-v4.9
 * Rust API support.
 * Debug symbol support when running on Linux.
 
-Latest:
+[v5.5](https://github.com/ufrisk/MemProcFS/releases/tag/v5.5)
+* [Findevil](https://github.com/ufrisk/MemProcFS/wiki/FS_FindEvil): New thread-based detections. Findevil is now forensic mode only.
 * [Jupyter Notebook example](https://github.com/ufrisk/MemProcFS/wiki/API_Python_Jupyter)
+* Yara support in [forensics mode](https://github.com/ufrisk/MemProcFS/wiki/FS_Forensic_Yara) and [search](https://github.com/ufrisk/MemProcFS/wiki/FS_YaraSearch).

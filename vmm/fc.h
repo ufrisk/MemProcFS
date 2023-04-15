@@ -45,10 +45,17 @@ typedef struct tdFCOB_FILE {
     POB_MEMFILE pmf;
 } FCOB_FILE, *PFCOB_FILE;
 
+typedef struct tdVMMDLL_CSV_HANDLE {
+    DWORD o;
+    BYTE pb[0x00100000];
+} *VMMDLL_CSV_HANDLE;
+
 typedef struct tdFC_CONTEXT {
     BOOL fInitStart;
     BOOL fInitFinish;
     BYTE cProgressPercent;
+    BYTE cProgressPercentScanPhysical;
+    BYTE cProgressPercentScanVirtual;
     CRITICAL_SECTION Lock;
     struct {
         DWORD tp;                           // type as specified in FC_DATABASE_TYPE_*
@@ -68,8 +75,12 @@ typedef struct tdFC_CONTEXT {
         POB_MEMFILE pReg;
     } FileJSON;
     struct {
-        POB_MAP pm;         // map of PFCOB_FILE
+        POB_MAP pm;                 // map of PFCOB_FILE
     } FileCSV;
+    struct {
+        POB_MAP pm;                 // map of PFC_FINDEVIL_ENTRY
+        POB_MEMFILE pmf;            // generated /forensic/findevil/findevil.txt
+    } FindEvil;
 } FC_CONTEXT, *PFC_CONTEXT;
 
 #define FC_JSONDATA_INIT_PIDTYPE(pd, pid, tp)   { ZeroMemory(pd, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)); pd->dwVersion = VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION; pd->dwPID = pid; pd->szjType = tp; }
@@ -218,7 +229,7 @@ int Fc_SqlBindMultiInt64(
 * -- H
 * -- uszFileName
 * -- uszFormat
-* -- ..
+* -- ...
 * -- return = the number of bytes appended (excluding terminating null).
 */
 _Success_(return != 0)
@@ -246,6 +257,35 @@ LPSTR FcCsv_FileTime(_In_ VMMDLL_CSV_HANDLE h, _In_ QWORD ft);
 
 
 // ----------------------------------------------------------------------------
+// FC FINDEVIL FUNCTIONALITY BELOW:
+// ----------------------------------------------------------------------------
+
+/*
+* Add a "findevil" entry. Take great care not spamming this function by mistake.
+* -- H
+* -- tpEvil
+* -- pProcess = associated process (if applicable).
+* -- va = virtual address.
+* -- uszFormat
+* -- ...
+*/
+VOID FcEvilAdd(_In_ VMM_HANDLE H, _In_ VMMEVIL_TYPE tpEvil, _In_opt_ PVMM_PROCESS pProcess, _In_opt_ QWORD va, _In_z_ _Printf_format_string_ LPSTR uszFormat, ...);
+
+/*
+* Add a "findevil" entry. Take great care not spamming this function by mistake.
+* -- H
+* -- uszType = evil type. max 15 chars, uppercase, no spaces.
+* -- dwSeverity = the more severe the higher up in the FindEvil listings.
+* -- pProcess = associated process (if applicable).
+* -- va = virtual address.
+* -- uszFormat
+* -- arglist
+*/
+VOID FcEvilAddEx(_In_ VMM_HANDLE H, _In_ LPSTR uszType, _In_ DWORD dwSeverity, _In_opt_ PVMM_PROCESS pProcess, _In_opt_ QWORD va, _In_z_ _Printf_format_string_ LPSTR uszFormat, _In_ va_list arglist);
+
+
+
+// // ----------------------------------------------------------------------------
 // FC TIMELINING FUNCTIONALITY BELOW:
 // ----------------------------------------------------------------------------
 

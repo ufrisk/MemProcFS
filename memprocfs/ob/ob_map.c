@@ -610,11 +610,16 @@ BOOL _ObMap_SortEntryIndex(_In_ POB_MAP pm, _In_ _CoreCrtNonSecureSearchSortComp
     }
     LocalFree(pSort);
     // update hash maps
-    ZeroMemory(pm->pHashMapKey, pm->cHashMax * sizeof(DWORD));
+    if(pm->fKey) {
+        ZeroMemory(pm->pHashMapKey, pm->cHashMax * sizeof(DWORD));
+        for(iEntry = 1; iEntry < pm->c; iEntry++) {
+            _ObMap_InsertHash(pm, FALSE, iEntry);
+        }
+    }
     ZeroMemory(pm->pHashMapValue, pm->cHashMax * sizeof(DWORD));
     for(iEntry = 1; iEntry < pm->c; iEntry++) {
         _ObMap_InsertHash(pm, TRUE, iEntry);
-        _ObMap_InsertHash(pm, FALSE, iEntry);
+        
     }
     return TRUE;
 }

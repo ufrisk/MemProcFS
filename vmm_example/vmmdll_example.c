@@ -153,7 +153,7 @@ int main(_In_ int argc, _In_ char* argv[])
     VMM_HANDLE hVMM = NULL;
     BOOL result;
     NTSTATUS nt;
-    DWORD i, dwPID;
+    DWORD i, cbRead, dwPID;
     DWORD dw = 0;
     QWORD va;
     BYTE pbPage1[0x1000], pbPage2[0x1000];
@@ -1348,7 +1348,7 @@ int main(_In_ int argc, _In_ char* argv[])
     // EX.1: CREATE SCATTER HANDLE
     printf("CALL:    VMMDLL_Scatter_Initialize\n");
     hS = VMMDLL_Scatter_Initialize(hVMM, 4, VMMDLL_FLAG_NOCACHE | VMMDLL_FLAG_NOPAGING_IO);
-    if(result) {
+    if(hS) {
         printf("SUCCESS: VMMDLL_Scatter_Initialize\n");
     } else {
         printf("FAIL:    VMMDLL_Scatter_Initialize\n");
@@ -1417,6 +1417,46 @@ int main(_In_ int argc, _In_ char* argv[])
         VMMDLL_LOGLEVEL_WARNING,
         "%i fake warning message from %s!", 1, "vmmdll_example");
     printf("SUCCESS: VMMDLL_Log\n");
+
+
+    // Read the file /misc/procinfo/dtb.txt containing the DTBs of processes
+    // in the target system. This virtual file takes a short while to render
+    // after first access.
+    // To make use of the virtual file system it's necessary to enable the
+    // MemProcFS plugins first. This API call is only required once.
+    printf("------------------------------------------------------------\n");
+    printf("# Access /misc/procinfo/dtb.txt                             \n");
+    ShowKeyPress();
+    VMMDLL_InitializePlugins(hVMM);
+    printf("CALL:    VMMDLL_VfsRead\n");
+    ZeroMemory(pbPage1, sizeof(pbPage1));
+    BOOL fResultDTB = FALSE;
+    while(TRUE) {
+        nt = VMMDLL_VfsReadU(hVMM, "\\misc\\procinfo\\progress_percent.txt", pbPage1, 3, &cbRead, 0);
+        if(nt == VMMDLL_STATUS_SUCCESS) {
+            printf("SUCCESS: VMMDLL_VfsRead: %s\n", (LPSTR)pbPage1);
+            if(!strcmp((LPSTR)pbPage1, "100")) {
+                // success - progress is at 100% - read the file.
+                PBYTE pb1M = LocalAlloc(LMEM_ZEROINIT, 0x00100000);
+                if(pb1M) {
+                    nt = VMMDLL_VfsReadU(hVMM, "\\misc\\procinfo\\dtb.txt", pb1M, 0x00100000, &cbRead, 0);
+                    if(nt == VMMDLL_STATUS_SUCCESS) {
+                        printf("SUCCESS: VMMDLL_VfsRead:\n%s\n", (LPSTR)pb1M);
+                    } else {
+                        printf("FAIL:    VMMDLL_VfsRead\n");
+                        return 1;
+                    }
+                    LocalFree(pb1M); pb1M = NULL;
+                }
+                break;
+            }
+            Sleep(100);
+        } else {
+            printf("FAIL:    VMMDLL_VfsRead\n");
+            return 1;
+        }
+    }
+
     
 
 

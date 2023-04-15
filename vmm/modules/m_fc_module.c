@@ -10,7 +10,7 @@
 
 #include "modules.h"
 
-static LPSTR MFCMODULE_CSV_MODULES = "PID,Process,Name,Wow64,Size,Start,End,#Imports,#Exports,#Sections,Path,KernelPath,PdbPath,PdbAge,PdbHexGUID,VerCompanyName,VerFileDescription,VerFileVersion,VerInternalName,VerLegalCopyright,VerOriginalFilename,VerProductName,VerProductVersion\n";
+static LPSTR MFCMODULE_CSV_MODULES = "PID,Process,Name,Wow64,Size,Start,End,#Imports,#Exports,#Sections,Path,KernelPath,VerCompanyName,VerFileDescription,VerFileVersion,VerInternalName,VerLegalCopyright,VerOriginalFilename,VerProductName,VerProductVersion,PdbPath,PdbAge,PdbHexGUID,PdbSymbolServer\n";
 static LPSTR MFCMODULE_CSV_UNLOADEDMODULES = "PID,Process,ModuleName,UnloadTime,Wow64,Size,Start,End\n";
 
 VOID MFcModule_LogModule(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData), _In_ PVMMOB_MAP_MODULE pMap)
@@ -135,15 +135,17 @@ VOID MFcModule_LogModuleCSV(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ 
     PVMM_MAP_MODULEENTRY pe;
     PVMM_MAP_VADENTRY peVad = NULL;
     PVMMOB_MAP_VAD pObVadMap = NULL;
+    CHAR szSymbolServer[MAX_PATH];
     VmmMap_GetVad(H, pProcess, &pObVadMap, VMM_VADMAP_TP_FULL);
     fSuppressDriver = !_stricmp(pProcess->szName, "csrss.exe") || !_stricmp(pProcess->szName, "Registry");
     for(i = 0; i < pMap->cMap; i++) {
         pe = pMap->pMap + i;
         if(fSuppressDriver && CharUtil_StrEndsWith(pe->uszText, ".sys", FALSE)) { continue; }
         peVad = VmmMap_GetVadEntry(H, pObVadMap, pe->vaBase);
-        //"PID,Process,Name,Wow64,Size,Start,End,#Imports,#Exports,#Sections,Path,KernelPath,PdbPath,PdbAge,PdbHexGUID,VerCompanyName,VerFileDescription,VerFileVersion,VerInternalName,VerLegalCopyright,VerOriginalFilename,VerProductName,VerProductVersion"
+        VmmWinLdrModule_SymbolServer(H, pe, TRUE, _countof(szSymbolServer), szSymbolServer);
+        //"PID,Process,Name,Wow64,Size,Start,End,#Imports,#Exports,#Sections,Path,KernelPath,VerCompanyName,VerFileDescription,VerFileVersion,VerInternalName,VerLegalCopyright,VerOriginalFilename,VerProductName,VerProductVersion,PdbPath,PdbAge,PdbHexGUID,PdbSymbolServer"
         FcCsv_Reset(hCSV);
-        FcFileAppend(H, "modules.csv", "%i,%s,%s,%i,0x%x,0x%llx,0x%llx,%i,%i,%i,%s,%s,%s,%i,%s,%s,%s,%s,%s,%s,%s,%s,%s\n",
+        FcFileAppend(H, "modules.csv", "%i,%s,%s,%i,0x%x,0x%llx,0x%llx,%i,%i,%i,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%i,%s,%s\n",
             pProcess->dwPID,
             FcCsv_String(hCSV, pProcess->pObPersistent->uszNameLong),
             FcCsv_String(hCSV, pe->uszText),
@@ -156,9 +158,6 @@ VOID MFcModule_LogModuleCSV(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ 
             pe->cSection,
             FcCsv_String(hCSV, pe->uszFullName),
             peVad ? FcCsv_String(hCSV, peVad->uszText) : "",
-            FcCsv_String(hCSV, pe->pExDebugInfo->uszPdbFilename),
-            pe->pExDebugInfo->dwAge,
-            FcCsv_String(hCSV, pe->pExDebugInfo->uszGuid),
             FcCsv_String(hCSV, pe->pExVersionInfo->uszCompanyName),
             FcCsv_String(hCSV, pe->pExVersionInfo->uszFileDescription),
             FcCsv_String(hCSV, pe->pExVersionInfo->uszFileVersion),
@@ -166,7 +165,11 @@ VOID MFcModule_LogModuleCSV(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ 
             FcCsv_String(hCSV, pe->pExVersionInfo->uszLegalCopyright),
             FcCsv_String(hCSV, pe->pExVersionInfo->uszOriginalFilename),
             FcCsv_String(hCSV, pe->pExVersionInfo->uszProductName),
-            FcCsv_String(hCSV, pe->pExVersionInfo->uszProductVersion)
+            FcCsv_String(hCSV, pe->pExVersionInfo->uszProductVersion),
+            FcCsv_String(hCSV, pe->pExDebugInfo->uszPdbFilename),
+            pe->pExDebugInfo->dwAge,
+            FcCsv_String(hCSV, pe->pExDebugInfo->uszGuid),
+            FcCsv_String(hCSV, szSymbolServer)
         );
     }
     Ob_DECREF(pObVadMap);

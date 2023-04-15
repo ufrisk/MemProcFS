@@ -149,6 +149,37 @@ VOID MVM_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOI
     LocalFree(pd);
 }
 
+VOID MVM_FcLogCSV(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VMMDLL_CSV_HANDLE hCSV)
+{
+    DWORD i;
+    PVMM_MAP_VMENTRY pe;
+    PVMMOB_MAP_VM pObVmMap = NULL;
+    if(!ctxP->pProcess) {
+        FcFileAppend(H, "virtualmachines.csv", "Name,Type,MaxGPA,Build,SystemType,PartitionID,IsActive,IsReadonly,IsPhysicalOnly,VmmemPID,MountID\n");
+        if(VmmMap_GetVM(H, &pObVmMap)) {
+            for(i = 0; i < pObVmMap->cMap; i++) {
+                pe = pObVmMap->pMap + i;
+                //"Name,Type,MaxGPA,Build,SystemType,PartitionID,IsActive,IsReadonly,IsPhysicalOnly,VmmemPID,MountID"
+                FcCsv_Reset(hCSV);
+                FcFileAppend(H, "virtualmachines.csv", "%s,%s,%llx,%u,%s,%u,%s,%s,%s,%u,%u\n",
+                    FcCsv_String(hCSV, pe->uszName),
+                    FcCsv_String(hCSV, (LPSTR)VMM_VM_TP_STRING[pe->tp]),
+                    pe->gpaMax,
+                    pe->dwVersionBuild,
+                    FcCsv_String(hCSV, (LPSTR)VMM_SYSTEM_TP_STRING[pe->tpSystem]),
+                    pe->dwPartitionID,
+                    pe->fActive ? "TRUE" : "FALSE",
+                    pe->fReadOnly ? "TRUE" : "FALSE",
+                    pe->fPhysicalOnly ? "TRUE" : "FALSE",
+                    pe->dwVmMemPID,
+                    pe->dwParentVmmMountID
+                );
+            }
+        }
+        Ob_DECREF(pObVmMap);
+    }
+}
+
 VOID M_VM_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if(!H->cfg.fVM) { return; }
@@ -160,5 +191,6 @@ VOID M_VM_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     pRI->reg_fn.pfnRead = MVM_Read;                             // Read function supported
     pRI->reg_fn.pfnWrite = MVM_Write;                           // Write function supported
     pRI->reg_fnfc.pfnLogJSON = MVM_FcLogJSON;                   // JSON log function supported
+    pRI->reg_fnfc.pfnLogCSV = MVM_FcLogCSV;                     // CSV log function supported
     pRI->pfnPluginManager_Register(H, pRI);
 }

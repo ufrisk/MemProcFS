@@ -10,7 +10,7 @@
 
 #include "modules.h"
 
-static LPSTR MFCPROC_CSV_THREAD = "PID,TID,ETHREAD,State,WaitReason,CreateTime,ExitTime,Running,BasePriority,Priority,ExitStatus,StartAddress,IP,SP,TEB,StackBaseUser,StackLimitUser,StackBaseKernel,StackLimitKernel,TrapFrame\n";
+static LPSTR MFCPROC_CSV_THREAD = "PID,TID,ETHREAD,State,WaitReason,CreateTime,ExitTime,Running,BasePriority,Priority,ExitStatus,StartAddress,Win32StartAddress,IP,SP,TEB,StackBaseUser,StackLimitUser,StackBaseKernel,StackLimitKernel,TrapFrame,ImpersonationToken\n";
 
 static LPSTR FC_SQL_SCHEMA_THREAD =
     "DROP TABLE IF EXISTS thread; " \
@@ -129,7 +129,15 @@ VOID M_FcThread_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _
         for(i = 0; i < pObThreadMap->cMap; i++) {
             pe = pObThreadMap->pMap + i;
             Util_FileTime2String(pe->ftCreateTime, szTime);
-            o = snprintf(usz, _countof(usz), "state:[%i %s] wait:[%i %s] status:[%x %x] prio:[%x %x] start:[%s]", pe->bState, MFCTHREAD_GET_STR_STATE(pe), pe->bWaitReason, MFCTHREAD_GET_STR_WAIT_REASON(pe), pe->bRunning, pe->dwExitStatus, pe->bBasePriority, pe->bPriority, szTime);
+            o = snprintf(usz, _countof(usz), "state:[%i %s] wait:[%i %s] status:[%x %x] prio:[%x %x] start-addr:[%llx %llx] impersonation:[%llx] start:[%s]",
+                pe->bState, MFCTHREAD_GET_STR_STATE(pe),
+                pe->bWaitReason, MFCTHREAD_GET_STR_WAIT_REASON(pe),
+                pe->bRunning, pe->dwExitStatus,
+                pe->bBasePriority, pe->bPriority,
+                pe->vaStartAddress, pe->vaWin32StartAddress,
+                pe->vaImpersonationToken,
+                szTime
+            );
             if(pe->ftExitTime) {
                 Util_FileTime2String(pe->ftExitTime, szTime);
                 snprintf(usz + o, _countof(usz) - 0, " stop:[%s]", szTime);
@@ -159,7 +167,7 @@ VOID M_FcThread_FcLogCSV(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _I
         for(i = 0; i < pObThreadMap->cMap; i++) {
             pe = pObThreadMap->pMap + i;
             FcCsv_Reset(hCSV);
-            FcFileAppend(H, "threads.csv", "%i,%i,%llx,%s,%s,%s,%s,%x,%x,%x,%x,%llx,%llx,%llx,%llx,%llx,%llx,%llx,%llx,%llx\n",
+            FcFileAppend(H, "threads.csv", "%i,%i,%llx,%s,%s,%s,%s,%x,%x,%x,%x,%llx,%llx,%llx,%llx,%llx,%llx,%llx,%llx,%llx,%llx,%llx\n",
                 pe->dwPID,
                 pe->dwTID,
                 pe->vaETHREAD,
@@ -172,6 +180,7 @@ VOID M_FcThread_FcLogCSV(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _I
                 pe->bPriority,
                 pe->dwExitStatus,
                 pe->vaStartAddress,
+                pe->vaWin32StartAddress,
                 pe->vaRIP,
                 pe->vaRSP,
                 pe->vaTeb,
@@ -179,7 +188,8 @@ VOID M_FcThread_FcLogCSV(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _I
                 pe->vaStackLimitUser,
                 pe->vaStackBaseKernel,
                 pe->vaStackLimitKernel,
-                pe->vaTrapFrame
+                pe->vaTrapFrame,
+                pe->vaImpersonationToken
             );
         }
     }

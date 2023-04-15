@@ -56,17 +56,6 @@ typedef struct tdMSYSDRIVER_IRP_CONTEXT {
 } MSYSDRIVER_IRP_CONTEXT, *PMSYSDRIVER_IRP_CONTEXT;
 
 /*
-* Comparison function to efficiently locate a single PTE given address and map.
-*/
-int MSysDriver_PteCmpFind(_In_ QWORD va, _In_ QWORD qwEntry)
-{
-    PVMM_MAP_PTEENTRY pEntry = (PVMM_MAP_PTEENTRY)qwEntry;
-    if(va < pEntry->vaBase) { return -1; }
-    if(va > pEntry->vaBase + (pEntry->cPages << 12) - 1) { return 1; }
-    return 0;
-}
-
-/*
 * Line callback function to print a single driver/irp line.
 */
 VOID MSysDriver_IrpReadLineCB(_In_ VMM_HANDLE H, _In_ PMSYSDRIVER_IRP_CONTEXT ctx, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVOID pv, _Out_writes_(cbLineLength + 1) LPSTR usz)
@@ -84,7 +73,7 @@ VOID MSysDriver_IrpReadLineCB(_In_ VMM_HANDLE H, _In_ PMSYSDRIVER_IRP_CONTEXT ct
         uszTxt = "---";
     } else if((vaIrp >= pe->vaStart) && (vaIrp < pe->vaStart + pe->cbDriverSize)) {
         uszTxt = pe->uszName;
-    } else if((pePte = Util_qfind(vaIrp, ctx->pPteMap->cMap, ctx->pPteMap->pMap, sizeof(VMM_MAP_PTEENTRY), MSysDriver_PteCmpFind))) {
+    } else if((pePte = VmmMap_GetPteEntry(H, ctx->pPteMap, vaIrp))) {
         uszTxt = pePte->uszText;
     }
     Util_usnprintf_ln(usz, cbLineLength,

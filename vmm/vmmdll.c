@@ -13,6 +13,7 @@
 #include "pe.h"
 #include "fc.h"
 #include "statistics.h"
+#include "sysquery.h"
 #include "version.h"
 #include "vmm.h"
 #include "vmmproc.h"
@@ -21,6 +22,7 @@
 #include "vmmwinobj.h"
 #include "vmmwinreg.h"
 #include "vmmvm.h"
+#include "vmmyarautil.h"
 #include "mm/mm_pfn.h"
 
 // tags for external allocations:
@@ -168,6 +170,13 @@ BOOL VMMDLL_ConfigGet_Impl(_In_ VMM_HANDLE H, _In_ ULONG64 fOption, _Out_ PULONG
         case VMMDLL_OPT_CONFIG_VMM_VERSION_REVISION:
             *pqwValue = VERSION_REVISION;
             return TRUE;
+        case VMMDLL_OPT_CONFIG_YARA_RULES:
+            if(H->cfg.szForensicYaraRules[0]) {
+                *pqwValue = (ULONG64)H->cfg.szForensicYaraRules;
+                return TRUE;
+            } else {
+                return FALSE;
+            }
         case VMMDLL_OPT_CONFIG_IS_REFRESH_ENABLED:
             *pqwValue = H->vmm.ThreadProcCache.fEnabled ? 1 : 0;
             return TRUE;
@@ -791,7 +800,9 @@ BOOL VMMDLL_MemSearch_Impl(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _Inout_ PVMMDLL_
     BOOL fResult = FALSE;
     POB_DATA pObData = NULL;
     PVMM_PROCESS pObProcess = NULL;
-    if(!(pObProcess = VmmProcessGet(H, dwPID))) { goto fail; }
+    if(dwPID != (DWORD)-1) {
+        if(!(pObProcess = VmmProcessGet(H, dwPID))) { goto fail; }
+    }
     if(!VmmSearch(H, pObProcess, (PVMM_MEMORY_SEARCH_CONTEXT)ctx, &pObData)) { goto fail; }
     if(pObData) {
         if(ppva) {
@@ -819,6 +830,41 @@ BOOL VMMDLL_MemSearch(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _Inout_ PVMMDLL_MEM_S
     CALL_IMPLEMENTATION_VMM(H,
         STATISTICS_ID_VMMDLL_MemSearch,
         VMMDLL_MemSearch_Impl(H, dwPID, ctx, ppva, pcva))
+}
+
+_Success_(return)
+BOOL VMMDLL_YaraSearch_Impl(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ PVMMDLL_YARA_CONFIG pYaraConfig, _Out_opt_ PQWORD *ppva, _Out_opt_ PDWORD pcva)
+{
+    BOOL fResult = FALSE;
+    POB_DATA pObData = NULL;
+    PVMM_PROCESS pObProcess = NULL;
+    if(dwPID != (DWORD)-1) {
+        if(!(pObProcess = VmmProcessGet(H, dwPID))) { goto fail; }
+    }
+    if(!VmmYaraUtil_SearchSingleProcess(H, pObProcess, pYaraConfig, &pObData)) { goto fail; }
+    if(pObData) {
+        if(ppva) {
+            if(!(*ppva = VmmDllCore_MemAllocExternal(H, OB_TAG_API_SEARCH, pObData->ObHdr.cbData, 0))) { goto fail; }    // VMMDLL_MemFree()
+            memcpy(*ppva, pObData->pqw, pObData->ObHdr.cbData);
+        }
+        if(pcva) {
+            *pcva = pObData->ObHdr.cbData / sizeof(QWORD);
+        }
+    }
+    fResult = TRUE;
+fail:
+    Ob_DECREF(pObProcess);
+    Ob_DECREF(pObData);
+    return fResult;
+}
+
+_Success_(return)
+BOOL VMMDLL_YaraSearch(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ PVMMDLL_YARA_CONFIG pYaraConfig, _Out_opt_ PQWORD *ppva, _Out_opt_ PDWORD pcva)
+{
+    if(pcva) { *pcva = 0; }
+    if(ppva) { *ppva = NULL; }
+    if(pYaraConfig->dwVersion != VMMDLL_YARA_CONFIG_VERSION) { return FALSE; }
+    CALL_IMPLEMENTATION_VMM(H, STATISTICS_ID_VMMDLL_YaraSearch, VMMDLL_YaraSearch_Impl(H, dwPID, pYaraConfig, ppva, pcva))
 }
 
 
@@ -1945,6 +1991,7 @@ BOOL VMMDLL_Map_GetPfn(_In_ VMM_HANDLE H, _In_reads_(cPfns) DWORD pPfns[], _In_ 
         VMMDLL_Map_GetPfn_Impl(H, pPfns, cPfns, pPfnMap, pcbPfnMap))
 }
 
+_Success_(return)
 BOOL VMMDLL_Map_GetPfnEx(_In_ VMM_HANDLE H, _In_reads_(cPfns) DWORD pPfns[], _In_ DWORD cPfns, _Out_ PVMMDLL_MAP_PFN *ppPfnMap, _In_ DWORD flags)
 {
     CALL_IMPLEMENTATION_VMM(H,
@@ -2033,12 +2080,14 @@ BOOL VMMDLL_ProcessGetInformation_Impl(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _Ino
         }
         pInfo->win.vaEPROCESS = pObProcess->win.EPROCESS.va;
         pInfo->win.vaPEB = pObProcess->win.vaPEB;
-        pInfo->win.qwLUID = pObProcess->win.TOKEN.qwLUID;
-        pInfo->win.dwSessionId = pObProcess->win.TOKEN.dwSessionId;
-        if(pObProcess->win.TOKEN.szSID) {
-            strncpy_s(pInfo->win.szSID, sizeof(pInfo->win.szSID), pObProcess->win.TOKEN.szSID, _TRUNCATE);
+        if(pObProcess->win.Token) {
+            pInfo->win.qwLUID = pObProcess->win.Token->qwLUID;
+            pInfo->win.dwSessionId = pObProcess->win.Token->dwSessionId;
+            if(pObProcess->win.Token->szSID) {
+                strncpy_s(pInfo->win.szSID, sizeof(pInfo->win.szSID), pObProcess->win.Token->szSID, _TRUNCATE);
+            }
+            pInfo->win.IntegrityLevel = (VMMDLL_PROCESS_INTEGRITY_LEVEL)pObProcess->win.Token->IntegrityLevel;
         }
-        pInfo->win.IntegrityLevel = (VMMDLL_PROCESS_INTEGRITY_LEVEL)pObProcess->win.TOKEN.IntegrityLevel;
     }
     Ob_DECREF(pObProcess);
     return TRUE;
@@ -2234,6 +2283,7 @@ ULONG64 VMMDLL_ProcessGetModuleBase_Impl(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _I
     return vaModuleBase;
 }
 
+_Success_(return != 0)
 ULONG64 VMMDLL_ProcessGetModuleBaseU(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ LPSTR uszModuleName)
 {
     CALL_IMPLEMENTATION_VMM_RETURN(
@@ -2244,6 +2294,7 @@ ULONG64 VMMDLL_ProcessGetModuleBaseU(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ L
         VMMDLL_ProcessGetModuleBase_Impl(H, dwPID, uszModuleName))
 }
 
+_Success_(return != 0)
 ULONG64 VMMDLL_ProcessGetModuleBaseW(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ LPWSTR wszModuleName)
 {
     LPSTR uszModuleName;
@@ -2254,31 +2305,16 @@ ULONG64 VMMDLL_ProcessGetModuleBaseW(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ L
 
 ULONG64 VMMDLL_ProcessGetProcAddress_Impl(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ LPSTR uszModuleName, _In_ LPSTR szFunctionName, _In_ DWORD iLevel)
 {
-    PVMM_PROCESS pObProcess = NULL;
-    PVMMOB_MAP_EAT pObEatMap = NULL;
-    PVMMOB_MAP_MODULE pObModuleMap = NULL;
-    PVMM_MAP_MODULEENTRY peModule;
     QWORD va = 0;
-    DWORD i;
-    CHAR uszForwardModuleName[MAX_PATH];
-    LPSTR uszForwardFunctionName;
-    if(!(pObProcess = VmmProcessGet(H, dwPID))) { goto fail; }
-    if(!VmmMap_GetModuleEntryEx(H, NULL, dwPID, uszModuleName, 0, &pObModuleMap, &peModule)) { goto fail; }
-    if(!VmmMap_GetEAT(H, pObProcess, peModule, &pObEatMap)) { goto fail; }
-    if(!VmmMap_GetEATEntryIndexU(H, pObEatMap, szFunctionName, &i)) { goto fail; }
-    va = pObEatMap->pMap[i].vaFunction;
-    if(!va && pObEatMap->pMap[i].uszForwardedFunction && (iLevel < 5)) {
-        if((uszForwardFunctionName = PE_EatForwardedFunctionNameValidate(pObEatMap->pMap[i].uszForwardedFunction, uszForwardModuleName, MAX_PATH, NULL))) {
-            va = VMMDLL_ProcessGetProcAddress_Impl(H, dwPID, uszForwardModuleName, uszForwardFunctionName, iLevel + 1);
-        }
+    PVMM_PROCESS pObProcess = NULL;
+    if((pObProcess = VmmProcessGet(H, dwPID))) {
+        va = SysQuery_GetProcAddress(H, pObProcess, uszModuleName, szFunctionName);
+        Ob_DECREF(pObProcess);
     }
-fail:
-    Ob_DECREF(pObEatMap);
-    Ob_DECREF(pObModuleMap);
-    Ob_DECREF(pObProcess);
     return va;
 }
 
+_Success_(return != 0)
 ULONG64 VMMDLL_ProcessGetProcAddressU(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ LPSTR uszModuleName, _In_ LPSTR szFunctionName)
 {
     CALL_IMPLEMENTATION_VMM_RETURN(
@@ -2289,6 +2325,7 @@ ULONG64 VMMDLL_ProcessGetProcAddressU(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ 
         VMMDLL_ProcessGetProcAddress_Impl(H, dwPID, uszModuleName, szFunctionName, 1))
 }
 
+_Success_(return != 0)
 ULONG64 VMMDLL_ProcessGetProcAddressW(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ LPWSTR wszModuleName, _In_ LPSTR szFunctionName)
 {
     LPSTR uszModuleName;

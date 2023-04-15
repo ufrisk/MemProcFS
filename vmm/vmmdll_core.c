@@ -458,6 +458,9 @@ VOID VmmDllCore_PrintHelp(_In_ VMM_HANDLE H)
         "   -vm        : virtual machine (VM) parsing.                                  \n" \
         "   -vm-basic  : virtual machine (VM) parsing (physical memory only).           \n" \
         "   -vm-nested : virtual machine (VM) parsing (including nested VMs).           \n" \
+        "   -forensic-yara-rules : perfom a forensic yara scan with specified rules.    \n" \
+        "          Full path to source or compiled yara rules should be specified.      \n" \
+        "          Example: -forensic-yara-rules \"C:\\Temp\\my_yara_rules.yar\"        \n" \
         "   -forensic : start a forensic scan of the physical memory immediately after  \n" \
         "          startup if possible. Allowed parameter values range from 0-4.        \n" \
         "          Note! forensic mode is not available for live memory.                \n" \
@@ -466,8 +469,7 @@ VOID VmmDllCore_PrintHelp(_In_ VMM_HANDLE H)
         "          2 = forensic mode with temp sqlite database deleted upon exit.       \n" \
         "          3 = forensic mode with temp sqlite database remaining upon exit.     \n" \
         "          4 = forensic mode with static named sqlite database (vmm.sqlite3).   \n" \
-        "          default: 0  Example -forensic 4                                      \n" \
-        "                                                                               \n",
+        "          default: 0  Example -forensic 4                                      \n",
         VERSION_MAJOR, VERSION_MINOR, VERSION_REVISION
     );
 }
@@ -577,6 +579,9 @@ BOOL VmmDllCore_InitializeConfig(_In_ VMM_HANDLE H, _In_ DWORD argc, _In_ char *
         } else if(0 == _stricmp(argv[i], "-loglevel")) {
             strcpy_s(H->cfg.szLogLevel, MAX_PATH, argv[i + 1]);
             i += 2; continue;
+        } else if(0 == _stricmp(argv[i], "-forensic-yara-rules")) {
+            strcpy_s(H->cfg.szForensicYaraRules, MAX_PATH, argv[i + 1]);
+            i += 2; continue;
         } else if(0 == _stricmp(argv[i], "-max")) {
             H->dev.paMax = Util_GetNumericA(argv[i + 1]);
             i += 2; continue;
@@ -612,6 +617,10 @@ BOOL VmmDllCore_InitializeConfig(_In_ VMM_HANDLE H, _In_ DWORD argc, _In_ char *
     if(!H->dev.paMax && (H->cfg.szMemMap[0] || H->cfg.szMemMapStr[0])) {
         // disable memory auto-detect when memmap is specified
         H->dev.paMax = -1;
+    }
+    if(H->cfg.szForensicYaraRules[0] && !H->cfg.tpForensicMode) {
+        // yara rules implies forensic mode (enabled if not previously set)
+        H->cfg.tpForensicMode = 1;
     }
     H->cfg.fFileInfoHeader = TRUE;
     H->cfg.fVerbose = H->cfg.fVerbose && H->cfg.fVerboseDll;

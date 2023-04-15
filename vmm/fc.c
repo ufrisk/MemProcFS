@@ -25,6 +25,8 @@
 #include "util.h"
 #include "version.h"
 
+#define FC_SCAN_VIRTMEM_WORKER_THREADS          (max(1, VMM_WORK_THREADPOOL_NUM_THREADS / 3))
+
 static LPSTR FC_SQL_SCHEMA_STR =
     "DROP TABLE IF EXISTS str; " \
     "CREATE TABLE str ( id INTEGER PRIMARY KEY, cbu INT, cbj INT, cbv INT, sz TEXT ); ";
@@ -198,11 +200,6 @@ int Fc_SqlBindMultiInt64(_In_ sqlite3_stmt *hStmt, _In_ DWORD iFirstBind, _In_ D
 // FC FILE FUNCTIONALITY BELOW:
 //-----------------------------------------------------------------------------
 
-typedef struct tdVMMDLL_CSV_HANDLE {
-    DWORD o;
-    BYTE pb[0x00100000];
-} *VMMDLL_CSV_HANDLE;
-
 VOID FcCsv_Reset(_In_ VMMDLL_CSV_HANDLE h)
 {
     if(h) { h->o = 0; }
@@ -277,15 +274,284 @@ SIZE_T FcFileAppendEx(_In_ VMM_HANDLE H, _In_ LPSTR uszFileName, _In_z_ _Printf_
     if(!H->fc || !H->fc->fInitStart || H->fc->fInitFinish) { goto fail; }
     if(!(pObFcFile = ObMap_GetByKey(H->fc->FileCSV.pm, qwFileNameHash))) {
         // add/allocate new file:
-        if(!(pObFcFile = Ob_AllocEx(H, OB_TAG_FORENSIC_FILE, LMEM_ZEROINIT, sizeof(FCOB_FILE), FcFile_CleanupCB, NULL))) { goto fail; }
+        if(!(pObFcFile = Ob_AllocEx(H, OB_TAG_FC_FILE, LMEM_ZEROINIT, sizeof(FCOB_FILE), FcFile_CleanupCB, NULL))) { goto fail; }
         if(!CharUtil_UtoU(uszFileName, -1, (PBYTE)pObFcFile->uszName, _countof(pObFcFile->uszName), NULL, NULL, CHARUTIL_FLAG_STR_BUFONLY)) { goto fail; }
         if(!(pObFcFile->pmf = ObMemFile_New(H, H->vmm.pObCacheMapObCompressedShared))) { goto fail; }
         if(!ObMap_Push(H->fc->FileCSV.pm, qwFileNameHash, pObFcFile)) { goto fail; }
     }
-    ret = ObMemFile_AppendStringEx(pObFcFile->pmf, uszFormat, arglist);
+    ret = ObMemFile_AppendStringEx2(pObFcFile->pmf, uszFormat, arglist);
 fail:
     Ob_DECREF(pObFcFile);
     return ret;
+}
+
+
+
+// ----------------------------------------------------------------------------
+// GENERAL JSON DATA LOG BELOW:
+// ----------------------------------------------------------------------------
+
+/*
+* Callback function to add a json log line to 'general.json'
+* -- H
+* -- pDataJSON
+*/
+VOID FcJson_Callback_EntryAdd(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pDataJSON)
+{
+    LPSTR szj;
+    DWORD i;
+    SIZE_T o = 0;
+    PVMM_PROCESS pObProcess = NULL;
+    typedef struct tdBUFFER {
+        CHAR szj[0x1000];
+        CHAR szln[0x3000];
+        // header+type cache
+        CHAR szjHdrType[128];
+        DWORD dwHdrType;
+        DWORD cchHdrType;
+        // pid-procname cache
+        DWORD dwPID;
+        DWORD cchPidProcName;
+        CHAR szjProcName[32];
+        CHAR szjPidProcName[64];
+    } *PBUFFER;
+    PBUFFER buf = (PBUFFER)pDataJSON->_Reserved;
+    if(H->fAbort) { return; }
+    if(pDataJSON->dwVersion != VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION) { return; }
+    // general/base:
+    {
+        if(buf->dwHdrType != *(PDWORD)pDataJSON->szjType) {
+            buf->dwHdrType = *(PDWORD)pDataJSON->szjType;
+            buf->cchHdrType = snprintf(buf->szjHdrType, sizeof(buf->szjHdrType),
+                "{\"class\":\"GEN\",\"ver\":\"%i.%i\",\"sys\":\"%s\",\"type\":\"%s\"",
+                VERSION_MAJOR, VERSION_MINOR,
+                H->vmm.szSystemUniqueTag,
+                pDataJSON->szjType
+            );
+        }
+        memcpy(buf->szln + o, buf->szjHdrType, buf->cchHdrType + 1ULL); o += buf->cchHdrType;
+    }
+    // pid & process:
+    if(pDataJSON->dwPID) {
+        if(buf->dwPID != pDataJSON->dwPID) {
+            buf->dwPID = pDataJSON->dwPID;
+            if((pObProcess = VmmProcessGetEx(H, NULL, pDataJSON->dwPID, VMM_FLAG_PROCESS_SHOW_TERMINATED))) {
+                CharUtil_UtoJ(pObProcess->pObPersistent->uszNameLong, -1, buf->szjProcName, sizeof(buf->szjProcName), &szj, NULL, CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR);
+                buf->cchPidProcName = snprintf(buf->szjPidProcName, sizeof(buf->szjPidProcName), ",\"pid\":%i,\"proc\":\"%s\"", pDataJSON->dwPID, buf->szjProcName);
+                Ob_DECREF_NULL(&pObProcess);
+            } else {
+                buf->cchPidProcName = snprintf(buf->szjPidProcName, sizeof(buf->szjPidProcName), ",\"pid\":%i", pDataJSON->dwPID);
+            }
+        }
+        memcpy(buf->szln + o, buf->szjPidProcName, buf->cchPidProcName + 1ULL); o += buf->cchPidProcName;
+    }
+    // index:
+    o += snprintf(buf->szln + o, sizeof(buf->szln) - o, ",\"i\":%i", pDataJSON->i);
+    // obj:
+    if(pDataJSON->vaObj) {
+        o += snprintf(buf->szln + o, sizeof(buf->szln) - o, ",\"obj\":\"%llx\"", pDataJSON->vaObj);
+    }
+    // addr:
+    for(i = 0; i < 2; i++) {
+        if(pDataJSON->fva[i] || pDataJSON->va[i]) {
+            o += snprintf(buf->szln + o, sizeof(buf->szln) - o, ",\"addr%s\":\"%llx\"", (i ? "2" : ""), pDataJSON->va[i]);
+        }
+    }
+    // size/num:
+    if(pDataJSON->fNum[0] || pDataJSON->qwNum[0]) {
+        o += snprintf(buf->szln + o, sizeof(buf->szln) - o, ",\"size\":%lli", pDataJSON->qwNum[0]);
+    }
+    if(pDataJSON->fNum[1] || pDataJSON->qwNum[1]) {
+        o += snprintf(buf->szln + o, sizeof(buf->szln) - o, ",\"num\":%lli", pDataJSON->qwNum[1]);
+    }
+    // hex:
+    for(i = 0; i < 2; i++) {
+        if(pDataJSON->fHex[i] || pDataJSON->qwHex[i]) {
+            o += snprintf(buf->szln + o, sizeof(buf->szln) - o, ",\"hex%s\":\"%llx\"", (i ? "2" : ""), pDataJSON->qwHex[i]);
+        }
+    }
+    // desc:
+    for(i = 0; i < 2; i++) {
+        szj = NULL;
+        if(pDataJSON->usz[i]) {
+            CharUtil_UtoJ((LPSTR)pDataJSON->usz[i], -1, buf->szj, sizeof(buf->szj), &szj, NULL, CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR);
+        } else if(pDataJSON->wsz[i]) {
+            CharUtil_WtoJ((LPWSTR)pDataJSON->wsz[i], -1, buf->szj, sizeof(buf->szj), &szj, NULL, CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR);
+        }
+        if(szj) {
+            o += snprintf(buf->szln + o, sizeof(buf->szln) - o, ",\"desc%s\":\"%s\"", (i ? "2" : ""), szj);
+        }
+    }
+    // commit to json file:
+    if(sizeof(buf->szln) - o > 3) {
+        memcpy(buf->szln + o, "}\n", 3);
+        ObMemFile_AppendString(H->fc->FileJSON.pGen, buf->szln);
+    }
+}
+
+
+
+// ----------------------------------------------------------------------------
+// FINDEVIL FUNCTIONALITY BELOW:
+// ----------------------------------------------------------------------------
+
+#define FCEVIL_LINEHEADER       "   #    PID Process        Type         Address          Description\n" \
+                                "--------------------------------------------------------------------\n"
+static LPSTR FCEVIL_CSV_HEADER = "PID,ProcessName,Type,Address,Description\n";
+
+typedef struct tdFC_FINDEVIL_ENTRY {
+    DWORD dwSeverity;
+    DWORD dwPID;
+    QWORD va;
+    CHAR uszType[16];
+    CHAR usz[];
+} FC_FINDEVIL_ENTRY, *PFC_FINDEVIL_ENTRY;
+
+/*
+* FindEvil main processing function (processed in async thread).
+* Takes care of generating the FindEvil data by calling forensic plugins.
+* -- H
+* -- qwNotUsed
+*/
+VOID FcEvilInitialize_ThreadProc(_In_ VMM_HANDLE H, _In_ QWORD qwNotUsed)
+{
+    if(H->fAbort) { return; }
+    if(!(H->fc->FindEvil.pm = ObMap_New(H, OB_MAP_FLAGS_NOKEY | OB_MAP_FLAGS_OBJECT_LOCALFREE))) { return; }
+    PluginManager_FcFindEvil(H);
+}
+
+/*
+* FindEvil compare / sort function.
+* Sorts on Severity, PID, Address.
+*/
+int FcEvilFinalize_CmpSort(_In_ POB_MAP_ENTRY p1, _In_ POB_MAP_ENTRY p2)
+{
+    PFC_FINDEVIL_ENTRY pe1 = (PFC_FINDEVIL_ENTRY)p1->v;
+    PFC_FINDEVIL_ENTRY pe2 = (PFC_FINDEVIL_ENTRY)p2->v;
+    // 1: Severity
+    if(pe1->dwSeverity < pe2->dwSeverity) { return 1; }
+    if(pe1->dwSeverity > pe2->dwSeverity) { return -1; }
+    // 2: PID
+    if(pe1->dwPID < pe2->dwPID) { return -1; }
+    if(pe1->dwPID > pe2->dwPID) { return 1; }
+    // 3: Address
+    if(pe1->va < pe2->va) { return -1; }
+    if(pe1->va > pe2->va) { return 1; }
+    // 4: Hash of Description
+    return CharUtil_Hash32U(pe1->usz, FALSE) - CharUtil_Hash32U(pe2->usz, FALSE);
+}
+
+/*
+* Finalize evil - i.e. sort it and generate output files.
+* -- H
+*/
+VOID FcEvilFinalize(_In_ VMM_HANDLE H, _In_opt_ VMMDLL_CSV_HANDLE hCSV)
+{
+    DWORD i, cMap;
+    CHAR uszTEXT[1024];
+    PFC_FINDEVIL_ENTRY pe;
+    PVMMDLL_PLUGIN_FORENSIC_JSONDATA pdJSON = NULL;
+    PVMM_PROCESS pObProcess = NULL;
+    if(H->fAbort) { goto fail; }
+    if(!hCSV || !H->fc->FindEvil.pm) { goto fail; }
+    // TEXT init:
+    if(!(H->fc->FindEvil.pmf = ObMemFile_New(H, H->vmm.pObCacheMapObCompressedShared))) { goto fail; }
+    ObMemFile_AppendString(H->fc->FindEvil.pmf, FCEVIL_LINEHEADER);
+    // JSON init:
+    if(!(pdJSON = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)))) { goto fail; }
+    pdJSON->dwVersion = VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION;
+    pdJSON->szjType = "evil";
+    // CSV init:
+    FcFileAppend(H, "findevil.csv", FCEVIL_CSV_HEADER);
+    // Sort & Populate:
+    ObMap_SortEntryIndex(H->fc->FindEvil.pm, (_CoreCrtNonSecureSearchSortCompareFunction)FcEvilFinalize_CmpSort);
+    for(i = 0, cMap = ObMap_Size(H->fc->FindEvil.pm); i < cMap; i++) {
+        if(H->fAbort) { goto fail; }
+        pe = ObMap_GetByIndex(H->fc->FindEvil.pm, i);
+        if(pe->dwPID) {
+            pObProcess = VmmProcessGet(H, pe->dwPID);
+        }
+        // TEXT log:
+        _snprintf_s(uszTEXT, _countof(uszTEXT), _TRUNCATE, "%04x%7i %-15s%-12s %016llx %s\n",
+            i,
+            pe->dwPID,
+            pObProcess ? pObProcess->szName : "---",
+            pe->uszType,
+            pe->va,
+            pe->usz
+        );
+        ObMemFile_AppendString(H->fc->FindEvil.pmf, uszTEXT);
+        // JSON log:
+        pdJSON->i = i;
+        pdJSON->dwPID = pe->dwPID;
+        pdJSON->va[0] = pe->va;
+        pdJSON->usz[0] = pe->uszType;
+        pdJSON->usz[1] = pe->usz;
+        FcJson_Callback_EntryAdd(H, pdJSON);
+        // CSV log:
+        FcCsv_Reset(hCSV);
+        FcFileAppend(H, "findevil.csv", "%i,%s,%s,0x%llx,%s\n",
+            pe->dwPID,
+            FcCsv_String(hCSV, pObProcess ? pObProcess->pObPersistent->uszNameLong : ""),
+            FcCsv_String(hCSV, pe->uszType),
+            pe->va,
+            FcCsv_String(hCSV, pe->usz)
+        );
+        Ob_DECREF_NULL(&pObProcess);
+    }
+fail:
+    Ob_DECREF_NULL(&H->fc->FindEvil.pm);
+    LocalFree(pdJSON);
+}
+
+/*
+* Add a "findevil" entry. Take great care not spamming this function by mistake.
+* Ordering when adding evil does not matter.
+* -- H
+* -- tpEvil
+* -- pProcess = associated process (if applicable).
+* -- va = virtual address.
+* -- uszFormat
+* -- ...
+*/
+VOID FcEvilAdd(_In_ VMM_HANDLE H, _In_ VMMEVIL_TYPE tpEvil, _In_opt_ PVMM_PROCESS pProcess, _In_opt_ QWORD va, _In_z_ _Printf_format_string_ LPSTR uszFormat, ...)
+{
+    va_list arglist;
+    va_start(arglist, uszFormat);
+    FcEvilAddEx(H, tpEvil.Name, tpEvil.Severity, pProcess, va, uszFormat, arglist);
+    va_end(arglist);
+}
+
+/*
+* Add a "findevil" entry. Take great care not spamming this function by mistake.
+* -- H
+* -- uszType = evil type. max 15 chars, uppercase, no spaces.
+* -- dwSeverity = the more severe the higher up in the FindEvil listings.
+* -- pProcess = associated process (if applicable).
+* -- va = virtual address.
+* -- uszFormat
+* -- arglist
+*/
+VOID FcEvilAddEx(_In_ VMM_HANDLE H, _In_ LPSTR uszType, _In_ DWORD dwSeverity, _In_opt_ PVMM_PROCESS pProcess, _In_opt_ QWORD va, _In_z_ _Printf_format_string_ LPSTR uszFormat, _In_ va_list arglist)
+{
+    int cchBuffer;
+    SIZE_T cbBuffer;
+    CHAR uszBuffer[0x1000];
+    PFC_FINDEVIL_ENTRY pe;
+    cchBuffer = _vsnprintf_s(uszBuffer, _countof(uszBuffer), _TRUNCATE, uszFormat, arglist);
+    if(cchBuffer >= 0) {
+        cbBuffer = (SIZE_T)cchBuffer + 1;
+        if((pe = LocalAlloc(0, sizeof(FC_FINDEVIL_ENTRY) + cbBuffer))) {
+            pe->dwPID = pProcess ? pProcess->dwPID : 0;
+            pe->dwSeverity = dwSeverity;
+            pe->va = va;
+            strncpy_s(pe->uszType, _countof(pe->uszType), uszType, _TRUNCATE);
+            memcpy(pe->usz, uszBuffer, cbBuffer);
+            if(!ObMap_Push(H->fc->FindEvil.pm, 0, pe)) {
+                LocalFree(pe);
+            }
+        }
+    }
 }
 
 
@@ -417,6 +683,7 @@ BOOL FcTimeline_Initialize(_In_ VMM_HANDLE H)
     sqlite3 *hSql = NULL;
     sqlite3_stmt *hStmt = NULL;
     PFC_TIMELINE_INFO pi;
+    if(H->fAbort) { goto fail; }
     LPSTR szTIMELINE_SQL1[] = {
         // populate timeline_info with basic information:
         "DROP TABLE IF EXISTS timeline_info;",
@@ -434,6 +701,7 @@ BOOL FcTimeline_Initialize(_In_ VMM_HANDLE H)
     }
     // populate timeline_data temporary table - with plugins.
     PluginManager_FcTimeline(H, FcTimeline_Callback_PluginRegister, FcTimeline_Callback_PluginClose, FcTimeline_Callback_PluginEntryAdd, FcTimeline_Callback_PluginEntryAddBySQL);
+    if(H->fAbort) { goto fail; }
     LPSTR szTIMELINE_SQL2[] = {
         // populate main timeline table:
         "DROP TABLE IF EXISTS timeline;",
@@ -460,6 +728,7 @@ BOOL FcTimeline_Initialize(_In_ VMM_HANDLE H)
         }
     }
     // update progress percent counter.
+    if(H->fAbort) { goto fail; }
     H->fc->cProgressPercent = 80;
     // update timeline_info with sizes for individual types for utf-8 and csv only.
     LPSTR szTIMELINE_SQL_TIMELINE_UPD[2] = {
@@ -477,6 +746,7 @@ BOOL FcTimeline_Initialize(_In_ VMM_HANDLE H)
         }
     }
     // populate timeline info struct
+    if(H->fAbort) { goto fail; }
     if(!(H->fc->Timeline.pInfo = LocalAlloc(LMEM_ZEROINIT, (H->fc->Timeline.cTp) * sizeof(FC_TIMELINE_INFO)))) { goto fail; }
     if(!(hSql = Fc_SqlReserve(H))) { goto fail; }
     if(SQLITE_OK != sqlite3_prepare_v2(hSql, "SELECT id, short_name, file_name, file_size_u, file_size_j, file_size_v FROM timeline_info", -1, &hStmt, 0)) { goto fail; }
@@ -706,6 +976,7 @@ fail:
 */
 VOID FcScanPhysmem(_In_ VMM_HANDLE H)
 {
+    BYTE bProgressPercent;
     QWORD i, iChunk = 0, paBase;
     FC_SCANPHYSMEM_CONTEXT ctx2[2] = { 0 };
     PFC_SCANPHYSMEM_CONTEXT ctx;
@@ -736,7 +1007,12 @@ VOID FcScanPhysmem(_In_ VMM_HANDLE H)
         if(ctx->e.fValid) {
             PluginManager_FcIngestPhysmem(H, &ctx->e);
         }
-        H->fc->cProgressPercent = 10 + (BYTE)((40 * paBase) / H->dev.paMax);
+        // 2.3: update progress:
+        bProgressPercent = (BYTE)((100 * paBase) / H->dev.paMax);
+        if(bProgressPercent != H->fc->cProgressPercentScanPhysical) {
+            H->fc->cProgressPercentScanPhysical = bProgressPercent;
+            H->fc->cProgressPercent = 10 + (min(H->fc->cProgressPercentScanPhysical, H->fc->cProgressPercentScanVirtual) / 2);
+        }
     }
     // 2.3: process last read chunk
     if(iChunk) {
@@ -770,29 +1046,88 @@ fail:
 // A special case for the kernel exists which is based on PTE scannint.
 // ----------------------------------------------------------------------------
 
-/*
-* Entry point for the virtual memory scanning of the kernel address space (pid 4).
-* Scanning takes place by walking ranges recovered from PTEs.
-* Reads will be packetized in chunks of max 16MBs.
-*/
-VOID FcScanVirtmemKernel_ThreadProc(_In_ VMM_HANDLE H, _In_ QWORD qwNotUsed)
+typedef struct tdFCOB_SCAN_VIRTMEM_CONTEXT {
+    OB ObHdr;
+    POB_MAP pmScanItems;
+    struct {
+        struct {
+            QWORD c;
+            QWORD cb;
+        } Kernel;
+        struct {
+            QWORD c;
+            QWORD cb;
+        } User;
+        QWORD c;
+        QWORD cb;
+    } Ranges;
+    struct {
+        QWORD cIngest;
+        QWORD cbIngest;
+        QWORD tcIngest;
+        QWORD cZero;
+        QWORD cbZero;
+    } Statistics;
+} FCOB_SCAN_VIRTMEM_CONTEXT, *PFCOB_SCAN_VIRTMEM_CONTEXT;
+
+int FcScanVirtmem_CmpSort(POB_MAP_ENTRY p1, POB_MAP_ENTRY p2)
 {
-    return;     // not yet activated (no active consumer module yet).
-    /*
-    PBYTE pb = NULL;
-    QWORD va = 0, vaMax;
-    DWORD iPTE = 0, cb, cbRead, cbPTE;
+    if(p1->k < p2->k) { return -1; }
+    if(p1->k > p2->k) { return 1; }
+    return 0;
+}
+
+VOID FcScanVirtmem_EntryCleanupCB(_In_ PVMMDLL_PLUGIN_FORENSIC_INGEST_VIRTMEM pOb)
+{
+    Ob_DECREF(pOb->pvProcess);
+}
+
+VOID FcScanVirtmem_ContextCleanupCB(_In_ PFCOB_SCAN_VIRTMEM_CONTEXT pOb)
+{    
+    Ob_DECREF(pOb->pmScanItems);
+}
+
+VOID FcScanVirtmem_AddRange(_In_ VMM_HANDLE H, _In_ PFCOB_SCAN_VIRTMEM_CONTEXT ctx, _In_ PVMM_PROCESS pProcess, _In_ QWORD va, _In_ DWORD cb)
+{
+    QWORD qwKey;
+    PVMMDLL_PLUGIN_FORENSIC_INGEST_VIRTMEM pObScanItem;
+    if(ObMap_Size(ctx->pmScanItems) < 0x00100000) {
+        if((pObScanItem = Ob_AllocEx(H, OB_TAG_FC_SCANVIRTMEM_ENTRY, LMEM_ZEROINIT, sizeof(VMMDLL_PLUGIN_FORENSIC_INGEST_VIRTMEM), (OB_CLEANUP_CB)FcScanVirtmem_EntryCleanupCB, NULL))) {
+            pObScanItem->dwVersion = VMMDLL_PLUGIN_FORENSIC_INGEST_VIRTMEM_VERSION;
+            pObScanItem->dwPID = pProcess->dwPID;
+            pObScanItem->pvProcess = Ob_INCREF(pProcess);
+            pObScanItem->fPte = !pProcess->fUserOnly;
+            pObScanItem->fVad = pProcess->fUserOnly;
+            pObScanItem->va = va;
+            pObScanItem->cb = cb;
+            qwKey = (va << 16) | (pProcess->dwPID >> 2);
+            ObMap_Push(ctx->pmScanItems, qwKey, pObScanItem);
+            Ob_DECREF(pObScanItem);
+        }
+    }
+}
+
+/*
+* Walks a kernel process for entries to add to the scan map. All entries for
+* the system process (PID 4) should be added, but only entries not found in
+* PID 4 should be added for the csrss.exe processes (i.e. kernel session space).
+*/
+VOID FcScanVirtmem_AddRangeKernelProcess(_In_ VMM_HANDLE H, _In_ PFCOB_SCAN_VIRTMEM_CONTEXT ctx, _In_ PVMM_PROCESS pProcess, _In_ QWORD va)
+{
+    QWORD vaMax;
+    DWORD iPTE = 0, cbPTE;
     PVMM_MAP_PTEENTRY pePTE;
     PVMMOB_MAP_PTE pObPTE = NULL;
-    PVMM_PROCESS pObSystemProcess = NULL;
+    // 1: init and fetch PTEs:
     if(H->fAbort) { goto fail; }
-    if(!(pb = LocalAlloc(0, 0x01000000))) { goto fail; }
-    if(!(pObSystemProcess = VmmProcessGet(H, 4))) { goto fail; }
-    if(!VmmMap_GetPte(H, pObSystemProcess, &pObPTE, FALSE)) { goto fail; }
+    if(!VmmMap_GetPte(H, pProcess, &pObPTE, FALSE)) { goto fail; }
+    // 2: loop over PTEs and prepare for scanning:
     while(iPTE < pObPTE->cMap) {
+        if(H->fAbort) { goto fail; }
         pePTE = pObPTE->pMap + iPTE;
         cbPTE = (DWORD)(pePTE->cPages << 12);
-        if(cbPTE > 0x40000000) { iPTE++; continue; }        // don't process 1GB+ PTE entries
+        if(pePTE->vaBase < va) { iPTE++; continue; }        // don't process PTEs before va
+        if(cbPTE > 0x20000000) { iPTE++; continue; }        // don't process 512MB+ PTE entries
         va = max(va, pePTE->vaBase);
         vaMax = pePTE->vaBase + cbPTE;
         // merge following PTEs (if adjacent and not too large)
@@ -801,184 +1136,182 @@ VOID FcScanVirtmemKernel_ThreadProc(_In_ VMM_HANDLE H, _In_ QWORD qwNotUsed)
             pePTE = pObPTE->pMap + iPTE;
             cbPTE = (DWORD)(pePTE->cPages << 12);
             if(vaMax != pePTE->vaBase) { break; }           // don't merge non-adjacent PTEs.
-            if(cbPTE > 0x40000000) { break; }               // don't process 1GB+ PTE entries
-            if(vaMax - va + cbPTE > 0x40000000) { break; }  // don't merge if chunk becomes 1GB+
+            if(cbPTE > 0x20000000) { break; }               // don't process 512MB+ PTE entries
+            if(vaMax - va + cbPTE > 0x20000000) { break; }  // don't merge if chunk becomes 512MB+
             // merge adjacent PTEs
             vaMax += cbPTE;
             iPTE++;
         }
-        // read and send onwards to plugin manager virtual memory ingest.
-        while(va < vaMax) {
-            if(H->fAbort) { goto fail; }
-            cb = min(0x01000000, (DWORD)(vaMax - va));
-            VmmReadEx(H, pObSystemProcess, va, pb, cb, &cbRead, VMM_FLAG_ZEROPAD_ON_FAIL);
-            PluginManager_FcIngestVirtmem(H, pObSystemProcess, va, pb, cb);
-            va += cb;
+        // add entry to scanning map.
+        if((pProcess->dwPID == 4) || !ObMap_ExistsKey(ctx->pmScanItems, ((va << 16) | (4 >> 2)))) {
+            FcScanVirtmem_AddRange(H, ctx, pProcess, va, (DWORD)(vaMax - va));
+            ctx->Ranges.Kernel.cb += (QWORD)(DWORD)(vaMax - va);
+            ctx->Ranges.Kernel.c++;
         }
     }
 fail:
     Ob_DECREF(pObPTE);
-    Ob_DECREF(pObSystemProcess);
-    LocalFree(pb);
-    */
 }
 
 /*
-* Only scan user-mode processes in the per-process virtual memory ingest.
+* Prepare scanning of kernel virtual address space (PID 4) and kernel session
+* space (csrss.exe ranges differing from PID 4).
 */
-BOOL FcScanVirtmem_ProcessCriteriaCB(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx)
+VOID FcScanVirtmem_AddRangeKernel(_In_ VMM_HANDLE H, _In_ PFCOB_SCAN_VIRTMEM_CONTEXT ctx)
 {
-    return (pProcess->dwState == 0) && (pProcess->fUserOnly || !strcmp(pProcess->szName, "csrss.exe"));
-}
-
-/*
-* Entry point for per-process virtual memory scanning.
-* The process scanning technique is based on scanning the VADs.
-* To avoid worker thread depletion only a few processes should be scanned in parallel.
-*/
-VOID FcScanVirtmem_ProcessCB(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ PVOID ctx)
-{
-    PBYTE pb = NULL;
-    QWORD va = 0, vaMax;
-    DWORD iVAD = 0, cb, cbRead;
-    PVMM_MAP_VADENTRY peVAD;
-    PVMMOB_MAP_VAD pObVAD = NULL;
-    if(H->fAbort) { goto fail; }
-    if(!(pb = LocalAlloc(0, 0x01000000))) { goto fail; }
-    if(!VmmMap_GetVad(H, pProcess, &pObVAD, VMM_VADMAP_TP_CORE)) { goto fail; }
-    for(iVAD = 0; iVAD < pObVAD->cMap; iVAD++) {
-        peVAD = pObVAD->pMap + iVAD;
-        if(peVAD->vaEnd - peVAD->vaStart > 0x40000000) { continue; }    // don't process 1GB+ entries
-        va = max(va, peVAD->vaStart);
-        vaMax = peVAD->vaEnd + 1;
-        // read and send onwards to plugin manager virtual memory ingest.
-        while(va < vaMax) {
-            if(H->fAbort) { goto fail; }
-            cb = min(0x01000000, (DWORD)(vaMax - va));
-            VmmReadEx(H, pProcess, va, pb, cb, &cbRead, VMM_FLAG_ZEROPAD_ON_FAIL);
-            PluginManager_FcIngestVirtmem(H, pProcess, va, pb, cb);
-            va += cb;
+    PVMM_PROCESS pObProcess = NULL;
+    if(!(pObProcess = VmmProcessGet(H, 4))) { goto fail; }
+    FcScanVirtmem_AddRangeKernelProcess(H, ctx, pObProcess, 0);
+    Ob_DECREF_NULL(&pObProcess);
+    while((pObProcess = VmmProcessGetNext(H, pObProcess, 0))) {
+        if(H->fAbort) { goto fail; }
+        if(!pObProcess->fUserOnly && CharUtil_StrEquals(pObProcess->szName, "csrss.exe", TRUE)) {
+            FcScanVirtmem_AddRangeKernelProcess(H, ctx, pObProcess, (H->vmm.f32 ? 0x80000000 : 0xffff000000000000));
         }
     }
 fail:
-    Ob_DECREF(pObVAD);
-    LocalFree(pb);
+    Ob_DECREF(pObProcess);
 }
 
-VOID FcScanVirtmem_ThreadProc(_In_ VMM_HANDLE H, _In_ QWORD qwNotUsed)
+VOID FcScanVirtmem_AddRangeUserProcess(_In_ VMM_HANDLE H, _In_ PFCOB_SCAN_VIRTMEM_CONTEXT ctx, _In_ PVMM_PROCESS pProcess)
 {
-    return;     // not yet activated (no active consumer module yet).
-    //VmmWork_ProcessActionForeachParallel_Void(H, 6, NULL, FcScanVirtmem_ProcessCriteriaCB, FcScanVirtmem_ProcessCB);
+    DWORD cbVAD, ie = 0;
+    PVMM_MAP_VADENTRY peVAD;
+    PVMMOB_MAP_VAD pObVAD = NULL;
+    if(!VmmMap_GetVad(H, pProcess, &pObVAD, VMM_VADMAP_TP_CORE)) { goto fail; }
+    for(ie = 0; ie < pObVAD->cMap; ie++) {
+        peVAD = pObVAD->pMap + ie;
+        cbVAD = (DWORD)(peVAD->vaEnd - peVAD->vaStart + 1);
+        if(cbVAD > 0x20000000) { continue; }    // don't process 512MB+ entries
+        FcScanVirtmem_AddRange(H, ctx, pProcess, peVAD->vaStart, cbVAD);
+        ctx->Ranges.User.cb += cbVAD;
+        ctx->Ranges.User.c++;
+    }
+fail:
+    Ob_DECREF(pObVAD);
 }
-
-
-// ----------------------------------------------------------------------------
-// GENERAL JSON DATA LOG BELOW:
-// ----------------------------------------------------------------------------
 
 /*
-* Callback function to add a json log line to 'general.json'
-* -- H
-* -- pDataJSON
+* Prepare scanning of user-mode virtual address space.
 */
-VOID FcJson_Callback_EntryAdd(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pDataJSON)
+VOID FcScanVirtmem_AddRangeUser(_In_ VMM_HANDLE H, _In_ PFCOB_SCAN_VIRTMEM_CONTEXT ctx)
 {
-    LPSTR szj;
-    DWORD i;
-    SIZE_T o = 0;
     PVMM_PROCESS pObProcess = NULL;
-    typedef struct tdBUFFER {
-        CHAR szj[0x1000];
-        CHAR szln[0x3000];
-        // header+type cache
-        CHAR szjHdrType[128];
-        DWORD dwHdrType;
-        DWORD cchHdrType;
-        // pid-procname cache
-        DWORD dwPID;
-        DWORD cchPidProcName;
-        CHAR szjProcName[32];
-        CHAR szjPidProcName[64];
-    } *PBUFFER;
-    PBUFFER buf = (PBUFFER)pDataJSON->_Reserved;
-    if(H->fAbort) { return; }
-    if(pDataJSON->dwVersion != VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION) { return; }
-    // general/base:
-    {
-        if(buf->dwHdrType != *(PDWORD)pDataJSON->szjType) {
-            buf->dwHdrType = *(PDWORD)pDataJSON->szjType;
-            buf->cchHdrType = snprintf(buf->szjHdrType, sizeof(buf->szjHdrType),
-                "{\"class\":\"GEN\",\"ver\":\"%i.%i\",\"sys\":\"%s\",\"type\":\"%s\"",
-                VERSION_MAJOR, VERSION_MINOR,
-                H->vmm.szSystemUniqueTag,
-                pDataJSON->szjType
-            );
+    while((pObProcess = VmmProcessGetNext(H, pObProcess, 0))) {
+        if(H->fAbort) { goto fail; }
+        if(!pObProcess->fUserOnly) { continue; }    // don't scan kernel processes
+        if(!pObProcess->win.vaPEB) { continue; }    // don't scan special user-mode processes without PEB (such as MemCompression)
+        if(CharUtil_StrCmpAny(CharUtil_StrEquals, pObProcess->szName, FALSE, 4, "MsMpEng.exe", "MemCompression", "vmmem", "vmware-vmx.exe")) {
+            // don't scan problematic "blocked processes".
+            continue;
         }
-        memcpy(buf->szln + o, buf->szjHdrType, buf->cchHdrType + 1ULL); o += buf->cchHdrType;
+        FcScanVirtmem_AddRangeUserProcess(H, ctx, pObProcess);
     }
-    // pid & process:
-    if(pDataJSON->dwPID) {
-        if(buf->dwPID != pDataJSON->dwPID) {
-            buf->dwPID = pDataJSON->dwPID;
-            if((pObProcess = VmmProcessGetEx(H, NULL, pDataJSON->dwPID, VMM_FLAG_PROCESS_SHOW_TERMINATED))) {
-                CharUtil_UtoJ(pObProcess->pObPersistent->uszNameLong, -1, buf->szjProcName, sizeof(buf->szjProcName), &szj, NULL, CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR);
-                buf->cchPidProcName = snprintf(buf->szjPidProcName, sizeof(buf->szjPidProcName), ",\"pid\":%i,\"proc\":\"%s\"", pDataJSON->dwPID, buf->szjProcName);
-                Ob_DECREF_NULL(&pObProcess);
-            } else {
-                buf->cchPidProcName = snprintf(buf->szjPidProcName, sizeof(buf->szjPidProcName), ",\"pid\":%i", pDataJSON->dwPID);
-            }
-        }
-        memcpy(buf->szln + o, buf->szjPidProcName, buf->cchPidProcName + 1ULL); o += buf->cchPidProcName;
-    }
-    // index:
-    o += snprintf(buf->szln + o, sizeof(buf->szln) - o, ",\"i\":%i", pDataJSON->i);
-    // obj:
-    if(pDataJSON->vaObj) {
-        o += snprintf(buf->szln + o, sizeof(buf->szln) - o, ",\"obj\":\"%llx\"", pDataJSON->vaObj);
-    }
-    // addr:
-    for(i = 0; i < 2; i++) {
-        if(pDataJSON->fva[i] || pDataJSON->va[i]) {
-            o += snprintf(buf->szln + o, sizeof(buf->szln) - o, ",\"addr%s\":\"%llx\"", (i ? "2" : ""), pDataJSON->va[i]);
-        }
-    }
-    // size/num:
-    if(pDataJSON->fNum[0] || pDataJSON->qwNum[0]) {
-        o += snprintf(buf->szln + o, sizeof(buf->szln) - o, ",\"size\":%lli", pDataJSON->qwNum[0]);
-    }
-    if(pDataJSON->fNum[1] || pDataJSON->qwNum[1]) {
-        o += snprintf(buf->szln + o, sizeof(buf->szln) - o, ",\"num\":%lli", pDataJSON->qwNum[1]);
-    }
-    // hex:
-    for(i = 0; i < 2; i++) {
-        if(pDataJSON->fHex[i] || pDataJSON->qwHex[i]) {
-            o += snprintf(buf->szln + o, sizeof(buf->szln) - o, ",\"hex%s\":\"%llx\"", (i ? "2" : ""), pDataJSON->qwHex[i]);
-        }
-    }
-    // desc:
-    for(i = 0; i < 2; i++) {
-        szj = NULL;
-        if(pDataJSON->usz[i]) {
-            CharUtil_UtoJ((LPSTR)pDataJSON->usz[i], -1, buf->szj, sizeof(buf->szj), &szj, NULL, CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR);
-        } else if(pDataJSON->wsz[i]) {
-            CharUtil_WtoJ((LPWSTR)pDataJSON->wsz[i], -1, buf->szj, sizeof(buf->szj), &szj, NULL, CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR);
-        }
-        if(szj) {
-            o += snprintf(buf->szln + o, sizeof(buf->szln) - o, ",\"desc%s\":\"%s\"", (i ? "2" : ""), szj);
-        }
-    }
-    // commit to json file:
-    if(sizeof(buf->szln) - o > 3) {
-        memcpy(buf->szln + o, "}\n", 3);
-        ObMemFile_AppendString(H->fc->FileJSON.pGen, buf->szln);
-    }
+fail:
+    Ob_DECREF(pObProcess);
 }
 
+VOID FcScanVirtmem_ScanRanges_ThreadProc(_In_ VMM_HANDLE H, _In_ PFCOB_SCAN_VIRTMEM_CONTEXT ctx)
+{
+    BYTE bProgressPercent;
+    QWORD va, tcStart;
+    DWORD cb, cbRead;
+    PVMMDLL_PLUGIN_FORENSIC_INGEST_VIRTMEM pe;
+    PBYTE pb16M = NULL;
+    if(!(pb16M = LocalAlloc(LMEM_ZEROINIT, 0x01000000))) { goto fail; }
+    while((pe = ObMap_Pop(ctx->pmScanItems))) {
+        va = pe->va;
+        cb = pe->cb;
+        while(cb) {
+            if(H->fAbort) { goto fail; }
+            cbRead = min(cb, 0x01000000);
+            pe->va = va;
+            pe->pb = pb16M;
+            pe->cb = cbRead;
+            VmmReadEx(H, pe->pvProcess, pe->va, pe->pb, pe->cb, &pe->cbReadActual, VMM_FLAG_ZEROPAD_ON_FAIL);
+            if(!pe->cbReadActual || Util_IsZeroBuffer(pe->pb, pe->cb)) {
+                InterlockedIncrement64(&ctx->Statistics.cZero);
+                InterlockedAdd64(&ctx->Statistics.cbZero, pe->cb);
+            } else {
+                tcStart = GetTickCount64();
+                PluginManager_FcIngestVirtmem(H, pe);
+                InterlockedIncrement64(&ctx->Statistics.cIngest);
+                InterlockedAdd64(&ctx->Statistics.cbIngest, pe->cb);
+                InterlockedAdd64(&ctx->Statistics.tcIngest, GetTickCount64() - tcStart);
+            }
+            va += cbRead;
+            cb -= cbRead;
+        }
+        Ob_DECREF(pe);
+        // 4: update progress.
+        bProgressPercent = (BYTE)((100 * (ctx->Ranges.c - ObMap_Size(ctx->pmScanItems))) / ctx->Ranges.c);
+        if(bProgressPercent != H->fc->cProgressPercentScanVirtual) {
+            H->fc->cProgressPercentScanVirtual = bProgressPercent;
+            H->fc->cProgressPercent = 10 + (min(H->fc->cProgressPercentScanPhysical, H->fc->cProgressPercentScanVirtual) / 2);
+        }
+    }
+
+fail:
+    LocalFree(pb16M);
+}
+
+/*
+* Scan virtual memory for forensic data.
+* TODO: 10% less scanning if same-data/address ranges in processes are scanned only once.
+*/
+VOID FcScanVirtmem_ThreadProc(_In_ VMM_HANDLE H, _In_ QWORD qwNotUsed)
+{
+    DWORD i;
+    HANDLE hEventFinish[FC_SCAN_VIRTMEM_WORKER_THREADS];
+    PFCOB_SCAN_VIRTMEM_CONTEXT ctx = NULL;
+    // 1: initialize context
+    if(!PluginManager_FcIngestVirtmem_ExistsConsumers(H)) { goto fail; }
+    if(!(ctx = Ob_AllocEx(H, OB_TAG_FC_SCANVIRTMEM_CTX, LMEM_ZEROINIT, sizeof(FCOB_SCAN_VIRTMEM_CONTEXT), (OB_CLEANUP_CB)FcScanVirtmem_ContextCleanupCB, NULL))) { goto fail; }
+    if(!(ctx->pmScanItems = ObMap_New(H, OB_MAP_FLAGS_OBJECT_OB))) { goto fail; }
+    // 2: fetch kernel ranges to scan:
+    FcScanVirtmem_AddRangeKernel(H, ctx);
+    VmmLog(H, MID_FORENSIC, LOGLEVEL_5_DEBUG, "FC_VIRTMEM_SCAN: INIT KERNEL: ranges=%lli, bytes=%llx", ctx->Ranges.Kernel.c, ctx->Ranges.Kernel.cb);
+    // 3: fetch user ranges to scan:
+    FcScanVirtmem_AddRangeUser(H, ctx);
+    VmmLog(H, MID_FORENSIC, LOGLEVEL_5_DEBUG, "FC_VIRTMEM_SCAN: INIT USER:   ranges=%lli, bytes=%llx", ctx->Ranges.User.c, ctx->Ranges.User.cb);
+    // 4: sort scan item map - this will arrange it by memory address -
+    //    which will give cache locality for image/prototype ranges.
+    ctx->Ranges.c = ctx->Ranges.Kernel.c + ctx->Ranges.User.c;
+    ctx->Ranges.cb = ctx->Ranges.Kernel.cb + ctx->Ranges.User.cb;
+    ObMap_SortEntryIndex(ctx->pmScanItems, (_CoreCrtNonSecureSearchSortCompareFunction)FcScanVirtmem_CmpSort);
+    VmmLog(H, MID_FORENSIC, LOGLEVEL_4_VERBOSE, "FC_VIRTMEM_SCAN: INIT TOTAL:  ranges=%lli, bytes=%llx", ctx->Ranges.c, ctx->Ranges.cb);
+    // 5: start scan in multiple threads (worker threads + main thread)
+    for(i = 1; i < FC_SCAN_VIRTMEM_WORKER_THREADS; i++) {
+        if(!(hEventFinish[i] = CreateEvent(NULL, TRUE, TRUE, NULL))) { goto fail; }
+        VmmWork_Ob(H, (PVMM_WORK_START_ROUTINE_OB_PFN)FcScanVirtmem_ScanRanges_ThreadProc, (POB)ctx, hEventFinish[i], VMMWORK_FLAG_PRIO_LOW);
+    }
+    FcScanVirtmem_ScanRanges_ThreadProc(H, ctx);
+    if(FC_SCAN_VIRTMEM_WORKER_THREADS > 1) {
+        WaitForMultipleObjects(FC_SCAN_VIRTMEM_WORKER_THREADS - 1, hEventFinish + 1, TRUE, INFINITE);
+    }
+    VmmLog(H, MID_FORENSIC, LOGLEVEL_4_VERBOSE, "FC_VIRTMEM_SCAN: FINISH");
+    VmmLog(H, MID_FORENSIC, LOGLEVEL_5_DEBUG, "FC_VIRTMEM_SCAN: STATISTICS: Zero:    ranges=%lli, bytes=%llx", ctx->Statistics.cZero, ctx->Statistics.cbZero);
+    VmmLog(H, MID_FORENSIC, LOGLEVEL_5_DEBUG, "FC_VIRTMEM_SCAN: STATISTICS: Ingest:  ranges=%lli, bytes=%llx", ctx->Statistics.cIngest, ctx->Statistics.cbIngest);
+    VmmLog(H, MID_FORENSIC, LOGLEVEL_5_DEBUG, "FC_VIRTMEM_SCAN: STATISTICS: Stats:   threads=%u, time(all_thread)=%llis, scan_speed=%lliMB/s",
+        FC_SCAN_VIRTMEM_WORKER_THREADS,
+        ctx->Statistics.tcIngest / 1000,
+        ((ctx->Statistics.cbIngest * 1000) / (ctx->Statistics.tcIngest * 1024 * 1024))
+    );
+fail:
+    H->fc->cProgressPercentScanVirtual = 100;
+    Ob_DECREF(ctx);
+}
 
 
 // ----------------------------------------------------------------------------
 // FORENSIC INITIALIZATION FUNCTIONALITY BELOW:
 // ----------------------------------------------------------------------------
+
+#define FCINITIALIZE_PROGRESS_UPDATE(dwProgressPercent)   {                                                                                 \
+    if(H->fAbort) { goto fail; }                                                                                                            \
+    H->fc->cProgressPercent = dwProgressPercent;                                                                                                           \
+    VmmLog(H, MID_FORENSIC, LOGLEVEL_5_DEBUG, "INIT %i%% time=%llis", H->fc->cProgressPercent, ((GetTickCount64() - tcStart) / 1000));      \
+}
 
 /*
 * The core asynchronous forensic initialization function.
@@ -988,8 +1321,7 @@ VOID FcInitialize_ThreadProc(_In_ VMM_HANDLE H, _In_ QWORD qwNotUsed)
     BOOL fResult = FALSE;
     VMMDLL_CSV_HANDLE hCSV = NULL;
     PVMMOB_MAP_VM pObVmMap = NULL;
-    PVMMOB_MAP_EVIL pObEvilMap = NULL;
-    HANDLE hEventAsyncLogCSV = 0, hEventAsyncLogJSON = 0, hEventAsyncIngestVirtmem = 0, hEventAsyncIngestVirtmemKernel = 0;
+    HANDLE hEventAsyncEvil = 0, hEventAsyncLogCSV = 0, hEventAsyncLogJSON = 0, hEventAsyncIngestVirtmem = 0;
     QWORD tmStart = Statistics_CallStart(H);
     QWORD tcStart = GetTickCount64();
     VmmLog(H, MID_FORENSIC, LOGLEVEL_4_VERBOSE, "INIT START");
@@ -997,48 +1329,43 @@ VOID FcInitialize_ThreadProc(_In_ VMM_HANDLE H, _In_ QWORD qwNotUsed)
     if(SQLITE_OK != Fc_SqlExec(H, FC_SQL_SCHEMA_STR)) { goto fail; }
     if(H->fAbort) { goto fail; }
     if(!(hCSV = LocalAlloc(LMEM_ZEROINIT, sizeof(struct tdVMMDLL_CSV_HANDLE)))) { goto fail; }
+    if(!(hEventAsyncEvil = CreateEvent(NULL, TRUE, TRUE, NULL))) { goto fail; }
     if(!(hEventAsyncLogCSV = CreateEvent(NULL, TRUE, TRUE, NULL))) { goto fail; }
     if(!(hEventAsyncLogJSON = CreateEvent(NULL, TRUE, TRUE, NULL))) { goto fail; }
     if(!(hEventAsyncIngestVirtmem = CreateEvent(NULL, TRUE, TRUE, NULL))) { goto fail; }
-    if(!(hEventAsyncIngestVirtmemKernel = CreateEvent(NULL, TRUE, TRUE, NULL))) { goto fail; }
     PluginManager_Notify(H, VMMDLL_PLUGIN_NOTIFY_FORENSIC_INIT, NULL, 0);
     VmmMap_GetVM(H, &pObVmMap);                 // force fetch VMs before starting forensic actions.
     Ob_DECREF_NULL(&pObVmMap);
-    VmmMap_GetEvil(H, NULL, &pObEvilMap);       // start findevil (in 'async' mode)
-    Ob_DECREF_NULL(&pObEvilMap);
-    PluginManager_FcInitialize(H);              // 0-10%
-    H->fc->cProgressPercent = 10;
-    VmmLog(H, MID_FORENSIC, LOGLEVEL_5_DEBUG, "INIT %i%% time=%llis", H->fc->cProgressPercent, ((GetTickCount64() - tcStart) / 1000));
-    if(H->fAbort) { goto fail; }
-    // parallel async init of: scan virtual per-process/kernel address space & init of json log
+    VmmWork_Value(H, FcEvilInitialize_ThreadProc, 0, hEventAsyncEvil, VMMWORK_FLAG_PRIO_NORMAL);
+    PluginManager_FcInitialize(H);
+    // 10-59% (updated by FcScanPhysmem()/FcScanVirtmem_ThreadProc()  functions).
+    FCINITIALIZE_PROGRESS_UPDATE(10);
+    // parallel async init of: scan virtual per-process/kernel address space & init of log for CSV/JSON.
+    VmmWork_Value(H, FcScanVirtmem_ThreadProc, 0, hEventAsyncIngestVirtmem, VMMWORK_FLAG_PRIO_NORMAL);
     VmmWork_Void(H, (PVMM_WORK_START_ROUTINE_PVOID_PFN)PluginManager_FcLogCSV, hCSV, hEventAsyncLogCSV, VMMWORK_FLAG_PRIO_LOW);
     VmmWork_Void(H, (PVMM_WORK_START_ROUTINE_PVOID_PFN)PluginManager_FcLogJSON, FcJson_Callback_EntryAdd, hEventAsyncLogJSON, VMMWORK_FLAG_PRIO_LOW);
-    VmmWork_Value(H, FcScanVirtmemKernel_ThreadProc, 0, hEventAsyncIngestVirtmemKernel, VMMWORK_FLAG_PRIO_LOW);
-    VmmWork_Value(H, FcScanVirtmem_ThreadProc, 0, hEventAsyncIngestVirtmem, VMMWORK_FLAG_PRIO_LOW);
-    FcScanPhysmem(H);                           // 11-50%
-    H->fc->cProgressPercent = 50;
-    VmmLog(H, MID_FORENSIC, LOGLEVEL_5_DEBUG, "INIT %i%% time=%llis", H->fc->cProgressPercent, ((GetTickCount64() - tcStart) / 1000));
-    if(H->fAbort) { goto fail; }
-    WaitForSingleObject(hEventAsyncIngestVirtmem, INFINITE);        // 51-60%
-    WaitForSingleObject(hEventAsyncIngestVirtmemKernel, INFINITE);
-    H->fc->cProgressPercent = 60;
-    VmmLog(H, MID_FORENSIC, LOGLEVEL_5_DEBUG, "INIT %i%% time=%llis", H->fc->cProgressPercent, ((GetTickCount64() - tcStart) / 1000));
-    if(H->fAbort) { goto fail; }
-    PluginManager_FcIngestFinalize(H);          // 61-70%
-    H->fc->cProgressPercent = 70;
-    VmmLog(H, MID_FORENSIC, LOGLEVEL_5_DEBUG, "INIT %i%% time=%llis", H->fc->cProgressPercent, ((GetTickCount64() - tcStart) / 1000));
-    if(H->fAbort) { goto fail; }
-    FcTimeline_Initialize(H);                   // 71-90%
-    H->fc->cProgressPercent = 90;
-    VmmLog(H, MID_FORENSIC, LOGLEVEL_5_DEBUG, "INIT %i%% time=%llis", H->fc->cProgressPercent, ((GetTickCount64() - tcStart) / 1000));
-    if(H->fAbort) { goto fail; }
+    FcScanPhysmem(H);
+    WaitForSingleObject(hEventAsyncIngestVirtmem, INFINITE);
+    // 60%
+    FCINITIALIZE_PROGRESS_UPDATE(60);
+    PluginManager_FcIngestFinalize(H);
+    // 70%
+    FCINITIALIZE_PROGRESS_UPDATE(70);
+    FcTimeline_Initialize(H);
+    // 90%
+    FCINITIALIZE_PROGRESS_UPDATE(90);
+    WaitForSingleObject(hEventAsyncEvil, INFINITE);
     WaitForSingleObject(hEventAsyncLogCSV, INFINITE);
     WaitForSingleObject(hEventAsyncLogJSON, INFINITE);
-    PluginManager_FcFinalize(H);                // 91-100%
-    H->fc->cProgressPercent = 100;
+    if(H->fAbort) { goto fail; }
+    PluginManager_FcFinalize(H);
+    // 95%
+    FCINITIALIZE_PROGRESS_UPDATE(95);
+    FcEvilFinalize(H, hCSV);
+    // 100% - finish!
+    FCINITIALIZE_PROGRESS_UPDATE(100);
     H->fc->db.fSingleThread = FALSE;
     H->fc->fInitFinish = TRUE;
-    if(H->fAbort) { goto fail; }
     PluginManager_Notify(H, VMMDLL_PLUGIN_NOTIFY_FORENSIC_INIT, NULL, 0);
     PluginManager_Notify(H, VMMDLL_PLUGIN_NOTIFY_FORENSIC_INIT_COMPLETE, NULL, 0);
     Statistics_CallEnd(H, STATISTICS_ID_FORENSIC_FcInitialize, tmStart);
@@ -1046,6 +1373,11 @@ VOID FcInitialize_ThreadProc(_In_ VMM_HANDLE H, _In_ QWORD qwNotUsed)
 fail:
     // finalize required even on error (including on H->fAbort) to clean up.
     PluginManager_FcFinalize(H);
+    if(hEventAsyncEvil) {
+        WaitForSingleObject(hEventAsyncEvil, INFINITE);
+        CloseHandle(hEventAsyncEvil);
+    }
+    FcEvilFinalize(H, hCSV);
     if(hEventAsyncLogCSV) {
         WaitForSingleObject(hEventAsyncLogCSV, INFINITE);
         CloseHandle(hEventAsyncLogCSV);
@@ -1057,10 +1389,6 @@ fail:
     if(hEventAsyncIngestVirtmem) {
         WaitForSingleObject(hEventAsyncIngestVirtmem, INFINITE);
         CloseHandle(hEventAsyncIngestVirtmem);
-    }
-    if(hEventAsyncIngestVirtmemKernel) {
-        WaitForSingleObject(hEventAsyncIngestVirtmemKernel, INFINITE);
-        CloseHandle(hEventAsyncIngestVirtmemKernel);
     }
     if(H->fc->cProgressPercent != 100) {
         H->fc->cProgressPercent = 0;
@@ -1120,6 +1448,8 @@ VOID FcClose(_In_ VMM_HANDLE H)
     Ob_DECREF_NULL(&ctxFc->FileJSON.pGen);
     Ob_DECREF_NULL(&ctxFc->FileJSON.pReg);
     Ob_DECREF_NULL(&ctxFc->FileCSV.pm);
+    Ob_DECREF_NULL(&ctxFc->FindEvil.pm);
+    Ob_DECREF_NULL(&ctxFc->FindEvil.pmf);
     LocalFree(ctxFc->Timeline.pInfo);
     LeaveCriticalSection(&ctxFc->Lock);
     DeleteCriticalSection(&ctxFc->Lock);

@@ -6,6 +6,7 @@
 #include "sysquery.h"
 #include "vmmwinreg.h"
 #include "charutil.h"
+#include "pe.h"
 
 /*
 * Retrieve the current system time as FILETIME.
@@ -46,4 +47,43 @@ BOOL SysQuery_TimeZone(_In_ VMM_HANDLE H, _Out_writes_opt_(32) LPSTR uszTimeZone
         if((*piActiveBias > 24 * 60) && (*piActiveBias < -(24 * 60))) { return FALSE; }
     }
     return TRUE;
+}
+
+_Success_(return)
+QWORD SysQuery_GetProcAddress_Impl(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ LPSTR uszModuleName, _In_ LPSTR szFunctionName, _In_ DWORD iLevel)
+{
+    PVMMOB_MAP_EAT pObEatMap = NULL;
+    PVMMOB_MAP_MODULE pObModuleMap = NULL;
+    PVMM_MAP_MODULEENTRY peModule;
+    QWORD va = 0;
+    DWORD i;
+    LPSTR uszForwardFunctionName;
+    CHAR uszForwardModuleName[MAX_PATH];
+    if(!VmmMap_GetModuleEntryEx(H, pProcess, 0, uszModuleName, 0, &pObModuleMap, &peModule)) { goto fail; }
+    if(!VmmMap_GetEAT(H, pProcess, peModule, &pObEatMap)) { goto fail; }
+    if(!VmmMap_GetEATEntryIndexU(H, pObEatMap, szFunctionName, &i)) { goto fail; }
+    va = pObEatMap->pMap[i].vaFunction;
+    if(!va && pObEatMap->pMap[i].uszForwardedFunction && (iLevel < 5)) {
+        if((uszForwardFunctionName = PE_EatForwardedFunctionNameValidate(pObEatMap->pMap[i].uszForwardedFunction, uszForwardModuleName, MAX_PATH, NULL))) {
+            va = SysQuery_GetProcAddress_Impl(H, pProcess, uszForwardModuleName, uszForwardFunctionName, iLevel + 1);
+        }
+    }
+fail:
+    Ob_DECREF(pObEatMap);
+    Ob_DECREF(pObModuleMap);
+    return va;
+}
+
+/*
+* Retrieve an exported function address similar to kernel32!GetProcAddress().
+* -- H
+* -- pProcess
+* -- uszModuleName
+* -- szFunctionName
+* -- return
+*/
+_Success_(return)
+QWORD SysQuery_GetProcAddress(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ LPSTR uszModuleName, _In_ LPSTR szFunctionName)
+{
+    return SysQuery_GetProcAddress_Impl(H, pProcess, uszModuleName, szFunctionName, 0);
 }

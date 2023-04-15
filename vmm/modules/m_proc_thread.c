@@ -6,12 +6,15 @@
 
 #include "modules.h"
 
-#define MTHREAD_INFOFILE_LENGTH  803ULL
-#define MTHREAD_LINELENGTH       250ULL
-#define MTHREAD_LINEHEADER       "   #    PID     TID          ETHREAD Status     WaitReason           Prio      ExitSt     StartAddress   InstructionPtr                 TEB          StackBase           StackPtr         StackLimit  CreateTime                 ExitTime"
+#define MTHREAD_INFOFILE_LENGTH  877ULL
+#define MTHREAD_LINELENGTH       267ULL
+#define MTHREAD_LINEHEADER       "   #    PID     TID          ETHREAD Status     WaitReason           Prio      ExitSt     StartAddress Win32StartAddress  InstructionPtr                 TEB          StackBase           StackPtr         StackLimit CreateTime                 ExitTime"
 
 #define MTHREAD_GET_STR_STATE(pe)           ((pe->bState < (sizeof(_KTHREAD_STATE_STR) / sizeof(LPCSTR))) ? _KTHREAD_STATE_STR[pe->bState] : "Unknown")
 #define MTHREAD_GET_STR_WAIT_REASON(pe)     ((pe->bWaitReason < (sizeof(_KWAIT_REASON_STR) / sizeof(LPCSTR))) ? _KWAIT_REASON_STR[pe->bWaitReason] : "Unknown")
+
+VOID MProcToken_ListToken(_In_ VMM_HANDLE H, _Inout_ PHANDLE pFileList, _In_ PVMMOB_TOKEN pToken);
+NTSTATUS MProcToken_ReadToken(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ PVMMOB_TOKEN pToken, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
 
 _Success_(return == 0)
 NTSTATUS MThread_Read_ThreadInfo(_In_ VMM_HANDLE H, _In_ PVMM_MAP_THREADENTRY pe, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
@@ -35,6 +38,7 @@ NTSTATUS MThread_Read_ThreadInfo(_In_ VMM_HANDLE H, _In_ PVMM_MAP_THREADENTRY pe
         "ETHREAD:       %21llx\n" \
         "TEB:           %21llx\n" \
         "StartAddress:       %16llx\n" \
+        "Win32StartAddress:  %16llx\n" \
         "UserStackBase:      %16llx\n" \
         "UserStackLimit:     %16llx\n" \
         "KernelStackBase:    %16llx\n" \
@@ -42,6 +46,7 @@ NTSTATUS MThread_Read_ThreadInfo(_In_ VMM_HANDLE H, _In_ PVMM_MAP_THREADENTRY pe
         "TrapFrame:          %16llx\n" \
         "StackPointer:       %16llx\n" \
         "InstructionPointer: %16llx\n" \
+        "ImpersonationToken: %16llx\n" \
         "CreateTime:  %-23s\n" \
         "ExitTime:    %-23s\n",
         pe->dwPID,
@@ -56,6 +61,7 @@ NTSTATUS MThread_Read_ThreadInfo(_In_ VMM_HANDLE H, _In_ PVMM_MAP_THREADENTRY pe
         pe->vaETHREAD,
         pe->vaTeb,
         pe->vaStartAddress,
+        pe->vaWin32StartAddress,
         pe->vaStackBaseUser,
         pe->vaStackLimitUser,
         pe->vaStackBaseKernel,
@@ -63,6 +69,7 @@ NTSTATUS MThread_Read_ThreadInfo(_In_ VMM_HANDLE H, _In_ PVMM_MAP_THREADENTRY pe
         pe->vaTrapFrame,
         pe->vaRSP,
         pe->vaRIP,
+        pe->vaImpersonationToken,
         szTimeCreate,
         szTimeExit
     );
@@ -75,7 +82,7 @@ VOID MThread_ReadLineCB(_In_ VMM_HANDLE H, _Inout_opt_ PVOID ctx, _In_ DWORD cbL
     Util_FileTime2String(pe->ftCreateTime, szTimeCreate);
     Util_FileTime2String(pe->ftExitTime, szTimeExit);
     Util_usnprintf_ln(szu8, cbLineLength,
-        "%04x%7i%8i %16llx %1x %-7s %2i %-17s %2x %2x %2x %8x %16llx %16llx -- %16llx : %16llx > %16llx > %16llx [%s :: %s]",
+        "%04x%7i%8i %16llx %1x %-7s %2i %-17s %2x %2x %2x %8x %16llx %16llx %16llx -- %16llx : %16llx > %16llx > %16llx [%s :: %s]",
         ie,
         pe->dwPID,
         pe->dwTID,
@@ -89,6 +96,7 @@ VOID MThread_ReadLineCB(_In_ VMM_HANDLE H, _Inout_opt_ PVOID ctx, _In_ DWORD cbL
         pe->bPriority,
         pe->dwExitStatus,
         pe->vaStartAddress,
+        pe->vaWin32StartAddress,
         pe->vaRIP,
         pe->vaTeb,
         pe->vaStackBaseUser,
@@ -119,6 +127,7 @@ NTSTATUS MThread_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_
     LPSTR uszSubPath;
     DWORD dwTID;
     PVMM_MAP_THREADENTRY pe;
+    PVMMOB_TOKEN pObToken = NULL;
     if(!VmmMap_GetThread(H, ctxP->pProcess, &pObThreadMap)) { return VMMDLL_STATUS_FILE_INVALID; }
     // module root - thread info file
     if(!_stricmp(ctxP->uszPath, "threads.txt")) {
@@ -153,6 +162,14 @@ NTSTATUS MThread_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_
         if(!_stricmp(uszSubPath, "kstack")) {
             nt = VmmReadAsFile(H, PVMM_PROCESS_SYSTEM, pe->vaStackLimitKernel, pe->vaStackBaseKernel - pe->vaStackLimitKernel, pb, cb, pcbRead, cbOffset);
             goto finish;
+        }
+        // impersonation token:
+        if(!_strnicmp(uszSubPath, "impersonation", 13) && pe->vaImpersonationToken) {
+            if(VmmWinToken_Initialize(H, 1, &pe->vaImpersonationToken, &pObToken)) {
+                nt = MProcToken_ReadToken(H, ctxP, pObToken, pb, cb, pcbRead, cbOffset);
+                Ob_DECREF_NULL(&pObToken);
+                goto finish;
+            }
         }
     }
 finish:
@@ -235,9 +252,12 @@ BOOL MThread_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ P
 {
     DWORD i, dwTID, cbStack;
     CHAR uszBuffer[32] = { 0 };
+    CHAR uszThreadName[16 + 1];
+    LPSTR uszSubPath;
     PVMMOB_MAP_THREAD pObThreadMap = NULL;
     PVMM_MAP_THREADENTRY pe;
     VMMDLL_VFS_FILELIST_EXINFO ExInfo = { 0 };
+    PVMMOB_TOKEN pObToken = NULL;
     if(!VmmMap_GetThread(H, ctxP->pProcess, &pObThreadMap)) { goto fail; }
     // module root - list thread map
     if(!ctxP->uszPath[0]) {
@@ -252,21 +272,34 @@ BOOL MThread_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ P
         return TRUE;
     }
     // specific thread
-    if(!(dwTID = (DWORD)Util_GetNumericA(ctxP->uszPath))) { goto fail; }
+    uszSubPath = CharUtil_PathSplitFirst(ctxP->uszPath, uszThreadName, sizeof(uszThreadName));
+    if(!(dwTID = (DWORD)Util_GetNumericA(uszThreadName))) { goto fail; }
     if(!(pe = VmmMap_GetThreadEntry(H, pObThreadMap, dwTID))) { goto fail; }
     MThread_List_TimeStampFile(pe, &ExInfo);
-    VMMDLL_VfsList_AddFile(pFileList, "info.txt", MTHREAD_INFOFILE_LENGTH, &ExInfo);
-    VMMDLL_VfsList_AddFile(pFileList, "ethread", H->vmm.offset.ETHREAD.oMax, &ExInfo);
-    if(pe->vaTeb) {
-        VMMDLL_VfsList_AddFile(pFileList, "teb", 0x1000, &ExInfo);
-    }
-    if(pe->vaStackBaseUser && pe->vaStackLimitUser && (pe->vaStackLimitUser < pe->vaStackBaseUser)) {
-        cbStack = (DWORD)(pe->vaStackBaseUser - pe->vaStackLimitUser);
-        VMMDLL_VfsList_AddFile(pFileList, "stack", cbStack, &ExInfo);
-    }
-    if(pe->vaStackBaseKernel && pe->vaStackLimitKernel && (pe->vaStackLimitKernel < pe->vaStackBaseKernel)) {
-        cbStack = (DWORD)(pe->vaStackBaseKernel - pe->vaStackLimitKernel);
-        VMMDLL_VfsList_AddFile(pFileList, "kstack", cbStack, &ExInfo);
+    if(!_strnicmp(uszSubPath, "impersonation", 13) && pe->vaImpersonationToken) {
+        // impersonation token:
+        if(VmmWinToken_Initialize(H, 1, &pe->vaImpersonationToken, &pObToken)) {
+            MProcToken_ListToken(H, pFileList, pObToken);
+            Ob_DECREF_NULL(&pObToken);
+        }
+    } else {
+        // thread directory:
+        VMMDLL_VfsList_AddFile(pFileList, "info.txt", MTHREAD_INFOFILE_LENGTH, &ExInfo);
+        VMMDLL_VfsList_AddFile(pFileList, "ethread", H->vmm.offset.ETHREAD.oMax, &ExInfo);
+        if(pe->vaTeb) {
+            VMMDLL_VfsList_AddFile(pFileList, "teb", 0x1000, &ExInfo);
+        }
+        if(pe->vaStackBaseUser && pe->vaStackLimitUser && (pe->vaStackLimitUser < pe->vaStackBaseUser)) {
+            cbStack = (DWORD)(pe->vaStackBaseUser - pe->vaStackLimitUser);
+            VMMDLL_VfsList_AddFile(pFileList, "stack", cbStack, &ExInfo);
+        }
+        if(pe->vaStackBaseKernel && pe->vaStackLimitKernel && (pe->vaStackLimitKernel < pe->vaStackBaseKernel)) {
+            cbStack = (DWORD)(pe->vaStackBaseKernel - pe->vaStackLimitKernel);
+            VMMDLL_VfsList_AddFile(pFileList, "kstack", cbStack, &ExInfo);
+        }
+        if(pe->vaImpersonationToken) {
+            VMMDLL_VfsList_AddDirectory(pFileList, "impersonation", &ExInfo);
+        }
     }
 fail:
     Ob_DECREF_NULL(&pObThreadMap);

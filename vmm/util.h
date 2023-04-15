@@ -54,6 +54,14 @@ BOOL Util_HashSHA256(_In_reads_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_wr
 VOID Util_DeleteFileU(_In_ LPSTR uszPathFile);
 
 /*
+* Utility function to check whether a buffer is zeroed.
+* -- pb
+* -- cb
+* -- return
+*/
+BOOL Util_IsZeroBuffer(_In_ PBYTE pb, _In_ DWORD cb);
+
+/*
 * Fill a human readable hex ascii memory dump into the caller supplied sz buffer.
 * -- pb = bytes (may only be NULL if sz is NULL for size query).
 * -- cb
@@ -67,6 +75,24 @@ BOOL Util_FillHexAscii(
     _In_reads_opt_(cb) PBYTE pb,
     _In_ DWORD cb,
     _In_ DWORD cbInitialOffset,
+    _Out_writes_opt_(*pcsz) LPSTR sz,
+    _Inout_ PDWORD pcsz
+);
+
+/*
+* Fill a human readable hex ascii memory dump into the caller supplied sz buffer.
+* -- pb = bytes (may only be NULL if sz is NULL for size query).
+* -- cb
+* -- qwAddress = the start address in the address column.
+* -- sz = buffer to fill, NULL to retrieve buffer size in pcsz parameter.
+* -- pcsz = IF sz==NULL :: size of buffer (including space for terminating NULL) on exit
+*           IF sz!=NULL :: size of buffer on entry, size of characters (excluding terminating NULL) on exit.
+*/
+_Success_(return)
+BOOL Util_FillHexAscii_WithAddress(
+    _In_reads_opt_(cb) PBYTE pb,
+    _In_ DWORD cb,
+    _In_ QWORD qwAddress,
     _Out_writes_opt_(*pcsz) LPSTR sz,
     _Inout_ PDWORD pcsz
 );

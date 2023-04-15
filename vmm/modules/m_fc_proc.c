@@ -43,7 +43,7 @@ PVOID MFcProc_FcInitialize(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
         // build and insert string data into 'str' table.
         if(!Fc_SqlInsertStr(H, hStmtStr, pObProcess->pObPersistent->uszNameLong, &SqlStrInsert[0])) { goto fail_transact; }
         if(!Fc_SqlInsertStr(H, hStmtStr, pObProcess->pObPersistent->uszPathKernel, &SqlStrInsert[1])) { goto fail_transact; }
-        if(!pObProcess->win.TOKEN.fSidUserValid || !VmmWinUser_GetName(H, &pObProcess->win.TOKEN.SidUser.SID, uszUserName, MAX_PATH, &fWellKnownAccount)) { uszUserName[0] = 0; }
+        if(!pObProcess->win.Token || !pObProcess->win.Token->fSidUserValid || !VmmWinUser_GetName(H, &pObProcess->win.Token->SidUser.SID, uszUserName, MAX_PATH, &fWellKnownAccount)) { uszUserName[0] = 0; }
         if(!Fc_SqlInsertStr(H, hStmtStr, uszUserName, &SqlStrInsert[2])) { goto fail_transact; }
         _snprintf_s(uszFullInfo, 2048 - 2, 2048 - 3, "%s [%s%s] %s", pObProcess->pObPersistent->uszNameLong, (fWellKnownAccount ? "*" : ""), uszUserName, pObProcess->pObPersistent->uszPathKernel);
         if(!Fc_SqlInsertStr(H, hStmtStr, uszFullInfo, &SqlStrInsert[3])) { goto fail_transact; }
@@ -121,8 +121,9 @@ VOID MFcProc_LogProcess_GetUserName(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProces
 {
     BOOL f, fWellKnownAccount = FALSE;
     uszUserName[0] = 0;
-    f = pProcess->win.TOKEN.fSidUserValid &&
-        VmmWinUser_GetName(H, &pProcess->win.TOKEN.SidUser.SID, uszUserName, 17, &fWellKnownAccount);
+    f = pProcess->win.Token &&
+        pProcess->win.Token->fSidUserValid &&
+        VmmWinUser_GetName(H, &pProcess->win.Token->SidUser.SID, uszUserName, 17, &fWellKnownAccount);
     *fAccountUser = f && !fWellKnownAccount;
 }
 
@@ -162,8 +163,8 @@ VOID MFcProc_LogProcess(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA
         Util_FileTime2String(VmmProcess_GetExitTimeOpt(H, pProcess), szTimeEXIT);
         o += _snprintf_s(usz + o, cbu - o, _TRUNCATE, " exittime:[%s]", szTimeEXIT);
     }
-    if(pProcess->win.TOKEN.IntegrityLevel) {
-        o += _snprintf_s(usz + o, cbu - o, _TRUNCATE, " integrity:[%s]", VMM_PROCESS_INTEGRITY_LEVEL_STR[pProcess->win.TOKEN.IntegrityLevel]);
+    if(pProcess->win.Token && pProcess->win.Token->IntegrityLevel) {
+        o += _snprintf_s(usz + o, cbu - o, _TRUNCATE, " integrity:[%s]", VMM_TOKEN_INTEGRITY_LEVEL_STR[pProcess->win.Token->IntegrityLevel]);
     }
     pd->usz[1] = usz;
     pfnLogJSON(H, pd);
@@ -204,7 +205,7 @@ VOID MFcProc_FcLogCSV(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ 
         pProcess->dwState,
         FcCsv_String(hCSV, pProcess->szName),
         FcCsv_String(hCSV, pProcess->pObPersistent->uszNameLong),
-        FcCsv_String(hCSV, (LPSTR)VMM_PROCESS_INTEGRITY_LEVEL_STR[pProcess->win.TOKEN.IntegrityLevel]),
+        FcCsv_String(hCSV, (LPSTR)VMM_TOKEN_INTEGRITY_LEVEL_STR[pProcess->win.Token ? pProcess->win.Token->IntegrityLevel : 0]),
         FcCsv_String(hCSV, szUserName),
         FcCsv_FileTime(hCSV, VmmProcess_GetCreateTimeOpt(H, pProcess)),
         FcCsv_FileTime(hCSV, VmmProcess_GetExitTimeOpt(H, pProcess)),

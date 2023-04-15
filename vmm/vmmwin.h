@@ -66,6 +66,25 @@ VOID VmmWinLdrModule_EnrichDebugInfo(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProce
 VOID VmmWinLdrModule_EnrichVersionInfo(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess);
 
 /*
+* Retrieve the symbol server for a specific module (Microsoft only).
+* Resulting szSymbolServer will be NULL-terminated even on fail.
+* -- H
+* -- pe
+* -- fExtendedChecks = check if VersionInfo is a Microsoft module.
+* -- cbSymbolServer
+* -- szSymbolServer
+* -- return
+*/
+_Success_(return)
+BOOL VmmWinLdrModule_SymbolServer(
+    _In_ VMM_HANDLE H,
+    _In_ PVMM_MAP_MODULEENTRY pe,
+    _In_ BOOL fExtendedChecks,
+    _In_ DWORD cbSymbolServer,
+    _Out_writes_(cbSymbolServer) LPSTR szSymbolServer
+);
+
+/*
 * Initialize the unloaded module map containing information about unloaded modules.
 * -- H
 * -- pProcess
@@ -83,6 +102,23 @@ BOOL VmmWinUnloadedModule_Initialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProce
 * -- return
 */
 BOOL VmmWinThread_Initialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess);
+
+/*
+* Initialize tokens for specific processes.
+* CALLER DECREF: *ppObTokens (each individual token).
+* -- H
+* -- cTokens = number of tokens to initialize.
+* -- pvaTokens
+* -- ppObTokens = buffer of size cToken to receive pointers to initialized tokens.
+* -- return
+*/
+_Success_(return)
+BOOL VmmWinToken_Initialize(
+    _In_ VMM_HANDLE H,
+    _In_ DWORD cTokens,
+    _In_reads_(cTokens) QWORD *pvaTokens,
+    _Out_writes_(cTokens) PVMMOB_TOKEN *ppObTokens
+);
 
 /*
 * Initialize Handles for a specific process. Extended information text may take

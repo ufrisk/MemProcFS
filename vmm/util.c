@@ -84,6 +84,62 @@ BOOL Util_FillHexAscii(_In_reads_opt_(cb) PBYTE pb, _In_ DWORD cb, _In_ DWORD cb
     return TRUE;
 }
 
+_Success_(return)
+BOOL Util_FillHexAscii_WithAddress(_In_reads_opt_(cb) PBYTE pb, _In_ DWORD cb, _In_ QWORD qwAddress, _Out_writes_opt_(*pcsz) LPSTR sz, _Inout_ PDWORD pcsz)
+{
+    QWORD va;
+    DWORD i, j, o = 0, cRows;
+    // checks
+    cRows = (cb + 0xf) >> 4;
+    if(!sz) {
+        *pcsz = 1 + cRows * 88;
+        return TRUE;
+    }
+    if(!pb || (*pcsz <= cRows * 88)) { return FALSE; }
+    // fill buffer with bytes
+    for(i = 0; i < cb + ((cb % 16) ? (16 - cb % 16) : 0); i++) {
+        // address
+        if(0 == i % 16) {
+            va = qwAddress + i;
+            for(j = 0; j < 0x40; j += 4) {
+                sz[o++] = Util_2HexChar(va >> j);
+            }
+            sz[o++] = ' ';
+            sz[o++] = ' ';
+            sz[o++] = ' ';
+            sz[o++] = ' ';
+        } else if(0 == i % 8) {
+            sz[o++] = ' ';
+        }
+        // hex
+        if(i < cb) {
+            sz[o++] = Util_2HexChar(pb[i] >> 4);
+            sz[o++] = Util_2HexChar(pb[i]);
+            sz[o++] = ' ';
+        } else {
+            sz[o++] = ' ';
+            sz[o++] = ' ';
+            sz[o++] = ' ';
+        }
+        // ascii
+        if(15 == i % 16) {
+            sz[o++] = ' ';
+            sz[o++] = ' ';
+            for(j = i - 15; j <= i; j++) {
+                if(j >= cb) {
+                    sz[o++] = ' ';
+                } else {
+                    sz[o++] = UTIL_PRINTASCII[pb[j]];
+                }
+            }
+            sz[o++] = '\n';
+        }
+    }
+    sz[o] = 0;
+    *pcsz = o;
+    return TRUE;
+}
+
 VOID Util_AsciiFileNameFix(_In_ LPSTR sz, _In_ CHAR chDefault)
 {
     DWORD i = 0;
@@ -922,6 +978,26 @@ VOID Util_GetPathDll(_Out_writes_(MAX_PATH) PCHAR szPath, _In_opt_ HMODULE hModu
             return;
         }
     }
+}
+
+/*
+* Utility function to check whether a buffer is zeroed.
+* -- pb
+* -- cb
+* -- return
+*/
+BOOL Util_IsZeroBuffer(_In_ PBYTE pb, _In_ DWORD cb)
+{
+    static const BYTE pbZERO[0x1000] = { 0 };
+    while(cb >= 0x1000) {
+        if(memcmp(pb, pbZERO, 0x1000)) { return FALSE; }
+        pb += 0x1000;
+        cb -= 0x1000;
+    }
+    if(cb) {
+        if(memcmp(pb, pbZERO, cb)) { return FALSE; }
+    }
+    return TRUE;
 }
 
 #ifdef _WIN32

@@ -11,7 +11,7 @@
 // (c) Ulf Frisk, 2018-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-// Header Version: 5.4
+// Header Version: 5.5
 //
 
 #include "leechcore.h"
@@ -51,6 +51,7 @@ typedef uint16_t                            WCHAR, *PWCHAR, *LPWSTR, *LPCWSTR;
 #define _In_z_
 #define _In_opt_
 #define _In_reads_(x)
+#define _In_reads_bytes_(x)
 #define _In_reads_opt_(x)
 #define _Inout_
 #define _Inout_bytecount_(x)
@@ -73,6 +74,7 @@ typedef uint16_t                            WCHAR, *PWCHAR, *LPWSTR, *LPCWSTR;
 
 typedef struct tdVMM_HANDLE     *VMM_HANDLE;
 typedef struct tdVMMVM_HANDLE   *VMMVM_HANDLE;
+typedef BYTE                    OPAQUE_OB_HEADER[0x40];
 
 
 
@@ -116,6 +118,12 @@ typedef struct tdVMMVM_HANDLE   *VMMVM_HANDLE;
 *    -userinteract = allow vmm.dll to, on the console, query the user for
 *              information such as, but not limited to, leechcore device options.
 *              Default: user interaction = disabled.
+*    -vm       = virtual machine (VM) parsing.
+*    -vm-basic = virtual machine (VM) parsing (physical memory only).
+*    -vm-nested = virtual machine (VM) parsing (including nested VMs).
+*    -forensic-yara-rules = perfom a forensic yara scan with specified rules.
+*              Full path to source or compiled yara rules should be specified.
+*              Example: -forensic-yara-rules "C:\Temp\my_yara_rules.yar"
 *    -forensic = start a forensic scan of the physical memory immediately after
 *              startup if possible. Allowed parameter values range from 0-4.
 *              Note! forensic mode is not available for live memory.
@@ -203,6 +211,7 @@ VOID VMMDLL_MemFree(_Frees_ptr_opt_ PVOID pvMem);
 #define VMMDLL_OPT_CONFIG_STATISTICS_FUNCTIONCALL       0x2000000C00000000  // RW - enable function call statistics (.status/statistics_fncall file)
 #define VMMDLL_OPT_CONFIG_IS_PAGING_ENABLED             0x2000000D00000000  // RW - 1/0
 #define VMMDLL_OPT_CONFIG_DEBUG                         0x2000000E00000000  // W
+#define VMMDLL_OPT_CONFIG_YARA_RULES                    0x2000000F00000000  // R
 
 #define VMMDLL_OPT_WIN_VERSION_MAJOR                    0x2000010100000000  // R
 #define VMMDLL_OPT_WIN_VERSION_MINOR                    0x2000010200000000  // R
@@ -480,8 +489,9 @@ BOOL VMMDLL_InitializePlugins(_In_ VMM_HANDLE hVMM);
 #define VMMDLL_PLUGIN_CONTEXT_MAGIC                 0xc0ffee663df9301c
 #define VMMDLL_PLUGIN_CONTEXT_VERSION               5
 #define VMMDLL_PLUGIN_REGINFO_MAGIC                 0xc0ffee663df9301d
-#define VMMDLL_PLUGIN_REGINFO_VERSION               16
+#define VMMDLL_PLUGIN_REGINFO_VERSION               17
 #define VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION     0xc0ee0002
+#define VMMDLL_PLUGIN_FORENSIC_INGEST_VIRTMEM_VERSION 0xc0dd0001
 
 #define VMMDLL_PLUGIN_NOTIFY_VERBOSITYCHANGE        0x01
 #define VMMDLL_PLUGIN_NOTIFY_REFRESH_FAST           0x05    // refresh fast event   - at partial process refresh.
@@ -543,6 +553,19 @@ typedef struct tdVMMDLL_PLUGIN_FORENSIC_INGEST_PHYSMEM {
     PVMMDLL_MAP_PFN pPfnMap;
 } VMMDLL_PLUGIN_FORENSIC_INGEST_PHYSMEM, *PVMMDLL_PLUGIN_FORENSIC_INGEST_PHYSMEM;
 
+typedef struct tdVMMDLL_PLUGIN_FORENSIC_INGEST_VIRTMEM {
+    OPAQUE_OB_HEADER _Reserved;
+    DWORD dwVersion;        // must equal VMMDLL_PLUGIN_FORENSIC_INGEST_VIRTMEM_VERSION
+    BOOL fPte;
+    BOOL fVad;
+    PVOID pvProcess;
+    DWORD dwPID;
+    QWORD va;
+    PBYTE pb;
+    DWORD cb;
+    DWORD cbReadActual;     // actual bytes read (may be spread out in pb)
+} VMMDLL_PLUGIN_FORENSIC_INGEST_VIRTMEM, *PVMMDLL_PLUGIN_FORENSIC_INGEST_VIRTMEM;
+
 typedef struct tdVMMDLL_PLUGIN_REGINFO {
     ULONG64 magic;
     WORD wVersion;
@@ -584,11 +607,18 @@ typedef struct tdVMMDLL_PLUGIN_REGINFO {
         PVOID pvReserved[10];
     } reg_fn;
     // Optional forensic plugin functionality for forensic (more comprehensive)
-    // analysis of various data. Functions are optional. Functions are called
-    // in single-threaded mode regards to the plugin itself - but 'ingest'
-    // functions are called in-parallel multi-threaded between plugins.
-    // Functions are called in the order of:
-    // pfnInitialize(), pfnIngest*(), pfnTimeline(), pfnLogJSON(), pfnFinalize()
+    // analysis of various data. Functions are optional.
+    // Functions are called in the below order and way.
+    // 1: pfnInitialize()            - single-threaded.
+    // 2: (multiple types see below) - multi-threaded (between plugins).
+    //    pfnLogCSV()
+    //    pfnLogJSON()
+    //    pfnFindEvil()
+    //    pfnIngestPhysmem()
+    //    pfnIngestVirtmem()
+    // 3. pfnIngestFinalize()        - single-threaded. (pfnLogCSV/pfnLogJSON/pfnFindEvil may still be active).
+    // 4. pfnTimeline()              - single-threaded. (pfnLogCSV/pfnLogJSON/pfnFindEvil may still be active).
+    // 5. pfnFinalize()              - single-threaded.
     struct {
         PVOID(*pfnInitialize)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP);
         VOID(*pfnFinalize)(_In_ VMM_HANDLE H, _In_opt_ PVOID ctxfc);
@@ -599,9 +629,10 @@ typedef struct tdVMMDLL_PLUGIN_REGINFO {
             _In_ VOID(*pfnAddEntry)(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPSTR uszText),
             _In_ VOID(*pfnEntryAddBySql)(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPSTR *pszEntrySql));
         VOID(*pfnIngestPhysmem)(_In_ VMM_HANDLE H, _In_opt_ PVOID ctxfc, _In_ PVMMDLL_PLUGIN_FORENSIC_INGEST_PHYSMEM pIngestPhysmem);
-        VOID(*pfnIngestVirtmem)(_In_ VMM_HANDLE H, _In_opt_ PVOID ctxfc, _In_ DWORD dwPID, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb);
+        VOID(*pfnIngestVirtmem)(_In_ VMM_HANDLE H, _In_opt_ PVOID ctxfc, _In_ PVMMDLL_PLUGIN_FORENSIC_INGEST_VIRTMEM pIngestVirtmem);
         VOID(*pfnIngestFinalize)(_In_ VMM_HANDLE H, _In_opt_ PVOID ctxfc);
-        PVOID pvReserved[8];
+        VOID(*pfnFindEvil)(_In_ VMM_HANDLE H, _In_ VMMDLL_MODULE_ID MID, _In_opt_ PVOID ctxfc);
+        PVOID pvReserved[7];
         VOID(*pfnLogCSV)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VMMDLL_CSV_HANDLE hCSV);
         VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData));
     } reg_fnfc;
@@ -1223,7 +1254,9 @@ typedef struct tdVMMDLL_MAP_THREADENTRY {
     UCHAR bSuspendCount;
     UCHAR bWaitReason;
     UCHAR _FutureUse1[2];
-    DWORD _FutureUse2[15];
+    DWORD _FutureUse2[11];
+    QWORD vaImpersonationToken;
+    QWORD vaWin32StartAddress;
 } VMMDLL_MAP_THREADENTRY, *PVMMDLL_MAP_THREADENTRY;
 
 typedef struct tdVMMDLL_MAP_HANDLEENTRY {
@@ -1775,7 +1808,7 @@ typedef struct tdVMMDLL_MEM_SEARCH_CONTEXT {
     DWORD _Filler[2];
     BOOL fAbortRequested;       // may be set by caller to abort processing prematurely.
     DWORD cMaxResult;           // # max result entries. '0' = 1 entry. max 0x10000 entries.
-    DWORD cSearch;              // number of valid search entries
+    DWORD cSearch;              // number of search entries.
     VMMDLL_MEM_SEARCH_CONTEXT_SEARCHENTRY search[VMMDLL_MEM_SEARCH_MAX];
     QWORD vaMin;                // min address to search (page-aligned).
     QWORD vaMax;                // max address to search (page-aligned), if 0 max memory is assumed.
@@ -1807,7 +1840,7 @@ typedef struct tdVMMDLL_MEM_SEARCH_CONTEXT {
 * and wait a short while.
 * CALLER FREE: VMMDLL_MemFree(*ppva)
 * -- hVMM
-* -- dwPID
+* -- dwPID - PID of target process, (DWORD)-1 to read physical memory.
 * -- ctx
 * -- ppva = pointer to receive addresses found. Free'd with VMMDLL_MemFree().
 * -- pcva = pointer to receive number of addresses in ppva. not bytes!
@@ -1818,6 +1851,118 @@ BOOL VMMDLL_MemSearch(
     _In_ VMM_HANDLE hVMM,
     _In_ DWORD dwPID,
     _Inout_ PVMMDLL_MEM_SEARCH_CONTEXT ctx,
+    _Out_opt_ PQWORD *ppva,
+    _Out_opt_ PDWORD pcva
+);
+
+
+
+//-----------------------------------------------------------------------------
+// MEMORY YARA SEARCH FUNCTIONALITY:
+// The yara search functionality requires that vmmyara.[dll|so] is present.
+// The vmmyara project is found at: https://github.com/ufrisk/vmmyara
+//-----------------------------------------------------------------------------
+
+// =========== START SHARED STRUCTS WITH <vmmyara.h> ===========
+#ifndef VMMYARA_RULE_MATCH_DEFINED
+#define VMMYARA_RULE_MATCH_DEFINED
+
+#define VMMYARA_RULE_MATCH_MAX              8
+#define VMMYARA_RULE_MATCH_OFFSETS_MAX      16
+
+typedef struct tdVMMYARA_RULE_MATCH {
+    LPSTR szRuleIdentifier;
+    DWORD cTags;
+    LPSTR szTags[VMMYARA_RULE_MATCH_MAX];
+    DWORD cMeta;
+    struct {
+        LPSTR szIdentifier;
+        LPSTR szString;
+    } Meta[VMMYARA_RULE_MATCH_MAX];
+    DWORD cStrings;
+    struct {
+        LPSTR szString;
+        DWORD cMatch;
+        SIZE_T cbMatchOffset[VMMYARA_RULE_MATCH_OFFSETS_MAX];
+    } Strings[VMMYARA_RULE_MATCH_MAX];
+} VMMYARA_RULE_MATCH, *PVMMYARA_RULE_MATCH;
+
+#endif /* VMMYARA_RULE_MATCH_DEFINED */
+#ifndef VMMYARA_SCAN_MEMORY_CALLBACK_DEFINED
+#define VMMYARA_SCAN_MEMORY_CALLBACK_DEFINED
+
+typedef BOOL(*VMMYARA_SCAN_MEMORY_CALLBACK)(
+    _In_ PVOID pvContext,
+    _In_ PVMMYARA_RULE_MATCH pRuleMatch,
+    _In_reads_bytes_(cbBuffer) PBYTE pbBuffer,
+    _In_ SIZE_T cbBuffer
+);
+
+#endif /* VMMYARA_SCAN_MEMORY_CALLBACK_DEFINED */
+// =========== END SHARED STRUCTS WITH <vmmyara.h> ===========
+
+#define VMMDLL_YARA_CONFIG_VERSION                  0xdec30001
+#define VMMDLL_YARA_CONFIG_MAX_RESULT               0x00010000      // max 65k results.
+
+/*
+* Yara search configuration struct.
+*/
+typedef struct tdVMMDLL_YARA_CONFIG {
+    DWORD dwVersion;
+    DWORD _Filler[2];
+    BOOL fAbortRequested;       // may be set by caller to abort processing prematurely.
+    DWORD cMaxResult;           // # max result entries. max 0x10000 entries. 0 = max entries.
+    DWORD cRules;               // number of rules to use - if compiled rules only 1 is allowed.
+    LPSTR *pszRules;            // array of rules to use - either filenames or in-memory rules.
+    QWORD vaMin;
+    QWORD vaMax;
+    QWORD vaCurrent;            // current address (may be read by caller).
+    DWORD _Filler2;
+    DWORD cResult;              // number of search hits.
+    QWORD cbReadTotal;          // total number of bytes read.
+    PVOID pvUserPtrOpt;         // optional pointer set by caller (used for context passing to callbacks)
+    // match callback function (recommended but optional).
+    // return = continue search(TRUE), abort search(FALSE).
+    VMMYARA_SCAN_MEMORY_CALLBACK pfnScanMemoryCB;
+    // non-recommended features:
+    QWORD ReadFlags;            // read flags as in VMMDLL_FLAG_*
+    BOOL fForcePTE;             // force PTE method for virtual address reads.
+    BOOL fForceVAD;             // force VAD method for virtual address reads.
+    // optional filter callback function for virtual address reads:
+    // for ranges inbetween vaMin:vaMax callback with pte or vad entry.
+    // return: read from range(TRUE), do not read from range(FALSE).
+    BOOL(*pfnFilterOptCB)(_In_ struct tdVMMDLL_YARA_CONFIG *ctx, _In_opt_ PVMMDLL_MAP_PTEENTRY pePte, _In_opt_ PVMMDLL_MAP_VADENTRY peVad);
+    PVOID pvUserPtrOpt2;        // optional pointer set by caller (not used by MemProcFS).
+    QWORD _Reserved;
+} VMMDLL_YARA_CONFIG, *PVMMDLL_YARA_CONFIG;
+
+/*
+* Yara search callback struct which created by MemProcFS internally and is
+* passed to the callback function supplied by the caller in VMMDLL_YaraSearch().
+*/
+typedef struct tdVMMDLL_YARA_MEMORY_CALLBACK_CONTEXT {
+    DWORD dwVersion;
+    DWORD dwPID;
+    PVOID pUserContext;
+    QWORD qwA;
+    PBYTE pb;
+    DWORD cb;
+} VMMDLL_YARA_MEMORY_CALLBACK_CONTEXT, *PVMMDLL_YARA_MEMORY_CALLBACK_CONTEXT;
+
+/*
+* Perform a yara search in the address space of a process.
+* NB! it may take a long time for this function to return.
+* -- hVMM
+* -- dwPID - PID of target process, (DWORD)-1 to read physical memory.
+* -- pYaraConfig
+* -- pfnScanMemoryCallback = callback function to be called for each yara match.
+* -- return
+*/
+EXPORTED_FUNCTION _Success_(return)
+BOOL VMMDLL_YaraSearch(
+    _In_ VMM_HANDLE hVMM,
+    _In_ DWORD dwPID,
+    _In_ PVMMDLL_YARA_CONFIG pYaraConfig,
     _Out_opt_ PQWORD *ppva,
     _Out_opt_ PDWORD pcva
 );
@@ -2097,8 +2242,8 @@ _Success_(return) BOOL VMMDLL_ProcessGetSectionsW(_In_ VMM_HANDLE hVMM, _In_ DWO
 * -- return = virtual address of function, zero on fail.
 */
 EXPORTED_FUNCTION
-ULONG64 VMMDLL_ProcessGetProcAddressU(_In_ VMM_HANDLE hVMM, _In_ DWORD dwPID, _In_ LPSTR  uszModuleName, _In_ LPSTR szFunctionName);
-ULONG64 VMMDLL_ProcessGetProcAddressW(_In_ VMM_HANDLE hVMM, _In_ DWORD dwPID, _In_ LPWSTR wszModuleName, _In_ LPSTR szFunctionName);
+_Success_(return != 0) ULONG64 VMMDLL_ProcessGetProcAddressU(_In_ VMM_HANDLE hVMM, _In_ DWORD dwPID, _In_ LPSTR  uszModuleName, _In_ LPSTR szFunctionName);
+_Success_(return != 0) ULONG64 VMMDLL_ProcessGetProcAddressW(_In_ VMM_HANDLE hVMM, _In_ DWORD dwPID, _In_ LPWSTR wszModuleName, _In_ LPSTR szFunctionName);
 
 /*
 * Retrieve the base address of a given module.
@@ -2108,8 +2253,8 @@ ULONG64 VMMDLL_ProcessGetProcAddressW(_In_ VMM_HANDLE hVMM, _In_ DWORD dwPID, _I
 * -- return = virtual address of module base, zero on fail.
 */
 EXPORTED_FUNCTION
-ULONG64 VMMDLL_ProcessGetModuleBaseU(_In_ VMM_HANDLE hVMM, _In_ DWORD dwPID, _In_ LPSTR  uszModuleName);
-ULONG64 VMMDLL_ProcessGetModuleBaseW(_In_ VMM_HANDLE hVMM, _In_ DWORD dwPID, _In_ LPWSTR wszModuleName);
+_Success_(return != 0) ULONG64 VMMDLL_ProcessGetModuleBaseU(_In_ VMM_HANDLE hVMM, _In_ DWORD dwPID, _In_ LPSTR  uszModuleName);
+_Success_(return != 0) ULONG64 VMMDLL_ProcessGetModuleBaseW(_In_ VMM_HANDLE hVMM, _In_ DWORD dwPID, _In_ LPWSTR wszModuleName);
 
 
 

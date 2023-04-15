@@ -164,7 +164,7 @@ BOOL _ObMemFile_Append(_In_ POB_MEMFILE pmf, _In_reads_(cbData) PBYTE pbData, _I
 }
 
 _Success_(return != 0)
-SIZE_T _ObMemFile_AppendStringEx(_In_ POB_MEMFILE pmf, _In_z_ _Printf_format_string_ LPSTR uszFormat, _In_ va_list arglist)
+SIZE_T _ObMemFile_AppendStringEx2(_In_ POB_MEMFILE pmf, _In_z_ _Printf_format_string_ LPSTR uszFormat, _In_ va_list arglist)
 {
     BOOL f = FALSE;
     int cch1, cch2;
@@ -225,13 +225,31 @@ BOOL ObMemFile_AppendString(_In_opt_ POB_MEMFILE pmf, _In_opt_z_ LPSTR sz)
 * Append a string (ansi or utf-8) to the ObMemFile.
 * -- H
 * -- uszFormat
+* -- ...
+* -- return = the number of bytes appended (excluding terminating null).
+*/
+_Success_(return != 0)
+SIZE_T ObMemFile_AppendStringEx(_In_opt_ POB_MEMFILE pmf, _In_z_ _Printf_format_string_ LPSTR uszFormat, ...)
+{
+    SIZE_T ret;
+    va_list arglist;
+    va_start(arglist, uszFormat);
+    ret = ObMemFile_AppendStringEx2(pmf, uszFormat, arglist);
+    va_end(arglist);
+    return ret;
+}
+
+/*
+* Append a string (ansi or utf-8) to the ObMemFile.
+* -- H
+* -- uszFormat
 * -- arglist
 * -- return = the number of bytes appended (excluding terminating null).
 */
 _Success_(return != 0)
-SIZE_T ObMemFile_AppendStringEx(_In_opt_ POB_MEMFILE pmf, _In_z_ _Printf_format_string_ LPSTR uszFormat, _In_ va_list arglist)
+SIZE_T ObMemFile_AppendStringEx2(_In_opt_ POB_MEMFILE pmf, _In_z_ _Printf_format_string_ LPSTR uszFormat, _In_ va_list arglist)
 {
-    OB_MEMFILE_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(pmf, SIZE_T, 0, _ObMemFile_AppendStringEx(pmf, uszFormat, arglist));
+    OB_MEMFILE_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(pmf, SIZE_T, 0, _ObMemFile_AppendStringEx2(pmf, uszFormat, arglist));
 }
 
 /*

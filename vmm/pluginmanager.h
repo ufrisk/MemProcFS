@@ -104,12 +104,14 @@ VOID PluginManager_FcIngestPhysmem(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENS
 /*
 * Ingest virtual memory into plugins with forensic mode capabilities.
 * -- H
-* -- pProcess
-* -- va
-* -- pb
-* -- cb
+* -- pIngestVirtmem
 */
-VOID PluginManager_FcIngestVirtmem(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb);
+VOID PluginManager_FcIngestVirtmem(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_INGEST_VIRTMEM pIngestVirtmem);
+
+/*
+* Checks whether there are any consumers of the IngestVirtmem functionality.
+*/
+BOOL PluginManager_FcIngestVirtmem_ExistsConsumers(_In_ VMM_HANDLE H);
 
 /*
 * All ingestion actions (physical & virtual) are completed.
@@ -154,6 +156,13 @@ DWORD PluginManager_FcLogCSV(_In_ VMM_HANDLE H, _In_ VMMDLL_CSV_HANDLE hCSV);
 * -- return = 0 (to make function compatible with LPTHREAD_START_ROUTINE).
 */
 DWORD PluginManager_FcLogJSON(_In_ VMM_HANDLE H, _In_ VOID(*pfnAddEntry)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData));
+
+/*
+* Call each plugin capable of FindEvil functionality.
+* NB! This function is meant to be called by the core forensic subsystem only.
+* -- H
+*/
+VOID PluginManager_FcFindEvil(_In_ VMM_HANDLE H);
 
 /*
 * Execute python code in the python plugin sub-system and print it's result on-screen.

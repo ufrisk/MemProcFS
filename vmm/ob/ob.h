@@ -1109,11 +1109,21 @@ BOOL ObMemFile_AppendString(_In_opt_ POB_MEMFILE pmf, _In_opt_z_ LPSTR sz);
 * Append a string (ansi or utf-8) to the ObMemFile.
 * -- H
 * -- uszFormat
+* -- ...
+* -- return = the number of bytes appended (excluding terminating null).
+*/
+_Success_(return != 0)
+SIZE_T ObMemFile_AppendStringEx(_In_opt_ POB_MEMFILE pmf, _In_z_ _Printf_format_string_ LPSTR uszFormat, ...);
+
+/*
+* Append a string (ansi or utf-8) to the ObMemFile.
+* -- H
+* -- uszFormat
 * -- arglist
 * -- return = the number of bytes appended (excluding terminating null).
 */
 _Success_(return != 0)
-SIZE_T ObMemFile_AppendStringEx(_In_opt_ POB_MEMFILE pmf, _In_z_ _Printf_format_string_ LPSTR uszFormat, _In_ va_list arglist);
+SIZE_T ObMemFile_AppendStringEx2(_In_opt_ POB_MEMFILE pmf, _In_z_ _Printf_format_string_ LPSTR uszFormat, _In_ va_list arglist);
 
 /*
 * Read data 'as file' from the ObMemFile.

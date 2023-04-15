@@ -1038,11 +1038,11 @@ impl Vmm<'_> {
         return self.impl_reg_value(path);
     }
 
-    /// Retrieve a search struct for a physical memory search.
+    /// Retrieve a search struct for physical memory.
     /// 
-    /// NB! This does not start the actual search yet. 
+    /// NB! This does not start the actual search yet.
     /// 
-    /// Check out the [`VmmRegValue`] struct for more detailed information.
+    /// Check out the [`VmmSearch`] struct for more detailed information.
     /// 
     /// 
     /// # Arguments
@@ -1055,16 +1055,49 @@ impl Vmm<'_> {
     /// # Examples
     /// ```
     /// // Retrieve a VmmSearch for the entire physical memory.
-    /// let search = vmm.search(0, 0, 0x10000, 0)?
+    /// let mut search = vmm.search(0, 0, 0x10000, 0)?
     /// ```
     /// 
     /// ```
     /// // Retrieve a VmmSearch for physical memory between 4GB and 8GB.
     /// // Also stop at first search hit.
-    /// let search = vmm.search(0x100000000, 0x200000000, 1, 0)?
+    /// let mut search = vmm.search(0x100000000, 0x200000000, 1, 0)?
     /// ```
     pub fn search(&self, addr_min : u64, addr_max : u64, num_results_max : u32, flags : u64) -> ResultEx<VmmSearch> {
         return VmmSearch::impl_new(&self, u32::MAX, addr_min, addr_max, num_results_max, flags);
+    }
+
+    /// Retrieve a yara search struct for physical memory.
+    /// 
+    /// NB! This does not start the actual search yet. 
+    /// 
+    /// Check out the [`VmmYara`] struct for more detailed information.
+    /// 
+    /// 
+    /// # Arguments
+    /// * `rules` - Yara rules to search for.
+    /// * `addr_min` - Start yara search at this physical address.
+    /// * `addr_max` - End the yara search at this physical address. 0 is interpreted as u64::MAX.
+    /// * `num_results_max` - Max number of search hits to search for. Max allowed value is 0x10000.
+    /// * `flags` - Any combination of `FLAG_*`.
+    /// 
+    /// 
+    /// # Examples
+    /// ```
+    /// // Retrieve a VmmYara for the entire physical memory.
+    /// let yara_rule = " rule mz_header { strings: $mz = \"MZ\" condition: $mz at 0 } ";
+    /// let yara_rules = vec![yara_rule];
+    /// let mut yara = vmm.search_yara(yara_rules, 0, 0, 0x10000, 0)?
+    /// ```
+    /// 
+    /// ```
+    /// // Retrieve a VmmYara for physical memory between 4GB and 8GB.
+    /// // Also stop at first yara search hit.
+    /// let yara_rules = vec!["/tmp/my_yara_rule.yar", "/tmp/my_yara_rule2.yar"];
+    /// let mut yara = vmm.search_yara(yara_rules, 0x100000000, 0x200000000, 1, 0)?
+    /// ```
+    pub fn search_yara(&self, rules : Vec<&str>, addr_min : u64, addr_max : u64, num_results_max : u32, flags : u64) -> ResultEx<VmmYara> {
+        return VmmYara::impl_new(&self, rules, u32::MAX, addr_min, addr_max, num_results_max, flags);
     }
 }
 
@@ -1488,16 +1521,25 @@ impl VmmScatterMemory<'_> {
 /// ```
 /// // Retrieve a process by its name. If more than one process share the
 /// // same name the first found will be returned.
-/// if let Ok(systemprocess) = vmm.process_from_name("System") {
-///     print!("{process} ");
-/// };
+/// let systemprocess = vmm.process_from_name("System")?;
+/// println!("{systemprocess}");
 /// ```
 /// 
 /// ```
 /// // Retrieve a process by its PID.
-/// if let Ok(systemprocess) = vmm.process_from_pid(4) {
-///     print!("{process} ");
-/// };
+/// let systemprocess = vmm.process_from_pid(4)?;
+/// println!("{systemprocess}");
+/// ```
+/// 
+/// ```
+/// // Process kernel memory and session space:
+/// // Mask the process PID with 0x80000000 to retrieve kernel memory.
+/// // This may be useful for retrieving kernel session data related to win32k.
+/// let mut winlogon = vmm.process_from_name("winlogon.exe")?;
+/// winlogon.pid = winlogon.pid | 0x80000000;
+/// let va = winlogon.get_proc_address("win32kbase.sys", "gSessionId")?;
+/// let sessionid : u32 = winlogon.mem_read_as(va, 0)?;
+/// println!("win32kbase.sys!gSessionId -> {:x} : {}", va, sessionid);
 /// ```
 #[derive(Debug)]
 pub struct VmmProcess<'a> {
@@ -1910,6 +1952,7 @@ pub struct VmmProcessMapThreadEntry {
     pub va_stack_kernel_base : u64,
     pub va_stack_kernel_limit : u64,
     pub va_trap_frame : u64,
+    pub va_impersonation_token : u64,
     pub va_rip : u64,
     pub va_rsp : u64,
     pub affinity : u64,
@@ -2519,9 +2562,9 @@ impl VmmProcess<'_> {
 
     /// Retrieve a search struct for process virtual memory.
     /// 
-    /// NB! This does not start the actual search yet. 
+    /// NB! This does not start the actual search yet.
     /// 
-    /// Check out the [`VmmRegValue`] struct for more detailed information.
+    /// Check out the [`VmmSearch`] struct for more detailed information.
     /// 
     /// 
     /// # Arguments
@@ -2534,16 +2577,50 @@ impl VmmProcess<'_> {
     /// # Examples
     /// ```
     /// // Retrieve a VmmSearch for the entire virtual memory.
-    /// let search = vmm.search(0, 0, 0x10000, 0)?
+    /// let mut search = vmmprocess.search(0, 0, 0x10000, 0)?
     /// ```
     /// 
     /// ```
     /// // Retrieve a VmmSearch for virtual memory. Stop at first hit.
     /// // Also avoid using cached and paged out memory.
-    /// let search = vmm.search(0, 0, 1, FLAG_NOCACHE | FLAG_NOPAGING)?
+    /// let mut search = vmmprocess.search(0, 0, 1, FLAG_NOCACHE | FLAG_NOPAGING)?
     /// ```
     pub fn search(&self, addr_min : u64, addr_max : u64, num_results_max : u32, flags : u64) -> ResultEx<VmmSearch> {
         return VmmSearch::impl_new(self.vmm, self.pid, addr_min, addr_max, num_results_max, flags);
+    }
+
+    /// Retrieve a yara search struct for process virtual memory.
+    /// 
+    /// NB! This does not start the actual search yet.
+    /// 
+    /// Check out the [`VmmYara`] struct for more detailed information.
+    /// 
+    /// 
+    /// # Arguments
+    /// * `rules` - Yara rules to search for.
+    /// * `addr_min` - Start yara search at this virtual address.
+    /// * `addr_max` - End the yara search at this virtual address. 0 is interpreted as u64::MAX.
+    /// * `num_results_max` - Max number of yara search hits to search for. Max allowed value is 0x10000.
+    /// * `flags` - Any combination of `FLAG_*`.
+    /// 
+    /// 
+    /// # Examples
+    /// # Examples
+    /// ```
+    /// // Retrieve a VmmYara for the entire physical memory.
+    /// let yara_rule = " rule mz_header { strings: $mz = \"MZ\" condition: $mz at 0 } ";
+    /// let yara_rules = vec![yara_rule];
+    /// let mut yara = vmmprocess.search_yara(yara_rules, 0, 0, 0x10000, 0)?
+    /// ```
+    /// 
+    /// ```
+    /// // Retrieve a VmmYara for physical memory between 4GB and 8GB.
+    /// // Also stop at first yara search hit.
+    /// let yara_rules = vec!["/tmp/my_yara_rule.yar", "/tmp/my_yara_rule2.yar"];
+    /// let mut yara = vmmprocess.search_yara(yara_rules, 0x100000000, 0x200000000, 1, 0)?
+    /// ```
+    pub fn search_yara(&self, rules : Vec<&str>, addr_min : u64, addr_max : u64, num_results_max : u32, flags : u64) -> ResultEx<VmmYara> {
+        return VmmYara::impl_new(self.vmm, rules, self.pid, addr_min, addr_max, num_results_max, flags);
     }
 }
 
@@ -2931,28 +3008,27 @@ pub struct VmmSearch<'a> {
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VmmSearchResult {
-    // Indicates that the search has been started. i.e. start() or result() have been called.
+    /// Indicates that the search has been started. i.e. start() or result() have been called.
     pub is_started : bool,
-    // Indicates that the search has been completed.
+    /// Indicates that the search has been completed.
     pub is_completed : bool,
-    // If is_completed is true this indicates if the search was completed successfully.
+    /// If is_completed is true this indicates if the search was completed successfully.
     pub is_completed_success : bool,
-    // Address to start searching from - default 0.
+    /// Address to start searching from - default 0.
     pub addr_min : u64,
-    // Address to stop searching at - default u64::MAX.
+    /// Address to stop searching at - default u64::MAX.
     pub addr_max : u64,
-    // Current address being searched in search thread.
+    /// Current address being searched in search thread.
     pub addr_current : u64,
-    // Number of bytes that have been procssed in search.
+    /// Number of bytes that have been procssed in search.
     pub total_read_bytes : u64,
-    // Number of search results.
+    /// Number of search results.
     pub total_results : u32,
-    // The actual result. result.0 = address, result.1 = search_term_id.
+    /// The actual result. result.0 = address, result.1 = search_term_id.
     pub result : Vec<(u64, u32)>,
 }
 
 impl VmmSearch<'_> {
-
     /// Add a search term.
     /// 
     /// The search will later be performed using the whole search term and
@@ -3037,7 +3113,7 @@ impl VmmSearch<'_> {
     /// 
     /// # Examples
     /// ```
-    /// search_status_and_result = vmmsearch.poll();
+    /// let search_status_and_result = vmmsearch.poll();
     /// ```
     pub fn poll(&mut self) -> VmmSearchResult {
         return self.impl_poll();
@@ -3053,9 +3129,198 @@ impl VmmSearch<'_> {
     /// 
     /// # Examples
     /// ```
-    /// search_status_and_result = vmmsearch.poll();
+    /// let search_status_and_result = vmmsearch.result();
     /// ```
     pub fn result(&mut self) -> VmmSearchResult {
+        return self.impl_result();
+    }
+}
+
+
+
+
+
+
+/// Yara Search API.
+/// 
+/// Search for yara signatures in physical or virtual memory.
+/// 
+/// Yara rules may be in either the form of:
+/// - one (1) compiled yara rules file.
+/// - multiple yara source rules files.
+/// - multiple yara source rules strings.
+/// 
+/// The [`VmmYara`] must be used as mut. Also see [`VmmYaraResult`].
+/// 
+/// The synchronous search workflow:
+/// 1) Acquire search object from `vmm.search_yara()` or `vmmprocess.search_yara()`.
+/// 2) Start the search and retrieve result (blocking) by calling `vmmyara.result()`.
+/// 
+/// The asynchronous search workflow:
+/// 1) Acquire search object from `vmm.search_yara()` or `vmmprocess.search_yara()`.
+/// 2) Start the search in the background using `vmmyara.start()`.
+/// 3) Optionally abort the search with `vmmyara.abort()`.
+/// 4) Optionally poll status or result (if completed) using `vmmyara.poll()`.
+/// 5) Optionally retrieve result (blocking) by calling `vmmyara.result()`.
+/// 6) Yara Search goes out of scope and is cleaned up. Any on-going searches
+///    may take a short while to terminate gracefully.
+/// 
+/// 
+/// # Created By
+/// - `vmm.yara_search()`
+/// - `vmmprocess.yara_search()`
+/// 
+/// # Examples
+/// ```
+/// // Fetch yara search struct for entire process virtual address space.
+/// // Max 256 search hits and avoid using the cache in this example.
+/// let yara_rule = " rule mz_header { strings: $mz = \"MZ\" condition: $mz at 0 } ";
+/// let yara_rules = vec![yara_rule];
+/// let mut vmmyara = vmmprocess.search_yara(yara_rules, 0, 0, 256, FLAG_NOCACHE);
+/// // Start search in async mode.
+/// vmmyara.start();
+/// // Search is now running - it's possible to do other actions here.
+/// // It's possible to poll() to see current progress (or if finished).
+/// // It's possible to abort() to stop search.
+/// // It's possible to fetch result() which will block until search is finished.
+/// let yara_result = vmmyara.result();
+/// ```
+#[derive(Debug)]
+pub struct VmmYara<'a> {
+    vmm : &'a Vmm<'a>,
+    pid : u32,
+    is_started : bool,
+    is_completed : bool,
+    is_completed_success : bool,
+    native : CVMMDLL_YARA_CONFIG,
+    _native_args_rules : Vec<CString>,
+    _native_argv_rules : Vec<*const c_char>,
+    thread : Option<std::thread::JoinHandle<bool>>,
+    result : Vec<VmmYaraMatch>,
+}
+
+/// Info: Yara search Progress/Result.
+/// 
+/// Also see [`VmmYara`].
+/// 
+/// 
+/// # Created By
+/// - `vmmyara.poll()`
+/// - `vmmyara.result()`
+/// 
+/// # Examples
+/// ```
+/// // Retrieve a search progress/result in a non-blocking call.
+/// let yararesult = vmmyara.poll();
+/// ```
+/// 
+/// ```
+/// // Retrieve a search result in a blocking call (until completed search).
+/// let yararesult = vmmyara.result();
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VmmYaraResult {
+    /// Indicates that the yara search has been completed.
+    pub is_completed : bool,
+    /// If is_completed is true this indicates if the search was completed successfully.
+    pub is_completed_success : bool,
+    /// Address to start searching from - default 0.
+    pub addr_min : u64,
+    /// Address to stop searching at - default u64::MAX.
+    pub addr_max : u64,
+    /// Current address being searched in search thread.
+    pub addr_current : u64,
+    /// Number of bytes that have been procssed in search.
+    pub total_read_bytes : u64,
+    /// Number of search results.
+    pub total_results : u32,
+    /// The actual result containing the yara matches.
+    pub result : Vec<VmmYaraMatch>,
+}
+
+/// Info: Yara search match string.
+/// 
+/// Also see [`VmmYara`] and [`VmmYaraResult`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VmmYaraMatchString {
+    /// yara match string identifier.
+    pub match_string : String,
+    /// yara match addresses.
+    pub addresses : Vec<u64>,
+}
+
+/// Info: Yara search match.
+/// 
+/// Also see [`VmmYara`] and [`VmmYaraResult`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VmmYaraMatch {
+    /// yara match memory region base address.
+    pub addr : u64,
+    /// yara rule identifier.
+    pub rule : String,
+    /// yara rule tags.
+    pub tags : Vec<String>,
+    /// yara rule meta data - key/value pairs.
+    pub meta : Vec<(String, String)>,
+    /// yara match strings.
+    pub match_strings : Vec<VmmYaraMatchString>,
+}
+
+impl VmmYara<'_> {
+    /// Start a yara search in asynchronous background thread.
+    /// 
+    /// This is useful since the yara search may take some time and other work
+    /// may be done while waiting for the result.
+    /// 
+    /// The search will start immediately and the progress (and result, if
+    /// finished) may be polled by calling [`poll()`](VmmYara::poll()).
+    /// 
+    /// The result may be retrieved by a call to `poll()` or by a blocking
+    /// call to [`result()`](VmmSearch::result()) which will return when the
+    /// search is completed.
+    /// 
+    /// # Examples
+    /// ```
+    /// vmmyara.start();
+    /// ```
+    pub fn start(&mut self) {
+        self.impl_start();
+    }
+
+    /// Abort an on-going yara search.
+    /// 
+    /// # Examples
+    /// ```
+    /// vmmyara.abort();
+    /// ```
+    pub fn abort(&mut self) {
+        self.impl_abort();
+    }
+
+    /// Poll an on-going yara search for the status/result.
+    /// 
+    /// Also see [`VmmYara`] and [`VmmYaraResult`].
+    /// 
+    /// # Examples
+    /// ```
+    /// let yara_status_and_result = vmmyara.poll();
+    /// ```
+    pub fn poll(&mut self) -> VmmYaraResult {
+        return self.impl_poll();
+    }
+
+    /// Retrieve the yara search result.
+    /// 
+    /// The function is blocking and will wait for the search to complete
+    /// before the results are returned.
+    /// 
+    /// Also see [`VmmYara`] and [`VmmYaraResult`].
+    /// 
+    /// # Examples
+    /// ```
+    /// let yara_status_and_result = vmmyara.result();
+    /// ```
+    pub fn result(&mut self) -> VmmYaraResult {
         return self.impl_result();
     }
 }
@@ -3379,6 +3644,7 @@ struct VmmNative {
     
     VMMDLL_Log :                    extern "C" fn(hVMM : usize, MID : u32, dwLogLevel : u32, uszFormat : *const c_char, uszParam : *const c_char),
     VMMDLL_MemSearch :              extern "C" fn(hVMM : usize, pid : u32, ctx : *mut CVMMDLL_MEM_SEARCH_CONTEXT, ppva : *mut u64, pcva : *mut u32) -> bool,
+    VMMDLL_YaraSearch :             extern "C" fn(hVMM : usize, pid : u32, ctx : *mut CVMMDLL_YARA_CONFIG, ppva : *mut u64, pcva : *mut u32) -> bool,
 
     VMMDLL_MemReadEx :              extern "C" fn(hVMM : usize, pid : u32, qwA : u64, pb : *mut u8, cb : u32, pcbReadOpt : *mut u32, flags : u64) -> bool,
     VMMDLL_MemWrite :               extern "C" fn(hVMM : usize, pid : u32, qwA : u64, pb : *const u8, cb : u32) -> bool,
@@ -3471,6 +3737,7 @@ fn impl_new<'a>(vmm_lib_path : &str, h_vmm_existing_opt : usize, args: &Vec<&str
         let VMMDLL_MemFree = *lib.get(b"VMMDLL_MemFree")?;
         let VMMDLL_Log = *lib.get(b"VMMDLL_Log")?;
         let VMMDLL_MemSearch = *lib.get(b"VMMDLL_MemSearch")?;
+        let VMMDLL_YaraSearch = *lib.get(b"VMMDLL_YaraSearch")?;
         let VMMDLL_MemReadEx = *lib.get(b"VMMDLL_MemReadEx")?;
         let VMMDLL_MemWrite = *lib.get(b"VMMDLL_MemWrite")?;
         let VMMDLL_MemVirt2Phys = *lib.get(b"VMMDLL_MemVirt2Phys")?;
@@ -3556,6 +3823,7 @@ fn impl_new<'a>(vmm_lib_path : &str, h_vmm_existing_opt : usize, args: &Vec<&str
             VMMDLL_MemFree,
             VMMDLL_Log,
             VMMDLL_MemSearch,
+            VMMDLL_YaraSearch,
             VMMDLL_MemReadEx,
             VMMDLL_MemWrite,
             VMMDLL_MemVirt2Phys,
@@ -3652,7 +3920,9 @@ fn impl_new_from_virtual_machine<'a>(vmm_parent : &'a Vmm, vm_entry : &VmmMapVir
 
 const MAX_PATH                          : usize = 260;
 const VMMDLL_MEM_SEARCH_VERSION         : u32 = 0xfe3e0002;
+const VMMDLL_YARA_CONFIG_VERSION        : u32 = 0xdec30001;
 const VMMDLL_VFS_FILELIST_VERSION       : u32 = 2;
+
 const VMMDLL_MAP_EAT_VERSION            : u32 = 3;
 const VMMDLL_MAP_HANDLE_VERSION         : u32 = 3;
 const VMMDLL_MAP_HEAP_VERSION           : u32 = 4;
@@ -3677,7 +3947,7 @@ const VMMDLL_MID_RUST                   : u32 = 0x80000004;
 const VMMDLL_PLUGIN_CONTEXT_MAGIC       : u64 = 0xc0ffee663df9301c;
 const VMMDLL_PLUGIN_CONTEXT_VERSION     : u16 = 5;
 const VMMDLL_PLUGIN_REGINFO_MAGIC       : u64 = 0xc0ffee663df9301d;
-const VMMDLL_PLUGIN_REGINFO_VERSION     : u16 = 16;
+const VMMDLL_PLUGIN_REGINFO_VERSION     : u16 = 17;
 const VMMDLL_STATUS_SUCCESS             : u32 = 0x00000000;
 const VMMDLL_STATUS_END_OF_FILE         : u32 = 0xC0000011;
 const VMMDLL_STATUS_FILE_INVALID        : u32 = 0xC0000098;
@@ -5034,7 +5304,7 @@ impl VmmRegValue<'_> {
 
 impl fmt::Display for VmmProcess<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "VmmProcess:{}", self.pid)
+        write!(f, "VmmProcess:{}", self.pid & 0x7fffffff)
     }
 }
 
@@ -5046,7 +5316,7 @@ impl PartialEq for VmmProcess<'_> {
 
 impl fmt::Display for VmmProcessInfo {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "VmmProcessInfo:{}:{}", self.pid, self.name)
+        write!(f, "VmmProcessInfo:{}:{}", self.pid & 0x7fffffff, self.name)
     }
 }
 
@@ -5058,7 +5328,7 @@ impl fmt::Display for VmmProcessMapEatEntry {
 
 impl fmt::Display for VmmProcessMapHandleEntry {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "VmmProcessMapHandleEntry:{}:{:x}:{}:[{}]", self.pid, self.handle_id, self.tp, self.info)
+        write!(f, "VmmProcessMapHandleEntry:{}:{:x}:{}:[{}]", self.pid & 0x7fffffff, self.handle_id, self.tp, self.info)
     }
 }
 
@@ -5085,7 +5355,7 @@ impl fmt::Display for VmmProcessMapHeapType {
 
 impl fmt::Display for VmmProcessMapHeapEntry {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "VmmProcessMapHeapAllocEntry:{}:{}:{}", self.pid, self.number, self.tp)
+        write!(f, "VmmProcessMapHeapAllocEntry:{}:{}:{}", self.pid & 0x7fffffff, self.number, self.tp)
     }
 }
 
@@ -5124,7 +5394,7 @@ impl fmt::Display for VmmProcessMapHeapAllocType {
 
 impl fmt::Display for VmmProcessMapHeapAllocEntry {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "VmmProcessMapHeapAllocEntry:{}:{}:{:x}", self.pid, self.tp, self.va)
+        write!(f, "VmmProcessMapHeapAllocEntry:{}:{}:{:x}", self.pid & 0x7fffffff, self.tp, self.va)
     }
 }
 
@@ -5136,13 +5406,13 @@ impl fmt::Display for VmmProcessMapIatEntry {
 
 impl fmt::Display for VmmProcessMapPteEntry {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "VmmProcessMapPteEntry:{}:{:x}->{:x}", self.pid, self.va_base, self.va_base + self.page_count * 0x1000 - 1)
+        write!(f, "VmmProcessMapPteEntry:{}:{:x}->{:x}", self.pid & 0x7fffffff, self.va_base, self.va_base + self.page_count * 0x1000 - 1)
     }
 }
 
 impl fmt::Display for VmmProcessMapModuleEntry {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "VmmProcessMapModuleEntry:{}:{:x}:[{}]", self.pid, self.va_base, self.name)
+        write!(f, "VmmProcessMapModuleEntry:{}:{:x}:[{}]", self.pid & 0x7fffffff, self.va_base, self.name)
     }
 }
 
@@ -5160,19 +5430,19 @@ impl fmt::Display for VmmProcessMapModuleVersionEntry {
 
 impl fmt::Display for VmmProcessMapThreadEntry {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "VmmProcessMapThreadEntry:{}:{:x}", self.pid, self.thread_id)
+        write!(f, "VmmProcessMapThreadEntry:{}:{:x}", self.pid & 0x7fffffff, self.thread_id)
     }
 }
 
 impl fmt::Display for VmmProcessMapUnloadedModuleEntry {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "VmmProcessMapUnloadedModuleEntry:{}:{:x}:[{}]", self.pid, self.va_base, self.name)
+        write!(f, "VmmProcessMapUnloadedModuleEntry:{}:{:x}:[{}]", self.pid & 0x7fffffff, self.va_base, self.name)
     }
 }
 
 impl fmt::Display for VmmProcessMapVadEntry {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "VmmProcessMapVadEntry:{}:{:x}->{}", self.pid, self.va_start, self.va_end)
+        write!(f, "VmmProcessMapVadEntry:{}:{:x}->{}", self.pid & 0x7fffffff, self.va_start, self.va_end)
     }
 }
 
@@ -5209,19 +5479,19 @@ impl fmt::Display for VmmProcessMapVadExType {
 
 impl fmt::Display for VmmProcessMapVadExEntry {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "VmmProcessMapVadExEntry:{}:{:x}:{}", self.pid, self.va, self.tp)
+        write!(f, "VmmProcessMapVadExEntry:{}:{:x}:{}", self.pid & 0x7fffffff, self.va, self.tp)
     }
 }
 
 impl fmt::Display for VmmProcessMapDirectoryEntry {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "VmmProcessMapDirectoryEntry:{}:{}:{:x}:{:x}", self.pid, self.name, self.virtual_address, self.size)
+        write!(f, "VmmProcessMapDirectoryEntry:{}:{}:{:x}:{:x}", self.pid & 0x7fffffff, self.name, self.virtual_address, self.size)
     }
 }
 
 impl fmt::Display for VmmProcessSectionEntry {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "VmmProcessSectionEntry:{}:[{}]:{:x}:{:x}", self.pid, self.name, self.virtual_address, self.misc_virtual_size)
+        write!(f, "VmmProcessSectionEntry:{}:[{}]:{:x}:{:x}", self.pid & 0x7fffffff, self.name, self.virtual_address, self.misc_virtual_size)
     }
 }
 
@@ -5534,7 +5804,8 @@ struct CThreadEntry {
     bSuspendCount : u8,
     bWaitReason : u8,
     _FutureUse1 : [u8; 2],
-    _FutureUse2 : [u32; 13],
+    _FutureUse2 : [u32; 11],
+    vaImpersonationToken : u64,
     vaWin32StartAddress : u64,
 }
 
@@ -6057,6 +6328,7 @@ impl VmmProcess<'_> {
                     va_stack_kernel_base : ne.vaStackBaseKernel,
                     va_stack_kernel_limit : ne.vaStackLimitKernel,
                     va_trap_frame : ne.vaTrapFrame,
+                    va_impersonation_token : ne.vaImpersonationToken,
                     va_rip : ne.vaRIP,
                     va_rsp : ne.vaRSP,
                     affinity : ne.qwAffinity,
@@ -6265,7 +6537,7 @@ impl VmmProcess<'_> {
 
 impl fmt::Display for VmmScatterMemory<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if self.pid == u32::MAX { write!(f, "VmmScatterMemory:physical") } else { write!(f, "VmmScatterMemory:virtual:{}", self.pid) }
+        if self.pid == u32::MAX { write!(f, "VmmScatterMemory:physical") } else { write!(f, "VmmScatterMemory:virtual:{}", self.pid & 0x7fffffff) }
     }
 }
 
@@ -6575,6 +6847,281 @@ impl VmmSearch<'_> {
 
 
 //=============================================================================
+// INTERNAL: VMM.YARA:
+//=============================================================================
+
+impl fmt::Display for VmmYara<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "VmmYara")
+    }
+}
+
+impl fmt::Display for VmmYaraResult {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "VmmYaraResult")
+    }
+}
+
+impl fmt::Display for VmmYaraMatch {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "VmmYaraMatch:[{}]:{}", self.rule, self.match_strings.len())
+    }
+}
+
+impl fmt::Display for VmmYaraMatchString {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "VmmYaraMatchString:[{}]:{}", self.match_string, self.addresses.len())
+    }
+}
+
+#[repr(C)]
+#[allow(non_snake_case)]
+#[derive(Debug)]
+struct CVMMDLL_VMMYARA_RULE_MATCH_META {
+    szIdentifier : *const c_char,
+    szString : *const c_char,
+}
+
+#[repr(C)]
+#[allow(non_snake_case)]
+#[derive(Debug)]
+struct CVMMDLL_VMMYARA_RULE_MATCH_STRINGS {
+    szString : *const c_char,
+    cMatch : u32,
+    cbMatchOffset : [usize; 16],
+}
+
+#[repr(C)]
+#[allow(non_snake_case)]
+#[derive(Debug)]
+struct CVMMDLL_VMMYARA_RULE_MATCH {
+    szRuleIdentifier : *const c_char,
+    cTags : u32,
+    szTags : [*const c_char; 8],
+    cMeta : u32,
+    meta : [CVMMDLL_VMMYARA_RULE_MATCH_META; 8],
+    cStrings : u32,
+    strings : [CVMMDLL_VMMYARA_RULE_MATCH_STRINGS; 8],
+}
+
+#[repr(C)]
+#[allow(non_snake_case)]
+#[derive(Debug)]
+pub(crate) struct CVMMDLL_YARA_CONFIG {
+    dwVersion : u32,
+    _Filler : [u32; 2],
+    fAbortRequested : u32,
+    cMaxResult : u32,
+    cRules : u32,
+    pszRules : *const *const c_char,
+    vaMin : u64,
+    vaMax : u64,
+    vaCurrent : u64,
+    _Filler2 : u32,
+    cResult : u32,
+    cbReadTotal : u64,
+    pvUserPtrOpt : usize,
+    pfnScanMemoryCB : usize,
+    ReadFlags : u64,
+    fForcePTE : u32,
+    fForceVAD : u32,
+    pfnFilterOptCB : usize,
+    pvUserPtrOpt2 : usize,
+    _Reserved : u64,
+}
+
+#[repr(C)]
+#[allow(non_snake_case)]
+#[derive(Debug)]
+pub(crate) struct CVMMDLL_YARA_MEMORY_CALLBACK_CONTEXT {
+    dwVersion : u32,
+    dwPID : u32,
+    pUserContext : usize,
+    qwA : u64,
+    pb : *const u8,
+    cb : u32,
+}
+
+impl Drop for VmmYara<'_> {
+    fn drop(&mut self) {
+        if self.is_started && !self.is_completed {
+            self.impl_abort();
+            let _r = self.impl_result();
+        }
+    }
+}
+
+// The below implementation is quite ugly, but it works since all methods are
+// serialized since they all require &mut self. Under no conditions should the
+// VmmYara struct be accessed directly or non-mutable.
+impl VmmYara<'_> {
+    fn impl_result(&mut self) -> VmmYaraResult {
+        if self.is_started == false {
+            self.impl_start();
+        }
+        if self.is_completed == false {
+            self.is_completed = true;
+            if let Some(thread) = self.thread.take() {
+                if let Ok(thread_result) = thread.join() {
+                    self.is_completed_success = thread_result;
+                }
+            }
+        }
+        return self.impl_poll();
+    }
+
+    fn impl_abort(&mut self) {
+        if self.is_started && !self.is_completed {
+            self.native.fAbortRequested = 1;
+        }
+    }
+
+    fn impl_start(&mut self) {
+        if self.is_started == false {
+            self.is_started = true;
+            // ugly code below - but it works ...
+            self.native.pvUserPtrOpt2 = std::ptr::addr_of!(self.result) as usize;
+            self.native.pvUserPtrOpt = std::ptr::addr_of!(self.native) as usize;
+            let pid = self.pid;
+            let native_h = self.vmm.native.h;
+            let pfn = self.vmm.native.VMMDLL_YaraSearch;
+            let ptr = &mut self.native as *mut CVMMDLL_YARA_CONFIG;
+            let ptr_wrap = ptr as usize;
+            let thread_handle = std::thread::spawn(move || {
+                let ptr = ptr_wrap as *mut CVMMDLL_YARA_CONFIG;
+                (pfn)(native_h, pid, ptr, std::ptr::null_mut(), std::ptr::null_mut())
+            });
+            self.thread = Some(thread_handle);
+        }
+    }
+
+    fn impl_poll(&mut self) -> VmmYaraResult {
+        if self.is_started && !self.is_completed && self.thread.as_ref().unwrap().is_finished() {
+            return self.impl_result();
+        }
+        let result_vec = if self.is_completed_success { self.result.clone() } else { Vec::new() };
+        return VmmYaraResult {
+            is_completed : self.is_completed,
+            is_completed_success : self.is_completed_success,
+            addr_min : self.native.vaMin,
+            addr_max : self.native.vaMax,
+            addr_current : self.native.vaCurrent,
+            total_read_bytes : self.native.cbReadTotal,
+            total_results : self.native.cResult,
+            result : result_vec,
+        }
+    }
+
+    fn impl_new<'a>(vmm : &'a Vmm<'a>, rules : Vec<&str>, pid : u32, addr_min : u64, addr_max : u64, num_results_max : u32, flags : u64) -> ResultEx<VmmYara<'a>> {
+        // 1: verify address validity:
+        let num_results_max = std::cmp::min(0x10000, num_results_max);
+        let addr_min = addr_min & 0xfffffffffffff000;
+        let addr_max = addr_max & 0xfffffffffffff000;
+        if addr_max != 0 && addr_max <= addr_min {
+            return Err("search max address must be larger than min address".into());
+        }
+        // 2: create native object:
+        let native_args_rules = rules.iter().map(|arg| CString::new(*arg).unwrap()).collect::<Vec<CString>>();
+        let native_argv_rules: Vec<*const c_char> = native_args_rules.iter().map(|s| s.as_ptr()).collect();
+        let native = CVMMDLL_YARA_CONFIG {
+            dwVersion : VMMDLL_YARA_CONFIG_VERSION,
+            _Filler : [0; 2],
+            fAbortRequested : 0,
+            cMaxResult : num_results_max,
+            cRules : native_args_rules.len() as u32,
+            pszRules : native_argv_rules.as_ptr(),
+            vaMin : addr_min,
+            vaMax : addr_max,
+            vaCurrent : 0,
+            _Filler2 : 0,
+            cResult : 0,
+            cbReadTotal : 0,
+            pvUserPtrOpt : 0,
+            pfnScanMemoryCB : VmmYara::impl_yara_cb as usize,
+            ReadFlags : flags,
+            fForcePTE : 0,
+            fForceVAD : 0,
+            pfnFilterOptCB : 0,
+            pvUserPtrOpt2 : 0,
+            _Reserved : 0,
+        };
+        // 3: create object and return:
+        let yara = VmmYara {
+            vmm,
+            pid,
+            is_started : false,
+            is_completed : false,
+            is_completed_success : false,
+            native,
+            _native_args_rules : native_args_rules,
+            _native_argv_rules : native_argv_rules,
+            thread : None,
+            result : Vec::new(),
+        };
+        return Ok(yara);
+    }
+
+    extern "C" fn impl_yara_cb(ctx : *const CVMMDLL_YARA_CONFIG, yrm : *const CVMMDLL_VMMYARA_RULE_MATCH, _pb_buffer : *const u8, _cb_buffer : usize) -> bool {
+        unsafe {
+            if (*ctx).dwVersion != VMMDLL_YARA_CONFIG_VERSION {
+                return false;
+            }
+            let addr = (*ctx).vaCurrent;
+            // rule:
+            let rule = String::from(CStr::from_ptr((*yrm).szRuleIdentifier).to_str().unwrap_or(""));
+            // tags:
+            let mut tags = Vec::new();
+            let ctags = std::cmp::min((*yrm).cTags as usize, 8);
+            for i in 0..ctags {
+                let tag = String::from(CStr::from_ptr((*yrm).szTags[i]).to_str().unwrap_or(""));
+                tags.push(tag);
+            }
+            // meta:
+            let mut meta = Vec::new();
+            let cmeta = std::cmp::min((*yrm).cMeta as usize, 8);
+            for i in 0..cmeta {
+                let key = String::from(CStr::from_ptr((*yrm).meta[i].szIdentifier).to_str().unwrap_or(""));
+                let value = String::from(CStr::from_ptr((*yrm).meta[i].szString).to_str().unwrap_or(""));
+                meta.push((key, value));
+            }
+            // match_strings:
+            let mut match_strings = Vec::new();
+            let cmatch_strings = std::cmp::min((*yrm).cStrings as usize, 8);
+            for i in 0..cmatch_strings {
+                let match_string = String::from(CStr::from_ptr((*yrm).strings[i].szString).to_str().unwrap_or(""));
+                let cmatch = std::cmp::min((*yrm).strings[i].cMatch as usize, 16);
+                let mut addresses = Vec::new();
+                for j in 0..cmatch {
+                    let offset = (*yrm).strings[i].cbMatchOffset[j] as u64;
+                    addresses.push(addr + offset);
+                }
+                let match_string = VmmYaraMatchString {
+                    match_string,
+                    addresses,
+                };
+                match_strings.push(match_string);
+            }
+            // create result:
+            let yara_match = VmmYaraMatch {
+                addr,
+                rule,
+                tags,
+                meta,
+                match_strings,
+            };
+            let ptr_result_vec = (*ctx).pvUserPtrOpt2 as *mut Vec<VmmYaraMatch>;
+            (*ptr_result_vec).push(yara_match);
+            return true;    
+        }
+    }
+}
+
+
+
+
+
+
+//=============================================================================
 // INTERNAL: VMM.PLUGINS:
 //=============================================================================
 
@@ -6659,7 +7206,8 @@ struct CVMMDLL_PLUGIN_REGINFO<T> {
     reg_fnfc_pfnIngestPhysmem : usize,
     reg_fnfc_pfnIngestVirtmem : usize,
     reg_fnfc_pfnIngestFinalize : usize,
-    reg_fnfc_pvReserved : [usize; 8],
+    reg_fnfc_pfnFindEvil : usize,
+    reg_fnfc_pvReserved : [usize; 7],
     reg_fnfc_pfnLogCSV : usize,
     reg_fnfc_pfnLogJSON : usize,
     // sysinfo:

@@ -64,8 +64,9 @@ typedef struct tdPLUGIN_ENTRY {
             _In_ VOID(*pfnEntryAddBySql)(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPSTR *pszEntrySql));
         VOID(*pfnLogCSV)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, VMMDLL_CSV_HANDLE hCSV);
         VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData));
+        VOID(*pfnFindEvil)(_In_ VMM_HANDLE H, _In_ VMMDLL_MODULE_ID MID, _In_opt_ PVOID ctxfc);
         VOID(*pfnIngestPhysmem)(_In_ VMM_HANDLE H, _In_opt_ PVOID ctxfc, _In_ PVMMDLL_PLUGIN_FORENSIC_INGEST_PHYSMEM pIngestPhysmem);
-        VOID(*pfnIngestVirtmem)(_In_ VMM_HANDLE H, _In_opt_ PVOID ctxfc, _In_ DWORD dwPID, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb);
+        VOID(*pfnIngestVirtmem)(_In_ VMM_HANDLE H, _In_opt_ PVOID ctxfc, _In_ PVMMDLL_PLUGIN_FORENSIC_INGEST_VIRTMEM pIngestVirtmem);
         VOID(*pfnIngestFinalize)(_In_ VMM_HANDLE H, _In_opt_ PVOID ctxfc);
         struct {
             PVMMDLL_PLUGIN_FORENSIC_INGEST_PHYSMEM p;
@@ -379,62 +380,35 @@ VOID PluginManager_FcIngestPhysmem(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENS
     Statistics_CallEnd(H, STATISTICS_ID_PluginManager_FcIngestPhysmem, tmStart);
 }
 
-typedef struct tVMMPLUGIN_INGEST_VIRTMEM {
-    VOID(*pfnIngestVirtmem)(_In_ VMM_HANDLE H, _In_opt_ PVOID ctxfc, _In_ DWORD dwPID, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb);
-    PVOID ctxfc;
-    PVMM_PROCESS pProcess;
-    QWORD va;
-    DWORD cb;
-    PBYTE pb;
-} VMMPLUGIN_INGEST_VIRTMEM, *PVMMPLUGIN_INGEST_VIRTMEM;
-
-/*
-* Worker thread entry point:
-* Ingest virtual memory into plugins with forensic mode capabilities.
-* -- H
-* -- ctx
-*/
-VOID PluginManager_FcIngestVirtmem_ThreadProc(_In_ VMM_HANDLE H, _In_ PVOID ctx)
-{
-    PVMMPLUGIN_INGEST_VIRTMEM ctxVM = ctx;
-    if(H->fAbort) { return; }
-    ctxVM->pfnIngestVirtmem(H, ctxVM->ctxfc, ctxVM->pProcess->dwPID, ctxVM->va, ctxVM->pb, ctxVM->cb);
-}
-
 /*
 * Ingest virtual memory into plugins with forensic mode capabilities.
 * -- H
-* -- pProcess
-* -- va
-* -- pb
-* -- cb
+* -- pIngestVirtmem
 */
-VOID PluginManager_FcIngestVirtmem(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb)
+VOID PluginManager_FcIngestVirtmem(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_INGEST_VIRTMEM pIngestVirtmem)
 {
-    DWORD cWork = 0;
-    PVMM_WORK_START_ROUTINE_PVOID_PFN pfns[MAXIMUM_WAIT_OBJECTS];
-    VMMPLUGIN_INGEST_VIRTMEM ctxa[MAXIMUM_WAIT_OBJECTS];
-    PVMMPLUGIN_INGEST_VIRTMEM ctx, ctxs[MAXIMUM_WAIT_OBJECTS];
     QWORD tmStart = Statistics_CallStart(H);
     PPLUGIN_ENTRY pModule = (PPLUGIN_ENTRY)H->vmm.PluginManager.FLinkForensic;
     while(pModule) {
         if(pModule->fc.pfnIngestVirtmem) {
-            ctx = ctxa + cWork;
-            ctx->pfnIngestVirtmem = pModule->fc.pfnIngestVirtmem;
-            ctx->ctxfc = pModule->fc.ctxfc;
-            ctx->pProcess = pProcess;
-            ctx->va = va;
-            ctx->cb = cb;
-            ctx->pb = pb;
-            ctxs[cWork] = ctx;
-            pfns[cWork] = PluginManager_FcIngestVirtmem_ThreadProc;
-            cWork++;
-            if(cWork >= MAXIMUM_WAIT_OBJECTS) { return; }
+            pModule->fc.pfnIngestVirtmem(H, pModule->fc.ctxfc, pIngestVirtmem);
         }
         pModule = pModule->FLinkForensic;
     }
-    VmmWorkWaitMultiple2_Void(H, cWork, pfns, (PVOID*)ctxs);
     Statistics_CallEnd(H, STATISTICS_ID_PluginManager_FcIngestVirtmem, tmStart);
+}
+
+/*
+* Checks whether there are any consumers of the IngestVirtmem functionality.
+*/
+BOOL PluginManager_FcIngestVirtmem_ExistsConsumers(_In_ VMM_HANDLE H)
+{
+    PPLUGIN_ENTRY pModule = (PPLUGIN_ENTRY)H->vmm.PluginManager.FLinkForensic;
+    while(pModule) {
+        if(pModule->fc.pfnIngestVirtmem) { return TRUE; }
+        pModule = pModule->FLinkForensic;
+    }
+    return FALSE;
 }
 
 /*
@@ -451,7 +425,7 @@ VOID PluginManager_FcIngestFinalize(_In_ VMM_HANDLE H)
         }
         pModule = pModule->FLinkForensic;
     }
-    Statistics_CallEnd(H, STATISTICS_ID_PluginManager_FcIngestPhysmem, tmStart);
+    Statistics_CallEnd(H, STATISTICS_ID_PluginManager_FcIngestFinalize, tmStart);
 }
 
 /*
@@ -547,6 +521,43 @@ DWORD PluginManager_FcLogJSON(_In_ VMM_HANDLE H, _In_ VOID(*pfnLogJSON)(_In_ VMM
     }
     Statistics_CallEnd(H, STATISTICS_ID_PluginManager_FcLogJSON, tmStart);
     return 0;
+}
+
+VOID PluginManager_FcFindEvil_ThreadProc(_In_ VMM_HANDLE H, _In_ PPLUGIN_ENTRY pPlugin)
+{
+    if(!H->fAbort && pPlugin->fc.pfnFindEvil) {
+        pPlugin->fc.pfnFindEvil(H, pPlugin->MID, pPlugin->fc.ctxfc);
+    }
+}
+
+/*
+* Call each plugin capable of FindEvil functionality.
+* NB! This function is meant to be called by the core forensic subsystem only.
+* -- H
+*/
+VOID PluginManager_FcFindEvil(_In_ VMM_HANDLE H)
+{
+    DWORD cFindEvil = 0;
+    QWORD tmStart = Statistics_CallStart(H);
+    PPLUGIN_ENTRY pPlugin = (PPLUGIN_ENTRY)H->vmm.PluginManager.FLinkForensic;
+    PVMM_WORK_START_ROUTINE_PVOID_PFN pfns[MAXIMUM_WAIT_OBJECTS];
+    PVOID ctxs[MAXIMUM_WAIT_OBJECTS];
+    if(H->fAbort) { return; }
+    while(pPlugin) {
+        if(pPlugin->fc.pfnFindEvil) {
+            pfns[cFindEvil] = (PVMM_WORK_START_ROUTINE_PVOID_PFN)PluginManager_FcFindEvil_ThreadProc;
+            ctxs[cFindEvil] = pPlugin;
+            cFindEvil++;
+            if(cFindEvil == MAXIMUM_WAIT_OBJECTS) {
+                VmmLog(H, MID_PLUGIN, LOGLEVEL_2_WARNING, "FindEvil max plugins reached. Some plugins may not be run.");
+                break;
+            }
+        }
+        pPlugin = pPlugin->FLinkForensic;
+    }
+    if(H->fAbort) { return; }
+    VmmWorkWaitMultiple2_Void(H, cFindEvil, pfns, ctxs);
+    Statistics_CallEnd(H, STATISTICS_ID_PluginManager_FcFindEvil, tmStart);
 }
 
 /*
@@ -685,6 +696,7 @@ BOOL PluginManager_Register(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_REGINFO pRegI
     pModule->fc.pfnTimeline = pRegInfo->reg_fnfc.pfnTimeline;
     pModule->fc.pfnLogCSV = pRegInfo->reg_fnfc.pfnLogCSV;
     pModule->fc.pfnLogJSON = pRegInfo->reg_fnfc.pfnLogJSON;
+    pModule->fc.pfnFindEvil = pRegInfo->reg_fnfc.pfnFindEvil;
     pModule->fc.pfnIngestPhysmem = pRegInfo->reg_fnfc.pfnIngestPhysmem;
     pModule->fc.pfnIngestVirtmem = pRegInfo->reg_fnfc.pfnIngestVirtmem;
     pModule->fc.pfnIngestFinalize = pRegInfo->reg_fnfc.pfnIngestFinalize;
@@ -695,7 +707,7 @@ BOOL PluginManager_Register(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_REGINFO pRegI
         pModule->FLinkNotify = (PPLUGIN_ENTRY)H->vmm.PluginManager.FLinkNotify;
         H->vmm.PluginManager.FLinkNotify = pModule;
     }
-    if(pModule->fc.pfnInitialize || pModule->fc.pfnFinalize || pModule->fc.pfnTimeline || pModule->fc.pfnLogCSV || pModule->fc.pfnLogJSON || pModule->fc.pfnIngestPhysmem || pModule->fc.pfnIngestVirtmem || pModule->fc.pfnIngestFinalize) {
+    if(pModule->fc.pfnInitialize || pModule->fc.pfnFinalize || pModule->fc.pfnTimeline || pModule->fc.pfnLogCSV || pModule->fc.pfnLogJSON || pModule->fc.pfnFindEvil || pModule->fc.pfnIngestPhysmem || pModule->fc.pfnIngestVirtmem || pModule->fc.pfnIngestFinalize) {
         if(pModule->fc.pfnIngestPhysmem) { H->vmm.PluginManager.cIngestPhysmem++; }
         if(pModule->fc.pfnIngestVirtmem) { H->vmm.PluginManager.cIngestVirtmem++; }
         pModule->FLinkForensic = (PPLUGIN_ENTRY)H->vmm.PluginManager.FLinkForensic;
@@ -919,7 +931,7 @@ VOID PluginManager_Initialize_ExternalDlls(_In_ VMM_HANDLE H)
     WIN32_FIND_DATAA FindData;
     HMODULE hDLL;
     VOID(*pfnInitializeVmmPlugin)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_REGINFO pRegInfo);
-    Util_GetPathDll(szPath, NULL);
+    Util_GetPathLib(szPath);
     cchPathBase = (DWORD)strnlen(szPath, MAX_PATH - 1);
     strcat_s(szPath, MAX_PATH, "plugins\\m_*"VMM_LIBRARY_FILETYPE);
     hFindFile = FindFirstFileA(szPath, &FindData);

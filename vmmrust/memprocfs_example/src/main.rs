@@ -36,6 +36,10 @@ struct IMAGE_DOS_HEADER {
 }
 
 pub fn main() {
+    main_example().unwrap();
+}
+
+pub fn main_example() -> ResultEx<()> {
     let vmm_lib_path;
     let memdump_path;
     if cfg!(windows) {
@@ -390,6 +394,30 @@ pub fn main() {
         if let Ok(vfs_file_data) = vmm.vfs_read("/conf/config_process_show_terminated.txt", 0x2000, 0) {
             println!("Number of bytes file contents read from file '/conf/config_process_show_terminated.txt': {}.", vfs_file_data.len());
             println!("{:?}", vfs_file_data.hex_dump());
+        }
+
+
+        // Example: vmm.vfs_read():
+        // Read the /misc/procinfo/dtb.txt file containing process DTB values.
+        // The dtb.txt file takes a short while to render so we wait for it.
+        println!("========================================");
+        println!("vmm.vfs_read(): /misc/procinfo/dtb.txt");
+        loop {
+            if let Ok(progress) = vmm.vfs_read("/misc/procinfo/progress_percent.txt", 3, 0) {
+                let progress = String::from_utf8(progress).unwrap_or(String::new());
+                let progress = progress.trim().parse::<u32>().unwrap_or(0);
+                println!("Progress: {}%", progress);
+                if progress == 100 {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100))
+            } else {
+                break;
+            }
+        }
+        if let Ok(result) = vmm.vfs_read("/misc/procinfo/dtb.txt", 0x00100000, 0) {
+            let result = String::from_utf8(result).unwrap_or(String::new());
+            println!("Result /misc/procinfo/dtb.txt:\n{}", result);
         }
 
 
@@ -903,6 +931,53 @@ pub fn main() {
 
 
 
+        // Example: vmmprocess.search_yara() #1: - asynchronous.
+        // Search process virtual memory efficiently using a yara signature.
+        // Search whole address space in asynchronous non-blocking mode and update.
+        // Search max 0x10000 hits (max allowed).
+        // In this example a simple yara signature is used to find the string
+        // "MZ" at the start of a page.
+        // it's also possible to load yara rules from files - in that case
+        // specify the full file path instead of the yara rule string.
+        println!("========================================");
+        println!("vmmprocess.search_yara()");
+        let yara_rule = " rule mz_header { strings: $mz = \"MZ\" condition: $mz at 0 } ";
+        let yara_rules = vec![yara_rule];
+        if let Ok(mut yara) = vmmprocess.search_yara(yara_rules, 0, 0, 0x10000, 0) {
+            // start search async
+            yara.start();
+            // optionally poll status until finished (it's possible to do other work here as well).
+            loop {
+                let r = yara.poll();
+                println!("yara search poll status: completed={} va_current={:x} read_bytes={:x} results={}", r.is_completed, r.addr_current, r.total_read_bytes, r.total_results);
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                if r.is_completed {
+                    if r.is_completed_success {
+                        for e in &*r.result {
+                            // prints out the <address:search_term_id>
+                            print!("{}", e);
+                            for ms in &*e.match_strings {
+                                print!("  {}-", ms.match_string);
+                                for va in &*ms.addresses {
+                                    print!("-{:x}", va);
+                                }
+                            }
+                            println!("");
+                        }
+                    }
+                    break;
+                }
+            }
+            // if poll isn't desirable it's possible to call result() and block until completion.
+            let _r = yara.result();
+            // the VmmYara struct is automatically cleaned when it goes out of scope and is dropped.
+        }
+
+
+
+
+
+
         // Example: vmmprocess.mem_write():
         // Write to virtual memory of kernel32 PE header (dangerous)
         // (Writes are only possible if underlying layers are write-capable.)
@@ -1054,10 +1129,31 @@ pub fn main() {
 
 
 
+        // Example: access a process kernel memory space:
+        // Sometimes it's desirable to access the kernel memory space of a
+        // process. This may be the case when session-specific kernel memory
+        // such as win32k.sys is needed to be accessed. This is possible by
+        // masking the process pid with 0x80000000 and then using the modified
+        // process struct for subsequent accesses.
+        if let Ok(mut winlogon) = vmm.process_from_name("winlogon.exe") {
+            winlogon.pid = winlogon.pid | 0x80000000;
+            if let Ok(va) = winlogon.get_proc_address("win32kbase.sys", "gSessionId") {
+                if let Ok(id) = winlogon.mem_read_as::<u32>(va, FLAG_NOCACHE | FLAG_ZEROPAD_ON_FAIL) {
+                    println!("win32kbase.sys!gSessionId -> {:x} : {}", va, id);
+                }
+            }
+        }
+
+
+
+
+
+
         // Example: close:
         // The underlying native VMM instance will be automatically dropped
         // when the Rust Vmm struct goes out of scope and is dropped.
     }
 
     println!("MemProcFS Rust API Example - COMPLETED");
+    return Ok(());
 }

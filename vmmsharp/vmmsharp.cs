@@ -14,7 +14,7 @@ using System.Collections.Generic;
  *  (c) Ulf Frisk, 2020-2023
  *  Author: Ulf Frisk, pcileech@frizk.net
  *  
- *  Version 5.4
+ *  Version 5.5
  *  
  */
 
@@ -29,76 +29,76 @@ namespace vmmsharp
 
     public static class lc
     {
-        public static ulong OPT_CORE_PRINTF_ENABLE =            0x4000000100000000;
-        public static ulong OPT_CORE_VERBOSE =                  0x4000000200000000;
-        public static ulong OPT_CORE_VERBOSE_EXTRA =            0x4000000300000000;
-        public static ulong OPT_CORE_VERBOSE_EXTRA_TLP =        0x4000000400000000;
-        public static ulong OPT_CORE_VERSION_MAJOR =            0x4000000500000000;
-        public static ulong OPT_CORE_VERSION_MINOR =            0x4000000600000000;
-        public static ulong OPT_CORE_VERSION_REVISION =         0x4000000700000000;
-        public static ulong OPT_CORE_ADDR_MAX =                 0x1000000800000000;
-        public static ulong VMMDLL_OPT_CORE_LEECHCORE_HANDLE =  0x4000001000000000;
+        public const ulong OPT_CORE_PRINTF_ENABLE =            0x4000000100000000;
+        public const ulong OPT_CORE_VERBOSE =                  0x4000000200000000;
+        public const ulong OPT_CORE_VERBOSE_EXTRA =            0x4000000300000000;
+        public const ulong OPT_CORE_VERBOSE_EXTRA_TLP =        0x4000000400000000;
+        public const ulong OPT_CORE_VERSION_MAJOR =            0x4000000500000000;
+        public const ulong OPT_CORE_VERSION_MINOR =            0x4000000600000000;
+        public const ulong OPT_CORE_VERSION_REVISION =         0x4000000700000000;
+        public const ulong OPT_CORE_ADDR_MAX =                 0x1000000800000000;
+        public const ulong VMMDLL_OPT_CORE_LEECHCORE_HANDLE =  0x4000001000000000;
 
-        public static ulong OPT_MEMORYINFO_VALID =              0x0200000100000000;
-        public static ulong OPT_MEMORYINFO_FLAG_32BIT =         0x0200000300000000;
-        public static ulong OPT_MEMORYINFO_FLAG_PAE =           0x0200000400000000;
-        public static ulong OPT_MEMORYINFO_OS_VERSION_MINOR =   0x0200000500000000;
-        public static ulong OPT_MEMORYINFO_OS_VERSION_MAJOR =   0x0200000600000000;
-        public static ulong OPT_MEMORYINFO_OS_DTB =             0x0200000700000000;
-        public static ulong OPT_MEMORYINFO_OS_PFN =             0x0200000800000000;
-        public static ulong OPT_MEMORYINFO_OS_PsLoadedModuleList = 0x0200000900000000;
-        public static ulong OPT_MEMORYINFO_OS_PsActiveProcessHead = 0x0200000a00000000;
-        public static ulong OPT_MEMORYINFO_OS_MACHINE_IMAGE_TP = 0x0200000b00000000;
-        public static ulong OPT_MEMORYINFO_OS_NUM_PROCESSORS =  0x0200000c00000000;
-        public static ulong OPT_MEMORYINFO_OS_SYSTEMTIME =      0x0200000d00000000;
-        public static ulong OPT_MEMORYINFO_OS_UPTIME =          0x0200000e00000000;
-        public static ulong OPT_MEMORYINFO_OS_KERNELBASE =      0x0200000f00000000;
-        public static ulong OPT_MEMORYINFO_OS_KERNELHINT =      0x0200001000000000;
-        public static ulong OPT_MEMORYINFO_OS_KdDebuggerDataBlock = 0x0200001100000000;
+        public const ulong OPT_MEMORYINFO_VALID =              0x0200000100000000;
+        public const ulong OPT_MEMORYINFO_FLAG_32BIT =         0x0200000300000000;
+        public const ulong OPT_MEMORYINFO_FLAG_PAE =           0x0200000400000000;
+        public const ulong OPT_MEMORYINFO_OS_VERSION_MINOR =   0x0200000500000000;
+        public const ulong OPT_MEMORYINFO_OS_VERSION_MAJOR =   0x0200000600000000;
+        public const ulong OPT_MEMORYINFO_OS_DTB =             0x0200000700000000;
+        public const ulong OPT_MEMORYINFO_OS_PFN =             0x0200000800000000;
+        public const ulong OPT_MEMORYINFO_OS_PsLoadedModuleList = 0x0200000900000000;
+        public const ulong OPT_MEMORYINFO_OS_PsActiveProcessHead = 0x0200000a00000000;
+        public const ulong OPT_MEMORYINFO_OS_MACHINE_IMAGE_TP = 0x0200000b00000000;
+        public const ulong OPT_MEMORYINFO_OS_NUM_PROCESSORS =  0x0200000c00000000;
+        public const ulong OPT_MEMORYINFO_OS_SYSTEMTIME =      0x0200000d00000000;
+        public const ulong OPT_MEMORYINFO_OS_UPTIME =          0x0200000e00000000;
+        public const ulong OPT_MEMORYINFO_OS_KERNELBASE =      0x0200000f00000000;
+        public const ulong OPT_MEMORYINFO_OS_KERNELHINT =      0x0200001000000000;
+        public const ulong OPT_MEMORYINFO_OS_KdDebuggerDataBlock = 0x0200001100000000;
 
-        public static ulong OPT_FPGA_PROBE_MAXPAGES =           0x0300000100000000;
-        public static ulong OPT_FPGA_MAX_SIZE_RX =              0x0300000300000000;
-        public static ulong OPT_FPGA_MAX_SIZE_TX =              0x0300000400000000;
-        public static ulong OPT_FPGA_DELAY_PROBE_READ =         0x0300000500000000;
-        public static ulong OPT_FPGA_DELAY_PROBE_WRITE =        0x0300000600000000;
-        public static ulong OPT_FPGA_DELAY_WRITE =              0x0300000700000000;
-        public static ulong OPT_FPGA_DELAY_READ =               0x0300000800000000;
-        public static ulong OPT_FPGA_RETRY_ON_ERROR =           0x0300000900000000;
-        public static ulong OPT_FPGA_DEVICE_ID =                0x0300008000000000;
-        public static ulong OPT_FPGA_FPGA_ID =                  0x0300008100000000;
-        public static ulong OPT_FPGA_VERSION_MAJOR =            0x0300008200000000;
-        public static ulong OPT_FPGA_VERSION_MINOR =            0x0300008300000000;
-        public static ulong OPT_FPGA_ALGO_TINY =                0x0300008400000000;
-        public static ulong OPT_FPGA_ALGO_SYNCHRONOUS =         0x0300008500000000;
+        public const ulong OPT_FPGA_PROBE_MAXPAGES =           0x0300000100000000;
+        public const ulong OPT_FPGA_MAX_SIZE_RX =              0x0300000300000000;
+        public const ulong OPT_FPGA_MAX_SIZE_TX =              0x0300000400000000;
+        public const ulong OPT_FPGA_DELAY_PROBE_READ =         0x0300000500000000;
+        public const ulong OPT_FPGA_DELAY_PROBE_WRITE =        0x0300000600000000;
+        public const ulong OPT_FPGA_DELAY_WRITE =              0x0300000700000000;
+        public const ulong OPT_FPGA_DELAY_READ =               0x0300000800000000;
+        public const ulong OPT_FPGA_RETRY_ON_ERROR =           0x0300000900000000;
+        public const ulong OPT_FPGA_DEVICE_ID =                0x0300008000000000;
+        public const ulong OPT_FPGA_FPGA_ID =                  0x0300008100000000;
+        public const ulong OPT_FPGA_VERSION_MAJOR =            0x0300008200000000;
+        public const ulong OPT_FPGA_VERSION_MINOR =            0x0300008300000000;
+        public const ulong OPT_FPGA_ALGO_TINY =                0x0300008400000000;
+        public const ulong OPT_FPGA_ALGO_SYNCHRONOUS =         0x0300008500000000;
 
-        public static ulong CMD_FPGA_WRITE_TLP =                0x0000010100000000;
-        public static ulong CMD_FPGA_LISTEN_TLP =               0x0000010200000000;
-        public static ulong CMD_FPGA_PCIECFGSPACE =             0x0000010300000000;
-        public static ulong CMD_FPGA_CFGREGPCIE =               0x0000010400000000;
-        public static ulong CMD_FPGA_CFGREGCFG =                0x0000010500000000;
-        public static ulong CMD_FPGA_CFGREGDRP =                0x0000010600000000;
-        public static ulong CMD_FPGA_CFGREGCFG_MARKWR =         0x0000010700000000;
-        public static ulong CMD_FPGA_CFGREGPCIE_MARKWR =        0x0000010800000000;
-        public static ulong CMD_FPGA_PCIECFGSPACE_WR =          0x0000010900000000;
-        public static ulong CMD_FPGA_CFGREG_DEBUGPRINT =        0x0000010a00000000;
-        public static ulong CMD_FPGA_PROBE =                    0x0000010b00000000;
+        public const ulong CMD_FPGA_WRITE_TLP =                0x0000010100000000;
+        public const ulong CMD_FPGA_LISTEN_TLP =               0x0000010200000000;
+        public const ulong CMD_FPGA_PCIECFGSPACE =             0x0000010300000000;
+        public const ulong CMD_FPGA_CFGREGPCIE =               0x0000010400000000;
+        public const ulong CMD_FPGA_CFGREGCFG =                0x0000010500000000;
+        public const ulong CMD_FPGA_CFGREGDRP =                0x0000010600000000;
+        public const ulong CMD_FPGA_CFGREGCFG_MARKWR =         0x0000010700000000;
+        public const ulong CMD_FPGA_CFGREGPCIE_MARKWR =        0x0000010800000000;
+        public const ulong CMD_FPGA_PCIECFGSPACE_WR =          0x0000010900000000;
+        public const ulong CMD_FPGA_CFGREG_DEBUGPRINT =        0x0000010a00000000;
+        public const ulong CMD_FPGA_PROBE =                    0x0000010b00000000;
 
-        public static ulong CMD_FILE_DUMPHEADER_GET =           0x0000020100000000;
+        public const ulong CMD_FILE_DUMPHEADER_GET =           0x0000020100000000;
 
-        public static ulong CMD_STATISTICS_GET =                0x4000010000000000;
-        public static ulong CMD_MEMMAP_GET =                    0x4000020000000000;
-        public static ulong CMD_MEMMAP_SET =                    0x4000030000000000;
+        public const ulong CMD_STATISTICS_GET =                0x4000010000000000;
+        public const ulong CMD_MEMMAP_GET =                    0x4000020000000000;
+        public const ulong CMD_MEMMAP_SET =                    0x4000030000000000;
 
-        public static ulong CMD_AGENT_EXEC_PYTHON =             0x8000000100000000;
-        public static ulong CMD_AGENT_EXIT_PROCESS =            0x8000000200000000;
+        public const ulong CMD_AGENT_EXEC_PYTHON =             0x8000000100000000;
+        public const ulong CMD_AGENT_EXIT_PROCESS =            0x8000000200000000;
 
-        public static uint CONFIG_VERSION =                     0xc0fd0002;
-        public static uint CONFIG_ERRORINFO_VERSION =           0xc0fe0001;
+        public const uint CONFIG_VERSION =                     0xc0fd0002;
+        public const uint CONFIG_ERRORINFO_VERSION =           0xc0fe0001;
 
-        public static uint CONFIG_PRINTF_ENABLED =              0x01;
-        public static uint CONFIG_PRINTF_V =                    0x02;
-        public static uint CONFIG_PRINTF_VV =                   0x04;
-        public static uint CONFIG_PRINTF_VVV =                  0x08;
+        public const uint CONFIG_PRINTF_ENABLED =              0x01;
+        public const uint CONFIG_PRINTF_V =                    0x02;
+        public const uint CONFIG_PRINTF_VV =                   0x04;
+        public const uint CONFIG_PRINTF_VVV =                  0x08;
 
         [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential, CharSet = CharSet.Ansi)]
         public struct CONFIG
@@ -283,45 +283,45 @@ namespace vmmsharp
         // CORE FUNCTIONALITY BELOW:
         //---------------------------------------------------------------------
 
-        public static ulong OPT_CORE_PRINTF_ENABLE = 0x4000000100000000;  // RW
-        public static ulong OPT_CORE_VERBOSE = 0x4000000200000000;  // RW
-        public static ulong OPT_CORE_VERBOSE_EXTRA = 0x4000000300000000;  // RW
-        public static ulong OPT_CORE_VERBOSE_EXTRA_TLP = 0x4000000400000000;  // RW
-        public static ulong OPT_CORE_MAX_NATIVE_ADDRESS = 0x4000000800000000;  // R
+        public const ulong OPT_CORE_PRINTF_ENABLE = 0x4000000100000000;  // RW
+        public const ulong OPT_CORE_VERBOSE = 0x4000000200000000;  // RW
+        public const ulong OPT_CORE_VERBOSE_EXTRA = 0x4000000300000000;  // RW
+        public const ulong OPT_CORE_VERBOSE_EXTRA_TLP = 0x4000000400000000;  // RW
+        public const ulong OPT_CORE_MAX_NATIVE_ADDRESS = 0x4000000800000000;  // R
 
-        public static ulong OPT_CORE_SYSTEM = 0x2000000100000000;  // R
-        public static ulong OPT_CORE_MEMORYMODEL = 0x2000000200000000;  // R
+        public const ulong OPT_CORE_SYSTEM = 0x2000000100000000;  // R
+        public const ulong OPT_CORE_MEMORYMODEL = 0x2000000200000000;  // R
 
-        public static ulong OPT_CONFIG_IS_REFRESH_ENABLED = 0x2000000300000000;  // R - 1/0
-        public static ulong OPT_CONFIG_TICK_PERIOD = 0x2000000400000000;  // RW - base tick period in ms
-        public static ulong OPT_CONFIG_READCACHE_TICKS = 0x2000000500000000;  // RW - memory cache validity period (in ticks)
-        public static ulong OPT_CONFIG_TLBCACHE_TICKS = 0x2000000600000000;  // RW - page table (tlb) cache validity period (in ticks)
-        public static ulong OPT_CONFIG_PROCCACHE_TICKS_PARTIAL = 0x2000000700000000; // RW - process refresh (partial) period (in ticks)
-        public static ulong OPT_CONFIG_PROCCACHE_TICKS_TOTAL = 0x2000000800000000;  // RW - process refresh (full) period (in ticks)
-        public static ulong OPT_CONFIG_VMM_VERSION_MAJOR = 0x2000000900000000;  // R
-        public static ulong OPT_CONFIG_VMM_VERSION_MINOR = 0x2000000A00000000;  // R
-        public static ulong OPT_CONFIG_VMM_VERSION_REVISION = 0x2000000B00000000;  // R
-        public static ulong OPT_CONFIG_STATISTICS_FUNCTIONCALL = 0x2000000C00000000; // RW - enable function call statistics (.status/statistics_fncall file)
-        public static ulong OPT_CONFIG_IS_PAGING_ENABLED = 0x2000000D00000000;  // RW - 1/0
+        public const ulong OPT_CONFIG_IS_REFRESH_ENABLED = 0x2000000300000000;  // R - 1/0
+        public const ulong OPT_CONFIG_TICK_PERIOD = 0x2000000400000000;  // RW - base tick period in ms
+        public const ulong OPT_CONFIG_READCACHE_TICKS = 0x2000000500000000;  // RW - memory cache validity period (in ticks)
+        public const ulong OPT_CONFIG_TLBCACHE_TICKS = 0x2000000600000000;  // RW - page table (tlb) cache validity period (in ticks)
+        public const ulong OPT_CONFIG_PROCCACHE_TICKS_PARTIAL = 0x2000000700000000; // RW - process refresh (partial) period (in ticks)
+        public const ulong OPT_CONFIG_PROCCACHE_TICKS_TOTAL = 0x2000000800000000;  // RW - process refresh (full) period (in ticks)
+        public const ulong OPT_CONFIG_VMM_VERSION_MAJOR = 0x2000000900000000;  // R
+        public const ulong OPT_CONFIG_VMM_VERSION_MINOR = 0x2000000A00000000;  // R
+        public const ulong OPT_CONFIG_VMM_VERSION_REVISION = 0x2000000B00000000;  // R
+        public const ulong OPT_CONFIG_STATISTICS_FUNCTIONCALL = 0x2000000C00000000; // RW - enable function call statistics (.status/statistics_fncall file)
+        public const ulong OPT_CONFIG_IS_PAGING_ENABLED = 0x2000000D00000000;  // RW - 1/0
 
-        public static ulong OPT_WIN_VERSION_MAJOR = 0x2000010100000000;  // R
-        public static ulong OPT_WIN_VERSION_MINOR = 0x2000010200000000;  // R
-        public static ulong OPT_WIN_VERSION_BUILD = 0x2000010300000000;  // R
+        public const ulong OPT_WIN_VERSION_MAJOR = 0x2000010100000000;  // R
+        public const ulong OPT_WIN_VERSION_MINOR = 0x2000010200000000;  // R
+        public const ulong OPT_WIN_VERSION_BUILD = 0x2000010300000000;  // R
 
-        public static ulong OPT_FORENSIC_MODE = 0x2000020100000000;  // RW - enable/retrieve forensic mode type [0-4].
+        public const ulong OPT_FORENSIC_MODE = 0x2000020100000000;  // RW - enable/retrieve forensic mode type [0-4].
 
-        public static ulong OPT_REFRESH_ALL = 0x2001ffff00000000;  // W - refresh all caches
-        public static ulong OPT_REFRESH_FREQ_FAST = 0x2001040000000000;  // W - refresh fast frequency (including partial process listings)
-        public static ulong OPT_REFRESH_FREQ_MEDIUM = 0x2001000100000000;  // W - refresh medium frequency (including full process listings)
-        public static ulong OPT_REFRESH_FREQ_SLOW = 0x2001001000000000;  // W - refresh slow frequency (including registry)
-        public static ulong OPT_REFRESH_READ = 0x2001000200000000;  // W - refresh physical read cache
-        public static ulong OPT_REFRESH_TLB = 0x2001000400000000;  // W - refresh page table (TLB) cache
-        public static ulong OPT_REFRESH_PAGING = 0x2001000800000000;  // W - refresh virtual memory 'paging' cache
-        public static ulong OPT_REFRESH_USER = 0x2001002000000000;  // W
-        public static ulong OPT_REFRESH_PHYSMEMMAP = 0x2001004000000000;  // W
-        public static ulong OPT_REFRESH_PFN = 0x2001008000000000;  // W
-        public static ulong OPT_REFRESH_OBJ = 0x2001010000000000;  // W
-        public static ulong OPT_REFRESH_NET = 0x2001020000000000;  // W
+        public const ulong OPT_REFRESH_ALL = 0x2001ffff00000000;  // W - refresh all caches
+        public const ulong OPT_REFRESH_FREQ_FAST = 0x2001040000000000;  // W - refresh fast frequency (including partial process listings)
+        public const ulong OPT_REFRESH_FREQ_MEDIUM = 0x2001000100000000;  // W - refresh medium frequency (including full process listings)
+        public const ulong OPT_REFRESH_FREQ_SLOW = 0x2001001000000000;  // W - refresh slow frequency (including registry)
+        public const ulong OPT_REFRESH_READ = 0x2001000200000000;  // W - refresh physical read cache
+        public const ulong OPT_REFRESH_TLB = 0x2001000400000000;  // W - refresh page table (TLB) cache
+        public const ulong OPT_REFRESH_PAGING = 0x2001000800000000;  // W - refresh virtual memory 'paging' cache
+        public const ulong OPT_REFRESH_USER = 0x2001002000000000;  // W
+        public const ulong OPT_REFRESH_PHYSMEMMAP = 0x2001004000000000;  // W
+        public const ulong OPT_REFRESH_PFN = 0x2001008000000000;  // W
+        public const ulong OPT_REFRESH_OBJ = 0x2001010000000000;  // W
+        public const ulong OPT_REFRESH_NET = 0x2001020000000000;  // W
 
 
         public enum MEMORYMODEL_TP
@@ -503,15 +503,15 @@ namespace vmmsharp
         // MEMORY READ/WRITE FUNCTIONALITY BELOW:
         //---------------------------------------------------------------------
 
-        public static uint PID_PROCESS_WITH_KERNELMEMORY = 0x80000000;      // Combine with dwPID to enable process kernel memory (NB! use with extreme care).
+        public const uint PID_PROCESS_WITH_KERNELMEMORY = 0x80000000;      // Combine with dwPID to enable process kernel memory (NB! use with extreme care).
 
-        public static uint FLAG_NOCACHE = 0x0001;  // do not use the data cache (force reading from memory acquisition device)
-        public static uint FLAG_ZEROPAD_ON_FAIL = 0x0002;  // zero pad failed physical memory reads and report success if read within range of physical memory.
-        public static uint FLAG_FORCECACHE_READ = 0x0008;  // force use of cache - fail non-cached pages - only valid for reads, invalid with VMM_FLAG_NOCACHE/VMM_FLAG_ZEROPAD_ON_FAIL.
-        public static uint FLAG_NOPAGING = 0x0010;  // do not try to retrieve memory from paged out memory from pagefile/compressed (even if possible)
-        public static uint FLAG_NOPAGING_IO = 0x0020;  // do not try to retrieve memory from paged out memory if read would incur additional I/O (even if possible).
-        public static uint FLAG_NOCACHEPUT = 0x0100;  // do not write back to the data cache upon successful read from memory acquisition device.
-        public static uint FLAG_CACHE_RECENT_ONLY = 0x0200;  // only fetch from the most recent active cache region when reading.
+        public const uint FLAG_NOCACHE = 0x0001;  // do not use the data cache (force reading from memory acquisition device)
+        public const uint FLAG_ZEROPAD_ON_FAIL = 0x0002;  // zero pad failed physical memory reads and report success if read within range of physical memory.
+        public const uint FLAG_FORCECACHE_READ = 0x0008;  // force use of cache - fail non-cached pages - only valid for reads, invalid with VMM_FLAG_NOCACHE/VMM_FLAG_ZEROPAD_ON_FAIL.
+        public const uint FLAG_NOPAGING = 0x0010;  // do not try to retrieve memory from paged out memory from pagefile/compressed (even if possible)
+        public const uint FLAG_NOPAGING_IO = 0x0020;  // do not try to retrieve memory from paged out memory if read would incur additional I/O (even if possible).
+        public const uint FLAG_NOCACHEPUT = 0x0100;  // do not write back to the data cache upon successful read from memory acquisition device.
+        public const uint FLAG_CACHE_RECENT_ONLY = 0x0200;  // only fetch from the most recent active cache region when reading.
 
         public unsafe MEM_SCATTER[] MemReadScatter(uint pid, uint flags, params ulong[] qwA)
         {
@@ -745,9 +745,9 @@ namespace vmmsharp
             }
         }
 
-        public static uint VMMDLL_PROCESS_INFORMATION_OPT_STRING_PATH_KERNEL = 1;
-        public static uint VMMDLL_PROCESS_INFORMATION_OPT_STRING_PATH_USER_IMAGE = 2;
-        public static uint VMMDLL_PROCESS_INFORMATION_OPT_STRING_CMDLINE = 3;
+        public const uint VMMDLL_PROCESS_INFORMATION_OPT_STRING_PATH_KERNEL = 1;
+        public const uint VMMDLL_PROCESS_INFORMATION_OPT_STRING_PATH_USER_IMAGE = 2;
+        public const uint VMMDLL_PROCESS_INFORMATION_OPT_STRING_CMDLINE = 3;
 
         public unsafe string ProcessGetInformationString(uint pid, uint fOptionString)
         {
@@ -901,10 +901,10 @@ namespace vmmsharp
         // "MAP" FUNCTIONALITY BELOW:
         //---------------------------------------------------------------------
 
-        public static ulong MEMMAP_FLAG_PAGE_W =    0x0000000000000002;
-        public static ulong MEMMAP_FLAG_PAGE_NS =   0x0000000000000004;
-        public static ulong MEMMAP_FLAG_PAGE_NX =   0x8000000000000000;
-        public static ulong MEMMAP_FLAG_PAGE_MASK = 0x8000000000000006;
+        public const ulong MEMMAP_FLAG_PAGE_W =    0x0000000000000002;
+        public const ulong MEMMAP_FLAG_PAGE_NS =   0x0000000000000004;
+        public const ulong MEMMAP_FLAG_PAGE_NX =   0x8000000000000000;
+        public const ulong MEMMAP_FLAG_PAGE_MASK = 0x8000000000000006;
 
         public struct MAP_PTEENTRY
         {
@@ -966,10 +966,10 @@ namespace vmmsharp
             public ulong vaVadBase;
         }
 
-        public static uint MAP_MODULEENTRY_TP_NORMAL    = 0;
-        public static uint VMMDLL_MODULE_TP_DATA        = 1;
-        public static uint VMMDLL_MODULE_TP_NOTLINKED   = 2;
-        public static uint VMMDLL_MODULE_TP_INJECTED    = 3;
+        public const uint MAP_MODULEENTRY_TP_NORMAL    = 0;
+        public const uint VMMDLL_MODULE_TP_DATA        = 1;
+        public const uint VMMDLL_MODULE_TP_NOTLINKED   = 2;
+        public const uint VMMDLL_MODULE_TP_INJECTED    = 3;
 
         public struct MODULEENTRY_DEBUGINFO
         {
@@ -1106,6 +1106,7 @@ namespace vmmsharp
             public ulong vaStackBaseKernel;
             public ulong vaStackLimitKernel;
             public ulong vaTrapFrame;
+            public ulong vaImpersonationToken;
             public ulong vaRIP;
             public ulong vaRSP;
             public ulong qwAffinity;
@@ -1630,6 +1631,7 @@ namespace vmmsharp
                 e.vaStackLimitUser = n.vaStackLimitUser;
                 e.vaStackBaseKernel = n.vaStackBaseKernel;
                 e.vaStackLimitKernel = n.vaStackLimitKernel;
+                e.vaImpersonationToken = n.vaImpersonationToken;
                 e.vaTrapFrame = n.vaTrapFrame;
                 e.vaRIP = n.vaRIP;
                 e.vaRSP = n.vaRSP;
@@ -2167,26 +2169,26 @@ namespace vmmsharp
 
     internal static class vmmi
     {
-        internal static ulong MAX_PATH =                     260;
-        internal static uint VMMDLL_MAP_PTE_VERSION =        2;
-        internal static uint VMMDLL_MAP_VAD_VERSION =        6;
-        internal static uint VMMDLL_MAP_VADEX_VERSION =      3;
-        internal static uint VMMDLL_MAP_MODULE_VERSION =     6;
-        internal static uint VMMDLL_MAP_UNLOADEDMODULE_VERSION = 2;
-        internal static uint VMMDLL_MAP_EAT_VERSION =        3;
-        internal static uint VMMDLL_MAP_IAT_VERSION =        2;
-        internal static uint VMMDLL_MAP_HEAP_VERSION =       4;
-        internal static uint VMMDLL_MAP_HEAPALLOC_VERSION =  1;
-        internal static uint VMMDLL_MAP_THREAD_VERSION =     4;
-        internal static uint VMMDLL_MAP_HANDLE_VERSION =     3;
-        internal static uint VMMDLL_MAP_NET_VERSION =        3;
-        internal static uint VMMDLL_MAP_PHYSMEM_VERSION =    2;
-        internal static uint VMMDLL_MAP_POOL_VERSION =       2;
-        internal static uint VMMDLL_MAP_USER_VERSION =       2;
-        internal static uint VMMDLL_MAP_PFN_VERSION =        1;
-        internal static uint VMMDLL_MAP_SERVICE_VERSION =    3;
-        internal static uint VMMDLL_MEM_SEARCH_VERSION =     0xfe3e0002;
-        internal static uint VMMDLL_REGISTRY_HIVE_INFORMATION_VERSION = 4;
+        internal const ulong MAX_PATH =                     260;
+        internal const uint VMMDLL_MAP_PTE_VERSION =        2;
+        internal const uint VMMDLL_MAP_VAD_VERSION =        6;
+        internal const uint VMMDLL_MAP_VADEX_VERSION =      3;
+        internal const uint VMMDLL_MAP_MODULE_VERSION =     6;
+        internal const uint VMMDLL_MAP_UNLOADEDMODULE_VERSION = 2;
+        internal const uint VMMDLL_MAP_EAT_VERSION =        3;
+        internal const uint VMMDLL_MAP_IAT_VERSION =        2;
+        internal const uint VMMDLL_MAP_HEAP_VERSION =       4;
+        internal const uint VMMDLL_MAP_HEAPALLOC_VERSION =  1;
+        internal const uint VMMDLL_MAP_THREAD_VERSION =     4;
+        internal const uint VMMDLL_MAP_HANDLE_VERSION =     3;
+        internal const uint VMMDLL_MAP_NET_VERSION =        3;
+        internal const uint VMMDLL_MAP_PHYSMEM_VERSION =    2;
+        internal const uint VMMDLL_MAP_POOL_VERSION =       2;
+        internal const uint VMMDLL_MAP_USER_VERSION =       2;
+        internal const uint VMMDLL_MAP_PFN_VERSION =        1;
+        internal const uint VMMDLL_MAP_SERVICE_VERSION =    3;
+        internal const uint VMMDLL_MEM_SEARCH_VERSION =     0xfe3e0002;
+        internal const uint VMMDLL_REGISTRY_HIVE_INFORMATION_VERSION = 4;
 
 
 
@@ -2223,8 +2225,8 @@ namespace vmmsharp
 
         // VFS (VIRTUAL FILE SYSTEM) FUNCTIONALITY BELOW:
 
-        internal static uint VMMDLL_VFS_FILELIST_EXINFO_VERSION = 1;
-        internal static uint VMMDLL_VFS_FILELIST_VERSION = 2;
+        internal const uint VMMDLL_VFS_FILELIST_EXINFO_VERSION = 1;
+        internal const uint VMMDLL_VFS_FILELIST_VERSION = 2;
 
         [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
         internal struct VMMDLL_VFS_FILELIST
@@ -2899,7 +2901,8 @@ namespace vmmsharp
             internal byte bSuspendCount;
             internal byte bWaitReason;
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)] internal byte[] _FutureUse1;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 13)] internal uint[] _FutureUse2;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 11)] internal uint[] _FutureUse2;
+            internal ulong vaImpersonationToken;
             internal ulong vaWin32StartAddress;
         }
 

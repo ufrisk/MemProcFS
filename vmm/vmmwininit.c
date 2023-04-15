@@ -43,13 +43,15 @@ VOID VmmWinInit_TryInitializeThreading(_In_ VMM_HANDLE H)
         PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_ETHREAD", "ExitTime", &pti->oExitTime) &&
         PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_ETHREAD", "ExitStatus", &pti->oExitStatus) &&
         PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_ETHREAD", "StartAddress", &pti->oStartAddress) &&
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_ETHREAD", "Win32StartAddress", &pti->oWin32StartAddress) &&
         PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_ETHREAD", "ThreadListEntry", &pti->oThreadListEntry) &&
         PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_ETHREAD", "Cid", &pti->oCid) &&
         PDB_GetTypeSize(H, PDB_HANDLE_KERNEL, "_ETHREAD", &cbEThread) &&
         (PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTRAP_FRAME", "Rip", &pti->oTrapRip) || PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTRAP_FRAME", "Eip", &pti->oTrapRip)) &&
         (PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTRAP_FRAME", "Rsp", &pti->oTrapRsp) || PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTRAP_FRAME", "HardwareEsp", &pti->oTrapRsp));
-    PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTHREAD", "Process", &pti->oProcessOpt);   // optional - does not exist in xp.
-    PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTHREAD", "Running", &pti->oRunningOpt);   // optional - does not exist in vista/xp.
+    PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTHREAD", "Process", &pti->oProcessOpt);                // optional - does not exist in xp.
+    PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTHREAD", "Running", &pti->oRunningOpt);                // optional - does not exist in vista/xp.
+    PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_ETHREAD", "ClientSecurity", &pti->oClientSecurityOpt);  // optional - does not exist in xp.
     pti->oMax = (WORD)(cbEThread + 8);
     pti->oTebStackBase = H->vmm.f32 ? 0x004 : 0x008;
     pti->oTebStackLimit = H->vmm.f32 ? 0x008 : 0x010;
@@ -96,6 +98,7 @@ VOID VmmWinInit_TryInitializeKernelOptionalValues(_In_ VMM_HANDLE H)
         // TOKEN
         PDB_GetTypeSizeShort(H, PDB_HANDLE_KERNEL, "_TOKEN", &H->vmm.offset.EPROCESS.opt.TOKEN_cb);
         PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_TOKEN", "IntegrityLevelIndex", &H->vmm.offset.EPROCESS.opt.TOKEN_IntegrityLevelIndex);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_TOKEN", "Privileges", &H->vmm.offset.EPROCESS.opt.TOKEN_Privileges);
         PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_TOKEN", "SessionId", &H->vmm.offset.EPROCESS.opt.TOKEN_SessionId);
         PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_TOKEN", "TokenId", &H->vmm.offset.EPROCESS.opt.TOKEN_TokenId);
         PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_TOKEN", "UserAndGroups", &H->vmm.offset.EPROCESS.opt.TOKEN_UserAndGroups);

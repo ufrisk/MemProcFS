@@ -17,7 +17,6 @@
 #include "vmmwinpool.h"
 #include "vmmwinreg.h"
 #include "vmmwinsvc.h"
-#include "vmmevil.h"
 #include "vmmnet.h"
 #include "pluginmanager.h"
 #include "charutil.h"
@@ -741,124 +740,40 @@ BOOL VmmCachePrefetchPages5(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _
 VOID VmmProcess_TokenTryEnsure(_In_ VMM_HANDLE H, _In_ PVMMOB_PROCESS_TABLE pt)
 {
     BOOL f, f32 = H->vmm.f32;
-    DWORD j, i = 0, iM, cbHdr, cb, dwIntegrityLevelIndex = 0;
-    QWORD va, *pva = NULL;
-    BYTE pb[0x1000];
-    PVMM_PROCESS *ppProcess = NULL, pObSystemProcess = NULL;
+    DWORD iM, i = 0, cTokens = 0;
+    QWORD va, *pvaTokens = NULL;
+    PVMM_PROCESS *ppProcess = NULL;
+    PVMMOB_TOKEN *ppObTokens = NULL;
     PVMM_OFFSET_EPROCESS poe = &H->vmm.offset.EPROCESS;
-    LPSTR szSidIntegrity = NULL;
-    BOOL fSidIntegrity;
-    VMM_PROCESS_INTEGRITY_LEVEL IntegrityLevel;
-    union {
-        SID SID;
-        BYTE pb[SECURITY_MAX_SID_SIZE];
-    } SidIntegrity;
-    f = poe->opt.TOKEN_TokenId &&                                               // token offsets/symbols initialized.
-        (pObSystemProcess = VmmProcessGet(H, 4)) &&
-        (pva = LocalAlloc(LMEM_ZEROINIT, pt->c * 2 * sizeof(QWORD))) &&
-        (ppProcess = LocalAlloc(LMEM_ZEROINIT, pt->c * sizeof(PVMM_PROCESS)));
+    // Init:
+    f = poe->opt.TOKEN_TokenId &&
+        (pvaTokens = LocalAlloc(LMEM_ZEROINIT, pt->c * sizeof(QWORD))) &&
+        (ppProcess = LocalAlloc(LMEM_ZEROINIT, pt->c * sizeof(PVMM_PROCESS))) &&
+        (ppObTokens = LocalAlloc(LMEM_ZEROINIT, pt->c * sizeof(PVMMOB_TOKEN)));
     if(!f) { goto fail; }
-    cbHdr = f32 ? 0x2c : 0x5c;
-    cb = cbHdr + poe->opt.TOKEN_cb;
-    if((cb > 0x1000) || !poe->opt.TOKEN_cb) { goto fail; }
-    // 1: Get Process and Token VA:
+    // 2: Get Processes and Token VAs:
     iM = pt->_iFLink;
     while(iM && i < pt->c) {
-        if((ppProcess[i] = pt->_M[iM]) && !ppProcess[i]->win.TOKEN.fInitialized) {
+        if((ppProcess[i] = pt->_M[iM]) && !ppProcess[i]->win.Token) {
             va = VMM_PTR_OFFSET(f32, ppProcess[i]->win.EPROCESS.pb, poe->opt.Token) & (f32 ? ~0x7 : ~0xf);
             if(VMM_KADDR(f32, va)) {
-                ppProcess[i]->win.TOKEN.va = va;
-                pva[i] = va - cbHdr; // adjust for _OBJECT_HEADER and Pool Header
+                pvaTokens[i] = va;
+                i++;
             }
         }
         iM = pt->_iFLinkM[iM];
-        i++;
     }
-    // 2: Read Token:
-    VmmCachePrefetchPages4(H, pObSystemProcess, (DWORD)pt->c, pva, cb, 0);
-    for(i = 0; i < pt->c; i++) {
-        if(!pva[i] || !VmmRead2(H, pObSystemProcess, pva[i], pb, cb, VMM_FLAG_FORCECACHE_READ)) { continue; }
-        // 2.1: fetch TOKEN.UserAndGroups (user id [_SID_AND_ATTRIBUTES])
-        pva[i] = VMM_PTR_OFFSET(f32, pb + cbHdr, poe->opt.TOKEN_UserAndGroups);
-        if(!VMM_KADDR(f32, pva[i])) { pva[i] = 0; continue; }
-        ppProcess[i]->win.TOKEN.vaUserAndGroups = pva[i];
-        // 2.2: fetch various offsets
-        for(j = 0, f = FALSE; !f && (j < cbHdr); j += (f32 ? 0x08 : 0x10)) {
-            f = VMM_POOLTAG_SHORT(*(PDWORD)(pb + j), 'Toke');
-        }
-        if(!f) { pva[i] = 0; continue; }
-        ppProcess[i]->win.TOKEN.qwLUID = *(PQWORD)(pb + cbHdr + poe->opt.TOKEN_TokenId);
-        ppProcess[i]->win.TOKEN.dwSessionId = *(PDWORD)(pb + cbHdr + poe->opt.TOKEN_SessionId);
-        if(poe->opt.TOKEN_UserAndGroupCount) {
-            ppProcess[i]->win.TOKEN.dwUserAndGroupCount = *(PDWORD)(pb + cbHdr + poe->opt.TOKEN_UserAndGroupCount);
-        }
-        if(poe->opt.TOKEN_IntegrityLevelIndex) {
-            dwIntegrityLevelIndex = *(PDWORD)(pb + cbHdr + poe->opt.TOKEN_IntegrityLevelIndex);
-            if(dwIntegrityLevelIndex > ppProcess[i]->win.TOKEN.dwUserAndGroupCount) { dwIntegrityLevelIndex = 0; }
-        }
-        // 2.3: fetch TOKEN.UserAndGroups+dwIntegrityLevelIndex (integrity level [_SID_AND_ATTRIBUTES])
-        if(dwIntegrityLevelIndex) {
-            va = VMM_PTR_OFFSET(f32, pb + cbHdr, poe->opt.TOKEN_UserAndGroups) + dwIntegrityLevelIndex * (f32 ? 8ULL : 16ULL);
-            if(VMM_KADDR(f32, va)) { pva[pt->c + i] = va; }
-        }
-    }
-    // 3: Read SID user & integrity ptr:
-    VmmCachePrefetchPages4(H, pObSystemProcess, 2 * (DWORD)pt->c, pva, 8, 0);
-    for(i = 0; i < pt->c; i++) {
-        // user:
-        f = pva[i] && VmmRead2(H, pObSystemProcess, pva[i], pb, 8, VMM_FLAG_FORCECACHE_READ) &&
-            (va = VMM_PTR_OFFSET(f32, pb, 0)) &&
-            VMM_KADDR(f32, va);
-        pva[i] = f ? va : 0;
-        // integrity:
-        f = pva[pt->c + i] && VmmRead2(H, pObSystemProcess, pva[pt->c + i], pb, 8, VMM_FLAG_FORCECACHE_READ) &&
-            (va = VMM_PTR_OFFSET(f32, pb, 0)) &&
-            VMM_KADDR(f32, va);
-        pva[pt->c + i] = f ? va : 0;
-    }
-    // 4: Get SID user & integrity:
-    VmmCachePrefetchPages4(H, pObSystemProcess, 2 * (DWORD)pt->c, pva, SECURITY_MAX_SID_SIZE, 0);
-    for(i = 0; i < pt->c; i++) {
-        if(!ppProcess[i]) { continue; }
-        // user:
-        ppProcess[i]->win.TOKEN.fSidUserValid =
-            (va = pva[i]) &&
-            VmmRead2(H, pObSystemProcess, va, ppProcess[i]->win.TOKEN.SidUser.pb, SECURITY_MAX_SID_SIZE, VMM_FLAG_FORCECACHE_READ) &&
-            IsValidSid(&ppProcess[i]->win.TOKEN.SidUser.SID);
-        // integrity:
-        fSidIntegrity =
-            (va = pva[pt->c + i]) &&
-            VmmRead2(H, pObSystemProcess, va, SidIntegrity.pb, SECURITY_MAX_SID_SIZE, VMM_FLAG_FORCECACHE_READ) &&
-            IsValidSid(&SidIntegrity.SID) &&
-            ConvertSidToStringSidA(&SidIntegrity.SID, &szSidIntegrity);
-        if(fSidIntegrity) {
-            // https://redcanary.com/blog/process-integrity-levels/
-            IntegrityLevel = VMM_PROCESS_INTEGRITY_LEVEL_UNKNOWN;
-            if(!strcmp(szSidIntegrity, "S-1-16-16384")) { IntegrityLevel = VMM_PROCESS_INTEGRITY_LEVEL_SYSTEM;     } else
-            if(!strcmp(szSidIntegrity, "S-1-16-0"))     { IntegrityLevel = VMM_PROCESS_INTEGRITY_LEVEL_UNTRUSTED;  } else
-            if(!strcmp(szSidIntegrity, "S-1-16-4096"))  { IntegrityLevel = VMM_PROCESS_INTEGRITY_LEVEL_LOW;        } else
-            if(!strcmp(szSidIntegrity, "S-1-16-8192"))  { IntegrityLevel = VMM_PROCESS_INTEGRITY_LEVEL_MEDIUM;     } else
-            if(!strcmp(szSidIntegrity, "S-1-16-8448"))  { IntegrityLevel = VMM_PROCESS_INTEGRITY_LEVEL_MEDIUMPLUS; } else
-            if(!strcmp(szSidIntegrity, "S-1-16-12288")) { IntegrityLevel = VMM_PROCESS_INTEGRITY_LEVEL_HIGH;       } else
-            if(!strcmp(szSidIntegrity, "S-1-16-20480")) { IntegrityLevel = VMM_PROCESS_INTEGRITY_LEVEL_PROTECTED;  };
-            ppProcess[i]->win.TOKEN.IntegrityLevel = IntegrityLevel;
-            LocalFree(szSidIntegrity); szSidIntegrity = NULL;
-        }
-    }
-    // 5: finish up:
-    for(i = 0; i < pt->c; i++) {
-        // 5.1: user
-        if(!ppProcess[i]) { continue; }
-        ppProcess[i]->win.TOKEN.fSidUserValid =
-            ppProcess[i]->win.TOKEN.fSidUserValid &&
-            ConvertSidToStringSidA(&ppProcess[i]->win.TOKEN.SidUser.SID, &ppProcess[i]->win.TOKEN.szSID) &&
-            (ppProcess[i]->win.TOKEN.dwHashSID = CharUtil_Hash32A(ppProcess[i]->win.TOKEN.szSID, FALSE));
-        ppProcess[i]->win.TOKEN.fInitialized = TRUE;
+    cTokens = i;
+    // 3: Read Tokens:
+    if(!VmmWinToken_Initialize(H, cTokens, pvaTokens, ppObTokens)) { goto fail; }
+    // 4: Assign Tokens:
+    for(i = 0; i < cTokens; i++) {
+        ppProcess[i]->win.Token = ppObTokens[i];
     }
 fail:
-    LocalFree(pva);
+    LocalFree(pvaTokens);
     LocalFree(ppProcess);
-    Ob_DECREF(pObSystemProcess);
+    LocalFree(ppObTokens);
 }
 
 /*
@@ -869,9 +784,9 @@ fail:
 */
 VOID VmmProcess_TokenTryEnsureLock(_In_ VMM_HANDLE H, _In_ PVMMOB_PROCESS_TABLE pt, _In_ PVMM_PROCESS pProcess)
 {
-    if(pProcess->win.TOKEN.fInitialized) { return; }
+    if(pProcess->win.Token) { return; }
     EnterCriticalSection(&H->vmm.LockMaster);
-    if(!pProcess->win.TOKEN.fInitialized) {
+    if(!pProcess->win.Token) {
         VmmProcess_TokenTryEnsure(H, pt);
     }
     LeaveCriticalSection(&H->vmm.LockMaster);
@@ -903,7 +818,7 @@ PVMM_PROCESS VmmProcessGetEx(_In_ VMM_HANDLE H, _In_opt_ PVMMOB_PROCESS_TABLE pt
         if(!pt->_M[i]) { goto fail; }
         if(pt->_M[i]->dwPID == dwPID) {
             pObProcess = (PVMM_PROCESS)Ob_INCREF(pt->_M[i]);
-            if(pObProcess && fToken && !pObProcess->win.TOKEN.fInitialized) { VmmProcess_TokenTryEnsureLock(H, pt, pObProcess); }
+            if(pObProcess && fToken && !pObProcess->win.Token) { VmmProcess_TokenTryEnsureLock(H, pt, pObProcess); }
             return pObProcess;
         }
         if(++i == VMM_PROCESSTABLE_ENTRIES_MAX) { i = 0; }
@@ -959,7 +874,7 @@ POB_MAP VmmProcessGetAll(_In_ VMM_HANDLE H, _In_ BOOL fByEPROCESS, _In_ QWORD fl
     pProcess = ptOb->_M[iProcess];
     while(pProcess) {
         if(!pProcess->dwState || fShowTerminated) {
-            if(pProcess && fToken && !pProcess->win.TOKEN.fInitialized) { VmmProcess_TokenTryEnsureLock(H, ptOb, pProcess); }
+            if(pProcess && fToken && !pProcess->win.Token) { VmmProcess_TokenTryEnsureLock(H, ptOb, pProcess); }
             qwKey = fByEPROCESS ? pProcess->win.EPROCESS.va : pProcess->dwPID;
             ObMap_Push(pmOb, qwKey, pProcess);
             i++;
@@ -1009,7 +924,7 @@ restart:
         Ob_DECREF(pProcess);
         pProcess = pProcessNew;
         if(pProcess && pProcess->dwState && !fShowTerminated) { goto restart; }
-        if(pProcess && fToken && !pProcess->win.TOKEN.fInitialized) { VmmProcess_TokenTryEnsureLock(H, pt, pProcess); }
+        if(pProcess && fToken && !pProcess->win.Token) { VmmProcess_TokenTryEnsureLock(H, pt, pProcess); }
         return pProcess;
     }
     i = iStart = pProcess->dwPID % VMM_PROCESSTABLE_ENTRIES_MAX;
@@ -1023,7 +938,7 @@ restart:
             Ob_DECREF(pProcess);
             pProcess = pProcessNew;
             if(pProcess && pProcess->dwState && !fShowTerminated) { goto restart; }
-            if(pProcess && fToken && !pProcess->win.TOKEN.fInitialized) { VmmProcess_TokenTryEnsureLock(H, pt, pProcess); }
+            if(pProcess && fToken && !pProcess->win.Token) { VmmProcess_TokenTryEnsureLock(H, pt, pProcess); }
             return pProcess;
         }
         if(++i == VMM_PROCESSTABLE_ENTRIES_MAX) { i = 0; }
@@ -1105,9 +1020,8 @@ VOID VmmProcess_CloseObCallback(_In_ PVOID pVmmOb)
     Ob_DECREF(pProcess->Map.pObHeap);
     Ob_DECREF(pProcess->Map.pObThread);
     Ob_DECREF(pProcess->Map.pObHandle);
-    Ob_DECREF(pProcess->Map.pObEvil);
     Ob_DECREF(pProcess->pObPersistent);
-    LocalFree(pProcess->win.TOKEN.szSID);
+    Ob_DECREF(pProcess->win.Token);
     // plugin cleanup below
     Ob_DECREF(pProcess->Plugin.pObCLdrModulesDisplayCache);
     Ob_DECREF(pProcess->Plugin.pObCPeDumpDirCache);
@@ -1249,6 +1163,8 @@ PVMM_PROCESS VmmProcessCreateEntry(_In_ VMM_HANDLE H, _In_ BOOL fTotalRefresh, _
             if(ch < 128) {
                 if(ch == 0) { break; }
                 ch = VFSLIST_ASCII[ch];
+            } else {
+                ch = '_';
             }
             pProcess->szName[ich] = ch;
         }
@@ -2403,6 +2319,7 @@ fail:
 * Search may take a long time. It's not recommended to run this interactively.
 * To cancel a search prematurely set the fAbortRequested flag in pctx and
 * wait a short while.
+* NB! This function is similar to VmmYaraUtil_SearchSingleProcess()
 * CALLER DECREF: ppObAddressResult
 * -- pProcess
 * -- ctxs
@@ -2420,7 +2337,7 @@ BOOL VmmSearch(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _Inout_ PVMM_M
     if(ppObAddressResult) { *ppObAddressResult = NULL; }
     ctxs->vaMin = ctxs->vaMin & ~0xfff;
     ctxs->vaMax = (ctxs->vaMax - 1) | 0xfff;
-    if(ctxs->fAbortRequested || (ctxs->vaMax < ctxs->vaMin)) { goto fail; }
+    if(H->fAbort || ctxs->fAbortRequested || (ctxs->vaMax < ctxs->vaMin)) { goto fail; }
     if(!ctxs->cSearch || ctxs->cSearch > VMM_MEMORY_SEARCH_MAX) { goto fail; }
     for(iS = 0; iS < ctxs->cSearch; iS++) {
         if(!ctxs->search[iS].cb || (ctxs->search[iS].cb > sizeof(ctxs->search[iS].pb))) { goto fail; }
@@ -2487,6 +2404,31 @@ BOOL VmmMap_GetPte(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_M
         H->vmm.fnMemoryModel.pfnPteMapInitialize(H, pProcess) &&
         (!fExtendedText || VmmWinPte_InitializeMapText(H, pProcess)) &&
         (*ppObPteMap = Ob_INCREF(pProcess->Map.pObPte));
+}
+
+/*
+* Comparison function to efficiently locate a single PTE given address and map.
+*/
+int VmmMap_GetPteEntry_CmpFind(_In_ QWORD va, _In_ QWORD qwEntry)
+{
+    PVMM_MAP_PTEENTRY pEntry = (PVMM_MAP_PTEENTRY)qwEntry;
+    if(va < pEntry->vaBase) { return -1; }
+    if(va > pEntry->vaBase + (pEntry->cPages << 12) - 1) { return 1; }
+    return 0;
+}
+
+/*
+* Retrieve a single PVMM_MAP_PTEENTRY for a given PteMap and address inside it.
+* -- H
+* -- pPteMap
+* -- va
+* -- return = PTR to PTEENTRY or NULL on fail. Must not be used out of pPteMap scope.
+*/
+_Success_(return != NULL)
+PVMM_MAP_PTEENTRY VmmMap_GetPteEntry(_In_ VMM_HANDLE H, _In_opt_ PVMMOB_MAP_PTE pPteMap, _In_ QWORD va)
+{
+    if(!pPteMap) { return NULL; }
+    return Util_qfind(va, pPteMap->cMap, pPteMap->pMap, sizeof(VMM_MAP_PTEENTRY), VmmMap_GetPteEntry_CmpFind);
 }
 
 /*
@@ -2864,21 +2806,6 @@ BOOL VmmMap_GetHandle(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _Out_ PVMMO
     if(!VmmWinHandle_Initialize(H, pProcess, fExtendedText)) { return FALSE; }
     *ppObHandleMap = Ob_INCREF(pProcess->Map.pObHandle);
     return *ppObHandleMap != NULL;
-}
-
-/*
-* Retrieve the EVIL map
-* CALLER DECREF: ppObEvilMap
-* -- H
-* -- pProcess = retrieve for specific process, or if NULL for all processes.
-* -- ppObEvilMap
-* -- return
-*/
-_Success_(return)
-BOOL VmmMap_GetEvil(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_EVIL *ppObEvilMap)
-{
-    *ppObEvilMap = VmmEvil_Initialize(H, pProcess);
-    return *ppObEvilMap != NULL;
 }
 
 /*

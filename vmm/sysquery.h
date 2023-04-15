@@ -26,4 +26,15 @@ QWORD SysQuery_TimeCurrent(_In_ VMM_HANDLE H);
 _Success_(return)
 BOOL SysQuery_TimeZone(_In_ VMM_HANDLE H, _Out_writes_opt_(32) LPSTR uszTimeZone, _Out_opt_ int *piActiveBias);
 
+/*
+* Retrieve an exported function address similar to kernel32!GetProcAddress().
+* -- H
+* -- pProcess
+* -- uszModuleName
+* -- szFunctionName
+* -- return
+*/
+_Success_(return)
+QWORD SysQuery_GetProcAddress(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ LPSTR uszModuleName, _In_ LPSTR szFunctionName);
+
 #endif /* __SYSQUERY_H__ */

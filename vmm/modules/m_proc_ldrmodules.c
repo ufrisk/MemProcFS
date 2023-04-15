@@ -31,6 +31,9 @@
 
 #define LDRMODULES_MAX_IATEAT               0x10000
 
+#define LDRMODULE_FILELENGTH_DEBUGINFO      356
+#define LDRMODULE_FILELENGTH_VERSIONINFO    672
+
 typedef struct tdOBLDRMODULES_CACHE_ENTRY {
     OB ObHdr;
     DWORD dwHash;
@@ -143,6 +146,60 @@ fail:
     LocalFree(pSections);
     LocalFree(sz);
     return nt;
+}
+
+/*
+* Dynamically generate the file \<modulename>\debuginfo.txt.
+*/
+_Success_(return == 0)
+NTSTATUS LdrModules_Read_PEDebugInfo(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pe, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+{
+    CHAR szSymbolServer[MAX_PATH];
+    CHAR sz[LDRMODULE_FILELENGTH_DEBUGINFO + 1];
+    VmmWinLdrModule_SymbolServer(H, pe, TRUE, _countof(szSymbolServer), szSymbolServer);
+    snprintf(
+        sz,
+        LDRMODULE_FILELENGTH_DEBUGINFO + 1,
+        "PDB filename:  %-64.64s\n" \
+        "GUID:          %-32.32s\n" \
+        "Age:           %-4u\n" \
+        "Symbol server: %-192.192s\n",
+        (pe->pExDebugInfo && pe->pExDebugInfo->uszPdbFilename) ? pe->pExDebugInfo->uszPdbFilename : "",
+        (pe->pExDebugInfo && pe->pExDebugInfo->uszGuid) ? pe->pExDebugInfo->uszGuid : "",
+        (pe->pExDebugInfo) ? pe->pExDebugInfo->dwAge : 0,
+        szSymbolServer
+    );
+    return Util_VfsReadFile_FromPBYTE(sz, LDRMODULE_FILELENGTH_DEBUGINFO, pb, cb, pcbRead, cbOffset);
+}
+
+/*
+* Dynamically generate the file \<modulename>\versioninfo.txt.
+*/
+_Success_(return == 0)
+NTSTATUS LdrModules_Read_PEVersionInfo(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pe, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+{
+    CHAR sz[LDRMODULE_FILELENGTH_VERSIONINFO + 1];
+    snprintf(
+        sz,
+        LDRMODULE_FILELENGTH_VERSIONINFO + 1,
+        "Company Name:      %-64.64s\n" \
+        "File Description:  %-64.64s\n" \
+        "File Version:      %-64.64s\n" \
+        "Internal Name:     %-64.64s\n" \
+        "Legal Copyright:   %-64.64s\n" \
+        "Original Filename: %-64.64s\n" \
+        "Product Name:      %-64.64s\n" \
+        "Product Version:   %-64.64s\n",
+        (pe->pExVersionInfo && pe->pExVersionInfo->uszCompanyName) ? pe->pExVersionInfo->uszCompanyName : "",
+        (pe->pExVersionInfo && pe->pExVersionInfo->uszFileDescription) ? pe->pExVersionInfo->uszFileDescription : "",
+        (pe->pExVersionInfo && pe->pExVersionInfo->uszFileVersion) ? pe->pExVersionInfo->uszFileVersion : "",
+        (pe->pExVersionInfo && pe->pExVersionInfo->uszInternalName) ? pe->pExVersionInfo->uszInternalName : "",
+        (pe->pExVersionInfo && pe->pExVersionInfo->uszLegalCopyright) ? pe->pExVersionInfo->uszLegalCopyright : "",
+        (pe->pExVersionInfo && pe->pExVersionInfo->uszOriginalFilename) ? pe->pExVersionInfo->uszOriginalFilename : "",
+        (pe->pExVersionInfo && pe->pExVersionInfo->uszProductName) ? pe->pExVersionInfo->uszProductName : "",
+        (pe->pExVersionInfo && pe->pExVersionInfo->uszProductVersion) ? pe->pExVersionInfo->uszProductVersion : ""
+    );
+    return Util_VfsReadFile_FromPBYTE(sz, LDRMODULE_FILELENGTH_VERSIONINFO, pb, cb, pcbRead, cbOffset);
 }
 
 /*
@@ -367,6 +424,12 @@ NTSTATUS LdrModules_Read_ModuleSubFile(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CO
     if(!_stricmp(uszPath, "sections.txt")) {
         return LdrModules_ReadFile_Sections(H, pProcess, pModule->vaBase, pb, cb, pcbRead, cbOffset);
     }
+    if(!_stricmp(uszPath, "debuginfo.txt")) {
+        return LdrModules_Read_PEDebugInfo(H, pProcess, pModule, pb, cb, pcbRead, cbOffset);
+    }
+    if(!_stricmp(uszPath, "versioninfo.txt")) {
+        return LdrModules_Read_PEVersionInfo(H, pProcess, pModule, pb, cb, pcbRead, cbOffset);
+    }
     if(!_strnicmp(uszPath, "sectionsd\\", 10)) {
         return LdrModules_Read_SectionsD(H, pProcess, pModule, uszPath + 10, pb, cb, pcbRead, cbOffset);
     }
@@ -392,6 +455,7 @@ NTSTATUS LdrModules_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _O
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     CHAR uszModuleName[MAX_PATH];
     LPSTR uszModuleSubPath;
+    DWORD flags = 0;
     PVMM_MAP_MODULEENTRY pModule = NULL;
     PVMMOB_MAP_MODULE pObModuleMap = NULL;
     PVMMOB_MAP_UNLOADEDMODULE pObUnloadedModuleMap = NULL;
@@ -449,7 +513,9 @@ NTSTATUS LdrModules_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _O
     }
     uszModuleSubPath = CharUtil_PathSplitFirst(ctxP->uszPath, uszModuleName, sizeof(uszModuleName));
     *pcbRead = 0;
-    if(uszModuleName[0] && uszModuleSubPath[0] && VmmMap_GetModuleEntryEx(H, (PVMM_PROCESS)ctxP->pProcess, 0, uszModuleName, 0, &pObModuleMap, &pModule)) {
+    flags |= CharUtil_StrEndsWith(uszModuleSubPath, "debuginfo.txt", TRUE) ? VMM_MODULE_FLAG_DEBUGINFO | VMM_MODULE_FLAG_VERSIONINFO : 0;
+    flags |= CharUtil_StrEndsWith(uszModuleSubPath, "versioninfo.txt", TRUE) ? VMM_MODULE_FLAG_VERSIONINFO : 0;
+    if(uszModuleName[0] && uszModuleSubPath[0] && VmmMap_GetModuleEntryEx(H, (PVMM_PROCESS)ctxP->pProcess, 0, uszModuleName, flags, &pObModuleMap, &pModule)) {
         nt = LdrModules_Read_ModuleSubFile(H, ctxP, pModule, uszModuleSubPath, pb, cb, pcbRead, cbOffset);
         Ob_DECREF(pObModuleMap);
         return nt;
@@ -502,6 +568,7 @@ BOOL LdrModules_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout
     // module-specific 'root' directory
     if(!uszPath2[0]) {
         VMMDLL_VfsList_AddFile(pFileList, "base.txt", 16, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "debuginfo.txt", LDRMODULE_FILELENGTH_DEBUGINFO, NULL);
         VMMDLL_VfsList_AddFile(pFileList, "entry.txt", 16, NULL);
         VMMDLL_VfsList_AddFile(pFileList, "fullname.txt",  strlen(pModule->uszFullName), NULL);
         VMMDLL_VfsList_AddFile(pFileList, "size.txt", 8, NULL);
@@ -510,6 +577,7 @@ BOOL LdrModules_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout
         VMMDLL_VfsList_AddFile(pFileList, "import.txt", pModule->cIAT * LDRMODULES_LINELENGTH_IAT, NULL);
         VMMDLL_VfsList_AddFile(pFileList, "sections.txt", pModule->cSection * LDRMODULES_LINELENGTH_SECTIONS, NULL);
         VMMDLL_VfsList_AddFile(pFileList, "pefile.dll", pModule->cbFileSizeRaw, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "versioninfo.txt", LDRMODULE_FILELENGTH_VERSIONINFO, NULL);
         VMMDLL_VfsList_AddDirectory(pFileList, "sectionsd", NULL);
         VMMDLL_VfsList_AddDirectory(pFileList, "directoriesd", NULL);
         goto success;

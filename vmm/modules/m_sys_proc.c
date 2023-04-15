@@ -56,8 +56,9 @@ VOID MSysProc_Tree_ProcessItems_GetUserName(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS
 {
     BOOL f, fWellKnownAccount = FALSE;
     uszUserName[0] = 0;
-    f = pProcess->win.TOKEN.fSidUserValid &&
-        VmmWinUser_GetName(H, &pProcess->win.TOKEN.SidUser.SID, uszUserName, 17, &fWellKnownAccount);
+    f = pProcess->win.Token &&
+        pProcess->win.Token->fSidUserValid &&
+        VmmWinUser_GetName(H, &pProcess->win.Token->SidUser.SID, uszUserName, 17, &fWellKnownAccount);
     *fAccountUser = f && !fWellKnownAccount;
 }
 
@@ -132,8 +133,8 @@ DWORD MSysProc_Tree_ProcessItems(_In_ VMM_HANDLE H, _In_ PMSYSPROC_TREE_ENTRY pP
         if(szTimeCRE[0] != ' ') {
             o += snprintf(pb + o, cb - o, "%66s%s -> %s\n", "", szTimeCRE, szTimeEXIT);
         }
-        if(pProcessEntry->pObProcess->win.TOKEN.IntegrityLevel) {
-            o += snprintf(pb + o, cb - o, "%66s%s\n", "", VMM_PROCESS_INTEGRITY_LEVEL_STR[pProcessEntry->pObProcess->win.TOKEN.IntegrityLevel]);
+        if(pProcessEntry->pObProcess->win.Token && pProcessEntry->pObProcess->win.Token->IntegrityLevel) {
+            o += snprintf(pb + o, cb - o, "%66s%s\n", "", VMM_TOKEN_INTEGRITY_LEVEL_STR[pProcessEntry->pObProcess->win.Token->IntegrityLevel]);
         }
         o += snprintf(pb + o, cb - o, "\n");
     }
@@ -230,8 +231,8 @@ VOID MSysProc_ListTree_ProcessUserParams_CallbackAction(_In_ VMM_HANDLE H, _In_ 
     if(VmmProcess_GetCreateTimeOpt(H, pProcess)) {
         c += MSYSPROC_TREE_LINE_LENGTH_VERBOSE_BASE + 23 + 4 + 23;
     }
-    if(pProcess->win.TOKEN.IntegrityLevel) {
-        c += MSYSPROC_TREE_LINE_LENGTH_VERBOSE_BASE + (DWORD)strlen(VMM_PROCESS_INTEGRITY_LEVEL_STR[pProcess->win.TOKEN.IntegrityLevel]);
+    if(pProcess->win.Token && pProcess->win.Token->IntegrityLevel) {
+        c += MSYSPROC_TREE_LINE_LENGTH_VERBOSE_BASE + (DWORD)strlen(VMM_TOKEN_INTEGRITY_LEVEL_STR[pProcess->win.Token->IntegrityLevel]);
     }
     InterlockedAdd(pcTotalBytes, c);
 }

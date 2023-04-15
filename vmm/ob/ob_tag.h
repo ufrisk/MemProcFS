@@ -9,7 +9,9 @@
 #include "ob.h"
 
 #define OB_TAG_CTX_MMISCINFO            'CMI '
-#define OB_TAG_FORENSIC_FILE            'Ffil'
+#define OB_TAG_FC_FILE                  'Ffil'
+#define OB_TAG_FC_SCANVIRTMEM_CTX       'FvmC'
+#define OB_TAG_FC_SCANVIRTMEM_ENTRY     'FvmE'
 #define OB_TAG_INFODB_CTX               'IDBC'
 #define OB_TAG_MAP_PTE                  'Mpte'
 #define OB_TAG_MAP_VAD                  'Mvad'
@@ -58,6 +60,7 @@
 #define OB_TAG_VM_CONTEXT               'VmC_'
 #define OB_TAG_VM_CONTEXT_TRANSLATE     'VmCt'
 #define OB_TAG_VM_GLOBAL                'VmG_'
+#define OB_TAG_VMM_TOKEN                'Tok_'
 #define OB_TAG_VMM_PROCESS              'Ps__'
 #define OB_TAG_VMM_PROCESS_CLONE        'PsC_'
 #define OB_TAG_VMM_PROCESS_PERSISTENT   'PsSt'
@@ -65,5 +68,7 @@
 #define OB_TAG_VMM_VIRT2PHYS            'PsVP'
 #define OB_TAB_VMMDLL_EXTERNALMEM       'EXTM'
 #define OB_TAG_VMMVFS_DUMPCONTEXT       'CDmp'
+#define OB_TAG_YARA_CONTEXT             'YrCX'
+#define OB_TAG_YARA_PARSEHANDLE         'YrPH'
 
 #endif /* __OB_TAG_H__ */
