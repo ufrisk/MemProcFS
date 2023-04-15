@@ -158,7 +158,6 @@ v1.1-v4.9
 * Device tree information in /sys/drivers.
 * Linux feature additions: memcompress and token.
 * Manual download of debug symbols (PDBs) on offline systems (Windows only).
-</details>
 
 [v5.3](https://github.com/ufrisk/MemProcFS/releases/tag/v5.3)
 * Bug fixes and performance optimizations.
@@ -168,6 +167,7 @@ v1.1-v4.9
 * Linux Python plugin support.
 * Hyper-V Container/Sandbox support.
 * Windows Hypervisor Platform support (VMware and VirtualBox on Hyper-V).
+</details>
 
 [v5.4](https://github.com/ufrisk/MemProcFS/releases/tag/v5.4)
 * Rust API support.
