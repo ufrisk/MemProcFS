@@ -715,8 +715,8 @@ namespace vmmsharp
             ulong cbENTRY = (ulong)System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_PROCESS_INFORMATION));
             fixed (byte* pb = new byte[cbENTRY])
             {
-                Marshal.WriteInt64(new IntPtr(pb + 0), (long)vmmi.VMMDLL_PROCESS_INFORMATION_MAGIC);
-                Marshal.WriteInt16(new IntPtr(pb + 8), (short)vmmi.VMMDLL_PROCESS_INFORMATION_VERSION);
+                Marshal.WriteInt64(new IntPtr(pb + 0), unchecked((long)vmmi.VMMDLL_PROCESS_INFORMATION_MAGIC));
+                Marshal.WriteInt16(new IntPtr(pb + 8), unchecked((short)vmmi.VMMDLL_PROCESS_INFORMATION_VERSION));
                 result = vmmi.VMMDLL_ProcessGetInformation(hVMM, pid, pb, ref cbENTRY);
                 if (!result) { return new PROCESS_INFORMATION(); }
                 vmmi.VMMDLL_PROCESS_INFORMATION n = Marshal.PtrToStructure<vmmi.VMMDLL_PROCESS_INFORMATION>((System.IntPtr)pb);
@@ -2382,8 +2382,8 @@ namespace vmmsharp
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_ProcessGetModuleBaseW")]
         public static extern ulong VMMDLL_ProcessGetModuleBase(IntPtr hVMM, uint pid, [MarshalAs(UnmanagedType.LPWStr)] string wszModuleName);
 
-        internal static ulong VMMDLL_PROCESS_INFORMATION_MAGIC =        0xc0ffee663df9301e;
-        internal static ushort VMMDLL_PROCESS_INFORMATION_VERSION =     7;
+        internal const ulong VMMDLL_PROCESS_INFORMATION_MAGIC =         0xc0ffee663df9301e;
+        internal const ushort VMMDLL_PROCESS_INFORMATION_VERSION =      7;
 
         [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential, CharSet = CharSet.Ansi)]
         internal struct VMMDLL_PROCESS_INFORMATION
