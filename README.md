@@ -69,9 +69,9 @@ Or register the memory dump file extension with MemProcFS.exe so that the file s
 - mount the memory dump file as default M: <br>`memprocfs.exe -device c:\temp\win10x64-dump.raw`
 - mount the memory dump file as default M: with extra verbosity: <br>`memprocfs.exe -device c:\temp\win10x64-dump.raw -v`
 - mount the memory dump file as default M: and start forensics mode: <br>`memprocfs.exe -device c:\temp\win10x64-dump.raw -forensic 1`
+- mount the memory dump file as default M: and start forensics mode with a yara scan: <br>`memprocfs.exe -device c:\temp\win10x64-dump.raw -forensic 1 -yara-rules-file c:\yara\rules\windows_malware_index.yar`
 - mount the memory dump file as /home/pi/mnt/ on Linux: <br>`./memprocfs -mount /home/pi/linux -device /dumps/win10x64-dump.raw`
 - mount the memory dump file as S: <br>`memprocfs.exe -mount s -device c:\temp\win10x64-dump.raw`
-- mount live target memory, in verbose read-only mode, with DumpIt in /LIVEKD mode: <br>`DumpIt.exe /LIVEKD /A memprocfs.exe /C "-v"`
 - mount live target memory, in read-only mode, with WinPMEM driver: <br>`memprocfs.exe -device pmem`
 - mount live target memory, in read/write mode, with PCILeech FPGA memory acquisition device: <br>`memprocfs.exe -device fpga -memmap auto`
 - mount a memory dump with a corresponding page files: <br>`memprocfs.exe -device unknown-x64-dump.raw -pagefile0 pagefile.sys -pagefile1 swapfile.sys`
