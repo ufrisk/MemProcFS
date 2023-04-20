@@ -11,9 +11,9 @@
 #
 # VmmPyPlugin also loads Light plugins: smaller, faster plugins which generate
 # output by printing to stdout. Light plugins are run at first access and are
-# refreshed at: NOTIFY_REFRESH_SLOW intervals. Light plugins are ordinary .py
-# files placed in the plugin directory. Light plugins are not possible to use
-# in a per-process context.
+# refreshed at: PLUGIN_NOTIFY_REFRESH_SLOW intervals. Light plugins are
+# ordinary .py files placed in the plugin directory. Light plugins are not
+# possible to use in a per-process context.
 # They are only suitable for fast small output have the file name format:
 # 'pyp_root_<dirname>_<filename>.py' or 'pyp_root_<dirname>_<filename>.py'.
 #
@@ -23,10 +23,10 @@
 #
 # https://github.com/ufrisk/
 #
-# (c) Ulf Frisk, 2018-2022
+# (c) Ulf Frisk, 2018-2023
 # Author: Ulf Frisk, pcileech@frizk.net
 #
-# Header Version: 4.0
+# Header Version: 5.5
 #
 
 import memprocfs
@@ -245,7 +245,7 @@ def VmmPyPlugin_InternalCallback_Notify(fEvent, bytesData):
     fEvent -- int: the event id as given by memprocfs.PLUGIN_EVENT_*
     bytesData -- bytes: any bytes object (or None) related to the event.
     """
-    if fEvent == memprocfs.PLUGIN_EVENT_VERBOSITYCHANGE:
+    if fEvent == memprocfs.PLUGIN_NOTIFY_VERBOSITYCHANGE:
         VmmPyPlugin_InternalSetVerbosity()
     for module in VmmPyPlugin_PluginModules:
         if hasattr(module, 'Notify'):
@@ -467,7 +467,7 @@ def VmmPyPluginLight_InternalInitializePlugins():
 def VmmPyPluginLight_InternalCallback_Refresh():
     """Internal Use Only!
     """
-    for e in VmmPyPluginLight_registry:
+    for e in VmmPyPluginLight_registry.values():
         e['$list'] = None
 
 

@@ -7,10 +7,10 @@
 # https://github.com/ufrisk/MemProcFS
 # https://github.com/ufrisk/MemProcFS/wiki/API_Python
 #
-# (c) Ulf Frisk, 2021-2022
+# (c) Ulf Frisk, 2021-2023
 # Author: Ulf Frisk, pcileech@frizk.net
 #
-# Header Version: 4.0
+# Header Version: 5.5
 #
 
 try:
@@ -220,6 +220,7 @@ FLAG_NOPAGING_IO                      = 0x0020 # do not try to retrieve memory f
 FLAG_NOCACHEPUT                       = 0x0100 # do not write back to the data cache upon successful read from memory acquisition device.
 FLAG_CACHE_RECENT_ONLY                = 0x0200 # only fetch from the most recent active cache region when reading.
 FLAG_NO_PREDICTIVE_READ               = 0x0400 # do not perform additional predictive page reads (default on smaller requests).
+FLAG_FORCECACHE_READ_DISABLE          = 0x0800 # disable/override any use of VMM_FLAG_FORCECACHE_READ. only recommended for local files. improves forensic artifact order.
 
 # NTSTATUS values. (Used/Returned by Write file plugin callbacks).
 STATUS_SUCCESS                        = 0x00000000
@@ -278,6 +279,7 @@ OPT_CORE_MAX_NATIVE_ADDRESS           = 0x4000000800000000  # R
 
 OPT_CORE_SYSTEM                       = 0x2000000100000000  # R
 OPT_CORE_MEMORYMODEL                  = 0x2000000200000000  # R
+
 OPT_CONFIG_IS_REFRESH_ENABLED         = 0x2000000300000000  # R - 1/0
 OPT_CONFIG_TICK_PERIOD                = 0x2000000400000000  # RW - base tick period in ms
 OPT_CONFIG_READCACHE_TICKS            = 0x2000000500000000  # RW - memory cache validity period (in ticks)
@@ -289,20 +291,23 @@ OPT_CONFIG_VMM_VERSION_MINOR          = 0x2000000A00000000  # R
 OPT_CONFIG_VMM_VERSION_REVISION       = 0x2000000B00000000  # R
 OPT_CONFIG_STATISTICS_FUNCTIONCALL    = 0x2000000C00000000  # RW - enable function call statistics (.status/statistics_fncall file)
 OPT_CONFIG_IS_PAGING_ENABLED          = 0x2000000D00000000  # RW - 1/0
+OPT_CONFIG_DEBUG                      = 0x2000000E00000000  # W
+OPT_CONFIG_YARA_RULES                 = 0x2000000F00000000  # R
 
 OPT_WIN_VERSION_MAJOR                 = 0x2000010100000000  # R
 OPT_WIN_VERSION_MINOR                 = 0x2000010200000000  # R
 OPT_WIN_VERSION_BUILD                 = 0x2000010300000000  # R
+OPT_WIN_SYSTEM_UNIQUE_ID              = 0x2000010400000000  # R
+
+OPT_FORENSIC_MODE                     = 0x2000020100000000  # RW - enable/retrieve forensic mode type [0-4].
 
 OPT_REFRESH_ALL                       = 0x2001ffff00000000  # W - refresh all caches
-OPT_REFRESH_FREQ_FAST                 = 0x2001040000000000  # W - refresh fast frequency (including partial process listings)
-OPT_REFRESH_FREQ_MEDIUM               = 0x2001000100000000  # W - refresh medium frequency (including full process listings)
-OPT_REFRESH_FREQ_SLOW                 = 0x2001001000000000  # W - refresh slow frequency (including registry)
-OPT_REFRESH_READ                      = 0x2001000200000000  # W - refresh physical read cache
-OPT_REFRESH_TLB                       = 0x2001000400000000  # W - refresh page table (TLB) cache
-OPT_REFRESH_PAGING                    = 0x2001000800000000  # W - refresh virtual memory 'paging' cache
-OPT_REFRESH_USER                      = 0x2001002000000000  # W
-OPT_REFRESH_PHYSMEMMAP                = 0x2001004000000000  # W
-OPT_REFRESH_PFN                       = 0x2001008000000000  # W
-OPT_REFRESH_OBJ                       = 0x2001010000000000  # W
-OPT_REFRESH_NET                       = 0x2001020000000000  # W
+OPT_REFRESH_FREQ_MEM                  = 0x2001100000000000  # W - refresh memory cache (excl. TLB) [fully]
+OPT_REFRESH_FREQ_MEM_PARTIAL          = 0x2001000200000000  # W - refresh memory cache (excl. TLB) [partial 33%/call]
+OPT_REFRESH_FREQ_TLB                  = 0x2001080000000000  # W - refresh page table (TLB) cache [fully]
+OPT_REFRESH_FREQ_TLB_PARTIAL          = 0x2001000400000000  # W - refresh page table (TLB) cache [partial 33%/call]
+OPT_REFRESH_FREQ_FAST                 = 0x2001040000000000  # W - refresh fast frequency - incl. partial process refresh
+OPT_REFRESH_FREQ_MEDIUM               = 0x2001000100000000  # W - refresh medium frequency - incl. full process refresh
+OPT_REFRESH_FREQ_SLOW                 = 0x2001001000000000  # W - refresh slow frequency.
+
+VMMDLL_OPT_PROCESS_DTB                = 0x2002000100000000  # W - force set process directory table base.
