@@ -1303,6 +1303,7 @@ PVMMWIN_USER_PROCESS_PARAMETERS VmmWin_UserProcessParameters_Get(_In_ VMM_HANDLE
         if(!VmmReadAllocUnicodeStringAsUTF8(H, pProcess, f32, 0, vaUserProcessParameters + (f32 ? 0x038 : 0x060), 0x400, &pu->uszImagePathName, &pu->cbuImagePathName)) {  // ImagePathName
             VmmReadAllocUnicodeStringAsUTF8(H, pProcess, f32, 0, vaUserProcessParameters + (f32 ? 0x030 : 0x050), 0x400, &pu->uszImagePathName, &pu->cbuImagePathName);    // DllPath (mutually exclusive with ImagePathName?)
         }
+        VmmReadAllocUnicodeStringAsUTF8(H, pProcess, f32, 0, vaUserProcessParameters + (f32 ? 0x024 : 0x038), 0x00010000, &pu->uszCurrentDirectory, &pu->cbuCurrentDirectory);
         VmmReadAllocUnicodeStringAsUTF8(H, pProcess, f32, 0, vaUserProcessParameters + (f32 ? 0x040 : 0x070), 0x00010000, &pu->uszCommandLine, &pu->cbuCommandLine);
         VmmReadAllocUnicodeStringAsUTF8(H, pProcess, f32, 0, vaUserProcessParameters + (f32 ? 0x070 : 0x0b0), 0x00010000, &pu->uszWindowTitle, &pu->cbuWindowTitle);
     }

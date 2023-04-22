@@ -7,6 +7,10 @@
 #include "modules.h"
 #include "../vmmwinreg.h"
 
+// Forward declarations:
+_Success_(return)
+BOOL VMMDLL_ConfigSet_Impl(_In_ VMM_HANDLE H, _In_ ULONG64 fOption, _In_ ULONG64 qwValue);
+
 /*
 * Read : function as specified by the module manager. The module manager will
 * call into this callback function whenever a read shall occur from a "file".
@@ -44,20 +48,38 @@ NTSTATUS MConf_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_wr
     if(!_stricmp(ctxP->uszPath, "config_refresh_tick_period_ms.txt")) {
         return Util_VfsReadFile_FromDWORD(H->vmm.ThreadProcCache.cMs_TickPeriod, pb, cb, pcbRead, cbOffset, FALSE);
     }
-    if(!_stricmp(ctxP->uszPath, "config_refresh_read.txt")) {
+    if(!_stricmp(ctxP->uszPath, "config_refresh_period_mem.txt")) {
         return Util_VfsReadFile_FromDWORD(H->vmm.ThreadProcCache.cTick_MEM, pb, cb, pcbRead, cbOffset, FALSE);
     }
-    if(!_stricmp(ctxP->uszPath, "config_refresh_tlb.txt")) {
+    if(!_stricmp(ctxP->uszPath, "config_refresh_period_tlb.txt")) {
         return Util_VfsReadFile_FromDWORD(H->vmm.ThreadProcCache.cTick_TLB, pb, cb, pcbRead, cbOffset, FALSE);
     }
-    if(!_stricmp(ctxP->uszPath, "config_refresh_proc_partial.txt")) {
+    if(!_stricmp(ctxP->uszPath, "config_refresh_period_fast.txt")) {
         return Util_VfsReadFile_FromDWORD(H->vmm.ThreadProcCache.cTick_Fast, pb, cb, pcbRead, cbOffset, FALSE);
     }
-    if(!_stricmp(ctxP->uszPath, "config_refresh_proc_total.txt")) {
+    if(!_stricmp(ctxP->uszPath, "config_refresh_period_medium.txt")) {
         return Util_VfsReadFile_FromDWORD(H->vmm.ThreadProcCache.cTick_Medium, pb, cb, pcbRead, cbOffset, FALSE);
     }
-    if(!_stricmp(ctxP->uszPath, "config_refresh_registry.txt")) {
+    if(!_stricmp(ctxP->uszPath, "config_refresh_period_slow.txt")) {
         return Util_VfsReadFile_FromDWORD(H->vmm.ThreadProcCache.cTick_Slow, pb, cb, pcbRead, cbOffset, FALSE);
+    }
+    if(!_stricmp(ctxP->uszPath, "config_refresh_force_all.txt")) {
+        return Util_VfsReadFile_FromNumber(0, pb, cb, pcbRead, cbOffset);
+    }
+    if(!_stricmp(ctxP->uszPath, "config_refresh_force_mem.txt")) {
+        return Util_VfsReadFile_FromNumber(0, pb, cb, pcbRead, cbOffset);
+    }
+    if(!_stricmp(ctxP->uszPath, "config_refresh_force_tlb.txt")) {
+        return Util_VfsReadFile_FromNumber(0, pb, cb, pcbRead, cbOffset);
+    }
+    if(!_stricmp(ctxP->uszPath, "config_refresh_force_fast.txt")) {
+        return Util_VfsReadFile_FromNumber(0, pb, cb, pcbRead, cbOffset);
+    }
+    if(!_stricmp(ctxP->uszPath, "config_refresh_force_medium.txt")) {
+        return Util_VfsReadFile_FromNumber(0, pb, cb, pcbRead, cbOffset);
+    }
+    if(!_stricmp(ctxP->uszPath, "config_refresh_force_slow.txt")) {
+        return Util_VfsReadFile_FromNumber(0, pb, cb, pcbRead, cbOffset);
     }
     if(!_stricmp(ctxP->uszPath, "statistics.txt")) {
         cPageReadTotal = H->vmm.stat.page.cPrototype + H->vmm.stat.page.cTransition + H->vmm.stat.page.cDemandZero + H->vmm.stat.page.cVAD + H->vmm.stat.page.cCacheHit + H->vmm.stat.page.cPageFile + H->vmm.stat.page.cCompressed;
@@ -170,6 +192,7 @@ NTSTATUS MConf_Write_NotifyVerbosityChange(_In_ VMM_HANDLE H, _In_ NTSTATUS nt)
 NTSTATUS MConf_Write(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
 {
     NTSTATUS nt;
+    DWORD dw = 0;
     BOOL fEnable = FALSE;
     if(!_stricmp(ctxP->uszPath, "config_process_show_terminated.txt")) {
         nt = Util_VfsWriteFile_BOOL(&fEnable, pb, cb, pcbWrite, cbOffset);
@@ -205,21 +228,50 @@ NTSTATUS MConf_Write(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_re
     if(!_stricmp(ctxP->uszPath, "config_refresh_tick_period_ms.txt")) {
         return Util_VfsWriteFile_DWORD(&H->vmm.ThreadProcCache.cMs_TickPeriod, pb, cb, pcbWrite, cbOffset, 50, 0);
     }
-    if(!_stricmp(ctxP->uszPath, "config_refresh_read.txt")) {
+    if(!_stricmp(ctxP->uszPath, "config_refresh_period_mem.txt")) {
         return Util_VfsWriteFile_DWORD(&H->vmm.ThreadProcCache.cTick_MEM, pb, cb, pcbWrite, cbOffset, 1, 0);
     }
-    if(!_stricmp(ctxP->uszPath, "config_refresh_tlb.txt")) {
+    if(!_stricmp(ctxP->uszPath, "config_refresh_period_tlb.txt")) {
         return Util_VfsWriteFile_DWORD(&H->vmm.ThreadProcCache.cTick_TLB, pb, cb, pcbWrite, cbOffset, 1, 0);
     }
-    if(!_stricmp(ctxP->uszPath, "config_refresh_proc_partial.txt")) {
+    if(!_stricmp(ctxP->uszPath, "config_refresh_period_fast.txt")) {
         return Util_VfsWriteFile_DWORD(&H->vmm.ThreadProcCache.cTick_Fast, pb, cb, pcbWrite, cbOffset, 1, 0);
     }
-    if(!_stricmp(ctxP->uszPath, "config_refresh_proc_total.txt")) {
+    if(!_stricmp(ctxP->uszPath, "config_refresh_period_medium.txt")) {
         return Util_VfsWriteFile_DWORD(&H->vmm.ThreadProcCache.cTick_Medium, pb, cb, pcbWrite, cbOffset, 1, 0);
     }
-    if(!_stricmp(ctxP->uszPath, "config_refresh_registry.txt")) {
-        VmmWinReg_Refresh(H);
+    if(!_stricmp(ctxP->uszPath, "config_refresh_period_slow.txt")) {
         return Util_VfsWriteFile_DWORD(&H->vmm.ThreadProcCache.cTick_Slow, pb, cb, pcbWrite, cbOffset, 1, 0);
+    }
+    if(!_stricmp(ctxP->uszPath, "config_refresh_force_all.txt")) {
+        Util_VfsWriteFile_DWORD(&dw, pb, cb, pcbWrite, cbOffset, 0, 0);
+        if(dw) { VMMDLL_ConfigSet_Impl(H, VMMDLL_OPT_REFRESH_ALL, 1); }
+        return VMMDLL_STATUS_SUCCESS;
+    }
+    if(!_stricmp(ctxP->uszPath, "config_refresh_force_mem.txt")) {
+        Util_VfsWriteFile_DWORD(&dw, pb, cb, pcbWrite, cbOffset, 0, 0);
+        if(dw) { VMMDLL_ConfigSet_Impl(H, VMMDLL_OPT_REFRESH_FREQ_MEM, 1); }
+        return VMMDLL_STATUS_SUCCESS;
+    }
+    if(!_stricmp(ctxP->uszPath, "config_refresh_force_tlb.txt")) {
+        Util_VfsWriteFile_DWORD(&dw, pb, cb, pcbWrite, cbOffset, 0, 0);
+        if(dw) { VMMDLL_ConfigSet_Impl(H, VMMDLL_OPT_REFRESH_FREQ_TLB, 1); }
+        return VMMDLL_STATUS_SUCCESS;
+    }
+    if(!_stricmp(ctxP->uszPath, "config_refresh_force_fast.txt")) {
+        Util_VfsWriteFile_DWORD(&dw, pb, cb, pcbWrite, cbOffset, 0, 0);
+        if(dw) { VMMDLL_ConfigSet_Impl(H, VMMDLL_OPT_REFRESH_FREQ_FAST, 1); }
+        return VMMDLL_STATUS_SUCCESS;
+    }
+    if(!_stricmp(ctxP->uszPath, "config_refresh_force_medium.txt")) {
+        Util_VfsWriteFile_DWORD(&dw, pb, cb, pcbWrite, cbOffset, 0, 0);
+        if(dw) { VMMDLL_ConfigSet_Impl(H, VMMDLL_OPT_REFRESH_FREQ_MEDIUM, 1); }
+        return VMMDLL_STATUS_SUCCESS;
+    }
+    if(!_stricmp(ctxP->uszPath, "config_refresh_force_slow.txt")) {
+        Util_VfsWriteFile_DWORD(&dw, pb, cb, pcbWrite, cbOffset, 0, 0);
+        if(dw) { VMMDLL_ConfigSet_Impl(H, VMMDLL_OPT_REFRESH_FREQ_SLOW, 1); }
+        return VMMDLL_STATUS_SUCCESS;
     }
     if(!_stricmp(ctxP->uszPath, "config_fileinfoheader_enable.txt")) {
         Util_VfsWriteFile_BOOL(&H->cfg.fFileInfoHeader, pb, cb, pcbWrite, cbOffset);
@@ -283,11 +335,17 @@ BOOL MConf_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHA
         VMMDLL_VfsList_AddFile(pFileList, "config_statistics_fncall.txt", 1, NULL);
         VMMDLL_VfsList_AddFile(pFileList, "config_refresh_enable.txt", 1, NULL);
         VMMDLL_VfsList_AddFile(pFileList, "config_refresh_tick_period_ms.txt", 8, NULL);
-        VMMDLL_VfsList_AddFile(pFileList, "config_refresh_read.txt", 8, NULL);
-        VMMDLL_VfsList_AddFile(pFileList, "config_refresh_tlb.txt", 8, NULL);
-        VMMDLL_VfsList_AddFile(pFileList, "config_refresh_proc_partial.txt", 8, NULL);
-        VMMDLL_VfsList_AddFile(pFileList, "config_refresh_proc_total.txt", 8, NULL);
-        VMMDLL_VfsList_AddFile(pFileList, "config_refresh_registry.txt", 8, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "config_refresh_force_all.txt", 1, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "config_refresh_force_mem.txt", 1, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "config_refresh_force_tlb.txt", 1, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "config_refresh_force_fast.txt", 1, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "config_refresh_force_medium.txt", 1, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "config_refresh_force_slow.txt", 1, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "config_refresh_period_mem.txt", 8, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "config_refresh_period_tlb.txt", 8, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "config_refresh_period_fast.txt", 8, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "config_refresh_period_medium.txt", 8, NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "config_refresh_period_slow.txt", 8, NULL);
         VMMDLL_VfsList_AddFile(pFileList, "config_symbol_enable.txt", 1, NULL);
         VMMDLL_VfsList_AddFile(pFileList, "config_symbolcache.txt", strlen(H->pdb.szLocal), NULL);
         VMMDLL_VfsList_AddFile(pFileList, "config_symbolserver.txt", strlen(H->pdb.szServer), NULL);

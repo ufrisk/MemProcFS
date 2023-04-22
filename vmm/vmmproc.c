@@ -88,18 +88,18 @@ BOOL VmmProc_RefreshProcesses(_In_ VMM_HANDLE H, _In_ BOOL fRefreshTotal)
 // may be changed in config options or by editing files in the .status directory.
 
 #define VMMPROC_UPDATERTHREAD_LOCAL_PERIOD              100
-#define VMMPROC_UPDATERTHREAD_LOCAL_MEM                 (300 / VMMPROC_UPDATERTHREAD_LOCAL_PERIOD)                // 0.3s
-#define VMMPROC_UPDATERTHREAD_LOCAL_TLB                 (2 * 1000 / VMMPROC_UPDATERTHREAD_LOCAL_PERIOD)           // 2s
-#define VMMPROC_UPDATERTHREAD_LOCAL_PROC_REFRESHLIST    (5 * 1000 / VMMPROC_UPDATERTHREAD_LOCAL_PERIOD)           // 5s
-#define VMMPROC_UPDATERTHREAD_LOCAL_PROC_REFRESHTOTAL   (15 * 1000 / VMMPROC_UPDATERTHREAD_LOCAL_PERIOD)          // 15s
-#define VMMPROC_UPDATERTHREAD_LOCAL_REGISTRY            (5 * 60 * 1000 / VMMPROC_UPDATERTHREAD_LOCAL_PERIOD)      // 5m
+#define VMMPROC_UPDATERTHREAD_LOCAL_MEM                 (300 / VMMPROC_UPDATERTHREAD_LOCAL_PERIOD)              // 0.3s
+#define VMMPROC_UPDATERTHREAD_LOCAL_TLB                 (2 * 1000 / VMMPROC_UPDATERTHREAD_LOCAL_PERIOD)         // 2s
+#define VMMPROC_UPDATERTHREAD_LOCAL_FAST                (5 * 1000 / VMMPROC_UPDATERTHREAD_LOCAL_PERIOD)         // 5s
+#define VMMPROC_UPDATERTHREAD_LOCAL_MEDIUM              (15 * 1000 / VMMPROC_UPDATERTHREAD_LOCAL_PERIOD)        // 15s
+#define VMMPROC_UPDATERTHREAD_LOCAL_SLOW                (5 * 60 * 1000 / VMMPROC_UPDATERTHREAD_LOCAL_PERIOD)    // 5m
 
 #define VMMPROC_UPDATERTHREAD_REMOTE_PERIOD             100
-#define VMMPROC_UPDATERTHREAD_REMOTE_MEM                (5 * 1000 / VMMPROC_UPDATERTHREAD_REMOTE_PERIOD)         // 5s
-#define VMMPROC_UPDATERTHREAD_REMOTE_TLB                (2 * 60 * 1000 / VMMPROC_UPDATERTHREAD_REMOTE_PERIOD)    // 2m
-#define VMMPROC_UPDATERTHREAD_REMOTE_PROC_REFRESHLIST   (15 * 1000 / VMMPROC_UPDATERTHREAD_REMOTE_PERIOD)        // 15s
-#define VMMPROC_UPDATERTHREAD_REMOTE_PROC_REFRESHTOTAL  (3 * 60 * 1000 / VMMPROC_UPDATERTHREAD_REMOTE_PERIOD)    // 3m
-#define VMMPROC_UPDATERTHREAD_REMOTE_REGISTRY           (10 * 60 * 1000 / VMMPROC_UPDATERTHREAD_LOCAL_PERIOD)    // 10m
+#define VMMPROC_UPDATERTHREAD_REMOTE_MEM                (5 * 1000 / VMMPROC_UPDATERTHREAD_REMOTE_PERIOD)        // 5s
+#define VMMPROC_UPDATERTHREAD_REMOTE_TLB                (2 * 60 * 1000 / VMMPROC_UPDATERTHREAD_REMOTE_PERIOD)   // 2m
+#define VMMPROC_UPDATERTHREAD_REMOTE_FAST               (15 * 1000 / VMMPROC_UPDATERTHREAD_REMOTE_PERIOD)       // 15s
+#define VMMPROC_UPDATERTHREAD_REMOTE_MEDIUM             (3 * 60 * 1000 / VMMPROC_UPDATERTHREAD_REMOTE_PERIOD)   // 3m
+#define VMMPROC_UPDATERTHREAD_REMOTE_SLOW               (10 * 60 * 1000 / VMMPROC_UPDATERTHREAD_LOCAL_PERIOD)   // 10m
 
 /*
 * Refresh functions refreshes aspects of MemProcFS at different intervals.
@@ -195,19 +195,19 @@ VOID VmmProcCacheUpdaterThread(_In_ VMM_HANDLE H, _In_ QWORD qwNotUsed)
     BOOL fRefreshMEM, fRefreshTLB, fRefreshFast, fRefreshMedium, fRefreshSlow;
     VmmLog(H, MID_CORE, LOGLEVEL_VERBOSE, "VmmProc: Start periodic cache flushing");
     if(H->dev.fRemote) {
-        H->vmm.ThreadProcCache.cMs_TickPeriod = VMMPROC_UPDATERTHREAD_REMOTE_PERIOD;
-        H->vmm.ThreadProcCache.cTick_MEM = VMMPROC_UPDATERTHREAD_REMOTE_MEM;
-        H->vmm.ThreadProcCache.cTick_TLB = VMMPROC_UPDATERTHREAD_REMOTE_TLB;
-        H->vmm.ThreadProcCache.cTick_Fast = VMMPROC_UPDATERTHREAD_REMOTE_PROC_REFRESHLIST;
-        H->vmm.ThreadProcCache.cTick_Medium = VMMPROC_UPDATERTHREAD_REMOTE_PROC_REFRESHTOTAL;
-        H->vmm.ThreadProcCache.cTick_Slow = VMMPROC_UPDATERTHREAD_REMOTE_REGISTRY;
+        H->vmm.ThreadProcCache.cMs_TickPeriod   = VMMPROC_UPDATERTHREAD_REMOTE_PERIOD;
+        H->vmm.ThreadProcCache.cTick_MEM        = VMMPROC_UPDATERTHREAD_REMOTE_MEM;
+        H->vmm.ThreadProcCache.cTick_TLB        = VMMPROC_UPDATERTHREAD_REMOTE_TLB;
+        H->vmm.ThreadProcCache.cTick_Fast       = VMMPROC_UPDATERTHREAD_REMOTE_FAST;
+        H->vmm.ThreadProcCache.cTick_Medium     = VMMPROC_UPDATERTHREAD_REMOTE_MEDIUM;
+        H->vmm.ThreadProcCache.cTick_Slow       = VMMPROC_UPDATERTHREAD_REMOTE_SLOW;
     } else {
-        H->vmm.ThreadProcCache.cMs_TickPeriod = VMMPROC_UPDATERTHREAD_LOCAL_PERIOD;
-        H->vmm.ThreadProcCache.cTick_MEM = VMMPROC_UPDATERTHREAD_LOCAL_MEM;
-        H->vmm.ThreadProcCache.cTick_TLB = VMMPROC_UPDATERTHREAD_LOCAL_TLB;
-        H->vmm.ThreadProcCache.cTick_Fast = VMMPROC_UPDATERTHREAD_LOCAL_PROC_REFRESHLIST;
-        H->vmm.ThreadProcCache.cTick_Medium = VMMPROC_UPDATERTHREAD_LOCAL_PROC_REFRESHTOTAL;
-        H->vmm.ThreadProcCache.cTick_Slow = VMMPROC_UPDATERTHREAD_LOCAL_REGISTRY;
+        H->vmm.ThreadProcCache.cMs_TickPeriod   = VMMPROC_UPDATERTHREAD_LOCAL_PERIOD;
+        H->vmm.ThreadProcCache.cTick_MEM        = VMMPROC_UPDATERTHREAD_LOCAL_MEM;
+        H->vmm.ThreadProcCache.cTick_TLB        = VMMPROC_UPDATERTHREAD_LOCAL_TLB;
+        H->vmm.ThreadProcCache.cTick_Fast       = VMMPROC_UPDATERTHREAD_LOCAL_FAST;
+        H->vmm.ThreadProcCache.cTick_Medium     = VMMPROC_UPDATERTHREAD_LOCAL_MEDIUM;
+        H->vmm.ThreadProcCache.cTick_Slow       = VMMPROC_UPDATERTHREAD_LOCAL_SLOW;
     }
     while(!H->fAbort && H->vmm.ThreadProcCache.fEnabled) {
         if(H->vmm.ThreadProcCache.cMs_TickPeriod > 100) {

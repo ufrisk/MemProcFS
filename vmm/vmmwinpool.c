@@ -1118,6 +1118,10 @@ fail:
     return fResult;
 }
 
+#define VMMWINPOOL_POOLTAG_STRICT_CHAR_ALLOW \
+    "0000000000000000000000000000000011000000000001101111111111000000" \
+    "0111111111111111111111111110000101111111111111111111111111100000"
+
 VOID VmmWinPool_AllPool7_ProcessSingleRange(_In_ VMM_HANDLE H, _In_ PVMMWINPOOL7_CTX ctx, _In_ PVMMWINPOOL7_RANGE pe, _In_ PBYTE pb)
 {
     BOOL f, fTagBad, fPrev = FALSE, f32 = H->vmm.f32;
@@ -1146,14 +1150,14 @@ VOID VmmWinPool_AllPool7_ProcessSingleRange(_In_ VMM_HANDLE H, _In_ PVMMWINPOOL7
             qwProcessBilled = pHdr64->ProcessBilled;
         }
         // check: index / block size / process billed
-        if(dwPoolIndex) { goto next; }
+        //if(dwPoolIndex) { goto next; }
         if(dwBlockSize < 2) { goto next; }
         if(fPrev && dwPreviousSize && (dwPrevBlockSize != dwPreviousSize)) { goto next; }
-        if(qwProcessBilled && !fPrev) {
+        if(dwPoolIndex || (qwProcessBilled && !fPrev)) {
             // strict pool tag checking:
             for(i = 0; i <= 16; i += 8) {
                 ch = (CHAR)(dwPoolTag >> i);
-                if(((ch < 'a') || (ch > 'z')) && ((ch < 'A') || (ch > 'Z')) && (ch != ' ')) {
+                if((ch & 0x80) || (VMMWINPOOL_POOLTAG_STRICT_CHAR_ALLOW[(BYTE)ch] == '0')) {
                     goto next;
                 }
             }

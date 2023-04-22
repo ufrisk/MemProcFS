@@ -978,10 +978,12 @@ typedef struct tdVMMWIN_USER_PROCESS_PARAMETERS {
     DWORD cbuCommandLine;
     DWORD cbuWindowTitle;
     DWORD cbuEnvironment;
+    DWORD cbuCurrentDirectory;
     LPSTR uszImagePathName;
     LPSTR uszCommandLine;
     LPSTR uszWindowTitle;
     LPSTR uszEnvironment;
+    LPSTR uszCurrentDirectory;
 } VMMWIN_USER_PROCESS_PARAMETERS, *PVMMWIN_USER_PROCESS_PARAMETERS;
 
 #define VMM_PHYS2VIRT_INFORMATION_MAX_PROCESS_RESULT    4
