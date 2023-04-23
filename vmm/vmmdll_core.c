@@ -496,6 +496,7 @@ BOOL VmmDllCore_InitializeConfig(_In_ VMM_HANDLE H, _In_ DWORD argc, _In_ char *
         argv2[2] = argv[1];
         return VmmDllCore_InitializeConfig(H, 3, argv2);
     }
+    H->cfg.dwPteQualityThreshold = 0x20;
     while(i < argc) {
         // "single argument" parameters below:
         if(0 == _stricmp(argv[i], "")) {
@@ -561,6 +562,9 @@ BOOL VmmDllCore_InitializeConfig(_In_ VMM_HANDLE H, _In_ DWORD argc, _In_ char *
             i += 2; continue;
         } else if(0 == _stricmp(argv[i], "-cr3")) {
             H->cfg.paCR3 = Util_GetNumericA(argv[i + 1]);
+            i += 2; continue;
+        } else if(0 == _stricmp(argv[i], "-debug-pte-quality-threshold")) {
+            H->cfg.dwPteQualityThreshold = (DWORD)Util_GetNumericA(argv[i + 1]);
             i += 2; continue;
         } else if((0 == _stricmp(argv[i], "-device")) || (0 == strcmp(argv[i], "-z"))) {
             strcpy_s(H->dev.szDevice, MAX_PATH, argv[i + 1]);

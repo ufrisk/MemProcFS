@@ -16,15 +16,15 @@
 */
 BOOL MmX64_TlbPageTableVerify(_In_ VMM_HANDLE H, _Inout_ PBYTE pb, _In_ QWORD pa, _In_ BOOL fSelfRefReq)
 {
-    DWORD i;
-    QWORD *ptes, c = 0, pte, paMax;
+    DWORD i, cBad = 0;
+    QWORD *ptes, pte, paMax;
     BOOL fSelfRef = FALSE;
     if(!pb) { return FALSE; }
     ptes = (PQWORD)pb;
     paMax = max(0xffffffff, H->dev.paMax);
     for(i = 0; i < 512; i++) {
         pte = *(ptes + i);
-        if((pte & 0x01) && ((0x000fffffffffffff & pte) > paMax)) {
+        if((pte & 0x01) && ((0x0000ffffffffffff & pte) > paMax)) {
             // A bad PTE, or memory allocated above the physical address max
             // limit. This may be just trash in the page table in which case
             // we clear this faulty entry. If too may bad PTEs are found this
@@ -34,14 +34,14 @@ BOOL MmX64_TlbPageTableVerify(_In_ VMM_HANDLE H, _Inout_ PBYTE pb, _In_ QWORD pa
             // avoid counting some special cases which may have plenty of entries.
             if(((pte & 0x80ffff000000000f) == 0x800000000000000f)) { continue; }
             // count as a bad page - if over threshold -> abort!
-            c++;
-            if(c > 16) { break; }
+            cBad++;
+            if(cBad > H->cfg.dwPteQualityThreshold) { break; }
         }
-        if(pa == (0x0000fffffffff000 & pte)) {
+        if(fSelfRefReq && (pa == (0x0000fffffffff000 & pte))) {
             fSelfRef = TRUE;
         }
     }
-    if((c > 16) || (fSelfRefReq && !fSelfRef)) {
+    if((cBad > H->cfg.dwPteQualityThreshold) || (fSelfRefReq && !fSelfRef)) {
         ZeroMemory(pb, 4096);
         return FALSE;
     }
