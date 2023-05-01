@@ -181,4 +181,4 @@ v1.1-v4.9
 [v5.6](https://github.com/ufrisk/MemProcFS/releases/tag/v5.6)
 * Bug fixes, performance optimizations and minor updates.
 * [files](https://github.com/ufrisk/MemProcFS/wiki/FS_Forensic_Files) plugin in forensics mode - showing files with recoverable contents.
-* Built-in yara rules for [Findevil](https://github.com/ufrisk/MemProcFS/wiki/FS_FindEvil) in forensics mode from [Elastic Security](https://github.com/elastic/protections-artifacts).<br>Activate by accepting the Elastic license 2.0 by start-up option [`-license-accept-elastic-license-2.0`](https://github.com/ufrisk/MemProcFS-dev/wiki/_CommandLine#-license-accept-elastic-license-2.0).
+* Built-in yara rules for [Findevil](https://github.com/ufrisk/MemProcFS/wiki/FS_FindEvil) in forensics mode from [Elastic Security](https://github.com/elastic/protections-artifacts).<br>Activate by accepting the Elastic license 2.0 by start-up option [`-license-accept-elastic-license-2.0`](https://github.com/ufrisk/MemProcFS/wiki/_CommandLine#-license-accept-elastic-license-2.0).
