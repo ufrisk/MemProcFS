@@ -1,5 +1,4 @@
-// m_vmemd.c : implementation related to the vmemd native plugin module for the
-// memory process file system.
+// m_vmemd.c : implementation related to the vmemd native plugin module for MemProcFS.
 //
 // (c) Ulf Frisk, 2018-2023
 // Author: Ulf Frisk, pcileech@frizk.net

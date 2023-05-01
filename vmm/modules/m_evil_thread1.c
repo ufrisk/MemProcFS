@@ -246,6 +246,7 @@ VOID MEvilThread1_DoWork(_In_ VMM_HANDLE H, _In_ VMMDLL_MODULE_ID MID, _In_opt_ 
     while((pObProcess = VmmProcessGetNext(H, pObProcess, VMM_FLAG_PROCESS_TOKEN))) {
         if(H->fAbort) { goto fail; }
         if(pObProcess->dwState || !pObProcess->fUserOnly) { continue; }
+        if(FcIsProcessSkip(H, pObProcess)) { continue; }
         if(VmmMap_GetThread(H, pObProcess, &pObThreadMap)) {
             VmmMap_GetModule(H, pObProcess, 0, &ctx.pModuleMap);
             VmmMap_GetVad(H, pObProcess, &ctx.pVadMap, VMM_VADMAP_TP_FULL);

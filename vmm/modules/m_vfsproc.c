@@ -83,6 +83,9 @@ NTSTATUS MVfsProc_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out
         if(!_stricmp(uszPath, "win-cmdline.txt")) {
             return Util_VfsReadFile_FromPBYTE(pUserProcessParams->uszCommandLine, max(1, pUserProcessParams->cbuCommandLine) - 1, pb, cb, pcbRead, cbOffset);
         }
+        if(!_stricmp(uszPath, "win-curdir.txt")) {
+            return Util_VfsReadFile_FromPBYTE(pUserProcessParams->uszCurrentDirectory, max(1, pUserProcessParams->cbuCurrentDirectory) - 1, pb, cb, pcbRead, cbOffset);
+        }
         if(!_stricmp(uszPath, "win-environment.txt")) {
             return Util_VfsReadFile_FromPBYTE(pUserProcessParams->uszEnvironment, max(1, pUserProcessParams->cbuEnvironment) - 1, pb, cb, pcbRead, cbOffset);
         }
@@ -140,6 +143,7 @@ NTSTATUS MVfsProc_Write(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In
         !_stricmp(uszPath, "state.txt") ||
         !_stricmp(uszPath, "name-long") ||
         !_stricmp(uszPath, "win-cmdline.txt") ||
+        !_stricmp(uszPath, "win-curdir.txt") ||
         !_stricmp(uszPath, "win-environment.txt") ||
         !_stricmp(uszPath, "win-eprocess.txt") ||
         !_stricmp(uszPath, "win-path.txt") ||
@@ -176,6 +180,9 @@ VOID MVfsProc_List_OsSpecific(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In
         VMMDLL_VfsList_AddFile(pFileList, "win-path.txt", pProcess->pObPersistent->cuszPathKernel, pExInfo);
         if(pUserProcessParams->uszCommandLine) {
             VMMDLL_VfsList_AddFile(pFileList, "win-cmdline.txt", max(1, pUserProcessParams->cbuCommandLine) - 1, pExInfo);
+        }
+        if(pUserProcessParams->uszCurrentDirectory) {
+            VMMDLL_VfsList_AddFile(pFileList, "win-curdir.txt", max(1, pUserProcessParams->cbuCurrentDirectory) - 1, pExInfo);
         }
         if(pUserProcessParams->uszEnvironment) {
             VMMDLL_VfsList_AddFile(pFileList, "win-environment.txt", max(1, pUserProcessParams->cbuEnvironment) - 1, pExInfo);

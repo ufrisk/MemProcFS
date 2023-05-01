@@ -3540,7 +3540,7 @@ VOID VmmWinProcess_Enum64_Post(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProce
         VmmCachePrefetchPages(H, NULL, ctx->pObSetPrefetchDTB, 0);
         Ob_DECREF_NULL(&ctx->pObSetPrefetchDTB);
     }
-    if(*pdwPID && (*pdwPID < 0x80000000) && *(PQWORD)szName) {
+    if(*pdwPID && (*pdwPID < 0x10000000) && *(PQWORD)szName) {
         // treat csrss.exe as 'kernel' due to win32k mapping missing in System Process _AND_ treat MemCompression as 'user'
         fUser =
             !((*pdwPID == 4) || ((*pdwState == 0) && (*pqwPEB == 0)) || (*(PQWORD)szName == 0x78652e7373727363)) ||     // csrss.exe
@@ -3902,7 +3902,7 @@ VOID VmmWinProcess_Enum32_Post(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProce
         VmmCachePrefetchPages(H, NULL, ctx->pObSetPrefetchDTB, 0);
         Ob_DECREF_NULL(&ctx->pObSetPrefetchDTB);
     }
-    if(*pdwPID && (*pdwPID < 0x80000000) && *(PQWORD)szName) {
+    if(*pdwPID && (*pdwPID < 0x10000000) && *(PQWORD)szName) {
         // treat csrss.exe as 'kernel' due to win32k mapping missing in System Process _AND_ treat MemCompression as 'user'
         fUser =
             !((*pdwPID == 4) || ((*pdwState == 0) && (*pdwPEB == 0)) || (*(PQWORD)szName == 0x78652e7373727363)) ||     // csrss.exe

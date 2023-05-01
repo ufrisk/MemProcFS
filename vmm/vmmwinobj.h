@@ -13,6 +13,7 @@
 typedef enum {
     VMMWINOBJ_TYPE_NONE = 0,
     VMMWINOBJ_TYPE_FILE = 1,
+    VMMWINOBJ_TYPE_SECTION_OBJECT_POINTERS = 2,
 } VMMWINOBJ_TYPE;
 
 typedef struct tdOB_VMMWINOBJ_OBJECT {
@@ -29,20 +30,18 @@ typedef struct tVMMWINOBJ_FILE_SUBSECTION {
     DWORD dwPtesInSubsection;
 } VMMWINOBJ_FILE_SUBSECTION, *PVMMWINOBJ_FILE_SUBSECTION;
 
-typedef struct tdOB_VMMWINOBJ_FILE {
+typedef struct tdOB_VMMWINOBJ_SECTION_OBJECT_POINTERS {
+    // OB_VMMWINOBJ_OBJECT common fields:
     OB ObHdr;
     QWORD va;
     VMMWINOBJ_TYPE tp;
     DWORD _FutureUse;
-    QWORD vaSectionObjectPointers;
+    // fields:
     QWORD _Reserved2;
     QWORD cb;
     BOOL fData;
     BOOL fCache;
     BOOL fImage;
-    DWORD dwNameHash;
-    LPSTR uszPath;
-    LPSTR uszName;
     QWORD vaControlArea;
     struct {
         BOOL fValid;
@@ -58,16 +57,22 @@ typedef struct tdOB_VMMWINOBJ_FILE {
         QWORD cbSizeOfSegment;
         QWORD vaPrototypePte;
     } _SEGMENT;
-    DWORD _Reserved1;
     DWORD cSUBSECTION;
     PVMMWINOBJ_FILE_SUBSECTION pSUBSECTION;
-} OB_VMMWINOBJ_FILE, *POB_VMMWINOBJ_FILE;
+} OB_VMMWINOBJ_SECTION_OBJECT_POINTERS, *POB_VMMWINOBJ_SECTION_OBJECT_POINTERS;
 
-/*
-* Initialize the Object sub-system. This should ideally be done on Vmm Init().
-* -- H
-*/
-VOID VmmWinObj_Initialize(_In_ VMM_HANDLE H);
+typedef struct tdOB_VMMWINOBJ_FILE {
+    // OB_VMMWINOBJ_OBJECT common fields:
+    OB ObHdr;
+    QWORD va;
+    VMMWINOBJ_TYPE tp;
+    DWORD _FutureUse;
+    // fields:
+    union { QWORD cb; DWORD _Reserved1; };
+    LPSTR uszName;
+    union { LPSTR uszPath; QWORD _Reserved2; };
+    union { POB_VMMWINOBJ_SECTION_OBJECT_POINTERS pSectionObjectPointers; QWORD _Reserved3; };
+} OB_VMMWINOBJ_FILE, *POB_VMMWINOBJ_FILE;
 
 /*
 * Create an object manager map and assign to the global vmm context upon success.
@@ -84,19 +89,25 @@ PVMMOB_MAP_OBJECT VmmWinObjMgr_Initialize(_In_ VMM_HANDLE H);
 VOID VmmWinObj_Refresh(_In_ VMM_HANDLE H);
 
 /*
-* Cleanup the Object sub-system. This should ideally be done on Vmm Close().
-* -- H
-*/
-VOID VmmWinObj_Close(_In_ VMM_HANDLE H);
-
-/*
-* Retrieve an object from the object cache.
+* Retrieve a file object by its virtual address.
 * CALLER DECREF: return
 * -- H
 * -- va = virtual address of the object to retrieve.
 * -- return = the object, NULL if not found in cache.
 */
-POB_VMMWINOBJ_OBJECT VmmWinObj_Get(_In_ VMM_HANDLE H, _In_ QWORD va);
+_Success_(return != NULL)
+POB_VMMWINOBJ_FILE VmmWinObjFile_GetByVa(_In_ VMM_HANDLE H, _In_ QWORD va);
+
+/*
+* Retrieve all _FILE_OBJECT that can be recovered with data from the system.
+* NB! this may take a long time to complete on first run.
+* CALLER DECREF: *ppmObFiles
+* -- H
+* -- ppmObFiles
+* -- return
+*/
+_Success_(return)
+BOOL VmmWinObjFile_GetAll(_In_ VMM_HANDLE H, _Out_ POB_MAP *ppmObFiles);
 
 /*
 * Retrieve all _FILE_OBJECT related to a process.

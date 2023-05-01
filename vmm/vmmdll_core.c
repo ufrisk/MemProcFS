@@ -10,6 +10,7 @@
 #include "vmmlog.h"
 #include "vmmproc.h"
 #include "vmmwork.h"
+#include "vmmuserconfig.h"
 #include "ob/ob.h"
 #include "ob/ob_tag.h"
 #include "charutil.h"
@@ -257,6 +258,7 @@ VOID VmmDllCore_CloseHandle(_In_opt_ _Post_ptr_invalid_ VMM_HANDLE H, _In_ BOOL 
 {
     BOOL fCloseHandle = FALSE;
     QWORD tc, tcStart;
+    CHAR szTime[24];
     // Verify & decrement handle count.
     // If handle count > 0 (after decrement) return.
     // If handle count == 0 -> close and clean-up.
@@ -335,8 +337,12 @@ VOID VmmDllCore_CloseHandle(_In_opt_ _Post_ptr_invalid_ VMM_HANDLE H, _In_ BOOL 
     VmmDllCore_CloseHandle_VmmParentDetach(H);
     // Close logging (last)
     Statistics_CallSetEnabled(H, FALSE);
-    VmmLog(H, MID_CORE, LOGLEVEL_VERBOSE, "SHUTDOWN COMPLETED (%p).\n", H);
+    Util_FileTime2String(Util_FileTimeNow(), szTime);
+    VmmLog(H, MID_CORE, LOGLEVEL_VERBOSE, "SHUTDOWN COMPLETED (%p).", H);
+    VmmLog(H, MID_CORE, LOGLEVEL_VERBOSE, "  TIME: %s.", szTime);
+    VmmLog(H, MID_CORE, LOGLEVEL_VERBOSE, "  RUNTIME: %llus.\n", ((GetTickCount64() - H->cfg.tcTimeStart) / 1000));
     VmmLog_Close(H);
+    LocalFree(H->cfg.ForensicProcessSkipList.pusz);
     LocalFree(H);
 }
 
@@ -374,38 +380,29 @@ VOID VmmDllCore_PrintHelp(_In_ VMM_HANDLE H)
 {
     vmmprintf(H,
         "                                                                               \n" \
-        " THE MEMORY PROCESS FILE SYSTEM v%i.%i.%i COMMAND LINE REFERENCE:              \n" \
-        " The Memory Process File System may be used in stand-alone mode with support   \n" \
-        " for memory dump files, local memory via rekall winpmem driver or together with\n" \
-        " PCILeech if pcileech.dll is placed in the application directory. For infor-   \n" \
-        " mation about PCILeech please consult the separate PCILeech documentation.     \n" \
+        " MemProcFS v%i.%i.%i COMMAND LINE REFERENCE:                                   \n" \
+        " MemProcFS may be used in stand-alone mode with support for memory dump files, \n" \
+        " local memory via winpmem driver or together with PCILeech DMA devices.        \n" \
         " -----                                                                         \n" \
-        " The Memory Process File System (c) 2018-2021 Ulf Frisk                        \n" \
+        " MemProcFS (c) 2018-2023 Ulf Frisk                                             \n" \
         " License: GNU Affero General Public License v3.0                               \n" \
         " Contact information: pcileech@frizk.net                                       \n" \
-        " The Memory Process File System: https://github.com/ufrisk/MemProcFS           \n" \
-        " LeechCore:                      https://github.com/ufrisk/LeechCore           \n" \
-        " PCILeech:                       https://github.com/ufrisk/pcileech            \n" \
+        " MemProcFS:    https://github.com/ufrisk/MemProcFS                             \n" \
+        " LeechCore:    https://github.com/ufrisk/LeechCore                             \n" \
+        " PCILeech:     https://github.com/ufrisk/pcileech                              \n" \
         " -----                                                                         \n" \
-        " The recommended way to use the Memory Process File System is to specify the   \n" \
-        " memory acquisition device in the -device option and possibly more options.    \n" \
-        " Example 1: MemProcFS.exe -device c:\\temp\\memdump-win10x64.pmem              \n" \
-        " Example 2: MemProcFS.exe -device c:\\temp\\memdump-winXPx86.dumpit -v -vv     \n" \
-        " Example 3: MemProcFS.exe -device FPGA                                         \n" \
-        " Example 4: MemProcFS.exe -device PMEM://c:\\temp\\winpmem_x64.sys             \n" \
-        " The Memory Process File System may also be started the memory dump file name  \n" \
-        " as the only option. This allows to make file extensions associated so that    \n" \
-        " they may be opened by double-clicking on them. This mode allows no options.   \n" \
-        " Example 4: MemProcFS.exe c:\\dumps\\memdump-win7x64.dumpit                    \n" \
+        " The recommended way to use MemProcFS is to specify a memory acquisition device\n" \
+        " in the -device option.                                                        \n" \
+        " Example 1: MemProcFS.exe -device c:\\temp\\memdump-win10x64.raw               \n" \
+        " Example 2: MemProcFS.exe -device FPGA                                         \n" \
+        " Example 3: MemProcFS.exe -device PMEM://c:\\temp\\winpmem_x64.sys             \n" \
+        " MemProcFS may also be started the memory dump file name as the only option or \n" \
+        " Example 4: MemProcFS.exe c:\\dumps\\memdump-win7x64.dmp                    \n" \
         " -----                                                                         \n" \
         " Valid options:                                                                \n" \
         "   -device : select memory acquisition device or memory dump file to use.      \n" \
         "          Valid options: <any device supported by the leechcore library>       \n" \
         "          such as, but not limited to: <memory_dump_file>, PMEM, FPGA          \n" \
-        "          ---                                                                  \n" \
-        "          <memory_dump_file> = memory dump file name optionally including path.\n" \
-        "          PMEM = use winpmem 'winpmem_64.sys' to acquire live memory.          \n" \
-        "          PMEM://c:\\path\\to\\winpmem_64.sys = path to winpmem driver.        \n" \
         "          ---                                                                  \n" \
         "          Please see https://github.com/ufrisk/LeechCore for additional info.  \n" \
         "   -remote : connect to a remote host running the LeechAgent. Please see the   \n" \
@@ -420,7 +417,6 @@ VOID VmmDllCore_PrintHelp(_In_ VMM_HANDLE H)
         "   -loglevel : specify the log verbosity level as a comma-separated list.      \n" \
         "          Please consult https://github.com/ufrisk/MemProcFS/wiki for details. \n" \
         "          example: -loglevel 4,f:5,f:VMM:6                                     \n" \
-        "   -cr3 : base address of kernel/process page table (PML4) / CR3 CPU register. \n" \
         "   -max : memory max address, valid range: 0x0 .. 0xffffffffffffffff           \n" \
         "          default: auto-detect (max supported by device / target system).      \n" \
         "   -memmap-str : specify a physical memory map in parameter agrument text.     \n" \
@@ -445,7 +441,7 @@ VOID VmmDllCore_PrintHelp(_In_ VMM_HANDLE H)
         "          Example: -disable-symbols                                            \n" \
         "   -disable-infodb : disable the infodb and any symbol lookups via it.         \n" \
         "          Example: -disable-infodb                                             \n" \
-        "   -mount : drive letter/path to mount The Memory Process File system at.      \n" \
+        "   -mount : drive letter/path to mount MemProcFS at.                           \n" \
         "          default: M   Example: -mount Q                                       \n" \
         "   -norefresh : disable automatic cache and processes refreshes even when      \n" \
         "          running against a live memory target - such as PCIe FPGA or live     \n" \
@@ -458,6 +454,7 @@ VOID VmmDllCore_PrintHelp(_In_ VMM_HANDLE H)
         "   -vm        : virtual machine (VM) parsing.                                  \n" \
         "   -vm-basic  : virtual machine (VM) parsing (physical memory only).           \n" \
         "   -vm-nested : virtual machine (VM) parsing (including nested VMs).           \n" \
+        "   -forensic-process-skip : comma-separated list of process names to skip.     \n" \
         "   -forensic-yara-rules : perfom a forensic yara scan with specified rules.    \n" \
         "          Full path to source or compiled yara rules should be specified.      \n" \
         "          Example: -forensic-yara-rules \"C:\\Temp\\my_yara_rules.yar\"        \n" \
@@ -488,7 +485,7 @@ _Success_(return)
 BOOL VmmDllCore_InitializeConfig(_In_ VMM_HANDLE H, _In_ DWORD argc, _In_ char *argv[])
 {
     char *argv2[3];
-    DWORD i = 0, iPageFile;
+    DWORD i = 0, dw, iPageFile;
     if((argc == 2) && argv[1][0] && (argv[1][0] != '-')) {
         // click to open -> only 1 argument ...
         argv2[0] = argv[0];
@@ -497,6 +494,7 @@ BOOL VmmDllCore_InitializeConfig(_In_ VMM_HANDLE H, _In_ DWORD argc, _In_ char *
         return VmmDllCore_InitializeConfig(H, 3, argv2);
     }
     H->cfg.dwPteQualityThreshold = 0x20;
+    H->cfg.tcTimeStart = GetTickCount64();
     while(i < argc) {
         // "single argument" parameters below:
         if(0 == _stricmp(argv[i], "")) {
@@ -516,6 +514,15 @@ BOOL VmmDllCore_InitializeConfig(_In_ VMM_HANDLE H, _In_ DWORD argc, _In_ char *
             i++; continue;
         } else if(0 == _stricmp(argv[i], "-disable-symbolserver")) {
             H->cfg.fDisableSymbolServerOnStartup = TRUE;
+            i++; continue;
+        } else if(0 == _stricmp(argv[i], "-disable-yara")) {
+            H->cfg.fDisableYara = TRUE;
+            i++; continue;
+        } else if(0 == _stricmp(argv[i], "-disable-yara-builtin")) {
+            H->cfg.fDisableYaraBuiltin = TRUE;
+            i++; continue;
+        } else if(0 == _stricmp(argv[i], "-license-accept-elastic-license-2.0")) {
+            H->cfg.fLicenseAcceptElasticV2 = TRUE;
             i++; continue;
         } else if(0 == _stricmp(argv[i], "-norefresh")) {
             H->cfg.fDisableBackgroundRefresh = TRUE;
@@ -572,10 +579,6 @@ BOOL VmmDllCore_InitializeConfig(_In_ VMM_HANDLE H, _In_ DWORD argc, _In_ char *
         } else if(0 == _stricmp(argv[i], "-forensic")) {
             H->cfg.tpForensicMode = (DWORD)Util_GetNumericA(argv[i + 1]);
             if(H->cfg.tpForensicMode > FC_DATABASE_TYPE_MAX) { return FALSE; }
-            if(H->cfg.tpForensicMode) {
-                H->cfg.fWaitInitialize = TRUE;
-                H->cfg.fVM = TRUE;
-            }
             i += 2; continue;
         } else if(0 == _stricmp(argv[i], "-logfile")) {
             strcpy_s(H->cfg.szLogFile, MAX_PATH, argv[i + 1]);
@@ -585,6 +588,9 @@ BOOL VmmDllCore_InitializeConfig(_In_ VMM_HANDLE H, _In_ DWORD argc, _In_ char *
             i += 2; continue;
         } else if(0 == _stricmp(argv[i], "-forensic-yara-rules")) {
             strcpy_s(H->cfg.szForensicYaraRules, MAX_PATH, argv[i + 1]);
+            i += 2; continue;
+        } else if(0 == _stricmp(argv[i], "-forensic-process-skip")) {
+            CharUtil_SplitList(argv[i + 1], ',', &H->cfg.ForensicProcessSkipList.cusz, &H->cfg.ForensicProcessSkipList.pusz);
             i += 2; continue;
         } else if(0 == _stricmp(argv[i], "-max")) {
             H->dev.paMax = Util_GetNumericA(argv[i + 1]);
@@ -618,14 +624,26 @@ BOOL VmmDllCore_InitializeConfig(_In_ VMM_HANDLE H, _In_ DWORD argc, _In_ char *
         }
     }
     if(H->dev.paMax && (H->dev.paMax < 0x00100000)) { return FALSE; }
+    // disable memory auto-detect when memmap is specified:
     if(!H->dev.paMax && (H->cfg.szMemMap[0] || H->cfg.szMemMapStr[0])) {
-        // disable memory auto-detect when memmap is specified
         H->dev.paMax = -1;
     }
+    // yara rules implies forensic mode:
     if(H->cfg.szForensicYaraRules[0] && !H->cfg.tpForensicMode) {
-        // yara rules implies forensic mode (enabled if not previously set)
         H->cfg.tpForensicMode = 1;
     }
+    // forensic mode implies VM detection & wait for initialize:
+    if(H->cfg.tpForensicMode) {
+        H->cfg.fWaitInitialize = TRUE;
+        H->cfg.fVM = TRUE;
+    }
+    // cache license acceptance for forensic mode yara rules:
+    if(H->cfg.fLicenseAcceptElasticV2) {
+        VmmUserConfig_SetNumber("LicenseAcceptElasticLicense2.0", 1);
+    } else if(H->cfg.tpForensicMode) {
+        H->cfg.fLicenseAcceptElasticV2 = (VmmUserConfig_GetNumber("LicenseAcceptElasticLicense2.0", &dw) && (dw == 1));
+    }
+    // set other config values:
     H->cfg.fFileInfoHeader = TRUE;
     H->cfg.fVerbose = H->cfg.fVerbose && H->cfg.fVerboseDll;
     H->cfg.fVerboseExtra = H->cfg.fVerboseExtra && H->cfg.fVerboseDll;
@@ -905,7 +923,10 @@ fail:
     VmmDllCore_CloseHandle(H, FALSE);
     return NULL;
 fail_prelock:
-    LocalFree(H);
+    if(H) {
+        LocalFree(H->cfg.ForensicProcessSkipList.pusz);
+        LocalFree(H);
+    }
     return NULL;
 }
 
@@ -920,7 +941,7 @@ typedef struct tdVMMDLLCORE_MEMLEAKEXTERNAL_CONTEXT {
     DWORD c;
 } VMMDLLCORE_MEMLEAKEXTERNAL_CONTEXT, *PVMMDLLCORE_MEMLEAKEXTERNAL_CONTEXT;
 
-VOID VmmDllCore_MemLeakFindExternal_MapFilterCB(_In_ QWORD k, _In_ POB v, _In_ PVMMDLLCORE_MEMLEAKEXTERNAL_CONTEXT ctx)
+VOID VmmDllCore_MemLeakFindExternal_MapFilterCB(_In_ PVMMDLLCORE_MEMLEAKEXTERNAL_CONTEXT ctx, _In_ QWORD k, _In_ POB v)
 {
     if((v->H != ctx->H) || (ctx->c >= 10)) { return; }
     ctx->c++;
@@ -940,7 +961,7 @@ VOID VmmDllCore_MemLeakFindExternal(_In_ VMM_HANDLE H)
     VMMDLLCORE_MEMLEAKEXTERNAL_CONTEXT ctxFilter = { 0 };
     ctxFilter.H = H;
     if(VmmLogIsActive(H, MID_API, LOGLEVEL_2_WARNING)) {
-        ObMap_Filter(g_VMMDLL_ALLOCMAP_EXT, &ctxFilter, (OB_MAP_FILTER_PFN)VmmDllCore_MemLeakFindExternal_MapFilterCB);
+        ObMap_Filter(g_VMMDLL_ALLOCMAP_EXT, &ctxFilter, (OB_MAP_FILTER_PFN_CB)VmmDllCore_MemLeakFindExternal_MapFilterCB);
     }
 }
 

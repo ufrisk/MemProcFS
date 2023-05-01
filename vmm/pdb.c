@@ -28,6 +28,7 @@
 #include "util.h"
 #include "vmmwindef.h"
 #include "vmmwininit.h"
+#include "vmmuserconfig.h"
 #include "ob/ob.h"
 #include "ob/ob_tag.h"
 #include <libpdbcrust.h>
@@ -277,7 +278,6 @@ typedef struct tdPDB_ENTRY {
 } PDB_ENTRY, *PPDB_ENTRY;
 
 #ifdef _WIN32
-#include <winreg.h>
 #include <io.h>
 #define _NO_CVCONST_H
 #include <dbghelp.h>
@@ -1150,8 +1150,7 @@ fail:
 
 VOID PDB_Initialize_InitialValues(_In_ VMM_HANDLE H)
 {
-    HKEY hKey = NULL;
-    DWORD cbData, dwEnableSymbols, dwEnableSymbolServer;
+    DWORD dwEnableSymbols, dwEnableSymbolServer;
     // 1: try load values from registry
     if(!H->pdb.fInitialized) {
         H->pdb.fEnable = 1;
@@ -1161,23 +1160,14 @@ VOID PDB_Initialize_InitialValues(_In_ VMM_HANDLE H)
     H->pdb.szServer[0] = 0;
     dwEnableSymbols = H->pdb.fEnable ? 1 : 0;
     dwEnableSymbolServer = H->pdb.fServerEnable ? 1 : 0;
-    if(ERROR_SUCCESS == RegOpenKeyExA(HKEY_CURRENT_USER, "Software\\UlfFrisk\\MemProcFS", 0, KEY_READ, &hKey)) {
-        cbData = _countof(H->pdb.szLocal) - 1;
-        RegQueryValueExA(hKey, "SymbolCache", NULL, NULL, (PBYTE)H->pdb.szLocal, &cbData);
-        if(cbData < 3) { H->pdb.szLocal[0] = 0; }
-        cbData = _countof(H->pdb.szServer) - 1;
-        RegQueryValueExA(hKey, "SymbolServer", NULL, NULL, (PBYTE)H->pdb.szServer, &cbData);
-        if(cbData < 3) { H->pdb.szServer[0] = 0; }
-        if(H->pdb.fEnable) {
-            cbData = sizeof(DWORD);
-            RegQueryValueExA(hKey, "SymbolEnable", NULL, NULL, (PBYTE)&dwEnableSymbols, &cbData);
-        }
-        if(H->pdb.fServerEnable) {
-            cbData = sizeof(DWORD);
-            RegQueryValueExA(hKey, "SymbolServerEnable", NULL, NULL, (PBYTE)&dwEnableSymbolServer, &cbData);
-        }
+    if(!VmmUserConfig_GetString("SymbolCache", sizeof(H->pdb.szLocal), H->pdb.szLocal)) { H->pdb.szLocal[0] = 0; }
+    if(!VmmUserConfig_GetString("SymbolServer", sizeof(H->pdb.szServer), H->pdb.szServer)) { H->pdb.szServer[0] = 0; }
+    if(H->pdb.fEnable) {
+        VmmUserConfig_GetNumber("SymbolEnable", &dwEnableSymbols);
     }
-    if(hKey) { RegCloseKey(hKey); hKey = NULL; }
+    if(H->pdb.fServerEnable) {
+        VmmUserConfig_GetNumber("SymbolServerEnable", &dwEnableSymbolServer);
+    }
     // 2: set default values (if not already loaded from registry)
     if(!H->pdb.szLocal[0]) {
         Util_GetPathDll(H->pdb.szLocal, H->vmm.hModuleVmmOpt);
@@ -1206,26 +1196,22 @@ VOID PDB_Initialize_InitialValues(_In_ VMM_HANDLE H)
 */
 VOID PDB_ConfigChange(_In_ VMM_HANDLE H)
 {
-    HKEY hKey;
     CHAR szLocalPath[MAX_PATH] = { 0 };
     if(H->cfg.fDisableSymbols) {
         VmmLog(H, MID_SYMBOL, LOGLEVEL_INFO, "Debug symbols disabled by user");
         return;
     }
     // update new values in registry
-    if(ERROR_SUCCESS == RegCreateKeyExA(HKEY_CURRENT_USER, "Software\\UlfFrisk\\MemProcFS", 0, NULL, 0, KEY_ALL_ACCESS, NULL, &hKey, NULL)) {
-        Util_GetPathDll(szLocalPath, H->vmm.hModuleVmmOpt);
-        if(strncmp(szLocalPath, H->pdb.szLocal, strlen(szLocalPath) - 1) && !_access_s(H->pdb.szLocal, 06)) {
-            RegSetValueExA(hKey, "SymbolCache", 0, REG_SZ, (PBYTE)H->pdb.szLocal, (DWORD)strlen(H->pdb.szLocal));
-        } else {
-            RegSetValueExA(hKey, "SymbolCache", 0, REG_SZ, (PBYTE)"", 0);
-        }
-        if((!strncmp("http://", H->pdb.szServer, 7) || !strncmp("https://", H->pdb.szServer, 8)) && !strstr(H->pdb.szServer, "msdl.microsoft.com")) {
-            RegSetValueExA(hKey, "SymbolServer", 0, REG_SZ, (PBYTE)H->pdb.szServer, (DWORD)strlen(H->pdb.szServer));
-        } else {
-            RegSetValueExA(hKey, "SymbolServer", 0, REG_SZ, (PBYTE)"", 0);
-        }
-        RegCloseKey(hKey);
+    Util_GetPathDll(szLocalPath, H->vmm.hModuleVmmOpt);
+    if(strncmp(szLocalPath, H->pdb.szLocal, strlen(szLocalPath) - 1) && !_access_s(H->pdb.szLocal, 06)) {
+        VmmUserConfig_SetString("SymbolCache", H->pdb.szLocal);
+    } else {
+        VmmUserConfig_Delete("SymbolCache");
+    }
+    if((!strncmp("http://", H->pdb.szServer, 7) || !strncmp("https://", H->pdb.szServer, 8)) && !strstr(H->pdb.szServer, "msdl.microsoft.com")) {
+        VmmUserConfig_SetString("SymbolServer", H->pdb.szServer);
+    } else {
+        VmmUserConfig_Delete("SymbolServer");
     }
     // refresh values and reload!
     EnterCriticalSection(&H->vmm.LockMaster);

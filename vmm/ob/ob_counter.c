@@ -396,6 +396,23 @@ QWORD _ObCounter_Del(_In_ POB_COUNTER pc, _In_ QWORD k)
     return v;
 }
 
+
+_Success_(return != 0)
+QWORD _ObCounter_RetrieveAndRemoveByEntryIndex(_In_ POB_COUNTER pc, _In_ DWORD iEntry, _Out_opt_ PQWORD pKey)
+{
+    QWORD v;
+    POB_COUNTER_ENTRY pe;
+    if((pe = _ObCounter_GetFromIndex(pc, iEntry))) {
+        v = pe->v;
+        if(pKey) { *pKey = pe->k; }
+        _ObCounter_Remove(pc, iEntry);
+        return v;
+    } else {
+        if(pKey) { *pKey = 0; }
+        return 0;
+    }
+}
+
 /*
 * Set the count of a specific key.
 * -- pc
@@ -466,6 +483,29 @@ QWORD ObCounter_Dec(_In_opt_ POB_COUNTER pc, _In_ QWORD k)
 QWORD ObCounter_Sub(_In_opt_ POB_COUNTER pc, _In_ QWORD k, _In_ QWORD v)
 {
     return ObCounter_Add(pc, k, (QWORD)(0-v));
+}
+
+/*
+* Remove the "last" count.
+* -- pc
+* -- return = success: count, fail: 0.
+*/
+_Success_(return != 0)
+QWORD ObCounter_Pop(_In_opt_ POB_COUNTER pc)
+{
+    OB_COUNTER_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(pc, QWORD, 0, _ObCounter_RetrieveAndRemoveByEntryIndex(pc, pc->c - 1, NULL))
+}
+
+/*
+* Remove the "last" count and return it and its key.
+* -- pc
+* -- pKey
+* -- return = success: count, fail: 0.
+*/
+_Success_(return != 0)
+QWORD ObCounter_PopWithKey(_In_opt_ POB_COUNTER pc, _Out_opt_ PQWORD pKey)
+{
+    OB_COUNTER_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(pc, QWORD, 0, _ObCounter_RetrieveAndRemoveByEntryIndex(pc, pc->c - 1, pKey))
 }
 
 

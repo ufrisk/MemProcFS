@@ -11,22 +11,12 @@ _Success_(return == 0)
 NTSTATUS M_FileHandlesVads_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctx, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset, _In_ BOOL fHandles)
 {
     QWORD va;
-    POB_MAP pmObFiles = NULL;
-    POB_VMMWINOBJ_OBJECT pOb = NULL;
+    POB_VMMWINOBJ_FILE pObFile = NULL;
     *pcbRead = 0;
     if(!(va = strtoull(ctx->uszPath, NULL, 16))) { return VMMDLL_STATUS_FILE_INVALID; }
-    if(!(pOb = VmmWinObj_Get(H, va))) {
-        VmmWinObjFile_GetByProcess(H, ctx->pProcess, &pmObFiles, fHandles);
-        Ob_DECREF_NULL(&pmObFiles);
-        pOb = VmmWinObj_Get(H, va);
-    }
-    if(!pOb) { return VMMDLL_STATUS_FILE_INVALID; }
-    if(pOb->tp != VMMWINOBJ_TYPE_FILE) {
-        Ob_DECREF(pOb);
-        return VMMDLL_STATUS_FILE_INVALID;
-    }
-    *pcbRead = VmmWinObjFile_Read(H, (POB_VMMWINOBJ_FILE)pOb, cbOffset, pb, cb, 0);
-    Ob_DECREF(pOb);
+    if(!(pObFile = VmmWinObjFile_GetByVa(H, va))) { return VMMDLL_STATUS_FILE_INVALID; }
+    *pcbRead = VmmWinObjFile_Read(H, pObFile, cbOffset, pb, cb, 0);
+    Ob_DECREF(pObFile);
     return *pcbRead ? VMM_STATUS_SUCCESS : VMM_STATUS_END_OF_FILE;
 }
 

@@ -339,11 +339,13 @@ VmmPycProcessMaps_thread(PyObj_ProcessMaps *self, PyObject *args)
             PyDict_SetItemString_DECREF(pyDict, "va-ethread", PyLong_FromUnsignedLongLong(pe->vaETHREAD));
             PyDict_SetItemString_DECREF(pyDict, "va-teb", PyLong_FromUnsignedLongLong(pe->vaTeb));
             PyDict_SetItemString_DECREF(pyDict, "va-start", PyLong_FromUnsignedLongLong(pe->vaStartAddress));
+            PyDict_SetItemString_DECREF(pyDict, "va-win32start", PyLong_FromUnsignedLongLong(pe->vaWin32StartAddress));
             PyDict_SetItemString_DECREF(pyDict, "va-stackbase", PyLong_FromUnsignedLongLong(pe->vaStackBaseUser));
             PyDict_SetItemString_DECREF(pyDict, "va-stacklimit", PyLong_FromUnsignedLongLong(pe->vaStackLimitUser));
             PyDict_SetItemString_DECREF(pyDict, "va-stackbase-kernel", PyLong_FromUnsignedLongLong(pe->vaStackBaseKernel));
             PyDict_SetItemString_DECREF(pyDict, "va-stacklimit-kernel", PyLong_FromUnsignedLongLong(pe->vaStackLimitKernel));
             PyDict_SetItemString_DECREF(pyDict, "va-trapframe", PyLong_FromUnsignedLongLong(pe->vaTrapFrame));
+            PyDict_SetItemString_DECREF(pyDict, "va-impersonation-token", PyLong_FromUnsignedLongLong(pe->vaImpersonationToken));
             PyDict_SetItemString_DECREF(pyDict, "reg-rip", PyLong_FromUnsignedLongLong(pe->vaRIP));
             PyDict_SetItemString_DECREF(pyDict, "reg-rsp", PyLong_FromUnsignedLongLong(pe->vaRSP));
             PyDict_SetItemString_DECREF(pyDict, "time-create", PyLong_FromUnsignedLongLong(pe->ftCreateTime));

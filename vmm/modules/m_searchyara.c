@@ -132,7 +132,7 @@ VOID MSearchYara_PerformSeach_ThreadProc(_In_ VMM_HANDLE H, _In_ PMOB_YARASEARCH
     // finalize results (if any) with vmmyarautil:
     if(ctxS->pObYaraUtil) {
         if(VmmYaraUtil_IngestFinalize(H, ctxS->pObYaraUtil) && (pmfOb = ObMemFile_New(H, H->vmm.pObCacheMapObCompressedShared))) {
-            while(VmmYaraUtil_ParseSingleResultNext(H, ctxS->pObYaraUtil, &uszTXT, NULL)) {
+            while(VmmYaraUtil_ParseSingleResultNext(H, ctxS->pObYaraUtil, &uszTXT, NULL, NULL, NULL)) {
                 ObMemFile_AppendString(pmfOb, uszTXT);
             }
             // assign result (and reference count responsibility) to context:
@@ -377,6 +377,7 @@ VOID MSearchYara_Close(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
 VOID M_SearchYara_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
+    if(H->cfg.fDisableYara) { return; }
     if(!(pRI->reg_info.ctxM = (PVMMDLL_PLUGIN_INTERNAL_CONTEXT)ObMap_New(H, OB_MAP_FLAGS_OBJECT_OB))) { return; }
     pRI->reg_fn.pfnList = MSearchYara_List;
     pRI->reg_fn.pfnRead = MSearchYara_Read;

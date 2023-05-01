@@ -661,7 +661,7 @@ BOOL VmmWinPool_AllPool1903_2_HeapFillSegmentHeap(_In_ VMM_HANDLE H, PVMMWINPOOL
     QWORD va = 0;
     // 1: prefetch
     if(!(cSegHeap = ObMap_Size(ctx->pmHeap))) { return FALSE; }
-    if(!(psvaObPrefetch = ObMap_FilterSet(ctx->pmHeap, ObMap_FilterSet_FilterAllKey))) { return FALSE; }
+    if(!(psvaObPrefetch = ObMap_FilterSet(ctx->pmHeap, NULL, ObMap_FilterSet_FilterAllKey))) { return FALSE; }
     VmmCachePrefetchPages3(H, ctx->pSystemProcess, psvaObPrefetch, ctx->po->_SEGMENT_HEAP.cb, 0);
     Ob_DECREF_NULL(&psvaObPrefetch);
     // 2: iterate nt!_SEGMENT_HEAP -> FETCH ADDR nt!_HEAP_PAGE_SEGMENT
@@ -755,7 +755,7 @@ VOID VmmWinPool_AllPool1903_3_HeapFillPageSegment(_In_ VMM_HANDLE H, _In_ PVMMWI
     QWORD va;
     POB_SET psvaObTry1 = NULL, psvaObTry2 = NULL;
     if(!(psvaObTry2 = ObSet_New(H))) { goto fail; }
-    if(!(psvaObTry1 = ObMap_FilterSet(ctx->pmPgSeg, ObMap_FilterSet_FilterAllKey))) { goto fail; }
+    if(!(psvaObTry1 = ObMap_FilterSet(ctx->pmPgSeg, NULL, ObMap_FilterSet_FilterAllKey))) { goto fail; }
     while(TRUE) {
         // try1 items
         while((va = ObSet_Pop(psvaObTry1))) {

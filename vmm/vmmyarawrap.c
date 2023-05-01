@@ -11,6 +11,12 @@
 #include "util.h"
 #include <vmmyara.h>
 
+typedef VMMYARA_ERROR(*pfnVmmYara_RulesLoadSourceCombined)(
+    _In_ DWORD cszSourceCombinedRules,
+    _In_reads_(cszSourceCombinedRules) LPSTR pszSourceCombinedRules[],
+    _Out_ PVMMYARA_RULES *phVmmYaraRules
+    );
+
 typedef VMMYARA_ERROR(*pfnVmmYara_RulesLoadCompiled)(
     _In_ LPSTR szCompiledFileRules,
     _Out_ PVMMYARA_RULES *phVmmYaraRules
@@ -47,6 +53,7 @@ BOOL g_VmmYaraInitialized = FALSE;
 BOOL g_VmmYaraInitializeFail = FALSE;
 HMODULE g_VmmYaraDLL = 0;
 pfnVmmYara_RulesLoadCompiled gpfn_VmmYara_RulesLoadCompiled = NULL;
+pfnVmmYara_RulesLoadSourceCombined gpfn_VmmYara_RulesLoadSourceCombined = NULL;
 pfnVmmYara_RulesLoadSourceFile gpfn_VmmYara_RulesLoadSourceFile = NULL;
 pfnVmmYara_RulesLoadSourceString gpfn_VmmYara_RulesLoadSourceString = NULL;
 pfnVmmYara_RulesDestroy gpfn_VmmYara_RulesDestroy = NULL;
@@ -64,13 +71,13 @@ VOID VmmYara_Initialize()
     strcat_s(szLibraryPath, MAX_PATH, "vmmyara"VMM_LIBRARY_FILETYPE);
     g_VmmYaraDLL = LoadLibraryA(szLibraryPath);
     if(!g_VmmYaraDLL) { goto fail; }
-    gpfn_VmmYara_RulesLoadCompiled = (pfnVmmYara_RulesLoadCompiled)GetProcAddress(g_VmmYaraDLL, "VmmYara_RulesLoadCompiled");
-    gpfn_VmmYara_RulesLoadSourceFile = (pfnVmmYara_RulesLoadSourceFile)GetProcAddress(g_VmmYaraDLL, "VmmYara_RulesLoadSourceFile");
-    gpfn_VmmYara_RulesLoadSourceString = (pfnVmmYara_RulesLoadSourceString)GetProcAddress(g_VmmYaraDLL, "VmmYara_RulesLoadSourceString");
-    gpfn_VmmYara_RulesDestroy = (pfnVmmYara_RulesDestroy)GetProcAddress(g_VmmYaraDLL, "VmmYara_RulesDestroy");
-    gpfn_VmmYara_ScanMemory = (pfnVmmYara_ScanMemory)GetProcAddress(g_VmmYaraDLL, "VmmYara_ScanMemory");
-    g_VmmYaraInitialized = gpfn_VmmYara_RulesLoadCompiled && gpfn_VmmYara_RulesLoadSourceFile && gpfn_VmmYara_RulesLoadSourceString && gpfn_VmmYara_RulesDestroy && gpfn_VmmYara_ScanMemory;
-    if(!g_VmmYaraInitialized) { goto fail; }
+    if(!(gpfn_VmmYara_RulesLoadCompiled = (pfnVmmYara_RulesLoadCompiled)GetProcAddress(g_VmmYaraDLL, "VmmYara_RulesLoadCompiled"))) { goto fail; }
+    if(!(gpfn_VmmYara_RulesLoadSourceCombined = (pfnVmmYara_RulesLoadSourceString)GetProcAddress(g_VmmYaraDLL, "VmmYara_RulesLoadSourceCombined"))) { goto fail; }
+    if(!(gpfn_VmmYara_RulesLoadSourceFile = (pfnVmmYara_RulesLoadSourceFile)GetProcAddress(g_VmmYaraDLL, "VmmYara_RulesLoadSourceFile"))) { goto fail; }
+    if(!(gpfn_VmmYara_RulesLoadSourceString = (pfnVmmYara_RulesLoadSourceString)GetProcAddress(g_VmmYaraDLL, "VmmYara_RulesLoadSourceString"))) { goto fail; }
+    if(!(gpfn_VmmYara_RulesDestroy = (pfnVmmYara_RulesDestroy)GetProcAddress(g_VmmYaraDLL, "VmmYara_RulesDestroy"))) { goto fail; }
+    if(!(gpfn_VmmYara_ScanMemory = (pfnVmmYara_ScanMemory)GetProcAddress(g_VmmYaraDLL, "VmmYara_ScanMemory"))) { goto fail; }
+    g_VmmYaraInitialized = TRUE;
     return;
 fail:
     g_VmmYaraInitializeFail = TRUE;
@@ -93,6 +100,25 @@ VMMYARA_ERROR VmmYara_RulesLoadCompiled(
     VmmYara_Initialize();
     if(!g_VmmYaraInitialized) { return VMMYARA_ERROR_INVALID_FILE; }
     return gpfn_VmmYara_RulesLoadCompiled(szCompiledFileRules, phVmmYaraRules);
+}
+
+/*
+* Load one or multiple yara rules from either memory or source files.
+* -- cszSourceCombinedRules = the number of source files/strings to load.
+* -- pszSourceCombinedRules = array of source file paths/strings to load.
+* -- phVmmYaraRules = pointer to a PVMMYARA_RULES variable that will receive the
+*                    handle to the loaded rule set on success.
+* -- return = VMMYARA_ERROR_SUCCESS on success, otherwise a yara error.
+*/
+_Success_(return == VMMYARA_ERROR_SUCCESS)
+VMMYARA_ERROR VmmYara_RulesLoadSourceCombined(
+    _In_ DWORD cszSourceCombinedRules,
+    _In_reads_(cszSourceCombinedRules) LPSTR pszSourceCombinedRules[],
+    _Out_ PVMMYARA_RULES *phVmmYaraRules
+) {
+    VmmYara_Initialize();
+    if(!g_VmmYaraInitialized) { return VMMYARA_ERROR_INVALID_FILE; }
+    return gpfn_VmmYara_RulesLoadSourceCombined(cszSourceCombinedRules, pszSourceCombinedRules, phVmmYaraRules);
 }
 
 /*

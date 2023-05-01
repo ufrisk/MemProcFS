@@ -22,6 +22,7 @@
 #include "sqlite/sqlite3.h"
 #include "statistics.h"
 #include "charutil.h"
+#include "infodb.h"
 #include "util.h"
 #include "version.h"
 
@@ -399,6 +400,19 @@ VOID FcJson_Callback_EntryAdd(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JS
                                 "--------------------------------------------------------------------\n"
 static LPSTR FCEVIL_CSV_HEADER = "PID,ProcessName,Type,Address,Description\n";
 
+static LPSTR FCEVIL_YARA_NO_BUILTIN_RULES = 
+    "BuiltIn FindEvil YARA rules are NOT enabled! FindEvil results may be degraded.\n" \
+    "---                                                                           \n" \
+    "Some YARA rules require acceptance of the Elastic License 2.0.                \n" \
+    "https://www.elastic.co/licensing/elastic-license                              \n" \
+    "The Elastic License 2.0 applies to some built-in FindEvil YARA rules.         \n" \
+    "The Elastic License 2.0 does not apply to MemProcFS itself.                   \n" \
+    "Accept with startup option: -license-accept-elastic-license-2.0               \n" \
+    "License Acceptance Status: %s                                     \n" \
+    "---                                                                           \n" \
+    "If the license has been accepted ensure the required info.db database exists  \n" \
+    "alongside the MemProcFS binary.                                               \n";
+
 typedef struct tdFC_FINDEVIL_ENTRY {
     DWORD dwSeverity;
     DWORD dwPID;
@@ -417,6 +431,11 @@ VOID FcEvilInitialize_ThreadProc(_In_ VMM_HANDLE H, _In_ QWORD qwNotUsed)
 {
     if(H->fAbort) { return; }
     if(!(H->fc->FindEvil.pm = ObMap_New(H, OB_MAP_FLAGS_NOKEY | OB_MAP_FLAGS_OBJECT_LOCALFREE))) { return; }
+    if(!(H->fc->FindEvil.pmf = ObMemFile_New(H, H->vmm.pObCacheMapObCompressedShared))) { return; }
+    if(!(H->fc->FindEvil.pmfYara = ObMemFile_New(H, H->vmm.pObCacheMapObCompressedShared))) { return; }
+    if(!InfoDB_YaraRulesBuiltIn_Exists(H)) {
+        ObMemFile_AppendStringEx(H->fc->FindEvil.pmfYara, FCEVIL_YARA_NO_BUILTIN_RULES, (H->cfg.fLicenseAcceptElasticV2 ? "ACCEPTED    " : "NOT ACCEPTED"));
+    }
     PluginManager_FcFindEvil(H);
 }
 
@@ -455,7 +474,6 @@ VOID FcEvilFinalize(_In_ VMM_HANDLE H, _In_opt_ VMMDLL_CSV_HANDLE hCSV)
     if(H->fAbort) { goto fail; }
     if(!hCSV || !H->fc->FindEvil.pm) { goto fail; }
     // TEXT init:
-    if(!(H->fc->FindEvil.pmf = ObMemFile_New(H, H->vmm.pObCacheMapObCompressedShared))) { goto fail; }
     ObMemFile_AppendString(H->fc->FindEvil.pmf, FCEVIL_LINEHEADER);
     // JSON init:
     if(!(pdJSON = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)))) { goto fail; }
@@ -472,7 +490,7 @@ VOID FcEvilFinalize(_In_ VMM_HANDLE H, _In_opt_ VMMDLL_CSV_HANDLE hCSV)
             pObProcess = VmmProcessGet(H, pe->dwPID);
         }
         // TEXT log:
-        _snprintf_s(uszTEXT, _countof(uszTEXT), _TRUNCATE, "%04x%7i %-15s%-12s %016llx %s\n",
+        _snprintf_s(uszTEXT, _countof(uszTEXT), _TRUNCATE, "%04x%7i %-15s%-15s %016llx %s\n",
             i,
             pe->dwPID,
             pObProcess ? pObProcess->szName : "---",
@@ -1161,6 +1179,7 @@ VOID FcScanVirtmem_AddRangeKernel(_In_ VMM_HANDLE H, _In_ PFCOB_SCAN_VIRTMEM_CON
 {
     PVMM_PROCESS pObProcess = NULL;
     if(!(pObProcess = VmmProcessGet(H, 4))) { goto fail; }
+    if(FcIsProcessSkip(H, pObProcess)) { goto fail; }
     FcScanVirtmem_AddRangeKernelProcess(H, ctx, pObProcess, 0);
     Ob_DECREF_NULL(&pObProcess);
     while((pObProcess = VmmProcessGetNext(H, pObProcess, 0))) {
@@ -1199,12 +1218,9 @@ VOID FcScanVirtmem_AddRangeUser(_In_ VMM_HANDLE H, _In_ PFCOB_SCAN_VIRTMEM_CONTE
     PVMM_PROCESS pObProcess = NULL;
     while((pObProcess = VmmProcessGetNext(H, pObProcess, 0))) {
         if(H->fAbort) { goto fail; }
-        if(!pObProcess->fUserOnly) { continue; }    // don't scan kernel processes
-        if(!pObProcess->win.vaPEB) { continue; }    // don't scan special user-mode processes without PEB (such as MemCompression)
-        if(CharUtil_StrCmpAny(CharUtil_StrEquals, pObProcess->szName, FALSE, 4, "MsMpEng.exe", "MemCompression", "vmmem", "vmware-vmx.exe")) {
-            // don't scan problematic "blocked processes".
-            continue;
-        }
+        if(!pObProcess->fUserOnly) { continue; }            // don't scan kernel processes
+        if(!pObProcess->win.vaPEB) { continue; }            // don't scan special user-mode processes without PEB (such as MemCompression)
+        if(FcIsProcessSkip(H, pObProcess)) { continue; }    // don't scan problematic processes
         FcScanVirtmem_AddRangeUserProcess(H, ctx, pObProcess);
     }
 fail:
@@ -1304,6 +1320,19 @@ fail:
 
 
 // ----------------------------------------------------------------------------
+// FC GENERAL FUNCTIONALITY BELOW:
+// ----------------------------------------------------------------------------
+
+BOOL FcIsProcessSkip(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
+{
+    return
+        CharUtil_StrCmpAny(CharUtil_StrEquals, pProcess->szName, FALSE, 4, "MsMpEng.exe", "MemCompression", "Registry", "vmmem", "vmware-vmx.exe") ||
+        (H->cfg.ForensicProcessSkipList.cusz && CharUtil_StrCmpAnyEx(CharUtil_StrEquals, pProcess->szName, TRUE, H->cfg.ForensicProcessSkipList.cusz, H->cfg.ForensicProcessSkipList.pusz));
+}
+
+
+
+// ----------------------------------------------------------------------------
 // FORENSIC INITIALIZATION FUNCTIONALITY BELOW:
 // ----------------------------------------------------------------------------
 
@@ -1318,6 +1347,7 @@ fail:
 */
 VOID FcInitialize_ThreadProc(_In_ VMM_HANDLE H, _In_ QWORD qwNotUsed)
 {
+    DWORD i;
     BOOL fResult = FALSE;
     VMMDLL_CSV_HANDLE hCSV = NULL;
     PVMMOB_MAP_VM pObVmMap = NULL;
@@ -1325,6 +1355,12 @@ VOID FcInitialize_ThreadProc(_In_ VMM_HANDLE H, _In_ QWORD qwNotUsed)
     QWORD tmStart = Statistics_CallStart(H);
     QWORD tcStart = GetTickCount64();
     VmmLog(H, MID_FORENSIC, LOGLEVEL_4_VERBOSE, "INIT START");
+    VmmLog(H, MID_FORENSIC, LOGLEVEL_4_VERBOSE, "  YARA BUILTIN RULES: %s", H->cfg.fLicenseAcceptElasticV2 ? "ACTIVE" : "INACTIVE");
+    VmmLog(H, MID_FORENSIC, LOGLEVEL_4_VERBOSE, "  YARA CUSTOM RULES:  %s", H->cfg.szForensicYaraRules[0] ? H->cfg.szForensicYaraRules : "INACTIVE");
+    VmmLog(H, MID_FORENSIC, LOGLEVEL_4_VERBOSE, "  PROCESS SKIPLIST:   %s", H->cfg.ForensicProcessSkipList.cusz ? "ACTIVE" : "INACTIVE");
+    for(i = 0; i < H->cfg.ForensicProcessSkipList.cusz; i++) {
+        VmmLog(H, MID_FORENSIC, LOGLEVEL_5_DEBUG, "    SKIP PROCESS: %s", H->cfg.ForensicProcessSkipList.pusz[i]);
+    }
     VmmLog(H, MID_FORENSIC, LOGLEVEL_5_DEBUG, "INIT %i%% time=%llis", H->fc->cProgressPercent, ((GetTickCount64() - tcStart) / 1000));
     if(SQLITE_OK != Fc_SqlExec(H, FC_SQL_SCHEMA_STR)) { goto fail; }
     if(H->fAbort) { goto fail; }
@@ -1450,6 +1486,7 @@ VOID FcClose(_In_ VMM_HANDLE H)
     Ob_DECREF_NULL(&ctxFc->FileCSV.pm);
     Ob_DECREF_NULL(&ctxFc->FindEvil.pm);
     Ob_DECREF_NULL(&ctxFc->FindEvil.pmf);
+    Ob_DECREF_NULL(&ctxFc->FindEvil.pmfYara);
     LocalFree(ctxFc->Timeline.pInfo);
     LeaveCriticalSection(&ctxFc->Lock);
     DeleteCriticalSection(&ctxFc->Lock);

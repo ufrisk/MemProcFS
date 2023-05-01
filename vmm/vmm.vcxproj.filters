@@ -452,6 +452,12 @@
     <ClCompile Include="modules\m_searchyara.c">
       <Filter>Source Files\modules</Filter>
     </ClCompile>
+    <ClCompile Include="modules\m_fc_file.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmuserconfig.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="vmmdll.def">

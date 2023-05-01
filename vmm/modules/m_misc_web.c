@@ -246,7 +246,7 @@ VOID MWeb_Initialize_ThreadProc(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _
     if(!VmmWinObjFile_GetByProcess(H, pProcess, &pmObFiles, TRUE)) { return; }
     VmmLog(H, ctx->MID, LOGLEVEL_TRACE, "process: pid=%i", pProcess->dwPID);
     while((pObFile = ObMap_Pop(pmObFiles))) {
-        if(pObFile->fData) {
+        if(pObFile->pSectionObjectPointers->fData) {
             VmmLog(H, ctx->MID, LOGLEVEL_TRACE, "handle:  pid=%i handle=%s", pProcess->dwPID, pObFile->uszName);
             // check if already processed (multiple handles often exists)
             qwHashFile = pObFile->cb + pProcess->dwPID;

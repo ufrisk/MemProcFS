@@ -1142,7 +1142,7 @@ VOID CharUtil_ReplaceAllA(_Inout_ LPSTR sz, _In_ CHAR chOld, _In_ CHAR chNew)
 * -- usz = utf-8 or ascii string.
 * -- uszPath = buffer to receive result.
 * -- cbuPath = byte length of uszPath buffer
-* -- return
+* -- return = last part (i.e. file name) of usz.
 */
 LPSTR CharUtil_PathSplitLastEx(_In_ LPSTR usz, _Out_writes_(cbuPath) LPSTR uszPath, _In_ DWORD cbuPath)
 {
@@ -1162,6 +1162,28 @@ LPSTR CharUtil_PathSplitLastEx(_In_ LPSTR usz, _Out_writes_(cbuPath) LPSTR uszPa
     return uszPath + iSlash + 1;
 }
 
+/*
+* Split the string usz into two at the last (back)slash which is removed.
+* If no slash is found, the input string is not modified and NULL is returned.
+* NB! The input string is modified in place.
+* Ex: usz: XXX/YYY/ZZZ/AAA -> usz: XXX/YYY/ZZZ + return: AAA
+* -- usz = utf-8 or ascii string to be split/modified.
+* -- return = last part (i.e. file name) of usz.
+*/
+LPSTR CharUtil_PathSplitLastInPlace(_Inout_ LPSTR usz)
+{
+    DWORD i = 0, iSlash = -1;
+    CHAR ch = -1;
+    while((ch = usz[i])) {
+        if((ch == '\\') || (ch == '/')) {
+            iSlash = i;
+        }
+        i++;
+    }
+    if(iSlash == (DWORD)-1) { return NULL; }
+    usz[iSlash] = 0;
+    return usz + iSlash + 1;
+}
 
 /*
 * Return the sub-string after the last (back)slash character in usz.
@@ -1209,9 +1231,74 @@ LPSTR CharUtil_PathSplitNext(_In_ LPSTR usz)
 }
 
 /*
+* Split a string into two at the first character.
+* The 1st string is returned in the pusz1 caller-allocated buffer. The
+* remainder is returned as return data (is a sub-string of usz). If no
+* 2nd string is found null-terminator character is returned (NB! not as NULL).
+* -- usz = utf-8/ascii string to split.
+* -- ch = character to split at.
+* -- usz1 = buffer to receive result.
+* -- cbu1 = byte length of usz1 buffer
+* -- return = remainder of split string.
+*/
+LPSTR CharUtil_SplitFirst(_In_ LPSTR usz, _In_ CHAR ch, _Out_writes_(cbu1) LPSTR usz1, _In_ DWORD cbu1)
+{
+    UCHAR c;
+    DWORD i = 0;
+    while((c = usz[i]) && (c != ch) && (i < cbu1 - 2)) {
+        usz1[i++] = c;
+    }
+    usz1[i] = 0;
+    return usz[i] ? &usz[i + 1] : "";
+}
+
+/*
+* Split a string into a list of strings at the delimiter characters.
+* The function allocates neccessary memory for the result array and its values.
+* CALLER LocalFree: *ppuszArray
+* -- usz = utf-8/ascii string to split.
+* -- chDelimiter = character to split at.
+* -- pcArray = pointer to receive number of strings in result array.
+* -- ppuszArray = pointer to receive result array.
+* -- return = remainder of split string.
+*/
+_Success_(return)
+BOOL CharUtil_SplitList(_In_opt_ LPSTR usz, _In_ CHAR chDelimiter, _Out_ PDWORD pcArray, _Out_ LPSTR **ppuszArray)
+{
+    UCHAR c;
+    LPSTR *pszResult;
+    DWORD cch = 0, cDelim = 1, cDelimResult = 0;
+    *pcArray = 0;
+    *ppuszArray = NULL;
+    if(!usz) { return FALSE; }
+    // count total length and # of delimiters:
+    while((c = usz[cch])) {
+        if(c == chDelimiter) { cDelim++; }
+        cch++;
+    }
+    // allocate result array:
+    if(!(pszResult = LocalAlloc(LMEM_ZEROINIT, cDelim * sizeof(LPSTR) + cch + 1))) { return FALSE; }
+    memcpy(pszResult + cDelim, usz, cch);
+    usz = (LPSTR)(pszResult + cDelim);
+    // split string:
+    pszResult[cDelimResult++] = usz;
+    while((c = usz[0]) && (cDelimResult < cDelim)) {
+        if(c == chDelimiter) {
+            usz[0] = 0;
+            pszResult[cDelimResult++] = usz + 1;
+        }
+        usz++;
+    }
+    // set out parameters:
+    *ppuszArray = pszResult;
+    *pcArray = cDelim;
+    return TRUE;
+}
+
+/*
 * Split a "path" string into two at the first slash/backslash character.
 * The 1st string is returned in the pusz1 caller-allocated buffer. The
-* remainder is returned as return data (is a sub-string of wsz). If no
+* remainder is returned as return data (is a sub-string of usz). If no
 * 2nd string is found null-terminator character is returned (NB! not as NULL).
 * -- usz = utf-8/ascii string to split.
 * -- usz1 = buffer to receive result.
@@ -1301,6 +1388,27 @@ BOOL CharUtil_StrCmpAny(_In_opt_ CHARUTIL_STRCMP_PFN pfnStrCmp, _In_opt_ LPSTR u
         cStr--;
     }
     va_end(arglist);
+    return FALSE;
+}
+
+/*
+* Compare multiple strings with a CharUtil_Str* compare function.
+* If at least one comparison is TRUE return TRUE - otherwise FALSE.
+* -- pfnStrCmp
+* -- usz1
+* -- fCaseInsensitive
+* -- cStr
+* -- pStr
+* -- return
+*/
+BOOL CharUtil_StrCmpAnyEx(_In_opt_ CHARUTIL_STRCMP_PFN pfnStrCmp, _In_opt_ LPSTR usz1, _In_ BOOL fCaseInsensitive, _In_ DWORD cStr, _In_ LPSTR *pStr)
+{
+    if(!pfnStrCmp) { return FALSE; }
+    while(cStr) {
+        if(pfnStrCmp(usz1, pStr[--cStr], fCaseInsensitive)) {
+            return TRUE;
+        }
+    }
     return FALSE;
 }
 

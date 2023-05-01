@@ -15,80 +15,87 @@
 #define VMMWINOBJ_WORKITEM_FILEPROCSCAN_VAD         0x0000000100000000
 #define VMMWINOBJ_WORKITEM_FILEPROCSCAN_HANDLE      0x0000000200000000
 
-typedef struct tdVMMWINOBJ_CONTEXT {
+typedef struct tdOB_VMMWINOBJ_CONTEXT {
+    OB ObHdr;
+    BOOL fAll;
     CRITICAL_SECTION LockUpdate;
-    POB_SET psError;
-    POB_MAP pmByObj;
-    POB_MAP pmByWorkitem;
-} VMMWINOBJ_CONTEXT, *PVMMWINOBJ_CONTEXT;
+    POB_SET psError;                // key = va
+    POB_MAP pmByObj;                // key = va
+    POB_MAP pmByWorkitem;           // key = [VMMWINOBJ_WORKITEM_ | dwPID]
+} OB_VMMWINOBJ_CONTEXT, *POB_VMMWINOBJ_CONTEXT;
 
 //-----------------------------------------------------------------------------
-// EXPORTED INITIALIZATION/REFRESH/CLOSE FUNCTIONALITY BELOW:
+// OBJECT INITIALIZATION/REFRESH/RETRIEVE FUNCTIONALITY BELOW:
 //-----------------------------------------------------------------------------
 
-VOID VmmWinObj_Initialize(_In_ VMM_HANDLE H)
+VOID VmmWinObj_Context_CleanupCB(POB_VMMWINOBJ_CONTEXT pOb)
 {
-    PVMMWINOBJ_CONTEXT ctx;
-    if(!(ctx = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMWINOBJ_CONTEXT)))) { goto fail; }
-    if(!(ctx->psError = ObSet_New(H))) { goto fail; }
-    if(!(ctx->pmByObj = ObMap_New(H, OB_MAP_FLAGS_OBJECT_OB))) { goto fail; }
-    if(!(ctx->pmByWorkitem = ObMap_New(H, OB_MAP_FLAGS_OBJECT_OB))) { goto fail; }
-    InitializeCriticalSection(&ctx->LockUpdate);
-    H->vmm.pObjects = ctx;
-    return;
+    DeleteCriticalSection(&pOb->LockUpdate);
+    Ob_DECREF(pOb->psError);
+    Ob_DECREF(pOb->pmByObj);
+    Ob_DECREF(pOb->pmByWorkitem);
+}
+
+/*
+* Retrieve the OB_VMMWINOBJ_CONTEXT.
+* CALLER DECREF: return
+* -- H
+* -- return
+*/
+_Success_(return != NULL)
+POB_VMMWINOBJ_CONTEXT VmmWinObj_GetContext(_In_ VMM_HANDLE H)
+{
+    static SRWLOCK LockSRW = SRWLOCK_INIT;
+    POB_VMMWINOBJ_CONTEXT pObCtx = NULL;
+    if((pObCtx = ObContainer_GetOb(H->vmm.pObCWinObj))) { return pObCtx; }
+    AcquireSRWLockExclusive(&LockSRW);
+    if((pObCtx = ObContainer_GetOb(H->vmm.pObCWinObj))) {
+        ReleaseSRWLockExclusive(&LockSRW);
+        return pObCtx;
+    }
+    pObCtx = Ob_AllocEx(H, OB_TAG_OBJ_CTX, LMEM_ZEROINIT, sizeof(OB_VMMWINOBJ_CONTEXT), (OB_CLEANUP_CB)VmmWinObj_Context_CleanupCB, NULL);
+    if(!pObCtx) { goto fail; }
+    InitializeCriticalSection(&pObCtx->LockUpdate);
+    if(!(pObCtx->psError = ObSet_New(H))) { goto fail; }
+    if(!(pObCtx->pmByObj = ObMap_New(H, OB_MAP_FLAGS_OBJECT_OB))) { goto fail; }
+    if(!(pObCtx->pmByWorkitem = ObMap_New(H, OB_MAP_FLAGS_OBJECT_OB))) { goto fail; }
+    ObContainer_SetOb(H->vmm.pObCWinObj, pObCtx);
+    ReleaseSRWLockExclusive(&LockSRW);
+    return pObCtx;
 fail:
-    if(ctx) {
-        Ob_DECREF(ctx->psError);
-        Ob_DECREF(ctx->pmByObj);
-        Ob_DECREF(ctx->pmByWorkitem);
-        LocalFree(ctx);
-    }
+    Ob_DECREF(pObCtx);
+    ReleaseSRWLockExclusive(&LockSRW);
+    return NULL;
 }
 
-VOID VmmWinObj_Close(_In_ VMM_HANDLE H)
-{
-    PVMMWINOBJ_CONTEXT ctx = H->vmm.pObjects;
-    if(ctx) {
-        H->vmm.pObjects = NULL;
-        Ob_DECREF(ctx->psError);
-        Ob_DECREF(ctx->pmByObj);
-        Ob_DECREF(ctx->pmByWorkitem);
-        LocalFree(ctx);
-    }
-}
-
+/*
+* Refresh the Object sub-system.
+* -- H
+*/
 VOID VmmWinObj_Refresh(_In_ VMM_HANDLE H)
 {
-    PVMMWINOBJ_CONTEXT ctx = H->vmm.pObjects;
-    if(ctx) {
-        EnterCriticalSection(&ctx->LockUpdate);
-        ObSet_Clear(ctx->psError);
-        ObMap_Clear(ctx->pmByObj);
-        ObMap_Clear(ctx->pmByWorkitem);
-        ObCacheMap_Clear(H->vmm.pObCacheMapWinObjDisplay);
-        LeaveCriticalSection(&ctx->LockUpdate);
-    }
-    ObContainer_SetOb(H->vmm.pObCMapObject, NULL);
+    ObContainer_SetOb(H->vmm.pObCWinObj, NULL);
+    ObContainer_SetOb(H->vmm.pObCMapObjMgr, NULL);
     ObContainer_SetOb(H->vmm.pObCMapKDriver, NULL);
 }
-
-
-
-// ----------------------------------------------------------------------------
-// GENERAL OBJECT FUNCTIONALITY:
-// ----------------------------------------------------------------------------
 
 /*
 * Retrieve an object from the object cache.
 * CALLER DECREF: return
 * -- H
+* -- ctx
+* -- tp = the type of object to retrieve.
 * -- va = virtual address of the object to retrieve.
 * -- return = the object, NULL if not found in cache.
 */
-POB_VMMWINOBJ_OBJECT VmmWinObj_Get(_In_ VMM_HANDLE H, _In_ QWORD va)
+POB_VMMWINOBJ_OBJECT VmmWinObj_CacheGet(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_CONTEXT ctx, _In_ VMMWINOBJ_TYPE tp, _In_ QWORD va)
 {
-    PVMMWINOBJ_CONTEXT ctx = H->vmm.pObjects;
-    return ObMap_GetByKey(ctx->pmByObj, va);
+    POB_VMMWINOBJ_OBJECT pOb = ObMap_GetByKey(ctx->pmByObj, va);
+    if(pOb) {
+        if(pOb->tp == tp) { return pOb; }
+        Ob_DECREF(pOb);
+    }
+    return NULL;
 }
 
 
@@ -107,16 +114,21 @@ POB_VMMWINOBJ_OBJECT VmmWinObj_Get(_In_ VMM_HANDLE H, _In_ QWORD va)
 //       _SEGMENT
 // ----------------------------------------------------------------------------
 
-VOID VmmWinObj_CallbackCleanup_ObObjFile(POB_VMMWINOBJ_FILE pOb)
+VOID VmmWinObj_ObObjFile_CleanupCB(POB_VMMWINOBJ_FILE pOb)
 {
+    Ob_DECREF(pOb->pSectionObjectPointers);
     LocalFree(pOb->uszPath);
+}
+
+VOID VmmWinObj_ObSectObjPtrs_CleanupCB(POB_VMMWINOBJ_SECTION_OBJECT_POINTERS pOb)
+{
     LocalFree(pOb->pSUBSECTION);
 }
 
 /*
 * Filter function for VmmWinObjFile_Initialize_SharedCacheMap.
 */
-VOID VmmWinObjFile_Initialize_SharedCacheMap_Filter(_In_ QWORD k, _In_ POB_VMMWINOBJ_FILE v, _Inout_ POB_SET ps)
+VOID VmmWinObjFile_Initialize_SharedCacheMap_Filter(_In_opt_ PVOID ctx, _In_ POB_SET ps, _In_ QWORD k, _In_ POB_VMMWINOBJ_SECTION_OBJECT_POINTERS v)
 {
     if(v->_SHARED_CACHE_MAP.va) {
         ObSet_Push(ps, v->_SHARED_CACHE_MAP.va - 0x10);
@@ -130,27 +142,27 @@ VOID VmmWinObjFile_Initialize_SharedCacheMap_Filter(_In_ QWORD k, _In_ POB_VMMWI
 * -- pSystemProcess
 * -- pm
 */
-VOID VmmWinObjFile_Initialize_SharedCacheMap(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_ POB_MAP pmFiles)
+VOID VmmWinObjFile_Initialize_SharedCacheMap(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_ POB_MAP pmSectObjPtrs)
 {
     BOOL f, f32 = H->vmm.f32;
     BYTE pb[0x300];
-    POB_VMMWINOBJ_FILE peObFile = NULL;
+    POB_VMMWINOBJ_SECTION_OBJECT_POINTERS peObPtr = NULL;
     PVMM_OFFSET_FILE po = &H->vmm.offset.FILE;
     // 1: Prefetch valid _SHARED_CACHE_MAP into cache.
-    if(!VmmCachePrefetchPages5(H, pSystemProcess, pmFiles, 0x10 + po->_SHARED_CACHE_MAP.cb, 0, (VOID(*)(QWORD, PVOID, POB_SET))VmmWinObjFile_Initialize_SharedCacheMap_Filter)) { return; }
+    if(!VmmCachePrefetchPages5(H, pSystemProcess, pmSectObjPtrs, 0x10 + po->_SHARED_CACHE_MAP.cb, 0, (OB_MAP_FILTERSET_PFN_CB)VmmWinObjFile_Initialize_SharedCacheMap_Filter)) { return; }
     // 2: process _SHARED_CACHE_MAP
-    while((peObFile = ObMap_GetNext(pmFiles, peObFile))) {
-        f = peObFile->_SHARED_CACHE_MAP.va &&
-            VmmRead2(H, pSystemProcess, peObFile->_SHARED_CACHE_MAP.va - 0x10, pb, po->_SHARED_CACHE_MAP.cb, VMM_FLAG_FORCECACHE_READ) &&
+    while((peObPtr = ObMap_GetNext(pmSectObjPtrs, peObPtr))) {
+        f = peObPtr->_SHARED_CACHE_MAP.va &&
+            VmmRead2(H, pSystemProcess, peObPtr->_SHARED_CACHE_MAP.va - 0x10, pb, po->_SHARED_CACHE_MAP.cb, VMM_FLAG_FORCECACHE_READ) &&
             VMM_POOLTAG_PREPENDED(f32, pb, 0x10, 'CcSc') &&
-            (peObFile->_SHARED_CACHE_MAP.vaVacbs = VMM_PTR_OFFSET(f32, pb + 0x10, po->_SHARED_CACHE_MAP.oVacbs)) &&
-            VMM_KADDR_4_8(f32, peObFile->_SHARED_CACHE_MAP.vaVacbs) &&
-            (peObFile->_SHARED_CACHE_MAP.cbFileSize = *(PQWORD)(pb + 0x10 + po->_SHARED_CACHE_MAP.oFileSize)) &&
-            (peObFile->_SHARED_CACHE_MAP.cbSectionSize = *(PQWORD)(pb + 0x10 + po->_SHARED_CACHE_MAP.oSectionSize));
-        peObFile->_SHARED_CACHE_MAP.fValid = f;
-        peObFile->_SHARED_CACHE_MAP.cbFileSizeValid = *(PQWORD)(pb + 0x10 + po->_SHARED_CACHE_MAP.oValidDataLength);
-        if(peObFile->_SHARED_CACHE_MAP.fValid && ((peObFile->cb == 0) || (peObFile->_SHARED_CACHE_MAP.cbFileSize < peObFile->cb))) {
-            peObFile->cb = peObFile->_SHARED_CACHE_MAP.cbFileSize;
+            (peObPtr->_SHARED_CACHE_MAP.vaVacbs = VMM_PTR_OFFSET(f32, pb + 0x10, po->_SHARED_CACHE_MAP.oVacbs)) &&
+            VMM_KADDR_4_8(f32, peObPtr->_SHARED_CACHE_MAP.vaVacbs) &&
+            (peObPtr->_SHARED_CACHE_MAP.cbFileSize = *(PQWORD)(pb + 0x10 + po->_SHARED_CACHE_MAP.oFileSize)) &&
+            (peObPtr->_SHARED_CACHE_MAP.cbSectionSize = *(PQWORD)(pb + 0x10 + po->_SHARED_CACHE_MAP.oSectionSize));
+        peObPtr->_SHARED_CACHE_MAP.fValid = f;
+        peObPtr->_SHARED_CACHE_MAP.cbFileSizeValid = *(PQWORD)(pb + 0x10 + po->_SHARED_CACHE_MAP.oValidDataLength);
+        if(peObPtr->_SHARED_CACHE_MAP.fValid && ((peObPtr->cb == 0) || (peObPtr->_SHARED_CACHE_MAP.cbFileSize < peObPtr->cb))) {
+            peObPtr->cb = peObPtr->_SHARED_CACHE_MAP.cbFileSize;
         }
     }
 }
@@ -164,7 +176,7 @@ VOID VmmWinObjFile_Initialize_SharedCacheMap(_In_ VMM_HANDLE H, _In_ PVMM_PROCES
 * -- pSystemProcess
 * -- pf
 */
-BOOL VmmWinObjFile_Initialize_ControlArea_Subsection(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_ POB_VMMWINOBJ_FILE pf)
+BOOL VmmWinObjFile_Initialize_ControlArea_Subsection(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_ POB_VMMWINOBJ_SECTION_OBJECT_POINTERS pf)
 {
     QWORD va;
     BOOL f = TRUE, fSoft, f32 = H->vmm.f32;
@@ -199,7 +211,7 @@ BOOL VmmWinObjFile_Initialize_ControlArea_Subsection(_In_ VMM_HANDLE H, _In_ PVM
 /*
 * Filter function for VmmWinObjFile_Initialize_ControlArea.
 */
-VOID VmmWinObjFile_Initialize_ControlArea_FilterSegment(_In_ QWORD k, _In_ POB_VMMWINOBJ_FILE v, _Inout_ POB_SET ps)
+VOID VmmWinObjFile_Initialize_ControlArea_FilterSegment(_In_opt_ PVOID ctx, _In_ POB_SET ps, _In_ QWORD k, _In_ POB_VMMWINOBJ_SECTION_OBJECT_POINTERS v)
 {
     ObSet_Push(ps, v->_SEGMENT.va);
 }
@@ -207,7 +219,7 @@ VOID VmmWinObjFile_Initialize_ControlArea_FilterSegment(_In_ QWORD k, _In_ POB_V
 /*
 * Filter function for VmmWinObjFile_Initialize_ControlArea.
 */
-VOID VmmWinObjFile_Initialize_ControlArea_Filter(_In_ QWORD k, _In_ POB_VMMWINOBJ_FILE v, _Inout_ POB_SET ps)
+VOID VmmWinObjFile_Initialize_ControlArea_Filter(_In_opt_ PVOID ctx, _In_ POB_SET ps, _In_ QWORD k, _In_ POB_VMMWINOBJ_SECTION_OBJECT_POINTERS v)
 {
     ObSet_Push(ps, v->vaControlArea);
 }
@@ -217,35 +229,35 @@ VOID VmmWinObjFile_Initialize_ControlArea_Filter(_In_ QWORD k, _In_ POB_VMMWINOB
 * in a efficient way.
 * -- H
 * -- pSystemProcess
-* -- pm
+* -- pmSectObjPtrs
 */
-VOID VmmWinObjFile_Initialize_ControlArea(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_ POB_MAP pmFiles)
+VOID VmmWinObjFile_Initialize_ControlArea(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_ POB_MAP pmSectObjPtrs)
 {
     BOOL f, f32 = H->vmm.f32;
     BYTE pb[0x100];
-    POB_VMMWINOBJ_FILE peObFile = NULL;
+    POB_VMMWINOBJ_SECTION_OBJECT_POINTERS peObPtr = NULL;
     PVMM_OFFSET_FILE po = &H->vmm.offset.FILE;
     // 1: Prefetch valid _CONTROL_AREA and following _SUBSECTION into cache.
-    if(!VmmCachePrefetchPages5(H, pSystemProcess, pmFiles, 0x1000, 0, (VOID(*)(QWORD, PVOID, POB_SET))VmmWinObjFile_Initialize_ControlArea_Filter)) { return; }
+    if(!VmmCachePrefetchPages5(H, pSystemProcess, pmSectObjPtrs, 0x1000, 0, (OB_MAP_FILTERSET_PFN_CB)VmmWinObjFile_Initialize_ControlArea_Filter)) { return; }
     // 2: get _SEGMENT pointer and sub-process _SUBSECTION(s)
-    while((peObFile = ObMap_GetNext(pmFiles, peObFile))) {
-        f = peObFile->vaControlArea &&
-            VmmRead2(H, pSystemProcess, peObFile->vaControlArea, pb, po->_CONTROL_AREA.cb, VMM_FLAG_FORCECACHE_READ) &&
+    while((peObPtr = ObMap_GetNext(pmSectObjPtrs, peObPtr))) {
+        f = peObPtr->vaControlArea &&
+            VmmRead2(H, pSystemProcess, peObPtr->vaControlArea, pb, po->_CONTROL_AREA.cb, VMM_FLAG_FORCECACHE_READ) &&
             VMM_KADDR(f32, VMM_PTR_OFFSET(f32, pb, po->_CONTROL_AREA.oFilePointer)) &&
-            (peObFile->_SEGMENT.va = VMM_PTR_OFFSET(f32, pb, po->_CONTROL_AREA.oSegment)) && VMM_KADDR_4_8(f32, peObFile->_SEGMENT.va);
+            (peObPtr->_SEGMENT.va = VMM_PTR_OFFSET(f32, pb, po->_CONTROL_AREA.oSegment)) && VMM_KADDR_4_8(f32, peObPtr->_SEGMENT.va);
         if(f) {
-            VmmWinObjFile_Initialize_ControlArea_Subsection(H, pSystemProcess, peObFile);
+            VmmWinObjFile_Initialize_ControlArea_Subsection(H, pSystemProcess, peObPtr);
         }
     }
     // 3: Prefetch valid _SEGMENT into cache.
-    if(!VmmCachePrefetchPages5(H, pSystemProcess, pmFiles, po->_SEGMENT.cb, 0, (VOID(*)(QWORD, PVOID, POB_SET))VmmWinObjFile_Initialize_ControlArea_FilterSegment)) { return; }
+    if(!VmmCachePrefetchPages5(H, pSystemProcess, pmSectObjPtrs, po->_SEGMENT.cb, 0, (OB_MAP_FILTERSET_PFN_CB)VmmWinObjFile_Initialize_ControlArea_FilterSegment)) { return; }
     // 4: get _SEGMENT data
-    while((peObFile = ObMap_GetNext(pmFiles, peObFile))) {
-        if(peObFile->_SEGMENT.va && VmmRead2(H, pSystemProcess, peObFile->_SEGMENT.va, pb, po->_SEGMENT.cb, VMM_FLAG_FORCECACHE_READ) && (peObFile->vaControlArea == VMM_PTR_OFFSET(f32, pb, po->_SEGMENT.oControlArea))) {
-            peObFile->_SEGMENT.cbSizeOfSegment = *(PQWORD)(pb + po->_SEGMENT.oSizeOfSegment);
-            peObFile->_SEGMENT.vaPrototypePte = *(PQWORD)(pb + po->_SEGMENT.oPrototypePte);
-            peObFile->_SEGMENT.fValid = TRUE;
-            peObFile->cb = min(peObFile->_SEGMENT.cbSizeOfSegment, (peObFile->cb ? peObFile->cb : (QWORD)-1));
+    while((peObPtr = ObMap_GetNext(pmSectObjPtrs, peObPtr))) {
+        if(peObPtr->_SEGMENT.va && VmmRead2(H, pSystemProcess, peObPtr->_SEGMENT.va, pb, po->_SEGMENT.cb, VMM_FLAG_FORCECACHE_READ) && (peObPtr->vaControlArea == VMM_PTR_OFFSET(f32, pb, po->_SEGMENT.oControlArea))) {
+            peObPtr->_SEGMENT.cbSizeOfSegment = *(PQWORD)(pb + po->_SEGMENT.oSizeOfSegment);
+            peObPtr->_SEGMENT.vaPrototypePte = *(PQWORD)(pb + po->_SEGMENT.oPrototypePte);
+            peObPtr->_SEGMENT.fValid = TRUE;
+            peObPtr->cb = min(peObPtr->_SEGMENT.cbSizeOfSegment, (peObPtr->cb ? peObPtr->cb : (QWORD)-1));
         }
     }
 }
@@ -253,48 +265,114 @@ VOID VmmWinObjFile_Initialize_ControlArea(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS p
 /*
 * Filter function for VmmWinObjFile_Initialize_FileObjects.
 */
-VOID VmmWinObjFile_Initialize_FileObject_Filter(_In_ QWORD k, _In_ POB_VMMWINOBJ_FILE v, _Inout_ POB_SET ps)
+VOID VmmWinObjFile_Initialize_FileObjects_Name_FilterCB(_In_opt_ PVOID ctx, _In_ POB_SET ps, _In_ QWORD k, _In_ POB_VMMWINOBJ_FILE v)
 {
     ObSet_Push(ps, v->_Reserved2);
-    ObSet_Push(ps, v->vaSectionObjectPointers);
 }
 
-/*
-* Filter function for VmmWinObjFile_Initialize_FileObjects.
-*/
-BOOL VmmWinObjFile_Initialize_FileObject_FilterRemove(_In_ VMM_HANDLE H, _In_ QWORD k, _In_ POB_VMMWINOBJ_FILE v)
+VOID VmmWinObjFile_Initialize_FileObjects_SectionObjectPointers_FilterSetCB(_In_opt_ PVOID ctx, _In_ POB_SET ps, _In_ QWORD k, _In_ POB_VMMWINOBJ_FILE v)
 {
-    BOOL f =
-        !v->dwNameHash ||
-        (!v->fData && !v->fImage && !v->fCache) ||
-        (v->fCache && !v->_SHARED_CACHE_MAP.fValid) ||
-        (v->fData && (!v->_SEGMENT.fValid || !v->cSUBSECTION)) ||
-        (v->fImage && !v->cSUBSECTION);
-    if(f) {
-        ObSet_Push(H->vmm.pObjects->psError, v->va);
+    ObSet_Push(ps, v->_Reserved3);
+}
+
+VOID VmmWinObjFile_Initialize_SectionObjectPointers(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_CONTEXT ctx, _In_ PVMM_PROCESS pSystemProcess, _Inout_ POB_SET psvaSectionObjectPointers)
+{
+    BOOL f, f32 = H->vmm.f32;
+    BYTE pb[0x100];
+    QWORD va, vaPtr;
+    DWORD dwIndex = 0;
+    PVMM_OFFSET_FILE po = &H->vmm.offset.FILE;
+    POB_MAP pmObSectionObjectPointers = NULL;
+    POB_VMMWINOBJ_SECTION_OBJECT_POINTERS peObPtr;
+    // 1: filter out already initialized _SECTION_OBJECT_POINTERS
+    while((va = ObSet_GetNextByIndex(psvaSectionObjectPointers, &dwIndex))) {
+        if(ObMap_ExistsKey(ctx->pmByObj, va) || ObSet_Exists(ctx->psError, va)) {
+            ObSet_Remove(psvaSectionObjectPointers, va);
+        }
     }
-    return f;
+    if(!ObSet_Size(psvaSectionObjectPointers)) { goto fail; }
+    // 2: fetch section object pointers:
+    if(!(pmObSectionObjectPointers = ObMap_New(H, OB_MAP_FLAGS_OBJECT_OB))) { goto fail; }
+    VmmCachePrefetchPages3(H, pSystemProcess, psvaSectionObjectPointers, po->_SECTION_OBJECT_POINTERS.cb, 0);
+    while((vaPtr = ObSet_Pop(psvaSectionObjectPointers))) {
+        if(!VmmRead2(H, pSystemProcess, vaPtr, pb, po->_SECTION_OBJECT_POINTERS.cb, VMM_FLAG_FORCECACHE_READ)) {
+            ObSet_Push(ctx->psError, vaPtr);
+            continue;
+        }
+        if(!(peObPtr = Ob_AllocEx(H, OB_TAG_OBJ_FILE, LMEM_ZEROINIT, sizeof(OB_VMMWINOBJ_SECTION_OBJECT_POINTERS), (OB_CLEANUP_CB)VmmWinObj_ObSectObjPtrs_CleanupCB, NULL))) { goto fail; }
+        peObPtr->va = vaPtr;
+        peObPtr->tp = VMMWINOBJ_TYPE_SECTION_OBJECT_POINTERS;
+        if((va = VMM_PTR_OFFSET(f32, pb, po->_SECTION_OBJECT_POINTERS.oDataSectionObject)) && VMM_KADDR_8_16(f32, va)) {
+            peObPtr->fData = TRUE;
+            peObPtr->vaControlArea = va;
+        }
+        if((va = VMM_PTR_OFFSET(f32, pb, po->_SECTION_OBJECT_POINTERS.oImageSectionObject)) && VMM_KADDR_8_16(f32, va)) {
+            peObPtr->fImage = TRUE;
+            peObPtr->vaControlArea = va;
+        }
+        if((va = VMM_PTR_OFFSET(f32, pb, po->_SECTION_OBJECT_POINTERS.oSharedCacheMap)) && VMM_KADDR_8_16(f32, va)) {
+            peObPtr->fCache = TRUE;
+            peObPtr->_SHARED_CACHE_MAP.va = va;
+        }
+        ObMap_Push(pmObSectionObjectPointers, peObPtr->va, peObPtr);
+        Ob_DECREF(peObPtr);
+    }
+    if(!ObMap_Size(pmObSectionObjectPointers)) { goto fail; }
+    // 3: fetch sub-objects
+    VmmWinObjFile_Initialize_ControlArea(H, pSystemProcess, pmObSectionObjectPointers);
+    VmmWinObjFile_Initialize_SharedCacheMap(H, pSystemProcess, pmObSectionObjectPointers);
+    // 4: verify correctness and push to global map
+    while((peObPtr = ObMap_Pop(pmObSectionObjectPointers))) {
+        f = (peObPtr->fData || peObPtr->fImage || peObPtr->fCache) &&
+            !(peObPtr->fCache && !peObPtr->_SHARED_CACHE_MAP.fValid) &&
+            !(peObPtr->fData && (!peObPtr->_SEGMENT.fValid || !peObPtr->cSUBSECTION)) &&
+            !(peObPtr->fImage && !peObPtr->cSUBSECTION);
+        if(f) {
+            ObMap_Push(ctx->pmByObj, peObPtr->va, peObPtr);
+        } else {
+            ObSet_Push(ctx->psError, peObPtr->va);
+        }
+        Ob_DECREF(peObPtr);
+    }
+fail:
+    Ob_DECREF(pmObSectionObjectPointers);
 }
 
 /*
 * Initialize new file objects.
 * -- H
+* -- ctx
 * -- pSystemProcess
 * -- psvaFiles = set of virtual addresses to _FILE_OBJECTs to initialize.
 * -- pmFilesResult = reults map, new valid objects are added to this map.
 */
-VOID VmmWinObjFile_Initialize_FileObjects(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _Inout_ POB_SET psvaFiles, _Inout_ POB_MAP pmFilesResult)
+VOID VmmWinObjFile_Initialize_FileObjects(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_CONTEXT ctx, _In_ PVMM_PROCESS pSystemProcess, _Inout_ POB_SET psvaFiles, _Inout_ POB_MAP pmFilesResult)
 {
     BOOL f, f32 = H->vmm.f32;
-    QWORD va;
-    DWORD cbPath;
-    QWORD vaSectionObjectPointers, vaFileNameBuffer;
+    QWORD va = 0;
     BYTE pb[0x100];
+    DWORD cbPath, dwIndex = 0;
+    QWORD vaSectionObjectPointers, vaFileNameBuffer;
     POB_MAP pmObFiles = NULL;
+    POB_SET psvaObSectionObjectPointers = NULL;
     POB_VMMWINOBJ_FILE peObFile = NULL;
     WCHAR wszNameBuffer[MAX_PATH + 1] = { 0 };
-    PVMMWINOBJ_CONTEXT ctx = H->vmm.pObjects;
     PVMM_OFFSET_FILE po = &H->vmm.offset.FILE;
+    // 1: add already existing objects to result map
+    while((va = ObSet_GetNextByIndex(psvaFiles, &dwIndex))) {
+        if((peObFile = (POB_VMMWINOBJ_FILE)VmmWinObj_CacheGet(H, ctx, VMMWINOBJ_TYPE_FILE, va))) {
+            ObMap_Push(pmFilesResult, va, peObFile);
+            ObSet_Remove(psvaFiles, va);
+            Ob_DECREF(peObFile);
+        }
+        if(ObSet_Exists(ctx->psError, va)) {
+            ObSet_Remove(psvaFiles, va);
+        }
+    }
+    if(!ObSet_Size(psvaFiles)) {
+        return;
+    }
+    //
     if(!(pmObFiles = ObMap_New(H, OB_MAP_FLAGS_OBJECT_OB))) { return; }
     // 1: prefetch _FILE_OBJECT
     VmmCachePrefetchPages3(H, pSystemProcess, psvaFiles, po->_FILE_OBJECT.cb, 0);
@@ -305,26 +383,25 @@ VOID VmmWinObjFile_Initialize_FileObjects(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS p
             (vaFileNameBuffer = VMM_PTR_OFFSET(f32, pb, po->_FILE_OBJECT.oFileNameBuffer)) &&
             (vaSectionObjectPointers = VMM_PTR_OFFSET(f32, pb, po->_FILE_OBJECT.oSectionObjectPointer)) &&
             VMM_KADDR(f32, vaFileNameBuffer) && VMM_KADDR_4_8(f32, vaSectionObjectPointers) &&
-            (peObFile = Ob_AllocEx(H, OB_TAG_OBJ_FILE, LMEM_ZEROINIT, sizeof(OB_VMMWINOBJ_FILE), (OB_CLEANUP_CB)VmmWinObj_CallbackCleanup_ObObjFile, NULL));
+            (peObFile = Ob_AllocEx(H, OB_TAG_OBJ_FILE, LMEM_ZEROINIT, sizeof(OB_VMMWINOBJ_FILE), (OB_CLEANUP_CB)VmmWinObj_ObObjFile_CleanupCB, NULL));
         if(f) {
             peObFile->tp = VMMWINOBJ_TYPE_FILE;
             peObFile->va = va;
-            peObFile->vaSectionObjectPointers = vaSectionObjectPointers;
             peObFile->_Reserved1 = cbPath;
             peObFile->_Reserved2 = vaFileNameBuffer;
+            peObFile->_Reserved3 = vaSectionObjectPointers;
             ObMap_Push(pmObFiles, va, peObFile);
             Ob_DECREF_NULL(&peObFile);
         } else {
             ObSet_Push(ctx->psError, va);
         }
     }
-    // 3: prefetch _UNICODE_STRING and _SECTION_OBJECT_POINTERS
-    if(!VmmCachePrefetchPages5(H, pSystemProcess, pmObFiles, MAX_PATH * 2, 0, (VOID(*)(QWORD, PVOID, POB_SET))VmmWinObjFile_Initialize_FileObject_Filter)) { goto finish; }
-    // 4: fill _UNICODE_STRING and _SECTION_OBJECT_POINTERS
+    // 3: fetch path and name of _FILE_OBJECT:
+    VmmCachePrefetchPages5(H, pSystemProcess, pmObFiles, MAX_PATH * 2, 0, (OB_MAP_FILTERSET_PFN_CB)VmmWinObjFile_Initialize_FileObjects_Name_FilterCB);
     while((peObFile = ObMap_GetNext(pmObFiles, peObFile))) {
         // _UNICODE_STRING
-        cbPath = peObFile->_Reserved1;
-        vaFileNameBuffer = peObFile->_Reserved2;
+        cbPath = peObFile->_Reserved1; peObFile->_Reserved1 = 0;
+        vaFileNameBuffer = peObFile->_Reserved2; peObFile->_Reserved2 = 0;
         if(cbPath > MAX_PATH * 2) {
             vaFileNameBuffer += cbPath - MAX_PATH * 2;
             cbPath = MAX_PATH * 2;
@@ -333,71 +410,46 @@ VOID VmmWinObjFile_Initialize_FileObjects(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS p
             if(!(peObFile->uszPath = (LPSTR)LocalAlloc(LMEM_ZEROINIT, 1))) { continue; }
         }
         peObFile->uszName = CharUtil_PathSplitLast(peObFile->uszPath);
-        peObFile->dwNameHash = CharUtil_HashNameFsU(peObFile->uszName, 0);
-        // _SECTION_OBJECT_POINTERS
-        if(!VmmRead2(H, pSystemProcess, peObFile->vaSectionObjectPointers, pb, po->_SECTION_OBJECT_POINTERS.cb, VMM_FLAG_FORCECACHE_READ)) { continue; }
-        if((va = VMM_PTR_OFFSET(f32, pb, po->_SECTION_OBJECT_POINTERS.oDataSectionObject)) && VMM_KADDR_8_16(f32, va)) {
-            peObFile->fData = TRUE;
-            peObFile->vaControlArea = va;
-        }
-        if((va = VMM_PTR_OFFSET(f32, pb, po->_SECTION_OBJECT_POINTERS.oImageSectionObject)) && VMM_KADDR_8_16(f32, va)) {
-            peObFile->fImage = TRUE;
-            peObFile->vaControlArea = va;
-        }
-        if((va = VMM_PTR_OFFSET(f32, pb, po->_SECTION_OBJECT_POINTERS.oSharedCacheMap)) && VMM_KADDR_8_16(f32, va)) {
-            peObFile->fCache = TRUE;
-            peObFile->_SHARED_CACHE_MAP.va = va;
-        }
     }
-    // 5: fetch sub-objects
-    VmmWinObjFile_Initialize_ControlArea(H, pSystemProcess, pmObFiles);
-    VmmWinObjFile_Initialize_SharedCacheMap(H, pSystemProcess, pmObFiles);
-    // 6: finish - move valid to result map and invalid to error set.
-finish:
-    ObMap_RemoveByFilter(pmObFiles, (OB_MAP_FILTER_REMOVE_PFN_CB)VmmWinObjFile_Initialize_FileObject_FilterRemove);
-    while((peObFile = ObMap_GetNext(pmObFiles, peObFile))) {
-        ObMap_Push(pmFilesResult, peObFile->va, peObFile);
-        ObMap_Push(ctx->pmByObj, peObFile->va, peObFile);
+    // 4: fetch _SECTION_OBJECT_POINTERS:
+    psvaObSectionObjectPointers = ObMap_FilterSet(pmObFiles, NULL, (OB_MAP_FILTERSET_PFN_CB)VmmWinObjFile_Initialize_FileObjects_SectionObjectPointers_FilterSetCB);
+    VmmWinObjFile_Initialize_SectionObjectPointers(H, ctx, pSystemProcess, psvaObSectionObjectPointers);
+    // 5: finish - finish up section object pointers and move valid to result map and invalid to error set.
+    peObFile = NULL;
+    while((peObFile = ObMap_Pop(pmObFiles))) {
+        peObFile->pSectionObjectPointers = (POB_VMMWINOBJ_SECTION_OBJECT_POINTERS)VmmWinObj_CacheGet(H, ctx, VMMWINOBJ_TYPE_SECTION_OBJECT_POINTERS, peObFile->_Reserved3);
+        if(peObFile->pSectionObjectPointers) {
+            peObFile->cb = peObFile->pSectionObjectPointers->cb;
+            ObMap_Push(pmFilesResult, peObFile->va, peObFile);
+            ObMap_Push(ctx->pmByObj, peObFile->va, peObFile);
+        } else {
+            ObSet_Push(ctx->psError, peObFile->va);
+        }
+        Ob_DECREF(peObFile);
     }
+    Ob_DECREF(psvaObSectionObjectPointers);
     Ob_DECREF(pmObFiles);
 }
 
 /*
-* Helper function for VmmWinObjFile_GetByProcess_DoWork
-*/
-VOID VmmWinObjFile_GetByProcess_DoWork_AddInitial(_In_ QWORD va, _In_ POB_MAP pmObFiles, _In_ POB_SET psvaObFiles, _In_ PVMMWINOBJ_CONTEXT ctx)
-{
-    POB_VMMWINOBJ_FILE pObF;
-    if((pObF = ObMap_GetByKey(ctx->pmByObj, va))) {
-        ObMap_Push(pmObFiles, va, pObF);
-        Ob_DECREF(pObF);
-    } else if(!ObSet_Exists(ctx->psError, va)) {
-        ObSet_Push(psvaObFiles, va);
-    }
-}
-
-/*
-* Retrieve and initialize all _FILE_OBJECTs belonging to the process either
+* Retrieve addresses of potential _FILE_OBJECTs belonging to a process either
 * by retrieving from Handles or Vads.
-* -- H
-* -- pProcess
-* -- pmObFiles
-* -- fHandles = TRUE = files from handles, FALSE = files from VADs
 */
-VOID VmmWinObjFile_GetByProcess_DoWork(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ POB_MAP pmObFiles, _In_ BOOL fHandles)
+VOID VmmWinObjFile_GetProcessAddressCandidates(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_CONTEXT ctx, _In_ PVMM_PROCESS pProcess, _In_ POB_SET psvaFiles, _In_ BOOL fHandles, _In_ BOOL fIncludeCachedFiles)
 {
+    QWORD va;
     DWORD i, iMax;
-    POB_SET psvaObFiles = NULL;
     PVMMOB_MAP_VAD pmObVad = NULL;
     PVMMOB_MAP_HANDLE pmObHandle = NULL;
-    PVMMWINOBJ_CONTEXT ctx = H->vmm.pObjects;
-    if(!(psvaObFiles = ObSet_New(H))) { return; }
     if(fHandles) {
         // handle map -> file objects
         if(VmmMap_GetHandle(H, pProcess, &pmObHandle, TRUE)) {
             for(i = 0, iMax = pmObHandle->cMap; i < iMax; i++) {
                 if((pmObHandle->pMap[i].dwPoolTag & 0x00ffffff) == 'liF') {
-                    VmmWinObjFile_GetByProcess_DoWork_AddInitial(pmObHandle->pMap[i].vaObject, pmObFiles, psvaObFiles, ctx);
+                    va = pmObHandle->pMap[i].vaObject;
+                    if(fIncludeCachedFiles || !(ObMap_ExistsKey(ctx->pmByObj, va) || ObSet_Exists(ctx->psError, va))) {
+                        ObSet_Push(psvaFiles, va);
+                    }
                 }
             }
             Ob_DECREF_NULL(&pmObHandle);
@@ -406,18 +458,39 @@ VOID VmmWinObjFile_GetByProcess_DoWork(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pPro
         // vad map -> file objects
         if(VmmMap_GetVad(H, pProcess, &pmObVad, VMM_VADMAP_TP_PARTIAL)) {
             for(i = 0, iMax = pmObVad->cMap; i < iMax; i++) {
-                if(pmObVad->pMap[i].vaFileObject) {
-                    VmmWinObjFile_GetByProcess_DoWork_AddInitial(pmObVad->pMap[i].vaFileObject, pmObFiles, psvaObFiles, ctx);
+                va = pmObVad->pMap[i].vaFileObject;
+                if(va) {
+                    if(fIncludeCachedFiles || !(ObMap_ExistsKey(ctx->pmByObj, va) || ObSet_Exists(ctx->psError, va))) {
+                        ObSet_Push(psvaFiles, va);
+                    }
                 }
             }
             Ob_DECREF_NULL(&pmObVad);
         }
     }
-    // Fetch and initialize new file objects
-    if(ObSet_Size(psvaObFiles)) {
-        VmmWinObjFile_Initialize_FileObjects(H, PVMM_PROCESS_SYSTEM, psvaObFiles, pmObFiles);
+}
+
+/*
+* Retrieve and initialize all _FILE_OBJECTs belonging to the process either
+* by retrieving from Handles or Vads.
+* -- H
+* -- ctx
+* -- pProcess
+* -- pmObFiles
+* -- fHandles = TRUE = files from handles, FALSE = files from VADs
+*/
+VOID VmmWinObjFile_GetByProcess_DoWork(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_CONTEXT ctx, _In_ PVMM_PROCESS pProcess, _In_ POB_MAP pmObFiles, _In_ BOOL fHandles)
+{
+    POB_SET psvaObFiles = NULL;
+    PVMM_PROCESS pObSystemProcess = NULL;
+    if(!(psvaObFiles = ObSet_New(H))) { return; }
+    VmmWinObjFile_GetProcessAddressCandidates(H, ctx, pProcess, psvaObFiles, fHandles, TRUE);
+    // Fetch and initialize file objects
+    if((pObSystemProcess = VmmProcessGet(H, 4))) {
+        VmmWinObjFile_Initialize_FileObjects(H, ctx, pObSystemProcess, psvaObFiles, pmObFiles);
     }
     Ob_DECREF(psvaObFiles);
+    Ob_DECREF(pObSystemProcess);
 }
 
 /*
@@ -437,35 +510,194 @@ BOOL VmmWinObjFile_GetByProcess(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _
     POB_SET psObKeyData = NULL;
     POB_DATA pObData = NULL;
     POB_VMMWINOBJ_FILE pObFile = NULL;
-    PVMMWINOBJ_CONTEXT ctx = H->vmm.pObjects;
-    if(!ctx || !H->vmm.offset.FILE.fValid || !(pmObFiles = ObMap_New(H, OB_MAP_FLAGS_OBJECT_OB))) { return FALSE; }
-    EnterCriticalSection(&ctx->LockUpdate);
+    POB_VMMWINOBJ_CONTEXT ctxOb = NULL;
+    if(!H->vmm.offset.FILE.fValid || !(ctxOb = VmmWinObj_GetContext(H)) || !(pmObFiles = ObMap_New(H, OB_MAP_FLAGS_OBJECT_OB))) {
+        Ob_DECREF(ctxOb);
+        return FALSE;
+    }
+    EnterCriticalSection(&ctxOb->LockUpdate);
     // 1: try fetch from already completed process workitem cache
-    if((pObData = ObMap_GetByKey(ctx->pmByWorkitem, (fHandles ? VMMWINOBJ_WORKITEM_FILEPROCSCAN_HANDLE : VMMWINOBJ_WORKITEM_FILEPROCSCAN_VAD) | pProcess->dwPID))) {
+    if((pObData = ObMap_GetByKey(ctxOb->pmByWorkitem, (fHandles ? VMMWINOBJ_WORKITEM_FILEPROCSCAN_HANDLE : VMMWINOBJ_WORKITEM_FILEPROCSCAN_VAD) | pProcess->dwPID))) {
         for(i = 0, iMax = pObData->ObHdr.cbData / sizeof(QWORD); i < iMax; i++) {
-            if((pObFile = ObMap_GetByKey(ctx->pmByObj, pObData->pqw[i]))) {
-                if(pObFile->tp == VMMWINOBJ_TYPE_FILE) {
-                    ObMap_Push(pmObFiles, pObFile->va, pObFile);
-                }
-                Ob_DECREF_NULL(&pObFile);
+            if((pObFile = (POB_VMMWINOBJ_FILE)VmmWinObj_CacheGet(H, ctxOb, VMMWINOBJ_TYPE_FILE, pObData->pqw[i]))) {
+                ObMap_Push(pmObFiles, pObFile->va, pObFile);
             }
         }
         Ob_DECREF_NULL(&pObData);
         goto success;
     }
     // 2: try fetch from process handles, and put result in process workitem cache
-    VmmWinObjFile_GetByProcess_DoWork(H, pProcess, pmObFiles, fHandles);
-    if((psObKeyData = ObMap_FilterSet(pmObFiles, ObMap_FilterSet_FilterAllKey))) {
+    VmmWinObjFile_GetByProcess_DoWork(H, ctxOb, pProcess, pmObFiles, fHandles);
+    if((psObKeyData = ObMap_FilterSet(pmObFiles, NULL, ObMap_FilterSet_FilterAllKey))) {
         if((pObData = ObSet_GetAll(psObKeyData))) {
-            ObMap_Push(ctx->pmByWorkitem, (fHandles ? VMMWINOBJ_WORKITEM_FILEPROCSCAN_HANDLE : VMMWINOBJ_WORKITEM_FILEPROCSCAN_VAD) | pProcess->dwPID, pObData);
+            ObMap_Push(ctxOb->pmByWorkitem, (fHandles ? VMMWINOBJ_WORKITEM_FILEPROCSCAN_HANDLE : VMMWINOBJ_WORKITEM_FILEPROCSCAN_VAD) | pProcess->dwPID, pObData);
             Ob_DECREF_NULL(&pObData);
         }
         Ob_DECREF_NULL(&psObKeyData);
     }
 success:
+    LeaveCriticalSection(&ctxOb->LockUpdate);
     *ppmObFiles = pmObFiles;
-    LeaveCriticalSection(&ctx->LockUpdate);
+    Ob_DECREF(ctxOb);
     return TRUE;
+}
+
+/*
+* Retrieve a file object by its virtual address.
+* CALLER DECREF: return
+* -- H
+* -- va = virtual address of the object to retrieve.
+* -- return = the object, NULL if not found in cache.
+*/
+_Success_(return != NULL)
+POB_VMMWINOBJ_FILE VmmWinObjFile_GetByVa(_In_ VMM_HANDLE H, _In_ QWORD va)
+{
+    POB_VMMWINOBJ_FILE pObFile = NULL;
+    POB_VMMWINOBJ_CONTEXT ctxOb = NULL;
+    PVMM_PROCESS pObSystemProcess = NULL;
+    POB_SET psvaObFiles = NULL;
+    POB_MAP pmObFiles = NULL;
+    if(!(ctxOb = VmmWinObj_GetContext(H))) { goto finish; }
+    if((pObFile = (POB_VMMWINOBJ_FILE)VmmWinObj_CacheGet(H, ctxOb, VMMWINOBJ_TYPE_FILE, va))) { goto finish; }
+    EnterCriticalSection(&ctxOb->LockUpdate);
+    if((pObFile = (POB_VMMWINOBJ_FILE)VmmWinObj_CacheGet(H, ctxOb, VMMWINOBJ_TYPE_FILE, va))) { goto finish_lock; }
+    if(!(pObSystemProcess = VmmProcessGet(H, 4))) { goto finish_lock; }
+    if(!(psvaObFiles = ObSet_New(H))) { goto finish_lock; }
+    if(!(pmObFiles = ObMap_New(H, OB_MAP_FLAGS_OBJECT_OB))) { goto finish_lock; }
+    ObSet_Push(psvaObFiles, va);
+    VmmWinObjFile_Initialize_FileObjects(H, ctxOb, pObSystemProcess, psvaObFiles, pmObFiles);
+    pObFile = ObMap_Pop(pmObFiles);
+finish_lock:
+    LeaveCriticalSection(&ctxOb->LockUpdate);
+    Ob_DECREF(pObSystemProcess);
+    Ob_DECREF(psvaObFiles);
+    Ob_DECREF(pmObFiles);
+finish:
+    Ob_DECREF(ctxOb);
+    return pObFile;
+}
+
+#define VMMWINOBJFILE_GETALL_MAX_CANDIDATES         0x400
+
+/*
+* Helper function for VmmWinObjFile_GetAll / VmmWinObjFile_GetAll_DoWork:
+* Try to fetch all _FILE_OBJECT with redable contents into the main cache.
+*/
+VOID VmmWinObjFile_GetAll_DoWork_Pool(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_CONTEXT ctx, _In_ PVMM_PROCESS pSystemProcess, _In_ POB_SET psvaPoolCandidates, _Inout_ POB_MAP pmFilesResult)
+{
+    QWORD va;
+    BYTE pb[0x100];
+    POB_SET psvaFileObjects = NULL;
+    DWORD o, oStep, dwFileNeedle;
+    oStep = H->vmm.f32 ? 0x08 : 0x10;
+    dwFileNeedle = (H->vmm.offset.FILE._FILE_OBJECT.cb << 16) | 0x0005;
+    if(0 == ObSet_Size(psvaPoolCandidates)) { return; }
+    if(!(psvaFileObjects = ObSet_New(H))) { return; }
+    VmmCachePrefetchPages3(H, pSystemProcess, psvaPoolCandidates, sizeof(pb), 0);
+    while((va = ObSet_Pop(psvaPoolCandidates))) {
+        if(VmmRead2(H, pSystemProcess, va, pb, sizeof(pb), VMM_FLAG_FORCECACHE_READ)) {
+            for(o = 0; o < sizeof(pb); o += oStep) {
+                if(dwFileNeedle == *(PDWORD)(pb + o)) {
+                    ObSet_Push(psvaFileObjects, va + o);
+                    break;
+                }
+            }
+        }
+    }
+    VmmWinObjFile_Initialize_FileObjects(H, ctx, pSystemProcess, psvaFileObjects, pmFilesResult);
+    Ob_DECREF(psvaFileObjects);
+}
+
+/*
+* Work function for VmmWinObjFile_GetAll - fetch all _FILE_OBJECT with possibly
+* readable contents into the main cache.
+* -- H
+* -- ctx
+* -- pSystemProcess
+*/
+VOID VmmWinObjFile_GetAll_DoWork(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_CONTEXT ctx)
+{
+    DWORD i;
+    POB_MAP pmObFiles = NULL;
+    POB_SET psvaObFiles = NULL;
+    PVMMOB_MAP_POOL pObPoolMap = NULL;
+    PVMM_MAP_POOLENTRY pePool;
+    PVMM_MAP_POOLENTRYTAG pePoolTag;
+    PVMM_PROCESS pObSystemProcess = NULL, pObProcess = NULL;
+    DWORD cbFile = H->vmm.offset.FILE._FILE_OBJECT.cb;
+    if(!(psvaObFiles = ObSet_New(H))) { goto fail; }
+    if(!(pmObFiles = ObMap_New(H, OB_MAP_FLAGS_OBJECT_OB))) { goto fail; }
+    if(!(pObSystemProcess = VmmProcessGet(H, 4))) { goto fail; }
+    // fetch candicates from pool into cache:
+    if(VmmMap_GetPool(H, &pObPoolMap, TRUE) && VmmMap_GetPoolTag(H, pObPoolMap, 'File', &pePoolTag)) {
+        for(i = 0; i < pePoolTag->cEntry; i++) {
+            pePool = pObPoolMap->pMap + pObPoolMap->piTag2Map[pePoolTag->iTag2Map + i];
+            if((pePool->cb < cbFile) || (pePool->cb > cbFile + 0x100)) { continue; }
+            ObSet_Push(psvaObFiles, pePool->va);
+            if(ObSet_Size(psvaObFiles) >= VMMWINOBJFILE_GETALL_MAX_CANDIDATES) {
+                VmmWinObjFile_GetAll_DoWork_Pool(H, ctx, pObSystemProcess, psvaObFiles, pmObFiles);
+            }
+        }
+        VmmWinObjFile_GetAll_DoWork_Pool(H, ctx, pObSystemProcess, psvaObFiles, pmObFiles);
+    }
+    // fetch candidates from process handles & vads into cache:
+    while((pObProcess = VmmProcessGetNext(H, pObProcess, 0))) {
+        VmmWinObjFile_GetProcessAddressCandidates(H, ctx, pObProcess, psvaObFiles, TRUE, FALSE);
+        VmmWinObjFile_GetProcessAddressCandidates(H, ctx, pObProcess, psvaObFiles, FALSE, FALSE);
+        if(ObSet_Size(psvaObFiles) >= VMMWINOBJFILE_GETALL_MAX_CANDIDATES) {
+            VmmWinObjFile_Initialize_FileObjects(H, ctx, pObSystemProcess, psvaObFiles, pmObFiles);
+        }
+    }
+    VmmWinObjFile_Initialize_FileObjects(H, ctx, pObSystemProcess, psvaObFiles, pmObFiles);
+fail:
+    Ob_DECREF(pObSystemProcess);
+    Ob_DECREF(psvaObFiles);
+    Ob_DECREF(pmObFiles);
+    Ob_DECREF(pObPoolMap);
+}
+
+/*
+* Filter function for VmmWinObjFile_GetAll.
+* -- pmDst
+* -- va
+* -- pObject
+*/
+VOID VmmWinObjFile_GetAll_FilterFile(_In_ POB_MAP pmDst, _In_ QWORD va, _In_ POB_VMMWINOBJ_OBJECT pObject)
+{
+    if(pObject->tp == VMMWINOBJ_TYPE_FILE) {
+        ObMap_Push(pmDst, va, pObject);
+    }
+}
+
+/*
+* Retrieve all _FILE_OBJECT that can be recovered with data from the system.
+* NB! this may take a long time to complete on first run.
+* CALLER DECREF: *ppmObFiles
+* -- H
+* -- ppmObFiles
+* -- return
+*/
+_Success_(return)
+BOOL VmmWinObjFile_GetAll(_In_ VMM_HANDLE H, _Out_ POB_MAP *ppmObFiles)
+{
+    POB_VMMWINOBJ_CONTEXT ctxOb = NULL;
+    *ppmObFiles = NULL;
+    if(!(ctxOb = VmmWinObj_GetContext(H))) { goto finish; }
+    if(ctxOb->fAll) { goto finish; }
+    EnterCriticalSection(&ctxOb->LockUpdate);
+    if(ctxOb->fAll) {
+        LeaveCriticalSection(&ctxOb->LockUpdate);
+        goto finish;
+    }
+    VmmWinObjFile_GetAll_DoWork(H, ctxOb);
+    ctxOb->fAll = TRUE;
+    LeaveCriticalSection(&ctxOb->LockUpdate);
+finish:
+    if(ctxOb && (*ppmObFiles = ObMap_New(H, OB_MAP_FLAGS_OBJECT_OB))) {
+        ObMap_Filter(ctxOb->pmByObj, *ppmObFiles, (OB_MAP_FILTER_PFN_CB)VmmWinObjFile_GetAll_FilterFile);
+    }
+    Ob_DECREF(ctxOb);
+    return *ppmObFiles != NULL;
 }
 
 
@@ -510,13 +742,13 @@ QWORD VmmWinObjFile_ReadSubsectionAndSharedCache_GetVaSharedCache(_In_ VMM_HANDL
     BYTE pbVacb[0x40];
     QWORD va, iVacb, vaVacbs, vaVacb;
     PVMM_OFFSET_FILE po = &H->vmm.offset.FILE;
-    iVacb = (iPte << 12) / pFile->_SHARED_CACHE_MAP.cbSectionSize;
-    vaVacbs = pFile->_SHARED_CACHE_MAP.vaVacbs + iVacb * (f32 ? 4 : 8);
+    iVacb = (iPte << 12) / pFile->pSectionObjectPointers->_SHARED_CACHE_MAP.cbSectionSize;
+    vaVacbs = pFile->pSectionObjectPointers->_SHARED_CACHE_MAP.vaVacbs + iVacb * (f32 ? 4 : 8);
     f = VmmRead2(H, pSystemProcess, vaVacbs, pbVacb, 8, fVmmRead) &&
         (vaVacb = VMM_PTR_OFFSET(f32, pbVacb, 0)) &&
         VMM_KADDR_4_8(f32, vaVacb) &&
         VmmRead2(H, pSystemProcess, vaVacb, pbVacb, po->_VACB.cb, fVmmRead) &&
-        (pFile->_SHARED_CACHE_MAP.va == VMM_PTR_OFFSET(f32, pbVacb, po->_VACB.oSharedCacheMap)) &&
+        (pFile->pSectionObjectPointers->_SHARED_CACHE_MAP.va == VMM_PTR_OFFSET(f32, pbVacb, po->_VACB.oSharedCacheMap)) &&
         (va = VMM_PTR_OFFSET(f32, pbVacb, po->_VACB.oBaseAddress));
     return f ? (va + (iPte << 12)) : 0;
 }
@@ -583,11 +815,11 @@ VOID VmmWinObjFile_ReadSubsectionAndSharedCache(_In_ VMM_HANDLE H, _In_ PVMM_PRO
         }
     }
     // Read from _SUBSECTION
-    if(pFile->cSUBSECTION && (iSubsection < pFile->cSUBSECTION)) {
+    if(pFile->pSectionObjectPointers->cSUBSECTION && (iSubsection < pFile->pSectionObjectPointers->cSUBSECTION)) {
         for(i = 0; i < cMEMs; i++) {
             if(pMEMs[i].f) { continue; }
             iPte = i + ((cbOffset - oA) >> 12);
-            pMEMs[i].qwA = (iPte < pFile->pSUBSECTION[iSubsection].dwPtesInSubsection) ? VmmWinObjFile_ReadSubsectionAndSharedCache_GetPteSubsection(H, pSystemProcess, pFile->pSUBSECTION[iSubsection].vaSubsectionBase, iPte, fVmmRead) : 0;
+            pMEMs[i].qwA = (iPte < pFile->pSectionObjectPointers->pSUBSECTION[iSubsection].dwPtesInSubsection) ? VmmWinObjFile_ReadSubsectionAndSharedCache_GetPteSubsection(H, pSystemProcess, pFile->pSectionObjectPointers->pSUBSECTION[iSubsection].vaSubsectionBase, iPte, fVmmRead) : 0;
             fReadSubsection = TRUE;
         }
         if(fReadSubsection) {
@@ -646,9 +878,9 @@ DWORD VmmWinObjFile_ReadImage(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProces
     DWORD cbSubsection, cbSubsectionBase, cbSubsectionEnd;
     DWORD cbSubsectionOffset, cbReadBufferOffset, cbAdjusted;
     ZeroMemory(pb, cb);
-    for(iSubsection = 0; iSubsection < pFile->cSUBSECTION; iSubsection++) {
-        cbSubsection = 512 * pFile->pSUBSECTION[iSubsection].dwNumberOfFullSectors;
-        cbSubsectionBase = 512 * pFile->pSUBSECTION[iSubsection].dwStartingSector;
+    for(iSubsection = 0; iSubsection < pFile->pSectionObjectPointers->cSUBSECTION; iSubsection++) {
+        cbSubsection = 512 * pFile->pSectionObjectPointers->pSUBSECTION[iSubsection].dwNumberOfFullSectors;
+        cbSubsectionBase = 512 * pFile->pSectionObjectPointers->pSUBSECTION[iSubsection].dwStartingSector;
         cbSubsectionEnd = cbSubsectionBase + cbSubsection;
         if(cbSubsectionEnd < cbOffset) { continue; }
         if(cbSubsectionBase >= cbOffset + cb) { break; }
@@ -689,22 +921,22 @@ DWORD VmmWinObjFile_Read(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_FILE pFile, _In_ 
     DWORD cbRead = 0;
     PVMM_PROCESS pObSystemProcess = NULL;
     ZeroMemory(pb, cb);
-    if(cbOffset + cb > pFile->cb) {
-        if((cbOffset >= pFile->cb) || (pFile->cb - cbOffset > 0xffffffff)) {
+    if(cbOffset + cb > pFile->pSectionObjectPointers->cb) {
+        if((cbOffset >= pFile->pSectionObjectPointers->cb) || (pFile->pSectionObjectPointers->cb - cbOffset > 0xffffffff)) {
             return 0;
         }
-        cb = (DWORD)(pFile->cb - cbOffset);
+        cb = (DWORD)(pFile->pSectionObjectPointers->cb - cbOffset);
     }
     if(!(pObSystemProcess = VmmProcessGet(H, 4))) { return 0; }
-    if(pFile->fImage) {
+    if(pFile->pSectionObjectPointers->fImage) {
         cbRead = VmmWinObjFile_ReadImage(H, pObSystemProcess, pFile, cbOffset, pb, cb, fVmmRead | VMM_FLAG_ZEROPAD_ON_FAIL);
         goto finish;
     }
-    if(pFile->fCache && pFile->_SHARED_CACHE_MAP.fValid) {
+    if(pFile->pSectionObjectPointers->fCache && pFile->pSectionObjectPointers->_SHARED_CACHE_MAP.fValid) {
         VmmWinObjFile_ReadSubsectionAndSharedCache(H, pObSystemProcess, pFile, 0, cbOffset, pb, cb, &cbRead, fVmmRead | VMM_FLAG_ZEROPAD_ON_FAIL, TRUE);
         goto finish;
     }
-    if(pFile->fData && (pFile->cSUBSECTION == 1)) {
+    if(pFile->pSectionObjectPointers->fData && (pFile->pSectionObjectPointers->cSUBSECTION == 1)) {
         VmmWinObjFile_ReadSubsectionAndSharedCache(H, pObSystemProcess, pFile, 0, cbOffset, pb, cb, &cbRead, fVmmRead | VMM_FLAG_ZEROPAD_ON_FAIL, FALSE);
         goto finish;
     }
@@ -1158,16 +1390,16 @@ fail:
 PVMMOB_MAP_OBJECT VmmWinObjMgr_Initialize(_In_ VMM_HANDLE H)
 {
     PVMMOB_MAP_OBJECT pObObject = NULL;
-    if((pObObject = ObContainer_GetOb(H->vmm.pObCMapObject))) { return pObObject; }
+    if((pObObject = ObContainer_GetOb(H->vmm.pObCMapObjMgr))) { return pObObject; }
     EnterCriticalSection(&H->vmm.LockUpdateMap);
-    if((pObObject = ObContainer_GetOb(H->vmm.pObCMapObject))) {
+    if((pObObject = ObContainer_GetOb(H->vmm.pObCMapObjMgr))) {
         LeaveCriticalSection(&H->vmm.LockUpdateMap);
         return pObObject;
     }
     if(!(pObObject = VmmWinObjMgr_Initialize_DoWork(H))) {
         pObObject = Ob_AllocEx(H, OB_TAG_MAP_OBJECT, LMEM_ZEROINIT, sizeof(VMMOB_MAP_OBJECT), NULL, NULL);
     }
-    ObContainer_SetOb(H->vmm.pObCMapObject, pObObject);
+    ObContainer_SetOb(H->vmm.pObCMapObjMgr, pObObject);
     LeaveCriticalSection(&H->vmm.LockUpdateMap);
     return pObObject;
 }
@@ -1400,7 +1632,7 @@ VOID VmmWinObjKDev_Initialize_2_FetchAndCreate(_In_ VMM_HANDLE H, _In_ PVMMWINDE
     POB_SET psPrefetch1 = NULL, psPrefetch2 = NULL, psTMP;
     DWORD cbDevice = H->vmm.f32 ? sizeof(DEVICE_OBJECT32) : sizeof(DEVICE_OBJECT64);
     if(!(psPrefetch1 = ObSet_New(H))) { goto fail; }
-    if(!(psPrefetch2 = ObMap_FilterSet(ctx->pmDevice, ObMap_FilterSet_FilterAllKey))) { goto fail; }
+    if(!(psPrefetch2 = ObMap_FilterSet(ctx->pmDevice, NULL, ObMap_FilterSet_FilterAllKey))) { goto fail; }
     while(ObSet_Size(psPrefetch2)) {
         psTMP = psPrefetch2; psPrefetch2 = psPrefetch1; psPrefetch1 = psTMP;    // swap address/prefetch sets
         VmmCachePrefetchPages3(H, ctx->pSystemProcess, psPrefetch1, cbDevice, 0);
@@ -1530,7 +1762,7 @@ fail:
     Ob_DECREF(ps2);
 }
 
-VOID VmmWinObjKDev_Initialize_4_FetchVpb_FilterSet(_In_ QWORD k, _In_ PVMM_MAP_KDEVICEENTRY v, _Inout_ POB_SET ps)
+VOID VmmWinObjKDev_Initialize_4_FetchVpb_FilterSet(_In_opt_ PVOID ctx, _In_ POB_SET ps, _In_ QWORD k, _In_ PVMM_MAP_KDEVICEENTRY v)
 {
     if(v->_Reserved_vaVpb) {
         ObSet_Push(ps, v->_Reserved_vaVpb);
@@ -1552,7 +1784,7 @@ VOID VmmWinObjKDev_Initialize_4_FetchVpb(_In_ VMM_HANDLE H, _In_ PVMMWINDEV_INIT
     QWORD vaVpb;
     WORD wZERO = 0;
     // 1: prefetch vpb
-    if((psPrefetch = ObMap_FilterSet(ctx->pmDevice, (OB_MAP_FILTERSET_PFN)VmmWinObjKDev_Initialize_4_FetchVpb_FilterSet))) {
+    if((psPrefetch = ObMap_FilterSet(ctx->pmDevice, NULL, (OB_MAP_FILTERSET_PFN_CB)VmmWinObjKDev_Initialize_4_FetchVpb_FilterSet))) {
         VmmCachePrefetchPages3(H, ctx->pSystemProcess, psPrefetch, cbVpb, 0);
         Ob_DECREF_NULL(&psPrefetch);
     }

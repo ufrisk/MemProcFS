@@ -2,9 +2,9 @@
 #define STRINGIZE(s) STRINGIZE2(s)
 
 #define VERSION_MAJOR               5
-#define VERSION_MINOR               5
-#define VERSION_REVISION            3
-#define VERSION_BUILD               110
+#define VERSION_MINOR               6
+#define VERSION_REVISION            0
+#define VERSION_BUILD               111
 
 #define VER_FILE_DESCRIPTION_STR    "MemProcFS : Plugin vmemd"
 #define VER_FILE_VERSION            VERSION_MAJOR, VERSION_MINOR, VERSION_REVISION, VERSION_BUILD

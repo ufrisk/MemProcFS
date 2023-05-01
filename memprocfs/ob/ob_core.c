@@ -104,6 +104,9 @@ PVOID Ob_XDECREF(_In_opt_ PVOID pObIn)
                 if(pOb->_pfnRef_0) { pOb->_pfnRef_0(pOb); }
                 pOb->_magic1 = 0;
                 pOb->_magic2 = 0;
+#ifdef OB_DEBUG_MEMZERO
+                ZeroMemory(pOb, sizeof(OB) + pOb->cbData);
+#endif /* OB_DEBUG_MEMZERO */
                 LocalFree(pOb);
             } else if((c == 1) && pOb->_pfnRef_1) {
                 pOb->_pfnRef_1(pOb);

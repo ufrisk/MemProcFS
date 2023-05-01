@@ -19,6 +19,11 @@ LPCSTR szM_FC_FINDEVIL_README =
 "Find Evil limit select findings per virtual address decriptor and process to \n" \
 "keep output manageable. Find Evil also limit findings on select processes.   \n" \
 "---                                                                          \n" \
+"YARA: FindEvil tries to use built-in YARA rules, many which are from         \n" \
+"Elastic Security. The Elastic License 2.0 must be accepted to use the rules. \n" \
+"https://www.elastic.co/licensing/elastic-license                             \n" \
+"Accept with command line option: '-license-accept-elastic-license-2.0'       \n" \
+"---                                                                          \n" \
 "Documentation:    https://github.com/ufrisk/MemProcFS/wiki/FS_FindEvil       \n" \
 "---                                                                          \n" \
 "Find Evil is a work in progress - post github issues for feature requests.   \n";
@@ -31,6 +36,9 @@ NTSTATUS MFcFindEvil_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _
     if(!_stricmp(ctxP->uszPath, "findevil.txt")) {
         return ObMemFile_ReadFile(H->fc->FindEvil.pmf, pb, cb, pcbRead, cbOffset);
     }
+    if(!_stricmp(ctxP->uszPath, "yara.txt")) {
+        return ObMemFile_ReadFile(H->fc->FindEvil.pmfYara, pb, cb, pcbRead, cbOffset);
+    }
     return VMMDLL_STATUS_FILE_INVALID;
 }
 
@@ -39,6 +47,7 @@ BOOL MFcFindEvil_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inou
     if(ctxP->uszPath[0]) { return FALSE; }
     VMMDLL_VfsList_AddFile(pFileList, "readme.txt", strlen(szM_FC_FINDEVIL_README), NULL);
     VMMDLL_VfsList_AddFile(pFileList, "findevil.txt", ObMemFile_Size(H->fc->FindEvil.pmf), NULL);
+    VMMDLL_VfsList_AddFile(pFileList, "yara.txt", ObMemFile_Size(H->fc->FindEvil.pmfYara), NULL);
     return TRUE;
 }
 

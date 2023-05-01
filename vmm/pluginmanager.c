@@ -1,4 +1,4 @@
-// pluginmanager.c : implementation of the plugin manager for memory process file system plugins.
+// pluginmanager.c : implementation of the plugin manager for MemProcFS plugins.
 //
 // (c) Ulf Frisk, 2018-2023
 // Author: Ulf Frisk, pcileech@frizk.net

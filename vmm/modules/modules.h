@@ -21,7 +21,7 @@
 
 
 
-// EVIL TYPES: (max length = 12 chars):
+// EVIL TYPES: (max length = 15 chars):
 static const VMMEVIL_TYPE EVIL_PE_INJECT    = { .Name = "PE_INJECT",    .Severity = 0xe000 };
 static const VMMEVIL_TYPE EVIL_PROC_NOLINK  = { .Name = "PROC_NOLINK",  .Severity = 0xd000 };
 static const VMMEVIL_TYPE EVIL_PROC_PARENT  = { .Name = "PROC_PARENT",  .Severity = 0xc000 };

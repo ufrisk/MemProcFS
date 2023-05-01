@@ -258,6 +258,16 @@ QWORD _ObSet_GetNext(_In_ POB_SET pvs, _In_ QWORD value)
     return _ObSet_GetValueFromIndex(pvs, iValue + 1);
 }
 
+QWORD _ObSet_GetNextByIndex(_In_ POB_SET pvs, _Inout_ PDWORD pdwIndex)
+{
+    if(*pdwIndex == 0) {
+        *pdwIndex = pvs->c - 1;
+    } else {
+        *pdwIndex = *pdwIndex - 1;
+    }
+    return _ObSet_GetValueFromIndex(pvs, *pdwIndex);
+}
+
 /*
 * Retrieve the next value given a value. The start value and end value are the
 * ZERO value (which is a special reserved non-valid value).
@@ -271,6 +281,23 @@ QWORD _ObSet_GetNext(_In_ POB_SET pvs, _In_ QWORD value)
 QWORD ObSet_GetNext(_In_opt_ POB_SET pvs, _In_ QWORD value)
 {
     OB_SET_CALL_SYNCHRONIZED_IMPLEMENTATION_READ(pvs, QWORD, 0, _ObSet_GetNext(pvs, value))
+}
+
+/*
+* Retrieve the given an index. To start iterating, use index 0. When no more
+* items are available, the function will return 0.
+* Add/Remove rules:
+*  - Added values are ok - but will not be iterated over.
+*  - Removal of current value and already iterated values are ok.
+*  - Removal of values not yet iterated is FORBIDDEN. It causes the iterator
+*    fail by returning the same value multiple times or skipping values.
+* -- pvs
+* -- pdwIndex
+* -- return
+*/
+QWORD ObSet_GetNextByIndex(_In_opt_ POB_SET pvs, _Inout_ PDWORD pdwIndex)
+{
+    OB_SET_CALL_SYNCHRONIZED_IMPLEMENTATION_READ(pvs, QWORD, 0, _ObSet_GetNextByIndex(pvs, pdwIndex))
 }
 
 POB_DATA _ObSet_GetAll(_In_ POB_SET pvs)

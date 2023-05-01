@@ -16,7 +16,7 @@ typedef struct tdOB_INFODB_CONTEXT {
     DWORD dwPdbId_NT;
     DWORD dwPdbId_TcpIp;
     BOOL fPdbId_TcpIp_TryComplete;
-    HANDLE hEventIngestPhys[INFODB_SQL_POOL_CONNECTION_NUM];
+    HANDLE hEventSqlPoolConnReserved[INFODB_SQL_POOL_CONNECTION_NUM];
     sqlite3 *hSql[INFODB_SQL_POOL_CONNECTION_NUM];
 } OB_INFODB_CONTEXT, *POB_INFODB_CONTEXT;
 
@@ -36,7 +36,7 @@ _Success_(return != NULL)
 sqlite3 *InfoDB_SqlReserve(_In_ VMM_HANDLE H, _In_ POB_INFODB_CONTEXT ctx)
 {
     DWORD iWaitNum = 0;
-    iWaitNum = WaitForMultipleObjects(INFODB_SQL_POOL_CONNECTION_NUM, ctx->hEventIngestPhys, FALSE, INFINITE) - WAIT_OBJECT_0;
+    iWaitNum = WaitForMultipleObjects(INFODB_SQL_POOL_CONNECTION_NUM, ctx->hEventSqlPoolConnReserved, FALSE, INFINITE) - WAIT_OBJECT_0;
     if(iWaitNum >= INFODB_SQL_POOL_CONNECTION_NUM) {
         VmmLog(H, MID_INFODB, LOGLEVEL_CRITICAL, "DATABASE ERROR: WaitForMultipleObjects ERROR: 0x%08x", (DWORD)(iWaitNum + WAIT_OBJECT_0));
         return NULL;
@@ -58,7 +58,7 @@ sqlite3 *InfoDB_SqlReserveReturn(_In_opt_ POB_INFODB_CONTEXT ctx, _In_opt_ sqlit
     if(!ctx || !hSql) { return NULL; }
     for(i = 0; i < INFODB_SQL_POOL_CONNECTION_NUM; i++) {
         if(ctx->hSql[i] == hSql) {
-            SetEvent(ctx->hEventIngestPhys[i]);
+            SetEvent(ctx->hEventSqlPoolConnReserved[i]);
             break;
         }
     }
@@ -187,6 +187,97 @@ DWORD InfoDB_EnsureTcpIp(_In_ VMM_HANDLE H, _In_ POB_INFODB_CONTEXT ctx)
         LeaveCriticalSection(&H->vmm.LockMaster);
     }
     return ctx->dwPdbId_TcpIp;
+}
+
+
+
+// ----------------------------------------------------------------------------
+// YARA BUILT-IN RULES FUNCTIONALITY BELOW:
+// ----------------------------------------------------------------------------
+
+#define INFODB_YARA_RULES_MAX 0x1000
+
+VOID InfoDB_YaraRulesBuiltIn_CleanupCB(PINFODB_YARA_RULES pOb)
+{
+    DWORD i;
+    if(pOb) {
+        for(i = 1; i < pOb->cRules; i++) {
+            LocalFree(pOb->szRules[i]);
+        }
+    }
+}
+
+/*
+* Return whether built-in yara rules exists and that they are accessible.
+* -- H
+* -- return
+*/
+BOOL InfoDB_YaraRulesBuiltIn_Exists(_In_ VMM_HANDLE H)
+{
+    LPSTR szSQL;
+    QWORD qwResult = 0;
+    BOOL fResult = FALSE;
+    POB_INFODB_CONTEXT pObCtx = NULL;
+    if(H->cfg.fDisableYara || H->cfg.fDisableYaraBuiltin) { return FALSE; }
+    if(!(pObCtx = ObContainer_GetOb(H->vmm.pObCInfoDB))) { return FALSE; }
+    szSQL = H->cfg.fLicenseAcceptElasticV2 ? "SELECT id FROM yara_rules LIMIT 1" : "SELECT id FROM yara_rules WHERE license != 'elastic-license-2.0' LIMIT 1";
+    InfoDB_SqlQueryN(H, pObCtx, szSQL, 0, NULL, 1, &qwResult, NULL);
+    Ob_DECREF(pObCtx);
+    return qwResult ? TRUE : FALSE;
+}
+
+/*
+* Retrieve the built-in YARA rules from the InfoDB.
+* License: The number of rules may be limited unless the elastic-license-2.0
+* is accepted by the user in the H->cfg.fLicenseAcceptElasticV2.
+* CALLER DECREF: *ppRules
+* -- H
+* -- ppObYaraRules = pointer to receive pointer to INFODB_YARA_RULES struct.
+*/
+_Success_(return)
+BOOL InfoDB_YaraRulesBuiltIn(_In_ VMM_HANDLE H, _Out_ PINFODB_YARA_RULES *ppObYaraRules)
+{
+    DWORD i, cRules = 0;
+    LPSTR *pszRules = NULL;     // array of INFODB_YARA_RULES_MAX ptrs.
+    int rc = SQLITE_ERROR;
+    sqlite3 *hSql = NULL;
+    sqlite3_stmt *hStmt = NULL;
+    POB_INFODB_CONTEXT pObCtx = NULL;
+    LPSTR szSQL, uszQueryResult;
+    PINFODB_YARA_RULES pObResult = NULL;
+    // 1: initialize
+    if(H->cfg.fDisableYara || H->cfg.fDisableYaraBuiltin) { goto fail; }
+    if(!(pObCtx = ObContainer_GetOb(H->vmm.pObCInfoDB))) { goto fail; }
+    if(!(hSql = InfoDB_SqlReserve(H, pObCtx))) { goto fail; }
+    szSQL = H->cfg.fLicenseAcceptElasticV2 ? "SELECT rule FROM yara_rules" : "SELECT rule FROM yara_rules WHERE license != 'elastic-license-2.0'";
+    rc = sqlite3_prepare_v2(hSql, szSQL, -1, &hStmt, 0);
+    if(rc != SQLITE_OK) { goto fail; }
+    // 2: retrieve rules from database
+    if(!(pszRules = LocalAlloc(0, INFODB_YARA_RULES_MAX * sizeof(LPSTR)))) { goto fail; }
+    while((SQLITE_ROW == sqlite3_step(hStmt)) && (cRules < INFODB_YARA_RULES_MAX)) {
+        uszQueryResult = (LPSTR)sqlite3_column_text(hStmt, 0);
+        if(strlen(uszQueryResult)) {
+            if(CharUtil_UtoU(uszQueryResult, -1, NULL, 0, pszRules + cRules, NULL, CHARUTIL_FLAG_ALLOC)) {
+                cRules++;
+            }
+        }
+    }
+    if(!cRules) { goto fail; }
+    // 3: allocate and populate result object
+    pObResult = Ob_AllocEx(H, OB_TAG_INFODB_YARA_RULES, LMEM_ZEROINIT, sizeof(INFODB_YARA_RULES) + ((SIZE_T)cRules + 1) * sizeof(LPSTR), (OB_CLEANUP_CB)InfoDB_YaraRulesBuiltIn_CleanupCB, NULL);
+    if(!pObResult) { goto fail; }
+    pObResult->cRules = cRules + 1;
+    pObResult->szRules[0] = "";
+    for(i = 0; i < cRules; i++) {
+        pObResult->szRules[i + 1] = pszRules[i];
+    }
+    *ppObYaraRules = pObResult;
+fail:
+    LocalFree(pszRules);
+    sqlite3_finalize(hStmt);
+    InfoDB_SqlReserveReturn(pObCtx, hSql);
+    Ob_DECREF(pObCtx);
+    return pObResult ? TRUE : FALSE;
 }
 
 
@@ -615,10 +706,10 @@ VOID InfoDB_Context_CleanupCB(POB_INFODB_CONTEXT pOb)
 {
     DWORD i;
     for(i = 0; i < INFODB_SQL_POOL_CONNECTION_NUM; i++) {
-        if(pOb->hEventIngestPhys[i]) {
-            WaitForSingleObject(pOb->hEventIngestPhys[i], INFINITE);
-            CloseHandle(pOb->hEventIngestPhys[i]);
-            pOb->hEventIngestPhys[i] = NULL;
+        if(pOb->hEventSqlPoolConnReserved[i]) {
+            WaitForSingleObject(pOb->hEventSqlPoolConnReserved[i], INFINITE);
+            CloseHandle(pOb->hEventSqlPoolConnReserved[i]);
+            pOb->hEventSqlPoolConnReserved[i] = NULL;
         }
         if(pOb->hSql[i]) { sqlite3_close(pOb->hSql[i]); }
     }
@@ -639,7 +730,7 @@ VOID InfoDB_Initialize_DoWork(_In_ VMM_HANDLE H)
         ExitProcess(0);
     }
     for(i = 0; i < INFODB_SQL_POOL_CONNECTION_NUM; i++) {
-        if(!(pObCtx->hEventIngestPhys[i] = CreateEvent(NULL, FALSE, TRUE, NULL))) { goto fail; }
+        if(!(pObCtx->hEventSqlPoolConnReserved[i] = CreateEvent(NULL, FALSE, TRUE, NULL))) { goto fail; }
         if(SQLITE_OK != sqlite3_open_v2(szDbPathFile, &pObCtx->hSql[i], SQLITE_OPEN_URI | SQLITE_OPEN_READONLY | SQLITE_OPEN_SHAREDCACHE | SQLITE_OPEN_NOMUTEX, NULL)) { goto fail; }
     }
     // 3: QUERY CURRENT 'NTOSKRNL.EXE' IMAGE

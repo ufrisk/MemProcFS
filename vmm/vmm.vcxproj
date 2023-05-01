@@ -379,6 +379,7 @@
     <ClCompile Include="modules\m_evil_proc3.c" />
     <ClCompile Include="modules\m_evil_thread1.c" />
     <ClCompile Include="modules\m_fc_csv.c" />
+    <ClCompile Include="modules\m_fc_file.c" />
     <ClCompile Include="modules\m_fc_findevil.c" />
     <ClCompile Include="modules\m_fc_handle.c" />
     <ClCompile Include="modules\m_fc_json.c" />
@@ -448,6 +449,7 @@
     <ClCompile Include="vmmlog.c" />
     <ClCompile Include="vmmnet.c" />
     <ClCompile Include="vmmproc.c" />
+    <ClCompile Include="vmmuserconfig.c" />
     <ClCompile Include="vmmvm.c" />
     <ClCompile Include="vmmwin.c" />
     <ClCompile Include="pluginmanager.c" />

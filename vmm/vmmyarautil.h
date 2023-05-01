@@ -95,6 +95,15 @@ PVMMYARA_RULES VmmYaraUtil_Rules(_In_ PVMMYARAUTILOB_CONTEXT ctx);
 _Success_(return)
 BOOL VmmYaraUtil_IngestFinalize(_In_ VMM_HANDLE H, _In_ PVMMYARAUTILOB_CONTEXT ctx);
 
+typedef struct tdVMMYARAUTIL_PARSE_RESULT_FINDEVIL {
+    BOOL fValid;
+    DWORD dwPID;
+    QWORD va;
+    VMMEVIL_TYPE EvilType;
+    CHAR uszName[16];
+    CHAR uszText[MAX_PATH];
+} VMMYARAUTIL_PARSE_RESULT_FINDEVIL, *PVMMYARAUTIL_PARSE_RESULT_FINDEVIL;
+
 /*
 * Process a single YARA match entry into text and csv output.
 * Function must be called in a single-threaded context.
@@ -103,6 +112,8 @@ BOOL VmmYaraUtil_IngestFinalize(_In_ VMM_HANDLE H, _In_ PVMMYARAUTILOB_CONTEXT c
 * -- ctx
 * -- puszTXT = optional pointer to receive text output.
 * -- puszCSV = optional pointer to receive csv output.
+* -- pdwType = optional pointer to receive value of meta X_MEMPROCFS_TYPE.
+* -- pFindEvil = optional pointer to receive find evil information.
 * -- return = TRUE on success, FALSE on failure (out of entries).
 */
 _Success_(return)
@@ -110,7 +121,9 @@ BOOL VmmYaraUtil_ParseSingleResultNext(
     _In_ VMM_HANDLE H,
     _In_ PVMMYARAUTILOB_CONTEXT ctx,
     _Out_opt_ LPSTR *puszTXT,
-    _Out_opt_ LPSTR *puszCSV
+    _Out_opt_ LPSTR *puszCSV,
+    _Out_opt_ PDWORD pdwType,
+    _Out_opt_ PVMMYARAUTIL_PARSE_RESULT_FINDEVIL pFindEvil
 );
 
 /*

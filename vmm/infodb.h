@@ -146,6 +146,40 @@ BOOL InfoDB_SidToUser_Wellknown(
 );
 
 /*
+* InfoDB struct containing acting as a container for built-in YARA rules.
+* Upon sucess of the InfoDB_YaraRulesBuiltIn() function this struct will
+* be returned. It will always contain one (1) blank rule at index 0 that
+* may be replaced by the user. Other subsequent rules are built-in rules
+* and must not be replaced by the user.
+*/
+typedef struct tdINFODB_YARA_RULES {
+    OB ObHdr;
+    DWORD cRules;
+    LPSTR szRules[0];
+} INFODB_YARA_RULES, *PINFODB_YARA_RULES;
+
+/*
+* Retrieve the built-in YARA rules from the InfoDB.
+* License: The number of rules may be limited unless the elastic-license-2.0
+* is accepted by the user in the H->cfg.fLicenseAcceptElasticV2.
+* CALLER DECREF: *ppObYaraRules
+* -- H
+* -- ppObYaraRules = pointer to receive pointer to INFODB_YARA_RULES struct.
+*/
+_Success_(return)
+BOOL InfoDB_YaraRulesBuiltIn(
+    _In_ VMM_HANDLE H,
+    _Out_ PINFODB_YARA_RULES *ppObYaraRules
+);
+
+/*
+* Return whether built-in yara rules exists and that they are accessible.
+* -- H
+* -- return
+*/
+BOOL InfoDB_YaraRulesBuiltIn_Exists(_In_ VMM_HANDLE H);
+
+/*
 * Return if the InfoDB have been successfully initialized.
 * Will return fail on no-init or failure to init (missing info.db file).
 * -- H

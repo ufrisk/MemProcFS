@@ -256,8 +256,7 @@ BOOL VMMDLL_ConfigSetProcess_Impl(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess,
 
 VOID VMMDLL_ConfigSet_Impl_Debug(_In_ VMM_HANDLE H, _In_ ULONG64 fOption, _In_ ULONG64 qwValue)
 {
-    // CUSTOM DEBUG FUNCTIONALITY BELOW:
-    ;
+    VMMDLL_ConfigSet(H, VMMDLL_OPT_REFRESH_ALL, 1);
 }
 
 _Success_(return)

@@ -1079,7 +1079,6 @@ BOOL VmmWinInit_TryInitialize(_In_ VMM_HANDLE H, _In_opt_ QWORD paDTBOpt)
     InfoDB_Initialize(H);
     PDB_Initialize(H, NULL, !H->cfg.fWaitInitialize);           // Init of PDB subsystem (async/sync).
     VmmWinInit_FindPsLoadedModuleListKDBG(H, pObSystemProcess); // Find PsLoadedModuleList and possibly KDBG.
-    VmmWinObj_Initialize(H);                                    // Windows Objects Manager.
     VmmWinReg_Initialize(H);                                    // Registry.
     VmmWinInit_TryInitialize_SystemUniqueTag(H);
     // Async Initialization functionality:

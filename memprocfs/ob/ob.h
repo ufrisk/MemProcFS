@@ -16,6 +16,7 @@ typedef unsigned __int64                QWORD, *PQWORD;
 // OB_DEBUG is not working (as currently coded) with arm32 due to alignment issues.
 #if _WIN32 || _WIN64 || __i386__ || __amd64__ || __aarch64__
 #define OB_DEBUG
+//#define OB_DEBUG_MEMZERO
 #endif /* _WIN32 || _WIN64 || __i386__ || __amd64__ || __aarch64__ */
 #define OB_HEADER_MAGIC                 0x0c0efefe
 typedef struct tdVMM_HANDLE             *VMM_HANDLE;
@@ -183,7 +184,7 @@ POB_DATA ObData_New(_In_opt_ VMM_HANDLE H, _In_ PBYTE pb, _In_ DWORD cb);
 
 typedef struct tdOB_CONTAINER {
     OB ObHdr;
-    CRITICAL_SECTION Lock;
+    SRWLOCK LockSRW;
     POB pOb;
 } OB_CONTAINER, *POB_CONTAINER;
 
@@ -336,6 +337,20 @@ QWORD ObSet_Pop(_In_opt_ POB_SET pvs);
 * -- return
 */
 QWORD ObSet_GetNext(_In_opt_ POB_SET pvs, _In_ QWORD value);
+
+/*
+* Retrieve the given an index. To start iterating, use index 0. When no more
+* items are available, the function will return 0.
+* Add/Remove rules:
+*  - Added values are ok - but will not be iterated over.
+*  - Removal of current value and already iterated values are ok.
+*  - Removal of values not yet iterated is FORBIDDEN. It causes the iterator
+*    fail by returning the same value multiple times or skipping values.
+* -- pvs
+* -- pdwIndex
+* -- return
+*/
+QWORD ObSet_GetNextByIndex(_In_opt_ POB_SET pvs, _Inout_ PDWORD pdwIndex);
 
 /*
 * Retrieve a value given a value index (which is less than the amount of items
@@ -541,6 +556,39 @@ PVOID ObMap_GetNext(_In_opt_ POB_MAP pm, _In_opt_ PVOID pvObject);
 PVOID ObMap_GetNextByKey(_In_opt_ POB_MAP pm, _In_ QWORD qwKey, _In_opt_ PVOID pvObject);
 
 /*
+* Retrieve the next object given a key in a map sorted by key. If the key isn't
+* found the next object with a larger key will be returned. To start iterating
+* supply zero (0) in the qwKey parameter. When no more objects are found NULL
+* will be returned.
+* NB! Correctness is only guarateed if the map is sorted by key ascending.
+* FUNCTION DECREF(if OB): pvObject
+* CALLER DECREF(if OB): return
+* -- pm
+* -- qwKey
+* -- pvObject
+* -- return
+*/
+PVOID ObMap_GetNextByKeySorted(_In_opt_ POB_MAP pm, _In_ QWORD qwKey, _In_opt_ PVOID pvObject);
+
+/*
+* Iterate over objects in reversed index order. To start iterating supply NULL
+* in the pvObject parameter (this overrides pdwIndex). When no more objects
+* are found NULL will be returned.
+* Add/Remove rules:
+*  - Added objects are ok - but will not be iterated over.
+*  - Removal of current object and already iterated objects are ok.
+*  - Removal of objects not yet iterated is FORBIDDEN. It causes the iterator
+*    fail by returning the same object multiple times or skipping objects.
+* FUNCTION DECREF(if OB): pvObject
+* CALLER DECREF(if OB): return
+* -- pm
+* -- pdwIndex
+* -- pvObject
+* -- return
+*/
+PVOID ObMap_GetNextByIndex(_In_opt_ POB_MAP pm, _Inout_ PDWORD pdwIndex, _In_opt_ PVOID pvObject);
+
+/*
 * Retrieve a value given a key.
 * CALLER DECREF(if OB): return
 * -- pm
@@ -572,53 +620,54 @@ _Success_(return != 0)
 QWORD ObMap_GetKey(_In_opt_ POB_MAP pm, _In_ PVOID pvObject);
 
 /*
+* Callback function for ObMap_Filter which converts a ObMap to an arbitrary context.
+*/
+typedef VOID(*OB_MAP_FILTER_PFN_CB)(_In_opt_ PVOID ctx, _In_ QWORD k, _In_ PVOID v);
+
+/*
+* Callback function for ObMap_FilterSet which converts an ObMap to an ObSet.
+*/
+typedef VOID(*OB_MAP_FILTERSET_PFN_CB)(_In_opt_ PVOID ctx, _In_ POB_SET ps, _In_ QWORD k, _In_ PVOID v);
+
+/*
+* Callback function for ObMap_RemoveByFilter which removes objects from an ObMap.
+*/
+typedef BOOL(*OB_MAP_FILTER_REMOVE_PFN_CB)(_In_opt_ PVOID ctx, _In_ QWORD k, _In_ PVOID v);
+
+/*
 * Common filter function related to ObMap_FilterSet.
 */
-VOID ObMap_FilterSet_FilterAllKey(_In_ QWORD k, _In_ PVOID v, _Inout_ POB_SET ps);
-
-typedef VOID(*OB_MAP_FILTER_PFN)(_In_ QWORD k, _In_ PVOID v, _Inout_opt_ PVOID ctx);
+VOID ObMap_FilterSet_FilterAllKey(_In_opt_ PVOID ctx, _In_ POB_SET ps, _In_ QWORD k, _In_ PVOID v);
 
 /*
 * Filter map objects into a generic context by using a user-supplied filter function.
 * -- pm
 * -- ctx = optional context to pass on to the filter function.
-* -- pfnFilter
+* -- pfnFilterCB = filter callback function. NULL = fail.
 * -- return
 */
 _Success_(return)
-BOOL ObMap_Filter(_In_opt_ POB_MAP pm, _Inout_opt_ PVOID ctx, _In_opt_ OB_MAP_FILTER_PFN pfnFilter);
-
-typedef VOID(*OB_MAP_FILTERSET_PFN)(_In_ QWORD k, _In_ PVOID v, _Inout_ POB_SET ps);
+BOOL ObMap_Filter(_In_opt_ POB_MAP pm, _In_opt_ PVOID ctx, _In_opt_ OB_MAP_FILTER_PFN_CB pfnFilterCB);
 
 /*
 * Filter map objects into a POB_SET by using a user-supplied filter function.
 * CALLER DECREF: return
 * -- pm
-* -- pfnFilterSet
+* -- ctx = optional context to pass on to the filter function.
+* -- pfnFilterSetCB = filter callback function. NULL = fail.
 * -- return = POB_SET consisting of values gathered by the pfnFilter function.
 */
 _Success_(return != NULL)
-POB_SET ObMap_FilterSet(_In_opt_ POB_MAP pm, _In_opt_ OB_MAP_FILTERSET_PFN pfnFilterSet);
-
-/*
-* Callback function for pfnFilter in ObMap_RemoveByFilter().
-* -- H
-* -- k
-* -- v
-*/
-typedef BOOL(*OB_MAP_FILTER_REMOVE_PFN_CB)(
-    _In_opt_ VMM_HANDLE H,
-    _In_ QWORD k,
-    _In_ PVOID v
-);
+POB_SET ObMap_FilterSet(_In_opt_ POB_MAP pm, _In_opt_ PVOID ctx, _In_opt_ OB_MAP_FILTERSET_PFN_CB pfnFilterSetCB);
 
 /*
 * Remove map objects using a user-supplied filter function.
 * -- pm
-* -- pfnFilter = decision making function: [pfnFilter(H,k,v)->TRUE(remove)|FALSE(keep)]
+* -- ctx = optional context to pass on to the filter function.
+* -- pfnFilterRemoveCB = decision making function: [pfnFilter(ctx,k,v)->TRUE(remove)|FALSE(keep)]
 * -- return = number of entries removed.
 */
-DWORD ObMap_RemoveByFilter(_In_opt_ POB_MAP pm, _In_opt_ OB_MAP_FILTER_REMOVE_PFN_CB pfnFilter);
+DWORD ObMap_RemoveByFilter(_In_opt_ POB_MAP pm, _In_opt_ PVOID ctx, _In_opt_ OB_MAP_FILTER_REMOVE_PFN_CB pfnFilterRemoveCB);
 
 /*
 * Sort the ObMap entry index by a sort compare function.
@@ -630,6 +679,16 @@ DWORD ObMap_RemoveByFilter(_In_opt_ POB_MAP pm, _In_opt_ OB_MAP_FILTER_REMOVE_PF
 */
 _Success_(return)
 BOOL ObMap_SortEntryIndex(_In_opt_ POB_MAP pm, _In_ _CoreCrtNonSecureSearchSortCompareFunction pfnSort);
+
+/*
+* Sort the ObMap entry index by key ascending.
+* NB! The items sorted by the sort function are const OB_MAP_ENTRY* objects
+*     which points to the underlying map object key/value.
+* -- pm
+* -- return
+*/
+_Success_(return)
+BOOL ObMap_SortEntryIndexByKey(_In_opt_ POB_MAP pm);
 
 
 
@@ -1108,11 +1167,21 @@ BOOL ObMemFile_AppendString(_In_opt_ POB_MEMFILE pmf, _In_opt_z_ LPSTR sz);
 * Append a string (ansi or utf-8) to the ObMemFile.
 * -- H
 * -- uszFormat
+* -- ...
+* -- return = the number of bytes appended (excluding terminating null).
+*/
+_Success_(return != 0)
+SIZE_T ObMemFile_AppendStringEx(_In_opt_ POB_MEMFILE pmf, _In_z_ _Printf_format_string_ LPSTR uszFormat, ...);
+
+/*
+* Append a string (ansi or utf-8) to the ObMemFile.
+* -- H
+* -- uszFormat
 * -- arglist
 * -- return = the number of bytes appended (excluding terminating null).
 */
 _Success_(return != 0)
-SIZE_T ObMemFile_AppendStringEx(_In_opt_ POB_MEMFILE pmf, _In_z_ _Printf_format_string_ LPSTR uszFormat, _In_ va_list arglist);
+SIZE_T ObMemFile_AppendStringEx2(_In_opt_ POB_MEMFILE pmf, _In_z_ _Printf_format_string_ LPSTR uszFormat, _In_ va_list arglist);
 
 /*
 * Read data 'as file' from the ObMemFile.

@@ -1,4 +1,4 @@
-// memprocfs_dokan.c : implementation of core functionality for the Memory Process File System
+// memprocfs_dokan.c : implementation of core functionality for MemProcFS
 // This is just a thin loader for the virtual memory manager dll which contains the logic.
 //
 // (c) Ulf Frisk, 2018-2023
@@ -394,14 +394,14 @@ VOID VfsDokan_InitializeAndMount_DisplayInfo(LPWSTR wszMountPoint)
     MemProcFS_ConfigGet(VMMDLL_OPT_WIN_VERSION_BUILD, &qwVersionWinBuild);
     MemProcFS_ConfigGet(VMMDLL_OPT_WIN_SYSTEM_UNIQUE_ID, &qwUniqueSystemId);
     printf("\n" \
-        "=============== MemProcFS - THE MEMORY PROCESS FILE SYSTEM ===============\n" \
-        " - Author:           Ulf Frisk - pcileech@frizk.net                     \n" \
-        " - Info:             https://github.com/ufrisk/MemProcFS                \n" \
-        " - License:          GNU Affero General Public License v3.0             \n" \
-        "   -------------------------------------------------------------------- \n" \
-        "   MemProcFS is free open source software. If you find it useful please \n" \
-        "   become a sponsor at: https://github.com/sponsors/ufrisk Thank You :) \n" \
-        "   -------------------------------------------------------------------- \n" \
+        "==============================  MemProcFS  ==============================\n" \
+        " - Author:           Ulf Frisk - pcileech@frizk.net                      \n" \
+        " - Info:             https://github.com/ufrisk/MemProcFS                 \n" \
+        " - License:          GNU Affero General Public License v3.0              \n" \
+        "   --------------------------------------------------------------------- \n" \
+        "   MemProcFS is free open source software. If you find it useful please  \n" \
+        "   become a sponsor at: https://github.com/sponsors/ufrisk Thank You :)  \n" \
+        "   --------------------------------------------------------------------- \n" \
         " - Version:          %i.%i.%i (%s)\n" \
         " - Mount Point:      %S           \n" \
         " - Tag:              %i_%x        \n",
@@ -574,8 +574,7 @@ BOOL WINAPI MemProcFsCtrlHandler(DWORD fdwCtrlType)
         return TRUE;
     }
     if(fdwCtrlType == CTRL_BREAK_EVENT) {
-        printf("CTRL+BREAK detected - refresh initiated ...\n");
-        VMMDLL_ConfigSet(g_hVMM, VMMDLL_OPT_REFRESH_ALL, 1);
+        printf("CTRL+BREAK detected - refresh/debug initated ...\n");
         VMMDLL_ConfigSet(g_hVMM, VMMDLL_OPT_CONFIG_DEBUG, 1);
         printf("CTRL+BREAK finished ...\n");
         return TRUE;
@@ -627,10 +626,10 @@ BOOL MemProcFS_InitializeRemoteFS(_In_ int argc, _In_ char *argv[])
 }
 
 /*
-* Main entry point of the memory process file system. The main function will
-* load and initialize VMM.DLL then initialize the VMM.DLL plugin manager and
-* then hand over control to vfs.c!VfsInitializeAndMount which will start the
-* dokany virtual file system and mount it at the correct mount point.
+* Main entry point of MemProcFS. The main function will load and initialize
+* VMM.DLL then initialize the VMM.DLL plugin manager and then hand over control
+* to vfs.c!VfsInitializeAndMount which will start the virtual file system and
+* mount it at the correct mount point.
 * All 'interesting' functionality will take part in VMM.DLL - the memprocfs
 * executable should be considered as a thin wrapper around VMM.DLL.
 * -- argc

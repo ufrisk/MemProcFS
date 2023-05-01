@@ -80,6 +80,7 @@ typedef struct tdFC_CONTEXT {
     struct {
         POB_MAP pm;                 // map of PFC_FINDEVIL_ENTRY
         POB_MEMFILE pmf;            // generated /forensic/findevil/findevil.txt
+        POB_MEMFILE pmfYara;        // generated /forensic/findevil/yara.txt
     } FindEvil;
 } FC_CONTEXT, *PFC_CONTEXT;
 
@@ -122,6 +123,14 @@ VOID FcInterrupt(_In_ VMM_HANDLE H);
 * -- H
 */
 VOID FcClose(_In_ VMM_HANDLE H);
+
+
+
+// ----------------------------------------------------------------------------
+// FC GENERAL FUNCTIONALITY BELOW:
+// ----------------------------------------------------------------------------
+
+BOOL FcIsProcessSkip(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess);
 
 
 
@@ -285,7 +294,7 @@ VOID FcEvilAddEx(_In_ VMM_HANDLE H, _In_ LPSTR uszType, _In_ DWORD dwSeverity, _
 
 
 
-// // ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // FC TIMELINING FUNCTIONALITY BELOW:
 // ----------------------------------------------------------------------------
 

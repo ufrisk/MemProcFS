@@ -1863,43 +1863,60 @@ BOOL VMMDLL_MemSearch(
 // The vmmyara project is found at: https://github.com/ufrisk/vmmyara
 //-----------------------------------------------------------------------------
 
-// =========== START SHARED STRUCTS WITH <vmmyara.h> ===========
+// =========== START SHARED STRUCTS WITH <vmmdll.h/vmmyara.h> ===========
 #ifndef VMMYARA_RULE_MATCH_DEFINED
 #define VMMYARA_RULE_MATCH_DEFINED
 
-#define VMMYARA_RULE_MATCH_MAX              8
-#define VMMYARA_RULE_MATCH_OFFSETS_MAX      16
+#define VMMYARA_RULE_MATCH_VERSION          0xfedc0003
+#define VMMYARA_RULE_MATCH_TAG_MAX          8
+#define VMMYARA_RULE_MATCH_META_MAX         16
+#define VMMYARA_RULE_MATCH_STRING_MAX       8
+#define VMMYARA_RULE_MATCH_OFFSET_MAX       16
 
+/*
+* Struct with match information upon a match in VmmYara_RulesScanMemory().
+*/
 typedef struct tdVMMYARA_RULE_MATCH {
+    DWORD dwVersion;                    // VMMYARA_RULE_MATCH_VERSION
+    DWORD flags;
     LPSTR szRuleIdentifier;
     DWORD cTags;
-    LPSTR szTags[VMMYARA_RULE_MATCH_MAX];
+    LPSTR szTags[VMMYARA_RULE_MATCH_TAG_MAX];
     DWORD cMeta;
     struct {
         LPSTR szIdentifier;
         LPSTR szString;
-    } Meta[VMMYARA_RULE_MATCH_MAX];
+    } Meta[VMMYARA_RULE_MATCH_META_MAX];
     DWORD cStrings;
     struct {
         LPSTR szString;
         DWORD cMatch;
-        SIZE_T cbMatchOffset[VMMYARA_RULE_MATCH_OFFSETS_MAX];
-    } Strings[VMMYARA_RULE_MATCH_MAX];
+        SIZE_T cbMatchOffset[VMMYARA_RULE_MATCH_OFFSET_MAX];
+    } Strings[VMMYARA_RULE_MATCH_STRING_MAX];
 } VMMYARA_RULE_MATCH, *PVMMYARA_RULE_MATCH;
 
 #endif /* VMMYARA_RULE_MATCH_DEFINED */
+
 #ifndef VMMYARA_SCAN_MEMORY_CALLBACK_DEFINED
 #define VMMYARA_SCAN_MEMORY_CALLBACK_DEFINED
 
+/*
+* Callback function to be called by VmmYara_RulesScanMemory() upon a match.
+* -- pvContext = user context set in call to VmmYara_ScanMemory().
+* -- pRuleMatch = pointer to match information.
+* -- pbBuffer = the memory buffer that was scanned.
+* -- cbBuffer = the size of the memory buffer that was scanned.
+* -- return = return TRUE to continue scanning, FALSE to stop scanning.
+*/
 typedef BOOL(*VMMYARA_SCAN_MEMORY_CALLBACK)(
     _In_ PVOID pvContext,
     _In_ PVMMYARA_RULE_MATCH pRuleMatch,
     _In_reads_bytes_(cbBuffer) PBYTE pbBuffer,
     _In_ SIZE_T cbBuffer
-);
+    );
 
 #endif /* VMMYARA_SCAN_MEMORY_CALLBACK_DEFINED */
-// =========== END SHARED STRUCTS WITH <vmmyara.h> ===========
+// =========== END SHARED STRUCTS WITH <vmmdll.h/vmmyara.h> ===========
 
 #define VMMDLL_YARA_CONFIG_VERSION                  0xdec30001
 #define VMMDLL_YARA_CONFIG_MAX_RESULT               0x00010000      // max 65k results.

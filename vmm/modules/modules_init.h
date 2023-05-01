@@ -54,6 +54,7 @@ VOID M_VM_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRe
 * Initialization functions for FORENSIC related modules.
 */
 VOID M_FcCSV_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
+VOID M_FcFile_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_FcFindEvil_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_FcHandle_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_FcJSON_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
@@ -130,6 +131,7 @@ VOID(*g_pfnModulesAllInternal[])(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_REGINFO 
     M_VM_Initialize,
     // forensic modules
     M_FcCSV_Initialize,
+    M_FcFile_Initialize,
     M_FcFindEvil_Initialize,
     M_FcHandle_Initialize,
     M_FcJSON_Initialize,

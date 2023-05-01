@@ -167,13 +167,18 @@ v1.1-v4.9
 * Linux Python plugin support.
 * Hyper-V Container/Sandbox support.
 * Windows Hypervisor Platform support (VMware and VirtualBox on Hyper-V).
-</details>
 
 [v5.4](https://github.com/ufrisk/MemProcFS/releases/tag/v5.4)
 * Rust API support.
 * Debug symbol support when running on Linux.
+</details>
 
 [v5.5](https://github.com/ufrisk/MemProcFS/releases/tag/v5.5)
 * [Findevil](https://github.com/ufrisk/MemProcFS/wiki/FS_FindEvil): New thread-based detections. Findevil is now forensic mode only.
 * [Jupyter Notebook example](https://github.com/ufrisk/MemProcFS/wiki/API_Python_Jupyter)
 * Yara support in [forensics mode](https://github.com/ufrisk/MemProcFS/wiki/FS_Forensic_Yara) and [search](https://github.com/ufrisk/MemProcFS/wiki/FS_YaraSearch).
+
+[v5.6](https://github.com/ufrisk/MemProcFS/releases/tag/v5.6)
+* Bug fixes, performance optimizations and minor updates.
+* [files](https://github.com/ufrisk/MemProcFS/wiki/FS_Forensic_Files) plugin in forensics mode - showing files with recoverable contents.
+* Built-in yara rules for [Findevil](https://github.com/ufrisk/MemProcFS/wiki/FS_FindEvil) in forensics mode from [Elastic Security](https://github.com/elastic/protections-artifacts). Activate with by accepting elastic license 2.0 by start-up option [`-license-accept-elastic-license-2.0`](https://github.com/ufrisk/MemProcFS-dev/wiki/_CommandLine#-license-accept-elastic-license-2.0).

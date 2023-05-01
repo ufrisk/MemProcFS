@@ -21,9 +21,9 @@
 */
 VOID ObContainer_ObCloseCallback(_In_ POB_CONTAINER pObContainer)
 {
-    if(!OB_CONTAINER_IS_VALID(pObContainer)) { return; }
-    DeleteCriticalSection(&pObContainer->Lock);
-    Ob_DECREF(pObContainer->pOb);
+    if(OB_CONTAINER_IS_VALID(pObContainer)) {
+        Ob_DECREF(pObContainer->pOb);
+    }
 }
 
 /*
@@ -36,13 +36,7 @@ VOID ObContainer_ObCloseCallback(_In_ POB_CONTAINER pObContainer)
 */
 POB_CONTAINER ObContainer_New()
 {
-    POB_CONTAINER pObContainer = Ob_Alloc(OB_TAG_CORE_CONTAINER, LMEM_ZEROINIT, sizeof(OB_CONTAINER), (OB_CLEANUP_CB)ObContainer_ObCloseCallback, NULL);
-    if(!pObContainer) { return NULL; }
-    if(!InitializeCriticalSectionAndSpinCount(&pObContainer->Lock, 4096)) {
-        Ob_DECREF(pObContainer);
-        return NULL;
-    }
-    return pObContainer;
+    return Ob_Alloc(OB_TAG_CORE_CONTAINER, LMEM_ZEROINIT, sizeof(OB_CONTAINER), (OB_CLEANUP_CB)ObContainer_ObCloseCallback, NULL);
 }
 
 /*
@@ -55,9 +49,9 @@ PVOID ObContainer_GetOb(_In_ POB_CONTAINER pObContainer)
 {
     POB pOb;
     if(!OB_CONTAINER_IS_VALID(pObContainer)) { return NULL; }
-    EnterCriticalSection(&pObContainer->Lock);
+    AcquireSRWLockShared(&pObContainer->LockSRW);
     pOb = Ob_INCREF(pObContainer->pOb);
-    LeaveCriticalSection(&pObContainer->Lock);
+    ReleaseSRWLockShared(&pObContainer->LockSRW);
     return pOb;
 }
 
@@ -70,10 +64,10 @@ VOID ObContainer_SetOb(_In_ POB_CONTAINER pObContainer, _In_opt_ PVOID pOb)
 {
     POB pObOld;
     if(!OB_CONTAINER_IS_VALID(pObContainer)) { return; }
-    EnterCriticalSection(&pObContainer->Lock);
+    AcquireSRWLockExclusive(&pObContainer->LockSRW);
     pObOld = pObContainer->pOb;
     pObContainer->pOb = Ob_INCREF(pOb);
-    LeaveCriticalSection(&pObContainer->Lock);
+    ReleaseSRWLockExclusive(&pObContainer->LockSRW);
     Ob_DECREF(pObOld);
 }
 

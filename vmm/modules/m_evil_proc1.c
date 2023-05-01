@@ -81,6 +81,7 @@ VOID MEvilProc1_Modules(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
 {
     BOOL fBadLdr = TRUE;
     DWORD i;
+    LPSTR uszModuleName;
     PVMM_MAP_VADENTRY peVad = NULL;
     PVMMOB_MAP_VAD pObVadMap = NULL;
     PVMM_MAP_MODULEENTRY peModule;
@@ -106,20 +107,24 @@ VOID MEvilProc1_Modules(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
                     VmmMap_GetVad(H, pProcess, &pObVadMap, VMM_VADMAP_TP_FULL);
                 }
                 peVad = VmmMap_GetVadEntry(H, pObVadMap, peModule->vaBase);
-                FcEvilAdd(H, EVIL_PE_INJECT, pProcess, peModule->vaBase, "Module:[%s] VAD:[%s]",
-                    (peModule && peModule->uszFullName) ? peModule->uszFullName : "",
-                    (peVad && peVad->cbuText) ? peVad->uszText : ""
-                );
+                uszModuleName = (peModule && peModule->uszFullName) ? peModule->uszFullName : "";
+                if(peVad && (peVad->cbuText > 1)) {
+                    FcEvilAdd(H, EVIL_PE_INJECT, pProcess, peModule->vaBase, "Module:[%s] VAD:[%s]", uszModuleName, peVad->uszText);
+                } else {
+                    FcEvilAdd(H, EVIL_PE_INJECT, pProcess, peModule->vaBase, "Module:[%s]", uszModuleName);
+                }
             }
             if(!fBadLdr && (peModule->tp == VMM_MODULE_TP_NOTLINKED)) {
                 if(!pObVadMap) {
                     VmmMap_GetVad(H, pProcess, &pObVadMap, VMM_VADMAP_TP_FULL);
                 }
                 peVad = VmmMap_GetVadEntry(H, pObVadMap, peModule->vaBase);
-                FcEvilAdd(H, EVIL_PE_NOLINK, pProcess, peModule->vaBase, "Module:[%s] VAD:[%s]",
-                    (peModule && peModule->uszFullName) ? peModule->uszFullName : "",
-                    (peVad && peVad->cbuText) ? peVad->uszText : ""
-                );
+                uszModuleName = (peModule && peModule->uszFullName) ? peModule->uszFullName : "";
+                if(peVad && (peVad->cbuText > 1)) {
+                    FcEvilAdd(H, EVIL_PE_NOLINK, pProcess, peModule->vaBase, "Module:[%s] VAD:[%s]", uszModuleName, peVad->uszText);
+                } else {
+                    FcEvilAdd(H, EVIL_PE_NOLINK, pProcess, peModule->vaBase, "Module:[%s]", uszModuleName);
+                }
             }
         }
         Ob_DECREF(pObModuleMap);
@@ -320,6 +325,7 @@ VOID MEvilProc1_DoWork(_In_ VMM_HANDLE H, _In_ VMMDLL_MODULE_ID MID, _In_opt_ PV
     while((pObProcess = VmmProcessGetNext(H, pObProcess, 0))) {
         if(H->fAbort) { goto fail; }
         if(pObProcess->dwState || !pObProcess->fUserOnly) { continue; }
+        if(FcIsProcessSkip(H, pObProcess)) { continue; }
         MEvilProc1_PePatched_VadImageExecuteNoProto(H, pObProcess);
         // update result with execute pages in non image vads.
         // also commit to modules map as injected PE (if possible).

@@ -35,8 +35,6 @@
 #define VMM_STATUS_FILE_INVALID                 STATUS_FILE_INVALID
 #define VMM_STATUS_FILE_SYSTEM_LIMITATION       STATUS_FILE_SYSTEM_LIMITATION
 
-#define VMM_PROCESSTABLE_ENTRIES_MAX            0x4000
-#define VMM_PROCESS_OS_ALLOC_PTR_MAX            0x4    // max number of operating system specific pointers that must be free'd
 #define VMM_MEMMAP_ENTRIES_MAX                  0x4000
 
 #define VMM_MEMMAP_PAGE_A                       0x0000000000000001
@@ -738,7 +736,7 @@ typedef struct tdVMM_MAP_SERVICEENTRY {
 typedef DWORD                       VMM_MODULE_ID;
 
 typedef struct tdVMMEVIL_TYPE {
-    LPSTR Name;
+    LPSTR Name;                     // max 15 chars
     DWORD Severity;
 } VMMEVIL_TYPE;
 
@@ -1072,19 +1070,20 @@ typedef struct tdVMM_PROCESS {
         POB_CONTAINER pObCPeDumpDirCache;
         POB_CONTAINER pObCPhys2Virt;
     } Plugin;
-    struct tdVMM_PROCESS *pObProcessCloneParent;    // only set in cloned processes
+    struct {
+        struct tdVMM_PROCESS *pObProcessCloneParent;    // only set in cloned processes
+    } VmmInternal;
 } VMM_PROCESS, *PVMM_PROCESS;
 
-#define PVMM_PROCESS_SYSTEM         ((PVMM_PROCESS)-4)      // SYSTEM PROCESS (PID 4) - ONLY VALID WITH VmmRead*/VmmWrite*/VmmCachePrefetch* functions!
+#define PVMM_PROCESS_SYSTEM         ((PVMM_PROCESS)-4)  // SYSTEM PROCESS (PID 4) - ONLY VALID WITH VmmRead*/VmmWrite*/VmmCachePrefetch* functions!
 
 typedef struct tdVMMOB_PROCESS_TABLE {
     OB ObHdr;
-    SIZE_T c;                       // Total # of processes in table
-    SIZE_T cActive;                 // # of active processes (state = 0) in table
-    WORD _iFLink;
-    WORD _iFLinkM[VMM_PROCESSTABLE_ENTRIES_MAX];
-    PVMM_PROCESS _M[VMM_PROCESSTABLE_ENTRIES_MAX];
-    POB_CONTAINER pObCNewPROC;      // contains VMM_PROCESS_TABLE
+    SIZE_T c;                                           // Total # of processes in table
+    SIZE_T cActive;                                     // # of active processes (state = 0) in table
+    BOOL fTokenInit;                                    // Process token initialization done for processes in table
+    POB_MAP pObProcessMap;                              // Map of processes
+    POB_CONTAINER pObCNewPROC;                          // Contains VMM_PROCESS_TABLE
 } VMMOB_PROCESS_TABLE, *PVMMOB_PROCESS_TABLE;
 
 #define VMM_CACHE_REGIONS               3
@@ -1199,15 +1198,19 @@ typedef struct tdVMMCONFIG {
     BOOL fDisableSymbols;
     BOOL fDisableInfoDB;
     BOOL fDisablePython;
+    BOOL fDisableYara;
+    BOOL fDisableYaraBuiltin;
+    BOOL fLicenseAcceptElasticV2;
     BOOL fWaitInitialize;
     BOOL fUserInteract;
     BOOL fFileInfoHeader;
     BOOL fPhysicalOnlyMemory;           // physical memory only - no windows analysis!
     BOOL fVM;                           // parse virtual machines (resource intensive)
     BOOL fVMNested;                     // parse virtual machines (very resource intensive)
-    BOOL fVMPhysicalOnly;               // parse virtual machines as physical memory only (less resource intense).
+    BOOL fVMPhysicalOnly;               // parse virtual machines as physical memory only (less resource intense)
     // values below:
-    DWORD dwPteQualityThreshold;        // max number of allowed invalid PTE entries in a page table (default: 0x20).
+    DWORD dwPteQualityThreshold;        // max number of allowed invalid PTE entries in a page table (default: 0x20)
+    QWORD tcTimeStart;                  // start time GetTickCount64()
     // strings below
     CHAR szPythonPath[MAX_PATH];
     CHAR szPythonExecuteFile[MAX_PATH];
@@ -1218,6 +1221,11 @@ typedef struct tdVMMCONFIG {
     CHAR szLogLevel[MAX_PATH];
     CHAR szPathLibraryVmm[MAX_PATH];
     CHAR szForensicYaraRules[MAX_PATH];
+    // allocated strings below:
+    struct {
+        DWORD cusz;
+        LPSTR* pusz;
+    } ForensicProcessSkipList;
 } VMMCONFIG, *PVMMCONFIG;
 
 typedef struct tdVMMCONFIG_PDB {
@@ -1448,7 +1456,6 @@ typedef struct tdVMM_OFFSET {
     struct { WORD cb; } _POOL_HEADER;
 } VMM_OFFSET, *PVMM_OFFSET;
 
-typedef struct tdVMMWINOBJ_CONTEXT          *PVMMWINOBJ_CONTEXT;
 typedef struct tdVMMWIN_REGISTRY_CONTEXT    *PVMMWIN_REGISTRY_CONTEXT;
 typedef struct tdVMMOB_VMGLOBAL_CONTEXT     *PVMMOB_VMGLOBAL_CONTEXT;
 
@@ -1551,7 +1558,6 @@ typedef struct tdVMM_CONTEXT {
         DWORD vaNtdll32;
         QWORD vaNtdll64;
     } ContextUnloadedModule;
-    PVMMWINOBJ_CONTEXT pObjects;
     PVMMWIN_REGISTRY_CONTEXT pRegistry;
     QWORD paPluginPhys2VirtRoot;
     VMM_DYNAMIC_LOAD_FUNCTIONS fn;
@@ -1578,13 +1584,14 @@ typedef struct tdVMM_CONTEXT {
     POB_CONTAINER pObCMapUser;
     POB_CONTAINER pObCMapVM;
     POB_CONTAINER pObCMapNet;
-    POB_CONTAINER pObCMapObject;
+    POB_CONTAINER pObCMapObjMgr;
     POB_CONTAINER pObCMapKDevice;
     POB_CONTAINER pObCMapKDriver;
     POB_CONTAINER pObCMapPoolAll;
     POB_CONTAINER pObCMapPoolBig;
     POB_CONTAINER pObCMapService;
     POB_CONTAINER pObCInfoDB;
+    POB_CONTAINER pObCWinObj;
     POB_CONTAINER pObCCachePrefetchEPROCESS;
     POB_CONTAINER pObCCachePrefetchRegistry;
     POB_CACHEMAP pObCacheMapEAT;
@@ -2219,22 +2226,6 @@ PVMM_PROCESS VmmProcessGetEx(_In_ VMM_HANDLE H, _In_opt_ PVMMOB_PROCESS_TABLE pt
 PVMM_PROCESS VmmProcessGet(_In_ VMM_HANDLE H, _In_ DWORD dwPID);
 
 /*
-* Retrieve the next process given a process and a process table. This may be
-* useful when iterating over a process list. NB! Listing of next item may fail
-* prematurely if the previous process is terminated while having a reference
-* to it.
-* FUNCTION DECREF: pProcess
-* CALLER DECREF: return
-* -- H
-* -- pt
-* -- pProcess = a process struct, or NULL if first.
-*    NB! function DECREF's  pProcess and must not be used after call!
-* -- flags = 0 (recommended) or VMM_FLAG_PROCESS_[TOKEN|SHOW_TERMINATED].
-* -- return = a process struct, or NULL if not found.
-*/
-PVMM_PROCESS VmmProcessGetNextEx(_In_ VMM_HANDLE H, _In_opt_ PVMMOB_PROCESS_TABLE pt, _In_opt_ PVMM_PROCESS pProcess, _In_ QWORD flags);
-
-/*
 * Retrieve processes sorted in a map keyed by either EPROCESS or PID.
 * CALLER DECREF: return
 * -- H
@@ -2246,18 +2237,31 @@ _Success_(return != NULL)
 POB_MAP VmmProcessGetAll(_In_ VMM_HANDLE H, _In_ BOOL fByEPROCESS, _In_ QWORD flags);
 
 /*
-* Retrieve the next process given a process. This may be useful when iterating
-* over a process list. NB! Listing of next item may fail prematurely if the
-* previous process is terminated while having a reference to it.
-* FUNCTION DECREF: pProcess
+* Retrieve the next process given a process and a process table. This may be
+* useful when iterating over a process list.
+* FUNCTION DECREF: pObProcess
 * CALLER DECREF: return
 * -- H
+* -- pt = the process table to iterate over (only taken into account when pObProcess is NULL).
 * -- pProcess = a process struct, or NULL if first.
+*    NB! function DECREF's  pProcess and must not be used after call!
+* -- flags = 0 (recommended) or VMM_FLAG_PROCESS_[TOKEN|SHOW_TERMINATED].
+* -- return = a process struct, or NULL if not found.
+*/
+PVMM_PROCESS VmmProcessGetNextEx(_In_ VMM_HANDLE H, _In_opt_ PVMMOB_PROCESS_TABLE pt, _In_opt_ PVMM_PROCESS pObProcess, _In_ QWORD flags);
+
+/*
+* Retrieve the next process given a process. This may be useful when iterating
+* over a process list.
+* FUNCTION DECREF: pObProcess
+* CALLER DECREF: return
+* -- H
+* -- pObProcess = a process struct, or NULL if first.
 *    NB! function DECREF's  pProcess and must not be used after call!
 * -- flags = 0 (recommended) or VMM_FLAG_PROCESS_[TOKEN|SHOW_TERMINATED]
 * -- return = a process struct, or NULL if not found.
 */
-PVMM_PROCESS VmmProcessGetNext(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _In_ QWORD flags);
+PVMM_PROCESS VmmProcessGetNext(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pObProcess, _In_ QWORD flags);
 
 /*
 * Clone an original process entry creating a shallow clone. The user of this
@@ -2400,10 +2404,10 @@ VOID VmmCachePrefetchPages4(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _
 * -- pmPrefetch = map of objects.
 * -- cb
 * -- flags
-* -- pfnFilter = filter as required by ObMap_FilterSet function.
+* -- pfnFilterCB = filter as required by ObMap_FilterSet function.
 * -- return = at least one object is found to be prefetched into cache.
 */
-BOOL VmmCachePrefetchPages5(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _In_opt_ POB_MAP pmPrefetchObjects, _In_ DWORD cb, _In_ QWORD flags, _In_ VOID(*pfnFilter)(_In_ QWORD k, _In_ PVOID v, _Inout_ POB_SET ps));
+BOOL VmmCachePrefetchPages5(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _In_opt_ POB_MAP pmPrefetchObjects, _In_ DWORD cb, _In_ QWORD flags, _In_ OB_MAP_FILTERSET_PFN_CB pfnFilterCB);
 
 /*
 * Initialize the memory model specified and discard any previous memory models

@@ -27,19 +27,21 @@ OBJ = oscompatibility.o charutil.o util.o pe.o vmmdll.o vmmdll_core.o        \
 	  ob/ob_counter.o ob/ob_map.o ob/ob_memfile.o ob/ob_set.o ob/ob_strmap.o \
 	  statistics.o sysquery.o vmmheap.o vmmlog.o vmmnet.o                    \
 	  vmmproc.o vmmvm.o vmmwininit.o vmmwin.o vmmwinobj.o vmmwinpool.o       \
-	  vmmwinreg.o vmmwinsvc.o vmmwork.o vmmyarautil.o vmmyarawrap.o          \
+	  vmmwinreg.o vmmwinsvc.o vmmuserconfig.o vmmwork.o vmmyarautil.o        \
+	  vmmyarawrap.o                                                          \
 	  modules/m_vfsroot.o modules/m_vfsproc.o modules/m_vfsfc.o              \
 	  modules/m_conf.o modules/m_vm.o modules/m_winreg.o                     \
-	  modules/m_fc_csv.o modules/m_fc_findevil.c modules/m_fc_handle.o       \
-	  modules/m_fc_json.o modules/m_fc_module.o modules/m_fc_ntfs.o          \
-	  modules/m_fc_proc.o modules/m_fc_registry.o modules/m_fc_sys.o         \
-	  modules/m_fc_thread.o modules/m_fc_timeline.o modules/m_fc_yara.o      \
+	  modules/m_fc_csv.o modules/m_fc_file.o modules/m_fc_findevil.o         \
+	  modules/m_fc_handle.o modules/m_fc_json.o modules/m_fc_module.o        \
+	  modules/m_fc_ntfs.o modules/m_fc_proc.o modules/m_fc_registry.o        \
+	  modules/m_fc_sys.o modules/m_fc_thread.o modules/m_fc_timeline.o       \
+	  modules/m_fc_yara.o                                                    \
 	  modules/m_evil_kern1.o modules/m_evil_proc1.o modules/m_evil_proc2.o   \
 	  modules/m_evil_proc3.o modules/m_evil_thread1.o                        \
 	  modules/m_misc_bitlocker.o modules/m_misc_procinfo.o                   \
 	  modules/m_misc_view.o modules/m_misc_web.o                             \
 	  modules/m_sys.o modules/m_sys_driver.o modules/m_sys_mem.o             \
-	  modules/m_sys_net.o modules/m_sys_obj.o modules/m_sys_pool.c           \
+	  modules/m_sys_net.o modules/m_sys_obj.o modules/m_sys_pool.o           \
 	  modules/m_sys_proc.o modules/m_sys_svc.o modules/m_sys_syscall.o       \
 	  modules/m_sys_task.o modules/m_sys_user.o                              \
 	  modules/m_phys2virt.o modules/m_search.o modules/m_searchyara.o        \

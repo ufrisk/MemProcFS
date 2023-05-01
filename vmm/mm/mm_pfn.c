@@ -39,8 +39,9 @@ VOID MmPfn_Close(_In_ VMM_HANDLE H)
 VOID MmPfn_Refresh(_In_ VMM_HANDLE H)
 {
     PMMPFN_CONTEXT ctx = (PMMPFN_CONTEXT)H->vmm.pMmPfnContext;
-    if(!ctx) { return; }
-    ObContainer_SetOb(ctx->pObCProcTableDTB, NULL);
+    if(ctx) {
+        ObContainer_SetOb(ctx->pObCProcTableDTB, NULL);
+    }
 }
 
 VOID MmPfn_InitializeContext_StaticX64(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_ PMMPFN_CONTEXT ctx)
@@ -177,6 +178,7 @@ DWORD MmPfn_GetPidFromDTB(_In_ VMM_HANDLE H, _In_ PMMPFN_CONTEXT ctx, _In_ PVMM_
         AcquireSRWLockExclusive(&ctx->LockSRW);
         if(!(pmObDtbPfn2Pid = ObContainer_GetOb(ctx->pObCProcTableDTB))) {
             pmObDtbPfn2Pid = MmPfn_ProcDTB_Create(H, ctx);
+            ObContainer_SetOb(ctx->pObCProcTableDTB, pmObDtbPfn2Pid);
         }
         ReleaseSRWLockExclusive(&ctx->LockSRW);
     }

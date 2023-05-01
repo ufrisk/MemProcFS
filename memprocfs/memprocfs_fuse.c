@@ -1,4 +1,4 @@
-// memprocfs_fuse.c : implementation of core functionality for the Memory Process File System
+// memprocfs_fuse.c : implementation of core functionality for MemProcFS
 // This is just a thin loader for the virtual memory manager .so which contains the logic.
 //
 // (c) Ulf Frisk, 2021-2023
@@ -230,14 +230,14 @@ VOID Vfs_InitializeAndMount_DisplayInfo(_In_ LPSTR uszMountPoint)
     VMMDLL_ConfigGet(g_hVMM, VMMDLL_OPT_WIN_VERSION_BUILD, &qwVersionWinBuild);
     VMMDLL_ConfigGet(g_hVMM, VMMDLL_OPT_WIN_SYSTEM_UNIQUE_ID, &qwUniqueSystemId);
     printf("\n" \
-        "=============== MemProcFS - THE MEMORY PROCESS FILE SYSTEM ===============\n" \
-        " - Author:           Ulf Frisk - pcileech@frizk.net                     \n" \
-        " - Info:             https://github.com/ufrisk/MemProcFS                \n" \
-        " - License:          GNU Affero General Public License v3.0             \n" \
-        "   -------------------------------------------------------------------- \n" \
-        "   MemProcFS is free open source software. If you find it useful please \n" \
-        "   become a sponsor at: https://github.com/sponsors/ufrisk Thank You :) \n" \
-        "   -------------------------------------------------------------------- \n" \
+        "==============================  MemProcFS  ==============================\n" \
+        " - Author:           Ulf Frisk - pcileech@frizk.net                      \n" \
+        " - Info:             https://github.com/ufrisk/MemProcFS                 \n" \
+        " - License:          GNU Affero General Public License v3.0              \n" \
+        "   --------------------------------------------------------------------- \n" \
+        "   MemProcFS is free open source software. If you find it useful please  \n" \
+        "   become a sponsor at: https://github.com/sponsors/ufrisk Thank You :)  \n" \
+        "   --------------------------------------------------------------------- \n" \
         " - Version:          %i.%i.%i (%s)\n" \
         " - Mount Point:      %s           \n" \
         " - Tag:              %i_%x        \n",
@@ -253,11 +253,11 @@ VOID Vfs_InitializeAndMount_DisplayInfo(_In_ LPSTR uszMountPoint)
 }
 
 /*
-* Main entry point of the memory process file system. The main function will
-* load and initialize VMM.DLL then initialize the VMM.DLL plugin manager and
-* then hand over control to vfsfuse!vfs_initialize_and_mount_displayinfo which
-* will start the FUSE virtual file system and mount it at the correct mount point.
-* All 'interesting' functionality will take part in VMM.so - the memprocfs
+* Main entry point of MemProcFS. The main function will load and initialize
+* 'vmm.so' then initialize the 'vmm.so' plugin manager and then hand over
+* control to vfsfuse!vfs_initialize_and_mount_displayinfo which will start
+* the FUSE virtual file system and mount it at the correct mount point.
+* All 'interesting' functionality will take part in vmm.so - the memprocfs
 * executable should be considered as a thin wrapper around VMM.so.
 * -- argc
 * -- argv

@@ -41,7 +41,6 @@ typedef struct tdVMMYARAUTILOB_ENTRYPARSECONTEXT {
 * Struct representing a single matching YARA rule.
 */
 typedef struct tdVMMYARAUTIL_MATCH {
-    DWORD dwId;
     DWORD dwPID;
     QWORD vaBase;
     VMMYARA_RULE_MATCH RuleMatch;
@@ -54,6 +53,7 @@ typedef struct tdVMMYARAUTIL_MATCH {
 */
 typedef struct tdVMMYARAUTILOB_CONTEXT {
     OB ObHdr;
+    DWORD dwIdByType[0x20];
     BOOL fFinalized;
     PBYTE pbMultiStr;
     DWORD cbMultiStr;
@@ -70,9 +70,7 @@ VOID VmmYaraUtil_Context_CallbackCleanup(PVMMYARAUTILOB_CONTEXT pOb)
     Ob_DECREF(pOb->pObEPC);
     Ob_DECREF(pOb->pmObMatches);
     LocalFree(pOb->pbMultiStr);
-    if(pOb->pYrRules) {
-        VmmYara_RulesDestroy(pOb->pYrRules);
-    }
+    if(pOb->pYrRules) { VmmYara_RulesDestroy(pOb->pYrRules); }
 }
 
 /*
@@ -138,6 +136,7 @@ BOOL VmmYaraUtil_MatchCB(_In_ PVMMYARAUTIL_SCAN_CONTEXT ctxScan, _In_ PVMMYARA_R
 {
     DWORD i, j;
     PVMMYARAUTIL_MATCH pe = NULL;
+    if(pMatch->dwVersion != VMMYARA_RULE_MATCH_VERSION) { return FALSE; }
     if(ObMap_Size(ctxScan->ctx->pmObMatches) >= ctxScan->ctx->cMatchesMax) { return FALSE; }
     if(!(pe = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMYARAUTIL_MATCH)))) { return FALSE; }
     // general:
@@ -176,12 +175,12 @@ int VmmYaraUtil_MatchCmpSort(void const *pv1, void const *pv2)
 {
     PVMMYARAUTIL_MATCH e1 = ((POB_MAP_ENTRY)pv1)->v;
     PVMMYARAUTIL_MATCH e2 = ((POB_MAP_ENTRY)pv2)->v;
-    if(e1->dwPID < e2->dwPID) { return -1; }
-    if(e1->dwPID > e2->dwPID) { return 1; }
-    if(e1->vaBase < e2->vaBase) { return -1; }
-    if(e1->vaBase > e2->vaBase) { return 1; }
-    if(e1->RuleMatch.Strings->cbMatchOffset < e2->RuleMatch.Strings->cbMatchOffset) { return -1; }
-    if(e1->RuleMatch.Strings->cbMatchOffset > e2->RuleMatch.Strings->cbMatchOffset) { return 1; }
+    if(e1->dwPID < e2->dwPID) { return 1; }
+    if(e1->dwPID > e2->dwPID) { return -1; }
+    if(e1->vaBase < e2->vaBase) { return 1; }
+    if(e1->vaBase > e2->vaBase) { return -1; }
+    if(e1->RuleMatch.Strings[0].cbMatchOffset[0] < e2->RuleMatch.Strings[0].cbMatchOffset[0]) { return 1; }
+    if(e1->RuleMatch.Strings[0].cbMatchOffset[0] > e2->RuleMatch.Strings[0].cbMatchOffset[0]) { return -1; }
     return 0;
 }
 
@@ -196,15 +195,10 @@ int VmmYaraUtil_MatchCmpSort(void const *pv1, void const *pv2)
 _Success_(return)
 BOOL VmmYaraUtil_IngestFinalize(_In_ VMM_HANDLE H, _In_ PVMMYARAUTILOB_CONTEXT ctx)
 {
-    DWORD i, cMax;
     if(ctx->fFinalized) { return FALSE; }
     ctx->fFinalized = TRUE;
     if(!ObStrMap_FinalizeAllocU_DECREF_NULL(&ctx->psmOb, &ctx->pbMultiStr, &ctx->cbMultiStr)) { return FALSE; }
     ObMap_SortEntryIndex(ctx->pmObMatches, VmmYaraUtil_MatchCmpSort);
-    cMax = ObMap_Size(ctx->pmObMatches);
-    for(i = 0; i < cMax; i++) {
-        ((PVMMYARAUTIL_MATCH)ObMap_GetByIndex(ctx->pmObMatches, i))->dwId = cMax - i - 1;
-    }
     return TRUE;
 }
 
@@ -216,21 +210,29 @@ BOOL VmmYaraUtil_IngestFinalize(_In_ VMM_HANDLE H, _In_ PVMMYARAUTILOB_CONTEXT c
 * -- ctx
 * -- puszTXT = optional pointer to receive text output.
 * -- puszCSV = optional pointer to receive csv output.
+* -- pdwType = optional pointer to receive value of meta X_MEMPROCFS_TYPE.
+* -- pFindEvil = optional pointer to receive find evil information.
 * -- return = TRUE on success, FALSE on failure (out of entries).
 */
 _Success_(return)
-BOOL VmmYaraUtil_ParseSingleResultNext(_In_ VMM_HANDLE H, _In_ PVMMYARAUTILOB_CONTEXT ctx, _Out_opt_ LPSTR *puszTXT, _Out_opt_ LPSTR *puszCSV)
-{
+BOOL VmmYaraUtil_ParseSingleResultNext(
+    _In_ VMM_HANDLE H,
+    _In_ PVMMYARAUTILOB_CONTEXT ctx,
+    _Out_opt_ LPSTR *puszTXT,
+    _Out_opt_ LPSTR *puszCSV,
+    _Out_opt_ PDWORD pdwType,
+    _Out_opt_ PVMMYARAUTIL_PARSE_RESULT_FINDEVIL pFindEvil
+) {
     PVMMYARAUTILOB_ENTRYPARSECONTEXT hEPC = NULL;
     PVMMYARAUTIL_MATCH peMatch = NULL;
     BOOL fFirst, f32 = H->vmm.f32;
     QWORD va, vaAlign;
     DWORD cch, cbRead, cbWrite, cAddresses = 0;
-    DWORD i, j, o, o2;
+    DWORD i, j, o, o2, dwType = 0;
     DWORD oMatchCSV = 0, iMatchCSV = 0;
     LPSTR uszMetaDescription = NULL, uszMetaAuthor = NULL, uszMetaVersion = NULL;
     PVMMWIN_USER_PROCESS_PARAMETERS pu;
-    LPSTR uszCommandLine = "", uszMemoryType = "", uszMemoryTag = "";
+    LPSTR uszCommandLine = "", uszMemoryType = "", uszMemoryTag = "", uszFindEvilSeverity;
     BYTE pbBuffer[0x80];
     CHAR szTimeCRE[24] = { 0 }, uszUserName[0x20] = { 0 };
     PVMM_MAP_PTEENTRY pePte;
@@ -251,6 +253,8 @@ BOOL VmmYaraUtil_ParseSingleResultNext(_In_ VMM_HANDLE H, _In_ PVMMYARAUTILOB_CO
     hEPC->uszResultTXT[0] = 0;
     if(puszTXT) { *puszTXT = hEPC->uszResultTXT; }
     if(puszCSV) { *puszCSV = hEPC->uszResultCSV; }
+    if(pdwType) { *pdwType = 0; }
+    if(pFindEvil) { pFindEvil->fValid = FALSE; }
     // tags:
     hEPC->uszTagsTXT[0] = 0;
     hEPC->uszTagsCSV[0] = 0;
@@ -265,6 +269,29 @@ BOOL VmmYaraUtil_ParseSingleResultNext(_In_ VMM_HANDLE H, _In_ PVMMYARAUTILOB_CO
     // meta:
     o = 0;
     for(i = 0; i < peMatch->RuleMatch.cMeta; i++) {
+        if(CharUtil_StrStartsWith(peMatch->RuleMatch.Meta[i].szIdentifier, "X_MEMPROCFS", FALSE)) {
+            // type:
+            if(CharUtil_StrEquals(peMatch->RuleMatch.Meta[i].szIdentifier, "X_MEMPROCFS_TYPE", FALSE)) {
+                dwType = *pdwType = strtoul(peMatch->RuleMatch.Meta[i].szString, NULL, 0);
+                if(pdwType) { *pdwType = dwType; }
+                continue;
+            }
+            // find evil:
+            if(pFindEvil && CharUtil_StrEquals(peMatch->RuleMatch.Meta[i].szIdentifier, "X_MEMPROCFS_FINDEVIL", FALSE)) {
+                uszFindEvilSeverity = CharUtil_SplitFirst(peMatch->RuleMatch.Meta[i].szString, ':', pFindEvil->uszName, sizeof(pFindEvil->uszName));
+                pFindEvil->EvilType.Name = pFindEvil->uszName;
+                pFindEvil->EvilType.Severity = strtoul(uszFindEvilSeverity, NULL, 16);
+                if(!pFindEvil->EvilType.Severity) {
+                    continue;
+                }
+                _snprintf_s(pFindEvil->uszText, _countof(pFindEvil->uszText), _TRUNCATE, "%s [%i]", peMatch->RuleMatch.szRuleIdentifier, ctx->dwIdByType[1]);
+                pFindEvil->va = peMatch->vaBase + peMatch->RuleMatch.Strings[0].cbMatchOffset[0];
+                pFindEvil->dwPID = peMatch->dwPID;
+                pFindEvil->fValid = TRUE;
+                continue;
+            }
+            continue;
+        }
         o2 = o;
         cch = (DWORD)strlen(peMatch->RuleMatch.Meta[i].szIdentifier);
         cch = 13 - min(12, cch);
@@ -395,10 +422,12 @@ BOOL VmmYaraUtil_ParseSingleResultNext(_In_ VMM_HANDLE H, _In_ PVMMYARAUTILOB_CO
         iMatchCSV++;
         oMatchCSV += _snprintf_s(hEPC->uszMatchContextCSV + oMatchCSV, _countof(hEPC->uszMatchContextCSV) - oMatchCSV, _TRUNCATE, ",\"\",\"\"");
     }
+    if(dwType > sizeof(ctx->dwIdByType) / sizeof(DWORD)) { dwType = 0; }
     // finalize result:
     _snprintf_s(hEPC->uszResultTXT, _countof(hEPC->uszResultTXT), _TRUNCATE,
-        "Match Index:  %i\nTags:         %s\n%s%s%s\n%s%s\n---------------------------------------------------------------------------------------\n\n",
-        peMatch->dwId,
+        "Match Index:  %i\nRule:         %s\nTags:         %s\n%s%s%s\n%s%s\n---------------------------------------------------------------------------------------\n\n",
+        ctx->dwIdByType[dwType],
+        peMatch->RuleMatch.szRuleIdentifier,
         hEPC->uszTagsTXT,
         hEPC->uszMetaTXT,
         hEPC->uszMemoryTXT,
@@ -408,7 +437,7 @@ BOOL VmmYaraUtil_ParseSingleResultNext(_In_ VMM_HANDLE H, _In_ PVMMYARAUTILOB_CO
     );
     _snprintf_s(hEPC->uszResultCSV, _countof(hEPC->uszResultCSV), _TRUNCATE,
         "%i,%s%s%s%s,%i%s\n",
-        peMatch->dwId,
+        ctx->dwIdByType[dwType],
         FcCsv_String(&hEPC->hCSV, hEPC->uszTagsCSV),
         hEPC->uszMetaCSV,
         hEPC->uszMemoryCSV,
@@ -416,6 +445,7 @@ BOOL VmmYaraUtil_ParseSingleResultNext(_In_ VMM_HANDLE H, _In_ PVMMYARAUTILOB_CO
         cAddresses,
         hEPC->uszMatchContextCSV
     );
+    ctx->dwIdByType[dwType]++;
     // cleanup:
     Ob_DECREF(pObPteMap);
     Ob_DECREF(pObVadMap);
@@ -444,6 +474,7 @@ BOOL VmmSearch_SearchRegion_YaraCB(_In_ PVOID pvContext, _In_ PVMMYARA_RULE_MATC
     DWORD i, j;
     PVMMDLL_YARA_CONFIG ctxs = (PVMMDLL_YARA_CONFIG)pvContext;
     PVMMYARAUTIL_SEARCH_INTERNAL_CONTEXT ctxi = (PVMMYARAUTIL_SEARCH_INTERNAL_CONTEXT)(SIZE_T)ctxs->_Reserved;
+    if(pRuleMatch->dwVersion != VMMYARA_RULE_MATCH_VERSION) { return FALSE; }
     for(i = 0; i < pRuleMatch->cStrings; i++) {
         for(j = 0; j < pRuleMatch->Strings[i].cMatch; j++) {
             ObSet_Push(ctxi->psvaResult, ctxs->vaCurrent + pRuleMatch->Strings[i].cbMatchOffset[j]);
