@@ -14,7 +14,7 @@ using System.Collections.Generic;
  *  (c) Ulf Frisk, 2020-2023
  *  Author: Ulf Frisk, pcileech@frizk.net
  *  
- *  Version 5.5
+ *  Version 5.6
  *  
  */
 
@@ -283,46 +283,49 @@ namespace vmmsharp
         // CORE FUNCTIONALITY BELOW:
         //---------------------------------------------------------------------
 
-        public const ulong OPT_CORE_PRINTF_ENABLE = 0x4000000100000000;  // RW
-        public const ulong OPT_CORE_VERBOSE = 0x4000000200000000;  // RW
-        public const ulong OPT_CORE_VERBOSE_EXTRA = 0x4000000300000000;  // RW
-        public const ulong OPT_CORE_VERBOSE_EXTRA_TLP = 0x4000000400000000;  // RW
-        public const ulong OPT_CORE_MAX_NATIVE_ADDRESS = 0x4000000800000000;  // R
+        public const ulong OPT_CORE_PRINTF_ENABLE =             0x4000000100000000;  // RW
+        public const ulong OPT_CORE_VERBOSE =                   0x4000000200000000;  // RW
+        public const ulong OPT_CORE_VERBOSE_EXTRA =             0x4000000300000000;  // RW
+        public const ulong OPT_CORE_VERBOSE_EXTRA_TLP =         0x4000000400000000;  // RW
+        public const ulong OPT_CORE_MAX_NATIVE_ADDRESS =        0x4000000800000000;  // R
+        public const ulong OPT_CORE_LEECHCORE_HANDLE =          0x4000001000000000;  // R - underlying leechcore handle (do not close).
 
-        public const ulong OPT_CORE_SYSTEM = 0x2000000100000000;  // R
-        public const ulong OPT_CORE_MEMORYMODEL = 0x2000000200000000;  // R
+        public const ulong OPT_CORE_SYSTEM =                    0x2000000100000000;  // R
+        public const ulong OPT_CORE_MEMORYMODEL =               0x2000000200000000;  // R
 
-        public const ulong OPT_CONFIG_IS_REFRESH_ENABLED = 0x2000000300000000;  // R - 1/0
-        public const ulong OPT_CONFIG_TICK_PERIOD = 0x2000000400000000;  // RW - base tick period in ms
-        public const ulong OPT_CONFIG_READCACHE_TICKS = 0x2000000500000000;  // RW - memory cache validity period (in ticks)
-        public const ulong OPT_CONFIG_TLBCACHE_TICKS = 0x2000000600000000;  // RW - page table (tlb) cache validity period (in ticks)
-        public const ulong OPT_CONFIG_PROCCACHE_TICKS_PARTIAL = 0x2000000700000000; // RW - process refresh (partial) period (in ticks)
-        public const ulong OPT_CONFIG_PROCCACHE_TICKS_TOTAL = 0x2000000800000000;  // RW - process refresh (full) period (in ticks)
-        public const ulong OPT_CONFIG_VMM_VERSION_MAJOR = 0x2000000900000000;  // R
-        public const ulong OPT_CONFIG_VMM_VERSION_MINOR = 0x2000000A00000000;  // R
-        public const ulong OPT_CONFIG_VMM_VERSION_REVISION = 0x2000000B00000000;  // R
-        public const ulong OPT_CONFIG_STATISTICS_FUNCTIONCALL = 0x2000000C00000000; // RW - enable function call statistics (.status/statistics_fncall file)
-        public const ulong OPT_CONFIG_IS_PAGING_ENABLED = 0x2000000D00000000;  // RW - 1/0
+        public const ulong OPT_CONFIG_IS_REFRESH_ENABLED =      0x2000000300000000;  // R - 1/0
+        public const ulong OPT_CONFIG_TICK_PERIOD =             0x2000000400000000;  // RW - base tick period in ms
+        public const ulong OPT_CONFIG_READCACHE_TICKS =         0x2000000500000000;  // RW - memory cache validity period (in ticks)
+        public const ulong OPT_CONFIG_TLBCACHE_TICKS =          0x2000000600000000;  // RW - page table (tlb) cache validity period (in ticks)
+        public const ulong OPT_CONFIG_PROCCACHE_TICKS_PARTIAL = 0x2000000700000000;  // RW - process refresh (partial) period (in ticks)
+        public const ulong OPT_CONFIG_PROCCACHE_TICKS_TOTAL =   0x2000000800000000;  // RW - process refresh (full) period (in ticks)
+        public const ulong OPT_CONFIG_VMM_VERSION_MAJOR =       0x2000000900000000;  // R
+        public const ulong OPT_CONFIG_VMM_VERSION_MINOR =       0x2000000A00000000;  // R
+        public const ulong OPT_CONFIG_VMM_VERSION_REVISION =    0x2000000B00000000;  // R
+        public const ulong OPT_CONFIG_STATISTICS_FUNCTIONCALL = 0x2000000C00000000;  // RW - enable function call statistics (.status/statistics_fncall file)
+        public const ulong OPT_CONFIG_IS_PAGING_ENABLED =       0x2000000D00000000;  // RW - 1/0
+        public const ulong OPT_CONFIG_DEBUG =                   0x2000000E00000000;  // W
+        public const ulong OPT_CONFIG_YARA_RULES =              0x2000000F00000000;  // R
 
-        public const ulong OPT_WIN_VERSION_MAJOR = 0x2000010100000000;  // R
-        public const ulong OPT_WIN_VERSION_MINOR = 0x2000010200000000;  // R
-        public const ulong OPT_WIN_VERSION_BUILD = 0x2000010300000000;  // R
+        public const ulong OPT_WIN_VERSION_MAJOR =              0x2000010100000000;  // R
+        public const ulong OPT_WIN_VERSION_MINOR =              0x2000010200000000;  // R
+        public const ulong OPT_WIN_VERSION_BUILD =              0x2000010300000000;  // R
+        public const ulong OPT_WIN_SYSTEM_UNIQUE_ID =           0x2000010400000000;  // R
 
-        public const ulong OPT_FORENSIC_MODE = 0x2000020100000000;  // RW - enable/retrieve forensic mode type [0-4].
+        public const ulong OPT_FORENSIC_MODE =                  0x2000020100000000;  // RW - enable/retrieve forensic mode type [0-4].
 
-        public const ulong OPT_REFRESH_ALL = 0x2001ffff00000000;  // W - refresh all caches
-        public const ulong OPT_REFRESH_FREQ_FAST = 0x2001040000000000;  // W - refresh fast frequency (including partial process listings)
-        public const ulong OPT_REFRESH_FREQ_MEDIUM = 0x2001000100000000;  // W - refresh medium frequency (including full process listings)
-        public const ulong OPT_REFRESH_FREQ_SLOW = 0x2001001000000000;  // W - refresh slow frequency (including registry)
-        public const ulong OPT_REFRESH_READ = 0x2001000200000000;  // W - refresh physical read cache
-        public const ulong OPT_REFRESH_TLB = 0x2001000400000000;  // W - refresh page table (TLB) cache
-        public const ulong OPT_REFRESH_PAGING = 0x2001000800000000;  // W - refresh virtual memory 'paging' cache
-        public const ulong OPT_REFRESH_USER = 0x2001002000000000;  // W
-        public const ulong OPT_REFRESH_PHYSMEMMAP = 0x2001004000000000;  // W
-        public const ulong OPT_REFRESH_PFN = 0x2001008000000000;  // W
-        public const ulong OPT_REFRESH_OBJ = 0x2001010000000000;  // W
-        public const ulong OPT_REFRESH_NET = 0x2001020000000000;  // W
+        // REFRESH OPTIONS:
+        public const ulong OPT_REFRESH_ALL =                    0x2001ffff00000000;  // W - refresh all caches
+        public const ulong OPT_REFRESH_FREQ_MEM =               0x2001100000000000;  // W - refresh memory cache (excl. TLB) [fully]
+        public const ulong OPT_REFRESH_FREQ_MEM_PARTIAL =       0x2001000200000000;  // W - refresh memory cache (excl. TLB) [partial 33%/call]
+        public const ulong OPT_REFRESH_FREQ_TLB =               0x2001080000000000;  // W - refresh page table (TLB) cache [fully]
+        public const ulong OPT_REFRESH_FREQ_TLB_PARTIAL =       0x2001000400000000;  // W - refresh page table (TLB) cache [partial 33%/call]
+        public const ulong OPT_REFRESH_FREQ_FAST =              0x2001040000000000;  // W - refresh fast frequency - incl. partial process refresh
+        public const ulong OPT_REFRESH_FREQ_MEDIUM =            0x2001000100000000;  // W - refresh medium frequency - incl. full process refresh
+        public const ulong OPT_REFRESH_FREQ_SLOW =              0x2001001000000000;  // W - refresh slow frequency.
 
+        // PROCESS OPTIONS: [LO-DWORD: Process PID]
+        public const ulong OPT_PROCESS_DTB = 0x2002000100000000;  // W - force set process directory table base.
 
         public enum MEMORYMODEL_TP
         {
