@@ -396,8 +396,8 @@ VOID FcJson_Callback_EntryAdd(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JS
 // FINDEVIL FUNCTIONALITY BELOW:
 // ----------------------------------------------------------------------------
 
-#define FCEVIL_LINEHEADER       "   #    PID Process        Type         Address          Description\n" \
-                                "--------------------------------------------------------------------\n"
+#define FCEVIL_LINEHEADER       "   #    PID Process        Type            Address          Description\n" \
+                                "-----------------------------------------------------------------------\n"
 static LPSTR FCEVIL_CSV_HEADER = "PID,ProcessName,Type,Address,Description\n";
 
 static LPSTR FCEVIL_YARA_NO_BUILTIN_RULES = 

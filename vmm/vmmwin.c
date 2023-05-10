@@ -1678,14 +1678,14 @@ BOOL VmmWinThread_Initialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
     if(pProcess->Map.pObThread) { return TRUE; }
     if(!H->vmm.fThreadMapEnabled) { return FALSE; }
     VmmTlbSpider(H, pProcess);
-    EnterCriticalSection(&pProcess->Map.LockUpdateThreadExtendedInfo);
+    EnterCriticalSection(&pProcess->LockUpdate);
     if(!pProcess->Map.pObThread) {
         VmmWinThread_Initialize_DoWork(H, pProcess);
         if(!pProcess->Map.pObThread) {
             pProcess->Map.pObThread = Ob_AllocEx(H, OB_TAG_MAP_THREAD, LMEM_ZEROINIT, sizeof(VMMOB_MAP_THREAD), NULL, NULL);
         }
     }
-    LeaveCriticalSection(&pProcess->Map.LockUpdateThreadExtendedInfo);
+    LeaveCriticalSection(&pProcess->LockUpdate);
     return pProcess->Map.pObThread ? TRUE : FALSE;
 }
 
@@ -2677,12 +2677,12 @@ BOOL VmmWinHandle_InitializeText(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
 {
     PVMM_PROCESS pObSystemProcess;
     if(pProcess->Map.pObHandle->pbMultiText) { return TRUE; }
-    EnterCriticalSection(&pProcess->Map.LockUpdateThreadExtendedInfo);
+    EnterCriticalSection(&pProcess->LockUpdate);
     if(!pProcess->Map.pObHandle->pbMultiText && (pObSystemProcess = VmmProcessGet(H, 4))) {
         VmmWinHandle_InitializeText_DoWork(H, pObSystemProcess, pProcess->Map.pObHandle);
         Ob_DECREF(pObSystemProcess);
     }
-    LeaveCriticalSection(&pProcess->Map.LockUpdateThreadExtendedInfo);
+    LeaveCriticalSection(&pProcess->LockUpdate);
     return pProcess->Map.pObHandle->pbMultiText ? TRUE : FALSE;
 }
 

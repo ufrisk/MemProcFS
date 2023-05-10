@@ -1,6 +1,6 @@
 [package]
 name = "memprocfs"
-version = "5.6.0"
+version = "5.6.1"
 edition = "2021"
 description = "MemProcFS - Physical Memory Analysis Framework"
 homepage = "https://github.com/ufrisk/MemProcFS"
@@ -15,5 +15,6 @@ name = "memprocfs"
 path = "src/lib_memprocfs.rs"
 
 [dependencies]
+anyhow = "1.0"
+libloading = "0.8"
 serde = { version = "1.0", features = ["derive"] }
-libloading = "0.7.4"

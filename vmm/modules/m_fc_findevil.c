@@ -7,9 +7,6 @@
 #include "modules.h"
 #include "../mm/mm.h"
 
-#define MFINDEVIL_LINELENGTH_X64   214ULL
-#define MFINDEVIL_LINEHEADER       "   #    PID Process         Type        Address          Description"
-
 LPCSTR szM_FC_FINDEVIL_README =
 "Find Evil tries to identify and discover signs of malware infection.         \n" \
 "Find Evil currently detect some types of malware infection by memory analysis\n" \

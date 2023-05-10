@@ -1178,20 +1178,12 @@ BOOL MmVad_MapInitialize_ExtendedInfo(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProc
 {
     PVMM_PROCESS pObSystemProcess;
     if(tp <= pProcess->Map.pObVad->tp) { return TRUE; }
-    if(tp == VMM_VADMAP_TP_PARTIAL) {
-        EnterCriticalSection(&pProcess->LockUpdate);
-    } else {
-        EnterCriticalSection(&pProcess->Map.LockUpdateThreadExtendedInfo);
-    }
+    EnterCriticalSection(&pProcess->LockUpdate);
     if((pProcess->Map.pObVad->tp < tp) && (pObSystemProcess = VmmProcessGet(H, 4))) {
         MmVad_ExtendedInfoFetch(H, pObSystemProcess, pProcess, tp, fVmmRead | VMM_FLAG_NOVAD);
         Ob_DECREF(pObSystemProcess);
     }
-    if(tp == VMM_VADMAP_TP_PARTIAL) {
-        LeaveCriticalSection(&pProcess->LockUpdate);
-    } else {
-        LeaveCriticalSection(&pProcess->Map.LockUpdateThreadExtendedInfo);
-    }
+    LeaveCriticalSection(&pProcess->LockUpdate);
     return (pProcess->Map.pObVad->tp >= tp);
 }
 

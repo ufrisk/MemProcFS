@@ -1047,10 +1047,6 @@ typedef struct tdVMM_PROCESS {
         PVMMOB_MAP_HEAP pObHeap;
         PVMMOB_MAP_THREAD pObThread;
         PVMMOB_MAP_HANDLE pObHandle;
-        // separate locks from main process lock to avoid deadlocks
-        // but also for increased parallelization for slow tasks.
-        CRITICAL_SECTION LockUpdateThreadExtendedInfo;
-        CRITICAL_SECTION LockUpdateMapEvil;
     } Map;
     PVMMOB_PROCESS_PERSISTENT pObPersistent;     // Always exists
     struct {

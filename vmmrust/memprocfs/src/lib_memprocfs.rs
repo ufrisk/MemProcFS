@@ -91,15 +91,16 @@
 use std::collections::HashMap;
 use std::ffi::{CStr, CString, c_char, c_int};
 use std::fmt;
+use anyhow::{anyhow, Context};
 use serde::{Serialize, Deserialize};
 
 
 
 /// Result type for MemProcFS API.
 /// 
-/// The MemProcFS result type contains a function-defined return type and
-/// a String error type.
-pub type ResultEx<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+/// The MemProcFS result type is a wrapper around the anyhow::Result type.
+/// It contains a function-defined return type and a String error type.
+pub type ResultEx<T> = anyhow::Result<T>;
 
 
 
@@ -3726,8 +3727,12 @@ fn impl_new<'a>(vmm_lib_path : &str, h_vmm_existing_opt : usize, args: &Vec<&str
         } else {
             path_lc = path_lc.join("leechcore.so");
         }
-        let lib_lc : libloading::Library = libloading::Library::new(path_lc.to_str().unwrap_or(""))?;
-        let lib : libloading::Library = libloading::Library::new(path_vmm.to_str().unwrap_or(""))?;
+        let str_path_lc = path_lc.to_str().unwrap_or("");
+        let str_path_vmm = path_vmm.to_str().unwrap_or("");
+        let lib_lc : libloading::Library = libloading::Library::new(str_path_lc)
+            .with_context(|| format!("Failed to load leechcore library at: {}", str_path_lc))?;
+        let lib : libloading::Library = libloading::Library::new(str_path_vmm)
+            .with_context(|| format!("Failed to load vmm library at: {}", str_path_vmm))?;
         // fetch function references:
         let VMMDLL_Initialize : extern "C" fn(argc: c_int, argv: *const *const c_char) -> usize = *lib.get(b"VMMDLL_Initialize")?;
         let VMMDLL_InitializePlugins : extern "C" fn(usize) -> bool = *lib.get(b"VMMDLL_InitializePlugins")?;
@@ -3802,11 +3807,11 @@ fn impl_new<'a>(vmm_lib_path : &str, h_vmm_existing_opt : usize, args: &Vec<&str
             let argc: c_int = args.len() as c_int;
             h = (VMMDLL_Initialize)(argc, argv.as_ptr());
             if h == 0 {
-                return Err("VMMDLL_Initialize: fail".into());
+                return Err(anyhow!("VMMDLL_Initialize: fail"));
             }
             let r = (VMMDLL_InitializePlugins)(h);
             if !r {
-                return Err("VMMDLL_InitializePlugins: fail".into());
+                return Err(anyhow!("VMMDLL_InitializePlugins: fail"));
             }
         }
         // return Vmm struct:
@@ -3890,11 +3895,11 @@ fn impl_new<'a>(vmm_lib_path : &str, h_vmm_existing_opt : usize, args: &Vec<&str
 #[allow(non_snake_case)]
 fn impl_new_from_virtual_machine<'a>(vmm_parent : &'a Vmm, vm_entry : &VmmMapVirtualMachineEntry) -> ResultEx<Vmm<'a>> {
     if vmm_parent.native.h != vm_entry.h_vmm {
-        return Err("Invalid parent/vm relationship.".into());
+        return Err(anyhow!("Invalid parent/vm relationship."));
     }
     let h_vmm_vm = (vmm_parent.native.VMMDLL_VmGetVmmHandle)(vmm_parent.native.h, vm_entry.h_vm);
     if h_vmm_vm == 0 {
-        return Err("VMMDLL_VmGetVmmHandle: fail.".into());
+        return Err(anyhow!("VMMDLL_VmGetVmmHandle: fail."));
     }
     let native = VmmNative {
         h: vmm_parent.native.h,
@@ -4454,12 +4459,12 @@ impl Vmm<'_> {
     fn impl_get_config(&self, config_id : u64) -> ResultEx<u64> {
         let mut v = 0;
         let f = (self.native.VMMDLL_ConfigGet)(self.native.h, config_id, &mut v);
-        return if f { Ok(v) } else { Err("VMMDLL_ConfigGet: fail".into()) };
+        return if f { Ok(v) } else { Err(anyhow!("VMMDLL_ConfigGet: fail")) };
     }
 
     fn impl_set_config(&self, config_id : u64, config_value : u64) -> ResultEx<()> {
         let f = (self.native.VMMDLL_ConfigSet)(self.native.h, config_id, config_value);
-        return if f { Ok(()) } else { Err("VMMDLL_ConfigSet: fail".into()) };
+        return if f { Ok(()) } else { Err(anyhow!("VMMDLL_ConfigSet: fail")) };
     }
 
     fn impl_process_from_pid(&self, pid : u32) -> ResultEx<VmmProcess> {
@@ -4471,7 +4476,7 @@ impl Vmm<'_> {
         if process_list.contains(&process) {
             return Ok(process);
         }
-        return Err(format!("VMMDLL_PidGetFromName: fail. PID '{pid}' does not exist.").into());
+        return Err(anyhow!("VMMDLL_PidGetFromName: fail. PID '{pid}' does not exist."));
     }
 
     fn impl_process_from_name(&self, process_name : &str) -> ResultEx<VmmProcess> {
@@ -4479,7 +4484,7 @@ impl Vmm<'_> {
         let sz_process_name = CString::new(process_name)?;
         let r = (self.native.VMMDLL_PidGetFromName)(self.native.h, sz_process_name.as_ptr(), &mut pid);
         if !r {
-            return Err(format!("VMMDLL_PidGetFromName: fail. Process '{process_name}' does not exist.").into());
+            return Err(anyhow!("VMMDLL_PidGetFromName: fail. Process '{process_name}' does not exist."));
         }
         return Ok(VmmProcess {
             vmm : &self,
@@ -4491,12 +4496,12 @@ impl Vmm<'_> {
         let mut cpids : usize = 0;
         let r = (self.native.VMMDLL_PidList)(self.native.h, std::ptr::null_mut(), &mut cpids);
         if !r || cpids > 0x00100000 {
-            return Err("VMMDLL_PidList: fail.".into());
+            return Err(anyhow!("VMMDLL_PidList: fail."));
         }
         let mut pids = vec![0u32; cpids];
         let r = (self.native.VMMDLL_PidList)(self.native.h, pids.as_mut_ptr(), &mut cpids);
         if !r || cpids > 0x00100000 {
-            return Err("VMMDLL_PidList: fail.".into());
+            return Err(anyhow!("VMMDLL_PidList: fail."));
         }
         let mut proclist = Vec::new();
         for i in 0..cpids {
@@ -4514,11 +4519,11 @@ impl Vmm<'_> {
             let flags = if is_extended { 1 } else { 0 };
             let r = (self.native.VMMDLL_Map_GetPfnEx)(self.native.h, pfns.as_ptr(), u32::try_from(pfns.len())?, &mut structs, flags);
             if !r {
-                return Err("VMMDLL_Map_GetPfnEx: fail.".into());
+                return Err(anyhow!("VMMDLL_Map_GetPfnEx: fail."));
             }
             if (*structs).dwVersion != VMMDLL_MAP_PFN_VERSION {
                 (self.native.VMMDLL_MemFree)(structs as usize);
-                return Err("VMMDLL_Map_GetPfnEx: bad version.".into());
+                return Err(anyhow!("VMMDLL_Map_GetPfnEx: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_PFN_VERSION));
             }
             let mut result = Vec::new();
             if (*structs).cMap == 0 {
@@ -4554,11 +4559,11 @@ impl Vmm<'_> {
             let mut structs  = std::ptr::null_mut();
             let r = (self.native.VMMDLL_Map_GetPhysMem)(self.native.h, &mut structs);
             if !r {
-                return Err("VMMDLL_Map_GetPhysMem: fail.".into());
+                return Err(anyhow!("VMMDLL_Map_GetPhysMem: fail."));
             }
             if (*structs).dwVersion != VMMDLL_MAP_PHYSMEM_VERSION {
                 (self.native.VMMDLL_MemFree)(structs as usize);
-                return Err("VMMDLL_Map_GetPhysMem: bad version.".into());
+                return Err(anyhow!("VMMDLL_Map_GetPhysMem: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_PHYSMEM_VERSION));
             }
             let mut result = Vec::new();
             if (*structs).cMap == 0 {
@@ -4585,11 +4590,11 @@ impl Vmm<'_> {
             let mut structs = std::ptr::null_mut();
             let r = (self.native.VMMDLL_Map_GetNetU)(self.native.h, &mut structs);
             if !r {
-                return Err("VMMDLL_Map_GetNetU: fail.".into());
+                return Err(anyhow!("VMMDLL_Map_GetNetU: fail."));
             }
             if (*structs).dwVersion != VMMDLL_MAP_NET_VERSION {
                 (self.native.VMMDLL_MemFree)(structs as usize);
-                return Err("VMMDLL_Map_GetNetU: bad version.".into());
+                return Err(anyhow!("VMMDLL_Map_GetNetU: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_NET_VERSION));
             }
             let mut result = Vec::new();
             if (*structs).cMap == 0 {
@@ -4630,11 +4635,11 @@ impl Vmm<'_> {
             let flags = if is_bigpool_only { 1 } else { 0 };
             let r = (self.native.VMMDLL_Map_GetPool)(self.native.h, &mut structs, flags);
             if !r {
-                return Err("VMMDLL_Map_GetPool: fail.".into());
+                return Err(anyhow!("VMMDLL_Map_GetPool: fail."));
             }
             if (*structs).dwVersion != VMMDLL_MAP_POOL_VERSION {
                 (self.native.VMMDLL_MemFree)(structs as usize);
-                return Err("VMMDLL_Map_GetPool: bad version.".into());
+                return Err(anyhow!("VMMDLL_Map_GetPool: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_POOL_VERSION));
             }
             let mut result = Vec::new();
             if (*structs).cMap == 0 {
@@ -4665,11 +4670,11 @@ impl Vmm<'_> {
             let mut structs = std::ptr::null_mut();
             let r = (self.native.VMMDLL_Map_GetServicesU)(self.native.h, &mut structs);
             if !r {
-                return Err("VMMDLL_Map_GetServicesU: fail.".into());
+                return Err(anyhow!("VMMDLL_Map_GetServicesU: fail."));
             }
             if (*structs).dwVersion != VMMDLL_MAP_SERVICE_VERSION {
                 (self.native.VMMDLL_MemFree)(structs as usize);
-                return Err("VMMDLL_Map_GetServicesU: bad version.".into());
+                return Err(anyhow!("VMMDLL_Map_GetServicesU: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_SERVICE_VERSION));
             }
             let mut result = Vec::new();
             if (*structs).cMap == 0 {
@@ -4711,11 +4716,11 @@ impl Vmm<'_> {
             let mut structs = std::ptr::null_mut();
             let r = (self.native.VMMDLL_Map_GetUsersU)(self.native.h, &mut structs);
             if !r {
-                return Err("VMMDLL_Map_GetUsersU: fail.".into());
+                return Err(anyhow!("VMMDLL_Map_GetUsersU: fail."));
             }
             if (*structs).dwVersion != VMMDLL_MAP_USER_VERSION {
                 (self.native.VMMDLL_MemFree)(structs as usize);
-                return Err("VMMDLL_Map_GetUsersU: bad version.".into());
+                return Err(anyhow!("VMMDLL_Map_GetUsersU: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_USER_VERSION));
             }
             let mut result = Vec::new();
             if (*structs).cMap == 0 {
@@ -4743,11 +4748,11 @@ impl Vmm<'_> {
             let mut structs = std::ptr::null_mut();
             let r = (self.native.VMMDLL_Map_GetVMU)(self.native.h, &mut structs);
             if !r {
-                return Err("VMMDLL_Map_GetVMU: fail.".into());
+                return Err(anyhow!("VMMDLL_Map_GetVMU: fail."));
             }
             if (*structs).dwVersion != VMMDLL_MAP_VM_VERSION {
                 (self.native.VMMDLL_MemFree)(structs as usize);
-                return Err("VMMDLL_Map_GetVMU: bad version.".into());
+                return Err(anyhow!("VMMDLL_Map_GetVMU: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_VM_VERSION));
             }
             let mut result = Vec::new();
             if (*structs).cMap == 0 {
@@ -4786,7 +4791,7 @@ impl Vmm<'_> {
         let mut pb_result = vec![0u8; size];
         let r = (self.native.VMMDLL_MemReadEx)(self.native.h, pid, va, pb_result.as_mut_ptr(), cb, &mut cb_read, flags);
         if !r {
-            return Err("VMMDLL_MemReadEx: fail.".into());
+            return Err(anyhow!("VMMDLL_MemReadEx: fail."));
         }
         return Ok(pb_result);
     }
@@ -4798,7 +4803,7 @@ impl Vmm<'_> {
             let mut result : T = std::mem::zeroed();
             let r = (self.native.VMMDLL_MemReadEx)(self.native.h, pid, va, &mut result as *mut _ as *mut u8, cb, &mut cb_read, flags);
             if !r {
-                return Err("VMMDLL_MemReadEx: fail.".into());
+                return Err(anyhow!("VMMDLL_MemReadEx: fail."));
             }
             return Ok(result);
         }
@@ -4808,7 +4813,7 @@ impl Vmm<'_> {
         let flags = u32::try_from(flags)?;
         let r = (self.native.VMMDLL_Scatter_Initialize)(self.native.h, pid, flags);
         if r == 0 {
-            return Err("VMMDLL_Scatter_Initialize: fail.".into());
+            return Err(anyhow!("VMMDLL_Scatter_Initialize: fail."));
         }
         return Ok(VmmScatterMemory {
             vmm : &self,
@@ -4823,7 +4828,7 @@ impl Vmm<'_> {
         let mut pa : u64 = 0;
         let r = (self.native.VMMDLL_MemVirt2Phys)(self.native.h, pid, va, &mut pa);
         if !r {
-            return Err("VMMDLL_MemVirt2Phys: fail.".into());
+            return Err(anyhow!("VMMDLL_MemVirt2Phys: fail."));
         }
         return Ok(pa);
     }
@@ -4833,7 +4838,7 @@ impl Vmm<'_> {
         let pb = data.as_ptr();
         let r = (self.native.VMMDLL_MemWrite)(self.native.h, pid, va, pb, cb);
         if !r {
-            return Err("VMMDLL_MemWrite: fail.".into());
+            return Err(anyhow!("VMMDLL_MemWrite: fail."));
         }
         return Ok(());
     }
@@ -4842,7 +4847,7 @@ impl Vmm<'_> {
         let cb = u32::try_from(std::mem::size_of::<T>())?;
         let r = (self.native.VMMDLL_MemWrite)(self.native.h, pid, va, data as *const _ as *const u8, cb);
         if !r {
-            return Err("VMMDLL_MemWrite: fail.".into());
+            return Err(anyhow!("VMMDLL_MemWrite: fail."));
         }
         return Ok(());
     }
@@ -4859,7 +4864,7 @@ impl Vmm<'_> {
         };
         let r = (self.native.VMMDLL_VfsListU)(self.native.h, c_path.as_ptr(), &mut filelist2);
         if !r {
-            return Err("VMMDLL_VfsListU: fail.".into());
+            return Err(anyhow!("VMMDLL_VfsListU: fail."));
         }
         return Ok(vec_result);
     }
@@ -4870,7 +4875,7 @@ impl Vmm<'_> {
         let mut data = vec![0u8; size as usize];
         let ntstatus = (self.native.VMMDLL_VfsReadU)(self.native.h, c_filename.as_ptr(), data.as_mut_ptr(), size, &mut cb_read, offset);
         if ntstatus != 0 && ntstatus != 0xC0000011 {
-            return Err("VMMDLL_VfsReadU: fail.".into());
+            return Err(anyhow!("VMMDLL_VfsReadU: fail."));
         }
         if cb_read < size {
             data.resize(cb_read as usize, 0);
@@ -4891,7 +4896,7 @@ impl Vmm<'_> {
             let mut cHives = 0;
             let r = (self.native.VMMDLL_WinReg_HiveList)(self.native.h, std::ptr::null_mut(), 0, &mut cHives);
             if !r {
-                return Err("VMMDLL_WinReg_HiveList: fail.".into());
+                return Err(anyhow!("VMMDLL_WinReg_HiveList: fail."));
             }
             if cHives == 0 {
                 return Ok(Vec::new());
@@ -4901,7 +4906,7 @@ impl Vmm<'_> {
             let ptr = bytes.as_mut_ptr() as *mut CRegHive;
             let r = (self.native.VMMDLL_WinReg_HiveList)(self.native.h, ptr, cHives, &mut cHives);
             if !r {
-                return Err("VMMDLL_WinReg_HiveList: fail.".into());
+                return Err(anyhow!("VMMDLL_WinReg_HiveList: fail."));
             }
             if cHives == 0 {
                 return Ok(Vec::new());
@@ -4911,7 +4916,7 @@ impl Vmm<'_> {
             for i in 0..cHives as usize {
                 let ne = &pMap[i];
                 if (ne.magic != VMMDLL_REGISTRY_HIVE_INFORMATION_MAGIC) || (ne.wVersion != VMMDLL_REGISTRY_HIVE_INFORMATION_VERSION) {
-                    return Err("Hive Bad Version.".into());
+                    return Err(anyhow!("Hive Bad Version."));
                 }
                 let e = VmmRegHive {
                     vmm : &self,
@@ -4935,7 +4940,7 @@ impl Vmm<'_> {
                 return Ok(split);
             }
         }
-        return Err("[err]".into());
+        return Err(anyhow!("[err]"));
     }
 
     fn impl_reg_key(&self, path : &str) -> ResultEx<VmmRegKey> {
@@ -4944,7 +4949,7 @@ impl Vmm<'_> {
         let c_path = CString::new(path)?;
         let r = (self.native.VMMDLL_WinReg_EnumKeyExU)(self.native.h, c_path.as_ptr(), u32::MAX, std::ptr::null_mut(), &mut cch, &mut ftLastWrite);
         if !r {
-            return Err("VMMDLL_WinReg_EnumKeyExU: fail.".into());
+            return Err(anyhow!("VMMDLL_WinReg_EnumKeyExU: fail."));
         }
         let pathname = Vmm::impl_reg_pathsplit(path)?;
         let result = VmmRegKey {
@@ -4964,14 +4969,14 @@ impl Vmm<'_> {
         let c_path = CString::new(path)?;
         let r = (self.native.VMMDLL_WinReg_QueryValueExU)(self.native.h, c_path.as_ptr(), &mut raw_type, v.as_mut_ptr(), &mut raw_size);
         if !r {
-            return Err("VMMDLL_WinReg_QueryValueExU: fail.".into());
+            return Err(anyhow!("VMMDLL_WinReg_QueryValueExU: fail."));
         }
         if raw_size < v.len() as u32 {
             raw_value = Some(v[0..raw_size as usize].to_vec());
         } else {
             let r = (self.native.VMMDLL_WinReg_QueryValueExU)(self.native.h, c_path.as_ptr(), std::ptr::null_mut(), std::ptr::null_mut(), &mut raw_size);
             if !r {
-                return Err("VMMDLL_WinReg_QueryValueExU: fail.".into());
+                return Err(anyhow!("VMMDLL_WinReg_QueryValueExU: fail."));
             }
         }
         let pathname = Vmm::impl_reg_pathsplit(path)?;
@@ -5024,7 +5029,7 @@ impl VmmPdb<'_> {
         let mut result_symbol_displacement = 0;
         let r = (self.vmm.native.VMMDLL_PdbSymbolName)(self.vmm.native.h, c_module.as_ptr(), va_or_offset, c_symbol_name.as_mut_ptr(), &mut result_symbol_displacement);
         if !r {
-            return Err("VMMDLL_PdbSymbolName: fail.".into());
+            return Err(anyhow!("VMMDLL_PdbSymbolName: fail."));
         }
         let cstr_symbol_name = unsafe { CStr::from_ptr(c_symbol_name.as_ptr()) };
         let string_symbol_name = String::from_utf8_lossy(cstr_symbol_name.to_bytes()).to_string();
@@ -5037,7 +5042,7 @@ impl VmmPdb<'_> {
         let mut result = 0;
         let r = (self.vmm.native.VMMDLL_PdbSymbolAddress)(self.vmm.native.h, c_module.as_ptr(), c_symbol_name.as_ptr(), &mut result);
         if !r {
-            return Err("VMMDLL_PdbSymbolAddress: fail.".into());
+            return Err(anyhow!("VMMDLL_PdbSymbolAddress: fail."));
         }
         return Ok(result);
     }
@@ -5048,7 +5053,7 @@ impl VmmPdb<'_> {
         let mut result = 0;
         let r = (self.vmm.native.VMMDLL_PdbTypeSize)(self.vmm.native.h, c_module.as_ptr(), c_type_name.as_ptr(), &mut result);
         if !r {
-            return Err("VMMDLL_PdbTypeSize: fail.".into());
+            return Err(anyhow!("VMMDLL_PdbTypeSize: fail."));
         }
         return Ok(result);
     }
@@ -5060,7 +5065,7 @@ impl VmmPdb<'_> {
         let mut result = 0;
         let r = (self.vmm.native.VMMDLL_PdbTypeChildOffset)(self.vmm.native.h, c_module.as_ptr(), c_type_name.as_ptr(), c_type_child_name.as_ptr(), &mut result);
         if !r {
-            return Err("VMMDLL_PdbTypeChildOffset: fail.".into());
+            return Err(anyhow!("VMMDLL_PdbTypeChildOffset: fail."));
         }
         return Ok(result);
     }
@@ -5138,7 +5143,7 @@ impl VmmRegHive<'_> {
         let mut pb_result = vec![0u8; size];
         let r = (self.vmm.native.VMMDLL_WinReg_HiveReadEx)(self.vmm.native.h, self.va, ra, pb_result.as_mut_ptr(), cb, &mut cb_read, flags);
         if !r {
-            return Err("VMMDLL_WinReg_HiveReadEx: fail.".into());
+            return Err(anyhow!("VMMDLL_WinReg_HiveReadEx: fail."));
         }
         return Ok(pb_result);
     }
@@ -5148,7 +5153,7 @@ impl VmmRegHive<'_> {
         let pb = data.as_ptr();
         let r = (self.vmm.native.VMMDLL_WinReg_HiveWrite)(self.vmm.native.h, self.va, ra, pb, cb);
         if !r {
-            return Err("VMMDLL_WinReg_HiveWrite: fail.".into());
+            return Err(anyhow!("VMMDLL_WinReg_HiveWrite: fail."));
         }
         return Ok(());
     }
@@ -5192,7 +5197,7 @@ impl VmmRegKey<'_> {
     }
 
     fn impl_values(&self) -> ResultEx<Vec<VmmRegValue>> {
-        return Err("Not implemented".into());
+        return Err(anyhow!("Not implemented"));
     }
 }
 
@@ -5209,14 +5214,14 @@ impl VmmRegValue<'_> {
             }
             // size larger than 64 bytes -> not cached in VmmRegValue.
             if self.raw_size > 0x01000000 {
-                return Err("VmmRegKey size too large (>16MB).".into());
+                return Err(anyhow!("VmmRegKey size too large (>16MB)."));
             }
             let mut raw_value = vec![0; self.raw_size as usize];
             let c_path = CString::new(self.path.clone())?;
             let mut raw_size = self.raw_size;
             let r = (self.vmm.native.VMMDLL_WinReg_QueryValueExU)(self.vmm.native.h, c_path.as_ptr(), std::ptr::null_mut(), raw_value.as_mut_ptr(), &mut raw_size);
             if !r {
-                return Err("VMMDLL_WinReg_QueryValueExU: fail.".into());
+                return Err(anyhow!("VMMDLL_WinReg_QueryValueExU: fail."));
             }
             return Ok(raw_value);
     }
@@ -5239,7 +5244,7 @@ impl VmmRegValue<'_> {
             return Ok(VmmRegValueType::REG_NONE);
         }
         if self.raw_type > REG_QWORD {
-            return Err("Unknown registry value type.".into());
+            return Err(anyhow!("Unknown registry value type."));
         }
         // Get data using method call since data may be larger than cached data.
         let raw_value = self.raw_value()?;
@@ -5264,7 +5269,7 @@ impl VmmRegValue<'_> {
         }
         // UTF16 below
         if raw_value.len() % 2 == 1 {
-            return Err("Invalid size".into());
+            return Err(anyhow!("Invalid size"));
         }
         let mut raw_chars = vec![0u16; raw_value.len() / 2];
         unsafe {
@@ -5289,7 +5294,7 @@ impl VmmRegValue<'_> {
             REG_SZ => return Ok(VmmRegValueType::REG_SZ(result_string)),
             REG_EXPAND_SZ => return Ok(VmmRegValueType::REG_EXPAND_SZ(result_string)),
             REG_LINK => return Ok(VmmRegValueType::REG_LINK(result_string)),
-            _ => return Err("[err]".into()),
+            _ => return Err(anyhow!("[err]")),
         };
     }
 }
@@ -5932,7 +5937,7 @@ impl VmmProcess<'_> {
         let raw_pi = &mut pi as *mut CProcessInformation;
         let r = (self.vmm.native.VMMDLL_ProcessGetInformation)(self.vmm.native.h, self.pid, raw_pi, &mut cb_pi);
         if !r {
-            return Err("VMMDLL_ProcessGetInformation: fail.".into());
+            return Err(anyhow!("VMMDLL_ProcessGetInformation: fail."));
         }
         let result = VmmProcessInfo {
             tp_system : VmmSystemType::from(pi.tpSystem),
@@ -5960,7 +5965,7 @@ impl VmmProcess<'_> {
     fn impl_get_information_string(&self, option : u32) -> ResultEx<String> {
         let r = (self.vmm.native.VMMDLL_ProcessGetInformationString)(self.vmm.native.h, self.pid, option);
         if r.is_null() {
-            return Err("VMMDLL_ProcessGetInformationString: fail.".into());
+            return Err(anyhow!("VMMDLL_ProcessGetInformationString: fail."));
         }
         let cstr = unsafe { CStr::from_ptr(r) };
         let result = cstr.to_string_lossy().to_string();
@@ -5972,7 +5977,7 @@ impl VmmProcess<'_> {
         let sz_module_name = CString::new(module_name)?;
         let r = (self.vmm.native.VMMDLL_ProcessGetModuleBaseU)(self.vmm.native.h, self.pid, sz_module_name.as_ptr());
         if r == 0 {
-            return Err("VMMDLL_ProcessGetModuleBaseU: fail.".into());
+            return Err(anyhow!("VMMDLL_ProcessGetModuleBaseU: fail."));
         }
         return Ok(r);
     }
@@ -5982,7 +5987,7 @@ impl VmmProcess<'_> {
         let sz_function_name = CString::new(function_name)?;
         let r = (self.vmm.native.VMMDLL_ProcessGetProcAddressU)(self.vmm.native.h, self.pid, sz_module_name.as_ptr(), sz_function_name.as_ptr());
         if r == 0 {
-            return Err("VMMDLL_ProcessGetProcAddressU: fail.".into());
+            return Err(anyhow!("VMMDLL_ProcessGetProcAddressU: fail."));
         }
         return Ok(r);
     }
@@ -5991,7 +5996,7 @@ impl VmmProcess<'_> {
         let mut szModuleName = [0i8; MAX_PATH + 1];
         let r = (self.vmm.native.VMMDLL_PdbLoad)(self.vmm.native.h, self.pid, va_module_base, szModuleName.as_mut_ptr());
         if !r {
-            return Err("VMMDLL_PdbLoad: fail.".into());
+            return Err(anyhow!("VMMDLL_PdbLoad: fail."));
         }
         let cstr = unsafe { CStr::from_ptr(szModuleName.as_ptr()) };
         let module = cstr.to_string_lossy().to_string();
@@ -6007,11 +6012,11 @@ impl VmmProcess<'_> {
             let mut structs = std::ptr::null_mut();
             let r = (self.vmm.native.VMMDLL_Map_GetHandleU)(self.vmm.native.h, self.pid, &mut structs);
             if !r {
-                return Err("VMMDLL_Map_GetHandleU: fail.".into());
+                return Err(anyhow!("VMMDLL_Map_GetHandleU: fail."));
             }
             if (*structs).dwVersion != VMMDLL_MAP_HANDLE_VERSION {
                 (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-                return Err("VMMDLL_Map_GetHandleU: bad version.".into());
+                return Err(anyhow!("VMMDLL_Map_GetHandleU: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_HANDLE_VERSION));
             }
             let mut result = Vec::new();
             if (*structs).cMap == 0 {
@@ -6049,11 +6054,11 @@ impl VmmProcess<'_> {
             let mut structs = std::ptr::null_mut();
             let r = (self.vmm.native.VMMDLL_Map_GetHeap)(self.vmm.native.h, self.pid, &mut structs);
             if !r {
-                return Err("VMMDLL_Map_GetHeap: fail.".into());
+                return Err(anyhow!("VMMDLL_Map_GetHeap: fail."));
             }
             if (*structs).dwVersion != VMMDLL_MAP_HEAP_VERSION {
                 (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-                return Err("VMMDLL_Map_GetHeap: bad version.".into());
+                return Err(anyhow!("VMMDLL_Map_GetHeap: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_HEAP_VERSION));
             }
             let mut result = Vec::new();
             if (*structs).cMap == 0 {
@@ -6083,11 +6088,11 @@ impl VmmProcess<'_> {
             let mut structs = std::ptr::null_mut();
             let r = (self.vmm.native.VMMDLL_Map_GetHeapAlloc)(self.vmm.native.h, self.pid, heap_number_or_address, &mut structs);
             if !r {
-                return Err("VMMDLL_Map_GetHeapAlloc: fail.".into());
+                return Err(anyhow!("VMMDLL_Map_GetHeapAlloc: fail."));
             }
             if (*structs).dwVersion != VMMDLL_MAP_HEAPALLOC_VERSION {
                 (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-                return Err("VMMDLL_Map_GetHeapAlloc: bad version.".into());
+                return Err(anyhow!("VMMDLL_Map_GetHeapAlloc: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_HEAPALLOC_VERSION));
             }
             let mut result = Vec::new();
             if (*structs).cMap == 0 {
@@ -6117,11 +6122,11 @@ impl VmmProcess<'_> {
             let flags = 0 + if is_info_debug { 1 } else { 0 } + if is_info_version { 2 } else { 0 };
             let r = (self.vmm.native.VMMDLL_Map_GetModuleU)(self.vmm.native.h, self.pid, &mut structs, flags);
             if !r {
-                return Err("VMMDLL_Map_GetModuleU: fail.".into());
+                return Err(anyhow!("VMMDLL_Map_GetModuleU: fail."));
             }
             if (*structs).dwVersion != VMMDLL_MAP_MODULE_VERSION {
                 (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-                return Err("VMMDLL_Map_GetModuleU: bad version.".into());
+                return Err(anyhow!("VMMDLL_Map_GetModuleU: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_MODULE_VERSION));
             }
             let mut result = Vec::new();
             if (*structs).cMap == 0 {
@@ -6187,11 +6192,11 @@ impl VmmProcess<'_> {
             let sz_module_name = CString::new(module_name)?;
             let r = (self.vmm.native.VMMDLL_Map_GetEATU)(self.vmm.native.h, self.pid, sz_module_name.as_ptr(), &mut structs);
             if !r {
-                return Err("VMMDLL_Map_GetEATU: fail.".into());
+                return Err(anyhow!("VMMDLL_Map_GetEATU: fail."));
             }
             if (*structs).dwVersion != VMMDLL_MAP_EAT_VERSION {
                 (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-                return Err("VMMDLL_Map_GetEATU: bad version.".into());
+                return Err(anyhow!("VMMDLL_Map_GetEATU: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_EAT_VERSION));
             }
             let mut result = Vec::new();
             if (*structs).cMap == 0 {
@@ -6222,11 +6227,11 @@ impl VmmProcess<'_> {
             let sz_module_name = CString::new(module_name)?;
             let r = (self.vmm.native.VMMDLL_Map_GetIATU)(self.vmm.native.h, self.pid, sz_module_name.as_ptr(), &mut structs);
             if !r {
-                return Err("VMMDLL_Map_GetIATU: fail.".into());
+                return Err(anyhow!("VMMDLL_Map_GetIATU: fail."));
             }
             if (*structs).dwVersion != VMMDLL_MAP_IAT_VERSION {
                 (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-                return Err("VMMDLL_Map_GetIATU: bad version.".into());
+                return Err(anyhow!("VMMDLL_Map_GetIATU: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_IAT_VERSION));
             }
             let mut result = Vec::new();
             if (*structs).cMap == 0 {
@@ -6255,11 +6260,11 @@ impl VmmProcess<'_> {
             let mut structs = std::ptr::null_mut();
             let r = (self.vmm.native.VMMDLL_Map_GetPteU)(self.vmm.native.h, self.pid, is_identify_modules, &mut structs);
             if !r {
-                return Err("VMMDLL_Map_GetPteU: fail.".into());
+                return Err(anyhow!("VMMDLL_Map_GetPteU: fail."));
             }
             if (*structs).dwVersion != VMMDLL_MAP_PTE_VERSION {
                 (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-                return Err("VMMDLL_Map_GetPteU: bad version.".into());
+                return Err(anyhow!("VMMDLL_Map_GetPteU: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_PTE_VERSION));
             }
             let mut result = Vec::new();
             if (*structs).cMap == 0 {
@@ -6294,11 +6299,11 @@ impl VmmProcess<'_> {
             let mut structs = std::ptr::null_mut();
             let r = (self.vmm.native.VMMDLL_Map_GetThread)(self.vmm.native.h, self.pid, &mut structs);
             if !r {
-                return Err("VMMDLL_Map_GetThread: fail.".into());
+                return Err(anyhow!("VMMDLL_Map_GetThread: fail."));
             }
             if (*structs).dwVersion != VMMDLL_MAP_THREAD_VERSION {
                 (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-                return Err("VMMDLL_Map_GetThread: bad version.".into());
+                return Err(anyhow!("VMMDLL_Map_GetThread: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_THREAD_VERSION));
             }
             let mut result = Vec::new();
             if (*structs).cMap == 0 {
@@ -6350,11 +6355,11 @@ impl VmmProcess<'_> {
             let mut structs = std::ptr::null_mut();
             let r = (self.vmm.native.VMMDLL_Map_GetUnloadedModuleU)(self.vmm.native.h, self.pid, &mut structs);
             if !r {
-                return Err("VMMDLL_Map_GetUnloadedModuleU: fail.".into());
+                return Err(anyhow!("VMMDLL_Map_GetUnloadedModuleU: fail."));
             }
             if (*structs).dwVersion != VMMDLL_MAP_UNLOADEDMODULE_VERSION {
                 (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-                return Err("VMMDLL_Map_GetUnloadedModuleU: bad version.".into());
+                return Err(anyhow!("VMMDLL_Map_GetUnloadedModuleU: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_UNLOADEDMODULE_VERSION));
             }
             let mut result = Vec::new();
             if (*structs).cMap == 0 {
@@ -6387,11 +6392,11 @@ impl VmmProcess<'_> {
             let mut structs = std::ptr::null_mut();
             let r = (self.vmm.native.VMMDLL_Map_GetVadU)(self.vmm.native.h, self.pid, is_identify_modules, &mut structs);
             if !r {
-                return Err("VMMDLL_Map_GetVadU: fail.".into());
+                return Err(anyhow!("VMMDLL_Map_GetVadU: fail."));
             }
             if (*structs).dwVersion != VMMDLL_MAP_VAD_VERSION {
                 (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-                return Err("VMMDLL_Map_GetVadU: bad version.".into());
+                return Err(anyhow!("VMMDLL_Map_GetVadU: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_VAD_VERSION));
             }
             let mut result = Vec::new();
             if (*structs).cMap == 0 {
@@ -6432,11 +6437,11 @@ impl VmmProcess<'_> {
             let mut structs = std::ptr::null_mut();
             let r = (self.vmm.native.VMMDLL_Map_GetVadEx)(self.vmm.native.h, self.pid, offset_pages, count_pages, &mut structs);
             if !r {
-                return Err("VMMDLL_Map_GetVadEx: fail.".into());
+                return Err(anyhow!("VMMDLL_Map_GetVadEx: fail."));
             }
             if (*structs).dwVersion != VMMDLL_MAP_VADEX_VERSION {
                 (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-                return Err("VMMDLL_Map_GetVadEx: bad version.".into());
+                return Err(anyhow!("VMMDLL_Map_GetVadEx: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_VADEX_VERSION));
             }
             let mut result = Vec::new();
             if (*structs).cMap == 0 {
@@ -6471,7 +6476,7 @@ impl VmmProcess<'_> {
         let mut data_directories = vec![CIMAGE_DATA_DIRECTORY::default(); 16];
         let r = (self.vmm.native.VMMDLL_ProcessGetDirectoriesU)(self.vmm.native.h, self.pid, sz_module_name.as_ptr(), data_directories.as_mut_ptr());
         if !r {
-            return Err("VMMDLL_ProcessGetDirectoriesU: fail.".into());
+            return Err(anyhow!("VMMDLL_ProcessGetDirectoriesU: fail."));
         }
         let mut result = Vec::new();
         for i in 0..16 {
@@ -6492,7 +6497,7 @@ impl VmmProcess<'_> {
         let mut section_count = 0u32;
         let r = (self.vmm.native.VMMDLL_ProcessGetSectionsU)(self.vmm.native.h, self.pid, sz_module_name.as_ptr(), std::ptr::null_mut(), 0, &mut section_count);
         if !r {
-            return Err("VMMDLL_ProcessGetSectionsU: fail.".into());
+            return Err(anyhow!("VMMDLL_ProcessGetSectionsU: fail."));
         }
         let mut sections = vec![CIMAGE_SECTION_HEADER::default(); section_count.try_into()?];
         let mut result = Vec::new();
@@ -6501,7 +6506,7 @@ impl VmmProcess<'_> {
         }
         let r = (self.vmm.native.VMMDLL_ProcessGetSectionsU)(self.vmm.native.h, self.pid, sz_module_name.as_ptr(), sections.as_mut_ptr(), section_count, &mut section_count);
         if !r {
-            return Err("VMMDLL_ProcessGetSectionsU: fail.".into());
+            return Err(anyhow!("VMMDLL_ProcessGetSectionsU: fail."));
         }
         for i in 0..(section_count as usize) {
             let src : &CIMAGE_SECTION_HEADER = sections.get(i).unwrap();
@@ -6554,12 +6559,12 @@ impl Drop for VmmScatterMemory<'_> {
 impl <'a> VmmScatterMemory<'a> {
     fn impl_prepare_ex(&mut self, data_to_read : &'a mut (u64, Vec<u8>, u32)) -> ResultEx<()> {
         if data_to_read.2 != 0 {
-            return Err("data_to_read.2 not set to zero".into());
+            return Err(anyhow!("data_to_read.2 not set to zero"));
         }
         let cb = u32::try_from(data_to_read.1.len())?;
         let r = (self.vmm.native.VMMDLL_Scatter_PrepareEx)(self.hs, data_to_read.0, cb, data_to_read.1.as_mut_ptr(), &mut data_to_read.2);
         if !r {
-            return Err("VMMDLL_Scatter_PrepareEx: fail.".into());
+            return Err(anyhow!("VMMDLL_Scatter_PrepareEx: fail."));
         }
         self.is_scatter_ex = true;
         return Ok(());
@@ -6567,12 +6572,12 @@ impl <'a> VmmScatterMemory<'a> {
 
     fn impl_prepare_ex_as<T>(&mut self, data_to_read : &'a mut (u64, T, u32)) -> ResultEx<()> {
         if data_to_read.2 != 0 {
-            return Err("data_to_read.2 not set to zero".into());
+            return Err(anyhow!("data_to_read.2 not set to zero"));
         }
         let cb = u32::try_from(std::mem::size_of::<T>())?;
         let r = (self.vmm.native.VMMDLL_Scatter_PrepareEx)(self.hs, data_to_read.0, cb, &mut data_to_read.1 as *mut _ as *mut u8, &mut data_to_read.2);
         if !r {
-            return Err("VMMDLL_Scatter_PrepareEx: fail.".into());
+            return Err(anyhow!("VMMDLL_Scatter_PrepareEx: fail."));
         }
         self.is_scatter_ex = true;
         return Ok(());
@@ -6584,7 +6589,7 @@ impl VmmScatterMemory<'_> {
         let cb = u32::try_from(size)?;
         let r = (self.vmm.native.VMMDLL_Scatter_Prepare)(self.hs, va, cb);
         if !r {
-            return Err("VMMDLL_Scatter_Prepare: fail.".into());
+            return Err(anyhow!("VMMDLL_Scatter_Prepare: fail."));
         }
         return Ok(());
     }
@@ -6594,7 +6599,7 @@ impl VmmScatterMemory<'_> {
         let pb = data.as_ptr();
         let r = (self.vmm.native.VMMDLL_Scatter_PrepareWrite)(self.hs, va, pb, cb);
         if !r {
-            return Err("VMMDLL_Scatter_PrepareWrite: fail.".into());
+            return Err(anyhow!("VMMDLL_Scatter_PrepareWrite: fail."));
         }
         return Ok(());
     }
@@ -6603,7 +6608,7 @@ impl VmmScatterMemory<'_> {
         let cb = u32::try_from(std::mem::size_of::<T>())?;
         let r = (self.vmm.native.VMMDLL_Scatter_PrepareWrite)(self.hs, va, data as *const _ as *const u8, cb);
         if !r {
-            return Err("VMMDLL_Scatter_PrepareWrite: fail.".into());
+            return Err(anyhow!("VMMDLL_Scatter_PrepareWrite: fail."));
         }
         return Ok(());
     }
@@ -6611,7 +6616,7 @@ impl VmmScatterMemory<'_> {
     fn impl_execute(&self) -> ResultEx<()> {
         let r = (self.vmm.native.VMMDLL_Scatter_Execute)(self.hs);
         if !r {
-            return Err("VMMDLL_Scatter_Execute: fail.".into());
+            return Err(anyhow!("VMMDLL_Scatter_Execute: fail."));
         }
         return Ok(());
     }
@@ -6622,7 +6627,7 @@ impl VmmScatterMemory<'_> {
         let mut pb_result = vec![0u8; size];
         let r = (self.vmm.native.VMMDLL_Scatter_Read)(self.hs, va, cb, pb_result.as_mut_ptr(), &mut cb_read);
         if !r {
-            return Err("VMMDLL_Scatter_Read: fail.".into());
+            return Err(anyhow!("VMMDLL_Scatter_Read: fail."));
         }
         return Ok(pb_result);
     }
@@ -6634,7 +6639,7 @@ impl VmmScatterMemory<'_> {
             let mut result : T = std::mem::zeroed();
             let r = (self.vmm.native.VMMDLL_Scatter_Read)(self.hs, va, cb, &mut result as *mut _ as *mut u8, &mut cb_read);
             if !r {
-                return Err("VMMDLL_Scatter_Read: fail.".into());
+                return Err(anyhow!("VMMDLL_Scatter_Read: fail."));
             }
             return Ok(result);
         }
@@ -6643,7 +6648,7 @@ impl VmmScatterMemory<'_> {
     fn impl_clear(&self) -> ResultEx<()> {
         let r = (self.vmm.native.VMMDLL_Scatter_Clear)(self.hs, self.pid, self.flags);
         if !r {
-            return Err("VMMDLL_Scatter_Clear: fail.".into());
+            return Err(anyhow!("VMMDLL_Scatter_Clear: fail."));
         }
         return Ok(());
     }
@@ -6779,7 +6784,7 @@ impl VmmSearch<'_> {
         let addr_min = addr_min & 0xfffffffffffff000;
         let addr_max = addr_max & 0xfffffffffffff000;
         if addr_max != 0 && addr_max <= addr_min {
-            return Err("search max address must be larger than min address".into());
+            return Err(anyhow!("search max address must be larger than min address"));
         }
         let result_vec = Vec::new();
         let mut native = CVMMDLL_MEM_SEARCH_CONTEXT::default();
@@ -6805,19 +6810,19 @@ impl VmmSearch<'_> {
 
     fn impl_add_search(&mut self, search_bytes : &[u8], search_skipmask : Option<&[u8]>, byte_align : u32) -> ResultEx<u32> {
         if self.native_search.cSearch as usize >= self.native_search.search.len() {
-            return Err("Search max terms reached.".into());
+            return Err(anyhow!("Search max terms reached."));
         }
         if (search_bytes.len() == 0) || (search_bytes.len() > 32) {
-            return Err("Search invalid length: search_bytes.".into());
+            return Err(anyhow!("Search invalid length: search_bytes."));
         }
         if byte_align > 0 {
             if ((byte_align & (byte_align - 1)) != 0) || (byte_align > 0x1000) {
-                return Err("Search bad byte_align.".into());
+                return Err(anyhow!("Search bad byte_align."));
             }
         }
         if let Some(search_skipmask) = search_skipmask {
             if search_skipmask.len() > search_bytes.len() {
-                return Err("Search invalid length: search_skipmask.".into());
+                return Err(anyhow!("Search invalid length: search_skipmask."));
             }
         }
         let term = &mut self.native_search.search[self.native_search.cSearch as usize];
@@ -7020,7 +7025,7 @@ impl VmmYara<'_> {
         let addr_min = addr_min & 0xfffffffffffff000;
         let addr_max = addr_max & 0xfffffffffffff000;
         if addr_max != 0 && addr_max <= addr_min {
-            return Err("search max address must be larger than min address".into());
+            return Err(anyhow!("search max address must be larger than min address"));
         }
         // 2: create native object:
         let native_args_rules = rules.iter().map(|arg| CString::new(*arg).unwrap()).collect::<Vec<CString>>();
@@ -7227,7 +7232,7 @@ fn impl_new_plugin_initialization<T>(native_h : usize, native_reginfo : usize) -
     unsafe {
         let reginfo = native_reginfo as *mut CVMMDLL_PLUGIN_REGINFO<T>;
         if (*reginfo).magic != VMMDLL_PLUGIN_REGINFO_MAGIC || (*reginfo).wVersion != VMMDLL_PLUGIN_REGINFO_VERSION {
-            return Err("Bad reginfo magic/version.".into());
+            return Err(anyhow!("Bad reginfo magic/version."));
         }
         let info = VmmPluginInitializationInfo {
             tp_system : VmmSystemType::from((*reginfo).tpSystem),
@@ -7260,16 +7265,16 @@ impl<T> VmmPluginInitializationContext<T> {
         unsafe {
             let mut reginfo = self.h_reginfo as *mut CVMMDLL_PLUGIN_REGINFO<T>;
             if (*reginfo).magic != VMMDLL_PLUGIN_REGINFO_MAGIC || (*reginfo).wVersion != VMMDLL_PLUGIN_REGINFO_VERSION {
-                return Err("Bad reginfo magic/version.".into());
+                return Err(anyhow!("Bad reginfo magic/version."));
             }
             if self.ctx.is_none() {
-                return Err("User context ctx is missing. User context cannot be None.".into());
+                return Err(anyhow!("User context ctx is missing. User context cannot be None."));
             }
             let pathname_str = str::replace(&self.path_name, "/", "\\");
             let pathname_cstring = CString::new(pathname_str)?;
             let pathname_bytes = pathname_cstring.to_bytes_with_nul();
             if pathname_bytes.len() > (*reginfo).reg_info_uszPathName.len() {
-                return Err("Plugin path/name too long.".into());
+                return Err(anyhow!("Plugin path/name too long."));
             }
             let pathname_len = std::cmp::min(pathname_bytes.len(), (*reginfo).reg_info_uszPathName.len());
             // "initialize" rust vmm context from handle and create rust plugin native context:
@@ -7315,7 +7320,7 @@ impl<T> VmmPluginInitializationContext<T> {
             }
             let r = ((*reginfo).pfnPluginManager_Register)(self.h_vmm, reginfo);
             if !r {
-                return Err("Failed registering plugin.".into());
+                return Err(anyhow!("Failed registering plugin."));
             }
             return Ok(());
         }

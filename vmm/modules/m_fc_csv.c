@@ -8,7 +8,7 @@
 
 #include "modules.h"
 
-#define MFCCSV_TIMELINE_LINEHEADER      "Time,Type,Action,PID,Value32,Value64,Text\n"
+#define MFCCSV_TIMELINE_LINEHEADER      "Time,Type,Action,PID,Value32,Value64,Text,Pad\n"
 
 /*
 * Read the csv version of the timeline info files.
@@ -52,8 +52,8 @@ NTSTATUS M_FcCSV_ReadTimeline2(_In_ VMM_HANDLE H, _In_ DWORD dwTimelineType, _Ou
         o += snprintf(
             szuBuffer + o,
             (SIZE_T)(cszuBuffer - o),
-            ",%*s\n",
-            (DWORD)(FC_LINELENGTH_TIMELINE_CSV - cch - 2),
+            ",\"%*s\"\n",
+            (DWORD)(FC_LINELENGTH_TIMELINE_CSV - cch - 4),
             ""
         );
     }

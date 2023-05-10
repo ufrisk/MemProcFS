@@ -300,7 +300,7 @@ VOID FcEvilAddEx(_In_ VMM_HANDLE H, _In_ LPSTR uszType, _In_ DWORD dwSeverity, _
 
 #define FC_LINELENGTH_TIMELINE_UTF8             74
 #define FC_LINELENGTH_TIMELINE_JSON             170
-#define FC_LINELENGTH_TIMELINE_CSV              75
+#define FC_LINELENGTH_TIMELINE_CSV              77
 
 #define FC_TIMELINE_ACTION_NONE                 0
 #define FC_TIMELINE_ACTION_CREATE               1

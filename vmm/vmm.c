@@ -1000,8 +1000,6 @@ VOID VmmProcess_CloseObCallback(_In_ PVOID pVmmOb)
     // delete lock
     DeleteCriticalSection(&pProcess->LockUpdate);
     DeleteCriticalSection(&pProcess->LockPlugin);
-    DeleteCriticalSection(&pProcess->Map.LockUpdateThreadExtendedInfo);
-    DeleteCriticalSection(&pProcess->Map.LockUpdateMapEvil);
 }
 
 VOID VmmProcessClone_CloseObCallback(_In_ PVOID pVmmOb)
@@ -1012,8 +1010,6 @@ VOID VmmProcessClone_CloseObCallback(_In_ PVOID pVmmOb)
     // delete lock
     DeleteCriticalSection(&pProcessClone->LockUpdate);
     DeleteCriticalSection(&pProcessClone->LockPlugin);
-    DeleteCriticalSection(&pProcessClone->Map.LockUpdateThreadExtendedInfo);
-    DeleteCriticalSection(&pProcessClone->Map.LockUpdateMapEvil);
 }
 
 /*
@@ -1047,8 +1043,6 @@ PVMM_PROCESS VmmProcessClone(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
     pObProcessClone->VmmInternal.pObProcessCloneParent = Ob_INCREF(pProcess);
     InitializeCriticalSection(&pObProcessClone->LockUpdate);
     InitializeCriticalSection(&pObProcessClone->LockPlugin);
-    InitializeCriticalSection(&pObProcessClone->Map.LockUpdateThreadExtendedInfo);
-    InitializeCriticalSection(&pObProcessClone->Map.LockUpdateMapEvil);
     return pObProcessClone;
 }
 
@@ -1116,8 +1110,6 @@ PVMM_PROCESS VmmProcessCreateEntry(_In_ VMM_HANDLE H, _In_ BOOL fTotalRefresh, _
         if(!pProcess) { goto fail; }
         if(!InitializeCriticalSectionAndSpinCount(&pProcess->LockUpdate, 4096)) { goto fail; }
         InitializeCriticalSection(&pProcess->LockPlugin);
-        InitializeCriticalSection(&pProcess->Map.LockUpdateThreadExtendedInfo);
-        InitializeCriticalSection(&pProcess->Map.LockUpdateMapEvil);
         // copy process short name in a nice way substituting any corrupt chars:
         for(ich = 0; ich < 15; ich++) {
             ch = szName[ich];

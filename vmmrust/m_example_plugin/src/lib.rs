@@ -15,6 +15,7 @@
 //
 
 use memprocfs::*;
+use anyhow::{anyhow};
 
 const PLUGIN_README : &str =
     "This is a MemProcFS example plugin for Rust.\n\
@@ -179,7 +180,7 @@ fn plugin_read_cb(ctxp : &VmmPluginContext<PluginContext>, _process : Option<Vmm
     } else if file_name.eq_ignore_ascii_case("68/writeme_68.txt") {
         data = &ctx_user.file_68;
     } else {
-        return Err("[err]".into());
+        return Err(anyhow!("[err]"));
     }
     // read from file:
     let file_offset_base = usize::try_from(cb_offset)?;
@@ -220,7 +221,7 @@ fn plugin_write_cb(ctxp : &VmmPluginContext<PluginContext>, _process : Option<Vm
             ctx_user.file_68[file_offset_base + i] = data[i];
         }
     } else {
-        return Err("[err]".into());
+        return Err(anyhow!("[err]"));
     }
     return Ok(());
 }
