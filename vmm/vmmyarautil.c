@@ -309,8 +309,8 @@ BOOL VmmYaraUtil_ParseSingleResultNext(
     }
     _snprintf_s(hEPC->uszMetaCSV, _countof(hEPC->uszMetaCSV), _TRUNCATE,
         ",%s,%s,%s",
-        FcCsv_String(&hEPC->hCSV, uszMetaAuthor),
         FcCsv_String(&hEPC->hCSV, uszMetaDescription),
+        FcCsv_String(&hEPC->hCSV, uszMetaAuthor),
         FcCsv_String(&hEPC->hCSV, uszMetaVersion)
     );
     // process info (if any):

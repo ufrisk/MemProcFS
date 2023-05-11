@@ -145,6 +145,7 @@ PVMMOB_MAP_EAT VmmWinEAT_Initialize_DoWork(_In_ VMM_HANDLE H,  _In_ PVMM_PROCESS
             // function pointer to export directory -> probably forwarded symbol
             if(PE_EatForwardedFunctionNameValidate((LPSTR)(pbExpDir + pe->vaFunction - vaExpDir), NULL, 0, NULL)) {
                 ObStrMap_PushPtrAU(pObStrMap, (LPSTR)(pbExpDir + pe->vaFunction - vaExpDir), &pe->uszForwardedFunction, NULL);
+                cForwardedFunctions++;
             }
             pe->vaFunction = 0;
         }

@@ -14,7 +14,7 @@ using System.Collections.Generic;
  *  (c) Ulf Frisk, 2020-2023
  *  Author: Ulf Frisk, pcileech@frizk.net
  *  
- *  Version 5.6
+ *  Version 5.6.2
  *  
  */
 
@@ -126,7 +126,7 @@ namespace vmmsharp
         public static unsafe ulong Create(ref CONFIG pLcCreateConfig, out CONFIG_ERRORINFO ConfigErrorInfo)
         {
             IntPtr pLcErrorInfo;
-            int cbERROR_INFO = System.Runtime.InteropServices.Marshal.SizeOf(typeof(lci.LC_CONFIG_ERRORINFO));
+            int cbERROR_INFO = System.Runtime.InteropServices.Marshal.SizeOf<lci.LC_CONFIG_ERRORINFO>();
             ulong hLC = lci.LcCreateEx(ref pLcCreateConfig, out pLcErrorInfo);
             long vaLcCreateErrorInfo = pLcErrorInfo.ToInt64();
             ConfigErrorInfo = new CONFIG_ERRORINFO();
@@ -354,7 +354,7 @@ namespace vmmsharp
         private static unsafe IntPtr Initialize(out lc.CONFIG_ERRORINFO ConfigErrorInfo, params string[] args)
         {
             IntPtr pLcErrorInfo;
-            int cbERROR_INFO = System.Runtime.InteropServices.Marshal.SizeOf(typeof(lci.LC_CONFIG_ERRORINFO));
+            int cbERROR_INFO = System.Runtime.InteropServices.Marshal.SizeOf<lci.LC_CONFIG_ERRORINFO>();
             IntPtr hVMM = vmmi.VMMDLL_InitializeEx(args.Length, args, out pLcErrorInfo);
             long vaLcCreateErrorInfo = pLcErrorInfo.ToInt64();
             ConfigErrorInfo = new lc.CONFIG_ERRORINFO();
@@ -715,7 +715,7 @@ namespace vmmsharp
         public unsafe PROCESS_INFORMATION ProcessGetInformation(uint pid)
         {
             bool result;
-            ulong cbENTRY = (ulong)System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_PROCESS_INFORMATION));
+            ulong cbENTRY = (ulong)System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_PROCESS_INFORMATION>();
             fixed (byte* pb = new byte[cbENTRY])
             {
                 Marshal.WriteInt64(new IntPtr(pb + 0), unchecked((long)vmmi.VMMDLL_PROCESS_INFORMATION_MAGIC));
@@ -786,8 +786,7 @@ namespace vmmsharp
         {
             string[] PE_DATA_DIRECTORIES = new string[16] { "EXPORT", "IMPORT", "RESOURCE", "EXCEPTION", "SECURITY", "BASERELOC", "DEBUG", "ARCHITECTURE", "GLOBALPTR", "TLS", "LOAD_CONFIG", "BOUND_IMPORT", "IAT", "DELAY_IMPORT", "COM_DESCRIPTOR", "RESERVED" };
             bool result;
-            uint cData;
-            uint cbENTRY = (uint)System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_IMAGE_DATA_DIRECTORY));
+            uint cbENTRY = (uint)System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_IMAGE_DATA_DIRECTORY>();
             fixed (byte* pb = new byte[16 * cbENTRY])
             {
                 result = vmmi.VMMDLL_ProcessGetDirectories(hVMM, pid, wszModule, pb);
@@ -810,7 +809,7 @@ namespace vmmsharp
         {
             bool result;
             uint cData;
-            uint cbENTRY = (uint)System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_IMAGE_SECTION_HEADER));
+            uint cbENTRY = (uint)System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_IMAGE_SECTION_HEADER>();
             result = vmmi.VMMDLL_ProcessGetSections(hVMM, pid, wszModule, null, 0, out cData);
             if (!result || (cData == 0)) { return new IMAGE_SECTION_HEADER[0]; }
             fixed (byte* pb = new byte[cData * cbENTRY])
@@ -1243,8 +1242,8 @@ namespace vmmsharp
 
         public unsafe MAP_PTEENTRY[] Map_GetPte(uint pid, bool fIdentifyModules = true)
         {
-            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_PTE));
-            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_PTEENTRY));
+            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_MAP_PTE>();
+            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_MAP_PTEENTRY>();
             IntPtr pMap = IntPtr.Zero;
             MAP_PTEENTRY[] m = new MAP_PTEENTRY[0];
             if (!vmmi.VMMDLL_Map_GetPte(hVMM, pid, fIdentifyModules, out pMap)) { goto fail; }
@@ -1272,8 +1271,8 @@ namespace vmmsharp
 
         public unsafe MAP_VADENTRY[] Map_GetVad(uint pid, bool fIdentifyModules = true)
         {
-            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_VAD));
-            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_VADENTRY));
+            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_MAP_VAD>();
+            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_MAP_VADENTRY>();
             IntPtr pMap = IntPtr.Zero;
             MAP_VADENTRY[] m = new MAP_VADENTRY[0];
             if (!vmmi.VMMDLL_Map_GetVad(hVMM, pid, fIdentifyModules, out pMap)) { goto fail; }
@@ -1319,8 +1318,8 @@ namespace vmmsharp
 
         public unsafe MAP_VADEXENTRY[] Map_GetVadEx(uint pid, uint oPages, uint cPages)
         {
-            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_VADEX));
-            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_VADEXENTRY));
+            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_MAP_VADEX>();
+            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_MAP_VADEXENTRY>();
             IntPtr pMap = IntPtr.Zero;
             MAP_VADEXENTRY[] m = new MAP_VADEXENTRY[0];
             if (!vmmi.VMMDLL_Map_GetVadEx(hVMM, pid, oPages, cPages, out pMap)) { goto fail; }
@@ -1349,8 +1348,8 @@ namespace vmmsharp
 
         public unsafe MAP_MODULEENTRY[] Map_GetModule(uint pid, bool fExtendedInfo)
         {
-            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_MODULE));
-            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_MODULEENTRY));
+            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_MAP_MODULE>();
+            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_MAP_MODULEENTRY>();
             IntPtr pMap = IntPtr.Zero;
             MAP_MODULEENTRY[] m = new MAP_MODULEENTRY[0];
             uint flags = fExtendedInfo ? (uint)0xff : 0;
@@ -1452,8 +1451,8 @@ namespace vmmsharp
 
         public unsafe MAP_UNLOADEDMODULEENTRY[] Map_GetUnloadedModule(uint pid)
         {
-            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_UNLOADEDMODULE));
-            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_UNLOADEDMODULEENTRY));
+            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_MAP_UNLOADEDMODULE>();
+            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_MAP_UNLOADEDMODULEENTRY>();
             IntPtr pMap = IntPtr.Zero;
             MAP_UNLOADEDMODULEENTRY[] m = new MAP_UNLOADEDMODULEENTRY[0];
             if (!vmmi.VMMDLL_Map_GetUnloadedModule(hVMM, pid, out pMap)) { goto fail; }
@@ -1481,8 +1480,8 @@ namespace vmmsharp
         public unsafe MAP_EATENTRY[] Map_GetEAT(uint pid, string wszModule, out MAP_EATINFO EatInfo)
         {
             EatInfo = new MAP_EATINFO();
-            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_EAT));
-            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_EATENTRY));
+            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_MAP_EAT>();
+            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_MAP_EATENTRY>();
             IntPtr pMap = IntPtr.Zero;
             MAP_EATENTRY[] m = new MAP_EATENTRY[0];
             if (!vmmi.VMMDLL_Map_GetEAT(hVMM, pid, wszModule, out pMap)) { goto fail; }
@@ -1516,8 +1515,8 @@ namespace vmmsharp
 
         public unsafe MAP_IATENTRY[] Map_GetIAT(uint pid, string wszModule)
         {
-            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_IAT));
-            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_IATENTRY));
+            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_MAP_IAT>();
+            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_MAP_IATENTRY>();
             IntPtr pMap = IntPtr.Zero;
             MAP_IATENTRY[] m = new MAP_IATENTRY[0];
             if (!vmmi.VMMDLL_Map_GetIAT(hVMM, pid, wszModule, out pMap)) { goto fail; }
@@ -1548,9 +1547,9 @@ namespace vmmsharp
         public unsafe MAP_HEAP Map_GetHeap(uint pid)
         {
             IntPtr pMap = IntPtr.Zero;
-            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_HEAP));
-            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_HEAPENTRY));
-            int cbSEGENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_HEAPSEGMENTENTRY));
+            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_MAP_HEAP>();
+            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_MAP_HEAPENTRY>();
+            int cbSEGENTRY = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_MAP_HEAPSEGMENTENTRY>();
             MAP_HEAP Heap;
             Heap.heaps = new MAP_HEAPENTRY[0];
             Heap.segments = new MAP_HEAPSEGMENTENTRY[0];
@@ -1583,8 +1582,8 @@ namespace vmmsharp
         public unsafe MAP_HEAPALLOCENTRY[] Map_GetHeapAlloc(uint pid, ulong vaHeapOrHeapNum)
         {
             IntPtr pHeapAllocMap = IntPtr.Zero;
-            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_HEAPALLOC));
-            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_HEAPALLOCENTRY));
+            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_MAP_HEAPALLOC>();
+            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_MAP_HEAPALLOCENTRY>();
             if (!vmmi.VMMDLL_Map_GetHeapAlloc(hVMM, pid, vaHeapOrHeapNum, out pHeapAllocMap)) { return new MAP_HEAPALLOCENTRY[0]; }
             vmmi.VMMDLL_MAP_HEAPALLOC nM = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_HEAPALLOC>(pHeapAllocMap);
             if (nM.dwVersion != vmmi.VMMDLL_MAP_HEAPALLOC_VERSION) {
@@ -1605,8 +1604,8 @@ namespace vmmsharp
 
         public unsafe MAP_THREADENTRY[] Map_GetThread(uint pid)
         {
-            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_THREAD));
-            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_THREADENTRY));
+            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_MAP_THREAD>();
+            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_MAP_THREADENTRY>();
             IntPtr pMap = IntPtr.Zero;
             MAP_THREADENTRY[] m = new MAP_THREADENTRY[0];
             if (!vmmi.VMMDLL_Map_GetThread(hVMM, pid, out pMap)) { goto fail; }
@@ -1652,8 +1651,8 @@ namespace vmmsharp
 
         public unsafe MAP_HANDLEENTRY[] Map_GetHandle(uint pid)
         {
-            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_HANDLE));
-            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_HANDLEENTRY));
+            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_MAP_HANDLE>();
+            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_MAP_HANDLEENTRY>();
             IntPtr pMap = IntPtr.Zero;
             MAP_HANDLEENTRY[] m = new MAP_HANDLEENTRY[0];
             if (!vmmi.VMMDLL_Map_GetHandle(hVMM, pid, out pMap)) { goto fail; }
@@ -1685,8 +1684,8 @@ namespace vmmsharp
 
         public unsafe MAP_NETENTRY[] Map_GetNet()
         {
-            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_NET));
-            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_NETENTRY));
+            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_MAP_NET>();
+            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_MAP_NETENTRY>();
             IntPtr pMap = IntPtr.Zero;
             MAP_NETENTRY[] m = new MAP_NETENTRY[0];
             if (!vmmi.VMMDLL_Map_GetNet(hVMM, out pMap)) { goto fail; }
@@ -1721,8 +1720,8 @@ namespace vmmsharp
 
         public unsafe MAP_PHYSMEMENTRY[] Map_GetPhysMem()
         {
-            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_PHYSMEM));
-            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_PHYSMEMENTRY));
+            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_MAP_PHYSMEM>();
+            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_MAP_PHYSMEMENTRY>();
             IntPtr pMap = IntPtr.Zero;
             MAP_PHYSMEMENTRY[] m = new MAP_PHYSMEMENTRY[0];
             if (!vmmi.VMMDLL_Map_GetPhysMem(hVMM, out pMap)) { goto fail; }
@@ -1746,8 +1745,8 @@ namespace vmmsharp
         {
             byte[] tag = { 0, 0, 0, 0};
             IntPtr pN = IntPtr.Zero;
-            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_POOL));
-            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_POOLENTRY));
+            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_MAP_POOL>();
+            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_MAP_POOLENTRY>();
             if (!vmmi.VMMDLL_Map_GetPool(hVMM, out pN, 0)) { return new MAP_POOLENTRY[0]; }
             vmmi.VMMDLL_MAP_POOL nM = Marshal.PtrToStructure<vmmi.VMMDLL_MAP_POOL>(pN);
             if (nM.dwVersion != vmmi.VMMDLL_MAP_POOL_VERSION) {
@@ -1775,8 +1774,8 @@ namespace vmmsharp
 
         public unsafe MAP_USERENTRY[] Map_GetUsers()
         {
-            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_USER));
-            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_USERENTRY));
+            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_MAP_USER>();
+            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_MAP_USERENTRY>();
             IntPtr pMap = IntPtr.Zero;
             MAP_USERENTRY[] m = new MAP_USERENTRY[0];
             if (!vmmi.VMMDLL_Map_GetUsers(hVMM, out pMap)) { goto fail; }
@@ -1799,8 +1798,8 @@ namespace vmmsharp
 
         public unsafe MAP_SERVICEENTRY[] Map_GetServices()
         {
-            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_SERVICE));
-            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_SERVICEENTRY));
+            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_MAP_SERVICE>();
+            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_MAP_SERVICEENTRY>();
             IntPtr pMap = IntPtr.Zero;
             MAP_SERVICEENTRY[] m = new MAP_SERVICEENTRY[0];
             if (!vmmi.VMMDLL_Map_GetServices(hVMM, out pMap)) { goto fail; }
@@ -1839,8 +1838,8 @@ namespace vmmsharp
         {
             bool result;
             uint cbPfns;
-            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_PFN));
-            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_MAP_PFNENTRY));
+            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_MAP_PFN>();
+            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_MAP_PFNENTRY>();
             if (pfns.Length == 0) { return new MAP_PFNENTRY[0]; }
             byte[] dataPfns = new byte[pfns.Length * sizeof(uint)];
             System.Buffer.BlockCopy(pfns, 0, dataPfns, 0, dataPfns.Length);
@@ -1922,7 +1921,7 @@ namespace vmmsharp
         {
             bool result;
             uint cHives;
-            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf(typeof(vmmi.VMMDLL_REGISTRY_HIVE_INFORMATION));
+            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf<vmmi.VMMDLL_REGISTRY_HIVE_INFORMATION>();
             result = vmmi.VMMDLL_WinReg_HiveList(hVMM, null, 0, out cHives);
             if (!result || (cHives == 0)) { return new REGISTRY_HIVE_INFORMATION[0]; }
             fixed (byte* pb = new byte[cHives * cbENTRY])

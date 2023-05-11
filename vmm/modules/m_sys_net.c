@@ -16,7 +16,6 @@ LPCSTR szMSYSNET_README =
 "====================================                                         \n" \
 "The sys/net module tries to enumerate and list network connections in        \n" \
 "Windows 7 and later (x64 only).                                              \n" \
-"Future 32-bit and Windows XP/Vista support is less likely.                   \n" \
 "---                                                                          \n" \
 "Documentation: https://github.com/ufrisk/MemProcFS/wiki/FS_SysInfo_Network   \n";
 
@@ -124,6 +123,58 @@ VOID MSysNet_Timeline(
     }
 }
 
+VOID MSysNet_FcLogCSV(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VMMDLL_CSV_HANDLE hCSV)
+{
+    static LPCSTR szSTATES[] = {
+        "CLOSED",
+        "LISTENING",
+        "SYN_SENT",
+        "SYN_RCVD",
+        "ESTABLISHED",
+        "FIN_WAIT_1",
+        "FIN_WAIT_2",
+        "CLOSE_WAIT",
+        "CLOSING",
+        "LAST_ACK",
+        "",
+        "",
+        "TIME_WAIT",
+        ""
+    };
+    CHAR szTime[24];
+    DWORD iNetMap, dwIpVersion;
+    PVMM_MAP_NETENTRY pe;
+    PVMMOB_MAP_NET pObNetMap = NULL;
+    PVMM_PROCESS pObProcess = NULL;
+    if(ctxP->pProcess) { return; }
+    if(!VmmMap_GetNet(H, &pObNetMap)) { goto fail; }
+    FcFileAppend(H, "net.csv", "Proto,State,SrcAddr,SrcPort,DstAddr,DstPort,Time,Object,PID,Process,ProcessPath\n");
+    for(iNetMap = 0; iNetMap < pObNetMap->cMap; iNetMap++) {
+        Ob_DECREF_NULL(&pObProcess);
+        pe = pObNetMap->pMap + iNetMap;
+        pObProcess = VmmProcessGet(H, pe->dwPID);
+        Util_FileTime2String(pe->ftTime, szTime);
+        dwIpVersion = (pe->AF == AF_INET) ? 4 : (((pe->AF == 23 /* AF_INET6 */)) ? 6 : 0);
+        FcCsv_Reset(hCSV);
+        FcFileAppend(H, "net.csv", "%s%i,%s,%s,%i,%s,%i,%s,0x%llx,%i,%s,%s\n",
+            ((pe->dwPoolTag == 'UdpA') ? "UDP" : "TCP"), dwIpVersion,
+            FcCsv_String(hCSV, (LPSTR)szSTATES[pe->dwState]),
+            pe->Src.uszText,
+            pe->Src.port,
+            pe->Dst.uszText,
+            pe->Dst.port,
+            FcCsv_String(hCSV, szTime),
+            pe->vaObj,
+            pe->dwPID,
+            FcCsv_String(hCSV, pObProcess ? pObProcess->pObPersistent->uszNameLong : ""),
+            FcCsv_String(hCSV, pObProcess ? pObProcess->pObPersistent->uszPathKernel : "")
+        );
+    }
+fail:
+    Ob_DECREF(pObNetMap);
+    Ob_DECREF(pObProcess);
+}
+
 VOID MSysNet_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
 {
     PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd;
@@ -168,6 +219,7 @@ VOID M_SysNet_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     pRI->reg_fn.pfnList = MSysNet_List;                         // List function supported
     pRI->reg_fn.pfnRead = MSysNet_Read;                         // Read function supported
     pRI->reg_fnfc.pfnTimeline = MSysNet_Timeline;               // Timeline supported
+    pRI->reg_fnfc.pfnLogCSV = MSysNet_FcLogCSV;                 // CSV log function supported
     pRI->reg_fnfc.pfnLogJSON = MSysNet_FcLogJSON;               // JSON log function supported
     memcpy(pRI->reg_info.sTimelineNameShort, "Net", 4);
     strncpy_s(pRI->reg_info.uszTimelineFile, 32, "timeline_net", _TRUNCATE);
