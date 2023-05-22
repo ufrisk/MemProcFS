@@ -868,27 +868,16 @@ fail:
 }
 
 /*
-* Retrieve the operating system versioning information by looking at values in
-* the PEB of the process 'smss.exe'.
+* Retrieve the operating system versioning information by looking at the PEB.
 * -- H
-* -- pProcessSMSS
+* -- pProcess
 * -- return
 */
-VOID VmmWinInit_VersionNumber(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcessSMSS)
+_Success_(return)
+BOOL VmmWinInit_VersionNumberFromProcess(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
 {
-    BOOL fRead;
     BYTE pbPEB[0x130];
-    PVMM_PROCESS pObProcess = NULL;
-    fRead = VmmRead(H, pProcessSMSS, pProcessSMSS->win.vaPEB, pbPEB, 0x130);
-    if(!fRead) { // failed (paging?) - try to read from crss.exe / lsass.exe / winlogon.exe
-        while((pObProcess = VmmProcessGetNext(H, pObProcess, 0))) {
-            if(!strcmp("crss.exe", pObProcess->szName) || !strcmp("lsass.exe", pObProcess->szName) || !strcmp("winlogon.exe", pObProcess->szName)) {
-                if((fRead = VmmRead(H, pObProcess, pObProcess->win.vaPEB, pbPEB, 0x130))) { break; }
-            }
-        }
-        Ob_DECREF_NULL(&pObProcess);
-    }
-    if(fRead) {
+    if(VmmRead(H, pProcess, pProcess->win.vaPEB, pbPEB, 0x130)) {
         if(H->vmm.f32) {
             H->vmm.kernel.dwVersionMajor = *(PDWORD)(pbPEB + 0x0a4);
             H->vmm.kernel.dwVersionMinor = *(PDWORD)(pbPEB + 0x0a8);
@@ -898,19 +887,44 @@ VOID VmmWinInit_VersionNumber(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcessSMSS)
             H->vmm.kernel.dwVersionMinor = *(PDWORD)(pbPEB + 0x11c);
             H->vmm.kernel.dwVersionBuild = *(PWORD)(pbPEB + 0x120);
         }
-    } else if(PDB_GetSymbolDWORD(H, PDB_HANDLE_KERNEL, "NtBuildNumber", PVMM_PROCESS_SYSTEM, &H->vmm.kernel.dwVersionBuild)) {
+        if((H->vmm.kernel.dwVersionMajor < 5) || (H->vmm.kernel.dwVersionMajor > 11)) { return FALSE; }
+        if((H->vmm.kernel.dwVersionBuild < 2600) || (H->vmm.kernel.dwVersionBuild > 30000)) { return FALSE; }
+        return TRUE;
+    }
+    return FALSE;
+}
+
+/*
+* Retrieve the operating system versioning information by looking at values in
+* the PEB of the process 'smss.exe'.
+* -- H
+* -- pSystemProcess
+* -- pProcessSMSS
+* -- return
+*/
+_Success_(return)
+BOOL VmmWinInit_VersionNumber(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_ PVMM_PROCESS pProcessSMSS)
+{
+    QWORD vaBuildNumber;
+    PVMM_PROCESS pObProcess = NULL;
+    // 1: From PEB SMSS:
+    if(VmmWinInit_VersionNumberFromProcess(H, pProcessSMSS)) { return TRUE; }
+    // 2: From Kernel:
+    vaBuildNumber = PE_GetProcAddress(H, pSystemProcess, H->vmm.kernel.vaBase, "NtBuildNumber");
+    if(VMM_KADDR_DUAL(H->vmm.f32, vaBuildNumber) && VmmRead(H, pSystemProcess, vaBuildNumber, (PBYTE)&H->vmm.kernel.dwVersionBuild, sizeof(DWORD))) {
         H->vmm.kernel.dwVersionBuild = (WORD)H->vmm.kernel.dwVersionBuild;
+        if((H->vmm.kernel.dwVersionBuild < 2600) || (H->vmm.kernel.dwVersionBuild > 30000)) { return FALSE; }
         if(H->vmm.kernel.dwVersionBuild) {
-            if(H->vmm.kernel.dwVersionBuild >= 10240) {        // 10 (incl. win11)
+            if(H->vmm.kernel.dwVersionBuild >= 10240) {         // 10 (incl. win11)
                 H->vmm.kernel.dwVersionMajor = 10;
                 H->vmm.kernel.dwVersionMinor = 0;
-            } else if(H->vmm.kernel.dwVersionBuild >= 9100) {  // 8
+            } else if(H->vmm.kernel.dwVersionBuild >= 9100) {   // 8
                 H->vmm.kernel.dwVersionMajor = 6;
                 H->vmm.kernel.dwVersionMinor = 3;
-            } else if(H->vmm.kernel.dwVersionBuild >= 7600) {  // 7
+            } else if(H->vmm.kernel.dwVersionBuild >= 7600) {   // 7
                 H->vmm.kernel.dwVersionMajor = 6;
                 H->vmm.kernel.dwVersionMinor = 1;
-            } else if(H->vmm.kernel.dwVersionBuild >= 6000) {  // VISTA
+            } else if(H->vmm.kernel.dwVersionBuild >= 6000) {   // VISTA
                 H->vmm.kernel.dwVersionMajor = 6;
                 H->vmm.kernel.dwVersionMinor = 0;
             } else {                                            // XP
@@ -918,7 +932,18 @@ VOID VmmWinInit_VersionNumber(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcessSMSS)
                 H->vmm.kernel.dwVersionMinor = 1;
             }
         }
+        return TRUE;
     }
+    // 3: From PEB crss.exe / lsass.exe / winlogon.exe:
+    while((pObProcess = VmmProcessGetNext(H, pObProcess, 0))) {
+        if(!strcmp("crss.exe", pObProcess->szName) || !strcmp("lsass.exe", pObProcess->szName) || !strcmp("winlogon.exe", pObProcess->szName)) {
+            if(VmmWinInit_VersionNumberFromProcess(H, pObProcess)) {
+                Ob_DECREF(pObProcess);
+                return TRUE;
+            }
+        }
+    }
+    return FALSE;
 }
 
 /*
@@ -1071,9 +1096,12 @@ BOOL VmmWinInit_TryInitialize(_In_ VMM_HANDLE H, _In_opt_ QWORD paDTBOpt)
                 H->vmm.kernel.dwPidRegistry = pObProcess->dwPID;
             }
             if(!_stricmp("smss.exe", pObProcess->szName)) {
-                VmmWinInit_VersionNumber(H, pObProcess);
+                VmmWinInit_VersionNumber(H, pObSystemProcess, pObProcess);
             }
         }
+    }
+    if((H->vmm.kernel.dwVersionBuild < 2600) || (H->vmm.kernel.dwVersionBuild > 30000)) {
+        VmmLog(H, MID_CORE, LOGLEVEL_WARNING, "Initialization Partially Failed. Unsupported build number: %i", H->vmm.kernel.dwVersionBuild);
     }
     // Initialization functionality:
     InfoDB_Initialize(H);
