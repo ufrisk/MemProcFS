@@ -145,7 +145,7 @@ BOOL MFcFile_ContextInitialize_2_FillFiles(_In_ VMM_HANDLE H, _In_ PMFCFILE_CONT
                 pDir->pChild[pDir->cChild++] = pEntry;
                 if(pDir->cChild > 1) { break; }
                 uszName = CharUtil_PathSplitLastInPlace(uszPath);
-                ObStrMap_PushPtrUU(psmOb, uszName, &pDir->uszName, NULL);
+                ObStrMap_PushPtrUU(psmOb, (uszName ? uszName : uszPath), &pDir->uszName, NULL);
                 pEntry = pDir;
             }
         }
@@ -330,7 +330,9 @@ BOOL MFcFile_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ P
                     _snprintf_s(uszFileName, _countof(uszFileName), _TRUNCATE, "%llx-%s", pEntry->va, pEntry->uszName);
                     VMMDLL_VfsList_AddFile(pFileList, uszFileName, pEntry->cb, NULL);
                 } else {
-                    VMMDLL_VfsList_AddDirectory(pFileList, pEntry->uszName, NULL);
+                    if(pEntry->uszName[0]) {
+                        VMMDLL_VfsList_AddDirectory(pFileList, pEntry->uszName, NULL);
+                    }
                 }
             }
         }
