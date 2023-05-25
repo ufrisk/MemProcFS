@@ -101,8 +101,8 @@ BOOL Util_FillHexAscii_WithAddress(_In_reads_opt_(cb) PBYTE pb, _In_ DWORD cb, _
         // address
         if(0 == i % 16) {
             va = qwAddress + i;
-            for(j = 0; j < 0x40; j += 4) {
-                sz[o++] = Util_2HexChar(va >> j);
+            for(j = 0; j < 64; j += 4) {
+                sz[o++] = Util_2HexChar(va >> (60 - j));
             }
             sz[o++] = ' ';
             sz[o++] = ' ';
