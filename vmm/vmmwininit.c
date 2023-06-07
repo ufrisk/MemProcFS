@@ -451,19 +451,32 @@ QWORD VmmWinInit_FindNtosScan64(_In_ VMM_HANDLE H, PVMM_PROCESS pSystemProcess)
         // try locate ntoskrnl.exe base inside suggested area
         if(!(pb = (PBYTE)LocalAlloc(0, (DWORD)cbSize))) { return 0; }
         VmmReadEx(H, pSystemProcess, vaBase, pb, (DWORD)cbSize, NULL, 0);
+        // Scan for ntoskrnl.exe - pass #1:
         for(p = 0; p < cbSize; p += 0x1000) {
             // check for (1) MZ header, (2) POOLCODE section, (3) ntoskrnl.exe module name
             if(*(PWORD)(pb + p) != 0x5a4d) { continue; } // MZ header
             for(o = 0; o < 0x1000; o += 8) {
                 if(*(PQWORD)(pb + p + o) == 0x45444F434C4F4F50) { // POOLCODE
                     PE_GetModuleNameEx(H, pSystemProcess, vaBase + p, FALSE, pb + p, szModuleName, _countof(szModuleName), NULL);
-                    if(!_stricmp(szModuleName, "ntoskrnl.exe")) {
+                    //if(!_stricmp(szModuleName, "ntoskrnl.exe")) {
                         LocalFree(pb);
                         return vaBase + p;
-                    }
+                    //}
                 }
             }
         }
+        // Scan for ntoskrnl.exe - pass #2: (more relaxed in case if not found in pass #1)
+        for(p = 0; p < cbSize; p += 0x1000) {
+            // check for (1) MZ header, (2) POOLCODE section:
+            if(*(PWORD)(pb + p) != 0x5a4d) { continue; } // MZ header
+            for(o = 0; o < 0x1000; o += 8) {
+                if(*(PQWORD)(pb + p + o) == 0x45444F434C4F4F50) { // POOLCODE
+                    LocalFree(pb);
+                    return vaBase + p;
+                }
+            }
+        }
+        // Not found:
         LocalFree(pb);
     }
     return 0;
