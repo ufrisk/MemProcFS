@@ -4923,9 +4923,9 @@ impl Vmm<'_> {
                     va : ne.vaCMHIVE,
                     va_baseblock : ne.vaHBASE_BLOCK,
                     size : ne.cbLength,
-                    name : String::from_utf8_lossy(CStr::from_ptr(ne.uszName.as_ptr()).to_bytes()).to_string(),
-                    name_short : String::from_utf8_lossy(CStr::from_ptr(ne.uszNameShort.as_ptr()).to_bytes()).to_string(),
-                    path : String::from_utf8_lossy(CStr::from_ptr(ne.uszHiveRootPath.as_ptr()).to_bytes()).to_string(),
+                    name : String::from_utf8_lossy(CStr::from_ptr(ne.uszName.as_ptr() as *const c_char).to_bytes()).to_string(),
+                    name_short : String::from_utf8_lossy(CStr::from_ptr(ne.uszNameShort.as_ptr() as *const c_char).to_bytes()).to_string(),
+                    path : String::from_utf8_lossy(CStr::from_ptr(ne.uszHiveRootPath.as_ptr() as *const c_char).to_bytes()).to_string(),
                 };
                 result.push(e);
             }
@@ -5536,8 +5536,8 @@ struct CProcessInformation {
     dwPID : u32,
     dwPPID : u32,
     dwState : u32,
-    szName : [i8; 16],
-    szNameLong : [i8; 64],
+    szName : [c_char; 16],
+    szNameLong : [c_char; 64],
     paDTB : u64,
     paDTB_UserOpt : u64,
     vaEPROCESS : u64,
@@ -5547,7 +5547,7 @@ struct CProcessInformation {
     vaPEB32 : u32,
     dwSessionId : u32,
     qwLUID : u64,
-    szSID : [i8; 260],
+    szSID : [c_char; 260],
     IntegrityLevel : u32,
 }
 
@@ -5920,8 +5920,8 @@ impl VmmProcess<'_> {
             dwPID : 0,
             dwPPID : 0,
             dwState : 0,
-            szName : [0i8; 16],
-            szNameLong : [0i8; 64],
+            szName : [0; 16],
+            szNameLong : [0; 64],
             paDTB : 0,
             paDTB_UserOpt : 0,
             vaEPROCESS : 0,
@@ -5931,7 +5931,7 @@ impl VmmProcess<'_> {
             vaPEB32 : 0,
             dwSessionId : 0,
             qwLUID : 0,
-            szSID : [0i8; 260],
+            szSID : [0; 260],
             IntegrityLevel : 0,
         };
         let raw_pi = &mut pi as *mut CProcessInformation;
@@ -5994,11 +5994,11 @@ impl VmmProcess<'_> {
 
     fn impl_pdb_from_module_address(&self, va_module_base : u64) -> ResultEx<VmmPdb> {
         let mut szModuleName = [0i8; MAX_PATH + 1];
-        let r = (self.vmm.native.VMMDLL_PdbLoad)(self.vmm.native.h, self.pid, va_module_base, szModuleName.as_mut_ptr());
+        let r = (self.vmm.native.VMMDLL_PdbLoad)(self.vmm.native.h, self.pid, va_module_base, szModuleName.as_mut_ptr() as *mut c_char);
         if !r {
             return Err(anyhow!("VMMDLL_PdbLoad: fail."));
         }
-        let cstr = unsafe { CStr::from_ptr(szModuleName.as_ptr()) };
+        let cstr = unsafe { CStr::from_ptr(szModuleName.as_ptr() as *const c_char) };
         let module = cstr.to_string_lossy().to_string();
         let pdb = VmmPdb {
             vmm : self.vmm,
