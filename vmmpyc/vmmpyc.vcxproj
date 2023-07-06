@@ -234,11 +234,13 @@
     <ClCompile Include="vmmpyc_regmemory.c" />
     <ClCompile Include="vmmpyc_regvalue.c" />
     <ClCompile Include="vmmpyc_scattermemory.c" />
+    <ClCompile Include="vmmpyc_search.c" />
     <ClCompile Include="vmmpyc_util.c" />
     <ClCompile Include="vmmpyc_vfs.c" />
     <ClCompile Include="vmmpyc_virtualmachine.c" />
     <ClCompile Include="vmmpyc_virtualmemory.c" />
     <ClCompile Include="vmmpyc_vmm.c" />
+    <ClCompile Include="vmmpyc_yara.c" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="vmmpyc.rc" />

@@ -17,7 +17,7 @@
 #include "oscompatibility.h"
 #include "vmm.h"
 #include "mm/mm_pfn.h"
-#include "sqlite/sqlite3.h"
+#include "ext/sqlite3.h"
 
 #define FC_SQL_POOL_CONNECTION_NUM          4
 #define FC_PHYSMEM_NUM_CHUNKS               0x1000
@@ -84,7 +84,7 @@ typedef struct tdFC_CONTEXT {
     } FindEvil;
 } FC_CONTEXT, *PFC_CONTEXT;
 
-#define FC_JSONDATA_INIT_PIDTYPE(pd, pid, tp)   { ZeroMemory(pd, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)); pd->dwVersion = VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION; pd->dwPID = pid; pd->szjType = tp; }
+#define FC_JSONDATA_INIT_PIDTYPE(pd, pid, tp)   { ZeroMemory(pd, sizeof(VMMDLL_FORENSIC_JSONDATA)); pd->dwVersion = VMMDLL_FORENSIC_JSONDATA_VERSION; pd->dwPID = pid; pd->szjType = tp; }
 
 static const LPSTR szFC_SQL_STR_INSERT = "INSERT INTO str (id, cbu, cbj, cbv, sz) VALUES (?, ?, ?, ?, ?);";
 

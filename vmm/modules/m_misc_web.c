@@ -5,7 +5,7 @@
 //
 
 #include "modules.h"
-#include "../sqlite/sqlite3.h"
+#include "../ext/sqlite3.h"
 #include "../vmmwinobj.h"
 
 LPSTR szMWEB_README =
@@ -449,17 +449,17 @@ VOID MWeb_Close(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
     Ob_DECREF(ctxP->ctxM);
 }
 
-VOID MWeb_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
+VOID MWeb_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_FORENSIC_JSONDATA pData))
 {
     DWORD ie;
     PVMM_MAP_WEBENTRY pe = NULL;
     PVMMOB_MAP_WEB pObWebMap = NULL;
-    PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd = NULL;
+    PVMMDLL_FORENSIC_JSONDATA pd = NULL;
     CHAR usz[2048], szTime[24];
     if(ctxP->pProcess) { return; }
     if(!(pObWebMap = MWeb_GetWebMap(H, ctxP))) { goto fail; }
-    if(!(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)))) { goto fail; }
-    pd->dwVersion = VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION;
+    if(!(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_FORENSIC_JSONDATA)))) { goto fail; }
+    pd->dwVersion = VMMDLL_FORENSIC_JSONDATA_VERSION;
     pd->szjType = "web";
     for(ie = 0; ie < pObWebMap->cMap; ie++) {
         pe = pObWebMap->pMap + ie;

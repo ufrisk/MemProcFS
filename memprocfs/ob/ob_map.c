@@ -649,7 +649,7 @@ PVOID ObMap_Pop(_In_opt_ POB_MAP pm)
 * -- return = success: object, fail: NULL.
 */
 _Success_(return != NULL)
-PVOID ObMap_PopWithKey(_In_opt_ POB_MAP pm, _Out_ PQWORD pKey)
+PVOID ObMap_PopWithKey(_In_opt_ POB_MAP pm, _Out_opt_ PQWORD pKey)
 {
     OB_MAP_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(pm, PVOID, NULL, _ObMap_RetrieveAndRemoveByEntryIndex(pm, pm->c - 1, pKey))
 }

@@ -6,6 +6,7 @@
 
 #include "vmmdll.h"
 #include "vmmdll_core.h"
+#include "vmmdll_remote.h"
 #include "pluginmanager.h"
 #include "charutil.h"
 #include "util.h"
@@ -24,6 +25,8 @@
 #include "vmmvm.h"
 #include "vmmyarautil.h"
 #include "mm/mm_pfn.h"
+
+#define VMM_HANDLE_IS_REMOTE(H)         (((SIZE_T)H) & 1)
 
 // tags for external allocations:
 #define OB_TAG_API_MAP_EAT              'EAT '
@@ -68,6 +71,10 @@ VMM_HANDLE VMMDLL_Initialize(_In_ DWORD argc, _In_ LPSTR argv[])
 EXPORTED_FUNCTION
 VOID VMMDLL_Close(_In_opt_ _Post_ptr_invalid_ VMM_HANDLE H)
 {
+    if(VMM_HANDLE_IS_REMOTE(H)) {
+        VmmDllRemote_Close(H);
+        return;
+    }
     VmmDllCore_Close(H);
 }
 
@@ -75,6 +82,7 @@ EXPORTED_FUNCTION
 VOID VMMDLL_CloseAll()
 {
     VmmDllCore_CloseAll();
+    VmmDllRemote_CloseAll();
 }
 
 
@@ -137,6 +145,9 @@ VOID VMMDLL_MemFree(_Frees_ptr_opt_ PVOID pvMem)
 _Success_(return)
 BOOL VMMDLL_InitializePlugins(_In_ VMM_HANDLE H)
 {
+    if(VMM_HANDLE_IS_REMOTE(H)) {
+        return TRUE;
+    }
     CALL_IMPLEMENTATION_VMM(H,
         STATISTICS_ID_VMMDLL_InitializePlugins,
         PluginManager_Initialize(H))
@@ -363,12 +374,18 @@ BOOL VMMDLL_ConfigSet_Impl(_In_ VMM_HANDLE H, _In_ ULONG64 fOption, _In_ ULONG64
 _Success_(return)
 BOOL VMMDLL_ConfigGet(_In_ VMM_HANDLE H, _In_ ULONG64 fOption, _Out_ PULONG64 pqwValue)
 {
+    if(VMM_HANDLE_IS_REMOTE(H)) {
+        return VmmDllRemote_ConfigGet(H, fOption, pqwValue);
+    }
     CALL_IMPLEMENTATION_VMM(H, STATISTICS_ID_VMMDLL_ConfigGet, VMMDLL_ConfigGet_Impl(H, fOption, pqwValue))
 }
 
 _Success_(return)
 BOOL VMMDLL_ConfigSet(_In_ VMM_HANDLE H, _In_ ULONG64 fOption, _In_ ULONG64 qwValue)
 {
+    if(VMM_HANDLE_IS_REMOTE(H)) {
+        return VmmDllRemote_ConfigSet(H, fOption, qwValue);
+    }
     CALL_IMPLEMENTATION_VMM(H, STATISTICS_ID_VMMDLL_ConfigSet, VMMDLL_ConfigSet_Impl(H, fOption, qwValue))
 }
 
@@ -428,6 +445,9 @@ BOOL VMMDLL_VfsList_Impl(_In_ VMM_HANDLE H, _In_ LPSTR uszPath, _Inout_ PHANDLE 
 _Success_(return)
 BOOL VMMDLL_VfsListU(_In_ VMM_HANDLE H, _In_ LPSTR uszPath, _Inout_ PVMMDLL_VFS_FILELIST2 pFileList)
 {
+    if(VMM_HANDLE_IS_REMOTE(H)) {
+        return VmmDllRemote_VfsListU(H, uszPath, pFileList);
+    }
     CALL_IMPLEMENTATION_VMM(H,
         STATISTICS_ID_VMMDLL_VfsList,
         VMMDLL_VfsList_Impl(H, uszPath, (PHANDLE)pFileList))
@@ -540,6 +560,9 @@ NTSTATUS VMMDLL_VfsRead_Impl(_In_ VMM_HANDLE H, _In_ LPSTR uszPath, _Out_writes_
 
 NTSTATUS VMMDLL_VfsReadU(_In_ VMM_HANDLE H, _In_ LPSTR uszFileName, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset)
 {
+    if(VMM_HANDLE_IS_REMOTE(H)) {
+        return VmmDllRemote_VfsReadU(H, uszFileName, pb, cb, pcbRead, cbOffset);
+    }
     CALL_IMPLEMENTATION_VMM_RETURN(
         H,
         STATISTICS_ID_VMMDLL_VfsRead,
@@ -574,6 +597,9 @@ NTSTATUS VMMDLL_VfsWrite_Impl(_In_ VMM_HANDLE H, _In_ LPSTR uszPath, _In_reads_(
 
 NTSTATUS VMMDLL_VfsWriteU(_In_ VMM_HANDLE H, _In_ LPSTR uszFileName, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ ULONG64 cbOffset)
 {
+    if(VMM_HANDLE_IS_REMOTE(H)) {
+        return VmmDllRemote_VfsWriteU(H, uszFileName, pb, cb, pcbWrite, cbOffset);
+    }
     CALL_IMPLEMENTATION_VMM_RETURN(
         H,
         STATISTICS_ID_VMMDLL_VfsWrite,

@@ -301,13 +301,15 @@ BOOL _ObMap_QFind(_In_ POB_MAP pm, _In_ QWORD qwKey, _Out_ PDWORD pdwIndex)
     if(pm->c <= 1) { return FALSE; }
     cMap = pm->c - 1;
     for(i = 1; ((cMap - 1) >> i); i++);
-    i = min(1UL << (i - 1), cMap - 1);
+    i = min(1UL << (i - 1), (cMap - 1) >> 1);
     if(i == 0) { i = 1; }
     dwStep = i >> 1;
     while(dwStep > 1) {
         pe = &pm->Directory[OB_MAP_INDEX_DIRECTORY(i)][OB_MAP_INDEX_TABLE(i)][OB_MAP_INDEX_STORE(i)];
         if(pe->k < qwKey) {
-            i += dwStep;
+            if(i + dwStep <= cMap) {
+                i += dwStep;
+            }
         } else if(pe->k > qwKey) {
             i -= dwStep;
         } else {

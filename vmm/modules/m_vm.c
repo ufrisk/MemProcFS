@@ -118,15 +118,15 @@ BOOL MVM_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHAND
     return TRUE;
 }
 
-VOID MVM_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
+VOID MVM_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_FORENSIC_JSONDATA pData))
 {
-    PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd;
+    PVMMDLL_FORENSIC_JSONDATA pd;
     PVMMOB_MAP_VM pObVmMap = NULL;
     PVMM_MAP_VMENTRY pe;
     DWORD i;
     CHAR usz[MAX_PATH];
-    if(ctxP->pProcess || !(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)))) { return; }
-    pd->dwVersion = VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION;
+    if(ctxP->pProcess || !(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_FORENSIC_JSONDATA)))) { return; }
+    pd->dwVersion = VMMDLL_FORENSIC_JSONDATA_VERSION;
     pd->szjType = "virtualmachine";
     if(VmmMap_GetVM(H, &pObVmMap)) {
         for(i = 0; i < pObVmMap->cMap; i++) {

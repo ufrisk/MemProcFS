@@ -1197,6 +1197,7 @@ typedef struct tdVMMCONFIG {
     BOOL fDisableYara;
     BOOL fDisableYaraBuiltin;
     BOOL fLicenseAcceptElasticV2;
+    BOOL fRemoteFS;
     BOOL fWaitInitialize;
     BOOL fUserInteract;
     BOOL fFileInfoHeader;

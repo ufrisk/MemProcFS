@@ -175,16 +175,16 @@ fail:
     Ob_DECREF(pObProcess);
 }
 
-VOID MSysNet_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
+VOID MSysNet_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_FORENSIC_JSONDATA pData))
 {
-    PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd;
+    PVMMDLL_FORENSIC_JSONDATA pd;
     PVMMOB_MAP_NET pObNetMap = NULL;
     PVMM_MAP_NETENTRY pe;
     DWORD i;
     PVMM_PROCESS pObProcess = NULL;
     CHAR szTime[24], szu[MAX_PATH];
-    if(ctxP->pProcess || !(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)))) { return; }
-    pd->dwVersion = VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION;
+    if(ctxP->pProcess || !(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_FORENSIC_JSONDATA)))) { return; }
+    pd->dwVersion = VMMDLL_FORENSIC_JSONDATA_VERSION;
     pd->szjType = "net";
     if(VmmMap_GetNet(H, &pObNetMap)) {
         for(i = 0; i < pObNetMap->cMap; i++) {

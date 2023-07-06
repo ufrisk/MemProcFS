@@ -135,6 +135,7 @@ PyObject* PyInit_vmmpyc(void)
         VmmPycModule_InitializeType, VmmPycModuleMaps_InitializeType,
         VmmPycKernel_InitializeType, VmmPycMaps_InitializeType,
         VmmPycPdb_InitializeType, VmmPycVfs_InitializeType, VmmPycVmm_InitializeType,
+        VmmPycSearch_InitializeType, VmmPycYara_InitializeType,
         VmmPycVirtualMachine_InitializeType
     };
     // initialize 'vmmpyc' core module:

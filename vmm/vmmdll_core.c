@@ -7,6 +7,7 @@
 
 #include "vmm.h"
 #include "vmmdll.h"
+#include "vmmdll_remote.h"
 #include "vmmlog.h"
 #include "vmmproc.h"
 #include "vmmwork.h"
@@ -31,11 +32,11 @@
 static BOOL g_VMMDLL_INITIALIZED            = FALSE;
 static POB_MAP g_VMMDLL_ALLOCMAP_EXT        = NULL;
 static CRITICAL_SECTION g_VMMDLL_CORE_LOCK  = { 0 };
-static POB_MAP g_VMMDLL_CORE_ALLHANDLE      = NULL;
 static DWORD g_VMMDLL_CORE_HANDLE_COUNT     = 0;
 static VMM_HANDLE g_VMMDLL_CORE_HANDLES[VMM_HANDLE_MAX_COUNT] = { 0 };
 
 // forward declarations below:
+VOID VmmDllRemote_InitializeGlobals();
 VOID VmmDllCore_MemLeakFindExternal(_In_ VMM_HANDLE H);
 VOID VmmDllCore_CloseHandle(_In_opt_ _Post_ptr_invalid_ VMM_HANDLE H, _In_ BOOL fForceCloseAll);
 
@@ -58,6 +59,7 @@ BOOL WINAPI DllMain(_In_ HINSTANCE hinstDLL, _In_ DWORD fdwReason, _In_ PVOID lp
 {    
     if(fdwReason == DLL_PROCESS_ATTACH) {
         VmmDllCore_InitializeGlobals();
+        VmmDllRemote_InitializeGlobals();
     }
     return TRUE;
 }
@@ -66,6 +68,7 @@ BOOL WINAPI DllMain(_In_ HINSTANCE hinstDLL, _In_ DWORD fdwReason, _In_ PVOID lp
 __attribute__((constructor)) VOID VmmAttach()
 {
     VmmDllCore_InitializeGlobals();
+    VmmDllRemote_InitializeGlobals();
 }
 #endif /* LINUX */
 
@@ -81,18 +84,19 @@ _Success_(return)
 BOOL VmmDllCore_HandleReserveExternal(_In_opt_ VMM_HANDLE H)
 {
     DWORD i = 0;
-    BOOL fResult = FALSE;
     if(!H || ((SIZE_T)H < 0x10000)) { return FALSE;}
     EnterCriticalSection(&g_VMMDLL_CORE_LOCK);
     for(i = 0; i < g_VMMDLL_CORE_HANDLE_COUNT; i++) {
         if(g_VMMDLL_CORE_HANDLES[i] == H) {
-            InterlockedIncrement(&H->cThreadExternal);
-            fResult = (H->magic == VMM_MAGIC) && !H->fAbort;
-            break;
+            if((H->magic == VMM_MAGIC) && !H->fAbort) {
+                InterlockedIncrement(&H->cThreadExternal);
+                LeaveCriticalSection(&g_VMMDLL_CORE_LOCK);
+                return TRUE;
+            }
         }
     }
     LeaveCriticalSection(&g_VMMDLL_CORE_LOCK);
-    return fResult;
+    return FALSE;
 }
 
 /*
@@ -126,7 +130,7 @@ VMM_HANDLE VmmDllCore_HandleDuplicate(_In_ VMM_HANDLE H)
 
 /*
 * Remove a handle from the external handle array.
-* NB! Function is to be called behind exclusive lock g_VMMDLL_CORE_LOCK_SRW.
+* NB! Function is to be called behind exclusive lock g_VMMDLL_CORE_LOCK.
 * -- H
 */
 VOID VmmDllCore_HandleRemove(_In_ VMM_HANDLE H)
@@ -150,7 +154,7 @@ VOID VmmDllCore_HandleRemove(_In_ VMM_HANDLE H)
 
 /*
 * Add a new handle to the external handle array.
-* NB! Function is to be called behind exclusive lock g_VMMDLL_CORE_LOCK_SRW.
+* NB! Function is to be called behind exclusive lock g_VMMDLL_CORE_LOCK.
 * -- H
 */
 _Success_(return)
@@ -407,6 +411,7 @@ VOID VmmDllCore_PrintHelp(_In_ VMM_HANDLE H)
         "          Please see https://github.com/ufrisk/LeechCore for additional info.  \n" \
         "   -remote : connect to a remote host running the LeechAgent. Please see the   \n" \
         "          LeechCore documentation for more information.                        \n" \
+        "   -remotefs : connect to a remote LeechAgent hosting a remote MemProcFS.      \n" \
         "   -v   : verbose option. Additional information is displayed in the output.   \n" \
         "          Option has no value. Example: -v                                     \n" \
         "   -vv  : extra verbose option. More detailed additional information is shown  \n" \
@@ -521,7 +526,7 @@ BOOL VmmDllCore_InitializeConfig(_In_ VMM_HANDLE H, _In_ DWORD argc, _In_ char *
         } else if(0 == _stricmp(argv[i], "-disable-yara-builtin")) {
             H->cfg.fDisableYaraBuiltin = TRUE;
             i++; continue;
-        } else if(0 == _stricmp(argv[i], "-license-accept-elastic-license-2.0")) {
+        } else if((0 == _stricmp(argv[i], "-license-accept-elastic-license-2.0")) || (0 == _stricmp(argv[i], "-license-accept-elastic-license-2-0"))) {
             H->cfg.fLicenseAcceptElasticV2 = TRUE;
             i++; continue;
         } else if(0 == _stricmp(argv[i], "-norefresh")) {
@@ -529,6 +534,9 @@ BOOL VmmDllCore_InitializeConfig(_In_ VMM_HANDLE H, _In_ DWORD argc, _In_ char *
             i++; continue;
         } else if(0 == _stricmp(argv[i], "-printf")) {
             H->cfg.fVerboseDll = TRUE;
+            i++; continue;
+        } else if(0 == _stricmp(argv[i], "-remotefs")) {
+            H->cfg.fRemoteFS = TRUE;
             i++; continue;
         } else if(0 == _stricmp(argv[i], "-userinteract")) {
             H->cfg.fUserInteract = TRUE;
@@ -806,7 +814,14 @@ VMM_HANDLE VmmDllCore_Initialize(_In_ DWORD argc, _In_ LPSTR argv[], _Out_opt_ P
         VmmDllCore_PrintHelp(H);
         goto fail_prelock;
     }
-    // 2: If vmm is supposed to be created with a parent check conditions and retrieve the parent handle.
+    // 2.1: If -remotefs is specified, try to connect to the remote MemProcFS
+    //      instance running under the remote LeechAgent. This is a special
+    //      case and will return a special VMM_HANDLE.
+    if(H->cfg.fRemoteFS) {
+        LocalFree(H);
+        return VmmDllRemote_Initialize(argc, argv, ppLcErrorInfo);
+    }
+    // 2.2: If vmm is supposed to be created with a parent check conditions and retrieve the parent handle.
     if(H->cfg.fVM && (sizeof(PVOID) < 8)) {
         vmmprintf(H, "MemProcFS: VM parsing is only available on 64-bit due to resource constraints.\n");
         goto fail_prelock;

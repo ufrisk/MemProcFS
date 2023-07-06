@@ -337,7 +337,7 @@ pub enum VmmMapPfnTypeExtended {
 /// Info: Memory PFN (Page Frame Number).
 /// 
 /// # Created By
-/// - `vmmprocess.map_pfn()`
+/// - [`vmm.map_pfn()`](Vmm::map_pfn())
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VmmMapPfnEntry {
     pub pfn : u32,
@@ -357,7 +357,7 @@ pub struct VmmMapPfnEntry {
 /// Info: Kernel pool entries.
 /// 
 /// # Created By
-/// - `vmm.map_pool()`
+/// - [`vmm.map_pool()`](Vmm::map_pool())
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VmmMapPoolEntry {
     pub va : u64,
@@ -371,7 +371,7 @@ pub struct VmmMapPoolEntry {
 /// Info: Physical memory map entries.
 /// 
 /// # Created By
-/// - `vmm.map_memory()`
+/// - [`vmm.map_memory()`](Vmm::map_memory())
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VmmMapMemoryEntry {
     pub pa : u64,
@@ -381,7 +381,7 @@ pub struct VmmMapMemoryEntry {
 /// Info: Services.
 /// 
 /// # Created By
-/// - `vmm.map_service()`
+/// - [`vmm.map_service()`](Vmm::map_service())
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VmmMapServiceEntry {
     pub ordinal : u32,
@@ -406,7 +406,7 @@ pub struct VmmMapServiceEntry {
 /// Info: Users.
 /// 
 /// # Created By
-/// - `vmm.map_user()`
+/// - [`vmm.map_user()`](Vmm::map_user())
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VmmMapUserEntry {
     pub user : String,
@@ -417,7 +417,7 @@ pub struct VmmMapUserEntry {
 /// Info: Virtual Machines (VMs).
 /// 
 /// # Created By
-/// - `vmm.map_virtual_machine()`
+/// - [`vmm.map_virtual_machine()`](Vmm::map_virtual_machine())
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VmmMapVirtualMachineEntry {
     h_vmm : usize,
@@ -438,7 +438,7 @@ pub struct VmmMapVirtualMachineEntry {
 /// VFS (Virtual File System) entry information - file or directory.
 /// 
 /// # Created By
-/// - `vmm.vfs_list()`
+/// - [`vmm.vfs_list()`](Vmm::vfs_list())
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VmmVfsEntry {
     /// Name of the file or directory.
@@ -1124,7 +1124,7 @@ impl VmmMapPoolEntry {
 /// 
 /// 
 /// # Created By
-/// - `vmm.kernel()`
+/// - [`vmm.kernel()`](Vmm::kernel())
 /// 
 /// # Examples
 /// ```
@@ -1189,8 +1189,8 @@ impl VmmKernel<'_> {
 /// 
 /// 
 /// # Created By
-/// - `vmmprocess.pdb_from_module_address()`
-/// - `vmm.kernel().pdb()`
+/// - [`vmmprocess.pdb_from_module_address()`](VmmProcess::pdb_from_module_address())
+/// - [`vmm.kernel().pdb()`](VmmKernel::pdb())
 /// 
 /// # Examples
 /// ```
@@ -1282,8 +1282,8 @@ impl VmmPdb<'_> {
 /// 
 /// 
 /// # Created By
-/// - `vmm.mem_scatter()`
-/// - `vmmprocess.mem_scatter()`
+/// - [`vmm.mem_scatter()`](Vmm::mem_scatter())
+/// - [`vmmprocess.mem_scatter()`](VmmProcess::mem_scatter())
 /// 
 /// # Example #1
 /// ```
@@ -1501,10 +1501,10 @@ impl VmmScatterMemory<'_> {
 /// 
 /// 
 /// # Created By
-/// - `vmm.process_from_pid()`
-/// - `vmm.process_from_name()`
-/// - `vmm.process_list()`
-/// - `vmm.kernel().process()`
+/// - [`vmm.process_from_pid()`](Vmm::process_from_pid())
+/// - [`vmm.process_from_name()`](Vmm::process_from_name())
+/// - [`vmm.process_list()`](Vmm::process_list())
+/// - [`vmm.kernel().process()`](VmmKernel::process())
 /// - `plugin sub-system`
 /// 
 /// 
@@ -1580,7 +1580,7 @@ pub enum VmmSystemType {
 /// Process Information.
 /// 
 /// # Created By
-/// - `vmmprocess.info()`
+/// - [`vmmprocess.info()`](VmmProcess::info())
 /// 
 /// # Examples
 /// ```
@@ -1624,7 +1624,7 @@ pub struct VmmProcessInfo {
 /// Info: Process Module: PE data directories.
 /// 
 /// # Created By
-/// - `vmmprocess.map_module_data_directory()`
+/// - [`vmmprocess.map_module_data_directory()`](VmmProcess::map_module_data_directory())
 /// 
 /// # Examples
 /// ```
@@ -1646,7 +1646,7 @@ pub struct VmmProcessMapDirectoryEntry {
 /// Info: Process Module: PE exported entries.
 /// 
 /// # Created By
-/// - `vmmprocess.map_module_eat()`
+/// - [`vmmprocess.map_module_eat()`](VmmProcess::map_module_eat()
 /// 
 /// # Examples
 /// ```
@@ -1669,7 +1669,7 @@ pub struct VmmProcessMapEatEntry {
 /// Info: Process: Handles.
 /// 
 /// # Created By
-/// - `vmmprocess.map_handle()`
+/// - [`vmmprocess.map_handle()`](VmmProcess::map_handle())
 /// 
 /// # Examples
 /// ```
@@ -1707,7 +1707,7 @@ pub enum VmmProcessMapHeapType {
 /// Info: Process: Heaps.
 /// 
 /// # Created By
-/// - `vmmprocess.map_heap()`
+/// - [`vmmprocess.map_heap()`](VmmProcess::map_heap())
 /// 
 /// # Examples
 /// ```
@@ -1743,7 +1743,7 @@ pub enum VmmProcessMapHeapAllocType {
 /// Info: Process: Heap allocations.
 /// 
 /// # Created By
-/// - `vmmprocess.map_heapalloc()`
+/// - [`vmmprocess.map_heapalloc()`](VmmProcess::map_heapalloc())
 /// 
 /// # Examples
 /// ```
@@ -1766,7 +1766,7 @@ pub struct VmmProcessMapHeapAllocEntry {
 /// Info: Process Module: PE imported entries.
 /// 
 /// # Created By
-/// - `vmmprocess.map_module_iat()`
+/// - [`vmmprocess.map_module_iat()`](VmmProcess::map_module_iat())
 /// 
 /// # Examples
 /// ```
@@ -1788,7 +1788,7 @@ pub struct VmmProcessMapIatEntry {
 /// Info: Process: Modules (loaded DLLs) debug information.
 /// 
 /// # Created By
-/// - `vmmprocess.map_module()`
+/// - [`vmmprocess.map_module()`](VmmProcess::map_module())
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VmmProcessMapModuleDebugEntry {
     pub pid : u32,
@@ -1801,7 +1801,7 @@ pub struct VmmProcessMapModuleDebugEntry {
 /// Info: Process: Modules (loaded DLLs) version information.
 /// 
 /// # Created By
-/// - `vmmprocess.map_module()`
+/// - [`vmmprocess.map_module()`](VmmProcess::map_module())
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VmmProcessMapModuleVersionEntry {
     pub pid : u32,
@@ -1826,7 +1826,7 @@ pub enum VmmProcessMapModuleType {
 /// Info: Process: Modules (loaded DLLs).
 /// 
 /// # Created By
-/// - `vmmprocess.map_module()`
+/// - [`vmmprocess.map_module()`](VmmProcess::map_module())
 /// 
 /// # Examples
 /// ```
@@ -1858,7 +1858,7 @@ pub struct VmmProcessMapModuleEntry {
 /// Info: Process: PTE memory map entries.
 /// 
 /// # Created By
-/// - `vmmprocess.map_pte()`
+/// - [`vmmprocess.map_pte()`](VmmProcess::map_pte())
 /// 
 /// # Examples
 /// ```
@@ -1890,7 +1890,7 @@ pub struct VmmProcessMapPteEntry {
 /// Info: Process Module: PE sections.
 /// 
 /// # Created By
-/// - `vmmprocess.map_module_section()`
+/// - [`vmmprocess.map_module_section()`](VmmProcess::map_module_section())
 /// 
 /// # Examples
 /// ```
@@ -1921,7 +1921,7 @@ pub struct VmmProcessSectionEntry {
 /// Info: Process: Threads.
 /// 
 /// # Created By
-/// - `vmmprocess.map_thread()`
+/// - [`vmmprocess.map_thread()`](VmmProcess::map_thread())
 /// 
 /// # Examples
 /// ```
@@ -1966,7 +1966,7 @@ pub struct VmmProcessMapThreadEntry {
 /// Info: Process: Unloaded modules.
 /// 
 /// # Created By
-/// - `vmmprocess.map_unloaded_module()`
+/// - [`vmmprocess.map_unloaded_module()`](VmmProcess::map_unloaded_module())
 /// 
 /// # Examples
 /// ```
@@ -1992,7 +1992,7 @@ pub struct VmmProcessMapUnloadedModuleEntry {
 /// Info: Process: VAD (Virtual Address Descriptor) memory map entries.
 /// 
 /// # Created By
-/// - `vmmprocess.map_vad()`
+/// - [`vmmprocess.map_vad()`](VmmProcess::map_vad())
 /// 
 /// # Examples
 /// ```
@@ -2038,7 +2038,7 @@ pub enum VmmProcessMapVadExType {
 /// Info: Process: Extended VAD memory map entries.
 /// 
 /// # Created By
-/// - `vmmprocess.map_vadex()`
+/// - [`vmmprocess.map_vadex()`](VmmProcess::map_vadex())
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VmmProcessMapVadExEntry {
     pub pid : u32,
@@ -2636,7 +2636,7 @@ impl VmmProcess<'_> {
 /// exposed fields and various methods.
 /// 
 /// # Created By
-/// - `vmm.reg_hive_list()`
+/// - [`vmm.reg_hive_list()`](Vmm::reg_hive_list())
 /// 
 /// # Examples
 /// ```
@@ -2703,11 +2703,11 @@ impl VmmRegHive<'_> {
 /// Registry keys are case sensitive.
 /// 
 /// # Created By
-/// - `vmm.reg_key()`
-/// - `vmmregkey.parent()`
-/// - `vmmregkey.subkeys()`
-/// - `vmmregkey.subkeys_map()`
-/// - `vmmregvalue.parent()`
+/// - [`vmm.reg_key()`](Vmm::reg_key())
+/// - [`vmmregkey.parent()`](VmmRegKey::parent())
+/// - [`vmmregkey.subkeys()`](VmmRegKey::subkeys())
+/// - [`vmmregkey.subkeys_map()`](VmmRegKey::subkeys_map())
+/// - [`vmmregvalue.parent()`](VmmRegValue::parent())
 /// 
 /// # Examples
 /// ```
@@ -2835,9 +2835,9 @@ pub enum VmmRegValueType {
 /// Registry values are case sensitive.
 /// 
 /// # Created By
-/// - `vmm.reg_value()`
-/// - `vmmregkey.values()`
-/// - `vmmregkey.values_map()`
+/// - [`vmm.reg_value()`](Vmm::reg_value())
+/// - [`vmmregkey.values()`](VmmRegKey::values())
+/// - [`vmmregkey.values_map()`](VmmRegKey::values_map())
 /// 
 /// # Examples
 /// ```
@@ -2958,8 +2958,8 @@ impl VmmRegValue<'_> {
 /// 
 /// 
 /// # Created By
-/// - `vmm.search()`
-/// - `vmmprocess.search()`
+/// - [`vmm.search()`](Vmm::search())
+/// - [`vmmprocess.search()`](VmmProcess::search())
 /// 
 /// # Examples
 /// ```
@@ -2994,8 +2994,8 @@ pub struct VmmSearch<'a> {
 /// Also see [`VmmSearch`].
 /// 
 /// # Created By
-/// - `vmmsearch.poll()`
-/// - `vmmsearch.result()`
+/// - [`vmmsearch.poll()`](VmmSearch::poll())
+/// - [`vmmsearch.result()`](VmmSearch::result())
 /// 
 /// # Examples
 /// ```
@@ -3168,8 +3168,8 @@ impl VmmSearch<'_> {
 /// 
 /// 
 /// # Created By
-/// - `vmm.yara_search()`
-/// - `vmmprocess.yara_search()`
+/// - [`vmm.search_yara()`](Vmm::search_yara())
+/// - [`vmmprocess.search_yara()`](VmmProcess::search_yara())
 /// 
 /// # Examples
 /// ```
@@ -3206,8 +3206,8 @@ pub struct VmmYara<'a> {
 /// 
 /// 
 /// # Created By
-/// - `vmmyara.poll()`
-/// - `vmmyara.result()`
+/// - [`vmmyara.poll()`](VmmYara::poll())
+/// - [`vmmyara.result()`](VmmYara::result())
 /// 
 /// # Examples
 /// ```
@@ -6935,18 +6935,6 @@ pub(crate) struct CVMMDLL_YARA_CONFIG {
     pfnFilterOptCB : usize,
     pvUserPtrOpt2 : usize,
     _Reserved : u64,
-}
-
-#[repr(C)]
-#[allow(non_snake_case)]
-#[derive(Debug)]
-pub(crate) struct CVMMDLL_YARA_MEMORY_CALLBACK_CONTEXT {
-    dwVersion : u32,
-    dwPID : u32,
-    pUserContext : usize,
-    qwA : u64,
-    pb : *const u8,
-    cb : u32,
 }
 
 impl Drop for VmmYara<'_> {

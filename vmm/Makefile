@@ -19,10 +19,10 @@ CFLAGS  += -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast
 LDFLAGS += -Wl,-rpath,'$$ORIGIN' -g -ldl -shared
 DEPS = vmmdll.h
 OBJ = oscompatibility.o charutil.o util.o pe.o vmmdll.o vmmdll_core.o        \
-      vmmdll_scatter.o vmm.o fc.o                                            \
+      vmmdll_remote.o vmmdll_scatter.o vmm.o fc.o                            \
 	  mm/mm_x64.o mm/mm_x86.o mm/mm_x86pae.o mm/mm_pfn.o mm/mm_vad.o         \
 	  mm/mm_win.o                                                            \
-	  pluginmanager.o pdb.o infodb.o sqlite/sqlite3.o                        \
+	  pluginmanager.o pdb.o infodb.o ext/miniz.o ext/sqlite3.o               \
 	  ob/ob_cachemap.o ob/ob_compressed.o ob/ob_container.o ob/ob_core.o     \
 	  ob/ob_counter.o ob/ob_map.o ob/ob_memfile.o ob/ob_set.o ob/ob_strmap.o \
 	  statistics.o sysquery.o vmmheap.o vmmlog.o vmmnet.o                    \
@@ -36,8 +36,9 @@ OBJ = oscompatibility.o charutil.o util.o pe.o vmmdll.o vmmdll_core.o        \
 	  modules/m_fc_ntfs.o modules/m_fc_proc.o modules/m_fc_registry.o        \
 	  modules/m_fc_sys.o modules/m_fc_thread.o modules/m_fc_timeline.o       \
 	  modules/m_fc_yara.o                                                    \
-	  modules/m_evil_kern1.o modules/m_evil_proc1.o modules/m_evil_proc2.o   \
-	  modules/m_evil_proc3.o modules/m_evil_thread1.o                        \
+	  modules/m_evil_kern1.o modules/m_evil_kernproc1.o                      \
+	  modules/m_evil_proc1.o modules/m_evil_proc2.o modules/m_evil_proc3.o   \
+	  modules/m_evil_thread1.o                                               \
 	  modules/m_misc_bitlocker.o modules/m_misc_procinfo.o                   \
 	  modules/m_misc_view.o modules/m_misc_web.o                             \
 	  modules/m_sys.o modules/m_sys_driver.o modules/m_sys_mem.o             \

@@ -7,7 +7,7 @@
 #include "pe.h"
 #include "charutil.h"
 #include "util.h"
-#include "sqlite/sqlite3.h"
+#include "ext/sqlite3.h"
 
 #define INFODB_SQL_POOL_CONNECTION_NUM          4
 
@@ -237,29 +237,32 @@ BOOL InfoDB_YaraRulesBuiltIn_Exists(_In_ VMM_HANDLE H)
 _Success_(return)
 BOOL InfoDB_YaraRulesBuiltIn(_In_ VMM_HANDLE H, _Out_ PINFODB_YARA_RULES *ppObYaraRules)
 {
-    DWORD i, cRules = 0;
+    PBYTE pbCompressed;
+    DWORD i, cRules = 0, cbCompressed, cbDecompressed;
     LPSTR *pszRules = NULL;     // array of INFODB_YARA_RULES_MAX ptrs.
     int rc = SQLITE_ERROR;
     sqlite3 *hSql = NULL;
     sqlite3_stmt *hStmt = NULL;
     POB_INFODB_CONTEXT pObCtx = NULL;
-    LPSTR szSQL, uszQueryResult;
+    LPSTR szSQL;
     PINFODB_YARA_RULES pObResult = NULL;
     // 1: initialize
     if(H->cfg.fDisableYara || H->cfg.fDisableYaraBuiltin) { goto fail; }
     if(!(pObCtx = ObContainer_GetOb(H->vmm.pObCInfoDB))) { goto fail; }
     if(!(hSql = InfoDB_SqlReserve(H, pObCtx))) { goto fail; }
-    szSQL = H->cfg.fLicenseAcceptElasticV2 ? "SELECT rule FROM yara_rules" : "SELECT rule FROM yara_rules WHERE license != 'elastic-license-2.0'";
+    szSQL = H->cfg.fLicenseAcceptElasticV2 ? "SELECT rulegz_len, rulegz FROM yara_rules" : "SELECT rulegz_len, rulegz FROM yara_rules WHERE license != 'elastic-license-2.0'";
     rc = sqlite3_prepare_v2(hSql, szSQL, -1, &hStmt, 0);
     if(rc != SQLITE_OK) { goto fail; }
     // 2: retrieve rules from database
     if(!(pszRules = LocalAlloc(0, INFODB_YARA_RULES_MAX * sizeof(LPSTR)))) { goto fail; }
     while((SQLITE_ROW == sqlite3_step(hStmt)) && (cRules < INFODB_YARA_RULES_MAX)) {
-        uszQueryResult = (LPSTR)sqlite3_column_text(hStmt, 0);
-        if(strlen(uszQueryResult)) {
-            if(CharUtil_UtoU(uszQueryResult, -1, NULL, 0, pszRules + cRules, NULL, CHARUTIL_FLAG_ALLOC)) {
-                cRules++;
-            }
+        cbDecompressed = sqlite3_column_int(hStmt, 0);
+        cbCompressed = sqlite3_column_bytes(hStmt, 1);
+        pbCompressed = (PBYTE)sqlite3_column_blob(hStmt, 1);
+        if(Util_DecompressGzToStringAlloc(pbCompressed, cbCompressed, cbDecompressed, pszRules + cRules)) {
+            cRules++;
+        } else {
+            VmmLog(H, MID_INFODB, LOGLEVEL_WARNING, "Failed decompressing Yara rule.");
         }
     }
     if(!cRules) { goto fail; }

@@ -10,7 +10,7 @@
 # (c) Ulf Frisk, 2021-2023
 # Author: Ulf Frisk, pcileech@frizk.net
 #
-# Header Version: 5.5
+# Header Version: 5.7
 #
 
 try:

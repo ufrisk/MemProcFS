@@ -479,7 +479,7 @@ PVOID ObMap_Pop(_In_opt_ POB_MAP pm);
 * -- return = success: object, fail: NULL.
 */
 _Success_(return != NULL)
-PVOID ObMap_PopWithKey(_In_opt_ POB_MAP pm, _Out_ PQWORD pKey);
+PVOID ObMap_PopWithKey(_In_opt_ POB_MAP pm, _Out_opt_ PQWORD pKey);
 
 /*
 * Remove an object from the ObMap.
@@ -1339,6 +1339,23 @@ BOOL ObCounter_GetAllSortedByKey(_In_opt_ POB_COUNTER pc, _In_ DWORD cEntries, _
 */
 _Success_(return)
 BOOL ObCounter_GetAllSortedByCount(_In_opt_ POB_COUNTER pc, _In_ DWORD cEntries, _Out_writes_opt_(cEntries) POB_COUNTER_ENTRY pEntries);
+
+/*
+* Remove the "last" count.
+* -- pc
+* -- return = success: count, fail: 0.
+*/
+_Success_(return != 0)
+QWORD ObCounter_Pop(_In_opt_ POB_COUNTER pc);
+
+/*
+* Remove the "last" count and return it and its key.
+* -- pc
+* -- pKey
+* -- return = success: count, fail: 0.
+*/
+_Success_(return != 0)
+QWORD ObCounter_PopWithKey(_In_opt_ POB_COUNTER pc, _Out_opt_ PQWORD pKey);
 
 
 #endif /* __OB_H__ */

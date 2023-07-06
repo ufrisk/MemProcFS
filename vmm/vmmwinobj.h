@@ -100,6 +100,7 @@ POB_VMMWINOBJ_FILE VmmWinObjFile_GetByVa(_In_ VMM_HANDLE H, _In_ QWORD va);
 
 /*
 * Retrieve all _FILE_OBJECT that can be recovered with data from the system.
+* Function return a map of POB_VMMWINOBJ_OBJECT of type VMMWINOBJ_TYPE_FILE.
 * NB! this may take a long time to complete on first run.
 * CALLER DECREF: *ppmObFiles
 * -- H
@@ -133,6 +134,19 @@ BOOL VmmWinObjFile_GetByProcess(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _
 */
 _Success_(return != 0)
 DWORD VmmWinObjFile_Read(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_FILE pFile, _In_ QWORD cbOffset, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb, _In_ QWORD fVmmRead);
+
+/*
+* Read a contigious amount of file data and report the number of bytes read.
+* -- H
+* -- vaFileObject
+* -- cbOffset
+* -- pb
+* -- cb
+* -- fVmmRead = flags as in VMM_FLAG_*
+* -- return = the number of bytes read.
+*/
+_Success_(return != 0)
+DWORD VmmWinObjFile_ReadFromObjectAddress(_In_ VMM_HANDLE H, _In_ QWORD vaFileObject, _In_ QWORD cbOffset, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb, _In_ QWORD fVmmRead);
 
 /*
 * Create an kernel device map and assign to the global vmm context upon success.

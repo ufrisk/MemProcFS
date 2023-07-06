@@ -1,4 +1,4 @@
-// vmmdll_core.c : definitions of core library functionality which mainly
+// vmmdll_core.h : definitions of core library functionality which mainly
 //      consists of library initialization and cleanup/close functionality.
 //
 // (c) Ulf Frisk, 2022-2023

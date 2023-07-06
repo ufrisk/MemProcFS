@@ -389,17 +389,17 @@ POB_MAP MBDE_ContextFetch(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
 // PLUGIN ACCESS FUNCTIONALITY BELOW:
 // ----------------------------------------------------------------------------
 
-VOID MBDE_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
+VOID MBDE_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_FORENSIC_JSONDATA pData))
 {
     DWORD i, cKey = 0;
     PMBDE_KEY pKey = NULL;
     POB_MAP pmObBDE = NULL;
     CHAR szDislocker[MAX_PATH];
-    PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd = NULL;
+    PVMMDLL_FORENSIC_JSONDATA pd = NULL;
     if(ctxP->pProcess) { return; }
     if(!(pmObBDE = MBDE_ContextFetch(H, ctxP))) { goto fail; }
-    if(!(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)))) { goto fail; }
-    pd->dwVersion = VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION;
+    if(!(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_FORENSIC_JSONDATA)))) { goto fail; }
+    pd->dwVersion = VMMDLL_FORENSIC_JSONDATA_VERSION;
     pd->szjType = "bitlocker";
     while((pKey = ObMap_GetNext(pmObBDE, pKey))) {
         for(i = 0; i < sizeof(pKey->pbDislocker); i++) {

@@ -12,6 +12,7 @@
 #define OB_TAG_FC_FILE                  'Ffil'
 #define OB_TAG_FC_SCANVIRTMEM_CTX       'FvmC'
 #define OB_TAG_FC_SCANVIRTMEM_ENTRY     'FvmE'
+#define OB_TAG_FC_SCANOBJECT_ENTRY      'FobE'
 #define OB_TAG_INFODB_CTX               'IDBC'
 #define OB_TAG_INFODB_YARA_RULES        'IDBY'
 #define OB_TAG_MAP_PTE                  'Mpte'

@@ -105,7 +105,7 @@ BOOL MSearchYara_MatchCB(_In_ PMOB_YARASEARCH_CONTEXT ctx, _In_ PVMMYARA_RULE_MA
         }
     }
     // init scan context:
-    ctxScan.qwA = ctx->sctx.vaCurrent;
+    ctxScan.va = ctx->sctx.vaCurrent;
     ctxScan.pb = pbBuffer;
     ctxScan.cb = (DWORD)cbBuffer;
     ctxScan.dwPID = ctx->dwPID;

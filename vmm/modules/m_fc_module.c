@@ -13,7 +13,7 @@
 static LPSTR MFCMODULE_CSV_MODULES = "PID,Process,Name,Wow64,Size,Start,End,#Imports,#Exports,#Sections,Path,KernelPath,VerCompanyName,VerFileDescription,VerFileVersion,VerInternalName,VerLegalCopyright,VerOriginalFilename,VerProductName,VerProductVersion,PdbPath,PdbAge,PdbHexGUID,PdbSymbolServer\n";
 static LPSTR MFCMODULE_CSV_UNLOADEDMODULES = "PID,Process,ModuleName,UnloadTime,Wow64,Size,Start,End\n";
 
-VOID MFcModule_LogModule(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData), _In_ PVMMOB_MAP_MODULE pMap)
+VOID MFcModule_LogModule(_In_ VMM_HANDLE H, _In_ PVMMDLL_FORENSIC_JSONDATA pd, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_FORENSIC_JSONDATA pData), _In_ PVMMOB_MAP_MODULE pMap)
 {
     DWORD i;
     PVMM_MAP_MODULEENTRY pe;
@@ -30,7 +30,7 @@ VOID MFcModule_LogModule(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDAT
     }
 }
 
-VOID MFcModule_LogModuleDebugInfo(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData), _In_ PVMMOB_MAP_MODULE pMap)
+VOID MFcModule_LogModuleDebugInfo(_In_ VMM_HANDLE H, _In_ PVMMDLL_FORENSIC_JSONDATA pd, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_FORENSIC_JSONDATA pData), _In_ PVMMOB_MAP_MODULE pMap)
 {
     DWORD i;
     CHAR usz[MAX_PATH];
@@ -47,7 +47,7 @@ VOID MFcModule_LogModuleDebugInfo(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSI
     }
 }
 
-VOID MFcModule_LogModuleVersionInfo(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData), _In_ PVMMOB_MAP_MODULE pMap)
+VOID MFcModule_LogModuleVersionInfo(_In_ VMM_HANDLE H, _In_ PVMMDLL_FORENSIC_JSONDATA pd, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_FORENSIC_JSONDATA pData), _In_ PVMMOB_MAP_MODULE pMap)
 {
     DWORD i;
     CHAR usz[0x1000];
@@ -72,7 +72,7 @@ VOID MFcModule_LogModuleVersionInfo(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FOREN
     }
 }
 
-VOID MFcModule_LogUnloadedModule(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData), PVMMOB_MAP_UNLOADEDMODULE pMap)
+VOID MFcModule_LogUnloadedModule(_In_ VMM_HANDLE H, _In_ PVMMDLL_FORENSIC_JSONDATA pd, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_FORENSIC_JSONDATA pData), PVMMOB_MAP_UNLOADEDMODULE pMap)
 {
     DWORD i;
     PVMM_MAP_UNLOADEDMODULEENTRY pe;
@@ -89,13 +89,13 @@ VOID MFcModule_LogUnloadedModule(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC
     }
 }
 
-VOID MFcModule_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
+VOID MFcModule_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_FORENSIC_JSONDATA pData))
 {
     PVMM_PROCESS pProcess = ctxP->pProcess;
-    PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd;
+    PVMMDLL_FORENSIC_JSONDATA pd;
     PVMMOB_MAP_UNLOADEDMODULE pObUnloadedModuleMap = NULL;
     PVMMOB_MAP_MODULE pObModuleMap = NULL, pObModuleMap_DebugInfo = NULL, pObModuleMap_VersionInfo = NULL;
-    if(!pProcess || !(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)))) { return; }
+    if(!pProcess || !(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_FORENSIC_JSONDATA)))) { return; }
     // loaded modules:
     FC_JSONDATA_INIT_PIDTYPE(pd, pProcess->dwPID, "module");
     if(VmmMap_GetModule(H, pProcess, 0, &pObModuleMap)) {

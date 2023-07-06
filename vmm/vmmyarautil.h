@@ -29,12 +29,14 @@ typedef struct tdVMMYARAUTIL_SCAN_CONTEXT {
     DWORD dwVersion;
     DWORD dwPID;
     PVMMYARAUTILOB_CONTEXT ctx;
-    QWORD qwA;
+    QWORD vaObject;
+    QWORD va;
     PBYTE pb;
     DWORD cb;
+    CHAR uszTag[1];     // min 1 char (but may be more).
 } VMMYARAUTIL_SCAN_CONTEXT, *PVMMYARAUTIL_SCAN_CONTEXT;
 
-#define VMMYARAUTIL_CSV_HEADER          "MatchIndex,Tags,Description,RuleAuthor,RuleVersion,MemoryType,MemoryTag,MemoryBaseAddress,PID,ProcessName,ProcessPath,CommandLine,User,Created,AddressCount,String0,Address0,String1,Address1,String2,Address2,String3,Address3,String4,Address4\n"
+#define VMMYARAUTIL_CSV_HEADER          "MatchIndex,Tags,Description,RuleAuthor,RuleVersion,MemoryType,MemoryTag,MemoryBaseAddress,ObjectAddress,PID,ProcessName,ProcessPath,CommandLine,User,Created,AddressCount,String0,Address0,String1,Address1,String2,Address2,String3,Address3,String4,Address4\n"
 
 /*
 * Initialize the yara util context.

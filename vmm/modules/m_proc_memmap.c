@@ -249,18 +249,18 @@ BOOL MemMap_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PH
 /*
 * Forensic JSON log:
 */
-VOID MemMap_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
+VOID MemMap_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_FORENSIC_JSONDATA pData))
 {
     PVMM_PROCESS pProcess = ctxP->pProcess;
-    PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd;
+    PVMMDLL_FORENSIC_JSONDATA pd;
     PVMMOB_MAP_PTE pObPteMap = NULL;
     PVMMOB_MAP_VAD pObVadMap = NULL;
     PVMM_MAP_PTEENTRY pep;
     PVMM_MAP_VADENTRY pev;
     DWORD i;
     CHAR usz[MAX_PATH] = { 0 };
-    if(!pProcess || !(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)))) { return; }
-    pd->dwVersion = VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION;
+    if(!pProcess || !(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_FORENSIC_JSONDATA)))) { return; }
+    pd->dwVersion = VMMDLL_FORENSIC_JSONDATA_VERSION;
     pd->dwPID = pProcess->dwPID;
     pd->szjType = "pte";
     // 1: PTEs

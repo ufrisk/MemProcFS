@@ -414,7 +414,7 @@ VOID FcNtfs_IngestMftPage(_In_ VMM_HANDLE H, _In_ PFCNTFS_SETUP_CONTEXT ctx, _In
 * -- pc
 * -- return = MAP or NULL if no candidate pages found.
 */
-POB_MAP FcNtfs_IngestGetValidAddrMap(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_INGEST_PHYSMEM pc)
+POB_MAP FcNtfs_IngestGetValidAddrMap(_In_ VMM_HANDLE H, _In_ PVMMDLL_FORENSIC_INGEST_PHYSMEM pc)
 {
     BOOL fPfnValidForMft;
     DWORD i;
@@ -449,7 +449,7 @@ POB_MAP FcNtfs_IngestGetValidAddrMap(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORE
 * -- ctxfc
 * -- pIngestPhysmem
 */
-VOID FcNtfs_IngestPhysmem(_In_ VMM_HANDLE H, _In_opt_ PVOID ctxfc, _In_ PVMMDLL_PLUGIN_FORENSIC_INGEST_PHYSMEM pIngestPhysmem)
+VOID FcNtfs_IngestPhysmem(_In_ VMM_HANDLE H, _In_opt_ PVOID ctxfc, _In_ PVMMDLL_FORENSIC_INGEST_PHYSMEM pIngestPhysmem)
 {
     QWORD pa;
     PBYTE pb;

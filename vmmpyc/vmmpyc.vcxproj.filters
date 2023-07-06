@@ -95,6 +95,12 @@
     <ClCompile Include="vmmpyc_virtualmachine.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="vmmpyc_search.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmpyc_yara.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="vmmpyc.rc">

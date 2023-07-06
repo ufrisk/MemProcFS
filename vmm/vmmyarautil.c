@@ -43,7 +43,9 @@ typedef struct tdVMMYARAUTILOB_ENTRYPARSECONTEXT {
 typedef struct tdVMMYARAUTIL_MATCH {
     DWORD dwPID;
     QWORD vaBase;
+    QWORD vaObject;
     VMMYARA_RULE_MATCH RuleMatch;
+    CHAR uszTag[1];     // min 1 char (but may be more).
 } VMMYARAUTIL_MATCH, *PVMMYARAUTIL_MATCH;
 
 /*
@@ -134,14 +136,19 @@ PVMMYARA_RULES VmmYaraUtil_Rules(_In_ PVMMYARAUTILOB_CONTEXT ctx)
 */
 BOOL VmmYaraUtil_MatchCB(_In_ PVMMYARAUTIL_SCAN_CONTEXT ctxScan, _In_ PVMMYARA_RULE_MATCH pMatch, _In_reads_bytes_(cbBuffer) PBYTE pbBuffer, _In_ SIZE_T cbBuffer)
 {
-    DWORD i, j;
+    DWORD i, j, cbTag;
     PVMMYARAUTIL_MATCH pe = NULL;
     if(pMatch->dwVersion != VMMYARA_RULE_MATCH_VERSION) { return FALSE; }
     if(ObMap_Size(ctxScan->ctx->pmObMatches) >= ctxScan->ctx->cMatchesMax) { return FALSE; }
-    if(!(pe = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMYARAUTIL_MATCH)))) { return FALSE; }
+    cbTag = ctxScan->uszTag[1] ? (DWORD)strlen(ctxScan->uszTag) + 1 : 0;
+    if(!(pe = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMYARAUTIL_MATCH) + cbTag))) { return FALSE; }
     // general:
     pe->dwPID = ctxScan->dwPID;
-    pe->vaBase = ctxScan->qwA;
+    pe->vaBase = ctxScan->va;
+    pe->vaObject = ctxScan->vaObject;
+    if(cbTag) {
+        strncpy_s(pe->uszTag, cbTag, ctxScan->uszTag, _TRUNCATE);
+    }
     // rule identifier:
     ObStrMap_PushPtrUU(ctxScan->ctx->psmOb, pMatch->szRuleIdentifier, &pe->RuleMatch.szRuleIdentifier, NULL);
     // tags:
@@ -285,7 +292,7 @@ BOOL VmmYaraUtil_ParseSingleResultNext(
                     continue;
                 }
                 _snprintf_s(pFindEvil->uszText, _countof(pFindEvil->uszText), _TRUNCATE, "%s [%i]", peMatch->RuleMatch.szRuleIdentifier, ctx->dwIdByType[1]);
-                pFindEvil->va = peMatch->vaBase + peMatch->RuleMatch.Strings[0].cbMatchOffset[0];
+                pFindEvil->va = peMatch->vaObject ? peMatch->vaObject : (peMatch->vaBase + peMatch->RuleMatch.Strings[0].cbMatchOffset[0]);
                 pFindEvil->dwPID = peMatch->dwPID;
                 pFindEvil->fValid = TRUE;
                 continue;
@@ -322,7 +329,7 @@ BOOL VmmYaraUtil_ParseSingleResultNext(
         }
         Util_FileTime2String(VmmProcess_GetCreateTimeOpt(H, pObProcess), szTimeCRE);
         if((pu = VmmWin_UserProcessParameters_Get(H, pObProcess))) {
-            uszCommandLine = pu->uszCommandLine;
+            uszCommandLine = (pu->uszCommandLine ? pu->uszCommandLine : "");
         }
         _snprintf_s(hEPC->uszProcessTXT, _countof(hEPC->uszProcessTXT), _TRUNCATE,
             "PID:          %u\nProcess Name: %s\nProcess Path: %s\nCommandLine:  %s\nUser:         %s\nCreated:      %s\n",
@@ -347,7 +354,18 @@ BOOL VmmYaraUtil_ParseSingleResultNext(
         strncpy_s(hEPC->uszProcessCSV, _countof(hEPC->uszProcessCSV), ",\"\",\"\",\"\",\"\",\"\",\"\"", _TRUNCATE);
     }
     // populate memory info:
-    if(pObProcess) {
+    if(peMatch->vaObject) {
+        _snprintf_s(hEPC->uszMemoryTXT, _countof(hEPC->uszMemoryTXT), _TRUNCATE,
+            "Type:         Object Memory\nMemory Tag:   %s\nBase Address: 0x%016llx\n",
+            peMatch->uszTag,
+            peMatch->vaObject
+        );
+        _snprintf_s(hEPC->uszMemoryCSV, _countof(hEPC->uszMemoryCSV), _TRUNCATE,
+            ",Object Memory,%s,\"\",%llx",
+            FcCsv_String(&hEPC->hCSV, peMatch->uszTag),
+            peMatch->vaObject
+        );
+    } else if(pObProcess) {
         if(!pObProcess->fUserOnly && VMM_KADDR(f32, peMatch->vaBase)) {
             if(VmmMap_GetPte(H, pObProcess, &pObPteMap, TRUE) && (pePte = VmmMap_GetPteEntry(H, pObPteMap, peMatch->vaBase))) {
                 uszMemoryTag = pePte->uszText;
@@ -366,14 +384,14 @@ BOOL VmmYaraUtil_ParseSingleResultNext(
             peMatch->vaBase
         );
         _snprintf_s(hEPC->uszMemoryCSV, _countof(hEPC->uszMemoryCSV), _TRUNCATE,
-            ",%s,%s,%llx",
+            ",%s,%s,%llx,\"\"",
             FcCsv_String(&hEPC->hCSV, uszMemoryType),
             FcCsv_String(&hEPC->hCSV, uszMemoryTag),
             peMatch->vaBase
         );
     } else {
         strncpy_s(hEPC->uszMemoryTXT, _countof(hEPC->uszMemoryTXT), "Type:         Physical Memory\n", _TRUNCATE);
-        strncpy_s(hEPC->uszMemoryCSV, _countof(hEPC->uszMemoryCSV), ",\"Physical Memory\",\"\",\"\"", _TRUNCATE);
+        strncpy_s(hEPC->uszMemoryCSV, _countof(hEPC->uszMemoryCSV), ",\"Physical Memory\",\"\",\"\",\"\"", _TRUNCATE);
     }
     // populate match strings:
     hEPC->uszMatchTXT[0] = 0;
@@ -392,29 +410,32 @@ BOOL VmmYaraUtil_ParseSingleResultNext(
         }
         o2 += _snprintf_s(hEPC->uszMatchTXT + o2, _countof(hEPC->uszMatchTXT) - o2, _TRUNCATE, "%s\n", hEPC->usz);
     }
-    o2 = 0;
-    for(i = 0; i < peMatch->RuleMatch.cStrings; i++) {
-        for(j = 0; j < peMatch->RuleMatch.Strings[i].cMatch; j++) {
-            cAddresses++;
-            hEPC->usz[0] = 0;
-            va = peMatch->vaBase + (QWORD)peMatch->RuleMatch.Strings[i].cbMatchOffset[j];
-            uszRuleMatchStringBuffer[0] = 0;
-            CharUtil_FixFsName(uszRuleMatchStringBuffer, sizeof(uszRuleMatchStringBuffer), NULL, peMatch->RuleMatch.Strings[i].szString, NULL, -1, 0, FALSE);
-            o = _snprintf_s(hEPC->usz, _countof(hEPC->usz), _TRUNCATE, "[%s] %llx:\n", uszRuleMatchStringBuffer, va);
-            vaAlign = (max(va, 0x40) - 0x40) & ~0xf;
-            VmmReadEx(H, pObProcess, vaAlign, pbBuffer, sizeof(pbBuffer), &cbRead, VMM_FLAG_ZEROPAD_ON_FAIL);
-            if(cbRead) {
-                cbWrite = (DWORD)_countof(hEPC->usz) - o;
-                Util_FillHexAscii_WithAddress(pbBuffer, sizeof(pbBuffer), vaAlign, hEPC->usz + o, &cbWrite);
-            }
-            o2 += _snprintf_s(hEPC->uszMatchContextTXT + o2, _countof(hEPC->uszMatchContextTXT) - o2, _TRUNCATE, "\n%s", hEPC->usz);
-            if(iMatchCSV < 5) {
-                iMatchCSV++;
-                oMatchCSV += _snprintf_s(hEPC->uszMatchContextCSV + oMatchCSV, _countof(hEPC->uszMatchContextCSV) - oMatchCSV, _TRUNCATE,
-                    ",%s,%llx",
-                    FcCsv_String(&hEPC->hCSV, uszRuleMatchStringBuffer),
-                    va
-                );
+    // detailed match strings - (physical/virtual memory only - not objects)
+    if(!peMatch->vaObject) {
+        o2 = 0;
+        for(i = 0; i < peMatch->RuleMatch.cStrings; i++) {
+            for(j = 0; j < peMatch->RuleMatch.Strings[i].cMatch; j++) {
+                cAddresses++;
+                hEPC->usz[0] = 0;
+                va = peMatch->vaBase + (QWORD)peMatch->RuleMatch.Strings[i].cbMatchOffset[j];
+                uszRuleMatchStringBuffer[0] = 0;
+                CharUtil_FixFsName(uszRuleMatchStringBuffer, sizeof(uszRuleMatchStringBuffer), NULL, peMatch->RuleMatch.Strings[i].szString, NULL, -1, 0, FALSE);
+                o = _snprintf_s(hEPC->usz, _countof(hEPC->usz), _TRUNCATE, "[%s] %llx:\n", uszRuleMatchStringBuffer, va);
+                vaAlign = (max(va, 0x40) - 0x40) & ~0xf;
+                VmmReadEx(H, pObProcess, vaAlign, pbBuffer, sizeof(pbBuffer), &cbRead, VMM_FLAG_ZEROPAD_ON_FAIL);
+                if(cbRead) {
+                    cbWrite = (DWORD)_countof(hEPC->usz) - o;
+                    Util_FillHexAscii_WithAddress(pbBuffer, sizeof(pbBuffer), vaAlign, hEPC->usz + o, &cbWrite);
+                }
+                o2 += _snprintf_s(hEPC->uszMatchContextTXT + o2, _countof(hEPC->uszMatchContextTXT) - o2, _TRUNCATE, "\n%s", hEPC->usz);
+                if(iMatchCSV < 5) {
+                    iMatchCSV++;
+                    oMatchCSV += _snprintf_s(hEPC->uszMatchContextCSV + oMatchCSV, _countof(hEPC->uszMatchContextCSV) - oMatchCSV, _TRUNCATE,
+                        ",%s,%llx",
+                        FcCsv_String(&hEPC->hCSV, uszRuleMatchStringBuffer),
+                        va
+                    );
+                }
             }
         }
     }
@@ -481,7 +502,7 @@ BOOL VmmSearch_SearchRegion_YaraCB(_In_ PVOID pvContext, _In_ PVMMYARA_RULE_MATC
         }
     }
     ctxs->cResult = ObSet_Size(ctxi->psvaResult);
-    if(ctxs->cResult >= ctxs->cMaxResult) {
+    if(ctxs->cResult > ctxs->cMaxResult) {
         ctxs->fAbortRequested = TRUE;
         return FALSE;
     }

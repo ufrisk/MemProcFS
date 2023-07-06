@@ -25,12 +25,6 @@
     <Filter Include="Header Files\includes">
       <UniqueIdentifier>{793ab526-24d7-44c9-b5d8-b41a0c1a0ab2}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Header Files\sqlite">
-      <UniqueIdentifier>{ffb4db14-1180-4c7f-82f7-7f470cf19f51}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\sqlite">
-      <UniqueIdentifier>{8bbd50e3-b525-4d05-9df5-889abea6045c}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Header Files\ob">
       <UniqueIdentifier>{4b033bbd-b98a-426a-b25c-4c7d5686604e}</UniqueIdentifier>
     </Filter>
@@ -42,6 +36,12 @@
     </Filter>
     <Filter Include="Header Files\modules">
       <UniqueIdentifier>{205ba541-835d-4dc2-a488-6113fe0438d1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\ext">
+      <UniqueIdentifier>{b1407620-53ff-4f04-8091-ec40de1b9a09}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\ext">
+      <UniqueIdentifier>{322652a4-b100-439f-a35d-a04ac22c8e0a}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -108,12 +108,6 @@
     <ClInclude Include="vmmwinsvc.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="sqlite\sqlite3.h">
-      <Filter>Header Files\sqlite</Filter>
-    </ClInclude>
-    <ClInclude Include="sqlite\sqlite3ext.h">
-      <Filter>Header Files\sqlite</Filter>
-    </ClInclude>
     <ClInclude Include="charutil.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -162,6 +156,21 @@
     <ClInclude Include="vmmyarautil.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="ext\miniz.h">
+      <Filter>Header Files\ext</Filter>
+    </ClInclude>
+    <ClInclude Include="ext\sqlite3.h">
+      <Filter>Header Files\ext</Filter>
+    </ClInclude>
+    <ClInclude Include="ext\sqlite3ext.h">
+      <Filter>Header Files\ext</Filter>
+    </ClInclude>
+    <ClInclude Include="vmmdll_remote.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="vmmuserconfig.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="vmmdll.c">
@@ -208,9 +217,6 @@
     </ClCompile>
     <ClCompile Include="vmmnet.c">
       <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="sqlite\sqlite3.c">
-      <Filter>Source Files\sqlite</Filter>
     </ClCompile>
     <ClCompile Include="ob\ob_container.c">
       <Filter>Source Files\ob</Filter>
@@ -456,6 +462,18 @@
       <Filter>Source Files\modules</Filter>
     </ClCompile>
     <ClCompile Include="vmmuserconfig.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\miniz.c">
+      <Filter>Source Files\ext</Filter>
+    </ClCompile>
+    <ClCompile Include="ext\sqlite3.c">
+      <Filter>Source Files\ext</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_evil_kernproc1.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmdll_remote.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

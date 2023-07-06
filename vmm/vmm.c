@@ -2192,6 +2192,7 @@ BOOL VmmSearch_SearchRange(_In_ VMM_HANDLE H, _In_ PVMM_MEMORY_SEARCH_INTERNAL_C
 {
     while(ctxs->vaCurrent < vaMax) {
         ctxi->cb = (DWORD)min(0x00100000, vaMax + 1 - ctxs->vaCurrent);
+        if(!ctxi->cb) { break; }
         if(!VmmSearch_SearchRegion(H, ctxi, ctxs)) { return FALSE; }
         ctxs->vaCurrent += ctxi->cb;
         if(!ctxs->vaCurrent) {
@@ -2294,6 +2295,10 @@ BOOL VmmSearch(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _Inout_ PVMM_M
         } else {
             ctxs->vaMax = (DWORD)-1;
         }
+    }
+    ctxs->vaMax = min(ctxs->vaMax, 0xfffffffffffff000);
+    if(!pProcess) {
+        ctxs->vaMax = min(ctxs->vaMax, H->dev.paMax);
     }
     // 2: allocate
     if(!(ctxi = LocalAlloc(0, sizeof(VMM_MEMORY_SEARCH_INTERNAL_CONTEXT)))) { goto fail; }

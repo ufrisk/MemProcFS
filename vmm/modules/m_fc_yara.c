@@ -18,14 +18,39 @@ typedef struct tdMFCYARA_CONTEXT {
     PVMMYARAUTILOB_CONTEXT ctxObInit;
 } MFCYARA_CONTEXT, *PMFCYARA_CONTEXT;
 
-VOID MFcYara_IngestVirtmem(_In_ VMM_HANDLE H, _In_opt_ PVOID ctxfc, _In_ PVMMDLL_PLUGIN_FORENSIC_INGEST_VIRTMEM pIngestVirtmem)
+VOID MFcYara_IngestObject(_In_ VMM_HANDLE H, _In_opt_ PVOID ctxfc, _In_ PVMMDLL_FORENSIC_INGEST_OBJECT pIngestObject)
+{
+    BYTE pbBuffer[0x1000];
+    PMFCYARA_CONTEXT ctx = (PMFCYARA_CONTEXT)ctxfc;
+    PVMMYARAUTIL_SCAN_CONTEXT pctxScan = (PVMMYARAUTIL_SCAN_CONTEXT)pbBuffer;
+    if(!ctx || (VmmYaraUtil_MatchCount(ctx->ctxObInit) >= MFC_YARA_MAX_MATCHES)) { return; }
+    ZeroMemory(pctxScan, sizeof(VMMYARAUTIL_SCAN_CONTEXT));
+    pctxScan->dwVersion = VMMDLL_YARA_MEMORY_CALLBACK_CONTEXT_VERSION;
+    pctxScan->ctx = ctx->ctxObInit;
+    pctxScan->vaObject = pIngestObject->vaObject;
+    pctxScan->pb = pIngestObject->pb;
+    pctxScan->cb = pIngestObject->cb;
+    CharUtil_UtoU(pIngestObject->uszText, -1, pctxScan->uszTag, sizeof(pbBuffer) - sizeof(VMMYARAUTIL_SCAN_CONTEXT), NULL, NULL, CHARUTIL_FLAG_STR_BUFONLY | CHARUTIL_FLAG_TRUNCATE);
+    VmmYara_ScanMemory(
+        VmmYaraUtil_Rules(ctx->ctxObInit),
+        pIngestObject->pb,
+        pIngestObject->cb,
+        VMMYARA_SCAN_FLAGS_FAST_MODE | VMMYARA_SCAN_FLAGS_REPORT_RULES_MATCHING,
+        (VMMYARA_SCAN_MEMORY_CALLBACK)VmmYaraUtil_MatchCB,
+        pctxScan,
+        0
+    );
+}
+
+VOID MFcYara_IngestVirtmem(_In_ VMM_HANDLE H, _In_opt_ PVOID ctxfc, _In_ PVMMDLL_FORENSIC_INGEST_VIRTMEM pIngestVirtmem)
 {
     PMFCYARA_CONTEXT ctx = (PMFCYARA_CONTEXT)ctxfc;
-    VMMYARAUTIL_SCAN_CONTEXT ctxScan;
+    VMMYARAUTIL_SCAN_CONTEXT ctxScan = { 0 };
     if(!ctx || (VmmYaraUtil_MatchCount(ctx->ctxObInit) >= MFC_YARA_MAX_MATCHES)) { return; }
+    ctxScan.dwVersion = VMMDLL_YARA_MEMORY_CALLBACK_CONTEXT_VERSION;
     ctxScan.ctx = ctx->ctxObInit;
     ctxScan.dwPID = pIngestVirtmem->dwPID;
-    ctxScan.qwA = pIngestVirtmem->va;
+    ctxScan.va = pIngestVirtmem->va;
     ctxScan.pb = pIngestVirtmem->pb;
     ctxScan.cb = pIngestVirtmem->cb;
     VmmYara_ScanMemory(
@@ -184,6 +209,7 @@ VOID M_FcYara_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     pRI->reg_fn.pfnNotify = MFcYara_Notify;
     pRI->reg_fn.pfnClose = MFcYara_Close;
     pRI->reg_fnfc.pfnInitialize = MFcYara_FcInitialize;
+    pRI->reg_fnfc.pfnIngestObject = MFcYara_IngestObject;
     pRI->reg_fnfc.pfnIngestVirtmem = MFcYara_IngestVirtmem;
     pRI->reg_fnfc.pfnIngestFinalize = MFcYara_FcIngestFinalize;
     pRI->pfnPluginManager_Register(H, pRI);

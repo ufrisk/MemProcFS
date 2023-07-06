@@ -119,7 +119,35 @@ static PyObject*
 VmmPycProcess_maps(PyObj_Process *self, void *closure)
 {
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Process.maps: Not initialized."); }
-    return (PyObject *)VmmPycProcessMaps_InitializeInternal(self->pyVMM, self->dwPID);
+    return (PyObject*)VmmPycProcessMaps_InitializeInternal(self->pyVMM, self->dwPID);
+}
+
+// (|QWORD, QWORD, QWORD) -> PyObj_Search*
+static PyObject*
+VmmPycProcess_search(PyObj_Process *self, PyObject *args)
+{
+    PyObject *pyObj;
+    LPSTR uszName = NULL;
+    if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Process.search(): Not initialized."); }
+    pyObj = (PyObject*)VmmPycSearch_InitializeInternal(self->pyVMM, self->dwPID, args);
+    if(!pyObj) {
+        return PyErr_Format(PyExc_RuntimeError, "Process.search(): Illegal argument.");
+    }
+    return pyObj;
+}
+
+// (PyList(STR), |QWORD, QWORD, DWORD, QWORD) ->PyObj_Yara*
+static PyObject*
+VmmPycProcess_search_yara(PyObj_Process *self, PyObject *args)
+{
+    PyObject *pyObj;
+    LPSTR uszName = NULL;
+    if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Process.search_yara(): Not initialized."); }
+    pyObj = (PyObject*)VmmPycYara_InitializeInternal(self->pyVMM, self->dwPID, args);
+    if(!pyObj) {
+        return PyErr_Format(PyExc_RuntimeError, "Process.search_yara(): Illegal argument.");
+    }
+    return pyObj;
 }
 
 //-----------------------------------------------------------------------------
@@ -362,6 +390,8 @@ BOOL VmmPycProcess_InitializeType(PyObject *pModule)
     static PyMethodDef PyMethods[] = {
         {"module_list", (PyCFunction)VmmPycProcess_module_list, METH_VARARGS, "Retrieve all loaded modules (dlls)."},
         {"module", (PyCFunction)VmmPycProcess_module, METH_VARARGS, "Retrieve a single module (dll) from its name."},
+        {"search", (PyCFunction)VmmPycProcess_search, METH_VARARGS, "Perform a binary search."},
+        {"search_yara", (PyCFunction)VmmPycProcess_search_yara, METH_VARARGS, "Perform a YARA search."},
         {NULL, NULL, 0, NULL}
     };
     static PyMemberDef PyMembers[] = {

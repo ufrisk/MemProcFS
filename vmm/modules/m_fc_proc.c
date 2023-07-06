@@ -103,7 +103,7 @@ VOID MFcProc_FcTimeline(
     pfnEntryAddBySql(H, hTimeline, sizeof(pszSql) / sizeof(LPSTR), pszSql);
 }
 
-VOID MFcProc_LogHeap(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData), _In_ PVMMOB_MAP_HEAP pMap)
+VOID MFcProc_LogHeap(_In_ VMM_HANDLE H, _In_ PVMMDLL_FORENSIC_JSONDATA pd, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_FORENSIC_JSONDATA pData), _In_ PVMMOB_MAP_HEAP pMap)
 {
     DWORD i;
     PVMM_MAP_HEAP_SEGMENTENTRY peR;
@@ -127,7 +127,7 @@ VOID MFcProc_LogProcess_GetUserName(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProces
     *fAccountUser = f && !fWellKnownAccount;
 }
 
-VOID MFcProc_LogProcess(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData), PVMM_PROCESS pProcess)
+VOID MFcProc_LogProcess(_In_ VMM_HANDLE H, _In_ PVMMDLL_FORENSIC_JSONDATA pd, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_FORENSIC_JSONDATA pData), PVMM_PROCESS pProcess)
 {
     SIZE_T o;
     BOOL fStateTerminated, fAccountUser = FALSE;
@@ -171,12 +171,12 @@ VOID MFcProc_LogProcess(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA
     if(usz != uszBuffer) { LocalFree(usz); }
 }
 
-VOID MFcProc_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
+VOID MFcProc_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_FORENSIC_JSONDATA pData))
 {
     PVMM_PROCESS pProcess = ctxP->pProcess;
-    PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd;
+    PVMMDLL_FORENSIC_JSONDATA pd;
     PVMMOB_MAP_HEAP pObHeapMap = NULL;
-    if(!pProcess || !(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)))) { return; }
+    if(!pProcess || !(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_FORENSIC_JSONDATA)))) { return; }
     // process:
     FC_JSONDATA_INIT_PIDTYPE(pd, pProcess->dwPID, "process");
     MFcProc_LogProcess(H, pd, pfnLogJSON, pProcess);

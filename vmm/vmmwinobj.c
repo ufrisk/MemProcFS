@@ -945,6 +945,28 @@ finish:
     return cb;
 }
 
+/*
+* Read a contigious amount of file data and report the number of bytes read.
+* -- H
+* -- vaFileObject
+* -- cbOffset
+* -- pb
+* -- cb
+* -- fVmmRead = flags as in VMM_FLAG_*
+* -- return = the number of bytes read.
+*/
+_Success_(return != 0)
+DWORD VmmWinObjFile_ReadFromObjectAddress(_In_ VMM_HANDLE H, _In_ QWORD vaFileObject, _In_ QWORD cbOffset, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb, _In_ QWORD fVmmRead)
+{
+    DWORD cbRead = 0;
+    POB_VMMWINOBJ_FILE pObFile;
+    if((pObFile = VmmWinObjFile_GetByVa(H, vaFileObject))) {
+        cbRead = VmmWinObjFile_Read(H, pObFile, cbOffset, pb, cb, fVmmRead);
+        Ob_DECREF(pObFile);
+    }
+    return cbRead;
+}
+
 
 
 //-----------------------------------------------------------------------------

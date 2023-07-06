@@ -71,6 +71,7 @@ VOID M_FcYara_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pRI);
 * Initalization functions for FINDEVIL related modules.
 */
 VOID M_Evil_Kern1(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
+VOID M_EvilMEvilKernProc1(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_Evil_Proc1(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_Evil_Proc2(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_Evil_Proc3(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
@@ -145,6 +146,7 @@ VOID(*g_pfnModulesAllInternal[])(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_REGINFO 
     M_FcYara_Initialize,
     // findevil modules
     M_Evil_Kern1,
+    M_EvilMEvilKernProc1,
     M_Evil_Proc1,
     M_Evil_Proc2,
     M_Evil_Proc3,

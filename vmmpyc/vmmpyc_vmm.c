@@ -207,6 +207,34 @@ VmmPycVmm_maps(PyObj_Vmm *self, void *closure)
     return (PyObject*)VmmPycMaps_InitializeInternal(self);
 }
 
+// (|QWORD, QWORD, QWORD) -> PyObj_Search*
+static PyObject*
+VmmPycVmm_search(PyObj_Vmm *self, PyObject *args)
+{
+    PyObject *pyObj;
+    LPSTR uszName = NULL;
+    if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Vmm.search(): Not initialized."); }
+    pyObj = (PyObject*)VmmPycSearch_InitializeInternal(self, -1, args);
+    if(!pyObj) {
+        return PyErr_Format(PyExc_RuntimeError, "Vmm.search(): Illegal argument.");
+    }
+    return pyObj;
+}
+
+// (PyList(STR), |QWORD, QWORD, DWORD, QWORD) ->PyObj_Yara*
+static PyObject*
+VmmPycVmm_search_yara(PyObj_Vmm *self, PyObject *args)
+{
+    PyObject *pyObj;
+    LPSTR uszName = NULL;
+    if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Vmm.search_yara(): Not initialized."); }
+    pyObj = (PyObject*)VmmPycYara_InitializeInternal(self, -1, args);
+    if(!pyObj) {
+        return PyErr_Format(PyExc_RuntimeError, "Vmm.search_yara(): Illegal argument.");
+    }
+    return pyObj;
+}
+
 //-----------------------------------------------------------------------------
 // VmmPycVmm INITIALIZATION AND CORE FUNCTIONALITY BELOW:
 //-----------------------------------------------------------------------------
@@ -346,6 +374,8 @@ BOOL VmmPycVmm_InitializeType(PyObject *pModule)
         {"reg_hive_list", (PyCFunction)VmmPycVmm_reg_hive_list, METH_VARARGS, "List registry hives."},
         {"reg_key", (PyCFunction)VmmPycVmm_reg_key, METH_VARARGS, "Retrieve registry key from full path."},
         {"reg_value", (PyCFunction)VmmPycVmm_reg_value, METH_VARARGS, "Retrieve registry value from full path."},
+        {"search", (PyCFunction)VmmPycVmm_search, METH_VARARGS, "Perform a binary search."},
+        {"search_yara", (PyCFunction)VmmPycVmm_search_yara, METH_VARARGS, "Perform a YARA search."},
         {"hex", (PyCFunction)VmmPycVmm_hex, METH_VARARGS, "Convert a bytes object into a human readable 'memory dump' style type of string."},
         {NULL, NULL, 0, NULL}
     };

@@ -183,7 +183,10 @@ v1.1-v4.9
 * [files](https://github.com/ufrisk/MemProcFS/wiki/FS_Forensic_Files) plugin in forensics mode - showing files with recoverable contents.
 * Built-in yara rules for [Findevil](https://github.com/ufrisk/MemProcFS/wiki/FS_FindEvil) in forensics mode from [Elastic Security](https://github.com/elastic/protections-artifacts).<br>Activate by accepting the Elastic license 2.0 by start-up option [`-license-accept-elastic-license-2.0`](https://github.com/ufrisk/MemProcFS/wiki/_CommandLine#-license-accept-elastic-license-2.0).
 
-Latest:
+[v5.7](https://github.com/ufrisk/MemProcFS/releases/tag/v5.6)
 * Bug fixes.
 * Rust API updates.
-* New findevil yara detections - incl. snake malware.
+* New FindEvil Yara detections.
+* Yara scans of file objects (increased chance of vulnerable driver detection by FindEvil).
+* Improved FPGA performance for smaller reads.
+* Improved [MemProcFS remoting](https://github.com/ufrisk/MemProcFS/wiki/_Remoting) via a remote [LeechAgent](https://github.com/ufrisk/LeechCore/wiki/LeechAgent). Full MemProcFS remote support over SMB - tcp/445. Perfect for memory forensics Incident Response (IR)!

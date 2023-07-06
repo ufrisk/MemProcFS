@@ -94,24 +94,26 @@ VOID PluginManager_FcInitialize(_In_ VMM_HANDLE H);
 VOID PluginManager_FcFinalize(_In_ VMM_HANDLE H);
 
 /*
+* Ingest an object into plugins with forensic mode capabilities.
+* -- H
+* -- pIngestVirtmem
+*/
+VOID PluginManager_FcIngestObject(_In_ VMM_HANDLE H, _In_ PVMMDLL_FORENSIC_INGEST_OBJECT pIngestObject);
+
+/*
 * Ingest physical memory into plugins with forensic mode capabilities.
 * NB! must only be called in single-threaded context!
 * -- H
 * -- pIngestPhysmem
 */
-VOID PluginManager_FcIngestPhysmem(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_INGEST_PHYSMEM pIngestPhysmem);
+VOID PluginManager_FcIngestPhysmem(_In_ VMM_HANDLE H, _In_ PVMMDLL_FORENSIC_INGEST_PHYSMEM pIngestPhysmem);
 
 /*
 * Ingest virtual memory into plugins with forensic mode capabilities.
 * -- H
 * -- pIngestVirtmem
 */
-VOID PluginManager_FcIngestVirtmem(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_INGEST_VIRTMEM pIngestVirtmem);
-
-/*
-* Checks whether there are any consumers of the IngestVirtmem functionality.
-*/
-BOOL PluginManager_FcIngestVirtmem_ExistsConsumers(_In_ VMM_HANDLE H);
+VOID PluginManager_FcIngestVirtmem(_In_ VMM_HANDLE H, _In_ PVMMDLL_FORENSIC_INGEST_VIRTMEM pIngestVirtmem);
 
 /*
 * All ingestion actions (physical & virtual) are completed.
@@ -155,7 +157,7 @@ DWORD PluginManager_FcLogCSV(_In_ VMM_HANDLE H, _In_ VMMDLL_CSV_HANDLE hCSV);
 * -- pfnAddEntry = callback function to call to add a json entry.
 * -- return = 0 (to make function compatible with LPTHREAD_START_ROUTINE).
 */
-DWORD PluginManager_FcLogJSON(_In_ VMM_HANDLE H, _In_ VOID(*pfnAddEntry)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData));
+DWORD PluginManager_FcLogJSON(_In_ VMM_HANDLE H, _In_ VOID(*pfnAddEntry)(_In_ VMM_HANDLE H, _In_ PVMMDLL_FORENSIC_JSONDATA pData));
 
 /*
 * Call each plugin capable of FindEvil functionality.

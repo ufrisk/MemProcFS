@@ -5,6 +5,7 @@
 //
 #include "util.h"
 #include "charutil.h"
+#include "ext/miniz.h"
 #include <math.h>
 
 /*
@@ -997,6 +998,52 @@ BOOL Util_IsZeroBuffer(_In_ PBYTE pb, _In_ DWORD cb)
     if(cb) {
         if(memcmp(pb, pbZERO, cb)) { return FALSE; }
     }
+    return TRUE;
+}
+
+/*
+* GZIP decompresses a buffer of known length.
+* NOTE! Function does not guarantee that the buffer is null-terminated.
+* -- cbCompressed = binary gzipped data.
+* -- cbCompressed = length of gzipped data.
+* -- cbDecompressed = length of decompressed data. NB! must exactly match the length of the decompressed data.
+* -- pbDecompressed = buffer to store decompressed data.
+* -- return
+*/
+_Success_(return)
+BOOL Util_DecompressGz(_In_ PBYTE pbCompressed, _In_ DWORD cbCompressed, _In_ DWORD cbDecompressed, _Out_writes_(cbDecompressed) PBYTE pbDecompressed)
+{
+    z_stream stream = { 0 };
+    stream.next_in = pbCompressed;
+    stream.avail_in = cbCompressed;
+    stream.next_out = pbDecompressed;
+    stream.avail_out = cbDecompressed;
+    if(Z_OK != inflateInit(&stream)) { return FALSE; }
+    if(Z_STREAM_END != inflate(&stream, Z_FINISH)) { return FALSE; }
+    return (Z_OK == inflateEnd(&stream)) && (stream.avail_out == 0);
+}
+
+/*
+* GZIP decompresses a buffer of known length and allocated the decompressed
+* data into a null-terminated string.
+* CALLER LocalFree: *pszDecompressed
+* -- pbCompressed = binary gzipped data.
+* -- cbCompressed = length of gzipped data.
+* -- cbDecompressed = length of decompressed data (excl. null terminator).
+* -- pszDecompressed
+* -- return
+*/
+_Success_(return)
+BOOL Util_DecompressGzToStringAlloc(_In_ PBYTE pbCompressed, _In_ DWORD cbCompressed, _In_ DWORD cbDecompressed, _Out_ LPSTR * pszDecompressed)
+{
+    LPSTR szDecompressed = LocalAlloc(0, (SIZE_T)cbDecompressed + 1);
+    if(!szDecompressed) { return FALSE; }
+    if(!Util_DecompressGz(pbCompressed, cbCompressed, cbDecompressed, (PBYTE)szDecompressed)) {
+        LocalFree(szDecompressed);
+        return FALSE;
+    }
+    szDecompressed[cbDecompressed] = 0;
+    *pszDecompressed = szDecompressed;
     return TRUE;
 }
 

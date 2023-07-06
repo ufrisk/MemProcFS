@@ -40,7 +40,7 @@ BOOL CharUtil_IsAnsiFsA(_In_ LPCSTR sz);
             result utf-8 string, either as (*pusz == pbBuffer) or LocalAlloc'ed
 *           buffer that caller is responsible for free.
 * -- pcbu = byte length (including terminating null) of utf-8 string.
-* -- flags = CHARUTIL_FLAG_NONE, CHARUTIL_FLAG_ALLOC or CHARUTIL_FLAG_TRUNCATE
+* -- flags = CHARUTIL_FLAG_NONE, CHARUTIL_FLAG_STR_BUFONLY, CHARUTIL_FLAG_ALLOC, CHARUTIL_FLAG_TRUNCATE, etc.
 * -- return
 */
 _Success_(return)
@@ -49,7 +49,7 @@ BOOL CharUtil_UtoU(
     _In_ DWORD cch,
     _Maybenull_ _Writable_bytes_(cbBuffer) PBYTE pbBuffer,
     _In_ DWORD cbBuffer,
-    _Out_opt_ LPSTR * pusz,
+    _Out_opt_ LPSTR *pusz,
     _Out_opt_ PDWORD pcbu,
     _In_ DWORD flags
 );
@@ -88,7 +88,7 @@ BOOL CharUtil_WtoU(
             result wide-string, either as (*pwsz == pbBuffer) or LocalAlloc'ed
 *           buffer that caller is responsible for free.
 * -- pcbw = byte length (including terminating null) of wide-char string.
-* -- flags = CHARUTIL_FLAG_NONE, CHARUTIL_FLAG_ALLOC or CHARUTIL_FLAG_TRUNCATE
+* -- flags = CHARUTIL_FLAG_NONE, CHARUTIL_FLAG_STR_BUFONLY, CHARUTIL_FLAG_ALLOC, CHARUTIL_FLAG_TRUNCATE, etc.
 * -- return
 */
 _Success_(return)
@@ -125,7 +125,7 @@ BOOL CharUtil_WtoW(
             result utf-8 string, either as (*pjsz == pbBuffer) or LocalAlloc'ed
 *           buffer that caller is responsible for free.
 * -- pcbj = byte length (including terminating null) of utf-8 string.
-* -- flags = CHARUTIL_FLAG_NONE, CHARUTIL_FLAG_ALLOC or CHARUTIL_FLAG_TRUNCATE
+* -- flags = CHARUTIL_FLAG_NONE, CHARUTIL_FLAG_STR_BUFONLY, CHARUTIL_FLAG_ALLOC, CHARUTIL_FLAG_TRUNCATE, etc.
 * -- return
 */
 _Success_(return)
@@ -175,7 +175,7 @@ BOOL CharUtil_WtoJ(
             result utf-8 string, either as (*pvsz == pbBuffer) or LocalAlloc'ed
 *           buffer that caller is responsible for free.
 * -- pcbv = byte length (including terminating null) of utf-8 string.
-* -- flags = CHARUTIL_FLAG_NONE, CHARUTIL_FLAG_ALLOC or CHARUTIL_FLAG_TRUNCATE
+* -- flags = CHARUTIL_FLAG_NONE, CHARUTIL_FLAG_STR_BUFONLY, CHARUTIL_FLAG_ALLOC, CHARUTIL_FLAG_TRUNCATE, etc.
 * -- return
 */
 _Success_(return)

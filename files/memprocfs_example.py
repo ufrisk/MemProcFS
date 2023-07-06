@@ -21,11 +21,12 @@
 #
 # https://github.com/ufrisk/
 #
-# (c) Ulf Frisk, 2018-2022
+# (c) Ulf Frisk, 2018-2023
 # Author: Ulf Frisk, pcileech@frizk.net
 #
 
 import memprocfs
+import time
 from io import BytesIO
 
 
@@ -336,6 +337,38 @@ def MemProcFS_Example(args):
     result = vmm.hex(vmm.vfs.read('/memory.pmem', 0x100, 0x1000))
     print("SUCCESS: vmm.vfs.read()")
     print(result)
+
+    # SEARCH PE HEADERS AT START-OF-PAGE (0x1000 aligned) IN VIRTUAL MEMORY USING BINARY SEARCH
+    # NB! it's also possible to search physical memory and search multiple terms. See documentation.
+    print("--------------------------------------------------------------------")
+    print("Search, using binary search, for PE headers in process virtual memory.")
+    input("Press Enter to continue...")
+    search_binary = process_explorer.search(0, 0xffffffffffffffff, memprocfs.FLAG_NOCACHE)
+    search_binary.add_search(b'PE',b'\x00\x00',0x1000)
+    search_binary.start()
+    while not search_binary.is_completed:
+        print("current address: %x" % (search_binary.addr_current))
+        print(search_binary.poll())
+        time.sleep(0.1)
+    print("SUCCESS: search results:")
+    print("current address: %x" % (search_binary.addr_current))
+    print(search_binary.result())
+
+    # SEARCH PE HEADERS AT START-OF-PAGE (0x1000 aligned) IN VIRTUAL MEMORY USING YARA SEARCH
+    # This demonstrates how it's possible to use in-memory YARA rules to search for PE headers.
+    # It's using the blocking result() method, which will block until the search is completed.
+    # It's also possible to use yara file rules by specifying the path. Also it's possible to
+    # use the poll() pattern to poll an ongoing search (as demonstrated in the binary search example).
+    print("--------------------------------------------------------------------")
+    print("Search, using binary search, for PE headers in process virtual memory.")
+    input("Press Enter to continue...")
+    yara_rule_1 = " rule mz_header { strings: $mz = \"MZ\" condition: $mz at 0 } "
+    search_yara = process_explorer.search_yara([yara_rule_1])
+    print(search_yara.result())
+    print("current address: %x" % (search_yara.addr_current))
+
+
+
 
     # EXIT
     input("Press enter to exit (examples finished)...")

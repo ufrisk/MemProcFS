@@ -66,4 +66,67 @@ DWORD GetModuleFileNameA(_In_opt_ HMODULE hModule, _Out_ LPSTR lpFilename, _In_ 
     return readlink("/proc/self/exe", lpFilename, nSize);
 }
 
+
+
+// ----------------------------------------------------------------------------
+// GENERAL HANDLES BELOW:
+// ----------------------------------------------------------------------------
+
+#define OSCOMPATIBILITY_HANDLE_INTERNAL         0x35d91cca
+#define OSCOMPATIBILITY_HANDLE_TYPE_THREAD      2
+#define OSCOMPATIBILITY_HANDLE_TYPE_EVENT       3
+
+typedef struct tdHANDLE_INTERNAL {
+    DWORD magic;
+    DWORD type;
+} HANDLE_INTERNAL, *PHANDLE_INTERNAL;
+
+typedef struct tdHANDLE_INTERNAL_THREAD {
+    DWORD magic;
+    DWORD type;
+    pthread_t thread;
+} HANDLE_INTERNAL_THREAD, *PHANDLE_INTERNAL_THREAD;
+
+BOOL CloseHandle(_In_ HANDLE hObject)
+{
+    PHANDLE_INTERNAL hi = (PHANDLE_INTERNAL)hObject;
+    if(hi->magic != OSCOMPATIBILITY_HANDLE_INTERNAL) { return FALSE; }
+    switch(hi->type) {
+        case OSCOMPATIBILITY_HANDLE_TYPE_THREAD:
+            pthread_join(((PHANDLE_INTERNAL_THREAD)hi)->thread, NULL);
+            break;
+        default:
+            break;
+    }
+    LocalFree(hi);
+    return TRUE;
+}
+
+
+
+// ----------------------------------------------------------------------------
+// THREAD FUNCTIONALITY:
+// ----------------------------------------------------------------------------
+
+HANDLE CreateThread(
+    PVOID     lpThreadAttributes,
+    SIZE_T    dwStackSize,
+    PVOID     lpStartAddress,
+    PVOID     lpParameter,
+    DWORD     dwCreationFlags,
+    PDWORD    lpThreadId
+) {
+    PHANDLE_INTERNAL_THREAD ph;
+    pthread_t thread;
+    int status;
+    status = pthread_create(&thread, NULL, lpStartAddress, lpParameter);
+    if(status) { return NULL; }
+    ph = malloc(sizeof(HANDLE_INTERNAL_THREAD));
+    if(!ph) { return NULL; }
+    ph->magic = OSCOMPATIBILITY_HANDLE_INTERNAL;
+    ph->type = OSCOMPATIBILITY_HANDLE_TYPE_THREAD;
+    ph->thread = thread;
+    return (HANDLE)ph;
+}
+
 #endif /* LINUX */

@@ -48,6 +48,31 @@ _Success_(return)
 BOOL Util_HashSHA256(_In_reads_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_writes_(32) PBYTE pbHash);
 
 /*
+* GZIP decompresses a buffer of known length.
+* NOTE! Function does not guarantee that the buffer is null-terminated.
+* -- cbCompressed = binary gzipped data.
+* -- cbCompressed = length of gzipped data.
+* -- cbDecompressed = length of decompressed data. NB! must exactly match the length of the decompressed data.
+* -- pbDecompressed = buffer to store decompressed data.
+* -- return
+*/
+_Success_(return)
+BOOL Util_DecompressGz(_In_ PBYTE pbCompressed, _In_ DWORD cbCompressed, _In_ DWORD cbDecompressed, _Out_writes_(cbDecompressed) PBYTE pbDecompressed);
+
+/*
+* GZIP decompresses a buffer of known length and allocated the decompressed
+* data into a null-terminated string.
+* CALLER LocalFree: *pszDecompressed
+* -- pbCompressed = binary gzipped data.
+* -- cbCompressed = length of gzipped data.
+* -- cbDecompressed = length of decompressed data (excl. null terminator).
+* -- pszDecompressed
+* -- return
+*/
+_Success_(return)
+BOOL Util_DecompressGzToStringAlloc(_In_ PBYTE pbCompressed, _In_ DWORD cbCompressed, _In_ DWORD cbDecompressed, _Out_ LPSTR *pszDecompressed);
+
+/*
 * Delete a file denoted by its utf-8 full path.
 * -- uszPathFile
 */

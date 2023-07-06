@@ -326,6 +326,9 @@
     <ClInclude Include="..\includes\libpdbcrust.h" />
     <ClInclude Include="..\includes\vmmyara.h" />
     <ClInclude Include="charutil.h" />
+    <ClInclude Include="ext\miniz.h" />
+    <ClInclude Include="ext\sqlite3.h" />
+    <ClInclude Include="ext\sqlite3ext.h" />
     <ClInclude Include="fc.h" />
     <ClInclude Include="infodb.h" />
     <ClInclude Include="mm\mm.h" />
@@ -337,8 +340,6 @@
     <ClInclude Include="pdb.h" />
     <ClInclude Include="pe.h" />
     <ClInclude Include="resource.h" />
-    <ClInclude Include="sqlite\sqlite3.h" />
-    <ClInclude Include="sqlite\sqlite3ext.h" />
     <ClInclude Include="statistics.h" />
     <ClInclude Include="sysquery.h" />
     <ClInclude Include="util.h" />
@@ -347,10 +348,12 @@
     <ClInclude Include="vmm.h" />
     <ClInclude Include="vmmdll.h" />
     <ClInclude Include="vmmdll_core.h" />
+    <ClInclude Include="vmmdll_remote.h" />
     <ClInclude Include="vmmheap.h" />
     <ClInclude Include="vmmlog.h" />
     <ClInclude Include="vmmnet.h" />
     <ClInclude Include="vmmproc.h" />
+    <ClInclude Include="vmmuserconfig.h" />
     <ClInclude Include="vmmvm.h" />
     <ClInclude Include="vmmwin.h" />
     <ClInclude Include="vmmwindef.h" />
@@ -364,6 +367,8 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="charutil.c" />
+    <ClCompile Include="ext\miniz.c" />
+    <ClCompile Include="ext\sqlite3.c" />
     <ClCompile Include="fc.c" />
     <ClCompile Include="infodb.c" />
     <ClCompile Include="mm\mm_pfn.c" />
@@ -374,6 +379,7 @@
     <ClCompile Include="mm\mm_x86pae.c" />
     <ClCompile Include="modules\m_conf.c" />
     <ClCompile Include="modules\m_evil_kern1.c" />
+    <ClCompile Include="modules\m_evil_kernproc1.c" />
     <ClCompile Include="modules\m_evil_proc1.c" />
     <ClCompile Include="modules\m_evil_proc2.c" />
     <ClCompile Include="modules\m_evil_proc3.c" />
@@ -437,13 +443,13 @@
     <ClCompile Include="oscompatibility.c" />
     <ClCompile Include="pdb.c" />
     <ClCompile Include="pe.c" />
-    <ClCompile Include="sqlite\sqlite3.c" />
     <ClCompile Include="statistics.c" />
     <ClCompile Include="sysquery.c" />
     <ClCompile Include="util.c" />
     <ClCompile Include="vmm.c" />
     <ClCompile Include="vmmdll.c" />
     <ClCompile Include="vmmdll_core.c" />
+    <ClCompile Include="vmmdll_remote.c" />
     <ClCompile Include="vmmdll_scatter.c" />
     <ClCompile Include="vmmheap.c" />
     <ClCompile Include="vmmlog.c" />

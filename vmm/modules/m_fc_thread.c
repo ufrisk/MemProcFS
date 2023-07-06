@@ -112,17 +112,17 @@ VOID M_FcThread_FcTimeline(
     pfnEntryAddBySql(H, hTimeline, sizeof(pszSql) / sizeof(LPSTR), pszSql);
 }
 
-VOID M_FcThread_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
+VOID M_FcThread_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_FORENSIC_JSONDATA pData))
 {
     PVMM_PROCESS pProcess = ctxP->pProcess;
-    PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd;
+    PVMMDLL_FORENSIC_JSONDATA pd;
     PVMMOB_MAP_THREAD pObThreadMap = NULL;
     PVMM_MAP_THREADENTRY pe;
     DWORD i, o;
     CHAR szTime[24];
     CHAR usz[MAX_PATH] = { 0 };
-    if(!pProcess || !(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)))) { return; }
-    pd->dwVersion = VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION;
+    if(!pProcess || !(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_FORENSIC_JSONDATA)))) { return; }
+    pd->dwVersion = VMMDLL_FORENSIC_JSONDATA_VERSION;
     pd->dwPID = pProcess->dwPID;
     pd->szjType = "thread";
     if(VmmMap_GetThread(H, pProcess, &pObThreadMap)) {

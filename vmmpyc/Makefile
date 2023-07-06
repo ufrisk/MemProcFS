@@ -8,13 +8,13 @@ CFLAGS  += -Wall -Wno-format-truncation -Wno-enum-compare -Wno-pointer-sign -Wno
 CFLAGS  += -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast
 LDFLAGS += -L../files -Wl,-rpath,'$$ORIGIN' -g -ldl -shared
 DEPS = 
-OBJ = oscompatibility.c vmmpycplugin.c vmmpyc.c                               \
-      vmmpyc_maps.c vmmpyc_process.c vmmpyc_regvalue.c vmmpyc_virtualmemory.c \
-	  vmmpyc_module.c vmmpyc_processmaps.c vmmpyc_scattermemory.c             \
-	  vmmpyc_vmm.c version.h vmmpyc_modulemaps.c vmmpyc_reghive.c             \
-	  vmmpyc_util.c vmmpyc_pdb.c vmmpyc_regkey.c vmmpyc_vfs.c vmmpyc.h        \
-	  vmmpyc_kernel.c vmmpyc_physicalmemory.c vmmpyc_regmemory.c              \
-	  vmmpyc_virtualmachine.c
+OBJ = oscompatibility.o vmmpycplugin.o vmmpyc.o                               \
+      vmmpyc_maps.o vmmpyc_process.o vmmpyc_regvalue.o vmmpyc_virtualmemory.o \
+	  vmmpyc_module.o vmmpyc_processmaps.o vmmpyc_scattermemory.o             \
+	  vmmpyc_vmm.o vmmpyc_modulemaps.o vmmpyc_reghive.o                       \
+	  vmmpyc_util.o vmmpyc_pdb.o vmmpyc_regkey.o vmmpyc_vfs.o vmmpyc.o        \
+	  vmmpyc_kernel.o vmmpyc_physicalmemory.o vmmpyc_regmemory.o              \
+	  vmmpyc_search.o vmmpyc_virtualmachine.o vmmpyc_yara.o
 
 %.o: %.c $(DEPS)
 	$(CC) -c -o $@ $< $(CFLAGS)

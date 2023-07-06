@@ -104,12 +104,12 @@ BOOL MSys_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHAN
     return TRUE;
 }
 
-VOID MSys_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_FORENSIC_JSONDATA pData))
+VOID MSys_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_FORENSIC_JSONDATA pData))
 {
-    PVMMDLL_PLUGIN_FORENSIC_JSONDATA pd;
+    PVMMDLL_FORENSIC_JSONDATA pd;
     CHAR usz[MAX_PATH], szTimeBoot[24], szTimeCurrent[24], szTimeZone[64];
     BYTE pbComputerName[0x42] = { 0 };
-    if(ctxP->pProcess || !(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_PLUGIN_FORENSIC_JSONDATA)))) { return; }
+    if(ctxP->pProcess || !(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_FORENSIC_JSONDATA)))) { return; }
     Util_FileTime2String(H->vmm.kernel.opt.ftBootTime, szTimeBoot);
     Util_FileTime2String(SysQuery_TimeCurrent(H), szTimeCurrent);
     MSys_QueryTimeZone(H, szTimeZone, FALSE);
@@ -119,7 +119,7 @@ VOID MSys_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VO
         H->vmm.kernel.dwVersionMajor, H->vmm.kernel.dwVersionMinor, H->vmm.kernel.dwVersionBuild,
         szTimeBoot, szTimeCurrent, szTimeZone
     );
-    pd->dwVersion = VMMDLL_PLUGIN_FORENSIC_JSONDATA_VERSION;
+    pd->dwVersion = VMMDLL_FORENSIC_JSONDATA_VERSION;
     pd->szjType = "systeminformation";
     pd->vaObj = H->vmm.kernel.vaBase;
     pd->va[0] = H->vmm.kernel.opt.KDBG.va;

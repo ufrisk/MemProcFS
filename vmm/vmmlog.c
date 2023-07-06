@@ -393,6 +393,7 @@ VOID VmmLogEx2(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_ VMMLOG_LEVEL dwLo
     // log to display
     if(fD) {
         printf("%-10s %s\n", szHead, uszBuffer);
+        fflush(stdout);
     }
     // log to file
     if(fF) {
