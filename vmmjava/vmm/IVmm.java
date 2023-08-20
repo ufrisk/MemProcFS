@@ -8,7 +8,6 @@ import vmm.entry.*;
  * The main MemProcFS implementation for Java.<br/>
  * MemProcFS for Java requires JNA - https://github.com/java-native-access/jna which must be on the classpath.<br>
  * Check out the example code to get started! https://github.com/ufrisk/MemProcFS/<br> 
- * MemProcFS currently only allow for one concurrent analysis instance. When the native code supports more instances the Java API will also support it without any API changes.
  * @see https://github.com/ufrisk/MemProcFS
  * @author Ulf Frisk - pcileech@frizk.net
  */
@@ -20,7 +19,7 @@ public interface IVmm
 	//-----------------------------------------------------------------------------
 	
 	/**
-	 * Initialize a new MemProcFS instance (only if no previous active instance exists).
+	 * Initialize a new MemProcFS instance.
 	 * @param vmmNativeLibraryPath	path to vmm.dll / vmm.so native binaries, ex: "C:\\Program FIles\\MemProcFS".
 	 * @param argv					VMM/MemProcFS initialization arguments.
 	 * @return

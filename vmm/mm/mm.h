@@ -9,27 +9,27 @@
 
 /*
 * Initialize the X86 32-bit protected mode memory model.
-* If a previous memory model exists that memory model is first closed before
-* the new X86 memory model is initialized.
 * -- H
 */
 VOID MmX86_Initialize(_In_ VMM_HANDLE H);
 
 /*
 * Initialize the X86 PAE 32-bit protected mode memory model.
-* If a previous memory model exists that memory model is first closed before
-* the new X86 PAE memory model is initialized.
 * -- H
 */
 VOID MmX86PAE_Initialize(_In_ VMM_HANDLE H);
 
 /*
 * Initialize the X64 / IA32e / Long-Mode paging / memory model.
-* If a previous memory model exists that memory model is first closed before
-* the new X64 memory model is initialized.
 * -- H
 */
 VOID MmX64_Initialize(_In_ VMM_HANDLE H);
+
+/*
+* Initialize ARM64 memory model.
+* -- H
+*/
+VOID MmARM64_Initialize(_In_ VMM_HANDLE H);
 
 /*
 * Initialize the paging sub-system for Windows in a limited or full fashion.

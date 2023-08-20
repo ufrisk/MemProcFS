@@ -437,7 +437,7 @@ BOOL MmPfn_Map_GetPfnScatter(_In_ VMM_HANDLE H, _In_ POB_SET psPfn, _Out_ PMMPFN
     }
     // encrich result with virtual addresses and additional info
     if(fExtended && ObSet_Size(psObEnrichAddress)) {
-        if(H->vmm.tpMemoryModel == VMMDLL_MEMORYMODEL_X64) {
+        if((H->vmm.tpMemoryModel == VMMDLL_MEMORYMODEL_X64) || (H->vmm.tpMemoryModel == VMMDLL_MEMORYMODEL_ARM64)) {
             MmPfn_Map_GetPfn_GetVaX64(H, ctx, pObSystemProcess, psObEnrichAddress, psObPrefetch, 1);
         } else if(H->vmm.tpMemoryModel == VMMDLL_MEMORYMODEL_X86PAE) {
             MmPfn_Map_GetPfn_GetVaX86PAE(H, ctx, pObSystemProcess, psObEnrichAddress, psObPrefetch, 1);

@@ -19,12 +19,13 @@ CFLAGS  += -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast
 LDFLAGS += -Wl,-rpath,'$$ORIGIN' -g -ldl -shared
 DEPS = vmmdll.h
 OBJ = oscompatibility.o charutil.o util.o pe.o vmmdll.o vmmdll_core.o        \
-      vmmdll_remote.o vmmdll_scatter.o vmm.o fc.o                            \
-	  mm/mm_x64.o mm/mm_x86.o mm/mm_x86pae.o mm/mm_pfn.o mm/mm_vad.o         \
-	  mm/mm_win.o                                                            \
+	  vmmdll_remote.o vmmdll_scatter.o vmm.o fc.o                            \
+	  mm/mm_arm64.o mm/mm_x64.o mm/mm_x86.o mm/mm_x86pae.o mm/mm_pfn.o       \
+	  mm/mm_vad.o mm/mm_win.o                                                \
 	  pluginmanager.o pdb.o infodb.o ext/miniz.o ext/sqlite3.o               \
-	  ob/ob_cachemap.o ob/ob_compressed.o ob/ob_container.o ob/ob_core.o     \
-	  ob/ob_counter.o ob/ob_map.o ob/ob_memfile.o ob/ob_set.o ob/ob_strmap.o \
+	  ob/ob_bytequeue.o ob/ob_cachemap.o ob/ob_compressed.o                  \
+	  ob/ob_container.o ob/ob_core.o ob/ob_counter.o ob/ob_map.o             \
+	  ob/ob_memfile.o ob/ob_set.o ob/ob_strmap.o                             \
 	  statistics.o sysquery.o vmmheap.o vmmlog.o vmmnet.o                    \
 	  vmmproc.o vmmvm.o vmmwininit.o vmmwin.o vmmwinobj.o vmmwinpool.o       \
 	  vmmwinreg.o vmmwinsvc.o vmmuserconfig.o vmmwork.o vmmyarautil.o        \
@@ -46,18 +47,11 @@ OBJ = oscompatibility.o charutil.o util.o pe.o vmmdll.o vmmdll_core.o        \
 	  modules/m_sys_proc.o modules/m_sys_svc.o modules/m_sys_syscall.o       \
 	  modules/m_sys_task.o modules/m_sys_user.o                              \
 	  modules/m_phys2virt.o modules/m_search.o modules/m_searchyara.o        \
-	  modules/m_virt2phys.o                                                  \
 	  modules/m_proc_file_handles_vads.o modules/m_proc_file_modules.o       \
 	  modules/m_proc_handle.o modules/m_proc_heap.o                          \
 	  modules/m_proc_ldrmodules.o modules/m_proc_memmap.o                    \
 	  modules/m_proc_minidump.o modules/m_proc_thread.o                      \
-	  modules/m_proc_token.o
-
-
-
-
-
-
+	  modules/m_proc_token.o modules/m_proc_virt2phys.o
 
 %.o: %.c $(DEPS)
 	$(CC) -c -o $@ $< $(CFLAGS)

@@ -21,7 +21,7 @@ interface VmmNative extends Library {
 	
 	static final int VMMDLL_MAP_PTE_VERSION 		= 2;
 	static final int VMMDLL_MAP_VAD_VERSION 		= 6;
-	static final int VMMDLL_MAP_VADEX_VERSION 		= 3;
+	static final int VMMDLL_MAP_VADEX_VERSION 		= 4;
 	static final int VMMDLL_MAP_MODULE_VERSION 		= 6;
 	static final int VMMDLL_MAP_UNLOADEDMODULE_VERSION = 2;
 	static final int VMMDLL_MAP_EAT_VERSION 		= 3;
@@ -457,7 +457,7 @@ interface VmmNative extends Library {
 	
 	
 	
-	@Structure.FieldOrder({"dwTID", "dwPID", "dwExitStatus", "bState", "bRunning", "bPriority", "bBasePriority", "vaETHREAD", "vaTeb", "ftCreateTime", "ftExitTime", "vaStartAddress", "vaStackBaseUser", "vaStackLimitUser", "vaStackBaseKernel", "vaStackLimitKernel", "vaTrapFrame", "vaRIP", "vaRSP", "qwAffinity", "dwUserTime", "dwKernelTime", "bSuspendCount", "bWaitReason", "_FutureUse1", "_FutureUse2"})
+	@Structure.FieldOrder({"dwTID", "dwPID", "dwExitStatus", "bState", "bRunning", "bPriority", "bBasePriority", "vaETHREAD", "vaTeb", "ftCreateTime", "ftExitTime", "vaStartAddress", "vaStackBaseUser", "vaStackLimitUser", "vaStackBaseKernel", "vaStackLimitKernel", "vaTrapFrame", "vaRIP", "vaRSP", "qwAffinity", "dwUserTime", "dwKernelTime", "bSuspendCount", "bWaitReason", "_FutureUse1", "_FutureUse2", "vaImpersonationToken", "vaWin32StartAddress"})
 	class VMMDLL_MAP_THREADENTRY extends Structure {
 	    public int dwTID;
 	    public int dwPID;
@@ -484,7 +484,9 @@ interface VmmNative extends Library {
 	    public byte bSuspendCount;
 	    public byte bWaitReason;
 	    public byte[] _FutureUse1 = new byte[2];
-	    public int[] _FutureUse2 = new int[15];
+	    public int[] _FutureUse2 = new int[11];
+	    public long vaImpersonationToken;
+	    public long vaWin32StartAddress;
 	}
 	
 	@Structure.FieldOrder({"dwVersion", "_Reserved", "cMap", "pMap"})
@@ -590,10 +592,12 @@ interface VmmNative extends Library {
 
 	
 	
-	@Structure.FieldOrder({"tp", "iPML", "va", "pa", "pte", "_Reserved1", "proto_tp", "proto_pa", "proto_pte", "vaVadBase"})
+	@Structure.FieldOrder({"tp", "iPML", "pteFlags", "_Reserved2", "va", "pa", "pte", "_Reserved1", "proto_tp", "proto_pa", "proto_pte", "vaVadBase"})
 	class VMMDLL_MAP_VADEXENTRY extends Structure {
 		public int tp;
-		public int iPML;
+		public byte iPML;
+		public byte pteFlags;
+		public short _Reserved2;
 		public long va;
 		public long pa;
 		public long pte;

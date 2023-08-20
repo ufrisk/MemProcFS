@@ -193,37 +193,37 @@ class vmm_example
     static void ExampleLeechCore()
     {
         bool result;
-        // CREATE LEECHCORE CONTEXT
-        lc.CONFIG cfg = new lc.CONFIG();
-        cfg.dwVersion = lc.CONFIG_VERSION;
-        cfg.dwPrintfVerbosity = lc.CONFIG_PRINTF_ENABLED | lc.CONFIG_PRINTF_V;
-        cfg.szDevice = "file://c:\\dumps\\WIN7-X64-SP1-1.pmem";
-        ulong hLC = lc.Create(ref cfg);
-        if(hLC == 0) { return; }
 
-        // read 128 bytes from address 0x1000
-        byte[] MemRead = lc.Read(hLC, 0x1000, 128);
 
-        // scatter read two memory pages in one single run
-        MEM_SCATTER[] MEMs = lc.ReadScatter(hLC, 0x1000, 0x2000);
+        // CREATE LEECHCORE OBJECT:
+        // It's also possible to create LeechCore objects from an active
+        // MemProcFS Vmm instance with new LeechCore(vmm).
+        LeechCore lc = new LeechCore("file://c:\\dumps\\WIN7-X64-SP1-1.pmem", "", LeechCore.LC_CONFIG_PRINTF_ENABLED | LeechCore.LC_CONFIG_PRINTF_V, 0);
 
-        // get/set LeechCore option
-        ulong qwOptionValue;
-        result = lc.GetOption(hLC, lc.OPT_CORE_VERBOSE_EXTRA, out qwOptionValue);
-        result = lc.SetOption(hLC, lc.OPT_CORE_VERBOSE_EXTRA, 1);
-        result = lc.GetOption(hLC, lc.OPT_CORE_VERBOSE_EXTRA, out qwOptionValue);
 
-        // get memory map via command
-        string strMemMap;
-        byte[] dataMemMap;
-        result = lc.Command(hLC, lc.CMD_MEMMAP_GET, null, out dataMemMap);
-        if (result)
+        // Read 128 bytes from address 0x1000.
+        byte[] MemRead = lc.Read(0x1000, 128);
+
+        // Scatter read two memory pages in one single run.
+        MEM_SCATTER[] MEMs = lc.ReadScatter(0x1000, 0x2000);
+
+        // Get/Set LeechCore option.
+        ulong qwOptionVerboseExtra_Pre, qwOptionVerboseExtra_Post;
+        result = lc.GetOption(LeechCore.LC_OPT_CORE_VERBOSE_EXTRA, out qwOptionVerboseExtra_Pre);
+        result = lc.SetOption(LeechCore.LC_OPT_CORE_VERBOSE_EXTRA, 1);
+        result = lc.GetOption(LeechCore.LC_OPT_CORE_VERBOSE_EXTRA, out qwOptionVerboseExtra_Post);
+
+        // Get memory map:
+        string sMemMap = lc.GetMemMap();
+
+        // Set memory map:
+        if(sMemMap != null)
         {
-            strMemMap = System.Text.Encoding.UTF8.GetString(dataMemMap);
+            lc.SetMemMap(sMemMap);
         }
 
-        // CLOSE
-        lc.Close(hLC);
+        // CLOSE LEECHCORE OBJECT:
+        lc.Close();
     }
 
     static void Main(string[] args)

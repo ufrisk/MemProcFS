@@ -742,7 +742,7 @@ VOID MmVad_Spider_DoWork(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _I
     PVMMOB_MAP_VAD pmObVad = NULL, pmObVadTemp;
     POB_SET psObAll = NULL, psObTry1 = NULL, psObTry2 = NULL, psObPrefetch = NULL;
     PVMM_MAP_VADENTRY(*pfnMmVad_Spider)(VMM_HANDLE, PVMM_PROCESS, QWORD, PVMMOB_MAP_VAD, POB_SET, POB_SET, POB_SET, QWORD, DWORD);
-    if(!(H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_X64 || H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_X86)) { goto fail; }
+    if(!(H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_64 || H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_32)) { goto fail; }
     // 1: retrieve # of VAD entries and sanity check.
     if(dwVersionBuild >= 9600) {
         // Win8.1 and later -> fetch # of RtlBalancedNode from EPROCESS.

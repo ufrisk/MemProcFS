@@ -104,7 +104,7 @@ VmmPycMaps_net(PyObj_Maps *self, PyObject *args)
             PyDict_SetItemString_DECREF(pyDictTcpE, "time-str", PyUnicode_FromFormat("%s", szTime));
             PyDict_SetItemString_DECREF(pyDictTcpE, "src-ip", PyUnicode_FromString(pe->Src.uszText));
             PyDict_SetItemString_DECREF(pyDictTcpE, "src-port", PyLong_FromUnsignedLong(pe->Src.port));
-            PyDict_SetItemString_DECREF(pyDictTcpE, "dst-ip", PyUnicode_FromString(pe->Src.uszText));
+            PyDict_SetItemString_DECREF(pyDictTcpE, "dst-ip", PyUnicode_FromString(pe->Dst.uszText));
             PyDict_SetItemString_DECREF(pyDictTcpE, "dst-port", PyLong_FromUnsignedLong(pe->Dst.port));
             PyList_Append_DECREF(pyList, pyDictTcpE);
         }

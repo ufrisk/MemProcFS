@@ -2098,8 +2098,8 @@ BOOL VMMDLL_ProcessGetInformation_Impl(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _Ino
     memcpy(pInfo->szName, pObProcess->szName, sizeof(pInfo->szName));
     strncpy_s(pInfo->szNameLong, sizeof(pInfo->szNameLong), pObProcess->pObPersistent->uszNameLong, _TRUNCATE);
     // set operating system specific parameters
-    if((H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_X64) || (H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_X86)) {
-        if(H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_X64) {
+    if((H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_64) || (H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_32)) {
+        if(H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_64) {
             pInfo->win.fWow64 = pObProcess->win.fWow64;
             pInfo->win.vaPEB32 = pObProcess->win.vaPEB32;
         }

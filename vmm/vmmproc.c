@@ -54,7 +54,7 @@ BOOL VmmProcUserCR3TryInitialize64(_In_ VMM_HANDLE H)
     }
     VmmTlbSpider(H, pObProcess);
     Ob_DECREF(pObProcess);
-    H->vmm.tpSystem = VMM_SYSTEM_UNKNOWN_X64;
+    H->vmm.tpSystem = VMM_SYSTEM_UNKNOWN_64;
     H->vmm.kernel.paDTB = H->cfg.paCR3;
     return TRUE;
 }
@@ -67,11 +67,11 @@ BOOL VmmProc_RefreshProcesses(_In_ VMM_HANDLE H, _In_ BOOL fRefreshTotal)
     if(!fRefreshTotal) { InterlockedIncrement64(&H->vmm.stat.cProcessRefreshPartial); }
     if(fRefreshTotal) { InterlockedIncrement64(&H->vmm.stat.cProcessRefreshFull); }
     // Single user-defined X64 process
-    if(fRefreshTotal && (H->vmm.tpSystem == VMM_SYSTEM_UNKNOWN_X64)) {
+    if(fRefreshTotal && (H->vmm.tpSystem == VMM_SYSTEM_UNKNOWN_64)) {
         fResult = VmmProcUserCR3TryInitialize64(H);
     }
     // Windows OS
-    if((H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_X64) || (H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_X86)) {
+    if((H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_64) || (H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_32)) {
         VmmLog(H, MID_CORE, LOGLEVEL_DEBUG, "PROCESS_REFRESH: %s", (fRefreshTotal ? "Total" : "Partial"));
         pObProcessSystem = VmmProcessGet(H, 4);
         if(!pObProcessSystem) {
@@ -261,8 +261,10 @@ BOOL VmmProcInitialize(_In_ VMM_HANDLE H)
         result = H->cfg.paCR3 && VmmProcUserCR3TryInitialize64(H);
         if(!result) {
             vmmprintf(H,
-                "VmmProc: Unable to auto-identify operating system for PROC file system mount.   \n" \
-                "         Specify PageDirectoryBase (DTB/CR3) in -cr3 option if value if known.  \n");
+                "VmmProc: Unable to auto-identify operating system.                            \n" \
+                "         Specify PageDirectoryBase (DTB/CR3) in -dtb option if value if known.\n" \
+                "         If arm64 dump, specify architecture: -arch arm64                     \n"
+            );
         }
     }
     // set up cache maintenance in the form of a separate eternally running

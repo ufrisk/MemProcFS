@@ -1317,14 +1317,14 @@ VOID VmmHeap_Initialize_DoWork(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
         goto fail;
     }
     // fetch data:
-    if((H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_X86) || ((H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_X64) && pProcess->win.fWow64)) {
+    if((H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_32) || ((H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_64) && pProcess->win.fWow64)) {
         if(!H->vmm.offset.HEAP32.fValid) { goto fail; }
         ctxInit.po = &H->vmm.offset.HEAP32;
         ctxInit.f32 = TRUE;
         VmmHeap_InitializeInternal(H, &ctxInit, TRUE);
         ObSet_Clear(ctxInit.psPrefetch);
     }
-    if(H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_X64) {
+    if(H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_64) {
         if(!H->vmm.offset.HEAP64.fValid) { goto fail; }
         ctxInit.po = &H->vmm.offset.HEAP64;
         ctxInit.f32 = FALSE;

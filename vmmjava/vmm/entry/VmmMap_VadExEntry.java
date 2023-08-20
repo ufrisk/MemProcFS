@@ -8,9 +8,10 @@ import java.io.Serializable;
  */
 public class VmmMap_VadExEntry implements Serializable
 {
-	private static final long serialVersionUID = -2942891920206162419L;
+	private static final long serialVersionUID = -2942891920206162420L;
 	public int tp;
 	public int iPML;
+	public int pteFlags;
 	public long va;
 	public long pa;
 	public long pte;

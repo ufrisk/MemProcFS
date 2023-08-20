@@ -172,6 +172,7 @@ VmmPycProcessMaps_vad_ex(PyObj_ProcessMaps *self, PyObject *args)
             pe = pVadExMap->pMap + i;
             PyDict_SetItemString_DECREF(pyDict, "tp", PyUnicode_FromFormat("%c", VmmPycProcessMaps_vad_ex_Type(pe->tp)));
             PyDict_SetItemString_DECREF(pyDict, "pml", PyLong_FromUnsignedLong(pe->iPML));
+            PyDict_SetItemString_DECREF(pyDict, "pteflags", PyLong_FromUnsignedLong(pe->pteFlags));
             PyDict_SetItemString_DECREF(pyDict, "va", PyLong_FromUnsignedLongLong(pe->va));
             PyDict_SetItemString_DECREF(pyDict, "pa", PyLong_FromUnsignedLongLong(pe->pa));
             PyDict_SetItemString_DECREF(pyDict, "pte", PyLong_FromUnsignedLongLong(pe->pte));

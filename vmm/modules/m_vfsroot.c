@@ -167,19 +167,19 @@ VOID MVfsRoot_InitializeDumpContext64(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSyst
     *(PDWORD)(pb + 0x000) = 0x45474150;                         // Signature #1
     *(PDWORD)(pb + 0x004) = 0x34365544;                         // Signature #2
     *(PDWORD)(pb + 0x008) = 0x0000000F;                         // DumpVersion
-    *(PDWORD)(pb + 0x00c) = H->vmm.kernel.dwVersionBuild;      // BuildNo
+    *(PDWORD)(pb + 0x00c) = H->vmm.kernel.dwVersionBuild;       // BuildNo
     *(PQWORD)(pb + 0x010) = H->vmm.kernel.paDTB;
     *(PQWORD)(pb + 0x018) = H->vmm.kernel.opt.vaPfnDatabase;
     *(PQWORD)(pb + 0x020) = H->vmm.kernel.opt.vaPsLoadedModuleListExp;
     *(PQWORD)(pb + 0x028) = pSystemProcess->win.EPROCESS.va;
-    *(PDWORD)(pb + 0x030) = 0x8664;                             // MachineImageType = AMD64
+    *(PDWORD)(pb + 0x030) = (H->vmm.tpMemoryModel == VMMDLL_MEMORYMODEL_X64) ? 0x8664 : 0xAA64;     // MachineImageType = AMD64 / ARM64
     *(PDWORD)(pb + 0x034) = max(1, H->vmm.kernel.opt.cCPUs);
     *(PDWORD)(pb + 0x038) = 0xDEADDEAD;                         // BugCheckCode
     *(PQWORD)(pb + 0x040) = 1;                                  // BugCheck1
     *(PQWORD)(pb + 0x048) = 2;                                  // BugCheck2
     *(PQWORD)(pb + 0x050) = 3;                                  // BugCheck3
     *(PQWORD)(pb + 0x058) = 4;                                  // BugCheck4
-    *(PQWORD)(pb + 0x080) = H->vmm.kernel.opt.KDBG.va;         // KDBG
+    *(PQWORD)(pb + 0x080) = H->vmm.kernel.opt.KDBG.va;          // KDBG
     MVfsRoot_InitializeDumpContext_SetMemory(H, ctx);
     ZeroMemory(pb + 0x348, 3000);                               // ContextRecord
     *(PWORD)(pb + 0x348 + 0x038) = 0x10;                        // SegCs
@@ -188,7 +188,7 @@ VOID MVfsRoot_InitializeDumpContext64(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSyst
     *(PWORD)(pb + 0x348 + 0x03e) = 0x53;                        // SegFs
     *(PWORD)(pb + 0x348 + 0x040) = 0x2b;                        // SegGs
     *(PWORD)(pb + 0x348 + 0x042) = 0x00;                        // SegSs
-    *(PQWORD)(pb + 0x348 + 0x098) = H->vmm.kernel.vaBase;      // Rsp
+    *(PQWORD)(pb + 0x348 + 0x098) = H->vmm.kernel.vaBase;       // Rsp
     ZeroMemory(pb + 0xf00, 152);                                // ExceptionRecord
     ZeroMemory(pb + 0xfb0, 128);                                // Comment
     snprintf(
@@ -353,7 +353,7 @@ NTSTATUS MVfsRoot_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out
         return VMM_STATUS_SUCCESS;
     }
     if(!_stricmp(ctxP->uszPath, "memory.dmp")) {
-        if((H->vmm.tpSystem != VMM_SYSTEM_WINDOWS_X64) && (H->vmm.tpSystem != VMM_SYSTEM_WINDOWS_X86)) { goto finish; }
+        if((H->vmm.tpSystem != VMM_SYSTEM_WINDOWS_64) && (H->vmm.tpSystem != VMM_SYSTEM_WINDOWS_32)) { goto finish; }
         if(!(pObDumpCtx = MVfsRoot_GetDumpContext(H))) { goto finish; }
         // read dump header
         if(cbOffset < pObDumpCtx->cbHdr) {
@@ -419,7 +419,7 @@ NTSTATUS MVfsRoot_Write(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In
         return fResult ? VMM_STATUS_SUCCESS : VMM_STATUS_FILE_SYSTEM_LIMITATION;
     }
     if(!_stricmp(ctxP->uszPath, "memory.dmp")) {
-        if((H->vmm.tpSystem != VMM_SYSTEM_WINDOWS_X64) && (H->vmm.tpSystem != VMM_SYSTEM_WINDOWS_X86)) { return VMM_STATUS_FILE_INVALID; }
+        if((H->vmm.tpSystem != VMM_SYSTEM_WINDOWS_64) && (H->vmm.tpSystem != VMM_SYSTEM_WINDOWS_32)) { return VMM_STATUS_FILE_INVALID; }
         *pcbWrite = cb;
         cbHeaderSize = H->vmm.f32 ? 0x1000 : 0x2000;
         if(cbOffset + cb <= cbHeaderSize) {
@@ -448,7 +448,7 @@ BOOL MVfsRoot_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ 
 {
     if(!ctxP->uszPath[0]) {
         VMMDLL_VfsList_AddFile(pFileList, "memory.pmem", H->dev.paMax, NULL);
-        if((H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_X64) || (H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_X86)) {
+        if((H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_64) || (H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_32)) {
             VMMDLL_VfsList_AddFile(pFileList, "memory.dmp", H->dev.paMax + (H->vmm.f32 ? 0x1000 : 0x2000), NULL);
         }
         if(H->vmm.tpSystem != VMM_SYSTEM_UNKNOWN_PHYSICAL) {

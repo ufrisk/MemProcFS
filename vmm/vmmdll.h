@@ -11,7 +11,7 @@
 // (c) Ulf Frisk, 2018-2023
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-// Header Version: 5.7
+// Header Version: 5.8
 //
 
 #include "leechcore.h"
@@ -233,21 +233,26 @@ VOID VMMDLL_MemFree(_Frees_ptr_opt_ PVOID pvMem);
 // PROCESS OPTIONS: [LO-DWORD: Process PID]
 #define VMMDLL_OPT_PROCESS_DTB                          0x2002000100000000  // W - force set process directory table base.
 
-static LPCSTR VMMDLL_MEMORYMODEL_TOSTRING[4] = { "N/A", "X86", "X86PAE", "X64" };
+static LPCSTR VMMDLL_MEMORYMODEL_TOSTRING[5] = { "N/A", "X86", "X86PAE", "X64", "ARM64" };
 
 typedef enum tdVMMDLL_MEMORYMODEL_TP {
     VMMDLL_MEMORYMODEL_NA       = 0,
     VMMDLL_MEMORYMODEL_X86      = 1,
     VMMDLL_MEMORYMODEL_X86PAE   = 2,
-    VMMDLL_MEMORYMODEL_X64      = 3
+    VMMDLL_MEMORYMODEL_X64      = 3,
+    VMMDLL_MEMORYMODEL_ARM64    = 4,
 } VMMDLL_MEMORYMODEL_TP;
 
 typedef enum tdVMMDLL_SYSTEM_TP {
     VMMDLL_SYSTEM_UNKNOWN_PHYSICAL = 0,
-    VMMDLL_SYSTEM_UNKNOWN_X64   = 1,
-    VMMDLL_SYSTEM_WINDOWS_X64   = 2,
-    VMMDLL_SYSTEM_UNKNOWN_X86   = 3,
-    VMMDLL_SYSTEM_WINDOWS_X86   = 4
+    VMMDLL_SYSTEM_UNKNOWN_64    = 1,
+    VMMDLL_SYSTEM_WINDOWS_64    = 2,
+    VMMDLL_SYSTEM_UNKNOWN_32    = 3,
+    VMMDLL_SYSTEM_WINDOWS_32    = 4,
+    VMMDLL_SYSTEM_UNKNOWN_X64   = 1,    // deprecated - do not use!
+    VMMDLL_SYSTEM_WINDOWS_X64   = 2,    // deprecated - do not use!
+    VMMDLL_SYSTEM_UNKNOWN_X86   = 3,    // deprecated - do not use!
+    VMMDLL_SYSTEM_WINDOWS_X86   = 4     // deprecated - do not use!
 } VMMDLL_SYSTEM_TP;
 
 /*
@@ -938,8 +943,11 @@ EXPORTED_FUNCTION _Success_(return)
 BOOL VMMDLL_Scatter_PrepareEx(_In_ VMMDLL_SCATTER_HANDLE hS, _In_ QWORD va, _In_ DWORD cb, _Out_writes_opt_(cb) PBYTE pb, _Out_opt_ PDWORD pcbRead);
 
 /*
-* Prepare (add) a memory range for writing. The memory is later written when
-* calling VMMDLL_Scatter_Execute(). Writing takes place before reading.
+* Prepare (add) a memory range for writing.
+* The memory contents to write is processed when calling this function.
+* Any changes to va/pb/cb after this call will not be reflected in the write.
+* The memory is later written when calling VMMDLL_Scatter_Execute().
+* Writing takes place before reading.
 * -- hS
 * -- va = start address of the memory range to write.
 * -- pb = data to write.
@@ -948,6 +956,21 @@ BOOL VMMDLL_Scatter_PrepareEx(_In_ VMMDLL_SCATTER_HANDLE hS, _In_ QWORD va, _In_
 */
 EXPORTED_FUNCTION _Success_(return)
 BOOL VMMDLL_Scatter_PrepareWrite(_In_ VMMDLL_SCATTER_HANDLE hS, _In_ QWORD va, _In_reads_(cb) PBYTE pb, _In_ DWORD cb);
+
+/*
+* Prepare (add) a memory range for writing.
+* Memory contents to write is processed when calling VMMDLL_Scatter_Execute().
+* The buffer pb must be valid when VMMDLL_Scatter_Execute() is called.
+* The memory is later written when calling VMMDLL_Scatter_Execute().
+* Writing takes place before reading.
+* -- hS
+* -- va = start address of the memory range to write.
+* -- pb = data to write. Buffer must be valid when VMMDLL_Scatter_Execute() is called.
+* -- cb = size of memory range to write.
+* -- return
+*/
+EXPORTED_FUNCTION _Success_(return)
+BOOL VMMDLL_Scatter_PrepareWriteEx(_In_ VMMDLL_SCATTER_HANDLE hS, _In_ QWORD va, _In_reads_(cb) PBYTE pb, _In_ DWORD cb);
 
 /*
 * Retrieve and Write memory previously populated.
@@ -1010,7 +1033,7 @@ VOID VMMDLL_Scatter_CloseHandle(_In_opt_ _Post_ptr_invalid_ VMMDLL_SCATTER_HANDL
 
 #define VMMDLL_MAP_PTE_VERSION              2
 #define VMMDLL_MAP_VAD_VERSION              6
-#define VMMDLL_MAP_VADEX_VERSION            3
+#define VMMDLL_MAP_VADEX_VERSION            4
 #define VMMDLL_MAP_MODULE_VERSION           6
 #define VMMDLL_MAP_UNLOADEDMODULE_VERSION   2
 #define VMMDLL_MAP_EAT_VERSION              3
@@ -1094,9 +1117,16 @@ typedef struct tdVMMDLL_MAP_VADENTRY {
     QWORD _Reserved2;
 } VMMDLL_MAP_VADENTRY, *PVMMDLL_MAP_VADENTRY;
 
+#define VMMDLL_VADEXENTRY_FLAG_HARDWARE     0x01
+#define VMMDLL_VADEXENTRY_FLAG_W            0x10
+#define VMMDLL_VADEXENTRY_FLAG_K            0x40
+#define VMMDLL_VADEXENTRY_FLAG_NX           0x80
+
 typedef struct tdVMMDLL_MAP_VADEXENTRY {
     VMMDLL_PTE_TP tp;
-    DWORD iPML;
+    BYTE iPML;
+    BYTE pteFlags;
+    WORD _Reserved2;
     QWORD va;
     QWORD pa;
     QWORD pte;
@@ -1415,7 +1445,7 @@ typedef struct tdVMMDLL_MAP_SERVICEENTRY {
 } VMMDLL_MAP_SERVICEENTRY, *PVMMDLL_MAP_SERVICEENTRY;
 
 typedef struct tdVMMDLL_MAP_PTE {
-    DWORD dwVersion;
+    DWORD dwVersion;                // VMMDLL_MAP_PTE_VERSION
     DWORD _Reserved1[5];
     PBYTE pbMultiText;              // NULL or multi-wstr pointed into by VMMDLL_MAP_VADENTRY.wszText
     DWORD cbMultiText;
@@ -1424,7 +1454,7 @@ typedef struct tdVMMDLL_MAP_PTE {
 } VMMDLL_MAP_PTE, *PVMMDLL_MAP_PTE;
 
 typedef struct tdVMMDLL_MAP_VAD {
-    DWORD dwVersion;
+    DWORD dwVersion;                // VMMDLL_MAP_VAD_VERSION
     DWORD _Reserved1[4];
     DWORD cPage;                    // # pages in vad map.
     PBYTE pbMultiText;              // NULL or multi-wstr pointed into by VMMDLL_MAP_VADENTRY.wszText
@@ -1434,14 +1464,14 @@ typedef struct tdVMMDLL_MAP_VAD {
 } VMMDLL_MAP_VAD, *PVMMDLL_MAP_VAD;
 
 typedef struct tdVMMDLL_MAP_VADEX {
-    DWORD dwVersion;
+    DWORD dwVersion;                // VMMDLL_MAP_VADEX_VERSION
     DWORD _Reserved1[4];
     DWORD cMap;                     // # map entries.
     VMMDLL_MAP_VADEXENTRY pMap[];   // map entries.
 } VMMDLL_MAP_VADEX, *PVMMDLL_MAP_VADEX;
 
 typedef struct tdVMMDLL_MAP_MODULE {
-    DWORD dwVersion;
+    DWORD dwVersion;                // VMMDLL_MAP_MODULE_VERSION
     DWORD _Reserved1[5];
     PBYTE pbMultiText;              // multi-wstr pointed into by VMMDLL_MAP_MODULEENTRY.wszText
     DWORD cbMultiText;
@@ -1450,7 +1480,7 @@ typedef struct tdVMMDLL_MAP_MODULE {
 } VMMDLL_MAP_MODULE, *PVMMDLL_MAP_MODULE;
 
 typedef struct tdVMMDLL_MAP_UNLOADEDMODULE {
-    DWORD dwVersion;
+    DWORD dwVersion;                // VMMDLL_MAP_UNLOADEDMODULE_VERSION
     DWORD _Reserved1[5];
     PBYTE pbMultiText;              // multi-wstr pointed into by VMMDLL_MAP_MODULEENTRY.wszText
     DWORD cbMultiText;
@@ -1459,7 +1489,7 @@ typedef struct tdVMMDLL_MAP_UNLOADEDMODULE {
 } VMMDLL_MAP_UNLOADEDMODULE, *PVMMDLL_MAP_UNLOADEDMODULE;
 
 typedef struct tdVMMDLL_MAP_EAT {
-    DWORD dwVersion;
+    DWORD dwVersion;                // VMMDLL_MAP_EAT_VERSION
     DWORD dwOrdinalBase;
     DWORD cNumberOfNames;
     DWORD cNumberOfFunctions;
@@ -1475,7 +1505,7 @@ typedef struct tdVMMDLL_MAP_EAT {
 } VMMDLL_MAP_EAT, *PVMMDLL_MAP_EAT;
 
 typedef struct tdVMMDLL_MAP_IAT {
-    DWORD dwVersion;
+    DWORD dwVersion;                // VMMDLL_MAP_IAT_VERSION
     DWORD _Reserved1[5];
     QWORD vaModuleBase;
     PBYTE pbMultiText;              // multi-str pointed into by VMM_MAP_EATENTRY.[wszFunction|wszModule]
@@ -1485,7 +1515,7 @@ typedef struct tdVMMDLL_MAP_IAT {
 } VMMDLL_MAP_IAT, *PVMMDLL_MAP_IAT;
 
 typedef struct tdVMMDLL_MAP_HEAP {
-    DWORD dwVersion;
+    DWORD dwVersion;                            // VMMDLL_MAP_HEAP_VERSION
     DWORD _Reserved1[7];
     PVMMDLL_MAP_HEAP_SEGMENTENTRY pSegments;    // heap segment entries.
     DWORD cSegments;                            // # heap segment entries.
@@ -1494,7 +1524,7 @@ typedef struct tdVMMDLL_MAP_HEAP {
 } VMMDLL_MAP_HEAP, *PVMMDLL_MAP_HEAP;
 
 typedef struct tdVMMDLL_MAP_HEAPALLOC {
-    DWORD dwVersion;
+    DWORD dwVersion;                    // VMMDLL_MAP_HEAPALLOC_VERSION
     DWORD _Reserved1[7];
     PVOID _Reserved2[2];
     DWORD cMap;                         // # map entries.
@@ -1502,14 +1532,14 @@ typedef struct tdVMMDLL_MAP_HEAPALLOC {
 } VMMDLL_MAP_HEAPALLOC, *PVMMDLL_MAP_HEAPALLOC;
 
 typedef struct tdVMMDLL_MAP_THREAD {
-    DWORD dwVersion;
+    DWORD dwVersion;                // VMMDLL_MAP_THREAD_VERSION
     DWORD _Reserved[8];
     DWORD cMap;                     // # map entries.
     VMMDLL_MAP_THREADENTRY pMap[];  // map entries.
 } VMMDLL_MAP_THREAD, *PVMMDLL_MAP_THREAD;
 
 typedef struct tdVMMDLL_MAP_HANDLE {
-    DWORD dwVersion;
+    DWORD dwVersion;                // VMMDLL_MAP_HANDLE_VERSION
     DWORD _Reserved1[5];
     PBYTE pbMultiText;              // multi-wstr pointed into by VMMDLL_MAP_HANDLEENTRY.wszText
     DWORD cbMultiText;
@@ -1518,7 +1548,7 @@ typedef struct tdVMMDLL_MAP_HANDLE {
 } VMMDLL_MAP_HANDLE, *PVMMDLL_MAP_HANDLE;
 
 typedef struct tdVMMDLL_MAP_POOL {
-    DWORD dwVersion;
+    DWORD dwVersion;                // VMMDLL_MAP_POOL_VERSION
     DWORD _Reserved1[6];
     DWORD cbTotal;                  // # bytes to represent this pool map object
     PDWORD piTag2Map;               // dword map array (size: cMap): tag index to map index.
@@ -1529,7 +1559,7 @@ typedef struct tdVMMDLL_MAP_POOL {
 } VMMDLL_MAP_POOL, *PVMMDLL_MAP_POOL;
 
 typedef struct tdVMMDLL_MAP_NET {
-    DWORD dwVersion;
+    DWORD dwVersion;                // VMMDLL_MAP_NET_VERSION
     DWORD _Reserved1;
     PBYTE pbMultiText;              // multi-wstr pointed into by VMM_MAP_NETENTRY.wszText
     DWORD cbMultiText;
@@ -1538,7 +1568,7 @@ typedef struct tdVMMDLL_MAP_NET {
 } VMMDLL_MAP_NET, *PVMMDLL_MAP_NET;
 
 typedef struct tdVMMDLL_MAP_PHYSMEM {
-    DWORD dwVersion;
+    DWORD dwVersion;                // VMMDLL_MAP_PHYSMEM_VERSION
     DWORD _Reserved1[5];
     DWORD cMap;                     // # map entries.
     DWORD _Reserved2;
@@ -1546,7 +1576,7 @@ typedef struct tdVMMDLL_MAP_PHYSMEM {
 } VMMDLL_MAP_PHYSMEM, *PVMMDLL_MAP_PHYSMEM;
 
 typedef struct tdVMMDLL_MAP_USER {
-    DWORD dwVersion;
+    DWORD dwVersion;                // VMMDLL_MAP_USER_VERSION
     DWORD _Reserved1[5];
     PBYTE pbMultiText;              // multi-wstr pointed into by VMMDLL_MAP_USERENTRY.wszText
     DWORD cbMultiText;
@@ -1555,7 +1585,7 @@ typedef struct tdVMMDLL_MAP_USER {
 } VMMDLL_MAP_USER, *PVMMDLL_MAP_USER;
 
 typedef struct tdVMMDLL_MAP_VM {
-    DWORD dwVersion;
+    DWORD dwVersion;                // VMMDLL_MAP_VM_VERSION
     DWORD _Reserved1[5];
     PBYTE pbMultiText;              // multi-wstr pointed into by VMMDLL_MAP_VMENTRY.wszText
     DWORD cbMultiText;
@@ -1564,7 +1594,7 @@ typedef struct tdVMMDLL_MAP_VM {
 } VMMDLL_MAP_VM, *PVMMDLL_MAP_VM;
 
 typedef struct tdVMMDLL_MAP_SERVICE {
-    DWORD dwVersion;
+    DWORD dwVersion;                // VMMDLL_MAP_SERVICE_VERSION
     DWORD _Reserved1[5];
     PBYTE pbMultiText;              // multi-wstr pointed into by VMMDLL_MAP_SERVICEENTRY.wsz*
     DWORD cbMultiText;

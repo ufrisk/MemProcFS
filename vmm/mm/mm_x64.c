@@ -7,7 +7,7 @@
 #include "mm.h"
 
 #define MMX64_MEMMAP_DISPLAYBUFFER_LINE_LENGTH      89
-#define MMX64_PTE_IS_TRANSITION(H, pte, iPML)       ((((pte & 0x0c01) == 0x0800) && (iPML == 1) && (H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_X64)) ? ((pte & 0xffffdffffffff000) | 0x005) : 0)
+#define MMX64_PTE_IS_TRANSITION(H, pte, iPML)       ((((pte & 0x0c01) == 0x0800) && (iPML == 1)) ? ((pte & 0xffffdffffffff000) | 0x005) : 0)
 #define MMX64_PTE_IS_VALID(pte, iPML)               (pte & 0x01)
 
 /*
@@ -114,7 +114,7 @@ VOID MmX64_MapInitialize_Index(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _I
             if(!pte) { continue; }
             if(iPML != 1) { continue; }
             pte = MMX64_PTE_IS_TRANSITION(H, pte, iPML);
-            pte = 0x8000000000000005 | (pte ? (pte & 0x8000fffffffff000 ) : 0); // GUESS READ-ONLY USER PAGE IF NON TRANSITION
+            pte = 0x8000000000000005 | (pte & 0x0000fffffffff000);  // GUESS READ-ONLY USER PAGE IF NON TRANSITION
             fPagedOut = TRUE;
         } else {
             fPagedOut = FALSE;
@@ -292,6 +292,8 @@ BOOL MmX64_Virt2Phys(_In_ VMM_HANDLE H, _In_ QWORD paPT, _In_ BOOL fUserOnly, _I
 
 VOID MmX64_Virt2PhysVadEx(_In_ VMM_HANDLE H, _In_ QWORD paPT, _Inout_ PVMMOB_MAP_VADEX pVadEx, _In_ BYTE iPML, _Inout_ PDWORD piVadEx)
 {
+    BYTE flags;
+    PVMM_MAP_VADEXENTRY peVadEx;
     QWORD pa, pte, iPte, iVadEx, qwMask;
     PVMMOB_CACHE_MEM pObPTEs = NULL;
     if(iPML == (BYTE)-1) { iPML = 4; }
@@ -301,26 +303,33 @@ VOID MmX64_Virt2PhysVadEx(_In_ VMM_HANDLE H, _In_ QWORD paPT, _Inout_ PVMMOB_MAP
     }
 next_entry:
     iVadEx = *piVadEx;
-    iPte = 0x1ff & (pVadEx->pMap[iVadEx].va >> MMX64_PAGETABLEMAP_PML_REGION_SIZE[iPML]);
+    peVadEx = &pVadEx->pMap[iVadEx];
+    peVadEx->flags = 0;
+    iPte = 0x1ff & (peVadEx->va >> MMX64_PAGETABLEMAP_PML_REGION_SIZE[iPML]);
     pte = pObPTEs->pqw[iPte];
     if(!MMX64_PTE_IS_VALID(pte, iPML)) { goto next_check; } // NOT VALID
     if(!(pte & 0x04)) { goto next_check; }                  // SUPERVISOR PAGE & USER MODE REQ
     if(pte & 0x000f000000000000) { goto next_check; }       // RESERVED
     if((iPML == 1) || (pte & 0x80) /* PS */) {
         if(iPML == 4) { goto next_check; }                  // NO SUPPORT IN PML4
+        flags = VADEXENTRY_FLAG_HARDWARE;
+        flags |= (pte & VMM_MEMMAP_PAGE_W) ? VADEXENTRY_FLAG_W : 0;
+        flags |= (pte & VMM_MEMMAP_PAGE_NX) ? VADEXENTRY_FLAG_NX : 0;
+        flags |= (pte & VMM_MEMMAP_PAGE_NS) ? 0 : VADEXENTRY_FLAG_K;
+        peVadEx->flags = flags;
         qwMask = 0xffffffffffffffff << MMX64_PAGETABLEMAP_PML_REGION_SIZE[iPML];
         pa = pte & 0x0000fffffffff000 & qwMask;             // MASK AWAY BITS FOR 4kB/2MB/1GB PAGES
         qwMask = qwMask ^ 0xffffffffffffffff;
-        pVadEx->pMap[iVadEx].pa = pa | (qwMask & pVadEx->pMap[iVadEx].va);  // FILL LOWER ADDRESS BITS
-        pVadEx->pMap[iVadEx].tp = VMM_PTE_TP_HARDWARE;
+        peVadEx->pa = pa | (qwMask & peVadEx->va);  // FILL LOWER ADDRESS BITS
+        peVadEx->tp = VMM_PTE_TP_HARDWARE;
         goto next_check;
     }    
     MmX64_Virt2PhysVadEx(H, pte, pVadEx, iPML - 1, piVadEx);
     Ob_DECREF(pObPTEs);
     return;
 next_check:
-    pVadEx->pMap[iVadEx].pte = pte;
-    pVadEx->pMap[iVadEx].iPML = iPML;
+    peVadEx->pte = pte;
+    peVadEx->iPML = iPML;
     *piVadEx = *piVadEx + 1;
     if((iPML == 1) && (iPte < 0x1ff) && (iVadEx + 1 < pVadEx->cMap) && (pVadEx->pMap[iVadEx].va + 0x1000 == pVadEx->pMap[iVadEx + 1].va)) { goto next_entry; }
     Ob_DECREF(pObPTEs);
@@ -393,7 +402,7 @@ VOID MmX64_Phys2VirtGetInformation_Index(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pP
             continue;
         }
         // maps page table (PDPT, PD, PT)
-        if(fUserOnly && !(pte & 0x04)) { continue; }    // do not go into supervisor pages if user-only adderss space
+        if(fUserOnly && !(pte & 0x04)) { continue; }    // do not go into supervisor pages if user-only address space
         pObNextPT = VmmTlbGetPageTable(H, pte & 0x0000fffffffff000, FALSE);
         if(!pObNextPT) { continue; }
         va = vaBase + (i << MMX64_PAGETABLEMAP_PML_REGION_SIZE[iPML]);

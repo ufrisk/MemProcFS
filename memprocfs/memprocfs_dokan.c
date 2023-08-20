@@ -185,6 +185,9 @@ VOID VfsDokan_Close(_In_ CHAR chMountPoint)
         ctxVfs->fInitialized = FALSE;
         if(wchMountPoint) {
             hModuleDokan = LoadLibraryExA("dokan2.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+            if(!hModuleDokan) {
+                hModuleDokan = LoadLibraryA("dokan2.dll");
+            }
             if(hModuleDokan) {
                 pfnDokanUnmount = (BOOL(WINAPI *)(WCHAR))GetProcAddress(hModuleDokan, "DokanUnmount");
                 if(pfnDokanUnmount) {
@@ -250,6 +253,9 @@ VOID VfsDokan_InitializeAndMount(_In_ CHAR chMountPoint)
     VOID(WINAPI *pfnDokanShutdown)();
     // allocate
     hModuleDokan = LoadLibraryExA("dokan2.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    if(!hModuleDokan) {
+        hModuleDokan = LoadLibraryA("dokan2.dll");
+    }
     if(!hModuleDokan) {
         printf("MOUNT: Failed. The required DOKANY file system library is not installed. \n");
         printf("Please download from : https://github.com/dokan-dev/dokany/releases/latest\n");

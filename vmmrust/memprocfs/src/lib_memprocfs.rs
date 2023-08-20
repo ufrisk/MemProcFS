@@ -16,6 +16,11 @@
 //! to undertake a wide range of actions - such as reading/writing memory or
 //! retrieve various information.
 //! 
+//! The use of the low-level [`LeechCore`] library is also possible. [LeechCore](https://github.com/ufrisk/LeechCore/wiki)
+//! is used for low-level tasks such as setting a [memory map](https://github.com/ufrisk/LeechCore/wiki/Device_FPGA_AMD_Thunderbolt),
+//! implementing raw PCIe Transaction Layer Packet (TLP), PCIe Base Address
+//! Register (BAR) support and more.
+//! 
 //! 
 //! <b>Read and write memory</b> by using the methods
 //! [`mem_read()`](VmmProcess::mem_read()),
@@ -275,6 +280,8 @@ pub const PLUGIN_NOTIFY_VM_ATTACH_DETACH            : u32 = 0x01000400;
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct Vmm<'a> {
+    path_lc : String,
+    path_vmm : String,
     native : VmmNative,
     parent_vmm : Option<&'a Vmm<'a>>,
 }
@@ -521,6 +528,16 @@ impl Vmm<'_> {
     /// ```
     pub fn new_from_virtual_machine<'a>(vmm_parent : &'a Vmm, vm_entry : &VmmMapVirtualMachineEntry) -> ResultEx<Vmm<'a>> {
         return impl_new_from_virtual_machine(vmm_parent, vm_entry);
+    }
+
+    /// Retrieve the underlying LeechCore native handle.
+    /// 
+    /// # Examples
+    /// ```
+    /// let lc = vmm.get_leechcore()?;
+    /// ```
+    pub fn get_leechcore(&self) -> ResultEx<LeechCore> {
+        return self.impl_get_leechcore();
     }
 
     /// Retrieve a single process by PID.
@@ -2043,10 +2060,11 @@ pub enum VmmProcessMapVadExType {
 pub struct VmmProcessMapVadExEntry {
     pub pid : u32,
     pub tp : VmmProcessMapVadExType,
-    pub i_pml : u32,
+    pub i_pml : u8,
     pub va : u64,
     pub pa : u64,
     pub pte : u64,
+    pub pte_flags : u8,
     pub proto_tp : VmmProcessMapVadExType,
     pub proto_pa : u64,
     pub proto_pte : u64,
@@ -3615,6 +3633,621 @@ impl<T> VmmPluginInitializationContext<T> {
 
 
 
+//=============================================================================
+// LEECHCORE API:
+//=============================================================================
+
+/// <b>LeechCore API Base Struct.</b>
+/// 
+/// The [`LeechCore`] struct is the base of the low-level physical memory
+/// aqusition API used by MemProcFS / [`Vmm`]. Normally it is not required
+/// to interact with this low-level library.
+/// 
+/// One may however wish to use specialized functionality such as sending and
+/// receiving raw PCIe TLPs (if the FPGA backend is in use), or to implement a
+/// device PCIe BAR.
+/// 
+/// The [`LeechCore`] struct acts as a wrapper around the native LeechCore API.
+/// 
+/// <b>Check out the example project for more detailed API usage and
+/// additional examples!</b>
+/// 
+/// 
+/// # Created By
+/// - [`LeechCore::new()`]
+/// - [`LeechCore::new_ex()`]
+/// - [`Vmm::get_leechcore()`]
+/// 
+/// # Examples
+/// 
+/// ```
+/// // Create a new LeechCore instance:
+/// let lc = LeechCore::new('fpga://algo=0', LeechCore::LC_CONFIG_PRINTF_ENABLED)?;
+/// ```
+/// 
+/// ```
+/// // Fetch an existing LeechCore instance from a Vmm instance:
+/// let lc = vmm.get_leechcore()?;
+/// ```
+#[derive(Debug)]
+pub struct LeechCore {
+    native : LcNative,
+}
+
+/// PCIe BAR info struct.
+/// 
+/// # Created By
+/// - [`LeechCore::get_bars()`]
+/// - LeechCore PCIe BAR callback.
+/// ```
+#[derive(Clone, Copy, Debug, Default)]
+pub struct LcBar {
+    /// BAR is valid.
+    pub is_valid : bool,
+    /// BAR is 64-bit.
+    pub is_64bit : bool,
+    /// BAR is prefetchable.
+    pub is_prefetchable : bool,
+    /// BAR index (0-5).
+    pub bar_index : u32,
+    /// BAR physical base address.
+    pub pa : u64,
+    /// BAR size in bytes.
+    pub cb : u64,
+}
+
+/// PCIe BAR request struct.
+/// 
+/// # Created By
+/// - LeechCore PCIe BAR callback.
+/// ```
+#[derive(Debug)]
+pub struct LcBarRequest {
+    native : *mut LC_BAR_REQUEST,
+    /// The PCIe BAR which this request is for.
+    pub bar : LcBar,
+    /// PCIe TLP packet tag.
+    pub tag : u8,
+    /// first byte-enable.
+    pub be_first : u8,
+    /// last byte-enable.
+    pub be_last : u8,
+    /// is a 64-bit request.
+    pub is_64bit : bool,
+    /// is a read request.
+    pub is_read : bool,
+    /// is a write request.
+    pub is_write : bool,
+    /// data size in bytes.
+    pub data_size : u32,
+    /// data byte offset within the BAR.
+    pub data_offset : u64,
+    /// data to write (if a write request).
+    pub data_write : Option<Vec<u8>>,
+}
+
+/// PCIe BAR Context: Supplied by LeechCore to the BAR callback function.
+/// 
+/// Contains the `lc` field which gives access to the general API.
+/// 
+/// Contains the `ctxlock` field which gives access to the user-defined generic
+/// struct set at plugin initialization.
+/// 
+/// The `ctxlock` field is a `std::sync::RwLock` and the inner user-defined
+/// generic struct may be accessed in either multi-threaded read-mode or
+/// single-threaded mutable write-mode. Read mode is more efficient.
+/// 
+/// See the plugin example for additional use cases and documentation.
+/// 
+/// Only one BAR callback may be active at a given time for a given native
+/// LeechCore instance. Previous instances will become inactive if a new
+/// one is started. To inactivate a callback drop the context.
+/// 
+/// 
+/// # Created By
+/// - `LeechCore::pcie_bar_callback()`
+///
+pub struct LcBarContext<'a, T> {
+    /// Access the general LeechCore API through the `lc` field.
+    pub lc     : &'a LeechCore,
+    /// Access generic user-set plugin context in a thread-safe way.
+    pub ctxlock : std::sync::RwLock<T>,
+    fn_callback : fn(ctx : &LcBarContext<T>, req : &LcBarRequest) -> ResultEx<()>,
+    native_ctx : usize,
+}
+
+/// PCIe BAR wrapper context - returned to the caller of the BAR enable function.
+/// The BAR callback is shut down / closed when this struct is dropped.
+pub struct LcBarContextWrap<'a, T> {
+    /// Access to the underlying context.
+    pub ctx     : &'a LcBarContext::<'a, T>,
+    native      : *mut LcBarContext::<'a, T>,
+}
+
+/// PCIe TLP Context: Supplied by LeechCore to the TLP callback function.
+/// 
+/// Contains the `lc` field which gives access to the general API.
+/// 
+/// Contains the `ctxlock` field which gives access to the user-defined generic
+/// struct set at plugin initialization.
+/// 
+/// The `ctxlock` field is a `std::sync::RwLock` and the inner user-defined
+/// generic struct may be accessed in either multi-threaded read-mode or
+/// single-threaded mutable write-mode. Read mode is more efficient.
+/// 
+/// See the plugin example for additional use cases and documentation.
+/// 
+/// Only one TLP callback may be active at a given time for a given native
+/// LeechCore instance. Previous instances will become inactive if a new
+/// one is started. To inactivate a callback drop the context.
+/// 
+/// 
+/// # Created By
+/// - `LeechCore::pcie_tlp_callback()`
+///
+pub struct LcTlpContext<'a, T> {
+    /// Access the general LeechCore API through the `lc` field.
+    pub lc     : &'a LeechCore,
+    /// Access generic user-set plugin context in a thread-safe way.
+    pub ctxlock : std::sync::RwLock<T>,
+    fn_callback : fn(ctx : &LcTlpContext<T>, tlp : &[u8], tlp_str : &str) -> ResultEx<()>,
+    native_ctx : usize,
+}
+
+/// PCIe TLP wrapper context - returned to the caller of the TLP enable function.
+/// The TLP callback is shut down / closed when this struct is dropped.
+pub struct LcTlpContextWrap<'a, T> {
+    /// Access to the underlying context.
+    pub ctx     : &'a LcTlpContext::<'a, T>,
+    native      : *mut LcTlpContext::<'a, T>,
+}
+
+impl LeechCore {
+    /// LeechCore configuration struct version.
+    pub const LC_CONFIG_VERSION                         : u32 = 0xc0fd0002;
+
+    /// No printf verbosity.
+    pub const LC_CONFIG_PRINTF_NONE                     : u32 = 0x00000000;
+    /// Printf verbosity: standard.
+    pub const LC_CONFIG_PRINTF_ENABLED                  : u32 = 0x00000001;
+    /// Printf verbosity: verbose.
+    pub const LC_CONFIG_PRINTF_V                        : u32 = 0x00000002;
+    /// Printf verbosity: extra verbose.
+    pub const LC_CONFIG_PRINTF_VV                       : u32 = 0x00000004;
+    /// Printf verbosity: extra extra verbose (TLP).
+    pub const LC_CONFIG_PRINTF_VVV                      : u32 = 0x00000008;
+
+    
+    /// LeechCore initialization function.
+    /// 
+    /// The [`LeechCore`] is the base of the low-level physical memory
+    /// aqusition API used by MemProcFS / [`Vmm`]. Normally it is not required
+    /// to interact with this low-level library.
+    /// 
+    /// One may however wish to use specialized functionality such as sending and
+    /// receiving raw PCIe TLPs (if the FPGA backend is in use), or to implement a
+    /// device PCIe BAR.
+    /// 
+    /// # Arguments
+    /// * `lc_lib_path` - Full path to the native leechcore library - i.e. `leechcore.dll` or `leechcore.so`.
+    /// * `device_config` - Leechcore device connection string, i.e. `fpga://algo=0`.
+    /// * `lc_config_printf_verbosity` - Leechcore printf verbosity level as a combination of `LeechCore::LC_CONFIG_PRINTF_*` values.
+    /// 
+    /// Information about supported memory acqusition methods may be found on the [LeechCore wiki](https://github.com/ufrisk/LeechCore/wiki).
+    /// 
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// // Initialize a new LeechCore instance using the FPGA memory acqusition method.
+    /// let lc = LeechCore::new('C:\\Temp\\MemProcFS\\leechcore.dll', 'fpga://algo=0', LeechCore::LC_CONFIG_PRINTF_ENABLED)?;
+    /// ```
+    pub fn new(lc_lib_path : &str, device_config : &str, lc_config_printf_verbosity : u32) -> ResultEx<LeechCore> {
+        return LeechCore::impl_new(lc_lib_path, device_config, "", lc_config_printf_verbosity, 0);
+    }
+
+    /// LeechCore initialization function.
+    /// 
+    /// The [`LeechCore`] is the base of the low-level physical memory
+    /// aqusition API used by MemProcFS / [`Vmm`]. Normally it is not required
+    /// to interact with this low-level library.
+    /// 
+    /// One may however wish to use specialized functionality such as sending and
+    /// receiving raw PCIe TLPs (if the FPGA backend is in use), or to implement a
+    /// device PCIe BAR.
+    /// 
+    /// # Arguments
+    /// * `lc_lib_path` - Full path to the native leechcore library - i.e. `leechcore.dll` or `leechcore.so`.
+    /// * `device_config` - Leechcore device connection string, i.e. `fpga://algo=0`.
+    /// * `lc_config_printf_verbosity` - Leechcore printf verbosity level as a combination of `LeechCore::LC_CONFIG_PRINTF_*` values.
+    /// * `remote_config` - Leechcore remote connection string, i.e. blank or ``rpc://...` (Windows only).
+    /// * `pa_max` - Max physical address to use for memory acquisition.
+    /// 
+    /// Information about supported memory acqusition methods may be found on the [LeechCore wiki](https://github.com/ufrisk/LeechCore/wiki).
+    /// 
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// // Initialize a new LeechCore instance using the FPGA memory acqusition method.
+    /// let lc = LeechCore::new('C:\\Temp\\MemProcFS\\leechcore.dll', 'fpga://algo=0', LeechCore::LC_CONFIG_PRINTF_ENABLED, '', 0x23fffffff)?;
+    /// ```
+    pub fn new_ex(lc_lib_path : &str, device_config : &str, lc_config_printf_verbosity : u32, remote_config : &str, pa_max : u64) -> ResultEx<LeechCore> {
+        return LeechCore::impl_new(lc_lib_path, device_config, remote_config, lc_config_printf_verbosity, pa_max);
+    }
+
+    /// LeechCore printf enable [RW].
+    pub const LC_OPT_CORE_PRINTF_ENABLE                 : u64 = 0x4000000100000000;
+    /// LeechCore verbose level [RW].
+    pub const LC_OPT_CORE_VERBOSE                       : u64 = 0x4000000200000000;
+    /// LeechCore extra verbose level [RW].
+    pub const LC_OPT_CORE_VERBOSE_EXTRA                 : u64 = 0x4000000300000000;
+    /// LeechCore extra extra verbose level (TLP) [RW].
+    pub const LC_OPT_CORE_VERBOSE_EXTRA_TLP             : u64 = 0x4000000400000000;
+    /// LeechCore major version [R].
+    pub const LC_OPT_CORE_VERSION_MAJOR                 : u64 = 0x4000000500000000;
+    /// LeechCore minor version [R].
+    pub const LC_OPT_CORE_VERSION_MINOR                 : u64 = 0x4000000600000000;
+    /// LeechCore revision version [R].
+    pub const LC_OPT_CORE_VERSION_REVISION              : u64 = 0x4000000700000000;
+    /// LeechCore max physical address [R].
+    pub const LC_OPT_CORE_ADDR_MAX                      : u64 = 0x1000000800000000;
+    /// LeechCore statistics call count [lo-dword: LC_STATISTICS_ID_*] [R].
+    pub const LC_OPT_CORE_STATISTICS_CALL_COUNT         : u64 = 0x4000000900000000;
+    /// LeechCore statistics call time [lo-dword: LC_STATISTICS_ID_*] [R].
+    pub const LC_OPT_CORE_STATISTICS_CALL_TIME          : u64 = 0x4000000a00000000;
+    /// LeechCore is memory volatile [R].
+    pub const LC_OPT_CORE_VOLATILE                      : u64 = 0x1000000b00000000;
+    /// LeechCore is memory readonly [R].
+    pub const LC_OPT_CORE_READONLY                      : u64 = 0x1000000c00000000;
+
+    /// LeechCore memory info: is valid [R]
+    pub const LC_OPT_MEMORYINFO_VALID                   : u64 = 0x0200000100000000;
+    /// LeechCore memory info: is 32-bit OS [R].
+    pub const LC_OPT_MEMORYINFO_FLAG_32BIT              : u64 = 0x0200000300000000;
+    /// LeechCore memory info: is 32-bit PAE OS [R].
+    pub const LC_OPT_MEMORYINFO_FLAG_PAE                : u64 = 0x0200000400000000;
+    /// LeechCore memory info: architecture [R].
+    pub const LC_OPT_MEMORYINFO_ARCH                    : u64 = 0x0200001200000000;
+    /// LeechCore memory info: OS minor version [R].
+    pub const LC_OPT_MEMORYINFO_OS_VERSION_MINOR        : u64 = 0x0200000500000000;
+    /// LeechCore memory info: OS major version [R].
+    pub const LC_OPT_MEMORYINFO_OS_VERSION_MAJOR        : u64 = 0x0200000600000000;
+    /// LeechCore memory info: OS directory table base [R].
+    pub const LC_OPT_MEMORYINFO_OS_DTB                  : u64 = 0x0200000700000000;
+    /// LeechCore memory info: OS PFN database [R].
+    pub const LC_OPT_MEMORYINFO_OS_PFN                  : u64 = 0x0200000800000000;
+    /// LeechCore memory info: OS PsLoadedModuleList [R].
+    pub const LC_OPT_MEMORYINFO_OS_PSLOADEDMODULELIST   : u64 = 0x0200000900000000;
+    /// LeechCore memory info: OS PsActiveProcessHead [R].
+    pub const LC_OPT_MEMORYINFO_OS_PSACTIVEPROCESSHEAD  : u64 = 0x0200000a00000000;
+    /// LeechCore memory info: OS machine image type [R].
+    pub const LC_OPT_MEMORYINFO_OS_MACHINE_IMAGE_TP     : u64 = 0x0200000b00000000;
+    /// LeechCore memory info: OS number of processors [R].
+    pub const LC_OPT_MEMORYINFO_OS_NUM_PROCESSORS       : u64 = 0x0200000c00000000;
+    /// LeechCore memory info: OS system time [R].
+    pub const LC_OPT_MEMORYINFO_OS_SYSTEMTIME           : u64 = 0x0200000d00000000;
+    /// LeechCore memory info: OS uptime [R].
+    pub const LC_OPT_MEMORYINFO_OS_UPTIME               : u64 = 0x0200000e00000000;
+    /// LeechCore memory info: OS kernel base [R].
+    pub const LC_OPT_MEMORYINFO_OS_KERNELBASE           : u64 = 0x0200000f00000000;
+    /// LeechCore memory info: OS kernel hint [R].
+    pub const LC_OPT_MEMORYINFO_OS_KERNELHINT           : u64 = 0x0200001000000000;
+    /// LeechCore memory info: OS KdDebuggerDataBlock [R].
+    pub const LC_OPT_MEMORYINFO_OS_KDDEBUGGERDATABLOCK  : u64 = 0x0200001100000000;
+
+    /// LeechCore fpga: probe maximum number of pages [RW].
+    pub const LC_OPT_FPGA_PROBE_MAXPAGES                : u64 = 0x0300000100000000;
+    /// LeechCore fpga: max rx size [RW].
+    pub const LC_OPT_FPGA_MAX_SIZE_RX                   : u64 = 0x0300000300000000;
+    /// LeechCore fpga: max tx size [RW].
+    pub const LC_OPT_FPGA_MAX_SIZE_TX                   : u64 = 0x0300000400000000;
+    /// LeechCore fpga: time delay probe read in uS (algo: 2,3) [RW].
+    pub const LC_OPT_FPGA_DELAY_PROBE_READ              : u64 = 0x0300000500000000;
+    /// LeechCore fpga: time delay probe write in uS (algo: 2,3) [RW].
+    pub const LC_OPT_FPGA_DELAY_PROBE_WRITE             : u64 = 0x0300000600000000;
+    /// LeechCore fpga: time delay write in uS (algo: 2,3) [RW].
+    pub const LC_OPT_FPGA_DELAY_WRITE                   : u64 = 0x0300000700000000;
+    /// LeechCore fpga: time delay read in uS (algo: 2,3) [RW].
+    pub const LC_OPT_FPGA_DELAY_READ                    : u64 = 0x0300000800000000;
+    /// LeechCore fpga: retry on error [RW].
+    pub const LC_OPT_FPGA_RETRY_ON_ERROR                : u64 = 0x0300000900000000;
+    /// LeechCore fpga: PCIe device id - bus:dev:fn (ex: 04:00.0 == : u64 = 0x0400) [RW].
+    pub const LC_OPT_FPGA_DEVICE_ID                     : u64 = 0x0300008000000000;
+    /// LeechCore fpga: FPGA bistream id [R].
+    pub const LC_OPT_FPGA_FPGA_ID                       : u64 = 0x0300008100000000;
+    /// LeechCore fpga: version major [R].
+    pub const LC_OPT_FPGA_VERSION_MAJOR                 : u64 = 0x0300008200000000;
+    /// LeechCore fpga: version minor [R].
+    pub const LC_OPT_FPGA_VERSION_MINOR                 : u64 = 0x0300008300000000;
+    /// LeechCore fpga: 1/0 use tiny 128-byte/tlp read algorithm. [RW].
+    pub const LC_OPT_FPGA_ALGO_TINY                     : u64 = 0x0300008400000000;
+    /// LeechCore fpga: 1/0 use synchronous (old) read algorithm. [RW].
+    pub const LC_OPT_FPGA_ALGO_SYNCHRONOUS              : u64 = 0x0300008500000000;
+    /// LeechCore fpga: [lo-dword: register address in bytes] [bytes: 0-3: data, 4-7: byte_enable(if wr/set); top bit = cfg_mgmt_wr_rw1c_as_rw] [RW].
+    pub const LC_OPT_FPGA_CFGSPACE_XILINX               : u64 = 0x0300008600000000;
+    /// LeechCore fpga: 1/0 call TLP read callback with additional string info in szInfo [RW].
+    pub const LC_OPT_FPGA_TLP_READ_CB_WITHINFO          : u64 = 0x0300009000000000;
+    /// LeechCore fpga: 1/0 call TLP read callback with memory read completions from read calls filtered [RW].
+    pub const LC_OPT_FPGA_TLP_READ_CB_FILTERCPL         : u64 = 0x0300009100000000;
+
+    /// Get a numeric configuration value.
+    /// 
+    /// # Arguments
+    /// * `config_id` - As specified by a `LeechCore::LC_OPT_*` constant marked as Read [R] or Read/Write [RW]. (Optionally or'ed with other data on select options).
+    /// 
+    /// # Examples
+    /// ```
+    /// println!("max addr: {:#x}", lc.get_option(LeechCore::LC_OPT_CORE_ADDR_MAX).unwrap_or(0));
+    /// ```
+    pub fn get_option(&self, config_id : u64) -> ResultEx<u64> {
+        return self.impl_get_option(config_id);
+    }
+
+    /// Set a numeric configuration value.
+    /// 
+    /// # Arguments
+    /// * `config_id` - As specified by a `LeechCore::LC_OPT_*` constant marked as Write [W] or Read/Write [RW]. (Optionally or'ed with other data on select options).
+    /// * `config_value` - The config value to set.
+    /// 
+    /// # Examples
+    /// ```
+    /// // The below enables printf outputs from within the LeechCore library.
+    /// let _r = lc.set_option(LeechCore::LC_OPT_CORE_PRINTF_ENABLE, 1);
+    /// ```
+    pub fn set_option(&self, config_id : u64, config_value : u64) -> ResultEx<()> {
+        return self.impl_set_option(config_id, config_value);
+    }
+
+    /// LeechCore command: FPGA PCIe Config Space [R].
+    pub const LC_CMD_FPGA_PCIECFGSPACE                  : u64 = 0x0000010300000000;
+    /// LeechCore command: FPGA PCIe register value [lo-dword: register address] [RW].
+    pub const LC_CMD_FPGA_CFGREGPCIE                    : u64 = 0x0000010400000000;
+    /// LeechCore command: FPGA register cfg [RW].
+    pub const LC_CMD_FPGA_CFGREGCFG                     : u64 = 0x0000010500000000;
+    /// LeechCore command: FPGA read/write DRP register space [lo-dword: register address] [RW].
+    pub const LC_CMD_FPGA_CFGREGDRP                     : u64 = 0x0000010600000000;
+    /// LeechCore command: FPGA write with mask [lo-dword: register address] [bytes: 0-1: data, 2-3: mask] [W].
+    pub const LC_CMD_FPGA_CFGREGCFG_MARKWR              : u64 = 0x0000010700000000;
+    /// LeechCore command: FPGA write with mask [lo-dword: register address] [bytes: 0-1: data, 2-3: mask] [W].
+    pub const LC_CMD_FPGA_CFGREGPCIE_MARKWR             : u64 = 0x0000010800000000;
+    /// LeechCore command: FPGA probe [RW].
+    pub const LC_CMD_FPGA_PROBE                         : u64 = 0x0000010b00000000;
+    /// LeechCore command: FPGA read shadow config space[R]. 
+    pub const LC_CMD_FPGA_CFGSPACE_SHADOW_RD            : u64 = 0x0000010c00000000;
+    /// LeechCore command: FPGA [lo-dword: config space write base address] [W].
+    pub const LC_CMD_FPGA_CFGSPACE_SHADOW_WR            : u64 = 0x0000010d00000000;
+    /// LeechCore command: FPGA write single tlp BYTE:s [W].
+    pub const LC_CMD_FPGA_TLP_WRITE_SINGLE              : u64 = 0x0000011000000000;
+    /// LeechCore command: FPGA write multiple LC_TLP:s [W].
+    pub const LC_CMD_FPGA_TLP_WRITE_MULTIPLE            : u64 = 0x0000011100000000;
+    /// LeechCore command: FPGA convert single TLP to LPSTR; *pcbDataOut includes NULL terminator [RW].
+    pub const LC_CMD_FPGA_TLP_TOSTRING                  : u64 = 0x0000011200000000;
+    /// LeechCore command: FPGA set/unset TLP user-defined context to be passed to callback function. [not remote] [W].
+    pub const LC_CMD_FPGA_TLP_CONTEXT                   : u64 = 0x2000011400000000;
+    /// LeechCore command: FPGA get TLP user-defined context to be passed to callback function. [not remote] [R].
+    pub const LC_CMD_FPGA_TLP_CONTEXT_RD                : u64 = 0x2000011b00000000;
+    /// LeechCore command: FPGA set/unset TLP callback function [not remote] [W].
+    pub const LC_CMD_FPGA_TLP_FUNCTION_CALLBACK         : u64 = 0x2000011500000000;
+    /// LeechCore command: FPGA get TLP callback function [not remote] [R].
+    pub const LC_CMD_FPGA_TLP_FUNCTION_CALLBACK_RD      : u64 = 0x2000011c00000000;
+    /// LeechCore command: FPGA set/unset BAR user-defined context to be passed to callback function. [not remote] [W].
+    pub const LC_CMD_FPGA_BAR_CONTEXT                   : u64 = 0x2000011800000000;
+    /// LeechCore command: FPGA get BAR user-defined context to be passed to callback function [not remote] [R].
+    pub const LC_CMD_FPGA_BAR_CONTEXT_RD                : u64 = 0x2000011d00000000;
+    /// LeechCore command: FPGA set/unset BAR callback function [not remote] [W].
+    pub const LC_CMD_FPGA_BAR_FUNCTION_CALLBACK         : u64 = 0x2000011900000000;
+    /// LeechCore command: FPGA get BAR callback function [not remote] [R].
+    pub const LC_CMD_FPGA_BAR_FUNCTION_CALLBACK_RD      : u64 = 0x2000011e00000000;
+    /// LeechCore command: FPGA BAR info. (pbDataOut == LC_BAR_INFO[6]) [R].
+    pub const LC_CMD_FPGA_BAR_INFO                      : u64 = 0x0000011a00000000;
+    /// LeechCore command: Get the dump file header [R].
+    pub const LC_CMD_FILE_DUMPHEADER_GET                : u64 = 0x0000020100000000;
+    /// LeechCore command: Get statistics [R].
+    pub const LC_CMD_STATISTICS_GET                     : u64 = 0x4000010000000000;
+    /// LeechCore command: Get memmap as string [R].
+    pub const LC_CMD_MEMMAP_GET                         : u64 = 0x4000020000000000;
+    /// LeechCore command: Set memmap as string [W].
+    pub const LC_CMD_MEMMAP_SET                         : u64 = 0x4000030000000000;
+    /// LeechCore command: Get memmap as C-struct [R].
+    pub const LC_CMD_MEMMAP_GET_STRUCT                  : u64 = 0x4000040000000000;
+    /// LeechCore command: Set memmap as C-struct [W].
+    pub const LC_CMD_MEMMAP_SET_STRUCT                  : u64 = 0x4000050000000000;
+
+    /// Execute a command using the LcCommand interface.
+    /// 
+    /// # Arguments
+    /// * `command_id` - The command id to execute.
+    /// * `data` - Optional data to send with the command.
+    /// 
+    /// # Examples
+    /// ```
+    /// // Get the LeechCore memory map:
+    /// let memmap = lc.command(LeechCore::LC_CMD_MEMMAP_GET, None)?.to_string();
+    /// ```
+    pub fn command(&self, command_id : u64, data : Option<&Vec<u8>>) -> ResultEx<Option<Vec<u8>>> {
+        return self.impl_command(command_id, data);
+    }
+
+    /// Read a contigious physical memory chunk.
+    /// 
+    /// The whole chunk must be read successfully for the method to succeed.
+    /// 
+    /// 
+    /// # Arguments
+    /// * `pa` - Physical address to start reading from.
+    /// * `size` - Number of bytes to read.
+    /// 
+    /// # Examples
+    /// ```
+    /// // Read 0x100 bytes of data starting at address 0x1000.
+    /// // Example assumes: use pretty_hex::*;
+    /// let data_read = lc.mem_read(0x1000, 0x100)?;
+    /// println!("{:?}", data_read.hex_dump());
+    /// ```
+    pub fn mem_read(&self, pa : u64, size : usize) -> ResultEx<Vec<u8>> {
+        return self.impl_mem_read(pa, size);
+    }
+
+    /// Read a contigious physical memory chunk with flags as a type/struct.
+    /// 
+    /// 
+    /// # Arguments
+    /// * `pa` - Physical address to start reading from.
+    /// 
+    /// # Examples
+    /// ```
+    /// // Read the C-struct IMAGE_DOS_HEADER from memory.
+    /// #[repr(C)]
+    /// struct IMAGE_DOS_HEADER {
+    ///     e_magic : u16,
+    /// 	...
+    ///     e_lfanew : u32,
+    /// }
+    /// if let Ok(doshdr) = lc.mem_read_as::<IMAGE_DOS_HEADER>(pa_module) {
+    ///     println!("e_magic:  {:x}", doshdr.e_magic);
+    ///     println!("e_lfanew: {:x}", doshdr.e_lfanew);
+    /// }
+    /// ```
+    pub fn mem_read_as<T>(&self, pa : u64) -> ResultEx<T> {
+        return self.impl_mem_read_as(pa);
+    }
+
+    /// Write physical memory.
+    /// 
+    /// The write is a best effort. Even of the write should fail it's not
+    /// certain that an error will be returned. To be absolutely certain that
+    /// a write has taken place follow up with a read.
+    /// 
+    /// # Arguments
+    /// * `pa` - Physical address to start writing from.
+    /// * `data` - Byte data to write.
+    /// 
+    /// # Examples
+    /// ```
+    /// let data_to_write = [0x56u8, 0x4d, 0x4d, 0x52, 0x55, 0x53, 0x54].to_vec();
+    /// let _r = lc.mem_write(0x1000, &data_to_write);
+    /// ```
+    pub fn mem_write(&self, pa : u64, data : &Vec<u8>) -> ResultEx<()> {
+        return self.impl_mem_write(pa, data);
+    }
+
+    /// Write a type/struct to physical memory.
+    /// 
+    /// The write is a best effort. Even of the write should fail it's not
+    /// certain that an error will be returned. To be absolutely certain that
+    /// a write has taken place follow up with a read.
+    /// 
+    /// # Arguments
+    /// * `pa` - Physical address to start writing from.
+    /// * `data` - Data to write. In case of a struct repr(C) is recommended.
+    /// 
+    /// # Examples
+    /// ```
+    /// let data_to_write = [0x56, 0x4d, 0x4d, 0x52, 0x55, 0x53, 0x54];
+    /// let _r = lc.mem_write_as(0x1000, &data_to_write);
+    /// ```
+    pub fn mem_write_as<T>(&self, pa : u64, data : &T) -> ResultEx<()> {
+        return self.impl_mem_write_as(pa, data);
+    }
+
+    /// Retrieve the memory map currently in-use.
+    /// 
+    /// For more information about memory maps see the [LeechCore wiki](https://github.com/ufrisk/LeechCore/wiki/Device_FPGA_AMD_Thunderbolt).
+    /// 
+    /// # Examples
+    /// ```
+    /// let memmap = lc.get_memmap()?;
+    /// println!("{}", memmap);
+    /// ```
+    pub fn get_memmap(&self) -> ResultEx<String> {
+        return self.impl_get_memmap();
+    }
+
+    /// Set/Update the memory map currently in-use.
+    /// 
+    /// For more information about memory maps see the [LeechCore wiki](https://github.com/ufrisk/LeechCore/wiki/Device_FPGA_AMD_Thunderbolt).
+    /// 
+    /// # Arguments
+    /// * `str_memmap` - The str containing the new memory map to use.
+    /// 
+    /// # Examples
+    /// ```
+    /// let _r = lc.set_memmap(memmap.as_str())?;
+    /// ```
+    pub fn set_memmap(&self, str_memmap : &str) -> ResultEx<()> {
+        return self.impl_set_memmap(str_memmap);
+    }
+
+    /// PCIe only function: Get the BARs of the PCIe device.
+    /// 
+    /// # Examples
+    /// ```
+    /// let bars = lc.pcie_bar_info()?;
+    /// ```
+    pub fn pcie_bar_info(&self) -> ResultEx<[LcBar; 6]> {
+        return self.impl_pcie_bar_info();
+    }
+
+    /// PCIe only function: Start a PCIe BAR callback.
+    /// 
+    /// # Arguments
+    /// * `ctx` - User defined context to be passed to the callback function.
+    /// * `fn_bar_callback` - The callback function to call when a BAR is accessed.
+    ///
+    /// See [`LcBarContext`] for more information.
+    /// 
+    /// Only one PCIe BAR callback may be active at a time.
+    pub fn pcie_bar_callback<T>(&self, ctx : T, fn_bar_callback : fn(ctx : &LcBarContext<T>, req : &LcBarRequest) -> ResultEx<()>) -> ResultEx<LcBarContextWrap<T>> {
+        return self.impl_pcie_bar_callback(ctx, fn_bar_callback);
+    }
+
+    /// PCIe only function: Start a PCIe TLP callback.
+    /// 
+    /// # Arguments
+    /// * `ctx` - User defined context to be passed to the callback function.
+    /// * `fn_tlp_callback` - The callback function to call when a TLP is received.
+    /// 
+    /// See [`LcTlpContext`] for more information.
+    /// 
+    /// Only one PCIe TLP callback may be active at a time.
+    pub fn pcie_tlp_callback<T>(&self, ctx : T, fn_tlp_callback : fn(ctx : &LcTlpContext<T>, tlp : &[u8], tlp_str : &str) -> ResultEx<()>) -> ResultEx<LcTlpContextWrap<T>> {
+        return self.impl_pcie_tlp_callback(ctx, fn_tlp_callback);
+    }
+
+    /// PCIe only function: Write a PCIe TLP.
+    /// 
+    /// # Arguments
+    /// * `tlp` - The TLP to write.
+    pub fn pcie_tlp_write(&self, tlp : &[u8]) -> ResultEx<()> {
+        return self.impl_pcie_tlp_write(tlp);
+    }
+}
+
+impl LcBarRequest {
+    /// Send a valid read reply to the BAR request.
+    /// 
+    /// The read reply must be of the exact length of the BAR read request.
+    /// 
+    /// # Arguments
+    /// * `data_reply` - The data to send as a reply.
+    pub fn read_reply(&self, data_reply : &[u8]) -> ResultEx<()> {
+        return self.impl_read_reply(data_reply, false);
+    }
+
+    /// Send an invalid read reply to the BAR request indicating that the read
+    /// failed. An Unsupported Request TLP will be sent to the host system in
+    /// reponse to the failed read.
+    /// 
+    /// This function should normally not be called.
+    pub fn read_reply_fail(&self) -> ResultEx<()> {
+        let data = [0u8; 0];
+        return self.impl_read_reply(&data, true);
+    }
+}
+
+
+
 
 
 
@@ -3712,7 +4345,6 @@ struct VmmNative {
     // Plugin related info below:
     VMMDLL_VfsList_AddFile :        extern "C" fn(pFileList : usize, uszName : *const c_char, cb : u64, pExInfo : usize),
     VMMDLL_VfsList_AddDirectory :   extern "C" fn(pFileList : usize, uszName : *const c_char, pExInfo : usize),
-
 }
 
 #[allow(non_snake_case)]
@@ -3885,6 +4517,8 @@ fn impl_new<'a>(vmm_lib_path : &str, h_vmm_existing_opt : usize, args: &Vec<&str
             VMMDLL_VfsList_AddDirectory,
         };
         let vmm = Vmm {
+            path_lc : str_path_lc.to_string(),
+            path_vmm : str_path_vmm.to_string(),
             native,
             parent_vmm : None,
         };
@@ -3908,6 +4542,8 @@ fn impl_new_from_virtual_machine<'a>(vmm_parent : &'a Vmm, vm_entry : &VmmMapVir
         ..vmm_parent.native
     };
     let vmm = Vmm {
+        path_lc : vmm_parent.path_lc.clone(),
+        path_vmm : vmm_parent.path_vmm.clone(),
         native : native,
         parent_vmm : Some(vmm_parent),
     };
@@ -3945,7 +4581,7 @@ const VMMDLL_MAP_THREAD_VERSION         : u32 = 4;
 const VMMDLL_MAP_UNLOADEDMODULE_VERSION : u32 = 2;
 const VMMDLL_MAP_USER_VERSION           : u32 = 2;
 const VMMDLL_MAP_VAD_VERSION            : u32 = 6;
-const VMMDLL_MAP_VADEX_VERSION          : u32 = 3;
+const VMMDLL_MAP_VADEX_VERSION          : u32 = 4;
 const VMMDLL_MAP_VM_VERSION             : u32 = 2;
 
 const VMMDLL_MID_RUST                   : u32 = 0x80000004;
@@ -3953,7 +4589,7 @@ const VMMDLL_MID_RUST                   : u32 = 0x80000004;
 const VMMDLL_PLUGIN_CONTEXT_MAGIC       : u64 = 0xc0ffee663df9301c;
 const VMMDLL_PLUGIN_CONTEXT_VERSION     : u16 = 5;
 const VMMDLL_PLUGIN_REGINFO_MAGIC       : u64 = 0xc0ffee663df9301d;
-const VMMDLL_PLUGIN_REGINFO_VERSION     : u16 = 17;
+const VMMDLL_PLUGIN_REGINFO_VERSION     : u16 = 18;
 const VMMDLL_STATUS_SUCCESS             : u32 = 0x00000000;
 const VMMDLL_STATUS_END_OF_FILE         : u32 = 0xC0000011;
 const VMMDLL_STATUS_FILE_INVALID        : u32 = 0xC0000098;
@@ -4405,7 +5041,7 @@ impl fmt::Display for VmmVfsEntry {
 }
 
 #[repr(C)]
-#[allow(non_snake_case)]
+#[allow(non_snake_case, non_camel_case_types)]
 struct CVMMDLL_VFS_FILELIST2 {
     dwVersion : u32,
     pfnAddFile : extern "C" fn(h : &mut Vec<VmmVfsEntry>, uszName : *const c_char, cb : u64, pExInfo : usize),
@@ -4441,6 +5077,13 @@ extern "C" fn vfs_list_adddirectory_cb(h : &mut Vec<VmmVfsEntry>, name : *const 
 
 #[allow(non_snake_case)]
 impl Vmm<'_> {
+    fn impl_get_leechcore(&self) -> ResultEx<LeechCore> {
+        let lc_handle = self.get_config(CONFIG_OPT_CORE_LEECHCORE_HANDLE)?;
+        let lc_lib_path = self.path_lc.as_str();
+        let device_config_string = format!("existing://0x{:x}", lc_handle);
+        return LeechCore::new(lc_lib_path, device_config_string.as_str(), 0);
+    }
+
     fn impl_log(&self, log_mid : u32, log_level : &VmmLogLevel, log_message : &str) {
         let c_loglevel : u32 = match log_level {
             VmmLogLevel::_1Critical => 1,
@@ -5552,7 +6195,7 @@ struct CProcessInformation {
 }
 
 #[repr(C)]
-#[allow(non_snake_case)]
+#[allow(non_snake_case, non_camel_case_types)]
 #[derive(Clone, Default)]
 struct CIMAGE_SECTION_HEADER {
     Name : [u8; 8],
@@ -5568,7 +6211,7 @@ struct CIMAGE_SECTION_HEADER {
 }
 
 #[repr(C)]
-#[allow(non_snake_case)]
+#[allow(non_snake_case, non_camel_case_types)]
 #[derive(Clone, Default)]
 struct CIMAGE_DATA_DIRECTORY {
     VirtualAddress : u32,
@@ -5886,7 +6529,9 @@ struct CVadMap {
 #[allow(non_snake_case)]
 struct CVadExEntry {
     tp : u32,
-    iPML : u32,
+    iPML : u8,
+    pteFlags : u8,
+    _Reserved2 : u16,
     va : u64,
     pa : u64,
     pte : u64,
@@ -6459,6 +7104,7 @@ impl VmmProcess<'_> {
                     va : ne.va,
                     pa : ne.pa,
                     pte : ne.pte,
+                    pte_flags : ne.pteFlags,
                     proto_tp : VmmProcessMapVadExType::from(ne.proto_tp),
                     proto_pa : ne.proto_pa,
                     proto_pte : ne.proto_va,
@@ -6676,7 +7322,7 @@ impl fmt::Display for VmmSearchResult {
 }
 
 #[repr(C)]
-#[allow(non_snake_case)]
+#[allow(non_snake_case, non_camel_case_types)]
 #[derive(Debug, Default)]
 struct CVMMDLL_MEM_SEARCH_CONTEXT_SEARCHENTRY {
     cbAlign : u32,
@@ -6686,7 +7332,7 @@ struct CVMMDLL_MEM_SEARCH_CONTEXT_SEARCHENTRY {
 }
 
 #[repr(C)]
-#[allow(non_snake_case)]
+#[allow(non_snake_case, non_camel_case_types)]
 #[derive(Debug, Default)]
 pub(crate) struct CVMMDLL_MEM_SEARCH_CONTEXT {
     dwVersion : u32,
@@ -6881,7 +7527,7 @@ impl fmt::Display for VmmYaraMatchString {
 }
 
 #[repr(C)]
-#[allow(non_snake_case)]
+#[allow(non_snake_case, non_camel_case_types)]
 #[derive(Debug)]
 struct CVMMDLL_VMMYARA_RULE_MATCH_META {
     szIdentifier : *const c_char,
@@ -6889,7 +7535,7 @@ struct CVMMDLL_VMMYARA_RULE_MATCH_META {
 }
 
 #[repr(C)]
-#[allow(non_snake_case)]
+#[allow(non_snake_case, non_camel_case_types)]
 #[derive(Debug)]
 struct CVMMDLL_VMMYARA_RULE_MATCH_STRINGS {
     szString : *const c_char,
@@ -6898,7 +7544,7 @@ struct CVMMDLL_VMMYARA_RULE_MATCH_STRINGS {
 }
 
 #[repr(C)]
-#[allow(non_snake_case)]
+#[allow(non_snake_case, non_camel_case_types)]
 #[derive(Debug)]
 struct CVMMDLL_VMMYARA_RULE_MATCH {
     dwVersion : u32,
@@ -6912,7 +7558,7 @@ struct CVMMDLL_VMMYARA_RULE_MATCH {
 }
 
 #[repr(C)]
-#[allow(non_snake_case)]
+#[allow(non_snake_case, non_camel_case_types)]
 #[derive(Debug)]
 pub(crate) struct CVMMDLL_YARA_CONFIG {
     dwVersion : u32,
@@ -7148,7 +7794,7 @@ impl fmt::Display for VmmPluginInitializationInfo {
 }
 
 #[repr(C)]
-#[allow(non_snake_case)]
+#[allow(non_snake_case, non_camel_case_types)]
 struct CVMMDLL_PLUGIN_CONTEXT<'a, T> {
     magic : u64,
     wVersion : u16,
@@ -7163,7 +7809,7 @@ struct CVMMDLL_PLUGIN_CONTEXT<'a, T> {
 }
 
 #[repr(C)]
-#[allow(non_snake_case)]
+#[allow(non_snake_case, non_camel_case_types)]
 struct CVMMDLL_PLUGIN_REGINFO<T> {
     magic : u64,
     wVersion : u16,
@@ -7251,7 +7897,7 @@ fn impl_new_plugin_initialization<T>(native_h : usize, native_reginfo : usize) -
 impl<T> VmmPluginInitializationContext<T> {
     fn impl_register(self) -> ResultEx<()> {
         unsafe {
-            let mut reginfo = self.h_reginfo as *mut CVMMDLL_PLUGIN_REGINFO<T>;
+            let reginfo = self.h_reginfo as *mut CVMMDLL_PLUGIN_REGINFO<T>;
             if (*reginfo).magic != VMMDLL_PLUGIN_REGINFO_MAGIC || (*reginfo).wVersion != VMMDLL_PLUGIN_REGINFO_VERSION {
                 return Err(anyhow!("Bad reginfo magic/version."));
             }
@@ -7331,7 +7977,6 @@ extern "C" fn impl_plugin_close_cb<T>(_h : usize, ctxp : *const CVMMDLL_PLUGIN_C
     unsafe {
         drop(Box::from_raw((*ctxp).ctxM as *mut VmmPluginContext<T>));
     }
-    println!("RUST: PLUGIN CLOSE");
 }
 
 extern "C" fn impl_plugin_list_cb<T>(_h : usize, ctxp : *const CVMMDLL_PLUGIN_CONTEXT<T>, h_pfilelist : usize) -> bool {
@@ -7437,4 +8082,511 @@ extern "C" fn impl_plugin_notify_cb<T>(_h : usize, ctxp : *const CVMMDLL_PLUGIN_
         let callback = ctx.fn_notify.unwrap();
         let _r = (callback)(ctx, f_event);
     }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+//=============================================================================
+// INTERNAL: LEECHCORE:
+//=============================================================================
+
+#[allow(dead_code)]
+#[allow(non_snake_case)]
+#[derive(Debug)]
+struct LcNative {
+    h : usize,
+    library_lc : libloading::Library,
+    config : CLC_CONFIG,
+    LcCreate : extern "C" fn(pLcCreateConfig : *mut CLC_CONFIG) -> usize,
+    LcClose : extern "C" fn(hLC : usize),
+    LcMemFree : extern "C" fn(pvMem : usize),
+    LcRead : extern "C" fn(hLC : usize, pa : u64, cb : u32, pb : *mut u8) -> bool,
+    LcWrite : extern "C" fn(hLC : usize, pa : u64, cb : u32, pb : *const u8) -> bool,
+    LcGetOption : extern "C" fn(hLC : usize, fOption : u64, pqwValue : *mut u64) -> bool,
+    LcSetOption : extern "C" fn(hLC : usize, fOption : u64, qwValue : u64) -> bool,
+    LcCommand : extern "C" fn(hLC : usize, fCommand : u64, cbDataIn : u32, pbDataIn : *const u8, ppbDataOut : *mut *mut u8, pcbDataOut : *mut u32) -> bool,
+    LcCommandPtr : extern "C" fn(hLC : usize, fCommand : u64, cbDataIn : u32, pbDataIn : usize, ppbDataOut : *mut usize, pcbDataOut : *mut u32) -> bool,
+}
+
+impl fmt::Display for LeechCore {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "LeechCore")
+    }
+}
+
+impl fmt::Display for LcBar {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if self.is_valid {
+            write!(f, "LcBar:{}:[{:x}->{:x}]", self.bar_index, self.pa, self.pa + self.cb - 1)
+        } else {
+            write!(f, "LcBar:{}:inactive", self.bar_index)
+        }
+    }
+}
+
+impl fmt::Display for LcBarRequest {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let tp = if self.is_write { "write" } else { "read" };
+        write!(f, "LcBarRequest:{}:{tp}:[{:x}:{:x}]", self.bar.bar_index, self.data_offset, self.data_size)
+    }
+}
+
+impl<T> fmt::Display for LcBarContext<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "LcBarContext")
+    }
+}
+
+impl<T> fmt::Display for LcBarContextWrap<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "LcBarContextWrap")
+    }
+}
+
+impl<T> fmt::Display for LcTlpContext<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "LcTlpContext")
+    }
+}
+
+impl<T> fmt::Display for LcTlpContextWrap<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "LcTlpContextWrap")
+    }
+}
+
+impl Drop for LeechCore {
+    fn drop(&mut self) {
+        (self.native.LcClose)(self.native.h);
+    }
+}
+
+impl<T> Drop for LcBarContext<'_, T> {
+    fn drop(&mut self) {
+        let mut native_ctx : usize = 0;
+        let r = (self.lc.native.LcCommandPtr)(self.lc.native.h, LeechCore::LC_CMD_FPGA_BAR_CONTEXT_RD, 0, 0, &mut native_ctx, std::ptr::null_mut());
+        if r && self.native_ctx == native_ctx {
+            let _r = (self.lc.native.LcCommandPtr)(self.lc.native.h, LeechCore::LC_CMD_FPGA_BAR_FUNCTION_CALLBACK, 0, 0, std::ptr::null_mut(), std::ptr::null_mut());
+            let _r = (self.lc.native.LcCommandPtr)(self.lc.native.h, LeechCore::LC_CMD_FPGA_BAR_CONTEXT, 0, 0, std::ptr::null_mut(), std::ptr::null_mut());
+        }
+    }
+}
+
+impl<T> Drop for LcBarContextWrap<'_, T> {
+    fn drop(&mut self) {
+        unsafe {
+            drop(Box::from_raw(self.native));
+        }
+    }
+}
+
+impl<T> Drop for LcTlpContext<'_, T> {
+    fn drop(&mut self) {
+        let mut native_ctx : usize = 0;
+        let r = (self.lc.native.LcCommandPtr)(self.lc.native.h, LeechCore::LC_CMD_FPGA_TLP_CONTEXT_RD, 0, 0, &mut native_ctx, std::ptr::null_mut());
+        if r && self.native_ctx == native_ctx {
+            let _r = (self.lc.native.LcCommandPtr)(self.lc.native.h, LeechCore::LC_CMD_FPGA_TLP_FUNCTION_CALLBACK, 0, 0, std::ptr::null_mut(), std::ptr::null_mut());
+            let _r = (self.lc.native.LcCommandPtr)(self.lc.native.h, LeechCore::LC_CMD_FPGA_TLP_CONTEXT, 0, 0, std::ptr::null_mut(), std::ptr::null_mut());
+        }
+    }
+}
+
+impl<T> Drop for LcTlpContextWrap<'_, T> {
+    fn drop(&mut self) {
+        unsafe {
+            drop(Box::from_raw(self.native));
+        }
+    }
+}
+
+#[allow(non_snake_case)]
+impl LeechCore {
+    #[allow(non_snake_case)]
+    fn impl_new(lc_lib_path : &str, device_config : &str, remote_config : &str, lc_config_printf_verbosity : u32, pa_max : u64) -> ResultEx<LeechCore> {
+        unsafe {
+            // load LeechCore native library (leechcore.dll / leechcore.so):
+            let path = std::path::Path::new(lc_lib_path).canonicalize()?;
+            let str_path = path.to_str().unwrap_or("");
+            let library_lc : libloading::Library = libloading::Library::new(str_path)
+                .with_context(|| format!("Failed to load leechcore library at: {}", str_path))?;
+            // fetch function references:
+            let LcCreate : extern "C" fn(pLcCreateConfig : *mut CLC_CONFIG) -> usize = *library_lc.get(b"LcCreate")?;
+            let LcClose = *library_lc.get(b"LcClose")?;
+            let LcMemFree = *library_lc.get(b"LcMemFree")?;
+            let LcRead = *library_lc.get(b"LcRead")?;
+            let LcWrite = *library_lc.get(b"LcWrite")?;
+            let LcGetOption = *library_lc.get(b"LcGetOption")?;
+            let LcSetOption = *library_lc.get(b"LcSetOption")?;
+            let LcCommand = *library_lc.get(b"LcCommand")?;
+            let LcCommandPtr = *library_lc.get(b"LcCommand")?;
+            // build config:
+            let device_config_bytes = &*(device_config.as_bytes() as *const [u8] as *const [c_char]);
+            let mut device_sz: [c_char; 260] = [0; 260];
+            device_sz[..device_config_bytes.len().min(260-1)].copy_from_slice(device_config_bytes);
+            let remote_config_bytes = &*(remote_config.as_bytes() as *const [u8] as *const [c_char]);
+            let mut remote_sz: [c_char; 260] = [0; 260];
+            remote_sz[..remote_config_bytes.len().min(260-1)].copy_from_slice(remote_config_bytes);
+            let mut config = CLC_CONFIG {
+                dwVersion : LeechCore::LC_CONFIG_VERSION,
+                dwPrintfVerbosity : lc_config_printf_verbosity,
+                szDevice : device_sz,
+                szRemote : remote_sz,
+                pfn_printf_opt : 0,
+                paMax : pa_max,
+                fVolatile : 0,
+                fWritable : 0,
+                fRemote : 0,
+                fRemoteDisableCompress : 0,
+                szDeviceName : [0; 260],
+            };
+            // initialize library
+            let h: usize;
+            h = (LcCreate)(&mut config);
+            if h == 0 {
+                return Err(anyhow!("LcCreate: fail"));
+            }
+            // return LeechCore struct:
+            let native = LcNative {
+                h,
+                library_lc,
+                config,
+                LcCreate,
+                LcClose,
+                LcMemFree,
+                LcRead,
+                LcWrite,
+                LcGetOption,
+                LcSetOption,
+                LcCommand,
+                LcCommandPtr,
+            };
+            let lc = LeechCore {
+                native,
+            };
+            return Ok(lc);
+        }
+    }
+
+    fn impl_get_option(&self, config_id : u64) -> ResultEx<u64> {
+        let mut v = 0;
+        let f = (self.native.LcGetOption)(self.native.h, config_id, &mut v);
+        return if f { Ok(v) } else { Err(anyhow!("LcGetOption: fail")) };
+    }
+
+    fn impl_set_option(&self, config_id : u64, config_value : u64) -> ResultEx<()> {
+        let f = (self.native.LcSetOption)(self.native.h, config_id, config_value);
+        return if f { Ok(()) } else { Err(anyhow!("LcSetOption: fail")) };
+    }
+
+    fn impl_mem_read(&self, pa : u64, size : usize) -> ResultEx<Vec<u8>> {
+        let cb = u32::try_from(size)?;
+        let mut pb_result: Vec<u8> = vec![0u8; size];
+        let r = (self.native.LcRead)(self.native.h, pa, cb, pb_result.as_mut_ptr());
+        if !r {
+            return Err(anyhow!("LcRead: fail."));
+        }
+        return Ok(pb_result);
+    }
+
+    fn impl_mem_read_as<T>(&self, pa : u64) -> ResultEx<T> {
+        unsafe {
+            let cb = u32::try_from(std::mem::size_of::<T>())?;
+            let mut result : T = std::mem::zeroed();
+            let r = (self.native.LcRead)(self.native.h, pa, cb, &mut result as *mut _ as *mut u8);
+            if !r {
+                return Err(anyhow!("LcRead: fail."));
+            }
+            return Ok(result);
+        }
+    }
+
+    fn impl_mem_write(&self, va : u64, data : &Vec<u8>) -> ResultEx<()> {
+        let cb = u32::try_from(data.len())?;
+        let pb = data.as_ptr();
+        let r = (self.native.LcWrite)(self.native.h, va, cb, pb);
+        if !r {
+            return Err(anyhow!("LcWrite: fail."));
+        }
+        return Ok(());
+    }
+
+    fn impl_mem_write_as<T>(&self, va : u64, data : &T) -> ResultEx<()> {
+        let cb = u32::try_from(std::mem::size_of::<T>())?;
+        let r = (self.native.LcWrite)(self.native.h, va, cb, data as *const _ as *const u8);
+        if !r {
+            return Err(anyhow!("LcWrite: fail."));
+        }
+        return Ok(());
+    }
+
+    fn impl_command(&self, command_id : u64, data : Option<&Vec<u8>>) -> ResultEx<Option<Vec<u8>>> {
+        unsafe {
+            let mut pb_out : *mut u8 = std::ptr::null_mut();
+            let mut cb_out : u32 = 0;
+            let cb_in;
+            let pb_in;
+            match data {
+                Some(data) => {
+                    cb_in = u32::try_from(data.len())?;
+                    pb_in = data.as_ptr();
+                },
+                None => {
+                    cb_in = 0;
+                    pb_in = std::ptr::null();
+                },
+            }
+            let r = (self.native.LcCommand)(self.native.h, command_id, cb_in, pb_in, &mut pb_out, &mut cb_out);
+            if !r {
+                return Err(anyhow!("LcCommand: fail."));
+            }
+            if pb_out.is_null() {
+                return Ok(None);
+            }
+            let mut pb_result: Vec<u8> = vec![0u8; cb_out as usize];
+            std::ptr::copy_nonoverlapping(pb_out, pb_result.as_mut_ptr(), cb_out as usize);
+            (self.native.LcMemFree)(pb_out as usize);
+            return Ok(Some(pb_result));
+        }
+    }
+
+    fn impl_get_memmap(&self) -> ResultEx<String> {
+        let memmap_vec = self.command(LeechCore::LC_CMD_MEMMAP_GET, None)?;
+        match memmap_vec {
+            Some(memmap_vec) => {
+                let memmap_str = String::from_utf8(memmap_vec)?;
+                return Ok(memmap_str);
+            },
+            None => {
+                return Err(anyhow!("Failed to get memmap."));
+            },
+        }
+    }
+
+    fn impl_set_memmap(&self, str_memmap : &str) -> ResultEx<()> {
+        let memmap_vec = str_memmap.as_bytes().to_vec();
+        self.command(LeechCore::LC_CMD_MEMMAP_SET, Some(&memmap_vec))?;
+        return Ok(());
+    }
+
+    fn impl_pcie_bar_info(&self) -> ResultEx<[LcBar; 6]> {
+        unsafe {
+            let mut cb_out = 0;
+            let mut pb_out = 0;
+            let r = (self.native.LcCommandPtr)(self.native.h, LeechCore::LC_CMD_FPGA_BAR_INFO, 0, 0, &mut pb_out, &mut cb_out);
+            if !r {
+                return Err(anyhow!("LcCommand: fail."));
+            }
+            if pb_out == 0 || cb_out as usize != 6 * std::mem::size_of::<CLC_BAR>() {
+                return Err(anyhow!("Failed to get PCIe BARs."));
+            }
+            let structs = pb_out as *const CLC_BAR;
+            let mut result : [LcBar; 6] = [LcBar::default(); 6];
+            let pMap = std::slice::from_raw_parts(structs, 6);
+            for i in 0..6 {
+                let ne = &pMap[i];
+                result[i] = LcBar {
+                    bar_index : ne.iBar,
+                    is_valid : ne.fValid != 0,
+                    is_64bit : ne.f64Bit != 0,
+                    is_prefetchable : ne.fPrefetchable != 0,
+                    pa : ne.pa,
+                    cb : ne.cb,
+                };
+            }
+            return Ok(result);
+        }
+    }
+
+    fn impl_pcie_tlp_write(&self, tlp : &[u8]) -> ResultEx<()> {
+        if tlp.len() % 4 > 0 {
+            return Err(anyhow!("TLP length must be a multiple of 4."));
+        }
+        let r = (self.native.LcCommand)(self.native.h, LeechCore::LC_CMD_FPGA_TLP_WRITE_SINGLE, tlp.len() as u32, tlp.as_ptr(), std::ptr::null_mut(), std::ptr::null_mut());
+        if !r {
+            return Err(anyhow!("LcCommand: fail."));
+        }
+        return Ok(());
+    }
+
+    fn impl_pcie_bar_callback<T>(&self, ctx_user : T, fn_bar_callback : fn(ctx : &LcBarContext<T>, req : &LcBarRequest) -> ResultEx<()>) -> ResultEx<LcBarContextWrap<T>> {
+        unsafe {
+            let ctx = LcBarContext {
+                lc : self,
+                ctxlock : std::sync::RwLock::new(ctx_user),
+                fn_callback : fn_bar_callback,
+                native_ctx : 0,
+            };
+            let ctx_rust_box = Box::new(ctx);
+            let ctx_native = Box::into_raw(ctx_rust_box);   // destroys ownership: returned LcBarContextWrap Drop is responsible for free.
+            (*ctx_native).native_ctx = ctx_native as usize;
+            let native_pfn = LeechCore::impl_pcie_bar_callback_external::<T> as usize;
+            let r = (self.native.LcCommandPtr)(self.native.h, LeechCore::LC_CMD_FPGA_BAR_CONTEXT, 0, ctx_native as usize, std::ptr::null_mut(), std::ptr::null_mut());
+            if !r {
+                return Err(anyhow!("LcCommand: fail."));
+            }
+            let r = (self.native.LcCommandPtr)(self.native.h, LeechCore::LC_CMD_FPGA_BAR_FUNCTION_CALLBACK, 0, native_pfn, std::ptr::null_mut(), std::ptr::null_mut());
+            if !r {
+                return Err(anyhow!("LcCommand: fail."));
+            }
+            let ctx_wrap = LcBarContextWrap {
+                ctx : &*ctx_native,
+                native : ctx_native,
+            };
+            return Ok(ctx_wrap);
+        }
+    }
+
+    fn impl_pcie_tlp_callback<T>(&self, ctx_user : T, fn_tlp_callback : fn(ctx : &LcTlpContext<T>, tlp : &[u8], tlp_str : &str) -> ResultEx<()>) -> ResultEx<LcTlpContextWrap<T>> {
+        unsafe {
+            let ctx = LcTlpContext {
+                lc : self,
+                ctxlock : std::sync::RwLock::new(ctx_user),
+                fn_callback : fn_tlp_callback,
+                native_ctx : 0,
+            };
+            let ctx_rust_box = Box::new(ctx);
+            let ctx_native = Box::into_raw(ctx_rust_box);   // destroys ownership: returned LcTlpContextWrap Drop is responsible for free.
+            (*ctx_native).native_ctx = ctx_native as usize;
+            let native_pfn = LeechCore::impl_pcie_tlp_callback_external::<T> as usize;
+            let r = (self.native.LcSetOption)(self.native.h, LeechCore::LC_OPT_FPGA_TLP_READ_CB_WITHINFO, 1);
+            if !r {
+                return Err(anyhow!("LcSetOption: fail."));
+            }
+            let r = (self.native.LcCommandPtr)(self.native.h, LeechCore::LC_CMD_FPGA_TLP_CONTEXT, 0, ctx_native as usize, std::ptr::null_mut(), std::ptr::null_mut());
+            if !r {
+                return Err(anyhow!("LcCommand: fail."));
+            }
+            let r = (self.native.LcCommandPtr)(self.native.h, LeechCore::LC_CMD_FPGA_TLP_FUNCTION_CALLBACK, 0, native_pfn, std::ptr::null_mut(), std::ptr::null_mut());
+            if !r {
+                return Err(anyhow!("LcCommand: fail."));
+            }
+            let ctx_wrap = LcTlpContextWrap {
+                ctx : &*ctx_native,
+                native : ctx_native,
+            };
+            return Ok(ctx_wrap);
+        }
+    }
+
+    extern "C" fn impl_pcie_tlp_callback_external<T>(native_ctx : *const LcTlpContext<T>, cbTlp : u32, pbTlp : *const u8, cbInfo : u32, szInfo : *const u8) {
+        unsafe {
+            let ctx : &LcTlpContext<T> = &*native_ctx;
+            let tlp = std::slice::from_raw_parts(pbTlp, cbTlp as usize);
+            let info = std::str::from_utf8_unchecked(std::slice::from_raw_parts(szInfo, cbInfo as usize));
+            let _r = (ctx.fn_callback)(ctx, tlp, info);
+        }
+    }
+
+    extern "C" fn impl_pcie_bar_callback_external<T>(native_bar_request : *mut LC_BAR_REQUEST) {
+        unsafe {
+            let req = &*native_bar_request;
+            let ctx = &*(req.ctx as *const LcBarContext<T>);
+            // assign bar
+            let ne = &*req.pBar;
+            let bar = LcBar {
+                bar_index : ne.iBar,
+                is_valid : ne.fValid != 0,
+                is_64bit : ne.f64Bit != 0,
+                is_prefetchable : ne.fPrefetchable != 0,
+                pa : ne.pa,
+                cb : ne.cb,
+            };
+            // assign bar request
+            let data_write : Option<Vec<u8>>;
+            if req.fWrite != 0 {
+                data_write = Some(std::slice::from_raw_parts(req.pbData.as_ptr(), req.cbData as usize).to_vec());
+            } else {
+                data_write = None;
+            }
+            let bar_request = LcBarRequest {
+                native : native_bar_request,
+                bar,
+                tag : req.bTag,
+                be_first : req.bFirstBE,
+                be_last : req.bLastBE,
+                is_64bit : req.f64 != 0,
+                is_read : req.fRead != 0,
+                is_write : req.fWrite != 0,
+                data_size : req.cbData,
+                data_offset : req.oData,
+                data_write,
+            };
+            let _r = (ctx.fn_callback)(ctx, &bar_request);
+        }
+    }
+}
+
+#[allow(non_snake_case)]
+impl LcBarRequest {
+    fn impl_read_reply(&self, data_reply : &[u8], is_fail : bool) -> ResultEx<()> {
+        unsafe {
+            if !self.is_read {
+                return Err(anyhow!("LcBarRequest: only allowed to reply to read requests."));
+            }
+            if !is_fail && self.data_size != data_reply.len() as u32 {
+                return Err(anyhow!("LcBarRequest: reply data size mismatch."));
+            }
+            (*self.native).fReadReply = 1;
+            (*self.native).cbData = data_reply.len() as u32;
+            (*self.native).pbData[..data_reply.len()].copy_from_slice(data_reply);
+            return Ok(());
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Debug)]
+#[allow(non_snake_case, non_camel_case_types)]
+struct CLC_CONFIG {
+    dwVersion : u32,
+    dwPrintfVerbosity : u32,
+    szDevice : [c_char; 260],
+    szRemote : [c_char; 260],
+    pfn_printf_opt : usize,
+    paMax : u64,
+    fVolatile : u32,
+    fWritable : u32,
+    fRemote : u32,
+    fRemoteDisableCompress : u32,
+    szDeviceName : [c_char; 260],
+}
+
+#[repr(C)]
+#[derive(Clone, Debug)]
+#[allow(non_snake_case, non_camel_case_types)]
+struct CLC_BAR {
+    fValid : u32,
+    f64Bit : u32,
+    fPrefetchable : u32,
+    iBar : u32,
+    pa : u64,
+    cb : u64,
+}
+
+#[repr(C)]
+#[derive(Clone, Debug)]
+#[allow(non_snake_case, non_camel_case_types)]
+struct LC_BAR_REQUEST {
+    ctx : usize,
+    pBar : *const CLC_BAR,
+    bTag : u8,
+    bFirstBE : u8,
+    bLastBE : u8,
+    _Filler : u8,
+    f64 : u32,
+    fRead : u32,
+    fReadReply : u32,
+    fWrite : u32,
+    cbData : u32,
+    oData : u64,
+    pbData : [u8; 1024],
 }

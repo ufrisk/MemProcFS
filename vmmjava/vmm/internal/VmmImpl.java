@@ -753,11 +753,13 @@ public class VmmImpl implements IVmm
 				e.ftCreateTime = n.ftCreateTime;
 				e.ftExitTime = n.ftExitTime;
 				e.vaStartAddress = n.vaStartAddress;
+				e.vaWin32StartAddress = n.vaWin32StartAddress;
 				e.vaStackBaseUser = n.vaStackBaseUser;
 				e.vaStackLimitUser = n.vaStackLimitUser;
 				e.vaStackBaseKernel = n.vaStackBaseKernel;
 				e.vaStackLimitKernel = n.vaStackLimitKernel;
 				e.vaTrapFrame = n.vaTrapFrame;
+				e.vaImpersonationToken = n.vaImpersonationToken;
 				e.vaRIP = n.vaRIP;
 				e.vaRSP = n.vaRSP;
 				e.qwAffinity = n.qwAffinity;
@@ -831,7 +833,8 @@ public class VmmImpl implements IVmm
 			for(VmmNative.VMMDLL_MAP_VADEXENTRY n : pMap.pMap) {
 				VmmMap_VadExEntry e = new VmmMap_VadExEntry();
 				e.tp = n.tp;
-				e.iPML = n.iPML;
+				e.iPML = Byte.toUnsignedInt(n.iPML);
+				e.pteFlags = Byte.toUnsignedInt(n.pteFlags);
 				e.va = n.va;
 				e.pa = n.pa;
 				e.pte = n.pte;

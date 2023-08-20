@@ -7,7 +7,7 @@
 #include "mm.h"
 
 #define MMX86PAE_MEMMAP_DISPLAYBUFFER_LINE_LENGTH      70
-#define MMX86PAE_PTE_IS_TRANSITION(H, pte, iPML)       ((((pte & 0x0c01) == 0x0800) && (iPML == 1) && (H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_X86)) ? ((pte & 0xffffdffffffff000) | 0x005) : 0)
+#define MMX86PAE_PTE_IS_TRANSITION(H, pte, iPML)       ((((pte & 0x0c01) == 0x0800) && (iPML == 1) && (H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_32)) ? ((pte & 0xffffdffffffff000) | 0x005) : 0)
 #define MMX86PAE_PTE_IS_VALID(pte, iPML)               (pte & 0x01)
 
 /*
@@ -326,6 +326,8 @@ BOOL MmX86PAE_Virt2Phys(_In_ VMM_HANDLE H, _In_ QWORD paPT, _In_ BOOL fUserOnly,
 
 VOID MmX86PAE_Virt2PhysVadEx(_In_ VMM_HANDLE H, _In_ QWORD paPT, _Inout_ PVMMOB_MAP_VADEX pVadEx, _In_ BYTE iPML, _Inout_ PDWORD piVadEx)
 {
+    BYTE flags;
+    PVMM_MAP_VADEXENTRY peVadEx;
     PBYTE pbPTEs;
     QWORD pa, pte, iPte, iVadEx, qwMask;
     PVMMOB_CACHE_MEM pObPTEs = NULL;
@@ -336,7 +338,9 @@ VOID MmX86PAE_Virt2PhysVadEx(_In_ VMM_HANDLE H, _In_ QWORD paPT, _Inout_ PVMMOB_
     }
 next_entry:
     iVadEx = *piVadEx;
-    iPte = 0x1ff & (pVadEx->pMap[iVadEx].va >> MMX86PAE_PAGETABLEMAP_PML_REGION_SIZE[iPML]);
+    peVadEx = &pVadEx->pMap[iVadEx];
+    peVadEx->flags = 0;
+    iPte = 0x1ff & (peVadEx->va >> MMX86PAE_PAGETABLEMAP_PML_REGION_SIZE[iPML]);
     pte = pObPTEs->pqw[iPte];
     if(iPML == 3) {
         // PDPT
@@ -354,21 +358,26 @@ next_entry:
     if(!(pte & 0x04)) { goto next_check; }                  // SUPERVISOR PAGE & USER MODE REQ
     if(pte & 0x000f000000000000) { goto next_check; }       // RESERVED
     if((iPML == 1) || (pte & 0x80) /* PS */) {
+        flags = VADEXENTRY_FLAG_HARDWARE;
+        flags |= (pte & VMM_MEMMAP_PAGE_W) ? VADEXENTRY_FLAG_W : 0;
+        flags |= (pte & VMM_MEMMAP_PAGE_NX) ? VADEXENTRY_FLAG_NX : 0;
+        flags |= (pte & VMM_MEMMAP_PAGE_NS) ? 0 : VADEXENTRY_FLAG_K;
+        peVadEx->flags = flags;
         qwMask = 0xffffffffffffffff << MMX86PAE_PAGETABLEMAP_PML_REGION_SIZE[iPML];
         pa = pte & 0x0000fffffffff000 & qwMask;             // MASK AWAY BITS FOR 4kB/2MB/1GB PAGES
         qwMask = qwMask ^ 0xffffffffffffffff;
-        pVadEx->pMap[iVadEx].pa = pa | (qwMask & pVadEx->pMap[iVadEx].va);  // FILL LOWER ADDRESS BITS
-        pVadEx->pMap[iVadEx].tp = VMM_PTE_TP_HARDWARE;
+        peVadEx->pa = pa | (qwMask & peVadEx->va);  // FILL LOWER ADDRESS BITS
+        peVadEx->tp = VMM_PTE_TP_HARDWARE;
         goto next_check;
     }
     MmX86PAE_Virt2PhysVadEx(H, pte, pVadEx, 1, piVadEx);
     Ob_DECREF(pObPTEs);
     return;
 next_check:
-    pVadEx->pMap[iVadEx].pte = pte;
-    pVadEx->pMap[iVadEx].iPML = iPML;
+    peVadEx->pte = pte;
+    peVadEx->iPML = iPML;
     *piVadEx = *piVadEx + 1;
-    if((iPML == 1) && (iPte < 0x3ff) && (iVadEx + 1 < pVadEx->cMap) && (pVadEx->pMap[iVadEx].va + 0x1000 == pVadEx->pMap[iVadEx + 1].va)) { goto next_entry; }
+    if((iPML == 1) && (iPte < 0x3ff) && (iVadEx + 1 < pVadEx->cMap) && (peVadEx->va + 0x1000 == pVadEx->pMap[iVadEx + 1].va)) { goto next_entry; }
     Ob_DECREF(pObPTEs);
 }
 

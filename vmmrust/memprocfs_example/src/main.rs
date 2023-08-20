@@ -1135,6 +1135,8 @@ pub fn main_example() -> ResultEx<()> {
         // such as win32k.sys is needed to be accessed. This is possible by
         // masking the process pid with 0x80000000 and then using the modified
         // process struct for subsequent accesses.
+        println!("========================================");
+        println!("vmm.process_from_name():");
         if let Ok(mut winlogon) = vmm.process_from_name("winlogon.exe") {
             winlogon.pid = winlogon.pid | 0x80000000;
             if let Ok(va) = winlogon.get_proc_address("win32kbase.sys", "gSessionId") {
@@ -1143,6 +1145,77 @@ pub fn main_example() -> ResultEx<()> {
                 }
             }
         }
+
+
+
+
+
+
+        // Example: retrieve the lowlevel LeechCore physical memory acquisition
+        // library from the Vmm instance. The LeechCore handles low-level
+        // operations and should normally not be used. In some cases such as
+        // setting a memory map it may be necessary to use the LeechCore.
+        // Also, dealing with PCIe TLPs and PCIe BAR memory region accesses
+        // happen through LeechCore. It's also possible to instantiate the
+        // LeechCore library separately by calling LeechCore::new() or
+        // LeechCore::new_ex() for more advanced/remote use cases.
+        println!("========================================");
+        println!("vmm.get_leechcore():");
+        let lc = vmm.get_leechcore()?;
+        println!("{}", lc);
+
+
+        // Example: lc.get_option():
+        // Retrieve max native address and print it on the screen.
+        println!("========================================");
+        println!("lc.get_option():");
+        println!("max native address: {:#x} -> {:#x}", LeechCore::LC_OPT_CORE_ADDR_MAX, lc.get_option(LeechCore::LC_OPT_CORE_ADDR_MAX).unwrap_or(0));
+
+
+        // Example: lc.set_option():
+        // Set printf and increase verbosity to extra level.
+        println!("========================================");
+        println!("lc.set_option():");
+        let _r = lc.set_option(LeechCore::LC_OPT_CORE_PRINTF_ENABLE, 1);
+        let _r = lc.set_option(LeechCore::LC_OPT_CORE_VERBOSE, 1);
+        let _r = lc.set_option(LeechCore::LC_OPT_CORE_VERBOSE_EXTRA, 1);
+        println!("lc.set_option() verbosity: -> Ok");
+
+
+        // Example: lc.mem_write():
+        // Write to physical memory at address 0x1000
+        // (Writes are only possible if the device is write-capable.)
+        println!("========================================");
+        println!("lc.mem_write():");
+        let data_to_write = [0x56u8, 0x4d, 0x4d, 0x52, 0x55, 0x53, 0x54].to_vec();
+        match lc.mem_write(0x1000, &data_to_write) {
+            Ok(()) => println!("lc.mem_write(): possible success?"),
+            Err(e) => println!("lc.mem_write(): fail [{}]", e),
+        }
+
+
+        // Example: lc.mem_read():
+        // Read 0x100 bytes from physical address 0x1000.
+        println!("========================================");
+        println!("lc.mem_read():");
+        let data_read = lc.mem_read(0x1000, 0x100)?;
+        println!("{:?}", data_read.hex_dump());
+
+
+        // Example: lc.get_memmap():
+        // Retrieve the physical memory map currently in-use by LeechCore.
+        println!("========================================");
+        println!("lc.get_memmap():");
+        let memmap = lc.get_memmap()?;
+        println!("{}", memmap);
+
+
+        // Example: lc.set_memmap():
+        // Set/Update the memory map currently in-use by LeechCore.
+        println!("========================================");
+        println!("lc.set_memmap():");
+        let _r = lc.set_memmap(memmap.as_str())?;
+        println!("lc.set_memmap(): -> Ok");
 
 
 

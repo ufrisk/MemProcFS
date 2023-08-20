@@ -1079,7 +1079,7 @@ PVMM_PROCESS VmmProcessCreateEntry(_In_ VMM_HANDLE H, _In_ BOOL fTotalRefresh, _
     // 1: Sanity check DTB
     if(dwState == 0) {
         if((pObDTB = VmmTlbGetPageTable(H, paDTB_Kernel & ~0xfff, FALSE))) {
-            fValidDTB = VmmTlbPageTableVerify(H, pObDTB->h.pb, paDTB_Kernel, (H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_X64));
+            fValidDTB = VmmTlbPageTableVerify(H, pObDTB->h.pb, paDTB_Kernel, (H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_64));
             Ob_DECREF(pObDTB);
         }
         if(!fValidDTB) {
@@ -2007,6 +2007,9 @@ BOOL VmmReadPage(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _In_ QWORD q
 VOID VmmInitializeMemoryModel(_In_ VMM_HANDLE H, _In_ VMM_MEMORYMODEL_TP tp)
 {
     switch(tp) {
+        case VMM_MEMORYMODEL_ARM64:
+            MmARM64_Initialize(H);
+            break;
         case VMM_MEMORYMODEL_X64:
             MmX64_Initialize(H);
             break;

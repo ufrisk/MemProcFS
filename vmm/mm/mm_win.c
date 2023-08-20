@@ -69,6 +69,8 @@ typedef struct tdMMWIN_CONTEXT {
     MMWIN_MEMCOMPRESS_CONTEXT MemCompress;
 } MMWIN_CONTEXT, *PMMWIN_CONTEXT;
 
+
+
 //-----------------------------------------------------------------------------
 // BTREE FUNCTIONALITY BELOW:
 //-----------------------------------------------------------------------------
@@ -305,6 +307,7 @@ BOOL MmWin_BTree_Search(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWOR
 {
     return H->vmm.f32 ? MmWin_BTree32_Search(H, pProcess, vaTree, dwKey, pdwValue, fVmmRead) : MmWin_BTree64_Search(H, pProcess, vaTree, dwKey, pdwValue, fVmmRead);
 }
+
 
 
 //-----------------------------------------------------------------------------
@@ -644,6 +647,7 @@ VOID MmWin_MemCompress_Initialize(_In_ VMM_HANDLE H)
 fail:
     Ob_DECREF(pObSystemProcess);
 }
+
 
 
 //-----------------------------------------------------------------------------
@@ -1069,6 +1073,7 @@ fail:
 }
 
 
+
 //-----------------------------------------------------------------------------
 // PAGE FILE FUNCTIONALITY BELOW:
 //-----------------------------------------------------------------------------
@@ -1136,6 +1141,7 @@ BOOL MmWin_PfRead(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ QWORD 
     ObSet_Push(H->vmm.Cache.PAGING_FAILED, pte);
     return FALSE;
 }
+
 
 
 //-----------------------------------------------------------------------------
@@ -1245,6 +1251,7 @@ fail:
 }
 
 
+
 //-----------------------------------------------------------------------------
 // X86PAE VIRTUAL MEMORY BELOW:
 //-----------------------------------------------------------------------------
@@ -1351,6 +1358,7 @@ fail:
     InterlockedIncrement64(&H->vmm.stat.page.cFail);
     return FALSE;
 }
+
 
 
 //-----------------------------------------------------------------------------
@@ -1472,6 +1480,35 @@ fail:
 }
 
 
+
+//-----------------------------------------------------------------------------
+// ARM64 VIRTUAL MEMORY BELOW:
+//-----------------------------------------------------------------------------
+
+// TODO: FIX THIS ARM64
+/*
+* Read a 'paged' page from virtual memory.
+* -- H
+* -- pProcess
+* -- va
+* -- pte
+* -- pbPage
+* -- ppa
+* -- ptp
+* -- flags
+* -- return
+*/
+_Success_(return)
+BOOL MmWinARM64_ReadPaged(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ QWORD va, _In_ QWORD pte, _Out_writes_opt_(4096) PBYTE pbPage, _Out_ PQWORD ppa, _Inout_opt_ PVMM_PTE_TP ptp, _In_ QWORD flags)
+{
+    return MmWinX64_ReadPaged(H, pProcess, va, pte, pbPage, ppa, ptp, flags);
+
+    InterlockedIncrement64(&H->vmm.stat.page.cFail);
+    return FALSE;
+}
+
+
+
 //-----------------------------------------------------------------------------
 // INITIALIZATION FUNCTIONALITY BELOW:
 //-----------------------------------------------------------------------------
@@ -1499,6 +1536,9 @@ VOID MmWin_PagingInitialize(_In_ VMM_HANDLE H, _In_ BOOL fModeFull)
     switch(H->vmm.tpMemoryModel) {
         case VMM_MEMORYMODEL_X64:
             H->vmm.fnMemoryModel.pfnPagedRead = MmWinX64_ReadPaged;
+            break;
+        case VMM_MEMORYMODEL_ARM64:
+            H->vmm.fnMemoryModel.pfnPagedRead = MmWinARM64_ReadPaged;
             break;
         case VMM_MEMORYMODEL_X86PAE:
             H->vmm.fnMemoryModel.pfnPagedRead = (BOOL(*)(VMM_HANDLE, PVMM_PROCESS, QWORD, QWORD, PBYTE, PQWORD, PVMM_PTE_TP, QWORD))MmWinX86PAE_ReadPaged;

@@ -29,26 +29,26 @@ NTSTATUS MVfsProc_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out
     PVMMWIN_USER_PROCESS_PARAMETERS pUserProcessParams = VmmWin_UserProcessParameters_Get(H, pProcess);    // don't free
     // read memory from "memory.vmem" file
     if(!_stricmp(uszPath, "memory.vmem")) {
-        cbMemSize = (tpMemoryModel == VMM_MEMORYMODEL_X64) ? 1ULL << 48 : 1ULL << 32;
+        cbMemSize = ((tpMemoryModel == VMM_MEMORYMODEL_X64) || (tpMemoryModel == VMM_MEMORYMODEL_ARM64)) ? 1ULL << 48 : 1ULL << 32;
         return VmmReadAsFile(H, pProcess, 0, cbMemSize, pb, cb, pcbRead, cbOffset);
     }
     // read genereal numeric values from files, pml4, pid, name, virt
     if(!_stricmp(uszPath, "dtb.txt")) {
-        if(tpMemoryModel == VMM_MEMORYMODEL_X64) {
+        if((tpMemoryModel == VMM_MEMORYMODEL_X64) || (tpMemoryModel == VMM_MEMORYMODEL_ARM64)) {
             return Util_VfsReadFile_FromQWORD(pProcess->paDTB, pb, cb, pcbRead, cbOffset, FALSE);
         } else if((tpMemoryModel == VMM_MEMORYMODEL_X86) || (tpMemoryModel == VMM_MEMORYMODEL_X86PAE)) {
             return Util_VfsReadFile_FromDWORD((DWORD)pProcess->paDTB, pb, cb, pcbRead, cbOffset, FALSE);
         }
     }
     if(!_stricmp(uszPath, "dtb-kernel.txt")) {
-        if(tpMemoryModel == VMM_MEMORYMODEL_X64) {
+        if((tpMemoryModel == VMM_MEMORYMODEL_X64) || (tpMemoryModel == VMM_MEMORYMODEL_ARM64)) {
             return Util_VfsReadFile_FromQWORD(pProcess->paDTB_Kernel, pb, cb, pcbRead, cbOffset, FALSE);
         } else if((tpMemoryModel == VMM_MEMORYMODEL_X86) || (tpMemoryModel == VMM_MEMORYMODEL_X86PAE)) {
             return Util_VfsReadFile_FromDWORD((DWORD)pProcess->paDTB_Kernel, pb, cb, pcbRead, cbOffset, FALSE);
         }
     }
     if(!_stricmp(uszPath, "dtb-user.txt")) {
-        if(tpMemoryModel == VMM_MEMORYMODEL_X64) {
+        if((tpMemoryModel == VMM_MEMORYMODEL_X64) || (tpMemoryModel == VMM_MEMORYMODEL_ARM64)) {
             return Util_VfsReadFile_FromQWORD(pProcess->paDTB_UserOpt, pb, cb, pcbRead, cbOffset, FALSE);
         } else if((tpMemoryModel == VMM_MEMORYMODEL_X86) || (tpMemoryModel == VMM_MEMORYMODEL_X86PAE)) {
             return Util_VfsReadFile_FromDWORD((DWORD)pProcess->paDTB_UserOpt, pb, cb, pcbRead, cbOffset, FALSE);
@@ -73,7 +73,7 @@ NTSTATUS MVfsProc_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out
         return Util_VfsReadFile_FromFILETIME(VmmProcess_GetExitTimeOpt(H, pProcess), pb, cb, pcbRead, cbOffset);
     }
     // windows specific reads below:
-    if((tpSystem == VMM_SYSTEM_WINDOWS_X64) || (tpSystem == VMM_SYSTEM_WINDOWS_X86)) {
+    if((tpSystem == VMM_SYSTEM_WINDOWS_64) || (tpSystem == VMM_SYSTEM_WINDOWS_32)) {
         if(!_stricmp(uszPath, "name-long.txt")) {
             return Util_VfsReadFile_FromPBYTE(pProcess->pObPersistent->uszNameLong, pProcess->pObPersistent->cuszNameLong, pb, cb, pcbRead, cbOffset);
         }
@@ -93,7 +93,7 @@ NTSTATUS MVfsProc_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out
             return Util_VfsReadFile_FromPBYTE(pUserProcessParams->uszWindowTitle, max(1, pUserProcessParams->cbuWindowTitle) - 1, pb, cb, pcbRead, cbOffset);
         }
     }
-    if(tpSystem == VMM_SYSTEM_WINDOWS_X64) {
+    if(tpSystem == VMM_SYSTEM_WINDOWS_64) {
         if(!_stricmp(uszPath, "win-eprocess.txt")) {
             return Util_VfsReadFile_FromQWORD(pProcess->win.EPROCESS.va, pb, cb, pcbRead, cbOffset, FALSE);
         }
@@ -104,7 +104,7 @@ NTSTATUS MVfsProc_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out
             return Util_VfsReadFile_FromDWORD(pProcess->win.vaPEB32, pb, cb, pcbRead, cbOffset, FALSE);
         }
     }
-    if(H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_X86) {
+    if(H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_32) {
         if(!_stricmp(uszPath, "win-eprocess.txt")) {
             return Util_VfsReadFile_FromDWORD((DWORD)pProcess->win.EPROCESS.va, pb, cb, pcbRead, cbOffset, FALSE);
         }
@@ -155,12 +155,12 @@ NTSTATUS MVfsProc_Write(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In
     }
     // write memory to "memory.vmem" file:
     if(!_stricmp(uszPath, "memory.vmem")) {
-        cbMemSize = (H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X64) ? 1ULL << 48 : 1ULL << 32;
+        cbMemSize = ((tpMemoryModel == VMM_MEMORYMODEL_X64) || (tpMemoryModel == VMM_MEMORYMODEL_ARM64)) ? 1ULL << 48 : 1ULL << 32;
         return VmmWriteAsFile(H, pProcess, 0, cbMemSize, pb, cb, pcbWrite, cbOffset);
     }
     // write to dtb (force set custom dtb):
     if(!_stricmp(uszPath, "dtb.txt")) {
-        if(tpMemoryModel == VMM_MEMORYMODEL_X64) {
+        if((tpMemoryModel == VMM_MEMORYMODEL_X64) || (tpMemoryModel == VMM_MEMORYMODEL_ARM64)) {
             nt = Util_VfsWriteFile_QWORD(&pProcess->pObPersistent->paDTB_Override, pb, cb, pcbWrite, cbOffset, 0, 0);
         } else if((tpMemoryModel == VMM_MEMORYMODEL_X86) || (tpMemoryModel == VMM_MEMORYMODEL_X86PAE)) {
             nt = Util_VfsWriteFile_DWORD((PDWORD)&pProcess->pObPersistent->paDTB_Override, pb, cb, pcbWrite, cbOffset, 0, 0);
@@ -175,7 +175,7 @@ VOID MVfsProc_List_OsSpecific(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In
 {
     PVMMWIN_USER_PROCESS_PARAMETERS pUserProcessParams = VmmWin_UserProcessParameters_Get(H, pProcess);    // don't free
     // WINDOWS - 32 & 64-bit
-    if((H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_X64) || (H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_X86)) {
+    if((H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_64) || (H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_32)) {
         VMMDLL_VfsList_AddFile(pFileList, "name-long.txt", pProcess->pObPersistent->cuszNameLong, pExInfo);
         VMMDLL_VfsList_AddFile(pFileList, "win-path.txt", pProcess->pObPersistent->cuszPathKernel, pExInfo);
         if(pUserProcessParams->uszCommandLine) {
@@ -196,7 +196,7 @@ VOID MVfsProc_List_OsSpecific(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In
         }
     }
     // WINDOWS - 64-bit specific
-    if(H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_X64) {
+    if(H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_64) {
         VMMDLL_VfsList_AddFile(pFileList, "win-eprocess.txt", 16, pExInfo);
         // 64-bit PEB and modules
         if(pProcess->win.vaPEB) {
@@ -208,7 +208,7 @@ VOID MVfsProc_List_OsSpecific(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In
         }
     }
     // WINDOWS 32-bit specific
-    if(H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_X86) {
+    if(H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_32) {
         VMMDLL_VfsList_AddFile(pFileList, "win-eprocess.txt", 8, pExInfo);
         // PEB
         if(pProcess->win.vaPEB) {
@@ -228,6 +228,7 @@ BOOL MVfsProc_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ 
 {
     PVMM_PROCESS pProcess = ctxP->pProcess;
     VMMDLL_VFS_FILELIST_EXINFO ExInfo = { 0 };
+    VMM_MEMORYMODEL_TP tpMemoryModel = H->vmm.tpMemoryModel;
     Util_VfsTimeStampFile(H, pProcess, &ExInfo);
     // populate process directory - list standard files and subdirectories
     if(!ctxP->uszPath[0]) {
@@ -235,12 +236,12 @@ BOOL MVfsProc_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ 
         VMMDLL_VfsList_AddFile(pFileList, "pid.txt", 11, &ExInfo);
         VMMDLL_VfsList_AddFile(pFileList, "ppid.txt", 11, &ExInfo);
         VMMDLL_VfsList_AddFile(pFileList, "state.txt", 11, &ExInfo);
-        if(H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X64) {
+        if((tpMemoryModel == VMM_MEMORYMODEL_X64) || (tpMemoryModel == VMM_MEMORYMODEL_ARM64)) {
             VMMDLL_VfsList_AddFile(pFileList, "memory.vmem", 0x0001000000000000, &ExInfo);
             VMMDLL_VfsList_AddFile(pFileList, "dtb.txt", 16, &ExInfo);
             if(pProcess->paDTB_UserOpt) { VMMDLL_VfsList_AddFile(pFileList, "dtb-user.txt", 16, &ExInfo); }
             if(pProcess->paDTB != pProcess->paDTB_Kernel) { VMMDLL_VfsList_AddFile(pFileList, "dtb-kernel.txt", 16, &ExInfo); }
-        } else if(H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X86 || H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X86PAE) {
+        } else if(tpMemoryModel == VMM_MEMORYMODEL_X86 || tpMemoryModel == VMM_MEMORYMODEL_X86PAE) {
             VMMDLL_VfsList_AddFile(pFileList, "memory.vmem", 0x100000000, &ExInfo);
             VMMDLL_VfsList_AddFile(pFileList, "dtb.txt", 8, &ExInfo);
             if(pProcess->paDTB_UserOpt) { VMMDLL_VfsList_AddFile(pFileList, "dtb-user.txt", 8, &ExInfo); }

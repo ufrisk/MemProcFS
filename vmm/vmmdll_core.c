@@ -575,7 +575,13 @@ BOOL VmmDllCore_InitializeConfig(_In_ VMM_HANDLE H, _In_ DWORD argc, _In_ char *
             H->cfg.qwParentVmmHandle = Util_GetNumericA(argv[i + 1]);
             H->cfg.fDisablePython = TRUE;
             i += 2; continue;
-        } else if(0 == _stricmp(argv[i], "-cr3")) {
+        } else if((0 == _stricmp(argv[i], "-arch")) || 0 == _stricmp(argv[i], "-architecture")) {
+            if(CharUtil_StrEquals(argv[i + 1], "x86", TRUE))    { H->cfg.tpMemoryModel = VMM_MEMORYMODEL_X86; }
+            if(CharUtil_StrEquals(argv[i + 1], "x86pae", TRUE)) { H->cfg.tpMemoryModel = VMM_MEMORYMODEL_X86PAE; }
+            if(CharUtil_StrEquals(argv[i + 1], "x64", TRUE))    { H->cfg.tpMemoryModel = VMM_MEMORYMODEL_X64; }
+            if(CharUtil_StrEquals(argv[i + 1], "arm64", TRUE))  { H->cfg.tpMemoryModel = VMM_MEMORYMODEL_ARM64; }
+            i += 2; continue;
+        } else if((0 == _stricmp(argv[i], "-cr3") || 0 == _stricmp(argv[i], "-dtb"))) {
             H->cfg.paCR3 = Util_GetNumericA(argv[i + 1]);
             i += 2; continue;
         } else if(0 == _stricmp(argv[i], "-debug-pte-quality-threshold")) {

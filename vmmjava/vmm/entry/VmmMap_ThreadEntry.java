@@ -8,7 +8,7 @@ import java.io.Serializable;
  */
 public class VmmMap_ThreadEntry implements Serializable
 {
-	private static final long serialVersionUID = -8162285678132928371L;
+	private static final long serialVersionUID = -8162285678132928372L;
     public int dwTID;
     public int dwPID;
     public int dwExitStatus;
@@ -21,11 +21,13 @@ public class VmmMap_ThreadEntry implements Serializable
     public long ftCreateTime;
     public long ftExitTime;
     public long vaStartAddress;
+    public long vaWin32StartAddress;
     public long vaStackBaseUser;
     public long vaStackLimitUser;
     public long vaStackBaseKernel;
     public long vaStackLimitKernel;
     public long vaTrapFrame;
+    public long vaImpersonationToken;
     public long vaRIP;
     public long vaRSP;
     public long qwAffinity;

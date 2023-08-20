@@ -190,3 +190,7 @@ v1.1-v4.9
 * Yara scans of file objects (increased chance of vulnerable driver detection by FindEvil).
 * Improved FPGA performance for smaller reads.
 * Improved [MemProcFS remoting](https://github.com/ufrisk/MemProcFS/wiki/_Remoting) via a remote [LeechAgent](https://github.com/ufrisk/LeechCore/wiki/LeechAgent). Full MemProcFS remote support over SMB - tcp/445. Perfect for memory forensics Incident Response (IR)!
+
+[v5.8](https://github.com/ufrisk/MemProcFS/releases/tag/v5.8)
+* LeechCore API updates for C/C++, C#, Rust, Python, Java.
+* Support for analyzing ARM64 Windows memory.

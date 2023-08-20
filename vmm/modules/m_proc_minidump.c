@@ -37,6 +37,7 @@ typedef ULONG64 RVA64;
 
 #define PROCESSOR_ARCHITECTURE_INTEL            0
 #define PROCESSOR_ARCHITECTURE_AMD64            9
+#define PROCESSOR_ARCHITECTURE_ARM64            12
 
 #define VER_NT_WORKSTATION              0x0000001
 #define VER_NT_DOMAIN_CONTROLLER        0x0000002
@@ -673,6 +674,13 @@ POB_M_MINIDUMP_CONTEXT M_MiniDump_Initialize_Internal(_In_ VMM_HANDLE H, _In_ VM
 
     // populate: MINIDUMP_SYSTEM_INFO
     {
+        if(H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X64) {
+            ctx->SystemInfo.p->ProcessorArchitecture = PROCESSOR_ARCHITECTURE_AMD64;
+        } else if(H->vmm.tpMemoryModel == VMM_MEMORYMODEL_ARM64) {
+            ctx->SystemInfo.p->ProcessorArchitecture = PROCESSOR_ARCHITECTURE_ARM64;
+        } else {
+            ctx->SystemInfo.p->ProcessorArchitecture = PROCESSOR_ARCHITECTURE_INTEL;
+        }
         ctx->SystemInfo.p->ProcessorArchitecture = (f32 ? PROCESSOR_ARCHITECTURE_INTEL : PROCESSOR_ARCHITECTURE_AMD64);
         ctx->SystemInfo.p->ProcessorLevel = 0;
         ctx->SystemInfo.p->ProcessorRevision = 0x31;
@@ -1121,7 +1129,7 @@ VOID M_MiniDump_Close(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
 VOID M_ProcMiniDump_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
-    if(!((pRI->tpSystem == VMM_SYSTEM_WINDOWS_X64) || (pRI->tpSystem == VMM_SYSTEM_WINDOWS_X86))) { return; }
+    if(!((pRI->tpSystem == VMM_SYSTEM_WINDOWS_64) || (pRI->tpSystem == VMM_SYSTEM_WINDOWS_32))) { return; }
     if(!(pRI->reg_info.ctxM = (PVMMDLL_PLUGIN_INTERNAL_CONTEXT)ObMap_New(H, OB_MAP_FLAGS_OBJECT_OB))) { return; }  // internal module context
     strcpy_s(pRI->reg_info.uszPathName, 128, "\\minidump");               // module name
     pRI->reg_info.fRootModule = FALSE;                                    // module shows in root directory

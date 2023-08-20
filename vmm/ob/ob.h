@@ -30,6 +30,7 @@ typedef struct tdVMM_HANDLE             *VMM_HANDLE;
 #define OB_TAG_CORE_MEMFILE             'ObMF'
 #define OB_TAG_CORE_CACHEMAP            'ObMc'
 #define OB_TAG_CORE_STRMAP              'ObMs'
+#define OB_TAG_CORE_BYTEQUEUE           'ObBq'
 
 // ----------------------------------------------------------------------------
 // OBJECT MANAGER CORE FUNCTIONALITY BELOW:
@@ -1357,5 +1358,79 @@ QWORD ObCounter_Pop(_In_opt_ POB_COUNTER pc);
 _Success_(return != 0)
 QWORD ObCounter_PopWithKey(_In_opt_ POB_COUNTER pc, _Out_opt_ PQWORD pKey);
 
+
+
+// ----------------------------------------------------------------------------
+// BYTE QUEUE FUNCTIONALITY BELOW
+//
+// The byte queue contains a fixed number of bytes as buffer. The queue size
+// is defined at queue creation and cannot be changed.
+// Bytes in the form of packets [pb, cb, tag] is pushed on the queue as long
+// as there is available space.
+// Bytes may be popped from the queue. This will also free up space for more
+// bytes to be pushed on the queue.
+// The bytes queue is FIFO and will always pop the oldest bytes first.
+// The ObByteQueue is an object manager object and must be DECREF'ed when required.
+// ----------------------------------------------------------------------------
+
+typedef struct tdOB_BYTEQUEUE *POB_BYTEQUEUE;
+
+/*
+* Retrieve the number of packets (not bytes) in the byte queue.
+* -- pq
+* -- return
+*/
+DWORD ObByteQueue_Size(_In_opt_ POB_BYTEQUEUE pq);
+
+/*
+* Peek data from the byte queue. The data is copied into the user-supplied buffer.
+* If the buffer is insufficient the function will return FALSE and the required
+* size will be returned in pcbRead.
+* -- pq
+* -- pqwTag
+* -- cb
+* -- pb
+* -- pcbRead
+* -- return = TRUE if there was data to peek, FALSE otherwise.
+*/
+_Success_(return)
+BOOL ObByteQueue_Peek(_In_opt_ POB_BYTEQUEUE pq, _Out_opt_ QWORD * pqwTag, _In_ SIZE_T cb, _Out_ PBYTE pb, _Out_ SIZE_T * pcbRead);
+
+/*
+* Pop data from the byte queue. The data is copied into the user-supplied buffer.
+* If the buffer is insufficient the function will return FALSE and the required
+* size will be returned in pcbRead.
+* -- pq
+* -- pqwTag
+* -- cb
+* -- pb
+* -- pcbRead
+* -- return = TRUE if there was data to pop, FALSE otherwise.
+*/
+_Success_(return)
+BOOL ObByteQueue_Pop(_In_opt_ POB_BYTEQUEUE pq, _Out_opt_ QWORD * pqwTag, _In_ SIZE_T cb, _Out_ PBYTE pb, _Out_ SIZE_T * pcbRead);
+
+/*
+* Push / Insert into the ObByteQueue. The data is copied into the queue.
+* -- pq
+* -- qwTag
+* -- cb
+* -- pb
+* -- return = TRUE on insertion, FALSE otherwise - i.e. if the byte queue
+*             is insufficient to hold the byte data.
+*/
+_Success_(return)
+BOOL ObByteQueue_Push(_In_opt_ POB_BYTEQUEUE pq, _In_opt_ QWORD qwTag, _In_ SIZE_T cb, _In_reads_bytes_(cb) PBYTE pb);
+
+/*
+* Create a new byte queue. A byte queue (ObByteQueue) provides atomic queuing
+* operations for pushing/popping bytes as packets on a FIFO queue.
+* The ObByteQueue is an object manager object and must be DECREF'ed when required.
+* CALLER DECREF: return
+* -- H
+* -- cbQueueSize = the queue size in bytes. Must be larger than 4096 bytes.
+* -- return
+*/
+POB_BYTEQUEUE ObByteQueue_New(_In_opt_ VMM_HANDLE H, _In_ DWORD cbQueueSize);
 
 #endif /* __OB_H__ */

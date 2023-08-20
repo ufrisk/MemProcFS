@@ -46,6 +46,10 @@ BOOL VmmUserConfig_SetString(_In_ LPSTR szKey, _In_ LPSTR szValue)
 {
     HKEY hKey = 0;
     BOOL fResult = FALSE;
+    if(ERROR_SUCCESS != RegOpenKeyExA(HKEY_CURRENT_USER, "Software\\UlfFrisk\\MemProcFS", 0, KEY_ALL_ACCESS, &hKey)) {
+        RegCreateKeyA(HKEY_CURRENT_USER, "Software\\UlfFrisk\\MemProcFS", &hKey);
+        RegCloseKey(hKey);
+    }
     if(ERROR_SUCCESS == RegOpenKeyExA(HKEY_CURRENT_USER, "Software\\UlfFrisk\\MemProcFS", 0, KEY_ALL_ACCESS, &hKey)) {
         fResult = (ERROR_SUCCESS == RegSetValueExA(hKey, szKey, 0, REG_SZ, (PBYTE)szValue, (DWORD)strlen(szValue)));
         RegCloseKey(hKey);

@@ -529,7 +529,7 @@ VOID VmmWinLdrModule_Initialize32(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess,
             }
         }
 
-    } else if(H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_X86) {
+    } else if(H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_32) {
         // Kernel mode process -> walk PsLoadedModuleList to enumerate drivers / .sys and .dlls.
         if(!H->vmm.kernel.vaPsLoadedModuleListPtr) { goto fail; }
         if(!VmmRead(H, pProcess, H->vmm.kernel.vaPsLoadedModuleListPtr, (PBYTE)&vaModuleLdrFirst32, sizeof(DWORD)) || !vaModuleLdrFirst32) { goto fail; }
@@ -842,14 +842,14 @@ BOOL VmmWinLdrModule_Initialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _
     if(pProcess->Map.pObModule && (!psvaInjected || !ObSet_Size(psvaInjected))) { return TRUE; }
     VmmTlbSpider(H, pProcess);
     EnterCriticalSection(&pProcess->LockUpdate);
-    if(pProcess->Map.pObModule && (!psvaInjected || !ObSet_Size(psvaInjected))) { goto fail; }  // not strict fail - but triggr cleanup and success.
+    if(pProcess->Map.pObModule && (!psvaInjected || !ObSet_Size(psvaInjected))) { goto fail; }  // not strict fail - but trigger cleanup and success.
     // set up context
     if(!(pmObModules = ObMap_New(H, OB_MAP_FLAGS_OBJECT_LOCALFREE))) { goto fail; }
     // fetch modules: "ordinary" linked list
-    if((H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_X86) || ((H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_X64) && pProcess->win.fWow64)) {
+    if((H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_32) || ((H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_64) && pProcess->win.fWow64)) {
         VmmWinLdrModule_Initialize32(H, pProcess, pmObModules, pProcess->fUserOnly);
     }
-    if(H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_X64) {
+    if(H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_64) {
         VmmWinLdrModule_Initialize64(H, pProcess, pmObModules, pProcess->fUserOnly);
     }
     // fetch modules: VADs
@@ -4076,7 +4076,7 @@ BOOL VmmWinProcess_Enumerate(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess
     VmmTlbSpider(H, pSystemProcess);
     // update processes within global lock (to avoid potential race conditions).
     EnterCriticalSection(&H->vmm.LockMaster);
-    if(H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X64) {
+    if((H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X64) || (H->vmm.tpMemoryModel == VMM_MEMORYMODEL_ARM64)) {
         fResult = VmmWinProcess_Enum64(H, pSystemProcess, fRefreshTotal, psvaNoLinkEPROCESS);
     } else if((H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X86PAE) || (H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X86)) {
         fResult = VmmWinProcess_Enum32(H, pSystemProcess, fRefreshTotal, psvaNoLinkEPROCESS);

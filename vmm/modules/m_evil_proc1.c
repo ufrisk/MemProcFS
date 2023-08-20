@@ -33,7 +33,7 @@ VOID MEvilProc1_AddEvilVad(
     _In_ QWORD vaVadBase,
     _In_ DWORD oVadEx
 ) {
-    QWORD qwHwPte;
+    BOOL fPteA;
     PVMM_MAP_VADENTRY peVad;
     PVMM_MAP_VADEXENTRY pex;
     PVMMOB_MAP_VAD pObVadMap = NULL;
@@ -45,14 +45,14 @@ VOID MEvilProc1_AddEvilVad(
     if(!VmmMap_GetVadEx(H, pProcess, &pObVadEx, VMM_VADMAP_TP_FULL, peVad->cVadExPagesBase + oVadEx, 1) || !pObVadEx->cMap) { goto fail; }
     pex = pObVadEx->pMap;
     MmVad_StrProtectionFlags(peVad, szProtection);
-    qwHwPte = (pex->tp == VMM_PTE_TP_HARDWARE) ? pex->pte : 0;
+    fPteA = pex->flags & VADEXENTRY_FLAG_HARDWARE;
     FcEvilAdd(H, tpEvil, pProcess, va, "%012llx %016llx %c %c%c%c %016llx %012llx %016llx %c %s %s %s",
         pex->pa,
         pex->pte,
         MmVadEx_StrType(pex->tp),
-        qwHwPte ? 'r' : '-',
-        (qwHwPte & VMM_MEMMAP_PAGE_W) ? 'w' : '-',
-        (!qwHwPte || (qwHwPte & VMM_MEMMAP_PAGE_NX)) ? '-' : 'x',
+        fPteA ? 'r' : '-',
+        (fPteA && (pex->flags & VADEXENTRY_FLAG_W)) ? 'w' : '-',
+        (!fPteA || (pex->flags & VADEXENTRY_FLAG_NX)) ? '-' : 'x',
         peVad->vaVad,
         pex->proto.pa,
         pex->proto.pte,
@@ -143,7 +143,7 @@ VOID MEvilProc1_Modules(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
 VOID MEvilProc1_VadNoImageExecuteEntry(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMMOB_MAP_VAD pVadMap, _In_ DWORD iVad, _Inout_ POB_SET psInjectedPE)
 {
     DWORD iVadEx, cEvilRX = 0, cEvilRWX = 0;
-    QWORD cbPE, qwHwPte;
+    QWORD cbPE;
     PVMM_MAP_VADENTRY peVad;
     PVMM_MAP_VADEXENTRY peVadEx;
     PVMMOB_MAP_VADEX pObVadExMap = NULL;
@@ -159,14 +159,18 @@ VOID MEvilProc1_VadNoImageExecuteEntry(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pPro
     if(!VmmMap_GetVadEx(H, pProcess, &pObVadExMap, VMM_VADMAP_TP_PARTIAL, peVad->cVadExPagesBase, peVad->cVadExPages)) { return; }
     for(iVadEx = 0; iVadEx < pObVadExMap->cMap; iVadEx++) {
         peVadEx = pObVadExMap->pMap + iVadEx;
-        qwHwPte = (peVadEx->tp == VMM_PTE_TP_HARDWARE) ? peVadEx->pte : 0;
-        fPteA = qwHwPte & VMM_MEMMAP_PAGE_A;
-        if(fPteA && (qwHwPte & VMM_MEMMAP_PAGE_NX)) { continue; }
-        if((fPteA && (qwHwPte & VMM_MEMMAP_PAGE_W)) || (!fPteA && MMVAD_IS_FLAG_W(peVad))) {
+        fPteA = peVadEx->flags & VADEXENTRY_FLAG_HARDWARE;
+        if(!fPteA && !MMVAD_IS_FLAG_X(peVad)) { continue; }
+        if(fPteA && (peVadEx->flags & VADEXENTRY_FLAG_NX)) { continue; }
+        if(peVadEx->tp == VMM_PTE_TP_DEMANDZERO) { continue; }
+        if((fPteA && (peVadEx->flags & VADEXENTRY_FLAG_W)) || (!fPteA && MMVAD_IS_FLAG_W(peVad))) {
             if(cEvilRWX >= EVIL_MAXCOUNT_VAD_EXECUTE) { continue; }
             cEvilRWX++;
             tpEvil = peVad->fPrivateMemory ? EVIL_PRIVATE_RWX : EVIL_NOIMAGE_RWX;
         } else {
+            if(!peVad->fPrivateMemory && peVad->fFile && (H->vmm.tpMemoryModel == VMMDLL_MEMORYMODEL_ARM64) && CharUtil_StrStartsWith(peVad->uszText, "\\Windows\\XtaCache\\", TRUE)) {
+                continue;
+            }
             if(cEvilRX >= EVIL_MAXCOUNT_VAD_EXECUTE) { continue; }
             cEvilRX++;
             tpEvil = peVad->fPrivateMemory ? EVIL_PRIVATE_RX : EVIL_NOIMAGE_RX;
@@ -269,7 +273,6 @@ fail:
 VOID MEvilProc1_PePatched_VadImageExecuteNoProto(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
 {
     BOOL f;
-    QWORD qwHwPte;
     DWORD iVad, iVadEx, cPatch;
     PVMM_MAP_VADENTRY peVad;
     PVMMOB_MAP_VAD pObVadMap = NULL;
@@ -284,8 +287,7 @@ VOID MEvilProc1_PePatched_VadImageExecuteNoProto(_In_ VMM_HANDLE H, _In_ PVMM_PR
         if(!VmmMap_GetVadEx(H, pProcess, &pObVadExMap, VMM_VADMAP_TP_PARTIAL, peVad->cVadExPagesBase, peVad->cVadExPages)) { continue; }
         for(iVadEx = 0, cPatch = 0; (iVadEx < pObVadExMap->cMap) && (cPatch < EVIL_MAXCOUNT_VAD_PATCHED_PE); iVadEx++) {
             peVadEx = pObVadExMap->pMap + iVadEx;
-            qwHwPte = (peVadEx->tp == VMM_PTE_TP_HARDWARE) ? peVadEx->pte : 0;
-            if(!qwHwPte || (qwHwPte & VMM_MEMMAP_PAGE_NX)) { continue; }
+            if(!(peVadEx->flags & VMM_PTE_TP_HARDWARE) || (peVadEx->flags & VADEXENTRY_FLAG_NX)) { continue; }
             if(!peVadEx->pa || !peVadEx->proto.pa) { continue; }
             if(peVadEx->pa == peVadEx->proto.pa) { continue; }
             if(!peVadEx->peVad->vaStart) { continue; }
@@ -333,7 +335,6 @@ VOID MEvilProc1_DoWork(_In_ VMM_HANDLE H, _In_ VMMDLL_MODULE_ID MID, _In_opt_ PV
         VmmWinLdrModule_Initialize(H, pObProcess, psObInjectedPE);
         // update result with interesting module entries.
         MEvilProc1_Modules(H, pObProcess);
-
     }
     VmmLog(H, MID, LOGLEVEL_6_TRACE, "COMPLETED FINDEVIL SCAN");
 fail:

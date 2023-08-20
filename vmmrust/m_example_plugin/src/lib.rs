@@ -15,7 +15,7 @@
 //
 
 use memprocfs::*;
-use anyhow::{anyhow};
+use anyhow::anyhow;
 
 const PLUGIN_README : &str =
     "This is a MemProcFS example plugin for Rust.\n\
@@ -258,7 +258,7 @@ fn plugin_notify_cb(ctxp : &VmmPluginContext<PluginContext>, event_id : u32) -> 
     // Throw away changes to files if there is a slow (complete) refresh.
     // NB! this does only happen on dynamic memory (not on memory dump files).
     if event_id == PLUGIN_NOTIFY_REFRESH_SLOW {
-        let mut ctx_user = ctxp.ctxlock.write().unwrap();
+        let mut ctx_user: std::sync::RwLockWriteGuard<'_, PluginContext> = ctxp.ctxlock.write().unwrap();
         ctx_user.file_024 = PLUGIN_README_024_WRITABLE.as_bytes().to_vec();
         ctx_user.file_68 = PLUGIN_README_68_WRITABLE.as_bytes().to_vec();
     }

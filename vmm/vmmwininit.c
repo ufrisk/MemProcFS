@@ -285,6 +285,7 @@ VOID VmmWinInit_InitializeOffsetStatic_Heap(_In_ VMM_HANDLE H)
     }
 }
 
+// TODO: FIX THIS ARM64
 /*
 * Helper/Worker function for VmmWinInit_FindNtosScan64_SmallPageWalk().
 * -- H
@@ -307,27 +308,51 @@ VOID VmmWinInit_FindNtosScan64_SmallPageWalk_DoWork(_In_ VMM_HANDLE H, _In_ QWOR
         if(!VmmTlbPageTableVerify(H, pObPTEs->pb, paTable, TRUE)) { goto finish; }
         vaBase = 0;
     }
-    for(i = 0; i < 512; i++) {
-        // address in range
-        vaCurrent = vaBase + (i << PML_REGION_SIZE[iPML]);
-        vaCurrent |= (vaCurrent & 0x0000800000000000) ? 0xffff000000000000 : 0; // sign extend
-        if(vaCurrent < vaMin) { continue; }
-        if(vaCurrent > vaMax) { goto finish; }
-        // check PTEs
-        pte = pObPTEs->pqw[i];
-        if(!(pte & 0x01)) { continue; }                     // NOT VALID
-        if(iPML == 1) {
-            if(i && pObPTEs->pqw[i - 1]) { continue; }      // PAGE i-1 NOT EMPTY -> NOT VALID
-            if((pte & 0x800000000000000f) != 0x8000000000000003) { continue; } // PAGE i+0 IS ACTIVE-WRITE-SUPERVISOR-NOEXECUTE
-            for(j = i + 2, f = TRUE; f && (j < min(i + 32, 512)); j++) {
-                f = ((pObPTEs->pqw[j] & 0x0f) == 0x01);   // PAGE i+1 IS ACTIVE-SUPERVISOR
+    if(H->vmm.tpMemoryModel == VMMDLL_MEMORYMODEL_X64) {
+        for(i = 0; i < 512; i++) {
+            // address in range
+            vaCurrent = vaBase + (i << PML_REGION_SIZE[iPML]);
+            vaCurrent |= (vaCurrent & 0x0000800000000000) ? 0xffff000000000000 : 0; // sign extend
+            if(vaCurrent < vaMin) { continue; }
+            if(vaCurrent > vaMax) { goto finish; }
+            // check PTEs
+            pte = pObPTEs->pqw[i];
+            if(!(pte & 0x01)) { continue; }                     // NOT VALID
+            if(iPML == 1) {
+                if(i && pObPTEs->pqw[i - 1]) { continue; }      // PAGE i-1 NOT EMPTY -> NOT VALID
+                if((pte & 0x800000000000000f) != 0x8000000000000003) { continue; } // PAGE i+0 IS ACTIVE-WRITE-SUPERVISOR-NOEXECUTE
+                for(j = i + 2, f = TRUE; f && (j < min(i + 32, 512)); j++) {
+                    f = ((pObPTEs->pqw[j] & 0x0f) == 0x01);   // PAGE i+1 IS ACTIVE-SUPERVISOR
+                }
+                if(f) {
+                    ObSet_Push(psvaKernelCandidates, vaCurrent);
+                }
             }
-            if(f) {
-                ObSet_Push(psvaKernelCandidates, vaCurrent);
-            }
+            if(pte & 0x80) { continue; }                        // PS (large page) -> NOT VALID
+            VmmWinInit_FindNtosScan64_SmallPageWalk_DoWork(H, pte & 0x0000fffffffff000, vaCurrent, vaMin, vaMax, iPML - 1, psvaKernelCandidates);
         }
-        if(pte & 0x80) { continue; }                        // PS (large page) -> NOT VALID
-        VmmWinInit_FindNtosScan64_SmallPageWalk_DoWork(H, pte & 0x0000fffffffff000, vaCurrent, vaMin, vaMax, iPML - 1, psvaKernelCandidates);
+    } else if(H->vmm.tpMemoryModel == VMMDLL_MEMORYMODEL_ARM64) {
+        for(i = 0; i < 512; i++) {
+            // address in range
+            vaCurrent = vaBase + (i << PML_REGION_SIZE[iPML]);
+            vaCurrent |= (vaCurrent & 0x0000800000000000) ? 0xffff000000000000 : 0; // sign extend
+            if(vaCurrent < vaMin) { continue; }
+            if(vaCurrent > vaMax) { goto finish; }
+            // check PTEs
+            pte = pObPTEs->pqw[i];
+            if((pte & 0x00E0000000000003) != 0x0060000000000003) { continue; }    // VALID, NOT_LARGE_PAGE, NO-EXECUTE(USER), NO-EXECUTE(PRIVILEGED), NO-WRITE
+            if(iPML == 1) {
+                if(i && pObPTEs->pqw[i - 1]) { continue; }      // PAGE i-1 NOT EMPTY -> NOT VALID
+                for(j = i + 2, f = TRUE; f && (j < min(i + 32, 512)); j++) {
+                    f = ((pObPTEs->pqw[j] & 0x03) == 0x03);   // PAGE i+1 IS VALID, NOT_LARGE_PAGE
+                }
+                if(f) {
+                    ObSet_Push(psvaKernelCandidates, vaCurrent);
+                }
+            }
+            if(pte & 0x80) { continue; }                        // PS (large page) -> NOT VALID
+            VmmWinInit_FindNtosScan64_SmallPageWalk_DoWork(H, pte & 0x0000fffffffff000, vaCurrent, vaMin, vaMax, iPML - 1, psvaKernelCandidates);
+        }
     }
 finish:
     Ob_DECREF(pObPTEs);
@@ -390,6 +415,7 @@ VOID VmmWinInit_FindNtosScan64_LargePageWalk(_In_ VMM_HANDLE H, _In_ QWORD paTab
     const QWORD PML_REGION_SIZE[5] = { 0, 12, 21, 30, 39 };
     QWORD i, pte, vaCurrent;
     PVMMOB_CACHE_MEM pObPTEs = NULL;
+    if(iPML == 1) { return; }
     pObPTEs = VmmTlbGetPageTable(H, paTable, FALSE);
     if(!pObPTEs) { return; }
     if(iPML == 4) {
@@ -398,24 +424,48 @@ VOID VmmWinInit_FindNtosScan64_LargePageWalk(_In_ VMM_HANDLE H, _In_ QWORD paTab
         if(!VmmTlbPageTableVerify(H, pObPTEs->pb, paTable, TRUE)) { goto finish; }
         vaBase = 0;
     }
-    for(i = 0; i < 512; i++) {
-        // address in range
-        vaCurrent = vaBase + (i << PML_REGION_SIZE[iPML]);
-        vaCurrent |= (vaCurrent & 0x0000800000000000) ? 0xffff000000000000 : 0; // sign extend
-        if(*pvaBase && (vaCurrent > (*pvaBase + *pcbSize))) { goto finish; }
-        if(vaCurrent < vaMin) { continue; }
-        if(vaCurrent > vaMax) { goto finish; }
-        // check PTEs
-        pte = pObPTEs->pqw[i];
-        if(!(pte & 0x01)) { continue; }     // NOT VALID
-        if(iPML == 2) {
-            if(!(pte & 0x80)) { continue; }
-            if(!*pvaBase) { *pvaBase = vaCurrent; }
-            *pcbSize += 0x200000;
-            continue;
-        } else {
-            if(pte & 0x80) { continue; }    // PS = 1
-            VmmWinInit_FindNtosScan64_LargePageWalk(H, pte & 0x0000fffffffff000, vaCurrent, vaMin, vaMax, iPML - 1, pvaBase, pcbSize);
+    if(H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X64) {
+        for(i = 0; i < 512; i++) {
+            // address in range
+            vaCurrent = vaBase + (i << PML_REGION_SIZE[iPML]);
+            vaCurrent |= (vaCurrent & 0x0000800000000000) ? 0xffff000000000000 : 0; // sign extend
+            if(*pvaBase && (vaCurrent > (*pvaBase + *pcbSize))) { goto finish; }
+            if(vaCurrent < vaMin) { continue; }
+            if(vaCurrent > vaMax) { goto finish; }
+            // check PTEs
+            pte = pObPTEs->pqw[i];
+            if(!(pte & 0x01)) { continue; }     // NOT VALID
+            if(iPML == 2) {
+                if(!(pte & 0x80)) { continue; }
+                if(!*pvaBase) { *pvaBase = vaCurrent; }
+                *pcbSize += 0x200000;
+                continue;
+            } else {
+                if(pte & 0x80) { continue; }    // PS = 1
+                VmmWinInit_FindNtosScan64_LargePageWalk(H, pte & 0x0000fffffffff000, vaCurrent, vaMin, vaMax, iPML - 1, pvaBase, pcbSize);
+            }
+        }
+    }
+    if(H->vmm.tpMemoryModel == VMM_MEMORYMODEL_ARM64) {
+        for(i = 0; i < 512; i++) {
+            // address in range
+            vaCurrent = vaBase + (i << PML_REGION_SIZE[iPML]);
+            vaCurrent |= (vaCurrent & 0x0000800000000000) ? 0xffff000000000000 : 0; // sign extend
+            if(*pvaBase && (vaCurrent > (*pvaBase + *pcbSize))) { goto finish; }
+            if(vaCurrent < vaMin) { continue; }
+            if(vaCurrent > vaMax) { goto finish; }
+            // check PTEs
+            pte = pObPTEs->pqw[i];
+            if(!(pte & 0x01)) { continue; }     // NOT VALID
+            if(iPML == 2) {
+                if(pte & 0x02) { continue; }
+                if(!*pvaBase) { *pvaBase = vaCurrent; }
+                *pcbSize += 0x200000;
+                continue;
+            } else {
+                if(!(pte & 0x02)) { continue; }
+                VmmWinInit_FindNtosScan64_LargePageWalk(H, pte & 0x0003fffffffff000, vaCurrent, vaMin, vaMax, iPML - 1, pvaBase, pcbSize);
+            }
         }
     }
 finish:
@@ -600,7 +650,7 @@ PVMM_PROCESS VmmWinInit_FindNtosScan(_In_ VMM_HANDLE H)
     // 2: Spider DTB to speed things up.
     VmmTlbSpider(H, pObSystemProcess);
     // 3: Find the base of 'ntoskrnl.exe'
-    if(VMM_MEMORYMODEL_X64 == H->vmm.tpMemoryModel) {
+    if((VMM_MEMORYMODEL_X64 == H->vmm.tpMemoryModel) || (VMM_MEMORYMODEL_ARM64 == H->vmm.tpMemoryModel)) {
         LcGetOption(H->hLC, LC_OPT_MEMORYINFO_OS_KERNELBASE, &vaKernelBase);
         if(!vaKernelBase) {
             vaKernelHint = H->vmm.kernel.vaEntry;
@@ -695,6 +745,32 @@ BOOL VmmWinInit_DTB_FindValidate_X64(_In_ VMM_HANDLE H, _In_ QWORD pa, _In_reads
     return fSelfRef && (cKernelValid >= 6) && (cUserZero > 0x40) && (cKernelZero > 0x40);
 }
 
+_Success_(return)
+BOOL VmmWinInit_DTB_FindValidate_ARM64(_In_ VMM_HANDLE H, _In_ QWORD pa, _In_reads_(0x1000) PBYTE pbPage)
+{
+    DWORD cKernelValid = 0, i;
+    DWORD cUserZero = 0, cKernelZero = 0;
+    QWORD *ptes, paMax;
+    BOOL fSelfRef = FALSE;
+    ptes = (PQWORD)pbPage;
+    paMax = H->dev.paMax;
+    // check for user-mode page table entries:
+    if((0x0060000000000003 != (ptes[0] & 0x0060000000000073)) || ((ptes[0] & 0x0003fffffffff000) > paMax)) { return FALSE; }
+    for(i = 0; i < 256; i++) {      // user-mode
+        if(ptes[i] == 0) { cUserZero++; }
+    }
+    for(i = 256; i < 512; i++) {    // kernel mode: minimum number of entries above 0x800
+        if(ptes[i] == 0) { cKernelZero++; }
+        // check for kernel-mode page table with PP below max physical address
+        if(((ptes[i] & 0x0060000000000071) == 0x0060000000000001) && ((ptes[i] & 0x0003fffffffff000) < paMax)) { cKernelValid++; }
+        // check for self-referential entry
+        if((ptes[i] & 0x0063fffffffff073) == pa + 0x0060000000000003) {
+            fSelfRef = TRUE;
+        }
+    }
+    return fSelfRef && (cKernelValid >= 6) && (cUserZero > 0x40) && (cKernelZero > 0x40);
+}
+
 /*
 * Find and validate the low stub (loaded <1MB if exists). The low stub almost
 * always exists on real hardware. It may be missing on virtual machines though.
@@ -728,19 +804,20 @@ _Success_(return)
 BOOL VmmWinInit_DTB_FindValidate(_In_ VMM_HANDLE H)
 {
     DWORD pa;
-    QWORD paDTB = 0;
+    QWORD paDTB = 0, pa16M;
     PBYTE pb16M;
     if(!(pb16M = LocalAlloc(LMEM_ZEROINIT, 0x01000000))) { return FALSE; }
     // 1: try locate DTB via X64 low stub in lower 1MB -
     //    avoiding normally reserved memory at a0000-fffff.
     LcRead(H->hLC, 0x1000, 0x9f000, pb16M + 0x1000);
-    if(VmmWinInit_DTB_FindValidate_X64_LowStub(H, pb16M)) {
+    if(((H->cfg.tpMemoryModel == VMM_MEMORYMODEL_NA) || (H->cfg.tpMemoryModel == VMM_MEMORYMODEL_X64)) && VmmWinInit_DTB_FindValidate_X64_LowStub(H, pb16M)) {
         VmmInitializeMemoryModel(H, VMM_MEMORYMODEL_X64);
         paDTB = H->vmm.kernel.paDTB;
+        goto finish;
     }
     // 2: try locate DTB by scanning in lower 16MB
     // X64
-    if(!paDTB) {
+    if(!paDTB && ((H->cfg.tpMemoryModel == VMM_MEMORYMODEL_NA) || (H->cfg.tpMemoryModel == VMM_MEMORYMODEL_X64))) {
         for(pa = 0; pa < 0x01000000; pa += 0x1000) {
             if(pa == 0x00100000) {
                 LcRead(H->hLC, 0x00100000, 0x00f00000, pb16M + 0x00100000);
@@ -748,30 +825,49 @@ BOOL VmmWinInit_DTB_FindValidate(_In_ VMM_HANDLE H)
             if(VmmWinInit_DTB_FindValidate_X64(H, pa, pb16M + pa)) {
                 VmmInitializeMemoryModel(H, VMM_MEMORYMODEL_X64);
                 paDTB = pa;
-                break;
+                goto finish;
             }
         }
     }
     // X86-PAE
-    if(!paDTB) {
+    if(!paDTB && ((H->cfg.tpMemoryModel == VMM_MEMORYMODEL_NA) || (H->cfg.tpMemoryModel == VMM_MEMORYMODEL_X86PAE))) {
         for(pa = 0; pa < 0x01000000; pa += 0x1000) {
             if(VmmWinInit_DTB_FindValidate_X86PAE(pa, pb16M + pa)) {
                 VmmInitializeMemoryModel(H, VMM_MEMORYMODEL_X86PAE);
                 paDTB = pa;
-                break;
+                goto finish;
             }
         }
     }
     // X86
-    if(!paDTB) {
+    if(!paDTB && ((H->cfg.tpMemoryModel == VMM_MEMORYMODEL_NA) || (H->cfg.tpMemoryModel == VMM_MEMORYMODEL_X86))) {
         for(pa = 0; pa < 0x01000000; pa += 0x1000) {
             if(VmmWinInit_DTB_FindValidate_X86(pa, pb16M + pa)) {
                 VmmInitializeMemoryModel(H, VMM_MEMORYMODEL_X86);
                 paDTB = pa;
-                break;
+                goto finish;
             }
         }
     }
+    // 3: if ARM64, try locate DTB by scanning up to top of image (slow)
+    if(!paDTB && (H->cfg.tpMemoryModel == VMM_MEMORYMODEL_ARM64)) {
+        VmmLog(H, MID_CORE, LOGLEVEL_WARNING, "Scanning ARM64 image for DirectoryTableBase (DTB)...");
+        VmmLog(H, MID_CORE, LOGLEVEL_WARNING, "  This may take time, use .DMP memory dumps instead of .RAW for ARM64 if possible.");
+        for(pa16M = 0; pa16M < H->dev.paMax; pa16M += 0x01000000) {
+            if(LcRead(H->hLC, pa16M, 0x01000000, pb16M)) {
+                for(pa = 0; pa < 0x01000000; pa += 0x1000) {
+                    if(VmmWinInit_DTB_FindValidate_ARM64(H, pa16M + pa, pb16M + pa)) {
+                        VmmLog(H, MID_CORE, LOGLEVEL_WARNING, "  DTB located. For faster start-up specify: -dtb 0x%llx", pa16M + pa);
+                        VmmInitializeMemoryModel(H, VMM_MEMORYMODEL_ARM64);
+                        paDTB = pa16M + pa;
+                        goto finish;
+                    }
+                }
+            }
+        }
+        VmmLog(H, MID_CORE, LOGLEVEL_WARNING, "  Failed locating DTB.");
+    }
+finish:
     LocalFree(pb16M);
     if(!paDTB) { return FALSE; }
     H->vmm.kernel.paDTB = paDTB;
@@ -790,17 +886,22 @@ BOOL VmmWinInit_DTB_Validate(_In_ VMM_HANDLE H, _In_ QWORD paDTB)
     BYTE pb[0x1000];
     paDTB = paDTB & ~0xfff;
     if(!LcRead(H->hLC, paDTB, 0x1000, pb)) { return FALSE; }
-    if(VmmWinInit_DTB_FindValidate_X64(H, paDTB, pb)) {
+    if(((H->cfg.tpMemoryModel == VMM_MEMORYMODEL_NA) || (H->cfg.tpMemoryModel == VMM_MEMORYMODEL_X64)) && VmmWinInit_DTB_FindValidate_X64(H, paDTB, pb)) {
         VmmInitializeMemoryModel(H, VMM_MEMORYMODEL_X64);
         H->vmm.kernel.paDTB = paDTB;
         return TRUE;
     }
-    if(VmmWinInit_DTB_FindValidate_X86PAE(paDTB, pb)) {
+    if(((H->cfg.tpMemoryModel == VMM_MEMORYMODEL_NA) || (H->cfg.tpMemoryModel == VMM_MEMORYMODEL_ARM64)) && VmmWinInit_DTB_FindValidate_ARM64(H, paDTB, pb)) {
+        VmmInitializeMemoryModel(H, VMM_MEMORYMODEL_ARM64);
+        H->vmm.kernel.paDTB = paDTB;
+        return TRUE;
+    }
+    if(((H->cfg.tpMemoryModel == VMM_MEMORYMODEL_NA) || (H->cfg.tpMemoryModel == VMM_MEMORYMODEL_X86PAE)) && VmmWinInit_DTB_FindValidate_X86PAE(paDTB, pb)) {
         VmmInitializeMemoryModel(H, VMM_MEMORYMODEL_X86PAE);
         H->vmm.kernel.paDTB = paDTB;
         return TRUE;
     }
-    if(VmmWinInit_DTB_FindValidate_X86(paDTB, pb)) {
+    if(((H->cfg.tpMemoryModel == VMM_MEMORYMODEL_NA) || (H->cfg.tpMemoryModel == VMM_MEMORYMODEL_X86)) && VmmWinInit_DTB_FindValidate_X86(paDTB, pb)) {
         VmmInitializeMemoryModel(H, VMM_MEMORYMODEL_X86);
         H->vmm.kernel.paDTB = paDTB;
         return TRUE;
@@ -974,7 +1075,7 @@ QWORD VmmWinInit_FindSystemEPROCESS(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystem
     QWORD i, vaPsInitialSystemProcess, vaSystemEPROCESS;
     // 1: try locate System EPROCESS by PsInitialSystemProcess exported symbol (works on all win versions)
     vaPsInitialSystemProcess = PE_GetProcAddress(H, pSystemProcess, H->vmm.kernel.vaBase, "PsInitialSystemProcess");
-    if(VmmRead(H, pSystemProcess, vaPsInitialSystemProcess, (PBYTE)& vaSystemEPROCESS, 8)) {
+    if(VmmRead(H, pSystemProcess, vaPsInitialSystemProcess, (PBYTE)&vaSystemEPROCESS, 8)) {
         if((VMM_MEMORYMODEL_X86 == H->vmm.tpMemoryModel) || (VMM_MEMORYMODEL_X86PAE == H->vmm.tpMemoryModel)) {
             vaSystemEPROCESS &= 0xffffffff;
         }
@@ -1062,11 +1163,10 @@ BOOL VmmWinInit_TryInitialize(_In_ VMM_HANDLE H, _In_opt_ QWORD paDTBOpt)
 {
     PVMM_PROCESS pObSystemProcess = NULL, pObProcess = NULL;
     // Fetch Directory Base (DTB (PML4)) and initialize Memory Model.
-
-    QWORD vaKERN1 = 0, vaKERN2;
-    LcGetOption(H->hLC, LC_OPT_MEMORYINFO_OS_KERNELBASE, &vaKERN1);
-    LcGetOption(H->hLC, LC_OPT_MEMORYINFO_OS_KERNELHINT, &vaKERN2);
-
+    QWORD qwMemoryModelOpt;
+    if((H->cfg.tpMemoryModel == VMM_MEMORYMODEL_NA) && LcGetOption(H->hLC, LC_OPT_MEMORYINFO_ARCH, &qwMemoryModelOpt)) {
+        H->cfg.tpMemoryModel = (VMM_MEMORYMODEL_TP)qwMemoryModelOpt;
+    }
     if(paDTBOpt && !VmmWinInit_DTB_Validate(H, paDTBOpt)) {
         VmmLog(H, MID_CORE, LOGLEVEL_CRITICAL, "Initialization Failed. Unable to verify user-supplied (0x%016llx) DTB. #1", paDTBOpt);
         goto fail;
@@ -1082,6 +1182,7 @@ BOOL VmmWinInit_TryInitialize(_In_ VMM_HANDLE H, _In_opt_ QWORD paDTBOpt)
     }
     VmmLog(H, MID_CORE, LOGLEVEL_DEBUG, "DTB  located at: %016llx. MemoryModel: %s", H->vmm.kernel.paDTB, VMM_MEMORYMODEL_TOSTRING[H->vmm.tpMemoryModel]);
     // Fetch 'ntoskrnl.exe' base address
+    if(H->fAbort) { goto fail; }
     if(!(pObSystemProcess = VmmWinInit_FindNtosScan(H))) {
         VmmLog(H, MID_CORE, LOGLEVEL_CRITICAL, "Initialization Failed. Unable to locate ntoskrnl.exe. #3");
         goto fail;
@@ -1090,17 +1191,30 @@ BOOL VmmWinInit_TryInitialize(_In_ VMM_HANDLE H, _In_opt_ QWORD paDTBOpt)
     // Initialize Paging (Limited Mode)
     MmWin_PagingInitialize(H, FALSE);
     // Locate System EPROCESS
+    if(H->fAbort) { goto fail; }
     pObSystemProcess->win.EPROCESS.va = VmmWinInit_FindSystemEPROCESS(H, pObSystemProcess);
     if(!pObSystemProcess->win.EPROCESS.va) {
         VmmLog(H, MID_CORE, LOGLEVEL_CRITICAL, "Initialization Failed. Unable to locate EPROCESS. #4");
         goto fail;
     }
     // Enumerate processes
+    if(H->fAbort) { goto fail; }
     if(!VmmWinProcess_Enumerate(H, pObSystemProcess, TRUE, NULL)) {
         VmmLog(H, MID_CORE, LOGLEVEL_CRITICAL, "Initialization Failed. Unable to walk EPROCESS. #5");
         goto fail;
     }
-    H->vmm.tpSystem = (VMM_MEMORYMODEL_X64 == H->vmm.tpMemoryModel) ? VMM_SYSTEM_WINDOWS_X64 : VMM_SYSTEM_WINDOWS_X86;
+    if((H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X64) || (H->vmm.tpMemoryModel == VMM_MEMORYMODEL_ARM64)) {
+        H->vmm.tpSystem = VMM_SYSTEM_WINDOWS_64;
+    } else {
+        H->vmm.tpSystem = VMM_SYSTEM_WINDOWS_32;
+    }
+    // Switch to proper system process and update kernel dtb:
+    Ob_DECREF_NULL(&pObSystemProcess);
+    if(!(pObSystemProcess = VmmProcessGet(H, 4))) {
+        VmmLog(H, MID_CORE, LOGLEVEL_CRITICAL, "Initialization Failed. Unable to load system process. #6");
+        goto fail;
+    }
+    H->vmm.kernel.paDTB = pObSystemProcess->paDTB;
     // Retrieve operating system version information from 'smss.exe' process
     // Optionally retrieve PID of Registry process
     while((pObProcess = VmmProcessGetNext(H, pObProcess, 0))) {
@@ -1117,12 +1231,14 @@ BOOL VmmWinInit_TryInitialize(_In_ VMM_HANDLE H, _In_opt_ QWORD paDTBOpt)
         VmmLog(H, MID_CORE, LOGLEVEL_WARNING, "Initialization Partially Failed. Unsupported build number: %i", H->vmm.kernel.dwVersionBuild);
     }
     // Initialization functionality:
+    if(H->fAbort) { goto fail; }
     InfoDB_Initialize(H);
     PDB_Initialize(H, NULL, !H->cfg.fWaitInitialize);           // Init of PDB subsystem (async/sync).
     VmmWinInit_FindPsLoadedModuleListKDBG(H, pObSystemProcess); // Find PsLoadedModuleList and possibly KDBG.
     VmmWinReg_Initialize(H);                                    // Registry.
     VmmWinInit_TryInitialize_SystemUniqueTag(H);
     // Async Initialization functionality:
+    if(H->fAbort) { goto fail; }
     if(H->cfg.fWaitInitialize) {
         VmmWinInit_TryInitialize_Async(H, 0);                   // synchronous initialization
     } else {

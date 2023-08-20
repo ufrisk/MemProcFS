@@ -113,40 +113,41 @@
 #define CONTAINING_RECORD64(address, type, field)   ((QWORD)(address) - (QWORD)(&((type*)0)->field))
 #define CONTAINING_RECORD32(address, type, field)   ((DWORD)((DWORD)(QWORD)(address) - (DWORD)(QWORD)(&((type *)0)->field)))
 
-static const LPSTR VMM_MEMORYMODEL_TOSTRING[4] = { "N/A", "X86", "X86PAE", "X64" };
+static const LPSTR VMM_MEMORYMODEL_TOSTRING[5] = { "N/A", "X86", "X86PAE", "X64", "ARM64" };
 
 typedef enum tdVMM_MEMORYMODEL_TP {
     VMM_MEMORYMODEL_NA      = 0,
     VMM_MEMORYMODEL_X86     = 1,
     VMM_MEMORYMODEL_X86PAE  = 2,
-    VMM_MEMORYMODEL_X64     = 3
+    VMM_MEMORYMODEL_X64     = 3,
+    VMM_MEMORYMODEL_ARM64   = 4
 } VMM_MEMORYMODEL_TP;
 
 typedef enum tdVMM_SYSTEM_TP {
     VMM_SYSTEM_UNKNOWN_PHYSICAL = 0,
-    VMM_SYSTEM_UNKNOWN_X64      = 1,
-    VMM_SYSTEM_WINDOWS_X64      = 2,
-    VMM_SYSTEM_UNKNOWN_X86      = 3,
-    VMM_SYSTEM_WINDOWS_X86      = 4
+    VMM_SYSTEM_UNKNOWN_64       = 1,
+    VMM_SYSTEM_WINDOWS_64       = 2,
+    VMM_SYSTEM_UNKNOWN_32       = 3,
+    VMM_SYSTEM_WINDOWS_32       = 4
 } VMM_SYSTEM_TP;
 
 static LPCSTR VMM_SYSTEM_TP_STRING[] = {
     [VMM_SYSTEM_UNKNOWN_PHYSICAL] = "Physical",
-    [VMM_SYSTEM_UNKNOWN_X64] = "UnknownX64",
-    [VMM_SYSTEM_WINDOWS_X64] = "WindowsX64",
-    [VMM_SYSTEM_UNKNOWN_X86] = "UnknownX86",
-    [VMM_SYSTEM_WINDOWS_X86] = "WindowsX86",
+    [VMM_SYSTEM_UNKNOWN_64]       = "Unknown 64-bit",
+    [VMM_SYSTEM_WINDOWS_64]       = "Windows 64-bit",
+    [VMM_SYSTEM_UNKNOWN_32]       = "Unknown 32-bit",
+    [VMM_SYSTEM_WINDOWS_32]       = "Windows 32-bit",
 };
 
 typedef enum tdVMM_PTE_TP {
-    VMM_PTE_TP_NA = 0,
-    VMM_PTE_TP_HARDWARE = 1,
-    VMM_PTE_TP_TRANSITION = 2,
-    VMM_PTE_TP_PROTOTYPE = 3,
-    VMM_PTE_TP_DEMANDZERO = 4,
-    VMM_PTE_TP_COMPRESSED = 5,
-    VMM_PTE_TP_PAGEFILE = 6,
-    VMM_PTE_TP_FILE = 7,
+    VMM_PTE_TP_NA           = 0,
+    VMM_PTE_TP_HARDWARE     = 1,
+    VMM_PTE_TP_TRANSITION   = 2,
+    VMM_PTE_TP_PROTOTYPE    = 3,
+    VMM_PTE_TP_DEMANDZERO   = 4,
+    VMM_PTE_TP_COMPRESSED   = 5,
+    VMM_PTE_TP_PAGEFILE     = 6,
+    VMM_PTE_TP_FILE         = 7,
 } VMM_PTE_TP, *PVMM_PTE_TP;
 
 // OBJECT TYPE table exists on Win7+ It's initialized on first use and it will
@@ -273,9 +274,16 @@ typedef struct tdVMM_MAP_VADENTRY {
     QWORD _Reserved2;
 } VMM_MAP_VADENTRY, *PVMM_MAP_VADENTRY;
 
+#define VADEXENTRY_FLAG_HARDWARE      0x01
+#define VADEXENTRY_FLAG_W             0x10
+#define VADEXENTRY_FLAG_K             0x40
+#define VADEXENTRY_FLAG_NX            0x80
+
 typedef struct tdVMM_MAP_VADEXENTRY {
     VMM_PTE_TP tp;
-    DWORD iPML;
+    BYTE iPML;
+    BYTE flags;
+    WORD _Reserved2;
     QWORD va;
     QWORD pa;
     QWORD pte;
@@ -1182,6 +1190,7 @@ typedef struct tdVMM_MEMORYMODEL_FUNCTIONS {
 
 typedef struct tdVMMCONFIG {
     QWORD paCR3;
+    VMM_MEMORYMODEL_TP tpMemoryModel;   // user-set memory model
     DWORD tpForensicMode;               // command line forensic mode
     QWORD qwParentVmmHandle;            // internal use only (option: _vmm_parent)
     // flags below

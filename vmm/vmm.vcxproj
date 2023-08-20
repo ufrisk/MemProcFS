@@ -336,6 +336,7 @@
     <ClInclude Include="modules\modules.h" />
     <ClInclude Include="modules\modules_init.h" />
     <ClInclude Include="ob\ob.h" />
+    <ClInclude Include="ob\ob_tag.h" />
     <ClInclude Include="oscompatibility.h" />
     <ClInclude Include="pdb.h" />
     <ClInclude Include="pe.h" />
@@ -371,6 +372,7 @@
     <ClCompile Include="ext\sqlite3.c" />
     <ClCompile Include="fc.c" />
     <ClCompile Include="infodb.c" />
+    <ClCompile Include="mm\mm_arm64.c" />
     <ClCompile Include="mm\mm_pfn.c" />
     <ClCompile Include="mm\mm_vad.c" />
     <ClCompile Include="mm\mm_win.c" />
@@ -411,6 +413,7 @@
     <ClCompile Include="modules\m_proc_minidump.c" />
     <ClCompile Include="modules\m_proc_thread.c" />
     <ClCompile Include="modules\m_proc_token.c" />
+    <ClCompile Include="modules\m_proc_virt2phys.c" />
     <ClCompile Include="modules\m_search.c" />
     <ClCompile Include="modules\m_searchyara.c" />
     <ClCompile Include="modules\m_sys.c" />
@@ -428,9 +431,9 @@
     <ClCompile Include="modules\m_vfsfc.c" />
     <ClCompile Include="modules\m_vfsproc.c" />
     <ClCompile Include="modules\m_vfsroot.c" />
-    <ClCompile Include="modules\m_virt2phys.c" />
     <ClCompile Include="modules\m_vm.c" />
     <ClCompile Include="modules\m_winreg.c" />
+    <ClCompile Include="ob\ob_bytequeue.c" />
     <ClCompile Include="ob\ob_cachemap.c" />
     <ClCompile Include="ob\ob_compressed.c" />
     <ClCompile Include="ob\ob_container.c" />
@@ -481,6 +484,6 @@
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
   <PropertyGroup>
-    <CAExcludePath>$(ProjectDir)\include;$(CAExcludePath)</CAExcludePath>
+    <CAExcludePath>$(ProjectDir)\include;$(CAExcludePath);$(ProjectDir)\ext;$(CAExcludePath)</CAExcludePath>
   </PropertyGroup>
 </Project>

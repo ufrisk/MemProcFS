@@ -20,4 +20,5 @@ info.db
 Cargo.lock
 /vmmrust/memprocfs/target
 /vmmrust/memprocfs_example/target
+/vmmrust/leechcore_example/target
 /vmmrust/m_example_plugin/target

@@ -7,7 +7,7 @@
 #include "mm.h"
 
 #define MMX86_MEMMAP_DISPLAYBUFFER_LINE_LENGTH      70
-#define MMX86_PTE_IS_TRANSITION(H, pte, iPML)       ((((pte & 0x0c01) == 0x0800) && (iPML == 1) && (H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_X86)) ? ((pte & 0xfffff000) | 0x005) : 0)
+#define MMX86_PTE_IS_TRANSITION(H, pte, iPML)       ((((pte & 0x0c01) == 0x0800) && (iPML == 1) && (H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_32)) ? ((pte & 0xfffff000) | 0x005) : 0)
 #define MMX86_PTE_IS_VALID(pte, iPML)               (pte & 0x01)
 
 /*
@@ -230,6 +230,8 @@ BOOL MmX86_Virt2Phys(_In_ VMM_HANDLE H, _In_ QWORD paPT, _In_ BOOL fUserOnly, _I
 
 VOID MmX86_Virt2PhysVadEx(_In_ VMM_HANDLE H, _In_ QWORD paPT, _Inout_ PVMMOB_MAP_VADEX pVadEx, _In_ BYTE iPML, _Inout_ PDWORD piVadEx)
 {
+    BYTE flags;
+    PVMM_MAP_VADEXENTRY peVadEx;
     DWORD pte, iPte, iVadEx;
     PVMMOB_CACHE_MEM pObPTEs = NULL;
     if(iPML == (BYTE)-1) { iPML = 2; }
@@ -239,7 +241,9 @@ VOID MmX86_Virt2PhysVadEx(_In_ VMM_HANDLE H, _In_ QWORD paPT, _Inout_ PVMMOB_MAP
     }
 next_entry:
     iVadEx = *piVadEx;
-    iPte = 0x3ff & (pVadEx->pMap[iVadEx].va >> MMX86_PAGETABLEMAP_PML_REGION_SIZE[iPML]);
+    peVadEx = &pVadEx->pMap[iVadEx];
+    peVadEx->flags = 0;
+    iPte = 0x3ff & (peVadEx->va >> MMX86_PAGETABLEMAP_PML_REGION_SIZE[iPML]);
     pte = pObPTEs->pdw[iPte];
     if(!MMX86_PTE_IS_VALID(pte, iPML)) { goto next_check; } // NOT VALID
     if(!(pte & 0x04)) { goto next_check; }                  // SUPERVISOR PAGE & USER MODE REQ
@@ -248,18 +252,23 @@ next_entry:
         Ob_DECREF(pObPTEs);
         return;
     }
+    flags = VADEXENTRY_FLAG_HARDWARE;
+    flags |= (pte & VMM_MEMMAP_PAGE_W) ? VADEXENTRY_FLAG_W : 0;
+    flags |= (pte & VMM_MEMMAP_PAGE_NS) ? 0 : VADEXENTRY_FLAG_K;
     if(iPML == 1) {                     // 4kB PAGE
-        pVadEx->pMap[iVadEx].pa = pte & 0xfffff000;
-        pVadEx->pMap[iVadEx].tp = VMM_PTE_TP_HARDWARE;
+        peVadEx->flags = flags;
+        peVadEx->pa = pte & 0xfffff000;
+        peVadEx->tp = VMM_PTE_TP_HARDWARE;
     } else if(!(pte & 0x003e0000)) {    // 4MB PAGE
-        pVadEx->pMap[iVadEx].pa = (((QWORD)(pte & 0x0001e000)) << (32 - 13)) + (pte & 0xffc00000) + (pVadEx->pMap[iVadEx].va & 0x003ff000);
-        pVadEx->pMap[iVadEx].tp = VMM_PTE_TP_HARDWARE;
+        peVadEx->flags = flags;
+        peVadEx->pa = (((QWORD)(pte & 0x0001e000)) << (32 - 13)) + (pte & 0xffc00000) + (peVadEx->va & 0x003ff000);
+        peVadEx->tp = VMM_PTE_TP_HARDWARE;
     }
 next_check:
-    pVadEx->pMap[iVadEx].pte = pte;
-    pVadEx->pMap[iVadEx].iPML = iPML;
+    peVadEx->pte = pte;
+    peVadEx->iPML = iPML;
     *piVadEx = *piVadEx + 1;
-    if((iPML == 1) && (iPte < 0x3ff) && (iVadEx + 1 < pVadEx->cMap) && (pVadEx->pMap[iVadEx].va + 0x1000 == pVadEx->pMap[iVadEx + 1].va)) { goto next_entry; }
+    if((iPML == 1) && (iPte < 0x3ff) && (iVadEx + 1 < pVadEx->cMap) && (peVadEx->va + 0x1000 == pVadEx->pMap[iVadEx + 1].va)) { goto next_entry; }
     Ob_DECREF(pObPTEs);
 }
 

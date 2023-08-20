@@ -43,7 +43,7 @@ NTSTATUS MemMap_Read_VadExMap2(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _I
 {
     NTSTATUS nt;
     LPSTR sz;
-    QWORD qwHwPte;
+    BOOL fPteA;
     DWORD i, iPage, cPage;
     QWORD o = 0, cbMax, cbLINELENGTH;
     PVMMOB_MAP_VADEX pObMap = NULL;
@@ -60,8 +60,8 @@ NTSTATUS MemMap_Read_VadExMap2(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _I
     for(i = 0; i < pObMap->cMap; i++) {
         pex = pObMap->pMap + i;
         pVad = pex->peVad;
-        qwHwPte = (pex->tp == VMM_PTE_TP_HARDWARE) ? pex->pte : 0;
         MmVad_StrProtectionFlags(pVad, szProtection);
+        fPteA = pex->flags & VADEXENTRY_FLAG_HARDWARE;
         o += Util_usnprintf_ln(
             sz + o,
             cbLINELENGTH,
@@ -72,9 +72,9 @@ NTSTATUS MemMap_Read_VadExMap2(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _I
             pex->pa,
             pex->pte,
             MmVadEx_StrType(pex->tp),
-            qwHwPte ? 'r' : '-',
-            (qwHwPte & VMM_MEMMAP_PAGE_W) ? 'w' : '-',
-            (!qwHwPte || (qwHwPte & VMM_MEMMAP_PAGE_NX)) ? '-' : 'x',
+            fPteA ? 'r' : '-',
+            (fPteA && (pex->flags & VADEXENTRY_FLAG_W)) ? 'w' : '-',
+            (!fPteA || (pex->flags & VADEXENTRY_FLAG_NX)) ? '-' : 'x',
             pVad->vaVad,
             pex->proto.pa,
             pex->proto.pte,
@@ -318,7 +318,7 @@ VOID MemMap_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ 
 VOID M_ProcMemMap_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
-    if(!((pRI->tpMemoryModel == VMM_MEMORYMODEL_X64) || (pRI->tpMemoryModel == VMM_MEMORYMODEL_X86) || (pRI->tpMemoryModel == VMM_MEMORYMODEL_X86PAE))) { return; }
+    if(!((pRI->tpMemoryModel == VMM_MEMORYMODEL_X64) || (pRI->tpMemoryModel == VMM_MEMORYMODEL_ARM64) || (pRI->tpMemoryModel == VMM_MEMORYMODEL_X86) || (pRI->tpMemoryModel == VMM_MEMORYMODEL_X86PAE))) { return; }
     strcpy_s(pRI->reg_info.uszPathName, 128, "\\memmap");               // module name
     pRI->reg_info.fRootModule = FALSE;                                  // module shows in root directory
     pRI->reg_info.fProcessModule = TRUE;                                // module shows in process directory

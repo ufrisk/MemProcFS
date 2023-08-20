@@ -10,7 +10,7 @@
 # (c) Ulf Frisk, 2021-2023
 # Author: Ulf Frisk, pcileech@frizk.net
 #
-# Header Version: 5.7
+# Header Version: 5.8
 #
 
 try:
@@ -241,6 +241,7 @@ MEMORYMODEL_NA                        = 0x0000
 MEMORYMODEL_X86                       = 0x0001
 MEMORYMODEL_X86PAE                    = 0x0002
 MEMORYMODEL_X64                       = 0x0003
+MEMORYMODEL_ARM64                     = 0x0004
 
 # NOTIFY EVENT values - received by the notify callback function for specific
 # events occuring in the native plugin manager / VMM / MemProcFS.
@@ -276,6 +277,7 @@ OPT_CORE_VERBOSE                      = 0x4000000200000000  # RW
 OPT_CORE_VERBOSE_EXTRA                = 0x4000000300000000  # RW
 OPT_CORE_VERBOSE_EXTRA_TLP            = 0x4000000400000000  # RW
 OPT_CORE_MAX_NATIVE_ADDRESS           = 0x4000000800000000  # R
+OPT_CORE_LEECHCORE_HANDLE             = 0x4000001000000000  # R - underlying leechcore handle (do not close).
 
 OPT_CORE_SYSTEM                       = 0x2000000100000000  # R
 OPT_CORE_MEMORYMODEL                  = 0x2000000200000000  # R

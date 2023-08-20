@@ -171,6 +171,9 @@
     <ClInclude Include="vmmuserconfig.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="ob\ob_tag.h">
+      <Filter>Source Files\ob</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="vmmdll.c">
@@ -419,9 +422,6 @@
     <ClCompile Include="modules\m_vfsroot.c">
       <Filter>Source Files\modules</Filter>
     </ClCompile>
-    <ClCompile Include="modules\m_virt2phys.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
     <ClCompile Include="modules\m_vm.c">
       <Filter>Source Files\modules</Filter>
     </ClCompile>
@@ -475,6 +475,15 @@
     </ClCompile>
     <ClCompile Include="vmmdll_remote.c">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="mm\mm_arm64.c">
+      <Filter>Source Files\mm</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_proc_virt2phys.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="ob\ob_bytequeue.c">
+      <Filter>Source Files\ob</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
