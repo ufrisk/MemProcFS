@@ -210,11 +210,11 @@ public interface ILeechCore
 	public static final long LC_CMD_FPGA_TLP_CONTEXT_RD                  = 0x2000011b00000000L;  // R - get TLP user-defined context to be passed to callback function. [not remote].
 	public static final long LC_CMD_FPGA_TLP_FUNCTION_CALLBACK           = 0x2000011500000000L;  // W - set/unset TLP callback function (pbDataIn == PLC_TLP_CALLBACK). [not remote].
 	public static final long LC_CMD_FPGA_TLP_FUNCTION_CALLBACK_RD        = 0x2000011c00000000L;  // R - get TLP callback function. [not remote].
-	public static final long LC_CMD_FPGA_BAR_CONTEXT                     = 0x2000011800000000L;  // W - set/unset BAR user-defined context to be passed to callback function. (pbDataIn == LPVOID user context). [not remote].
-	public static final long LC_CMD_FPGA_BAR_CONTEXT_RD                  = 0x2000011d00000000L;  // R - get BAR user-defined context to be passed to callback function. [not remote].
-	public static final long LC_CMD_FPGA_BAR_FUNCTION_CALLBACK           = 0x2000011900000000L;  // W - set/unset BAR callback function (pbDataIn == PLC_BAR_CALLBACK). [not remote].
-	public static final long LC_CMD_FPGA_BAR_FUNCTION_CALLBACK_RD        = 0x2000011e00000000L;  // R - get BAR callback function. [not remote].
-	public static final long LC_CMD_FPGA_BAR_INFO                        = 0x0000011a00000000L;  // R - get BAR info (pbDataOut == LC_BAR_INFO[6]).
+	public static final long LC_CMD_FPGA_BAR_CONTEXT                     = 0x2000012000000000L;  // W - set/unset BAR user-defined context to be passed to callback function. (pbDataIn == LPVOID user context). [not remote].
+	public static final long LC_CMD_FPGA_BAR_CONTEXT_RD                  = 0x2000012100000000L;  // R - get BAR user-defined context to be passed to callback function. [not remote].
+	public static final long LC_CMD_FPGA_BAR_FUNCTION_CALLBACK           = 0x2000012200000000L;  // W - set/unset BAR callback function (pbDataIn == PLC_BAR_CALLBACK). [not remote].
+	public static final long LC_CMD_FPGA_BAR_FUNCTION_CALLBACK_RD        = 0x2000012300000000L;  // R - get BAR callback function. [not remote].
+	public static final long LC_CMD_FPGA_BAR_INFO                        = 0x0000012400000000L;  // R - get BAR info (pbDataOut == LC_BAR_INFO[6]).
 
 
 	public static final long LC_CMD_FILE_DUMPHEADER_GET                  = 0x0000020100000000L;  // R

@@ -355,6 +355,7 @@ public class LeechCoreImpl implements ILeechCore
 						LeechCoreNative.LC_BAR nbar = new LeechCoreNative.LC_BAR(n.pBar);
 						LeechCoreBar bar = new LeechCoreBar();
 						bar.fValid = nbar.fValid;
+						bar.fIO = nbar.fIO;
 						bar.f64Bit = nbar.f64Bit;
 						bar.fPrefetchable = nbar.fPrefetchable;
 						bar.iBar = nbar.iBar;

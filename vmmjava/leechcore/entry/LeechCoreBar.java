@@ -8,8 +8,9 @@ import java.io.Serializable;
  */
 public class LeechCoreBar implements Serializable
 {
-	private static final long serialVersionUID = -8552459732654567238L;
+	private static final long serialVersionUID = -8552459732654567239L;
 	public boolean fValid;
+	public boolean fIO;
 	public boolean f64Bit;
 	public boolean fPrefetchable;
 	public int iBar;

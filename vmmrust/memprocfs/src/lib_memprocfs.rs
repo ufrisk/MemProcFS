@@ -3684,6 +3684,8 @@ pub struct LeechCore {
 pub struct LcBar {
     /// BAR is valid.
     pub is_valid : bool,
+    /// BAR is I/O.
+    pub is_io : bool,
     /// BAR is 64-bit.
     pub is_64bit : bool,
     /// BAR is prefetchable.
@@ -3757,7 +3759,6 @@ pub struct LcBarContext<'a, T> {
 }
 
 /// PCIe BAR wrapper context - returned to the caller of the BAR enable function.
-/// The BAR callback is shut down / closed when this struct is dropped.
 pub struct LcBarContextWrap<'a, T> {
     /// Access to the underlying context.
     pub ctx     : &'a LcBarContext::<'a, T>,
@@ -3795,7 +3796,6 @@ pub struct LcTlpContext<'a, T> {
 }
 
 /// PCIe TLP wrapper context - returned to the caller of the TLP enable function.
-/// The TLP callback is shut down / closed when this struct is dropped.
 pub struct LcTlpContextWrap<'a, T> {
     /// Access to the underlying context.
     pub ctx     : &'a LcTlpContext::<'a, T>,
@@ -4032,15 +4032,15 @@ impl LeechCore {
     /// LeechCore command: FPGA get TLP callback function [not remote] [R].
     pub const LC_CMD_FPGA_TLP_FUNCTION_CALLBACK_RD      : u64 = 0x2000011c00000000;
     /// LeechCore command: FPGA set/unset BAR user-defined context to be passed to callback function. [not remote] [W].
-    pub const LC_CMD_FPGA_BAR_CONTEXT                   : u64 = 0x2000011800000000;
+    pub const LC_CMD_FPGA_BAR_CONTEXT                   : u64 = 0x2000012000000000;
     /// LeechCore command: FPGA get BAR user-defined context to be passed to callback function [not remote] [R].
-    pub const LC_CMD_FPGA_BAR_CONTEXT_RD                : u64 = 0x2000011d00000000;
+    pub const LC_CMD_FPGA_BAR_CONTEXT_RD                : u64 = 0x2000012100000000;
     /// LeechCore command: FPGA set/unset BAR callback function [not remote] [W].
-    pub const LC_CMD_FPGA_BAR_FUNCTION_CALLBACK         : u64 = 0x2000011900000000;
+    pub const LC_CMD_FPGA_BAR_FUNCTION_CALLBACK         : u64 = 0x2000012200000000;
     /// LeechCore command: FPGA get BAR callback function [not remote] [R].
-    pub const LC_CMD_FPGA_BAR_FUNCTION_CALLBACK_RD      : u64 = 0x2000011e00000000;
+    pub const LC_CMD_FPGA_BAR_FUNCTION_CALLBACK_RD      : u64 = 0x2000012300000000;
     /// LeechCore command: FPGA BAR info. (pbDataOut == LC_BAR_INFO[6]) [R].
-    pub const LC_CMD_FPGA_BAR_INFO                      : u64 = 0x0000011a00000000;
+    pub const LC_CMD_FPGA_BAR_INFO                      : u64 = 0x0000012400000000;
     /// LeechCore command: Get the dump file header [R].
     pub const LC_CMD_FILE_DUMPHEADER_GET                : u64 = 0x0000020100000000;
     /// LeechCore command: Get statistics [R].
@@ -8396,6 +8396,7 @@ impl LeechCore {
                 result[i] = LcBar {
                     bar_index : ne.iBar,
                     is_valid : ne.fValid != 0,
+                    is_io : ne.fIO != 0,
                     is_64bit : ne.f64Bit != 0,
                     is_prefetchable : ne.fPrefetchable != 0,
                     pa : ne.pa,
@@ -8495,6 +8496,7 @@ impl LeechCore {
             let bar = LcBar {
                 bar_index : ne.iBar,
                 is_valid : ne.fValid != 0,
+                is_io : ne.fIO != 0,
                 is_64bit : ne.f64Bit != 0,
                 is_prefetchable : ne.fPrefetchable != 0,
                 pa : ne.pa,
@@ -8565,8 +8567,10 @@ struct CLC_CONFIG {
 #[allow(non_snake_case, non_camel_case_types)]
 struct CLC_BAR {
     fValid : u32,
+    fIO : u32,
     f64Bit : u32,
     fPrefetchable : u32,
+    _Filler : [u32; 3],
     iBar : u32,
     pa : u64,
     cb : u64,

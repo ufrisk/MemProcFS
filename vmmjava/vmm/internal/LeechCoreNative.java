@@ -47,11 +47,15 @@ interface LeechCoreNative extends Library {
 		void invoke(int ctxNative, int cbTlp, Pointer pbTlp, int cbInfo, String szInfo);
 	}
 	
-	@Structure.FieldOrder({"fValid", "f64Bit", "fPrefetchable", "iBar", "pa", "cb"})
+	@Structure.FieldOrder({"fValid", "fIO", "f64Bit", "fPrefetchable", "iBar", "_Filler0", "_Filler1", "_Filler2", "pa", "cb"})
 	class LC_BAR extends Structure {
 		public boolean fValid;
+		public boolean fIO;
 		public boolean f64Bit;
 		public boolean fPrefetchable;
+		public int _Filler0;
+		public int _Filler1;
+		public int _Filler2;
 		public int iBar;
 		public long pa;
 		public long cb;
