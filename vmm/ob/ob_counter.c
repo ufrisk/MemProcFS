@@ -200,6 +200,27 @@ VOID _ObCounter_Remove(_In_ POB_COUNTER pm, _In_ DWORD iEntry)
     pm->c--;
 }
 
+/*
+* Clear the ObCounter by removing all counts and keys.
+* NB! underlying allocated memory will remain unchanged.
+* -- pm
+* -- return = clear was successful - always true.
+*/
+_Success_(return)
+BOOL ObCounter_Clear(_In_opt_ POB_COUNTER pc)
+{
+    if(!OB_COUNTER_IS_VALID(pc) || (pc->c <= 1)) { return TRUE; }
+    AcquireSRWLockExclusive(&pc->LockSRW);
+    if(pc->c <= 1) {
+        ReleaseSRWLockExclusive(&pc->LockSRW);
+        return TRUE;
+    }
+    ZeroMemory(pc->pHashMapKey, 4ULL * pc->cHashMax);
+    pc->c = 1;  // item zero is reserved - hence the initialization of count to 1
+    ReleaseSRWLockExclusive(&pc->LockSRW);
+    return TRUE;
+}
+
 
 
 //-----------------------------------------------------------------------------

@@ -10,18 +10,19 @@
 //
 
 #include "modules.h"
+#include "../vmmwinobj.h"
 
-#define M_NTFS_INFO_LINELENGTH_UTF8          98
-#define M_NTFS_INFO_LINELENGTH_JSON          98
+#define M_NTFS_INFO_LINELENGTH_UTF8          104
+#define M_NTFS_INFO_LINELENGTH_JSON          104
 
 static LPSTR FC_SQL_SCHEMA_NTFS =
-    "DROP VIEW IF EXISTS v_ntfs; " \
-    "DROP TABLE IF EXISTS ntfs; " \
-    "CREATE TABLE ntfs ( id INTEGER PRIMARY KEY, id_parent INTEGER, id_str INTEGER, hash INTEGER, hash_parent INTEGER, addr_phys INTEGER, inode INTEGER, mft_flags INTEGER, depth INTEGER, size_file INTEGER, size_fileres INTEGER, time_create INTEGER, time_modify INTEGER, time_read INTEGER, name_seq INTEGER, oln_u INTEGER, oln_j INTEGER );" \
-    "CREATE INDEX idx_ntfs_hash ON ntfs(hash); " \
-    "CREATE INDEX idx_ntfs_hash_parent ON ntfs(hash_parent); " \
-    "CREATE INDEX idx_ntfs_oln_u ON ntfs(oln_u); " \
-    "CREATE VIEW v_ntfs AS SELECT * FROM ntfs, str WHERE ntfs.id_str = str.id; ";
+"DROP VIEW IF EXISTS v_ntfs; " \
+"DROP TABLE IF EXISTS ntfs; " \
+"CREATE TABLE ntfs ( id INTEGER PRIMARY KEY, id_parent INTEGER, id_str INTEGER, hash INTEGER, hash_parent INTEGER, addr_phys INTEGER, inode INTEGER, inode_parent INTEGER, flags INTEGER, size_file INTEGER, time_create INTEGER, time_modify INTEGER, time_read INTEGER, name_seq INTEGER, oln_u INTEGER, oln_j INTEGER );" \
+"CREATE INDEX idx_ntfs_hash ON ntfs(hash); " \
+"CREATE INDEX idx_ntfs_hash_parent ON ntfs(hash_parent); " \
+"CREATE INDEX idx_ntfs_oln_u ON ntfs(oln_u); " \
+"CREATE VIEW v_ntfs AS SELECT * FROM ntfs, str WHERE ntfs.id_str = str.id; ";
 
 //-----------------------------------------------------------------------------
 // NTFS MFT WINDOWS DEFINES AND TYPEDEFS BELOW:
@@ -48,6 +49,28 @@ typedef struct tdNTFS_FILE_RECORD {
     WORD    _Pad;                       // +02a
     DWORD   MftRecordNumber;            // +02c : mft record id
 } NTFS_FILE_RECORD, *PNTFS_FILE_RECORD;
+
+typedef struct tdNTFS_INDEX_RECORD {
+    DWORD   Signature;                  // +000 : signature 'INDX'
+    WORD    UpdateSequenceArrayOffset;  // +004 : (most common 0x28)
+    WORD    UpdateSequenceArraySize;    // +006
+    QWORD   LogFileSequenceNumber;      // +008
+    QWORD   VCN;                        // +010 : virtual cluster number
+    DWORD   IndexEntryFirstOffset;      // +018
+    DWORD   IndexEntryTotalSize;        // +01c
+    DWORD   AllocatedSize;              // +020
+    BYTE    IndexEntryNonLeafFlag;      // +024
+    BYTE    _Pad[3];                    // +025
+} NTFS_INDEX_RECORD, *PNTFS_INDEX_RECORD;
+
+typedef struct tdNTFS_INDEX_ENTRY {
+    NTFS_REF FileReference;             // +000
+    WORD    Length;                     // +008
+    WORD    StreamLength;               // +00a
+    BYTE    Flags;                      // +00c
+    BYTE    _Pad[3];                    // +00d
+    BYTE    Stream[0];                  // +010
+} NTFS_INDEX_ENTRY, *PNTFS_INDEX_ENTRY;
 
 #define NTFS_FILE_RECORD_FLAG_ACTIVE            0x0001
 #define NTFS_FILE_RECORD_FLAG_DIRECTORY         0x0002
@@ -176,235 +199,499 @@ typedef struct tdNTFS_FILE_NAME {
 // NTFS INTERNAL DEFINES AND TYPEDEFS BELOW:
 //-----------------------------------------------------------------------------
 
-typedef struct tdFCNTFS {
-    QWORD pa;
-    QWORD va;
+#define FCNTFS2_FLAG_ACTIVE             0x0001
+#define FCNTFS2_FLAG_DIRECTORY          0x0002
+#define FCNTFS2_FLAG_RESIDENT           0x0004
+#define FCNTFS2_FLAG_ADS                0x0008
+
+#define FCNTFS2_FLAG_SOURCE_SYNTHETIC   0x0800
+#define FCNTFS2_FLAG_SOURCE_PMEM_MFT    0x1000
+#define FCNTFS2_FLAG_SOURCE_PMEM_DIR    0x2000
+#define FCNTFS2_FLAG_SOURCE_FILE_MFT    0x4000
+#define FCNTFS2_FLAG_SOURCE_FILE_DIR    0x8000
+
+typedef struct tdFCNTFS2 {
+    union {
+        QWORD qwKey;
+        struct {
+            DWORD dwMftRecordNumber;    // MFT record number.
+            WORD _Filler1;
+            WORD wRecordNumberIndex;    // multiple filesystems will lead to record# collisions.
+        };
+    };
+    DWORD dwParentMftRecordNumber;
+    WORD flags;
+    WORD wVolumeId;                 // 0 = default/unknown, 1..n = device counter id.
+    WORD wMftSequenceNumber;
+    WORD wParentMftSequenceNumber;
+    QWORD paRecord;
     QWORD ftCreate;
     QWORD ftModify;
     QWORD ftRead;
     QWORD cbFileSize;
-    DWORD dwMftRecordNumber;
-    BOOL fSynthenticDir;                // fake "synthentic" directory
-    BOOL fRootDir;
-    BOOL fActive;
-    BOOL fDir;
-    WORD Flags;
-    WORD cbFileSizeMftResident;
-    WORD wMftSequenceNumber;
-    // setup data
-    struct {
-        DWORD dwParentRecordNumber;
-        WORD  wParentSeqenceNumber;
-        struct tdFCNTFS *pNextDir;      // next directory with same RecordNumber (in case of multiple)
-    } Setup;
-    struct tdFCNTFS *pParent;           // parent entry [not counted as reference]
-    struct tdFCNTFS *pChild;            // 1st child entry [not counted as reference]
-    struct tdFCNTFS *pSibling;          // sibling entry list [not counted as reference]
-    QWORD qwHashThis;
+    DWORD cChild;
+    struct tdFCNTFS2 *pParent;          // parent entry
+    struct tdFCNTFS2 *pChild;           // 1st child entry
+    struct tdFCNTFS2 *pSibling;         // sibling entry list
+    QWORD qwDbId;
+    QWORD qwHashPath;
+    DWORD dwHashName;
     WORD wName_SeqNbr;                  // collision counter for wszName (in same directory)
-    WORD iDirDepth;                     // directory depth from GlobalRoot
-    DWORD iMap;                         // index (after setup)
-    // initial general create attributes - name
+    WORD wDirDepth;                     // directory depth
     CHAR uszName[0];
-} FCNTFS, *PFCNTFS;
+} FCNTFS2, *PFCNTFS2;
 
-typedef struct tdFCNTFS_SETUP_CONTEXT {
-    POB_MAP pmDuplicate;    // duplicate checks
-    POB_SET psRoot;         // root '.' entries
-    POB_SET psDirFile;      // non-root entries
-    POB_MAP pmDir;          // directory map
-    POB_SET psOrphan;       // orphan entries
-} FCNTFS_SETUP_CONTEXT, *PFCNTFS_SETUP_CONTEXT;
+typedef struct tdFCNTFS2_VOLUME {
+    WORD wId;
+    DWORD dwNextOrphan;
+    QWORD vaDevice;
+    PFCNTFS2 pRoot;
+    PFCNTFS2 pOrphan;
+    BYTE uszVolumeName[MAX_PATH];
+} FCNTFS2_VOLUME, *PFCNTFS2_VOLUME;
 
-typedef struct tdFCNTFS_FINALIZE_CONTEXT {
+typedef struct tdOB_FCNTFS2_INIT_CONTEXT {
+    OB ObHdr;
+    VMMDLL_MODULE_ID MID;
+    BOOL fLogTrace;
+    POB_MAP pmMft;          // MFT record number + index (owns reference to PFCNTFS2)
+    POB_MAP pmVolume;       // Volume ID (owns reference to PFCNTFS2_VOLUME)
+    POB_MAP pmDuplicate;    // duplicate check
+    WORD wNextVolumeId;
+    PBYTE pb1M;
+    DWORD cVolumes;
+    PFCNTFS2_VOLUME pVolumes;
+} OB_FCNTFS2_INIT_CONTEXT, *POB_FCNTFS2_INIT_CONTEXT;
+
+typedef struct tdFCNTFS2_FINALIZE_CONTEXT {
     sqlite3 *hSql;
     sqlite3_stmt *st;
     sqlite3_stmt *st_str;
     QWORD cbUtf8Total;
     QWORD cbJsonTotal;
-} FCNTFS_FINALIZE_CONTEXT, *PFCNTFS_FINALIZE_CONTEXT;
+    QWORD qwNextDbId;
+} FCNTFS2_FINALIZE_CONTEXT, *PFCNTFS2_FINALIZE_CONTEXT;
 
-
-
-//-----------------------------------------------------------------------------
-// NTFS MFT ANALYSIS / INITIALIZATION FUNCTIONALITY BELOW:
-// The NTFS MFT analysis heavily builds upon the analysis of physical memory
-// which is analyzed page-by-page as the forensic sub-system is doing its
-// physical memory scan. The results of the NTFS MFT entries gathered during
-// the physical memory scan phase is then analyzed and pieced together using
-// a best-effort algorithm into somewhat valid file systems.
-// NB! artifacts will be missing from memory and best-effort guesses will be
-//     made. This may result in files/directories being missed or assembled
-//     towards another file system. Manual analysis of the MFT entries are
-//     recommended for more correct forensics.
-// NB! the code below is somewhat messy and should be cleaned up; but it's
-//     working at the moment and provides the functionality needed.
-//-----------------------------------------------------------------------------
+#define FCNTFS2_DUPLICATE_CHECK_FILE_RECORD(dwMftRecordNumber, ftCreate, ftModify, ftRead)      (((QWORD)(dwMftRecordNumber) << 32) ^ (dwMftRecordNumber) ^ (ftCreate) ^ (ftModify) ^ (ftRead))
 
 /*
-* Close and clean up PFCNTFS_SETUP_CONTEXT.
-* -- ctx
+* Push the pNt entry to the internal context (if possible).
 */
-VOID FcNtfs_Close(_Frees_ptr_opt_ PFCNTFS_SETUP_CONTEXT ctx)
+_Success_(return)
+BOOL FcNtfs2_IngestPushEntry(_In_ VMM_HANDLE H, _In_ POB_FCNTFS2_INIT_CONTEXT ctx, _In_ PFCNTFS2 pNt, _In_opt_ PNTFS_FILE_NAME pfn)
 {
-    if(ctx) {
-        Ob_DECREF(ctx->pmDuplicate);
-        Ob_DECREF(ctx->psRoot);
-        Ob_DECREF(ctx->psDirFile);
-        Ob_DECREF(ctx->pmDir);
-        Ob_DECREF(ctx->psOrphan);
-        LocalFree(ctx);
+    BOOL fResult = TRUE;
+    QWORD qwKey;
+    if((pNt->dwMftRecordNumber == 5) && !(pNt->flags & FCNTFS2_FLAG_SOURCE_SYNTHETIC)) { return FALSE; }
+    if(!pNt->dwParentMftRecordNumber && !(pNt->flags & FCNTFS2_FLAG_SOURCE_SYNTHETIC)) { return FALSE; }
+    while(!ObMap_Push(ctx->pmMft, pNt->qwKey, pNt)) {
+        if(pNt->wRecordNumberIndex == 0xffff) {
+            fResult = FALSE;
+            break;
+        }
+        pNt->wRecordNumberIndex++;
+    }
+    if(fResult) {
+        qwKey = FCNTFS2_DUPLICATE_CHECK_FILE_RECORD(pNt->dwMftRecordNumber, pNt->ftCreate, pNt->ftModify, pNt->ftRead);
+        ObMap_Push(ctx->pmDuplicate, qwKey, pNt);
+        if(pfn) {
+            qwKey = FCNTFS2_DUPLICATE_CHECK_FILE_RECORD(pNt->dwMftRecordNumber, pfn->TimeCreate, pfn->TimeModify, pfn->TimeRead);
+            ObMap_Push(ctx->pmDuplicate, qwKey, (PVOID)((SIZE_T)pNt | 1));
+        }
+    }
+    if(ctx->fLogTrace) {
+        VmmLog(H, ctx->MID, LOGLEVEL_6_TRACE, "  %08x %08x %12llx %04x %2x%12llx %04x %c%c%c%c%c%c %s",
+            pNt->dwMftRecordNumber,
+            pNt->dwParentMftRecordNumber,
+            pNt->paRecord,
+            pNt->wRecordNumberIndex,
+            pNt->wVolumeId,
+            pNt->cbFileSize,
+            pNt->flags,
+            fResult ? ' ' : '!',
+            (pNt->flags & FCNTFS2_FLAG_ACTIVE) ? 'A' : ' ',
+            (pNt->flags & FCNTFS2_FLAG_DIRECTORY) ? 'D' : ' ',
+            (pNt->flags & FCNTFS2_FLAG_ADS) ? 'S' : ' ',
+            ((pNt->flags & FCNTFS2_FLAG_SOURCE_PMEM_DIR) || (pNt->flags & FCNTFS2_FLAG_SOURCE_PMEM_MFT)) ? 'P' : ' ',
+            ((pNt->flags & FCNTFS2_FLAG_SOURCE_FILE_DIR) || (pNt->flags & FCNTFS2_FLAG_SOURCE_PMEM_DIR)) ? 'I' : ' ',
+            pNt->uszName
+        );
+    }
+    return fResult;
+}
+
+/*
+* Push a synthetic directory to the internal context.
+* This context must not be free'd by the caller - ctx->pmMft will take care of it.
+*/
+_Success_(return != 0)
+PFCNTFS2 FcNtfs2_IngestPushEntrySynthetic(_In_ VMM_HANDLE H, _In_ POB_FCNTFS2_INIT_CONTEXT ctx, _In_ DWORD dwMftRecordNumber, _In_opt_ PFCNTFS2 pNtParent, _In_ WORD wVolumeId, _In_ DWORD dwId)
+{
+    DWORD cbId;
+    CHAR szId[16];
+    PFCNTFS2 pNt;
+    if(dwId == 0xffffffff) {
+        cbId = (DWORD)_snprintf_s(szId, sizeof(szId), _TRUNCATE, "$_ORPHAN") + 1;
+    } else {
+        cbId = (DWORD)_snprintf_s(szId, sizeof(szId), _TRUNCATE, "%u", dwId) + 1;
+    }
+    if(!(pNt = LocalAlloc(LMEM_ZEROINIT, sizeof(FCNTFS2) + cbId))) { return NULL; }
+    pNt->dwMftRecordNumber = dwMftRecordNumber;
+    pNt->dwParentMftRecordNumber = pNtParent ? pNtParent->dwMftRecordNumber : 0;
+    pNt->wVolumeId = wVolumeId;
+    pNt->flags = FCNTFS2_FLAG_ACTIVE | FCNTFS2_FLAG_DIRECTORY | FCNTFS2_FLAG_SOURCE_SYNTHETIC;
+    memcpy(pNt->uszName, szId, cbId);
+    if(FcNtfs2_IngestPushEntry(H, ctx, pNt, NULL)) {
+        if(pNtParent) {
+            pNt->pParent = pNtParent;
+            pNt->pSibling = pNtParent->pChild;
+            pNtParent->pChild = pNt;
+            pNtParent->cChild++;
+        }
+        return pNt;
+    } else {
+        LocalFree(pNt);
+        return NULL;
     }
 }
 
 /*
-* Finalize the NTFS setup/initialization phase. Close/Clear any allocated contexts.
-* -- H
-* -- ctxfc
+* Try ingest a Index Entry
 */
-VOID FcNtfs_Finalize(_In_ VMM_HANDLE H, _In_opt_ PVOID ctxfc)
+VOID FcNtfs2_IngestIndexEntry(_In_ VMM_HANDLE H, _In_ POB_FCNTFS2_INIT_CONTEXT ctx, _In_ PNTFS_INDEX_RECORD pIR, _In_ PNTFS_INDEX_ENTRY pIE, _In_ WORD wVolumeId, _In_ WORD wFlagsSource)
 {
-    FcNtfs_Close((PFCNTFS_SETUP_CONTEXT)ctxfc);
-}
-
-/*
-* Initialize a new empty PFCNTFS_SETUP_CONTEXT.
-* -- return = the initialized context, or NULL on fail.
-*/
-PVOID FcNtfs_Initialize(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
-{
-    PFCNTFS_SETUP_CONTEXT ctx;
-    Fc_SqlExec(H, FC_SQL_SCHEMA_NTFS);
-    if(!(ctx = LocalAlloc(LMEM_ZEROINIT, sizeof(FCNTFS_SETUP_CONTEXT)))) { goto fail; }
-    if(!(ctx->pmDuplicate = ObMap_New(H, OB_MAP_FLAGS_OBJECT_LOCALFREE))) { goto fail; }
-    if(!(ctx->psRoot = ObSet_New(H))) { goto fail; }
-    if(!(ctx->psDirFile = ObSet_New(H))) { goto fail; }
-    if(!(ctx->pmDir = ObMap_New(H, 0))) { goto fail; }
-    if(!(ctx->psOrphan = ObSet_New(H))) { goto fail; }
-    return ctx;
-fail:
-    FcNtfs_Close(ctx);
-    return NULL;
-}
-
-/*
-* Try add a single MFT entry to the NTFS MFT dataset.
-* -- H
-* -- ctx
-* -- qwPhysicalAddress
-* -- qwVirtualAddress
-* -- pb
-*/
-VOID FcNtfs_IngestMftEntry(_In_ VMM_HANDLE H, _In_ PFCNTFS_SETUP_CONTEXT ctx, _In_ QWORD qwPhysicalAddress, _In_opt_ QWORD qwVirtualAddress, _In_reads_(0x400) PBYTE pb)
-{
-    QWORD qwHashDuplicateCheck;
-    DWORD oA, cbData = 0, cbuName;
-    PNTFS_FILE_RECORD pr;
-    PNTFS_ATTR pa;
+    DWORD cb, cbAttribute, cbuName = 0;
+    PBYTE pb;
+    QWORD qwKey;
+    PFCNTFS2 pNt;
     PNTFS_FILE_NAME pfnC, pfn = NULL;
+    cb = pIE->StreamLength;
+    pb = pIE->Stream;
+    // we don't know if this is actually a $FILE_NAME / $I30 entry so perform validity
+    // checks on the data while iterating to find the file name entry.
+    while(cb >= 0x42) {
+        pfnC = (PNTFS_FILE_NAME)pb;
+        if(0x03 != (pfnC->TimeCreate >> 56) + (pfnC->TimeModify >> 56) + (pfnC->TimeRead >> 56)) {
+            return;
+        }
+        cbAttribute = 0x42 + sizeof(WCHAR) * pfnC->NameLength;
+        if(cbAttribute > cb) {
+            break;
+        }
+        if(pfnC->NameSpace != NTFS_FILENAME_NAMESPACE_DOS) {
+            if(!pfn || (pfnC->SizeReal > pfn->SizeAllocated)) {
+                pfn = pfnC;
+            }
+        }
+        pb += cbAttribute;
+        cb -= cbAttribute;
+    }
+    if(!pfn) {
+        return;
+    }
+    // Verify validity:
+    if(!pfn || (pfn->ParentDirectory.SegmentNumber > 0xfffffff0) || !pfn->NameLength) { return; }                               // verify
+    // Duplicate check:
+    qwKey = FCNTFS2_DUPLICATE_CHECK_FILE_RECORD(pIE->FileReference.SegmentNumber, pfn->TimeCreate, pfn->TimeModify, pfn->TimeRead);
+    if(ObMap_ExistsKey(ctx->pmDuplicate, qwKey)) { return; }
+    // Create NTFS object:
+    if(!CharUtil_WtoU(pfn->Name, pfn->NameLength, NULL, 0, NULL, &cbuName, 0) || !cbuName) { return; }
+    if(!(pNt = LocalAlloc(LMEM_ZEROINIT, sizeof(FCNTFS2) + cbuName))) { return; }
+    if(!CharUtil_WtoU(pfn->Name, pfn->NameLength, pNt->uszName, cbuName, NULL, &cbuName, CHARUTIL_FLAG_STR_BUFONLY) || !cbuName) {
+        LocalFree(pNt);
+        return;
+    }
+    pNt->dwMftRecordNumber = (DWORD)pIE->FileReference.SegmentNumber;
+    pNt->dwParentMftRecordNumber = (DWORD)pfn->ParentDirectory.SegmentNumber;
+    pNt->wParentMftSequenceNumber = (WORD)pfn->ParentDirectory.SequenceNumber;
+    pNt->flags = wFlagsSource | (pfn->Flags & 0x10000000 ? FCNTFS2_FLAG_DIRECTORY : 0);
+    pNt->wVolumeId = wVolumeId;
+    pNt->ftCreate = pfn->TimeCreate;
+    pNt->ftModify = pfn->TimeModify;
+    pNt->ftRead = pfn->TimeRead;
+    pNt->cbFileSize = pfn->SizeReal;
+    // Push NTFS object to "MAP":
+    if(!FcNtfs2_IngestPushEntry(H, ctx, pNt, pfn)) {
+        LocalFree(pNt);
+        return;
+    }
+}
+
+/*
+* Try to ingest an 'INDX' page-sized directory index record.
+* This could be either a $Directory from a _FILE_OBJECT or a physical memory page.
+*/
+VOID FcNtfs2_IngestIndexRecord(_In_ VMM_HANDLE H, _In_ POB_FCNTFS2_INIT_CONTEXT ctx, _In_ PNTFS_INDEX_RECORD pIR, _In_reads_(0x1000) PBYTE pb, _In_ WORD wVolumeId, _In_ WORD wFlagsSource)
+{
+    DWORD oNextIndexEntry, cbTotalIndexEntry;
+    PNTFS_INDEX_ENTRY pIE;
+    if(pIR->Signature != 'XDNI') { return; }
+    if((0x18 + pIR->AllocatedSize > 0x1000) || (pIR->IndexEntryTotalSize > pIR->AllocatedSize)) {
+        return;
+    }
+    oNextIndexEntry = 0x18 + pIR->IndexEntryFirstOffset;
+    if(oNextIndexEntry > pIR->AllocatedSize) {
+        return;
+    }
+    cbTotalIndexEntry = min(pIR->AllocatedSize - oNextIndexEntry, pIR->IndexEntryTotalSize);
+    if(oNextIndexEntry < 0x2A) {
+        return;
+    }
+    while(cbTotalIndexEntry >= sizeof(NTFS_INDEX_ENTRY)) {
+        pIE = (PNTFS_INDEX_ENTRY)(pb + oNextIndexEntry);
+        if(pIE->Length > cbTotalIndexEntry) {
+            return;
+        }
+        if(sizeof(NTFS_INDEX_ENTRY) + pIE->StreamLength > pIE->Length) {
+            return;
+        }
+        FcNtfs2_IngestIndexEntry(H, ctx, pIR, pIE, wVolumeId, wFlagsSource);
+        cbTotalIndexEntry -= pIE->Length;
+        oNextIndexEntry += pIE->Length;
+    }
+}
+
+/*
+* Try to ingest a MFT 'FILE' record.
+* This could be either a $Mft from a _FILE_OBJECT or a physical memory page.
+*/
+VOID FcNtfs2_IngestFileRecord(_In_ VMM_HANDLE H, _In_ POB_FCNTFS2_INIT_CONTEXT ctx, _In_ PNTFS_FILE_RECORD pR, _In_reads_(0x400) PBYTE pb, _In_ WORD wVolumeId, _In_ WORD wFlagsSource, _In_ QWORD paRecord)
+{
+    QWORD qwKey;
+    DWORD oA, cbData = 0, cbDataADS = 0, cbuName = 0, cbuNameADS = 0;
+    PFCNTFS2 pNt = NULL, pNtADS = NULL, pNtDuplicate;
+    PNTFS_ATTR pA, pADataADS = NULL;
+    PNTFS_FILE_NAME pfnC, pfn = NULL, pfnDOS = NULL;
     PNTFS_STANDARD_INFORMATION psi = NULL;
-    PFCNTFS pNtfs = NULL, pNtfs_Coll = NULL;
-    pr = (PNTFS_FILE_RECORD)pb;
-    // Check MFT record number is within the correct location inside the page:
-    if((((qwPhysicalAddress >> 10) & 0x3) != (0x3 & pr->MftRecordNumber)) || (pr->MftRecordNumber == 0)) { return; }
+    if(pR->Signature != 'ELIF') { return; }
     // Extract attributes loop:
-    oA = pr->FirstAttributeOffset;
+    oA = pR->FirstAttributeOffset;
     while((oA + sizeof(NTFS_ATTR) < 0x400)) {
-        pa = (PNTFS_ATTR)(pb + oA);
-        if((pa->Type == 0xffffffff) || (pa->Length < sizeof(NTFS_ATTR))) { break; }
-        if(oA + pa->Length > 0x400) { break; }
-        if(pa->Length < pa->AttrOffset + pa->AttrLength) { break; }
-        if(!pa->fNonResident && (pa->Type == NTFS_ATTR_TYPE_DATA)) {
-            cbData = pa->AttrLength;
-        }
-        if(pa->Type == NTFS_ATTR_TYPE_STANDARD_INFORMATION) {
-            if(pa->AttrLength < sizeof(NTFS_STANDARD_INFORMATION) && (pa->AttrLength != NTFS_STANDARD_INFORMATION_LEN_PREWIN2K)) { break; }
-            psi = (PNTFS_STANDARD_INFORMATION)(pb + oA + pa->AttrOffset);
-        }
-        if(pa->Type == NTFS_ATTR_TYPE_FILE_NAME) {
-            pfnC = (PNTFS_FILE_NAME)(pb + oA + pa->AttrOffset);
-            if((pfnC->NameSpace != NTFS_FILENAME_NAMESPACE_DOS) && (pa->AttrLength >= 42 + pfnC->NameLength * sizeof(WCHAR))) {
-                if(!pfn || (pfnC->SizeReal > pfn->SizeAllocated)) {
-                    pfn = pfnC;
+        pA = (PNTFS_ATTR)(pb + oA);
+        if((pA->Type == 0xffffffff) || (pA->Length < sizeof(NTFS_ATTR))) { break; }
+        if(oA + pA->Length > 0x400) { break; }
+        if(pA->Type == NTFS_ATTR_TYPE_DATA) {
+            if(pA->NameLength) {
+                // NAMED DATA (ADS):
+                if(((pA->NameOffset) == 0x18) && (pA->Length >= pA->NameOffset + sizeof(WCHAR) * pA->NameLength)) {
+                    pADataADS = pA;
+                    if(!pA->fNonResident) {
+                        if(pA->Length < pA->AttrOffset + pA->AttrLength) {
+                            break;
+                        }
+                        cbDataADS = pA->AttrLength;
+                    }
+                }
+            } else {
+                // UNNAMED DATA (STANDARD FILE):
+                if(!pA->fNonResident) {
+                    if(pA->Length < pA->AttrOffset + pA->AttrLength) {
+                        break;
+                    }
+                    cbData = pA->AttrLength;
                 }
             }
         }
-        oA += pa->Length;
-    }
-    if(!psi || !pfn || (pfn->ParentDirectory.SegmentNumber > 0xfffffff0)) { return; }
-    // Duplicate check by MftRecordNumber and LogFileSequenceNumber:
-    qwHashDuplicateCheck = (((QWORD)pr->MftRecordNumber << 32) ^ pr->LogFileSequenceNumber);
-    if(ObMap_ExistsKey(ctx->pmDuplicate, qwHashDuplicateCheck)) { return; }
-    // Create NTFS object and populate:
-    if(!pfn->NameLength) { return; }
-    if(!CharUtil_WtoU(pfn->Name, pfn->NameLength, NULL, 0, NULL, &cbuName, 0)) { return; }
-    if(!(pNtfs = LocalAlloc(LMEM_ZEROINIT, sizeof(FCNTFS) + cbuName))) { return; }
-    if(!CharUtil_WtoU(pfn->Name, pfn->NameLength, pNtfs->uszName, cbuName, NULL, &cbuName, CHARUTIL_FLAG_STR_BUFONLY)) {
-        LocalFree(pNtfs);
-        return;
-    }
-    pNtfs->pa = qwPhysicalAddress;
-    pNtfs->va = qwVirtualAddress;
-    pNtfs->ftCreate = psi->TimeCreate;
-    pNtfs->ftModify = psi->TimeModify;
-    pNtfs->ftRead = psi->TimeRead;
-    pNtfs->cbFileSize = max(cbData, pfn->SizeReal);
-    pNtfs->dwMftRecordNumber = pr->MftRecordNumber;
-    pNtfs->fActive = (pr->Flags & 1) ? TRUE : FALSE;
-    pNtfs->fDir = (pr->Flags & 2) ? TRUE : FALSE;
-    pNtfs->Flags = pr->Flags;
-    pNtfs->cbFileSizeMftResident = (WORD)cbData;
-    pNtfs->wMftSequenceNumber = pr->SequenceNumber;
-    pNtfs->Setup.dwParentRecordNumber = (DWORD)pfn->ParentDirectory.SegmentNumber;
-    pNtfs->Setup.wParentSeqenceNumber = (WORD)pfn->ParentDirectory.SequenceNumber;
-    // Commit:
-    ObMap_Push(ctx->pmDuplicate, qwHashDuplicateCheck, pNtfs);
-    if(pNtfs->fDir) {
-        if(pNtfs->dwMftRecordNumber == pNtfs->Setup.dwParentRecordNumber) {
-            pNtfs->fRootDir = TRUE;
-            ObSet_Push(ctx->psRoot, (QWORD)pNtfs);
+        if(pA->Type == NTFS_ATTR_TYPE_STANDARD_INFORMATION) {
+            if(pA->Length < pA->AttrOffset + pA->AttrLength) {
+                break;
+            }
+            if(pA->AttrLength < sizeof(NTFS_STANDARD_INFORMATION) && (pA->AttrLength != NTFS_STANDARD_INFORMATION_LEN_PREWIN2K)) { break; }
+            psi = (PNTFS_STANDARD_INFORMATION)(pb + oA + pA->AttrOffset);
         }
-        if(!ObMap_Push(ctx->pmDir, (QWORD)pNtfs->dwMftRecordNumber, pNtfs)) {
-            // fail == already exists -> queue on NextDir list
-            if((pNtfs_Coll = ObMap_GetByKey(ctx->pmDir, (QWORD)pNtfs->dwMftRecordNumber))) {
-                pNtfs->Setup.pNextDir = pNtfs_Coll->Setup.pNextDir;
-                pNtfs_Coll->Setup.pNextDir = pNtfs;
+        if(pA->Type == NTFS_ATTR_TYPE_FILE_NAME) {
+            if(pA->Length < pA->AttrOffset + pA->AttrLength) {
+                break;
+            }
+            pfnC = (PNTFS_FILE_NAME)(pb + oA + pA->AttrOffset);
+            if(pA->AttrLength < 42 + pfnC->NameLength * sizeof(WCHAR)) { continue; }
+            if(pfnC->NameSpace == NTFS_FILENAME_NAMESPACE_DOS) {
+                pfnDOS = pfnC;
+            } else if(!pfn || (pfnC->SizeReal > pfn->SizeAllocated)) {
+                pfn = pfnC;
             }
         }
+        oA += pA->Length;
     }
-    if(!pNtfs->fRootDir) {
-        ObSet_Push(ctx->psDirFile, (QWORD)pNtfs);
+    // Verify validity:
+    if(!psi || !pfn || (pfn->ParentDirectory.SegmentNumber > 0xfffffff0) || !pfn->NameLength) { return; }           // verify
+    if((pR->Flags & 2) && cbData) { return; }                                                                       // verify (directory must not have unnamed data)
+    // Duplicate check:
+    // Consider pre-existing $Mft records as duplicates.
+    // Do not consider pre-existing $Directory records as duplicates if the replacing record is a $Mft record.
+    qwKey = FCNTFS2_DUPLICATE_CHECK_FILE_RECORD(pR->MftRecordNumber, psi->TimeCreate, psi->TimeModify, psi->TimeRead);
+    if((pNtDuplicate = (PFCNTFS2)((SIZE_T)ObMap_GetByKey(ctx->pmDuplicate, qwKey) & ~3))) {
+        if((wFlagsSource == FCNTFS2_FLAG_SOURCE_FILE_DIR) || (wFlagsSource == FCNTFS2_FLAG_SOURCE_PMEM_DIR) || (pNtDuplicate->flags & FCNTFS2_FLAG_SOURCE_FILE_MFT) || (pNtDuplicate->flags & FCNTFS2_FLAG_SOURCE_PMEM_MFT)) {
+            return;
+        }
+        ObMap_Remove(ctx->pmDuplicate, (PVOID)((SIZE_T)pNtDuplicate | 1));
+        LocalFree(ObMap_Remove(ctx->pmMft, pNtDuplicate));
     }
-    // Debug output:
-    VmmLog(H, MID_FORENSIC, LOGLEVEL_6_TRACE, "   %08x:%04x %12llx %8lli : %c : %s",
-        pNtfs->Setup.dwParentRecordNumber,
-        pNtfs->Setup.wParentSeqenceNumber,
-        pNtfs->pa,
-        pNtfs->cbFileSize,
-        (pNtfs->fDir ? 'D' : ' '),
-        pNtfs->uszName
-    );
+    // Create NTFS object:
+    if(!CharUtil_WtoU(pfn->Name, pfn->NameLength, NULL, 0, NULL, &cbuName, 0) || !cbuName) { return; }
+    if(!(pNt = LocalAlloc(LMEM_ZEROINIT, sizeof(FCNTFS2) + cbuName))) { return; }
+    if(!CharUtil_WtoU(pfn->Name, pfn->NameLength, pNt->uszName, cbuName, NULL, &cbuName, CHARUTIL_FLAG_STR_BUFONLY) || !cbuName) {
+        LocalFree(pNt);
+        return;
+    }
+    pNt->paRecord = paRecord;
+    pNt->dwMftRecordNumber = pR->MftRecordNumber;
+    pNt->dwParentMftRecordNumber = (DWORD)pfn->ParentDirectory.SegmentNumber;
+    pNt->wParentMftSequenceNumber = (WORD)pfn->ParentDirectory.SequenceNumber;
+    pNt->wMftSequenceNumber = pR->SequenceNumber;
+    pNt->flags = wFlagsSource | (pR->Flags & 3) | (cbData ? FCNTFS2_FLAG_RESIDENT : 0);
+    pNt->wVolumeId = wVolumeId;
+    pNt->ftCreate = psi->TimeCreate;
+    pNt->ftModify = psi->TimeModify;
+    pNt->ftRead = psi->TimeRead;
+    pNt->cbFileSize = cbData ? cbData : pfn->SizeReal;
+    // Push NTFS object to "MAP":
+    if(!FcNtfs2_IngestPushEntry(H, ctx, pNt, pfn)) {
+        LocalFree(pNt);
+        return;
+    }
+    if(!pADataADS) { return; }
+    // If ADS, create NTFS object for ADS:
+    if(!CharUtil_WtoU((LPWSTR)((PBYTE)pADataADS + pADataADS->NameOffset), pADataADS->NameLength, NULL, 0, NULL, &cbuNameADS, 0) || !cbuNameADS) { return; }
+    if(!(pNtADS = LocalAlloc(LMEM_ZEROINIT, sizeof(FCNTFS2) + cbuName + cbuNameADS))) { return; }
+    memcpy(pNtADS, pNt, sizeof(FCNTFS2) + cbuName);
+    pNtADS->uszName[cbuName - 1] = ':';
+    if(!CharUtil_WtoU((LPWSTR)((PBYTE)pADataADS + pADataADS->NameOffset), pADataADS->NameLength, pNtADS->uszName + cbuName, cbuNameADS, NULL, &cbuNameADS, CHARUTIL_FLAG_STR_BUFONLY) || !cbuNameADS) {
+        LocalFree(pNtADS);
+        return;
+    }
+    pNtADS->cbFileSize = pADataADS->fNonResident ? 0 : pADataADS->AttrLength;
+    pNtADS->flags = wFlagsSource | (pR->Flags & FCNTFS2_FLAG_ACTIVE) | ((pADataADS->fNonResident || !pNtADS->cbFileSize) ? 0 : FCNTFS2_FLAG_RESIDENT) | FCNTFS2_FLAG_ADS;
+    pNtADS->wRecordNumberIndex++;
+    // Push NTFS ADS object to "MAP":
+    if(!FcNtfs2_IngestPushEntry(H, ctx, pNtADS, NULL)) {
+        LocalFree(pNtADS);
+        return;
+    }
 }
 
 /*
-* Try add a physical memory page to the NTFS MFT dataset.
-* -- ctx
-* -- pa
-* -- pbPage
+* Fetch a "volume id" for the $Mft file.
 */
-VOID FcNtfs_IngestMftPage(_In_ VMM_HANDLE H, _In_ PFCNTFS_SETUP_CONTEXT ctx, _In_ QWORD pa, _In_reads_(0x1000) PBYTE pbPage)
+_Success_(return != 0)
+WORD FcNtfs2_Init_NewVolumeFromMft(_In_ VMM_HANDLE H, _In_ POB_FCNTFS2_INIT_CONTEXT ctx, _In_ POB_VMMWINOBJ_FILE pFileMft, _In_ BOOL fForceExisting)
 {
-    QWORD i, va = 0;
-    PNTFS_FILE_RECORD pr;
-    if(*(PDWORD)pbPage != 'ELIF') { return; }     // file signature
-    for(i = 0; i < 0x1000; i += 0x400) {
-        pr = (PNTFS_FILE_RECORD)(pbPage + i);
-        if(pr->Signature != 'ELIF') { continue; }
-        if((pr->UpdateSequenceArrayOffset > 0x100) || (pr->UpdateSequenceArraySize > 0x100)) { continue; }
-        if(pr->BaseFileRecordSegment.SegmentNumber) { continue; }
-        if(pr->FirstAttributeOffset > 0x300) { continue; }
-        FcNtfs_IngestMftEntry(H, ctx, pa + i, (va ? va + i : 0), pbPage + i);
+    QWORD vaDevice = 0;
+    BOOL f32 = H->vmm.f32;
+    PFCNTFS2_VOLUME pVolume = NULL;
+    // 1: fetch device virtual address (in case of multiple $Mft pointers to same device):
+    if(!VmmRead(H, PVMM_PROCESS_SYSTEM, pFileMft->va + (f32 ? 4 : 8), (PBYTE)&vaDevice, (f32 ? 4 : 8))) { return 0; }
+    // 2: try find existing volume:
+    if(pVolume = ObMap_GetByKey(ctx->pmVolume, vaDevice)) {
+        return fForceExisting ? pVolume->wId : 0;
     }
+    if(fForceExisting) { return 0; }
+    // 3: create new volume:
+    if(ctx->wNextVolumeId == (WORD)-1) { return 0; }
+    if(!(pVolume = LocalAlloc(LMEM_ZEROINIT, sizeof(FCNTFS2_VOLUME)))) { return 0; }
+    pVolume->wId = ctx->wNextVolumeId++;
+    pVolume->vaDevice = vaDevice;
+    _snprintf_s(pVolume->uszVolumeName, _countof(pVolume->uszVolumeName), _TRUNCATE, "$MFT @ 0x%llx", pFileMft->va);
+    if(!ObMap_Push(ctx->pmVolume, pVolume->vaDevice, pVolume)) { return 0; }
+    return pVolume->wId;
+}
+
+/*
+* Ingest a $Mft file (from _FILE_OBJECT).
+*/
+VOID FcNtfs2_InitMft(_In_ VMM_HANDLE H, _In_ POB_FCNTFS2_INIT_CONTEXT ctx, _In_ POB_VMMWINOBJ_FILE pFile)
+{
+    PNTFS_FILE_RECORD pR;
+    DWORD cbBuffer, oBuffer;
+    QWORD oFile = 0, pa;
+    WORD wVolumeId = 0;
+    if(!pFile->cb || (pFile->cb % 0x400)) { return; }
+    if(!(wVolumeId = FcNtfs2_Init_NewVolumeFromMft(H, ctx, pFile, FALSE))) { return; }
+    while(oFile < pFile->cb) {
+        cbBuffer = (DWORD)min(0x00100000, pFile->cb - oFile);
+        ZeroMemory(ctx->pb1M, 0x00100000);
+        VmmWinObjFile_Read(H, pFile, oFile, ctx->pb1M, cbBuffer, 0);
+        for(oBuffer = 0; oBuffer < cbBuffer; oBuffer += 0x400) {
+            if((oBuffer & 0xfff) == 0) { pa = 0; }
+            pR = (PNTFS_FILE_RECORD)(ctx->pb1M + oBuffer);
+            if(pR->Signature != 'ELIF') { continue; }
+            if(pR->MftRecordNumber != ((oFile + oBuffer) >> 10)) { continue; }
+            if(!pa) {
+                VmmWinObjFile_GetPA(H, pFile, oFile + (oBuffer & ~0xfff), &pa);
+                if(pa > 0x400000000) {
+                    DWORD DEBUG = 1;
+                    VmmWinObjFile_GetPA(H, pFile, oFile + (oBuffer & ~0xfff), &pa);
+                }
+
+            }
+            FcNtfs2_IngestFileRecord(H, ctx, pR, ctx->pb1M + oBuffer, wVolumeId, FCNTFS2_FLAG_SOURCE_FILE_MFT, pa + (oBuffer & 0xfff));
+        }
+        oFile += cbBuffer;
+    }
+}
+
+/*
+* Ingest a $Directory file (from _FILE_OBJECT).
+*/
+VOID FcNtfs2_InitDir(_In_ VMM_HANDLE H, _In_ POB_FCNTFS2_INIT_CONTEXT ctx, _In_ POB_VMMWINOBJ_FILE pFile)
+{
+    PNTFS_INDEX_RECORD pIR;
+    DWORD cbBuffer, oBuffer;
+    QWORD oFile = 0;
+    WORD wVolumeId = 0;
+    if(!pFile->cb || (pFile->cb % 0x1000)) { return; }
+    if(!(wVolumeId = FcNtfs2_Init_NewVolumeFromMft(H, ctx, pFile, TRUE))) { return; }
+    while(oFile < pFile->cb) {
+        cbBuffer = (DWORD)min(0x00100000, pFile->cb - oFile);
+        ZeroMemory(ctx->pb1M, 0x00100000);
+        VmmWinObjFile_Read(H, pFile, oFile, ctx->pb1M, cbBuffer, 0);
+        for(oBuffer = 0; oBuffer < cbBuffer; oBuffer += 0x1000) {
+            pIR = (PNTFS_INDEX_RECORD)(ctx->pb1M + oBuffer);
+            if(pIR->Signature != 'XDNI') { continue; }
+            FcNtfs2_IngestIndexRecord(H, ctx, pIR, ctx->pb1M + oBuffer, wVolumeId, FCNTFS2_FLAG_SOURCE_FILE_DIR);
+        }
+        oFile += cbBuffer;
+    }
+}
+
+int FcNtfs2_Init_CmpSortFileSize(_In_ POB_MAP_ENTRY p1, _In_ POB_MAP_ENTRY p2)
+{
+    POB_VMMWINOBJ_FILE e1 = p1->v;
+    POB_VMMWINOBJ_FILE e2 = p2->v;
+    if(e1->cb == e2->cb) { return 0; }
+    return (e1->cb < e2->cb) ? -1 : 1;
+}
+
+VOID FcNtfs2_Init1(_In_ VMM_HANDLE H, POB_FCNTFS2_INIT_CONTEXT ctx)
+{
+    POB_VMMWINOBJ_FILE pObFile = NULL;
+    POB_MAP pmObFiles = NULL, pmObMft = NULL, pmObDirectory = NULL;
+    // init and fetch all files:
+    if(!(pmObMft = ObMap_New(H, OB_MAP_FLAGS_OBJECT_OB))) { goto fail; }
+    if(!(pmObDirectory = ObMap_New(H, OB_MAP_FLAGS_OBJECT_OB))) { goto fail; }
+    if(!VmmWinObjFile_GetAll(H, &pmObFiles)) { goto fail; }
+    // find $Mft and $Directory files, sort by file size:
+    while((pObFile = ObMap_GetNext(pmObFiles, pObFile))) {
+        if(CharUtil_StrEquals("\\$Mft", pObFile->uszPath, FALSE)) {
+            ObMap_Push(pmObMft, pObFile->va, pObFile);
+        }
+        else if(CharUtil_StrEquals("\\$Directory", pObFile->uszPath, FALSE)) {
+            ObMap_Push(pmObDirectory, pObFile->va, pObFile);
+        }
+    }
+    ObMap_SortEntryIndex(pmObMft, FcNtfs2_Init_CmpSortFileSize);
+    // ingest $Mft files:
+    while((pObFile = ObMap_Pop(pmObMft))) {
+        FcNtfs2_InitMft(H, ctx, pObFile);
+    }
+    // ingest $Directory files:
+    while((pObFile = ObMap_Pop(pmObDirectory))) {
+        FcNtfs2_InitDir(H, ctx, pObFile);
+    }
+fail:
+    Ob_DECREF(pmObDirectory);
+    Ob_DECREF(pmObFiles);
+    Ob_DECREF(pmObMft);
 }
 
 /*
@@ -414,15 +701,15 @@ VOID FcNtfs_IngestMftPage(_In_ VMM_HANDLE H, _In_ PFCNTFS_SETUP_CONTEXT ctx, _In
 * -- pc
 * -- return = MAP or NULL if no candidate pages found.
 */
-POB_MAP FcNtfs_IngestGetValidAddrMap(_In_ VMM_HANDLE H, _In_ PVMMDLL_FORENSIC_INGEST_PHYSMEM pc)
+POB_MAP FcNtfs2_IngestGetValidAddrMap(_In_ VMM_HANDLE H, _In_ PVMMDLL_FORENSIC_INGEST_PHYSMEM pc)
 {
     BOOL fPfnValidForMft;
-    DWORD i;
+    DWORD i, dwSignature = 0;
     POB_MAP pmObAddr;
     PVMMDLL_MAP_PFNENTRY pePfn;
     if(!(pmObAddr = ObMap_New(H, 0))) { return NULL; }
     for(i = 0; i < 0x1000; i++) {
-        if((pc->ppMEMs[i]->qwA != (QWORD)-1) && pc->ppMEMs[i]->f && (pc->ppMEMs[i]->cb == 0x1000) && (*(PDWORD)pc->ppMEMs[i]->pb == 'ELIF')) {
+        if((pc->ppMEMs[i]->qwA != (QWORD)-1) && pc->ppMEMs[i]->f && (pc->ppMEMs[i]->cb == 0x1000) && (dwSignature = *(PDWORD)pc->ppMEMs[i]->pb) && ((dwSignature == 'ELIF')) || (dwSignature == 'XDNI')) {
             pePfn = (pc->pPfnMap && (i < pc->pPfnMap->cMap)) ? (pc->pPfnMap->pMap + i) : NULL;
             fPfnValidForMft =
                 !pePfn || (pePfn->dwPfn != (pc->ppMEMs[i]->qwA >> 12)) ||
@@ -443,49 +730,127 @@ POB_MAP FcNtfs_IngestGetValidAddrMap(_In_ VMM_HANDLE H, _In_ PVMMDLL_FORENSIC_IN
 }
 
 /*
-* Analyze a POB_FC_SCANPHYSMEM_CHUNK 16MB memory chunk for MFT file candidates
+* Analyze a POB_FC_SCANPHYSMEM_CHUNK 16MB memory chunk for MFT/INDX file candidates
 * and add any found to the internal data sets.
 * -- H
 * -- ctxfc
 * -- pIngestPhysmem
 */
-VOID FcNtfs_IngestPhysmem(_In_ VMM_HANDLE H, _In_opt_ PVOID ctxfc, _In_ PVMMDLL_FORENSIC_INGEST_PHYSMEM pIngestPhysmem)
+VOID FcNtfs2_FcIngestPhysmem(_In_ VMM_HANDLE H, _In_opt_ PVOID ctxfc, _In_ PVMMDLL_FORENSIC_INGEST_PHYSMEM pIngestPhysmem)
 {
+    PNTFS_INDEX_RECORD pI;
+    PNTFS_FILE_RECORD pR;
+    DWORD i;
     QWORD pa;
     PBYTE pb;
     POB_MAP pmObAddr = NULL;
-    PFCNTFS_SETUP_CONTEXT ctx = (PFCNTFS_SETUP_CONTEXT)ctxfc;
-    if(ctx && (pmObAddr = FcNtfs_IngestGetValidAddrMap(H, pIngestPhysmem))) {
+    POB_FCNTFS2_INIT_CONTEXT ctx = (POB_FCNTFS2_INIT_CONTEXT)ctxfc;
+    if(ctx && (pmObAddr = FcNtfs2_IngestGetValidAddrMap(H, pIngestPhysmem))) {
         while((pb = ObMap_PopWithKey(pmObAddr, &pa))) {
-            FcNtfs_IngestMftPage(H, ctx, pa, pb);
+            if(*(PDWORD)pb == 'XDNI') {
+                pI = (PNTFS_INDEX_RECORD)pb;
+                FcNtfs2_IngestIndexRecord(H, ctx, pI, pb, 0, FCNTFS2_FLAG_SOURCE_PMEM_DIR);
+            } else {
+                for(i = 0; i < 4; i++) {
+                    pR = (PNTFS_FILE_RECORD)pb;
+                    if((pR->Signature != 'ELIF') || ((pR->MftRecordNumber & 3) != i)) { continue; }
+                    FcNtfs2_IngestFileRecord(H, ctx, pR, pb, 0, FCNTFS2_FLAG_SOURCE_PMEM_MFT, pa);
+                    pa += 0x400;
+                    pb += 0x400;
+                }
+            }
         }
     }
     Ob_DECREF(pmObAddr);
 }
 
 /*
-* Calculate a validity score for merge suitability. Score ranges from 0-100
-* where 100 is a perfect match, while 0 is invalid/forbidden match.
-* -- pdir
-* -- pe
-* -- return = match score 0-100.
+* Cleanup callback for POB_FCNTFS2_INIT_CONTEXT.
 */
-DWORD FcNtfs_FinalizeMergeScore(_In_ PFCNTFS pdir, _In_ PFCNTFS pe)
+VOID FcNtfs2_InitContext_CleanupCB(POB_FCNTFS2_INIT_CONTEXT pOb)
 {
-    DWORD dwScore;
-    // 1: calculate validity score
-    if(pe->Setup.wParentSeqenceNumber > pdir->wMftSequenceNumber) { return 0; }
-    if(pe->fActive)
+    Ob_DECREF(pOb->pmMft);
+    Ob_DECREF(pOb->pmVolume);
+    Ob_DECREF(pOb->pmDuplicate);
+    LocalFree(pOb->pb1M);
+    LocalFree(pOb->pVolumes);
+}
+
+/*
+* Inititialize the initialization context.
+* CALLER DECREF: return
+* -- H
+* -- return
+*/
+_Success_(return != NULL)
+POB_FCNTFS2_INIT_CONTEXT FcNtfs2_InitContext(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
+{
+    PFCNTFS2_VOLUME pVolume = NULL;
+    POB_FCNTFS2_INIT_CONTEXT ctxOb = NULL;
+    if(!(ctxOb = Ob_AllocEx(H, 'CNtF', LMEM_ZEROINIT, sizeof(OB_FCNTFS2_INIT_CONTEXT), FcNtfs2_InitContext_CleanupCB, NULL))) { goto fail; }
+    if(!(ctxOb->pmMft = ObMap_New(H, OB_MAP_FLAGS_OBJECT_LOCALFREE))) { goto fail; }
+    if(!(ctxOb->pmVolume = ObMap_New(H, OB_MAP_FLAGS_OBJECT_LOCALFREE))) { goto fail; }
+    if(!(ctxOb->pmDuplicate = ObMap_New(H, OB_MAP_FLAGS_OBJECT_VOID))) { goto fail; }
+    if(!(ctxOb->pb1M = LocalAlloc(0, 0x00100000))) { goto fail; }
+    ctxOb->MID = ctxP->MID;
+    ctxOb->fLogTrace = VmmLogIsActive(H, ctxP->MID, LOGLEVEL_6_TRACE);
+    // create a fake volume for physical-only entries:
     {
-        if(!pe->fActive) { return 0; }
-        dwScore = 100 - min(99, pdir->wMftSequenceNumber - pe->Setup.wParentSeqenceNumber);
-    } else {
-        dwScore = (pdir->fActive ? 100 : 50) - min(49, pdir->wMftSequenceNumber - pe->Setup.wParentSeqenceNumber);
+        if(!(pVolume = LocalAlloc(LMEM_ZEROINIT, sizeof(FCNTFS2_VOLUME)))) { goto fail; }
+        pVolume->wId = ctxOb->wNextVolumeId++;
+        pVolume->vaDevice = 1;
+        strncpy_s(pVolume->uszVolumeName, _countof(pVolume->uszVolumeName), "PHYSICAL", _TRUNCATE);
+        if(!ObMap_Push(ctxOb->pmVolume, pVolume->vaDevice, pVolume)) { goto fail; }
     }
-    // 2: loop protect when attach dir
-    if(pe->fDir) {
-        while((pe = pe->pParent)) {
-            if(pdir == pe) { return 0; }
+    Ob_INCREF(ctxOb);
+fail:
+    return Ob_DECREF(ctxOb);
+}
+
+_Success_(return)
+BOOL FcNtfs2_FcIngestFinalize_CreateVolumeRoots(_In_ VMM_HANDLE H, _In_ POB_FCNTFS2_INIT_CONTEXT ctx)
+{
+    DWORD i;
+    PFCNTFS2_VOLUME pVolume;
+    // 1: copy volumes to array:
+    ctx->cVolumes = ObMap_Size(ctx->pmVolume);
+    ctx->pVolumes = LocalAlloc(LMEM_ZEROINIT, ctx->cVolumes * sizeof(FCNTFS2_VOLUME));
+    if(!ctx->pVolumes) { return FALSE; }
+    for(i = 0; i < ctx->cVolumes; i++) {
+        pVolume = (PFCNTFS2_VOLUME)ObMap_GetByIndex(ctx->pmVolume, i);
+        if(!pVolume) { return FALSE; }
+        memcpy(ctx->pVolumes + i, pVolume, sizeof(FCNTFS2_VOLUME));
+    }
+    // 2: create volume roots:
+    for(i = 0; i < ctx->cVolumes; i++) {
+        ctx->pVolumes[i].pRoot = FcNtfs2_IngestPushEntrySynthetic(H, ctx, 5, NULL, ctx->pVolumes[i].wId, ctx->pVolumes[i].wId);
+        if(!ctx->pVolumes[i].pRoot) { return FALSE; }
+        ctx->pVolumes[i].pOrphan = FcNtfs2_IngestPushEntrySynthetic(H, ctx, (DWORD)-1, ctx->pVolumes[i].pRoot, ctx->pVolumes[i].wId, 0xffffffff);
+        if(!ctx->pVolumes[i].pOrphan) { return FALSE; }
+    }
+    return TRUE;
+}
+
+/*
+* Calculate a validity score for merge suitability.
+* -- pDir
+* -- pe
+* -- return = match score: Higher is better. Zero is forbidden.
+*/
+DWORD FcNtfs2_FcIngestFinalize_MergeScore(_In_ PFCNTFS2 pDir, _In_ PFCNTFS2 pe)
+{
+    DWORD dwScore = 0;
+    // 1: check forbidden conditions:
+    if((pDir->wVolumeId != pe->wVolumeId) && !pDir->wVolumeId && !pe->wVolumeId) { return 0; }
+    // 2: calculate score:
+    dwScore += (pDir->wVolumeId && (pDir->wVolumeId == pe->wVolumeId)) ? 0x02000000 : 0;
+    dwScore += (pDir->wVolumeId && (pDir->wVolumeId < 0xff)) ? ((0x00000100 - pDir->wVolumeId) << 16) : 0;
+    dwScore += (pDir->flags & FCNTFS2_FLAG_ACTIVE) ? 0x01000000 : 0;
+    dwScore += pDir->wMftSequenceNumber;
+    // 3: loop protect when attach dir:
+    if(pe->flags & FCNTFS2_FLAG_DIRECTORY) {
+        while((pDir = pDir->pParent)) {
+            if(pDir == pe) { return 0; }
         }
     }
     return dwScore;
@@ -497,186 +862,252 @@ DWORD FcNtfs_FinalizeMergeScore(_In_ PFCNTFS pdir, _In_ PFCNTFS pe)
 * -- pe
 * -- return = merge directory or null on fail.
 */
-PFCNTFS FcNtfs_FinalizeMergeFind(_In_ PFCNTFS_SETUP_CONTEXT ctx, _In_ PFCNTFS pe)
+PFCNTFS2 FcNtfs2_FcIngestFinalize_MergeFind(_In_ POB_FCNTFS2_INIT_CONTEXT ctx, _In_ PFCNTFS2 pe)
 {
-    PFCNTFS pDir, pMergeDir = NULL;;
-    DWORD dwMergeScoreThis, dwMergeScoreMax = 0;
-    if((pDir = ObMap_GetByKey(ctx->pmDir, (QWORD)pe->Setup.dwParentRecordNumber))) {
-        while(pDir && (dwMergeScoreMax < 100)) {
-            dwMergeScoreThis = FcNtfs_FinalizeMergeScore(pDir, pe);
-            if(dwMergeScoreThis > dwMergeScoreMax) {
-                dwMergeScoreMax = dwMergeScoreThis;
-                pMergeDir = pDir;
-            }
-            pDir = pDir->Setup.pNextDir;
-        }
+    PFCNTFS2 pDirThis, pDirMerge = NULL;
+    DWORD dwScoreThis, dwScoreMerge = 0;
+    QWORD qwKey = pe->dwParentMftRecordNumber;
+    while((pDirThis = ObMap_GetByKey(ctx->pmMft, qwKey))) {
+        qwKey += 0x0001000000000000;
+        if(!(pDirThis->flags & FCNTFS2_FLAG_DIRECTORY)) { continue; }
+        dwScoreThis = FcNtfs2_FcIngestFinalize_MergeScore(pDirThis, pe);
+        if(!dwScoreThis || (dwScoreThis < dwScoreMerge)) { continue; }
+        dwScoreMerge = dwScoreThis;
+        pDirMerge = pDirThis;
     }
-    return pMergeDir;
+    return pDirMerge;
 }
 
 /*
 * Merge entries onto already existing directories, or set as orphan.
 */
-VOID FcNtfs_FinalizeMerge1(_In_ PFCNTFS_SETUP_CONTEXT ctx)
+_Success_(return)
+BOOL FcNtfs2_FcIngestFinalize_MergeAll(_In_ VMM_HANDLE H, _In_ POB_FCNTFS2_INIT_CONTEXT ctx)
 {
-    PFCNTFS pe, pParent;
-    while((pe = (PFCNTFS)ObSet_Pop(ctx->psDirFile))) {
-        if((pParent = FcNtfs_FinalizeMergeFind(ctx, pe))) {
-            pe->pParent = pParent;
-            pe->pSibling = pParent->pChild;
-            pParent->pChild = pe;
-        } else {
-            ObSet_Push(ctx->psOrphan, (QWORD)pe);
+    DWORD i, cMap;
+    PFCNTFS2 pe, pParent;
+    PFCNTFS2_VOLUME pVolume;
+    cMap = ObMap_Size(ctx->pmMft);
+    for(i = 0; i < cMap; i++) {
+        pe = (PFCNTFS2)ObMap_GetByIndex(ctx->pmMft, i);
+        if(pe->flags & FCNTFS2_FLAG_SOURCE_SYNTHETIC) { continue; }
+        pParent = FcNtfs2_FcIngestFinalize_MergeFind(ctx, pe);
+        if(!pParent) {
+            // no parent -> create synthetic orphan sub-directory:
+            pVolume = ctx->pVolumes + pe->wVolumeId;
+            pParent = FcNtfs2_IngestPushEntrySynthetic(H, ctx, pe->dwParentMftRecordNumber, pVolume->pOrphan, pVolume->wId, --pVolume->dwNextOrphan);
+            if(!pParent) { return FALSE; }
         }
+        pe->pParent = pParent;
+        pe->pSibling = pParent->pChild;
+        pParent->pChild = pe;
+        pParent->cChild++;
     }
+    return TRUE;
 }
 
 /*
-* Create a "synthentic" root directory
+* Shrink orphan sub-dirs with 1-3 entries into $_ORPHAN parent.
 */
-PFCNTFS FcNtfs_FinalizeCreateSynthenticDir(_In_ PFCNTFS_SETUP_CONTEXT ctx, _In_ DWORD dwMftRecordNumber, _In_ LPSTR uszName, _In_ BOOL fRootDir)
+VOID FcNtfs2_FcIngestFinalize_MergeShrink(_In_ VMM_HANDLE H, _In_ POB_FCNTFS2_INIT_CONTEXT ctx)
 {
-    PFCNTFS pNtfs, pNtfs_Coll;
-    SIZE_T cuszName = strlen(uszName);
-    if(!(pNtfs = LocalAlloc(LMEM_ZEROINIT, sizeof(FCNTFS) + cuszName + 1))) { return NULL; }
-    memcpy(pNtfs->uszName, uszName, cuszName + 1);
-    pNtfs->dwMftRecordNumber = dwMftRecordNumber;
-    pNtfs->wMftSequenceNumber = (WORD)-1;
-    pNtfs->fSynthenticDir = TRUE;
-    pNtfs->fRootDir = fRootDir;
-    pNtfs->fDir = TRUE;
-    pNtfs->Flags = 0x03;    // active directory
-    if(!ObMap_Push(ctx->pmDir, (QWORD)pNtfs->dwMftRecordNumber, pNtfs)) {
-        // fail == already exists -> queue on NextDir list
-        if((pNtfs_Coll = ObMap_GetByKey(ctx->pmDir, (QWORD)pNtfs->dwMftRecordNumber))) {
-            pNtfs->Setup.pNextDir = pNtfs_Coll->Setup.pNextDir;
-            pNtfs_Coll->Setup.pNextDir = pNtfs;
-        }
-    }
-    if(pNtfs->fRootDir) {
-        ObSet_Push(ctx->psRoot, (QWORD)pNtfs);
-    }
-    ObMap_Push(ctx->pmDuplicate, ((QWORD)dwMftRecordNumber << 32 | dwMftRecordNumber), pNtfs);  // for later free
-    return pNtfs;
-}
-
-/*
-* Merge orphan entries and return the global root
-* -- H
-* -- ctx
-* -- return = the global root, or null if fail
-*/
-PFCNTFS FcNtfs_FinalizeMerge2(_In_ VMM_HANDLE H, _In_ PFCNTFS_SETUP_CONTEXT ctx)
-{
-    PFCNTFS pe, pRootOrphan, pRootGlobal = NULL;
-    PDWORD pdwRecordNumberArray = NULL;
-    DWORD cMax = 0, i, c = 0, dwLastRecord = -1, iDirCount = 0;
-    CHAR uszDirName[16];
-    // 1: Generate sorted array of ParentRecordNumber and move Orphan into DirFile Set.
-    if(!(pdwRecordNumberArray = LocalAlloc(0, sizeof(DWORD) * ObSet_Size(ctx->psOrphan)))) { goto fail; }
-    while((pe = (PFCNTFS)ObSet_Pop(ctx->psOrphan))) {
-        ObSet_Push(ctx->psDirFile, (QWORD)pe);
-        pdwRecordNumberArray[cMax++] = pe->Setup.dwParentRecordNumber;
-    }
-    qsort(pdwRecordNumberArray, cMax, sizeof(DWORD), Util_qsort_DWORD);
-    // 2: Create "synthetic" root directories
-    if(!(pRootGlobal = FcNtfs_FinalizeCreateSynthenticDir(ctx, (DWORD)-1, "", FALSE))) { goto fail; }
-    if(!(pRootOrphan = FcNtfs_FinalizeCreateSynthenticDir(ctx, (DWORD)-2, "ORPHAN", TRUE))) { goto fail; }
-    // 3: Create "syntethic" directories for enties if record# count >= 3
-    for(i = 0; i < cMax; i++) {
-        if(dwLastRecord != pdwRecordNumberArray[i]) {
-            dwLastRecord = pdwRecordNumberArray[i];
-            c = 0;
-        } else {
-            c++;
-            if(c == 3) {
-                _snprintf_s(uszDirName, 16, _TRUNCATE, "$%i", ++iDirCount);
-                if((pe = FcNtfs_FinalizeCreateSynthenticDir(ctx, dwLastRecord, uszDirName, FALSE))) {
-                    pe->pParent = pRootOrphan;
-                    pe->pSibling = pRootOrphan->pChild;
-                    pRootOrphan->pChild = pe;
-                }
+    DWORD i, iDir;
+    PFCNTFS2 peOrphan, peDir, peDirNext, pe;
+    for(i = 0; i < ctx->cVolumes; i++) {
+        peOrphan = ctx->pVolumes[i].pOrphan;
+        peDir = peOrphan->pChild;
+        peOrphan->pChild = NULL;
+        iDir = 0;
+        while(peDir) {
+            peDirNext = peDir->pSibling;
+            if(peDir->cChild <= 3) {
+                // move children to orphan root (and drop directory):
+                pe = peDir->pChild;
+                pe->pParent = peOrphan;
+                pe->pSibling = peOrphan->pChild;
+                peOrphan->pChild = pe;
+                peOrphan->cChild += peDir->cChild - 1;
+                peDir->pChild = NULL;
+                peDir->cChild = 0;
+            } else {
+                // keep directory:
+                peDir->pSibling = peOrphan->pChild;
+                peOrphan->pChild = peDir;
+                _snprintf_s(peDir->uszName, 0x10, _TRUNCATE, "$%i", ++iDir);
             }
+            peDir = peDirNext;
         }
     }
-    // 4: Merge onto synth dirs
-    FcNtfs_FinalizeMerge1(ctx);
-    // 5: Merge remaining orphans onto orphan root
-    while((pe = (PFCNTFS)ObSet_Pop(ctx->psOrphan))) {
-        pe->pParent = pRootOrphan;
-        pe->pSibling = pRootOrphan->pChild;
-        pRootOrphan->pChild = pe;
+}
+
+int FcNtfs2_FcIngestFinalize_MergeSortCompare(_In_ PFCNTFS2 *ppe1, _In_ PFCNTFS2 *ppe2)
+{
+    CHAR c1, c2;
+    DWORD i = 0;
+    PFCNTFS2 pe1 = *ppe1;
+    PFCNTFS2 pe2 = *ppe2;
+    // dir/file diff:
+    if((pe1->flags & FCNTFS2_FLAG_DIRECTORY) != (pe2->flags & FCNTFS2_FLAG_DIRECTORY)) {
+        return (pe1->flags & FCNTFS2_FLAG_DIRECTORY) ? 1 : -1;
     }
-    // 6: move onto global root
-    while((pe = (PFCNTFS)ObSet_Pop(ctx->psRoot))) {
-        pe->pParent = pRootGlobal;
-        pe->pSibling = pRootGlobal->pChild;
-        pRootGlobal->pChild = pe;
+    // name diff:
+    while(TRUE) {
+        c1 = pe1->uszName[i]; if(c1 >= 'A' && c1 <= 'Z') { c1 += 'a' - 'A'; }
+        c2 = pe2->uszName[i]; if(c2 >= 'A' && c2 <= 'Z') { c2 += 'a' - 'A'; }
+        if((c1 != c2) || !c1) { break; }
+        i++;
     }
+    if(c1 != c2) {
+        return (c1 < c2) ? -1 : 1;
+    }
+    // child diff:
+    if(pe1->cChild != pe2->cChild) {
+        return (pe1->cChild < pe2->cChild) ? 1 : -1;
+    }
+    // active diff:
+    if((pe1->flags & FCNTFS2_FLAG_ACTIVE) != (pe2->flags & FCNTFS2_FLAG_ACTIVE)) {
+        return (pe2->flags & FCNTFS2_FLAG_ACTIVE) ? 1 : -1;
+    }
+    // mft record number diff:
+    if(pe1->dwMftRecordNumber != pe2->dwMftRecordNumber) {
+        return (pe1->dwMftRecordNumber < pe2->dwMftRecordNumber) ? -1 : 1;
+    }
+    return 0;
+}
+
+/*
+* Sort directory entries by type, and and children.
+*/
+VOID FcNtfs2_FcIngestFinalize_MergeSort(_In_ VMM_HANDLE H, _In_ POB_FCNTFS2_INIT_CONTEXT ctx)
+{
+    DWORD iEntry, cEntries, i;
+    DWORD cChildArrayMax = 0x00100000 / sizeof(PFCNTFS2);
+    PFCNTFS2 *pChildArray = (PFCNTFS2*)ctx->pb1M, pDir, pe;
+    cEntries = ObMap_Size(ctx->pmMft);
+    for(iEntry = 0; iEntry < cEntries; iEntry++) {
+        pDir = (PFCNTFS2)ObMap_GetByIndex(ctx->pmMft, iEntry);
+        if((pDir->cChild < 2) && (pDir->cChild < (0x00100000 / sizeof(PFCNTFS2)))) { continue; }
+        pe = pDir->pChild;
+        i = 0;
+        while(pe) {
+            pChildArray[i++] = pe;
+            pe = pe->pSibling;
+        }
+        qsort(pChildArray, i, sizeof(PFCNTFS2), (_CoreCrtNonSecureSearchSortCompareFunction)FcNtfs2_FcIngestFinalize_MergeSortCompare);
+        pDir->pChild = NULL;
+        while(i) {
+            i--;
+            pe = pChildArray[i];
+            pe->pSibling = pDir->pChild;
+            pDir->pChild = pe;
+        }
+    }
+}
+
+/*
+* File system hash entries.
+*/
+_Success_(return)
+BOOL FcNtfs2_FcIngestFinalize_MergeHash(_In_ VMM_HANDLE H, _In_ POB_FCNTFS2_INIT_CONTEXT ctx)
+{
+    BOOL fResult = FALSE;
+    DWORD iParent = 0, i;
+    PFCNTFS2 peParent, pe;
+    POB_MAP pmOb = NULL;
+    POB_COUNTER pcOb = NULL;
+    QWORD qwName_SeqNbr;
+    if(!(pmOb = ObMap_New(H, OB_MAP_FLAGS_OBJECT_VOID | OB_MAP_FLAGS_NOKEY))) { goto fail; }
+    if(!(pcOb = ObCounter_New(H, 0))) { goto fail; }
+    // 1: hash volume roots:
+    for(i = 0; i < ctx->cVolumes; i++) {
+        if((pe = ctx->pVolumes[i].pRoot)) {
+            pe->dwHashName = CharUtil_HashNameFsU(pe->uszName, pe->wName_SeqNbr);
+            pe->qwHashPath = pe->dwHashName;
+            ObMap_Push(pmOb, 0, pe);
+        }
+    }
+    // 2: hash all entries - a breath-first traversal:
+    while(TRUE) {
+        peParent = ObMap_GetByIndex(pmOb, iParent++);
+        if(!peParent) { break; }
+        ObCounter_Clear(pcOb);
+        pe = peParent->pChild;
+        while(pe) {
+            pe->dwHashName = CharUtil_HashNameFsU(pe->uszName, 0);
+            if((qwName_SeqNbr = ObCounter_Inc(pcOb, pe->dwHashName) - 1)) {
+                if(qwName_SeqNbr >= 0xffff) {
+                    pe->pSibling = NULL;
+                }
+                pe->wName_SeqNbr = (WORD)qwName_SeqNbr;
+                pe->dwHashName = CharUtil_HashNameFsU(pe->uszName, pe->wName_SeqNbr);
+            }
+            pe->qwHashPath = pe->dwHashName + ((peParent->qwHashPath >> 13) | (peParent->qwHashPath << 51));
+            if(pe->pChild) {
+                ObMap_Push(pmOb, 0, pe);
+            }
+            // detach/remove same-name entries with no physical address/children:
+            while(pe->pSibling && !pe->pSibling->paRecord && !pe->pSibling->cChild && (pe->dwHashName == CharUtil_HashNameFsU(pe->pSibling->uszName, 0))) {
+                pe->pSibling = pe->pSibling->pSibling;
+                pe->pParent->cChild--;
+            }
+            pe = pe->pSibling;
+        }
+    }
+    fResult = TRUE;
 fail:
-    LocalFree(pdwRecordNumberArray);
-    return pRootGlobal;
+    Ob_DECREF(pcOb);
+    Ob_DECREF(pmOb);
+    return fResult;
 }
 
 /*
 * Add a file system entry to the database.
 */
-VOID FcNtfs_Finalize_DatabaseAdd(_In_ VMM_HANDLE H, _In_ PFCNTFS_FINALIZE_CONTEXT ctx, _In_ PFCNTFS pe, _In_ LPSTR uszPathName)
+VOID FcNtfs2_FcIngestFinalize_DbPush_Database(_In_ VMM_HANDLE H, _In_ PFCNTFS2_FINALIZE_CONTEXT ctx, _In_ PFCNTFS2 pe, _In_ LPSTR uszPathName)
 {
-    QWORD id = pe->iMap;
     FCSQL_INSERTSTRTABLE SqlStrInsert = { 0 };
     if(!Fc_SqlInsertStr(H, ctx->st_str, uszPathName + 1, &SqlStrInsert)) { return; }
     sqlite3_reset(ctx->st);
-    sqlite3_bind_int64(ctx->st, 1, id);
-    sqlite3_bind_int64(ctx->st, 2, pe->pParent ? pe->pParent->iMap : (QWORD)-1);
+    sqlite3_bind_int64(ctx->st, 1, pe->qwDbId);
+    sqlite3_bind_int64(ctx->st, 2, pe->pParent ? pe->pParent->qwDbId : (QWORD)-1);
     sqlite3_bind_int64(ctx->st, 3, SqlStrInsert.id);
-    sqlite3_bind_int64(ctx->st, 4, pe->qwHashThis);
-    sqlite3_bind_int64(ctx->st, 5, pe->pParent ? pe->pParent->qwHashThis : (QWORD)-1);
-    sqlite3_bind_int64(ctx->st, 6, pe->pa);
+    sqlite3_bind_int64(ctx->st, 4, pe->qwHashPath);
+    sqlite3_bind_int64(ctx->st, 5, pe->pParent ? pe->pParent->qwHashPath : 0);
+    sqlite3_bind_int64(ctx->st, 6, pe->paRecord);
     sqlite3_bind_int64(ctx->st, 7, pe->dwMftRecordNumber);
-    sqlite3_bind_int64(ctx->st, 8, pe->Flags);
-    sqlite3_bind_int64(ctx->st, 9, pe->iDirDepth);
+    sqlite3_bind_int64(ctx->st, 8, pe->dwParentMftRecordNumber);
+    sqlite3_bind_int64(ctx->st, 9, pe->flags);
     sqlite3_bind_int64(ctx->st, 10, pe->cbFileSize);
-    sqlite3_bind_int64(ctx->st, 11, pe->cbFileSizeMftResident);
-    sqlite3_bind_int64(ctx->st, 12, pe->ftCreate);
-    sqlite3_bind_int64(ctx->st, 13, pe->ftModify);
-    sqlite3_bind_int64(ctx->st, 14, pe->ftRead);
-    sqlite3_bind_int64(ctx->st, 15, pe->wName_SeqNbr);
-    sqlite3_bind_int64(ctx->st, 16, ctx->cbUtf8Total + id * M_NTFS_INFO_LINELENGTH_UTF8);
-    sqlite3_bind_int64(ctx->st, 17, ctx->cbJsonTotal + id * M_NTFS_INFO_LINELENGTH_JSON);
+    sqlite3_bind_int64(ctx->st, 11, pe->ftCreate);
+    sqlite3_bind_int64(ctx->st, 12, pe->ftModify);
+    sqlite3_bind_int64(ctx->st, 13, pe->ftRead);
+    sqlite3_bind_int64(ctx->st, 14, pe->wName_SeqNbr);
+    sqlite3_bind_int64(ctx->st, 15, ctx->cbUtf8Total + pe->qwDbId * M_NTFS_INFO_LINELENGTH_UTF8);
+    sqlite3_bind_int64(ctx->st, 16, ctx->cbJsonTotal + pe->qwDbId * M_NTFS_INFO_LINELENGTH_JSON);
     sqlite3_step(ctx->st);
     ctx->cbUtf8Total += SqlStrInsert.cbu;
     ctx->cbJsonTotal += SqlStrInsert.cbj;
 }
 
-DWORD FcNtfs_FinalizeFinish(_In_ VMM_HANDLE H, _In_ PFCNTFS_FINALIZE_CONTEXT ctx, _In_ POB_SET psHashPath, _In_ PFCNTFS peNtfs, _In_ DWORD iMap, _In_ BYTE iDirDepth, _In_reads_(2048) LPSTR uszPath, _In_ DWORD cuszPath)
+VOID FcNtfs2_FcIngestFinalize_DbPush_BuildPath(_In_ VMM_HANDLE H, _In_ PFCNTFS2_FINALIZE_CONTEXT ctx, _In_ PFCNTFS2 peNt, _In_ WORD wDirDepth, _In_reads_(2048) LPSTR uszPath, _In_ DWORD cuszPath)
 {
-    DWORD dwHashName, cuszName;
-    QWORD qwHashTotal;
-    while(peNtfs) {
+    DWORD cuszName;
+    while(peNt) {
         // update/set path
-        cuszName = (DWORD)strlen(peNtfs->uszName);
+        cuszName = (DWORD)strlen(peNt->uszName);
         if(cuszPath + cuszName + 2 >= 2048) { break; }
         uszPath[cuszPath] = '\\';
-        memcpy(&uszPath[cuszPath + 1], peNtfs->uszName, cuszName + 1ULL);
+        memcpy(&uszPath[cuszPath + 1], peNt->uszName, cuszName + 1ULL);
         // update/set path hash
-        while(TRUE) {
-            qwHashTotal = peNtfs->pParent ? peNtfs->pParent->qwHashThis : 0;
-            dwHashName = CharUtil_HashNameFsU(peNtfs->uszName, peNtfs->wName_SeqNbr);
-            qwHashTotal = dwHashName + ((qwHashTotal >> 13) | (qwHashTotal << 51));
-            if(!ObSet_Exists(psHashPath, qwHashTotal) || (peNtfs->wName_SeqNbr >= 100)) { break; }
-            peNtfs->wName_SeqNbr++;
+        peNt->wDirDepth = wDirDepth;
+        peNt->qwDbId = ctx->qwNextDbId++;
+        FcNtfs2_FcIngestFinalize_DbPush_Database(H, ctx, peNt, uszPath);
+        if(peNt->pChild) {
+            FcNtfs2_FcIngestFinalize_DbPush_BuildPath(H, ctx, peNt->pChild, wDirDepth + 1, uszPath, cuszPath + cuszName + 1);
         }
-        ObSet_Push(psHashPath, qwHashTotal);
-        peNtfs->qwHashThis = qwHashTotal;
-        peNtfs->iDirDepth = iDirDepth;
-        peNtfs->iMap = iMap++;
-        FcNtfs_Finalize_DatabaseAdd(H, ctx, peNtfs, uszPath);
-        iMap = FcNtfs_FinalizeFinish(H, ctx, psHashPath, peNtfs->pChild, iMap, iDirDepth + 1, uszPath, cuszPath + cuszName + 1);
-        peNtfs = peNtfs->pSibling;
+        peNt = peNt->pSibling;
     }
     uszPath[cuszPath] = 0;
-    return iMap;
 }
 
 /*
@@ -686,33 +1117,28 @@ DWORD FcNtfs_FinalizeFinish(_In_ VMM_HANDLE H, _In_ PFCNTFS_FINALIZE_CONTEXT ctx
 * -- H
 * -- ctxfc
 */
-VOID FcNtfs_IngestFinalize(_In_ VMM_HANDLE H, _In_opt_ PVOID ctxfc)
+VOID FcNtfs2_FcIngestFinalize_DbPush(_In_ VMM_HANDLE H, POB_FCNTFS2_INIT_CONTEXT ctx)
 {
-    PFCNTFS_SETUP_CONTEXT ctx = (PFCNTFS_SETUP_CONTEXT)ctxfc;
-    FCNTFS_FINALIZE_CONTEXT ctxFinal = { 0 };
+    FCNTFS2_FINALIZE_CONTEXT ctxFinal = { 0 };
     CHAR uszPath[2048] = { 0 };
     POB_SET psObHashPath = NULL;
-    PFCNTFS pNtfsGlobalRoot;
+    DWORD i;
     int rc;
-    // initialize general
-    if(!ctx) { goto fail; }
-    if(!(psObHashPath = ObSet_New(H))) { goto fail; }
-    // merge ingested items and retrieve global root
-    FcNtfs_FinalizeMerge1(ctx);
-    pNtfsGlobalRoot = FcNtfs_FinalizeMerge2(H, ctx);
-    if(!pNtfsGlobalRoot) { goto fail; }
     // SETUP FINISH:
+    uszPath[0] = '\\';
     if(!(ctxFinal.hSql = Fc_SqlReserve(H))) { goto fail; }
     rc = sqlite3_prepare_v2(ctxFinal.hSql,
         "INSERT INTO ntfs " \
-        "(id, id_parent, id_str, hash, hash_parent, addr_phys, inode, mft_flags, depth, size_file, size_fileres, time_create, time_modify, time_read, name_seq, oln_u, oln_j) " \
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"
+        "(id, id_parent, id_str, hash, hash_parent, addr_phys, inode, inode_parent, flags, size_file, time_create, time_modify, time_read, name_seq, oln_u, oln_j) " \
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"
         , -1, &ctxFinal.st, NULL);
     if(rc != SQLITE_OK) { goto fail; }
     rc = sqlite3_prepare_v2(ctxFinal.hSql, szFC_SQL_STR_INSERT, -1, &ctxFinal.st_str, NULL);
     if(rc != SQLITE_OK) { goto fail; }
     sqlite3_exec(ctxFinal.hSql, "BEGIN TRANSACTION", NULL, NULL, NULL);
-    DWORD DEBUG_NUM = FcNtfs_FinalizeFinish(H, &ctxFinal, psObHashPath, pNtfsGlobalRoot, 0, 0, uszPath, 0);
+    for(i = 0; i < ctx->cVolumes; i++) {
+        FcNtfs2_FcIngestFinalize_DbPush_BuildPath(H, &ctxFinal, ctx->pVolumes[i].pRoot, 0, uszPath, 1);
+    }
     sqlite3_exec(ctxFinal.hSql, "COMMIT TRANSACTION", NULL, NULL, NULL);
     // CLEAN UP:
 fail:
@@ -720,6 +1146,19 @@ fail:
     sqlite3_finalize(ctxFinal.st_str);
     Fc_SqlReserveReturn(H, ctxFinal.hSql);
     Ob_DECREF(psObHashPath);
+}
+
+VOID FcNtfs2_FcIngestFinalize(_In_ VMM_HANDLE H, _In_opt_ PVOID ctxfc)
+{
+    POB_FCNTFS2_INIT_CONTEXT ctx = (POB_FCNTFS2_INIT_CONTEXT)ctxfc;
+    if(!ctx) { return; }
+    if(!FcNtfs2_FcIngestFinalize_CreateVolumeRoots(H, ctx)) { return; }
+    if(!FcNtfs2_FcIngestFinalize_MergeAll(H, ctx)) { return; }
+    FcNtfs2_FcIngestFinalize_MergeShrink(H, ctx);
+    FcNtfs2_FcIngestFinalize_MergeSort(H, ctx);
+    if(!FcNtfs2_FcIngestFinalize_MergeHash(H, ctx)) { return; }
+    Fc_SqlExec(H, FC_SQL_SCHEMA_NTFS);
+    FcNtfs2_FcIngestFinalize_DbPush(H, ctx);
 }
 
 /*
@@ -730,7 +1169,7 @@ fail:
 * -- pfnAddEntry
 * -- pfnEntryAddBySql
 */
-VOID FcNtfs_SetupTimeline(
+VOID FcNtfs2_FcTimeline(
     _In_ VMM_HANDLE H,
     _In_opt_ PVOID ctxfc,
     _In_ HANDLE hTimeline,
@@ -745,6 +1184,31 @@ VOID FcNtfs_SetupTimeline(
     pfnEntryAddBySql(H, hTimeline, sizeof(pszSql) / sizeof(LPSTR), pszSql);
 }
 
+/*
+* Finalize the NTFS setup/initialization phase. Close/Clear any allocated contexts.
+* -- H
+* -- ctxfc
+*/
+VOID FcNtfs2_FcFinalize(_In_ VMM_HANDLE H, _In_opt_ PVOID ctxfc)
+{
+    Ob_DECREF(ctxfc);
+}
+
+/*
+* Initialize the forensic context which is used as an initialization context.
+* At this stage the context is also populated with $Mft and $Directory contents.
+* This takes a bit of time, but it's imperative that it's done before physical
+* memory is ingested as it will increase the quality of the results.
+* CALLER DECREF: return
+*/
+PVOID FcNtfs2_FcInitialize(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
+{
+    POB_FCNTFS2_INIT_CONTEXT ctxOb = FcNtfs2_InitContext(H, ctxP);
+    if(!ctxOb) { return NULL; }
+    FcNtfs2_Init1(H, ctxOb);
+    return ctxOb;
+}
+
 
 
 //-----------------------------------------------------------------------------
@@ -756,17 +1220,14 @@ VOID FcNtfs_SetupTimeline(
 
 typedef struct tdFC_MAP_NTFSENTRY {
     QWORD qwId;
-    QWORD qwIdParent;
     QWORD pa;
     QWORD qwFileSize;
-    DWORD dwFileSizeResident;
     QWORD ftCreate;
     QWORD ftModify;
     QWORD ftRead;
-    DWORD dwMftFlags;
     DWORD dwMftId;
-    BOOL fDir;
-    DWORD dwDirDepth;
+    DWORD dwMftIdParent;
+    DWORD flags;
     DWORD dwTextSeq;
     QWORD cszuOffset;               // offset to start of "line" in bytes (utf-8)
     QWORD cszjOffset;               // offset to start of "line" in bytes (json)
@@ -792,10 +1253,11 @@ typedef struct tdFCOB_MAP_NTFS {
 * -- return
 */
 _Success_(return)
-BOOL FcNtfs_GetMftResidentData(_In_ VMM_HANDLE H, _In_ PFC_MAP_NTFSENTRY pNtfsEntry, _Out_writes_opt_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_opt_ PDWORD pcbDataRead)
+BOOL FcNtfs2_GetMftResidentData(_In_ VMM_HANDLE H, _In_ PFC_MAP_NTFSENTRY pNtfsEntry, _Out_writes_opt_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_opt_ PDWORD pcbDataRead)
 {
     DWORD oA;
-    PNTFS_ATTR pa;
+    BOOL fADS;
+    PNTFS_ATTR pA;
     PNTFS_FILE_RECORD pr;
     BYTE pbMftEntry[0x400];
     if(!VmmRead(H, NULL, pNtfsEntry->pa, pbMftEntry, 0x400)) { return FALSE; }
@@ -805,27 +1267,33 @@ BOOL FcNtfs_GetMftResidentData(_In_ VMM_HANDLE H, _In_ PFC_MAP_NTFSENTRY pNtfsEn
     // Extract attributes loop.
     oA = pr->FirstAttributeOffset;
     while((oA + sizeof(NTFS_ATTR) < 0x400)) {
-        pa = (PNTFS_ATTR)(pbMftEntry + oA);
-        if((pa->Type == 0xffffffff) || (pa->Length < sizeof(NTFS_ATTR))) { return FALSE; }
-        if(pa->Type == NTFS_ATTR_TYPE_DATA) {
-            if(pcbDataRead) {
-                *pcbDataRead = pa->AttrLength;
+        pA = (PNTFS_ATTR)(pbMftEntry + oA);
+        if((pA->Type == 0xffffffff) || (pA->Length < sizeof(NTFS_ATTR))) { return FALSE; }
+        if(pA->Type == NTFS_ATTR_TYPE_DATA) {
+            if((oA + pA->AttrOffset + pA->AttrLength > 0x400) || (pA->AttrLength > 0x400)) { return FALSE; }
+            fADS = (pNtfsEntry->flags & FCNTFS2_FLAG_ADS) ? TRUE : FALSE;
+            if((fADS && !pA->NameLength) || (!fADS && pA->NameLength)) {
+                oA += pA->Length;
+                continue;
             }
-            if(cbData != pa->AttrLength) { return FALSE; }
+            if(cbData != pA->AttrLength) { return FALSE; }
             if(pbData) {
-                memcpy(pbData, (pbMftEntry + oA + pa->AttrOffset), pa->AttrLength);
+                memcpy(pbData, (pbMftEntry + oA + pA->AttrOffset), pA->AttrLength);
+            }
+            if(pcbDataRead) {
+                *pcbDataRead = cbData;
             }
             return TRUE;
         }
-        oA += pa->Length;
+        oA += pA->Length;
     }
     return FALSE;
 }
 
-#define FCNTFS_SQL_SELECT_FIELDS " sz, id, id_parent, addr_phys, inode, mft_flags, depth, name_seq, time_create, time_modify, time_read, size_file, size_fileres, oln_u, oln_j "
+#define FCNTFS_SQL_SELECT_FIELDS " sz, id, addr_phys, inode, inode_parent, flags, name_seq, time_create, time_modify, time_read, size_file, oln_u, oln_j "
 
 _Success_(return)
-BOOL FcNtfsMap_CreateInternal(_In_ VMM_HANDLE H, _In_ LPSTR szSqlCount, _In_ LPSTR szSqlSelect, _In_ DWORD cQueryValues, _In_reads_(cQueryValues) PQWORD pqwQueryValues, _Out_ PFCOB_MAP_NTFS *ppObNtfsMap)
+BOOL FcNtfs2_Map_CreateInternal(_In_ VMM_HANDLE H, _In_ LPSTR szSqlCount, _In_ LPSTR szSqlSelect, _In_ DWORD cQueryValues, _In_reads_(cQueryValues) PQWORD pqwQueryValues, _Out_ PFCOB_MAP_NTFS *ppObNtfsMap)
 {
     // TODO: CHANGE MAP INTO UTF-8 STRING!
     int rc;
@@ -863,20 +1331,17 @@ BOOL FcNtfsMap_CreateInternal(_In_ VMM_HANDLE H, _In_ LPSTR szSqlCount, _In_ LPS
         oMultiText += pe->cbuText;
         // populate numeric data
         pe->qwId = sqlite3_column_int64(hStmt, 1);
-        pe->qwIdParent = sqlite3_column_int64(hStmt, 2);
-        pe->pa = sqlite3_column_int64(hStmt, 3);
-        pe->dwMftId = sqlite3_column_int(hStmt, 4);
-        pe->dwMftFlags = sqlite3_column_int(hStmt, 5);
-        pe->fDir = (pe->dwMftFlags & 2) ? TRUE : FALSE;
-        pe->dwDirDepth = sqlite3_column_int(hStmt, 6);
-        pe->dwTextSeq = sqlite3_column_int(hStmt, 7);
-        pe->ftCreate = sqlite3_column_int64(hStmt, 8);
-        pe->ftModify = sqlite3_column_int64(hStmt, 9);
-        pe->ftRead = sqlite3_column_int64(hStmt, 10);
-        pe->qwFileSize = sqlite3_column_int64(hStmt, 11);
-        pe->dwFileSizeResident = sqlite3_column_int(hStmt, 12);
-        pe->cszuOffset = sqlite3_column_int64(hStmt, 13);
-        pe->cszjOffset = sqlite3_column_int64(hStmt, 14);
+        pe->pa = sqlite3_column_int64(hStmt, 2);
+        pe->dwMftId = sqlite3_column_int(hStmt, 3);
+        pe->dwMftIdParent = sqlite3_column_int(hStmt, 4);
+        pe->flags = sqlite3_column_int(hStmt, 5);
+        pe->dwTextSeq = sqlite3_column_int(hStmt, 6);
+        pe->ftCreate = sqlite3_column_int64(hStmt, 7);
+        pe->ftModify = sqlite3_column_int64(hStmt, 8);
+        pe->ftRead = sqlite3_column_int64(hStmt, 9);
+        pe->qwFileSize = sqlite3_column_int64(hStmt, 10);
+        pe->cszuOffset = sqlite3_column_int64(hStmt, 11);
+        pe->cszjOffset = sqlite3_column_int64(hStmt, 12);
     }
     Ob_INCREF(pObNtfsMap);
 fail:
@@ -895,9 +1360,9 @@ fail:
 * -- return
 */
 _Success_(return)
-BOOL FcNtfsMap_GetFromHash(_In_ VMM_HANDLE H, _In_ QWORD qwHash, _Out_ PFCOB_MAP_NTFS * ppObNtfsMap)
+BOOL FcNtfs2_Map_GetFromHash(_In_ VMM_HANDLE H, _In_ QWORD qwHash, _Out_ PFCOB_MAP_NTFS *ppObNtfsMap)
 {
-    return FcNtfsMap_CreateInternal(
+    return FcNtfs2_Map_CreateInternal(
         H,
         "SELECT COUNT(*), SUM(cbu) FROM v_ntfs WHERE hash = ?",
         "SELECT "FCNTFS_SQL_SELECT_FIELDS" FROM v_ntfs WHERE hash = ?",
@@ -916,9 +1381,9 @@ BOOL FcNtfsMap_GetFromHash(_In_ VMM_HANDLE H, _In_ QWORD qwHash, _Out_ PFCOB_MAP
 * -- return
 */
 _Success_(return)
-BOOL FcNtfsMap_GetFromHashParent(_In_ VMM_HANDLE H, _In_ QWORD qwHashParent, _Out_ PFCOB_MAP_NTFS * ppObNtfsMap)
+BOOL FcNtfs2_Map_GetFromHashParent(_In_ VMM_HANDLE H, _In_ QWORD qwHashParent, _Out_ PFCOB_MAP_NTFS *ppObNtfsMap)
 {
-    return FcNtfsMap_CreateInternal(
+    return FcNtfs2_Map_CreateInternal(
         H,
         "SELECT COUNT(*), SUM(cbu) FROM v_ntfs WHERE hash_parent = ?",
         "SELECT "FCNTFS_SQL_SELECT_FIELDS" FROM v_ntfs WHERE hash_parent = ?",
@@ -937,10 +1402,10 @@ BOOL FcNtfsMap_GetFromHashParent(_In_ VMM_HANDLE H, _In_ QWORD qwHashParent, _Ou
 * -- return
 */
 _Success_(return)
-BOOL FcNtfsMap_GetFromIdRange(_In_ VMM_HANDLE H, _In_ QWORD qwId, _In_ QWORD cId, _Out_ PFCOB_MAP_NTFS * ppObNtfsMap)
+BOOL FcNtfs2_Map_GetFromIdRange(_In_ VMM_HANDLE H, _In_ QWORD qwId, _In_ QWORD cId, _Out_ PFCOB_MAP_NTFS * ppObNtfsMap)
 {
     QWORD v[] = { qwId, qwId + cId };
-    return FcNtfsMap_CreateInternal(
+    return FcNtfs2_Map_CreateInternal(
         H,
         "SELECT COUNT(*), SUM(cbu) FROM v_ntfs WHERE id >= ? AND id < ?",
         "SELECT "FCNTFS_SQL_SELECT_FIELDS" FROM v_ntfs WHERE id >= ? AND id < ? ORDER BY id",
@@ -959,7 +1424,7 @@ BOOL FcNtfsMap_GetFromIdRange(_In_ VMM_HANDLE H, _In_ QWORD qwId, _In_ QWORD cId
 * -- return
 */
 _Success_(return)
-BOOL FcNtfs_GetFileSize(_In_ VMM_HANDLE H, _Out_opt_ PQWORD pcRecords, _Out_opt_ PQWORD pcbUTF8, _Out_opt_ PQWORD pcbJSON)
+BOOL FcNtfs2_GetFileSize(_In_ VMM_HANDLE H, _Out_opt_ PQWORD pcRecords, _Out_opt_ PQWORD pcbUTF8, _Out_opt_ PQWORD pcbJSON)
 {
     QWORD pqwResult[3];
     // query below is convoluted but it's very fast ...
@@ -979,7 +1444,7 @@ BOOL FcNtfs_GetFileSize(_In_ VMM_HANDLE H, _Out_opt_ PQWORD pcRecords, _Out_opt_
 * -- return
 */
 _Success_(return)
-BOOL FcNtfs_GetIdFromPosition(_In_ VMM_HANDLE H, _In_ QWORD qwFilePos, _In_ BOOL fJSON, _Out_ PQWORD pqwId)
+BOOL FcNtfs2_GetIdFromPosition(_In_ VMM_HANDLE H, _In_ QWORD qwFilePos, _In_ BOOL fJSON, _Out_ PQWORD pqwId)
 {
     QWORD v[] = { max(2048, qwFilePos) - 2048, qwFilePos };
     return fJSON ?
@@ -1003,7 +1468,7 @@ BOOL FcNtfs_GetIdFromPosition(_In_ VMM_HANDLE H, _In_ QWORD qwFilePos, _In_ BOOL
 * -- pcsz
 * -- return
 */
-PBYTE M_FcNtfs_ReadInfoSingle(_In_ VMM_HANDLE H, _In_ PFC_MAP_NTFSENTRY peNtfs, _Out_ PDWORD pcsz)
+PBYTE FcNtfs2_ReadInfoSingle(_In_ VMM_HANDLE H, _In_ PFC_MAP_NTFSENTRY peNtfs, _Out_ PDWORD pcsz)
 {
     LPSTR sz = NULL;
     LPSTR uszTextName;
@@ -1013,7 +1478,8 @@ PBYTE M_FcNtfs_ReadInfoSingle(_In_ VMM_HANDLE H, _In_ PFC_MAP_NTFSENTRY peNtfs, 
     BYTE szHexAscii[0xC00];
     //----
     LPSTR uszRecordFileName;
-    BYTE pbBuffer[2*MAX_PATH];
+    BYTE pbBuffer[2 * MAX_PATH];
+    CHAR uszAttributeName[2 * MAX_PATH];
     CHAR szTimeC[24], szTimeA[24], szTimeM[24], szTimeR[24];
     CHAR szGuid1[37], szGuid2[37], szGuid3[37], szGuid4[37];
     DWORD oA, iStr;
@@ -1050,15 +1516,24 @@ PBYTE M_FcNtfs_ReadInfoSingle(_In_ VMM_HANDLE H, _In_ PFC_MAP_NTFSENTRY peNtfs, 
         pA = (PNTFS_ATTR)(pbr + oA);
         if((pA->Type == 0xffffffff) || (pA->Length < sizeof(NTFS_ATTR))) { break; }
         if(oA + pA->Length > 0x400) { break; }
+        if((oA + pA->AttrOffset + pA->AttrLength > 0x400) || (pA->AttrLength > 0x400)) { break; }
+        // $ATTRIBUTE_HEADER NAME:
+        uszAttributeName[0] = 0;
+        if(pA->NameLength && pA->NameOffset && (pA->Length >= pA->NameOffset + sizeof(WCHAR) * pA->NameLength)) {
+            strncpy_s(uszAttributeName, sizeof(uszAttributeName), "Attribute Name:   ", _TRUNCATE);
+            CharUtil_WtoU((LPWSTR)((PBYTE)pA + pA->NameOffset), pA->NameLength, uszAttributeName + 18, (DWORD)(sizeof(uszAttributeName) - 18 - 2), NULL, NULL, CHARUTIL_FLAG_TRUNCATE | CHARUTIL_FLAG_STR_BUFONLY);
+            strncat_s(uszAttributeName, sizeof(uszAttributeName), "\n", _TRUNCATE);
+        }
         // $ATTRIBUTE_HEADER
         iStr = ((pA->Type <= NTFS_ATTR_TYPE_MAX) & !(pA->Type & 0xf)) ? pA->Type >> 4 : 0;
         csz += snprintf(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz,
-            "$%s\n======================\nO Offset:Length:  %03X:%03X\nA Offset:Length:  %03X:%03X\nType:             %s%s\nAttribute ID:     %i\n",
+            "$%s\n======================\nO Offset:Length:  %03X:%03X\nA Offset:Length:  %03X:%03X\nType:             %s%s\n%sAttribute ID:     %i\n",
             NTFS_ATTR_TYPE_NAME_STR[iStr],
             oA, pA->Length,
             (pA->fNonResident ? 0 : pA->AttrOffset), (pA->fNonResident ? 0 : pA->AttrLength),
             (pA->fNonResident ? "Non-Resident" : "Resident"),
             (pA->NameLength ? ", Named" : ""),
+            uszAttributeName,
             pA->AttrId
         );
         // only parse resident attributes below:
@@ -1138,7 +1613,7 @@ fail:
     return sz;
 }
 
-NTSTATUS M_FcNtfs_ReadInfoAll(_In_ VMM_HANDLE H, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS FcNtfs2_ReadInfoAll(_In_ VMM_HANDLE H, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PFC_MAP_NTFSENTRY pe;
@@ -1146,10 +1621,10 @@ NTSTATUS M_FcNtfs_ReadInfoAll(_In_ VMM_HANDLE H, _Out_ PBYTE pb, _In_ DWORD cb, 
     QWORD i, o, qwIdBase, qwIdTop, cId, cszuBuffer, cbOffsetBuffer;
     LPSTR szuBuffer = NULL;
     CHAR szTimeCreate[24], szTimeModify[24];
-    if(!FcNtfs_GetIdFromPosition(H, cbOffset, FALSE, &qwIdBase)) { goto fail; }
-    if(!FcNtfs_GetIdFromPosition(H, cbOffset + cb, FALSE, &qwIdTop)) { goto fail; }
+    if(!FcNtfs2_GetIdFromPosition(H, cbOffset, FALSE, &qwIdBase)) { goto fail; }
+    if(!FcNtfs2_GetIdFromPosition(H, cbOffset + cb, FALSE, &qwIdTop)) { goto fail; }
     cId = min(cb / M_NTFS_INFO_LINELENGTH_UTF8, qwIdTop - qwIdBase) + 1;
-    if(!FcNtfsMap_GetFromIdRange(H, qwIdBase, cId, &pObNtfsMap) || !pObNtfsMap->cMap) { goto fail; }
+    if(!FcNtfs2_Map_GetFromIdRange(H, qwIdBase, cId, &pObNtfsMap) || !pObNtfsMap->cMap) { goto fail; }
     cbOffsetBuffer = pObNtfsMap->pMap[0].cszuOffset;
     if((cbOffsetBuffer > cbOffset) || (cbOffset - cbOffsetBuffer > 0x10000)) { goto fail; }
     cszuBuffer = 0x01000000;
@@ -1161,15 +1636,18 @@ NTSTATUS M_FcNtfs_ReadInfoAll(_In_ VMM_HANDLE H, _Out_ PBYTE pb, _In_ DWORD cb, 
         o += snprintf(
             szuBuffer + o,
             (SIZE_T)(cszuBuffer - o),
-            "%6llx%12llx %8x %s : %s %12llx %3x %c %s\n",
+            "%6llx%12llx%8x%8x %s : %s %12llx %c%c%c%c %s\n",
             pe->qwId,
             pe->pa,
-            (pe->dwMftId & 0xf0000000 ? 0 : pe->dwMftId),
+            (pe->dwMftId & 0x80000000 ? 0 : pe->dwMftId),
+            (pe->dwMftIdParent & 0x80000000 ? 0 : pe->dwMftIdParent),
             szTimeCreate,
             szTimeModify,
             pe->qwFileSize,
-            pe->dwFileSizeResident,
-            pe->fDir ? 'D' : ' ',
+            (pe->flags & FCNTFS2_FLAG_ACTIVE) ? 'A' : ' ',
+            (pe->flags & FCNTFS2_FLAG_RESIDENT) ? 'R' : ' ',
+            (pe->flags & FCNTFS2_FLAG_ADS) ? 'S' : ' ',
+            (pe->flags & FCNTFS2_FLAG_DIRECTORY) ? 'D' : ' ',
             pe->uszText
         );
     }
@@ -1193,7 +1671,7 @@ fail:
 * -- pfMem = path ends with '\\mftdata.mem'
 * -- pfBin = path ends with '\\mftfile.bin'
 */
-VOID M_FcNtfs_PathStripMftInfo(_In_ VMM_HANDLE H, _In_ LPSTR uszPath, _Out_writes_(MAX_PATH) LPSTR uszPathStripped, _Out_opt_ PBOOL pfMeta, _Out_opt_ PBOOL pfEnd, _Out_opt_ PBOOL pfTxt, _Out_opt_ PBOOL pfMem, _Out_opt_ PBOOL pfBin)
+VOID FcNtfs2_PathStripMftInfo(_In_ VMM_HANDLE H, _In_ LPSTR uszPath, _Out_writes_(MAX_PATH) LPSTR uszPathStripped, _Out_opt_ PBOOL pfMeta, _Out_opt_ PBOOL pfEnd, _Out_opt_ PBOOL pfTxt, _Out_opt_ PBOOL pfMem, _Out_opt_ PBOOL pfBin)
 {
     QWORD cch;
     LPSTR usz;
@@ -1221,7 +1699,7 @@ VOID M_FcNtfs_PathStripMftInfo(_In_ VMM_HANDLE H, _In_ LPSTR uszPath, _Out_write
     if(pfMeta) { *pfMeta = TRUE; }
 }
 
-NTSTATUS M_FcNtfs_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS FcNtfs2_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PFCOB_MAP_NTFS pObNtfsMap = NULL;
@@ -1233,16 +1711,16 @@ NTSTATUS M_FcNtfs_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out
     PBYTE pbInfoTxt;
     DWORD cbInfoTxt;
     if(!strcmp(ctxP->uszPath, "ntfs_files.txt")) {
-        return M_FcNtfs_ReadInfoAll(H, pb, cb, pcbRead, cbOffset);
+        return FcNtfs2_ReadInfoAll(H, pb, cb, pcbRead, cbOffset);
     }
-    M_FcNtfs_PathStripMftInfo(H, ctxP->uszPath, uszPathStripped, &fMeta, NULL, &fMetaTxt, &fMetaMem, &fMetaBin);
+    FcNtfs2_PathStripMftInfo(H, ctxP->uszPath, uszPathStripped, &fMeta, NULL, &fMetaTxt, &fMetaMem, &fMetaBin);
     qwHashPath = CharUtil_HashPathFsU(uszPathStripped);
-    if(FcNtfsMap_GetFromHash(H, qwHashPath, &pObNtfsMap) && pObNtfsMap->cMap) {
+    if(FcNtfs2_Map_GetFromHash(H, qwHashPath, &pObNtfsMap) && pObNtfsMap->cMap) {
         peNtfs = pObNtfsMap->pMap + 0;
         if(!fMeta || fMetaBin) {
-            if(peNtfs->qwFileSize && (peNtfs->dwFileSizeResident == peNtfs->qwFileSize) && (peNtfs->qwFileSize < 0x400)) {
-                if(FcNtfs_GetMftResidentData(H, peNtfs, pbNtfsRecordMax, peNtfs->dwFileSizeResident, NULL)) {
-                    nt = Util_VfsReadFile_FromPBYTE(pbNtfsRecordMax, peNtfs->dwFileSizeResident, pb, cb, pcbRead, cbOffset);
+            if(peNtfs->qwFileSize && (peNtfs->flags & FCNTFS2_FLAG_RESIDENT) && (peNtfs->qwFileSize < 0x400)) {
+                if(FcNtfs2_GetMftResidentData(H, peNtfs, pbNtfsRecordMax, (DWORD)peNtfs->qwFileSize, NULL)) {
+                    nt = Util_VfsReadFile_FromPBYTE(pbNtfsRecordMax, peNtfs->qwFileSize, pb, cb, pcbRead, cbOffset);
                 }
             } else {
                 nt = Util_VfsReadFile_FromZERO(peNtfs->qwFileSize, pb, cb, pcbRead, cbOffset);
@@ -1252,7 +1730,7 @@ NTSTATUS M_FcNtfs_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out
             VmmRead2(H, NULL, peNtfs->pa, pbNtfsRecordMax, 0x400, VMM_FLAG_ZEROPAD_ON_FAIL);
             nt = Util_VfsReadFile_FromPBYTE(pbNtfsRecordMax, 0x400, pb, cb, pcbRead, cbOffset);
         }
-        if(fMetaTxt && (pbInfoTxt = M_FcNtfs_ReadInfoSingle(H, peNtfs, &cbInfoTxt))) {
+        if(fMetaTxt && (pbInfoTxt = FcNtfs2_ReadInfoSingle(H, peNtfs, &cbInfoTxt))) {
             nt = Util_VfsReadFile_FromPBYTE(pbInfoTxt, cbInfoTxt, pb, cb, pcbRead, cbOffset);
             LocalFree(pbInfoTxt);
         }
@@ -1261,7 +1739,7 @@ NTSTATUS M_FcNtfs_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out
     return nt;
 }
 
-VOID M_FcNtfs_ListDirectory(_In_ VMM_HANDLE H, _In_ LPSTR uszPath, _Inout_ PHANDLE pFileList)
+VOID FcNtfs2_ListDirectory(_In_ VMM_HANDLE H, _In_ LPSTR uszPath, _Inout_ PHANDLE pFileList)
 {
     BOOL fMeta, fEnd, fTxt, fMem, fBin;
     PBYTE pbInfoTxt;
@@ -1269,27 +1747,27 @@ VOID M_FcNtfs_ListDirectory(_In_ VMM_HANDLE H, _In_ LPSTR uszPath, _Inout_ PHAND
     PFC_MAP_NTFSENTRY pe;
     PFCOB_MAP_NTFS pObNtfsMap = NULL;
     VMMDLL_VFS_FILELIST_EXINFO FileExInfo = { 0 };
-    CHAR uszNameFix[2*MAX_PATH];
+    CHAR uszNameFix[2 * MAX_PATH];
     LPSTR uszTextName;
     QWORD qwHashPath;
     FileExInfo.dwVersion = VMMDLL_VFS_FILELIST_EXINFO_VERSION;
-    M_FcNtfs_PathStripMftInfo(H, uszPath, uszNameFix, &fMeta, &fEnd, &fTxt, &fMem, &fBin);
+    FcNtfs2_PathStripMftInfo(H, uszPath, uszNameFix, &fMeta, &fEnd, &fTxt, &fMem, &fBin);
     if(fTxt || fMem || fBin) { return; }
     qwHashPath = CharUtil_HashPathFsU(uszNameFix);
     // single mft entry metadata files
     if(fMeta && !fEnd) {
-        if(FcNtfsMap_GetFromHash(H, qwHashPath, &pObNtfsMap) && pObNtfsMap->cMap) {
+        if(FcNtfs2_Map_GetFromHash(H, qwHashPath, &pObNtfsMap) && pObNtfsMap->cMap) {
             pe = pObNtfsMap->pMap;
             if(pe->pa) {
                 FileExInfo.qwCreationTime = pe->ftCreate;
                 FileExInfo.qwLastWriteTime = pe->ftModify;
                 FileExInfo.qwLastAccessTime = pe->ftRead;
-                if((pbInfoTxt = M_FcNtfs_ReadInfoSingle(H, pe, &cbInfoTxt))) {
+                if((pbInfoTxt = FcNtfs2_ReadInfoSingle(H, pe, &cbInfoTxt))) {
                     VMMDLL_VfsList_AddFile(pFileList, "mftinfo.txt", cbInfoTxt, &FileExInfo);
                     LocalFree(pbInfoTxt);
                 }
                 VMMDLL_VfsList_AddFile(pFileList, "mftdata.mem", 0x400, &FileExInfo);
-                if(!pe->fDir) {
+                if(pe->flags & FCNTFS2_FLAG_RESIDENT) {
                     VMMDLL_VfsList_AddFile(pFileList, "mftfile.bin", pe->qwFileSize, &FileExInfo);
                 }
             }
@@ -1298,7 +1776,7 @@ VOID M_FcNtfs_ListDirectory(_In_ VMM_HANDLE H, _In_ LPSTR uszPath, _Inout_ PHAND
         return;
     }
     // ordinary directory or metadata directory
-    if(!FcNtfsMap_GetFromHashParent(H, qwHashPath, &pObNtfsMap)) { return; }
+    if(!FcNtfs2_Map_GetFromHashParent(H, qwHashPath, &pObNtfsMap)) { return; }
     if(!fMeta && uszPath[0] && pObNtfsMap->cMap) {
         VMMDLL_VfsList_AddDirectory(pFileList, "$_INFO", NULL);
     }
@@ -1309,30 +1787,30 @@ VOID M_FcNtfs_ListDirectory(_In_ VMM_HANDLE H, _In_ LPSTR uszPath, _Inout_ PHAND
         FileExInfo.qwCreationTime = pe->ftCreate;
         FileExInfo.qwLastWriteTime = pe->ftModify;
         FileExInfo.qwLastAccessTime = pe->ftRead;
-        if(pe->fDir || fMeta) {
+        if((pe->flags & FCNTFS2_FLAG_DIRECTORY) || fMeta) {
             if(pe->pa || !fMeta) {
                 FileExInfo.fCompressed = FALSE;
                 VMMDLL_VfsList_AddDirectory(pFileList, uszNameFix, &FileExInfo);
             }
         } else {
-            FileExInfo.fCompressed = !pe->qwFileSize || (pe->qwFileSize != pe->dwFileSizeResident);
+            FileExInfo.fCompressed = (pe->flags & FCNTFS2_FLAG_RESIDENT) ? TRUE : FALSE;
             VMMDLL_VfsList_AddFile(pFileList, uszNameFix, pe->qwFileSize, &FileExInfo);
         }
     }
     Ob_DECREF(pObNtfsMap);
 }
 
-BOOL M_FcNtfs_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList)
+BOOL FcNtfs2_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList)
 {
     QWORD cbFileSizeUTF8;
-    M_FcNtfs_ListDirectory(H, ctxP->uszPath, pFileList);
-    if(!ctxP->uszPath[0] && FcNtfs_GetFileSize(H, NULL, &cbFileSizeUTF8, NULL)) {
+    FcNtfs2_ListDirectory(H, ctxP->uszPath, pFileList);
+    if(!ctxP->uszPath[0] && FcNtfs2_GetFileSize(H, NULL, &cbFileSizeUTF8, NULL)) {
         VMMDLL_VfsList_AddFile(pFileList, "ntfs_files.txt", cbFileSizeUTF8, NULL);
     }
     return TRUE;
 }
 
-VOID M_FcNtfs_Notify(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent)
+VOID FcNtfs2_Notify(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent)
 {
     if(fEvent == VMMDLL_PLUGIN_NOTIFY_FORENSIC_INIT_COMPLETE) {
         PluginManager_SetVisibility(H, TRUE, "\\forensic\\ntfs", TRUE);
@@ -1346,14 +1824,14 @@ VOID M_FcNtfs_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
     strcpy_s(pRI->reg_info.uszPathName, 128, "\\forensic\\ntfs");               // module name
     pRI->reg_info.fRootModule = TRUE;                                           // module shows in root directory
     pRI->reg_info.fRootModuleHidden = TRUE;                                     // module hidden by default
-    pRI->reg_fn.pfnList = M_FcNtfs_List;                                        // List function supported
-    pRI->reg_fn.pfnRead = M_FcNtfs_Read;                                        // Read function supported
-    pRI->reg_fn.pfnNotify = M_FcNtfs_Notify;                                    // Notify function supported
-    pRI->reg_fnfc.pfnInitialize = FcNtfs_Initialize;                            // Forensic initialize function supported
-    pRI->reg_fnfc.pfnFinalize = FcNtfs_Finalize;                                // Forensic ingest finalize function supported
-    pRI->reg_fnfc.pfnIngestPhysmem = FcNtfs_IngestPhysmem;                      // Forensic physmem ingest supported
-    pRI->reg_fnfc.pfnIngestFinalize = FcNtfs_IngestFinalize;                    // Forensic ingest finalize function supported
-    pRI->reg_fnfc.pfnTimeline = FcNtfs_SetupTimeline;                           // Forensic timelining supported
+    pRI->reg_fn.pfnList = FcNtfs2_List;                                         // List function supported
+    pRI->reg_fn.pfnRead = FcNtfs2_Read;                                         // Read function supported
+    pRI->reg_fn.pfnNotify = FcNtfs2_Notify;                                     // Notify function supported
+    pRI->reg_fnfc.pfnInitialize = FcNtfs2_FcInitialize;                         // Forensic initialize function supported
+    pRI->reg_fnfc.pfnIngestPhysmem = FcNtfs2_FcIngestPhysmem;                   // Forensic physmem ingest supported
+    pRI->reg_fnfc.pfnIngestFinalize = FcNtfs2_FcIngestFinalize;                 // Forensic ingest finalize function supported
+    pRI->reg_fnfc.pfnTimeline = FcNtfs2_FcTimeline;                             // Forensic timelining supported
+    pRI->reg_fnfc.pfnFinalize = FcNtfs2_FcFinalize;                             // Forensic finalize function supported
     memcpy(pRI->reg_info.sTimelineNameShort, "NTFS", 5);
     strncpy_s(pRI->reg_info.uszTimelineFile, 32, "timeline_ntfs", _TRUNCATE);
     pRI->pfnPluginManager_Register(H, pRI);

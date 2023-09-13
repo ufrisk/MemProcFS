@@ -304,22 +304,41 @@ BOOL PluginManager_Notify(_In_ VMM_HANDLE H, _In_ DWORD fEvent, _In_opt_ PVOID p
     return TRUE;
 }
 
+VOID PluginManager_FcInitialize_ThreadProc(_In_ VMM_HANDLE H, _In_ PPLUGIN_ENTRY pPlugin)
+{
+    VMMDLL_PLUGIN_CONTEXT ctxPlugin;
+    if(!H->fAbort && pPlugin->fc.pfnInitialize) {
+        PluginManager_ContextInitialize(&ctxPlugin, pPlugin, NULL, NULL);
+        pPlugin->fc.ctxfc = pPlugin->fc.pfnInitialize(H, &ctxPlugin);
+    }
+}
+
 /*
 * Initialize plugins with forensic mode capabilities.
 * -- H
 */
 VOID PluginManager_FcInitialize(_In_ VMM_HANDLE H)
 {
-    VMMDLL_PLUGIN_CONTEXT ctxPlugin;
+    DWORD cWork = 0;
     QWORD tmStart = Statistics_CallStart(H);
     PPLUGIN_ENTRY pPlugin = (PPLUGIN_ENTRY)H->vmm.PluginManager.FLinkForensic;
+    PVMM_WORK_START_ROUTINE_PVOID_PFN pfns[MAXIMUM_WAIT_OBJECTS];
+    PVOID ctxs[MAXIMUM_WAIT_OBJECTS];
+    if(H->fAbort) { return; }
     while(pPlugin) {
         if(pPlugin->fc.pfnInitialize) {
-            PluginManager_ContextInitialize(&ctxPlugin, pPlugin, NULL, NULL);
-            pPlugin->fc.ctxfc = pPlugin->fc.pfnInitialize(H, &ctxPlugin);
+            pfns[cWork] = (PVMM_WORK_START_ROUTINE_PVOID_PFN)PluginManager_FcInitialize_ThreadProc;
+            ctxs[cWork] = pPlugin;
+            cWork++;
+            if(cWork == MAXIMUM_WAIT_OBJECTS) {
+                VmmLog(H, MID_PLUGIN, LOGLEVEL_2_WARNING, "FcInitialize max plugins reached. Some plugins may not be run.");
+                break;
+            }
         }
         pPlugin = pPlugin->FLinkForensic;
     }
+    if(H->fAbort) { return; }
+    VmmWorkWaitMultiple2_Void(H, cWork, pfns, ctxs);
     Statistics_CallEnd(H, STATISTICS_ID_PluginManager_FcInitialize, tmStart);
 }
 
@@ -543,7 +562,7 @@ VOID PluginManager_FcFindEvil_ThreadProc(_In_ VMM_HANDLE H, _In_ PPLUGIN_ENTRY p
 */
 VOID PluginManager_FcFindEvil(_In_ VMM_HANDLE H)
 {
-    DWORD cFindEvil = 0;
+    DWORD cWork = 0;
     QWORD tmStart = Statistics_CallStart(H);
     PPLUGIN_ENTRY pPlugin = (PPLUGIN_ENTRY)H->vmm.PluginManager.FLinkForensic;
     PVMM_WORK_START_ROUTINE_PVOID_PFN pfns[MAXIMUM_WAIT_OBJECTS];
@@ -551,10 +570,10 @@ VOID PluginManager_FcFindEvil(_In_ VMM_HANDLE H)
     if(H->fAbort) { return; }
     while(pPlugin) {
         if(pPlugin->fc.pfnFindEvil) {
-            pfns[cFindEvil] = (PVMM_WORK_START_ROUTINE_PVOID_PFN)PluginManager_FcFindEvil_ThreadProc;
-            ctxs[cFindEvil] = pPlugin;
-            cFindEvil++;
-            if(cFindEvil == MAXIMUM_WAIT_OBJECTS) {
+            pfns[cWork] = (PVMM_WORK_START_ROUTINE_PVOID_PFN)PluginManager_FcFindEvil_ThreadProc;
+            ctxs[cWork] = pPlugin;
+            cWork++;
+            if(cWork == MAXIMUM_WAIT_OBJECTS) {
                 VmmLog(H, MID_PLUGIN, LOGLEVEL_2_WARNING, "FindEvil max plugins reached. Some plugins may not be run.");
                 break;
             }
@@ -562,7 +581,7 @@ VOID PluginManager_FcFindEvil(_In_ VMM_HANDLE H)
         pPlugin = pPlugin->FLinkForensic;
     }
     if(H->fAbort) { return; }
-    VmmWorkWaitMultiple2_Void(H, cFindEvil, pfns, ctxs);
+    VmmWorkWaitMultiple2_Void(H, cWork, pfns, ctxs);
     Statistics_CallEnd(H, STATISTICS_ID_PluginManager_FcFindEvil, tmStart);
 }
 

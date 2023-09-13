@@ -445,10 +445,10 @@ VOID FcEvilInitialize_ThreadProc(_In_ VMM_HANDLE H, _In_ QWORD qwNotUsed)
 * FindEvil compare / sort function.
 * Sorts on Severity, PID, Address.
 */
-int FcEvilFinalize_CmpSort(_In_ POB_MAP_ENTRY p1, _In_ POB_MAP_ENTRY p2)
+int FcEvilFinalize_CmpSort(_In_ POB_MAP_ENTRY e1, _In_ POB_MAP_ENTRY e2)
 {
-    PFC_FINDEVIL_ENTRY pe1 = (PFC_FINDEVIL_ENTRY)p1->v;
-    PFC_FINDEVIL_ENTRY pe2 = (PFC_FINDEVIL_ENTRY)p2->v;
+    PFC_FINDEVIL_ENTRY pe1 = (PFC_FINDEVIL_ENTRY)e1->v;
+    PFC_FINDEVIL_ENTRY pe2 = (PFC_FINDEVIL_ENTRY)e2->v;
     // 1: Severity
     if(pe1->dwSeverity < pe2->dwSeverity) { return 1; }
     if(pe1->dwSeverity > pe2->dwSeverity) { return -1; }
@@ -484,7 +484,7 @@ VOID FcEvilFinalize(_In_ VMM_HANDLE H, _In_opt_ VMMDLL_CSV_HANDLE hCSV)
     // CSV init:
     FcFileAppend(H, "findevil.csv", FCEVIL_CSV_HEADER);
     // Sort & Populate:
-    ObMap_SortEntryIndex(H->fc->FindEvil.pm, (_CoreCrtNonSecureSearchSortCompareFunction)FcEvilFinalize_CmpSort);
+    ObMap_SortEntryIndex(H->fc->FindEvil.pm, FcEvilFinalize_CmpSort);
     for(i = 0, cMap = ObMap_Size(H->fc->FindEvil.pm); i < cMap; i++) {
         if(H->fAbort) { goto fail; }
         pe = ObMap_GetByIndex(H->fc->FindEvil.pm, i);
@@ -1094,10 +1094,10 @@ typedef struct tdFCOB_SCAN_VIRTMEM_CONTEXT {
     } Statistics;
 } FCOB_SCAN_VIRTMEM_CONTEXT, *PFCOB_SCAN_VIRTMEM_CONTEXT;
 
-int FcScanVirtmem_CmpSort(POB_MAP_ENTRY p1, POB_MAP_ENTRY p2)
+int FcScanVirtmem_CmpSort(_In_ POB_MAP_ENTRY e1, _In_ POB_MAP_ENTRY e2)
 {
-    if(p1->k < p2->k) { return -1; }
-    if(p1->k > p2->k) { return 1; }
+    if(e1->k < e2->k) { return -1; }
+    if(e1->k > e2->k) { return 1; }
     return 0;
 }
 
@@ -1390,7 +1390,7 @@ VOID FcScanObjectAndVirtmem_ThreadProc(_In_ VMM_HANDLE H, _In_ QWORD qwNotUsed)
     //    which will give cache locality for image/prototype ranges.
     ctx->Ranges.c = ctx->Ranges.Kernel.c + ctx->Ranges.User.c;
     ctx->Ranges.cb = ctx->Ranges.Kernel.cb + ctx->Ranges.User.cb;
-    ObMap_SortEntryIndex(ctx->pmScanItems, (_CoreCrtNonSecureSearchSortCompareFunction)FcScanVirtmem_CmpSort);
+    ObMap_SortEntryIndex(ctx->pmScanItems, FcScanVirtmem_CmpSort);
     VmmLog(H, MID_FORENSIC, LOGLEVEL_4_VERBOSE, "FC_VIRTMEM_SCAN: INIT TOTAL:  ranges=%lli, bytes=%llx", ctx->Ranges.c, ctx->Ranges.cb);
     // 6: start scan in multiple threads (worker threads + main thread)
     ZeroMemory(hEventFinish, sizeof(hEventFinish));
@@ -1472,8 +1472,8 @@ VOID FcInitialize_ThreadProc(_In_ VMM_HANDLE H, _In_ QWORD qwNotUsed)
     PluginManager_Notify(H, VMMDLL_PLUGIN_NOTIFY_FORENSIC_INIT, NULL, 0);
     VmmMap_GetVM(H, &pObVmMap);                 // force fetch VMs before starting forensic actions.
     Ob_DECREF_NULL(&pObVmMap);
-    VmmWork_Value(H, FcEvilInitialize_ThreadProc, 0, hEventAsyncEvil, VMMWORK_FLAG_PRIO_NORMAL);
     PluginManager_FcInitialize(H);
+    VmmWork_Value(H, FcEvilInitialize_ThreadProc, 0, hEventAsyncEvil, VMMWORK_FLAG_PRIO_NORMAL);
     // 10-59% (updated by FcScanPhysmem()/FcScanObjectAndVirtmem_ThreadProc()  functions).
     FCINITIALIZE_PROGRESS_UPDATE(10);
     // parallel async init of: scan virtual per-process/kernel address space & init of log for CSV/JSON.

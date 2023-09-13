@@ -194,3 +194,6 @@ v1.1-v4.9
 [v5.8](https://github.com/ufrisk/MemProcFS/releases/tag/v5.8)
 * LeechCore API updates for C/C++, C#, Rust, Python, Java.
 * Support for analyzing ARM64 Windows memory.
+
+Latest:
+* forensic/ntfs improvements.

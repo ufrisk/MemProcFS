@@ -967,6 +967,99 @@ DWORD VmmWinObjFile_ReadFromObjectAddress(_In_ VMM_HANDLE H, _In_ QWORD vaFileOb
     return cbRead;
 }
 
+/*
+* Translate a file offset into a physical address.
+* -- H
+* -- pSystemProcess
+* -- pFile
+* -- iSubsection
+* -- cbOffset
+* -- ppa
+* -- fSharedCache = pFile contains a _SHARED_CACHE_MAP that should be read.
+* -- return
+*/
+_Success_(return)
+BOOL VmmWinObjFile_GetPA_FromSubsectionAndSharedCache(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_ POB_VMMWINOBJ_FILE pFile, _In_ DWORD iSubsection, _In_ QWORD cbOffset, _Out_ PQWORD ppa, _In_ BOOL fSharedCache)
+{
+    QWORD pa = 0, va = 0, pte = 0, iPte = cbOffset >> 12;
+    // Read from _SHARED_CACHE_MAP
+    if(fSharedCache) {
+        va = VmmWinObjFile_ReadSubsectionAndSharedCache_GetVaSharedCache(H, pSystemProcess, pFile, iPte, 0);
+        if(!VmmVirt2Phys(H, pSystemProcess, va, &pa) && pa) {
+            pte = pa; pa = 0;
+            H->vmm.fnMemoryModel.pfnPagedRead(H, pSystemProcess, 0, pte, NULL, &pa, NULL, 0);
+        }
+    }
+    // Read from _SUBSECTION
+    if(pFile->pSectionObjectPointers->cSUBSECTION && (iSubsection < pFile->pSectionObjectPointers->cSUBSECTION) && !pa && H->vmm.fnMemoryModel.pfnPagedRead) {
+        pte = (iPte < pFile->pSectionObjectPointers->pSUBSECTION[iSubsection].dwPtesInSubsection) ? VmmWinObjFile_ReadSubsectionAndSharedCache_GetPteSubsection(H, pSystemProcess, pFile->pSectionObjectPointers->pSUBSECTION[iSubsection].vaSubsectionBase, iPte, 0) : 0;
+        H->vmm.fnMemoryModel.pfnPagedRead(H, pSystemProcess, 0, pte, NULL, &pa, NULL, 0);
+    }
+    *ppa = pa;
+    return pa ? TRUE : FALSE;
+}
+
+/*
+* Translate a file offset into a physical address in an image _FILE_OBJECT.
+* -- H
+* -- pSystemProcess
+* -- pFile
+* -- cbOffset
+* -- pb
+* -- ppa
+* -- return
+*/
+_Success_(return)
+BOOL VmmWinObjFile_GetPA_FromImage(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_ POB_VMMWINOBJ_FILE pFile, _In_ QWORD cbOffset, _Out_ PQWORD ppa)
+{
+    DWORD iSubsection;
+    DWORD cbSubsection, cbSubsectionBase, cbSubsectionEnd;
+    DWORD cbSubsectionOffset;
+    for(iSubsection = 0; iSubsection < pFile->pSectionObjectPointers->cSUBSECTION; iSubsection++) {
+        cbSubsection = 512 * pFile->pSectionObjectPointers->pSUBSECTION[iSubsection].dwNumberOfFullSectors;
+        cbSubsectionBase = 512 * pFile->pSectionObjectPointers->pSUBSECTION[iSubsection].dwStartingSector;
+        cbSubsectionEnd = cbSubsectionBase + cbSubsection;
+        if(cbSubsectionEnd < cbOffset) { continue; }
+        if(cbSubsectionBase >= cbOffset) { return FALSE; }
+        cbSubsectionOffset = (DWORD)max(cbSubsectionBase, cbOffset) - cbSubsectionBase;
+        return VmmWinObjFile_GetPA_FromSubsectionAndSharedCache(H, pSystemProcess, pFile, iSubsection, cbSubsectionOffset, ppa, FALSE);
+    }
+    return FALSE;
+}
+
+/*
+* Translate a file offset into a physical address.
+* -- H
+* -- pFile
+* -- cbOffset
+* -- ppa
+* -- return
+*/
+_Success_(return)
+BOOL VmmWinObjFile_GetPA(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_FILE pFile, _In_ QWORD cbOffset, _Out_ PQWORD ppa)
+{
+    BOOL fResult = FALSE;
+    PVMM_PROCESS pObSystemProcess = NULL;
+    if(cbOffset > pFile->pSectionObjectPointers->cb) { goto finish; }
+    if(!(pObSystemProcess = VmmProcessGet(H, 4))) { goto finish; }
+    if(pFile->pSectionObjectPointers->fImage) {
+        fResult = VmmWinObjFile_GetPA_FromImage(H, pObSystemProcess, pFile, cbOffset, ppa);
+        goto finish;
+    }
+    if(pFile->pSectionObjectPointers->fCache && pFile->pSectionObjectPointers->_SHARED_CACHE_MAP.fValid) {
+        fResult = VmmWinObjFile_GetPA_FromSubsectionAndSharedCache(H, pObSystemProcess, pFile, 0, cbOffset, ppa, TRUE);
+        goto finish;
+    }
+    if(pFile->pSectionObjectPointers->fData && (pFile->pSectionObjectPointers->cSUBSECTION == 1)) {
+        fResult = VmmWinObjFile_GetPA_FromSubsectionAndSharedCache(H, pObSystemProcess, pFile, 0, cbOffset, ppa, FALSE);
+        goto finish;
+    }
+
+finish:
+    Ob_DECREF(pObSystemProcess);
+    return fResult;
+}
+
 
 
 //-----------------------------------------------------------------------------
@@ -1729,10 +1822,10 @@ VOID VmmWinObjKDev_Initialize_3_AttachAndSort_FilterSet(_In_ QWORD k, _In_ PVOID
     }
 }
 
-int VmmWinObjKDev_Initialize_3_AttachAndSort_CmpSort(_In_ POB_MAP_ENTRY p1, _In_ POB_MAP_ENTRY p2)
+int VmmWinObjKDev_Initialize_3_AttachAndSort_CmpSort(_In_ POB_MAP_ENTRY e1, _In_ POB_MAP_ENTRY e2)
 {
-    PVMM_MAP_KDEVICEENTRY pe1 = (PVMM_MAP_KDEVICEENTRY)p1->v;
-    PVMM_MAP_KDEVICEENTRY pe2 = (PVMM_MAP_KDEVICEENTRY)p2->v;
+    PVMM_MAP_KDEVICEENTRY pe1 = (PVMM_MAP_KDEVICEENTRY)e1->v;
+    PVMM_MAP_KDEVICEENTRY pe2 = (PVMM_MAP_KDEVICEENTRY)e2->v;
     QWORD v1 = pe1->_Reserved_vaTopDevice + pe1->iDepth;
     QWORD v2 = pe2->_Reserved_vaTopDevice + pe2->iDepth;
     if(v1 < v2) { return -1; }
@@ -1778,7 +1871,7 @@ VOID VmmWinObjKDev_Initialize_3_AttachAndSort(_In_ VMM_HANDLE H, _In_ PVMMWINDEV
         psTMP = ps1; ps1 = ps2; ps2 = psTMP;
     }
     // 4: sort
-    ObMap_SortEntryIndex(ctx->pmDevice, (_CoreCrtNonSecureSearchSortCompareFunction)VmmWinObjKDev_Initialize_3_AttachAndSort_CmpSort);
+    ObMap_SortEntryIndex(ctx->pmDevice, VmmWinObjKDev_Initialize_3_AttachAndSort_CmpSort);
 fail:
     Ob_DECREF(ps1);
     Ob_DECREF(ps2);

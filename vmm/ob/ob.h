@@ -671,6 +671,11 @@ POB_SET ObMap_FilterSet(_In_opt_ POB_MAP pm, _In_opt_ PVOID ctx, _In_opt_ OB_MAP
 DWORD ObMap_RemoveByFilter(_In_opt_ POB_MAP pm, _In_opt_ PVOID ctx, _In_opt_ OB_MAP_FILTER_REMOVE_PFN_CB pfnFilterRemoveCB);
 
 /*
+* Sort compare callback function.
+*/
+typedef int(*OB_MAP_SORT_COMPARE_FUNCTION)(_In_ POB_MAP_ENTRY e1, _In_ POB_MAP_ENTRY e2);
+
+/*
 * Sort the ObMap entry index by a sort compare function.
 * NB! The items sorted by the sort function are const OB_MAP_ENTRY* objects
 *     which points to the underlying map object key/value.
@@ -679,7 +684,7 @@ DWORD ObMap_RemoveByFilter(_In_opt_ POB_MAP pm, _In_opt_ PVOID ctx, _In_opt_ OB_
 * -- return
 */
 _Success_(return)
-BOOL ObMap_SortEntryIndex(_In_opt_ POB_MAP pm, _In_ _CoreCrtNonSecureSearchSortCompareFunction pfnSort);
+BOOL ObMap_SortEntryIndex(_In_opt_ POB_MAP pm, _In_ OB_MAP_SORT_COMPARE_FUNCTION pfnSort);
 
 /*
 * Sort the ObMap entry index by key ascending.
@@ -1228,6 +1233,15 @@ typedef struct tdOB_COUNTER_ENTRY {
 * -- return
 */
 POB_COUNTER ObCounter_New(_In_opt_ VMM_HANDLE H, _In_ QWORD flags);
+
+/*
+* Clear the ObCounter by removing all counts and keys.
+* NB! underlying allocated memory will remain unchanged.
+* -- pm
+* -- return = clear was successful - always true.
+*/
+_Success_(return)
+BOOL ObCounter_Clear(_In_opt_ POB_COUNTER pc);
 
 /*
 * Retrieve the number of counted keys the ObCounter.

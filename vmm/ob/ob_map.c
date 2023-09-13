@@ -725,7 +725,7 @@ BOOL ObMap_Clear(_In_opt_ POB_MAP pm)
 //-----------------------------------------------------------------------------
 
 _Success_(return)
-BOOL _ObMap_SortEntryIndex(_In_ POB_MAP pm, _In_ _CoreCrtNonSecureSearchSortCompareFunction pfnSort)
+BOOL _ObMap_SortEntryIndex(_In_ POB_MAP pm, _In_ OB_MAP_SORT_COMPARE_FUNCTION pfnSort)
 {
     DWORD iEntry;
     POB_MAP_ENTRY pSort;
@@ -734,7 +734,7 @@ BOOL _ObMap_SortEntryIndex(_In_ POB_MAP pm, _In_ _CoreCrtNonSecureSearchSortComp
     for(iEntry = 1; iEntry < pm->c; iEntry++) {
         memcpy(pSort + iEntry, &pm->Directory[OB_MAP_INDEX_DIRECTORY(iEntry)][OB_MAP_INDEX_TABLE(iEntry)][OB_MAP_INDEX_STORE(iEntry)], sizeof(OB_MAP_ENTRY));
     }
-    qsort(pSort + 1, pm->c - 1, sizeof(OB_MAP_ENTRY), pfnSort);
+    qsort(pSort + 1, pm->c - 1, sizeof(OB_MAP_ENTRY), (_CoreCrtNonSecureSearchSortCompareFunction)pfnSort);
     for(iEntry = 1; iEntry < pm->c; iEntry++) {
         memcpy(&pm->Directory[OB_MAP_INDEX_DIRECTORY(iEntry)][OB_MAP_INDEX_TABLE(iEntry)][OB_MAP_INDEX_STORE(iEntry)], pSort + iEntry, sizeof(OB_MAP_ENTRY));
     }
@@ -754,11 +754,11 @@ BOOL _ObMap_SortEntryIndex(_In_ POB_MAP pm, _In_ _CoreCrtNonSecureSearchSortComp
     return TRUE;
 }
 
-int _ObMap_SortEntryIndexByKey_CmpSort(_In_ POB_MAP_ENTRY p1, _In_ POB_MAP_ENTRY p2)
+int _ObMap_SortEntryIndexByKey_CmpSort(_In_ POB_MAP_ENTRY e1, _In_ POB_MAP_ENTRY e2)
 {
     return
-        (p1->k < p2->k) ? -1 :
-        (p1->k > p2->k) ? 1 : 0;
+        (e1->k < e2->k) ? -1 :
+        (e1->k > e2->k) ? 1 : 0;
 }
 
 /*
@@ -770,7 +770,7 @@ int _ObMap_SortEntryIndexByKey_CmpSort(_In_ POB_MAP_ENTRY p1, _In_ POB_MAP_ENTRY
 * -- return
 */
 _Success_(return)
-BOOL ObMap_SortEntryIndex(_In_opt_ POB_MAP pm, _In_ _CoreCrtNonSecureSearchSortCompareFunction pfnSort)
+BOOL ObMap_SortEntryIndex(_In_opt_ POB_MAP pm, _In_ OB_MAP_SORT_COMPARE_FUNCTION pfnSort)
 {
     OB_MAP_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(pm, BOOL, FALSE, _ObMap_SortEntryIndex(pm, pfnSort))
 }
@@ -785,7 +785,7 @@ BOOL ObMap_SortEntryIndex(_In_opt_ POB_MAP pm, _In_ _CoreCrtNonSecureSearchSortC
 _Success_(return)
 BOOL ObMap_SortEntryIndexByKey(_In_opt_ POB_MAP pm)
 {
-    return ObMap_SortEntryIndex(pm, (_CoreCrtNonSecureSearchSortCompareFunction)_ObMap_SortEntryIndexByKey_CmpSort);
+    return ObMap_SortEntryIndex(pm, _ObMap_SortEntryIndexByKey_CmpSort);
 }
 
 //-----------------------------------------------------------------------------

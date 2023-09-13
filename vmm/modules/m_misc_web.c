@@ -295,7 +295,7 @@ BOOL MWeb_CriteriaSupportedBrowserProcess(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS p
         !_stricmp(pProcess->szName, "msedge.exe");
 }
 
-int MWeb_Initialize_CmpSort(POB_MAP_ENTRY p1, POB_MAP_ENTRY p2)
+int MWeb_Initialize_CmpSort(_In_ POB_MAP_ENTRY p1, _In_ POB_MAP_ENTRY p2)
 {
     PVMM_MAP_WEBENTRY e1 = p1->v;
     PVMM_MAP_WEBENTRY e2 = p2->v;
@@ -335,7 +335,7 @@ VOID MWeb_Initialize_DoWork(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
     pObMap->pdwLineOffset = (PDWORD)(pObMap->pMap + pObMap->cMap);
     pObMap->pbMultiText = (LPSTR)((QWORD)pObMap + cbData - cbDataStr);
     ObStrMap_FinalizeBufferU(ctxInit.psm, cbDataStr, pObMap->pbMultiText, &pObMap->cbMultiText);
-    ObMap_SortEntryIndex(ctxInit.pm, (_CoreCrtNonSecureSearchSortCompareFunction)MWeb_Initialize_CmpSort);
+    ObMap_SortEntryIndex(ctxInit.pm, MWeb_Initialize_CmpSort);
     for(i = 0; i < pObMap->cMap; i++) {     // COPY WEBENTRY TO MAP
         if(!(peWeb = ObMap_GetByIndex(ctxInit.pm, i))) { goto fail; }
         memcpy(pObMap->pMap + i, peWeb, sizeof(VMM_MAP_WEBENTRY));
