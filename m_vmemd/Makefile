@@ -8,7 +8,7 @@
 CC=gcc
 CFLAGS  += -std=c11 -I. -I../includes -D LINUX -D _GNU_SOURCE -shared -fPIC -l:vmm.so -fvisibility=hidden -L. -lm -pthread `pkg-config liblz4 openssl --libs --cflags`
 #CFLAGS  += -g -O0 -Wextra -Wno-unused-parameter -Wno-cast-function-type
-CFLAGS  += -fPIE -fPIC -pie -fstack-protector -D_FORTIFY_SOURCE=2 -O1 -Wl,-z,noexecstack
+CFLAGS  += -fPIE -fPIC -pie -fstack-protector-strong -D_FORTIFY_SOURCE=2 -O1 -Wl,-z,noexecstack
 CFLAGS  += -Wall -Wno-format-truncation -Wno-enum-compare -Wno-pointer-sign -Wno-multichar -Wno-unused-variable -Wno-unused-value
 CFLAGS  += -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast
 LDFLAGS += -L../files -Wl,-rpath,'$$ORIGIN' -g -ldl -shared
