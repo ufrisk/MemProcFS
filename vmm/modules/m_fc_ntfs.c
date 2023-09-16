@@ -458,10 +458,10 @@ VOID FcNtfs2_IngestIndexRecord(_In_ VMM_HANDLE H, _In_ POB_FCNTFS2_INIT_CONTEXT 
 VOID FcNtfs2_IngestFileRecord(_In_ VMM_HANDLE H, _In_ POB_FCNTFS2_INIT_CONTEXT ctx, _In_ PNTFS_FILE_RECORD pR, _In_reads_(0x400) PBYTE pb, _In_ WORD wVolumeId, _In_ WORD wFlagsSource, _In_ QWORD paRecord)
 {
     QWORD qwKey;
-    DWORD oA, cbData = 0, cbDataADS = 0, cbuName = 0, cbuNameADS = 0;
+    DWORD oA, cbData = 0, cbuName = 0, cbuNameADS = 0;
     PFCNTFS2 pNt = NULL, pNtADS = NULL, pNtDuplicate;
     PNTFS_ATTR pA, pADataADS = NULL;
-    PNTFS_FILE_NAME pfnC, pfn = NULL, pfnDOS = NULL;
+    PNTFS_FILE_NAME pfnC, pfn = NULL;
     PNTFS_STANDARD_INFORMATION psi = NULL;
     if(pR->Signature != 'ELIF') { return; }
     // Extract attributes loop:
@@ -479,7 +479,6 @@ VOID FcNtfs2_IngestFileRecord(_In_ VMM_HANDLE H, _In_ POB_FCNTFS2_INIT_CONTEXT c
                         if(pA->Length < pA->AttrOffset + pA->AttrLength) {
                             break;
                         }
-                        cbDataADS = pA->AttrLength;
                     }
                 }
             } else {
@@ -504,11 +503,12 @@ VOID FcNtfs2_IngestFileRecord(_In_ VMM_HANDLE H, _In_ POB_FCNTFS2_INIT_CONTEXT c
                 break;
             }
             pfnC = (PNTFS_FILE_NAME)(pb + oA + pA->AttrOffset);
-            if(pA->AttrLength < 42 + pfnC->NameLength * sizeof(WCHAR)) { continue; }
-            if(pfnC->NameSpace == NTFS_FILENAME_NAMESPACE_DOS) {
-                pfnDOS = pfnC;
-            } else if(!pfn || (pfnC->SizeReal > pfn->SizeAllocated)) {
-                pfn = pfnC;
+            if(pA->AttrLength >= 42 + pfnC->NameLength * sizeof(WCHAR)) {
+                if(pfnC->NameSpace == NTFS_FILENAME_NAMESPACE_DOS) {
+                    ;   // DOS NameSpace is currently ignored
+                } else if(!pfn || (pfnC->SizeReal > pfn->SizeAllocated)) {
+                    pfn = pfnC;
+                }
             }
         }
         oA += pA->Length;
@@ -582,7 +582,7 @@ WORD FcNtfs2_Init_NewVolumeFromMft(_In_ VMM_HANDLE H, _In_ POB_FCNTFS2_INIT_CONT
     // 1: fetch device virtual address (in case of multiple $Mft pointers to same device):
     if(!VmmRead(H, PVMM_PROCESS_SYSTEM, pFileMft->va + (f32 ? 4 : 8), (PBYTE)&vaDevice, (f32 ? 4 : 8))) { return 0; }
     // 2: try find existing volume:
-    if(pVolume = ObMap_GetByKey(ctx->pmVolume, vaDevice)) {
+    if((pVolume = ObMap_GetByKey(ctx->pmVolume, vaDevice))) {
         return fForceExisting ? pVolume->wId : 0;
     }
     if(fForceExisting) { return 0; }
@@ -709,7 +709,7 @@ POB_MAP FcNtfs2_IngestGetValidAddrMap(_In_ VMM_HANDLE H, _In_ PVMMDLL_FORENSIC_I
     PVMMDLL_MAP_PFNENTRY pePfn;
     if(!(pmObAddr = ObMap_New(H, 0))) { return NULL; }
     for(i = 0; i < 0x1000; i++) {
-        if((pc->ppMEMs[i]->qwA != (QWORD)-1) && pc->ppMEMs[i]->f && (pc->ppMEMs[i]->cb == 0x1000) && (dwSignature = *(PDWORD)pc->ppMEMs[i]->pb) && ((dwSignature == 'ELIF')) || (dwSignature == 'XDNI')) {
+        if((pc->ppMEMs[i]->qwA != (QWORD)-1) && pc->ppMEMs[i]->f && (pc->ppMEMs[i]->cb == 0x1000) && (dwSignature = *(PDWORD)pc->ppMEMs[i]->pb) && ((dwSignature == 'ELIF') || dwSignature == 'XDNI')) {
             pePfn = (pc->pPfnMap && (i < pc->pPfnMap->cMap)) ? (pc->pPfnMap->pMap + i) : NULL;
             fPfnValidForMft =
                 !pePfn || (pePfn->dwPfn != (pc->ppMEMs[i]->qwA >> 12)) ||
@@ -787,7 +787,7 @@ POB_FCNTFS2_INIT_CONTEXT FcNtfs2_InitContext(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLU
 {
     PFCNTFS2_VOLUME pVolume = NULL;
     POB_FCNTFS2_INIT_CONTEXT ctxOb = NULL;
-    if(!(ctxOb = Ob_AllocEx(H, 'CNtF', LMEM_ZEROINIT, sizeof(OB_FCNTFS2_INIT_CONTEXT), FcNtfs2_InitContext_CleanupCB, NULL))) { goto fail; }
+    if(!(ctxOb = Ob_AllocEx(H, 'CNtF', LMEM_ZEROINIT, sizeof(OB_FCNTFS2_INIT_CONTEXT), (OB_CLEANUP_CB)FcNtfs2_InitContext_CleanupCB, NULL))) { goto fail; }
     if(!(ctxOb->pmMft = ObMap_New(H, OB_MAP_FLAGS_OBJECT_LOCALFREE))) { goto fail; }
     if(!(ctxOb->pmVolume = ObMap_New(H, OB_MAP_FLAGS_OBJECT_LOCALFREE))) { goto fail; }
     if(!(ctxOb->pmDuplicate = ObMap_New(H, OB_MAP_FLAGS_OBJECT_VOID))) { goto fail; }

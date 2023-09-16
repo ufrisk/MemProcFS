@@ -196,4 +196,5 @@ v1.1-v4.9
 * Support for analyzing ARM64 Windows memory.
 
 Latest:
+* Bug fixes.
 * forensic/ntfs improvements.
