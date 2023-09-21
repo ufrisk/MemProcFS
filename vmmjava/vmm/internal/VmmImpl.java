@@ -1,9 +1,6 @@
 package vmm.internal;
 
-import java.io.File;
-import java.lang.foreign.MemorySegment;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -22,27 +19,21 @@ import vmm.internal.VmmNative.VMMDLL_REGISTRY_HIVE_INFORMATION;
  * @author Ulf Frisk - pcileech@frizk.net
  */
 public class VmmImpl implements IVmm
-{
-
+{ 
+	
 	//-----------------------------------------------------------------------------
 	// INITIALIZATION FUNCTIONALITY BELOW:
 	//-----------------------------------------------------------------------------
 	private Pointer hVMM = null;
 	private String vmmNativeLibraryPath = null;
-
-	private VmmImplPanama panamaImpl;
-
-
+	
 	/*
 	 * Do not allow direct class instantiation from outside.
 	 */
 	private VmmImpl()
 	{
 	}
-
-	// TODO: Should be determined on runtime whether panama can be used, if not fall back to JNA impl
-	public static boolean USE_PANAMA = false;
-
+	
 	private VmmImpl(String vmmNativeLibraryPath, String argv[])
 	{
 		String[] argv_new = null;
@@ -61,44 +52,38 @@ public class VmmImpl implements IVmm
 		if(hVMM == null) { throw new VmmException("Vmm Init: failed in native code."); }
 		VmmNative.INSTANCE.VMMDLL_InitializePlugins(hVMM);
 		this.vmmNativeLibraryPath = vmmNativeLibraryPath;
-		if (USE_PANAMA) {
-			panamaImpl = new VmmImplPanama(MemorySegment.ofAddress(Pointer.nativeValue(hVMM)));
-		}
 	}
-
+	
 	public static IVmm Initialize(String vmmNativeLibraryPath, String argv[])
 	{
 		return new VmmImpl(vmmNativeLibraryPath, argv);
 	}
-
+	
 	public boolean isValid() {
 		return hVMM != null;
 	}
 
 	public String getNativeLibraryPath() {
 		return vmmNativeLibraryPath;
-	}
-
+	}	
+	
 	public void close()
 	{
-		if (USE_PANAMA) {
-			panamaImpl.close();
-		}
 		VmmNative.INSTANCE.VMMDLL_Close(hVMM);
 		hVMM = null;
 	}
-
+	
 	/*
 	 * Always close native implementation upon finalization.
 	 */
 	@Override
 	public void finalize()
 	{
-		try {
-			this.close();
-		} catch (Exception e) {}
+	    try {
+	        this.close();
+	    } catch (Exception e) {}
 	}
-
+	
 	/*
 	 * Custom toString() method.
 	 */
@@ -107,33 +92,33 @@ public class VmmImpl implements IVmm
 	{
 		return (hVMM != null) ? "Vmm" : "VmmNotValid";
 	}
-
-
-
+	
+	
+	
 	//-----------------------------------------------------------------------------
 	// CONFIGURATION SETTINGS BELOW:
 	//-----------------------------------------------------------------------------
-
+	
 	public long getConfig(long fOption)
 	{
 		LongByReference pqw = new LongByReference();
 		boolean f = VmmNative.INSTANCE.VMMDLL_ConfigGet(hVMM, fOption, pqw);
 		if(!f) { throw new VmmException(); }
-		return pqw.getValue();
+		return pqw.getValue(); 
 	}
-
+	
 	public void setConfig(long fOption, long qw)
 	{
 		boolean f = VmmNative.INSTANCE.VMMDLL_ConfigSet(hVMM, fOption, qw);
 		if(!f) { throw new VmmException(); }
 	}
-
-
-
+	
+	
+	
 	//-----------------------------------------------------------------------------
 	// INTERNAL UTILITY FUNCTIONALITY BELOW:
 	//-----------------------------------------------------------------------------
-
+	
 	private static byte[] _utilStringToCString(String s)
 	{
 		byte[] bjava = s.getBytes(StandardCharsets.UTF_8);
@@ -141,15 +126,15 @@ public class VmmImpl implements IVmm
 		System.arraycopy(bjava, 0, bc, 0, bjava.length);
 		return bc;
 	}
-
-
-
+	
+	
+	
 	//-----------------------------------------------------------------------------
 	// VFS - VIRTUAL FILE SYSTEM FUNCTIONALITY BELOW:
 	// NB! VFS FUNCTIONALITY REQUIRES PLUGINS TO BE INITIALIZED
-	//     WITH CALL TO InitializePlugins().
+	//     WITH CALL TO InitializePlugins(). 
 	//-----------------------------------------------------------------------------
-
+	
 	public List<Vmm_VfsListEntry> vfsList(String path)
 	{
 		ArrayList<Vmm_VfsListEntry> result = new ArrayList<Vmm_VfsListEntry>();
@@ -180,7 +165,7 @@ public class VmmImpl implements IVmm
 		if(!f) { throw new VmmException(); }
 		return result;
 	}
-
+	
 	public byte[] vfsRead(String file, long offset, int size)
 	{
 		IntByReference pcbRead = new IntByReference();
@@ -192,13 +177,13 @@ public class VmmImpl implements IVmm
 		pb.read(0, result, 0, size);
 		return result;
 	}
-
+	
 	public String vfsReadString(String file, long offset, int size)
 	{
 		byte[] data = vfsRead(file, offset, size);
 		return new String(data, StandardCharsets.UTF_8);
 	}
-
+	
 	public void vfsWrite(String file, byte[] data, long offset)
 	{
 		IntByReference pcbWrite = new IntByReference();
@@ -207,25 +192,25 @@ public class VmmImpl implements IVmm
 		VmmNative.INSTANCE.VMMDLL_VfsWriteU(hVMM, _utilStringToCString(file), pb, data.length, pcbWrite, offset);
 		if(0 == pcbWrite.getValue()) { throw new VmmException(); }
 	}
-
-
-
+	
+	
+	
 	//-----------------------------------------------------------------------------
 	// INTERNAL VMM MEMORY FUNCTIONALITY BELOW:
 	//-----------------------------------------------------------------------------
-
+	
 	private class VmmMemScatterMemoryImpl implements IVmmMemScatterMemory {
 		private final Object objLock = new Object();
 		private Pointer hS;
 		private int pid;
 		private int flags;
-
+		
 		private VmmMemScatterMemoryImpl(Pointer hS, int pid, int flags) {
 			this.hS = hS;
 			this.pid = pid;
 			this.flags = flags;
 		}
-
+		
 		@Override
 		public String toString()
 		{
@@ -235,7 +220,7 @@ public class VmmImpl implements IVmm
 				return "VmmScatterMemory:Virtual:" + String.valueOf(pid);
 			}
 		}
-
+		
 		public boolean isValid() {
 			return this.hS != null;
 		}
@@ -246,49 +231,30 @@ public class VmmImpl implements IVmm
 
 		public void prepare(long va, int size) {
 			if(this.hS == null) { throw new VmmException(); }
-			if (USE_PANAMA) {
-				panamaImpl.scatterPrepare(MemorySegment.ofAddress(Pointer.nativeValue(hS)), va, size);
-				return;
-			}
 			boolean f = VmmNative.INSTANCE.VMMDLL_Scatter_Prepare(hS, va, size);
-			if(!f) { throw new VmmException(); }
+			if(!f) { throw new VmmException(); }				
 		}
 
 		public void prepareWrite(long va, byte[] data) {
 			if(this.hS == null) { throw new VmmException(); }
-			if (USE_PANAMA) {
-				panamaImpl.scatterPrepareWrite(MemorySegment.ofAddress(Pointer.nativeValue(hS)), va, data);
-				return;
-			}
 			boolean f = VmmNative.INSTANCE.VMMDLL_Scatter_PrepareWrite(hS, va, data, data.length);
 			if(!f) { throw new VmmException(); }
 		}
 
 		public void execute() {
 			if(this.hS == null) { throw new VmmException(); }
-			if (USE_PANAMA) {
-				panamaImpl.scatterExecute(MemorySegment.ofAddress(Pointer.nativeValue(hS)));
-				return;
-			}
 			boolean f = VmmNative.INSTANCE.VMMDLL_Scatter_Execute(hS);
 			if(!f) { throw new VmmException(); }
 		}
 
 		public void clear() {
 			if(this.hS == null) { throw new VmmException(); }
-			if (USE_PANAMA) {
-				panamaImpl.scatterClear(MemorySegment.ofAddress(Pointer.nativeValue(hS)), pid, flags);
-				return;
-			}
 			boolean f = VmmNative.INSTANCE.VMMDLL_Scatter_Clear(hS, pid, flags);
 			if(!f) { throw new VmmException(); }
 		}
 
 		public byte[] read(long va, int size) {
 			if(this.hS == null) { throw new VmmException(); }
-			if (USE_PANAMA) {
-				return panamaImpl.scatterRead(MemorySegment.ofAddress(Pointer.nativeValue(hS)), va, size);
-			}
 			IntByReference pcbRead = new IntByReference();
 			byte[] pbResult = new byte[size];
 			boolean f = VmmNative.INSTANCE.VMMDLL_Scatter_Read(hS, va, size, pbResult, pcbRead);
@@ -306,50 +272,42 @@ public class VmmImpl implements IVmm
 				}
 			}
 		}
-
+		
 		@Override
 		public void finalize()
 		{
-			try {
-				this.close();
-			} catch (Exception e) {}
+		    try {
+		        this.close();
+		    } catch (Exception e) {}
 		}
 	}
-
+	
 	public byte[] _memRead(int pid, long va, int size)
 	{
 		return _memRead(pid, va, size, 0);
 	}
-
+	
 	public byte[] _memRead(int pid, long va, int size, int flags)
 	{
-		if (USE_PANAMA) {
-			return panamaImpl.memRead(pid, va, size, flags);
-		}
-
 		IntByReference pcbRead = new IntByReference();
 		byte[] pbResult = new byte[size];
 		boolean f = VmmNative.INSTANCE.VMMDLL_MemReadEx(hVMM, pid, va, pbResult, size, pcbRead, flags);
 		if(!f) { throw new VmmException(); }
 		return pbResult;
 	}
-
+	
 	public void _memWrite(int pid, long va, byte[] data)
 	{
-		if (USE_PANAMA) {
-			panamaImpl.memWrite(pid, va, data);
-			return;
-		}
 		boolean f = VmmNative.INSTANCE.VMMDLL_MemWrite(hVMM, pid, va, data, data.length);
 		if(!f) { throw new VmmException(); }
 	}
-
+	
 	public void _memPrefetchPages(int pid, long[] vas)
 	{
 		boolean f = VmmNative.INSTANCE.VMMDLL_MemPrefetchPages(hVMM, pid, vas, vas.length);
-		if(!f) { throw new VmmException(); }
+		if(!f) { throw new VmmException(); }		
 	}
-
+	
 	public long _memVirtualToPhysical(int pid, long va)
 	{
 		LongByReference pa = new LongByReference();
@@ -364,13 +322,13 @@ public class VmmImpl implements IVmm
 		if(hS == null) { throw new VmmException(); }
 		return new VmmMemScatterMemoryImpl(hS, pid, flags);
 	}
-
-
-
+	
+	
+	
 	//-----------------------------------------------------------------------------
 	// VMM PHYSICAL MEMORY FUNCTIONALITY BELOW:
 	//-----------------------------------------------------------------------------
-
+	
 	public byte[] memRead(long pa, int size)
 	{
 		return _memRead(-1, pa, size);
@@ -393,28 +351,28 @@ public class VmmImpl implements IVmm
 	public IVmmMemScatterMemory memScatterInitialize(int flags) {
 		return _memScatterInitialize(-1, flags);
 	}
-
-
-
+	
+	
+		
 	//-----------------------------------------------------------------------------
 	// VMM INTERNAL PDB/DEBUG FUNCTIONALITY BELOW:
 	//-----------------------------------------------------------------------------
-
+	
 	private class VmmPdbImpl implements IVmmPdb
 	{
 		private String pdbName;
-
+		
 		private VmmPdbImpl(int dwPID, long vaModuleBase) {
 			byte[] szModuleName = new byte[VmmNative.MAX_PATH];
 			boolean f = VmmNative.INSTANCE.VMMDLL_PdbLoad(hVMM, dwPID, vaModuleBase, szModuleName);
 			if(!f) { throw new VmmException(); }
 			this.pdbName = Native.toString(szModuleName);
 		}
-
+		
 		private VmmPdbImpl(String pdbName) {
 			this.pdbName = pdbName;
 		}
-
+		
 		@Override
 		public String toString() {
 			return "VmmPdb:" + pdbName;
@@ -453,9 +411,9 @@ public class VmmImpl implements IVmm
 			return pcbTypeSize.getValue();
 		}
 	}
-
-
-
+	
+	
+	
 	//-----------------------------------------------------------------------------
 	// VMM KERNEL FUNCTIONALITY BELOW:
 	//-----------------------------------------------------------------------------
@@ -474,13 +432,13 @@ public class VmmImpl implements IVmm
 	{
 		return (int)getConfig(OPT_WIN_VERSION_BUILD);
 	}
-
-
-
+	
+	
+	
 	//-----------------------------------------------------------------------------
 	// VMM MAP FUNCTIONALITY BELOW:
 	//-----------------------------------------------------------------------------
-
+	
 	public List<VmmMap_MemMapEntry> mapPhysicalMemory()
 	{
 		PointerByReference pptr = new PointerByReference();
@@ -498,7 +456,7 @@ public class VmmImpl implements IVmm
 		VmmNative.INSTANCE.VMMDLL_MemFree(pptr.getValue());
 		return result;
 	}
-
+	
 	public List<VmmMap_NetEntry> mapNet()
 	{
 		PointerByReference pptr = new PointerByReference();
@@ -527,7 +485,7 @@ public class VmmImpl implements IVmm
 		VmmNative.INSTANCE.VMMDLL_MemFree(pptr.getValue());
 		return result;
 	}
-
+	
 	public List<VmmMap_UserEntry> mapUser()
 	{
 		PointerByReference pptr = new PointerByReference();
@@ -546,7 +504,7 @@ public class VmmImpl implements IVmm
 		VmmNative.INSTANCE.VMMDLL_MemFree(pptr.getValue());
 		return result;
 	}
-
+	
 	public List<VmmMap_ServiceEntry> mapService()
 	{
 		PointerByReference pptr = new PointerByReference();
@@ -579,7 +537,7 @@ public class VmmImpl implements IVmm
 		VmmNative.INSTANCE.VMMDLL_MemFree(pptr.getValue());
 		return result;
 	}
-
+	
 	public VmmMap_PoolMap mapPool(boolean isBigPoolOnly)
 	{
 		int flags = isBigPoolOnly ? VmmNative.VMMDLL_POOLMAP_FLAG_BIG : VmmNative.VMMDLL_POOLMAP_FLAG_ALL;
@@ -611,23 +569,23 @@ public class VmmImpl implements IVmm
 		VmmNative.INSTANCE.VMMDLL_MemFree(pptr.getValue());
 		return result;
 	}
-
-
-
+	
+	
+	
 	//-----------------------------------------------------------------------------
 	// PROCESS INTERNAL FUNCTIONALITY BELOW:
 	//-----------------------------------------------------------------------------
-
+	
 	private class VmmProcessImpl implements IVmmProcess
 	{
 		private int pid;
 		private VmmNative.VMMDLL_PROCESS_INFORMATION info;
-
+		
 		private VmmProcessImpl(int pid) {
 			this.pid = pid;
 			this.info = null;
 		}
-
+		
 		/*
 		 * Ensure process information is loaded
 		 */
@@ -644,12 +602,12 @@ public class VmmImpl implements IVmm
 				this.info = pInfo;
 			}
 		}
-
+		
 		@Override
 		public String toString() {
 			return "VmmProcess:" + String.valueOf(pid);
 		}
-
+		
 		public int getPID() {
 			return pid;
 		}
@@ -904,7 +862,7 @@ public class VmmImpl implements IVmm
 			ensure();
 			return info.paDTB;
 		}
-
+		
 		public long getDTBUser() {
 			ensure();
 			return info.paDTB_UserOpt;
@@ -951,7 +909,7 @@ public class VmmImpl implements IVmm
 			VmmNative.INSTANCE.VMMDLL_MemFree(p);
 			return s;
 		}
-
+		
 		public String getCmdLine() {
 			Pointer p = VmmNative.INSTANCE.VMMDLL_ProcessGetInformationString(hVMM, pid, VmmNative.VMMDLL_PROCESS_INFORMATION_OPT_STRING_CMDLINE);
 			String s = p.getString(0);
@@ -1046,9 +1004,9 @@ public class VmmImpl implements IVmm
 			return result;
 		}
 	}
-
-
-
+	
+	
+	
 	//-----------------------------------------------------------------------------
 	// VMM PROCESS FUNCTIONALITY BELOW:
 	//-----------------------------------------------------------------------------
@@ -1065,7 +1023,7 @@ public class VmmImpl implements IVmm
 		IntByReference pdwPID = new IntByReference();
 		boolean f = VmmNative.INSTANCE.VMMDLL_PidGetFromName(hVMM, _utilStringToCString(name), pdwPID);
 		if(!f) { throw new VmmException(); }
-		return new VmmProcessImpl(pdwPID.getValue());
+		return new VmmProcessImpl(pdwPID.getValue()); 
 	}
 
 	public List<IVmmProcess> processGetAll()
@@ -1085,13 +1043,13 @@ public class VmmImpl implements IVmm
 		}
 		return result;
 	}
-
-
-
+	
+	
+	
 	//-----------------------------------------------------------------------------
 	// MODULE INTERNAL FUNCTIONALITY BELOW:
 	//-----------------------------------------------------------------------------
-
+	
 	private class VmmModuleImpl implements IVmmModule
 	{
 		private IVmmProcess process;
@@ -1099,8 +1057,8 @@ public class VmmImpl implements IVmm
 		private VmmNative.VMMDLL_MAP_MODULEENTRY module;
 		private VmmNative.VMMDLL_MAP_MODULEENTRY_DEBUGINFO debug;
 		private VmmNative.VMMDLL_MAP_MODULEENTRY_VERSIONINFO version;
-
-
+		
+		
 		private VmmModuleImpl(IVmmProcess process, VmmNative.VMMDLL_MAP_MODULEENTRY module, VmmNative.VMMDLL_MAP_MODULEENTRY_DEBUGINFO debug, VmmNative.VMMDLL_MAP_MODULEENTRY_VERSIONINFO version) {
 			this.module = module;
 			this.debug = debug;
@@ -1108,7 +1066,7 @@ public class VmmImpl implements IVmm
 			this.process = process;
 			this.pid = process.getPID();
 		}
-
+		
 		@Override
 		public String toString() {
 			return "VmmModule:" + String.valueOf(pid) + ":" + module.uszText;
@@ -1121,7 +1079,7 @@ public class VmmImpl implements IVmm
 		public String getName() {
 			return module.uszText;
 		}
-
+		
 		public String getNameFull() {
 			return module.uszFullName;
 		}
@@ -1137,7 +1095,7 @@ public class VmmImpl implements IVmm
 		public int getSize() {
 			return module.cbImageSize;
 		}
-
+		
 		public int getSizeFile() {
 			return module.cbFileSizeRaw;
 		}
@@ -1157,7 +1115,7 @@ public class VmmImpl implements IVmm
 		public int getCountIAT() {
 			return module.cIAT;
 		}
-
+			
 		public Vmm_ModuleExDebugInfo getExDebugInfo() {
 			if(debug == null) {
 				return null;
@@ -1169,7 +1127,7 @@ public class VmmImpl implements IVmm
 			n.PdbFilename = debug.uszPdbFilename;
 			return n;
 		}
-
+		
 		public Vmm_ModuleExVersionInfo getExVersionInfo() {
 			if(version == null) {
 				return null;
@@ -1209,7 +1167,7 @@ public class VmmImpl implements IVmm
 			}
 			return result;
 		}
-
+		
 		public List<VmmMap_ModuleSection> mapSection() {
 			IntByReference pcData = new IntByReference();
 			boolean f = VmmNative.INSTANCE.VMMDLL_ProcessGetSectionsU(hVMM, pid, module.uszText, null, 0, pcData);
@@ -1287,21 +1245,21 @@ public class VmmImpl implements IVmm
 			return new VmmImpl.VmmPdbImpl(pid, module.vaBase);
 		}
 	}
-
-
-
+	
+	
+	
 	//-----------------------------------------------------------------------------
 	// REGISTRY INTERNAL FUNCTIONALITY BELOW:
 	//-----------------------------------------------------------------------------
-
+	
 	private class VmmRegHiveImpl implements IVmmRegHive {
 		private VmmNative.VMMDLL_REGISTRY_HIVE_INFORMATION hive;
-
+		
 		VmmRegHiveImpl(VmmNative.VMMDLL_REGISTRY_HIVE_INFORMATION hive)
 		{
 			this.hive = hive;
 		}
-
+		
 		@Override
 		public String toString() {
 			return String.format("VmmRegHive:0x%016x", hive.vaCMHIVE);
@@ -1318,7 +1276,7 @@ public class VmmImpl implements IVmm
 		public String getPath() {
 			return Native.toString(hive.uszHiveRootPath);
 		}
-
+		
 		public int getSize() {
 			return hive.cbLength;
 		}
@@ -1330,7 +1288,7 @@ public class VmmImpl implements IVmm
 		public long getVaBaseBlock() {
 			return hive.vaHBASE_BLOCK;
 		}
-
+		
 		public byte[] memRead(int ra, int size) {
 			return memRead(ra, size, 0);
 		}
@@ -1361,17 +1319,17 @@ public class VmmImpl implements IVmm
 			return new VmmRegKeyImpl(strKeyPath);
 		}
 	}
-
+	
 	private class VmmRegKeyImpl implements IVmmRegKey {
 		private String strPath;
 		private String strName;
-
+		
 		private VmmRegKeyImpl(String strPath)
 		{
 			strName = strPath.substring(strPath.lastIndexOf('\\') + 1);
 			this.strPath = strPath;
 		}
-
+		
 		@Override
 		public String toString() {
 			return "VmmRegKey:" + strName;
@@ -1429,19 +1387,19 @@ public class VmmImpl implements IVmm
 			return lpftLastWriteTime.getValue();
 		}
 	}
-
+	
 	private class VmmRegValueImpl implements IVmmRegValue {
 		private String strPath;
 		private String strName;
 		private int dwType;
-
+		
 		private VmmRegValueImpl(String strPath, int dwType)
 		{
 			this.strName = strPath.substring(strPath.lastIndexOf('\\') + 1);
 			this.strPath = strPath;
 			this.dwType = dwType;
 		}
-
+		
 		@Override
 		public String toString() {
 			return "VmmRegValue:" + strName;
@@ -1490,7 +1448,7 @@ public class VmmImpl implements IVmm
 		public int getType() {
 			return dwType;
 		}
-
+		
 	}
 
 	public List<IVmmRegHive> regHive() {
