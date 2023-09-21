@@ -6,16 +6,20 @@ package vmm;
  * @author Ulf Frisk - pcileech@frizk.net
  */
 public class VmmException extends RuntimeException
-{	
-	
-	private static final long serialVersionUID = 3361783299853681520L;
+{    
+    
+    private static final long serialVersionUID = 3361783299853681520L;
 
-	public VmmException() {
+    public VmmException() {
         super("Native call to vmm failed!");
     }
 
-	public VmmException(String errorMessage) {
+    public VmmException(String errorMessage) {
         super(errorMessage);
     }
-	
+    
+    public VmmException(String errorMessage, Throwable t) {
+        super(errorMessage, t);
+    }
+    
 }

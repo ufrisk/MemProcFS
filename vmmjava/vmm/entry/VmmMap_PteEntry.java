@@ -8,15 +8,15 @@ import java.io.Serializable;
  */
 public class VmmMap_PteEntry implements Serializable
 {
-	private static final long serialVersionUID = -7463671464805453585L;
-	public long vaBase;
-	public long cPages;
-	public long fPage;
-	public boolean fWow64;
-	public String strDescription;
-	public int cSoftware;
-	
-	public String toString() {
-		return "VmmMap_PteEntry:" + Long.toHexString(vaBase) + ":" + Long.toHexString(cPages);
-	}
+    private static final long serialVersionUID = -7463671464805453585L;
+    public long vaBase;
+    public long cPages;
+    public long fPage;
+    public boolean fWow64;
+    public String strDescription;
+    public int cSoftware;
+    
+    public String toString() {
+        return "VmmMap_PteEntry:" + Long.toHexString(vaBase) + ":" + Long.toHexString(cPages);
+    }
 }

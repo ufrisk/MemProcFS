@@ -4,31 +4,40 @@ import vmm.VmmException;
 
 import java.lang.foreign.*;
 import java.lang.invoke.MethodHandle;
+import java.nio.file.Paths;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static java.lang.foreign.ValueLayout.*;
 
-public class VmmImplPanama {
+public class VmmImplPanama implements IVmmNativeEx {
 
     // 256 kb
     private final int PRE_ALLOCATED_SEGMENT_SIZE = 0x40000;
+    private final AtomicBoolean lock = new AtomicBoolean();
 
     private final Arena arena = Arena.ofShared();
     private final Linker linker = Linker.nativeLinker();
-    private final SymbolLookup lookup = SymbolLookup.libraryLookup("vmm.dll", arena);
-
+    private SymbolLookup lookup;
+    
     private MemorySegment vmmHandle;
-
     private MemorySegment dataBufferSegment;
     private MemorySegment refSegment;
 
     private VmmMethodHandles methodHandles;
-
+    
+    @SuppressWarnings("unused")
     private VmmImplPanama() {
 
     }
 
-    public VmmImplPanama(MemorySegment vmmHandle) {
-        this.vmmHandle = vmmHandle;
+    public VmmImplPanama(Long hVMM, String vmmPath) {
+        if(System.getProperty("os.name").toLowerCase().contains("win")) {
+            vmmPath = vmmPath + "\\vmm.dll";
+        } else {
+            vmmPath = vmmPath + "/vmm.so";
+        }
+        this.vmmHandle = MemorySegment.ofAddress(hVMM);
+        this.lookup = SymbolLookup.libraryLookup(Paths.get(vmmPath), arena);
         dataBufferSegment = arena.allocateArray(JAVA_BYTE, PRE_ALLOCATED_SEGMENT_SIZE);
         refSegment = arena.allocate(ADDRESS);
         methodHandles = new VmmMethodHandles();
@@ -36,14 +45,19 @@ public class VmmImplPanama {
     }
 
     public byte[] memRead(int pid, long va, int size, int flags) {
-        if (size > PRE_ALLOCATED_SEGMENT_SIZE) {
+        if ((size > PRE_ALLOCATED_SEGMENT_SIZE) || !lock.compareAndSet(false, true)) {
             Arena dynamicArena = Arena.ofShared();
             MemorySegment dataBufferSegment = dynamicArena.allocateArray(JAVA_BYTE, size);
             byte[] bytes = memRead(pid, va, size, flags, dataBufferSegment);
             dynamicArena.close();
             return bytes;
+        } else {
+            try {
+                return memRead(pid, va, size, flags, dataBufferSegment);
+            } finally {
+                lock.set(false);
+            }
         }
-        return memRead(pid, va, size, flags, dataBufferSegment);
     }
 
 
@@ -58,13 +72,17 @@ public class VmmImplPanama {
 
     public void memWrite(int pid, long va, byte[] data) {
         int size = data.length;
-        if (size > PRE_ALLOCATED_SEGMENT_SIZE) {
+        if ((size > PRE_ALLOCATED_SEGMENT_SIZE) || !lock.compareAndSet(false, true)) {
             Arena dynamicArena = Arena.ofShared();
             MemorySegment dataBufferSegment = dynamicArena.allocateArray(JAVA_BYTE, size);
             memWrite(pid, va, data, dataBufferSegment);
             dynamicArena.close();
         } else {
-            memWrite(pid, va, data, dataBufferSegment);
+            try {
+                memWrite(pid, va, data, dataBufferSegment);
+            } finally {
+                lock.set(false);
+            }
         }
     }
 
@@ -75,23 +93,35 @@ public class VmmImplPanama {
             throw new VmmException();
         }
     }
+    
+    public Object scatterInitialize(int pid, int flags) {
+        MemorySegment result = (MemorySegment) invokeUnchecked(methodHandles.scatterInitialize, vmmHandle, pid, flags);
+        if (result == null) {
+            throw new VmmException();
+        }
+        return result;
+    }
 
-    public void scatterPrepare(MemorySegment scatterHandle, long va, int size) {
+    public void scatterPrepare(Object scatterHandle, long va, int size) {
         boolean successful = (boolean) invokeUnchecked(methodHandles.scatterPrepare, scatterHandle, va, size);
         if (!successful) {
             throw new VmmException();
         }
     }
 
-    public void scatterPrepareWrite(MemorySegment scatterHandle, long va, byte[] data) {
+    public void scatterPrepareWrite(Object scatterHandle, long va, byte[] data) {
         int length = data.length;
-        if (length > PRE_ALLOCATED_SEGMENT_SIZE) {
+        if ((length > PRE_ALLOCATED_SEGMENT_SIZE) || !lock.compareAndSet(false, true)) {
             Arena dynamicArena = Arena.ofShared();
             MemorySegment dataBufferSegment = dynamicArena.allocateArray(JAVA_BYTE, length);
-            scatterPrepareWrite(scatterHandle, va, data, dataBufferSegment);
+            scatterPrepareWrite((MemorySegment)scatterHandle, va, data, dataBufferSegment);
             dynamicArena.close();
         } else {
-            scatterPrepareWrite(scatterHandle, va, data, dataBufferSegment);
+            try {
+                scatterPrepareWrite((MemorySegment)scatterHandle, va, data, dataBufferSegment);
+            } finally {
+                lock.set(false);
+            }
         }
     }
 
@@ -103,29 +133,40 @@ public class VmmImplPanama {
         }
     }
 
-    public void scatterExecute(MemorySegment scatterHandle) {
+    public void scatterExecute(Object scatterHandle) {
         boolean successful = (boolean) invokeUnchecked(methodHandles.scatterExecute, scatterHandle);
         if (!successful) {
             throw new VmmException();
         }
     }
 
-    public void scatterClear(MemorySegment scatterHandle, int pid, int flags) {
+    public void scatterClear(Object scatterHandle, int pid, int flags) {
         boolean successful = (boolean) invokeUnchecked(methodHandles.scatterClear, scatterHandle, pid, flags);
         if (!successful) {
             throw new VmmException();
         }
     }
+    
+    public void scatterClose(Object scatterHandle) {
+        try {
+            invokeUnchecked(methodHandles.scatterClose, scatterHandle);
+        } catch (Exception e) {}
+    }
 
-    public byte[] scatterRead(MemorySegment scatterHandle, long va, int size) {
-        if (size > PRE_ALLOCATED_SEGMENT_SIZE) {
+    public byte[] scatterRead(Object scatterHandle, long va, int size) {
+        if ((size > PRE_ALLOCATED_SEGMENT_SIZE) || !lock.compareAndSet(false, true)) {
             Arena dynamicArena = Arena.ofShared();
             MemorySegment dataBufferSegment = dynamicArena.allocateArray(JAVA_BYTE, size);
-            byte[] bytes = scatterRead(scatterHandle, va, size, dataBufferSegment);
+            byte[] bytes = scatterRead((MemorySegment)scatterHandle, va, size, dataBufferSegment);
             dynamicArena.close();
             return bytes;
+        } else {
+            try {
+                return scatterRead((MemorySegment)scatterHandle, va, size, dataBufferSegment);
+            } finally {
+                lock.set(false);
+            }
         }
-        return scatterRead(scatterHandle, va, size, dataBufferSegment);
     }
 
     private byte[] scatterRead(MemorySegment scatterHandle, long va, int size, MemorySegment dataBufferSegment) {
@@ -134,10 +175,6 @@ public class VmmImplPanama {
             throw new VmmException();
         }
         return getBytes(size, dataBufferSegment);
-    }
-
-    public void close() {
-        arena.close();
     }
 
     // TODO: try reading/writing one by one and benchmark if it's faster than to wrap the segment as a ByteBuffer
@@ -156,27 +193,31 @@ public class VmmImplPanama {
         try {
             return methodHandle.invokeWithArguments(args);
         } catch (Throwable e) {
-            throw new RuntimeException(e);
+            throw new VmmException("Native call failed.", e);
         }
     }
 
     private class VmmMethodHandles {
         private MethodHandle memRead;
         private MethodHandle memWrite;
+        private MethodHandle scatterInitialize;
         private MethodHandle scatterPrepare;
         private MethodHandle scatterPrepareWrite;
         private MethodHandle scatterExecute;
         private MethodHandle scatterRead;
         private MethodHandle scatterClear;
+        private MethodHandle scatterClose;
 
         private void initialize() {
             initializeMemReadHandle();
             initializeMemWriteHandle();
+            initializeScatterInitializeHandle();
             initializeScatterPrepareHandle();
             initializeScatterPrepareWriteHandle();
             initializeScatterExecuteHandle();
             initializeScatterClearHandle();
             initializeScatterReadHandle();
+            initializeScatterCloseHandle();
         }
 
         private void initializeMemReadHandle() {
@@ -187,6 +228,11 @@ public class VmmImplPanama {
         private void initializeMemWriteHandle() {
             FunctionDescriptor memWriteDescriptor = FunctionDescriptor.of(JAVA_BOOLEAN, ADDRESS, JAVA_INT, JAVA_LONG, ADDRESS, JAVA_INT);
             memWrite = constructMethodHandle("VMMDLL_MemWrite", memWriteDescriptor);
+        }
+        
+        private void initializeScatterInitializeHandle() {
+            FunctionDescriptor scatterInitializeDescriptor = FunctionDescriptor.of(ADDRESS, ADDRESS, JAVA_INT, JAVA_INT);
+            scatterInitialize = constructMethodHandle("VMMDLL_Scatter_Initialize", scatterInitializeDescriptor);
         }
 
         private void initializeScatterPrepareHandle() {
@@ -212,6 +258,11 @@ public class VmmImplPanama {
         private void initializeScatterReadHandle() {
             FunctionDescriptor scatterReadDescriptor = FunctionDescriptor.of(JAVA_BOOLEAN, ADDRESS, JAVA_LONG, JAVA_INT, ADDRESS, ADDRESS);
             scatterRead = constructMethodHandle("VMMDLL_Scatter_Read", scatterReadDescriptor);
+        }
+        
+        private void initializeScatterCloseHandle() {
+            FunctionDescriptor scatterCloseDescriptor = FunctionDescriptor.ofVoid(ADDRESS);
+            scatterClose = constructMethodHandle("VMMDLL_Scatter_CloseHandle", scatterCloseDescriptor);
         }
 
         /**

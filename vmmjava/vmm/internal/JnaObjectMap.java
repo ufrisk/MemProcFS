@@ -16,7 +16,7 @@ public class JnaObjectMap {
     }
 
     public synchronized Integer put(Object obj) {
-    	Integer key = Integer.valueOf(counter++);
+        Integer key = Integer.valueOf(counter++);
         map.put(key, new WeakReference<>(obj));
         return key;
     }

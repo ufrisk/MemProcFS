@@ -198,3 +198,4 @@ v1.1-v4.9
 Latest:
 * Bug fixes.
 * forensic/ntfs improvements.
+* Java API: support for java.lang.foreign (JDK21+) for efficient memory accesses.

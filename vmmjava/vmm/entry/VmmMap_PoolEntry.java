@@ -8,15 +8,15 @@ import java.io.Serializable;
  */
 public class VmmMap_PoolEntry implements Serializable
 {
-	private static final long serialVersionUID = 6028663064101019000L;
-	public long va;
-	public int cb;
-	public String tag;
-	public boolean fAlloc;
-	public byte tpPool;
-	public byte tpSS;
-	
-	public String toString() {
-		return "VmmMap_PoolEntry:" + tag + ":" + String.valueOf(va);
-	}
+    private static final long serialVersionUID = 6028663064101019000L;
+    public long va;
+    public int cb;
+    public String tag;
+    public boolean fAlloc;
+    public byte tpPool;
+    public byte tpSS;
+    
+    public String toString() {
+        return "VmmMap_PoolEntry:" + tag + ":" + String.valueOf(va);
+    }
 }

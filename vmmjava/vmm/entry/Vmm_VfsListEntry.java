@@ -8,12 +8,12 @@ import java.io.Serializable;
  */
 public class Vmm_VfsListEntry implements Serializable
 {
-	private static final long serialVersionUID = -2708452659192929578L;
-	public String name;
-	public boolean isFile;
-	public long size;
-	
-	public String toString() {
-		return "Vmm_VfsListEntry:" + name;
-	}
+    private static final long serialVersionUID = -2708452659192929578L;
+    public String name;
+    public boolean isFile;
+    public long size;
+    
+    public String toString() {
+        return "Vmm_VfsListEntry:" + name;
+    }
 }

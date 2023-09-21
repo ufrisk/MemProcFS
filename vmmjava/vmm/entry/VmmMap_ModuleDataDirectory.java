@@ -8,13 +8,13 @@ import java.io.Serializable;
  */
 public class VmmMap_ModuleDataDirectory implements Serializable
 {
-	private static final long serialVersionUID = -603939752974235784L;
-	public long RealVirtualAddress;
-	public int VirtualAddress;
-	public int Size;
-	public String name;
-	
-	public String toString() {
-		return "VmmMap_ModuleDataDirectory:" + name;
-	}
+    private static final long serialVersionUID = -603939752974235784L;
+    public long RealVirtualAddress;
+    public int VirtualAddress;
+    public int Size;
+    public String name;
+    
+    public String toString() {
+        return "VmmMap_ModuleDataDirectory:" + name;
+    }
 }

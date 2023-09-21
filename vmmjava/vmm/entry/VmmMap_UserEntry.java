@@ -8,12 +8,12 @@ import java.io.Serializable;
  */
 public class VmmMap_UserEntry implements Serializable
 {
-	private static final long serialVersionUID = -7758667727787190877L;
-	public String user;
-	public String SID;
-	public long vaRegHive;
-	
-	public String toString() {
-		return "VmmMap_UserEntry:" + user;
-	}
+    private static final long serialVersionUID = -7758667727787190877L;
+    public String user;
+    public String SID;
+    public long vaRegHive;
+    
+    public String toString() {
+        return "VmmMap_UserEntry:" + user;
+    }
 }

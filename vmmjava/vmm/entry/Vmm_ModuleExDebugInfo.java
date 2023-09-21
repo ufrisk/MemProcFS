@@ -8,13 +8,13 @@ import java.io.Serializable;
  */
 public class Vmm_ModuleExDebugInfo implements Serializable {
 
-	private static final long serialVersionUID = -7875377132222488703L;
-	public int dwAge;
-	public byte[] GuidBytes;
-	public String Guid;
-	public String PdbFilename;
+    private static final long serialVersionUID = -7875377132222488703L;
+    public int dwAge;
+    public byte[] GuidBytes;
+    public String Guid;
+    public String PdbFilename;
 
-	public String toString() {
-		return "Vmm_ModuleExDebugInfo";
-	}
+    public String toString() {
+        return "Vmm_ModuleExDebugInfo";
+    }
 }

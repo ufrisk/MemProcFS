@@ -24,8 +24,10 @@ public class VmmImpl implements IVmm
 	//-----------------------------------------------------------------------------
 	// INITIALIZATION FUNCTIONALITY BELOW:
 	//-----------------------------------------------------------------------------
+    private boolean isVerbose = false;
 	private Pointer hVMM = null;
 	private String vmmNativeLibraryPath = null;
+	private IVmmNativeEx jnative = null;
 	
 	/*
 	 * Do not allow direct class instantiation from outside.
@@ -52,6 +54,18 @@ public class VmmImpl implements IVmm
 		if(hVMM == null) { throw new VmmException("Vmm Init: failed in native code."); }
 		VmmNative.INSTANCE.VMMDLL_InitializePlugins(hVMM);
 		this.vmmNativeLibraryPath = vmmNativeLibraryPath;
+		this.isVerbose = getConfig(OPT_CORE_VERBOSE) == 1;
+		// Try load java "project panama java.lang.native" implementation.
+		// This allows for less function call overhead but it's very recent
+		// so it's expected to fail on older JREs. Fallback gracefully to JNA.
+		// Implementation is currently built for JDK21. 
+		try {
+		    if(isVerbose) { System.out.println("vmm: java.lang.foreign implementation = try enable."); }
+		    this.jnative = (IVmmNativeEx)Class.forName("vmm.internal.VmmNativeExImpl").getDeclaredConstructor(Long.class, String.class).newInstance(Pointer.nativeValue(hVMM), vmmNativeLibraryPath);
+		    if(isVerbose) { System.out.println("vmm: java.lang.foreign implementation = enabled."); }
+		} catch(Throwable t) {
+		    if(isVerbose) { System.out.println("vmm: java.lang.foreign implementation = failed to enable (JDK21+ required)."); }
+		}
 	}
 	
 	public static IVmm Initialize(String vmmNativeLibraryPath, String argv[])
@@ -199,14 +213,16 @@ public class VmmImpl implements IVmm
 	// INTERNAL VMM MEMORY FUNCTIONALITY BELOW:
 	//-----------------------------------------------------------------------------
 	
-	private class VmmMemScatterMemoryImpl implements IVmmMemScatterMemory {
+	private class VmmMemScatterMemoryImpl implements IVmmMemScatterMemory {	    
 		private final Object objLock = new Object();
-		private Pointer hS;
+		private Object nhS;   // native scatter handle
+		private Pointer hS;   // JNA scatter handle
 		private int pid;
 		private int flags;
 		
-		private VmmMemScatterMemoryImpl(Pointer hS, int pid, int flags) {
+		private VmmMemScatterMemoryImpl(Pointer hS, Object nhS, int pid, int flags) {
 			this.hS = hS;
+			this.nhS = nhS;
 			this.pid = pid;
 			this.flags = flags;
 		}
@@ -230,46 +246,75 @@ public class VmmImpl implements IVmm
 		}
 
 		public void prepare(long va, int size) {
-			if(this.hS == null) { throw new VmmException(); }
-			boolean f = VmmNative.INSTANCE.VMMDLL_Scatter_Prepare(hS, va, size);
-			if(!f) { throw new VmmException(); }				
+		    if(jnative == null) {		    
+    			if(this.hS == null) { throw new VmmException(); }
+    			boolean f = VmmNative.INSTANCE.VMMDLL_Scatter_Prepare(hS, va, size);
+    			if(!f) { throw new VmmException(); }
+		    } else {
+		        if(this.nhS == null) { throw new VmmException(); }
+		        jnative.scatterPrepare(nhS, va, size);
+		    }
 		}
 
 		public void prepareWrite(long va, byte[] data) {
-			if(this.hS == null) { throw new VmmException(); }
-			boolean f = VmmNative.INSTANCE.VMMDLL_Scatter_PrepareWrite(hS, va, data, data.length);
-			if(!f) { throw new VmmException(); }
+		    if(jnative == null) {
+    			if(this.hS == null) { throw new VmmException(); }
+    			boolean f = VmmNative.INSTANCE.VMMDLL_Scatter_PrepareWrite(hS, va, data, data.length);
+    			if(!f) { throw new VmmException(); }
+            } else {
+                if(this.nhS == null) { throw new VmmException(); }
+                jnative.scatterPrepareWrite(nhS, va, data);
+            }
 		}
 
 		public void execute() {
-			if(this.hS == null) { throw new VmmException(); }
-			boolean f = VmmNative.INSTANCE.VMMDLL_Scatter_Execute(hS);
-			if(!f) { throw new VmmException(); }
+		    if(jnative == null) {
+    			if(this.hS == null) { throw new VmmException(); }
+    			boolean f = VmmNative.INSTANCE.VMMDLL_Scatter_Execute(hS);
+    			if(!f) { throw new VmmException(); }
+            } else {
+                if(this.nhS == null) { throw new VmmException(); }
+                jnative.scatterExecute(nhS);
+            }
 		}
 
 		public void clear() {
-			if(this.hS == null) { throw new VmmException(); }
-			boolean f = VmmNative.INSTANCE.VMMDLL_Scatter_Clear(hS, pid, flags);
-			if(!f) { throw new VmmException(); }
+		    if(jnative == null) {
+    			if(this.hS == null) { throw new VmmException(); }
+    			boolean f = VmmNative.INSTANCE.VMMDLL_Scatter_Clear(hS, pid, flags);
+    			if(!f) { throw new VmmException(); }
+            } else {
+                if(this.nhS == null) { throw new VmmException(); }
+                jnative.scatterClear(nhS, pid, flags);
+            }
 		}
 
 		public byte[] read(long va, int size) {
-			if(this.hS == null) { throw new VmmException(); }
-			IntByReference pcbRead = new IntByReference();
-			byte[] pbResult = new byte[size];
-			boolean f = VmmNative.INSTANCE.VMMDLL_Scatter_Read(hS, va, size, pbResult, pcbRead);
-			if(!f) { throw new VmmException(); }
-			return pbResult;
+		    if(jnative == null) {
+    			if(this.hS == null) { throw new VmmException(); }
+    			IntByReference pcbRead = new IntByReference();
+    			byte[] pbResult = new byte[size];
+    			boolean f = VmmNative.INSTANCE.VMMDLL_Scatter_Read(hS, va, size, pbResult, pcbRead);
+    			if(!f) { throw new VmmException(); }
+    			return pbResult;
+		    } else {
+                if(this.nhS == null) { throw new VmmException(); }
+                return jnative.scatterRead(nhS, va, size);
+		    }
 		}
 
 		public void close() {
 			synchronized(objLock) {
 				if(this.hS != null) {
 					VmmNative.INSTANCE.VMMDLL_Scatter_CloseHandle(hS);
-					this.hS = null;
-					this.pid = 0;
-					this.flags = 0;
 				}
+                if(this.nhS != null) {
+                    jnative.scatterClose(nhS);
+                }				
+                this.hS = null;
+                this.nhS = null;
+                this.pid = 0;
+                this.flags = 0;
 			}
 		}
 		
@@ -289,17 +334,29 @@ public class VmmImpl implements IVmm
 	
 	public byte[] _memRead(int pid, long va, int size, int flags)
 	{
-		IntByReference pcbRead = new IntByReference();
-		byte[] pbResult = new byte[size];
-		boolean f = VmmNative.INSTANCE.VMMDLL_MemReadEx(hVMM, pid, va, pbResult, size, pcbRead, flags);
-		if(!f) { throw new VmmException(); }
-		return pbResult;
+	    if(jnative == null) {
+	        // JNA implementation:
+	        IntByReference pcbRead = new IntByReference();
+	        byte[] pbResult = new byte[size];
+	        boolean f = VmmNative.INSTANCE.VMMDLL_MemReadEx(hVMM, pid, va, pbResult, size, pcbRead, flags);
+	        if(!f) { throw new VmmException(); }
+	        return pbResult;
+	    } else {
+	        // Native java.lang.foreign implementation:
+	        return jnative.memRead(pid, va, size, flags);
+	    }
 	}
 	
 	public void _memWrite(int pid, long va, byte[] data)
 	{
-		boolean f = VmmNative.INSTANCE.VMMDLL_MemWrite(hVMM, pid, va, data, data.length);
-		if(!f) { throw new VmmException(); }
+	    if(jnative == null) {
+	        // JNA implementation:
+	        boolean f = VmmNative.INSTANCE.VMMDLL_MemWrite(hVMM, pid, va, data, data.length);
+	        if(!f) { throw new VmmException(); }
+	    } else {
+	        // Native java.lang.foreign implementation:
+	        jnative.memWrite(pid, va, data);
+	    }
 	}
 	
 	public void _memPrefetchPages(int pid, long[] vas)
@@ -318,9 +375,16 @@ public class VmmImpl implements IVmm
 
 	public IVmmMemScatterMemory _memScatterInitialize(int pid, int flags)
 	{
-		Pointer hS = VmmNative.INSTANCE.VMMDLL_Scatter_Initialize(hVMM, pid, flags);
-		if(hS == null) { throw new VmmException(); }
-		return new VmmMemScatterMemoryImpl(hS, pid, flags);
+       if(jnative == null) {
+            // JNA implementation:
+           Pointer hS = VmmNative.INSTANCE.VMMDLL_Scatter_Initialize(hVMM, pid, flags);
+           if(hS == null) { throw new VmmException(); }
+           return new VmmMemScatterMemoryImpl(hS, null, pid, flags);
+       } else {
+           // Native java.lang.foreign implementation:
+           Object nhS = jnative.scatterInitialize(pid, flags);
+           return new VmmMemScatterMemoryImpl(null, nhS, pid, flags);
+       }
 	}
 	
 	

@@ -8,7 +8,7 @@ import java.io.Serializable;
  */
 public class VmmMap_ThreadEntry implements Serializable
 {
-	private static final long serialVersionUID = -8162285678132928372L;
+    private static final long serialVersionUID = -8162285678132928372L;
     public int dwTID;
     public int dwPID;
     public int dwExitStatus;
@@ -36,7 +36,7 @@ public class VmmMap_ThreadEntry implements Serializable
     public byte bSuspendCount;
     public byte bWaitReason;
     
-	public String toString() {
-		return "VmmMap_ThreadEntry:" + String.valueOf(dwTID);
-	}
+    public String toString() {
+        return "VmmMap_ThreadEntry:" + String.valueOf(dwTID);
+    }
 }

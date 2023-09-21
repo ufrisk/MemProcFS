@@ -8,11 +8,11 @@ import java.io.Serializable;
  */
 public class VmmMap_MemMapEntry implements Serializable
 {
-	private static final long serialVersionUID = 862616981396566108L;
-	public long pa;
-	public long cb;
-	
-	public String toString() {
-		return "VmmMap_MemMapEntry:" + Long.toHexString(pa) + ":" + Long.toHexString(cb);
-	}
+    private static final long serialVersionUID = 862616981396566108L;
+    public long pa;
+    public long cb;
+    
+    public String toString() {
+        return "VmmMap_MemMapEntry:" + Long.toHexString(pa) + ":" + Long.toHexString(cb);
+    }
 }
