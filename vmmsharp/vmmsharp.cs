@@ -2347,6 +2347,22 @@ namespace vmmsharp
             return data;
         }
 
+        public unsafe bool ReadStruct<T>(ulong qwA, out T result)
+            where T : unmanaged
+        {
+            uint cb = (uint)sizeof(T);
+            uint cbRead;
+            result = default;
+            fixed (T* pb = &result)
+            {
+                if (!vmmi.VMMDLL_Scatter_Read(hS, qwA, cb, (byte*)pb, out cbRead))
+                    return false;
+            }
+            if (cbRead != cb)
+                return false;
+            return true;
+        }
+
         public bool Prepare(ulong qwA, uint cb)
         {
             return vmmi.VMMDLL_Scatter_Prepare(hS, qwA, cb);
@@ -2358,6 +2374,14 @@ namespace vmmsharp
             {
                 return vmmi.VMMDLL_Scatter_PrepareWrite(hS, qwA, pb, (uint)data.Length);
             }
+        }
+
+        public unsafe bool PrepareWriteStruct<T>(ulong qwA, T value)
+            where T : unmanaged
+        {
+            uint cb = (uint)sizeof(T);
+            byte* pb = (byte*)&value;
+            return vmmi.VMMDLL_Scatter_PrepareWrite(hS, qwA, pb, cb);
         }
 
         public bool Execute()

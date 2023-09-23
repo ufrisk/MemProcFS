@@ -152,6 +152,9 @@ class vmm_example
             // prepare multiple ranges to read
             scatter.Prepare(mModuleKernel32.vaBase, 0x100);
             scatter.Prepare(mModuleKernel32.vaBase + 0x2000, 0x100);
+            scatter.Prepare(mModuleKernel32.vaBase + 0x3000, (uint)Marshal.SizeOf<IntPtr>());
+            // prepare struct value to write
+            scatter.PrepareWriteStruct<IntPtr>(mModuleKernel32.vaBase, IntPtr.Zero);
             // execute actual read operation to underlying system
             scatter.Execute();
             byte[] pbKernel32_100_1 = scatter.Read(mModuleKernel32.vaBase, 0x80);
@@ -164,6 +167,7 @@ class vmm_example
             scatter.Execute();
             byte[] pbKernel32_100_3 = scatter.Read(mModuleKernel32.vaBase + 0x3000, 0x100);
             byte[] pbKernel32_100_4 = scatter.Read(mModuleKernel32.vaBase + 0x4000, 0x100);
+            scatter.ReadStruct<IntPtr>(mModuleKernel32.vaBase + 0x3000, out IntPtr intPtrResult);
             // clean up scatter handle hS (free native memory)
             // NB! hS handle should not be used after this!
             scatter.Close();
