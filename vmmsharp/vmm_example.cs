@@ -62,6 +62,14 @@ class vmm_example
         result = vmm.ConfigSet(Vmm.OPT_CORE_VERBOSE_EXTRA, 1);
         result = vmm.ConfigGet(Vmm.OPT_CORE_VERBOSE_EXTRA, out ulOptionVV);
 
+        // Get Memory Map Functionality
+        string memMap = vmm.GetMemoryMap();
+        if (memMap != null)
+        {
+            // Write output to Text File
+            System.IO.File.WriteAllBytes("mmap.txt", System.Text.Encoding.ASCII.GetBytes(memMap));
+        }
+
         // initialize plugins (required for vfs)
         vmm.InitializePlugins();
 
@@ -120,6 +128,18 @@ class vmm_example
         // read first 128 bytes of kernel32.dll
         byte[] dataKernel32MZ = vmm.MemRead(dwExplorerPID, mModuleKernel32.vaBase, 128, 0);
 
+        // Read Handle value at kernel32.dll Offset
+        if (vmm.MemReadStruct<IntPtr>(dwExplorerPID, mModuleKernel32.vaBase + 0x100, out var hKernel32))
+        {
+            // Read Success -> Inspect Result
+            hKernel32 = IntPtr.Zero;
+            // Attempt to write modified handle back
+            if (vmm.MemWriteStruct(dwExplorerPID, mModuleKernel32.vaBase + 0x100, hKernel32))
+            {
+                // Successful Write
+            }
+        }
+
         // translate virtual address of 1st page in kernel32.dll to physical address
         ulong paBaseKernel32;
         result = vmm.MemVirt2Phys(dwExplorerPID, mModuleKernel32.vaBase, out paBaseKernel32);
@@ -132,6 +152,9 @@ class vmm_example
             // prepare multiple ranges to read
             scatter.Prepare(mModuleKernel32.vaBase, 0x100);
             scatter.Prepare(mModuleKernel32.vaBase + 0x2000, 0x100);
+            scatter.Prepare(mModuleKernel32.vaBase + 0x3000, (uint)Marshal.SizeOf<IntPtr>());
+            // prepare struct value to write
+            scatter.PrepareWriteStruct<IntPtr>(mModuleKernel32.vaBase, IntPtr.Zero);
             // execute actual read operation to underlying system
             scatter.Execute();
             byte[] pbKernel32_100_1 = scatter.Read(mModuleKernel32.vaBase, 0x80);
@@ -144,6 +167,7 @@ class vmm_example
             scatter.Execute();
             byte[] pbKernel32_100_3 = scatter.Read(mModuleKernel32.vaBase + 0x3000, 0x100);
             byte[] pbKernel32_100_4 = scatter.Read(mModuleKernel32.vaBase + 0x4000, 0x100);
+            scatter.ReadStruct<IntPtr>(mModuleKernel32.vaBase + 0x3000, out IntPtr intPtrResult);
             // clean up scatter handle hS (free native memory)
             // NB! hS handle should not be used after this!
             scatter.Close();

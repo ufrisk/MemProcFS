@@ -2,6 +2,7 @@
 using System.Text;
 using System.Runtime.InteropServices;
 using System.Collections.Generic;
+using System.Linq;
 
 /*  
  *  C# API wrapper 'vmmsharp' for MemProcFS 'vmm.dll' and LeechCore 'leechcore.dll' APIs.
@@ -27,7 +28,7 @@ namespace vmmsharp
     }
 
     // LeechCore public API:
-    public class LeechCore : IDisposable
+    public sealed class LeechCore : IDisposable
     {
         //---------------------------------------------------------------------
         // LEECHCORE: PUBLIC API CONSTANTS BELOW:
@@ -267,7 +268,7 @@ namespace vmmsharp
             GC.SuppressFinalize(this);
         }
 
-        protected virtual void Dispose(bool disposing)
+        private void Dispose(bool disposing)
         {
             if (!this.disposed)
             {
@@ -489,7 +490,7 @@ namespace vmmsharp
 
 
     // MemProcFS public API:
-    public class Vmm : IDisposable
+    public sealed class Vmm : IDisposable
     {
         //---------------------------------------------------------------------
         // CORE FUNCTIONALITY BELOW:
@@ -616,7 +617,7 @@ namespace vmmsharp
             GC.SuppressFinalize(this);
         }
 
-        protected virtual void Dispose(bool disposing)
+        private void Dispose(bool disposing)
         {
             if (!this.disposed)
             {
@@ -644,6 +645,22 @@ namespace vmmsharp
         public bool ConfigSet(ulong fOption, ulong qwValue)
         {
             return vmmi.VMMDLL_ConfigSet(hVMM, fOption, qwValue);
+        }
+
+        public string GetMemoryMap()
+        {
+            var map = Map_GetPhysMem();
+            if (map.Length == 0)
+                return null;
+            var sb = new StringBuilder();
+            int leftLength = map.Max(x => x.pa).ToString("x").Length;
+            for (int i = 0; i < map.Length; i++)
+            {
+                sb.AppendFormat($"{{0,{-leftLength}}}", map[i].pa.ToString("x"))
+                    .Append($" - {(map[i].pa + map[i].cb - 1).ToString("x")}")
+                    .AppendLine();
+            }
+            return sb.ToString();
         }
 
         //---------------------------------------------------------------------
@@ -785,6 +802,22 @@ namespace vmmsharp
             return data;
         }
 
+        public unsafe bool MemReadStruct<T>(uint pid, ulong qwA, out T result, uint flags = 0)
+            where T : unmanaged
+        {
+            uint cb = (uint)sizeof(T);
+            result = default;
+            uint cbRead;
+            fixed (T* pb = &result)
+            {
+                if (!vmmi.VMMDLL_MemReadEx(hVMM, pid, qwA, (byte*)pb, cb, out cbRead, flags))
+                    return false;
+            }
+            if (cbRead != cb)
+                return false;
+            return true;
+        }
+
         public unsafe bool MemPrefetchPages(uint pid, ulong[] qwA)
         {
             byte[] data = new byte[qwA.Length * sizeof(ulong)];
@@ -801,6 +834,14 @@ namespace vmmsharp
             {
                 return vmmi.VMMDLL_MemWrite(hVMM, pid, qwA, pb, (uint)data.Length);
             }
+        }
+
+        public unsafe bool MemWriteStruct<T>(uint pid, ulong qwA, T value)
+            where T : unmanaged
+        {
+            uint cb = (uint)sizeof(T);
+            byte* pb = (byte*)&value;
+            return vmmi.VMMDLL_MemWrite(hVMM, pid, qwA, pb, cb);
         }
 
         public bool MemVirt2Phys(uint dwPID, ulong qwVA, out ulong pqwPA)
@@ -2244,7 +2285,7 @@ namespace vmmsharp
         }
     }
 
-    public class VmmScatter : IDisposable
+    public sealed class VmmScatter : IDisposable
     {
         //---------------------------------------------------------------------
         // MEMORY NEW SCATTER READ/WRITE FUNCTIONALITY BELOW:
@@ -2273,7 +2314,7 @@ namespace vmmsharp
             GC.SuppressFinalize(this);
         }
 
-        protected virtual void Dispose(bool disposing)
+        private void Dispose(bool disposing)
         {
             if (!this.disposed)
             {
@@ -2306,6 +2347,22 @@ namespace vmmsharp
             return data;
         }
 
+        public unsafe bool ReadStruct<T>(ulong qwA, out T result)
+            where T : unmanaged
+        {
+            uint cb = (uint)sizeof(T);
+            uint cbRead;
+            result = default;
+            fixed (T* pb = &result)
+            {
+                if (!vmmi.VMMDLL_Scatter_Read(hS, qwA, cb, (byte*)pb, out cbRead))
+                    return false;
+            }
+            if (cbRead != cb)
+                return false;
+            return true;
+        }
+
         public bool Prepare(ulong qwA, uint cb)
         {
             return vmmi.VMMDLL_Scatter_Prepare(hS, qwA, cb);
@@ -2317,6 +2374,14 @@ namespace vmmsharp
             {
                 return vmmi.VMMDLL_Scatter_PrepareWrite(hS, qwA, pb, (uint)data.Length);
             }
+        }
+
+        public unsafe bool PrepareWriteStruct<T>(ulong qwA, T value)
+            where T : unmanaged
+        {
+            uint cb = (uint)sizeof(T);
+            byte* pb = (byte*)&value;
+            return vmmi.VMMDLL_Scatter_PrepareWrite(hS, qwA, pb, cb);
         }
 
         public bool Execute()
