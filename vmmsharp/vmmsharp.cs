@@ -506,6 +506,7 @@ namespace vmmsharp
             protected override bool ReleaseHandle()
             {
                 lci.LcClose(this.handle);
+                this.handle = IntPtr.Zero;
                 return true;
             }
 
@@ -2268,6 +2269,7 @@ namespace vmmsharp
             protected override bool ReleaseHandle()
             {
                 VMMDLL_Close(this.handle);
+                this.handle = IntPtr.Zero;
                 return true;
             }
 
