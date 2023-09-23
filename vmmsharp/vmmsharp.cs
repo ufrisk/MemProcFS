@@ -162,7 +162,7 @@ namespace vmmsharp
         }
 
         private bool disposed = false;
-        private IntPtr hLC = IntPtr.Zero;
+        private readonly LeechcoreHandle hLC;
 
         // private zero-argument constructor - do not use!
         private LeechCore()
@@ -171,7 +171,7 @@ namespace vmmsharp
 
         private LeechCore(IntPtr hLC)
         {
-            this.hLC = hLC;
+            this.hLC = new LeechcoreHandle(hLC);
         }
 
         // Factory method creating a new LeechCore object taking a LC_CONFIG structure
@@ -212,68 +212,29 @@ namespace vmmsharp
 
         public LeechCore(string strDevice)
         {
-            LC_CONFIG cfg = new LC_CONFIG();
-            cfg.dwVersion = LeechCore.LC_CONFIG_VERSION;
-            cfg.szDevice = strDevice;
-            IntPtr hLC = lci.LcCreate(ref cfg);
-            if (hLC == IntPtr.Zero)
-            {
-                throw new Exception("LeechCore: failed to create object.");
-            }
-            this.hLC = hLC;
+            this.hLC = new LeechcoreHandle(strDevice);
         }
 
         public LeechCore(string strDevice, string strRemote, uint dwVerbosityFlags, ulong paMax)
         {
-            LC_CONFIG cfg = new LC_CONFIG();
-            cfg.dwVersion = LeechCore.LC_CONFIG_VERSION;
-            cfg.szDevice = strDevice;
-            cfg.szRemote = strRemote;
-            cfg.dwPrintfVerbosity = dwVerbosityFlags;
-            cfg.paMax = paMax;
-            IntPtr hLC = lci.LcCreate(ref cfg);
-            if(hLC == IntPtr.Zero)
-            {
-                throw new Exception("LeechCore: failed to create object.");
-            }
-            this.hLC = hLC;
+            this.hLC = new LeechcoreHandle(strDevice, strRemote, dwVerbosityFlags, paMax);
         }
 
         public LeechCore(Vmm vmm)
         {
-            ulong pqwValue;
-            if (!vmm.ConfigGet(Vmm.OPT_CORE_LEECHCORE_HANDLE, out pqwValue)) {
-                throw new Exception("LeechCore: failed retrieving handle from Vmm.");
-            }
-            string strDevice = string.Format("existing://0x{0:X}", pqwValue);
-            LC_CONFIG cfg = new LC_CONFIG();
-            cfg.dwVersion = LeechCore.LC_CONFIG_VERSION;
-            cfg.szDevice = strDevice;
-            IntPtr hLC = lci.LcCreate(ref cfg);
-            if (hLC == IntPtr.Zero)
-            {
-                throw new Exception("LeechCore: failed to create object.");
-            }
-            this.hLC = hLC;
-        }
-
-        ~LeechCore()
-        {
-            Dispose(disposing: false);
+            this.hLC = new LeechcoreHandle(vmm);
         }
 
         public void Dispose()
         {
             Dispose(disposing: true);
-            GC.SuppressFinalize(this);
         }
 
         private void Dispose(bool disposing)
         {
             if (!this.disposed)
             {
-                lci.LcClose(hLC);
-                hLC = IntPtr.Zero;
+                hLC.Dispose();
                 disposed = true;
             }
         }
@@ -485,6 +446,72 @@ namespace vmmsharp
         {
             return this.Command(LeechCore.LC_CMD_MEMMAP_SET, System.Text.Encoding.UTF8.GetBytes(sMemMap), out byte[] bMemMap);
         }
+
+        private sealed class LeechcoreHandle : VmmsharpHandle
+        {
+
+            internal LeechcoreHandle(string strDevice) : base()
+            {
+                LC_CONFIG cfg = new LC_CONFIG();
+                cfg.dwVersion = LeechCore.LC_CONFIG_VERSION;
+                cfg.szDevice = strDevice;
+                IntPtr hLC = LcCreate(ref cfg);
+                if (hLC == IntPtr.Zero)
+                {
+                    throw new Exception("LeechCore: failed to create object.");
+                }
+                this.handle = hLC;
+            }
+
+            internal LeechcoreHandle(string strDevice, string strRemote, uint dwVerbosityFlags, ulong paMax) : base()
+            {
+                LC_CONFIG cfg = new LC_CONFIG();
+                cfg.dwVersion = LeechCore.LC_CONFIG_VERSION;
+                cfg.szDevice = strDevice;
+                cfg.szRemote = strRemote;
+                cfg.dwPrintfVerbosity = dwVerbosityFlags;
+                cfg.paMax = paMax;
+                IntPtr hLC = LcCreate(ref cfg);
+                if (hLC == IntPtr.Zero)
+                {
+                    throw new Exception("LeechCore: failed to create object.");
+                }
+                this.handle = hLC;
+            }
+
+            internal LeechcoreHandle(Vmm vmm) : base()
+            {
+                ulong pqwValue;
+                if (!vmm.ConfigGet(Vmm.OPT_CORE_LEECHCORE_HANDLE, out pqwValue))
+                {
+                    throw new Exception("LeechCore: failed retrieving handle from Vmm.");
+                }
+                string strDevice = string.Format("existing://0x{0:X}", pqwValue);
+                LC_CONFIG cfg = new LC_CONFIG();
+                cfg.dwVersion = LeechCore.LC_CONFIG_VERSION;
+                cfg.szDevice = strDevice;
+                IntPtr hLC = LcCreate(ref cfg);
+                if (hLC == IntPtr.Zero)
+                {
+                    throw new Exception("LeechCore: failed to create object.");
+                }
+                this.handle = hLC;
+            }
+
+            internal LeechcoreHandle(IntPtr hLC) : base()
+            {
+                this.handle = hLC;
+            }
+
+            protected override bool ReleaseHandle()
+            {
+                lci.LcClose(this.handle);
+                return true;
+            }
+
+            [DllImport("leechcore.dll", EntryPoint = "LcCreate")]
+            private static extern IntPtr LcCreate(ref LeechCore.LC_CONFIG pLcCreateConfig);
+        }
     }
 
 
@@ -558,71 +585,34 @@ namespace vmmsharp
         }
 
         private bool disposed = false;
-        private IntPtr hVMM = IntPtr.Zero;
+        private readonly VmmHandle hVMM;
 
         // private zero-argument constructor - do not use!
         private Vmm()
         {
         }
 
-        private static unsafe IntPtr Initialize(out LeechCore.LC_CONFIG_ERRORINFO ConfigErrorInfo, params string[] args)
-        {
-            IntPtr pLcErrorInfo;
-            int cbERROR_INFO = System.Runtime.InteropServices.Marshal.SizeOf<lci.LC_CONFIG_ERRORINFO>();
-            IntPtr hVMM = vmmi.VMMDLL_InitializeEx(args.Length, args, out pLcErrorInfo);
-            long vaLcCreateErrorInfo = pLcErrorInfo.ToInt64();
-            ConfigErrorInfo = new LeechCore.LC_CONFIG_ERRORINFO();
-            ConfigErrorInfo.strUserText = "";
-            if (hVMM.ToInt64() == 0)
-            {
-                throw new Exception("VMM INIT FAILED.");
-            }
-            if (vaLcCreateErrorInfo == 0)
-            {
-                return hVMM;
-            }
-            lci.LC_CONFIG_ERRORINFO e = Marshal.PtrToStructure<lci.LC_CONFIG_ERRORINFO>(pLcErrorInfo);
-            if (e.dwVersion == LeechCore.LC_CONFIG_ERRORINFO_VERSION)
-            {
-                ConfigErrorInfo.fValid = true;
-                ConfigErrorInfo.fUserInputRequest = e.fUserInputRequest;
-                if (e.cwszUserText > 0)
-                {
-                    ConfigErrorInfo.strUserText = Marshal.PtrToStringUni((System.IntPtr)(vaLcCreateErrorInfo + cbERROR_INFO));
-                }
-            }
-            lci.LcMemFree(pLcErrorInfo);
-            return hVMM;
-        }
-
         public Vmm(out LeechCore.LC_CONFIG_ERRORINFO ConfigErrorInfo, params string[] args)
         {
-            this.hVMM = Vmm.Initialize(out ConfigErrorInfo, args);
+            this.hVMM = new VmmHandle(out ConfigErrorInfo, args);
         }
 
         public Vmm(params string[] args)
         {
             LeechCore.LC_CONFIG_ERRORINFO ErrorInfo;
-            this.hVMM = Vmm.Initialize(out ErrorInfo, args);
-        }
-
-        ~Vmm()
-        {
-            Dispose(disposing: false);
+            this.hVMM = new VmmHandle(out ErrorInfo, args);
         }
 
         public void Dispose()
         {
             Dispose(disposing: true);
-            GC.SuppressFinalize(this);
         }
 
         private void Dispose(bool disposing)
         {
             if (!this.disposed)
             {
-                vmmi.VMMDLL_Close(hVMM);
-                hVMM = IntPtr.Zero;
+                hVMM.Dispose();
                 disposed = true;
             }
         }
@@ -2267,6 +2257,54 @@ namespace vmmsharp
                 return result ? data : null;
             }
         }
+
+        private sealed class VmmHandle : VmmsharpHandle
+        {
+            internal VmmHandle(out LeechCore.LC_CONFIG_ERRORINFO ConfigErrorInfo, params string[] args) : base()
+            {
+                this.handle = Initialize(out ConfigErrorInfo, args);
+            }
+
+            protected override bool ReleaseHandle()
+            {
+                VMMDLL_Close(this.handle);
+                return true;
+            }
+
+            private static unsafe IntPtr Initialize(out LeechCore.LC_CONFIG_ERRORINFO ConfigErrorInfo, params string[] args)
+            {
+                IntPtr pLcErrorInfo;
+                int cbERROR_INFO = System.Runtime.InteropServices.Marshal.SizeOf<lci.LC_CONFIG_ERRORINFO>();
+                IntPtr hVMM = vmmi.VMMDLL_InitializeEx(args.Length, args, out pLcErrorInfo);
+                long vaLcCreateErrorInfo = pLcErrorInfo.ToInt64();
+                ConfigErrorInfo = new LeechCore.LC_CONFIG_ERRORINFO();
+                ConfigErrorInfo.strUserText = "";
+                if (hVMM.ToInt64() == 0)
+                {
+                    throw new Exception("VMM INIT FAILED.");
+                }
+                if (vaLcCreateErrorInfo == 0)
+                {
+                    return hVMM;
+                }
+                lci.LC_CONFIG_ERRORINFO e = Marshal.PtrToStructure<lci.LC_CONFIG_ERRORINFO>(pLcErrorInfo);
+                if (e.dwVersion == LeechCore.LC_CONFIG_ERRORINFO_VERSION)
+                {
+                    ConfigErrorInfo.fValid = true;
+                    ConfigErrorInfo.fUserInputRequest = e.fUserInputRequest;
+                    if (e.cwszUserText > 0)
+                    {
+                        ConfigErrorInfo.strUserText = Marshal.PtrToStringUni((System.IntPtr)(vaLcCreateErrorInfo + cbERROR_INFO));
+                    }
+                }
+                lci.LcMemFree(pLcErrorInfo);
+                return hVMM;
+            }
+
+            [DllImport("vmm.dll", EntryPoint = "VMMDLL_Close")]
+            private static extern void VMMDLL_Close(
+                IntPtr hVMM);
+        }
     }
 
     public sealed class VmmScatter : IDisposable
@@ -2382,14 +2420,8 @@ namespace vmmsharp
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 12)] internal ulong[] vStack;
         }
 
-        [DllImport("leechcore.dll", EntryPoint = "LcCreate")]
-        public static extern IntPtr LcCreate(ref LeechCore.LC_CONFIG pLcCreateConfig);
-
         [DllImport("leechcore.dll", EntryPoint = "LcCreateEx")]
         public static extern IntPtr LcCreateEx(ref LeechCore.LC_CONFIG pLcCreateConfig, out IntPtr ppLcCreateErrorInfo);
-
-        [DllImport("leechcore.dll", EntryPoint = "LcClose")]
-        internal static extern void LcClose(IntPtr hLC);
 
         [DllImport("leechcore.dll", EntryPoint = "LcMemFree")]
         internal static extern unsafe void LcMemFree(IntPtr pv);
@@ -2398,25 +2430,28 @@ namespace vmmsharp
         internal static extern unsafe bool LcAllocScatter1(uint cMEMs, out IntPtr pppMEMs);
 
         [DllImport("leechcore.dll", EntryPoint = "LcRead")]
-        internal static extern unsafe bool LcRead(IntPtr hLC, ulong pa, uint cb, byte* pb);
+        internal static extern unsafe bool LcRead(SafeHandle hLC, ulong pa, uint cb, byte* pb);
 
         [DllImport("leechcore.dll", EntryPoint = "LcReadScatter")]
-        internal static extern unsafe void LcReadScatter(IntPtr hLC, uint cMEMs, IntPtr ppMEMs);
+        internal static extern unsafe void LcReadScatter(SafeHandle hLC, uint cMEMs, IntPtr ppMEMs);
 
         [DllImport("leechcore.dll", EntryPoint = "LcWrite")]
-        internal static extern unsafe bool LcWrite(IntPtr hLC, ulong pa, uint cb, byte* pb);
+        internal static extern unsafe bool LcWrite(SafeHandle hLC, ulong pa, uint cb, byte* pb);
 
         [DllImport("leechcore.dll", EntryPoint = "LcWriteScatter")]
-        internal static extern unsafe void LcWriteScatter(IntPtr hLC, uint cMEMs, IntPtr ppMEMs);
+        internal static extern unsafe void LcWriteScatter(SafeHandle hLC, uint cMEMs, IntPtr ppMEMs);
 
         [DllImport("leechcore.dll", EntryPoint = "LcGetOption")]
-        public static extern bool GetOption(IntPtr hLC, ulong fOption, out ulong pqwValue);
+        public static extern bool GetOption(SafeHandle hLC, ulong fOption, out ulong pqwValue);
 
         [DllImport("leechcore.dll", EntryPoint = "LcSetOption")]
-        public static extern bool SetOption(IntPtr hLC, ulong fOption, ulong qwValue);
+        public static extern bool SetOption(SafeHandle hLC, ulong fOption, ulong qwValue);
 
         [DllImport("leechcore.dll", EntryPoint = "LcCommand")]
-        internal static extern unsafe bool LcCommand(IntPtr hLC, ulong fOption, uint cbDataIn, byte* pbDataIn, out IntPtr ppbDataOut, out uint pcbDataOut);
+        internal static extern unsafe bool LcCommand(SafeHandle hLC, ulong fOption, uint cbDataIn, byte* pbDataIn, out IntPtr ppbDataOut, out uint pcbDataOut);
+        
+        [DllImport("leechcore.dll", EntryPoint = "LcClose")]
+        internal static extern void LcClose(IntPtr hLC);
     }
 
 
@@ -2455,19 +2490,15 @@ namespace vmmsharp
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_CloseAll")]
         public static extern void VMMDLL_CloseAll();
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Close")]
-        public static extern void VMMDLL_Close(
-            IntPtr hVMM);
-
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_ConfigGet")]
         public static extern bool VMMDLL_ConfigGet(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             ulong fOption,
             out ulong pqwValue);
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_ConfigSet")]
         public static extern bool VMMDLL_ConfigSet(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             ulong fOption,
             ulong qwValue);
 
@@ -2494,13 +2525,13 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_VfsListU")]
         internal static extern unsafe bool VMMDLL_VfsList(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             [MarshalAs(UnmanagedType.LPUTF8Str)] string wcsPath,
             ref VMMDLL_VFS_FILELIST pFileList);
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_VfsReadU")]
         internal static extern unsafe uint VMMDLL_VfsRead(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             [MarshalAs(UnmanagedType.LPUTF8Str)] string wcsFileName,
             byte* pb,
             uint cb,
@@ -2509,7 +2540,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_VfsWriteU")]
         internal static extern unsafe uint VMMDLL_VfsWrite(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             [MarshalAs(UnmanagedType.LPUTF8Str)] string wcsFileName,
             byte* pb,
             uint cb,
@@ -2521,7 +2552,7 @@ namespace vmmsharp
         // PLUGIN FUNCTIONALITY BELOW:
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_InitializePlugins")]
-        public static extern bool VMMDLL_InitializePlugins(IntPtr hVMM);
+        public static extern bool VMMDLL_InitializePlugins(SafeHandle hVMM);
 
 
 
@@ -2529,7 +2560,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_MemReadScatter")]
         internal static extern unsafe uint VMMDLL_MemReadScatter(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             uint dwPID,
             IntPtr ppMEMs,
             uint cpMEMs,
@@ -2537,7 +2568,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_MemReadEx")]
         internal static extern unsafe bool VMMDLL_MemReadEx(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             uint dwPID,
             ulong qwA,
             byte* pb,
@@ -2547,14 +2578,14 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_MemPrefetchPages")]
         internal static extern unsafe bool VMMDLL_MemPrefetchPages(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             uint dwPID,
             byte* pPrefetchAddresses,
             uint cPrefetchAddresses);
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_MemWrite")]
         internal static extern unsafe bool VMMDLL_MemWrite(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             uint dwPID,
             ulong qwA,
             byte* pb,
@@ -2562,7 +2593,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_MemVirt2Phys")]
         public static extern bool VMMDLL_MemVirt2Phys(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             uint dwPID,
             ulong qwVA,
             out ulong pqwPA
@@ -2574,7 +2605,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Scatter_Initialize")]
         internal static extern unsafe IntPtr VMMDLL_Scatter_Initialize(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             uint dwPID,
             uint flags);
 
@@ -2625,16 +2656,16 @@ namespace vmmsharp
         // PROCESS FUNCTIONALITY BELOW:
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_PidList")]
-        internal static extern unsafe bool VMMDLL_PidList(IntPtr hVMM, byte* pPIDs, ref ulong pcPIDs);
+        internal static extern unsafe bool VMMDLL_PidList(SafeHandle hVMM, byte* pPIDs, ref ulong pcPIDs);
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_PidGetFromName")]
-        public static extern bool VMMDLL_PidGetFromName(IntPtr hVMM, [MarshalAs(UnmanagedType.LPStr)] string szProcName, out uint pdwPID);
+        public static extern bool VMMDLL_PidGetFromName(SafeHandle hVMM, [MarshalAs(UnmanagedType.LPStr)] string szProcName, out uint pdwPID);
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_ProcessGetProcAddressW")]
-        public static extern ulong VMMDLL_ProcessGetProcAddress(IntPtr hVMM, uint pid, [MarshalAs(UnmanagedType.LPWStr)] string wszModuleName, [MarshalAs(UnmanagedType.LPStr)] string szFunctionName);
+        public static extern ulong VMMDLL_ProcessGetProcAddress(SafeHandle hVMM, uint pid, [MarshalAs(UnmanagedType.LPWStr)] string wszModuleName, [MarshalAs(UnmanagedType.LPStr)] string szFunctionName);
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_ProcessGetModuleBaseW")]
-        public static extern ulong VMMDLL_ProcessGetModuleBase(IntPtr hVMM, uint pid, [MarshalAs(UnmanagedType.LPWStr)] string wszModuleName);
+        public static extern ulong VMMDLL_ProcessGetModuleBase(SafeHandle hVMM, uint pid, [MarshalAs(UnmanagedType.LPWStr)] string wszModuleName);
 
         internal const ulong VMMDLL_PROCESS_INFORMATION_MAGIC =         0xc0ffee663df9301e;
         internal const ushort VMMDLL_PROCESS_INFORMATION_VERSION =      7;
@@ -2668,14 +2699,14 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_ProcessGetInformation")]
         internal static extern unsafe bool VMMDLL_ProcessGetInformation(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             uint dwPID,
             byte* pProcessInformation,
             ref ulong pcbProcessInformation);
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_ProcessGetInformationString")]
         internal static extern unsafe byte* VMMDLL_ProcessGetInformationString(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             uint dwPID,
             uint fOptionString);
 
@@ -2703,14 +2734,14 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_ProcessGetDirectoriesW")]
         internal static extern unsafe bool VMMDLL_ProcessGetDirectories(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             uint dwPID,
             [MarshalAs(UnmanagedType.LPWStr)] string wszModule,
             byte* pData);
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_ProcessGetSectionsW")]
         internal static extern unsafe bool VMMDLL_ProcessGetSections(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             uint dwPID,
             [MarshalAs(UnmanagedType.LPWStr)] string wszModule,
             byte* pData,
@@ -2723,14 +2754,14 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_PdbLoad")]
         internal static extern unsafe bool VMMDLL_PdbLoad(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             uint dwPID,
             ulong vaModuleBase,
             byte* pModuleMapEntry);
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_PdbSymbolName")]
         internal static extern unsafe bool VMMDLL_PdbSymbolName(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             [MarshalAs(UnmanagedType.LPStr)] string szModule,
             ulong cbSymbolAddressOrOffset,
             byte* szSymbolName,
@@ -2738,21 +2769,21 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_PdbSymbolAddress")]
         public static extern bool VMMDLL_PdbSymbolAddress(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             [MarshalAs(UnmanagedType.LPStr)] string szModule,
             [MarshalAs(UnmanagedType.LPStr)] string szSymbolName,
             out ulong pvaSymbolAddress);
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_PdbTypeSize")]
         public static extern bool VMMDLL_PdbTypeSize(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             [MarshalAs(UnmanagedType.LPStr)] string szModule,
             [MarshalAs(UnmanagedType.LPStr)] string szTypeName,
             out uint pcbTypeSize);
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_PdbTypeChildOffset")]
         public static extern bool VMMDLL_PdbTypeChildOffset(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             [MarshalAs(UnmanagedType.LPStr)] string szModule,
             [MarshalAs(UnmanagedType.LPStr)] string szTypeName,
             [MarshalAs(UnmanagedType.LPStr)] string wszTypeChildName,
@@ -2788,7 +2819,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetPteW")]
         internal static extern unsafe bool VMMDLL_Map_GetPte(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             uint dwPid,
             bool fIdentifyModules,
             out IntPtr ppPteMap);
@@ -2831,7 +2862,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetVadW")]
         internal static extern unsafe bool VMMDLL_Map_GetVad(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             uint dwPid,
             bool fIdentifyModules,
             out IntPtr ppVadMap);
@@ -2867,7 +2898,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetVadEx")]
         internal static extern unsafe bool VMMDLL_Map_GetVadEx(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             uint dwPid,
             uint oPage,
             uint cPage,
@@ -2932,7 +2963,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetModuleW")]
         internal static extern unsafe bool VMMDLL_Map_GetModule(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             uint dwPid,
             out IntPtr ppModuleMap,
             uint flags);
@@ -2941,7 +2972,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetModuleFromNameW")]
         internal static extern unsafe bool VMMDLL_Map_GetModuleFromName(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             uint dwPID,
             [MarshalAs(UnmanagedType.LPWStr)] string wszModuleName,
             out IntPtr ppModuleMapEntry,
@@ -2976,7 +3007,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetUnloadedModuleW")]
         internal static extern unsafe bool VMMDLL_Map_GetUnloadedModule(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             uint dwPid,
             out IntPtr ppModuleMap);
 
@@ -3014,7 +3045,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetEATW")]
         internal static extern unsafe bool VMMDLL_Map_GetEAT(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             uint dwPid,
             [MarshalAs(UnmanagedType.LPWStr)] string wszModuleName,
             out IntPtr ppEatMap);
@@ -3052,7 +3083,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetIATW")]
         internal static extern unsafe bool VMMDLL_Map_GetIAT(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             uint dwPid,
             [MarshalAs(UnmanagedType.LPWStr)] string wszModuleName,
             out IntPtr ppIatMap);
@@ -3092,7 +3123,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetHeap")]
         internal static extern unsafe bool VMMDLL_Map_GetHeap(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             uint dwPid,
             out IntPtr ppHeapMap);
 
@@ -3120,7 +3151,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetHeapAlloc")]
         internal static extern unsafe bool VMMDLL_Map_GetHeapAlloc(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             uint dwPid,
             ulong qwHeapNumOrAddress,
             out IntPtr ppHeapAllocMap);
@@ -3172,7 +3203,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetThread")]
         internal static extern unsafe bool VMMDLL_Map_GetThread(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             uint dwPid,
             out IntPtr ppThreadMap);
 
@@ -3210,7 +3241,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetHandleW")]
         internal static extern unsafe bool VMMDLL_Map_GetHandle(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             uint dwPid,
             out IntPtr ppHandleMap);
 
@@ -3258,7 +3289,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetNetW")]
         internal static extern unsafe bool VMMDLL_Map_GetNet(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             out IntPtr ppNetMap);
 
 
@@ -3283,7 +3314,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetPhysMem")]
         internal static extern unsafe bool VMMDLL_Map_GetPhysMem(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             out IntPtr ppPhysMemMap);
 
 
@@ -3317,7 +3348,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetPool")]
         internal static extern unsafe bool VMMDLL_Map_GetPool(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             out IntPtr ppHeapAllocMap,
             uint flags);
 
@@ -3347,7 +3378,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetUsersW")]
         internal static extern unsafe bool VMMDLL_Map_GetUsers(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             out IntPtr ppUserMap);
 
 
@@ -3392,7 +3423,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetServicesW")]
         internal static extern unsafe bool VMMDLL_Map_GetServices(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             out IntPtr ppServiceMap);
 
 
@@ -3424,7 +3455,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetPfn")]
         internal static extern unsafe bool VMMDLL_Map_GetPfn(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             byte* pPfns,
             uint cPfns,
             byte* pPfnMap,
@@ -3452,14 +3483,14 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_WinReg_HiveList")]
         internal static extern unsafe bool VMMDLL_WinReg_HiveList(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             byte* pHives,
             uint cHives,
             out uint pcHives);
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_WinReg_HiveReadEx")]
         internal static extern unsafe bool VMMDLL_WinReg_HiveReadEx(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             ulong vaCMHive,
             uint ra,
             byte* pb,
@@ -3469,7 +3500,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_WinReg_HiveWrite")]
         internal static extern unsafe bool VMMDLL_WinReg_HiveWrite(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             ulong vaCMHive,
             uint ra,
             byte* pb,
@@ -3477,7 +3508,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_WinReg_EnumKeyExW")]
         internal static extern unsafe bool VMMDLL_WinReg_EnumKeyExW(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             [MarshalAs(UnmanagedType.LPWStr)] string wszFullPathKey,
             uint dwIndex,
             byte* lpName,
@@ -3486,7 +3517,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_WinReg_EnumValueW")]
         internal static extern unsafe bool VMMDLL_WinReg_EnumValueW(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             [MarshalAs(UnmanagedType.LPWStr)] string wszFullPathKey,
             uint dwIndex,
             byte* lpValueName,
@@ -3497,7 +3528,7 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_WinReg_QueryValueExW")]
         internal static extern unsafe bool VMMDLL_WinReg_QueryValueExW(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             [MarshalAs(UnmanagedType.LPWStr)] string wszFullPathKeyValue,
             out uint lpType,
             byte* lpData,
@@ -3542,11 +3573,23 @@ namespace vmmsharp
 
         [DllImport("vmm.dll", EntryPoint = "VMMDLL_MemSearch")]
         internal static extern unsafe bool VMMDLL_MemSearch(
-            IntPtr hVMM,
+            SafeHandle hVMM,
             uint dwPID,
             ref VMMDLL_MEM_SEARCH_CONTEXT ctx,
             out IntPtr ppva,
             out uint pcva);
 
+    }
+
+    internal abstract class VmmsharpHandle : SafeHandle
+    {
+        internal VmmsharpHandle() : base(IntPtr.Zero, true)
+        {
+        }
+
+        public override bool IsInvalid => this.handle == IntPtr.Zero;
+
+        protected override bool ReleaseHandle() =>
+            throw new NotImplementedException();
     }
 }
