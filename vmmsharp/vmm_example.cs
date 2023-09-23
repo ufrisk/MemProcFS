@@ -62,6 +62,14 @@ class vmm_example
         result = vmm.ConfigSet(Vmm.OPT_CORE_VERBOSE_EXTRA, 1);
         result = vmm.ConfigGet(Vmm.OPT_CORE_VERBOSE_EXTRA, out ulOptionVV);
 
+        // Get Memory Map Functionality
+        string memMap = vmm.GetMemoryMap();
+        if (memMap != null)
+        {
+            // Write output to Text File
+            System.IO.File.WriteAllBytes("mmap.txt", System.Text.Encoding.ASCII.GetBytes(memMap));
+        }
+
         // initialize plugins (required for vfs)
         vmm.InitializePlugins();
 

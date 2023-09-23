@@ -2,6 +2,7 @@
 using System.Text;
 using System.Runtime.InteropServices;
 using System.Collections.Generic;
+using System.Linq;
 
 /*  
  *  C# API wrapper 'vmmsharp' for MemProcFS 'vmm.dll' and LeechCore 'leechcore.dll' APIs.
@@ -644,6 +645,22 @@ namespace vmmsharp
         public bool ConfigSet(ulong fOption, ulong qwValue)
         {
             return vmmi.VMMDLL_ConfigSet(hVMM, fOption, qwValue);
+        }
+
+        public string GetMemoryMap()
+        {
+            var map = Map_GetPhysMem();
+            if (map.Length == 0)
+                return null;
+            var sb = new StringBuilder();
+            int leftLength = map.Max(x => x.pa).ToString("x").Length;
+            for (int i = 0; i < map.Length; i++)
+            {
+                sb.AppendFormat($"{{0,{-leftLength}}}", map[i].pa.ToString("x"))
+                    .Append($" - {(map[i].pa + map[i].cb - 1).ToString("x")}")
+                    .AppendLine();
+            }
+            return sb.ToString();
         }
 
         //---------------------------------------------------------------------
