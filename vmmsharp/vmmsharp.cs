@@ -27,7 +27,7 @@ namespace vmmsharp
     }
 
     // LeechCore public API:
-    public class LeechCore : IDisposable
+    public sealed class LeechCore : IDisposable
     {
         //---------------------------------------------------------------------
         // LEECHCORE: PUBLIC API CONSTANTS BELOW:
@@ -267,7 +267,7 @@ namespace vmmsharp
             GC.SuppressFinalize(this);
         }
 
-        protected virtual void Dispose(bool disposing)
+        private void Dispose(bool disposing)
         {
             if (!this.disposed)
             {
@@ -489,7 +489,7 @@ namespace vmmsharp
 
 
     // MemProcFS public API:
-    public class Vmm : IDisposable
+    public sealed class Vmm : IDisposable
     {
         //---------------------------------------------------------------------
         // CORE FUNCTIONALITY BELOW:
@@ -616,7 +616,7 @@ namespace vmmsharp
             GC.SuppressFinalize(this);
         }
 
-        protected virtual void Dispose(bool disposing)
+        private void Dispose(bool disposing)
         {
             if (!this.disposed)
             {
@@ -2244,7 +2244,7 @@ namespace vmmsharp
         }
     }
 
-    public class VmmScatter : IDisposable
+    public sealed class VmmScatter : IDisposable
     {
         //---------------------------------------------------------------------
         // MEMORY NEW SCATTER READ/WRITE FUNCTIONALITY BELOW:
@@ -2273,7 +2273,7 @@ namespace vmmsharp
             GC.SuppressFinalize(this);
         }
 
-        protected virtual void Dispose(bool disposing)
+        private void Dispose(bool disposing)
         {
             if (!this.disposed)
             {
