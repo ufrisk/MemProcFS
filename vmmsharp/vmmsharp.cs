@@ -785,6 +785,22 @@ namespace vmmsharp
             return data;
         }
 
+        public unsafe bool MemReadStruct<T>(uint pid, ulong qwA, out T result, uint flags = 0)
+            where T : unmanaged
+        {
+            uint cb = (uint)sizeof(T);
+            result = default;
+            uint cbRead;
+            fixed (T* pb = &result)
+            {
+                if (!vmmi.VMMDLL_MemReadEx(hVMM, pid, qwA, (byte*)pb, cb, out cbRead, flags))
+                    return false;
+            }
+            if (cbRead != cb)
+                return false;
+            return true;
+        }
+
         public unsafe bool MemPrefetchPages(uint pid, ulong[] qwA)
         {
             byte[] data = new byte[qwA.Length * sizeof(ulong)];
@@ -801,6 +817,14 @@ namespace vmmsharp
             {
                 return vmmi.VMMDLL_MemWrite(hVMM, pid, qwA, pb, (uint)data.Length);
             }
+        }
+
+        public unsafe bool MemWriteStruct<T>(uint pid, ulong qwA, T value)
+            where T : unmanaged
+        {
+            uint cb = (uint)sizeof(T);
+            byte* pb = (byte*)&value;
+            return vmmi.VMMDLL_MemWrite(hVMM, pid, qwA, pb, cb);
         }
 
         public bool MemVirt2Phys(uint dwPID, ulong qwVA, out ulong pqwPA)

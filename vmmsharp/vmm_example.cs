@@ -120,6 +120,18 @@ class vmm_example
         // read first 128 bytes of kernel32.dll
         byte[] dataKernel32MZ = vmm.MemRead(dwExplorerPID, mModuleKernel32.vaBase, 128, 0);
 
+        // Read Handle value at kernel32.dll Offset
+        if (vmm.MemReadStruct<IntPtr>(dwExplorerPID, mModuleKernel32.vaBase + 0x100, out var hKernel32))
+        {
+            // Read Success -> Inspect Result
+            hKernel32 = IntPtr.Zero;
+            // Attempt to write modified handle back
+            if (vmm.MemWriteStruct(dwExplorerPID, mModuleKernel32.vaBase + 0x100, hKernel32))
+            {
+                // Successful Write
+            }
+        }
+
         // translate virtual address of 1st page in kernel32.dll to physical address
         ulong paBaseKernel32;
         result = vmm.MemVirt2Phys(dwExplorerPID, mModuleKernel32.vaBase, out paBaseKernel32);
