@@ -3,6 +3,7 @@ using System.Text;
 using System.Runtime.InteropServices;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 
 /*  
  *  C# API wrapper 'vmmsharp' for MemProcFS 'vmm.dll' and LeechCore 'leechcore.dll' APIs.
@@ -295,17 +296,72 @@ namespace vmmsharp
         /// <param name="pa">Physical address to read.</param>
         /// <param name="cb">Number of bytes to read.</param>
         /// <returns>Bytes read.</returns>
-        public byte[] Read(ulong pa, uint cb)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public unsafe byte[] Read(ulong pa, uint cb) =>
+            ReadArray<byte>(pa, cb);
+
+        /// <summary>
+        /// Read physcial memory into a single struct value <typeparamref name="T"/>.
+        /// </summary>
+        /// <typeparam name="T">Value Type.</typeparam>
+        /// <param name="pa">Physical address to read.</param>
+        /// <param name="result">Result value to populate</param>
+        /// <returns>True if read successful, otherwise False.</returns>
+        public unsafe bool ReadStruct<T>(ulong pa, out T result)
+            where T : unmanaged
         {
-            unsafe
+            uint cb = (uint)sizeof(T);
+            result = default;
+            fixed (T* pb = &result)
             {
-                byte[] data = new byte[cb];
-                fixed (byte* pb = data)
-                {
-                    bool result = lci.LcRead(hLC, pa, cb, pb);
-                    return result ? data : null;
-                }
+                if (!lci.LcRead(hLC, pa, cb, (byte*)pb))
+                    return false;
             }
+            return true;
+        }
+
+        /// <summary>
+        /// Read physical memory into an array of type <typeparamref name="T"/>.
+        /// </summary>
+        /// <typeparam name="T">Value Type.</typeparam>
+        /// <param name="pa">Physical address to read.</param>
+        /// <param name="count">Number of elements to read.</param>
+        /// <returns>Managed Array of type <typeparamref name="T"/>. Null if read failed.</returns>
+        public unsafe T[] ReadArray<T>(ulong pa, uint count)
+            where T : unmanaged
+        {
+            uint cb = count * (uint)sizeof(T);
+            T[] data = new T[count];
+            fixed (T* pb = data)
+            {
+                bool result = lci.LcRead(hLC, pa, cb, (byte*)pb);
+                return result ? data : null;
+            }
+        }
+
+        /// <summary>
+        /// Read physical memory into unmanaged memory.
+        /// </summary>
+        /// <param name="pa">Physical address to read.</param>
+        /// <param name="cb">Counte of bytes to read.</param>
+        /// <param name="pb">Pointer to buffer to read into.</param>
+        /// <returns>True if read successful, otherwise False.</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public unsafe bool Read(ulong pa, uint cb, IntPtr pb) =>
+            Read(pa, cb, pb.ToPointer());
+
+        /// <summary>
+        /// Read physical memory into unmanaged memory.
+        /// </summary>
+        /// <param name="pa">Physical address to read.</param>
+        /// <param name="cb">Counte of bytes to read.</param>
+        /// <param name="pb">Pointer to buffer to read into.</param>
+        /// <returns>True if read successful, otherwise False.</returns>
+        public unsafe bool Read(ulong pa, uint cb, void* pb)
+        {
+            if (!lci.LcRead(hLC, pa, cb, (byte*)pb))
+                return false;
+            return true;
         }
 
         /// <summary>
@@ -345,20 +401,68 @@ namespace vmmsharp
         }
 
         /// <summary>
-        /// Write a single range of physical memory. The write is best-effort and may fail. It's recommended to verify the write with a subsequent read.
+        /// Write a single range of physical memory.
         /// </summary>
         /// <param name="pa">Physical address to write</param>
         /// <param name="data">Data to write starting at pa.</param>
-        /// <returns></returns>
-        public bool Write(ulong pa, byte[] data)
+        /// <returns>True if write successful, otherwise False. The write is best-effort and may fail. It's recommended to verify the write with a subsequent read.</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public unsafe bool Write(ulong pa, byte[] data) =>
+            WriteArray<byte>(pa, data);
+
+        /// <summary>
+        /// Write a single struct <typeparamref name="T"/> into physical memory.
+        /// </summary>
+        /// <typeparam name="T">Value Type.</typeparam>
+        /// <param name="pa">Physical address to write</param>
+        /// <param name="value"><typeparamref name="T"/> value to write.</param>
+        /// <returns>True if write successful, otherwise False. The write is best-effort and may fail. It's recommended to verify the write with a subsequent read.</returns>
+        public unsafe bool WriteStruct<T>(ulong pa, T value)
+            where T : unmanaged
         {
-            unsafe
+            uint cb = (uint)sizeof(T);
+            byte* pb = (byte*)&value;
+            return lci.LcWrite(hLC, pa, cb, pb);
+        }
+
+        /// <summary>
+        /// Write a managed <typeparamref name="T"/> array into physical memory.
+        /// </summary>
+        /// <typeparam name="T">Value Type.</typeparam>
+        /// <param name="pa">Physical address to write</param>
+        /// <param name="data">Managed <typeparamref name="T"/> array to write.</param>
+        /// <returns>True if write successful, otherwise False. The write is best-effort and may fail. It's recommended to verify the write with a subsequent read.</returns>
+        public unsafe bool WriteArray<T>(ulong pa, T[] data)
+            where T : unmanaged
+        {
+            uint cb = (uint)sizeof(T) * (uint)data.Length;
+            fixed (T* pb = data)
             {
-                fixed (byte* pb = data)
-                {
-                    return lci.LcWrite(hLC, pa, (uint)data.Length, pb);
-                }
+                return lci.LcWrite(hLC, pa, cb, (byte*)pb);
             }
+        }
+
+        /// <summary>
+        /// Write from unmanaged memory into physical memory.
+        /// </summary>
+        /// <param name="pa">Physical address to write</param>
+        /// <param name="cb">Count of bytes to write.</param>
+        /// <param name="pb">Pointer to buffer to write from.</param>
+        /// <returns>True if write successful, otherwise False. The write is best-effort and may fail. It's recommended to verify the write with a subsequent read.</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public unsafe bool Write(ulong pa, uint cb, IntPtr pb) =>
+            Write(pa, cb, pb.ToPointer());
+
+        /// <summary>
+        /// Write from unmanaged memory into physical memory.
+        /// </summary>
+        /// <param name="pa">Physical address to write</param>
+        /// <param name="cb">Count of bytes to write.</param>
+        /// <param name="pb">Pointer to buffer to write from.</param>
+        /// <returns>True if write successful, otherwise False. The write is best-effort and may fail. It's recommended to verify the write with a subsequent read.</returns>
+        public unsafe bool Write(ulong pa, uint cb, void* pb)
+        {
+            return lci.LcWrite(hLC, pa, cb, (byte*)pb);
         }
 
         /// <summary>
@@ -473,7 +577,7 @@ namespace vmmsharp
             {
                 return System.Text.Encoding.UTF8.GetString(bMemMap);
             }
-            return "";
+            return null;
         }
 
         /// <summary>
@@ -647,6 +751,10 @@ namespace vmmsharp
             return vmmi.VMMDLL_ConfigSet(hVMM, fOption, qwValue);
         }
 
+        /// <summary>
+        /// Returns current Memory Map in string format.
+        /// </summary>
+        /// <returns>Memory Map, NULL if failed.</returns>
         public string GetMemoryMap()
         {
             var map = Map_GetPhysMem();
@@ -746,6 +854,13 @@ namespace vmmsharp
         public const uint FLAG_NOCACHEPUT = 0x0100;  // do not write back to the data cache upon successful read from memory acquisition device.
         public const uint FLAG_CACHE_RECENT_ONLY = 0x0200;  // only fetch from the most recent active cache region when reading.
 
+        /// <summary>
+        /// Performs a Scatter Read on a collection of page-aligned Virtual Addresses.
+        /// </summary>
+        /// <param name="pid">Process ID.</param>
+        /// <param name="flags">VMM Flags</param>
+        /// <param name="qwA">Array of Virtual Addresses to read.</param>
+        /// <returns>Array of MEM_SCATTER structures.</returns>
         public unsafe MEM_SCATTER[] MemReadScatter(uint pid, uint flags, params ulong[] qwA)
         {
             int i;
@@ -784,24 +899,56 @@ namespace vmmsharp
             return new VmmScatter(hS);
         }
 
-        public unsafe byte[] MemRead(uint pid, ulong qwA, uint cb, uint flags = 0)
+        /// <summary>
+        /// Read Memory from a Virtual Address into a managed byte-array.
+        /// </summary>
+        /// <param name="pid">Process ID.</param>
+        /// <param name="qwA">Virtual Address to read from.</param>
+        /// <param name="cb">Count of bytes to read.</param>
+        /// <param name="flags">VMM Flags.</param>
+        /// <returns>Managed byte array containing number of bytes read.</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public unsafe byte[] MemRead(uint pid, ulong qwA, uint cb, uint flags = 0) =>
+            MemReadArray<byte>(pid, qwA, cb, flags);
+
+        /// <summary>
+        /// Read Memory from a Virtual Address into unmanaged memory.
+        /// </summary>
+        /// <param name="pid">Process ID.</param>
+        /// <param name="qwA">Virtual Address to read from.</param>
+        /// <param name="cb">Count of bytes to read.</param>
+        /// <param name="pb">Pointer to buffer to receive read.</param>
+        /// <param name="flags">VMM Flags.</param>
+        /// <returns>Count of bytes read.</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public unsafe uint MemRead(uint pid, ulong qwA, uint cb, IntPtr pb, uint flags = 0) =>
+            MemRead(pid, qwA, cb, pb.ToPointer(), flags);
+
+        /// <summary>
+        /// Read Memory from a Virtual Address into unmanaged memory.
+        /// </summary>
+        /// <param name="pid">Process ID.</param>
+        /// <param name="qwA">Virtual Address to read from.</param>
+        /// <param name="cb">Count of bytes to read.</param>
+        /// <param name="pb">Pointer to buffer to receive read.</param>
+        /// <param name="flags">VMM Flags.</param>
+        /// <returns>Count of bytes read.</returns>
+        public unsafe uint MemRead(uint pid, ulong qwA, uint cb, void* pb, uint flags = 0)
         {
-            uint cbRead;
-            byte[] data = new byte[cb];
-            fixed (byte* pb = data)
-            {
-                if (!vmmi.VMMDLL_MemReadEx(hVMM, pid, qwA, pb, cb, out cbRead, flags))
-                {
-                    return null;
-                }
-            }
-            if (cbRead != cb)
-            {
-                Array.Resize<byte>(ref data, (int)cbRead);
-            }
-            return data;
+            if (!vmmi.VMMDLL_MemReadEx(hVMM, pid, qwA, (byte*)pb, cb, out var cbRead, flags))
+                return 0;
+            return cbRead;
         }
 
+        /// <summary>
+        /// Read Memory from a Virtual Address into a struct of Type <typeparamref name="T"/>.
+        /// </summary>
+        /// <typeparam name="T">Struct Type.</typeparam>
+        /// <param name="pid">Process ID.</param>
+        /// <param name="qwA">Virtual Address to read from.</param>
+        /// <param name="result">Result populated from this read.</param>
+        /// <param name="flags">VMM Flags.</param>
+        /// <returns>True if read successful, otherwise False.</returns>
         public unsafe bool MemReadStruct<T>(uint pid, ulong qwA, out T result, uint flags = 0)
             where T : unmanaged
         {
@@ -818,6 +965,36 @@ namespace vmmsharp
             return true;
         }
 
+        /// <summary>
+        /// Read Memory from a Virtual Address into an Array of Type <typeparamref name="T"/>.
+        /// </summary>
+        /// <typeparam name="T">Value Type.</typeparam>
+        /// <param name="pid">Process ID.</param>
+        /// <param name="qwA">Virtual Address to read from.</param>
+        /// <param name="count">Number of elements to read.</param>
+        /// <param name="flags">VMM Flags.</param>
+        /// <returns>Managed <typeparamref name="T"/> array containing number of elements read.</returns>
+        public unsafe T[] MemReadArray<T>(uint pid, ulong qwA, uint count, uint flags = 0)
+            where T : unmanaged
+        {
+            uint cb = (uint)sizeof(T) * count;
+            uint cbRead;
+            T[] data = new T[count];
+            fixed (T* pb = data)
+            {
+                if (!vmmi.VMMDLL_MemReadEx(hVMM, pid, qwA, (byte*)pb, count, out cbRead, flags))
+                {
+                    return null;
+                }
+            }
+            if (cbRead != count)
+            {
+                int partialCount = (int)cbRead / sizeof(T);
+                Array.Resize<T>(ref data, partialCount);
+            }
+            return data;
+        }
+
         public unsafe bool MemPrefetchPages(uint pid, ulong[] qwA)
         {
             byte[] data = new byte[qwA.Length * sizeof(ulong)];
@@ -828,20 +1005,73 @@ namespace vmmsharp
             }
         }
 
-        public unsafe bool MemWrite(uint pid, ulong qwA, byte[] data)
-        {
-            fixed (byte* pb = data)
-            {
-                return vmmi.VMMDLL_MemWrite(hVMM, pid, qwA, pb, (uint)data.Length);
-            }
-        }
+        /// <summary>
+        /// Write Memory from a managed byte-array to a given Virtual Address.
+        /// </summary>
+        /// <param name="pid">Process ID.</param>
+        /// <param name="qwA">Virtual Address to write to.</param>
+        /// <param name="data">Data to be written.</param>
+        /// <returns>True if write successful, otherwise False.</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public unsafe bool MemWrite(uint pid, ulong qwA, byte[] data) =>
+            MemWriteArray<byte>(pid, qwA, data);
 
+        /// <summary>
+        /// Write Memory from unmanaged memory to a given Virtual Address.
+        /// </summary>
+        /// <param name="pid">Process ID.</param>
+        /// <param name="qwA">Virtual Address to write to.</param>
+        /// <param name="cb">Count of bytes to write.</param>
+        /// <param name="pb">Pointer to buffer to write from.</param>
+        /// <returns>True if write successful, otherwise False.</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public unsafe bool MemWrite(uint pid, ulong qwA, uint cb, IntPtr pb) =>
+            MemWrite(pid, qwA, cb, pb.ToPointer());
+
+        /// <summary>
+        /// Write Memory from unmanaged memory to a given Virtual Address.
+        /// </summary>
+        /// <param name="pid">Process ID.</param>
+        /// <param name="qwA">Virtual Address to write to.</param>
+        /// <param name="cb">Count of bytes to write.</param>
+        /// <param name="pb">Pointer to buffer to write from.</param>
+        /// <returns>True if write successful, otherwise False.</returns>
+        public unsafe bool MemWrite(uint pid, ulong qwA, uint cb, void* pb) =>
+            vmmi.VMMDLL_MemWrite(hVMM, pid, qwA, (byte*)pb, cb);
+
+        /// <summary>
+        /// Write Memory from a struct value <typeparamref name="T"/> to a given Virtual Address.
+        /// </summary>
+        /// <typeparam name="T">Value Type.</typeparam>
+        /// <param name="pid">Process ID.</param>
+        /// <param name="qwA">Virtual Address to write to.</param>
+        /// <param name="value"><typeparamref name="T"/> Value to write.</param>
+        /// <returns>True if write successful, otherwise False.</returns>
         public unsafe bool MemWriteStruct<T>(uint pid, ulong qwA, T value)
             where T : unmanaged
         {
             uint cb = (uint)sizeof(T);
             byte* pb = (byte*)&value;
             return vmmi.VMMDLL_MemWrite(hVMM, pid, qwA, pb, cb);
+        }
+
+        /// <summary>
+        /// Write Memory from a managed <typeparamref name="T"/> Array to a given Virtual Address.
+        /// </summary>
+        /// <typeparam name="T">Value Type.</typeparam>
+        /// <param name="pid">Process ID.</param>
+        /// <param name="qwA">Virtual Address to write to.</param>
+        /// <param name="data">Managed <typeparamref name="T"/> array to write.</param>
+        /// <param name="flags">VMM Flags.</param>
+        /// <returns>True if write successful, otherwise False.</returns>
+        public unsafe bool MemWriteArray<T>(uint pid, ulong qwA, T[] data)
+            where T : unmanaged
+        {
+            uint cb = (uint)sizeof(T) * (uint)data.Length;
+            fixed (T* pb = data)
+            {
+                return vmmi.VMMDLL_MemWrite(hVMM, pid, qwA, (byte*)pb, cb);
+            }
         }
 
         public bool MemVirt2Phys(uint dwPID, ulong qwVA, out ulong pqwPA)
@@ -2329,23 +2559,9 @@ namespace vmmsharp
             Dispose(disposing: true);
         }
 
-        public unsafe byte[] Read(ulong qwA, uint cb)
-        {
-            uint cbRead;
-            byte[] data = new byte[cb];
-            fixed (byte* pb = data)
-            {
-                if (!vmmi.VMMDLL_Scatter_Read(hS, qwA, cb, pb, out cbRead))
-                {
-                    return null;
-                }
-            }
-            if (cbRead != cb)
-            {
-                Array.Resize<byte>(ref data, (int)cbRead);
-            }
-            return data;
-        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public unsafe byte[] Read(ulong qwA, uint cb) =>
+            ReadArray<byte>(qwA, cb);
 
         public unsafe bool ReadStruct<T>(ulong qwA, out T result)
             where T : unmanaged
@@ -2363,16 +2579,43 @@ namespace vmmsharp
             return true;
         }
 
+        public unsafe T[] ReadArray<T>(ulong qwA, uint count)
+            where T : unmanaged
+        {
+            uint cb = (uint)sizeof(T) * count;
+            uint cbRead;
+            T[] data = new T[count];
+            fixed (T* pb = data)
+            {
+                if (!vmmi.VMMDLL_Scatter_Read(hS, qwA, cb, (byte*)pb, out cbRead))
+                {
+                    return null;
+                }
+            }
+            if (cbRead != cb)
+            {
+                int partialCount = (int)cbRead / sizeof(T);
+                Array.Resize<T>(ref data, partialCount);
+            }
+            return data;
+        }
+
         public bool Prepare(ulong qwA, uint cb)
         {
             return vmmi.VMMDLL_Scatter_Prepare(hS, qwA, cb);
         }
 
-        public unsafe bool PrepareWrite(ulong qwA, byte[] data)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public unsafe bool PrepareWrite(ulong qwA, byte[] data) =>
+            PrepareWriteArray<byte>(qwA, data);
+
+        public unsafe bool PrepareWriteArray<T>(ulong qwA, T[] data)
+            where T : unmanaged
         {
-            fixed (byte* pb = data)
+            uint cb = (uint)sizeof(T) * (uint)data.Length;
+            fixed (T* pb = data)
             {
-                return vmmi.VMMDLL_Scatter_PrepareWrite(hS, qwA, pb, (uint)data.Length);
+                return vmmi.VMMDLL_Scatter_PrepareWrite(hS, qwA, (byte*)pb, cb);
             }
         }
 
