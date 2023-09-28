@@ -1581,7 +1581,7 @@ typedef struct tdVMM_CONTEXT {
     CRITICAL_SECTION LockUpdateModule;  // lock for internal modules
     CRITICAL_SECTION LockUpdateVM;      // lock for vm map (vm parse is heavy - separate lock!)
     struct {                            // lightweight SRW locks
-        SRWLOCK VmmPaging;
+        SRWLOCK ModuleMiscWeb;
         SRWLOCK WinObjDisplay;
         SRWLOCK PluginMgr;
     } LockSRW;

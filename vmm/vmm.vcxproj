@@ -398,11 +398,11 @@
     <ClCompile Include="modules\m_fc_sys.c" />
     <ClCompile Include="modules\m_fc_thread.c" />
     <ClCompile Include="modules\m_fc_timeline.c" />
+    <ClCompile Include="modules\m_fc_web.c" />
     <ClCompile Include="modules\m_fc_yara.c" />
     <ClCompile Include="modules\m_misc_bitlocker.c" />
     <ClCompile Include="modules\m_misc_procinfo.c" />
     <ClCompile Include="modules\m_misc_view.c" />
-    <ClCompile Include="modules\m_misc_web.c" />
     <ClCompile Include="modules\m_phys2virt.c" />
     <ClCompile Include="modules\m_proc_file_handles_vads.c" />
     <ClCompile Include="modules\m_proc_file_modules.c" />

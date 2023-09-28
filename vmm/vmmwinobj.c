@@ -22,6 +22,7 @@ typedef struct tdOB_VMMWINOBJ_CONTEXT {
     POB_SET psError;                // key = va
     POB_MAP pmByObj;                // key = va
     POB_MAP pmByWorkitem;           // key = [VMMWINOBJ_WORKITEM_ | dwPID]
+    POB_COUNTER pcVaToPid;          // key = va, value = PID
 } OB_VMMWINOBJ_CONTEXT, *POB_VMMWINOBJ_CONTEXT;
 
 //-----------------------------------------------------------------------------
@@ -34,6 +35,7 @@ VOID VmmWinObj_Context_CleanupCB(POB_VMMWINOBJ_CONTEXT pOb)
     Ob_DECREF(pOb->psError);
     Ob_DECREF(pOb->pmByObj);
     Ob_DECREF(pOb->pmByWorkitem);
+    Ob_DECREF(pOb->pcVaToPid);
 }
 
 /*
@@ -698,6 +700,87 @@ finish:
     }
     Ob_DECREF(ctxOb);
     return *ppmObFiles != NULL;
+}
+
+
+
+// ----------------------------------------------------------------------------
+// _OBJECT TO PROCESS MAPPING:
+// ----------------------------------------------------------------------------
+
+/*
+* Single-threaded worker function creating the object va -> pid mapping
+* by walking all process handle tables/maps.
+* -- H
+* -- ctx
+*/
+VOID VmmWinObj_GetProcessAssociated_DoWork(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_CONTEXT ctx)
+{
+    DWORD i, dwPID;
+    POB_VMMWINOBJ_FILE pObFile = NULL;
+    POB_MAP pmObFile = NULL;
+    POB_COUNTER pcVaToPid = NULL;
+    PVMM_PROCESS pObProcess = NULL;
+    PVMMOB_MAP_HANDLE pObHandleMap = NULL;
+    if(ctx->pcVaToPid || H->fAbort) { return; }
+    if(!(pcVaToPid = ObCounter_New(H, 0))) { return; }
+    // 1: add process object handles to map:
+    while((pObProcess = VmmProcessGetNext(H, pObProcess, 0))) {
+        if(VmmMap_GetHandle(H, pObProcess, &pObHandleMap, FALSE)) {
+            for(i = 0; i < pObHandleMap->cMap; i++) {
+                ObCounter_Set(pcVaToPid, pObHandleMap->pMap[i].vaObject, pObProcess->dwPID);
+            }
+            Ob_DECREF_NULL(&pObHandleMap);
+        }
+    }
+    // 2: add file object section object pointers to map.
+    //    (only if there is a process mapping to be found).
+    //    also missing file objects to map.
+    if(VmmWinObjFile_GetAll(H, &pmObFile)) {
+        while((pObFile = ObMap_GetNext(pmObFile, pObFile))) {
+            dwPID = (DWORD)ObCounter_Get(pcVaToPid, pObFile->va);
+            if(dwPID && pObFile->pSectionObjectPointers) {
+                ObCounter_Set(pcVaToPid, pObFile->pSectionObjectPointers->va, dwPID);
+            }
+        }
+        while((pObFile = ObMap_GetNext(pmObFile, pObFile))) {
+            if(!ObCounter_Exists(pcVaToPid, pObFile->va) && pObFile->pSectionObjectPointers) {
+                dwPID = (DWORD)ObCounter_Get(pcVaToPid, pObFile->pSectionObjectPointers->va);
+                if(dwPID) {
+                    ObCounter_Set(pcVaToPid, pObFile->va, dwPID);
+                }
+            }
+        }
+    }
+    Ob_DECREF(pmObFile);
+    ctx->pcVaToPid = pcVaToPid;
+}
+
+/*
+* Retrieve a process associated (open handle) with the object virtual address.
+* NB! Object may have multiple processes associated, only the first is returned.
+* If no process is found NULL is returned.
+* CALLER DECREF: return
+* -- H
+* -- vaObject
+* -- return = process associated with the file object (if any).
+*/
+_Success_(return != NULL)
+PVMM_PROCESS VmmWinObj_GetProcessAssociated(_In_ VMM_HANDLE H, _In_ QWORD vaObject)
+{
+    DWORD dwPID = 0;
+    POB_VMMWINOBJ_CONTEXT ctxOb = NULL;
+    if(!(ctxOb = VmmWinObj_GetContext(H))) { return NULL; }
+    // create new va->pid mapping if not already created:
+    if(!ctxOb->pcVaToPid) {
+        EnterCriticalSection(&ctxOb->LockUpdate);
+        VmmWinObj_GetProcessAssociated_DoWork(H, ctxOb);
+        LeaveCriticalSection(&ctxOb->LockUpdate);
+    }
+    // finish up and return process (if found):
+    dwPID = (DWORD)ObCounter_Get(ctxOb->pcVaToPid, vaObject);
+    Ob_DECREF(ctxOb);
+    return dwPID ? VmmProcessGet(H, dwPID) : NULL;
 }
 
 

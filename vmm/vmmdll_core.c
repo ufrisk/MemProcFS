@@ -398,10 +398,9 @@ VOID VmmDllCore_PrintHelp(_In_ VMM_HANDLE H)
         " The recommended way to use MemProcFS is to specify a memory acquisition device\n" \
         " in the -device option.                                                        \n" \
         " Example 1: MemProcFS.exe -device c:\\temp\\memdump-win10x64.raw               \n" \
-        " Example 2: MemProcFS.exe -device FPGA                                         \n" \
-        " Example 3: MemProcFS.exe -device PMEM://c:\\temp\\winpmem_x64.sys             \n" \
-        " MemProcFS may also be started the memory dump file name as the only option or \n" \
-        " Example 4: MemProcFS.exe c:\\dumps\\memdump-win7x64.dmp                    \n" \
+        " Example 2: MemProcFS.exe -device c:\\temp\\memdump-win10x64.dmp -forensic 1   \n" \
+        " Example 3: MemProcFS.exe -device FPGA                                         \n" \
+        " Example 4: MemProcFS.exe -device PMEM://c:\\temp\\winpmem_x64.sys             \n" \
         " -----                                                                         \n" \
         " Valid options:                                                                \n" \
         "   -device : select memory acquisition device or memory dump file to use.      \n" \
@@ -455,10 +454,12 @@ VOID VmmDllCore_PrintHelp(_In_ VMM_HANDLE H)
         "          mounting file system and fully starting MemProcFS.                   \n" \
         "   -userinteract = allow vmm.dll to, on the console, query the user for        \n" \
         "          information such as, but not limited to, leechcore device options.   \n" \
-        "          Default: user interaction = disabled.                                \n" \
+        "          Default: user interaction = disabled. Combine with -forensic option. \n" \
         "   -vm        : virtual machine (VM) parsing.                                  \n" \
         "   -vm-basic  : virtual machine (VM) parsing (physical memory only).           \n" \
         "   -vm-nested : virtual machine (VM) parsing (including nested VMs).           \n" \
+        "   -license-accept-elastic-license-2-0 : accept the Elastic License 2.0 to     \n" \
+        "          enable built-in yara rules from Elastic.                             \n" \
         "   -forensic-process-skip : comma-separated list of process names to skip.     \n" \
         "   -forensic-yara-rules : perfom a forensic yara scan with specified rules.    \n" \
         "          Full path to source or compiled yara rules should be specified.      \n" \

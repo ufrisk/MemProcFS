@@ -341,9 +341,6 @@
     <ClCompile Include="modules\m_misc_view.c">
       <Filter>Source Files\modules</Filter>
     </ClCompile>
-    <ClCompile Include="modules\m_misc_web.c">
-      <Filter>Source Files\modules</Filter>
-    </ClCompile>
     <ClCompile Include="modules\m_phys2virt.c">
       <Filter>Source Files\modules</Filter>
     </ClCompile>
@@ -484,6 +481,9 @@
     </ClCompile>
     <ClCompile Include="ob\ob_bytequeue.c">
       <Filter>Source Files\ob</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_fc_web.c">
+      <Filter>Source Files\modules</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

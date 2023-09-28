@@ -32,7 +32,6 @@ VOID M_BDE_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pPluginR
 VOID M_Conf_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_MiscProcInfo_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_MiscView_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
-VOID M_MiscWeb_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_Phys2Virt_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_Sys_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_SysCert_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
@@ -65,6 +64,7 @@ VOID M_FcProc_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pPlug
 VOID M_FcRegistry_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_FcSys_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_FcThread_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
+VOID M_FcWeb_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pPluginRegInfo);
 VOID M_FcYara_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pRI);
 
 /*
@@ -116,7 +116,6 @@ VOID(*g_pfnModulesAllInternal[])(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_REGINFO 
     M_Conf_Initialize,
     M_MiscProcInfo_Initialize,
     M_MiscView_Initialize,
-    M_MiscWeb_Initialize,
     M_Sys_Initialize,
     M_SysDriver_Initialize,
     M_SysMem_Initialize,
@@ -143,6 +142,7 @@ VOID(*g_pfnModulesAllInternal[])(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_REGINFO 
     M_FcRegistry_Initialize,
     M_FcSys_Initialize,
     M_FcThread_Initialize,
+    M_FcWeb_Initialize,
     M_FcYara_Initialize,
     // findevil modules
     M_Evil_Kern1,

@@ -89,6 +89,18 @@ PVMMOB_MAP_OBJECT VmmWinObjMgr_Initialize(_In_ VMM_HANDLE H);
 VOID VmmWinObj_Refresh(_In_ VMM_HANDLE H);
 
 /*
+* Retrieve a process associated (open handle) with the object virtual address.
+* NB! Object may have multiple processes associated, only the first is returned.
+* If no process is found NULL is returned.
+* CALLER DECREF: return
+* -- H
+* -- vaObject
+* -- return = process associated with the file object (if any).
+*/
+_Success_(return != NULL)
+PVMM_PROCESS VmmWinObj_GetProcessAssociated(_In_ VMM_HANDLE H, _In_ QWORD vaObject);
+
+/*
 * Retrieve a file object by its virtual address.
 * CALLER DECREF: return
 * -- H
