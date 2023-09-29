@@ -201,3 +201,4 @@ Latest:
 * web module: improved support and move from misc/web -> forenic/web.
 * C# API: improvements.
 * Java API: support for java.lang.foreign (JDK21+) for efficient memory accesses.
+* Linux PCIe FPGA performance improvements.
