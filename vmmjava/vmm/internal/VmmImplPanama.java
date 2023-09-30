@@ -31,6 +31,9 @@ public class VmmImplPanama implements IVmmNativeEx {
     }
 
     public VmmImplPanama(Long hVMM, String vmmPath) {
+        if(Boolean.getBoolean("vmm.disable-java-lang-foreign")) {
+            throw new VmmException();
+        }
         if(System.getProperty("os.name").toLowerCase().contains("win")) {
             vmmPath = vmmPath + "\\vmm.dll";
         } else {

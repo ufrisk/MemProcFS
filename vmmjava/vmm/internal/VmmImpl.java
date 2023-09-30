@@ -61,7 +61,7 @@ public class VmmImpl implements IVmm
 		// Implementation is currently built for JDK21. 
 		try {
 		    if(isVerbose) { System.out.println("vmm: java.lang.foreign implementation = try enable."); }
-		    this.jnative = (IVmmNativeEx)Class.forName("vmm.internal.VmmNativeExImpl").getDeclaredConstructor(Long.class, String.class).newInstance(Pointer.nativeValue(hVMM), vmmNativeLibraryPath);
+		    this.jnative = (IVmmNativeEx)Class.forName("vmm.internal.VmmImplPanama").getDeclaredConstructor(Long.class, String.class).newInstance(Pointer.nativeValue(hVMM), vmmNativeLibraryPath);
 		    if(isVerbose) { System.out.println("vmm: java.lang.foreign implementation = enabled."); }
 		} catch(Throwable t) {
 		    if(isVerbose) { System.out.println("vmm: java.lang.foreign implementation = failed to enable (JDK21+ required)."); }
