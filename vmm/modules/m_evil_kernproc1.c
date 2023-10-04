@@ -26,6 +26,7 @@ VOID MEvilKernProc1_PeHdrSpoof(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
     IMAGE_SECTION_HEADER Section;
     PVMM_MAP_MODULEENTRY peModule;
     PVMMOB_MAP_MODULE pObModuleMap = NULL;
+    if(CharUtil_StrEquals(pProcess->szName, "csrss.exe", TRUE)) { goto fail; }
     if(!VmmMap_GetModule(H, pProcess, 0, &pObModuleMap)) { goto fail; }
     for(i = 0; i < pObModuleMap->cMap; i++) {
         peModule = pObModuleMap->pMap + i;
@@ -57,7 +58,7 @@ fail:
     Ob_DECREF(pObProcess);
 }
 
-VOID M_EvilMEvilKernProc1(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
+VOID M_Evil_KernProc1(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if(pRI->sysinfo.f32 || (pRI->sysinfo.dwVersionBuild < 9600)) { return; }    // only support 64-bit Win8.1+ for now
