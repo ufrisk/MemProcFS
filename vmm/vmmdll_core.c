@@ -396,8 +396,8 @@ VOID VmmDllCore_PrintHelp(_In_ VMM_HANDLE H)
         " PCILeech:     https://github.com/ufrisk/pcileech                              \n" \
         " -----                                                                         \n" \
         " The recommended way to use MemProcFS is to specify a memory acquisition device\n" \
-        " in the -device option.                                                        \n" \
-        " Example 1: MemProcFS.exe -device c:\\temp\\memdump-win10x64.raw               \n" \
+        " in the -device option. Options -f and -z equals -device.                      \n" \
+        " Example 1: MemProcFS.exe -f c:\\temp\\memdump-win10x64.raw                    \n" \
         " Example 2: MemProcFS.exe -device c:\\temp\\memdump-win10x64.dmp -forensic 1   \n" \
         " Example 3: MemProcFS.exe -device FPGA                                         \n" \
         " Example 4: MemProcFS.exe -device PMEM://c:\\temp\\winpmem_x64.sys             \n" \
@@ -407,6 +407,7 @@ VOID VmmDllCore_PrintHelp(_In_ VMM_HANDLE H)
         "          Valid options: <any device supported by the leechcore library>       \n" \
         "          such as, but not limited to: <memory_dump_file>, PMEM, FPGA          \n" \
         "          ---                                                                  \n" \
+        "          Options -f and -z equals -device.                                    \n" \
         "          Please see https://github.com/ufrisk/LeechCore for additional info.  \n" \
         "   -remote : connect to a remote host running the LeechAgent. Please see the   \n" \
         "          LeechCore documentation for more information.                        \n" \
@@ -588,7 +589,7 @@ BOOL VmmDllCore_InitializeConfig(_In_ VMM_HANDLE H, _In_ DWORD argc, _In_ char *
         } else if(0 == _stricmp(argv[i], "-debug-pte-quality-threshold")) {
             H->cfg.dwPteQualityThreshold = (DWORD)Util_GetNumericA(argv[i + 1]);
             i += 2; continue;
-        } else if((0 == _stricmp(argv[i], "-device")) || (0 == strcmp(argv[i], "-z"))) {
+        } else if((0 == _stricmp(argv[i], "-device")) || (0 == strcmp(argv[i], "-f")) || (0 == strcmp(argv[i], "-z"))) {
             strcpy_s(H->dev.szDevice, MAX_PATH, argv[i + 1]);
             i += 2; continue;
         } else if(0 == _stricmp(argv[i], "-forensic")) {

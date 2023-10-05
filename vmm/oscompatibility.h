@@ -42,7 +42,6 @@ typedef unsigned __int64                    QWORD, *PQWORD;
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <openssl/sha.h>
 
 #define VMM_LIBRARY_FILETYPE                ".so"
 
@@ -53,11 +52,11 @@ typedef uint8_t                             BYTE, *PBYTE, *LPBYTE;
 typedef uint8_t                             UCHAR, *PUCHAR;
 typedef char                                CHAR, *PCHAR, *PSTR, *LPSTR;
 typedef int16_t                             SHORT, *PSHORT;
-typedef int32_t                             UINT, LONG;
+typedef int32_t                             LONG;
 typedef int64_t                             LONGLONG;
 typedef uint16_t                            WORD, *PWORD, USHORT, *PUSHORT;
 typedef uint16_t                            WCHAR, *PWCHAR, *LPWSTR, *LPCWSTR;
-typedef uint32_t                            DWORD, *PDWORD, *LPDWORD, NTSTATUS, ULONG, *PULONG, ULONG32;
+typedef uint32_t                            UINT, DWORD, *PDWORD, *LPDWORD, NTSTATUS, ULONG, *PULONG, ULONG32;
 typedef long long unsigned int              QWORD, *PQWORD, ULONG64, *PULONG64, ULONG_PTR;
 typedef uint64_t                            DWORD64, *PDWORD64, LARGE_INTEGER, *PLARGE_INTEGER, ULONGLONG, FILETIME, *PFILETIME;
 typedef size_t                              SIZE_T, *PSIZE_T;

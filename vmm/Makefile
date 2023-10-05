@@ -6,7 +6,7 @@
 #       . (current), ../files, ../../LeechCore*/files
 #
 CC=gcc
-CFLAGS  += -std=c11 -I. -I../includes -D LINUX -D _GNU_SOURCE -D SQLITE_THREADSAFE=2 -D SQLITE_CORE -shared -fPIC -l:leechcore.so -fvisibility=hidden -L. -lm -pthread `pkg-config liblz4 openssl --libs --cflags`
+CFLAGS  += -std=c11 -I. -I../includes -D LINUX -D _GNU_SOURCE -D SQLITE_THREADSAFE=2 -D SQLITE_CORE -shared -fPIC -l:leechcore.so -fvisibility=hidden -L. -lm -pthread `pkg-config liblz4 --libs --cflags`
 # DEBUG FLAGS BELOW
 #export ASAN_OPTIONS=strict_string_checks=1:detect_stack_use_after_return=1:check_initialization_order=1:strict_init_order=1:detect_invalid_pointer_pairs=2
 #CFLAGS  += -g -O0 -Wextra -Wno-unused-parameter -Wno-cast-function-type
@@ -22,7 +22,8 @@ OBJ = oscompatibility.o charutil.o util.o pe.o vmmdll.o vmmdll_core.o        \
 	  vmmdll_remote.o vmmdll_scatter.o vmm.o fc.o                            \
 	  mm/mm_arm64.o mm/mm_x64.o mm/mm_x86.o mm/mm_x86pae.o mm/mm_pfn.o       \
 	  mm/mm_vad.o mm/mm_win.o                                                \
-	  pluginmanager.o pdb.o infodb.o ext/miniz.o ext/sqlite3.o               \
+	  pluginmanager.o pdb.o infodb.o                                         \
+	  ext/miniz.o ext/sha256.o ext/sqlite3.o                                 \
 	  ob/ob_bytequeue.o ob/ob_cachemap.o ob/ob_compressed.o                  \
 	  ob/ob_container.o ob/ob_core.o ob/ob_counter.o ob/ob_map.o             \
 	  ob/ob_memfile.o ob/ob_set.o ob/ob_strmap.o                             \

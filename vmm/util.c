@@ -6,6 +6,7 @@
 #include "util.h"
 #include "charutil.h"
 #include "ext/miniz.h"
+#include "ext/sha256.h"
 #include <math.h>
 
 /*
@@ -1047,6 +1048,24 @@ BOOL Util_DecompressGzToStringAlloc(_In_ PBYTE pbCompressed, _In_ DWORD cbCompre
     return TRUE;
 }
 
+/*
+* SHA256 hash data.
+* -- pbData
+* -- cbData
+* -- pbHash
+* -- return
+*/
+_Success_(return)
+BOOL Util_HashSHA256(_In_reads_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_writes_(32) PBYTE pbHash)
+{
+    SHA256_CTX sha256;
+    ZeroMemory(pbHash, 32);
+    sha256_init(&sha256);
+    sha256_update(&sha256, pbData, cbData);
+    sha256_final(&sha256, pbHash);
+    return TRUE;
+}
+
 #ifdef _WIN32
 
 DWORD Util_ResourceSize(_In_ VMM_HANDLE H, _In_ LPWSTR wszResourceName)
@@ -1072,35 +1091,6 @@ fail:
 }
 
 /*
-* SHA256 hash data.
-* -- pbData
-* -- cbData
-* -- pbHash
-* -- return
-*/
-_Success_(return)
-BOOL Util_HashSHA256(_In_reads_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_writes_(32) PBYTE pbHash)
-{
-    BOOL fResult = FALSE;
-    DWORD cbHashObject, cbHashObjectLen;
-    PBYTE pbHashObject = NULL;
-    BCRYPT_ALG_HANDLE hAlg = NULL;
-    BCRYPT_HASH_HANDLE hHash = NULL;
-    if(BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_SHA256_ALGORITHM, NULL, 0)) { goto fail; }
-    if(BCryptGetProperty(hAlg, BCRYPT_OBJECT_LENGTH, (PBYTE)&cbHashObject, sizeof(DWORD), &cbHashObjectLen, 0)) { goto fail; }
-    if(!(pbHashObject = LocalAlloc(LMEM_ZEROINIT, cbHashObject))) { goto fail; }
-    if(BCryptCreateHash(hAlg, &hHash, pbHashObject, cbHashObject, NULL, 0, 0)) { goto fail; }
-    if(BCryptHashData(hHash, pbData, cbData, 0)) { goto fail; }
-    if(BCryptFinishHash(hHash, pbHash, 32, 0)) { goto fail; }
-    fResult = TRUE;
-fail:
-    if(hHash) { BCryptDestroyHash(hHash); }
-    LocalFree(pbHashObject);
-    if(hAlg) { BCryptCloseAlgorithmProvider(hAlg, 0); }
-    return fResult;
-}
-
-/*
 * Delete a file denoted by its utf-8 full path.
 * -- uszPathFile
 */
@@ -1114,24 +1104,6 @@ VOID Util_DeleteFileU(_In_ LPSTR uszPathFile)
 
 #endif /* _WIN32 */
 #ifdef LINUX
-
-/*
-* SHA256 hash data.
-* -- pbData
-* -- cbData
-* -- pbHash
-* -- return
-*/
-_Success_(return)
-BOOL Util_HashSHA256(_In_reads_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_writes_(32) PBYTE pbHash)
-{
-    ZeroMemory(pbHash, 32);
-    SHA256_CTX sha256;
-    SHA256_Init(&sha256);
-    SHA256_Update(&sha256, pbData, cbData);
-    SHA256_Final(pbHash, &sha256);
-    return TRUE;
-}
 
 /*
 * Delete a file denoted by its utf-8 full path.
