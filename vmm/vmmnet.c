@@ -96,14 +96,15 @@ typedef struct tdVMMNET_ASYNC_CONTEXT {
 */
 int VmmNet_TcpE_CmpSort(PVMM_MAP_NETENTRY a, PVMM_MAP_NETENTRY b)
 {
+    int v;
     if((a->dwPoolTag != b->dwPoolTag) && (a->dwPoolTag == 'UdpA' || b->dwPoolTag == 'UdpA')) {
         return (a->dwPoolTag == 'UdpA') ? 1 : -1;
     }
     if(a->dwPID != b->dwPID) {
         return a->dwPID - b->dwPID;
     }
-    if(memcmp(a->Src.pbAddr, b->Src.pbAddr, 16)) {
-        return memcmp(a->Src.pbAddr, b->Src.pbAddr, 16);
+    if((v = memcmp(a->Src.pbAddr, b->Src.pbAddr, 16))) {
+        return v;
     }
     if(a->Src.port != b->Src.port) {
         return a->Src.port - b->Src.port;
@@ -111,7 +112,10 @@ int VmmNet_TcpE_CmpSort(PVMM_MAP_NETENTRY a, PVMM_MAP_NETENTRY b)
     if(a->AF != b->AF) {
         return a->AF - b->AF;
     }
-    return memcmp(a->Dst.pbAddr, b->Dst.pbAddr, 16);
+    if((v = memcmp(a->Dst.pbAddr, b->Dst.pbAddr, 16))) {
+        return v;
+    }
+    return (int)(a->vaObj - b->vaObj);
 }
 
 /*

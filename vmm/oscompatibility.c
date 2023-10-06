@@ -117,6 +117,31 @@ HMODULE GetModuleHandleA(_In_opt_ LPCSTR lpModuleName)
 }
 
 // ----------------------------------------------------------------------------
+// STRING OPERATIONS BELOW:
+// ----------------------------------------------------------------------------
+
+int strncpy_s(char *dst, size_t dst_size, const char *src, size_t count)
+{
+    size_t src_length;
+    if(!dst || !src) { return -1; }
+    if(dst_size == 0) { return -2; }
+    src_length = strlen(src);
+    if(count == (size_t)-1 /* _TRUNCATE */) {
+        if(src_length >= dst_size) {
+            count = dst_size - 1;
+        } else {
+            count = src_length;
+        }
+    } else if(src_length < count) {
+        count = src_length;
+    }
+    if(count >= dst_size) { return -3; }
+    strncpy(dst, src, count);
+    dst[count] = '\0';
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
 // GENERAL HANDLES BELOW:
 // ----------------------------------------------------------------------------
 

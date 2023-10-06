@@ -42,6 +42,8 @@ typedef unsigned __int64                    QWORD, *PQWORD;
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#undef  AF_INET6
+#define AF_INET6 23
 
 #define VMM_LIBRARY_FILETYPE                ".so"
 
@@ -165,7 +167,6 @@ typedef int(*_CoreCrtNonSecureSearchSortCompareFunction)(void const *, void cons
 #define sprintf_s(s, maxcount, ...)         (snprintf(s, maxcount, __VA_ARGS__))
 #define strnlen_s(s, maxcount)              (strnlen(s, maxcount))
 #define strcpy_s(dst, len, src)             (strncpy(dst, src, len))
-#define strncpy_s(dst, len, src, srclen)    (strncpy(dst, src, min((size_t)(max(1, len)) - 1, (size_t)(srclen))))
 #define strncat_s(dst, dstlen, src, srclen) (strncat(dst, src, min((((strlen(dst) + 1 >= (size_t)(dstlen)) || ((size_t)(dstlen) == 0)) ? 0 : ((size_t)(dstlen) - strlen(dst) - 1)), (size_t)(srclen))))
 #define strcat_s(dst, dstlen, src)          (strncat_s(dst, dstlen, src, _TRUNCATE))
 #define _vsnprintf_s(dst, len, cnt, fmt, a) (vsnprintf(dst, min((size_t)(len), (size_t)(cnt)), fmt, a))
@@ -191,7 +192,7 @@ typedef int(*_CoreCrtNonSecureSearchSortCompareFunction)(void const *, void cons
 #define InterlockedIncrement(p)             (__sync_add_and_fetch_4(p, 1))
 #define InterlockedDecrement(p)             (__sync_sub_and_fetch_4(p, 1))
 #define GetCurrentProcess()					((HANDLE)-1)
-#define InetNtopA                           inet_ntop
+#define InetNtopA(af,a,pb,cb)               inet_ntop(((af)==23?10:(af)),a,pb,cb)
 #define closesocket(s)                      close(s)
 #define HeapAlloc(hHeap, dwFlags, dwBytes)  malloc(dwBytes)
 
@@ -266,6 +267,7 @@ BOOL SetEvent(_In_ HANDLE hEventIngestPhys);
 HANDLE CreateEvent(_In_opt_ PVOID lpEventAttributes, _In_ BOOL bManualReset, _In_ BOOL bInitialState, _In_opt_ PVOID lpName);
 DWORD WaitForMultipleObjects(_In_ DWORD nCount, HANDLE *lpHandles, _In_ BOOL bWaitAll, _In_ DWORD dwMilliseconds);
 DWORD WaitForSingleObject(_In_ HANDLE hHandle, _In_ DWORD dwMilliseconds);
+int strncpy_s(char *dst, size_t dst_size, const char *src, size_t count);
 int _vscprintf(_In_z_ _Printf_format_string_ char const *const _Format, va_list _ArgList);
 
 // for some unexplainable reasons the gcc on -O2 will optimize out functionality

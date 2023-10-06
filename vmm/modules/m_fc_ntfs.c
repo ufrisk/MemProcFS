@@ -210,6 +210,8 @@ typedef struct tdNTFS_FILE_NAME {
 #define FCNTFS2_FLAG_SOURCE_FILE_MFT    0x4000
 #define FCNTFS2_FLAG_SOURCE_FILE_DIR    0x8000
 
+#define FCNTFS2_SYNTHETIC_NAME_BUFSIZE  0x10
+
 typedef struct tdFCNTFS2 {
     union {
         QWORD qwKey;
@@ -245,6 +247,7 @@ typedef struct tdFCNTFS2_VOLUME {
     WORD wId;
     DWORD dwNextOrphan;
     QWORD vaDevice;
+    QWORD cEntry;
     PFCNTFS2 pRoot;
     PFCNTFS2 pOrphan;
     BYTE uszVolumeName[MAX_PATH];
@@ -254,13 +257,14 @@ typedef struct tdOB_FCNTFS2_INIT_CONTEXT {
     OB ObHdr;
     VMMDLL_MODULE_ID MID;
     BOOL fLogTrace;
-    POB_MAP pmMft;          // MFT record number + index (owns reference to PFCNTFS2)
-    POB_MAP pmVolume;       // Volume ID (owns reference to PFCNTFS2_VOLUME)
-    POB_MAP pmDuplicate;    // duplicate check
+    POB_MAP pmMft;              // MFT record number + index (owns reference to PFCNTFS2)
+    POB_MAP pmVolume;           // Volume ID (owns reference to PFCNTFS2_VOLUME)
+    POB_COUNTER pcDuplicate;    // duplicate check
     WORD wNextVolumeId;
     PBYTE pb1M;
     DWORD cVolumes;
     PFCNTFS2_VOLUME pVolumes;
+    SRWLOCK LockPhysIngestSRW;
 } OB_FCNTFS2_INIT_CONTEXT, *POB_FCNTFS2_INIT_CONTEXT;
 
 typedef struct tdFCNTFS2_FINALIZE_CONTEXT {
@@ -293,10 +297,10 @@ BOOL FcNtfs2_IngestPushEntry(_In_ VMM_HANDLE H, _In_ POB_FCNTFS2_INIT_CONTEXT ct
     }
     if(fResult) {
         qwKey = FCNTFS2_DUPLICATE_CHECK_FILE_RECORD(pNt->dwMftRecordNumber, pNt->ftCreate, pNt->ftModify, pNt->ftRead);
-        ObMap_Push(ctx->pmDuplicate, qwKey, pNt);
+        ObCounter_Set(ctx->pcDuplicate, qwKey, pNt->qwKey);
         if(pfn) {
             qwKey = FCNTFS2_DUPLICATE_CHECK_FILE_RECORD(pNt->dwMftRecordNumber, pfn->TimeCreate, pfn->TimeModify, pfn->TimeRead);
-            ObMap_Push(ctx->pmDuplicate, qwKey, (PVOID)((SIZE_T)pNt | 1));
+            ObCounter_Set(ctx->pcDuplicate, qwKey, pNt->qwKey);
         }
     }
     if(ctx->fLogTrace) {
@@ -327,20 +331,17 @@ BOOL FcNtfs2_IngestPushEntry(_In_ VMM_HANDLE H, _In_ POB_FCNTFS2_INIT_CONTEXT ct
 _Success_(return != 0)
 PFCNTFS2 FcNtfs2_IngestPushEntrySynthetic(_In_ VMM_HANDLE H, _In_ POB_FCNTFS2_INIT_CONTEXT ctx, _In_ DWORD dwMftRecordNumber, _In_opt_ PFCNTFS2 pNtParent, _In_ WORD wVolumeId, _In_ DWORD dwId)
 {
-    DWORD cbId;
-    CHAR szId[16];
     PFCNTFS2 pNt;
-    if(dwId == 0xffffffff) {
-        cbId = (DWORD)_snprintf_s(szId, sizeof(szId), _TRUNCATE, "$_ORPHAN") + 1;
-    } else {
-        cbId = (DWORD)_snprintf_s(szId, sizeof(szId), _TRUNCATE, "%u", dwId) + 1;
-    }
-    if(!(pNt = LocalAlloc(LMEM_ZEROINIT, sizeof(FCNTFS2) + cbId))) { return NULL; }
+    if(!(pNt = LocalAlloc(LMEM_ZEROINIT, sizeof(FCNTFS2) + FCNTFS2_SYNTHETIC_NAME_BUFSIZE))) { return NULL; }
     pNt->dwMftRecordNumber = dwMftRecordNumber;
     pNt->dwParentMftRecordNumber = pNtParent ? pNtParent->dwMftRecordNumber : 0;
     pNt->wVolumeId = wVolumeId;
     pNt->flags = FCNTFS2_FLAG_ACTIVE | FCNTFS2_FLAG_DIRECTORY | FCNTFS2_FLAG_SOURCE_SYNTHETIC;
-    memcpy(pNt->uszName, szId, cbId);
+    if(dwId == 0xffffffff) {
+        _snprintf_s(pNt->uszName, FCNTFS2_SYNTHETIC_NAME_BUFSIZE, _TRUNCATE, "$_ORPHAN");
+    } else {
+        _snprintf_s(pNt->uszName, FCNTFS2_SYNTHETIC_NAME_BUFSIZE, _TRUNCATE, "%u", dwId);
+    }
     if(FcNtfs2_IngestPushEntry(H, ctx, pNt, NULL)) {
         if(pNtParent) {
             pNt->pParent = pNtParent;
@@ -393,7 +394,7 @@ VOID FcNtfs2_IngestIndexEntry(_In_ VMM_HANDLE H, _In_ POB_FCNTFS2_INIT_CONTEXT c
     if(!pfn || (pfn->ParentDirectory.SegmentNumber > 0xfffffff0) || !pfn->NameLength) { return; }                               // verify
     // Duplicate check:
     qwKey = FCNTFS2_DUPLICATE_CHECK_FILE_RECORD(pIE->FileReference.SegmentNumber, pfn->TimeCreate, pfn->TimeModify, pfn->TimeRead);
-    if(ObMap_ExistsKey(ctx->pmDuplicate, qwKey)) { return; }
+    if(ObCounter_Exists(ctx->pcDuplicate, qwKey)) { return; }
     // Create NTFS object:
     if(!CharUtil_WtoU(pfn->Name, pfn->NameLength, NULL, 0, NULL, &cbuName, 0) || !cbuName) { return; }
     if(!(pNt = LocalAlloc(LMEM_ZEROINIT, sizeof(FCNTFS2) + cbuName))) { return; }
@@ -457,7 +458,7 @@ VOID FcNtfs2_IngestIndexRecord(_In_ VMM_HANDLE H, _In_ POB_FCNTFS2_INIT_CONTEXT 
 */
 VOID FcNtfs2_IngestFileRecord(_In_ VMM_HANDLE H, _In_ POB_FCNTFS2_INIT_CONTEXT ctx, _In_ PNTFS_FILE_RECORD pR, _In_reads_(0x400) PBYTE pb, _In_ WORD wVolumeId, _In_ WORD wFlagsSource, _In_ QWORD paRecord)
 {
-    QWORD qwKey;
+    QWORD qwKey1, qwKey2;
     DWORD oA, cbData = 0, cbuName = 0, cbuNameADS = 0;
     PFCNTFS2 pNt = NULL, pNtADS = NULL, pNtDuplicate;
     PNTFS_ATTR pA, pADataADS = NULL;
@@ -519,13 +520,14 @@ VOID FcNtfs2_IngestFileRecord(_In_ VMM_HANDLE H, _In_ POB_FCNTFS2_INIT_CONTEXT c
     // Duplicate check:
     // Consider pre-existing $Mft records as duplicates.
     // Do not consider pre-existing $Directory records as duplicates if the replacing record is a $Mft record.
-    qwKey = FCNTFS2_DUPLICATE_CHECK_FILE_RECORD(pR->MftRecordNumber, psi->TimeCreate, psi->TimeModify, psi->TimeRead);
-    if((pNtDuplicate = (PFCNTFS2)((SIZE_T)ObMap_GetByKey(ctx->pmDuplicate, qwKey) & ~3))) {
-        if((wFlagsSource == FCNTFS2_FLAG_SOURCE_FILE_DIR) || (wFlagsSource == FCNTFS2_FLAG_SOURCE_PMEM_DIR) || (pNtDuplicate->flags & FCNTFS2_FLAG_SOURCE_FILE_MFT) || (pNtDuplicate->flags & FCNTFS2_FLAG_SOURCE_PMEM_MFT)) {
-            return;
+    qwKey1 = FCNTFS2_DUPLICATE_CHECK_FILE_RECORD(pR->MftRecordNumber, psi->TimeCreate, psi->TimeModify, psi->TimeRead);
+    if((qwKey2 = ObCounter_Get(ctx->pcDuplicate, qwKey1))) {
+        if((pNtDuplicate = (PFCNTFS2)ObMap_GetByKey(ctx->pmMft, qwKey2))) {
+            if((wFlagsSource == FCNTFS2_FLAG_SOURCE_FILE_DIR) || (wFlagsSource == FCNTFS2_FLAG_SOURCE_PMEM_DIR) || (pNtDuplicate->flags & FCNTFS2_FLAG_SOURCE_FILE_MFT) || (pNtDuplicate->flags & FCNTFS2_FLAG_SOURCE_PMEM_MFT)) {
+                return;
+            }
+            LocalFree(ObMap_Remove(ctx->pmMft, pNtDuplicate));
         }
-        ObMap_Remove(ctx->pmDuplicate, (PVOID)((SIZE_T)pNtDuplicate | 1));
-        LocalFree(ObMap_Remove(ctx->pmMft, pNtDuplicate));
     }
     // Create NTFS object:
     if(!CharUtil_WtoU(pfn->Name, pfn->NameLength, NULL, 0, NULL, &cbuName, 0) || !cbuName) { return; }
@@ -658,37 +660,48 @@ int FcNtfs2_Init_CmpSortFileSize(_In_ POB_MAP_ENTRY p1, _In_ POB_MAP_ENTRY p2)
 {
     POB_VMMWINOBJ_FILE e1 = p1->v;
     POB_VMMWINOBJ_FILE e2 = p2->v;
-    if(e1->cb == e2->cb) { return 0; }
-    return (e1->cb < e2->cb) ? -1 : 1;
+    if(e1->cb != e2->cb) {
+        return (e1->cb < e2->cb) ? -1 : 1;
+    }
+    return (int)(e1->va - e2->va);
 }
 
 VOID FcNtfs2_Init1(_In_ VMM_HANDLE H, POB_FCNTFS2_INIT_CONTEXT ctx)
 {
     POB_VMMWINOBJ_FILE pObFile = NULL;
+    POB_SET psObDuplicates = NULL;
     POB_MAP pmObFiles = NULL, pmObMft = NULL, pmObDirectory = NULL;
     // init and fetch all files:
+    if(!(psObDuplicates = ObSet_New(H))) { goto fail; }
     if(!(pmObMft = ObMap_New(H, OB_MAP_FLAGS_OBJECT_OB))) { goto fail; }
     if(!(pmObDirectory = ObMap_New(H, OB_MAP_FLAGS_OBJECT_OB))) { goto fail; }
     if(!VmmWinObjFile_GetAll(H, &pmObFiles)) { goto fail; }
     // find $Mft and $Directory files, sort by file size:
     while((pObFile = ObMap_GetNext(pmObFiles, pObFile))) {
         if(CharUtil_StrEquals("\\$Mft", pObFile->uszPath, FALSE)) {
-            ObMap_Push(pmObMft, pObFile->va, pObFile);
-        }
-        else if(CharUtil_StrEquals("\\$Directory", pObFile->uszPath, FALSE)) {
-            ObMap_Push(pmObDirectory, pObFile->va, pObFile);
+            if(pObFile->pSectionObjectPointers && ObSet_Push(psObDuplicates, pObFile->pSectionObjectPointers->va)) {
+                ObMap_Push(pmObMft, pObFile->va, pObFile);
+            }
+        } else if(CharUtil_StrEquals("\\$Directory", pObFile->uszPath, FALSE)) {
+            if(pObFile->pSectionObjectPointers && ObSet_Push(psObDuplicates, pObFile->pSectionObjectPointers->va)) {
+                ObMap_Push(pmObDirectory, pObFile->va, pObFile);
+            }
         }
     }
     ObMap_SortEntryIndex(pmObMft, FcNtfs2_Init_CmpSortFileSize);
+    ObMap_SortEntryIndex(pmObDirectory, FcNtfs2_Init_CmpSortFileSize);
     // ingest $Mft files:
     while((pObFile = ObMap_Pop(pmObMft))) {
+        VmmLog(H, ctx->MID, LOGLEVEL_5_DEBUG, "Ingesting $Mft file:[%s] size:[%llu] va:[0x%llx]", pObFile->uszPath, pObFile->cb, pObFile->va);
         FcNtfs2_InitMft(H, ctx, pObFile);
     }
     // ingest $Directory files:
     while((pObFile = ObMap_Pop(pmObDirectory))) {
+        VmmLog(H, ctx->MID, LOGLEVEL_5_DEBUG, "Ingesting $Directory file:[%s] size:[%llu] va:[0x%llx]", pObFile->uszPath, pObFile->cb, pObFile->va);
         FcNtfs2_InitDir(H, ctx, pObFile);
     }
 fail:
+    Ob_DECREF(psObDuplicates);
     Ob_DECREF(pmObDirectory);
     Ob_DECREF(pmObFiles);
     Ob_DECREF(pmObMft);
@@ -771,7 +784,7 @@ VOID FcNtfs2_InitContext_CleanupCB(POB_FCNTFS2_INIT_CONTEXT pOb)
 {
     Ob_DECREF(pOb->pmMft);
     Ob_DECREF(pOb->pmVolume);
-    Ob_DECREF(pOb->pmDuplicate);
+    Ob_DECREF(pOb->pcDuplicate);
     LocalFree(pOb->pb1M);
     LocalFree(pOb->pVolumes);
 }
@@ -790,7 +803,7 @@ POB_FCNTFS2_INIT_CONTEXT FcNtfs2_InitContext(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLU
     if(!(ctxOb = Ob_AllocEx(H, 'CNtF', LMEM_ZEROINIT, sizeof(OB_FCNTFS2_INIT_CONTEXT), (OB_CLEANUP_CB)FcNtfs2_InitContext_CleanupCB, NULL))) { goto fail; }
     if(!(ctxOb->pmMft = ObMap_New(H, OB_MAP_FLAGS_OBJECT_LOCALFREE))) { goto fail; }
     if(!(ctxOb->pmVolume = ObMap_New(H, OB_MAP_FLAGS_OBJECT_LOCALFREE))) { goto fail; }
-    if(!(ctxOb->pmDuplicate = ObMap_New(H, OB_MAP_FLAGS_OBJECT_VOID))) { goto fail; }
+    if(!(ctxOb->pcDuplicate = ObCounter_New(H, 0))) { goto fail; }
     if(!(ctxOb->pb1M = LocalAlloc(0, 0x00100000))) { goto fail; }
     ctxOb->MID = ctxP->MID;
     ctxOb->fLogTrace = VmmLogIsActive(H, ctxP->MID, LOGLEVEL_6_TRACE);
@@ -933,7 +946,7 @@ VOID FcNtfs2_FcIngestFinalize_MergeShrink(_In_ VMM_HANDLE H, _In_ POB_FCNTFS2_IN
                 // keep directory:
                 peDir->pSibling = peOrphan->pChild;
                 peOrphan->pChild = peDir;
-                _snprintf_s(peDir->uszName, 0x10, _TRUNCATE, "$%i", ++iDir);
+                _snprintf_s(peDir->uszName, FCNTFS2_SYNTHETIC_NAME_BUFSIZE, _TRUNCATE, "$%u", ++iDir);
             }
             peDir = peDirNext;
         }
@@ -970,7 +983,11 @@ int FcNtfs2_FcIngestFinalize_MergeSortCompare(_In_ PFCNTFS2 *ppe1, _In_ PFCNTFS2
     }
     // mft record number diff:
     if(pe1->dwMftRecordNumber != pe2->dwMftRecordNumber) {
-        return (pe1->dwMftRecordNumber < pe2->dwMftRecordNumber) ? -1 : 1;
+        return (pe1->dwMftRecordNumber < pe2->dwMftRecordNumber) ? 1 : -1;
+    }
+    // physical address diff:
+    if(pe1->paRecord != pe2->paRecord) {
+        return (pe1->paRecord < pe2->paRecord) ? 1 : -1;
     }
     return 0;
 }
@@ -1002,6 +1019,50 @@ VOID FcNtfs2_FcIngestFinalize_MergeSort(_In_ VMM_HANDLE H, _In_ POB_FCNTFS2_INIT
             pDir->pChild = pe;
         }
     }
+}
+
+int FcNtfs2_FcIngestFinalize_VolumeCountSort_Compare(PFCNTFS2_VOLUME p1, PFCNTFS2_VOLUME p2)
+{
+    if(p1->cEntry != p2->cEntry) {
+        return (p1->cEntry < p2->cEntry) ? 1 : -1;
+    }
+    return p1->wId - p2->wId;
+}
+
+/*
+* Sort volumes by #entries, so that non-physical with largest #entries are put as [1], physical being [0].
+*/
+VOID FcNtfs2_FcIngestFinalize_VolumeCountSort(_In_ VMM_HANDLE H, _In_ POB_FCNTFS2_INIT_CONTEXT ctx)
+{
+    DWORD i, c;
+    PFCNTFS2 pe;
+    POB_MAP pmOb = NULL;
+    if(ctx->cVolumes == 1) { return; }
+    if(!(pmOb = ObMap_New(H, OB_MAP_FLAGS_OBJECT_VOID | OB_MAP_FLAGS_NOKEY))) { return; }
+    // 1: volume roots (excl. required physical [i = 0]:
+    for(i = 1; i < ctx->cVolumes; i++) {
+        c = 0;
+        ObMap_Push(pmOb, 0, ctx->pVolumes[i].pRoot);
+        while((pe = ObMap_Pop(pmOb))) {
+            while(pe) {
+                c++;
+                if(pe->pChild) {
+                    ObMap_Push(pmOb, 0, pe->pChild);
+                }
+                pe = pe->pSibling;
+            }
+        }
+        ctx->pVolumes[i].cEntry = c;
+    }
+    // 2: sort volumes by entry count:
+    qsort(ctx->pVolumes + 1, ctx->cVolumes - 1, sizeof(FCNTFS2_VOLUME), (_CoreCrtNonSecureSearchSortCompareFunction)FcNtfs2_FcIngestFinalize_VolumeCountSort_Compare);
+    for(i = 1; i < ctx->cVolumes; i++) {
+        ctx->pVolumes[i].wId = (WORD)i;
+        if(ctx->pVolumes[i].pRoot) {
+            _snprintf_s(ctx->pVolumes[i].pRoot->uszName, FCNTFS2_SYNTHETIC_NAME_BUFSIZE, _TRUNCATE, "%u", i);
+        }
+    }
+    Ob_DECREF(pmOb);
 }
 
 /*
@@ -1137,7 +1198,9 @@ VOID FcNtfs2_FcIngestFinalize_DbPush(_In_ VMM_HANDLE H, POB_FCNTFS2_INIT_CONTEXT
     if(rc != SQLITE_OK) { goto fail; }
     sqlite3_exec(ctxFinal.hSql, "BEGIN TRANSACTION", NULL, NULL, NULL);
     for(i = 0; i < ctx->cVolumes; i++) {
-        FcNtfs2_FcIngestFinalize_DbPush_BuildPath(H, &ctxFinal, ctx->pVolumes[i].pRoot, 0, uszPath, 1);
+        if((i == 0) || (ctx->pVolumes[i].cEntry > 2)) {
+            FcNtfs2_FcIngestFinalize_DbPush_BuildPath(H, &ctxFinal, ctx->pVolumes[i].pRoot, 0, uszPath, 1);
+        }
     }
     sqlite3_exec(ctxFinal.hSql, "COMMIT TRANSACTION", NULL, NULL, NULL);
     // CLEAN UP:
@@ -1156,6 +1219,7 @@ VOID FcNtfs2_FcIngestFinalize(_In_ VMM_HANDLE H, _In_opt_ PVOID ctxfc)
     if(!FcNtfs2_FcIngestFinalize_MergeAll(H, ctx)) { return; }
     FcNtfs2_FcIngestFinalize_MergeShrink(H, ctx);
     FcNtfs2_FcIngestFinalize_MergeSort(H, ctx);
+    FcNtfs2_FcIngestFinalize_VolumeCountSort(H, ctx);
     if(!FcNtfs2_FcIngestFinalize_MergeHash(H, ctx)) { return; }
     Fc_SqlExec(H, FC_SQL_SCHEMA_NTFS);
     FcNtfs2_FcIngestFinalize_DbPush(H, ctx);
