@@ -1001,16 +1001,17 @@ namespace vmmsharp
         /// <param name="encoding">String Encoding for this read.</param>
         /// <param name="pid">Process ID.</param>
         /// <param name="qwA">Virtual Address to read from.</param>
-        /// <param name="count">Number of elements to read.</param>
+        /// <param name="cb">Number of bytes to read. Keep in mind some string encodings are 2-4 bytes per character.</param>
         /// <param name="flags">VMM Flags.</param>
         /// <param name="terminateOnNullChar">Terminate the string at the first occurrence of the null character.</param>
         /// <returns>C# Managed System.String. Null if failed.</returns>
-        public unsafe string MemReadString(Encoding encoding, uint pid, ulong qwA, uint length, 
+        public unsafe string MemReadString(Encoding encoding, uint pid, ulong qwA, uint cb,
             uint flags = 0, bool terminateOnNullChar = true)
         {
-            byte[] buffer = MemRead(pid, qwA, length, flags);
+            byte[] buffer = MemRead(pid, qwA, cb, flags);
             if (buffer is null)
                 return null;
+            encoding.GetString(buffer);
             var result = encoding.GetString(buffer);
             if (terminateOnNullChar)
             {
@@ -2631,11 +2632,12 @@ namespace vmmsharp
         /// </summary>
         /// <param name="encoding">String Encoding for this read.</param>
         /// <param name="qwA">Virtual Address to read from.</param>
+        /// <param name="cb">Number of bytes to read. Keep in mind some string encodings are 2-4 bytes per character.</param>
         /// <param name="terminateOnNullChar">Terminate the string at the first occurrence of the null character.</param>
         /// <returns>C# Managed System.String. Null if failed.</returns>
-        public unsafe string ReadString(Encoding encoding, ulong qwA, uint length, bool terminateOnNullChar = true)
+        public unsafe string ReadString(Encoding encoding, ulong qwA, uint cb, bool terminateOnNullChar = true)
         {
-            byte[] buffer = Read(qwA, length);
+            byte[] buffer = Read(qwA, cb);
             if (buffer is null)
                 return null;
             var result = encoding.GetString(buffer);
