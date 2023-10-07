@@ -995,6 +995,33 @@ namespace vmmsharp
             return data;
         }
 
+        /// <summary>
+        /// Read Memory from a Virtual Address into a Managed String.
+        /// </summary>
+        /// <param name="encoding">String Encoding for this read.</param>
+        /// <param name="pid">Process ID.</param>
+        /// <param name="qwA">Virtual Address to read from.</param>
+        /// <param name="cb">Number of bytes to read. Keep in mind some string encodings are 2-4 bytes per character.</param>
+        /// <param name="flags">VMM Flags.</param>
+        /// <param name="terminateOnNullChar">Terminate the string at the first occurrence of the null character.</param>
+        /// <returns>C# Managed System.String. Null if failed.</returns>
+        public unsafe string MemReadString(Encoding encoding, uint pid, ulong qwA, uint cb,
+            uint flags = 0, bool terminateOnNullChar = true)
+        {
+            byte[] buffer = MemRead(pid, qwA, cb, flags);
+            if (buffer is null)
+                return null;
+            encoding.GetString(buffer);
+            var result = encoding.GetString(buffer);
+            if (terminateOnNullChar)
+            {
+                int nullIndex = result.IndexOf('\0');
+                if (nullIndex != -1)
+                    result = result.Substring(0, nullIndex);
+            }
+            return result;
+        }
+
         public unsafe bool MemPrefetchPages(uint pid, ulong[] qwA)
         {
             byte[] data = new byte[qwA.Length * sizeof(ulong)];
@@ -2598,6 +2625,29 @@ namespace vmmsharp
                 Array.Resize<T>(ref data, partialCount);
             }
             return data;
+        }
+
+        /// <summary>
+        /// Read Memory from a Virtual Address into a Managed String.
+        /// </summary>
+        /// <param name="encoding">String Encoding for this read.</param>
+        /// <param name="qwA">Virtual Address to read from.</param>
+        /// <param name="cb">Number of bytes to read. Keep in mind some string encodings are 2-4 bytes per character.</param>
+        /// <param name="terminateOnNullChar">Terminate the string at the first occurrence of the null character.</param>
+        /// <returns>C# Managed System.String. Null if failed.</returns>
+        public unsafe string ReadString(Encoding encoding, ulong qwA, uint cb, bool terminateOnNullChar = true)
+        {
+            byte[] buffer = Read(qwA, cb);
+            if (buffer is null)
+                return null;
+            var result = encoding.GetString(buffer);
+            if (terminateOnNullChar)
+            {
+                int nullIndex = result.IndexOf('\0');
+                if (nullIndex != -1)
+                    result = result.Substring(0, nullIndex);
+            }
+            return result;
         }
 
         public bool Prepare(ulong qwA, uint cb)

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Runtime.InteropServices;
+using System.Text;
 using vmmsharp;
 
 /*  
@@ -139,6 +140,9 @@ class vmm_example
                 // Successful Write
             }
         }
+
+        // Read string
+        string someString = vmm.MemReadString(Encoding.UTF8, dwExplorerPID, mModuleKernel32.vaBase + 0x0 /* Some Offset */ , 64);
 
         // translate virtual address of 1st page in kernel32.dll to physical address
         ulong paBaseKernel32;
