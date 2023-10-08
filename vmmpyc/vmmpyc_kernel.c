@@ -57,9 +57,10 @@ static void
 VmmPycKernel_dealloc(PyObj_Kernel *self)
 {
     self->fValid = FALSE;
-    Py_XDECREF(self->pyVMM); self->pyVMM = NULL;
-    Py_XDECREF(self->pyObjPdb); self->pyObjPdb = NULL;
-    Py_XDECREF(self->pyObjProcess); self->pyObjProcess = NULL;
+    Py_XDECREF(self->pyObjProcess);
+    Py_XDECREF(self->pyObjPdb);
+    Py_XDECREF(self->pyVMM);
+    PyObject_Del(self);
 }
 
 _Success_(return)

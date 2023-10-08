@@ -119,6 +119,7 @@ typedef struct tdPyObj_Vmm {
     BOOL fVmmCoreOpenType;      // original open = TRUE, existing open = FALSE
     PyObject *pyObjVfs;
     PyObject *pyObjKernel;
+    PyObject *pyObjMaps;
     PyObject *pyObjMemory;
     VMM_HANDLE hVMM;
 } PyObj_Vmm;
@@ -188,6 +189,7 @@ typedef struct tdPyObj_Module {
     BOOL fValid;
     PyObj_Vmm *pyVMM;
     DWORD dwPID;
+    PyObject *pyObjMapsOpt;
     VMMDLL_MAP_MODULEENTRY ModuleEntry;
     CHAR uszText[64];
     CHAR uszFullName[128];
@@ -215,6 +217,8 @@ typedef struct tdPyObj_Process {
     PyObj_Vmm *pyVMM;
     DWORD dwPID;
     BOOL fValidInfo;
+    PyObject *pyObjMapsOpt;
+    PyObject *pyObjMemoryOpt;
     VMMDLL_PROCESS_INFORMATION Info;
 } PyObj_Process;
 
@@ -358,8 +362,11 @@ PyObj_Vmm *VmmPycVmm_InitializeInternal2(_In_ PyObj_Vmm *pyVMM, _In_ VMM_HANDLE 
 PyObj_Search *VmmPycSearch_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_opt_ DWORD dwPID, _In_ PyObject *args);
 PyObj_Yara *VmmPycYara_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_opt_ DWORD dwPID, _In_ PyObject *args);
 
+DWORD VmmPyc_MemReadType_TypeCheck(_In_ PyObject *pyUnicodeTp, _Out_ PDWORD pcbTp);
+PyObject* VmmPyc_MemReadType_TypeGet(_In_ DWORD tp, _In_ PBYTE pb);
 PyObject* VmmPyc_MemReadScatter(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ LPSTR szFN, PyObject *args);
 PyObject* VmmPyc_MemRead(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ LPSTR szFN, PyObject *args);
 PyObject* VmmPyc_MemWrite(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ LPSTR szFN, PyObject *args);
+PyObject* VmmPyc_MemReadType(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ LPSTR szFN, PyObject *args);
 
 #endif /* __VMMPYC_H__ */

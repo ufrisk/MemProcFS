@@ -378,6 +378,7 @@ VmmPycYara_dealloc(PyObj_Yara *self)
     }
     Py_XDECREF(self->pyListResult);
     Py_XDECREF(self->pyVMM); self->pyVMM = NULL;
+    PyObject_Del(self);
 }
 
 _Success_(return)

@@ -218,7 +218,8 @@ VmmPycRegKey_dealloc(PyObj_RegKey *self)
 {
     self->fValid = FALSE;
     Py_XDECREF(self->pyName);
-    Py_XDECREF(self->pyVMM); self->pyVMM = NULL;
+    Py_XDECREF(self->pyVMM);
+    PyObject_Del(self);
 }
 
 _Success_(return)

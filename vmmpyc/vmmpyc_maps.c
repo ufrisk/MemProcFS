@@ -339,6 +339,8 @@ static void
 VmmPycMaps_dealloc(PyObj_Maps *self)
 {
     self->fValid = FALSE;
+    Py_XDECREF(self->pyVMM);
+    PyObject_Del(self);
 }
 
 _Success_(return)

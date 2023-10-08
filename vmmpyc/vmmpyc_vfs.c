@@ -196,7 +196,8 @@ static void
 VmmPycVfs_dealloc(PyObj_Vfs *self)
 {
     self->fValid = FALSE;
-    Py_XDECREF(self->pyVMM); self->pyVMM = NULL;
+    Py_XDECREF(self->pyVMM);
+    PyObject_Del(self);
 }
 
 _Success_(return)

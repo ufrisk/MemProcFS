@@ -106,6 +106,179 @@ PyObject* VmmPyc_MemWrite(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ LPSTR szFN, 
     return Py_BuildValue("s", NULL);    // None returned on success.
 }
 
+DWORD VmmPyc_MemReadType_TypeCheck(_In_ PyObject* pyUnicodeTp, _Out_ PDWORD pcbTp)
+{
+    PyObject *pyBytes;
+    union {
+        DWORD dw;
+        BYTE b4[4];
+    } tp = { 0 };
+    SIZE_T cch;
+    char *sz;
+    if((pyBytes = PyUnicode_AsUTF8String(pyUnicodeTp))) {
+        PyBytes_AsStringAndSize(pyBytes, &sz, &cch);
+        tp.b4[3] = (cch > 0) ? sz[0] : ' ';
+        tp.b4[2] = (cch > 1) ? sz[1] : ' ';
+        tp.b4[1] = (cch > 2) ? sz[2] : ' ';
+        tp.b4[0] = (cch > 3) ? sz[3] : ' ';
+        Py_DECREF(pyBytes);
+    }
+    switch(tp.dw) {
+        case 'i8  ':
+        case 'u8  ':
+            *pcbTp = 1;
+            return tp.dw;
+        case 'i16 ':
+        case 'u16 ':
+            *pcbTp = 2;
+            return tp.dw;
+        case 'f32 ':
+        case 'i32 ':
+        case 'u32 ':
+            *pcbTp = 4;
+            return tp.dw;
+        case 'f64 ':
+        case 'i64 ':
+        case 'u64 ':
+            *pcbTp = 8;
+            return tp.dw;
+        default:
+            *pcbTp = 0;
+            return tp.dw;
+    }
+}
+
+PyObject* VmmPyc_MemReadType_TypeGet(_In_ DWORD tp, _In_ PBYTE pb)
+{
+    switch(tp) {
+        case 'i8  ':
+            return PyLong_FromLong(*(signed char*)pb); break;
+        case 'u8  ':
+            return PyLong_FromUnsignedLong(*(BYTE*)pb); break;
+        case 'i16 ':
+            return PyLong_FromLong(*(signed short*)pb); break;
+        case 'u16 ':
+            return PyLong_FromUnsignedLong(*(WORD*)pb); break;
+        case 'f32 ':
+            return PyFloat_FromDouble(*(float*)pb); break;
+        case 'i32 ':
+            return PyLong_FromLong(*(signed long *)pb); break;
+        case 'u32 ':
+            return PyLong_FromUnsignedLong(*(DWORD*)pb); break;
+        case 'f64 ':
+            return PyFloat_FromDouble(*(double*)pb); break;
+        case 'i64 ':
+            return PyLong_FromLongLong(*(signed long long*)pb); break;
+        case 'u64 ':
+            return PyLong_FromUnsignedLongLong(*(QWORD*)pb); break;
+            break;
+        default:
+            Py_INCREF(Py_None);
+            return Py_None;
+    }
+}
+
+// ([[ULONG64, STR], ..]) -> [T1, T2, ..]
+PyObject* VmmPyc_MemReadType(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ LPSTR szFN, PyObject *args)
+{
+    PyObject *pyListItemSrc, *pyListResult = NULL, *pyLongAddress, *pyUnicodeTP;
+    DWORD iItem, cItem;
+    ULONG64 qwA, vaPrevious = (ULONG64)-1, flags = 0;
+    BYTE pbPage[0x1000], pb8[8], pbZERO[8] = { 0 }, *pbTP;
+    DWORD tp, cbTP, cbRead;
+    PyObject *pyObjArg0, *pyObjArg1 = NULL;
+    struct MultiInfo {
+        QWORD qwA;
+        DWORD tp;
+        DWORD cb;
+        BYTE pb[8];
+    };
+    struct MultiInfo *pMultiInfo = NULL, *pInfo;
+    if(!PyArg_ParseTuple(args, "O|OK", &pyObjArg0, &pyObjArg1, &flags)) {           // borrowed reference
+        return PyErr_Format(PyExc_RuntimeError, "%s: Illegal argument.", szFN);
+    }
+    // Single type read on the format: (ULONG64, STR | ULONG64), Example: 0x1000, 'u32 '
+    if(PyLong_Check(pyObjArg0)) {
+        if(!pyObjArg1 || !PyUnicode_Check(pyObjArg1)) {
+            return PyErr_Format(PyExc_RuntimeError, "%s: Illegal argument.", szFN);
+        }
+        tp = VmmPyc_MemReadType_TypeCheck(pyObjArg1, &cbTP);
+        qwA = PyLong_AsUnsignedLongLong(pyObjArg0);
+        pbTP = pbZERO;
+        if(cbTP) {
+            Py_BEGIN_ALLOW_THREADS;
+            VMMDLL_MemReadEx(H, dwPID, qwA, pb8, cbTP, &cbRead, flags | VMMDLL_FLAG_NO_PREDICTIVE_READ);
+            if(cbTP == cbRead) {
+                pbTP = pb8;
+            }
+            Py_END_ALLOW_THREADS;
+        }
+        return VmmPyc_MemReadType_TypeGet(tp, pbTP);
+    }
+    // List read on the format: ([[ULONG64, STR], ..] | ULONG64), Example: [[0x1000, 'u32 '], [0x2000, 'u32 ']]
+    // verify and read python object data:
+    if(!PyList_Check(pyObjArg0)) {
+        return PyErr_Format(PyExc_RuntimeError, "%s: Illegal argument.", szFN);
+    }
+    if(pyObjArg1) {
+        if(!PyLong_Check(pyObjArg1)) {
+            return PyErr_Format(PyExc_RuntimeError, "%s: Illegal argument.", szFN);
+        }
+        flags = PyLong_AsUnsignedLongLong(pyObjArg1);
+    }
+    cItem = (DWORD)PyList_Size(pyObjArg0);
+    pMultiInfo = LocalAlloc(LMEM_ZEROINIT, cItem * sizeof(struct MultiInfo));
+    if(!pMultiInfo) { goto fail; }
+    for(iItem = 0; iItem < cItem; iItem++) {
+        pInfo = pMultiInfo + iItem;
+        pyListItemSrc = PyList_GetItem(pyObjArg0, iItem);           // borrowed reference
+        if(!pyListItemSrc || !PyList_Check(pyListItemSrc)) { goto fail; }
+        pyLongAddress = PyList_GetItem(pyListItemSrc, 0);           // borrowed reference
+        pyUnicodeTP = PyList_GetItem(pyListItemSrc, 1);             // borrowed reference
+        if(!pyLongAddress || !pyUnicodeTP || !PyLong_Check(pyLongAddress) || !PyUnicode_Check(pyUnicodeTP)) { goto fail; }
+        pInfo->tp = VmmPyc_MemReadType_TypeCheck(pyUnicodeTP, &pInfo->cb);
+        pInfo->qwA = PyLong_AsUnsignedLongLong(pyLongAddress);
+    }
+    // native read data:
+    Py_BEGIN_ALLOW_THREADS;
+    for(iItem = 0; iItem < cItem; iItem++) {
+        pInfo = pMultiInfo + iItem;
+        if((pInfo->qwA & 0xfff) + pInfo->cb > 0x1000) {
+            // across page-boundary:
+            vaPrevious = (ULONG64)-1;
+            VMMDLL_MemReadEx(H, dwPID, pInfo->qwA, pb8, pInfo->cb, &cbRead, flags | VMMDLL_FLAG_NO_PREDICTIVE_READ);
+            if(cbRead == pInfo->cb) {
+                memcpy(pInfo->pb, pb8, pInfo->cb);
+            }
+        } else if(vaPrevious != (pInfo->qwA & ~0xfff)) {
+            // new in-page read:
+            vaPrevious = (ULONG64)-1;
+            VMMDLL_MemReadEx(H, dwPID, pInfo->qwA & ~0xfff, pbPage, 0x1000, &cbRead, flags | VMMDLL_FLAG_NO_PREDICTIVE_READ);
+            if(cbRead == 0x1000) {
+                vaPrevious = pInfo->qwA & ~0xfff;
+                memcpy(pInfo->pb, pbPage + (pInfo->qwA & 0xfff), pInfo->cb);
+            }
+        } else {
+            // previous page-read:
+            memcpy(pInfo->pb, pbPage + (pInfo->qwA & 0xfff), pInfo->cb);
+        }
+    }
+    Py_END_ALLOW_THREADS;
+    // python allocate and return results:
+    pyListResult = PyList_New(0);
+    if(!pyListResult) { goto fail; }
+    for(iItem = 0; iItem < cItem; iItem++) {
+        pInfo = pMultiInfo + iItem;
+        PyList_Append_DECREF(pyListResult, VmmPyc_MemReadType_TypeGet(pInfo->tp, pInfo->pb));
+    }
+    LocalFree(pMultiInfo);
+    return pyListResult;
+fail:
+    LocalFree(pMultiInfo);
+    Py_XDECREF(pyListResult);
+    return PyErr_Format(PyExc_RuntimeError, "%s: Internal error.", szFN);
+}
+
 
 
 //-----------------------------------------------------------------------------

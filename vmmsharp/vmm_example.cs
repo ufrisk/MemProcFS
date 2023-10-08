@@ -68,7 +68,7 @@ class vmm_example
         if (memMap != null)
         {
             // Write output to Text File
-            System.IO.File.WriteAllBytes("mmap.txt", System.Text.Encoding.ASCII.GetBytes(memMap));
+            //System.IO.File.WriteAllBytes("mmap.txt", System.Text.Encoding.ASCII.GetBytes(memMap));
         }
 
         // initialize plugins (required for vfs)
@@ -141,8 +141,8 @@ class vmm_example
             }
         }
 
-        // Read string
-        string someString = vmm.MemReadString(Encoding.UTF8, dwExplorerPID, mModuleKernel32.vaBase + 0x0 /* Some Offset */ , 64);
+        // Read string: "This program cannot be run in DOS mode" from kernel32.dll with ascii encoding (offset: 0x4e).
+        string strDosMode = vmm.MemReadString(Encoding.ASCII, dwExplorerPID, mModuleKernel32.vaBase + 0x4e, 0x26);
 
         // translate virtual address of 1st page in kernel32.dll to physical address
         ulong paBaseKernel32;

@@ -139,7 +139,8 @@ static void
 VmmPycPdb_dealloc(PyObj_Pdb *self)
 {
     self->fValid = FALSE;
-    Py_XDECREF(self->pyVMM); self->pyVMM = NULL;
+    Py_XDECREF(self->pyVMM);
+    PyObject_Del(self);
 }
 
 _Success_(return)

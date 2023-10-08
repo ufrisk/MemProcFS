@@ -111,7 +111,9 @@ static PyObject*
 VmmPycProcess_memory(PyObj_Process *self, void *closure)
 {
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Process.memory: Not initialized."); }
-    return (PyObject*)VmmPycVirtualMemory_InitializeInternal(self->pyVMM, self->dwPID);
+    if(!self->pyObjMemoryOpt) { self->pyObjMemoryOpt = (PyObject*)VmmPycVirtualMemory_InitializeInternal(self->pyVMM, self->dwPID); }
+    Py_XINCREF(self->pyObjMemoryOpt);
+    return self->pyObjMemoryOpt;
 }
 
 // -> *PyObj_ProcessMaps
@@ -119,7 +121,9 @@ static PyObject*
 VmmPycProcess_maps(PyObj_Process *self, void *closure)
 {
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Process.maps: Not initialized."); }
-    return (PyObject*)VmmPycProcessMaps_InitializeInternal(self->pyVMM, self->dwPID);
+    if(!self->pyObjMapsOpt) { self->pyObjMapsOpt = (PyObject*)VmmPycProcessMaps_InitializeInternal(self->pyVMM, self->dwPID); }
+    Py_XINCREF(self->pyObjMapsOpt);
+    return self->pyObjMapsOpt;
 }
 
 // (|QWORD, QWORD, QWORD) -> PyObj_Search*
@@ -359,6 +363,8 @@ VmmPycProcess_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_ DWORD dwPID, _In_ B
     pyObj->fValid = TRUE;
     pyObj->dwPID = dwPID;
     pyObj->fValidInfo = FALSE;
+    pyObj->pyObjMapsOpt = NULL;
+    pyObj->pyObjMemoryOpt = NULL;
     return pyObj;
 }
 
@@ -381,7 +387,10 @@ static void
 VmmPycProcess_dealloc(PyObj_Process *self)
 {
     self->fValid = FALSE;
-    Py_XDECREF(self->pyVMM); self->pyVMM = NULL;
+    Py_XDECREF(self->pyObjMapsOpt);
+    Py_XDECREF(self->pyObjMemoryOpt);
+    Py_XDECREF(self->pyVMM);
+    PyObject_Del(self);
 }
 
 _Success_(return)

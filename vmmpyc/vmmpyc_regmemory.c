@@ -90,7 +90,8 @@ static void
 VmmPycRegMemory_dealloc(PyObj_RegMemory *self)
 {
     self->fValid = FALSE;
-    Py_XDECREF(self->pyVMM); self->pyVMM = NULL;
+    Py_XDECREF(self->pyVMM);
+    PyObject_Del(self);
 }
 
 _Success_(return)

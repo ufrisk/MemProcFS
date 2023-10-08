@@ -221,7 +221,8 @@ static void
 VmmPycModuleMaps_dealloc(PyObj_ModuleMaps *self)
 {
     self->fValid = FALSE;
-    Py_XDECREF(self->pyVMM); self->pyVMM = NULL;
+    Py_XDECREF(self->pyVMM);
+    PyObject_Del(self);
 }
 
 _Success_(return)

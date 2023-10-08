@@ -199,14 +199,6 @@ VmmPycVmm_reg_value(PyObj_Vmm *self, PyObject *args)
     return pyObj;
 }
 
-// -> *PyObj_Maps
-static PyObject*
-VmmPycVmm_maps(PyObj_Vmm *self, void *closure)
-{
-    if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Vmm.maps: Not initialized."); }
-    return (PyObject*)VmmPycMaps_InitializeInternal(self);
-}
-
 // (|QWORD, QWORD, QWORD) -> PyObj_Search*
 static PyObject*
 VmmPycVmm_search(PyObj_Vmm *self, PyObject *args)
@@ -247,8 +239,9 @@ VmmPycVmm_InitializeInternal2(_In_ PyObj_Vmm *pyVMM, _In_ VMM_HANDLE hVMM)
     pyObj->hVMM = hVMM;
     pyObj->fVmmCoreOpenType = TRUE;
     pyObj->pyObjKernel = (PyObject*)VmmPycKernel_InitializeInternal(pyObj);
+    pyObj->pyObjMaps = (PyObject*)VmmPycMaps_InitializeInternal(pyObj);
     pyObj->pyObjMemory = (PyObject*)VmmPycPhysicalMemory_InitializeInternal(pyObj);
-    pyObj->pyObjVfs = (PyObject *)VmmPycVfs_InitializeInternal(pyObj);
+    pyObj->pyObjVfs = (PyObject*)VmmPycVfs_InitializeInternal(pyObj);
     pyObj->fValid = TRUE;
     return pyObj;
 }
@@ -326,13 +319,11 @@ VmmPycVmm_init(PyObj_Vmm *self, PyObject *args, PyObject *kwds)
         }
         g_PluginVMM_LoadedOnce = TRUE;
     }
-    // initialize vfs:
-    if(!self->pyObjVfs) {
-        self->pyObjVfs = (PyObject*)VmmPycVfs_InitializeInternal(self);
-    }
     // success - initialize type object and return!
     self->pyObjKernel = (PyObject*)VmmPycKernel_InitializeInternal(self);
+    self->pyObjMaps = (PyObject*)VmmPycMaps_InitializeInternal(self);
     self->pyObjMemory = (PyObject*)VmmPycPhysicalMemory_InitializeInternal(self);
+    self->pyObjVfs = (PyObject*)VmmPycVfs_InitializeInternal(self);
     self->fValid = TRUE;
     return 0;
 }
@@ -348,9 +339,10 @@ VmmPycVmm_dealloc(PyObj_Vmm *self)
             Py_END_ALLOW_THREADS;
         }
     }
-    Py_XDECREF(self->pyObjVfs); self->pyObjVfs = NULL;
-    Py_XDECREF(self->pyObjKernel); self->pyObjKernel = NULL;
-    Py_XDECREF(self->pyObjMemory); self->pyObjMemory = NULL;
+    Py_XDECREF(self->pyObjKernel);
+    Py_XDECREF(self->pyObjMaps);
+    Py_XDECREF(self->pyObjMemory);
+    Py_XDECREF(self->pyObjVfs);
 }
 
 // () -> None
@@ -380,13 +372,13 @@ BOOL VmmPycVmm_InitializeType(PyObject *pModule)
         {NULL, NULL, 0, NULL}
     };
     static PyMemberDef PyMembers[] = {
-        {"memory", T_OBJECT, offsetof(PyObj_Vmm, pyObjMemory), READONLY, "Physical memory."},
         {"kernel", T_OBJECT, offsetof(PyObj_Vmm, pyObjKernel), READONLY, "Kernel information."},
+        {"maps", T_OBJECT, offsetof(PyObj_Vmm, pyObjMaps), READONLY, "Info maps."},
+        {"memory", T_OBJECT, offsetof(PyObj_Vmm, pyObjMemory), READONLY, "Physical memory."},
         {"vfs", T_OBJECT, offsetof(PyObj_Vmm, pyObjVfs), READONLY, "Virtual file system."},
         {NULL}
     };
     static PyGetSetDef PyGetSet[] = {
-        {"maps", (getter)VmmPycVmm_maps, (setter)NULL, "Info maps.", NULL},
         {NULL}
     };
     static PyType_Slot PyTypeSlot[] = {

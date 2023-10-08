@@ -437,7 +437,8 @@ static void
 VmmPycProcessMaps_dealloc(PyObj_ProcessMaps *self)
 {
     self->fValid = FALSE;
-    Py_XDECREF(self->pyVMM); self->pyVMM = NULL;
+    Py_XDECREF(self->pyVMM);
+    PyObject_Del(self);
 }
 
 _Success_(return)

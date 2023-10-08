@@ -338,7 +338,8 @@ VmmPycSearch_dealloc(PyObj_Search *self)
         Py_END_ALLOW_THREADS;
     }
     Py_XDECREF(self->pyListResult);
-    Py_XDECREF(self->pyVMM); self->pyVMM = NULL;
+    Py_XDECREF(self->pyVMM);
+    PyObject_Del(self);
 }
 
 _Success_(return)

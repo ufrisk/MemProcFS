@@ -5,7 +5,7 @@ CFLAGS= -I. -I../includes -D LINUX  -L. -l:vmm.so -shared -fPIC -fvisibility=hid
 # DEBUG FLAGS ABOVE
 CFLAGS  += -fPIE -fPIC -pie -fstack-protector-strong -D_FORTIFY_SOURCE=2 -O1 -Wl,-z,noexecstack
 CFLAGS  += -Wall -Wno-format-truncation -Wno-enum-compare -Wno-pointer-sign -Wno-multichar -Wno-unused-variable -Wno-unused-value
-CFLAGS  += -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast
+CFLAGS  += -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast -Wno-multichar
 LDFLAGS += -L../files -Wl,-rpath,'$$ORIGIN' -g -ldl -shared
 DEPS = 
 OBJ = oscompatibility.o vmmpycplugin.o vmmpyc.o                               \

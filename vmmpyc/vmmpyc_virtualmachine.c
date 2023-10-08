@@ -172,7 +172,8 @@ VmmPycVirtualMachine_dealloc(PyObj_VirtualMachine *self)
 {
     self->fValid = FALSE;
     Py_XDECREF(self->pyName);
-    Py_XDECREF(self->pyVMM); self->pyVMM = NULL;
+    Py_XDECREF(self->pyVMM);
+    PyObject_Del(self);
 }
 
 _Success_(return)

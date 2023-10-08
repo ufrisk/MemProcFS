@@ -31,16 +31,18 @@ VmmPycModule_pdb(PyObj_Module *self, void *closure)
 {
     PyObject *pyObjPdb;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Module.pdb: Not initialized."); }
-    pyObjPdb = (PyObject *)VmmPycPdb_InitializeInternal1(self->pyVMM, self->dwPID, self->ModuleEntry.vaBase);
+    pyObjPdb = (PyObject*)VmmPycPdb_InitializeInternal1(self->pyVMM, self->dwPID, self->ModuleEntry.vaBase);
     return pyObjPdb ? pyObjPdb : PyErr_Format(PyExc_RuntimeError, "Module.pdb: Not initialized.");
 }
 
 // -> *PyObj_ModuleMaps
-static PyObject*
+static PyObject *
 VmmPycModule_maps(PyObj_Module *self, void *closure)
 {
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Module.maps: Not initialized."); }
-    return (PyObject*)VmmPycModuleMaps_InitializeInternal(self->pyVMM, self->dwPID, self->ModuleEntry.uszText);
+    if(!self->pyObjMapsOpt) { (PyObject*)VmmPycModuleMaps_InitializeInternal(self->pyVMM, self->dwPID, self->ModuleEntry.uszText); }
+    Py_XINCREF(self->pyObjMapsOpt);
+    return self->pyObjMapsOpt;
 }
 
 // -> PyObj_Process
@@ -84,6 +86,7 @@ VmmPycModule_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_ DWORD dwPID, _In_ PV
     strncpy_s(pyObj->uszFullName, _countof(pyObj->uszFullName), pe->uszFullName, _TRUNCATE);
     pyObj->ModuleEntry.uszText = pyObj->uszText;
     pyObj->ModuleEntry.uszFullName = pyObj->uszFullName;
+    pyObj->pyObjMapsOpt = NULL;
     return pyObj;
 }
 
@@ -109,7 +112,9 @@ static void
 VmmPycModule_dealloc(PyObj_Module *self)
 {
     self->fValid = FALSE;
-    Py_XDECREF(self->pyVMM); self->pyVMM = NULL;
+    Py_XDECREF(self->pyObjMapsOpt);
+    Py_XDECREF(self->pyVMM);
+    PyObject_Del(self);
 }
 
 _Success_(return)

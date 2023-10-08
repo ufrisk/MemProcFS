@@ -23,6 +23,14 @@ VmmPycPhysicalMemory_read_scatter(PyObj_PhysicalMemory *self, PyObject *args)
     return VmmPyc_MemReadScatter(self->pyVMM->hVMM, (DWORD)-1, "PhysicalMemory.read_scatter()", args);
 }
 
+// ([[ULONG64, STR], ..]) -> [T1, T2, ..]
+static PyObject*
+VmmPycPhysicalMemory_read_type(PyObj_PhysicalMemory *self, PyObject *args)
+{
+    if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "PhysicalMemory.read_type(): Not initialized."); }
+    return VmmPyc_MemReadType(self->pyVMM->hVMM, (DWORD)-1, "PhysicalMemory.read_type()", args);
+}
+
 // (ULONG64, PBYTE) -> None
 static PyObject*
 VmmPycPhysicalMemory_write(PyObj_PhysicalMemory *self, PyObject *args)
@@ -74,7 +82,8 @@ static void
 VmmPycPhysicalMemory_dealloc(PyObj_PhysicalMemory *self)
 {
     self->fValid = FALSE;
-    Py_XDECREF(self->pyVMM); self->pyVMM = NULL;
+    Py_XDECREF(self->pyVMM);
+    PyObject_Del(self);
 }
 
 _Success_(return)
@@ -83,6 +92,7 @@ BOOL VmmPycPhysicalMemory_InitializeType(PyObject * pModule)
     static PyMethodDef PyMethods[] = {
         {"read", (PyCFunction)VmmPycPhysicalMemory_read, METH_VARARGS, "Read contigious physical memory."},
         {"read_scatter", (PyCFunction)VmmPycPhysicalMemory_read_scatter, METH_VARARGS, "Read scatter physical 4kB memory pages."},
+        {"read_type", (PyCFunction)VmmPycPhysicalMemory_read_type, METH_VARARGS, "Read user-defined type(s)."},
         {"write", (PyCFunction)VmmPycPhysicalMemory_write, METH_VARARGS, "Write contigious physical memory."},
         {"scatter_initialize", (PyCFunction)VmmPycPhysicalMemory_scatter_initialize, METH_VARARGS, "Initialize a Scatter memory object used for efficient reads."},
         {NULL, NULL, 0, NULL}
