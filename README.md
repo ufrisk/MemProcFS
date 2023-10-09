@@ -203,3 +203,4 @@ Latest:
 * Java API: support for java.lang.foreign (JDK21+) for efficient memory accesses.
 * Linux PCIe FPGA performance improvements.
 * FindEvil: AV detections from Windows Defender residing on the analyzed system.
+* Python API: new functionality (multi-read, type-read) and improved scatter read performance.

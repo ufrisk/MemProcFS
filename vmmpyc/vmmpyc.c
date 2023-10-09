@@ -61,7 +61,65 @@ PyObject* VmmPyc_MemReadScatter(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ LPSTR 
     return pyListDst;
 }
 
+PyObject* VmmPyc_MemRead_Multi(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ LPSTR szFN, PyObject *args)
+{
+    BOOL fResult = FALSE;
+    QWORD flags = 0;
+    PyObject *pyListSrc, *pyListItemSrc, *pyLongAddress, *pyLongSize, *pyListResult, *pyBytes;
+    DWORD cItem, iItem, cbMax = 0, cbRead;
+    struct MultiInfo {
+        QWORD qwA;
+        DWORD cb;
+    };
+    struct MultiInfo *pMultiInfo = NULL, *pInfo;
+    VMMDLL_SCATTER_HANDLE hS = NULL;
+    PBYTE pb = NULL;
+    if(!PyArg_ParseTuple(args, "O!|K", &PyList_Type, &pyListSrc, &flags)) {     // borrowed reference
+        return PyErr_Format(PyExc_RuntimeError, "%s: Illegal argument.", szFN);
+    }
+    cItem = (DWORD)PyList_Size(pyListSrc);
+    pMultiInfo = LocalAlloc(LMEM_ZEROINIT, cItem * sizeof(struct MultiInfo));
+    hS = VMMDLL_Scatter_Initialize(H, dwPID, (DWORD)flags);
+    pyListResult = PyList_New(0);
+    if(!pMultiInfo || !hS || !pyListResult) { goto fail; }
+    for(iItem = 0; iItem < cItem; iItem++) {
+        pInfo = pMultiInfo + iItem;
+        pyListItemSrc = PyList_GetItem(pyListSrc, iItem);           // borrowed reference
+        if(!pyListItemSrc || !PyList_Check(pyListItemSrc)) { goto fail; }
+        pyLongAddress = PyList_GetItem(pyListItemSrc, 0);           // borrowed reference
+        pyLongSize = PyList_GetItem(pyListItemSrc, 1);              // borrowed reference
+        if(!pyLongAddress || !pyLongSize || !PyLong_Check(pyLongAddress) || !PyLong_Check(pyLongSize)) { goto fail; }
+        pInfo->qwA = PyLong_AsUnsignedLongLong(pyLongAddress);
+        pInfo->cb = PyLong_AsUnsignedLong(pyLongSize);
+        if((pInfo->qwA == (DWORD)-1) || (pInfo->cb == (DWORD)-1)) { goto fail; }
+        cbMax = max(cbMax, pInfo->cb);
+        VMMDLL_Scatter_Prepare(hS, pInfo->qwA, pInfo->cb);
+    }
+    VMMDLL_Scatter_ExecuteRead(hS);
+    pb = LocalAlloc(0, cbMax);
+    if(!pb) { goto fail; }
+    for(iItem = 0; iItem < cItem; iItem++) {
+        pInfo = pMultiInfo + iItem;
+        if(VMMDLL_Scatter_Read(hS, pInfo->qwA, pInfo->cb, pb, &cbRead) && (pInfo->cb == cbRead) && (pyBytes = PyBytes_FromStringAndSize((const char*)pb, cbRead))) {
+            PyList_Append_DECREF(pyListResult, pyBytes);
+        } else {
+            PyList_Append(pyListResult, Py_None);
+        }
+    }
+    fResult = TRUE;
+fail:
+    LocalFree(pb);
+    LocalFree(pMultiInfo);
+    VMMDLL_Scatter_CloseHandle(hS);
+    if(!fResult) {
+        Py_XDECREF(pyListResult);
+        PyErr_Format(PyExc_RuntimeError, "%s: Failed.", szFN);
+    }
+    return fResult ? pyListResult : PyErr_Format(PyExc_RuntimeError, "%s: Failed.", szFN);
+}
+
 // (ULONG64, DWORD, (ULONG64)) -> PBYTE
+// ([[ULONG64, DWORD], ..], (ULONG64)) -> [PBYTE, ..]
 PyObject* VmmPyc_MemRead(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ LPSTR szFN, PyObject *args)
 {
     PyObject *pyBytes;
@@ -69,8 +127,10 @@ PyObject* VmmPyc_MemRead(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ LPSTR szFN, P
     PBYTE pb;
     DWORD cb, cbRead = 0;
     ULONG64 qwA, flags = 0;
-    if(!PyArg_ParseTuple(args, "Kk|K",  &qwA, &cb, &flags)) {
-        return PyErr_Format(PyExc_RuntimeError, "%s: Illegal argument.", szFN);
+    if(!PyArg_ParseTuple(args, "Kk|K", &qwA, &cb, &flags)) {
+        // try multi-read:
+        PyErr_Clear();
+        return VmmPyc_MemRead_Multi(H, dwPID, szFN, args);
     }
     pb = LocalAlloc(0, cb);
     if(!pb) { return PyErr_NoMemory(); }
@@ -97,13 +157,13 @@ PyObject* VmmPyc_MemWrite(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ LPSTR szFN, 
         return PyErr_Format(PyExc_RuntimeError, "%s: Illegal argument.", szFN);
     }
     if(cb == 0) {
-        return Py_BuildValue("s", NULL);    // zero-byte write is always successful.
+        Py_INCREF(Py_None); return Py_None; // zero-byte write is always successful.
     }
     Py_BEGIN_ALLOW_THREADS;
     result = VMMDLL_MemWrite(H, dwPID, va, pb, (DWORD)cb);
     Py_END_ALLOW_THREADS;
     if(!result) { return PyErr_Format(PyExc_RuntimeError, "%s: Failed.", szFN); }
-    return Py_BuildValue("s", NULL);    // None returned on success.
+    Py_INCREF(Py_None); return Py_None;     // None returned on success.
 }
 
 DWORD VmmPyc_MemReadType_TypeCheck(_In_ PyObject* pyUnicodeTp, _Out_ PDWORD pcbTp)

@@ -86,6 +86,19 @@ def MemProcFS_Example(args):
     print("SUCCESS: vmm.hex(vmm.memory.read())")
     print(result)
 
+    # MEM READ (MULTIPLE) + FillHexAscii
+    print("--------------------------------------------------------------------")
+    print("Read multiple chunks of physical memory at the same time using an   ")
+    print("efficient 'scatter read'. Also disallow using the built-in cache.   ")
+    print("2 chunks are read: 0x100 bytes from 0x1000, 0x80 bytes from 0x3000  ")
+    input("Press Enter to continue...")
+    print("CALL: vmm.hex(vmm.memory.read())")
+    result = vmm.memory.read([[0x1000, 0x100], [0x3000, 0x80]], memprocfs.FLAG_NOCACHE)
+    print("SUCCESS: vmm.hex(vmm.memory.read()[0])")
+    print(vmm.hex(result[0]))
+    print("SUCCESS: vmm.hex(vmm.memory.read()[1])")
+    print(vmm.hex(result[1]))
+
     # MEM READ SCATTER
     print("--------------------------------------------------------------------")
     print("Read 2 non-contigious (scatter) memory from the physical addresses: ")
@@ -224,6 +237,66 @@ def MemProcFS_Example(args):
     result = vmm.hex(process_explorer.memory.read(module_explorer.base, 0x100))
     print("SUCCESS: process_explorer.memory.read()")
     print(result)
+
+    # MEM READ (MULTIPLE)
+    print("--------------------------------------------------------------------")
+    print("Read multiple chunks of virtual memory at the same time using an    ")
+    print("efficient 'scatter read'. Also disallow using the built-in cache.   ")
+    print("read chunks: 8 bytes at PE_BASE and 0x10 bytes at PE_BASE+0x3000.   ")
+    input("Press Enter to continue...")
+    print("CALL: vmm.hex(process_explorer.memory.read())")
+    result = process_explorer.memory.read([[module_explorer.base, 8], [module_explorer.base+0x3000, 0x10]], memprocfs.FLAG_NOCACHE)
+    print("SUCCESS: process_explorer.memory.read()")
+    print(result)
+
+    # MEM READ NATIVE TYPE (SINGLE)
+    print("--------------------------------------------------------------------")
+    print("Read a native type and return its corresponding Python type.        ")
+    print("Supported types: i8, u8, i16, u16, f32, i32, u64, f64, i64, u64     ")
+    input("Press Enter to continue...")
+    print("CALL: vmm.hex(process_explorer.memory.read_type())")
+    result = process_explorer.memory.read_type(module_explorer.base, 'u16')
+    print("SUCCESS: process_explorer.memory.read_type()")
+    print(result)
+
+    # MEM READ NATIVE TYPE (MULTIPLE)
+    print("--------------------------------------------------------------------")
+    print("Read multiple native types and return corresponding Python types.   ")
+    print("Supported types: i8, u8, i16, u16, f32, i32, u64, f64, i64, u64     ")
+    input("Press Enter to continue...")
+    print("CALL: vmm.hex(process_explorer.memory.read_type())")
+    result = process_explorer.memory.read_type([[module_explorer.base, 'u16'], [module_explorer.base + 0x100, 'u64']], memprocfs.FLAG_NOCACHE)
+    print("SUCCESS: process_explorer.memory.read_type()")
+    print(result)
+
+    # MEM READ NEW SCATTER
+    print("--------------------------------------------------------------------")
+    print("Read multiple memory regions at the same time using a scatter memory")
+    print("approach as follows:                                                ")
+    print("   1. Initialize the scatter object.                                ")
+    print("   2. Prepare multiple ranges for reading.                          ")
+    print("   3. Execute the read underlying read, performing io operations.   ")
+    print("   4. Read the results from the scatter object.                     ")
+    print("   5. Close the scatter object, alternatively clear it for re-use.  ")
+    input("Press Enter to continue...")
+    print("CALL: process_explorer.memory.read_scatter_initialize()")
+    scatter = process_explorer.memory.scatter_initialize(memprocfs.FLAG_NOCACHE)
+    print("CALL: scatter.prepare() - SINGLE")
+    scatter.prepare(module_explorer.base, 0x100)
+    print("CALL: scatter.prepare() - MULTIPLE")
+    scatter.prepare([[module_explorer.base, 0x100], [module_explorer.base+0x1000, 0x100]])
+    print("CALL: scatter.execute()")
+    scatter.execute()
+    print("CALL: scatter.read() - SINGLE")
+    result = scatter.read(module_explorer.base, 0x10)
+    print(result)
+    print("CALL: scatter.read() - MULTIPLE")
+    result = scatter.read([[module_explorer.base, 8], [module_explorer.base+0x1000, 0x10]])
+    print(result)
+    # NB! scatter.execute() may be called here to re-read the prepared regions.
+    # NB! scatter.clear() may be called here to clear the scatter object for re-use.
+    # NB! scatter.close() may be called here to close the scatter object, this is
+    #     not required as the object will be cleaned up when it goes out of scope.
 
     # PE EAT
     print("--------------------------------------------------------------------")
