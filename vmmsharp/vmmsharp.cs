@@ -1011,7 +1011,6 @@ namespace vmmsharp
             byte[] buffer = MemRead(pid, qwA, cb, flags);
             if (buffer is null)
                 return null;
-            encoding.GetString(buffer);
             var result = encoding.GetString(buffer);
             if (terminateOnNullChar)
             {
@@ -2715,40 +2714,40 @@ namespace vmmsharp
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 12)] internal ulong[] vStack;
         }
 
-        [DllImport("leechcore.dll", EntryPoint = "LcCreate")]
+        [DllImport("leechcore", EntryPoint = "LcCreate")]
         public static extern IntPtr LcCreate(ref LeechCore.LC_CONFIG pLcCreateConfig);
 
-        [DllImport("leechcore.dll", EntryPoint = "LcCreateEx")]
+        [DllImport("leechcore", EntryPoint = "LcCreateEx")]
         public static extern IntPtr LcCreateEx(ref LeechCore.LC_CONFIG pLcCreateConfig, out IntPtr ppLcCreateErrorInfo);
 
-        [DllImport("leechcore.dll", EntryPoint = "LcClose")]
+        [DllImport("leechcore", EntryPoint = "LcClose")]
         internal static extern void LcClose(IntPtr hLC);
 
-        [DllImport("leechcore.dll", EntryPoint = "LcMemFree")]
+        [DllImport("leechcore", EntryPoint = "LcMemFree")]
         internal static extern unsafe void LcMemFree(IntPtr pv);
 
-        [DllImport("leechcore.dll", EntryPoint = "LcAllocScatter1")]
+        [DllImport("leechcore", EntryPoint = "LcAllocScatter1")]
         internal static extern unsafe bool LcAllocScatter1(uint cMEMs, out IntPtr pppMEMs);
 
-        [DllImport("leechcore.dll", EntryPoint = "LcRead")]
+        [DllImport("leechcore", EntryPoint = "LcRead")]
         internal static extern unsafe bool LcRead(IntPtr hLC, ulong pa, uint cb, byte* pb);
 
-        [DllImport("leechcore.dll", EntryPoint = "LcReadScatter")]
+        [DllImport("leechcore", EntryPoint = "LcReadScatter")]
         internal static extern unsafe void LcReadScatter(IntPtr hLC, uint cMEMs, IntPtr ppMEMs);
 
-        [DllImport("leechcore.dll", EntryPoint = "LcWrite")]
+        [DllImport("leechcore", EntryPoint = "LcWrite")]
         internal static extern unsafe bool LcWrite(IntPtr hLC, ulong pa, uint cb, byte* pb);
 
-        [DllImport("leechcore.dll", EntryPoint = "LcWriteScatter")]
+        [DllImport("leechcore", EntryPoint = "LcWriteScatter")]
         internal static extern unsafe void LcWriteScatter(IntPtr hLC, uint cMEMs, IntPtr ppMEMs);
 
-        [DllImport("leechcore.dll", EntryPoint = "LcGetOption")]
+        [DllImport("leechcore", EntryPoint = "LcGetOption")]
         public static extern bool GetOption(IntPtr hLC, ulong fOption, out ulong pqwValue);
 
-        [DllImport("leechcore.dll", EntryPoint = "LcSetOption")]
+        [DllImport("leechcore", EntryPoint = "LcSetOption")]
         public static extern bool SetOption(IntPtr hLC, ulong fOption, ulong qwValue);
 
-        [DllImport("leechcore.dll", EntryPoint = "LcCommand")]
+        [DllImport("leechcore", EntryPoint = "LcCommand")]
         internal static extern unsafe bool LcCommand(IntPtr hLC, ulong fOption, uint cbDataIn, byte* pbDataIn, out IntPtr ppbDataOut, out uint pcbDataOut);
     }
 
@@ -2779,32 +2778,32 @@ namespace vmmsharp
 
 
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_InitializeEx")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_InitializeEx")]
         internal static extern IntPtr VMMDLL_InitializeEx(
             int argc,
             string[] argv,
             out IntPtr ppLcErrorInfo);
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_CloseAll")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_CloseAll")]
         public static extern void VMMDLL_CloseAll();
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Close")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Close")]
         public static extern void VMMDLL_Close(
             IntPtr hVMM);
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_ConfigGet")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_ConfigGet")]
         public static extern bool VMMDLL_ConfigGet(
             IntPtr hVMM,
             ulong fOption,
             out ulong pqwValue);
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_ConfigSet")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_ConfigSet")]
         public static extern bool VMMDLL_ConfigSet(
             IntPtr hVMM,
             ulong fOption,
             ulong qwValue);
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_MemFree")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_MemFree")]
         internal static extern unsafe void VMMDLL_MemFree(
             byte* pvMem);
 
@@ -2825,13 +2824,13 @@ namespace vmmsharp
             internal ulong h;
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_VfsListU")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_VfsListU")]
         internal static extern unsafe bool VMMDLL_VfsList(
             IntPtr hVMM,
             [MarshalAs(UnmanagedType.LPUTF8Str)] string wcsPath,
             ref VMMDLL_VFS_FILELIST pFileList);
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_VfsReadU")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_VfsReadU")]
         internal static extern unsafe uint VMMDLL_VfsRead(
             IntPtr hVMM,
             [MarshalAs(UnmanagedType.LPUTF8Str)] string wcsFileName,
@@ -2840,7 +2839,7 @@ namespace vmmsharp
             out uint pcbRead,
             ulong cbOffset);
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_VfsWriteU")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_VfsWriteU")]
         internal static extern unsafe uint VMMDLL_VfsWrite(
             IntPtr hVMM,
             [MarshalAs(UnmanagedType.LPUTF8Str)] string wcsFileName,
@@ -2853,14 +2852,14 @@ namespace vmmsharp
 
         // PLUGIN FUNCTIONALITY BELOW:
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_InitializePlugins")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_InitializePlugins")]
         public static extern bool VMMDLL_InitializePlugins(IntPtr hVMM);
 
 
 
         // MEMORY READ/WRITE FUNCTIONALITY BELOW:
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_MemReadScatter")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_MemReadScatter")]
         internal static extern unsafe uint VMMDLL_MemReadScatter(
             IntPtr hVMM,
             uint dwPID,
@@ -2868,7 +2867,7 @@ namespace vmmsharp
             uint cpMEMs,
             uint flags);
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_MemReadEx")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_MemReadEx")]
         internal static extern unsafe bool VMMDLL_MemReadEx(
             IntPtr hVMM,
             uint dwPID,
@@ -2878,14 +2877,14 @@ namespace vmmsharp
             out uint pcbReadOpt,
             uint flags);
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_MemPrefetchPages")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_MemPrefetchPages")]
         internal static extern unsafe bool VMMDLL_MemPrefetchPages(
             IntPtr hVMM,
             uint dwPID,
             byte* pPrefetchAddresses,
             uint cPrefetchAddresses);
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_MemWrite")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_MemWrite")]
         internal static extern unsafe bool VMMDLL_MemWrite(
             IntPtr hVMM,
             uint dwPID,
@@ -2893,7 +2892,7 @@ namespace vmmsharp
             byte* pb,
             uint cb);
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_MemVirt2Phys")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_MemVirt2Phys")]
         public static extern bool VMMDLL_MemVirt2Phys(
             IntPtr hVMM,
             uint dwPID,
@@ -2905,34 +2904,34 @@ namespace vmmsharp
 
         // MEMORY NEW SCATTER READ/WRITE FUNCTIONALITY BELOW:
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Scatter_Initialize")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Scatter_Initialize")]
         internal static extern unsafe IntPtr VMMDLL_Scatter_Initialize(
             IntPtr hVMM,
             uint dwPID,
             uint flags);
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Scatter_Prepare")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Scatter_Prepare")]
         internal static extern unsafe bool VMMDLL_Scatter_Prepare(
             IntPtr hS,
             ulong va,
             uint cb);
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Scatter_PrepareWrite")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Scatter_PrepareWrite")]
         internal static extern unsafe bool VMMDLL_Scatter_PrepareWrite(
             IntPtr hS,
             ulong va,
             byte* pb,
             uint cb);
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Scatter_ExecuteRead")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Scatter_ExecuteRead")]
         internal static extern unsafe bool VMMDLL_Scatter_ExecuteRead(
             IntPtr hS);
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Scatter_Execute")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Scatter_Execute")]
         internal static extern unsafe bool VMMDLL_Scatter_Execute(
             IntPtr hS);
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Scatter_Read")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Scatter_Read")]
         internal static extern unsafe bool VMMDLL_Scatter_Read(
             IntPtr hS,
             ulong va,
@@ -2940,16 +2939,16 @@ namespace vmmsharp
             byte* pb,
             out uint pcbRead);
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Scatter_Clear")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Scatter_Clear")]
         public static extern bool SVMMDLL_Scatter_Clear(IntPtr hS, uint dwPID, uint flags);
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Scatter_Clear")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Scatter_Clear")]
         internal static extern unsafe bool VMMDLL_Scatter_Clear(
             IntPtr hS,
             uint dwPID,
             uint flags);
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Scatter_CloseHandle")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Scatter_CloseHandle")]
         internal static extern unsafe void VMMDLL_Scatter_CloseHandle(
             IntPtr hS);
 
@@ -2957,16 +2956,16 @@ namespace vmmsharp
 
         // PROCESS FUNCTIONALITY BELOW:
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_PidList")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_PidList")]
         internal static extern unsafe bool VMMDLL_PidList(IntPtr hVMM, byte* pPIDs, ref ulong pcPIDs);
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_PidGetFromName")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_PidGetFromName")]
         public static extern bool VMMDLL_PidGetFromName(IntPtr hVMM, [MarshalAs(UnmanagedType.LPStr)] string szProcName, out uint pdwPID);
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_ProcessGetProcAddressW")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_ProcessGetProcAddressW")]
         public static extern ulong VMMDLL_ProcessGetProcAddress(IntPtr hVMM, uint pid, [MarshalAs(UnmanagedType.LPWStr)] string wszModuleName, [MarshalAs(UnmanagedType.LPStr)] string szFunctionName);
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_ProcessGetModuleBaseW")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_ProcessGetModuleBaseW")]
         public static extern ulong VMMDLL_ProcessGetModuleBase(IntPtr hVMM, uint pid, [MarshalAs(UnmanagedType.LPWStr)] string wszModuleName);
 
         internal const ulong VMMDLL_PROCESS_INFORMATION_MAGIC =         0xc0ffee663df9301e;
@@ -2999,14 +2998,14 @@ namespace vmmsharp
             internal uint IntegrityLevel;
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_ProcessGetInformation")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_ProcessGetInformation")]
         internal static extern unsafe bool VMMDLL_ProcessGetInformation(
             IntPtr hVMM,
             uint dwPID,
             byte* pProcessInformation,
             ref ulong pcbProcessInformation);
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_ProcessGetInformationString")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_ProcessGetInformationString")]
         internal static extern unsafe byte* VMMDLL_ProcessGetInformationString(
             IntPtr hVMM,
             uint dwPID,
@@ -3034,14 +3033,14 @@ namespace vmmsharp
             internal uint Size;
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_ProcessGetDirectoriesW")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_ProcessGetDirectoriesW")]
         internal static extern unsafe bool VMMDLL_ProcessGetDirectories(
             IntPtr hVMM,
             uint dwPID,
             [MarshalAs(UnmanagedType.LPWStr)] string wszModule,
             byte* pData);
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_ProcessGetSectionsW")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_ProcessGetSectionsW")]
         internal static extern unsafe bool VMMDLL_ProcessGetSections(
             IntPtr hVMM,
             uint dwPID,
@@ -3054,14 +3053,14 @@ namespace vmmsharp
 
         // WINDOWS SPECIFIC DEBUGGING / SYMBOL FUNCTIONALITY BELOW:
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_PdbLoad")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_PdbLoad")]
         internal static extern unsafe bool VMMDLL_PdbLoad(
             IntPtr hVMM,
             uint dwPID,
             ulong vaModuleBase,
             byte* pModuleMapEntry);
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_PdbSymbolName")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_PdbSymbolName")]
         internal static extern unsafe bool VMMDLL_PdbSymbolName(
             IntPtr hVMM,
             [MarshalAs(UnmanagedType.LPStr)] string szModule,
@@ -3069,21 +3068,21 @@ namespace vmmsharp
             byte* szSymbolName,
             out uint pdwSymbolDisplacement);
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_PdbSymbolAddress")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_PdbSymbolAddress")]
         public static extern bool VMMDLL_PdbSymbolAddress(
             IntPtr hVMM,
             [MarshalAs(UnmanagedType.LPStr)] string szModule,
             [MarshalAs(UnmanagedType.LPStr)] string szSymbolName,
             out ulong pvaSymbolAddress);
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_PdbTypeSize")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_PdbTypeSize")]
         public static extern bool VMMDLL_PdbTypeSize(
             IntPtr hVMM,
             [MarshalAs(UnmanagedType.LPStr)] string szModule,
             [MarshalAs(UnmanagedType.LPStr)] string szTypeName,
             out uint pcbTypeSize);
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_PdbTypeChildOffset")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_PdbTypeChildOffset")]
         public static extern bool VMMDLL_PdbTypeChildOffset(
             IntPtr hVMM,
             [MarshalAs(UnmanagedType.LPStr)] string szModule,
@@ -3119,7 +3118,7 @@ namespace vmmsharp
             internal uint cMap;
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetPteW")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetPteW")]
         internal static extern unsafe bool VMMDLL_Map_GetPte(
             IntPtr hVMM,
             uint dwPid,
@@ -3162,7 +3161,7 @@ namespace vmmsharp
             internal uint cMap;
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetVadW")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetVadW")]
         internal static extern unsafe bool VMMDLL_Map_GetVad(
             IntPtr hVMM,
             uint dwPid,
@@ -3198,7 +3197,7 @@ namespace vmmsharp
             internal uint cMap;
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetVadEx")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetVadEx")]
         internal static extern unsafe bool VMMDLL_Map_GetVadEx(
             IntPtr hVMM,
             uint dwPid,
@@ -3263,7 +3262,7 @@ namespace vmmsharp
             internal uint cMap;
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetModuleW")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetModuleW")]
         internal static extern unsafe bool VMMDLL_Map_GetModule(
             IntPtr hVMM,
             uint dwPid,
@@ -3272,7 +3271,7 @@ namespace vmmsharp
 
         // VMMDLL_Map_GetModuleFromName
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetModuleFromNameW")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetModuleFromNameW")]
         internal static extern unsafe bool VMMDLL_Map_GetModuleFromName(
             IntPtr hVMM,
             uint dwPID,
@@ -3307,7 +3306,7 @@ namespace vmmsharp
             internal uint cMap;
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetUnloadedModuleW")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetUnloadedModuleW")]
         internal static extern unsafe bool VMMDLL_Map_GetUnloadedModule(
             IntPtr hVMM,
             uint dwPid,
@@ -3345,7 +3344,7 @@ namespace vmmsharp
             internal uint cMap;
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetEATW")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetEATW")]
         internal static extern unsafe bool VMMDLL_Map_GetEAT(
             IntPtr hVMM,
             uint dwPid,
@@ -3383,7 +3382,7 @@ namespace vmmsharp
             internal uint cMap;
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetIATW")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetIATW")]
         internal static extern unsafe bool VMMDLL_Map_GetIAT(
             IntPtr hVMM,
             uint dwPid,
@@ -3423,7 +3422,7 @@ namespace vmmsharp
             internal uint cMap;
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetHeap")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetHeap")]
         internal static extern unsafe bool VMMDLL_Map_GetHeap(
             IntPtr hVMM,
             uint dwPid,
@@ -3451,7 +3450,7 @@ namespace vmmsharp
             internal uint cMap;
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetHeapAlloc")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetHeapAlloc")]
         internal static extern unsafe bool VMMDLL_Map_GetHeapAlloc(
             IntPtr hVMM,
             uint dwPid,
@@ -3503,7 +3502,7 @@ namespace vmmsharp
             internal uint cMap;
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetThread")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetThread")]
         internal static extern unsafe bool VMMDLL_Map_GetThread(
             IntPtr hVMM,
             uint dwPid,
@@ -3541,7 +3540,7 @@ namespace vmmsharp
             internal uint cMap;
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetHandleW")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetHandleW")]
         internal static extern unsafe bool VMMDLL_Map_GetHandle(
             IntPtr hVMM,
             uint dwPid,
@@ -3589,7 +3588,7 @@ namespace vmmsharp
             internal uint cMap;
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetNetW")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetNetW")]
         internal static extern unsafe bool VMMDLL_Map_GetNet(
             IntPtr hVMM,
             out IntPtr ppNetMap);
@@ -3614,7 +3613,7 @@ namespace vmmsharp
             internal uint _Reserved2;
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetPhysMem")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetPhysMem")]
         internal static extern unsafe bool VMMDLL_Map_GetPhysMem(
             IntPtr hVMM,
             out IntPtr ppPhysMemMap);
@@ -3648,7 +3647,7 @@ namespace vmmsharp
             internal uint cMap;
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetPool")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetPool")]
         internal static extern unsafe bool VMMDLL_Map_GetPool(
             IntPtr hVMM,
             out IntPtr ppHeapAllocMap,
@@ -3678,7 +3677,7 @@ namespace vmmsharp
             internal uint cMap;
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetUsersW")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetUsersW")]
         internal static extern unsafe bool VMMDLL_Map_GetUsers(
             IntPtr hVMM,
             out IntPtr ppUserMap);
@@ -3723,7 +3722,7 @@ namespace vmmsharp
             internal uint cMap;
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetServicesW")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetServicesW")]
         internal static extern unsafe bool VMMDLL_Map_GetServices(
             IntPtr hVMM,
             out IntPtr ppServiceMap);
@@ -3755,7 +3754,7 @@ namespace vmmsharp
             internal uint _Reserved2;
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_Map_GetPfn")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetPfn")]
         internal static extern unsafe bool VMMDLL_Map_GetPfn(
             IntPtr hVMM,
             byte* pPfns,
@@ -3783,14 +3782,14 @@ namespace vmmsharp
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 0x10)] internal ulong[] _FutureReserved;
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_WinReg_HiveList")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_WinReg_HiveList")]
         internal static extern unsafe bool VMMDLL_WinReg_HiveList(
             IntPtr hVMM,
             byte* pHives,
             uint cHives,
             out uint pcHives);
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_WinReg_HiveReadEx")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_WinReg_HiveReadEx")]
         internal static extern unsafe bool VMMDLL_WinReg_HiveReadEx(
             IntPtr hVMM,
             ulong vaCMHive,
@@ -3800,7 +3799,7 @@ namespace vmmsharp
             out uint pcbReadOpt,
             uint flags);
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_WinReg_HiveWrite")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_WinReg_HiveWrite")]
         internal static extern unsafe bool VMMDLL_WinReg_HiveWrite(
             IntPtr hVMM,
             ulong vaCMHive,
@@ -3808,7 +3807,7 @@ namespace vmmsharp
             byte* pb,
             uint cb);
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_WinReg_EnumKeyExW")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_WinReg_EnumKeyExW")]
         internal static extern unsafe bool VMMDLL_WinReg_EnumKeyExW(
             IntPtr hVMM,
             [MarshalAs(UnmanagedType.LPWStr)] string wszFullPathKey,
@@ -3817,7 +3816,7 @@ namespace vmmsharp
             ref uint lpcchName,
             out ulong lpftLastWriteTime);
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_WinReg_EnumValueW")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_WinReg_EnumValueW")]
         internal static extern unsafe bool VMMDLL_WinReg_EnumValueW(
             IntPtr hVMM,
             [MarshalAs(UnmanagedType.LPWStr)] string wszFullPathKey,
@@ -3828,7 +3827,7 @@ namespace vmmsharp
             byte* lpData,
             ref uint lpcbData);
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_WinReg_QueryValueExW")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_WinReg_QueryValueExW")]
         internal static extern unsafe bool VMMDLL_WinReg_QueryValueExW(
             IntPtr hVMM,
             [MarshalAs(UnmanagedType.LPWStr)] string wszFullPathKeyValue,
@@ -3873,7 +3872,7 @@ namespace vmmsharp
             internal IntPtr pfnFilterOptCB;
         }
 
-        [DllImport("vmm.dll", EntryPoint = "VMMDLL_MemSearch")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_MemSearch")]
         internal static extern unsafe bool VMMDLL_MemSearch(
             IntPtr hVMM,
             uint dwPID,
