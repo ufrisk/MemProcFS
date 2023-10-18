@@ -708,6 +708,58 @@ int main(_In_ int argc, _In_ char* argv[])
         VMMDLL_MemFree(pHeapMap); pHeapMap = NULL;
     }
 
+
+    // BINARY SEARCH WITH WILDCARD BITMASK for process PE header signatures.
+    // The search is performed at offset 0x0 in each 4096-byte memory page.
+    // Only search virtual memory above 4GB. For more information see vmmdll.h.
+    printf("------------------------------------------------------------\n");
+    printf("# Binary Search for PE header signatures in 'explorer.exe'. \n");
+    ShowKeyPress();
+    // Initialize search context and add one search term. Up to 16 search terms
+    // are possible to use at the same time for more efficient searches.
+    // In addition to the listed configuration it's possible to use callback
+    // functions for both which ranges should be scanned and for search results.
+    // Also additional properties for max address and more exists.
+    VMMDLL_MEM_SEARCH_CONTEXT ctxSearch = { 0 };
+    ctxSearch.dwVersion = VMMDLL_MEM_SEARCH_VERSION;            // required struct version.
+    if(ctxSearch.cSearch < VMMDLL_MEM_SEARCH_MAX) {
+        ctxSearch.search[ctxSearch.cSearch].cb = 4;             // required number of bytes to search, max 32.
+        memcpy(ctxSearch.search[ctxSearch.cSearch].pb,
+            (BYTE[4]) {
+            0x4d, 0x5a, 0x90, 0x00
+        }, 4);           // required bytes to search for, max 32.
+        memcpy(ctxSearch.search[ctxSearch.cSearch].pbSkipMask,
+            (BYTE[4]) {
+            0x00, 0x00, 0xff, 0x00
+        }, 4);           // optional bitwise wildcard mask, here the 3rd byte is completely optional.
+        ctxSearch.search[ctxSearch.cSearch].cbAlign = 0x1000;   // optional alignment, i.e. search every X bytes,
+                                                                // here we search in beginning of pages only.
+                                                                // other common values are 0/1 (default) - full search
+                                                                // and 8 - search every 8 bytes for 64-bit pointers.
+        ctxSearch.cSearch++;
+    }
+    ctxSearch.ReadFlags = VMMDLL_FLAG_NOCACHE;                  // optional read flags are possible to use.
+    ctxSearch.vaMin = 0x100000000;                              // optional start searching at 4GB in virtual memory
+    // perform the actual search:
+    printf("CALL:    VMMDLL_MemSearch\n");
+    DWORD cvaSearchResult = 0;
+    PQWORD pvaSearchResult = NULL;
+    result = VMMDLL_MemSearch(hVMM, dwPID, &ctxSearch, &pvaSearchResult, &cvaSearchResult);
+    if(result) {
+        printf("SUCCESS: VMMDLL_MemSearch\n");
+        printf("         Number of search results: %u\n", cvaSearchResult);
+        printf("       ");
+        for(i = 0; i < cvaSearchResult; i++) {
+            printf("  0x%016llx", pvaSearchResult[i]);
+        }
+        printf("\n");
+        LocalFree(pvaSearchResult);     // free any function-allocated memory containing results.
+    } else {
+        printf("FAIL:    VMMDLL_MemSearch\n");
+        LocalFree(pvaSearchResult);     // free any function-allocated memory containing results.
+        return 1;
+    }
+
     
     // Write virtual memory at PE header of Explorer.EXE and display the first
     // 0x80 bytes on-screen - afterwards. Maybe result of write is in there?
