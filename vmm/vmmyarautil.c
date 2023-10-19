@@ -178,10 +178,10 @@ BOOL VmmYaraUtil_MatchCB(_In_ PVMMYARAUTIL_SCAN_CONTEXT ctxScan, _In_ PVMMYARA_R
     return TRUE;
 }
 
-int VmmYaraUtil_MatchCmpSort(void const *pv1, void const *pv2)
+int VmmYaraUtil_MatchCmpSort(_In_ POB_MAP_ENTRY pv1, _In_ POB_MAP_ENTRY pv2)
 {
-    PVMMYARAUTIL_MATCH e1 = ((POB_MAP_ENTRY)pv1)->v;
-    PVMMYARAUTIL_MATCH e2 = ((POB_MAP_ENTRY)pv2)->v;
+    PVMMYARAUTIL_MATCH e1 = (PVMMYARAUTIL_MATCH)pv1->v;
+    PVMMYARAUTIL_MATCH e2 = (PVMMYARAUTIL_MATCH)pv2->v;
     if(e1->dwPID < e2->dwPID) { return 1; }
     if(e1->dwPID > e2->dwPID) { return -1; }
     if(e1->vaBase < e2->vaBase) { return 1; }
@@ -502,7 +502,7 @@ BOOL VmmSearch_SearchRegion_YaraCB(_In_ PVOID pvContext, _In_ PVMMYARA_RULE_MATC
         }
     }
     ctxs->cResult = ObSet_Size(ctxi->psvaResult);
-    if(ctxs->cResult > ctxs->cMaxResult) {
+    if(ctxs->cResult >= ctxs->cMaxResult) {
         ctxs->fAbortRequested = TRUE;
         return FALSE;
     }
@@ -529,7 +529,9 @@ BOOL VmmYaraUtil_SearchRegion(_In_ VMM_HANDLE H, _In_ PVMMYARAUTIL_SEARCH_INTERN
     if(!cbRead || Util_IsZeroBuffer(ctxi->pb, ctxi->cb)) {
         return TRUE;
     }
-    if(Util_IsZeroBuffer(ctxi->pb, ctxi->cb)) { return TRUE; }
+    if(Util_IsZeroBuffer(ctxi->pb, ctxi->cb)) {
+        return TRUE;
+    }
     yrerr = VmmYara_ScanMemory(
         ctxi->hVmmYaraRules,
         ctxi->pb,
@@ -667,6 +669,7 @@ BOOL VmmYaraUtil_SearchSingleProcess(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pP
         ctxs->vaCurrent = ctxs->vaMin;
         fResult = VmmYaraUtil_SearchRange(H, ctxi, ctxs, ctxs->vaMax);
     }
+    fResult = fResult || (ctxs->cResult && (ctxs->cResult == ctxs->cMaxResult));
     // 5: finish
     if(fResult && ppObAddressResult) {
         *ppObAddressResult = ObSet_GetAll(ctxi->psvaResult);

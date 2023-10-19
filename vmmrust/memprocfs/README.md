@@ -15,7 +15,15 @@ purposes. Analysis may also take place on live memory - either captured by
 using [PCILeech PCIe DMA devices](https://github.com/ufrisk/pcileech-fpga)
 or by using drivers - such as WinPMEM, LiveCloudKd, VMware or similar.
 
-The MemProcFS API base is the [`Vmm`](https://docs.rs/memprocfs/latest/memprocfs/struct.Vmm.html)
+<b>Rust API Versioning follows MemProcFS major.minor versioning.</b>
+Always use the matching MemProcFS Native library version for the major.minor
+number. <b>Revision numbers</b> may however be higher (but not lower) in the
+Native library than in the Rust API. Bug fixes often takes place in the Native
+library without the Rust API being updated. It's possible to use Rust API
+version 5.8.1 with MemProcFS 5.8.10 for example. It is not supported to use
+Rust API version 5.8.1 with MemProcFS 5.7.x or MemProcFS 5.9.x.
+
+<b>Base of the MemProcFS API</b> is the [`Vmm`](https://docs.rs/memprocfs/latest/memprocfs/struct.Vmm.html)
 struct. Once the native vmm has been initialized it's possible to retrieve
 processes in the form of the [`VmmProcess`](https://docs.rs/memprocfs/latest/memprocfs/struct.VmmProcess.html) struct.
 Using the `Vmm` and `VmmProcess` it's possible to undertake a wide range of

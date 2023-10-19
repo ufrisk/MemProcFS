@@ -139,6 +139,40 @@ LPSTR VadMap_Type(_In_ PVMMDLL_MAP_VADENTRY pVad)
     }
 }
 
+
+// ----------------------------------------------------------------------------
+// Callback functions (YARA SEARCH) functionality below:
+// ----------------------------------------------------------------------------
+
+BOOL CallbackSearchYaraMatch(_In_ PVOID pvContext, _In_ PVMMYARA_RULE_MATCH pRuleMatch, _In_reads_bytes_(cbBuffer) PBYTE pbBuffer, _In_ SIZE_T cbBuffer)
+{
+    PVMMDLL_YARA_CONFIG ctx = (PVMMDLL_YARA_CONFIG)pvContext;                   // We pass the PVMMDLL_YARA_CONFIG into the user-set context pointer (ctx->pvUserPtrOpt)
+                                                                                // This is done so we'll get the base address of the buffer being scanned.   
+                                                                                // if one wish to use another user-context the field ctx->pvUserPtrOpt2 may be used.
+    if(pRuleMatch->dwVersion != VMMYARA_RULE_MATCH_VERSION) { return FALSE; }
+    if((pRuleMatch->cStrings > 0) && (pRuleMatch->Strings[0].cMatch > 0)) {     // ensure at least one string match exists - only print the address of the first occurence.
+        printf("         rule: %s  address: %llx  string: %s\n", pRuleMatch->szRuleIdentifier, ctx->vaCurrent + pRuleMatch->Strings[0].cbMatchOffset[0], pRuleMatch->Strings[0].szString);
+    }
+    return TRUE;        // TRUE = continue search, FALSE = abort search
+}
+
+/*
+* Optional filter callback. Tell whether a memory region should be scanned or not.
+* User-mode applications predominantely use vad entries, whilst kernel use pte entries.
+* -- ctx = Pointer to the VMMDLL_YARA_CONFIG structure.
+* -- pePte = Pointer to the VMMDLL_MAP_PTEENTRY structure. NULL if not available.
+* -- peVad = Pointer to the VMMDLL_MAP_VADENTRY structure. NULL if not available.
+* -- return = TRUE to scan the memory region, FALSE to skip it.
+*/
+BOOL CallbackSearchYaraFilter(_In_ PVMMDLL_YARA_CONFIG ctx, _In_opt_ PVMMDLL_MAP_PTEENTRY pePte, _In_opt_ PVMMDLL_MAP_VADENTRY peVad)
+{
+    if(ctx->dwVersion != VMMDLL_YARA_CONFIG_VERSION) { return FALSE; }
+    // only scan VAD-backed image memory regions since we're scanning for PE headers.
+    // this may miss out on PE headers in other memory regions commonly used by malware.
+    return   peVad && peVad->fImage;
+}
+
+
 // ----------------------------------------------------------------------------
 // Main entry point which contains various sample code how to use MemProcFS DLL.
 // Please walk though for different API usage examples. To select device ensure
@@ -753,11 +787,51 @@ int main(_In_ int argc, _In_ char* argv[])
             printf("  0x%016llx", pvaSearchResult[i]);
         }
         printf("\n");
-        LocalFree(pvaSearchResult);     // free any function-allocated memory containing results.
+        VMMDLL_MemFree(pvaSearchResult);     // free any function-allocated memory containing results.
     } else {
         printf("FAIL:    VMMDLL_MemSearch\n");
-        LocalFree(pvaSearchResult);     // free any function-allocated memory containing results.
+        VMMDLL_MemFree(pvaSearchResult);     // free any function-allocated memory containing results.
         return 1;
+    }
+
+
+    // YARA SEARCH for process PE header signatures.
+    // NB! YARA SEARCH REQUIRES 'vmmyara.dll'/'vmmyara.so' to be present in the vmm directory.
+    // The search is performed at offset 0x0in each scanned memory region (VAD or PTE).
+    // Only search virtual memory above 4GB. For more information see vmmdll.h.
+    // The search will return a maximum number of 32 results.
+    printf("------------------------------------------------------------\n");
+    printf("# YARA Search for PE header signatures in 'explorer.exe'.   \n");
+    ShowKeyPress();
+    VMMDLL_YARA_CONFIG ctxYara = { 0 };
+    ctxYara.dwVersion = VMMDLL_YARA_CONFIG_VERSION;             // required struct version.
+    // YARA rules: Yara rules may be in the form of any number of strings as
+    // given in the below example.
+    // Yara rules may also be given in the form of one (1) file (including path)
+    // containing one or more YARA rules or index rules.
+    LPSTR szYaraRule1 = " rule mz_header { strings: $mz = \"MZ\" condition: $mz at 0 } ";
+    LPSTR szYaraRules[] = { szYaraRule1 };
+    ctxYara.pszRules = szYaraRules;                             // required YARA rules array.
+    ctxYara.cRules = 1;                                         // required number of YARA rules.
+    ctxYara.pvUserPtrOpt = &ctxYara;                            // optional user pointer passed to callback functions
+                                                                //          here ctxYara is passed since we need to read the base address of the memory region.
+                                                                //          any other user-defined pointer may be set in ctxYara.pvUserPtrOpt2
+    ctxYara.cMaxResult = 16;                                    // optional max number of results to return.
+    ctxYara.ReadFlags = VMMDLL_FLAG_NOCACHE;                    // optional read flags are possible to use.
+    ctxYara.vaMin = 0x100000000;                                // optional start searching at 4GB in virtual memory
+    ctxYara.pfnFilterOptCB = CallbackSearchYaraFilter;          // optional callback function for filtering which memory ranges to scan.
+    ctxYara.pfnScanMemoryCB = CallbackSearchYaraMatch;          // optional callback function for handling search results
+    // perform the actual search:
+    // Note that the the two last arguments works the same as in the VMMDLL_MemSearch() function.
+    // These are not used in this example though since a callback is used instead (it's possible to use both or just one of them).
+    printf("CALL:    VMMDLL_YaraSearch\n");
+    result = VMMDLL_YaraSearch(hVMM, dwPID, &ctxYara, NULL, NULL);
+    if(result) {
+        printf("SUCCESS: VMMDLL_YaraSearch\n");
+        printf("         Number of search results: %u\n", ctxYara.cResult);
+    } else {
+        printf("FAIL:    VMMDLL_YaraSearch\n");
+        // YARA search will fail if 'vmmyara.dll'/'vmmyara.so' is not present in the vmm directory.
     }
 
     

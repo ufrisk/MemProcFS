@@ -20,7 +20,7 @@ VOID MEvilAV1_DoWork_WinDefend_MPLog(_In_ VMM_HANDLE H, _In_ VMMDLL_MODULE_ID MI
     LPSTR uszText = NULL, uszLine, szTokenizerContext;
     DWORD cProtect = 0;
     // read file:
-    cbFile = min(MEVILAV1_MAX_FILE_SIZE, pFile->cb);
+    cbFile = min(MEVILAV1_MAX_FILE_SIZE, (SIZE_T)pFile->cb);
     if(!cbFile || !(pbFile = LocalAlloc(0, cbFile + 1))) { goto fail; }
     if(0 == VmmWinObjFile_Read(H, pFile, 0, pbFile, (DWORD)cbFile, VMMDLL_FLAG_ZEROPAD_ON_FAIL)) { goto fail; }
     pbFile[cbFile] = 0;
