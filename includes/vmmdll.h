@@ -232,6 +232,7 @@ VOID VMMDLL_MemFree(_Frees_ptr_opt_ PVOID pvMem);
 
 // PROCESS OPTIONS: [LO-DWORD: Process PID]
 #define VMMDLL_OPT_PROCESS_DTB                          0x2002000100000000  // W - force set process directory table base.
+#define VMMDLL_OPT_PROCESS_DTB_FAST_LOWINTEGRITY        0x2002000200000000  // W - force set process directory table base (fast, low integrity mode, with less checks) - use at own risk!.
 
 static LPCSTR VMMDLL_MEMORYMODEL_TOSTRING[5] = { "N/A", "X86", "X86PAE", "X64", "ARM64" };
 

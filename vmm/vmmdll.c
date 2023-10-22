@@ -260,6 +260,11 @@ BOOL VMMDLL_ConfigSetProcess_Impl(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess,
             pProcess->pObPersistent->paDTB_Override = qwValue;
             VmmProcRefresh_Slow(H);
             return TRUE;
+        case VMMDLL_OPT_PROCESS_DTB_FAST_LOWINTEGRITY:
+            if(!pProcess->fUserOnly) { return FALSE; }
+            pProcess->pObPersistent->paDTB_Override = qwValue;
+            VmmProcessForceClearState_DoNotUse(H, pProcess);
+            return TRUE;
         default:
             return FALSE;
     }

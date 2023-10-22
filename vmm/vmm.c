@@ -1165,6 +1165,37 @@ fail:
 }
 
 /*
+* Try to force clear the internal state of a process object without refreshing
+* the whole process list.
+* This may be useful when a quick update of a process must take place.
+* This is may however lead to potential race conditions and possible corrpution!
+* Use with extreme care at own risk!
+* -- H
+* -- pProcess
+*/
+VOID VmmProcessForceClearState_DoNotUse(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
+{
+    EnterCriticalSection(&pProcess->LockUpdate);
+    EnterCriticalSection(&H->vmm.LockMaster);
+    if(pProcess->pObPersistent->paDTB_Override && (pProcess->paDTB != pProcess->pObPersistent->paDTB_Override)) {
+        pProcess->paDTB = pProcess->pObPersistent->paDTB_Override;
+        pProcess->fTlbSpiderDone = FALSE;
+    }
+    Ob_DECREF_NULL(&pProcess->Map.pObPte);
+    Ob_DECREF_NULL(&pProcess->Map.pObVad);
+    Ob_DECREF_NULL(&pProcess->Map.pObModule);
+    Ob_DECREF_NULL(&pProcess->Map.pObUnloadedModule);
+    Ob_DECREF_NULL(&pProcess->Map.pObHeap);
+    Ob_DECREF_NULL(&pProcess->Map.pObThread);
+    Ob_DECREF_NULL(&pProcess->Map.pObHandle);
+    ObContainer_SetOb(pProcess->Plugin.pObCLdrModulesDisplayCache, NULL);
+    ObContainer_SetOb(pProcess->Plugin.pObCPeDumpDirCache, NULL);
+    ObContainer_SetOb(pProcess->Plugin.pObCPhys2Virt, NULL);
+    LeaveCriticalSection(&H->vmm.LockMaster);
+    LeaveCriticalSection(&pProcess->LockUpdate);
+}
+
+/*
 * Activate the pending, not yet active, processes added by VmmProcessCreateEntry.
 * This will also clear any previous processes.
 * -- H
@@ -2049,6 +2080,11 @@ BOOL VmmInitialize(_In_ VMM_HANDLE H)
         // read pattern to achieve greater forensic file consistency.
         H->vmm.flags |= VMM_FLAG_FORCECACHE_READ_DISABLE;
     }
+
+    //H->vmm.flags |= VMMDLL_FLAG_NO_PREDICTIVE_READ;
+    //H->vmm.flags |= VMMDLL_FLAG_NOPAGING;
+
+
     // 2: CACHE INIT: Process Table
     if(!VmmProcessTableCreateInitial(H)) { goto fail; }
     // 3: CACHE INIT: Translation Lookaside Buffer (TLB) Cache Table

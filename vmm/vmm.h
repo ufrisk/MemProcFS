@@ -2327,6 +2327,17 @@ QWORD VmmProcess_GetExitTimeOpt(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProces
 VOID VmmProcessCreateFinish(_In_ VMM_HANDLE H);
 
 /*
+* Try to force clear the internal state of a process object without refreshing
+* the whole process list. This may be useful when a quick update of a process
+* must take place.
+* This is however prone to potential race conditions and possible corrpution!
+* Use with extreme care at own risk!
+* -- H
+* -- pProcess
+*/
+VOID VmmProcessForceClearState_DoNotUse(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess);
+
+/*
 * List the PIDs and put them into the supplied table.
 * -- H
 * -- pPIDs = user allocated DWORD array to receive result, or NULL.
