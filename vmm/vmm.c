@@ -190,7 +190,7 @@ PVMMOB_CACHE_MEM VmmCacheReserve(_In_ VMM_HANDLE H, _In_ DWORD dwTblTag)
         VmmCacheClearPartial(H, dwTblTag);
         if(++cLoopProtect == VMM_CACHE_REGIONS) {
             VmmLog(H, MID_VMM, LOGLEVEL_WARNING, "SHOULD NOT HAPPEN - CACHE %04X DRAINED OF ENTRIES", dwTblTag);
-            Sleep(10);
+            return NULL;
         }
     }
     pOb = CONTAINING_RECORD(e, VMMOB_CACHE_MEM, SListEmpty);
@@ -602,11 +602,12 @@ VOID VmmCachePrefetchPages(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _I
     QWORD qwA = 0;
     DWORD cPages, iMEM = 0;
     PPMEM_SCATTER ppMEMs = NULL;
-    cPages = ObSet_Size(pPrefetchPages);
+    cPages = min(VMM_CACHE_REGION_MEMS_PHYS, ObSet_Size(pPrefetchPages));
     if(!cPages || (H->vmm.flags & VMM_FLAG_NOCACHE)) { return; }
     if(!LcAllocScatter1(cPages, &ppMEMs)) { return; }
-    while((qwA = ObSet_GetNext(pPrefetchPages, qwA))) {
-        ppMEMs[iMEM++]->qwA = qwA & ~0xfff;
+    for(iMEM = 0; iMEM < cPages; iMEM++) {
+        qwA = ObSet_Get(pPrefetchPages, iMEM);
+        ppMEMs[iMEM]->qwA = qwA & ~0xfff;
     }
     if(pProcess) {
         VmmReadScatterVirtual(H, pProcess, ppMEMs, iMEM, flags | VMM_FLAG_CACHE_RECENT_ONLY);

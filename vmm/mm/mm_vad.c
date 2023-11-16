@@ -7,16 +7,15 @@
 #include "mm.h"
 #include "../util.h"
 
-#define MMVAD_POOLTAG_VAD       'Vad '
-#define MMVAD_POOLTAG_VADF      'VadF'
-#define MMVAD_POOLTAG_VADS      'VadS'
-#define MMVAD_POOLTAG_VADL      'Vadl'
-#define MMVAD_POOLTAG_VADM      'Vadm'
+#define MMVAD_POOLTAG_VAD               'Vad '
+#define MMVAD_POOLTAG_VADF              'VadF'
+#define MMVAD_POOLTAG_VADS              'VadS'
+#define MMVAD_POOLTAG_VADL              'Vadl'
+#define MMVAD_POOLTAG_VADM              'Vadm'
 
-#define MMVAD_PTESIZE           ((H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X86) ? 4 : 8)
-#define MMVAD_MAXVADS_THRESHOLD 0x10000
-
-#define MMVADEX_MAXVADPAGES_THRESHOLD   0x10000
+#define MMVAD_PTESIZE                   ((H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X86) ? 4 : 8)
+#define MMVAD_MAXVADS_THRESHOLD         0x20000
+#define MMVAD_SLOWQUERY_THRESHOLD_MS    1000
 
 // ----------------------------------------------------------------------------
 // DEFINES OF VAD STRUCTS FOR DIFFRENT WINDOWS VERSIONS
@@ -813,9 +812,9 @@ VOID MmVad_Spider_DoWork(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _I
     //        It's done to avoid extreme amounts of reads on larger VAD trees.
     fVmmReadSpider = fVmmRead;
     if(fVmmReadSpider & VMM_FLAG_NOCACHE) {
-        fVmmReadSpider = (fVmmReadSpider & ~VMM_FLAG_NOCACHE) | VMM_FLAG_CACHE_RECENT_ONLY;
+        fVmmReadSpider = (fVmmReadSpider & ~VMM_FLAG_NOCACHE);
     }
-    while((pmObVad->cMap < cMax) && ObSet_Size(psObTry2)) {
+    while((pmObVad->cMap < cMax) && (ObSet_Size(psObTry1) || ObSet_Size(psObTry2))) {
         // fetch vad entries 2nd attempt
         VmmCachePrefetchPages3(H, pSystemProcess, psObTry2, sizeof(_MMVAD64_10), fVmmReadSpider);
         while((pmObVad->cMap < cMax) && (va = ObSet_Pop(psObTry2))) {
@@ -828,7 +827,7 @@ VOID MmVad_Spider_DoWork(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _I
             }
         }
         // fetch vad entries 1st attempt
-        while((pmObVad->cMap < cMax) && (va = ObSet_Pop(psObTry1))) {
+        while((pmObVad->cMap < cMax) && (ObSet_Size(psObTry2) < (VMM_CACHE_REGION_MEMS_PHYS >> 1)) && (va = ObSet_Pop(psObTry1))) {
             if((eVad = pfnMmVad_Spider(H, pSystemProcess, va, pmObVad, psObAll, psObTry1, psObTry2, fVmmReadSpider, dwFlagsBitMask))) {
                 if(eVad->CommitCharge > ((eVad->vaEnd + 1 - eVad->vaStart) >> 12)) { eVad->CommitCharge = 0; }
                 eVad->vaVad = va + (f32 ? 8 : 0x10);
@@ -1157,8 +1156,10 @@ QWORD MmVad_PrototypePte(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWO
 _Success_(return)
 BOOL MmVad_MapInitialize_Core(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD fVmmRead)
 {
+    QWORD tmStart, tmEnd;
     PVMM_PROCESS pObSystemProcess;
     if(pProcess->Map.pObVad) { return TRUE; }
+    tmStart = GetTickCount64();
     EnterCriticalSection(&pProcess->LockUpdate);
     if(!pProcess->Map.pObVad && (pObSystemProcess = VmmProcessGet(H, 4))) {
         if(pProcess->dwState != 1) {    // vads does not exist on terminated processes
@@ -1170,20 +1171,31 @@ BOOL MmVad_MapInitialize_Core(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In
         Ob_DECREF(pObSystemProcess);
     }
     LeaveCriticalSection(&pProcess->LockUpdate);
+    tmEnd = GetTickCount64();
+    if(tmEnd - tmStart > MMVAD_SLOWQUERY_THRESHOLD_MS) {
+        VmmLog(H, MID_VMM, LOGLEVEL_4_VERBOSE, "VAD: SLOW QUERY (CORE) PID: %i #VAD: %x TIME: %llums", pProcess->dwPID, (pProcess->Map.pObVad ? pProcess->Map.pObVad->cMap : 0), (tmEnd - tmStart));
+    }
     return pProcess->Map.pObVad ? TRUE : FALSE;
 }
 
 _Success_(return)
 BOOL MmVad_MapInitialize_ExtendedInfo(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ VMM_VADMAP_TP tp, _In_ QWORD fVmmRead)
 {
+    QWORD tmStart, tmEnd;
     PVMM_PROCESS pObSystemProcess;
+    if(!pProcess->Map.pObVad) { return FALSE; }
     if(tp <= pProcess->Map.pObVad->tp) { return TRUE; }
+    tmStart = GetTickCount64();
     EnterCriticalSection(&pProcess->LockUpdate);
     if((pProcess->Map.pObVad->tp < tp) && (pObSystemProcess = VmmProcessGet(H, 4))) {
         MmVad_ExtendedInfoFetch(H, pObSystemProcess, pProcess, tp, fVmmRead | VMM_FLAG_NOVAD);
         Ob_DECREF(pObSystemProcess);
     }
     LeaveCriticalSection(&pProcess->LockUpdate);
+    tmEnd = GetTickCount64();
+    if(tmEnd - tmStart > MMVAD_SLOWQUERY_THRESHOLD_MS) {
+        VmmLog(H, MID_VMM, LOGLEVEL_4_VERBOSE, "VAD: SLOW QUERY (EXT) PID: %i #VAD: %x TIME: %llums", pProcess->dwPID, (pProcess->Map.pObVad ? pProcess->Map.pObVad->cMap : 0), (tmEnd - tmStart));
+    }
     return (pProcess->Map.pObVad->tp >= tp);
 }
 
