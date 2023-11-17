@@ -32,6 +32,7 @@ typedef struct tdVMM_MAP_TASKENTRY {
     DWORD tp;
     QWORD ftRegLastWrite;
     LPSTR uszName;
+    LPSTR uszNameFs;
     LPSTR uszPath;
     QWORD qwHashParent;          // parent key hash (calculated on file system compatible hash)
     QWORD qwHashThis;            // this key hash (calculated on file system compatible hash)
@@ -65,6 +66,7 @@ typedef struct tdVMM_TASK_SETUP_CONTEXT {
     POB_MAP pmAll;      // by path hash
     POB_MAP pmDir;      // by path hash
     POB_MAP pmTask;     // by guid hash
+    POB_SET psName;     // name hash duplicate check
     POB_STRMAP psm;
 } VMM_TASK_SETUP_CONTEXT, *PVMM_TASK_SETUP_CONTEXT;
 
@@ -166,10 +168,12 @@ PVMM_MAP_TASKENTRY VmmSysTask_Initialize_AddTask(
     _In_opt_ LPSTR szGUID,
     _In_opt_ PVMM_MAP_TASKENTRY pParentTask
 ) {
-    DWORD dwHashName;
+    DWORD dwHashName, iNameFs = 0;
     QWORD qwHashGUID, qwHashThis;
     PVMM_MAP_TASKENTRY pTask = NULL;
     CHAR uszPath[MAX_PATH];
+    CHAR uszNameFsBuffer[MAX_PATH];
+    LPSTR uszNameFs = uszName;
     // 1: find existing tasks
     if((qwHashGUID = VmmSysTask_Util_HashGUID(szGUID))) {
         pTask = ObMap_GetByKey(ctx->pmTask, qwHashGUID);
@@ -187,6 +191,16 @@ PVMM_MAP_TASKENTRY VmmSysTask_Initialize_AddTask(
         return pTask;
     }
     // 2: task not found - allocate new
+    while(!ObSet_Push(ctx->psName, dwHashName)) {
+        iNameFs++;
+        qwHashThis = pParentTask ? pParentTask->qwHashThis : 0;
+        dwHashName = CharUtil_HashNameFsU(uszName, iNameFs);
+        qwHashThis = dwHashName + ((qwHashThis >> 13) | (qwHashThis << 51));
+    }
+    if(iNameFs) {
+        _snprintf_s(uszNameFsBuffer, _countof(uszNameFsBuffer), _TRUNCATE, "%s-%i", uszName, iNameFs);
+        uszNameFs = uszNameFsBuffer;
+    }
     pTask = LocalAlloc(LMEM_ZEROINIT, sizeof(VMM_MAP_TASKENTRY));
     if(!pTask) { return NULL; }
     pTask->ftRegLastWrite = ftRegLastWrite;
@@ -194,6 +208,7 @@ PVMM_MAP_TASKENTRY VmmSysTask_Initialize_AddTask(
     pTask->qwHashThis = qwHashThis;
     pTask->qwHashName = dwHashName;
     ObStrMap_PushPtrUU(ctx->psm, uszName, &pTask->uszName, NULL);
+    ObStrMap_PushPtrUU(ctx->psm, uszNameFs, &pTask->uszNameFs, NULL);
     ObStrMap_PushPtrUU(ctx->psm, (qwHashGUID ? szGUID : NULL), &pTask->uszGUID, NULL);
     VmmSysTask_Initialize_AddTask_FullPath(ctx, pTask, uszPath);
     ObStrMap_PushPtrUU(ctx->psm, uszPath, &pTask->uszPath, NULL);
@@ -312,6 +327,7 @@ VOID VmmSysTask_Initialize_DoWork(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT
     POB_REGISTRY_KEY pObKey = NULL;
     VMM_TASK_SETUP_CONTEXT ctxInit = { 0 };
     // 1: INIT:
+    if(!(ctxInit.psName = ObSet_New(H))) { goto fail; }
     if(!(ctxInit.pmAll = ObMap_New(H, OB_MAP_FLAGS_OBJECT_LOCALFREE))) { goto fail; }
     if(!(ctxInit.pmDir = ObMap_New(H, OB_MAP_FLAGS_OBJECT_VOID))) { goto fail; }
     if(!(ctxInit.pmTask = ObMap_New(H, OB_MAP_FLAGS_OBJECT_VOID))) { goto fail; }
@@ -377,6 +393,7 @@ fail:
     Ob_DECREF(ctxInit.pmAll);
     Ob_DECREF(ctxInit.pmDir);
     Ob_DECREF(ctxInit.pmTask);
+    Ob_DECREF(ctxInit.psName);
     Ob_DECREF(ctxInit.psm);
 }
 
@@ -496,7 +513,7 @@ NTSTATUS MSysTask_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PVMMOB_MAP_TASK pObTaskMap = NULL;
-    CHAR uszGUID[MAX_PATH];
+    CHAR usz[MAX_PATH];
     LPSTR uszSubPath;
     QWORD qwHash;
     PVMM_MAP_TASKENTRY pe;
@@ -510,12 +527,12 @@ NTSTATUS MSysTask_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out
         goto finish;
     }
     if(!_strnicmp("by-guid\\", ctxP->uszPath, 8) || !_strnicmp("by-name\\", ctxP->uszPath, 8)) {
-        uszSubPath = CharUtil_PathSplitFirst(ctxP->uszPath + 8, uszGUID, sizeof(uszGUID));
+        uszSubPath = CharUtil_PathSplitFirst(ctxP->uszPath + 8, usz, sizeof(usz));
         if(!_strnicmp("by-guid\\", ctxP->uszPath, 8)) {
-            qwHash = VmmSysTask_Util_HashGUID(uszGUID);
+            qwHash = VmmSysTask_Util_HashGUID(usz);
             pe = VmmSysTask_GetTaskByHash(pObTaskMap, pObTaskMap->pqwByHashGuid, pObTaskMap->cTask, qwHash);
         } else {
-            qwHash = CharUtil_HashNameFsU(uszGUID, 0);
+            qwHash = CharUtil_HashNameFsU(usz, 0);
             pe = VmmSysTask_GetTaskByHash(pObTaskMap, pObTaskMap->pqwByHashName, pObTaskMap->cMap, qwHash);
         }
         nt = MSysTask_ReadSingleEntry(H, ctxP, pb, cb, pcbRead, cbOffset, pe, uszSubPath);
@@ -551,7 +568,7 @@ VOID MSysTask_ListSingleEntry(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctx
 BOOL MSysTask_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList)
 {
     QWORD i, qwHash;
-    CHAR uszGUID[MAX_PATH];
+    CHAR usz[MAX_PATH];
     LPSTR uszSubPath;
     PVMM_MAP_TASKENTRY pe;
     PVMMOB_MAP_TASK pObTaskMap = NULL;
@@ -572,17 +589,17 @@ BOOL MSysTask_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ 
     if(!_stricmp("by-name", ctxP->uszPath)) {
         for(i = 0; i < pObTaskMap->cTask; i++) {
             pe = pObTaskMap->pMap + pObTaskMap->pqwByTaskName[i];
-            VMMDLL_VfsList_AddDirectory(pFileList, pe->uszName, NULL);
+            VMMDLL_VfsList_AddDirectory(pFileList, pe->uszNameFs, NULL);
         }
         goto finish;
     }
     if(!_strnicmp("by-guid\\", ctxP->uszPath, 8) || !_strnicmp("by-name\\", ctxP->uszPath, 8)) {
-        uszSubPath = CharUtil_PathSplitFirst(ctxP->uszPath + 8, uszGUID, sizeof(uszGUID));
+        uszSubPath = CharUtil_PathSplitFirst(ctxP->uszPath + 8, usz, sizeof(usz));
         if(!_strnicmp("by-guid\\", ctxP->uszPath, 8)) {
-            qwHash = VmmSysTask_Util_HashGUID(uszGUID);
+            qwHash = VmmSysTask_Util_HashGUID(usz);
             pe = VmmSysTask_GetTaskByHash(pObTaskMap, pObTaskMap->pqwByHashGuid, pObTaskMap->cTask, qwHash);
         } else {
-            qwHash = CharUtil_HashNameFsU(uszGUID, 0);
+            qwHash = CharUtil_HashNameFsU(usz, 0);
             pe = VmmSysTask_GetTaskByHash(pObTaskMap, pObTaskMap->pqwByHashName, pObTaskMap->cMap, qwHash);
         }
         MSysTask_ListSingleEntry(H, ctxP, pFileList, pe, uszSubPath);
