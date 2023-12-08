@@ -878,11 +878,11 @@ VOID PluginManager_Initialize_Python(_In_ VMM_HANDLE H)
             }
         }
     }
-    // 3: Try locate Python by checking the python36 sub-directory relative to the current executable (.exe).
+    // 3: Try locate Python by checking the python36 sub-directory relative to the current library (vmm.dll).
     if(0 == H->cfg.szPythonPath[0]) {
         for(i = 0; i < cszPYTHON_VERSIONS_SUPPORTED; i++) {
             ZeroMemory(szPythonPath, MAX_PATH);
-            Util_GetPathDll(szPythonPath, NULL);
+            Util_GetPathLib(szPythonPath);
             strcat_s(szPythonPath, MAX_PATH, "python\\");
             strcat_s(szPythonPath, MAX_PATH, szPYTHON_VERSIONS_SUPPORTED[i]);
             hDllPython3X = LoadLibraryExA(szPythonPath, 0, LOAD_WITH_ALTERED_SEARCH_PATH);
@@ -890,7 +890,7 @@ VOID PluginManager_Initialize_Python(_In_ VMM_HANDLE H)
             fBitnessFail = fBitnessFail || (ERROR_BAD_EXE_FORMAT == GetLastError());
         }
         if(hDllPython3X) {
-            Util_GetPathDll(H->cfg.szPythonPath, NULL);
+            Util_GetPathLib(H->cfg.szPythonPath);
             strcat_s(H->cfg.szPythonPath, MAX_PATH, "python\\");
         }
     }

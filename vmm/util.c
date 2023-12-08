@@ -959,8 +959,11 @@ VOID Util_GetPathLib(_Out_writes_(MAX_PATH) PCHAR szPath)
 #endif /* _WIN32 */
 #ifdef LINUX
     Dl_info Info = { 0 };
-    if(!dladdr((void *)Util_GetPathLib, &Info) || !Info.dli_fname) { return; }
-    strncpy(szPath, Info.dli_fname, MAX_PATH - 1);
+    if(!dladdr((void *)Util_GetPathLib, &Info) || !Info.dli_fname) {
+        GetModuleFileNameA(NULL, szPath, MAX_PATH - 4);
+    } else {
+        strncpy(szPath, Info.dli_fname, MAX_PATH - 1);
+    }
 #endif /* LINUX */
     for(i = strlen(szPath) - 1; i > 0; i--) {
         if(szPath[i] == '/' || szPath[i] == '\\') {

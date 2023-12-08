@@ -1170,7 +1170,7 @@ VOID PDB_Initialize_InitialValues(_In_ VMM_HANDLE H)
     }
     // 2: set default values (if not already loaded from registry)
     if(!H->pdb.szLocal[0]) {
-        Util_GetPathDll(H->pdb.szLocal, H->vmm.hModuleVmmOpt);
+        Util_GetPathLib(H->pdb.szLocal);
         strncat_s(H->pdb.szLocal, _countof(H->pdb.szLocal), "Symbols", _TRUNCATE);
     }
     if(!H->pdb.szServer[0]) {
@@ -1202,7 +1202,7 @@ VOID PDB_ConfigChange(_In_ VMM_HANDLE H)
         return;
     }
     // update new values in registry
-    Util_GetPathDll(szLocalPath, H->vmm.hModuleVmmOpt);
+    Util_GetPathLib(szLocalPath);
     if(strncmp(szLocalPath, H->pdb.szLocal, strlen(szLocalPath) - 1) && !_access_s(H->pdb.szLocal, 06)) {
         VmmUserConfig_SetString("SymbolCache", H->pdb.szLocal);
     } else {
@@ -1288,8 +1288,8 @@ VOID PDB_Initialize(_In_ VMM_HANDLE H, _In_opt_ PPE_CODEVIEW_INFO pPdbInfoOpt, _
     //      this only possible to do on windows.
     //      If initialization fail the rust library will be tried as a fallback instead.
     CHAR szPathSymSrv[MAX_PATH], szPathDbgHelp[MAX_PATH];
-    Util_GetPathDll(szPathSymSrv, H->vmm.hModuleVmmOpt);
-    Util_GetPathDll(szPathDbgHelp, H->vmm.hModuleVmmOpt);
+    Util_GetPathLib(szPathSymSrv);
+    Util_GetPathLib(szPathDbgHelp);
     strncat_s(szPathSymSrv, MAX_PATH, "symsrv.dll", _TRUNCATE);
     strncat_s(szPathDbgHelp, MAX_PATH, "dbghelp.dll", _TRUNCATE);
     ctx->mspdb.hModuleSymSrv = LoadLibraryA(szPathSymSrv);
@@ -1324,7 +1324,7 @@ fail_mspdb:
     // 3: Try initialize pdb subsystem using the wrapper library pdbcrust around the rust pdb crate.
     //    This is only done if the MSPDB loading was not successful.
     if(!fValidMSPDB) {
-        Util_GetPathDll(szPathLib, H->vmm.hModuleVmmOpt);
+        Util_GetPathLib(szPathLib);
         strncat_s(szPathLib, MAX_PATH, "libpdbcrust", _TRUNCATE);
         strncat_s(szPathLib, MAX_PATH, VMM_LIBRARY_FILETYPE, _TRUNCATE);
         ctx->crust.hModule = LoadLibraryA(szPathLib);
