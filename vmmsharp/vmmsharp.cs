@@ -16,7 +16,7 @@ using System.Runtime.CompilerServices;
  *  (c) Ulf Frisk, 2020-2023
  *  Author: Ulf Frisk, pcileech@frizk.net
  *  
- *  Version 5.8
+ *  Version 5.8.18
  *  
  */
 namespace vmmsharp
@@ -982,12 +982,12 @@ namespace vmmsharp
             T[] data = new T[count];
             fixed (T* pb = data)
             {
-                if (!vmmi.VMMDLL_MemReadEx(hVMM, pid, qwA, (byte*)pb, count, out cbRead, flags))
+                if (!vmmi.VMMDLL_MemReadEx(hVMM, pid, qwA, (byte*)pb, cb, out cbRead, flags))
                 {
                     return null;
                 }
             }
-            if (cbRead != count)
+            if (cbRead != cb)
             {
                 int partialCount = (int)cbRead / sizeof(T);
                 Array.Resize<T>(ref data, partialCount);
