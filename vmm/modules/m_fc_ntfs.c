@@ -998,12 +998,21 @@ int FcNtfs2_FcIngestFinalize_MergeSortCompare(_In_ PFCNTFS2 *ppe1, _In_ PFCNTFS2
 VOID FcNtfs2_FcIngestFinalize_MergeSort(_In_ VMM_HANDLE H, _In_ POB_FCNTFS2_INIT_CONTEXT ctx)
 {
     DWORD iEntry, cEntries, i;
-    DWORD cChildArrayMax = 0x00100000 / sizeof(PFCNTFS2);
-    PFCNTFS2 *pChildArray = (PFCNTFS2*)ctx->pb1M, pDir, pe;
+    DWORD cChildArrayMax = 0x80000;     // 512k entries
+    PFCNTFS2 *pChildArray, pDir, pe;
+    pChildArray = (PFCNTFS2*)LocalAlloc(0, cChildArrayMax * sizeof(SIZE_T));
+    if(!pChildArray) {
+        VmmLog(H, ctx->MID, LOGLEVEL_1_CRITICAL, "Out of memory.");
+        return;
+    }
     cEntries = ObMap_Size(ctx->pmMft);
     for(iEntry = 0; iEntry < cEntries; iEntry++) {
         pDir = (PFCNTFS2)ObMap_GetByIndex(ctx->pmMft, iEntry);
-        if((pDir->cChild < 2) && (pDir->cChild < (0x00100000 / sizeof(PFCNTFS2)))) { continue; }
+        if(pDir->cChild < 2) { continue; }
+        if(pDir->cChild >= cChildArrayMax) {
+            VmmLog(H, ctx->MID, LOGLEVEL_2_WARNING, "Large number of files (>%uk) in directory '%s'. If possible to share memory dump file create an issue @Github!", cChildArrayMax >> 10, pDir->uszName);
+            continue;
+        }
         pe = pDir->pChild;
         i = 0;
         while(pe) {
@@ -1019,6 +1028,7 @@ VOID FcNtfs2_FcIngestFinalize_MergeSort(_In_ VMM_HANDLE H, _In_ POB_FCNTFS2_INIT
             pDir->pChild = pe;
         }
     }
+    LocalFree(pChildArray);
 }
 
 int FcNtfs2_FcIngestFinalize_VolumeCountSort_Compare(PFCNTFS2_VOLUME p1, PFCNTFS2_VOLUME p2)
