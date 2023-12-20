@@ -125,4 +125,15 @@ BOOL MmPfn_Map_GetPfn(_In_ VMM_HANDLE H, _In_ DWORD dwPfnStart, _In_ DWORD cPfn,
 _Success_(return)
 BOOL MmPfn_Map_GetPfnScatter(_In_ VMM_HANDLE H, _In_ POB_SET psPfn, _Out_ PMMPFNOB_MAP *ppObPfnMap, _In_ BOOL fExtended);
 
+/*
+* Retrieve the system PTEs aka DTB PFNs in a fairly optimized way.
+* -- H
+* -- ppObPfnMap
+* -- fExtended = extended information such as process id's.
+* -- ppcProgress = optional progress counter to be updated continuously within function.
+* -- return
+*/
+_Success_(return)
+BOOL MmPfn_Map_GetPfnSystem(_In_ VMM_HANDLE H, _Out_ PMMPFNOB_MAP *ppObPfnMap, _In_ BOOL fExtended, _Out_opt_ PDWORD ppcProgress);
+
 #endif /* __MM_PFN_H__ */

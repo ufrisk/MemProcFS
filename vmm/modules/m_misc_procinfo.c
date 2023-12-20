@@ -20,66 +20,33 @@ VOID MMiscProcInfo_Context_CallbackCleanup(POB_PMMISCINFO_CONTEXT pOb)
     Ob_DECREF(pOb->pDTB);
 }
 
-#define MMISCPROCINFO_MAP_NUM_PFNS      0x2000
-
 VOID MMiscProcInfo_InitializeDTB(_In_ VMM_HANDLE H, _In_ POB_PMMISCINFO_CONTEXT ctx)
 {
-    BYTE pbDTB[0x1000];
     SIZE_T oText = 0;
     LPSTR uszText = NULL;
-    DWORD cEntries = 0, i, oPfn, cPfn, cPfnMax;
-    QWORD vaPfnPteSystem;
+    DWORD iPfn, cEntries = 0;
     PMMPFN_MAP_ENTRY pPfn;
-    PMMPFNOB_MAP pObPfnMap = NULL, pObPfnMap2 = NULL;
     PVMM_PROCESS pObProcess = NULL;
-    PVMM_PROCESS pObSystemProcess = NULL;
-    // 1: INIT:
+    PMMPFNOB_MAP pObPfnMap = NULL;
+    if(!MmPfn_Map_GetPfnSystem(H, &pObPfnMap, TRUE, &ctx->dwProgressPercent)) { goto fail; }
     if(!(uszText = LocalAlloc(LMEM_ZEROINIT, 0x00100000))) { goto fail; }
-    if(!(pObSystemProcess = VmmProcessGet(H, 4))) { goto fail; }
-    // 2: Get System DTB PFN:
-    if(!MmPfn_Map_GetPfn(H, (DWORD)(pObSystemProcess->paDTB >> 12), 1, &pObPfnMap, FALSE) || (pObPfnMap->cMap != 1)) { goto fail; }
-    vaPfnPteSystem = pObPfnMap->pMap[0].vaPte;
-    Ob_DECREF_NULL(&pObPfnMap);
-    // 4: Walk PFN database:
-    cPfnMax = (DWORD)(H->dev.paMax >> 12);
-    for(oPfn = 0; oPfn < cPfnMax; oPfn += MMISCPROCINFO_MAP_NUM_PFNS) {
-        cPfn = min(MMISCPROCINFO_MAP_NUM_PFNS, cPfnMax - oPfn);
-        if(H->fAbort || ctx->fAbort) { goto fail; }
-        ctx->dwProgressPercent = (DWORD)((100ULL * oPfn) / cPfnMax);
-        if(!MmPfn_Map_GetPfn(H, oPfn, cPfn, &pObPfnMap, FALSE)) { goto fail; }
-        for(i = 0; i < pObPfnMap->cMap; i++) {
-            pPfn = pObPfnMap->pMap + i;
-            if((pPfn->vaPte == vaPfnPteSystem) && (pPfn->PageLocation == MmPfnTypeActive)) {
-                if(oText > 0x00100000 - 0x1000) { goto fail; }
-                // verify dtb validity:
-                if(!VmmRead(H, NULL, (QWORD)pPfn->dwPfn << 12, pbDTB, 0x1000)) { continue; }
-                if(!VmmTlbPageTableVerify(H, pbDTB, (QWORD)pPfn->dwPfn << 12, TRUE)) { continue; }
-                // get process from pfn db:
-                if(MmPfn_Map_GetPfn(H, pPfn->dwPfn, 1, &pObPfnMap2, TRUE)) {
-                    if(pObPfnMap2->cMap) {
-                        pObProcess = VmmProcessGet(H, pObPfnMap2->pMap[0].AddressInfo.dwPid);
-                    }
-                    Ob_DECREF_NULL(&pObPfnMap2);
-                }
-                oText += _snprintf_s(uszText + oText, MAX_PATH, _TRUNCATE, "%04x%7i %16llx %16llx %s\n",
-                    cEntries++,
-                    pObProcess ? pObProcess->dwPID : 0,
-                    (QWORD)pPfn->dwPfn << 12,
-                    pObProcess ? pObProcess->win.EPROCESS.va : 0,
-                    pObProcess ? pObProcess->szName : "---"
-                );
-                Ob_DECREF_NULL(&pObProcess);
-            }
-        }
-        Ob_DECREF_NULL(&pObPfnMap);
+    for(iPfn = 0; iPfn < pObPfnMap->cMap; iPfn++) {
+        pPfn = pObPfnMap->pMap + iPfn;
+        pObProcess = VmmProcessGet(H, pPfn->AddressInfo.dwPid);
+        oText += _snprintf_s(uszText + oText, MAX_PATH, _TRUNCATE, "%04x%7i %16llx %16llx %s\n",
+            cEntries++,
+            pObProcess ? pObProcess->dwPID : 0,
+            (QWORD)pPfn->dwPfn << 12,
+            pObProcess ? pObProcess->win.EPROCESS.va : 0,
+            pObProcess ? pObProcess->szName : "---"
+        );
+        Ob_DECREF_NULL(&pObProcess);
     }
     ctx->dwProgressPercent = 100;
     ctx->fCompleted = TRUE;
     ctx->pDTB = ObCompress_NewFromStrA(H, H->vmm.pObCacheMapObCompressedShared, uszText);
 fail:
-    Ob_DECREF(pObSystemProcess);
     Ob_DECREF(pObProcess);
-    Ob_DECREF(pObPfnMap2);
     Ob_DECREF(pObPfnMap);
     LocalFree(uszText);
 }

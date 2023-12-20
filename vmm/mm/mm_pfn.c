@@ -469,3 +469,74 @@ BOOL MmPfn_Map_GetPfn(_In_ VMM_HANDLE H, _In_ DWORD dwPfnStart, _In_ DWORD cPfn,
     Ob_DECREF(psObPfn);
     return fResult;
 }
+
+/*
+* Retrieve the system PTEs aka DTB PFNs in a fairly optimized way.
+* -- H
+* -- ppObPfnMap
+* -- fExtended = extended information such as process id's.
+* -- ppcProgress = optional progress counter to be updated continuously within function.
+* -- return
+*/
+_Success_(return)
+BOOL MmPfn_Map_GetPfnSystem(_In_ VMM_HANDLE H, _Out_ PMMPFNOB_MAP *ppObPfnMap, _In_ BOOL fExtended, _Out_opt_ PDWORD ppcProgress)
+{
+    BOOL f32 = H->vmm.f32;
+    BOOL fResult = FALSE;
+    BYTE pbDTB[0x1000];
+    PMMPFN_CONTEXT ctx;
+    DWORD iPfn, cPfnMax, cPfnChunk;
+    POB_SET psPfn = NULL, pspaDtb = NULL;
+    PVMM_PROCESS pObSystemProcess = NULL;
+    QWORD vaPfnPteSystem;
+    PMMPFNOB_MAP pObPfnMap = NULL;
+    PBYTE pbPfn, pb16M = NULL;
+    QWORD pa;
+    // 1: initialization
+    *ppObPfnMap = NULL;
+    if(ppcProgress) { *ppcProgress = 0; }
+    if(!(ctx = MmPfn_GetContext(H))) { goto fail; }
+    if(!(pObSystemProcess = VmmProcessGet(H, 4))) { goto fail; }
+    if(!(psPfn = ObSet_New(H))) { goto fail; }
+    if(!(pspaDtb = ObSet_New(H))) { goto fail; }
+    if(!(pb16M = LocalAlloc(0, 0x01000000))) { goto fail; }
+    // 2: Get System DTB PFN:
+    if(!MmPfn_Map_GetPfn(H, (DWORD)(pObSystemProcess->paDTB >> 12), 1, &pObPfnMap, FALSE) || (pObPfnMap->cMap != 1)) { goto fail; }
+    vaPfnPteSystem = pObPfnMap->pMap[0].vaPte;
+    Ob_DECREF_NULL(&pObPfnMap);
+    if(!vaPfnPteSystem) { goto fail; }
+    // 3: Get all DTB PFN candidates:
+    cPfnMax = (DWORD)(H->dev.paMax >> 12);
+    cPfnChunk = 0x01000000 / ctx->_MMPFN.cb;
+    for(iPfn = 0; iPfn < cPfnMax; iPfn++) {
+        if(iPfn % cPfnChunk == 0) {
+            cPfnChunk = min(cPfnChunk, cPfnMax - iPfn);
+            VmmRead2(H, pObSystemProcess, ctx->vaPfnDatabase + (QWORD)iPfn * ctx->_MMPFN.cb, pb16M, cPfnChunk * ctx->_MMPFN.cb, VMM_FLAG_ZEROPAD_ON_FAIL);
+            if(ppcProgress) { *ppcProgress = min(99, ((100ULL * iPfn) / cPfnMax)); }
+        }
+        pbPfn = pb16M + (SIZE_T)(iPfn % cPfnChunk) * ctx->_MMPFN.cb;
+        if(vaPfnPteSystem != VMM_PTR_OFFSET(f32, pbPfn, ctx->_MMPFN.oPteAddress)) {
+            continue;
+        }
+        if(MmPfnTypeActive != (*(PBYTE)(pbPfn + ctx->_MMPFN.ou3 + 2) & 0x7)) {
+            continue;
+        }
+        ObSet_Push(pspaDtb, (QWORD)iPfn * 0x1000);
+    }
+    // 4: Validate candidate DTBs:
+    VmmCachePrefetchPages(H, NULL, pspaDtb, 0);
+    for(iPfn = 0; iPfn < ObSet_Size(pspaDtb); iPfn++) {
+        pa = ObSet_Get(pspaDtb, iPfn);
+        if(!VmmRead(H, NULL, pa, pbDTB, 0x1000)) { continue; }
+        if(!VmmTlbPageTableVerify(H, pbDTB, pa, TRUE)) { continue; }
+        ObSet_Push(psPfn, pa >> 12);
+    }
+    // 5: Retrieve PFNs:
+    fResult = MmPfn_Map_GetPfnScatter(H, psPfn, ppObPfnMap, fExtended);
+fail:
+    LocalFree(pb16M);
+    Ob_DECREF(psPfn);
+    Ob_DECREF(pspaDtb);
+    Ob_DECREF(pObSystemProcess);
+    return fResult;
+}

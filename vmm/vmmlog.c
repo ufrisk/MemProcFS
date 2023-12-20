@@ -28,6 +28,7 @@ typedef struct tdVMMLOG_MODULE_MODULEINFO {
 } VMMLOG_CONTEXT_MODULEINFO, *PVMMLOG_CONTEXT_MODULEINFO;
 
 typedef struct tdVMMLOG_CONTEXT {
+    BOOL fFileFlush;
     FILE* pFile;
     VMMLOG_LEVEL dwLevelD;      // log level display (default)
     VMMLOG_LEVEL dwLevelF;      // log level file    (default)
@@ -196,6 +197,11 @@ VOID VmmLog_LevelRefresh(_In_ VMM_HANDLE H)
         szTokenInitial = NULL;
         dwTokenMID = 0;
         fModuleName = FALSE;
+        // parse file flush option (if any):
+        if(!_stricmp(szToken, "fflush")) {
+            ctxLog->fFileFlush = TRUE;
+            continue;
+        }
         // parse file or display (default):
         if((szToken[0] == 'f') && (szToken[1] == ':')) {
             if(!ctxLog->pFile) { continue; }
@@ -399,6 +405,9 @@ VOID VmmLogEx2(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_ VMMLOG_LEVEL dwLo
     if(fF) {
         Util_FileTime2String(Util_FileTimeNow(), szTime);
         fprintf(ctxLog->pFile, "%s %s %-10s %s\n", szTime, VMMLOG_LEVEL_STR[dwLogLevel], szHead, uszBuffer);
+        if(ctxLog->fFileFlush) {
+            fflush(ctxLog->pFile);
+        }
     }
     // cleanup
     if(uszBuffer != uszBufferSmall) { LocalFree(uszBuffer); }
