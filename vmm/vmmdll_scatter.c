@@ -183,7 +183,7 @@ BOOL VMMDLL_Scatter_PrepareWriteInternal(_In_ PSCATTER_CONTEXT ctx, _In_ QWORD v
 * -- va = start address of the memory range to read.
 * -- cb = size of memory range to read.
 * -- pb = buffer to populate with read memory when calling VMMDLL_Scatter_ExecuteRead()
-* -- pcbRead = pointer to be populated with number of bytes successfully read.
+* -- pcbRead = optional pointer to be populated with number of bytes successfully read.
 * -- return
 */
 _Success_(return)
@@ -297,6 +297,11 @@ VOID VMMDLL_Scatter_CloseHandle(_In_opt_ _Post_ptr_invalid_ VMMDLL_SCATTER_HANDL
     PSCATTER_RANGE_WRITE pRangeWr, pRangeWrNext;
     if(!ctx || (ctx->qwMagic != SCATTER_CONTEXT_MAGIC)) { return; }
     AcquireSRWLockExclusive(&ctx->LockSRW);
+    if(ctx->qwMagic != SCATTER_CONTEXT_MAGIC) {
+        // this should never happen ideally - it means user closed handle twice and won the race!
+        ReleaseSRWLockExclusive(&ctx->LockSRW);
+        return;
+    }
     ctx->qwMagic = 0;
     ReleaseSRWLockExclusive(&ctx->LockSRW);
     // dealloc / free

@@ -32,7 +32,7 @@ VmmPycScatterMemory_prepare(PyObj_ScatterMemory *self, PyObject *args)
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "VmmScatterMemory.prepare(): Not initialized."); }
     cArgs = PyTuple_Size(args);
     // single prepare:
-    if((cArgs == 2) && PyArg_ParseTuple(args, "Kk", &qwA, &cb)) {
+    if((cArgs == 2) && PyArg_ParseTuple(args, "KI", &qwA, &cb)) {
         result = VMMDLL_Scatter_Prepare(self->hScatter, qwA, cb);
         if(!result) { return PyErr_Format(PyExc_RuntimeError, "VmmScatterMemory.prepare(): Failed."); }
         Py_INCREF(Py_None); return Py_None;                 // None returned on success.        
@@ -85,7 +85,7 @@ VmmPycScatterMemory_read(PyObj_ScatterMemory *self, PyObject *args)
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "VmmScatterMemory.read(): Not initialized."); }
     cArgs = PyTuple_Size(args);
     // single read:
-    if((cArgs == 2) && PyArg_ParseTuple(args, "Kk", &qwA, &cb)) {
+    if((cArgs == 2) && PyArg_ParseTuple(args, "KI", &qwA, &cb)) {
         pb = LocalAlloc(0, cb);
         if(!pb) { return PyErr_NoMemory(); }
         result = VMMDLL_Scatter_Read(self->hScatter, qwA, cb, pb, &cbRead);
@@ -193,7 +193,7 @@ VmmPycScatterMemory_clear(PyObj_ScatterMemory *self, PyObject *args)
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "VmmScatterMemory.clear(): Not initialized."); }
     dwPID = self->dwPID;
     dwReadFlags = self->dwReadFlags;
-    if(!PyArg_ParseTuple(args, "|kk", &dwPID, &dwReadFlags)) {
+    if(!PyArg_ParseTuple(args, "|II", &dwPID, &dwReadFlags)) {
         return PyErr_Format(PyExc_RuntimeError, "VmmScatterMemory.clear(): Illegal argument.");
     }
     result = VMMDLL_Scatter_Clear(self->hScatter, dwPID, dwReadFlags);

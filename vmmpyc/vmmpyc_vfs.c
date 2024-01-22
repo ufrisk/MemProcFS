@@ -113,7 +113,7 @@ VmmPycVfs_read(PyObj_Vfs *self, PyObject *args)
     PBYTE pb;
     LPSTR uszPathPython = NULL, uszPath;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Vfs.read(): Not initialized."); }
-    if(!PyArg_ParseTuple(args, "s|kK", &uszPathPython, &cb, &cbOffset)) {
+    if(!PyArg_ParseTuple(args, "s|IK", &uszPathPython, &cb, &cbOffset)) {
         return PyErr_Format(PyExc_RuntimeError, "Vfs.read(): Illegal argument.");
     }
     if(cb > 0x10000000) {
@@ -139,7 +139,7 @@ static PyObject*
 VmmPycVfs_write(PyObj_Vfs *self, PyObject *args)
 {
     BOOL result;
-    QWORD cb;
+    SIZE_T cb;
     DWORD cbWritten;
     ULONG64 cbOffset;
     PBYTE pb;

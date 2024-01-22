@@ -17,7 +17,7 @@ VmmPycRegMemory_read(PyObj_RegMemory *self, PyObject *args)
     DWORD ra, cb, cbRead = 0;
     ULONG64 flags = 0;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "RegMemory.read(): Not initialized."); }
-    if(!PyArg_ParseTuple(args, "kk|K", &ra, &cb, &flags)) {
+    if(!PyArg_ParseTuple(args, "II|K", &ra, &cb, &flags)) {
         return PyErr_Format(PyExc_RuntimeError, "RegMemory.read(): Illegal argument.");
     }
     if(cb > 0x01000000) { return PyErr_Format(PyExc_RuntimeError, "RegMemory.read(): Read larger than maximum supported (0x01000000) bytes requested."); }
@@ -41,9 +41,10 @@ VmmPycRegMemory_write(PyObj_RegMemory *self, PyObject *args)
 {
     BOOL result;
     PBYTE pb;
-    DWORD cb, ra;
+    DWORD ra;
+    SIZE_T cb;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "RegMemory.write(): Not initialized."); }
-    if(!PyArg_ParseTuple(args, "ky#", &ra, &pb, &cb)) {
+    if(!PyArg_ParseTuple(args, "Iy#", &ra, &pb, &cb)) {
         return PyErr_Format(PyExc_RuntimeError, "RegMemory.write(): Illegal argument.");
     }
     if(cb == 0) {

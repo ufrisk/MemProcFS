@@ -116,9 +116,9 @@ VmmPycSearch_add_search(PyObj_Search *self, PyObject *args)
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "VmmSearch.add_search(): Not initialized."); }
     if(self->fStarted) { return PyErr_Format(PyExc_RuntimeError, "VmmSearch.add_search(): Search already started."); }
     if(self->ctxSearch.cSearch >= VMMDLL_MEM_SEARCH_MAX) { return PyErr_Format(PyExc_RuntimeError, "VmmSearch.add_search(): Too many searches."); }
-    if(!PyArg_ParseTuple(args, "|y#y#k", &pbSearch, &cbSearch, &pbMask, &cbMask, &cbAlign)) {
+    if(!PyArg_ParseTuple(args, "|y#y#I", &pbSearch, &cbSearch, &pbMask, &cbMask, &cbAlign)) {
         PyErr_Clear();
-        if(!PyArg_ParseTuple(args, "|y#Ok", &pbSearch, &cbSearch, &pyObject, &cbAlign)) {
+        if(!PyArg_ParseTuple(args, "|y#OI", &pbSearch, &cbSearch, &pyObject, &cbAlign)) {
             return PyErr_Format(PyExc_RuntimeError, "VmmSearch.add_search(): Illegal argument.");
         }
         if(pyObject != Py_None) {

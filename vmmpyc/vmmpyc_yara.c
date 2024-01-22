@@ -279,7 +279,7 @@ VmmPycYara_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_opt_ DWORD dwPID, _In_ 
     QWORD vaMin = 0, vaMax = 0, qwReadFlags = 0;
     Py_ssize_t cListRules, size = 0;
     // parse arguments:
-    if(PyArg_ParseTuple(args, "O!|KKkK", &PyList_Type, &pyListRules, &vaMin, &vaMax, &cMaxResults, &qwReadFlags)) {
+    if(PyArg_ParseTuple(args, "O!|KKIK", &PyList_Type, &pyListRules, &vaMin, &vaMax, &cMaxResults, &qwReadFlags)) {
         cListRules = PyList_Size(pyListRules);
         if((cListRules == 0) || (cListRules > VMMPYC_YARA_MAX_RULES)) {
             return NULL;
@@ -297,7 +297,7 @@ VmmPycYara_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_opt_ DWORD dwPID, _In_ 
                 }
             }
         }
-    } else if(PyArg_ParseTuple(args, "s|KKkK", &szSingleRule, &vaMin, &vaMax, &cMaxResults, &qwReadFlags)) {
+    } else if(PyArg_ParseTuple(args, "s|KKIK", &szSingleRule, &vaMin, &vaMax, &cMaxResults, &qwReadFlags)) {
         if(szSingleRule && strlen(szSingleRule) && (pszRules = LocalAlloc(0, sizeof(LPSTR)))) {
             if((pszRules[cRules] = strdup(szSingleRule))) {
                 cRules += 1;

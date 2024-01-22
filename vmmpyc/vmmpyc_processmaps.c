@@ -154,7 +154,7 @@ VmmPycProcessMaps_vad_ex(PyObj_ProcessMaps *self, PyObject *args)
     PVMMDLL_MAP_VADEXENTRY pe;
     PVMMDLL_MAP_VADEX pVadExMap = NULL;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "ProcessMaps.vad_ex(): Not initialized."); }
-    if(!PyArg_ParseTuple(args, "kk", &oPage, &cPage)) {
+    if(!PyArg_ParseTuple(args, "II", &oPage, &cPage)) {
         return PyErr_Format(PyExc_RuntimeError, "ProcessMaps.vad_ex(): Illegal argument.");
     }
     if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }

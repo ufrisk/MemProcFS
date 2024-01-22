@@ -17,7 +17,7 @@ PyObject *VmmPycVirtualMachine_read(PyObj_VirtualMachine *self, PyObject *args)
     ULONG64 qwGPA;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "VirtualMachine.read(): Not initialized."); }
     if(!self->eVM.fActive) { return PyErr_Format(PyExc_RuntimeError, "VirtualMachine.read(): Not allowed inactive VM."); }
-    if(!PyArg_ParseTuple(args, "Kk", &qwGPA, &cb)) {
+    if(!PyArg_ParseTuple(args, "KI", &qwGPA, &cb)) {
         return PyErr_Format(PyExc_RuntimeError, "VirtualMachine.read(): Illegal argument.");
     }
     pb = LocalAlloc(0, cb);
@@ -39,7 +39,7 @@ PyObject *VmmPycVirtualMachine_write(PyObj_VirtualMachine *self, PyObject *args)
 {
     BOOL result;
     ULONG64 qwGPA;
-    DWORD cb;
+    SIZE_T cb;
     PBYTE pb;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "VirtualMachine.write(): Not initialized."); }
     if(!self->eVM.fActive) { return PyErr_Format(PyExc_RuntimeError, "VirtualMachine.write(): Not allowed inactive VM."); }
@@ -50,7 +50,7 @@ PyObject *VmmPycVirtualMachine_write(PyObj_VirtualMachine *self, PyObject *args)
         return Py_BuildValue("s", NULL);    // zero-byte write is always successful.
     }
     Py_BEGIN_ALLOW_THREADS;
-    result = VMMDLL_VmMemWrite(self->pyVMM->hVMM, self->eVM.hVM, qwGPA, pb, cb);
+    result = VMMDLL_VmMemWrite(self->pyVMM->hVMM, self->eVM.hVM, qwGPA, pb, (DWORD)cb);
     Py_END_ALLOW_THREADS;
     if(!result) { return PyErr_Format(PyExc_RuntimeError, "%VirtualMachine.write(): Failed."); }
     return Py_BuildValue("s", NULL);        // None returned on success.

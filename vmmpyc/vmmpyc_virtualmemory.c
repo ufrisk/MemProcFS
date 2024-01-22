@@ -62,7 +62,7 @@ VmmPycVirtualMemory_scatter_initialize(PyObj_VirtualMemory *self, PyObject *args
 {
     DWORD dwReadFlags = 0;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "VirtualMemory.scatter_initialize(): Not initialized."); }
-    if(!PyArg_ParseTuple(args, "|k", &dwReadFlags)) { // borrowed reference
+    if(!PyArg_ParseTuple(args, "|I", &dwReadFlags)) { // borrowed reference
         return PyErr_Format(PyExc_RuntimeError, "VirtualMemory.scatter_initialize(): Illegal argument.");
     }
     return (PyObject*)VmmPycScatterMemory_InitializeInternal(self->pyVMM, NULL, self->dwPID, dwReadFlags);

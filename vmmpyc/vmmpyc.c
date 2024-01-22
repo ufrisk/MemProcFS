@@ -17,7 +17,7 @@ PyObject* VmmPyc_MemReadScatter(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ LPSTR 
     DWORD i, cMEMs, flags = 0;
     PMEM_SCATTER pMEM;
     PPMEM_SCATTER ppMEMs = NULL;
-    if(!PyArg_ParseTuple(args, "O!|k", &PyList_Type, &pyListSrc, &flags)) { // borrowed reference
+    if(!PyArg_ParseTuple(args, "O!|I", &PyList_Type, &pyListSrc, &flags)) { // borrowed reference
         return PyErr_Format(PyExc_RuntimeError, "%s: Illegal argument.", szFN);
     }
     cMEMs = (DWORD)PyList_Size(pyListSrc);
@@ -127,7 +127,7 @@ PyObject* VmmPyc_MemRead(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ LPSTR szFN, P
     PBYTE pb;
     DWORD cb, cbRead = 0;
     ULONG64 qwA, flags = 0;
-    if(!PyArg_ParseTuple(args, "Kk|K", &qwA, &cb, &flags)) {
+    if(!PyArg_ParseTuple(args, "KI|K", &qwA, &cb, &flags)) {
         // try multi-read:
         PyErr_Clear();
         return VmmPyc_MemRead_Multi(H, dwPID, szFN, args);
@@ -151,7 +151,7 @@ PyObject* VmmPyc_MemWrite(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ LPSTR szFN, 
 {
     BOOL result;
     ULONG64 va;
-    DWORD cb;
+    SIZE_T cb;
     PBYTE pb;
     if(!PyArg_ParseTuple(args, "Ky#", &va, &pb, &cb)) {
         return PyErr_Format(PyExc_RuntimeError, "%s: Illegal argument.", szFN);

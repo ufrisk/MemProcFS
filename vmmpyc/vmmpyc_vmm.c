@@ -44,7 +44,7 @@ VmmPycVmm_process(PyObj_Vmm *self, PyObject *args)
     DWORD dwPID;
     LPSTR szProcessName = NULL;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Vmm.process(): Not initialized."); }
-    if(PyArg_ParseTuple(args, "k", &dwPID)) {
+    if(PyArg_ParseTuple(args, "I", &dwPID)) {
         // argument: by-pid:
         pyObjProcess = (PyObject*)VmmPycProcess_InitializeInternal(self, dwPID, TRUE);
         if(!pyObjProcess) {
@@ -70,12 +70,12 @@ VmmPycVmm_hex(PyObj_Vmm *self, PyObject *args)
 {
     PyObject *pyString;
     DWORD cbInitialOffset = 0, csz = 0;
-    QWORD cb;
+    SIZE_T cb;
     PBYTE pb;
     LPSTR sz = NULL;
     BOOL result;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Vmm.hex(): Not initialized."); }
-    if(!PyArg_ParseTuple(args, "y#|k", &pb, &cb, &cbInitialOffset)) {
+    if(!PyArg_ParseTuple(args, "y#|I", &pb, &cb, &cbInitialOffset)) {
         return PyErr_Format(PyExc_RuntimeError, "Vmm.hex(): Illegal argument.");
     }
     if(cb == 0) {
