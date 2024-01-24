@@ -189,16 +189,14 @@ static PyObject*
 VmmPycScatterMemory_clear(PyObj_ScatterMemory *self, PyObject *args)
 {
     BOOL result;
-    DWORD dwPID, dwReadFlags;
+    DWORD dwReadFlags;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "VmmScatterMemory.clear(): Not initialized."); }
-    dwPID = self->dwPID;
     dwReadFlags = self->dwReadFlags;
-    if(!PyArg_ParseTuple(args, "|II", &dwPID, &dwReadFlags)) {
+    if(!PyArg_ParseTuple(args, "|I", &dwReadFlags)) {
         return PyErr_Format(PyExc_RuntimeError, "VmmScatterMemory.clear(): Illegal argument.");
     }
-    result = VMMDLL_Scatter_Clear(self->hScatter, dwPID, dwReadFlags);
+    result = VMMDLL_Scatter_Clear(self->hScatter, self->dwPID, dwReadFlags);
     if(!result) { return PyErr_Format(PyExc_RuntimeError, "VmmScatterMemory.clear(): Failed."); }
-    self->dwPID = dwPID;
     self->dwReadFlags = dwReadFlags;
     Py_INCREF(Py_None); return Py_None;                 // None returned on success.
 }
