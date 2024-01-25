@@ -1,6 +1,6 @@
 [package]
 name = "memprocfs"
-version = "5.8.22"
+version = "5.8.23"
 edition = "2021"
 description = "MemProcFS - Physical Memory Analysis Framework"
 homepage = "https://github.com/ufrisk/MemProcFS"

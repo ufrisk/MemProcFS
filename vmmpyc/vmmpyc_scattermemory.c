@@ -137,7 +137,7 @@ VmmPycScatterMemory_read_type(PyObj_ScatterMemory *self, PyObject *args)
     PyObject *pyListSrc, *pyListItemSrc, *pyListResult = NULL, *pyLongAddress, *pyUnicodeTP;
     DWORD iItem, cItem;
     ULONG64 qwA, flags = 0;
-    BYTE pb8[8], pbZERO[8] = { 0 }, *pbTP;
+    BYTE pb8[8] = { 0 }, pbZERO[8] = { 0 }, *pbTP;
     DWORD tp, cbTP, cbRead;
     BOOL result;
     SIZE_T cArgs;

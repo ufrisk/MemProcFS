@@ -212,23 +212,23 @@ PyObject* VmmPyc_MemReadType_TypeGet(_In_ DWORD tp, _In_ PBYTE pb)
 {
     switch(tp) {
         case 'i8  ':
-            return PyLong_FromLong(*(signed char*)pb); break;
+            return PyLong_FromLong(*(BYTE*)pb); break;
         case 'u8  ':
             return PyLong_FromUnsignedLong(*(BYTE*)pb); break;
         case 'i16 ':
-            return PyLong_FromLong(*(signed short*)pb); break;
+            return PyLong_FromLong(*(WORD*)pb); break;
         case 'u16 ':
             return PyLong_FromUnsignedLong(*(WORD*)pb); break;
         case 'f32 ':
             return PyFloat_FromDouble(*(float*)pb); break;
         case 'i32 ':
-            return PyLong_FromLong(*(signed long *)pb); break;
+            return PyLong_FromLong(*(DWORD*)pb); break;
         case 'u32 ':
             return PyLong_FromUnsignedLong(*(DWORD*)pb); break;
         case 'f64 ':
             return PyFloat_FromDouble(*(double*)pb); break;
         case 'i64 ':
-            return PyLong_FromLongLong(*(signed long long*)pb); break;
+            return PyLong_FromLongLong(*(QWORD*)pb); break;
         case 'u64 ':
             return PyLong_FromUnsignedLongLong(*(QWORD*)pb); break;
             break;
@@ -244,7 +244,7 @@ PyObject* VmmPyc_MemReadType(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ LPSTR szF
     PyObject *pyListItemSrc, *pyListResult = NULL, *pyLongAddress, *pyUnicodeTP;
     DWORD iItem, cItem;
     ULONG64 qwA, vaPrevious = (ULONG64)-1, flags = 0;
-    BYTE pbPage[0x1000], pb8[8], pbZERO[8] = { 0 }, *pbTP;
+    BYTE pbPage[0x1000], pb8[8] = { 0 }, pbZERO[8] = { 0 }, *pbTP;
     DWORD tp, cbTP, cbRead;
     PyObject *pyObjArg0, *pyObjArg1 = NULL;
     struct MultiInfo {
