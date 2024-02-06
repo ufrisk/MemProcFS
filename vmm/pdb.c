@@ -1328,6 +1328,13 @@ fail_mspdb:
         strncat_s(szPathLib, MAX_PATH, "libpdbcrust", _TRUNCATE);
         strncat_s(szPathLib, MAX_PATH, VMM_LIBRARY_FILETYPE, _TRUNCATE);
         ctx->crust.hModule = LoadLibraryA(szPathLib);
+#ifndef _WIN32
+        if(!ctx->crust.hModule) {
+            strncat_s(szPathLib, MAX_PATH, "libpdbcrust2", _TRUNCATE);
+            strncat_s(szPathLib, MAX_PATH, VMM_LIBRARY_FILETYPE, _TRUNCATE);
+            ctx->crust.hModule = LoadLibraryA(szPathLib);
+        }
+#endif /* _WIN32 */
         if(!ctx->crust.hModule) {
             PDB_PrintError(H, "Reason: Could not load PDB required file - libpdbcrust.dll/so.", szErrorMSPDB);
             goto fail;

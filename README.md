@@ -197,10 +197,10 @@ v1.1-v4.9
 
 Latest:
 * Bug fixes.
-* ntfs module: improvements.
-* web module: improved support and move from misc/web -> forenic/web.
+* Module improvements: ntfs, procinfo, web.
 * C# API: improvements.
 * Java API: support for java.lang.foreign (JDK21+) for efficient memory accesses.
 * Linux PCIe FPGA performance improvements.
 * FindEvil: AV detections from Windows Defender residing on the analyzed system.
 * Python API: new functionality (multi-read, type-read) and improved scatter read performance.
+* Support for Proxmox memory dump files.
