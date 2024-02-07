@@ -1324,14 +1324,15 @@ fail_mspdb:
     // 3: Try initialize pdb subsystem using the wrapper library pdbcrust around the rust pdb crate.
     //    This is only done if the MSPDB loading was not successful.
     if(!fValidMSPDB) {
+        ZeroMemory(szPathLib, sizeof(szPathLib));
         Util_GetPathLib(szPathLib);
-        strncat_s(szPathLib, MAX_PATH, "libpdbcrust", _TRUNCATE);
-        strncat_s(szPathLib, MAX_PATH, VMM_LIBRARY_FILETYPE, _TRUNCATE);
+        strncat_s(szPathLib, MAX_PATH, "libpdbcrust"VMM_LIBRARY_FILETYPE, _TRUNCATE);
         ctx->crust.hModule = LoadLibraryA(szPathLib);
 #ifndef _WIN32
         if(!ctx->crust.hModule) {
-            strncat_s(szPathLib, MAX_PATH, "libpdbcrust2", _TRUNCATE);
-            strncat_s(szPathLib, MAX_PATH, VMM_LIBRARY_FILETYPE, _TRUNCATE);
+            ZeroMemory(szPathLib, sizeof(szPathLib));
+            Util_GetPathLib(szPathLib);
+            strncat_s(szPathLib, MAX_PATH, "libpdbcrust2"VMM_LIBRARY_FILETYPE, _TRUNCATE);
             ctx->crust.hModule = LoadLibraryA(szPathLib);
         }
 #endif /* _WIN32 */

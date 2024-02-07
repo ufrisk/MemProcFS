@@ -70,6 +70,14 @@ VOID VmmYara_Initialize()
     Util_GetPathLib(szLibraryPath);
     strcat_s(szLibraryPath, MAX_PATH, "vmmyara"VMM_LIBRARY_FILETYPE);
     g_VmmYaraDLL = LoadLibraryA(szLibraryPath);
+#ifndef _WIN32
+if(!g_VmmYaraDLL) {
+        ZeroMemory(szLibraryPath, sizeof(szLibraryPath));
+        Util_GetPathLib(szLibraryPath);
+        strcat_s(szLibraryPath, MAX_PATH, "vmmyara2"VMM_LIBRARY_FILETYPE);
+        g_VmmYaraDLL = LoadLibraryA(szLibraryPath);
+    }
+#endif /* _WIN32 */
     if(!g_VmmYaraDLL) { goto fail; }
     if(!(gpfn_VmmYara_RulesLoadCompiled = (pfnVmmYara_RulesLoadCompiled)GetProcAddress(g_VmmYaraDLL, "VmmYara_RulesLoadCompiled"))) { goto fail; }
     if(!(gpfn_VmmYara_RulesLoadSourceCombined = (pfnVmmYara_RulesLoadSourceString)GetProcAddress(g_VmmYaraDLL, "VmmYara_RulesLoadSourceCombined"))) { goto fail; }
