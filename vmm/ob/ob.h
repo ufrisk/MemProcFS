@@ -100,7 +100,7 @@ PVOID Ob_AllocEx(_In_opt_ VMM_HANDLE H, _In_ DWORD tag, _In_ UINT uFlags, _In_ S
 * -- pfnRef_1 = optional callback for when object reach refcount = 1 at DECREF.
 * -- return = allocated object on success, with refcount = 1, - NULL on fail.
 */
-inline PVOID Ob_Alloc(_In_ DWORD tag, _In_ UINT uFlags, _In_ SIZE_T uBytes, _In_opt_ OB_CLEANUP_CB pfnRef_0, _In_opt_ OB_CLEANUP_CB pfnRef_1)
+__forceinline PVOID Ob_Alloc(_In_ DWORD tag, _In_ UINT uFlags, _In_ SIZE_T uBytes, _In_opt_ OB_CLEANUP_CB pfnRef_0, _In_opt_ OB_CLEANUP_CB pfnRef_1)
 {
     return Ob_AllocEx(NULL, tag, uFlags, uBytes, pfnRef_0, pfnRef_1);
 }

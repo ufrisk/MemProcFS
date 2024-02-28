@@ -451,7 +451,7 @@ BOOL AcquireSRWLockExclusive_Try(_Inout_ PSRWLOCK SRWLock)
 {
     DWORD dwZero = 0;
     __sync_fetch_and_add_4(&SRWLock->c, 1);
-    if(atomic_compare_exchange_strong(&SRWLock->xchg, &dwZero, 1)) {
+    if(atomic_compare_exchange_strong((atomic_uint*)&SRWLock->xchg, &dwZero, 1)) {
         return TRUE;
     }
     __sync_sub_and_fetch_4(&SRWLock->c, 1);
@@ -464,7 +464,7 @@ VOID AcquireSRWLockExclusive(_Inout_ PSRWLOCK SRWLock)
     __sync_fetch_and_add_4(&SRWLock->c, 1);
     while(TRUE) {
         dwZero = 0;
-        if(atomic_compare_exchange_strong(&SRWLock->xchg, &dwZero, 1)) {
+        if(atomic_compare_exchange_strong((atomic_uint*)&SRWLock->xchg, &dwZero, 1)) {
             return;
         }
         futex(&SRWLock->xchg, FUTEX_WAIT, 1, NULL, NULL, 0);
@@ -479,7 +479,7 @@ BOOL AcquireSRWLockExclusive_Timeout(_Inout_ PSRWLOCK SRWLock, _In_ DWORD dwMill
     __sync_fetch_and_add_4(&SRWLock->c, 1);
     while(TRUE) {
         dwZero = 0;
-        if(atomic_compare_exchange_strong(&SRWLock->xchg, &dwZero, 1)) {
+        if(atomic_compare_exchange_strong((atomic_uint*)&SRWLock->xchg, &dwZero, 1)) {
             return TRUE;
         }
         if((dwMilliseconds != 0) && (dwMilliseconds != 0xffffffff)) {
@@ -501,7 +501,7 @@ BOOL AcquireSRWLockExclusive_Timeout(_Inout_ PSRWLOCK SRWLock, _In_ DWORD dwMill
 VOID ReleaseSRWLockExclusive(_Inout_ PSRWLOCK SRWLock)
 {
     DWORD dwOne = 1;
-    if(atomic_compare_exchange_strong(&SRWLock->xchg, &dwOne, 0)) {
+    if(atomic_compare_exchange_strong((atomic_uint*)&SRWLock->xchg, &dwOne, 0)) {
         if(__sync_sub_and_fetch_4(&SRWLock->c, 1)) {
             futex(&SRWLock->xchg, FUTEX_WAKE, 1, NULL, NULL, 0);
         }

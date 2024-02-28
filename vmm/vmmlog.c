@@ -41,7 +41,7 @@ typedef struct tdVMMLOG_CONTEXT {
 /*
 * Helper function to get a log module info object.
 */
-inline PVMMLOG_CONTEXT_MODULEINFO VmmLog_GetModuleInfo(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID)
+__forceinline PVMMLOG_CONTEXT_MODULEINFO VmmLog_GetModuleInfo(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID)
 {
     PVMMLOG_CONTEXT ctxLog = H->log;
     if(!ctxLog) { return NULL; }

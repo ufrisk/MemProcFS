@@ -55,6 +55,7 @@ typedef struct tdSID { BYTE pb[12]; } SID, *PSID;
 typedef DWORD(*PTHREAD_START_ROUTINE)(PVOID);
 typedef DWORD(*LPTHREAD_START_ROUTINE)(PVOID);
 typedef int(*_CoreCrtNonSecureSearchSortCompareFunction)(void const *, void const *);
+#define __forceinline                       inline __attribute__((always_inline))
 #define errno_t                             int
 #define CONST                               const
 #define TRUE                                1

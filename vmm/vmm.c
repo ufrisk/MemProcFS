@@ -843,7 +843,7 @@ PVMM_PROCESS VmmProcessGetEx(_In_ VMM_HANDLE H, _In_opt_ PVMMOB_PROCESS_TABLE pt
 * -- dwPID
 * -- return = a process struct, or NULL if not found.
 */
-inline PVMM_PROCESS VmmProcessGet(_In_ VMM_HANDLE H, _In_ DWORD dwPID)
+__forceinline PVMM_PROCESS VmmProcessGet(_In_ VMM_HANDLE H, _In_ DWORD dwPID)
 {
     return VmmProcessGetEx(H, NULL, dwPID, 0);
 }

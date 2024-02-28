@@ -221,7 +221,7 @@ LPSTR PE_EatForwardedFunctionNameValidate(
 * -- return = success: number of entries. fail: 0.
 */
 DWORD PE_EatGetNumberOfEx(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt);
-inline DWORD PE_EatGetNumberOf(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase)
+__forceinline DWORD PE_EatGetNumberOf(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase)
 {
     return PE_EatGetNumberOfEx(H, pProcess, vaModuleBase, NULL);
 }
@@ -236,7 +236,7 @@ inline DWORD PE_EatGetNumberOf(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _I
 * -- return = success: number of entries. fail: 0.
 */
 DWORD PE_IatGetNumberOfEx(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt);
-inline DWORD PE_IatGetNumberOf(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase)
+__forceinline DWORD PE_IatGetNumberOf(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase)
 {
     return PE_IatGetNumberOfEx(H, pProcess, vaModuleBase, NULL);
 }

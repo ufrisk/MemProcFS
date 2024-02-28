@@ -31,7 +31,7 @@
 * -- dwPoolType
 * -- return
 */
-inline VMM_MAP_POOL_TP VmmWinPool_PoolTypeConvert(_In_ DWORD dwPoolType)
+__forceinline VMM_MAP_POOL_TP VmmWinPool_PoolTypeConvert(_In_ DWORD dwPoolType)
 {
     if(dwPoolType & 1) {
         return VMM_MAP_POOL_TP_PagedPool;
