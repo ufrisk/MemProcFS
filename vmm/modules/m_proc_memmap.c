@@ -1,6 +1,6 @@
 // m_proc_memmap.c : implementation of the memmap built-in module.
 //
-// (c) Ulf Frisk, 2019-2023
+// (c) Ulf Frisk, 2019-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -99,7 +99,7 @@ int MemMap_Read_VadExMap_CmpFind(_In_ QWORD vaBase, _In_ QWORD qwEntry)
 }
 
 _Success_(return == 0)
-NTSTATUS MemMap_Read_VadExMap(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ LPSTR uszFile, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MemMap_Read_VadExMap(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ LPCSTR uszFile, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     QWORD vaVad;
@@ -153,7 +153,7 @@ NTSTATUS MemMap_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_w
 {
     BOOL f32 = H->vmm.f32;
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
-    LPSTR uszFile;
+    LPCSTR uszFile;
     CHAR uszPath1[MAX_PATH];
     PVMMOB_MAP_PTE pObPteMap = NULL;
     PVMMOB_MAP_VAD pObVadMap = NULL;
@@ -205,7 +205,7 @@ BOOL MemMap_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PH
 {
     BOOL f32 = H->vmm.f32;
     DWORD iVad, cbLine;
-    LPSTR uszFile;
+    LPCSTR uszFile;
     CHAR uszPath1[MAX_PATH];
     PVMMOB_MAP_PTE pObPteMap = NULL;
     PVMMOB_MAP_VAD pObVadMap = NULL;

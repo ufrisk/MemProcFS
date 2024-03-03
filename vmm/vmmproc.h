@@ -1,6 +1,6 @@
 // vmmproc.h : definitions related to operating system and process parsing of virtual memory
 //
-// (c) Ulf Frisk, 2018-2023
+// (c) Ulf Frisk, 2018-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __VMMPROC_H__

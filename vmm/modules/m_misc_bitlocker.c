@@ -1,6 +1,6 @@
 // m_misc_bitlocker.c : implementation of the bitlocker key recovery built-in module.
 //
-// (c) Ulf Frisk, 2022-2023
+// (c) Ulf Frisk, 2022-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

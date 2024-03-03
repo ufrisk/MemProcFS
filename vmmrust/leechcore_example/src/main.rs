@@ -7,7 +7,7 @@
 // For more general LeechCore useage (possibly together with MemProcFS) check
 // out the MemProcFS example project.
 //
-// (c) Ulf Frisk, 2023
+// (c) Ulf Frisk, 2023-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 // https://github.com/ufrisk/LeechCore
 //

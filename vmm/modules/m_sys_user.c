@@ -2,7 +2,7 @@
 //
 // The '/sys/users' module is responsible for displaying the users of the system.
 //
-// (c) Ulf Frisk, 2022-2023
+// (c) Ulf Frisk, 2022-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

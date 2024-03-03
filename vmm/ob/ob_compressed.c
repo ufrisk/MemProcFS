@@ -6,7 +6,7 @@
 // The compressed data object (ObCompressed) is thread safe.
 // The ObCompressed is an object manager object and must be DECREF'ed when required.
 //
-// (c) Ulf Frisk, 2021-2023
+// (c) Ulf Frisk, 2021-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "ob.h"
@@ -291,11 +291,11 @@ fail:
 * -- return
 */
 _Success_(return != NULL)
-POB_COMPRESSED ObCompress_NewFromStrA(_In_opt_ VMM_HANDLE H, _In_opt_ POB_CACHEMAP pcmg, _In_ LPSTR sz)
+POB_COMPRESSED ObCompress_NewFromStrA(_In_opt_ VMM_HANDLE H, _In_opt_ POB_CACHEMAP pcmg, _In_ LPCSTR sz)
 {
     SIZE_T csz = strlen(sz);
     if(csz > 0x01000000) { return NULL; }
-    return ObCompressed_NewFromByte(H, pcmg, sz, (DWORD)csz);
+    return ObCompressed_NewFromByte(H, pcmg, (PBYTE)sz, (DWORD)csz);
 }
 
 /*

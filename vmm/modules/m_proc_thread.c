@@ -1,6 +1,6 @@
 // m_proc_thread.c : implementation of the thread info built-in module.
 //
-// (c) Ulf Frisk, 2019-2023
+// (c) Ulf Frisk, 2019-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -124,7 +124,7 @@ NTSTATUS MThread_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PVMMOB_MAP_THREAD pObThreadMap = NULL;
     CHAR uszThreadName[16 + 1];
-    LPSTR uszSubPath;
+    LPCSTR uszSubPath;
     DWORD dwTID;
     PVMM_MAP_THREADENTRY pe;
     PVMMOB_TOKEN pObToken = NULL;
@@ -193,7 +193,7 @@ NTSTATUS MThread_Write(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PVMMOB_MAP_THREAD pObThreadMap = NULL;
     CHAR uszThreadName[16 + 1];
-    LPSTR uszSubPath;
+    LPCSTR uszSubPath;
     DWORD dwTID;
     PVMM_MAP_THREADENTRY pe;
     if(!VmmMap_GetThread(H, ctxP->pProcess, &pObThreadMap)) { return VMMDLL_STATUS_FILE_INVALID; }
@@ -253,7 +253,7 @@ BOOL MThread_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ P
     DWORD i, dwTID, cbStack;
     CHAR uszBuffer[32] = { 0 };
     CHAR uszThreadName[16 + 1];
-    LPSTR uszSubPath;
+    LPCSTR uszSubPath;
     PVMMOB_MAP_THREAD pObThreadMap = NULL;
     PVMM_MAP_THREADENTRY pe;
     VMMDLL_VFS_FILELIST_EXINFO ExInfo = { 0 };

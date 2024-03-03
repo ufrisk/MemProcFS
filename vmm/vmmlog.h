@@ -1,6 +1,6 @@
 // vmmlog.h : definitions of the vmm logging functionality.
 //
-// (c) Ulf Frisk, 2022-2023
+// (c) Ulf Frisk, 2022-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __VMMLOG_H__
@@ -125,7 +125,7 @@ VOID VmmLog_LevelSet(_In_ VMM_HANDLE H, _In_opt_ VMM_MODULE_ID MID, _In_ VMMLOG_
 * -- uszModuleName
 * -- fExternal = externally loaded module (dll/so).
 */
-VOID VmmLog_RegisterModule(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_ LPSTR uszModuleName, _In_ BOOL fExternal);
+VOID VmmLog_RegisterModule(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_ LPCSTR uszModuleName, _In_ BOOL fExternal);
 
 /*
 * Check whether the MID/LogLevel will log to any output.
@@ -154,7 +154,7 @@ VOID VmmLogHexAsciiEx(
     _In_reads_(cb) PBYTE pb,
     _In_ DWORD cb,
     _In_ DWORD cbInitialOffset,
-    _In_z_ _Printf_format_string_ LPSTR uszFormat,
+    _In_z_ _Printf_format_string_ LPCSTR uszFormat,
     ...
 );
 
@@ -167,7 +167,7 @@ VOID VmmLogHexAsciiEx(
 * -- uszFormat
 * -- ...
 */
-VOID VmmLogEx(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_ VMMLOG_LEVEL dwLogLevel, _In_z_ _Printf_format_string_ LPSTR uszFormat, ...);
+VOID VmmLogEx(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_ VMMLOG_LEVEL dwLogLevel, _In_z_ _Printf_format_string_ LPCSTR uszFormat, ...);
 
 /*
 * Log a message using a va_list. Whether the message is displayed and/or saved
@@ -178,7 +178,7 @@ VOID VmmLogEx(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_ VMMLOG_LEVEL dwLog
 * -- uszFormat
 * -- arglist
 */
-VOID VmmLogEx2(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_ VMMLOG_LEVEL dwLogLevel, _In_z_ _Printf_format_string_ LPSTR uszFormat, va_list arglist);
+VOID VmmLogEx2(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_ VMMLOG_LEVEL dwLogLevel, _In_z_ _Printf_format_string_ LPCSTR uszFormat, va_list arglist);
 
 /*
 * Log amessage "printf" style.

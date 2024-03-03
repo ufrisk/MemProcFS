@@ -22,7 +22,7 @@
 // Please also check out LiveCloudKd at: https://github.com/gerhart01/LiveCloudKd
 // 
 //
-// (c) Ulf Frisk, 2022-2023
+// (c) Ulf Frisk, 2022-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -465,7 +465,7 @@ VOID VmmVm_DoWork_4_NewVM_StartupVmm(_In_ VMM_HANDLE H, _In_ PVMMOB_VM_CONTEXT p
     LPSTR szOsType = "Windows";
     CHAR szLcDevice[128], szGpaMax[32], szParentVmm[32];
     DWORD cArg = 0;
-    LPSTR szArg[32];
+    LPCSTR szArg[32];
     // 1: Sanity check & create init parameters:
     if(H->fAbort || !pVM->fActive || pVM->hVMM) { return; }
     // 2: Common arguments:

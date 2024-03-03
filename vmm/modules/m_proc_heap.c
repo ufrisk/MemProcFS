@@ -1,6 +1,6 @@
 // m_proc_heap.c : implementation of the heaps built-in module.
 //
-// (c) Ulf Frisk, 2022-2023
+// (c) Ulf Frisk, 2022-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -89,7 +89,7 @@ BOOL MHeap_GetAllocPath(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Ou
 {
     DWORD dwId = (DWORD)Util_GetNumericA(ctxP->uszPath);
     if(!dwId && (ctxP->uszPath[0] != '0')) return FALSE;
-    *pszPath = CharUtil_PathSplitNext(ctxP->uszPath);
+    *pszPath = (LPSTR)CharUtil_PathSplitNext(ctxP->uszPath);
     return VmmMap_GetHeapAlloc(H, ctxP->pProcess, dwId, ppObHeapAllocMap);
 }
 
@@ -107,11 +107,11 @@ BOOL MHeap_GetAllocPath(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Ou
 NTSTATUS MHeap_Write(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
 {
     QWORD va;
-    LPSTR uszPath;
+    LPCSTR uszPath;
     PVMM_MAP_HEAPALLOCENTRY peA;
     PVMMOB_MAP_HEAPALLOC pObHeapAllocMap = NULL;
     *pcbWrite = 0;
-    if(!MHeap_GetAllocPath(H, ctxP, &pObHeapAllocMap, &uszPath)) { goto finish; }
+    if(!MHeap_GetAllocPath(H, ctxP, &pObHeapAllocMap, (LPSTR*)&uszPath)) { goto finish; }
     if(CharUtil_StrEndsWith(uszPath, ".mem", FALSE)) {
         uszPath = CharUtil_PathSplitLast(uszPath);
         va = Util_GetNumericA(uszPath);
@@ -143,7 +143,7 @@ NTSTATUS MHeap_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_wr
     PVMMOB_MAP_HEAPALLOC pObHeapAllocMap = NULL;
     PVMM_MAP_HEAPALLOCENTRY peA;
     MHEAP_CTX ctx = { 0 };
-    LPSTR uszPath;
+    LPCSTR uszPath;
     QWORD va;
     if(!VmmMap_GetHeap(H, ctxP->pProcess, &pObHeapMap)) { return VMMDLL_STATUS_FILE_INVALID; }
     ctx.pProcess = (PVMM_PROCESS)ctxP->pProcess;
@@ -168,7 +168,7 @@ NTSTATUS MHeap_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_wr
         goto finish;
     }
     // specific heap
-    if(!MHeap_GetAllocPath(H, ctxP, &pObHeapAllocMap, &uszPath)) { goto finish; }
+    if(!MHeap_GetAllocPath(H, ctxP, &pObHeapAllocMap, (LPSTR*)&uszPath)) { goto finish; }
     if(!_stricmp(uszPath, "allocations.txt")) {
         nt = Util_VfsLineFixed_Read(
             H, (UTIL_VFSLINEFIXED_PFN_CB)MHeap_AllocReadLineCB, &ctx, MHEAP_ALLOC_LINELENGTH, MHEAP_ALLOC_LINEHEADER,

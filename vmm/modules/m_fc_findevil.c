@@ -1,6 +1,6 @@
 // m_fc_findevil.c : implementation of the find evil built-in module.
 //
-// (c) Ulf Frisk, 2020-2023
+// (c) Ulf Frisk, 2020-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -36,6 +36,9 @@ NTSTATUS MFcFindEvil_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _
     if(!_stricmp(ctxP->uszPath, "yara.txt")) {
         return ObMemFile_ReadFile(H->fc->FindEvil.pmfYara, pb, cb, pcbRead, cbOffset);
     }
+    if(!_stricmp(ctxP->uszPath, "yara_rules.txt")) {
+        return ObMemFile_ReadFile(H->fc->FindEvil.pmfYaraRules, pb, cb, pcbRead, cbOffset);
+    }
     return VMMDLL_STATUS_FILE_INVALID;
 }
 
@@ -45,6 +48,7 @@ BOOL MFcFindEvil_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inou
     VMMDLL_VfsList_AddFile(pFileList, "readme.txt", strlen(szM_FC_FINDEVIL_README), NULL);
     VMMDLL_VfsList_AddFile(pFileList, "findevil.txt", ObMemFile_Size(H->fc->FindEvil.pmf), NULL);
     VMMDLL_VfsList_AddFile(pFileList, "yara.txt", ObMemFile_Size(H->fc->FindEvil.pmfYara), NULL);
+    VMMDLL_VfsList_AddFile(pFileList, "yara_rules.txt", ObMemFile_Size(H->fc->FindEvil.pmfYaraRules), NULL);
     return TRUE;
 }
 

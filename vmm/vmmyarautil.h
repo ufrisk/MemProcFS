@@ -8,7 +8,7 @@
 // (3) Finalize the yara context with VmmYaraUtil_Finalize().
 // (4) Parse the results with VmmYaraUtil_ParseSingleResult().
 //
-// (c) Ulf Frisk, 2023
+// (c) Ulf Frisk, 2023-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -103,7 +103,8 @@ typedef struct tdVMMYARAUTIL_PARSE_RESULT_FINDEVIL {
     QWORD va;
     VMMEVIL_TYPE EvilType;
     CHAR uszName[16];
-    CHAR uszText[MAX_PATH];
+    CHAR uszRuleName[MAX_PATH];
+    DWORD dwRuleIndex;
 } VMMYARAUTIL_PARSE_RESULT_FINDEVIL, *PVMMYARAUTIL_PARSE_RESULT_FINDEVIL;
 
 /*

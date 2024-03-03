@@ -1,6 +1,6 @@
 // infodb.c : implementation of the information read-only sqlite database.
 //
-// (c) Ulf Frisk, 2021-2023
+// (c) Ulf Frisk, 2021-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "infodb.h"
@@ -227,6 +227,70 @@ BOOL InfoDB_YaraRulesBuiltIn_Exists(_In_ VMM_HANDLE H)
 }
 
 /*
+* Retrieve a single yara rule given its name. MemProcFS specific info is removed.
+* CALLER LocalFree: *puszRule
+* -- H
+* -- uszRuleName = the rule name to retrieve.
+* -- puszRule = pointer to receive pointer to rule string.
+* -- return
+*/
+_Success_(return)
+BOOL InfoDB_YaraRulesBuiltInSingle(_In_ VMM_HANDLE H, _In_ LPCSTR uszRuleName, _Out_ LPSTR *puszRule)
+{
+    CHAR uszNameBuf[MAX_PATH];
+    LPSTR szSQL;
+    int rc;
+    sqlite3 *hSql = NULL;
+    sqlite3_stmt *hStmt = NULL;
+    POB_INFODB_CONTEXT pObCtx = NULL;
+    PBYTE pbCompressed;
+    DWORD cbCompressed, cbDecompressed, cbRule, oRule = 0;
+    LPSTR uszRules = NULL, uszRule, uszRuleStart = NULL, uszRuleEnd = NULL;
+    LPSTR uszLine, szTokenizerContext = NULL;
+    *puszRule = NULL;
+    // 1: init
+    if(!(pObCtx = ObContainer_GetOb(H->vmm.pObCInfoDB))) { goto fail; }
+    if(!(hSql = InfoDB_SqlReserve(H, pObCtx))) { goto fail; }
+    // 2: sqlite prepare:
+    szSQL = "SELECT rulegz_len, rulegz FROM yara_rules WHERE name LIKE ?";
+    rc = sqlite3_prepare_v2(hSql, szSQL, -1, &hStmt, 0);
+    if(rc != SQLITE_OK) { goto fail; }
+    if(!CharUtil_SplitLast(uszRuleName, '_', uszNameBuf, sizeof(uszNameBuf))) { goto fail; }
+    strncat_s(uszNameBuf, sizeof(uszNameBuf), "%", _TRUNCATE);
+    sqlite3_bind_text(hStmt, 1, uszNameBuf, -1, NULL);
+    // 3: sqlite execute query and retrieve decompressed result:
+    if(SQLITE_ROW != sqlite3_step(hStmt)) { goto fail; }
+    cbDecompressed = sqlite3_column_int(hStmt, 0);
+    cbCompressed = sqlite3_column_bytes(hStmt, 1);
+    pbCompressed = (PBYTE)sqlite3_column_blob(hStmt, 1);
+    if(!cbDecompressed || !cbCompressed || !pbCompressed) { goto fail; }
+    if(!Util_DecompressGzToStringAlloc(pbCompressed, cbCompressed, cbDecompressed, &uszRules)) { goto fail; }
+    // 4: find rule and remove MemProcFS specific info:
+    _snprintf_s(uszNameBuf, sizeof(uszNameBuf), _TRUNCATE, "rule %s", uszRuleName);
+    if(!(uszRuleStart = strstr(uszRules, uszNameBuf))) { goto fail; }
+    uszRuleEnd = strstr(uszRuleStart, "\n}");
+    cbRule = 16 + (uszRuleEnd ? (DWORD)(uszRuleEnd - uszRuleStart) : (DWORD)strlen(uszRuleStart));
+    if(!(uszRule = LocalAlloc(LMEM_ZEROINIT, cbRule))) { goto fail; }
+    uszLine = strtok_s(uszRuleStart, "\n", &szTokenizerContext);
+    while(uszLine) {
+        if(!strstr(uszLine, "MEMPROCFS")) {
+            oRule += (DWORD)_snprintf_s(uszRule + oRule, cbRule - oRule, _TRUNCATE, "%s\n", uszLine);
+        }
+        if(CharUtil_StrEquals(uszLine, "}", FALSE)) { break; }
+        uszLine = strtok_s(NULL, "\n", &szTokenizerContext);
+        if(CharUtil_StrStartsWith(uszLine, "rule ", TRUE)) { break; }
+    }
+    // 5: cleanup and return:
+    *puszRule = uszRule;
+fail:
+    LocalFree(uszRules);
+    sqlite3_finalize(hStmt);
+    InfoDB_SqlReserveReturn(pObCtx, hSql);
+    Ob_DECREF(pObCtx);
+    return *puszRule ? TRUE : FALSE;
+}
+
+/*
 * Retrieve the built-in YARA rules from the InfoDB.
 * License: The number of rules may be limited unless the elastic-license-2.0
 * is accepted by the user in the H->cfg.fLicenseAcceptElasticV2.
@@ -318,7 +382,7 @@ fail:
 * -- return
 */
 _Success_(return)
-BOOL InfoDB_SymbolOffset(_In_ VMM_HANDLE H, _In_ LPSTR szModule, _In_ LPSTR szSymbolName, _Out_ PDWORD pdwSymbolOffset)
+BOOL InfoDB_SymbolOffset(_In_ VMM_HANDLE H, _In_ LPCSTR szModule, _In_ LPCSTR szSymbolName, _Out_ PDWORD pdwSymbolOffset)
 {
     BOOL fResult = FALSE;
     POB_INFODB_CONTEXT pObCtx = NULL;
@@ -356,7 +420,7 @@ fail:
 * -- return
 */
 _Success_(return)
-BOOL InfoDB_SymbolPBYTE(_In_ VMM_HANDLE H, _In_ LPSTR szModule, _In_ QWORD vaModuleBase, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb)
+BOOL InfoDB_SymbolPBYTE(_In_ VMM_HANDLE H, _In_ LPCSTR szModule, _In_ QWORD vaModuleBase, _In_ LPCSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb)
 {
     DWORD dwSymbolOffset = 0;
     if(!InfoDB_SymbolOffset(H, szModule, szSymbolName, &dwSymbolOffset)) { return FALSE; }
@@ -374,7 +438,7 @@ BOOL InfoDB_SymbolPBYTE(_In_ VMM_HANDLE H, _In_ LPSTR szModule, _In_ QWORD vaMod
 * -- return
 */
 _Success_(return)
-BOOL InfoDB_GetSymbolQWORD(_In_ VMM_HANDLE H, _In_ LPSTR szModule, _In_ QWORD vaModuleBase, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_ PQWORD pqw)
+BOOL InfoDB_GetSymbolQWORD(_In_ VMM_HANDLE H, _In_ LPCSTR szModule, _In_ QWORD vaModuleBase, _In_ LPCSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_ PQWORD pqw)
 {
     return InfoDB_SymbolPBYTE(H, szModule, vaModuleBase, szSymbolName, pProcess, (PBYTE)pqw, sizeof(QWORD));
 }
@@ -390,7 +454,7 @@ BOOL InfoDB_GetSymbolQWORD(_In_ VMM_HANDLE H, _In_ LPSTR szModule, _In_ QWORD va
 * -- return
 */
 _Success_(return)
-BOOL InfoDB_SymbolDWORD(_In_ VMM_HANDLE H, _In_ LPSTR szModule, _In_ QWORD vaModuleBase, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_ PDWORD pdw)
+BOOL InfoDB_SymbolDWORD(_In_ VMM_HANDLE H, _In_ LPCSTR szModule, _In_ QWORD vaModuleBase, _In_ LPCSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_ PDWORD pdw)
 {
     return InfoDB_SymbolPBYTE(H, szModule, vaModuleBase, szSymbolName, pProcess, (PBYTE)pdw, sizeof(DWORD));
 }
@@ -406,7 +470,7 @@ BOOL InfoDB_SymbolDWORD(_In_ VMM_HANDLE H, _In_ LPSTR szModule, _In_ QWORD vaMod
 * -- return
 */
 _Success_(return)
-BOOL InfoDB_SymbolPTR(_In_ VMM_HANDLE H, _In_ LPSTR szModule, _In_ QWORD vaModuleBase, _In_ LPSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_ PVOID pv)
+BOOL InfoDB_SymbolPTR(_In_ VMM_HANDLE H, _In_ LPCSTR szModule, _In_ QWORD vaModuleBase, _In_ LPCSTR szSymbolName, _In_ PVMM_PROCESS pProcess, _Out_ PVOID pv)
 {
     return InfoDB_SymbolPBYTE(H, szModule, vaModuleBase, szSymbolName, pProcess, (PBYTE)pv, (H->vmm.f32 ? sizeof(DWORD) : sizeof(QWORD)));
 }
@@ -420,7 +484,7 @@ BOOL InfoDB_SymbolPTR(_In_ VMM_HANDLE H, _In_ LPSTR szModule, _In_ QWORD vaModul
 * -- return
 */
 _Success_(return)
-BOOL InfoDB_TypeSize_Static(_In_ VMM_HANDLE H, _In_ LPSTR szModule, _In_ LPSTR szTypeName, _Out_ PDWORD pdwTypeSize)
+BOOL InfoDB_TypeSize_Static(_In_ VMM_HANDLE H, _In_ LPCSTR szModule, _In_ LPCSTR szTypeName, _Out_ PDWORD pdwTypeSize)
 {
     int r, rc = SQLITE_ERROR;
     sqlite3_stmt *hStmt = NULL;
@@ -470,7 +534,7 @@ fail:
 * -- return
 */
 _Success_(return)
-BOOL InfoDB_TypeSize_Dynamic(_In_ VMM_HANDLE H, _In_ LPSTR szModule, _In_ LPSTR szTypeName, _Out_ PDWORD pdwTypeSize)
+BOOL InfoDB_TypeSize_Dynamic(_In_ VMM_HANDLE H, _In_ LPCSTR szModule, _In_ LPCSTR szTypeName, _Out_ PDWORD pdwTypeSize)
 {
     DWORD dwPdbId = 0;
     QWORD qwHash, qwResult = 0;
@@ -505,7 +569,7 @@ fail:
 * -- return
 */
 _Success_(return)
-BOOL InfoDB_TypeChildOffset_Static(_In_ VMM_HANDLE H, _In_ LPSTR szModule, _In_ LPSTR szTypeName, _In_ LPSTR uszTypeChildName, _Out_ PDWORD pdwTypeOffset)
+BOOL InfoDB_TypeChildOffset_Static(_In_ VMM_HANDLE H, _In_ LPCSTR szModule, _In_ LPCSTR szTypeName, _In_ LPCSTR uszTypeChildName, _Out_ PDWORD pdwTypeOffset)
 {
     int r, rc = SQLITE_ERROR;
     sqlite3_stmt *hStmt = NULL;
@@ -557,7 +621,7 @@ fail:
 * -- return
 */
 _Success_(return)
-BOOL InfoDB_TypeChildOffset_Dynamic(_In_ VMM_HANDLE H, _In_ LPSTR szModule, _In_ LPSTR szTypeName, _In_ LPSTR uszTypeChildName, _Out_ PDWORD pdwTypeOffset)
+BOOL InfoDB_TypeChildOffset_Dynamic(_In_ VMM_HANDLE H, _In_ LPCSTR szModule, _In_ LPCSTR szTypeName, _In_ LPCSTR uszTypeChildName, _Out_ PDWORD pdwTypeOffset)
 {
     DWORD dwPdbId = 0;
     POB_INFODB_CONTEXT pObCtx = NULL;
@@ -616,7 +680,7 @@ VOID InfoDB_IsValidSymbols(_In_ VMM_HANDLE H, _Out_opt_ PBOOL pfNtos, _Out_opt_ 
 _Success_(return)
 BOOL InfoDB_SidToUser_Wellknown(
     _In_ VMM_HANDLE H,
-    _In_ LPSTR szSID,
+    _In_ LPCSTR szSID,
     _Out_writes_to_opt_(*pcbName, *pcbName + 1) LPSTR szName,
     _Inout_ LPDWORD pcbName,
     _Out_writes_to_opt_(*pcbDomain, *pcbDomain + 1) LPSTR szDomain,

@@ -1,15 +1,15 @@
 // m_misc_view.c : view filtered file system under 'misc/view/txt' & 'misc/view/bin'
 //
-// (c) Ulf Frisk, 2022-2023
+// (c) Ulf Frisk, 2022-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
 #include "modules.h"
 
 // forward declarations of VFS implemented functionality in core VMMDLL.
-BOOL VMMDLL_VfsList_Impl(_In_ VMM_HANDLE H, _In_ LPSTR uszPath, _Inout_ PHANDLE pFileList);
-NTSTATUS VMMDLL_VfsRead_Impl(_In_ VMM_HANDLE H, _In_ LPSTR uszPath, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
-NTSTATUS VMMDLL_VfsWrite_Impl(_In_ VMM_HANDLE H, _In_ LPSTR uszPath, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset);
+BOOL VMMDLL_VfsList_Impl(_In_ VMM_HANDLE H, _In_ LPCSTR uszPath, _Inout_ PHANDLE pFileList);
+NTSTATUS VMMDLL_VfsRead_Impl(_In_ VMM_HANDLE H, _In_ LPCSTR uszPath, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset);
+NTSTATUS VMMDLL_VfsWrite_Impl(_In_ VMM_HANDLE H, _In_ LPCSTR uszPath, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset);
 
 LPSTR szMVIEW_EXCLUDE_DIRS_ROOT[] = {
     "forensic\\ntfs\\.-"
@@ -94,7 +94,7 @@ VOID MView_AddFileCB(_Inout_ HANDLE h, _In_ LPSTR uszName, _In_ ULONG64 cb, _In_
 VOID MView_AddDirectoryCB(_Inout_ HANDLE h, _In_ LPSTR uszName, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
 {
     PMVIEW_VFS_FILELIST3 p = (PMVIEW_VFS_FILELIST3)h;
-    LPSTR szProcPath;
+    LPCSTR szProcPath;
     CHAR szPath[MAX_PATH];
     DWORD i;
     _snprintf_s(szPath, _countof(szPath), _TRUNCATE, "%s\\%s", p->szPath, uszName);

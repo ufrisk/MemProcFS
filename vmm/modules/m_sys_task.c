@@ -6,7 +6,7 @@
 // 
 // The scheduled tasks module is supported on Windows 8.0 and above.
 //
-// (c) Ulf Frisk, 2021-2023
+// (c) Ulf Frisk, 2021-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -472,7 +472,7 @@ DWORD MSysTask_InfoFromEntry(_In_ VMM_HANDLE H, _In_ PVMM_MAP_TASKENTRY pe, _Out
 /*
 * Read a 'single entry' file - the 'taskinfo.txt' a registry sub-folder file.
 */
-NTSTATUS MSysTask_ReadSingleEntry(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset, _In_ PVMM_MAP_TASKENTRY pTask, _In_ LPSTR uszPath)
+NTSTATUS MSysTask_ReadSingleEntry(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset, _In_ PVMM_MAP_TASKENTRY pTask, _In_ LPCSTR uszPath)
 {
     DWORD cbInfoFile;
     CHAR usz[MAX_PATH];
@@ -514,7 +514,7 @@ NTSTATUS MSysTask_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PVMMOB_MAP_TASK pObTaskMap = NULL;
     CHAR usz[MAX_PATH];
-    LPSTR uszSubPath;
+    LPCSTR uszSubPath;
     QWORD qwHash;
     PVMM_MAP_TASKENTRY pe;
     if(!(pObTaskMap = VmmSysTask_GetTaskMap(H, ctxP))) { goto finish; }
@@ -546,7 +546,7 @@ finish:
 /*
 * List a single entry directory - i.e. the directory as such or the registry sub-directory.
 */
-VOID MSysTask_ListSingleEntry(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList, _In_ PVMM_MAP_TASKENTRY pTask, _In_ LPSTR uszPath)
+VOID MSysTask_ListSingleEntry(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList, _In_ PVMM_MAP_TASKENTRY pTask, _In_ LPCSTR uszPath)
 {
     DWORD cbInfoFile;
     CHAR usz[MAX_PATH];
@@ -569,7 +569,7 @@ BOOL MSysTask_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ 
 {
     QWORD i, qwHash;
     CHAR usz[MAX_PATH];
-    LPSTR uszSubPath;
+    LPCSTR uszSubPath;
     PVMM_MAP_TASKENTRY pe;
     PVMMOB_MAP_TASK pObTaskMap = NULL;
     if(!(pObTaskMap = VmmSysTask_GetTaskMap(H, ctxP))) { goto finish; }
@@ -626,8 +626,8 @@ VOID MSysTask_FcTimeline(
     _In_ VMM_HANDLE H,
     _In_opt_ PVOID ctxfc,
     _In_ HANDLE hTimeline,
-    _In_ VOID(*pfnAddEntry)(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD dwData64, _In_ LPSTR uszText),
-    _In_ VOID(*pfnEntryAddBySql)(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPSTR *pszEntrySql)
+    _In_ VOID(*pfnAddEntry)(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD dwData64, _In_ LPCSTR uszText),
+    _In_ VOID(*pfnEntryAddBySql)(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPCSTR *pszEntrySql)
 ) {
     PVMMOB_MAP_TASK pObTaskMap = ctxfc;
     PVMM_MAP_TASKENTRY pe;

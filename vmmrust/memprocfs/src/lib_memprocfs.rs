@@ -93,6 +93,12 @@
 //! 
 //! <b>Best wishes with your memory analysis project!</b>
 
+//
+// (c) Ulf Frisk, 2023-2024
+// Author: Ulf Frisk, pcileech@frizk.net
+// https://github.com/ufrisk/LeechCore
+//
+
 use std::collections::HashMap;
 use std::ffi::{CStr, CString, c_char, c_int};
 use std::fmt;

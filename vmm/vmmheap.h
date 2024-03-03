@@ -1,6 +1,6 @@
 // vmmheap.h : declarations of functionality related to user-mode process heaps.
 //
-// (c) Ulf Frisk, 2022-2023
+// (c) Ulf Frisk, 2022-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

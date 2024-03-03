@@ -1,6 +1,6 @@
 // m_proc_ldrmodules.c : implementation of the ldrmodules built-in module.
 //
-// (c) Ulf Frisk, 2018-2023
+// (c) Ulf Frisk, 2018-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -288,7 +288,7 @@ VOID LdrModules_UnloadedReadLineCB(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess
 /*
 * Helper write function - Write to the requested data directory file.
 */
-VOID LdrModules_Write_DirectoriesD(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pModule, _In_ LPSTR uszDirectory, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
+VOID LdrModules_Write_DirectoriesD(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pModule, _In_ LPCSTR uszDirectory, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
 {
     DWORD i;
     IMAGE_DATA_DIRECTORY Directory[IMAGE_NUMBEROF_DIRECTORY_ENTRIES];
@@ -305,7 +305,7 @@ VOID LdrModules_Write_DirectoriesD(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess
 /*
 * Helper write function - Write to the requested section header file.
 */
-VOID LdrModules_Write_SectionsD(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pModule, _In_ LPSTR uszSection, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
+VOID LdrModules_Write_SectionsD(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pModule, _In_ LPCSTR uszSection, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
 {
     IMAGE_SECTION_HEADER SectionHeader;
     if(!PE_SectionGetFromName(H, pProcess, pModule->vaBase, uszSection, &SectionHeader)) { *pcbWrite = 0;  return; }
@@ -328,7 +328,7 @@ NTSTATUS LdrModules_Write(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _
     PVMM_MAP_MODULEENTRY pModule = NULL;
     PVMMOB_MAP_MODULE pObModuleMap = NULL;
     CHAR uszModuleName[MAX_PATH];
-    LPSTR uszModuleSubPath;
+    LPCSTR uszModuleSubPath;
     PVMM_PROCESS pProcess = (PVMM_PROCESS)ctxP->pProcess;
     *pcbWrite = 0;
     uszModuleSubPath = CharUtil_PathSplitFirst(ctxP->uszPath, uszModuleName, sizeof(uszModuleName));
@@ -350,7 +350,7 @@ NTSTATUS LdrModules_Write(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _
 /*
 * Helper read function - Read the requested data directory file.
 */
-NTSTATUS LdrModules_Read_DirectoriesD(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pModule, _In_ LPSTR uszDirectory, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS LdrModules_Read_DirectoriesD(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pModule, _In_ LPCSTR uszDirectory, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     DWORD i;
     IMAGE_DATA_DIRECTORY Directory[IMAGE_NUMBEROF_DIRECTORY_ENTRIES];
@@ -367,14 +367,14 @@ NTSTATUS LdrModules_Read_DirectoriesD(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProc
 /*
 * Helper read function - Read the requested section header file.
 */
-NTSTATUS LdrModules_Read_SectionsD(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pModule, _In_ LPSTR uszSection, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS LdrModules_Read_SectionsD(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pModule, _In_ LPCSTR uszSection, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     IMAGE_SECTION_HEADER SectionHeader;
     if(!PE_SectionGetFromName(H, pProcess, pModule->vaBase, uszSection, &SectionHeader)) { return VMMDLL_STATUS_FILE_INVALID; }
     return VmmReadAsFile(H, pProcess, pModule->vaBase + SectionHeader.VirtualAddress, SectionHeader.Misc.VirtualSize, pb, cb, pcbRead, cbOffset);
 }
 
-NTSTATUS LdrModules_Read_ModuleSubFile(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PVMM_MAP_MODULEENTRY pModule, _In_ LPSTR uszPath, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS LdrModules_Read_ModuleSubFile(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PVMM_MAP_MODULEENTRY pModule, _In_ LPCSTR uszPath, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PVMMOB_MAP_EAT pObEatMap = NULL;
@@ -454,7 +454,7 @@ NTSTATUS LdrModules_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _O
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     CHAR uszModuleName[MAX_PATH];
-    LPSTR uszModuleSubPath;
+    LPCSTR uszModuleSubPath;
     DWORD flags = 0;
     PVMM_MAP_MODULEENTRY pModule = NULL;
     PVMMOB_MAP_MODULE pObModuleMap = NULL;
@@ -538,7 +538,7 @@ BOOL LdrModules_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout
     DWORD c, i, cbLine, cbLineV;
     CHAR szSectionName[9] = { 0 };
     CHAR uszPath1[MAX_PATH];
-    LPSTR uszPath2;
+    LPCSTR uszPath2;
     PVMMOB_MAP_MODULE pObModuleMap = NULL;
     PVMM_MAP_MODULEENTRY pModule = NULL;
     PIMAGE_SECTION_HEADER pSections = NULL;

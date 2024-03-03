@@ -1,6 +1,6 @@
 // m_winreg.c : implementation related to the WinReg built-in module.
 //
-// (c) Ulf Frisk, 2019-2023
+// (c) Ulf Frisk, 2019-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -248,7 +248,7 @@ NTSTATUS MWinReg_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_
     BOOL fResult;
     POB_REGISTRY_HIVE pObHive = NULL;
     CHAR uszTopPath[64];
-    LPSTR uszSubPath;
+    LPCSTR uszSubPath;
     *pcbRead = 0;
     uszSubPath = CharUtil_PathSplitFirst(ctxP->uszPath, uszTopPath, sizeof(uszTopPath));
     if(!_stricmp(uszTopPath, "hive_files")) {
@@ -275,7 +275,7 @@ NTSTATUS MWinReg_Write(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_
 {
     POB_REGISTRY_HIVE pObHive = NULL;
     CHAR uszTopPath[64];
-    LPSTR uszSubPath;
+    LPCSTR uszSubPath;
     uszSubPath = CharUtil_PathSplitFirst(ctxP->uszPath, uszTopPath, sizeof(uszTopPath));
     if(!_stricmp(uszTopPath, "hive_files")) {
         pObHive = VmmWinReg_HiveGetByAddress(H, Util_GetNumericA(uszSubPath));

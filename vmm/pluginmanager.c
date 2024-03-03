@@ -1,6 +1,6 @@
 // pluginmanager.c : implementation of the plugin manager for MemProcFS plugins.
 //
-// (c) Ulf Frisk, 2018-2023
+// (c) Ulf Frisk, 2018-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "pluginmanager.h"
@@ -60,8 +60,8 @@ typedef struct tdPLUGIN_ENTRY {
             _In_ VMM_HANDLE H,
             _In_opt_ PVOID ctxfc,
             _In_ HANDLE hTimeline,
-            _In_ VOID(*pfnAddEntry)(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPSTR uszText),
-            _In_ VOID(*pfnEntryAddBySql)(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPSTR *pszEntrySql));
+            _In_ VOID(*pfnAddEntry)(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPCSTR uszText),
+            _In_ VOID(*pfnEntryAddBySql)(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPCSTR *pszEntrySql));
         VOID(*pfnLogCSV)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, VMMDLL_CSV_HANDLE hCSV);
         VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_FORENSIC_JSONDATA pData));
         VOID(*pfnFindEvil)(_In_ VMM_HANDLE H, _In_ VMMDLL_MODULE_ID MID, _In_opt_ PVOID ctxfc);
@@ -115,7 +115,7 @@ VOID PluginManager_SetTreeVisibility(_In_opt_ PPLUGIN_TREE pTree, _In_ BOOL fVis
     }
 }
 
-PPLUGIN_TREE PluginManager_Register_GetCreateTree(_In_ PPLUGIN_TREE pTree, _In_ LPSTR uszPathName, _In_ BOOL fVisible)
+PPLUGIN_TREE PluginManager_Register_GetCreateTree(_In_ PPLUGIN_TREE pTree, _In_ LPCSTR uszPathName, _In_ BOOL fVisible)
 {
     DWORD i, dwHash;
     CHAR uszEntry[32];
@@ -148,11 +148,11 @@ PPLUGIN_TREE PluginManager_Register_GetCreateTree(_In_ PPLUGIN_TREE pTree, _In_ 
 * -- pTree
 * -- pwszSubPath
 */
-VOID PluginManager_GetTree(_In_ PPLUGIN_TREE pTree, _In_ LPSTR uszPath, _Out_ PPLUGIN_TREE *ppTree, _Out_ LPSTR *puszSubPath)
+VOID PluginManager_GetTree(_In_ PPLUGIN_TREE pTree, _In_ LPCSTR uszPath, _Out_ PPLUGIN_TREE *ppTree, _Out_ LPSTR *puszSubPath)
 {
     DWORD i, dwHash;
     CHAR uszEntry[32];
-    LPSTR uszSubPath;
+    LPCSTR uszSubPath;
     if(!uszPath[0]) { goto finish; }
     uszSubPath = CharUtil_PathSplitFirst(uszPath, uszEntry, _countof(uszEntry));
     dwHash = CharUtil_HashNameFsU(uszEntry, 0);
@@ -164,10 +164,10 @@ VOID PluginManager_GetTree(_In_ PPLUGIN_TREE pTree, _In_ LPSTR uszPath, _Out_ PP
     }
 finish:
     *ppTree = pTree;
-    *puszSubPath = uszPath;
+    *puszSubPath = (LPSTR)uszPath;
 }
 
-VOID PluginManager_SetVisibility(_In_ VMM_HANDLE H, _In_ BOOL fRoot, _In_ LPSTR uszPluginPath, _In_ BOOL fVisible)
+VOID PluginManager_SetVisibility(_In_ VMM_HANDLE H, _In_ BOOL fRoot, _In_ LPCSTR uszPluginPath, _In_ BOOL fVisible)
 {
     LPSTR uszSubPath;
     PPLUGIN_TREE pTree;
@@ -205,7 +205,7 @@ VOID PluginManager_ContextInitialize(_Out_ PVMMDLL_PLUGIN_CONTEXT ctx, _In_ PPLU
     ctx->MID = pModule->MID;
 }
 
-VOID PluginManager_List(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR uszPath, _Inout_ PHANDLE pFileList)
+VOID PluginManager_List(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _In_ LPCSTR uszPath, _Inout_ PHANDLE pFileList)
 {
     DWORD i;
     BOOL fVisibleProgrammatic, result = TRUE;
@@ -242,7 +242,7 @@ VOID PluginManager_List(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _In_ 
     Statistics_CallEnd(H, STATISTICS_ID_PluginManager_List, tmStart);
 }
 
-NTSTATUS PluginManager_Read(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR uszPath, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS PluginManager_Read(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _In_ LPCSTR uszPath, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     QWORD tmStart = Statistics_CallStart(H);
     NTSTATUS nt;
@@ -265,7 +265,7 @@ NTSTATUS PluginManager_Read(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _
     return VMMDLL_STATUS_FILE_INVALID;
 }
 
-NTSTATUS PluginManager_Write(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _In_ LPSTR uszPath, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
+NTSTATUS PluginManager_Write(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _In_ LPCSTR uszPath, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
 {
     QWORD tmStart = Statistics_CallStart(H);
     NTSTATUS nt;
@@ -465,10 +465,10 @@ VOID PluginManager_FcIngestFinalize(_In_ VMM_HANDLE H)
 */
 VOID PluginManager_FcTimeline(
     _In_ VMM_HANDLE H,
-    _In_ HANDLE(*pfnRegister)(_In_ VMM_HANDLE H, _In_reads_(6) LPSTR sNameShort, _In_reads_(32) LPSTR szFileUTF8),
+    _In_ HANDLE(*pfnRegister)(_In_ VMM_HANDLE H, _In_reads_(6) LPCSTR sNameShort, _In_reads_(32) LPCSTR szFileUTF8),
     _In_ VOID(*pfnClose)(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline),
-    _In_ VOID(*pfnAddEntry)(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPSTR uszText),
-    _In_ VOID(*pfnEntryAddBySql)(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPSTR *pszEntrySql)
+    _In_ VOID(*pfnAddEntry)(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPCSTR uszText),
+    _In_ VOID(*pfnEntryAddBySql)(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPCSTR *pszEntrySql)
 ) {
     HANDLE hTimeline;
     QWORD tmStart = Statistics_CallStart(H);
@@ -633,7 +633,7 @@ BOOL PluginManager_PythonExecCode(_In_ VMM_HANDLE H, _In_ LPSTR uszPythonCodeToE
 * -- H
 * -- szPythonFileToExec
 */
-VOID PluginManager_PythonExecFile(_In_ VMM_HANDLE H, _In_ LPSTR szPythonFileToExec)
+VOID PluginManager_PythonExecFile(_In_ VMM_HANDLE H, _In_ LPCSTR szPythonFileToExec)
 {
     BOOL f;
     FILE *hFile = NULL;
@@ -664,7 +664,7 @@ VOID PluginManager_PythonExecFile(_In_ VMM_HANDLE H, _In_ LPSTR szPythonFileToEx
 BOOL PluginManager_Register(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_REGINFO pRegInfo)
 {
     DWORD iPluginNameStart;
-    LPSTR uszPluginName, uszLogName;
+    LPCSTR uszPluginName, uszLogName;
     PPLUGIN_ENTRY pModule;
     PPLUGIN_TREE pPluginTreeEntry;
     // 1: tests if plugin is valid
@@ -869,7 +869,7 @@ VOID PluginManager_Initialize_Python(_In_ VMM_HANDLE H)
         for(i = 0; i < cszPYTHON_VERSIONS_SUPPORTED; i++) {
             if((hDllPython3X = GetModuleHandleA(szPYTHON_VERSIONS_SUPPORTED[i]))) {
                 GetModuleFileNameA(hDllPython3X, szPythonPath, MAX_PATH);
-                hDllPython3X = LoadLibraryA(szPythonPath);
+                hDllPython3X = LoadLibraryU(szPythonPath);
                 if(hDllPython3X) {
                     Util_GetPathDll(H->cfg.szPythonPath, hDllPython3X);
                     fPythonStandalone = TRUE;
@@ -897,7 +897,7 @@ VOID PluginManager_Initialize_Python(_In_ VMM_HANDLE H)
     // 4: Try locate Python by loading from the current path.
     if(0 == H->cfg.szPythonPath[0]) {
         for(i = 0; i < cszPYTHON_VERSIONS_SUPPORTED; i++) {
-            hDllPython3X = LoadLibraryA(szPYTHON_VERSIONS_SUPPORTED[i]);
+            hDllPython3X = LoadLibraryU(szPYTHON_VERSIONS_SUPPORTED[i]);
             if(hDllPython3X) { break; }
             fBitnessFail = fBitnessFail || (ERROR_BAD_EXE_FORMAT == GetLastError());
         }
@@ -920,7 +920,7 @@ VOID PluginManager_Initialize_Python(_In_ VMM_HANDLE H)
     hDllPython3 = LoadLibraryExA(szPythonPath, 0, LOAD_WITH_ALTERED_SEARCH_PATH);
     VmmLog(H, MID_PLUGIN, LOGLEVEL_DEBUG, "PYTHON_PATH: %s", H->cfg.szPythonPath);
     // 7: process 'special status' python plugin manager.
-    hDllPyPlugin = LoadLibraryA("vmmpyc.pyd");
+    hDllPyPlugin = LoadLibraryU("vmmpyc.pyd");
     if(!hDllPyPlugin) {
         VmmLog(H, MID_PLUGIN, LOGLEVEL_WARNING, "Python plugin manager failed to load.");
         goto fail;

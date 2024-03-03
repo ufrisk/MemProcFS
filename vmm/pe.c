@@ -2,7 +2,7 @@
 //        in virtual address space. This may mostly (but not exclusively) be
 //        used by Windows functionality.
 //
-// (c) Ulf Frisk, 2018-2023
+// (c) Ulf Frisk, 2018-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmm.h"
@@ -64,7 +64,7 @@ BOOL PE_GetTimeDateStampCheckSum(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, 
 }
 
 _Success_(return)
-BOOL PE_GetThunkInfoIAT(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ LPSTR szImportModuleName, _In_ LPSTR szImportProcName, _Out_ PPE_THUNKINFO_IAT pThunkInfoIAT)
+BOOL PE_GetThunkInfoIAT(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ LPCSTR szImportModuleName, _In_ LPCSTR szImportProcName, _Out_ PPE_THUNKINFO_IAT pThunkInfoIAT)
 {
     BYTE pbModuleHeader[0x1000] = { 0 };
     PIMAGE_NT_HEADERS64 ntHeader64;
@@ -158,7 +158,7 @@ fail:
 }
 
 _Success_(return)
-BOOL PE_GetThunkInfoEAT(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ LPSTR szProcName, _Out_ PPE_THUNKINFO_EAT pThunkInfoEAT)
+BOOL PE_GetThunkInfoEAT(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ LPCSTR szProcName, _Out_ PPE_THUNKINFO_EAT pThunkInfoEAT)
 {
     BYTE pbModuleHeader[0x1000] = { 0 };
     PIMAGE_NT_HEADERS32 ntHeader32;
@@ -217,7 +217,7 @@ cleanup:
     return FALSE;
 }
 
-QWORD PE_GetProcAddress(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ LPSTR lpProcName)
+QWORD PE_GetProcAddress(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ LPCSTR lpProcName)
 {
     PE_THUNKINFO_EAT oThunkInfoEAT = { 0 };
     PE_GetThunkInfoEAT(H, pProcess, vaModuleBase, lpProcName, &oThunkInfoEAT);
@@ -300,7 +300,7 @@ BOOL PE_SectionGetAll(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD 
 }
 
 _Success_(return)
-BOOL PE_SectionGetFromName(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ LPSTR szSectionName, _Out_ PIMAGE_SECTION_HEADER pSection)
+BOOL PE_SectionGetFromName(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ LPCSTR szSectionName, _Out_ PIMAGE_SECTION_HEADER pSection)
 {
     BOOL f32;
     BYTE pbModuleHeader[0x1000] = { 0 };
@@ -368,7 +368,7 @@ DWORD PE_IatGetNumberOfEx(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt
 
 _Success_(return != NULL)
 LPSTR PE_EatForwardedFunctionNameValidate(
-    _In_ LPSTR szForwardedFunction,
+    _In_ LPCSTR szForwardedFunction,
     _Out_writes_opt_(cbModule) LPSTR szModule,
     _In_ DWORD cbModule,
     _Out_opt_ PDWORD pdwOrdinal

@@ -1,8 +1,25 @@
 // oscompatibility.c : VMM Windows/Linux compatibility layer.
 //
-// (c) Ulf Frisk, 2021-2023
+// (c) Ulf Frisk, 2021-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
+
+#ifdef _WIN32
+
+#include "oscompatibility.h"
+#include "charutil.h"
+
+_Ret_maybenull_ HMODULE WINAPI LoadLibraryU(_In_ LPCSTR lpLibFileName)
+{
+    WCHAR wszLibFileName[MAX_PATH * 2];
+    if(CharUtil_UtoW(lpLibFileName, -1, (PBYTE)wszLibFileName, sizeof(wszLibFileName), NULL, NULL, CHARUTIL_FLAG_STR_BUFONLY)) {
+        return LoadLibraryW(wszLibFileName);
+    }
+    return NULL;
+}
+
+#endif
+
 #ifdef LINUX
 
 #include "oscompatibility.h"
@@ -52,13 +69,13 @@ FARPROC GetProcAddress(_In_opt_ HMODULE hModule, _In_ LPSTR lpProcName)
     return NULL;
 }
 
-HMODULE LoadLibraryA(LPSTR lpFileName)
+_Ret_maybenull_ HMODULE WINAPI LoadLibraryU(_In_ LPCSTR lpLibFileName)
 {
-    if(!strcmp(lpFileName, "ntdll.dll")) {
+    if(!strcmp(lpLibFileName, "ntdll.dll")) {
         return (HMODULE)0x1000;      // FAKE HMODULE
     }
-    if(lpFileName[0] == '/') {
-        return dlopen(lpFileName, RTLD_NOW);
+    if(lpLibFileName[0] == '/') {
+        return dlopen(lpLibFileName, RTLD_NOW);
     }
     return 0;
 }

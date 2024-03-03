@@ -1,7 +1,7 @@
 // mm_pfn.c : implementation of Windows PFN (page frame number) functionality and
 //            related physical memory functionality.
 //
-// (c) Ulf Frisk, 2020-2023
+// (c) Ulf Frisk, 2020-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

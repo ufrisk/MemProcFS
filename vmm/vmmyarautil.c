@@ -1,6 +1,6 @@
 // vmmyarautil.c : utility api with helper functions around the yara scanner.
 // 
-// (c) Ulf Frisk, 2023
+// (c) Ulf Frisk, 2023-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmm.h"
@@ -239,7 +239,8 @@ BOOL VmmYaraUtil_ParseSingleResultNext(
     DWORD oMatchCSV = 0, iMatchCSV = 0;
     LPSTR uszMetaDescription = NULL, uszMetaAuthor = NULL, uszMetaVersion = NULL;
     PVMMWIN_USER_PROCESS_PARAMETERS pu;
-    LPSTR uszCommandLine = "", uszMemoryType = "", uszMemoryTag = "", uszFindEvilSeverity;
+    LPSTR uszCommandLine = "", uszMemoryType = "", uszMemoryTag = "";
+    LPCSTR uszFindEvilSeverity;
     BYTE pbBuffer[0x80];
     CHAR szTimeCRE[24] = { 0 }, uszUserName[0x20] = { 0 };
     PVMM_MAP_PTEENTRY pePte;
@@ -291,7 +292,8 @@ BOOL VmmYaraUtil_ParseSingleResultNext(
                 if(!pFindEvil->EvilType.Severity) {
                     continue;
                 }
-                _snprintf_s(pFindEvil->uszText, _countof(pFindEvil->uszText), _TRUNCATE, "%s [%i]", peMatch->RuleMatch.szRuleIdentifier, ctx->dwIdByType[1]);
+                pFindEvil->dwRuleIndex = ctx->dwIdByType[1];
+                strncpy_s(pFindEvil->uszRuleName, _countof(pFindEvil->uszRuleName), peMatch->RuleMatch.szRuleIdentifier, _TRUNCATE);
                 pFindEvil->va = peMatch->vaObject ? peMatch->vaObject : (peMatch->vaBase + peMatch->RuleMatch.Strings[0].cbMatchOffset[0]);
                 pFindEvil->dwPID = peMatch->dwPID;
                 pFindEvil->fValid = TRUE;

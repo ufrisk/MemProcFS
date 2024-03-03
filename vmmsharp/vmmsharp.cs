@@ -13,10 +13,10 @@ using System.Runtime.CompilerServices;
  *  Please consult the C/C++ header files vmmdll.h and leechcore.h for information about
  *  parameters and API usage.
  *  
- *  (c) Ulf Frisk, 2020-2023
+ *  (c) Ulf Frisk, 2020-2024
  *  Author: Ulf Frisk, pcileech@frizk.net
  *  
- *  Version 5.8.18
+ *  Version 5.9
  *  
  */
 namespace vmmsharp

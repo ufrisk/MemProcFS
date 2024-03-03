@@ -4,7 +4,7 @@
 //
 // NB! module generate forensic data only - no file system presence!
 //
-// (c) Ulf Frisk, 2020-2023
+// (c) Ulf Frisk, 2020-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -33,7 +33,7 @@ static LPCSTR MFCREGISTRY_TYPE_NAMES[] = {
     "REG_QWORD"
 };
 
-VOID MFcRegistry_JsonKeyCB(_In_ VMM_HANDLE H, _Inout_ PVMMWINREG_FORENSIC_CONTEXT ctx, _In_z_ LPSTR uszPathName, _In_ QWORD ftLastWrite)
+VOID MFcRegistry_JsonKeyCB(_In_ VMM_HANDLE H, _Inout_ PVMMWINREG_FORENSIC_CONTEXT ctx, _In_z_ LPCSTR uszPathName, _In_ QWORD ftLastWrite)
 {
     PFC_CONTEXT ctxFc = H->fc;
     SIZE_T o = 0;
@@ -120,7 +120,7 @@ VOID MFcRegistry_JsonValueCB(_In_ VMM_HANDLE H, _Inout_ PVMMWINREG_FORENSIC_CONT
 /*
 * Callback for registry key information destined for forensic database.
 */
-VOID MFcRegistry_KeyCB(_In_ VMM_HANDLE H, _In_ HANDLE hCallback1, _In_ HANDLE hCallback2, _In_ LPSTR uszPathName, _In_ QWORD vaHive, _In_ DWORD dwCell, _In_ DWORD dwCellParent, _In_ QWORD ftLastWrite)
+VOID MFcRegistry_KeyCB(_In_ VMM_HANDLE H, _In_ HANDLE hCallback1, _In_ HANDLE hCallback2, _In_ LPCSTR uszPathName, _In_ QWORD vaHive, _In_ DWORD dwCell, _In_ DWORD dwCellParent, _In_ QWORD ftLastWrite)
 {
     FCSQL_INSERTSTRTABLE SqlStrInsert;
     sqlite3_stmt *hStmt = (sqlite3_stmt *)hCallback1;
@@ -175,10 +175,10 @@ VOID M_FcRegistry_FcTimeline(
     _In_ VMM_HANDLE H,
     _In_opt_ PVOID ctxfc,
     _In_ HANDLE hTimeline,
-    _In_ VOID(*pfnAddEntry)(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPSTR uszText),
-    _In_ VOID(*pfnEntryAddBySql)(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPSTR *pszEntrySql)
+    _In_ VOID(*pfnAddEntry)(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPCSTR uszText),
+    _In_ VOID(*pfnEntryAddBySql)(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPCSTR *pszEntrySql)
 ) {
-    LPSTR pszSql[] = {
+    LPCSTR pszSql[] = {
         "id_str, time, "STRINGIZE(FC_TIMELINE_ACTION_MODIFY)", 0, 0, 0 FROM registry WHERE time > 0;"
     };
     pfnEntryAddBySql(H, hTimeline, sizeof(pszSql) / sizeof(LPSTR), pszSql);

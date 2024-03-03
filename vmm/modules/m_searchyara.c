@@ -1,6 +1,6 @@
 // m_searchyara.c : implementation of the yara memory search built-in module.
 //
-// (c) Ulf Frisk, 2023
+// (c) Ulf Frisk, 2023-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

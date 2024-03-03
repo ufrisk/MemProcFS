@@ -9,7 +9,7 @@
 //      is generally stored in an sqlite database with may be used to query
 //      the results.  
 //
-// (c) Ulf Frisk, 2020-2023
+// (c) Ulf Frisk, 2020-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __FC_H__
@@ -81,6 +81,7 @@ typedef struct tdFC_CONTEXT {
         POB_MAP pm;                 // map of PFC_FINDEVIL_ENTRY
         POB_MEMFILE pmf;            // generated /forensic/findevil/findevil.txt
         POB_MEMFILE pmfYara;        // generated /forensic/findevil/yara.txt
+        POB_MEMFILE pmfYaraRules;   // generated /forensic/findevil/yara_rules.txt
     } FindEvil;
 } FC_CONTEXT, *PFC_CONTEXT;
 
@@ -164,7 +165,7 @@ sqlite3* Fc_SqlReserveReturn(_In_ VMM_HANDLE H, _In_opt_ sqlite3 *hSql);
 * -- return = sqlite return code.
 */
 _Success_(return == SQLITE_OK)
-int Fc_SqlExec(_In_ VMM_HANDLE H, _In_ LPSTR szSql);
+int Fc_SqlExec(_In_ VMM_HANDLE H, _In_ LPCSTR szSql);
 
 /*
 * Execute a single SQLITE database SQL query and return all results as numeric
@@ -182,7 +183,7 @@ int Fc_SqlExec(_In_ VMM_HANDLE H, _In_ LPSTR szSql);
 _Success_(return == SQLITE_OK)
 int Fc_SqlQueryN(
     _In_ VMM_HANDLE H,
-    _In_ LPSTR szSql,
+    _In_ LPCSTR szSql,
     _In_ DWORD cQueryValues,
     _In_reads_(cQueryValues) PQWORD pqwQueryValues,
     _In_ DWORD cResultValues,
@@ -204,7 +205,7 @@ _Success_(return)
 BOOL Fc_SqlInsertStr(
     _In_ VMM_HANDLE H, 
     _In_ sqlite3_stmt *hStmt,
-    _In_ LPSTR usz,
+    _In_ LPCSTR usz,
     _Out_ PFCSQL_INSERTSTRTABLE pThis
 );
 
@@ -242,7 +243,7 @@ int Fc_SqlBindMultiInt64(
 * -- return = the number of bytes appended (excluding terminating null).
 */
 _Success_(return != 0)
-SIZE_T FcFileAppend(_In_ VMM_HANDLE H, _In_ LPSTR uszFileName, _In_z_ _Printf_format_string_ LPSTR uszFormat, ...);
+SIZE_T FcFileAppend(_In_ VMM_HANDLE H, _In_ LPCSTR uszFileName, _In_z_ _Printf_format_string_ LPCSTR uszFormat, ...);
 
 /*
 * Append text data to a memory-backed forensics file.
@@ -254,13 +255,13 @@ SIZE_T FcFileAppend(_In_ VMM_HANDLE H, _In_ LPSTR uszFileName, _In_z_ _Printf_fo
 * -- return = the number of bytes appended (excluding terminating null).
 */
 _Success_(return != 0)
-SIZE_T FcFileAppendEx(_In_ VMM_HANDLE H, _In_ LPSTR uszFileName, _In_z_ _Printf_format_string_ LPSTR uszFormat, _In_ va_list arglist);
+SIZE_T FcFileAppendEx(_In_ VMM_HANDLE H, _In_ LPCSTR uszFileName, _In_z_ _Printf_format_string_ LPCSTR uszFormat, _In_ va_list arglist);
 
 /*
 * Helper functions to ease CSV string conversions destined for FcFileAppend().
 */
 VOID FcCsv_Reset(_In_ VMMDLL_CSV_HANDLE h);
-LPSTR FcCsv_String(_In_ VMMDLL_CSV_HANDLE h, _In_opt_ LPSTR usz);
+LPSTR FcCsv_String(_In_ VMMDLL_CSV_HANDLE h, _In_opt_ LPCSTR usz);
 LPSTR FcCsv_FileTime(_In_ VMMDLL_CSV_HANDLE h, _In_ QWORD ft);
 
 
@@ -278,7 +279,7 @@ LPSTR FcCsv_FileTime(_In_ VMMDLL_CSV_HANDLE h, _In_ QWORD ft);
 * -- uszFormat
 * -- ...
 */
-VOID FcEvilAdd(_In_ VMM_HANDLE H, _In_ VMMEVIL_TYPE tpEvil, _In_opt_ PVMM_PROCESS pProcess, _In_opt_ QWORD va, _In_z_ _Printf_format_string_ LPSTR uszFormat, ...);
+VOID FcEvilAdd(_In_ VMM_HANDLE H, _In_ VMMEVIL_TYPE tpEvil, _In_opt_ PVMM_PROCESS pProcess, _In_opt_ QWORD va, _In_z_ _Printf_format_string_ LPCSTR uszFormat, ...);
 
 /*
 * Add a "findevil" entry. Take great care not spamming this function by mistake.
@@ -290,7 +291,7 @@ VOID FcEvilAdd(_In_ VMM_HANDLE H, _In_ VMMEVIL_TYPE tpEvil, _In_opt_ PVMM_PROCES
 * -- uszFormat
 * -- arglist
 */
-VOID FcEvilAddEx(_In_ VMM_HANDLE H, _In_ LPSTR uszType, _In_ DWORD dwSeverity, _In_opt_ PVMM_PROCESS pProcess, _In_opt_ QWORD va, _In_z_ _Printf_format_string_ LPSTR uszFormat, _In_ va_list arglist);
+VOID FcEvilAddEx(_In_ VMM_HANDLE H, _In_ LPSTR uszType, _In_ DWORD dwSeverity, _In_opt_ PVMM_PROCESS pProcess, _In_opt_ QWORD va, _In_z_ _Printf_format_string_ LPCSTR uszFormat, _In_ va_list arglist);
 
 
 

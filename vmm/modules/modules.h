@@ -1,6 +1,6 @@
 // modules.h : common includes used by modules.
 //
-// (c) Ulf Frisk, 2023
+// (c) Ulf Frisk, 2023-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __MODULES_H__
@@ -16,6 +16,7 @@
 #include "../pluginmanager.h"
 #include "../statistics.h"
 #include "../util.h"
+#include "../vmmlog.h"
 #include "../vmmwin.h"
 #include "../vmmwindef.h"
 

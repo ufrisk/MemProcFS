@@ -1,6 +1,6 @@
 // m_vfsproc.h : implementation of virtual file system process root.
 //
-// (c) Ulf Frisk, 2020-2023
+// (c) Ulf Frisk, 2020-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

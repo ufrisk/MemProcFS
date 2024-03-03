@@ -1,6 +1,6 @@
 // util.c : implementation of various utility functions.
 //
-// (c) Ulf Frisk, 2018-2023
+// (c) Ulf Frisk, 2018-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "util.h"
@@ -17,7 +17,7 @@ DWORD Util_GetNumDigits(_In_ DWORD dwNumber)
     return (DWORD)max(1, floor(log10(dwNumber) + 1));
 }
 
-QWORD Util_GetNumericA(_In_ LPSTR sz)
+QWORD Util_GetNumericA(_In_ LPCSTR sz)
 {
     if((strlen(sz) > 1) && (sz[0] == '0') && ((sz[1] == 'x') || (sz[1] == 'X'))) {
         return strtoull(sz, NULL, 16); // Hex (starts with 0x)
@@ -142,7 +142,7 @@ BOOL Util_FillHexAscii_WithAddress(_In_reads_opt_(cb) PBYTE pb, _In_ DWORD cb, _
     return TRUE;
 }
 
-VOID Util_AsciiFileNameFix(_In_ LPSTR sz, _In_ CHAR chDefault)
+VOID Util_AsciiFileNameFix(_Inout_ LPSTR sz, _In_ CHAR chDefault)
 {
     DWORD i = 0;
     while(sz[i]) {
@@ -151,7 +151,7 @@ VOID Util_AsciiFileNameFix(_In_ LPSTR sz, _In_ CHAR chDefault)
     }
 }
 
-VOID Util_PathPrependVA(_Out_writes_(MAX_PATH) LPSTR uszDstBuffer, _In_ QWORD va, _In_ BOOL f32, _In_ LPSTR uszText)
+VOID Util_PathPrependVA(_Out_writes_(MAX_PATH) LPSTR uszDstBuffer, _In_ QWORD va, _In_ BOOL f32, _In_ LPCSTR uszText)
 {
     _snprintf_s(uszDstBuffer, MAX_PATH, _TRUNCATE, (f32 ? "%08llx%s%s" : "%016llx%s%s"), va, (uszText[0] ? "-" : ""), uszText);
 }
@@ -160,7 +160,7 @@ _Success_(return >= 0)
 size_t Util_usnprintf_ln_impl(
     _Out_writes_(cszLineLength + 1) LPSTR uszBuffer,
     _In_ QWORD cszLineLength,
-    _In_z_ _Printf_format_string_ LPSTR uszFormat,
+    _In_z_ _Printf_format_string_ LPCSTR uszFormat,
     _In_ va_list arglist
 )
 {
@@ -180,7 +180,7 @@ _Success_(return >= 0)
 size_t Util_usnprintf_ln(
     _Out_writes_(cszLineLength + 1) LPSTR uszBuffer,
     _In_ QWORD cszLineLength,
-    _In_z_ _Printf_format_string_ LPSTR uszFormat,
+    _In_z_ _Printf_format_string_ LPCSTR uszFormat,
     ...
 ) {
     size_t ret;
@@ -331,7 +331,7 @@ NTSTATUS Util_VfsReadFile_FromFILETIME(_In_ QWORD ftValue, _Out_writes_to_(cb, *
     return Util_VfsReadFile_FromPBYTE(szTime, 24, pb, cb, pcbRead, cbOffset);
 }
 
-NTSTATUS Util_VfsReadFile_usnprintf_ln(_Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset, _In_ QWORD cszLineLength, _In_z_ _Printf_format_string_ LPSTR uszFormat, ...)
+NTSTATUS Util_VfsReadFile_usnprintf_ln(_Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset, _In_ QWORD cszLineLength, _In_z_ _Printf_format_string_ LPCSTR uszFormat, ...)
 {
     NTSTATUS nt = UTIL_NTSTATUS_END_OF_FILE;
     DWORD ret;
@@ -476,7 +476,7 @@ VOID Util_VfsTimeStampFile(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _O
     }
 }
 
-LPSTR Util_StrDupA(_In_opt_ LPSTR sz)
+LPSTR Util_StrDupA(_In_opt_ LPCSTR sz)
 {
     SIZE_T cch;
     LPSTR szDup;
@@ -663,7 +663,7 @@ PVOID Util_qfind(_In_ QWORD qwFind, _In_ DWORD cMap, _In_ PVOID pvMap, _In_ DWOR
 }
 
 _Success_(return)
-BOOL Util_VfsHelper_GetIdDir(_In_ LPSTR uszPath, _In_ BOOL fHex, _Out_ PDWORD pdwID, _Out_opt_ LPSTR *puszSubPath)
+BOOL Util_VfsHelper_GetIdDir(_In_ LPCSTR uszPath, _In_ BOOL fHex, _Out_ PDWORD pdwID, _Out_opt_ LPCSTR *puszSubPath)
 {
     CHAR c;
     DWORD i = 0, iSubPath = 0;
@@ -733,7 +733,7 @@ NTSTATUS Util_VfsLineVariable_Read(
     _In_ VMM_HANDLE H,
     _In_ UTIL_VFSLINEFIXED_PFN_CB pfnCallback,
     _Inout_opt_ PVOID ctx,
-    _In_opt_ LPSTR uszHeader,
+    _In_opt_ LPCSTR uszHeader,
     _In_ PVOID pMap,
     _In_ DWORD cMap,
     _In_ DWORD cbEntry,
@@ -841,7 +841,7 @@ NTSTATUS Util_VfsLineFixed_Read(
     _In_ UTIL_VFSLINEFIXED_PFN_CB pfnCallback,
     _Inout_opt_ PVOID ctx,
     _In_ DWORD cbLineLength,
-    _In_opt_ LPSTR uszHeader,
+    _In_opt_ LPCSTR uszHeader,
     _In_ PVOID pMap,
     _In_ DWORD cMap,
     _In_ DWORD cbEntry,
@@ -903,7 +903,7 @@ NTSTATUS Util_VfsLineFixedMapCustom_Read(
     _In_ UTIL_VFSLINEFIXED_PFN_CB pfnCallback,
     _Inout_opt_ PVOID ctx,
     _In_ DWORD cbLineLength,
-    _In_opt_ LPSTR uszHeader,
+    _In_opt_ LPCSTR uszHeader,
     _In_ PVOID ctxMap,
     _In_ DWORD cMap,
     _In_ UTIL_VFSLINEFIXED_MAP_PFN_CB pfnMap,
@@ -953,8 +953,10 @@ VOID Util_GetPathLib(_Out_writes_(MAX_PATH) PCHAR szPath)
     ZeroMemory(szPath, MAX_PATH);
 #ifdef _WIN32
     HMODULE hModuleVmm;
-    hModuleVmm = LoadLibraryA("vmm.dll");
-    GetModuleFileNameA(hModuleVmm, szPath, MAX_PATH - 4);
+    WCHAR wszPath[MAX_PATH] = { 0 };
+    hModuleVmm = LoadLibraryU("vmm.dll");
+    GetModuleFileNameW(hModuleVmm, wszPath, MAX_PATH - 4);
+    CharUtil_WtoU(wszPath, -1, (PBYTE)szPath, MAX_PATH, NULL, NULL, CHARUTIL_FLAG_STR_BUFONLY | CHARUTIL_FLAG_TRUNCATE);
     if(hModuleVmm) { FreeLibrary(hModuleVmm); }
 #endif /* _WIN32 */
 #ifdef LINUX
@@ -1108,7 +1110,7 @@ fail:
 * Delete a file denoted by its utf-8 full path.
 * -- uszPathFile
 */
-VOID Util_DeleteFileU(_In_ LPSTR uszPathFile)
+VOID Util_DeleteFileU(_In_ LPCSTR uszPathFile)
 {
     WCHAR wszWinPath[MAX_PATH];
     if(CharUtil_UtoW(uszPathFile, -1, (PBYTE)wszWinPath, sizeof(wszWinPath), NULL, NULL, CHARUTIL_FLAG_STR_BUFONLY)) {
@@ -1142,7 +1144,7 @@ BOOL Util_HashSHA256(_In_reads_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_wr
 * Delete a file denoted by its utf-8 full path.
 * -- uszPathFile
 */
-VOID Util_DeleteFileU(_In_ LPSTR uszPathFile)
+VOID Util_DeleteFileU(_In_ LPCSTR uszPathFile)
 {
     remove(uszPathFile);
 }

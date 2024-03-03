@@ -1,6 +1,6 @@
 // vmmwinreg.c : implementation of functionality related to the Windows registry.
 //
-// (c) Ulf Frisk, 2019-2023
+// (c) Ulf Frisk, 2019-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 // Registry key parsing partly built on documentation found at:
@@ -1719,11 +1719,11 @@ success:
 * -- return
 */
 _Success_(return)
-BOOL VmmWinReg_PathHiveGetByFullPath(_In_ VMM_HANDLE H, _In_ LPSTR uszPathFull, _Out_ POB_REGISTRY_HIVE *ppHive, _Out_writes_(MAX_PATH) LPSTR uszPathKeyValue)
+BOOL VmmWinReg_PathHiveGetByFullPath(_In_ VMM_HANDLE H, _In_ LPCSTR uszPathFull, _Out_ POB_REGISTRY_HIVE *ppHive, _Out_writes_(MAX_PATH) LPSTR uszPathKeyValue)
 {
     BOOL fUser = FALSE, fUserSystem = FALSE, fOrphan = FALSE;
     DWORD i;
-    LPSTR usz, uszPath2;
+    LPCSTR usz, uszPath2;
     CHAR uszPath1[MAX_PATH];
     POB_REGISTRY_HIVE pObHive = NULL;
     POB_REGISTRY_KEY pObKey = NULL;
@@ -1805,7 +1805,7 @@ BOOL VmmWinReg_PathHiveGetByFullPath(_In_ VMM_HANDLE H, _In_ LPSTR uszPathFull, 
 * -- return
 */
 _Success_(return)
-BOOL VmmWinReg_KeyHiveGetByFullPath(_In_ VMM_HANDLE H, _In_ LPSTR uszPathFull, _Out_ POB_REGISTRY_HIVE *ppObHive, _Out_opt_ POB_REGISTRY_KEY *ppObKey)
+BOOL VmmWinReg_KeyHiveGetByFullPath(_In_ VMM_HANDLE H, _In_ LPCSTR uszPathFull, _Out_ POB_REGISTRY_HIVE *ppObHive, _Out_opt_ POB_REGISTRY_KEY *ppObKey)
 {
     CHAR uszPathKey[MAX_PATH];
     if(!VmmWinReg_PathHiveGetByFullPath(H, uszPathFull, ppObHive, uszPathKey)) { return FALSE; }
@@ -1825,7 +1825,7 @@ BOOL VmmWinReg_KeyHiveGetByFullPath(_In_ VMM_HANDLE H, _In_ LPSTR uszPathFull, _
 * -- return
 */
 _Success_(return != NULL)
-POB_REGISTRY_KEY VmmWinReg_KeyGetByPath(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_ LPSTR uszPath)
+POB_REGISTRY_KEY VmmWinReg_KeyGetByPath(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_ LPCSTR uszPath)
 {
     if(!VmmWinReg_HiveSnapshotEnsure(H, pHive)) { return NULL; }
     return (POB_REGISTRY_KEY)ObMap_GetByKey(pHive->Snapshot.pmKeyHash, CharUtil_HashPathFsU(uszPath));
@@ -2006,7 +2006,7 @@ POB_MAP VmmWinReg_KeyValueList(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, 
 * -- uszValueName = value name or NULL for default.
 * -- return = registry value or NULL if not found.
 */
-POB_REGISTRY_VALUE VmmWinReg_KeyValueGetByName(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pKeyParent, _In_ LPSTR uszValueName)
+POB_REGISTRY_VALUE VmmWinReg_KeyValueGetByName(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pKeyParent, _In_ LPCSTR uszValueName)
 {
     POB_MAP pmObValues = NULL;
     POB_REGISTRY_VALUE pObValue = NULL;
@@ -2061,7 +2061,7 @@ VOID VmmWinReg_ValueInfo(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_VALUE p
 * -- return
 */
 _Success_(return)
-BOOL VmmWinReg_ValueQuery1(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_ LPSTR uszPathKeyValue, _Out_opt_ PDWORD pdwType, _Out_opt_ PDWORD pra, _Out_writes_opt_(cb) PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbRead, _In_ QWORD cbOffset)
+BOOL VmmWinReg_ValueQuery1(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_ LPCSTR uszPathKeyValue, _Out_opt_ PDWORD pdwType, _Out_opt_ PDWORD pra, _Out_writes_opt_(cb) PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     BOOL f;
     LPSTR uszValueName;
@@ -2090,7 +2090,7 @@ BOOL VmmWinReg_ValueQuery1(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_
 * -- return
 */
 _Success_(return)
-BOOL VmmWinReg_ValueQuery2(_In_ VMM_HANDLE H, _In_ LPSTR uszFullPathKeyValue, _Out_opt_ PDWORD pdwType, _Out_writes_opt_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_opt_ PDWORD pcbData)
+BOOL VmmWinReg_ValueQuery2(_In_ VMM_HANDLE H, _In_ LPCSTR uszFullPathKeyValue, _Out_opt_ PDWORD pdwType, _Out_writes_opt_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_opt_ PDWORD pcbData)
 {
     BOOL f;
     CHAR uszPathKeyValue[MAX_PATH];
@@ -2113,7 +2113,7 @@ BOOL VmmWinReg_ValueQuery2(_In_ VMM_HANDLE H, _In_ LPSTR uszFullPathKeyValue, _O
 * -- return
 */
 _Success_(return)
-BOOL VmmWinReg_ValueQuery3(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_ LPSTR uszPathKeyValue, _Out_opt_ PDWORD pdwType, _Out_writes_opt_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_opt_ PDWORD pcbData)
+BOOL VmmWinReg_ValueQuery3(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_ LPCSTR uszPathKeyValue, _Out_opt_ PDWORD pdwType, _Out_writes_opt_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_opt_ PDWORD pcbData)
 {
     return VmmWinReg_ValueQuery1(H, pHive, uszPathKeyValue, pdwType, NULL, pbData, cbData, pcbData, 0);
 }
@@ -2153,7 +2153,7 @@ BOOL VmmWinReg_ValueQuery4(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_
 * -- return
 */
 _Success_(return)
-BOOL VmmWinReg_ValueQuery5(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pKey, _In_ LPSTR uszValueName, _Out_opt_ PDWORD pdwType, _Out_writes_opt_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_opt_ PDWORD pcbData)
+BOOL VmmWinReg_ValueQuery5(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pKey, _In_ LPCSTR uszValueName, _Out_opt_ PDWORD pdwType, _Out_writes_opt_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_opt_ PDWORD pcbData)
 {
     BOOL fResult = FALSE;
     POB_REGISTRY_VALUE pObKeyValue;
@@ -2231,8 +2231,8 @@ VOID VmmWinReg_ForensicGetAllKeysAndValues(
     _In_ POB_REGISTRY_HIVE pHive,
     _In_ HANDLE hCallback1,
     _In_ HANDLE hCallback2,
-    _In_ VOID(*pfnKeyCB)(_In_ VMM_HANDLE H, _In_ HANDLE hCallback1, _In_ HANDLE hCallback2, _In_ LPSTR uszPathName, _In_ QWORD vaHive, _In_ DWORD dwCell, _In_ DWORD dwCellParent, _In_ QWORD ftLastWrite),
-    _In_ VOID(*pfnJsonKeyCB)(_In_ VMM_HANDLE H, _Inout_ PVMMWINREG_FORENSIC_CONTEXT ctx, _In_z_ LPSTR uszPathName, _In_ QWORD ftLastWrite),
+    _In_ VOID(*pfnKeyCB)(_In_ VMM_HANDLE H, _In_ HANDLE hCallback1, _In_ HANDLE hCallback2, _In_ LPCSTR uszPathName, _In_ QWORD vaHive, _In_ DWORD dwCell, _In_ DWORD dwCellParent, _In_ QWORD ftLastWrite),
+    _In_ VOID(*pfnJsonKeyCB)(_In_ VMM_HANDLE H, _Inout_ PVMMWINREG_FORENSIC_CONTEXT ctx, _In_z_ LPCSTR uszPathName, _In_ QWORD ftLastWrite),
     _In_ VOID(*pfnJsonValueCB)(_In_ VMM_HANDLE H, _Inout_ PVMMWINREG_FORENSIC_CONTEXT ctx)
 ) {
     DWORD i, c, oHive, j, jMax;

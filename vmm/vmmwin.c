@@ -1,7 +1,7 @@
 // vmmwin.c : implementation related to operating system and process
 // parsing of virtual memory. Windows related features only.
 //
-// (c) Ulf Frisk, 2018-2023
+// (c) Ulf Frisk, 2018-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -3482,7 +3482,7 @@ VOID VmmWinProcess_Enumerate_PostProcessing(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS
             pProcPers->uszPathKernel = uszPathKernel;
             pProcPers->cuszPathKernel = (WORD)strlen(pProcPers->uszPathKernel);
             // locate FullName by skipping to last \ character.
-            pProcPers->uszNameLong = CharUtil_PathSplitLast(pProcPers->uszPathKernel);
+            pProcPers->uszNameLong = (LPSTR)CharUtil_PathSplitLast(pProcPers->uszPathKernel);
             pProcPers->cuszNameLong = (WORD)strlen(pProcPers->uszNameLong);
         }
     }

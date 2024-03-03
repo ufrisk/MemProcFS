@@ -9,7 +9,7 @@
 //      is generally stored in an sqlite database with may be used to query
 //      the results.
 //
-// (c) Ulf Frisk, 2020-2023
+// (c) Ulf Frisk, 2020-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -91,7 +91,7 @@ sqlite3* Fc_SqlReserveReturn(_In_ VMM_HANDLE H, _In_opt_ sqlite3 *hSql)
 * -- return = sqlite return code.
 */
 _Success_(return == SQLITE_OK)
-int Fc_SqlExec(_In_ VMM_HANDLE H, _In_ LPSTR szSql)
+int Fc_SqlExec(_In_ VMM_HANDLE H, _In_ LPCSTR szSql)
 {
     int rc = SQLITE_ERROR;
     sqlite3 *hSql = Fc_SqlReserve(H);
@@ -116,7 +116,7 @@ int Fc_SqlExec(_In_ VMM_HANDLE H, _In_ LPSTR szSql)
 * -- return = sqlite return code.
 */
 _Success_(return == SQLITE_OK)
-int Fc_SqlQueryN(_In_ VMM_HANDLE H, _In_ LPSTR szSql, _In_ DWORD cQueryValues, _In_reads_(cQueryValues) PQWORD pqwQueryValues, _In_ DWORD cResultValues, _Out_writes_(cResultValues) PQWORD pqwResultValues, _Out_opt_ PDWORD pcResultValues)
+int Fc_SqlQueryN(_In_ VMM_HANDLE H, _In_ LPCSTR szSql, _In_ DWORD cQueryValues, _In_reads_(cQueryValues) PQWORD pqwQueryValues, _In_ DWORD cResultValues, _Out_writes_(cResultValues) PQWORD pqwResultValues, _Out_opt_ PDWORD pcResultValues)
 {
     int rc = SQLITE_ERROR;
     DWORD i, iMax;
@@ -151,7 +151,7 @@ fail:
 }
 
 _Success_(return)
-BOOL Fc_SqlInsertStr(_In_ VMM_HANDLE H, _In_ sqlite3_stmt *hStmt, _In_ LPSTR usz, _Out_ PFCSQL_INSERTSTRTABLE pThis)
+BOOL Fc_SqlInsertStr(_In_ VMM_HANDLE H, _In_ sqlite3_stmt *hStmt, _In_ LPCSTR usz, _Out_ PFCSQL_INSERTSTRTABLE pThis)
 {
     if(!CharUtil_UtoU(usz, -1, NULL, 0, NULL, &pThis->cbu, 0)) { return FALSE; }
     pThis->cbu--;               // don't count null terminator.
@@ -220,7 +220,7 @@ LPSTR FcCsv_FileTime(_In_ VMMDLL_CSV_HANDLE h, _In_ QWORD ft)
     return "";
 }
 
-LPSTR FcCsv_String(_In_ VMMDLL_CSV_HANDLE h, _In_opt_ LPSTR usz)
+LPSTR FcCsv_String(_In_ VMMDLL_CSV_HANDLE h, _In_opt_ LPCSTR usz)
 {
     DWORD o, cbv = 0;
     if(!usz) { usz = ""; }
@@ -249,7 +249,7 @@ VOID FcFile_CleanupCB(_In_ PVOID pOb)
 * -- return = the number of bytes appended (excluding terminating null).
 */
 _Success_(return != 0)
-SIZE_T FcFileAppend(_In_ VMM_HANDLE H, _In_ LPSTR uszFileName, _In_z_ _Printf_format_string_ LPSTR uszFormat, ...)
+SIZE_T FcFileAppend(_In_ VMM_HANDLE H, _In_ LPCSTR uszFileName, _In_z_ _Printf_format_string_ LPCSTR uszFormat, ...)
 {
     SIZE_T ret;
     va_list arglist;
@@ -269,7 +269,7 @@ SIZE_T FcFileAppend(_In_ VMM_HANDLE H, _In_ LPSTR uszFileName, _In_z_ _Printf_fo
 * -- return = the number of bytes appended (excluding terminating null).
 */
 _Success_(return != 0)
-SIZE_T FcFileAppendEx(_In_ VMM_HANDLE H, _In_ LPSTR uszFileName, _In_z_ _Printf_format_string_ LPSTR uszFormat, _In_ va_list arglist)
+SIZE_T FcFileAppendEx(_In_ VMM_HANDLE H, _In_ LPCSTR uszFileName, _In_z_ _Printf_format_string_ LPCSTR uszFormat, _In_ va_list arglist)
 {
     SIZE_T ret = 0;
     PFCOB_FILE pObFcFile = NULL;
@@ -435,6 +435,7 @@ VOID FcEvilInitialize_ThreadProc(_In_ VMM_HANDLE H, _In_ QWORD qwNotUsed)
     if(!(H->fc->FindEvil.pm = ObMap_New(H, OB_MAP_FLAGS_NOKEY | OB_MAP_FLAGS_OBJECT_LOCALFREE))) { return; }
     if(!(H->fc->FindEvil.pmf = ObMemFile_New(H, H->vmm.pObCacheMapObCompressedShared))) { return; }
     if(!(H->fc->FindEvil.pmfYara = ObMemFile_New(H, H->vmm.pObCacheMapObCompressedShared))) { return; }
+    if(!(H->fc->FindEvil.pmfYaraRules = ObMemFile_New(H, H->vmm.pObCacheMapObCompressedShared))) { return; }
     if(!InfoDB_YaraRulesBuiltIn_Exists(H)) {
         ObMemFile_AppendStringEx(H->fc->FindEvil.pmfYara, FCEVIL_YARA_NO_BUILTIN_RULES, (H->cfg.fLicenseAcceptElasticV2 ? "ACCEPTED    " : "NOT ACCEPTED"));
     }
@@ -534,7 +535,7 @@ fail:
 * -- uszFormat
 * -- ...
 */
-VOID FcEvilAdd(_In_ VMM_HANDLE H, _In_ VMMEVIL_TYPE tpEvil, _In_opt_ PVMM_PROCESS pProcess, _In_opt_ QWORD va, _In_z_ _Printf_format_string_ LPSTR uszFormat, ...)
+VOID FcEvilAdd(_In_ VMM_HANDLE H, _In_ VMMEVIL_TYPE tpEvil, _In_opt_ PVMM_PROCESS pProcess, _In_opt_ QWORD va, _In_z_ _Printf_format_string_ LPCSTR uszFormat, ...)
 {
     va_list arglist;
     va_start(arglist, uszFormat);
@@ -552,7 +553,7 @@ VOID FcEvilAdd(_In_ VMM_HANDLE H, _In_ VMMEVIL_TYPE tpEvil, _In_opt_ PVMM_PROCES
 * -- uszFormat
 * -- arglist
 */
-VOID FcEvilAddEx(_In_ VMM_HANDLE H, _In_ LPSTR uszType, _In_ DWORD dwSeverity, _In_opt_ PVMM_PROCESS pProcess, _In_opt_ QWORD va, _In_z_ _Printf_format_string_ LPSTR uszFormat, _In_ va_list arglist)
+VOID FcEvilAddEx(_In_ VMM_HANDLE H, _In_ LPSTR uszType, _In_ DWORD dwSeverity, _In_opt_ PVMM_PROCESS pProcess, _In_opt_ QWORD va, _In_z_ _Printf_format_string_ LPCSTR uszFormat, _In_ va_list arglist)
 {
     int cchBuffer;
     SIZE_T cbBuffer;
@@ -596,7 +597,7 @@ typedef struct tdFCTIMELINE_PLUGIN_CONTEXT {
 * -- qwValue
 * -- wszText
 */
-VOID FcTimeline_Callback_PluginEntryAdd(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPSTR uszText)
+VOID FcTimeline_Callback_PluginEntryAdd(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPCSTR uszText)
 {
     PFCTIMELINE_PLUGIN_CONTEXT ctx = (PFCTIMELINE_PLUGIN_CONTEXT)hTimeline;
     FCSQL_INSERTSTRTABLE SqlStrInsert;
@@ -622,7 +623,7 @@ VOID FcTimeline_Callback_PluginEntryAdd(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline
 * -- cEntrySql
 * -- pszEntrySql
 */
-VOID FcTimeline_Callback_PluginEntryAddBySQL(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPSTR *pszEntrySql)
+VOID FcTimeline_Callback_PluginEntryAddBySQL(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPCSTR *pszEntrySql)
 {
     int rc;
     DWORD i;
@@ -658,7 +659,7 @@ VOID FcTimeline_Callback_PluginClose(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline)
 * -- szFileUTF8 = utf-8 file name (if exists)
 * -- return = handle, should be closed with callback function.
 */
-HANDLE FcTimeline_Callback_PluginRegister(_In_ VMM_HANDLE H, _In_reads_(6) LPSTR sNameShort, _In_reads_(32) LPSTR szFileUTF8)
+HANDLE FcTimeline_Callback_PluginRegister(_In_ VMM_HANDLE H, _In_reads_(6) LPCSTR sNameShort, _In_reads_(32) LPCSTR szFileUTF8)
 {
     QWORD v;
     sqlite3 *hSql = NULL;
@@ -1427,7 +1428,7 @@ BOOL FcIsProcessSkip(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
 {
     return
         CharUtil_StrCmpAny(CharUtil_StrEquals, pProcess->szName, FALSE, 4, "MsMpEng.exe", "MemCompression", "Registry", "vmmem", "vmware-vmx.exe") ||
-        (H->cfg.ForensicProcessSkipList.cusz && CharUtil_StrCmpAnyEx(CharUtil_StrEquals, pProcess->szName, TRUE, H->cfg.ForensicProcessSkipList.cusz, H->cfg.ForensicProcessSkipList.pusz));
+        (H->cfg.ForensicProcessSkipList.cusz && CharUtil_StrCmpAnyEx(CharUtil_StrEquals, pProcess->szName, TRUE, H->cfg.ForensicProcessSkipList.cusz, (LPCSTR*)H->cfg.ForensicProcessSkipList.pusz));
 }
 
 
@@ -1530,7 +1531,7 @@ fail:
         H->fc->cProgressPercent = 0;
     }
     LocalFree(hCSV);
-    VmmLog(H, MID_FORENSIC, LOGLEVEL_4_VERBOSE, "INIT %s : time=%llis", (fResult ? "COMPLETED" : "FAIL"), ((GetTickCount64() - tcStart) / 1000));
+    VmmLog(H, MID_FORENSIC, LOGLEVEL_3_INFO, "Forensic mode completed in %llis%s.", ((GetTickCount64() - tcStart) / 1000), (fResult ? "" : " (FAIL)"));
 }
 
 /*
@@ -1587,6 +1588,7 @@ VOID FcClose(_In_ VMM_HANDLE H)
     Ob_DECREF_NULL(&ctxFc->FindEvil.pm);
     Ob_DECREF_NULL(&ctxFc->FindEvil.pmf);
     Ob_DECREF_NULL(&ctxFc->FindEvil.pmfYara);
+    Ob_DECREF_NULL(&ctxFc->FindEvil.pmfYaraRules);
     LocalFree(ctxFc->Timeline.pInfo);
     LeaveCriticalSection(&ctxFc->Lock);
     DeleteCriticalSection(&ctxFc->Lock);
@@ -1667,6 +1669,9 @@ BOOL FcInitialize_Impl(_In_ VMM_HANDLE H, _In_ DWORD dwDatabaseType, _In_ BOOL f
     if(H->fc && !fForceReInit) { return FALSE; }
     if(H->dev.fVolatile) {
         VmmLog(H, MID_FORENSIC, LOGLEVEL_WARNING, "FORENSIC mode on volatile memory is not recommended due to memory drift/smear.");
+    }
+    if(!H->cfg.fLicenseAcceptElasticV2 && !H->cfg.fDisableYara && !H->cfg.fDisableInfoDB) {
+        VmmLog(H, MID_FORENSIC, LOGLEVEL_WARNING, "Built-in Yara rules from Elastic are disabled. Enable with: -license-accept-elastic-license-2-0");
     }
     H->cfg.tpForensicMode = dwDatabaseType;
     PDB_Initialize_WaitComplete(H);

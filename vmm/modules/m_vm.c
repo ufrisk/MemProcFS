@@ -1,6 +1,6 @@
 // m_vm.c : implementation of virtual machine sub virtual file system (vfs) functionality.
 //
-// (c) Ulf Frisk, 2022-2023
+// (c) Ulf Frisk, 2022-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -32,10 +32,10 @@ VOID MVM_ReadLineCB(_In_ VMM_HANDLE H, _Inout_opt_ PVOID ctx, _In_ DWORD cbLineL
 }
 
 _Success_(return != NULL)
-LPSTR MVM_GetPathAndChild(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_ VMM_HANDLE *phVmmChild)
+LPCSTR MVM_GetPathAndChild(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_ VMM_HANDLE *phVmmChild)
 {
     DWORD iChild;
-    LPSTR uszNewPath;
+    LPCSTR uszNewPath;
     CHAR uszChildIndex[32];
     uszNewPath = CharUtil_PathSplitFirst(ctxP->uszPath, uszChildIndex, _countof(uszChildIndex));
     iChild = strtoul(uszChildIndex, NULL, 10);
@@ -54,7 +54,7 @@ LPSTR MVM_GetPathAndChild(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _
 NTSTATUS MVM_Write(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
 {
     VMM_HANDLE hVmmChild = NULL;
-    LPSTR uszNewPath = MVM_GetPathAndChild(H, ctxP, &hVmmChild);
+    LPCSTR uszNewPath = MVM_GetPathAndChild(H, ctxP, &hVmmChild);
     if(uszNewPath && hVmmChild) {
         return VMMDLL_VfsWriteU(hVmmChild, uszNewPath, pb, cb, pcbWrite, cbOffset);
     }
@@ -66,7 +66,7 @@ NTSTATUS MVM_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writ
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PVMMOB_MAP_VM pObVmMap = NULL;
     VMM_HANDLE hVmmChild = NULL;
-    LPSTR uszNewPath = NULL;
+    LPCSTR uszNewPath = NULL;
     if(CharUtil_StrEquals(ctxP->uszPath, "vm.txt", TRUE)) {
         // vm.txt
         if(VmmMap_GetVM(H, &pObVmMap)) {
@@ -90,7 +90,7 @@ NTSTATUS MVM_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writ
 BOOL MVM_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList)
 {
     DWORD i;
-    LPSTR uszNewPath;
+    LPCSTR uszNewPath;
     VMM_HANDLE hVmmChild = NULL;
     CHAR uszBuffer[32];
     PVMMOB_MAP_VM pObVmMap = NULL;

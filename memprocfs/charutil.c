@@ -1,6 +1,6 @@
 // charutil.c : implementation of various character/string utility functions.
 //
-// (c) Ulf Frisk, 2021-2023
+// (c) Ulf Frisk, 2021-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "charutil.h"
@@ -66,7 +66,7 @@ BOOL CharUtil_IsAnsiFsA(_In_ LPCSTR sz)
 * -- return
 */
 _Success_(return)
-BOOL CharUtil_AtoU(_In_opt_ LPSTR sz, _In_ DWORD cch, _Maybenull_ _Writable_bytes_(cbBuffer) PBYTE pbBuffer, _In_ DWORD cbBuffer, _Out_opt_ LPSTR *pusz, _Out_opt_ PDWORD pcbu, _In_ DWORD flags)
+BOOL CharUtil_AtoU(_In_opt_ LPCSTR sz, _In_ DWORD cch, _Maybenull_ _Writable_bytes_(cbBuffer) PBYTE pbBuffer, _In_ DWORD cbBuffer, _Out_opt_ LPSTR *pusz, _Out_opt_ PDWORD pcbu, _In_ DWORD flags)
 {
     UCHAR c;
     LPSTR usz;
@@ -128,7 +128,7 @@ fail:
 }
 
 _Success_(return)
-BOOL CharUtil_UtoU(_In_opt_ LPSTR uszIn, _In_ DWORD cch, _Maybenull_ _Writable_bytes_(cbBuffer) PBYTE pbBuffer, _In_ DWORD cbBuffer, _Out_opt_ LPSTR *pusz, _Out_opt_ PDWORD pcbu, _In_ DWORD flags)
+BOOL CharUtil_UtoU(_In_opt_ LPCSTR uszIn, _In_ DWORD cch, _Maybenull_ _Writable_bytes_(cbBuffer) PBYTE pbBuffer, _In_ DWORD cbBuffer, _Out_opt_ LPSTR *pusz, _Out_opt_ PDWORD pcbu, _In_ DWORD flags)
 {
     // NB! function may look meaningless - but it provides some additional
     //     checking of the validity of the string and adheres to the flags.
@@ -188,7 +188,7 @@ fail:
 }
 
 _Success_(return)
-BOOL CharUtil_WtoU(_In_opt_ LPWSTR wsz, _In_ DWORD cch, _Maybenull_ _Writable_bytes_(cbBuffer) PBYTE pbBuffer, _In_ DWORD cbBuffer, _Out_opt_ LPSTR *pusz, _Out_opt_ PDWORD pcbu, _In_ DWORD flags)
+BOOL CharUtil_WtoU(_In_opt_ LPCWSTR wsz, _In_ DWORD cch, _Maybenull_ _Writable_bytes_(cbBuffer) PBYTE pbBuffer, _In_ DWORD cbBuffer, _Out_opt_ LPSTR *pusz, _Out_opt_ PDWORD pcbu, _In_ DWORD flags)
 {
     USHORT c, cZERO = 0;
     LPSTR usz;
@@ -303,7 +303,7 @@ fail:
 * -- return
 */
 _Success_(return)
-BOOL CharUtil_UtoW(_In_opt_ LPSTR usz, _In_ DWORD cch, _Maybenull_ _Writable_bytes_(cbBuffer) PBYTE pbBuffer, _In_ DWORD cbBuffer, _Out_opt_ LPWSTR *pwsz, _Out_opt_ PDWORD pcbw, _In_ DWORD flags)
+BOOL CharUtil_UtoW(_In_opt_ LPCSTR usz, _In_ DWORD cch, _Maybenull_ _Writable_bytes_(cbBuffer) PBYTE pbBuffer, _In_ DWORD cbBuffer, _Out_opt_ LPWSTR *pwsz, _Out_opt_ PDWORD pcbw, _In_ DWORD flags)
 {
     UCHAR c;
     LPWSTR wsz;
@@ -393,7 +393,7 @@ fail:
 }
 
 _Success_(return)
-BOOL CharUtil_WtoW(_In_opt_ LPWSTR wsz, _In_ DWORD cch, _Maybenull_ _Writable_bytes_(cbBuffer) PBYTE pbBuffer, _In_ DWORD cbBuffer, _Out_opt_ LPWSTR *pwsz, _Out_opt_ PDWORD pcbw, _In_ DWORD flags)
+BOOL CharUtil_WtoW(_In_opt_ LPCWSTR wsz, _In_ DWORD cch, _Maybenull_ _Writable_bytes_(cbBuffer) PBYTE pbBuffer, _In_ DWORD cbBuffer, _Out_opt_ LPWSTR *pwsz, _Out_opt_ PDWORD pcbw, _In_ DWORD flags)
 {
     // NB!
     // This function is assumed to be rarely used. Due to this it's implemented
@@ -450,7 +450,7 @@ VOID CharUtil_EscapeJSON6(_In_ CHAR ch, _Out_writes_(6) PCHAR chj)
 * -- return
 */
 _Success_(return)
-BOOL CharUtil_UtoJ(_In_opt_ LPSTR usz, _In_ DWORD cch, _Maybenull_ _Writable_bytes_(cbBuffer) PBYTE pbBuffer, _In_ DWORD cbBuffer, _Out_opt_ LPSTR *pjsz, _Out_opt_ PDWORD pcbj, _In_ DWORD flags)
+BOOL CharUtil_UtoJ(_In_opt_ LPCSTR usz, _In_ DWORD cch, _Maybenull_ _Writable_bytes_(cbBuffer) PBYTE pbBuffer, _In_ DWORD cbBuffer, _Out_opt_ LPSTR *pjsz, _Out_opt_ PDWORD pcbj, _In_ DWORD flags)
 {
     UCHAR c;
     LPSTR jsz;
@@ -519,7 +519,7 @@ fail:
 }
 
 _Success_(return)
-BOOL CharUtil_AtoJ(_In_opt_ LPSTR sz, _In_ DWORD cch, _Maybenull_ _Writable_bytes_(cbBuffer) PBYTE pbBuffer, _In_ DWORD cbBuffer, _Out_opt_ LPSTR *pjsz, _Out_opt_ PDWORD pcbj, _In_ DWORD flags)
+BOOL CharUtil_AtoJ(_In_opt_ LPCSTR sz, _In_ DWORD cch, _Maybenull_ _Writable_bytes_(cbBuffer) PBYTE pbBuffer, _In_ DWORD cbBuffer, _Out_opt_ LPSTR *pjsz, _Out_opt_ PDWORD pcbj, _In_ DWORD flags)
 {
     UCHAR c;
     LPSTR jsz;
@@ -598,7 +598,7 @@ fail:
 }
 
 _Success_(return)
-BOOL CharUtil_WtoJ(_In_opt_ LPWSTR wsz, _In_ DWORD cch, _Maybenull_ _Writable_bytes_(cbBuffer) PBYTE pbBuffer, _In_ DWORD cbBuffer, _Out_opt_ LPSTR *pjsz, _Out_opt_ PDWORD pcbj, _In_ DWORD flags)
+BOOL CharUtil_WtoJ(_In_opt_ LPCWSTR wsz, _In_ DWORD cch, _Maybenull_ _Writable_bytes_(cbBuffer) PBYTE pbBuffer, _In_ DWORD cbBuffer, _Out_opt_ LPSTR *pjsz, _Out_opt_ PDWORD pcbj, _In_ DWORD flags)
 {
     USHORT c, cZERO = 0;
     LPSTR jsz;
@@ -730,7 +730,7 @@ fail:
 * -- return
 */
 _Success_(return)
-BOOL CharUtil_UtoCSV(_In_opt_ LPSTR usz, _In_ DWORD cch, _Maybenull_ _Writable_bytes_(cbBuffer) PBYTE pbBuffer, _In_ DWORD cbBuffer, _Out_opt_ LPSTR *pvsz, _Out_opt_ PDWORD pcbv, _In_ DWORD flags)
+BOOL CharUtil_UtoCSV(_In_opt_ LPCSTR usz, _In_ DWORD cch, _Maybenull_ _Writable_bytes_(cbBuffer) PBYTE pbBuffer, _In_ DWORD cbBuffer, _Out_opt_ LPSTR *pvsz, _Out_opt_ PDWORD pcbv, _In_ DWORD flags)
 {
     UCHAR c;
     LPSTR vsz;
@@ -1144,7 +1144,7 @@ VOID CharUtil_ReplaceAllA(_Inout_ LPSTR sz, _In_ CHAR chOld, _In_ CHAR chNew)
 * -- cbuPath = byte length of uszPath buffer
 * -- return = last part (i.e. file name) of usz.
 */
-LPSTR CharUtil_PathSplitLastEx(_In_ LPSTR usz, _Out_writes_(cbuPath) LPSTR uszPath, _In_ DWORD cbuPath)
+LPSTR CharUtil_PathSplitLastEx(_In_ LPCSTR usz, _Out_writes_(cbuPath) LPSTR uszPath, _In_ DWORD cbuPath)
 {
     DWORD i, iSlash = -1;
     CHAR ch = -1;
@@ -1192,9 +1192,9 @@ LPSTR CharUtil_PathSplitLastInPlace(_Inout_ LPSTR usz)
 * -- usz = utf-8 or ascii string.
 * -- return
 */
-LPSTR CharUtil_PathSplitLast(_In_ LPSTR usz)
+LPCSTR CharUtil_PathSplitLast(_In_ LPCSTR usz)
 {
-    LPSTR uszResult = usz;
+    LPCSTR uszResult = usz;
     UCHAR ch;
     DWORD i = 0;
     while(TRUE) {
@@ -1215,7 +1215,7 @@ LPSTR CharUtil_PathSplitLast(_In_ LPSTR usz)
 * -- usz = utf-8 or ascii string.
 * -- return
 */
-LPSTR CharUtil_PathSplitNext(_In_ LPSTR usz)
+LPCSTR CharUtil_PathSplitNext(_In_ LPCSTR usz)
 {
     CHAR ch;
     DWORD i = 0;
@@ -1263,7 +1263,7 @@ LPSTR CharUtil_SplitFirst(_In_ LPSTR usz, _In_ CHAR ch, _Out_writes_(cbu1) LPSTR
 * -- return = remainder of split string.
 */
 _Success_(return)
-BOOL CharUtil_SplitList(_In_opt_ LPSTR usz, _In_ CHAR chDelimiter, _Out_ PDWORD pcArray, _Out_ LPSTR **ppuszArray)
+BOOL CharUtil_SplitList(_Inout_opt_ LPSTR usz, _In_ CHAR chDelimiter, _Out_ PDWORD pcArray, _Out_ LPSTR **ppuszArray)
 {
     UCHAR c;
     LPSTR *pszResult;
@@ -1305,7 +1305,7 @@ BOOL CharUtil_SplitList(_In_opt_ LPSTR usz, _In_ CHAR chDelimiter, _Out_ PDWORD 
 * -- cbu1 = byte length of usz1 buffer
 * -- return = remainder of split string.
 */
-LPSTR CharUtil_PathSplitFirst(_In_ LPSTR usz, _Out_writes_(cbu1) LPSTR usz1, _In_ DWORD cbu1)
+LPCSTR CharUtil_PathSplitFirst(_In_ LPCSTR usz, _Out_writes_(cbu1) LPSTR usz1, _In_ DWORD cbu1)
 {
     UCHAR c;
     DWORD i = 0;
@@ -1375,7 +1375,7 @@ QWORD CharUtil_HashPathFsW(_In_ LPCWSTR wszPath)
 * ...
 * -- return
 */
-BOOL CharUtil_StrCmpAny(_In_opt_ CHARUTIL_STRCMP_PFN pfnStrCmp, _In_opt_ LPSTR usz1, _In_ BOOL fCaseInsensitive, _In_ DWORD cStr, ...)
+BOOL CharUtil_StrCmpAny(_In_opt_ CHARUTIL_STRCMP_PFN pfnStrCmp, _In_opt_ LPCSTR usz1, _In_ BOOL fCaseInsensitive, _In_ DWORD cStr, ...)
 {
     va_list arglist;
     if(!pfnStrCmp) { return FALSE; }
@@ -1401,7 +1401,7 @@ BOOL CharUtil_StrCmpAny(_In_opt_ CHARUTIL_STRCMP_PFN pfnStrCmp, _In_opt_ LPSTR u
 * -- pStr
 * -- return
 */
-BOOL CharUtil_StrCmpAnyEx(_In_opt_ CHARUTIL_STRCMP_PFN pfnStrCmp, _In_opt_ LPSTR usz1, _In_ BOOL fCaseInsensitive, _In_ DWORD cStr, _In_ LPSTR *pStr)
+BOOL CharUtil_StrCmpAnyEx(_In_opt_ CHARUTIL_STRCMP_PFN pfnStrCmp, _In_opt_ LPCSTR usz1, _In_ BOOL fCaseInsensitive, _In_ DWORD cStr, _In_ LPCSTR *pStr)
 {
     if(!pfnStrCmp) { return FALSE; }
     while(cStr) {
@@ -1423,7 +1423,7 @@ BOOL CharUtil_StrCmpAnyEx(_In_opt_ CHARUTIL_STRCMP_PFN pfnStrCmp, _In_opt_ LPSTR
 * ...
 * -- return
 */
-BOOL CharUtil_StrCmpAll(_In_opt_ CHARUTIL_STRCMP_PFN pfnStrCmp, _In_opt_ LPSTR usz1, _In_ BOOL fCaseInsensitive, _In_ DWORD cStr, ...)
+BOOL CharUtil_StrCmpAll(_In_opt_ CHARUTIL_STRCMP_PFN pfnStrCmp, _In_opt_ LPCSTR usz1, _In_ BOOL fCaseInsensitive, _In_ DWORD cStr, ...)
 {
     va_list arglist;
     if(!pfnStrCmp) { return FALSE; }
@@ -1446,7 +1446,7 @@ BOOL CharUtil_StrCmpAll(_In_opt_ CHARUTIL_STRCMP_PFN pfnStrCmp, _In_opt_ LPSTR u
 * -- fCaseInsensitive
 * -- return
 */
-BOOL CharUtil_StrEndsWith(_In_opt_ LPSTR usz, _In_opt_ LPSTR uszEndsWith, _In_ BOOL fCaseInsensitive)
+BOOL CharUtil_StrEndsWith(_In_opt_ LPCSTR usz, _In_opt_ LPCSTR uszEndsWith, _In_ BOOL fCaseInsensitive)
 {
     SIZE_T cch, cchEndsWith;
     if(!usz || !uszEndsWith) { return FALSE; }
@@ -1465,7 +1465,7 @@ BOOL CharUtil_StrEndsWith(_In_opt_ LPSTR usz, _In_opt_ LPSTR uszEndsWith, _In_ B
 * -- fCaseInsensitive
 * -- return
 */
-BOOL CharUtil_StrStartsWith(_In_opt_ LPSTR usz, _In_opt_ LPSTR uszStartsWith, _In_ BOOL fCaseInsensitive)
+BOOL CharUtil_StrStartsWith(_In_opt_ LPCSTR usz, _In_opt_ LPCSTR uszStartsWith, _In_ BOOL fCaseInsensitive)
 {
     if(!usz || !uszStartsWith) { return FALSE; }
     if(fCaseInsensitive) {
@@ -1482,7 +1482,7 @@ BOOL CharUtil_StrStartsWith(_In_opt_ LPSTR usz, _In_opt_ LPSTR uszStartsWith, _I
 * -- fCaseInsensitive
 * -- return
 */
-BOOL CharUtil_StrEquals(_In_opt_ LPSTR usz, _In_opt_ LPSTR usz2, _In_ BOOL fCaseInsensitive)
+BOOL CharUtil_StrEquals(_In_opt_ LPCSTR usz, _In_opt_ LPCSTR usz2, _In_ BOOL fCaseInsensitive)
 {
     if(!usz || !usz2) { return FALSE; }
     if(fCaseInsensitive) {
@@ -1519,7 +1519,7 @@ int CharUtil_CmpWU(_In_opt_ LPWSTR wsz1, _In_opt_ LPSTR usz2, _In_ BOOL fCaseIns
 * -- wsz2
 * -- return = 0 if equals, -1/1 otherwise.
 */
-int CharUtil_CmpWW(_In_opt_ LPWSTR wsz1, _In_opt_ LPWSTR wsz2, _In_ BOOL fCaseInsensitive)
+int CharUtil_CmpWW(_In_opt_ LPCWSTR wsz1, _In_opt_ LPCWSTR wsz2, _In_ BOOL fCaseInsensitive)
 {
     LPSTR usz1, usz2;
     BYTE pbBuffer1[2 * MAX_PATH], pbBuffer2[2 * MAX_PATH];

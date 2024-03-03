@@ -12,7 +12,7 @@
 //
 // The ObStrMap is an object manager object and must be DECREF'ed when required.
 //
-// (c) Ulf Frisk, 2021-2023
+// (c) Ulf Frisk, 2021-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "ob.h"
@@ -90,7 +90,7 @@ typedef struct tdOB_STRMAP {
 }
 
 _Success_(return != NULL)
-POB_STRMAP_ENTRY _ObStrMap_PushStr(_In_ POB_STRMAP psm, _In_opt_ LPSTR usz, _In_opt_ LPSTR sz, _In_opt_ LPWSTR wsz)
+POB_STRMAP_ENTRY _ObStrMap_PushStr(_In_ POB_STRMAP psm, _In_opt_ LPCSTR usz, _In_opt_ LPCSTR sz, _In_opt_ LPCWSTR wsz)
 {
     BOOL f;
     DWORD cbu = 0;
@@ -137,7 +137,7 @@ POB_STRMAP_ENTRY _ObStrMap_PushStr(_In_ POB_STRMAP psm, _In_opt_ LPSTR usz, _In_
 }
 
 _Success_(return)
-BOOL _ObStrMap_PushPtr(_In_ POB_STRMAP psm, _In_opt_ LPSTR usz, _In_opt_ LPSTR sz, _In_opt_ LPWSTR wsz, _Out_opt_ LPSTR *puszDst, _Out_opt_ PDWORD pcbuDst, _Out_opt_ LPWSTR *pwszDst, _Out_opt_ PDWORD pcbwDst)
+BOOL _ObStrMap_PushPtr(_In_ POB_STRMAP psm, _In_opt_ LPCSTR usz, _In_opt_ LPCSTR sz, _In_opt_ LPCWSTR wsz, _Out_opt_ LPSTR *puszDst, _Out_opt_ PDWORD pcbuDst, _Out_opt_ LPWSTR *pwszDst, _Out_opt_ PDWORD pcbwDst)
 {
     DWORD i;
     POB_STRMAP_ENTRY pe;
@@ -179,7 +179,7 @@ BOOL _ObStrMap_PushPtr(_In_ POB_STRMAP psm, _In_opt_ LPSTR usz, _In_opt_ LPSTR s
 }
 
 _Success_(return)
-BOOL _ObStrMap_Push(_In_ POB_STRMAP psm, _In_opt_ LPSTR usz, _In_opt_ LPSTR sz, _In_opt_ LPWSTR wsz)
+BOOL _ObStrMap_Push(_In_ POB_STRMAP psm, _In_opt_ LPCSTR usz, _In_opt_ LPCSTR sz, _In_opt_ LPCWSTR wsz)
 {
     return _ObStrMap_PushStr(psm, usz, sz, wsz) ? TRUE : FALSE;
 }
@@ -191,7 +191,7 @@ BOOL _ObStrMap_Push(_In_ POB_STRMAP psm, _In_opt_ LPSTR usz, _In_opt_ LPSTR sz, 
 * -- return = TRUE on insertion, FALSE otherwise.
 */
 _Success_(return)
-BOOL ObStrMap_PushU(_In_opt_ POB_STRMAP psm, _In_opt_ LPSTR usz)
+BOOL ObStrMap_PushU(_In_opt_ POB_STRMAP psm, _In_opt_ LPCSTR usz)
 {
     OB_STRUMAP_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(psm, BOOL, FALSE, _ObStrMap_Push(psm, usz, NULL, NULL))
 }
@@ -203,7 +203,7 @@ BOOL ObStrMap_PushU(_In_opt_ POB_STRMAP psm, _In_opt_ LPSTR usz)
 * -- return = TRUE on insertion, FALSE otherwise.
 */
 _Success_(return)
-BOOL ObStrMap_PushA(_In_opt_ POB_STRMAP psm, _In_opt_ LPSTR sz)
+BOOL ObStrMap_PushA(_In_opt_ POB_STRMAP psm, _In_opt_ LPCSTR sz)
 {
     OB_STRUMAP_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(psm, BOOL, FALSE, _ObStrMap_Push(psm, NULL, sz, NULL))
 }
@@ -215,7 +215,7 @@ BOOL ObStrMap_PushA(_In_opt_ POB_STRMAP psm, _In_opt_ LPSTR sz)
 * -- return = TRUE on insertion, FALSE otherwise.
 */
 _Success_(return)
-BOOL ObStrMap_PushW(_In_opt_ POB_STRMAP psm, _In_opt_ LPWSTR wsz)
+BOOL ObStrMap_PushW(_In_opt_ POB_STRMAP psm, _In_opt_ LPCWSTR wsz)
 {
     OB_STRUMAP_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(psm, BOOL, FALSE, _ObStrMap_Push(psm, NULL, NULL, wsz))
 }
@@ -229,7 +229,7 @@ BOOL ObStrMap_PushW(_In_opt_ POB_STRMAP psm, _In_opt_ LPWSTR wsz)
 * -- return = TRUE on insertion, FALSE otherwise.
 */
 _Success_(return)
-BOOL ObStrMap_PushPtrUU(_In_opt_ POB_STRMAP psm, _In_opt_ LPSTR usz, _Out_opt_ LPSTR *puszDst, _Out_opt_ PDWORD pcbuDst)
+BOOL ObStrMap_PushPtrUU(_In_opt_ POB_STRMAP psm, _In_opt_ LPCSTR usz, _Out_opt_ LPSTR *puszDst, _Out_opt_ PDWORD pcbuDst)
 {
     OB_STRUMAP_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(psm, BOOL, FALSE, _ObStrMap_PushPtr(psm, usz, NULL, NULL, puszDst, pcbuDst, NULL, NULL))
 }
@@ -243,7 +243,7 @@ BOOL ObStrMap_PushPtrUU(_In_opt_ POB_STRMAP psm, _In_opt_ LPSTR usz, _Out_opt_ L
 * -- return = TRUE on insertion, FALSE otherwise.
 */
 _Success_(return)
-BOOL ObStrMap_PushPtrAU(_In_opt_ POB_STRMAP psm, _In_opt_ LPSTR sz, _Out_opt_ LPSTR *puszDst, _Out_opt_ PDWORD pcbuDst)
+BOOL ObStrMap_PushPtrAU(_In_opt_ POB_STRMAP psm, _In_opt_ LPCSTR sz, _Out_opt_ LPSTR *puszDst, _Out_opt_ PDWORD pcbuDst)
 {
     OB_STRUMAP_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(psm, BOOL, FALSE, _ObStrMap_PushPtr(psm, NULL, sz, NULL, puszDst, pcbuDst, NULL, NULL))
 }
@@ -257,7 +257,7 @@ BOOL ObStrMap_PushPtrAU(_In_opt_ POB_STRMAP psm, _In_opt_ LPSTR sz, _Out_opt_ LP
 * -- return = TRUE on insertion, FALSE otherwise.
 */
 _Success_(return)
-BOOL ObStrMap_PushPtrWU(_In_opt_ POB_STRMAP psm, _In_opt_ LPWSTR wsz, _Out_opt_ LPSTR *puszDst, _Out_opt_ PDWORD pcbuDst)
+BOOL ObStrMap_PushPtrWU(_In_opt_ POB_STRMAP psm, _In_opt_ LPCWSTR wsz, _Out_opt_ LPSTR *puszDst, _Out_opt_ PDWORD pcbuDst)
 {
     OB_STRUMAP_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(psm, BOOL, FALSE, _ObStrMap_PushPtr(psm, NULL, NULL, wsz, puszDst, pcbuDst, NULL, NULL))
 }
@@ -271,7 +271,7 @@ BOOL ObStrMap_PushPtrWU(_In_opt_ POB_STRMAP psm, _In_opt_ LPWSTR wsz, _Out_opt_ 
 * -- return = TRUE on insertion, FALSE otherwise.
 */
 _Success_(return)
-BOOL ObStrMap_PushPtrUW(_In_opt_ POB_STRMAP psm, _In_opt_ LPSTR usz, _Out_opt_ LPWSTR *pwszDst, _Out_opt_ PDWORD pcbwDst)
+BOOL ObStrMap_PushPtrUW(_In_opt_ POB_STRMAP psm, _In_opt_ LPCSTR usz, _Out_opt_ LPWSTR *pwszDst, _Out_opt_ PDWORD pcbwDst)
 {
     OB_STRUMAP_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(psm, BOOL, FALSE, _ObStrMap_PushPtr(psm, usz, NULL, NULL, NULL, NULL, pwszDst, pcbwDst))
 }
@@ -286,7 +286,7 @@ BOOL ObStrMap_PushPtrUW(_In_opt_ POB_STRMAP psm, _In_opt_ LPSTR usz, _Out_opt_ L
 * -- return = TRUE on insertion, FALSE otherwise.
 */
 _Success_(return)
-BOOL ObStrMap_PushPtrUXUW(_In_opt_ POB_STRMAP psm, _In_opt_ LPSTR usz, _Out_opt_ LPSTR *puszDst, _Out_opt_ PDWORD pcbuDst, BOOL fWideChar)
+BOOL ObStrMap_PushPtrUXUW(_In_opt_ POB_STRMAP psm, _In_opt_ LPCSTR usz, _Out_opt_ LPSTR *puszDst, _Out_opt_ PDWORD pcbuDst, BOOL fWideChar)
 {
     if(fWideChar) {
         OB_STRUMAP_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(psm, BOOL, FALSE, _ObStrMap_PushPtr(psm, usz, NULL, NULL, NULL, NULL, (LPWSTR*)puszDst, pcbuDst))
@@ -304,7 +304,7 @@ BOOL ObStrMap_PushPtrUXUW(_In_opt_ POB_STRMAP psm, _In_opt_ LPSTR usz, _Out_opt_
 * -- return = TRUE on insertion, FALSE otherwise.
 */
 _Success_(return)
-BOOL ObStrMap_PushPtrWW(_In_opt_ POB_STRMAP psm, _In_opt_ LPWSTR wsz, _Out_opt_ LPWSTR *pwszDst, _Out_opt_ PDWORD pcbwDst)
+BOOL ObStrMap_PushPtrWW(_In_opt_ POB_STRMAP psm, _In_opt_ LPCWSTR wsz, _Out_opt_ LPWSTR *pwszDst, _Out_opt_ PDWORD pcbwDst)
 {
     OB_STRUMAP_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(psm, BOOL, FALSE, _ObStrMap_PushPtr(psm, NULL, NULL, wsz, NULL, NULL, pwszDst, pcbwDst))
 }

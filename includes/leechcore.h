@@ -46,8 +46,10 @@ typedef uint64_t                            FILETIME, *PFILETIME;
 typedef uint32_t                            DWORD, *PDWORD, *LPDWORD, BOOL, *PBOOL, NTSTATUS;
 typedef uint16_t                            WORD, *PWORD;
 typedef uint8_t                             BYTE, *PBYTE, *LPBYTE, UCHAR;
-typedef char                                CHAR, *PCHAR, *LPSTR, *LPCSTR;
-typedef uint16_t                            WCHAR, *PWCHAR, *LPWSTR, *LPCWSTR;
+typedef char                                CHAR, *PCHAR, *LPSTR;
+typedef const char                          *LPCSTR;
+typedef uint16_t                            WCHAR, *PWCHAR, *LPWSTR;
+typedef const uint16_t                      *LPCWSTR;
 #define MAX_PATH                            260
 #define _In_
 #define _In_z_

@@ -4,7 +4,7 @@
 //
 // NB! module generate forensic data only - no file system presence!
 //
-// (c) Ulf Frisk, 2020-2023
+// (c) Ulf Frisk, 2020-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -93,10 +93,10 @@ VOID MFcProc_FcTimeline(
     _In_ VMM_HANDLE H,
     _In_opt_ PVOID ctxfc,
     _In_ HANDLE hTimeline,
-    _In_ VOID(*pfnAddEntry)(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPSTR uszText),
-    _In_ VOID(*pfnEntryAddBySql)(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPSTR *pszEntrySql)
+    _In_ VOID(*pfnAddEntry)(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline, _In_ QWORD ft, _In_ DWORD dwAction, _In_ DWORD dwPID, _In_ DWORD dwData32, _In_ QWORD qwData64, _In_ LPCSTR uszText),
+    _In_ VOID(*pfnEntryAddBySql)(_In_ VMM_HANDLE H, _In_ HANDLE hTimeline, _In_ DWORD cEntrySql, _In_ LPCSTR *pszEntrySql)
 ) {
-    LPSTR pszSql[] = {
+    LPCSTR pszSql[] = {
         "id_str_all, time_create, "STRINGIZE(FC_TIMELINE_ACTION_CREATE)", pid, ppid, eprocess FROM process WHERE time_create > 0;",
         "id_str_all, time_exit,   "STRINGIZE(FC_TIMELINE_ACTION_DELETE)", pid, ppid, eprocess FROM process WHERE time_exit > 0;"
     };

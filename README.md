@@ -21,9 +21,9 @@ Check out the excellent quick walkthrough from [13Cubed](https://www.13cubed.com
 
 <p align="center"> <a href="https://youtu.be/hjWVUrf7Obk" alt="13Cubed: MemProcFS - This Changes Everything" target="_new"><img src="http://img.youtube.com/vi/hjWVUrf7Obk/0.jpg" height="230"/></a> <a href="https://youtu.be/mca3rLsHuTA?t=952" alt="Disobey 2020 talk - Live Memory Attacks and Forensics" target="_new"><img src="http://img.youtube.com/vi/mca3rLsHuTA/0.jpg" height="230"/></a> <a href="https://www.youtube.com/watch?v=Da_9SV9FA34" alt="Microsoft BlueHatIL 2019 talk - Practical Uses for Hardware-assisted Memory Visualization" target="_new"><img src="http://img.youtube.com/vi/Da_9SV9FA34/0.jpg" height="230"/></a></p>
 
-For additional documentation **please check out the [project wiki](https://github.com/ufrisk/MemProcFS/wiki)** for in-depth detailed information about the file system itself, its API and its plugin modules! For additional information about memory acqusition methods check out the **[LeechCore project](https://github.com/ufrisk/LeechCore/)** or hop into the [PCILeech/MemProcFS](https://discord.gg/BCmfBhDPXX) Discord server!
+For additional documentation **check out the [project wiki](https://github.com/ufrisk/MemProcFS/wiki)** for in-depth detailed information about the file system itself, its API and its plugin modules! For additional information about memory acqusition methods check out the **[LeechCore project](https://github.com/ufrisk/LeechCore/)** or hop into the [PCILeech/MemProcFS](https://discord.gg/BCmfBhDPXX) Discord server!
 
-To get going clone the sources in the repository or download the [latest binaries, modules and configuration files](https://github.com/ufrisk/MemProcFS/releases/latest) from the releases section and **check out the [guide](https://github.com/ufrisk/MemProcFS/wiki).**
+To get going download the [latest binaries, modules and configuration files](https://github.com/ufrisk/MemProcFS/releases/latest) and check out the [guide](https://github.com/ufrisk/MemProcFS/wiki)!
 
 
 
@@ -32,14 +32,14 @@ Installing:
 <b>Get the latest [binaries, modules and configuration files](https://github.com/ufrisk/MemProcFS/releases/latest) from the latest release.</b> Alternatively clone the repository and build from source.
 
 ## Windows
-Mounting the file system requires the <b>Dokany file system library</b> to be installed. Please download and install the latest version of Dokany version 2 at: https://github.com/dokan-dev/dokany/releases/latest
+Mounting the file system requires the <b>Dokany file system library</b> to be installed. Download and install the latest version of Dokany version 2 at: https://github.com/dokan-dev/dokany/releases/latest
 
 To capture live memory (without PCILeech FPGA hardware) download [DumpIt](https://www.magnetforensics.com/resources/magnet-dumpit-for-windows) and start MemProcFS via DumpIt /LIVEKD mode. Alternatively, get WinPMEM by downloading the most recent signed [WinPMEM driver](https://github.com/Velocidex/c-aff4/tree/master/tools/pmem/resources/winpmem) and place it alongside MemProcFS - detailed instructions in the [LeechCore Wiki](https://github.com/ufrisk/LeechCore/wiki/Device_WinPMEM).
 
 PCILeech FPGA will require hardware as well as _FTD3XX.dll_ to be dropped alongside the MemProcFS binaries. Please check out the [LeechCore](https://github.com/ufrisk/LeechCore) project for instructions.
 
 ## Linux
-MemProcFS is dependent on packages, please do a `sudo apt-get install libusb-1.0 fuse openssl lz4` before trying out MemProcFS. If building from source please check out the guide about [MemProcFS on Linux](https://github.com/ufrisk/MemProcFS/wiki/_Linux).
+MemProcFS is dependent on packages, do a `sudo apt-get install libusb-1.0 fuse openssl lz4` before trying out MemProcFS. If building from source check out the guide about [MemProcFS on Linux](https://github.com/ufrisk/MemProcFS/wiki/_Linux).
 
 
 
@@ -75,6 +75,14 @@ Or register the memory dump file extension with MemProcFS.exe so that the file s
 - mount live target memory, in read-only mode, with WinPMEM driver: <br>`memprocfs.exe -device pmem`
 - mount live target memory, in read/write mode, with PCILeech FPGA memory acquisition device: <br>`memprocfs.exe -device fpga -memmap auto`
 - mount a memory dump with a corresponding page files: <br>`memprocfs.exe -device unknown-x64-dump.raw -pagefile0 pagefile.sys -pagefile1 swapfile.sys`
+
+
+
+PCILeech and MemProcFS community:
+=========
+Find all this a bit overwhelming? Or just want to ask a quick question? Join the PCILeech and MemProcFS DMA community server at Discord!
+
+<a href="https://discord.gg/BCmfBhDPXX"><img src="https://discord.com/api/guilds/1155439643395883128/widget.png?style=banner3"/></a>
 
 
 
@@ -171,7 +179,6 @@ v1.1-v4.9
 [v5.4](https://github.com/ufrisk/MemProcFS/releases/tag/v5.4)
 * Rust API support.
 * Debug symbol support when running on Linux.
-</details>
 
 [v5.5](https://github.com/ufrisk/MemProcFS/releases/tag/v5.5)
 * [Findevil](https://github.com/ufrisk/MemProcFS/wiki/FS_FindEvil): New thread-based detections. Findevil is now forensic mode only.
@@ -190,17 +197,19 @@ v1.1-v4.9
 * Yara scans of file objects (increased chance of vulnerable driver detection by FindEvil).
 * Improved FPGA performance for smaller reads.
 * Improved [MemProcFS remoting](https://github.com/ufrisk/MemProcFS/wiki/_Remoting) via a remote [LeechAgent](https://github.com/ufrisk/LeechCore/wiki/LeechAgent). Full MemProcFS remote support over SMB - tcp/445. Perfect for memory forensics Incident Response (IR)!
+</details>
 
 [v5.8](https://github.com/ufrisk/MemProcFS/releases/tag/v5.8)
 * LeechCore API updates for C/C++, C#, Rust, Python, Java.
 * Support for analyzing ARM64 Windows memory.
 
-Latest:
+[v5.9](https://github.com/ufrisk/MemProcFS/releases/tag/v5.9)
 * Bug fixes.
 * Module improvements: ntfs, procinfo, web.
 * C# API: improvements.
 * Java API: support for java.lang.foreign (JDK21+) for efficient memory accesses.
 * Linux PCIe FPGA performance improvements.
+* FindEvil: Triggered Yara rules are now shown.
 * FindEvil: AV detections from Windows Defender residing on the analyzed system.
 * Python API: new functionality (multi-read, type-read) and improved scatter read performance.
 * Support for Proxmox memory dump files.

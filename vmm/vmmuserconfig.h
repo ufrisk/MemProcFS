@@ -4,7 +4,7 @@
 // - Windows: HKCU\Software\UlfFrisk\MemProcFS
 // - Linux: ~/.memprocfs
 //
-// (c) Ulf Frisk, 2023
+// (c) Ulf Frisk, 2023-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __VMMUSERCONFIG_H__
@@ -15,7 +15,7 @@
 /*
 * Delete a key from the user configuration.
 */
-VOID VmmUserConfig_Delete(_In_ LPSTR szKey);
+VOID VmmUserConfig_Delete(_In_ LPCSTR szKey);
 
 /*
 * Retrieve a string value from the user configuration.
@@ -25,7 +25,7 @@ VOID VmmUserConfig_Delete(_In_ LPSTR szKey);
 * -- return
 */
 _Success_(return)
-BOOL VmmUserConfig_GetString(_In_ LPSTR szKey, _In_ DWORD cbValue, _Out_writes_opt_(cbValue) LPSTR szValue);
+BOOL VmmUserConfig_GetString(_In_ LPCSTR szKey, _In_ DWORD cbValue, _Out_writes_opt_(cbValue) LPSTR szValue);
 
 /*
 * Set a string value in the user configuration.
@@ -34,14 +34,14 @@ BOOL VmmUserConfig_GetString(_In_ LPSTR szKey, _In_ DWORD cbValue, _Out_writes_o
 * -- return
 */
 _Success_(return)
-BOOL VmmUserConfig_SetString(_In_ LPSTR szKey, _In_ LPSTR szValue);
+BOOL VmmUserConfig_SetString(_In_ LPCSTR szKey, _In_ LPCSTR szValue);
 
 /*
 * Check if a key exists in the user configuration.
 * -- szKey
 * -- return
 */
-BOOL VmmUserConfig_Exists(_In_ LPSTR szKey);
+BOOL VmmUserConfig_Exists(_In_ LPCSTR szKey);
 
 /*
 * Retrieve a number value from the user configuration.
@@ -50,7 +50,7 @@ BOOL VmmUserConfig_Exists(_In_ LPSTR szKey);
 * -- return
 */
 _Success_(return)
-BOOL VmmUserConfig_GetNumber(_In_ LPSTR szKey, _Out_opt_ PDWORD pdwValue);
+BOOL VmmUserConfig_GetNumber(_In_ LPCSTR szKey, _Out_opt_ PDWORD pdwValue);
 
 /*
 * Set a number value in the user configuration.
@@ -59,6 +59,6 @@ BOOL VmmUserConfig_GetNumber(_In_ LPSTR szKey, _Out_opt_ PDWORD pdwValue);
 * -- return
 */
 _Success_(return)
-BOOL VmmUserConfig_SetNumber(_In_ LPSTR szKey, _In_ DWORD dwValue);
+BOOL VmmUserConfig_SetNumber(_In_ LPCSTR szKey, _In_ DWORD dwValue);
 
 #endif /* __VMMUSERCONFIG_H__ */

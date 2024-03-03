@@ -269,7 +269,8 @@ int main(_In_ int argc, _In_ char* argv[])
     // MAIN FUNCTION PROPER BELOW:
     int i;
     BOOL fPythonExec;
-    LPSTR szMountPoint = NULL, *szArgs = NULL;
+    LPCSTR *szArgs = NULL;
+    LPSTR szMountPoint = NULL;
     GetMountPoint(argc, argv, &szMountPoint, &fPythonExec);
     if((argc > 2) && (!szMountPoint || !szMountPoint[0])) {
         if(!fPythonExec || szMountPoint) {

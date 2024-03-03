@@ -3,7 +3,7 @@
 // The 'sys/pool' module displays information about the kernel pools and
 // allocated objects inside it.
 //
-// (c) Ulf Frisk, 2021-2023
+// (c) Ulf Frisk, 2021-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -65,7 +65,7 @@ PVOID MSysPool_ReadLineGetEntryCB(_In_ VMM_HANDLE H, _In_ PVOID ctxMap, _In_ DWO
     return NULL;
 }
 
-NTSTATUS MSysPool_ReadSingle(_In_ VMM_HANDLE H, _In_ LPSTR uszPathFile, _In_ PVMM_MAP_POOLENTRY pe, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MSysPool_ReadSingle(_In_ VMM_HANDLE H, _In_ LPCSTR uszPathFile, _In_ PVMM_MAP_POOLENTRY pe, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     if(CharUtil_StrEndsWith(uszPathFile, "pool-address.txt", TRUE)) {
         if(H->vmm.f32) {
@@ -83,7 +83,7 @@ NTSTATUS MSysPool_ReadSingle(_In_ VMM_HANDLE H, _In_ LPSTR uszPathFile, _In_ PVM
     return VMMDLL_STATUS_FILE_INVALID;
 }
 
-NTSTATUS MSysPool_Read2(_In_ VMM_HANDLE H, _In_ LPSTR uszPath, _In_ PVMMOB_MAP_POOL pmPool, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS MSysPool_Read2(_In_ VMM_HANDLE H, _In_ LPCSTR uszPath, _In_ PVMMOB_MAP_POOL pmPool, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     DWORD dwTag = (DWORD)-1;
     QWORD vaEntry;
@@ -150,7 +150,7 @@ BOOL MSysPool_List2(_In_ VMM_HANDLE H, _In_ LPSTR uszPath, _In_ PVMMOB_MAP_POOL 
 {
     QWORD vaEntry;
     DWORD i, iEntry, iTagEntry, dwTag = (DWORD)-1;
-    LPSTR uszSubPath = NULL;
+    LPCSTR uszSubPath = NULL;
     CHAR usz[MAX_PATH], c1, c2, c3, c4;
     PVMM_MAP_POOLENTRYTAG pePoolTag;
     PVMM_MAP_POOLENTRY pePool;

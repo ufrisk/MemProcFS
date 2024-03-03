@@ -1,6 +1,6 @@
 // oscompatibility.h : VMM Windows/Linux compatibility layer.
 //
-// (c) Ulf Frisk, 2021-2023
+// (c) Ulf Frisk, 2021-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __OSCOMPATIBILITY_H__
@@ -19,6 +19,7 @@
 #define STATUS_FILE_INVALID                 ((NTSTATUS)0xC0000098L)
 #define STATUS_FILE_SYSTEM_LIMITATION       ((NTSTATUS)0xC0000427L)
 typedef unsigned __int64                    QWORD, *PQWORD;
+_Ret_maybenull_ HMODULE WINAPI LoadLibraryU(_In_ LPCSTR lpLibFileName);
 
 #endif /* _WIN32 */
 #ifdef LINUX
@@ -53,11 +54,13 @@ typedef uint32_t                            BOOL, *PBOOL;
 typedef uint8_t                             BYTE, *PBYTE, *LPBYTE;
 typedef uint8_t                             UCHAR, *PUCHAR;
 typedef char                                CHAR, *PCHAR, *PSTR, *LPSTR;
+typedef const char                          *LPCSTR;
 typedef int16_t                             SHORT, *PSHORT;
 typedef int32_t                             LONG;
 typedef int64_t                             LONGLONG;
 typedef uint16_t                            WORD, *PWORD, USHORT, *PUSHORT;
-typedef uint16_t                            WCHAR, *PWCHAR, *LPWSTR, *LPCWSTR;
+typedef uint16_t                            WCHAR, *PWCHAR, *LPWSTR;
+typedef const uint16_t                      *LPCWSTR;
 typedef uint32_t                            UINT, DWORD, *PDWORD, *LPDWORD, NTSTATUS, ULONG, *PULONG, ULONG32;
 typedef long long unsigned int              QWORD, *PQWORD, ULONG64, *PULONG64, ULONG_PTR;
 typedef uint64_t                            DWORD64, *PDWORD64, LARGE_INTEGER, *PLARGE_INTEGER, ULONGLONG, FILETIME, *PFILETIME;
@@ -146,6 +149,7 @@ typedef int(*_CoreCrtNonSecureSearchSortCompareFunction)(void const *, void cons
 #define _Outptr_
 #define _Post_ptr_invalid_
 #define _Printf_format_string_
+#define _Ret_maybenull_
 #define _Success_(x)
 #define _When_(x,y)
 #define _Writable_bytes_(x)
@@ -197,7 +201,7 @@ typedef int(*_CoreCrtNonSecureSearchSortCompareFunction)(void const *, void cons
 #define closesocket(s)                      close(s)
 #define HeapAlloc(hHeap, dwFlags, dwBytes)  malloc(dwBytes)
 
-HMODULE LoadLibraryA(LPSTR lpFileName);
+_Ret_maybenull_ HMODULE WINAPI LoadLibraryU(_In_ LPCSTR lpLibFileName);
 BOOL FreeLibrary(_In_ HMODULE hLibModule);
 FARPROC GetProcAddress(_In_opt_ HMODULE hModule, _In_ LPSTR lpProcName);
 

@@ -2,7 +2,7 @@
 //        virtual address space. This may mostly (but not exclusively) be used
 //        by Windows functionality.
 //
-// (c) Ulf Frisk, 2018-2023
+// (c) Ulf Frisk, 2018-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __PE_H__
@@ -86,7 +86,7 @@ QWORD PE_GetProcAddress(
     _In_ VMM_HANDLE H,
     _In_ PVMM_PROCESS pProcess,
     _In_ QWORD vaModuleBase,
-    _In_ LPSTR lpProcName
+    _In_ LPCSTR lpProcName
 );
 
 /*
@@ -104,7 +104,7 @@ BOOL PE_GetThunkInfoEAT(
     _In_ VMM_HANDLE H,
     _In_ PVMM_PROCESS pProcess,
     _In_ QWORD vaModuleBase,
-    _In_ LPSTR szProcName,
+    _In_ LPCSTR szProcName,
     _Out_ PPE_THUNKINFO_EAT pThunkInfoEAT
 );
 
@@ -124,8 +124,8 @@ BOOL PE_GetThunkInfoIAT(
     _In_ VMM_HANDLE H,
     _In_ PVMM_PROCESS pProcess,
     _In_ QWORD vaModuleBase,
-    _In_ LPSTR szImportModuleName,
-    _In_ LPSTR szImportProcName,
+    _In_ LPCSTR szImportModuleName,
+    _In_ LPCSTR szImportProcName,
     _Out_ PPE_THUNKINFO_IAT pThunkInfoIAT
 );
 
@@ -172,7 +172,7 @@ BOOL PE_SectionGetFromName(
     _In_ VMM_HANDLE H,
     _In_ PVMM_PROCESS pProcess,
     _In_ QWORD vaModuleBase,
-    _In_ LPSTR szSectionName,
+    _In_ LPCSTR szSectionName,
     _Out_ PIMAGE_SECTION_HEADER pSection
 );
 
@@ -205,7 +205,7 @@ BOOL PE_SectionGetAll(
 */
 _Success_(return != NULL)
 LPSTR PE_EatForwardedFunctionNameValidate(
-    _In_ LPSTR szForwardedFunction,
+    _In_ LPCSTR szForwardedFunction,
     _Out_writes_opt_(cbModule) LPSTR szModule,
     _In_ DWORD cbModule,
     _Out_opt_ PDWORD pdwOrdinal

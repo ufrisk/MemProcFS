@@ -12,7 +12,7 @@
 //   functions whilst linux in general should use UTF-8 functions only. This
 //   example use UTF-8 functions throughout to have the best compatibility.
 //
-// (c) Ulf Frisk, 2018-2023
+// (c) Ulf Frisk, 2018-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -93,14 +93,14 @@ VOID PrintHexAscii(_In_ PBYTE pb, _In_ DWORD cb)
     LocalFree(sz);
 }
 
-VOID CallbackList_AddFile(_Inout_ HANDLE h, _In_ LPSTR uszName, _In_ ULONG64 cb, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
+VOID CallbackList_AddFile(_Inout_ HANDLE h, _In_ LPCSTR uszName, _In_ ULONG64 cb, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
 {
     if(uszName) {
         printf("         FILE: '%s'\tSize: %lli\n", uszName, cb);
     }
 }
 
-VOID CallbackList_AddDirectory(_Inout_ HANDLE h, _In_ LPSTR uszName, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
+VOID CallbackList_AddDirectory(_Inout_ HANDLE h, _In_ LPCSTR uszName, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)
 {
     if(uszName) {
         printf("         DIR:  '%s'\n", uszName);
@@ -198,7 +198,7 @@ int main(_In_ int argc, _In_ char* argv[])
     printf("# Initialize from file:                                     \n");
     ShowKeyPress();
     printf("CALL:    VMMDLL_InitializeFile\n");
-    hVMM = VMMDLL_Initialize(3, (LPSTR[]) { "", "-device", _INITIALIZE_FROM_FILE });
+    hVMM = VMMDLL_Initialize(3, (LPCSTR[]) { "", "-device", _INITIALIZE_FROM_FILE });
     if(hVMM) {
         printf("SUCCESS: VMMDLL_InitializeFile\n");
     } else {

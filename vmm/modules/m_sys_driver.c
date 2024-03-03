@@ -3,7 +3,7 @@
 // The 'sys/drivers' module lists various aspects of drivers from the windows
 // kernel object manager.
 //
-// (c) Ulf Frisk, 2022-2023
+// (c) Ulf Frisk, 2022-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -151,7 +151,7 @@ VOID MSysDriver_DevReadLineCB(_In_ VMM_HANDLE H, _In_ PVOID ctx, _In_ DWORD cbLi
 }
 
 _Success_(return)
-BOOL MSysDriver_EntryFromPath(_In_ LPSTR uszPath, _In_ PVMMOB_MAP_KDRIVER pDrvMap, _Out_ PVMM_MAP_KDRIVERENTRY *ppDrvMapEntry, _Out_opt_ LPSTR *puszPath)
+BOOL MSysDriver_EntryFromPath(_In_ LPCSTR uszPath, _In_ PVMMOB_MAP_KDRIVER pDrvMap, _Out_ PVMM_MAP_KDRIVERENTRY *ppDrvMapEntry, _Out_opt_ LPSTR *puszPath)
 {
     DWORD i, dwHash;
     CHAR usz[MAX_PATH];
@@ -160,7 +160,7 @@ BOOL MSysDriver_EntryFromPath(_In_ LPSTR uszPath, _In_ PVMMOB_MAP_KDRIVER pDrvMa
     dwHash = CharUtil_HashNameFsU(usz, 0);
     for(i = 0; i < pDrvMap->cMap; i++) {
         if(dwHash == pDrvMap->pMap[i].dwHash) {
-            if(puszPath) { *puszPath = uszPath + 8; }
+            if(puszPath) { *puszPath = (LPSTR)uszPath + 8; }
             *ppDrvMapEntry = pDrvMap->pMap + i;
             return TRUE;
         }
@@ -180,7 +180,7 @@ NTSTATUS MSysDriver_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _O
     PVMMOB_MAP_MODULE pObModuleMap = NULL;
     POB_MAP pmObModuleByVA = NULL;
     CHAR uszBuffer[MAX_PATH];
-    LPSTR uszPath;
+    LPCSTR uszPath;
     if(!_stricmp(ctxP->uszPath, "devices.txt")) {
         if(!VmmMap_GetKDevice(H, &pObDevMap)) { goto cleanup; }
         nt = Util_VfsLineFixed_Read(
@@ -243,7 +243,7 @@ BOOL MSysDriver_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout
 {
     DWORD i;
     CHAR uszBuffer[MAX_PATH];
-    LPSTR uszPath;
+    LPCSTR uszPath;
     PVMM_MAP_KDRIVERENTRY peDriver;
     PVMMOB_MAP_KDEVICE pObDevMap = NULL;
     PVMMOB_MAP_KDRIVER pObDrvMap = NULL;
@@ -265,7 +265,7 @@ BOOL MSysDriver_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout
         }
         goto finish;
     }
-    if(MSysDriver_EntryFromPath(ctxP->uszPath, pObDrvMap, &peDriver, &uszPath) && uszPath[0] && (pObSystemProcess = VmmProcessGet(H, 4))) {
+    if(MSysDriver_EntryFromPath(ctxP->uszPath, pObDrvMap, &peDriver, (LPSTR*)&uszPath) && uszPath[0] && (pObSystemProcess = VmmProcessGet(H, 4))) {
         uszPath = CharUtil_PathSplitNext(uszPath);
         if(0 == uszPath[0]) {
             VmmWinObjDisplay_VfsList(H, H->vmm.ObjectTypeTable.tpDriver, peDriver->va, pFileList);

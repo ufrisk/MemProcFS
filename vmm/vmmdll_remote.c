@@ -1,7 +1,7 @@
 // vmmdll_remote.c : implementation of remote library functionality:
 //     proxying calls to a remote VMMDLL instance hosted by a LeechAgent.
 //
-// (c) Ulf Frisk, 2023
+// (c) Ulf Frisk, 2023-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -306,7 +306,7 @@ fail:
 * Remote VMMDLL_VfsListU().
 */
 _Success_(return)
-BOOL VmmDllRemote_VfsListU(_In_ VMM_HANDLE H, _In_ LPSTR uszPath, _Inout_ PVMMDLL_VFS_FILELIST2 pFileList)
+BOOL VmmDllRemote_VfsListU(_In_ VMM_HANDLE H, _In_ LPCSTR uszPath, _Inout_ PVMMDLL_VFS_FILELIST2 pFileList)
 {
     DWORD i;
     LC_CMD_AGENT_VFS_REQ Req;
@@ -341,7 +341,7 @@ fail:
 /*
 * Remote VMMDLL_VfsReadU().
 */
-NTSTATUS VmmDllRemote_VfsReadU(_In_ VMM_HANDLE H, _In_ LPSTR uszFileName, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset)
+NTSTATUS VmmDllRemote_VfsReadU(_In_ VMM_HANDLE H, _In_ LPCSTR uszFileName, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ ULONG64 cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     LC_CMD_AGENT_VFS_REQ Req;
@@ -369,7 +369,7 @@ fail:
 /*
 * Remote VMMDLL_VfsWriteU().
 */
-NTSTATUS VmmDllRemote_VfsWriteU(_In_ VMM_HANDLE H, _In_ LPSTR uszFileName, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ ULONG64 cbOffset)
+NTSTATUS VmmDllRemote_VfsWriteU(_In_ VMM_HANDLE H, _In_ LPCSTR uszFileName, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ ULONG64 cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PLC_CMD_AGENT_VFS_REQ pReq = NULL;
@@ -460,7 +460,7 @@ DWORD WINAPI VmmDllRemote_KeepAlive_ThreadProc(_In_ VMMDLL_REMOTE_HANDLE HR)
 * -- return
 */
 _Success_(return)
-BOOL VmmDllRemote_InitializeConfig(_In_ VMMDLL_REMOTE_HANDLE HR, _In_ DWORD argc, _In_ char *argv[], _Out_ PVMMDLL_VFS_INITIALIZEBLOB *ppVfsInitBlob)
+BOOL VmmDllRemote_InitializeConfig(_In_ VMMDLL_REMOTE_HANDLE HR, _In_ DWORD argc, _In_ const char *argv[], _Out_ PVMMDLL_VFS_INITIALIZEBLOB *ppVfsInitBlob)
 {
     DWORD i, oMultiStr;
     POB_STRMAP psmOb = NULL;
@@ -587,7 +587,7 @@ VMM_HANDLE VmmDllRemote_InitializeRequestUserInput(_In_ _Post_ptr_invalid_ VMMDL
 * -- return
 */
 _Success_(return != NULL)
-VMM_HANDLE VmmDllRemote_Initialize(_In_ DWORD argc, _In_ LPSTR argv[], _Out_opt_ PPLC_CONFIG_ERRORINFO ppLcErrorInfo)
+VMM_HANDLE VmmDllRemote_Initialize(_In_ DWORD argc, _In_ LPCSTR argv[], _Out_opt_ PPLC_CONFIG_ERRORINFO ppLcErrorInfo)
 {
     // TODO: IMPLEMENT PROPER ->
     //   - command line passing to remote agent.

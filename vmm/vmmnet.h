@@ -1,6 +1,6 @@
 // vmmnet.h : declarations of functionality related to the Windows networking.
 //
-// (c) Ulf Frisk, 2019-2023
+// (c) Ulf Frisk, 2019-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

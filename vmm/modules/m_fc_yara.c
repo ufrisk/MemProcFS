@@ -2,7 +2,7 @@
 //
 // REQUIRE: FORENSIC SUB-SYSTEM INIT
 //
-// (c) Ulf Frisk, 2023
+// (c) Ulf Frisk, 2023-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -71,11 +71,13 @@ VOID MFcYara_IngestVirtmem(_In_ VMM_HANDLE H, _In_opt_ PVOID ctxfc, _In_ PVMMDLL
 VOID MFcYara_FcIngestFinalize(_In_ VMM_HANDLE H, _In_opt_ PVOID ctxfc)
 {
     PMFCYARA_CONTEXT ctx = (PMFCYARA_CONTEXT)ctxfc;
-    LPSTR uszTXT, uszCSV;
+    POB_SET psObDuplicateCheck = NULL;
+    LPSTR uszTXT, uszCSV, uszYaraRule = NULL;
     DWORD dwType;
     PVMM_PROCESS pObProcess = NULL;
     VMMYARAUTIL_PARSE_RESULT_FINDEVIL FindEvilResult;
     if(!ctx) { return; }
+    if(!(psObDuplicateCheck = ObSet_New(H))) { goto fail; }
     if(!(VmmYaraUtil_IngestFinalize(H, ctx->ctxObInit))) { goto fail; }
     FcFileAppend(H, "yara.csv", VMMYARAUTIL_CSV_HEADER);
     while(VmmYaraUtil_ParseSingleResultNext(H, ctx->ctxObInit, &uszTXT, &uszCSV, &dwType, &FindEvilResult)) {
@@ -87,8 +89,14 @@ VOID MFcYara_FcIngestFinalize(_In_ VMM_HANDLE H, _In_opt_ PVOID ctxfc)
             // findevil match - also log a findevil entry.
             ObMemFile_AppendString(H->fc->FindEvil.pmfYara, uszTXT);
             if(FindEvilResult.fValid) {
+                if(ObSet_Push(psObDuplicateCheck, CharUtil_Hash64U(FindEvilResult.uszRuleName, FALSE)) && InfoDB_YaraRulesBuiltInSingle(H, FindEvilResult.uszRuleName, &uszYaraRule)) {
+                    ObMemFile_AppendString(H->fc->FindEvil.pmfYaraRules, uszYaraRule);
+                    ObMemFile_AppendString(H->fc->FindEvil.pmfYaraRules, "\n\n");
+                    LocalFree(uszYaraRule);
+                    uszYaraRule = NULL;
+                }
                 pObProcess = VmmProcessGet(H, FindEvilResult.dwPID);
-                FcEvilAdd(H, FindEvilResult.EvilType, pObProcess, FindEvilResult.va, "%s", FindEvilResult.uszText);
+                FcEvilAdd(H, FindEvilResult.EvilType, pObProcess, FindEvilResult.va, "%s [%u]", FindEvilResult.uszRuleName, FindEvilResult.dwRuleIndex);
                 Ob_DECREF_NULL(&pObProcess);
             }
         }
@@ -96,6 +104,7 @@ VOID MFcYara_FcIngestFinalize(_In_ VMM_HANDLE H, _In_opt_ PVOID ctxfc)
     }
 fail:
     Ob_DECREF_NULL(&ctx->ctxObInit);
+    Ob_DECREF(psObDuplicateCheck);
 }
 
 PVOID MFcYara_FcInitialize(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
@@ -126,7 +135,7 @@ PVOID MFcYara_FcInitialize(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
 finish:
     Ob_DECREF(pObYaraRules);
     if(err != VMMYARA_ERROR_SUCCESS) {
-        VMMDLL_Log(H, ctxP->MID, LOGLEVEL_2_WARNING, "yr_initialize() failed with error code %i", err);
+        VmmLog(H, ctxP->MID, LOGLEVEL_2_WARNING, "yr_initialize() failed with error code %i", err);
         if(pYrRules) { VmmYara_RulesDestroy(pYrRules); }
         return NULL;
     }

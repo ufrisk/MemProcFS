@@ -1,7 +1,7 @@
 // vmmdll_core.c : implementation of core library functionality which mainly
 //      consists of library initialization and cleanup/close functionality.
 //
-// (c) Ulf Frisk, 2022-2023
+// (c) Ulf Frisk, 2022-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -489,9 +489,9 @@ VOID VmmDllCore_PrintHelp(_In_ VMM_HANDLE H)
 * -- return
 */
 _Success_(return)
-BOOL VmmDllCore_InitializeConfig(_In_ VMM_HANDLE H, _In_ DWORD argc, _In_ char *argv[])
+BOOL VmmDllCore_InitializeConfig(_In_ VMM_HANDLE H, _In_ DWORD argc, _In_ const char *argv[])
 {
-    char *argv2[3];
+    const char *argv2[3];
     DWORD i = 0, dw, iPageFile;
     if((argc == 2) && argv[1][0] && (argv[1][0] != '-')) {
         // click to open -> only 1 argument ...
@@ -606,7 +606,7 @@ BOOL VmmDllCore_InitializeConfig(_In_ VMM_HANDLE H, _In_ DWORD argc, _In_ char *
             strcpy_s(H->cfg.szForensicYaraRules, MAX_PATH, argv[i + 1]);
             i += 2; continue;
         } else if(0 == _stricmp(argv[i], "-forensic-process-skip")) {
-            CharUtil_SplitList(argv[i + 1], ',', &H->cfg.ForensicProcessSkipList.cusz, &H->cfg.ForensicProcessSkipList.pusz);
+            CharUtil_SplitList((LPSTR)argv[i + 1], ',', &H->cfg.ForensicProcessSkipList.cusz, &H->cfg.ForensicProcessSkipList.pusz);
             i += 2; continue;
         } else if(0 == _stricmp(argv[i], "-max")) {
             H->dev.paMax = Util_GetNumericA(argv[i + 1]);
@@ -801,7 +801,7 @@ BOOL VmmDllCore_Initialize_HandleAttachParent(_In_ VMM_HANDLE H, _In_ VMM_HANDLE
 * -- return
 */
 _Success_(return != NULL)
-VMM_HANDLE VmmDllCore_Initialize(_In_ DWORD argc, _In_ LPSTR argv[], _Out_opt_ PPLC_CONFIG_ERRORINFO ppLcErrorInfo)
+VMM_HANDLE VmmDllCore_Initialize(_In_ DWORD argc, _In_ LPCSTR argv[], _Out_opt_ PPLC_CONFIG_ERRORINFO ppLcErrorInfo)
 {
     VMM_HANDLE H = NULL;
     FILE *hFile = NULL;

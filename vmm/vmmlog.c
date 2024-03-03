@@ -1,6 +1,6 @@
 // vmmlog.c : implementation of the vmm logging functionality.
 //
-// (c) Ulf Frisk, 2022-2023
+// (c) Ulf Frisk, 2022-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmmlog.h"
@@ -259,7 +259,7 @@ VOID VmmLog_LevelRefresh(_In_ VMM_HANDLE H)
 * -- uszModuleName
 * -- fExternal = externally loaded module (dll/so).
 */
-VOID VmmLog_RegisterModule(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_ LPSTR uszModuleName, _In_ BOOL fExternal)
+VOID VmmLog_RegisterModule(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_ LPCSTR uszModuleName, _In_ BOOL fExternal)
 {
     PVMMLOG_CONTEXT_MODULEINFO pmi;
     if(!H->log) { return; }
@@ -284,7 +284,7 @@ VOID VmmLog_RegisterModule(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_ LPSTR
 * -- uszFormat
 * -- ...
 */
-VOID VmmLogEx(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_ VMMLOG_LEVEL dwLogLevel, _In_z_ _Printf_format_string_ LPSTR uszFormat, ...)
+VOID VmmLogEx(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_ VMMLOG_LEVEL dwLogLevel, _In_z_ _Printf_format_string_ LPCSTR uszFormat, ...)
 {
     va_list arglist;
     va_start(arglist, uszFormat);
@@ -303,7 +303,7 @@ VOID VmmLogEx(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_ VMMLOG_LEVEL dwLog
 * -- uszFormat
 * -- ...
 */
-VOID VmmLogHexAsciiEx(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_ VMMLOG_LEVEL dwLogLevel, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _In_ DWORD cbInitialOffset, _In_z_ _Printf_format_string_ LPSTR uszFormat, ...)
+VOID VmmLogHexAsciiEx(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_ VMMLOG_LEVEL dwLogLevel, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _In_ DWORD cbInitialOffset, _In_z_ _Printf_format_string_ LPCSTR uszFormat, ...)
 {
     LPSTR usz;
     va_list arglist;
@@ -362,7 +362,7 @@ BOOL VmmLogIsActive(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_ VMMLOG_LEVEL
 * -- uszFormat
 * -- arglist
 */
-VOID VmmLogEx2(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_ VMMLOG_LEVEL dwLogLevel, _In_z_ _Printf_format_string_ LPSTR uszFormat, va_list arglist)
+VOID VmmLogEx2(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_ VMMLOG_LEVEL dwLogLevel, _In_z_ _Printf_format_string_ LPCSTR uszFormat, va_list arglist)
 {
     PVMMLOG_CONTEXT ctxLog = H->log;
     PVMMLOG_CONTEXT_MODULEINFO pmi;

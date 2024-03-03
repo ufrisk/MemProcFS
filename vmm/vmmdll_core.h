@@ -1,7 +1,7 @@
 // vmmdll_core.h : definitions of core library functionality which mainly
 //      consists of library initialization and cleanup/close functionality.
 //
-// (c) Ulf Frisk, 2022-2023
+// (c) Ulf Frisk, 2022-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __VMMDLL_CORE_H__
@@ -73,7 +73,7 @@ VMM_HANDLE VmmDllCore_HandleDuplicate(_In_ VMM_HANDLE H);
 * -- return
 */
 _Success_(return != NULL)
-VMM_HANDLE VmmDllCore_Initialize(_In_ DWORD argc, _In_ LPSTR argv[], _Out_opt_ PPLC_CONFIG_ERRORINFO ppLcErrorInfo);
+VMM_HANDLE VmmDllCore_Initialize(_In_ DWORD argc, _In_ LPCSTR argv[], _Out_opt_ PPLC_CONFIG_ERRORINFO ppLcErrorInfo);
 
 /*
 * Close all VMM_HANDLE and clean up everything! No VMM_HANDLE will be valid

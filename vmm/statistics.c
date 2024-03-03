@@ -1,6 +1,6 @@
 // statistics.c : implementation of statistics related functionality.
 //
-// (c) Ulf Frisk, 2016-2023
+// (c) Ulf Frisk, 2016-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "statistics.h"
@@ -148,7 +148,7 @@ BOOL Statistics_CallToString(_In_ VMM_HANDLE H, _Out_opt_ LPSTR *psz, _Out_ PDWO
 * -- ps
 * -- uszText
 */
-VOID VmmStatisticsLogStart(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_ VMMLOG_LEVEL dwLogLevel, _In_opt_ PVMM_PROCESS pProcess, _Out_ PVMMSTATISTICS_LOG ps, _In_ LPSTR uszText)
+VOID VmmStatisticsLogStart(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_ VMMLOG_LEVEL dwLogLevel, _In_opt_ PVMM_PROCESS pProcess, _Out_ PVMMSTATISTICS_LOG ps, _In_ LPCSTR uszText)
 {
     ps->f = VmmLogIsActive(H, MID, dwLogLevel);
     if(H->fAbort || !ps->f) { return; }
@@ -171,7 +171,7 @@ VOID VmmStatisticsLogStart(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_ VMMLO
 * -- ps
 * -- uszText
 */
-VOID VmmStatisticsLogEnd(_In_ VMM_HANDLE H, _In_ PVMMSTATISTICS_LOG ps, _In_ LPSTR uszText)
+VOID VmmStatisticsLogEnd(_In_ VMM_HANDLE H, _In_ PVMMSTATISTICS_LOG ps, _In_ LPCSTR uszText)
 {
     QWORD v[3];
     if(H->fAbort || !ps->f) { return; }

@@ -1,6 +1,6 @@
 // vmmwinreg.h : declarations of functionality related to the Windows registry.
 //
-// (c) Ulf Frisk, 2020-2023
+// (c) Ulf Frisk, 2020-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -140,7 +140,7 @@ BOOL VmmWinReg_HiveWrite(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pRegistryHive
 * -- return
 */
 _Success_(return)
-BOOL VmmWinReg_PathHiveGetByFullPath(_In_ VMM_HANDLE H, _In_ LPSTR uszPathFull, _Out_ POB_REGISTRY_HIVE *ppHive, _Out_writes_(MAX_PATH) LPSTR uszPathKeyValue);
+BOOL VmmWinReg_PathHiveGetByFullPath(_In_ VMM_HANDLE H, _In_ LPCSTR uszPathFull, _Out_ POB_REGISTRY_HIVE *ppHive, _Out_writes_(MAX_PATH) LPSTR uszPathKeyValue);
 
 /*
 * Retrieve registry hive and key from a "full" path starting with:
@@ -153,7 +153,7 @@ BOOL VmmWinReg_PathHiveGetByFullPath(_In_ VMM_HANDLE H, _In_ LPSTR uszPathFull, 
 * -- return
 */
 _Success_(return)
-BOOL VmmWinReg_KeyHiveGetByFullPath(_In_ VMM_HANDLE H, _In_ LPSTR uszPathFull, _Out_ POB_REGISTRY_HIVE *ppObHive, _Out_opt_ POB_REGISTRY_KEY *ppObKey);
+BOOL VmmWinReg_KeyHiveGetByFullPath(_In_ VMM_HANDLE H, _In_ LPCSTR uszPathFull, _Out_ POB_REGISTRY_HIVE *ppObHive, _Out_opt_ POB_REGISTRY_KEY *ppObKey);
 
 /*
 * Retrieve a registry key by its path. If no registry key is found then NULL
@@ -165,7 +165,7 @@ BOOL VmmWinReg_KeyHiveGetByFullPath(_In_ VMM_HANDLE H, _In_ LPSTR uszPathFull, _
 * -- return
 */
 _Success_(return != NULL)
-POB_REGISTRY_KEY VmmWinReg_KeyGetByPath(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_ LPSTR uszPath);
+POB_REGISTRY_KEY VmmWinReg_KeyGetByPath(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_ LPCSTR uszPath);
 
 /*
 * Retrieve a registry key by parent key and name.
@@ -250,7 +250,7 @@ POB_REGISTRY_VALUE VmmWinReg_KeyValueGetByOffset(_In_ VMM_HANDLE H, _In_ POB_REG
 * -- uszValueName = value name or NULL for default.
 * -- return = registry value or NULL if not found.
 */
-POB_REGISTRY_VALUE VmmWinReg_KeyValueGetByName(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pKeyParent, _In_ LPSTR uszValueName);
+POB_REGISTRY_VALUE VmmWinReg_KeyValueGetByName(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pKeyParent, _In_ LPCSTR uszValueName);
 
 /*
 * Retrieve information about a registry key value.
@@ -274,7 +274,7 @@ VOID VmmWinReg_ValueInfo(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_VALUE p
 * -- return
 */
 _Success_(return)
-BOOL VmmWinReg_ValueQuery1(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_ LPSTR uszPathKeyValue, _Out_opt_ PDWORD pdwType, _Out_opt_ PDWORD pra, _Out_writes_opt_(cb) PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbRead, _In_ QWORD cbOffset);
+BOOL VmmWinReg_ValueQuery1(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_ LPCSTR uszPathKeyValue, _Out_opt_ PDWORD pdwType, _Out_opt_ PDWORD pra, _Out_writes_opt_(cb) PBYTE pb, _In_ DWORD cb, _Out_opt_ PDWORD pcbRead, _In_ QWORD cbOffset);
 
 /*
 * Read a registry value - similar to WINAPI function 'RegQueryValueEx'.
@@ -287,7 +287,7 @@ BOOL VmmWinReg_ValueQuery1(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_
 * -- return
 */
 _Success_(return)
-BOOL VmmWinReg_ValueQuery2(_In_ VMM_HANDLE H, _In_ LPSTR uszFullPathKeyValue, _Out_opt_ PDWORD pdwType, _Out_writes_opt_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_opt_ PDWORD pcbData);
+BOOL VmmWinReg_ValueQuery2(_In_ VMM_HANDLE H, _In_ LPCSTR uszFullPathKeyValue, _Out_opt_ PDWORD pdwType, _Out_writes_opt_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_opt_ PDWORD pcbData);
 
 /*
 * Read a registry value - similar to WINAPI function 'RegQueryValueEx'.
@@ -301,7 +301,7 @@ BOOL VmmWinReg_ValueQuery2(_In_ VMM_HANDLE H, _In_ LPSTR uszFullPathKeyValue, _O
 * -- return
 */
 _Success_(return)
-BOOL VmmWinReg_ValueQuery3(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_ LPSTR uszPathKeyValue, _Out_opt_ PDWORD pdwType, _Out_writes_opt_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_opt_ PDWORD pcbData);
+BOOL VmmWinReg_ValueQuery3(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_ LPCSTR uszPathKeyValue, _Out_opt_ PDWORD pdwType, _Out_writes_opt_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_opt_ PDWORD pcbData);
 
 /*
 * Read a registry value - similar to WINAPI function 'RegQueryValueEx'.
@@ -330,7 +330,7 @@ BOOL VmmWinReg_ValueQuery4(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_
 * -- return
 */
 _Success_(return)
-BOOL VmmWinReg_ValueQuery5(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pKey, _In_ LPSTR uszValueName, _Out_opt_ PDWORD pdwType, _Out_writes_opt_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_opt_ PDWORD pcbData);
+BOOL VmmWinReg_ValueQuery5(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pKey, _In_ LPCSTR uszValueName, _Out_opt_ PDWORD pdwType, _Out_writes_opt_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_opt_ PDWORD pcbData);
 
 typedef struct tdVMMWINREG_FORENSIC_CONTEXT {
     struct {
@@ -364,8 +364,8 @@ VOID VmmWinReg_ForensicGetAllKeysAndValues(
     _In_ POB_REGISTRY_HIVE pHive,
     _In_ HANDLE hCallback1,
     _In_ HANDLE hCallback2,
-    _In_ VOID(*pfnKeyCB)(_In_ VMM_HANDLE H, _In_ HANDLE hCallback1, _In_ HANDLE hCallback2, _In_ LPSTR uszPathName, _In_ QWORD vaHive, _In_ DWORD dwCell, _In_ DWORD dwCellParent, _In_ QWORD ftLastWrite),
-    _In_ VOID(*pfnJsonKeyCB)(_In_ VMM_HANDLE H, _Inout_ PVMMWINREG_FORENSIC_CONTEXT ctx, _In_z_ LPSTR uszPathName, _In_ QWORD ftLastWrite),
+    _In_ VOID(*pfnKeyCB)(_In_ VMM_HANDLE H, _In_ HANDLE hCallback1, _In_ HANDLE hCallback2, _In_ LPCSTR uszPathName, _In_ QWORD vaHive, _In_ DWORD dwCell, _In_ DWORD dwCellParent, _In_ QWORD ftLastWrite),
+    _In_ VOID(*pfnJsonKeyCB)(_In_ VMM_HANDLE H, _Inout_ PVMMWINREG_FORENSIC_CONTEXT ctx, _In_z_ LPCSTR uszPathName, _In_ QWORD ftLastWrite),
     _In_ VOID(*pfnJsonValueCB)(_In_ VMM_HANDLE H, _Inout_ PVMMWINREG_FORENSIC_CONTEXT ctx)
 );
 

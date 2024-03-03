@@ -1,6 +1,6 @@
 // vmmwinobj.c : implementation related to Windows Objects.
 //
-// (c) Ulf Frisk, 2020-2023
+// (c) Ulf Frisk, 2020-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -411,7 +411,7 @@ VOID VmmWinObjFile_Initialize_FileObjects(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_
         if(!VmmReadWtoU(H, pSystemProcess, vaFileNameBuffer, cbPath, VMM_FLAG_FORCECACHE_READ, NULL, 0, &peObFile->uszPath, NULL, CHARUTIL_FLAG_ALLOC)) {
             if(!(peObFile->uszPath = (LPSTR)LocalAlloc(LMEM_ZEROINIT, 1))) { continue; }
         }
-        peObFile->uszName = CharUtil_PathSplitLast(peObFile->uszPath);
+        peObFile->uszName = (LPSTR)CharUtil_PathSplitLast(peObFile->uszPath);
     }
     // 4: fetch _SECTION_OBJECT_POINTERS:
     psvaObSectionObjectPointers = ObMap_FilterSet(pmObFiles, NULL, (OB_MAP_FILTERSET_PFN_CB)VmmWinObjFile_Initialize_FileObjects_SectionObjectPointers_FilterSetCB);
@@ -2221,7 +2221,7 @@ fail:
 * -- cbOffset
 * -- return
 */
-NTSTATUS VmmWinObjDisplay_VfsRead(_In_ VMM_HANDLE H, _In_ LPSTR uszPathFile, _In_opt_ DWORD iTypeIndex, _In_ QWORD vaObject, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+NTSTATUS VmmWinObjDisplay_VfsRead(_In_ VMM_HANDLE H, _In_ LPCSTR uszPathFile, _In_opt_ DWORD iTypeIndex, _In_ QWORD vaObject, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     POB_OBJECT_DISPLAY pObObjDisp = NULL;

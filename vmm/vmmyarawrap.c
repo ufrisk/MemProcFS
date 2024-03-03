@@ -4,7 +4,7 @@
 // graceful fallback if the library is not available. The vmmyara library may
 // be treated as a singleton shared amongst all instances of VMM.DLL/MemProcFS.
 // 
-// (c) Ulf Frisk, 2023
+// (c) Ulf Frisk, 2023-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmm.h"
@@ -69,13 +69,13 @@ VOID VmmYara_Initialize()
     ZeroMemory(szLibraryPath, sizeof(szLibraryPath));
     Util_GetPathLib(szLibraryPath);
     strcat_s(szLibraryPath, MAX_PATH, "vmmyara"VMM_LIBRARY_FILETYPE);
-    g_VmmYaraDLL = LoadLibraryA(szLibraryPath);
+    g_VmmYaraDLL = LoadLibraryU(szLibraryPath);
 #ifndef _WIN32
 if(!g_VmmYaraDLL) {
         ZeroMemory(szLibraryPath, sizeof(szLibraryPath));
         Util_GetPathLib(szLibraryPath);
         strcat_s(szLibraryPath, MAX_PATH, "vmmyara2"VMM_LIBRARY_FILETYPE);
-        g_VmmYaraDLL = LoadLibraryA(szLibraryPath);
+        g_VmmYaraDLL = LoadLibraryU(szLibraryPath);
     }
 #endif /* _WIN32 */
     if(!g_VmmYaraDLL) { goto fail; }

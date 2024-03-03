@@ -3,7 +3,7 @@
 // The '/sys/services' module is responsible for displaying information about
 // system services retrieved from the service control manager (SCM).
 //
-// (c) Ulf Frisk, 2020-2023
+// (c) Ulf Frisk, 2020-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -205,7 +205,7 @@ NTSTATUS MSysSvc_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PVMMOB_MAP_SERVICE pObSvcMap = NULL;
     PVMM_MAP_SERVICEENTRY pe;
-    LPSTR uszSvcSubPath;
+    LPCSTR uszSvcSubPath;
     QWORD qwSvcId;
     DWORD i, cbInfoFile, dwSvcId;
     CHAR usz[MAX_PATH];
@@ -244,7 +244,7 @@ BOOL MSysSvc_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ P
 {
     QWORD qwSvcId;
     DWORD i, cbInfoFile, dwSvcId;
-    LPSTR uszSvcSubPath;
+    LPCSTR uszSvcSubPath;
     PVMMOB_MAP_SERVICE pObSvcMap = NULL;
     PVMM_MAP_SERVICEENTRY pe;
     CHAR usz[MAX_PATH];
@@ -342,7 +342,7 @@ VOID MSysSvc_FcLogCSV(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ 
     CHAR szSvcType[MAX_PATH];
     PVMMOB_MAP_SERVICE pObSvcMap = NULL;
     PVMM_MAP_SERVICEENTRY pe;
-    LPSTR szTp1, szTp2;
+    LPCSTR szTp1, szTp2;
     DWORD i;
     if((ctxP->dwPID == 4) && VmmMap_GetService(H, &pObSvcMap)) {
         for(i = 0; i < pObSvcMap->cMap; i++) {

@@ -1,6 +1,6 @@
 // sysquery.h : definitions of various system queries that may be performed.
 //
-// (c) Ulf Frisk, 2019-2023
+// (c) Ulf Frisk, 2019-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __SYSQUERY_H__
@@ -35,6 +35,6 @@ BOOL SysQuery_TimeZone(_In_ VMM_HANDLE H, _Out_writes_opt_(32) LPSTR uszTimeZone
 * -- return
 */
 _Success_(return)
-QWORD SysQuery_GetProcAddress(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ LPSTR uszModuleName, _In_ LPSTR szFunctionName);
+QWORD SysQuery_GetProcAddress(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ LPCSTR uszModuleName, _In_ LPCSTR szFunctionName);
 
 #endif /* __SYSQUERY_H__ */

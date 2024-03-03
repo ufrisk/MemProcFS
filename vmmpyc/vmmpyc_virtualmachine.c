@@ -1,6 +1,6 @@
 // vmmpyc_virtualmachine.c : implementation of virtual machine functionality vmmpyc.
 //
-// (c) Ulf Frisk, 2022-2023
+// (c) Ulf Frisk, 2022-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmmpyc.h"

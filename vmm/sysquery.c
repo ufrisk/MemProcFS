@@ -1,6 +1,6 @@
 // sysquery.c : implementations of various system queries that may be performed.
 //
-// (c) Ulf Frisk, 2019-2023
+// (c) Ulf Frisk, 2019-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "sysquery.h"
@@ -50,7 +50,7 @@ BOOL SysQuery_TimeZone(_In_ VMM_HANDLE H, _Out_writes_opt_(32) LPSTR uszTimeZone
 }
 
 _Success_(return)
-QWORD SysQuery_GetProcAddress_Impl(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ LPSTR uszModuleName, _In_ LPSTR szFunctionName, _In_ DWORD iLevel)
+QWORD SysQuery_GetProcAddress_Impl(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ LPCSTR uszModuleName, _In_ LPCSTR szFunctionName, _In_ DWORD iLevel)
 {
     PVMMOB_MAP_EAT pObEatMap = NULL;
     PVMMOB_MAP_MODULE pObModuleMap = NULL;
@@ -83,7 +83,7 @@ fail:
 * -- return
 */
 _Success_(return)
-QWORD SysQuery_GetProcAddress(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ LPSTR uszModuleName, _In_ LPSTR szFunctionName)
+QWORD SysQuery_GetProcAddress(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ LPCSTR uszModuleName, _In_ LPCSTR szFunctionName)
 {
     return SysQuery_GetProcAddress_Impl(H, pProcess, uszModuleName, szFunctionName, 0);
 }

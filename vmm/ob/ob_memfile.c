@@ -8,7 +8,7 @@
 // The memfile (ObMemFile) is thread safe.
 // The ObMemFile is an object manager object and must be DECREF'ed when required.
 //
-// (c) Ulf Frisk, 2021-2023
+// (c) Ulf Frisk, 2021-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "ob.h"
@@ -164,7 +164,7 @@ BOOL _ObMemFile_Append(_In_ POB_MEMFILE pmf, _In_reads_(cbData) PBYTE pbData, _I
 }
 
 _Success_(return != 0)
-SIZE_T _ObMemFile_AppendStringEx2(_In_ POB_MEMFILE pmf, _In_z_ _Printf_format_string_ LPSTR uszFormat, _In_ va_list arglist)
+SIZE_T _ObMemFile_AppendStringEx2(_In_ POB_MEMFILE pmf, _In_z_ _Printf_format_string_ LPCSTR uszFormat, _In_ va_list arglist)
 {
     BOOL f = FALSE;
     int cch1, cch2;
@@ -215,7 +215,7 @@ BOOL ObMemFile_Append(_In_opt_ POB_MEMFILE pmf, _In_reads_(cb) PBYTE pb, _In_ QW
 * -- return
 */
 _Success_(return)
-BOOL ObMemFile_AppendString(_In_opt_ POB_MEMFILE pmf, _In_opt_z_ LPSTR sz)
+BOOL ObMemFile_AppendString(_In_opt_ POB_MEMFILE pmf, _In_opt_z_ LPCSTR sz)
 {
     if(!sz) { return TRUE; }
     return ObMemFile_Append(pmf, (PBYTE)sz, strlen(sz));
@@ -229,7 +229,7 @@ BOOL ObMemFile_AppendString(_In_opt_ POB_MEMFILE pmf, _In_opt_z_ LPSTR sz)
 * -- return = the number of bytes appended (excluding terminating null).
 */
 _Success_(return != 0)
-SIZE_T ObMemFile_AppendStringEx(_In_opt_ POB_MEMFILE pmf, _In_z_ _Printf_format_string_ LPSTR uszFormat, ...)
+SIZE_T ObMemFile_AppendStringEx(_In_opt_ POB_MEMFILE pmf, _In_z_ _Printf_format_string_ LPCSTR uszFormat, ...)
 {
     SIZE_T ret;
     va_list arglist;
@@ -247,7 +247,7 @@ SIZE_T ObMemFile_AppendStringEx(_In_opt_ POB_MEMFILE pmf, _In_z_ _Printf_format_
 * -- return = the number of bytes appended (excluding terminating null).
 */
 _Success_(return != 0)
-SIZE_T ObMemFile_AppendStringEx2(_In_opt_ POB_MEMFILE pmf, _In_z_ _Printf_format_string_ LPSTR uszFormat, _In_ va_list arglist)
+SIZE_T ObMemFile_AppendStringEx2(_In_opt_ POB_MEMFILE pmf, _In_z_ _Printf_format_string_ LPCSTR uszFormat, _In_ va_list arglist)
 {
     OB_MEMFILE_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(pmf, SIZE_T, 0, _ObMemFile_AppendStringEx2(pmf, uszFormat, arglist));
 }

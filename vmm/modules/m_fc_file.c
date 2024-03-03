@@ -2,7 +2,7 @@
 //
 // REQUIRE: FORENSIC SUB-SYSTEM INIT.
 //
-// (c) Ulf Frisk, 2020-2023
+// (c) Ulf Frisk, 2020-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -280,7 +280,7 @@ VOID MFcFile_FcLogCSV(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ 
 NTSTATUS MFcFile_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     POB_VMMWINOBJ_FILE pObFile = NULL;
-    LPSTR uszFile = NULL;
+    LPCSTR uszFile = NULL;
     QWORD va;
     *pcbRead = 0;
     if(CharUtil_StrEquals(ctxP->uszPath, "readme.txt", TRUE)) {
@@ -307,7 +307,7 @@ BOOL MFcFile_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ P
     PMFCFILE_CONTEXT ctx = (PMFCFILE_CONTEXT)ctxP->ctxM;
     DWORD i;
     QWORD qwHash;
-    LPSTR uszPath;
+    LPCSTR uszPath;
     PMFCFILE_ENTRY pDir, pEntry;
     CHAR uszFileName[MAX_PATH];
     if(!ctxP->uszPath[0]) {

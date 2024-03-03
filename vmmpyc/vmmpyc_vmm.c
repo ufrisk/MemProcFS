@@ -1,6 +1,6 @@
 // vmmpyc_vmm.c : implementation of core functionality for vmmpyc.
 //
-// (c) Ulf Frisk, 2021-2023
+// (c) Ulf Frisk, 2021-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmmpyc.h"
@@ -259,7 +259,7 @@ VmmPycVmm_init(PyObj_Vmm *self, PyObject *args, PyObject *kwds)
     static char *kwlist[] = { "args", NULL };
     PyObject *pyListSrc = NULL, *pyString, **pyBytesDstArgs, *pyObjProcessTest;
     DWORD i, cDstArgs;
-    LPSTR *pszDstArgs;
+    LPCSTR *pszDstArgs;
     self->fVmmCoreOpenType = FALSE;
     if(!PyArg_ParseTupleAndKeywords(args, kwds, "|O!", kwlist, &PyList_Type, &pyListSrc)) {
         PyErr_SetString(PyExc_TypeError, "Vmm.init(): Illegal argument.");
@@ -272,8 +272,8 @@ VmmPycVmm_init(PyObj_Vmm *self, PyObject *args, PyObject *kwds)
             return -1;
         }
         // allocate & initialize buffer+basic
-        pszDstArgs = (LPSTR *)LocalAlloc(LMEM_ZEROINIT, sizeof(LPSTR) * cDstArgs);
-        pyBytesDstArgs = (PyObject **)LocalAlloc(LMEM_ZEROINIT, sizeof(PyObject *) * cDstArgs);
+        pszDstArgs = (LPCSTR*)LocalAlloc(LMEM_ZEROINIT, sizeof(LPSTR) * cDstArgs);
+        pyBytesDstArgs = (PyObject**)LocalAlloc(LMEM_ZEROINIT, sizeof(PyObject*)*cDstArgs);
         if(!pszDstArgs || !pyBytesDstArgs) {
             PyErr_SetString(PyExc_TypeError, "Vmm.init(): Out of memory.");
             return -1;

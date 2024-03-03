@@ -4,7 +4,7 @@
 // - Windows: HKCU\Software\UlfFrisk\MemProcFS
 // - Linux: ~/.memprocfs
 //
-// (c) Ulf Frisk, 2023
+// (c) Ulf Frisk, 2023-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmmuserconfig.h"
@@ -13,7 +13,7 @@
 /*
 * Delete a key from the user configuration.
 */
-VOID VmmUserConfig_Delete(_In_ LPSTR szKey)
+VOID VmmUserConfig_Delete(_In_ LPCSTR szKey)
 {
     HKEY hKey = 0;
     if(ERROR_SUCCESS == RegOpenKeyExA(HKEY_CURRENT_USER, "Software\\UlfFrisk\\MemProcFS", 0, KEY_ALL_ACCESS, &hKey)) {
@@ -30,7 +30,7 @@ VOID VmmUserConfig_Delete(_In_ LPSTR szKey)
 * -- return
 */
 _Success_(return)
-BOOL VmmUserConfig_GetString(_In_ LPSTR szKey, _In_ DWORD cbValue, _Out_writes_opt_(cbValue) LPSTR szValue)
+BOOL VmmUserConfig_GetString(_In_ LPCSTR szKey, _In_ DWORD cbValue, _Out_writes_opt_(cbValue) LPSTR szValue)
 {
     return ERROR_SUCCESS == RegGetValueA(HKEY_CURRENT_USER, "Software\\UlfFrisk\\MemProcFS", szKey, RRF_RT_REG_SZ, NULL, szValue, &cbValue);
 }
@@ -42,7 +42,7 @@ BOOL VmmUserConfig_GetString(_In_ LPSTR szKey, _In_ DWORD cbValue, _Out_writes_o
 * -- return
 */
 _Success_(return)
-BOOL VmmUserConfig_SetString(_In_ LPSTR szKey, _In_ LPSTR szValue)
+BOOL VmmUserConfig_SetString(_In_ LPCSTR szKey, _In_ LPCSTR szValue)
 {
     HKEY hKey = 0;
     BOOL fResult = FALSE;
@@ -101,7 +101,7 @@ FILE *get_user_config_file_write()
 /*
 * Delete a key from the user configuration.
 */
-VOID VmmUserConfig_Delete(_In_ LPSTR szKey)
+VOID VmmUserConfig_Delete(_In_ LPCSTR szKey)
 {
     VmmUserConfig_SetString(szKey, NULL);
 }
@@ -114,7 +114,7 @@ VOID VmmUserConfig_Delete(_In_ LPSTR szKey)
 * -- return
 */
 _Success_(return)
-BOOL VmmUserConfig_GetString(_In_ LPSTR szKey, _In_ DWORD cbValue, _Out_writes_opt_(cbValue) LPSTR szValue)
+BOOL VmmUserConfig_GetString(_In_ LPCSTR szKey, _In_ DWORD cbValue, _Out_writes_opt_(cbValue) LPSTR szValue)
 {
     char key[256], val[256];
     FILE *file = get_user_config_file_read();
@@ -140,7 +140,7 @@ BOOL VmmUserConfig_GetString(_In_ LPSTR szKey, _In_ DWORD cbValue, _Out_writes_o
 * -- return
 */
 _Success_(return)
-BOOL VmmUserConfig_EqualsString(_In_ LPSTR szKey, _In_ LPSTR szValue)
+BOOL VmmUserConfig_EqualsString(_In_ LPCSTR szKey, _In_ LPCSTR szValue)
 {
     char key[256], val[256];
     FILE *file = get_user_config_file_read();
@@ -163,7 +163,7 @@ BOOL VmmUserConfig_EqualsString(_In_ LPSTR szKey, _In_ LPSTR szValue)
 * -- return
 */
 _Success_(return)
-BOOL VmmUserConfig_SetString(_In_ LPSTR szKey, _In_ LPSTR szValue)
+BOOL VmmUserConfig_SetString(_In_ LPCSTR szKey, _In_ LPCSTR szValue)
 {
     int o = 0;
     BOOL f_result = FALSE;
@@ -202,7 +202,7 @@ fail:
 * -- szKey
 * -- return
 */
-BOOL VmmUserConfig_Exists(_In_ LPSTR szKey)
+BOOL VmmUserConfig_Exists(_In_ LPCSTR szKey)
 {
     return VmmUserConfig_GetString(szKey, 0, NULL);
 }
@@ -214,7 +214,7 @@ BOOL VmmUserConfig_Exists(_In_ LPSTR szKey)
 * -- return
 */
 _Success_(return)
-BOOL VmmUserConfig_GetNumber(_In_ LPSTR szKey, _Out_opt_ PDWORD pdwValue)
+BOOL VmmUserConfig_GetNumber(_In_ LPCSTR szKey, _Out_opt_ PDWORD pdwValue)
 {
     CHAR sz[32];
     if(VmmUserConfig_GetString(szKey, sizeof(sz), sz)) {
@@ -233,7 +233,7 @@ BOOL VmmUserConfig_GetNumber(_In_ LPSTR szKey, _Out_opt_ PDWORD pdwValue)
 * -- return
 */
 _Success_(return)
-BOOL VmmUserConfig_SetNumber(_In_ LPSTR szKey, _In_ DWORD dwValue)
+BOOL VmmUserConfig_SetNumber(_In_ LPCSTR szKey, _In_ DWORD dwValue)
 {
     CHAR sz[32] = { 0 };
     _snprintf_s(sz, 32, _TRUNCATE, "%i", dwValue);

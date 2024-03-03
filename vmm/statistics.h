@@ -1,6 +1,6 @@
 // statistics.h : definitions of statistics related functionality.
 //
-// (c) Ulf Frisk, 2016-2023
+// (c) Ulf Frisk, 2016-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __STATISTICS_H__
@@ -182,6 +182,15 @@ static LPCSTR STATISTICS_ID_STR[STATISTICS_ID_MAX] = {
 VOID Statistics_CallSetEnabled(_In_ VMM_HANDLE H, _In_ BOOL fEnabled);
 BOOL Statistics_CallGetEnabled(_In_ VMM_HANDLE H);
 QWORD Statistics_CallStart(_In_ VMM_HANDLE H);
+
+/*
+* Log the completion of a statistics-measured function call.
+* Log the time spend in the call and return it.
+* -- H
+* -- fId
+* -- tmCallStart
+* -- return = time spend in call in ticks of QueryPerformanceCounter()
+*/
 QWORD Statistics_CallEnd(_In_ VMM_HANDLE H, _In_ DWORD fId, QWORD tmCallStart);
 
 /*
@@ -219,7 +228,7 @@ typedef struct tdVMMSTATISTICS_LOG {
 * -- pLogStatistics
 * -- uszText
 */
-VOID VmmStatisticsLogStart(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_ VMMLOG_LEVEL dwLogLevel, _In_opt_ PVMM_PROCESS pProcess, _Out_ PVMMSTATISTICS_LOG pStatisticsLog, _In_ LPSTR uszText);
+VOID VmmStatisticsLogStart(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_ VMMLOG_LEVEL dwLogLevel, _In_opt_ PVMM_PROCESS pProcess, _Out_ PVMMSTATISTICS_LOG pStatisticsLog, _In_ LPCSTR uszText);
 
 /*
 * End a statistics logging session.
@@ -227,6 +236,6 @@ VOID VmmStatisticsLogStart(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_ VMMLO
 * -- pLogStatistics
 * -- uszText
 */
-VOID VmmStatisticsLogEnd(_In_ VMM_HANDLE H, _In_ PVMMSTATISTICS_LOG pStatisticsLog, _In_ LPSTR uszText);
+VOID VmmStatisticsLogEnd(_In_ VMM_HANDLE H, _In_ PVMMSTATISTICS_LOG pStatisticsLog, _In_ LPCSTR uszText);
 
 #endif /* __STATISTICS_H__ */
