@@ -1163,6 +1163,7 @@ typedef struct tdVMM_WINOBJ_SETUP_OBJECT {
         WORD cchName;
         QWORD vaName;
         QWORD ft;
+        QWORD va;       // type dependent virtual address: (SECTION: vaControlArea)
     } ExtInfo;
 } VMM_WINOBJ_SETUP_OBJECT, *PVMM_WINOBJ_SETUP_OBJECT, **PPVMM_WINOBJ_SETUP_OBJECT;
 
@@ -1181,6 +1182,7 @@ typedef struct tdVMM_WINOBJ_SETUP_CONTEXT {
 */
 VOID VmmWinObjMgr_Initialize_ProcessObject(_In_ VMM_HANDLE H, _Inout_ PVMM_WINOBJ_SETUP_CONTEXT ctxInit, _In_reads_(0x70) PBYTE pb, _In_ PVMM_WINOBJ_SETUP_OBJECT pe)
 {
+    QWORD va;
     DWORD vaDir32[37];
     QWORD vaDir64[37];
     POBJECT_HEADER32 pHdr32;
@@ -1268,6 +1270,20 @@ VOID VmmWinObjMgr_Initialize_ProcessObject(_In_ VMM_HANDLE H, _Inout_ PVMM_WINOB
             }
         }
     }
+    // OBJECT_TYPE == _OBJECT_SECTION --> EXTENDED INFO
+    if((iTp == H->vmm.ObjectTypeTable.tpSection)) {
+        if(VmmRead(H, ctxInit->pSystemProcess, pe->va, pb, 0x30)) {
+            if(H->vmm.f32) {
+                if((va = *(PDWORD)(pb + 0x14)) && VMM_KADDR32_8(va)) {
+                    pe->ExtInfo.va = va;
+                }
+            } else {
+                if((va = *(PQWORD)(pb + 0x28)) && VMM_KADDR64_16(va)) {
+                    pe->ExtInfo.va = va;
+                }
+            }
+        }
+    }
     pe->iLevel = pe->pParent ? pe->pParent->iLevel + 1 : 0;
     ObSet_Push(ctxInit->psObjectAll, (QWORD)pe);
     return;
@@ -1307,6 +1323,7 @@ fail:
 VOID VmmWinObjMgr_Initialize_ObjectNameExtInfo(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _Inout_ POB_STRMAP pStrMap, _Inout_ PVMM_MAP_OBJECTENTRY pe, _In_ PVMM_WINOBJ_SETUP_OBJECT pes)
 {
     pe->ExtInfo.ft = pes->ExtInfo.ft;
+    pe->ExtInfo.va = pes->ExtInfo.va;
     if(pes->ExtInfo.vaName) {
         ObStrMap_Push_UnicodeBuffer(pStrMap, min(0x200, pes->ExtInfo.cchName << 1), pes->ExtInfo.vaName, &pe->ExtInfo.usz, NULL);
     } else {

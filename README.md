@@ -213,3 +213,6 @@ v1.1-v4.9
 * FindEvil: AV detections from Windows Defender residing on the analyzed system.
 * Python API: new functionality (multi-read, type-read) and improved scatter read performance.
 * Support for Proxmox memory dump files.
+
+Latest:
+* Added named _SECTION objects to VAD map.

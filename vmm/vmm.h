@@ -559,6 +559,7 @@ typedef struct tdVMM_MAP_OBJECTENTRY {
     struct {
         LPSTR usz;
         QWORD ft;
+        QWORD va;       // type dependent virtual address: (SECTION: vaControlArea)
     } ExtInfo;
     PVOID _Reserved;
 } VMM_MAP_OBJECTENTRY, *PVMM_MAP_OBJECTENTRY;

@@ -859,6 +859,51 @@ fail:
 }
 
 /*
+* Maps a _SECTION object onto the VAD map. (This is only valid for Windows 10+).
+* The MMVAD.SubSection points to the subsection which is always trailing the _CONTROL_AREA.
+* The _SECTION object from the handles map is used to find the same _CONTROL_AREA.
+* -- H
+* -- pSystemProcess
+* -- pProcess
+* -- pVadMap
+* -- psm
+* -- fVmmRead
+*/
+VOID MmVad_ExtendedInfoFetch_FillSectionNames(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_ PVMM_PROCESS pProcess, _In_ PVMMOB_MAP_VAD pVadMap, _In_ POB_STRMAP psm, _In_ QWORD fVmmRead)
+{
+    DWORD i, iType, cType;
+    QWORD vaControlArea;
+    POB_MAP pmObControlArea2Object = NULL;
+    PVMMOB_MAP_OBJECT pObObjectMap = NULL;
+    PVMM_MAP_OBJECTENTRY peObject;
+    PVMM_MAP_VADENTRY peVad;
+    // 1: fetch object map and set up control area to object map:
+    if(!(pmObControlArea2Object = ObMap_New(H, OB_MAP_FLAGS_OBJECT_VOID))) { goto fail; }
+    if(!(VmmMap_GetObject(H, &pObObjectMap))) { goto fail; }
+    iType = pObObjectMap->iTypeSortBase[H->vmm.ObjectTypeTable.tpSection];
+    cType = pObObjectMap->cType[H->vmm.ObjectTypeTable.tpSection] + iType;
+    for(i = iType; i < cType; i++) {
+        peObject = &pObObjectMap->pMap[pObObjectMap->piTypeSort[i]];
+        if(peObject->ExtInfo.va) {
+            ObMap_Push(pmObControlArea2Object, peObject->ExtInfo.va, peObject);
+        }
+    }
+    // 2: fill in the VAD map with the SECTION object names:
+    for(i = 0; i < pVadMap->cMap; i++) {
+        peVad = pVadMap->pMap + i;
+        if(peVad->fPageFile && peVad->vaSubsection) {
+            vaControlArea = pVadMap->pMap[i].vaSubsection - H->vmm.offset.FILE._CONTROL_AREA.cb;
+            if((peObject = ObMap_GetByKey(pmObControlArea2Object, vaControlArea))) {
+                ObStrMap_PushUU_snprintf_s(psm, &peVad->uszText, &peVad->cbuText, "SECTION-%llx %s", peObject->va, peObject->uszName);
+            }
+        }
+    }
+fail:
+    Ob_DECREF(pmObControlArea2Object);
+    Ob_DECREF(pObObjectMap);
+}
+
+/*
 * Fetch extended information such as file and image names into the buffer
 * pProcess->pObMemMapVad->wszText which will be allocated by the function
 * and must be free'd upon cleanup of pObMemMapVad.
@@ -943,7 +988,7 @@ VOID MmVad_ExtendedInfoFetch(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess
             }
             if(f && (tp == VMM_VADMAP_TP_FULL)) {
                 // _FILE_OBJECT.FileName [_UNICODE_STRING]
-                ObStrMap_Push_UnicodeObject(psmOb, f32, va + 0x58, &ppeVads[i]->uszText, &ppeVads[i]->cbuText);
+                ObStrMap_Push_UnicodeObject(psmOb, f32, va + (f32 ? O32_FILE_OBJECT_FileName : O64_FILE_OBJECT_FileName), &ppeVads[i]->uszText, &ppeVads[i]->cbuText);
             }
         }
     }
@@ -993,6 +1038,10 @@ VOID MmVad_ExtendedInfoFetch(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess
                 }
             }
         }
+    }
+    // [ object _SECTION names ]
+    if((tp == VMM_VADMAP_TP_FULL) && (H->vmm.kernel.dwVersionBuild >= 10240)) {
+        MmVad_ExtendedInfoFetch_FillSectionNames(H, pSystemProcess, pProcess, pVadMap, psmOb, fVmmRead);
     }
     // cleanup
     pVadMap->tp = tp;
