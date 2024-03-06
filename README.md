@@ -21,7 +21,7 @@ Check out the excellent quick walkthrough from [13Cubed](https://www.13cubed.com
 
 <p align="center"> <a href="https://youtu.be/hjWVUrf7Obk" alt="13Cubed: MemProcFS - This Changes Everything" target="_new"><img src="http://img.youtube.com/vi/hjWVUrf7Obk/0.jpg" height="230"/></a> <a href="https://youtu.be/mca3rLsHuTA?t=952" alt="Disobey 2020 talk - Live Memory Attacks and Forensics" target="_new"><img src="http://img.youtube.com/vi/mca3rLsHuTA/0.jpg" height="230"/></a> <a href="https://www.youtube.com/watch?v=Da_9SV9FA34" alt="Microsoft BlueHatIL 2019 talk - Practical Uses for Hardware-assisted Memory Visualization" target="_new"><img src="http://img.youtube.com/vi/Da_9SV9FA34/0.jpg" height="230"/></a></p>
 
-For additional documentation **check out the [project wiki](https://github.com/ufrisk/MemProcFS/wiki)** for in-depth detailed information about the file system itself, its API and its plugin modules! For additional information about memory acqusition methods check out the **[LeechCore project](https://github.com/ufrisk/LeechCore/)** or hop into the [PCILeech/MemProcFS](https://discord.gg/BCmfBhDPXX) Discord server!
+For additional documentation **check out the [project wiki](https://github.com/ufrisk/MemProcFS/wiki)** for in-depth detailed information about the file system itself, its API and its plugin modules! For additional information about memory acqusition methods check out the **[LeechCore project](https://github.com/ufrisk/LeechCore/)** or hop into the [PCILeech/MemProcFS](https://discord.gg/vf2Ta6VvRH) Discord server!
 
 To get going download the [latest binaries, modules and configuration files](https://github.com/ufrisk/MemProcFS/releases/latest) and check out the [guide](https://github.com/ufrisk/MemProcFS/wiki)!
 
@@ -82,7 +82,7 @@ PCILeech and MemProcFS community:
 =========
 Find all this a bit overwhelming? Or just want to ask a quick question? Join the PCILeech and MemProcFS DMA community server at Discord!
 
-<a href="https://discord.gg/BCmfBhDPXX"><img src="https://discord.com/api/guilds/1155439643395883128/widget.png?style=banner3"/></a>
+<a href="https://discord.gg/vf2Ta6VvRH"><img src="https://discord.com/api/guilds/1155439643395883128/widget.png?style=banner3"/></a>
 
 
 
@@ -109,7 +109,7 @@ PCILeech, MemProcFS and LeechCore are open source but not open contribution. PCI
 Links:
 ======
 * Twitter: [![Twitter](https://img.shields.io/twitter/follow/UlfFrisk?label=UlfFrisk&style=social)](https://twitter.com/intent/follow?screen_name=UlfFrisk)
-* Discord: [![Discord | PCILeech/MemProcFS](https://img.shields.io/discord/1155439643395883128.svg?label=&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/BCmfBhDPXX)
+* Discord: [![Discord | PCILeech/MemProcFS](https://img.shields.io/discord/1155439643395883128.svg?label=&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/vf2Ta6VvRH)
 * PCILeech: https://github.com/ufrisk/pcileech
 * PCILeech FPGA: https://github.com/ufrisk/pcileech-fpga
 * LeechCore: https://github.com/ufrisk/LeechCore
