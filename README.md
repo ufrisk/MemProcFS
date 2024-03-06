@@ -147,18 +147,18 @@ v1.0
 v1.1-v4.9
 * Various updates. Please see individual relases for more information.
 
-[v5.0](https://github.com/ufrisk/MemProcFS/releases/tag/v5.0)
+v5.0
 * Major release with new features to support parallel analysis tasks.
 * Breaking API changes and major updates.
 * Extended forensic analysis capabilties and [CSV file](https://github.com/ufrisk/MemProcFS/wiki/FS_Forensic_CSV) support.
 * Linux plugin support.
 * New [Java API](https://github.com/ufrisk/MemProcFS/wiki/API_Java).
 
-[v5.1](https://github.com/ufrisk/MemProcFS/releases/tag/v5.1)
+v5.1
 * Support for Windows 11 22H2.
 * Text & Binary-only views at '/misc/view/'.
 
-[v5.2](https://github.com/ufrisk/MemProcFS/releases/tag/v5.2)
+v5.2
 * Bug fixes.
 * [Virtual Machine support](https://github.com/ufrisk/MemProcFS/wiki/VM).
 * [ARM64 Windows support](https://github.com/ufrisk/MemProcFS/wiki/_ARM64).
@@ -167,7 +167,7 @@ v1.1-v4.9
 * Linux feature additions: memcompress and token.
 * Manual download of debug symbols (PDBs) on offline systems (Windows only).
 
-[v5.3](https://github.com/ufrisk/MemProcFS/releases/tag/v5.3)
+v5.3
 * Bug fixes and performance optimizations.
 * PE forwarded functions.
 * PE version information.
@@ -176,21 +176,21 @@ v1.1-v4.9
 * Hyper-V Container/Sandbox support.
 * Windows Hypervisor Platform support (VMware and VirtualBox on Hyper-V).
 
-[v5.4](https://github.com/ufrisk/MemProcFS/releases/tag/v5.4)
+v5.4
 * Rust API support.
 * Debug symbol support when running on Linux.
 
-[v5.5](https://github.com/ufrisk/MemProcFS/releases/tag/v5.5)
+v5.5
 * [Findevil](https://github.com/ufrisk/MemProcFS/wiki/FS_FindEvil): New thread-based detections. Findevil is now forensic mode only.
 * [Jupyter Notebook example](https://github.com/ufrisk/MemProcFS/wiki/API_Python_Jupyter)
 * Yara support in [forensics mode](https://github.com/ufrisk/MemProcFS/wiki/FS_Forensic_Yara) and [search](https://github.com/ufrisk/MemProcFS/wiki/FS_YaraSearch).
 
-[v5.6](https://github.com/ufrisk/MemProcFS/releases/tag/v5.6)
+v5.6
 * Bug fixes, performance optimizations and minor updates.
 * [files](https://github.com/ufrisk/MemProcFS/wiki/FS_Forensic_Files) plugin in forensics mode - showing files with recoverable contents.
 * Built-in yara rules for [Findevil](https://github.com/ufrisk/MemProcFS/wiki/FS_FindEvil) in forensics mode from [Elastic Security](https://github.com/elastic/protections-artifacts).<br>Activate by accepting the Elastic license 2.0 by start-up option [`-license-accept-elastic-license-2.0`](https://github.com/ufrisk/MemProcFS/wiki/_CommandLine#-license-accept-elastic-license-2.0).
 
-[v5.7](https://github.com/ufrisk/MemProcFS/releases/tag/v5.7)
+v5.7
 * Bug fixes.
 * Rust API updates.
 * New FindEvil Yara detections.
@@ -199,7 +199,7 @@ v1.1-v4.9
 * Improved [MemProcFS remoting](https://github.com/ufrisk/MemProcFS/wiki/_Remoting) via a remote [LeechAgent](https://github.com/ufrisk/LeechCore/wiki/LeechAgent). Full MemProcFS remote support over SMB - tcp/445. Perfect for memory forensics Incident Response (IR)!
 </details>
 
-[v5.8](https://github.com/ufrisk/MemProcFS/releases/tag/v5.8)
+v5.8
 * LeechCore API updates for C/C++, C#, Rust, Python, Java.
 * Support for analyzing ARM64 Windows memory.
 
