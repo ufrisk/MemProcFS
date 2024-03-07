@@ -220,7 +220,7 @@ VOID VfsDokan_InitializeAndMount_DisplayInfo(LPWSTR wszMountPoint)
         "==============================  MemProcFS  ==============================\n" \
         " - Author:           Ulf Frisk - pcileech@frizk.net                      \n" \
         " - Info:             https://github.com/ufrisk/MemProcFS                 \n" \
-        " - Discord:          https://discord.gg/BCmfBhDPXX                       \n" \
+        " - Discord:          https://discord.gg/pcileech                         \n" \
         " - License:          GNU Affero General Public License v3.0              \n" \
         "   --------------------------------------------------------------------- \n" \
         "   MemProcFS is free open source software. If you find it useful please  \n" \

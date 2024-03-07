@@ -82,7 +82,7 @@
 //! ## Questions and Comments
 //! Please feel free to contact me!
 //! * Github: <https://github.com/ufrisk/MemProcFS>
-//! * Discord #pcileech channel at the [Porchetta](https://discord.gg/sEkn3aa) server.
+//! * Discord Server: <https://discord.gg/pcileech>.
 //! * Twitter: <https://twitter.com/UlfFrisk>
 //! * Email: pcileech@frizk.net
 //! 
