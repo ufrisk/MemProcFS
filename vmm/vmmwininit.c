@@ -1188,7 +1188,6 @@ fail:
 */
 BOOL VmmWinInit_TryInitialize(_In_ VMM_HANDLE H, _In_opt_ QWORD paDTBOpt)
 {
-    PVMMOB_MAP_PHYSMEM pObPhysMem = NULL;
     PVMM_PROCESS pObSystemProcess = NULL, pObProcess = NULL;
     // Fetch Directory Base (DTB (PML4)) and initialize Memory Model.
     QWORD qwMemoryModelOpt;
