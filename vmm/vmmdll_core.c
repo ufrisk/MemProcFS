@@ -613,6 +613,7 @@ BOOL VmmDllCore_InitializeConfig(_In_ VMM_HANDLE H, _In_ DWORD argc, _In_ const 
             i += 2; continue;
         } else if(0 == _stricmp(argv[i], "-memmap")) {
             strcpy_s(H->cfg.szMemMap, MAX_PATH, argv[i + 1]);
+            if(!_stricmp(H->cfg.szMemMap, "auto")) { H->cfg.fMemMapAuto = TRUE; }
             i += 2; continue;
         } else if(0 == _stricmp(argv[i], "-memmap-str")) {
             strcpy_s(H->cfg.szMemMapStr, _countof(H->cfg.szMemMapStr), argv[i + 1]);
@@ -673,32 +674,6 @@ BOOL VmmDllCore_InitializeConfig(_In_ VMM_HANDLE H, _In_ DWORD argc, _In_ const 
     strncat_s(H->cfg.szPathLibraryVmm, _countof(H->cfg.szPathLibraryVmm), "vmm", _TRUNCATE);
     strncat_s(H->cfg.szPathLibraryVmm, _countof(H->cfg.szPathLibraryVmm), VMM_LIBRARY_FILETYPE, _TRUNCATE);
     return (H->dev.szDevice[0] != 0);
-}
-
-/*
-* Initialize memory map auto - i.e. retrieve it from the registry and load it into LeechCore.
-* -- H
-* -- return
-*/
-_Success_(return)
-BOOL VmmDllCore_InitializeMemMapAuto(_In_ VMM_HANDLE H)
-{
-    BOOL fResult = FALSE;
-    DWORD i, cbMemMap = 0;
-    LPSTR szMemMap = NULL;
-    PVMMOB_MAP_PHYSMEM pObMap = NULL;
-    if(!VmmMap_GetPhysMem(H, &pObMap)) { goto fail; }
-    if(!(szMemMap = LocalAlloc(LMEM_ZEROINIT, 0x01000000))) { goto fail; }
-    for(i = 0; i < pObMap->cMap; i++) {
-        cbMemMap += snprintf(szMemMap + cbMemMap, 0x01000000 - cbMemMap - 1, "%016llx %016llx\n", pObMap->pMap[i].pa, pObMap->pMap[i].pa + pObMap->pMap[i].cb - 1);
-    }
-    fResult =
-        LcCommand(H->hLC, LC_CMD_MEMMAP_SET, cbMemMap, (PBYTE)szMemMap, NULL, NULL) &&
-        LcGetOption(H->hLC, LC_OPT_CORE_ADDR_MAX, &H->dev.paMax);
-fail:
-    Ob_DECREF(pObMap);
-    LocalFree(szMemMap);
-    return fResult;
 }
 
 #ifdef _WIN32
@@ -874,7 +849,7 @@ VMM_HANDLE VmmDllCore_Initialize(_In_ DWORD argc, _In_ LPCSTR argv[], _Out_opt_ 
     // 6: initialize/(refresh) the logging sub-system
     VmmLog_LevelRefresh(H);
     // 7: Set LeechCore MemMap (if exists and not auto - i.e. from file)
-    if(H->cfg.szMemMap[0] && _stricmp(H->cfg.szMemMap, "auto")) {
+    if(H->cfg.szMemMap[0] && !H->cfg.fMemMapAuto) {
         f = (pbMemMap = LocalAlloc(LMEM_ZEROINIT, 0x01000000)) &&
             !fopen_s(&hFile, H->cfg.szMemMap, "rb") && hFile &&
             (cbMemMap = (DWORD)fread(pbMemMap, 1, 0x01000000, hFile)) && (cbMemMap < 0x01000000) &&
@@ -902,18 +877,12 @@ VMM_HANDLE VmmDllCore_Initialize(_In_ DWORD argc, _In_ LPCSTR argv[], _Out_opt_ 
     }
     // 9: device context (H->dev) is initialized from here onwards - device functionality is working!
     //    try initialize vmm subsystem.
+    //    If '-memmap auto' is specified it will be initialized here as well.
     if(!VmmProcInitialize(H)) {
         VmmLog(H, MID_CORE, LOGLEVEL_CRITICAL, "Failed to initialize.\n");
         goto fail;
     }
     // 10: vmm context (H->vmm) is initialized from here onwards - vmm functionality is working!
-    //     set LeechCore MemMap (if auto).
-    if(H->cfg.szMemMap[0] && !_stricmp(H->cfg.szMemMap, "auto")) {
-        if(!VmmDllCore_InitializeMemMapAuto(H)) {
-            VmmLog(H, MID_CORE, LOGLEVEL_CRITICAL, "Failed to load initial memory map from: '%s'.\n", H->cfg.szMemMap);
-            goto fail;
-        }
-    }
     // 11: add this vmm instance to the parent vmm instance (if any)
     if(H->cfg.qwParentVmmHandle) {
         if(!VmmDllCore_Initialize_HandleAttachParent(H, (VMM_HANDLE)H->cfg.qwParentVmmHandle)) {

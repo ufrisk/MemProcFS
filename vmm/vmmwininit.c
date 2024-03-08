@@ -1154,6 +1154,33 @@ VOID VmmWinInit_TryInitialize_SystemUniqueTag(_In_ VMM_HANDLE H)
 }
 
 /*
+* Initialize memory map auto - i.e. retrieve it from the kernel (or fallback registry) and load it into LeechCore.
+* -- H
+* -- return
+*/
+_Success_(return)
+BOOL VmmWinInit_TryInitialize_MemMapAuto(_In_ VMM_HANDLE H)
+{
+    BOOL fResult = FALSE;
+    DWORD i, cbMemMap = 0;
+    LPSTR szMemMap = NULL;
+    PVMMOB_MAP_PHYSMEM pObMap = NULL;
+    if(!VmmMap_GetPhysMem(H, &pObMap) || !pObMap->cMap) { goto fail; }
+    if(!(szMemMap = LocalAlloc(LMEM_ZEROINIT, 0x00100000))) { goto fail; }
+    for(i = 0; i < pObMap->cMap; i++) {
+        cbMemMap += snprintf(szMemMap + cbMemMap, 0x00100000 - cbMemMap - 1, "%016llx %016llx\n", pObMap->pMap[i].pa, pObMap->pMap[i].pa + pObMap->pMap[i].cb - 1);
+    }
+    fResult =
+        LcCommand(H->hLC, LC_CMD_MEMMAP_SET, cbMemMap, (PBYTE)szMemMap, NULL, NULL) &&
+        LcGetOption(H->hLC, LC_OPT_CORE_ADDR_MAX, &H->dev.paMax);
+fail:
+    ObContainer_SetOb(H->vmm.pObCMapPhysMem, NULL);
+    LocalFree(szMemMap);
+    Ob_DECREF(pObMap);
+    return fResult;
+}
+
+/*
 * Try initialize the VMM from scratch with new WINDOWS support.
 * -- H
 * -- paDTBOpt
@@ -1161,6 +1188,7 @@ VOID VmmWinInit_TryInitialize_SystemUniqueTag(_In_ VMM_HANDLE H)
 */
 BOOL VmmWinInit_TryInitialize(_In_ VMM_HANDLE H, _In_opt_ QWORD paDTBOpt)
 {
+    PVMMOB_MAP_PHYSMEM pObPhysMem = NULL;
     PVMM_PROCESS pObSystemProcess = NULL, pObProcess = NULL;
     // Fetch Directory Base (DTB (PML4)) and initialize Memory Model.
     QWORD qwMemoryModelOpt;
@@ -1188,6 +1216,13 @@ BOOL VmmWinInit_TryInitialize(_In_ VMM_HANDLE H, _In_opt_ QWORD paDTBOpt)
         goto fail;
     }
     VmmLog(H, MID_CORE, LOGLEVEL_DEBUG, "NTOS located at: %016llx", H->vmm.kernel.vaBase);
+    // -memmap auto: Try to initialize the memory map early to minimize the risk of
+    // an out-of-range memory read. This may slow down the initialization. 1st try.
+    if(H->cfg.fMemMapAuto) {
+        InfoDB_Initialize(H);
+        PDB_Initialize(H, NULL, FALSE);
+        H->cfg.fMemMapAuto = !VmmWinInit_TryInitialize_MemMapAuto(H);
+    }
     // Initialize Paging (Limited Mode)
     MmWin_PagingInitialize(H, FALSE);
     // Locate System EPROCESS
@@ -1243,6 +1278,11 @@ BOOL VmmWinInit_TryInitialize(_In_ VMM_HANDLE H, _In_opt_ QWORD paDTBOpt)
         VmmWinInit_TryInitialize_Async(H, 0);                   // synchronous initialization
     } else {
         VmmWork_Value(H, VmmWinInit_TryInitialize_Async, 0, 0, VMMWORK_FLAG_PRIO_NORMAL); // async initialization
+    }
+    // -memmap auto: 2nd try (if not already initialized)
+    if(H->cfg.fMemMapAuto && !VmmWinInit_TryInitialize_MemMapAuto(H)) {
+        VmmLog(H, MID_CORE, LOGLEVEL_CRITICAL, "Failed to load initial memory map from: 'auto'.\n");
+        goto fail;
     }
     // clean up, print version (unless python execute parameter is set) and return!
     Ob_DECREF(pObSystemProcess);

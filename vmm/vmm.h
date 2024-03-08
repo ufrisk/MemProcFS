@@ -1215,6 +1215,7 @@ typedef struct tdVMMCONFIG {
     BOOL fVM;                           // parse virtual machines (resource intensive)
     BOOL fVMNested;                     // parse virtual machines (very resource intensive)
     BOOL fVMPhysicalOnly;               // parse virtual machines as physical memory only (less resource intense)
+    BOOL fMemMapAuto;
     // values below:
     DWORD dwPteQualityThreshold;        // max number of allowed invalid PTE entries in a page table (default: 0x20)
     QWORD tcTimeStart;                  // start time GetTickCount64()

@@ -216,3 +216,4 @@ v5.8
 
 Latest:
 * Added named _SECTION objects to VAD map.
+* -memmap auto improvements.
