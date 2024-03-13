@@ -8,7 +8,7 @@ Analyze memory dump files, <b>live memory</b> via DumpIt or WinPMEM, <b>live mem
 
 It's even possible to connect to a remote LeechAgent memory acquisition agent over a secured connection - allowing for remote live memory incident response - even over higher latency low band-width connections! Peek into [Virtual Machines with MemProcFS](https://github.com/ufrisk/MemProcFS/wiki/VM), [LiveCloudKd](https://github.com/ufrisk/LeechCore/wiki/Device_LiveCloudKd) or [VMware](https://github.com/ufrisk/LeechCore/wiki/Device_VMWare)!
 
-Use your favorite tools to analyze memory - use your favorite hex editors, your python and powershell scripts, WinDbg or your favorite disassemblers and debuggers - all will work trivally with MemProcFS by just reading and writing files!
+Use your favorite tools to analyze memory - use your favorite hex editors, your python and powershell scripts, WinDbg or your favorite disassemblers and debuggers - all will work trivially with MemProcFS by just reading and writing files!
 
 <p align="center"><img src="https://github.com/ufrisk/MemProcFS/wiki/resources/proc_base3.png" height="190"/><img src="https://github.com/ufrisk/MemProcFS/wiki/resources/pciescreamer.jpeg" height="190"/><img src="https://github.com/ufrisk/MemProcFS/wiki/resources/proc_modules.png" height="190"/></p>
 
@@ -21,7 +21,7 @@ Check out the excellent quick walkthrough from [13Cubed](https://www.13cubed.com
 
 <p align="center"> <a href="https://youtu.be/hjWVUrf7Obk" alt="13Cubed: MemProcFS - This Changes Everything" target="_new"><img src="http://img.youtube.com/vi/hjWVUrf7Obk/0.jpg" height="230"/></a> <a href="https://youtu.be/mca3rLsHuTA?t=952" alt="Disobey 2020 talk - Live Memory Attacks and Forensics" target="_new"><img src="http://img.youtube.com/vi/mca3rLsHuTA/0.jpg" height="230"/></a> <a href="https://www.youtube.com/watch?v=Da_9SV9FA34" alt="Microsoft BlueHatIL 2019 talk - Practical Uses for Hardware-assisted Memory Visualization" target="_new"><img src="http://img.youtube.com/vi/Da_9SV9FA34/0.jpg" height="230"/></a></p>
 
-For additional documentation **check out the [project wiki](https://github.com/ufrisk/MemProcFS/wiki)** for in-depth detailed information about the file system itself, its API and its plugin modules! For additional information about memory acqusition methods check out the **[LeechCore project](https://github.com/ufrisk/LeechCore/)** or hop into the [PCILeech/MemProcFS](https://discord.gg/pcileech) Discord server!
+For additional documentation **check out the [project wiki](https://github.com/ufrisk/MemProcFS/wiki)** for in-depth detailed information about the file system itself, its API and its plugin modules! For additional information about memory acquisition methods check out the **[LeechCore project](https://github.com/ufrisk/LeechCore/)** or hop into the [PCILeech/MemProcFS](https://discord.gg/pcileech) Discord server!
 
 To get going download the [latest binaries, modules and configuration files](https://github.com/ufrisk/MemProcFS/releases/latest) and check out the [guide](https://github.com/ufrisk/MemProcFS/wiki)!
 
