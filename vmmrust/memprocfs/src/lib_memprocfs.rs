@@ -4568,7 +4568,7 @@ fn impl_new_from_virtual_machine<'a>(vmm_parent : &'a Vmm, vm_entry : &VmmMapVir
 const MAX_PATH                          : usize = 260;
 const VMMDLL_MEM_SEARCH_VERSION         : u32 = 0xfe3e0002;
 const VMMDLL_YARA_CONFIG_VERSION        : u32 = 0xdec30001;
-const VMMYARA_RULE_MATCH_VERSION        : u32 = 0xfedc0001;
+const VMMYARA_RULE_MATCH_VERSION        : u32 = 0xfedc0003;
 const VMMDLL_VFS_FILELIST_VERSION       : u32 = 2;
 
 const VMMDLL_MAP_EAT_VERSION            : u32 = 3;
@@ -7554,6 +7554,7 @@ struct CVMMDLL_VMMYARA_RULE_MATCH_STRINGS {
 #[derive(Debug)]
 struct CVMMDLL_VMMYARA_RULE_MATCH {
     dwVersion : u32,
+    flags : u32,
     szRuleIdentifier : *const c_char,
     cTags : u32,
     szTags : [*const c_char; 8],

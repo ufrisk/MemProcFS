@@ -418,13 +418,14 @@ VOID VmmDllCore_PrintHelp(_In_ VMM_HANDLE H)
         "          in output. Option has no value. Example: -vv                         \n" \
         "   -vvv : super verbose option. Show all data transferred such as PCIe TLPs.   \n" \
         "          Option has no value. Example: -vvv                                   \n" \
+        "   -version : display version.                                                 \n" \
         "   -logfile : specify an optional log file.                                    \n" \
         "   -loglevel : specify the log verbosity level as a comma-separated list.      \n" \
         "          Please consult https://github.com/ufrisk/MemProcFS/wiki for details. \n" \
         "          example: -loglevel 4,f:5,f:VMM:6                                     \n" \
         "   -max : memory max address, valid range: 0x0 .. 0xffffffffffffffff           \n" \
         "          default: auto-detect (max supported by device / target system).      \n" \
-        "   -memmap-str : specify a physical memory map in parameter agrument text.     \n" \
+        "   -memmap-str : specify a physical memory map in parameter argument text.     \n" \
         "   -memmap : specify a physical memory map given in a file or specify 'auto'.  \n" \
         "          example: -memmap c:\\temp\\my_custom_memory_map.txt                  \n" \
         "          example: -memmap auto                                                \n" \
@@ -551,6 +552,9 @@ BOOL VmmDllCore_InitializeConfig(_In_ VMM_HANDLE H, _In_ DWORD argc, _In_ const 
             i++; continue;
         } else if(0 == _stricmp(argv[i], "-vvv")) {
             H->cfg.fVerboseExtraTlp = TRUE;
+            i++; continue;
+        } else if(0 == _stricmp(argv[i], "-version")) {
+            H->cfg.fDisplayVersion = TRUE;
             i++; continue;
         } else if(0 == _stricmp(argv[i], "-waitinitialize")) {
             H->cfg.fWaitInitialize = TRUE;
@@ -793,8 +797,14 @@ VMM_HANDLE VmmDllCore_Initialize(_In_ DWORD argc, _In_ LPCSTR argv[], _Out_opt_ 
     if(!(H = LocalAlloc(LMEM_ZEROINIT, sizeof(struct tdVMM_HANDLE)))) { goto fail_prelock; }
     H->magic = VMM_MAGIC;
     H->dwHandleCount = 1;
-    if(!VmmDllCore_InitializeConfig(H, (DWORD)argc, argv)) {
-        VmmDllCore_PrintHelp(H);
+    f = VmmDllCore_InitializeConfig(H, (DWORD)argc, argv);
+    if(H->cfg.fDisplayVersion) {
+        vmmprintf(H, "MemProcFS v%i.%i.%i\n", VERSION_MAJOR, VERSION_MINOR, VERSION_REVISION);
+    }
+    if(!f) {
+        if(!H->cfg.fDisplayVersion) {
+            VmmDllCore_PrintHelp(H);
+        }
         goto fail_prelock;
     }
     // 2.1: If -remotefs is specified, try to connect to the remote MemProcFS

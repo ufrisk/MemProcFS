@@ -1206,6 +1206,7 @@ typedef struct tdVMMCONFIG {
     BOOL fDisablePython;
     BOOL fDisableYara;
     BOOL fDisableYaraBuiltin;
+    BOOL fDisplayVersion;
     BOOL fLicenseAcceptElasticV2;
     BOOL fRemoteFS;
     BOOL fWaitInitialize;

@@ -743,7 +743,7 @@ VOID VmmHeapAlloc_NtInitSeg(_In_ VMM_HANDLE H, _In_ PVMMHEAPNT_CTX ctx, _In_ QWO
             VmmLog(H, MID_HEAP, LOGLEVEL_6_TRACE, "FAIL: (PREVSIZE) AT: %llx %x", vaSegment, oEntry);
             break;
         }
-        cbAlloc = (eH.Size - 1) * cbUnitSize - eH.UnusedBytes;
+        cbAlloc = eH.Size * cbUnitSize - eH.UnusedBytes;
         if((eH.Flags & 1) && cbAlloc && (cbAlloc < 0x01000000)) {
             if(eH.Flags & 8) {
                 // internal: potential lfh

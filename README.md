@@ -215,5 +215,6 @@ v5.8
 * Support for Proxmox memory dump files.
 
 Latest:
+* Bug fixes.
 * Added named _SECTION objects to VAD map.
 * -memmap auto improvements.
