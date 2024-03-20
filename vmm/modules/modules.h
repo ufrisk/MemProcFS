@@ -23,6 +23,7 @@
 
 
 // EVIL TYPES: (max length = 15 chars):
+static const VMMEVIL_TYPE EVIL_TIME_CHANGE  = { .Name = "TIME_CHANGE",  .Severity = 0x10000 };
 static const VMMEVIL_TYPE EVIL_AV_DETECT    = { .Name = "AV_DETECT",    .Severity = 0xf000 };
 static const VMMEVIL_TYPE EVIL_PE_INJECT    = { .Name = "PE_INJECT",    .Severity = 0xe000 };
 static const VMMEVIL_TYPE EVIL_PROC_NOLINK  = { .Name = "PROC_NOLINK",  .Severity = 0xd000 };

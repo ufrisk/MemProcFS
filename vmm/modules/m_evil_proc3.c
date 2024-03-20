@@ -10,6 +10,36 @@
 #include "modules.h"
 #include "../vmmwin.h"
 
+//-----------------------------------------------------------------------------
+// TIME_CHANGE
+//-----------------------------------------------------------------------------
+
+typedef struct tdMEVILPROC3_TIMECHANGE {
+    QWORD tmSystemCreate;
+    BOOL fTimeChanged;
+} MEVILPROC3_TIMECHANGE, *PMEVILPROC3_TIMECHANGE;
+
+/*
+* Check if the start time of the process is more than 1 minute before the start
+* time of the SYSTEM process. This is an indicator of system time change.
+*/
+VOID MEvilProc3_TimeChange(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _Inout_ PMEVILPROC3_TIMECHANGE pTimeChange)
+{
+    QWORD tmProcessCreate;
+    PVMM_PROCESS pObSystemProcess = NULL;
+    if(pTimeChange->fTimeChanged) { return; }
+    if(!pTimeChange->tmSystemCreate && (pObSystemProcess = VmmProcessGet(H, 4))) {
+        pTimeChange->tmSystemCreate = VmmProcess_GetCreateTimeOpt(H, pObSystemProcess);
+        Ob_DECREF(pObSystemProcess);
+    }
+    if(!pTimeChange->tmSystemCreate) { return; }
+    tmProcessCreate = VmmProcess_GetCreateTimeOpt(H, pProcess);
+    if(tmProcessCreate && ((tmProcessCreate + 60 * 10000000) < pTimeChange->tmSystemCreate)) {
+        FcEvilAdd(H, EVIL_TIME_CHANGE, NULL, 0, "");
+        pTimeChange->fTimeChanged = TRUE;
+    }
+}
+
 
 
 //-----------------------------------------------------------------------------
@@ -38,11 +68,13 @@ VOID MEvilProc3_SeDebugPrivilege(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
 VOID MEvilProc3_DoWork(_In_ VMM_HANDLE H, _In_ VMMDLL_MODULE_ID MID, _In_opt_ PVOID ctxfc)
 {
     PVMM_PROCESS pObProcess = NULL;
+    MEVILPROC3_TIMECHANGE TimeChange = { 0 };
     while((pObProcess = VmmProcessGetNext(H, pObProcess, VMM_FLAG_PROCESS_TOKEN | VMM_FLAG_PROCESS_SHOW_TERMINATED))) {
         if(H->fAbort) { goto fail; }
         if(!pObProcess->fUserOnly) { continue; }
         if(FcIsProcessSkip(H, pObProcess)) { continue; }
         MEvilProc3_SeDebugPrivilege(H, pObProcess);
+        MEvilProc3_TimeChange(H, pObProcess, &TimeChange);
     }
     VmmLog(H, MID, LOGLEVEL_6_TRACE, "COMPLETED FINDEVIL SCAN");
 fail:

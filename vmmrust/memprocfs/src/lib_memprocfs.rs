@@ -7655,7 +7655,7 @@ impl VmmYara<'_> {
             addr_max : self.native.vaMax,
             addr_current : self.native.vaCurrent,
             total_read_bytes : self.native.cbReadTotal,
-            total_results : self.native.cResult,
+            total_results : self.result.len() as u32,
             result : result_vec,
         }
     }
