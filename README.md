@@ -218,3 +218,4 @@ Latest:
 * Bug fixes.
 * Added named _SECTION objects to VAD map.
 * -memmap auto improvements.
+* Hibernation file support.
