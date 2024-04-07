@@ -1191,6 +1191,7 @@ typedef struct tdVMM_MEMORYMODEL_FUNCTIONS {
 
 typedef struct tdVMMCONFIG {
     QWORD paCR3;
+    QWORD qwVmmID;                      // vmmid parameter (used with -create-from-vmmid to create a dulicate VMM instance).
     VMM_MEMORYMODEL_TP tpMemoryModel;   // user-set memory model
     DWORD tpForensicMode;               // command line forensic mode
     QWORD qwParentVmmHandle;            // internal use only (option: _vmm_parent)

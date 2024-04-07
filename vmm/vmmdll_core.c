@@ -494,7 +494,7 @@ BOOL VmmDllCore_InitializeConfig(_In_ VMM_HANDLE H, _In_ DWORD argc, _In_ const 
 {
     const char *argv2[3];
     DWORD i = 0, dw, iPageFile;
-    if((argc == 2) && argv[1][0] && (argv[1][0] != '-')) {
+    if((argc == 2) && argv[0][0] && (argv[0][0] != '-') && argv[1][0] && (argv[1][0] != '-')) {
         // click to open -> only 1 argument ...
         argv2[0] = argv[0];
         argv2[1] = "-device";
@@ -590,6 +590,9 @@ BOOL VmmDllCore_InitializeConfig(_In_ VMM_HANDLE H, _In_ DWORD argc, _In_ const 
         } else if((0 == _stricmp(argv[i], "-cr3") || 0 == _stricmp(argv[i], "-dtb"))) {
             H->cfg.paCR3 = Util_GetNumericA(argv[i + 1]);
             i += 2; continue;
+        } else if(0 == _stricmp(argv[i], "-create-from-vmmid")) {
+            H->cfg.qwVmmID = Util_GetNumericA(argv[i + 1]);
+            return TRUE;    // special case: this parameter takes priority over all other parameters -> return TRUE now.
         } else if(0 == _stricmp(argv[i], "-debug-pte-quality-threshold")) {
             H->cfg.dwPteQualityThreshold = (DWORD)Util_GetNumericA(argv[i + 1]);
             i += 2; continue;
@@ -790,6 +793,7 @@ VMM_HANDLE VmmDllCore_Initialize(_In_ DWORD argc, _In_ LPCSTR argv[], _Out_opt_ 
     PLC_CONFIG_ERRORINFO pLcErrorInfo = NULL;
     LPSTR uszUserText;
     BYTE pbBuffer[3 * MAX_PATH];
+    QWORD qwVmmID;
     if(ppLcErrorInfo) { *ppLcErrorInfo = NULL; }
     // 1: allocate VMM_HANDLE object and initialize command line configuration.
     //    After config initialization call vmmprintf should work regardless of
@@ -806,6 +810,16 @@ VMM_HANDLE VmmDllCore_Initialize(_In_ DWORD argc, _In_ LPCSTR argv[], _Out_opt_ 
             VmmDllCore_PrintHelp(H);
         }
         goto fail_prelock;
+    }
+    // 2.0: If -create-from-vmmid is specified, duplicate the parent VMM_HANDLE
+    //      increasing its refcount. This also disregards any other parameters
+    //      that may be specified.
+    printf("DEBUG HERE VMMID: %016llx\n", H->cfg.qwVmmID);
+    if(H->cfg.qwVmmID) {
+        qwVmmID = H->cfg.qwVmmID;
+        LocalFree(H->cfg.ForensicProcessSkipList.pusz);
+        LocalFree(H);
+        return VmmDllCore_HandleDuplicate((VMM_HANDLE)qwVmmID);
     }
     // 2.1: If -remotefs is specified, try to connect to the remote MemProcFS
     //      instance running under the remote LeechAgent. This is a special

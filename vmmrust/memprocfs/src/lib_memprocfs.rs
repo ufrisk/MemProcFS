@@ -157,6 +157,8 @@ pub const CONFIG_OPT_CORE_VERBOSE_EXTRA_TLP         : u64 = 0x4000000400000000;
 pub const CONFIG_OPT_CORE_MAX_NATIVE_ADDRESS        : u64 = 0x4000000800000000;
 /// Get the LeechCore native handle. (void*) (do not close/free).
 pub const CONFIG_OPT_CORE_LEECHCORE_HANDLE          : u64 = 0x4000001000000000;
+/// Get the vmmid that may be used with startup option '-create-from-vmmid' to create a thread-safe duplicate VMM instance.
+pub const CONFIG_OPT_CORE_VMM_ID                    : u64 = 0x4000002000000000;
 /// Get the numeric system type according to VMM C-API.
 pub const CONFIG_OPT_CORE_SYSTEM                    : u64 = 0x2000000100000000;
 /// Get the numeric memory model type according to the VMM C-API.

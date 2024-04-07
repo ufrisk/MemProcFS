@@ -875,6 +875,45 @@ pub fn main_example() -> ResultEx<()> {
 
 
 
+        // Example: Duplicate the Vmm struct creating a duplicate Vmm struct.
+        // The primary use case would be to create a linked thread-safe Vmm
+        // instance that can be used safely in a separate thread. First the
+        // vmmid is retrieved as a numeric u64 value. This u64 value may be
+        // forwarded to a separate thread in which a new linked dublicated
+        // Vmm object is created.
+        // Both Vmm objects will follow normal rules, the native Vmm instance
+        // will be closed with all Rust Vmm instances have been dropped.
+        let vmmid = vmm.get_config(CONFIG_OPT_CORE_VMM_ID).unwrap();
+
+        {
+            println!("========================================");
+            println!("Vmm::new(): (duplicate)");
+            let vmmid_str = vmmid.to_string();
+            let vmm_duplicate_args = ["-create-from-vmmid", &vmmid_str].to_vec();
+            let vmm_duplicate = Vmm::new(vmm_lib_path, &vmm_duplicate_args).unwrap();
+
+            // Example: vmm.mem_read():
+            // Read 0x100 bytes from physical address 0x1000.
+            println!("========================================");
+            println!("Vmm.mem_read(): (duplicate)");
+            if let Ok(data_read) = vmm_duplicate.mem_read(0x1000, 0x100) {
+                println!("{:?}", data_read.hex_dump());
+            }
+
+            // Example: vmm.process_from_pid():
+            // Retrieve the 'System' process by its PID.
+            println!("========================================");
+            println!("Vmm.process_from_pid(): (duplicate)");
+            if let Ok(process) = vmm_duplicate.process_from_pid(4) {
+                println!("{}", process);    
+            }
+        }
+
+
+
+
+
+
         // Example: vmmprocess.search() #1: - asynchronous.
         // Search process virtual memory efficiently.
         // Search whole address space in asynchronous non-blocking mode and update.
