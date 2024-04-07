@@ -494,7 +494,7 @@ BOOL VmmDllCore_InitializeConfig(_In_ VMM_HANDLE H, _In_ DWORD argc, _In_ const 
 {
     const char *argv2[3];
     DWORD i = 0, dw, iPageFile;
-    if((argc == 2) && argv[0][0] && (argv[0][0] != '-') && argv[1][0] && (argv[1][0] != '-')) {
+    if((argc == 2) && ((0 == _stricmp(argv[0], "-printf")) || (argv[0][0] != '-')) && argv[1][0] && (argv[1][0] != '-')) {
         // click to open -> only 1 argument ...
         argv2[0] = argv[0];
         argv2[1] = "-device";
