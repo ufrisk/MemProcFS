@@ -814,7 +814,6 @@ VMM_HANDLE VmmDllCore_Initialize(_In_ DWORD argc, _In_ LPCSTR argv[], _Out_opt_ 
     // 2.0: If -create-from-vmmid is specified, duplicate the parent VMM_HANDLE
     //      increasing its refcount. This also disregards any other parameters
     //      that may be specified.
-    printf("DEBUG HERE VMMID: %016llx\n", H->cfg.qwVmmID);
     if(H->cfg.qwVmmID) {
         qwVmmID = H->cfg.qwVmmID;
         LocalFree(H->cfg.ForensicProcessSkipList.pusz);
