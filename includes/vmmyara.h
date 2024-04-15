@@ -10,10 +10,10 @@
 // For more information please consult the VmmYara information on Github:
 // - README: https://github.com/ufrisk/vmmyara
 //
-// (c) Ulf Frisk, 2023
+// (c) Ulf Frisk, 2023-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-// Header Version: 4.3.1.4
+// Header Version: 4.5.0.4
 //
 
 #ifndef __VMMYARA_H__

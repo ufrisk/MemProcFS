@@ -870,7 +870,7 @@ POB_M_MINIDUMP_CONTEXT M_MiniDump_Initialize_Internal(_In_ VMM_HANDLE H, _In_ VM
             pmdMR->StartOfMemoryRange = peP->vaBase;
             pmdMR->DataSize = peP->cPages << 12;
             // adjust range (in case of non mapped pte's in vad image)
-            if(peV && peV->fImage) {
+            if(peV && peV->fImage && iMR) {
                 f = i && (pmdMR->StartOfMemoryRange > peV->vaStart) &&
                     (pmdMR->StartOfMemoryRange > ctx->MemoryList.p->MemoryRanges[iMR - 1].StartOfMemoryRange + ctx->MemoryList.p->MemoryRanges[iMR - 1].DataSize);
                 if(f) {
