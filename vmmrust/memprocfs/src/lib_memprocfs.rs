@@ -145,6 +145,8 @@ pub const FLAG_NO_PREDICTIVE_READ                   : u64 = 0x0400;
 /// 
 /// This flag is only recommended for local files. improves forensic artifact order.
 pub const FLAG_FORCECACHE_READ_DISABLE              : u64 = 0x0800;
+/// Disable clearing of memory supplied to VmmScatterMemory.prepare_ex
+pub const VMMDLL_FLAG_SCATTER_PREPAREEX_NOMEMZERO   : u64 = 0x1000;
 /// Get/Set library console printouts.
 pub const CONFIG_OPT_CORE_PRINTF_ENABLE             : u64 = 0x4000000100000000;
 /// Get/Set standard verbosity.

@@ -11,7 +11,7 @@
 // (c) Ulf Frisk, 2018-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-// Header Version: 5.9
+// Header Version: 5.9.8
 //
 
 #include "leechcore.h"
@@ -775,6 +775,7 @@ VOID VMMDLL_LogEx(
 #define VMMDLL_FLAG_CACHE_RECENT_ONLY               0x0200  // only fetch from the most recent active cache region when reading.
 #define VMMDLL_FLAG_NO_PREDICTIVE_READ              0x0400  // do not perform additional predictive page reads (default on smaller requests).
 #define VMMDLL_FLAG_FORCECACHE_READ_DISABLE         0x0800  // disable/override any use of VMM_FLAG_FORCECACHE_READ. only recommended for local files. improves forensic artifact order.
+#define VMMDLL_FLAG_SCATTER_PREPAREEX_NOMEMZERO     0x1000  // do not zero out the memory buffer when preparing a scatter read.
 
 /*
 * Read memory in various non-contigious locations specified by the pointers to

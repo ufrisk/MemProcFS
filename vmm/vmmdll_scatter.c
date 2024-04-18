@@ -66,7 +66,9 @@ BOOL VMMDLL_Scatter_PrepareInternal(_In_ PSCATTER_CONTEXT ctx, _In_ QWORD va, _I
     PSCATTER_RANGE pr = NULL;
     DWORD i, iNewMEM = 0, cMEMsRequired, cMEMsPre = 0;
     // zero out any buffer received
-    if(pb) { ZeroMemory(pb, cb); }
+    if(pb && !(ctx->dwReadFlags & VMMDLL_FLAG_SCATTER_PREPAREEX_NOMEMZERO)) {
+        ZeroMemory(pb, cb);
+    }
     if(pcbRead) { *pcbRead = 0; }
     // validity checks
     if(va + cb < va) { return FALSE; }
