@@ -217,5 +217,6 @@ v5.8
 Latest:
 * Bug fixes.
 * Added named _SECTION objects to VAD map.
-* -memmap auto improvements.
+* `-memmap auto` improvements.
 * Hibernation file support.
+* [Sysinfo module](https://github.com/ufrisk/MemProcFS/wiki/FS_Sys_Sysinfo) for easy-to-read system information.

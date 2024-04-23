@@ -7,6 +7,7 @@
 #include "vmmwinreg.h"
 #include "charutil.h"
 #include "pe.h"
+#include "util.h"
 
 /*
 * Retrieve the current system time as FILETIME.
@@ -37,10 +38,8 @@ QWORD SysQuery_TimeCurrent(_In_ VMM_HANDLE H)
 _Success_(return)
 BOOL SysQuery_TimeZone(_In_ VMM_HANDLE H, _Out_writes_opt_(32) LPSTR uszTimeZone, _Out_opt_ int *piActiveBias)
 {
-    BYTE pbTimeZone[64];
     if(uszTimeZone) {
-        if(!VmmWinReg_ValueQuery2(H, "HKLM\\SYSTEM\\ControlSet001\\Control\\TimeZoneInformation\\TimeZoneKeyName", NULL, pbTimeZone, sizeof(pbTimeZone), NULL)) { return FALSE; }
-        CharUtil_WtoU((LPWSTR)pbTimeZone, 32, uszTimeZone, 32, NULL, NULL, CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR | CHARUTIL_FLAG_STR_BUFONLY);
+        if(!VmmWinReg_ValueQueryString2(H, "HKLM\\SYSTEM\\ControlSet001\\Control\\TimeZoneInformation\\TimeZoneKeyName", NULL, uszTimeZone, 32)) { return FALSE; }
     }
     if(piActiveBias) {
         if(!VmmWinReg_ValueQuery2(H, "HKLM\\SYSTEM\\ControlSet001\\Control\\TimeZoneInformation\\ActiveTimeBias", NULL, (PBYTE)piActiveBias, sizeof(DWORD), NULL)) { return FALSE; }
@@ -48,6 +47,52 @@ BOOL SysQuery_TimeZone(_In_ VMM_HANDLE H, _Out_writes_opt_(32) LPSTR uszTimeZone
     }
     return TRUE;
 }
+
+/*
+* Query the time zone information into a formatted string.
+* -- H
+* -- uszTimeZone = formatted string representation - ex: 'Eastern Standard Time [UTC-5]'.
+* -- fLine = if TRUE, the string will be formatted as a single line.
+*/
+VOID SysQuery_TimeZoneEx(_In_ VMM_HANDLE H, _Out_writes_(49) LPSTR uszTimeZone, _In_ BOOL fLine)
+{
+    int iTimeZoneActiveBias = 0;
+    CHAR uszTimeZoneName[0x20] = { 0 };
+    uszTimeZone[0] = 0;
+    if(SysQuery_TimeZone(H, uszTimeZoneName, &iTimeZoneActiveBias)) {
+        if(iTimeZoneActiveBias % 60) {
+            if(fLine) {
+                Util_usnprintf_ln(uszTimeZone, 48, "%s [UTC%+i]", uszTimeZoneName, -iTimeZoneActiveBias);
+            } else {
+                snprintf(uszTimeZone, 48, "%s [UTC%+i]", uszTimeZoneName, -iTimeZoneActiveBias);
+            }
+
+        } else {
+            if(fLine) {
+                Util_usnprintf_ln(uszTimeZone, 48, "%s : UTC%+i:%02i", uszTimeZoneName, -iTimeZoneActiveBias / 60, iTimeZoneActiveBias % 60);
+            } else {
+                snprintf(uszTimeZone, 48, "%s : UTC%+i:%02i", uszTimeZoneName, -iTimeZoneActiveBias / 60, iTimeZoneActiveBias % 60);
+            }
+        }
+    } else if(fLine) {
+        Util_usnprintf_ln(uszTimeZone, 48, "");
+    }
+    uszTimeZone[48] = 0;
+}
+
+/*
+* Query the computer name.
+* -- H
+* -- szuComputerName = buffer to receive the computer name.
+* -- cbuComputerName = size of the buffer.
+* -- return
+*/
+_Success_(return)
+BOOL SysQuery_ComputerName(_In_ VMM_HANDLE H, _Out_writes_(cbuComputerName) LPSTR uszComputerName, _In_ DWORD cbuComputerName)
+{
+    return VmmWinReg_ValueQueryString2(H, "HKLM\\SYSTEM\\ControlSet001\\Control\\ComputerName\\ComputerName\\ComputerName", NULL, uszComputerName, cbuComputerName);
+}
+
 
 _Success_(return)
 QWORD SysQuery_GetProcAddress_Impl(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ LPCSTR uszModuleName, _In_ LPCSTR szFunctionName, _In_ DWORD iLevel)

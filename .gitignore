@@ -16,6 +16,7 @@ info.db
 /files/ARM64
 /files/x86/lib
 /files/x86/vmm_example.exe
+/vmmsharp/.vs
 /vmmsharp/obj
 Cargo.lock
 /vmmrust/memprocfs/target

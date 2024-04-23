@@ -27,6 +27,24 @@ _Success_(return)
 BOOL SysQuery_TimeZone(_In_ VMM_HANDLE H, _Out_writes_opt_(32) LPSTR uszTimeZone, _Out_opt_ int *piActiveBias);
 
 /*
+* Query the time zone information into a formatted string.
+* -- H
+* -- uszTimeZone = formatted string representation - ex: 'Eastern Standard Time [UTC-5]'.
+* -- fLine = if TRUE, the string will be formatted as a single line.
+*/
+VOID SysQuery_TimeZoneEx(_In_ VMM_HANDLE H, _Out_writes_(49) LPSTR uszTimeZone, _In_ BOOL fLine);
+
+/*
+* Query the computer name.
+* -- H
+* -- szuComputerName = buffer to receive the computer name.
+* -- cbuComputerName = size of the buffer.
+* -- return
+*/
+_Success_(return)
+BOOL SysQuery_ComputerName(_In_ VMM_HANDLE H, _Out_writes_(cbuComputerName) LPSTR uszComputerName, _In_ DWORD cbuComputerName);
+
+/*
 * Retrieve an exported function address similar to kernel32!GetProcAddress().
 * -- H
 * -- pProcess

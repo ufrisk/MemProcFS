@@ -332,6 +332,31 @@ BOOL VmmWinReg_ValueQuery4(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_
 _Success_(return)
 BOOL VmmWinReg_ValueQuery5(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pKey, _In_ LPCSTR uszValueName, _Out_opt_ PDWORD pdwType, _Out_writes_opt_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_opt_ PDWORD pcbData);
 
+/*
+* Read a registry string value in WCHAR format. Convert to a UTF-8 string.
+* -- H
+* -- pHive
+* -- pKeyValue
+* -- pdwType
+* -- uszData
+* -- cbuData
+* -- return
+*/
+_Success_(return)
+BOOL VmmWinReg_ValueQueryString4(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_VALUE pKeyValue, _Out_opt_ PDWORD pdwType, _Out_writes_(cbuData) LPSTR uszData, _In_ DWORD cbuData);
+
+/*
+* Read a registry string value in WCHAR format. Convert to a UTF-8 string.
+* -- H
+* -- uszFullPathKeyValue
+* -- pdwType
+* -- uszData
+* -- cbuData
+* -- return
+*/
+_Success_(return)
+BOOL VmmWinReg_ValueQueryString2(_In_ VMM_HANDLE H, _In_ LPCSTR uszFullPathKeyValue, _Out_opt_ PDWORD pdwType, _Out_writes_(cbuData) LPSTR uszData, _In_ DWORD cbuData);
+
 typedef struct tdVMMWINREG_FORENSIC_CONTEXT {
     struct {
         DWORD cb;

@@ -429,6 +429,7 @@
     <ClCompile Include="modules\m_sys_proc.c" />
     <ClCompile Include="modules\m_sys_svc.c" />
     <ClCompile Include="modules\m_sys_syscall.c" />
+    <ClCompile Include="modules\m_sys_sysinfo.c" />
     <ClCompile Include="modules\m_sys_task.c" />
     <ClCompile Include="modules\m_sys_user.c" />
     <ClCompile Include="modules\m_vfsfc.c" />

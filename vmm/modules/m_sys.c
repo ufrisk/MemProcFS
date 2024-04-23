@@ -11,35 +11,9 @@
 #include "../sysquery.h"
 #include "../vmmwinreg.h"
 
-VOID MSys_QueryTimeZone(_In_ VMM_HANDLE H, _Out_writes_(49) LPSTR uszTimeZone, _In_ BOOL fLine)
-{
-    int iTimeZoneActiveBias = 0;
-    CHAR uszTimeZoneName[0x20] = { 0 };
-    uszTimeZone[0] = 0;
-    if(SysQuery_TimeZone(H, uszTimeZoneName, &iTimeZoneActiveBias)) {
-        if(iTimeZoneActiveBias % 60) {
-            if(fLine) {
-                Util_usnprintf_ln(uszTimeZone, 48, "%s [UTC%+i]", uszTimeZoneName, -iTimeZoneActiveBias);
-            } else {
-                snprintf(uszTimeZone, 48, "%s [UTC%+i]", uszTimeZoneName, -iTimeZoneActiveBias);
-            }
-            
-        } else {
-            if(fLine) {
-                Util_usnprintf_ln(uszTimeZone, 48, "%s : UTC%+i:%02i", uszTimeZoneName, -iTimeZoneActiveBias / 60, iTimeZoneActiveBias % 60);
-            } else {
-                snprintf(uszTimeZone, 48, "%s : UTC%+i:%02i", uszTimeZoneName, -iTimeZoneActiveBias / 60, iTimeZoneActiveBias % 60);
-            }
-        }
-    } else if(fLine) {
-        Util_usnprintf_ln(uszTimeZone, 48, "");
-    }
-    uszTimeZone[48] = 0;
-}
-
 NTSTATUS MSys_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
-    DWORD cbBuffer, cbData;
+    DWORD i, cbBuffer;
     BYTE pbBuffer[0x42] = { 0 };
     BYTE pbRegData[0x42] = { 0 };
     CHAR szTimeZone[64] = { 0 };
@@ -67,8 +41,14 @@ NTSTATUS MSys_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_wri
             pb, cb, pcbRead, cbOffset);
     }
     if(!_stricmp(ctxP->uszPath, "computername.txt")) {
-        VmmWinReg_ValueQuery2(H, "HKLM\\SYSTEM\\ControlSet001\\Control\\ComputerName\\ComputerName\\ComputerName", NULL, pbRegData, sizeof(pbRegData) - 2, &cbData);
-        CharUtil_WtoU((LPWSTR)pbRegData, cbData << 1, pbBuffer, sizeof(pbBuffer), NULL, NULL, CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR | CHARUTIL_FLAG_STR_BUFONLY);
+        SysQuery_ComputerName(H, (LPSTR)pbBuffer, sizeof(pbBuffer));
+        for(i = 0; i < 32; i++) {
+            if(!pbBuffer[i]) {
+                for(; i < 32; i++) {
+                    pbBuffer[i] = ' ';
+                }
+            }
+        }
         return Util_VfsReadFile_FromPBYTE(pbBuffer, 32, pb, cb, pcbRead, cbOffset);
     }
     if(!_stricmp(ctxP->uszPath, "time-boot.txt")) {
@@ -78,7 +58,7 @@ NTSTATUS MSys_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_wri
         return Util_VfsReadFile_FromFILETIME(SysQuery_TimeCurrent(H), pb, cb, pcbRead, cbOffset);
     }
     if(!_stricmp(ctxP->uszPath, "timezone.txt")) {
-        MSys_QueryTimeZone(H, szTimeZone, TRUE);
+        SysQuery_TimeZoneEx(H, szTimeZone, TRUE);
         return Util_VfsReadFile_FromPBYTE(szTimeZone, 48, pb, cb, pcbRead, cbOffset);
     }
     return VMMDLL_STATUS_FILE_INVALID;
@@ -112,7 +92,7 @@ VOID MSys_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VO
     if(ctxP->pProcess || !(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_FORENSIC_JSONDATA)))) { return; }
     Util_FileTime2String(H->vmm.kernel.opt.ftBootTime, szTimeBoot);
     Util_FileTime2String(SysQuery_TimeCurrent(H), szTimeCurrent);
-    MSys_QueryTimeZone(H, szTimeZone, FALSE);
+    SysQuery_TimeZoneEx(H, szTimeZone, FALSE);
     VmmWinReg_ValueQuery2(H, "HKLM\\SYSTEM\\ControlSet001\\Control\\ComputerName\\ComputerName\\ComputerName", NULL, pbComputerName, sizeof(pbComputerName) - 2, NULL);
     snprintf(usz, sizeof(usz), "architecture:[%s] version:[%i.%i.%i] time-boot:[%s] time-current:[%s], timezone:[%s]",
         VMM_MEMORYMODEL_TOSTRING[H->vmm.tpMemoryModel],

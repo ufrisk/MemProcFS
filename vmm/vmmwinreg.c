@@ -2165,6 +2165,73 @@ BOOL VmmWinReg_ValueQuery5(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_
 }
 
 /*
+* Read a registry string value in WCHAR format. Convert to a UTF-8 string.
+* -- H
+* -- pHive
+* -- pKeyValue
+* -- pdwType
+* -- uszData
+* -- cbuData
+* -- return
+*/
+_Success_(return)
+BOOL VmmWinReg_ValueQueryString4(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_VALUE pKeyValue, _Out_opt_ PDWORD pdwType, _Out_writes_(cbuData) LPSTR uszData, _In_ DWORD cbuData)
+{
+    BOOL fResult = FALSE;
+    BYTE pbRegDataBuffer[0x400];
+    PBYTE pbRegData = NULL;
+    DWORD cbRegData = 0, cbRegDataRead = 0;
+    if(!cbuData) { goto fail; }
+    uszData[0] = 0;
+    if(sizeof(pbRegDataBuffer) < cbuData * 2) {
+        cbRegData = sizeof(pbRegDataBuffer);
+        pbRegData = pbRegDataBuffer;
+    } else {
+        cbRegData = cbuData * 2;
+        pbRegData = LocalAlloc(0, cbRegData);
+        if(!pbRegData) { goto fail; }
+    }
+    if(!VmmWinReg_ValueQuery4(H, pHive, pKeyValue, pdwType, pbRegData, cbRegData, &cbRegDataRead) || !cbRegDataRead) { goto fail; }
+    fResult = CharUtil_WtoU((LPWSTR)pbRegData, cbRegDataRead >> 1, uszData, cbuData, NULL, NULL, CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR | CHARUTIL_FLAG_STR_BUFONLY);;
+fail:
+    if(pbRegData != pbRegDataBuffer) { LocalFree(pbRegData); }
+    return fResult;
+}
+
+/*
+* Read a registry string value in WCHAR format. Convert to a UTF-8 string.
+* -- H
+* -- uszFullPathKeyValue
+* -- pdwType
+* -- uszData
+* -- cbuData
+* -- return
+*/
+_Success_(return)
+BOOL VmmWinReg_ValueQueryString2(_In_ VMM_HANDLE H, _In_ LPCSTR uszFullPathKeyValue, _Out_opt_ PDWORD pdwType, _Out_writes_(cbuData) LPSTR uszData, _In_ DWORD cbuData)
+{
+    BOOL fResult = FALSE;
+    BYTE pbRegDataBuffer[0x400];
+    PBYTE pbRegData = NULL;
+    DWORD cbRegData = 0, cbRegDataRead = 0;
+    if(!cbuData) { goto fail; }
+    uszData[0] = 0;
+    if(sizeof(pbRegDataBuffer) < cbuData * 2) {
+        cbRegData = sizeof(pbRegDataBuffer);
+        pbRegData = pbRegDataBuffer;
+    } else {
+        cbRegData = cbuData * 2;
+        pbRegData = LocalAlloc(0, cbRegData);
+        if(!pbRegData) { goto fail; }
+    }
+    if(!VmmWinReg_ValueQuery2(H, uszFullPathKeyValue, pdwType, pbRegData, cbRegData, &cbRegDataRead) || !cbRegDataRead) { goto fail; }
+    fResult = CharUtil_WtoU((LPWSTR)pbRegData, cbRegDataRead >> 1, uszData, cbuData, NULL, NULL, CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR | CHARUTIL_FLAG_STR_BUFONLY);;
+fail:
+    if(pbRegData != pbRegDataBuffer) { LocalFree(pbRegData); }
+    return fResult;
+}
+
+/*
 * Create a full path given a registry key. This string format is primarily used
 * for forensic storage purposes.
 * -- pHive
