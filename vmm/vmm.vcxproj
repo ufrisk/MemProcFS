@@ -404,6 +404,7 @@
     <ClCompile Include="modules\m_fc_web.c" />
     <ClCompile Include="modules\m_fc_yara.c" />
     <ClCompile Include="modules\m_misc_bitlocker.c" />
+    <ClCompile Include="modules\m_misc_eventlog.c" />
     <ClCompile Include="modules\m_misc_procinfo.c" />
     <ClCompile Include="modules\m_misc_view.c" />
     <ClCompile Include="modules\m_phys2virt.c" />

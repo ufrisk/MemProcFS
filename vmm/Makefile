@@ -41,8 +41,8 @@ OBJ = oscompatibility.o charutil.o util.o pe.o vmmdll.o vmmdll_core.o        \
 	  modules/m_evil_av1.o modules/m_evil_kern1.o modules/m_evil_kernproc1.o \
 	  modules/m_evil_proc1.o modules/m_evil_proc2.o modules/m_evil_proc3.o   \
 	  modules/m_evil_thread1.o                                               \
-	  modules/m_misc_bitlocker.o modules/m_misc_procinfo.o                   \
-	  modules/m_misc_view.o                                                  \
+	  modules/m_misc_bitlocker.o modules/m_misc_eventlog.o                   \
+	  modules/m_misc_procinfo.o modules/m_misc_view.o                        \
 	  modules/m_sys.o modules/m_sys_driver.o modules/m_sys_mem.o             \
 	  modules/m_sys_net.o modules/m_sys_obj.o modules/m_sys_pool.o           \
 	  modules/m_sys_proc.o modules/m_sys_svc.o modules/m_sys_syscall.o       \
