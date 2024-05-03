@@ -553,7 +553,7 @@ VOID M_MiniDump_CallbackCleanup_ObMiniDumpContext(POB_M_MINIDUMP_CONTEXT pOb)
 */
 POB_M_MINIDUMP_CONTEXT M_MiniDump_Initialize_Internal(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_ PVMM_PROCESS pProcess)
 {
-    BOOL f, f32 = H->vmm.f32;
+    BOOL f, f32 = H->vmm.f32, fResult = FALSE;
     DWORD i, j, iPte, iVad, iMR, dwCpuMhz, cThreadActive = 0;
     QWORD qw, vaDiff;
     PBYTE pbOld = NULL;
@@ -1008,8 +1008,11 @@ POB_M_MINIDUMP_CONTEXT M_MiniDump_Initialize_Internal(_In_ VMM_HANDLE H, _In_ VM
 
     // finish
     Ob_INCREF(ctx);
+    fResult = TRUE;
 fail:
-    VmmLog(H, MID, LOGLEVEL_5_DEBUG, "PID: %u - Failed to generate minidump.", pProcess->dwPID);
+    if(!fResult) {
+        VmmLog(H, MID, LOGLEVEL_5_DEBUG, "PID: %u - Failed to generate minidump.", pProcess->dwPID);
+    }
     LocalFree(pbOld);
     Ob_DECREF(pObSystemProcess);
     Ob_DECREF(pObPteMap);
@@ -1143,7 +1146,7 @@ VOID M_MiniDump_Close(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
 * shall call the supplied pfnPluginManager_Register function.
 * NB! the module does not have to register itself - for example if the target
 * operating system or architecture is unsupported.
-* -- pPluginRegInfo
+* -- pRI
 */
 VOID M_ProcMiniDump_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {

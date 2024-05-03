@@ -466,10 +466,17 @@ VOID VmmVm_DoWork_4_NewVM_StartupVmm(_In_ VMM_HANDLE H, _In_ PVMMOB_VM_CONTEXT p
     CHAR szLcDevice[128], szGpaMax[32], szParentVmm[32];
     DWORD cArg = 0;
     LPCSTR szArg[32];
+    LC_VMM LcVmm;
     // 1: Sanity check & create init parameters:
     if(H->fAbort || !pVM->fActive || pVM->hVMM) { return; }
+    LcVmm.dwVersion = LC_VMM_VERSION;
+    LcVmm.hVMM = (HANDLE)H;
+    LcVmm.hVMMVM = (HANDLE)pVM->va;
+    LcVmm.pfnVMMDLL_ConfigGet = (PVOID)VMMDLL_ConfigGet;
+    LcVmm.pfnVMMDLL_VmMemReadScatter = (PVOID)VMMDLL_VmMemReadScatter;
+    LcVmm.pfnVMMDLL_VmMemWriteScatter = (PVOID)VMMDLL_VmMemWriteScatter;
     // 2: Common arguments:
-    _snprintf_s(szLcDevice, _countof(szLcDevice), _TRUNCATE, "vmm://hvmm=0x%016llx,hvm=0x%016llx", (QWORD)H, pVM->va);
+    _snprintf_s(szLcDevice, _countof(szLcDevice), _TRUNCATE, "vmm://hlcvmm=0x%016llx", (QWORD)&LcVmm);
     _snprintf_s(szGpaMax, _countof(szGpaMax), _TRUNCATE, "0x%016llx", pVM->gpaMax);
     _snprintf_s(szParentVmm, _countof(szParentVmm), _TRUNCATE, "0x%016llx", (QWORD)H);
     szArg[cArg++] = "";

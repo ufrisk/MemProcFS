@@ -1366,17 +1366,22 @@ VOID VmmReadScatterPhysical(_In_ VMM_HANDLE H, _Inout_ PPMEM_SCATTER ppMEMsPhys,
     QWORD tp;   // 0 = normal, 1 = already read, 2 = cache hit, 3 = speculative read
     BOOL fCache, fCacheRecent, fCachePut, fCacheForce;
     PMEM_SCATTER pMEM;
-    DWORD i, c, cSpeculative;
+    DWORD i, c, iPA;
     PVMMOB_CACHE_MEM pObCacheEntry, pObReservedMEM;
-    PMEM_SCATTER ppMEMsSpeculative[VMM_READ_PHYSICAL_SPECULATIVE_PAGES];
-    PVMMOB_CACHE_MEM ppObCacheSpeculative[VMM_READ_PHYSICAL_SPECULATIVE_PAGES];
     fCache = !(VMM_FLAG_NOCACHE & (flags | H->vmm.flags));
     fCacheRecent = fCache && (VMM_FLAG_CACHE_RECENT_ONLY & flags);
     fCachePut = !(VMM_FLAG_NOCACHEPUT & flags);
     fCacheForce = (VMM_FLAG_FORCECACHE_READ & flags) && !(VMM_FLAG_FORCECACHE_READ_DISABLE & (flags | H->vmm.flags));
+    // 0: split very large reads:
+    if(cpMEMsPhys > 0x2000) {
+        for(iPA = 0; iPA < cpMEMsPhys; iPA += 0x2000) {
+            VmmReadScatterPhysical(H, ppMEMsPhys + iPA, min(0x2000, cpMEMsPhys - iPA), flags);
+        }
+        return;
+    }
     // 1: cache read
     if(fCache) {
-        c = 0, cSpeculative = 0;
+        c = 0;
         for(i = 0; i < cpMEMsPhys; i++) {
             pMEM = ppMEMsPhys[i];
             if(pMEM->f) {
@@ -1397,10 +1402,6 @@ VOID VmmReadScatterPhysical(_In_ VMM_HANDLE H, _Inout_ PPMEM_SCATTER ppMEMsPhys,
                 continue;
             }
             MEM_SCATTER_STACK_PUSH(pMEM, 1);        // 1: normal read
-            // add to potential speculative read map if read is small enough...
-            if(cSpeculative < VMM_READ_PHYSICAL_SPECULATIVE_PAGES) {
-                ppMEMsSpeculative[cSpeculative++] = pMEM;
-            }
         }
         // all found in cache _OR_ only cached reads allowed -> restore mem stack and return!
         if((c == cpMEMsPhys) || fCacheForce) {
@@ -1410,26 +1411,6 @@ VOID VmmReadScatterPhysical(_In_ VMM_HANDLE H, _Inout_ PPMEM_SCATTER ppMEMsPhys,
             return;
         }
     }
-    // 2: speculative future read if negligible performance loss
-    if(fCache && fCachePut && cSpeculative && (cSpeculative < VMM_READ_PHYSICAL_SPECULATIVE_PAGES) && !(flags & VMMDLL_FLAG_NO_PREDICTIVE_READ)) {
-        for(i = 0; i < cpMEMsPhys; i++) {
-            pMEM = ppMEMsPhys[i];
-            if(1 != MEM_SCATTER_STACK_PEEK(pMEM, 1)) {
-                MEM_SCATTER_STACK_POP(pMEM);
-            }
-        }
-        while(cSpeculative < VMM_READ_PHYSICAL_SPECULATIVE_PAGES) {
-            if((ppObCacheSpeculative[cSpeculative] = VmmCacheReserve(H, VMM_CACHE_TAG_PHYS))) {
-                pMEM = ppMEMsSpeculative[cSpeculative] = &ppObCacheSpeculative[cSpeculative]->h;
-                MEM_SCATTER_STACK_PUSH(pMEM, 4);
-                pMEM->f = FALSE;
-                pMEM->qwA = ((QWORD)ppMEMsSpeculative[cSpeculative - 1]->qwA & ~0xfff) + 0x1000;
-                cSpeculative++;
-            }
-        }
-        ppMEMsPhys = ppMEMsSpeculative;
-        cpMEMsPhys = cSpeculative;
-    }
     // 3: read!
     LcReadScatter(H->hLC, cpMEMsPhys, ppMEMsPhys);
     // 4: cache put
@@ -1438,9 +1419,6 @@ VOID VmmReadScatterPhysical(_In_ VMM_HANDLE H, _Inout_ PPMEM_SCATTER ppMEMsPhys,
             pMEM = ppMEMsPhys[i];
             tp = MEM_SCATTER_STACK_POP(pMEM);
             if(fCachePut) {
-                if(tp == 4) {   // 4 == speculative & backed by cache reserved
-                    VmmCacheReserveReturn(H, ppObCacheSpeculative[i]);
-                }
                 if((tp == 1) && pMEM->f) { // 1 = normal read
                     if((pObReservedMEM = VmmCacheReserve(H, VMM_CACHE_TAG_PHYS))) {
                         pObReservedMEM->h.f = TRUE;
@@ -1565,6 +1543,13 @@ VOID VmmReadScatterVirtual_New(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _I
     BOOL fAltAddrPte = VMM_FLAG_ALTADDR_VA_PTE & flags;
     BOOL fZeropadOnFail = VMM_FLAG_ZEROPAD_ON_FAIL & (flags | H->vmm.flags);
     BOOL fProcessMagicHandle = ((SIZE_T)pProcess >= PROCESS_MAGIC_HANDLE_THRESHOLD);
+    // 0: split very large reads:
+    if(cpMEMsVirt > 0x2000) {
+        for(iVA = 0; iVA < cpMEMsVirt; iVA += 0x2000) {
+            VmmReadScatterVirtual_New(H, pProcess, ppMEMsVirt + iVA, min(0x2000, cpMEMsVirt - iVA), flags);
+        }
+        return;
+    }
     // 1: 'magic' process handle:
     if(fProcessMagicHandle && !(pProcess = VmmProcessGet(H, (DWORD)(0 - (SIZE_T)pProcess)))) { goto finish; }
     // 2: allocate / set up buffers:
