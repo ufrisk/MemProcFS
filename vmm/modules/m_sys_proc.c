@@ -21,6 +21,9 @@
 #define MSYSPROC_TREE_LINE_LENGTH_VERBOSE_BASE      67
 #define MSYSPROC_TREE_LINE_LENGTH_VERBOSE_HEADER    100
 
+#define MSYSPROC_TIME_LINE_LENGTH                   140
+#define MSYSPROX_TIME_LINE_HEADER                   "Process            Pid Parent   Flag User             Create Time              Exit Time                Process Full Name"
+
 const LPSTR szMSYSPROC_WHITELIST_WINDOWS_PATHS_AND_BINARIES[] = {
     "\\Windows\\System32\\",
     "\\Windows\\SystemApps\\",
@@ -237,6 +240,84 @@ VOID MSysProc_ListTree_ProcessUserParams_CallbackAction(_In_ VMM_HANDLE H, _In_ 
     InterlockedAdd(pcTotalBytes, c);
 }
 
+VOID MSysProc_ReadByTime_ReadLineCB(_In_ VMM_HANDLE H, _Inout_opt_ PVOID ctx, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PMSYSPROC_TREE_ENTRY pe, _Out_writes_(cbLineLength + 1) LPSTR szu8)
+{
+    CHAR szUserName[17], szTimeCRE[24], szTimeEXIT[24];
+    DWORD i, o = 0;
+    BOOL fWinNativeProc, fStateTerminated, fAccountUser = FALSE;
+    fStateTerminated = (pe->pObProcess->dwState != 0);
+    fWinNativeProc = (pe->dwPID == 4) || (pe->dwPPID == 4);
+    for(i = 0; !fWinNativeProc && (i < (sizeof(szMSYSPROC_WHITELIST_WINDOWS_PATHS_AND_BINARIES) / sizeof(LPSTR))); i++) {
+        fWinNativeProc = (NULL != strstr(pe->pObProcess->pObPersistent->uszPathKernel, szMSYSPROC_WHITELIST_WINDOWS_PATHS_AND_BINARIES[i]));
+    }
+    MSysProc_Tree_ProcessItems_GetUserName(H, pe->pObProcess, szUserName, &fAccountUser);
+    Util_FileTime2String(VmmProcess_GetCreateTimeOpt(H, pe->pObProcess), szTimeCRE);
+    Util_FileTime2String(VmmProcess_GetExitTimeOpt(H, pe->pObProcess), szTimeEXIT);
+    Util_usnprintf_ln(szu8, cbLineLength,
+        "%-16.16s%6i %6i %s%c%c%c%c %-16s %s  %s  %s",
+        pe->pObProcess->szName,
+        pe->dwPID,
+        pe->dwPPID,
+        pe->pObProcess->win.fWow64 ? "32" : "  ",
+        pe->pObProcess->win.EPROCESS.fNoLink ? 'E' : ' ',
+        fStateTerminated ? 'T' : ' ',
+        fAccountUser ? 'U' : ' ',
+        fWinNativeProc ? ' ' : '*',
+        szUserName,
+        szTimeCRE,
+        szTimeEXIT,
+        pe->pObProcess->pObPersistent->uszNameLong
+    );
+}
+
+int MSysProc_ReadByTime_CmpSort(PMSYSPROC_TREE_ENTRY a, PMSYSPROC_TREE_ENTRY b)
+{
+    if(a->ftCreate == b->ftCreate) {
+        return a->dwPID - b->dwPID;
+    }
+    return (a->ftCreate < b->ftCreate) ? -1 : 1;
+}
+
+NTSTATUS MSysProc_ReadByTime(_In_ VMM_HANDLE H, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+{
+    NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
+    BOOL fResult = FALSE;
+    PVMM_PROCESS pObProcess = NULL;
+    PMSYSPROC_TREE_ENTRY pe, pPidList = NULL;
+    DWORD iPidList = 0, i;
+    SIZE_T cPidList = 0;
+    *pcbRead = 0;
+    // 1: retrieve process information into "pid list"
+    VmmProcessListPIDs(H, NULL, &cPidList, VMM_FLAG_PROCESS_SHOW_TERMINATED);
+    if(!cPidList) { goto fail; }
+    if(!(pPidList = LocalAlloc(LMEM_ZEROINIT, cPidList * sizeof(MSYSPROC_TREE_ENTRY)))) { goto fail; }
+    while((iPidList < cPidList) && (pObProcess = VmmProcessGetNext(H, pObProcess, VMM_FLAG_PROCESS_SHOW_TERMINATED | VMM_FLAG_PROCESS_TOKEN))) {
+        pe = pPidList + iPidList;
+        pe->dwPID = pObProcess->dwPID;
+        pe->dwPPID = pObProcess->dwPPID;
+        pe->ftCreate = VmmProcess_GetCreateTimeOpt(H, pObProcess);
+        pe->pObProcess = (PVMM_PROCESS)Ob_INCREF(pObProcess);       // INCREF process object and assign to array
+        iPidList++;
+    }
+    Ob_DECREF_NULL(&pObProcess);
+    cPidList = iPidList;
+    // 2: iterate over list sorted by create time
+    qsort(pPidList, cPidList, sizeof(MSYSPROC_TREE_ENTRY), (int(*)(const void *, const void *))MSysProc_ReadByTime_CmpSort);
+    nt = Util_VfsLineFixed_Read(
+        H, (UTIL_VFSLINEFIXED_PFN_CB)MSysProc_ReadByTime_ReadLineCB, NULL, MSYSPROC_TIME_LINE_LENGTH, MSYSPROX_TIME_LINE_HEADER,
+        pPidList, (DWORD)cPidList, sizeof(MSYSPROC_TREE_ENTRY),
+        pb, cb, pcbRead, cbOffset
+    );
+fail:
+    if(pPidList) {
+        for(i = 0; i < cPidList; i++) {
+            Ob_DECREF(pPidList[i].pObProcess);      // DECREF process object in array
+        }
+        LocalFree(pPidList);
+    }
+    return nt;
+}
+
 NTSTATUS MSysProc_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt;
@@ -254,13 +335,16 @@ NTSTATUS MSysProc_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out
         LocalFree(pbFile);
         return nt;
     }
+    if(!_stricmp(ctxP->uszPath, "proc-time.txt")) {
+        return MSysProc_ReadByTime(H, pb, cb, pcbRead, cbOffset);
+    }
     return VMMDLL_STATUS_FILE_INVALID;
 }
 
 BOOL MSysProc_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList)
 {
     SIZE_T cProcess = 0;
-    DWORD cbProcTree = 0;
+    DWORD cbProcTime = 0, cbProcTree = 0;
     if(ctxP->uszPath[0]) { return FALSE; }
     VmmProcessListPIDs(H, NULL, &cProcess, VMM_FLAG_PROCESS_SHOW_TERMINATED);
     if(cProcess) {
@@ -270,6 +354,8 @@ BOOL MSysProc_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ 
         if(VmmWork_ProcessActionForeachParallel_Void(H, 0, &cbProcTree, NULL, MSysProc_ListTree_ProcessUserParams_CallbackAction)) {
             VMMDLL_VfsList_AddFile(pFileList, "proc-v.txt", cbProcTree, NULL);
         }
+        cbProcTime = (DWORD)(cProcess + 2) * MSYSPROC_TIME_LINE_LENGTH;
+        VMMDLL_VfsList_AddFile(pFileList, "proc-time.txt", cbProcTime, NULL);
     }
     return TRUE;
 }
