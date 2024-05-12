@@ -7713,6 +7713,14 @@ impl VmmYara<'_> {
         return Ok(yara);
     }
 
+    unsafe fn cstr_to_string(sz : *const c_char) -> String {
+        return if sz.is_null() {
+            String::from("")
+        } else {
+            String::from(CStr::from_ptr(sz).to_str().unwrap_or(""))
+        };
+    }
+
     extern "C" fn impl_yara_cb(ctx : *const CVMMDLL_YARA_CONFIG, yrm : *const CVMMDLL_VMMYARA_RULE_MATCH, _pb_buffer : *const u8, _cb_buffer : usize) -> bool {
         unsafe {
             if (*ctx).dwVersion != VMMDLL_YARA_CONFIG_VERSION {
@@ -7723,27 +7731,27 @@ impl VmmYara<'_> {
             }
             let addr = (*ctx).vaCurrent;
             // rule:
-            let rule = String::from(CStr::from_ptr((*yrm).szRuleIdentifier).to_str().unwrap_or(""));
+            let rule = VmmYara::cstr_to_string((*yrm).szRuleIdentifier);
             // tags:
             let mut tags = Vec::new();
             let ctags = std::cmp::min((*yrm).cTags as usize, 8);
             for i in 0..ctags {
-                let tag = String::from(CStr::from_ptr((*yrm).szTags[i]).to_str().unwrap_or(""));
+                let tag = VmmYara::cstr_to_string((*yrm).szTags[i]);
                 tags.push(tag);
             }
             // meta:
             let mut meta = Vec::new();
             let cmeta = std::cmp::min((*yrm).cMeta as usize, 8);
             for i in 0..cmeta {
-                let key = String::from(CStr::from_ptr((*yrm).meta[i].szIdentifier).to_str().unwrap_or(""));
-                let value = String::from(CStr::from_ptr((*yrm).meta[i].szString).to_str().unwrap_or(""));
+                let key = VmmYara::cstr_to_string((*yrm).meta[i].szIdentifier);
+                let value = VmmYara::cstr_to_string((*yrm).meta[i].szString);
                 meta.push((key, value));
             }
             // match_strings:
             let mut match_strings = Vec::new();
             let cmatch_strings = std::cmp::min((*yrm).cStrings as usize, 8);
             for i in 0..cmatch_strings {
-                let match_string = String::from(CStr::from_ptr((*yrm).strings[i].szString).to_str().unwrap_or(""));
+                let match_string = VmmYara::cstr_to_string((*yrm).strings[i].szString);
                 let cmatch = std::cmp::min((*yrm).strings[i].cMatch as usize, 16);
                 let mut addresses = Vec::new();
                 for j in 0..cmatch {
