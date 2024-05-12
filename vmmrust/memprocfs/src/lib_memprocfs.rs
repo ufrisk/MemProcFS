@@ -5061,6 +5061,7 @@ struct CVMMDLL_VFS_FILELIST2 {
 
 extern "C" fn vfs_list_addfile_cb(h : &mut Vec<VmmVfsEntry>, name : *const c_char, cb : u64, _p_ex_info : usize) {
     unsafe {
+        if name.is_null() { return; }
         if let Ok(name) = CStr::from_ptr(name).to_str() {
             let e = VmmVfsEntry {
                 name : name.to_string(),
@@ -5074,6 +5075,7 @@ extern "C" fn vfs_list_addfile_cb(h : &mut Vec<VmmVfsEntry>, name : *const c_cha
 
 extern "C" fn vfs_list_adddirectory_cb(h : &mut Vec<VmmVfsEntry>, name : *const c_char, _p_ex_info : usize) {
     unsafe {
+        if name.is_null() { return; }
         if let Ok(name) = CStr::from_ptr(name).to_str() {
             let e = VmmVfsEntry {
                 name : name.to_string(),
@@ -5083,6 +5085,22 @@ extern "C" fn vfs_list_adddirectory_cb(h : &mut Vec<VmmVfsEntry>, name : *const 
             h.push(e);
         }
     }
+}
+
+unsafe fn cstr_to_string(sz : *const c_char) -> String {
+    return if sz.is_null() {
+        String::from("")
+    } else {
+        String::from(CStr::from_ptr(sz).to_str().unwrap_or(""))
+    };
+}
+
+unsafe fn cstr_to_string_lossy(sz : *const c_char) -> String {
+    return if sz.is_null() {
+        String::from("")
+    } else {
+        String::from_utf8_lossy(CStr::from_ptr(sz).to_bytes()).to_string()
+    };
 }
 
 #[allow(non_snake_case)]
@@ -5265,15 +5283,15 @@ impl Vmm<'_> {
                     src_is_valid : ne.src_fValid,
                     src_port : ne.src_port,
                     src_addr_raw : ne.src_pbAddr,
-                    src_str : String::from(CStr::from_ptr(ne.src_uszText).to_str().unwrap_or("")),
+                    src_str : cstr_to_string(ne.src_uszText),
                     dst_is_valid : ne.dst_fValid,
                     dst_port : ne.dst_port,
                     dst_addr_raw : ne.dst_pbAddr,
-                    dst_str : String::from(CStr::from_ptr(ne.dst_uszText).to_str().unwrap_or("")),
+                    dst_str : cstr_to_string(ne.dst_uszText),
                     va_object : ne.vaObj,
                     filetime : ne.ftTime,
                     pool_tag : ne.dwPoolTag,
-                    desc : String::from(CStr::from_ptr(ne.uszText).to_str().unwrap_or("")),
+                    desc : cstr_to_string(ne.uszText),
                 };
                 result.push(e);
             }
@@ -5350,12 +5368,12 @@ impl Vmm<'_> {
                     service_specific_exit_code : ne.dwServiceSpecificExitCode,
                     check_point : ne.dwCheckPoint,
                     wait_hint : ne.wWaitHint,
-                    name : String::from(CStr::from_ptr(ne.uszServiceName).to_str().unwrap_or("")),
-                    name_display : String::from(CStr::from_ptr(ne.uszDisplayName).to_str().unwrap_or("")),
-                    path : String::from(CStr::from_ptr(ne.uszPath).to_str().unwrap_or("")),
-                    user_type : String::from(CStr::from_ptr(ne.uszUserTp).to_str().unwrap_or("")),
-                    user_account : String::from(CStr::from_ptr(ne.uszUserAcct).to_str().unwrap_or("")),
-                    image_path : String::from(CStr::from_ptr(ne.uszImagePath).to_str().unwrap_or("")),
+                    name : cstr_to_string(ne.uszServiceName),
+                    name_display : cstr_to_string(ne.uszDisplayName),
+                    path : cstr_to_string(ne.uszPath),
+                    user_type : cstr_to_string(ne.uszUserTp),
+                    user_account : cstr_to_string(ne.uszUserAcct),
+                    image_path : cstr_to_string(ne.uszImagePath),
                 };
                 result.push(e);
             }
@@ -5385,8 +5403,8 @@ impl Vmm<'_> {
             for i in 0..cMap {
                 let ne = &pMap[i];
                 let e = VmmMapUserEntry {
-                    user : String::from(CStr::from_ptr(ne.uszText).to_str().unwrap_or("")),
-                    sid : String::from(CStr::from_ptr(ne.uszSID).to_str().unwrap_or("")),
+                    user : cstr_to_string(ne.uszText),
+                    sid : cstr_to_string(ne.uszSID),
                     va_reg_hive : ne.vaRegHive,
                 };
                 result.push(e);
@@ -5419,7 +5437,7 @@ impl Vmm<'_> {
                 let e = VmmMapVirtualMachineEntry {
                     h_vmm : self.native.h,
                     h_vm : ne.hVM,
-                    name : String::from(CStr::from_ptr(ne.uszName).to_str().unwrap_or("")),
+                    name : cstr_to_string(ne.uszName),
                     gpa_max : ne.gpaMax,
                     tp_vm : ne.tp,
                     is_active : ne.fActive,
@@ -5576,9 +5594,9 @@ impl Vmm<'_> {
                     va : ne.vaCMHIVE,
                     va_baseblock : ne.vaHBASE_BLOCK,
                     size : ne.cbLength,
-                    name : String::from_utf8_lossy(CStr::from_ptr(ne.uszName.as_ptr() as *const c_char).to_bytes()).to_string(),
-                    name_short : String::from_utf8_lossy(CStr::from_ptr(ne.uszNameShort.as_ptr() as *const c_char).to_bytes()).to_string(),
-                    path : String::from_utf8_lossy(CStr::from_ptr(ne.uszHiveRootPath.as_ptr() as *const c_char).to_bytes()).to_string(),
+                    name : cstr_to_string_lossy(ne.uszName.as_ptr() as *const c_char),
+                    name_short : cstr_to_string_lossy(ne.uszNameShort.as_ptr() as *const c_char),
+                    path : cstr_to_string_lossy(ne.uszHiveRootPath.as_ptr() as *const c_char),
                 };
                 result.push(e);
             }
@@ -5684,8 +5702,7 @@ impl VmmPdb<'_> {
         if !r {
             return Err(anyhow!("VMMDLL_PdbSymbolName: fail."));
         }
-        let cstr_symbol_name = unsafe { CStr::from_ptr(c_symbol_name.as_ptr()) };
-        let string_symbol_name = String::from_utf8_lossy(cstr_symbol_name.to_bytes()).to_string();
+        let string_symbol_name = unsafe { cstr_to_string_lossy(c_symbol_name.as_ptr()) };
         return Ok((string_symbol_name, result_symbol_displacement));
     }
 
@@ -5834,7 +5851,7 @@ impl VmmRegKey<'_> {
                 if !r {
                     break;
                 }
-                let name = String::from_utf8_lossy(CStr::from_ptr(data.as_ptr()).to_bytes()).to_string();
+                let name = cstr_to_string_lossy(data.as_ptr());
                 let path = format!("{}\\{}", self.path, name);
                 let e = VmmRegKey {
                     vmm : self.vmm,
@@ -6601,8 +6618,8 @@ impl VmmProcess<'_> {
             pid : pi.dwPID,
             ppid : pi.dwPPID,
             state : pi.dwState,
-            name : unsafe { CStr::from_ptr(&pi.szName as *const c_char).to_string_lossy().to_string() },
-            name_long : unsafe { CStr::from_ptr(&pi.szNameLong as *const c_char).to_string_lossy().to_string() },
+            name : unsafe { cstr_to_string_lossy(&pi.szName as *const c_char) },
+            name_long : unsafe { cstr_to_string_lossy(&pi.szNameLong as *const c_char) },
             pa_dtb : pi.paDTB,
             pa_dtb_user : pi.paDTB_UserOpt,
             va_eprocess : pi.vaEPROCESS,
@@ -6611,7 +6628,7 @@ impl VmmProcess<'_> {
             va_peb32 : pi.vaPEB32,
             session_id : pi.dwSessionId,
             luid : pi.qwLUID,
-            sid : unsafe { CStr::from_ptr(&pi.szSID as *const c_char).to_string_lossy().to_string() },
+            sid : unsafe { cstr_to_string_lossy(&pi.szSID as *const c_char) },
             integrity_level : VmmIntegrityLevelType::from(pi.IntegrityLevel),
         };
         return Ok(result);
@@ -6622,8 +6639,7 @@ impl VmmProcess<'_> {
         if r.is_null() {
             return Err(anyhow!("VMMDLL_ProcessGetInformationString: fail."));
         }
-        let cstr = unsafe { CStr::from_ptr(r) };
-        let result = cstr.to_string_lossy().to_string();
+        let result = unsafe { cstr_to_string_lossy(r) };
         (self.vmm.native.VMMDLL_MemFree)(r as usize);
         return Ok(result);
     }
@@ -6653,8 +6669,7 @@ impl VmmProcess<'_> {
         if !r {
             return Err(anyhow!("VMMDLL_PdbLoad: fail."));
         }
-        let cstr = unsafe { CStr::from_ptr(szModuleName.as_ptr() as *const c_char) };
-        let module = cstr.to_string_lossy().to_string();
+        let module = unsafe { cstr_to_string_lossy(szModuleName.as_ptr() as *const c_char) };
         let pdb = VmmPdb {
             vmm : self.vmm,
             module,
@@ -6694,8 +6709,8 @@ impl VmmProcess<'_> {
                     va_security_descriptor : ne.vaSecurityDescriptor,
                     handle_pid : ne.dwPID,
                     pool_tag : ne.dwPoolTag,
-                    info : String::from(CStr::from_ptr(ne.uszText).to_str().unwrap_or("")),
-                    tp : String::from(CStr::from_ptr(ne.uszType).to_str().unwrap_or("")),
+                    info : cstr_to_string(ne.uszText),
+                    tp : cstr_to_string(ne.uszType),
                 };
                 result.push(e);
             }
@@ -6799,8 +6814,8 @@ impl VmmProcess<'_> {
                         pid : self.pid,
                         age : nei.dwAge,
                         raw_guid : nei.Guid,
-                        guid : String::from(CStr::from_ptr(nei.uszGuid).to_str().unwrap_or("")),
-                        pdb_filename : String::from(CStr::from_ptr(nei.uszPdbFilename).to_str().unwrap_or("")),
+                        guid : cstr_to_string(nei.uszGuid),
+                        pdb_filename : cstr_to_string(nei.uszPdbFilename),
                     });
                 }
                 let mut version_info = None;
@@ -6808,14 +6823,14 @@ impl VmmProcess<'_> {
                     let nei = &*ne.pExVersionInfo;
                     version_info = Some(VmmProcessMapModuleVersionEntry {
                         pid : self.pid,
-                        company_name : String::from(CStr::from_ptr(nei.uszCompanyName).to_str().unwrap_or("")),
-                        file_description : String::from(CStr::from_ptr(nei.uszFileDescription).to_str().unwrap_or("")),
-                        file_version : String::from(CStr::from_ptr(nei.uszFileVersion).to_str().unwrap_or("")),
-                        internal_name : String::from(CStr::from_ptr(nei.uszInternalName).to_str().unwrap_or("")),
-                        legal_copyright : String::from(CStr::from_ptr(nei.uszLegalCopyright).to_str().unwrap_or("")),
-                        original_file_name : String::from(CStr::from_ptr(nei.uszOriginalFilename).to_str().unwrap_or("")),
-                        product_name : String::from(CStr::from_ptr(nei.uszProductName).to_str().unwrap_or("")),
-                        product_version : String::from(CStr::from_ptr(nei.uszProductVersion).to_str().unwrap_or("")),
+                        company_name : cstr_to_string(nei.uszCompanyName),
+                        file_description : cstr_to_string(nei.uszFileDescription),
+                        file_version : cstr_to_string(nei.uszFileVersion),
+                        internal_name : cstr_to_string(nei.uszInternalName),
+                        legal_copyright : cstr_to_string(nei.uszLegalCopyright),
+                        original_file_name : cstr_to_string(nei.uszOriginalFilename),
+                        product_name : cstr_to_string(nei.uszProductName),
+                        product_version : cstr_to_string(nei.uszProductVersion),
                     });
                 }
                 let e = VmmProcessMapModuleEntry {
@@ -6825,8 +6840,8 @@ impl VmmProcess<'_> {
                     image_size : ne.cbImageSize,
                     is_wow64 : ne.fWoW64,
                     tp : VmmProcessMapModuleType::from(ne.tp),
-                    name : String::from(CStr::from_ptr(ne.uszText).to_str().unwrap_or("")),
-                    full_name : String::from(CStr::from_ptr(ne.uszFullName).to_str().unwrap_or("")),
+                    name : cstr_to_string(ne.uszText),
+                    full_name : cstr_to_string(ne.uszFullName),
                     file_size_raw : ne.cbFileSizeRaw,
                     section_count : ne.cSection,
                     eat_count : ne.cEAT,
@@ -6866,8 +6881,8 @@ impl VmmProcess<'_> {
                     pid : self.pid,
                     va_function : ne.vaFunction,
                     ordinal : ne.dwOrdinal,
-                    function : String::from(CStr::from_ptr(ne.uszFunction).to_str().unwrap_or("")),
-                    forwarded_function : String::from(CStr::from_ptr(ne.uszForwardedFunction).to_str().unwrap_or("")),
+                    function : cstr_to_string(ne.uszFunction),
+                    forwarded_function : cstr_to_string(ne.uszForwardedFunction),
                 };
                 result.push(e);
             }
@@ -6900,8 +6915,8 @@ impl VmmProcess<'_> {
                 let e = VmmProcessMapIatEntry {
                     pid : self.pid,
                     va_function : ne.vaFunction,
-                    function : String::from(CStr::from_ptr(ne.uszFunction).to_str().unwrap_or("")),
-                    module : String::from(CStr::from_ptr(ne.uszModule).to_str().unwrap_or("")),
+                    function : cstr_to_string(ne.uszFunction),
+                    module : cstr_to_string(ne.uszModule),
                 };
                 result.push(e);
             }
@@ -6940,7 +6955,7 @@ impl VmmProcess<'_> {
                     is_x : (ne.fPage & 0x8000000000000000) == 0,
                     is_s : (ne.fPage & 0x0000000000000004) == 0,
                     is_wow64 : ne.fWoW64,
-                    info : String::from(CStr::from_ptr(ne.uszText).to_str().unwrap_or("")),
+                    info : cstr_to_string(ne.uszText),
                 };
                 result.push(e);
             }
@@ -7030,7 +7045,7 @@ impl VmmProcess<'_> {
                     va_base : ne.vaBase,
                     image_size : ne.cbImageSize,
                     is_wow64 : ne.fWoW64,
-                    name : String::from(CStr::from_ptr(ne.uszText).to_str().unwrap_or("")),
+                    name : cstr_to_string(ne.uszText),
                     checksum : ne.dwCheckSum,
                     timedatestamp : ne.dwTimeDateStamp,
                     ft_unload : ne.ftUnload,
@@ -7076,7 +7091,7 @@ impl VmmProcess<'_> {
                     va_prototype_pte : ne.vaPrototypePte,
                     va_subsection : ne.vaSubsection,
                     va_file_object : ne.vaFileObject,
-                    info : String::from(CStr::from_ptr(ne.uszText).to_str().unwrap_or("")),
+                    info : cstr_to_string(ne.uszText),
                     vadex_page_base : ne.cVadExPagesBase,
                     vadex_page_count : ne.cVadExPages,
                 };
@@ -7713,14 +7728,6 @@ impl VmmYara<'_> {
         return Ok(yara);
     }
 
-    unsafe fn cstr_to_string(sz : *const c_char) -> String {
-        return if sz.is_null() {
-            String::from("")
-        } else {
-            String::from(CStr::from_ptr(sz).to_str().unwrap_or(""))
-        };
-    }
-
     extern "C" fn impl_yara_cb(ctx : *const CVMMDLL_YARA_CONFIG, yrm : *const CVMMDLL_VMMYARA_RULE_MATCH, _pb_buffer : *const u8, _cb_buffer : usize) -> bool {
         unsafe {
             if (*ctx).dwVersion != VMMDLL_YARA_CONFIG_VERSION {
@@ -7731,27 +7738,27 @@ impl VmmYara<'_> {
             }
             let addr = (*ctx).vaCurrent;
             // rule:
-            let rule = VmmYara::cstr_to_string((*yrm).szRuleIdentifier);
+            let rule = cstr_to_string((*yrm).szRuleIdentifier);
             // tags:
             let mut tags = Vec::new();
             let ctags = std::cmp::min((*yrm).cTags as usize, 8);
             for i in 0..ctags {
-                let tag = VmmYara::cstr_to_string((*yrm).szTags[i]);
+                let tag = cstr_to_string((*yrm).szTags[i]);
                 tags.push(tag);
             }
             // meta:
             let mut meta = Vec::new();
             let cmeta = std::cmp::min((*yrm).cMeta as usize, 8);
             for i in 0..cmeta {
-                let key = VmmYara::cstr_to_string((*yrm).meta[i].szIdentifier);
-                let value = VmmYara::cstr_to_string((*yrm).meta[i].szString);
+                let key = cstr_to_string((*yrm).meta[i].szIdentifier);
+                let value = cstr_to_string((*yrm).meta[i].szString);
                 meta.push((key, value));
             }
             // match_strings:
             let mut match_strings = Vec::new();
             let cmatch_strings = std::cmp::min((*yrm).cStrings as usize, 8);
             for i in 0..cmatch_strings {
-                let match_string = VmmYara::cstr_to_string((*yrm).strings[i].szString);
+                let match_string = cstr_to_string((*yrm).strings[i].szString);
                 let cmatch = std::cmp::min((*yrm).strings[i].cMatch as usize, 16);
                 let mut addresses = Vec::new();
                 for j in 0..cmatch {
