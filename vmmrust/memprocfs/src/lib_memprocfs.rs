@@ -7748,7 +7748,7 @@ impl VmmYara<'_> {
             }
             // meta:
             let mut meta = Vec::new();
-            let cmeta = std::cmp::min((*yrm).cMeta as usize, 8);
+            let cmeta = std::cmp::min((*yrm).cMeta as usize, 16);
             for i in 0..cmeta {
                 let key = cstr_to_string((*yrm).meta[i].szIdentifier);
                 let value = cstr_to_string((*yrm).meta[i].szString);

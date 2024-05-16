@@ -21,8 +21,21 @@
 typedef unsigned __int64                    QWORD, *PQWORD;
 _Ret_maybenull_ HMODULE WINAPI LoadLibraryU(_In_ LPCSTR lpLibFileName);
 
+#ifdef _WIN64
+#define VMM_64BIT
+#else /* _WIN64 */
+#define VMM_32BIT
+#endif /* _WIN64 */
+
 #endif /* _WIN32 */
 #ifdef LINUX
+
+#if __SIZEOF_POINTER__ == 8
+#define VMM_64BIT
+#else /* __SIZEOF_POINTER__ */
+#define VMM_32BIT
+#endif /* __SIZEOF_POINTER__ */
+
 #include <byteswap.h>
 #include <ctype.h>
 #include <dirent.h>

@@ -8,8 +8,15 @@
 
 #include "vmmdll.h"
 #include "ob/ob.h"
+#include "oscompatibility.h"
 
-#define SCATTER_MAX_SIZE            0x40000000
+#ifdef VMM_64BIT
+#define SCATTER_MAX_SIZE_TOTAL      0x40000000000
+#else /* VMM_64BIT */
+#define SCATTER_MAX_SIZE_TOTAL      0x40000000
+#endif /* VMM_64BIT */
+
+#define SCATTER_MAX_SIZE_SINGLE     0x40000000
 #define SCATTER_CONTEXT_MAGIC       0x5a5d65c8465a32d5
 
 typedef struct tdSCATTER_RANGE {
@@ -74,7 +81,7 @@ BOOL VMMDLL_Scatter_PrepareInternal(_In_ PSCATTER_CONTEXT ctx, _In_ QWORD va, _I
     if(va + cb < va) { return FALSE; }
     if(ctx->fExecute) { return FALSE; }
     if(!cb) { return TRUE; }
-    if((cb >= SCATTER_MAX_SIZE) || ((ctx->cPageTotal << 12) + cb > SCATTER_MAX_SIZE)) { return FALSE; }
+    if((cb >= SCATTER_MAX_SIZE_SINGLE) || (((SIZE_T)ctx->cPageTotal << 12) + cb > SCATTER_MAX_SIZE_TOTAL)) { return FALSE; }
     // count MEMs (required and pre-existing)
     cMEMsRequired = ((va & 0xfff) + cb + 0xfff) >> 12;
     vaMEM = va & ~0xfff;
@@ -153,7 +160,7 @@ BOOL VMMDLL_Scatter_PrepareWriteInternal(_In_ PSCATTER_CONTEXT ctx, _In_ QWORD v
     if(va + cb < va) { return FALSE; }
     if(ctx->fExecute) { return FALSE; }
     if(!cb) { return TRUE; }
-    if((cb >= SCATTER_MAX_SIZE) || ((ctx->wr.cPage << 12) + cb > SCATTER_MAX_SIZE)) { return FALSE; }
+    if((cb >= SCATTER_MAX_SIZE_SINGLE) || (((SIZE_T)ctx->wr.cPage << 12) + cb > SCATTER_MAX_SIZE_TOTAL)) { return FALSE; }
     // alloc and store in context
     if(fBufferExternal) {
         if(!(pRangeWr = LocalAlloc(0, sizeof(SCATTER_RANGE_WRITE)))) { return FALSE; }
