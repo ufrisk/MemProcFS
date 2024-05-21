@@ -26,6 +26,7 @@
 static const VMMEVIL_TYPE EVIL_TIME_CHANGE  = { .Name = "TIME_CHANGE",  .Severity = 0x10000 };
 static const VMMEVIL_TYPE EVIL_AV_DETECT    = { .Name = "AV_DETECT",    .Severity = 0xf000 };
 static const VMMEVIL_TYPE EVIL_PE_INJECT    = { .Name = "PE_INJECT",    .Severity = 0xe000 };
+static const VMMEVIL_TYPE EVIL_UM_APC       = { .Name = "UM_APC",       .Severity = 0xd800 };
 static const VMMEVIL_TYPE EVIL_PROC_NOLINK  = { .Name = "PROC_NOLINK",  .Severity = 0xd000 };
 static const VMMEVIL_TYPE EVIL_PROC_PARENT  = { .Name = "PROC_PARENT",  .Severity = 0xc000 };
 static const VMMEVIL_TYPE EVIL_PROC_BAD_DTB = { .Name = "PROC_BAD_DTB", .Severity = 0xb000 };
