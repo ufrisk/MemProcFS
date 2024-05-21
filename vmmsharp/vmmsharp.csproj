@@ -63,8 +63,12 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="vmmsharp.cs" />
-    <Compile Include="vmm_example.cs" />
+    <Compile Include="Internal\Lci.cs" />
+    <Compile Include="Internal\Vmmi.cs" />
+    <Compile Include="LeechCore.cs" />
+    <Compile Include="Vmm.cs" />
+    <Compile Include="VmmScatter.cs" />
+    <Compile Include="Example\vmm_example.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
