@@ -20,7 +20,7 @@ using System.Text;
  *  
  */
 
-namespace vmmsharp.Example
+namespace vmmsharp.Examples
 {
     class vmm_example
     {

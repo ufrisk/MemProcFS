@@ -68,7 +68,7 @@
     <Compile Include="LeechCore.cs" />
     <Compile Include="Vmm.cs" />
     <Compile Include="VmmScatter.cs" />
-    <Compile Include="Example\vmm_example.cs" />
+    <Compile Include="Examples\vmm_example.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
