@@ -5,10 +5,11 @@ using System.Text;
 /*  
  *  Examples of using the PCILeech / LeechCore / MemProcFS "Lc" and "Vmm" APIs for C#
  *  
- *  1) Include the file 'vmmsharp.cs' in your project.
- *  2) Make sure your C# project is run as x64 (not x86 or AnyCPU). This is because the
+ *  1) Build this project for Release/x64.
+ *  2) Include a project reference to vmmsharp.dll in your project.
+ *  3) Make sure your C# project is run as x64 (not x86 or AnyCPU). This is because the
  *     natíve 'leechcore.dll' and 'vmm.dll' only exists as 64-bit native binaries.
- *  3) Make sure the MemProcFS binaries (vmm.dll / leechcore.dll and related binaries)
+ *  4) Make sure the MemProcFS binaries (vmm.dll / leechcore.dll and related binaries)
  *     are located alongside your C# binary or in the "current directory".
  *     
  *  The examples in this file generally don't print anything on the screen, but if
@@ -22,9 +23,9 @@ using System.Text;
 
 namespace vmmsharp.Examples
 {
-    class vmm_example
+    public static class VmmExample
     {
-        static bool ExampleVfsCallBack_AddFile(ulong h, [MarshalAs(UnmanagedType.LPUTF8Str)] string wszName, ulong cb, IntPtr pExInfo)
+        private static bool ExampleVfsCallBack_AddFile(ulong h, [MarshalAs(UnmanagedType.LPUTF8Str)] string wszName, ulong cb, IntPtr pExInfo)
         {
             ulong ft = 0;
             if (pExInfo != IntPtr.Zero)
@@ -36,7 +37,7 @@ namespace vmmsharp.Examples
             return true;
         }
 
-        static bool ExampleVfsCallBack_AddDirectory(ulong h, [MarshalAs(UnmanagedType.LPUTF8Str)] string wszName, IntPtr pExInfo)
+        private static bool ExampleVfsCallBack_AddDirectory(ulong h, [MarshalAs(UnmanagedType.LPUTF8Str)] string wszName, IntPtr pExInfo)
         {
             ulong ft = 0;
             if (pExInfo != IntPtr.Zero)
@@ -48,7 +49,7 @@ namespace vmmsharp.Examples
             return true;
         }
 
-        static void ExampleVmm()
+        private static void ExampleVmm()
         {
             bool result;
             uint nt;
@@ -220,7 +221,7 @@ namespace vmmsharp.Examples
             vmm.Close();
         }
 
-        static void ExampleLeechCore()
+        private static void ExampleLeechCore()
         {
             bool result;
 
@@ -256,7 +257,10 @@ namespace vmmsharp.Examples
             lc.Close();
         }
 
-        static void Main(string[] args)
+        /// <summary>
+        /// Invoke to run the examples above.
+        /// </summary>
+        public static void RunExamples()
         {
             ExampleLeechCore();
             ExampleVmm();
