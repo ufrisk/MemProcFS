@@ -66,12 +66,12 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Internal\Lci.cs" />
-    <Compile Include="Internal\Vmmi.cs" />
-    <Compile Include="LeechCore.cs" />
-    <Compile Include="Vmm.cs" />
-    <Compile Include="VmmScatter.cs" />
-    <Compile Include="Examples\VmmExample.cs" />
+    <Compile Include="vmmsharp\Internal\Lci.cs" />
+    <Compile Include="vmmsharp\Internal\Vmmi.cs" />
+    <Compile Include="vmmsharp\LeechCore.cs" />
+    <Compile Include="vmmsharp\Vmm.cs" />
+    <Compile Include="vmmsharp\VmmScatter.cs" />
+    <Compile Include="vmmsharp\Examples\VmmExample.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
