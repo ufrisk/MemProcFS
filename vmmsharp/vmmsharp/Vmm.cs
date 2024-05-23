@@ -4,7 +4,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
-using vmmsharp.Internal;
+using Vmmsharp.Internal;
 
 /*  
  *  C# API wrapper 'vmmsharp' for MemProcFS 'vmm.dll' and LeechCore 'leechcore.dll' APIs.
@@ -21,7 +21,7 @@ using vmmsharp.Internal;
  *  
  */
 
-namespace vmmsharp
+namespace Vmmsharp
 {
     /// <summary>
     /// MemProcFS public API

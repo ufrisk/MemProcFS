@@ -6,8 +6,8 @@
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <ProjectGuid>{3CDF36DD-2B04-4876-B4BF-29FED2386E6A}</ProjectGuid>
     <OutputType>Library</OutputType>
-    <RootNamespace>vmmsharp</RootNamespace>
-    <AssemblyName>vmmsharp</AssemblyName>
+    <RootNamespace>Vmmsharp</RootNamespace>
+    <AssemblyName>Vmmsharp</AssemblyName>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
@@ -66,12 +66,12 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="vmmsharp\Internal\Lci.cs" />
-    <Compile Include="vmmsharp\Internal\Vmmi.cs" />
-    <Compile Include="vmmsharp\LeechCore.cs" />
-    <Compile Include="vmmsharp\Vmm.cs" />
-    <Compile Include="vmmsharp\VmmScatter.cs" />
-    <Compile Include="vmmsharp\Examples\VmmExample.cs" />
+    <Compile Include="Vmmsharp\Internal\Lci.cs" />
+    <Compile Include="Vmmsharp\Internal\Vmmi.cs" />
+    <Compile Include="Vmmsharp\LeechCore.cs" />
+    <Compile Include="Vmmsharp\Vmm.cs" />
+    <Compile Include="Vmmsharp\VmmScatter.cs" />
+    <Compile Include="Vmmsharp\Examples\VmmExample.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

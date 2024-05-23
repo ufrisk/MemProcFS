@@ -7,10 +7,10 @@ using System.Text;
  *  
  *  1) Do one of the following options to include this library in your project:
  *      - Build this project for Release/x64.
- *      - Include a project reference to vmmsharp.dll in your project.
+ *      - Include a project reference to Vmmsharp.dll in your project.
  *      *OR*
- *      - Copy the 'vmmsharp' folder into your C# project directly.
- *      - Be sure to reference the vmmsharp namespace via 'using vmmsharp;'
+ *      - Copy the 'Vmmsharp' folder into your C# project directly.
+ *      - Be sure to reference the Vmmsharp namespace via 'using Vmmsharp;'
  *  3) Make sure your C# project is run as x64 (not x86 or AnyCPU). This is because the
  *     natíve 'leechcore.dll' and 'vmm.dll' only exists as 64-bit native binaries.
  *  4) Make sure the MemProcFS binaries (vmm.dll / leechcore.dll and related binaries)
@@ -25,7 +25,7 @@ using System.Text;
  *  
  */
 
-namespace vmmsharp.Examples
+namespace Vmmsharp.Examples
 {
     public static class VmmExample
     {

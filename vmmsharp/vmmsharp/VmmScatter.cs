@@ -1,9 +1,9 @@
 ﻿using System;
 using System.Runtime.CompilerServices;
 using System.Text;
-using vmmsharp.Internal;
+using Vmmsharp.Internal;
 
-namespace vmmsharp
+namespace Vmmsharp
 {
     public sealed class VmmScatter : IDisposable
     {

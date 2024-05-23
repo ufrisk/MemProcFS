@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Runtime.InteropServices;
 
-namespace vmmsharp.Internal
+namespace Vmmsharp.Internal
 {
     internal static class Lci
     {
