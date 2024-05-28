@@ -264,6 +264,62 @@ VmmPycSearch_max_results_set(PyObj_Search *self, PyObject *value, void *closure)
     return 0;
 }
 
+// -> STR
+static PyObject*
+VmmPycSearch_strategy_get(PyObj_Search *self, void *closure)
+{
+    if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "VmmSearch.strategy: Not initialized."); }
+    if(self->ctxSearch.fForcePTE) {
+        return PyUnicode_FromString("pte");
+    }
+    if(self->ctxSearch.fForceVAD) {
+        return PyUnicode_FromString("vad");
+    }
+    return PyUnicode_FromString("default");
+}
+
+// STR ->
+static int
+VmmPycSearch_strategy_set(PyObj_Search *self, PyObject *value, void *closure)
+{
+    PyObject *pyBytes;
+    LPSTR szStrategy;
+    if(!self->fValid) {
+        PyErr_SetString(PyExc_TypeError, "VmmSearch.strategy: Not initialized.");
+        return -1;
+    }
+    if(!PyUnicode_Check(value)) {
+        PyErr_SetString(PyExc_TypeError, "VmmSearch.strategy: Invalid type.");
+        return -1;
+    }
+    if(self->fStarted) {
+        PyErr_SetString(PyExc_TypeError, "VmmSearch.max_results: Already started.");
+        return -1;
+    }
+    pyBytes = PyUnicode_AsEncodedString(value, NULL, NULL);
+    if(!pyBytes) {
+        PyErr_SetString(PyExc_TypeError, "VmmSearch.strategy: Invalid type.");
+        return -1;
+    }
+    szStrategy = PyBytes_AsString(pyBytes);
+    if(!_stricmp(szStrategy, "pte")) {
+        self->ctxSearch.fForcePTE = TRUE;
+        self->ctxSearch.fForceVAD = FALSE;
+    } else if (!_stricmp(szStrategy, "vad")) {
+        self->ctxSearch.fForcePTE = FALSE;
+        self->ctxSearch.fForceVAD = TRUE;
+    } else if (!_stricmp(szStrategy, "default")) {
+        self->ctxSearch.fForcePTE = FALSE;
+        self->ctxSearch.fForceVAD = FALSE;
+    } else {
+        PyErr_SetString(PyExc_TypeError, "VmmSearch.strategy: Invalid strategy.");
+        Py_DECREF(pyBytes);
+        return -1;
+    }
+    Py_DECREF(pyBytes);
+    return 0;
+}
+
 //-----------------------------------------------------------------------------
 // VmmPycSearch INITIALIZATION AND CORE FUNCTIONALITY BELOW:
 //-----------------------------------------------------------------------------
@@ -369,6 +425,7 @@ BOOL VmmPycSearch_InitializeType(PyObject *pModule)
         {"addr_min", (getter)VmmPycSearch_addr_min_get, (setter)VmmPycSearch_addr_min_set, "Min address to search.", NULL},
         {"flags", (getter)VmmPycSearch_flags_get, (setter)VmmPycSearch_flags_set, "Read Flags.", NULL},
         {"max_results", (getter)VmmPycSearch_max_results_get, (setter)VmmPycSearch_max_results_set, "Max address to search.", NULL},
+        {"strategy", (getter)VmmPycSearch_strategy_get, (setter)VmmPycSearch_strategy_set, "Search strategy.", NULL},
         {NULL}
     };
     static PyType_Slot PyTypeSlot[] = {

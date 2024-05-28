@@ -1,6 +1,6 @@
 [package]
 name = "m_example_plugin"
-version = "5.9.15"
+version = "5.9.16"
 edition = "2021"
 publish = false
 
