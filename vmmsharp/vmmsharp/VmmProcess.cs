@@ -81,7 +81,7 @@ namespace Vmmsharp
                 throw new ArgumentNullException(nameof(hVmm));
             if (string.IsNullOrWhiteSpace(name))
                 throw new ArgumentNullException(nameof(name));
-            if (!Vmmi.VMMDLL_PidGetFromName(_hVmm, name, out uint pid))
+            if (!Vmmi.VMMDLL_PidGetFromName(hVmm, name, out uint pid))
                 throw new VmmException("Failed to get PID from process name: " + name);
             PID = pid;
             _hVmm = hVmm;
