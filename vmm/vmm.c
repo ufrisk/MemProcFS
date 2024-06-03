@@ -2048,6 +2048,7 @@ VOID VmmInitializeFunctions(_In_ VMM_HANDLE H)
     HMODULE hNtDll = NULL;
     if((hNtDll = LoadLibraryU("ntdll.dll"))) {
         H->vmm.fn.RtlDecompressBufferOpt = (VMMFN_RtlDecompressBuffer*)GetProcAddress(hNtDll, "RtlDecompressBuffer");
+        H->vmm.fn.RtlDecompressBufferExOpt = (VMMFN_RtlDecompressBufferEx*)GetProcAddress(hNtDll, "RtlDecompressBufferEx");
         FreeLibrary(hNtDll);
     }
     return;
@@ -2126,9 +2127,10 @@ fail:
 typedef struct tdVMM_MEMORY_SEARCH_INTERNAL_CONTEXT {
     PVMM_PROCESS pProcess;
     POB_SET psvaResult;
-    BOOL fMask[VMM_MEMORY_SEARCH_MAX];
+    DWORD cSearch;
     DWORD cb;
     BYTE pb[0x00100000];    // 1MB
+    BOOL fMask[0];          // cSearch elements
 } VMM_MEMORY_SEARCH_INTERNAL_CONTEXT, *PVMM_MEMORY_SEARCH_INTERNAL_CONTEXT;
 
 /*
@@ -2150,7 +2152,7 @@ BOOL VmmSearch_SearchRegion(_In_ VMM_HANDLE H, _In_ PVMM_MEMORY_SEARCH_INTERNAL_
     VmmReadEx(H, ctxi->pProcess, ctxs->vaCurrent, ctxi->pb, ctxi->cb, &cbRead, ctxs->ReadFlags | VMM_FLAG_ZEROPAD_ON_FAIL);
     if(!cbRead) { return TRUE; }
     for(iS = 0; iS < ctxs->cSearch; iS++) {
-        pS = ctxs->search + iS;
+        pS = ctxs->pSearch + iS;
         f4 = (pS->cb >= 4);
         if(ctxi->fMask[iS]) {
             // mask search
@@ -2297,7 +2299,7 @@ fail:
 _Success_(return)
 BOOL VmmSearch(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _Inout_ PVMM_MEMORY_SEARCH_CONTEXT ctxs, _Out_opt_ POB_DATA *ppObAddressResult)
 {
-    static BYTE pbZERO[sizeof(ctxs->search[0].pb)] = {0};
+    static BYTE pbZERO[sizeof(ctxs->pSearch[0].pb)] = { 0 };
     DWORD iS;
     BOOL fResult = FALSE;
     PVMM_MEMORY_SEARCH_INTERNAL_CONTEXT ctxi = NULL;
@@ -2306,11 +2308,11 @@ BOOL VmmSearch(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _Inout_ PVMM_M
     ctxs->vaMin = ctxs->vaMin & ~0xfff;
     ctxs->vaMax = (ctxs->vaMax - 1) | 0xfff;
     if(H->fAbort || ctxs->fAbortRequested || (ctxs->vaMax < ctxs->vaMin)) { goto fail; }
-    if(!ctxs->cSearch || ctxs->cSearch > VMM_MEMORY_SEARCH_MAX) { goto fail; }
+    if(!ctxs->cSearch || (ctxs->cSearch > 0x01000000)) { goto fail; }
     for(iS = 0; iS < ctxs->cSearch; iS++) {
-        if(!ctxs->search[iS].cb || (ctxs->search[iS].cb > sizeof(ctxs->search[iS].pb))) { goto fail; }
-        if(!memcmp(ctxs->search[iS].pb, pbZERO, ctxs->search[iS].cb)) { goto fail; }
-        if(!ctxs->search[iS].cbAlign) { ctxs->search[iS].cbAlign = 1; }
+        if(!ctxs->pSearch[iS].cb || (ctxs->pSearch[iS].cb > sizeof(ctxs->pSearch[iS].pb))) { goto fail; }
+        if(!memcmp(ctxs->pSearch[iS].pb, pbZERO, ctxs->pSearch[iS].cb)) { goto fail; }
+        if(!ctxs->pSearch[iS].cbAlign) { ctxs->pSearch[iS].cbAlign = 1; }
     }
     if(!ctxs->vaMax) {
         if(!pProcess) {
@@ -2326,11 +2328,12 @@ BOOL VmmSearch(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _Inout_ PVMM_M
         ctxs->vaMax = min(ctxs->vaMax, H->dev.paMax);
     }
     // 2: allocate
-    if(!(ctxi = LocalAlloc(0, sizeof(VMM_MEMORY_SEARCH_INTERNAL_CONTEXT)))) { goto fail; }
+    if(!(ctxi = LocalAlloc(0, sizeof(VMM_MEMORY_SEARCH_INTERNAL_CONTEXT) + sizeof(BOOL) * ctxs->cSearch))) { goto fail; }
     if(!(ctxi->psvaResult = ObSet_New(H))) { goto fail; }
+    ctxi->cSearch = ctxs->cSearch;
     ctxi->pProcess = pProcess;
     for(iS = 0; iS < ctxs->cSearch; iS++) {
-        ctxi->fMask[iS] = (memcmp(ctxs->search[iS].pbSkipMask, pbZERO, ctxs->search[iS].cb) ? TRUE : FALSE);
+        ctxi->fMask[iS] = (memcmp(ctxs->pSearch[iS].pbSkipMask, pbZERO, ctxs->pSearch[iS].cb) ? TRUE : FALSE);
     }
     // 3: perform search
     if(pProcess && (ctxs->fForcePTE || ctxs->fForceVAD || (H->vmm.tpMemoryModel == VMMDLL_MEMORYMODEL_X64))) {

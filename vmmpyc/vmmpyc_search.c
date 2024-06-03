@@ -115,7 +115,7 @@ VmmPycSearch_add_search(PyObj_Search *self, PyObject *args)
     DWORD cbAlign = 1, iSearch = 0;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "VmmSearch.add_search(): Not initialized."); }
     if(self->fStarted) { return PyErr_Format(PyExc_RuntimeError, "VmmSearch.add_search(): Search already started."); }
-    if(self->ctxSearch.cSearch >= VMMDLL_MEM_SEARCH_MAX) { return PyErr_Format(PyExc_RuntimeError, "VmmSearch.add_search(): Too many searches."); }
+    if(self->ctxSearch.cSearch >= PYOBJ_SEARCH_MAXENTRIES) { return PyErr_Format(PyExc_RuntimeError, "VmmSearch.add_search(): Too many searches. (Max supported: %i)", PYOBJ_SEARCH_MAXENTRIES); }
     if(!PyArg_ParseTuple(args, "|y#y#I", &pbSearch, &cbSearch, &pbMask, &cbMask, &cbAlign)) {
         PyErr_Clear();
         if(!PyArg_ParseTuple(args, "|y#OI", &pbSearch, &cbSearch, &pyObject, &cbAlign)) {
@@ -137,11 +137,11 @@ VmmPycSearch_add_search(PyObj_Search *self, PyObject *args)
     }
     iSearch = self->ctxSearch.cSearch;
     self->ctxSearch.cSearch++;
-    self->ctxSearch.search[iSearch].cbAlign = cbAlign;
-    self->ctxSearch.search[iSearch].cb = (DWORD)cbSearch;
-    memcpy(self->ctxSearch.search[iSearch].pb, pbSearch, cbSearch);
+    self->ctxSearch.pSearch[iSearch].cbAlign = cbAlign;
+    self->ctxSearch.pSearch[iSearch].cb = (DWORD)cbSearch;
+    memcpy(self->ctxSearch.pSearch[iSearch].pb, pbSearch, cbSearch);
     if(cbMask) {
-        memcpy(self->ctxSearch.search[iSearch].pbSkipMask, pbMask, cbMask);
+        memcpy(self->ctxSearch.pSearch[iSearch].pbSkipMask, pbMask, cbMask);
     }
     return PyLong_FromUnsignedLong(iSearch);
 }
@@ -357,6 +357,8 @@ VmmPycSearch_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_opt_ DWORD dwPID, _In
     pyObj->ctxSearch.ReadFlags = qwReadFlags;
     pyObj->ctxSearch.pvUserPtrOpt = pyObj;
     pyObj->ctxSearch.pfnResultOptCB = VmmPycSearch_SearchResultCB;
+    pyObj->ctxSearch.pSearch = pyObj->peSearch;
+    memset(pyObj->peSearch, 0, PYOBJ_SEARCH_MAXENTRIES * sizeof(VMMDLL_MEM_SEARCH_CONTEXT_SEARCHENTRY));
     // finish & return:
     pyObj->fValid = TRUE;
     return pyObj;

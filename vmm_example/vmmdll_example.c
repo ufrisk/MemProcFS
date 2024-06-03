@@ -754,19 +754,21 @@ int main(_In_ int argc, _In_ char* argv[])
     // In addition to the listed configuration it's possible to use callback
     // functions for both which ranges should be scanned and for search results.
     // Also additional properties for max address and more exists.
+    VMMDLL_MEM_SEARCH_CONTEXT_SEARCHENTRY SearchEntry3[3] = { 0 };      // an array which may hold up to 3 search terms (max).
     VMMDLL_MEM_SEARCH_CONTEXT ctxSearch = { 0 };
     ctxSearch.dwVersion = VMMDLL_MEM_SEARCH_VERSION;            // required struct version.
-    if(ctxSearch.cSearch < VMMDLL_MEM_SEARCH_MAX) {
-        ctxSearch.search[ctxSearch.cSearch].cb = 4;             // required number of bytes to search, max 32.
-        memcpy(ctxSearch.search[ctxSearch.cSearch].pb,
+    ctxSearch.pSearch = SearchEntry3;                           // required pointer to search terms.
+    if(ctxSearch.cSearch < 3) {
+        ctxSearch.pSearch[ctxSearch.cSearch].cb = 4;            // required number of bytes to search, max 32.
+        memcpy(ctxSearch.pSearch[ctxSearch.cSearch].pb,
             (BYTE[4]) {
             0x4d, 0x5a, 0x90, 0x00
         }, 4);           // required bytes to search for, max 32.
-        memcpy(ctxSearch.search[ctxSearch.cSearch].pbSkipMask,
+        memcpy(ctxSearch.pSearch[ctxSearch.cSearch].pbSkipMask,
             (BYTE[4]) {
             0x00, 0x00, 0xff, 0x00
         }, 4);           // optional bitwise wildcard mask, here the 3rd byte is completely optional.
-        ctxSearch.search[ctxSearch.cSearch].cbAlign = 0x1000;   // optional alignment, i.e. search every X bytes,
+        ctxSearch.pSearch[ctxSearch.cSearch].cbAlign = 0x1000;  // optional alignment, i.e. search every X bytes,
                                                                 // here we search in beginning of pages only.
                                                                 // other common values are 0/1 (default) - full search
                                                                 // and 8 - search every 8 bytes for 64-bit pointers.

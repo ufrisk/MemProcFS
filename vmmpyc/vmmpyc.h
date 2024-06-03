@@ -28,6 +28,7 @@
 
 #include <pthread.h>
 #include <netinet/in.h>
+#include <strings.h>
 
 #define EXPORTED_FUNCTION                   __attribute__((visibility("default")))
 
@@ -74,6 +75,7 @@ typedef struct _SYSTEMTIME {
 #define min(a, b)                           (((a) < (b)) ? (a) : (b))
 #define _countof(_Array)                    (sizeof(_Array) / sizeof(_Array[0]))
 #define ZeroMemory(pb, cb)                  (memset(pb, 0, cb))
+#define _stricmp(s1, s2)                    (strcasecmp(s1, s2))
 #define strcpy_s(dst, len, src)             (strncpy(dst, src, len))
 #define strncpy_s(dst, len, src, srclen)    (strncpy(dst, src, min((QWORD)(max(1, len)) - 1, (QWORD)(srclen))))
 #define sprintf_s(s, maxcount, ...)         (snprintf(s, maxcount, __VA_ARGS__))
@@ -159,6 +161,8 @@ typedef struct tdPyObj_ScatterMemory {
     VMMDLL_SCATTER_HANDLE hScatter;
 } PyObj_ScatterMemory;
 
+#define PYOBJ_SEARCH_MAXENTRIES     1024
+
 typedef struct tdPyObj_Search {
     PyObject_HEAD
     BOOL fValid;
@@ -169,6 +173,7 @@ typedef struct tdPyObj_Search {
     BOOL fCompletedSuccess;
     VMMDLL_MEM_SEARCH_CONTEXT ctxSearch;
     PyObject *pyListResult;
+    VMMDLL_MEM_SEARCH_CONTEXT_SEARCHENTRY peSearch[PYOBJ_SEARCH_MAXENTRIES];
 } PyObj_Search;
 
 typedef struct tdPyObj_Yara {

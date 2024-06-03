@@ -3013,6 +3013,7 @@ pub struct VmmSearch<'a> {
     is_completed : bool,
     is_completed_success : bool,
     native_search : CVMMDLL_MEM_SEARCH_CONTEXT,
+    search_terms : Vec<CVMMDLL_MEM_SEARCH_CONTEXT_SEARCHENTRY>,
     thread : Option<std::thread::JoinHandle<bool>>,
     result : Vec<(u64, u32)>,
 }
@@ -4570,7 +4571,7 @@ fn impl_new_from_virtual_machine<'a>(vmm_parent : &'a Vmm, vm_entry : &VmmMapVir
 //=============================================================================
 
 const MAX_PATH                          : usize = 260;
-const VMMDLL_MEM_SEARCH_VERSION         : u32 = 0xfe3e0002;
+const VMMDLL_MEM_SEARCH_VERSION         : u32 = 0xfe3e0003;
 const VMMDLL_YARA_CONFIG_VERSION        : u32 = 0xdec30001;
 const VMMYARA_RULE_MATCH_VERSION        : u32 = 0xfedc0003;
 const VMMDLL_VFS_FILELIST_VERSION       : u32 = 2;
@@ -7346,6 +7347,9 @@ impl fmt::Display for VmmSearchResult {
     }
 }
 
+/// Maximum number of supported search terms.
+const CVMMDLL_MEM_SEARCH_CONTEXT_SEARCHENTRY_MAX : usize = 0x00100000;
+
 #[repr(C)]
 #[allow(non_snake_case, non_camel_case_types)]
 #[derive(Debug, Default)]
@@ -7365,7 +7369,7 @@ pub(crate) struct CVMMDLL_MEM_SEARCH_CONTEXT {
     fAbortRequested : u32,
     cMaxResult : u32,
     cSearch : u32,
-    search : [CVMMDLL_MEM_SEARCH_CONTEXT_SEARCHENTRY; 16],
+    pSearch : usize,
     vaMin : u64,
     vaMax : u64,
     vaCurrent : u64,
@@ -7418,6 +7422,8 @@ impl VmmSearch<'_> {
         if self.is_started == false {
             self.is_started = true;
             // ugly code below - but it works ...
+            self.native_search.cSearch = self.search_terms.len() as u32;
+            self.native_search.pSearch = self.search_terms.as_ptr() as usize;
             self.native_search.pvUserPtrOpt = std::ptr::addr_of!(self.result) as usize;
             let pid = self.pid;
             let native_h = self.vmm.native.h;
@@ -7458,30 +7464,33 @@ impl VmmSearch<'_> {
             return Err(anyhow!("search max address must be larger than min address"));
         }
         let result_vec = Vec::new();
-        let mut native = CVMMDLL_MEM_SEARCH_CONTEXT::default();
-        native.dwVersion = VMMDLL_MEM_SEARCH_VERSION;
-        native.vaMin = addr_min;
-        native.vaMax = addr_max;
-        native.ReadFlags = flags;
-        native.cMaxResult = num_results_max;
-        native.pfnResultOptCB = VmmSearch::impl_search_cb as usize;
-        native.pvUserPtrOpt = std::ptr::addr_of!(result_vec) as usize;
-        //let ptr = result_vec::as_mut_ptr;
+        let mut native_search = CVMMDLL_MEM_SEARCH_CONTEXT::default();
+        native_search.dwVersion = VMMDLL_MEM_SEARCH_VERSION;
+        native_search.vaMin = addr_min;
+        native_search.vaMax = addr_max;
+        native_search.ReadFlags = flags;
+        native_search.cMaxResult = num_results_max;
+        native_search.pfnResultOptCB = VmmSearch::impl_search_cb as usize;
+        native_search.pvUserPtrOpt = std::ptr::addr_of!(result_vec) as usize;
         return Ok(VmmSearch {
             vmm,
             pid,
             is_started : false,
             is_completed : false,
             is_completed_success : false,
-            native_search : native,
+            native_search,
+            search_terms : Vec::new(),
             thread : None,
             result : result_vec,
         });
     }
 
     fn impl_add_search(&mut self, search_bytes : &[u8], search_skipmask : Option<&[u8]>, byte_align : u32) -> ResultEx<u32> {
-        if self.native_search.cSearch as usize >= self.native_search.search.len() {
-            return Err(anyhow!("Search max terms reached."));
+        if self.is_started || self.is_completed {
+            return Err(anyhow!("Search cannot add terms to an already started/completed search."));
+        }
+        if self.search_terms.len() >= CVMMDLL_MEM_SEARCH_CONTEXT_SEARCHENTRY_MAX {
+            return Err(anyhow!("Search max terms ({}) reached.", CVMMDLL_MEM_SEARCH_CONTEXT_SEARCHENTRY_MAX));
         }
         if (search_bytes.len() == 0) || (search_bytes.len() > 32) {
             return Err(anyhow!("Search invalid length: search_bytes."));
@@ -7496,15 +7505,15 @@ impl VmmSearch<'_> {
                 return Err(anyhow!("Search invalid length: search_skipmask."));
             }
         }
-        let term = &mut self.native_search.search[self.native_search.cSearch as usize];
+        let mut term = CVMMDLL_MEM_SEARCH_CONTEXT_SEARCHENTRY::default();
         term.cbAlign = byte_align;
         term.cb = search_bytes.len() as u32;
         term.pb[0..search_bytes.len()].copy_from_slice(search_bytes);
         if let Some(search_skipmask) = search_skipmask {
             term.pbSkipMask[0..search_skipmask.len()].copy_from_slice(search_skipmask);
         }
-        let result_index = self.native_search.cSearch;
-        self.native_search.cSearch += 1;
+        let result_index = self.search_terms.len() as u32;
+        self.search_terms.push(term);
         return Ok(result_index);
     }
 

@@ -28,6 +28,7 @@ typedef struct tdMOB_SEARCH_CONTEXT {
     BOOL fActive;
     BOOL fCompleted;
     VMM_MEMORY_SEARCH_CONTEXT sctx;
+    VMM_MEMORY_SEARCH_CONTEXT_SEARCHENTRY sctx_Entry0;
     POB_DATA pObDataResult;
 } MOB_SEARCH_CONTEXT, *PMOB_SEARCH_CONTEXT;
 
@@ -61,8 +62,9 @@ PMOB_SEARCH_CONTEXT MSearch_ContextGet(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CO
     pObCtx = ObMap_GetByKey((POB_MAP)ctxP->ctxM, ctxP->dwPID);
     LeaveCriticalSection(&H->vmm.LockPlugin);
     if(!pObCtx && (pObCtx = Ob_AllocEx(H, OB_TAG_MOD_SEARCH_CTX, LMEM_ZEROINIT, sizeof(MOB_SEARCH_CONTEXT), MSearch_ContextCleanup_CB, MSearch_ContextCleanup1_CB))) {
+        pObCtx->sctx.pSearch = &pObCtx->sctx_Entry0;
+        pObCtx->sctx.pSearch[0].cbAlign = 1;
         pObCtx->sctx.cSearch = 1;
-        pObCtx->sctx.search[0].cbAlign = 1;
         if(ctxP->pProcess) {
             // virtual memory search in process address space
             pObCtx->dwPID = ((PVMM_PROCESS)ctxP->pProcess)->dwPID;
@@ -128,14 +130,14 @@ NTSTATUS MSearch_Write(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_
     }
     if(!pObCtx->fActive && !pObCtx->fCompleted) {
         if(!_stricmp(ctxP->uszPath, "align.txt")) {
-            dw = pObCtx->sctx.search[0].cbAlign;
-            nt = Util_VfsWriteFile_DWORD(&dw, pb, cb, pcbWrite, cbOffset + 5, 1, 2048);
-            if((dw != pObCtx->sctx.search[0].cbAlign) && (0 == (dw & (dw - 1)))) {
+            dw = pObCtx->sctx.pSearch[0].cbAlign;
+            nt = Util_VfsWriteFile_DWORD(&dw, pb, cb, pcbWrite, cbOffset + 4, 1, 4096);
+            if((dw != pObCtx->sctx.pSearch[0].cbAlign) && (0 == (dw & (dw - 1)))) {
                 if(dw == 0) { dw = 1; }
                 // update (if ok) within critical section
                 EnterCriticalSection(&H->vmm.LockPlugin);
                 if(!pObCtx->fActive && !pObCtx->fCompleted) {
-                    pObCtx->sctx.search[0].cbAlign = dw;
+                    pObCtx->sctx.pSearch[0].cbAlign = dw;
                     MSearch_ContextUpdate(H, ctxP, pObCtx);
                 }
                 LeaveCriticalSection(&H->vmm.LockPlugin);
@@ -170,14 +172,14 @@ NTSTATUS MSearch_Write(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_
             }
         }
         if(!_stricmp(ctxP->uszPath, "search-skip-bitmask.txt")) {
-            memcpy(pbSearchBuffer, pObCtx->sctx.search[0].pbSkipMask, 32);
+            memcpy(pbSearchBuffer, pObCtx->sctx.pSearch[0].pbSkipMask, 32);
             nt = Util_VfsWriteFile_HEXASCII(pbSearchBuffer, 32, pb, cb, pcbWrite, cbOffset);
             if(*pcbWrite) {
                 // update (if ok) within critical section
                 EnterCriticalSection(&H->vmm.LockPlugin);
                 if(!pObCtx->fActive && !pObCtx->fCompleted) {
-                    pObCtx->sctx.search[0].cb = max(pObCtx->sctx.search[0].cb, (*pcbWrite + 1) >> 1);
-                    memcpy(pObCtx->sctx.search[0].pbSkipMask, pbSearchBuffer, 32);
+                    pObCtx->sctx.pSearch[0].cb = max(pObCtx->sctx.pSearch[0].cb, (*pcbWrite + 1) >> 1);
+                    memcpy(pObCtx->sctx.pSearch[0].pbSkipMask, pbSearchBuffer, 32);
                     MSearch_ContextUpdate(H, ctxP, pObCtx);
                 }
                 LeaveCriticalSection(&H->vmm.LockPlugin);
@@ -185,14 +187,14 @@ NTSTATUS MSearch_Write(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_
             *pcbWrite = cb;
         }
         if(!_stricmp(ctxP->uszPath, "search.txt")) {
-            memcpy(pbSearchBuffer, pObCtx->sctx.search[0].pb, 32);
+            memcpy(pbSearchBuffer, pObCtx->sctx.pSearch[0].pb, 32);
             nt = Util_VfsWriteFile_HEXASCII(pbSearchBuffer, 32, pb, cb, pcbWrite, cbOffset);
             if(*pcbWrite) {
                 // update (if ok) within critical section
                 EnterCriticalSection(&H->vmm.LockPlugin);
                 if(!pObCtx->fActive && !pObCtx->fCompleted) {
-                    pObCtx->sctx.search[0].cb = (*pcbWrite + 1) >> 1;
-                    memcpy(pObCtx->sctx.search[0].pb, pbSearchBuffer, 32);
+                    pObCtx->sctx.pSearch[0].cb = (*pcbWrite + 1) >> 1;
+                    memcpy(pObCtx->sctx.pSearch[0].pb, pbSearchBuffer, 32);
                     MSearch_ContextUpdate(H, ctxP, pObCtx);
                     // start search by queuing the search onto a work item
                     // in a separate thread. also increase refcount since
@@ -233,8 +235,8 @@ NTSTATUS MSearch_ReadStatus(_In_ PMOB_SEARCH_CONTEXT ctxS, _Out_writes_to_(cb, *
         "Bytes read:      0x%llx\n" \
         "Search hits:     %i\n",
         szStatus,
-        ctxS->sctx.search[0].cb,
-        ctxS->sctx.search[0].cbAlign,
+        ctxS->sctx.pSearch[0].cb,
+        ctxS->sctx.pSearch[0].cbAlign,
         ctxS->sctx.vaMin,
         ctxS->sctx.vaMax,
         ctxS->sctx.vaCurrent,
@@ -281,7 +283,7 @@ NTSTATUS MSearch_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_
             Util_VfsReadFile_FromDWORD((DWORD)pObCtx->sctx.vaMin, pb, cb, pcbRead, cbOffset, FALSE) :
             Util_VfsReadFile_FromQWORD((QWORD)pObCtx->sctx.vaMin, pb, cb, pcbRead, cbOffset, FALSE);
     } else if(!_stricmp(ctxP->uszPath, "align.txt")) {
-        nt = Util_VfsReadFile_FromDWORD(pObCtx->sctx.search[0].cbAlign, pb, cb, pcbRead, cbOffset + 5, FALSE);
+        nt = Util_VfsReadFile_FromDWORD(pObCtx->sctx.pSearch[0].cbAlign, pb, cb, pcbRead, cbOffset + 4, FALSE);
     } else if(!_stricmp(ctxP->uszPath, "reset.txt")) {
         nt = Util_VfsReadFile_FromBOOL(FALSE, pb, cb, pcbRead, cbOffset);
     } else if(!_stricmp(ctxP->uszPath, "result.txt")) {
@@ -294,9 +296,9 @@ NTSTATUS MSearch_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_
             );
         }
     } else if(!_stricmp(ctxP->uszPath, "search.txt")) {
-        nt = Util_VfsReadFile_FromHEXASCII(pObCtx->sctx.search[0].pb, pObCtx->sctx.search[0].cb, pb, cb, pcbRead, cbOffset);
+        nt = Util_VfsReadFile_FromHEXASCII(pObCtx->sctx.pSearch[0].pb, pObCtx->sctx.pSearch[0].cb, pb, cb, pcbRead, cbOffset);
     } else if(!_stricmp(ctxP->uszPath, "search-skip-bitmask.txt")) {
-        nt = Util_VfsReadFile_FromHEXASCII(pObCtx->sctx.search[0].pbSkipMask, pObCtx->sctx.search[0].cb, pb, cb, pcbRead, cbOffset);
+        nt = Util_VfsReadFile_FromHEXASCII(pObCtx->sctx.pSearch[0].pbSkipMask, pObCtx->sctx.pSearch[0].cb, pb, cb, pcbRead, cbOffset);
     } else if(!_stricmp(ctxP->uszPath, "status.txt")) {
         nt = MSearch_ReadStatus(pObCtx, pb, cb, pcbRead, cbOffset);
     }
@@ -321,13 +323,13 @@ BOOL MSearch_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ P
     if(!(pObCtx = MSearch_ContextGet(H, ctxP))) { return FALSE; }
     VMMDLL_VfsList_AddFile(pFileList, "addr-max.txt", H->vmm.f32 ? 8 : 16, NULL);
     VMMDLL_VfsList_AddFile(pFileList, "addr-min.txt", H->vmm.f32 ? 8 : 16, NULL);
-    VMMDLL_VfsList_AddFile(pFileList, "align.txt", 3, NULL);
+    VMMDLL_VfsList_AddFile(pFileList, "align.txt", 4, NULL);
     VMMDLL_VfsList_AddFile(pFileList, "readme.txt", strlen(szSEARCH_README), NULL);
     VMMDLL_VfsList_AddFile(pFileList, "reset.txt", 1, NULL);
     cbResult = pObCtx->pObDataResult ? ((H->vmm.f32 ? 9ULL : 17ULL) * pObCtx->pObDataResult->ObHdr.cbData / sizeof(QWORD)) : 0;
     VMMDLL_VfsList_AddFile(pFileList, "result.txt", cbResult, NULL);
-    VMMDLL_VfsList_AddFile(pFileList, "search.txt", pObCtx->sctx.search[0].cb * 2ULL, NULL);
-    VMMDLL_VfsList_AddFile(pFileList, "search-skip-bitmask.txt", pObCtx->sctx.search[0].cb * 2ULL, NULL);
+    VMMDLL_VfsList_AddFile(pFileList, "search.txt", pObCtx->sctx.pSearch[0].cb * 2ULL, NULL);
+    VMMDLL_VfsList_AddFile(pFileList, "search-skip-bitmask.txt", pObCtx->sctx.pSearch[0].cb * 2ULL, NULL);
     cbResult = 0;
     MSearch_ReadStatus(pObCtx, NULL, 0, &cbResult, 0);
     VMMDLL_VfsList_AddFile(pFileList, "status.txt", cbResult, NULL);
