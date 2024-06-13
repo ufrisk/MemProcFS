@@ -1266,6 +1266,7 @@ BOOL VMMDLL_Map_GetModuleFromName_Impl(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_
 fail:
     if(ppeDst && !*ppeDst) { VMMDLL_MemFree(peDst); peDst = NULL; }
     Ob_DECREF(pObMapSrc);
+    Ob_DECREF(psmOb);
     return *ppeDst ? TRUE : FALSE;
 }
 
@@ -1727,21 +1728,21 @@ BOOL VMMDLL_Map_GetNet_Impl(_In_ VMM_HANDLE H, _Out_ PVMMDLL_MAP_NET *ppMapDst, 
     PVMM_MAP_NETENTRY peSrc;
     PVMMOB_MAP_NET pObMapSrc = NULL;
     PVMMDLL_MAP_NET pMapDst = NULL;
-    POB_STRMAP psm = NULL;
+    POB_STRMAP psmOb = NULL;
     *ppMapDst = NULL;
     // 0: sanity check:
     if(sizeof(VMM_MAP_NETENTRY) != sizeof(VMMDLL_MAP_NETENTRY)) { goto fail; }
     // 1: fetch map [and populate strings]:
-    if(!(psm = ObStrMap_New(H, 0))) { goto fail; }
+    if(!(psmOb = ObStrMap_New(H, 0))) { goto fail; }
     if(!VmmMap_GetNet(H, &pObMapSrc)) { goto fail; }
     for(i = 0; i < pObMapSrc->cMap; i++) {
         peSrc = pObMapSrc->pMap + i;
-        ObStrMap_PushU(psm, peSrc->Src.uszText);
-        ObStrMap_PushU(psm, peSrc->Dst.uszText);
-        ObStrMap_PushU(psm, peSrc->uszText);
+        ObStrMap_PushU(psmOb, peSrc->Src.uszText);
+        ObStrMap_PushU(psmOb, peSrc->Dst.uszText);
+        ObStrMap_PushU(psmOb, peSrc->uszText);
     }
     // 2: byte count & alloc:
-    if(!ObStrMap_FinalizeBufferXUW(psm, 0, NULL, &cbDstStr, fWideChar)) { goto fail; }
+    if(!ObStrMap_FinalizeBufferXUW(psmOb, 0, NULL, &cbDstStr, fWideChar)) { goto fail; }
     cbDstData = pObMapSrc->cMap * sizeof(VMMDLL_MAP_NETENTRY);
     cbDst = sizeof(VMMDLL_MAP_NET) + cbDstData + cbDstStr;
     if(!(pMapDst = VmmDllCore_MemAllocExternal(H, OB_TAG_API_MAP_NET, cbDst, sizeof(VMMDLL_MAP_NET)))) { goto fail; }    // VMMDLL_MemFree()
@@ -1753,18 +1754,18 @@ BOOL VMMDLL_Map_GetNet_Impl(_In_ VMM_HANDLE H, _Out_ PVMMDLL_MAP_NET *ppMapDst, 
     for(i = 0; i < pMapDst->cMap; i++) {
         peSrc = pObMapSrc->pMap + i;
         peDst = pMapDst->pMap + i;
-        f = ObStrMap_PushPtrUXUW(psm, peSrc->Src.uszText, &peDst->Src.uszText, NULL, fWideChar) &&
-            ObStrMap_PushPtrUXUW(psm, peSrc->Dst.uszText, &peDst->Dst.uszText, NULL, fWideChar) &&
-            ObStrMap_PushPtrUXUW(psm, peSrc->uszText, &peDst->uszText, NULL, fWideChar);
+        f = ObStrMap_PushPtrUXUW(psmOb, peSrc->Src.uszText, &peDst->Src.uszText, NULL, fWideChar) &&
+            ObStrMap_PushPtrUXUW(psmOb, peSrc->Dst.uszText, &peDst->Dst.uszText, NULL, fWideChar) &&
+            ObStrMap_PushPtrUXUW(psmOb, peSrc->uszText, &peDst->uszText, NULL, fWideChar);
         if(!f) { goto fail; }
     }
     pMapDst->pbMultiText = ((PBYTE)pMapDst->pMap) + cbDstData;
-    ObStrMap_FinalizeBufferXUW(psm, cbDstStr, pMapDst->pbMultiText, &pMapDst->cbMultiText, fWideChar);
+    ObStrMap_FinalizeBufferXUW(psmOb, cbDstStr, pMapDst->pbMultiText, &pMapDst->cbMultiText, fWideChar);
     *ppMapDst = pMapDst;
 fail:
     if(pMapDst && !*ppMapDst) { VMMDLL_MemFree(pMapDst); pMapDst = NULL; }
     Ob_DECREF(pObMapSrc);
-    Ob_DECREF(psm);
+    Ob_DECREF(psmOb);
     return *ppMapDst ? TRUE : FALSE;
 }
 

@@ -397,6 +397,7 @@
     <ClCompile Include="modules\m_fc_json.c" />
     <ClCompile Include="modules\m_fc_module.c" />
     <ClCompile Include="modules\m_fc_ntfs.c" />
+    <ClCompile Include="modules\m_fc_prefetch.c" />
     <ClCompile Include="modules\m_fc_proc.c" />
     <ClCompile Include="modules\m_fc_registry.c" />
     <ClCompile Include="modules\m_fc_sys.c" />

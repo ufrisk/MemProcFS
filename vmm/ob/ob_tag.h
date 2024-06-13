@@ -30,6 +30,7 @@
 #define OB_TAG_MAP_OBJECT               'Mobj'
 #define OB_TAG_MAP_KDEVICE              'Mdev'
 #define OB_TAG_MAP_KDRIVER              'Mdrv'
+#define OB_TAG_MAP_PREFETCH             'Mprf'
 #define OB_TAG_MAP_PHYSMEM              'Mmem'
 #define OB_TAG_MAP_USER                 'Musr'
 #define OB_TAG_MAP_SERVICE              'Msvc'

@@ -35,9 +35,9 @@ OBJ = oscompatibility.o charutil.o util.o pe.o vmmdll.o vmmdll_core.o        \
 	  modules/m_conf.o modules/m_vm.o modules/m_winreg.o                     \
 	  modules/m_fc_csv.o modules/m_fc_file.o modules/m_fc_findevil.o         \
 	  modules/m_fc_handle.o modules/m_fc_json.o modules/m_fc_module.o        \
-	  modules/m_fc_ntfs.o modules/m_fc_proc.o modules/m_fc_registry.o        \
-	  modules/m_fc_sys.o modules/m_fc_thread.o modules/m_fc_timeline.o       \
-	  modules/m_fc_web.o modules/m_fc_yara.o                                 \
+	  modules/m_fc_ntfs.o modules/m_fc_prefetch.o modules/m_fc_proc.o        \
+	  modules/m_fc_registry.o modules/m_fc_sys.o modules/m_fc_thread.o       \
+	  modules/m_fc_timeline.o modules/m_fc_web.o modules/m_fc_yara.o         \
 	  modules/m_evil_apc1.o modules/m_evil_av1.o modules/m_evil_kern1.o      \
 	  modules/m_evil_kernproc1.o modules/m_evil_proc1.o                      \
 	  modules/m_evil_proc2.o modules/m_evil_proc3.o modules/m_evil_thread1.o \

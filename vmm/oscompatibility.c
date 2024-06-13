@@ -34,7 +34,8 @@ _Ret_maybenull_ HMODULE WINAPI LoadLibraryU(_In_ LPCSTR lpLibFileName)
 #include <sys/syscall.h>
 #include <linux/futex.h>
 
-VMMFN_RtlDecompressBuffer OSCOMPAT_RtlDecompressBuffer;
+VMMFN_RtlDecompressBuffer   OSCOMPAT_RtlDecompressBuffer;
+VMMFN_RtlDecompressBufferEx OSCOMPAT_RtlDecompressBufferEx;
 
 // ----------------------------------------------------------------------------
 // LocalAlloc/LocalFree BELOW:
@@ -62,6 +63,9 @@ FARPROC GetProcAddress(_In_opt_ HMODULE hModule, _In_ LPSTR lpProcName)
 {
     if(!strcmp(lpProcName, "RtlDecompressBuffer")) {
         return OSCOMPAT_RtlDecompressBuffer;
+    }
+    if(!strcmp(lpProcName, "RtlDecompressBufferEx")) {
+        return OSCOMPAT_RtlDecompressBufferEx;
     }
     if(hModule && ((SIZE_T)hModule & 0xfff)) {
         return dlsym(hModule, lpProcName);
@@ -705,7 +709,7 @@ NTSTATUS OSCOMPAT_RtlDecompressBuffer(USHORT CompressionFormat, PUCHAR Uncompres
     static BOOL fFirst = TRUE;
     static SRWLOCK LockSRW = SRWLOCK_INIT;
     static int(*pfn_xpress_decompress)(PBYTE pbIn, SIZE_T cbIn, PBYTE pbOut, SIZE_T *pcbOut) = NULL;
-    if(CompressionFormat != 3) { return VMM_STATUS_UNSUCCESSFUL; } // 3 == COMPRESS_ALGORITHM_XPRESS
+    if(CompressionFormat != COMPRESSION_FORMAT_XPRESS) { return VMM_STATUS_UNSUCCESSFUL; }
     if(fFirst) {
         AcquireSRWLockExclusive(&LockSRW);
         if(fFirst) {
@@ -721,6 +725,51 @@ NTSTATUS OSCOMPAT_RtlDecompressBuffer(USHORT CompressionFormat, PUCHAR Uncompres
     if(pfn_xpress_decompress) {
         cbOut = UncompressedBufferSize;
         rc = pfn_xpress_decompress(CompressedBuffer, CompressedBufferSize, UncompressedBuffer, &cbOut);
+        if(rc == 0) {
+            *FinalUncompressedSize = cbOut;
+            return VMM_STATUS_SUCCESS;
+        }
+    }
+    return VMM_STATUS_UNSUCCESSFUL;
+}
+
+/*
+* Linux implementation of ntdll!RtlDecompressBuffer for COMPRESS_ALGORITHM_XPRESS:
+* Dynamically load libMSCompression.so (if it exists) and use it. If library does
+* not exist then fail gracefully (i.e. don't support XPRESS decompress).
+* https://github.com/coderforlife/ms-compress   (License: GPLv3)
+*/
+NTSTATUS OSCOMPAT_RtlDecompressBufferEx(USHORT CompressionFormat, PUCHAR UncompressedBuffer, ULONG  UncompressedBufferSize, PUCHAR CompressedBuffer, ULONG  CompressedBufferSize, PULONG FinalUncompressedSize, PVOID pv)
+{
+    int rc;
+    void *lib_mscompress;
+    SIZE_T cbOut;
+    static BOOL fFirst = TRUE;
+    static SRWLOCK LockSRW = SRWLOCK_INIT;
+    static int(*pfn_xpress_decompress)(PBYTE pbIn, SIZE_T cbIn, PBYTE pbOut, SIZE_T *pcbOut) = NULL;
+    static int(*pfn_xpress_decompress_huff)(PBYTE pbIn, SIZE_T cbIn, PBYTE pbOut, SIZE_T *pcbOut) = NULL;
+    CHAR szPathLib[MAX_PATH] = { 0 };
+    Util_GetPathLib(szPathLib);
+    strncat_s(szPathLib, sizeof(szPathLib), "libMSCompression.so", _TRUNCATE);
+    if((CompressionFormat != COMPRESSION_FORMAT_XPRESS) && (CompressionFormat != COMPRESSION_FORMAT_XPRESS_HUFF)) { return VMM_STATUS_UNSUCCESSFUL; }
+    if(fFirst) {
+        AcquireSRWLockExclusive(&LockSRW);
+        if(fFirst) {
+            fFirst = FALSE;
+            lib_mscompress = dlopen(szPathLib, RTLD_NOW);
+            if(lib_mscompress) {
+                pfn_xpress_decompress = (int(*)(PBYTE, SIZE_T, PBYTE, SIZE_T *))dlsym(lib_mscompress, "xpress_decompress");
+                pfn_xpress_decompress_huff = (int(*)(PBYTE, SIZE_T, PBYTE, SIZE_T *))dlsym(lib_mscompress, "xpress_huff_decompress");
+            }
+        }
+        ReleaseSRWLockExclusive(&LockSRW);
+    }
+    *FinalUncompressedSize = 0;
+    if(pfn_xpress_decompress && pfn_xpress_decompress_huff) {
+        cbOut = UncompressedBufferSize;
+        rc = (CompressionFormat == 4) ?
+            pfn_xpress_decompress_huff(CompressedBuffer, CompressedBufferSize, UncompressedBuffer, &cbOut) :
+            pfn_xpress_decompress(CompressedBuffer, CompressedBufferSize, UncompressedBuffer, &cbOut);
         if(rc == 0) {
             *FinalUncompressedSize = cbOut;
             return VMM_STATUS_SUCCESS;

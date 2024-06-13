@@ -128,6 +128,8 @@ typedef int(*_CoreCrtNonSecureSearchSortCompareFunction)(void const *, void cons
 #define STATUS_END_OF_FILE                  ((NTSTATUS)0xC0000011L)
 #define STATUS_FILE_INVALID                 ((NTSTATUS)0xC0000098L)
 #define STATUS_FILE_SYSTEM_LIMITATION       ((NTSTATUS)0xC0000427L)
+#define COMPRESSION_FORMAT_XPRESS           (0x0003)   
+#define COMPRESSION_FORMAT_XPRESS_HUFF      (0x0004)
 
 //-----------------------------------------------------------------------------
 // SAL DEFINES BELOW:

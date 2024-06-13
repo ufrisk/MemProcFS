@@ -223,3 +223,4 @@ Latest:
 * [Sysinfo module](https://github.com/ufrisk/MemProcFS/wiki/FS_Sys_Sysinfo) for easy-to-read system information.
 * [Eventlog module](https://github.com/ufrisk/MemProcFS/wiki/FS_Misc_Eventlog) for convenient access to event log files.
 * Binary search API now allows for up to 16M search terms (up from previous 16).
+* Prefetch parsing.
