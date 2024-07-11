@@ -214,7 +214,8 @@ v5.8
 * Python API: new functionality (multi-read, type-read) and improved scatter read performance.
 * Support for Proxmox memory dump files.
 
-Latest:
+[v5.10](https://github.com/ufrisk/MemProcFS/releases/tag/v5.10)
+* Support for Windows 11 24H2 release.
 * Bug fixes.
 * Added named _SECTION objects to VAD map.
 * `-memmap auto` improvements.
