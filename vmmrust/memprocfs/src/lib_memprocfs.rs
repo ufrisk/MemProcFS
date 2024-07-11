@@ -4573,7 +4573,12 @@ fn impl_new_from_virtual_machine<'a>(vmm_parent : &'a Vmm, vm_entry : &VmmMapVir
 const MAX_PATH                          : usize = 260;
 const VMMDLL_MEM_SEARCH_VERSION         : u32 = 0xfe3e0003;
 const VMMDLL_YARA_CONFIG_VERSION        : u32 = 0xdec30001;
-const VMMYARA_RULE_MATCH_VERSION        : u32 = 0xfedc0003;
+const VMMYARA_RULE_MATCH_VERSION        : u32 = 0xfedc0005;
+const VMMYARA_RULE_MATCH_TAG_MAX        : usize = 27;
+const VMMYARA_RULE_MATCH_META_MAX       : usize = 32;
+const VMMYARA_RULE_MATCH_STRING_MAX     : usize = 16;
+const VMMYARA_RULE_MATCH_OFFSET_MAX     : usize = 24;
+
 const VMMDLL_VFS_FILELIST_VERSION       : u32 = 2;
 
 const VMMDLL_MAP_EAT_VERSION            : u32 = 3;
@@ -7574,7 +7579,7 @@ struct CVMMDLL_VMMYARA_RULE_MATCH_META {
 struct CVMMDLL_VMMYARA_RULE_MATCH_STRINGS {
     szString : *const c_char,
     cMatch : u32,
-    cbMatchOffset : [usize; 16],
+    cbMatchOffset : [usize; VMMYARA_RULE_MATCH_OFFSET_MAX],
 }
 
 #[repr(C)]
@@ -7585,11 +7590,11 @@ struct CVMMDLL_VMMYARA_RULE_MATCH {
     flags : u32,
     szRuleIdentifier : *const c_char,
     cTags : u32,
-    szTags : [*const c_char; 8],
+    szTags : [*const c_char; VMMYARA_RULE_MATCH_TAG_MAX],
     cMeta : u32,
-    meta : [CVMMDLL_VMMYARA_RULE_MATCH_META; 16],
+    meta : [CVMMDLL_VMMYARA_RULE_MATCH_META; VMMYARA_RULE_MATCH_META_MAX],
     cStrings : u32,
-    strings : [CVMMDLL_VMMYARA_RULE_MATCH_STRINGS; 8],
+    strings : [CVMMDLL_VMMYARA_RULE_MATCH_STRINGS; VMMYARA_RULE_MATCH_STRING_MAX],
 }
 
 #[repr(C)]
@@ -7750,14 +7755,14 @@ impl VmmYara<'_> {
             let rule = cstr_to_string((*yrm).szRuleIdentifier);
             // tags:
             let mut tags = Vec::new();
-            let ctags = std::cmp::min((*yrm).cTags as usize, 8);
+            let ctags = std::cmp::min((*yrm).cTags as usize, VMMYARA_RULE_MATCH_TAG_MAX);
             for i in 0..ctags {
                 let tag = cstr_to_string((*yrm).szTags[i]);
                 tags.push(tag);
             }
             // meta:
             let mut meta = Vec::new();
-            let cmeta = std::cmp::min((*yrm).cMeta as usize, 16);
+            let cmeta = std::cmp::min((*yrm).cMeta as usize, VMMYARA_RULE_MATCH_META_MAX);
             for i in 0..cmeta {
                 let key = cstr_to_string((*yrm).meta[i].szIdentifier);
                 let value = cstr_to_string((*yrm).meta[i].szString);
@@ -7765,10 +7770,10 @@ impl VmmYara<'_> {
             }
             // match_strings:
             let mut match_strings = Vec::new();
-            let cmatch_strings = std::cmp::min((*yrm).cStrings as usize, 8);
+            let cmatch_strings = std::cmp::min((*yrm).cStrings as usize, VMMYARA_RULE_MATCH_STRING_MAX);
             for i in 0..cmatch_strings {
                 let match_string = cstr_to_string((*yrm).strings[i].szString);
-                let cmatch = std::cmp::min((*yrm).strings[i].cMatch as usize, 16);
+                let cmatch = std::cmp::min((*yrm).strings[i].cMatch as usize, VMMYARA_RULE_MATCH_OFFSET_MAX);
                 let mut addresses = Vec::new();
                 for j in 0..cmatch {
                     let offset = (*yrm).strings[i].cbMatchOffset[j] as u64;

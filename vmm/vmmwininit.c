@@ -280,6 +280,8 @@ VOID VmmWinInit_InitializeOffsetStatic_Heap(_In_ VMM_HANDLE H)
         PDB_GetTypeSizeShort(H, hPDB, "_HEAP_PAGE_SEGMENT", &po->seg.HEAP_PAGE_SEGMENT.cb);
         PDB_GetTypeSizeShort(H, hPDB, "_HEAP_PAGE_RANGE_DESCRIPTOR", &po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.cb);
         PDB_GetTypeSizeShort(H, hPDB, "_HEAP_VS_CHUNK_HEADER", &po->seg.HEAP_VS_CHUNK_HEADER.cb);
+        po->seg.HEAP_PAGE_SEGMENT.qwSignatureStaticKey = ((H->vmm.kernel.dwVersionBuild < 26100) ? 0xa2e64eada2e64ead : 0);
+        // VALIDITY CHECK AND LOG:
         po->fValid = po->nt.HEAP.VirtualAllocdBlocks || po->nt.HEAP.FrontEndHeap || po->seg.SEGMENT_HEAP.cb;
         VmmWinInit_InitializeOffsetStatic_Heap_Print(H, f32, po);
     }

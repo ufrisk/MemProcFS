@@ -8,7 +8,7 @@
 #define CHARUTIL_CONVERT_MAXSIZE            0x40000000
 #define CHARUTIL_ANSIFILENAME_ALLOW \
     "0000000000000000000000000000000011011111110111101111111111010100" \
-    "1111111111111111111111111111011111111111111111111111111111110111"
+    "1111111111111111111111111111011111111111111111111111111111110110"
 
 /*
 * Check whether a string is an ansi-string (only codepoints between 0-127).
@@ -894,7 +894,7 @@ DWORD CharUtil_FixFsNameU(_Out_writes_(cbuDst) LPSTR uszDst, _In_ DWORD cbuDst, 
 _Success_(return != 0)
 DWORD CharUtil_FixFsName(_Out_writes_(cbuDst) LPSTR uszOut, _In_ DWORD cbuDst, _In_opt_ LPCSTR usz, _In_opt_ LPCSTR sz, _In_opt_ LPCWSTR wsz, _In_ DWORD cch, _In_opt_ DWORD iSuffix, _In_ BOOL fUpper)
 {
-    UCHAR c;
+    UCHAR c, cLast = 0;
     DWORD i = 0;
     LPSTR uszTMP;
     uszOut[0] = 0;
@@ -909,18 +909,20 @@ DWORD CharUtil_FixFsName(_Out_writes_(cbuDst) LPSTR uszOut, _In_ DWORD cbuDst, _
         while((c = uszOut[i])) {
             if(c >= 'a' && c <= 'z') {
                 c += 'A' - 'a';
-            } else if(c < 128) {
+            } else if((c < 128) && (cLast < 128)) {
                 c = (CHARUTIL_ANSIFILENAME_ALLOW[c] == '0') ? '_' : c;
             }
             uszOut[i] = c;
+            cLast = c;
             i++;
         }
     } else {
         while((c = uszOut[i])) {
-            if(c < 128) {
+            if((c < 128) && (cLast < 128)) {
                 c = (CHARUTIL_ANSIFILENAME_ALLOW[c] == '0') ? '_' : c;
             }
             uszOut[i] = c;
+            cLast = c;
             i++;
         }
     }
@@ -934,6 +936,45 @@ DWORD CharUtil_FixFsName(_Out_writes_(cbuDst) LPSTR uszOut, _In_ DWORD cbuDst, _
         uszOut[i++] = 0;
     }
     if(i && (uszOut[i - 1] == '.')) { uszOut[i - 1] = '_'; }
+    return (DWORD)(strlen(uszOut) + 1);
+}
+
+/*
+* Replace illegal characters in a text with a character of the users choosing.
+* The result is returned as a utf-8 string.
+* -- uszOut
+* -- cbuDst
+* -- usz
+* -- sz
+* -- wsz
+* -- cwsz
+* -- cch = number of bytes/wchars in usz/sz/wsz or _TRUNCATE
+* -- chReplace = character to replace illegal characters with.
+* -- chAllowArray = array of 0(illegal char) or 1(allowed char) for each character in the 0-127 range.
+* -- return = number of bytes written (including terminating NULL).
+*/
+_Success_(return != 0)
+DWORD CharUtil_ReplaceMultiple(_Out_writes_(cbuDst) LPSTR uszOut, _In_ DWORD cbuDst, _In_opt_ LPCSTR usz, _In_opt_ LPCSTR sz, _In_opt_ LPCWSTR wsz, _In_ DWORD cch, _In_ CHAR chAllowArray[128], _In_ CHAR chNew)
+{
+    UCHAR c, cLast = 0;
+    DWORD i = 0;
+    LPSTR uszTMP;
+    uszOut[0] = 0;
+    // 1: convert correct size utf-8
+    if(cbuDst < 5) { return 0; }
+    if(!sz && !usz && !wsz) { return 0; }
+    if(sz && !CharUtil_AtoU((LPSTR)sz, cch, (PBYTE)uszOut, cbuDst - 4, &uszTMP, NULL, CHARUTIL_FLAG_TRUNCATE)) { return 0; }
+    if(wsz && !CharUtil_WtoU((LPWSTR)wsz, cch, (PBYTE)uszOut, cbuDst - 4, &uszTMP, NULL, CHARUTIL_FLAG_TRUNCATE)) { return 0; }
+    if(usz && !CharUtil_UtoU((LPSTR)usz, cch, (PBYTE)uszOut, cbuDst - 4, &uszTMP, NULL, CHARUTIL_FLAG_TRUNCATE)) { return 0; }
+    // 2: replace bad chars
+    while((c = uszOut[i])) {
+        if((c < 128) && (cLast < 128)) {
+            c = (chAllowArray[c] == '0') ? chNew : c;
+        }
+        uszOut[i] = c;
+        cLast = c;
+        i++;
+    }
     return (DWORD)(strlen(uszOut) + 1);
 }
 

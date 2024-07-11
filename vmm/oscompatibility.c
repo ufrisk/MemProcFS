@@ -18,6 +18,26 @@ _Ret_maybenull_ HMODULE WINAPI LoadLibraryU(_In_ LPCSTR lpLibFileName)
     return NULL;
 }
 
+int LZ4_decompress_safe(const char *src, char *dst, int compressedSize, int dstCapacity)
+{
+    static BOOL fFirst = TRUE;
+    static HMODULE hLZ4 = NULL;
+    static int(*pfn_LZ4_decompress_safe)(const char *, char *, int, int) = NULL;
+    if(fFirst) {
+        hLZ4 = LoadLibraryU("tinylz4.dll");
+        if(hLZ4) {
+            pfn_LZ4_decompress_safe = (int(*)(const char *, char *, int, int))GetProcAddress(hLZ4, "LZ4_decompress_safe");
+        }
+        fFirst = FALSE;
+        // "leak" hLZ4 on purpose to avoid unloading the library
+    }
+    if(pfn_LZ4_decompress_safe) {
+        return pfn_LZ4_decompress_safe(src, dst, compressedSize, dstCapacity);
+    } else {
+        return -1;
+    }
+}
+
 #endif
 
 #ifdef LINUX

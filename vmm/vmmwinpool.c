@@ -448,6 +448,7 @@ typedef struct tdVMMWINPOOL_OFFSETS {
     } _HEAP_SEG_CONTEXT;
     struct {
         WORD cb;
+        QWORD qwSignatureStaticKey;
     } _HEAP_PAGE_SEGMENT;
     struct {
         WORD cb;
@@ -536,6 +537,7 @@ _Success_(return)
 BOOL VmmWinPool_AllPool1903_Offsets(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _Out_ PVMMWINPOOL_OFFSETS po)
 {
     // static initialization:
+    po->_HEAP_PAGE_SEGMENT.qwSignatureStaticKey = ((H->vmm.kernel.dwVersionBuild < 26100) ? 0xa2e64eada2e64ead : 0);
     po->_EX_POOL_HEAP_MANAGER_STATE.oHeapKey = 0;
     po->_EX_HEAP_POOL_NODE.oHeaps = 0;
     if(H->vmm.f32) {
@@ -728,7 +730,7 @@ BOOL VmmWinPool_AllPool1903_3_HeapFillPageSegment_ProcessSingleCandidate(_In_ VM
     if(!(pe = ObMap_GetByKey(ctx->pmPgSeg, va))) { return TRUE; }
     if(!VmmRead2(H, ctx->pSystemProcess, pe->va, pe->pb, ctx->po->_HEAP_PAGE_SEGMENT.cb, VMMDLL_FLAG_FORCECACHE_READ)) { return FALSE; }
     // signature check
-    vaSignature = VMM_PTR_OFFSET_DUAL(f32, pe->pb, 8, 16) ^ ctx->qwKeyHeap ^ va ^ 0xa2e64eada2e64ead;
+    vaSignature = VMM_PTR_OFFSET_DUAL(f32, pe->pb, 8, 16) ^ ctx->qwKeyHeap ^ va ^ ctx->po->_HEAP_PAGE_SEGMENT.qwSignatureStaticKey;
     if(!VMM_KADDR_4_8(f32, vaSignature)) { return TRUE; }
     pe->fValid = TRUE;
     // flink/blink
@@ -927,11 +929,12 @@ VOID VmmWinPool_AllPool1903_5_LFH_DoWork(
     UCHAR ucBits;
     PBYTE pbBitmap;
     DWORD iBlock, cBlock, oBlock;
-    DWORD cbBlockSize, oFirstBlock;
+    DWORD cbBlockSize, oFirstBlock, dwvaShift;
     P_HEAP_LFH_SUBSEGMENT_ENCODED_OFFSETS pEncoded;
     pbBitmap = pb + ctx->po->_HEAP_LFH_SUBSEGMENT.oBlockBitmap;
     pEncoded = (P_HEAP_LFH_SUBSEGMENT_ENCODED_OFFSETS)(pb + ctx->po->_HEAP_LFH_SUBSEGMENT.oBlockOffsets);
-    pEncoded->EncodedData = (DWORD)(pEncoded->EncodedData ^ ctx->qwKeyLfh ^ ((DWORD)va >> 12));
+    dwvaShift = (H->vmm.kernel.dwVersionBuild >= 26100) ? ((DWORD)(va >> 12)) : ((DWORD)va >> 12);
+    pEncoded->EncodedData = (DWORD)(pEncoded->EncodedData ^ ctx->qwKeyLfh ^ dwvaShift);
     oFirstBlock = pEncoded->FirstBlockOffset;
     cbBlockSize = pEncoded->BlockSize;
     if((cbBlockSize >= 0xff8) || (oFirstBlock > cb)) { return; }

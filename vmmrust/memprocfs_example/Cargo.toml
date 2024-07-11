@@ -1,6 +1,6 @@
 [package]
 name = "memprocfs_example"
-version = "5.9.18"
+version = "5.10.0"
 edition = "2021"
 publish = false
 

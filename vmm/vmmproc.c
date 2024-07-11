@@ -189,25 +189,27 @@ BOOL VmmProcRefresh_Slow(_In_ VMM_HANDLE H)
     return TRUE;
 }
 
+#define VMMPROCCACHE_SETDEFAULT(dwDst, dwSrc)       (dwDst = (DWORD)(dwDst ? dwDst : dwSrc))
+
 VOID VmmProcCacheUpdaterThread(_In_ VMM_HANDLE H, _In_ QWORD qwNotUsed)
 {
     QWORD i = 0, qwTickPeriodCount;
     BOOL fRefreshMEM, fRefreshTLB, fRefreshFast, fRefreshMedium, fRefreshSlow;
     VmmLog(H, MID_CORE, LOGLEVEL_VERBOSE, "VmmProc: Start periodic cache flushing");
     if(H->dev.fRemote) {
-        H->vmm.ThreadProcCache.cMs_TickPeriod   = VMMPROC_UPDATERTHREAD_REMOTE_PERIOD;
-        H->vmm.ThreadProcCache.cTick_MEM        = VMMPROC_UPDATERTHREAD_REMOTE_MEM;
-        H->vmm.ThreadProcCache.cTick_TLB        = VMMPROC_UPDATERTHREAD_REMOTE_TLB;
-        H->vmm.ThreadProcCache.cTick_Fast       = VMMPROC_UPDATERTHREAD_REMOTE_FAST;
-        H->vmm.ThreadProcCache.cTick_Medium     = VMMPROC_UPDATERTHREAD_REMOTE_MEDIUM;
-        H->vmm.ThreadProcCache.cTick_Slow       = VMMPROC_UPDATERTHREAD_REMOTE_SLOW;
+        VMMPROCCACHE_SETDEFAULT(H->vmm.ThreadProcCache.cMs_TickPeriod,  VMMPROC_UPDATERTHREAD_REMOTE_PERIOD);
+        VMMPROCCACHE_SETDEFAULT(H->vmm.ThreadProcCache.cTick_MEM,       VMMPROC_UPDATERTHREAD_REMOTE_MEM);
+        VMMPROCCACHE_SETDEFAULT(H->vmm.ThreadProcCache.cTick_TLB,       VMMPROC_UPDATERTHREAD_REMOTE_TLB);
+        VMMPROCCACHE_SETDEFAULT(H->vmm.ThreadProcCache.cTick_Fast,      VMMPROC_UPDATERTHREAD_REMOTE_FAST);
+        VMMPROCCACHE_SETDEFAULT(H->vmm.ThreadProcCache.cTick_Medium,    VMMPROC_UPDATERTHREAD_REMOTE_MEDIUM);
+        VMMPROCCACHE_SETDEFAULT(H->vmm.ThreadProcCache.cTick_Slow,      VMMPROC_UPDATERTHREAD_REMOTE_SLOW);
     } else {
-        H->vmm.ThreadProcCache.cMs_TickPeriod   = VMMPROC_UPDATERTHREAD_LOCAL_PERIOD;
-        H->vmm.ThreadProcCache.cTick_MEM        = VMMPROC_UPDATERTHREAD_LOCAL_MEM;
-        H->vmm.ThreadProcCache.cTick_TLB        = VMMPROC_UPDATERTHREAD_LOCAL_TLB;
-        H->vmm.ThreadProcCache.cTick_Fast       = VMMPROC_UPDATERTHREAD_LOCAL_FAST;
-        H->vmm.ThreadProcCache.cTick_Medium     = VMMPROC_UPDATERTHREAD_LOCAL_MEDIUM;
-        H->vmm.ThreadProcCache.cTick_Slow       = VMMPROC_UPDATERTHREAD_LOCAL_SLOW;
+        VMMPROCCACHE_SETDEFAULT(H->vmm.ThreadProcCache.cMs_TickPeriod,  VMMPROC_UPDATERTHREAD_LOCAL_PERIOD);
+        VMMPROCCACHE_SETDEFAULT(H->vmm.ThreadProcCache.cTick_MEM,       VMMPROC_UPDATERTHREAD_LOCAL_MEM);
+        VMMPROCCACHE_SETDEFAULT(H->vmm.ThreadProcCache.cTick_TLB,       VMMPROC_UPDATERTHREAD_LOCAL_TLB);
+        VMMPROCCACHE_SETDEFAULT(H->vmm.ThreadProcCache.cTick_Fast,      VMMPROC_UPDATERTHREAD_LOCAL_FAST);
+        VMMPROCCACHE_SETDEFAULT(H->vmm.ThreadProcCache.cTick_Medium,    VMMPROC_UPDATERTHREAD_LOCAL_MEDIUM);
+        VMMPROCCACHE_SETDEFAULT(H->vmm.ThreadProcCache.cTick_Slow,      VMMPROC_UPDATERTHREAD_LOCAL_SLOW);
     }
     while(!H->fAbort && H->vmm.ThreadProcCache.fEnabled) {
         if(H->vmm.ThreadProcCache.cMs_TickPeriod > 100) {
@@ -260,10 +262,10 @@ BOOL VmmProcInitialize(_In_ VMM_HANDLE H)
     if(!result) {
         result = H->cfg.paCR3 && VmmProcUserCR3TryInitialize64(H);
         if(!result) {
-            vmmprintf(H,
-                "VmmProc: Unable to auto-identify operating system.                            \n" \
-                "         Specify PageDirectoryBase (DTB/CR3) in -dtb option if value if known.\n" \
-                "         If arm64 dump, specify architecture: -arch arm64                     \n"
+            VmmLog(H, MID_CORE, LOGLEVEL_CRITICAL, "Unable to auto-identify operating system.    \n" \
+                "           Specify PageDirectoryBase (DTB/CR3) in -dtb option if value if known.\n" \
+                "           If arm64 dump, specify architecture: -arch arm64                     \n"
+
             );
         }
     }

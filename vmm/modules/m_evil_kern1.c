@@ -22,6 +22,7 @@ VOID MEvilKern1_KDriverPath(_In_ VMM_HANDLE H, _In_ VMMDLL_MODULE_ID MID, _In_ P
         "\\SystemRoot\\system32\\ntoskrnl.exe",
         "\\SystemRoot\\System32\\win32k",
         "\\SystemRoot\\system32\\hal.dll",
+        "\\SystemRoot\\system32\\cdd.dll",
         "\\??\\C:\\Windows\\system32\\DRIVERS\\",
         "\\??\\C:\\Windows\\System32\\DriverStore\\",
         "\\??\\C:\\ProgramData\\Microsoft\\Windows Defender\\Definition Updates\\",

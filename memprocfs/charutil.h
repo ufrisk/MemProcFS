@@ -271,6 +271,23 @@ DWORD CharUtil_FixFsName(
 );
 
 /*
+* Replace illegal characters in a text with a character of the users choosing.
+* The result is returned as a utf-8 string.
+* -- uszOut
+* -- cbuDst
+* -- usz
+* -- sz
+* -- wsz
+* -- cwsz
+* -- cch = number of bytes/wchars in usz/sz/wsz or _TRUNCATE
+* -- chReplace = character to replace illegal characters with.
+* -- chAllowArray = array of 0(illegal char) or 1(allowed char) for each character in the 0-127 range.
+* -- return = number of bytes written (including terminating NULL).
+*/
+_Success_(return != 0)
+DWORD CharUtil_ReplaceMultiple(_Out_writes_(cbuDst) LPSTR uszOut, _In_ DWORD cbuDst, _In_opt_ LPCSTR usz, _In_opt_ LPCSTR sz, _In_opt_ LPCWSTR wsz, _In_ DWORD cch, _In_ CHAR chAllowArray[128], _In_ CHAR chNew);
+
+/*
 * Replace all characters in a string.
 * -- sz
 * -- chOld
@@ -289,7 +306,20 @@ VOID CharUtil_ReplaceAllA(_Inout_ LPSTR sz, _In_ CHAR chOld, _In_ CHAR chNew);
 * -- cbu1 = byte length of usz1 buffer
 * -- return = remainder of split string.
 */
-LPSTR CharUtil_SplitFirst(_In_ LPSTR usz, _In_ CHAR ch, _Out_writes_(cbu1) LPSTR usz1, _In_ DWORD cbu1);
+LPCSTR CharUtil_SplitFirst(_In_ LPCSTR usz, _In_ CHAR ch, _Out_writes_(cbu1) LPSTR usz1, _In_ DWORD cbu1);
+
+/*
+* Split a string into two at the last character.
+* The 1st string is returned in the pusz1 caller-allocated buffer. The
+* remainder is returned as return data (is a sub-string of usz). If no
+* 2nd string is found null-terminator character is returned (NB! not as NULL).
+* -- usz = utf-8/ascii string to split.
+* -- ch = character to split at.
+* -- usz1 = buffer to receive result.
+* -- cbu1 = byte length of usz1 buffer
+* -- return = remainder of split string.
+*/
+LPCSTR CharUtil_SplitLast(_In_ LPCSTR usz, _In_ CHAR ch, _Out_writes_(cbu1) LPSTR usz1, _In_ DWORD cbu1);
 
 /*
 * Split a string into a list of strings at the delimiter characters.

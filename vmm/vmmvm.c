@@ -14,6 +14,7 @@
 // - Windows 10 19041
 // - Windows 11 22000
 // - Windows 11 22621
+// - Windows 11 26100
 //  
 // The Hyper-V implementation is largely based from the most excellent blog
 // entry by @gerhart_x (twitter.com/gerhart_x). Blog Entry:
@@ -107,6 +108,7 @@ typedef struct tdVMM_VM_OFFSET {
         DWORD Signature;
         DWORD HndPrtn;
         DWORD GPAA;
+        DWORD VmMemOffset;
     } mb;
 } VMM_VM_OFFSET, *PVMM_VM_OFFSET;
 
@@ -356,7 +358,7 @@ QWORD VmmVm_DoWork_NewHvMemTranslate(_In_ VMM_HANDLE H, _In_ PVMMOB_VMGLOBAL_CON
         if(peT->GpaPfnBase == 0xfff800) { continue; }
         peT->vaMB = *(PQWORD)(pb + po->gpar.MB);
         peT->vaVmMem = *(PQWORD)(pb + po->gpar.VmMemOffset);
-        if(!pVM->dwPrcsPID || !VMM_UADDR64_PAGE(peT->vaVmMem)) {
+        if(!po->gpar.VmMemOffset || !pVM->dwPrcsPID || !VMM_UADDR64_PAGE(peT->vaVmMem)) {
             peT->vaVmMem = 0;
         }
         if(!VMM_KADDR64_16(peT->vaMB)) { peT->vaMB = 0; continue; }
@@ -376,17 +378,28 @@ QWORD VmmVm_DoWork_NewHvMemTranslate(_In_ VMM_HANDLE H, _In_ PVMMOB_VMGLOBAL_CON
             if(!VmmRead2(H, pVMG->init.pSystemProcess, peT->vaMB, pb, po->mb.cb, VMM_FLAG_FORCECACHE_READ)) { continue; }
             if('  bM' != *(PDWORD)(pb + po->mb.Signature)) { continue; }     // Signature: 'Mb  '
             if(pVM->va != *(PQWORD)(pb + po->mb.HndPrtn)) { continue; }
-            peT->vaGPAA = *(PQWORD)(pb + po->mb.GPAA);
-            if(!VmmMap_GetPoolEntry(H, pVMG->init.pBigPoolMap, peT->vaGPAA, &pePool)) {
-                // DEBUG / TODO: is it a valid assumption vaGPAA is in big pool table?
-                VmmLog(H, MID_VM, LOGLEVEL_6_TRACE, "[%02X] WARN: HvMemTranslate: GPAA not in BigPoolTable. [GPAR=%llx,MB=%llx,GPAA=%llx]", pVM->dwPartitionID, peT->va, peT->vaMB, peT->vaGPAA);
-                continue;
+            // Try retrieve VmMemOffset process offset (if available / 24h2):
+            if(po->mb.VmMemOffset) {
+                peT->vaVmMem = *(PQWORD)(pb + po->mb.VmMemOffset);
+                if(!pVM->dwPrcsPID || !VMM_UADDR64_PAGE(peT->vaVmMem)) {
+                    peT->vaVmMem = 0;
+                }
             }
-            if((pePool->cb / cbGPAA_Entry) < (peT->GpaPfnTop + 1 - peT->GpaPfnBase)) {
-                VmmLog(H, MID_VM, LOGLEVEL_6_TRACE, "[%02X] WARN: HvMemTranslate: cbGPAA too small. [GPAR=%llx,MB=%llx,GPAA=%llx]", pVM->dwPartitionID, peT->va, peT->vaMB, peT->vaGPAA);
-                continue;
+            if(peT->vaVmMem) {
+                pVM->fGpaVirtual = TRUE;
+            } else {
+                peT->vaGPAA = *(PQWORD)(pb + po->mb.GPAA);
+                if(!VmmMap_GetPoolEntry(H, pVMG->init.pBigPoolMap, peT->vaGPAA, &pePool)) {
+                    // DEBUG / TODO: is it a valid assumption vaGPAA is in big pool table?
+                    VmmLog(H, MID_VM, LOGLEVEL_6_TRACE, "[%02X] WARN: HvMemTranslate: GPAA not in BigPoolTable. [GPAR=%llx,MB=%llx,GPAA=%llx]", pVM->dwPartitionID, peT->va, peT->vaMB, peT->vaGPAA);
+                    continue;
+                }
+                if((pePool->cb / cbGPAA_Entry) < (peT->GpaPfnTop + 1 - peT->GpaPfnBase)) {
+                    VmmLog(H, MID_VM, LOGLEVEL_6_TRACE, "[%02X] WARN: HvMemTranslate: cbGPAA too small. [GPAR=%llx,MB=%llx,GPAA=%llx]", pVM->dwPartitionID, peT->va, peT->vaMB, peT->vaGPAA);
+                    continue;
+                }
+                pVM->fGpaPhysical = TRUE;
             }
-            pVM->fGpaPhysical = TRUE;
         }
         // check previous valid GPAR is at PFN below current.
         // these are very common when a 'vmmem' process exists so don't log them
@@ -740,6 +753,7 @@ BOOL VmmVm_DoWork_1_AllocGlobalContext_GetOffsets(_In_ VMM_HANDLE H, _In_ PVMM_V
         InfoDB_TypeChildOffset_Static(H, "hv", "_PRTN", "HvpSignature", &po->prtn.HvpSignature);
         InfoDB_TypeChildOffset_Static(H, "hv", "_PRTN", "HvpTreeRoot", &po->prtn.HvpTreeRoot);
         InfoDB_TypeChildOffset_Static(H, "hv", "_GPAR", "VmMem", &po->gpar.VmMemOffset);
+        InfoDB_TypeChildOffset_Static(H, "hv", "_MB", "VmMem", &po->mb.VmMemOffset);
     }
     return
         InfoDB_TypeSize_Static(H, "hv", "_PRTN", &po->prtn.cb) &&

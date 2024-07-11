@@ -20,6 +20,7 @@
 #define STATUS_FILE_SYSTEM_LIMITATION       ((NTSTATUS)0xC0000427L)
 typedef unsigned __int64                    QWORD, *PQWORD;
 _Ret_maybenull_ HMODULE WINAPI LoadLibraryU(_In_ LPCSTR lpLibFileName);
+int LZ4_decompress_safe(const char *src, char *dst, int compressedSize, int dstCapacity);
 
 #ifdef _WIN64
 #define VMM_64BIT
@@ -56,6 +57,7 @@ _Ret_maybenull_ HMODULE WINAPI LoadLibraryU(_In_ LPCSTR lpLibFileName);
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <lz4.h>
 #undef  AF_INET6
 #define AF_INET6 23
 

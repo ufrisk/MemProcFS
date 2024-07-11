@@ -271,6 +271,23 @@ DWORD CharUtil_FixFsName(
 );
 
 /*
+* Replace illegal characters in a text with a character of the users choosing.
+* The result is returned as a utf-8 string.
+* -- uszOut
+* -- cbuDst
+* -- usz
+* -- sz
+* -- wsz
+* -- cwsz
+* -- cch = number of bytes/wchars in usz/sz/wsz or _TRUNCATE
+* -- chReplace = character to replace illegal characters with.
+* -- chAllowArray = array of 0(illegal char) or 1(allowed char) for each character in the 0-127 range.
+* -- return = number of bytes written (including terminating NULL).
+*/
+_Success_(return != 0)
+DWORD CharUtil_ReplaceMultiple(_Out_writes_(cbuDst) LPSTR uszOut, _In_ DWORD cbuDst, _In_opt_ LPCSTR usz, _In_opt_ LPCSTR sz, _In_opt_ LPCWSTR wsz, _In_ DWORD cch, _In_ CHAR chAllowArray[128], _In_ CHAR chNew);
+
+/*
 * Replace all characters in a string.
 * -- sz
 * -- chOld

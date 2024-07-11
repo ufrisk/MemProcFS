@@ -357,9 +357,14 @@ VOID MmWin_MemCompress_InitializeOffsets64(_In_ VMM_HANDLE H)
     po->SMKM_STORE.SmkmStore = 0x50 + 0x320;                // static = ok
     po->SMKM_STORE.RegionSizeMask = 0x50 + 0x328;           // static = ok
     po->SMKM_STORE.RegionIndexMask = 0x50 + 0x32C;          // static = ok
-    po->SMKM_STORE.CompressionAlgorithm = 0x50 + 0x3E0;     // 1709+
-    po->SMKM_STORE.CompressedRegionPtrArray = 0x1848;       // 1709+
-    po->SMKM_STORE.OwnerProcess = 0x19B8;                   // 2004+
+    po->SMKM_STORE.CompressionAlgorithm = 0;                // 24H2+
+    po->SMKM_STORE.CompressedRegionPtrArray = 0x1b70;       // 24H2+
+    po->SMKM_STORE.OwnerProcess = 0x1d08;                   // 24H2+
+    if(dwVersionBuild <= 22621) {
+        po->SMKM_STORE.CompressionAlgorithm = 0x50 + 0x3E0; // 1709+
+        po->SMKM_STORE.CompressedRegionPtrArray = 0x1848;   // 1709+
+        po->SMKM_STORE.OwnerProcess = 0x19B8;               // 2004+
+    }
     if(dwVersionBuild <= 18363) {                           // 1709-1909
         po->SMKM_STORE.OwnerProcess = 0x19A8;
     }
@@ -602,7 +607,9 @@ finish:
 
 VOID MmWin_MemCompress_Initialize(_In_ VMM_HANDLE H)
 {
-    DWORD vaKeyToStoreTree32;
+    BYTE LZ4TEST_DST[] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+    BYTE LZ4TEST_SRC[] = { 0x80, 0x54, 0x45, 0x53, 0x54, 0x00, 0x00, 0x00, 0x00 };
+    DWORD dwo, vaKeyToStoreTree32;
     QWORD vaKeyToStoreTree64, va;
     PVMM_PROCESS pObSystemProcess = NULL, pObProcess = NULL;
     PMMWIN_CONTEXT ctx = H->vmm.pMmContext;
@@ -626,9 +633,11 @@ VOID MmWin_MemCompress_Initialize(_In_ VMM_HANDLE H)
     if(H->vmm.kernel.dwVersionBuild >= 22601) {
         // WIN11 22H2+: SmGlobals data is mostly moved into external allocation (pool tag: 'SmPa').
         // This is referenced by a (list?) in 'SmGlobals'+8 -> Use the 'SmPa' as SmGlobals instead!
-        if(!VmmRead(H, pObSystemProcess, ctx->MemCompress.vaSmGlobals + 8, (PBYTE)&va, sizeof(QWORD))) { goto fail; }
+        dwo = (H->vmm.kernel.dwVersionBuild >= 26100) ? 0x10 : 0x08;
+        if(!VmmRead(H, pObSystemProcess, ctx->MemCompress.vaSmGlobals + dwo, (PBYTE)&va, sizeof(QWORD))) { goto fail; }
         if(!VMM_KADDR64_8(va)) { goto fail; }
-        ctx->MemCompress.vaSmGlobals = va - 0x7a8;
+        dwo = (H->vmm.kernel.dwVersionBuild >= 26100) ? 0xc30 : 0x7a8;
+        ctx->MemCompress.vaSmGlobals = va - dwo;
     }
     // WIN10 and WIN11 21H2: most data is stored in the large global 'SmGlobals'
     // incl. vaKeyToStoreTree which is referenced from SmGlobals (pool tag: 'smBt').
@@ -643,6 +652,12 @@ VOID MmWin_MemCompress_Initialize(_In_ VMM_HANDLE H)
         if(!VMM_KADDR64_PAGE(vaKeyToStoreTree64)) { goto fail; }
         ctx->MemCompress.vaKeyToStoreTree = vaKeyToStoreTree64;
     }
+    // IF WIN11 24H2-26100+: TEST LZ4 COMPRESSION:
+    if((H->vmm.kernel.dwVersionBuild >= 26100) && (sizeof(LZ4TEST_DST) != LZ4_decompress_safe(LZ4TEST_SRC, LZ4TEST_DST, sizeof(LZ4TEST_SRC), sizeof(LZ4TEST_DST)))) {
+        VmmLog(H, MID_VMM, LOGLEVEL_4_VERBOSE, "MemCompress_Initialize: Failed to initialize LZ4 decompression. Likely reason: tinylz4.dll is missing.");
+        goto fail;
+    }
+    // SUCCESS:
     ctx->MemCompress.fValid = TRUE;
 fail:
     Ob_DECREF(pObSystemProcess);
@@ -832,7 +847,7 @@ BOOL MmWin_MemCompress3_SmkmStoreAndPageRecord32(_In_ VMM_HANDLE H, _In_ PMMWINX
     if(!VMM_KADDR32_8(*(PDWORD)(ctx->e.pbSmkm + po->SMKM_STORE.PagesTree))) {
         return MmWin_MemCompress_LogError(H, ctx, "#32 PagesTreePtrNoKADDR");
     }
-    if(COMPRESS_ALGORITHM_XPRESS != *(PWORD)(ctx->e.pbSmkm + po->SMKM_STORE.CompressionAlgorithm)) {
+    if(po->SMKM_STORE.CompressionAlgorithm && (COMPRESS_ALGORITHM_XPRESS != *(PWORD)(ctx->e.pbSmkm + po->SMKM_STORE.CompressionAlgorithm))) {
         return MmWin_MemCompress_LogError(H, ctx, "#33 InvalidCompressionAlgorithm");
     }
     // 3: Get region key
@@ -895,7 +910,7 @@ BOOL MmWin_MemCompress3_SmkmStoreAndPageRecord64(_In_ VMM_HANDLE H, _In_ PMMWINX
     if(!VMM_KADDR64_16(*(PQWORD)(ctx->e.pbSmkm + po->SMKM_STORE.PagesTree))) {
         return MmWin_MemCompress_LogError(H, ctx, "#32 PagesTreePtrNoKADDR");
     }
-    if(COMPRESS_ALGORITHM_XPRESS != *(PWORD)(ctx->e.pbSmkm + po->SMKM_STORE.CompressionAlgorithm)) {
+    if(po->SMKM_STORE.CompressionAlgorithm && (COMPRESS_ALGORITHM_XPRESS != *(PWORD)(ctx->e.pbSmkm + po->SMKM_STORE.CompressionAlgorithm))) {
         return MmWin_MemCompress_LogError(H, ctx, "#33 InvalidCompressionAlgorithm");
     }
     // 3: Get region key
@@ -1006,9 +1021,16 @@ BOOL MmWin_MemCompress5_DecompressPage(_In_ VMM_HANDLE H, _In_ PMMWINX64_COMPRES
     // 2: Decompress data
     if(ctx->e.cbCompressedData == 0x1000) {
         memcpy(pbDecompressedPage, ctx->e.pbCompressedData, 0x1000);
+    } else if(ctx->e.cbCompressedData == 0) {
+        ZeroMemory(pbDecompressedPage, 0x1000);
     } else {
-        if(H->vmm.fn.RtlDecompressBufferOpt) {
-            nt = H->vmm.fn.RtlDecompressBufferOpt(COMPRESS_ALGORITHM_XPRESS, pbDecompressedPage, 0x1000, ctx->e.pbCompressedData, ctx->e.cbCompressedData, &cbDecompressed);
+        if(H->vmm.kernel.dwVersionBuild >= 26100) {
+            nt = VMM_STATUS_SUCCESS;
+            cbDecompressed = LZ4_decompress_safe(ctx->e.pbCompressedData, pbDecompressedPage, ctx->e.cbCompressedData, 0x1000);
+        } else {
+            if(H->vmm.fn.RtlDecompressBufferOpt) {
+                nt = H->vmm.fn.RtlDecompressBufferOpt(COMPRESS_ALGORITHM_XPRESS, pbDecompressedPage, 0x1000, ctx->e.pbCompressedData, ctx->e.cbCompressedData, &cbDecompressed);
+            }
         }
         if((nt != VMM_STATUS_SUCCESS) || (cbDecompressed != 0x1000)) {
             MmWin_MemCompress_LogError(H, ctx, "#52 Decompress");
@@ -1054,6 +1076,9 @@ BOOL MmWin_MemCompress(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ Q
     } else {
         // 64-bit system
         ctx->e.dwPageKey = MMWINX64_PTE_PAGE_KEY_COMPRESSED(H, pte);
+        if(H->vmm.kernel.dwVersionBuild >= 26100) {
+            ctx->e.dwPageKey &= 0x0fffffff;
+        }
         fResult =
             (ctx->pProcess = pProcess) &&
             (ctx->pSystemProcess = pObSystemProcess = VmmProcessGet(H, 4)) &&

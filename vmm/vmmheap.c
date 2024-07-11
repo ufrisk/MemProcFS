@@ -514,11 +514,12 @@ VOID VmmHeapAlloc_SegLFH(_In_ VMM_HANDLE H, _In_ PVMMHEAPNT_CTX ctx, _In_ DWORD 
     UCHAR ucBits;
     PBYTE pbBitmap;
     DWORD iBlock, cBlock, oBlock;
-    DWORD cbBlockSize, oFirstBlock;
+    DWORD cbBlockSize, oFirstBlock, dwvaShift;
     PVMMHEAPALLOC_SEG_LFHENCODED_OFFSETS pEncoded;
     pbBitmap = pb + ctx->po->seg.HEAP_LFH_SUBSEGMENT.BlockBitmap;
     pEncoded = (PVMMHEAPALLOC_SEG_LFHENCODED_OFFSETS)(pb + ctx->po->seg.HEAP_LFH_SUBSEGMENT.BlockOffsets);
-    pEncoded->EncodedData = (DWORD)(pEncoded->EncodedData ^ ctx->dwSegLfhKey ^ ((DWORD)va >> 12));
+    dwvaShift = (H->vmm.kernel.dwVersionBuild >= 26100) ? ((DWORD)(va >> 12)) : ((DWORD)va >> 12);
+    pEncoded->EncodedData = (DWORD)(pEncoded->EncodedData ^ ctx->dwSegLfhKey ^ dwvaShift);
     oFirstBlock = pEncoded->FirstBlockOffset;
     cbBlockSize = pEncoded->BlockSize;
     if((cbBlockSize >= 0xff8) || (oFirstBlock > cb)) { return; }
@@ -607,7 +608,7 @@ VOID VmmHeapAlloc_SegInit(_In_ VMM_HANDLE H, _In_ PVMMHEAPNT_CTX ctx)
                 if(!(pbPgSeg = LocalAlloc(0, cbPgSeg))) { goto fail; }
                 VmmRead2(H, ctx->pProcess, peSegment->va, pbPgSeg, cbPgSeg, VMM_FLAG_ZEROPAD_ON_FAIL);
                 // signature check:
-                vaSignature = VMM_PTR_OFFSET_DUAL(f32, pbPgSeg, 8, 16) ^ peSegment->va ^ ctx->qwSegHeapGbl ^ 0xa2e64eada2e64ead;
+                vaSignature = VMM_PTR_OFFSET_DUAL(f32, pbPgSeg, 8, 16) ^ peSegment->va ^ ctx->qwSegHeapGbl ^ ctx->po->seg.HEAP_PAGE_SEGMENT.qwSignatureStaticKey;
                 iCtx = (DWORD)-1;
                 if(ctx->segctx[0].va == vaSignature) { iCtx = 0; }
                 if(ctx->segctx[1].va == vaSignature) { iCtx = 1; }
