@@ -1,11 +1,12 @@
 // oscompatibility.h : VMM Windows/Linux compatibility layer.
 //
-// (c) Ulf Frisk, 2021-2023
+// (c) Ulf Frisk, 2021-2024
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifdef LINUX
 #ifndef __OSCOMPATIBILITY_H__
 #define __OSCOMPATIBILITY_H__
+#define _FILE_OFFSET_BITS 64
 #include <leechcore.h>
 #include <vmmdll.h>
 

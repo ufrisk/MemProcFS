@@ -51,8 +51,7 @@ typedef enum tdVMMLOG_LEVEL {
 #define MID_OBJECT       0x8000001e
 #define MID_VM           0x8000001f
 #define MID_MODULE       0x80000020
-#define MID_YARA         0x80000021
-#define MID_MAX          0x80000021
+#define MID_MAX          0x80000020
 
 // max 8 chars long!
 static LPCSTR VMMLOG_MID_STR[] = {
@@ -81,7 +80,6 @@ static LPCSTR VMMLOG_MID_STR[] = {
     "OBJECT",
     "VM",
     "MODULE",
-    "YARA"
 };
 
 /*

@@ -30,6 +30,7 @@ int LZ4_decompress_safe(const char *src, char *dst, int compressedSize, int dstC
 
 #endif /* _WIN32 */
 #ifdef LINUX
+#define _FILE_OFFSET_BITS 64
 
 #if __SIZEOF_POINTER__ == 8
 #define VMM_64BIT
@@ -203,10 +204,10 @@ typedef int(*_CoreCrtNonSecureSearchSortCompareFunction)(void const *, void cons
 #define ExitProcess(c)                      (exit(c ? EXIT_SUCCESS : EXIT_FAILURE))
 #define Sleep(dwMilliseconds)               (usleep(1000*dwMilliseconds))
 #define _fsopen(szFile, szMode, dwAttr)     fopen(szFile, szMode)
-#define fopen_s(ppFile, szFile, szAttr)     ((*ppFile = fopen64(szFile, szAttr)) ? 0 : 1)
+#define fopen_s(ppFile, szFile, szAttr)     ((*ppFile = fopen(szFile, szAttr)) ? 0 : 1)
 #define ZeroMemory(pb, cb)                  (memset(pb, 0, cb))
-#define _ftelli64(f)                        (ftello64(f))
-#define _fseeki64(f, o, w)                  (fseeko64(f, o, w))
+#define _ftelli64(f)                        (ftello(f))
+#define _fseeki64(f, o, w)                  (fseeko(f, o, w))
 #define _chsize_s(fd, cb)                   (ftruncate64(fd, cb))
 #define _fileno(f)                          (fileno(f))
 #define InterlockedAdd64(p, v)              (__sync_add_and_fetch_8(p, v))

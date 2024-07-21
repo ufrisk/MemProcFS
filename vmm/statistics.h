@@ -213,6 +213,7 @@ BOOL Statistics_CallToString(_In_ VMM_HANDLE H, _Out_opt_ LPSTR *psz, _Out_ PDWO
 
 typedef struct tdVMMSTATISTICS_LOG {
     BOOL f;
+    BOOL fShowReads;
     DWORD dwPID;
     DWORD MID;
     VMMLOG_LEVEL dwLogLevel;

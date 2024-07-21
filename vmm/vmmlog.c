@@ -148,7 +148,7 @@ VOID VmmLog_LevelRefresh(_In_ VMM_HANDLE H)
 {
     PVMMLOG_CONTEXT ctxLog = H->log;
     VMM_MODULE_ID MID;
-    DWORD i, dwTokenMID;
+    DWORD i;
     PVMMLOG_CONTEXT_MODULEINFO pmi;
     CHAR ch, szModuleName[9], szTokenBuffer[MAX_PATH];
     LPSTR szToken, szTokenInitial, szTokenContext = NULL;
@@ -195,7 +195,6 @@ VOID VmmLog_LevelRefresh(_In_ VMM_HANDLE H)
     szTokenInitial = szTokenBuffer;
     while((szToken = strtok_s(szTokenInitial, ",", &szTokenContext))) {
         szTokenInitial = NULL;
-        dwTokenMID = 0;
         fModuleName = FALSE;
         // parse file flush option (if any):
         if(!_stricmp(szToken, "fflush")) {
@@ -230,23 +229,29 @@ VOID VmmLog_LevelRefresh(_In_ VMM_HANDLE H)
             for(MID = 1; MID < ctxLog->iNextMID; MID++) {
                 pmi = VmmLog_GetModuleInfo(H, MID);
                 if(pmi->uszName && !_stricmp(pmi->uszName, szModuleName)) {
-                    dwTokenMID = MID;
-                    break;
+                    // parse log level & apply:
+                    if((szToken[0] >= '0') && (szToken[0] <= '7') && (szToken[1] == 0)) {
+                        dwLogLevel = szToken[0] - '0';
+                        VmmLog_LevelSet(H, MID, dwLogLevel, fDisplay, TRUE);
+                    }
                 }
             }
             for(MID = MID_NA; MID <= MID_MAX; MID++) {
                 pmi = VmmLog_GetModuleInfo(H, MID);
                 if(pmi->uszName && !_stricmp(pmi->uszName, szModuleName)) {
-                    dwTokenMID = MID;
-                    break;
+                    // parse log level & apply:
+                    if((szToken[0] >= '0') && (szToken[0] <= '7') && (szToken[1] == 0)) {
+                        dwLogLevel = szToken[0] - '0';
+                        VmmLog_LevelSet(H, MID, dwLogLevel, fDisplay, TRUE);
+                    }
                 }
             }
-            if(!dwTokenMID) { return; }
-        }
-        // parse log level & apply:
-        if((szToken[0] >= '0') && (szToken[0] <= '7') && (szToken[1] == 0)) {
-            dwLogLevel = szToken[0] - '0';
-            VmmLog_LevelSet(H, dwTokenMID, dwLogLevel, fDisplay, TRUE);
+        } else {
+            // parse log level & apply:
+            if((szToken[0] >= '0') && (szToken[0] <= '7') && (szToken[1] == 0)) {
+                dwLogLevel = szToken[0] - '0';
+                VmmLog_LevelSet(H, 0, dwLogLevel, fDisplay, TRUE);
+            }
         }
     }
 }
@@ -270,9 +275,9 @@ VOID VmmLog_RegisterModule(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_ LPCST
         ZeroMemory(pmi, sizeof(VMMLOG_CONTEXT_MODULEINFO));
     }
     if(CharUtil_UtoU(uszModuleName, 8, NULL, 0, &pmi->uszName, NULL, CHARUTIL_FLAG_ALLOC)) {
+        pmi->MID = MID;
+        H->log->iNextMID = MID + 1;
     }
-    pmi->MID = MID;
-    H->log->iNextMID = MID + 1;
 }
 
 /*

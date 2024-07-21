@@ -13,6 +13,7 @@
 #define MFC_YARA_MAX_MATCHES    0x10000
 
 typedef struct tdMFCYARA_CONTEXT {
+    VMMSTATISTICS_LOG Statistics;
     DWORD cMatches;
     POB_MEMFILE pmfObMemFileUser;
     PVMMYARAUTILOB_CONTEXT ctxObInit;
@@ -105,15 +106,19 @@ VOID MFcYara_FcIngestFinalize(_In_ VMM_HANDLE H, _In_opt_ PVOID ctxfc)
 fail:
     Ob_DECREF_NULL(&ctx->ctxObInit);
     Ob_DECREF(psObDuplicateCheck);
+    VmmStatisticsLogEnd(H, &ctx->Statistics, "SCAN");
 }
 
-PVOID MFcYara_FcInitialize(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
+/*
+* Initialize a yara ruleset (either built-in find-evil or user supplied).
+*/
+PVOID MFcYara_FcInitialize_DoWork(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ BOOL fBuiltin)
 {
     PMFCYARA_CONTEXT ctx = (PMFCYARA_CONTEXT)ctxP->ctxM;
     VMMYARA_ERROR err;
     PVMMYARA_RULES pYrRules = NULL;
     PINFODB_YARA_RULES pObYaraRules = NULL;
-    LPSTR szUserYaraRules = H->cfg.szForensicYaraRules;
+    LPSTR szUserYaraRules = fBuiltin ? "" : H->cfg.szForensicYaraRules;
     // 1: try initialize pre-compiled yara rules,
     //    compiled rules will disable built-in rules:
     if(szUserYaraRules[0]) {
@@ -121,7 +126,7 @@ PVOID MFcYara_FcInitialize(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
         if(err == VMMYARA_ERROR_SUCCESS) { goto finish; }
     }
     // 2: try initialize combined rules (built-in rules + optional user rule):
-    if(InfoDB_YaraRulesBuiltIn(H, &pObYaraRules)) {
+    if(fBuiltin && InfoDB_YaraRulesBuiltIn(H, &pObYaraRules)) {
         if(szUserYaraRules[0]) {
             pObYaraRules->szRules[0] = szUserYaraRules;
             err = VmmYara_RulesLoadSourceCombined(pObYaraRules->cRules, pObYaraRules->szRules, &pYrRules);
@@ -144,7 +149,19 @@ finish:
         if(pYrRules) { VmmYara_RulesDestroy(pYrRules); }
         return NULL;
     }
+    VmmStatisticsLogStart(H, ctxP->MID, LOGLEVEL_6_TRACE, NULL, &ctx->Statistics, "SCAN");
+    ctx->Statistics.fShowReads = FALSE;
     return ctx;
+}
+
+PVOID MFcYara_FcInitialize_Builtin(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
+{
+    return MFcYara_FcInitialize_DoWork(H, ctxP, TRUE);
+}
+
+PVOID MFcYara_FcInitialize_User(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
+{
+    return MFcYara_FcInitialize_DoWork(H, ctxP, FALSE);
 }
 
 NTSTATUS MFcYara_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
@@ -182,10 +199,14 @@ VOID MFcYara_Close(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
     }
 }
 
-BOOL MFcYara_ExistsRules(_In_ VMM_HANDLE H)
+BOOL MFcYara_ExistsRules_Builtin(_In_ VMM_HANDLE H)
 {
-    if(H->cfg.fDisableYara) { return FALSE; }
-    return H->cfg.szForensicYaraRules[0] || InfoDB_YaraRulesBuiltIn_Exists(H);
+    return !H->cfg.fDisableYara && InfoDB_YaraRulesBuiltIn_Exists(H);
+}
+
+BOOL MFcYara_ExistsRules_User(_In_ VMM_HANDLE H)
+{
+    return !H->cfg.fDisableYara && H->cfg.szForensicYaraRules[0];
 }
 
 VOID MFcYara_Notify(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent)
@@ -206,20 +227,40 @@ VOID M_FcYara_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     PMFCYARA_CONTEXT ctx = NULL;
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
-    if(!MFcYara_ExistsRules(H)) { return; }
-    if(!(ctx = LocalAlloc(LMEM_ZEROINIT, sizeof(MFCYARA_CONTEXT)))) { return; }
-    if(!(ctx->pmfObMemFileUser = ObMemFile_New(H, H->vmm.pObCacheMapObCompressedShared))) { return; }
-    pRI->reg_info.ctxM = (PVMMDLL_PLUGIN_INTERNAL_CONTEXT)ctx;
-    strcpy_s(pRI->reg_info.uszPathName, 128, "\\forensic\\yara");
-    pRI->reg_info.fRootModule = TRUE;
-    pRI->reg_info.fRootModuleHidden = TRUE;
-    pRI->reg_fn.pfnList = MFcYara_List;
-    pRI->reg_fn.pfnRead = MFcYara_Read;
-    pRI->reg_fn.pfnNotify = MFcYara_Notify;
-    pRI->reg_fn.pfnClose = MFcYara_Close;
-    pRI->reg_fnfc.pfnInitialize = MFcYara_FcInitialize;
-    pRI->reg_fnfc.pfnIngestObject = MFcYara_IngestObject;
-    pRI->reg_fnfc.pfnIngestVirtmem = MFcYara_IngestVirtmem;
-    pRI->reg_fnfc.pfnIngestFinalize = MFcYara_FcIngestFinalize;
-    pRI->pfnPluginManager_Register(H, pRI);
+    if(!(MFcYara_ExistsRules_Builtin(H) || MFcYara_ExistsRules_User(H))) { return; }
+    // register the built-in yara rules (used for FindEvil):
+    if(MFcYara_ExistsRules_Builtin(H)) {
+        if(!(ctx = LocalAlloc(LMEM_ZEROINIT, sizeof(MFCYARA_CONTEXT)))) { return; }
+        pRI->reg_info.ctxM = (PVMMDLL_PLUGIN_INTERNAL_CONTEXT)ctx;
+        strcpy_s(pRI->reg_info.uszPathName, 128, "\\forensic\\yara_builtin");
+        pRI->reg_info.fRootModule = TRUE;
+        pRI->reg_info.fRootModuleHidden = TRUE;
+        pRI->reg_fn.pfnList = NULL;
+        pRI->reg_fn.pfnRead = NULL;
+        pRI->reg_fn.pfnNotify = NULL;
+        pRI->reg_fn.pfnClose = MFcYara_Close;
+        pRI->reg_fnfc.pfnInitialize = MFcYara_FcInitialize_Builtin;
+        pRI->reg_fnfc.pfnIngestObject = MFcYara_IngestObject;
+        pRI->reg_fnfc.pfnIngestVirtmem = MFcYara_IngestVirtmem;
+        pRI->reg_fnfc.pfnIngestFinalize = MFcYara_FcIngestFinalize;
+        pRI->pfnPluginManager_Register(H, pRI);
+    }
+    // register the user-supplied yara rules:
+    if(MFcYara_ExistsRules_User(H)) {
+        if(!(ctx = LocalAlloc(LMEM_ZEROINIT, sizeof(MFCYARA_CONTEXT)))) { return; }
+        if(!(ctx->pmfObMemFileUser = ObMemFile_New(H, H->vmm.pObCacheMapObCompressedShared))) { return; }
+        pRI->reg_info.ctxM = (PVMMDLL_PLUGIN_INTERNAL_CONTEXT)ctx;
+        strcpy_s(pRI->reg_info.uszPathName, 128, "\\forensic\\yara");
+        pRI->reg_info.fRootModule = TRUE;
+        pRI->reg_info.fRootModuleHidden = TRUE;
+        pRI->reg_fn.pfnList = MFcYara_List;
+        pRI->reg_fn.pfnRead = MFcYara_Read;
+        pRI->reg_fn.pfnNotify = MFcYara_Notify;
+        pRI->reg_fn.pfnClose = MFcYara_Close;
+        pRI->reg_fnfc.pfnInitialize = MFcYara_FcInitialize_User;
+        pRI->reg_fnfc.pfnIngestObject = MFcYara_IngestObject;
+        pRI->reg_fnfc.pfnIngestVirtmem = MFcYara_IngestVirtmem;
+        pRI->reg_fnfc.pfnIngestFinalize = MFcYara_FcIngestFinalize;
+        pRI->pfnPluginManager_Register(H, pRI);
+    }
 }

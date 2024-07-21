@@ -152,6 +152,7 @@ VOID VmmStatisticsLogStart(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_ VMMLO
 {
     ps->f = VmmLogIsActive(H, MID, dwLogLevel);
     if(H->fAbort || !ps->f) { return; }
+    ps->fShowReads = TRUE;
     ps->dwPID = pProcess ? pProcess->dwPID : 0;
     ps->MID = MID;
     ps->dwLogLevel = dwLogLevel;
@@ -176,11 +177,19 @@ VOID VmmStatisticsLogEnd(_In_ VMM_HANDLE H, _In_ PVMMSTATISTICS_LOG ps, _In_ LPC
     QWORD v[3];
     if(H->fAbort || !ps->f) { return; }
     v[0] = GetTickCount64();
-    LcGetOption(H->hLC, LC_OPT_CORE_STATISTICS_CALL_COUNT | LC_STATISTICS_ID_READSCATTER, &v[1]);
-    v[2] = H->vmm.stat.cPhysReadSuccess;
-    if(ps->dwPID) {
-        VmmLog(H, ps->MID, ps->dwLogLevel, "%s END:   [pid=%i time=%llims scatter=0x%llx pages=0x%llx]", uszText, ps->dwPID, (v[0] - ps->v[0]), (v[1] - ps->v[1]), (v[2] - ps->v[2]));
+    if(ps->fShowReads) {
+        LcGetOption(H->hLC, LC_OPT_CORE_STATISTICS_CALL_COUNT | LC_STATISTICS_ID_READSCATTER, &v[1]);
+        v[2] = H->vmm.stat.cPhysReadSuccess;
+        if(ps->dwPID) {
+            VmmLog(H, ps->MID, ps->dwLogLevel, "%s END:   [pid=%i time=%llims scatter=0x%llx pages=0x%llx]", uszText, ps->dwPID, (v[0] - ps->v[0]), (v[1] - ps->v[1]), (v[2] - ps->v[2]));
+        } else {
+            VmmLog(H, ps->MID, ps->dwLogLevel, "%s END:   [time=%llims scatter=0x%llx pages=0x%llx]", uszText, (v[0] - ps->v[0]), (v[1] - ps->v[1]), (v[2] - ps->v[2]));
+        }
     } else {
-        VmmLog(H, ps->MID, ps->dwLogLevel, "%s END:   [time=%llims scatter=0x%llx pages=0x%llx]", uszText, (v[0] - ps->v[0]), (v[1] - ps->v[1]), (v[2] - ps->v[2]));
+        if(ps->dwPID) {
+            VmmLog(H, ps->MID, ps->dwLogLevel, "%s END:   [pid=%i time=%llims]", uszText, ps->dwPID, (v[0] - ps->v[0]));
+        } else {
+            VmmLog(H, ps->MID, ps->dwLogLevel, "%s END:   [time=%llims]", uszText, (v[0] - ps->v[0]));
+        }
     }
 }
