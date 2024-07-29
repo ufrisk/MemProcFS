@@ -12,26 +12,25 @@
 
 /* Contributions by imerzan (Frostchi)
  * BSD Zero Clause License
-
-Copyright (c) 2024 imerzan
-
-Permission to use, copy, modify, and/or distribute this software for any
-purpose with or without fee is hereby granted.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
-REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
-AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
-INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
-LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
-OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
-PERFORMANCE OF THIS SOFTWARE.
-    */
+ * 
+ * Copyright (c) 2024 imerzan
+ * 
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+ * REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+ * AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+ * INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+ * LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+ * OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
 
 using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Runtime.InteropServices;
-using static Vmmsharp.Internal.Vmmi;
 using Vmmsharp.Internal;
 
 namespace Vmmsharp
@@ -47,9 +46,9 @@ namespace Vmmsharp
         protected readonly uint _PID;
 
         internal SearchResult _result;
-        internal VMMDLL_MEM_SEARCH_CONTEXT _native;
+        internal Vmmi.VMMDLL_MEM_SEARCH_CONTEXT _native;
         internal Thread _thread;
-        internal List<VMMDLL_MEM_SEARCH_CONTEXT_SEARCHENTRY> _terms;
+        internal List<Vmmi.VMMDLL_MEM_SEARCH_CONTEXT_SEARCHENTRY> _terms;
 
         IntPtr _ptrNative;
         private bool disposed = false;
@@ -68,8 +67,8 @@ namespace Vmmsharp
             _result.addrMin = addr_min;
             _result.addrMax = addr_max;
             _result.result = new List<SearchResultEntry>();
-            _terms = new List<VMMDLL_MEM_SEARCH_CONTEXT_SEARCHENTRY>();
-            _native = new VMMDLL_MEM_SEARCH_CONTEXT();
+            _terms = new List<Vmmi.VMMDLL_MEM_SEARCH_CONTEXT_SEARCHENTRY>();
+            _native = new Vmmi.VMMDLL_MEM_SEARCH_CONTEXT();
             _native.dwVersion = Vmmi.VMMDLL_MEM_SEARCH_VERSION;
             _native.vaMin = addr_min;
             _native.vaMax = addr_max;
@@ -158,7 +157,7 @@ namespace Vmmsharp
             if (_result.isStarted) { return uint.MaxValue; }
             if (search.Length == 0 || search.Length > 32) { return uint.MaxValue; }
             if (skipmask != null && skipmask.Length != search.Length) { return uint.MaxValue; }
-            VMMDLL_MEM_SEARCH_CONTEXT_SEARCHENTRY e = new VMMDLL_MEM_SEARCH_CONTEXT_SEARCHENTRY();
+            Vmmi.VMMDLL_MEM_SEARCH_CONTEXT_SEARCHENTRY e = new Vmmi.VMMDLL_MEM_SEARCH_CONTEXT_SEARCHENTRY();
             e.cbAlign = align;
             e.cb = (uint)search.Length;
             fixed (byte* pbSearch = search)
@@ -178,7 +177,7 @@ namespace Vmmsharp
 
         private unsafe void Start_DoWork()
         {
-            VMMDLL_MEM_SEARCH_CONTEXT_SEARCHENTRY[] arrTerms = _terms.ToArray();
+            Vmmi.VMMDLL_MEM_SEARCH_CONTEXT_SEARCHENTRY[] arrTerms = _terms.ToArray();
             GCHandle hndTerms = GCHandle.Alloc(arrTerms, GCHandleType.Pinned);
             _native.cSearch = (uint)_terms.Count;
             _native.search = hndTerms.AddrOfPinnedObject();
@@ -220,10 +219,10 @@ namespace Vmmsharp
         {
             if (disposed) { throw new VmmException("Object disposed."); }
             if (!_result.isStarted) { Start(); }
-            _result.addrCurrent = (ulong)Marshal.ReadInt64(_ptrNative, Marshal.OffsetOf<VMMDLL_MEM_SEARCH_CONTEXT>("vaCurrent").ToInt32());
-            _result.addrMin = (ulong)Marshal.ReadInt64(_ptrNative, Marshal.OffsetOf<VMMDLL_MEM_SEARCH_CONTEXT>("vaMin").ToInt32());
-            _result.addrMax = (ulong)Marshal.ReadInt64(_ptrNative, Marshal.OffsetOf<VMMDLL_MEM_SEARCH_CONTEXT>("vaMax").ToInt32());
-            _result.totalReadBytes = (ulong)Marshal.ReadInt64(_ptrNative, Marshal.OffsetOf<VMMDLL_MEM_SEARCH_CONTEXT>("cbReadTotal").ToInt32());
+            _result.addrCurrent = (ulong)Marshal.ReadInt64(_ptrNative, Marshal.OffsetOf<Vmmi.VMMDLL_MEM_SEARCH_CONTEXT>("vaCurrent").ToInt32());
+            _result.addrMin = (ulong)Marshal.ReadInt64(_ptrNative, Marshal.OffsetOf<Vmmi.VMMDLL_MEM_SEARCH_CONTEXT>("vaMin").ToInt32());
+            _result.addrMax = (ulong)Marshal.ReadInt64(_ptrNative, Marshal.OffsetOf<Vmmi.VMMDLL_MEM_SEARCH_CONTEXT>("vaMax").ToInt32());
+            _result.totalReadBytes = (ulong)Marshal.ReadInt64(_ptrNative, Marshal.OffsetOf<Vmmi.VMMDLL_MEM_SEARCH_CONTEXT>("cbReadTotal").ToInt32());
             return _result;
         }
 
@@ -239,7 +238,7 @@ namespace Vmmsharp
             return Poll();
         }
 
-        private bool SearchResultCallback(VMMDLL_MEM_SEARCH_CONTEXT ctx, ulong va, uint iSearch)
+        private bool SearchResultCallback(Vmmi.VMMDLL_MEM_SEARCH_CONTEXT ctx, ulong va, uint iSearch)
         {
             SearchResultEntry e = new SearchResultEntry();
             e.address = va;

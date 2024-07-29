@@ -16,10 +16,15 @@ info.db
 /files/ARM64
 /files/x86/lib
 /files/x86/vmm_example.exe
-/vmmsharp/.vs
-/vmmsharp/obj
 Cargo.lock
 /vmmrust/memprocfs/target
 /vmmrust/memprocfs_example/target
 /vmmrust/leechcore_example/target
 /vmmrust/m_example_plugin/target
+/vmmsharp/files
+/vmmsharp/example/.vs
+/vmmsharp/example/bin
+/vmmsharp/example/obj
+/vmmsharp/vmmsharp/.vs
+/vmmsharp/vmmsharp/bin
+/vmmsharp/vmmsharp/obj

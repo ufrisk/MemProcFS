@@ -12,28 +12,26 @@
 
 /* Contributions by imerzan (Frostchi)
  * BSD Zero Clause License
-
-Copyright (c) 2024 imerzan
-
-Permission to use, copy, modify, and/or distribute this software for any
-purpose with or without fee is hereby granted.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
-REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
-AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
-INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
-LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
-OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
-PERFORMANCE OF THIS SOFTWARE.
-    */
+ * 
+ * Copyright (c) 2024 imerzan
+ * 
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+ * REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+ * AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+ * INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+ * LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+ * OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
 
 using System;
 using System.Collections.Generic;
-using System.Dynamic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
 using System.Text;
 using Vmmsharp.Internal;
 
@@ -61,10 +59,10 @@ namespace Vmmsharp
         private Vmm()
         {
         }
-
         /// <summary>
-        /// ToString override.
+        /// ToString() override.
         /// </summary>
+        /// <returns></returns>
         public override string ToString()
         {
             return (disposed || (hVMM == IntPtr.Zero)) ? "Vmm:NotValid" : "Vmm";
@@ -157,7 +155,7 @@ namespace Vmmsharp
         }
 
         /// <summary>
-        /// Close all Vmm instances.
+        /// Close all Vmm instances in the native layer.
         /// </summary>
         public static void CloseAll()
         {
@@ -170,6 +168,7 @@ namespace Vmmsharp
 
         /// <summary>
         /// Load the native vmm.dll and leechcore.dll libraries. This may sometimes be necessary if the libraries are not in the system path.
+        /// NB! This method should be called before any other Vmm API methods. This method is only available on Windows.
         /// </summary>
         /// <param name="path"></param>
         public static void LoadNativeLibrary(string path)

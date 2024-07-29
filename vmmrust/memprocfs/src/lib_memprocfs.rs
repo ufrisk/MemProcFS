@@ -146,7 +146,7 @@ pub const FLAG_NO_PREDICTIVE_READ                   : u64 = 0x0400;
 /// This flag is only recommended for local files. improves forensic artifact order.
 pub const FLAG_FORCECACHE_READ_DISABLE              : u64 = 0x0800;
 /// Disable clearing of memory supplied to VmmScatterMemory.prepare_ex
-pub const VMMDLL_FLAG_SCATTER_PREPAREEX_NOMEMZERO   : u64 = 0x1000;
+pub const FLAG_SCATTER_PREPAREEX_NOMEMZERO          : u64 = 0x1000;
 /// Get/Set library console printouts.
 pub const CONFIG_OPT_CORE_PRINTF_ENABLE             : u64 = 0x4000000100000000;
 /// Get/Set standard verbosity.
@@ -1217,6 +1217,7 @@ impl VmmKernel<'_> {
 /// 
 /// # Created By
 /// - [`vmmprocess.pdb_from_module_address()`](VmmProcess::pdb_from_module_address())
+/// - [`vmmprocess.pdb_from_module_name()`](VmmProcess::pdb_from_module_name())
 /// - [`vmm.kernel().pdb()`](VmmKernel::pdb())
 /// 
 /// # Examples
@@ -1228,7 +1229,7 @@ impl VmmKernel<'_> {
 /// 
 /// ```
 /// // Retrieve the PDB struct associated with a process module.
-/// let pdb = vmmprocess.pdb("ntdll.dll")?;
+/// let pdb = vmmprocess.pdb_from_module_name("ntdll.dll")?;
 /// ```
 #[derive(Debug)]
 pub struct VmmPdb<'a> {
@@ -2589,6 +2590,24 @@ impl VmmProcess<'_> {
         return self.impl_pdb_from_module_address(va_module_base);
     }
 
+    /// Retrieve PDB debugging for the module.
+    /// 
+    /// PDB debugging most often only work on modules by Microsoft.
+    /// See [`VmmPdb`] documentation for additional information.
+    /// 
+    /// # Arguments
+    /// * `module_name`
+    /// 
+    /// # Examples
+    /// ```
+    /// if let Ok(pdb_kernel32) = vmmprocess.pdb_from_module_name("kernel32.dll") {
+    ///     println!("-> {pdb_kernel32}");
+    /// }
+    /// ```
+    pub fn pdb_from_module_name(&self, module_name : &str) -> ResultEx<VmmPdb> {
+        return self.impl_pdb_from_module_name(module_name);
+    }
+
     /// Retrieve a search struct for process virtual memory.
     /// 
     /// NB! This does not start the actual search yet.
@@ -3042,7 +3061,7 @@ pub struct VmmSearchResult {
     pub is_started : bool,
     /// Indicates that the search has been completed.
     pub is_completed : bool,
-    /// If is_completed is true this indicates if the search was completed successfully.
+    /// Indicates that the search has been completed successfully.
     pub is_completed_success : bool,
     /// Address to start searching from - default 0.
     pub addr_min : u64,
@@ -6667,6 +6686,11 @@ impl VmmProcess<'_> {
             return Err(anyhow!("VMMDLL_ProcessGetProcAddressU: fail."));
         }
         return Ok(r);
+    }
+
+    fn impl_pdb_from_module_name(&self, module_name : &str) -> ResultEx<VmmPdb> {
+        let va_module_base = self.get_module_base(module_name)?;
+        return self.impl_pdb_from_module_address(va_module_base);
     }
 
     fn impl_pdb_from_module_address(&self, va_module_base : u64) -> ResultEx<VmmPdb> {

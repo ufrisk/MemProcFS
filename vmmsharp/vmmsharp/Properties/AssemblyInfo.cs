@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
@@ -7,7 +7,7 @@ using System.Runtime.Versioning;
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("Ulf Frisk")]
 [assembly: AssemblyProduct("vmmsharp")]
-[assembly: AssemblyCopyright("Copyright © Ulf Frisk 2020")]
+[assembly: AssemblyCopyright("Copyright � Ulf Frisk 2020-2024")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 #if NET5_0_OR_GREATER
@@ -32,5 +32,5 @@ using System.Runtime.Versioning;
 // You can specify all the values or you can default the Build and Revision Numbers
 // by using the '*' as shown below:
 // [assembly: AssemblyVersion("1.0.*")]
-[assembly: AssemblyVersion("3.3.0.7")]
-[assembly: AssemblyFileVersion("3.3.0.7")]
+[assembly: AssemblyVersion("5.11.0.168")]
+[assembly: AssemblyFileVersion("5.11.0.168")]

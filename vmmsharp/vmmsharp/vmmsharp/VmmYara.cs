@@ -12,28 +12,27 @@
 
 /* Contributions by imerzan (Frostchi)
  * BSD Zero Clause License
-
-Copyright (c) 2024 imerzan
-
-Permission to use, copy, modify, and/or distribute this software for any
-purpose with or without fee is hereby granted.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
-REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
-AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
-INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
-LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
-OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
-PERFORMANCE OF THIS SOFTWARE.
-    */
+ * 
+ * Copyright (c) 2024 imerzan
+ * 
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+ * REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+ * AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+ * INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+ * LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+ * OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
 
 using System;
 using System.Collections.Generic;
+using System.Text;
 using System.Threading;
 using System.Runtime.InteropServices;
-using static Vmmsharp.Internal.Vmmi;
 using Vmmsharp.Internal;
-using System.Text;
 
 namespace Vmmsharp
 {
@@ -48,7 +47,7 @@ namespace Vmmsharp
         protected readonly uint _PID;
 
         internal YaraResult _result;
-        internal VMMDLL_YARA_CONFIG _native;
+        internal Vmmi.VMMDLL_YARA_CONFIG _native;
         internal Thread _thread;
         internal List<string> _terms;
 
@@ -73,7 +72,7 @@ namespace Vmmsharp
             _ptrNative = Marshal.AllocHGlobal(Marshal.SizeOf(_native));
             unsafe
             {
-                _native = new VMMDLL_YARA_CONFIG();
+                _native = new Vmmi.VMMDLL_YARA_CONFIG();
                 _native.dwVersion = Vmmi.VMMDLL_YARA_CONFIG_VERSION;
                 _native.vaMin = addr_min;
                 _native.vaMax = addr_max;
@@ -212,10 +211,10 @@ namespace Vmmsharp
         {
             if (disposed) { throw new VmmException("Object disposed."); }
             if (!_result.isStarted) { Start(); }
-            _result.addrCurrent = (ulong)Marshal.ReadInt64(_ptrNative, Marshal.OffsetOf<VMMDLL_YARA_CONFIG>("vaCurrent").ToInt32());
-            _result.addrMin = (ulong)Marshal.ReadInt64(_ptrNative, Marshal.OffsetOf<VMMDLL_YARA_CONFIG>("vaMin").ToInt32());
-            _result.addrMax = (ulong)Marshal.ReadInt64(_ptrNative, Marshal.OffsetOf<VMMDLL_YARA_CONFIG>("vaMax").ToInt32());
-            _result.totalReadBytes = (ulong)Marshal.ReadInt64(_ptrNative, Marshal.OffsetOf<VMMDLL_YARA_CONFIG>("cbReadTotal").ToInt32());
+            _result.addrCurrent = (ulong)Marshal.ReadInt64(_ptrNative, Marshal.OffsetOf<Vmmi.VMMDLL_YARA_CONFIG>("vaCurrent").ToInt32());
+            _result.addrMin = (ulong)Marshal.ReadInt64(_ptrNative, Marshal.OffsetOf<Vmmi.VMMDLL_YARA_CONFIG>("vaMin").ToInt32());
+            _result.addrMax = (ulong)Marshal.ReadInt64(_ptrNative, Marshal.OffsetOf<Vmmi.VMMDLL_YARA_CONFIG>("vaMax").ToInt32());
+            _result.totalReadBytes = (ulong)Marshal.ReadInt64(_ptrNative, Marshal.OffsetOf<Vmmi.VMMDLL_YARA_CONFIG>("cbReadTotal").ToInt32());
             return _result;
         }
 
@@ -231,11 +230,11 @@ namespace Vmmsharp
             return Poll();
         }
 
-        private unsafe bool YaraResultCallback(IntPtr ctx, VMMYARA_RULE_MATCH pRuleMatch, byte* pbBuffer, ulong cbBuffer)
+        private unsafe bool YaraResultCallback(IntPtr ctx, Vmmi.VMMYARA_RULE_MATCH pRuleMatch, byte* pbBuffer, ulong cbBuffer)
         {
             if(pRuleMatch.dwVersion != Vmmi.VMMYARA_RULE_MATCH_VERSION) { return false; }
             YaraMatch match = new YaraMatch();
-            ulong addrBase = (ulong)Marshal.ReadInt64(ctx, Marshal.OffsetOf<VMMDLL_YARA_CONFIG>("vaCurrent").ToInt32());
+            ulong addrBase = (ulong)Marshal.ReadInt64(ctx, Marshal.OffsetOf<Vmmi.VMMDLL_YARA_CONFIG>("vaCurrent").ToInt32());
             match.sRuleIdentifier = pRuleMatch.szRuleIdentifier;
             // tags:
             match.tags = new string[pRuleMatch.cTags];

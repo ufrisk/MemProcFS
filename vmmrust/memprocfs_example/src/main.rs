@@ -295,22 +295,22 @@ pub fn main_example() -> ResultEx<()> {
 
 
         // Example: pdb.symbol_address_from_name():
-        // Retrieve the address of the symbol nt!MiMapContiguousMemory
+        // Retrieve the address of the symbol nt!MmAllocateContiguousMemory
         // NB! this requires that the MemProcFS symbol-subsystem is working.
         println!("========================================");
         println!("pdb.symbol_address_from_name():");
         let mut va_kernel_symbol = 0u64;
-        if let Ok(va) = pdb.symbol_address_from_name("MiMapContiguousMemory") {
+        if let Ok(va) = pdb.symbol_address_from_name("MmAllocateContiguousMemory") {
             va_kernel_symbol = va;
-            println!("Address of 'MiMapContiguousMemory' = {:x}", va_kernel_symbol);
+            println!("Address of 'MmAllocateContiguousMemory' = {:x}", va_kernel_symbol);
         } else {
-            println!("Error retrieving symbol address for 'MiMapContiguousMemory'");
+            println!("Error retrieving symbol address for 'MmAllocateContiguousMemory'");
         }
 
 
         // Example: pdb.symbol_name_from_address():
         // Retrieve the symbol name from an address.
-        // Use the already retrieved address of nt!MiMapContiguousMemory.
+        // Use the already retrieved address of nt!MmAllocateContiguousMemory.
         if va_kernel_symbol != 0 {
             println!("========================================");
             println!("pdb.symbol_name_from_address():");
@@ -388,7 +388,7 @@ pub fn main_example() -> ResultEx<()> {
 
         // Example: vmm.vfs_read():
         // Read (a part) of a file in the virtual file system.
-        // In this case try reading the file /sys/memory/physmemmap.txt
+        // In this case try reading the file /conf/config_process_show_terminated.txt
         println!("========================================");
         println!("vmm.vfs_read():");
         if let Ok(vfs_file_data) = vmm.vfs_read("/conf/config_process_show_terminated.txt", 0x2000, 0) {
@@ -815,6 +815,17 @@ pub fn main_example() -> ResultEx<()> {
         println!("========================================");
         println!("vmmprocess.pdb_from_module_address():");
         if let Ok(pdb) = vmmprocess.pdb_from_module_address(kernel32.va_base) {
+            println!("-> {pdb}");
+        }
+
+
+        // Example: vmmprocess.pdb_from_module_name():
+        // Retrieve debugging information (for microsoft modules) given
+        // the module name. If there are multiple modules with the same
+        // name use vmmprocess.pdb_from_module_address().
+        println!("========================================");
+        println!("vmmprocess.pdb_from_module_name():");
+        if let Ok(pdb) = vmmprocess.pdb_from_module_name("kernel32.dll") {
             println!("-> {pdb}");
         }
 

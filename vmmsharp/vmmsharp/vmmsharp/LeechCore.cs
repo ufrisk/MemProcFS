@@ -12,20 +12,20 @@
 
 /* Contributions by imerzan (Frostchi)
  * BSD Zero Clause License
-
-Copyright (c) 2024 imerzan
-
-Permission to use, copy, modify, and/or distribute this software for any
-purpose with or without fee is hereby granted.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
-REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
-AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
-INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
-LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
-OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
-PERFORMANCE OF THIS SOFTWARE.
-    */
+ * 
+ * Copyright (c) 2024 imerzan
+ * 
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+ * REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+ * AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+ * INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+ * LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+ * OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+ * PERFORMANCE OF THIS SOFTWARE.
+ */
 
 using System;
 using System.Runtime.CompilerServices;
@@ -195,6 +195,10 @@ namespace Vmmsharp
             this.hLC = hLC;
         }
 
+        /// <summary>
+        /// ToString() override.
+        /// </summary>
+        /// <returns></returns>
         public override string ToString()
         {
             return (disposed || (hLC == IntPtr.Zero)) ? "LeechCore:NotValid" : "LeechCore";
@@ -320,6 +324,7 @@ namespace Vmmsharp
 
         /// <summary>
         /// Load the native leechcore.dll library. This may sometimes be necessary if the library is not in the system path.
+        /// NB! This method should be called before any other LeechCore API methods. This method is only available on Windows.
         /// </summary>
         /// <param name="path"></param>
         public static void LoadNativeLibrary(string path)
