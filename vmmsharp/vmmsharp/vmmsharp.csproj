@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFrameworks>net48;net5.0;net6.0;net7.0;net8.0</TargetFrameworks>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
@@ -24,7 +24,7 @@
     <AssemblyTitle>MemProcFS : C# API</AssemblyTitle>
     <Company>Ulf Frisk</Company>
     <Product>vmmsharp</Product>
-    <Copyright>Copyright © Ulf Frisk 2024</Copyright>
+    <Copyright>Copyright � Ulf Frisk 2024</Copyright>
     <AssemblyVersion>3.3.0.7</AssemblyVersion>
     <FileVersion>3.3.0.7</FileVersion>
     <Platforms>x64</Platforms>
@@ -91,4 +91,32 @@
     <PackageReference Include="Microsoft.CSharp" Version="4.7.0" />
     <PackageReference Include="System.Data.DataSetExtensions" Version="4.5.0" />
   </ItemGroup>
+    <ItemGroup>
+        <Content Include="..\..\LICENSE">
+            <Pack>true</Pack>
+            <PackagePath></PackagePath>
+            <Visible>True</Visible>
+        </Content>
+    </ItemGroup>
+    <ItemGroup>
+        <Content Include="..\..\README.md">
+            <Pack>true</Pack>
+            <PackagePath></PackagePath>
+            <Visible>True</Visible>
+        </Content>
+    </ItemGroup>
+	<ItemGroup>
+		<None Include="logo.png" Pack="true" Visible="true" PackagePath="" />
+	</ItemGroup>
+    <PropertyGroup>
+        <Version>5.11.1</Version>
+        <RepositoryUrl>https://github.com/ufrisk/MemProcFS</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+        <PackageLicenseFile>LICENSE</PackageLicenseFile>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageId>Vmmsharp</PackageId>
+        <IncludeContentInPack>true</IncludeContentInPack>
+        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+		<PackageIcon>logo.png</PackageIcon>
+    </PropertyGroup>
 </Project>
