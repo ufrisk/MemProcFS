@@ -216,6 +216,17 @@ namespace vmmsharp_example
                 Console.WriteLine(memMap);
 
 
+                // Example: vmm.MapNet():
+                // Retrieve the network connection information:
+                Console.WriteLine("====================================");
+                Console.WriteLine("Vmm.MapNet():");
+                Vmm.NetEntry[] netEntries = vmm.MapNet();
+                foreach (Vmm.NetEntry netEntry in netEntries)
+                {
+                    Console.WriteLine("{0} \t pid={1} \t src={2} \t dst={3}", netEntry, netEntry.dwPID, netEntry.src.sText, netEntry.dst.sText);
+                }
+
+
                 // Example: vmm.MapPool():
                 // Retrieve kernel pool allocations and display the 'Proc' allocations.
                 // NB! here we retrieve all pool allocations which is substantially

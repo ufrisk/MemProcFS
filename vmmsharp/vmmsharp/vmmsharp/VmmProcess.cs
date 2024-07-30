@@ -390,7 +390,7 @@ namespace Vmmsharp
                 e.cPages = n.cPages;
                 e.fPage = n.fPage;
                 e.fWoW64 = n.fWoW64;
-                e.sText = n.wszText;
+                e.sText = n.uszText;
                 e.cSoftware = n.cSoftware;
                 e.fR = true;
                 e.fW = (0 != (e.fPage & 0x0000000000000002)) ? true : false;
@@ -444,7 +444,7 @@ namespace Vmmsharp
                 e.cbPrototypePte = n.cbPrototypePte;
                 e.vaPrototypePte = n.vaPrototypePte;
                 e.vaSubsection = n.vaSubsection;
-                e.sText = n.wszText;
+                e.sText = n.uszText;
                 e.vaFileObject = n.vaFileObject;
                 e.cVadExPages = n.cVadExPages;
                 e.cVadExPagesBase = n.cVadExPagesBase;
@@ -519,8 +519,8 @@ namespace Vmmsharp
                 e.vaEntry = n.vaEntry;
                 e.cbImageSize = n.cbImageSize;
                 e.fWow64 = n.fWow64;
-                e.sText = n.wszText;
-                e.sFullName = n.wszFullName;
+                e.sText = n.uszText;
+                e.sFullName = n.uszFullName;
                 e.tp = n.tp;
                 e.cbFileSizeRaw = n.cbFileSizeRaw;
                 e.cSection = n.cSection;
@@ -539,8 +539,8 @@ namespace Vmmsharp
                     Vmmi.VMMDLL_MAP_MODULEENTRY_DEBUGINFO nDbg = Marshal.PtrToStructure<Vmmi.VMMDLL_MAP_MODULEENTRY_DEBUGINFO>(n.pExDebugInfo);
                     eDbg.fValid = true;
                     eDbg.dwAge = nDbg.dwAge;
-                    eDbg.sGuid = nDbg.wszGuid;
-                    eDbg.sPdbFilename = nDbg.wszPdbFilename;
+                    eDbg.sGuid = nDbg.uszGuid;
+                    eDbg.sPdbFilename = nDbg.uszPdbFilename;
                 }
                 e.DebugInfo = eDbg;
                 // Extended Version Information
@@ -560,14 +560,14 @@ namespace Vmmsharp
                 {
                     Vmmi.VMMDLL_MAP_MODULEENTRY_VERSIONINFO nVer = Marshal.PtrToStructure<Vmmi.VMMDLL_MAP_MODULEENTRY_VERSIONINFO>(n.pExVersionInfo);
                     eVer.fValid = true;
-                    eVer.sCompanyName = nVer.wszCompanyName;
-                    eVer.sFileDescription = nVer.wszFileDescription;
-                    eVer.sFileVersion = nVer.wszFileVersion;
-                    eVer.sInternalName = nVer.wszInternalName;
-                    eVer.sLegalCopyright = nVer.wszLegalCopyright;
-                    eVer.sFileOriginalFilename = nVer.wszFileOriginalFilename;
-                    eVer.sProductName = nVer.wszProductName;
-                    eVer.sProductVersion = nVer.wszProductVersion;
+                    eVer.sCompanyName = nVer.uszCompanyName;
+                    eVer.sFileDescription = nVer.uszFileDescription;
+                    eVer.sFileVersion = nVer.uszFileVersion;
+                    eVer.sInternalName = nVer.uszInternalName;
+                    eVer.sLegalCopyright = nVer.uszLegalCopyright;
+                    eVer.sFileOriginalFilename = nVer.uszFileOriginalFilename;
+                    eVer.sProductName = nVer.uszProductName;
+                    eVer.sProductVersion = nVer.uszProductVersion;
                 }
                 e.VersionInfo = eVer;
                 m[i] = e;
@@ -594,7 +594,7 @@ namespace Vmmsharp
             e.cbImageSize = nM.cbImageSize;
             e.fWow64 = nM.fWow64;
             e.sText = module;
-            e.sFullName = nM.wszFullName;
+            e.sFullName = nM.uszFullName;
             e.tp = nM.tp;
             e.cbFileSizeRaw = nM.cbFileSizeRaw;
             e.cSection = nM.cSection;
@@ -626,7 +626,7 @@ namespace Vmmsharp
                 e.vaBase = n.vaBase;
                 e.cbImageSize = n.cbImageSize;
                 e.fWow64 = n.fWow64;
-                e.wText = n.wszText;
+                e.wText = n.uszText;
                 e.dwCheckSum = n.dwCheckSum;
                 e.dwTimeDateStamp = n.dwTimeDateStamp;
                 e.ftUnload = n.ftUnload;
@@ -672,8 +672,8 @@ namespace Vmmsharp
                 e.dwOrdinal = n.dwOrdinal;
                 e.oFunctionsArray = n.oFunctionsArray;
                 e.oNamesArray = n.oNamesArray;
-                e.sFunction = n.wszFunction;
-                e.sForwardedFunction = n.wszForwardedFunction;
+                e.sFunction = n.uszFunction;
+                e.sForwardedFunction = n.uszForwardedFunction;
                 m[i] = e;
             }
             info.fValid = true;
@@ -709,8 +709,8 @@ namespace Vmmsharp
                 Vmmi.VMMDLL_MAP_IATENTRY n = Marshal.PtrToStructure<Vmmi.VMMDLL_MAP_IATENTRY>((System.IntPtr)(pMap.ToInt64() + cbMAP + i * cbENTRY));
                 IATEntry e;
                 e.vaFunction = n.vaFunction;
-                e.sFunction = n.wszFunction;
-                e.sModule = n.wszModule;
+                e.sFunction = n.uszFunction;
+                e.sModule = n.uszModule;
                 e.f32 = n.f32;
                 e.wHint = n.wHint;
                 e.rvaFirstThunk = n.rvaFirstThunk;
@@ -870,10 +870,10 @@ namespace Vmmsharp
                 e.qwPointerCount = n.qwPointerCount;
                 e.vaObjectCreateInfo = n.vaObjectCreateInfo;
                 e.vaSecurityDescriptor = n.vaSecurityDescriptor;
-                e.sText = n.wszText;
+                e.sText = n.uszText;
                 e.dwPID = n.dwPID;
                 e.dwPoolTag = n.dwPoolTag;
-                e.sType = n.wszType;
+                e.sType = n.uszType;
                 m[i] = e;
             }
         fail:

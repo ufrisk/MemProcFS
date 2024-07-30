@@ -28,6 +28,7 @@
  */
 
 using System;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Collections.Generic;
@@ -318,19 +319,41 @@ namespace Vmmsharp
             Dispose(disposing: true);
         }
 
-        // P/Invoke to LoadLibrary to pre-load required native libraries (vmm.dll & leechcore.dll)
-        [DllImport("Kernel32.dll")]
-        private static extern IntPtr LoadLibrary(string path);
 
+#if NET5_0_OR_GREATER
         /// <summary>
-        /// Load the native leechcore.dll library. This may sometimes be necessary if the library is not in the system path.
-        /// NB! This method should be called before any other LeechCore API methods. This method is only available on Windows.
+        /// Load the native vmm.dll and leechcore.dll libraries. This may sometimes be necessary if the libraries are not in the system path.
+        /// NB! This method should be called before any other Vmm API methods. This method is only available on Windows.
         /// </summary>
         /// <param name="path"></param>
         public static void LoadNativeLibrary(string path)
         {
             // Load the native leechcore.dll library if possible.
-            // Leak the handle to the library as it will be used by the APIs.
+            // Leak the handles to the libraries as it will be used by the API.
+            if(NativeLibrary.TryLoad("leechcore", out _))
+            {
+                return;
+            }
+            if (NativeLibrary.TryLoad(Path.Combine(path, "leechcore"), out _))
+            {
+                return;
+            }
+            throw new VmmException("Failed to load native library leechcore.dll.");
+        }
+#else // NET5_0_OR_GREATER
+        // P/Invoke to LoadLibrary to pre-load required native libraries (vmm.dll & leechcore.dll)
+        [DllImport("Kernel32.dll")]
+        private static extern IntPtr LoadLibrary(string path);
+
+        /// <summary>
+        /// Load the native vmm.dll and leechcore.dll libraries. This may sometimes be necessary if the libraries are not in the system path.
+        /// NB! This method should be called before any other Vmm API methods. This method is only available on Windows.
+        /// </summary>
+        /// <param name="path"></param>
+        public static void LoadNativeLibrary(string path)
+        {
+            // Load the native vmm.dll and leechcore.dll libraries if possible.
+            // Leak the handles to the libraries as it will be used by the API.
             if ((path != null) && !path.EndsWith("\\")) { path += "\\"; }
             if (path == null) { path = ""; }
             IntPtr hLC = LoadLibrary(path + "leechcore.dll");
@@ -339,6 +362,7 @@ namespace Vmmsharp
                 throw new VmmException("Failed to load native library leechcore.dll.");
             }
         }
+#endif // NET5_0_OR_GREATER
 
 
 

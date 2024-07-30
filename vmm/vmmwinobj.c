@@ -1939,6 +1939,7 @@ int VmmWinObjKDev_Initialize_3_AttachAndSort_CmpSort(_In_ POB_MAP_ENTRY e1, _In_
 VOID VmmWinObjKDev_Initialize_3_AttachAndSort(_In_ VMM_HANDLE H, _In_ PVMMWINDEV_INIT_CONTEXT ctx)
 {
     QWORD va;
+    DWORD cLoopProtectMaxDepth = 32;
     POB_SET ps1 = NULL, ps2 = NULL, psTMP;
     PVMM_MAP_KDEVICEENTRY pe = NULL, peAttach;
     // 1: init:
@@ -1953,7 +1954,7 @@ VOID VmmWinObjKDev_Initialize_3_AttachAndSort(_In_ VMM_HANDLE H, _In_ PVMMWINDEV
         }
     }
     // 3: drain remaining devices iteratively:
-    while(ObSet_Size(ps1)) {
+    while(ObSet_Size(ps1) && --cLoopProtectMaxDepth) {
         while((va = ObSet_Pop(ps1))) {
             if(!(pe = ObMap_GetByKey(ctx->pmDevice, va))) {
                 continue;

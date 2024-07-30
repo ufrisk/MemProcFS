@@ -128,7 +128,7 @@ namespace Vmmsharp.Internal
             internal ulong fPage;
             internal bool fWoW64;
             internal uint _FutureUse1;
-            [MarshalAs(UnmanagedType.LPWStr)] internal string wszText;
+            [MarshalAs(UnmanagedType.LPUTF8Str)] internal string uszText;
             internal uint _Reserved1;
             internal uint cSoftware;
         }
@@ -178,7 +178,7 @@ namespace Vmmsharp.Internal
             internal uint cbPrototypePte;
             internal ulong vaPrototypePte;
             internal ulong vaSubsection;
-            [MarshalAs(UnmanagedType.LPWStr)] internal string wszText;
+            [MarshalAs(UnmanagedType.LPUTF8Str)] internal string uszText;
             internal uint _FutureUse1;
             internal uint _Reserved1;
             internal ulong vaFileObject;
@@ -229,7 +229,7 @@ namespace Vmmsharp.Internal
             internal ulong vaBase;
             internal uint cbImageSize;
             internal bool fWow64;
-            [MarshalAs(UnmanagedType.LPWStr)] internal string wszText;
+            [MarshalAs(UnmanagedType.LPUTF8Str)] internal string uszText;
             internal uint _FutureUse1;
             internal uint dwCheckSum;
             internal uint dwTimeDateStamp;
@@ -252,21 +252,21 @@ namespace Vmmsharp.Internal
             internal uint dwAge;
             internal uint _Reserved;
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)] internal byte[] Guid;
-            [MarshalAs(UnmanagedType.LPWStr)] internal string wszGuid;
-            [MarshalAs(UnmanagedType.LPWStr)] internal string wszPdbFilename;
+            [MarshalAs(UnmanagedType.LPUTF8Str)] internal string uszGuid;
+            [MarshalAs(UnmanagedType.LPUTF8Str)] internal string uszPdbFilename;
         }
 
         [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
         internal struct VMMDLL_MAP_MODULEENTRY_VERSIONINFO
         {
-            [MarshalAs(UnmanagedType.LPWStr)] internal string wszCompanyName;
-            [MarshalAs(UnmanagedType.LPWStr)] internal string wszFileDescription;
-            [MarshalAs(UnmanagedType.LPWStr)] internal string wszFileVersion;
-            [MarshalAs(UnmanagedType.LPWStr)] internal string wszInternalName;
-            [MarshalAs(UnmanagedType.LPWStr)] internal string wszLegalCopyright;
-            [MarshalAs(UnmanagedType.LPWStr)] internal string wszFileOriginalFilename;
-            [MarshalAs(UnmanagedType.LPWStr)] internal string wszProductName;
-            [MarshalAs(UnmanagedType.LPWStr)] internal string wszProductVersion;
+            [MarshalAs(UnmanagedType.LPUTF8Str)] internal string uszCompanyName;
+            [MarshalAs(UnmanagedType.LPUTF8Str)] internal string uszFileDescription;
+            [MarshalAs(UnmanagedType.LPUTF8Str)] internal string uszFileVersion;
+            [MarshalAs(UnmanagedType.LPUTF8Str)] internal string uszInternalName;
+            [MarshalAs(UnmanagedType.LPUTF8Str)] internal string uszLegalCopyright;
+            [MarshalAs(UnmanagedType.LPUTF8Str)] internal string uszFileOriginalFilename;
+            [MarshalAs(UnmanagedType.LPUTF8Str)] internal string uszProductName;
+            [MarshalAs(UnmanagedType.LPUTF8Str)] internal string uszProductVersion;
         }
 
         [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
@@ -276,10 +276,10 @@ namespace Vmmsharp.Internal
             internal ulong vaEntry;
             internal uint cbImageSize;
             internal bool fWow64;
-            [MarshalAs(UnmanagedType.LPWStr)] internal string wszText;
+            [MarshalAs(UnmanagedType.LPUTF8Str)] internal string uszText;
             internal uint _Reserved3;
             internal uint _Reserved4;
-            [MarshalAs(UnmanagedType.LPWStr)] internal string wszFullName;
+            [MarshalAs(UnmanagedType.LPUTF8Str)] internal string uszFullName;
             internal uint tp;
             internal uint cbFileSizeRaw;
             internal uint cSection;
@@ -299,8 +299,8 @@ namespace Vmmsharp.Internal
             internal uint oFunctionsArray;
             internal uint oNamesArray;
             internal uint _FutureUse1;
-            [MarshalAs(UnmanagedType.LPWStr)] internal string wszFunction;
-            [MarshalAs(UnmanagedType.LPWStr)] internal string wszForwardedFunction;
+            [MarshalAs(UnmanagedType.LPUTF8Str)] internal string uszFunction;
+            [MarshalAs(UnmanagedType.LPUTF8Str)] internal string uszForwardedFunction;
         }
 
         internal struct VMMDLL_MAP_EAT
@@ -323,10 +323,10 @@ namespace Vmmsharp.Internal
         internal struct VMMDLL_MAP_IATENTRY
         {
             internal ulong vaFunction;
-            [MarshalAs(UnmanagedType.LPWStr)] internal string wszFunction;
+            [MarshalAs(UnmanagedType.LPUTF8Str)] internal string uszFunction;
             internal uint _FutureUse1;
             internal uint _FutureUse2;
-            [MarshalAs(UnmanagedType.LPWStr)] internal string wszModule;
+            [MarshalAs(UnmanagedType.LPUTF8Str)] internal string uszModule;
             internal bool f32;
             internal ushort wHint;
             internal ushort _Reserved1;
@@ -444,12 +444,12 @@ namespace Vmmsharp.Internal
             internal ulong qwPointerCount;
             internal ulong vaObjectCreateInfo;
             internal ulong vaSecurityDescriptor;
-            [MarshalAs(UnmanagedType.LPWStr)] internal string wszText;
+            [MarshalAs(UnmanagedType.LPUTF8Str)] internal string uszText;
             internal uint _FutureUse2;
             internal uint dwPID;
             internal uint dwPoolTag;
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 7)] internal uint[] _FutureUse;
-            [MarshalAs(UnmanagedType.LPWStr)] internal string wszType;
+            [MarshalAs(UnmanagedType.LPUTF8Str)] internal string uszType;
         }
 
         [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
@@ -474,19 +474,19 @@ namespace Vmmsharp.Internal
             internal ushort src__Reserved1;
             internal ushort src_port;
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)] internal byte[] src_pbAddr;
-            [MarshalAs(UnmanagedType.LPWStr)] internal string src_wszText;
+            [MarshalAs(UnmanagedType.LPUTF8Str)] internal string src_uszText;
             // dst
             internal bool dst_fValid;
             internal ushort dst__Reserved1;
             internal ushort dst_port;
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)] internal byte[] dst_pbAddr;
-            [MarshalAs(UnmanagedType.LPWStr)] internal string dst_wszText;
+            [MarshalAs(UnmanagedType.LPUTF8Str)] internal string dst_uszText;
             //
             internal ulong vaObj;
             internal ulong ftTime;
             internal uint dwPoolTag;
             internal uint _FutureUse4;
-            [MarshalAs(UnmanagedType.LPWStr)] internal string wszText;
+            [MarshalAs(UnmanagedType.LPUTF8Str)] internal string uszText;
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)] internal uint[] _FutureUse2;
         }
 
@@ -548,9 +548,9 @@ namespace Vmmsharp.Internal
         internal struct VMMDLL_MAP_USERENTRY
         {
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)] internal uint[] _FutureUse1;
-            [MarshalAs(UnmanagedType.LPWStr)] internal string wszText;
+            [MarshalAs(UnmanagedType.LPUTF8Str)] internal string uszText;
             internal ulong vaRegHive;
-            [MarshalAs(UnmanagedType.LPWStr)] internal string wszSID;
+            [MarshalAs(UnmanagedType.LPUTF8Str)] internal string uszSID;
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2)] internal uint[] _FutureUse2;
         }
 
@@ -568,7 +568,7 @@ namespace Vmmsharp.Internal
         internal struct VMMDLL_MAP_VMENTRY
         {
             internal ulong hVM;
-            [MarshalAs(UnmanagedType.LPWStr)] internal string wszName;
+            [MarshalAs(UnmanagedType.LPUTF8Str)] internal string uszName;
             internal ulong gpaMax;
             internal uint tp;
             internal bool fActive;
@@ -606,12 +606,12 @@ namespace Vmmsharp.Internal
             internal uint dwCheckPoint;
             internal uint dwWaitHint;
             // SERVICE_STATUS END
-            [MarshalAs(UnmanagedType.LPWStr)] internal string wszServiceName;
-            [MarshalAs(UnmanagedType.LPWStr)] internal string wszDisplayName;
-            [MarshalAs(UnmanagedType.LPWStr)] internal string wszPath;
-            [MarshalAs(UnmanagedType.LPWStr)] internal string wszUserTp;
-            [MarshalAs(UnmanagedType.LPWStr)] internal string wszUserAcct;
-            [MarshalAs(UnmanagedType.LPWStr)] internal string wszImagePath;
+            [MarshalAs(UnmanagedType.LPUTF8Str)] internal string uszServiceName;
+            [MarshalAs(UnmanagedType.LPUTF8Str)] internal string uszDisplayName;
+            [MarshalAs(UnmanagedType.LPUTF8Str)] internal string uszPath;
+            [MarshalAs(UnmanagedType.LPUTF8Str)] internal string uszUserTp;
+            [MarshalAs(UnmanagedType.LPUTF8Str)] internal string uszUserAcct;
+            [MarshalAs(UnmanagedType.LPUTF8Str)] internal string uszImagePath;
             internal uint dwPID;
             internal uint _FutureUse1;
             internal ulong _FutureUse2;
@@ -958,11 +958,11 @@ namespace Vmmsharp.Internal
         [return: MarshalAs(UnmanagedType.Bool)]
         public static partial bool VMMDLL_PidGetFromName(IntPtr hVMM, [MarshalAs(UnmanagedType.LPStr)] string szProcName, out uint pdwPID);
 
-        [LibraryImport("vmm", EntryPoint = "VMMDLL_ProcessGetProcAddressW")]
-        public static partial ulong VMMDLL_ProcessGetProcAddress(IntPtr hVMM, uint pid, [MarshalAs(UnmanagedType.LPWStr)] string wszModuleName, [MarshalAs(UnmanagedType.LPStr)] string szFunctionName);
+        [LibraryImport("vmm", EntryPoint = "VMMDLL_ProcessGetProcAddressU")]
+        public static partial ulong VMMDLL_ProcessGetProcAddress(IntPtr hVMM, uint pid, [MarshalAs(UnmanagedType.LPUTF8Str)] string uszModuleName, [MarshalAs(UnmanagedType.LPStr)] string szFunctionName);
 
-        [LibraryImport("vmm", EntryPoint = "VMMDLL_ProcessGetModuleBaseW")]
-        public static partial ulong VMMDLL_ProcessGetModuleBase(IntPtr hVMM, uint pid, [MarshalAs(UnmanagedType.LPWStr)] string wszModuleName);
+        [LibraryImport("vmm", EntryPoint = "VMMDLL_ProcessGetModuleBaseU")]
+        public static partial ulong VMMDLL_ProcessGetModuleBase(IntPtr hVMM, uint pid, [MarshalAs(UnmanagedType.LPUTF8Str)] string uszModuleName);
 
         [LibraryImport("vmm", EntryPoint = "VMMDLL_ProcessGetInformation")]
         [return: MarshalAs(UnmanagedType.Bool)]
@@ -978,20 +978,20 @@ namespace Vmmsharp.Internal
             uint dwPID,
             uint fOptionString);
 
-        [LibraryImport("vmm", EntryPoint = "VMMDLL_ProcessGetDirectoriesW")]
+        [LibraryImport("vmm", EntryPoint = "VMMDLL_ProcessGetDirectoriesU")]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static unsafe partial bool VMMDLL_ProcessGetDirectories(
             IntPtr hVMM,
             uint dwPID,
-            [MarshalAs(UnmanagedType.LPWStr)] string wszModule,
+            [MarshalAs(UnmanagedType.LPUTF8Str)] string uszModule,
             byte* pData);
 
-        [LibraryImport("vmm", EntryPoint = "VMMDLL_ProcessGetSectionsW")]
+        [LibraryImport("vmm", EntryPoint = "VMMDLL_ProcessGetSectionsU")]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static unsafe partial bool VMMDLL_ProcessGetSections(
             IntPtr hVMM,
             uint dwPID,
-            [MarshalAs(UnmanagedType.LPWStr)] string wszModule,
+            [MarshalAs(UnmanagedType.LPUTF8Str)] string uszModule,
             byte* pData,
             uint cData,
             out uint pcData);
@@ -1041,7 +1041,7 @@ namespace Vmmsharp.Internal
             out uint pcbTypeChildOffset);
 
         // VMMDLL_Map_GetPte
-        [LibraryImport("vmm", EntryPoint = "VMMDLL_Map_GetPteW")]
+        [LibraryImport("vmm", EntryPoint = "VMMDLL_Map_GetPteU")]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static unsafe partial bool VMMDLL_Map_GetPte(
             IntPtr hVMM,
@@ -1050,7 +1050,7 @@ namespace Vmmsharp.Internal
             out IntPtr ppPteMap);
 
         // VMMDLL_Map_GetVad
-        [LibraryImport("vmm", EntryPoint = "VMMDLL_Map_GetVadW")]
+        [LibraryImport("vmm", EntryPoint = "VMMDLL_Map_GetVadU")]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static unsafe partial bool VMMDLL_Map_GetVad(
             IntPtr hVMM,
@@ -1069,7 +1069,7 @@ namespace Vmmsharp.Internal
             out IntPtr ppVadExMap);
 
         // VMMDLL_Map_GetModule
-        [LibraryImport("vmm", EntryPoint = "VMMDLL_Map_GetModuleW")]
+        [LibraryImport("vmm", EntryPoint = "VMMDLL_Map_GetModuleU")]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static unsafe partial bool VMMDLL_Map_GetModule(
             IntPtr hVMM,
@@ -1078,17 +1078,17 @@ namespace Vmmsharp.Internal
             uint flags);
 
         // VMMDLL_Map_GetModuleFromName
-        [LibraryImport("vmm", EntryPoint = "VMMDLL_Map_GetModuleFromNameW")]
+        [LibraryImport("vmm", EntryPoint = "VMMDLL_Map_GetModuleFromNameU")]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static unsafe partial bool VMMDLL_Map_GetModuleFromName(
             IntPtr hVMM,
             uint dwPID,
-            [MarshalAs(UnmanagedType.LPWStr)] string wszModuleName,
+            [MarshalAs(UnmanagedType.LPUTF8Str)] string uszModuleName,
             out IntPtr ppModuleMapEntry,
             uint flags);
 
         // VMMDLL_Map_GetUnloadedModule
-        [LibraryImport("vmm", EntryPoint = "VMMDLL_Map_GetUnloadedModuleW")]
+        [LibraryImport("vmm", EntryPoint = "VMMDLL_Map_GetUnloadedModuleU")]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static unsafe partial bool VMMDLL_Map_GetUnloadedModule(
             IntPtr hVMM,
@@ -1096,21 +1096,21 @@ namespace Vmmsharp.Internal
             out IntPtr ppModuleMap);
 
         // VMMDLL_Map_GetEAT
-        [LibraryImport("vmm", EntryPoint = "VMMDLL_Map_GetEATW")]
+        [LibraryImport("vmm", EntryPoint = "VMMDLL_Map_GetEATU")]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static unsafe partial bool VMMDLL_Map_GetEAT(
             IntPtr hVMM,
             uint dwPid,
-            [MarshalAs(UnmanagedType.LPWStr)] string wszModuleName,
+            [MarshalAs(UnmanagedType.LPUTF8Str)] string uszModuleName,
             out IntPtr ppEatMap);
 
         // VMMDLL_Map_GetIAT
-        [LibraryImport("vmm", EntryPoint = "VMMDLL_Map_GetIATW")]
+        [LibraryImport("vmm", EntryPoint = "VMMDLL_Map_GetIATU")]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static unsafe partial bool VMMDLL_Map_GetIAT(
             IntPtr hVMM,
             uint dwPid,
-            [MarshalAs(UnmanagedType.LPWStr)] string wszModuleName,
+            [MarshalAs(UnmanagedType.LPUTF8Str)] string uszModuleName,
             out IntPtr ppIatMap);
 
         // VMMDLL_Map_GetHeap
@@ -1139,7 +1139,7 @@ namespace Vmmsharp.Internal
             out IntPtr ppThreadMap);
 
         // VMMDLL_Map_GetHandle
-        [LibraryImport("vmm", EntryPoint = "VMMDLL_Map_GetHandleW")]
+        [LibraryImport("vmm", EntryPoint = "VMMDLL_Map_GetHandleU")]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static unsafe partial bool VMMDLL_Map_GetHandle(
             IntPtr hVMM,
@@ -1147,7 +1147,7 @@ namespace Vmmsharp.Internal
             out IntPtr ppHandleMap);
 
         // VMMDLL_Map_GetNet
-        [LibraryImport("vmm", EntryPoint = "VMMDLL_Map_GetNetW")]
+        [LibraryImport("vmm", EntryPoint = "VMMDLL_Map_GetNetU")]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static unsafe partial bool VMMDLL_Map_GetNet(
             IntPtr hVMM,
@@ -1169,21 +1169,21 @@ namespace Vmmsharp.Internal
             uint flags);
 
         // VMMDLL_Map_GetUsers
-        [LibraryImport("vmm", EntryPoint = "VMMDLL_Map_GetUsersW")]
+        [LibraryImport("vmm", EntryPoint = "VMMDLL_Map_GetUsersU")]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static unsafe partial bool VMMDLL_Map_GetUsers(
             IntPtr hVMM,
             out IntPtr ppUserMap);
 
         // VMMDLL_Map_GetVM
-        [LibraryImport("vmm", EntryPoint = "VMMDLL_Map_GetVMW")]
+        [LibraryImport("vmm", EntryPoint = "VMMDLL_Map_GetVMU")]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static unsafe partial bool VMMDLL_Map_GetVM(
             IntPtr hVMM,
             out IntPtr ppUserMap);
 
         // VMMDLL_Map_GetServices
-        [LibraryImport("vmm", EntryPoint = "VMMDLL_Map_GetServicesW")]
+        [LibraryImport("vmm", EntryPoint = "VMMDLL_Map_GetServicesU")]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static unsafe partial bool VMMDLL_Map_GetServices(
             IntPtr hVMM,
@@ -1228,21 +1228,21 @@ namespace Vmmsharp.Internal
             byte* pb,
             uint cb);
 
-        [LibraryImport("vmm", EntryPoint = "VMMDLL_WinReg_EnumKeyExW")]
+        [LibraryImport("vmm", EntryPoint = "VMMDLL_WinReg_EnumKeyExU")]
         [return: MarshalAs(UnmanagedType.Bool)]
-        internal static unsafe partial bool VMMDLL_WinReg_EnumKeyExW(
+        internal static unsafe partial bool VMMDLL_WinReg_EnumKeyEx(
             IntPtr hVMM,
-            [MarshalAs(UnmanagedType.LPWStr)] string wszFullPathKey,
+            [MarshalAs(UnmanagedType.LPUTF8Str)] string uszFullPathKey,
             uint dwIndex,
             byte* lpName,
             ref uint lpcchName,
             out ulong lpftLastWriteTime);
 
-        [LibraryImport("vmm", EntryPoint = "VMMDLL_WinReg_EnumValueW")]
+        [LibraryImport("vmm", EntryPoint = "VMMDLL_WinReg_EnumValueU")]
         [return: MarshalAs(UnmanagedType.Bool)]
-        internal static unsafe partial bool VMMDLL_WinReg_EnumValueW(
+        internal static unsafe partial bool VMMDLL_WinReg_EnumValue(
             IntPtr hVMM,
-            [MarshalAs(UnmanagedType.LPWStr)] string wszFullPathKey,
+            [MarshalAs(UnmanagedType.LPUTF8Str)] string uszFullPathKey,
             uint dwIndex,
             byte* lpValueName,
             ref uint lpcchValueName,
@@ -1250,11 +1250,11 @@ namespace Vmmsharp.Internal
             byte* lpData,
             ref uint lpcbData);
 
-        [LibraryImport("vmm", EntryPoint = "VMMDLL_WinReg_QueryValueExW")]
+        [LibraryImport("vmm", EntryPoint = "VMMDLL_WinReg_QueryValueExU")]
         [return: MarshalAs(UnmanagedType.Bool)]
-        internal static unsafe partial bool VMMDLL_WinReg_QueryValueExW(
+        internal static unsafe partial bool VMMDLL_WinReg_QueryValueEx(
             IntPtr hVMM,
-            [MarshalAs(UnmanagedType.LPWStr)] string wszFullPathKeyValue,
+            [MarshalAs(UnmanagedType.LPUTF8Str)] string uszFullPathKeyValue,
             out uint lpType,
             byte* lpData,
             ref uint lpcbData);
@@ -1480,11 +1480,11 @@ namespace Vmmsharp.Internal
         [DllImport("vmm", EntryPoint = "VMMDLL_PidGetFromName")]
         public static extern bool VMMDLL_PidGetFromName(IntPtr hVMM, [MarshalAs(UnmanagedType.LPStr)] string szProcName, out uint pdwPID);
 
-        [DllImport("vmm", EntryPoint = "VMMDLL_ProcessGetProcAddressW")]
-        public static extern ulong VMMDLL_ProcessGetProcAddress(IntPtr hVMM, uint pid, [MarshalAs(UnmanagedType.LPWStr)] string wszModuleName, [MarshalAs(UnmanagedType.LPStr)] string szFunctionName);
+        [DllImport("vmm", EntryPoint = "VMMDLL_ProcessGetProcAddressU")]
+        public static extern ulong VMMDLL_ProcessGetProcAddress(IntPtr hVMM, uint pid, [MarshalAs(UnmanagedType.LPUTF8Str)] string uszModuleName, [MarshalAs(UnmanagedType.LPStr)] string szFunctionName);
 
-        [DllImport("vmm", EntryPoint = "VMMDLL_ProcessGetModuleBaseW")]
-        public static extern ulong VMMDLL_ProcessGetModuleBase(IntPtr hVMM, uint pid, [MarshalAs(UnmanagedType.LPWStr)] string wszModuleName);
+        [DllImport("vmm", EntryPoint = "VMMDLL_ProcessGetModuleBaseU")]
+        public static extern ulong VMMDLL_ProcessGetModuleBase(IntPtr hVMM, uint pid, [MarshalAs(UnmanagedType.LPUTF8Str)] string uszModuleName);
 
         [DllImport("vmm", EntryPoint = "VMMDLL_ProcessGetInformation")]
         internal static extern unsafe bool VMMDLL_ProcessGetInformation(
@@ -1499,18 +1499,18 @@ namespace Vmmsharp.Internal
             uint dwPID,
             uint fOptionString);
 
-        [DllImport("vmm", EntryPoint = "VMMDLL_ProcessGetDirectoriesW")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_ProcessGetDirectoriesU")]
         internal static extern unsafe bool VMMDLL_ProcessGetDirectories(
             IntPtr hVMM,
             uint dwPID,
-            [MarshalAs(UnmanagedType.LPWStr)] string wszModule,
+            [MarshalAs(UnmanagedType.LPUTF8Str)] string uszModule,
             byte* pData);
 
-        [DllImport("vmm", EntryPoint = "VMMDLL_ProcessGetSectionsW")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_ProcessGetSectionsU")]
         internal static extern unsafe bool VMMDLL_ProcessGetSections(
             IntPtr hVMM,
             uint dwPID,
-            [MarshalAs(UnmanagedType.LPWStr)] string wszModule,
+            [MarshalAs(UnmanagedType.LPUTF8Str)] string uszModule,
             byte* pData,
             uint cData,
             out uint pcData);
@@ -1555,7 +1555,7 @@ namespace Vmmsharp.Internal
             out uint pcbTypeChildOffset);
 
         // VMMDLL_Map_GetPte
-        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetPteW")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetPteU")]
         internal static extern unsafe bool VMMDLL_Map_GetPte(
             IntPtr hVMM,
             uint dwPid,
@@ -1563,7 +1563,7 @@ namespace Vmmsharp.Internal
             out IntPtr ppPteMap);
 
         // VMMDLL_Map_GetVad
-        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetVadW")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetVadU")]
         internal static extern unsafe bool VMMDLL_Map_GetVad(
             IntPtr hVMM,
             uint dwPid,
@@ -1580,7 +1580,7 @@ namespace Vmmsharp.Internal
             out IntPtr ppVadExMap);
 
         // VMMDLL_Map_GetModule
-        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetModuleW")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetModuleU")]
         internal static extern unsafe bool VMMDLL_Map_GetModule(
             IntPtr hVMM,
             uint dwPid,
@@ -1588,35 +1588,35 @@ namespace Vmmsharp.Internal
             uint flags);
 
         // VMMDLL_Map_GetModuleFromName
-        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetModuleFromNameW")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetModuleFromNameU")]
         internal static extern unsafe bool VMMDLL_Map_GetModuleFromName(
             IntPtr hVMM,
             uint dwPID,
-            [MarshalAs(UnmanagedType.LPWStr)] string wszModuleName,
+            [MarshalAs(UnmanagedType.LPUTF8Str)] string uszModuleName,
             out IntPtr ppModuleMapEntry,
             uint flags);
 
         // VMMDLL_Map_GetUnloadedModule
-        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetUnloadedModuleW")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetUnloadedModuleU")]
         internal static extern unsafe bool VMMDLL_Map_GetUnloadedModule(
             IntPtr hVMM,
             uint dwPid,
             out IntPtr ppModuleMap);
 
         // VMMDLL_Map_GetEAT
-        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetEATW")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetEATU")]
         internal static extern unsafe bool VMMDLL_Map_GetEAT(
             IntPtr hVMM,
             uint dwPid,
-            [MarshalAs(UnmanagedType.LPWStr)] string wszModuleName,
+            [MarshalAs(UnmanagedType.LPUTF8Str)] string uszModuleName,
             out IntPtr ppEatMap);
 
         // VMMDLL_Map_GetIAT
-        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetIATW")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetIATU")]
         internal static extern unsafe bool VMMDLL_Map_GetIAT(
             IntPtr hVMM,
             uint dwPid,
-            [MarshalAs(UnmanagedType.LPWStr)] string wszModuleName,
+            [MarshalAs(UnmanagedType.LPUTF8Str)] string uszModuleName,
             out IntPtr ppIatMap);
 
         // VMMDLL_Map_GetHeap
@@ -1642,14 +1642,14 @@ namespace Vmmsharp.Internal
             out IntPtr ppThreadMap);
 
         // VMMDLL_Map_GetHandle
-        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetHandleW")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetHandleU")]
         internal static extern unsafe bool VMMDLL_Map_GetHandle(
             IntPtr hVMM,
             uint dwPid,
             out IntPtr ppHandleMap);
 
         // VMMDLL_Map_GetNet
-        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetNetW")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetNetU")]
         internal static extern unsafe bool VMMDLL_Map_GetNet(
             IntPtr hVMM,
             out IntPtr ppNetMap);
@@ -1668,19 +1668,19 @@ namespace Vmmsharp.Internal
             uint flags);
 
         // VMMDLL_Map_GetUsers
-        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetUsersW")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetUsersU")]
         internal static extern unsafe bool VMMDLL_Map_GetUsers(
             IntPtr hVMM,
             out IntPtr ppUserMap);
 
         // VMMDLL_Map_GetVM
-        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetVMW")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetVMU")]
         internal static extern unsafe bool VMMDLL_Map_GetVM(
             IntPtr hVMM,
             out IntPtr ppUserMap);
 
         // VMMDLL_Map_GetServuces
-        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetServicesW")]
+        [DllImport("vmm", EntryPoint = "VMMDLL_Map_GetServicesU")]
         internal static extern unsafe bool VMMDLL_Map_GetServices(
             IntPtr hVMM,
             out IntPtr ppServiceMap);
@@ -1721,19 +1721,19 @@ namespace Vmmsharp.Internal
             byte* pb,
             uint cb);
 
-        [DllImport("vmm", EntryPoint = "VMMDLL_WinReg_EnumKeyExW")]
-        internal static extern unsafe bool VMMDLL_WinReg_EnumKeyExW(
+        [DllImport("vmm", EntryPoint = "VMMDLL_WinReg_EnumKeyExU")]
+        internal static extern unsafe bool VMMDLL_WinReg_EnumKeyEx(
             IntPtr hVMM,
-            [MarshalAs(UnmanagedType.LPWStr)] string wszFullPathKey,
+            [MarshalAs(UnmanagedType.LPUTF8Str)] string uszFullPathKey,
             uint dwIndex,
             byte* lpName,
             ref uint lpcchName,
             out ulong lpftLastWriteTime);
 
-        [DllImport("vmm", EntryPoint = "VMMDLL_WinReg_EnumValueW")]
-        internal static extern unsafe bool VMMDLL_WinReg_EnumValueW(
+        [DllImport("vmm", EntryPoint = "VMMDLL_WinReg_EnumValueU")]
+        internal static extern unsafe bool VMMDLL_WinReg_EnumValue(
             IntPtr hVMM,
-            [MarshalAs(UnmanagedType.LPWStr)] string wszFullPathKey,
+            [MarshalAs(UnmanagedType.LPUTF8Str)] string uszFullPathKey,
             uint dwIndex,
             byte* lpValueName,
             ref uint lpcchValueName,
@@ -1741,10 +1741,10 @@ namespace Vmmsharp.Internal
             byte* lpData,
             ref uint lpcbData);
 
-        [DllImport("vmm", EntryPoint = "VMMDLL_WinReg_QueryValueExW")]
-        internal static extern unsafe bool VMMDLL_WinReg_QueryValueExW(
+        [DllImport("vmm", EntryPoint = "VMMDLL_WinReg_QueryValueExU")]
+        internal static extern unsafe bool VMMDLL_WinReg_QueryValueEx(
             IntPtr hVMM,
-            [MarshalAs(UnmanagedType.LPWStr)] string wszFullPathKeyValue,
+            [MarshalAs(UnmanagedType.LPUTF8Str)] string uszFullPathKeyValue,
             out uint lpType,
             byte* lpData,
             ref uint lpcbData);

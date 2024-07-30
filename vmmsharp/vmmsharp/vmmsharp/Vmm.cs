@@ -29,6 +29,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -162,6 +163,27 @@ namespace Vmmsharp
             Vmmi.VMMDLL_CloseAll();
         }
 
+#if NET5_0_OR_GREATER
+        /// <summary>
+        /// Load the native vmm.dll and leechcore.dll libraries. This may sometimes be necessary if the libraries are not in the system path.
+        /// NB! This method should be called before any other Vmm API methods. This method is only available on Windows.
+        /// </summary>
+        /// <param name="path"></param>
+        public static void LoadNativeLibrary(string path)
+        {
+            // Load the native vmm.dll and leechcore.dll libraries if possible.
+            // Leak the handles to the libraries as it will be used by the API.
+            if(NativeLibrary.TryLoad("leechcore", out _) && NativeLibrary.TryLoad("vmm", out _))
+            {
+                return;
+            }
+            if (NativeLibrary.TryLoad(Path.Combine(path, "leechcore"), out _) && NativeLibrary.TryLoad(Path.Combine(path, "vmm"), out _))
+            {
+                return;
+            }
+            throw new VmmException("Failed to load native libraries vmm.dll and leechcore.dll.");
+        }
+#else // NET5_0_OR_GREATER
         // P/Invoke to LoadLibrary to pre-load required native libraries (vmm.dll & leechcore.dll)
         [DllImport("Kernel32.dll")]
         private static extern IntPtr LoadLibrary(string path);
@@ -184,6 +206,7 @@ namespace Vmmsharp
                 throw new VmmException("Failed to load native libraries vmm.dll and leechcore.dll.");
             }
         }
+#endif // NET5_0_OR_GREATER
 
         #endregion
 
@@ -910,23 +933,23 @@ namespace Vmmsharp
             {
                 i = 0;
                 cchName = 0x800;
-                while (Vmmi.VMMDLL_WinReg_EnumKeyExW(hVMM, sKeyFullPath, i, pb, ref cchName, out ftLastWriteTime))
+                while (Vmmi.VMMDLL_WinReg_EnumKeyEx(hVMM, sKeyFullPath, i, pb, ref cchName, out ftLastWriteTime))
                 {
                     RegEnumKeyEntry e = new RegEnumKeyEntry();
                     e.ftLastWriteTime = ftLastWriteTime;
-                    e.sName = new string((sbyte*)pb, 0, 2 * (int)Math.Max(1, cchName) - 2, Encoding.Unicode);
+                    e.sName = new string((sbyte*)pb, 0, 2 * (int)Math.Max(1, cchName) - 2, Encoding.UTF8);
                     re.KeyList.Add(e);
                     i++;
                     cchName = 0x800;
                 }
                 i = 0;
                 cchName = 0x800;
-                while (Vmmi.VMMDLL_WinReg_EnumValueW(hVMM, sKeyFullPath, i, pb, ref cchName, out lpType, null, ref cbData))
+                while (Vmmi.VMMDLL_WinReg_EnumValue(hVMM, sKeyFullPath, i, pb, ref cchName, out lpType, null, ref cbData))
                 {
                     RegEnumValueEntry e = new RegEnumValueEntry();
                     e.type = lpType;
                     e.size = cbData;
-                    e.sName = new string((sbyte*)pb, 0, 2 * (int)Math.Max(1, cchName) - 2, Encoding.Unicode);
+                    e.sName = new string((sbyte*)pb, 0, 2 * (int)Math.Max(1, cchName) - 2, Encoding.UTF8);
                     re.ValueList.Add(e);
                     i++;
                     cchName = 0x800;
@@ -945,7 +968,7 @@ namespace Vmmsharp
         {
             bool result;
             uint cb = 0;
-            result = Vmmi.VMMDLL_WinReg_QueryValueExW(hVMM, sValueFullPath, out tp, null, ref cb);
+            result = Vmmi.VMMDLL_WinReg_QueryValueEx(hVMM, sValueFullPath, out tp, null, ref cb);
             if (!result)
             {
                 return null;
@@ -953,7 +976,7 @@ namespace Vmmsharp
             byte[] data = new byte[cb];
             fixed (byte* pb = data)
             {
-                result = Vmmi.VMMDLL_WinReg_QueryValueExW(hVMM, sValueFullPath, out tp, pb, ref cb);
+                result = Vmmi.VMMDLL_WinReg_QueryValueEx(hVMM, sValueFullPath, out tp, pb, ref cb);
                 return result ? data : null;
             }
         }
@@ -1114,14 +1137,14 @@ namespace Vmmsharp
                 e.src.fValid = n.src_fValid;
                 e.src.port = n.src_port;
                 e.src.pbAddr = n.src_pbAddr;
-                e.src.sText = n.src_wszText;
+                e.src.sText = n.src_uszText;
                 e.dst.fValid = n.dst_fValid;
                 e.dst.port = n.dst_port;
                 e.dst.pbAddr = n.dst_pbAddr;
-                e.dst.sText = n.dst_wszText;
+                e.dst.sText = n.dst_uszText;
                 e.vaObj = n.vaObj;
                 e.ftTime = n.ftTime;
-                e.sText = n.wszText;
+                e.sText = n.uszText;
                 m[i] = e;
             }
         fail:
@@ -1212,8 +1235,8 @@ namespace Vmmsharp
             {
                 Vmmi.VMMDLL_MAP_USERENTRY n = Marshal.PtrToStructure<Vmmi.VMMDLL_MAP_USERENTRY>((System.IntPtr)(pMap.ToInt64() + cbMAP + i * cbENTRY));
                 UserEntry e;
-                e.sSID = n.wszSID;
-                e.sText = n.wszText;
+                e.sSID = n.uszSID;
+                e.sText = n.uszText;
                 e.vaRegHive = n.vaRegHive;
                 m[i] = e;
             }
@@ -1241,7 +1264,7 @@ namespace Vmmsharp
                 Vmmi.VMMDLL_MAP_VMENTRY n = Marshal.PtrToStructure<Vmmi.VMMDLL_MAP_VMENTRY>((System.IntPtr)(pMap.ToInt64() + cbMAP + i * cbENTRY));
                 VirtualMachineEntry e;
                 e.hVM = n.hVM;
-                e.sName = n.wszName;
+                e.sName = n.uszName;
                 e.gpaMax = n.gpaMax;
                 e.tp = n.tp;
                 e.fActive = n.fActive;
@@ -1280,12 +1303,12 @@ namespace Vmmsharp
                 e.vaObj = n.vaObj;
                 e.dwPID = n.dwPID;
                 e.dwOrdinal = n.dwOrdinal;
-                e.sServiceName = n.wszServiceName;
-                e.sDisplayName = n.wszDisplayName;
-                e.sPath = n.wszPath;
-                e.sUserTp = n.wszUserTp;
-                e.sUserAcct = n.wszUserAcct;
-                e.sImagePath = n.wszImagePath;
+                e.sServiceName = n.uszServiceName;
+                e.sDisplayName = n.uszDisplayName;
+                e.sPath = n.uszPath;
+                e.sUserTp = n.uszUserTp;
+                e.sUserAcct = n.uszUserAcct;
+                e.sImagePath = n.uszImagePath;
                 e.dwStartType = n.dwStartType;
                 e.dwServiceType = n.dwServiceType;
                 e.dwCurrentState = n.dwCurrentState;

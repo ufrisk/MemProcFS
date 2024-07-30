@@ -229,3 +229,6 @@ v5.8
 [v5.11](https://github.com/ufrisk/MemProcFS/releases/tag/v5.11)
 * Bug fixes.
 * [New Vmmsharp C# API](https://github.com/ufrisk/MemProcFS/wiki/API_CSharp).
+
+Latest:
+* Bug fixes.
