@@ -36,10 +36,12 @@ using Vmmsharp;
 namespace vmmsharp_example {
     class VmmsharpExample {
         static void Main(string[] args) {
-            // Pre-load the native MemProcFS libraries. (This is recommended if the libraries are not already on the PATH.)
+            // Pre-load the native MemProcFS libraries.
+            // (This is recommended if the libraries are not already on the PATH.)
             Vmm.LoadNativeLibrary("C:\\MemProcFS\\");
 
-            // Initialize MemProcFS (Vmm object) with arguments, e.g. a physical memory dump file in this example:
+            // Initialize MemProcFS (Vmm object) with arguments.
+            // (A physical memory dump file in this example.)
             Vmm vmm = new Vmm("-device", "c:\\dumps\\memorydump.raw");
 
             // Get the process object for explorer.exe:
@@ -53,7 +55,6 @@ namespace vmmsharp_example {
             byte[] memReadData = explorerProcess.MemRead(kernel32Base, 0x100);
             string memReadHexDump = Vmm.UtilFillHexAscii(memReadData);
             Console.WriteLine("Read from explorer.exe!kernel32.dll: \n{0}", memReadHexDump);
-
         }
     }
 }

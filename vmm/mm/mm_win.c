@@ -360,7 +360,7 @@ VOID MmWin_MemCompress_InitializeOffsets64(_In_ VMM_HANDLE H)
     po->SMKM_STORE.CompressionAlgorithm = 0;                // 24H2+
     po->SMKM_STORE.CompressedRegionPtrArray = 0x1b70;       // 24H2+
     po->SMKM_STORE.OwnerProcess = 0x1d08;                   // 24H2+
-    if(dwVersionBuild <= 22621) {
+    if(dwVersionBuild <= 22631) {
         po->SMKM_STORE.CompressionAlgorithm = 0x50 + 0x3E0; // 1709+
         po->SMKM_STORE.CompressedRegionPtrArray = 0x1848;   // 1709+
         po->SMKM_STORE.OwnerProcess = 0x19B8;               // 2004+
