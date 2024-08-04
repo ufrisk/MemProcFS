@@ -232,3 +232,4 @@ v5.8
 
 Latest:
 * Bug fixes.
+* Minor updates (FindEvil, New signatures, etc.).

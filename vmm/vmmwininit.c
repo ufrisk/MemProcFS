@@ -89,6 +89,9 @@ VOID VmmWinInit_TryInitializeKernelOptionalValues(_In_ VMM_HANDLE H)
         if(PDB_GetTypeChildOffset(H, PDB_HANDLE_KERNEL, "_EPROCESS", "ExitTime", &dwo) && (dwo < pObSystemProcess->win.EPROCESS.cb - 8)) {
             H->vmm.offset.EPROCESS.opt.ExitTime = (WORD)dwo;
         }
+        if(PDB_GetTypeChildOffset(H, PDB_HANDLE_KERNEL, "_EPROCESS", "SectionBaseAddress", &dwo) && (dwo < pObSystemProcess->win.EPROCESS.cb - 8)) {
+            H->vmm.offset.EPROCESS.opt.SectionBaseAddress = (WORD)dwo;
+        }
         if(PDB_GetTypeChildOffset(H, PDB_HANDLE_KERNEL, "_KPROCESS", "KernelTime", &dwo) && (dwo < pObSystemProcess->win.EPROCESS.cb - 8)) {
             H->vmm.offset.EPROCESS.opt.KernelTime = (WORD)dwo;
         }

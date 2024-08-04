@@ -109,7 +109,7 @@
 		<None Include="logo.png" Pack="true" Visible="true" PackagePath="" />
 	</ItemGroup>
     <PropertyGroup>
-        <Version>5.11.3</Version>
+        <Version>5.11.4</Version>
         <RepositoryUrl>https://github.com/ufrisk/MemProcFS</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageLicenseFile>LICENSE</PackageLicenseFile>

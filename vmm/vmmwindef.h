@@ -728,7 +728,8 @@ typedef struct _PEB32 {
     BYTE Reserved1[2];
     BYTE BeingDebugged;
     BYTE Reserved2[1];
-    DWORD Reserved3[2];
+    DWORD Mutant;
+    DWORD ImageBaseAddress;
     DWORD Ldr;
     DWORD ProcessParameters;
     DWORD SubSystemData;
@@ -745,7 +746,8 @@ typedef struct _PEB64 {
     BYTE BeingDebugged;
     BYTE Reserved2[1];
     DWORD _Filler;
-    QWORD Reserved3[2];
+    QWORD Mutant;
+    QWORD ImageBaseAddress;
     QWORD Ldr;
     QWORD ProcessParameters;
     QWORD SubSystemData;

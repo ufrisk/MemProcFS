@@ -21,6 +21,11 @@
 #define LDRMODULES_LINEHEADER_X86_VERB      LDRMODULES_LINEHEADER_X86"                                     #Imports #Exports #Sect Path                                                                    KernelPath"
 #define LDRMODULES_LINEHEADER_X64_VERB      LDRMODULES_LINEHEADER_X64"                                     #Imports #Exports #Sect Path                                                                    KernelPath"
 
+#define LDRMODULES_UNLOAD_LINELENGTH_X86    132ULL
+#define LDRMODULES_UNLOAD_LINELENGTH_X64    148ULL
+#define LDRMODULES_UNLOAD_LINEHEADER_X86    "   #    PID    Pages Range Start-End      UnloadTime               Description"
+#define LDRMODULES_UNLOAD_LINEHEADER_X64    "   #    PID    Pages      Range Start-End                 UnloadTime               Description"
+
 #define LDRMODULE_LINELENGTH_VERSIONINFO    364
 #define LDRMODULE_LINEHEADER_VERSIONINFO    "   #    PID          Address Module                            CompanyName               FileDescription                           FileVersion                                       InternalName                      LegalCopyright                                    OriginalFilename                  ProductName                               ProductVersion"
 
@@ -273,14 +278,17 @@ VOID LdrModules_ModuleVersionInfoReadLineCB(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS
 */
 VOID LdrModules_UnloadedReadLineCB(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVMM_MAP_UNLOADEDMODULEENTRY pe, _Out_writes_(cbLineLength + 1) LPSTR usz)
 {
+    CHAR szTime[24];
+    Util_FileTime2String(pe->ftUnload, szTime);
     Util_usnprintf_ln(usz, cbLineLength,
-        H->vmm.f32 ? "%04x%7i %8x %08x-%08x %s %s" : "%04x%7i %8x %016llx-%016llx %s %s",
+        H->vmm.f32 ? "%04x%7i %8x %08x-%08x %s %s" : "%04x%7i %8x %016llx-%016llx %s %s  %s",
         ie,
         pProcess->dwPID,
         pe->cbImageSize >> 12,
         pe->vaBase,
         pe->vaBase + pe->cbImageSize - 1,
         pe->fWoW64 ? "32" : "  ",
+        szTime,
         pe->uszText
     );
 }
@@ -502,8 +510,8 @@ NTSTATUS LdrModules_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _O
         if(VmmMap_GetUnloadedModule(H, (PVMM_PROCESS)ctxP->pProcess, &pObUnloadedModuleMap)) {
             nt = Util_VfsLineFixed_Read(
                 H, (UTIL_VFSLINEFIXED_PFN_CB)LdrModules_UnloadedReadLineCB, ctxP->pProcess,
-                (H->vmm.f32 ? LDRMODULES_LINELENGTH_X86 : LDRMODULES_LINELENGTH_X64),
-                (H->vmm.f32 ? LDRMODULES_LINEHEADER_X86 : LDRMODULES_LINEHEADER_X64),
+                (H->vmm.f32 ? LDRMODULES_UNLOAD_LINELENGTH_X86 : LDRMODULES_UNLOAD_LINELENGTH_X64),
+                (H->vmm.f32 ? LDRMODULES_UNLOAD_LINEHEADER_X86 : LDRMODULES_UNLOAD_LINEHEADER_X64),
                 pObUnloadedModuleMap->pMap, pObUnloadedModuleMap->cMap, sizeof(VMM_MAP_UNLOADEDMODULEENTRY),
                 pb, cb, pcbRead, cbOffset
             );
@@ -535,7 +543,7 @@ NTSTATUS LdrModules_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _O
 */
 BOOL LdrModules_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList)
 {
-    DWORD c, i, cbLine, cbLineV;
+    DWORD c, i, cbLine, cbLineV, cbLineUnload;
     CHAR szSectionName[9] = { 0 };
     CHAR uszPath1[MAX_PATH];
     LPCSTR uszPath2;
@@ -553,11 +561,12 @@ BOOL LdrModules_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout
         }
         cbLine = H->vmm.f32 ? LDRMODULES_LINELENGTH_X86 : LDRMODULES_LINELENGTH_X64;
         cbLineV = H->vmm.f32 ? LDRMODULES_LINELENGTH_X86_VERB : LDRMODULES_LINELENGTH_X64_VERB;
+        cbLineUnload = H->vmm.f32 ? LDRMODULES_UNLOAD_LINELENGTH_X86 : LDRMODULES_UNLOAD_LINELENGTH_X64;
         VMMDLL_VfsList_AddFile(pFileList, "modules.txt", UTIL_VFSLINEFIXED_LINECOUNT(H, pObModuleMap->cMap) * cbLine, NULL);
         VMMDLL_VfsList_AddFile(pFileList, "modules-v.txt", UTIL_VFSLINEFIXED_LINECOUNT(H, pObModuleMap->cMap) * cbLineV, NULL);
         VMMDLL_VfsList_AddFile(pFileList, "modules-versioninfo.txt", UTIL_VFSLINEFIXED_LINECOUNT(H, pObModuleMap->cMap) * LDRMODULE_LINELENGTH_VERSIONINFO, NULL);
         if(VmmMap_GetUnloadedModule(H, pProcess, &pObUnloadedModuleMap)) {
-            VMMDLL_VfsList_AddFile(pFileList, "unloaded_modules.txt", UTIL_VFSLINEFIXED_LINECOUNT(H, pObUnloadedModuleMap->cMap) * cbLine, NULL);
+            VMMDLL_VfsList_AddFile(pFileList, "unloaded_modules.txt", UTIL_VFSLINEFIXED_LINECOUNT(H, pObUnloadedModuleMap->cMap) * cbLineUnload, NULL);
             Ob_DECREF_NULL(&pObUnloadedModuleMap);
         }
         goto success;

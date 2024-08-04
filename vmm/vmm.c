@@ -562,19 +562,21 @@ BOOL VmmTlbPageTableVerify(_In_ VMM_HANDLE H, _Inout_ PBYTE pb, _In_ QWORD pa, _
 VOID VmmTlbPrefetch(_In_ VMM_HANDLE H, _In_ POB_SET pTlbPrefetch)
 {
     QWORD pbTlb = 0;
-    DWORD cTlbs, i = 0;
+    DWORD cTlbs, cTlbsMax, i = 0;
     PPVMMOB_CACHE_MEM ppObMEMs = NULL;
     PPMEM_SCATTER ppMEMs = NULL;
-    if(!(cTlbs = min(0x2000, ObSet_Size(pTlbPrefetch)))) { goto fail; }
+    cTlbsMax = VMM_CACHE_REGION_MEMS_TLB >> 1;
+    if(!(cTlbs = min(cTlbsMax, ObSet_Size(pTlbPrefetch)))) { goto fail; }
     if(!(ppMEMs = LocalAlloc(0, cTlbs * sizeof(PMEM_SCATTER)))) { goto fail; }
     if(!(ppObMEMs = LocalAlloc(0, cTlbs * sizeof(PVMMOB_CACHE_MEM)))) { goto fail; }
-    while((cTlbs = min(0x2000, ObSet_Size(pTlbPrefetch)))) {   // protect cache bleed -> max 0x2000 pages/round
+    while((cTlbs = min(cTlbsMax, ObSet_Size(pTlbPrefetch)))) {   // protect cache bleed -> max cTlbsMax pages/round
         for(i = 0; i < cTlbs; i++) {
             if((ppObMEMs[i] = VmmCacheReserve(H, VMM_CACHE_TAG_TLB))) {
                 ppMEMs[i] = &ppObMEMs[i]->h;
                 ppMEMs[i]->qwA = ObSet_Pop(pTlbPrefetch);
             } else {
                 cTlbs = i;
+                break;
             }
         }
         LcReadScatter(H->hLC, cTlbs, ppMEMs);

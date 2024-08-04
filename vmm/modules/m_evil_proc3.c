@@ -62,6 +62,30 @@ VOID MEvilProc3_SeDebugPrivilege(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
 
 
 //-----------------------------------------------------------------------------
+// PROC_BASE
+//-----------------------------------------------------------------------------
+
+/*
+* Checks whether the ImageBaseAddress in the PEB matches the SectionBaseAddress
+* in the EPROCESS. If they do not match, it is an indicator of process hollowing.
+*/
+VOID MEvilProc3_BaseAddressMismatch(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
+{
+    BOOL f32 = H->vmm.f32;
+    QWORD vaImageBaseAddress = 0;
+    QWORD vaSectionBaseAddress = VMM_EPROCESS_PTR(f32, pProcess, H->vmm.offset.EPROCESS.opt.SectionBaseAddress);
+    DWORD oImageBaseAddress = f32 ? offsetof(PEB32, ImageBaseAddress) : offsetof(PEB64, ImageBaseAddress);
+    if(!vaSectionBaseAddress) { return; }
+    VmmRead(H, pProcess, pProcess->win.vaPEB + 0x10, (PBYTE)&vaImageBaseAddress, f32 ? 4 : 8);
+    if(!vaImageBaseAddress) { return; }
+    if(vaSectionBaseAddress != vaImageBaseAddress) {
+        FcEvilAdd(H, EVIL_PROC_BASEADDR, pProcess, vaImageBaseAddress, "Process base address mismatch: PEB.ImageBaseAddress != EPROCESS.SectionBaseAddress (0x%llx != 0x%llx)", vaImageBaseAddress, vaSectionBaseAddress);
+    }
+}
+
+
+
+//-----------------------------------------------------------------------------
 // COMMON:
 //-----------------------------------------------------------------------------
 
@@ -75,6 +99,7 @@ VOID MEvilProc3_DoWork(_In_ VMM_HANDLE H, _In_ VMMDLL_MODULE_ID MID, _In_opt_ PV
         if(FcIsProcessSkip(H, pObProcess)) { continue; }
         MEvilProc3_SeDebugPrivilege(H, pObProcess);
         MEvilProc3_TimeChange(H, pObProcess, &TimeChange);
+        MEvilProc3_BaseAddressMismatch(H, pObProcess);
     }
     VmmLog(H, MID, LOGLEVEL_6_TRACE, "COMPLETED FINDEVIL SCAN");
 fail:

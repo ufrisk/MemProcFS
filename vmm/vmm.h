@@ -1094,7 +1094,7 @@ typedef struct tdVMMOB_PROCESS_TABLE {
 #define VMM_CACHE_REGIONS               3
 #define VMM_CACHE_REGION_MEMS_INITALLOC FALSE
 #define VMM_CACHE_REGION_MEMS_PHYS      0x5000
-#define VMM_CACHE_REGION_MEMS_TLB       0x3000
+#define VMM_CACHE_REGION_MEMS_TLB       0x5000
 #define VMM_CACHE_REGION_MEMS_PAGING    0x2000
 #define VMM_CACHE_BUCKETS               0x5000
 
@@ -1311,6 +1311,7 @@ typedef struct tdVMM_OFFSET_EPROCESS {
         WORD TOKEN_IntegrityLevelIndex;
         WORD KernelTime;
         WORD UserTime;
+        WORD SectionBaseAddress;
     } opt;
 } VMM_OFFSET_EPROCESS, *PVMM_OFFSET_EPROCESS;
 

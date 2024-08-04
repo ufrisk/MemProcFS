@@ -350,7 +350,12 @@ static PyObject*
 VmmPycVmm_close(PyObj_Vmm *self, PyObject *args)
 {
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Vmm.close(): Not initialized."); }
-    VmmPycVmm_dealloc(self);
+    self->fValid = FALSE;
+    if(self->fVmmCoreOpenType) {
+        Py_BEGIN_ALLOW_THREADS;
+        VMMDLL_Close(self->hVMM);
+        Py_END_ALLOW_THREADS;
+    }
     return Py_BuildValue("s", NULL);    // None returned on success.
 }
 
