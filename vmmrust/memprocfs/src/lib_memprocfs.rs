@@ -1572,7 +1572,7 @@ impl VmmScatterMemory<'_> {
 /// ```
 #[derive(Debug)]
 pub struct VmmProcess<'a> {
-    vmm : &'a Vmm<'a>,
+    pub vmm : &'a Vmm<'a>,
     pub pid : u32,
 }
 
@@ -4645,6 +4645,16 @@ impl Drop for Vmm<'_> {
         if self.native.is_close_h {
             (self.native.VMMDLL_Close)(self.native.h);
         }
+    }
+}
+
+impl Clone for Vmm<'_> {
+    fn clone(&self) -> Self {
+        let vmmid = self.get_config(CONFIG_OPT_CORE_VMM_ID).unwrap();
+        let vmmid_str = vmmid.to_string();
+        let vmm_clone_args = ["-create-from-vmmid", &vmmid_str].to_vec();
+        let vmm_clone = Vmm::new(&self.path_vmm, &vmm_clone_args).unwrap();
+        return vmm_clone;
     }
 }
 
