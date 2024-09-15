@@ -43,7 +43,7 @@ MemProcFS is dependent on packages, do a `sudo apt-get install libusb-1.0 fuse o
 
 
 
-Extensive Python, Rust, Java, GO, C# and C/C++ API:
+Extensive Python, Rust, Java, Go, C# and C/C++ API:
 ===============================
 Include MemProcFS in your [C/C++](https://github.com/ufrisk/MemProcFS/wiki/API_C), [C#](https://github.com/ufrisk/MemProcFS/wiki/API_CSharp), [Java](https://github.com/ufrisk/MemProcFS/wiki/API_Java), [Go](https://github.com/TexHik620953/go-memprocfs/) (3rd party), [Python](https://github.com/ufrisk/MemProcFS/wiki/API_Python) or [Rust](https://github.com/ufrisk/MemProcFS/wiki/API_Rust) programming projects! Everything in MemProcFS is exposed via an easy-to-use API for use in your own projects! The Plugin friendly architecture allows users to easily extend MemProcFS with C/C++/Rust/Python plugins!
 
