@@ -89,7 +89,7 @@ BOOL _ObByteQueue_Pop(_In_ POB_BYTEQUEUE pq, _Out_opt_ QWORD *pqwTag, _In_ SIZE_
         return FALSE;
     }
     *pcbRead = p->cb;
-    if(p->cb < cb) {
+    if(p->cb > cb) {
         return FALSE;
     }
     if(pqwTag) {
@@ -136,6 +136,7 @@ BOOL _ObByteQueue_Push(_In_ POB_BYTEQUEUE pq, _In_opt_ QWORD qwTag, _In_ SIZE_T 
     p->cboNext = 0;
     memcpy(p->pb, pb, cb);
     pq->cPackets++;
+    pq->cboTail = (DWORD)((SIZE_T)p - (SIZE_T)pq->pb);
     return TRUE;
 }
 

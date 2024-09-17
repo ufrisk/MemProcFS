@@ -6,8 +6,8 @@
 
 #include "modules.h"
 
-#define MVM_LINELENGTH      127ULL
-#define MVM_LINEHEADER      "   # VmMemPID Type         Flags   ObjectAddress       MaxGPA Name                                     OsType   OsBuild Mount"
+#define MVM_LINELENGTH      133ULL
+#define MVM_LINEHEADER      "   # VmMemPID Type         Flags   ObjectAddress       MaxGPA Name                                     OsType        OsBuild Mount"
 
 VOID MVM_ReadLineCB(_In_ VMM_HANDLE H, _Inout_opt_ PVOID ctx, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVMM_MAP_VMENTRY pe, _Out_writes_(cbLineLength + 1) LPSTR usz)
 {
@@ -16,7 +16,7 @@ VOID MVM_ReadLineCB(_In_ VMM_HANDLE H, _Inout_opt_ PVOID ctx, _In_ DWORD cbLineL
         _snprintf_s(szMountID, _countof(szMountID), _TRUNCATE, "/vm/%i", pe->dwParentVmmMountID);
     }
     Util_usnprintf_ln(usz, cbLineLength,
-        "%04x  %7i %-12s %c,%s %16llx %12llx %-40.40s %-10s %5i %s",
+        "%04x  %7i %-12s %c,%s %16llx %12llx %-40.40s %-15s %5i %s",
         ie,
         pe->dwVmMemPID,
         VMM_VM_TP_STRING[pe->tp],

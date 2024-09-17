@@ -277,9 +277,9 @@ PVOID _ObMap_GetNextByKey(_In_ POB_MAP pm, _In_ QWORD qwKey, _In_opt_ PVOID pvOb
 PVOID _ObMap_GetNextByIndex(_In_ POB_MAP pm, _Inout_ PDWORD pdwIndex, _In_opt_ PVOID pvObject)
 {
     if(pvObject) {
-        *pdwIndex = pm->c - 1;
-    } else {
         *pdwIndex = *pdwIndex - 1;
+    } else {
+        *pdwIndex = pm->c - 1;
     }
     if(pm->fObjectsOb) { Ob_DECREF(pvObject); }
     return _ObMap_GetByEntryIndex(pm, *pdwIndex);

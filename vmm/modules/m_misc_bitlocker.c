@@ -192,7 +192,11 @@ VOID MBDE_Win10(_In_ VMM_HANDLE H, _In_ PMBDE_CONTEXT ctxBDE, _In_ PVMM_MAP_POOL
     if(H->vmm.f32) {
         // 32-bit
         if(pe->cb < (fWin8 ? 0x268UL : 0x400UL)) { return; }
-        o.o0 = 0x50; o.o1 = 0x54; o.o2 = 0x78; o.o3 = 0x98;
+        if(H->vmm.kernel.dwVersionBuild <= 17134) {
+            o.o0 = 0x50; o.o1 = 0x54; o.o2 = 0x78; o.o3 = 0x98;
+        } else {
+            o.o0 = 0x54; o.o1 = 0x58; o.o2 = 0x7c; o.o3 = 0x9c;
+        }
     } else {
         // 64-bit
         if(pe->cb < (fWin8 ? 0x290UL : 0x4c0UL)) { return; }

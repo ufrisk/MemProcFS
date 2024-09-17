@@ -307,6 +307,7 @@ VOID VmmWinInit_FindNtosScan64_SmallPageWalk_DoWork(_In_ VMM_HANDLE H, _In_ QWOR
     QWORD i, j, pte, vaCurrent;
     PVMMOB_CACHE_MEM pObPTEs = NULL;
     BOOL f;
+    if(iPML == 0) { return; }
     pObPTEs = VmmTlbGetPageTable(H, paTable, FALSE);
     if(!pObPTEs) { return; }
     if(iPML == 4) {

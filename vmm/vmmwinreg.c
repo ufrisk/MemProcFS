@@ -328,7 +328,7 @@ BOOL VmmWinReg_HiveWrite(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pRegistryHive
     PVMM_PROCESS pObProcessRegistry = NULL;
     if(!cb || !(pObProcessRegistry = VmmWinReg_GetRegistryProcess(H))) { return FALSE; }
     while(cb) {
-        cbWrite = 0x1000 - (ra & 0xfff);
+        cbWrite = min(cb, 0x1000 - (ra & 0xfff));
         if(VmmWinReg_Reg2Virt(H, pObProcessRegistry, pRegistryHive, ra, &vaWrite) && vaWrite) {
             fSuccess = VmmWrite(H, pObProcessRegistry, vaWrite, pb, cbWrite) && fSuccess;
         } else {
@@ -336,6 +336,7 @@ BOOL VmmWinReg_HiveWrite(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pRegistryHive
         }
         ra += cbWrite;
         pb += cbWrite;
+        cb -= cbWrite;
     }
     Ob_DECREF(pObProcessRegistry);
     return fSuccess;
