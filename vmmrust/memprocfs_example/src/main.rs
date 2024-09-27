@@ -37,6 +37,7 @@ struct IMAGE_DOS_HEADER {
 
 pub fn main() {
     main_example().unwrap();
+    leechcore_example().unwrap();
 }
 
 pub fn main_example() -> ResultEx<()> {
@@ -1261,15 +1262,122 @@ pub fn main_example() -> ResultEx<()> {
         println!("lc.set_memmap(): -> Ok");
 
 
-
-
-
-
         // Example: close:
         // The underlying native VMM instance will be automatically dropped
         // when the Rust Vmm struct goes out of scope and is dropped.
     }
 
     println!("MemProcFS Rust API Example - COMPLETED");
+    return Ok(());
+}
+
+pub fn leechcore_example() -> ResultEx<()> {
+    let lc_lib_path;
+    let memdump_path;
+    if cfg!(windows) {
+        lc_lib_path  = "C:\\Github\\MemProcFS-dev\\files\\leechcore.dll";
+        memdump_path = "C:\\Dumps\\trickbot-ram.pmem";
+    } else {
+        lc_lib_path  = "/home/user/memprocfs/leechcore.so";
+        memdump_path = "/dumps/warren.mem";
+    }
+
+    // Example arguments to initialize LeechCore (leechcore.dll or leechcore.so).
+    // For complete argument list please see MemProcFS command line documentation.
+    let lc_init_arg = format!("file://{}", memdump_path);
+    if let Ok(lc) = LeechCore::new(lc_lib_path, &lc_init_arg, LeechCore::LC_CONFIG_PRINTF_ENABLED | LeechCore::LC_CONFIG_PRINTF_V | LeechCore::LC_CONFIG_PRINTF_VV) {
+        // Example: lc.get_option():
+        // Retrieve max native address and print it on the screen.
+        println!("========================================");
+        println!("lc.get_option():");
+        println!("max native address: {:#x} -> {:#x}", LeechCore::LC_OPT_CORE_ADDR_MAX, lc.get_option(LeechCore::LC_OPT_CORE_ADDR_MAX).unwrap_or(0));
+
+
+        // Example: lc.set_option():
+        // Set printf and increase verbosity to extra level.
+        println!("========================================");
+        println!("lc.set_option():");
+        let _r = lc.set_option(LeechCore::LC_OPT_CORE_PRINTF_ENABLE, 1);
+        let _r = lc.set_option(LeechCore::LC_OPT_CORE_VERBOSE, 1);
+        let _r = lc.set_option(LeechCore::LC_OPT_CORE_VERBOSE_EXTRA, 1);
+        println!("lc.set_option() verbosity: -> Ok");
+
+
+        // Example: lc.mem_write():
+        // Write to physical memory at address 0x1000
+        // (Writes are only possible if the device is write-capable.)
+        println!("========================================");
+        println!("lc.mem_write():");
+        let data_to_write = [0x56u8, 0x4d, 0x4d, 0x52, 0x55, 0x53, 0x54].to_vec();
+        match lc.mem_write(0x1000, &data_to_write) {
+            Ok(()) => println!("lc.mem_write(): possible success?"),
+            Err(e) => println!("lc.mem_write(): fail [{}]", e),
+        }
+
+
+        // Example: lc.mem_read():
+        // Read 0x100 bytes from physical address 0x1000.
+        println!("========================================");
+        println!("lc.mem_read():");
+        let data_read = lc.mem_read(0x1000, 0x100)?;
+        println!("{:?}", data_read.hex_dump());
+
+
+        // Example: lc.get_memmap():
+        // Retrieve the physical memory map currently in-use by LeechCore.
+        println!("========================================");
+        println!("lc.get_memmap():");
+        let memmap = lc.get_memmap()?;
+        println!("{}", memmap);
+
+
+        // Example: lc.set_memmap():
+        // Set/Update the memory map currently in-use by LeechCore.
+        println!("========================================");
+        println!("lc.set_memmap():");
+        let _r = lc.set_memmap(memmap.as_str())?;
+        println!("lc.set_memmap(): -> Ok");
+
+
+        // Example: Vmm::new_from_leechcore():
+        // Create a new Vmm instance from an existing LeechCore instance.
+        // Note the missing -device argument from the vmm argument list.
+        let vmm_args = ["-printf", "-v", "-waitinitialize"].to_vec();
+        let vmm = Vmm::new_from_leechcore(&lc, &vmm_args)?;
+
+
+        // Example: drop the LeechCore instance early, the Vmm instance won't
+        // be affected by this as it has its own internal reference to the
+        // LeechCore instance in the native layer. Any cleanups of LeechCore
+        // will be done when all references are dropped (i.e. the Vmm reference).
+        drop(lc);
+
+
+        // Example: vmm.process_list():
+        // Retrieve all processes of the running system as a Vec<process>
+        println!("========================================");
+        println!("Vmm.process_list():");
+        if let Ok(process_all) = vmm.process_list() {
+            for process in &*process_all {
+                print!("{process} ");
+            }
+            println!("");
+            // Example: Convert process list into a HashMap<K:pid, V:&VmmProcess>.
+            let process_map : std::collections::HashMap<u32, VmmProcess> = process_all.into_iter().map(|s| (s.pid, s)).collect();
+            for process in process_map {
+                print!("{},{} ", process.0, process.1);
+            }
+            println!("");
+        }
+
+
+        // Example: close:
+        // The underlying native VMM instance will be automatically dropped
+        // when the Rust Vmm struct goes out of scope and is dropped. The
+        // separate LeechCore instance held by Rust is already dropped, but
+        // here the internal LeechCore instance helt by Vmm is also dropped.
+    }
+
+    println!("LeechCore Rust API Example - COMPLETED");
     return Ok(());
 }

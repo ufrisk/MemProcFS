@@ -506,7 +506,45 @@ impl Vmm<'_> {
     /// };
     /// ```
     pub fn new<'a>(vmm_lib_path : &str, args: &Vec<&str>) -> ResultEx<Vmm<'a>> {
-        return crate::impl_new(vmm_lib_path, 0, args);
+        return crate::impl_new(vmm_lib_path, None, 0, args);
+    }
+
+    /// <b>MemProcFS Initialization Function.</b>
+    /// 
+    /// The [`Vmm`] struct is the base of the MemProcFS API. All API accesses
+    /// takes place from the [`Vmm`] struct and its sub-structs.
+    /// 
+    /// The [`Vmm`] struct acts as a wrapper around the native MemProcFS VMM API.
+    /// 
+    /// This function initializes a new [`Vmm`] struct from an already existing
+    /// LeechCore object. The LeechCore object may be dropped at user discretion
+    /// after the [`Vmm`] object has been created without it being affected. The
+    /// underlying device will be closed when all internal LeechCore references
+    /// have been dropped.
+    /// 
+    /// 
+    /// # Arguments
+    /// * `leechcore_existing` - The LeechCore struct to use as underlying device when initializing MemProcFS VMM.
+    /// * `args` - MemProcFS command line arguments as a Vec<&str> not including any -device arguments.
+    /// 
+    /// MemProcFS command line argument documentation is found on the [MemProcFS wiki](https://github.com/ufrisk/MemProcFS/wiki/_CommandLine).
+    /// 
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// // Initialize MemProcFS VMM on a Windows system using an existing
+    /// // LeechCore object to parse a memory dump. Note that no '-device'
+    /// // argument should be supplied when using [`Vmm::new_from_leechcore`].
+    /// let args = ["-printf", "-v", "-waitinitialize"].to_vec();
+    /// if let Ok(vmm) = Vmm::new_from_leechcore(&leechcore_existing, &args) {
+    ///     ...
+    ///     // The underlying native vmm is automatically closed 
+    ///     // when the vmm object goes out of scope.
+    /// };
+    /// ```
+    pub fn new_from_leechcore<'a>(leechcore_existing : &LeechCore, args: &Vec<&str>) -> ResultEx<Vmm<'a>> {
+        return crate::impl_new_from_leechcore(leechcore_existing, args);
     }
 
     /// Initialize MemProcFS from a host VMM and a child VM.
@@ -3692,7 +3730,7 @@ impl<T> VmmPluginInitializationContext<T> {
 /// 
 /// ```
 /// // Create a new LeechCore instance:
-/// let lc = LeechCore::new('fpga://algo=0', LeechCore::LC_CONFIG_PRINTF_ENABLED)?;
+/// let lc = LeechCore::new('C:\\Temp\\MemProcFS\\leechcore.dll', 'fpga://algo=0', LeechCore::LC_CONFIG_PRINTF_ENABLED)?;
 /// ```
 /// 
 /// ```
@@ -3701,6 +3739,7 @@ impl<T> VmmPluginInitializationContext<T> {
 /// ```
 #[derive(Debug)]
 pub struct LeechCore {
+    path_lc : String,
     native : LcNative,
 }
 
@@ -4378,7 +4417,7 @@ struct VmmNative {
 }
 
 #[allow(non_snake_case)]
-fn impl_new<'a>(vmm_lib_path : &str, h_vmm_existing_opt : usize, args: &Vec<&str>) -> ResultEx<Vmm<'a>> {
+fn impl_new<'a>(vmm_lib_path : &str, lc_existing_opt : Option<&LeechCore>, h_vmm_existing_opt : usize, args: &Vec<&str>) -> ResultEx<Vmm<'a>> {
     unsafe {
         // load MemProcFS native library (vmm.dll / vmm.so):
         // vmm is however dependant on leechcore which must be loaded first...
@@ -4464,6 +4503,13 @@ fn impl_new<'a>(vmm_lib_path : &str, h_vmm_existing_opt : usize, args: &Vec<&str
         if h_vmm_existing_opt != 0 {
             h = h_vmm_existing_opt;
         } else {
+            let mut args = args.clone();
+            let lc_existing_device : String;
+            if let Some(lc_existing) = lc_existing_opt {
+                lc_existing_device = format!("existing://0x{:x}", lc_existing.native.h);
+                args.push("-device");
+                args.push(lc_existing_device.as_str());
+            }
             let args = args.iter().map(|arg| CString::new(*arg).unwrap()).collect::<Vec<CString>>();
             let argv: Vec<*const c_char> = args.iter().map(|s| s.as_ptr()).collect();
             let argc: c_int = args.len() as c_int;
@@ -4554,6 +4600,19 @@ fn impl_new<'a>(vmm_lib_path : &str, h_vmm_existing_opt : usize, args: &Vec<&str
         };
         return Ok(vmm);
     }
+}
+
+fn impl_new_from_leechcore<'a>(leechcore_existing : &LeechCore, args: &Vec<&str>) -> ResultEx<Vmm<'a>> {
+    // vmm path is assumed to be the same as leechcore path
+    let path_vmm = std::path::Path::new(leechcore_existing.path_lc.as_str()).canonicalize()?;
+    let mut path_vmm = path_vmm.parent().unwrap().canonicalize()?;
+    if cfg!(windows) {
+        path_vmm = path_vmm.join("vmm.dll");
+    } else {
+        path_vmm = path_vmm.join("vmm.so");
+    }
+    let str_path_vmm = path_vmm.to_str().unwrap_or("");
+    return crate::impl_new(str_path_vmm, Some(leechcore_existing), 0, args)
 }
 
 #[allow(non_snake_case)]
@@ -7987,7 +8046,7 @@ impl<T> VmmPluginInitializationContext<T> {
             let pathname_len = std::cmp::min(pathname_bytes.len(), (*reginfo).reg_info_uszPathName.len());
             // "initialize" rust vmm context from handle and create rust plugin native context:
             let c_path_vmm = CStr::from_ptr((*reginfo).uszPathVmmDLL);
-            let vmm = impl_new(c_path_vmm.to_str()?, self.h_vmm, &Vec::new())?;
+            let vmm = impl_new(c_path_vmm.to_str()?, None, self.h_vmm, &Vec::new())?;
             let ctx_user = self.ctx.unwrap();
             let ctx_rust = VmmPluginContext {
                 vmm : vmm,
@@ -8289,9 +8348,9 @@ impl LeechCore {
         unsafe {
             // load LeechCore native library (leechcore.dll / leechcore.so):
             let path = std::path::Path::new(lc_lib_path).canonicalize()?;
-            let str_path = path.to_str().unwrap_or("");
-            let library_lc : libloading::Library = libloading::Library::new(str_path)
-                .with_context(|| format!("Failed to load leechcore library at: {}", str_path))?;
+            let str_path_lc = path.to_str().unwrap_or("");
+            let library_lc : libloading::Library = libloading::Library::new(str_path_lc)
+                .with_context(|| format!("Failed to load leechcore library at: {}", str_path_lc))?;
             // fetch function references:
             let LcCreate : extern "C" fn(pLcCreateConfig : *mut CLC_CONFIG) -> usize = *library_lc.get(b"LcCreate")?;
             let LcClose = *library_lc.get(b"LcClose")?;
@@ -8344,6 +8403,7 @@ impl LeechCore {
                 LcCommandPtr,
             };
             let lc = LeechCore {
+                path_lc : str_path_lc.to_string(),
                 native,
             };
             return Ok(lc);
