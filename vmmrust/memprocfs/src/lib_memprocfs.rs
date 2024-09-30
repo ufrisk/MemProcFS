@@ -296,7 +296,7 @@ pub struct Vmm<'a> {
     parent_vmm : Option<&'a Vmm<'a>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum VmmLogLevel {
     _1Critical,
     _2Warning,
@@ -327,7 +327,7 @@ pub struct VmmMapNetEntry {
     pub desc : String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum VmmMapPfnType {
     Zero,
     Free,
@@ -339,7 +339,7 @@ pub enum VmmMapPfnType {
     Transition,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum VmmMapPfnTypeExtended {
     Unknown,
     Unused,
@@ -355,7 +355,7 @@ pub enum VmmMapPfnTypeExtended {
 /// 
 /// # Created By
 /// - [`vmm.map_pfn()`](Vmm::map_pfn())
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct VmmMapPfnEntry {
     pub pfn : u32,
     pub location : VmmMapPfnType,
@@ -375,7 +375,7 @@ pub struct VmmMapPfnEntry {
 /// 
 /// # Created By
 /// - [`vmm.map_pool()`](Vmm::map_pool())
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct VmmMapPoolEntry {
     pub va : u64,
     pub cb : u32,
@@ -389,7 +389,7 @@ pub struct VmmMapPoolEntry {
 /// 
 /// # Created By
 /// - [`vmm.map_memory()`](Vmm::map_memory())
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct VmmMapMemoryEntry {
     pub pa : u64,
     pub cb : u64
@@ -1199,7 +1199,7 @@ impl VmmMapPoolEntry {
 /// let pdb = kernel.pdb();
 /// println!("{pdb}");
 /// ```
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct VmmKernel<'a> {
     vmm : &'a Vmm<'a>,
 }
@@ -1269,7 +1269,7 @@ impl VmmKernel<'_> {
 /// // Retrieve the PDB struct associated with a process module.
 /// let pdb = vmmprocess.pdb_from_module_name("ntdll.dll")?;
 /// ```
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct VmmPdb<'a> {
     vmm : &'a Vmm<'a>,
     pub module : String,
@@ -1608,13 +1608,13 @@ impl VmmScatterMemory<'_> {
 /// let sessionid : u32 = winlogon.mem_read_as(va, 0)?;
 /// println!("win32kbase.sys!gSessionId -> {:x} : {}", va, sessionid);
 /// ```
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct VmmProcess<'a> {
     pub vmm : &'a Vmm<'a>,
     pub pid : u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum VmmIntegrityLevelType {
     Unknown,
     Untrusted,
@@ -1626,7 +1626,7 @@ pub enum VmmIntegrityLevelType {
     Protected,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum VmmMemoryModelType {
     NA,
     X86,
@@ -1634,7 +1634,7 @@ pub enum VmmMemoryModelType {
     X64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum VmmSystemType {
     UnknownPhysical,
     UnknownX64,
@@ -1701,7 +1701,7 @@ pub struct VmmProcessInfo {
 ///     }
 /// }
 /// ```
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct VmmProcessMapDirectoryEntry {
     pub pid : u32,
     pub name : &'static str,
@@ -1763,7 +1763,7 @@ pub struct VmmProcessMapHandleEntry {
     pub tp : String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum VmmProcessMapHeapType {
     NA,
     NtHeap,
@@ -1784,7 +1784,7 @@ pub enum VmmProcessMapHeapType {
 ///     }
 /// }
 /// ```
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct VmmProcessMapHeapEntry {
     pub pid : u32,
     pub tp : VmmProcessMapHeapType,
@@ -1793,7 +1793,7 @@ pub struct VmmProcessMapHeapEntry {
     pub number : u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum VmmProcessMapHeapAllocType {
     NA,
     NtHeap,
@@ -1821,7 +1821,7 @@ pub enum VmmProcessMapHeapAllocType {
 ///     println!("");
 /// }
 /// ```
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct VmmProcessMapHeapAllocEntry {
     pub pid : u32,
     pub va : u64,
@@ -1881,7 +1881,7 @@ pub struct VmmProcessMapModuleVersionEntry {
     pub product_version : String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum VmmProcessMapModuleType {
     Normal,
     Data,
@@ -1998,7 +1998,7 @@ pub struct VmmProcessSectionEntry {
 ///     }
 /// }
 /// ```
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct VmmProcessMapThreadEntry {
     pub pid : u32,
     pub thread_id : u32,
@@ -2089,7 +2089,7 @@ pub struct VmmProcessMapVadEntry {
     pub vadex_page_count : u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum VmmProcessMapVadExType {
     NA,
     Hardware,
@@ -2730,7 +2730,7 @@ impl VmmProcess<'_> {
 ///     println!("{hive} size={} path={}", hive.size, hive.path);
 /// }
 /// ```
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct VmmRegHive<'a> {
     vmm : &'a Vmm<'a>,
     pub va : u64,
@@ -2807,7 +2807,7 @@ impl VmmRegHive<'_> {
 /// let regkey = vmm.reg_key("0xffffba061a908000\\ROOT\\Microsoft\\Windows\\CurrentVersion\\Run")?
 /// println!("{regkey");
 /// ```
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct VmmRegKey<'a> {
     vmm : &'a Vmm<'a>,
     /// Key name.
@@ -2895,6 +2895,7 @@ impl VmmRegKey<'_> {
 }
 
 #[allow(non_camel_case_types)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum VmmRegValueType {
     REG_NONE,
     REG_SZ(String),
@@ -2944,7 +2945,7 @@ pub enum VmmRegValueType {
 ///     println!("REG_DWORD: 0x{:08x}", dw);
 /// }
 /// ```
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct VmmRegValue<'a> {
     vmm : &'a Vmm<'a>,
     /// Value name.
@@ -8300,6 +8301,14 @@ impl<T> fmt::Display for LcTlpContextWrap<'_, T> {
 impl Drop for LeechCore {
     fn drop(&mut self) {
         (self.native.LcClose)(self.native.h);
+    }
+}
+
+impl Clone for LeechCore {
+    fn clone(&self) -> Self {
+        let lc_init_arg = format!("existing://0x{:x}", self.native.h);
+        let lc_clone = LeechCore::new(&self.path_lc, &lc_init_arg, 0).unwrap();
+        return lc_clone;
     }
 }
 
