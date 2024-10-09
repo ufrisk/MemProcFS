@@ -38,6 +38,9 @@
 #define OB_TAG_API_MAP_NET              'NET '
 #define OB_TAG_API_MAP_PHYSMEM          'PMEM'
 #define OB_TAG_API_MAP_POOL             'POOL'
+#define OB_TAG_API_MAP_KOBJECT          'KOBJ'
+#define OB_TAG_API_MAP_KDRIVER          'KDRV'
+#define OB_TAG_API_MAP_KDEVICE          'KDEV'
 #define OB_TAG_API_MAP_PTE              'PTE '
 #define OB_TAG_API_MAP_SERVICES         'SVC '
 #define OB_TAG_API_MAP_THREAD           'THRD'
@@ -1712,11 +1715,225 @@ fail:
 }
 
 _Success_(return)
-BOOL VMMDLL_Map_GetPool(_In_ VMM_HANDLE H, _Out_ PVMMDLL_MAP_POOL* ppPoolMap, _In_ DWORD flags)
+BOOL VMMDLL_Map_GetPool(_In_ VMM_HANDLE H, _Out_ PVMMDLL_MAP_POOL *ppPoolMap, _In_ DWORD flags)
 {
     CALL_IMPLEMENTATION_VMM(H,
         STATISTICS_ID_VMMDLL_Map_GetPool,
         VMMDLL_Map_GetPool_Impl(H, ppPoolMap, flags))
+}
+
+_Success_(return)
+BOOL VMMDLL_Map_GetKObject_Impl(_In_ VMM_HANDLE H, _Out_ PVMMDLL_MAP_KOBJECT *ppMapDst, _In_ BOOL fWideChar)
+{
+    DWORD i, cbDst = 0, cbDstData, cbDstStr, cbDstChildArray;
+    PVMMDLL_MAP_KOBJECTENTRY peDst;
+    PVMM_MAP_OBJECTENTRY peSrc;
+    PVMMOB_MAP_OBJECT pObMapSrc = NULL;
+    PVMMDLL_MAP_KOBJECT pMapDst = NULL;
+    POB_STRMAP psmOb = NULL;
+    DWORD ivaChild;
+    PQWORD pvaChild;
+    PVMM_MAP_OBJECTENTRY pChild;
+    *ppMapDst = NULL;
+    // 1: fetch map [and populate strings]:
+    if(!(psmOb = ObStrMap_New(H, 0))) { goto fail; }
+    if(!VmmMap_GetObject(H, &pObMapSrc)) { goto fail; }
+    for(i = 0; i < pObMapSrc->cMap; i++) {
+        peSrc = pObMapSrc->pMap + i;
+        ObStrMap_PushU(psmOb, peSrc->uszName);
+        ObStrMap_PushU(psmOb, (peSrc->pType ? peSrc->pType->usz : NULL));
+    }
+    // 2: byte count & alloc:
+    if(!ObStrMap_FinalizeBufferXUW(psmOb, 0, NULL, &cbDstStr, fWideChar)) { goto fail; }
+    cbDstChildArray = pObMapSrc->cMap * sizeof(QWORD);
+    cbDstData = pObMapSrc->cMap * sizeof(VMMDLL_MAP_KOBJECTENTRY);
+    cbDst = sizeof(VMMDLL_MAP_KOBJECT) + cbDstData + cbDstChildArray + cbDstStr;
+    if(!(pMapDst = VmmDllCore_MemAllocExternal(H, OB_TAG_API_MAP_KOBJECT, cbDst, sizeof(VMMDLL_MAP_KOBJECT)))) { goto fail; }    // VMMDLL_MemFree()
+    ZeroMemory(pMapDst, cbDst);
+    // 3: fill map:
+    pMapDst->dwVersion = VMMDLL_MAP_KOBJECT_VERSION;
+    pMapDst->cMap = pObMapSrc->cMap;
+    pvaChild = (PQWORD)((PBYTE)pMapDst + sizeof(VMMDLL_MAP_KOBJECT) + cbDstData);
+    // object map (incl. strmap) below:
+    for(i = 0; i < pMapDst->cMap; i++) {
+        peSrc = pObMapSrc->pMap + i;
+        peDst = pMapDst->pMap + i;
+        // Common:
+        peDst->va = peSrc->va;
+        peDst->vaParent = (peSrc->pParent ? peSrc->pParent->va : 0);
+        // Child list:
+        peDst->cvaChild = peSrc->cChild;
+        peDst->pvaChild = pvaChild;
+        pChild = peSrc->pChild;
+        for(ivaChild = 0; ivaChild < peSrc->cChild; ivaChild++) {
+            peDst->pvaChild[ivaChild] = pChild->va;
+            pChild = pChild->pNextByParent;
+        }
+        pvaChild += peSrc->cChild;
+        // Strings:
+        ObStrMap_PushPtrUXUW(psmOb, peSrc->uszName, &peDst->uszName, NULL, fWideChar);
+        ObStrMap_PushPtrUXUW(psmOb, (peSrc->pType ? peSrc->pType->usz : NULL), &peDst->uszType, NULL, fWideChar);
+    }
+    pMapDst->pbMultiText = ((PBYTE)pMapDst->pMap) + cbDstData + cbDstChildArray;
+    ObStrMap_FinalizeBufferXUW(psmOb, cbDstStr, pMapDst->pbMultiText, &pMapDst->cbMultiText, fWideChar);
+    *ppMapDst = pMapDst;
+fail:
+    if(pMapDst && !*ppMapDst) { VMMDLL_MemFree(pMapDst); pMapDst = NULL; }
+    Ob_DECREF(pObMapSrc);
+    Ob_DECREF(psmOb);
+    return *ppMapDst ? TRUE : FALSE;
+}
+
+_Success_(return)
+BOOL VMMDLL_Map_GetKObjectU(_In_ VMM_HANDLE H, _Out_ PVMMDLL_MAP_KOBJECT *ppKObjectMap)
+{
+    CALL_IMPLEMENTATION_VMM(H,
+        STATISTICS_ID_VMMDLL_Map_GetKObject,
+        VMMDLL_Map_GetKObject_Impl(H, ppKObjectMap, FALSE))
+}
+
+_Success_(return)
+BOOL VMMDLL_Map_GetKObjectW(_In_ VMM_HANDLE H, _Out_ PVMMDLL_MAP_KOBJECT * ppKObjectMap)
+{
+    CALL_IMPLEMENTATION_VMM(H,
+        STATISTICS_ID_VMMDLL_Map_GetKObject,
+        VMMDLL_Map_GetKObject_Impl(H, ppKObjectMap, TRUE))
+}
+
+_Success_(return)
+BOOL VMMDLL_Map_GetKDriver_Impl(_In_ VMM_HANDLE H, _Out_ PVMMDLL_MAP_KDRIVER * ppMapDst, _In_ BOOL fWideChar)
+{
+    DWORD i, cbDst = 0, cbDstData, cbDstStr;
+    PVMMDLL_MAP_KDRIVERENTRY peDst;
+    PVMM_MAP_KDRIVERENTRY peSrc;
+    PVMMOB_MAP_KDRIVER pObMapSrc = NULL;
+    PVMMDLL_MAP_KDRIVER pMapDst = NULL;
+    POB_STRMAP psmOb = NULL;
+    *ppMapDst = NULL;
+    // 1: fetch map [and populate strings]:
+    if(!(psmOb = ObStrMap_New(H, 0))) { goto fail; }
+    if(!VmmMap_GetKDriver(H, &pObMapSrc)) { goto fail; }
+    for(i = 0; i < pObMapSrc->cMap; i++) {
+        peSrc = pObMapSrc->pMap + i;
+        ObStrMap_PushU(psmOb, peSrc->uszName);
+        ObStrMap_PushU(psmOb, peSrc->uszPath);
+        ObStrMap_PushU(psmOb, peSrc->uszServiceKeyName);
+    }
+    // 2: byte count & alloc:
+    if(!ObStrMap_FinalizeBufferXUW(psmOb, 0, NULL, &cbDstStr, fWideChar)) { goto fail; }
+    cbDstData = pObMapSrc->cMap * sizeof(VMMDLL_MAP_KDRIVERENTRY);
+    cbDst = sizeof(VMMDLL_MAP_KDRIVER) + cbDstData + cbDstStr;
+    if(!(pMapDst = VmmDllCore_MemAllocExternal(H, OB_TAG_API_MAP_KDRIVER, cbDst, sizeof(VMMDLL_MAP_KDRIVER)))) { goto fail; }    // VMMDLL_MemFree()
+    ZeroMemory(pMapDst, cbDst);
+    // 3: fill map:
+    pMapDst->dwVersion = VMMDLL_MAP_KDRIVER_VERSION;
+    pMapDst->cMap = pObMapSrc->cMap;
+    // object map (incl. strmap) below:
+    for(i = 0; i < pMapDst->cMap; i++) {
+        peSrc = pObMapSrc->pMap + i;
+        peDst = pMapDst->pMap + i;
+        // Common:
+        peDst->va = peSrc->va;
+        peDst->vaDriverStart = peSrc->vaStart;
+        peDst->cbDriverSize = peSrc->cbDriverSize;
+        peDst->vaDeviceObject = peSrc->vaDeviceObject;
+        memcpy(peDst->MajorFunction, peSrc->MajorFunction, sizeof(peDst->MajorFunction));
+        // Strings:
+        ObStrMap_PushPtrUXUW(psmOb, peSrc->uszName, &peDst->uszName, NULL, fWideChar);
+        ObStrMap_PushPtrUXUW(psmOb, peSrc->uszPath, &peDst->uszPath, NULL, fWideChar);
+        ObStrMap_PushPtrUXUW(psmOb, peSrc->uszServiceKeyName, &peDst->uszServiceKeyName, NULL, fWideChar);
+    }
+    pMapDst->pbMultiText = ((PBYTE)pMapDst->pMap) + cbDstData;
+    ObStrMap_FinalizeBufferXUW(psmOb, cbDstStr, pMapDst->pbMultiText, &pMapDst->cbMultiText, fWideChar);
+    *ppMapDst = pMapDst;
+fail:
+    if(pMapDst && !*ppMapDst) { VMMDLL_MemFree(pMapDst); pMapDst = NULL; }
+    Ob_DECREF(pObMapSrc);
+    Ob_DECREF(psmOb);
+    return *ppMapDst ? TRUE : FALSE;
+}
+
+_Success_(return)
+BOOL VMMDLL_Map_GetKDriverU(_In_ VMM_HANDLE H, _Out_ PVMMDLL_MAP_KDRIVER *ppKDriverMap)
+{
+    CALL_IMPLEMENTATION_VMM(H,
+        STATISTICS_ID_VMMDLL_Map_GetKDriver,
+        VMMDLL_Map_GetKDriver_Impl(H, ppKDriverMap, FALSE))
+}
+
+_Success_(return)
+BOOL VMMDLL_Map_GetKDriverW(_In_ VMM_HANDLE H, _Out_ PVMMDLL_MAP_KDRIVER * ppKDriverMap)
+{
+    CALL_IMPLEMENTATION_VMM(H,
+        STATISTICS_ID_VMMDLL_Map_GetKDriver,
+        VMMDLL_Map_GetKDriver_Impl(H, ppKDriverMap, TRUE))
+}
+
+_Success_(return)
+BOOL VMMDLL_Map_GetKDevice_Impl(_In_ VMM_HANDLE H, _Out_ PVMMDLL_MAP_KDEVICE * ppMapDst, _In_ BOOL fWideChar)
+{
+    DWORD i, cbDst = 0, cbDstData, cbDstStr;
+    PVMMDLL_MAP_KDEVICEENTRY peDst;
+    PVMM_MAP_KDEVICEENTRY peSrc;
+    PVMMOB_MAP_KDEVICE pObMapSrc = NULL;
+    PVMMDLL_MAP_KDEVICE pMapDst = NULL;
+    POB_STRMAP psmOb = NULL;
+    *ppMapDst = NULL;
+    // 1: fetch map [and populate strings]:
+    if(!(psmOb = ObStrMap_New(H, 0))) { goto fail; }
+    if(!VmmMap_GetKDevice(H, &pObMapSrc)) { goto fail; }
+    for(i = 0; i < pObMapSrc->cMap; i++) {
+        peSrc = pObMapSrc->pMap + i;
+        ObStrMap_PushU(psmOb, peSrc->szDeviceType);     // ANSI str, but no need to convert to utf-8 here.
+        ObStrMap_PushU(psmOb, peSrc->uszVolumeInfo);
+    }
+    // 2: byte count & alloc:
+    if(!ObStrMap_FinalizeBufferXUW(psmOb, 0, NULL, &cbDstStr, fWideChar)) { goto fail; }
+    cbDstData = pObMapSrc->cMap * sizeof(VMMDLL_MAP_KDEVICEENTRY);
+    cbDst = sizeof(VMMDLL_MAP_KDEVICE) + cbDstData + cbDstStr;
+    if(!(pMapDst = VmmDllCore_MemAllocExternal(H, OB_TAG_API_MAP_KDEVICE, cbDst, sizeof(VMMDLL_MAP_KDEVICE)))) { goto fail; }    // VMMDLL_MemFree()
+    ZeroMemory(pMapDst, cbDst);
+    // 3: fill map:
+    pMapDst->dwVersion = VMMDLL_MAP_KDEVICE_VERSION;
+    pMapDst->cMap = pObMapSrc->cMap;
+    // object map (incl. strmap) below:
+    for(i = 0; i < pMapDst->cMap; i++) {
+        peSrc = pObMapSrc->pMap + i;
+        peDst = pMapDst->pMap + i;
+        // Common:
+        peDst->va = peSrc->va;
+        peDst->iDepth = peSrc->iDepth;
+        peDst->vaDriverObject = (peSrc->pDriver ? peSrc->pDriver->va : 0);
+        peDst->vaAttachedDevice = peSrc->vaAttachedDevice;
+        peDst->vaFileSystemDevice = peSrc->vaFileSystemDevice;
+        // Strings:
+        ObStrMap_PushPtrUXUW(psmOb, peSrc->szDeviceType, &peDst->uszDeviceType, NULL, fWideChar);
+        ObStrMap_PushPtrUXUW(psmOb, peSrc->uszVolumeInfo, &peDst->uszVolumeInfo, NULL, fWideChar);
+    }
+    pMapDst->pbMultiText = ((PBYTE)pMapDst->pMap) + cbDstData;
+    ObStrMap_FinalizeBufferXUW(psmOb, cbDstStr, pMapDst->pbMultiText, &pMapDst->cbMultiText, fWideChar);
+    *ppMapDst = pMapDst;
+fail:
+    if(pMapDst && !*ppMapDst) { VMMDLL_MemFree(pMapDst); pMapDst = NULL; }
+    Ob_DECREF(pObMapSrc);
+    Ob_DECREF(psmOb);
+    return *ppMapDst ? TRUE : FALSE;
+}
+
+_Success_(return)
+BOOL VMMDLL_Map_GetKDeviceU(_In_ VMM_HANDLE H, _Out_ PVMMDLL_MAP_KDEVICE *ppKDeviceMap)
+{
+    CALL_IMPLEMENTATION_VMM(H,
+        STATISTICS_ID_VMMDLL_Map_GetKDevice,
+        VMMDLL_Map_GetKDevice_Impl(H, ppKDeviceMap, FALSE))
+}
+
+_Success_(return)
+BOOL VMMDLL_Map_GetKDeviceW(_In_ VMM_HANDLE H, _Out_ PVMMDLL_MAP_KDEVICE * ppKDeviceMap)
+{
+    CALL_IMPLEMENTATION_VMM(H,
+        STATISTICS_ID_VMMDLL_Map_GetKDevice,
+        VMMDLL_Map_GetKDevice_Impl(H, ppKDeviceMap, TRUE))
 }
 
 _Success_(return)

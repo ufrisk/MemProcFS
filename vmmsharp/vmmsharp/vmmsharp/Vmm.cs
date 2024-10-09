@@ -112,7 +112,9 @@ namespace Vmmsharp
         public Vmm(out LeechCore.LCConfigErrorInfo configErrorInfo, params string[] args)
         {
             this.hVMM = Vmm.Initialize(out configErrorInfo, args);
-            this.LeechCore = new LeechCore("existing");
+            ulong hLC = GetConfig(CONFIG_OPT_CORE_LEECHCORE_HANDLE);
+            string sLC = $"existing://0x{hLC:X}";
+            this.LeechCore = new LeechCore(sLC);
         }
 
         /// <summary>
@@ -123,7 +125,9 @@ namespace Vmmsharp
         {
             LeechCore.LCConfigErrorInfo errorInfo;
             this.hVMM = Vmm.Initialize(out errorInfo, args);
-            this.LeechCore = new LeechCore("existing");
+            ulong hLC = GetConfig(CONFIG_OPT_CORE_LEECHCORE_HANDLE);
+            string sLC = $"existing://0x{hLC:X}";
+            this.LeechCore = new LeechCore(sLC);
         }
 
         ~Vmm()
@@ -141,6 +145,12 @@ namespace Vmmsharp
         {
             if (!this.disposed)
             {
+                // Dispose managed objects.
+                if (disposing)
+                {
+                    this.LeechCore.Dispose();
+                }
+                // Free unmanaged objects.
                 Vmmi.VMMDLL_Close(hVMM);
                 hVMM = IntPtr.Zero;
                 disposed = true;
@@ -591,6 +601,7 @@ namespace Vmmsharp
             public VMMDLL_VFS_FILELIST_EXINFO info;
         }
 
+#if NET5_0_OR_GREATER
         /// <summary>
         /// VFS list callback function for adding files.
         /// </summary>
@@ -611,6 +622,92 @@ namespace Vmmsharp
         /// <returns></returns>
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate bool VfsCallBack_AddDirectory(ulong ctx, [MarshalAs(UnmanagedType.LPUTF8Str)] string name, IntPtr pExInfo);
+
+        private static bool VfsList_AddFileCB(ulong h, [MarshalAs(UnmanagedType.LPUTF8Str)] string sName, ulong cb, IntPtr pExInfo)
+        {
+            GCHandle gcHandle = (GCHandle)(new IntPtr((long)h));
+            List<VfsEntry> ctx = (List<VfsEntry>)gcHandle.Target;
+            VfsEntry e = new VfsEntry();
+            e.name = sName;
+            e.isDirectory = false;
+            e.size = cb;
+            if (pExInfo != IntPtr.Zero)
+            {
+                e.info = Marshal.PtrToStructure<Vmm.VMMDLL_VFS_FILELIST_EXINFO>(pExInfo);
+            }
+            ctx.Add(e);
+            return true;
+        }
+
+        private static bool VfsList_AddDirectoryCB(ulong h, [MarshalAs(UnmanagedType.LPUTF8Str)] string sName, IntPtr pExInfo)
+        {
+            GCHandle gcHandle = (GCHandle)(new IntPtr((long)h));
+            List<VfsEntry> ctx = (List<VfsEntry>)gcHandle.Target;
+            VfsEntry e = new VfsEntry();
+            e.name = sName;
+            e.isDirectory = true;
+            e.size = 0;
+            if (pExInfo != IntPtr.Zero)
+            {
+                e.info = Marshal.PtrToStructure<Vmm.VMMDLL_VFS_FILELIST_EXINFO>(pExInfo);
+            }
+            ctx.Add(e);
+            return true;
+        }
+#else
+        /// <summary>
+        /// VFS list callback function for adding files.
+        /// </summary>
+        /// <param name="ctx"></param>
+        /// <param name="name"></param>
+        /// <param name="cb"></param>
+        /// <param name="pExInfo"></param>
+        /// <returns></returns>
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate bool VfsCallBack_AddFile(ulong ctx, [MarshalAs(UnmanagedType.LPWStr)] string name, ulong cb, IntPtr pExInfo);
+
+        /// <summary>
+        /// VFS list callback function for adding directories.
+        /// </summary>
+        /// <param name="ctx"></param>
+        /// <param name="name"></param>
+        /// <param name="pExInfo"></param>
+        /// <returns></returns>
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate bool VfsCallBack_AddDirectory(ulong ctx, [MarshalAs(UnmanagedType.LPWStr)] string name, IntPtr pExInfo);
+
+        private static bool VfsList_AddFileCB(ulong h, [MarshalAs(UnmanagedType.LPWStr)] string sName, ulong cb, IntPtr pExInfo)
+        {
+            GCHandle gcHandle = (GCHandle)(new IntPtr((long)h));
+            List<VfsEntry> ctx = (List<VfsEntry>)gcHandle.Target;
+            VfsEntry e = new VfsEntry();
+            e.name = sName;
+            e.isDirectory = false;
+            e.size = cb;
+            if (pExInfo != IntPtr.Zero)
+            {
+                e.info = Marshal.PtrToStructure<Vmm.VMMDLL_VFS_FILELIST_EXINFO>(pExInfo);
+            }
+            ctx.Add(e);
+            return true;
+        }
+
+        private static bool VfsList_AddDirectoryCB(ulong h, [MarshalAs(UnmanagedType.LPWStr)] string sName, IntPtr pExInfo)
+        {
+            GCHandle gcHandle = (GCHandle)(new IntPtr((long)h));
+            List<VfsEntry> ctx = (List<VfsEntry>)gcHandle.Target;
+            VfsEntry e = new VfsEntry();
+            e.name = sName;
+            e.isDirectory = true;
+            e.size = 0;
+            if (pExInfo != IntPtr.Zero)
+            {
+                e.info = Marshal.PtrToStructure<Vmm.VMMDLL_VFS_FILELIST_EXINFO>(pExInfo);
+            }
+            ctx.Add(e);
+            return true;
+        }
+#endif
 
         /// <summary>
         /// VFS list files and directories in a virtual file system path using callback functions.
@@ -643,38 +740,6 @@ namespace Vmmsharp
             ulong nativeHandle = (ulong)((IntPtr)gcHandle).ToInt64();
             VfsList(path, nativeHandle, VfsList_AddFileCB, VfsList_AddDirectoryCB);
             return ctx;
-        }
-
-        private static bool VfsList_AddFileCB(ulong h, [MarshalAs(UnmanagedType.LPUTF8Str)] string sName, ulong cb, IntPtr pExInfo)
-        {
-            GCHandle gcHandle = (GCHandle)(new IntPtr((long)h));
-            List<VfsEntry> ctx = (List<VfsEntry>)gcHandle.Target;
-            VfsEntry e = new VfsEntry();
-            e.name = sName;
-            e.isDirectory = false;
-            e.size = cb;
-            if (pExInfo != IntPtr.Zero)
-            {
-                e.info = Marshal.PtrToStructure<Vmm.VMMDLL_VFS_FILELIST_EXINFO>(pExInfo);
-            }
-            ctx.Add(e);
-            return true;
-        }
-
-        private static bool VfsList_AddDirectoryCB(ulong h, [MarshalAs(UnmanagedType.LPUTF8Str)] string sName, IntPtr pExInfo)
-        {
-            GCHandle gcHandle = (GCHandle)(new IntPtr((long)h));
-            List<VfsEntry> ctx = (List<VfsEntry>)gcHandle.Target;
-            VfsEntry e = new VfsEntry();
-            e.name = sName;
-            e.isDirectory = true;
-            e.size = 0;
-            if (pExInfo != IntPtr.Zero)
-            {
-                e.info = Marshal.PtrToStructure<Vmm.VMMDLL_VFS_FILELIST_EXINFO>(pExInfo);
-            }
-            ctx.Add(e);
-            return true;
         }
 
         /// <summary>
@@ -733,7 +798,7 @@ namespace Vmmsharp
             }
         }
 
-        #endregion
+#endregion
 
 
         #region Process functionality
@@ -1021,6 +1086,39 @@ namespace Vmmsharp
             public ulong cb;
         }
 
+        public struct KDeviceEntry
+        {
+            public ulong va;
+            public uint iDepth;
+            public uint dwDeviceType;
+            public string sDeviceType;
+            public ulong vaDriverObject;
+            public ulong vaAttachedDevice;
+            public ulong vaFileSystemDevice;
+            public string sVolumeInfo;
+        }
+
+        public struct KDriverEntry
+        {
+            public ulong va;
+            public ulong vaDriverStart;
+            public ulong cbDriverSize;
+            public ulong vaDeviceObject;
+            public string sName;
+            public string sPath;
+            public string sServiceKeyName;
+            public ulong[] MajorFunction;
+        }
+
+        public struct KObjectEntry
+        {
+            public ulong va;
+            public ulong vaParent;
+            public ulong[] vaChild;
+            public string sName;
+            public string sType;
+        }
+
         public struct PoolEntry
         {
             public ulong va;
@@ -1172,6 +1270,110 @@ namespace Vmmsharp
                 MemoryEntry e;
                 e.pa = n.pa;
                 e.cb = n.cb;
+                m[i] = e;
+            }
+        fail:
+            Vmmi.VMMDLL_MemFree((byte*)pMap.ToPointer());
+            return m;
+        }
+
+        /// <summary>
+        /// Retrieve the kernel devices on the system.
+        /// </summary>
+        /// <returns>An array of KDeviceEntry elements.</returns>
+        public unsafe KDeviceEntry[] MapKDevice()
+        {
+            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf<Vmmi.VMMDLL_MAP_KDEVICE>();
+            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf<Vmmi.VMMDLL_MAP_KDEVICEENTRY>();
+            IntPtr pMap = IntPtr.Zero;
+            KDeviceEntry[] m = new KDeviceEntry[0];
+            if (!Vmmi.VMMDLL_Map_GetKDevice(hVMM, out pMap)) { goto fail; }
+            Vmmi.VMMDLL_MAP_KDEVICE nM = Marshal.PtrToStructure<Vmmi.VMMDLL_MAP_KDEVICE>(pMap);
+            if (nM.dwVersion != Vmmi.VMMDLL_MAP_KDEVICE_VERSION) { goto fail; }
+            m = new KDeviceEntry[nM.cMap];
+            for (int i = 0; i < nM.cMap; i++)
+            {
+                Vmmi.VMMDLL_MAP_KDEVICEENTRY n = Marshal.PtrToStructure<Vmmi.VMMDLL_MAP_KDEVICEENTRY>((System.IntPtr)(pMap.ToInt64() + cbMAP + i * cbENTRY));
+                KDeviceEntry e;
+                e.va = n.va;
+                e.iDepth = n.iDepth;
+                e.dwDeviceType = n.dwDeviceType;
+                e.sDeviceType = n.uszDeviceType;
+                e.vaDriverObject = n.vaDriverObject;
+                e.vaAttachedDevice = n.vaAttachedDevice;
+                e.vaFileSystemDevice = n.vaFileSystemDevice;
+                e.sVolumeInfo = n.uszVolumeInfo;
+                m[i] = e;
+            }
+        fail:
+            Vmmi.VMMDLL_MemFree((byte*)pMap.ToPointer());
+            return m;
+        }
+
+        /// <summary>
+        /// Retrieve the kernel drivers on the system.
+        /// </summary>
+        /// <returns>An array of KDriverEntry elements.</returns>
+        public unsafe KDriverEntry[] MapKDriver()
+        {
+            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf<Vmmi.VMMDLL_MAP_KDRIVER>();
+            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf<Vmmi.VMMDLL_MAP_KDRIVERENTRY>();
+            IntPtr pMap = IntPtr.Zero;
+            KDriverEntry[] m = new KDriverEntry[0];
+            if (!Vmmi.VMMDLL_Map_GetKDriver(hVMM, out pMap)) { goto fail; }
+            Vmmi.VMMDLL_MAP_KDRIVER nM = Marshal.PtrToStructure<Vmmi.VMMDLL_MAP_KDRIVER>(pMap);
+            if (nM.dwVersion != Vmmi.VMMDLL_MAP_KDRIVER_VERSION) { goto fail; }
+            m = new KDriverEntry[nM.cMap];
+            for (int i = 0; i < nM.cMap; i++)
+            {
+                Vmmi.VMMDLL_MAP_KDRIVERENTRY n = Marshal.PtrToStructure<Vmmi.VMMDLL_MAP_KDRIVERENTRY>((System.IntPtr)(pMap.ToInt64() + cbMAP + i * cbENTRY));
+                KDriverEntry e;
+                e.va = n.va;
+                e.vaDriverStart = n.vaDriverStart;
+                e.cbDriverSize = n.cbDriverSize;
+                e.vaDeviceObject = n.vaDeviceObject;
+                e.sName = n.uszName;
+                e.sPath = n.uszPath;
+                e.sServiceKeyName = n.uszServiceKeyName;
+                e.MajorFunction = new ulong[28];
+                for (int j = 0; j < 28; j++)
+                {
+                    e.MajorFunction[j] = n.MajorFunction[j];
+                }
+                m[i] = e;
+            }
+        fail:
+            Vmmi.VMMDLL_MemFree((byte*)pMap.ToPointer());
+            return m;
+        }
+
+        /// <summary>
+        /// Retrieve the kernel named objects on the system.
+        /// </summary>
+        /// <returns>An array of KObjectEntry elements.</returns>
+        public unsafe KObjectEntry[] MapKObject()
+        {
+            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf<Vmmi.VMMDLL_MAP_KOBJECT>();
+            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf<Vmmi.VMMDLL_MAP_KOBJECTENTRY>();
+            IntPtr pMap = IntPtr.Zero;
+            KObjectEntry[] m = new KObjectEntry[0];
+            if (!Vmmi.VMMDLL_Map_GetKObject(hVMM, out pMap)) { goto fail; }
+            Vmmi.VMMDLL_MAP_KOBJECT nM = Marshal.PtrToStructure<Vmmi.VMMDLL_MAP_KOBJECT>(pMap);
+            if (nM.dwVersion != Vmmi.VMMDLL_MAP_KOBJECT_VERSION) { goto fail; }
+            m = new KObjectEntry[nM.cMap];
+            for (int i = 0; i < nM.cMap; i++)
+            {
+                Vmmi.VMMDLL_MAP_KOBJECTENTRY n = Marshal.PtrToStructure<Vmmi.VMMDLL_MAP_KOBJECTENTRY>((System.IntPtr)(pMap.ToInt64() + cbMAP + i * cbENTRY));
+                KObjectEntry e;
+                e.va = n.va;
+                e.vaParent = n.vaParent;
+                e.vaChild = new ulong[n.cvaChild];
+                for (int j = 0; j < n.cvaChild; j++)
+                {
+                    e.vaChild[j] = (ulong)Marshal.ReadInt64(n.pvaChild, j * 8);
+                }
+                e.sName = n.uszName;
+                e.sType = n.uszType;
                 m[i] = e;
             }
         fail:

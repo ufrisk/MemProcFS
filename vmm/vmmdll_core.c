@@ -121,6 +121,10 @@ _Success_(return != NULL)
 VMM_HANDLE VmmDllCore_HandleDuplicate(_In_ VMM_HANDLE H)
 {
     if(VmmDllCore_HandleReserveExternal(H)) {
+        if(H->dwHandleCount > 0xFFFFFFF0) {
+            VmmDllCore_HandleReturnExternal(H);
+            return NULL;
+        }
         InterlockedIncrement(&H->dwHandleCount);
         VmmDllCore_HandleReturnExternal(H);
         return H;

@@ -138,7 +138,7 @@ VmmPycScatterMemory_read_type(PyObj_ScatterMemory *self, PyObject *args)
     DWORD iItem, cItem;
     ULONG64 qwA, flags = 0;
     BYTE pb8[8] = { 0 }, pbZERO[8] = { 0 }, *pbTP;
-    DWORD tp, cbTP, cbRead;
+    DWORD tp, cbTP, cbRead = 0;
     BOOL result;
     SIZE_T cArgs;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "VmmScatterMemory.read(): Not initialized."); }
@@ -153,7 +153,7 @@ VmmPycScatterMemory_read_type(PyObj_ScatterMemory *self, PyObject *args)
                 pbTP = pb8;
             }
         }
-        return VmmPyc_MemReadType_TypeGet(tp, pbTP);
+        return VmmPyc_MemReadType_TypeGet(tp, pbTP, cbRead);
     }
     // Multi read on the format: ([[ULONG64, STR], ..]) -> [T, ..], Example: [[0x1000, 'u32'], [0x2000, 'u32']]
     if((cArgs == 1) && PyArg_ParseTuple(args, "O!", &PyList_Type, &pyListSrc)) {
@@ -169,13 +169,14 @@ VmmPycScatterMemory_read_type(PyObj_ScatterMemory *self, PyObject *args)
             qwA = PyLong_AsUnsignedLongLong(pyLongAddress);
             tp = VmmPyc_MemReadType_TypeCheck(pyUnicodeTP, &cbTP);
             pbTP = pbZERO;
+            cbRead = 0;
             if(cbTP) {
                 result = VMMDLL_Scatter_Read(self->hScatter, qwA, cbTP, pb8, &cbRead);
                 if(result && (cbTP == cbRead)) {
                     pbTP = pb8;
                 }
             }
-            PyList_Append_DECREF(pyListResult, VmmPyc_MemReadType_TypeGet(tp, pbTP));
+            PyList_Append_DECREF(pyListResult, VmmPyc_MemReadType_TypeGet(tp, pbTP, cbRead));
         }
         return pyListResult;
     }

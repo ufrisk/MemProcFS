@@ -205,6 +205,51 @@ pub fn main_example() -> ResultEx<()> {
         }
 
 
+        // Example: vmm.map_kdevice():
+        // Retrieve kernel devices and display the information.
+        println!("========================================");
+        println!("vmm.map_kdevice():");
+        if let Ok(kdevices) = vmm.map_kdevice() {
+            println!("Number of devices: {}.", kdevices.len());
+            for kdevice in &*kdevices {
+                println!("{kdevice} ");
+            }
+            println!("");
+        } else {
+            println!("Error retrieving kernel devices.");
+        }
+
+
+        // Example: vmm.map_kdriver():
+        // Retrieve kernel drivers and display the information.
+        println!("========================================");
+        println!("vmm.map_kddriver():");
+        if let Ok(kdrivers) = vmm.map_kdriver() {
+            println!("Number of drivers: {}.", kdrivers.len());
+            for kdriver in &*kdrivers {
+                println!("{kdriver} ");
+            }
+            println!("");
+        } else {
+            println!("Error retrieving kernel drivers.");
+        }
+
+
+        // Example: vmm.map_kobject():
+        // Retrieve kernel named objects and display the information.
+        println!("========================================");
+        println!("vmm.map_kobject():");
+        if let Ok(kobjects) = vmm.map_kobject() {
+            println!("Number of objects: {}.", kobjects.len());
+            for kobject in &*kobjects {
+                println!("{kobject} ");
+            }
+            println!("");
+        } else {
+            println!("Error retrieving kernel objects.");
+        }
+
+
         // Example: vmm.map_pool():
         // Retrieve kernel pool allocations and display the 'Proc' allocations.
         // NB! here we retrieve all pool allocations which is substantially

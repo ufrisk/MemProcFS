@@ -25,6 +25,7 @@
 #define EXPORTED_FUNCTION                   __declspec(dllexport)
 #endif /* _WIN32 */
 #ifdef LINUX
+#define _FILE_OFFSET_BITS 64
 
 #include <pthread.h>
 #include <netinet/in.h>
@@ -368,7 +369,7 @@ PyObj_Search *VmmPycSearch_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_opt_ DW
 PyObj_Yara *VmmPycYara_InitializeInternal(_In_ PyObj_Vmm *pyVMM, _In_opt_ DWORD dwPID, _In_ PyObject *args);
 
 DWORD VmmPyc_MemReadType_TypeCheck(_In_ PyObject *pyUnicodeTp, _Out_ PDWORD pcbTp);
-PyObject* VmmPyc_MemReadType_TypeGet(_In_ DWORD tp, _In_ PBYTE pb);
+PyObject* VmmPyc_MemReadType_TypeGet(_In_ DWORD tp, _In_ PBYTE pb, _In_ DWORD cbRead);
 PyObject* VmmPyc_MemReadScatter(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ LPSTR szFN, PyObject *args);
 PyObject* VmmPyc_MemRead(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ LPSTR szFN, PyObject *args);
 PyObject* VmmPyc_MemWrite(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ LPSTR szFN, PyObject *args);

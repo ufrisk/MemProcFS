@@ -208,30 +208,30 @@ DWORD VmmPyc_MemReadType_TypeCheck(_In_ PyObject* pyUnicodeTp, _Out_ PDWORD pcbT
     }
 }
 
-PyObject* VmmPyc_MemReadType_TypeGet(_In_ DWORD tp, _In_ PBYTE pb)
+PyObject* VmmPyc_MemReadType_TypeGet(_In_ DWORD tp, _In_ PBYTE pb, _In_ DWORD cbRead)
 {
+    BYTE pbZERO[8] = { 0 };
     switch(tp) {
         case 'i8  ':
-            return PyLong_FromLong(*(BYTE*)pb); break;
+            return PyLong_FromLong(*(BYTE*)((cbRead >= 1) ? pb : pbZERO)); break;
         case 'u8  ':
-            return PyLong_FromUnsignedLong(*(BYTE*)pb); break;
+            return PyLong_FromUnsignedLong(*(BYTE*)((cbRead >= 1) ? pb : pbZERO)); break;
         case 'i16 ':
-            return PyLong_FromLong(*(WORD*)pb); break;
+            return PyLong_FromLong(*(WORD*)((cbRead >= 2) ? pb : pbZERO)); break;
         case 'u16 ':
-            return PyLong_FromUnsignedLong(*(WORD*)pb); break;
+            return PyLong_FromUnsignedLong(*(WORD*)((cbRead >= 2) ? pb : pbZERO)); break;
         case 'f32 ':
-            return PyFloat_FromDouble(*(float*)pb); break;
+            return PyFloat_FromDouble(*(float*)((cbRead >= 4) ? pb : pbZERO)); break;
         case 'i32 ':
-            return PyLong_FromLong(*(DWORD*)pb); break;
+            return PyLong_FromLong(*(DWORD*)((cbRead >= 4) ? pb : pbZERO)); break;
         case 'u32 ':
-            return PyLong_FromUnsignedLong(*(DWORD*)pb); break;
+            return PyLong_FromUnsignedLong(*(DWORD*)((cbRead >= 4) ? pb : pbZERO)); break;
         case 'f64 ':
-            return PyFloat_FromDouble(*(double*)pb); break;
+            return PyFloat_FromDouble(*(double*)((cbRead >= 8) ? pb : pbZERO)); break;
         case 'i64 ':
-            return PyLong_FromLongLong(*(QWORD*)pb); break;
+            return PyLong_FromLongLong(*(QWORD*)((cbRead >= 8) ? pb : pbZERO)); break;
         case 'u64 ':
-            return PyLong_FromUnsignedLongLong(*(QWORD*)pb); break;
-            break;
+            return PyLong_FromUnsignedLongLong(*(QWORD*)((cbRead >= 8) ? pb : pbZERO)); break;
         default:
             Py_INCREF(Py_None);
             return Py_None;
@@ -244,15 +244,17 @@ PyObject* VmmPyc_MemReadType(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ LPSTR szF
     PyObject *pyListItemSrc, *pyListResult = NULL, *pyLongAddress, *pyUnicodeTP;
     DWORD iItem, cItem;
     ULONG64 qwA, vaPrevious = (ULONG64)-1, flags = 0;
-    BYTE pbPage[0x1000], pb8[8] = { 0 }, pbZERO[8] = { 0 }, *pbTP;
+    BYTE pb8[8] = { 0 }, pbZERO[8] = { 0 }, *pbTP;
     DWORD tp, cbTP, cbRead;
     PyObject *pyObjArg0, *pyObjArg1 = NULL;
     struct MultiInfo {
         QWORD qwA;
         DWORD tp;
         DWORD cb;
+        DWORD cbRead;
         BYTE pb[8];
     };
+    VMMDLL_SCATTER_HANDLE hS = NULL;
     struct MultiInfo *pMultiInfo = NULL, *pInfo;
     if(!PyArg_ParseTuple(args, "O|OK", &pyObjArg0, &pyObjArg1, &flags)) {           // borrowed reference
         return PyErr_Format(PyExc_RuntimeError, "%s: Illegal argument.", szFN);
@@ -273,7 +275,7 @@ PyObject* VmmPyc_MemReadType(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ LPSTR szF
             }
             Py_END_ALLOW_THREADS;
         }
-        return VmmPyc_MemReadType_TypeGet(tp, pbTP);
+        return VmmPyc_MemReadType_TypeGet(tp, pbTP, cbRead);
     }
     // List read on the format: ([[ULONG64, STR], ..] | ULONG64), Example: [[0x1000, 'u32 '], [0x2000, 'u32 ']]
     // verify and read python object data:
@@ -289,6 +291,7 @@ PyObject* VmmPyc_MemReadType(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ LPSTR szF
     cItem = (DWORD)PyList_Size(pyObjArg0);
     pMultiInfo = LocalAlloc(LMEM_ZEROINIT, cItem * sizeof(struct MultiInfo));
     if(!pMultiInfo) { goto fail; }
+    hS = VMMDLL_Scatter_Initialize(H, dwPID, (DWORD)flags | VMMDLL_FLAG_NO_PREDICTIVE_READ);
     for(iItem = 0; iItem < cItem; iItem++) {
         pInfo = pMultiInfo + iItem;
         pyListItemSrc = PyList_GetItem(pyObjArg0, iItem);           // borrowed reference
@@ -298,42 +301,26 @@ PyObject* VmmPyc_MemReadType(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ LPSTR szF
         if(!pyLongAddress || !pyUnicodeTP || !PyLong_Check(pyLongAddress) || !PyUnicode_Check(pyUnicodeTP)) { goto fail; }
         pInfo->tp = VmmPyc_MemReadType_TypeCheck(pyUnicodeTP, &pInfo->cb);
         pInfo->qwA = PyLong_AsUnsignedLongLong(pyLongAddress);
+        if(pInfo->cb) {
+            VMMDLL_Scatter_PrepareEx(hS, pInfo->qwA, pInfo->cb, pInfo->pb, &pInfo->cbRead);
+        }
     }
     // native read data:
     Py_BEGIN_ALLOW_THREADS;
-    for(iItem = 0; iItem < cItem; iItem++) {
-        pInfo = pMultiInfo + iItem;
-        if((pInfo->qwA & 0xfff) + pInfo->cb > 0x1000) {
-            // across page-boundary:
-            vaPrevious = (ULONG64)-1;
-            VMMDLL_MemReadEx(H, dwPID, pInfo->qwA, pb8, pInfo->cb, &cbRead, flags | VMMDLL_FLAG_NO_PREDICTIVE_READ);
-            if(cbRead == pInfo->cb) {
-                memcpy(pInfo->pb, pb8, pInfo->cb);
-            }
-        } else if(vaPrevious != (pInfo->qwA & ~0xfff)) {
-            // new in-page read:
-            vaPrevious = (ULONG64)-1;
-            VMMDLL_MemReadEx(H, dwPID, pInfo->qwA & ~0xfff, pbPage, 0x1000, &cbRead, flags | VMMDLL_FLAG_NO_PREDICTIVE_READ);
-            if(cbRead == 0x1000) {
-                vaPrevious = pInfo->qwA & ~0xfff;
-                memcpy(pInfo->pb, pbPage + (pInfo->qwA & 0xfff), pInfo->cb);
-            }
-        } else {
-            // previous page-read:
-            memcpy(pInfo->pb, pbPage + (pInfo->qwA & 0xfff), pInfo->cb);
-        }
-    }
+    VMMDLL_Scatter_Execute(hS);
     Py_END_ALLOW_THREADS;
     // python allocate and return results:
     pyListResult = PyList_New(0);
     if(!pyListResult) { goto fail; }
     for(iItem = 0; iItem < cItem; iItem++) {
         pInfo = pMultiInfo + iItem;
-        PyList_Append_DECREF(pyListResult, VmmPyc_MemReadType_TypeGet(pInfo->tp, pInfo->pb));
+        PyList_Append_DECREF(pyListResult, VmmPyc_MemReadType_TypeGet(pInfo->tp, pInfo->pb, pInfo->cbRead));
     }
+    VMMDLL_Scatter_CloseHandle(hS);
     LocalFree(pMultiInfo);
     return pyListResult;
 fail:
+    VMMDLL_Scatter_CloseHandle(hS);
     LocalFree(pMultiInfo);
     Py_XDECREF(pyListResult);
     return PyErr_Format(PyExc_RuntimeError, "%s: Internal error.", szFN);

@@ -229,6 +229,7 @@ v5.8
 * Bug fixes.
 * [New Vmmsharp C# API](https://github.com/ufrisk/MemProcFS/wiki/API_CSharp).
 
-Latest:
+[v5.12](https://github.com/ufrisk/MemProcFS/releases/tag/v5.12)
 * Bug fixes.
-* Minor updates (FindEvil, New signatures, etc.).
+* updates (FindEvil, New signatures, etc.).
+* New APIs for Kernel Objects, Drivers and Devices.

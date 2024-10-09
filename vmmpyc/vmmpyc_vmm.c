@@ -227,6 +227,20 @@ VmmPycVmm_search_yara(PyObj_Vmm *self, PyObject *args)
     return pyObj;
 }
 
+// -> *PyLong
+static PyObject*
+VmmPycVmm_bits(PyObj_Vmm *self, void *closure)
+{
+    DWORD dwBits;
+    ULONG64 qwValue = 0;
+    if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Vmm.f32: Not initialized."); }
+    Py_BEGIN_ALLOW_THREADS;
+    VMMDLL_ConfigGet(self->hVMM, VMMDLL_OPT_CORE_MEMORYMODEL, &qwValue);
+    dwBits = ((qwValue == VMMDLL_MEMORYMODEL_X86) || (qwValue == VMMDLL_MEMORYMODEL_X86PAE)) ? 32 : 64;
+    Py_END_ALLOW_THREADS;
+    return PyLong_FromUnsignedLong(dwBits);
+}
+
 //-----------------------------------------------------------------------------
 // VmmPycVmm INITIALIZATION AND CORE FUNCTIONALITY BELOW:
 //-----------------------------------------------------------------------------
@@ -384,6 +398,7 @@ BOOL VmmPycVmm_InitializeType(PyObject *pModule)
         {NULL}
     };
     static PyGetSetDef PyGetSet[] = {
+        {"bits", (getter)VmmPycVmm_bits, (setter)NULL, "System bitness, returns either 32 or 64.", NULL},
         {NULL}
     };
     static PyType_Slot PyTypeSlot[] = {

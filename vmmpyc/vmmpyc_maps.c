@@ -21,31 +21,203 @@ LPSTR VmmPycMaps_PoolTagHelper(_In_ DWORD dwTag, _In_reads_(5) LPSTR szBuffer)
     return szBuffer;
 }
 
+// () -> [{...}]
+static PyObject*
+VmmPycMaps_kdevice(PyObj_Maps *self, PyObject *args)
+{
+    PyObject *pyList, *pyDict;
+    BOOL result;
+    ULONG64 i;
+    PVMMDLL_MAP_KDEVICE pKDeviceMap = NULL;
+    PVMMDLL_MAP_KDEVICEENTRY pe;
+    if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Maps.kdevice(): Not initialized."); }
+    if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
+    Py_BEGIN_ALLOW_THREADS;
+    result = VMMDLL_Map_GetKDeviceU(self->pyVMM->hVMM, &pKDeviceMap);
+    Py_END_ALLOW_THREADS;
+    if(!result || (pKDeviceMap->dwVersion != VMMDLL_MAP_KDEVICE_VERSION)) {
+        Py_DECREF(pyList);
+        VMMDLL_MemFree(pKDeviceMap);;
+        return PyErr_Format(PyExc_RuntimeError, "Maps.kdevice(): Failed.");
+    }
+    for(i = 0; i < pKDeviceMap->cMap; i++) {
+        if((pyDict = PyDict_New())) {
+            pe = pKDeviceMap->pMap + i;
+            PyDict_SetItemString_DECREF(pyDict, "va", PyLong_FromUnsignedLongLong(pe->va));
+            PyDict_SetItemString_DECREF(pyDict, "depth", PyLong_FromUnsignedLong(pe->iDepth));
+            PyDict_SetItemString_DECREF(pyDict, "type", PyLong_FromUnsignedLong(pe->dwDeviceType));
+            PyDict_SetItemString_DECREF(pyDict, "type_name", PyUnicode_FromString(pe->uszDeviceType));
+            PyDict_SetItemString_DECREF(pyDict, "va_driver_object", PyLong_FromUnsignedLongLong(pe->vaDriverObject));
+            PyDict_SetItemString_DECREF(pyDict, "va_attached_device", PyLong_FromUnsignedLongLong(pe->vaAttachedDevice));
+            PyDict_SetItemString_DECREF(pyDict, "va_file_system_device", PyLong_FromUnsignedLongLong(pe->vaFileSystemDevice));
+            PyDict_SetItemString_DECREF(pyDict, "volume_info_str", PyUnicode_FromString(pe->uszVolumeInfo));
+            PyList_Append_DECREF(pyList, pyDict);
+        }
+    }
+    VMMDLL_MemFree(pKDeviceMap);
+    return pyList;
+}
+
+// () -> [{...}]
+static PyObject*
+VmmPycMaps_kdriver(PyObj_Maps *self, PyObject *args)
+{
+    PyObject *pyList, *pyDict, *PyListMajorFunction;
+    BOOL result;
+    ULONG64 i, j;
+    PVMMDLL_MAP_KDRIVER pKDriverMap = NULL;
+    PVMMDLL_MAP_KDRIVERENTRY pe;
+    if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Maps.kdriver(): Not initialized."); }
+    if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
+    Py_BEGIN_ALLOW_THREADS;
+    result = VMMDLL_Map_GetKDriverU(self->pyVMM->hVMM, &pKDriverMap);
+    Py_END_ALLOW_THREADS;
+    if(!result || (pKDriverMap->dwVersion != VMMDLL_MAP_KDRIVER_VERSION)) {
+        Py_DECREF(pyList);
+        VMMDLL_MemFree(pKDriverMap);;
+        return PyErr_Format(PyExc_RuntimeError, "Maps.kdriver(): Failed.");
+    }
+    for(i = 0; i < pKDriverMap->cMap; i++) {
+        if((pyDict = PyDict_New()) && (PyListMajorFunction = PyList_New(0))) {
+            pe = pKDriverMap->pMap + i;
+            PyDict_SetItemString_DECREF(pyDict, "va", PyLong_FromUnsignedLongLong(pe->va));
+            PyDict_SetItemString_DECREF(pyDict, "va", PyLong_FromUnsignedLongLong(pe->vaDriverStart));
+            PyDict_SetItemString_DECREF(pyDict, "va", PyLong_FromUnsignedLongLong(pe->cbDriverSize));
+            PyDict_SetItemString_DECREF(pyDict, "va", PyLong_FromUnsignedLongLong(pe->vaDeviceObject));
+            PyDict_SetItemString_DECREF(pyDict, "name", PyUnicode_FromString(pe->uszName));
+            PyDict_SetItemString_DECREF(pyDict, "path", PyUnicode_FromString(pe->uszPath));
+            PyDict_SetItemString_DECREF(pyDict, "service_key_name", PyUnicode_FromString(pe->uszServiceKeyName));
+            for(j = 0; j < sizeof(pe->MajorFunction)/sizeof(QWORD); j++) {
+                PyList_Append_DECREF(PyListMajorFunction, PyLong_FromUnsignedLongLong(pe->MajorFunction[j]));
+            }
+            PyDict_SetItemString_DECREF(pyDict, "major_function", PyListMajorFunction);
+            PyList_Append_DECREF(pyList, pyDict);
+        }
+    }
+    VMMDLL_MemFree(pKDriverMap);
+    return pyList;
+}
+
+// () -> [{...}]
+static PyObject*
+VmmPycMaps_kobject(PyObj_Maps *self, PyObject *args)
+{
+    PyObject *pyList, *pyDict, *PyListVaChild;
+    BOOL result;
+    ULONG64 i, j;
+    PVMMDLL_MAP_KOBJECT pKObjectMap = NULL;
+    PVMMDLL_MAP_KOBJECTENTRY pe;
+    if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Maps.kobject(): Not initialized."); }
+    if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
+    Py_BEGIN_ALLOW_THREADS;
+    result = VMMDLL_Map_GetKObjectU(self->pyVMM->hVMM, &pKObjectMap);
+    Py_END_ALLOW_THREADS;
+    if(!result || (pKObjectMap->dwVersion != VMMDLL_MAP_KOBJECT_VERSION)) {
+        Py_DECREF(pyList);
+        VMMDLL_MemFree(pKObjectMap);;
+        return PyErr_Format(PyExc_RuntimeError, "Maps.kobject(): Failed.");
+    }
+    for(i = 0; i < pKObjectMap->cMap; i++) {
+        if((pyDict = PyDict_New()) && (PyListVaChild = PyList_New(0))) {
+            pe = pKObjectMap->pMap + i;
+            PyDict_SetItemString_DECREF(pyDict, "va", PyLong_FromUnsignedLongLong(pe->va));
+            PyDict_SetItemString_DECREF(pyDict, "va_parent", PyLong_FromUnsignedLongLong(pe->vaParent));
+            PyDict_SetItemString_DECREF(pyDict, "name", PyUnicode_FromString(pe->uszName));
+            PyDict_SetItemString_DECREF(pyDict, "type", PyUnicode_FromString(pe->uszType));
+            for(j = 0; j < pe->cvaChild; j++) {
+                PyList_Append_DECREF(PyListVaChild, PyLong_FromUnsignedLongLong(pe->pvaChild[j]));
+            }
+            PyDict_SetItemString_DECREF(pyDict, "va_child", PyListVaChild);
+            PyList_Append_DECREF(pyList, pyDict);
+        }
+    }
+    VMMDLL_MemFree(pKObjectMap);
+    return pyList;
+}
+
 // () -> {'va': {...}, 'tag': {...}}
 static PyObject *
 VmmPycMaps_pool(PyObj_Maps *self, PyObject *args)
 {
+    PyObject *pyListSrc = NULL, *pyListItemSrc, *pyBytesSrc;
     PyObject *pyDictResult, *pyDictResultVA, *pyDictResultTag, *pyDictTag, *pyDict;
     BOOL result;
-    DWORD iTag, iTagEntry;
+    DWORD i, iTag, iTagEntry;
     PVMMDLL_MAP_POOLENTRY pe;
     PVMMDLL_MAP_POOLENTRYTAG pTag;
     PVMMDLL_MAP_POOL pPoolMap = NULL;
     CHAR szBuffer[5] = { 0 };
+    BOOL fAllowedTag;
+    DWORD cdwAllowedTags = 0;
+    PDWORD pdwAllowedTags = NULL;
     if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "Maps.pool(): Not initialized."); }
-    if(!(pyDictResult = PyDict_New())) { return PyErr_NoMemory(); }
-    if(!(pyDictResultVA = PyDict_New())) { return PyErr_NoMemory(); } PyDict_SetItemString_DECREF(pyDictResult, "va", pyDictResultVA);
-    if(!(pyDictResultTag = PyDict_New())) { return PyErr_NoMemory(); } PyDict_SetItemString_DECREF(pyDictResult, "tag", pyDictResultTag);
+    // START OPTIONAL TAG LIST
+    if(!PyArg_ParseTuple(args, "|O!", &PyList_Type, &pyListSrc)) { return NULL; }    // borrowed reference
+    if(pyListSrc) {
+        cdwAllowedTags = (DWORD)PyList_Size(pyListSrc);
+        pdwAllowedTags = LocalAlloc(LMEM_ZEROINIT, cdwAllowedTags * sizeof(DWORD));
+        if(!pdwAllowedTags) {
+            return PyErr_NoMemory();
+        }
+        for(iTag = 0; iTag < cdwAllowedTags; iTag++) {
+            pyListItemSrc = PyList_GetItem(pyListSrc, iTag);                // borrowed reference
+            if(PyLong_Check(pyListItemSrc)) {
+                pdwAllowedTags[iTag] = PyLong_AsUnsignedLong(pyListItemSrc);
+                continue;
+            }
+            if(PyBytes_Check(pyListItemSrc)) {
+                if(4 != PyBytes_Size(pyListItemSrc)) {
+                    LocalFree(pdwAllowedTags);
+                    return PyErr_Format(PyExc_RuntimeError, "Maps.pool(): Argument list contains non 4-byte bytes item at position %i.", iTag);
+                }
+                pdwAllowedTags[iTag] = *(PDWORD)PyBytes_AsString(pyListItemSrc);
+                continue;
+            }
+            if(PyUnicode_Check(pyListItemSrc)) {
+                if(4 != PyUnicode_GetLength(pyListItemSrc)) {
+                    LocalFree(pdwAllowedTags);
+                    return PyErr_Format(PyExc_RuntimeError, "Maps.pool(): Argument list contains non 4-byte string item at position %i.", iTag);
+                }
+                pyBytesSrc = PyUnicode_AsLatin1String(pyListItemSrc);      // new reference
+                if(!pyBytesSrc) {
+                    LocalFree(pdwAllowedTags);
+                    return PyErr_Format(PyExc_RuntimeError, "Maps.pool(): Argument list contains an invalid string item at position %i.", iTag);
+                }
+                pdwAllowedTags[iTag] = *(PDWORD)PyBytes_AsString(pyBytesSrc);
+                Py_DECREF(pyBytesSrc);
+                continue;
+            }
+        }
+    }
+    // END OPTIONAL TAG LIST
+    if(!(pyDictResult = PyDict_New())) { LocalFree(pdwAllowedTags); return PyErr_NoMemory(); }
+    if(!(pyDictResultVA = PyDict_New())) { LocalFree(pdwAllowedTags); return PyErr_NoMemory(); } PyDict_SetItemString_DECREF(pyDictResult, "va", pyDictResultVA);
+    if(!(pyDictResultTag = PyDict_New())) { LocalFree(pdwAllowedTags); return PyErr_NoMemory(); } PyDict_SetItemString_DECREF(pyDictResult, "tag", pyDictResultTag);
     Py_BEGIN_ALLOW_THREADS;
     result = VMMDLL_Map_GetPool(self->pyVMM->hVMM, &pPoolMap, VMMDLL_POOLMAP_FLAG_ALL);
     Py_END_ALLOW_THREADS;
     if(!result || (pPoolMap->dwVersion != VMMDLL_MAP_POOL_VERSION)) {
         Py_DECREF(pyDictResult);
         VMMDLL_MemFree(pPoolMap);
+        LocalFree(pdwAllowedTags);
         return PyErr_Format(PyExc_RuntimeError, "Maps.pool(): Failed.");
     }
     for(iTag = 0; iTag < pPoolMap->cTag; iTag++) {
         pTag = pPoolMap->pTag + iTag;
+        // START OPTIONAL TAG LIST
+        if(pdwAllowedTags) {
+            fAllowedTag = FALSE;
+            for(i = 0; i < cdwAllowedTags; i++) {
+                if(pTag->dwTag == pdwAllowedTags[i]) {
+                    fAllowedTag = TRUE;
+                    break;
+                }
+            }
+            if(!fAllowedTag) {
+                continue;
+            }
+        }
+        // END OPTIONAL TAG LIST
         if((pyDictTag = PyDict_New())) {
             for(iTagEntry = 0; iTagEntry < pTag->cEntry; iTagEntry++) {
                 pe = pPoolMap->pMap + pPoolMap->piTag2Map[pTag->iTag2Map + iTagEntry];
@@ -65,6 +237,7 @@ VmmPycMaps_pool(PyObj_Maps *self, PyObject *args)
         }
     }
     VMMDLL_MemFree(pPoolMap);
+    LocalFree(pdwAllowedTags);
     return pyDictResult;
 }
 
@@ -347,6 +520,9 @@ _Success_(return)
 BOOL VmmPycMaps_InitializeType(PyObject *pModule)
 {
     static PyMethodDef PyMethods[] = {
+        {"kdevice", (PyCFunction)VmmPycMaps_kdevice, METH_VARARGS, "Retrieve kernel devices."},
+        {"kdriver", (PyCFunction)VmmPycMaps_kdriver, METH_VARARGS, "Retrieve kernel drivers."},
+        {"kobject", (PyCFunction)VmmPycMaps_kobject, METH_VARARGS, "Retrieve kernel named objects."},
         {"memmap", (PyCFunction)VmmPycMaps_memmap, METH_VARARGS, "Retrieve the physical memory map."},
         {"net", (PyCFunction)VmmPycMaps_net, METH_VARARGS, "Retrieve the etwork connection map."},
         {"pfn", (PyCFunction)VmmPycMaps_pfn, METH_VARARGS, "Retrieve page frame number (PFN) information for select page frame numbers."},

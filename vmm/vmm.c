@@ -1321,6 +1321,11 @@ VOID VmmWriteScatterPhysical(_In_ VMM_HANDLE H, _Inout_ PPMEM_SCATTER ppMEMsPhys
 {
     DWORD i;
     PMEM_SCATTER pMEM;
+    // 1: pre-callback
+    if(H->vmm.MemUserCB.pfnWritePhysicalPreCB) {
+        H->vmm.MemUserCB.pfnWritePhysicalPreCB(H->vmm.MemUserCB.ctxWritePhysicalPre, (DWORD)-1, cpMEMsPhys, ppMEMsPhys);
+    }
+    // 2: write:
     LcWriteScatter(H->hLC, cpMEMsPhys, ppMEMsPhys);
     InterlockedAdd64(&H->vmm.stat.cPhysWrite, cpMEMsPhys);
     for(i = 0; i < cpMEMsPhys; i++) {
@@ -1337,9 +1342,13 @@ VOID VmmWriteScatterVirtual(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _Inou
     QWORD qwPA_PTE = 0, qwPagedPA = 0;
     PMEM_SCATTER pMEM;
     BOOL fProcessMagicHandle = ((SIZE_T)pProcess >= PROCESS_MAGIC_HANDLE_THRESHOLD);
-    // 0: 'magic' process handle
+    // 1: 'magic' process handle
     if(fProcessMagicHandle && !(pProcess = VmmProcessGet(H, (DWORD)(0-(SIZE_T)pProcess)))) { return; }
-    // 1: virt2phys translation
+    // 2: pre-callback
+    if(H->vmm.MemUserCB.pfnWriteVirtualPreCB) {
+        H->vmm.MemUserCB.pfnWriteVirtualPreCB(H->vmm.MemUserCB.ctxWriteVirtualPre, pProcess->dwPID, cpMEMsVirt, ppMEMsVirt);
+    }
+    // 3: virt2phys translation
     for(i = 0; i < cpMEMsVirt; i++) {
         pMEM = ppMEMsVirt[i];
         MEM_SCATTER_STACK_PUSH(pMEM, pMEM->qwA);
@@ -1356,7 +1365,7 @@ VOID VmmWriteScatterVirtual(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _Inou
         H->vmm.fnMemoryModel.pfnPagedRead(H, pProcess, pMEM->qwA, qwPA_PTE, NULL, &qwPagedPA, NULL, 0);
         pMEM->qwA = qwPagedPA ? qwPagedPA : (QWORD)-1;
     }
-    // write to physical addresses
+    // 4: write to physical addresses
     VmmWriteScatterPhysical(H, ppMEMsVirt, cpMEMsVirt);
     for(i = 0; i < cpMEMsVirt; i++) {
         ppMEMsVirt[i]->qwA = MEM_SCATTER_STACK_POP(ppMEMsVirt[i]);
@@ -1377,14 +1386,18 @@ VOID VmmReadScatterPhysical(_In_ VMM_HANDLE H, _Inout_ PPMEM_SCATTER ppMEMsPhys,
     fCacheRecent = fCache && (VMM_FLAG_CACHE_RECENT_ONLY & flags);
     fCachePut = !(VMM_FLAG_NOCACHEPUT & flags);
     fCacheForce = (VMM_FLAG_FORCECACHE_READ & flags) && !(VMM_FLAG_FORCECACHE_READ_DISABLE & (flags | H->vmm.flags));
-    // 0: split very large reads:
+    // 0: split very large reads
     if(cpMEMsPhys > 0x2000) {
         for(iPA = 0; iPA < cpMEMsPhys; iPA += 0x2000) {
             VmmReadScatterPhysical(H, ppMEMsPhys + iPA, min(0x2000, cpMEMsPhys - iPA), flags);
         }
         return;
     }
-    // 1: cache read
+    // 1: pre-callback
+    if(H->vmm.MemUserCB.pfnReadPhysicalPreCB && !(flags & VMM_FLAG_NOMEMCALLBACK)) {
+        H->vmm.MemUserCB.pfnReadPhysicalPreCB(H->vmm.MemUserCB.ctxReadPhysicalPre, (DWORD)-1, cpMEMsPhys, ppMEMsPhys);
+    }
+    // 2: cache read
     if(fCache) {
         c = 0;
         for(i = 0; i < cpMEMsPhys; i++) {
@@ -1418,7 +1431,11 @@ VOID VmmReadScatterPhysical(_In_ VMM_HANDLE H, _Inout_ PPMEM_SCATTER ppMEMsPhys,
     }
     // 3: read!
     LcReadScatter(H->hLC, cpMEMsPhys, ppMEMsPhys);
-    // 4: cache put
+    // 4: post-callback
+    if(H->vmm.MemUserCB.pfnReadPhysicalPostCB && !(flags & VMM_FLAG_NOMEMCALLBACK)) {
+        H->vmm.MemUserCB.pfnReadPhysicalPostCB(H->vmm.MemUserCB.ctxReadPhysicalPost, (DWORD)-1, cpMEMsPhys, ppMEMsPhys);
+    }
+    // 5: cache put
     if(fCache) {
         for(i = 0; i < cpMEMsPhys; i++) {
             pMEM = ppMEMsPhys[i];
@@ -1435,7 +1452,7 @@ VOID VmmReadScatterPhysical(_In_ VMM_HANDLE H, _Inout_ PPMEM_SCATTER ppMEMsPhys,
             }
         }
     }
-    // 5: statistics and read fail zero fixups (if required)
+    // 6: statistics and read fail zero fixups (if required)
     for(i = 0; i < cpMEMsPhys; i++) {
         pMEM = ppMEMsPhys[i];
         if(pMEM->f) {
@@ -1468,9 +1485,13 @@ VOID VmmReadScatterVirtual_Old(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _I
     BOOL fAltAddrPte = VMM_FLAG_ALTADDR_VA_PTE & flags;
     BOOL fZeropadOnFail = VMM_FLAG_ZEROPAD_ON_FAIL & (flags | H->vmm.flags);
     BOOL fProcessMagicHandle = ((SIZE_T)pProcess >= PROCESS_MAGIC_HANDLE_THRESHOLD);
-    // 0: 'magic' process handle
+    // 1: 'magic' process handle
     if(fProcessMagicHandle && !(pProcess = VmmProcessGet(H, (DWORD)(0-(SIZE_T)pProcess)))) { return; }
-    // 1: allocate / set up buffers (if needed)
+    // 2: pre-callback
+    if(H->vmm.MemUserCB.pfnReadVirtualPreCB && !(flags & VMM_FLAG_NOMEMCALLBACK)) {
+        H->vmm.MemUserCB.pfnReadVirtualPreCB(H->vmm.MemUserCB.ctxReadVirtualPre, pProcess->dwPID, cpMEMsVirt, ppMEMsVirt);
+    }
+    // 3: allocate / set up buffers (if needed)
     if(cpMEMsVirt < 0x20) {
         ZeroMemory(pbBufferSmall, sizeof(pbBufferSmall));
         ppMEMsPhys = (PPMEM_SCATTER)pbBufferSmall;
@@ -1483,7 +1504,7 @@ VOID VmmReadScatterVirtual_Old(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _I
         ppMEMsPhys = (PPMEM_SCATTER)pbBufferLarge;
         pbBufferMEMs = pbBufferLarge + cpMEMsVirt * sizeof(PMEM_SCATTER);
     }
-    // 2: translate virt2phys
+    // 4: translate virt2phys
     for(iVA = 0, iPA = 0; iVA < cpMEMsVirt; iVA++) {
         pIoVA = ppMEMsVirt[iVA];
         // MEMORY READ ALREADY COMPLETED
@@ -1523,7 +1544,7 @@ VOID VmmReadScatterVirtual_Old(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _I
         pIoPA->f = FALSE;
         MEM_SCATTER_STACK_PUSH(pIoPA, (QWORD)pIoVA);
     }
-    // 3: read and check result
+    // 5: read and check result
     if(iPA) {
         VmmReadScatterPhysical(H, ppMEMsPhys, iPA, flags);
         while(iPA > 0) {
@@ -1531,6 +1552,11 @@ VOID VmmReadScatterVirtual_Old(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _I
             ((PMEM_SCATTER)MEM_SCATTER_STACK_POP(ppMEMsPhys[iPA]))->f = ppMEMsPhys[iPA]->f;
         }
     }
+    // 6: post-callback
+    if(H->vmm.MemUserCB.pfnReadVirtualPostCB && !(flags & VMM_FLAG_NOMEMCALLBACK)) {
+        H->vmm.MemUserCB.pfnReadVirtualPostCB(H->vmm.MemUserCB.ctxReadVirtualPost, pProcess->dwPID, cpMEMsVirt, ppMEMsVirt);
+    }
+    // 7: cleanup
     LocalFree(pbBufferLarge);
     if(fProcessMagicHandle) { Ob_DECREF(pProcess); }
 }
@@ -1548,16 +1574,20 @@ VOID VmmReadScatterVirtual_New(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _I
     BOOL fAltAddrPte = VMM_FLAG_ALTADDR_VA_PTE & flags;
     BOOL fZeropadOnFail = VMM_FLAG_ZEROPAD_ON_FAIL & (flags | H->vmm.flags);
     BOOL fProcessMagicHandle = ((SIZE_T)pProcess >= PROCESS_MAGIC_HANDLE_THRESHOLD);
-    // 0: split very large reads:
+    // 1: split very large reads:
     if(cpMEMsVirt > 0x2000) {
         for(iVA = 0; iVA < cpMEMsVirt; iVA += 0x2000) {
             VmmReadScatterVirtual_New(H, pProcess, ppMEMsVirt + iVA, min(0x2000, cpMEMsVirt - iVA), flags);
         }
         return;
     }
-    // 1: 'magic' process handle:
+    // 2: 'magic' process handle:
     if(fProcessMagicHandle && !(pProcess = VmmProcessGet(H, (DWORD)(0 - (SIZE_T)pProcess)))) { goto finish; }
-    // 2: allocate / set up buffers:
+    // 3: pre-callback
+    if(H->vmm.MemUserCB.pfnReadVirtualPreCB && !(flags & VMM_FLAG_NOMEMCALLBACK)) {
+        H->vmm.MemUserCB.pfnReadVirtualPreCB(H->vmm.MemUserCB.ctxReadVirtualPre, pProcess->dwPID, cpMEMsVirt, ppMEMsVirt);
+    }
+    // 4: allocate / set up buffers:
     if(cpMEMsVirt < 0x20) {
         ZeroMemory(pbBufferSmall, sizeof(pbBufferSmall));
         pbBuffer = pbBufferSmall;
@@ -1568,7 +1598,7 @@ VOID VmmReadScatterVirtual_New(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _I
     ppMEMs = (PPMEM_SCATTER)pbBuffer;
     pV2Ps = (PVMM_V2P_ENTRY)(pbBuffer + cpMEMsVirt * sizeof(PMEM_SCATTER));
     pMEMs_Phys = (PMEM_SCATTER)pV2Ps;
-    // 3: translate virt2phys: prepare:
+    // 5: translate virt2phys: prepare:
     for(iVA = 0; iVA < cpMEMsVirt; iVA++) {
         pMEM_Virt = ppMEMsVirt[iVA];
         // memory read already completed -> skip
@@ -1585,7 +1615,7 @@ VOID VmmReadScatterVirtual_New(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _I
         cV2P++;
     }
     if(!cV2P) { goto finish; }
-    // 4: dispatch to Virt2PhysEx translation function:
+    // 6: dispatch to Virt2PhysEx translation function:
     if(fAltAddrPte) {
         for(iV2P = 0; iV2P < cV2P; iV2P++) {
             pV2Ps[iV2P].fPaging = TRUE;
@@ -1593,7 +1623,7 @@ VOID VmmReadScatterVirtual_New(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _I
     } else {
         H->vmm.fnMemoryModel.pfnVirt2PhysEx(H, pV2Ps, cV2P, pProcess->fUserOnly, -1);
     }
-    // 5: interpret V2P translation results and fetch paged memory:
+    // 7: interpret V2P translation results and fetch paged memory:
     for(iV2P = 0; iV2P < cV2P; iV2P++) {
         pV2P = pV2Ps + iV2P;
         pMEM_Virt = ppMEMs[iV2P];
@@ -1626,11 +1656,15 @@ VOID VmmReadScatterVirtual_New(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _I
         MEM_SCATTER_STACK_PUSH(pMEM_Phys, (QWORD)pMEM_Virt);
     }
     if(!cPhys) { goto finish; }
-    // 6: read physical pages and check result:
+    // 8: read physical pages and check result:
     VmmReadScatterPhysical(H, ppMEMs, cPhys, flags);
     while(cPhys > 0) {
         cPhys--;
         ((PMEM_SCATTER)MEM_SCATTER_STACK_POP(ppMEMs[cPhys]))->f = ppMEMs[cPhys]->f;
+    }
+    // 9: post-callback
+    if(H->vmm.MemUserCB.pfnReadVirtualPostCB && !(flags & VMM_FLAG_NOMEMCALLBACK)) {
+        H->vmm.MemUserCB.pfnReadVirtualPostCB(H->vmm.MemUserCB.ctxReadVirtualPost, pProcess->dwPID, cpMEMsVirt, ppMEMsVirt);
     }
 finish:
     if(pbBuffer != pbBufferSmall) { LocalFree(pbBuffer); }

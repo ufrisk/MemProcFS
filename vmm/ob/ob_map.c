@@ -844,16 +844,20 @@ BOOL _ObMap_Push(_In_ POB_MAP pm, _In_ QWORD qwKey, _In_ PVOID pvObject)
     if(!pm->Directory[OB_MAP_INDEX_DIRECTORY(iEntry)][OB_MAP_INDEX_TABLE(iEntry)]) {    // allocate "store" if required
         if(!(pm->Directory[OB_MAP_INDEX_DIRECTORY(iEntry)][OB_MAP_INDEX_TABLE(iEntry)] = LocalAlloc(LMEM_ZEROINIT, sizeof(OB_MAP_ENTRY) * OB_MAP_ENTRIES_STORE))) { return FALSE; }
     }
-    if(pm->fObjectsOb) {
-        Ob_INCREF(pvObject);
-    }
     pm->c++;
-    pe = _ObMap_GetFromIndex(pm, iEntry);
-    pe->k = qwKey;
-    pe->v = pvObject;
-    _ObMap_InsertHash(pm, TRUE, iEntry);
-    _ObMap_InsertHash(pm, FALSE, iEntry);
-    return TRUE;
+    if((pe = _ObMap_GetFromIndex(pm, iEntry))) {
+        if(pm->fObjectsOb) {
+            Ob_INCREF(pvObject);
+        }
+        pe->k = qwKey;
+        pe->v = pvObject;
+        _ObMap_InsertHash(pm, TRUE, iEntry);
+        _ObMap_InsertHash(pm, FALSE, iEntry);
+        return TRUE;
+    } else {
+        pm->c--;
+        return FALSE;
+    }
 }
 
 _Success_(return)

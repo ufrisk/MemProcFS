@@ -137,9 +137,7 @@ pub const FLAG_NOPAGING_IO                          : u64 = 0x0020;
 pub const FLAG_NOCACHEPUT                           : u64 = 0x0100;
 /// Only fetch from the most recent active cache region when reading.
 pub const FLAG_CACHE_RECENT_ONLY                    : u64 = 0x0200;
-/// Do not perform additional predictive page reads.
-///
-/// This is default on smaller requests.
+/// Deprecated/Unused.
 pub const FLAG_NO_PREDICTIVE_READ                   : u64 = 0x0400;
 /// Disable/override any use of VMM_FLAG_FORCECACHE_READ.
 /// 
@@ -251,6 +249,7 @@ pub const PLUGIN_NOTIFY_VM_ATTACH_DETACH            : u32 = 0x01000400;
 /// 
 /// # Created By
 /// - [`Vmm::new()`]
+/// - [`Vmm::new_from_leechcore()`]
 /// - [`Vmm::new_from_virtual_machine()`]
 /// - `plugin sub-system`
 /// 
@@ -369,6 +368,72 @@ pub struct VmmMapPfnEntry {
     pub va : u64,
     pub va_pte : u64,
     pub pte_original : u64,
+}
+
+/// Info: Kernel device entries.
+/// 
+/// # Created By
+/// - [`vmm.map_kdevice()`](Vmm::map_kdevice())
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VmmMapKDeviceEntry {
+    /// Virtual address of the device object.
+    pub va : u64,
+    /// Depth of the device object.
+    pub depth : u32,
+    /// Device type according to FILE_DEVICE_* in the Windows API.
+    pub device_type : u32,
+    /// Device type name.
+    pub device_type_name : String,
+    /// Virtual address of the associated driver object.
+    pub va_driver_object : u64,
+    /// Virtual address of the attached device object.
+    pub va_attached_device : u64,
+    /// Virtual address for some device types.
+    pub va_file_system_device : u64,
+    /// Volume info for some device types.
+    pub volume_info : String,
+}
+
+/// Info: Kernel driver entries.
+/// 
+/// # Created By
+/// - [`vmm.map_kdriver()`](Vmm::map_kdriver())
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VmmMapKDriverEntry {
+    /// Virtual address of the driver object.
+    pub va : u64,
+    /// Virtual address of the start of the loaded driver in memory (the module PE header).
+    pub va_driver_start : u64,
+    /// Size of the loaded driver in memory.
+    pub cb_driver_size : u64,
+    /// Virtual address of the associated device object.
+    pub va_device_object : u64,
+    /// Device name.
+    pub name : String,
+    /// Device path.
+    pub path : String,
+    /// Service key name.
+    pub service_key_name : String,
+    /// Virtual addresses of the major functions.
+    pub major_function : [u64; 28],
+}
+
+/// Info: Kernel named object manager entries.
+/// 
+/// # Created By
+/// - [`vmm.map_kobject()`](Vmm::map_kobject())
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VmmMapKObjectEntry {
+    /// Virtual address of the object.
+    pub va : u64,
+    /// Virtual address of the parent of this object, or 0 if top-level object.
+    pub va_parent : u64,
+    /// Virtual address of the object's children object (in case of a directlry object).
+    pub children : Vec<u64>,
+    /// Object name.
+    pub name : String,
+    /// Object type.
+    pub object_type : String,
 }
 
 /// Info: Kernel pool entries.
@@ -535,7 +600,7 @@ impl Vmm<'_> {
     /// ```
     /// // Initialize MemProcFS VMM on a Windows system using an existing
     /// // LeechCore object to parse a memory dump. Note that no '-device'
-    /// // argument should be supplied when using [`Vmm::new_from_leechcore`].
+    /// // argument should be supplied when using Vmm::new_from_leechcore.
     /// let args = ["-printf", "-v", "-waitinitialize"].to_vec();
     /// if let Ok(vmm) = Vmm::new_from_leechcore(&leechcore_existing, &args) {
     ///     ...
@@ -755,6 +820,54 @@ impl Vmm<'_> {
     /// ```
     pub fn map_pfn(&self, pfns : &Vec<u32>, is_extended : bool) -> ResultEx<Vec<VmmMapPfnEntry>> {
         return self.impl_map_pfn(pfns, is_extended);
+    }
+
+    /// Retrieve the kernel device map.
+    /// 
+    /// # Examples
+    /// ```
+    /// if let Ok(kdevices) = vmm.map_kdevice() {
+    ///     println!("Number of devices: {}.", kdevices.len());
+    ///     for kdevice in &*kdevices {
+    ///         println!("{kdevice} ");
+    ///     }
+    ///     println!("");
+    /// }
+    /// ```
+    pub fn map_kdevice(&self) -> ResultEx<Vec<VmmMapKDeviceEntry>> {
+        return self.impl_map_kdevice();
+    }
+
+    /// Retrieve the kernel driver map.
+    /// 
+    /// # Examples
+    /// ```
+    /// if let Ok(kdrivers) = vmm.map_kdriver() {
+    ///     println!("Number of drivers: {}.", kdrivers.len());
+    ///     for kdriver in &*kdrivers {
+    ///         println!("{kdriver} ");
+    ///     }
+    ///     println!("");
+    /// }
+    /// ```
+    pub fn map_kdriver(&self) -> ResultEx<Vec<VmmMapKDriverEntry>> {
+        return self.impl_map_kdriver();
+    }
+
+    /// Retrieve the kernel named objects map.
+    /// 
+    /// # Examples
+    /// ```
+    /// if let Ok(kobjects) = vmm.map_kobject() {
+    ///     println!("Number of objects: {}.", kobjects.len());
+    ///     for kobject in &*kobjects {
+    ///         println!("{kobject} ");
+    ///     }
+    ///     println!("");
+    /// }
+    /// ```
+    pub fn map_kobject(&self) -> ResultEx<Vec<VmmMapKObjectEntry>> {
+        return self.impl_map_kobject();
     }
 
     /// Retrieve the kernel pool allocation info map.
@@ -2730,7 +2843,7 @@ impl VmmProcess<'_> {
 ///     println!("{hive} size={} path={}", hive.size, hive.path);
 /// }
 /// ```
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub struct VmmRegHive<'a> {
     vmm : &'a Vmm<'a>,
     pub va : u64,
@@ -4378,6 +4491,9 @@ struct VmmNative {
     VMMDLL_ProcessGetInformation :  extern "C" fn(hVMM : usize, pid : u32, pProcessInformation : *mut CProcessInformation, pcbProcessInformation : *mut usize) -> bool,
     VMMDLL_ProcessGetInformationString : extern "C" fn(hVMM : usize, pid : u32, fOptionString : u32) -> *const c_char,
 
+    VMMDLL_Map_GetKDeviceU :        extern "C" fn(hVMM : usize, ppPoolMap : *mut *mut CKDeviceMap) -> bool,
+    VMMDLL_Map_GetKDriverU :        extern "C" fn(hVMM : usize, ppPoolMap : *mut *mut CKDriverMap) -> bool,
+    VMMDLL_Map_GetKObjectU :        extern "C" fn(hVMM : usize, ppPoolMap : *mut *mut CKObjectMap) -> bool,
     VMMDLL_Map_GetNetU :            extern "C" fn(hVMM : usize, ppNetMap : *mut *mut CNetMap) -> bool,
     VMMDLL_Map_GetPfnEx :           extern "C" fn(hVMM : usize, pPfns : *const u32, cPfns : u32, ppPfnMap : *mut *mut CPfnMap, flags : u32) -> bool,
     VMMDLL_Map_GetPhysMem :         extern "C" fn(hVMM : usize, ppPhysMemMap : *mut *mut CMemoryMap) -> bool,
@@ -4468,6 +4584,9 @@ fn impl_new<'a>(vmm_lib_path : &str, lc_existing_opt : Option<&LeechCore>, h_vmm
         let VMMDLL_ProcessGetProcAddressU = *lib.get(b"VMMDLL_ProcessGetProcAddressU")?;
         let VMMDLL_ProcessGetInformation = *lib.get(b"VMMDLL_ProcessGetInformation")?;
         let VMMDLL_ProcessGetInformationString = *lib.get(b"VMMDLL_ProcessGetInformationString")?;
+        let VMMDLL_Map_GetKDeviceU = *lib.get(b"VMMDLL_Map_GetKDeviceU")?;
+        let VMMDLL_Map_GetKDriverU = *lib.get(b"VMMDLL_Map_GetKDriverU")?;
+        let VMMDLL_Map_GetKObjectU = *lib.get(b"VMMDLL_Map_GetKObjectU")?;
         let VMMDLL_Map_GetNetU = *lib.get(b"VMMDLL_Map_GetNetU")?;
         let VMMDLL_Map_GetPfnEx = *lib.get(b"VMMDLL_Map_GetPfnEx")?;
         let VMMDLL_Map_GetPhysMem = *lib.get(b"VMMDLL_Map_GetPhysMem")?;
@@ -4561,6 +4680,9 @@ fn impl_new<'a>(vmm_lib_path : &str, lc_existing_opt : Option<&LeechCore>, h_vmm
             VMMDLL_ProcessGetProcAddressU,
             VMMDLL_ProcessGetInformation,
             VMMDLL_ProcessGetInformationString,
+            VMMDLL_Map_GetKDeviceU,
+            VMMDLL_Map_GetKDriverU,
+            VMMDLL_Map_GetKObjectU,
             VMMDLL_Map_GetNetU,
             VMMDLL_Map_GetPfnEx,
             VMMDLL_Map_GetPhysMem,
@@ -4665,6 +4787,9 @@ const VMMDLL_MAP_HANDLE_VERSION         : u32 = 3;
 const VMMDLL_MAP_HEAP_VERSION           : u32 = 4;
 const VMMDLL_MAP_HEAPALLOC_VERSION      : u32 = 1;
 const VMMDLL_MAP_IAT_VERSION            : u32 = 2;
+const VMMDLL_MAP_KDEVICE_VERSION        : u32 = 1;
+const VMMDLL_MAP_KDRIVER_VERSION        : u32 = 1;
+const VMMDLL_MAP_KOBJECT_VERSION        : u32 = 1;
 const VMMDLL_MAP_POOL_VERSION           : u32 = 2;
 const VMMDLL_MAP_PTE_VERSION            : u32 = 2;
 const VMMDLL_MAP_MODULE_VERSION         : u32 = 6;
@@ -4932,6 +5057,42 @@ impl PartialEq for VmmMapNetEntry {
     }
 }
 
+impl fmt::Display for VmmMapKDeviceEntry {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "VmmMapKDeviceEntry:{:x}:'{}'", self.va, self.device_type_name)
+    }
+}
+
+impl PartialEq for VmmMapKDeviceEntry {
+    fn eq(&self, other: &Self) -> bool {
+        self.va == other.va
+    }
+}
+
+impl fmt::Display for VmmMapKDriverEntry {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "VmmMapKDriverEntry::{:x}'{}'", self.va, self.name)
+    }
+}
+
+impl PartialEq for VmmMapKDriverEntry {
+    fn eq(&self, other: &Self) -> bool {
+        self.va == other.va
+    }
+}
+
+impl fmt::Display for VmmMapKObjectEntry {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "VmmMapKObjectEntry:{:x}:{}:'{}'", self.va, self.object_type, self.name)
+    }
+}
+
+impl PartialEq for VmmMapKObjectEntry {
+    fn eq(&self, other: &Self) -> bool {
+        self.va == other.va
+    }
+}
+
 impl fmt::Display for VmmMapPoolEntry {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "VmmMapPoolEntry:'{}':{:x}", self.tag_to_string(), self.va)
@@ -5035,6 +5196,77 @@ struct CMemoryMap {
     cMap : u32,
     _Reserved2 : u32,
     pMap : CMemoryMapEntry,
+}
+
+#[repr(C)]
+#[allow(non_snake_case)]
+struct CKDeviceEntry {
+    va : u64,
+    iDepth : u32,
+    dwDeviceType : u32,
+    uszDeviceType : *const c_char,
+    vaDriverObject : u64,
+    vaAttachedDevice : u64,
+    vaFileSystemDevice : u64,
+    uszVolumeInfo : *const c_char,
+}
+
+#[repr(C)]
+#[allow(non_snake_case)]
+struct CKDeviceMap {
+    dwVersion : u32,
+    _Reserved1 : [u32; 5],
+    pbMultiText : *const c_char,
+    cbMultiText : u32,
+    cMap : u32,
+    pMap : CKDeviceEntry,
+}
+
+#[repr(C)]
+#[allow(non_snake_case)]
+struct CKDriverEntry {
+    va : u64,
+    vaDriverStart : u64,
+    cbDriverSize : u64,
+    vaDeviceObject : u64,
+    uszName : *const c_char,
+    uszPath : *const c_char,
+    uszServiceKeyName : *const c_char,
+    MajorFunction : [u64; 28],
+}
+
+#[repr(C)]
+#[allow(non_snake_case)]
+struct CKDriverMap {
+    dwVersion : u32,
+    _Reserved1 : [u32; 5],
+    pbMultiText : *const c_char,
+    cbMultiText : u32,
+    cMap : u32,
+    pMap : CKDriverEntry,
+}
+
+#[repr(C)]
+#[allow(non_snake_case)]
+struct CKObjectEntry {
+    va : u64,
+    vaParent : u64,
+    _Filler : u32,
+    cvaChild : u32,
+    pvaChild : *const u64,
+    uszName : *const c_char,
+    uszType : *const c_char,
+}
+
+#[repr(C)]
+#[allow(non_snake_case)]
+struct CKObjectMap {
+    dwVersion : u32,
+    _Reserved1 : [u32; 5],
+    pbMultiText : *const c_char,
+    cbMultiText : u32,
+    cMap : u32,
+    pMap : CKObjectEntry,
 }
 
 #[repr(C)]
@@ -5387,6 +5619,120 @@ impl Vmm<'_> {
                     filetime : ne.ftTime,
                     pool_tag : ne.dwPoolTag,
                     desc : cstr_to_string(ne.uszText),
+                };
+                result.push(e);
+            }
+            (self.native.VMMDLL_MemFree)(structs as usize);
+            return Ok(result);
+        }
+    }
+
+    fn impl_map_kdevice(&self) -> ResultEx<Vec<VmmMapKDeviceEntry>> {
+        unsafe {
+            let mut structs = std::ptr::null_mut();
+            let r = (self.native.VMMDLL_Map_GetKDeviceU)(self.native.h, &mut structs);
+            if !r {
+                return Err(anyhow!("VMMDLL_Map_GetKDeviceU: fail."));
+            }
+            if (*structs).dwVersion != VMMDLL_MAP_KDEVICE_VERSION {
+                (self.native.VMMDLL_MemFree)(structs as usize);
+                return Err(anyhow!("VMMDLL_Map_GetKDeviceU: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_KDEVICE_VERSION));
+            }
+            let mut result = Vec::new();
+            if (*structs).cMap == 0 {
+                (self.native.VMMDLL_MemFree)(structs as usize);
+                return Ok(result);
+            }
+            let cMap : usize = (*structs).cMap.try_into()?;
+            let pMap = std::slice::from_raw_parts(&(*structs).pMap, cMap);
+            for i in 0..cMap {
+                let ne = &pMap[i];
+                let e = VmmMapKDeviceEntry {
+                    va : ne.va,
+                    depth : ne.iDepth,
+                    device_type : ne.dwDeviceType,
+                    device_type_name : cstr_to_string(ne.uszDeviceType),
+                    va_driver_object : ne.vaDriverObject,
+                    va_attached_device : ne.vaAttachedDevice,
+                    va_file_system_device : ne.vaFileSystemDevice,
+                    volume_info : cstr_to_string(ne.uszVolumeInfo),
+                };
+                result.push(e);
+            }
+            (self.native.VMMDLL_MemFree)(structs as usize);
+            return Ok(result);
+        }
+    }
+
+    fn impl_map_kdriver(&self) -> ResultEx<Vec<VmmMapKDriverEntry>> {
+        unsafe {
+            let mut structs = std::ptr::null_mut();
+            let r = (self.native.VMMDLL_Map_GetKDriverU)(self.native.h, &mut structs);
+            if !r {
+                return Err(anyhow!("VMMDLL_Map_GetKDriverU: fail."));
+            }
+            if (*structs).dwVersion != VMMDLL_MAP_KDRIVER_VERSION {
+                (self.native.VMMDLL_MemFree)(structs as usize);
+                return Err(anyhow!("VMMDLL_Map_GetKDriverU: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_KDRIVER_VERSION));
+            }
+            let mut result = Vec::new();
+            if (*structs).cMap == 0 {
+                (self.native.VMMDLL_MemFree)(structs as usize);
+                return Ok(result);
+            }
+            let cMap : usize = (*structs).cMap.try_into()?;
+            let pMap = std::slice::from_raw_parts(&(*structs).pMap, cMap);
+            for i in 0..cMap {
+                let ne = &pMap[i];
+                let e = VmmMapKDriverEntry {
+                    va : ne.va,
+                    va_driver_start : ne.vaDriverStart,
+                    cb_driver_size : ne.cbDriverSize,
+                    va_device_object : ne.vaDeviceObject,
+                    name : cstr_to_string(ne.uszName),
+                    path : cstr_to_string(ne.uszPath),
+                    service_key_name : cstr_to_string(ne.uszServiceKeyName),
+                    major_function : ne.MajorFunction,
+                };
+                result.push(e);
+            }
+            (self.native.VMMDLL_MemFree)(structs as usize);
+            return Ok(result);
+        }
+    }
+
+    fn impl_map_kobject(&self) -> ResultEx<Vec<VmmMapKObjectEntry>> {
+        unsafe {
+            let mut structs = std::ptr::null_mut();
+            let r = (self.native.VMMDLL_Map_GetKObjectU)(self.native.h, &mut structs);
+            if !r {
+                return Err(anyhow!("VMMDLL_Map_GetKObjectU: fail."));
+            }
+            if (*structs).dwVersion != VMMDLL_MAP_KOBJECT_VERSION {
+                (self.native.VMMDLL_MemFree)(structs as usize);
+                return Err(anyhow!("VMMDLL_Map_GetKObjectU: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_KOBJECT_VERSION));
+            }
+            let mut result = Vec::new();
+            if (*structs).cMap == 0 {
+                (self.native.VMMDLL_MemFree)(structs as usize);
+                return Ok(result);
+            }
+            let cMap : usize = (*structs).cMap.try_into()?;
+            let pMap = std::slice::from_raw_parts(&(*structs).pMap, cMap);
+            for i in 0..cMap {
+                let ne = &pMap[i];
+                let mut child_vec = Vec::new();
+                let child_count = ne.cvaChild as usize;
+                let child_ptr = std::slice::from_raw_parts(ne.pvaChild, ne.cvaChild as usize);
+                for j in 0..child_count {
+                    child_vec.push(child_ptr[j]);
+                }
+                let e = VmmMapKObjectEntry {
+                    va : ne.va,
+                    va_parent : ne.vaParent,
+                    children : child_vec,
+                    name : cstr_to_string(ne.uszName),
+                    object_type : cstr_to_string(ne.uszType),
                 };
                 result.push(e);
             }

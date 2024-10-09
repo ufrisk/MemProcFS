@@ -110,24 +110,28 @@ _Success_(return)
 BOOL _ObByteQueue_Push(_In_ POB_BYTEQUEUE pq, _In_opt_ QWORD qwTag, _In_ SIZE_T cb, _In_reads_bytes_(cb) PBYTE pb)
 {
     PBYTEQUEUE_PACKET p;
-    if(cb >= 0x80000000) {
+    SIZE_T cboEoQ, cbEoQ, cbPkt = sizeof(BYTEQUEUE_PACKET) + cb;
+    if(pq->cb < cbPkt) {
         return FALSE;
     }
-    if(pq->cPackets) {
-        p = (PBYTEQUEUE_PACKET)(pq->pb + pq->cboTail);
-        if(pq->cb - sizeof(BYTEQUEUE_PACKET) - p->cb >= cb + sizeof(BYTEQUEUE_PACKET)) {
-            p->cboNext = (DWORD)((SIZE_T)p - (SIZE_T)pq->pb + sizeof(BYTEQUEUE_PACKET) + p->cb);
-            p = (PBYTEQUEUE_PACKET)(pq->pb + p->cboNext);
-        } else if(pq->cboHead >= cb + sizeof(BYTEQUEUE_PACKET)) {
-            p->cboNext = 0;
-            p = (PBYTEQUEUE_PACKET)pq->pb;
-        } else {
-            return FALSE;
-        }
+    if(!pq->cPackets) {
+        // 1st packet to be inserted at start-of-queue.
+        p = (PBYTEQUEUE_PACKET)pq->pb;
     } else {
-        if(pq->cb >= cb + sizeof(BYTEQUEUE_PACKET)) {
-            p = (PBYTEQUEUE_PACKET)pq->pb;
+        // Nth packet to be inserted at end-of-queue.
+        p = (PBYTEQUEUE_PACKET)(pq->pb + pq->cboTail);
+        cboEoQ = pq->cboTail + sizeof(BYTEQUEUE_PACKET) + p->cb;
+        cbEoQ = ((pq->cboHead < cboEoQ) ? pq->cb : pq->cboHead) - cboEoQ;
+        if(cbEoQ >= cbPkt) {
+            // Insert packet at next position in the circular buffer.
+            p->cboNext = (DWORD)cboEoQ;
+            p = (PBYTEQUEUE_PACKET)(pq->pb + p->cboNext);
+        } else if((pq->cboTail > pq->cboHead) && (pq->cboHead >= cbPkt)) {
+            // Insert packet at start of the circular buffer.
+            p->cboNext = 0;
+            p = (PBYTEQUEUE_PACKET)(pq->pb + p->cboNext);
         } else {
+            // Not enough space.
             return FALSE;
         }
     }

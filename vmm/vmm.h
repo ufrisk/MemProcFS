@@ -59,7 +59,10 @@
 #define VMM_FLAG_ALTADDR_VA_PTE                 0x00000080  // alternative address mode - MEM_IO_SCATTER_HEADER.qwA contains PTE instead of VA when calling VmmRead* functions.
 #define VMM_FLAG_NOCACHEPUT                     0x00000100  // do not write back to the data cache upon successful read from memory acquisition device.
 #define VMM_FLAG_CACHE_RECENT_ONLY              0x00000200  // only fetch from the most recent active cache region when reading.
-#define VMM_FLAG_FORCECACHE_READ_DISABLE        0x00000400  // disable/override any use of VMM_FLAG_FORCECACHE_READ. only recommended for local files. improves forensic artifact order.
+#define VMM_FLAG_NO_PREDICTIVE_READ             0x00000400  // (deprecated/unused).
+#define VMM_FLAG_FORCECACHE_READ_DISABLE        0x00000800  // disable/override any use of VMM_FLAG_FORCECACHE_READ. only recommended for local files. improves forensic artifact order.
+#define VMM_FLAG_SCATTER_PREPAREEX_NOMEMZERO    0x00001000  // (no internal use!) do not zero out the memory buffer when preparing a scatter read.
+#define VMM_FLAG_NOMEMCALLBACK                  0x00002000  // do not call user-set memory callback functions when reading memory (even if active).
 #define VMM_FLAG_PAGING_LOOP_PROTECT_BITS       0x00ff0000  // placeholder bits for paging loop protect counter.
 #define VMM_FLAG_NOVAD                          0x01000000  // do not try to retrieve memory from backing VAD even if otherwise possible.
 
@@ -1529,6 +1532,19 @@ typedef struct tdVMM_DYNAMIC_LOAD_FUNCTIONS {
     VMMFN_RtlDecompressBufferEx *RtlDecompressBufferExOpt; // ntdll.dll!RtlDecompressBufferEx
 } VMM_DYNAMIC_LOAD_FUNCTIONS;
 
+// MEM callback function definition.
+typedef VOID(*VMM_MEM_CALLBACK_PFN)(_In_opt_ PVOID ctxUser, _In_ DWORD dwPID, _In_ DWORD cpMEMs, _In_ PPMEM_SCATTER ppMEMs);
+
+// MEM callback types.
+typedef enum tdVMM_MEM_CALLBACK_TP {
+    VMMDLL_MEM_CALLBACK_READ_PHYSICAL_PRE = 1,
+    VMMDLL_MEM_CALLBACK_READ_PHYSICAL_POST = 2,
+    VMMDLL_MEM_CALLBACK_WRITE_PHYSICAL_PRE = 3,
+    VMMDLL_MEM_CALLBACK_READ_VIRTUAL_PRE = 4,
+    VMMDLL_MEM_CALLBACK_READ_VIRTUAL_POST = 5,
+    VMMDLL_MEM_CALLBACK_WRITE_VIRTUAL_PRE = 6,
+} VMM_MEM_CALLBACK_TP;
+
 // forward declarations of non-public types:
 typedef struct tdVMMWORK_CONTEXT            *PVMMWORK_CONTEXT;
 typedef struct tdFC_CONTEXT                 *PFC_CONTEXT;
@@ -1632,6 +1648,21 @@ typedef struct tdVMM_CONTEXT {
     } Cache;
     WCHAR _EmptyWCHAR;
     VMMWIN_OBJECT_TYPE_TABLE ObjectTypeTable;
+    // memory access callback functionality:
+    struct {
+        PVOID ctxReadPhysicalPre;
+        PVOID ctxReadPhysicalPost;
+        PVOID ctxWritePhysicalPre;
+        PVOID ctxReadVirtualPre;
+        PVOID ctxReadVirtualPost;
+        PVOID ctxWriteVirtualPre;
+        VMM_MEM_CALLBACK_PFN pfnReadPhysicalPreCB;
+        VMM_MEM_CALLBACK_PFN pfnReadPhysicalPostCB;
+        VMM_MEM_CALLBACK_PFN pfnWritePhysicalPreCB;
+        VMM_MEM_CALLBACK_PFN pfnReadVirtualPreCB;
+        VMM_MEM_CALLBACK_PFN pfnReadVirtualPostCB;
+        VMM_MEM_CALLBACK_PFN pfnWriteVirtualPreCB;
+    } MemUserCB;
 } VMM_CONTEXT, *PVMM_CONTEXT;
 
 #define VMM_HANDLE_VM_CHILD_MAX_COUNT           32

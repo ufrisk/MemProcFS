@@ -25,6 +25,8 @@ Cargo.lock
 /vmmsharp/example/.vs
 /vmmsharp/example/bin
 /vmmsharp/example/obj
+/vmmsharp/example_48/bin
+/vmmsharp/example_48/obj
 /vmmsharp/vmmsharp/.vs
 /vmmsharp/vmmsharp/bin
 /vmmsharp/vmmsharp/obj
