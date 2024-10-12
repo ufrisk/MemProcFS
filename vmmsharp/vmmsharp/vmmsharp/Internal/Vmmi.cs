@@ -191,11 +191,7 @@ namespace Vmmsharp.Internal
             internal ulong fPage;
             internal bool fWoW64;
             internal uint _FutureUse1;
-#if NET5_0_OR_GREATER
             [MarshalAs(VmmString)] internal string uszText;
-#else
-            [MarshalAs(UnmanagedType.LPWStr)] internal string uszText;
-#endif
             internal uint _Reserved1;
             internal uint cSoftware;
         }
