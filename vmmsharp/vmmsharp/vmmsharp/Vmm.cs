@@ -52,7 +52,7 @@ namespace Vmmsharp
         /// <summary>
         /// Underlying LeechCore handle.
         /// </summary>
-        public LeechCore LeechCore { get; }
+        public virtual LeechCore LeechCore { get; }
 
         /// <summary>
         /// Private zero-argument constructor to prevent instantiation.
