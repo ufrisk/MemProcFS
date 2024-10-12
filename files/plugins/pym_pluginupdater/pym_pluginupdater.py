@@ -7,7 +7,7 @@
 #
 # https://github.com/ufrisk/
 #
-# (c) Ulf Frisk, 2019-2022
+# (c) Ulf Frisk, 2019-2023
 # Author: Ulf Frisk, pcileech@frizk.net
 #
 
@@ -72,19 +72,6 @@ text_desc_regsecrets = "The RegSecrets plugin for MemProcFS provides 'mimikatz' 
 plugin_dir = os.path.realpath(__file__ + os.sep + '..' + os.sep + '..' + os.sep) + os.sep + 'pym_'
 
 plugins = {
-    'pypykatz': {
-        'name': 'pypykatz',
-        'files': ['pypyreader.py', 'sysinfo_helpers.py', '__init__.py', 'pym_pypykatz.py', 'version.txt'],
-        'pid': None,
-        'files_installinfo': ['secrets/pypykatz-install.txt'],
-        'installed': False,
-        'version_installed': '0.0.0',
-        'version_remote': '0.0.0',
-        'upgrade': False,
-        'text_upgrade': text_upgrade + text_desc_pypykatz,
-        'text_install': text_install + text_desc_pypykatz,
-        'text_completed': 'Additional dependencies: "pip install dissect.cstruct pypykatz" may be required.',
-    },
     'regsecrets': {
         'name': 'regsecrets',
         'files': ['__init__.py', 'pym_regsecrets.py', 'version.txt'],
