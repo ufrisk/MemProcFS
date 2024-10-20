@@ -184,6 +184,7 @@ fail:
 * -- pModule
 * -- return
 */
+_Success_(return != NULL)
 PVMMOB_MAP_EAT VmmWinEAT_Initialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pModule)
 {
     BOOL f;
@@ -341,6 +342,7 @@ fail:
 * -- pModule
 * -- return
 */
+_Success_(return != NULL)
 PVMMOB_MAP_IAT VmmWinIAT_Initialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pModule)
 {
     BOOL f;
@@ -1674,6 +1676,7 @@ fail:
 * -- pProcess
 * -- return
 */
+_Success_(return)
 BOOL VmmWinThread_Initialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
 {
     if(pProcess->Map.pObThread) { return TRUE; }

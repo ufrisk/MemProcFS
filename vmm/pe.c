@@ -186,7 +186,7 @@ BOOL PE_GetThunkInfoEAT(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWOR
     VmmReadEx(H, pProcess, vaExportDirectory, pbExportDirectory, cbExportDirectory, &cbRead, VMM_FLAG_ZEROPAD_ON_FAIL);
     if(!cbRead) { goto cleanup; }
     PIMAGE_EXPORT_DIRECTORY exp = (PIMAGE_EXPORT_DIRECTORY)pbExportDirectory;
-    if(!exp || !exp->NumberOfNames || !exp->AddressOfNames) { goto cleanup; }
+    if(!exp || !exp->NumberOfNames || (exp->NumberOfNames > 0x00100000) || !exp->AddressOfNames) { goto cleanup; }
     vaRVAAddrNames = vaModuleBase + exp->AddressOfNames;
     vaNameOrdinals = vaModuleBase + exp->AddressOfNameOrdinals;
     vaRVAAddrFunctions = vaModuleBase + exp->AddressOfFunctions;

@@ -410,6 +410,7 @@
     <ClCompile Include="modules\m_misc_procinfo.c" />
     <ClCompile Include="modules\m_misc_view.c" />
     <ClCompile Include="modules\m_phys2virt.c" />
+    <ClCompile Include="modules\m_proc_console.c" />
     <ClCompile Include="modules\m_proc_file_handles_vads.c" />
     <ClCompile Include="modules\m_proc_file_modules.c" />
     <ClCompile Include="modules\m_proc_handle.c" />

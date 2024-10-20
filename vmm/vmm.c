@@ -2743,6 +2743,7 @@ PVMM_MAP_HEAPENTRY VmmMap_GetHeapEntry(_In_ VMM_HANDLE H, _In_ PVMMOB_MAP_HEAP p
 * CALLER DECREF: ppObHeapAllocMap
 * -- H
 * -- pProcess
+* -- vaHeap = va of heap or heap id.
 * -- ppObHeapAllocMap
 * -- return
 */

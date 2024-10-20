@@ -207,7 +207,13 @@ BOOL CharUtil_WtoU(_In_opt_ LPCWSTR wsz, _In_ DWORD cch, _Maybenull_ _Writable_b
                     // surrogate pair
                     if(cbw + cbu + 1 + 2 + 1 >= cbBuffer) { break; }
                     if(cbw + 1 >= cch) { break; }    // end of string
-                    if(pus[cbw + 1] < 0xD800 || pus[cbw + 1] > 0xDFFF) { goto fail; }    // fail: invalid code point
+                    if(pus[cbw + 1] < 0xD800 || pus[cbw + 1] > 0xDFFF) {
+                        // fail: invalid code point
+                        if((cbw >= 0x10) && (flags & CHARUTIL_FLAG_BAD_UTF8CP_SOFTFAIL)) {
+                            break;
+                        }
+                        goto fail;
+                    }
                     cbu += 2;
                     cbw++;
                 } else {
@@ -228,7 +234,13 @@ BOOL CharUtil_WtoU(_In_opt_ LPCWSTR wsz, _In_ DWORD cch, _Maybenull_ _Writable_b
                 if(c >= 0xD800 && c <= 0xDFFF) {
                     // surrogate pair
                     if(cbw + 1 >= cch) { break; }    // end of string
-                    if(pus[cbw + 1] < 0xD800 || pus[cbw + 1] > 0xDFFF) { goto fail; }    // fail: invalid code point
+                    if(pus[cbw + 1] < 0xD800 || pus[cbw + 1] > 0xDFFF) {
+                        // fail: invalid code point
+                        if((cbw >= 0x10) && (flags & CHARUTIL_FLAG_BAD_UTF8CP_SOFTFAIL)) {
+                            break;
+                        }
+                        goto fail;
+                    }
                     cbu += 2;
                     cbw++;
                 } else {

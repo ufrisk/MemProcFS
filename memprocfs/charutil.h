@@ -18,6 +18,7 @@ typedef unsigned __int64                QWORD, *PQWORD;
 #define CHARUTIL_FLAG_TRUNCATE                  0x0002
 #define CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR   0x0006
 #define CHARUTIL_FLAG_STR_BUFONLY               0x0008
+#define CHARUTIL_FLAG_BAD_UTF8CP_SOFTFAIL       0x0010
 
 /*
 * Check whether a string is an ansi-string (only codepoints between 0-127).

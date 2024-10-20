@@ -196,7 +196,6 @@ v5.7
 * Yara scans of file objects (increased chance of vulnerable driver detection by FindEvil).
 * Improved FPGA performance for smaller reads.
 * Improved [MemProcFS remoting](https://github.com/ufrisk/MemProcFS/wiki/_Remoting) via a remote [LeechAgent](https://github.com/ufrisk/LeechCore/wiki/LeechAgent). Full MemProcFS remote support over SMB - tcp/445. Perfect for memory forensics Incident Response (IR)!
-</details>
 
 v5.8
 * LeechCore API updates for C/C++, C#, Rust, Python, Java.
@@ -212,6 +211,7 @@ v5.8
 * FindEvil: AV detections from Windows Defender residing on the analyzed system.
 * Python API: new functionality (multi-read, type-read) and improved scatter read performance.
 * Support for Proxmox memory dump files.
+</details>
 
 [v5.10](https://github.com/ufrisk/MemProcFS/releases/tag/v5.10)
 * Support for Windows 11 24H2 release.
@@ -233,3 +233,7 @@ v5.8
 * Bug fixes.
 * updates (FindEvil, New signatures, etc.).
 * New APIs for Kernel Objects, Drivers and Devices.
+
+Latest:
+* Bug fixes.
+* New [console module](https://github.com/ufrisk/MemProcFS/wiki/FS_Process_Console) added.

@@ -1291,7 +1291,10 @@ int VmmHeap_qsort_SegmentEntry(PVMM_MAP_HEAP_SEGMENTENTRY p1, PVMM_MAP_HEAP_SEGM
 
 int VmmHeap_qsort_HeapEntry(PVMM_MAP_HEAPENTRY p1, PVMM_MAP_HEAPENTRY p2)
 {
-    return (p1->va < p2->va) ? -1 : ((p1->va > p2->va) ? 1 : 0);
+    if(p1->dwHeapNum == p2->dwHeapNum) {
+        return (p1->va < p2->va) ? -1 : ((p1->va > p2->va) ? 1 : 0);
+    }
+    return (p1->dwHeapNum < p2->dwHeapNum) ? -1 : ((p1->dwHeapNum > p2->dwHeapNum) ? 1 : 0);
 }
 
 /*

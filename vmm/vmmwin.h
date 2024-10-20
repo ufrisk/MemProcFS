@@ -16,6 +16,7 @@
 * -- pModule
 * -- return
 */
+_Success_(return != NULL)
 PVMMOB_MAP_EAT VmmWinEAT_Initialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pModule);
 
 /*
@@ -26,6 +27,7 @@ PVMMOB_MAP_EAT VmmWinEAT_Initialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProces
 * -- pModule
 * -- return
 */
+_Success_(return != NULL)
 PVMMOB_MAP_IAT VmmWinIAT_Initialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pModule);
 
 /*
@@ -101,6 +103,7 @@ BOOL VmmWinUnloadedModule_Initialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProce
 * -- pProcess
 * -- return
 */
+_Success_(return)
 BOOL VmmWinThread_Initialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess);
 
 /*

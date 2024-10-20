@@ -506,6 +506,9 @@
     <ClCompile Include="modules\m_fc_prefetch.c">
       <Filter>Source Files\modules</Filter>
     </ClCompile>
+    <ClCompile Include="modules\m_proc_console.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="vmmdll.def">
