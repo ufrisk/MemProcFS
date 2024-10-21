@@ -431,13 +431,24 @@ BOOL VMMDLL_VfsList_Impl(_In_ VMM_HANDLE H, _In_ LPCSTR uszPath, _Inout_ PHANDLE
 {
     BOOL result = FALSE;
     DWORD dwPID;
-    LPCSTR wszSubPath;
+    LPCSTR uszSubPath;
     PVMM_PROCESS pObProcess;
+    CHAR uszPathBuffer[MAX_PATH];
+    SIZE_T cch;
     if(!VMMDLL_VfsList_IsHandleValid(pFileList)) { return FALSE; }
-    if(uszPath[0] == '\\') { uszPath++; }
-    if(Util_VfsHelper_GetIdDir(uszPath, FALSE, &dwPID, &wszSubPath)) {
+    // strip leading and trailing backslashes:
+    while(uszPath[0] == '\\') { uszPath++; }
+    if((cch = strlen(uszPath)) && (uszPath[cch - 1] == '\\') && (cch < _countof(uszPathBuffer))) {
+        strncpy_s(uszPathBuffer, _countof(uszPathBuffer) - 1, uszPath, _TRUNCATE);
+        while(--cch && (uszPathBuffer[cch] == '\\')) {
+            uszPathBuffer[cch] = 0;
+        }
+        uszPath = uszPathBuffer;
+    }
+    // dispatch:
+    if(Util_VfsHelper_GetIdDir(uszPath, FALSE, &dwPID, &uszSubPath)) {
         if(!(pObProcess = VmmProcessGet(H, dwPID))) { return FALSE; }
-        PluginManager_List(H, pObProcess, wszSubPath, pFileList);
+        PluginManager_List(H, pObProcess, uszSubPath, pFileList);
         Ob_DECREF(pObProcess);
         return TRUE;
     }

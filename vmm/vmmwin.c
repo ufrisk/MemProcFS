@@ -3239,7 +3239,6 @@ VOID VmmWinProcess_OffsetLocator64(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemP
     WORD i, j, cLoopProtect;
     QWORD va1, vaPEB, paPEB, vaP, oP;
     BYTE pbSYSTEM[VMMPROC_EPROCESS64_MAX_SIZE], pbSMSS[VMMPROC_EPROCESS64_MAX_SIZE], pb1[VMMPROC_EPROCESS64_MAX_SIZE], pbPage[0x1000];
-    BYTE pbZero[0x800];
     QWORD paMax, paDTB_0, paDTB_1;
     POB_SET psObOff = NULL, psObVa = NULL;
     ZeroMemory(po, sizeof(VMM_OFFSET_EPROCESS));
@@ -3413,7 +3412,6 @@ VOID VmmWinProcess_OffsetLocator64(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemP
     // System have an entry pointing to a shadow PML4 which has empty user part
     // smss.exe do not have an entry since it's running as admin ...
     {
-        ZeroMemory(pbZero, 0x800);
         paMax = H->dev.paMax;
         for(i = 0x240; i < VMMPROC_EPROCESS64_MAX_SIZE - 8; i += 8) {
             paDTB_0 = *(PQWORD)(pbSYSTEM + i);
@@ -3423,7 +3421,7 @@ VOID VmmWinProcess_OffsetLocator64(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemP
                 !(paDTB_0 & 0xffe) &&
                 (paDTB_0 < paMax) &&
                 VmmReadPage(H, NULL, (paDTB_0 & ~0xfff), pbPage) &&
-                !memcmp(pbPage, pbZero, 0x800) &&
+                !memcmp(pbPage, H->ZERO_PAGE, 0x800) &&
                 VmmTlbPageTableVerify(H, pbPage, (paDTB_0 & ~0xfff), TRUE);
             if(f) {
                 po->DTB_User = i;
@@ -3695,7 +3693,6 @@ VOID VmmWinProcess_OffsetLocator32(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemP
     DWORD va1, vaPEB, vaP, oP;
     QWORD paPEB;
     BYTE pbSYSTEM[VMMPROC_EPROCESS32_MAX_SIZE], pbSMSS[VMMPROC_EPROCESS32_MAX_SIZE], pb1[VMMPROC_EPROCESS32_MAX_SIZE], pbPage[0x1000];
-    //BYTE pbZero[0x800]
     //QWORD paMax, paDTB_0, paDTB_1;
     POB_SET psObOff = NULL, psObVa = NULL;
     ZeroMemory(po, sizeof(VMM_OFFSET_EPROCESS));

@@ -1646,7 +1646,6 @@ typedef struct tdVMM_CONTEXT {
         POB_SET PAGING_FAILED;
         POB_MAP pmPrototypePte;     // map with mm_vad.c managed data
     } Cache;
-    WCHAR _EmptyWCHAR;
     VMMWIN_OBJECT_TYPE_TABLE ObjectTypeTable;
     // memory access callback functionality:
     struct {
@@ -1704,6 +1703,8 @@ typedef struct tdVMM_HANDLE {
     PFC_CONTEXT fc;
     // vmm core:
     VMM_CONTEXT vmm;
+    // utils:
+    BYTE ZERO_PAGE[0x1000];
 } *VMM_HANDLE;
 
 
