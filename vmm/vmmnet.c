@@ -205,12 +205,13 @@ BOOL VmmNet_TcpE_GetAddressEPs(_In_ VMM_HANDLE H, _In_ PVMMNET_CONTEXT ctx, _In_
 {
     BOOL f, f32 = H->vmm.f32, fResult = FALSE;
     QWORD va, va2, va3;
-    DWORD i, j, o, iEntry, oStartHT, oListPT = 0, cbRead, cbTcpHT;
+    DWORD i, j, o, oStartHT, oListPT = 0, cbTcpHT;
     BYTE pb[0x810] = { 0 };
     PBYTE pbPartitionTable = NULL, pbTcHT = NULL;
     POB_SET pObTcHT = NULL, pObHTab_TcpE = NULL, pObTcpE = NULL;
     PRTL_DYNAMIC_HASH_TABLE pTcpHT;
     DWORD dwPoolTag;
+    PVMM_MAP_POOLENTRY pePool;
     PVMM_MAP_POOLENTRYTAG pePoolTag;
     if(!(pObTcHT = ObSet_New(H))) { goto fail; }
     if(!(pObHTab_TcpE = ObSet_New(H))) { goto fail; }
@@ -246,8 +247,8 @@ BOOL VmmNet_TcpE_GetAddressEPs(_In_ VMM_HANDLE H, _In_ PVMMNET_CONTEXT ctx, _In_
     // 2: enumerate possible/interesting TCP hash tables - TcHT.
     while((va = ObSet_Pop(pObTcHT))) {
         ZeroMemory(pbTcHT, cbTcpHT);
-        VmmReadEx(H, pSystemProcess, va, pbTcHT, cbTcpHT, &cbRead, VMM_FLAG_FORCECACHE_READ);
-        if((cbTcpHT != cbRead) || !VMM_POOLTAG_PREPENDED(f32, pbTcHT, 0x10, 'TcHT')) { continue; }
+        if(!VmmRead2(H, pSystemProcess, va, pbTcHT, cbTcpHT, VMM_FLAG_FORCECACHE_READ)) { continue; }
+        if(!VMM_POOLTAG_PREPENDED(f32, pbTcHT, 0x10, 'TcHT')) { continue; }
         // Common TCP Hash Table: Contains TcTW
         if(H->vmm.kernel.dwVersionBuild >= 20348) {
             o = oStartHT - sizeof(RTL_DYNAMIC_HASH_TABLE);
@@ -271,8 +272,7 @@ BOOL VmmNet_TcpE_GetAddressEPs(_In_ VMM_HANDLE H, _In_ PVMMNET_CONTEXT ctx, _In_
     VmmCachePrefetchPages3(H, pSystemProcess, pObHTab_TcpE, 0x810, 0);
     // 3: Enumerate TCP Endpoints 'TcpE' out of the potential 'HTab'
     while((va = ObSet_Pop(pObHTab_TcpE))) {
-        VmmReadEx(H, pSystemProcess, va, pb, 0x810, &cbRead, VMM_FLAG_FORCECACHE_READ);
-        if(0x810 != cbRead) { continue; }
+        if(!VmmRead2(H, pSystemProcess, va, pb, 0x810, VMM_FLAG_FORCECACHE_READ)) { continue; }
         if((*(PDWORD)(pb + 0x04) != 'baTH') && (H->vmm.kernel.dwVersionBuild != 10240)) {
             VmmLog(H, MID_NET, LOGLEVEL_5_DEBUG, "UNEXPECTED POOL HDR: '%c%c%c%c' EXPECT: 'HTab' AT VA: 0x%016llx", pb[4], pb[5], pb[6], pb[7], va);
             continue;
@@ -290,8 +290,7 @@ BOOL VmmNet_TcpE_GetAddressEPs(_In_ VMM_HANDLE H, _In_ PVMMNET_CONTEXT ctx, _In_
     VmmCachePrefetchPages3(H, pSystemProcess, pObTcpE, 0x50, 0);
     // 4: Verify and transfer to outgoing result set pObTcpE_Located
     while((va = ObSet_Pop(pObTcpE))) {
-        VmmReadEx(H, pSystemProcess, va, pb, 0x50, &cbRead, VMM_FLAG_FORCECACHE_READ);
-        if(0x50 != cbRead) { continue; }
+        if(!VmmRead2(H, pSystemProcess, va, pb, 0x50, VMM_FLAG_FORCECACHE_READ)) { continue; }
         if(VMM_POOLTAG_PREPENDED(f32, pb, 0x10, 'TcpE') || VMM_POOLTAG_PREPENDED(f32, pb, 0x10, 'TTcb')) {
             ObSet_Push(psvaOb_TcpE, va + 0x10);
             continue;
@@ -317,9 +316,9 @@ BOOL VmmNet_TcpE_GetAddressEPs(_In_ VMM_HANDLE H, _In_ PVMMNET_CONTEXT ctx, _In_
             if(H->vmm.kernel.dwVersionBuild >= 22000 && dwPoolTag == 'TcpE') { continue; }  // don't parse TcpE on Win11 - rely on TTcb
             if(VmmMap_GetPoolTag(H, pPoolMap, dwPoolTag, &pePoolTag)) {
                 for(j = 0; j < pePoolTag->cEntry; j++) {
-                    iEntry = pPoolMap->piTag2Map[pePoolTag->iTag2Map + j];
-                    if(pPoolMap->pMap[iEntry].cb < 0x800) {
-                        ObSet_Push(psvaOb_TcpE, pPoolMap->pMap[iEntry].va + o);
+                    pePool = pPoolMap->pMap + pPoolMap->piTag2Map[pePoolTag->iTag2Map + j];
+                    if((pePool->cb > 0x100) && (pePool->cb < 0x800)) {
+                        ObSet_Push(psvaOb_TcpE, pePool->va + o);
                     }
                 }
             }
@@ -341,7 +340,7 @@ BOOL VmmNet_TcpE_Enumerate(_In_ VMM_HANDLE H, _In_ PVMMNET_CONTEXT ctx, _In_ PVM
 {
     BOOL f, fResult = FALSE;
     QWORD va, ftTime, vaEPROCESS;
-    DWORD cbRead, c = 0, i;
+    DWORD c = 0, i;
     BYTE pb[0x400] = { 0 };
     PVMM_MAP_NETENTRY pe;
     POB_SET pObPrefetch = NULL;
@@ -354,10 +353,9 @@ BOOL VmmNet_TcpE_Enumerate(_In_ VMM_HANDLE H, _In_ PVMMNET_CONTEXT ctx, _In_ PVM
     VmmCachePrefetchPages3(H, pSystemProcess, ps_TcpE_TTcb, po->_Size, 0);
     // 1: retrieve general info from main struct (TcpE)
     while((va = ObSet_Pop(ps_TcpE_TTcb))) {
-        VmmReadEx(H, pSystemProcess, va, pb, po->_Size, &cbRead, VMM_FLAG_FORCECACHE_READ);
-        if(po->_Size != cbRead) { continue; }
+        if(!VmmRead2(H, pSystemProcess, va, pb, po->_Size, VMM_FLAG_FORCECACHE_READ)) { continue; }
         ftTime = *(PQWORD)(pb + po->Time);
-        if(!ftTime || (ftTime > 0x0200000000000000)) { continue; }
+        if(ftTime > 0x0200000000000000) { continue; }
         if(!VMM_KADDR64_8(*(PQWORD)(pb + po->EProcess)) || !VMM_KADDR64_8(*(PQWORD)(pb + po->INET_AF)) || !VMM_KADDR64_8(*(PQWORD)(pb + po->INET_Addr))) { continue; }
         if(!(pe = LocalAlloc(LMEM_ZEROINIT, sizeof(VMM_MAP_NETENTRY)))) { continue; }
         pe->dwPoolTag = 'TcpE';
@@ -389,8 +387,7 @@ BOOL VmmNet_TcpE_Enumerate(_In_ VMM_HANDLE H, _In_ PVMMNET_CONTEXT ctx, _In_ PVM
         pe->_Reserved1 = 0;
         pe->_Reserved2 = 0;
         // 2.1 fetch INET_AF
-        VmmReadEx(H, pSystemProcess, vaINET_AF - 0x10, pb, 0x30, &cbRead, VMM_FLAG_FORCECACHE_READ);
-        if(0x30 != cbRead) { continue; }
+        if(!VmmRead2(H, pSystemProcess, vaINET_AF - 0x10, pb, 0x30, VMM_FLAG_FORCECACHE_READ)) { continue; }
         if(*(PDWORD)(pb + 0x04) != 'lNnI') {
             if(H->vmm.kernel.dwVersionBuild < 22000) {
                 // on win11 this is very common (and expected). This happens
@@ -405,8 +402,8 @@ BOOL VmmNet_TcpE_Enumerate(_In_ VMM_HANDLE H, _In_ PVMMNET_CONTEXT ctx, _In_ PVM
             continue;
         }
         // 2.2 fetch ptrs to INET_ADDR SRC/DST and queue for prefetch
-        VmmReadEx(H, pSystemProcess, vaINET_Addr, pb, 0x18, &cbRead, VMM_FLAG_FORCECACHE_READ);
-        if((0x18 != cbRead) || !VMM_KADDR64_8(*(PQWORD)(pb + 0x00)) || !VMM_KADDR64_8(*(PQWORD)(pb + 0x10))) { continue; }
+        if(!VmmRead2(H, pSystemProcess, vaINET_Addr, pb, 0x18, VMM_FLAG_FORCECACHE_READ)) { continue; }
+        if(!VMM_KADDR64_8(*(PQWORD)(pb + 0x00)) || !VMM_KADDR64_8(*(PQWORD)(pb + 0x10))) { continue; }
         pe->_Reserved1 = *(PQWORD)(pb + 0x00);  // vaINET_Src
         pe->_Reserved2 = *(PQWORD)(pb + 0x10);  // vaINET_Dst
         ObSet_Push(pObPrefetch, pe->_Reserved1);
@@ -422,8 +419,7 @@ BOOL VmmNet_TcpE_Enumerate(_In_ VMM_HANDLE H, _In_ PVMMNET_CONTEXT ctx, _In_ PVM
         pe->_Reserved2 = 0;
         if((pe->AF == AF_INET) || (pe->AF == AF_INET6)) {
             // 3.1 src address
-            VmmReadEx(H, pSystemProcess, vaINET_Src, pb, 0x18, &cbRead, VMM_FLAG_FORCECACHE_READ);
-            f = (0x18 == cbRead) &&
+            f = VmmRead2(H, pSystemProcess, vaINET_Src, pb, 0x18, VMM_FLAG_FORCECACHE_READ) &&
                 VMM_KADDR64_8(*(PQWORD)(pb + 0x10)) &&
                 VmmRead(H, pSystemProcess, *(PQWORD)(pb + 0x10), pb, 0x08) &&
                 VMM_KADDR64_8(*(PQWORD)pb) &&
@@ -433,8 +429,7 @@ BOOL VmmNet_TcpE_Enumerate(_In_ VMM_HANDLE H, _In_ PVMMNET_CONTEXT ctx, _In_ PVM
                 memcpy(pe->Src.pbAddr, pb, (pe->AF == AF_INET) ? 4 : 16);
             }
             // 3.2 dst address
-            VmmReadEx(H, pSystemProcess, vaINET_Dst, pb, 0x20, &cbRead, VMM_FLAG_FORCECACHE_READ);
-            if(0x20 == cbRead) {
+            if(VmmRead2(H, pSystemProcess, vaINET_Dst, pb, 0x20, VMM_FLAG_FORCECACHE_READ)) {
                 pe->Dst.fValid = TRUE;
                 memcpy(pe->Dst.pbAddr, pb, (pe->AF == AF_INET) ? 4 : 16);
             }
@@ -452,7 +447,7 @@ BOOL VmmNet_TcpTW_Enumerate(_In_ VMM_HANDLE H, _In_ PVMMNET_CONTEXT ctx, _In_ PV
 {
     BOOL f;
     QWORD va;
-    DWORD cbRead, c = 0, i;
+    DWORD c = 0, i;
     BYTE pb[0x400] = { 0 };
     PVMM_MAP_NETENTRY pe;
     POB_SET pObPrefetch = NULL;
@@ -493,8 +488,7 @@ BOOL VmmNet_TcpTW_Enumerate(_In_ VMM_HANDLE H, _In_ PVMMNET_CONTEXT ctx, _In_ PV
         pe->_Reserved1 = 0;
         pe->_Reserved2 = 0;
         // 2.1 fetch INET_AF
-        VmmReadEx(H, pSystemProcess, vaINET_AF - 0x10, pb, 0x30, &cbRead, VMM_FLAG_FORCECACHE_READ);
-        if(0x30 != cbRead) { continue; }
+        if(!VmmRead2(H, pSystemProcess, vaINET_AF - 0x10, pb, 0x30, VMM_FLAG_FORCECACHE_READ)) { continue; }
         if(*(PDWORD)(pb + 0x04) != 'lNnI') {
             VmmLog(H, MID_NET, LOGLEVEL_5_DEBUG, "UNEXPECTED POOL HDR: '%c%c%c%c' EXPECT: 'InNl' AT VA: 0x%016llx", pb[4], pb[5], pb[6], pb[7], vaINET_AF);
             continue;
@@ -505,8 +499,8 @@ BOOL VmmNet_TcpTW_Enumerate(_In_ VMM_HANDLE H, _In_ PVMMNET_CONTEXT ctx, _In_ PV
             continue;
         }
         // 2.2 fetch ptrs to INET_ADDR SRC and queue for prefetch
-        VmmReadEx(H, pSystemProcess, vaINET_Addr, pb, 0x18, &cbRead, VMM_FLAG_FORCECACHE_READ);
-        if((0x18 != cbRead) || !VMM_KADDR64_8(*(PQWORD)(pb + 0x10))) { continue; }
+        if(!VmmRead2(H, pSystemProcess, vaINET_Addr, pb, 0x18, VMM_FLAG_FORCECACHE_READ)) { continue; }
+        if(!VMM_KADDR64_8(*(PQWORD)(pb + 0x10))) { continue; }
         pe->_Reserved1 = *(PQWORD)(pb + 0x10);  // vaINET_Src
         ObSet_Push(pObPrefetch, pe->_Reserved1);
     }
@@ -520,8 +514,7 @@ BOOL VmmNet_TcpTW_Enumerate(_In_ VMM_HANDLE H, _In_ PVMMNET_CONTEXT ctx, _In_ PV
         pe->_Reserved1 = 0;
         if((pe->AF == AF_INET) || (pe->AF == AF_INET6)) {
             // 3.1 src address
-            VmmReadEx(H, pSystemProcess, vaINET_Src, pb, 0x38, &cbRead, VMM_FLAG_FORCECACHE_READ);
-            f = (0x38 == cbRead) &&
+            f = VmmRead2(H, pSystemProcess, vaINET_Src, pb, 0x38, VMM_FLAG_FORCECACHE_READ) &&
                 VMM_KADDR64_8(*(PQWORD)(pb + 0x00)) &&
                 VMM_KADDR64_8(*(PQWORD)(pb + 0x10)) &&
                 VMM_KADDR64_8(*(PQWORD)(pb + 0x18));
@@ -595,7 +588,7 @@ VOID VmmNet_InPP_FilterTcpLUdpA(_In_ POB_MAP pm, _In_ QWORD k, _In_ PVOID v)
 */
 VOID VmmNet_InPP_PostTcpLUdpA(_In_ VMM_HANDLE H, _In_ PVMMNET_CONTEXT ctx, _In_ PVMM_PROCESS pSystemProcess, _Inout_ POB_MAP pmNetEntriesPre, _Inout_ POB_MAP pmNetEntries)
 {
-    DWORD o, cbRead;
+    DWORD o;
     BYTE pb[0x30] = { 0 };
     POB_SET psObPrefetch = NULL;
     POB_MAP pmOb = NULL;
@@ -619,8 +612,7 @@ VOID VmmNet_InPP_PostTcpLUdpA(_In_ VMM_HANDLE H, _In_ PVMMNET_CONTEXT ctx, _In_ 
         pe->_Reserved1 = 0;
         pe->_Reserved2 = 0;
         // 2.1 fetch INET_AF
-        VmmReadEx(H, pSystemProcess, vaINET_AF - 0x10, pb, 0x30, &cbRead, VMM_FLAG_FORCECACHE_READ);
-        if(0x30 != cbRead) { continue; }
+        if(!VmmRead2(H, pSystemProcess, vaINET_AF - 0x10, pb, 0x30, VMM_FLAG_FORCECACHE_READ)) { continue; }
         if(*(PDWORD)(pb + 0x04) != 'lNnI') {
             VmmLog(H, MID_NET, LOGLEVEL_5_DEBUG, "UNEXPECTED POOL HDR: '%c%c%c%c' EXPECT: 'InNl' AT VA: 0x%016llx", pb[4], pb[5], pb[6], pb[7], vaINET_AF);
             continue;
@@ -633,8 +625,8 @@ VOID VmmNet_InPP_PostTcpLUdpA(_In_ VMM_HANDLE H, _In_ PVMMNET_CONTEXT ctx, _In_ 
         // 2.2 fetch ptrs to INET_ADDR SRC and queue for prefetch
         if(vaLocal_Addr) {
             o = ((pe->dwPoolTag == 'UdpA') && H->vmm.kernel.dwVersionBuild >= 10240) ? 0x18 : 0x10;        // UDP-Win10 special offset
-            VmmReadEx(H, pSystemProcess, vaLocal_Addr, pb, 0x20, &cbRead, VMM_FLAG_FORCECACHE_READ);
-            if((0x20 != cbRead) || !VMM_KADDR64_8(*(PQWORD)(pb + o))) { continue; }
+            if(!VmmRead2(H, pSystemProcess, vaLocal_Addr, pb, 0x20, VMM_FLAG_FORCECACHE_READ)) { continue; }
+            if(!VMM_KADDR64_8(*(PQWORD)(pb + o))) { continue; }
             pe->_Reserved2 = *(PQWORD)(pb + o);  // vaSrc
             ObSet_Push(psObPrefetch, pe->_Reserved2);
         } else {
@@ -648,8 +640,8 @@ VOID VmmNet_InPP_PostTcpLUdpA(_In_ VMM_HANDLE H, _In_ PVMMNET_CONTEXT ctx, _In_ 
         if(pe->_Reserved2) {
             vaLocal_Addr = pe->_Reserved2;
             pe->_Reserved2 = 0;
-            VmmReadEx(H, pSystemProcess, vaLocal_Addr, pb, 8, &cbRead, VMM_FLAG_FORCECACHE_READ);
-            if((8 != cbRead) || !VMM_KADDR64_8(*(PQWORD)(pb))) { continue; }
+            if(!VmmRead2(H, pSystemProcess, vaLocal_Addr, pb, 8, VMM_FLAG_FORCECACHE_READ)) { continue; }
+            if(!VMM_KADDR64_8(*(PQWORD)(pb))) { continue; }
             pe->_Reserved2 = *(PQWORD)(pb);  // vaSrc
             ObSet_Push(psObPrefetch, pe->_Reserved2);
         }

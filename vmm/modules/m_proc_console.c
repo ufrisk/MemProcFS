@@ -307,11 +307,10 @@ VOID MCON_Initialize_Win1011_RowRecordParse(_In_ VMM_HANDLE H, _In_ PMCON_OFFSET
 */
 VOID MCON_Initialize_Win11_2(_In_ VMM_HANDLE H, _In_ PMCON_OFFSETS off, _Inout_ PMCON_INIT_CONTEXT ctx)
 {
-    BYTE pbZERO[0x1000] = { 0 };
     QWORD vaScreenInfo = 0;
     DWORD cbo = 0;
     // skip forward:
-    while((cbo + 0x1000 <= ctx->cbAllocation) && !memcmp(ctx->pbAllocation + cbo, pbZERO, 0x1000)) { cbo += 0x1000; }
+    while((cbo + 0x1000 <= ctx->cbAllocation) && !memcmp(ctx->pbAllocation + cbo, H->ZERO_PAGE, 0x1000)) { cbo += 0x1000; }
     cbo += off->cbHeader;
     if(cbo + 0x1000 > ctx->cbAllocation) { return; }
     // test record validity by verifying ptr to "screen info" main object.
@@ -703,7 +702,7 @@ VOID M_ProcConsole_Notify(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _
 BOOL M_ProcConsole_VisibleModule(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
 {
     PVMM_PROCESS pProcess = ctxP->pProcess;
-    return pProcess && (*(PQWORD)pProcess->szName == 0x2e74736f686e6f63);   // "conhost."
+    return pProcess && (*(PQWORD)pProcess->szName == 0x2e74736f686e6f63) && ((*(PDWORD)(pProcess->szName + 8) == 0x0657865));   // "conhost." "exe\0"
 }
 
 /*
