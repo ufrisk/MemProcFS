@@ -160,7 +160,6 @@ VOID VmmWinObjFile_Initialize_SharedCacheMap(_In_ VMM_HANDLE H, _In_ PVMM_PROCES
             (pe->_SHARED_CACHE_MAP.cbFileSize = *(PQWORD)(pb + 0x10 + po->_SHARED_CACHE_MAP.oFileSize)) &&
             (pe->_SHARED_CACHE_MAP.cbSectionSize = *(PQWORD)(pb + 0x10 + po->_SHARED_CACHE_MAP.oSectionSize));
         pe->_SHARED_CACHE_MAP.fValid = f;
-        if(!f) { printf("."); }
         pe->_SHARED_CACHE_MAP.cbFileSizeValid = *(PQWORD)(pb + 0x10 + po->_SHARED_CACHE_MAP.oValidDataLength);
         if(pe->_SHARED_CACHE_MAP.fValid && ((pe->cb == 0) || (pe->_SHARED_CACHE_MAP.cbFileSize < pe->cb))) {
             pe->cb = pe->_SHARED_CACHE_MAP.cbFileSize;
