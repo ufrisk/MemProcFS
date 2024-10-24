@@ -111,7 +111,7 @@ POB_VMMWINOBJ_OBJECT VmmWinObj_CacheGet(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_CO
 //   _UNICODE_STRING
 //   _SECTION_OBJECT_POINTERS
 //     _SHARED_CACHE_MAP
-//     _CONTROL_AREA
+//     _CONTROL_AREA (DATA and/or IMAGE)
 //       _SUBSECTION(s) [follows _CONTROL_AREA]
 //       _SEGMENT
 // ----------------------------------------------------------------------------
@@ -128,45 +128,45 @@ VOID VmmWinObj_ObSectObjPtrs_CleanupCB(POB_VMMWINOBJ_SECTION_OBJECT_POINTERS pOb
 }
 
 /*
-* Filter function for VmmWinObjFile_Initialize_SharedCacheMap.
-*/
-VOID VmmWinObjFile_Initialize_SharedCacheMap_Filter(_In_opt_ PVOID ctx, _In_ POB_SET ps, _In_ QWORD k, _In_ POB_VMMWINOBJ_SECTION_OBJECT_POINTERS v)
-{
-    if(v->_SHARED_CACHE_MAP.va) {
-        ObSet_Push(ps, v->_SHARED_CACHE_MAP.va - 0x10);
-    }
-}
-
-/*
 * Fetch _SHARED_CACHE_MAP data into the OB_VMMWINOBJ_FILE contained by the pm map
 * in a efficient way.
 * -- H
 * -- pSystemProcess
 * -- pm
 */
+
 VOID VmmWinObjFile_Initialize_SharedCacheMap(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_ POB_MAP pmSectObjPtrs)
 {
-    BOOL f, f32 = H->vmm.f32;
     BYTE pb[0x300];
-    POB_VMMWINOBJ_SECTION_OBJECT_POINTERS peObPtr = NULL;
+    BOOL f, f32 = H->vmm.f32;
     PVMM_OFFSET_FILE po = &H->vmm.offset.FILE;
-    // 1: Prefetch valid _SHARED_CACHE_MAP into cache.
-    if(!VmmCachePrefetchPages5(H, pSystemProcess, pmSectObjPtrs, 0x10 + po->_SHARED_CACHE_MAP.cb, 0, (OB_MAP_FILTERSET_PFN_CB)VmmWinObjFile_Initialize_SharedCacheMap_Filter)) { return; }
-    // 2: process _SHARED_CACHE_MAP
-    while((peObPtr = ObMap_GetNext(pmSectObjPtrs, peObPtr))) {
-        f = peObPtr->_SHARED_CACHE_MAP.va &&
-            VmmRead2(H, pSystemProcess, peObPtr->_SHARED_CACHE_MAP.va - 0x10, pb, po->_SHARED_CACHE_MAP.cb, VMM_FLAG_FORCECACHE_READ) &&
-            VMM_POOLTAG_PREPENDED(f32, pb, 0x10, 'CcSc') &&
-            (peObPtr->_SHARED_CACHE_MAP.vaVacbs = VMM_PTR_OFFSET(f32, pb + 0x10, po->_SHARED_CACHE_MAP.oVacbs)) &&
-            VMM_KADDR_4_8(f32, peObPtr->_SHARED_CACHE_MAP.vaVacbs) &&
-            (peObPtr->_SHARED_CACHE_MAP.cbFileSize = *(PQWORD)(pb + 0x10 + po->_SHARED_CACHE_MAP.oFileSize)) &&
-            (peObPtr->_SHARED_CACHE_MAP.cbSectionSize = *(PQWORD)(pb + 0x10 + po->_SHARED_CACHE_MAP.oSectionSize));
-        peObPtr->_SHARED_CACHE_MAP.fValid = f;
-        peObPtr->_SHARED_CACHE_MAP.cbFileSizeValid = *(PQWORD)(pb + 0x10 + po->_SHARED_CACHE_MAP.oValidDataLength);
-        if(peObPtr->_SHARED_CACHE_MAP.fValid && ((peObPtr->cb == 0) || (peObPtr->_SHARED_CACHE_MAP.cbFileSize < peObPtr->cb))) {
-            peObPtr->cb = peObPtr->_SHARED_CACHE_MAP.cbFileSize;
+    POB_VMMWINOBJ_SECTION_OBJECT_POINTERS pe = NULL;
+    PVMMOB_SCATTER hObScatter = NULL;
+    // 1: initialize scatter and prepare:
+    if(!(hObScatter = VmmScatter_Initialize(H, 0))) { return; }
+    while((pe = ObMap_GetNext(pmSectObjPtrs, pe))) {
+        if(pe->_SHARED_CACHE_MAP.va) {
+            VmmScatter_Prepare(hObScatter, pe->_SHARED_CACHE_MAP.va - 0x10, po->_SHARED_CACHE_MAP.cb + 0x10);
         }
     }
+    VmmScatter_Execute(hObScatter, pSystemProcess, 0);
+    // 2: process _SHARED_CACHE_MAP
+    while((pe = ObMap_GetNext(pmSectObjPtrs, pe))) {
+        f = pe->_SHARED_CACHE_MAP.va &&
+            VmmScatter_Read(hObScatter, pe->_SHARED_CACHE_MAP.va - 0x10, po->_SHARED_CACHE_MAP.cb + 0x10, pb, NULL) &&
+            VMM_POOLTAG_PREPENDED(f32, pb, 0x10, 'CcSc') &&
+            (pe->_SHARED_CACHE_MAP.vaVacbs = VMM_PTR_OFFSET(f32, pb + 0x10, po->_SHARED_CACHE_MAP.oVacbs)) &&
+            VMM_KADDR_4_8(f32, pe->_SHARED_CACHE_MAP.vaVacbs) &&
+            (pe->_SHARED_CACHE_MAP.cbFileSize = *(PQWORD)(pb + 0x10 + po->_SHARED_CACHE_MAP.oFileSize)) &&
+            (pe->_SHARED_CACHE_MAP.cbSectionSize = *(PQWORD)(pb + 0x10 + po->_SHARED_CACHE_MAP.oSectionSize));
+        pe->_SHARED_CACHE_MAP.fValid = f;
+        if(!f) { printf("."); }
+        pe->_SHARED_CACHE_MAP.cbFileSizeValid = *(PQWORD)(pb + 0x10 + po->_SHARED_CACHE_MAP.oValidDataLength);
+        if(pe->_SHARED_CACHE_MAP.fValid && ((pe->cb == 0) || (pe->_SHARED_CACHE_MAP.cbFileSize < pe->cb))) {
+            pe->cb = pe->_SHARED_CACHE_MAP.cbFileSize;
+        }
+    }
+    Ob_DECREF(hObScatter);
 }
 
 /*

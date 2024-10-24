@@ -59,9 +59,9 @@
 #define VMM_FLAG_ALTADDR_VA_PTE                 0x00000080  // alternative address mode - MEM_IO_SCATTER_HEADER.qwA contains PTE instead of VA when calling VmmRead* functions.
 #define VMM_FLAG_NOCACHEPUT                     0x00000100  // do not write back to the data cache upon successful read from memory acquisition device.
 #define VMM_FLAG_CACHE_RECENT_ONLY              0x00000200  // only fetch from the most recent active cache region when reading.
-#define VMM_FLAG_NO_PREDICTIVE_READ             0x00000400  // (deprecated/unused).
+//#define VMM_FLAG_NO_PREDICTIVE_READ           0x00000400  // (deprecated/unused).
 #define VMM_FLAG_FORCECACHE_READ_DISABLE        0x00000800  // disable/override any use of VMM_FLAG_FORCECACHE_READ. only recommended for local files. improves forensic artifact order.
-#define VMM_FLAG_SCATTER_PREPAREEX_NOMEMZERO    0x00001000  // (no internal use!) do not zero out the memory buffer when preparing a scatter read.
+#define VMM_FLAG_SCATTER_PREPAREEX_NOMEMZERO    0x00001000  // do not zero out the memory buffer when preparing a scatter read.
 #define VMM_FLAG_NOMEMCALLBACK                  0x00002000  // do not call user-set memory callback functions when reading memory (even if active).
 #define VMM_FLAG_PAGING_LOOP_PROTECT_BITS       0x00ff0000  // placeholder bits for paging loop protect counter.
 #define VMM_FLAG_NOVAD                          0x01000000  // do not try to retrieve memory from backing VAD even if otherwise possible.
@@ -2141,6 +2141,83 @@ typedef struct tdVMM_MEMORY_SEARCH_CONTEXT {
 */
 _Success_(return)
 BOOL VmmSearch(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _Inout_ PVMM_MEMORY_SEARCH_CONTEXT ctxs, _Out_opt_ POB_DATA *ppObAddressResult);
+
+
+
+// ----------------------------------------------------------------------------
+// SCATTER READ MEMORY FUNCTIONALITY BELOW:
+// The scatter functionality is not thread-safe by itself and should only be
+// used in single-threaded contexts or with proper synchronization.
+// ----------------------------------------------------------------------------
+
+typedef struct tdVMMOB_SCATTER *PVMMOB_SCATTER;
+
+/*
+* Initialize a scatter handle which is used to call VmmScatter* functions.
+* CALLER DECREF: return
+* -- H
+* -- flags = flags as in VMM_FLAG_*
+* -- return = handle to be used in VmmScatter_* functions.
+*/
+_Success_(return != NULL)
+PVMMOB_SCATTER VmmScatter_Initialize(_In_ VMM_HANDLE H, _In_ DWORD flags);
+
+/*
+* Prepare (add) a memory range for reading. The buffer pb and the read length
+* *pcbRead will be populated when VmmScatter_Execute() is later called.
+* NB! the buffer pb must not be deallocated when VmmScatter_Execute() is called.
+* -- hS
+* -- va = start address of the memory range to read.
+* -- cb = size of memory range to read.
+* -- pb = buffer to populate with read memory when calling VmmScatter_Execute()
+* -- pcbRead = optional pointer to be populated with number of bytes successfully read.
+* -- return
+*/
+_Success_(return)
+BOOL VmmScatter_PrepareEx(_In_ PVMMOB_SCATTER hS, _In_ QWORD va, _In_ DWORD cb, _Out_writes_opt_(cb) PBYTE pb, _Out_opt_ PDWORD pcbRead);
+
+/*
+* Prepare (add) a memory range for reading. The memory may after a call to
+* VmmScatter_Execute() be retrieved with VmmScatter_Read().
+* -- hS
+* -- va = start address of the memory range to read.
+* -- cb = size of memory range to read.
+* -- return
+*/
+_Success_(return)
+BOOL VmmScatter_Prepare(_In_ PVMMOB_SCATTER hS, _In_ QWORD va, _In_ DWORD cb);
+
+/*
+* Retrieve the memory ranges previously populated with calls to the
+* VmmScatter_Prepare* functions.
+* -- hS
+* -- pProcess = the process to read from, NULL = physical memory.
+* -- flags = flags as in VMM_FLAG_*
+* -- return
+*/
+_Success_(return)
+BOOL VmmScatter_Execute(_In_ PVMMOB_SCATTER hS, _In_ PVMM_PROCESS pProcess, _In_ DWORD flags);
+
+/*
+* Read out memory in previously populated ranges. This function should only be
+* called after the memory has been retrieved using VmmScatter_Execute().
+* -- hS
+* -- va
+* -- cb
+* -- pb
+* -- pcbRead
+* -- return
+*/
+_Success_(return)
+BOOL VmmScatter_Read(_In_ PVMMOB_SCATTER hS, _In_ QWORD va, _In_ DWORD cb, _Out_writes_opt_(cb) PBYTE pb, _Out_opt_ PDWORD pcbRead);
+
+/*
+* Clear/Reset the handle for use in another subsequent read scatter operation.
+* -- hS = the scatter handle to clear for reuse.
+* -- return
+*/
+_Success_(return)
+BOOL VmmScatter_Clear(_In_ PVMMOB_SCATTER hS);
 
 
 

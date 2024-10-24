@@ -207,7 +207,7 @@ VOID MCON_Initialize_Win1011_RowRecordParse(_In_ VMM_HANDLE H, _In_ PMCON_OFFSET
     QWORD va, vaCurrent, vaSelf, vaRowText, vaScreenInfo, vaScreenInfoThis;
     PBYTE pb, pbRowText;
     DWORD cchRowText, cchTextTotal = 0, cRowRecords = 0;
-    VMMDLL_SCATTER_HANDLE hScatter = NULL;
+    PVMMOB_SCATTER hObScatter = NULL;
     // set initial data:
     va = ctx->vaAllocation;
     cb = ctx->cbAllocation;
@@ -240,17 +240,17 @@ VOID MCON_Initialize_Win1011_RowRecordParse(_In_ VMM_HANDLE H, _In_ PMCON_OFFSET
     if(fExternalText) {
         // read record-external text (if necessary):
         cchTextTotal = 0;
-        hScatter = VMMDLL_Scatter_Initialize(H, ctx->pProcess->dwPID, 0);
-        if(!hScatter) { return; }
+        hObScatter = VmmScatter_Initialize(H, 0);
+        if(!hObScatter) { return; }
         // prepare & execute scatter read:
         for(iRowRecord = 0; iRowRecord < cRowRecords; iRowRecord++) {
             cbo = ctx->cbAllocationInitialOffset + iRowRecord * off->cb;
             cchRowText = *(PWORD)(pb + cbo + off->oCountText);
             vaRowText = VMM_PTR_OFFSET(f32, pb, cbo + off->oPtrText);
             fPartialLine = *(PWORD)(pb + cbo + off->oPartialLine) ? TRUE : FALSE;
-            f = VMMDLL_Scatter_PrepareEx(hScatter, vaRowText, cchRowText * 3, ctx->pbBufferText + cchTextTotal * 3, NULL);
+            f = VmmScatter_PrepareEx(hObScatter, vaRowText, cchRowText * 3, ctx->pbBufferText + cchTextTotal * 3, NULL);
             if(!f) {
-                VMMDLL_Scatter_CloseHandle(hScatter);
+                Ob_DECREF_NULL(&hObScatter);
                 return;
             }
             cchTextTotal += cchRowText;
@@ -261,8 +261,8 @@ VOID MCON_Initialize_Win1011_RowRecordParse(_In_ VMM_HANDLE H, _In_ PMCON_OFFSET
                 cchTextTotal++;
             }
         }
-        VMMDLL_Scatter_Execute(hScatter);
-        VMMDLL_Scatter_CloseHandle(hScatter); hScatter = NULL;
+        VmmScatter_Execute(hObScatter, ctx->pProcess, 0);
+        Ob_DECREF_NULL(&hObScatter);
         // parse individual 3-byte characters & finish up:
         pbRowText = ctx->pbBufferText;
         for(i = 0, j = 0; i < cchTextTotal; i++) {
@@ -363,7 +363,7 @@ VOID MCON_Initialize_Win10(_In_ VMM_HANDLE H, _Inout_ PMCON_INIT_CONTEXT ctx)
     DWORD cbPtr = ctx->f32 ? 4 : 8;
     DWORD cbRcd = ctx->f32 ? 0x30 : 0x60;
     BYTE pbRcd[0x60] = { 0 };
-    VMMDLL_SCATTER_HANDLE hScatter = NULL;
+    PVMMOB_SCATTER hObScatter = NULL;
     DWORD i, cboSrc = 0, cboDst = 0, cRowRecords = 0;
     QWORD vaScreenInfo = 0;
     BOOL fInitialVerify = FALSE;
@@ -410,20 +410,20 @@ VOID MCON_Initialize_Win10(_In_ VMM_HANDLE H, _Inout_ PMCON_INIT_CONTEXT ctx)
     // Walk the pointer array and scatter read the entries into the buffer.
     // It's not an issue to use the same buffer since the scatter read will
     // only overwrite the buffer when executed.
-    hScatter = VMMDLL_Scatter_Initialize(H, ctx->pProcess->dwPID, VMMDLL_FLAG_ZEROPAD_ON_FAIL | VMMDLL_FLAG_SCATTER_PREPAREEX_NOMEMZERO);
-    if(!hScatter) { return; }
+    hObScatter = VmmScatter_Initialize(H, VMMDLL_FLAG_ZEROPAD_ON_FAIL | VMM_FLAG_SCATTER_PREPAREEX_NOMEMZERO);
+    if(!hObScatter) { return; }
     while(TRUE) {
         va = VMM_PTR_OFFSET(f32, pbA, cboSrc);
         if(!VMM_UADDR_8_16(f32, va)) { break; }
-        VMMDLL_Scatter_PrepareEx(hScatter, va, off.cb, pbA + cboDst, NULL);
+        VmmScatter_PrepareEx(hObScatter, va, off.cb, pbA + cboDst, NULL);
         cboSrc += cbPtr;
         cboDst += off.cb;
         cRowRecords++;
         if(cboDst > MCON_INIT_BUFFER_SIZE - 0x100) { break; }
     }
     ctx->cbAllocation = cboDst;
-    VMMDLL_Scatter_Execute(hScatter);
-    VMMDLL_Scatter_CloseHandle(hScatter); hScatter = NULL;
+    VmmScatter_Execute(hObScatter, ctx->pProcess, 0);
+    Ob_DECREF_NULL(&hObScatter);
     // fix-up the self-ptr to support self-validation in row-record-parse:
     for(i = 0; i < cRowRecords; i++) {
         cbo = i * off.cb;
@@ -450,7 +450,7 @@ VOID MCON_Initialize_Win7(_In_ VMM_HANDLE H, _Inout_ PMCON_INIT_CONTEXT ctx)
     PBYTE pbA = NULL;
     DWORD iRcd;
     PBYTE pbRcd;
-    VMMDLL_SCATTER_HANDLE hScatter = NULL;
+    PVMMOB_SCATTER hObScatter = NULL;
     QWORD vaRowText, va;
     DWORD cbRowText, cbTextTotal = 0;
     struct {
@@ -496,17 +496,17 @@ VOID MCON_Initialize_Win7(_In_ VMM_HANDLE H, _Inout_ PMCON_INIT_CONTEXT ctx)
         if(*(PWORD)(pbRcd + off.oCountText) >= 0x8000) { return; }
     }
     // Walk the pointer array and scatter read the entries into the text buffer.
-    hScatter = VMMDLL_Scatter_Initialize(H, ctx->pProcess->dwPID, VMMDLL_FLAG_ZEROPAD_ON_FAIL | VMMDLL_FLAG_SCATTER_PREPAREEX_NOMEMZERO);
-    if(!hScatter) { return; }
+    hObScatter = VmmScatter_Initialize(H, VMMDLL_FLAG_ZEROPAD_ON_FAIL | VMMDLL_FLAG_SCATTER_PREPAREEX_NOMEMZERO);
+    if(!hObScatter) { return; }
     for(iRcd = 0; iRcd < cRcd; iRcd++) {
         pbRcd = pbA + iRcd * off.cb;
         cbRowText = (DWORD)(*(PWORD)(pbRcd + off.oCountText)) << 1;
         vaRowText = VMM_PTR_OFFSET(f32, pbRcd, off.oPtrText);
         if(((cbTextTotal + cbRowText) >> 1) >= MCON_SCREEN_MAX_CHARS + 2) { break; }
         if(cbRowText) {
-            f = VMMDLL_Scatter_PrepareEx(hScatter, vaRowText, cbRowText, ctx->pbBufferText + cbTextTotal, NULL);
+            f = VmmScatter_PrepareEx(hObScatter, vaRowText, cbRowText, ctx->pbBufferText + cbTextTotal, NULL);
             if(!f) {
-                VMMDLL_Scatter_CloseHandle(hScatter);
+                Ob_DECREF(hObScatter);
                 return;
             }
             cbTextTotal += cbRowText;
@@ -514,8 +514,8 @@ VOID MCON_Initialize_Win7(_In_ VMM_HANDLE H, _Inout_ PMCON_INIT_CONTEXT ctx)
         ctx->pbBufferText[cbTextTotal++] = 0x0A;
         ctx->pbBufferText[cbTextTotal++] = 0x00;
     }
-    VMMDLL_Scatter_Execute(hScatter);
-    VMMDLL_Scatter_CloseHandle(hScatter); hScatter = NULL;
+    VmmScatter_Execute(hObScatter, ctx->pProcess, 0);
+    Ob_DECREF_NULL(&hObScatter);
     // finalize buffer:
     ctx->pbBufferText[cbTextTotal++] = 0x00;
     ctx->pbBufferText[cbTextTotal++] = 0x00;

@@ -2160,6 +2160,350 @@ fail:
 
 
 // ----------------------------------------------------------------------------
+// SCATTER READ MEMORY FUNCTIONALITY BELOW:
+// ----------------------------------------------------------------------------
+
+#ifdef VMM_64BIT
+#define VMM_SCATTER_MAX_SIZE_TOTAL      0x40000000000
+#else /* VMM_64BIT */
+#define VMM_SCATTER_MAX_SIZE_TOTAL      0x40000000
+#endif /* VMM_64BIT */
+
+#define VMM_SCATTER_MAX_SIZE_SINGLE     0x40000000
+
+typedef struct tdVMM_SCATTER_RANGE {
+    struct tdVMM_SCATTER_RANGE *FLink;
+    QWORD va;
+    PDWORD pcbRead;
+    PBYTE pb;
+    DWORD cb;
+    DWORD cMEMs;
+    MEM_SCATTER MEMs[0];
+} VMM_SCATTER_RANGE, *PVMM_SCATTER_RANGE;
+
+typedef struct tdVMMOB_SCATTER {
+    OB ObHdr;
+    VMM_HANDLE H;
+    DWORD flags;
+    BOOL fExecute;          // read/write is already executed
+    DWORD cPageTotal;
+    DWORD cPageAlloc;
+    POB_MAP pmMEMs;
+    PBYTE pbBuffer;
+    PVMM_SCATTER_RANGE pRanges;
+} VMMOB_SCATTER, *PVMMOB_SCATTER;
+
+_Success_(return)
+BOOL VmmScatter_PrepareInternal(_In_ PVMMOB_SCATTER hS, _In_ QWORD va, _In_ DWORD cb, _Out_writes_opt_(cb) PBYTE pb, _Out_opt_ PDWORD pcbRead)
+{
+    QWORD vaMEM;
+    PMEM_SCATTER pMEM;
+    PVMM_SCATTER_RANGE pr = NULL;
+    DWORD i, iNewMEM = 0, cMEMsRequired, cMEMsPre = 0;
+    // zero out any buffer received
+    if(pb && !(hS->flags & VMM_FLAG_SCATTER_PREPAREEX_NOMEMZERO)) {
+        ZeroMemory(pb, cb);
+    }
+    if(pcbRead) { *pcbRead = 0; }
+    // validity checks
+    if(va + cb < va) { return FALSE; }
+    if(hS->fExecute) { return FALSE; }
+    if(!cb) { return TRUE; }
+    if((cb >= VMM_SCATTER_MAX_SIZE_SINGLE) || (((SIZE_T)hS->cPageTotal << 12) + cb > VMM_SCATTER_MAX_SIZE_TOTAL)) { return FALSE; }
+    // count MEMs (required and pre-existing)
+    cMEMsRequired = ((va & 0xfff) + cb + 0xfff) >> 12;
+    vaMEM = va & ~0xfff;
+    for(i = 0; i < cMEMsRequired; i++) {
+        if(ObMap_ExistsKey(hS->pmMEMs, vaMEM | 1)) {
+            cMEMsPre++;
+        }
+        vaMEM += 0x1000;
+    }
+    // alloc scatter range (including any new MEMs required)
+    if(pb || pcbRead || (cMEMsRequired > cMEMsPre)) {
+        if(!(pr = LocalAlloc(LMEM_ZEROINIT, sizeof(VMM_SCATTER_RANGE) + (cMEMsRequired - cMEMsPre) * sizeof(MEM_SCATTER)))) { return FALSE; }
+        pr->va = va;
+        pr->cb = cb;
+        pr->pb = pb;
+        pr->pcbRead = pcbRead;
+        pr->cMEMs = cMEMsRequired - cMEMsPre;
+        for(i = 0; i < pr->cMEMs; i++) {
+            pMEM = pr->MEMs + i;
+            pMEM->version = MEM_SCATTER_VERSION;
+            pMEM->cb = 0x1000;
+        }
+        pr->FLink = hS->pRanges;
+        hS->pRanges = pr;
+    }
+    // assign addresses and/or buffers to MEMs
+    vaMEM = va & ~0xfff;
+    for(i = 0; i < cMEMsRequired; i++) {
+        if((pMEM = ObMap_GetByKey(hS->pmMEMs, vaMEM | 1))) {
+            // pre-existing MEM
+            if(pMEM->cb != 0x1000) {
+                // pre-existing MEM was a tiny MEM -> since we have two reads
+                // subscribing to this MEM we 'upgrade' it to a full MEM.
+                pMEM->qwA = pMEM->qwA & ~0xfff;
+                pMEM->cb = 0x1000;
+            }
+        } else {
+            // new MEM
+            if(!pr || (pr->cMEMs <= iNewMEM)) {
+                // should never happen!
+                return FALSE;
+            }
+            pMEM = pr->MEMs + iNewMEM;
+            iNewMEM++;
+            pMEM->qwA = vaMEM;
+            if((cMEMsRequired == 1) && (cb <= 0x400)) {
+                // single-page small read -> optimize MEM for small read.
+                // NB! buffer allocation still remains 0x1000 even if not all is used for now.
+                pMEM->cb = (cb + 15) & ~0x7;
+                pMEM->qwA = va & ~0x7;
+                if((pMEM->qwA & 0xfff) + pMEM->cb > 0x1000) {
+                    pMEM->qwA = (pMEM->qwA & ~0xfff) + 0x1000 - pMEM->cb;
+                }
+            }
+            if(!ObMap_Push(hS->pmMEMs, vaMEM | 1, pMEM)) {
+                // should never happen!
+                return FALSE;
+            }
+            hS->cPageTotal++;
+        }
+        if(pb && !pMEM->pb && (vaMEM >= va) && (vaMEM + 0xfff < va + cb)) {
+            pMEM->pb = pb + vaMEM - va;
+            hS->cPageAlloc++;
+        }
+        vaMEM += 0x1000;
+    }
+    return TRUE;
+}
+
+/*
+* Prepare (add) a memory range for reading. The buffer pb and the read length
+* *pcbRead will be populated when VmmScatter_Execute() is later called.
+* NB! the buffer pb must not be deallocated when VmmScatter_Execute() is called.
+* -- hS
+* -- va = start address of the memory range to read.
+* -- cb = size of memory range to read.
+* -- pb = buffer to populate with read memory when calling VmmScatter_Execute()
+* -- pcbRead = optional pointer to be populated with number of bytes successfully read.
+* -- return
+*/
+_Success_(return)
+BOOL VmmScatter_PrepareEx(_In_ PVMMOB_SCATTER hS, _In_ QWORD va, _In_ DWORD cb, _Out_writes_opt_(cb) PBYTE pb, _Out_opt_ PDWORD pcbRead)
+{
+    return VmmScatter_PrepareInternal(hS, va, cb, pb, pcbRead);
+}
+
+/*
+* Prepare (add) a memory range for reading. The memory may after a call to
+* VmmScatter_Execute() be retrieved with VmmScatter_Read().
+* -- hS
+* -- va = start address of the memory range to read.
+* -- cb = size of memory range to read.
+* -- return
+*/
+_Success_(return)
+BOOL VmmScatter_Prepare(_In_ PVMMOB_SCATTER hS, _In_ QWORD va, _In_ DWORD cb)
+{
+    return VmmScatter_PrepareInternal(hS, va, cb, NULL, NULL);
+}
+
+/*
+* Clear/Reset the handle for use in another subsequent read scatter operation.
+* -- hS = the scatter handle to clear for reuse.
+* -- return
+*/
+_Success_(return)
+BOOL VmmScatter_Clear(_In_ PVMMOB_SCATTER hS)
+{
+    PVMM_SCATTER_RANGE pRangeRd, pRangeRdNext = hS->pRanges;
+    hS->fExecute = FALSE;
+    hS->cPageTotal = 0;
+    hS->cPageAlloc = 0;
+    hS->pRanges = NULL;
+    ObMap_Clear(hS->pmMEMs);
+    LocalFree(hS->pbBuffer);
+    hS->pbBuffer = NULL;
+    while(pRangeRdNext) {
+        pRangeRd = pRangeRdNext;
+        pRangeRdNext = pRangeRd->FLink;
+        LocalFree(pRangeRd);
+    }
+    return TRUE;
+}
+
+/*
+* Read out memory in previously populated ranges. This function should only be
+* called after the memory has been retrieved using VmmScatter_Execute().
+* -- hS
+* -- va
+* -- cb
+* -- pb
+* -- pcbRead
+* -- return
+*/
+_Success_(return)
+BOOL VmmScatter_Read(_In_ PVMMOB_SCATTER hS, _In_ QWORD va, _In_ DWORD cb, _Out_writes_opt_(cb) PBYTE pb, _Out_opt_ PDWORD pcbRead)
+{
+    PMEM_SCATTER pMEM;
+    BOOL fResultFirst = FALSE;
+    DWORD cbChunk, cbReadTotal = 0;
+    if(pcbRead) { *pcbRead = 0; }
+    if(va + cb < va) { return FALSE; }
+    if(!hS->fExecute) { return FALSE; }
+    // 1st item may not be page aligned or may be 'tiny' sized MEM:
+    {
+        cbChunk = min(cb, 0x1000 - (va & 0xfff));
+        pMEM = ObMap_GetByKey(hS->pmMEMs, (va & ~0xfff) | 1);
+        if(pMEM && pMEM->f) {
+            if(pMEM->cb == 0x1000) {
+                // normal page-sized MEM:
+                if(pb) {
+                    memcpy(pb, pMEM->pb + (va & 0xfff), cbChunk);
+                    pb += cbChunk;
+                }
+                cbReadTotal += cbChunk;
+                fResultFirst = TRUE;
+            } else if((va >= pMEM->qwA) && (va + cb <= pMEM->qwA + pMEM->cb)) {
+                // tiny MEM with in-range read:
+                if(pb) {
+                    memcpy(pb, pMEM->pb + (va - pMEM->qwA), cbChunk);
+                    pb += cbChunk;
+                }
+                cbReadTotal += cbChunk;
+                fResultFirst = TRUE;
+            }
+        }
+        if(!fResultFirst && pb) {
+            ZeroMemory(pb, cbChunk);
+            pb += cbChunk;
+        }
+        va += cbChunk;
+        cb -= cbChunk;
+    }
+    // page aligned va onwards (read from normal page-sized MEMs):
+    while(cb) {
+        cbChunk = min(cb, 0x1000);
+        pMEM = ObMap_GetByKey(hS->pmMEMs, va | 1);
+        if(pMEM && pMEM->f && (pMEM->cb == 0x1000)) {
+            cbReadTotal += cbChunk;
+            if(pb) {
+                if(pb != pMEM->pb) {
+                    memcpy(pb, pMEM->pb, cbChunk);
+                }
+                pb += cbChunk;
+            }
+        } else {
+            if(pb) {
+                if(pMEM && (pb != pMEM->pb)) {
+                    ZeroMemory(pb, cbChunk);
+                }
+                pb += cbChunk;
+            }
+        }
+        va += cbChunk;
+        cb -= cbChunk;
+    }
+    if(pcbRead) { *pcbRead = cbReadTotal; }
+    return TRUE;
+}
+
+/*
+* Retrieve the memory ranges previously populated with calls to the
+* VmmScatter_Prepare* functions.
+* -- hS
+* -- pProcess = the process to read from, NULL = physical memory.
+* -- flags = flags as in VMM_FLAG_*
+* -- return
+*/
+_Success_(return)
+BOOL VmmScatter_Execute(_In_ PVMMOB_SCATTER hS, _In_ PVMM_PROCESS pProcess, _In_ DWORD flags)
+{
+    DWORD i, cbBuffer, cbBufferAlloc, oBufferAllocMEM = 0;
+    PMEM_SCATTER pMEM;
+    PPMEM_SCATTER ppMEMs;
+    PVMM_SCATTER_RANGE pRange;
+    // validate
+    if(!hS->cPageTotal || (hS->cPageTotal != ObMap_Size(hS->pmMEMs))) { return FALSE; }
+    // alloc (if required)
+    cbBuffer = (hS->cPageTotal - hS->cPageAlloc) * 0x1000;
+    if(!hS->fExecute) {
+        cbBufferAlloc = cbBuffer + hS->cPageTotal * sizeof(PMEM_SCATTER);
+        if(!(hS->pbBuffer = LocalAlloc(LMEM_ZEROINIT, cbBufferAlloc))) { return FALSE; }
+    }
+    ppMEMs = (PPMEM_SCATTER)(hS->pbBuffer + cbBuffer);
+    // fixup MEMs
+    for(i = 0; i < hS->cPageTotal; i++) {
+        pMEM = ObMap_GetByIndex(hS->pmMEMs, i);
+        ppMEMs[i] = pMEM;
+        if(!pMEM->pb) {
+            pMEM->pb = hS->pbBuffer + oBufferAllocMEM;
+            oBufferAllocMEM += 0x1000;
+        } else if(hS->fExecute) {
+            pMEM->f = FALSE;
+            ZeroMemory(pMEM->pb, 0x1000);
+        }
+    }
+    // read scatter
+    if(pProcess) {
+        VmmReadScatterVirtual(hS->H, pProcess, ppMEMs, hS->cPageTotal, flags | hS->flags);
+    } else {
+        VmmReadScatterPhysical(hS->H, ppMEMs, hS->cPageTotal, flags | hS->flags);
+    }
+    hS->fExecute = TRUE;
+    // range fixup (if required)
+    pRange = hS->pRanges;
+    while(pRange) {
+        if(pRange->pb || pRange->pcbRead) {
+            VmmScatter_Read(hS, pRange->va, pRange->cb, pRange->pb, pRange->pcbRead);
+        }
+        pRange = pRange->FLink;
+    }
+    return TRUE;
+}
+
+VOID VmmScatter_CleanupCB(PVMMOB_SCATTER hS)
+{
+    PVMM_SCATTER_RANGE pRangeRd, pRangeRdNext;
+    // dealloc / free
+    Ob_DECREF(hS->pmMEMs);
+    LocalFree(hS->pbBuffer);
+    pRangeRdNext = hS->pRanges;
+    while(pRangeRdNext) {
+        pRangeRd = pRangeRdNext;
+        pRangeRdNext = pRangeRd->FLink;
+        LocalFree(pRangeRd);
+    }
+}
+
+/*
+* Initialize a scatter handle which is used to call VmmScatter* functions.
+* CALLER DECREF: return
+* -- H
+* -- flags = flags as in VMM_FLAG_*
+* -- return = handle to be used in VmmScatter_* functions.
+*/
+_Success_(return != NULL)
+PVMMOB_SCATTER VmmScatter_Initialize(_In_ VMM_HANDLE H, _In_ DWORD flags)
+{
+    PVMMOB_SCATTER hS = NULL;
+    if(!(hS = Ob_AllocEx(H, OB_TAG_VMM_SCATTER, LMEM_ZEROINIT, sizeof(VMMOB_SCATTER), (OB_CLEANUP_CB)VmmScatter_CleanupCB, NULL))) {
+        return NULL;
+    }
+    if(!(hS->pmMEMs = ObMap_New(H, OB_MAP_FLAGS_OBJECT_VOID))) {
+        Ob_DECREF(hS);
+        return NULL;
+    }
+    hS->H = H;
+    hS->flags = flags;
+    return hS;
+}
+
+
+
+// ----------------------------------------------------------------------------
 // SEARCH MEMORY FUNCTIONALITY BELOW:
 // ----------------------------------------------------------------------------
 

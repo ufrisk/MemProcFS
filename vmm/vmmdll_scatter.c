@@ -1,4 +1,4 @@
-// vmmdll_scatter.c : implementation of the exported VMMDDLL_Scatter_* functions.
+// vmmdll_scatter.c : implementation of the exported VMMDLL_Scatter_* functions.
 // 
 // This API is a wrapper API around the VMMDLL_MemReadScatter API call.
 //
@@ -448,7 +448,7 @@ BOOL VMMDLL_Scatter_ExecuteReadInternal(_In_ PSCATTER_CONTEXT ctx)
     if(ctx->HVM) {
         VMMDLL_VmMemReadScatter(ctx->H, ctx->HVM, ppMEMs, ctx->cPageTotal, 0);
     } else {
-        VMMDLL_MemReadScatter(ctx->H, ctx->dwPID, ppMEMs, ctx->cPageTotal, ctx->dwReadFlags | VMMDLL_FLAG_NO_PREDICTIVE_READ);
+        VMMDLL_MemReadScatter(ctx->H, ctx->dwPID, ppMEMs, ctx->cPageTotal, ctx->dwReadFlags);
     }
     ctx->fExecute = TRUE;
     // range fixup (if required)
