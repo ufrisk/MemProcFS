@@ -191,6 +191,7 @@ int main(_In_ int argc, _In_ char* argv[])
     DWORD dw = 0;
     QWORD va;
     BYTE pbPage1[0x1000], pbPage2[0x1000];
+    CHAR usz[MAX_PATH];
 
 #ifdef _INITIALIZE_FROM_FILE
     // Initialize PCILeech DLL with a memory dump file.
@@ -875,7 +876,7 @@ int main(_In_ int argc, _In_ char* argv[])
         return 1;
     }
 
-
+    
     // Retrieve the module of kernel32.dll by its name. Note it is also possible
     // to retrieve it by retrieving the complete module map (list) and iterate
     // over it. But if the name of the module is known this is more convenient.
@@ -905,7 +906,7 @@ int main(_In_ int argc, _In_ char* argv[])
         return 1;
     }
 
-
+    
     // Retrieve the memory at the base of kernel32.dll previously fetched and
     // display the first 0x200 bytes of it. This read is fetched from the cache
     // by default (if possible). If reads should be forced from the DMA device
@@ -1585,7 +1586,102 @@ int main(_In_ int argc, _In_ char* argv[])
         }
     }
 
-    
+
+
+
+    // PDB/Symbol functionality: Get the module name of a loaded PDB file.
+    printf("------------------------------------------------------------\n");
+    printf("# PDB: Get the PDB file path of kernel32.dll                \n");
+    ShowKeyPress();
+    printf("CALL:    VMMDLL_Map_GetModuleFromNameU\n");
+    PVMMDLL_MAP_MODULEENTRY pPdbModuleEntryNtdll;
+    result = VMMDLL_Map_GetModuleFromNameU(hVMM, dwPID, "ntdll.dll", &pPdbModuleEntryNtdll, 0);
+    if(!result) {
+        printf("FAIL:    VMMDLL_Map_GetModuleFromNameU\n");
+        return 1;
+    }
+    printf("CALL:    VMMDLL_PdbLoad\n");
+    CHAR szPdbModuleName_NtDll[MAX_PATH] = { 0 };
+    result = VMMDLL_PdbLoad(hVMM, dwPID, pPdbModuleEntryNtdll->vaBase, szPdbModuleName_NtDll);
+    if(!result) {
+        printf("FAIL:    VMMDLL_PdbLoad\n");
+        return 1;
+    }
+    printf("SUCCESS: VMMDLL_PdbLoad [%s]\n", szPdbModuleName_NtDll);
+
+
+    // PDB/Symbol functionality: Get the address of the symbol/function 'ntdll!LdrLoadDll'
+    printf("------------------------------------------------------------\n");
+    printf("# PDB: Get symbol address of ntdll.dll!LdrLoadDll    \n");
+    ShowKeyPress();
+    printf("CALL:    VMMDLL_PdbSymbolAddress\n");
+    QWORD vaPdbSymbolAddress_LdrLoadDll = 0;
+    result = VMMDLL_PdbSymbolAddress(hVMM, szPdbModuleName_NtDll, "LdrLoadDll", &vaPdbSymbolAddress_LdrLoadDll);
+    if(!result) {
+        printf("FAIL:    VMMDLL_PdbSymbolAddress\n");
+        return 1;
+    }
+    printf("SUCCESS: VMMDLL_PdbSymbolAddress [%llx]\n", vaPdbSymbolAddress_LdrLoadDll);
+
+
+    // PDB/Symbol functionality: Get the symbol (exactly/near) of the address of the function 'LdrLoadDll'
+    printf("------------------------------------------------------------\n");
+    printf("# PDB: Get symbol name exactly/near(+0) address             \n");
+    ShowKeyPress();
+    printf("CALL:    VMMDLL_PdbSymbolName\n");
+    DWORD dwPdbSymbolDisplacement1 = 0;
+    result = VMMDLL_PdbSymbolName(hVMM, szPdbModuleName_NtDll, vaPdbSymbolAddress_LdrLoadDll, usz, &dwPdbSymbolDisplacement1);
+    if(!result) {
+        printf("FAIL:    VMMDLL_PdbSymbolName\n");
+        return 1;
+    }
+    printf("SUCCESS: VMMDLL_PdbSymbolName name:[%s] displacement:[%x]\n", usz, dwPdbSymbolDisplacement1);
+
+
+    // PDB/Symbol functionality: Get the symbol (exactly/near) of the address of the function 'LdrLoadDll'
+    printf("------------------------------------------------------------\n");
+    printf("# PDB: Get symbol name near(+10) address                    \n");
+    ShowKeyPress();
+    printf("CALL:    VMMDLL_PdbSymbolName\n");
+    DWORD dwPdbSymbolDisplacement2 = 0;
+    result = VMMDLL_PdbSymbolName(hVMM, szPdbModuleName_NtDll, vaPdbSymbolAddress_LdrLoadDll + 0x10, usz, &dwPdbSymbolDisplacement2);
+    if(!result) {
+        printf("FAIL:    VMMDLL_PdbSymbolName\n");
+        return 1;
+    }
+    printf("SUCCESS: VMMDLL_PdbSymbolName name:[%s] displacement:[%x]\n", usz, dwPdbSymbolDisplacement2);
+
+
+    // PDB/Symbol functionality: Get type size of the kernel structure '_EPROCESS'
+    // The kernel is a special 'module' which is loaded by the name of 'nt', i.e.
+    // no previous call to 'VMMDLL_PdbLoad()' is required.
+    printf("------------------------------------------------------------\n");
+    printf("# PDB: Get type size of _EPROCESS                           \n");
+    ShowKeyPress();
+    printf("CALL:    VMMDLL_PdbTypeSize\n");
+    DWORD dwPdbTypeSize = 0;
+    result = VMMDLL_PdbTypeSize(hVMM, "nt", "_EPROCESS", &dwPdbTypeSize);
+    if(!result) {
+        printf("FAIL:    VMMDLL_PdbTypeSize\n");
+        return 1;
+    }
+    printf("SUCCESS: VMMDLL_PdbTypeSize name:[_EPROCESS] type_size:[%x]\n", dwPdbTypeSize);
+
+
+    // PDB/Symbol functionality: Get type offset of the _EPROCESS.Token child member.
+    // The kernel is a special 'module' which is loaded by the name of 'nt', i.e.
+    // no previous call to 'VMMDLL_PdbLoad()' is required.
+    printf("------------------------------------------------------------\n");
+    printf("# PDB: Get type child offset of _EPROCESS.Token              \n");
+    ShowKeyPress();
+    printf("CALL:    VMMDLL_PdbTypeChildOffset\n");
+    DWORD dwPdbTypeChildOffset = 0;
+    result = VMMDLL_PdbTypeChildOffset(hVMM, "nt", "_EPROCESS", "Token", &dwPdbTypeChildOffset);
+    if(!result) {
+        printf("FAIL:    VMMDLL_PdbTypeChildOffset\n");
+        return 1;
+    }
+    printf("SUCCESS: VMMDLL_PdbTypeChildOffset name:[_EPROCESS.Token] child_offset:[%x]\n", dwPdbTypeChildOffset);
 
 
 
