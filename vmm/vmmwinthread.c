@@ -1,3 +1,10 @@
+// CallStack unwinding features for threads in memory dumps
+//
+// Contributed under BSD 0-Clause License (0BSD)
+// Author: MattCore71
+//
+
+
 #include <vmmwinthread.h>
 #define _INITIALIZE_FROM_FILE    "file.raw"
 
