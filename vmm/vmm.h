@@ -63,6 +63,7 @@
 #define VMM_FLAG_FORCECACHE_READ_DISABLE        0x00000800  // disable/override any use of VMM_FLAG_FORCECACHE_READ. only recommended for local files. improves forensic artifact order.
 #define VMM_FLAG_SCATTER_PREPAREEX_NOMEMZERO    0x00001000  // do not zero out the memory buffer when preparing a scatter read.
 #define VMM_FLAG_NOMEMCALLBACK                  0x00002000  // do not call user-set memory callback functions when reading memory (even if active).
+#define VMM_FLAG_SCATTER_FORCE_PAGEREAD         0x00004000  // force page-sized reads when using scatter functionality.
 #define VMM_FLAG_PAGING_LOOP_PROTECT_BITS       0x00ff0000  // placeholder bits for paging loop protect counter.
 #define VMM_FLAG_NOVAD                          0x01000000  // do not try to retrieve memory from backing VAD even if otherwise possible.
 
@@ -1357,10 +1358,19 @@ typedef struct tdVMM_OFFSET_FILE {
     struct {
         WORD cb;
         WORD oDeviceObject;
+        WORD oFsContext;
         WORD oSectionObjectPointer;
         WORD oFileName;
         WORD oFileNameBuffer;
     } _FILE_OBJECT;
+    struct {
+        WORD cb;
+        WORD oVersion;
+        WORD oResource;
+        WORD oAllocationSize;
+        WORD oFileSize;
+        WORD oValidDataLength;
+    } _FSRTL_COMMON_FCB_HEADER;
     struct {
         WORD cb;
         WORD oDataSectionObject;
@@ -1388,8 +1398,14 @@ typedef struct tdVMM_OFFSET_FILE {
     } _CONTROL_AREA;
     struct {
         WORD cb;
+        WORD oImageFileSize;
+    } _SECTION_IMAGE_INFORMATION;
+    struct {
+        WORD cb;
         WORD oControlArea;
+        WORD oSegmentFlags;
         WORD oSizeOfSegment;
+        WORD oU2;
         WORD oPrototypePte;
     } _SEGMENT;
     struct {
@@ -2188,15 +2204,37 @@ _Success_(return)
 BOOL VmmScatter_Prepare(_In_ PVMMOB_SCATTER hS, _In_ QWORD va, _In_ DWORD cb);
 
 /*
+* Prepare (add) multiple memory ranges. The memory may after a call to
+* VmmScatter_Execute() be retrieved with VmmScatter_Read().
+* -- hS
+* -- psva = set with addresses to read.
+* -- cb = size of memory range to read.
+* -- return
+*/
+_Success_(return)
+BOOL VmmScatter_Prepare3(_In_ PVMMOB_SCATTER hS, _In_opt_ POB_SET psva, _In_ DWORD cb);
+
+/*
+* Prepare (add) multiple memory ranges. The memory may after a call to
+* VmmScatter_Execute() be retrieved with VmmScatter_Read().
+* -- hS
+* -- pm = map of objects.
+* -- cb = size of memory range to read.
+* -- pfnFilterCB = filter as required by ObMap_FilterSet function.
+* -- return
+*/
+_Success_(return)
+BOOL VmmScatter_Prepare5(_In_ PVMMOB_SCATTER hS, _In_opt_ POB_MAP pm, _In_ DWORD cb, _In_ OB_MAP_FILTERSET_PFN_CB pfnFilterCB);
+
+/*
 * Retrieve the memory ranges previously populated with calls to the
 * VmmScatter_Prepare* functions.
 * -- hS
 * -- pProcess = the process to read from, NULL = physical memory.
-* -- flags = flags as in VMM_FLAG_*
 * -- return
 */
 _Success_(return)
-BOOL VmmScatter_Execute(_In_ PVMMOB_SCATTER hS, _In_ PVMM_PROCESS pProcess, _In_ DWORD flags);
+BOOL VmmScatter_Execute(_In_ PVMMOB_SCATTER hS, _In_ PVMM_PROCESS pProcess);
 
 /*
 * Read out memory in previously populated ranges. This function should only be

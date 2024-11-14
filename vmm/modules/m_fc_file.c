@@ -20,11 +20,12 @@ LPCSTR szMFCFILE_README =
 "---                                                                          \n" \
 "Documentation: https://github.com/ufrisk/MemProcFS/wiki/FS_Forensic_Files    \n";
 
-static LPSTR MMFCFILE_CSV_FILES = "Object,Type,Size,File,Path\n";
+static LPSTR MMFCFILE_CSV_FILES = "Object,Type,SignInfo,Size,File,Path\n";
 
 typedef struct tdMFCFILE_ENTRY {
     LPSTR uszName;
     QWORD va;
+    BOOL fDuplicate;
     union {
         QWORD cb;
         struct {
@@ -129,6 +130,7 @@ BOOL MFcFile_ContextInitialize_2_FillFiles(_In_ VMM_HANDLE H, _In_ PMFCFILE_CONT
             cboFileEntryBuffer += sizeof(MFCFILE_ENTRY);
             pEntry->va = pObFileObj->va;
             pEntry->cb = pObFileObj->cb;
+            pEntry->fDuplicate = pObFileObj->fDuplicate;
             ObStrMap_PushPtrUU(psmOb, pObFileObj->uszName, &pEntry->uszName, NULL);
             // fetch and set parent directory entry (recursively):
             uszName = CharUtil_PathSplitLastInPlace(uszPath);
@@ -158,30 +160,21 @@ fail:
     return fResult;
 }
 
-LPSTR MFcFile_GetType(_In_ POB_VMMWINOBJ_FILE pFile)
-{
-    if(pFile->pSectionObjectPointers) {
-        if(pFile->pSectionObjectPointers->fCache) {
-            return "Cache";
-        } else if(pFile->pSectionObjectPointers->fData) {
-            return "Data";
-        } else if(pFile->pSectionObjectPointers->fImage) {
-            return "Image";
-        }
-    }
-    return "N/A";
-}
-
 VOID MFcFile_ContextInitialize_3_GenerateSummaryFile(_In_ VMM_HANDLE H, _In_ PMFCFILE_CONTEXT ctx, PMFCFILE_ENTRY pEntry)
 {
     DWORD i;
+    CHAR szType[5] = { 0 };
     POB_VMMWINOBJ_FILE pObFileObj = NULL;
     // file:
     if(pEntry->va && (pObFileObj = ObMap_GetByKey(ctx->Init.pmFileObj, pEntry->va))) {
-        ObMemFile_AppendStringEx(ctx->pmfFiles, "%04x %016llx %-5s %10llu %-64.64s %s\n",
+        szType[0] = pObFileObj->pData ? 'D' : '-';
+        szType[1] = pObFileObj->pCache ? 'C' : '-';
+        szType[2] = pObFileObj->pImage ? 'I' : '-';
+        szType[3] = pObFileObj->fDuplicate ? 'X' : '-';
+        ObMemFile_AppendStringEx(ctx->pmfFiles, "%04x %016llx %s %10llu %-64.64s %s\n",
             ctx->Init.iFileEntry++,
             pObFileObj->va,
-            MFcFile_GetType(pObFileObj),
+            szType,
             pObFileObj->cb,
             pObFileObj->uszName,
             pObFileObj->uszPath
@@ -238,14 +231,28 @@ PVOID MFcFile_FcInitialize(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
 VOID MFcFile_FcLogCSV_DoWork(_In_ VMM_HANDLE H, _In_ PMFCFILE_CONTEXT ctx, PMFCFILE_ENTRY pEntry, _In_ VMMDLL_CSV_HANDLE hCSV)
 {
     DWORD i;
+    LPCSTR szSign = "";
+    CHAR szType[MAX_PATH];
     POB_VMMWINOBJ_FILE pObFileObj = NULL;
     // file:
     if(pEntry->va && (pObFileObj = ObMap_GetByKey(ctx->Init.pmFileObj, pEntry->va))) {
+        // type:
+        szType[0] = '\0';
+        szType[1] = '\0';
+        if(pObFileObj->pData) { strcat_s(szType, _countof(szType), ",Data"); }
+        if(pObFileObj->pCache) { strcat_s(szType, _countof(szType), ",Cache"); }
+        if(pObFileObj->pImage) { strcat_s(szType, _countof(szType), ",Image"); }
+        if(pObFileObj->fDuplicate) { strcat_s(szType, _countof(szType), ",Dup"); }
+        // sign info:
+        if(pObFileObj->pImage && pObFileObj->pImage->_SEGMENT.bImageSigningType && pObFileObj->pImage->_SEGMENT.bImageSigningLevel) {
+            szSign = SE_SIGNING_LEVEL_STR[pObFileObj->pImage->_SEGMENT.bImageSigningLevel];
+        }
         // csv file append:
         FcCsv_Reset(hCSV);
-        FcFileAppend(H, "files.csv", "0x%llx,%s,%llu,%s,%s\n",
+        FcFileAppend(H, "files.csv", "0x%llx,\"%s\",%s,%llu,%s,%s\n",
             pObFileObj->va,
-            FcCsv_String(hCSV, MFcFile_GetType(pObFileObj)),
+            szType + 1,
+            szSign,
             pObFileObj->cb,
             FcCsv_String(hCSV, pObFileObj->uszName),
             FcCsv_String(hCSV, pObFileObj->uszPath)
@@ -293,7 +300,7 @@ NTSTATUS MFcFile_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_
         uszFile = CharUtil_PathSplitLast(ctxP->uszPath);
         va = strtoull(uszFile, NULL, 16);
         if((pObFile = VmmWinObjFile_GetByVa(H, va))) {
-            *pcbRead = VmmWinObjFile_Read(H, pObFile, cbOffset, pb, cb, 0);
+            *pcbRead = VmmWinObjFile_Read(H, pObFile, cbOffset, pb, cb, 0, VMMWINOBJ_FILE_TP_DEFAULT);
             Ob_DECREF(pObFile);
             return *pcbRead ? VMM_STATUS_SUCCESS : VMM_STATUS_END_OF_FILE;
         }
@@ -327,8 +334,10 @@ BOOL MFcFile_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ P
             for(i = 0; i < pDir->cChild; i++) {
                 pEntry = pDir->pChild[i];
                 if(pEntry->va) {
-                    _snprintf_s(uszFileName, _countof(uszFileName), _TRUNCATE, "%llx-%s", pEntry->va, pEntry->uszName);
-                    VMMDLL_VfsList_AddFile(pFileList, uszFileName, pEntry->cb, NULL);
+                    if(!pEntry->fDuplicate) {
+                        _snprintf_s(uszFileName, _countof(uszFileName), _TRUNCATE, "%llx-%s", pEntry->va, pEntry->uszName);
+                        VMMDLL_VfsList_AddFile(pFileList, uszFileName, pEntry->cb, NULL);
+                    }
                 } else {
                     if(pEntry->uszName[0]) {
                         VMMDLL_VfsList_AddDirectory(pFileList, pEntry->uszName, NULL);

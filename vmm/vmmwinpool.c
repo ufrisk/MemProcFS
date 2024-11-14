@@ -19,6 +19,7 @@
 #include "vmmwindef.h"
 #include "pdb.h"
 #include "util.h"
+#include "statistics.h"
 
 #define VMMWINPOOL_PREFETCH_BUFFER_SIZE     0x00800000
 
@@ -1316,13 +1317,16 @@ PVMMOB_MAP_POOL VmmWinPool_Initialize(_In_ VMM_HANDLE H, _In_ BOOL fAll)
 {
     PVMM_PROCESS pObSystemProcess = NULL;
     PVMMOB_MAP_POOL pObPoolBig = NULL, pObPoolAll = NULL;
+    VMMSTATISTICS_LOG Statistics = { 0 };
     if(fAll && (pObPoolAll = ObContainer_GetOb(H->vmm.pObCMapPoolAll))) { return pObPoolAll; }
     if((pObPoolBig = ObContainer_GetOb(H->vmm.pObCMapPoolBig)) && !fAll) { return pObPoolBig; }
     // fetch big pool map (if required)
     if(!pObPoolBig && (pObSystemProcess = VmmProcessGet(H, 4))) {
         EnterCriticalSection(&H->vmm.LockUpdateMap);
         if(!(pObPoolBig = ObContainer_GetOb(H->vmm.pObCMapPoolBig))) {
+            VmmStatisticsLogStart(H, MID_POOL, LOGLEVEL_6_TRACE, NULL, &Statistics, "INIT POOL(BIG)");
             pObPoolBig = VmmWinPool_Initialize_BigPool_DoWork(H, pObSystemProcess);
+            VmmStatisticsLogEnd(H, &Statistics, "INIT POOL(BIG)");
             ObContainer_SetOb(H->vmm.pObCMapPoolBig, pObPoolBig);
         }
         LeaveCriticalSection(&H->vmm.LockUpdateMap);
@@ -1333,7 +1337,9 @@ PVMMOB_MAP_POOL VmmWinPool_Initialize(_In_ VMM_HANDLE H, _In_ BOOL fAll)
     if(!pObPoolAll && (pObSystemProcess = VmmProcessGet(H, 4))) {
         EnterCriticalSection(&H->vmm.LockUpdateMap);
         if(!(pObPoolAll = ObContainer_GetOb(H->vmm.pObCMapPoolAll))) {
+            VmmStatisticsLogStart(H, MID_POOL, LOGLEVEL_6_TRACE, NULL, &Statistics, "INIT POOL(ALL)");
             pObPoolAll = VmmWinPool_Initialize_AllPool_DoWork(H, pObSystemProcess, pObPoolBig);
+            VmmStatisticsLogEnd(H, &Statistics, "INIT POOL(ALL)");
             if(!pObPoolAll) {
                 // if all pool map fail - fallback to big pool map
                 pObPoolAll = Ob_INCREF(pObPoolBig);

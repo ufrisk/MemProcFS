@@ -240,7 +240,7 @@ VOID MCON_Initialize_Win1011_RowRecordParse(_In_ VMM_HANDLE H, _In_ PMCON_OFFSET
     if(fExternalText) {
         // read record-external text (if necessary):
         cchTextTotal = 0;
-        hObScatter = VmmScatter_Initialize(H, 0);
+        hObScatter = VmmScatter_Initialize(H, VMM_FLAG_SCATTER_FORCE_PAGEREAD);
         if(!hObScatter) { return; }
         // prepare & execute scatter read:
         for(iRowRecord = 0; iRowRecord < cRowRecords; iRowRecord++) {
@@ -261,7 +261,7 @@ VOID MCON_Initialize_Win1011_RowRecordParse(_In_ VMM_HANDLE H, _In_ PMCON_OFFSET
                 cchTextTotal++;
             }
         }
-        VmmScatter_Execute(hObScatter, ctx->pProcess, 0);
+        VmmScatter_Execute(hObScatter, ctx->pProcess);
         Ob_DECREF_NULL(&hObScatter);
         // parse individual 3-byte characters & finish up:
         pbRowText = ctx->pbBufferText;
@@ -422,7 +422,7 @@ VOID MCON_Initialize_Win10(_In_ VMM_HANDLE H, _Inout_ PMCON_INIT_CONTEXT ctx)
         if(cboDst > MCON_INIT_BUFFER_SIZE - 0x100) { break; }
     }
     ctx->cbAllocation = cboDst;
-    VmmScatter_Execute(hObScatter, ctx->pProcess, 0);
+    VmmScatter_Execute(hObScatter, ctx->pProcess);
     Ob_DECREF_NULL(&hObScatter);
     // fix-up the self-ptr to support self-validation in row-record-parse:
     for(i = 0; i < cRowRecords; i++) {
@@ -514,7 +514,7 @@ VOID MCON_Initialize_Win7(_In_ VMM_HANDLE H, _Inout_ PMCON_INIT_CONTEXT ctx)
         ctx->pbBufferText[cbTextTotal++] = 0x0A;
         ctx->pbBufferText[cbTextTotal++] = 0x00;
     }
-    VmmScatter_Execute(hObScatter, ctx->pProcess, 0);
+    VmmScatter_Execute(hObScatter, ctx->pProcess);
     Ob_DECREF_NULL(&hObScatter);
     // finalize buffer:
     ctx->pbBufferText[cbTextTotal++] = 0x00;

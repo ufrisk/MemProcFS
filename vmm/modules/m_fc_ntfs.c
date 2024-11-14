@@ -612,7 +612,7 @@ VOID FcNtfs2_InitMft(_In_ VMM_HANDLE H, _In_ POB_FCNTFS2_INIT_CONTEXT ctx, _In_ 
     while(oFile < pFile->cb) {
         cbBuffer = (DWORD)min(0x00100000, pFile->cb - oFile);
         ZeroMemory(ctx->pb1M, 0x00100000);
-        VmmWinObjFile_Read(H, pFile, oFile, ctx->pb1M, cbBuffer, 0);
+        VmmWinObjFile_Read(H, pFile, oFile, ctx->pb1M, cbBuffer, 0, VMMWINOBJ_FILE_TP_DEFAULT);
         for(oBuffer = 0; oBuffer < cbBuffer; oBuffer += 0x400) {
             if((oBuffer & 0xfff) == 0) { pa = 0; }
             pR = (PNTFS_FILE_RECORD)(ctx->pb1M + oBuffer);
@@ -646,7 +646,7 @@ VOID FcNtfs2_InitDir(_In_ VMM_HANDLE H, _In_ POB_FCNTFS2_INIT_CONTEXT ctx, _In_ 
     while(oFile < pFile->cb) {
         cbBuffer = (DWORD)min(0x00100000, pFile->cb - oFile);
         ZeroMemory(ctx->pb1M, 0x00100000);
-        VmmWinObjFile_Read(H, pFile, oFile, ctx->pb1M, cbBuffer, 0);
+        VmmWinObjFile_Read(H, pFile, oFile, ctx->pb1M, cbBuffer, 0, VMMWINOBJ_FILE_TP_DEFAULT);
         for(oBuffer = 0; oBuffer < cbBuffer; oBuffer += 0x1000) {
             pIR = (PNTFS_INDEX_RECORD)(ctx->pb1M + oBuffer);
             if(pIR->Signature != 'XDNI') { continue; }
@@ -679,11 +679,11 @@ VOID FcNtfs2_Init1(_In_ VMM_HANDLE H, POB_FCNTFS2_INIT_CONTEXT ctx)
     // find $Mft and $Directory files, sort by file size:
     while((pObFile = ObMap_GetNext(pmObFiles, pObFile))) {
         if(CharUtil_StrEquals("\\$Mft", pObFile->uszPath, FALSE)) {
-            if(pObFile->pSectionObjectPointers && ObSet_Push(psObDuplicates, pObFile->pSectionObjectPointers->va)) {
+            if(pObFile->vaSectionObjectPointers && ObSet_Push(psObDuplicates, pObFile->vaSectionObjectPointers)) {
                 ObMap_Push(pmObMft, pObFile->va, pObFile);
             }
         } else if(CharUtil_StrEquals("\\$Directory", pObFile->uszPath, FALSE)) {
-            if(pObFile->pSectionObjectPointers && ObSet_Push(psObDuplicates, pObFile->pSectionObjectPointers->va)) {
+            if(pObFile->vaSectionObjectPointers && ObSet_Push(psObDuplicates, pObFile->vaSectionObjectPointers)) {
                 ObMap_Push(pmObDirectory, pObFile->va, pObFile);
             }
         }

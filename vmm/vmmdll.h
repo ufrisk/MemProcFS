@@ -777,6 +777,7 @@ VOID VMMDLL_LogEx(
 #define VMMDLL_FLAG_FORCECACHE_READ_DISABLE         0x0800  // disable/override any use of VMMDLL_FLAG_FORCECACHE_READ. only recommended for local files. improves forensic artifact order.
 #define VMMDLL_FLAG_SCATTER_PREPAREEX_NOMEMZERO     0x1000  // do not zero out the memory buffer when preparing a scatter read.
 #define VMMDLL_FLAG_NOMEMCALLBACK                   0x2000  // do not call user-set memory callback functions when reading memory (even if active).
+#define VMMDLL_FLAG_SCATTER_FORCE_PAGEREAD          0x4000  // force page-sized reads when using scatter functionality.
 
 /*
 * Read memory in various non-contigious locations specified by the pointers to

@@ -256,12 +256,12 @@ VOID FcWeb_LoadSqliteDispatch(_In_ VMM_HANDLE H, _In_ PMWEB_CONTEXT ctx, _In_ FC
     FILE *phFile = NULL;
     // 1: sanity checks
     if((ctx->pFile->cb < 0x1000) || (ctx->pFile->cb > 0x04000000)) { goto fail; }
-    VmmWinObjFile_Read(H, ctx->pFile, 0, pbTest, sizeof(pbTest) - 1, 0);
+    VmmWinObjFile_Read(H, ctx->pFile, 0, pbTest, sizeof(pbTest) - 1, 0, VMMWINOBJ_FILE_TP_DEFAULT);
     if(pbTest != (PBYTE)strstr((LPCSTR)pbTest, "SQLite ")) { goto fail; }
     // 2: read file handle into memory
     cbDB = (DWORD)ctx->pFile->cb;
     if(!(pbDB = LocalAlloc(0, cbDB))) { goto fail; }
-    cbDB = VmmWinObjFile_Read(H, ctx->pFile, 0, pbDB, cbDB, 0);
+    cbDB = VmmWinObjFile_Read(H, ctx->pFile, 0, pbDB, cbDB, 0, VMMWINOBJ_FILE_TP_DEFAULT);
     // 3: create and write to temp file
     if(tmpnam_s(szFile, MAX_PATH)) { goto fail; }
     strncat_s(szFile, _countof(szFile), ".vmmsqlite3.tmp", _TRUNCATE);
@@ -326,7 +326,7 @@ PVMMOB_MAP_WEB MWeb_Initialize_DoWork(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CON
     // 2: Analyze interesting file handles:
     while((pObFile = ObMap_GetNext(ctxInit.pmFileObjects, pObFile))) {
         // Duplicate check and init analyze context:
-        if(!pObFile->pSectionObjectPointers || !pObFile->pSectionObjectPointers->fData || ObSet_Exists(ctxInit.psDuplicate, pObFile->pSectionObjectPointers->va)) {
+        if(!pObFile->vaSectionObjectPointers || !pObFile->pData || ObSet_Exists(ctxInit.psDuplicate, pObFile->vaSectionObjectPointers)) {
             continue;
         }
         pfnCB = NULL;
@@ -343,7 +343,7 @@ PVMMOB_MAP_WEB MWeb_Initialize_DoWork(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CON
         }
         // Dispatch to analysis:
         if(pfnCB) {
-            ObSet_Push(ctxInit.psDuplicate, pObFile->pSectionObjectPointers->va);
+            ObSet_Push(ctxInit.psDuplicate, pObFile->vaSectionObjectPointers);
             pObProcessOpt = VmmWinObj_GetProcessAssociated(H, pObFile->va);
             ctxInit.pProcessOpt = pObProcessOpt;
             ctxInit.pFile = pObFile;

@@ -74,7 +74,7 @@ NTSTATUS MEventlog_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Ou
     *pcbRead = 0;
     if(!(va = strtoull(ctxP->uszPath, NULL, 16))) { return VMMDLL_STATUS_FILE_INVALID; }
     if(!(pObFile = VmmWinObjFile_GetByVa(H, va))) { return VMMDLL_STATUS_FILE_INVALID; }
-    *pcbRead = VmmWinObjFile_Read(H, pObFile, cbOffset, pb, cb, 0);
+    *pcbRead = VmmWinObjFile_Read(H, pObFile, cbOffset, pb, cb, 0, VMMWINOBJ_FILE_TP_DEFAULT);
     Ob_DECREF(pObFile);
     return *pcbRead ? VMM_STATUS_SUCCESS : VMM_STATUS_END_OF_FILE;
 }

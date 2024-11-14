@@ -186,6 +186,7 @@ typedef int(*_CoreCrtNonSecureSearchSortCompareFunction)(void const *, void cons
 #define _rotr16(v,c)                        ((((WORD)v) >> ((WORD)c) | (WORD)((WORD)v) << (16 - (WORD)c)))
 #define _rotr64(v,c)                        ((((QWORD)v) >> ((QWORD)c) | (QWORD)((QWORD)v) << (64 - (QWORD)c)))
 #define _rotl64(v,c)                        ((QWORD)(((QWORD)v) << ((QWORD)c)) | (((QWORD)v) >> (64 - (QWORD)c)))
+#define __lzcnt(v)                          (__builtin_clz(v))
 #define _countof(_Array)                    (sizeof(_Array) / sizeof(_Array[0]))
 #define sprintf_s(s, maxcount, ...)         (snprintf(s, maxcount, __VA_ARGS__))
 #define strnlen_s(s, maxcount)              (strnlen(s, maxcount))

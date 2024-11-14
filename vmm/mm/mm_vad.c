@@ -503,7 +503,7 @@ PVMM_MAP_VADENTRY MmVad_Spider_MMVAD32_XP(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS p
     if(VMM_POOLTAG(v.PoolTag, MMVAD_POOLTAG_VADL)) { e->VadType = VadLargePages; }
     // full vad
     if(v.PoolTag == MMVAD_POOLTAG_VADS) { return e; }
-    e->vaSubsection = v.ControlArea;
+    e->vaSubsection = v.ControlArea + H->vmm.offset.FILE._CONTROL_AREA.cb;
     if(VMM_KADDR32_4(v.FirstPrototypePte)) {
         e->vaPrototypePte = v.FirstPrototypePte;
         e->cbPrototypePte = (DWORD)(v.LastContiguousPte - v.FirstPrototypePte + MMVAD_PTESIZE);

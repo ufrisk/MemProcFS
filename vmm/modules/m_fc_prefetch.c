@@ -168,7 +168,7 @@ VOID MFcPrefetch_ParseSingle(_In_ VMM_HANDLE H, _In_ PMFCPREFETCH_INIT_CONTEXT c
     cch = (DWORD)strlen(pFile->uszName);
     if((cch < 12) || (pFile->uszName[cch - 12] != '-')) { return; }
     // 2: read file and decompress if needed:
-    cbFile = VmmWinObjFile_Read(H, pFile, 0, ctx->pbBuffer1M_1, (DWORD)min(MFCPREFETCH_MAXSIZE, pFile->cb), 0);
+    cbFile = VmmWinObjFile_Read(H, pFile, 0, ctx->pbBuffer1M_1, (DWORD)min(MFCPREFETCH_MAXSIZE, pFile->cb), 0, VMMWINOBJ_FILE_TP_DEFAULT);
     if(cbFile < 0x100) { return; }
     dwSignature = *(PDWORD)ctx->pbBuffer1M_1;
     if(dwSignature == MFCPREFETCH_COMPRESSED_MAGIC) {
@@ -370,7 +370,7 @@ NTSTATUS MFcPrefetch_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _
     if(CharUtil_StrEndsWith(ctxP->uszPath, ".pf", TRUE)) {
         cbFile = pObPfMap->pMap[idx].cbPrefetchFileSize;
         if((pbFile = LocalAlloc(LMEM_ZEROINIT, cbFile))) {
-            VmmWinObjFile_ReadFromObjectAddress(H, pObPfMap->pMap[idx].vaPrefetchFile, 0, pbFile, cbFile, 0);
+            VmmWinObjFile_ReadFromObjectAddress(H, pObPfMap->pMap[idx].vaPrefetchFile, 0, pbFile, cbFile, 0, VMMWINOBJ_FILE_TP_DEFAULT);
             nt = Util_VfsReadFile_FromPBYTE(pbFile, cbFile, pb, cb, pcbRead, cbOffset);
             LocalFree(pbFile); pbFile = NULL;
             goto finish;

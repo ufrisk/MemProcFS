@@ -237,3 +237,4 @@ v5.8
 Latest:
 * Bug fixes.
 * New [console module](https://github.com/ufrisk/MemProcFS/wiki/FS_Process_Console) added.
+* File recovery improvements (file sizes, signing info) for [files module](https://github.com/ufrisk/MemProcFS/wiki/FS_Forensic_Files).

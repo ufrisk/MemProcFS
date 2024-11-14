@@ -113,9 +113,17 @@ VOID VmmWinInit_TryInitializeKernelOptionalValues(_In_ VMM_HANDLE H)
         // _FILE_OBJECT
         PDB_GetTypeSizeShort(H, PDB_HANDLE_KERNEL, "_FILE_OBJECT", &pof->_FILE_OBJECT.cb);
         PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_FILE_OBJECT", "DeviceObject", &pof->_FILE_OBJECT.oDeviceObject);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_FILE_OBJECT", "FsContext", &pof->_FILE_OBJECT.oFsContext);
         PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_FILE_OBJECT", "SectionObjectPointer", &pof->_FILE_OBJECT.oSectionObjectPointer);
         PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_FILE_OBJECT", "FileName", &pof->_FILE_OBJECT.oFileName);
         pof->_FILE_OBJECT.oFileNameBuffer       = pof->_FILE_OBJECT.oFileName + (H->vmm.f32 ? 4 : 8);
+        // _FSRTL_COMMON_FCB_HEADER
+        PDB_GetTypeSizeShort(H, PDB_HANDLE_KERNEL, "_FSRTL_ADVANCED_FCB_HEADER", &pof->_FSRTL_COMMON_FCB_HEADER.cb);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_FSRTL_ADVANCED_FCB_HEADER", "Version", &pof->_FSRTL_COMMON_FCB_HEADER.oVersion);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_FSRTL_ADVANCED_FCB_HEADER", "Resource", &pof->_FSRTL_COMMON_FCB_HEADER.oResource);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_FSRTL_ADVANCED_FCB_HEADER", "AllocationSize", &pof->_FSRTL_COMMON_FCB_HEADER.oAllocationSize);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_FSRTL_ADVANCED_FCB_HEADER", "FileSize", &pof->_FSRTL_COMMON_FCB_HEADER.oFileSize);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_FSRTL_ADVANCED_FCB_HEADER", "ValidDataLength", &pof->_FSRTL_COMMON_FCB_HEADER.oValidDataLength);
         // _SECTION_OBJECT_POINTERS
         PDB_GetTypeSizeShort(H, PDB_HANDLE_KERNEL, "_SECTION_OBJECT_POINTERS", &pof->_SECTION_OBJECT_POINTERS.cb);
         PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_SECTION_OBJECT_POINTERS", "DataSectionObject", &pof->_SECTION_OBJECT_POINTERS.oDataSectionObject);
@@ -137,10 +145,15 @@ VOID VmmWinInit_TryInitializeKernelOptionalValues(_In_ VMM_HANDLE H)
         PDB_GetTypeSizeShort(H, PDB_HANDLE_KERNEL, "_CONTROL_AREA", &pof->_CONTROL_AREA.cb);
         PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_CONTROL_AREA", "Segment", &pof->_CONTROL_AREA.oSegment);
         PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_CONTROL_AREA", "FilePointer", &pof->_CONTROL_AREA.oFilePointer);
+        // _SECTION_IMAGE_INFORMATION
+        PDB_GetTypeSizeShort(H, PDB_HANDLE_KERNEL, "_SECTION_IMAGE_INFORMATION", &pof->_SECTION_IMAGE_INFORMATION.cb);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_SECTION_IMAGE_INFORMATION", "ImageFileSize", &pof->_SECTION_IMAGE_INFORMATION.oImageFileSize);
         // _SEGMENT
         PDB_GetTypeSizeShort(H, PDB_HANDLE_KERNEL, "_SEGMENT", &pof->_SEGMENT.cb);
         PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_SEGMENT", "ControlArea", &pof->_SEGMENT.oControlArea);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_SEGMENT", "SegmentFlags", &pof->_SEGMENT.oSegmentFlags);
         PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_SEGMENT", "SizeOfSegment", &pof->_SEGMENT.oSizeOfSegment);
+        PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_SEGMENT", "u2", &pof->_SEGMENT.oU2);
         PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_SEGMENT", "PrototypePte", &pof->_SEGMENT.oPrototypePte);
         // _SUBSECTION
         PDB_GetTypeSizeShort(H, PDB_HANDLE_KERNEL, "_SUBSECTION", &pof->_SUBSECTION.cb);

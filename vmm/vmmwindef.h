@@ -867,4 +867,23 @@ static LPCSTR FILE_DEVICE_STR[] = {
     "FILE_DEVICE_SOUNDWIRE"
 };
 
+static LPCSTR SE_SIGNING_LEVEL_STR[] = {
+    "UNCHECKED",
+    "UNSIGNED",
+    "ENTERPRISE",
+    "DEVELOPER",
+    "AUTHENTICODE",
+    "CUSTOM_2",
+    "STORE",
+    "ANTIMALWARE",
+    "MICROSOFT",
+    "CUSTOM_4",
+    "CUSTOM_5",
+    "DYNAMIC_CODEGEN",
+    "WINDOWS",
+    "CUSTOM_7",
+    "WINDOWS_TCB",
+    "CUSTOM_6",
+};
+
 #endif /* __VMMWINDEF_H__ */

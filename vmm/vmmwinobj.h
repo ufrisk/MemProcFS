@@ -13,7 +13,6 @@
 typedef enum {
     VMMWINOBJ_TYPE_NONE = 0,
     VMMWINOBJ_TYPE_FILE = 1,
-    VMMWINOBJ_TYPE_SECTION_OBJECT_POINTERS = 2,
 } VMMWINOBJ_TYPE;
 
 typedef struct tdOB_VMMWINOBJ_OBJECT {
@@ -25,41 +24,43 @@ typedef struct tdOB_VMMWINOBJ_OBJECT {
 
 typedef struct tVMMWINOBJ_FILE_SUBSECTION {
     QWORD vaSubsectionBase;         // PTR _MMPTE
-    DWORD dwStartingSector;         // Sector = 512bytes
+    DWORD dwStartingSector;         // Sector = 4096(data), 512(image, usually)
     DWORD dwNumberOfFullSectors;
     DWORD dwPtesInSubsection;
 } VMMWINOBJ_FILE_SUBSECTION, *PVMMWINOBJ_FILE_SUBSECTION;
 
-typedef struct tdOB_VMMWINOBJ_SECTION_OBJECT_POINTERS {
-    // OB_VMMWINOBJ_OBJECT common fields:
+typedef struct tdOB_VMMWINOBJ_SHARED_CACHE_MAP {
     OB ObHdr;
     QWORD va;
-    VMMWINOBJ_TYPE tp;
-    DWORD _FutureUse;
-    // fields:
-    QWORD _Reserved2;
-    QWORD cb;
-    BOOL fData;
-    BOOL fCache;
-    BOOL fImage;
-    QWORD vaControlArea;
+    QWORD vaVacbs;
+    QWORD cbFileSize;
+    QWORD cbFileSizeValid;
+    QWORD cbSectionSize;
+} OB_VMMWINOBJ_SHARED_CACHE_MAP, *POB_VMMWINOBJ_SHARED_CACHE_MAP;
+
+typedef struct tdOB_VMMWINOBJ_CONTROL_AREA {
+    OB ObHdr;
+    QWORD va;
     struct {
-        BOOL fValid;
-        QWORD va;
-        QWORD cbFileSize;
-        QWORD cbFileSizeValid;
-        QWORD cbSectionSize;
-        QWORD vaVacbs;
-    } _SHARED_CACHE_MAP;
-    struct {
-        BOOL fValid;
         QWORD va;
         QWORD cbSizeOfSegment;
+        DWORD cbSizeOfImage;
+        BYTE bImageSigningLevel;        // SE_SIGNING_LEVEL_*
+        BYTE bImageSigningType;         // SE_IMAGE_SIGNATURE_TYPE
         QWORD vaPrototypePte;
     } _SEGMENT;
+    WORD cbSectorSize;
     DWORD cSUBSECTION;
-    PVMMWINOBJ_FILE_SUBSECTION pSUBSECTION;
-} OB_VMMWINOBJ_SECTION_OBJECT_POINTERS, *POB_VMMWINOBJ_SECTION_OBJECT_POINTERS;
+    VMMWINOBJ_FILE_SUBSECTION pSUBSECTION[];
+} OB_VMMWINOBJ_CONTROL_AREA, *POB_VMMWINOBJ_CONTROL_AREA;
+
+typedef DWORD VMMWINOBJ_FILE_TP;
+
+#define VMMWINOBJ_FILE_TP_DEFAULT   0
+#define VMMWINOBJ_FILE_TP_DATA      1
+#define VMMWINOBJ_FILE_TP_CACHE     2
+#define VMMWINOBJ_FILE_TP_IMAGE     4
+#define VMMWINOBJ_FILE_TP_ALL       (VMMWINOBJ_FILE_TP_DATA | VMMWINOBJ_FILE_TP_CACHE | VMMWINOBJ_FILE_TP_IMAGE)
 
 typedef struct tdOB_VMMWINOBJ_FILE {
     // OB_VMMWINOBJ_OBJECT common fields:
@@ -68,10 +69,20 @@ typedef struct tdOB_VMMWINOBJ_FILE {
     VMMWINOBJ_TYPE tp;
     DWORD _FutureUse;
     // fields:
-    union { QWORD cb; DWORD _Reserved1; };
+    QWORD cb;           // File size for VMMWINOBJ_FILE_TP_ALL
+    LPSTR uszPath;
     LPSTR uszName;
-    union { LPSTR uszPath; QWORD _Reserved2; };
-    union { POB_VMMWINOBJ_SECTION_OBJECT_POINTERS pSectionObjectPointers; QWORD _Reserved3; };
+    DWORD fDuplicate;   // Shares the same path & section object pointers as another object.
+    // new SECTION_OBJECT_POINTERS:
+    QWORD vaSectionObjectPointers;
+    POB_VMMWINOBJ_CONTROL_AREA pData;
+    POB_VMMWINOBJ_SHARED_CACHE_MAP pCache;
+    POB_VMMWINOBJ_CONTROL_AREA pImage;
+    // reserved init:
+    DWORD _Reserved1;
+    QWORD _Reserved2;
+    QWORD _Reserved3;
+    QWORD _Reserved4;
 } OB_VMMWINOBJ_FILE, *POB_VMMWINOBJ_FILE;
 
 /*
@@ -135,6 +146,17 @@ _Success_(return)
 BOOL VmmWinObjFile_GetByProcess(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _Out_ POB_MAP *ppmObFiles, _In_ BOOL fHandles);
 
 /*
+* Retrieve the file size of a _FILE_OBJECT.
+* The file size may differ depending on which types of the file object is being
+* read, i.e. _DATA, _IMAGE or _CACHE.
+* -- H
+* -- pFile
+* -- tp = VMMWINOBJ_FILE_TP_*
+* -- return = the file size.
+*/
+QWORD VmmWinObjFile_Size(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_FILE pFile, _In_ VMMWINOBJ_FILE_TP tp);
+
+/*
 * Read a contigious amount of file data and report the number of bytes read.
 * -- H
 * -- pFile
@@ -142,10 +164,11 @@ BOOL VmmWinObjFile_GetByProcess(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _
 * -- pb
 * -- cb
 * -- fVmmRead = flags as in VMM_FLAG_*
+* -- tp = VMMWINOBJ_FILE_TP_*
 * -- return = the number of bytes read.
 */
 _Success_(return != 0)
-DWORD VmmWinObjFile_Read(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_FILE pFile, _In_ QWORD cbOffset, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb, _In_ QWORD fVmmRead);
+DWORD VmmWinObjFile_Read(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_FILE pFile, _In_ QWORD cbOffset, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb, _In_ QWORD fVmmRead, _In_ VMMWINOBJ_FILE_TP tp);
 
 /*
 * Read a contigious amount of file data and report the number of bytes read.
@@ -155,10 +178,11 @@ DWORD VmmWinObjFile_Read(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_FILE pFile, _In_ 
 * -- pb
 * -- cb
 * -- fVmmRead = flags as in VMM_FLAG_*
+* -- tp = VMMWINOBJ_FILE_TP_*
 * -- return = the number of bytes read.
 */
 _Success_(return != 0)
-DWORD VmmWinObjFile_ReadFromObjectAddress(_In_ VMM_HANDLE H, _In_ QWORD vaFileObject, _In_ QWORD cbOffset, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb, _In_ QWORD fVmmRead);
+DWORD VmmWinObjFile_ReadFromObjectAddress(_In_ VMM_HANDLE H, _In_ QWORD vaFileObject, _In_ QWORD cbOffset, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb, _In_ QWORD fVmmRead, _In_ VMMWINOBJ_FILE_TP tp);
 
 /*
 * Translate a file offset into a physical address.
