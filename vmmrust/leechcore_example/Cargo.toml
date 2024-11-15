@@ -1,6 +1,6 @@
 [package]
 name = "leechcore_example"
-version = "5.12.6"
+version = "5.12.7"
 edition = "2021"
 publish = false
 
