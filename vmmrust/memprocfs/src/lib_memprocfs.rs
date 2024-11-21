@@ -3863,7 +3863,7 @@ pub struct LeechCore {
 /// - [`LeechCore::get_bars()`]
 /// - LeechCore PCIe BAR callback.
 /// ```
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct LcBar {
     /// BAR is valid.
     pub is_valid : bool,
