@@ -1526,176 +1526,6 @@ BOOL VmmWinPte_InitializeMapText(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
 
 
 // ----------------------------------------------------------------------------
-// THREADING FUNCTIONALITY BELOW:
-//
-// The threading subsystem is dependent on loaded kernel pdb symbols and being
-// initialized asynchronously at startup. i.e. it may not be immediately avail-
-// able at startup time or not available at all. Loading threads may be slow
-// the first time if many threads exist in a process since a list have to be
-// traversed - hence functionality exists to start a load asynchronously.
-// ----------------------------------------------------------------------------
-
-typedef struct tdVMMWIN_INITIALIZETHREAD_CONTEXT {
-    POB_MAP pmThread;
-    POB_SET psObTeb;
-    POB_SET psObTrapFrame;
-    PVMM_PROCESS pProcess;
-} VMMWIN_INITIALIZETHREAD_CONTEXT, *PVMMWIN_INITIALIZETHREAD_CONTEXT;
-
-int VmmWinThread_Initialize_CmpThreadEntry(PVMM_MAP_THREADENTRY v1, PVMM_MAP_THREADENTRY v2)
-{
-    return
-        (v1->dwTID < v2->dwTID) ? -1 :
-        (v1->dwTID > v2->dwTID) ? 1 : 0;
-}
-
-VOID VmmWinThread_Initialize_DoWork_Pre(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_opt_ PVMMWIN_INITIALIZETHREAD_CONTEXT ctx, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb, _In_ QWORD vaFLink, _In_ QWORD vaBLink, _In_ POB_SET pVSetAddress, _Inout_ PBOOL pfValidEntry, _Inout_ PBOOL pfValidFLink, _Inout_ PBOOL pfValidBLink)
-{
-    BOOL f, f32 = H->vmm.f32;
-    DWORD dwTID;
-    PVMM_MAP_THREADENTRY e;
-    PVMM_OFFSET_ETHREAD ot = &H->vmm.offset.ETHREAD;
-    // 1: sanity check
-    f = ctx &&
-        (f32 ? VMM_KADDR32_4(vaFLink) : VMM_KADDR64_8(vaFLink)) &&
-        (f32 ? VMM_KADDR32_4(vaBLink) : VMM_KADDR64_8(vaBLink)) &&
-        (!ot->oProcessOpt || (VMM_PTR_OFFSET(f32, pb, ot->oProcessOpt) == ctx->pProcess->win.EPROCESS.va)) &&
-        (dwTID = (DWORD)VMM_PTR_OFFSET(f32, pb, ot->oCid + (f32 ? 4ULL : 8ULL)));
-    if(!f) { return; }
-    *pfValidEntry = *pfValidFLink = *pfValidBLink = TRUE;
-    // 2: allocate and populate thread entry with info.
-    if(!(e = LocalAlloc(LMEM_ZEROINIT, sizeof(VMM_MAP_THREADENTRY)))) { return; }
-    e->vaETHREAD = va;
-    e->dwTID = dwTID;
-    e->dwPID = (DWORD)VMM_PTR_OFFSET(f32, pb, ot->oCid);
-    e->dwExitStatus = *(PDWORD)(pb + ot->oExitStatus);
-    e->bState = *(PUCHAR)(pb + ot->oState);
-    e->bSuspendCount = *(PUCHAR)(pb + ot->oSuspendCount);
-    if(ot->oRunningOpt) { e->bRunning = *(PUCHAR)(pb + ot->oRunningOpt); }
-    e->bPriority = *(PUCHAR)(pb + ot->oPriority);
-    e->bBasePriority = *(PUCHAR)(pb + ot->oBasePriority);
-    e->bWaitReason = *(PUCHAR)(pb + ot->oWaitReason);
-    e->vaTeb = VMM_PTR_OFFSET(f32, pb, ot->oTeb);
-    e->ftCreateTime = *(PQWORD)(pb + ot->oCreateTime);
-    e->ftExitTime = *(PQWORD)(pb + ot->oExitTime);
-    e->vaStartAddress = VMM_PTR_OFFSET(f32, pb, ot->oStartAddress);
-    e->vaImpersonationToken = ot->oClientSecurityOpt ? VMM_PTR_EX_FAST_REF(f32, VMM_PTR_OFFSET(f32, pb, ot->oClientSecurityOpt)) : 0;
-    e->vaWin32StartAddress = VMM_PTR_OFFSET(f32, pb, ot->oWin32StartAddress);
-    e->vaStackBaseKernel = VMM_PTR_OFFSET(f32, pb, ot->oStackBase);
-    e->vaStackLimitKernel = VMM_PTR_OFFSET(f32, pb, ot->oStackLimit);
-    e->vaTrapFrame = VMM_PTR_OFFSET(f32, pb, ot->oTrapFrame);
-    e->qwAffinity = VMM_PTR_OFFSET(f32, pb, ot->oAffinity);
-    e->dwKernelTime = *(PDWORD)(pb + ot->oKernelTime);
-    e->dwUserTime = *(PDWORD)(pb + ot->oUserTime);
-    if(e->ftExitTime > 0x0200000000000000) { e->ftExitTime = 0; }
-    ObSet_Push(ctx->psObTeb, e->vaTeb);
-    ObSet_Push(ctx->psObTrapFrame, e->vaTrapFrame);
-    ObMap_Push(ctx->pmThread, e->dwTID, e);  // map will free allocation when cleared
-}
-
-VOID VmmWinThread_Initialize_DoWork(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
-{
-    BOOL f, f32 = H->vmm.f32;
-    BYTE pb[0x200];
-    DWORD i, cMap, cbTrapFrame = 0;
-    QWORD va, vaThreadListEntry;
-    POB_SET psObTeb = NULL, psObTrapFrame = NULL;
-    POB_MAP pmObThreads = NULL;
-    PVMMOB_MAP_THREAD pObThreadMap = NULL;
-    PVMM_MAP_THREADENTRY pThreadEntry;
-    PVMM_PROCESS pObSystemProcess = NULL;
-    VMMWIN_INITIALIZETHREAD_CONTEXT ctx = { 0 };
-    PVMM_OFFSET_ETHREAD ot = &H->vmm.offset.ETHREAD;
-    // 1: set up and perform list traversal call.
-    vaThreadListEntry = VMM_PTR_OFFSET(f32, pProcess->win.EPROCESS.pb, H->vmm.offset.ETHREAD.oThreadListHeadKP);
-    if(f32 ? !VMM_KADDR32_4(vaThreadListEntry) : !VMM_KADDR64_8(vaThreadListEntry)) { goto fail; }
-    if(!(pObSystemProcess = VmmProcessGet(H, 4))) { goto fail; }
-    if(!(psObTeb = ObSet_New(H))) { goto fail; }
-    if(!(psObTrapFrame = ObSet_New(H))) { goto fail; }
-    if(!(pmObThreads = ObMap_New(H, OB_MAP_FLAGS_OBJECT_LOCALFREE))) { goto fail; }
-    ctx.pmThread = pmObThreads;
-    ctx.psObTeb = psObTeb;
-    ctx.psObTrapFrame = psObTrapFrame;
-    ctx.pProcess = pProcess;
-    va = vaThreadListEntry - H->vmm.offset.ETHREAD.oThreadListEntry;
-    VmmWin_ListTraversePrefetch(
-        H,
-        pObSystemProcess,
-        f32,
-        &ctx,
-        1,
-        &va,
-        H->vmm.offset.ETHREAD.oThreadListEntry,
-        H->vmm.offset.ETHREAD.oMax,
-        (VMMWIN_LISTTRAVERSE_PRE_CB)VmmWinThread_Initialize_DoWork_Pre,
-        NULL,
-        pProcess->pObPersistent->pObCMapThreadPrefetch);
-    // 2: transfer result from generic map into PVMMOB_MAP_THREAD
-    if(!(cMap = ObMap_Size(pmObThreads))) { goto fail; }
-    if(!(pObThreadMap = Ob_AllocEx(H, OB_TAG_MAP_THREAD, 0, sizeof(VMMOB_MAP_THREAD) + cMap * sizeof(VMM_MAP_THREADENTRY), NULL, NULL))) { goto fail; }
-    pObThreadMap->cMap = cMap;
-    cbTrapFrame = ((ot->oTrapRsp < 0x200 - 8) && (ot->oTrapRip < 0x200 - 8)) ? 8 + max(ot->oTrapRsp, ot->oTrapRip) : 0;
-    VmmCachePrefetchPages3(H, pObSystemProcess, psObTrapFrame, cbTrapFrame, 0);
-    VmmCachePrefetchPages3(H, pProcess, psObTeb, 0x20, 0);
-    for(i = 0; i < cMap; i++) {
-        pThreadEntry = (PVMM_MAP_THREADENTRY)ObMap_GetByIndex(pmObThreads, i);
-        // fetch Teb
-        if(VmmRead2(H, pProcess, pThreadEntry->vaTeb, pb, 0x20, VMM_FLAG_FORCECACHE_READ)) {
-            pThreadEntry->vaStackBaseUser = VMM_PTR_OFFSET_DUAL(f32, pb, 4, 8);
-            pThreadEntry->vaStackLimitUser = VMM_PTR_OFFSET_DUAL(f32, pb, 8, 16);
-        }
-        // fetch TrapFrame (RSP/RIP)
-        if(cbTrapFrame && VmmRead2(H, pObSystemProcess, pThreadEntry->vaTrapFrame, pb, cbTrapFrame, VMM_FLAG_FORCECACHE_READ)) {
-            pThreadEntry->vaRIP = VMM_PTR_OFFSET(f32, pb, ot->oTrapRip);
-            pThreadEntry->vaRSP = VMM_PTR_OFFSET(f32, pb, ot->oTrapRsp);
-            f = ((pThreadEntry->vaStackBaseUser > pThreadEntry->vaRSP) && (pThreadEntry->vaStackLimitUser < pThreadEntry->vaRSP)) ||
-                ((pThreadEntry->vaStackBaseKernel > pThreadEntry->vaRSP) && (pThreadEntry->vaStackLimitKernel < pThreadEntry->vaRSP));
-            if(!f) {
-                pThreadEntry->vaRIP = 0;
-                pThreadEntry->vaRSP = 0;
-            }
-        }
-        // commit
-        memcpy(pObThreadMap->pMap + i, pThreadEntry, sizeof(VMM_MAP_THREADENTRY));
-    }
-    // 3: sort on thread id (TID) and assign result to process object.
-    qsort(pObThreadMap->pMap, cMap, sizeof(VMM_MAP_THREADENTRY), (int(*)(const void*, const void*))VmmWinThread_Initialize_CmpThreadEntry);
-    pProcess->Map.pObThread = pObThreadMap;     // pProcess take reference responsibility
-fail:
-    Ob_DECREF(psObTeb);
-    Ob_DECREF(psObTrapFrame);
-    Ob_DECREF(pmObThreads);
-    Ob_DECREF(pObSystemProcess);
-}
-
-/*
-* Initialize the thread map for a specific process.
-* NB! The threading sub-system is dependent on pdb symbols and may take a small
-* amount of time before it's available after system startup.
-* -- H
-* -- pProcess
-* -- return
-*/
-_Success_(return)
-BOOL VmmWinThread_Initialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
-{
-    if(pProcess->Map.pObThread) { return TRUE; }
-    if(!H->vmm.fThreadMapEnabled) { return FALSE; }
-    VmmTlbSpider(H, pProcess);
-    EnterCriticalSection(&pProcess->LockUpdate);
-    if(!pProcess->Map.pObThread) {
-        VmmWinThread_Initialize_DoWork(H, pProcess);
-        if(!pProcess->Map.pObThread) {
-            pProcess->Map.pObThread = Ob_AllocEx(H, OB_TAG_MAP_THREAD, LMEM_ZEROINIT, sizeof(VMMOB_MAP_THREAD), NULL, NULL);
-        }
-    }
-    LeaveCriticalSection(&pProcess->LockUpdate);
-    return pProcess->Map.pObThread ? TRUE : FALSE;
-}
-
-
-
-// ----------------------------------------------------------------------------
 // TOKEN FUNCTIONALITY BELOW:
 //
 // Tokens are used to determine access rights to objects. Most often the token
@@ -4012,6 +3842,34 @@ BOOL VmmWinProcess_Enum32(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _
     return (ctx.cProc > 10);
 }
 
+BOOL VmmWinProcess_Enumerate(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fRefreshTotal, _In_opt_ POB_SET psvaNoLinkEPROCESS)
+{
+    BOOL fResult = FALSE;
+    VMMSTATISTICS_LOG Statistics = { 0 };
+    VmmStatisticsLogStart(H, MID_PROCESS, LOGLEVEL_6_TRACE, NULL, &Statistics, "EPROCESS_ENUMERATE");
+    // spider TLB and set up initial system process and enumerate EPROCESS
+    VmmTlbSpider(H, pSystemProcess);
+    // update processes within global lock (to avoid potential race conditions).
+    EnterCriticalSection(&H->vmm.LockMaster);
+    if((H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X64) || (H->vmm.tpMemoryModel == VMM_MEMORYMODEL_ARM64)) {
+        fResult = VmmWinProcess_Enum64(H, pSystemProcess, fRefreshTotal, psvaNoLinkEPROCESS);
+    } else if((H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X86PAE) || (H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X86)) {
+        fResult = VmmWinProcess_Enum32(H, pSystemProcess, fRefreshTotal, psvaNoLinkEPROCESS);
+    }
+    LeaveCriticalSection(&H->vmm.LockMaster);
+    VmmStatisticsLogEnd(H, &Statistics, "EPROCESS_ENUMERATE");
+    return fResult;
+}
+
+
+
+// ----------------------------------------------------------------------------
+// NON-LINKED PROCESS ENUMERATION BELOW:
+// Processes may not always be in the EPROCESS list. Running processes may have
+// been maliciously unlinked, or terminated processes may have been cleaned up.
+// Try to enumerate these processes in alternative ways.
+// ----------------------------------------------------------------------------
+
 /*
 * Locate EPROCESS objects not linked by the EPROCESS list.
 * This is achieved by analyzing the object table for the SYSTEM process.
@@ -4065,25 +3923,6 @@ fail:
     Ob_DECREF(pObHandleMap);
     Ob_DECREF(psOb);
     return psObNoLink;
-}
-
-BOOL VmmWinProcess_Enumerate(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_ BOOL fRefreshTotal, _In_opt_ POB_SET psvaNoLinkEPROCESS)
-{
-    BOOL fResult = FALSE;
-    VMMSTATISTICS_LOG Statistics = { 0 };
-    VmmStatisticsLogStart(H, MID_PROCESS, LOGLEVEL_6_TRACE, NULL, &Statistics, "EPROCESS_ENUMERATE");
-    // spider TLB and set up initial system process and enumerate EPROCESS
-    VmmTlbSpider(H, pSystemProcess);
-    // update processes within global lock (to avoid potential race conditions).
-    EnterCriticalSection(&H->vmm.LockMaster);
-    if((H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X64) || (H->vmm.tpMemoryModel == VMM_MEMORYMODEL_ARM64)) {
-        fResult = VmmWinProcess_Enum64(H, pSystemProcess, fRefreshTotal, psvaNoLinkEPROCESS);
-    } else if((H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X86PAE) || (H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X86)) {
-        fResult = VmmWinProcess_Enum32(H, pSystemProcess, fRefreshTotal, psvaNoLinkEPROCESS);
-    }
-    LeaveCriticalSection(&H->vmm.LockMaster);
-    VmmStatisticsLogEnd(H, &Statistics, "EPROCESS_ENUMERATE");
-    return fResult;
 }
 
 

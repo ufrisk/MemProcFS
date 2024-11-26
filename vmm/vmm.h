@@ -509,6 +509,17 @@ typedef struct tdVMM_MAP_THREADENTRY {
     QWORD vaWin32StartAddress;
 } VMM_MAP_THREADENTRY, *PVMM_MAP_THREADENTRY;
 
+typedef struct tdVMM_MAP_THREADCALLSTACKENTRY {
+    DWORD i;
+    BOOL  fRegPresent;
+    QWORD vaRetAddr;
+    QWORD vaRSP;
+    QWORD vaBaseSP;
+    DWORD cbDisplacement;
+    LPSTR uszModule;
+    LPSTR uszFunction;
+} VMM_MAP_THREADCALLSTACKENTRY, *PVMM_MAP_THREADCALLSTACKENTRY;
+
 typedef enum tdVMM_MAP_HANDLEENTRY_TP_INFOEX {
     HANDLEENTRY_TP_INFO_NONE = 0,
     HANDLEENTRY_TP_INFO_ERROR = 1,
@@ -851,6 +862,18 @@ typedef struct tdVMMOB_MAP_THREAD {
     VMM_MAP_THREADENTRY pMap[];      // map entries.
 } VMMOB_MAP_THREAD, *PVMMOB_MAP_THREAD;
 
+typedef struct tdVMMOB_MAP_THREADCALLSTACK {
+    OB ObHdr;
+    DWORD dwPID;
+    DWORD dwTID;
+    LPSTR uszText;
+    DWORD cbText;
+    DWORD cbMultiText;
+    PBYTE pbMultiText;
+    DWORD cMap;
+    VMM_MAP_THREADCALLSTACKENTRY pMap[0];
+} VMMOB_MAP_THREADCALLSTACK, *PVMMOB_MAP_THREADCALLSTACK;
+
 typedef struct tdVMMOB_MAP_HANDLE {
     OB ObHdr;
     PBYTE pbMultiText;              // UTF-8 multi-string.
@@ -1008,6 +1031,8 @@ typedef struct tdVMMOB_PHYS2VIRT_INFORMATION {
     QWORD pvaList[VMM_PHYS2VIRT_INFORMATION_MAX_PROCESS_RESULT];
 } VMMOB_PHYS2VIRT_INFORMATION, *PVMMOB_PHYS2VIRT_INFORMATION;
 
+#define VMMOB_PROCESS_PERSISTENT_FLAG_THREAD_CALLSTACK_ENABLE       1
+
 // 'static' process information that should be kept even in the ase of a total
 // process refresh. Only use for information that may never change or things
 // that may not affect analysis (like cache preload addresses that only may
@@ -1016,6 +1041,7 @@ typedef struct tdVMMOB_PHYS2VIRT_INFORMATION {
 // thread safe ways. Use with extreme care!
 typedef struct tdVMMOB_PROCESS_PERSISTENT {
     OB ObHdr;
+    SRWLOCK LockUpdateSRW;  // update lock (exclusive)
     QWORD paDTB_Override;   // optional saved override of the paDTB (set by user).
     BOOL fIsPostProcessingComplete;
     POB_CONTAINER pObCMapVadPrefetch;
@@ -1033,6 +1059,7 @@ typedef struct tdVMMOB_PROCESS_PERSISTENT {
     struct {
         QWORD vaVirt2Phys;
         QWORD paPhys2Virt;
+        QWORD flags;
     } Plugin;
 } VMMOB_PROCESS_PERSISTENT, *PVMMOB_PROCESS_PERSISTENT;
 
@@ -1551,16 +1578,6 @@ typedef struct tdVMM_DYNAMIC_LOAD_FUNCTIONS {
 // MEM callback function definition.
 typedef VOID(*VMM_MEM_CALLBACK_PFN)(_In_opt_ PVOID ctxUser, _In_ DWORD dwPID, _In_ DWORD cpMEMs, _In_ PPMEM_SCATTER ppMEMs);
 
-// MEM callback types.
-typedef enum tdVMM_MEM_CALLBACK_TP {
-    VMMDLL_MEM_CALLBACK_READ_PHYSICAL_PRE = 1,
-    VMMDLL_MEM_CALLBACK_READ_PHYSICAL_POST = 2,
-    VMMDLL_MEM_CALLBACK_WRITE_PHYSICAL_PRE = 3,
-    VMMDLL_MEM_CALLBACK_READ_VIRTUAL_PRE = 4,
-    VMMDLL_MEM_CALLBACK_READ_VIRTUAL_POST = 5,
-    VMMDLL_MEM_CALLBACK_WRITE_VIRTUAL_PRE = 6,
-} VMM_MEM_CALLBACK_TP;
-
 // forward declarations of non-public types:
 typedef struct tdVMMWORK_CONTEXT            *PVMMWORK_CONTEXT;
 typedef struct tdFC_CONTEXT                 *PFC_CONTEXT;
@@ -1633,6 +1650,7 @@ typedef struct tdVMM_CONTEXT {
         SRWLOCK ModuleMiscWeb;
         SRWLOCK WinObjDisplay;
         SRWLOCK PluginMgr;
+        SRWLOCK ThreadCallback;
     } LockSRW;
     POB_CONTAINER pObCMapPhysMem;
     POB_CONTAINER pObCMapEvil;
@@ -1654,6 +1672,7 @@ typedef struct tdVMM_CONTEXT {
     POB_CACHEMAP pObCacheMapHeapAlloc;
     POB_CACHEMAP pObCacheMapWinObjDisplay;
     POB_CACHEMAP pObCacheMapObCompressedShared;
+    POB_MAP pmObThreadCallback;
     // page caches
     struct {
         VMM_CACHE_TABLE PHYS;
@@ -2448,6 +2467,7 @@ PVMM_PROCESS VmmProcessClone(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess);
 * Create a new process object. New process object are created in a separate
 * data structure and won't become visible to the "Process" functions until
 * after the VmmProcessCreateFinish have been called.
+* NB! REQUIRE SINGLE THREAD: [H->vmm.LockMaster]
 * CALLER DECREF: return
 * -- H
 * -- fTotalRefresh = create a completely new entry - i.e. do not copy any form
@@ -2464,6 +2484,22 @@ PVMM_PROCESS VmmProcessClone(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess);
 * -- return
 */
 PVMM_PROCESS VmmProcessCreateEntry(_In_ VMM_HANDLE H, _In_ BOOL fTotalRefresh, _In_ DWORD dwPID, _In_ DWORD dwPPID, _In_ DWORD dwState, _In_ QWORD paDTB, _In_ QWORD paDTB_UserOpt, _In_ CHAR szName[16], _In_ BOOL fUserOnly, _In_reads_opt_(cbEPROCESS) PBYTE pbEPROCESS, _In_ DWORD cbEPROCESS);
+
+/*
+* Create a new "fake" terminated process entry. This is useful when terminated
+* processes are not available in the system but can be discovered by other means.
+* NB! REQUIRE SINGLE THREAD: [H->vmm.LockMaster]
+* -- H
+* -- dwPID
+* -- dwPPID
+* -- ftCreate
+* -- ftExit
+* -- szShortName
+* -- uszLongName
+* -- return
+*/
+_Success_(return)
+BOOL VmmProcessCreateTerminatedFakeEntry(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ DWORD dwPPID, _In_ QWORD ftCreate, _In_ QWORD ftExit, _In_reads_(15) LPSTR szShortName, _In_ LPSTR uszLongName);
 
 /*
 * Query process for its creation time.
@@ -2823,6 +2859,23 @@ BOOL VmmMap_GetThread(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _Out_ PVMMO
 * -- return = PTR to VMM_MAP_THREADENTRY or NULL on fail. Must not be used out of pThreadMap scope.
 */
 PVMM_MAP_THREADENTRY VmmMap_GetThreadEntry(_In_ VMM_HANDLE H, _In_ PVMMOB_MAP_THREAD pThreadMap, _In_ DWORD dwTID);
+
+/*
+* Retrieve the callstack for the specified thread. Callstack parsing is:
+* - only supported for x64 user-mode threads.
+* - best-effort and is very resource intense since it may
+* - may download a large amounts of PDB symbol data from the Microsoft symbol server.
+* Use with caution!
+* CALLER DECREF: *ppObThreadCallstackMap
+* -- H
+* -- pProcess
+* -- pThread
+* -- flags = VMM_FLAG_NOCACHE (do not use cache)
+* -- ppObThreadCallstackMap
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetThreadCallstack(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_THREADENTRY pThread, _In_ DWORD flags, _Out_ PVMMOB_MAP_THREADCALLSTACK *ppObThreadCallstackMap);
 
 /*
 * Retrieve the HANDLE map

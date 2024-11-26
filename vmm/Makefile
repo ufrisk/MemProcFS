@@ -29,8 +29,8 @@ OBJ = oscompatibility.o charutil.o util.o pe.o vmmdll.o vmmdll_core.o        \
 	  ob/ob_memfile.o ob/ob_set.o ob/ob_strmap.o                             \
 	  statistics.o sysquery.o vmmheap.o vmmlog.o vmmnet.o                    \
 	  vmmproc.o vmmvm.o vmmwininit.o vmmwin.o vmmwinobj.o vmmwinpool.o       \
-	  vmmwinreg.o vmmwinsvc.o vmmuserconfig.o vmmwork.o vmmyarautil.o        \
-	  vmmyarawrap.o                                                          \
+	  vmmwinreg.o vmmwinsvc.o vmmwinthread.o vmmuserconfig.o vmmwork.o       \
+	  vmmyarautil.o vmmyarawrap.o                                            \
 	  modules/m_vfsroot.o modules/m_vfsproc.o modules/m_vfsfc.o              \
 	  modules/m_conf.o modules/m_vm.o modules/m_winreg.o                     \
 	  modules/m_fc_csv.o modules/m_fc_file.o modules/m_fc_findevil.o         \

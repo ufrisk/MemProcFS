@@ -364,6 +364,7 @@
     <ClInclude Include="vmmwinpool.h" />
     <ClInclude Include="vmmwinreg.h" />
     <ClInclude Include="vmmwinsvc.h" />
+    <ClInclude Include="vmmwinthread.h" />
     <ClInclude Include="vmmwork.h" />
     <ClInclude Include="vmmyarautil.h" />
   </ItemGroup>
@@ -475,6 +476,7 @@
     <ClCompile Include="vmmwinpool.c" />
     <ClCompile Include="vmmwinreg.c" />
     <ClCompile Include="vmmwinsvc.c" />
+    <ClCompile Include="vmmwinthread.c" />
     <ClCompile Include="vmmwork.c" />
     <ClCompile Include="vmmyarautil.c" />
     <ClCompile Include="vmmyarawrap.c" />

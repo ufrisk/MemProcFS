@@ -464,6 +464,16 @@ _Success_(return)
 BOOL ObMap_PushCopy(_In_opt_ POB_MAP pm, _In_ QWORD qwKey, _In_ PVOID pvObject, _In_ SIZE_T cbObject);
 
 /*
+* Push / Insert all objects in pmSrc to pmDst using the same key and value.
+* NB! only valid for OB_MAP_FLAGS_OBJECT_OB and OB_MAP_FLAGS_OBJECT_VOID maps.
+* -- pmDst
+* -- pmSrc
+* -- return = TRUE on success, FALSE otherwise.
+*/
+_Success_(return)
+BOOL ObMap_PushAll(_In_opt_ POB_MAP pmDst, _In_ POB_MAP pmSrc);
+
+/*
 * Remove the "last" object.
 * CALLER DECREF(if OB): return
 * -- pm

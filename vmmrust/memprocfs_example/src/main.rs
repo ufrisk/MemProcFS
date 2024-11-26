@@ -773,15 +773,31 @@ pub fn main_example() -> ResultEx<()> {
 
         // Example: vmmprocess.map_thread():
         // Retrieve information about the process threads.
+        let mut tid_callstack = 0;
         println!("========================================");
         println!("vmmprocess.map_thread():");
         if let Ok(thread_all) = vmmprocess.map_thread() {
             println!("Number of process threads: {}.", thread_all.len());
             for thread in &*thread_all {
                 println!("{thread}");
+                tid_callstack = thread.thread_id;
             }
         } else {
             println!("Error retrieving process thread map.");
+        }
+
+
+        // Example: vmmprocess.map_thread_callstack():
+        // Retrieve information about the callstack of a thread.
+        // Currently only supports user-mode threads and may download PDB files.
+        println!("========================================");
+        println!("vmmprocess.map_thread_callstack():");
+        if let Ok(threadcs_all) = vmmprocess.map_thread_callstack(tid_callstack) {
+            for threadcs in &*threadcs_all {
+                println!("{threadcs}");
+            }
+        } else {
+            println!("Error retrieving process thread callstack map.");
         }
 
 

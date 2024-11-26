@@ -2142,6 +2142,35 @@ pub struct VmmProcessMapThreadEntry {
     pub wait_reason : u8
 }
 
+/// Info: Process: Thread Callstack.
+/// 
+/// # Created By
+/// - [`vmmprocess.map_thread_callstack()`](VmmProcess::map_thread_callstack())
+/// - [`vmmprocess.map_thread_callstack_ex()`](VmmProcess::map_thread_callstack_ex())
+/// 
+/// # Examples
+/// ```
+/// // in this example the TID (thread id) is 9600.
+/// if let Ok(thread_callstack) = vmmprocess.map_thread_callstack(9600) {
+///     for cs_entry in &*thread_callstack {
+///         println!("{cs_entry}");
+///     }
+/// }
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VmmProcessMapThreadCallstackEntry {
+    pub pid : u32,
+    pub tid : u32,
+    pub i : u32,
+    pub is_reg_present : bool,
+    pub va_ret_addr : u64,
+    pub va_rsp : u64,
+    pub va_base_sp : u64,
+    pub displacement : i32,
+    pub module : String,
+    pub function : String,
+}
+
 /// Info: Process: Unloaded modules.
 /// 
 /// # Created By
@@ -2518,6 +2547,40 @@ impl VmmProcess<'_> {
     /// ```
     pub fn map_thread(&self) -> ResultEx<Vec<VmmProcessMapThreadEntry>> {
         return self.impl_map_thread();
+    }
+
+    /// Info: Process: Thread Callstack.
+    /// 
+    /// For additional information see the [`VmmProcessMapThreadCallstackEntry`] struct.
+    /// 
+    /// # Examples
+    /// ```
+    /// // in this example the TID (thread id) is 9600.
+    /// if let Ok(thread_callstack) = vmmprocess.map_thread_callstack(9600) {
+    ///     for cs_entry in &*thread_callstack {
+    ///         println!("{cs_entry}");
+    ///     }
+    /// }
+    /// ```
+    pub fn map_thread_callstack(&self, tid : u32) -> ResultEx<Vec<VmmProcessMapThreadCallstackEntry>> {
+        return self.impl_map_thread_callstack(tid, 0);
+    }
+
+    /// Info: Process: Thread Callstack.
+    /// 
+    /// For additional information see the [`VmmProcessMapThreadCallstackEntry`] struct.
+    /// 
+    /// # Examples
+    /// ```
+    /// // in this example the TID (thread id) is 9600.
+    /// if let Ok(thread_callstack) = vmmprocess.map_thread_callstack_ex(9600, 0) {
+    ///     for cs_entry in &*thread_callstack {
+    ///         println!("{cs_entry}");
+    ///     }
+    /// }
+    /// ```
+    pub fn map_thread_callstack_ex(&self, tid : u32, flags : u32) -> ResultEx<Vec<VmmProcessMapThreadCallstackEntry>> {
+        return self.impl_map_thread_callstack(tid, flags);
     }
 
     /// Retrieve the unloaded module info map.
@@ -4516,6 +4579,7 @@ struct VmmNative {
     VMMDLL_Map_GetModuleU :         extern "C" fn(hVMM : usize, pid : u32, ppModuleMap : *mut *mut CModuleMap, flags : u32) -> bool,
     VMMDLL_Map_GetPteU :            extern "C" fn(hVMM : usize, pid : u32, fIdentifyModules : bool, ppPteMap : *mut *mut CPteMap) -> bool,
     VMMDLL_Map_GetThread :          extern "C" fn(hVMM : usize, pid : u32, ppThreadMap : *mut *mut CThreadMap) -> bool,
+    VMMDLL_Map_GetThreadCallstackU: extern "C" fn(hVMM : usize, pid : u32, tid : u32, flags : u32, ppThreadCallstack : *mut *mut CThreadCallstackMap) -> bool,
     VMMDLL_Map_GetUnloadedModuleU : extern "C" fn(hVMM : usize, pid : u32, ppUnloadedModuleMap : *mut *mut CUnloadedModuleMap) -> bool,
     VMMDLL_Map_GetVadU :            extern "C" fn(hVMM : usize, pid : u32, fIdentifyModules : bool, ppVadMap : *mut *mut CVadMap) -> bool,
     VMMDLL_Map_GetVadEx :           extern "C" fn(hVMM : usize, pid : u32, oPage : u32, cPage : u32, ppVadExMap : *mut *mut CVadExMap) -> bool,
@@ -4607,6 +4671,7 @@ fn impl_new<'a>(vmm_lib_path : &str, lc_existing_opt : Option<&LeechCore>, h_vmm
         let VMMDLL_Map_GetModuleU = *lib.get(b"VMMDLL_Map_GetModuleU")?;
         let VMMDLL_Map_GetPteU = *lib.get(b"VMMDLL_Map_GetPteU")?;
         let VMMDLL_Map_GetThread = *lib.get(b"VMMDLL_Map_GetThread")?;
+        let VMMDLL_Map_GetThreadCallstackU = *lib.get(b"VMMDLL_Map_GetThread_CallstackU")?;
         let VMMDLL_Map_GetUnloadedModuleU = *lib.get(b"VMMDLL_Map_GetUnloadedModuleU")?;
         let VMMDLL_Map_GetVadU = *lib.get(b"VMMDLL_Map_GetVadU")?;
         let VMMDLL_Map_GetVadEx = *lib.get(b"VMMDLL_Map_GetVadEx")?;
@@ -4703,6 +4768,7 @@ fn impl_new<'a>(vmm_lib_path : &str, lc_existing_opt : Option<&LeechCore>, h_vmm
             VMMDLL_Map_GetModuleU,
             VMMDLL_Map_GetPteU,
             VMMDLL_Map_GetThread,
+            VMMDLL_Map_GetThreadCallstackU,
             VMMDLL_Map_GetUnloadedModuleU,
             VMMDLL_Map_GetVadU,
             VMMDLL_Map_GetVadEx,
@@ -4798,6 +4864,7 @@ const VMMDLL_MAP_PFN_VERSION            : u32 = 1;
 const VMMDLL_MAP_PHYSMEM_VERSION        : u32 = 2;
 const VMMDLL_MAP_SERVICE_VERSION        : u32 = 3;
 const VMMDLL_MAP_THREAD_VERSION         : u32 = 4;
+const VMMDLL_MAP_THREAD_CALLSTACK_VERSION : u32 = 1;
 const VMMDLL_MAP_UNLOADEDMODULE_VERSION : u32 = 2;
 const VMMDLL_MAP_USER_VERSION           : u32 = 2;
 const VMMDLL_MAP_VAD_VERSION            : u32 = 6;
@@ -6551,6 +6618,12 @@ impl fmt::Display for VmmProcessMapThreadEntry {
     }
 }
 
+impl fmt::Display for VmmProcessMapThreadCallstackEntry {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "VmmProcessMapThreadEntry:{}:{}:{:02x}:{:016x}:{:016x}:[{}!{}+{:x}]", self.pid & 0x7fffffff, self.tid, self.i, self.va_rsp, self.va_ret_addr, self.module, self.function, self.displacement)
+    }
+}
+
 impl fmt::Display for VmmProcessMapUnloadedModuleEntry {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "VmmProcessMapUnloadedModuleEntry:{}:{:x}:[{}]", self.pid & 0x7fffffff, self.va_base, self.name)
@@ -6933,6 +7006,35 @@ struct CThreadMap {
     _Reserved1 : [u32; 8],
     cMap : u32,
     pMap : CThreadEntry,
+}
+
+#[repr(C)]
+#[allow(non_snake_case)]
+struct CThreadCallstackEntry {
+    i : u32,
+    fRegPresent : bool,
+    vaRetAddr : u64,
+    vaRSP : u64,
+    vaBaseSP : u64,
+    _FutureUse1 : u32,
+    cbDisplacement : i32,
+    uszModule : *const c_char,
+    uszFunction : *const c_char,
+}
+
+#[repr(C)]
+#[allow(non_snake_case)]
+struct CThreadCallstackMap {
+    dwVersion : u32,
+    _Reserved1 : [u32; 6],
+    dwPID : u32,
+    dwTID : u32,
+    cbText : u32,
+    uszText : *const c_char,
+    pbMultiText : *const c_char,
+    cbMultiText : u32,
+    cMap : u32,
+    pMap : CThreadCallstackEntry,
 }
 
 #[repr(C)]
@@ -7458,6 +7560,45 @@ impl VmmProcess<'_> {
                     kernel_time : ne.dwKernelTime,
                     suspend_count : ne.bSuspendCount,
                     wait_reason : ne.bWaitReason
+                };
+                result.push(e);
+            }
+            (self.vmm.native.VMMDLL_MemFree)(structs as usize);
+            return Ok(result);
+        }
+    }
+
+    fn impl_map_thread_callstack(&self, tid : u32, flags : u32) -> ResultEx<Vec<VmmProcessMapThreadCallstackEntry>> {
+        unsafe {
+            let mut structs = std::ptr::null_mut();
+            let r = (self.vmm.native.VMMDLL_Map_GetThreadCallstackU)(self.vmm.native.h, self.pid, tid, flags, &mut structs);
+            if !r {
+                return Err(anyhow!("VMMDLL_Map_GetThreadCallstackU: fail."));
+            }
+            if (*structs).dwVersion != VMMDLL_MAP_THREAD_CALLSTACK_VERSION {
+                (self.vmm.native.VMMDLL_MemFree)(structs as usize);
+                return Err(anyhow!("VMMDLL_Map_GetThreadCallstackU: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_THREAD_CALLSTACK_VERSION));
+            }
+            let mut result = Vec::new();
+            if (*structs).cMap == 0 {
+                (self.vmm.native.VMMDLL_MemFree)(structs as usize);
+                return Ok(result);
+            }
+            let cMap : usize = (*structs).cMap.try_into()?;
+            let pMap = std::slice::from_raw_parts(&(*structs).pMap, cMap);
+            for i in 0..cMap {
+                let ne = &pMap[i];
+                let e = VmmProcessMapThreadCallstackEntry {
+                    pid : self.pid,
+                    tid : tid,
+                    i : ne.i,
+                    is_reg_present : ne.fRegPresent,
+                    va_ret_addr : ne.vaRetAddr,
+                    va_rsp : ne.vaRSP,
+                    va_base_sp : ne.vaBaseSP,
+                    displacement : ne.cbDisplacement,
+                    module : cstr_to_string(ne.uszModule),
+                    function : cstr_to_string(ne.uszFunction),
                 };
                 result.push(e);
             }

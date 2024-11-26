@@ -17,6 +17,7 @@
 #include "vmmwinpool.h"
 #include "vmmwinreg.h"
 #include "vmmwinsvc.h"
+#include "vmmwinthread.h"
 #include "vmmnet.h"
 #include "pluginmanager.h"
 #include "charutil.h"
@@ -1171,6 +1172,65 @@ fail:
 }
 
 /*
+* Create a new "fake" terminated process entry. This is useful when terminated
+* processes are not available in the system but can be discovered by other means.
+* -- H
+* -- dwPID
+* -- dwPPID
+* -- ftCreate
+* -- ftExit
+* -- szShortName
+* -- uszLongName
+* -- return
+*/
+_Success_(return)
+BOOL VmmProcessCreateTerminatedFakeEntry(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ DWORD dwPPID, _In_ QWORD ftCreate, _In_ QWORD ftExit, _In_reads_(15) LPSTR szShortName, _In_ LPSTR uszLongName)
+{
+    PVMM_PROCESS pTProc = NULL;
+    PVMMOB_PROCESS_PERSISTENT pProcPers = NULL;
+    PVMMOB_PROCESS_TABLE ptOld = NULL, ptNew = NULL;
+    BYTE pbE[0x1000] = { 0 };
+    if(!H->vmm.offset.EPROCESS.opt.CreateTime || !H->vmm.offset.EPROCESS.opt.ExitTime) { return FALSE; }
+    if(!dwPID || !dwPPID || !ftCreate || !ftExit || !szShortName || !uszLongName || !szShortName[0] || !uszLongName[0]) { return FALSE; }
+    // 1: Fake EPROCESS:
+    *(PBYTE)(pbE + H->vmm.offset.EPROCESS.State) = 0xff;
+    *(PDWORD)(pbE + H->vmm.offset.EPROCESS.PID) = dwPID;
+    *(PDWORD)(pbE + H->vmm.offset.EPROCESS.PPID) = dwPPID;
+    *(PQWORD)(pbE + H->vmm.offset.EPROCESS.opt.CreateTime) = ftCreate;
+    *(PQWORD)(pbE + H->vmm.offset.EPROCESS.opt.ExitTime) = ftExit;
+    memcpy(pbE + H->vmm.offset.EPROCESS.Name, szShortName, 15);
+    // 2: Allocate new 'Process Table' (if not already existing) and copy over all existing processes:
+    ptOld = (PVMMOB_PROCESS_TABLE)ObContainer_GetOb(H->vmm.pObCPROC);
+    if(!ptOld) { return FALSE; }
+    ptNew = (PVMMOB_PROCESS_TABLE)ObContainer_GetOb(ptOld->pObCNewPROC);
+    if(!ptNew) {
+        ptNew = (PVMMOB_PROCESS_TABLE)Ob_AllocEx(H, OB_TAG_VMM_PROCESSTABLE, LMEM_ZEROINIT, sizeof(VMMOB_PROCESS_TABLE), (OB_CLEANUP_CB)VmmProcessTable_CloseObCallback, NULL);
+        if(!ptNew) { return FALSE; }
+        ptNew->pObCNewPROC = ObContainer_New();
+        ptNew->pObProcessMap = ObMap_New(H, OB_MAP_FLAGS_OBJECT_OB);
+        if(!ptNew->pObCNewPROC || !ptNew->pObProcessMap) { return FALSE; }
+        ObContainer_SetOb(ptOld->pObCNewPROC, ptNew);
+        // move all old processes to new table:
+        ObMap_PushAll(ptNew->pObProcessMap, ptOld->pObProcessMap);
+        ptNew->cActive = ptOld->cActive;
+        ptNew->c = ptOld->c;
+    }
+    // 3: Push new fake process:
+    pTProc = VmmProcessCreateEntry(H, FALSE, dwPID, dwPPID, 0xff, 0, 0, szShortName, TRUE, pbE, H->vmm.offset.EPROCESS.cbMaxOffset + 0x10);
+    // 4: Update static process info with long name:
+    if(pTProc && !pTProc->pObPersistent->uszNameLong) {
+        pProcPers = pTProc->pObPersistent;
+        CharUtil_UtoU(uszLongName, -1, NULL, 0, &pProcPers->uszPathKernel, NULL, CHARUTIL_FLAG_ALLOC);
+        pProcPers->cuszPathKernel = (WORD)strlen(pProcPers->uszPathKernel);
+        // locate FullName by skipping to last \ character.
+        pProcPers->uszNameLong = (LPSTR)CharUtil_PathSplitLast(pProcPers->uszPathKernel);
+        pProcPers->cuszNameLong = (WORD)strlen(pProcPers->uszNameLong);
+    }
+    Ob_DECREF(pTProc);
+    return TRUE;
+}
+
+/*
 * Try to force clear the internal state of a process object without refreshing
 * the whole process list.
 * This may be useful when a quick update of a process must take place.
@@ -1791,6 +1851,7 @@ VOID VmmClose(_In_ VMM_HANDLE H)
     Ob_DECREF_NULL(&H->vmm.pObCacheMapHeapAlloc);
     Ob_DECREF_NULL(&H->vmm.pObCacheMapWinObjDisplay);
     Ob_DECREF_NULL(&H->vmm.pObCacheMapObCompressedShared);
+    Ob_DECREF_NULL(&H->vmm.pmObThreadCallback);
     DeleteCriticalSection(&H->vmm.LockMaster);
     DeleteCriticalSection(&H->vmm.LockPlugin);
     DeleteCriticalSection(&H->vmm.LockUpdateVM);
@@ -2142,6 +2203,7 @@ BOOL VmmInitialize(_In_ VMM_HANDLE H)
     H->vmm.pObCCachePrefetchEPROCESS = ObContainer_New();
     H->vmm.pObCCachePrefetchRegistry = ObContainer_New();
     H->vmm.pObCacheMapObCompressedShared = ObCacheMap_New(H, OB_COMPRESSED_CACHED_ENTRIES_MAX, NULL, OB_CACHEMAP_FLAGS_OBJECT_OB);
+    H->vmm.pmObThreadCallback = ObMap_New(H, OB_MAP_FLAGS_OBJECT_OB);
     InitializeCriticalSection(&H->vmm.LockMaster);
     InitializeCriticalSection(&H->vmm.LockPlugin);
     InitializeCriticalSection(&H->vmm.LockUpdateVM);
@@ -3187,6 +3249,26 @@ int VmmMap_GetThreadEntry_CmpFind(_In_ QWORD dwTID, _In_ QWORD qwEntry)
 PVMM_MAP_THREADENTRY VmmMap_GetThreadEntry(_In_ VMM_HANDLE H, _In_ PVMMOB_MAP_THREAD pThreadMap, _In_ DWORD dwTID)
 {
     return Util_qfind((QWORD)dwTID, pThreadMap->cMap, pThreadMap->pMap, sizeof(VMM_MAP_THREADENTRY), VmmMap_GetThreadEntry_CmpFind);
+}
+
+/*
+* Retrieve the callstack for the specified thread. Callstack parsing is:
+* - only supported for x64 user-mode threads.
+* - best-effort and is very resource intense since it may
+* - may download a large amounts of PDB symbol data from the Microsoft symbol server.
+* Use with caution!
+* CALLER DECREF: *ppObThreadCallstackMap
+* -- H
+* -- pProcess
+* -- pThread
+* -- flags = VMM_FLAG_NOCACHE (do not use cache)
+* -- ppObThreadCallstackMap
+* -- return
+*/
+_Success_(return)
+BOOL VmmMap_GetThreadCallstack(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_THREADENTRY pThread, _In_ DWORD flags, _Out_ PVMMOB_MAP_THREADCALLSTACK *ppObThreadCallstackMap)
+{
+    return VmmWinThreadCs_GetCallstack(H, pProcess, pThread, flags, ppObThreadCallstackMap);
 }
 
 /*

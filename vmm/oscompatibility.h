@@ -28,6 +28,10 @@ int LZ4_decompress_safe(const char *src, char *dst, int compressedSize, int dstC
 #define VMM_32BIT
 #endif /* _WIN64 */
 
+#ifdef _M_ARM64
+#define __lzcnt(v)                          (_CountLeadingZeros(v))
+#endif /* _M_ARM64 */
+
 #endif /* _WIN32 */
 #ifdef LINUX
 #define _FILE_OFFSET_BITS 64
@@ -273,6 +277,7 @@ VOID GetLocalTime(LPSYSTEMTIME lpSystemTime);
 DWORD InterlockedAdd(DWORD *Addend, DWORD Value);
 BOOL GetExitCodeThread(_In_ HANDLE hThread, _Out_ LPDWORD lpExitCode);
 BOOL FileTimeToSystemTime(_In_ PFILETIME lpFileTime, _Out_ PSYSTEMTIME lpSystemTime);
+BOOL SystemTimeToFileTime(_In_ PSYSTEMTIME lpSystemTime, _Out_ PFILETIME lpFileTime);
 VOID GetSystemTimeAsFileTime(PFILETIME lpSystemTimeAsFileTime);
 errno_t tmpnam_s(char *_Buffer, ssize_t _Size);
 

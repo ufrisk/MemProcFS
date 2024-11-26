@@ -79,7 +79,7 @@ VOID ShowKeyPress()
 {
     printf("PRESS ANY KEY TO CONTINUE ...\n");
     Sleep(250);
-    _getch();
+    //_getch();
 }
 
 VOID PrintHexAscii(_In_ PBYTE pb, _In_ DWORD cb)
@@ -174,6 +174,26 @@ BOOL CallbackSearchYaraFilter(_In_ PVMMDLL_YARA_CONFIG ctx, _In_opt_ PVMMDLL_MAP
 
 
 // ----------------------------------------------------------------------------
+// Callback functions (MEM CALLBACK) functionality below:
+// ----------------------------------------------------------------------------
+
+VOID CallbackMemCallback_PhysicalReadPost(_In_opt_ PVOID ctxUser, _In_ DWORD dwPID, _In_ DWORD cpMEMs, _In_ PPMEM_SCATTER ppMEMs)
+{
+    DWORD i;
+    PMEM_SCATTER pMEM;
+    for(i = 0; i < cpMEMs; i++) {
+        pMEM = ppMEMs[i];
+        if(pMEM->f && (pMEM->qwA == 0x1000) && (pMEM->cb >= 0x10)) {
+            // Successful physical memory read at address 0x1000.
+            // This is simplified since read may start mid-range if
+            // non-page-aligned MEMs are used.
+            memcpy(pMEM->pb, (PBYTE)"0123456789ABCDEF", 0x10);
+        }
+    }
+}
+
+
+// ----------------------------------------------------------------------------
 // Main entry point which contains various sample code how to use MemProcFS DLL.
 // Please walk though for different API usage examples. To select device ensure
 // one device type only is uncommented in the #defines above.
@@ -187,7 +207,7 @@ int main(_In_ int argc, _In_ char* argv[])
     VMM_HANDLE hVMM = NULL;
     BOOL result;
     NTSTATUS nt;
-    DWORD i, cbRead, dwPID;
+    DWORD i, j, cbRead, dwPID;
     DWORD dw = 0;
     QWORD va;
     BYTE pbPage1[0x1000], pbPage2[0x1000];
@@ -665,6 +685,43 @@ int main(_In_ int argc, _In_ char* argv[])
         }
         VMMDLL_MemFree(pThreadMap); pThreadMap = NULL;
     }
+
+
+    // THREAD CALLSTACK: Retrieve callstack information for the threads in the
+    // 'smss.exe' process and display on the screen.
+    DWORD dwPID_SMSS = 0;
+    PVMMDLL_MAP_THREAD pThreadMap_SMSS = NULL;
+    PVMMDLL_MAP_THREADENTRY pThreadMapEntry_SMSS;
+    PVMMDLL_MAP_THREAD_CALLSTACK pThreadCallstack = NULL;
+    PVMMDLL_MAP_THREAD_CALLSTACKENTRY pThreadCallstackEntry = NULL;
+    printf("------------------------------------------------------------\n");
+    printf("# Get Thread Callstack Information of 'smss.exe' threads.   \n");
+    ShowKeyPress();
+    VMMDLL_PidGetFromName(hVMM, "smss.exe", &dwPID_SMSS);
+    VMMDLL_Map_GetThread(hVMM, dwPID_SMSS, &pThreadMap_SMSS);
+    if(!dwPID_SMSS || !pThreadMap_SMSS) {
+        printf("FAIL:    VMMDLL_PidGetFromName//VMMDLL_Map_GetThread\n");
+        return 1;
+    }
+    for(i = 0; i < pThreadMap_SMSS->cMap; i++) {
+        pThreadMapEntry_SMSS = &pThreadMap_SMSS->pMap[i];
+        printf("CALL:    VMMDLL_Map_GetThread_CallstackU\n");
+        result = VMMDLL_Map_GetThread_CallstackU(hVMM, dwPID_SMSS, pThreadMapEntry_SMSS->dwTID, 0, &pThreadCallstack);
+        if(!result) {
+            printf("FAIL:    VMMDLL_Map_GetThread_CallstackU\n");
+            return 1;
+        }
+        printf("SUCCESS: VMMDLL_Map_GetThread_CallstackU\n");
+        printf(pThreadCallstack->uszText);
+        printf("-------------\n");
+        for(j = 0; j < pThreadCallstack->cMap; j++) {
+            pThreadCallstackEntry = &pThreadCallstack->pMap[j];
+            printf("%02x: %016llx %016llx :: %s!%s+%x\n", pThreadCallstackEntry->i, pThreadCallstackEntry->vaRSP, pThreadCallstackEntry->vaRetAddr, pThreadCallstackEntry->uszModule, pThreadCallstackEntry->uszFunction, pThreadCallstackEntry->cbDisplacement);
+        }
+        printf("------------------------------------------------------------\n");
+        VMMDLL_MemFree(pThreadCallstack); pThreadCallstack = NULL;
+    }
+    VMMDLL_MemFree(pThreadMap_SMSS); pThreadMap_SMSS = NULL;
 
 
     // HANDLES: Retrieve handle information about handles in the explorer.exe
@@ -1584,6 +1641,47 @@ int main(_In_ int argc, _In_ char* argv[])
             printf("FAIL:    VMMDLL_VfsRead\n");
             return 1;
         }
+    }
+
+
+    // Use a Memory Callback function to alter the MemProcFS view of underlying
+    // physical memory. This can be useful to implement alternative views of
+    // memory and/or for debugging and logging purposes.
+    // It's possible to register a callback function which will be called every
+    // time a physical memory read or write is performed.
+    // It also works for any process internal virtual memory read or write.
+    // For this example to work we'll read uncached memory since a cache hit
+    // would prevent the need for a 2nd physical memory read.
+    {
+        printf("------------------------------------------------------------\n");
+        printf("# Demonstrate memory callback functionality:                \n");
+        printf("     (1) Read existing data from physical memory at 0x1000  \n");
+        printf("     (2) Register a callback function:                      \n");
+        printf("     (3) Read existing data from physical memory at 0x1000  \n");
+        printf("     (4) Unregister the callback function:                  \n");
+        ShowKeyPress();
+        printf("CALL:    VMMDLL_MemRead - BEFORE CALLBACK\n");
+        result = VMMDLL_MemReadEx(hVMM, -1, 0x1000, pbPage1, 0x1000, NULL, VMMDLL_FLAG_NOCACHE);
+        if(result) {
+            printf("SUCCESS: VMMDLL_MemRead - BEFORE CALLBACK\n");
+            PrintHexAscii(pbPage1, 0x80);
+        } else {
+            printf("FAIL:    VMMDLL_MemRead - BEFORE CALLBACK\n");
+            return 1;
+        }
+        printf("CALL:    VMMDLL_MemCallback (Register)\n");
+        VMMDLL_MemCallback(hVMM, VMMDLL_MEM_CALLBACK_READ_PHYSICAL_POST, NULL, CallbackMemCallback_PhysicalReadPost);
+        printf("CALL:    VMMDLL_MemRead - AFTER CALLBACK\n");
+        result = VMMDLL_MemReadEx(hVMM, -1, 0x1000, pbPage1, 0x1000, NULL, VMMDLL_FLAG_NOCACHE);
+        if(result) {
+            printf("SUCCESS: VMMDLL_MemRead - AFTER CALLBACK\n");
+            PrintHexAscii(pbPage1, 0x80);
+        } else {
+            printf("FAIL:    VMMDLL_MemRead - AFTER CALLBACK\n");
+            return 1;
+        }
+        printf("CALL:    VMMDLL_MemCallback (Unregister)\n");
+        VMMDLL_MemCallback(hVMM, VMMDLL_MEM_CALLBACK_READ_PHYSICAL_POST, NULL, NULL);
     }
 
 

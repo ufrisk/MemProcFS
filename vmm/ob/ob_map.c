@@ -872,6 +872,21 @@ BOOL _ObMap_PushCopy(_In_ POB_MAP pm, _In_ QWORD qwKey, _In_ PVOID pvObject, _In
     return FALSE;
 }
 
+_Success_(return)
+BOOL _ObMap_PushAll(_In_ POB_MAP pm, _In_ POB_MAP pmSrc)
+{
+    DWORD i;
+    POB_MAP_ENTRY pe;
+    if(!pmSrc || (pm == pmSrc) || (pm->fObjectsOb != pmSrc->fObjectsOb) || pm->fObjectsLocalFree || pmSrc->fObjectsLocalFree) { return FALSE; }
+    AcquireSRWLockShared(&pmSrc->LockSRW);
+    for(i = 1; i < pmSrc->c; i++) {
+        pe = _ObMap_GetFromIndex(pmSrc, i);
+        _ObMap_Push(pm, pe->k, pe->v);
+    }
+    ReleaseSRWLockShared(&pmSrc->LockSRW);
+    return TRUE;
+}
+
 /*
 * Push / Insert into the ObMap.
 * -- pm
@@ -900,6 +915,19 @@ _Success_(return)
 BOOL ObMap_PushCopy(_In_opt_ POB_MAP pm, _In_ QWORD qwKey, _In_ PVOID pvObject, _In_ SIZE_T cbObject)
 {
     OB_MAP_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(pm, BOOL, FALSE, _ObMap_PushCopy(pm, qwKey, pvObject, cbObject))
+}
+
+/*
+* Push / Insert all objects in pmSrc to pmDst using the same key and value.
+* NB! only valid for OB_MAP_FLAGS_OBJECT_OB and OB_MAP_FLAGS_OBJECT_VOID maps.
+* -- pmDst
+* -- pmSrc
+* -- return = TRUE on success, FALSE otherwise.
+*/
+_Success_(return)
+BOOL ObMap_PushAll(_In_opt_ POB_MAP pmDst, _In_ POB_MAP pmSrc)
+{
+    OB_MAP_CALL_SYNCHRONIZED_IMPLEMENTATION_WRITE(pmDst, BOOL, FALSE, _ObMap_PushAll(pmDst, pmSrc))
 }
 
 /*

@@ -349,6 +349,22 @@ BOOL FileTimeToSystemTime(_In_ PFILETIME lpFileTime, _Out_ PSYSTEMTIME pSystemTi
     return TRUE;
 }
 
+BOOL SystemTimeToFileTime(_In_ PSYSTEMTIME lpSystemTime, _Out_ PFILETIME lpFileTime)
+{
+    time_t tm;
+    struct tm t = { 0 };
+    t.tm_year = lpSystemTime->wYear - 1900;
+    t.tm_mon = lpSystemTime->wMonth - 1;
+    t.tm_wday = lpSystemTime->wDayOfWeek;
+    t.tm_mday = lpSystemTime->wDay;
+    t.tm_hour = lpSystemTime->wHour;
+    t.tm_min = lpSystemTime->wMinute;
+    t.tm_sec = lpSystemTime->wSecond;
+    tm = mktime(&t);
+    *lpFileTime = (tm * 10000000ULL) + 116444736000000000ULL;
+    return TRUE;
+}
+
 
 
 // ----------------------------------------------------------------------------

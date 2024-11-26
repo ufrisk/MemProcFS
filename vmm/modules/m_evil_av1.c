@@ -21,9 +21,9 @@ VOID MEvilAV1_DoWork_WinDefend_MPLog(_In_ VMM_HANDLE H, _In_ VMMDLL_MODULE_ID MI
     DWORD cProtect = 0;
     // read file:
     cbFile = min(MEVILAV1_MAX_FILE_SIZE, (SIZE_T)pFile->cb);
-    if(!cbFile || !(pbFile = LocalAlloc(0, cbFile + 1))) { goto fail; }
+    if(!cbFile || !(pbFile = LocalAlloc(0, cbFile + sizeof(DWORD)))) { goto fail; }
     if(0 == VmmWinObjFile_Read(H, pFile, 0, pbFile, (DWORD)cbFile, VMMDLL_FLAG_ZEROPAD_ON_FAIL, VMMWINOBJ_FILE_TP_DEFAULT)) { goto fail; }
-    pbFile[cbFile] = 0;
+    *(PDWORD)(pbFile + cbFile) = 0;
     // data is likely to be zero-padded on a per-page basis and will be in UTF-16LE, convert to UTF-8:
     while(oFile < cbFile) {
         if(!pbFile[oFile]) {

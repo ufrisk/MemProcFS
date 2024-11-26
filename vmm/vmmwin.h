@@ -96,17 +96,6 @@ _Success_(return)
 BOOL VmmWinUnloadedModule_Initialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess);
 
 /*
-* Initialize the thread map for a specific process.
-* NB! The threading sub-system is dependent on pdb symbols and may take a small
-* amount of time before it's available after system startup.
-* -- H
-* -- pProcess
-* -- return
-*/
-_Success_(return)
-BOOL VmmWinThread_Initialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess);
-
-/*
 * Initialize tokens for specific processes.
 * CALLER DECREF: *ppObTokens (each individual token).
 * -- H

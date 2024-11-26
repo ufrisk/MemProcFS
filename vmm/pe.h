@@ -177,6 +177,24 @@ BOOL PE_SectionGetFromName(
 );
 
 /*
+* Retrieve a single section header given its address offset.
+* -- H
+* -- pProcess
+* -- vaModuleBase
+* -- cboAddress
+* -- pSection
+* -- return
+*/
+_Success_(return)
+BOOL PE_SectionGetFromAddressOffset(
+    _In_ VMM_HANDLE H,
+    _In_ PVMM_PROCESS pProcess,
+    _In_ QWORD vaModuleBase,
+    _In_ DWORD cboAddress,
+    _Out_ PIMAGE_SECTION_HEADER pSection
+);
+
+/*
 * Retrieve all sections.
 * -- H
 * -- pProcess

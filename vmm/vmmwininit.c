@@ -16,6 +16,7 @@
 #include "vmmwinreg.h"
 #include "infodb.h"
 #include "mm/mm.h"
+#include "charutil.h"
 
 /*
 * Try initialize threading - this is dependent on available PDB symbols.
@@ -1127,6 +1128,151 @@ success:
     return vaSystemEPROCESS;
 }
 
+typedef struct tdVMMWININITOB_PARTIAL_TERMINATED_PROCESS {
+    DWORD dwPID;
+    DWORD dwPPID;
+    QWORD ftCreate;
+    QWORD ftExit;
+    CHAR szShortName[16];
+    CHAR szLongName[MAX_PATH];
+} VMMWININITOB_PARTIAL_TERMINATED_PROCESS, *PVMMWININITOB_PARTIAL_TERMINATED_PROCESS;
+
+/*
+* Parse a single line of SgrmBroker.exe json log data for terminated processes
+* and add it to the result map.
+* -- H
+* -- szJson
+* -- pmResult
+*/
+VOID VmmWinInit_FindAddTerminatedProcesses_ParseSgrmJsonLine(_In_ VMM_HANDLE H, _In_ LPSTR szJson, _In_ POB_MAP pmResult)
+{
+    QWORD ftCreate = 0, ftExit = 0;
+    DWORD dwPID = 0, dwPPID = 0;
+    LPSTR sz, uszImageName = NULL;
+    VMMWININITOB_PARTIAL_TERMINATED_PROCESS sTProc = { 0 };
+    PVMMWININITOB_PARTIAL_TERMINATED_PROCESS pTProc = NULL;
+    if((sz = strstr(szJson, "\"ProcessID\":"))) {
+        dwPID = (DWORD)Util_GetNumericA(sz + 12);
+    }
+    if((sz = strstr(szJson, "\"ParentProcessID\":"))) {
+        dwPPID = (DWORD)Util_GetNumericA(sz + 18);
+    }
+    if((sz = strstr(szJson, "\"CreateTime\":\""))) {
+        ftCreate = Util_TimeIso8601ToFileTime(sz + 14);
+        if((ftCreate < 0x0100000000000000) || (ftCreate > 0x0200000000000000)) { ftCreate = 0; }
+    }
+    if((sz = strstr(szJson, "\"ExitTime\":\""))) {
+        ftExit = Util_TimeIso8601ToFileTime(sz + 12);
+        if((ftExit < 0x0100000000000000) || (ftExit > 0x0200000000000000)) { ftCreate = 0; }
+    }
+    if((sz = strstr(szJson, "\"ImageName\":\""))) {
+        sz += 13;
+        uszImageName = sz;
+        while(sz[0] && (sz[0] != '"')) { sz++; }
+        sz[0] = 0;
+    }
+    if(!dwPID || (dwPID & 3) || (dwPPID & 3) || !ftCreate || !uszImageName) { return; }
+    pTProc = ObMap_GetByKey(pmResult, dwPID);
+    if(!pTProc) { pTProc = &sTProc; }
+    pTProc->dwPID = dwPID;
+    if(dwPPID) { pTProc->dwPPID = dwPPID; }
+    if(ftCreate) { pTProc->ftCreate = ftCreate; }
+    if(ftExit) { pTProc->ftExit = ftExit; }
+    if(uszImageName) {
+        if(strlen(uszImageName) < 15) {
+            strncpy_s(pTProc->szShortName, sizeof(pTProc->szShortName), uszImageName, _TRUNCATE);
+        } else {
+            if(!CharUtil_UtoU(uszImageName, -1, pTProc->szLongName, sizeof(pTProc->szLongName), NULL, NULL, CHARUTIL_FLAG_STR_BUFONLY | CHARUTIL_FLAG_TRUNCATE)) { return; }
+        }
+    }
+    if(pTProc == &sTProc) {
+        ObMap_PushCopy(pmResult, dwPID, pTProc, sizeof(VMMWININITOB_PARTIAL_TERMINATED_PROCESS));
+    }
+}
+
+/*
+* Find and add terminated processes in alternative ways. This can be a somewhat
+* heavy operation and is only done in forensic mode on non-volatile memory.
+* Currently supported methods are:
+*   - SgrmBroker.exe (heap scanning for json log strings).
+* -- H
+*/
+VOID VmmWinInit_FindAddTerminatedProcesses(_In_ VMM_HANDLE H)
+{
+    DWORD i, cb, oS, oE, cbE, dwPID;
+    BOOL fParentIsServices, fNewTProc = FALSE;
+    PVMM_PROCESS pObProcess, pObProcessSgrm = NULL;
+    PVMMOB_MAP_HEAP pObHeapMap = NULL;
+    PVMM_MAP_HEAP_SEGMENTENTRY pSeg;
+    PBYTE pb = NULL;
+    POB_MAP pmObTProcMap = NULL;
+    PVMMWININITOB_PARTIAL_TERMINATED_PROCESS pTProc = NULL;
+    if(!H->cfg.tpForensicMode) { return; }
+    if((H->vmm.kernel.dwVersionBuild < 19041) || (H->vmm.kernel.dwVersionBuild > 22631)) { return; }
+    // locate SgrmBroker.exe process:
+    while((pObProcessSgrm = VmmProcessGetNext(H, pObProcessSgrm, 0))) {
+        if(CharUtil_StrEquals(pObProcessSgrm->szName, "SgrmBroker.exe", FALSE)) {
+            pObProcess = VmmProcessGet(H, pObProcessSgrm->dwPPID);
+            fParentIsServices = pObProcess && CharUtil_StrEquals(pObProcess->szName, "services.exe", FALSE);
+            Ob_DECREF_NULL(&pObProcess);
+            if(fParentIsServices) {
+                break;
+            }
+        }
+    }
+    if(!pObProcessSgrm) { goto fail; }
+    // retrieve heap map:
+    if(!VmmMap_GetHeap(H, pObProcessSgrm, &pObHeapMap) || !pObHeapMap->cSegments) { goto fail; }
+    if(!(pmObTProcMap = ObMap_New(H, OB_MAP_FLAGS_OBJECT_LOCALFREE))) { goto fail; }
+    if(!(pb = LocalAlloc(LMEM_ZEROINIT, 0x01000000))) { goto fail; }
+    // scan heap segments for json strings of terminated process candidates:
+    for(i = 0; i < pObHeapMap->cSegments; i++) {
+        pSeg = &pObHeapMap->pSegments[i];
+        if(pSeg->cb > 0x01000000) { continue; }
+        if(pSeg->tp != VMM_HEAP_SEGMENT_TP_NT_SEGMENT) { continue; }
+        VmmReadEx(H, pObProcessSgrm, pSeg->va, pb, pSeg->cb, NULL, VMM_FLAG_ZEROPAD_ON_FAIL);
+        cb = pSeg->cb;
+        // scan heap segment buffer:
+        for(oS = 0x10; oS < cb - 0x40; oS++) {
+            if(pb[oS] != '{') { continue; }
+            if(0x7365636f7250227b != *(PQWORD)(pb + oS)) { continue; }  // {"Proces
+            if(!CharUtil_StrStartsWith(pb + oS, "{\"ProcessID\":", FALSE)) { continue; }
+            cbE = min(cb, oS + 0x1000);
+            for(oE = oS; oE < cbE; oE++) {
+                if(pb[oE] < 0x20) { oS = oE; break; }
+                if((pb[oE] == '}') && (pb[oE - 1] == '"')) {
+                    pb[oE + 1] = 0;
+                    dwPID = (DWORD)Util_GetNumericA(pb + oS + 13);
+                    if(dwPID && !(pObProcess = VmmProcessGet(H, dwPID))) {
+                        // candidate found:
+                        VmmWinInit_FindAddTerminatedProcesses_ParseSgrmJsonLine(H, pb + oS, pmObTProcMap);
+                    }
+                    Ob_DECREF_NULL(&pObProcess);
+                    oS = oE; break;
+                }
+            }
+        }
+    }
+    // add terminated processes to the process map:
+    EnterCriticalSection(&H->vmm.LockMaster);
+    while((pTProc = ObMap_Pop(pmObTProcMap))) {
+        if(VmmProcessCreateTerminatedFakeEntry(H, pTProc->dwPID, pTProc->dwPPID, pTProc->ftCreate, pTProc->ftExit, pTProc->szShortName, pTProc->szLongName)) {
+            VmmLog(H, MID_CORE, LOGLEVEL_6_TRACE, "Terminated process added: %5i - %s", pTProc->dwPID, pTProc->szShortName);
+            fNewTProc = TRUE;
+        }
+        LocalFree(pTProc);
+    }
+    if(fNewTProc) {
+        VmmProcessCreateFinish(H);
+    }
+    LeaveCriticalSection(&H->vmm.LockMaster);
+fail:
+    Ob_DECREF(pObHeapMap);
+    Ob_DECREF(pObProcessSgrm);
+    Ob_DECREF(pmObTProcMap);
+    LocalFree(pb);
+}
+
 /*
 * Async initialization of remaining actions in VmmWinInit_TryInitialize.
 * -- H
@@ -1143,13 +1289,18 @@ VOID VmmWinInit_TryInitialize_Async(_In_ VMM_HANDLE H, _In_ QWORD qwNotUsed)
     VmmWinInit_TryInitializeThreading(H);
     VmmWinInit_InitializeOffsetStatic_Heap(H);
     VmmWinInit_TryInitializeKernelOptionalValues(H);
-    // locate no-link processes [only in non-volatile memory due to performance].
-    if(!H->dev.fVolatile && (psObNoLinkEPROCESS = VmmWinProcess_Enumerate_FindNoLinkProcesses(H))) {
-        if((pObSystemProcess = VmmProcessGet(H, 4))) {
-            VmmWinProcess_Enumerate(H, pObSystemProcess, FALSE, psObNoLinkEPROCESS);
+    // locate no-link processes and retired processes (no longer in eprocess list) [only in non-volatile memory due to performance].
+    if(!H->dev.fVolatile) {
+        if((psObNoLinkEPROCESS = VmmWinProcess_Enumerate_FindNoLinkProcesses(H))) {
+            if((pObSystemProcess = VmmProcessGet(H, 4))) {
+                VmmWinProcess_Enumerate(H, pObSystemProcess, FALSE, psObNoLinkEPROCESS);
+            }
+            Ob_DECREF(psObNoLinkEPROCESS);
+            Ob_DECREF(pObSystemProcess);
         }
-        Ob_DECREF(psObNoLinkEPROCESS);
-        Ob_DECREF(pObSystemProcess);
+        if(H->cfg.tpForensicMode) {
+            VmmWinInit_FindAddTerminatedProcesses(H);
+        }
     }
     // vm parse (if enabled)
     VmmMap_GetVM(H, &pObVmMap);

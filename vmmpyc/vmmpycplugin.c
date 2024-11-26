@@ -435,7 +435,6 @@ BOOL VmmPyPlugin_PythonInitializeEmbedded(_In_ VMM_HANDLE H, _In_ HMODULE hDllPy
     wcscat_s(wszPathPython, PYTHON_PATH_MAX, L"pylib\\");
     // 3: Initialize (Embedded) Python.
     __try {
-        Py_SetProgramName(L"VmmPyPluginManager");
         Py_SetPath(wszPathPython);
         VMMDLL_Log(H, VMMDLL_MID_PYTHON, VMMDLL_LOGLEVEL_DEBUG, "PythonPath: %S", wszPathPython);
         Py_Initialize();

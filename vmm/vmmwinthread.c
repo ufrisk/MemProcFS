@@ -1,589 +1,709 @@
+// vmmwinthread.c : implementations related to windows threading.
+//
+// (c) Ulf Frisk, 2024
+// Author: Ulf Frisk, pcileech@frizk.net
+//
+
+#include "vmmwinthread.h"
+#include "vmm.h"
+#include "vmmwin.h"
+#include "charutil.h"
+#include "pdb.h"
+#include "pe.h"
+
+// ----------------------------------------------------------------------------
+// THREADING FUNCTIONALITY BELOW:
+//
+// The threading subsystem is dependent on loaded kernel pdb symbols and being
+// initialized asynchronously at startup. i.e. it may not be immediately avail-
+// able at startup time or not available at all. Loading threads may be slow
+// the first time if many threads exist in a process since a list have to be
+// traversed - hence functionality exists to start a load asynchronously.
+// ----------------------------------------------------------------------------
+
+typedef struct tdVMMWIN_INITIALIZETHREAD_CONTEXT {
+    POB_MAP pmThread;
+    POB_SET psObTeb;
+    POB_SET psObTrapFrame;
+    PVMM_PROCESS pProcess;
+} VMMWIN_INITIALIZETHREAD_CONTEXT, *PVMMWIN_INITIALIZETHREAD_CONTEXT;
+
+int VmmWinThread_Initialize_CmpThreadEntry(PVMM_MAP_THREADENTRY v1, PVMM_MAP_THREADENTRY v2)
+{
+    return
+        (v1->dwTID < v2->dwTID) ? -1 :
+        (v1->dwTID > v2->dwTID) ? 1 : 0;
+}
+
+VOID VmmWinThread_Initialize_DoWork_Pre(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_opt_ PVMMWIN_INITIALIZETHREAD_CONTEXT ctx, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb, _In_ QWORD vaFLink, _In_ QWORD vaBLink, _In_ POB_SET pVSetAddress, _Inout_ PBOOL pfValidEntry, _Inout_ PBOOL pfValidFLink, _Inout_ PBOOL pfValidBLink)
+{
+    BOOL f, f32 = H->vmm.f32;
+    DWORD dwTID;
+    PVMM_MAP_THREADENTRY e;
+    PVMM_OFFSET_ETHREAD ot = &H->vmm.offset.ETHREAD;
+    // 1: sanity check
+    f = ctx &&
+        (f32 ? VMM_KADDR32_4(vaFLink) : VMM_KADDR64_8(vaFLink)) &&
+        (f32 ? VMM_KADDR32_4(vaBLink) : VMM_KADDR64_8(vaBLink)) &&
+        (!ot->oProcessOpt || (VMM_PTR_OFFSET(f32, pb, ot->oProcessOpt) == ctx->pProcess->win.EPROCESS.va)) &&
+        (dwTID = (DWORD)VMM_PTR_OFFSET(f32, pb, ot->oCid + (f32 ? 4ULL : 8ULL)));
+    if(!f) { return; }
+    *pfValidEntry = *pfValidFLink = *pfValidBLink = TRUE;
+    // 2: allocate and populate thread entry with info.
+    if(!(e = LocalAlloc(LMEM_ZEROINIT, sizeof(VMM_MAP_THREADENTRY)))) { return; }
+    e->vaETHREAD = va;
+    e->dwTID = dwTID;
+    e->dwPID = (DWORD)VMM_PTR_OFFSET(f32, pb, ot->oCid);
+    e->dwExitStatus = *(PDWORD)(pb + ot->oExitStatus);
+    e->bState = *(PUCHAR)(pb + ot->oState);
+    e->bSuspendCount = *(PUCHAR)(pb + ot->oSuspendCount);
+    if(ot->oRunningOpt) { e->bRunning = *(PUCHAR)(pb + ot->oRunningOpt); }
+    e->bPriority = *(PUCHAR)(pb + ot->oPriority);
+    e->bBasePriority = *(PUCHAR)(pb + ot->oBasePriority);
+    e->bWaitReason = *(PUCHAR)(pb + ot->oWaitReason);
+    e->vaTeb = VMM_PTR_OFFSET(f32, pb, ot->oTeb);
+    e->ftCreateTime = *(PQWORD)(pb + ot->oCreateTime);
+    e->ftExitTime = *(PQWORD)(pb + ot->oExitTime);
+    e->vaStartAddress = VMM_PTR_OFFSET(f32, pb, ot->oStartAddress);
+    e->vaImpersonationToken = ot->oClientSecurityOpt ? VMM_PTR_EX_FAST_REF(f32, VMM_PTR_OFFSET(f32, pb, ot->oClientSecurityOpt)) : 0;
+    e->vaWin32StartAddress = VMM_PTR_OFFSET(f32, pb, ot->oWin32StartAddress);
+    e->vaStackBaseKernel = VMM_PTR_OFFSET(f32, pb, ot->oStackBase);
+    e->vaStackLimitKernel = VMM_PTR_OFFSET(f32, pb, ot->oStackLimit);
+    e->vaTrapFrame = VMM_PTR_OFFSET(f32, pb, ot->oTrapFrame);
+    e->qwAffinity = VMM_PTR_OFFSET(f32, pb, ot->oAffinity);
+    e->dwKernelTime = *(PDWORD)(pb + ot->oKernelTime);
+    e->dwUserTime = *(PDWORD)(pb + ot->oUserTime);
+    if(e->ftExitTime > 0x0200000000000000) { e->ftExitTime = 0; }
+    ObSet_Push(ctx->psObTeb, e->vaTeb);
+    ObSet_Push(ctx->psObTrapFrame, e->vaTrapFrame);
+    ObMap_Push(ctx->pmThread, e->dwTID, e);  // map will free allocation when cleared
+}
+
+VOID VmmWinThread_Initialize_DoWork(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
+{
+    BOOL f, f32 = H->vmm.f32;
+    BYTE pb[0x200];
+    DWORD i, cMap, cbTrapFrame = 0;
+    QWORD va, vaThreadListEntry;
+    POB_SET psObTeb = NULL, psObTrapFrame = NULL;
+    POB_MAP pmObThreads = NULL;
+    PVMMOB_MAP_THREAD pObThreadMap = NULL;
+    PVMM_MAP_THREADENTRY pThreadEntry;
+    PVMM_PROCESS pObSystemProcess = NULL;
+    VMMWIN_INITIALIZETHREAD_CONTEXT ctx = { 0 };
+    PVMM_OFFSET_ETHREAD ot = &H->vmm.offset.ETHREAD;
+    // 1: set up and perform list traversal call.
+    vaThreadListEntry = VMM_PTR_OFFSET(f32, pProcess->win.EPROCESS.pb, H->vmm.offset.ETHREAD.oThreadListHeadKP);
+    if(f32 ? !VMM_KADDR32_4(vaThreadListEntry) : !VMM_KADDR64_8(vaThreadListEntry)) { goto fail; }
+    if(!(pObSystemProcess = VmmProcessGet(H, 4))) { goto fail; }
+    if(!(psObTeb = ObSet_New(H))) { goto fail; }
+    if(!(psObTrapFrame = ObSet_New(H))) { goto fail; }
+    if(!(pmObThreads = ObMap_New(H, OB_MAP_FLAGS_OBJECT_LOCALFREE))) { goto fail; }
+    ctx.pmThread = pmObThreads;
+    ctx.psObTeb = psObTeb;
+    ctx.psObTrapFrame = psObTrapFrame;
+    ctx.pProcess = pProcess;
+    va = vaThreadListEntry - H->vmm.offset.ETHREAD.oThreadListEntry;
+    VmmWin_ListTraversePrefetch(
+        H,
+        pObSystemProcess,
+        f32,
+        &ctx,
+        1,
+        &va,
+        H->vmm.offset.ETHREAD.oThreadListEntry,
+        H->vmm.offset.ETHREAD.oMax,
+        (VMMWIN_LISTTRAVERSE_PRE_CB)VmmWinThread_Initialize_DoWork_Pre,
+        NULL,
+        pProcess->pObPersistent->pObCMapThreadPrefetch);
+    // 2: transfer result from generic map into PVMMOB_MAP_THREAD
+    if(!(cMap = ObMap_Size(pmObThreads))) { goto fail; }
+    if(!(pObThreadMap = Ob_AllocEx(H, OB_TAG_MAP_THREAD, 0, sizeof(VMMOB_MAP_THREAD) + cMap * sizeof(VMM_MAP_THREADENTRY), NULL, NULL))) { goto fail; }
+    pObThreadMap->cMap = cMap;
+    cbTrapFrame = ((ot->oTrapRsp < 0x200 - 8) && (ot->oTrapRip < 0x200 - 8)) ? 8 + max(ot->oTrapRsp, ot->oTrapRip) : 0;
+    VmmCachePrefetchPages3(H, pObSystemProcess, psObTrapFrame, cbTrapFrame, 0);
+    VmmCachePrefetchPages3(H, pProcess, psObTeb, 0x20, 0);
+    for(i = 0; i < cMap; i++) {
+        pThreadEntry = (PVMM_MAP_THREADENTRY)ObMap_GetByIndex(pmObThreads, i);
+        // fetch Teb
+        if(VmmRead2(H, pProcess, pThreadEntry->vaTeb, pb, 0x20, VMM_FLAG_FORCECACHE_READ)) {
+            pThreadEntry->vaStackBaseUser = VMM_PTR_OFFSET_DUAL(f32, pb, 4, 8);
+            pThreadEntry->vaStackLimitUser = VMM_PTR_OFFSET_DUAL(f32, pb, 8, 16);
+        }
+        // fetch TrapFrame (RSP/RIP)
+        if(cbTrapFrame && VmmRead2(H, pObSystemProcess, pThreadEntry->vaTrapFrame, pb, cbTrapFrame, VMM_FLAG_FORCECACHE_READ)) {
+            pThreadEntry->vaRIP = VMM_PTR_OFFSET(f32, pb, ot->oTrapRip);
+            pThreadEntry->vaRSP = VMM_PTR_OFFSET(f32, pb, ot->oTrapRsp);
+            f = ((pThreadEntry->vaStackBaseUser > pThreadEntry->vaRSP) && (pThreadEntry->vaStackLimitUser < pThreadEntry->vaRSP)) ||
+                ((pThreadEntry->vaStackBaseKernel > pThreadEntry->vaRSP) && (pThreadEntry->vaStackLimitKernel < pThreadEntry->vaRSP));
+            if(!f) {
+                pThreadEntry->vaRIP = 0;
+                pThreadEntry->vaRSP = 0;
+            }
+        }
+        // commit
+        memcpy(pObThreadMap->pMap + i, pThreadEntry, sizeof(VMM_MAP_THREADENTRY));
+    }
+    // 3: sort on thread id (TID) and assign result to process object.
+    qsort(pObThreadMap->pMap, cMap, sizeof(VMM_MAP_THREADENTRY), (int(*)(const void *, const void *))VmmWinThread_Initialize_CmpThreadEntry);
+    pProcess->Map.pObThread = pObThreadMap;     // pProcess take reference responsibility
+fail:
+    Ob_DECREF(psObTeb);
+    Ob_DECREF(psObTrapFrame);
+    Ob_DECREF(pmObThreads);
+    Ob_DECREF(pObSystemProcess);
+}
+
+/*
+* Initialize the thread map for a specific process.
+* NB! The threading sub-system is dependent on pdb symbols and may take a small
+* amount of time before it's available after system startup.
+* -- H
+* -- pProcess
+* -- return
+*/
+_Success_(return)
+BOOL VmmWinThread_Initialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
+{
+    if(pProcess->Map.pObThread) { return TRUE; }
+    if(!H->vmm.fThreadMapEnabled) { return FALSE; }
+    VmmTlbSpider(H, pProcess);
+    EnterCriticalSection(&pProcess->LockUpdate);
+    if(!pProcess->Map.pObThread) {
+        VmmWinThread_Initialize_DoWork(H, pProcess);
+        if(!pProcess->Map.pObThread) {
+            pProcess->Map.pObThread = Ob_AllocEx(H, OB_TAG_MAP_THREAD, LMEM_ZEROINIT, sizeof(VMMOB_MAP_THREAD), NULL, NULL);
+        }
+    }
+    LeaveCriticalSection(&pProcess->LockUpdate);
+    return pProcess->Map.pObThread ? TRUE : FALSE;
+}
+
+
+
+// ----------------------------------------------------------------------------
 // CallStack unwinding features for threads in memory dumps
 //
 // Contributed under BSD 0-Clause License (0BSD)
 // Author: MattCore71
-//
+// ----------------------------------------------------------------------------
 
+#define UWOP_PUSH_NONVOL        0x0   
+#define UWOP_ALLOC_LARGE        0x01     
+#define UWOP_ALLOC_SMALL        0x02    
+#define UWOP_SET_FPREG          0x03     
+#define UWOP_SAVE_NONVOL        0x04    
+#define UWOP_SAVE_NONVOL_FAR    0x05
+#define UWOP_SAVE_XMM128        0x08    
+#define UWOP_SAVE_XMM128_FAR    0x09 
+#define UWOP_PUSH_MACHFRAME     0x0a
 
-#include <vmmwinthread.h>
-#define _INITIALIZE_FROM_FILE    "file.raw"
+#define UNW_FLAG_NHANDLER       0x0
+#define UNW_FLAG_EHANDLER       0x1
+#define UNW_FLAG_UHANDLER       0x2
+#define UNW_FLAG_CHAININFO      0x4
 
+#define VMMWINTHREADCS_MAX_DEPTH 0x80
 
-int main(_In_ int argc, _In_ char* argv[])
+typedef struct tdVMMWINTHREAD_SYMBOL {
+    CHAR szModule[MAX_PATH];
+    CHAR szFunction[MAX_PATH];
+    BOOL fSymbolLookupFailed;
+    DWORD displacement;
+    QWORD retaddress;
+} VMMWINTHREAD_SYMBOL, *PVMMWINTHREAD_SYMBOL;
+
+typedef struct tdVMMWINTHREAD_MODULE_SECTION {
+    CHAR uszModuleName[MAX_PATH];       // TODO: remove
+    QWORD vaModuleBase;
+    DWORD size_vad;
+    struct {
+        CHAR szSectionName[IMAGE_SIZEOF_SHORT_NAME];
+        DWORD dwZERO;
+        DWORD Address;
+        DWORD Size;
+    } text;
+    struct {
+        DWORD Address;
+        DWORD Size;
+    } pdata;
+} VMMWINTHREAD_MODULE_SECTION, *PVMMWINTHREAD_MODULE_SECTION;
+
+typedef struct tdVMMWINTHREAD_FRAME {
+    BOOL fRegPresent;
+    QWORD vaRetAddr;
+    QWORD vaRSP;
+    QWORD vaBaseSP;
+} VMMWINTHREAD_FRAME, *PVMMWINTHREAD_FRAME;
+
+typedef struct tdVMMWINTHREAD_RSP_UNWINDER {
+    QWORD unwind_address;
+    QWORD RSP_in;
+    QWORD RSP_out;
+    BOOL chained;
+    DWORD nb_slot_chained;
+} VMMWINTHREAD_RSP_UNWINDER, *PVMMWINTHREAD_RSP_UNWINDER;
+
+typedef struct _FRAME_OFFSET_SH {
+    USHORT FrameOffset;
+} FRAME_OFFSET_SH, *PFRAME_OFFSET_SH;
+
+typedef struct _FRAME_OFFSET_L {
+    DWORD FrameOffset;
+} FRAME_OFFSET_L, *PFRAME_OFFSET_L;
+
+typedef struct _UNWIND_INFO {
+    BYTE Version : 3;
+    BYTE Flags : 5;
+    BYTE SizeOfProlog;
+    BYTE CountOfCodes;
+    BYTE FrameRegister_offset;
+} UNWIND_INFO, *PUNWIND_INFO;
+
+typedef union _UNWIND_CODE {
+    struct {
+        BYTE CodeOffset;
+        BYTE UnwindOp : 4;
+        BYTE OpInfo : 4;
+    };
+} UNWIND_CODE, *PUNWIND_CODE;
+
+// RUNTIME_FUNCTION_X64
+typedef struct _IMAGE_RUNTIME_FUNCTION_ENTRY_X64 {
+    DWORD BeginAddress;
+    DWORD EndAddress;
+    union {
+        DWORD UnwindInfoAddress;
+        DWORD UnwindData;
+    };
+} _IMAGE_RUNTIME_FUNCTION_ENTRY_X64, *_PIMAGE_RUNTIME_FUNCTION_ENTRY_X64;
+
+typedef struct _IMAGE_RUNTIME_FUNCTION_ENTRY_X64 RUNTIME_FUNCTION_X64, *PRUNTIME_FUNCTION_X64;
+
+// Forward declarations:
+DWORD VmmWinThreadCs_GetModuleSectionFromAddress(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD va, _Out_ PVMMWINTHREAD_MODULE_SECTION pModuleSection);
+_Success_(return) BOOL VmmWinThreadCs_GetSymbolFromAddr(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD qwReturnAddress, _Out_ PVMMWINTHREAD_SYMBOL pSymbol);
+_Success_(return) BOOL VmmWinThreadCs_HeuristicScanForFrame(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_THREADENTRY pThread, _In_ PVMMWINTHREAD_FRAME pCurrentFrame, _Out_ PVMMWINTHREAD_FRAME pReturnScanFrame);
+_Success_(return) BOOL VmmWinThreadCs_PopReturnAddress(VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD va, _Out_ PQWORD pqwBufferCandidate, _Out_opt_ PVMMWINTHREAD_MODULE_SECTION pModuleSectionOpt);
+_Success_(return) BOOL VmmWinThreadCs_RspUnwinder(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_THREADENTRY pThread, _Inout_ PVMMWINTHREAD_RSP_UNWINDER pInRSPOut);
+_Success_(return) BOOL VmmWinThreadCs_ValidateCandidate(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_THREADENTRY pThread, _In_ QWORD vaCandidate, _In_ PVMMWINTHREAD_FRAME pCurrentFrame, _Out_ PVMMWINTHREAD_FRAME pValidationTempFrame);
+_Success_(return) BOOL VmmWinThreadCs_ValidateThreadBeforeUnwind(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_THREADENTRY pThread);
+
+_Success_(return)
+BOOL VmmWinThreadCs_UnwindFrame(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_THREADENTRY pThread, _In_ PVMMWINTHREAD_FRAME pCurrentFrame, _Out_ PVMMWINTHREAD_FRAME pFrameOut)
 {
-
-    VMM_HANDLE hVMM = NULL;
-    BOOL result;
-    DWORD cRead;
-    DWORD i, cbRead, dwPID;
-    PVMMDLL_MAP_MODULE pModuleMap = NULL;
-    PVMMDLL_MAP_THREAD pThreadMap = NULL;
-    PVMMDLL_MAP_THREADENTRY pThreadMapEntry;
-
-    printf("------------------------------------------------------------\n");
-    printf("# Initialize from file:                                     \n");
-    printf("CALL:    VMMDLL_InitializeFile\n");
-    hVMM = VMMDLL_Initialize(3, (LPCSTR[]) { "", "-device", _INITIALIZE_FROM_FILE });
-    if(hVMM) {
-    } else {
-        printf("FAIL:    VMMDLL_InitializeFile\n");
-        return 1;
-    }
-    result = VMMDLL_PidGetFromName(hVMM, "explorer.exe", &dwPID);
-    if(result) {
-        printf("         PID = %i\n", dwPID);
-    } else {
-        printf("FAIL:    VMMDLL_PidGetFromName\n");
-        return 1;
-    }
-
-    printf("CALL:    VMMDLL_Map_GetModuleU\n");
-    result = VMMDLL_Map_GetModuleU(hVMM, dwPID, &pModuleMap, 0);
-    if(!result) {
-        printf("FAIL:    VMMDLL_Map_GetModuleU #1\n");
-        return 1;
-    }
-    if(pModuleMap->dwVersion != VMMDLL_MAP_MODULE_VERSION) {
-        printf("FAIL:    VMMDLL_Map_GetModuleU - BAD VERSION\n");
-        VMMDLL_MemFree(pModuleMap); pModuleMap = NULL;
-        return 1;
-    }
-    result = 0;
-    result = VMMDLL_Map_GetThread(hVMM, dwPID, &pThreadMap);
-
-
-    printf("------------------------------------------------------------\n");
-    printf("# Get Thread Information of 'explorer.exe'.                 \n");
-    printf("CALL:    VMMDLL_Map_GetThread\n");
-    if(!result) {
-        return 1;
-    }
-    if(pThreadMap->dwVersion != VMMDLL_MAP_THREAD_VERSION) {
-        printf("FAIL:    VMMDLL_Map_GetThread - BAD VERSION\n");
-        VMMDLL_MemFree(pThreadMap); pThreadMap = NULL;
-        return 1;
-    }
-
-
-///MULTIPLE THREAD 
-
-    DoublyLinkedList list; 
-    init_list(&list);
-    BOOL state=FALSE;
-    for (int z=0;z<pThreadMap->cMap;z++){
-        pThreadMapEntry = &pThreadMap->pMap[z];
-        printf("Starting for thread %d, TID:%8x \n",z,pThreadMapEntry->dwTID);
-        state = UnwindScanCallstack(dwPID,hVMM,pThreadMapEntry,&list);
-        if(state == FALSE){
-            continue;
-        }
-    }
-    free_list(&list);
-    
-
-///SINGLE THREAD 
-/*
-BOOL state;
-DoublyLinkedList list; 
-init_list(&list);
-pThreadMapEntry = &pThreadMap->pMap[16];
-state = UnwindScanCallstack(pModuleMap,dwPID,hVMM,pThreadMapEntry,&list);
-if(state == FALSE){
-    return 1;
-}
-else{
-    return 0;
-}
-
-free_list(&list);
-*/
-
-
-printf("------------------------------------------------------------\n");
-VMMDLL_MemFree(pModuleMap); pModuleMap = NULL;
-VMMDLL_MemFree(pThreadMap); pThreadMap = NULL;
-VMMDLL_Close(hVMM);
-    
-return 0;
-
-
-}
- BOOL UnwindFrame(_In_ DWORD dwPID,_In_ VMM_HANDLE hVMM, _In_ td_FRAME* psCurrentFrame,_In_ PVMMDLL_MAP_THREADENTRY pThreadMapEntry,_Out_ td_FRAME* pFrameOut){
-
-
+    BOOL fResult = FALSE;
     QWORD qwCurrentAddress;
-    BOOL fResult=FALSE; 
-    if(!psCurrentFrame){fResult=FALSE; goto end;}
-    qwCurrentAddress = psCurrentFrame->RetAddr;
-    BOOL bIsChained = FALSE;
+    PBYTE pbPdata = NULL;
 
-    sModuleSection smsModuleInfo;
-    QWORD qwCurrentRSP,qwVaPdata, qwUnwindAddress,qwBaseModule,qwRvaAddress,qwRetAddress = 0;
-    DWORD dwResultFromAddress,result,cRead,dwPdataSize;
-    size_t sCountFct;
+    VMMWINTHREAD_MODULE_SECTION sModuleSectionInfo;
+    QWORD qwCurrentRSP = 0, vaModuleBase = 0, qwRvaAddress = 0, qwRetAddress = 0;
+    DWORD dwResultFromAddress, dwPdataSize;
+    DWORD iRuntime, cRuntimeFunctions;
 
-    RUNTIME_FUNCTION* runtimeIter;
-    BYTE pUnwindInfoRead[4];
-    UNWIND_INFO* pUnwindStruct = NULL;
-    BYTE* pbPages =NULL;
+    PRUNTIME_FUNCTION_X64 pRuntimeIter;
+    BYTE pbUnwindInfoRead[4];
+    UNWIND_INFO* pUnwindInfo = NULL;
+    VMMWINTHREAD_RSP_UNWINDER sInRSPOut, sInRSPOutChained;
+    DWORD dwUnwindAddress = 0;
 
-    dwResultFromAddress = getVADFromAddress(&qwCurrentAddress,dwPID,hVMM,&smsModuleInfo);
-    
-    //Unwinding from metadata is unavailable if not PE or if function fails, exiting
-    if(dwResultFromAddress == 0 || dwResultFromAddress == 3){fResult=FALSE;goto end;}
-    
-    else if(dwResultFromAddress == 1 || dwResultFromAddress == 2){
-        qwBaseModule = smsModuleInfo.base;
-        dwPdataSize = smsModuleInfo.sizePdata;
-        qwVaPdata = smsModuleInfo.vaPdata;
-    }
-    pbPages = (BYTE*)calloc(dwPdataSize,sizeof(BYTE));if(pbPages == NULL){fResult=FALSE;goto end;}
-    runtimeIter = (RUNTIME_FUNCTION*) pbPages;
+    // initial sanity checks:
+    // unwinding from metadata is unavailable if not PE or if function fails, exiting
+    if(!pCurrentFrame) { goto end; }
+    qwCurrentAddress = pCurrentFrame->vaRetAddr;
+    dwResultFromAddress = VmmWinThreadCs_GetModuleSectionFromAddress(H, pProcess, qwCurrentAddress, &sModuleSectionInfo);
+    if(!dwResultFromAddress) { goto end; }
 
-    //reading all the pdata section containing the RUNTIME_FUNCTION
-    if(!VMMDLL_MemReadEx(hVMM, dwPID, qwBaseModule + qwVaPdata, pbPages, dwPdataSize, &cRead, 0)) {fResult=FALSE;goto end;}
+    // reading all the pdata section containing the RUNTIME_FUNCTION_X64
+    vaModuleBase = sModuleSectionInfo.vaModuleBase;
+    dwPdataSize = sModuleSectionInfo.pdata.Size;
+    pbPdata = LocalAlloc(0, dwPdataSize);
+    if(!pbPdata || !VmmRead(H, pProcess, vaModuleBase + sModuleSectionInfo.pdata.Address, pbPdata, dwPdataSize)) { goto end; }
+    pRuntimeIter = (PRUNTIME_FUNCTION_X64)pbPdata;
+    qwRvaAddress = qwCurrentAddress - vaModuleBase ;
+    cRuntimeFunctions = dwPdataSize / sizeof(RUNTIME_FUNCTION_X64); 
 
-    
-    qwRvaAddress = qwCurrentAddress - qwBaseModule ;
-
-    //Finding the number of functions in pdata section
-    sCountFct = dwPdataSize / sizeof(RUNTIME_FUNCTION); 
-
-    //printf("RVA is %016llx\n",qwRvaAddress);
-    //Finding where the previous Return address is located among runtime functions and getting the unwindInfo structure address
-
+    // finding where the previous Return address is located among runtime functions and getting the unwindInfo structure address
     int dwMaxCountRuntime = 0;
-    for (size_t dwIterRuntime = 0; dwIterRuntime < sCountFct; dwIterRuntime++) {
-        if (qwRvaAddress >=  runtimeIter[dwIterRuntime].BeginAddress && qwRvaAddress < (runtimeIter[dwIterRuntime].EndAddress) && runtimeIter[dwIterRuntime].BeginAddress!=0)
-        {   printf("Runtime structure %016llx   %016llx       %016llx\n : ",runtimeIter[dwIterRuntime].BeginAddress,runtimeIter[dwIterRuntime].EndAddress,runtimeIter[dwIterRuntime].UnwindInfo);
-            qwUnwindAddress = runtimeIter[dwIterRuntime].UnwindInfo ;
-            printf("le unwind info se trouve à l'adresse %016llx\n",qwBaseModule + qwUnwindAddress);
-            
-            //issue iffinding multiple runtime functions corresponding, exiting..
-            if (dwMaxCountRuntime > 1){fResult=FALSE;goto end;}
+    for(iRuntime = 0; iRuntime < cRuntimeFunctions; iRuntime++) {
+        if((qwRvaAddress >= pRuntimeIter[iRuntime].BeginAddress) && (qwRvaAddress < pRuntimeIter[iRuntime].EndAddress) && pRuntimeIter[iRuntime].BeginAddress) {
+            dwUnwindAddress = pRuntimeIter[iRuntime].UnwindInfoAddress;
+            VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, "  UNWIND RUNTIME STRUCT: BEGIN:[%08x] END:[%08x] UNWIND_INFO:[%08x] UNWIND_INFO_ADDR:[%016llx] PID:[%u] TID:[%u]", pRuntimeIter[iRuntime].BeginAddress, pRuntimeIter[iRuntime].EndAddress, (DWORD)dwUnwindAddress, vaModuleBase + dwUnwindAddress, pProcess->dwPID, pThread->dwTID);
+            // issue if finding multiple runtime functions corresponding, exiting..
+            if (dwMaxCountRuntime > 1) { goto end; }
             dwMaxCountRuntime++;
         }
     }
-    if(qwUnwindAddress == 0){fResult=FALSE;goto end;}
+    if(dwUnwindAddress == 0) { goto end; }
     
-
-    //Reading UNWIND INFO structure
-    pUnwindStruct = (UNWIND_INFO*)pUnwindInfoRead;
-
-    printf("Reading UNWIND_INFO\n");
-    if(!VMMDLL_MemReadEx(hVMM, dwPID, qwBaseModule+qwUnwindAddress, pUnwindInfoRead, 4, &cRead, 0)) {fResult = FALSE;goto end;}
-
-    //PrintHexAscii((PBYTE)pUnwindStruct, min(cRead, 4));
-
-    printf("Version of UNWIND_INFO structure is %02x\n",pUnwindStruct->Version);
-    printf("Flag is %02x\n",pUnwindStruct->Flags);
-
-    //retreiving the number of slot for the current UNWIND_INFO
-    DWORD dwNbslot=pUnwindStruct->CountOfCodes;
-
-    //finding out if UNWIND INFO is not conventional, exiting if not.
-    if((pUnwindStruct->Version != 0x01 && pUnwindStruct->Version != 0x02)|| (pUnwindStruct->Flags > 0x04)){fResult = FALSE;goto end;}
-
-    // If the CountOfCodes is NULL and the baseSP is null we are at the beginning of the unwind process, therefore the returnAdress is on top of the stack, no need to restore anything
-    else if(pUnwindStruct->CountOfCodes== 0x00 && psCurrentFrame->baseSP == 0 && (pUnwindStruct->Flags != 0x04)){
-        //printf("No Prolog is present, it is a leaf function at the beginning\n");
-        
-        //We can get the return address of top by passing pThreadMapEntry->vaRSP
-        if (!PopReturnAddress(&pThreadMapEntry->vaRSP,dwPID,hVMM,&qwRetAddress)){
-            pFrameOut->RetAddr = 0;
-            pFrameOut->RSP = pThreadMapEntry->vaRSP;
-            fResult=FALSE; goto end;
+    // Reading UNWIND INFO structure
+    pUnwindInfo = (PUNWIND_INFO)pbUnwindInfoRead;
+    if(!VmmRead(H, pProcess, vaModuleBase + dwUnwindAddress, pbUnwindInfoRead, 4)) { goto end; }
+    VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, "  UNWIND INFO: VERSION:[%02x] FLAGS:[%02x] PID:[%u] TID:[%u]", pUnwindInfo->Version, pUnwindInfo->Flags, pProcess->dwPID, pThread->dwTID);
+    // retreiving the number of slot for the current UNWIND_INFO
+    DWORD dwNbslot = pUnwindInfo->CountOfCodes;
+    // finding out if UNWIND INFO is not conventional, exiting if not.
+    if((pUnwindInfo->Version != 0x01 && pUnwindInfo->Version != 0x02) || (pUnwindInfo->Flags > 0x04)) {
+        goto end;
+    }
+    // If the CountOfCodes is NULL and the vaBaseSP is null we are at the beginning of the unwind process, therefore the returnAddress is on top of the stack, no need to restore anything
+    if((pUnwindInfo->CountOfCodes == 0x00) && (pCurrentFrame->vaBaseSP == 0) && (pUnwindInfo->Flags != 0x04)) {
+        // We can get the return address of top by passing pThread->vaRSP
+        if(!VmmWinThreadCs_PopReturnAddress(H, pProcess, pThread->vaRSP, &qwRetAddress, NULL)) {
+            pFrameOut->vaRSP = pThread->vaRSP;
+            pFrameOut->vaRetAddr = 0;
+            goto end;
         }
-        printf("The return address is %016llx\n",qwRetAddress);
-        pFrameOut->RetAddr = qwRetAddress;
-        pFrameOut->RSP = pThreadMapEntry->vaRSP;
-        pFrameOut->baseSP = pThreadMapEntry->vaRSP + 8;
-        fResult=TRUE;goto end;
+        VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, "  UNWIND SUCCESS #1: RETADDR:[%016llx] PID:[%u] TID:[%u]", qwRetAddress, pProcess->dwPID, pThread->dwTID);
+        pFrameOut->vaRetAddr = qwRetAddress;
+        pFrameOut->vaRSP = pThread->vaRSP;
+        pFrameOut->vaBaseSP = pThread->vaRSP + 8;
+        fResult = TRUE; goto end;
     }
-    //if we find a leaf function without being at the beginning
-    else if(pUnwindStruct->CountOfCodes == 0x00 && psCurrentFrame->baseSP != 0 && (pUnwindStruct->Flags != 0x04)){
-
-        qwCurrentRSP = psCurrentFrame->baseSP;
-        printf("No Prolog is present, it is a leaf function, the return address is on top of stack but we are not at the beginning\n");
-        
-        if (!PopReturnAddress(&qwCurrentRSP,dwPID,hVMM,&qwRetAddress)){fResult=FALSE;goto end;}
-
-        printf("The return address is %016llx\n",qwRetAddress);
-        pFrameOut->RetAddr = qwRetAddress;
-        pFrameOut->baseSP = qwCurrentRSP + 8;
-        pFrameOut->RSP = qwCurrentRSP;
-        fResult=TRUE;goto end;
+    // if we find a leaf function without being at the beginning
+    if((pUnwindInfo->CountOfCodes == 0x00) && (pCurrentFrame->vaBaseSP != 0) && (pUnwindInfo->Flags != 0x04)) {
+        qwCurrentRSP = pCurrentFrame->vaBaseSP;
+        //printf("No Prolog is present, it is a leaf function, the return address is on top of stack but we are not at the beginning\n");
+        if (!VmmWinThreadCs_PopReturnAddress(H, pProcess, qwCurrentRSP, &qwRetAddress, NULL)) { goto end; }
+        VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, "  UNWIND SUCCESS #2: RETADDR:[%016llx] PID:[%u] TID:[%u]", qwRetAddress, pProcess->dwPID, pThread->dwTID);
+        pFrameOut->vaRetAddr = qwRetAddress;
+        pFrameOut->vaBaseSP = qwCurrentRSP + 8;
+        pFrameOut->vaRSP = qwCurrentRSP;
+        fResult = TRUE; goto end;
     }
-    //we need to unwind each code to restore RSP and pop the return address
-    else{
-        printf("Normal function, Continuing..");
-        td_RSP_UNWINDER* pInRSPOut =NULL;
-        pInRSPOut = (td_RSP_UNWINDER*)calloc(1,sizeof(td_RSP_UNWINDER)); if(pInRSPOut ==NULL){fResult=FALSE;goto end;}
-
-        printf("Address of pInRSPOut : %p\n", (void*)pInRSPOut);
-        pInRSPOut->unwind_adress = qwBaseModule+qwUnwindAddress;
-        pFrameOut->RSP = qwCurrentRSP;
-        pInRSPOut-> RSP_in = psCurrentFrame->baseSP;
-        if(!RspUnwinder(dwPID,hVMM,pInRSPOut)){fResult=FALSE;goto end;}
-        
-        printf("The new RSP is :%016llx ",pInRSPOut->RSP_out);
-        qwCurrentRSP = pInRSPOut->RSP_out;
-        free(pInRSPOut);pInRSPOut=NULL;
-
-        printf("Getting the return address but before testing if UNWIND INFO is chained (flag 0x04)\n");
-
-        if(pUnwindStruct->Flags == 0x04){
-            QWORD qwRtimChainAddr;
-            RUNTIME_FUNCTION* pRuntimeChained;
-            BYTE pbReadRtime[sizeof(RUNTIME_FUNCTION)];
+    // we need to unwind each code to restore RSP and pop the return address
+    {
+        VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, "  UNWIND Normal function, Continuing... PID:[%u] TID:[%u]", pProcess->dwPID, pThread->dwTID);
+        sInRSPOut.unwind_address = vaModuleBase + dwUnwindAddress;
+        pFrameOut->vaRSP = qwCurrentRSP;
+        sInRSPOut.RSP_in = pCurrentFrame->vaBaseSP;
+        if(!VmmWinThreadCs_RspUnwinder(H, pProcess, pThread, &sInRSPOut)) { goto end; }
+        qwCurrentRSP = sInRSPOut.RSP_out;
+        VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, "  UNWIND New RSP:[%016llx] PID:[%u] TID:[%u]", qwCurrentRSP, pProcess->dwPID, pThread->dwTID);
+        if(pUnwindInfo->Flags == 0x04) {
+            QWORD qwRuntimeChainAddr;
+            RUNTIME_FUNCTION_X64* pRuntimeChained;
+            BYTE pbReadRtime[sizeof(RUNTIME_FUNCTION_X64)];
             QWORD qwUwdChainedAddr;
-        chain:
-            pRuntimeChained =NULL;
-            bIsChained = FALSE;
-            //RUNTIME struct for chained is after previous unwind structure + 4 + 2bytes for each UNWIND_CODES
-            qwRtimChainAddr = qwBaseModule+qwUnwindAddress+4+2*dwNbslot;
-            memset(pbReadRtime, 0, sizeof(RUNTIME_FUNCTION));
-            pRuntimeChained = (RUNTIME_FUNCTION*) pbReadRtime; 
-            printf("Reading RUNTIME_FUNCTIONS for chained steps\n");
-
-            //we read RUNTIME_FUNCTION for chained steps
-            if(!VMMDLL_MemReadEx(hVMM, dwPID, qwRtimChainAddr, pbReadRtime, sizeof(RUNTIME_FUNCTION), &cRead, 0)) {fResult=FALSE;goto end;}
-            printf("the adress for chained RUNTIME address is  %016llx\n",qwRtimChainAddr);
-           
-            qwUwdChainedAddr = pRuntimeChained[0].UnwindInfo;
-            if(qwUwdChainedAddr == 0){fResult=FALSE;goto end;}
-
-            printf("UNWIND_INFO for chained structures is at %016llx\n",qwBaseModule + qwUwdChainedAddr);
-
-            td_RSP_UNWINDER* pInRSPOutChained =NULL;
-            pInRSPOutChained = (td_RSP_UNWINDER*)calloc(1,sizeof(td_RSP_UNWINDER));if(pInRSPOutChained ==NULL){fResult=FALSE;goto end;}
-
-            //preparing second structure pInRSPOutChained for new call to RspUnwinder in order to resolve chain. 
-            pInRSPOutChained->unwind_adress = qwBaseModule+qwUwdChainedAddr;
-            pInRSPOutChained->RSP_in = qwCurrentRSP;
-
-            if(!RspUnwinder(dwPID,hVMM,pInRSPOutChained)){fResult=FALSE;goto end;}
-
-            printf("New RSP is %016llx ",pInRSPOutChained->RSP_out);
-
-            //updating current RSP
-            qwCurrentRSP = pInRSPOutChained->RSP_out;
-
-            //if chained function was also chained, redoing chained step (goto chain)
-            bIsChained = pInRSPOutChained->chained;
-            if(bIsChained==TRUE){
-                //updating current UnwindAddress before jumping
-                qwUnwindAddress = qwUwdChainedAddr;
-                dwNbslot = pInRSPOutChained->nb_slot_chained;
-                free(pInRSPOutChained),pInRSPOutChained=NULL;goto chain;
+chain:
+            pRuntimeChained = NULL;
+            // RUNTIME struct for chained is after previous unwind structure + 4 + 2bytes for each UNWIND_CODES
+            // we read RUNTIME_FUNCTION_X64 for chained steps
+            qwRuntimeChainAddr = vaModuleBase + dwUnwindAddress + 4 + (2 * dwNbslot);
+            if(!VmmRead(H, pProcess, qwRuntimeChainAddr, pbReadRtime, sizeof(RUNTIME_FUNCTION_X64))) { goto end; }
+            pRuntimeChained = (RUNTIME_FUNCTION_X64 *)pbReadRtime;
+            qwUwdChainedAddr = pRuntimeChained[0].UnwindInfoAddress;
+            if(qwUwdChainedAddr == 0) { goto end; }
+            VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, "  UNWIND CHAINED CHAINED_RUNTIME:[%016llx] UNWIND_INFO_ADDR:[%016llx] PID:[%u] TID:[%u]", qwRuntimeChainAddr, vaModuleBase + qwUwdChainedAddr, pProcess->dwPID, pThread->dwTID);
+            // preparing second structure pInRSPOutChained for new call to VmmWinThreadCs_RspUnwinder in order to resolve chain.
+            ZeroMemory(&sInRSPOutChained, sizeof(VMMWINTHREAD_RSP_UNWINDER));
+            sInRSPOutChained.unwind_address = vaModuleBase+qwUwdChainedAddr;
+            sInRSPOutChained.RSP_in = qwCurrentRSP;
+            if(!VmmWinThreadCs_RspUnwinder(H, pProcess, pThread, &sInRSPOutChained)) { goto end; }
+            // updating current RSP
+            VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, "  UNWIND New RSP:[%016llx] PID:[%u] TID:[%u]", sInRSPOutChained.RSP_out, pProcess->dwPID, pThread->dwTID);
+            qwCurrentRSP = sInRSPOutChained.RSP_out;
+            // if chained function was also chained, redoing chained step (goto chain)
+            if(sInRSPOutChained.chained) {
+                // updating current UnwindAddress before jumping
+                dwUnwindAddress = (DWORD)qwUwdChainedAddr;
+                dwNbslot = sInRSPOutChained.nb_slot_chained;
+                goto chain;
             }
         }
-
-        if (!PopReturnAddress(&qwCurrentRSP,dwPID,hVMM,&qwRetAddress)){fResult=FALSE;goto end;}
-
-        printf("Decrementing RSP because popping out the return address\n");
+        if(!VmmWinThreadCs_PopReturnAddress(H, pProcess, qwCurrentRSP, &qwRetAddress, NULL)) { goto end; }
         qwCurrentRSP = qwCurrentRSP + 8;
-        
-        printf("Final RSP :  %016llx\n",qwCurrentRSP);
-        printf("Return Address :  %016llx\n",qwRetAddress);
-        
+        VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, "  UNWIND FINAL_RSP:[%016llx] RETURN_ADDR:[%016llx] PID:[%u] TID:[%u]", qwCurrentRSP, qwRetAddress, pProcess->dwPID, pThread->dwTID);
         //preparing return argument structure
-        pFrameOut->RetAddr = qwRetAddress;
-        pFrameOut->baseSP = qwCurrentRSP;
-        pFrameOut->RSP = psCurrentFrame->baseSP;
-        fResult=TRUE;
+        pFrameOut->vaRetAddr = qwRetAddress;
+        pFrameOut->vaBaseSP = qwCurrentRSP;
+        pFrameOut->vaRSP = pCurrentFrame->vaBaseSP;
+        fResult = TRUE; goto end;
     }
-end :
-    if(pbPages){free(pbPages);pbPages = NULL;}
+end:
+    LocalFree(pbPdata);
     return fResult;
-    
 }
 
-BOOL RspUnwinder(_In_ DWORD dwPID,_In_ VMM_HANDLE hVMM,_In_Out_ td_RSP_UNWINDER* pInRSPOut){
+_Success_(return)
+BOOL VmmWinThreadCs_RspUnwinder(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_THREADENTRY pThread, _Inout_ PVMMWINTHREAD_RSP_UNWINDER pInRSPOut)
+{
+    BOOL fResult = FALSE;
     BYTE pUnwindInfoRead[4];
-    UNWIND_INFO* pUnwindStruct = NULL;
-    pUnwindStruct = (UNWIND_INFO*)pUnwindInfoRead;
-    DWORD cRead,dwUnwdIter;
-    QWORD pReadUnwind = pInRSPOut->unwind_adress+4;
-    QWORD qwCurrentRSP;
-    BOOL fResult;
+    PUNWIND_INFO pUnwindInfo = (PUNWIND_INFO)pUnwindInfoRead;
+    DWORD dwUnwdIter, dwNbslot;
+    QWORD qwCurrentRSP, pReadUnwind = pInRSPOut->unwind_address + 4;
     USHORT FrameOffset;
-    if (pInRSPOut ==NULL){fResult = FALSE;goto end;}
+    PUNWIND_CODE pUnwindCodes = NULL;
+    PFRAME_OFFSET_L offset_l;
+    PFRAME_OFFSET_SH offset;
+    if(!pInRSPOut) { goto end; }
     qwCurrentRSP = pInRSPOut->RSP_in;
-
-
-    printf("Reading UNWIND_INFO for unwind address passed in structure at %016llx\n",pInRSPOut->unwind_adress);
-    if(!VMMDLL_MemReadEx(hVMM, dwPID, pInRSPOut->unwind_adress, pUnwindInfoRead, 4, &cRead, 0)) {fResult = FALSE;goto end;}
-
-    DWORD dwNbslot=pUnwindStruct->CountOfCodes;
-    //reading UNWIND CODES for dwNbslot 
-    UNWIND_CODE* pUnwindCodes = (UNWIND_CODE*)calloc(dwNbslot,sizeof(UNWIND_CODE));if(pUnwindCodes==NULL){fResult = FALSE;goto end;}
-    
-    //detecting multiple chained function 
-    if(pUnwindStruct->Flags == 0x04){
+    VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, "  RSPUnwinder: Reading UNWIND_INFO for unwind address passed in structure at %016llx PID:[%u] TID:[%u]", pInRSPOut->unwind_address, pProcess->dwPID, pThread->dwTID);
+    if(!VmmRead(H, pProcess, pInRSPOut->unwind_address, pUnwindInfoRead, 4)) { goto end; }
+    // reading UNWIND CODES for dwNbslot 
+    dwNbslot = pUnwindInfo->CountOfCodes;
+    pUnwindCodes = LocalAlloc(LMEM_ZEROINIT, dwNbslot * sizeof(UNWIND_CODE));
+    if(!pUnwindCodes) { goto end; }
+    // detecting multiple chained function 
+    if(pUnwindInfo->Flags == 0x04) {
         pInRSPOut->chained = TRUE;
         pInRSPOut->nb_slot_chained = dwNbslot;
     }
-
-    if(pUnwindStruct->CountOfCodes == 0x00){
+    if(pUnwindInfo->CountOfCodes == 0x00) {
         pInRSPOut->RSP_out = pInRSPOut->RSP_in;
-        fResult = TRUE;goto end;
+        goto end;
     }
-
-    //PrintHexAscii((PBYTE)pUnwindStruct, min(cRead, 4));
-    printf("Reading UNWIND_CODES in fct\n");
-    if(!VMMDLL_MemReadEx(hVMM, dwPID, pReadUnwind, (PBYTE)pUnwindCodes, 2*dwNbslot, &cRead, 0)) {fResult = FALSE;goto end;}
-    
-    printf("Enumerating each UNWIND CODES\n");
-    printf("RSP at begenning is :  %016llx\n",pInRSPOut->RSP_in);
-        
-    //for each slot, testing type of OpInfo 
-    for (dwUnwdIter = 0; dwUnwdIter<dwNbslot;dwUnwdIter++){
-        switch (pUnwindCodes[dwUnwdIter].UnwindOp)
-        {
+    if(!VmmRead(H, pProcess, pReadUnwind, (PBYTE)pUnwindCodes, 2 * dwNbslot)) { goto end; }
+    VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, "  RSPUnwinder: Enumerating each UNWIND CODES - RSP at begenning is %016llx PID:[%u] TID:[%u]", pInRSPOut->RSP_in, pProcess->dwPID, pThread->dwTID); 
+    // for each slot, testing type of OpInfo 
+    for(dwUnwdIter = 0; dwUnwdIter < dwNbslot; dwUnwdIter++) {
+        switch (pUnwindCodes[dwUnwdIter].UnwindOp) {
             //we pop a registry, the stack need to grow down
             case UWOP_PUSH_NONVOL:
                 qwCurrentRSP = qwCurrentRSP + 8;
-                printf("NEW RSP :  %016llx\n",qwCurrentRSP);
+                VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, "  RSPUnwinder: New RSP: %016llx CODE:[%02x] PID:[%u] TID:[%u]", qwCurrentRSP, UWOP_PUSH_NONVOL, pProcess->dwPID, pThread->dwTID);
                 break;
             //Restoring former stack allocation, (the number of bytes is given by new slot and carried by FrameOffset)
             case UWOP_ALLOC_LARGE:
-                if(pUnwindCodes[dwUnwdIter].OpInfo == 0x00){
-                    FRAME_OFFSET_SH* offset = (FRAME_OFFSET_SH *)&pUnwindCodes[dwUnwdIter+1];
+                if(pUnwindCodes[dwUnwdIter].OpInfo == 0x00) {
+                    offset = (PFRAME_OFFSET_SH)&pUnwindCodes[dwUnwdIter + 1];
                     FrameOffset = (offset->FrameOffset)*8;
-                    printf("Frame offset is %02x\n",FrameOffset);
                     qwCurrentRSP = qwCurrentRSP + FrameOffset;
-                    printf("NEW RSP :  %016llx\n",qwCurrentRSP);
+                    VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, "  RSPUnwinder: New RSP: %016llx FRAME_OFFSET:[%02x] CODE:[%02x] PID:[%u] TID:[%u]", qwCurrentRSP, FrameOffset, UWOP_ALLOC_LARGE, pProcess->dwPID, pThread->dwTID);
                     dwUnwdIter++;
                     break;
                 }
-                else if(pUnwindCodes[dwUnwdIter].OpInfo == 0x01){
-                    FRAME_OFFSET_L* offset_l = (FRAME_OFFSET_L *)&pUnwindCodes[dwUnwdIter+1];
-                    FrameOffset = (offset_l->FrameOffset);
-                    printf("Frame offset is %02x\n",FrameOffset);
+                else if(pUnwindCodes[dwUnwdIter].OpInfo == 0x01) {
+                    offset_l = (PFRAME_OFFSET_L)&pUnwindCodes[dwUnwdIter + 1];
+                    FrameOffset = (USHORT)offset_l->FrameOffset;
+                    printf("Frame offset is %02x\n", FrameOffset);
                     qwCurrentRSP = qwCurrentRSP + FrameOffset;
-                    printf("NEW RSP :  %016llx\n",qwCurrentRSP);
-                    dwUnwdIter=dwUnwdIter+2;
+                    printf("NEW RSP :  %016llx\n", qwCurrentRSP);
+                    VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, "  RSPUnwinder: New RSP: %016llx FRAME_OFFSET:[%02x] CODE:[%02x] PID:[%u] TID:[%u]", qwCurrentRSP, FrameOffset, UWOP_ALLOC_LARGE, pProcess->dwPID, pThread->dwTID);
+                    dwUnwdIter=dwUnwdIter + 2;
                     break;
                 }
                 break;                
             case UWOP_ALLOC_SMALL:
                 FrameOffset = (pUnwindCodes[dwUnwdIter].OpInfo)*8 +8;
-                printf("Le frame offset est %d\n",FrameOffset);
                 qwCurrentRSP = qwCurrentRSP + FrameOffset;
-                printf("NEW RSP :  %016llx\n",qwCurrentRSP);
+                VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, "  RSPUnwinder: New RSP: %016llx FRAME_OFFSET:[%02x] CODE:[%02x] PID:[%u] TID:[%u]", qwCurrentRSP, FrameOffset, UWOP_ALLOC_SMALL, pProcess->dwPID, pThread->dwTID);
                 break;
-
-            //  RSP is left untouched 
+            //  vaRSP is left untouched 
             case UWOP_SET_FPREG:
                 break;
-            
             // the save is only made on stack space already allocated, RSP is left untouched but next slot is used for this register so we go over it
             case UWOP_SAVE_NONVOL:
                 dwUnwdIter++;
                 break;
-            
             // the save is only made on stack already allocated, RSP is left untouched 
             case UWOP_SAVE_NONVOL_FAR:
                 break;
-
             // the save is only made on stack already allocated, RSP is left untouched 
             case UWOP_SAVE_XMM128:
                 break;
-
             // the save is only made on stack already allocated, RSP is left untouched 
             case UWOP_SAVE_XMM128_FAR:
                 break;
-
             case UWOP_PUSH_MACHFRAME:
-                if(pUnwindCodes[dwUnwdIter].OpInfo == 0x00){
+                if(pUnwindCodes[dwUnwdIter].OpInfo == 0x00) {
                     qwCurrentRSP = qwCurrentRSP + 40;
-                    printf("NEW RSP :  %016llx\n",qwCurrentRSP);
+                    VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, "  RSPUnwinder: New RSP: %016llx CODE:[%02x] PID:[%u] TID:[%u]", qwCurrentRSP, UWOP_PUSH_MACHFRAME, pProcess->dwPID, pThread->dwTID);
                     break;
                 }
-                else if(pUnwindCodes[dwUnwdIter].OpInfo == 0x01){
+                else if(pUnwindCodes[dwUnwdIter].OpInfo == 0x01) {
                     qwCurrentRSP = qwCurrentRSP + 48;
-                    printf("NEW RSP :  %016llx\n",qwCurrentRSP);
+                    VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, "  RSPUnwinder: New RSP: %016llx CODE:[%02x] PID:[%u] TID:[%u]", qwCurrentRSP, UWOP_PUSH_MACHFRAME, pProcess->dwPID, pThread->dwTID);
                     break;
                 }
                 break;
                 
             default:
-                printf("Code Unknown\n");
+                VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, "  RSPUnwinder: Unknown Code CODE:[%02x] PID:[%u] TID:[%u]", pUnwindCodes[dwUnwdIter].UnwindOp, pProcess->dwPID, pThread->dwTID);
                 break;
         }
         pInRSPOut->RSP_out = qwCurrentRSP;
     }
     fResult = TRUE;
-end : 
-    if(pUnwindCodes){free(pUnwindCodes); pUnwindCodes = NULL;}
+end: 
+    LocalFree(pUnwindCodes);
     return fResult;
 }
 
-BOOL UnwindScanCallstack(_In_ DWORD dwPID,_In_ VMM_HANDLE hVMM,_In_ PVMMDLL_MAP_THREADENTRY pThreadMapEntry,_In_ DoublyLinkedList* list){
-    td_FRAME sFrameInit;
-    td_FRAME* psCurrentFrame = NULL;
-    DWORD dwIterDisplay,dwIterFrame;
-    td_FRAME* psFullCallStack = NULL; 
-    BOOL fResult,fResultScan,GlobalResult,fResult_display= FALSE;
+VOID VmmWinThreadCs_CleanupCB(PVMMOB_MAP_THREADCALLSTACK pOb)
+{
+    LocalFree(pOb->pbMultiText);
+}
+
+#define VMMWINTHREADCS_BUFFER_USERTEXT 0x10000
+
+/*
+* Retrieve a new callstack object for the specified thread.
+* CALLER DECREF: return
+* -- H
+* -- pProcess
+* -- pThread
+* -- return
+*/
+PVMMOB_MAP_THREADCALLSTACK VmmWinThreadCs_UnwindScanCallstack(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_THREADENTRY pThread)
+{
+    VMMWINTHREAD_FRAME sFrameInit, sCurrentFrame = { 0 };
+    DWORD i, dwIterFrame, cboText = 0;
+    PVMMWINTHREAD_FRAME peSrc, pFullCallStack = NULL; 
+    BOOL fResultDisplay = FALSE;
     QWORD qwLimitKernel = 0x00007FFFFFFF0000;
+    PVMMOB_MAP_THREADCALLSTACK pObCS = NULL;
+    PVMM_MAP_THREADCALLSTACKENTRY peDst;
+    POB_STRMAP psmOb = NULL;
+    VMMWINTHREAD_SYMBOL sCurrentSymbol;
+    LPSTR uszText = NULL;
 
-    psFullCallStack = (td_FRAME*)calloc(100,sizeof(td_FRAME));if(psFullCallStack==NULL){GlobalResult =FALSE;goto end;}
-    psCurrentFrame = (td_FRAME*)calloc(1,sizeof(td_FRAME));if(psCurrentFrame==NULL){GlobalResult =FALSE;goto end;}
+    if(H->vmm.tpMemoryModel != VMM_MEMORYMODEL_X64) { return NULL; }
 
-    //checcking condition before starting to unwind
-    if(!validateThreadBeforeUnwind(dwPID,hVMM,pThreadMapEntry)){GlobalResult = FALSE;goto end;}
+    pFullCallStack = LocalAlloc(LMEM_ZEROINIT, VMMWINTHREADCS_MAX_DEPTH * sizeof(VMMWINTHREAD_FRAME));
+    if(!pFullCallStack) { return NULL; }
 
-    printf("RIP IS %016llx\n ",pThreadMapEntry->vaRIP);
-    printf("Constructing first frame with RIP retreived from pThreadMapEntry\n");
-    sFrameInit.RetAddr = pThreadMapEntry->vaRIP;
-    //setting RSP as 0 as we are not unwinding kernel stack
-    sFrameInit.RSP = 0;
-    sFrameInit.baseSP = 0;
-    psFullCallStack[0] = sFrameInit;
+    // checking condition before starting to unwind
+    if(!VmmWinThreadCs_ValidateThreadBeforeUnwind(H, pProcess, pThread)) { goto end; }
+
+    VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, " START: RIP:[%016llx] PID:[%u] TID:[%u]", pThread->vaRIP, pProcess->dwPID, pThread->dwTID);
+    sFrameInit.vaRetAddr = pThread->vaRIP;
+    // setting RSP as 0 as we are not unwinding kernel stack
+    sFrameInit.vaRSP = 0;
+    sFrameInit.vaBaseSP = 0;
+    pFullCallStack[0] = sFrameInit;
     
-    for (dwIterFrame = 0; dwIterFrame<20 ; dwIterFrame++) {
-        if(psFullCallStack[dwIterFrame].RetAddr > qwLimitKernel){
-            printf("Adress is in Kernel space, unwinding not supported at the moment\n");
+    for(dwIterFrame = 0; dwIterFrame < VMMWINTHREADCS_MAX_DEPTH - 2; dwIterFrame++) {
+        VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, " START: RIP:[%016llx] RSP:[%016llx] ADDR:[%016llx] PID:[%u] TID:[%u]", pThread->vaRIP, pThread->vaRSP, pFullCallStack[dwIterFrame].vaRetAddr, pProcess->dwPID, pThread->dwTID);
+        if(pFullCallStack[dwIterFrame].vaRetAddr > qwLimitKernel) {
+            VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, " END: (kernel address not supported) RIP:[%016llx] ADDR:[%016llx] PID:[%u] TID:[%u]", pThread->vaRIP, pFullCallStack[dwIterFrame].vaRetAddr, pProcess->dwPID, pThread->dwTID);
             break;
         }
-        fResult = UnwindFrame(dwPID, hVMM, &psFullCallStack[dwIterFrame], pThreadMapEntry,psCurrentFrame);
-
-        if(fResult == TRUE){
-            psFullCallStack[dwIterFrame + 1] = *psCurrentFrame;
+        // try to unwind frame:
+        if(VmmWinThreadCs_UnwindFrame(H, pProcess, pThread, &pFullCallStack[dwIterFrame], &sCurrentFrame)) {
+            pFullCallStack[dwIterFrame + 1] = sCurrentFrame;
+            continue;
         }
-        //if false we could not unwind, trying heuristic technique
-        else if(fResult == FALSE){
-           fResultScan = heuristicScanForFrame(pThreadMapEntry,dwPID,hVMM,&psFullCallStack[dwIterFrame],psCurrentFrame);
-           if(fResultScan ==TRUE){
-                psFullCallStack[dwIterFrame + 1] = *psCurrentFrame;
-            }
-            //both technique failed, stopping
-            else{
-                break;
-            }
+        // unwind frame failed, trying heuristic technique:
+        if(VmmWinThreadCs_HeuristicScanForFrame(H, pProcess, pThread, &pFullCallStack[dwIterFrame], &sCurrentFrame)) {
+            pFullCallStack[dwIterFrame + 1] = sCurrentFrame;
         }
+        // both techniques failed, stopping
+        VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, " END: (unwind+heuristics fail) RIP:[%016llx] ADDR:[%016llx] PID:[%u] TID:[%u]", pThread->vaRIP, pFullCallStack[dwIterFrame].vaRetAddr, pProcess->dwPID, pThread->dwTID);
+        break;
     }
-    //setting the last frame before display
-    if(psFullCallStack[dwIterFrame].RetAddr != 0){
-        dwIterFrame=dwIterFrame+1;
-        psFullCallStack[dwIterFrame].RSP = psFullCallStack[dwIterFrame-1].baseSP;
-        psFullCallStack[dwIterFrame].RetAddr = 0;
+    // setting the last frame before display
+    if(pFullCallStack[dwIterFrame].vaRetAddr) {
+        dwIterFrame = dwIterFrame + 1;
+        pFullCallStack[dwIterFrame].vaRSP = pFullCallStack[dwIterFrame - 1].vaBaseSP;
+        pFullCallStack[dwIterFrame].vaRetAddr = 0;
     }
+    dwIterFrame++;
 
-    printf("Printing Call Stack\n");
-
-    td_SYMBOL* ptdCurrentSym = NULL;
-    printf("Index     SP   Return Address  CallSite\n");
-    for (int dwIterDisplay = 0; dwIterDisplay <= dwIterFrame; dwIterDisplay++) {
-        ptdCurrentSym = (td_SYMBOL*)calloc(100,sizeof(td_SYMBOL));
-
-        if(ptdCurrentSym==NULL){GlobalResult =FALSE;goto end;}
-
-        if (psFullCallStack[dwIterDisplay-1].RetAddr !=0)
-            fResult_display = GetSymbolFromAddr(psFullCallStack[dwIterDisplay-1].RetAddr, dwPID, hVMM, list,ptdCurrentSym );
-            //if no symbol was resolved, printing the raw address
-    if (fResult_display) {
-        if (ptdCurrentSym->name != NULL && psFullCallStack[dwIterDisplay-1].RetAddr !=0){
-            printf("Index %d : SP %016llx, Return Address %016llx, Symbol %s+%x\n", dwIterDisplay, psFullCallStack[dwIterDisplay].RSP, psFullCallStack[dwIterDisplay].RetAddr, ptdCurrentSym->name,ptdCurrentSym->deplacement);
+    // create ob object:
+    if(!(psmOb = ObStrMap_New(H, OB_STRMAP_FLAGS_CASE_SENSITIVE))) { goto end; }
+    if(!(pObCS = Ob_AllocEx(H, OB_TAG_THREAD_CALLSTACK, LMEM_ZEROINIT, sizeof(VMMOB_MAP_THREADCALLSTACK) + dwIterFrame * sizeof(VMM_MAP_THREADCALLSTACKENTRY), (OB_CLEANUP_CB)VmmWinThreadCs_CleanupCB, NULL))) { goto end; }
+    if(!(uszText = LocalAlloc(LMEM_ZEROINIT, VMMWINTHREADCS_BUFFER_USERTEXT))) { goto end; }
+    if(H->cfg.fFileInfoHeader) {
+        cboText += (DWORD)_snprintf_s(uszText + cboText, VMMWINTHREADCS_BUFFER_USERTEXT - cboText, _TRUNCATE, "Index            RSP          RetAddr Module!Function+Displacement\n==================================================================\n");
+    }
+    for(i = 0; i < dwIterFrame; i++) {
+        peSrc = &pFullCallStack[i];
+        peDst = &pObCS->pMap[i];
+        peDst->i = i;
+        peDst->fRegPresent = peSrc->fRegPresent;
+        peDst->vaRetAddr = peSrc->vaRetAddr;
+        peDst->vaRSP = peSrc->vaRSP;
+        peDst->vaBaseSP = peSrc->vaBaseSP;
+        if(i && pFullCallStack[i - 1].vaRetAddr && VmmWinThreadCs_GetSymbolFromAddr(H, pProcess, pFullCallStack[i - 1].vaRetAddr, &sCurrentSymbol)) {
+            peDst->cbDisplacement = sCurrentSymbol.displacement;
+            ObStrMap_PushPtrUU(psmOb, sCurrentSymbol.szFunction, &peDst->uszFunction, NULL);
+            ObStrMap_PushPtrUU(psmOb, sCurrentSymbol.szModule, &peDst->uszModule, NULL);
+            cboText += (DWORD)_snprintf_s(uszText + cboText, VMMWINTHREADCS_BUFFER_USERTEXT - cboText, _TRUNCATE, "%02u: %016llx %016llx %s!%s+%x\n", peDst->i, peDst->vaRSP, peDst->vaRetAddr, sCurrentSymbol.szModule, sCurrentSymbol.szFunction, sCurrentSymbol.displacement);
         } else {
-            printf("Index %d : SP %016llx, Return Address %016llx\n", dwIterDisplay, psFullCallStack[dwIterDisplay].RSP, psFullCallStack[dwIterDisplay].RetAddr);
+            ObStrMap_PushPtrUU(psmOb, "", &peDst->uszFunction, NULL);
+            ObStrMap_PushPtrUU(psmOb, "", &peDst->uszModule, NULL);
+            cboText += (DWORD)_snprintf_s(uszText + cboText, VMMWINTHREADCS_BUFFER_USERTEXT - cboText, _TRUNCATE, "%02u: %016llx %016llx\n", peDst->i, peDst->vaRSP, peDst->vaRetAddr);
         }
-    } else {
-        printf("Index %d : SP %016llx, Return Address %016llx\n", dwIterDisplay, psFullCallStack[dwIterDisplay].RSP, psFullCallStack[dwIterDisplay].RetAddr);
     }
-    if(ptdCurrentSym){free(ptdCurrentSym);ptdCurrentSym=NULL;}
+    ObStrMap_PushPtrUU(psmOb, uszText, &pObCS->uszText, NULL);
+    pObCS->cbText = cboText;
+    pObCS->dwPID = pProcess->dwPID;
+    pObCS->dwTID = pThread->dwTID;
+    pObCS->cMap = dwIterFrame;
+    ObStrMap_FinalizeAllocU_DECREF_NULL(&psmOb, &pObCS->pbMultiText, &pObCS->cbMultiText);
+    if(VmmLogIsActive(H, MID_THREADCS, LOGLEVEL_5_DEBUG)) {
+        VmmLog(H, MID_THREADCS, LOGLEVEL_5_DEBUG, "CALLSTACK PRINTOUT PID:[%u] TID:[%u]", pObCS->dwPID, pObCS->dwTID);
+        for(i = 0; i < pObCS->cMap; i++) {
+            peDst = &pObCS->pMap[i];
+            VmmLog(H, MID_THREADCS, LOGLEVEL_5_DEBUG, "  [%02u] RSP:[%016llx] RET:[%016llx] SITE:[%s!%s+%x]", peDst->i, peDst->vaRSP, peDst->vaRetAddr, peDst->uszModule, peDst->uszFunction, peDst->cbDisplacement);
+        }
+        VmmLog(H, MID_THREADCS, LOGLEVEL_5_DEBUG, "\n%s", uszText);
     }
-    
-    GlobalResult=TRUE;
-
-end : 
-    if(psFullCallStack){free(psFullCallStack);psFullCallStack = NULL;}
-    if(psCurrentFrame){free(psCurrentFrame);psCurrentFrame = NULL;}
-    return GlobalResult;
+end: 
+    LocalFree(pFullCallStack);
+    LocalFree(uszText);
+    return pObCS;
 }
 
-
-BOOL PopReturnAddress(_In_ QWORD* qwAddres,_In_ DWORD dwPID,VMM_HANDLE hVMM,_Out_ QWORD* BufferCandidates){
-
-    BYTE pbAddressRead[8];
-    QWORD qwAddressCandidate;
-    sModuleSection sModule;
-    BOOL fResult=FALSE;
-    DWORD cRead ;
-
-    if(!VMMDLL_MemReadEx(hVMM, dwPID, *qwAddres, pbAddressRead, 8, &cRead, 0)) {
-        return FALSE;
-    }
-    //popping the 8 first bytes
-    memcpy(&qwAddressCandidate, pbAddressRead, sizeof(QWORD));
-
-
-    if(getVADFromAddress(&qwAddressCandidate,dwPID,hVMM,&sModule)){
-            BufferCandidates[0] = qwAddressCandidate;
-            return TRUE;
-    }
-    else{
-        return FALSE;
-    }
+_Success_(return)
+BOOL VmmWinThreadCs_PopReturnAddress(VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD va, _Out_ PQWORD pqwBufferCandidate, _Out_opt_ PVMMWINTHREAD_MODULE_SECTION pModuleSectionOpt)
+{
+    VMMWINTHREAD_MODULE_SECTION ModuleSection;
+    if(!pModuleSectionOpt) { pModuleSectionOpt = &ModuleSection; }
+    if(!VmmRead(H, pProcess, va, (PBYTE)pqwBufferCandidate, sizeof(QWORD))) { return FALSE; }
+    if(!VmmWinThreadCs_GetModuleSectionFromAddress(H, pProcess, *pqwBufferCandidate, pModuleSectionOpt)) { return FALSE; }
+    return TRUE;
 }
 
+_Success_(return)
+BOOL VmmWinThreadCs_HeuristicScanForFrame(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_THREADENTRY pThread, _In_ PVMMWINTHREAD_FRAME pCurrentFrame, _Out_ PVMMWINTHREAD_FRAME pReturnScanFrame)
+{
+    VMMWINTHREAD_MODULE_SECTION sModuleSection;
+    VMMWINTHREAD_FRAME sValidationTempFrame, sRegistryTempFrame = { 0 };
+    QWORD qwAddressCandidate, qwCurrentRSP = pCurrentFrame->vaBaseSP;
+    DWORD dwCounterReg = 0, dwLoopProtect = 0;
 
+    VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, " Heuristic scan START. RSP:[%016llx] PID:[%u] TID:[%u]", qwCurrentRSP, pProcess->dwPID, pThread->dwTID);
+    // Getting previous RSP and ret address as input for ValidateCandidate:
+    pReturnScanFrame->vaRetAddr = pCurrentFrame->vaRetAddr;
+    pReturnScanFrame->vaRSP = pCurrentFrame->vaBaseSP;
+    sRegistryTempFrame.fRegPresent = FALSE;
 
-BOOL heuristicScanForFrame(_In_ PVMMDLL_MAP_THREADENTRY pThreadMapEntry,_In_ DWORD dwPID,_In_ VMM_HANDLE hVMM,_In_ td_FRAME* psCurrentFrame,_Out_ td_FRAME* psReturnScanFrame ){
-    
-    td_FRAME sValidationTempFrame,psRegistryTempFrame;
-    //Getting previous RSP adn ret address as input for ValidateCandidate
-    psReturnScanFrame->RetAddr = psCurrentFrame->RetAddr;
-    psReturnScanFrame->RSP = psCurrentFrame->baseSP;
-    BYTE pbReadCanidate[8];
-    QWORD qwAddressCandidate;
-    sModuleSection sModule;
-    DWORD dwLimit = 0;
-    DWORD cRead = 0;
-    QWORD qwCurrentRSP = psCurrentFrame->baseSP;
-    DWORD dwCounterReg=0;
-
-    psRegistryTempFrame.regIsPresent = FALSE;
-
-    //reading 8 bytes by 8 bytes and decreasing RSP at the same time (which increase addresses)
-    for(qwCurrentRSP = psCurrentFrame->baseSP;qwCurrentRSP != pThreadMapEntry->vaStackBaseUser && dwLimit<50;qwCurrentRSP = qwCurrentRSP+8){
-        memset(pbReadCanidate, 0, sizeof(pbReadCanidate));
-        if(!VMMDLL_MemReadEx(hVMM, dwPID, qwCurrentRSP, pbReadCanidate, 8, &cRead, 0)){return FALSE;}
-        memcpy(&qwAddressCandidate, pbReadCanidate, sizeof(QWORD));
-        if(getVADFromAddress(&qwAddressCandidate,dwPID,hVMM,&sModule)){
-                if(ValidateCandidate(dwPID,hVMM,qwAddressCandidate,psReturnScanFrame,&sValidationTempFrame)){
-                        //reserving call registry in case we do not find another candidate
-                        if(sValidationTempFrame.regIsPresent == TRUE && dwCounterReg == 0){
-                            printf("reserving for registry call\n");
-                            psRegistryTempFrame.baseSP = qwCurrentRSP+8;
-                            psRegistryTempFrame.RetAddr = sValidationTempFrame.RetAddr;
-                            psRegistryTempFrame.regIsPresent = TRUE;
-                            dwCounterReg = dwCounterReg+1;
-                            continue;
-                        }
-                        //not a call by registry we found a candidate, we can update the structure and return
-                        else{
-                            psReturnScanFrame->baseSP = qwCurrentRSP+8;
-                            psReturnScanFrame->RetAddr = sValidationTempFrame.RetAddr;
-                            return TRUE;
-                        }
-                }
-                else{
-                    printf("%016llx is not a valid candidate\n",qwAddressCandidate);
-                }  
+    // Reading 8 bytes by 8 bytes and decreasing RSP at the same time (which increase addresses)
+    for(qwCurrentRSP = pCurrentFrame->vaBaseSP; qwCurrentRSP != pThread->vaStackBaseUser && dwLoopProtect < 50; qwCurrentRSP = qwCurrentRSP + 8) {
+        dwLoopProtect++;
+        if(!VmmRead(H, pProcess, qwCurrentRSP, (PBYTE)&qwAddressCandidate, sizeof(QWORD))) { return FALSE; }
+        if(!VmmWinThreadCs_GetModuleSectionFromAddress(H, pProcess, qwAddressCandidate, &sModuleSection)) { continue; }
+        if(VmmWinThreadCs_ValidateCandidate(H, pProcess, pThread, qwAddressCandidate, pReturnScanFrame, &sValidationTempFrame)) {
+            // Reserving call registry in case we do not find another candidate
+            if(sValidationTempFrame.fRegPresent == TRUE && dwCounterReg == 0) {
+                VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, " Heuristic scan (reserving candidate). RSP:[%016llx] RET:[%016llx] PID:[%u] TID:[%u]", qwCurrentRSP, sRegistryTempFrame.vaRetAddr, pProcess->dwPID, pThread->dwTID);
+                sRegistryTempFrame.vaBaseSP = qwCurrentRSP + 8;
+                sRegistryTempFrame.vaRetAddr = sValidationTempFrame.vaRetAddr;
+                sRegistryTempFrame.fRegPresent = TRUE;
+                dwCounterReg = dwCounterReg+1;
+                continue;
             }
-        dwLimit++;    
+            // Not a call by registry we found a candidate, we can update the structure and return
+            else{
+                VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, " Heuristic scan SUCCESS. RSP:[%016llx] (direct candidate) RET:[%016llx] PID:[%u] TID:[%u]", pReturnScanFrame->vaBaseSP, pReturnScanFrame->vaRetAddr, pProcess->dwPID, pThread->dwTID);
+                pReturnScanFrame->vaBaseSP = qwCurrentRSP + 8;
+                pReturnScanFrame->vaRetAddr = sValidationTempFrame.vaRetAddr;
+                return TRUE;
+            }
+        }
     }
-    if(psRegistryTempFrame.regIsPresent == TRUE){
-        printf("restoring candidate from call registry\n");
-        //Updating return structure psReturnScanFrame with values
-        psReturnScanFrame->baseSP = psRegistryTempFrame.baseSP;
-        psReturnScanFrame->RetAddr  = psRegistryTempFrame.RetAddr ;
+    if(sRegistryTempFrame.fRegPresent) {
+        // Updating return structure pReturnScanFrame with values
+        pReturnScanFrame->vaBaseSP = sRegistryTempFrame.vaBaseSP;
+        pReturnScanFrame->vaRetAddr  = sRegistryTempFrame.vaRetAddr;
+        VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, " Heuristic scan SUCCESS. RSP:[%016llx] (reserved candidate) RET:[%016llx] PID:[%u] TID:[%u]", pReturnScanFrame->vaBaseSP, pReturnScanFrame->vaRetAddr, pProcess->dwPID, pThread->dwTID);
         return TRUE;
     }
-    printf("No candidates were found\n");
-    //we reached the end and did not find any candidate
+    // We reached the end and did not find any candidate
+    VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, " Heuristic scan FAIL. PID:[%u] TID:[%u]",  pProcess->dwPID, pThread->dwTID);
     return FALSE;
 }
 
@@ -593,353 +713,256 @@ BOOL heuristicScanForFrame(_In_ PVMMDLL_MAP_THREADENTRY pThreadMapEntry,_In_ DWO
 //E8 : call xxxxxx
 //FF 90 : call[RAX+x]
 
-BOOL ValidateCandidate(_In_ DWORD dwPID,_In_ VMM_HANDLE hVMM,_In_ QWORD qwAddressCandidate,_In_ td_FRAME* psCurrentFrame,_Out_ td_FRAME* sValidationTempFrame){
-    BYTE pbOpcodesDirectRead[5];
+_Success_(return)
+BOOL VmmWinThreadCs_ValidateCandidate(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_THREADENTRY pThread, _In_ QWORD vaCandidate, _In_ PVMMWINTHREAD_FRAME pCurrentFrame, _Out_ PVMMWINTHREAD_FRAME pValidationTempFrame)
+{
+    static BYTE DCALL = 0xe8;
+    static BYTE ICALL = 0xff;
+    static BYTE MRIPI = 0x15;
+    static BYTE MRAXI = 0x90;
+    static BYTE RAXI = 0xD0;
+    static BYTE RBXI = 0xD3;
     BYTE pbOpcodesIndirectRead[6];
-    BYTE pbOffset[4];
-    DWORD cRead = 0;
-    sValidationTempFrame->regIsPresent = FALSE;
-    BYTE dcall[1] = { 0xe8 };
-    BYTE icall[1] = { 0xff };
-    BYTE mripi[1] = { 0x15 };
-    BYTE mraxi[1] = { 0x90 };
-    BYTE raxi[1] = { 0xD0 };
-    BYTE rbxi[1] = { 0xD3 };
-    QWORD qwDirectCallAddress,qwIndirectCallAddress,qwIndirectStoredAddress;
+    PBYTE pbOpcodesDirectRead = pbOpcodesIndirectRead + 1;
+    QWORD qwDirectCallAddress, qwIndirectCallAddress, qwIndirectStoredAddress, qwCurrentRIP = pCurrentFrame->vaRetAddr;
+    VMMWINTHREAD_MODULE_SECTION sModuleSectionRIP, sModuleSectionTargetCall;
     DWORD dwOffset;
-    QWORD qwCurrentRIP = psCurrentFrame->RetAddr;
-    sModuleSection sVADRip,sVADTargetCall;
 
-    if(!VMMDLL_MemReadEx(hVMM, dwPID, qwAddressCandidate -5 , pbOpcodesDirectRead, 5, &cRead, 0)){
-        return FALSE;
-    }
-    if(!VMMDLL_MemReadEx(hVMM, dwPID, qwAddressCandidate -6 , pbOpcodesIndirectRead, 6, &cRead, 0)){
-        return FALSE;
-    }
-    //Finding zone for RIP
-    if(!getVADFromAddress(&qwCurrentRIP,dwPID,hVMM,&sVADRip)){
-        return FALSE;
-    }
-    else{
-        printf("RIP is zone starting from %016llx\n", sVADRip.base);
-    }
+    // 1: read opcode:
+    pValidationTempFrame->fRegPresent = FALSE;
+    if(!VmmRead(H, pProcess, vaCandidate - 6, pbOpcodesIndirectRead, 6)) { return FALSE; }
 
-    //we check first if the call is direct
-    if(memcmp(pbOpcodesDirectRead,dcall,1) == 0){
-        printf("we have a call instruction at %016llx\n",qwAddressCandidate -5);
-        //we retreive the offset for the call 
-        memcpy(pbOffset,pbOpcodesDirectRead+1,4);
-        PrintHexAscii(pbOffset, min(cRead, 4));
-        memcpy(&dwOffset, pbOffset, 4);
-        //we construct the address target for the call
-        qwDirectCallAddress = qwAddressCandidate + dwOffset;
-        printf("Target of the Direct call  is at %016llx\n:\n",qwDirectCallAddress);
+    // 2: finding zone for RIP:
+    if(!VmmWinThreadCs_GetModuleSectionFromAddress(H, pProcess, qwCurrentRIP, &sModuleSectionRIP)) { return FALSE; }
+    VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, "  RIP %016llx is zone starting at %016llx PID:[%u] TID:[%u]", qwCurrentRIP, sModuleSectionRIP.vaModuleBase, pProcess->dwPID, pThread->dwTID);
 
-        //we retreive the VAD for the target of the call and store it in sVADTargetCall
-        if(!getVADFromAddress(&qwDirectCallAddress,dwPID,hVMM,&sVADTargetCall)){
-            printf("could not find appropriate module for the direct adress\n");
+    // 3: direct call:
+    if(DCALL == pbOpcodesDirectRead[0]) {
+        dwOffset = *(PDWORD)(pbOpcodesDirectRead + 1);
+        qwDirectCallAddress = vaCandidate + dwOffset;
+        VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, "  DIRECT CALL instruction at %016llx OFF:[%08x] TARGET:[%016llx] PID:[%u] TID:[%u]", vaCandidate - 5, dwOffset, qwDirectCallAddress, pProcess->dwPID, pThread->dwTID);
+        // we retreive the module info for the target of the call and store it
+        if(!VmmWinThreadCs_GetModuleSectionFromAddress(H, pProcess, qwDirectCallAddress, &sModuleSectionTargetCall)) {
+            VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, "   Could not find appropriate module for the direct adress PID:[%u] TID:[%u]", pProcess->dwPID, pThread->dwTID);
             return FALSE;
         }
-        else{
-            //we check that the target for the direct call is in the same VAD as the previous return address i.e RIP
-            if (sVADRip.base !=0 && (sVADRip.base == sVADTargetCall.base)) {
-            printf("RIP is in same module than target of the direct jump\n");
-            printf("RIP %016llx is in range with %016llx\n",sVADRip.base,sVADTargetCall.base);
-            sValidationTempFrame->RetAddr = qwAddressCandidate;
+        // we check that the target for the direct call is in the same VAD as the previous return address i.e RIP
+        if((sModuleSectionRIP.vaModuleBase != 0) && (sModuleSectionRIP.vaModuleBase == sModuleSectionTargetCall.vaModuleBase)) {
+            VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, "   RIP %016llx is in range with %016llx PID:[%u] TID:[%u]", vaCandidate, sModuleSectionTargetCall.vaModuleBase, pProcess->dwPID, pThread->dwTID);
+            pValidationTempFrame->vaRetAddr = vaCandidate;
             return TRUE;
-
-            } else {
-                return FALSE;
-            }
         }
+        return FALSE;
     }
-    //checking if we have an indirect call opcode, first
-    else if(memcmp(pbOpcodesIndirectRead,icall,1) == 0){
-        printf("We have an indirect call instruction at %016llx\n",qwAddressCandidate -6);
-        //FF 15 : call [RIP+x]
-        if(memcmp(pbOpcodesIndirectRead+1,mripi,1) == 0){
-            printf("The indirect offset is :\n");
-            memcpy(pbOffset,pbOpcodesIndirectRead+2,4);
-            memcpy(&dwOffset, pbOffset, 4);
-            qwIndirectCallAddress = qwAddressCandidate + dwOffset;
-            printf("The indirect address is %016llx\n:\n",qwIndirectCallAddress); 
-            printf("Retreiving the adress stored at the indirect jump adress\n"); 
 
-            if(!PopReturnAddress(&qwIndirectCallAddress,dwPID,hVMM,&qwIndirectStoredAddress)){
+    // 4: indirect call:
+    if(ICALL == pbOpcodesIndirectRead[0]) {
+        // FF 15 : call [RIP+x]
+        if(MRIPI == pbOpcodesIndirectRead[1]) {
+            dwOffset = *(PDWORD)(pbOpcodesIndirectRead + 2);
+            qwIndirectCallAddress = vaCandidate + dwOffset;
+            VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, "  INDIRECT CALL instruction at %016llx OFF:[%08x] INDIRECT:[%016llx] PID:[%u] TID:[%u]", vaCandidate - 6, dwOffset, qwIndirectCallAddress, pProcess->dwPID, pThread->dwTID);
+            if(!VmmWinThreadCs_PopReturnAddress(H, pProcess, qwIndirectCallAddress, &qwIndirectStoredAddress, &sModuleSectionTargetCall)) {
+                VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, "   Could not read indirect target address PID:[%u] TID:[%u]", pProcess->dwPID, pThread->dwTID);
                 return FALSE;
-            }
-            printf("True target address stored at localtion is %016llx\n:\n",qwIndirectStoredAddress);
-
-            if(!getVADFromAddress(&qwIndirectStoredAddress,dwPID,hVMM,&sVADTargetCall)){
-                printf("could not find apporpriate module for the direct adress\n");
-                return FALSE;
-            }
-            else{
-                if (sVADRip.base !=0 && (sVADRip.base == sVADTargetCall.base)) {
-                printf("RIP is in same module than indirect jump\n");
-                printf("found true return address, RIP %016llx is in range with %016llx\n",sVADRip.base,sVADTargetCall.base);
-                sValidationTempFrame->RetAddr = qwAddressCandidate;
+            };
+            if(sModuleSectionRIP.vaModuleBase && (sModuleSectionRIP.vaModuleBase == sModuleSectionTargetCall.vaModuleBase)) {
+                VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, "   RIP %016llx is in same module as indirect jump %016llx MODULE_BASE:[%016llx] PID:[%u] TID:[%u]", vaCandidate - 6, qwIndirectCallAddress, sModuleSectionRIP.vaModuleBase,  pProcess->dwPID, pThread->dwTID);
+                pValidationTempFrame->vaRetAddr = vaCandidate;
                 return TRUE;
 
-                } else {
-                    printf("Not the same module\n");
-                    return FALSE;
-                }
             }
-        }
-        //Not able to check jump address but storing it in case we don't have anything else
-        else if(memcmp(pbOpcodesIndirectRead+1,mraxi,1) == 0){
-            printf("It is Indirect via memory RAX\n");
-            sValidationTempFrame->regIsPresent = TRUE;
-            sValidationTempFrame->RetAddr = qwAddressCandidate;
-            return TRUE;
-        }
-        else if(memcmp(pbOpcodesIndirectRead+1,raxi,1) == 0){
-            printf("It is indirect via  RAX\n");
-            sValidationTempFrame->regIsPresent = TRUE;
-            sValidationTempFrame->RetAddr = qwAddressCandidate;
-            return TRUE;
-        }
-        else if(memcmp(pbOpcodesIndirectRead+1,rbxi,1) == 0){
-            printf("It is indirect via  RBX\n");
-            sValidationTempFrame->regIsPresent = TRUE;
-            sValidationTempFrame->RetAddr = qwAddressCandidate;
-            return TRUE;
-        }
-        else{
+            VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, "   RIP %016llx is NOT in same module as indirect jump %016llx PID:[%u] TID:[%u]", vaCandidate - 6, qwIndirectCallAddress, pProcess->dwPID, pThread->dwTID);
             return FALSE;
         }
-    }
-    else{
-        printf("We have an unknown suite byte :0X%x\n",pbOpcodesIndirectRead[0]);
-        return FALSE;
-    }
-}
-
-BOOL validateThreadBeforeUnwind(_In_ DWORD dwPID,_In_ VMM_HANDLE hVMM,_In_ PVMMDLL_MAP_THREADENTRY pThreadMapEntry){
-    
-    QWORD qwCurrentRIP;
-    if(pThreadMapEntry !=NULL){qwCurrentRIP = pThreadMapEntry->vaRIP;}
-    sModuleSection sModule;
-    printf("Verifying RSP and RIP\n");
-
-    if (pThreadMapEntry->vaRSP > pThreadMapEntry->vaStackBaseUser || pThreadMapEntry->vaRSP < pThreadMapEntry->vaStackLimitUser ){
-        printf("SP for thread is invalid\n");
-        return FALSE;
-    }
-    if (!getVADFromAddress(&qwCurrentRIP,dwPID,hVMM,&sModule)){
-        return FALSE;
-    }
-    else {
-        return TRUE;
-    }
-}
-
-
-// Issues with some modules PDB loading such as KERNELBASE, win32u and some others.. address are left without symbols for these. 
-BOOL GetSymbolFromAddr(_In_ QWORD returnAddres, _In_ DWORD dwPID, _In_ VMM_HANDLE hVMM,_In_ DoublyLinkedList* pLinkedLIstPDBLoaded,_Out_ td_SYMBOL* ptdCurrentSym){
-    CHAR szModuleName[MAX_PATH] = { 0 };
-    sModuleSection sModule;
-    DWORD dwPdbSymbolDisplacement1 = 0;
-    CHAR pFunctionName[MAX_PATH] = { 0 };
-    CHAR pTempBufferModule[MAX_PATH] = { 0 };
-    CHAR pBufferModSym[MAX_PATH] = { 0 };
-    if(!getVADFromAddress(&returnAddres,dwPID,hVMM,&sModule)){
-        return FALSE;
-    }
-    strncpy(pTempBufferModule , sModule.name, sizeof(pTempBufferModule) - 1);
-    pTempBufferModule[sizeof(pTempBufferModule) - 1] = '\0';
-    remove_extension_generic(pTempBufferModule, ".dll");
-    remove_extension_generic(pTempBufferModule, ".DLL");
-
-    //if we dont have already loaded the PDB file for this module, we load it
-    if(!find_module(pLinkedLIstPDBLoaded,pTempBufferModule)){
-        printf("The DLL %s was not found in the linked list for already loaded module\n",pTempBufferModule);
-        if(!VMMDLL_PdbLoad(hVMM,dwPID,(ULONG64)sModule.base,szModuleName)){
-            return FALSE;
-        }
-        else{
-            //Once the PDB is loaded, we add it on the list
-            append(pLinkedLIstPDBLoaded,pTempBufferModule);
-            if(!VMMDLL_PdbSymbolName(hVMM,szModuleName,returnAddres,pFunctionName,&dwPdbSymbolDisplacement1)){
-                return FALSE;
-            }
-            else{
-                snprintf(pBufferModSym, sizeof(pBufferModSym), "%s!%s", szModuleName, pFunctionName);
-                strncpy(ptdCurrentSym->name , pBufferModSym, sizeof(pFunctionName) - 1);
-                ptdCurrentSym->name[sizeof(pBufferModSym) - 1] = '\0';
-                ptdCurrentSym->retaddress = returnAddres;
-                ptdCurrentSym->deplacement = dwPdbSymbolDisplacement1;
-                return TRUE;
-            } 
-            
-        }
-    }
-    // PDB was already loaded, we can retreive the SymbolName directly
-    else{
-        if(!VMMDLL_PdbSymbolName(hVMM,pTempBufferModule,returnAddres,pFunctionName,&dwPdbSymbolDisplacement1)){
-            return FALSE;
-        }
-        else{
-            snprintf(pBufferModSym, sizeof(pBufferModSym), "%s!%s", pTempBufferModule, pFunctionName);
-            strncpy(ptdCurrentSym->name , pBufferModSym, sizeof(pFunctionName) - 1);
-            //preparing return structure
-            ptdCurrentSym->name[sizeof(pBufferModSym) - 1] = '\0';
-            ptdCurrentSym->retaddress = returnAddres;
-            ptdCurrentSym->deplacement = dwPdbSymbolDisplacement1;
+        // Not able to check jump address but storing it in case we don't have anything else
+        if(MRAXI == pbOpcodesIndirectRead[1]) {
+            VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, "  INDIRECT CALL via memory RAX PID:[%u] TID:[%u]", pProcess->dwPID, pThread->dwTID);
+            pValidationTempFrame->fRegPresent = TRUE;
+            pValidationTempFrame->vaRetAddr = vaCandidate;
             return TRUE;
-        } 
+        }
+        if(RAXI == pbOpcodesIndirectRead[1]) {
+            VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, "  INDIRECT CALL via RAX PID:[%u] TID:[%u]", pProcess->dwPID, pThread->dwTID);
+            pValidationTempFrame->fRegPresent = TRUE;
+            pValidationTempFrame->vaRetAddr = vaCandidate;
+            return TRUE;
+        }
+        if(RBXI == pbOpcodesIndirectRead[1]) {
+            VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, "  INDIRECT CALL via RBX PID:[%u] TID:[%u]", pProcess->dwPID, pThread->dwTID);
+            pValidationTempFrame->fRegPresent = TRUE;
+            pValidationTempFrame->vaRetAddr = vaCandidate;
+            return TRUE;
+        }
+        VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, "  INDIRECT CALL unknown PID:[%u] TID:[%u]", pProcess->dwPID, pThread->dwTID);
+        return FALSE;
     }
+
+    // 5: unknown opcode:
+    VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, "  UNKNOWN OPCODE:[%02X%02X%02X%02X%02X%02X] PID:[%u] TID:[%u]", pbOpcodesIndirectRead[0], pbOpcodesIndirectRead[1], pbOpcodesIndirectRead[2], pbOpcodesIndirectRead[3], pbOpcodesIndirectRead[4], pbOpcodesIndirectRead[5], pProcess->dwPID, pThread->dwTID);
+    return FALSE;
 }
 
-DWORD getVADFromAddress( _In_ QWORD* pAddress, _In_ DWORD dwPID,_In_ VMM_HANDLE hVMM, _Out_ sModuleSection* pmodule2Return){
-
-    DWORD i;
-    LPSTR pModule = NULL;
-    DWORD fResult = FALSE;
-    LPSTR sectionText = ".text";
-    LPSTR sectionPdata = ".pdata";
-    sSection SSectionDetails;
-    PVMMDLL_MAP_VAD pVadMap = NULL;
-    PVMMDLL_MAP_VADENTRY pVadMapEntry;
-    VMMDLL_MEM_SEARCH_CONTEXT_SEARCHENTRY SearchEntry3[3] = { 0 };
-    VMMDLL_MEM_SEARCH_CONTEXT ctxSearch = { 0 };
-    PVMMDLL_MAP_MODULE pModuleMap = NULL;
-    DWORD cvaSearchResult = 0;
-    PQWORD pvaSearchResult = NULL;
-    CHAR szVadProtection[7] = { 0 };
-
-
-    if(! VMMDLL_Map_GetModuleU(hVMM, dwPID, &pModuleMap, 0)) {fResult = 0;goto end;}
-    if(pModuleMap->dwVersion != VMMDLL_MAP_MODULE_VERSION) {fResult = 0;goto end;}
-    if (pAddress == NULL){fResult = 0;goto end;} 
-
-    //use VMMDLL_Map_GetModuleU first
-    for (i = 0; i < pModuleMap->cMap; i++) {
-        if (*pAddress >= pModuleMap->pMap[i].vaBase && *pAddress < (pModuleMap->pMap[i].vaBase + pModuleMap->pMap[i].cbImageSize)) {
-
-            pmodule2Return->base = pModuleMap->pMap[i].vaBase;
-            pmodule2Return->name = pModuleMap->pMap[i].uszText;
-
-            //get Text section info
-            if(!GetSectionInfos(pModuleMap->pMap[i].vaBase,sectionText,dwPID,hVMM,&SSectionDetails)){fResult = 0;goto end;}
-
-            else{
-                pmodule2Return->vaText = SSectionDetails.va;
-                pmodule2Return->sizeText = SSectionDetails.size;
-            }
-            //get Pdata section info
-            memset(&SSectionDetails, 0, sizeof(sSection));
-
-            if(!GetSectionInfos(pModuleMap->pMap[i].vaBase,sectionPdata,dwPID,hVMM,&SSectionDetails)){fResult = 0;goto end;}
-            else{
-                pmodule2Return->vaPdata = SSectionDetails.va;
-                pmodule2Return->sizePdata = SSectionDetails.size;
-            }
-            fResult = 1;goto end;
-        }
+_Success_(return)
+BOOL VmmWinThreadCs_ValidateThreadBeforeUnwind(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_THREADENTRY pThread)
+{
+    QWORD vaCurrentRIP;
+    VMMWINTHREAD_MODULE_SECTION ModuleSection;
+    vaCurrentRIP = pThread->vaRIP;
+    if((pThread->vaRSP > pThread->vaStackBaseUser) || (pThread->vaRSP < pThread->vaStackLimitUser)) {
+        VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, "  SP for thread is invalid. RSP:[%016llx] PID:[%u] TID:[%u]", pThread->vaRSP, pProcess->dwPID, pThread->dwTID);
+        return FALSE;
     }
-    if(!VMMDLL_Map_GetVadU(hVMM, dwPID, TRUE, &pVadMap)){fResult = 0;goto end;}
+    return VmmWinThreadCs_GetModuleSectionFromAddress(H, pProcess, vaCurrentRIP, &ModuleSection);
+}
 
-    for(i = 0; i < pVadMap->cMap; i++) {
-        memset(szVadProtection, 0, sizeof(szVadProtection));
-        pVadMapEntry = &pVadMap->pMap[i];
-        VadMap_Protection(pVadMapEntry, szVadProtection);
-        if (*pAddress >= pVadMapEntry->vaStart && *pAddress < pVadMapEntry->vaEnd && strchr(szVadProtection, 'x') != NULL) {
-            //we prepare structure for searching MZ in VAD
-            ctxSearch.dwVersion = VMMDLL_MEM_SEARCH_VERSION;        
-            ctxSearch.pSearch = SearchEntry3;
-            if(ctxSearch.cSearch < 3) {
-                ctxSearch.pSearch[ctxSearch.cSearch].cb = 4;           
-                memcpy(ctxSearch.pSearch[ctxSearch.cSearch].pb,(BYTE[4]) {0x4d, 0x5a, 0x90, 0x00}, 4);  
-                memcpy(ctxSearch.pSearch[ctxSearch.cSearch].pbSkipMask,(BYTE[4]) {0x00, 0x00, 0xff, 0x00}, 4);        
-                ctxSearch.pSearch[ctxSearch.cSearch].cbAlign = 0x1000; 
+// Issues with some modules PDB loading such as KERNELBASE, win32u and some others.. address are left without symbols for these.
+_Success_(return)
+BOOL VmmWinThreadCs_GetSymbolFromAddr(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD qwReturnAddress, _Out_ PVMMWINTHREAD_SYMBOL pSymbol)
+{
+    PDB_HANDLE hPDB;
+    VMMWINTHREAD_MODULE_SECTION sModule;
+    if(!qwReturnAddress || !VmmWinThreadCs_GetModuleSectionFromAddress(H, pProcess, qwReturnAddress, &sModule)) { return FALSE; }
+    // load the PDB for the module:
+    if(!(hPDB = PDB_GetHandleFromModuleAddress(H, pProcess, sModule.vaModuleBase))) { goto fail; }
+    if(!PDB_LoadEnsure(H, hPDB) || !PDB_GetModuleInfo(H, hPDB, pSymbol->szModule, NULL, NULL)) { goto fail; }
+    // lookup the symbol:
+    if(!PDB_GetSymbolFromOffset(H, hPDB, (DWORD)(qwReturnAddress - sModule.vaModuleBase), pSymbol->szFunction, &pSymbol->displacement)) { goto fail; }
+    // return the symbol:
+    pSymbol->retaddress = qwReturnAddress;
+    return TRUE;
+fail:
+    // PDB symbol lookup failed, but we still have the module & section name:
+    _snprintf_s(pSymbol->szModule, sizeof(pSymbol->szModule), _TRUNCATE, "[%s]", sModule.uszModuleName);
+    _snprintf_s(pSymbol->szFunction, sizeof(pSymbol->szFunction), _TRUNCATE, "[%s]", sModule.text.szSectionName);
+    pSymbol->retaddress = qwReturnAddress;
+    pSymbol->displacement = (DWORD)(qwReturnAddress - sModule.vaModuleBase);
+    return TRUE;
+}
+
+DWORD VmmWinThreadCs_GetModuleSectionFromAddress(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD va, _Out_ PVMMWINTHREAD_MODULE_SECTION pModuleSection)
+{
+    DWORD i, dwResult = 0;
+    QWORD vaBase;
+    PVMMOB_MAP_VAD pObVadMap = NULL;
+    PVMM_MAP_VADENTRY peVad;
+    VMM_MEMORY_SEARCH_CONTEXT_SEARCHENTRY SearchEntry[1] = {0};
+    VMM_MEMORY_SEARCH_CONTEXT ctxSearch = { 0 };
+    PVMMOB_MAP_MODULE pObModuleMap = NULL;
+    PVMM_MAP_MODULEENTRY peModule;
+    IMAGE_SECTION_HEADER Section = { 0 };
+    POB_DATA pObDataSearchResult = NULL;
+    ZeroMemory(pModuleSection, sizeof(VMMWINTHREAD_MODULE_SECTION));
+    if(!va) { dwResult = 0; goto end; }
+    // try module map first:
+    if(VmmMap_GetModule(H, pProcess, VMM_MODULE_FLAG_NORMAL, &pObModuleMap) && (peModule = VmmMap_GetModuleEntryEx2(H, pObModuleMap, va))) {
+        // ".text":
+        if(!PE_SectionGetFromAddressOffset(H, pProcess, peModule->vaBase, (DWORD)(va - peModule->vaBase), &Section)) { dwResult = 0; goto end; }
+        *(PQWORD)pModuleSection->text.szSectionName = *(PQWORD)Section.Name;
+        pModuleSection->text.Address = Section.VirtualAddress;
+        pModuleSection->text.Size = Section.Misc.VirtualSize;
+        // .pdata:
+        if(!PE_SectionGetFromName(H, pProcess, peModule->vaBase, ".pdata", &Section)) { dwResult = 0; goto end; }
+        pModuleSection->pdata.Address = Section.VirtualAddress;
+        pModuleSection->pdata.Size = Section.Misc.VirtualSize;
+        // module info:
+        strncpy_s(pModuleSection->uszModuleName, sizeof(pModuleSection->uszModuleName), peModule->uszText, _TRUNCATE);
+        CharUtil_ReplaceAllA(pModuleSection->uszModuleName, '.', '\0');
+        pModuleSection->vaModuleBase = peModule->vaBase;
+        dwResult = 1; goto end;
+    }
+    // try vad map secondly:
+    if(VmmMap_GetVad(H, pProcess, &pObVadMap, VMM_VADMAP_TP_FULL)) {
+        for(i = 0; i < pObVadMap->cMap; i++) {
+            peVad = pObVadMap->pMap + i;
+            if((va >= peVad->vaStart) && (va < peVad->vaEnd)) {
+                // we prepare structure for searching MZ in VAD
+                ctxSearch.pSearch = SearchEntry;
+                ctxSearch.pSearch[0].cb = 4;
+                memcpy(ctxSearch.pSearch[0].pb, (BYTE[4]) { 0x4d, 0x5a, 0x90, 0x00 }, 4);
+                memcpy(ctxSearch.pSearch[0].pbSkipMask, (BYTE[4]) { 0x00, 0x00, 0xff, 0x00 }, 4);
+                ctxSearch.pSearch[0].cbAlign = 0x1000;
                 ctxSearch.cSearch++;
-            }
-            ctxSearch.ReadFlags = VMMDLL_FLAG_NOCACHE; 
-            ctxSearch.vaMin = pVadMapEntry->vaStart;
-            ctxSearch.vaMax = pVadMapEntry->vaEnd;
-
-            //MZ header found in VAD
-            if(VMMDLL_MemSearch(hVMM, dwPID, &ctxSearch, &pvaSearchResult, &cvaSearchResult)){
-                printf("  0x%016llx\n", pvaSearchResult[0]);
-                if(GetSectionInfos(pvaSearchResult[0],sectionText,dwPID,hVMM,&SSectionDetails)){
-                    pmodule2Return->vaText = SSectionDetails.va;
-                    pmodule2Return->sizeText = SSectionDetails.size;
+                ctxSearch.vaMin = peVad->vaStart;
+                ctxSearch.vaMax = peVad->vaEnd;
+                // MZ header found in VAD
+                if(VmmSearch(H, pProcess, &ctxSearch, &pObDataSearchResult) && ctxSearch.cResult) {
+                    vaBase = pObDataSearchResult->pqw[0];
+                    // ".text":
+                    if(!PE_SectionGetFromAddressOffset(H, pProcess, vaBase, (DWORD)(va - vaBase), &Section)) { dwResult = 0; goto end; }
+                    *(PQWORD)pModuleSection->text.szSectionName = *(PQWORD)Section.Name;
+                    pModuleSection->text.Address = Section.VirtualAddress;
+                    pModuleSection->text.Size = Section.Misc.VirtualSize;
+                    // .pdata:
+                    if(!PE_SectionGetFromName(H, pProcess, vaBase, ".pdata", &Section)) { dwResult = 0; goto end; }
+                    pModuleSection->pdata.Address = Section.VirtualAddress;
+                    pModuleSection->pdata.Size = Section.Misc.VirtualSize;
+                    // module info:
+                    strncpy_s(pModuleSection->uszModuleName, sizeof(pModuleSection->uszModuleName), CharUtil_PathSplitLast(peVad->uszText), _TRUNCATE);
+                    CharUtil_ReplaceAllA(pModuleSection->uszModuleName, '.', '\0');
+                    pModuleSection->vaModuleBase = peVad->vaStart;
+                    pModuleSection->size_vad = (DWORD)(peVad->vaEnd - peVad->vaStart);
+                    dwResult = 2;
+                    goto end;
                 }
-                else{fResult = 0;goto end;}
-
-                if(GetSectionInfos(pvaSearchResult[0],sectionPdata,dwPID,hVMM,&SSectionDetails)){
-                    printf("la va de la section %s est de 0x%02x\n",sectionPdata,SSectionDetails.va);
-                    pmodule2Return->vaPdata = SSectionDetails.va;
-                    pmodule2Return->sizePdata = SSectionDetails.size;
-                }
-                else{fResult = 0;goto end;}
-
-            fResult = 2;
-            pmodule2Return->base = pVadMapEntry->vaStart;
-            pmodule2Return->size_vad = pVadMapEntry->vaEnd - pVadMapEntry->vaStart;
-            goto end;
+                break;
             }
-
-            else if(strchr(szVadProtection, 'x') != NULL){
-                printf("Did not find anything while searching the VADS for MZ header, the adress is not in PE, returning the VAD anyway...\n");
-                pmodule2Return->base = pVadMapEntry->vaStart;
-                pmodule2Return->size_vad = pVadMapEntry->vaEnd - pVadMapEntry->vaStart;
-                fResult = 3;goto end;
-            }
-            else{fResult = 0;goto end;}
         }
     }
-    fResult = 0;
-    pmodule2Return->base = 0;
-    pmodule2Return->size_vad = 0;
-
+    dwResult = 0;
+    pModuleSection->vaModuleBase = 0;
+    pModuleSection->size_vad = 0;
 end:
-    if(pVadMap){VMMDLL_MemFree(pVadMap); pVadMap = NULL;}
-    if(pvaSearchResult){VMMDLL_MemFree(pvaSearchResult);pvaSearchResult=NULL;}
-    if(pModuleMap){VMMDLL_MemFree(pModuleMap); pModuleMap = NULL;}
-    return fResult;
+    Ob_DECREF(pObDataSearchResult);
+    Ob_DECREF(pObModuleMap);
+    Ob_DECREF(pObVadMap);
+    return dwResult;
 }
 
-BOOL GetSectionInfos(_In_ QWORD module, _In_ LPSTR pSectionName, _In_ DWORD dwPID, _In_ VMM_HANDLE hVMM, _Out_ sSection* pReturnSection) {
-    DWORD cSections;
-    PIMAGE_SECTION_HEADER pSectionHeaders;
-    BYTE pSection[IMAGE_SIZEOF_SHORT_NAME];
-    BOOL fResult = FALSE;
-    DWORD cRead = 0;
+/*
+* Refresh the callstack cache.
+* -- H
+*/
+VOID VmmWinThreadCs_Refresh(_In_ VMM_HANDLE H)
+{
+    ObMap_Clear(H->vmm.pmObThreadCallback);
+}
 
-    IMAGE_DOS_HEADER dos; 
-    IMAGE_NT_HEADERS ntHeaders; 
-    IMAGE_SECTION_HEADER sectionHeader[9];
-
-    strncpy((LPSTR)pSection, pSectionName, IMAGE_SIZEOF_SHORT_NAME - 1);
-    pSection[IMAGE_SIZEOF_SHORT_NAME - 1] = '\0';
-
-    // Reading DOS header
-    if (!VMMDLL_MemReadEx(hVMM, dwPID, module, (PBYTE)&dos, sizeof(IMAGE_DOS_HEADER), &cRead, 0)) {return FALSE;}
-
-    if (dos.e_magic != IMAGE_DOS_SIGNATURE) {return FALSE;}
-
-    // Offset retreival for NT headers
-    QWORD ntHeadersAddress = module + dos.e_lfanew;
-
-    // Reading NT headers
-    if (!VMMDLL_MemReadEx(hVMM, dwPID, ntHeadersAddress, (PBYTE)&ntHeaders, sizeof(IMAGE_NT_HEADERS), &cRead, 0)) {return FALSE;}
-    if (ntHeaders.Signature != IMAGE_NT_SIGNATURE) {return FALSE;}
-
-    cSections = ntHeaders.FileHeader.NumberOfSections;
-    QWORD sectionHeadersAddress = ntHeadersAddress + sizeof(IMAGE_NT_HEADERS);
-
-    if (!VMMDLL_MemReadEx(hVMM, dwPID, (QWORD)sectionHeadersAddress, (PBYTE)&sectionHeader, cSections * sizeof(IMAGE_SECTION_HEADER), &cRead, 0)) {return FALSE;}
-
-    for (DWORD i = 0; i < cSections; i++) {
-        IMAGE_SECTION_HEADER* section = &sectionHeader[i];
-        if (memcmp(section->Name,pSection,IMAGE_SIZEOF_SHORT_NAME) == 0){
-            pReturnSection->va = section->VirtualAddress;
-            pReturnSection->size = section->Misc.VirtualSize;
-            return TRUE;
+/*
+* Retrieve the callstack for the specified thread.
+* Callback parsing is only supported for x64 user-mode threads.
+* Callback parsing is best-effort and is very resource intense since it may
+* download a large amounts of PDB symbol data from the Microsoft symbol server.
+* Use with caution!
+* CALLER DECREF: *ppObCS
+* -- H
+* -- pProcess
+* -- pThread
+* -- flags = VMM_FLAG_NOCACHE (do not use cache) or VMM_FLAG_FORCECACHE_READ (require cache)
+* -- ppObCS
+* -- return
+*/
+_Success_(return)
+BOOL VmmWinThreadCs_GetCallstack(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_THREADENTRY pThread, _In_ DWORD flags, _Out_ PVMMOB_MAP_THREADCALLSTACK *ppObCS)
+{
+    PVMMOB_MAP_THREADCALLSTACK pObCS = NULL;
+    BOOL fNoCache = (flags & VMM_FLAG_NOCACHE) ? TRUE : FALSE;
+    BOOL fRequireCache = (flags & VMM_FLAG_FORCECACHE_READ) ? TRUE : FALSE;
+    QWORD qwKey = ((QWORD)pProcess->dwPID << 32) | pThread->dwTID;
+    if(fNoCache || !(pObCS = ObMap_GetByKey(H->vmm.pmObThreadCallback, qwKey)) || fRequireCache) {
+        AcquireSRWLockExclusive(&H->vmm.LockSRW.ThreadCallback);
+        if(fNoCache || !(pObCS = ObMap_GetByKey(H->vmm.pmObThreadCallback, qwKey))) {
+            pObCS = VmmWinThreadCs_UnwindScanCallstack(H, pProcess, pThread);       // fetch the callstack
+            if(!pObCS && (pObCS = Ob_AllocEx(H, OB_TAG_THREAD_CALLSTACK, LMEM_ZEROINIT, sizeof(VMMOB_MAP_THREADCALLSTACK), NULL, NULL))) {
+                pObCS->dwPID = pProcess->dwPID;
+                pObCS->dwTID = pThread->dwTID;
+            }
+            if(pObCS) {
+                ObMap_Push(H->vmm.pmObThreadCallback, qwKey, pObCS);
+            }
         }
+        ReleaseSRWLockExclusive(&H->vmm.LockSRW.ThreadCallback);
     }
+    *ppObCS = pObCS;
+    return pObCS ? TRUE : FALSE;
 }
-

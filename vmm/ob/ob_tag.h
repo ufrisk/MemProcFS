@@ -60,6 +60,7 @@
 #define OB_TAG_REG_HIVE                 'Rhve'
 #define OB_TAG_REG_KEY                  'Rkey'
 #define OB_TAG_REG_KEYVALUE             'Rval'
+#define OB_TAG_THREAD_CALLSTACK         'ThCS'
 #define OB_TAG_VAD_MEM                  'MmSt'
 #define OB_TAG_WORK_PER_PROCESS         'WrkP'
 #define OB_TAG_WORK_WORKUNIT            'WrkU'

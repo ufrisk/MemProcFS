@@ -557,6 +557,24 @@ VOID Util_FileTime2CSV(_In_ QWORD ft, _Out_writes_(22) LPSTR szTime)
     );
 }
 
+_Success_(return != 0)
+QWORD Util_TimeIso8601ToFileTime(_In_ LPSTR szIso8601)
+{
+    QWORD ft = 0;
+    SYSTEMTIME sSystemTime = { 0 };
+    int iYear = 0, iMonth = 0, iDay = 0, iHour = 0, iMinute = 0, iSecond = 0, iMs = 0, iUs = 0;
+    if(sscanf_s(szIso8601, "%4d-%2d-%2dT%2d:%2d:%2d.%3d%dZ", &iYear, &iMonth, &iDay, &iHour, &iMinute, &iSecond, &iMs, &iUs) != 8) { return 0; }
+    sSystemTime.wYear = (WORD)iYear;
+    sSystemTime.wMonth = (WORD)iMonth;
+    sSystemTime.wDay = (WORD)iDay;
+    sSystemTime.wHour = (WORD)iHour;
+    sSystemTime.wMinute = (WORD)iMinute;
+    sSystemTime.wSecond = (WORD)iSecond;
+    sSystemTime.wMilliseconds = (WORD)iMs;
+    SystemTimeToFileTime(&sSystemTime, (PFILETIME)&ft);
+    return ft;
+}
+
 VOID Util_GuidToString(_In_reads_(16) PBYTE pb, _Out_writes_(37) LPSTR szGUID)
 {
     typedef struct tdGUID {

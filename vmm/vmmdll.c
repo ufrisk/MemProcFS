@@ -44,6 +44,7 @@
 #define OB_TAG_API_MAP_PTE              'PTE '
 #define OB_TAG_API_MAP_SERVICES         'SVC '
 #define OB_TAG_API_MAP_THREAD           'THRD'
+#define OB_TAG_API_MAP_THREAD_CALLSTACK 'THRC'
 #define OB_TAG_API_MAP_UNLOADEDMODULE   'UMOD'
 #define OB_TAG_API_MAP_USER             'USER'
 #define OB_TAG_API_MAP_VAD              'VAD '
@@ -842,6 +843,47 @@ BOOL VMMDLL_MemVirt2Phys(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ ULONG64 qwVA,
 }
 
 _Success_(return)
+BOOL VMMDLL_MemCallback_Impl(_In_ VMM_HANDLE H, _In_ VMMDLL_MEM_CALLBACK_TP tp, _In_opt_ PVOID ctxUser, _In_opt_ VMM_MEM_CALLBACK_PFN pfnCB)
+{
+    switch(tp) {
+        case VMMDLL_MEM_CALLBACK_READ_PHYSICAL_PRE:
+            H->vmm.MemUserCB.pfnReadPhysicalPreCB = pfnCB;
+            H->vmm.MemUserCB.ctxReadPhysicalPre = ctxUser;
+            return TRUE;
+        case VMMDLL_MEM_CALLBACK_READ_PHYSICAL_POST:
+            H->vmm.MemUserCB.pfnReadPhysicalPostCB = pfnCB;
+            H->vmm.MemUserCB.ctxReadPhysicalPost = ctxUser;
+            return TRUE;
+        case VMMDLL_MEM_CALLBACK_WRITE_PHYSICAL_PRE:
+            H->vmm.MemUserCB.pfnWritePhysicalPreCB = pfnCB;
+            H->vmm.MemUserCB.ctxWritePhysicalPre = ctxUser;
+            return TRUE;
+        case VMMDLL_MEM_CALLBACK_READ_VIRTUAL_PRE:
+            H->vmm.MemUserCB.pfnReadVirtualPreCB = pfnCB;
+            H->vmm.MemUserCB.ctxReadVirtualPre = ctxUser;
+            return TRUE;
+        case VMMDLL_MEM_CALLBACK_READ_VIRTUAL_POST:
+            H->vmm.MemUserCB.pfnReadVirtualPostCB = pfnCB;
+            H->vmm.MemUserCB.ctxReadVirtualPost = ctxUser;
+            return TRUE;
+        case VMMDLL_MEM_CALLBACK_WRITE_VIRTUAL_PRE:
+            H->vmm.MemUserCB.pfnWriteVirtualPreCB = pfnCB;
+            H->vmm.MemUserCB.ctxWriteVirtualPre = ctxUser;
+            return TRUE;
+        default:
+            return FALSE;
+    }
+}
+
+EXPORTED_FUNCTION _Success_(return)
+BOOL VMMDLL_MemCallback(_In_ VMM_HANDLE H, _In_ VMMDLL_MEM_CALLBACK_TP tp, _In_opt_ PVOID ctxUser, _In_opt_ VMMDLL_MEM_CALLBACK_PFN pfnCB)
+{
+    CALL_IMPLEMENTATION_VMM(H,
+        STATISTICS_ID_VMMDLL_MemCallback,
+        VMMDLL_MemCallback_Impl(H, tp, ctxUser, pfnCB))
+}
+
+_Success_(return)
 BOOL VMMDLL_MemSearch_Impl(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _Inout_ PVMMDLL_MEM_SEARCH_CONTEXT ctx, _Out_opt_ PQWORD *ppva, _Out_opt_ PDWORD pcva)
 {
     BOOL fResult = FALSE;
@@ -1595,6 +1637,82 @@ _Success_(return) BOOL VMMDLL_Map_GetThread(_In_ VMM_HANDLE H, _In_ DWORD dwPID,
         H,
         STATISTICS_ID_VMMDLL_Map_GetThread,
         VMMDLL_Map_GetThread_Impl(H, dwPID, ppThreadMap))
+}
+
+_Success_(return) BOOL VMMDLL_Map_GetThread_Callstack_Impl(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ DWORD dwTID, _In_ DWORD flags, _Out_ PVMMDLL_MAP_THREAD_CALLSTACK *ppMapDst, _In_ BOOL fWideChar)
+{
+    BOOL f, fResult = FALSE;
+    PVMM_PROCESS pObProcess = NULL;
+    PVMMOB_MAP_THREAD pObThreadMap = NULL;
+    PVMM_MAP_THREADENTRY pThreadEntry = NULL;
+    DWORD i, cbDst = 0, cbDstData, cbDstStr;
+    PVMMDLL_MAP_THREAD_CALLSTACKENTRY peDst;
+    PVMM_MAP_THREADCALLSTACKENTRY peSrc;
+    PVMMOB_MAP_THREADCALLSTACK pObMapSrc = NULL;
+    PVMMDLL_MAP_THREAD_CALLSTACK pMapDst = NULL;
+    POB_STRMAP psmOb = NULL;
+    *ppMapDst = NULL;
+    // 0: sanity check:
+    if(sizeof(VMM_MAP_EATENTRY) != sizeof(VMMDLL_MAP_EATENTRY)) { goto fail; }
+    // 1: fetch map [and populate strings]:
+    if(!(psmOb = ObStrMap_New(H, 0))) { goto fail; }
+    if(!(pObProcess = VmmProcessGet(H, dwPID))) { goto fail; }
+    if(!VmmMap_GetThread(H, pObProcess, &pObThreadMap)) { goto fail; }
+    if(!(pThreadEntry = VmmMap_GetThreadEntry(H, pObThreadMap, dwTID))) { goto fail; }
+    if(!VmmMap_GetThreadCallstack(H, pObProcess, pThreadEntry, flags, &pObMapSrc)) { goto fail; }
+    for(i = 0; i < pObMapSrc->cMap; i++) {
+        peSrc = pObMapSrc->pMap + i;
+        ObStrMap_PushU(psmOb, peSrc->uszFunction);
+        ObStrMap_PushU(psmOb, peSrc->uszModule);
+    }
+    ObStrMap_PushU(psmOb, pObMapSrc->uszText);
+    // 2: byte count & alloc:
+    if(!ObStrMap_FinalizeBufferXUW(psmOb, 0, NULL, &cbDstStr, fWideChar)) { goto fail; }
+    cbDstData = pObMapSrc->cMap * sizeof(VMMDLL_MAP_THREAD_CALLSTACKENTRY);
+    cbDst = sizeof(VMMDLL_MAP_THREAD_CALLSTACK) + cbDstData + cbDstStr;
+    if(!(pMapDst = VmmDllCore_MemAllocExternal(H, OB_TAG_API_MAP_THREAD_CALLSTACK, cbDst, sizeof(VMMDLL_MAP_THREAD_CALLSTACK)))) { goto fail; }    // VMMDLL_MemFree()
+    // 3: fill map:
+    pMapDst->dwVersion = VMMDLL_MAP_THREAD_CALLSTACK_VERSION;
+    pMapDst->dwPID = dwPID;
+    pMapDst->dwTID = dwTID;
+    pMapDst->cMap = pObMapSrc->cMap;
+    // strmap below:
+    for(i = 0; i < pMapDst->cMap; i++) {
+        peSrc = pObMapSrc->pMap + i;
+        peDst = pMapDst->pMap + i;
+        peDst->i = peSrc->i;
+        peDst->fRegPresent = peSrc->fRegPresent;
+        peDst->vaRetAddr = peSrc->vaRetAddr;
+        peDst->vaRSP = peSrc->vaRSP;
+        peDst->vaBaseSP = peSrc->vaBaseSP;
+        peDst->_FutureUse1 = 0;
+        peDst->cbDisplacement = peSrc->cbDisplacement;
+        f = ObStrMap_PushPtrUXUW(psmOb, peSrc->uszFunction, &peDst->uszFunction, NULL, fWideChar) &&
+            ObStrMap_PushPtrUXUW(psmOb, peSrc->uszModule, &peDst->uszModule, NULL, fWideChar);
+        if(!f) { goto fail; }
+    }
+    ObStrMap_PushPtrUXUW(psmOb, pObMapSrc->uszText, &pMapDst->uszText, &pMapDst->cbText, fWideChar);
+    pMapDst->pbMultiText = ((PBYTE)pMapDst->pMap) + cbDstData;
+    ObStrMap_FinalizeBufferXUW(psmOb, cbDstStr, pMapDst->pbMultiText, &pMapDst->cbMultiText, fWideChar);
+    *ppMapDst = pMapDst;
+fail:
+    if(pMapDst && !*ppMapDst) { VMMDLL_MemFree(pMapDst); pMapDst = NULL; }
+    Ob_DECREF(pObThreadMap);
+    Ob_DECREF(pObProcess);
+    Ob_DECREF(pObMapSrc);
+    Ob_DECREF(psmOb);
+    return *ppMapDst ? TRUE : FALSE;
+}
+
+EXPORTED_FUNCTION
+_Success_(return) BOOL VMMDLL_Map_GetThread_CallstackU(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ DWORD dwTID, _In_ DWORD flags, _Out_ PVMMDLL_MAP_THREAD_CALLSTACK *ppThreadCallstack)
+{
+    CALL_IMPLEMENTATION_VMM(H, STATISTICS_ID_VMMDLL_Map_GetThreadCallstack, VMMDLL_Map_GetThread_Callstack_Impl(H, dwPID, dwTID, flags, ppThreadCallstack, FALSE))
+}
+
+_Success_(return) BOOL VMMDLL_Map_GetThread_CallstackW(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ DWORD dwTID, _In_ DWORD flags, _Out_ PVMMDLL_MAP_THREAD_CALLSTACK *ppThreadCallstack)
+{
+    CALL_IMPLEMENTATION_VMM(H, STATISTICS_ID_VMMDLL_Map_GetThreadCallstack, VMMDLL_Map_GetThread_Callstack_Impl(H, dwPID, dwTID, flags, ppThreadCallstack, TRUE))
 }
 
 _Success_(return)

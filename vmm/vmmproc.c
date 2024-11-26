@@ -15,6 +15,7 @@
 #include "vmmwinpool.h"
 #include "vmmwinreg.h"
 #include "vmmwinsvc.h"
+#include "vmmwinthread.h"
 #include "mm/mm_pfn.h"
 #include "pluginmanager.h"
 #include "statistics.h"
@@ -184,6 +185,7 @@ BOOL VmmProcRefresh_Slow(_In_ VMM_HANDLE H)
     VmmWinPool_Refresh(H);
     VmmWinPhysMemMap_Refresh(H);
     VmmVm_Refresh(H);
+    VmmWinThreadCs_Refresh(H);
     PluginManager_Notify(H, VMMDLL_PLUGIN_NOTIFY_REFRESH_SLOW, NULL, 0);
     LeaveCriticalSection(&H->vmm.LockMaster);
     return TRUE;

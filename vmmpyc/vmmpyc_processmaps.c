@@ -364,6 +364,47 @@ VmmPycProcessMaps_thread(PyObj_ProcessMaps *self, PyObject *args)
 
 // () -> [{...}]
 static PyObject*
+VmmPycProcessMaps_thread_callstack(PyObj_ProcessMaps *self, PyObject *args)
+{
+    PyObject *pyList, *pyDict;
+    BOOL result;
+    DWORD i, dwTID, dwFlags = 0;
+    PVMMDLL_MAP_THREAD_CALLSTACKENTRY pe;
+    PVMMDLL_MAP_THREAD_CALLSTACK pThreadCallstackMap = NULL;
+    if(!self->fValid) { return PyErr_Format(PyExc_RuntimeError, "ProcessMaps.thread_callstack(): Not initialized."); }
+    if(!PyArg_ParseTuple(args, "I|I", &dwTID, &dwFlags)) {
+        return PyErr_Format(PyExc_RuntimeError, "ProcessMaps.thread_callstack(): Illegal argument.");
+    }
+    if(!(pyList = PyList_New(0))) { return PyErr_NoMemory(); }
+    Py_BEGIN_ALLOW_THREADS;
+    result = VMMDLL_Map_GetThread_CallstackU(self->pyVMM->hVMM, self->dwPID, dwTID, dwFlags, &pThreadCallstackMap);
+    Py_END_ALLOW_THREADS;
+    if(!result || (pThreadCallstackMap->dwVersion != VMMDLL_MAP_THREAD_CALLSTACK_VERSION)) {
+        Py_DECREF(pyList);
+        VMMDLL_MemFree(pThreadCallstackMap);
+        return PyErr_Format(PyExc_RuntimeError, "ProcessMaps.thread_callstack(): Failed.");
+    }
+    for(i = 0; i < pThreadCallstackMap->cMap; i++) {
+        if((pyDict = PyDict_New())) {
+            pe = pThreadCallstackMap->pMap + i;
+            PyDict_SetItemString_DECREF(pyDict, "pid", PyLong_FromUnsignedLong(self->dwPID));
+            PyDict_SetItemString_DECREF(pyDict, "tid", PyLong_FromUnsignedLong(dwTID));
+            PyDict_SetItemString_DECREF(pyDict, "i", PyLong_FromUnsignedLong(pe->i));
+            PyDict_SetItemString_DECREF(pyDict, "va-retaddr", PyLong_FromUnsignedLongLong(pe->vaRetAddr));
+            PyDict_SetItemString_DECREF(pyDict, "va-rsp", PyLong_FromUnsignedLongLong(pe->vaRSP));
+            PyDict_SetItemString_DECREF(pyDict, "va-base-sp", PyLong_FromUnsignedLongLong(pe->vaBaseSP));
+            PyDict_SetItemString_DECREF(pyDict, "displacement", PyLong_FromUnsignedLong(pe->cbDisplacement));
+            PyDict_SetItemString_DECREF(pyDict, "type", PyUnicode_FromString(pe->uszModule));
+            PyDict_SetItemString_DECREF(pyDict, "type", PyUnicode_FromString(pe->uszFunction));
+            PyList_Append_DECREF(pyList, pyDict);
+        }
+    }
+    VMMDLL_MemFree(pThreadCallstackMap);
+    return pyList;
+}
+
+// () -> [{...}]
+static PyObject*
 VmmPycProcessMaps_handle(PyObj_ProcessMaps *self, PyObject *args)
 {
     PyObject *pyList, *pyDict;
@@ -452,6 +493,7 @@ BOOL VmmPycProcessMaps_InitializeType(PyObject *pModule)
         {"heap", (PyCFunction)VmmPycProcessMaps_heap, METH_VARARGS, "Retrieve the heaps."},
         {"heapalloc", (PyCFunction)VmmPycProcessMaps_heapalloc, METH_VARARGS, "Retrieve heap allocations for a specified heap."},
         {"thread", (PyCFunction)VmmPycProcessMaps_thread, METH_VARARGS, "Retrieve the threads."},
+        {"thread_callstack", (PyCFunction)VmmPycProcessMaps_thread_callstack, METH_VARARGS, "Retrieve the callstack for a specific thread."},
         {"handle", (PyCFunction)VmmPycProcessMaps_handle, METH_VARARGS, "Retrieve the handles."},
         {NULL, NULL, 0, NULL}
     };

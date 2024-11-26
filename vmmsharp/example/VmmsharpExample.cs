@@ -227,6 +227,39 @@ namespace vmmsharp_example
                 }
 
 
+                // Example: vmm.MapKDevice():
+                // Retrieve kernel devices and display them.
+                Console.WriteLine("====================================");
+                Console.WriteLine("Vmm.MapKDevice():");
+                Vmm.KDeviceEntry[] deviceEntries = vmm.MapKDevice();
+                foreach (Vmm.KDeviceEntry deviceEntry in deviceEntries)
+                {
+                    Console.WriteLine("{0}  va={1:X}  type={2}", deviceEntry, deviceEntry.va, deviceEntry.sDeviceType);
+                }
+
+
+                // Example: vmm.MapKDriver():
+                // Retrieve kernel drivers and display them.
+                Console.WriteLine("====================================");
+                Console.WriteLine("Vmm.MapKDriver():");
+                Vmm.KDriverEntry[] driverEntries = vmm.MapKDriver();
+                foreach (Vmm.KDriverEntry driverEntry in driverEntries)
+                {
+                    Console.WriteLine("{0}  va={1:X}  va_driver={2:X}  name='{3}'", driverEntry, driverEntry.va, driverEntry.vaDriverStart, driverEntry.sName);
+                }
+
+
+                // Example: vmm.MapKObject():
+                // Retrieve kernel drivers and display them.
+                Console.WriteLine("====================================");
+                Console.WriteLine("Vmm.MapKObject():");
+                Vmm.KObjectEntry[] objectEntries = vmm.MapKObject();
+                foreach (Vmm.KObjectEntry objectEntry in objectEntries)
+                {
+                    Console.WriteLine("{0}  va={1:X}  va_parent={2:X}  type={3} \t name='{4}'", objectEntry, objectEntry.va, objectEntry.vaParent, objectEntry.sType, objectEntry.sName);
+                }
+
+
                 // Example: vmm.MapPool():
                 // Retrieve kernel pool allocations and display the 'Proc' allocations.
                 // NB! here we retrieve all pool allocations which is substantially
@@ -680,6 +713,21 @@ namespace vmmsharp_example
             foreach (VmmProcess.ThreadEntry threadEntry in threadEntries)
             {
                 Console.WriteLine("{0} \t {1} \t {2} \t {3}", threadEntry, threadEntry.bState, threadEntry.dwTID, threadEntry.dwPID);
+            }
+
+
+            // Example: vmmprocess.MapThreadCallstack():
+            // Retrieve information about a thread callstack.
+            Console.WriteLine("====================================");
+            Console.WriteLine("VmmProcess.MapThreadCallstack():");
+            VmmProcess.ThreadCallstackEntry[] threadCallstackEntries = explorerProcess.MapThreadCallstack(threadEntries[0].dwTID);
+            Console.WriteLine("Number of thread callstack entries: {0}.", threadCallstackEntries.Length);
+            foreach (VmmProcess.ThreadCallstackEntry threadCallstackEntry in threadCallstackEntries)
+            {
+                Console.WriteLine("{0}   {1}:{2}   {3}: {4:X} {5:X} \t {6}!{7}+{8}",
+                    threadCallstackEntry, threadCallstackEntry.dwPID, threadCallstackEntry.dwTID,
+                    threadCallstackEntry.i, threadCallstackEntry.vaRSP, threadCallstackEntry.vaRetAddr,
+                    threadCallstackEntry.sModule, threadCallstackEntry.sFunction, threadCallstackEntry.cbDisplacement);
             }
 
 

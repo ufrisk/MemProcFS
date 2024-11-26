@@ -31,6 +31,7 @@ EXPORTS
     VMMDLL_UtilVfsWriteFile_BOOL
     VMMDLL_UtilVfsWriteFile_DWORD
     
+    VMMDLL_MemCallback
     VMMDLL_MemPrefetchPages
     VMMDLL_MemRead
     VMMDLL_MemReadEx
@@ -91,6 +92,8 @@ EXPORTS
     VMMDLL_Map_GetHeap
     VMMDLL_Map_GetHeapAlloc
     VMMDLL_Map_GetThread
+    VMMDLL_Map_GetThread_CallstackU
+    VMMDLL_Map_GetThread_CallstackW
     VMMDLL_Map_GetHandleU
     VMMDLL_Map_GetHandleW
     VMMDLL_ProcessGetInformation

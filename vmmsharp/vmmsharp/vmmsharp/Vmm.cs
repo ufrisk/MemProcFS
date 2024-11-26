@@ -349,6 +349,9 @@ namespace Vmmsharp
         public const uint FLAG_CACHE_RECENT_ONLY        = 0x0200;  // only fetch from the most recent active cache region when reading.
         public const uint FLAG_NO_PREDICTIVE_READ       = 0x0400;  // do not use predictive read-ahead when reading memory.
         public const uint FLAG_FORCECACHE_READ_DISABLE  = 0x0800;  // this flag is only recommended for local files. improves forensic artifact order.
+        public const uint FLAG_SCATTER_PREPAREEX_NOMEMZERO = 0x1000; // (not used by the C# API).
+        public const uint FLAG_NOMEMCALLBACK            = 0x2000;  // (not used by the C# API).
+        public const uint FLAG_SCATTER_FORCE_PAGEREAD   = 0x4000; // (not used by the C# API).
 
         /// <summary>
         /// Performs a Scatter Read on a collection of page-aligned Physical Addresses.

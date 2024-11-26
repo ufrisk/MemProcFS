@@ -177,6 +177,9 @@
     <ClInclude Include="ext\sha256.h">
       <Filter>Header Files\ext</Filter>
     </ClInclude>
+    <ClInclude Include="vmmwinthread.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="vmmdll.c">
@@ -508,6 +511,9 @@
     </ClCompile>
     <ClCompile Include="modules\m_proc_console.c">
       <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmwinthread.c">
+      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

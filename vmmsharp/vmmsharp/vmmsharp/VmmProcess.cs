@@ -845,6 +845,43 @@ namespace Vmmsharp
         }
 
         /// <summary>
+        /// Thread callstack information.
+        /// </summary>
+        /// <param name="tid">The thread id to retrieve the callstack for.</param>
+        /// <param name="flags">Supported flags: 0, FLAG_NOCACHE, FLAG_FORCECACHE_READ</param>
+        /// <returns></returns>
+        public unsafe ThreadCallstackEntry[] MapThreadCallstack(uint tid, uint flags = 0)
+        {
+            int cbMAP = System.Runtime.InteropServices.Marshal.SizeOf<Vmmi.VMMDLL_MAP_THREAD_CALLSTACK>();
+            int cbENTRY = System.Runtime.InteropServices.Marshal.SizeOf<Vmmi.VMMDLL_MAP_THREAD_CALLSTACKENTRY>();
+            IntPtr pMap = IntPtr.Zero;
+            ThreadCallstackEntry[] m = new ThreadCallstackEntry[0];
+            if (!Vmmi.VMMDLL_Map_GetThread_Callstack(_hVmm, this.PID, tid, flags, out pMap)) { goto fail; }
+            Vmmi.VMMDLL_MAP_THREAD_CALLSTACK nM = Marshal.PtrToStructure<Vmmi.VMMDLL_MAP_THREAD_CALLSTACK>(pMap);
+            if (nM.dwVersion != Vmmi.VMMDLL_MAP_THREAD_CALLSTACK_VERSION) { goto fail; }
+            m = new ThreadCallstackEntry[nM.cMap];
+            for (int i = 0; i < nM.cMap; i++)
+            {
+                Vmmi.VMMDLL_MAP_THREAD_CALLSTACKENTRY n = Marshal.PtrToStructure<Vmmi.VMMDLL_MAP_THREAD_CALLSTACKENTRY>((System.IntPtr)(pMap.ToInt64() + cbMAP + i * cbENTRY));
+                ThreadCallstackEntry e;
+                e.dwPID = this.PID;
+                e.dwTID = tid;
+                e.i = n.i;
+                e.fRegPresent = n.fRegPresent;
+                e.vaRetAddr = n.vaRetAddr;
+                e.vaRSP = n.vaRSP;
+                e.vaBaseSP = n.vaBaseSP;
+                e.cbDisplacement = (int)n.cbDisplacement;
+                e.sModule = n.uszModule;
+                e.sFunction = n.uszFunction;
+                m[i] = e;
+            }
+        fail:
+            Vmmi.VMMDLL_MemFree((byte*)pMap.ToPointer());
+            return m;
+        }
+
+        /// <summary>
         /// Handle information.
         /// </summary>
         /// <returns></returns>
@@ -1364,6 +1401,20 @@ namespace Vmmsharp
             public uint dwKernelTime;
             public byte bSuspendCount;
             public byte bWaitReason;
+        }
+
+        public struct ThreadCallstackEntry
+        {
+            public uint dwPID;
+            public uint dwTID;
+            public uint i;
+            public bool fRegPresent;
+            public ulong vaRetAddr;
+            public ulong vaRSP;
+            public ulong vaBaseSP;
+            public int cbDisplacement;
+            public string sModule;
+            public string sFunction;
         }
 
         public struct HandleEntry

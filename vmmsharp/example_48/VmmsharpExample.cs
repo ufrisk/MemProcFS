@@ -720,6 +720,21 @@ namespace vmmsharp_example
             }
 
 
+            // Example: vmmprocess.MapThreadCallstack():
+            // Retrieve information about a thread callstack.
+            Console.WriteLine("====================================");
+            Console.WriteLine("VmmProcess.MapThreadCallstack():");
+            VmmProcess.ThreadCallstackEntry[] threadCallstackEntries = explorerProcess.MapThreadCallstack(threadEntries[0].dwTID);
+            Console.WriteLine("Number of thread callstack entries: {0}.", threadCallstackEntries.Length);
+            foreach (VmmProcess.ThreadCallstackEntry threadCallstackEntry in threadCallstackEntries)
+            {
+                Console.WriteLine("{0}   {1}:{2}   {3}: {4:X} {5:X} \t {6}!{7}+{8}",
+                    threadCallstackEntry, threadCallstackEntry.dwPID, threadCallstackEntry.dwTID,
+                    threadCallstackEntry.i, threadCallstackEntry.vaRSP, threadCallstackEntry.vaRetAddr,
+                    threadCallstackEntry.sModule, threadCallstackEntry.sFunction, threadCallstackEntry.cbDisplacement);
+            }
+
+
             // Example: vmmprocess.MapUnloadedModule():
             // Retrieve information about unloaded modules (if any).
             Console.WriteLine("====================================");

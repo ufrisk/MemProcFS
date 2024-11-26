@@ -64,6 +64,7 @@ namespace Vmmsharp.Internal
         internal const string VMMDLL_Map_GetKDeviceX        = "VMMDLL_Map_GetKDeviceU";
         internal const string VMMDLL_Map_GetKDriverX        = "VMMDLL_Map_GetKDriverU";
         internal const string VMMDLL_Map_GetKObjectX        = "VMMDLL_Map_GetKObjectU";
+        internal const string VMMDLL_Map_GetThread_CallstackX = "VMMDLL_Map_GetThread_CallstackU";
         internal const string VMMDLL_Map_GetUsersX          = "VMMDLL_Map_GetUsersU";
         internal const string VMMDLL_Map_GetVMX             = "VMMDLL_Map_GetVMU";
         internal const string VMMDLL_Map_GetServicesX       = "VMMDLL_Map_GetServicesU";
@@ -91,6 +92,7 @@ namespace Vmmsharp.Internal
         internal const string VMMDLL_Map_GetKDeviceX        = "VMMDLL_Map_GetKDeviceW";
         internal const string VMMDLL_Map_GetKDriverX        = "VMMDLL_Map_GetKDriverW";
         internal const string VMMDLL_Map_GetKObjectX        = "VMMDLL_Map_GetKObjectW";
+        internal const string VMMDLL_Map_GetThread_CallstackX = "VMMDLL_Map_GetThread_CallstackW";
         internal const string VMMDLL_Map_GetUsersX          = "VMMDLL_Map_GetUsersW";
         internal const string VMMDLL_Map_GetVMX             = "VMMDLL_Map_GetVMW";
         internal const string VMMDLL_Map_GetServicesX       = "VMMDLL_Map_GetServicesW";
@@ -114,6 +116,7 @@ namespace Vmmsharp.Internal
         internal const uint VMMDLL_MAP_HEAP_VERSION = 4;
         internal const uint VMMDLL_MAP_HEAPALLOC_VERSION = 1;
         internal const uint VMMDLL_MAP_THREAD_VERSION = 4;
+        internal const uint VMMDLL_MAP_THREAD_CALLSTACK_VERSION = 1;
         internal const uint VMMDLL_MAP_HANDLE_VERSION = 3;
         internal const uint VMMDLL_MAP_NET_VERSION = 3;
         internal const uint VMMDLL_MAP_PHYSMEM_VERSION = 2;
@@ -494,6 +497,34 @@ namespace Vmmsharp.Internal
         {
             internal uint dwVersion;
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)] internal uint[] _Reserved1;
+            internal uint cMap;
+        }
+
+        [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        internal struct VMMDLL_MAP_THREAD_CALLSTACKENTRY
+        {
+            internal uint i;
+            internal bool fRegPresent;
+            internal ulong vaRetAddr;
+            internal ulong vaRSP;
+            internal ulong vaBaseSP;
+            internal uint _FutureUse1;
+            internal uint cbDisplacement;
+            [MarshalAs(VmmString)] internal string uszModule;
+            [MarshalAs(VmmString)] internal string uszFunction;
+        }
+
+        [System.Runtime.InteropServices.StructLayoutAttribute(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        internal struct VMMDLL_MAP_THREAD_CALLSTACK
+        {
+            internal uint dwVersion;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 6)] internal uint[] _Reserved1;
+            internal uint dwPID;
+            internal uint dwTID;
+            internal uint cbText;
+            [MarshalAs(VmmString)] internal string uszText;
+            internal IntPtr pbMultiText;
+            internal uint cbMultiText;
             internal uint cMap;
         }
 
@@ -1269,6 +1300,16 @@ namespace Vmmsharp.Internal
             uint dwPid,
             out IntPtr ppThreadMap);
 
+        // VMMDLL_Map_GetThread_Callstack
+        [LibraryImport("vmm", EntryPoint = "VMMDLL_Map_GetThread_CallstackU")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static unsafe partial bool VMMDLL_Map_GetThread_Callstack(
+            IntPtr hVMM,
+            uint dwPID,
+            uint dwTID,
+            uint flags,
+            out IntPtr ppThreadCallstack);
+
         // VMMDLL_Map_GetHandle
         [LibraryImport("vmm", EntryPoint = "VMMDLL_Map_GetHandleU")]
         [return: MarshalAs(UnmanagedType.Bool)]
@@ -1792,6 +1833,15 @@ namespace Vmmsharp.Internal
             IntPtr hVMM,
             uint dwPid,
             out IntPtr ppThreadMap);
+
+        // VMMDLL_Map_GetThread_Callstack
+        [DllImport("vmm", EntryPoint = VMMDLL_Map_GetThread_CallstackX)]
+        internal static extern unsafe bool VMMDLL_Map_GetThread_Callstack(
+            IntPtr hVMM,
+            uint dwPID,
+            uint dwTID,
+            uint flags,
+            out IntPtr ppThreadCallstack);
 
         // VMMDLL_Map_GetHandle
         [DllImport("vmm", EntryPoint = VMMDLL_Map_GetHandleX)]

@@ -122,54 +122,73 @@ _Success_(return == 0)
 NTSTATUS MThread_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
+    PVMM_PROCESS pProcess = ctxP->pProcess;
     PVMMOB_MAP_THREAD pObThreadMap = NULL;
     CHAR uszThreadName[16 + 1];
     LPCSTR uszSubPath;
     DWORD dwTID;
     PVMM_MAP_THREADENTRY pe;
     PVMMOB_TOKEN pObToken = NULL;
-    if(!VmmMap_GetThread(H, ctxP->pProcess, &pObThreadMap)) { return VMMDLL_STATUS_FILE_INVALID; }
-    // module root - thread info file
-    if(!_stricmp(ctxP->uszPath, "threads.txt")) {
-        nt = Util_VfsLineFixed_Read(
-            H, (UTIL_VFSLINEFIXED_PFN_CB)MThread_ReadLineCB, NULL, MTHREAD_LINELENGTH, MTHREAD_LINEHEADER,
-            pObThreadMap->pMap, pObThreadMap->cMap, sizeof(VMM_MAP_THREADENTRY),
-            pb, cb, pcbRead, cbOffset
-        );
-        goto finish;
-    }
+    BOOL fCS;
+    PVMMOB_MAP_THREADCALLSTACK pObThreadCallstackMap = NULL;
+    if(!VmmMap_GetThread(H, pProcess, &pObThreadMap)) { return VMMDLL_STATUS_FILE_INVALID; }
     // individual thread file
     uszSubPath = CharUtil_PathSplitFirst(ctxP->uszPath, uszThreadName, _countof(uszThreadName));
-    if(uszSubPath && (dwTID = (DWORD)Util_GetNumericA(ctxP->uszPath)) && (pe = VmmMap_GetThreadEntry(H, pObThreadMap, dwTID))) {
-        if(!_stricmp(uszSubPath, "info.txt")) {
+    if(uszSubPath[0] && (dwTID = (DWORD)Util_GetNumericA(ctxP->uszPath)) && (pe = VmmMap_GetThreadEntry(H, pObThreadMap, dwTID))) {
+        if(CharUtil_StrEquals(uszSubPath, "info.txt", TRUE)) {
             nt = MThread_Read_ThreadInfo(H, pe, pb, cb, pcbRead, cbOffset);
             goto finish;
         }
         // individual thread files backed by user-mode memory below:
-        if(!_stricmp(uszSubPath, "teb")) {
-            nt = VmmReadAsFile(H, (PVMM_PROCESS)ctxP->pProcess, pe->vaTeb, 0x1000, pb, cb, pcbRead, cbOffset);
+        if(CharUtil_StrEquals(uszSubPath, "teb", TRUE)) {
+            nt = VmmReadAsFile(H, pProcess, pe->vaTeb, 0x1000, pb, cb, pcbRead, cbOffset);
             goto finish;
         }
-        if(!_stricmp(uszSubPath, "stack")) {
-            nt = VmmReadAsFile(H, (PVMM_PROCESS)ctxP->pProcess, pe->vaStackLimitUser, pe->vaStackBaseUser - pe->vaStackLimitUser, pb, cb, pcbRead, cbOffset);
+        if(CharUtil_StrEquals(uszSubPath, "stack", TRUE)) {
+            nt = VmmReadAsFile(H, pProcess, pe->vaStackLimitUser, pe->vaStackBaseUser - pe->vaStackLimitUser, pb, cb, pcbRead, cbOffset);
             goto finish;
         }
         // individual thread files backed by kernel memory below:
-        if(!_stricmp(uszSubPath, "ethread")) {
+        if(CharUtil_StrEquals(uszSubPath, "ethread", TRUE)) {
             nt = VmmReadAsFile(H, PVMM_PROCESS_SYSTEM, pe->vaETHREAD, H->vmm.offset.ETHREAD.oMax, pb, cb, pcbRead, cbOffset);
             goto finish;
         }
-        if(!_stricmp(uszSubPath, "kstack")) {
+        if(CharUtil_StrEquals(uszSubPath, "kstack", TRUE)) {
             nt = VmmReadAsFile(H, PVMM_PROCESS_SYSTEM, pe->vaStackLimitKernel, pe->vaStackBaseKernel - pe->vaStackLimitKernel, pb, cb, pcbRead, cbOffset);
             goto finish;
         }
+        // callback file:
+        if(CharUtil_StrEquals(uszSubPath, "callstack.txt", TRUE)) {
+            nt = VMMDLL_STATUS_END_OF_FILE;
+            VmmMap_GetThreadCallstack(H, pProcess, pe, 0, &pObThreadCallstackMap);
+            if(pObThreadCallstackMap && pObThreadCallstackMap->uszText) {
+                nt = Util_VfsReadFile_FromPBYTE(pObThreadCallstackMap->uszText, pObThreadCallstackMap->cbText, pb, cb, pcbRead, cbOffset);
+                Ob_DECREF_NULL(&pObThreadCallstackMap);
+            }
+            goto finish;
+        }
         // impersonation token:
-        if(!_strnicmp(uszSubPath, "impersonation", 13) && pe->vaImpersonationToken) {
+        if(CharUtil_StrStartsWith(uszSubPath, "impersonation", TRUE) && pe->vaImpersonationToken) {
             if(VmmWinToken_Initialize(H, 1, &pe->vaImpersonationToken, &pObToken)) {
                 nt = MProcToken_ReadToken(H, ctxP, pObToken, pb, cb, pcbRead, cbOffset);
                 Ob_DECREF_NULL(&pObToken);
                 goto finish;
             }
+        }
+    } else {
+        // module root:
+        if(CharUtil_StrEquals(ctxP->uszPath, "threads.txt", TRUE)) {
+            nt = Util_VfsLineFixed_Read(
+                H, (UTIL_VFSLINEFIXED_PFN_CB)MThread_ReadLineCB, NULL, MTHREAD_LINELENGTH, MTHREAD_LINEHEADER,
+                pObThreadMap->pMap, pObThreadMap->cMap, sizeof(VMM_MAP_THREADENTRY),
+                pb, cb, pcbRead, cbOffset
+            );
+            goto finish;
+        }
+        if(CharUtil_StrEquals(ctxP->uszPath, "callstack_enable.txt", TRUE)) {
+            fCS = pProcess->pObPersistent->Plugin.flags & VMMOB_PROCESS_PERSISTENT_FLAG_THREAD_CALLSTACK_ENABLE;
+            nt = Util_VfsReadFile_FromBOOL(fCS, pb, cb, pcbRead, cbOffset);
+            goto finish;
         }
     }
 finish:
@@ -191,31 +210,49 @@ finish:
 NTSTATUS MThread_Write(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
+    PVMM_PROCESS pProcess = (PVMM_PROCESS)ctxP->pProcess;
     PVMMOB_MAP_THREAD pObThreadMap = NULL;
     CHAR uszThreadName[16 + 1];
     LPCSTR uszSubPath;
     DWORD dwTID;
     PVMM_MAP_THREADENTRY pe;
-    if(!VmmMap_GetThread(H, ctxP->pProcess, &pObThreadMap)) { return VMMDLL_STATUS_FILE_INVALID; }
+    BOOL fCsEnableOld, fCsEnableNew = FALSE;
+    if(!VmmMap_GetThread(H, pProcess, &pObThreadMap)) { return VMMDLL_STATUS_FILE_INVALID; }
     // individual thread file
     uszSubPath = CharUtil_PathSplitFirst(ctxP->uszPath, uszThreadName, sizeof(uszThreadName));
-    if(uszSubPath && (dwTID = (DWORD)Util_GetNumericA(ctxP->uszPath)) && (pe = VmmMap_GetThreadEntry(H, pObThreadMap, dwTID))) {
+    if(uszSubPath[0] && (dwTID = (DWORD)Util_GetNumericA(ctxP->uszPath)) && (pe = VmmMap_GetThreadEntry(H, pObThreadMap, dwTID))) {
         // individual thread files backed by user-mode memory below:
-        if(!_stricmp(uszSubPath, "teb")) {
-            nt = VmmWriteAsFile(H, (PVMM_PROCESS)ctxP->pProcess, pe->vaTeb, 0x1000, pb, cb, pcbWrite, cbOffset);
+        if(CharUtil_StrEquals(uszSubPath, "teb", TRUE)) {
+            nt = VmmWriteAsFile(H, pProcess, pe->vaTeb, 0x1000, pb, cb, pcbWrite, cbOffset);
             goto finish;
         }
-        if(!_stricmp(uszSubPath, "stack")) {
-            nt = VmmWriteAsFile(H, (PVMM_PROCESS)ctxP->pProcess, pe->vaStackLimitUser, pe->vaStackBaseUser - pe->vaStackLimitUser, pb, cb, pcbWrite, cbOffset);
+        if(CharUtil_StrEquals(uszSubPath, "stack", TRUE)) {
+            nt = VmmWriteAsFile(H, pProcess, pe->vaStackLimitUser, pe->vaStackBaseUser - pe->vaStackLimitUser, pb, cb, pcbWrite, cbOffset);
             goto finish;
         }
         // individual thread files backed by kernel memory below:
-        if(!_stricmp(uszSubPath, "ethread")) {
+        if(CharUtil_StrEquals(uszSubPath, "ethread", TRUE)) {
             nt = VmmWriteAsFile(H, PVMM_PROCESS_SYSTEM, pe->vaETHREAD, H->vmm.offset.ETHREAD.oMax, pb, cb, pcbWrite, cbOffset);
             goto finish;
         }
-        if(!_stricmp(uszSubPath, "kstack")) {
+        if(CharUtil_StrEquals(uszSubPath, "kstack", TRUE)) {
             nt = VmmWriteAsFile(H, PVMM_PROCESS_SYSTEM, pe->vaStackLimitKernel, pe->vaStackBaseKernel - pe->vaStackLimitKernel, pb, cb, pcbWrite, cbOffset);
+            goto finish;
+        }
+    } else {
+        // module root:
+        if(CharUtil_StrEquals(ctxP->uszPath, "callstack_enable.txt", TRUE)) {
+            fCsEnableOld = (pProcess->pObPersistent->Plugin.flags & VMMOB_PROCESS_PERSISTENT_FLAG_THREAD_CALLSTACK_ENABLE) ? TRUE : FALSE;
+            nt = Util_VfsWriteFile_BOOL(&fCsEnableNew, pb, cb, pcbWrite, cbOffset);
+            if(fCsEnableOld != fCsEnableNew) {
+                AcquireSRWLockExclusive(&pProcess->pObPersistent->LockUpdateSRW);
+                if(fCsEnableNew) {
+                    pProcess->pObPersistent->Plugin.flags |= VMMOB_PROCESS_PERSISTENT_FLAG_THREAD_CALLSTACK_ENABLE;
+                } else {
+                    pProcess->pObPersistent->Plugin.flags &= ~VMMOB_PROCESS_PERSISTENT_FLAG_THREAD_CALLSTACK_ENABLE;
+                }
+                ReleaseSRWLockExclusive(&pProcess->pObPersistent->LockUpdateSRW);
+            }
             goto finish;
         }
     }
@@ -250,6 +287,7 @@ VOID MThread_List_TimeStampFile(_In_ PVMM_MAP_THREADENTRY pThreadEntry, _Out_ PV
 */
 BOOL MThread_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList)
 {
+    PVMM_PROCESS pProcess = (PVMM_PROCESS)ctxP->pProcess;
     DWORD i, dwTID, cbStack;
     CHAR uszBuffer[32] = { 0 };
     CHAR uszThreadName[16 + 1];
@@ -258,7 +296,10 @@ BOOL MThread_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ P
     PVMM_MAP_THREADENTRY pe;
     VMMDLL_VFS_FILELIST_EXINFO ExInfo = { 0 };
     PVMMOB_TOKEN pObToken = NULL;
+    PVMMOB_MAP_THREADCALLSTACK pObThreadCallstackMap = NULL;
+    BOOL f64u;
     if(!VmmMap_GetThread(H, ctxP->pProcess, &pObThreadMap)) { goto fail; }
+    f64u = !H->vmm.f32 && !pProcess->win.fWow64 && pProcess->fUserOnly;
     // module root - list thread map
     if(!ctxP->uszPath[0]) {
         for(i = 0; i < pObThreadMap->cMap; i++) {
@@ -267,6 +308,7 @@ BOOL MThread_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ P
             _snprintf_s(uszBuffer, _countof(uszBuffer), 32, "%i", pe->dwTID);
             VMMDLL_VfsList_AddDirectory(pFileList, uszBuffer, &ExInfo);
         }
+        if(f64u) { VMMDLL_VfsList_AddFile(pFileList, "callstack_enable.txt", 1, NULL); }
         VMMDLL_VfsList_AddFile(pFileList, "threads.txt", UTIL_VFSLINEFIXED_LINECOUNT(H, pObThreadMap->cMap) * MTHREAD_LINELENGTH, NULL);
         Ob_DECREF_NULL(&pObThreadMap);
         return TRUE;
@@ -284,6 +326,11 @@ BOOL MThread_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ P
         }
     } else {
         // thread directory:
+        if(f64u && (pProcess->pObPersistent->Plugin.flags & VMMOB_PROCESS_PERSISTENT_FLAG_THREAD_CALLSTACK_ENABLE)) {
+            VmmMap_GetThreadCallstack(H, pProcess, pe, 0, &pObThreadCallstackMap);
+            VMMDLL_VfsList_AddFile(pFileList, "callstack.txt", (pObThreadCallstackMap ? pObThreadCallstackMap->cbText : 0), &ExInfo);
+            Ob_DECREF_NULL(&pObThreadCallstackMap);
+        }
         VMMDLL_VfsList_AddFile(pFileList, "info.txt", MTHREAD_INFOFILE_LENGTH, &ExInfo);
         VMMDLL_VfsList_AddFile(pFileList, "ethread", H->vmm.offset.ETHREAD.oMax, &ExInfo);
         if(pe->vaTeb) {

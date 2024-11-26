@@ -234,7 +234,9 @@ v5.8
 * updates (FindEvil, New signatures, etc.).
 * New APIs for Kernel Objects, Drivers and Devices.
 
-Latest:
+[v5.13](https://github.com/ufrisk/MemProcFS/releases/tag/v5.12)
 * Bug fixes.
 * New [console module](https://github.com/ufrisk/MemProcFS/wiki/FS_Process_Console) added.
 * File recovery improvements (file sizes, signing info) for [files module](https://github.com/ufrisk/MemProcFS/wiki/FS_Forensic_Files).
+* Memory callback API functionality (C/C++ API only).
+* [Callstack parsing](https://github.com/ufrisk/MemProcFS/wiki/FS_Process_Threads) for x64 user-mode process callstacks.
