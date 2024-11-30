@@ -24,8 +24,10 @@
 //! 
 //! <b>Read and write memory</b> by using the methods
 //! [`mem_read()`](VmmProcess::mem_read()),
-//! [`mem_read_ex()`](VmmProcess::mem_read_ex()) and
-//! [`mem_write()`](VmmProcess::mem_write()).
+//! [`mem_read_ex()`](VmmProcess::mem_read_ex()),
+//! [`mem_read_as()`](VmmProcess::mem_read_as()) and
+//! [`mem_write()`](VmmProcess::mem_write()) /
+//! [`mem_write_as()`](VmmProcess::mem_write_as()).
 //! Virtual memory is read from [`VmmProcess`] struct.
 //! Physical memory is read from the [`Vmm`] struct.
 //! 

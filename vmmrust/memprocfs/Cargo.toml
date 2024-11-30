@@ -3,6 +3,7 @@ name = "memprocfs"
 version = "5.13.0"
 edition = "2021"
 description = "MemProcFS - Physical Memory Analysis Framework"
+documentation = "https://docs.rs/memprocfs"
 homepage = "https://github.com/ufrisk/MemProcFS"
 repository = "https://github.com/ufrisk/MemProcFS"
 categories = ["external-ffi-bindings"]

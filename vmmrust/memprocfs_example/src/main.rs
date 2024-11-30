@@ -88,10 +88,22 @@ pub fn main_example() -> ResultEx<()> {
         // (Writes are only possible if underlying layers are write-capable.)
         println!("========================================");
         println!("Vmm.mem_write():");
-        let data_to_write = [0x56u8, 0x4d, 0x4d, 0x52, 0x55, 0x53, 0x54].to_vec();
-        match vmm.mem_write(0x1000, &data_to_write) {
+        let data_to_write_vec = [0x56u8, 0x4d, 0x4d, 0x52, 0x55, 0x53, 0x54].to_vec();
+        match vmm.mem_write(0x1000, &data_to_write_vec) {
             Ok(()) => println!("Vmm.mem_write(): success"),
             Err(e) => println!("Vmm.mem_write(): fail [{}]", e),
+        }
+
+
+        // Example: vmm.mem_write_as():
+        // Write to physical memory at address 0x1000
+        // (Writes are only possible if underlying layers are write-capable.)
+        println!("========================================");
+        println!("Vmm.mem_write_as():");
+        let data_to_write_arr = [0x56u8, 0x4d, 0x4d, 0x52, 0x55, 0x53, 0x54];
+        match vmm.mem_write_as(0x1000, &data_to_write_arr) {
+            Ok(()) => println!("Vmm.mem_write_as(): success"),
+            Err(e) => println!("Vmm.mem_write_as(): fail [{}]", e),
         }
 
 
@@ -1088,10 +1100,22 @@ pub fn main_example() -> ResultEx<()> {
         // (Writes are only possible if underlying layers are write-capable.)
         println!("========================================");
         println!("vmmprocess.mem_write():");
-        let data_to_write = [0x56u8, 0x4d, 0x4d, 0x52, 0x55, 0x53, 0x54].to_vec();
-        match vmmprocess.mem_write(kernel32.va_base + 8, &data_to_write) {
+        let data_to_write_vec = [0x56u8, 0x4d, 0x4d, 0x52, 0x55, 0x53, 0x54].to_vec();
+        match vmmprocess.mem_write(kernel32.va_base + 8, &data_to_write_vec) {
             Err(e) => println!("vmmprocess.mem_write(): fail [{}]", e),
             Ok(()) => println!("vmmprocess.mem_write(): success"),
+        }
+
+
+        // Example: vmmprocess.mem_write_as():
+        // Write to virtual memory of kernel32 PE header (dangerous)
+        // (Writes are only possible if underlying layers are write-capable.)
+        println!("========================================");
+        println!("vmmprocess.mem_write_as():");
+        let data_to_write_arr = [0x56u8, 0x4d, 0x4d, 0x52, 0x55, 0x53, 0x54];
+        match vmmprocess.mem_write_as(kernel32.va_base + 8, &data_to_write_arr) {
+            Err(e) => println!("vmmprocess.mem_write_as(): fail [{}]", e),
+            Ok(()) => println!("vmmprocess.mem_write_as(): success"),
         }
 
 

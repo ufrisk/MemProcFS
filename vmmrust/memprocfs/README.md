@@ -32,7 +32,9 @@ actions - such as reading/writing memory and retrieving various information.
 <b>Read and write memory</b> by using the methods
 [`mem_read()`](https://docs.rs/memprocfs/latest/memprocfs/struct.VmmProcess.html#method.mem_read),
 [`mem_read_ex()`](https://docs.rs/memprocfs/latest/memprocfs/struct.VmmProcess.html#method.mem_read_ex),
-[`mem_write()`](https://docs.rs/memprocfs/latest/memprocfs/struct.VmmProcess.html#method.mem_write) of the
+[`mem_read_as()`](https://docs.rs/memprocfs/latest/memprocfs/struct.VmmProcess.html#method.mem_read_as),
+[`mem_write()`](https://docs.rs/memprocfs/latest/memprocfs/struct.VmmProcess.html#method.mem_write),
+[`mem_write_as()`](https://docs.rs/memprocfs/latest/memprocfs/struct.VmmProcess.html#method.mem_write_as) of the
 [`Vmm`](https://docs.rs/memprocfs/latest/memprocfs/struct.Vmm.html) and
 [`VmmProcess`](https://docs.rs/memprocfs/latest/memprocfs/struct.VmmProcess.html) structs.
 
