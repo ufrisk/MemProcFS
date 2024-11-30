@@ -1063,7 +1063,7 @@ impl Vmm<'_> {
     /// let data_to_write = [0x56u8, 0x4d, 0x4d, 0x52, 0x55, 0x53, 0x54].to_vec();
     /// let _r = vmm.mem_write(0x1000, &data_to_write);
     /// ```
-    pub fn mem_write(&self, pa : u64, data : &Vec<u8>) -> ResultEx<()> {
+    pub fn mem_write(&self, pa : u64, data : &[u8]) -> ResultEx<()> {
         return self.impl_mem_write(u32::MAX, pa, data);
     }
 
@@ -1623,7 +1623,7 @@ impl VmmScatterMemory<'_> {
     /// # Arguments
     /// * `va` - Address to prepare to write to.
     /// * `data` - Data to write.
-    pub fn prepare_write(&self, va : u64, data : &Vec<u8>) -> ResultEx<()> {
+    pub fn prepare_write(&self, va : u64, data : &[u8]) -> ResultEx<()> {
         return self.impl_prepare_write(va, data);
     }
 
@@ -2762,7 +2762,7 @@ impl VmmProcess<'_> {
     /// let data_to_write = [0x56u8, 0x4d, 0x4d, 0x52, 0x55, 0x53, 0x54].to_vec();
     /// let _r = vmmprocess.mem_write(va_kernel32, &data_to_write);
     /// ```
-    pub fn mem_write(&self, va : u64, data : &Vec<u8>) -> ResultEx<()> {
+    pub fn mem_write(&self, va : u64, data : &[u8]) -> ResultEx<()> {
         return self.vmm.impl_mem_write(self.pid, va, data);
     }
 
@@ -2949,7 +2949,7 @@ impl VmmRegHive<'_> {
     /// let data_to_write = [0x56u8, 0x4d, 0x4d, 0x52, 0x55, 0x53, 0x54].to_vec();
     /// let _r = hive.reg_hive_write(0x1000, &data_to_write);
     /// ```
-    pub fn reg_hive_write(&self, ra : u32, data : &Vec<u8>) -> ResultEx<()> {
+    pub fn reg_hive_write(&self, ra : u32, data : &[u8]) -> ResultEx<()> {
         return self.impl_reg_hive_write(ra, data);
     }
 }
@@ -4311,7 +4311,7 @@ impl LeechCore {
     /// // Get the LeechCore memory map:
     /// let memmap = lc.command(LeechCore::LC_CMD_MEMMAP_GET, None)?.to_string();
     /// ```
-    pub fn command(&self, command_id : u64, data : Option<&Vec<u8>>) -> ResultEx<Option<Vec<u8>>> {
+    pub fn command(&self, command_id : u64, data : Option<&[u8]>) -> ResultEx<Option<Vec<u8>>> {
         return self.impl_command(command_id, data);
     }
 
@@ -4374,7 +4374,7 @@ impl LeechCore {
     /// let data_to_write = [0x56u8, 0x4d, 0x4d, 0x52, 0x55, 0x53, 0x54].to_vec();
     /// let _r = lc.mem_write(0x1000, &data_to_write);
     /// ```
-    pub fn mem_write(&self, pa : u64, data : &Vec<u8>) -> ResultEx<()> {
+    pub fn mem_write(&self, pa : u64, data : &[u8]) -> ResultEx<()> {
         return self.impl_mem_write(pa, data);
     }
 
@@ -6012,7 +6012,7 @@ impl Vmm<'_> {
         return Ok(pa);
     }
 
-    fn impl_mem_write(&self, pid : u32, va : u64, data : &Vec<u8>) -> ResultEx<()> {
+    fn impl_mem_write(&self, pid : u32, va : u64, data : &[u8]) -> ResultEx<()> {
         let cb = u32::try_from(data.len())?;
         let pb = data.as_ptr();
         let r = (self.native.VMMDLL_MemWrite)(self.native.h, pid, va, pb, cb);
@@ -6326,7 +6326,7 @@ impl VmmRegHive<'_> {
         return Ok(pb_result);
     }
 
-    fn impl_reg_hive_write(&self, ra : u32, data : &Vec<u8>) -> ResultEx<()> {
+    fn impl_reg_hive_write(&self, ra : u32, data : &[u8]) -> ResultEx<()> {
         let cb = u32::try_from(data.len())?;
         let pb = data.as_ptr();
         let r = (self.vmm.native.VMMDLL_WinReg_HiveWrite)(self.vmm.native.h, self.va, ra, pb, cb);
@@ -7852,7 +7852,7 @@ impl VmmScatterMemory<'_> {
         return Ok(());
     }
 
-    fn impl_prepare_write(&self, va : u64, data : &Vec<u8>) -> ResultEx<()> {
+    fn impl_prepare_write(&self, va : u64, data : &[u8]) -> ResultEx<()> {
         let cb = u32::try_from(data.len())?;
         let pb = data.as_ptr();
         let r = (self.vmm.native.VMMDLL_Scatter_PrepareWrite)(self.hs, va, pb, cb);
@@ -8939,7 +8939,7 @@ impl LeechCore {
         }
     }
 
-    fn impl_mem_write(&self, va : u64, data : &Vec<u8>) -> ResultEx<()> {
+    fn impl_mem_write(&self, va : u64, data : &[u8]) -> ResultEx<()> {
         let cb = u32::try_from(data.len())?;
         let pb = data.as_ptr();
         let r = (self.native.LcWrite)(self.native.h, va, cb, pb);
@@ -8958,7 +8958,7 @@ impl LeechCore {
         return Ok(());
     }
 
-    fn impl_command(&self, command_id : u64, data : Option<&Vec<u8>>) -> ResultEx<Option<Vec<u8>>> {
+    fn impl_command(&self, command_id : u64, data : Option<&[u8]>) -> ResultEx<Option<Vec<u8>>> {
         unsafe {
             let mut pb_out : *mut u8 = std::ptr::null_mut();
             let mut cb_out : u32 = 0;
