@@ -125,6 +125,17 @@ pub fn main_example() -> ResultEx<()> {
         }
 
 
+        // Example: vmm.mem_read_into():
+        // Read 0x100 bytes from physical address 0x100 into a pre-existing buffer with vmm flags.
+        println!("========================================");
+        println!("Vmm.mem_read_into():");
+        let mut data_buffer = [0u8; 0x100];
+        if let Ok(length) = vmm.mem_read_into(0x1000, FLAG_NOCACHE | FLAG_ZEROPAD_ON_FAIL, &mut data_buffer) {
+            println!("bytes_read: {length}");
+            println!("{:?}", data_buffer.hex_dump());
+        }
+
+
         // Example: vmm.log():
         // Log a message to VMM/MemProcFS
         println!("========================================");
@@ -1139,6 +1150,17 @@ pub fn main_example() -> ResultEx<()> {
         }
 
 
+        // Example: vmmprocess.mem_read_into():
+        // Read 0x100 bytes from beginning of explorer.exe!kernel32.dll into a pre-allocated buffer with vmm flags.
+        println!("========================================");
+        println!("vmmprocess.mem_read_into():");
+        let mut data_buffer = [0u8; 0x100];
+        if let Ok(length) = vmmprocess.mem_read_into(kernel32.va_base, FLAG_NOCACHE | FLAG_ZEROPAD_ON_FAIL, &mut data_buffer) {
+            println!("bytes_read: {length}");
+            println!("{:?}", data_buffer.hex_dump());
+        }
+
+
         // Example: vmmprocess.mem_read_as():
         // Read the C-struct IMAGE_DOS_HEADER from the beginning of explorer.exe!kernel32.dll with vmm flags.
         // NB! any type may be read, it's possible to read u32, usize, etc.
@@ -1202,6 +1224,13 @@ pub fn main_example() -> ResultEx<()> {
             if let Ok(data_read) = mem_scatter.read(kernel32.va_base + 0x0000, 0x80) {
                 println!("memory range: va={:x} cb={:x} cb_read={:x}", kernel32.va_base + 0x0000, 0x80, data_read.len());
                 println!("{:?}", data_read.hex_dump());
+                println!("-----------------------");
+            }
+            // It's possible to read into a pre-allocated buffer.
+            let mut data_buffer = [0u8; 0x100];
+            if let Ok(length) = mem_scatter.read_into(kernel32.va_base + 0x0000, &mut data_buffer) {
+                println!("memory range: va={:x} cb={:x} cb_read={:x}", kernel32.va_base + 0x0000, 0x100, length);
+                println!("{:?}", data_buffer.hex_dump());
                 println!("-----------------------");
             }
             // It's also possible to clear the VmmScatterMemory to start anew.
