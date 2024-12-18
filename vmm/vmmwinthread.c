@@ -298,7 +298,7 @@ BOOL VmmWinThreadCs_UnwindFrame(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _
 
     VMMWINTHREAD_MODULE_SECTION sModuleSectionInfo;
     QWORD qwCurrentRSP = 0, vaModuleBase = 0, qwRvaAddress = 0, qwRetAddress = 0;
-    DWORD dwResultFromAddress, dwPdataSize;
+    DWORD dwResultFromAddress, dwPdataSize, cbPdataRead;
     DWORD iRuntime, cRuntimeFunctions;
 
     PRUNTIME_FUNCTION_X64 pRuntimeIter;
@@ -318,7 +318,10 @@ BOOL VmmWinThreadCs_UnwindFrame(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _
     vaModuleBase = sModuleSectionInfo.vaModuleBase;
     dwPdataSize = sModuleSectionInfo.pdata.Size;
     pbPdata = LocalAlloc(0, dwPdataSize);
-    if(!pbPdata || !VmmRead(H, pProcess, vaModuleBase + sModuleSectionInfo.pdata.Address, pbPdata, dwPdataSize)) { goto end; }
+    if(!pbPdata) { goto end; }
+    VmmReadEx(H, pProcess, vaModuleBase + sModuleSectionInfo.pdata.Address, pbPdata, dwPdataSize, &cbPdataRead, VMM_FLAG_ZEROPAD_ON_FAIL);
+    if(!cbPdataRead) { goto end; }
+
     pRuntimeIter = (PRUNTIME_FUNCTION_X64)pbPdata;
     qwRvaAddress = qwCurrentAddress - vaModuleBase ;
     cRuntimeFunctions = dwPdataSize / sizeof(RUNTIME_FUNCTION_X64); 
@@ -550,7 +553,7 @@ PVMMOB_MAP_THREADCALLSTACK VmmWinThreadCs_UnwindScanCallstack(_In_ VMM_HANDLE H,
 {
     VMMWINTHREAD_FRAME sFrameInit, sCurrentFrame = { 0 };
     DWORD i, dwIterFrame, cboText = 0;
-    PVMMWINTHREAD_FRAME peSrc, pFullCallStack = NULL; 
+    PVMMWINTHREAD_FRAME peFrame, peSrc, pFullCallStack = NULL; 
     BOOL fResultDisplay = FALSE;
     QWORD qwLimitKernel = 0x00007FFFFFFF0000;
     PVMMOB_MAP_THREADCALLSTACK pObCS = NULL;
@@ -575,7 +578,8 @@ PVMMOB_MAP_THREADCALLSTACK VmmWinThreadCs_UnwindScanCallstack(_In_ VMM_HANDLE H,
     pFullCallStack[0] = sFrameInit;
     
     for(dwIterFrame = 0; dwIterFrame < VMMWINTHREADCS_MAX_DEPTH - 2; dwIterFrame++) {
-        VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, " START: RIP:[%016llx] RSP:[%016llx] ADDR:[%016llx] PID:[%u] TID:[%u]", pThread->vaRIP, pThread->vaRSP, pFullCallStack[dwIterFrame].vaRetAddr, pProcess->dwPID, pThread->dwTID);
+        peFrame = &pFullCallStack[dwIterFrame];
+        VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, " START: %02u: RIP:[%016llx] RSP:[%016llx] ADDR:[%016llx] PID:[%u] TID:[%u]", dwIterFrame, peFrame->vaRetAddr, peFrame->vaBaseSP, pFullCallStack[dwIterFrame].vaRetAddr, pProcess->dwPID, pThread->dwTID);
         if(pFullCallStack[dwIterFrame].vaRetAddr > qwLimitKernel) {
             VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, " END: (kernel address not supported) RIP:[%016llx] ADDR:[%016llx] PID:[%u] TID:[%u]", pThread->vaRIP, pFullCallStack[dwIterFrame].vaRetAddr, pProcess->dwPID, pThread->dwTID);
             break;
@@ -588,6 +592,7 @@ PVMMOB_MAP_THREADCALLSTACK VmmWinThreadCs_UnwindScanCallstack(_In_ VMM_HANDLE H,
         // unwind frame failed, trying heuristic technique:
         if(VmmWinThreadCs_HeuristicScanForFrame(H, pProcess, pThread, &pFullCallStack[dwIterFrame], &sCurrentFrame)) {
             pFullCallStack[dwIterFrame + 1] = sCurrentFrame;
+            continue;
         }
         // both techniques failed, stopping
         VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, " END: (unwind+heuristics fail) RIP:[%016llx] ADDR:[%016llx] PID:[%u] TID:[%u]", pThread->vaRIP, pFullCallStack[dwIterFrame].vaRetAddr, pProcess->dwPID, pThread->dwTID);
@@ -657,6 +662,8 @@ BOOL VmmWinThreadCs_PopReturnAddress(VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _
     return TRUE;
 }
 
+#define VMMWINTHREADCS_HEURISTICSCAN_LOOPPROTECT_MAX    50
+
 _Success_(return)
 BOOL VmmWinThreadCs_HeuristicScanForFrame(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_THREADENTRY pThread, _In_ PVMMWINTHREAD_FRAME pCurrentFrame, _Out_ PVMMWINTHREAD_FRAME pReturnScanFrame)
 {
@@ -664,6 +671,7 @@ BOOL VmmWinThreadCs_HeuristicScanForFrame(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS p
     VMMWINTHREAD_FRAME sValidationTempFrame, sRegistryTempFrame = { 0 };
     QWORD qwAddressCandidate, qwCurrentRSP = pCurrentFrame->vaBaseSP;
     DWORD dwCounterReg = 0, dwLoopProtect = 0;
+    QWORD aqwAddressCandidates[VMMWINTHREADCS_HEURISTICSCAN_LOOPPROTECT_MAX];
 
     VmmLog(H, MID_THREADCS, LOGLEVEL_6_TRACE, " Heuristic scan START. RSP:[%016llx] PID:[%u] TID:[%u]", qwCurrentRSP, pProcess->dwPID, pThread->dwTID);
     // Getting previous RSP and ret address as input for ValidateCandidate:
@@ -672,9 +680,10 @@ BOOL VmmWinThreadCs_HeuristicScanForFrame(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS p
     sRegistryTempFrame.fRegPresent = FALSE;
 
     // Reading 8 bytes by 8 bytes and decreasing RSP at the same time (which increase addresses)
-    for(qwCurrentRSP = pCurrentFrame->vaBaseSP; qwCurrentRSP != pThread->vaStackBaseUser && dwLoopProtect < 50; qwCurrentRSP = qwCurrentRSP + 8) {
+    if(!VmmRead2(H, pProcess, qwCurrentRSP, (PBYTE)aqwAddressCandidates, VMMWINTHREADCS_HEURISTICSCAN_LOOPPROTECT_MAX * sizeof(QWORD), VMM_FLAG_ZEROPAD_ON_FAIL)) { return FALSE; }
+    for(qwCurrentRSP = pCurrentFrame->vaBaseSP; qwCurrentRSP != pThread->vaStackBaseUser && dwLoopProtect < VMMWINTHREADCS_HEURISTICSCAN_LOOPPROTECT_MAX; qwCurrentRSP = qwCurrentRSP + 8) {
+        qwAddressCandidate = aqwAddressCandidates[dwLoopProtect];
         dwLoopProtect++;
-        if(!VmmRead(H, pProcess, qwCurrentRSP, (PBYTE)&qwAddressCandidate, sizeof(QWORD))) { return FALSE; }
         if(!VmmWinThreadCs_GetModuleSectionFromAddress(H, pProcess, qwAddressCandidate, &sModuleSection)) { continue; }
         if(VmmWinThreadCs_ValidateCandidate(H, pProcess, pThread, qwAddressCandidate, pReturnScanFrame, &sValidationTempFrame)) {
             // Reserving call registry in case we do not find another candidate

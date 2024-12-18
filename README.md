@@ -240,3 +240,6 @@ v5.8
 * File recovery improvements (file sizes, signing info) for [files module](https://github.com/ufrisk/MemProcFS/wiki/FS_Forensic_Files).
 * Memory callback API functionality (C/C++ API only).
 * [Callstack parsing](https://github.com/ufrisk/MemProcFS/wiki/FS_Process_Threads) for x64 user-mode process callstacks.
+
+Latest:
+* Bug fixes.
