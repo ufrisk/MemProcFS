@@ -243,3 +243,4 @@ v5.8
 
 Latest:
 * Bug fixes.
+* Linux clang compilation support.

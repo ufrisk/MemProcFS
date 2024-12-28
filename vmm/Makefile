@@ -6,17 +6,20 @@
 #       . (current), ../files, ../../LeechCore*/files
 #
 CC=gcc
-CFLAGS  += -std=c11 -I. -I../includes -D LINUX -D _GNU_SOURCE -D SQLITE_THREADSAFE=2 -D SQLITE_CORE -shared -fPIC -l:leechcore.so -fvisibility=hidden -L. -lm -pthread `pkg-config liblz4 --libs --cflags`
-# DEBUG FLAGS BELOW
-#export ASAN_OPTIONS=strict_string_checks=1:detect_stack_use_after_return=1:check_initialization_order=1:strict_init_order=1:detect_invalid_pointer_pairs=2
-#CFLAGS  += -g -O0 -Wextra -Wno-unused-parameter -Wno-cast-function-type
-#CFLAGS  += -fsanitize=address -fsanitize=leak -fno-omit-frame-pointer -fsanitize=undefined -fsanitize=bounds-strict -fsanitize=float-divide-by-zero -fsanitize=float-cast-overflow
-#CFLAGS  += -fsanitize=pointer-compare -fsanitize=pointer-subtract -fanalyzer
-# DEBUG FLAGS ABOVE
-CFLAGS  += -fPIE -fPIC -pie -fstack-protector-strong -D_FORTIFY_SOURCE=2 -O1 -Wl,-z,noexecstack
+CFLAGS  += -std=c11 -I. -I../includes -D LINUX -D _GNU_SOURCE -D SQLITE_THREADSAFE=2 -D SQLITE_CORE -fPIC -fvisibility=hidden -pthread `pkg-config liblz4 --cflags`
+CFLAGS  += -fPIE -fPIC -fstack-protector-strong -D_FORTIFY_SOURCE=2 -O1
 CFLAGS  += -Wall -Wno-format-truncation -Wno-enum-compare -Wno-pointer-sign -Wno-multichar -Wno-unused-variable -Wno-unused-value
 CFLAGS  += -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast
-LDFLAGS += -Wl,-rpath,'$$ORIGIN' -g -ldl -shared
+ifeq ($(shell basename $(CC)),gcc)
+    CFLAGS  += -pie
+	# DEBUG FLAGS BELOW
+	#export ASAN_OPTIONS=strict_string_checks=1:detect_stack_use_after_return=1:check_initialization_order=1:strict_init_order=1:detect_invalid_pointer_pairs=2
+	#CFLAGS  += -g -O0 -Wextra -Wno-unused-parameter -Wno-cast-function-type
+	#CFLAGS  += -fsanitize=address -fsanitize=leak -fno-omit-frame-pointer -fsanitize=undefined -fsanitize=bounds-strict -fsanitize=float-divide-by-zero -fsanitize=float-cast-overflow
+	#CFLAGS  += -fsanitize=pointer-compare -fsanitize=pointer-subtract -fanalyzer
+	# DEBUG FLAGS ABOVE
+endif
+LDFLAGS += -Wl,-rpath,'$$ORIGIN' -g -ldl -shared -L. -l:leechcore.so -lm -Wl,-z,noexecstack `pkg-config liblz4 --libs`
 DEPS = vmmdll.h
 OBJ = oscompatibility.o charutil.o util.o pe.o vmmdll.o vmmdll_core.o        \
 	  vmmdll_remote.o vmmdll_scatter.o vmm.o fc.o                            \

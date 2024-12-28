@@ -1398,7 +1398,7 @@ VOID VmmWinObjMgr_Initialize_ProcessObject(_In_ VMM_HANDLE H, _Inout_ PVMM_WINOB
         }
     }
     // OBJECT_TYPE == _OBJECT_SECTION --> EXTENDED INFO
-    if((iTp == H->vmm.ObjectTypeTable.tpSection)) {
+    if(iTp == H->vmm.ObjectTypeTable.tpSection) {
         if(VmmRead(H, ctxInit->pSystemProcess, pe->va, pb, 0x30)) {
             if(H->vmm.f32) {
                 if((va = *(PDWORD)(pb + 0x14)) && VMM_KADDR32_8(va)) {

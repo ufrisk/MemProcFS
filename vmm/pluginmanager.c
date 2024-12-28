@@ -1126,7 +1126,7 @@ VOID PluginManager_Initialize_ExternalDlls(_In_ VMM_HANDLE H)
     }
     if(!dp) { return; }
     while((ep = readdir(dp)) && !H->fAbort) {
-        if(!ep->d_name || (ep->d_name[0] != 'm') || (ep->d_name[1] != '_')) { continue; }
+        if((ep->d_name[0] != 'm') || (ep->d_name[1] != '_')) { continue; }
         if(!CharUtil_StrEndsWith(ep->d_name, VMM_LIBRARY_FILETYPE, TRUE)) { continue; }
 
         strcat_s(szPath + cchPathBase, MAX_PATH - cchPathBase, ep->d_name);

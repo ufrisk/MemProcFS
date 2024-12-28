@@ -124,12 +124,11 @@ _Success_(return)
 BOOL MmWin_BTree32_SearchLeaf(_In_ PVMM_PROCESS pSystemProcess, _In_ P_BTREE32 pT, _In_ DWORD dwKey, _Out_ PDWORD pdwValue, _In_ QWORD fVmmRead)
 {
     BOOL fSearchPreFail = FALSE;
-    DWORD i, dwSearchStep, dwSearchIndex = 1, dwSearchCount = 0;
+    DWORD i, dwSearchStep, dwSearchIndex = 1;
     // 2: search tree for leaf
     for(i = 1; (i < 12) && ((pT->cEntries - 1) >> i); i++);
     dwSearchIndex = dwSearchStep = min(1 << (i - 1), pT->cEntries);
     while(TRUE) {
-        dwSearchCount++;
         dwSearchStep = dwSearchStep >> 1;
         if(pT->LeafEntries[dwSearchIndex].k == dwKey) {
             *pdwValue = pT->LeafEntries[dwSearchIndex].v;
@@ -225,13 +224,12 @@ _Success_(return)
 BOOL MmWin_BTree64_SearchNode(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_ P_BTREE64 pT, _In_ DWORD dwKey, _Out_ PDWORD pdwValue, _In_ QWORD fVmmRead)
 {
     BOOL fSearchPreFail = FALSE;
-    DWORD i, dwSearchStep, dwSearchIndex = 1, dwSearchCount = 0;
+    DWORD i, dwSearchStep, dwSearchIndex = 1;
     QWORD vaSubTree = 0;
     // 2: search tree for entry
     for(i = 1; (i < 12) && ((pT->cEntries - 1) >> i); i++);
     dwSearchIndex = dwSearchStep = min(1 << (i - 1), pT->cEntries - 1);
     while(TRUE) {
-        dwSearchCount++;
         dwSearchStep = dwSearchStep >> 1;
         if((dwSearchStep == 0) && !fSearchPreFail) {
             fSearchPreFail = TRUE;

@@ -6,12 +6,17 @@
 #       . (current), ../files, ../../LeechCore*/files
 #
 CC=gcc
-CFLAGS  += -std=c11 -I. -I../includes -D LINUX -D _GNU_SOURCE -shared -fPIC -l:vmm.so -fvisibility=hidden -L. -lm -pthread `pkg-config liblz4 openssl --libs --cflags`
-#CFLAGS  += -g -O0 -Wextra -Wno-unused-parameter -Wno-cast-function-type
-CFLAGS  += -fPIE -fPIC -pie -fstack-protector-strong -D_FORTIFY_SOURCE=2 -O1 -Wl,-z,noexecstack
+CFLAGS  += -std=c11 -I. -I../includes -D LINUX -D _GNU_SOURCE -fPIC -fvisibility=hidden -pthread `pkg-config liblz4 openssl --cflags`
+CFLAGS  += -fPIE -fPIC -fstack-protector-strong -D_FORTIFY_SOURCE=2 -O1
 CFLAGS  += -Wall -Wno-format-truncation -Wno-enum-compare -Wno-pointer-sign -Wno-multichar -Wno-unused-variable -Wno-unused-value
 CFLAGS  += -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast
-LDFLAGS += -L../files -Wl,-rpath,'$$ORIGIN' -g -ldl -shared
+ifeq ($(shell basename $(CC)),gcc)
+    CFLAGS  += -pie
+	# DEBUG FLAGS BELOW
+	#CFLAGS  += -g -O0 -Wextra -Wno-unused-parameter -Wno-cast-function-type
+	# DEBUG FLAGS ABOVE
+endif
+LDFLAGS += -L../files -Wl,-rpath,'$$ORIGIN' -g -ldl -shared -L. -lm -l:vmm.so -Wl,-z,noexecstack `pkg-config liblz4 openssl --libs`
 DEPS = vmmdll.h
 OBJ = m_vmemd.o oscompatibility.o
 

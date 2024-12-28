@@ -4,11 +4,15 @@
 # the folder '../files/'.
 #
 CC=gcc
-CFLAGS	+= -I. -I../includes -D LINUX -D_FILE_OFFSET_BITS=64 -L. -l:vmm.so -pthread `pkg-config fuse --cflags --libs`
-#CFLAGS  += -g -O0 -Wextra
-CFLAGS  += -fPIE -fPIC -pie -fstack-protector-strong -D_FORTIFY_SOURCE=2 -O1 -Wl,-z,noexecstack
+CFLAGS	+= -I. -I../includes -D LINUX -D_FILE_OFFSET_BITS=64 -pthread `pkg-config fuse --cflags`
+CFLAGS  += -fPIE -fPIC -fstack-protector-strong -D_FORTIFY_SOURCE=2 -O1
 CFLAGS	+= -Wall -Wno-multichar -Wno-unused-variable -Wno-unused-parameter -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast
-LDFLAGS += -Wl,-rpath,'$$ORIGIN' -ldl
+ifeq ($(shell basename $(CC)),gcc)
+    CFLAGS  += -pie
+	#DEBUG FLAGS BELOW
+	#CFLAGS  += -g -O0 -Wextra
+endif
+LDFLAGS += -Wl,-rpath,'$$ORIGIN' -ldl -L. -l:vmm.so -Wl,-z,noexecstack `pkg-config fuse --libs`
 DEPS = vfs.h
 OBJ  = oscompatibility.o charutil.o vfslist.o memprocfs_fuse.o ob/ob_cachemap.o ob/ob_core.o ob/ob_map.o ob/ob_set.o
 
