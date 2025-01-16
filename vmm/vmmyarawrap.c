@@ -4,7 +4,7 @@
 // graceful fallback if the library is not available. The vmmyara library may
 // be treated as a singleton shared amongst all instances of VMM.DLL/MemProcFS.
 // 
-// (c) Ulf Frisk, 2023-2024
+// (c) Ulf Frisk, 2023-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmm.h"

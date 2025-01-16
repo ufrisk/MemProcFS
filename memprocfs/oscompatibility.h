@@ -1,16 +1,15 @@
 // oscompatibility.h : VMM Windows/Linux compatibility layer.
 //
-// (c) Ulf Frisk, 2021-2024
+// (c) Ulf Frisk, 2021-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-#ifdef LINUX
+#if defined(LINUX) || defined(MACOS)
 #ifndef __OSCOMPATIBILITY_H__
 #define __OSCOMPATIBILITY_H__
 #define _FILE_OFFSET_BITS 64
 #include <leechcore.h>
 #include <vmmdll.h>
 
-#include <byteswap.h>
 #include <ctype.h>
 #include <dirent.h>
 #include <dlfcn.h>
@@ -25,13 +24,18 @@
 #include <pthread.h>
 #include <time.h>
 #include <unistd.h>
-#include <sys/eventfd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#ifdef LINUX
 #define LC_LIBRARY_FILETYPE                 ".so"
+#endif /* LINUX */
+
+#ifdef MACOS
+#define LC_LIBRARY_FILETYPE                 ".dylib"
+#endif /* MACOS */
 
 typedef void                                VOID, *PVOID, *LPVOID;
 typedef void                                *HANDLE, **PHANDLE, *HMODULE, *FARPROC;
@@ -139,9 +143,9 @@ typedef int(*_CoreCrtNonSecureSearchSortCompareFunction)(void const *, void cons
 
 #define max(a, b)                           (((a) > (b)) ? (a) : (b))
 #define min(a, b)                           (((a) < (b)) ? (a) : (b))
-#define _byteswap_ushort(v)                 (bswap_16(v))
-#define _byteswap_ulong(v)                  (bswap_32(v))
-#define _byteswap_uint64(v)                 (bswap_64(v))
+#define _byteswap_ushort(v)                 (__builtin_bswap16(v))
+#define _byteswap_ulong(v)                  (__builtin_bswap32(v))
+#define _byteswap_uint64(v)                 (__builtin_bswap64(v))
 #ifndef _rotr
 #define _rotr(v,c)                          ((((DWORD)v) >> ((DWORD)c) | (DWORD)((DWORD)v) << (32 - (DWORD)c)))
 #endif /* _rotr */
@@ -198,19 +202,31 @@ VOID EnterCriticalSection(LPCRITICAL_SECTION lpCriticalSection);
 VOID LeaveCriticalSection(LPCRITICAL_SECTION lpCriticalSection);
 
 // SRWLOCK
+#ifdef LINUX
 typedef struct tdSRWLOCK {
     uint32_t xchg;
     int c;
 } SRWLOCK, *PSRWLOCK;
-VOID InitializeSRWLock(PSRWLOCK SRWLock);
-VOID AcquireSRWLockExclusive(_Inout_ PSRWLOCK SRWLock);
-VOID ReleaseSRWLockExclusive(_Inout_ PSRWLOCK SRWLock);
+#endif /* LINUX */
+#ifdef MACOS
+#include <dispatch/dispatch.h>
+typedef struct tdSRWLOCK {
+    union {
+        QWORD valid;
+        dispatch_semaphore_t sem;
+    };
+} SRWLOCK, *PSRWLOCK;
+#endif /* MACOS */
+VOID InitializeSRWLock(PSRWLOCK pSRWLock);
+VOID AcquireSRWLockExclusive(_Inout_ PSRWLOCK pSRWLock);
+VOID ReleaseSRWLockExclusive(_Inout_ PSRWLOCK pSRWLock);
 #define AcquireSRWLockShared    AcquireSRWLockExclusive
 #define ReleaseSRWLockShared    ReleaseSRWLockExclusive
+#define SRWLOCK_INIT            { 0 }
 
 HANDLE LocalAlloc(DWORD uFlags, SIZE_T uBytes);
 VOID LocalFree(HANDLE hMem);
 QWORD GetTickCount64();
 
 #endif /* __OSCOMPATIBILITY_H__ */
-#endif /* LINUX */
+#endif /* LINUX || MACOS */

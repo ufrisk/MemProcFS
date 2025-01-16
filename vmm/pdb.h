@@ -2,7 +2,7 @@
 //         for debug symbols and automatic retrieval from the Microsoft Symbol
 //         Server. (Windows exclusive functionality).
 //
-// (c) Ulf Frisk, 2019-2024
+// (c) Ulf Frisk, 2019-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __PDB_H__

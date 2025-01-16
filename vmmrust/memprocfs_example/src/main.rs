@@ -46,6 +46,9 @@ pub fn main_example() -> ResultEx<()> {
     if cfg!(windows) {
         vmm_lib_path = "C:\\Github\\MemProcFS-dev\\files\\vmm.dll";
         memdump_path = "C:\\Dumps\\trickbot-ram.pmem";
+    } else if cfg!(target_os = "macos") {
+        vmm_lib_path = "/Users/user/memprocfs/vmm.dylib";
+        memdump_path = "/Users/user/dumps/trickbot-ram.pmem";
     } else {
         vmm_lib_path = "/home/user/memprocfs/vmm.so";
         memdump_path = "/dumps/warren.mem";

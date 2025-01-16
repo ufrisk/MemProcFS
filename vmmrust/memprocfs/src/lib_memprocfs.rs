@@ -2,8 +2,8 @@
 //!
 //! The MemProcFS crate contains a wrapper API around the [MemProcFS physical
 //! memory analysis framework](https://github.com/ufrisk/MemProcFS). The native
-//! libray in the form of `vmm.dll` or `vmm.so` must be downloaded or compiled
-//! in order to make use of the memprocfs crate.
+//! library in the form of `vmm.dll`, `vmm.dylib`, `vmm.so` must be downloaded
+//! or compiled in order to make use of the memprocfs crate.
 //! 
 //! Physical memory analysis may take place on memory dump files for forensic
 //! purposes. Analysis may also take place on live memory - either captured by
@@ -543,7 +543,7 @@ impl Vmm<'_> {
     /// 
     /// 
     /// # Arguments
-    /// * `vmm_lib_path` - Full path to the native vmm library - i.e. `vmm.dll` or `vmm.so`.
+    /// * `vmm_lib_path` - Full path to the native vmm library - i.e. `vmm.dll`,  `vmm.so` or `vmm.dylib` depending on platform.
     /// * `args` - MemProcFS command line arguments as a Vec<&str>.
     /// 
     /// MemProcFS command line argument documentation is found on the [MemProcFS wiki](https://github.com/ufrisk/MemProcFS/wiki/_CommandLine).
@@ -1393,9 +1393,9 @@ impl VmmKernel<'_> {
 
 /// Debug Symbol API.
 /// 
-/// The PDB sub-system requires that MemProcFS supporting DLLs/.SO's for
-/// debugging and symbol server are put alongside `vmm.dll`. Also it's
-/// recommended that the file `info.db` is put alongside `vmm.dll`.
+/// The PDB sub-system requires that MemProcFS supporting DLLs/.DYLIBs/.SOs for
+/// debugging and symbol server are put alongside `vmm.dll`.
+/// Also it's recommended that the file `info.db` is put alongside `vmm.dll`.
 /// 
 /// 
 /// # Created By
@@ -4142,7 +4142,7 @@ impl LeechCore {
     /// device PCIe BAR.
     /// 
     /// # Arguments
-    /// * `lc_lib_path` - Full path to the native leechcore library - i.e. `leechcore.dll` or `leechcore.so`.
+    /// * `lc_lib_path` - Full path to the native leechcore library - i.e. `leechcore.dll`, `leechcore.dylib` or `leechcore.so`.
     /// * `device_config` - Leechcore device connection string, i.e. `fpga://algo=0`.
     /// * `lc_config_printf_verbosity` - Leechcore printf verbosity level as a combination of `LeechCore::LC_CONFIG_PRINTF_*` values.
     /// 
@@ -4170,7 +4170,7 @@ impl LeechCore {
     /// device PCIe BAR.
     /// 
     /// # Arguments
-    /// * `lc_lib_path` - Full path to the native leechcore library - i.e. `leechcore.dll` or `leechcore.so`.
+    /// * `lc_lib_path` - Full path to the native leechcore library - i.e. `leechcore.dll`,  `leechcore.dylib` or `leechcore.so`.
     /// * `device_config` - Leechcore device connection string, i.e. `fpga://algo=0`.
     /// * `lc_config_printf_verbosity` - Leechcore printf verbosity level as a combination of `LeechCore::LC_CONFIG_PRINTF_*` values.
     /// * `remote_config` - Leechcore remote connection string, i.e. blank or ``rpc://...` (Windows only).
@@ -4673,6 +4673,8 @@ fn impl_new<'a>(vmm_lib_path : &str, lc_existing_opt : Option<&LeechCore>, h_vmm
         let mut path_lc = path_vmm.parent().unwrap().canonicalize()?;
         if cfg!(windows) {
             path_lc = path_lc.join("leechcore.dll");
+        } else if cfg!(target_os = "macos") {
+            path_lc = path_lc.join("leechcore.dylib");
         } else {
             path_lc = path_lc.join("leechcore.so");
         }
@@ -4864,6 +4866,8 @@ fn impl_new_from_leechcore<'a>(leechcore_existing : &LeechCore, args: &Vec<&str>
     let mut path_vmm = path_vmm.parent().unwrap().canonicalize()?;
     if cfg!(windows) {
         path_vmm = path_vmm.join("vmm.dll");
+    } else if cfg!(target_os = "macos") {
+        path_vmm = path_vmm.join("vmm.dylib");
     } else {
         path_vmm = path_vmm.join("vmm.so");
     }
@@ -8929,7 +8933,7 @@ impl LeechCore {
     #[allow(non_snake_case)]
     fn impl_new(lc_lib_path : &str, device_config : &str, remote_config : &str, lc_config_printf_verbosity : u32, pa_max : u64) -> ResultEx<LeechCore> {
         unsafe {
-            // load LeechCore native library (leechcore.dll / leechcore.so):
+            // load LeechCore native library (leechcore.[dll|dylib|so]):
             let path = std::path::Path::new(lc_lib_path).canonicalize()?;
             let str_path_lc = path.to_str().unwrap_or("");
             let library_lc : libloading::Library = libloading::Library::new(str_path_lc)

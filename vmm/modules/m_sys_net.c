@@ -5,7 +5,7 @@
 //
 // The module is a provider of forensic timelining information.
 //
-// (c) Ulf Frisk, 2020-2024
+// (c) Ulf Frisk, 2020-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

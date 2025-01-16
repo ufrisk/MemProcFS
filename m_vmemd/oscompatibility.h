@@ -1,6 +1,6 @@
 // oscompatibility.h : VMM Windows/Linux compatibility layer.
 //
-// (c) Ulf Frisk, 2021-2024
+// (c) Ulf Frisk, 2021-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __OSCOMPATIBILITY_H__
@@ -20,9 +20,8 @@
 typedef unsigned __int64                    QWORD, *PQWORD;
 
 #endif /* _WIN32 */
-#ifdef LINUX
+#if defined(LINUX) || defined(MACOS)
 #define _FILE_OFFSET_BITS 64
-#include <byteswap.h>
 #include <ctype.h>
 #include <dirent.h>
 #include <dlfcn.h>
@@ -37,12 +36,7 @@ typedef unsigned __int64                    QWORD, *PQWORD;
 #include <pthread.h>
 #include <time.h>
 #include <unistd.h>
-#include <sys/eventfd.h>
 #include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <openssl/sha.h>
 
 #define LC_LIBRARY_FILETYPE                 ".so"
 
@@ -152,9 +146,9 @@ typedef int(*_CoreCrtNonSecureSearchSortCompareFunction)(void const *, void cons
 #define __declspec(dllexport)
 #define max(a, b)                           (((a) > (b)) ? (a) : (b))
 #define min(a, b)                           (((a) < (b)) ? (a) : (b))
-#define _byteswap_ushort(v)                 (bswap_16(v))
-#define _byteswap_ulong(v)                  (bswap_32(v))
-#define _byteswap_uint64(v)                 (bswap_64(v))
+#define _byteswap_ushort(v)                 (__builtin_bswap16(v))
+#define _byteswap_ulong(v)                  (__builtin_bswap32(v))
+#define _byteswap_uint64(v)                 (__builtin_bswap64(v))
 #ifndef _rotr
 #define _rotr(v,c)                          ((((DWORD)v) >> ((DWORD)c) | (DWORD)((DWORD)v) << (32 - (DWORD)c)))
 #endif /* _rotr */
@@ -483,93 +477,6 @@ typedef struct LIST_ENTRY64 {
 } LIST_ENTRY64;
 typedef LIST_ENTRY64 *PLIST_ENTRY64;
 
-
-
-
-
-
-
-
-#define IMAGE_SCN_LNK_NRELOC_OVFL            0x01000000
-#define IMAGE_SCN_MEM_DISCARDABLE            0x02000000
-#define IMAGE_SCN_MEM_NOT_CACHED             0x04000000
-#define IMAGE_SCN_MEM_NOT_PAGED              0x08000000
-#define IMAGE_SCN_MEM_SHARED                 0x10000000
-#define IMAGE_SCN_MEM_EXECUTE                0x20000000
-#define IMAGE_SCN_MEM_READ                   0x40000000
-#define IMAGE_SCN_MEM_WRITE                  0x80000000
-
-#define SERVICE_KERNEL_DRIVER          0x00000001
-#define SERVICE_FILE_SYSTEM_DRIVER     0x00000002
-#define SERVICE_ADAPTER                0x00000004
-#define SERVICE_RECOGNIZER_DRIVER      0x00000008
-#define SERVICE_DRIVER                 (SERVICE_KERNEL_DRIVER | \
-                                        SERVICE_FILE_SYSTEM_DRIVER | \
-                                        SERVICE_RECOGNIZER_DRIVER)
-#define SERVICE_WIN32_OWN_PROCESS      0x00000010
-#define SERVICE_WIN32_SHARE_PROCESS    0x00000020
-#define SERVICE_WIN32                  (SERVICE_WIN32_OWN_PROCESS | \
-                                        SERVICE_WIN32_SHARE_PROCESS)
-#define SERVICE_USER_SERVICE           0x00000040
-#define SERVICE_USERSERVICE_INSTANCE   0x00000080
-#define SERVICE_USER_SHARE_PROCESS     (SERVICE_USER_SERVICE | \
-                                        SERVICE_WIN32_SHARE_PROCESS)
-#define SERVICE_USER_OWN_PROCESS       (SERVICE_USER_SERVICE | \
-                                        SERVICE_WIN32_OWN_PROCESS)
-#define SERVICE_INTERACTIVE_PROCESS    0x00000100
-#define SERVICE_PKG_SERVICE            0x00000200
-#define SERVICE_TYPE_ALL               (SERVICE_WIN32  | \
-                                        SERVICE_ADAPTER | \
-                                        SERVICE_DRIVER  | \
-                                        SERVICE_INTERACTIVE_PROCESS | \
-                                        SERVICE_USER_SERVICE | \
-                                        SERVICE_USERSERVICE_INSTANCE | \
-                                        SERVICE_PKG_SERVICE)
-
-
-
-
-
-
-
-
-
-
-// SRWLOCK
-typedef struct tdSRWLOCK {
-    uint32_t xchg;
-    int c;
-} SRWLOCK, *PSRWLOCK;
-VOID InitializeSRWLock(PSRWLOCK SRWLock);
-VOID AcquireSRWLockExclusive(_Inout_ PSRWLOCK SRWLock);
-VOID ReleaseSRWLockExclusive(_Inout_ PSRWLOCK SRWLock);
-#define AcquireSRWLockShared    AcquireSRWLockExclusive
-#define ReleaseSRWLockShared    ReleaseSRWLockExclusive
-#define SRWLOCK_INIT            { 0 }
-
-
-
-
-
-
-
-typedef struct _SLIST_ENTRY {
-    struct _SLIST_ENTRY *Next;
-} SLIST_ENTRY, *PSLIST_ENTRY;
-
-typedef struct _SLIST_HEADER {
-    PSLIST_ENTRY Next;
-    SRWLOCK LockSRW;
-    USHORT c;
-} SLIST_HEADER, *PSLIST_HEADER;
-
-VOID InitializeSListHead(PSLIST_HEADER ListHead);
-USHORT QueryDepthSList(PSLIST_HEADER ListHead);
-PSLIST_ENTRY InterlockedPopEntrySList(_Inout_ PSLIST_HEADER ListHead);
-PSLIST_ENTRY InterlockedPushEntrySList(_Inout_ PSLIST_HEADER ListHead, _Inout_ PSLIST_ENTRY ListEntry);
-
-#endif /* LINUX */
-
-
+#endif /* LINUX || MACOS */
 
 #endif /* __OSCOMPATIBILITY_H__ */

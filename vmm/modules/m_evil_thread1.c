@@ -5,7 +5,7 @@
 // Detections:
 //  - THREAD_START
 // 
-// (c) Ulf Frisk, 2023-2024
+// (c) Ulf Frisk, 2023-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

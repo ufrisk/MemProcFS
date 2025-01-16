@@ -1,6 +1,6 @@
 // vmmproc.c : implementation of functions related to operating system and process parsing of virtual memory.
 //
-// (c) Ulf Frisk, 2018-2024
+// (c) Ulf Frisk, 2018-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

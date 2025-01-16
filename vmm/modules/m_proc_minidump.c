@@ -1,6 +1,6 @@
 // m_proc_minidump.c : implementation of the minidump built-in module.
 //
-// (c) Ulf Frisk, 2020-2024
+// (c) Ulf Frisk, 2020-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -14,7 +14,7 @@
 #include <DbgHelp.h>
 
 #endif /* _WIN32 */
-#ifdef LINUX
+#if defined(LINUX) || defined(MACOS)
 #pragma pack(push, 4)
 
 typedef DWORD RVA;
@@ -343,7 +343,7 @@ typedef struct _MINIDUMP_UNLOADED_MODULE_LIST {
 } MINIDUMP_UNLOADED_MODULE_LIST, *PMINIDUMP_UNLOADED_MODULE_LIST;
 
 #pragma pack(pop)
-#endif /* LINUX */
+#endif /* LINUX || MACOS */
 
 #define M_MINIDUMP_DYNAMIC_DUMP_MAX_AGE_MS      30*1000
 

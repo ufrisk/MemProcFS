@@ -7,7 +7,7 @@
 // contained. The object container itself is an object manager object and
 // must be DECREF'ed when required.
 //
-// (c) Ulf Frisk, 2018-2024
+// (c) Ulf Frisk, 2018-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "ob.h"

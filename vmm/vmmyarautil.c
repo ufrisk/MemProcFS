@@ -1,6 +1,6 @@
 // vmmyarautil.c : utility api with helper functions around the yara scanner.
 // 
-// (c) Ulf Frisk, 2023-2024
+// (c) Ulf Frisk, 2023-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmm.h"

@@ -1,6 +1,6 @@
 // vmmwinsvc.h : definitions related to Windows service manager (SCM).
 //
-// (c) Ulf Frisk, 2020-2024
+// (c) Ulf Frisk, 2020-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmm.h"

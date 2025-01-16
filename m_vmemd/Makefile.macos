@@ -1,0 +1,40 @@
+#
+# NOTE! PACKAGE DEPENDENCY ON LeechCore:
+#       The build script require leechcore.so built from the leechcore project
+#       which is found at https://github.com/ufrisk/LeechCore to build. This
+#       file is assumed to exist in either of the directories: 
+#       . (current), ../files, ../../LeechCore*/files
+#
+CC=clang
+CFLAGS  += -I. -I../includes -D MACOS -D _GNU_SOURCE -fvisibility=hidden -pthread
+CFLAGS += -fPIC -fstack-protector-strong -D_FORTIFY_SOURCE=2 -O1
+CFLAGS += -Wall -Wno-multichar -Wno-unused-result -Wno-unused-variable -Wno-unused-value -Wno-pointer-sign
+CFLAGS += -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast
+CFLAGS += -mmacosx-version-min=11.0
+# DEBUG FLAGS BELOW
+#CFLAGS += -O0
+#CFLAGS += -fsanitize=address
+# DEBUG FLAGS ABOVE
+LDFLAGS += -dynamiclib -L. ./leechcore.dylib ./vmm.dylib -lm
+LDFLAGS += -Wl,-rpath,@loader_path
+LDFLAGS += -g -mmacosx-version-min=11.0
+DEPS = vmmdll.h
+OBJ = m_vmemd.o oscompatibility.o
+
+%.o: %.c $(DEPS)
+	$(CC) -c -o $@ $< $(CFLAGS)
+
+m_vmemd: $(OBJ)
+	cp ../files/leechcore.dylib . || cp ../../LeechCore*/files/leechcore.dylib . || true
+	cp ../files/vmm.dylib . || cp ../../MemProcFS*/files/vmm.dylib . || true
+	$(CC) $(CFLAGS) $(LDFLAGS) -o m_vmemd.dylib $^
+	mv m_vmemd.dylib ../files/plugins/
+	rm -f *.o || true
+	rm -f */*.o || true
+	rm -f *.dylib || true
+	true
+
+clean:
+	rm -f *.o || true
+	rm -f */*.o || true
+	rm -f *.dylib || true

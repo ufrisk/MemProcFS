@@ -1,0 +1,33 @@
+#
+# NOTE! PACKAGE DEPENDENCY ON LeechCore:
+#       The build script require leechcore.so built from the leechcore project
+#       which is found at https://github.com/ufrisk/LeechCore to build. This
+#       file is assumed to exist in either of the directories: 
+#       . (current), ../files, ../../LeechCore*/files
+#
+CC=clang
+CFLAGS += -I. -I../includes -D MACOS -pthread
+#CFLAGS += -g -O0
+CFLAGS += -fPIC -fPIE -fstack-protector-strong -D_FORTIFY_SOURCE=2 -O1
+LDFLAGS += -ldl -L. ./leechcore.dylib ./vmm.dylib
+LDFLAGS += -Wl,-rpath,@loader_path
+DEPS =
+OBJ = vmmdll_example.o
+
+%.o: %.c $(DEPS)
+	$(CC) -c -o $@ $< $(CFLAGS)
+
+vmm_example: $(OBJ)
+	cp ../files/leechcore.dylib . || cp ../../LeechCore*/files/leechcore.dylib . || true
+	cp ../files/vmm.dylib . |true
+	$(CC) -o $@ $^ $(CFLAGS) $(LDFLAGS)
+	mv vmm_example ../files/
+	rm -f *.o || true
+	rm -f */*.o || true
+	rm -f *.dylib || true
+	true
+
+clean:
+	rm -f *.o || true
+	rm -f *.dylib || true
+	rm -f vmm_example || true

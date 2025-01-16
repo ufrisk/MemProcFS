@@ -8,7 +8,7 @@
 // (3) Finalize the yara context with VmmYaraUtil_Finalize().
 // (4) Parse the results with VmmYaraUtil_ParseSingleResult().
 //
-// (c) Ulf Frisk, 2023-2024
+// (c) Ulf Frisk, 2023-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

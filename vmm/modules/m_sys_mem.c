@@ -3,7 +3,7 @@
 // The '/sys/memory' module is responsible for displaying various memory related
 // information such as information about the Windows PFN database.
 //
-// (c) Ulf Frisk, 2020-2024
+// (c) Ulf Frisk, 2020-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

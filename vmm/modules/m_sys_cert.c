@@ -3,7 +3,7 @@
 // The 'sys/certificates' module is responsible for displaying cryptographic
 // certificates from the certificate stores in the virtual file system.
 //
-// (c) Ulf Frisk, 2020-2024
+// (c) Ulf Frisk, 2020-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

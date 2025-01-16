@@ -1,6 +1,6 @@
 // modules_init.h : definitions related to initialization of built-in modules.
 //
-// (c) Ulf Frisk, 2018-2024
+// (c) Ulf Frisk, 2018-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __M_MODULES_H__

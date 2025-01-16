@@ -1,6 +1,6 @@
 // m_search.c : implementation of the binary memory search built-in module.
 //
-// (c) Ulf Frisk, 2022-2024
+// (c) Ulf Frisk, 2022-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

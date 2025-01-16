@@ -10,7 +10,7 @@
 // The segment heap is reliant on symbols and it will not be possible to parse
 // without symbols.s
 //
-// (c) Ulf Frisk, 2022-2024
+// (c) Ulf Frisk, 2022-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

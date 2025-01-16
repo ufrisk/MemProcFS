@@ -1,6 +1,6 @@
 // m_proc_handle.c : implementation of the handle info built-in module.
 //
-// (c) Ulf Frisk, 2019-2024
+// (c) Ulf Frisk, 2019-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

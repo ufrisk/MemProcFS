@@ -1,6 +1,6 @@
 // m_sys_sysinfo.c : implementation of easy-to-read system information.
 //
-// (c) Ulf Frisk, 2024
+// (c) Ulf Frisk, 2024-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

@@ -18,7 +18,7 @@
 //         A fallback of select functionality of cached symbols towards
 //         the info.db sqlite database may also take place.
 //
-// (c) Ulf Frisk, 2019-2024
+// (c) Ulf Frisk, 2019-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "pdb.h"
@@ -1221,7 +1221,7 @@ VOID PDB_ConfigChange(_In_ VMM_HANDLE H)
 }
 
 #endif /* _WIN32 */
-#ifdef LINUX
+#if defined(LINUX) || defined(MACOS)
 
 /*
 * PDB config changes have no meaning on Linux.
@@ -1239,7 +1239,7 @@ VOID PDB_Initialize_InitialValues(_In_ VMM_HANDLE H)
     }
     H->pdb.szLocal[0] = 0;
     H->pdb.szServer[0] = 0;
-    // 1: set symbol path to Symbol directory related to 'vmm.so' folder.
+    // 1: set symbol path to Symbol directory related to 'vmm.so'/'vmm.dylib' folder.
     Util_GetPathDll(H->pdb.szLocal, H->vmm.hModuleVmmOpt);
     strncat_s(H->pdb.szLocal, _countof(H->pdb.szLocal), "Symbols", _TRUNCATE);
     // 2: if directory is not writable - then use /tmp
@@ -1251,7 +1251,7 @@ VOID PDB_Initialize_InitialValues(_In_ VMM_HANDLE H)
     H->pdb.fServerEnable = H->pdb.fServerEnable ? 1 : 0;
 }
 
-#endif /* LINUX */
+#endif /* LINUX || MACOS */
 
 /*
 * Initialize the PDB sub-system. This should ideally be done on Vmm Init().
@@ -1337,13 +1337,13 @@ fail_mspdb:
         }
 #endif /* _WIN32 */
         if(!ctx->crust.hModule) {
-            PDB_PrintError(H, "Reason: Could not load PDB required file - libpdbcrust.dll/so.", szErrorMSPDB);
+            PDB_PrintError(H, "Reason: Could not load PDB required file - libpdbcrust"VMM_LIBRARY_FILETYPE".", szErrorMSPDB);
             goto fail;
         }
         for(i = 0; i < sizeof(CRUST_PDB_FUNCTIONS) / sizeof(PVOID); i++) {
             ctx->crust.vafn[i] = GetProcAddress(ctx->crust.hModule, szCRUST_PDB_FUNCTIONS[i]);
             if(!ctx->crust.vafn[i]) {
-                PDB_PrintError(H, "Reason: Could not load functions from libpdbcrust.dll/so.", szErrorMSPDB);
+                PDB_PrintError(H, "Reason: Could not load functions from libpdbcrust"VMM_LIBRARY_FILETYPE".", szErrorMSPDB);
                 goto fail;
             }
         }
@@ -1809,7 +1809,7 @@ fail:
 }
 
 #endif /* _WIN32 */
-#ifdef LINUX
+#if defined(LINUX) || defined(MACOS)
 
 _Success_(return)
 BOOL PDB_DisplayTypeNt(
@@ -1826,4 +1826,4 @@ BOOL PDB_DisplayTypeNt(
     return FALSE;
 }
 
-#endif /* LINUX */
+#endif /* LINUX || MACOS */

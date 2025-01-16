@@ -12,7 +12,7 @@
 //   functions whilst linux in general should use UTF-8 functions only. This
 //   example use UTF-8 functions throughout to have the best compatibility.
 //
-// (c) Ulf Frisk, 2018-2024
+// (c) Ulf Frisk, 2018-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -27,7 +27,7 @@
 #pragma comment(lib, "vmm")
 
 #endif /* _WIN32 */
-#ifdef LINUX
+#if defined(LINUX) || defined(MACOS)
 
 #include <leechcore.h>
 #include <vmmdll.h>
@@ -60,7 +60,7 @@ VOID LocalFree(HANDLE hMem)
     free(hMem);
 }
 
-#endif /* LINUX */
+#endif /* LINUX || MACOS */
 
 // ----------------------------------------------------------------------------
 // Initialize from type of device, FILE or  FPGA.
@@ -712,7 +712,7 @@ int main(_In_ int argc, _In_ char* argv[])
             return 1;
         }
         printf("SUCCESS: VMMDLL_Map_GetThread_CallstackU\n");
-        printf(pThreadCallstack->uszText);
+        printf("%s", pThreadCallstack->uszText);
         printf("-------------\n");
         for(j = 0; j < pThreadCallstack->cMap; j++) {
             pThreadCallstackEntry = &pThreadCallstack->pMap[j];
@@ -950,8 +950,8 @@ int main(_In_ int argc, _In_ char* argv[])
         printf("         MODULE_NAME                                 BASE             SIZE     ENTRY\n");
         printf("         ======================================================================================\n");
         printf(
-            "         %-40.40S %i %016llx %08x %016llx\n",
-            L"kernel32.dll",
+            "         %-40.40s %i %016llx %08x %016llx\n",
+            "kernel32.dll",
             pModuleEntryKernel32->fWoW64 ? 32 : 64,
             pModuleEntryKernel32->vaBase,
             pModuleEntryKernel32->cbImageSize,

@@ -1,6 +1,6 @@
 // util.c : implementation of various utility functions.
 //
-// (c) Ulf Frisk, 2018-2024
+// (c) Ulf Frisk, 2018-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "util.h"
@@ -977,14 +977,14 @@ VOID Util_GetPathLib(_Out_writes_(MAX_PATH) PCHAR szPath)
     CharUtil_WtoU(wszPath, -1, (PBYTE)szPath, MAX_PATH, NULL, NULL, CHARUTIL_FLAG_STR_BUFONLY | CHARUTIL_FLAG_TRUNCATE);
     if(hModuleVmm) { FreeLibrary(hModuleVmm); }
 #endif /* _WIN32 */
-#ifdef LINUX
+#if defined(LINUX) || defined(MACOS)
     Dl_info Info = { 0 };
     if(!dladdr((void *)Util_GetPathLib, &Info) || !Info.dli_fname) {
         GetModuleFileNameA(NULL, szPath, MAX_PATH - 4);
     } else {
         strncpy(szPath, Info.dli_fname, MAX_PATH - 1);
     }
-#endif /* LINUX */
+#endif /* LINUX || MACOS */
     for(i = strlen(szPath) - 1; i > 0; i--) {
         if(szPath[i] == '/' || szPath[i] == '\\') {
             szPath[i + 1] = '\0';
@@ -1137,7 +1137,7 @@ VOID Util_DeleteFileU(_In_ LPCSTR uszPathFile)
 }
 
 #endif /* _WIN32 */
-#ifdef LINUX
+#if defined(LINUX) || defined(MACOS)
 
 /*
 * SHA256 hash data.
@@ -1169,4 +1169,4 @@ VOID Util_DeleteFileU(_In_ LPCSTR uszPathFile)
 
 DWORD Util_ResourceSize(_In_ VMM_HANDLE H, _In_ LPWSTR wszResourceName) { return 0; }
 NTSTATUS Util_VfsReadFile_FromResource(_In_ VMM_HANDLE H, _In_ LPWSTR wszResourceName, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset) { return VMMDLL_STATUS_FILE_INVALID; }
-#endif /* LINUX */
+#endif /* LINUX || MACOS */

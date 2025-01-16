@@ -3,7 +3,7 @@
 //               In practice this is the implementation of the root files:
 //               'memory.dmp' and 'memory.pmem' only.
 //
-// (c) Ulf Frisk, 2020-2024
+// (c) Ulf Frisk, 2020-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

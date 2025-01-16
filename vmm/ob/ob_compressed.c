@@ -6,7 +6,7 @@
 // The compressed data object (ObCompressed) is thread safe.
 // The ObCompressed is an object manager object and must be DECREF'ed when required.
 //
-// (c) Ulf Frisk, 2021-2024
+// (c) Ulf Frisk, 2021-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "ob.h"
@@ -169,9 +169,9 @@ POB_DATA _ObCompressed_GetData(_In_ POB_COMPRESSED pdc)
 }
 
 #endif /* _WIN32 */
-#ifdef LINUX
+#if defined(LINUX) || defined(MACOS)
 
-#include <lz4.h>
+#include "../ext/lz4.h"
 
 /*
 * Internal helper function to compress bytes.
@@ -231,7 +231,7 @@ POB_DATA _ObCompressed_GetData(_In_ POB_COMPRESSED pdc)
     return pObData;
 }
 
-#endif /* LINUX */
+#endif /* LINUX || MACOS */
 
 /*
 * Retrieve uncompressed from a compressed data object.

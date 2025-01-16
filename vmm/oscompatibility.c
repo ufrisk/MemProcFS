@@ -1,6 +1,6 @@
 // oscompatibility.c : VMM Windows/Linux compatibility layer.
 //
-// (c) Ulf Frisk, 2021-2024
+// (c) Ulf Frisk, 2021-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -18,41 +18,18 @@ _Ret_maybenull_ HMODULE WINAPI LoadLibraryU(_In_ LPCSTR lpLibFileName)
     return NULL;
 }
 
-int LZ4_decompress_safe(const char *src, char *dst, int compressedSize, int dstCapacity)
-{
-    static BOOL fFirst = TRUE;
-    static HMODULE hLZ4 = NULL;
-    static int(*pfn_LZ4_decompress_safe)(const char *, char *, int, int) = NULL;
-    if(fFirst) {
-        hLZ4 = LoadLibraryU("tinylz4.dll");
-        if(hLZ4) {
-            pfn_LZ4_decompress_safe = (int(*)(const char *, char *, int, int))GetProcAddress(hLZ4, "LZ4_decompress_safe");
-        }
-        fFirst = FALSE;
-        // "leak" hLZ4 on purpose to avoid unloading the library
-    }
-    if(pfn_LZ4_decompress_safe) {
-        return pfn_LZ4_decompress_safe(src, dst, compressedSize, dstCapacity);
-    } else {
-        return -1;
-    }
-}
-
 #endif
 
-#ifdef LINUX
+#if defined(LINUX) || defined(MACOS)
 
 #include "oscompatibility.h"
 #include "util.h"
 #include <dlfcn.h>
 #include <fcntl.h>
-#include <link.h>
 #include <poll.h>
 #include <stdatomic.h>
 #include <sys/ioctl.h>
 #include <sys/time.h>
-#include <sys/syscall.h>
-#include <linux/futex.h>
 
 VMMFN_RtlDecompressBuffer   OSCOMPAT_RtlDecompressBuffer;
 VMMFN_RtlDecompressBufferEx OSCOMPAT_RtlDecompressBufferEx;
@@ -112,51 +89,6 @@ BOOL FreeLibrary(_In_ HMODULE hLibModule)
     return TRUE;
 }
 
-DWORD GetModuleFileNameA(_In_opt_ HMODULE hModule, _Out_ LPSTR lpFilename, _In_ DWORD nSize)
-{
-    struct link_map *lm = NULL;
-    if(hModule && ((SIZE_T)hModule & 0xfff)) {
-        dlinfo(hModule, RTLD_DI_LINKMAP, &lm);
-        if(lm) {
-            strncpy(lpFilename, lm->l_name, nSize);
-            lpFilename[nSize - 1] = 0;
-            return strlen(lpFilename);
-        }
-    }
-    return readlink("/proc/self/exe", lpFilename, nSize);
-}
-
-typedef struct tdMODULE_CB_INFO {
-    LPCSTR lpModuleName;
-    HMODULE hModule;
-} MODULE_CB_INFO, *PMODULE_CB_INFO;
-
-int GetModuleHandleA_CB(struct dl_phdr_info *info, size_t size, void *data)
-{
-    PMODULE_CB_INFO ctx = (PMODULE_CB_INFO)data;
-    if(!ctx->lpModuleName && (info->dlpi_name[0] == 0)) {
-        //Dl_info dl;
-        //DWORD DEBUG1 = dladdr((void *)(info->dlpi_addr + info->dlpi_phdr[0].p_vaddr), &dl);
-        ctx->hModule = (HMODULE)info->dlpi_addr;
-        return 1;
-    }
-    if(ctx->lpModuleName && info->dlpi_name[0] && strstr(info->dlpi_name, ctx->lpModuleName)) {
-        //Dl_info dl;
-        //DWORD DEBUG1 = dladdr((void *)(info->dlpi_addr + info->dlpi_phdr[0].p_vaddr), &dl);
-        ctx->hModule = (HMODULE)info->dlpi_addr;
-        return 1;
-    }
-    return 0;
-}
-
-HMODULE GetModuleHandleA(_In_opt_ LPCSTR lpModuleName)
-{
-    MODULE_CB_INFO info = { 0 };
-    info.lpModuleName = lpModuleName;
-    dl_iterate_phdr(GetModuleHandleA_CB, (void*)&info);
-    return info.hModule;
-}
-
 // ----------------------------------------------------------------------------
 // STRING OPERATIONS BELOW:
 // ----------------------------------------------------------------------------
@@ -187,6 +119,7 @@ int strncpy_s(char *dst, size_t dst_size, const char *src, size_t count)
 // ----------------------------------------------------------------------------
 
 #define OSCOMPATIBILITY_HANDLE_INTERNAL         0x35d91cca
+#define OSCOMPATIBILITY_HANDLE_TYPE_NA          0
 #define OSCOMPATIBILITY_HANDLE_TYPE_THREAD      2
 #define OSCOMPATIBILITY_HANDLE_TYPE_EVENT       3
 
@@ -201,6 +134,8 @@ typedef struct tdHANDLE_INTERNAL_THREAD {
     pthread_t thread;
 } HANDLE_INTERNAL_THREAD, *PHANDLE_INTERNAL_THREAD;
 
+VOID CloseEvent(_In_ HANDLE hEvent);
+
 BOOL CloseHandle(_In_ HANDLE hObject)
 {
     PHANDLE_INTERNAL hi = (PHANDLE_INTERNAL)hObject;
@@ -210,7 +145,7 @@ BOOL CloseHandle(_In_ HANDLE hObject)
             pthread_join(((PHANDLE_INTERNAL_THREAD)hi)->thread, NULL);
             break;
         case OSCOMPATIBILITY_HANDLE_TYPE_EVENT:
-            SetEvent(hObject);
+            CloseEvent(hObject);
             break;
         default:
             break;
@@ -218,6 +153,10 @@ BOOL CloseHandle(_In_ HANDLE hObject)
     LocalFree(hi);
     return TRUE;
 }
+
+#ifndef CLOCK_MONOTONIC_COARSE
+#define CLOCK_MONOTONIC_COARSE CLOCK_MONOTONIC
+#endif /* CLOCK_MONOTONIC_COARSE */
 
 QWORD GetTickCount64()
 {
@@ -491,83 +430,282 @@ VOID LeaveCriticalSection(LPCRITICAL_SECTION lpCriticalSection)
 
 
 // ----------------------------------------------------------------------------
+// SLIST functionality below:
+// ----------------------------------------------------------------------------
+
+VOID InitializeSListHead(PSLIST_HEADER ListHead)
+{
+    ZeroMemory(ListHead, sizeof(SLIST_HEADER));
+}
+
+USHORT QueryDepthSList(PSLIST_HEADER ListHead)
+{
+    return ListHead->c;
+}
+
+PSLIST_ENTRY InterlockedPopEntrySList(_Inout_ PSLIST_HEADER ListHead)
+{
+    PSLIST_ENTRY e = NULL;
+    AcquireSRWLockExclusive(&ListHead->LockSRW);
+    if(ListHead->c) {
+        ListHead->c--;
+        if((e = ListHead->Next)) {
+            ListHead->Next = ListHead->Next->Next;
+            e->Next = NULL;
+        }
+    }
+    ReleaseSRWLockExclusive(&ListHead->LockSRW);
+    return e;
+}
+
+
+PSLIST_ENTRY InterlockedPushEntrySList(_Inout_ PSLIST_HEADER ListHead, _Inout_ PSLIST_ENTRY ListEntry)
+{
+    PSLIST_ENTRY e = NULL;
+    AcquireSRWLockExclusive(&ListHead->LockSRW);
+    ListHead->c++;
+    e = ListHead->Next;
+    ListEntry->Next = e;
+    ListHead->Next = ListEntry;
+    ReleaseSRWLockExclusive(&ListHead->LockSRW);
+    return e;
+}
+
+
+
+// ----------------------------------------------------------------------------
+// VARIOUS FUNCTIONALITY BELOW:
+// ----------------------------------------------------------------------------
+
+/*
+* Linux implementation of ntdll!RtlDecompressBuffer for COMPRESS_ALGORITHM_XPRESS:
+* Dynamically load libMSCompression.so (if it exists) and use it. If library does
+* not exist then fail gracefully (i.e. don't support XPRESS decompress).
+* https://github.com/coderforlife/ms-compress   (License: GPLv3)
+*/
+NTSTATUS OSCOMPAT_RtlDecompressBuffer(USHORT CompressionFormat, PUCHAR UncompressedBuffer, ULONG  UncompressedBufferSize, PUCHAR CompressedBuffer, ULONG  CompressedBufferSize, PULONG FinalUncompressedSize)
+{
+    int rc;
+    void *lib_mscompress;
+    SIZE_T cbOut;
+    static BOOL fFirst = TRUE;
+    static SRWLOCK LockSRW = SRWLOCK_INIT;
+    static int(*pfn_xpress_decompress)(PBYTE pbIn, SIZE_T cbIn, PBYTE pbOut, SIZE_T * pcbOut) = NULL;
+    if(CompressionFormat != COMPRESSION_FORMAT_XPRESS) { return VMM_STATUS_UNSUCCESSFUL; }
+    if(fFirst) {
+        AcquireSRWLockExclusive(&LockSRW);
+        if(fFirst) {
+            lib_mscompress = dlopen("libMSCompression"VMM_LIBRARY_FILETYPE, RTLD_NOW);
+            if(lib_mscompress) {
+                pfn_xpress_decompress = (int(*)(PBYTE, SIZE_T, PBYTE, SIZE_T *))dlsym(lib_mscompress, "xpress_decompress");
+            }
+            fFirst = FALSE;
+        }
+        ReleaseSRWLockExclusive(&LockSRW);
+    }
+    *FinalUncompressedSize = 0;
+    if(pfn_xpress_decompress) {
+        cbOut = UncompressedBufferSize;
+        rc = pfn_xpress_decompress(CompressedBuffer, CompressedBufferSize, UncompressedBuffer, &cbOut);
+        if(rc == 0) {
+            *FinalUncompressedSize = cbOut;
+            return VMM_STATUS_SUCCESS;
+        }
+    }
+    return VMM_STATUS_UNSUCCESSFUL;
+}
+
+/*
+* Linux implementation of ntdll!RtlDecompressBuffer for COMPRESS_ALGORITHM_XPRESS:
+* Dynamically load libMSCompression.so (if it exists) and use it. If library does
+* not exist then fail gracefully (i.e. don't support XPRESS decompress).
+* https://github.com/coderforlife/ms-compress   (License: GPLv3)
+*/
+NTSTATUS OSCOMPAT_RtlDecompressBufferEx(USHORT CompressionFormat, PUCHAR UncompressedBuffer, ULONG  UncompressedBufferSize, PUCHAR CompressedBuffer, ULONG  CompressedBufferSize, PULONG FinalUncompressedSize, PVOID pv)
+{
+    int rc;
+    void *lib_mscompress;
+    SIZE_T cbOut;
+    static BOOL fFirst = TRUE;
+    static SRWLOCK LockSRW = SRWLOCK_INIT;
+    static int(*pfn_xpress_decompress)(PBYTE pbIn, SIZE_T cbIn, PBYTE pbOut, SIZE_T * pcbOut) = NULL;
+    static int(*pfn_xpress_decompress_huff)(PBYTE pbIn, SIZE_T cbIn, PBYTE pbOut, SIZE_T * pcbOut) = NULL;
+    CHAR szPathLib[MAX_PATH] = { 0 };
+    Util_GetPathLib(szPathLib);
+    strncat_s(szPathLib, sizeof(szPathLib), "libMSCompression"VMM_LIBRARY_FILETYPE, _TRUNCATE);
+    if((CompressionFormat != COMPRESSION_FORMAT_XPRESS) && (CompressionFormat != COMPRESSION_FORMAT_XPRESS_HUFF)) { return VMM_STATUS_UNSUCCESSFUL; }
+    if(fFirst) {
+        AcquireSRWLockExclusive(&LockSRW);
+        if(fFirst) {
+            lib_mscompress = dlopen(szPathLib, RTLD_NOW);
+            if(lib_mscompress) {
+                pfn_xpress_decompress = (int(*)(PBYTE, SIZE_T, PBYTE, SIZE_T *))dlsym(lib_mscompress, "xpress_decompress");
+                pfn_xpress_decompress_huff = (int(*)(PBYTE, SIZE_T, PBYTE, SIZE_T *))dlsym(lib_mscompress, "xpress_huff_decompress");
+            }
+            fFirst = FALSE;
+        }
+        ReleaseSRWLockExclusive(&LockSRW);
+    }
+    *FinalUncompressedSize = 0;
+    if(pfn_xpress_decompress && pfn_xpress_decompress_huff) {
+        cbOut = UncompressedBufferSize;
+        rc = (CompressionFormat == 4) ?
+            pfn_xpress_decompress_huff(CompressedBuffer, CompressedBufferSize, UncompressedBuffer, &cbOut) :
+            pfn_xpress_decompress(CompressedBuffer, CompressedBufferSize, UncompressedBuffer, &cbOut);
+        if(rc == 0) {
+            *FinalUncompressedSize = cbOut;
+            return VMM_STATUS_SUCCESS;
+        }
+    }
+    return VMM_STATUS_UNSUCCESSFUL;
+}
+
+errno_t tmpnam_s(char *_Buffer, ssize_t _Size)
+{
+    if(_Size < 32) { return -1; }
+    snprintf(_Buffer, _Size, "/tmp/vmm-%x%x", (uint32_t)((uint64_t)_Buffer >> 12), rand());
+    return 0;
+}
+
+int _vscprintf(_In_z_ _Printf_format_string_ char const *const _Format, va_list _ArgList)
+{
+    char *sz = NULL;
+    int len = vasprintf(&sz, _Format, _ArgList);
+    free(sz);
+    return len;
+}
+
+#endif /* LINUX || MACOS */
+
+
+
+// ----------------------------------------------------------------------------
 // SRWLock functionality below:
 // ----------------------------------------------------------------------------
+
+#ifdef LINUX
+
+#include <sys/syscall.h>
+#include <linux/futex.h>
 
 static int futex(uint32_t *uaddr, int futex_op, uint32_t val, const struct timespec *timeout, uint32_t *uaddr2, uint32_t val3)
 {
     return syscall(SYS_futex, uaddr, futex_op, val, timeout, uaddr2, val3);
 }
 
-VOID InitializeSRWLock(PSRWLOCK SRWLock)
+VOID InitializeSRWLock(PSRWLOCK pSRWLock)
 {
-    ZeroMemory(SRWLock, sizeof(SRWLOCK));
+    ZeroMemory(pSRWLock, sizeof(SRWLOCK));
 }
 
-BOOL AcquireSRWLockExclusive_Try(_Inout_ PSRWLOCK SRWLock)
+BOOL AcquireSRWLockExclusive_Try(_Inout_ PSRWLOCK pSRWLock)
 {
     DWORD dwZero = 0;
-    __sync_fetch_and_add_4(&SRWLock->c, 1);
-    if(atomic_compare_exchange_strong((atomic_uint*)&SRWLock->xchg, &dwZero, 1)) {
+    __sync_fetch_and_add_4(&pSRWLock->c, 1);
+    if(atomic_compare_exchange_strong((atomic_uint*)&pSRWLock->xchg, &dwZero, 1)) {
         return TRUE;
     }
-    __sync_sub_and_fetch_4(&SRWLock->c, 1);
+    __sync_sub_and_fetch_4(&pSRWLock->c, 1);
     return FALSE;
 }
 
-VOID AcquireSRWLockExclusive(_Inout_ PSRWLOCK SRWLock)
+VOID AcquireSRWLockExclusive(_Inout_ PSRWLOCK pSRWLock)
 {
     DWORD dwZero;
-    __sync_fetch_and_add_4(&SRWLock->c, 1);
+    __sync_fetch_and_add_4(&pSRWLock->c, 1);
     while(TRUE) {
         dwZero = 0;
-        if(atomic_compare_exchange_strong((atomic_uint*)&SRWLock->xchg, &dwZero, 1)) {
+        if(atomic_compare_exchange_strong((atomic_uint*)&pSRWLock->xchg, &dwZero, 1)) {
             return;
         }
-        futex(&SRWLock->xchg, FUTEX_WAIT, 1, NULL, NULL, 0);
+        futex(&pSRWLock->xchg, FUTEX_WAIT, 1, NULL, NULL, 0);
     }
 }
 
 _Success_(return)
-BOOL AcquireSRWLockExclusive_Timeout(_Inout_ PSRWLOCK SRWLock, _In_ DWORD dwMilliseconds)
+BOOL AcquireSRWLockExclusive_Timeout(_Inout_ PSRWLOCK pSRWLock, _In_ DWORD dwMilliseconds)
 {
     DWORD dwZero;
     struct timespec ts;
-    __sync_fetch_and_add_4(&SRWLock->c, 1);
+    __sync_fetch_and_add_4(&pSRWLock->c, 1);
     while(TRUE) {
         dwZero = 0;
-        if(atomic_compare_exchange_strong((atomic_uint*)&SRWLock->xchg, &dwZero, 1)) {
+        if(atomic_compare_exchange_strong((atomic_uint*)&pSRWLock->xchg, &dwZero, 1)) {
             return TRUE;
         }
         if((dwMilliseconds != 0) && (dwMilliseconds != 0xffffffff)) {
             ts.tv_sec = dwMilliseconds / 1000;
             ts.tv_nsec = (dwMilliseconds % 1000) * 1000 * 1000;
-            if((-1 == futex(&SRWLock->xchg, FUTEX_WAIT, 1, &ts, NULL, 0)) && (errno != EAGAIN)) {
-                __sync_sub_and_fetch_4(&SRWLock->c, 1);
+            if((-1 == futex(&pSRWLock->xchg, FUTEX_WAIT, 1, &ts, NULL, 0)) && (errno != EAGAIN)) {
+                __sync_sub_and_fetch_4(&pSRWLock->c, 1);
                 return FALSE;
             }
         } else {
-            if((-1 == futex(&SRWLock->xchg, FUTEX_WAIT, 1, NULL, NULL, 0)) && (errno != EAGAIN)) {
-                __sync_sub_and_fetch_4(&SRWLock->c, 1);
+            if((-1 == futex(&pSRWLock->xchg, FUTEX_WAIT, 1, NULL, NULL, 0)) && (errno != EAGAIN)) {
+                __sync_sub_and_fetch_4(&pSRWLock->c, 1);
                 return FALSE;
             }
         }
     }
 }
 
-VOID ReleaseSRWLockExclusive(_Inout_ PSRWLOCK SRWLock)
+VOID ReleaseSRWLockExclusive(_Inout_ PSRWLOCK pSRWLock)
 {
     DWORD dwOne = 1;
-    if(atomic_compare_exchange_strong((atomic_uint*)&SRWLock->xchg, &dwOne, 0)) {
-        if(__sync_sub_and_fetch_4(&SRWLock->c, 1)) {
-            futex(&SRWLock->xchg, FUTEX_WAKE, 1, NULL, NULL, 0);
+    if(atomic_compare_exchange_strong((atomic_uint*)&pSRWLock->xchg, &dwOne, 0)) {
+        if(__sync_sub_and_fetch_4(&pSRWLock->c, 1)) {
+            futex(&pSRWLock->xchg, FUTEX_WAKE, 1, NULL, NULL, 0);
         }
     }
 }
+
+#endif /* LINUX */
+
+#ifdef MACOS
+
+VOID InitializeSRWLock(PSRWLOCK pSRWLock)
+{
+    if(!pSRWLock->valid) {
+        pSRWLock->sem = dispatch_semaphore_create(1);
+    }
+}
+
+BOOL AcquireSRWLockExclusive_Try(_Inout_ PSRWLOCK pSRWLock)
+{
+    if(!pSRWLock->valid) { InitializeSRWLock(pSRWLock); }
+    return (0 == dispatch_semaphore_wait(pSRWLock->sem, DISPATCH_TIME_NOW));
+}
+
+VOID AcquireSRWLockExclusive(_Inout_ PSRWLOCK pSRWLock)
+{
+    if(!pSRWLock->valid) { InitializeSRWLock(pSRWLock); }
+    dispatch_semaphore_wait(pSRWLock->sem, DISPATCH_TIME_FOREVER);
+}
+
+_Success_(return)
+BOOL AcquireSRWLockExclusive_Timeout(_Inout_ PSRWLOCK pSRWLock, _In_ DWORD dwMilliseconds)
+{
+    if(!pSRWLock->valid) { InitializeSRWLock(pSRWLock); }
+    dispatch_time_t timeout = dispatch_time(DISPATCH_TIME_NOW, dwMilliseconds * NSEC_PER_MSEC);
+    return (0 == dispatch_semaphore_wait(pSRWLock->sem, timeout));
+}
+
+VOID ReleaseSRWLockExclusive(_Inout_ PSRWLOCK pSRWLock)
+{
+    if(pSRWLock->valid) {
+        dispatch_semaphore_signal(pSRWLock->sem);
+    }
+}
+
+#endif /* MACOS */
+
+
 
 // ----------------------------------------------------------------------------
 // EVENT functionality below:
 // ----------------------------------------------------------------------------
+
+#if defined(LINUX) || defined(MACOS)
 
 typedef struct tdHANDLE_INTERNAL_EVENT2 {
     DWORD magic;
@@ -626,7 +764,7 @@ DWORD WaitForMultipleObjectsSingle(_In_ DWORD nCount, HANDLE *lpHandles, _In_ DW
     PHANDLE_INTERNAL_EVENT2 ph;
     // 1: verify handle validity
     for(i = 0; i < nCount; i++) {
-        ph = *(PHANDLE_INTERNAL_EVENT2*)(lpHandles + i);
+        ph = *(PHANDLE_INTERNAL_EVENT2 *)(lpHandles + i);
         if((ph->magic != OSCOMPATIBILITY_HANDLE_INTERNAL) || (ph->type != OSCOMPATIBILITY_HANDLE_TYPE_EVENT)) {
             return 0xffffffff;
         }
@@ -634,7 +772,7 @@ DWORD WaitForMultipleObjectsSingle(_In_ DWORD nCount, HANDLE *lpHandles, _In_ DW
     // 2: try find single available object - or else sleep and try again
     while(TRUE) {
         for(i = 0; i < nCount; i++) {
-            ph = *(PHANDLE_INTERNAL_EVENT2*)(lpHandles + i);
+            ph = *(PHANDLE_INTERNAL_EVENT2 *)(lpHandles + i);
             if(AcquireSRWLockExclusive_Try(&ph->SRWLock)) {
                 if(ph->fEventManualReset) {
                     ReleaseSRWLockExclusive(&ph->SRWLock);
@@ -651,20 +789,19 @@ DWORD WaitForMultipleObjects(_In_ DWORD nCount, HANDLE *lpHandles, _In_ BOOL bWa
     return bWaitAll ?
         WaitForMultipleObjectsAll(nCount, lpHandles, dwMilliseconds) :
         WaitForMultipleObjectsSingle(nCount, lpHandles, dwMilliseconds);
-
 }
 
-BOOL SetEvent(_In_ HANDLE hEventIngestPhys)
+BOOL SetEvent(_In_ HANDLE hEvent)
 {
-    PHANDLE_INTERNAL_EVENT2 ph = (PHANDLE_INTERNAL_EVENT2)hEventIngestPhys;
+    PHANDLE_INTERNAL_EVENT2 ph = (PHANDLE_INTERNAL_EVENT2)hEvent;
     if((ph->magic != OSCOMPATIBILITY_HANDLE_INTERNAL) || (ph->type != OSCOMPATIBILITY_HANDLE_TYPE_EVENT)) { return FALSE; }
     ReleaseSRWLockExclusive(&ph->SRWLock);
     return TRUE;
 }
 
-BOOL ResetEvent(_In_ HANDLE hEventIngestPhys)
+BOOL ResetEvent(_In_ HANDLE hEvent)
 {
-    PHANDLE_INTERNAL_EVENT2 ph = (PHANDLE_INTERNAL_EVENT2)hEventIngestPhys;
+    PHANDLE_INTERNAL_EVENT2 ph = (PHANDLE_INTERNAL_EVENT2)hEvent;
     if((ph->magic != OSCOMPATIBILITY_HANDLE_INTERNAL) || (ph->type != OSCOMPATIBILITY_HANDLE_TYPE_EVENT)) { return FALSE; }
     return AcquireSRWLockExclusive_Try(&ph->SRWLock);
 }
@@ -685,148 +822,159 @@ HANDLE CreateEvent(_In_opt_ PVOID lpEventAttributes, _In_ BOOL bManualReset, _In
     return (HANDLE)ph;
 }
 
-// ----------------------------------------------------------------------------
-// SLIST functionality below:
-// ----------------------------------------------------------------------------
-
-VOID InitializeSListHead(PSLIST_HEADER ListHead)
+VOID CloseEvent(_In_ HANDLE hEvent)
 {
-    ZeroMemory(ListHead, sizeof(SLIST_HEADER));
+    PHANDLE_INTERNAL_EVENT2 ph = (PHANDLE_INTERNAL_EVENT2)hEvent;
+    if((ph->magic != OSCOMPATIBILITY_HANDLE_INTERNAL) || (ph->type != OSCOMPATIBILITY_HANDLE_TYPE_EVENT)) { return; }
+    ph->type = OSCOMPATIBILITY_HANDLE_TYPE_NA;
+    ReleaseSRWLockExclusive(&ph->SRWLock);
 }
 
-USHORT QueryDepthSList(PSLIST_HEADER ListHead)
-{
-    return ListHead->c;
-}
-
-PSLIST_ENTRY InterlockedPopEntrySList(_Inout_ PSLIST_HEADER ListHead)
-{
-    PSLIST_ENTRY e = NULL;
-    AcquireSRWLockExclusive(&ListHead->LockSRW);
-    if(ListHead->c) {
-        ListHead->c--;
-        if((e = ListHead->Next)) {
-            ListHead->Next = ListHead->Next->Next;
-            e->Next = NULL;
-        }
-    }
-    ReleaseSRWLockExclusive(&ListHead->LockSRW);
-    return e;
-}
+#endif /* LINUX || MACOS */
 
 
-PSLIST_ENTRY InterlockedPushEntrySList(_Inout_ PSLIST_HEADER ListHead, _Inout_ PSLIST_ENTRY ListEntry)
-{
-    PSLIST_ENTRY e = NULL;
-    AcquireSRWLockExclusive(&ListHead->LockSRW);
-    ListHead->c++;
-    e = ListHead->Next;
-    ListEntry->Next = e;
-    ListHead->Next = ListEntry;
-    ReleaseSRWLockExclusive(&ListHead->LockSRW); 
-    return e;
-}
 
 // ----------------------------------------------------------------------------
-// VARIOUS FUNCTIONALITY BELOW:
+// GetModule*() functionality below:
 // ----------------------------------------------------------------------------
 
-/*
-* Linux implementation of ntdll!RtlDecompressBuffer for COMPRESS_ALGORITHM_XPRESS:
-* Dynamically load libMSCompression.so (if it exists) and use it. If library does
-* not exist then fail gracefully (i.e. don't support XPRESS decompress).
-* https://github.com/coderforlife/ms-compress   (License: GPLv3)
-*/
-NTSTATUS OSCOMPAT_RtlDecompressBuffer(USHORT CompressionFormat, PUCHAR UncompressedBuffer, ULONG  UncompressedBufferSize, PUCHAR CompressedBuffer, ULONG  CompressedBufferSize, PULONG FinalUncompressedSize)
+#ifdef LINUX
+
+#include <link.h>
+
+DWORD GetModuleFileNameA(_In_opt_ HMODULE hModule, _Out_ LPSTR lpFilename, _In_ DWORD nSize)
 {
-    int rc;
-    void* lib_mscompress;
-    SIZE_T cbOut;
-    static BOOL fFirst = TRUE;
-    static SRWLOCK LockSRW = SRWLOCK_INIT;
-    static int(*pfn_xpress_decompress)(PBYTE pbIn, SIZE_T cbIn, PBYTE pbOut, SIZE_T *pcbOut) = NULL;
-    if(CompressionFormat != COMPRESSION_FORMAT_XPRESS) { return VMM_STATUS_UNSUCCESSFUL; }
-    if(fFirst) {
-        AcquireSRWLockExclusive(&LockSRW);
-        if(fFirst) {
-            fFirst = FALSE;
-            lib_mscompress = dlopen("libMSCompression.so", RTLD_NOW);
-            if(lib_mscompress) {
-                pfn_xpress_decompress = (int(*)(PBYTE,SIZE_T,PBYTE,SIZE_T*))dlsym(lib_mscompress, "xpress_decompress");
-            }
-        }
-        ReleaseSRWLockExclusive(&LockSRW);
-    }
-    *FinalUncompressedSize = 0;
-    if(pfn_xpress_decompress) {
-        cbOut = UncompressedBufferSize;
-        rc = pfn_xpress_decompress(CompressedBuffer, CompressedBufferSize, UncompressedBuffer, &cbOut);
-        if(rc == 0) {
-            *FinalUncompressedSize = cbOut;
-            return VMM_STATUS_SUCCESS;
+    struct link_map *lm = NULL;
+    if(hModule && ((SIZE_T)hModule & 0xfff)) {
+        dlinfo(hModule, RTLD_DI_LINKMAP, &lm);
+        if(lm) {
+            strncpy(lpFilename, lm->l_name, nSize);
+            lpFilename[nSize - 1] = 0;
+            return strlen(lpFilename);
         }
     }
-    return VMM_STATUS_UNSUCCESSFUL;
+    return readlink("/proc/self/exe", lpFilename, nSize);
 }
 
-/*
-* Linux implementation of ntdll!RtlDecompressBuffer for COMPRESS_ALGORITHM_XPRESS:
-* Dynamically load libMSCompression.so (if it exists) and use it. If library does
-* not exist then fail gracefully (i.e. don't support XPRESS decompress).
-* https://github.com/coderforlife/ms-compress   (License: GPLv3)
-*/
-NTSTATUS OSCOMPAT_RtlDecompressBufferEx(USHORT CompressionFormat, PUCHAR UncompressedBuffer, ULONG  UncompressedBufferSize, PUCHAR CompressedBuffer, ULONG  CompressedBufferSize, PULONG FinalUncompressedSize, PVOID pv)
-{
-    int rc;
-    void *lib_mscompress;
-    SIZE_T cbOut;
-    static BOOL fFirst = TRUE;
-    static SRWLOCK LockSRW = SRWLOCK_INIT;
-    static int(*pfn_xpress_decompress)(PBYTE pbIn, SIZE_T cbIn, PBYTE pbOut, SIZE_T *pcbOut) = NULL;
-    static int(*pfn_xpress_decompress_huff)(PBYTE pbIn, SIZE_T cbIn, PBYTE pbOut, SIZE_T *pcbOut) = NULL;
-    CHAR szPathLib[MAX_PATH] = { 0 };
-    Util_GetPathLib(szPathLib);
-    strncat_s(szPathLib, sizeof(szPathLib), "libMSCompression.so", _TRUNCATE);
-    if((CompressionFormat != COMPRESSION_FORMAT_XPRESS) && (CompressionFormat != COMPRESSION_FORMAT_XPRESS_HUFF)) { return VMM_STATUS_UNSUCCESSFUL; }
-    if(fFirst) {
-        AcquireSRWLockExclusive(&LockSRW);
-        if(fFirst) {
-            fFirst = FALSE;
-            lib_mscompress = dlopen(szPathLib, RTLD_NOW);
-            if(lib_mscompress) {
-                pfn_xpress_decompress = (int(*)(PBYTE, SIZE_T, PBYTE, SIZE_T *))dlsym(lib_mscompress, "xpress_decompress");
-                pfn_xpress_decompress_huff = (int(*)(PBYTE, SIZE_T, PBYTE, SIZE_T *))dlsym(lib_mscompress, "xpress_huff_decompress");
-            }
-        }
-        ReleaseSRWLockExclusive(&LockSRW);
-    }
-    *FinalUncompressedSize = 0;
-    if(pfn_xpress_decompress && pfn_xpress_decompress_huff) {
-        cbOut = UncompressedBufferSize;
-        rc = (CompressionFormat == 4) ?
-            pfn_xpress_decompress_huff(CompressedBuffer, CompressedBufferSize, UncompressedBuffer, &cbOut) :
-            pfn_xpress_decompress(CompressedBuffer, CompressedBufferSize, UncompressedBuffer, &cbOut);
-        if(rc == 0) {
-            *FinalUncompressedSize = cbOut;
-            return VMM_STATUS_SUCCESS;
-        }
-    }
-    return VMM_STATUS_UNSUCCESSFUL;
-}
+typedef struct tdMODULE_CB_INFO {
+    LPCSTR lpModuleName;
+    HMODULE hModule;
+} MODULE_CB_INFO, *PMODULE_CB_INFO;
 
-errno_t tmpnam_s(char *_Buffer, ssize_t _Size)
+int GetModuleHandleA_CB(struct dl_phdr_info *info, size_t size, void *data)
 {
-    if(_Size < 32) { return -1; }
-    snprintf(_Buffer, _Size, "/tmp/vmm-%x%x", (uint32_t)((uint64_t)_Buffer >> 12), rand());
+    PMODULE_CB_INFO ctx = (PMODULE_CB_INFO)data;
+    if(!ctx->lpModuleName && (info->dlpi_name[0] == 0)) {
+        ctx->hModule = (HMODULE)info->dlpi_addr;
+        return 1;
+    }
+    if(ctx->lpModuleName && info->dlpi_name[0] && strstr(info->dlpi_name, ctx->lpModuleName)) {
+        ctx->hModule = (HMODULE)info->dlpi_addr;
+        return 1;
+    }
     return 0;
 }
 
-int _vscprintf(_In_z_ _Printf_format_string_ char const *const _Format, va_list _ArgList)
+HMODULE GetModuleHandleA(_In_opt_ LPCSTR lpModuleName)
 {
-    char *sz = NULL;
-    int len = vasprintf(&sz, _Format, _ArgList);
-    free(sz);
-    return len;
+    MODULE_CB_INFO info = { 0 };
+    info.lpModuleName = lpModuleName;
+    dl_iterate_phdr(GetModuleHandleA_CB, (void *)&info);
+    return info.hModule;
 }
 
 #endif /* LINUX */
+
+#ifdef MACOS
+
+#include <mach-o/dyld.h>
+#include <mach-o/dyld_images.h>
+
+DWORD GetModuleFileNameA(_In_opt_ HMODULE hModule, _Out_ LPSTR lpFilename, _In_ DWORD nSize)
+{
+    int ret;
+    char resolvedPath[MAX_PATH];
+    // ----------------------------------------------------------------------
+    // 1) Handle the case hModule == NULL => main executable path
+    // ----------------------------------------------------------------------
+    if(hModule == NULL) {
+        // macOS function to get the path of the main executable
+        uint32_t bufSize = (uint32_t)nSize;
+        ret = _NSGetExecutablePath(lpFilename, &bufSize);
+        if(ret == 0) {
+            // If you want to resolve symlinks and get an absolute path:
+            // (optional: remove if you just want the raw path from dyld)
+            if(realpath(lpFilename, resolvedPath)) {
+                strncpy(lpFilename, resolvedPath, nSize);
+                lpFilename[nSize - 1] = '\0';
+            } else {
+                // realpath failed, but we still have _NSGetExecutablePath
+                // fallback to leaving lpFilename as-is
+            }
+            return (DWORD)strlen(lpFilename);
+        } else {
+            // _NSGetExecutablePath indicates buffer too small
+            // or some other error
+            // Ideally you handle this more gracefully by re-allocating
+            // or returning an error code.
+            if(bufSize > 0 && bufSize <= nSize) {
+                // The function might have written a partial path, but typically
+                // ret != 0 means not enough space. Return 0 or handle error.
+            }
+            return 0;
+        }
+    }
+    // ----------------------------------------------------------------------
+    // 2) hModule != NULL => look up the corresponding Mach-O image
+    // ----------------------------------------------------------------------
+    uint32_t imageCount = _dyld_image_count();
+    for(uint32_t i = 0; i < imageCount; i++) {
+        const struct mach_header *header = _dyld_get_image_header(i);
+        intptr_t slide = _dyld_get_image_vmaddr_slide(i);
+        // Base address of this Mach-O image
+        uintptr_t baseAddr = (uintptr_t)header + (uintptr_t)slide;
+        if((uintptr_t)hModule == baseAddr) {
+            // Found the matching Mach-O
+            const char *imagePath = _dyld_get_image_name(i);
+            if(imagePath) {
+                strncpy(lpFilename, imagePath, nSize);
+                lpFilename[nSize - 1] = '\0';
+                return (DWORD)strlen(lpFilename);
+            } else {
+                // If for some reason there's no name
+                return 0;
+            }
+        }
+    }
+    // ----------------------------------------------------------------------
+    // 3) If we didn't find a matching image, return 0 or some error code
+    // ----------------------------------------------------------------------
+    return 0;
+}
+
+HMODULE GetModuleHandleA(LPCSTR lpModuleName)
+{
+    // If lpModuleName == NULL, we’ll mimic the Windows behavior of
+    // returning the handle for the main executable.
+    if(!lpModuleName) {
+        // Index 0 should be the main executable
+        const struct mach_header *hdr = _dyld_get_image_header(0);
+        intptr_t slide = _dyld_get_image_vmaddr_slide(0);
+        return (HMODULE)((uintptr_t)hdr + (uintptr_t)slide);
+    }
+    // Otherwise, iterate over all loaded images looking for a match
+    uint32_t count = _dyld_image_count();
+    for(uint32_t i = 0; i < count; i++) {
+        const char *imageName = _dyld_get_image_name(i);
+        if(imageName && strstr(imageName, lpModuleName)) {
+            // Found a match, return base address of this image
+            const struct mach_header *hdr = _dyld_get_image_header(i);
+            intptr_t slide = _dyld_get_image_vmaddr_slide(i);
+            return (HMODULE)((uintptr_t)hdr + (uintptr_t)slide);
+        }
+    }
+    // If nothing found, return NULL
+    return NULL;
+}
+
+#endif /* MACOS */

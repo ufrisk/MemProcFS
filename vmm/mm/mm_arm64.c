@@ -1,6 +1,6 @@
 // mm_arm64.c : implementation of the ARM64 memory model.
 //
-// (c) Ulf Frisk, 2018-2024
+// (c) Ulf Frisk, 2018-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

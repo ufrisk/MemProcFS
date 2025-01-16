@@ -3,7 +3,7 @@
 // vmmpyc_yara is a wrapper around the VMMDLL_YaraSearch() API.
 // It's possible to search physical and virtual address space using YARA rules.
 //
-// (c) Ulf Frisk, 2023-2024
+// (c) Ulf Frisk, 2023-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmmpyc.h"

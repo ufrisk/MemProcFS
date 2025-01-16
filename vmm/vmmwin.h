@@ -1,7 +1,7 @@
 // vmmwin.h : definitions related to windows operating system and processes.
 // parsing of virtual memory. Windows related features only.
 //
-// (c) Ulf Frisk, 2018-2024
+// (c) Ulf Frisk, 2018-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __VMMWIN_H__

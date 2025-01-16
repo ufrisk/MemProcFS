@@ -1,6 +1,6 @@
 // vmmpyc_physicalmemory.c : implementation of physical memory for vmmpyc.
 //
-// (c) Ulf Frisk, 2021-2024
+// (c) Ulf Frisk, 2021-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmmpyc.h"

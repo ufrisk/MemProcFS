@@ -180,6 +180,9 @@
     <ClInclude Include="vmmwinthread.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="ext\lz4.h">
+      <Filter>Header Files\ext</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="vmmdll.c">
@@ -515,6 +518,9 @@
     <ClCompile Include="vmmwinthread.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="ext\lz4.c">
+      <Filter>Source Files\ext</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="vmmdll.def">
@@ -528,6 +534,9 @@
     </None>
     <None Include="..\..\..\MemProcFS-dev\vmm\res\m_fc_json_elastic_import_unauth.ps1">
       <Filter>Resource Files\res</Filter>
+    </None>
+    <None Include="Makefile.macos">
+      <Filter>Resource Files</Filter>
     </None>
   </ItemGroup>
   <ItemGroup>

@@ -1,7 +1,7 @@
 // vmmdll_core.c : implementation of core library functionality which mainly
 //      consists of library initialization and cleanup/close functionality.
 //
-// (c) Ulf Frisk, 2022-2024
+// (c) Ulf Frisk, 2022-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -64,13 +64,13 @@ BOOL WINAPI DllMain(_In_ HINSTANCE hinstDLL, _In_ DWORD fdwReason, _In_ PVOID lp
     return TRUE;
 }
 #endif /* _WIN32 */
-#ifdef LINUX
+#if defined(LINUX) || defined(MACOS)
 __attribute__((constructor)) VOID VmmAttach()
 {
     VmmDllCore_InitializeGlobals();
     VmmDllRemote_InitializeGlobals();
 }
-#endif /* LINUX */
+#endif /* LINUX || MACOS */
 
 /*
 * Verify that the supplied handle is valid and also check it out.

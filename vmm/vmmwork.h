@@ -1,6 +1,6 @@
 // vmmwork.h : declarations of the internal MemprocFS 'work' threading solution.
 //
-// (c) Ulf Frisk, 2022-2024
+// (c) Ulf Frisk, 2022-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

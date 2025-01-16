@@ -4,7 +4,7 @@
 // - Windows: HKCU\Software\UlfFrisk\MemProcFS
 // - Linux: ~/.memprocfs
 //
-// (c) Ulf Frisk, 2023-2024
+// (c) Ulf Frisk, 2023-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmmuserconfig.h"
@@ -58,7 +58,7 @@ BOOL VmmUserConfig_SetString(_In_ LPCSTR szKey, _In_ LPCSTR szValue)
 }
 #endif /* _WIN32 */
 
-#ifdef LINUX
+#if defined(LINUX) || defined(MACOS)
 
 #include <pwd.h>
 
@@ -195,7 +195,7 @@ fail:
     if(file_write) { fclose(file_write); }
     return f_result;
 }
-#endif /* LINUX */
+#endif /* LINUX || MACOS */
 
 /*
 * Check if a key exists in the user configuration.

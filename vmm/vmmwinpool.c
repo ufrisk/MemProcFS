@@ -11,7 +11,7 @@
 // WIN10 1507->1803: PagedPool/NonPagedPool not supported.
 // WIN10 1809+: Support but pages may be missing.
 //
-// (c) Ulf Frisk, 2021-2024
+// (c) Ulf Frisk, 2021-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

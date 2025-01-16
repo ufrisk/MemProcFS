@@ -1,7 +1,7 @@
 // vmmdll_core.h : definitions of core library functionality which mainly
 //      consists of library initialization and cleanup/close functionality.
 //
-// (c) Ulf Frisk, 2022-2024
+// (c) Ulf Frisk, 2022-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __VMMDLL_CORE_H__

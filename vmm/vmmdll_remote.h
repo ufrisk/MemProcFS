@@ -1,7 +1,7 @@
 // vmmdll_remote.h : definitions of remote library functionality:
 //     proxying calls to a remote VMMDLL instance hosted by a LeechAgent.
 //
-// (c) Ulf Frisk, 2023-2024
+// (c) Ulf Frisk, 2023-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __VMMDLL_REMOTE_H__

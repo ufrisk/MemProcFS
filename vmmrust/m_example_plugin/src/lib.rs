@@ -9,7 +9,7 @@
 // The root folder have a readme.txt as a read-only file.
 // The sub-folders will have a writeme.txt as a read/write file.
 //
-// (c) Ulf Frisk, 2023-2024
+// (c) Ulf Frisk, 2023-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 // https://github.com/ufrisk/MemProcFS
 //

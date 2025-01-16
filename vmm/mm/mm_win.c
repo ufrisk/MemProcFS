@@ -1,10 +1,11 @@
 // mm_win.c : implementation of functionality related to the windows paging subsystem.
 //
-// (c) Ulf Frisk, 2019-2024
+// (c) Ulf Frisk, 2019-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
 #include "mm.h"
+#include "../ext/lz4.h"
 #include "../pdb.h"
 #include "../statistics.h"
 

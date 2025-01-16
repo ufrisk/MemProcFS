@@ -1,6 +1,6 @@
 // pluginmanager.c : implementation of the plugin manager for MemProcFS plugins.
 //
-// (c) Ulf Frisk, 2018-2024
+// (c) Ulf Frisk, 2018-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "pluginmanager.h"
@@ -991,7 +991,7 @@ VOID PluginManager_Initialize_ExternalDlls(_In_ VMM_HANDLE H)
 }
 #endif /* _WIN32 */
 
-#ifdef LINUX
+#if defined(LINUX) || defined(MACOS)
 VOID PluginManager_Initialize_Python(_In_ VMM_HANDLE H)
 {
     struct link_map *lm;
@@ -1153,7 +1153,7 @@ VOID PluginManager_Initialize_ExternalDlls(_In_ VMM_HANDLE H)
     }
     closedir(dp);
 }
-#endif /* LINUX */
+#endif /* LINUX || MACOS */
 
 BOOL PluginManager_Initialize(_In_ VMM_HANDLE H)
 {

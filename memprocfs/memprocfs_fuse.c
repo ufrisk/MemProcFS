@@ -1,10 +1,10 @@
 // memprocfs_fuse.c : implementation of core functionality for MemProcFS
 // This is just a thin loader for the virtual memory manager .so which contains the logic.
 //
-// (c) Ulf Frisk, 2021-2023
+// (c) Ulf Frisk, 2021-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-#ifdef LINUX
+#if defined(LINUX) || defined(MACOS)
 #include <vmmdll.h>
 #include "charutil.h"
 #include "vfslist.h"
@@ -28,7 +28,12 @@ VMM_HANDLE g_hVMM = NULL;
 //-----------------------------------------------------------------------------
 
 #define FILETIME_TO_UNIX(ft)        (time_t)((ft) / 10000000ULL - 11644473600ULL)
+#ifdef LINUX
 #define VER_OSARCH                  "Linux"
+#endif /* LINUX */
+#ifdef MACOS
+#define VER_OSARCH                  "macOS"
+#endif /* MACOS */
 
 static int vfs_getattr(const char *uszPathFull, struct stat *st)
 {
@@ -134,7 +139,14 @@ static struct fuse_operations vfs_operations = {
 
 int vfs_initialize_and_mount_displayinfo(char *szMountPoint)
 {
+#ifdef LINUX
     struct fuse_args fargs = { 0 };
+#endif /* LINUX */
+#ifdef MACOS
+    int argc = 5;
+    char* argv[] = {"memprocfs", "-o", "local,volname=MemProcFS", "-o", "volicon=memprocfs.icns"};
+    struct fuse_args fargs = FUSE_ARGS_INIT(argc, argv);
+#endif /* MACOS */
     g_FuseInfo.szMountPoint = szMountPoint;
     g_FuseInfo.pchan = fuse_mount(g_FuseInfo.szMountPoint, &fargs);
     if(!g_FuseInfo.pchan) { return -ENOENT; };
@@ -311,4 +323,4 @@ int main(_In_ int argc, _In_ char* argv[])
     return vfs_initialize_and_mount_displayinfo(szMountPoint);
 }
 
-#endif /* LINUX */
+#endif /* LINUX || MACOS */

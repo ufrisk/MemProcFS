@@ -326,6 +326,7 @@
     <ClInclude Include="..\includes\libpdbcrust.h" />
     <ClInclude Include="..\includes\vmmyara.h" />
     <ClInclude Include="charutil.h" />
+    <ClInclude Include="ext\lz4.h" />
     <ClInclude Include="ext\miniz.h" />
     <ClInclude Include="ext\sha256.h" />
     <ClInclude Include="ext\sqlite3.h" />
@@ -370,6 +371,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="charutil.c" />
+    <ClCompile Include="ext\lz4.c" />
     <ClCompile Include="ext\miniz.c" />
     <ClCompile Include="ext\sha256.c" />
     <ClCompile Include="ext\sqlite3.c" />
@@ -484,6 +486,7 @@
   <ItemGroup>
     <None Include="..\..\..\MemProcFS-dev\vmm\res\m_fc_json_elastic_import_unauth.ps1" />
     <None Include="Makefile" />
+    <None Include="Makefile.macos" />
     <None Include="res\m_fc_json_elastic_import.ps1" />
     <None Include="vmmdll.def" />
   </ItemGroup>

@@ -6,7 +6,7 @@
 #       . (current), ../files, ../../LeechCore*/files
 #
 CC=gcc
-CFLAGS  += -std=c11 -I. -I../includes -D LINUX -D _GNU_SOURCE -D SQLITE_THREADSAFE=2 -D SQLITE_CORE -fPIC -fvisibility=hidden -pthread `pkg-config liblz4 --cflags`
+CFLAGS  += -std=c11 -I. -I../includes -D LINUX -D _GNU_SOURCE -D SQLITE_THREADSAFE=2 -D SQLITE_CORE -fPIC -fvisibility=hidden -pthread
 CFLAGS  += -fPIE -fPIC -fstack-protector-strong -D_FORTIFY_SOURCE=2 -O1
 CFLAGS  += -Wall -Wno-format-truncation -Wno-enum-compare -Wno-pointer-sign -Wno-multichar -Wno-unused-variable -Wno-unused-value
 CFLAGS  += -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast
@@ -19,14 +19,14 @@ ifeq ($(shell basename $(CC)),gcc)
 	#CFLAGS  += -fsanitize=pointer-compare -fsanitize=pointer-subtract -fanalyzer
 	# DEBUG FLAGS ABOVE
 endif
-LDFLAGS += -Wl,-rpath,'$$ORIGIN' -g -ldl -shared -L. -l:leechcore.so -lm -Wl,-z,noexecstack `pkg-config liblz4 --libs`
+LDFLAGS += -Wl,-rpath,'$$ORIGIN' -g -ldl -shared -L. -l:leechcore.so -lm -Wl,-z,noexecstack
 DEPS = vmmdll.h
 OBJ = oscompatibility.o charutil.o util.o pe.o vmmdll.o vmmdll_core.o        \
 	  vmmdll_remote.o vmmdll_scatter.o vmm.o fc.o                            \
 	  mm/mm_arm64.o mm/mm_x64.o mm/mm_x86.o mm/mm_x86pae.o mm/mm_pfn.o       \
 	  mm/mm_vad.o mm/mm_win.o                                                \
 	  pluginmanager.o pdb.o infodb.o                                         \
-	  ext/miniz.o ext/sha256.o ext/sqlite3.o                                 \
+	  ext/lz4.o ext/miniz.o ext/sha256.o ext/sqlite3.o                       \
 	  ob/ob_bytequeue.o ob/ob_cachemap.o ob/ob_compressed.o                  \
 	  ob/ob_container.o ob/ob_core.o ob/ob_counter.o ob/ob_map.o             \
 	  ob/ob_memfile.o ob/ob_set.o ob/ob_strmap.o                             \

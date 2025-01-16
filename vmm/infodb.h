@@ -1,6 +1,6 @@
 // infodb.h : definitions related to the information read-only sqlite database.
 //
-// (c) Ulf Frisk, 2021-2024
+// (c) Ulf Frisk, 2021-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __INFODB_H__

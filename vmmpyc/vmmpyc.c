@@ -1,6 +1,6 @@
 // vmmpyc.c : implementation MemProcFS/VMM Python API
 //
-// (c) Ulf Frisk, 2018-2024
+// (c) Ulf Frisk, 2018-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmmpyc.h"

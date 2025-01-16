@@ -1,6 +1,6 @@
 // vmmpyc_regvalue.c : implementation of registry value functionality for vmmpyc.
 //
-// (c) Ulf Frisk, 2021-2024
+// (c) Ulf Frisk, 2021-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmmpyc.h"

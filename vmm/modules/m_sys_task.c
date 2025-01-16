@@ -6,7 +6,7 @@
 // 
 // The scheduled tasks module is supported on Windows 8.0 and above.
 //
-// (c) Ulf Frisk, 2021-2024
+// (c) Ulf Frisk, 2021-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

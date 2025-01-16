@@ -1,6 +1,6 @@
 // vmmwinthread.c : implementations related to windows threading.
 //
-// (c) Ulf Frisk, 2024
+// (c) Ulf Frisk, 2024-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

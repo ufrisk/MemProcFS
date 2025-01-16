@@ -1,6 +1,6 @@
 // m_proc_memmap.c : implementation of the memmap built-in module.
 //
-// (c) Ulf Frisk, 2019-2024
+// (c) Ulf Frisk, 2019-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

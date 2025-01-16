@@ -1,6 +1,6 @@
 // vmmwinreg.h : declarations of functionality related to the Windows registry.
 //
-// (c) Ulf Frisk, 2020-2024
+// (c) Ulf Frisk, 2020-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

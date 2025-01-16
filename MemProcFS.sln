@@ -138,12 +138,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "vmmsharp", "vmmsharp\vmmsha
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "vmmsharp_example", "vmmsharp\example\vmmsharp_example.csproj", "{5A727016-07EA-421E-81B9-8CDC0B525E1C}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "vmmsharp_old", "vmmsharp_old", "{DB9B848A-BD78-4E9A-B4B6-99B6ADB727BA}"
-	ProjectSection(SolutionItems) = preProject
-		vmmsharp\vmmsharp_old\vmmsharp.cs = vmmsharp\vmmsharp_old\vmmsharp.cs
-		vmmsharp\vmmsharp_old\vmm_example.cs = vmmsharp\vmmsharp_old\vmm_example.cs
-	EndProjectSection
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU

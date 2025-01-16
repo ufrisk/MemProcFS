@@ -1,6 +1,6 @@
 // m_misc_eventlog.c : display event log files
 //
-// (c) Ulf Frisk, 2024
+// (c) Ulf Frisk, 2024-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

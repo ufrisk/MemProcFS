@@ -1,6 +1,6 @@
 // vmmwork.c : implementation of the internal MemprocFS 'work' threading solution.
 //
-// (c) Ulf Frisk, 2022-2024
+// (c) Ulf Frisk, 2022-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -182,7 +182,7 @@ VOID VmmWork_QueueWorkUnit_DECREF_NULL(_In_ VMM_HANDLE H, _In_ DWORD flags, _In_
     if(!H->fAbort) {
         if(flags & VMMWORK_FLAG_PRIO_LOW) {
             if((*ppu)->hEventFinish) { ResetEvent((*ppu)->hEventFinish); }
-            ObMap_Push(H->work->pmUnitLow, 0, *ppu);        
+            ObMap_Push(H->work->pmUnitLow, 0, *ppu);
         } else {
             if((*ppu)->hEventFinish) { ResetEvent((*ppu)->hEventFinish); }
             ObMap_Push(H->work->pmUnit, 0, *ppu);
@@ -230,7 +230,7 @@ VOID VmmWork_Void(_In_ VMM_HANDLE H, _In_ PVMM_WORK_START_ROUTINE_PVOID_PFN pfn,
     }
 }
 
-VOID VmmWorkWaitMultiple2_Void(_In_ VMM_HANDLE H, _In_ DWORD cWork, _In_count_(cWork) PVMM_WORK_START_ROUTINE_PVOID_PFN *pfns, _In_count_(cWork) PVOID *ctxs)
+VOID VmmWorkWaitMultiple2_Void(_In_ VMM_HANDLE H, _In_ DWORD cWork, _In_count_(cWork) PVMM_WORK_START_ROUTINE_PVOID_PFN * pfns, _In_count_(cWork) PVOID * ctxs)
 {
     DWORD i;
     HANDLE hEventFinish[MAXIMUM_WAIT_OBJECTS];

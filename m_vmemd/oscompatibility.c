@@ -1,19 +1,11 @@
 // oscompatibility.c : VMM Windows/Linux compatibility layer.
 //
-// (c) Ulf Frisk, 2021-2024
+// (c) Ulf Frisk, 2021-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-#ifdef LINUX
+#if defined(LINUX) || defined(MACOS)
 
 #include "oscompatibility.h"
-#include <dlfcn.h>
-#include <fcntl.h>
-#include <poll.h>
-#include <stdatomic.h>
-#include <sys/ioctl.h>
-#include <sys/time.h>
-#include <sys/syscall.h>
-#include <linux/futex.h>
 
 // ----------------------------------------------------------------------------
 // LocalAlloc/LocalFree BELOW:
@@ -76,15 +68,16 @@ BOOL CloseHandle(_In_ HANDLE hObject)
     switch(hi->type) {
         case OSCOMPATIBILITY_HANDLE_TYPE_THREAD:
             break;
-        case OSCOMPATIBILITY_HANDLE_TYPE_EVENT:
-            SetEvent(hObject);
-            break;
         default:
             break;
     }
     LocalFree(hi);
     return TRUE;
 }
+
+#ifndef CLOCK_MONOTONIC_COARSE
+#define CLOCK_MONOTONIC_COARSE CLOCK_MONOTONIC
+#endif /* CLOCK_MONOTONIC_COARSE */
 
 QWORD GetTickCount64()
 {
@@ -249,254 +242,4 @@ VOID LeaveCriticalSection(LPCRITICAL_SECTION lpCriticalSection)
     pthread_mutex_unlock(&lpCriticalSection->mutex);
 }
 
-
-
-// ----------------------------------------------------------------------------
-// SRWLock functionality below:
-// ----------------------------------------------------------------------------
-
-static int futex(uint32_t *uaddr, int futex_op, uint32_t val, const struct timespec *timeout, uint32_t *uaddr2, uint32_t val3)
-{
-    return syscall(SYS_futex, uaddr, futex_op, val, timeout, uaddr2, val3);
-}
-
-VOID InitializeSRWLock(PSRWLOCK SRWLock)
-{
-    ZeroMemory(SRWLock, sizeof(SRWLOCK));
-}
-
-BOOL AcquireSRWLockExclusive_Try(_Inout_ PSRWLOCK SRWLock)
-{
-    DWORD dwZero = 0;
-    __sync_fetch_and_add_4(&SRWLock->c, 1);
-    if(atomic_compare_exchange_strong((atomic_uint*)&SRWLock->xchg, &dwZero, 1)) {
-        return TRUE;
-    }
-    __sync_sub_and_fetch_4(&SRWLock->c, 1);
-    return FALSE;
-}
-
-VOID AcquireSRWLockExclusive(_Inout_ PSRWLOCK SRWLock)
-{
-    DWORD dwZero;
-    __sync_fetch_and_add_4(&SRWLock->c, 1);
-    while(TRUE) {
-        dwZero = 0;
-        if(atomic_compare_exchange_strong((atomic_uint*)&SRWLock->xchg, &dwZero, 1)) {
-            return;
-        }
-        futex(&SRWLock->xchg, FUTEX_WAIT, 1, NULL, NULL, 0);
-    }
-}
-
-_Success_(return)
-BOOL AcquireSRWLockExclusive_Timeout(_Inout_ PSRWLOCK SRWLock, _In_ DWORD dwMilliseconds)
-{
-    DWORD dwZero;
-    struct timespec ts;
-    __sync_fetch_and_add_4(&SRWLock->c, 1);
-    while(TRUE) {
-        dwZero = 0;
-        if(atomic_compare_exchange_strong((atomic_uint*)&SRWLock->xchg, &dwZero, 1)) {
-            return TRUE;
-        }
-        if((dwMilliseconds != 0) && (dwMilliseconds != 0xffffffff)) {
-            ts.tv_sec = dwMilliseconds / 1000;
-            ts.tv_nsec = (dwMilliseconds % 1000) * 1000 * 1000;
-            if((-1 == futex(&SRWLock->xchg, FUTEX_WAIT, 1, &ts, NULL, 0)) && (errno != EAGAIN)) {
-                __sync_sub_and_fetch_4(&SRWLock->c, 1);
-                return FALSE;
-            }
-        } else {
-            if((-1 == futex(&SRWLock->xchg, FUTEX_WAIT, 1, NULL, NULL, 0)) && (errno != EAGAIN)) {
-                __sync_sub_and_fetch_4(&SRWLock->c, 1);
-                return FALSE;
-            }
-        }
-    }
-}
-
-VOID ReleaseSRWLockExclusive(_Inout_ PSRWLOCK SRWLock)
-{
-    DWORD dwOne = 1;
-    if(atomic_compare_exchange_strong((atomic_uint*)&SRWLock->xchg, &dwOne, 0)) {
-        if(__sync_sub_and_fetch_4(&SRWLock->c, 1)) {
-            futex(&SRWLock->xchg, FUTEX_WAKE, 1, NULL, NULL, 0);
-        }
-    }
-}
-
-// ----------------------------------------------------------------------------
-// EVENT functionality below:
-// ----------------------------------------------------------------------------
-
-typedef struct tdHANDLE_INTERNAL_EVENT2 {
-    DWORD magic;
-    DWORD type;
-    BOOL fEventManualReset;
-    SRWLOCK SRWLock;
-} HANDLE_INTERNAL_EVENT2, *PHANDLE_INTERNAL_EVENT2;
-
-// function is limited and not thread-safe, but use case in leechcore is single-threaded
-DWORD WaitForSingleObject(_In_ HANDLE hHandle, _In_ DWORD dwMilliseconds)
-{
-    PHANDLE_INTERNAL_EVENT2 ph = (PHANDLE_INTERNAL_EVENT2)hHandle;
-    BOOL fResult;
-    if((ph->magic != OSCOMPATIBILITY_HANDLE_INTERNAL) || (ph->type != OSCOMPATIBILITY_HANDLE_TYPE_EVENT)) { return 0xffffffff; }
-    if(!AcquireSRWLockExclusive_Timeout(&ph->SRWLock, dwMilliseconds)) {
-        return 0xffffffff;  // timeout
-    }
-    if(ph->fEventManualReset) {
-        ReleaseSRWLockExclusive(&ph->SRWLock);
-    }
-    return 0;
-}
-
-DWORD WaitForMultipleObjectsAll(_In_ DWORD nCount, HANDLE *lpHandles, _In_ DWORD dwMilliseconds)
-{
-    DWORD i;
-    BOOL fAll = FALSE;
-    PHANDLE_INTERNAL_EVENT2 ph;
-    // 1: verify handle validity
-    for(i = 0; i < nCount; i++) {
-        ph = *(PHANDLE_INTERNAL_EVENT2 *)(lpHandles + i);
-        if((ph->magic != OSCOMPATIBILITY_HANDLE_INTERNAL) || (ph->type != OSCOMPATIBILITY_HANDLE_TYPE_EVENT)) {
-            return 0xffffffff;
-        }
-    }
-    // 2: wait for all objects
-    while(!fAll) {
-        fAll = TRUE;
-        for(i = 0; i < nCount; i++) {
-            ph = *(PHANDLE_INTERNAL_EVENT2 *)(lpHandles + i);
-            if(!AcquireSRWLockExclusive_Try(&ph->SRWLock)) {
-                if(!AcquireSRWLockExclusive_Timeout(&ph->SRWLock, dwMilliseconds)) {
-                    return 0xffffffff;  // timeout
-                }
-                fAll = FALSE;
-            }
-            ReleaseSRWLockExclusive(&ph->SRWLock);
-        }
-    }
-    return 0;
-}
-
-DWORD WaitForMultipleObjectsSingle(_In_ DWORD nCount, HANDLE *lpHandles, _In_ DWORD dwMilliseconds)
-{
-    DWORD i;
-    PHANDLE_INTERNAL_EVENT2 ph;
-    // 1: verify handle validity
-    for(i = 0; i < nCount; i++) {
-        ph = *(PHANDLE_INTERNAL_EVENT2*)(lpHandles + i);
-        if((ph->magic != OSCOMPATIBILITY_HANDLE_INTERNAL) || (ph->type != OSCOMPATIBILITY_HANDLE_TYPE_EVENT)) {
-            return 0xffffffff;
-        }
-    }
-    // 2: try find single available object - or else sleep and try again
-    while(TRUE) {
-        for(i = 0; i < nCount; i++) {
-            ph = *(PHANDLE_INTERNAL_EVENT2*)(lpHandles + i);
-            if(AcquireSRWLockExclusive_Try(&ph->SRWLock)) {
-                if(ph->fEventManualReset) {
-                    ReleaseSRWLockExclusive(&ph->SRWLock);
-                }
-                return i;
-            }
-        }
-        Sleep(5);
-    }
-}
-
-DWORD WaitForMultipleObjects(_In_ DWORD nCount, HANDLE *lpHandles, _In_ BOOL bWaitAll, _In_ DWORD dwMilliseconds)
-{
-    return bWaitAll ?
-        WaitForMultipleObjectsAll(nCount, lpHandles, dwMilliseconds) :
-        WaitForMultipleObjectsSingle(nCount, lpHandles, dwMilliseconds);
-
-}
-
-BOOL SetEvent(_In_ HANDLE hEventIngestPhys)
-{
-    PHANDLE_INTERNAL_EVENT2 ph = (PHANDLE_INTERNAL_EVENT2)hEventIngestPhys;
-    if((ph->magic != OSCOMPATIBILITY_HANDLE_INTERNAL) || (ph->type != OSCOMPATIBILITY_HANDLE_TYPE_EVENT)) { return FALSE; }
-    ReleaseSRWLockExclusive(&ph->SRWLock);
-    return TRUE;
-}
-
-BOOL ResetEvent(_In_ HANDLE hEventIngestPhys)
-{
-    PHANDLE_INTERNAL_EVENT2 ph = (PHANDLE_INTERNAL_EVENT2)hEventIngestPhys;
-    if((ph->magic != OSCOMPATIBILITY_HANDLE_INTERNAL) || (ph->type != OSCOMPATIBILITY_HANDLE_TYPE_EVENT)) { return FALSE; }
-    return AcquireSRWLockExclusive_Try(&ph->SRWLock);
-}
-
-HANDLE CreateEvent(_In_opt_ PVOID lpEventAttributes, _In_ BOOL bManualReset, _In_ BOOL bInitialState, _In_opt_ PVOID lpName)
-{
-    PHANDLE_INTERNAL_EVENT2 ph;
-    ph = malloc(sizeof(HANDLE_INTERNAL_EVENT2));
-    ZeroMemory(ph, sizeof(HANDLE_INTERNAL_EVENT2));
-    ph->magic = OSCOMPATIBILITY_HANDLE_INTERNAL;
-    ph->type = OSCOMPATIBILITY_HANDLE_TYPE_EVENT;
-    ph->fEventManualReset = bManualReset;
-    if(bInitialState) {
-        SetEvent((HANDLE)ph);
-    } else {
-        ResetEvent((HANDLE)ph);
-    }
-    return (HANDLE)ph;
-}
-
-// ----------------------------------------------------------------------------
-// SLIST functionality below:
-// ----------------------------------------------------------------------------
-
-VOID InitializeSListHead(PSLIST_HEADER ListHead)
-{
-    ZeroMemory(ListHead, sizeof(SLIST_HEADER));
-}
-
-USHORT QueryDepthSList(PSLIST_HEADER ListHead)
-{
-    return ListHead->c;
-}
-
-PSLIST_ENTRY InterlockedPopEntrySList(_Inout_ PSLIST_HEADER ListHead)
-{
-    PSLIST_ENTRY e = NULL;
-    AcquireSRWLockExclusive(&ListHead->LockSRW);
-    if(ListHead->c) {
-        ListHead->c--;
-        if((e = ListHead->Next)) {
-            ListHead->Next = ListHead->Next->Next;
-            e->Next = NULL;
-        }
-    }
-    ReleaseSRWLockExclusive(&ListHead->LockSRW);
-    return e;
-}
-
-
-PSLIST_ENTRY InterlockedPushEntrySList(_Inout_ PSLIST_HEADER ListHead, _Inout_ PSLIST_ENTRY ListEntry)
-{
-    PSLIST_ENTRY e = NULL;
-    AcquireSRWLockExclusive(&ListHead->LockSRW);
-    ListHead->c++;
-    e = ListHead->Next;
-    ListEntry->Next = e;
-    ListHead->Next = ListEntry;
-    ReleaseSRWLockExclusive(&ListHead->LockSRW); 
-    return e;
-}
-
-// ----------------------------------------------------------------------------
-// VARIOUS FUNCTIONALITY BELOW:
-// ----------------------------------------------------------------------------
-
-errno_t tmpnam_s(char *_Buffer, ssize_t _Size)
-{
-    if(_Size < 32) { return -1; }
-    snprintf(_Buffer, _Size, "/tmp/vmm-%x%x", (uint32_t)((uint64_t)_Buffer >> 12), rand());
-    return 0;
-}
-
-#endif /* LINUX */
+#endif /* LINUX || MACOS */

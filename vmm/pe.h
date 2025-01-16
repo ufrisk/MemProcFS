@@ -2,7 +2,7 @@
 //        virtual address space. This may mostly (but not exclusively) be used
 //        by Windows functionality.
 //
-// (c) Ulf Frisk, 2018-2024
+// (c) Ulf Frisk, 2018-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __PE_H__
