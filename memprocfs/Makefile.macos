@@ -1,9 +1,7 @@
-# brew install pkg-config macfuse openssl
 CC=clang
-CFLAGS += -I. -I../includes -D MACOS -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -pthread
-CFLAGS += -I/usr/local/include/fuse -D_FILE_OFFSET_BITS=64
+CFLAGS += -I. -I../includes -D MACOS -D _GNU_SOURCE -D _FILE_OFFSET_BITS=64 -pthread
+CFLAGS += -fPIE -fPIC -fstack-protector -D_FORTIFY_SOURCE=2 -O1
 #CFLAGS += `pkg-config fuse --cflags`
-CFLAGS += -fPIC -fPIE -fstack-protector-strong -D_FORTIFY_SOURCE=2 -O1
 CFLAGS += -Wall -Wno-enum-compare -Wno-pointer-sign -Wno-multichar -Wno-unused-variable -Wno-unused-value
 CFLAGS += -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast
 CFLAGS += -mmacosx-version-min=11.0
@@ -16,25 +14,48 @@ LDFLAGS += -ldl -L. ./leechcore.dylib ./vmm.dylib
 LDFLAGS += -L/usr/local/lib -lfuse -pthread
 LDFLAGS += -Wl,-rpath,@loader_path
 LDFLAGS += -mmacosx-version-min=11.0
-DEPS = vfs.h
+
+DEPS = vfslist.h
 OBJ  = oscompatibility.o charutil.o vfslist.o memprocfs_fuse.o ob/ob_cachemap.o ob/ob_core.o ob/ob_map.o ob/ob_set.o
 
-%.o: %.c $(DEPS)
-	$(CC) -c -o $@ $< $(CFLAGS)
+# ARCH SPECIFIC FLAGS:
+CFLAGS_X86_64  = $(CFLAGS) -arch x86_64
+CFLAGS_ARM64   = $(CFLAGS) -arch arm64
+LDFLAGS_X86_64 = $(LDFLAGS) -arch x86_64
+LDFLAGS_ARM64  = $(LDFLAGS) -arch arm64
+OBJ_X86_64 = $(OBJ:.o=.o.x86_64)
+OBJ_ARM64  = $(OBJ:.o=.o.arm64)
 
-memprocfs: $(OBJ)
+all: memprocfs
+
+%.o.x86_64: %.c $(DEPS)
+	$(CC) $(CFLAGS_X86_64) -c -o $@ $<
+
+%.o.arm64: %.c $(DEPS)
+	$(CC) $(CFLAGS_ARM64) -c -o $@ $<
+
+memprocfs_x86_64: $(OBJ_X86_64)
 	cp ../files/vmm.dylib . || cp ../../MemProcFS*/files/vmm.dylib . || true
 	cp ../files/leechcore.dylib . || cp ../../LeechCore*/files/leechcore.dylib . || true
-	$(CC) -o $@ $^ $(CFLAGS) $(LDFLAGS)
+	$(CC) $(LDFLAGS_X86_64) -o $@ $^
+
+memprocfs_arm64: $(OBJ_ARM64)
+	cp ../files/vmm.dylib . || cp ../../MemProcFS*/files/vmm.dylib . || true
+	cp ../files/leechcore.dylib . || cp ../../LeechCore*/files/leechcore.dylib . || true
+	$(CC) $(LDFLAGS_ARM64) -o $@ $^
+
+memprocfs: memprocfs_x86_64 memprocfs_arm64
+	lipo -create -output memprocfs memprocfs_x86_64 memprocfs_arm64
+	install_name_tool -id @rpath/memprocfs memprocfs
 	mv memprocfs ../files/ |true
 	mv vmm.dylib ../files/ |true
 	mv leechcore.dylib ../files/ |true
-	rm -f *.o || true
-	rm -f */*.o || true
+	rm -f *.o *.o.x86_64 *.o.arm64 || true
+	rm -f */*.o */*.o.x86_64 */*.o.arm64 || true
 	rm -f *.dylib || true
 	true
 
 clean:
-	rm -f *.o || true
-	rm -f */*.o || true
+	rm -f *.o *.o.x86_64 *.o.arm64 || true
+	rm -f */*.o */*.o.x86_64 */*.o.arm64 || true
 	rm -f *.dylib || true

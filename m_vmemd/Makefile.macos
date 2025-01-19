@@ -18,23 +18,47 @@ CFLAGS += -mmacosx-version-min=11.0
 LDFLAGS += -dynamiclib -L. ./leechcore.dylib ./vmm.dylib -lm
 LDFLAGS += -Wl,-rpath,@loader_path
 LDFLAGS += -g -mmacosx-version-min=11.0
-DEPS = vmmdll.h
+
+DEPS = 
 OBJ = m_vmemd.o oscompatibility.o
 
-%.o: %.c $(DEPS)
-	$(CC) -c -o $@ $< $(CFLAGS)
+# ARCH SPECIFIC FLAGS:
+CFLAGS_X86_64  = $(CFLAGS) -arch x86_64
+CFLAGS_ARM64   = $(CFLAGS) -arch arm64
+LDFLAGS_X86_64 = $(LDFLAGS) -arch x86_64
+LDFLAGS_ARM64  = $(LDFLAGS) -arch arm64
+OBJ_X86_64 = $(OBJ:.o=.o.x86_64)
+OBJ_ARM64  = $(OBJ:.o=.o.arm64)
 
-m_vmemd: $(OBJ)
+all: m_vmemd.dylib
+
+%.o.x86_64: %.c $(DEPS)
+	$(CC) $(CFLAGS_X86_64) -c -o $@ $<
+
+%.o.arm64: %.c $(DEPS)
+	$(CC) $(CFLAGS_ARM64) -c -o $@ $<
+
+m_vmemd_x86_64.dylib: $(OBJ_X86_64)
+	cp ../files/vmm.dylib . || cp ../../LeechCore*/files/vmm.dylib . || true
 	cp ../files/leechcore.dylib . || cp ../../LeechCore*/files/leechcore.dylib . || true
-	cp ../files/vmm.dylib . || cp ../../MemProcFS*/files/vmm.dylib . || true
-	$(CC) $(CFLAGS) $(LDFLAGS) -o m_vmemd.dylib $^
+	$(CC) $(LDFLAGS_X86_64) -o $@ $^
+
+m_vmemd_arm64.dylib: $(OBJ_ARM64)
+	cp ../files/vmm.dylib . || cp ../../LeechCore*/files/vmm.dylib . || true
+	cp ../files/leechcore.dylib . || cp ../../LeechCore*/files/leechcore.dylib . || true
+	$(CC) $(LDFLAGS_ARM64) -o $@ $^
+
+m_vmemd.dylib: m_vmemd_x86_64.dylib m_vmemd_arm64.dylib
+	lipo -create -output m_vmemd.dylib m_vmemd_x86_64.dylib m_vmemd_arm64.dylib
+	install_name_tool -id @rpath/m_vmemd.dylib m_vmemd.dylib
+	mkdir -p ../files/plugins
 	mv m_vmemd.dylib ../files/plugins/
-	rm -f *.o || true
-	rm -f */*.o || true
+	rm -f *.o *.o.x86_64 *.o.arm64 || true
+	rm -f */*.o */*.o.x86_64 */*.o.arm64 || true
 	rm -f *.dylib || true
 	true
 
 clean:
-	rm -f *.o || true
-	rm -f */*.o || true
+	rm -f *.o *.o.x86_64 *.o.arm64 || true
+	rm -f */*.o */*.o.x86_64 */*.o.arm64 || true
 	rm -f *.dylib || true
