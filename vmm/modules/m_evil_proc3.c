@@ -95,7 +95,7 @@ VOID MEvilProc3_DoWork(_In_ VMM_HANDLE H, _In_ VMMDLL_MODULE_ID MID, _In_opt_ PV
     MEVILPROC3_TIMECHANGE TimeChange = { 0 };
     while((pObProcess = VmmProcessGetNext(H, pObProcess, VMM_FLAG_PROCESS_TOKEN | VMM_FLAG_PROCESS_SHOW_TERMINATED))) {
         if(H->fAbort) { goto fail; }
-        if(!pObProcess->fUserOnly) { continue; }
+        if(VmmProcess_IsKernelOnly(pObProcess)) { continue; }
         if(FcIsProcessSkip(H, pObProcess)) { continue; }
         MEvilProc3_SeDebugPrivilege(H, pObProcess);
         MEvilProc3_TimeChange(H, pObProcess, &TimeChange);

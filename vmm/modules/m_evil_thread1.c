@@ -245,7 +245,7 @@ VOID MEvilThread1_DoWork(_In_ VMM_HANDLE H, _In_ VMMDLL_MODULE_ID MID, _In_opt_ 
     // 2: scan user-mode processes for evil threads:
     while((pObProcess = VmmProcessGetNext(H, pObProcess, VMM_FLAG_PROCESS_TOKEN))) {
         if(H->fAbort) { goto fail; }
-        if(pObProcess->dwState || !pObProcess->fUserOnly) { continue; }
+        if(pObProcess->dwState || VmmProcess_IsKernelOnly(pObProcess)) { continue; }
         if(FcIsProcessSkip(H, pObProcess)) { continue; }
         if(VmmMap_GetThread(H, pObProcess, &pObThreadMap)) {
             VmmMap_GetModule(H, pObProcess, 0, &ctx.pModuleMap);

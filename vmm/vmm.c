@@ -1299,6 +1299,16 @@ VOID VmmProcessTlbClear(_In_ VMM_HANDLE H)
 }
 
 /*
+* Query the process whether it's a kernel process or not.
+* -- pProcess
+* -- return = TRUE if a typical kernel-mode process, FALSE if typical user-mode process.
+*/
+BOOL VmmProcess_IsKernelOnly(_In_opt_ PVMM_PROCESS pProcess)
+{
+    return pProcess && !pProcess->fUserOnly && (*(PQWORD)pProcess->szName != 0x78652e737361736c) && (*(PQWORD)pProcess->szName != 0x78652e7373727363);
+}
+
+/*
 * Query process for its creation time.
 * -- H
 * -- pProcess

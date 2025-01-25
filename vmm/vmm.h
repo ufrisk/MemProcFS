@@ -2502,6 +2502,13 @@ _Success_(return)
 BOOL VmmProcessCreateTerminatedFakeEntry(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ DWORD dwPPID, _In_ QWORD ftCreate, _In_ QWORD ftExit, _In_reads_(15) LPSTR szShortName, _In_ LPSTR uszLongName);
 
 /*
+* Query the process whether it's a kernel process or not.
+* -- pProcess
+* -- return = TRUE if a typical kernel-mode process, FALSE if typical user-mode process.
+*/
+BOOL VmmProcess_IsKernelOnly(_In_opt_ PVMM_PROCESS pProcess);
+
+/*
 * Query process for its creation time.
 * -- H
 * -- pProcess

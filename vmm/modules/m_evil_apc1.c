@@ -132,7 +132,7 @@ VOID MEvilAPC1_DoWork(_In_ VMM_HANDLE H, _In_ VMMDLL_MODULE_ID MID, _In_opt_ PVO
     if(!f) { goto fail; }
     // iterate over user-mode processes:
     while((pObProcess = VmmProcessGetNext(H, pObProcess, 0))) {
-        if(!pObProcess->fUserOnly) { continue; }
+        if(VmmProcess_IsKernelOnly(pObProcess)) { continue; }
         if(H->fAbort) { goto fail; }
         if(VmmMap_GetThread(H, pObProcess, &pObThreadMap)) {
             for(i = 0; i < pObThreadMap->cMap; i++) {

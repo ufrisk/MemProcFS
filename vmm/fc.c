@@ -1267,9 +1267,9 @@ VOID FcScanVirtmem_AddRangeUser(_In_ VMM_HANDLE H, _In_ PFCOB_SCAN_VIRTMEM_CONTE
     PVMM_PROCESS pObProcess = NULL;
     while((pObProcess = VmmProcessGetNext(H, pObProcess, 0))) {
         if(H->fAbort) { goto fail; }
-        if(!pObProcess->fUserOnly) { continue; }            // don't scan kernel processes
-        if(!pObProcess->win.vaPEB) { continue; }            // don't scan special user-mode processes without PEB (such as MemCompression)
-        if(FcIsProcessSkip(H, pObProcess)) { continue; }    // don't scan problematic processes
+        if(VmmProcess_IsKernelOnly(pObProcess)) { continue; }   // don't scan kernel processes
+        if(!pObProcess->win.vaPEB) { continue; }                // don't scan special user-mode processes without PEB (such as MemCompression)
+        if(FcIsProcessSkip(H, pObProcess)) { continue; }        // don't scan problematic processes
         FcScanVirtmem_AddRangeUserProcess(H, ctx, pObProcess);
     }
 fail:

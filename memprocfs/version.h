@@ -3,8 +3,8 @@
 
 #define VERSION_MAJOR               5
 #define VERSION_MINOR               14
-#define VERSION_REVISION            1
-#define VERSION_BUILD               191
+#define VERSION_REVISION            2
+#define VERSION_BUILD               192
 
 #define VER_FILE_DESCRIPTION_STR    "MemProcFS"
 #define VER_FILE_VERSION            VERSION_MAJOR, VERSION_MINOR, VERSION_REVISION, VERSION_BUILD

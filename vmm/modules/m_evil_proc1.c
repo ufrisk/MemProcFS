@@ -160,7 +160,7 @@ VOID MEvilProc1_VadNoImageExecuteEntry(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pPro
     for(iVadEx = 0; iVadEx < pObVadExMap->cMap; iVadEx++) {
         peVadEx = pObVadExMap->pMap + iVadEx;
         fPteA = peVadEx->flags & VADEXENTRY_FLAG_HARDWARE;
-        if(!fPteA && !MMVAD_IS_FLAG_X(peVad)) { continue; }
+        //if(!fPteA && !MMVAD_IS_FLAG_X(peVad)) { continue; }
         if(fPteA && (peVadEx->flags & VADEXENTRY_FLAG_NX)) { continue; }
         if(peVadEx->tp == VMM_PTE_TP_DEMANDZERO) { continue; }
         if((fPteA && (peVadEx->flags & VADEXENTRY_FLAG_W)) || (!fPteA && MMVAD_IS_FLAG_W(peVad))) {
@@ -326,7 +326,7 @@ VOID MEvilProc1_DoWork(_In_ VMM_HANDLE H, _In_ VMMDLL_MODULE_ID MID, _In_opt_ PV
     if(!(psObInjectedPE = ObSet_New(H))) { goto fail; }
     while((pObProcess = VmmProcessGetNext(H, pObProcess, 0))) {
         if(H->fAbort) { goto fail; }
-        if(pObProcess->dwState || !pObProcess->fUserOnly) { continue; }
+        if(pObProcess->dwState || VmmProcess_IsKernelOnly(pObProcess)) { continue; }
         if(FcIsProcessSkip(H, pObProcess)) { continue; }
         MEvilProc1_PePatched_VadImageExecuteNoProto(H, pObProcess);
         // update result with execute pages in non image vads.
