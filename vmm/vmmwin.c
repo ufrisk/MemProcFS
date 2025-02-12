@@ -926,8 +926,8 @@ VOID VmmWinLdrModule_EnrichDebugInfo(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProce
     PVMM_MAP_MODULEENTRY_DEBUGINFO pDebugInfo;
     PVMM_MAP_MODULEENTRY pe;
     POB_STRMAP psmOb = NULL;
-    DWORD i, j, k, cbMultiStr;
-    BYTE b;
+    DWORD i, cbMultiStr;
+    PBYTE pbGUID;
     CHAR szGUID[33] = { 0 };
     PE_CODEVIEW_INFO CodeViewInfo;
     VMMSTATISTICS_LOG Statistics = { 0 };
@@ -948,11 +948,11 @@ VOID VmmWinLdrModule_EnrichDebugInfo(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProce
         pe->pExDebugInfo = pDebugInfo;
         if(PE_GetCodeViewInfo(H, pProcess, pe->vaBase, NULL, &CodeViewInfo)) {
             // guid -> hex
-            for(k = 0, j = 0; k < 16; k++) {
-                b = CodeViewInfo.CodeView.Guid[k];
-                szGUID[j++] = szHEX_ALPHABET[b >> 4];
-                szGUID[j++] = szHEX_ALPHABET[b & 7];
-            }
+            pbGUID = CodeViewInfo.CodeView.Guid;
+            _snprintf_s(szGUID, _countof(szGUID), _TRUNCATE, "%08X%04X%04X%02X%02X%02X%02X%02X%02X%02X%02X",
+                *(PDWORD)(pbGUID + 0), *(PWORD)(pbGUID + 4), *(PWORD)(pbGUID + 6),
+                pbGUID[8], pbGUID[9], pbGUID[10], pbGUID[11],
+                pbGUID[12], pbGUID[13], pbGUID[14], pbGUID[15]);
             // populate ExDebugInfo
             pDebugInfo->dwAge = CodeViewInfo.CodeView.Age;
             memcpy(pDebugInfo->Guid, CodeViewInfo.CodeView.Guid, sizeof(pDebugInfo->Guid));
