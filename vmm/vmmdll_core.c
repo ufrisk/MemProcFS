@@ -392,7 +392,7 @@ VOID VmmDllCore_PrintHelp(_In_ VMM_HANDLE H)
         " MemProcFS may be used in stand-alone mode with support for memory dump files, \n" \
         " local memory via winpmem driver or together with PCILeech DMA devices.        \n" \
         " -----                                                                         \n" \
-        " MemProcFS (c) 2018-2023 Ulf Frisk                                             \n" \
+        " MemProcFS "VER_COPYRIGHT_STR"\n" \
         " License: GNU Affero General Public License v3.0                               \n" \
         " Contact information: pcileech@frizk.net                                       \n" \
         " MemProcFS:    https://github.com/ufrisk/MemProcFS                             \n" \
