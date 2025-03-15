@@ -285,7 +285,7 @@ BOOL PY2C_Exec(_In_ VMM_HANDLE H, _In_ LPSTR uszPythonCodeToExec, _Out_ LPSTR *p
     if(!pyStrResultOfExec || !PyUnicode_Check(pyStrResultOfExec)) { goto pyfail; }
     pyBytesResultOfExec = PyUnicode_AsUTF8String(pyStrResultOfExec);
     if(!pyBytesResultOfExec || !PyBytes_Check(pyBytesResultOfExec)) { goto pyfail; }
-    PyBytes_AsStringAndSize(pyBytesResultOfExec, &uszResultOfExec, &cuszResultOfExec);
+    PyBytes_AsStringAndSize(pyBytesResultOfExec, &uszResultOfExec, (Py_ssize_t*)&cuszResultOfExec);
     if(!uszResultOfExec) { goto pyfail; }
     *puszResultOfExec = LocalAlloc(0, cuszResultOfExec + 1);
     if(!*puszResultOfExec) { goto  pyfail; }
@@ -438,7 +438,9 @@ BOOL VmmPyPlugin_PythonInitializeEmbedded(_In_ VMM_HANDLE H, _In_ HMODULE hDllPy
         Py_SetPath(wszPathPython);
         VMMDLL_Log(H, VMMDLL_MID_PYTHON, VMMDLL_LOGLEVEL_DEBUG, "PythonPath: %S", wszPathPython);
         Py_Initialize();
-        PyEval_InitThreads();
+#if PY_VERSION_HEX <= 0x03060000
+        PyEval_InitThreads();   // Required for Python 3.6
+#endif
         // 4: Import VmmPyPlugin library/file to start the python part of the plugin manager.
         pyName = PyUnicode_DecodeFSDefault("vmmpyplugin");
         if(!pyName) { goto fail; }
@@ -474,13 +476,24 @@ VOID Util_GetPathDllA(_Out_writes_(MAX_PATH) LPSTR szPath, _In_opt_ HMODULE hMod
     }
 }
 
-#define PYTHON_IMPORT_PRE       "import sys\nsys.path.append(\""
-#define PYTHON_IMPORT_POST      "\")"
+VOID Util_PyAddSysPath(LPCSTR szPath)
+{
+    PyObject *pySysPath, *pyPath;
+    pySysPath = PySys_GetObject("path");
+    if(pySysPath && PyList_Check(pySysPath)) {
+        pyPath = PyUnicode_FromString(szPath);
+        if(pyPath) {
+            PyList_Append(pySysPath, pyPath);
+            Py_DECREF(pyPath);
+        }
+    }
+}
+
 BOOL VmmPyPlugin_PythonInitializeEmbedded(_In_ VMM_HANDLE H, _In_ HMODULE hDllPython, _In_ HMODULE hDllModule)
 {
     DWORD i;
     PyObject *pyName = NULL, *pyModule = NULL;
-    CHAR szPathBaseExe[MAX_PATH] = { 0 }, szImportBase[MAX_PATH] = { 0 } , szImportLibs[MAX_PATH] = { 0 };
+    CHAR szPathBaseExe[MAX_PATH] = { 0 }, szImportLibs[MAX_PATH] = { 0 };
     // 1: Allocate context (if required) and fetch verbosity settings
     if(!ctxPY2C && !(ctxPY2C = LocalAlloc(LMEM_ZEROINIT, sizeof(PY2C_CONTEXT)))) {
         return FALSE;
@@ -488,21 +501,18 @@ BOOL VmmPyPlugin_PythonInitializeEmbedded(_In_ VMM_HANDLE H, _In_ HMODULE hDllPy
     VmmPyPlugin_UpdateVerbosity();
     // 2: Construct Python Path
     Util_GetPathDllA(szPathBaseExe, NULL);
-    // 2.1: .exe location of this process    
-    strcat_s(szImportBase, MAX_PATH, PYTHON_IMPORT_PRE);
-    strcat_s(szImportBase, MAX_PATH, szPathBaseExe);
-    strcat_s(szImportBase, MAX_PATH, PYTHON_IMPORT_POST);
-    // 2.2: plugins relative to this process
-    strcat_s(szImportLibs, MAX_PATH, PYTHON_IMPORT_PRE);
+    // 2.1: plugins relative to this process
     strcat_s(szImportLibs, MAX_PATH, szPathBaseExe);
     strcat_s(szImportLibs, MAX_PATH, "pylib/");
-    strcat_s(szImportLibs, MAX_PATH, PYTHON_IMPORT_POST);
     // 3: Initialize (Embedded) Python.
-    Py_SetProgramName(L"VmmPyPluginManager");   
-    Py_Initialize();
-    PyEval_InitThreads();
-    PyRun_SimpleString(szImportBase);
-    PyRun_SimpleString(szImportLibs);
+#if PY_VERSION_HEX <= 0x030A0000
+    Py_SetProgramName(L"VmmPyPluginManager");
+#endif
+#if PY_VERSION_HEX <= 0x03060000
+    PyEval_InitThreads();   // Required for Python 3.6
+#endif
+    Util_PyAddSysPath(szPathBaseExe);
+    Util_PyAddSysPath(szImportLibs);
     // 4: Import VmmPyPlugin library/file to start the python part of the plugin manager.
     pyName = PyUnicode_DecodeFSDefault("vmmpyplugin");
     if(!pyName) { goto fail; }

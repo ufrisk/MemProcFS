@@ -173,7 +173,7 @@ DWORD VmmPyc_MemReadType_TypeCheck(_In_ PyObject* pyUnicodeTp, _Out_ PDWORD pcbT
         DWORD dw;
         BYTE b4[4];
     } tp = { 0 };
-    SIZE_T cch;
+    Py_ssize_t cch;
     char *sz;
     if((pyBytes = PyUnicode_AsUTF8String(pyUnicodeTp))) {
         PyBytes_AsStringAndSize(pyBytes, &sz, &cch);
@@ -210,20 +210,28 @@ DWORD VmmPyc_MemReadType_TypeCheck(_In_ PyObject* pyUnicodeTp, _Out_ PDWORD pcbT
 
 PyObject* VmmPyc_MemReadType_TypeGet(_In_ DWORD tp, _In_ PBYTE pb, _In_ DWORD cbRead)
 {
+    long l;
+    DWORD dw = 0;
     BYTE pbZERO[8] = { 0 };
     switch(tp) {
         case 'i8  ':
-            return PyLong_FromLong(*(BYTE*)((cbRead >= 1) ? pb : pbZERO)); break;
+            if(cbRead >= 1) { dw = *(BYTE*)pb; }
+            l = (long)((dw & 0x80) ? (0 - dw) : dw);
+            return PyLong_FromLong(l); break;
         case 'u8  ':
             return PyLong_FromUnsignedLong(*(BYTE*)((cbRead >= 1) ? pb : pbZERO)); break;
         case 'i16 ':
-            return PyLong_FromLong(*(WORD*)((cbRead >= 2) ? pb : pbZERO)); break;
+            if(cbRead >= 2) { dw = *(WORD*)pb; }
+            l = (long)((dw & 0x8000) ? (0 - dw) : dw);
+            return PyLong_FromLong(l); break;
         case 'u16 ':
             return PyLong_FromUnsignedLong(*(WORD*)((cbRead >= 2) ? pb : pbZERO)); break;
         case 'f32 ':
             return PyFloat_FromDouble(*(float*)((cbRead >= 4) ? pb : pbZERO)); break;
         case 'i32 ':
-            return PyLong_FromLong(*(DWORD*)((cbRead >= 4) ? pb : pbZERO)); break;
+            if(cbRead >= 4) { dw = *(DWORD*)pb; }
+            l = (long)((dw & 0x80000000) ? (0 - dw) : dw);
+            return PyLong_FromLong(l); break;
         case 'u32 ':
             return PyLong_FromUnsignedLong(*(DWORD*)((cbRead >= 4) ? pb : pbZERO)); break;
         case 'f64 ':
