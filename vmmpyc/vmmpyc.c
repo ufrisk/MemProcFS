@@ -216,13 +216,15 @@ PyObject* VmmPyc_MemReadType_TypeGet(_In_ DWORD tp, _In_ PBYTE pb, _In_ DWORD cb
     switch(tp) {
         case 'i8  ':
             if(cbRead >= 1) { dw = *(BYTE*)pb; }
-            l = (long)((dw & 0x80) ? (0 - dw) : dw);
+            l = (long)(dw & 0x7f);
+            if(dw & 0x80) { l = -l; }
             return PyLong_FromLong(l); break;
         case 'u8  ':
             return PyLong_FromUnsignedLong(*(BYTE*)((cbRead >= 1) ? pb : pbZERO)); break;
         case 'i16 ':
             if(cbRead >= 2) { dw = *(WORD*)pb; }
-            l = (long)((dw & 0x8000) ? (0 - dw) : dw);
+            l = (long)(dw & 0x7fff);
+            if(dw & 0x8000) { l = -l; }
             return PyLong_FromLong(l); break;
         case 'u16 ':
             return PyLong_FromUnsignedLong(*(WORD*)((cbRead >= 2) ? pb : pbZERO)); break;
@@ -230,7 +232,8 @@ PyObject* VmmPyc_MemReadType_TypeGet(_In_ DWORD tp, _In_ PBYTE pb, _In_ DWORD cb
             return PyFloat_FromDouble(*(float*)((cbRead >= 4) ? pb : pbZERO)); break;
         case 'i32 ':
             if(cbRead >= 4) { dw = *(DWORD*)pb; }
-            l = (long)((dw & 0x80000000) ? (0 - dw) : dw);
+            l = (long)(dw & 0x7fffffff);
+            if(dw & 0x80000000) { l = -l; }
             return PyLong_FromLong(l); break;
         case 'u32 ':
             return PyLong_FromUnsignedLong(*(DWORD*)((cbRead >= 4) ? pb : pbZERO)); break;
