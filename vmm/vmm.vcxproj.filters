@@ -521,6 +521,9 @@
     <ClCompile Include="ext\lz4.c">
       <Filter>Source Files\ext</Filter>
     </ClCompile>
+    <ClCompile Include="modules\m_evil_entropy.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="vmmdll.def">

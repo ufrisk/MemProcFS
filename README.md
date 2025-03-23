@@ -252,3 +252,4 @@ v5.8
 Latest:
 * Bug fixes.
 * Linux LeechAgent support using gRPC (LeechCore v2.21).
+* New FindEvil detection: High Entropy.

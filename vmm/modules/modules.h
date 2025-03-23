@@ -33,6 +33,7 @@ static const VMMEVIL_TYPE EVIL_PROC_BAD_DTB = { .Name = "PROC_BAD_DTB", .Severit
 static const VMMEVIL_TYPE EVIL_PROC_USER    = { .Name = "PROC_USER",    .Severity = 0xa000 };
 static const VMMEVIL_TYPE EVIL_PROC_BASEADDR= { .Name = "PROC_BASEADDR",.Severity = 0x9C00 };
 static const VMMEVIL_TYPE EVIL_PE_HDR_SPOOF = { .Name = "PE_HDR_SPOOF", .Severity = 0x9800 };
+static const VMMEVIL_TYPE EVIL_HIGH_ENTROPY = { .Name = "HIGH_ENTROPY", .Severity = 0x9400 };
 static const VMMEVIL_TYPE EVIL_PEB_MASQ     = { .Name = "PEB_MASQ",     .Severity = 0x9000 };
 static const VMMEVIL_TYPE EVIL_DRIVER_PATH  = { .Name = "DRIVER_PATH",  .Severity = 0x8000 };
 static const VMMEVIL_TYPE EVIL_PROC_DEBUG   = { .Name = "PROC_DEBUG",   .Severity = 0x7800 };

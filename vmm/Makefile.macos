@@ -33,9 +33,10 @@ OBJ = oscompatibility.o charutil.o util.o pe.o vmmdll.o vmmdll_core.o        \
 	  modules/m_fc_ntfs.o modules/m_fc_prefetch.o modules/m_fc_proc.o        \
 	  modules/m_fc_registry.o modules/m_fc_sys.o modules/m_fc_thread.o       \
 	  modules/m_fc_timeline.o modules/m_fc_web.o modules/m_fc_yara.o         \
-	  modules/m_evil_apc1.o modules/m_evil_av1.o modules/m_evil_kern1.o      \
-	  modules/m_evil_kernproc1.o modules/m_evil_proc1.o                      \
-	  modules/m_evil_proc2.o modules/m_evil_proc3.o modules/m_evil_thread1.o \
+	  modules/m_evil_apc1.o modules/m_evil_av1.o modules/m_evil_entropy.o    \
+	  modules/m_evil_kern1.o modules/m_evil_kernproc1.o                      \
+	  modules/m_evil_proc1.o modules/m_evil_proc2.o modules/m_evil_proc3.o   \
+	  modules/m_evil_thread1.o                                               \
 	  modules/m_misc_bitlocker.o modules/m_misc_eventlog.o                   \
 	  modules/m_misc_procinfo.o modules/m_misc_view.o                        \
 	  modules/m_sys.o modules/m_sys_driver.o modules/m_sys_mem.o             \
