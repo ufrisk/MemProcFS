@@ -36,7 +36,7 @@ Mounting the file system requires the <b>Dokany file system library</b> to be in
 
 To capture live memory (without PCILeech FPGA hardware) download [DumpIt](https://www.magnetforensics.com/resources/magnet-dumpit-for-windows) and start MemProcFS via DumpIt /LIVEKD mode. Alternatively, get WinPMEM by downloading the most recent signed [WinPMEM driver](https://github.com/Velocidex/c-aff4/tree/master/tools/pmem/resources/winpmem) and place it alongside MemProcFS - detailed instructions in the [LeechCore Wiki](https://github.com/ufrisk/LeechCore/wiki/Device_WinPMEM).
 
-PCILeech FPGA will require hardware as well as _FTD3XX.dll_ to be dropped alongside the MemProcFS binaries. Please check out the [LeechCore](https://github.com/ufrisk/LeechCore) project for instructions.
+PCILeech FPGA will require hardware as well as _FTD3XXWU.dll_ to be dropped alongside the MemProcFS binaries. Please check out the [LeechCore](https://github.com/ufrisk/LeechCore) project for instructions.
 
 ## Linux
 MemProcFS is dependent on packages, do a `sudo apt-get install libusb-1.0 fuse` before trying out MemProcFS. If building from source check out the guide about [MemProcFS on Linux](https://github.com/ufrisk/MemProcFS/wiki/_Linux).
