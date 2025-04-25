@@ -556,7 +556,7 @@ BOOL VmmWinPool_AllPool1903_Offsets(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystem
         PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_EX_POOL_HEAP_MANAGER_STATE", "NumberOfPools", &po->_EX_POOL_HEAP_MANAGER_STATE.oNumberOfPools) &&
         PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_EX_POOL_HEAP_MANAGER_STATE", "PoolNode", &po->_EX_POOL_HEAP_MANAGER_STATE.oPoolNode) &&
         PDB_GetTypeChildOffset(H, PDB_HANDLE_KERNEL, "_EX_POOL_HEAP_MANAGER_STATE", "SpecialHeaps", &po->_EX_POOL_HEAP_MANAGER_STATE.oSpecialHeaps) &&
-        PDB_GetTypeSizeShort(H, PDB_HANDLE_KERNEL, "_EX_HEAP_POOL_NODE", &po->_EX_HEAP_POOL_NODE.cb) && (po->_EX_HEAP_POOL_NODE.cb < 0x4000) &&
+        PDB_GetTypeSizeShort(H, PDB_HANDLE_KERNEL, "_EX_HEAP_POOL_NODE", &po->_EX_HEAP_POOL_NODE.cb) && (po->_EX_HEAP_POOL_NODE.cb < 0x8000) &&
         PDB_GetTypeSizeShort(H, PDB_HANDLE_KERNEL, "_SEGMENT_HEAP", &po->_SEGMENT_HEAP.cb) &&
         PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_SEGMENT_HEAP", "SegContexts", &po->_SEGMENT_HEAP.oSegContexts) &&
         PDB_GetTypeSizeShort(H, PDB_HANDLE_KERNEL, "_HEAP_SEG_CONTEXT", &po->_HEAP_SEG_CONTEXT.cb) &&
@@ -873,7 +873,9 @@ VOID VmmWinPool_AllPool1903_5_VS_DoWork(
     }
     // signature check: _HEAP_VS_SUBSEGMENT
     if(wSize != (wSignature ^ 0x2BED)) {
-        return;
+        if((H->vmm.kernel.dwVersionBuild <= 22000) || (wSignature & 0xf000)) {
+            return;
+        }
     }
     // loop over pool entries
     while(oVsChunkHdr + 0x30 < cb) {
