@@ -441,6 +441,9 @@ BOOL VmmPyPlugin_PythonInitializeEmbedded(_In_ VMM_HANDLE H, _In_ HMODULE hDllPy
 #if PY_VERSION_HEX <= 0x03060000
         PyEval_InitThreads();   // Required for Python 3.6
 #endif
+        if(!Py_IsInitialized()) {
+            Py_Initialize();
+        }
         // 4: Import VmmPyPlugin library/file to start the python part of the plugin manager.
         pyName = PyUnicode_DecodeFSDefault("vmmpyplugin");
         if(!pyName) { goto fail; }
@@ -511,6 +514,9 @@ BOOL VmmPyPlugin_PythonInitializeEmbedded(_In_ VMM_HANDLE H, _In_ HMODULE hDllPy
 #if PY_VERSION_HEX <= 0x03060000
     PyEval_InitThreads();   // Required for Python 3.6
 #endif
+    if(!Py_IsInitialized()) {
+        Py_Initialize();
+    }
     Util_PyAddSysPath(szPathBaseExe);
     Util_PyAddSysPath(szImportLibs);
     // 4: Import VmmPyPlugin library/file to start the python part of the plugin manager.

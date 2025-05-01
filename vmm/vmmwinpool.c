@@ -873,7 +873,7 @@ VOID VmmWinPool_AllPool1903_5_VS_DoWork(
     }
     // signature check: _HEAP_VS_SUBSEGMENT
     if(wSize != (wSignature ^ 0x2BED)) {
-        if((H->vmm.kernel.dwVersionBuild <= 22000) || (wSignature & 0xf000)) {
+        if(wSignature & 0xf000) {
             return;
         }
     }
