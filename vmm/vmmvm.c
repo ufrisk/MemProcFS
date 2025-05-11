@@ -510,7 +510,14 @@ VOID VmmVm_DoWork_4_NewVM_StartupVmm(_In_ VMM_HANDLE H, _In_ PVMMOB_VM_CONTEXT p
             szArg[cArg++] = "-forensic";
             szArg[cArg++] = "1";
         }
+        szArg[cArg++] = "-memmap";
+        szArg[cArg++] = "auto";
         hVMM = VMMDLL_Initialize(cArg, szArg);
+        if(!hVMM && (H->vmm.tpMemoryModel == VMM_MEMORYMODEL_ARM64)) {
+            szArg[cArg++] = "-arch";
+            szArg[cArg++] = "arm64";
+            hVMM = VMMDLL_Initialize(cArg, szArg);
+        }
         if(!hVMM) {
             // Windows VM initialization failed!
             // Try init physical memory only VM in recursive call.
@@ -746,9 +753,10 @@ VOID VmmVm_DoWork_2_RefreshVMs(_In_ VMM_HANDLE H, _In_ PVMMOB_VMGLOBAL_CONTEXT p
 _Success_(return)
 BOOL VmmVm_DoWork_1_AllocGlobalContext_GetOffsets(_In_ VMM_HANDLE H, _In_ PVMM_VM_OFFSET po)
 {
+    LPCSTR sz_PRTN = (H->vmm.tpMemoryModel == VMM_MEMORYMODEL_ARM64) ? "_PRTN_ARM64" : "_PRTN";
     if(H->vmm.kernel.dwVersionBuild >= 19041) {
-        InfoDB_TypeChildOffset_Static(H, "hv", "_PRTN", "PrcsSignature", &po->prtn.PrcsSignature);
-        InfoDB_TypeChildOffset_Static(H, "hv", "_PRTN", "PrcsHndVmMem", &po->prtn.PrcsHndVmMem);
+        InfoDB_TypeChildOffset_Static(H, "hv", sz_PRTN, "PrcsSignature", &po->prtn.PrcsSignature);
+        InfoDB_TypeChildOffset_Static(H, "hv", sz_PRTN, "PrcsHndVmMem", &po->prtn.PrcsHndVmMem);
         InfoDB_TypeChildOffset_Static(H, "hv", "_PRTN", "HvpHndVmMem", &po->prtn.HvpHndVmMem);
         InfoDB_TypeChildOffset_Static(H, "hv", "_PRTN", "HvpSignature", &po->prtn.HvpSignature);
         InfoDB_TypeChildOffset_Static(H, "hv", "_PRTN", "HvpTreeRoot", &po->prtn.HvpTreeRoot);
@@ -756,14 +764,14 @@ BOOL VmmVm_DoWork_1_AllocGlobalContext_GetOffsets(_In_ VMM_HANDLE H, _In_ PVMM_V
         InfoDB_TypeChildOffset_Static(H, "hv", "_MB", "VmMem", &po->mb.VmMemOffset);
     }
     return
-        InfoDB_TypeSize_Static(H, "hv", "_PRTN", &po->prtn.cb) &&
+        InfoDB_TypeSize_Static(H, "hv", sz_PRTN, &po->prtn.cb) &&
         InfoDB_TypeSize_Static(H, "hv", "_GPAR", &po->gpar.cb) &&
         InfoDB_TypeSize_Static(H, "hv", "_MB", &po->mb.cb) &&
-        InfoDB_TypeChildOffset_Static(H, "hv", "_PRTN", "Signature", &po->prtn.Signature) &&
-        InfoDB_TypeChildOffset_Static(H, "hv", "_PRTN", "Type", &po->prtn.Type) &&
-        InfoDB_TypeChildOffset_Static(H, "hv", "_PRTN", "Name", &po->prtn.Name) &&
-        InfoDB_TypeChildOffset_Static(H, "hv", "_PRTN", "Id", &po->prtn.Id) &&
-        InfoDB_TypeChildOffset_Static(H, "hv", "_PRTN", "HndGpar", &po->prtn.HndGpar) &&
+        InfoDB_TypeChildOffset_Static(H, "hv", sz_PRTN, "Signature", &po->prtn.Signature) &&
+        InfoDB_TypeChildOffset_Static(H, "hv", sz_PRTN, "Type", &po->prtn.Type) &&
+        InfoDB_TypeChildOffset_Static(H, "hv", sz_PRTN, "Name", &po->prtn.Name) &&
+        InfoDB_TypeChildOffset_Static(H, "hv", sz_PRTN, "Id", &po->prtn.Id) &&
+        InfoDB_TypeChildOffset_Static(H, "hv", sz_PRTN, "HndGpar", &po->prtn.HndGpar) &&
         InfoDB_TypeChildOffset_Static(H, "hv", "_GPAR", "Signature", &po->gpar.Signature) &&
         InfoDB_TypeChildOffset_Static(H, "hv", "_GPAR", "GpaPfnBase", &po->gpar.GpaPfnBase) &&
         InfoDB_TypeChildOffset_Static(H, "hv", "_GPAR", "GpaPfnTop", &po->gpar.GpaPfnTop) &&
