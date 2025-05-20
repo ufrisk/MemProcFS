@@ -189,14 +189,14 @@ VOID MFcProc_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_
     LocalFree(pd);
 }
 
-static void MFcProc_BuildFlagString(PVMM_PROCESS pProcess, const char* szUserName, BOOL fAccountUser, char* szFlag, size_t cchFlag) {
-    size_t o = 0;
-    
-    if (pProcess->win.fWow64) { szFlag[o++] = '3'; szFlag[o++] = '2'; }
-    if (pProcess->win.EPROCESS.fNoLink) szFlag[o++] = 'E';
-    if (pProcess->dwState != 0) szFlag[o++] = 'T';
-    if (fAccountUser) szFlag[o++] = 'U';
-    if (o == 0) {
+static VOID MFcProc_BuildFlagString(_In_ PVMM_PROCESS pProcess, _In_ BOOL fAccountUser, _Out_writes_(8) LPSTR szFlag)
+{
+    SIZE_T o = 0;
+    if(pProcess->win.fWow64) { szFlag[o++] = '3'; szFlag[o++] = '2'; }
+    if(pProcess->win.EPROCESS.fNoLink) { szFlag[o++] = 'E'; }
+    if(pProcess->dwState != 0) { szFlag[o++] = 'T'; }
+    if(fAccountUser) { szFlag[o++] = 'U'; }
+    if(o == 0) {
         szFlag[o++] = '-';
     }
     szFlag[o] = '\0';
@@ -211,7 +211,7 @@ VOID MFcProc_FcLogCSV(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ 
     CHAR szFlag[8];
     if(!pProcess) { return; }
     pu = VmmWin_UserProcessParameters_Get(H, pProcess);
-    MFcProc_BuildFlagString(pProcess, szUserName, fAccountUser, szFlag, sizeof(szFlag));
+    MFcProc_BuildFlagString(pProcess, fAccountUser, szFlag);
     MFcProc_LogProcess_GetUserName(H, pProcess, szUserName, &fAccountUser);
     FcCsv_Reset(hCSV);
     FcFileAppend(H, "process.csv", "%i,%i,%i,%s,%s,%s,%s,%s,%s,%i,0x%llx,0x%llx,0x%x,0x%llx,0x%llx,%s,%s,%s,%s\n",
