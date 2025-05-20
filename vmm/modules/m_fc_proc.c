@@ -11,7 +11,7 @@
 #include "modules.h"
 #include "../vmmwin.h"
 
-static LPSTR MFCPROC_CSV_PROCESS = "PID,PPID,State,ShortName,Name,IntegrityLevel,User,CreateTime,ExitTime,Wow64,EPROCESS,PEB,PEB32,DTB,UserDTB,UserPath,KernelPath,CommandLine\n";
+static LPSTR MFCPROC_CSV_PROCESS = "PID,PPID,State,ShortName,Name,IntegrityLevel,User,CreateTime,ExitTime,Wow64,EPROCESS,PEB,PEB32,DTB,UserDTB,UserPath,KernelPath,CommandLine,Flag\n";
 
 static LPSTR FC_SQL_SCHEMA_PROCESS =
     "DROP TABLE IF EXISTS process; " \
@@ -189,17 +189,32 @@ VOID MFcProc_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_
     LocalFree(pd);
 }
 
+static void MFcProc_BuildFlagString(PVMM_PROCESS pProcess, const char* szUserName, BOOL fAccountUser, char* szFlag, size_t cchFlag) {
+    size_t o = 0;
+    
+    if (pProcess->win.fWow64) { szFlag[o++] = '3'; szFlag[o++] = '2'; }
+    if (pProcess->win.EPROCESS.fNoLink) szFlag[o++] = 'E';
+    if (pProcess->dwState != 0) szFlag[o++] = 'T';
+    if (fAccountUser) szFlag[o++] = 'U';
+    if (o == 0) {
+        szFlag[o++] = '-';
+    }
+    szFlag[o] = '\0';
+}
+
 VOID MFcProc_FcLogCSV(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VMMDLL_CSV_HANDLE hCSV)
 {
     PVMM_PROCESS pProcess = ctxP->pProcess;
     PVMMWIN_USER_PROCESS_PARAMETERS pu;
     BOOL fAccountUser = FALSE;
     CHAR szUserName[17];
+    CHAR szFlag[8];
     if(!pProcess) { return; }
     pu = VmmWin_UserProcessParameters_Get(H, pProcess);
+    MFcProc_BuildFlagString(pProcess, szUserName, fAccountUser, szFlag, sizeof(szFlag));
     MFcProc_LogProcess_GetUserName(H, pProcess, szUserName, &fAccountUser);
     FcCsv_Reset(hCSV);
-    FcFileAppend(H, "process.csv", "%i,%i,%i,%s,%s,%s,%s,%s,%s,%i,0x%llx,0x%llx,0x%x,0x%llx,0x%llx,%s,%s,%s\n",
+    FcFileAppend(H, "process.csv", "%i,%i,%i,%s,%s,%s,%s,%s,%s,%i,0x%llx,0x%llx,0x%x,0x%llx,0x%llx,%s,%s,%s,%s\n",
         pProcess->dwPID,
         pProcess->dwPPID,
         pProcess->dwState,
@@ -217,7 +232,8 @@ VOID MFcProc_FcLogCSV(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ 
         pProcess->paDTB_UserOpt,
         FcCsv_String(hCSV, pu->uszImagePathName),
         FcCsv_String(hCSV, pProcess->pObPersistent->uszPathKernel),
-        FcCsv_String(hCSV, pu->uszCommandLine)
+        FcCsv_String(hCSV, pu->uszCommandLine),
+        FcCsv_String(hCSV, szFlag)
     );
 }
 
