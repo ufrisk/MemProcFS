@@ -214,7 +214,6 @@ v5.8
 * FindEvil: AV detections from Windows Defender residing on the analyzed system.
 * Python API: new functionality (multi-read, type-read) and improved scatter read performance.
 * Support for Proxmox memory dump files.
-</details>
 
 [v5.10](https://github.com/ufrisk/MemProcFS/releases/tag/v5.10)
 * Support for Windows 11 24H2 release.
@@ -227,6 +226,7 @@ v5.8
 * [Eventlog module](https://github.com/ufrisk/MemProcFS/wiki/FS_Misc_Eventlog) for convenient access to event log files.
 * Binary search API now allows for up to 16M search terms (up from previous 16).
 * Prefetch parsing.
+</details>
 
 [v5.11](https://github.com/ufrisk/MemProcFS/releases/tag/v5.11)
 * Bug fixes.
@@ -249,7 +249,8 @@ v5.8
 * Linux clang compilation support.
 * macOS support.
 
-Latest:
+[v5.15](https://github.com/ufrisk/MemProcFS/releases/tag/v5.14)
 * Bug fixes.
 * Linux LeechAgent support using gRPC (LeechCore v2.21).
 * New FindEvil detection: High Entropy.
+* [DNS cache parsing](https://github.com/ufrisk/MemProcFS/wiki/FS_SysInfo_Network). Thanks [@MattCore71](https://github.com/MattCore71) for the contribution.

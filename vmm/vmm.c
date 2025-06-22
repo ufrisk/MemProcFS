@@ -2811,7 +2811,7 @@ BOOL VmmSearch(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _Inout_ PVMM_M
     if(!ctxs->vaMax) {
         if(!pProcess) {
             ctxs->vaMax = H->dev.paMax;
-        } else if(H->vmm.tpMemoryModel == VMMDLL_MEMORYMODEL_X64) {
+        } else if(H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X64) {
             ctxs->vaMax = (QWORD)-1;
         } else {
             ctxs->vaMax = (DWORD)-1;
@@ -2830,7 +2830,7 @@ BOOL VmmSearch(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _Inout_ PVMM_M
         ctxi->fMask[iS] = (memcmp(ctxs->pSearch[iS].pbSkipMask, pbZERO, ctxs->pSearch[iS].cb) ? TRUE : FALSE);
     }
     // 3: perform search
-    if(pProcess && (ctxs->fForcePTE || ctxs->fForceVAD || (H->vmm.tpMemoryModel == VMMDLL_MEMORYMODEL_X64))) {
+    if(pProcess && (ctxs->fForcePTE || ctxs->fForceVAD || (H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X64))) {
         fResult = VmmSearch_VirtPteVad(H, ctxi, ctxs);
     } else {
         ctxs->vaCurrent = ctxs->vaMin;
@@ -3168,12 +3168,6 @@ BOOL VmmMap_GetHeap(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_
     return *ppObHeapMap != NULL;
 }
 
-int VmmMap_GetHeapEntry_CmpFind(_In_ QWORD va, _In_ QWORD qwEntry)
-{
-    PVMM_MAP_HEAPENTRY pEntry = (PVMM_MAP_HEAPENTRY)qwEntry;
-    return (pEntry->va > va) ? -1 : ((pEntry->va < va) ? 1 : 0);
-}
-
 /*
 * Retrieve a single PVMM_MAP_HEAPENTRY for a given HeapMap and heap virtual address.
 * -- H
@@ -3185,7 +3179,9 @@ PVMM_MAP_HEAPENTRY VmmMap_GetHeapEntry(_In_ VMM_HANDLE H, _In_ PVMMOB_MAP_HEAP p
 {
     DWORD i;
     if(vaHeap > 0x1000) {
-        return Util_qfind(vaHeap, pHeapMap->cMap, pHeapMap->pMap, sizeof(VMM_MAP_HEAPENTRY), VmmMap_GetHeapEntry_CmpFind);
+        for(i = 0; i < pHeapMap->cMap; i++) {
+            if(pHeapMap->pMap[i].va == vaHeap) { return pHeapMap->pMap + i; }
+        }
     }
     for(i = 0; i < pHeapMap->cMap; i++) {
         if(pHeapMap->pMap[i].iHeap == (DWORD)vaHeap) { return pHeapMap->pMap + i; }

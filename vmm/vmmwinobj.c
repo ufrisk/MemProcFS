@@ -855,7 +855,7 @@ PVMM_PROCESS VmmWinObj_GetProcessAssociated(_In_ VMM_HANDLE H, _In_ QWORD vaObje
 QWORD VmmWinObjFile_ReadSubsectionAndSharedCache_GetPteSubsection(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_ QWORD vaPteBase, _In_ QWORD iPte, _In_ QWORD fVmmRead)
 {
     QWORD pte = 0;
-    DWORD cbPte = H->vmm.tpMemoryModel == VMMDLL_MEMORYMODEL_X86 ? 4 : 8;
+    DWORD cbPte = H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X86 ? 4 : 8;
     VmmReadEx(H, pSystemProcess, vaPteBase + iPte * cbPte, (PBYTE)&pte, cbPte, NULL, fVmmRead);
     return pte;
 }

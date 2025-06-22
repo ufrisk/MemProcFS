@@ -35,6 +35,7 @@
 #define OB_TAG_MAP_USER                 'Musr'
 #define OB_TAG_MAP_SERVICE              'Msvc'
 #define OB_TAG_MAP_NET                  'Mnet'
+#define OB_TAG_MAP_NETDNS               'Mdns'
 #define OB_TAG_MAP_PFN                  'Mpfn'
 #define OB_TAG_MAP_EVIL                 'Mevl'
 #define OB_TAG_MAP_TASK                 'Mtsk'

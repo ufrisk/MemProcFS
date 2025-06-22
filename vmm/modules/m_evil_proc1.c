@@ -168,7 +168,7 @@ VOID MEvilProc1_VadNoImageExecuteEntry(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pPro
             cEvilRWX++;
             tpEvil = peVad->fPrivateMemory ? EVIL_PRIVATE_RWX : EVIL_NOIMAGE_RWX;
         } else {
-            if(!peVad->fPrivateMemory && peVad->fFile && (H->vmm.tpMemoryModel == VMMDLL_MEMORYMODEL_ARM64) && CharUtil_StrStartsWith(peVad->uszText, "\\Windows\\XtaCache\\", TRUE)) {
+            if(!peVad->fPrivateMemory && peVad->fFile && (H->vmm.tpMemoryModel == VMM_MEMORYMODEL_ARM64) && CharUtil_StrStartsWith(peVad->uszText, "\\Windows\\XtaCache\\", TRUE)) {
                 continue;
             }
             if(cEvilRX >= EVIL_MAXCOUNT_VAD_EXECUTE) { continue; }

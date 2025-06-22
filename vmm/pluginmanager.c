@@ -8,10 +8,15 @@
 #include "charutil.h"
 #include "util.h"
 #include "vmm.h"
+#include "vmmex.h"
 #include "vmmdll.h"
 #include "vmmlog.h"
 #include "fc.h"
 #include "modules/modules_init.h"
+
+#ifdef VMM_PROFILE_FULL
+#include "ex/vmmex_modules_init.h"
+#endif /* VMM_PROFILE_FULL */
 
 //
 // This file contains functionality related to keeping track of plugins, both
@@ -1175,6 +1180,11 @@ BOOL PluginManager_Initialize(_In_ VMM_HANDLE H)
         if(H->fAbort) { goto fail; }
         PluginManager_Initialize_RegInfoInit(H, &ri, NULL);
         g_pfnModulesAllInternal[i](H, &ri);
+    }
+    for(i = 0; i < sizeof(g_pfnModulesExAllInternal) / sizeof(PVOID); i++) {
+        if(H->fAbort) { goto fail; }
+        PluginManager_Initialize_RegInfoInit(H, &ri, NULL);
+        g_pfnModulesExAllInternal[i](H, &ri);
     }
     // 4: process dll modules
     PluginManager_Initialize_ExternalDlls(H);

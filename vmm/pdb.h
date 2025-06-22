@@ -16,6 +16,7 @@ typedef QWORD                               PDB_HANDLE;
 #define PDB_HANDLE_TCPIP                    ((PDB_HANDLE)-2)
 #define PDB_HANDLE_NTDLL                    ((PDB_HANDLE)-3)
 #define PDB_HANDLE_NTDLL_WOW64              ((PDB_HANDLE)-4)
+#define PDB_HANDLE_DNSRSLVR                 ((PDB_HANDLE)-5)
 
 /*
 * Initialize the PDB sub-system. This should ideally be done on Vmm Init().

@@ -22,7 +22,7 @@ endif
 LDFLAGS += -Wl,-rpath,'$$ORIGIN' -g -ldl -shared -L. -l:leechcore.so -lm -Wl,-z,noexecstack
 DEPS = vmmdll.h
 OBJ = oscompatibility.o charutil.o util.o pe.o vmmdll.o vmmdll_core.o        \
-	  vmmdll_remote.o vmmdll_scatter.o vmm.o fc.o                            \
+	  vmmdll_remote.o vmmdll_scatter.o vmm.o vmmex_light.o fc.o              \
 	  mm/mm_arm64.o mm/mm_x64.o mm/mm_x86.o mm/mm_x86pae.o mm/mm_pfn.o       \
 	  mm/mm_vad.o mm/mm_win.o                                                \
 	  pluginmanager.o pdb.o infodb.o                                         \
@@ -48,9 +48,10 @@ OBJ = oscompatibility.o charutil.o util.o pe.o vmmdll.o vmmdll_core.o        \
 	  modules/m_misc_bitlocker.o modules/m_misc_eventlog.o                   \
 	  modules/m_misc_procinfo.o modules/m_misc_view.o                        \
 	  modules/m_sys.o modules/m_sys_driver.o modules/m_sys_mem.o             \
-	  modules/m_sys_net.o modules/m_sys_obj.o modules/m_sys_pool.o           \
-	  modules/m_sys_proc.o modules/m_sys_svc.o modules/m_sys_syscall.o       \
-	  modules/m_sys_sysinfo.o modules/m_sys_task.o modules/m_sys_user.o      \
+	  modules/m_sys_net.o modules/m_sys_netdns.o modules/m_sys_obj.o         \
+	  modules/m_sys_pool.o modules/m_sys_proc.o modules/m_sys_svc.o          \
+	  modules/m_sys_syscall.o modules/m_sys_sysinfo.o modules/m_sys_task.o   \
+	  modules/m_sys_user.o                                                   \
 	  modules/m_phys2virt.o modules/m_search.o modules/m_searchyara.o        \
 	  modules/m_proc_console.o modules/m_proc_file_handles_vads.o            \
 	  modules/m_proc_file_modules.o modules/m_proc_handle.o                  \

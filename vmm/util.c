@@ -1124,6 +1124,14 @@ fail:
     return VMMDLL_STATUS_FILE_INVALID;
 }
 
+NTSTATUS Util_VfsReadFile_FromResourceEncrypted(_In_ VMM_HANDLE H, _In_ LPWSTR wszResourceName, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+{
+    DWORD i, cMax;
+    NTSTATUS nt = Util_VfsReadFile_FromResource(H, wszResourceName, pb, cb, pcbRead, cbOffset);
+    for(i = 0, cMax = *pcbRead; i < cMax; i++) { pb[i] ^= 0xAB; }
+    return nt;
+}
+
 /*
 * Delete a file denoted by its utf-8 full path.
 * -- uszPathFile
@@ -1169,4 +1177,5 @@ VOID Util_DeleteFileU(_In_ LPCSTR uszPathFile)
 
 DWORD Util_ResourceSize(_In_ VMM_HANDLE H, _In_ LPWSTR wszResourceName) { return 0; }
 NTSTATUS Util_VfsReadFile_FromResource(_In_ VMM_HANDLE H, _In_ LPWSTR wszResourceName, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset) { return VMMDLL_STATUS_FILE_INVALID; }
+NTSTATUS Util_VfsReadFile_FromResourceEncrypted(_In_ VMM_HANDLE H, _In_ LPWSTR wszResourceName, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset) { return VMMDLL_STATUS_FILE_INVALID; }
 #endif /* LINUX || MACOS */

@@ -484,7 +484,7 @@ VOID M_BDE_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     // the bitlocker plugin is only supported on: 64-bit Windows or 32-bit Windows 10 14393 or later.
-    if((pRI->tpSystem != VMM_SYSTEM_WINDOWS_32) && (pRI->tpSystem != VMM_SYSTEM_WINDOWS_64)) { return; }
+    if((pRI->tpSystem != VMMDLL_SYSTEM_WINDOWS_32) && (pRI->tpSystem != VMMDLL_SYSTEM_WINDOWS_64)) { return; }
     if(pRI->sysinfo.dwVersionBuild < 7600) { return; }              // WIN7+ are supported
     if(!(pRI->reg_info.ctxM = (PVMMDLL_PLUGIN_INTERNAL_CONTEXT)ObContainer_New())) { return; }
     strcpy_s(pRI->reg_info.uszPathName, 128, "\\misc\\bitlocker");  // module name - 'bitlocker'.

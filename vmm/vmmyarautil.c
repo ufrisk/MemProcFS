@@ -646,7 +646,7 @@ BOOL VmmYaraUtil_SearchSingleProcess(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pP
     if(!ctxs->vaMax) {
         if(!pProcess) {
             ctxs->vaMax = H->dev.paMax;
-        } else if(H->vmm.tpMemoryModel == VMMDLL_MEMORYMODEL_X64) {
+        } else if(H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X64) {
             ctxs->vaMax = (QWORD)-1;
         } else {
             ctxs->vaMax = (DWORD)-1;
@@ -669,7 +669,7 @@ BOOL VmmYaraUtil_SearchSingleProcess(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pP
     }
     if(!ctxi->hVmmYaraRules) { goto fail; }
     // 4: perform search
-    if(pProcess && (ctxs->fForcePTE || ctxs->fForceVAD || (H->vmm.tpMemoryModel == VMMDLL_MEMORYMODEL_X64))) {
+    if(pProcess && (ctxs->fForcePTE || ctxs->fForceVAD || (H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X64))) {
         fResult = VmmYaraUtil_VirtPteVad(H, ctxi, ctxs);
     } else {
         ctxs->vaCurrent = ctxs->vaMin;

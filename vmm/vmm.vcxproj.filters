@@ -183,6 +183,9 @@
     <ClInclude Include="ext\lz4.h">
       <Filter>Header Files\ext</Filter>
     </ClInclude>
+    <ClInclude Include="vmmex.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="vmmdll.c">
@@ -523,6 +526,12 @@
     </ClCompile>
     <ClCompile Include="modules\m_evil_entropy.c">
       <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="modules\m_sys_netdns.c">
+      <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="vmmex_light.c">
+      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

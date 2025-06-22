@@ -441,8 +441,8 @@ UCHAR M_MiniDump_Initialize_GetThreadPriorityClass(PVMM_MAP_THREADENTRY peT)
 
 DWORD M_MiniDump_Initialize_AddBinary(_Inout_ POB_M_MINIDUMP_CONTEXT ctx, _In_ PBYTE pb, _In_ DWORD cb)
 {
-    ctx->cb = (ctx->cb + 3) & ~3;       // DWORD ALIGN START
-    if((ctx->cb >> 23) || (cb >> 23)) { return 0; }
+    ctx->cb = (ctx->cb + 3) & ~3;                       // DWORD ALIGN START
+    if((ctx->cb >> 23) || (cb >> 23)) { return 0; }     // buffer size = 16MB, max 8MB buffer/entry allowed.
     memcpy(ctx->pb + ctx->cb, pb, cb);
     ctx->cb += cb;
     return ctx->cb - cb;
@@ -1151,7 +1151,7 @@ VOID M_MiniDump_Close(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
 VOID M_ProcMiniDump_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
-    if(!((pRI->tpSystem == VMM_SYSTEM_WINDOWS_64) || (pRI->tpSystem == VMM_SYSTEM_WINDOWS_32))) { return; }
+    if(!((pRI->tpSystem == VMMDLL_SYSTEM_WINDOWS_64) || (pRI->tpSystem == VMMDLL_SYSTEM_WINDOWS_32))) { return; }
     if(!(pRI->reg_info.ctxM = (PVMMDLL_PLUGIN_INTERNAL_CONTEXT)ObMap_New(H, OB_MAP_FLAGS_OBJECT_OB))) { return; }  // internal module context
     strcpy_s(pRI->reg_info.uszPathName, 128, "\\minidump");               // module name
     pRI->reg_info.fRootModule = FALSE;                                    // module shows in root directory

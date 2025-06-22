@@ -852,6 +852,10 @@ typedef struct tdOB_STRMAP *POB_STRMAP;
 // incompatible with OB_STRMAP_FLAGS_STR_ASSIGN_TEMPORARY option.
 #define OB_STRMAP_FLAGS_STR_ASSIGN_OFFSET      0x04
 
+// Read UNICODE OBJECT data from another process than SYSTEM (4).
+// PID is specified in flags high 32-bits.
+#define OB_STRMAP_FLAGS_WITH_PROCESS_PID       0x08
+
 //
 // STRMAP BELOW:
 //

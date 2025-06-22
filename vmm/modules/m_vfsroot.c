@@ -172,7 +172,7 @@ VOID MVfsRoot_InitializeDumpContext64(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSyst
     *(PQWORD)(pb + 0x018) = H->vmm.kernel.opt.vaPfnDatabase;
     *(PQWORD)(pb + 0x020) = H->vmm.kernel.opt.vaPsLoadedModuleListExp;
     *(PQWORD)(pb + 0x028) = pSystemProcess->win.EPROCESS.va;
-    *(PDWORD)(pb + 0x030) = (H->vmm.tpMemoryModel == VMMDLL_MEMORYMODEL_X64) ? 0x8664 : 0xAA64;     // MachineImageType = AMD64 / ARM64
+    *(PDWORD)(pb + 0x030) = (H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X64) ? 0x8664 : 0xAA64;     // MachineImageType = AMD64 / ARM64
     *(PDWORD)(pb + 0x034) = max(1, H->vmm.kernel.opt.cCPUs);
     *(PDWORD)(pb + 0x038) = 0xDEADDEAD;                         // BugCheckCode
     *(PQWORD)(pb + 0x040) = 1;                                  // BugCheck1

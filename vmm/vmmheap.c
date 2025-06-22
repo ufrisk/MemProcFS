@@ -315,7 +315,7 @@ PVMMOB_MAP_HEAPALLOC VmmHeapAlloc_Init_DoWork(_In_ VMM_HANDLE H, _In_ PVMM_PROCE
     // 1: init
     if(!(ctx = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMHEAPNT_CTX)))) { goto fail; }
     if(!VmmMap_GetHeap(H, pProcess, &ctx->pHeapMap) || !(ctx->pHeapEntry = VmmMap_GetHeapEntry(H, ctx->pHeapMap, vaHeap))) {
-        VmmLog(H, MID_HEAP, LOGLEVEL_5_DEBUG, "FAIL: NO HEAP ENTRY: pid=%i %va=%llx", pProcess->dwPID, vaHeap);
+        VmmLog(H, MID_HEAP, LOGLEVEL_5_DEBUG, "FAIL: NO HEAP ENTRY: pid=%i va=%llx", pProcess->dwPID, vaHeap);
         goto fail;
     }
     ctx->f32 = ctx->pHeapEntry->f32;
@@ -328,7 +328,7 @@ PVMMOB_MAP_HEAPALLOC VmmHeapAlloc_Init_DoWork(_In_ VMM_HANDLE H, _In_ PVMM_PROCE
     } else if(ctx->pHeapEntry->tp == VMM_HEAP_TP_SEG) {
         VmmHeapAlloc_SegInit(H, ctx);
     } else {
-        VmmLog(H, MID_HEAP, LOGLEVEL_2_WARNING, "FAIL: UNSUPPORTED HEAP TYPE - SHOULD NOT HAPPEN!: pid=%i %va=%llx", pProcess->dwPID, vaHeap);
+        VmmLog(H, MID_HEAP, LOGLEVEL_2_WARNING, "FAIL: UNSUPPORTED HEAP TYPE - SHOULD NOT HAPPEN!: pid=%i va=%llx", pProcess->dwPID, vaHeap);
         goto fail;
     }
     // 3: add large entries from heap map segments

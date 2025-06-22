@@ -189,6 +189,7 @@ LPSTR PDB_ModuleNameFromHandleMagic(_In_ PDB_HANDLE hPDB)
         case PDB_HANDLE_TCPIP:       return "tcpip";
         case PDB_HANDLE_NTDLL:       return "ntdll";
         case PDB_HANDLE_NTDLL_WOW64: return "wntdll";
+        case PDB_HANDLE_DNSRSLVR:    return "dnsrslvr";
         default:                     return NULL;
     }
 }

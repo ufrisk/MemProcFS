@@ -264,7 +264,7 @@ BOOL Virt2Phys_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_
 VOID M_Virt2Phys_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
-    if(!((pRI->tpMemoryModel == VMM_MEMORYMODEL_X64) || (pRI->tpMemoryModel == VMM_MEMORYMODEL_ARM64) || (pRI->tpMemoryModel == VMM_MEMORYMODEL_X86) || (pRI->tpMemoryModel == VMM_MEMORYMODEL_X86PAE))) { return; }
+    if(!((pRI->tpMemoryModel == VMMDLL_MEMORYMODEL_X64) || (pRI->tpMemoryModel == VMMDLL_MEMORYMODEL_ARM64) || (pRI->tpMemoryModel == VMMDLL_MEMORYMODEL_X86) || (pRI->tpMemoryModel == VMMDLL_MEMORYMODEL_X86PAE))) { return; }
     strcpy_s(pRI->reg_info.uszPathName, 128, "\\virt2phys");             // module name
     pRI->reg_info.fProcessModule = TRUE;                                 // module shows in process directory
     pRI->reg_fn.pfnList = Virt2Phys_List;                                // List function supported

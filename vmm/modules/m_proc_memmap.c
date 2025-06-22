@@ -318,7 +318,7 @@ VOID MemMap_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ 
 VOID M_ProcMemMap_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
-    if(!((pRI->tpMemoryModel == VMM_MEMORYMODEL_X64) || (pRI->tpMemoryModel == VMM_MEMORYMODEL_ARM64) || (pRI->tpMemoryModel == VMM_MEMORYMODEL_X86) || (pRI->tpMemoryModel == VMM_MEMORYMODEL_X86PAE))) { return; }
+    if(!((pRI->tpMemoryModel == VMMDLL_MEMORYMODEL_X64) || (pRI->tpMemoryModel == VMMDLL_MEMORYMODEL_ARM64) || (pRI->tpMemoryModel == VMMDLL_MEMORYMODEL_X86) || (pRI->tpMemoryModel == VMMDLL_MEMORYMODEL_X86PAE))) { return; }
     strcpy_s(pRI->reg_info.uszPathName, 128, "\\memmap");               // module name
     pRI->reg_info.fRootModule = FALSE;                                  // module shows in root directory
     pRI->reg_info.fProcessModule = TRUE;                                // module shows in process directory

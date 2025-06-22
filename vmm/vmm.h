@@ -1249,6 +1249,7 @@ typedef struct tdVMMCONFIG {
     BOOL fVMNested;                     // parse virtual machines (very resource intensive)
     BOOL fVMPhysicalOnly;               // parse virtual machines as physical memory only (less resource intense)
     BOOL fMemMapAuto;
+    BOOL fMemMapNone;
     // values below:
     DWORD dwPteQualityThreshold;        // max number of allowed invalid PTE entries in a page table (default: 0x20)
     QWORD tcTimeStart;                  // start time GetTickCount64()
@@ -1267,6 +1268,10 @@ typedef struct tdVMMCONFIG {
         DWORD cusz;
         LPSTR* pusz;
     } ForensicProcessSkipList;
+    struct {
+        QWORD paStart;
+        QWORD paEnd;
+    } DTBRange;
 } VMMCONFIG, *PVMMCONFIG;
 
 typedef struct tdVMMCONFIG_PDB {
