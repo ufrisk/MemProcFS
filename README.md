@@ -123,7 +123,7 @@ Links:
 
 Links - Related Projects:
 =========================
-* MemProcFS-Analyzer: https://github.com/evild3ad/MemProcFS-Analyzer
+* [MemProcFS-Analyzer](https://github.com/LETHAL-FORENSICS/MemProcFS-Analyzer/) is a 3rd party PowerShell application used for simplifying the usage of MemProcFS and to optimize your memory analysis workflow. MemProcFS-Analyzer is maintained by [@evild3ad](https://github.com/evild3ad) at [LETHAL-FORENSICS](https://github.com/LETHAL-FORENSICS).
 
 
 
