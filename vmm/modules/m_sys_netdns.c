@@ -750,6 +750,35 @@ VOID MSysNetDns_FcLogCSV(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _I
     }
 }
 
+VOID MSysNetDns_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_FORENSIC_JSONDATA pData))
+{
+    PVMMDLL_FORENSIC_JSONDATA pd;
+    PVMMOB_MAP_NETDNS pObDnsMap = NULL;
+    PVMM_MAP_NETDNSENTRY pe;
+    DWORD i;
+    CHAR szu[MAX_PATH];
+    if(ctxP->pProcess || !(pd = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_FORENSIC_JSONDATA)))) { return; }
+    pd->dwVersion = VMMDLL_FORENSIC_JSONDATA_VERSION;
+    pd->szjType = "netdns";
+    if((pObDnsMap = VmmNetDns_GetMap(H, ctxP))) {
+        for(i = 0; i < pObDnsMap->cMap; i++) {
+            pe = pObDnsMap->pMap + i;
+            snprintf(szu, _countof(szu), "type:[%s] ttl:[%u] flags:[0x%x] data:[%s]",
+                pe->uszType,
+                pe->dwTTL,
+                pe->dwFlags,
+                pe->uszData);
+            pd->i = i;
+            pd->vaObj = pe->va;
+            pd->usz[0] = pe->uszName;
+            pd->usz[1] = szu;
+            pfnLogJSON(H, pd);
+        }
+    }
+    Ob_DECREF(pObDnsMap);
+    LocalFree(pd);
+}
+
 VOID MSysNetDns_Notify(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent)
 {
     if(fEvent == VMMDLL_PLUGIN_NOTIFY_REFRESH_SLOW) {
@@ -774,7 +803,8 @@ VOID M_SysNetDns_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pR
     pRI->reg_fn.pfnRead = MSysNetDns_Read;                      // Read function supported
     pRI->reg_fn.pfnNotify = MSysNetDns_Notify;                  // Notify function supported
     pRI->reg_fn.pfnClose = MSysNetDns_Close;                    // Close function supported
-    // csv support:
+    // csv/json support:
     pRI->reg_fnfc.pfnLogCSV = MSysNetDns_FcLogCSV;
+    pRI->reg_fnfc.pfnLogJSON = MSysNetDns_FcLogJSON;
     pRI->pfnPluginManager_Register(H, pRI);
 }
