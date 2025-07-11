@@ -809,7 +809,7 @@ VMM_HANDLE VmmDllCore_Initialize(_In_ DWORD argc, _In_ LPCSTR argv[], _Out_opt_ 
     if(!(H = LocalAlloc(LMEM_ZEROINIT, sizeof(struct tdVMM_HANDLE)))) { goto fail_prelock; }
     H->magic = VMM_MAGIC;
     H->dwHandleCount = 1;
-    f = VmmDllCore_InitializeConfig(H, (DWORD)argc, argv) && VmmEx_InitializeVerifyConfig(H);
+    f = VmmDllCore_InitializeConfig(H, (DWORD)argc, argv);
     if(H->cfg.fDisplayVersion) {
         vmmprintf(H, "MemProcFS v%i.%i.%i\n", VERSION_MAJOR, VERSION_MINOR, VERSION_REVISION);
     }
@@ -817,6 +817,10 @@ VMM_HANDLE VmmDllCore_Initialize(_In_ DWORD argc, _In_ LPCSTR argv[], _Out_opt_ 
         if(!H->cfg.fDisplayVersion) {
             VmmDllCore_PrintHelp(H);
         }
+        goto fail_prelock;
+    }
+    if(!VmmEx_InitializeVerifyConfig(H)) {
+        vmmprintf(H, "\n");
         goto fail_prelock;
     }
     // 2.0: If -create-from-vmmid is specified, duplicate the parent VMM_HANDLE

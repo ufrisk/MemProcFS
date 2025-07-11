@@ -201,6 +201,21 @@ VOID VfsDokan_Close(_In_ CHAR chMountPoint)
     ctxVfs = NULL;
 }
 
+#ifdef VMM_PROFILE_FULL
+#include "ex/memprocfs_ex.h"
+#else /* VMM_PROFILE_FULL */
+#define MEMPROCFS_SPLASH \
+    "==============================  MemProcFS  ==============================\n" \
+    " - Author:           Ulf Frisk - pcileech@frizk.net                      \n" \
+    " - Info:             https://github.com/ufrisk/MemProcFS                 \n" \
+    " - Discord:          https://discord.gg/pcileech                         \n" \
+    " - License:          GNU Affero General Public License v3.0              \n" \
+    "   --------------------------------------------------------------------- \n" \
+    "   MemProcFS is free open source software. If you find it useful please  \n" \
+    "   become a sponsor at: https://github.com/sponsors/ufrisk Thank You :)  \n" \
+    "   --------------------------------------------------------------------- \n"
+#endif /* VMM_PROFILE_FULL */
+
 VOID VfsDokan_InitializeAndMount_DisplayInfo(LPWSTR wszMountPoint)
 {
     ULONG64 qwVersionVmmMajor = 0, qwVersionVmmMinor = 0, qwVersionVmmRevision = 0;
@@ -216,16 +231,7 @@ VOID VfsDokan_InitializeAndMount_DisplayInfo(LPWSTR wszMountPoint)
     VMMDLL_ConfigGet(g_hVMM, VMMDLL_OPT_WIN_VERSION_MINOR, &qwVersionWinMinor);
     VMMDLL_ConfigGet(g_hVMM, VMMDLL_OPT_WIN_VERSION_BUILD, &qwVersionWinBuild);
     VMMDLL_ConfigGet(g_hVMM, VMMDLL_OPT_WIN_SYSTEM_UNIQUE_ID, &qwUniqueSystemId);
-    printf("\n" \
-        "==============================  MemProcFS  ==============================\n" \
-        " - Author:           Ulf Frisk - pcileech@frizk.net                      \n" \
-        " - Info:             https://github.com/ufrisk/MemProcFS                 \n" \
-        " - Discord:          https://discord.gg/pcileech                         \n" \
-        " - License:          GNU Affero General Public License v3.0              \n" \
-        "   --------------------------------------------------------------------- \n" \
-        "   MemProcFS is free open source software. If you find it useful please  \n" \
-        "   become a sponsor at: https://github.com/sponsors/ufrisk Thank You :)  \n" \
-        "   --------------------------------------------------------------------- \n" \
+    printf("\n"MEMPROCFS_SPLASH \
         " - Version:          %i.%i.%i (%s)\n" \
         " - Mount Point:      %S           \n" \
         " - Tag:              %i_%x        \n",

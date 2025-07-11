@@ -248,10 +248,10 @@ NTSTATUS Util_VfsReadFile_FromMEM(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProc
     if(cbOffset < cbMEM) {
         vaMEM += cbOffset;
         cbMEM -= cbOffset;
+        cbMEM = min(cbMEM, cb);
         if((cbMEM < 0x04000000) && (pbMEM = LocalAlloc(0, (SIZE_T)cbMEM))) {
-            if(VmmRead2(H, pProcess, vaMEM, pbMEM, (DWORD)cbMEM, flags)) {
-                nt = Util_VfsReadFile_FromPBYTE(pbMEM, cbMEM, pb, cb, pcbRead, 0);
-            }
+            VmmRead2(H, pProcess, vaMEM, pbMEM, (DWORD)cbMEM, flags | VMM_FLAG_ZEROPAD_ON_FAIL);
+            nt = Util_VfsReadFile_FromPBYTE(pbMEM, cbMEM, pb, cb, pcbRead, 0);
             LocalFree(pbMEM);
         }
     }

@@ -456,6 +456,16 @@ BOOL CharUtil_StrStartsWith(_In_opt_ LPCSTR usz, _In_opt_ LPCSTR uszStartsWith, 
 BOOL CharUtil_StrEquals(_In_opt_ LPCSTR usz, _In_opt_ LPCSTR usz2, _In_ BOOL fCaseInsensitive);
 
 /*
+* Checks if a string contains a certain substring, if found return the pointer
+* to the 1st start of the substring in the original string.
+* -- usz
+* -- uszNeedle
+* -- fCaseInsensitive
+* -- return = pointer to the start of the substring in usz, or NULL if not found.
+*/
+LPCSTR CharUtil_StrContains(_In_opt_ LPCSTR usz, _In_opt_ LPCSTR uszSubString, _In_ BOOL fCaseInsensitive);
+
+/*
 * Compare a wide-char string to a utf-8 string.
 * NB! only the first 2*MAX_PATH characters are compared.
 * -- wsz1

@@ -234,7 +234,7 @@ static PVMM_PROCESS VmmNetDns_GetProcess(_In_ VMM_HANDLE H)
 * -- cHashTable = size of the hash table.
 * -- return = top address of the hash table.
 */
-QWORD VmmNetDns_LookupHashTable_HashTableTop(_In_ VMM_HANDLE H, _In_ QWORD vaHashTableBase, _In_ DWORD cHashTable)
+static QWORD VmmNetDns_LookupHashTable_HashTableTop(_In_ VMM_HANDLE H, _In_ QWORD vaHashTableBase, _In_ DWORD cHashTable)
 {
     DWORD cbPtr;
     if(H->vmm.f32) {
@@ -265,11 +265,12 @@ static BOOL VmmNetDns_LookupHashTable(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProc
     PVMM_MAP_MODULEENTRY peModule = NULL;
     PVMMOB_MAP_HEAP pObHeapMap = NULL;
     PVMM_MAP_HEAPENTRY peHeap = NULL;
-    DWORD i;
+    DWORD i, c;
     PVMMOB_MAP_HEAPALLOC pObHeapAllocMap = NULL;
     PVMM_MAP_HEAPALLOCENTRY peAlloc, peAllocPrev = NULL;
     DWORD cbPTR = (H->vmm.f32 ? 4 : 8);
     DWORD cbMinSizeHashTable = ((H->vmm.kernel.dwVersionBuild <= 9600) ? 0x400 : 0x1000); // minimum size of the hash table allocation.
+    PQWORD pvaT = NULL;
     *fSymbolLookup = FALSE;
     *pvaHashTableBase = 0;
     *pvaHashTableTop = 0;
@@ -289,8 +290,8 @@ static BOOL VmmNetDns_LookupHashTable(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProc
         return TRUE;
     }
     // 2: try lookup DNS hash table using heuristics:
-    // it's assumed the largest heap allocation in the topmost heap is the DNS hash table.
-    if(H->vmm.kernel.dwVersionBuild >= 22000) { return FALSE; } // not supported on Windows 11+.
+    //    in XP->Win10 it's assumed the largest heap allocation in the topmost heap is the DNS hash table.
+    //    in Win11+ any allocation larger than 0x7000 bytes is a candidate and is read and "verified".
     if(VmmMap_GetHeap(H, pProcess, &pObHeapMap) && pObHeapMap->cMap) {
         // 2.1 - locate the topmost heap:
         for(i = 0; i < pObHeapMap->cMap; i++) {
@@ -299,19 +300,43 @@ static BOOL VmmNetDns_LookupHashTable(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProc
             }
         }
         if(peHeap && VmmMap_GetHeapAlloc(H, pProcess, peHeap->va, &pObHeapAllocMap)) {
-            // try to find the DNS hash table in the heap allocations:
-            for(i = 0; i < pObHeapAllocMap->cMap; i++) {
-                peAlloc = &pObHeapAllocMap->pMap[i];
-                if(peAlloc->cb < cbMinSizeHashTable) { continue; }
-                if(peAlloc->cb % cbPTR) { continue; }
-                if(!peAllocPrev || (peAllocPrev->cb < peAlloc->cb)) {
-                    peAllocPrev = peAlloc;
+            if(H->vmm.kernel.dwVersionBuild >= 22000) {
+                // Win11+ heuristics: read any allocation larger than 0x7000 and integrity check it.
+                for(i = 0; i < pObHeapAllocMap->cMap; i++) {
+                    peAlloc = &pObHeapAllocMap->pMap[i];
+                    if((peAlloc->cb < 0x7000) || (peAlloc->cb > 0x00100000) || (peAlloc->cb & 0xf)) { continue; }
+                    if(VmmReadAlloc(H, pProcess, peAlloc->va, (PBYTE*)&pvaT, peAlloc->cb, 0)) {
+                        fResult = TRUE;
+                        c = (peAlloc->cb / 16) - 2; // number of entries in the hash table.
+                        for(i = 0; i < c; i++) {
+                            if(!VMM_UADDR64_8(pvaT[i])) {
+                                fResult = FALSE;
+                                break;
+                            }
+                        }
+                        LocalFree(pvaT);
+                        if(fResult) {
+                            *pvaHashTableBase = peAlloc->va;
+                            *pcHashTable = (peAlloc->cb / 16) - 2;
+                            break;
+                        }
+                    }
                 }
-            }
-            if(peAllocPrev) {
-                fResult = TRUE;
-                *pvaHashTableBase = peAllocPrev->va;
-                *pcHashTable = (peAllocPrev->cb / (H->vmm.f32 ? 4 : 8)) - 4;
+            } else {
+                // XP->Win10 heuristics: try to find the DNS hash table in the heap allocations:
+                for(i = 0; i < pObHeapAllocMap->cMap; i++) {
+                    peAlloc = &pObHeapAllocMap->pMap[i];
+                    if(peAlloc->cb < cbMinSizeHashTable) { continue; }
+                    if(peAlloc->cb % cbPTR) { continue; }
+                    if(!peAllocPrev || (peAllocPrev->cb < peAlloc->cb)) {
+                        peAllocPrev = peAlloc;
+                    }
+                }
+                if(peAllocPrev) {
+                    fResult = TRUE;
+                    *pvaHashTableBase = peAllocPrev->va;
+                    *pcHashTable = (peAllocPrev->cb / (H->vmm.f32 ? 4 : 8)) - 4;
+                }
             }
         }
     }
@@ -679,7 +704,7 @@ static PVMMOB_MAP_NETDNS VmmNetDns_GetMap(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN
 /*
 * Generate a single line in the dns.txt file.
 */
-VOID MSysNetDns_ReadLine_CB(_In_ VMM_HANDLE H, _In_ PVMMOB_MAP_NETDNS pDnsMap, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVOID pv, _Out_writes_(cbLineLength + 1) LPSTR szu8)
+static VOID MSysNetDns_ReadLine_CB(_In_ VMM_HANDLE H, _In_ PVMMOB_MAP_NETDNS pDnsMap, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVOID pv, _Out_writes_(cbLineLength + 1) LPSTR szu8)
 {
     PVMM_MAP_NETDNSENTRY pe = &pDnsMap->pMap[ie];
     Util_usnprintf_ln(szu8, cbLineLength,
@@ -693,7 +718,7 @@ VOID MSysNetDns_ReadLine_CB(_In_ VMM_HANDLE H, _In_ PVMMOB_MAP_NETDNS pDnsMap, _
     );
 }
 
-NTSTATUS MSysNetDns_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+static NTSTATUS MSysNetDns_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PVMMOB_MAP_NETDNS pObDnsMap = NULL;
@@ -715,7 +740,7 @@ finish:
     return nt;
 }
 
-BOOL MSysNetDns_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList)
+static BOOL MSysNetDns_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList)
 {
     PVMMOB_MAP_NETDNS pObDnsMap = NULL;
     if(ctxP->uszPath[0]) { return FALSE; }
@@ -727,7 +752,7 @@ BOOL MSysNetDns_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout
     return TRUE;
 }
 
-VOID MSysNetDns_FcLogCSV(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VMMDLL_CSV_HANDLE hCSV)
+static VOID MSysNetDns_FcLogCSV(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VMMDLL_CSV_HANDLE hCSV)
 {
     DWORD i;
     PVMM_MAP_NETDNSENTRY pe;
@@ -750,7 +775,7 @@ VOID MSysNetDns_FcLogCSV(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _I
     }
 }
 
-VOID MSysNetDns_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_FORENSIC_JSONDATA pData))
+static VOID MSysNetDns_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_FORENSIC_JSONDATA pData))
 {
     PVMMDLL_FORENSIC_JSONDATA pd;
     PVMMOB_MAP_NETDNS pObDnsMap = NULL;
@@ -779,14 +804,14 @@ VOID MSysNetDns_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _
     LocalFree(pd);
 }
 
-VOID MSysNetDns_Notify(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent)
+static VOID MSysNetDns_Notify(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent)
 {
     if(fEvent == VMMDLL_PLUGIN_NOTIFY_REFRESH_SLOW) {
         ObContainer_SetOb((POB_CONTAINER)ctxP->ctxM, NULL);
     }
 }
 
-VOID MSysNetDns_Close(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
+static VOID MSysNetDns_Close(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
 {
     Ob_DECREF(ctxP->ctxM);
 }

@@ -37,7 +37,7 @@ typedef struct tdMHEAP_CTX {
     PVMM_PROCESS pProcess;
 } MHEAP_CTX, *PMHEAP_CTX;
 
-VOID MHeap_HeapReadLineCB(_In_ VMM_HANDLE H, _In_ PMHEAP_CTX ctx, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVMM_MAP_HEAPENTRY pe, _Out_writes_(cbLineLength + 1) LPSTR szu8)
+static VOID MHeap_HeapReadLineCB(_In_ VMM_HANDLE H, _In_ PMHEAP_CTX ctx, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVMM_MAP_HEAPENTRY pe, _Out_writes_(cbLineLength + 1) LPSTR szu8)
 {
     Util_usnprintf_ln(szu8, cbLineLength,
         "%04x%7i %4i %016llx %s%s",
@@ -50,7 +50,7 @@ VOID MHeap_HeapReadLineCB(_In_ VMM_HANDLE H, _In_ PMHEAP_CTX ctx, _In_ DWORD cbL
     );
 }
 
-VOID MHeap_SegmentReadLineCB(_In_ VMM_HANDLE H, _In_ PMHEAP_CTX ctx, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVMM_MAP_HEAP_SEGMENTENTRY pe, _Out_writes_(cbLineLength + 1) LPSTR szu8)
+static VOID MHeap_SegmentReadLineCB(_In_ VMM_HANDLE H, _In_ PMHEAP_CTX ctx, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVMM_MAP_HEAP_SEGMENTENTRY pe, _Out_writes_(cbLineLength + 1) LPSTR szu8)
 {
     Util_usnprintf_ln(szu8, cbLineLength,
         "%04x%7i %4i %016llx %s",
@@ -62,7 +62,7 @@ VOID MHeap_SegmentReadLineCB(_In_ VMM_HANDLE H, _In_ PMHEAP_CTX ctx, _In_ DWORD 
     );
 }
 
-VOID MHeap_AllocReadLineCB(_In_ VMM_HANDLE H, _In_ PMHEAP_CTX ctx, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVMM_MAP_HEAPALLOCENTRY pe, _Out_writes_(cbLineLength + 1) LPSTR szu8)
+static VOID MHeap_AllocReadLineCB(_In_ VMM_HANDLE H, _In_ PMHEAP_CTX ctx, _In_ DWORD cbLineLength, _In_ DWORD ie, _In_ PVMM_MAP_HEAPALLOCENTRY pe, _Out_writes_(cbLineLength + 1) LPSTR szu8)
 {
     BYTE pb16[16] = { 0 };
     CHAR szHex[80] = { 0 };
@@ -85,7 +85,7 @@ VOID MHeap_AllocReadLineCB(_In_ VMM_HANDLE H, _In_ PMHEAP_CTX ctx, _In_ DWORD cb
 }
 
 _Success_(return)
-BOOL MHeap_GetAllocPath(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_ PVMMOB_MAP_HEAPALLOC *ppObHeapAllocMap, _Out_ LPSTR *pszPath)
+static BOOL MHeap_GetAllocPath(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_ PVMMOB_MAP_HEAPALLOC *ppObHeapAllocMap, _Out_ LPSTR *pszPath)
 {
     DWORD dwId = (DWORD)Util_GetNumericA(ctxP->uszPath);
     if(!dwId && (ctxP->uszPath[0] != '0')) return FALSE;
@@ -104,7 +104,7 @@ BOOL MHeap_GetAllocPath(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Ou
 * -- cbOffset
 * -- return
 */
-NTSTATUS MHeap_Write(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
+static NTSTATUS MHeap_Write(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_reads_(cb) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbWrite, _In_ QWORD cbOffset)
 {
     QWORD va;
     LPCSTR uszPath;
@@ -136,7 +136,7 @@ finish:
 * -- return
 */
 _Success_(return == 0)
-NTSTATUS MHeap_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
+static NTSTATUS MHeap_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PVMMOB_MAP_HEAP pObHeapMap = NULL;
@@ -190,7 +190,7 @@ NTSTATUS MHeap_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_wr
         uszPath = CharUtil_PathSplitLast(uszPath);
         va = Util_GetNumericA(uszPath);
         if(va && (peA = VmmMap_GetHeapAllocEntry(H, pObHeapAllocMap, va))) {
-            nt = Util_VfsReadFile_FromMEM(H, ctxP->pProcess, va, peA->cb, 0, pb, cb, pcbRead, cbOffset);
+            nt = Util_VfsReadFile_FromMEM(H, ctxP->pProcess, va, peA->cb, VMM_FLAG_ZEROPAD_ON_FAIL, pb, cb, pcbRead, cbOffset);
         }
         goto finish;
     }
@@ -208,7 +208,7 @@ finish:
 * -- pFileList
 * -- return
 */
-BOOL MHeap_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList)
+static BOOL MHeap_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList)
 {
     PVMMOB_MAP_HEAP pObHeapMap = NULL;
     PVMMOB_MAP_HEAPALLOC pObHeapAllocMap = NULL;

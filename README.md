@@ -254,3 +254,6 @@ v5.8
 * Linux LeechAgent support using gRPC (LeechCore v2.21).
 * New FindEvil detection: High Entropy.
 * [DNS cache parsing](https://github.com/ufrisk/MemProcFS/wiki/FS_SysInfo_Network). Thanks [@MattCore71](https://github.com/MattCore71) for the contribution.
+
+Latest:
+* Bug fixes.
