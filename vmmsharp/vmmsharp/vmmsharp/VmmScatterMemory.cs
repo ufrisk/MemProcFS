@@ -155,6 +155,9 @@ namespace Vmmsharp
         /// <returns>true/false.</returns>
         public unsafe bool PrepareWriteStruct<T>(ulong qwA, T value)
             where T : unmanaged
+#if NET9_0_OR_GREATER
+            , allows ref struct
+#endif
         {
             uint cb = (uint)sizeof(T);
             byte* pb = (byte*)&value;
@@ -189,6 +192,9 @@ namespace Vmmsharp
         /// <returns>true/false.</returns>
         public unsafe bool ReadAs<T>(ulong qwA, out T result)
             where T : unmanaged
+#if NET9_0_OR_GREATER
+            , allows ref struct
+#endif
         {
             uint cb = (uint)sizeof(T);
             uint cbRead;
@@ -264,6 +270,6 @@ namespace Vmmsharp
             return Vmmi.VMMDLL_Scatter_Clear(hS, pid, flags);
         }
 
-        #endregion
+#endregion
     }
 }

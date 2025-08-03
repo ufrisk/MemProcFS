@@ -228,6 +228,22 @@ namespace Vmmsharp
             where T : unmanaged =>
             Vmmi.MemReadAs<T>(_hVmm, this.PID, va, flags);
 
+#if NET9_0_OR_GREATER
+
+        /// <summary>
+        /// Read Memory from a Virtual Address into a ref struct of Type <typeparamref name="T"/>.
+        /// </summary>
+        /// <typeparam name="T">Struct/Ref Struct Type.</typeparam>
+        /// <param name="va">Virtual Address to read from.</param>
+        /// <param name="result">Memory read result.</param>
+        /// <param name="flags">VMM Flags.</param>
+        /// <returns>TRUE if successful, otherwise FALSE.</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public unsafe bool MemReadRefAs<T>(ulong va, out T result, uint flags = 0)
+            where T : unmanaged, allows ref struct =>
+            Vmmi.MemReadRefAs<T>(_hVmm, this.PID, va, out result, flags);
+#endif
+
         /// <summary>
         /// Read Memory from a Virtual Address into an Array of Type <typeparamref name="T"/>.
         /// </summary>
@@ -334,7 +350,11 @@ namespace Vmmsharp
         /// <returns>True if write successful, otherwise False.</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public unsafe bool MemWriteStruct<T>(ulong va, T value)
-            where T : unmanaged =>
+            where T : unmanaged
+#if NET9_0_OR_GREATER
+            , allows ref struct
+#endif
+            =>
             Vmmi.MemWriteStruct(_hVmm, this.PID, va, value);
 
         /// <summary>
@@ -362,7 +382,7 @@ namespace Vmmsharp
             Vmmi.MemVirt2Phys(_hVmm, this.PID, va, out pa);
             return pa;
         }
-        #endregion
+#endregion
 
         #region Process Functionality
         /// <summary>
