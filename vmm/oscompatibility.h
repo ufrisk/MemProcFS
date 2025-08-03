@@ -105,6 +105,7 @@ typedef int(*_CoreCrtNonSecureSearchSortCompareFunction)(void const *, void cons
 #define MAX_PATH                            260
 #define LMEM_ZEROINIT                       0x0040
 #define INVALID_HANDLE_VALUE                ((HANDLE)-1)
+#define S_OK                                (0L)
 #define STD_INPUT_HANDLE                    ((DWORD)-10)
 #define STD_OUTPUT_HANDLE                   ((DWORD)-11)
 #define GENERIC_WRITE                       (0x40000000L)

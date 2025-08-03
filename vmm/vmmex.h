@@ -42,6 +42,12 @@ BOOL VmmEx_DTB_FindValidate_UserDTBRange(_In_ VMM_HANDLE H);
 */
 extern VOID(*g_pfnModulesExAllInternal[1])(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_REGINFO pRegInfo);
 
+/*
+* License information.
+*/
+extern LPCSTR g_VmmEx_szLICENSE;
+extern DWORD  g_VmmEx_cbLICENSE;
+
 #endif /* __VMMEX_LIGHT_H__ */
 
 #endif /* VMM_PROFILE_FULL */

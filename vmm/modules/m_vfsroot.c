@@ -12,6 +12,7 @@
 #include "../version.h"
 #include "../vmmwin.h"
 #include "../vmmwininit.h"
+#include "../vmmex.h"
 
 #define KDBG64_KiProcessorBlock     0x218
 #define KDBG64_ContextKPRCB         0x338
@@ -348,6 +349,9 @@ NTSTATUS MVfsRoot_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out
     DWORD io, cbHead = 0, cbReadMem = 0;
     DWORD cbOverlayOffset, cbOverlay;
     QWORD cbOverlayAdjust;
+    if(!_stricmp(ctxP->uszPath, "LICENSE.txt")) {
+        return Util_VfsReadFile_FromPBYTE((PBYTE)g_VmmEx_szLICENSE, g_VmmEx_cbLICENSE, pb, cb, pcbRead, cbOffset);
+    }
     if(!_stricmp(ctxP->uszPath, "memory.pmem")) {
         VmmReadEx(H, NULL, cbOffset, pb, cb, pcbRead, VMM_FLAG_ZEROPAD_ON_FAIL);
         return VMM_STATUS_SUCCESS;
@@ -447,6 +451,7 @@ NTSTATUS MVfsRoot_Write(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In
 BOOL MVfsRoot_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList)
 {
     if(!ctxP->uszPath[0]) {
+        VMMDLL_VfsList_AddFile(pFileList, "LICENSE.txt", g_VmmEx_cbLICENSE, NULL);
         VMMDLL_VfsList_AddFile(pFileList, "memory.pmem", H->dev.paMax, NULL);
         if((H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_64) || (H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_32)) {
             VMMDLL_VfsList_AddFile(pFileList, "memory.dmp", H->dev.paMax + (H->vmm.f32 ? 0x1000 : 0x2000), NULL);

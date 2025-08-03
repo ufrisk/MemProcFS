@@ -898,7 +898,6 @@ namespace Vmmsharp
         /// </summary>
         /// <param name="sProcName">Process name to get.</param>
         /// <returns>A VmmProcess if successful, if unsuccessful null.</returns>
-        [Obsolete("Use GetProcessByName")]
         public VmmProcess Process(string sProcName) =>
             GetProcessByName(sProcName);
 
@@ -908,7 +907,6 @@ namespace Vmmsharp
         /// </summary>
         /// <param name="pid">Process ID to get.</param>
         /// <returns>A VmmProcess if successful, if unsuccessful null.</returns>
-        [Obsolete("Use GetProcessByPID")]
         public VmmProcess Process(uint pid) =>
             GetProcessByPID(pid);
 
@@ -921,7 +919,6 @@ namespace Vmmsharp
         /// <summary>
         /// Returns All Processes on the Target System.
         /// </summary>
-        [Obsolete("Use AllProcesses")]
         public VmmProcess[] Processes => AllProcesses;
 
         /// <summary>
@@ -952,7 +949,6 @@ namespace Vmmsharp
         /// <summary>
         /// Returns All Process IDs on the Target System.
         /// </summary>
-        [Obsolete("Use AllPIDs")]
         public unsafe uint[] PIDs =>
             AllPIDs;
 
