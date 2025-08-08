@@ -249,6 +249,7 @@ BOOL VmmYaraUtil_ParseSingleResultNext(
     BYTE pbBuffer[0x80];
     BYTE pbBufPlain[0x40];
     CHAR szTimeCRE[24] = { 0 }, uszUserName[0x20] = { 0 };
+    CHAR uszMatchPreview[0x100];
     PVMM_MAP_PTEENTRY pePte;
     PVMM_MAP_VADENTRY peVad;
     PVMMOB_MAP_PTE pObPteMap = NULL;
@@ -410,6 +411,9 @@ BOOL VmmYaraUtil_ParseSingleResultNext(
         hEPC->usz[0] = 0;
         uszRuleMatchStringBuffer[0] = 0;
         CharUtil_ReplaceMultiple(uszRuleMatchStringBuffer, sizeof(uszRuleMatchStringBuffer), NULL, peMatch->RuleMatch.Strings[i].szString, NULL, -1, VMMYARAUTIL_TEXT_ALLOW, '_');
+        if(!uszRuleMatchStringBuffer[0]) {
+            _snprintf_s(uszRuleMatchStringBuffer, sizeof(uszRuleMatchStringBuffer), _TRUNCATE, "string_%u", i);
+        }
         o = _snprintf_s(hEPC->usz, _countof(hEPC->usz), _TRUNCATE, "[%s]:", uszRuleMatchStringBuffer);
         for(j = 0; j < peMatch->RuleMatch.Strings[i].cMatch; j++) {
             o += _snprintf_s(hEPC->usz + o, _countof(hEPC->usz) - o, _TRUNCATE,
@@ -428,6 +432,9 @@ BOOL VmmYaraUtil_ParseSingleResultNext(
                 va = peMatch->vaBase + (QWORD)peMatch->RuleMatch.Strings[i].cbMatchOffset[j];
                 uszRuleMatchStringBuffer[0] = 0;
                 CharUtil_ReplaceMultiple(uszRuleMatchStringBuffer, sizeof(uszRuleMatchStringBuffer), NULL, peMatch->RuleMatch.Strings[i].szString, NULL, -1, VMMYARAUTIL_TEXT_ALLOW, '_');
+                if(!uszRuleMatchStringBuffer[0]) {
+                    _snprintf_s(uszRuleMatchStringBuffer, sizeof(uszRuleMatchStringBuffer), _TRUNCATE, "string_%u", i);
+                }
                 o = _snprintf_s(hEPC->usz, _countof(hEPC->usz), _TRUNCATE, "[%s] %llx:\n", uszRuleMatchStringBuffer, va);
                 vaAlign = (max(va, 0x40) - 0x40) & ~0xf;
                 VmmReadEx(H, pObProcess, vaAlign, pbBuffer, sizeof(pbBuffer), &cbRead, VMM_FLAG_ZEROPAD_ON_FAIL);
@@ -435,12 +442,26 @@ BOOL VmmYaraUtil_ParseSingleResultNext(
                     cbWrite = (DWORD)_countof(hEPC->usz) - o;
                     Util_FillHexAscii_WithAddress(pbBuffer, sizeof(pbBuffer), vaAlign, hEPC->usz + o, &cbWrite);
                 }
+                // build CSV preview from memory around match address
+                {
+                    DWORD pos = (DWORD)(va - vaAlign);
+                    DWORD k, maxk = 64;
+                    uszMatchPreview[0] = 0;
+                    if(cbRead > pos) {
+                        maxk = min(maxk, cbRead - pos);
+                        for(k = 0; k < maxk && k + 2 < _countof(uszMatchPreview); k++) {
+                            BYTE ch = pbBuffer[pos + k];
+                            uszMatchPreview[k] = (ch >= 0x20 && ch < 0x7f) ? (CHAR)ch : '.';
+                        }
+                        uszMatchPreview[k] = 0;
+                    }
+                }
                 o2 += _snprintf_s(hEPC->uszMatchContextTXT + o2, _countof(hEPC->uszMatchContextTXT) - o2, _TRUNCATE, "\n%s", hEPC->usz);
                 if(iMatchCSV < 5) {
                     iMatchCSV++;
                     oMatchCSV += _snprintf_s(hEPC->uszMatchContextCSV + oMatchCSV, _countof(hEPC->uszMatchContextCSV) - oMatchCSV, _TRUNCATE,
                         ",%s,%llx",
-                        FcCsv_String(&hEPC->hCSV, uszRuleMatchStringBuffer),
+                        FcCsv_String(&hEPC->hCSV, uszMatchPreview),
                         va
                     );
                 }
@@ -456,6 +477,9 @@ BOOL VmmYaraUtil_ParseSingleResultNext(
                 va = peMatch->vaBase + (QWORD)peMatch->RuleMatch.Strings[i].cbMatchOffset[j];
                 uszRuleMatchStringBuffer[0] = 0;
                 CharUtil_ReplaceMultiple(uszRuleMatchStringBuffer, sizeof(uszRuleMatchStringBuffer), NULL, peMatch->RuleMatch.Strings[i].szString, NULL, -1, VMMYARAUTIL_TEXT_ALLOW, '_');
+                if(!uszRuleMatchStringBuffer[0]) {
+                    _snprintf_s(uszRuleMatchStringBuffer, sizeof(uszRuleMatchStringBuffer), _TRUNCATE, "string_%u", i);
+                }
                 // Read a small window from the file around the match offset for preview and hexdump.
                 vaAlign = (max(va, 0x40) - 0x40) & ~0xf; // align to 16 bytes, keep 0x40 bytes of context before
                 // read hexdump window (0x80 bytes) from file object address
@@ -488,12 +512,23 @@ BOOL VmmYaraUtil_ParseSingleResultNext(
                     o += (DWORD)strlen("Hexdump:\n");
                     Util_FillHexAscii_WithAddress(pbBuffer, sizeof(pbBuffer), vaAlign, hEPC->usz + o, &cbWrite);
                 }
+                // CSV preview from FILE bytes at match
+                {
+                    DWORD k, maxk = 64;
+                    uszMatchPreview[0] = 0;
+                    for(k = 0; k < sizeof(pbBufPlain) && k < maxk && k + 2 < _countof(uszMatchPreview); k++) {
+                        BYTE ch = pbBufPlain[k];
+                        if(ch == '\0') { break; }
+                        uszMatchPreview[k] = (ch >= 0x20 && ch < 0x7f) ? (CHAR)ch : '.';
+                    }
+                    uszMatchPreview[k] = 0;
+                }
                 o2 += _snprintf_s(hEPC->uszMatchContextTXT + o2, _countof(hEPC->uszMatchContextTXT) - o2, _TRUNCATE, "\n%s", hEPC->usz);
                 if(iMatchCSV < 5) {
                     iMatchCSV++;
                     oMatchCSV += _snprintf_s(hEPC->uszMatchContextCSV + oMatchCSV, _countof(hEPC->uszMatchContextCSV) - oMatchCSV, _TRUNCATE,
                         ",%s,%llx",
-                        FcCsv_String(&hEPC->hCSV, uszRuleMatchStringBuffer),
+                        FcCsv_String(&hEPC->hCSV, uszMatchPreview),
                         va
                     );
                 }
