@@ -9,6 +9,7 @@
 #include "fc.h"
 #include "util.h"
 #include "vmmwin.h"
+#include "vmmwinobj.h"
 
 // ----------------------------------------------------------------------------
 // PARSE SINGLE RESULT FUNCTIONALITY BELOW:
@@ -246,6 +247,7 @@ BOOL VmmYaraUtil_ParseSingleResultNext(
     LPSTR uszCommandLine = "", uszMemoryType = "", uszMemoryTag = "";
     LPCSTR uszFindEvilSeverity;
     BYTE pbBuffer[0x80];
+    BYTE pbBufPlain[0x40];
     CHAR szTimeCRE[24] = { 0 }, uszUserName[0x20] = { 0 };
     PVMM_MAP_PTEENTRY pePte;
     PVMM_MAP_VADENTRY peVad;
@@ -431,6 +433,59 @@ BOOL VmmYaraUtil_ParseSingleResultNext(
                 VmmReadEx(H, pObProcess, vaAlign, pbBuffer, sizeof(pbBuffer), &cbRead, VMM_FLAG_ZEROPAD_ON_FAIL);
                 if(cbRead) {
                     cbWrite = (DWORD)_countof(hEPC->usz) - o;
+                    Util_FillHexAscii_WithAddress(pbBuffer, sizeof(pbBuffer), vaAlign, hEPC->usz + o, &cbWrite);
+                }
+                o2 += _snprintf_s(hEPC->uszMatchContextTXT + o2, _countof(hEPC->uszMatchContextTXT) - o2, _TRUNCATE, "\n%s", hEPC->usz);
+                if(iMatchCSV < 5) {
+                    iMatchCSV++;
+                    oMatchCSV += _snprintf_s(hEPC->uszMatchContextCSV + oMatchCSV, _countof(hEPC->uszMatchContextCSV) - oMatchCSV, _TRUNCATE,
+                        ",%s,%llx",
+                        FcCsv_String(&hEPC->hCSV, uszRuleMatchStringBuffer),
+                        va
+                    );
+                }
+            }
+        }
+    } else {
+        // FILE object: print both direct string output and hexdump from file content around the match offset.
+        o2 = 0;
+        for(i = 0; i < peMatch->RuleMatch.cStrings; i++) {
+            for(j = 0; j < peMatch->RuleMatch.Strings[i].cMatch; j++) {
+                cAddresses++;
+                hEPC->usz[0] = 0;
+                va = peMatch->vaBase + (QWORD)peMatch->RuleMatch.Strings[i].cbMatchOffset[j];
+                uszRuleMatchStringBuffer[0] = 0;
+                CharUtil_ReplaceMultiple(uszRuleMatchStringBuffer, sizeof(uszRuleMatchStringBuffer), NULL, peMatch->RuleMatch.Strings[i].szString, NULL, -1, VMMYARAUTIL_TEXT_ALLOW, '_');
+                // Read a small window from the file around the match offset for preview and hexdump.
+                vaAlign = (max(va, 0x40) - 0x40) & ~0xf; // align to 16 bytes, keep 0x40 bytes of context before
+                // read hexdump window (0x80 bytes) from file object address
+                cbRead = VmmWinObjFile_ReadFromObjectAddress(H, peMatch->vaObject, vaAlign - peMatch->vaBase, pbBuffer, sizeof(pbBuffer), VMM_FLAG_ZEROPAD_ON_FAIL, VMMWINOBJ_FILE_TP_DEFAULT);
+                // read plain text preview (up to 0x40 bytes) exactly from match offset
+                ZeroMemory(pbBufPlain, sizeof(pbBufPlain));
+                VmmWinObjFile_ReadFromObjectAddress(H, peMatch->vaObject, va - peMatch->vaBase, pbBufPlain, sizeof(pbBufPlain), VMM_FLAG_ZEROPAD_ON_FAIL, VMMWINOBJ_FILE_TP_DEFAULT);
+                // Build output: header, plain text and hexdump
+                o = _snprintf_s(hEPC->usz, _countof(hEPC->usz), _TRUNCATE, "[%s] %llx (FILE):\n", uszRuleMatchStringBuffer, va);
+                // Plain text (sanitize to printable)
+                {
+                    CHAR szPlain[0x100];
+                    DWORD k, oP = 0;
+                    oP += _snprintf_s(szPlain + oP, _countof(szPlain) - oP, _TRUNCATE, "Plain: \"");
+                    for(k = 0; k < sizeof(pbBufPlain) && oP + 4 < _countof(szPlain); k++) {
+                        BYTE ch = pbBufPlain[k];
+                        if(ch == '\0') { break; }
+                        if(ch >= 0x20 && ch < 0x7f) {
+                            szPlain[oP++] = (CHAR)ch;
+                        } else {
+                            szPlain[oP++] = '.';
+                        }
+                    }
+                    oP += _snprintf_s(szPlain + oP, _countof(szPlain) - oP, _TRUNCATE, "\"\n");
+                    o += _snprintf_s(hEPC->usz + o, _countof(hEPC->usz) - o, _TRUNCATE, "%s", szPlain);
+                }
+                if(cbRead) {
+                    cbWrite = (DWORD)_countof(hEPC->usz) - o;
+                    _snprintf_s(hEPC->usz + o, _countof(hEPC->usz) - o, _TRUNCATE, "Hexdump:\n");
+                    o += (DWORD)strlen("Hexdump:\n");
                     Util_FillHexAscii_WithAddress(pbBuffer, sizeof(pbBuffer), vaAlign, hEPC->usz + o, &cbWrite);
                 }
                 o2 += _snprintf_s(hEPC->uszMatchContextTXT + o2, _countof(hEPC->uszMatchContextTXT) - o2, _TRUNCATE, "\n%s", hEPC->usz);
