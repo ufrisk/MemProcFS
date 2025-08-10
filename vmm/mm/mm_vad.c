@@ -6,6 +6,7 @@
 
 #include "mm.h"
 #include "../util.h"
+#include "../charutil.h"
 
 #define MMVAD_POOLTAG_VAD               'Vad '
 #define MMVAD_POOLTAG_VADF              'VadF'
@@ -760,7 +761,7 @@ VOID MmVad_Spider_DoWork(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _I
     }
     // 2: allocate and retrieve objects required for processing
     if(!(pmObVad = Ob_AllocEx(H, OB_TAG_MAP_VAD, LMEM_ZEROINIT, sizeof(VMMOB_MAP_VAD) + cVads * sizeof(VMM_MAP_VADENTRY), MmVad_MemMapVad_CloseObCallback, NULL))) { goto fail; }
-    if((cVads == 0) && (pProcess->dwPID != 4)) {    // No VADs
+    if((cVads == 0) && (pProcess->dwPID != 4) && !CharUtil_StrCmpAny(CharUtil_StrEquals, pProcess->szName, FALSE, 2, "MemCompression", "Registry")) {    // No VADs
         VmmLog(H, MID_VMM, LOGLEVEL_VERBOSE, "NO VAD FOR PROCESS - PID: %i STATE: %i NAME: %s", pProcess->dwPID, pProcess->dwState, pProcess->szName);
         pProcess->Map.pObVad = Ob_INCREF(pmObVad);
         goto fail;

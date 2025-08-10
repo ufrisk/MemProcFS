@@ -256,6 +256,10 @@ BOOL VmmYaraUtil_ParseSingleResultNext(
     PVMMOB_MAP_VAD pObVadMap = NULL;
     PVMM_PROCESS pObProcess = NULL;
     CHAR uszRuleMatchStringBuffer[MAX_PATH];
+    BOOL fRuleMatchStringBuffer;
+    BYTE ch;
+    DWORD k, maxk, pos, oP;
+    CHAR szPlain[0x100];
     // init:
     if(!ctx->pObEPC) {
         ctx->pObEPC = Ob_AllocEx(H, OB_TAG_YARA_PARSEHANDLE, 0, sizeof(VMMYARAUTILOB_ENTRYPARSECONTEXT), NULL, NULL);
@@ -432,7 +436,9 @@ BOOL VmmYaraUtil_ParseSingleResultNext(
                 va = peMatch->vaBase + (QWORD)peMatch->RuleMatch.Strings[i].cbMatchOffset[j];
                 uszRuleMatchStringBuffer[0] = 0;
                 CharUtil_ReplaceMultiple(uszRuleMatchStringBuffer, sizeof(uszRuleMatchStringBuffer), NULL, peMatch->RuleMatch.Strings[i].szString, NULL, -1, VMMYARAUTIL_TEXT_ALLOW, '_');
+                fRuleMatchStringBuffer = TRUE;
                 if(!uszRuleMatchStringBuffer[0]) {
+                    fRuleMatchStringBuffer = FALSE;
                     _snprintf_s(uszRuleMatchStringBuffer, sizeof(uszRuleMatchStringBuffer), _TRUNCATE, "string_%u", i);
                 }
                 o = _snprintf_s(hEPC->usz, _countof(hEPC->usz), _TRUNCATE, "[%s] %llx:\n", uszRuleMatchStringBuffer, va);
@@ -442,15 +448,15 @@ BOOL VmmYaraUtil_ParseSingleResultNext(
                     cbWrite = (DWORD)_countof(hEPC->usz) - o;
                     Util_FillHexAscii_WithAddress(pbBuffer, sizeof(pbBuffer), vaAlign, hEPC->usz + o, &cbWrite);
                 }
-                // build CSV preview from memory around match address
-                {
-                    DWORD pos = (DWORD)(va - vaAlign);
-                    DWORD k, maxk = 64;
-                    uszMatchPreview[0] = 0;
+                // build CSV preview from memory around match address (unless a matching string rule already exists)
+                uszMatchPreview[0] = 0;
+                if(!fRuleMatchStringBuffer) {
+                    maxk = 64;
+                    pos = (DWORD)(va - vaAlign);
                     if(cbRead > pos) {
                         maxk = min(maxk, cbRead - pos);
                         for(k = 0; k < maxk && k + 2 < _countof(uszMatchPreview); k++) {
-                            BYTE ch = pbBuffer[pos + k];
+                            ch = pbBuffer[pos + k];
                             uszMatchPreview[k] = (ch >= 0x20 && ch < 0x7f) ? (CHAR)ch : '.';
                         }
                         uszMatchPreview[k] = 0;
@@ -461,7 +467,7 @@ BOOL VmmYaraUtil_ParseSingleResultNext(
                     iMatchCSV++;
                     oMatchCSV += _snprintf_s(hEPC->uszMatchContextCSV + oMatchCSV, _countof(hEPC->uszMatchContextCSV) - oMatchCSV, _TRUNCATE,
                         ",%s,%llx",
-                        FcCsv_String(&hEPC->hCSV, uszMatchPreview),
+                        FcCsv_String(&hEPC->hCSV, (fRuleMatchStringBuffer ? uszRuleMatchStringBuffer : uszMatchPreview)),
                         va
                     );
                 }
@@ -477,7 +483,9 @@ BOOL VmmYaraUtil_ParseSingleResultNext(
                 va = peMatch->vaBase + (QWORD)peMatch->RuleMatch.Strings[i].cbMatchOffset[j];
                 uszRuleMatchStringBuffer[0] = 0;
                 CharUtil_ReplaceMultiple(uszRuleMatchStringBuffer, sizeof(uszRuleMatchStringBuffer), NULL, peMatch->RuleMatch.Strings[i].szString, NULL, -1, VMMYARAUTIL_TEXT_ALLOW, '_');
+                fRuleMatchStringBuffer = TRUE;
                 if(!uszRuleMatchStringBuffer[0]) {
+                    fRuleMatchStringBuffer = FALSE;
                     _snprintf_s(uszRuleMatchStringBuffer, sizeof(uszRuleMatchStringBuffer), _TRUNCATE, "string_%u", i);
                 }
                 // Read a small window from the file around the match offset for preview and hexdump.
@@ -491,11 +499,10 @@ BOOL VmmYaraUtil_ParseSingleResultNext(
                 o = _snprintf_s(hEPC->usz, _countof(hEPC->usz), _TRUNCATE, "[%s] %llx (FILE):\n", uszRuleMatchStringBuffer, va);
                 // Plain text (sanitize to printable)
                 {
-                    CHAR szPlain[0x100];
-                    DWORD k, oP = 0;
+                    oP = 0;
                     oP += _snprintf_s(szPlain + oP, _countof(szPlain) - oP, _TRUNCATE, "Plain: \"");
                     for(k = 0; k < sizeof(pbBufPlain) && oP + 4 < _countof(szPlain); k++) {
-                        BYTE ch = pbBufPlain[k];
+                        ch = pbBufPlain[k];
                         if(ch == '\0') { break; }
                         if(ch >= 0x20 && ch < 0x7f) {
                             szPlain[oP++] = (CHAR)ch;
@@ -514,10 +521,10 @@ BOOL VmmYaraUtil_ParseSingleResultNext(
                 }
                 // CSV preview from FILE bytes at match
                 {
-                    DWORD k, maxk = 64;
+                    maxk = 64;
                     uszMatchPreview[0] = 0;
                     for(k = 0; k < sizeof(pbBufPlain) && k < maxk && k + 2 < _countof(uszMatchPreview); k++) {
-                        BYTE ch = pbBufPlain[k];
+                        ch = pbBufPlain[k];
                         if(ch == '\0') { break; }
                         uszMatchPreview[k] = (ch >= 0x20 && ch < 0x7f) ? (CHAR)ch : '.';
                     }
@@ -528,7 +535,7 @@ BOOL VmmYaraUtil_ParseSingleResultNext(
                     iMatchCSV++;
                     oMatchCSV += _snprintf_s(hEPC->uszMatchContextCSV + oMatchCSV, _countof(hEPC->uszMatchContextCSV) - oMatchCSV, _TRUNCATE,
                         ",%s,%llx",
-                        FcCsv_String(&hEPC->hCSV, uszMatchPreview),
+                        FcCsv_String(&hEPC->hCSV, (fRuleMatchStringBuffer ? uszRuleMatchStringBuffer : uszMatchPreview)),
                         va
                     );
                 }
