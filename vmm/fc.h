@@ -131,6 +131,14 @@ VOID FcClose(_In_ VMM_HANDLE H);
 // FC GENERAL FUNCTIONALITY BELOW:
 // ----------------------------------------------------------------------------
 
+/*
+* Check whether the specific process should be skipped in the forensic scan.
+* This is mostly used to skip problematic processes such as known anti-virus
+* and EDR processes that often trigger false-positives.
+* -- H
+* -- pProcess = the process to check.
+* -- return = TRUE if the process should be skipped, FALSE otherwise.
+*/
 BOOL FcIsProcessSkip(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess);
 
 

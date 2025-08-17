@@ -1424,10 +1424,33 @@ fail:
 // FC GENERAL FUNCTIONALITY BELOW:
 // ----------------------------------------------------------------------------
 
+/*
+* Check whether the specific process should be skipped in the forensic scan.
+* This is mostly used to skip problematic processes such as known anti-virus
+* and EDR processes that often trigger false-positives.
+* -- H
+* -- pProcess = the process to check.
+* -- return = TRUE if the process should be skipped, FALSE otherwise.
+*/
 BOOL FcIsProcessSkip(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
 {
+    BOOL fResult;
+    PVMM_PROCESS pObParentProcess = NULL;
+    if(CharUtil_StrCmpAny(CharUtil_StrEquals, pProcess->szName, FALSE, 6, "MemCompression", "Registry", "MsMpEng.exe", "vmmem", "vmware-vmx.exe", "elastic-endpoi")) {
+        if(CharUtil_StrCmpAny(CharUtil_StrEquals, pProcess->szName, FALSE, 2, "MemCompression", "Registry")) {
+            // Require 'SYSTEM' as parent process:
+            return (pProcess->dwPPID == 4);
+        }
+        if(CharUtil_StrCmpAny(CharUtil_StrEquals, pProcess->szName, FALSE, 1, "elastic-endpoi")) {
+            // Require 'services.exe' as parent process:
+            pObParentProcess = VmmProcessGet(H, pProcess->dwPPID);
+            fResult = pObParentProcess && CharUtil_StrEquals(pObParentProcess->szName, "services.exe", FALSE);
+            Ob_DECREF(pObParentProcess);
+            return fResult;
+        }
+        return TRUE;
+    }
     return
-        CharUtil_StrCmpAny(CharUtil_StrEquals, pProcess->szName, FALSE, 4, "MsMpEng.exe", "MemCompression", "Registry", "vmmem", "vmware-vmx.exe") ||
         (H->cfg.ForensicProcessSkipList.cusz && CharUtil_StrCmpAnyEx(CharUtil_StrEquals, pProcess->szName, TRUE, H->cfg.ForensicProcessSkipList.cusz, (LPCSTR*)H->cfg.ForensicProcessSkipList.pusz));
 }
 
