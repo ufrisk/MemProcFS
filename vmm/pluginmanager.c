@@ -1133,15 +1133,14 @@ VOID PluginManager_Initialize_ExternalDlls(_In_ VMM_HANDLE H)
     while((ep = readdir(dp)) && !H->fAbort) {
         if((ep->d_name[0] != 'm') || (ep->d_name[1] != '_')) { continue; }
         if(!CharUtil_StrEndsWith(ep->d_name, VMM_LIBRARY_FILETYPE, TRUE)) { continue; }
-
+        szPath[cchPathBase] = '\0';
         strcat_s(szPath + cchPathBase, MAX_PATH - cchPathBase, ep->d_name);
+        VmmLog(H, MID_PLUGIN, LOGLEVEL_6_TRACE, "Try load external module '%s'", szPath);
         hDLL = dlopen(szPath, RTLD_NOW);
         if(!hDLL) {
-            VmmLog(H, MID_PLUGIN, LOGLEVEL_DEBUG, "FAIL load external module '%s' - missing dependencies?", ep->d_name);
+            VmmLog(H, MID_PLUGIN, LOGLEVEL_DEBUG, "FAIL load external module '%s' - ('%s') missing dependencies?", ep->d_name, dlerror());
             continue;
         }
-
-
         pfnInitializeVmmPlugin = (VOID(*)(VMM_HANDLE, PVMMDLL_PLUGIN_REGINFO))dlsym(hDLL, "InitializeVmmPlugin");
         if(!pfnInitializeVmmPlugin) {
             VmmLog(H, MID_PLUGIN, LOGLEVEL_DEBUG, "FAIL load external module '%s' - plugin entry point not found", ep->d_name);
