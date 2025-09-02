@@ -56,7 +56,8 @@ typedef enum tdVMMLOG_LEVEL {
 #define MID_POOL         0x80000021
 #define MID_THREAD       0x80000022
 #define MID_THREADCS     0x80000023
-#define MID_MAX          0x80000023
+#define MID_LICENSE      0x80000024
+#define MID_MAX          0x80000024
 
 static LPCSTR VMMLOG_MID_STR[] = {
     [MID_NA       & 0xFF] = "N/A",
@@ -97,6 +98,7 @@ static LPCSTR VMMLOG_MID_STR[] = {
     [MID_POOL     & 0xFF] = "POOL",
     [MID_THREAD   & 0xFF] = "THREAD",
     [MID_THREADCS & 0xFF] = "THREADCS",
+    [MID_LICENSE  & 0xFF] = "LICENSE",
 };
 
 /*

@@ -1144,6 +1144,40 @@ VOID Util_DeleteFileU(_In_ LPCSTR uszPathFile)
     }
 }
 
+/*
+* Read a file given by its utf-8 full path into a newly allocated buffer.
+* CALLER LocalFree: *ppbFile
+* -- uszPathFile
+* -- ppbFile
+* -- pcbFile
+* -- return
+*/
+BOOL Util_ReadFileU(_In_ LPCSTR uszPathFile, _Out_ PBYTE *ppbFile, _Out_ PDWORD pcbFile)
+{
+    BOOL fResult = FALSE;
+    HANDLE hFile = INVALID_HANDLE_VALUE;
+    DWORD cbFile, cbRead;
+    PBYTE pbFile = NULL;
+    WCHAR wszWinPath[MAX_PATH];
+    *ppbFile = NULL;
+    *pcbFile = 0;
+    if(!CharUtil_UtoW(uszPathFile, -1, (PBYTE)wszWinPath, sizeof(wszWinPath), NULL, NULL, CHARUTIL_FLAG_STR_BUFONLY)) { goto fail; }
+    hFile = CreateFileW(wszWinPath, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if(!hFile || (hFile == INVALID_HANDLE_VALUE)) { goto fail; }
+    cbFile = GetFileSize(hFile, NULL);
+    if((cbFile > 0x00100000) || (cbFile == INVALID_FILE_SIZE)) { goto fail; }
+    if(!(pbFile = LocalAlloc(LMEM_ZEROINIT, cbFile))) { goto fail; }
+    if(!ReadFile(hFile, pbFile, cbFile, &cbRead, NULL) || (cbRead != cbFile)) { goto fail; }
+    *ppbFile = pbFile;
+    *pcbFile = cbFile;
+    pbFile = NULL;
+    fResult = TRUE;
+fail:
+    if(hFile && (hFile != INVALID_HANDLE_VALUE)) { CloseHandle(hFile); }
+    LocalFree(pbFile);
+    return fResult;
+}
+
 #endif /* _WIN32 */
 #if defined(LINUX) || defined(MACOS)
 
@@ -1173,6 +1207,40 @@ BOOL Util_HashSHA256(_In_reads_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_wr
 VOID Util_DeleteFileU(_In_ LPCSTR uszPathFile)
 {
     remove(uszPathFile);
+}
+
+/*
+* Read a file given by its utf-8 full path into a newly allocated buffer.
+* CALLER LocalFree: *ppbFile
+* -- uszPathFile
+* -- ppbFile
+* -- pcbFile
+* -- return
+*/
+BOOL Util_ReadFileU(_In_ LPCSTR uszPathFile, _Out_ PBYTE * ppbFile, _Out_ PDWORD pcbFile)
+{
+    BOOL fResult = FALSE;
+    FILE *f = NULL;
+    DWORD cbFile, cbRead;
+    PBYTE pbFile = NULL;
+    *ppbFile = NULL;
+    *pcbFile = 0;
+    if(fopen_s(&f, uszPathFile, "rb") || !f) { goto fail; }
+    if(fseek(f, 0, SEEK_END)) { goto fail; }
+    if((cbFile = ftell(f)) == (DWORD)-1) { goto fail; }
+    if(cbFile > 0x00100000) { goto fail; }
+    if(fseek(f, 0, SEEK_SET)) { goto fail; }
+    if(!cbFile) { goto fail; }
+    if(!(pbFile = LocalAlloc(LMEM_ZEROINIT, cbFile))) { goto fail; }
+    if((cbRead = (DWORD)fread(pbFile, 1, cbFile, f)) != cbFile) { goto fail; }
+    *ppbFile = pbFile;
+    *pcbFile = cbFile;
+    pbFile = NULL;
+    fResult = TRUE;
+fail:
+    if(f) { fclose(f); }
+    LocalFree(pbFile);
+    return fResult;
 }
 
 DWORD Util_ResourceSize(_In_ VMM_HANDLE H, _In_ LPWSTR wszResourceName) { return 0; }

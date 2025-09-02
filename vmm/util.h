@@ -73,6 +73,16 @@ _Success_(return)
 BOOL Util_DecompressGzToStringAlloc(_In_ PBYTE pbCompressed, _In_ DWORD cbCompressed, _In_ DWORD cbDecompressed, _Out_ LPSTR *pszDecompressed);
 
 /*
+* Read a file given by its utf-8 full path into a newly allocated buffer.
+* CALLER LocalFree: *ppbFile
+* -- uszPathFile
+* -- ppbFile
+* -- pcbFile
+* -- return
+*/
+BOOL Util_ReadFileU(_In_ LPCSTR uszPathFile, _Out_ PBYTE *ppbFile, _Out_ PDWORD pcbFile);
+
+/*
 * Delete a file denoted by its utf-8 full path.
 * -- uszPathFile
 */
