@@ -6,6 +6,46 @@
 #ifndef VMM_PROFILE_FULL
 
 #include "vmmex.h"
+#include "version.h"
+#include "charutil.h"
+
+#define VMMEX_VMM_COPYRIGHT_INFORMATION \
+    " MemProcFS "VER_COPYRIGHT_STR"\n" \
+    " License: GNU Affero General Public License v3.0                               \n" \
+    " Contact information: pcileech@frizk.net                                       \n" \
+    " MemProcFS:    https://github.com/ufrisk/MemProcFS                             \n" \
+    " LeechCore:    https://github.com/ufrisk/LeechCore                             \n" \
+    " PCILeech:     https://github.com/ufrisk/pcileech                              \n"
+
+/*
+* Print the copyright splash information at start-up.
+* -- H
+*/
+VOID VmmEx_InitializePrintSplashCopyright(_In_ VMM_HANDLE H)
+{
+    LPSTR uszLicensedTo = VmmEx_License_LicensedTo();
+    if(!uszLicensedTo) {
+        vmmprintf(H, "[CRITICAL] NO VALID LICENSE FOUND - ABORTING!\n");
+        exit(1);
+    }
+    vmmprintf(H, "%s", VMMEX_VMM_COPYRIGHT_INFORMATION);
+    vmmprintf(H, " Licensed To:  %s\n", uszLicensedTo);
+    LocalFree(uszLicensedTo);
+}
+
+/*
+* Return the licensed-to string.
+* Caller LocalFree: return
+* -- return = the licensed-to string as a utf-8 string or NULL on error (no license).
+*/
+_Success_(return != NULL)
+LPSTR VmmEx_License_LicensedTo()
+{
+    static LPCSTR uszLICENCED_TO = "GNU Affero General Public License v3.0 - OPEN SOURCE USER.";
+    LPSTR uszLicensedTo = NULL;
+    CharUtil_AtoU(uszLICENCED_TO, (DWORD)-1, NULL, 0, &uszLicensedTo, NULL, CHARUTIL_FLAG_ALLOC);
+    return uszLicensedTo;
+}
 
 /*
 * Perform additional verification of the config after the initial argument parsing.

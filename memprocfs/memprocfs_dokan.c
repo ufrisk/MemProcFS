@@ -204,12 +204,14 @@ VOID VfsDokan_Close(_In_ CHAR chMountPoint)
 #ifdef VMM_PROFILE_FULL
 #include "ex/memprocfs_ex.h"
 #else /* VMM_PROFILE_FULL */
+#define MEMPROCFS_IS_OPENSOURCE 1
 #define MEMPROCFS_SPLASH \
     "==============================  MemProcFS  ==============================\n" \
     " - Author:           Ulf Frisk - pcileech@frizk.net                      \n" \
     " - Info:             https://github.com/ufrisk/MemProcFS                 \n" \
     " - Discord:          https://discord.gg/pcileech                         \n" \
     " - License:          GNU Affero General Public License v3.0              \n" \
+    " - Licensed To:      %s\n"                                                   \
     "   --------------------------------------------------------------------- \n" \
     "   MemProcFS is free open source software. If you find it useful please  \n" \
     "   become a sponsor at: https://github.com/sponsors/ufrisk Thank You :)  \n" \
@@ -221,6 +223,8 @@ VOID VfsDokan_InitializeAndMount_DisplayInfo(LPWSTR wszMountPoint)
     ULONG64 qwVersionVmmMajor = 0, qwVersionVmmMinor = 0, qwVersionVmmRevision = 0;
     ULONG64 qwVersionWinMajor = 0, qwVersionWinMinor = 0, qwVersionWinBuild = 0;
     ULONG64 qwUniqueSystemId = 0, iMemoryModel;
+    LPSTR uszLicensedTo = NULL;
+    BOOL fGPL;
     // get vmm.dll versions
     VMMDLL_ConfigGet(g_hVMM, VMMDLL_OPT_CONFIG_VMM_VERSION_MAJOR, &qwVersionVmmMajor);
     VMMDLL_ConfigGet(g_hVMM, VMMDLL_OPT_CONFIG_VMM_VERSION_MINOR, &qwVersionVmmMinor);
@@ -231,10 +235,23 @@ VOID VfsDokan_InitializeAndMount_DisplayInfo(LPWSTR wszMountPoint)
     VMMDLL_ConfigGet(g_hVMM, VMMDLL_OPT_WIN_VERSION_MINOR, &qwVersionWinMinor);
     VMMDLL_ConfigGet(g_hVMM, VMMDLL_OPT_WIN_VERSION_BUILD, &qwVersionWinBuild);
     VMMDLL_ConfigGet(g_hVMM, VMMDLL_OPT_WIN_SYSTEM_UNIQUE_ID, &qwUniqueSystemId);
+    uszLicensedTo = VMMDLL_LicensedTo();
+    if(!uszLicensedTo) {
+        printf("[CRITICAL] A valid license could not be found. Terminating.\n");
+        exit(1);
+        return;
+    }
+    fGPL = strstr(uszLicensedTo, "General Public License") != NULL;
+    if((MEMPROCFS_IS_OPENSOURCE && !fGPL) || (!MEMPROCFS_IS_OPENSOURCE && fGPL)) {
+        printf("[CRITICAL] License mis-match. Terminating.\n");
+        exit(1);
+        return;
+    }
     printf("\n"MEMPROCFS_SPLASH \
         " - Version:          %i.%i.%i (%s)\n" \
         " - Mount Point:      %S           \n" \
         " - Tag:              %i_%x        \n",
+        uszLicensedTo,
         (DWORD)qwVersionVmmMajor, (DWORD)qwVersionVmmMinor, (DWORD)qwVersionVmmRevision, VER_OSARCH,
         wszMountPoint, (DWORD)qwVersionWinBuild, (DWORD)qwUniqueSystemId);
     if(qwVersionWinMajor && (iMemoryModel < (sizeof(VMMDLL_MEMORYMODEL_TOSTRING) / sizeof(LPSTR)))) {
@@ -244,6 +261,7 @@ VOID VfsDokan_InitializeAndMount_DisplayInfo(LPWSTR wszMountPoint)
         printf(" - Operating System: Unknown\n");
     }
     printf("==========================================================================\n\n");
+    VMMDLL_MemFree(uszLicensedTo);
 }
 
 VOID VfsDokan_InitializeAndMount(_In_ CHAR chMountPoint)

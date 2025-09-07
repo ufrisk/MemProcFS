@@ -12,20 +12,26 @@
 
 #include "vmm.h"
 
-#define VMMEX_VMM_COPYRIGHT_INFORMATION \
-    " MemProcFS "VER_COPYRIGHT_STR"\n" \
-    " License: GNU Affero General Public License v3.0                               \n" \
-    " Contact information: pcileech@frizk.net                                       \n" \
-    " MemProcFS:    https://github.com/ufrisk/MemProcFS                             \n" \
-    " LeechCore:    https://github.com/ufrisk/LeechCore                             \n" \
-    " PCILeech:     https://github.com/ufrisk/pcileech                              \n"
-
 /*
 * Perform additional verification of the config after the initial argument parsing.
 * -- H
 * -- return
 */
 BOOL VmmEx_InitializeVerifyConfig(_In_ VMM_HANDLE H);
+
+/*
+* Print the copyright splash information at start-up.
+* -- H
+*/
+VOID VmmEx_InitializePrintSplashCopyright(_In_ VMM_HANDLE H);
+
+/*
+* Return the licensed-to string.
+* Caller LocalFree: return
+* -- return = the licensed-to string as a utf-8 string or NULL on error (no license).
+*/
+_Success_(return != NULL)
+LPSTR VmmEx_License_LicensedTo();
 
 /*
 * Tries to locate the Directory Table Base by scanning a user-defined range.

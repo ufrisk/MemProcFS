@@ -1131,7 +1131,6 @@ VOID PluginManager_Initialize_ExternalDlls(_In_ VMM_HANDLE H)
         VmmLog(H, MID_PLUGIN, LOGLEVEL_DEBUG, "FAIL load external modules - plugins directory missing");
         return;
     }
-    if(!dp) { return; }
     while((ep = readdir(dp)) && !H->fAbort) {
         if((ep->d_name[0] != 'm') || (ep->d_name[1] != '_')) { continue; }
         if(!CharUtil_StrEndsWith(ep->d_name, VMM_LIBRARY_FILETYPE, TRUE)) { continue; }

@@ -392,8 +392,11 @@ VOID VmmDllCore_PrintHelp(_In_ VMM_HANDLE H)
         " MemProcFS v%i.%i.%i COMMAND LINE REFERENCE:                                   \n" \
         " MemProcFS may be used in stand-alone mode with support for memory dump files, \n" \
         " local memory via winpmem driver or together with PCILeech DMA devices.        \n" \
-        " -----                                                                         \n" \
-        VMMEX_VMM_COPYRIGHT_INFORMATION
+        " -----                                                                         \n",
+        VERSION_MAJOR, VERSION_MINOR, VERSION_REVISION
+    );
+    VmmEx_InitializePrintSplashCopyright(H);
+    vmmprintf(H,
         " -----                                                                         \n" \
         " The recommended way to use MemProcFS is to specify a memory acquisition device\n" \
         " in the -device option. Options -f and -z equals -device.                      \n" \
@@ -474,8 +477,7 @@ VOID VmmDllCore_PrintHelp(_In_ VMM_HANDLE H)
         "          2 = forensic mode with temp sqlite database deleted upon exit.       \n" \
         "          3 = forensic mode with temp sqlite database remaining upon exit.     \n" \
         "          4 = forensic mode with static named sqlite database (vmm.sqlite3).   \n" \
-        "          default: 0  Example -forensic 4                                      \n",
-        VERSION_MAJOR, VERSION_MINOR, VERSION_REVISION
+        "          default: 0  Example -forensic 4                                      \n"
     );
 }
 
@@ -1043,3 +1045,22 @@ PVOID VmmDllCore_MemAllocExternal(_In_ VMM_HANDLE H, _In_ DWORD tag, _In_ SIZE_T
     return pObData ? pObData->pb : NULL;
 }
 
+/*
+* Copy internal memory to freshly allocated "external" memory to be free'd only
+* by VMMDLL_MemFree // VmmDllCore_MemFreeExternal.
+* CALLER VMMDLL_MemFree(return)
+* -- H
+* -- tag = tag identifying the type of object.
+* -- pb = source memory to copy.
+* -- cb = size of memory to allocation and copy.
+* -- return
+*/
+_Success_(return != NULL)
+PVOID VmmDllCore_MemAllocExternalAndCopy(_In_ VMM_HANDLE H, _In_ DWORD tag, _In_reads_bytes_(cb) PBYTE pb, _In_ SIZE_T cb)
+{
+    PVOID pv = VmmDllCore_MemAllocExternal(H, tag, cb, 0);
+    if(pv) {
+        memcpy(pv, pb, cb);
+    }
+    return pv;
+}

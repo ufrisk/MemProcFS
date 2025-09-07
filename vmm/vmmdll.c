@@ -17,6 +17,7 @@
 #include "sysquery.h"
 #include "version.h"
 #include "vmm.h"
+#include "vmmex.h"
 #include "vmmproc.h"
 #include "vmmwin.h"
 #include "vmmnet.h"
@@ -51,6 +52,7 @@
 #define OB_TAG_API_MAP_VAD_EX           'VADX'
 #define OB_TAG_API_MAP_VM               'VM  '
 #define OB_TAG_API_MODULE_FROM_NAME     'MODN'
+#define OB_TAG_API_LICENSE              'LIC '
 #define OB_TAG_API_PROCESS_INFORMATION  'PNFO'
 #define OB_TAG_API_PROCESS_STRING       'PSTR'
 #define OB_TAG_API_SEARCH               'SRCH'
@@ -3249,6 +3251,21 @@ BOOL VMMDLL_UtilFillHexAscii(_In_reads_opt_(cb) PBYTE pb, _In_ DWORD cb, _In_ DW
     return Util_FillHexAscii(pb, cb, cbInitialOffset, sz, pcsz);
 }
 
+/*
+* Retrieve license information - Licensed To.
+* -- CALLER FREE: VMMDLL_MemFree(return)
+* -- return = NULL on fail, otherwise a string that must be free'd by caller.
+*/
+EXPORTED_FUNCTION _Success_(return != NULL)
+LPSTR VMMDLL_LicensedTo()
+{
+    LPSTR uszLicensedToInt = NULL, uszLicensedToExt = NULL;
+    uszLicensedToInt = VmmEx_License_LicensedTo();
+    if(!uszLicensedToInt) { return NULL; }
+    uszLicensedToExt = VmmDllCore_MemAllocExternalAndCopy(NULL, OB_TAG_API_LICENSE, (PBYTE)uszLicensedToInt, (DWORD)(strlen(uszLicensedToInt) + 1));
+    LocalFree(uszLicensedToInt);
+    return uszLicensedToExt;
+}
 
 
 
