@@ -139,6 +139,30 @@ fail:
 // GENERAL INTERNAL FUNCTIONALITY BELOW:
 // ----------------------------------------------------------------------------
 
+#define INFODB_AGE_EPOCH_4M             (QWORD)(120 * 24 * 60 * 60)  // 4 months (EPOCH time)
+
+/*
+* Verify the InfoDB version and age to ensure compatibility.
+* If the InfoDB is old a log entry will be made.
+* If the InfoDB version may not be compatible a log entry will be made.
+* -- H
+* -- ctx
+*/
+VOID InfoDB_CheckVersionAndAge(_In_ VMM_HANDLE H, _In_ POB_INFODB_CONTEXT ctx)
+{
+    QWORD qwVersion = 0, qwAge = 0, qwAgeNow = 0;
+    InfoDB_SqlQueryN(H, ctx, "SELECT value FROM dbinfo WHERE type = 'version'", 0, NULL, 1, &qwVersion, NULL);
+    InfoDB_SqlQueryN(H, ctx, "SELECT value FROM dbinfo WHERE type = 'created'", 0, NULL, 1, &qwAge, NULL);
+    if(qwVersion > 1) {
+        VmmLog(H, MID_INFODB, LOGLEVEL_WARNING, "InfoDB version %llu (>1) may not be fully supported.", qwVersion);
+    }
+    qwAgeNow = Util_FileTimeToEpoch(Util_FileTimeNow());
+    if(qwAge + INFODB_AGE_EPOCH_4M < qwAgeNow) {
+        VmmLog(H, MID_INFODB, LOGLEVEL_WARNING, "InfoDB is older than four months. Consider updating from:");
+        VmmLog(H, MID_INFODB, LOGLEVEL_WARNING, "https://github.com/ufrisk/MemProcFS/releases/latest");
+    }
+}
+
 DWORD InfoDB_GetPdbId(_In_ VMM_HANDLE H, _In_ POB_INFODB_CONTEXT ctx, _In_ QWORD vaModuleBase)
 {
     PVMM_PROCESS pObSystemProcess = NULL;
@@ -784,25 +808,36 @@ VOID InfoDB_Context_CleanupCB(POB_INFODB_CONTEXT pOb)
 
 VOID InfoDB_Initialize_DoWork(_In_ VMM_HANDLE H)
 {
+    int rc;
     DWORD i;
     POB_INFODB_CONTEXT pObCtx = NULL;
-    CHAR szDbPathFile[MAX_PATH] = { 0 };
+    CHAR uszDbPathFile[MAX_PATH] = { 0 };
     // 1: INIT
     if(!(pObCtx = Ob_AllocEx(H, OB_TAG_INFODB_CTX, LMEM_ZEROINIT, sizeof(OB_INFODB_CONTEXT), (OB_CLEANUP_CB)InfoDB_Context_CleanupCB, NULL))) { goto fail; }
     // 2: SQLITE INIT:
-    Util_GetPathLib(szDbPathFile);
-    strncat_s(szDbPathFile, sizeof(szDbPathFile), "info.db", _TRUNCATE);
+    Util_GetPathLib(uszDbPathFile);
+    strncat_s(uszDbPathFile, sizeof(uszDbPathFile), "info.db", _TRUNCATE);
     if(SQLITE_CONFIG_MULTITHREAD != sqlite3_threadsafe()) {
         VmmLog(H, MID_INFODB, LOGLEVEL_CRITICAL, "WRONG SQLITE THREADING MODE - TERMINATING!");
         ExitProcess(0);
     }
     for(i = 0; i < INFODB_SQL_POOL_CONNECTION_NUM; i++) {
         if(!(pObCtx->hEventSqlPoolConnReserved[i] = CreateEvent(NULL, FALSE, TRUE, NULL))) { goto fail; }
-        if(SQLITE_OK != sqlite3_open_v2(szDbPathFile, &pObCtx->hSql[i], SQLITE_OPEN_URI | SQLITE_OPEN_READONLY | SQLITE_OPEN_SHAREDCACHE | SQLITE_OPEN_NOMUTEX, NULL)) { goto fail; }
+        rc = sqlite3_open_v2(uszDbPathFile, &pObCtx->hSql[i], SQLITE_OPEN_URI | SQLITE_OPEN_READONLY | SQLITE_OPEN_SHAREDCACHE | SQLITE_OPEN_NOMUTEX, NULL);
+        if(rc != SQLITE_OK) {
+            if(rc == SQLITE_CANTOPEN) {
+                VmmLog(H, MID_INFODB, LOGLEVEL_WARNING, "Recommended file info.db not found. Info database disabled.");
+            } else {
+                VmmLog(H, MID_INFODB, LOGLEVEL_WARNING, "Failed opening file info.db. Info database disabled. (rc=%i)", rc);
+            }
+            goto fail;
+        }
     }
     // 3: QUERY CURRENT 'NTOSKRNL.EXE' IMAGE
     pObCtx->dwPdbId_NT = InfoDB_GetPdbId(H, pObCtx, H->vmm.kernel.vaBase);
     ObContainer_SetOb(H->vmm.pObCInfoDB, pObCtx);
+    // 4: CHECK 'info.db' VERSION AND AGE:
+    InfoDB_CheckVersionAndAge(H, pObCtx);
 fail:
     Ob_DECREF(pObCtx);
 }

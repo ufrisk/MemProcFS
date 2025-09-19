@@ -502,6 +502,18 @@ QWORD Util_FileTimeNow()
     return (QWORD)ftNow;
 }
 
+/*
+* Convert FILETIME to EPOCH.
+* -- ft
+* -- return
+*/
+_Success_(return != 0)
+QWORD Util_FileTimeToEpoch(_In_ QWORD ft)
+{
+    if(!ft || (ft > 0x0200000000000000)) { return 0; }
+    return (ft / 10000000) - 11644473600ULL;
+}
+
 VOID Util_FileTime2String(_In_ QWORD ft, _Out_writes_(24) LPSTR szTime)
 {
     SYSTEMTIME SystemTime;
@@ -963,31 +975,31 @@ NTSTATUS Util_VfsLineFixedMapCustom_Read(
 /*
 * Retrieve the operating system path of the directory which is containing this:
 * .dll/.so file.
-* -- szPath
+* -- uszPath
 */
-VOID Util_GetPathLib(_Out_writes_(MAX_PATH) PCHAR szPath)
+VOID Util_GetPathLib(_Out_writes_(MAX_PATH) PCHAR uszPath)
 {
     SIZE_T i;
-    ZeroMemory(szPath, MAX_PATH);
+    ZeroMemory(uszPath, MAX_PATH);
 #ifdef _WIN32
     HMODULE hModuleVmm;
     WCHAR wszPath[MAX_PATH] = { 0 };
     hModuleVmm = LoadLibraryU("vmm.dll");
     GetModuleFileNameW(hModuleVmm, wszPath, MAX_PATH - 4);
-    CharUtil_WtoU(wszPath, -1, (PBYTE)szPath, MAX_PATH, NULL, NULL, CHARUTIL_FLAG_STR_BUFONLY | CHARUTIL_FLAG_TRUNCATE);
+    CharUtil_WtoU(wszPath, -1, (PBYTE)uszPath, MAX_PATH, NULL, NULL, CHARUTIL_FLAG_STR_BUFONLY | CHARUTIL_FLAG_TRUNCATE);
     if(hModuleVmm) { FreeLibrary(hModuleVmm); }
 #endif /* _WIN32 */
 #if defined(LINUX) || defined(MACOS)
     Dl_info Info = { 0 };
     if(!dladdr((void *)Util_GetPathLib, &Info) || !Info.dli_fname) {
-        GetModuleFileNameA(NULL, szPath, MAX_PATH - 4);
+        GetModuleFileNameA(NULL, uszPath, MAX_PATH - 4);
     } else {
-        strncpy(szPath, Info.dli_fname, MAX_PATH - 1);
+        strncpy(uszPath, Info.dli_fname, MAX_PATH - 1);
     }
 #endif /* LINUX || MACOS */
-    for(i = strlen(szPath) - 1; i > 0; i--) {
-        if(szPath[i] == '/' || szPath[i] == '\\') {
-            szPath[i + 1] = '\0';
+    for(i = strlen(uszPath) - 1; i > 0; i--) {
+        if(uszPath[i] == '/' || uszPath[i] == '\\') {
+            uszPath[i + 1] = '\0';
             return;
         }
     }

@@ -175,9 +175,9 @@ VOID Util_GetPathDll(_Out_writes_(MAX_PATH) PCHAR szPath, _In_opt_ HMODULE hModu
 /*
 * Retrieve the operating system path of the directory which is containing this:
 * .dll/.so file.
-* -- szPath
+* -- uszPath
 */
-VOID Util_GetPathLib(_Out_writes_(MAX_PATH) PCHAR szPath);
+VOID Util_GetPathLib(_Out_writes_(MAX_PATH) PCHAR uszPath);
 
 /*
 * Duplicates a string.
@@ -191,6 +191,14 @@ LPSTR Util_StrDupA(_In_opt_ LPCSTR sz);
 * Retrieve the current time as FILETIME.
 */
 QWORD Util_FileTimeNow();
+
+/*
+* Convert FILETIME to EPOCH.
+* -- ft
+* -- return
+*/
+_Success_(return != 0)
+QWORD Util_FileTimeToEpoch(_In_ QWORD ft);
 
 /*
 * Convert a FILETIME (ft) into a human readable string.
