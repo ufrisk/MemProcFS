@@ -249,11 +249,12 @@ v5.8
 * Linux clang compilation support.
 * macOS support.
 
-[v5.15](https://github.com/ufrisk/MemProcFS/releases/tag/v5.14)
+[v5.15](https://github.com/ufrisk/MemProcFS/releases/tag/v5.15)
 * Bug fixes.
 * Linux LeechAgent support using gRPC (LeechCore v2.21).
 * New FindEvil detection: High Entropy.
 * [DNS cache parsing](https://github.com/ufrisk/MemProcFS/wiki/FS_SysInfo_Network). Thanks [@MattCore71](https://github.com/MattCore71) for the contribution.
 
-Latest:
+[v5.16](https://github.com/ufrisk/MemProcFS/releases/tag/v5.16)
 * Bug fixes.
+* Support for Windows 11 25H2

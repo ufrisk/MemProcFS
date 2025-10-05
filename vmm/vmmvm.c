@@ -666,7 +666,7 @@ VOID VmmVm_DoWork_4_NewVMs(_In_ VMM_HANDLE H, _In_ PVMMOB_VMGLOBAL_CONTEXT pVMG)
         for(iTagPoolEntry = 0; iTagPoolEntry < pePoolTag->cEntry; iTagPoolEntry++) {
             iPoolEntry = pVMG->init.pBigPoolMap->piTag2Map[pePoolTag->iTag2Map + iTagPoolEntry];
             pePool = pVMG->init.pBigPoolMap->pMap + iPoolEntry;
-            if(pePool->cb == pVMG->offset.prtn.cb) {
+            if((pePool->cb >= pVMG->offset.prtn.cb) && (pePool->cb <= pVMG->offset.prtn.cb + 0x10)) {
                 pVM = ObMap_GetByKey(pVMG->pVmMap, pePool->va);
                 if(!pVM || !pVM->fActive) {
                     VmmVm_DoWork_4_NewVM(H, pVMG, pePool->va);

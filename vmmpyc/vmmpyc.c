@@ -141,6 +141,9 @@ PyObject* VmmPyc_MemRead(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ LPSTR szFN, P
         LocalFree(pb);
         return PyErr_Format(PyExc_RuntimeError, "%s: Failed.", szFN);
     }
+    if(flags & VMMDLL_FLAG_ZEROPAD_ON_FAIL) {
+        cbRead = cb;
+    }
     pyBytes = PyBytes_FromStringAndSize((const char *)pb, cbRead);
     LocalFree(pb);
     return pyBytes;

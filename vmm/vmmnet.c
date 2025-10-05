@@ -942,24 +942,37 @@ VOID VmmNet_Initialize_Context_Fuzz_TcpL_UdpA_TcTW(_In_ VMM_HANDLE H, _In_ PVMMN
     po->_Size = po->FLink + 8;
     // UdpA
     po = &ctx->oUdpA;
-    if(dwBuild >= 19041) {          // WIN10 / WIN11 / SERVER2022
-        po->SrcAddr = 0xa8;
-        po->SrcPort = 0xa0;
-        po->DstAddr = 0x120;        // ptr to IPpa
-        po->DstPort = 0x110;
-        po->FLink = 0x70;           // ??
-    } else if(dwBuild >= 10240) {   // WIN10
-        po->SrcAddr = 0x80;
-        po->SrcPort = 0x78;
-        po->FLink = 0x70;
-    } else {                        // VISTA - WIN8.1
-        po->SrcAddr = 0x60;
-        po->SrcPort = 0x80;
-        po->FLink = 0x88;
+    if(dwBuild >= 26100) {
+        // WIN11 24H2+:
+        po->INET_AF  = 0x28;
+        po->EProcess = 0x30;
+        po->Time     = 0x60;
+        po->SrcAddr  = 0xb0;
+        po->SrcPort  = 0xa8;
+        po->DstAddr  = 0x128;
+        po->DstPort  = 0x118;
+        po->FLink    = 0x78;
+    } else {
+        // VISTA to WIN11 23H2:
+        if(dwBuild >= 19041) {          // WIN10 / WIN11 / SERVER2022
+            po->SrcAddr = 0xa8;
+            po->SrcPort = 0xa0;
+            po->DstAddr = 0x120;        // ptr to IPpa
+            po->DstPort = 0x110;
+            po->FLink = 0x70;           // ??
+        } else if(dwBuild >= 10240) {   // WIN10
+            po->SrcAddr = 0x80;
+            po->SrcPort = 0x78;
+            po->FLink = 0x70;
+        } else {                        // VISTA - WIN8.1
+            po->SrcAddr = 0x60;
+            po->SrcPort = 0x80;
+            po->FLink = 0x88;
+        }
+        po->INET_AF = 0x20;
+        po->EProcess = 0x28;
+        po->Time = 0x58;
     }
-    po->INET_AF = 0x20;
-    po->EProcess = 0x28;
-    po->Time = 0x58;
     po->INET_AF_AF = (dwBuild < 9200) ? 0x14 : 0x18;  // VISTA-WIN7 or WIN8+
     po->_Size = max(max(po->SrcAddr, po->SrcPort), max(po->DstAddr, po->DstPort)) + 0x10;
     // TcTW
