@@ -89,11 +89,10 @@ VmmPycScatterMemory_read(PyObj_ScatterMemory *self, PyObject *args)
         pb = LocalAlloc(LMEM_ZEROINIT, cb);
         if(!pb) { return PyErr_NoMemory(); }
         result = VMMDLL_Scatter_Read(self->hScatter, qwA, cb, pb, &cbRead);
-        if(self->dwReadFlags & VMMDLL_FLAG_ZEROPAD_ON_FAIL) {
-            result = TRUE;
-            cbRead = cb;
-        }
         if(result) {
+            if(self->dwReadFlags & VMMDLL_FLAG_ZEROPAD_ON_FAIL) {
+                cbRead = cb;
+            }
             pyBytes = PyBytes_FromStringAndSize((const char*)pb, cbRead);
             LocalFree(pb);
             return pyBytes;
@@ -118,11 +117,10 @@ VmmPycScatterMemory_read(PyObj_ScatterMemory *self, PyObject *args)
             pb = LocalAlloc(LMEM_ZEROINIT, cb);
             if(!pb) { return PyErr_NoMemory(); }
             result = VMMDLL_Scatter_Read(self->hScatter, qwA, cb, pb, &cbRead);
-            if(self->dwReadFlags & VMMDLL_FLAG_ZEROPAD_ON_FAIL) {
-                result = TRUE;
-                cbRead = cb;
-            }
             if(result) {
+                if(self->dwReadFlags & VMMDLL_FLAG_ZEROPAD_ON_FAIL) {
+                    cbRead = cb;
+                }
                 pyBytes = PyBytes_FromStringAndSize((const char*)pb, cbRead);
                 PyList_Append_DECREF(pyListResult, pyBytes);
             } else {
