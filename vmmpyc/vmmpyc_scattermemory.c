@@ -86,9 +86,13 @@ VmmPycScatterMemory_read(PyObj_ScatterMemory *self, PyObject *args)
     cArgs = PyTuple_Size(args);
     // single read:
     if((cArgs == 2) && PyArg_ParseTuple(args, "KI", &qwA, &cb)) {
-        pb = LocalAlloc(0, cb);
+        pb = LocalAlloc(LMEM_ZEROINIT, cb);
         if(!pb) { return PyErr_NoMemory(); }
         result = VMMDLL_Scatter_Read(self->hScatter, qwA, cb, pb, &cbRead);
+        if(self->dwReadFlags & VMMDLL_FLAG_ZEROPAD_ON_FAIL) {
+            result = TRUE;
+            cbRead = cb;
+        }
         if(result) {
             pyBytes = PyBytes_FromStringAndSize((const char*)pb, cbRead);
             LocalFree(pb);
@@ -111,9 +115,13 @@ VmmPycScatterMemory_read(PyObj_ScatterMemory *self, PyObject *args)
             if(!pyA || !pyCB || !PyLong_Check(pyA) || !PyLong_Check(pyCB)) { goto fail; }
             qwA = PyLong_AsUnsignedLongLong(pyA);
             cb = PyLong_AsUnsignedLong(pyCB);
-            pb = LocalAlloc(0, cb);
+            pb = LocalAlloc(LMEM_ZEROINIT, cb);
             if(!pb) { return PyErr_NoMemory(); }
             result = VMMDLL_Scatter_Read(self->hScatter, qwA, cb, pb, &cbRead);
+            if(self->dwReadFlags & VMMDLL_FLAG_ZEROPAD_ON_FAIL) {
+                result = TRUE;
+                cbRead = cb;
+            }
             if(result) {
                 pyBytes = PyBytes_FromStringAndSize((const char*)pb, cbRead);
                 PyList_Append_DECREF(pyListResult, pyBytes);
