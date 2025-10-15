@@ -165,6 +165,16 @@ BOOL VmmWinProcess_Enumerate(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess
 */
 POB_SET VmmWinProcess_Enumerate_FindNoLinkProcesses(_In_ VMM_HANDLE H);
 
+/*
+* Refresh information about a single process given its PID. This is useful if
+* one wish to manually trigger a refresh of a specific process.
+* This function is thread-safe and will do appropriate locking internally.
+* -- H
+* -- dwPID = process to refresh.
+* -- return = TRUE on success, FALSE on failure.
+*/
+VOID VmmWinProcess_Enumerate_SingleProcess_Refresh(_In_ VMM_HANDLE H, _In_ DWORD dwPID);
+
 typedef VOID(*VMMWIN_LISTTRAVERSE_PRE_CB)(
     _In_ VMM_HANDLE H,
     _In_ PVMM_PROCESS pProcess,

@@ -258,3 +258,6 @@ v5.8
 [v5.16](https://github.com/ufrisk/MemProcFS/releases/tag/v5.16)
 * Bug fixes.
 * Support for Windows 11 25H2
+
+Latest:
+* New refresh options in the API.

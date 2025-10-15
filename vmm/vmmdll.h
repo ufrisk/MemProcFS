@@ -11,7 +11,7 @@
 // (c) Ulf Frisk, 2018-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-// Header Version: 5.15
+// Header Version: 5.16
 //
 
 #include "leechcore.h"
@@ -232,6 +232,20 @@ VOID VMMDLL_MemFree(_Frees_ptr_opt_ PVOID pvMem);
 #define VMMDLL_OPT_REFRESH_FREQ_FAST                    0x2001040000000000  // W - refresh fast frequency - incl. partial process refresh
 #define VMMDLL_OPT_REFRESH_FREQ_MEDIUM                  0x2001000100000000  // W - refresh medium frequency - incl. full process refresh
 #define VMMDLL_OPT_REFRESH_FREQ_SLOW                    0x2001001000000000  // W - refresh slow frequency.
+
+#define VMMDLL_OPT_REFRESH_SPECIFIC_HEAP_ALLOC          0x2003000100000000  // W - refresh only heap allocations.
+#define VMMDLL_OPT_REFRESH_SPECIFIC_KOBJECT             0x2003000200000000  // W - refresh only kernel objects.
+#define VMMDLL_OPT_REFRESH_SPECIFIC_NET                 0x2003000300000000  // W - refresh only network connections.
+#define VMMDLL_OPT_REFRESH_SPECIFIC_PFN                 0x2003000400000000  // W - refresh only pfn database.
+#define VMMDLL_OPT_REFRESH_SPECIFIC_PHYSMEMMAP          0x2003000500000000  // W - refresh only physical memory map.
+#define VMMDLL_OPT_REFRESH_SPECIFIC_POOL                0x2003000600000000  // W - refresh only kernel pool.
+#define VMMDLL_OPT_REFRESH_SPECIFIC_REGISTRY            0x2003000700000000  // W - refresh only registry.
+#define VMMDLL_OPT_REFRESH_SPECIFIC_SERVICES            0x2003000800000000  // W - refresh only services.
+#define VMMDLL_OPT_REFRESH_SPECIFIC_THREADCS            0x2003000900000000  // W - refresh only thread callstacks.
+#define VMMDLL_OPT_REFRESH_SPECIFIC_USER                0x2003000A00000000  // W - refresh only users.
+#define VMMDLL_OPT_REFRESH_SPECIFIC_VM                  0x2003000B00000000  // W - refresh only virtual machines.
+
+#define VMMDLL_OPT_REFRESH_SPECIFIC_PROCESS             0x2004000100000000  // W - refresh only the specified process [LO-DWORD: Process PID]
 
 // PROCESS OPTIONS: [LO-DWORD: Process PID]
 #define VMMDLL_OPT_PROCESS_DTB                          0x2002000100000000  // W - force set process directory table base.

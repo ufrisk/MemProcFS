@@ -3861,6 +3861,58 @@ BOOL VmmWinProcess_Enumerate(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess
     return fResult;
 }
 
+/*
+* Refresh information about a single process given its PID. This is useful if
+* one wish to manually trigger a refresh of a specific process.
+* This function is thread-safe and will do appropriate locking internally.
+* -- H
+* -- dwPID = process to refresh.
+* -- return = TRUE on success, FALSE on failure.
+*/
+VOID VmmWinProcess_Enumerate_SingleProcess_Refresh(_In_ VMM_HANDLE H, _In_ DWORD dwPID)
+{
+    BOOL fTotalRefresh;
+    PBYTE pbEPROCESS = NULL;
+    PVMM_PROCESS pObProcessNew, pProcess = NULL;
+    VMMSTATISTICS_LOG Statistics = { 0 };
+    if((H->vmm.tpSystem != VMM_SYSTEM_WINDOWS_32) && (H->vmm.tpSystem != VMM_SYSTEM_WINDOWS_64)) {
+        return;
+    }
+    VmmStatisticsLogStart(H, MID_PROCESS, LOGLEVEL_6_TRACE, NULL, &Statistics, "EPROCESS_ENUMERATE_RefreshSingleProcess");
+    EnterCriticalSection(&H->vmm.LockMaster);
+    while((pProcess = VmmProcessGetNext(H, pProcess, VMM_FLAG_PROCESS_SHOW_TERMINATED))) {
+        fTotalRefresh = (pProcess->dwPID == dwPID);
+        if(fTotalRefresh) {
+            VmmReadAlloc(H, PVMM_PROCESS_SYSTEM, pProcess->win.EPROCESS.va, &pbEPROCESS, pProcess->win.EPROCESS.cb, VMM_FLAG_ZEROPAD_ON_FAIL | VMM_FLAG_NOCACHE);
+            if(!pbEPROCESS) {
+                pbEPROCESS = LocalAlloc(LMEM_ZEROINIT, pProcess->win.EPROCESS.cb);
+                if(!pbEPROCESS) {
+                    fTotalRefresh = FALSE;
+                }
+            }
+        }
+        pObProcessNew = VmmProcessCreateEntry(
+            H,
+            fTotalRefresh,
+            pProcess->dwPID,
+            pProcess->dwPPID,
+            fTotalRefresh ? *(PDWORD)(pbEPROCESS + H->vmm.offset.EPROCESS.State) : pProcess->dwState,
+            pProcess->paDTB_Kernel,
+            pProcess->paDTB_UserOpt,
+            pProcess->szName,
+            pProcess->fUserOnly,
+            fTotalRefresh ? pbEPROCESS : pProcess->win.EPROCESS.pb,
+            pProcess->win.EPROCESS.cb);
+        Ob_DECREF(pObProcessNew);
+        if(fTotalRefresh) {
+            LocalFree(pbEPROCESS);
+            pbEPROCESS = NULL;
+        }
+    }
+    LeaveCriticalSection(&H->vmm.LockMaster);
+    VmmStatisticsLogEnd(H, &Statistics, "EPROCESS_ENUMERATE_RefreshSingleProcess");
+}
+
 
 
 // ----------------------------------------------------------------------------

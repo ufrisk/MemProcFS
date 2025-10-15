@@ -18,11 +18,15 @@
 #include "version.h"
 #include "vmm.h"
 #include "vmmex.h"
+#include "vmmheap.h"
 #include "vmmproc.h"
 #include "vmmwin.h"
 #include "vmmnet.h"
 #include "vmmwinobj.h"
+#include "vmmwinpool.h"
 #include "vmmwinreg.h"
+#include "vmmwinsvc.h"
+#include "vmmwinthread.h"
 #include "vmmvm.h"
 #include "vmmyarautil.h"
 #include "mm/mm_pfn.h"
@@ -327,8 +331,56 @@ BOOL VMMDLL_ConfigSet_Impl(_In_ VMM_HANDLE H, _In_ ULONG64 fOption, _In_ ULONG64
         }
         return fResult;
     }
+    // user-initiated specific refresh / cache flushes
+    if((fOption & 0xffff000000000000) == 0x2003000000000000) {
+        fResult = TRUE;
+        EnterCriticalSection(&H->vmm.LockMaster);
+        switch(fOption) {
+            case VMMDLL_OPT_REFRESH_SPECIFIC_KOBJECT:
+                VmmWinObj_Refresh(H);
+                break;
+            case VMMDLL_OPT_REFRESH_SPECIFIC_HEAP_ALLOC:
+                VmmHeapAlloc_Refresh(H);
+                break;
+            case VMMDLL_OPT_REFRESH_SPECIFIC_NET:
+                VmmNet_Refresh(H);
+                break;
+            case VMMDLL_OPT_REFRESH_SPECIFIC_PFN:
+                MmPfn_Refresh(H);
+                break;
+            case VMMDLL_OPT_REFRESH_SPECIFIC_PHYSMEMMAP:
+                VmmWinPhysMemMap_Refresh(H);
+                break;
+            case VMMDLL_OPT_REFRESH_SPECIFIC_POOL:
+                VmmWinPool_Refresh(H);
+                break;
+            case VMMDLL_OPT_REFRESH_SPECIFIC_REGISTRY:
+                VmmWinReg_Refresh(H);
+                break;
+            case VMMDLL_OPT_REFRESH_SPECIFIC_SERVICES:
+                VmmWinSvc_Refresh(H);
+                break;
+            case VMMDLL_OPT_REFRESH_SPECIFIC_THREADCS:
+                VmmWinThreadCs_Refresh(H);
+                break;
+            case VMMDLL_OPT_REFRESH_SPECIFIC_USER:
+                VmmWinUser_Refresh(H);
+                break;
+            case VMMDLL_OPT_REFRESH_SPECIFIC_VM:
+                VmmVm_Refresh(H);
+                break;
+            default:
+                fResult = FALSE;
+                break;
+        }
+        LeaveCriticalSection(&H->vmm.LockMaster);
+        return fResult;
+    }
     // options:
     switch(fOption & 0xffffffff00000000) {
+        case VMMDLL_OPT_REFRESH_SPECIFIC_PROCESS:
+            VmmWinProcess_Enumerate_SingleProcess_Refresh(H, (DWORD)(fOption & 0xffffffff));
+            return TRUE;
         case VMMDLL_OPT_CORE_PRINTF_ENABLE:
             LcSetOption(H->hLC, fOption, qwValue);
             H->cfg.fVerboseDll = qwValue ? TRUE : FALSE;
