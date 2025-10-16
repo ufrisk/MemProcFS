@@ -269,6 +269,9 @@ _Success_(return)
 BOOL VMMDLL_ConfigSetProcess_Impl(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ ULONG64 fOption, _In_ ULONG64 qwValue)
 {
     switch(fOption) {
+        case VMMDLL_OPT_REFRESH_SPECIFIC_PROCESS:
+            VmmWinProcess_Enumerate_SingleProcess_Refresh(H, pProcess->dwPID);
+            return TRUE;
         case VMMDLL_OPT_PROCESS_DTB:
             pProcess->pObPersistent->paDTB_Override = qwValue;
             VmmProcRefresh_Slow(H);
@@ -378,9 +381,6 @@ BOOL VMMDLL_ConfigSet_Impl(_In_ VMM_HANDLE H, _In_ ULONG64 fOption, _In_ ULONG64
     }
     // options:
     switch(fOption & 0xffffffff00000000) {
-        case VMMDLL_OPT_REFRESH_SPECIFIC_PROCESS:
-            VmmWinProcess_Enumerate_SingleProcess_Refresh(H, (DWORD)(fOption & 0xffffffff));
-            return TRUE;
         case VMMDLL_OPT_CORE_PRINTF_ENABLE:
             LcSetOption(H->hLC, fOption, qwValue);
             H->cfg.fVerboseDll = qwValue ? TRUE : FALSE;

@@ -3873,7 +3873,7 @@ VOID VmmWinProcess_Enumerate_SingleProcess_Refresh(_In_ VMM_HANDLE H, _In_ DWORD
 {
     BOOL fTotalRefresh;
     PBYTE pbEPROCESS = NULL;
-    PVMM_PROCESS pObProcessNew, pProcess = NULL;
+    PVMM_PROCESS pSystemProcess, pProcessNew, pProcess = NULL;
     VMMSTATISTICS_LOG Statistics = { 0 };
     if((H->vmm.tpSystem != VMM_SYSTEM_WINDOWS_32) && (H->vmm.tpSystem != VMM_SYSTEM_WINDOWS_64)) {
         return;
@@ -3891,7 +3891,7 @@ VOID VmmWinProcess_Enumerate_SingleProcess_Refresh(_In_ VMM_HANDLE H, _In_ DWORD
                 }
             }
         }
-        pObProcessNew = VmmProcessCreateEntry(
+        pProcessNew = VmmProcessCreateEntry(
             H,
             fTotalRefresh,
             pProcess->dwPID,
@@ -3903,12 +3903,17 @@ VOID VmmWinProcess_Enumerate_SingleProcess_Refresh(_In_ VMM_HANDLE H, _In_ DWORD
             pProcess->fUserOnly,
             fTotalRefresh ? pbEPROCESS : pProcess->win.EPROCESS.pb,
             pProcess->win.EPROCESS.cb);
-        Ob_DECREF(pObProcessNew);
+        Ob_DECREF(pProcessNew);
         if(fTotalRefresh) {
             LocalFree(pbEPROCESS);
             pbEPROCESS = NULL;
         }
     }
+    if((pSystemProcess = VmmProcessGet(H, 4))) {
+        VmmWinProcess_Enumerate_PostProcessing(H, pSystemProcess);
+        Ob_DECREF(pSystemProcess);
+    }
+    VmmProcessCreateFinish(H);
     LeaveCriticalSection(&H->vmm.LockMaster);
     VmmStatisticsLogEnd(H, &Statistics, "EPROCESS_ENUMERATE_RefreshSingleProcess");
 }
