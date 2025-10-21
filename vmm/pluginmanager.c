@@ -927,12 +927,12 @@ VOID PluginManager_Initialize_Python(_In_ VMM_HANDLE H)
     // 7: process 'special status' python plugin manager.
     hDllPyPlugin = LoadLibraryU("vmmpyc.pyd");
     if(!hDllPyPlugin) {
-        VmmLog(H, MID_PLUGIN, LOGLEVEL_WARNING, "Python plugin manager failed to load.");
+        VmmLog(H, MID_PLUGIN, LOGLEVEL_4_VERBOSE, "Python plugin manager failed to load.");
         goto fail;
     }
     pfnInitializeVmmPlugin = (VOID(*)(VMM_HANDLE, PVMMDLL_PLUGIN_REGINFO))GetProcAddress(hDllPyPlugin, "InitializeVmmPlugin");
     if(!pfnInitializeVmmPlugin) {
-        VmmLog(H, MID_PLUGIN, LOGLEVEL_WARNING, "Python plugin manager failed to load due to corrupt DLL.");
+        VmmLog(H, MID_PLUGIN, LOGLEVEL_4_VERBOSE, "Python plugin manager failed to load due to corrupt DLL.");
         goto fail;
     }
     PluginManager_Initialize_RegInfoInit(H, &ri, hDllPyPlugin);
@@ -941,10 +941,10 @@ VOID PluginManager_Initialize_Python(_In_ VMM_HANDLE H)
     ri.python.hReservedDllPython3 = hDllPython3;
     pfnInitializeVmmPlugin(H, &ri);
     if(!PluginManager_ModuleExistsDll(H, hDllPyPlugin)) {
-        VmmLog(H, MID_PLUGIN, LOGLEVEL_WARNING, "Python plugin manager failed to load due to internal error.");
+        VmmLog(H, MID_PLUGIN, LOGLEVEL_4_VERBOSE, "Python plugin manager failed to load due to internal error.");
         return;
     }
-    VmmLog(H, MID_PLUGIN, LOGLEVEL_VERBOSE, "PluginManager: Python plugin loaded.");
+    VmmLog(H, MID_PLUGIN, LOGLEVEL_4_VERBOSE, "PluginManager: Python plugin loaded.");
     if(hDllPython3X) { FreeLibrary(hDllPython3X); }
     return;
 fail:
@@ -1087,12 +1087,12 @@ VOID PluginManager_Initialize_Python(_In_ VMM_HANDLE H)
     // 7: process 'special status' python plugin manager.
     hDllPyPlugin = dlopen("vmmpyc.so", RTLD_NOW | RTLD_GLOBAL);
     if(!hDllPyPlugin) {
-        VmmLog(H, MID_PLUGIN, LOGLEVEL_WARNING, "Python plugin manager failed to load.");
+        VmmLog(H, MID_PLUGIN, LOGLEVEL_4_VERBOSE, "Python plugin manager failed to load.");
         goto fail;
     }
     pfnInitializeVmmPlugin = (VOID(*)(VMM_HANDLE, PVMMDLL_PLUGIN_REGINFO))GetProcAddress(hDllPyPlugin, "InitializeVmmPlugin");
     if(!pfnInitializeVmmPlugin) {
-        VmmLog(H, MID_PLUGIN, LOGLEVEL_WARNING, "Python plugin manager failed to load due to corrupt DLL.");
+        VmmLog(H, MID_PLUGIN, LOGLEVEL_4_VERBOSE, "Python plugin manager failed to load due to corrupt DLL.");
         goto fail;
     }
     PluginManager_Initialize_RegInfoInit(H, &ri, hDllPyPlugin);
@@ -1101,10 +1101,10 @@ VOID PluginManager_Initialize_Python(_In_ VMM_HANDLE H)
     ri.python.hReservedDllPython3 = hDllPython3X;
     pfnInitializeVmmPlugin(H, &ri);
     if(!PluginManager_ModuleExistsDll(H, hDllPyPlugin)) {
-        VmmLog(H, MID_PLUGIN, LOGLEVEL_WARNING, "Python plugin manager failed to load due to internal error.");
+        VmmLog(H, MID_PLUGIN, LOGLEVEL_4_VERBOSE, "Python plugin manager failed to load due to internal error.");
         return;
     }
-    VmmLog(H, MID_PLUGIN, LOGLEVEL_VERBOSE, "PluginManager: Python plugin loaded.");
+    VmmLog(H, MID_PLUGIN, LOGLEVEL_4_VERBOSE, "PluginManager: Python plugin loaded.");
     return;
 fail:
     if(hDllPyPlugin) { dlclose(hDllPyPlugin); }
