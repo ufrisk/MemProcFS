@@ -7,10 +7,10 @@
 # https://github.com/ufrisk/MemProcFS
 # https://github.com/ufrisk/MemProcFS/wiki/API_Python
 #
-# (c) Ulf Frisk, 2021-2023
+# (c) Ulf Frisk, 2021-2025
 # Author: Ulf Frisk, pcileech@frizk.net
 #
-# Header Version: 5.8
+# Header Version: 5.16
 #
 
 try:
@@ -219,8 +219,11 @@ FLAG_NOPAGING                         = 0x0010 # do not try to retrieve memory f
 FLAG_NOPAGING_IO                      = 0x0020 # do not try to retrieve memory from paged out memory if read would incur additional I/O (even if possible).
 FLAG_NOCACHEPUT                       = 0x0100 # do not write back to the data cache upon successful read from memory acquisition device.
 FLAG_CACHE_RECENT_ONLY                = 0x0200 # only fetch from the most recent active cache region when reading.
-FLAG_NO_PREDICTIVE_READ               = 0x0400 # do not perform additional predictive page reads (default on smaller requests).
+FLAG_NO_PREDICTIVE_READ               = 0x0400 # (deprecated/unused).
 FLAG_FORCECACHE_READ_DISABLE          = 0x0800 # disable/override any use of VMM_FLAG_FORCECACHE_READ. only recommended for local files. improves forensic artifact order.
+FLAG_SCATTER_PREPAREEX_NOMEMZERO      = 0x1000 # (not used by the Python API).
+FLAG_NOMEMCALLBACK                    = 0x2000 # (not used by the Python API).
+FLAG_SCATTER_FORCE_PAGEREAD           = 0x4000 # force page-sized reads when using scatter functionality.
 
 # NTSTATUS values. (Used/Returned by Write file plugin callbacks).
 STATUS_SUCCESS                        = 0x00000000
@@ -312,4 +315,19 @@ OPT_REFRESH_FREQ_FAST                 = 0x2001040000000000  # W - refresh fast f
 OPT_REFRESH_FREQ_MEDIUM               = 0x2001000100000000  # W - refresh medium frequency - incl. full process refresh
 OPT_REFRESH_FREQ_SLOW                 = 0x2001001000000000  # W - refresh slow frequency.
 
+OPT_REFRESH_SPECIFIC_HEAP_ALLOC       = 0x2003000100000000  # W - refresh only heap allocations.
+OPT_REFRESH_SPECIFIC_KOBJECT          = 0x2003000200000000  # W - refresh only kernel objects.
+OPT_REFRESH_SPECIFIC_NET              = 0x2003000300000000  # W - refresh only network connections.
+OPT_REFRESH_SPECIFIC_PFN              = 0x2003000400000000  # W - refresh only pfn database.
+OPT_REFRESH_SPECIFIC_PHYSMEMMAP       = 0x2003000500000000  # W - refresh only physical memory map.
+OPT_REFRESH_SPECIFIC_POOL             = 0x2003000600000000  # W - refresh only kernel pool.
+OPT_REFRESH_SPECIFIC_REGISTRY         = 0x2003000700000000  # W - refresh only registry.
+OPT_REFRESH_SPECIFIC_SERVICES         = 0x2003000800000000  # W - refresh only services.
+OPT_REFRESH_SPECIFIC_THREADCS         = 0x2003000900000000  # W - refresh only thread callstacks.
+OPT_REFRESH_SPECIFIC_USER             = 0x2003000A00000000  # W - refresh only users.
+OPT_REFRESH_SPECIFIC_VM               = 0x2003000B00000000  # W - refresh only virtual machines.
+
+OPT_REFRESH_SPECIFIC_PROCESS          = 0x2002000300000000  # W - refresh only the specified process [LO-DWORD: Process PID]
+
 VMMDLL_OPT_PROCESS_DTB                = 0x2002000100000000  # W - force set process directory table base.
+VMMDLL_OPT_PROCESS_DTB_FAST_LOWINTEGRITY = 0x2002000200000000  # W - force set process directory table base (fast, low integrity mode, with less checks) - use at own risk!.

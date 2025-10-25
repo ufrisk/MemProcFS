@@ -217,8 +217,34 @@ pub const CONFIG_OPT_REFRESH_FREQ_FAST              : u64 = 0x2001040000000000;
 pub const CONFIG_OPT_REFRESH_FREQ_MEDIUM            : u64 = 0x2001000100000000;
 /// Set - refresh slow frequency.
 pub const CONFIG_OPT_REFRESH_FREQ_SLOW              : u64 = 0x2001001000000000;
+/// Set - refresh only heap allocations.
+pub const VMMDLL_OPT_REFRESH_SPECIFIC_HEAP_ALLOC    : u64 = 0x2003000100000000;
+/// Set - refresh only kernel objects.
+pub const VMMDLL_OPT_REFRESH_SPECIFIC_KOBJECT       : u64 = 0x2003000200000000;
+/// Set - refresh only network connections.
+pub const VMMDLL_OPT_REFRESH_SPECIFIC_NET           : u64 = 0x2003000300000000;
+/// Set - refresh only pfn database.
+pub const VMMDLL_OPT_REFRESH_SPECIFIC_PFN           : u64 = 0x2003000400000000;
+/// Set - refresh only physical memory map.
+pub const VMMDLL_OPT_REFRESH_SPECIFIC_PHYSMEMMAP    : u64 = 0x2003000500000000;
+/// Set - refresh only kernel pool.
+pub const VMMDLL_OPT_REFRESH_SPECIFIC_POOL          : u64 = 0x2003000600000000;
+/// Set - refresh only registry.
+pub const VMMDLL_OPT_REFRESH_SPECIFIC_REGISTRY      : u64 = 0x2003000700000000;
+/// Set - refresh only services.
+pub const VMMDLL_OPT_REFRESH_SPECIFIC_SERVICES      : u64 = 0x2003000800000000;
+/// Set - refresh only thread callstacks.
+pub const VMMDLL_OPT_REFRESH_SPECIFIC_THREADCS      : u64 = 0x2003000900000000;
+/// Set - refresh only users.
+pub const VMMDLL_OPT_REFRESH_SPECIFIC_USER          : u64 = 0x2003000A00000000;
+/// Set - refresh only virtual machines.
+pub const VMMDLL_OPT_REFRESH_SPECIFIC_VM            : u64 = 0x2003000B00000000;
+/// Set - refresh only the specified process [LO-DWORD: Process PID].
+pub const VMMDLL_OPT_REFRESH_SPECIFIC_PROCESS       : u64 = 0x2002000300000000;
 /// Set custom process directory table base. [LO-DWORD: Process PID].
 pub const CONFIG_OPT_PROCESS_DTB                    : u64 = 0x2002000100000000;
+/// Set - force set process directory table base (fast, low integrity mode, with less checks) - use at own risk!.
+pub const CONFIG_OPT_PROCESS_DTB_FAST_LOWINTEGRITY  : u64 = 0x2002000200000000;
 
 // PLUGIN NOTIFICATIONS:
 /// Verbosity change. Query new verbosity with: `vmm.get_config()`.

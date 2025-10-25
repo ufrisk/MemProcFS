@@ -316,6 +316,20 @@ namespace Vmmsharp
         public const ulong CONFIG_OPT_REFRESH_FREQ_MEDIUM            = 0x2001000100000000;  // W - refresh medium frequency - incl. full process refresh
         public const ulong CONFIG_OPT_REFRESH_FREQ_SLOW              = 0x2001001000000000;  // W - refresh slow frequency.
 
+        public const ulong CONFIG_OPT_REFRESH_SPECIFIC_HEAP_ALLOC    = 0x2003000100000000;  // W - refresh only heap allocations.
+        public const ulong CONFIG_OPT_REFRESH_SPECIFIC_KOBJECT       = 0x2003000200000000;  // W - refresh only kernel objects.
+        public const ulong CONFIG_OPT_REFRESH_SPECIFIC_NET           = 0x2003000300000000;  // W - refresh only network connections.
+        public const ulong CONFIG_OPT_REFRESH_SPECIFIC_PFN           = 0x2003000400000000;  // W - refresh only pfn database.
+        public const ulong CONFIG_OPT_REFRESH_SPECIFIC_PHYSMEMMAP    = 0x2003000500000000;  // W - refresh only physical memory map.
+        public const ulong CONFIG_OPT_REFRESH_SPECIFIC_POOL          = 0x2003000600000000;  // W - refresh only kernel pool.
+        public const ulong CONFIG_OPT_REFRESH_SPECIFIC_REGISTRY      = 0x2003000700000000;  // W - refresh only registry.
+        public const ulong CONFIG_OPT_REFRESH_SPECIFIC_SERVICES      = 0x2003000800000000;  // W - refresh only services.
+        public const ulong CONFIG_OPT_REFRESH_SPECIFIC_THREADCS      = 0x2003000900000000;  // W - refresh only thread callstacks.
+        public const ulong CONFIG_OPT_REFRESH_SPECIFIC_USER          = 0x2003000A00000000;  // W - refresh only users.
+        public const ulong CONFIG_OPT_REFRESH_SPECIFIC_VM            = 0x2003000B00000000;  // W - refresh only virtual machines.
+
+        public const ulong CONFIG_OPT_REFRESH_SPECIFIC_PROCESS       = 0x2002000300000000;  // W - refresh only the specified process [LO-DWORD: Process PID]
+
         // PROCESS OPTIONS: [LO-DWORD: Process PID]
         public const ulong CONFIG_OPT_PROCESS_DTB                    = 0x2002000100000000;  // W - force set process directory table base.
         public const ulong CONFIG_OPT_PROCESS_DTB_FAST_LOWINTEGRITY  = 0x2002000200000000;  // W - force set process directory table base (fast, low integrity mode, with less checks) - use at own risk!.
