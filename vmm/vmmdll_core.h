@@ -32,7 +32,7 @@ VOID VmmDllCore_MemFreeExternal(_Frees_ptr_opt_ PVOID pvMem);
 * -- return
 */
 _Success_(return != NULL)
-PVOID VmmDllCore_MemAllocExternal(_In_ VMM_HANDLE H, _In_ DWORD tag, _In_ SIZE_T cb, _In_ SIZE_T cbHdr);
+PVOID VmmDllCore_MemAllocExternal(_In_opt_ VMM_HANDLE H, _In_ DWORD tag, _In_ SIZE_T cb, _In_ SIZE_T cbHdr);
 
 /*
 * Copy internal memory to freshly allocated "external" memory to be free'd only
@@ -45,7 +45,7 @@ PVOID VmmDllCore_MemAllocExternal(_In_ VMM_HANDLE H, _In_ DWORD tag, _In_ SIZE_T
 * -- return
 */
 _Success_(return != NULL)
-PVOID VmmDllCore_MemAllocExternalAndCopy(_In_ VMM_HANDLE H, _In_ DWORD tag, _In_reads_bytes_(cb) PBYTE pb, _In_ SIZE_T cb);
+PVOID VmmDllCore_MemAllocExternalAndCopy(_In_opt_ VMM_HANDLE H, _In_ DWORD tag, _In_reads_bytes_(cb) PBYTE pb, _In_ SIZE_T cb);
 
 
 

@@ -109,6 +109,13 @@ static LPCSTR VMMLOG_MID_STR[] = {
 VOID VmmLog_LevelRefresh(_In_ VMM_HANDLE H);
 
 /*
+* Set/unset a log callback function and refresh logging levels.
+* -- H
+* -- pfnCB
+*/
+VOID VmmLog_SetCB(_In_ VMM_HANDLE H, _In_opt_ VMMDLL_LOG_CALLBACK_PFN pfnCB);
+
+/*
 * Close and clean-up internal logging data structures.
 * This should only be done last at system exit before shut-down.
 * -- H

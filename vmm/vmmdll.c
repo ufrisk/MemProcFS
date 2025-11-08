@@ -2805,6 +2805,30 @@ VOID VMMDLL_Log(_In_ VMM_HANDLE H, _In_opt_ VMMDLL_MODULE_ID MID, _In_ VMMDLL_LO
     va_end(arglist);
 }
 
+_Success_(return)
+BOOL VMMDLL_LogCallback_Impl(_In_ VMM_HANDLE H, _In_opt_ VMMDLL_LOG_CALLBACK_PFN pfnCB)
+{
+    VmmLog_SetCB(H, pfnCB);
+    return TRUE;
+}
+
+/*
+* Register or unregister an optional log callback function.
+* When vmm logs an action which is visible according to current logging
+* configuration the registered callback function will be called with details.
+* To clear an already registered callback function specify NULL as pfnCB.
+* Callback logging will follow file logging configuration even if no log file
+* is specified when a callback function is registered.
+* -- hVMM
+* -- pfnCB
+* -- return = success/fail.
+*/
+_Success_(return)
+BOOL VMMDLL_LogCallback(_In_ VMM_HANDLE hVMM, _In_opt_ VMMDLL_LOG_CALLBACK_PFN pfnCB)
+{
+    CALL_IMPLEMENTATION_VMM(hVMM, STATISTICS_ID_VMMDLL_LogCallback, VMMDLL_LogCallback_Impl(hVMM, pfnCB))
+}
+
 
 
 //-----------------------------------------------------------------------------

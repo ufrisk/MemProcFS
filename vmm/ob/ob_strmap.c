@@ -464,13 +464,13 @@ VOID _ObStrMap_FinalizeDoWork_UnicodeResolve(_In_ POB_STRMAP psm)
         VmmCachePrefetchPages(psm->ObHdr.H, pObProcess, psObPrefetch, 0);
         pu = psm->pUnicodeObjectListHead;
         while(pu) {
-            if(VmmRead2(psm->ObHdr.H, pObProcess, pu->va, pbBuffer, pu->f32 ? sizeof(UNICODE_STRING32) : sizeof(UNICODE_STRING64), VMM_FLAG_FORCECACHE_READ)) {
+            if((f = VmmRead2(psm->ObHdr.H, pObProcess, pu->va, pbBuffer, pu->f32 ? sizeof(UNICODE_STRING32) : sizeof(UNICODE_STRING64), VMM_FLAG_FORCECACHE_READ))) {
                 f = pu->f32 ?
                     _ObStrMap_Push_UnicodeBuffer(psm, ((PUNICODE_STRING32)pbBuffer)->Length, ((PUNICODE_STRING32)pbBuffer)->Buffer, pu->p.pusz, pu->p.pcbu) :
                     _ObStrMap_Push_UnicodeBuffer(psm, ((PUNICODE_STRING64)pbBuffer)->Length, ((PUNICODE_STRING64)pbBuffer)->Buffer, pu->p.pusz, pu->p.pcbu);
-                if(!f) {
-                    _ObStrMap_PushPtr(psm, NULL, NULL, NULL, pu->p.pusz, pu->p.pcbu, NULL, NULL);
-                }
+            }
+            if(!f) {
+                _ObStrMap_PushPtr(psm, NULL, NULL, NULL, pu->p.pusz, pu->p.pcbu, NULL, NULL);
             }
             pu = pu->FLink;
         }

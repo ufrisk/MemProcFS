@@ -142,4 +142,5 @@ EXPORTS
 
     VMMDLL_Log
     VMMDLL_LogEx
+    VMMDLL_LogCallback
     

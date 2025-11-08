@@ -11,7 +11,7 @@
 // (c) Ulf Frisk, 2018-2025
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-// Header Version: 5.16
+// Header Version: 5.16.5
 //
 
 #include "leechcore.h"
@@ -765,6 +765,30 @@ VOID VMMDLL_LogEx(
     va_list arglist
 );
 
+/*
+* Log callback function.
+* -- hVMM
+* -- MID = module id.
+* -- uszModule = module name.
+* -- dwLogLevel
+* -- uszLogMessage = log message in utf-8.
+*/
+typedef VOID(*VMMDLL_LOG_CALLBACK_PFN)(_In_ VMM_HANDLE hVMM, _In_ VMMDLL_MODULE_ID MID, _In_ LPCSTR uszModule, _In_ VMMDLL_LOGLEVEL dwLogLevel, _In_ LPCSTR uszLogMessage);
+
+/*
+* Register or unregister an optional log callback function.
+* When vmm logs an action which is visible according to current logging
+* configuration the registered callback function will be called with details.
+* To clear an already registered callback function specify NULL as pfnCB.
+* Callback logging will follow file logging configuration even if no log file
+* is specified when a callback function is registered.
+* -- hVMM
+* -- pfnCB
+* -- return = success/fail.
+*/
+EXPORTED_FUNCTION _Success_(return)
+BOOL VMMDLL_LogCallback(_In_ VMM_HANDLE hVMM, _In_opt_ VMMDLL_LOG_CALLBACK_PFN pfnCB);
+
 
 
 //-----------------------------------------------------------------------------
@@ -1071,7 +1095,7 @@ typedef enum tdVMMDLL_MEM_CALLBACK_TP {
 typedef VOID(*VMMDLL_MEM_CALLBACK_PFN)(_In_opt_ PVOID ctxUser, _In_ DWORD dwPID, _In_ DWORD cpMEMs, _In_ PPMEM_SCATTER ppMEMs);
 
 /*
-* Register or unregister am optional memory access callback function.
+* Register or unregister an optional memory access callback function.
 * It's possible to have one callback function registered for each type.
 * To clear an already registered callback function specify NULL as pfnCB.
 * -- hVMM

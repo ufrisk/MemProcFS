@@ -1034,7 +1034,7 @@ VOID VmmDllCore_MemFreeExternal(_Frees_ptr_opt_ PVOID pvMem)
 * -- return
 */
 _Success_(return != NULL)
-PVOID VmmDllCore_MemAllocExternal(_In_ VMM_HANDLE H, _In_ DWORD tag, _In_ SIZE_T cb, _In_ SIZE_T cbHdr)
+PVOID VmmDllCore_MemAllocExternal(_In_opt_ VMM_HANDLE H, _In_ DWORD tag, _In_ SIZE_T cb, _In_ SIZE_T cbHdr)
 {
     POB_DATA pObData;
     if((cb > 0x40000000) || (cb < cbHdr)) { return NULL; }
@@ -1056,7 +1056,7 @@ PVOID VmmDllCore_MemAllocExternal(_In_ VMM_HANDLE H, _In_ DWORD tag, _In_ SIZE_T
 * -- return
 */
 _Success_(return != NULL)
-PVOID VmmDllCore_MemAllocExternalAndCopy(_In_ VMM_HANDLE H, _In_ DWORD tag, _In_reads_bytes_(cb) PBYTE pb, _In_ SIZE_T cb)
+PVOID VmmDllCore_MemAllocExternalAndCopy(_In_opt_ VMM_HANDLE H, _In_ DWORD tag, _In_reads_bytes_(cb) PBYTE pb, _In_ SIZE_T cb)
 {
     PVOID pv = VmmDllCore_MemAllocExternal(H, tag, cb, 0);
     if(pv) {

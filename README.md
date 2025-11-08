@@ -260,4 +260,6 @@ v5.8
 * Support for Windows 11 25H2
 
 Latest:
+* Bug fixes.
 * New refresh options in the API.
+* New optional logging callback in the API.
