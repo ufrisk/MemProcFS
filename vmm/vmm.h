@@ -1272,6 +1272,7 @@ typedef struct tdVMMCONFIG {
         QWORD paStart;
         QWORD paEnd;
     } DTBRange;
+    VMMDLL_LOG_CALLBACK_PFN pfnLogCallback;
 } VMMCONFIG, *PVMMCONFIG;
 
 typedef struct tdVMMCONFIG_PDB {

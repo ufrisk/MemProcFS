@@ -463,8 +463,8 @@ VOID VmmDllCore_PrintHelp(_In_ VMM_HANDLE H)
         "   -vm        : virtual machine (VM) parsing.                                  \n" \
         "   -vm-basic  : virtual machine (VM) parsing (physical memory only).           \n" \
         "   -vm-nested : virtual machine (VM) parsing (including nested VMs).           \n" \
-        "   -license-accept-elastic-license-2-0 : accept the Elastic License 2.0 to     \n" \
-        "          enable built-in yara rules from Elastic.                             \n" \
+        "   -license-accept-elastic-license-2-0 or -license-accept-elastic-license-2.0 :\n" \
+        "          accept the Elastic License 2.0 to enable built-in Elastic yara rules.\n" \
         "   -forensic-process-skip : comma-separated list of process names to skip.     \n" \
         "   -forensic-yara-rules : perfom a forensic yara scan with specified rules.    \n" \
         "          Full path to source or compiled yara rules should be specified.      \n" \
@@ -617,6 +617,9 @@ BOOL VmmDllCore_InitializeConfig(_In_ VMM_HANDLE H, _In_ DWORD argc, _In_ const 
             i += 2; continue;
         } else if(0 == _stricmp(argv[i], "-loglevel")) {
             strcpy_s(H->cfg.szLogLevel, MAX_PATH, argv[i + 1]);
+            i += 2; continue;
+        } else if(0 == _stricmp(argv[i], "-log-pfn-callback")) {
+            H->cfg.pfnLogCallback = (VMMDLL_LOG_CALLBACK_PFN)(ULONG_PTR)Util_GetNumericA(argv[i + 1]);
             i += 2; continue;
         } else if(0 == _stricmp(argv[i], "-forensic-yara-rules")) {
             strcpy_s(H->cfg.szForensicYaraRules, MAX_PATH, argv[i + 1]);

@@ -160,6 +160,7 @@ VOID VmmLog_LevelRefresh(_In_ VMM_HANDLE H)
     if(!ctxLog) {
         H->log = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMLOG_CONTEXT));
         if(!(ctxLog = H->log)) { return; }
+        H->log->pfnCB = H->cfg.pfnLogCallback;
         for(MID = MID_NA; MID <= MID_MAX; MID++) {
             pmi = VmmLog_GetModuleInfo(H, MID);
             pmi->MID = MID;
