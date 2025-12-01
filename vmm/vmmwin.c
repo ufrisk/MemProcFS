@@ -3871,10 +3871,12 @@ BOOL VmmWinProcess_Enumerate(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess
 */
 VOID VmmWinProcess_Enumerate_SingleProcess_Refresh(_In_ VMM_HANDLE H, _In_ DWORD dwPID)
 {
+    PVMM_OFFSET_EPROCESS po = &H->vmm.offset.EPROCESS;
     BOOL fTotalRefresh;
     PBYTE pbEPROCESS = NULL;
-    PVMM_PROCESS pSystemProcess, pProcessNew, pProcess = NULL;
+    PVMM_PROCESS pObSystemProcess, pObProcessNew, pProcess = NULL;
     VMMSTATISTICS_LOG Statistics = { 0 };
+    QWORD qwPEB, qwWow64Process;
     if((H->vmm.tpSystem != VMM_SYSTEM_WINDOWS_32) && (H->vmm.tpSystem != VMM_SYSTEM_WINDOWS_64)) {
         return;
     }
@@ -3891,27 +3893,50 @@ VOID VmmWinProcess_Enumerate_SingleProcess_Refresh(_In_ VMM_HANDLE H, _In_ DWORD
                 }
             }
         }
-        pProcessNew = VmmProcessCreateEntry(
+        pObProcessNew = VmmProcessCreateEntry(
             H,
             fTotalRefresh,
             pProcess->dwPID,
             pProcess->dwPPID,
-            fTotalRefresh ? *(PDWORD)(pbEPROCESS + H->vmm.offset.EPROCESS.State) : pProcess->dwState,
+            fTotalRefresh ? *(PDWORD)(pbEPROCESS + po->State) : pProcess->dwState,
             pProcess->paDTB_Kernel,
             pProcess->paDTB_UserOpt,
             pProcess->szName,
             pProcess->fUserOnly,
             fTotalRefresh ? pbEPROCESS : pProcess->win.EPROCESS.pb,
             pProcess->win.EPROCESS.cb);
-        Ob_DECREF(pProcessNew);
         if(fTotalRefresh) {
+            // EPROCESS
+            pObProcessNew->win.EPROCESS.va = pProcess->win.EPROCESS.va;
+            pObProcessNew->win.EPROCESS.fNoLink = pProcess->win.EPROCESS.fNoLink;
+            // PEB
+            qwPEB = H->vmm.f32 ? *(PDWORD)(pbEPROCESS + po->PEB) : *(PQWORD)(pbEPROCESS + po->PEB);
+            if(qwPEB & 0xfff) {
+                VmmLog(H, MID_PROCESS, LOGLEVEL_4_VERBOSE, "Bad PEB alignment for PID: '%i' (0x%016llx)", pProcess->dwPID, qwPEB);
+            } else {
+                pObProcessNew->win.vaPEB = qwPEB;
+            }
+            // WoW64 and PEB32
+            if(H->vmm.tpSystem == VMM_SYSTEM_WINDOWS_64) {
+                qwWow64Process = *(PQWORD)(pbEPROCESS + po->Wow64Process);
+                if(qwWow64Process) {
+                    pObProcessNew->win.fWow64 = TRUE;
+                    if(qwWow64Process & 0xffffffff00000fff) {
+                        pObProcessNew->win.vaPEB32 = (DWORD)qwPEB + (po->f64VistaOr7 ? -0x1000 : +0x1000);
+                    } else {
+                        pObProcessNew->win.vaPEB32 = (DWORD)qwWow64Process;
+                    }
+                }
+            }
+            // Clean-Up
             LocalFree(pbEPROCESS);
             pbEPROCESS = NULL;
         }
+        Ob_DECREF(pObProcessNew);
     }
-    if((pSystemProcess = VmmProcessGet(H, 4))) {
-        VmmWinProcess_Enumerate_PostProcessing(H, pSystemProcess);
-        Ob_DECREF(pSystemProcess);
+    if((pObSystemProcess = VmmProcessGet(H, 4))) {
+        VmmWinProcess_Enumerate_PostProcessing(H, pObSystemProcess);
+        Ob_DECREF(pObSystemProcess);
     }
     VmmProcessCreateFinish(H);
     LeaveCriticalSection(&H->vmm.LockMaster);
