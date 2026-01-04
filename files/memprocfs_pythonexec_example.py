@@ -19,7 +19,7 @@
 #
 # https://github.com/ufrisk/MemProcFS
 #
-# (c) Ulf Frisk, 2022
+# (c) Ulf Frisk, 2022-2026
 # Author: Ulf Frisk, pcileech@frizk.net
 #
 

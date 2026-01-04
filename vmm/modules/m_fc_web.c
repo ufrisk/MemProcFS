@@ -6,7 +6,7 @@
 //  - Microsoft Edge (Chromium based)
 //  - Mozilla Firefox
 //
-// (c) Ulf Frisk, 2022-2025
+// (c) Ulf Frisk, 2022-2026
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

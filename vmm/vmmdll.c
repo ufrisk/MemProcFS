@@ -1,6 +1,6 @@
 // vmmdll.c : implementation of external exported library functions.
 //
-// (c) Ulf Frisk, 2018-2025
+// (c) Ulf Frisk, 2018-2026
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -81,6 +81,7 @@ VMM_HANDLE VMMDLL_Initialize(_In_ DWORD argc, _In_ LPCSTR argv[])
 EXPORTED_FUNCTION
 VOID VMMDLL_Close(_In_opt_ _Post_ptr_invalid_ VMM_HANDLE H)
 {
+    if(!H) { return; }
     if(VMM_HANDLE_IS_REMOTE(H)) {
         VmmDllRemote_Close(H);
         return;

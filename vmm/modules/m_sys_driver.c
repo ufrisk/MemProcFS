@@ -3,7 +3,7 @@
 // The 'sys/drivers' module lists various aspects of drivers from the windows
 // kernel object manager.
 //
-// (c) Ulf Frisk, 2022-2025
+// (c) Ulf Frisk, 2022-2026
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

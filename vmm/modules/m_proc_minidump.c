@@ -1,6 +1,6 @@
 // m_proc_minidump.c : implementation of the minidump built-in module.
 //
-// (c) Ulf Frisk, 2020-2025
+// (c) Ulf Frisk, 2020-2026
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

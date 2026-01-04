@@ -8,7 +8,7 @@
 // while Linux may only access UTF-8 versions. Some functionality may also
 // be degraded or unavailable on Linux.
 //
-// (c) Ulf Frisk, 2018-2025
+// (c) Ulf Frisk, 2018-2026
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 // Header Version: 5.16.5

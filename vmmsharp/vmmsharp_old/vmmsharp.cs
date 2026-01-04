@@ -13,7 +13,7 @@ using System.Runtime.CompilerServices;
  *  Please consult the C/C++ header files vmmdll.h and leechcore.h for information about
  *  parameters and API usage.
  *  
- *  (c) Ulf Frisk, 2020-2024
+ *  (c) Ulf Frisk, 2020-2026
  *  Author: Ulf Frisk, pcileech@frizk.net
  *  
  *  Version 5.9

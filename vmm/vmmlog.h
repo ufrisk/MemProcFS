@@ -1,6 +1,6 @@
 // vmmlog.h : definitions of the vmm logging functionality.
 //
-// (c) Ulf Frisk, 2022-2025
+// (c) Ulf Frisk, 2022-2026
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __VMMLOG_H__

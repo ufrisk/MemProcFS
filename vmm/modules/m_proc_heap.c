@@ -1,6 +1,6 @@
 // m_proc_heap.c : implementation of the heaps built-in module.
 //
-// (c) Ulf Frisk, 2022-2025
+// (c) Ulf Frisk, 2022-2026
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

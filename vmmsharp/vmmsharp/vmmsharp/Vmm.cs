@@ -5,7 +5,7 @@
  *  
  *  Please consult the C/C++ header files vmmdll.h and leechcore.h for information about parameters and API usage.
  *  
- *  (c) Ulf Frisk, 2020-2025
+ *  (c) Ulf Frisk, 2020-2026
  *  Author: Ulf Frisk, pcileech@frizk.net
  *  
  */
@@ -185,8 +185,12 @@ namespace Vmmsharp
                 }
                 // Free unmanaged objects.
                 this.LeechCore.Dispose(); // Contains unmanaged handles
-                Vmmi.VMMDLL_Close(hVMM);
+                IntPtr hVMM_Dispose = hVMM;
                 hVMM = IntPtr.Zero;
+                if(hVMM_Dispose != IntPtr.Zero)
+                {
+                    Vmmi.VMMDLL_Close(hVMM_Dispose);
+                }
                 disposed = true;
             }
         }
@@ -807,8 +811,15 @@ namespace Vmmsharp
         {
             List<VfsEntry> ctx = new List<VfsEntry>();
             GCHandle gcHandle = GCHandle.Alloc(ctx);
-            ulong nativeHandle = (ulong)((IntPtr)gcHandle).ToInt64();
-            VfsList(path, nativeHandle, VfsList_AddFileCB, VfsList_AddDirectoryCB);
+            try
+            {
+                ulong nativeHandle = (ulong)((IntPtr)gcHandle).ToInt64();
+                VfsList(path, nativeHandle, VfsList_AddFileCB, VfsList_AddDirectoryCB);
+            }
+            finally
+            {
+                gcHandle.Free();
+            }
             return ctx;
         }
 

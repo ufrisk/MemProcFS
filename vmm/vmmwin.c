@@ -1,7 +1,7 @@
 // vmmwin.c : implementation related to operating system and process
 // parsing of virtual memory. Windows related features only.
 //
-// (c) Ulf Frisk, 2018-2025
+// (c) Ulf Frisk, 2018-2026
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

@@ -3,7 +3,7 @@
 // The 'sys/objects' module is responsible for displaying information about
 // the kernel object maanger.
 //
-// (c) Ulf Frisk, 2021-2025
+// (c) Ulf Frisk, 2021-2026
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

@@ -1,6 +1,6 @@
 // vmmvm.h : definitions related to virtual machine parsing functionality.
 //
-// (c) Ulf Frisk, 2022-2025
+// (c) Ulf Frisk, 2022-2026
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __VMMVM_H__

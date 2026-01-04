@@ -7,7 +7,7 @@
 // If the search doesn't provide enough flexibility it's possible to search
 // using YARA rules - see vmmpyc_yara.c.
 //
-// (c) Ulf Frisk, 2023-2025
+// (c) Ulf Frisk, 2023-2026
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmmpyc.h"

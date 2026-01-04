@@ -1,6 +1,6 @@
 // ob.h : definitions related to the object manager and object manager collections.
 //
-// (c) Ulf Frisk, 2018-2025
+// (c) Ulf Frisk, 2018-2026
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __OB_H__
@@ -851,6 +851,10 @@ typedef struct tdOB_STRMAP *POB_STRMAP;
 // instead of pointers. Offset is counted from base of multi-string.
 // incompatible with OB_STRMAP_FLAGS_STR_ASSIGN_TEMPORARY option.
 #define OB_STRMAP_FLAGS_STR_ASSIGN_OFFSET      0x04
+
+// Read UNICODE OBJECT data from another process than SYSTEM (4).
+// PID is specified in flags high 32-bits.
+#define OB_STRMAP_FLAGS_WITH_PROCESS_PID       0x08
 
 //
 // STRMAP BELOW:

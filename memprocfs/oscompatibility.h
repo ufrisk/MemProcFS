@@ -1,6 +1,6 @@
 // oscompatibility.h : VMM Windows/Linux compatibility layer.
 //
-// (c) Ulf Frisk, 2021-2025
+// (c) Ulf Frisk, 2021-2026
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #if defined(LINUX) || defined(MACOS)

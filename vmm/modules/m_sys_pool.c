@@ -3,7 +3,7 @@
 // The 'sys/pool' module displays information about the kernel pools and
 // allocated objects inside it.
 //
-// (c) Ulf Frisk, 2021-2025
+// (c) Ulf Frisk, 2021-2026
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

@@ -1,6 +1,6 @@
 // vmmnet.c :  implementation of functionality related to the Windows networking.
 //
-// (c) Ulf Frisk, 2019-2025
+// (c) Ulf Frisk, 2019-2026
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

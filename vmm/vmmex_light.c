@@ -1,6 +1,6 @@
 // vmmex_light.c : MemProcFS extended functionality - light profile.
 //
-// (c) Ulf Frisk, 2025
+// (c) Ulf Frisk, 2025-2026
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef VMM_PROFILE_FULL

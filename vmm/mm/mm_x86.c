@@ -1,6 +1,6 @@
 // mm_x86.c : implementation of the x86 32-bit protected mode memory model.
 //
-// (c) Ulf Frisk, 2018-2025
+// (c) Ulf Frisk, 2018-2026
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

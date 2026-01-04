@@ -1,6 +1,6 @@
 // m_misc_view.c : view filtered file system under 'misc/view/txt' & 'misc/view/bin'
 //
-// (c) Ulf Frisk, 2022-2025
+// (c) Ulf Frisk, 2022-2026
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

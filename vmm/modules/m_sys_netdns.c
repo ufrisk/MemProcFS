@@ -3,7 +3,7 @@
 // The 'sys/net/dns' module is responsible for displaying network DNS information
 // cached by the operating system.
 //
-// (c) Ulf Frisk, 2025
+// (c) Ulf Frisk, 2025-2026
 // Author: Ulf Frisk, pcileech@frizk.net
 // 
 // This module is built upon the reversing work of the DNS caching algorithm

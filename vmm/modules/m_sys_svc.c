@@ -3,7 +3,7 @@
 // The '/sys/services' module is responsible for displaying information about
 // system services retrieved from the service control manager (SCM).
 //
-// (c) Ulf Frisk, 2020-2025
+// (c) Ulf Frisk, 2020-2026
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

@@ -1,6 +1,6 @@
 // main.rs - MemProcFS Rust VMM API usage examples
 //
-// (c) Ulf Frisk, 2023-2024
+// (c) Ulf Frisk, 2023-2026
 // Author: Ulf Frisk, pcileech@frizk.net
 // https://github.com/ufrisk/MemProcFS
 //

@@ -1,6 +1,6 @@
 // vmmpyc_vfs.c : implementation of virtual file system (vfs) functionality for vmmpyc.
 //
-// (c) Ulf Frisk, 2021-2025
+// (c) Ulf Frisk, 2021-2026
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #include "vmmpyc.h"

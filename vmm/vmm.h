@@ -1,6 +1,6 @@
 // vmm.h : definitions related to virtual memory management support.
 //
-// (c) Ulf Frisk, 2018-2025
+// (c) Ulf Frisk, 2018-2026
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __VMM_H__

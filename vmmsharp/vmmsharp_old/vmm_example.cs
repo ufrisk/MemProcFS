@@ -16,7 +16,7 @@ using vmmsharp;
  *  running it from within Visual Studio with breakpoints it should be fairly easy
  *  to follow the calls and have a look at the different return data.
  *  
- *  (c) Ulf Frisk, 2020-2024
+ *  (c) Ulf Frisk, 2020-2026
  *  Author: Ulf Frisk, pcileech@frizk.net
  *  
  */

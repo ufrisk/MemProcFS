@@ -9,7 +9,7 @@
 //      is generally stored in an sqlite database with may be used to query
 //      the results.  
 //
-// (c) Ulf Frisk, 2020-2025
+// (c) Ulf Frisk, 2020-2026
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #ifndef __FC_H__

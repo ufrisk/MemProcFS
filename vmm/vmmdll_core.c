@@ -1,7 +1,7 @@
 // vmmdll_core.c : implementation of core library functionality which mainly
 //      consists of library initialization and cleanup/close functionality.
 //
-// (c) Ulf Frisk, 2022-2025
+// (c) Ulf Frisk, 2022-2026
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 

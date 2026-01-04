@@ -1,6 +1,6 @@
 // vmm.c : implementation of functions related to virtual memory management support.
 //
-// (c) Ulf Frisk, 2018-2025
+// (c) Ulf Frisk, 2018-2026
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 
@@ -2331,7 +2331,7 @@ BOOL VmmScatter_PrepareInternal(_In_ PVMMOB_SCATTER hS, _In_ QWORD va, _In_ DWOR
             if((cMEMsRequired == 1) && (cb <= 0x400) && !fForcePageRead) {
                 // single-page small read -> optimize MEM for small read.
                 // NB! buffer allocation still remains 0x1000 even if not all is used for now.
-                pMEM->cb = (cb + 15) & ~0x7;
+                pMEM->cb = (cb + 7) & ~0x7;
                 pMEM->qwA = va & ~0x7;
                 if((pMEM->qwA & 0xfff) + pMEM->cb > 0x1000) {
                     pMEM->qwA = (pMEM->qwA & ~0xfff) + 0x1000 - pMEM->cb;

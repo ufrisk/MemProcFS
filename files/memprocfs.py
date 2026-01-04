@@ -7,7 +7,7 @@
 # https://github.com/ufrisk/MemProcFS
 # https://github.com/ufrisk/MemProcFS/wiki/API_Python
 #
-# (c) Ulf Frisk, 2021-2025
+# (c) Ulf Frisk, 2021-2026
 # Author: Ulf Frisk, pcileech@frizk.net
 #
 # Header Version: 5.16

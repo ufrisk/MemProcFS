@@ -1,7 +1,7 @@
 // memprocfs_fuse.c : implementation of core functionality for MemProcFS
 // This is just a thin loader for the virtual memory manager .so which contains the logic.
 //
-// (c) Ulf Frisk, 2021-2025
+// (c) Ulf Frisk, 2021-2026
 // Author: Ulf Frisk, pcileech@frizk.net
 //
 #if defined(LINUX) || defined(MACOS)

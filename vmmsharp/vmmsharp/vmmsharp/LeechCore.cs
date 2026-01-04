@@ -5,7 +5,7 @@
  *  
  *  Please consult the C/C++ header files vmmdll.h and leechcore.h for information about parameters and API usage.
  *  
- *  (c) Ulf Frisk, 2020-2025
+ *  (c) Ulf Frisk, 2020-2026
  *  Author: Ulf Frisk, pcileech@frizk.net
  *  
  */
@@ -305,8 +305,17 @@ namespace Vmmsharp
         {
             if (!this.disposed)
             {
-                Lci.LcClose(hLC);
+                // Dispose managed objects.
+                if (disposing)
+                {
+                }
+                // Free unmanaged objects.
+                IntPtr hLC_Dispose = hLC;
                 hLC = IntPtr.Zero;
+                if (hLC_Dispose != IntPtr.Zero)
+                {
+                    Lci.LcClose(hLC_Dispose);
+                }
                 disposed = true;
             }
         }
