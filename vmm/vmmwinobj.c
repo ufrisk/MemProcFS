@@ -133,7 +133,7 @@ static POB_VMMWINOBJ_CONTROL_AREA VmmWinObjFile_Initialize_ControlArea_Subsectio
     BOOL f = TRUE, fSoft, f32 = H->vmm.f32;
     PVMMWINOBJ_FILE_SUBSECTION pe;
     VMMWINOBJ_FILE_SUBSECTION pSS[VMMWINOBJ_FILE_OBJECT_SUBSECTION_MAX];
-    DWORD cSS = 0, dwStartingSectorNext = 0, iSS, iSSMaxSector = 8, cbSectorEstimate, cbRead;
+    DWORD cSS = 0, dwStartingSectorNext = 0, iSS, iSSMaxSector = 8, cbSectorEstimate;
     QWORD va, vaSegment;
     BYTE pb[0x80] = { 0 };
     POB_VMMWINOBJ_CONTROL_AREA pObCA = NULL;
@@ -144,7 +144,7 @@ static POB_VMMWINOBJ_CONTROL_AREA VmmWinObjFile_Initialize_ControlArea_Subsectio
     if(!VMM_KADDR_4_8(f32, vaSegment)) { return NULL; }
     // 2: Fetch # _SUBSECTION    
     va = vaCA + po->_CONTROL_AREA.cb;
-    while(f && (cSS < VMMWINOBJ_FILE_OBJECT_SUBSECTION_MAX) && VMM_KADDR_4_8(f32, va) && ((VmmScatter_Read(hScatterCA, va, po->_SUBSECTION.cb, pb, &cbRead) && cbRead) || VmmRead2(H, pSystemProcess, va, pb, po->_SUBSECTION.cb, 0))) {
+    while(f && (cSS < VMMWINOBJ_FILE_OBJECT_SUBSECTION_MAX) && VMM_KADDR_4_8(f32, va) && ((VmmScatter_Read(hScatterCA, va, po->_SUBSECTION.cb, pb)) || VmmRead2(H, pSystemProcess, va, pb, po->_SUBSECTION.cb, 0))) {
         pe = pSS + cSS;
         pe->dwStartingSector = *(PDWORD)(pb + po->_SUBSECTION.oStartingSector);
         pe->dwNumberOfFullSectors = *(PDWORD)(pb + po->_SUBSECTION.oNumberOfFullSectors);
@@ -210,7 +210,7 @@ static VOID VmmWinObjFile_Initialize_ControlArea_New(_In_ VMM_HANDLE H, _In_ PVM
     // 3: read & process _CONTROL_AREA:
     VmmScatter_Execute(hObScatterCA, pSystemProcess);
     while((va = ObSet_Pop(psvaControlArea))) {
-        if(!VmmScatter_Read(hObScatterCA, va - 0x10, po->_CONTROL_AREA.cb + 0x10, pb10, NULL)) { goto fail_entry_ca; }
+        if(!VmmScatter_Read(hObScatterCA, va - 0x10, po->_CONTROL_AREA.cb + 0x10, pb10)) { goto fail_entry_ca; }
         if(!VMM_POOLTAG_PREPENDED(f32, pb10, 0x10, 'MmCa') && !VMM_POOLTAG_PREPENDED(f32, pb10, 0x10, 'MmCi')) { goto fail_entry_ca; }
         if(!(peObCA = VmmWinObjFile_Initialize_ControlArea_Subsection_New(H, pSystemProcess, va, pb, hObScatterCA))) { goto fail_entry_ca; }
         if(peObCA->_SEGMENT.va) {
@@ -226,7 +226,7 @@ fail_entry_ca:
     peObCA = NULL;
     VmmScatter_Execute(hObScatterSEG, pSystemProcess);
     while((peObCA = ObMap_GetNext(pmObCA, peObCA))) {
-        if(peObCA->_SEGMENT.va && VmmScatter_Read(hObScatterSEG, peObCA->_SEGMENT.va, po->_SEGMENT.cb + po->_SECTION_IMAGE_INFORMATION.cb, pb, NULL) && (peObCA->va == VMM_PTR_OFFSET(f32, pb, po->_SEGMENT.oControlArea))) {
+        if(peObCA->_SEGMENT.va && VmmScatter_Read(hObScatterSEG, peObCA->_SEGMENT.va, po->_SEGMENT.cb + po->_SECTION_IMAGE_INFORMATION.cb, pb) && (peObCA->va == VMM_PTR_OFFSET(f32, pb, po->_SEGMENT.oControlArea))) {
             cbSizeOfSegment = *(PQWORD)(pb + po->_SEGMENT.oSizeOfSegment);
             vaPrototypePte = *(PQWORD)(pb + po->_SEGMENT.oPrototypePte);
             vaSectionImageInformation = VMM_PTR_OFFSET(f32, pb, po->_SEGMENT.oU2);
@@ -291,7 +291,7 @@ static VOID VmmWinObjFile_Initialize_SharedCacheMap_New(_In_ VMM_HANDLE H, _In_ 
     VmmScatter_Execute(hObScatter, pSystemProcess);
     // 2: process _SHARED_CACHE_MAP
     while((va = ObSet_Pop(psvaSharedCacheMap))) {
-        if(!VmmScatter_Read(hObScatter, va - 0x10, po->_SHARED_CACHE_MAP.cb + 0x10, pb10, NULL)) { goto fail_entry_scm; }
+        if(!VmmScatter_Read(hObScatter, va - 0x10, po->_SHARED_CACHE_MAP.cb + 0x10, pb10)) { goto fail_entry_scm; }
         if(!VMM_POOLTAG_PREPENDED(f32, pb10, 0x10, 'CcSc')) { goto fail_entry_scm; }
         vaVacbs = VMM_PTR_OFFSET(f32, pb, po->_SHARED_CACHE_MAP.oVacbs);
         cbFileSize = *(PQWORD)(pb + po->_SHARED_CACHE_MAP.oFileSize);
@@ -384,7 +384,7 @@ VOID VmmWinObjFile_Initialize_FileObjects(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_
     VmmScatter_Prepare3(hObScatterFO, psvaFiles, po->_FILE_OBJECT.cb);
     VmmScatter_Execute(hObScatterFO, pSystemProcess);
     while((va = ObSet_Pop(psvaFiles))) {
-        f = VmmScatter_Read(hObScatterFO, va, po->_FILE_OBJECT.cb, pb, NULL) &&
+        f = VmmScatter_Read(hObScatterFO, va, po->_FILE_OBJECT.cb, pb) &&
             (cbPath = *(PWORD)(pb + po->_FILE_OBJECT.oFileName)) && !(cbPath & 1) &&
             (vaFileNameBuffer = VMM_PTR_OFFSET(f32, pb, po->_FILE_OBJECT.oFileNameBuffer)) &&
             (vaSectionObjectPointers = VMM_PTR_OFFSET(f32, pb, po->_FILE_OBJECT.oSectionObjectPointer)) &&
@@ -419,7 +419,7 @@ VOID VmmWinObjFile_Initialize_FileObjects(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_
             vaFileNameBuffer += cbPath - MAX_PATH * 2;
             cbPath = MAX_PATH * 2;
         }
-        if(!VmmScatter_Read(hObScatter2, vaFileNameBuffer, cbPath, (PBYTE)wszNameBuffer, NULL) || !CharUtil_WtoU(wszNameBuffer, cbPath >> 1, NULL, 0, &peObFile->uszPath, NULL, CHARUTIL_FLAG_ALLOC)) {
+        if(!VmmScatter_ReadEx(hObScatter2, vaFileNameBuffer, cbPath, (PBYTE)wszNameBuffer, NULL) || !CharUtil_WtoU(wszNameBuffer, cbPath >> 1, NULL, 0, &peObFile->uszPath, NULL, CHARUTIL_FLAG_ALLOC)) {
             if(!(peObFile->uszPath = (LPSTR)LocalAlloc(LMEM_ZEROINIT, 1))) { continue; }
         }
         peObFile->uszName = (LPSTR)CharUtil_PathSplitLast(peObFile->uszPath);
@@ -428,7 +428,7 @@ VOID VmmWinObjFile_Initialize_FileObjects(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_
     if(po->_FSRTL_COMMON_FCB_HEADER.cb) {
         peObFile = NULL;
         while((peObFile = ObMap_GetNext(pmObFiles, peObFile))) {
-            if(VmmScatter_Read(hObScatter2, peObFile->_Reserved3, po->_FSRTL_COMMON_FCB_HEADER.cb, pb, NULL)) {
+            if(VmmScatter_Read(hObScatter2, peObFile->_Reserved3, po->_FSRTL_COMMON_FCB_HEADER.cb, pb)) {
                 va = VMM_PTR_OFFSET(f32, pb, po->_FSRTL_COMMON_FCB_HEADER.oResource);
                 if(VMM_KADDR_4_8(f32, va)) {
                     cbFile = *(PQWORD)(pb + po->_FSRTL_COMMON_FCB_HEADER.oFileSize);
@@ -445,7 +445,7 @@ VOID VmmWinObjFile_Initialize_FileObjects(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_
         peObFile->_Reserved2 = 0;
         peObFile->_Reserved3 = 0;
         peObFile->_Reserved4 = 0;
-        if(VmmScatter_Read(hObScatter2, peObFile->vaSectionObjectPointers, po->_SECTION_OBJECT_POINTERS.cb, pb, NULL)) {
+        if(VmmScatter_Read(hObScatter2, peObFile->vaSectionObjectPointers, po->_SECTION_OBJECT_POINTERS.cb, pb)) {
             va = VMM_PTR_OFFSET(f32, pb, po->_SECTION_OBJECT_POINTERS.oDataSectionObject);
             if(VMM_KADDR_8_16(f32, va)) {
                 peObFile->_Reserved2 = va;

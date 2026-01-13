@@ -1209,7 +1209,7 @@ BOOL MmWinX86_ReadPaged(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ 
     *ppa = 0;
     if(MMWINX86_PTE_IS_HARDWARE(pte)) {
         if(ptp && !*ptp) { *ptp = VMM_PTE_TP_HARDWARE; }
-        *ppa = pte & 0xfffff000;
+        *ppa = (pte & 0xfffff000) + (va & 0xfff);
         return FALSE;
     }
     if(MM_LOOP_PROTECT_MAX(flags)) { goto fail; }
@@ -1220,7 +1220,7 @@ BOOL MmWinX86_ReadPaged(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ 
         InterlockedIncrement64(&H->vmm.stat.page.cPrototype);
         pte = MmWinX86_Prototype(H, pte, flags);
         if(MMWINX86_PTE_IS_HARDWARE(pte)) {
-            *ppa = pte & 0xfffff000;
+            *ppa = (pte & 0xfffff000) + (va & 0xfff);
             return FALSE;
         }
         // prototype pte points to software pte -> use it as new pte and continue
@@ -1230,7 +1230,7 @@ BOOL MmWinX86_ReadPaged(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ 
         if(ptp && !*ptp) { *ptp = VMM_PTE_TP_TRANSITION; }
         pte = MMWINX86_PTE_TRANSITION(pte);
         if((pte & 0xfffff000) < H->dev.paMax) {
-            *ppa = pte & 0xfffff000;
+            *ppa = (pte & 0xfffff000) + (va & 0xfff);
             InterlockedIncrement64(&H->vmm.stat.page.cTransition);
         }
         return FALSE;
@@ -1247,7 +1247,7 @@ BOOL MmWinX86_ReadPaged(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ 
         if(ptp && !*ptp) { *ptp = VMM_PTE_TP_PROTOTYPE; }
         InterlockedIncrement64(&H->vmm.stat.page.cVAD);
         if(MMWINX86_PTE_IS_HARDWARE(pte)) {
-            *ppa = pte & 0xfffff000;
+            *ppa = (pte & 0xfffff000) + (va & 0xfff);
             return FALSE;
         }
         return MmWinX86_ReadPaged(H, pProcess, va, pte, pbPage, ppa, NULL, flags | VMM_FLAG_NOVAD);
@@ -1318,7 +1318,7 @@ BOOL MmWinX86PAE_ReadPaged(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_op
     *ppa = 0;
     if(MMWINX86PAE_PTE_IS_HARDWARE(pte)) {
         if(ptp && !*ptp) { *ptp = VMM_PTE_TP_HARDWARE; }
-        *ppa = pte & 0x0000003ffffff000;
+        *ppa = (pte & 0x0000003ffffff000) + (va & 0xfff);
         return FALSE;
     }
     if(MM_LOOP_PROTECT_MAX(flags)) { goto fail; }
@@ -1329,7 +1329,7 @@ BOOL MmWinX86PAE_ReadPaged(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_op
         InterlockedIncrement64(&H->vmm.stat.page.cPrototype);
         pte = MmWinX86PAE_Prototype(H, pte, flags);
         if(MMWINX86PAE_PTE_IS_HARDWARE(pte)) {
-            *ppa = pte & 0x0000003ffffff000;
+            *ppa = (pte & 0x0000003ffffff000) + (va & 0xfff);
             return FALSE;
         }
         // prototype pte points to software pte -> use it as new pte and continue
@@ -1339,7 +1339,7 @@ BOOL MmWinX86PAE_ReadPaged(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_op
         if(ptp && !*ptp) { *ptp = VMM_PTE_TP_TRANSITION; }
         pte = MMWINX86PAE_PTE_TRANSITION(pte);
         if((pte & 0x0000003ffffff000) < H->dev.paMax) {
-            *ppa = pte & 0x0000003ffffff000;
+            *ppa = (pte & 0x0000003ffffff000) + (va & 0xfff);
             InterlockedIncrement64(&H->vmm.stat.page.cTransition);
         }
         return FALSE;
@@ -1356,7 +1356,7 @@ BOOL MmWinX86PAE_ReadPaged(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_op
         if(ptp && !*ptp) { *ptp = VMM_PTE_TP_PROTOTYPE; }
         InterlockedIncrement64(&H->vmm.stat.page.cVAD);
         if(MMWINX86PAE_PTE_IS_HARDWARE(pte)) {
-            *ppa = pte & 0x0000003ffffff000;
+            *ppa = (pte & 0x0000003ffffff000) + (va & 0xfff);
             return FALSE;
         }
         return MmWinX86PAE_ReadPaged(H, pProcess, va, pte, pbPage, ppa, NULL, flags | VMM_FLAG_NOVAD);
@@ -1428,7 +1428,7 @@ BOOL MmWinX64_ReadPaged(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ 
     *ppa = 0;
     if(MMWINX64_PTE_IS_HARDWARE(pte)) {
         if(ptp && !*ptp) { *ptp = VMM_PTE_TP_HARDWARE; }
-        *ppa = pte & 0x0000fffffffff000;
+        *ppa = (pte & 0x0000fffffffff000) + (va & 0xfff);
         return FALSE;
     }
     if(MM_LOOP_PROTECT_MAX(flags)) { goto fail; }
@@ -1439,7 +1439,7 @@ BOOL MmWinX64_ReadPaged(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ 
         InterlockedIncrement64(&H->vmm.stat.page.cPrototype);
         pte = MmWinX64_Prototype(H, pte, flags);
         if(MMWINX64_PTE_IS_HARDWARE(pte)) {
-            *ppa = pte & 0x0000fffffffff000;
+            *ppa = (pte & 0x0000fffffffff000) + (va & 0xfff);
             return FALSE;
         }
         // prototype pte points to software pte -> use it as new pte and continue
@@ -1449,7 +1449,7 @@ BOOL MmWinX64_ReadPaged(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ 
         if(ptp && !*ptp) { *ptp = VMM_PTE_TP_TRANSITION; }
         pte = MMWINX64_PTE_TRANSITION(pte);
         if((pte & 0x0000fffffffff000) < H->dev.paMax) {
-            *ppa = pte & 0x0000fffffffff000;
+            *ppa = (pte & 0x0000fffffffff000) + (va & 0xfff);
             InterlockedIncrement64(&H->vmm.stat.page.cTransition);
         }
         return FALSE;
@@ -1466,7 +1466,7 @@ BOOL MmWinX64_ReadPaged(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ 
         if(ptp && !*ptp) { *ptp = VMM_PTE_TP_PROTOTYPE; }
         InterlockedIncrement64(&H->vmm.stat.page.cVAD);
         if(MMWINX64_PTE_IS_HARDWARE(pte)) {
-            *ppa = pte & 0x0000fffffffff000;
+            *ppa = (pte & 0x0000fffffffff000) + (va & 0xfff);
             return FALSE;
         }
         return MmWinX64_ReadPaged(H, pProcess, va, pte, pbPage, ppa, NULL, flags | VMM_FLAG_NOVAD);

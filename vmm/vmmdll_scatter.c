@@ -131,7 +131,7 @@ BOOL VMMDLL_Scatter_PrepareInternal(_In_ PSCATTER_CONTEXT ctx, _In_ QWORD va, _I
             if((cMEMsRequired == 1) && (cb <= 0x400) && !fForcePageRead) {
                 // single-page small read -> optimize MEM for small read.
                 // NB! buffer allocation still remains 0x1000 even if not all is used for now.
-                pMEM->cb = (cb + 7) & ~0x7;
+                pMEM->cb = (cb + 7 + (va & 7)) & ~0x7;
                 pMEM->qwA = va & ~0x7;
                 if((pMEM->qwA & 0xfff) + pMEM->cb > 0x1000) {
                     pMEM->qwA = (pMEM->qwA & ~0xfff) + 0x1000 - pMEM->cb;

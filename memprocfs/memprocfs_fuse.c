@@ -237,9 +237,6 @@ VOID GetMountPoint(_In_ DWORD argc, _In_ char *argv[], _Out_ LPSTR *pszMountPoin
     " - Discord:          https://discord.gg/pcileech                         \n" \
     " - License:          GNU Affero General Public License v3.0              \n" \
     " - Licensed To:      %s\n"                                                   \
-    "   --------------------------------------------------------------------- \n" \
-    "   MemProcFS is free open source software. If you find it useful please  \n" \
-    "   become a sponsor at: https://github.com/sponsors/ufrisk Thank You :)  \n" \
     "   --------------------------------------------------------------------- \n"
 #endif /* VMM_PROFILE_FULL */
 

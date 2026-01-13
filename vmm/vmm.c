@@ -2331,7 +2331,7 @@ BOOL VmmScatter_PrepareInternal(_In_ PVMMOB_SCATTER hS, _In_ QWORD va, _In_ DWOR
             if((cMEMsRequired == 1) && (cb <= 0x400) && !fForcePageRead) {
                 // single-page small read -> optimize MEM for small read.
                 // NB! buffer allocation still remains 0x1000 even if not all is used for now.
-                pMEM->cb = (cb + 7) & ~0x7;
+                pMEM->cb = (cb + 7 + (va & 7)) & ~0x7;
                 pMEM->qwA = va & ~0x7;
                 if((pMEM->qwA & 0xfff) + pMEM->cb > 0x1000) {
                     pMEM->qwA = (pMEM->qwA & ~0xfff) + 0x1000 - pMEM->cb;
@@ -2371,7 +2371,7 @@ BOOL VmmScatter_PrepareEx(_In_ PVMMOB_SCATTER hS, _In_ QWORD va, _In_ DWORD cb, 
 
 /*
 * Prepare (add) a memory range for reading. The memory may after a call to
-* VmmScatter_Execute() be retrieved with VmmScatter_Read().
+* VmmScatter_Execute() be retrieved with VmmScatter_Read() / VmmScatter_ReadEx().
 * -- hS
 * -- va = start address of the memory range to read.
 * -- cb = size of memory range to read.
@@ -2385,7 +2385,7 @@ BOOL VmmScatter_Prepare(_In_ PVMMOB_SCATTER hS, _In_ QWORD va, _In_ DWORD cb)
 
 /*
 * Prepare (add) multiple memory ranges. The memory may after a call to
-* VmmScatter_Execute() be retrieved with VmmScatter_Read().
+* VmmScatter_Execute() be retrieved with VmmScatter_Read() / VmmScatter_ReadEx().
 * -- hS
 * -- psva = set with addresses to read.
 * -- cb = size of memory range to read.
@@ -2404,7 +2404,7 @@ BOOL VmmScatter_Prepare3(_In_ PVMMOB_SCATTER hS, _In_opt_ POB_SET psva, _In_ DWO
 
 /*
 * Prepare (add) multiple memory ranges. The memory may after a call to
-* VmmScatter_Execute() be retrieved with VmmScatter_Read().
+* VmmScatter_Execute() be retrieved with VmmScatter_Read() / VmmScatter_ReadEx().
 * -- hS
 * -- pm = map of objects.
 * -- cb = size of memory range to read.
@@ -2454,10 +2454,10 @@ BOOL VmmScatter_Clear(_In_ PVMMOB_SCATTER hS)
 * -- cb
 * -- pb
 * -- pcbRead
-* -- return
+* -- return = TRUE on success (at least some bytes read), FALSE on failure (no bytes read).
 */
 _Success_(return)
-BOOL VmmScatter_Read(_In_ PVMMOB_SCATTER hS, _In_ QWORD va, _In_ DWORD cb, _Out_writes_opt_(cb) PBYTE pb, _Out_opt_ PDWORD pcbRead)
+BOOL VmmScatter_ReadEx(_In_ PVMMOB_SCATTER hS, _In_ QWORD va, _In_ DWORD cb, _Out_writes_opt_(cb) PBYTE pb, _Out_opt_ PDWORD pcbRead)
 {
     PMEM_SCATTER pMEM;
     BOOL fResultFirst = FALSE;
@@ -2523,6 +2523,22 @@ BOOL VmmScatter_Read(_In_ PVMMOB_SCATTER hS, _In_ QWORD va, _In_ DWORD cb, _Out_
 }
 
 /*
+* Read out memory in previously populated ranges. This function should only be
+* called after the memory has been retrieved using VmmScatter_Execute().
+* -- hS
+* -- va
+* -- cb
+* -- pb
+* -- return = TRUE on success (all bytes read).
+*/
+_Success_(return)
+BOOL VmmScatter_Read(_In_ PVMMOB_SCATTER hS, _In_ QWORD va, _In_ DWORD cb, _Out_writes_opt_(cb) PBYTE pb)
+{
+    DWORD cbRead = 0;
+    return VmmScatter_ReadEx(hS, va, cb, pb, &cbRead) && (cbRead == cb);
+}
+
+/*
 * Retrieve the memory ranges previously populated with calls to the
 * VmmScatter_Prepare* functions.
 * -- hS
@@ -2568,7 +2584,7 @@ BOOL VmmScatter_Execute(_In_ PVMMOB_SCATTER hS, _In_ PVMM_PROCESS pProcess)
     pRange = hS->pRanges;
     while(pRange) {
         if(pRange->pb || pRange->pcbRead) {
-            VmmScatter_Read(hS, pRange->va, pRange->cb, pRange->pb, pRange->pcbRead);
+            VmmScatter_ReadEx(hS, pRange->va, pRange->cb, pRange->pb, pRange->pcbRead);
         }
         pRange = pRange->FLink;
     }

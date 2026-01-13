@@ -397,7 +397,7 @@ static BOOL VmmNetDns_FetchParseHashRecord(_In_ VMM_HANDLE H, _In_ PVMMNETDNS_IN
         VmmScatter_Prepare3(ctx->hS, ctx->psvaHashRecordNew, ctx->off_hashentry.cb);
         VmmScatter_Execute(ctx->hS, ctx->pProcess);
         while((va = ObSet_Pop(ctx->psvaHashRecordNew))) {
-            if(VmmScatter_Read(ctx->hS, va, ctx->off_hashentry.cb, pb, NULL)) {
+            if(VmmScatter_Read(ctx->hS, va, ctx->off_hashentry.cb, pb)) {
                 if(ctx->off_hashentry.oFlink) {
                     // _LIST_ENTRY
                     vaFLink = VMM_PTR_OFFSET(f32, pb, ctx->off_hashentry.oFlink) - ctx->off_hashentry.oFlink;
@@ -499,7 +499,7 @@ static BOOL VmmNetDns_FetchParseDnsRecord(_In_ VMM_HANDLE H, _In_ PVMMNETDNS_INI
         VmmScatter_Prepare3(ctx->hS, ctx->psvaDnsRecordNew, sizeof(DNS_RECORD64));
         VmmScatter_Execute(ctx->hS, ctx->pProcess);
         while((va = ObSet_Pop(ctx->psvaDnsRecordNew))) {
-            if(VmmScatter_Read(ctx->hS, va, sizeof(DNS_RECORD64), (PBYTE)&oDNS, NULL)) {
+            if(VmmScatter_Read(ctx->hS, va, sizeof(DNS_RECORD64), (PBYTE)&oDNS)) {
                 VmmNetDns_FetchParseDnsRecord_Single(H, ctx, va, &oDNS);
             }
         }

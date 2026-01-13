@@ -2219,7 +2219,7 @@ BOOL VmmScatter_PrepareEx(_In_ PVMMOB_SCATTER hS, _In_ QWORD va, _In_ DWORD cb, 
 
 /*
 * Prepare (add) a memory range for reading. The memory may after a call to
-* VmmScatter_Execute() be retrieved with VmmScatter_Read().
+* VmmScatter_Execute() be retrieved with VmmScatter_Read() / VmmScatter_ReadEx().
 * -- hS
 * -- va = start address of the memory range to read.
 * -- cb = size of memory range to read.
@@ -2230,7 +2230,7 @@ BOOL VmmScatter_Prepare(_In_ PVMMOB_SCATTER hS, _In_ QWORD va, _In_ DWORD cb);
 
 /*
 * Prepare (add) multiple memory ranges. The memory may after a call to
-* VmmScatter_Execute() be retrieved with VmmScatter_Read().
+* VmmScatter_Execute() be retrieved with VmmScatter_Read() / VmmScatter_ReadEx().
 * -- hS
 * -- psva = set with addresses to read.
 * -- cb = size of memory range to read.
@@ -2241,7 +2241,7 @@ BOOL VmmScatter_Prepare3(_In_ PVMMOB_SCATTER hS, _In_opt_ POB_SET psva, _In_ DWO
 
 /*
 * Prepare (add) multiple memory ranges. The memory may after a call to
-* VmmScatter_Execute() be retrieved with VmmScatter_Read().
+* VmmScatter_Execute() be retrieved with VmmScatter_Read() / VmmScatter_ReadEx().
 * -- hS
 * -- pm = map of objects.
 * -- cb = size of memory range to read.
@@ -2269,10 +2269,22 @@ BOOL VmmScatter_Execute(_In_ PVMMOB_SCATTER hS, _In_ PVMM_PROCESS pProcess);
 * -- cb
 * -- pb
 * -- pcbRead
-* -- return
+* -- return = TRUE on success (at least some bytes read), FALSE on failure (no bytes read).
 */
 _Success_(return)
-BOOL VmmScatter_Read(_In_ PVMMOB_SCATTER hS, _In_ QWORD va, _In_ DWORD cb, _Out_writes_opt_(cb) PBYTE pb, _Out_opt_ PDWORD pcbRead);
+BOOL VmmScatter_ReadEx(_In_ PVMMOB_SCATTER hS, _In_ QWORD va, _In_ DWORD cb, _Out_writes_opt_(cb) PBYTE pb, _Out_opt_ PDWORD pcbRead);
+
+/*
+* Read out memory in previously populated ranges. This function should only be
+* called after the memory has been retrieved using VmmScatter_Execute().
+* -- hS
+* -- va
+* -- cb
+* -- pb
+* -- return = TRUE on success (all bytes read).
+*/
+_Success_(return)
+BOOL VmmScatter_Read(_In_ PVMMOB_SCATTER hS, _In_ QWORD va, _In_ DWORD cb, _Out_writes_opt_(cb) PBYTE pb);
 
 /*
 * Clear/Reset the handle for use in another subsequent read scatter operation.
