@@ -420,14 +420,17 @@ BOOL VMMDLL_Scatter_Read(_In_ VMMDLL_SCATTER_HANDLE hS, _In_ QWORD va, _In_ DWOR
 _Success_(return)
 BOOL VMMDLL_Scatter_ExecuteReadInternal(_In_ PSCATTER_CONTEXT ctx)
 {
-    DWORD i, cbBuffer, cbBufferAlloc, oBufferAllocMEM = 0;
+    SIZE_T cPagesToAlloc, cbBuffer, cbBufferAlloc, oBufferAllocMEM = 0;
+    DWORD i;
     PMEM_SCATTER pMEM;
     PPMEM_SCATTER ppMEMs;
     PSCATTER_RANGE pRange;
     // validate
     if(!ctx->cPageTotal || (ctx->cPageTotal != ObMap_Size(ctx->pmMEMs))) { return FALSE; }
     // alloc (if required)
-    cbBuffer = (ctx->cPageTotal - ctx->cPageAlloc) * 0x1000;
+    cPagesToAlloc = (ctx->cPageTotal - ctx->cPageAlloc);
+    if((cPagesToAlloc > 0x000f0000) && (sizeof(SIZE_T) < 8)) { return FALSE; }
+    cbBuffer = cPagesToAlloc * 0x1000;
     if(!ctx->fExecute) {
         cbBufferAlloc = cbBuffer + ctx->cPageTotal * sizeof(PMEM_SCATTER);
         if(!(ctx->pbBuffer = LocalAlloc(LMEM_ZEROINIT, cbBufferAlloc))) { return FALSE; }

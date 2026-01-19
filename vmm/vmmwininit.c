@@ -48,9 +48,16 @@ VOID VmmWinInit_TryInitializeThreading(_In_ VMM_HANDLE H)
         PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_ETHREAD", "Win32StartAddress", &pti->oWin32StartAddress) &&
         PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_ETHREAD", "ThreadListEntry", &pti->oThreadListEntry) &&
         PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_ETHREAD", "Cid", &pti->oCid) &&
-        PDB_GetTypeSize(H, PDB_HANDLE_KERNEL, "_ETHREAD", &cbEThread) &&
-        (PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTRAP_FRAME", "Rip", &pti->oTrapRip) || PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTRAP_FRAME", "Eip", &pti->oTrapRip)) &&
-        (PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTRAP_FRAME", "Rsp", &pti->oTrapRsp) || PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTRAP_FRAME", "HardwareEsp", &pti->oTrapRsp));
+        PDB_GetTypeSize(H, PDB_HANDLE_KERNEL, "_ETHREAD", &cbEThread);
+    if(H->vmm.f32) {
+        f = f &&
+            PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTRAP_FRAME", "Eip", &pti->oTrapRip) &&
+            PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTRAP_FRAME", "HardwareEsp", &pti->oTrapRsp);
+    } else {
+        f = f &&
+            PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTRAP_FRAME", "Rip", &pti->oTrapRip) &&
+            PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTRAP_FRAME", "Rsp", &pti->oTrapRsp);
+    }
     PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTHREAD", "Process", &pti->oProcessOpt);                // optional - does not exist in xp.
     PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_KTHREAD", "Running", &pti->oRunningOpt);                // optional - does not exist in vista/xp.
     PDB_GetTypeChildOffsetShort(H, PDB_HANDLE_KERNEL, "_ETHREAD", "ClientSecurity", &pti->oClientSecurityOpt);  // optional - does not exist in xp.

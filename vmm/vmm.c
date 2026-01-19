@@ -2548,14 +2548,17 @@ BOOL VmmScatter_Read(_In_ PVMMOB_SCATTER hS, _In_ QWORD va, _In_ DWORD cb, _Out_
 _Success_(return)
 BOOL VmmScatter_Execute(_In_ PVMMOB_SCATTER hS, _In_ PVMM_PROCESS pProcess)
 {
-    DWORD i, cbBuffer, cbBufferAlloc, oBufferAllocMEM = 0;
+    SIZE_T cPagesToAlloc, cbBuffer, cbBufferAlloc, oBufferAllocMEM = 0;
+    DWORD i;
     PMEM_SCATTER pMEM;
     PPMEM_SCATTER ppMEMs;
     PVMM_SCATTER_RANGE pRange;
     // validate
     if(!hS->cPageTotal || (hS->cPageTotal != ObMap_Size(hS->pmMEMs))) { return FALSE; }
     // alloc (if required)
-    cbBuffer = (hS->cPageTotal - hS->cPageAlloc) * 0x1000;
+    cPagesToAlloc = (hS->cPageTotal - hS->cPageAlloc);
+    if((cPagesToAlloc > 0x000f0000) && (sizeof(SIZE_T) < 8)) { return FALSE; }
+    cbBuffer = cPagesToAlloc * 0x1000;
     if(!hS->fExecute) {
         cbBufferAlloc = cbBuffer + hS->cPageTotal * sizeof(PMEM_SCATTER);
         if(!(hS->pbBuffer = LocalAlloc(LMEM_ZEROINIT, cbBufferAlloc))) { return FALSE; }
