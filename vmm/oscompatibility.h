@@ -20,6 +20,7 @@
 #define STATUS_FILE_SYSTEM_LIMITATION       ((NTSTATUS)0xC0000427L)
 typedef unsigned __int64                    QWORD, *PQWORD;
 _Ret_maybenull_ HMODULE WINAPI LoadLibraryU(_In_ LPCSTR lpLibFileName);
+errno_t fopen_su(FILE **pFile, const char *filename, const char *mode);
 
 #ifdef _WIN64
 #define VMM_64BIT
@@ -224,6 +225,7 @@ typedef int(*_CoreCrtNonSecureSearchSortCompareFunction)(void const *, void cons
 #define _fseeki64(f, o, w)                  (fseeko(f, o, w))
 #define _chsize_s(fd, cb)                   (ftruncate64(fd, cb))
 #define _fileno(f)                          (fileno(f))
+#define fopen_su(pFile, filename, mode)     (fopen_s(pFile, filename, mode))
 #define InterlockedAdd64(p, v)              (__sync_add_and_fetch_8(p, v))
 #define InterlockedIncrement64(p)           (__sync_add_and_fetch_8(p, 1))
 #define InterlockedIncrement(p)             (__sync_add_and_fetch_4(p, 1))

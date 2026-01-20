@@ -265,7 +265,7 @@ VOID FcWeb_LoadSqliteDispatch(_In_ VMM_HANDLE H, _In_ PMWEB_CONTEXT ctx, _In_ FC
     // 3: create and write to temp file
     if(tmpnam_s(szFile, MAX_PATH)) { goto fail; }
     strncat_s(szFile, _countof(szFile), ".vmmsqlite3.tmp", _TRUNCATE);
-    if(fopen_s(&phFile, szFile, "wb")) {
+    if(fopen_su(&phFile, szFile, "wb")) {
         VmmLog(H, ctx->MID, LOGLEVEL_DEBUG, "fail open temp file: %s", szFile);
         goto fail;
     }

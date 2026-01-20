@@ -1580,7 +1580,7 @@ VOID MmWin_PagingInitialize(_In_ VMM_HANDLE H, _In_ BOOL fModeFull)
         InitializeCriticalSection(&ctx->Lock);
         for(i = 0; i < 10; i++) {
             if(H->cfg.szPageFile[i][0]) {
-                if(fopen_s(&ctx->pPageFile[i], H->cfg.szPageFile[i], "rb")) {
+                if(fopen_su(&ctx->pPageFile[i], H->cfg.szPageFile[i], "rb")) {
                     VmmLog(H, MID_VMM, LOGLEVEL_VERBOSE, "WARNING: CANNOT OPEN PAGE FILE #%i '%s'", i, H->cfg.szPageFile[i]);
                 } else {
                     VmmLog(H, MID_VMM, LOGLEVEL_DEBUG, "Successfully opened page file #%i '%s'", i, H->cfg.szPageFile[i]);

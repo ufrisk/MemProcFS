@@ -646,7 +646,7 @@ VOID PluginManager_PythonExecFile(_In_ VMM_HANDLE H, _In_ LPCSTR szPythonFileToE
     LPSTR uszResultOfExec = NULL;
     PBYTE pbPythonProgram = NULL;
     f = (pbPythonProgram = LocalAlloc(LMEM_ZEROINIT, 0x01000000)) &&
-        !fopen_s(&hFile, H->cfg.szPythonExecuteFile, "rb") && hFile &&
+        !fopen_su(&hFile, H->cfg.szPythonExecuteFile, "rb") && hFile &&
         (cbPythonProgram = (DWORD)fread(pbPythonProgram, 1, 0x01000000, hFile)) && (cbPythonProgram < 0x01000000);
     if(f) {
         if(PluginManager_PythonExecCode(H, (LPSTR)pbPythonProgram, &uszResultOfExec) && uszResultOfExec) {

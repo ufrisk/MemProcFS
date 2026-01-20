@@ -18,6 +18,19 @@ _Ret_maybenull_ HMODULE WINAPI LoadLibraryU(_In_ LPCSTR lpLibFileName)
     return NULL;
 }
 
+errno_t fopen_su(FILE **pFile, const char *filename, const char *mode)
+{
+    LPWSTR wszFileName = NULL, wszMode = NULL;
+    if(!pFile || !filename || !mode) { return EINVAL; }
+    CharUtil_UtoW(filename, (DWORD)-1, NULL, 0, &wszFileName, NULL, CHARUTIL_FLAG_ALLOC);
+    CharUtil_UtoW(mode, (DWORD)-1, NULL, 0, &wszMode, NULL, CHARUTIL_FLAG_ALLOC);
+    if(!wszFileName || !wszMode) { return EINVAL; }
+    errno_t err = _wfopen_s(pFile, wszFileName, wszMode);
+    LocalFree(wszFileName);
+    LocalFree(wszMode);
+    return err;
+}
+
 #endif
 
 #if defined(LINUX) || defined(MACOS)

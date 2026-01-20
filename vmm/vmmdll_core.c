@@ -891,7 +891,7 @@ VMM_HANDLE VmmDllCore_Initialize(_In_ DWORD argc, _In_ LPCSTR argv[], _Out_opt_ 
     // 7: Set LeechCore MemMap (if exists and not auto - i.e. from file)
     if(H->cfg.szMemMap[0] && !H->cfg.fMemMapAuto) {
         f = (pbMemMap = LocalAlloc(LMEM_ZEROINIT, 0x01000000)) &&
-            !fopen_s(&hFile, H->cfg.szMemMap, "rb") && hFile &&
+            !fopen_su(&hFile, H->cfg.szMemMap, "rb") && hFile &&
             (cbMemMap = (DWORD)fread(pbMemMap, 1, 0x01000000, hFile)) && (cbMemMap < 0x01000000) &&
             LcCommand(H->hLC, LC_CMD_MEMMAP_SET, cbMemMap, pbMemMap, NULL, NULL) &&
             LcGetOption(H->hLC, LC_OPT_CORE_ADDR_MAX, &H->dev.paMax);

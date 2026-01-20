@@ -362,18 +362,18 @@ _Success_(return) BOOL MemProcFS_VfsListU(_In_ LPSTR uszPath, _Inout_ PVMMDLL_VF
 * -- pfPythonExec
 * -- return = the mount point as a drive letter.
 */
-CHAR GetMountPoint(_In_ DWORD argc, _In_ char* argv[], _Out_ PBOOL pfMountSpecified, _Out_ PBOOL pfPythonExec)
+CHAR GetMountPoint(_In_ DWORD argc, _In_ wchar_t* argv[], _Out_ PBOOL pfMountSpecified, _Out_ PBOOL pfPythonExec)
 {
     CHAR chMountPoint = 'M';
     DWORD i = 1;
     *pfPythonExec = FALSE;
     *pfMountSpecified = FALSE;
     for(i = 0; i < argc - 1; i++) {
-        if(0 == strcmp(argv[i], "-mount")) {
-            chMountPoint = argv[i + 1][0];
+        if(0 == _wcsicmp(argv[i], L"-mount")) {
+            chMountPoint = (CHAR)argv[i + 1][0];
             *pfMountSpecified = TRUE;
         }
-        if(0 == strcmp(argv[i], "-pythonexec")) {
+        if(0 == _wcsicmp(argv[i], L"-pythonexec")) {
             *pfPythonExec = TRUE;
         }
     }
@@ -440,7 +440,7 @@ BOOL WINAPI MemProcFsCtrlHandler(DWORD fdwCtrlType)
 * -- argv
 * -- return
 */
-int main(_In_ int argc, _In_ char* argv[])
+int wmain(_In_ int argc, _In_ wchar_t* argv[])
 {
     // MAIN FUNCTION PROPER BELOW:
     int i;
@@ -462,10 +462,13 @@ int main(_In_ int argc, _In_ char* argv[])
     SetConsoleCtrlHandler(MemProcFsCtrlHandler, TRUE);
     szArgs[0] = "-printf";
     for(i = 1; i < argc; i++) {
-        szArgs[i] = argv[i];
+        if(!CharUtil_WtoU(argv[i], (DWORD)-1, NULL, 0, &szArgs[i], NULL, CHARUTIL_FLAG_ALLOC)) {
+            printf("MemProcFS: Invalid argument!\n");
+            return 1;
+        }
     }
     if(argc > 2) {
-        szArgs[argc++] = "-userinteract";
+        CharUtil_UtoU("-userinteract", (DWORD)-1, NULL, 0, &szArgs[argc++], NULL, CHARUTIL_FLAG_ALLOC);
     }
     g_hVMM = VMMDLL_Initialize(argc, szArgs);
     if(!g_hVMM) {
