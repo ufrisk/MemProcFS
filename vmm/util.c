@@ -982,12 +982,11 @@ VOID Util_GetPathLib(_Out_writes_(MAX_PATH) PCHAR uszPath)
     SIZE_T i;
     ZeroMemory(uszPath, MAX_PATH);
 #ifdef _WIN32
-    HMODULE hModuleVmm;
+    HMODULE hModuleVmm = 0;
     WCHAR wszPath[MAX_PATH] = { 0 };
-    hModuleVmm = LoadLibraryU("vmm.dll");
+    GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, (LPCWSTR)Util_GetPathLib, &hModuleVmm);
     GetModuleFileNameW(hModuleVmm, wszPath, MAX_PATH - 4);
     CharUtil_WtoU(wszPath, -1, (PBYTE)uszPath, MAX_PATH, NULL, NULL, CHARUTIL_FLAG_STR_BUFONLY | CHARUTIL_FLAG_TRUNCATE);
-    if(hModuleVmm) { FreeLibrary(hModuleVmm); }
 #endif /* _WIN32 */
 #if defined(LINUX) || defined(MACOS)
     Dl_info Info = { 0 };
@@ -997,6 +996,7 @@ VOID Util_GetPathLib(_Out_writes_(MAX_PATH) PCHAR uszPath)
         strncpy(uszPath, Info.dli_fname, MAX_PATH - 1);
     }
 #endif /* LINUX || MACOS */
+    if(uszPath[0] == '\0') { return; }
     for(i = strlen(uszPath) - 1; i > 0; i--) {
         if(uszPath[i] == '/' || uszPath[i] == '\\') {
             uszPath[i + 1] = '\0';

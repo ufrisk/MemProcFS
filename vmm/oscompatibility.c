@@ -13,7 +13,11 @@ _Ret_maybenull_ HMODULE WINAPI LoadLibraryU(_In_ LPCSTR lpLibFileName)
 {
     WCHAR wszLibFileName[MAX_PATH * 2];
     if(CharUtil_UtoW(lpLibFileName, -1, (PBYTE)wszLibFileName, sizeof(wszLibFileName), NULL, NULL, CHARUTIL_FLAG_STR_BUFONLY)) {
-        return LoadLibraryW(wszLibFileName);
+        if(CharUtil_StrContains(lpLibFileName, "\\", FALSE)) {
+            return LoadLibraryExW(wszLibFileName, NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
+        } else {
+            return LoadLibraryW(wszLibFileName);
+        }
     }
     return NULL;
 }
@@ -501,6 +505,7 @@ NTSTATUS OSCOMPAT_RtlDecompressBuffer(USHORT CompressionFormat, PUCHAR Uncompres
     int rc;
     void *lib_mscompress;
     SIZE_T cbOut;
+    CHAR szPathLib[MAX_PATH];
     static BOOL fFirst = TRUE;
     static SRWLOCK LockSRW = SRWLOCK_INIT;
     static int(*pfn_xpress_decompress)(PBYTE pbIn, SIZE_T cbIn, PBYTE pbOut, SIZE_T * pcbOut) = NULL;
@@ -508,7 +513,10 @@ NTSTATUS OSCOMPAT_RtlDecompressBuffer(USHORT CompressionFormat, PUCHAR Uncompres
     if(fFirst) {
         AcquireSRWLockExclusive(&LockSRW);
         if(fFirst) {
-            lib_mscompress = dlopen("libMSCompression"VMM_LIBRARY_FILETYPE, RTLD_NOW);
+            ZeroMemory(szPathLib, sizeof(szPathLib));
+            Util_GetPathLib(szPathLib);
+            strncat_s(szPathLib, sizeof(szPathLib), "libMSCompression"VMM_LIBRARY_FILETYPE, _TRUNCATE);
+            lib_mscompress = dlopen(szPathLib, RTLD_NOW);
             if(lib_mscompress) {
                 pfn_xpress_decompress = (int(*)(PBYTE, SIZE_T, PBYTE, SIZE_T *))dlsym(lib_mscompress, "xpress_decompress");
             }
@@ -539,17 +547,18 @@ NTSTATUS OSCOMPAT_RtlDecompressBufferEx(USHORT CompressionFormat, PUCHAR Uncompr
     int rc;
     void *lib_mscompress;
     SIZE_T cbOut;
+    CHAR szPathLib[MAX_PATH];
     static BOOL fFirst = TRUE;
     static SRWLOCK LockSRW = SRWLOCK_INIT;
     static int(*pfn_xpress_decompress)(PBYTE pbIn, SIZE_T cbIn, PBYTE pbOut, SIZE_T * pcbOut) = NULL;
     static int(*pfn_xpress_decompress_huff)(PBYTE pbIn, SIZE_T cbIn, PBYTE pbOut, SIZE_T * pcbOut) = NULL;
-    CHAR szPathLib[MAX_PATH] = { 0 };
-    Util_GetPathLib(szPathLib);
-    strncat_s(szPathLib, sizeof(szPathLib), "libMSCompression"VMM_LIBRARY_FILETYPE, _TRUNCATE);
     if((CompressionFormat != COMPRESSION_FORMAT_XPRESS) && (CompressionFormat != COMPRESSION_FORMAT_XPRESS_HUFF)) { return VMM_STATUS_UNSUCCESSFUL; }
     if(fFirst) {
         AcquireSRWLockExclusive(&LockSRW);
         if(fFirst) {
+            ZeroMemory(szPathLib, sizeof(szPathLib));
+            Util_GetPathLib(szPathLib);
+            strncat_s(szPathLib, sizeof(szPathLib), "libMSCompression"VMM_LIBRARY_FILETYPE, _TRUNCATE);
             lib_mscompress = dlopen(szPathLib, RTLD_NOW);
             if(lib_mscompress) {
                 pfn_xpress_decompress = (int(*)(PBYTE, SIZE_T, PBYTE, SIZE_T *))dlsym(lib_mscompress, "xpress_decompress");

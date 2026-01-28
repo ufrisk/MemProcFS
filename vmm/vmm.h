@@ -1254,7 +1254,7 @@ typedef struct tdVMMCONFIG {
     DWORD dwPteQualityThreshold;        // max number of allowed invalid PTE entries in a page table (default: 0x20)
     QWORD tcTimeStart;                  // start time GetTickCount64()
     // strings below
-    CHAR szPythonPath[MAX_PATH];
+    CHAR uszPythonPath[MAX_PATH];
     CHAR szPythonExecuteFile[MAX_PATH];
     CHAR szPageFile[10][MAX_PATH];
     CHAR szMemMap[MAX_PATH];

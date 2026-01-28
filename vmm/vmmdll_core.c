@@ -651,7 +651,7 @@ BOOL VmmDllCore_InitializeConfig(_In_ VMM_HANDLE H, _In_ DWORD argc, _In_ const 
             strcpy_s(H->cfg.szPythonExecuteFile, MAX_PATH, argv[i + 1]);
             i += 2; continue;
         } else if(0 == _stricmp(argv[i], "-pythonpath")) {
-            strcpy_s(H->cfg.szPythonPath, MAX_PATH, argv[i + 1]);
+            strcpy_s(H->cfg.uszPythonPath, MAX_PATH, argv[i + 1]);
             i += 2; continue;
         } else if(0 == _stricmp(argv[i], "-remote")) {
             strcpy_s(H->dev.szRemote, MAX_PATH, argv[i + 1]);
