@@ -92,6 +92,27 @@ VOID VmmWinThread_Initialize_DoWork(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProces
     PVMM_PROCESS pObSystemProcess = NULL;
     VMMWIN_INITIALIZETHREAD_CONTEXT ctx = { 0 };
     PVMM_OFFSET_ETHREAD ot = &H->vmm.offset.ETHREAD;
+    PVMMOB_MAP_HANDLE pObHandleMap = NULL;
+    PVMM_MAP_HANDLEENTRY peHandle;
+    POB_SET psObPrefetch = NULL;
+    // 0: 1st run optimization: pre-populate prefetch candidates from handle table.
+    //    i.e. speed up linked list _ETHREAD walking.
+    if(!ObContainer_Exists(pProcess->pObPersistent->pObCMapThreadPrefetch)) {
+        if(VmmMap_GetHandle(H, pProcess, &pObHandleMap, FALSE)) {
+            psObPrefetch = ObSet_New(H);
+            for(i = 0; i < pObHandleMap->cMap; i++) {
+                peHandle = pObHandleMap->pMap + i;
+                // threads (and processes) usually have access 0x1fffff -> use this as a fast heuristic.
+                if(peHandle->dwGrantedAccess == 0x1fffff) {
+                    ObSet_Push(psObPrefetch, peHandle->vaObject);
+                }
+            }
+            peHandle = NULL;
+            ObContainer_SetOb(pProcess->pObPersistent->pObCMapThreadPrefetch, psObPrefetch);
+            Ob_DECREF_NULL(&psObPrefetch);
+            Ob_DECREF_NULL(&pObHandleMap);
+        }
+    }
     // 1: set up and perform list traversal call.
     vaThreadListEntry = VMM_PTR_OFFSET(f32, pProcess->win.EPROCESS.pb, H->vmm.offset.ETHREAD.oThreadListHeadKP);
     if(f32 ? !VMM_KADDR32_4(vaThreadListEntry) : !VMM_KADDR64_8(vaThreadListEntry)) { goto fail; }
