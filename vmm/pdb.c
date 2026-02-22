@@ -206,8 +206,16 @@ LPSTR PDB_ModuleNameFromHandleMagic(_In_ PDB_HANDLE hPDB)
 _Success_(return)
 BOOL PDB_InfoDB_SymbolOffset(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ LPCSTR szSymbolName, _Out_ PDWORD pdwSymbolOffset)
 {
-    LPSTR szModule = PDB_ModuleNameFromHandleMagic(hPDB);
-    if(!szModule) { return FALSE; }
+    LPSTR szModule = NULL;
+    CHAR szModuleBuf[MAX_PATH];
+    if(PDB_HANDLE_IS_MAGIC(hPDB)) {
+        szModule = PDB_ModuleNameFromHandleMagic(hPDB);
+        if(!szModule) { return FALSE; }
+    } else {
+        ZeroMemory(szModuleBuf, sizeof(szModuleBuf));
+        if(!PDB_GetModuleInfo(H, hPDB, szModuleBuf, NULL, NULL) || !szModuleBuf[0]) { return FALSE; }
+        szModule = szModuleBuf;
+    }
     return InfoDB_SymbolOffset(H, szModule, szSymbolName, pdwSymbolOffset);
 }
 
@@ -224,8 +232,16 @@ BOOL PDB_InfoDB_SymbolOffset(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ L
 _Success_(return)
 BOOL PDB_InfoDB_TypeSize(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ LPCSTR szTypeName, _Out_ PDWORD pdwTypeSize, _In_ BOOL fDynamic)
 {
-    LPSTR szModule = PDB_ModuleNameFromHandleMagic(hPDB);
-    if(!szModule) { return FALSE; }
+    LPSTR szModule = NULL;
+    CHAR szModuleBuf[MAX_PATH];
+    if(PDB_HANDLE_IS_MAGIC(hPDB)) {
+        szModule = PDB_ModuleNameFromHandleMagic(hPDB);
+        if(!szModule) { return FALSE; }
+    } else {
+        ZeroMemory(szModuleBuf, sizeof(szModuleBuf));
+        if(!PDB_GetModuleInfo(H, hPDB, szModuleBuf, NULL, NULL) || !szModuleBuf[0]) { return FALSE; }
+        szModule = szModuleBuf;
+    }
     if(fDynamic) {
         return InfoDB_TypeSize_Dynamic(H, szModule, szTypeName, pdwTypeSize);
     } else {
@@ -247,8 +263,16 @@ BOOL PDB_InfoDB_TypeSize(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ LPCST
 _Success_(return)
 BOOL PDB_InfoDB_TypeChildOffset(_In_ VMM_HANDLE H, _In_opt_ PDB_HANDLE hPDB, _In_ LPCSTR szTypeName, _In_ LPCSTR uszTypeChildName, _Out_ PDWORD pdwTypeOffset, _In_ BOOL fDynamic)
 {
-    LPSTR szModule = PDB_ModuleNameFromHandleMagic(hPDB);
-    if(!szModule) { return FALSE; }
+    LPSTR szModule = NULL;
+    CHAR szModuleBuf[MAX_PATH];
+    if(PDB_HANDLE_IS_MAGIC(hPDB)) {
+        szModule = PDB_ModuleNameFromHandleMagic(hPDB);
+        if(!szModule) { return FALSE; }
+    } else {
+        ZeroMemory(szModuleBuf, sizeof(szModuleBuf));
+        if(!PDB_GetModuleInfo(H, hPDB, szModuleBuf, NULL, NULL) || !szModuleBuf[0]) { return FALSE; }
+        szModule = szModuleBuf;
+    }
     if(fDynamic) {
         return InfoDB_TypeChildOffset_Dynamic(H, szModule, szTypeName, uszTypeChildName, pdwTypeOffset);
     } else {

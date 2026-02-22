@@ -2201,7 +2201,7 @@ typedef struct tdVMMOB_SCATTER *PVMMOB_SCATTER;
 * -- return = handle to be used in VmmScatter_* functions.
 */
 _Success_(return != NULL)
-PVMMOB_SCATTER VmmScatter_Initialize(_In_ VMM_HANDLE H, _In_ DWORD flags);
+PVMMOB_SCATTER VmmScatter_Initialize(_In_ VMM_HANDLE H, _In_ QWORD flags);
 
 /*
 * Prepare (add) a memory range for reading. The buffer pb and the read length
@@ -2238,6 +2238,18 @@ BOOL VmmScatter_Prepare(_In_ PVMMOB_SCATTER hS, _In_ QWORD va, _In_ DWORD cb);
 */
 _Success_(return)
 BOOL VmmScatter_Prepare3(_In_ PVMMOB_SCATTER hS, _In_opt_ POB_SET psva, _In_ DWORD cb);
+
+/*
+* Prepare (add) multiple memory ranges. The memory may after a call to
+* VmmScatter_Execute() be retrieved with VmmScatter_Read() / VmmScatter_ReadEx().
+* -- hS
+* -- cAddresses
+* -- pqwAddresses = array of cAddresses length.
+* -- cb = size of memory range to read.
+* -- return
+*/
+_Success_(return)
+BOOL VmmScatter_Prepare4(_In_ PVMMOB_SCATTER hS, _In_ DWORD cAddresses, _In_ PQWORD pqwAddresses, _In_ DWORD cb);
 
 /*
 * Prepare (add) multiple memory ranges. The memory may after a call to
@@ -2913,6 +2925,15 @@ BOOL VmmMap_GetThreadCallstack(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _I
 */
 _Success_(return)
 BOOL VmmMap_GetHandle(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_HANDLE *ppObHandleMap, _In_ BOOL fExtendedText);
+
+/*
+* Retrieve a single PVMM_MAP_HANDLEENTRY for a given HandleMap and HandleID.
+* -- H
+* -- pHandleMap
+* -- dwID
+* -- return = PTR to VMM_MAP_THREADENTRY or NULL on fail. Must not be used out of pThreadMap scope.
+*/
+PVMM_MAP_HANDLEENTRY VmmMap_GetHandleEntry(_In_ VMM_HANDLE H, _In_ PVMMOB_MAP_HANDLE pHandleMap, _In_ DWORD dwID);
 
 /*
 * Retrieve the OBJECT MANAGER map

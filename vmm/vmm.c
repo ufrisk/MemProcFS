@@ -2256,7 +2256,7 @@ typedef struct tdVMM_SCATTER_RANGE {
 typedef struct tdVMMOB_SCATTER {
     OB ObHdr;
     VMM_HANDLE H;
-    DWORD flags;
+    QWORD flags;
     BOOL fExecute;          // read/write is already executed
     DWORD cPageTotal;
     DWORD cPageAlloc;
@@ -2398,6 +2398,26 @@ BOOL VmmScatter_Prepare3(_In_ PVMMOB_SCATTER hS, _In_opt_ POB_SET psva, _In_ DWO
     BOOL f = TRUE;
     while((va = ObSet_GetNext(psva, va))) {
         f = VmmScatter_PrepareInternal(hS, va, cb, NULL, NULL) && f;
+    }
+    return f;
+}
+
+/*
+* Prepare (add) multiple memory ranges. The memory may after a call to
+* VmmScatter_Execute() be retrieved with VmmScatter_Read() / VmmScatter_ReadEx().
+* -- hS
+* -- cAddresses
+* -- pqwAddresses = array of cAddresses length.
+* -- cb = size of memory range to read.
+* -- return
+*/
+_Success_(return)
+BOOL VmmScatter_Prepare4(_In_ PVMMOB_SCATTER hS, _In_ DWORD cAddresses, _In_ PQWORD pqwAddresses, _In_ DWORD cb)
+{
+    BOOL f = TRUE;
+    while(cAddresses) {
+        cAddresses--;
+        f = VmmScatter_PrepareInternal(hS, pqwAddresses[cAddresses], cb, NULL, NULL) && f;
     }
     return f;
 }
@@ -2616,7 +2636,7 @@ VOID VmmScatter_CleanupCB(PVMMOB_SCATTER hS)
 * -- return = handle to be used in VmmScatter_* functions.
 */
 _Success_(return != NULL)
-PVMMOB_SCATTER VmmScatter_Initialize(_In_ VMM_HANDLE H, _In_ DWORD flags)
+PVMMOB_SCATTER VmmScatter_Initialize(_In_ VMM_HANDLE H, _In_ QWORD flags)
 {
     PVMMOB_SCATTER hS = NULL;
     if(!(hS = Ob_AllocEx(H, OB_TAG_VMM_SCATTER, LMEM_ZEROINIT, sizeof(VMMOB_SCATTER), (OB_CLEANUP_CB)VmmScatter_CleanupCB, NULL))) {
@@ -3311,6 +3331,24 @@ BOOL VmmMap_GetHandle(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _Out_ PVMMO
     if(!VmmWinHandle_Initialize(H, pProcess, fExtendedText)) { return FALSE; }
     *ppObHandleMap = Ob_INCREF(pProcess->Map.pObHandle);
     return *ppObHandleMap != NULL;
+}
+
+int VmmMap_GetHandleEntry_CmpFind(_In_ QWORD dwID, _In_ QWORD qwEntry)
+{
+    PVMM_MAP_HANDLEENTRY pEntry = (PVMM_MAP_HANDLEENTRY)qwEntry;
+    return (pEntry->dwHandle > dwID) ? -1 : ((pEntry->dwHandle < dwID) ? 1 : 0);
+}
+
+/*
+* Retrieve a single PVMM_MAP_HANDLEENTRY for a given HandleMap and HandleID.
+* -- H
+* -- pHandleMap
+* -- dwID
+* -- return = PTR to VMM_MAP_THREADENTRY or NULL on fail. Must not be used out of pThreadMap scope.
+*/
+PVMM_MAP_HANDLEENTRY VmmMap_GetHandleEntry(_In_ VMM_HANDLE H, _In_ PVMMOB_MAP_HANDLE pHandleMap, _In_ DWORD dwID)
+{
+    return Util_qfind((QWORD)dwID, pHandleMap->cMap, pHandleMap->pMap, sizeof(VMM_MAP_HANDLEENTRY), VmmMap_GetHandleEntry_CmpFind);
 }
 
 /*

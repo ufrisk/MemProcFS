@@ -16,7 +16,12 @@ typedef struct tdOB_REGISTRY_HIVE {
     CHAR uszName[128];
     CHAR uszNameShort[32 + 1];
     CHAR uszHiveRootPath[MAX_PATH];
-    QWORD _FutureReserved[0x10];
+    struct {
+        BOOL fFail;
+        DWORD dwHandle;
+        QWORD vaFileObject;
+    } File;
+    QWORD _FutureReserved[0x0e];
     struct {
         //_DUAL[0] = Static, _DUAL[1] = Volatile.
         DWORD cb;

@@ -13,6 +13,7 @@
 #include "charutil.h"
 #include "util.h"
 #include "vmmwin.h"
+#include "vmmwinobj.h"
 
 #define REG_SIGNATURE_HBIN      0x6e696268
 
@@ -28,6 +29,7 @@ typedef struct tdVMMWIN_REGISTRY_OFFSET {
         WORD StorageMap1;
         WORD StorageSmallDir1;
         WORD BaseBlock;
+        WORD FileHandles;
         WORD FileFullPathOpt;
         WORD FileUserNameOpt;
         WORD HiveRootPathOpt;
@@ -204,8 +206,10 @@ BOOL VmmWinReg_Reg2Virt(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcessRegistry, _
 */
 VOID VmmWinReg_ReadScatter(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcessRegistry, _In_ POB_REGISTRY_HIVE pRegistryHive, _Inout_ PPMEM_SCATTER ppMEMsReg, _In_ DWORD cpMEMsReg, _In_ QWORD flags)
 {
-    DWORD i;
+    DWORD i, cMEMsFile = 0;
     PMEM_SCATTER pMEM;
+    PPMEM_SCATTER ppMEMsFile;
+    POB_VMMWINOBJ_FILE pObHiveFile = NULL;
     for(i = 0; i < cpMEMsReg; i++) {
         pMEM = ppMEMsReg[i];
         MEM_SCATTER_STACK_PUSH(pMEM, pMEM->qwA);
@@ -217,6 +221,38 @@ VOID VmmWinReg_ReadScatter(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcessRegistry
     for(i = 0; i < cpMEMsReg; i++) {
         pMEM = ppMEMsReg[i];
         pMEM->qwA = MEM_SCATTER_STACK_POP(pMEM);
+        if(!pMEM->f && !(pMEM->qwA >> 31)) {
+            cMEMsFile++;
+        }
+    }
+    // failed read from registry hive memory space -> try read from hive file in file cache (if possible):
+    if(cMEMsFile && !pRegistryHive->File.fFail) {
+        pObHiveFile = VmmWinObjFile_GetByVa(H, pRegistryHive->File.vaFileObject);
+        if(!pObHiveFile) {
+            EnterCriticalSection(&pRegistryHive->LockUpdate);
+            pRegistryHive->File.fFail = TRUE;
+            LeaveCriticalSection(&pRegistryHive->LockUpdate);
+            return;
+        }
+        ppMEMsFile = LocalAlloc(0, cMEMsFile * sizeof(PMEM_SCATTER));
+        if(ppMEMsFile) {
+            cMEMsFile = 0;
+            for(i = 0; i < cpMEMsReg; i++) {
+                pMEM = ppMEMsReg[i];
+                if(!pMEM->f && !(pMEM->qwA >> 31)) {
+                    MEM_SCATTER_STACK_PUSH(pMEM, pMEM->qwA);
+                    pMEM->qwA += 0x1000;   // adjust registry address to skip regf header
+                    ppMEMsFile[cMEMsFile++] = pMEM;
+                }
+            }
+            VmmWinObjFile_ReadScatter(H, pObHiveFile, ppMEMsReg, cpMEMsReg, flags, VMMWINOBJ_FILE_TP_DATA | VMMWINOBJ_FILE_TP_CACHE);
+            for(i = 0; i < cMEMsFile; i++) {
+                pMEM = ppMEMsFile[i];
+                pMEM->qwA = MEM_SCATTER_STACK_POP(pMEM);
+            }
+        }
+        Ob_DECREF(pObHiveFile);
+        LocalFree(ppMEMsFile);
     }
 }
 
@@ -421,6 +457,7 @@ BOOL VmmWinReg_FuzzHiveOffsets64(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcessSy
     po->CM.StorageMap1 = o + 0x008;
     po->CM.StorageSmallDir1 = o + 0x010;
     o += cbDual;
+    po->CM.FileHandles = o;
     // _CMHIVE _LIST_ENTRY
     for(; o < 0xff0; o += 8) {
         f = VMM_KADDR64_8(*(PQWORD)(pbCMHIVE + o)) &&                                           // FLinkAll
@@ -534,6 +571,7 @@ BOOL VmmWinReg_FuzzHiveOffsets32(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcessSy
     po->CM.StorageMap1 = o + 0x004;
     po->CM.StorageSmallDir1 = o + 0x008;
     o += cbDual;
+    po->CM.FileHandles = o;
     // _CMHIVE _LIST_ENTRY
     for(; o < 0x800; o += 4) {
         f = VMM_KADDR32_4(*(PDWORD)(pbCMHIVE + o)) &&                                                       // FLinkAll
@@ -742,6 +780,7 @@ VOID VmmWinReg_HiveGetShortName(_In_ POB_REGISTRY_HIVE pHive, _Out_writes_(32) L
 VOID VmmWinReg_EnumHive64_Post(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ POB_MAP pHiveMap, _In_ QWORD vaData, _In_ PBYTE pbData, _In_ DWORD cbData)
 {
     BOOL f;
+    QWORD qwFH;
     CHAR chDefault = '_';
     BOOL fBoolTrue = TRUE;
     CHAR szHiveFileNameShort[32+1] = { 0 };
@@ -767,6 +806,8 @@ VOID VmmWinReg_EnumHive64_Post(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _I
     pObHive->_DUAL[1].cb = *(PDWORD)(pbData + po->CM.Length1);
     pObHive->_DUAL[1].vaHMAP_DIRECTORY = *(PQWORD)(pbData + po->CM.StorageMap1);
     pObHive->_DUAL[1].vaHMAP_TABLE_SmallDir = *(PQWORD)(pbData + po->CM.StorageSmallDir1);
+    qwFH = *(PQWORD)(pbData + po->CM.FileHandles);
+    if(0xFFFFFFFF80000000 == (qwFH & 0xFFFFFFFF80000000)) { pObHive->File.dwHandle = qwFH & 0x7fffffff; }
     InitializeCriticalSection(&pObHive->LockUpdate);
     //_HBASE_BLOCK.FileName
     VmmReadWtoU(
@@ -831,6 +872,7 @@ VOID VmmWinReg_EnumHive64_Post(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _I
 VOID VmmWinReg_EnumHive32_Post(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ POB_MAP pHiveMap, _In_ QWORD vaData, _In_ PBYTE pbData, _In_ DWORD cbData)
 {
     BOOL f;
+    DWORD dwFH;
     CHAR chDefault = '_';
     BOOL fBoolTrue = TRUE;
     CHAR szHiveFileNameShort[32+1] = { 0 };
@@ -857,6 +899,8 @@ VOID VmmWinReg_EnumHive32_Post(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _I
     pObHive->_DUAL[1].cb = *(PDWORD)(pbData + po->CM.Length1);
     pObHive->_DUAL[1].vaHMAP_DIRECTORY = *(PDWORD)(pbData + po->CM.StorageMap1);
     pObHive->_DUAL[1].vaHMAP_TABLE_SmallDir = *(PDWORD)(pbData + po->CM.StorageSmallDir1);
+    dwFH = *(PDWORD)(pbData + po->CM.FileHandles);
+    if(0x80000000 == (dwFH & 0x80000000)) { pObHive->File.dwHandle = dwFH & 0x7fffffff; }
     InitializeCriticalSection(&pObHive->LockUpdate);
     //_HBASE_BLOCK.FileName
     VmmReadWtoU(
@@ -919,6 +963,31 @@ VOID VmmWinReg_EnumHive32_Post(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _I
 
 /*
 * Internal function to create / set up a new registry objects.
+* Fetches hive file handles in a fairly efficient way.
+* NB! This function must NOT be called in a multi-threaded way.
+* CALLER DECREF: return
+* -- H
+* -- return
+*/
+VOID VmmWinReg_EnumHive_FileHandle(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcessSystem, _Inout_ POB_MAP pmHive)
+{
+    PVMM_MAP_HANDLEENTRY peHandle;
+    PVMMOB_MAP_HANDLE pObHandleMap = NULL;
+    POB_REGISTRY_HIVE pObHive = NULL;
+    if(VmmMap_GetHandle(H, pProcessSystem, &pObHandleMap, FALSE)) {
+        while((pObHive = ObMap_GetNext(pmHive, pObHive))) {
+            if(pObHive->File.dwHandle) {
+                if((peHandle = VmmMap_GetHandleEntry(H, pObHandleMap, pObHive->File.dwHandle))) {
+                    pObHive->File.vaFileObject = peHandle->vaObject;
+                }
+            }
+        }
+        Ob_DECREF(pObHandleMap);
+    }
+}
+
+/*
+* Internal function to create / set up a new registry objects.
 * NB! This function must NOT be called in a multi-threaded way.
 * CALLER DECREF: return
 * -- H
@@ -945,6 +1014,7 @@ POB_MAP VmmWinReg_HiveMap_New(_In_ VMM_HANDLE H)
         (VMMWIN_LISTTRAVERSE_PRE_CB)(f32 ? VmmWinReg_EnumHive32_Pre : VmmWinReg_EnumHive64_Pre),
         (VMMWIN_LISTTRAVERSE_POST_CB)(f32 ? VmmWinReg_EnumHive32_Post : VmmWinReg_EnumHive64_Post),
         H->vmm.pObCCachePrefetchRegistry);
+    VmmWinReg_EnumHive_FileHandle(H, pObProcessSystem, pObHiveMap);
     ObContainer_SetOb(H->vmm.pRegistry->pObCHiveMap, pObHiveMap);
     Ob_DECREF(pObProcessSystem);
     return pObHiveMap;
@@ -1722,16 +1792,18 @@ success:
 _Success_(return)
 BOOL VmmWinReg_PathHiveGetByFullPath(_In_ VMM_HANDLE H, _In_ LPCSTR uszPathFull, _Out_ POB_REGISTRY_HIVE *ppHive, _Out_writes_(MAX_PATH) LPSTR uszPathKeyValue)
 {
-    BOOL fUser = FALSE, fUserSystem = FALSE, fOrphan = FALSE;
+    BOOL fHKLM = FALSE, fUser = FALSE, fUserSystem = FALSE, fOrphan = FALSE;
     DWORD i;
     LPCSTR usz, uszPath2;
     CHAR uszPath1[MAX_PATH];
     POB_REGISTRY_HIVE pObHive = NULL;
     POB_REGISTRY_KEY pObKey = NULL;
     PVMMOB_MAP_USER pObUserMap = NULL;
-    if(!strncmp(uszPathFull, "HKLM\\", 5) || (fUser = !strncmp(uszPathFull, "HKU\\", 4))) {
+    fUser = CharUtil_StrStartsWith(uszPathFull, "HKU\\", TRUE);
+    fHKLM = CharUtil_StrStartsWith(uszPathFull, "HKLM\\", TRUE);
+    if(fHKLM || fUser) {
         uszPathFull += fUser ? 4 : 5;
-        if(!strncmp(uszPathFull, "ORPHAN\\", 7)) {
+        if(!_strnicmp(uszPathFull, "ORPHAN\\", 7)) {
             uszPathFull += 7;
             fOrphan = TRUE;
         }
@@ -1739,9 +1811,9 @@ BOOL VmmWinReg_PathHiveGetByFullPath(_In_ VMM_HANDLE H, _In_ LPCSTR uszPathFull,
         strncpy_s(uszPathKeyValue, MAX_PATH, fOrphan ? "ORPHAN\\" : "ROOT\\", _TRUNCATE);
         strncat_s(uszPathKeyValue, MAX_PATH, uszPath2, _TRUNCATE);
         if(fUser) {
-            if(strstr("LocalSystem", uszPath1)) { fUserSystem = TRUE;  strncpy_s(uszPath1, sizeof(uszPath1), "DEFAULT-USER_.DEFAULT", _TRUNCATE); }
-            if(strstr("LocalService", uszPath1)) { fUserSystem = TRUE;  strncpy_s(uszPath1, sizeof(uszPath1), "NTUSERDAT-USER_S-1-5-19", _TRUNCATE); }
-            if(strstr("NetworkService", uszPath1)) { fUserSystem = TRUE;  strncpy_s(uszPath1, sizeof(uszPath1), "NTUSERDAT-USER_S-1-5-20", _TRUNCATE); }
+            if(CharUtil_StrEquals(uszPath1, "LocalSystem", TRUE)) { fUserSystem = TRUE;  strncpy_s(uszPath1, sizeof(uszPath1), "DEFAULT-USER_.DEFAULT", _TRUNCATE); }
+            if(CharUtil_StrEquals(uszPath1, "LocalService", TRUE)) { fUserSystem = TRUE;  strncpy_s(uszPath1, sizeof(uszPath1), "NTUSERDAT-USER_S-1-5-19", _TRUNCATE); }
+            if(CharUtil_StrEquals(uszPath1, "NetworkService", TRUE)) { fUserSystem = TRUE;  strncpy_s(uszPath1, sizeof(uszPath1), "NTUSERDAT-USER_S-1-5-20", _TRUNCATE); }
             if(fUserSystem) {
                 while((pObHive = VmmWinReg_HiveGetNext(H, pObHive))) {
                     if(strstr(pObHive->uszName, uszPath1)) {
@@ -1759,15 +1831,16 @@ BOOL VmmWinReg_PathHiveGetByFullPath(_In_ VMM_HANDLE H, _In_ LPCSTR uszPathFull,
                 }
                 Ob_DECREF_NULL(&pObUserMap);
             }
-        } else {
+        }
+        if(fHKLM) {
             while((pObHive = VmmWinReg_HiveGetNext(H, pObHive))) {
-                if(strstr(pObHive->uszNameShort, uszPath1)) {
+                if(CharUtil_StrContains(pObHive->uszNameShort, uszPath1, TRUE)) {
                     *ppHive = pObHive;
                     return TRUE;    // CALLER DECREF: *ppHive
                 }
             }
             while((pObHive = VmmWinReg_HiveGetNext(H, pObHive))) {
-                if(strstr(pObHive->uszHiveRootPath, uszPath1)) {
+                if(CharUtil_StrContains(pObHive->uszHiveRootPath, uszPath1, TRUE)) {
                     *ppHive = pObHive;
                     return TRUE;    // CALLER DECREF: *ppHive
                 }
@@ -1785,7 +1858,7 @@ BOOL VmmWinReg_PathHiveGetByFullPath(_In_ VMM_HANDLE H, _In_ LPCSTR uszPathFull,
         return FALSE;
     }
     // try retrieve hive by address (path starts with 0x ...)
-    if(!strncmp(uszPathFull, "by-hive\\", 8)) {
+    if(CharUtil_StrStartsWith(uszPathFull, "by-hive\\", TRUE)) {
         uszPathFull += 8;
     }
     *ppHive = VmmWinReg_HiveGetByAddress(H, Util_GetNumericA(uszPathFull));

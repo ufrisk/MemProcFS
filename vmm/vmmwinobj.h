@@ -171,6 +171,17 @@ _Success_(return != 0)
 DWORD VmmWinObjFile_Read(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_FILE pFile, _In_ QWORD cbOffset, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb, _In_ QWORD fVmmRead, _In_ VMMWINOBJ_FILE_TP tp);
 
 /*
+* Scatter read file data.
+* -- H
+* -- pFile
+* -- ppMEMsFile
+* -- cpMEMsFile
+* -- fVmmRead = flags as in VMM_FLAG_*
+* -- tp = VMMWINOBJ_FILE_TP_*
+*/
+VOID VmmWinObjFile_ReadScatter(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_FILE pFile, _Inout_updates_(cpMEMsFile) PPMEM_SCATTER ppMEMsFile, _In_ DWORD cpMEMsFile, _In_ QWORD fVmmRead, _In_ VMMWINOBJ_FILE_TP tp);
+
+/*
 * Read a contigious amount of file data and report the number of bytes read.
 * -- H
 * -- vaFileObject

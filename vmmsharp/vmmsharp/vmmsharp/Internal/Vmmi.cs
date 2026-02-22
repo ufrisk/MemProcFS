@@ -132,7 +132,7 @@ namespace Vmmsharp.Internal
         internal const uint VMMDLL_YARA_CONFIG_VERSION = 0xdec30001;
         internal const uint VMMDLL_YARA_MEMORY_CALLBACK_CONTEXT_VERSION = 0xdec40002;
         internal const uint VMMDLL_YARA_CONFIG_MAX_RESULT = 0x00010000;      // max 65k results.
-        internal const uint VMMDLL_REGISTRY_HIVE_INFORMATION_VERSION = 4;
+        internal const uint VMMDLL_REGISTRY_HIVE_INFORMATION_VERSION = 5;
 
         internal const uint VMMDLL_VFS_FILELIST_EXINFO_VERSION = 1;
         internal const uint VMMDLL_VFS_FILELIST_VERSION = 2;

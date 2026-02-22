@@ -214,7 +214,6 @@ v5.8
 * [Eventlog module](https://github.com/ufrisk/MemProcFS/wiki/FS_Misc_Eventlog) for convenient access to event log files.
 * Binary search API now allows for up to 16M search terms (up from previous 16).
 * Prefetch parsing.
-</details>
 
 [v5.11](https://github.com/ufrisk/MemProcFS/releases/tag/v5.11)
 * Bug fixes.
@@ -224,6 +223,7 @@ v5.8
 * Bug fixes.
 * updates (FindEvil, New signatures, etc.).
 * New APIs for Kernel Objects, Drivers and Devices.
+</details>
 
 [v5.13](https://github.com/ufrisk/MemProcFS/releases/tag/v5.13)
 * Bug fixes.
@@ -247,8 +247,9 @@ v5.8
 * Bug fixes.
 * Support for Windows 11 25H2
 
-Latest:
-* Bug fixes.
+[v5.17](https://github.com/ufrisk/MemProcFS/releases/tag/v5.17)
+* Support for Windows 11 26H1.
+* Improved registry parsing.
 * New refresh options in the API.
 * New optional logging callback in the API.
 * Support for non-ascii characters in file paths.
