@@ -1,6 +1,6 @@
 [package]
 name = "memprocfs"
-version = "5.17.0"
+version = "5.17.1"
 edition = "2021"
 description = "MemProcFS - Physical Memory Analysis Framework"
 documentation = "https://docs.rs/memprocfs"

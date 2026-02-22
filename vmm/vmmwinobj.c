@@ -1031,7 +1031,7 @@ DWORD VmmWinObjFile_ReadSubsectionAndSharedCacheContigious(_In_ VMM_HANDLE H, _I
     fProcessImageSubsection = (tp & VMMWINOBJ_FILE_TP_IMAGE) && pFile->pImage && (iSubsection < pFile->pImage->cSUBSECTION);
     // Read from _SHARED_CACHE_MAP & _DATA
     if(fProcessSharedCacheMap || fProcessDataSubsection) {
-        VmmWinObjFile_ReadSubsectionAndSharedCacheScatter(H, pFile, &pMEMs, cMEMs, fVmmRead, tp);
+        VmmWinObjFile_ReadSubsectionAndSharedCacheScatter(H, pFile, ppMEMs, cMEMs, fVmmRead, tp);
     }
     // Read from _IMAGE
     if(fProcessImageSubsection) {
