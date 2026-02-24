@@ -502,7 +502,7 @@ VOID VmmWinObjFile_GetProcessAddressCandidates(_In_ VMM_HANDLE H, _In_ POB_VMMWI
     PVMMOB_MAP_HANDLE pmObHandle = NULL;
     if(fHandles) {
         // handle map -> file objects
-        if(VmmMap_GetHandle(H, pProcess, &pmObHandle, TRUE)) {
+        if(VmmMap_GetHandle(H, pProcess, &pmObHandle, VMM_HANDLE_FLAG_BASIC)) {
             for(i = 0, iMax = pmObHandle->cMap; i < iMax; i++) {
                 if((pmObHandle->pMap[i].dwPoolTag & 0x00ffffff) == 'liF') {
                     va = pmObHandle->pMap[i].vaObject;
@@ -778,7 +778,7 @@ VOID VmmWinObj_GetProcessAssociated_DoWork(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ
     if(!(pcVaToPid = ObCounter_New(H, 0))) { return; }
     // 1: add process object handles to map:
     while((pObProcess = VmmProcessGetNext(H, pObProcess, 0))) {
-        if(VmmMap_GetHandle(H, pObProcess, &pObHandleMap, FALSE)) {
+        if(VmmMap_GetHandle(H, pObProcess, &pObHandleMap, VMM_HANDLE_FLAG_CORE)) {
             for(i = 0; i < pObHandleMap->cMap; i++) {
                 ObCounter_Set(pcVaToPid, pObHandleMap->pMap[i].vaObject, pObProcess->dwPID);
             }
@@ -889,6 +889,30 @@ QWORD VmmWinObjFile_ReadSubsectionAndSharedCache_GetVaSharedCache(_In_ VMM_HANDL
     return f ? (va + (iPte << 12)) : 0;
 }
 
+DWORD VmmWinObjFile_ReadSubsectionAndSharedCacheScatter_MemPush(_In_reads_(cpMEMs) PPMEM_SCATTER ppMEMsIn, _Inout_updates_(cpMEMs) PPMEM_SCATTER ppMEMsOut, _In_ DWORD cpMEMs)
+{
+    PMEM_SCATTER pMEM;
+    DWORD i, cMEMs = 0;
+    for(i = 0; i < cpMEMs; i++) {
+        if(!ppMEMsIn[i]->f && (ppMEMsIn[i]->qwA != (QWORD)-1)) {
+            pMEM = ppMEMsIn[i];
+            ppMEMsOut[cMEMs++] = pMEM;
+            MEM_SCATTER_STACK_PUSH(pMEM, pMEM->qwA);
+        }
+    }
+    return cMEMs;
+}
+
+VOID VmmWinObjFile_ReadSubsectionAndSharedCacheScatter_MemPop(_Inout_updates_(cpMEMs) PPMEM_SCATTER ppMEMs, _In_ DWORD cpMEMs)
+{
+    DWORD i;
+    PMEM_SCATTER pMEM;
+    for(i = 0; i < cpMEMs; i++) {
+        pMEM = ppMEMs[i];
+        pMEM->qwA = MEM_SCATTER_STACK_POP(pMEM);
+    }
+}
+
 /*
 * Read data from a single _FILE_OBJECT _SUBSECTION and/or a _SHARED_CACHE_MAP.
 * Function does not support reading from image files currently.
@@ -902,51 +926,36 @@ QWORD VmmWinObjFile_ReadSubsectionAndSharedCache_GetVaSharedCache(_In_ VMM_HANDL
 VOID VmmWinObjFile_ReadSubsectionAndSharedCacheScatter(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_FILE pFile, _Inout_updates_(cpMEMsFile) PPMEM_SCATTER ppMEMsFile, _In_ DWORD cpMEMsFile, _In_ QWORD fVmmRead, _In_ VMMWINOBJ_FILE_TP tp)
 {
     PMEM_SCATTER pMEM;
-    PPMEM_SCATTER pMEMs = NULL;
+    PPMEM_SCATTER ppMEMs = NULL;
     QWORD iPte;
     DWORD i, iSS, cMEMs;
     PVMMWINOBJ_FILE_SUBSECTION pSS = NULL;
     POB_VMMWINOBJ_CONTROL_AREA pCA = NULL;
-    // sanity check & init:
+    // 0: Sanity check & init:
     if(tp == VMMWINOBJ_FILE_TP_DEFAULT) { return; }
-    pMEMs = LocalAlloc(0, cpMEMsFile * sizeof(PMEM_SCATTER));
-    if(!pMEMs) { return; }
+    ppMEMs = LocalAlloc(0, cpMEMsFile * sizeof(PMEM_SCATTER));
+    if(!ppMEMs) { return; }
+
     // 1: Read from _SHARED_CACHE_MAP
     if((tp & VMMWINOBJ_FILE_TP_CACHE) && pFile->pCache) {
-        cMEMs = 0;
-        for(i = 0; i < cpMEMsFile; i++) {
-            pMEM = ppMEMsFile[i];
-            if(!pMEM->f && (pMEM->qwA != (QWORD)-1)) {
-                MEM_SCATTER_STACK_PUSH(pMEM, pMEM->qwA);
-                pMEMs[cMEMs++] = pMEM;
-            }
-        }
+        cMEMs = VmmWinObjFile_ReadSubsectionAndSharedCacheScatter_MemPush(ppMEMsFile, ppMEMs, cpMEMsFile);
         if(!cMEMs) { goto cleanup; }
         for(i = 0; i < cMEMs; i++) {
-            pMEM = pMEMs[i];
+            pMEM = ppMEMs[i];
             iPte = pMEM->qwA >> 12;
             pMEM->qwA = VmmWinObjFile_ReadSubsectionAndSharedCache_GetVaSharedCache(H, PVMM_PROCESS_SYSTEM, pFile, iPte, fVmmRead);
         }
-        VmmReadScatterVirtual(H, PVMM_PROCESS_SYSTEM, pMEMs, cMEMs, fVmmRead);
-        for(i = 0; i < cMEMs; i++) {
-            pMEM = pMEMs[i];
-            pMEM->qwA = MEM_SCATTER_STACK_POP(pMEM);
-        }
+        VmmReadScatterVirtual(H, PVMM_PROCESS_SYSTEM, ppMEMs, cMEMs, fVmmRead);
+        VmmWinObjFile_ReadSubsectionAndSharedCacheScatter_MemPop(ppMEMs, cMEMs);
     }
+
     // 2: Read from _DATA
     if((tp & VMMWINOBJ_FILE_TP_DATA) && pFile->pData && pFile->pData->cSUBSECTION) {
-        cMEMs = 0;
-        for(i = 0; i < cpMEMsFile; i++) {
-            pMEM = ppMEMsFile[i];
-            if(!pMEM->f && (pMEM->qwA != (QWORD)-1)) {
-                MEM_SCATTER_STACK_PUSH(pMEM, pMEM->qwA);
-                pMEMs[cMEMs++] = pMEM;
-            }
-        }
+        cMEMs = VmmWinObjFile_ReadSubsectionAndSharedCacheScatter_MemPush(ppMEMsFile, ppMEMs, cpMEMsFile);
         if(!cMEMs) { goto cleanup; }
         pCA = pFile->pData;
         for(i = 0; i < cMEMs; i++) {
-            pMEM = pMEMs[i];
+            pMEM = ppMEMs[i];
             iPte = pMEM->qwA >> 12;
             if(pMEM->f) { continue; }
             // move to correct subsection:
@@ -960,14 +969,22 @@ VOID VmmWinObjFile_ReadSubsectionAndSharedCacheScatter(_In_ VMM_HANDLE H, _In_ P
             // fetch pte:
             pMEM->qwA = VmmWinObjFile_ReadSubsectionAndSharedCache_GetPteSubsection(H, PVMM_PROCESS_SYSTEM, pSS->vaSubsectionBase, (iPte - pSS->dwStartingSector), fVmmRead);
         }
-        VmmReadScatterVirtual(H, PVMM_PROCESS_SYSTEM, pMEMs, cMEMs, fVmmRead | VMM_FLAG_ALTADDR_VA_PTE);
-        for(i = 0; i < cMEMs; i++) {
-            pMEM = pMEMs[i];
-            pMEM->qwA = MEM_SCATTER_STACK_POP(pMEM);
-        }
+        VmmReadScatterVirtual(H, PVMM_PROCESS_SYSTEM, ppMEMs, cMEMs, fVmmRead | VMM_FLAG_ALTADDR_VA_PTE);
+        VmmWinObjFile_ReadSubsectionAndSharedCacheScatter_MemPop(ppMEMs, cMEMs);
     }
+
+    // 3: Read from _IMAGE
+    /*
+    if((tp & VMMWINOBJ_FILE_TP_IMAGE) && pFile->pImage && pFile->pImage->cSUBSECTION) {
+        cMEMs = VmmWinObjFile_ReadSubsectionAndSharedCacheScatter_MemPush(ppMEMsFile, ppMEMs, cpMEMsFile);
+        if(!cMEMs) { goto cleanup; }
+        VmmWinObjFile_ReadSubsectionAndSharedCacheScatter_Image(H, pFile, ppMEMs, cMEMs, fVmmRead);
+        VmmWinObjFile_ReadSubsectionAndSharedCacheScatter_MemPop(ppMEMs, cMEMs);
+    }
+    */
+
 cleanup:
-    LocalFree(pMEMs);
+    LocalFree(ppMEMs);
 }
 
 /*

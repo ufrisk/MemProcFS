@@ -974,7 +974,7 @@ VOID VmmWinReg_EnumHive_FileHandle(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess
     PVMM_MAP_HANDLEENTRY peHandle;
     PVMMOB_MAP_HANDLE pObHandleMap = NULL;
     POB_REGISTRY_HIVE pObHive = NULL;
-    if(VmmMap_GetHandle(H, pProcessSystem, &pObHandleMap, FALSE)) {
+    if(VmmMap_GetHandle(H, pProcessSystem, &pObHandleMap, VMM_HANDLE_FLAG_CORE)) {
         while((pObHive = ObMap_GetNext(pmHive, pObHive))) {
             if(pObHive->File.dwHandle) {
                 if((peHandle = VmmMap_GetHandleEntry(H, pObHandleMap, pObHive->File.dwHandle))) {

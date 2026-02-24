@@ -253,3 +253,6 @@ v5.8
 * New refresh options in the API.
 * New optional logging callback in the API.
 * Support for non-ascii characters in file paths.
+
+Latest:
+* Bug fixes.

@@ -310,6 +310,10 @@ typedef struct tdVMM_MAP_VADEXENTRY {
 #define VMM_MODULE_FLAG_DEBUGINFO        1
 #define VMM_MODULE_FLAG_VERSIONINFO      2
 
+#define VMM_HANDLE_FLAG_CORE             0
+#define VMM_HANDLE_FLAG_BASIC            1
+#define VMM_HANDLE_FLAG_FULLTEXT         2
+
 typedef enum tdVMM_MODULE_TP {
     VMM_MODULE_TP_NORMAL = 0,
     VMM_MODULE_TP_DATA = 1,
@@ -878,7 +882,7 @@ typedef struct tdVMMOB_MAP_HANDLE {
     OB ObHdr;
     PBYTE pbMultiText;              // UTF-8 multi-string.
     DWORD cbMultiText;
-    BOOL fInfoExFile;
+    DWORD flags;                    // VMM_HANDLE_FLAG_*
     DWORD cMap;                     // # map entries.
     VMM_MAP_HANDLEENTRY pMap[];     // map entries.
 } VMMOB_MAP_HANDLE, *PVMMOB_MAP_HANDLE;
@@ -2271,7 +2275,22 @@ BOOL VmmScatter_Prepare5(_In_ PVMMOB_SCATTER hS, _In_opt_ POB_MAP pm, _In_ DWORD
 * -- return
 */
 _Success_(return)
-BOOL VmmScatter_Execute(_In_ PVMMOB_SCATTER hS, _In_ PVMM_PROCESS pProcess);
+BOOL VmmScatter_Execute(_In_ PVMMOB_SCATTER hS, _In_opt_ PVMM_PROCESS pProcess);
+
+// Custom scatter execute function type definition. See VmmScatter_ExecuteEx() for usage.
+typedef VOID(*VMM_SCATTER_CUSTOM_EXECUTE_SCATTER_PFN)(_In_ VMM_HANDLE H, _In_ PVOID ctx, _Inout_updates_(cpMEMs) PPMEM_SCATTER ppMEMs, _In_ DWORD cpMEMs, _In_ QWORD flags);
+
+/*
+* Retrieve the memory ranges previously populated with calls to the
+* VmmScatter_Prepare* functions.
+* Use a custom user-settable backend scatter function to retrieve memory.
+* -- hS
+* -- pCustomContext
+* -- pfnCustomScatter
+* -- return
+*/
+_Success_(return)
+BOOL VmmScatter_ExecuteEx(_In_ PVMMOB_SCATTER hS, _In_opt_ PVOID pCustomContext, _In_ VMM_SCATTER_CUSTOM_EXECUTE_SCATTER_PFN pfnCustomScatter);
 
 /*
 * Read out memory in previously populated ranges. This function should only be
@@ -2920,11 +2939,11 @@ BOOL VmmMap_GetThreadCallstack(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _I
 * -- H
 * -- pProcess
 * -- ppObHandleMap
-* -- fExtendedText
+* -- flags = optional flag: VMM_HANDLE_FLAG_*
 * -- return
 */
 _Success_(return)
-BOOL VmmMap_GetHandle(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_HANDLE *ppObHandleMap, _In_ BOOL fExtendedText);
+BOOL VmmMap_GetHandle(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_HANDLE *ppObHandleMap, _In_ DWORD flags);
 
 /*
 * Retrieve a single PVMM_MAP_HANDLEENTRY for a given HandleMap and HandleID.

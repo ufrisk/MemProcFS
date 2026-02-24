@@ -407,7 +407,7 @@ BOOL VMMDLL_ConfigSet_Impl(_In_ VMM_HANDLE H, _In_ ULONG64 fOption, _In_ ULONG64
             PluginManager_Notify(H, VMMDLL_PLUGIN_NOTIFY_VERBOSITYCHANGE, NULL, 0);
             return TRUE;
         case VMMDLL_OPT_CONFIG_IS_PAGING_ENABLED:
-            H->vmm.flags = (H->vmm.flags & ~VMM_FLAG_NOPAGING) | (qwValue ? 0 : 1);
+            H->vmm.flags = (H->vmm.flags & ~VMM_FLAG_NOPAGING) | (qwValue ? 0 : VMM_FLAG_NOPAGING);
             return TRUE;
         case VMMDLL_OPT_CONFIG_DEBUG:
             VMMDLL_ConfigSet_Impl_Debug(H, fOption, qwValue);
@@ -1788,7 +1788,7 @@ BOOL VMMDLL_Map_GetHandle_Impl(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _Out_ PVMMDL
     // 1: fetch map [and populate strings]:
     if(!(psmOb = ObStrMap_New(H, 0))) { goto fail; }
     if(!(pObProcess = VmmProcessGet(H, dwPID))) { goto fail; }
-    if(!VmmMap_GetHandle(H, pObProcess, &pObMapSrc, TRUE)) { goto fail; }
+    if(!VmmMap_GetHandle(H, pObProcess, &pObMapSrc, VMM_HANDLE_FLAG_FULLTEXT)) { goto fail; }
     for(i = 0; i < pObMapSrc->cMap; i++) {
         peSrc = pObMapSrc->pMap + i;
         pOT = VmmWin_ObjectTypeGet(H, (BYTE)peSrc->iType);

@@ -78,7 +78,7 @@ NTSTATUS MHandle_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     PVMMOB_MAP_HANDLE pObHandleMap = NULL;
     PVMM_MAP_HANDLEENTRY pe;
-    if(VmmMap_GetHandle(H, ctxP->pProcess, &pObHandleMap, TRUE)) {
+    if(VmmMap_GetHandle(H, ctxP->pProcess, &pObHandleMap, VMM_HANDLE_FLAG_FULLTEXT)) {
         if(!_stricmp(ctxP->uszPath, "handles.txt")) {
             nt = Util_VfsLineFixed_Read(
                 H, (UTIL_VFSLINEFIXED_PFN_CB)MHandle_ReadLine_CB, NULL, MHANDLE_LINELENGTH, MHANDLE_LINEHEADER,
@@ -111,13 +111,13 @@ BOOL MHandle_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ P
     PVMM_MAP_HANDLEENTRY pe;
     PVMMOB_MAP_HANDLE pObHandleMap = NULL;
     if(!ctxP->uszPath[0]) {
-        if(VmmMap_GetHandle(H, ctxP->pProcess, &pObHandleMap, FALSE)) {
+        if(VmmMap_GetHandle(H, ctxP->pProcess, &pObHandleMap, VMM_HANDLE_FLAG_CORE)) {
             VMMDLL_VfsList_AddFile(pFileList, "handles.txt", UTIL_VFSLINEFIXED_LINECOUNT(H, pObHandleMap->cMap) * MHANDLE_LINELENGTH, NULL);
             VMMDLL_VfsList_AddDirectory(pFileList, "by-id", NULL);
         }
         goto finish;
     }
-    if(!VmmMap_GetHandle(H, ctxP->pProcess, &pObHandleMap, TRUE)) { return TRUE; }
+    if(!VmmMap_GetHandle(H, ctxP->pProcess, &pObHandleMap, VMM_HANDLE_FLAG_FULLTEXT)) { return TRUE; }
     if(!_stricmp(ctxP->uszPath, "by-id")) {
         for(i = 0; i < pObHandleMap->cMap; i++) {
             pe = pObHandleMap->pMap + i;
@@ -153,7 +153,7 @@ VOID MHandle_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_
     pd->dwVersion = VMMDLL_FORENSIC_JSONDATA_VERSION;
     pd->dwPID = pProcess->dwPID;
     pd->szjType = "handle";
-    if(VmmMap_GetHandle(H, ctxP->pProcess, &pObHandleMap, TRUE)) {
+    if(VmmMap_GetHandle(H, ctxP->pProcess, &pObHandleMap, VMM_HANDLE_FLAG_FULLTEXT)) {
         for(i = 0; i < pObHandleMap->cMap; i++) {
             pe = pObHandleMap->pMap + i;
             // get type:

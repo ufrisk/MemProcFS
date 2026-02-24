@@ -98,7 +98,7 @@ VOID VmmWinThread_Initialize_DoWork(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProces
     // 0: 1st run optimization: pre-populate prefetch candidates from handle table.
     //    i.e. speed up linked list _ETHREAD walking.
     if(!ObContainer_Exists(pProcess->pObPersistent->pObCMapThreadPrefetch)) {
-        if(VmmMap_GetHandle(H, pProcess, &pObHandleMap, FALSE)) {
+        if(VmmMap_GetHandle(H, pProcess, &pObHandleMap, VMM_HANDLE_FLAG_CORE)) {
             psObPrefetch = ObSet_New(H);
             for(i = 0; i < pObHandleMap->cMap; i++) {
                 peHandle = pObHandleMap->pMap + i;

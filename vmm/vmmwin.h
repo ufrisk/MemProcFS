@@ -117,11 +117,11 @@ BOOL VmmWinToken_Initialize(
 * extra time to initialize.
 * -- H
 * -- pProcess
-* -- fExtendedText = also fetch extended info such as handle paths/names.
+* -- flags = optional flag: VMM_HANDLE_FLAG_*
 * -- return
 */
 _Success_(return)
-BOOL VmmWinHandle_Initialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ BOOL fExtendedText);
+BOOL VmmWinHandle_Initialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ DWORD flags);
 
 /*
 * Retrieve a pointer to a VMMWIN_OBJECT_TYPE if possible. Initialization of the

@@ -2566,7 +2566,7 @@ BOOL VmmScatter_Read(_In_ PVMMOB_SCATTER hS, _In_ QWORD va, _In_ DWORD cb, _Out_
 * -- return
 */
 _Success_(return)
-BOOL VmmScatter_Execute(_In_ PVMMOB_SCATTER hS, _In_ PVMM_PROCESS pProcess)
+BOOL VmmScatter_ExecuteInternal(_In_ PVMMOB_SCATTER hS, _In_opt_ PVMM_PROCESS pProcess, _In_opt_ PVOID pCustomContext, _In_opt_ VMM_SCATTER_CUSTOM_EXECUTE_SCATTER_PFN pfnCustomScatter)
 {
     SIZE_T cPagesToAlloc, cbBuffer, cbBufferAlloc, oBufferAllocMEM = 0;
     DWORD i;
@@ -2599,6 +2599,8 @@ BOOL VmmScatter_Execute(_In_ PVMMOB_SCATTER hS, _In_ PVMM_PROCESS pProcess)
     // read scatter
     if(pProcess) {
         VmmReadScatterVirtual(hS->H, pProcess, ppMEMs, hS->cPageTotal, hS->flags);
+    } else if(pfnCustomScatter) {
+        pfnCustomScatter(hS->H, pCustomContext, ppMEMs, hS->cPageTotal, hS->flags);
     } else {
         VmmReadScatterPhysical(hS->H, ppMEMs, hS->cPageTotal, hS->flags);
     }
@@ -2612,6 +2614,35 @@ BOOL VmmScatter_Execute(_In_ PVMMOB_SCATTER hS, _In_ PVMM_PROCESS pProcess)
         pRange = pRange->FLink;
     }
     return TRUE;
+}
+
+/*
+* Retrieve the memory ranges previously populated with calls to the
+* VmmScatter_Prepare* functions.
+* -- hS
+* -- pProcess = the process to read from, NULL = physical memory.
+* -- return
+*/
+_Success_(return)
+BOOL VmmScatter_Execute(_In_ PVMMOB_SCATTER hS, _In_opt_ PVMM_PROCESS pProcess)
+{
+    return VmmScatter_ExecuteInternal(hS, pProcess, NULL, NULL);
+}
+
+/*
+* Retrieve the memory ranges previously populated with calls to the
+* VmmScatter_Prepare* functions.
+* Use a custom user-settable backend scatter function to retrieve memory.
+* -- hS
+* -- pCustomContext
+* -- pfnCustomScatter
+* -- return
+*/
+_Success_(return)
+BOOL VmmScatter_ExecuteEx(_In_ PVMMOB_SCATTER hS, _In_opt_ PVOID pCustomContext, _In_ VMM_SCATTER_CUSTOM_EXECUTE_SCATTER_PFN pfnCustomScatter)
+{
+    if(!pfnCustomScatter) { return FALSE; }
+    return VmmScatter_ExecuteInternal(hS, NULL, pCustomContext, pfnCustomScatter);
 }
 
 VOID VmmScatter_CleanupCB(PVMMOB_SCATTER hS)
@@ -3322,13 +3353,13 @@ BOOL VmmMap_GetThreadCallstack(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _I
 * -- H
 * -- pProcess
 * -- ppObHandleMap
-* -- fExtendedText
+* -- flags = optional flag: VMM_HANDLE_FLAG_*
 * -- return
 */
 _Success_(return)
-BOOL VmmMap_GetHandle(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_HANDLE *ppObHandleMap, _In_ BOOL fExtendedText)
+BOOL VmmMap_GetHandle(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _Out_ PVMMOB_MAP_HANDLE *ppObHandleMap, _In_ DWORD flags)
 {
-    if(!VmmWinHandle_Initialize(H, pProcess, fExtendedText)) { return FALSE; }
+    if(!VmmWinHandle_Initialize(H, pProcess, flags)) { return FALSE; }
     *ppObHandleMap = Ob_INCREF(pProcess->Map.pObHandle);
     return *ppObHandleMap != NULL;
 }

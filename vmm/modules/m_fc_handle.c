@@ -29,7 +29,7 @@ VOID MFcHandle_FcLogCSV(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In
     CHAR szPoolTag[5] = { 0 };
     CHAR uszBufferDevName[MAX_PATH] = { 0 };
     DWORD i;
-    if(pProcess && VmmMap_GetHandle(H, pProcess, &pObHandleMap, TRUE)) {
+    if(pProcess && VmmMap_GetHandle(H, pProcess, &pObHandleMap, VMM_HANDLE_FLAG_FULLTEXT)) {
         for(i = 0; i < pObHandleMap->cMap; i++) {
             pe = pObHandleMap->pMap + i;
             // type&pool tag:

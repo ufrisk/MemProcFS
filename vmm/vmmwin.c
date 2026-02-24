@@ -2078,7 +2078,7 @@ typedef struct tdVMMWINHANDLE_REGHELPER {
 } VMMWINHANDLE_REGHELPER, *PVMMWINHANDLE_REGHELPER;
 
 /*
-* Helper function for VmmWinHandle_InitializeText_DoWork that fetches registry
+* Helper function for VmmWinHandle_InitializeFullText_DoWork that fetches registry
 * names provided that the underlying _CM_KEY_CONTROL_BLOCK is prefetched.
 * -- H
 * -- pSystemProcess
@@ -2172,7 +2172,7 @@ VOID VmmWinHandle_InitializeText_DoWork_FileSizeHelper(_In_ VMM_HANDLE H, _In_ P
     }
 }
 
-VOID VmmWinHandle_InitializeText_DoWork(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_ PVMMOB_MAP_HANDLE pHandleMap)
+VOID VmmWinHandle_InitializeExtended_DoWork(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_ PVMMOB_MAP_HANDLE pHandleMap, _In_ DWORD flags)
 {
     BOOL f, f32 = H->vmm.f32, fThreadingEnabled;
     PVMM_OFFSET po = &H->vmm.offset;
@@ -2336,6 +2336,10 @@ VOID VmmWinHandle_InitializeText_DoWork(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSy
             }
         }
     }
+    if(flags == VMM_HANDLE_FLAG_BASIC) {
+        pHandleMap->flags = VMM_HANDLE_FLAG_BASIC;
+        goto done;
+    }
     // registry key retrieve names & file device object parse
     VmmCachePrefetchPages3(H, pSystemProcess, psObDevRegPrefetch, 0x90, 0);
     for(i = 0; i < pHandleMap->cMap; i++) {
@@ -2437,6 +2441,8 @@ VOID VmmWinHandle_InitializeText_DoWork(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSy
             pe->uszText = (LPSTR)pHandleMap->pbMultiText;
         }
     }
+    pHandleMap->flags = VMM_HANDLE_FLAG_FULLTEXT;
+done:
 fail:
     Ob_DECREF(psObPrefetch);
     Ob_DECREF(psObDevRegPrefetch);
@@ -2507,13 +2513,13 @@ BOOL VmmWinHandle_InitializeCore(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
 }
 
 _Success_(return)
-BOOL VmmWinHandle_InitializeText(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
+BOOL VmmWinHandle_InitializeText(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ DWORD flags)
 {
     PVMM_PROCESS pObSystemProcess;
     if(pProcess->Map.pObHandle->pbMultiText) { return TRUE; }
     EnterCriticalSection(&pProcess->LockUpdate);
     if(!pProcess->Map.pObHandle->pbMultiText && (pObSystemProcess = VmmProcessGet(H, 4))) {
-        VmmWinHandle_InitializeText_DoWork(H, pObSystemProcess, pProcess->Map.pObHandle);
+        VmmWinHandle_InitializeExtended_DoWork(H, pObSystemProcess, pProcess->Map.pObHandle, flags);
         Ob_DECREF(pObSystemProcess);
     }
     LeaveCriticalSection(&pProcess->LockUpdate);
@@ -2525,14 +2531,23 @@ BOOL VmmWinHandle_InitializeText(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
 * extra time to initialize.
 * -- H
 * -- pProcess
-* -- fExtendedText = also fetch extended info such as handle paths/names.
+* -- flags = optional flag: VMM_HANDLE_FLAG_*
 * -- return
 */
 _Success_(return)
-BOOL VmmWinHandle_Initialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ BOOL fExtendedText)
+BOOL VmmWinHandle_Initialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ DWORD flags)
 {
-    if(pProcess->Map.pObHandle && (!fExtendedText || pProcess->Map.pObHandle->pbMultiText)) { return TRUE; }
-    return VmmWinHandle_InitializeCore(H, pProcess) && (!fExtendedText || VmmWinHandle_InitializeText(H, pProcess));
+    if(!pProcess->Map.pObHandle) {
+        VmmWinHandle_InitializeCore(H, pProcess);
+        if(!pProcess->Map.pObHandle) { return FALSE; }
+    }
+    if((flags == VMM_HANDLE_FLAG_FULLTEXT) && (pProcess->Map.pObHandle->flags < VMM_HANDLE_FLAG_FULLTEXT)) {
+        if(!VmmWinHandle_InitializeText(H, pProcess, VMM_HANDLE_FLAG_FULLTEXT)) { return FALSE; }
+    }
+    if((flags == VMM_HANDLE_FLAG_BASIC) && (pProcess->Map.pObHandle->flags < VMM_HANDLE_FLAG_BASIC)) {
+        if(!VmmWinHandle_InitializeText(H, pProcess, VMM_HANDLE_FLAG_BASIC)) { return FALSE; }
+    }
+    return (pProcess->Map.pObHandle->flags >= flags);
 }
 
 
@@ -3975,7 +3990,7 @@ POB_SET VmmWinProcess_Enumerate_FindNoLinkProcesses(_In_ VMM_HANDLE H)
     if(!(psOb = ObSet_New(H))) { goto fail; }
     if(!(pObSystemProcess = VmmProcessGet(H, 4))) { goto fail; }
     if(!VmmWin_ObjectTypeGet(H, 2) || !(tpProcess = H->vmm.ObjectTypeTable.tpProcess)) { goto fail; }
-    if(!VmmMap_GetHandle(H, pObSystemProcess, &pObHandleMap, FALSE)) { goto fail; }
+    if(!VmmMap_GetHandle(H, pObSystemProcess, &pObHandleMap, VMM_HANDLE_FLAG_CORE)) { goto fail; }
     // 2: Prefetch object headers
     for(i = 0; i < pObHandleMap->cMap; i++) {
         ObSet_Push_PageAlign(psOb, pObHandleMap->pMap[i].vaObject - cbHdr, cbHdr);

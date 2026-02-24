@@ -1093,7 +1093,7 @@ BOOL VmmWinPool_AllPool7_RangeInit(_In_ VMM_HANDLE H, _In_ PVMMWINPOOL7_CTX ctx)
     PVMMOB_MAP_OBJECT pObObj = NULL;
     if(!(psvaOb = ObSet_New(H))) { goto fail; }
     // 1: fetch sorted handle & object addresses (which are residing inside the pool):
-    if(VmmMap_GetHandle(H, ctx->pSystemProcess, &pObHnd, FALSE)) {
+    if(VmmMap_GetHandle(H, ctx->pSystemProcess, &pObHnd, VMM_HANDLE_FLAG_CORE)) {
         for(i = 0; i < pObHnd->cMap; i++) {
             ObSet_Push(psvaOb, pObHnd->pMap[i].vaObject & ~0x1fffff);   // 2MB align
         }

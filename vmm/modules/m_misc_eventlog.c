@@ -42,7 +42,7 @@ PVMM_PROCESS MEventlog_GetProcess(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT
         while((pObProcess = VmmProcessGetNext(H, pObProcess, 0))) {
             if(CharUtil_StrEquals(pObProcess->szName, "svchost.exe", 0)) {
                 c = 0;
-                if(VmmMap_GetHandle(H, pObProcess, &pObHandleMap, TRUE)) {
+                if(VmmMap_GetHandle(H, pObProcess, &pObHandleMap, VMM_HANDLE_FLAG_FULLTEXT)) {
                     for(i = 0; i < pObHandleMap->cMap; i++) {
                         pe = &pObHandleMap->pMap[i];
                         if(CharUtil_StrEndsWith(pe->uszText, ".evtx", FALSE)) {
