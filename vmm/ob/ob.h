@@ -750,7 +750,7 @@ typedef BOOL(*OB_CACHEMAP_VALIDENTRY_PFN_CB)(
 * -- H
 * -- cMaxEntries = max entries in the cache, if more entries are added the
 *       least recently accessed item will be removed from the cache map.
-* -- pfnValidEntry = validation callback function (if any).
+* -- pfnValidEntry = optional validation callback function (if any). NB! Must never call back into the ObCacheMap as this may cause a deadlock.
 * -- flags = defined by OB_CACHEMAP_FLAGS_*
 * -- return
 */
@@ -943,7 +943,7 @@ _Success_(return)
 BOOL ObStrMap_PushPtrWW(_In_opt_ POB_STRMAP psm, _In_opt_ LPCWSTR wsz, _Out_opt_ LPWSTR *pwszDst, _Out_opt_ PDWORD pcbwDst);
 
 /*
-* Push / Insert into the ObStrMap. Result pointer is dependant on fWideChar flag.
+* Push / Insert into the ObStrMap. Result pointer is dependent on fWideChar flag.
 * -- psm
 * -- usz
 * -- puszDst = ptr to utf-8 _OR_ wide string depending on fWideChar

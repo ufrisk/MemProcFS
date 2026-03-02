@@ -9,7 +9,7 @@
 #include "../pdb.h"
 #include "../statistics.h"
 
-#define MM_LOOP_PROTECT_ADD(flags)                  ((flags & ~0x00ff0000) | ((((flags >> 16) & 0xff) + 1) << 16))
+#define MM_LOOP_PROTECT_ADD(flags)                  ((flags & ~0x00ff0000) | ((flags + 0x00010000) & 0x00ff0000))
 #define MM_LOOP_PROTECT_MAX(flags)                  (((flags >> 16) & 0xff) > 4)
 
 #define PTE_SWIZZLE_BIT                             0x10        // nt!_MMPTE_SOFTWARE.SwizzleBit
@@ -1526,9 +1526,6 @@ _Success_(return)
 BOOL MmWinARM64_ReadPaged(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ QWORD va, _In_ QWORD pte, _Out_writes_opt_(4096) PBYTE pbPage, _Out_ PQWORD ppa, _Inout_opt_ PVMM_PTE_TP ptp, _In_ QWORD flags)
 {
     return MmWinX64_ReadPaged(H, pProcess, va, pte, pbPage, ppa, ptp, flags);
-
-    InterlockedIncrement64(&H->vmm.stat.page.cFail);
-    return FALSE;
 }
 
 

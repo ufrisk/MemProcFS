@@ -324,7 +324,7 @@ LPCSTR CharUtil_SplitLast(_In_ LPCSTR usz, _In_ CHAR ch, _Out_writes_(cbu1) LPST
 
 /*
 * Split a string into a list of strings at the delimiter characters.
-* The function allocates neccessary memory for the result array and its values.
+* The function allocates necessary memory for the result array and its values.
 * CALLER LocalFree: *ppuszArray
 * -- usz = utf-8/ascii string to split.
 * -- chDelimiter = character to split at.

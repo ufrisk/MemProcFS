@@ -421,7 +421,7 @@ BOOL WINAPI MemProcFsCtrlHandler(DWORD fdwCtrlType)
         return TRUE;
     }
     if(fdwCtrlType == CTRL_BREAK_EVENT) {
-        printf("CTRL+BREAK detected - refresh/debug initated ...\n");
+        printf("CTRL+BREAK detected - refresh/debug initiated ...\n");
         VMMDLL_ConfigSet(g_hVMM, VMMDLL_OPT_CONFIG_DEBUG, 1);
         printf("CTRL+BREAK finished ...\n");
         return TRUE;

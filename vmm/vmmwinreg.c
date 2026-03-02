@@ -210,6 +210,7 @@ VOID VmmWinReg_ReadScatter(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcessRegistry
     PMEM_SCATTER pMEM;
     PPMEM_SCATTER ppMEMsFile;
     POB_VMMWINOBJ_FILE pObHiveFile = NULL;
+    VMMWINOBJFILE_SCATTER_CONTEXT ctxHiveFileScatterRead;
     for(i = 0; i < cpMEMsReg; i++) {
         pMEM = ppMEMsReg[i];
         MEM_SCATTER_STACK_PUSH(pMEM, pMEM->qwA);
@@ -245,7 +246,9 @@ VOID VmmWinReg_ReadScatter(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcessRegistry
                     ppMEMsFile[cMEMsFile++] = pMEM;
                 }
             }
-            VmmWinObjFile_ReadScatter(H, pObHiveFile, ppMEMsReg, cpMEMsReg, flags, VMMWINOBJ_FILE_TP_DATA | VMMWINOBJ_FILE_TP_CACHE);
+            ctxHiveFileScatterRead.pFile = pObHiveFile;
+            ctxHiveFileScatterRead.tp = VMMWINOBJ_FILE_TP_DATA | VMMWINOBJ_FILE_TP_CACHE;
+            VmmWinObjFile_ReadScatter(H, &ctxHiveFileScatterRead, ppMEMsReg, cpMEMsReg, flags);
             for(i = 0; i < cMEMsFile; i++) {
                 pMEM = ppMEMsFile[i];
                 pMEM->qwA = MEM_SCATTER_STACK_POP(pMEM);

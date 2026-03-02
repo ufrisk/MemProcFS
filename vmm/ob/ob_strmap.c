@@ -278,7 +278,7 @@ BOOL ObStrMap_PushPtrUW(_In_opt_ POB_STRMAP psm, _In_opt_ LPCSTR usz, _Out_opt_ 
 }
 
 /*
-* Push / Insert into the ObStrMap. Result pointer is dependant on fWideChar flag.
+* Push / Insert into the ObStrMap. Result pointer is dependent on fWideChar flag.
 * -- psm
 * -- usz
 * -- puszDst = ptr to utf-8 _OR_ wide string depending on fWideChar
@@ -445,7 +445,7 @@ VOID _ObStrMap_ObCloseCallback(_In_ POB_STRMAP psm)
 VOID _ObStrMap_FinalizeDoWork_UnicodeResolve(_In_ POB_STRMAP psm)
 {
     BOOL f;
-    USHORT wsz[MAX_PATH + 1];
+    USHORT cbuRead, wsz[MAX_PATH + 1];
     POB_STRMAP_UNICODEENTRY pu;
     POB_SET psObPrefetch = NULL;
     PVMM_PROCESS pObProcess = NULL;
@@ -487,9 +487,9 @@ VOID _ObStrMap_FinalizeDoWork_UnicodeResolve(_In_ POB_STRMAP psm)
         pu = psm->pUnicodeBufferListHead;
         while(pu) {
             wsz[0] = 0;
-            if(VmmRead2(psm->ObHdr.H, pObProcess, pu->va, (PBYTE)wsz, pu->cb, VMM_FLAG_FORCECACHE_READ)) {
-                wsz[pu->cb >> 1] = 0;
-            }
+            cbuRead = min(pu->cb, sizeof(wsz) - sizeof(WCHAR));
+            VmmRead2(psm->ObHdr.H, pObProcess, pu->va, (PBYTE)wsz, cbuRead, VMM_FLAG_FORCECACHE_READ);
+            wsz[cbuRead >> 1] = 0;
             _ObStrMap_PushPtr(psm, NULL, NULL, (LPWSTR)wsz, pu->p.pusz, pu->p.pcbu, NULL, NULL);
             pu = pu->FLink;
         }

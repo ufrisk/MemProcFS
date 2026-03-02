@@ -85,6 +85,11 @@ typedef struct tdOB_VMMWINOBJ_FILE {
     QWORD _Reserved4;
 } OB_VMMWINOBJ_FILE, *POB_VMMWINOBJ_FILE;
 
+typedef struct tdVMMWINOBJFILE_SCATTER_CONTEXT {
+    POB_VMMWINOBJ_FILE pFile;
+    VMMWINOBJ_FILE_TP tp;
+} VMMWINOBJFILE_SCATTER_CONTEXT, *PVMMWINOBJFILE_SCATTER_CONTEXT;
+
 /*
 * Create an object manager map and assign to the global vmm context upon success.
 * CALLER DECREF: return
@@ -172,14 +177,14 @@ DWORD VmmWinObjFile_Read(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_FILE pFile, _In_ 
 
 /*
 * Scatter read file data.
+* Function is compatible with VmmScatter_ExecuteEx().
 * -- H
-* -- pFile
+* -- ctx = context containing the file object and type(s) to read accoring to VMMWINOBJ_FILE_TP_*
 * -- ppMEMsFile
 * -- cpMEMsFile
 * -- fVmmRead = flags as in VMM_FLAG_*
-* -- tp = VMMWINOBJ_FILE_TP_*
 */
-VOID VmmWinObjFile_ReadScatter(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_FILE pFile, _Inout_updates_(cpMEMsFile) PPMEM_SCATTER ppMEMsFile, _In_ DWORD cpMEMsFile, _In_ QWORD fVmmRead, _In_ VMMWINOBJ_FILE_TP tp);
+VOID VmmWinObjFile_ReadScatter(_In_ VMM_HANDLE H, _In_ PVMMWINOBJFILE_SCATTER_CONTEXT ctx, _Inout_updates_(cpMEMsFile) PPMEM_SCATTER ppMEMsFile, _In_ DWORD cpMEMsFile, _In_ QWORD fVmmRead);
 
 /*
 * Read a contigious amount of file data and report the number of bytes read.

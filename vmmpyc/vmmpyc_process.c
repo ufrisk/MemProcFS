@@ -411,7 +411,7 @@ BOOL VmmPycProcess_InitializeType(PyObject *pModule)
         {"ppid", (getter)VmmPycProcess_ppid, (setter)NULL, "parent pid (PPID).", NULL},
         {"dtb", (getter)VmmPycProcess_dtb, (setter)NULL, "directory table base (DTB).", NULL},
         {"dtb_user", (getter)VmmPycProcess_dtb_user, (setter)NULL, "user directory table base (DTB).", NULL},
-        {"state", (getter)VmmPycProcess_state, (setter)NULL, "proces state.", NULL},
+        {"state", (getter)VmmPycProcess_state, (setter)NULL, "process state.", NULL},
         {"tp_memorymodel", (getter)VmmPycProcess_tp_memorymodel, (setter)NULL, "memory model type.", NULL},
         {"tp_system", (getter)VmmPycProcess_tp_system, (setter)NULL, "system type.", NULL},
         {"is_usermode", (getter)VmmPycProcess_is_usermode, (setter)NULL, "is user mode process.", NULL},

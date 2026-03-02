@@ -126,7 +126,7 @@ BOOL VmmWinHandle_Initialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_
 /*
 * Retrieve a pointer to a VMMWIN_OBJECT_TYPE if possible. Initialization of the
 * table takes place on first use. The table only exists in Win7+ and is is
-* dependant on PDB symbol functionality for initialization.
+* dependent on PDB symbol functionality for initialization.
 * -- H
 * -- iObjectType
 * -- return

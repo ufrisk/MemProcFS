@@ -165,7 +165,7 @@ int vfs_initialize_and_mount_displayinfo(char *szMountPoint)
 * WRAPPER FUNCTION AROUND LOCAL/REMOTE VMMDLL_VfsListU
 * List a directory of files in MemProcFS. Directories and files will be listed
 * by callbacks into functions supplied in the pFileList parameter.
-* If information of an individual file is needed it's neccessary to list all
+* If information of an individual file is needed it's necessary to list all
 * files in its directory.
 * -- uszPath
 * -- pFileList

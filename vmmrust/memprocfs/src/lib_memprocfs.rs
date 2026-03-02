@@ -4677,7 +4677,7 @@ struct VmmNative {
 fn impl_new<'a>(vmm_lib_path : &str, lc_existing_opt : Option<&LeechCore>, h_vmm_existing_opt : usize, args: &Vec<&str>) -> ResultEx<Vmm<'a>> {
     unsafe {
         // load MemProcFS native library (vmm.dll / vmm.so):
-        // vmm is however dependant on leechcore which must be loaded first...
+        // vmm is however dependent on leechcore which must be loaded first...
         let path_vmm = std::path::Path::new(vmm_lib_path).canonicalize()?;
         let mut path_lc = path_vmm.parent().unwrap().canonicalize()?;
         if cfg!(windows) {
@@ -4964,7 +4964,7 @@ const VMMDLL_STATUS_FILE_INVALID        : u32 = 0xC0000098;
 const VMMDLL_PROCESS_INFORMATION_MAGIC          : u64 = 0xc0ffee663df9301e;
 const VMMDLL_PROCESS_INFORMATION_VERSION        : u16 = 7;
 const VMMDLL_REGISTRY_HIVE_INFORMATION_MAGIC    : u64 = 0xc0ffee653df8d01e;
-const VMMDLL_REGISTRY_HIVE_INFORMATION_VERSION  : u16 = 4;
+const VMMDLL_REGISTRY_HIVE_INFORMATION_VERSION  : u16 = 5;
 
 const VMMDLL_PROCESS_INFORMATION_OPT_STRING_PATH_KERNEL     : u32 = 1;
 const VMMDLL_PROCESS_INFORMATION_OPT_STRING_PATH_USER_IMAGE : u32 = 2;

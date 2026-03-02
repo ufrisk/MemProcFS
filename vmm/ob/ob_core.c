@@ -146,7 +146,7 @@ VOID Ob_XDECREF_NULL(_In_opt_ PVOID *ppOb)
 BOOL Ob_VALID_TAG(_In_ PVOID pObIn, _In_ DWORD tag)
 {
     POB pOb = (POB)pObIn;
-    return pOb && (pOb->_magic2 == OB_HEADER_MAGIC) && (pOb->_magic1 == OB_HEADER_MAGIC) && (pOb->_tag = tag);
+    return pOb && (pOb->_magic2 == OB_HEADER_MAGIC) && (pOb->_magic1 == OB_HEADER_MAGIC) && (pOb->_tag == tag);
 }
 
 /*

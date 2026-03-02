@@ -914,226 +914,233 @@ VOID VmmWinObjFile_ReadSubsectionAndSharedCacheScatter_MemPop(_Inout_updates_(cp
 }
 
 /*
-* Read data from a single _FILE_OBJECT _SUBSECTION and/or a _SHARED_CACHE_MAP.
-* Function does not support reading from image files currently.
+* Custom image read scatter function.
+* Reads memory from MEMs indicating subsection+subsection within a control area.
+* -- H
+* -- ctx
+* -- ppMEMs
+* -- cpMEMs
+* -- flags
+*/
+VOID VmmWinObjFile_ReadSubsectionAndSharedCacheScatter_Image_ScatterExecute(_In_ VMM_HANDLE H, _In_ PVOID ctx, _Inout_updates_(cpMEMs) PPMEM_SCATTER ppMEMs, _In_ DWORD cpMEMs, _In_ QWORD flags)
+{
+    DWORD i, iSS;
+    QWORD iPte;
+    PMEM_SCATTER pMEM;
+    POB_VMMWINOBJ_CONTROL_AREA pCA = (POB_VMMWINOBJ_CONTROL_AREA)ctx;
+    PVMMWINOBJ_FILE_SUBSECTION pSS = NULL;
+    for(i = 0; i < cpMEMs; i++) {
+        pMEM = ppMEMs[i];
+        if(pMEM->f) { continue; }
+        iSS = (DWORD)(pMEM->qwA >> 48);
+        iPte = (pMEM->qwA & 0x0000ffffffffffff) >> 12;
+        pSS = pCA->pSUBSECTION + iSS;
+        pMEM->qwA = (iPte < pSS->dwPtesInSubsection) ? VmmWinObjFile_ReadSubsectionAndSharedCache_GetPteSubsection(H, PVMM_PROCESS_SYSTEM, pSS->vaSubsectionBase, iPte, flags) : 0;
+    }
+    VmmReadScatterVirtual(H, PVMM_PROCESS_SYSTEM, ppMEMs, cpMEMs, flags | VMM_FLAG_ALTADDR_VA_PTE);
+}
+
+/*
+* Scatter read a file using the SectionObjectPointers->ImageSectionObject method.
 * -- H
 * -- pFile
+* -- ppMEMs
+* -- cpMEMs
+* -- fVmmRead
+*/
+VOID VmmWinObjFile_ReadSubsectionAndSharedCacheScatter_Image(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_FILE pFile, _Inout_updates_(cpMEMs) PPMEM_SCATTER ppMEMs, _In_ DWORD cpMEMs, _In_ QWORD fVmmRead)
+{
+    QWORD qwA;
+    PMEM_SCATTER pMEM;
+    DWORD i, iSS = 0;
+    DWORD cbSS, cbSSBase, cbSSEnd;
+    DWORD cbSSOffset, cbReadBufferOffset, cbAdjusted, cReadMEMs2;
+    PVMMWINOBJ_FILE_SUBSECTION pSS = NULL;
+    POB_VMMWINOBJ_CONTROL_AREA pCA = NULL;
+    PVMMOB_SCATTER hObScatterSS = NULL;
+    PDWORD pcbReadMEMs = NULL;
+    // sanity check & init:
+    pCA = pFile->pImage;
+    if(!pCA || (pCA->cSUBSECTION > 0xffff)) { goto fail; }
+    if(!(hObScatterSS = VmmScatter_Initialize(H, VMM_FLAG_SCATTER_FORCE_PAGEREAD))) { goto fail; }
+    if(!(pcbReadMEMs = (PDWORD)LocalAlloc(LMEM_ZEROINIT, cpMEMs * 2 * sizeof(DWORD)))) { goto fail; }
+    // prepare custom scatter read with subsection+offset
+    for(i = 0; i < cpMEMs; i++) {
+        pMEM = ppMEMs[i];
+        cReadMEMs2 = 0;
+        // scatter prepare using subsection+offset
+        for(iSS = 0; iSS < pCA->cSUBSECTION; iSS++) {
+            pSS = pCA->pSUBSECTION + iSS;
+            cbSS = pSS->dwNumberOfFullSectors * pCA->cbSectorSize;
+            cbSSBase = pSS->dwStartingSector * pCA->cbSectorSize;
+            cbSSEnd = cbSSBase + cbSS;
+            if(cbSSEnd <= pMEM->qwA) { continue; }
+            if(cbSSBase >= pMEM->qwA + pMEM->cb) { break; }
+            cbSSOffset = (DWORD)max(cbSSBase, pMEM->qwA) - cbSSBase;
+            cbReadBufferOffset = (DWORD)(cbSSBase + cbSSOffset - pMEM->qwA);
+            cbAdjusted = min(pMEM->cb - cbReadBufferOffset, cbSS - cbSSOffset);
+            qwA = ((QWORD)iSS << 48) | cbSSOffset;
+            VmmScatter_PrepareEx(hObScatterSS, qwA, cbAdjusted, pMEM->pb + cbReadBufferOffset, &pcbReadMEMs[i + cReadMEMs2]);
+            cReadMEMs2 = cpMEMs;    // sometimes two subsections can be hit, grab the read count of both.
+        }
+    }
+    // read the file using a custom scatter read function.
+    VmmScatter_ExecuteEx(hObScatterSS, pCA, VmmWinObjFile_ReadSubsectionAndSharedCacheScatter_Image_ScatterExecute);
+    // set MEMs to TRUE if read succeeded.
+    for(i = 0; i < cpMEMs; i++) {
+        pMEM = ppMEMs[i];
+        if(pcbReadMEMs[i] || pcbReadMEMs[i + cpMEMs]) {
+            pMEM->f = TRUE;
+        }
+    }
+fail:
+    LocalFree(pcbReadMEMs);
+    Ob_DECREF(hObScatterSS);
+}
+
+/*
+* Scatter read a file using the SectionObjectPointers->DataSectionObject method.
+* -- H
+* -- pFile
+* -- ppMEMs
+* -- cpMEMs
+* -- fVmmRead
+*/
+VOID VmmWinObjFile_ReadSubsectionAndSharedCacheScatter_Data(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_FILE pFile, _Inout_updates_(cpMEMs) PPMEM_SCATTER ppMEMs, _In_ DWORD cpMEMs, _In_ QWORD fVmmRead)
+{
+    DWORD i, iSS;
+    QWORD iPte, vaPte;
+    PMEM_SCATTER pMEM;
+    POB_VMMWINOBJ_CONTROL_AREA pCA = NULL;
+    PVMMWINOBJ_FILE_SUBSECTION pSS = NULL;
+    PVMMOB_SCATTER hObScatterSS = NULL;
+    DWORD cbPte = H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X86 ? 4 : 8;
+    if(!(hObScatterSS = VmmScatter_Initialize(H, VMM_FLAG_SCATTER_FORCE_PAGEREAD))) { return; }
+    pCA = pFile->pData;
+    for(i = 0; i < cpMEMs; i++) {
+        pMEM = ppMEMs[i];
+        iPte = pMEM->qwA >> 12;
+        if(pMEM->f) { continue; }
+        // move to correct subsection:
+        iSS = 0;
+        while((iPte >= pCA->pSUBSECTION[iSS].dwStartingSector + pCA->pSUBSECTION[iSS].dwPtesInSubsection) && (iSS < pCA->cSUBSECTION)) { iSS++; }
+        pSS = pCA->pSUBSECTION + iSS;
+        if((iPte < pSS->dwStartingSector) || (iPte >= pSS->dwStartingSector + pSS->dwPtesInSubsection)) {
+            pMEM->qwA = 0;
+            continue;
+        }
+        // fetch pte:
+        pMEM->qwA = 0;
+        vaPte = pSS->vaSubsectionBase + iPte * cbPte;
+        VmmScatter_PrepareEx(hObScatterSS, vaPte, cbPte, (PBYTE)&pMEM->qwA, NULL);
+    }
+    VmmScatter_Execute(hObScatterSS, PVMM_PROCESS_SYSTEM);
+    VmmReadScatterVirtual(H, PVMM_PROCESS_SYSTEM, ppMEMs, cpMEMs, fVmmRead | VMM_FLAG_ALTADDR_VA_PTE);
+    Ob_DECREF(hObScatterSS);
+}
+
+typedef struct tdVMMWINFILE_READSCATTER_SCM_CONTEXT {
+    QWORD iPte;
+    QWORD iVacb;
+    QWORD vaVacbs;
+    BYTE pbvaVacb[8];
+    QWORD vaVacb;
+    BYTE pbVacb[0x40];
+} VMMWINFILE_READSCATTER_SCM_CONTEXT, *PVMMWINFILE_READSCATTER_SCM_CONTEXT;
+
+/*
+* Scatter read a file using the SectionObjectPointers->SharedCacheMap mathod.
+* -- H
+* -- pFile
+* -- ppMEMs
+* -- cpMEMs
+* -- fVmmRead
+*/
+VOID VmmWinObjFile_ReadSubsectionAndSharedCacheScatter_SCM(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_FILE pFile, _Inout_updates_(cpMEMs) PPMEM_SCATTER ppMEMs, _In_ DWORD cpMEMs, _In_ QWORD fVmmRead)
+{
+    BOOL f32 = H->vmm.f32;
+    PMEM_SCATTER pMEM;
+    QWORD va;
+    DWORD i, cbPte = H->vmm.f32 ? 4 : 8;
+    PVMMOB_SCATTER hObScatter = NULL;
+    PVMM_OFFSET_FILE po = &H->vmm.offset.FILE;
+    PVMMWINFILE_READSCATTER_SCM_CONTEXT ctx, ctxs = NULL;
+    if(!(hObScatter = VmmScatter_Initialize(H, VMM_FLAG_SCATTER_FORCE_PAGEREAD))) { goto fail; }
+    if(!(ctxs = (PVMMWINFILE_READSCATTER_SCM_CONTEXT)LocalAlloc(LMEM_ZEROINIT, cpMEMs * sizeof(VMMWINFILE_READSCATTER_SCM_CONTEXT)))) { goto fail; }
+    for(i = 0; i < cpMEMs; i++) {
+        pMEM = ppMEMs[i];
+        ctx = ctxs + i;
+        ctx->iPte = pMEM->qwA >> 12;
+        ctx->iVacb = (ctx->iPte << 12) / pFile->pCache->cbSectionSize;
+        ctx->vaVacbs = pFile->pCache->vaVacbs + ctx->iVacb * cbPte;
+        VmmScatter_PrepareEx(hObScatter, ctx->vaVacbs, cbPte, ctx->pbvaVacb, NULL);
+        pMEM->qwA = 0;
+    }
+    VmmScatter_Execute(hObScatter, PVMM_PROCESS_SYSTEM);
+    VmmScatter_Clear(hObScatter);
+    for(i = 0; i < cpMEMs; i++) {
+        ctx = ctxs + i;
+        ctx->vaVacb = VMM_PTR_OFFSET(f32, ctx->pbvaVacb, 0);
+        if(ctx->vaVacb && VMM_KADDR_4_8(f32, ctx->vaVacb)) {
+            VmmScatter_PrepareEx(hObScatter, ctx->vaVacb, po->_VACB.cb, ctx->pbVacb, NULL);
+        }
+    }
+    VmmScatter_Execute(hObScatter, PVMM_PROCESS_SYSTEM);
+    for(i = 0; i < cpMEMs; i++) {
+        pMEM = ppMEMs[i];
+        ctx = ctxs + i;
+        if(pFile->pCache->va == VMM_PTR_OFFSET(f32, ctx->pbVacb, po->_VACB.oSharedCacheMap)) {
+            va = VMM_PTR_OFFSET(f32, ctx->pbVacb, po->_VACB.oBaseAddress);
+            pMEM->qwA = (va + (ctx->iPte << 12));
+        }
+    }
+    VmmReadScatterVirtual(H, PVMM_PROCESS_SYSTEM, ppMEMs, cpMEMs, fVmmRead);
+fail:
+    Ob_DECREF(hObScatter);
+    LocalFree(ctxs);
+}
+
+/*
+* Read data from a single _FILE_OBJECT using the SectionObjectPointers, i.e. _SUBSECTION and/or a _SHARED_CACHE_MAP.
+* Function is compatible with VmmScatter_ExecuteEx().
+* -- H
+* -- ctx
 * -- ppMEMsFile
 * -- cpMEMsFile
 * -- fVmmRead = VMM_FLAGS_* flags.
-* -- tp = type to read from:
 */
-VOID VmmWinObjFile_ReadSubsectionAndSharedCacheScatter(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_FILE pFile, _Inout_updates_(cpMEMsFile) PPMEM_SCATTER ppMEMsFile, _In_ DWORD cpMEMsFile, _In_ QWORD fVmmRead, _In_ VMMWINOBJ_FILE_TP tp)
+VOID VmmWinObjFile_ReadSubsectionAndSharedCacheScatter(_In_ VMM_HANDLE H, _In_ PVMMWINOBJFILE_SCATTER_CONTEXT ctx, _Inout_updates_(cpMEMsFile) PPMEM_SCATTER ppMEMsFile, _In_ DWORD cpMEMsFile, _In_ QWORD fVmmRead)
 {
-    PMEM_SCATTER pMEM;
     PPMEM_SCATTER ppMEMs = NULL;
-    QWORD iPte;
-    DWORD i, iSS, cMEMs;
-    PVMMWINOBJ_FILE_SUBSECTION pSS = NULL;
+    DWORD cMEMs;
     POB_VMMWINOBJ_CONTROL_AREA pCA = NULL;
+    PVMMWINOBJ_FILE_SUBSECTION pSS = NULL;
     // 0: Sanity check & init:
-    if(tp == VMMWINOBJ_FILE_TP_DEFAULT) { return; }
+    if(ctx->tp == VMMWINOBJ_FILE_TP_DEFAULT) { return; }
     ppMEMs = LocalAlloc(0, cpMEMsFile * sizeof(PMEM_SCATTER));
     if(!ppMEMs) { return; }
-
     // 1: Read from _SHARED_CACHE_MAP
-    if((tp & VMMWINOBJ_FILE_TP_CACHE) && pFile->pCache) {
+    if((ctx->tp & VMMWINOBJ_FILE_TP_CACHE) && ctx->pFile->pCache) {
         cMEMs = VmmWinObjFile_ReadSubsectionAndSharedCacheScatter_MemPush(ppMEMsFile, ppMEMs, cpMEMsFile);
-        if(!cMEMs) { goto cleanup; }
-        for(i = 0; i < cMEMs; i++) {
-            pMEM = ppMEMs[i];
-            iPte = pMEM->qwA >> 12;
-            pMEM->qwA = VmmWinObjFile_ReadSubsectionAndSharedCache_GetVaSharedCache(H, PVMM_PROCESS_SYSTEM, pFile, iPte, fVmmRead);
-        }
-        VmmReadScatterVirtual(H, PVMM_PROCESS_SYSTEM, ppMEMs, cMEMs, fVmmRead);
+        VmmWinObjFile_ReadSubsectionAndSharedCacheScatter_SCM(H, ctx->pFile, ppMEMs, cMEMs, fVmmRead);
         VmmWinObjFile_ReadSubsectionAndSharedCacheScatter_MemPop(ppMEMs, cMEMs);
     }
-
     // 2: Read from _DATA
-    if((tp & VMMWINOBJ_FILE_TP_DATA) && pFile->pData && pFile->pData->cSUBSECTION) {
+    if((ctx->tp & VMMWINOBJ_FILE_TP_DATA) && ctx->pFile->pData && ctx->pFile->pData->cSUBSECTION) {
         cMEMs = VmmWinObjFile_ReadSubsectionAndSharedCacheScatter_MemPush(ppMEMsFile, ppMEMs, cpMEMsFile);
         if(!cMEMs) { goto cleanup; }
-        pCA = pFile->pData;
-        for(i = 0; i < cMEMs; i++) {
-            pMEM = ppMEMs[i];
-            iPte = pMEM->qwA >> 12;
-            if(pMEM->f) { continue; }
-            // move to correct subsection:
-            iSS = 0;
-            while((iPte >= pCA->pSUBSECTION[iSS].dwStartingSector + pCA->pSUBSECTION[iSS].dwPtesInSubsection) && (iSS < pCA->cSUBSECTION)) { iSS++; }
-            pSS = pCA->pSUBSECTION + iSS;
-            if((iPte < pSS->dwStartingSector) || (iPte >= pSS->dwStartingSector + pSS->dwPtesInSubsection)) {
-                pMEM->qwA = (QWORD)-1;
-                continue;
-            }
-            // fetch pte:
-            pMEM->qwA = VmmWinObjFile_ReadSubsectionAndSharedCache_GetPteSubsection(H, PVMM_PROCESS_SYSTEM, pSS->vaSubsectionBase, (iPte - pSS->dwStartingSector), fVmmRead);
-        }
-        VmmReadScatterVirtual(H, PVMM_PROCESS_SYSTEM, ppMEMs, cMEMs, fVmmRead | VMM_FLAG_ALTADDR_VA_PTE);
+        VmmWinObjFile_ReadSubsectionAndSharedCacheScatter_Data(H, ctx->pFile, ppMEMs, cMEMs, fVmmRead);
         VmmWinObjFile_ReadSubsectionAndSharedCacheScatter_MemPop(ppMEMs, cMEMs);
     }
-
     // 3: Read from _IMAGE
-    /*
-    if((tp & VMMWINOBJ_FILE_TP_IMAGE) && pFile->pImage && pFile->pImage->cSUBSECTION) {
+    if((ctx->tp & VMMWINOBJ_FILE_TP_IMAGE) && ctx->pFile->pImage && ctx->pFile->pImage->cSUBSECTION) {
         cMEMs = VmmWinObjFile_ReadSubsectionAndSharedCacheScatter_MemPush(ppMEMsFile, ppMEMs, cpMEMsFile);
         if(!cMEMs) { goto cleanup; }
-        VmmWinObjFile_ReadSubsectionAndSharedCacheScatter_Image(H, pFile, ppMEMs, cMEMs, fVmmRead);
+        VmmWinObjFile_ReadSubsectionAndSharedCacheScatter_Image(H, ctx->pFile, ppMEMs, cMEMs, fVmmRead);
         VmmWinObjFile_ReadSubsectionAndSharedCacheScatter_MemPop(ppMEMs, cMEMs);
     }
-    */
-
 cleanup:
     LocalFree(ppMEMs);
-}
-
-/*
-* Read data from a single _FILE_OBJECT _SUBSECTION and/or a _SHARED_CACHE_MAP.
-* Function is very similar to the VmmReadEx() function. Reading is not yet
-* optimized, but the assumption is the function won't be called frequently so
-* any inefficencies should only have a minor performance impact.
-* -- H
-* -- pFile
-* -- iSubsection
-* -- cbOffset
-* -- pb
-* -- cb
-* -- pcbReadOpt
-* -- fVmmRead = VMM_FLAGS_* flags.
-* -- tp = type to read from:
-* -- return
-*/
-_Success_(return != 0)
-DWORD VmmWinObjFile_ReadSubsectionAndSharedCacheContigious(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_FILE pFile, _In_ DWORD iSubsection, _In_ QWORD cbOffset, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb, _In_ QWORD fVmmRead, _In_ VMMWINOBJ_FILE_TP tp)
-{
-    BOOL fProcessImageSubsection = FALSE, fProcessSharedCacheMap = FALSE, fProcessDataSubsection = FALSE;
-    BOOL fReadImageSubsection = FALSE, fReadSharedCacheMap = FALSE, fReadDataSubsection = FALSE;
-    DWORD cbP, cMEMs, cMEMsAlloc, cbRead = 0;
-    PBYTE pbBuffer;
-    PMEM_SCATTER pMEM, pMEMs, *ppMEMs;
-    QWORD i, oA, qwA, iPte;
-    PVMMWINOBJ_FILE_SUBSECTION pSS = NULL;
-    POB_VMMWINOBJ_CONTROL_AREA pCA = NULL, pControlArea = NULL;
-    if(tp == VMMWINOBJ_FILE_TP_DEFAULT) { return 0; }
-    if(!cb) { return 0; }
-    cMEMs = (DWORD)(((cbOffset & 0xfff) + cb + 0xfff) >> 12);
-    cMEMsAlloc = cMEMs + VMMWINOBJ_FILE_OBJECT_SUBSECTION_MAX;
-    pbBuffer = (PBYTE)LocalAlloc(LMEM_ZEROINIT, 0x2000 + cMEMsAlloc * (sizeof(MEM_SCATTER) + sizeof(PMEM_SCATTER)));
-    if(!pbBuffer) {
-        ZeroMemory(pb, cb);
-        return 0;
-    }
-    pMEMs = (PMEM_SCATTER)(pbBuffer + 0x2000);
-    ppMEMs = (PPMEM_SCATTER)(pbBuffer + 0x2000 + cMEMsAlloc * sizeof(MEM_SCATTER));
-    oA = cbOffset & 0xfff;
-    qwA = cbOffset & ~0xfff;
-    // prepare "middle" pages
-    for(i = 0; i < cMEMs; i++) {
-        pMEM = ppMEMs[i] = &pMEMs[i];
-        pMEM->version = MEM_SCATTER_VERSION;
-        pMEM->qwA = qwA;
-        pMEM->f = FALSE;
-        pMEM->cb = 0x1000;
-        pMEM->pb = pb - oA + (i << 12);
-        qwA += 0x1000;
-    }
-    // fixup "first/last" pages
-    pMEMs[0].pb = pbBuffer;
-    if(cMEMs > 1) {
-        pMEMs[cMEMs - 1].pb = pbBuffer + 0x1000;
-    }
-    // READ:
-    fProcessSharedCacheMap = (tp & VMMWINOBJ_FILE_TP_CACHE) && pFile->pCache;
-    fProcessDataSubsection = (tp & VMMWINOBJ_FILE_TP_DATA) && pFile->pData && pFile->pData->cSUBSECTION;
-    fProcessImageSubsection = (tp & VMMWINOBJ_FILE_TP_IMAGE) && pFile->pImage && (iSubsection < pFile->pImage->cSUBSECTION);
-    // Read from _SHARED_CACHE_MAP & _DATA
-    if(fProcessSharedCacheMap || fProcessDataSubsection) {
-        VmmWinObjFile_ReadSubsectionAndSharedCacheScatter(H, pFile, ppMEMs, cMEMs, fVmmRead, tp);
-    }
-    // Read from _IMAGE
-    if(fProcessImageSubsection) {
-        pCA = pFile->pImage;
-        pSS = pCA->pSUBSECTION + iSubsection;
-        for(i = 0; i < cMEMs; i++) {
-            iPte = i + ((cbOffset - oA) >> 12);
-            pMEM = pMEMs + i;
-            if(pMEM->f) { continue; }
-            pMEM->qwA = (iPte < pSS->dwPtesInSubsection) ? VmmWinObjFile_ReadSubsectionAndSharedCache_GetPteSubsection(H, PVMM_PROCESS_SYSTEM, pSS->vaSubsectionBase, iPte, fVmmRead) : 0;
-            if(pMEM->qwA) {
-                fReadImageSubsection = TRUE;
-            }
-        }
-        if(fReadImageSubsection) {
-            VmmReadScatterVirtual(H, PVMM_PROCESS_SYSTEM, ppMEMs, cMEMs, fVmmRead | VMM_FLAG_ALTADDR_VA_PTE);
-        }
-    }
-    // Handle results:
-    // Handle middle pages
-    for(i = 1; i < cMEMs - 1; i++) {
-        if(pMEMs[i].f) {
-            cbRead += 0x1000;
-        }
-    }
-    // Handle first page
-    cbP = (DWORD)min(cb, 0x1000 - oA);
-    if(pMEMs[0].f) {
-        memcpy(pb, pMEMs[0].pb + oA, cbP);
-        cbRead += cbP;
-    }
-    // Handle last page
-    if(cMEMs > 1) {
-        cbP = (((cbOffset + cb) & 0xfff) ? ((cbOffset + cb) & 0xfff) : 0x1000);
-        if(pMEMs[cMEMs - 1].f) {
-            memcpy(pb + ((QWORD)cMEMs << 12) - oA - 0x1000, pMEMs[cMEMs - 1].pb, cbP);
-            cbRead += cbP;
-        }
-    }
-    LocalFree(pbBuffer);
-    return cbRead;
-}
-
-/*
-* Read an image _FILE_OBJECT. i.e. a PE-file with multiple sections. Reading is
-* performed by reading the necessary underlying _SUBSECTIONs.
-* -- H
-* -- pFile
-* -- cbOffset
-* -- pb
-* -- cb
-* -- fVmmRead
-* -- return
-*/
-_Success_(return != 0)
-DWORD VmmWinObjFile_ReadImage(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_FILE pFile, _In_ QWORD cbOffset, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb, _In_ QWORD fVmmRead)
-{
-    DWORD cbReadTotal = 0;
-    DWORD iSubsection;
-    DWORD cbSubsection, cbSubsectionBase, cbSubsectionEnd;
-    DWORD cbSubsectionOffset, cbReadBufferOffset, cbAdjusted;
-    POB_VMMWINOBJ_CONTROL_AREA pCA = NULL;
-    pCA = pFile->pImage;
-    ZeroMemory(pb, cb);
-    for(iSubsection = 0; iSubsection < pCA->cSUBSECTION; iSubsection++) {
-        cbSubsection = pCA->pSUBSECTION[iSubsection].dwNumberOfFullSectors * pCA->cbSectorSize;
-        cbSubsectionBase = pCA->pSUBSECTION[iSubsection].dwStartingSector * pCA->cbSectorSize;
-        cbSubsectionEnd = cbSubsectionBase + cbSubsection;
-        if(cbSubsectionEnd < cbOffset) { continue; }
-        if(cbSubsectionBase >= cbOffset + cb) { break; }
-        cbSubsectionOffset = (DWORD)max(cbSubsectionBase, cbOffset) - cbSubsectionBase;
-        cbReadBufferOffset = (DWORD)(cbSubsectionBase + cbSubsectionOffset - cbOffset);
-        cbAdjusted = min(cb - cbReadBufferOffset, cbSubsection - cbSubsectionOffset);
-        cbReadTotal += VmmWinObjFile_ReadSubsectionAndSharedCacheContigious(
-            H,
-            pFile,
-            iSubsection,
-            cbSubsectionOffset,
-            pb + cbReadBufferOffset,
-            cbAdjusted,
-            fVmmRead,
-            VMMWINOBJ_FILE_TP_IMAGE
-        );
-    }
-    return cbReadTotal;
 }
 
 /*
@@ -1170,6 +1177,44 @@ QWORD VmmWinObjFile_Size(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_FILE pFile, _In_ 
 }
 
 /*
+* Scatter read file data.
+* Function is compatible with VmmScatter_ExecuteEx().
+* -- H
+* -- ctx = context containing the file object and type(s) to read accoring to VMMWINOBJ_FILE_TP_*
+* -- ppMEMsFile
+* -- cpMEMsFile
+* -- fVmmRead = flags as in VMM_FLAG_*
+*/
+VOID VmmWinObjFile_ReadScatter(_In_ VMM_HANDLE H, _In_ PVMMWINOBJFILE_SCATTER_CONTEXT ctx, _Inout_updates_(cpMEMsFile) PPMEM_SCATTER ppMEMsFile, _In_ DWORD cpMEMsFile, _In_ QWORD fVmmRead)
+{
+    DWORD i;
+    QWORD cbFile;
+    BOOL fInRange;
+    DWORD cpMEMs = 0;
+    PMEM_SCATTER pMEM;
+    PPMEM_SCATTER ppMEMs = NULL;
+    VMMWINOBJFILE_SCATTER_CONTEXT ctxNew = { 0 };
+    // validate MEMs and adjust size if required.
+    cbFile = VmmWinObjFile_Size(H, ctx->pFile, ctx->tp);
+    ppMEMs = LocalAlloc(0, cpMEMsFile * sizeof(PMEM_SCATTER));
+    if(!ppMEMs) { return; }
+    for(i = 0; i < cpMEMsFile; i++) {
+        pMEM = ppMEMsFile[i];
+        fInRange = (cbFile & ~0xfff) >= ((pMEM->qwA + pMEM->cb - 1) & ~0xfff);
+        if(!pMEM->f && (pMEM->qwA != (QWORD)-1) && fInRange) {
+            ppMEMs[cpMEMs++] = pMEM;
+        }
+    }
+    if(!cpMEMs) { LocalFree(ppMEMs); return; }
+    // dispatch to read function:
+    ctxNew.pFile = ctx->pFile;
+    ctxNew.tp = ctx->tp;
+    if(ctxNew.tp == VMMWINOBJ_FILE_TP_DEFAULT) { ctxNew.tp = VMMWINOBJ_FILE_TP_ALL; }
+    VmmWinObjFile_ReadSubsectionAndSharedCacheScatter(H, &ctxNew, ppMEMs, cpMEMs, fVmmRead);
+    LocalFree(ppMEMs);
+}
+
+/*
 * Read a contigious amount of file data and report the number of bytes read.
 * -- H
 * -- pFile
@@ -1184,6 +1229,8 @@ _Success_(return != 0)
 DWORD VmmWinObjFile_Read(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_FILE pFile, _In_ QWORD cbOffset, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb, _In_ QWORD fVmmRead, _In_ VMMWINOBJ_FILE_TP tp)
 {
     QWORD cbFile;
+    PVMMOB_SCATTER hObScatter = NULL;
+    VMMWINOBJFILE_SCATTER_CONTEXT ctxNew = { 0 };
     // zero memory and adjust file size:
     ZeroMemory(pb, cb);
     cbFile = VmmWinObjFile_Size(H, pFile, tp);
@@ -1194,54 +1241,15 @@ DWORD VmmWinObjFile_Read(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_FILE pFile, _In_ 
         cb = (DWORD)(cbFile - cbOffset);
     }
     // dispatch to read function:
-    if(tp == VMMWINOBJ_FILE_TP_DEFAULT) { tp = VMMWINOBJ_FILE_TP_ALL; }
-    if((tp & VMMWINOBJ_FILE_TP_IMAGE) && pFile->pImage) {
-        VmmWinObjFile_ReadImage(H, pFile, cbOffset, pb, cb, fVmmRead);
-    }
-    if((tp & VMMWINOBJ_FILE_TP_DATA) || (tp & VMMWINOBJ_FILE_TP_CACHE)) {
-        VmmWinObjFile_ReadSubsectionAndSharedCacheContigious(H, pFile, 0, cbOffset, pb, cb, fVmmRead, (tp & (VMMWINOBJ_FILE_TP_DATA | VMMWINOBJ_FILE_TP_CACHE)));
-    }
+    ctxNew.pFile = pFile;
+    ctxNew.tp = tp;
+    if(ctxNew.tp == VMMWINOBJ_FILE_TP_DEFAULT) { ctxNew.tp = VMMWINOBJ_FILE_TP_ALL; }
+    hObScatter = VmmScatter_Initialize(H, fVmmRead | VMM_FLAG_SCATTER_FORCE_PAGEREAD);
+    if(!hObScatter) { return 0; }
+    VmmScatter_PrepareEx(hObScatter, cbOffset, cb, pb, NULL);
+    VmmScatter_ExecuteEx(hObScatter, &ctxNew, (VMM_SCATTER_CUSTOM_EXECUTE_SCATTER_PFN)VmmWinObjFile_ReadSubsectionAndSharedCacheScatter);
+    Ob_DECREF(hObScatter);
     return cb;
-}
-
-/*
-* Scatter read file data.
-* -- H
-* -- pFile
-* -- ppMEMsFile
-* -- cpMEMsFile
-* -- fVmmRead = flags as in VMM_FLAG_*
-* -- tp = VMMWINOBJ_FILE_TP_*
-*/
-VOID VmmWinObjFile_ReadScatter(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_FILE pFile, _Inout_updates_(cpMEMsFile) PPMEM_SCATTER ppMEMsFile, _In_ DWORD cpMEMsFile, _In_ QWORD fVmmRead, _In_ VMMWINOBJ_FILE_TP tp)
-{
-    DWORD i;
-    QWORD cbFile;
-    DWORD cMEMs = 0;
-    PMEM_SCATTER pMEM;
-    PPMEM_SCATTER pMEMs = NULL;
-    // validate MEMs and adjust size if required.
-    cbFile = VmmWinObjFile_Size(H, pFile, tp);
-    pMEMs = LocalAlloc(0, cpMEMsFile * sizeof(PMEM_SCATTER));
-    if(!pMEMs) { return; }
-    for(i = 0; i < cpMEMsFile; i++) {
-        pMEM = ppMEMsFile[i];
-        if(!pMEM->f && (pMEM->qwA != (QWORD)-1) && (cbFile >= pMEM->qwA + pMEM->cb)) {
-            pMEMs[cMEMs++] = pMEM;
-        }
-    }
-    if(!cMEMs) { LocalFree(pMEMs); return; }
-    // dispatch to read function:
-    if(tp == VMMWINOBJ_FILE_TP_DEFAULT) { tp = VMMWINOBJ_FILE_TP_ALL; }
-    if((tp & VMMWINOBJ_FILE_TP_IMAGE) && pFile->pImage) {
-        for(i = 0; i < cpMEMsFile; i++) {
-            pMEM = ppMEMsFile[i];
-            VmmWinObjFile_ReadImage(H, pFile, pMEM->qwA, pMEM->pb, pMEM->cb, fVmmRead);
-        }
-    }
-    if((tp & VMMWINOBJ_FILE_TP_DATA) || (tp & VMMWINOBJ_FILE_TP_CACHE)) {
-        VmmWinObjFile_ReadSubsectionAndSharedCacheScatter(H, pFile, ppMEMsFile, cpMEMsFile, fVmmRead, (tp & (VMMWINOBJ_FILE_TP_DATA | VMMWINOBJ_FILE_TP_CACHE)));
-    }
 }
 
 /*

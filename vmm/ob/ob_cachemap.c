@@ -230,7 +230,7 @@ VOID _ObCacheMap_ObCloseCallback(_In_ POB_CACHEMAP pObCacheMap)
 * -- H
 * -- cMaxEntries = max entries in the cache, if more entries are added the
 *       least recently accessed item will be removed from the cache map.
-* -- pfnValidEntry = optional validation callback function.
+* -- pfnValidEntry = optional validation callback function (if any). NB! Must never call back into the ObCacheMap as this may cause a deadlock.
 * -- flags = defined by OB_CACHEMAP_FLAGS_*
 * -- return
 */

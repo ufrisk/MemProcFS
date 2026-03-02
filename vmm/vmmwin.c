@@ -1732,7 +1732,7 @@ static const VMMWIN_OBJECTTYPE_NAME2OBJECT_ENTRY VMMWIN_OBJECTTYPE_NAME2OBJECT_A
 /*
 * Retrieve a pointer to a VMMWIN_OBJECT_TYPE if possible. Initialization of the
 * table takes place on first use. The table only exists in Win7+ and is is
-* dependant on PDB symbol functionality for initialization.
+* dependent on PDB symbol functionality for initialization.
 * -- H
 * -- iObjectType
 * -- return

@@ -157,7 +157,7 @@ typedef enum tdVMM_PTE_TP {
 // OBJECT TYPE table exists on Win7+ It's initialized on first use and it will
 // exist throughout the lifetime of vmm context. Call function:
 // VmmWin_ObjectTypeGet() to retrieve the type for a specific object type.
-// OBJECT TYPE description table is dependant on PDB symbol functionality.
+// OBJECT TYPE description table is dependent on PDB symbol functionality.
 typedef struct tdVMMWIN_OBJECT_TYPE {
     DWORD cb;       // optional type size
     DWORD cbu;
