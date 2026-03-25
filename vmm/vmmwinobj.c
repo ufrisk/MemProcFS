@@ -298,6 +298,7 @@ static VOID VmmWinObjFile_Initialize_SharedCacheMap_New(_In_ VMM_HANDLE H, _In_ 
         cbSectionSize = *(PQWORD)(pb + po->_SHARED_CACHE_MAP.oSectionSize);
         cbFileSizeValid = *(PQWORD)(pb + po->_SHARED_CACHE_MAP.oValidDataLength);
         if(!VMM_KADDR_4_8(f32, vaVacbs) || (cbFileSize > 0x0000ffffffffffff) || (cbFileSizeValid > 0x0000ffffffffffff)) { goto fail_entry_scm; }
+        if(!cbSectionSize || !cbFileSizeValid) { goto fail_entry_scm; }
         if((peOb = Ob_AllocEx(H, OB_TAG_OBJ_SHARED_CACHE_MAP, 0, sizeof(OB_VMMWINOBJ_SHARED_CACHE_MAP), NULL, NULL))) {
             peOb->va = va;
             peOb->vaVacbs = vaVacbs;
