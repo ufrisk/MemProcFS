@@ -172,7 +172,7 @@ VOID MVfsRoot_InitializeDumpContext64(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSyst
     *(PQWORD)(pb + 0x010) = H->vmm.kernel.paDTB;
     *(PQWORD)(pb + 0x018) = H->vmm.kernel.opt.vaPfnDatabase;
     *(PQWORD)(pb + 0x020) = H->vmm.kernel.opt.vaPsLoadedModuleListExp;
-    *(PQWORD)(pb + 0x028) = pSystemProcess->win.EPROCESS.va;
+    *(PQWORD)(pb + 0x028) = H->vmm.kernel.opt.vaPsActiveProcessHead;
     *(PDWORD)(pb + 0x030) = (H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X64) ? 0x8664 : 0xAA64;     // MachineImageType = AMD64 / ARM64
     *(PDWORD)(pb + 0x034) = max(1, H->vmm.kernel.opt.cCPUs);
     *(PDWORD)(pb + 0x038) = 0xDEADDEAD;                         // BugCheckCode
@@ -225,7 +225,7 @@ VOID MVfsRoot_InitializeDumpContext32(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSyst
     *(PDWORD)(pb + 0x010) = (DWORD)H->vmm.kernel.paDTB;
     *(PDWORD)(pb + 0x014) = (DWORD)H->vmm.kernel.opt.vaPfnDatabase;
     *(PDWORD)(pb + 0x018) = (DWORD)H->vmm.kernel.opt.vaPsLoadedModuleListExp;
-    *(PDWORD)(pb + 0x01c) = (DWORD)pSystemProcess->win.EPROCESS.va;
+    *(PDWORD)(pb + 0x01c) = (DWORD)H->vmm.kernel.opt.vaPsActiveProcessHead;
     *(PDWORD)(pb + 0x020) = 0x014c;                             // MachineImageType = I386
     *(PDWORD)(pb + 0x024) = max(1, H->vmm.kernel.opt.cCPUs);
     *(PDWORD)(pb + 0x028) = 0xDEADDEAD;                         // BugCheckCode

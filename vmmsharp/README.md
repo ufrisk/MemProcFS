@@ -18,7 +18,7 @@ Links:
 * Vmmsharp examples https://github.com/ufrisk/MemProcFS/blob/master/vmmsharp/example/VmmsharpExample.cs
 * MemProcFS at Github https://github.com/ufrisk/MemProcFS
 * MemProcFS latest release https://github.com/ufrisk/MemProcFS/releases/latest
-* Discord: [![Discord | PCILeech/MemProcFS](https://img.shields.io/discord/1155439643395883128.svg?label=&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/pcileech)
+* Discord: [![Discord | PCILeech/MemProcFS](https://img.shields.io/discord/1155439643395883128.svg?label=&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://pcileech.com/discord)
 * Twitter: [![Twitter](https://img.shields.io/twitter/follow/UlfFrisk?label=UlfFrisk&style=social)](https://twitter.com/intent/follow?screen_name=UlfFrisk)
 
 

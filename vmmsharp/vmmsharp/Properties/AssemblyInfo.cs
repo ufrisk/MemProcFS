@@ -32,5 +32,5 @@ using System.Runtime.Versioning;
 // You can specify all the values or you can default the Build and Revision Numbers
 // by using the '*' as shown below:
 // [assembly: AssemblyVersion("1.0.*")]
-[assembly: AssemblyVersion("5.17.4.233")]
-[assembly: AssemblyFileVersion("5.17.4.233")]
+[assembly: AssemblyVersion("5.17.5.234")]
+[assembly: AssemblyFileVersion("5.17.5.234")]

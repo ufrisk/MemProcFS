@@ -234,7 +234,7 @@ VOID GetMountPoint(_In_ DWORD argc, _In_ char *argv[], _Out_ LPSTR *pszMountPoin
     "==============================  MemProcFS  ==============================\n" \
     " - Author:           Ulf Frisk - pcileech@frizk.net                      \n" \
     " - Info:             https://github.com/ufrisk/MemProcFS                 \n" \
-    " - Discord:          https://discord.gg/pcileech                         \n" \
+    " - Discord:          https://pcileech.com/discord                        \n" \
     " - License:          GNU Affero General Public License v3.0              \n" \
     " - Licensed To:      %s\n"                                                   \
     "   --------------------------------------------------------------------- \n"

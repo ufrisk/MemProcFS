@@ -1531,6 +1531,7 @@ typedef struct tdVMMWIN_OPTIONAL_KERNEL_CONTEXT {
     BOOL fInitialized;
     DWORD cCPUs;
     QWORD vaPfnDatabase;
+    QWORD vaPsActiveProcessHead;
     QWORD vaPsLoadedModuleListExp;
     QWORD vaMmUnloadedDrivers;
     QWORD vaMmLastUnloadedDriver;

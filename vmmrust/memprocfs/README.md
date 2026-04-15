@@ -95,7 +95,7 @@ Check out the project documentation for MemProcFS, LeechCore and pcileech-fpga:
 ## Questions and Comments
 Please feel free to contact me!
 * Github: <https://github.com/ufrisk/MemProcFS>
-* Discord: <https://discord.gg/pcileech>
+* Discord: <https://pcileech.com/discord>
 * Twitter: <https://twitter.com/UlfFrisk>
 * Email: pcileech@frizk.net
 

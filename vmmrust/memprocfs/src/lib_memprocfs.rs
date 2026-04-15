@@ -67,7 +67,7 @@
 //! ## Questions and Comments
 //! Please feel free to contact me!
 //! * Github: <https://github.com/ufrisk/MemProcFS>
-//! * Discord Server: <https://discord.gg/pcileech>.
+//! * Discord Server: <https://pcileech.com/discord>.
 //! * Twitter: <https://twitter.com/UlfFrisk>
 //! * Email: pcileech@frizk.net
 //! 
@@ -5577,6 +5577,39 @@ unsafe fn cstr_to_string_lossy(sz : *const c_char) -> String {
     };
 }
 
+/// Macro to handle common map retrieval pattern.
+/// This reduces code duplication in all impl_map_* functions.
+///
+/// Usage:
+/// ```ignore
+/// impl_map_get!(native, structs, VMMDLL_MAP_X_VERSION, |ne| {
+///     VmmMapXEntry { ... }
+/// })
+/// ```
+macro_rules! impl_map_get {
+    ($native:expr, $structs:ident, $version_const:expr, |$ne:ident| $convert:block) => {{
+        unsafe {
+            if (*$structs).dwVersion != $version_const {
+                ($native.VMMDLL_MemFree)($structs as usize);
+                return Err(anyhow!("bad version [{} != {}].", (*$structs).dwVersion, $version_const));
+            }
+            let mut result = Vec::new();
+            if (*$structs).cMap == 0 {
+                ($native.VMMDLL_MemFree)($structs as usize);
+                return Ok(result);
+            }
+            let cMap: usize = (*$structs).cMap.try_into()?;
+            let pMap = std::slice::from_raw_parts(&(*$structs).pMap, cMap);
+            for i in 0..cMap {
+                let $ne = &pMap[i];
+                result.push($convert);
+            }
+            ($native.VMMDLL_MemFree)($structs as usize);
+            return Ok(result);
+        }
+    }};
+}
+
 #[allow(non_snake_case)]
 impl Vmm<'_> {
     fn impl_get_leechcore(&self) -> ResultEx<LeechCore> {
@@ -5659,389 +5692,219 @@ impl Vmm<'_> {
         return Ok(proclist);
     }
     fn impl_map_pfn(&self, pfns : &Vec<u32>, is_extended : bool) -> ResultEx<Vec<VmmMapPfnEntry>> {
-        unsafe {
-            let mut structs = std::ptr::null_mut();
-            let flags = if is_extended { 1 } else { 0 };
-            let r = (self.native.VMMDLL_Map_GetPfnEx)(self.native.h, pfns.as_ptr(), u32::try_from(pfns.len())?, &mut structs, flags);
-            if !r {
-                return Err(anyhow!("VMMDLL_Map_GetPfnEx: fail."));
-            }
-            if (*structs).dwVersion != VMMDLL_MAP_PFN_VERSION {
-                (self.native.VMMDLL_MemFree)(structs as usize);
-                return Err(anyhow!("VMMDLL_Map_GetPfnEx: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_PFN_VERSION));
-            }
-            let mut result = Vec::new();
-            if (*structs).cMap == 0 {
-                (self.native.VMMDLL_MemFree)(structs as usize);
-                return Ok(result);
-            }
-            let cMap : usize = (*structs).cMap.try_into()?;
-            let pMap = std::slice::from_raw_parts(&(*structs).pMap, cMap);
-            for i in 0..cMap {
-                let ne = &pMap[i];
-                let e = VmmMapPfnEntry {
-                    pfn : ne.dwPfn,
-                    location : VmmMapPfnType::from((ne.u3 >> 16) & 7),
-                    is_prototype : if ne.u4 & 0x0200000000000000 > 0 { true } else { false },
-                    color : u32::try_from(ne.u4 >> 58)?,
-                    is_extended : is_extended,
-                    tp_ex : VmmMapPfnTypeExtended::from(ne.tpExtended),
-                    pid : ne.dwPfnPte[0],
-                    ptes : [0, ne.dwPfnPte[1], ne.dwPfnPte[2], ne.dwPfnPte[3], ne.dwPfnPte[4]],
-                    va : ne.va,
-                    va_pte : ne.vaPte,
-                    pte_original : ne.OriginalPte,
-                };
-                result.push(e);
-            }
-            (self.native.VMMDLL_MemFree)(structs as usize);
-            return Ok(result);
+        let mut structs = std::ptr::null_mut();
+        let flags = if is_extended { 1 } else { 0 };
+        let r = (self.native.VMMDLL_Map_GetPfnEx)(self.native.h, pfns.as_ptr(), u32::try_from(pfns.len())?, &mut structs, flags);
+        if !r {
+            return Err(anyhow!("VMMDLL_Map_GetPfnEx: fail."));
         }
+        impl_map_get!(self.native, structs, VMMDLL_MAP_PFN_VERSION, |ne| {
+            VmmMapPfnEntry {
+                pfn : ne.dwPfn,
+                location : VmmMapPfnType::from((ne.u3 >> 16) & 7),
+                is_prototype : if ne.u4 & 0x0200000000000000 > 0 { true } else { false },
+                color : u32::try_from(ne.u4 >> 58)?,
+                is_extended : is_extended,
+                tp_ex : VmmMapPfnTypeExtended::from(ne.tpExtended),
+                pid : ne.dwPfnPte[0],
+                ptes : [0, ne.dwPfnPte[1], ne.dwPfnPte[2], ne.dwPfnPte[3], ne.dwPfnPte[4]],
+                va : ne.va,
+                va_pte : ne.vaPte,
+                pte_original : ne.OriginalPte,
+            }
+        })
     }
 
     fn impl_map_memory(&self) -> ResultEx<Vec<VmmMapMemoryEntry>> {
-        unsafe {
-            let mut structs  = std::ptr::null_mut();
-            let r = (self.native.VMMDLL_Map_GetPhysMem)(self.native.h, &mut structs);
-            if !r {
-                return Err(anyhow!("VMMDLL_Map_GetPhysMem: fail."));
-            }
-            if (*structs).dwVersion != VMMDLL_MAP_PHYSMEM_VERSION {
-                (self.native.VMMDLL_MemFree)(structs as usize);
-                return Err(anyhow!("VMMDLL_Map_GetPhysMem: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_PHYSMEM_VERSION));
-            }
-            let mut result = Vec::new();
-            if (*structs).cMap == 0 {
-                (self.native.VMMDLL_MemFree)(structs as usize);
-                return Ok(result);
-            }
-            let cMap : usize = (*structs).cMap.try_into()?;
-            let pMap = std::slice::from_raw_parts(&(*structs).pMap, cMap);
-            for i in 0..cMap {
-                let ne = &pMap[i];
-                let e = VmmMapMemoryEntry {
-                    pa : ne.pa,
-                    cb : ne.cb,
-                };
-                result.push(e);
-            }
-            (self.native.VMMDLL_MemFree)(structs as usize);
-            return Ok(result);
+        let mut structs = std::ptr::null_mut();
+        let r = (self.native.VMMDLL_Map_GetPhysMem)(self.native.h, &mut structs);
+        if !r {
+            return Err(anyhow!("VMMDLL_Map_GetPhysMem: fail."));
         }
+        impl_map_get!(self.native, structs, VMMDLL_MAP_PHYSMEM_VERSION, |ne| {
+            VmmMapMemoryEntry {
+                pa : ne.pa,
+                cb : ne.cb,
+            }
+        })
     }
 
     fn impl_map_net(&self) -> ResultEx<Vec<VmmMapNetEntry>> {
-        unsafe {
-            let mut structs = std::ptr::null_mut();
-            let r = (self.native.VMMDLL_Map_GetNetU)(self.native.h, &mut structs);
-            if !r {
-                return Err(anyhow!("VMMDLL_Map_GetNetU: fail."));
-            }
-            if (*structs).dwVersion != VMMDLL_MAP_NET_VERSION {
-                (self.native.VMMDLL_MemFree)(structs as usize);
-                return Err(anyhow!("VMMDLL_Map_GetNetU: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_NET_VERSION));
-            }
-            let mut result = Vec::new();
-            if (*structs).cMap == 0 {
-                (self.native.VMMDLL_MemFree)(structs as usize);
-                return Ok(result);
-            }
-            let cMap : usize = (*structs).cMap.try_into()?;
-            let pMap = std::slice::from_raw_parts(&(*structs).pMap, cMap);
-            for i in 0..cMap {
-                let ne = &pMap[i];
-                let e = VmmMapNetEntry {
-                    pid : ne.dwPID,
-                    state : ne.dwState,
-                    address_family : ne.AF,
-                    src_is_valid : ne.src_fValid,
-                    src_port : ne.src_port,
-                    src_addr_raw : ne.src_pbAddr,
-                    src_str : cstr_to_string(ne.src_uszText),
-                    dst_is_valid : ne.dst_fValid,
-                    dst_port : ne.dst_port,
-                    dst_addr_raw : ne.dst_pbAddr,
-                    dst_str : cstr_to_string(ne.dst_uszText),
-                    va_object : ne.vaObj,
-                    filetime : ne.ftTime,
-                    pool_tag : ne.dwPoolTag,
-                    desc : cstr_to_string(ne.uszText),
-                };
-                result.push(e);
-            }
-            (self.native.VMMDLL_MemFree)(structs as usize);
-            return Ok(result);
+        let mut structs = std::ptr::null_mut();
+        let r = (self.native.VMMDLL_Map_GetNetU)(self.native.h, &mut structs);
+        if !r {
+            return Err(anyhow!("VMMDLL_Map_GetNetU: fail."));
         }
+        impl_map_get!(self.native, structs, VMMDLL_MAP_NET_VERSION, |ne| {
+            VmmMapNetEntry {
+                pid : ne.dwPID,
+                state : ne.dwState,
+                address_family : ne.AF,
+                src_is_valid : ne.src_fValid,
+                src_port : ne.src_port,
+                src_addr_raw : ne.src_pbAddr,
+                src_str : cstr_to_string(ne.src_uszText),
+                dst_is_valid : ne.dst_fValid,
+                dst_port : ne.dst_port,
+                dst_addr_raw : ne.dst_pbAddr,
+                dst_str : cstr_to_string(ne.dst_uszText),
+                va_object : ne.vaObj,
+                filetime : ne.ftTime,
+                pool_tag : ne.dwPoolTag,
+                desc : cstr_to_string(ne.uszText),
+            }
+        })
     }
 
     fn impl_map_kdevice(&self) -> ResultEx<Vec<VmmMapKDeviceEntry>> {
-        unsafe {
-            let mut structs = std::ptr::null_mut();
-            let r = (self.native.VMMDLL_Map_GetKDeviceU)(self.native.h, &mut structs);
-            if !r {
-                return Err(anyhow!("VMMDLL_Map_GetKDeviceU: fail."));
-            }
-            if (*structs).dwVersion != VMMDLL_MAP_KDEVICE_VERSION {
-                (self.native.VMMDLL_MemFree)(structs as usize);
-                return Err(anyhow!("VMMDLL_Map_GetKDeviceU: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_KDEVICE_VERSION));
-            }
-            let mut result = Vec::new();
-            if (*structs).cMap == 0 {
-                (self.native.VMMDLL_MemFree)(structs as usize);
-                return Ok(result);
-            }
-            let cMap : usize = (*structs).cMap.try_into()?;
-            let pMap = std::slice::from_raw_parts(&(*structs).pMap, cMap);
-            for i in 0..cMap {
-                let ne = &pMap[i];
-                let e = VmmMapKDeviceEntry {
-                    va : ne.va,
-                    depth : ne.iDepth,
-                    device_type : ne.dwDeviceType,
-                    device_type_name : cstr_to_string(ne.uszDeviceType),
-                    va_driver_object : ne.vaDriverObject,
-                    va_attached_device : ne.vaAttachedDevice,
-                    va_file_system_device : ne.vaFileSystemDevice,
-                    volume_info : cstr_to_string(ne.uszVolumeInfo),
-                };
-                result.push(e);
-            }
-            (self.native.VMMDLL_MemFree)(structs as usize);
-            return Ok(result);
+        let mut structs = std::ptr::null_mut();
+        let r = (self.native.VMMDLL_Map_GetKDeviceU)(self.native.h, &mut structs);
+        if !r {
+            return Err(anyhow!("VMMDLL_Map_GetKDeviceU: fail."));
         }
+        impl_map_get!(self.native, structs, VMMDLL_MAP_KDEVICE_VERSION, |ne| {
+            VmmMapKDeviceEntry {
+                va : ne.va,
+                depth : ne.iDepth,
+                device_type : ne.dwDeviceType,
+                device_type_name : cstr_to_string(ne.uszDeviceType),
+                va_driver_object : ne.vaDriverObject,
+                va_attached_device : ne.vaAttachedDevice,
+                va_file_system_device : ne.vaFileSystemDevice,
+                volume_info : cstr_to_string(ne.uszVolumeInfo),
+            }
+        })
     }
 
     fn impl_map_kdriver(&self) -> ResultEx<Vec<VmmMapKDriverEntry>> {
-        unsafe {
-            let mut structs = std::ptr::null_mut();
-            let r = (self.native.VMMDLL_Map_GetKDriverU)(self.native.h, &mut structs);
-            if !r {
-                return Err(anyhow!("VMMDLL_Map_GetKDriverU: fail."));
-            }
-            if (*structs).dwVersion != VMMDLL_MAP_KDRIVER_VERSION {
-                (self.native.VMMDLL_MemFree)(structs as usize);
-                return Err(anyhow!("VMMDLL_Map_GetKDriverU: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_KDRIVER_VERSION));
-            }
-            let mut result = Vec::new();
-            if (*structs).cMap == 0 {
-                (self.native.VMMDLL_MemFree)(structs as usize);
-                return Ok(result);
-            }
-            let cMap : usize = (*structs).cMap.try_into()?;
-            let pMap = std::slice::from_raw_parts(&(*structs).pMap, cMap);
-            for i in 0..cMap {
-                let ne = &pMap[i];
-                let e = VmmMapKDriverEntry {
-                    va : ne.va,
-                    va_driver_start : ne.vaDriverStart,
-                    cb_driver_size : ne.cbDriverSize,
-                    va_device_object : ne.vaDeviceObject,
-                    name : cstr_to_string(ne.uszName),
-                    path : cstr_to_string(ne.uszPath),
-                    service_key_name : cstr_to_string(ne.uszServiceKeyName),
-                    major_function : ne.MajorFunction,
-                };
-                result.push(e);
-            }
-            (self.native.VMMDLL_MemFree)(structs as usize);
-            return Ok(result);
+        let mut structs = std::ptr::null_mut();
+        let r = (self.native.VMMDLL_Map_GetKDriverU)(self.native.h, &mut structs);
+        if !r {
+            return Err(anyhow!("VMMDLL_Map_GetKDriverU: fail."));
         }
+        impl_map_get!(self.native, structs, VMMDLL_MAP_KDRIVER_VERSION, |ne| {
+            VmmMapKDriverEntry {
+                va : ne.va,
+                va_driver_start : ne.vaDriverStart,
+                cb_driver_size : ne.cbDriverSize,
+                va_device_object : ne.vaDeviceObject,
+                name : cstr_to_string(ne.uszName),
+                path : cstr_to_string(ne.uszPath),
+                service_key_name : cstr_to_string(ne.uszServiceKeyName),
+                major_function : ne.MajorFunction,
+            }
+        })
     }
 
     fn impl_map_kobject(&self) -> ResultEx<Vec<VmmMapKObjectEntry>> {
-        unsafe {
-            let mut structs = std::ptr::null_mut();
-            let r = (self.native.VMMDLL_Map_GetKObjectU)(self.native.h, &mut structs);
-            if !r {
-                return Err(anyhow!("VMMDLL_Map_GetKObjectU: fail."));
-            }
-            if (*structs).dwVersion != VMMDLL_MAP_KOBJECT_VERSION {
-                (self.native.VMMDLL_MemFree)(structs as usize);
-                return Err(anyhow!("VMMDLL_Map_GetKObjectU: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_KOBJECT_VERSION));
-            }
-            let mut result = Vec::new();
-            if (*structs).cMap == 0 {
-                (self.native.VMMDLL_MemFree)(structs as usize);
-                return Ok(result);
-            }
-            let cMap : usize = (*structs).cMap.try_into()?;
-            let pMap = std::slice::from_raw_parts(&(*structs).pMap, cMap);
-            for i in 0..cMap {
-                let ne = &pMap[i];
-                let mut child_vec = Vec::new();
-                let child_count = ne.cvaChild as usize;
-                let child_ptr = std::slice::from_raw_parts(ne.pvaChild, ne.cvaChild as usize);
-                for j in 0..child_count {
-                    child_vec.push(child_ptr[j]);
-                }
-                let e = VmmMapKObjectEntry {
-                    va : ne.va,
-                    va_parent : ne.vaParent,
-                    children : child_vec,
-                    name : cstr_to_string(ne.uszName),
-                    object_type : cstr_to_string(ne.uszType),
-                };
-                result.push(e);
-            }
-            (self.native.VMMDLL_MemFree)(structs as usize);
-            return Ok(result);
+        let mut structs = std::ptr::null_mut();
+        let r = (self.native.VMMDLL_Map_GetKObjectU)(self.native.h, &mut structs);
+        if !r {
+            return Err(anyhow!("VMMDLL_Map_GetKObjectU: fail."));
         }
+        impl_map_get!(self.native, structs, VMMDLL_MAP_KOBJECT_VERSION, |ne| {
+            let mut child_vec = Vec::new();
+            let child_count = ne.cvaChild as usize;
+            let child_ptr = std::slice::from_raw_parts(ne.pvaChild, ne.cvaChild as usize);
+            for j in 0..child_count {
+                child_vec.push(child_ptr[j]);
+            }
+            VmmMapKObjectEntry {
+                va : ne.va,
+                va_parent : ne.vaParent,
+                children : child_vec,
+                name : cstr_to_string(ne.uszName),
+                object_type : cstr_to_string(ne.uszType),
+            }
+        })
     }
 
     fn impl_map_pool(&self, is_bigpool_only : bool) -> ResultEx<Vec<VmmMapPoolEntry>> {
-        unsafe {
-            let mut structs = std::ptr::null_mut();
-            let flags = if is_bigpool_only { 1 } else { 0 };
-            let r = (self.native.VMMDLL_Map_GetPool)(self.native.h, &mut structs, flags);
-            if !r {
-                return Err(anyhow!("VMMDLL_Map_GetPool: fail."));
-            }
-            if (*structs).dwVersion != VMMDLL_MAP_POOL_VERSION {
-                (self.native.VMMDLL_MemFree)(structs as usize);
-                return Err(anyhow!("VMMDLL_Map_GetPool: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_POOL_VERSION));
-            }
-            let mut result = Vec::new();
-            if (*structs).cMap == 0 {
-                (self.native.VMMDLL_MemFree)(structs as usize);
-                return Ok(result);
-            }
-            let cMap : usize = (*structs).cMap.try_into()?;
-            let pMap = std::slice::from_raw_parts(&(*structs).pMap, cMap);
-            for i in 0..cMap {
-                let ne = &pMap[i];
-                let e = VmmMapPoolEntry {
-                    va : ne.va,
-                    cb : ne.cb,
-                    tag : ne.dwTag,
-                    is_alloc : ne.fAlloc != 0,
-                    tp_pool : ne.tpPool,
-                    tp_subsegment : ne.tpSS,
-                };
-                result.push(e);
-            }
-            (self.native.VMMDLL_MemFree)(structs as usize);
-            return Ok(result);
+        let mut structs = std::ptr::null_mut();
+        let flags = if is_bigpool_only { 1 } else { 0 };
+        let r = (self.native.VMMDLL_Map_GetPool)(self.native.h, &mut structs, flags);
+        if !r {
+            return Err(anyhow!("VMMDLL_Map_GetPool: fail."));
         }
+        impl_map_get!(self.native, structs, VMMDLL_MAP_POOL_VERSION, |ne| {
+            VmmMapPoolEntry {
+                va : ne.va,
+                cb : ne.cb,
+                tag : ne.dwTag,
+                is_alloc : ne.fAlloc != 0,
+                tp_pool : ne.tpPool,
+                tp_subsegment : ne.tpSS,
+            }
+        })
     }
 
     fn impl_map_service(&self) -> ResultEx<Vec<VmmMapServiceEntry>> {
-        unsafe {
-            let mut structs = std::ptr::null_mut();
-            let r = (self.native.VMMDLL_Map_GetServicesU)(self.native.h, &mut structs);
-            if !r {
-                return Err(anyhow!("VMMDLL_Map_GetServicesU: fail."));
-            }
-            if (*structs).dwVersion != VMMDLL_MAP_SERVICE_VERSION {
-                (self.native.VMMDLL_MemFree)(structs as usize);
-                return Err(anyhow!("VMMDLL_Map_GetServicesU: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_SERVICE_VERSION));
-            }
-            let mut result = Vec::new();
-            if (*structs).cMap == 0 {
-                (self.native.VMMDLL_MemFree)(structs as usize);
-                return Ok(result);
-            }
-            let cMap : usize = (*structs).cMap.try_into()?;
-            let pMap = std::slice::from_raw_parts(&(*structs).pMap, cMap);
-            for i in 0..cMap {
-                let ne = &pMap[i];
-                let e = VmmMapServiceEntry {
-                    ordinal : ne.dwOrdinal,
-                    va_object : ne.vaObj,
-                    pid : ne.dwPID,
-                    start_type : ne.dwStartType,
-                    service_type : ne.dwServiceType,
-                    current_state : ne.dwCurrentState,
-                    controls_accepted : ne.dwControlsAccepted,
-                    win32_exit_code : ne.dwWin32ExitCode,
-                    service_specific_exit_code : ne.dwServiceSpecificExitCode,
-                    check_point : ne.dwCheckPoint,
-                    wait_hint : ne.wWaitHint,
-                    name : cstr_to_string(ne.uszServiceName),
-                    name_display : cstr_to_string(ne.uszDisplayName),
-                    path : cstr_to_string(ne.uszPath),
-                    user_type : cstr_to_string(ne.uszUserTp),
-                    user_account : cstr_to_string(ne.uszUserAcct),
-                    image_path : cstr_to_string(ne.uszImagePath),
-                };
-                result.push(e);
-            }
-            (self.native.VMMDLL_MemFree)(structs as usize);
-            return Ok(result);
+        let mut structs = std::ptr::null_mut();
+        let r = (self.native.VMMDLL_Map_GetServicesU)(self.native.h, &mut structs);
+        if !r {
+            return Err(anyhow!("VMMDLL_Map_GetServicesU: fail."));
         }
+        impl_map_get!(self.native, structs, VMMDLL_MAP_SERVICE_VERSION, |ne| {
+            VmmMapServiceEntry {
+                ordinal : ne.dwOrdinal,
+                va_object : ne.vaObj,
+                pid : ne.dwPID,
+                start_type : ne.dwStartType,
+                service_type : ne.dwServiceType,
+                current_state : ne.dwCurrentState,
+                controls_accepted : ne.dwControlsAccepted,
+                win32_exit_code : ne.dwWin32ExitCode,
+                service_specific_exit_code : ne.dwServiceSpecificExitCode,
+                check_point : ne.dwCheckPoint,
+                wait_hint : ne.wWaitHint,
+                name : cstr_to_string(ne.uszServiceName),
+                name_display : cstr_to_string(ne.uszDisplayName),
+                path : cstr_to_string(ne.uszPath),
+                user_type : cstr_to_string(ne.uszUserTp),
+                user_account : cstr_to_string(ne.uszUserAcct),
+                image_path : cstr_to_string(ne.uszImagePath),
+            }
+        })
     }
 
     fn impl_map_user(&self) -> ResultEx<Vec<VmmMapUserEntry>> {
-        unsafe {
-            let mut structs = std::ptr::null_mut();
-            let r = (self.native.VMMDLL_Map_GetUsersU)(self.native.h, &mut structs);
-            if !r {
-                return Err(anyhow!("VMMDLL_Map_GetUsersU: fail."));
-            }
-            if (*structs).dwVersion != VMMDLL_MAP_USER_VERSION {
-                (self.native.VMMDLL_MemFree)(structs as usize);
-                return Err(anyhow!("VMMDLL_Map_GetUsersU: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_USER_VERSION));
-            }
-            let mut result = Vec::new();
-            if (*structs).cMap == 0 {
-                (self.native.VMMDLL_MemFree)(structs as usize);
-                return Ok(result);
-            }
-            let cMap : usize = (*structs).cMap.try_into()?;
-            let pMap = std::slice::from_raw_parts(&(*structs).pMap, cMap);
-            for i in 0..cMap {
-                let ne = &pMap[i];
-                let e = VmmMapUserEntry {
-                    user : cstr_to_string(ne.uszText),
-                    sid : cstr_to_string(ne.uszSID),
-                    va_reg_hive : ne.vaRegHive,
-                };
-                result.push(e);
-            }
-            (self.native.VMMDLL_MemFree)(structs as usize);
-            return Ok(result);
+        let mut structs = std::ptr::null_mut();
+        let r = (self.native.VMMDLL_Map_GetUsersU)(self.native.h, &mut structs);
+        if !r {
+            return Err(anyhow!("VMMDLL_Map_GetUsersU: fail."));
         }
+        impl_map_get!(self.native, structs, VMMDLL_MAP_USER_VERSION, |ne| {
+            VmmMapUserEntry {
+                user : cstr_to_string(ne.uszText),
+                sid : cstr_to_string(ne.uszSID),
+                va_reg_hive : ne.vaRegHive,
+            }
+        })
     }
 
     fn impl_map_virtual_machine(&self) -> ResultEx<Vec<VmmMapVirtualMachineEntry>> {
-        unsafe {
-            let mut structs = std::ptr::null_mut();
-            let r = (self.native.VMMDLL_Map_GetVMU)(self.native.h, &mut structs);
-            if !r {
-                return Err(anyhow!("VMMDLL_Map_GetVMU: fail."));
-            }
-            if (*structs).dwVersion != VMMDLL_MAP_VM_VERSION {
-                (self.native.VMMDLL_MemFree)(structs as usize);
-                return Err(anyhow!("VMMDLL_Map_GetVMU: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_VM_VERSION));
-            }
-            let mut result = Vec::new();
-            if (*structs).cMap == 0 {
-                (self.native.VMMDLL_MemFree)(structs as usize);
-                return Ok(result);
-            }
-            let cMap : usize = (*structs).cMap.try_into()?;
-            let pMap = std::slice::from_raw_parts(&(*structs).pMap, cMap);
-            for i in 0..cMap {
-                let ne = &pMap[i];
-                let e = VmmMapVirtualMachineEntry {
-                    h_vmm : self.native.h,
-                    h_vm : ne.hVM,
-                    name : cstr_to_string(ne.uszName),
-                    gpa_max : ne.gpaMax,
-                    tp_vm : ne.tp,
-                    is_active : ne.fActive,
-                    is_readonly : ne.fReadOnly,
-                    is_physicalonly : ne.fPhysicalOnly,
-                    partition_id : ne.dwPartitionID,
-                    guest_os_version_build : ne.dwVersionBuild,
-                    guest_tp_system : ne.tpSystem,
-                    parent_mount_id : ne.dwParentVmmMountID,
-                    vmmem_pid : ne.dwVmMemPID,
-                };
-                result.push(e);
-            }
-            (self.native.VMMDLL_MemFree)(structs as usize);
-            return Ok(result);
+        let mut structs = std::ptr::null_mut();
+        let r = (self.native.VMMDLL_Map_GetVMU)(self.native.h, &mut structs);
+        if !r {
+            return Err(anyhow!("VMMDLL_Map_GetVMU: fail."));
         }
+        impl_map_get!(self.native, structs, VMMDLL_MAP_VM_VERSION, |ne| {
+            VmmMapVirtualMachineEntry {
+                h_vmm : self.native.h,
+                h_vm : ne.hVM,
+                name : cstr_to_string(ne.uszName),
+                gpa_max : ne.gpaMax,
+                tp_vm : ne.tp,
+                is_active : ne.fActive,
+                is_readonly : ne.fReadOnly,
+                is_physicalonly : ne.fPhysicalOnly,
+                partition_id : ne.dwPartitionID,
+                guest_os_version_build : ne.dwVersionBuild,
+                guest_tp_system : ne.tpSystem,
+                parent_mount_id : ne.dwParentVmmMountID,
+                vmmem_pid : ne.dwVmMemPID,
+            }
+        })
     }
 
     fn impl_mem_read(&self, pid : u32, va : u64, size : usize, flags : u64) -> ResultEx<Vec<u8>> {
@@ -7316,507 +7179,303 @@ impl VmmProcess<'_> {
     }
 
     fn impl_map_handle(&self) -> ResultEx<Vec<VmmProcessMapHandleEntry>> {
-        unsafe {
-            let mut structs = std::ptr::null_mut();
-            let r = (self.vmm.native.VMMDLL_Map_GetHandleU)(self.vmm.native.h, self.pid, &mut structs);
-            if !r {
-                return Err(anyhow!("VMMDLL_Map_GetHandleU: fail."));
-            }
-            if (*structs).dwVersion != VMMDLL_MAP_HANDLE_VERSION {
-                (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-                return Err(anyhow!("VMMDLL_Map_GetHandleU: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_HANDLE_VERSION));
-            }
-            let mut result = Vec::new();
-            if (*structs).cMap == 0 {
-                (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-                return Ok(result);
-            }
-            let cMap : usize = (*structs).cMap.try_into()?;
-            let pMap = std::slice::from_raw_parts(&(*structs).pMap, cMap);
-            for i in 0..cMap {
-                let ne = &pMap[i];
-                let e = VmmProcessMapHandleEntry {
-                    pid : self.pid,
-                    va_object : ne.vaObject,
-                    handle_id : ne.dwHandle,
-                    granted_access : ne.dwGrantedAccess_Tp & 0x00ffffff,
-                    type_index : (ne.dwGrantedAccess_Tp >> 24) & 0xff,
-                    handle_count : ne.qwHandleCount,
-                    pointer_count : ne.qwPointerCount,
-                    va_object_create_info : ne.vaObjectCreateInfo,
-                    va_security_descriptor : ne.vaSecurityDescriptor,
-                    handle_pid : ne.dwPID,
-                    pool_tag : ne.dwPoolTag,
-                    info : cstr_to_string(ne.uszText),
-                    tp : cstr_to_string(ne.uszType),
-                };
-                result.push(e);
-            }
-            (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-            return Ok(result);
+        let mut structs = std::ptr::null_mut();
+        let r = (self.vmm.native.VMMDLL_Map_GetHandleU)(self.vmm.native.h, self.pid, &mut structs);
+        if !r {
+            return Err(anyhow!("VMMDLL_Map_GetHandleU: fail."));
         }
+        impl_map_get!(self.vmm.native, structs, VMMDLL_MAP_HANDLE_VERSION, |ne| {
+            VmmProcessMapHandleEntry {
+                pid : self.pid,
+                va_object : ne.vaObject,
+                handle_id : ne.dwHandle,
+                granted_access : ne.dwGrantedAccess_Tp & 0x00ffffff,
+                type_index : (ne.dwGrantedAccess_Tp >> 24) & 0xff,
+                handle_count : ne.qwHandleCount,
+                pointer_count : ne.qwPointerCount,
+                va_object_create_info : ne.vaObjectCreateInfo,
+                va_security_descriptor : ne.vaSecurityDescriptor,
+                handle_pid : ne.dwPID,
+                pool_tag : ne.dwPoolTag,
+                info : cstr_to_string(ne.uszText),
+                tp : cstr_to_string(ne.uszType),
+            }
+        })
     }
 
     fn impl_map_heap(&self) -> ResultEx<Vec<VmmProcessMapHeapEntry>> {
-        unsafe {
-            let mut structs = std::ptr::null_mut();
-            let r = (self.vmm.native.VMMDLL_Map_GetHeap)(self.vmm.native.h, self.pid, &mut structs);
-            if !r {
-                return Err(anyhow!("VMMDLL_Map_GetHeap: fail."));
-            }
-            if (*structs).dwVersion != VMMDLL_MAP_HEAP_VERSION {
-                (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-                return Err(anyhow!("VMMDLL_Map_GetHeap: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_HEAP_VERSION));
-            }
-            let mut result = Vec::new();
-            if (*structs).cMap == 0 {
-                (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-                return Ok(result);
-            }
-            let cMap : usize = (*structs).cMap.try_into()?;
-            let pMap = std::slice::from_raw_parts(&(*structs).pMap, cMap);
-            for i in 0..cMap {
-                let ne = &pMap[i];
-                let e = VmmProcessMapHeapEntry {
-                    pid : self.pid,
-                    tp : VmmProcessMapHeapType::from(ne.tp),
-                    is_32 : ne.f32,
-                    index : ne.iHeap,
-                    number : ne.dwHeapNum,
-                };
-                result.push(e);
-            }
-            (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-            return Ok(result);
+        let mut structs = std::ptr::null_mut();
+        let r = (self.vmm.native.VMMDLL_Map_GetHeap)(self.vmm.native.h, self.pid, &mut structs);
+        if !r {
+            return Err(anyhow!("VMMDLL_Map_GetHeap: fail."));
         }
+        impl_map_get!(self.vmm.native, structs, VMMDLL_MAP_HEAP_VERSION, |ne| {
+            VmmProcessMapHeapEntry {
+                pid : self.pid,
+                tp : VmmProcessMapHeapType::from(ne.tp),
+                is_32 : ne.f32,
+                index : ne.iHeap,
+                number : ne.dwHeapNum,
+            }
+        })
     }
 
     fn impl_map_heapalloc(&self, heap_number_or_address : u64) -> ResultEx<Vec<VmmProcessMapHeapAllocEntry>> {
-        unsafe {
-            let mut structs = std::ptr::null_mut();
-            let r = (self.vmm.native.VMMDLL_Map_GetHeapAlloc)(self.vmm.native.h, self.pid, heap_number_or_address, &mut structs);
-            if !r {
-                return Err(anyhow!("VMMDLL_Map_GetHeapAlloc: fail."));
-            }
-            if (*structs).dwVersion != VMMDLL_MAP_HEAPALLOC_VERSION {
-                (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-                return Err(anyhow!("VMMDLL_Map_GetHeapAlloc: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_HEAPALLOC_VERSION));
-            }
-            let mut result = Vec::new();
-            if (*structs).cMap == 0 {
-                (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-                return Ok(result);
-            }
-            let cMap : usize = (*structs).cMap.try_into()?;
-            let pMap = std::slice::from_raw_parts(&(*structs).pMap, cMap);
-            for i in 0..cMap {
-                let ne = &pMap[i];
-                let e = VmmProcessMapHeapAllocEntry {
-                    pid : self.pid,
-                    va : ne.va,
-                    size : ne.cb,
-                    tp : VmmProcessMapHeapAllocType::from(ne.tp),
-                };
-                result.push(e);
-            }
-            (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-            return Ok(result);
+        let mut structs = std::ptr::null_mut();
+        let r = (self.vmm.native.VMMDLL_Map_GetHeapAlloc)(self.vmm.native.h, self.pid, heap_number_or_address, &mut structs);
+        if !r {
+            return Err(anyhow!("VMMDLL_Map_GetHeapAlloc: fail."));
         }
+        impl_map_get!(self.vmm.native, structs, VMMDLL_MAP_HEAPALLOC_VERSION, |ne| {
+            VmmProcessMapHeapAllocEntry {
+                pid : self.pid,
+                va : ne.va,
+                size : ne.cb,
+                tp : VmmProcessMapHeapAllocType::from(ne.tp),
+            }
+        })
     }
 
     fn impl_map_module(&self, is_info_debug : bool, is_info_version : bool) -> ResultEx<Vec<VmmProcessMapModuleEntry>> {
-        unsafe {
-            let mut structs = std::ptr::null_mut();
-            let flags = 0 + if is_info_debug { 1 } else { 0 } + if is_info_version { 2 } else { 0 };
-            let r = (self.vmm.native.VMMDLL_Map_GetModuleU)(self.vmm.native.h, self.pid, &mut structs, flags);
-            if !r {
-                return Err(anyhow!("VMMDLL_Map_GetModuleU: fail."));
-            }
-            if (*structs).dwVersion != VMMDLL_MAP_MODULE_VERSION {
-                (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-                return Err(anyhow!("VMMDLL_Map_GetModuleU: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_MODULE_VERSION));
-            }
-            let mut result = Vec::new();
-            if (*structs).cMap == 0 {
-                (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-                return Ok(result);
-            }
-            let cMap : usize = (*structs).cMap.try_into()?;
-            let pMap = std::slice::from_raw_parts(&(*structs).pMap, cMap);
-            for i in 0..cMap {
-                let ne = &pMap[i];
-                let mut debug_info = None;
-                if !ne.pExDebugInfo.is_null() {
-                    let nei = &*ne.pExDebugInfo;
-                    debug_info = Some(VmmProcessMapModuleDebugEntry {
-                        pid : self.pid,
-                        age : nei.dwAge,
-                        raw_guid : nei.Guid,
-                        guid : cstr_to_string(nei.uszGuid),
-                        pdb_filename : cstr_to_string(nei.uszPdbFilename),
-                    });
-                }
-                let mut version_info = None;
-                if !ne.pExVersionInfo.is_null() {
-                    let nei = &*ne.pExVersionInfo;
-                    version_info = Some(VmmProcessMapModuleVersionEntry {
-                        pid : self.pid,
-                        company_name : cstr_to_string(nei.uszCompanyName),
-                        file_description : cstr_to_string(nei.uszFileDescription),
-                        file_version : cstr_to_string(nei.uszFileVersion),
-                        internal_name : cstr_to_string(nei.uszInternalName),
-                        legal_copyright : cstr_to_string(nei.uszLegalCopyright),
-                        original_file_name : cstr_to_string(nei.uszOriginalFilename),
-                        product_name : cstr_to_string(nei.uszProductName),
-                        product_version : cstr_to_string(nei.uszProductVersion),
-                    });
-                }
-                let e = VmmProcessMapModuleEntry {
-                    pid : self.pid,
-                    va_base : ne.vaBase,
-                    va_entry : ne.vaEntry,
-                    image_size : ne.cbImageSize,
-                    is_wow64 : ne.fWoW64,
-                    tp : VmmProcessMapModuleType::from(ne.tp),
-                    name : cstr_to_string(ne.uszText),
-                    full_name : cstr_to_string(ne.uszFullName),
-                    file_size_raw : ne.cbFileSizeRaw,
-                    section_count : ne.cSection,
-                    eat_count : ne.cEAT,
-                    iat_count : ne.cIAT,
-                    debug_info : debug_info,
-                    version_info : version_info,
-                };
-                result.push(e);
-            }
-            (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-            return Ok(result);
+        let mut structs = std::ptr::null_mut();
+        let flags = 0 + if is_info_debug { 1 } else { 0 } + if is_info_version { 2 } else { 0 };
+        let r = (self.vmm.native.VMMDLL_Map_GetModuleU)(self.vmm.native.h, self.pid, &mut structs, flags);
+        if !r {
+            return Err(anyhow!("VMMDLL_Map_GetModuleU: fail."));
         }
+        impl_map_get!(self.vmm.native, structs, VMMDLL_MAP_MODULE_VERSION, |ne| {
+            let mut debug_info = None;
+            if !ne.pExDebugInfo.is_null() {
+                let nei = &*ne.pExDebugInfo;
+                debug_info = Some(VmmProcessMapModuleDebugEntry {
+                    pid : self.pid,
+                    age : nei.dwAge,
+                    raw_guid : nei.Guid,
+                    guid : cstr_to_string(nei.uszGuid),
+                    pdb_filename : cstr_to_string(nei.uszPdbFilename),
+                });
+            }
+            let mut version_info = None;
+            if !ne.pExVersionInfo.is_null() {
+                let nei = &*ne.pExVersionInfo;
+                version_info = Some(VmmProcessMapModuleVersionEntry {
+                    pid : self.pid,
+                    company_name : cstr_to_string(nei.uszCompanyName),
+                    file_description : cstr_to_string(nei.uszFileDescription),
+                    file_version : cstr_to_string(nei.uszFileVersion),
+                    internal_name : cstr_to_string(nei.uszInternalName),
+                    legal_copyright : cstr_to_string(nei.uszLegalCopyright),
+                    original_file_name : cstr_to_string(nei.uszOriginalFilename),
+                    product_name : cstr_to_string(nei.uszProductName),
+                    product_version : cstr_to_string(nei.uszProductVersion),
+                });
+            }
+            VmmProcessMapModuleEntry {
+                pid : self.pid,
+                va_base : ne.vaBase,
+                va_entry : ne.vaEntry,
+                image_size : ne.cbImageSize,
+                is_wow64 : ne.fWoW64,
+                tp : VmmProcessMapModuleType::from(ne.tp),
+                name : cstr_to_string(ne.uszText),
+                full_name : cstr_to_string(ne.uszFullName),
+                file_size_raw : ne.cbFileSizeRaw,
+                section_count : ne.cSection,
+                eat_count : ne.cEAT,
+                iat_count : ne.cIAT,
+                debug_info : debug_info,
+                version_info : version_info,
+            }
+        })
     }
 
     fn impl_map_module_eat(&self, module_name : &str) -> ResultEx<Vec<VmmProcessMapEatEntry>> {
-        unsafe {
-            let mut structs = std::ptr::null_mut();
-            let sz_module_name = CString::new(module_name)?;
-            let r = (self.vmm.native.VMMDLL_Map_GetEATU)(self.vmm.native.h, self.pid, sz_module_name.as_ptr(), &mut structs);
-            if !r {
-                return Err(anyhow!("VMMDLL_Map_GetEATU: fail."));
-            }
-            if (*structs).dwVersion != VMMDLL_MAP_EAT_VERSION {
-                (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-                return Err(anyhow!("VMMDLL_Map_GetEATU: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_EAT_VERSION));
-            }
-            let mut result = Vec::new();
-            if (*structs).cMap == 0 {
-                (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-                return Ok(result);
-            }
-            let cMap : usize = (*structs).cMap.try_into()?;
-            let pMap = std::slice::from_raw_parts(&(*structs).pMap, cMap);
-            for i in 0..cMap {
-                let ne = &pMap[i];
-                let e = VmmProcessMapEatEntry {
-                    pid : self.pid,
-                    va_function : ne.vaFunction,
-                    ordinal : ne.dwOrdinal,
-                    function : cstr_to_string(ne.uszFunction),
-                    forwarded_function : cstr_to_string(ne.uszForwardedFunction),
-                };
-                result.push(e);
-            }
-            (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-            return Ok(result);
+        let mut structs = std::ptr::null_mut();
+        let sz_module_name = CString::new(module_name)?;
+        let r = (self.vmm.native.VMMDLL_Map_GetEATU)(self.vmm.native.h, self.pid, sz_module_name.as_ptr(), &mut structs);
+        if !r {
+            return Err(anyhow!("VMMDLL_Map_GetEATU: fail."));
         }
+        impl_map_get!(self.vmm.native, structs, VMMDLL_MAP_EAT_VERSION, |ne| {
+            VmmProcessMapEatEntry {
+                pid : self.pid,
+                va_function : ne.vaFunction,
+                ordinal : ne.dwOrdinal,
+                function : cstr_to_string(ne.uszFunction),
+                forwarded_function : cstr_to_string(ne.uszForwardedFunction),
+            }
+        })
     }
 
     fn impl_map_module_iat(&self, module_name : &str) -> ResultEx<Vec<VmmProcessMapIatEntry>> {
-        unsafe {
-            let mut structs = std::ptr::null_mut();
-            let sz_module_name = CString::new(module_name)?;
-            let r = (self.vmm.native.VMMDLL_Map_GetIATU)(self.vmm.native.h, self.pid, sz_module_name.as_ptr(), &mut structs);
-            if !r {
-                return Err(anyhow!("VMMDLL_Map_GetIATU: fail."));
-            }
-            if (*structs).dwVersion != VMMDLL_MAP_IAT_VERSION {
-                (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-                return Err(anyhow!("VMMDLL_Map_GetIATU: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_IAT_VERSION));
-            }
-            let mut result = Vec::new();
-            if (*structs).cMap == 0 {
-                (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-                return Ok(result);
-            }
-            let cMap : usize = (*structs).cMap.try_into()?;
-            let pMap = std::slice::from_raw_parts(&(*structs).pMap, cMap);
-            for i in 0..cMap {
-                let ne = &pMap[i];
-                let e = VmmProcessMapIatEntry {
-                    pid : self.pid,
-                    va_function : ne.vaFunction,
-                    function : cstr_to_string(ne.uszFunction),
-                    module : cstr_to_string(ne.uszModule),
-                };
-                result.push(e);
-            }
-            (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-            return Ok(result);
+        let mut structs = std::ptr::null_mut();
+        let sz_module_name = CString::new(module_name)?;
+        let r = (self.vmm.native.VMMDLL_Map_GetIATU)(self.vmm.native.h, self.pid, sz_module_name.as_ptr(), &mut structs);
+        if !r {
+            return Err(anyhow!("VMMDLL_Map_GetIATU: fail."));
         }
+        impl_map_get!(self.vmm.native, structs, VMMDLL_MAP_IAT_VERSION, |ne| {
+            VmmProcessMapIatEntry {
+                pid : self.pid,
+                va_function : ne.vaFunction,
+                function : cstr_to_string(ne.uszFunction),
+                module : cstr_to_string(ne.uszModule),
+            }
+        })
     }
 
     fn impl_map_pte(&self, is_identify_modules : bool) -> ResultEx<Vec<VmmProcessMapPteEntry>> {
-        unsafe {
-            let mut structs = std::ptr::null_mut();
-            let r = (self.vmm.native.VMMDLL_Map_GetPteU)(self.vmm.native.h, self.pid, is_identify_modules, &mut structs);
-            if !r {
-                return Err(anyhow!("VMMDLL_Map_GetPteU: fail."));
-            }
-            if (*structs).dwVersion != VMMDLL_MAP_PTE_VERSION {
-                (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-                return Err(anyhow!("VMMDLL_Map_GetPteU: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_PTE_VERSION));
-            }
-            let mut result = Vec::new();
-            if (*structs).cMap == 0 {
-                (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-                return Ok(result);
-            }
-            let cMap : usize = (*structs).cMap.try_into()?;
-            let pMap = std::slice::from_raw_parts(&(*structs).pMap, cMap);
-            for i in 0..cMap {
-                let ne = &pMap[i];
-                let e = VmmProcessMapPteEntry {
-                    pid : self.pid,
-                    va_base : ne.vaBase,
-                    page_count : ne.cPages,
-                    page_software_count : ne.cSoftware,
-                    is_r : true,
-                    is_w : (ne.fPage & 0x0000000000000002) != 0,
-                    is_x : (ne.fPage & 0x8000000000000000) == 0,
-                    is_s : (ne.fPage & 0x0000000000000004) == 0,
-                    is_wow64 : ne.fWoW64,
-                    info : cstr_to_string(ne.uszText),
-                };
-                result.push(e);
-            }
-            (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-            return Ok(result);
+        let mut structs = std::ptr::null_mut();
+        let r = (self.vmm.native.VMMDLL_Map_GetPteU)(self.vmm.native.h, self.pid, is_identify_modules, &mut structs);
+        if !r {
+            return Err(anyhow!("VMMDLL_Map_GetPteU: fail."));
         }
+        impl_map_get!(self.vmm.native, structs, VMMDLL_MAP_PTE_VERSION, |ne| {
+            VmmProcessMapPteEntry {
+                pid : self.pid,
+                va_base : ne.vaBase,
+                page_count : ne.cPages,
+                page_software_count : ne.cSoftware,
+                is_r : true,
+                is_w : (ne.fPage & 0x0000000000000002) != 0,
+                is_x : (ne.fPage & 0x8000000000000000) == 0,
+                is_s : (ne.fPage & 0x0000000000000004) == 0,
+                is_wow64 : ne.fWoW64,
+                info : cstr_to_string(ne.uszText),
+            }
+        })
     }
 
     fn impl_map_thread(&self) -> ResultEx<Vec<VmmProcessMapThreadEntry>> {
-        unsafe {
-            let mut structs = std::ptr::null_mut();
-            let r = (self.vmm.native.VMMDLL_Map_GetThread)(self.vmm.native.h, self.pid, &mut structs);
-            if !r {
-                return Err(anyhow!("VMMDLL_Map_GetThread: fail."));
-            }
-            if (*structs).dwVersion != VMMDLL_MAP_THREAD_VERSION {
-                (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-                return Err(anyhow!("VMMDLL_Map_GetThread: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_THREAD_VERSION));
-            }
-            let mut result = Vec::new();
-            if (*structs).cMap == 0 {
-                (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-                return Ok(result);
-            }
-            let cMap : usize = (*structs).cMap.try_into()?;
-            let pMap = std::slice::from_raw_parts(&(*structs).pMap, cMap);
-            for i in 0..cMap {
-                let ne = &pMap[i];
-                let e = VmmProcessMapThreadEntry {
-                    pid : self.pid,
-                    thread_id : ne.dwTID,
-                    thread_pid : ne.dwPID,
-                    exit_status : ne.dwExitStatus,
-                    state : ne.bState,
-                    running : ne.bRunning,
-                    priority : ne.bPriority,
-                    priority_base : ne.bBasePriority,
-                    va_ethread : ne.vaETHREAD,
-                    va_teb : ne.vaTeb,
-                    ft_create_time : ne.ftCreateTime,
-                    ft_exit_time : ne.ftExitTime,
-                    va_start_address : ne.vaStartAddress,
-                    va_win32_start_address : ne.vaWin32StartAddress,
-                    va_stack_user_base : ne.vaStackBaseUser,
-                    va_stack_user_limit : ne.vaStackLimitUser,
-                    va_stack_kernel_base : ne.vaStackBaseKernel,
-                    va_stack_kernel_limit : ne.vaStackLimitKernel,
-                    va_trap_frame : ne.vaTrapFrame,
-                    va_impersonation_token : ne.vaImpersonationToken,
-                    va_rip : ne.vaRIP,
-                    va_rsp : ne.vaRSP,
-                    affinity : ne.qwAffinity,
-                    user_time : ne.dwUserTime,
-                    kernel_time : ne.dwKernelTime,
-                    suspend_count : ne.bSuspendCount,
-                    wait_reason : ne.bWaitReason
-                };
-                result.push(e);
-            }
-            (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-            return Ok(result);
+        let mut structs = std::ptr::null_mut();
+        let r = (self.vmm.native.VMMDLL_Map_GetThread)(self.vmm.native.h, self.pid, &mut structs);
+        if !r {
+            return Err(anyhow!("VMMDLL_Map_GetThread: fail."));
         }
+        impl_map_get!(self.vmm.native, structs, VMMDLL_MAP_THREAD_VERSION, |ne| {
+            VmmProcessMapThreadEntry {
+                pid : self.pid,
+                thread_id : ne.dwTID,
+                thread_pid : ne.dwPID,
+                exit_status : ne.dwExitStatus,
+                state : ne.bState,
+                running : ne.bRunning,
+                priority : ne.bPriority,
+                priority_base : ne.bBasePriority,
+                va_ethread : ne.vaETHREAD,
+                va_teb : ne.vaTeb,
+                ft_create_time : ne.ftCreateTime,
+                ft_exit_time : ne.ftExitTime,
+                va_start_address : ne.vaStartAddress,
+                va_win32_start_address : ne.vaWin32StartAddress,
+                va_stack_user_base : ne.vaStackBaseUser,
+                va_stack_user_limit : ne.vaStackLimitUser,
+                va_stack_kernel_base : ne.vaStackBaseKernel,
+                va_stack_kernel_limit : ne.vaStackLimitKernel,
+                va_trap_frame : ne.vaTrapFrame,
+                va_impersonation_token : ne.vaImpersonationToken,
+                va_rip : ne.vaRIP,
+                va_rsp : ne.vaRSP,
+                affinity : ne.qwAffinity,
+                user_time : ne.dwUserTime,
+                kernel_time : ne.dwKernelTime,
+                suspend_count : ne.bSuspendCount,
+                wait_reason : ne.bWaitReason
+            }
+        })
     }
 
     fn impl_map_thread_callstack(&self, tid : u32, flags : u32) -> ResultEx<Vec<VmmProcessMapThreadCallstackEntry>> {
-        unsafe {
-            let mut structs = std::ptr::null_mut();
-            let r = (self.vmm.native.VMMDLL_Map_GetThreadCallstackU)(self.vmm.native.h, self.pid, tid, flags, &mut structs);
-            if !r {
-                return Err(anyhow!("VMMDLL_Map_GetThreadCallstackU: fail."));
-            }
-            if (*structs).dwVersion != VMMDLL_MAP_THREAD_CALLSTACK_VERSION {
-                (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-                return Err(anyhow!("VMMDLL_Map_GetThreadCallstackU: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_THREAD_CALLSTACK_VERSION));
-            }
-            let mut result = Vec::new();
-            if (*structs).cMap == 0 {
-                (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-                return Ok(result);
-            }
-            let cMap : usize = (*structs).cMap.try_into()?;
-            let pMap = std::slice::from_raw_parts(&(*structs).pMap, cMap);
-            for i in 0..cMap {
-                let ne = &pMap[i];
-                let e = VmmProcessMapThreadCallstackEntry {
-                    pid : self.pid,
-                    tid : tid,
-                    i : ne.i,
-                    is_reg_present : ne.fRegPresent,
-                    va_ret_addr : ne.vaRetAddr,
-                    va_rsp : ne.vaRSP,
-                    va_base_sp : ne.vaBaseSP,
-                    displacement : ne.cbDisplacement,
-                    module : cstr_to_string(ne.uszModule),
-                    function : cstr_to_string(ne.uszFunction),
-                };
-                result.push(e);
-            }
-            (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-            return Ok(result);
+        let mut structs = std::ptr::null_mut();
+        let r = (self.vmm.native.VMMDLL_Map_GetThreadCallstackU)(self.vmm.native.h, self.pid, tid, flags, &mut structs);
+        if !r {
+            return Err(anyhow!("VMMDLL_Map_GetThreadCallstackU: fail."));
         }
+        impl_map_get!(self.vmm.native, structs, VMMDLL_MAP_THREAD_CALLSTACK_VERSION, |ne| {
+            VmmProcessMapThreadCallstackEntry {
+                pid : self.pid,
+                tid : tid,
+                i : ne.i,
+                is_reg_present : ne.fRegPresent,
+                va_ret_addr : ne.vaRetAddr,
+                va_rsp : ne.vaRSP,
+                va_base_sp : ne.vaBaseSP,
+                displacement : ne.cbDisplacement,
+                module : cstr_to_string(ne.uszModule),
+                function : cstr_to_string(ne.uszFunction),
+            }
+        })
     }
 
     fn impl_map_unloaded_module(&self) -> ResultEx<Vec<VmmProcessMapUnloadedModuleEntry>> {
-        unsafe {
-            let mut structs = std::ptr::null_mut();
-            let r = (self.vmm.native.VMMDLL_Map_GetUnloadedModuleU)(self.vmm.native.h, self.pid, &mut structs);
-            if !r {
-                return Err(anyhow!("VMMDLL_Map_GetUnloadedModuleU: fail."));
-            }
-            if (*structs).dwVersion != VMMDLL_MAP_UNLOADEDMODULE_VERSION {
-                (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-                return Err(anyhow!("VMMDLL_Map_GetUnloadedModuleU: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_UNLOADEDMODULE_VERSION));
-            }
-            let mut result = Vec::new();
-            if (*structs).cMap == 0 {
-                (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-                return Ok(result);
-            }
-            let cMap : usize = (*structs).cMap.try_into()?;
-            let pMap = std::slice::from_raw_parts(&(*structs).pMap, cMap);
-            for i in 0..cMap {
-                let ne = &pMap[i];
-                let e = VmmProcessMapUnloadedModuleEntry {
-                    pid : self.pid,
-                    va_base : ne.vaBase,
-                    image_size : ne.cbImageSize,
-                    is_wow64 : ne.fWoW64,
-                    name : cstr_to_string(ne.uszText),
-                    checksum : ne.dwCheckSum,
-                    timedatestamp : ne.dwTimeDateStamp,
-                    ft_unload : ne.ftUnload,
-                };
-                result.push(e);
-            }
-            (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-            return Ok(result);
+        let mut structs = std::ptr::null_mut();
+        let r = (self.vmm.native.VMMDLL_Map_GetUnloadedModuleU)(self.vmm.native.h, self.pid, &mut structs);
+        if !r {
+            return Err(anyhow!("VMMDLL_Map_GetUnloadedModuleU: fail."));
         }
+        impl_map_get!(self.vmm.native, structs, VMMDLL_MAP_UNLOADEDMODULE_VERSION, |ne| {
+            VmmProcessMapUnloadedModuleEntry {
+                pid : self.pid,
+                va_base : ne.vaBase,
+                image_size : ne.cbImageSize,
+                is_wow64 : ne.fWoW64,
+                name : cstr_to_string(ne.uszText),
+                checksum : ne.dwCheckSum,
+                timedatestamp : ne.dwTimeDateStamp,
+                ft_unload : ne.ftUnload,
+            }
+        })
     }
 
     fn impl_map_vad(&self, is_identify_modules : bool) -> ResultEx<Vec<VmmProcessMapVadEntry>> {
-        unsafe {
-            let mut structs = std::ptr::null_mut();
-            let r = (self.vmm.native.VMMDLL_Map_GetVadU)(self.vmm.native.h, self.pid, is_identify_modules, &mut structs);
-            if !r {
-                return Err(anyhow!("VMMDLL_Map_GetVadU: fail."));
-            }
-            if (*structs).dwVersion != VMMDLL_MAP_VAD_VERSION {
-                (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-                return Err(anyhow!("VMMDLL_Map_GetVadU: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_VAD_VERSION));
-            }
-            let mut result = Vec::new();
-            if (*structs).cMap == 0 {
-                (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-                return Ok(result);
-            }
-            let cMap : usize = (*structs).cMap.try_into()?;
-            let pMap = std::slice::from_raw_parts(&(*structs).pMap, cMap);
-            for i in 0..cMap {
-                let ne = &pMap[i];
-                let e = VmmProcessMapVadEntry {
-                    pid : self.pid,
-                    va_start : ne.vaStart,
-                    va_end : ne.vaEnd,
-                    va_vad : ne.vaVad,
-                    u0 : ne.u0,
-                    u1 : ne.u1,
-                    u2 : ne.u2,
-                    commit_charge : ne.u1 & 0x7fffffff,
-                    is_mem_commit : (ne.u1 & 0x80000000) != 0,
-                    cb_prototype_pte : ne.cbPrototypePte,
-                    va_prototype_pte : ne.vaPrototypePte,
-                    va_subsection : ne.vaSubsection,
-                    va_file_object : ne.vaFileObject,
-                    info : cstr_to_string(ne.uszText),
-                    vadex_page_base : ne.cVadExPagesBase,
-                    vadex_page_count : ne.cVadExPages,
-                };
-                result.push(e);
-            }
-            (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-            return Ok(result);
+        let mut structs = std::ptr::null_mut();
+        let r = (self.vmm.native.VMMDLL_Map_GetVadU)(self.vmm.native.h, self.pid, is_identify_modules, &mut structs);
+        if !r {
+            return Err(anyhow!("VMMDLL_Map_GetVadU: fail."));
         }
+        impl_map_get!(self.vmm.native, structs, VMMDLL_MAP_VAD_VERSION, |ne| {
+            VmmProcessMapVadEntry {
+                pid : self.pid,
+                va_start : ne.vaStart,
+                va_end : ne.vaEnd,
+                va_vad : ne.vaVad,
+                u0 : ne.u0,
+                u1 : ne.u1,
+                u2 : ne.u2,
+                commit_charge : ne.u1 & 0x7fffffff,
+                is_mem_commit : (ne.u1 & 0x80000000) != 0,
+                cb_prototype_pte : ne.cbPrototypePte,
+                va_prototype_pte : ne.vaPrototypePte,
+                va_subsection : ne.vaSubsection,
+                va_file_object : ne.vaFileObject,
+                info : cstr_to_string(ne.uszText),
+                vadex_page_base : ne.cVadExPagesBase,
+                vadex_page_count : ne.cVadExPages,
+            }
+        })
     }
 
     fn impl_map_vadex(&self, offset_pages : u32, count_pages : u32) -> ResultEx<Vec<VmmProcessMapVadExEntry>> {
-        unsafe {
-            let mut structs = std::ptr::null_mut();
-            let r = (self.vmm.native.VMMDLL_Map_GetVadEx)(self.vmm.native.h, self.pid, offset_pages, count_pages, &mut structs);
-            if !r {
-                return Err(anyhow!("VMMDLL_Map_GetVadEx: fail."));
-            }
-            if (*structs).dwVersion != VMMDLL_MAP_VADEX_VERSION {
-                (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-                return Err(anyhow!("VMMDLL_Map_GetVadEx: bad version [{} != {}].", (*structs).dwVersion, VMMDLL_MAP_VADEX_VERSION));
-            }
-            let mut result = Vec::new();
-            if (*structs).cMap == 0 {
-                (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-                return Ok(result);
-            }
-            let cMap : usize = (*structs).cMap.try_into()?;
-            let pMap = std::slice::from_raw_parts(&(*structs).pMap, cMap);
-            for i in 0..cMap {
-                let ne = &pMap[i];
-                let e = VmmProcessMapVadExEntry {
-                    pid : self.pid,
-                    tp : VmmProcessMapVadExType::from(ne.tp),
-                    i_pml : ne.iPML,
-                    va : ne.va,
-                    pa : ne.pa,
-                    pte : ne.pte,
-                    pte_flags : ne.pteFlags,
-                    proto_tp : VmmProcessMapVadExType::from(ne.proto_tp),
-                    proto_pa : ne.proto_pa,
-                    proto_pte : ne.proto_va,
-                    va_vad_base : ne.vaVadBase,
-                };
-                result.push(e);
-            }
-            (self.vmm.native.VMMDLL_MemFree)(structs as usize);
-            return Ok(result);
+        let mut structs = std::ptr::null_mut();
+        let r = (self.vmm.native.VMMDLL_Map_GetVadEx)(self.vmm.native.h, self.pid, offset_pages, count_pages, &mut structs);
+        if !r {
+            return Err(anyhow!("VMMDLL_Map_GetVadEx: fail."));
         }
+        impl_map_get!(self.vmm.native, structs, VMMDLL_MAP_VADEX_VERSION, |ne| {
+            VmmProcessMapVadExEntry {
+                pid : self.pid,
+                tp : VmmProcessMapVadExType::from(ne.tp),
+                i_pml : ne.iPML,
+                va : ne.va,
+                pa : ne.pa,
+                pte : ne.pte,
+                pte_flags : ne.pteFlags,
+                proto_tp : VmmProcessMapVadExType::from(ne.proto_tp),
+                proto_pa : ne.proto_pa,
+                proto_pte : ne.proto_va,
+                va_vad_base : ne.vaVadBase,
+            }
+        })
     }
 
     fn impl_map_module_data_directory(&self, module_name : &str) -> ResultEx<Vec<VmmProcessMapDirectoryEntry>> {
