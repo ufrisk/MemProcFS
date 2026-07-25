@@ -12,6 +12,7 @@
 
 #include "modules.h"
 #include "../ext/sqlite3.h"
+#include "../ext/sqlite_vfs_memprocfs.h"
 #include "../vmmwinobj.h"
 
 LPSTR szMWEB_README =
@@ -248,43 +249,14 @@ VOID FcWeb_Chromium_LoginData_CB(_In_ VMM_HANDLE H, _In_ PMWEB_CONTEXT ctx)
 */
 VOID FcWeb_LoadSqliteDispatch(_In_ VMM_HANDLE H, _In_ PMWEB_CONTEXT ctx, _In_ FCWEB_SQLITE_PFN_CB pfnCB)
 {
-    int rc;
-    DWORD cbDB;
+    DWORD cbDB = 0;
     PBYTE pbDB = NULL;
-    BYTE pbTest[0x10] = { 0 };
-    CHAR szFile[MAX_PATH], szURI[MAX_PATH];
-    FILE *phFile = NULL;
-    // 1: sanity checks
-    if((ctx->pFile->cb < 0x1000) || (ctx->pFile->cb > 0x04000000)) { goto fail; }
-    VmmWinObjFile_Read(H, ctx->pFile, 0, pbTest, sizeof(pbTest) - 1, 0, VMMWINOBJ_FILE_TP_DEFAULT);
-    if(pbTest != (PBYTE)strstr((LPCSTR)pbTest, "SQLite ")) { goto fail; }
-    // 2: read file handle into memory
-    cbDB = (DWORD)ctx->pFile->cb;
-    if(!(pbDB = LocalAlloc(0, cbDB))) { goto fail; }
-    cbDB = VmmWinObjFile_Read(H, ctx->pFile, 0, pbDB, cbDB, 0, VMMWINOBJ_FILE_TP_DEFAULT);
-    // 3: create and write to temp file
-    if(tmpnam_s(szFile, MAX_PATH)) { goto fail; }
-    strncat_s(szFile, _countof(szFile), ".vmmsqlite3.tmp", _TRUNCATE);
-    if(fopen_su(&phFile, szFile, "wb")) {
-        VmmLog(H, ctx->MID, LOGLEVEL_DEBUG, "fail open temp file: %s", szFile);
-        goto fail;
-    }
-    fwrite(pbDB, 1, cbDB, phFile);
-    fclose(phFile);
-    // 4: open sqlite and dispatch
-    sprintf_s(szURI, _countof(szURI), "file:///%s", szFile);
-    CharUtil_ReplaceAllA(szURI, '\\', '/');
-    rc = sqlite3_open_v2(szURI, &ctx->hDB, SQLITE_OPEN_URI | SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX | SQLITE_OPEN_EXCLUSIVE, NULL);
-    if(rc == SQLITE_OK) {
-        sqlite3_db_config(ctx->hDB, SQLITE_DBCONFIG_ENABLE_TRIGGER, 0, 0);
-        sqlite3_db_config(ctx->hDB, SQLITE_DBCONFIG_ENABLE_VIEW, 0, 0);
+    if(!VmmWinObjFile_ReadAlloc(H, ctx->pFile, 0x01000000, 0, VMMWINOBJ_FILE_TP_DEFAULT, &pbDB, &cbDB, NULL)) { return; }
+    if(SQLITE_OK == MemProcFS_SqliteVfsOpen(pbDB, cbDB, NULL, 0, &ctx->hDB)) {
         pfnCB(H, ctx);
-    } else {
-        VmmLog(H, ctx->MID, LOGLEVEL_DEBUG, "fail sqlite3 open: rc=%i db='%s'", rc, ctx->pFile->uszName);
     }
-fail:
-    sqlite3_close(ctx->hDB); ctx->hDB = NULL;
-    if(phFile) { remove(szFile); }
+    MemProcFS_SqliteVfsClose(ctx->hDB);
+    ctx->hDB = NULL;
     LocalFree(pbDB);
 }
 

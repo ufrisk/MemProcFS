@@ -1191,6 +1191,8 @@ POB_REGISTRY_HIVE VmmWinReg_HiveGetByAddress(_In_ VMM_HANDLE H, _In_ QWORD vaCMH
 #define REG_CM_KEY_SIGNATURE_KEYVALUE       0x6B76  // 'vk'-key
 #define REG_CM_HASH_LEAF_SIGNATURE          0x686C  // 'hl'-key
 #define REG_CM_KEY_SIGNATURE_BIGDATA        0x6264  // 'db'-key
+#define REG_CM_BIGDATA_SEGMENT_DATA_SIZE    16344
+#define REG_CM_BIGDATA_SEGMENT_CELL_SIZE    (REG_CM_BIGDATA_SEGMENT_DATA_SIZE + 8)
 
 #define REG_CM_KEY_VALUE_FLAGS_COMP_NAME    0x01
 #define REG_CM_KEY_NODE_FLAGS_COMP_NAME     0x20
@@ -1658,19 +1660,26 @@ POB_REGISTRY_VALUE VmmWinReg_ValueByKeyAndName(_In_ VMM_HANDLE H, _In_ POB_REGIS
 VOID VmmWinReg_ValueQueryInternal_BigDataCell(_In_ POB_REGISTRY_HIVE pHive, _In_ DWORD oDataCell, _In_ BOOL fDataCellLast, _Out_writes_opt_(cbData) PBYTE pbData, _In_ DWORD cbData, _In_ DWORD cbDataOffset)
 {
     BOOL f;
-    DWORD iDataCellSV, oDataCellRaw, cbDataCell;
+    PBYTE pbSnapshot;
+    DWORD iDataCellSV, oDataCellRaw, cbDataCell, cbDataCellPayload, cbDataCopy, cbSnapshot;
     if(!pbData) { return; }
+    ZeroMemory(pbData, cbData);
     iDataCellSV = REG_CELL_SV(oDataCell);
     oDataCellRaw = REG_CELL_ORAW(oDataCell);
-    cbDataCell = REG_CELL_SIZE_EX(pHive->Snapshot._DUAL[iDataCellSV].pb, oDataCellRaw);
-    f = (oDataCellRaw + cbDataCell <= pHive->Snapshot._DUAL[iDataCellSV].cb) &&
-        (fDataCellLast || (cbDataCell == 16344 + 8)) &&
-        (cbDataCell <= 16344 + 8) &&
-        (cbDataCell > 8);
-    if(f) {
-        memcpy(pbData, pHive->Snapshot._DUAL[iDataCellSV].pb + oDataCellRaw + 4 + cbDataOffset, min(cbData, cbDataCell));
-    } else {
-        ZeroMemory(pbData, cbData);
+    pbSnapshot = pHive->Snapshot._DUAL[iDataCellSV].pb;
+    cbSnapshot = pHive->Snapshot._DUAL[iDataCellSV].cb;
+    if(!pbSnapshot || (oDataCellRaw > cbSnapshot) || (cbSnapshot - oDataCellRaw < sizeof(DWORD))) { return; }
+    cbDataCell = REG_CELL_SIZE_EX(pbSnapshot, oDataCellRaw);
+    f = (cbDataCell <= cbSnapshot - oDataCellRaw) &&
+        (cbDataCell <= REG_CM_BIGDATA_SEGMENT_CELL_SIZE) &&
+        (cbDataCell > 8) &&
+        !(!fDataCellLast && (cbDataCell != REG_CM_BIGDATA_SEGMENT_CELL_SIZE));
+    if(!f) { return; }
+    cbDataCellPayload = cbDataCell - 4;
+    if(cbDataOffset > cbDataCellPayload) { return; }
+    cbDataCopy = min(cbData, cbDataCellPayload - cbDataOffset);
+    if(cbDataCopy) {
+        memcpy(pbData, pbSnapshot + oDataCellRaw + sizeof(DWORD) + cbDataOffset, cbDataCopy);
     }
 }
 
@@ -1689,38 +1698,41 @@ VOID VmmWinReg_ValueQueryInternal_BigDataCell(_In_ POB_REGISTRY_HIVE pHive, _In_
 _Success_(return)
 BOOL VmmWinReg_ValueQueryInternal_BigDataList(_In_ POB_REGISTRY_HIVE pHive, _In_ WORD cNumSegments, _In_ DWORD oListCell, _Out_writes_opt_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_opt_ PDWORD pcbDataRead, _In_ DWORD cbDataOffset)
 {
-    DWORD i, cbMaxSizeTotalSegments, iListCellSV, oListCellRaw, cbListCell, cbReadDataCell;
-    cbMaxSizeTotalSegments = cNumSegments * 16344;
+    PBYTE pbSnapshot;
+    DWORD i, cbMaxSizeTotalSegments, iListCellSV, oListCellRaw, cbListCell, cbListCellRequired, cbReadDataCell, cbSnapshot;
+    cbMaxSizeTotalSegments = cNumSegments * REG_CM_BIGDATA_SEGMENT_DATA_SIZE;
     // adjust read size (if required)
     if(cbDataOffset > cbMaxSizeTotalSegments) { return FALSE; }
-    if(cbData + cbDataOffset > cbMaxSizeTotalSegments) {
+    if(cbData > cbMaxSizeTotalSegments - cbDataOffset) {
         cbData = cbMaxSizeTotalSegments - cbDataOffset;
     }
     // verify list cell
     iListCellSV = REG_CELL_SV(oListCell);
     oListCellRaw = REG_CELL_ORAW(oListCell);
-    if(oListCellRaw + 4 + cNumSegments * 4 > pHive->Snapshot._DUAL[iListCellSV].cb) { return FALSE; }
-    cbListCell = REG_CELL_SIZE_EX(pHive->Snapshot._DUAL[iListCellSV].pb, oListCellRaw);
-    if(oListCellRaw + cbListCell > pHive->Snapshot._DUAL[iListCellSV].cb) { return FALSE; }
-    if(cbListCell < 4 + cNumSegments * 4UL) { return FALSE; }
+    pbSnapshot = pHive->Snapshot._DUAL[iListCellSV].pb;
+    cbSnapshot = pHive->Snapshot._DUAL[iListCellSV].cb;
+    cbListCellRequired = 4 + cNumSegments * 4;
+    if(!pbSnapshot || (oListCellRaw > cbSnapshot) || (cbListCellRequired > cbSnapshot - oListCellRaw)) { return FALSE; }
+    cbListCell = REG_CELL_SIZE_EX(pbSnapshot, oListCellRaw);
+    if((cbListCell < cbListCellRequired) || (cbListCell > cbSnapshot - oListCellRaw)) { return FALSE; }
     // read individual data cells
     if(pcbDataRead) { *pcbDataRead = cbData; }
     if(pbData) { ZeroMemory(pbData, cbData); }
     for(i = 0; cbData && (i < cNumSegments); i++) {
-        if(cbDataOffset > 16344) {
-            cbDataOffset -= 16344;
+        if(cbDataOffset >= REG_CM_BIGDATA_SEGMENT_DATA_SIZE) {
+            cbDataOffset -= REG_CM_BIGDATA_SEGMENT_DATA_SIZE;
             continue;
         }
-        cbReadDataCell = min(cbData, 16344 - cbDataOffset);
+        cbReadDataCell = min(cbData, REG_CM_BIGDATA_SEGMENT_DATA_SIZE - cbDataOffset);
         VmmWinReg_ValueQueryInternal_BigDataCell(
             pHive,
-            *(PDWORD)(pHive->Snapshot._DUAL[iListCellSV].pb + oListCellRaw + 4 + i * 4ULL),
+            *(PDWORD)(pbSnapshot + oListCellRaw + 4 + i * 4ULL),
             (i + 1 == cNumSegments),
             pbData,
             cbReadDataCell,
             cbDataOffset
         );
-        pbData += cbReadDataCell;
+        if(pbData) { pbData += cbReadDataCell; }
         cbData -= cbReadDataCell;
         cbDataOffset -= min(cbReadDataCell, cbDataOffset);
     }

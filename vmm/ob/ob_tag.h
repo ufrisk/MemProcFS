@@ -41,6 +41,7 @@
 #define OB_TAG_MAP_TASK                 'Mtsk'
 #define OB_TAG_MAP_VM                   'Mvm_'
 #define OB_TAG_MAP_WEB                  'Mweb'
+#define OB_TAG_MAP_AMCACHE              'MAmC'
 #define OB_TAG_MOD_CERTIFICATES         'mCer'
 #define OB_TAG_MOD_FCNTFS_CTX           'mFnt'
 #define OB_TAG_MOD_FCTIMELINE           'mFtl'

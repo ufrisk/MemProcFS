@@ -464,6 +464,7 @@ _Success_(return)
 BOOL _ObSet_PushSet(_In_ POB_SET pvs, _In_opt_ POB_SET pvsSrc)
 {
     DWORD iValue;
+    if(pvs == pvsSrc) { return FALSE; }
     if(pvsSrc) {
         AcquireSRWLockShared(&pvsSrc->LockSRW);
         for(iValue = pvsSrc->c - 1; iValue; iValue--) {

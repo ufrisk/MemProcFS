@@ -28,7 +28,7 @@
 * Allocate a new object manager memory object.
 * -- H = an optional handle to embed as OB.H in the header.
 * -- tag = tag of the object to be allocated.
-* -- uFlags = flags as given by LocalAlloc.
+* -- uFlags = flags as given by LocalAlloc, 0 (LMEM_FIXED) or LMEM_ZEROINIT.
 * -- uBytes = bytes of object (_including_ object headers).
 * -- pfnRef_0 = optional callback for cleanup o be called before object is destroyed.
 *               (if object has references that should be decremented before destruction).
@@ -39,7 +39,7 @@ PVOID Ob_AllocEx(_In_opt_ VMM_HANDLE H, _In_ DWORD tag, _In_ UINT uFlags, _In_ S
 {
     POB pOb;
     if((uBytes > 0x40000000) || (uBytes < sizeof(OB))) { return NULL; }
-    pOb = (POB)LocalAlloc(uFlags, uBytes + OB_DEBUG_FOOTER_SIZE);
+    pOb = (POB)LocalAlloc(uFlags & LMEM_ZEROINIT, uBytes + OB_DEBUG_FOOTER_SIZE);
     if(!pOb) { return NULL; }
     pOb->_magic1 = OB_HEADER_MAGIC;
     pOb->_magic2 = OB_HEADER_MAGIC;
@@ -101,16 +101,16 @@ PVOID Ob_XDECREF(_In_opt_ PVOID pObIn)
             }
 #endif /* OB_DEBUG */
             if(c == 0) {
-                if(pOb->_pfnRef_0) { pOb->_pfnRef_0(pOb); }
                 pOb->_magic1 = 0;
                 pOb->_magic2 = 0;
+                if(pOb->_pfnRef_0) { pOb->_pfnRef_0(pOb); }
 #ifdef OB_DEBUG_MEMZERO
                 ZeroMemory(pOb, sizeof(OB) + pOb->cbData);
 #endif /* OB_DEBUG_MEMZERO */
                 LocalFree(pOb);
             } else if((c == 1) && pOb->_pfnRef_1) {
                 pOb->_pfnRef_1(pOb);
-                return pOb;
+                return ((pOb->_magic2 == OB_HEADER_MAGIC) && (pOb->_magic1 == OB_HEADER_MAGIC)) ? pOb : NULL;
             } else {
                 return pOb;
             }

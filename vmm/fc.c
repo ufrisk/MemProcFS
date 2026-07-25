@@ -16,11 +16,10 @@
 #include "fc.h"
 #include "vmmdll.h"
 #include "pdb.h"
-#include "vmmwin.h"
 #include "vmmwinobj.h"
-#include "vmmwinreg.h"
 #include "pluginmanager.h"
 #include "ext/sqlite3.h"
+#include "ext/sqlite_vfs_memprocfs.h"
 #include "statistics.h"
 #include "charutil.h"
 #include "infodb.h"
@@ -444,7 +443,7 @@ VOID FcEvilInitialize_ThreadProc(_In_ VMM_HANDLE H, _In_ QWORD qwNotUsed)
 
 /*
 * FindEvil compare / sort function.
-* Sorts on Severity, PID, Address.
+* Sorts on Severity (1), PID (2), Address (3), Description(4).
 */
 int FcEvilFinalize_CmpSort(_In_ POB_MAP_ENTRY e1, _In_ POB_MAP_ENTRY e2)
 {
@@ -459,8 +458,8 @@ int FcEvilFinalize_CmpSort(_In_ POB_MAP_ENTRY e1, _In_ POB_MAP_ENTRY e2)
     // 3: Address
     if(pe1->va < pe2->va) { return -1; }
     if(pe1->va > pe2->va) { return 1; }
-    // 4: Hash of Description
-    return CharUtil_Hash32U(pe1->usz, FALSE) - CharUtil_Hash32U(pe2->usz, FALSE);
+    // 4: strcmp description
+    return strcmp(pe1->usz, pe2->usz);
 }
 
 /*
@@ -1502,12 +1501,12 @@ VOID FcInitialize_ThreadProc(_In_ VMM_HANDLE H, _In_ QWORD qwNotUsed)
     FCINITIALIZE_PROGRESS_UPDATE(10);
     // parallel async init of: scan virtual per-process/kernel address space & init of log for CSV/JSON.
     VmmWork_Value(H, FcScanObjectAndVirtmem_ThreadProc, 0, hEventAsyncIngestObjectAndVirtmem, VMMWORK_FLAG_PRIO_NORMAL);
-    VmmWork_Void(H, (PVMM_WORK_START_ROUTINE_PVOID_PFN)PluginManager_FcLogCSV, hCSV, hEventAsyncLogCSV, VMMWORK_FLAG_PRIO_LOW);
-    VmmWork_Void(H, (PVMM_WORK_START_ROUTINE_PVOID_PFN)PluginManager_FcLogJSON, FcJson_Callback_EntryAdd, hEventAsyncLogJSON, VMMWORK_FLAG_PRIO_LOW);
     FcScanPhysmem(H);
     WaitForSingleObject(hEventAsyncIngestObjectAndVirtmem, INFINITE);
     // 60%
     FCINITIALIZE_PROGRESS_UPDATE(60);
+    VmmWork_Void(H, (PVMM_WORK_START_ROUTINE_PVOID_PFN)PluginManager_FcLogCSV, hCSV, hEventAsyncLogCSV, VMMWORK_FLAG_PRIO_LOW);
+    VmmWork_Void(H, (PVMM_WORK_START_ROUTINE_PVOID_PFN)PluginManager_FcLogJSON, FcJson_Callback_EntryAdd, hEventAsyncLogJSON, VMMWORK_FLAG_PRIO_LOW);
     PluginManager_FcIngestFinalize(H);
     // 70%
     FCINITIALIZE_PROGRESS_UPDATE(70);
@@ -1720,6 +1719,7 @@ BOOL FcInitialize_Impl(_In_ VMM_HANDLE H, _In_ DWORD dwDatabaseType, _In_ BOOL f
         if(!(H->fc->db.hEventIngestPhys[i] = CreateEvent(NULL, FALSE, TRUE, NULL))) { goto fail; }
         if(SQLITE_OK != sqlite3_open_v2(H->fc->db.szuDatabase, &H->fc->db.hSql[i], SQLITE_OPEN_URI | SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_SHAREDCACHE | SQLITE_OPEN_NOMUTEX, NULL)) { goto fail; }
     }
+    MemProcFS_SqliteVfsRegister();
     H->fc->fInitStart = TRUE;
     VmmWork_Value(H, FcInitialize_ThreadProc, 0, 0, VMMWORK_FLAG_PRIO_LOW);
     return TRUE;

@@ -324,8 +324,8 @@ VOID Util_VfsTimeStampFile(_In_ VMM_HANDLE H, _In_opt_ PVMM_PROCESS pProcess, _O
 _Success_(return)
 BOOL Util_VfsHelper_GetIdDir(_In_ LPCSTR uszPath, _In_ BOOL fHex, _Out_ PDWORD pdwID, _Out_opt_ LPCSTR *puszSubPath);
 
-#define UTIL_VFSLINEFIXED_LINECOUNT(H, c)                  (c + (H->cfg.fFileInfoHeader ? 2ULL : 0ULL))
-#define UTIL_VFSLINEVARIABLE_BYTECOUNT(H, c, pdwo, szHdr)  ((c ? (pdwo[c - 1]) : 0) + (H->cfg.fFileInfoHeader ? 2 * strlen(szHdr) + 2 : 0ULL))
+#define UTIL_VFSLINEFIXED_LINECOUNT(H, c)                  ((c) + (H->cfg.fFileInfoHeader ? 2ULL : 0ULL))
+#define UTIL_VFSLINEVARIABLE_BYTECOUNT(H, c, pdwo, szHdr)  (((c) ? (pdwo[(c) - 1]) : 0) + (H->cfg.fFileInfoHeader ? 2 * strlen(szHdr) + 2 : 0ULL))
 
 /*
 * FixedLineRead: Callback function to populate a fixed-length line in a

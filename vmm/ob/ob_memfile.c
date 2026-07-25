@@ -16,7 +16,7 @@
 
 #define OB_MEMFILE_ENTRIES_DIRECTORY    0x200
 #define OB_MEMFILE_ENTRIES_TABLE        0x200
-#define OB_MEMFILE_BUFSIZE              0x00010000
+#define OB_MEMFILE_BUFSIZE              0x00010000ULL
 #define OB_MEMFILE_MAXSIZE              (OB_MEMFILE_ENTRIES_DIRECTORY*OB_MEMFILE_ENTRIES_TABLE*OB_MEMFILE_BUFSIZE)      // 16GB
 
 #define OB_MEMFILE_INDEX_DIRECTORY(cb)  (((cb) >> 25) & 0x1ff)
@@ -147,6 +147,7 @@ BOOL _ObMemFile_Append(_In_ POB_MEMFILE pmf, _In_reads_(cbData) PBYTE pbData, _I
 {
     QWORD oBuffer, cbCopy;
     if(!cbData) { return TRUE; }
+    if((cbData > OB_MEMFILE_MAXSIZE) || (pmf->cb + cbData > OB_MEMFILE_MAXSIZE)) { return FALSE; }
     while(cbData) {
         // fill as many bytes as possible to buffer
         oBuffer = pmf->cb % OB_MEMFILE_BUFSIZE;

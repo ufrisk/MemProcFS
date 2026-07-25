@@ -21,9 +21,7 @@
 */
 VOID ObContainer_ObCloseCallback(_In_ POB_CONTAINER pObContainer)
 {
-    if(OB_CONTAINER_IS_VALID(pObContainer)) {
-        Ob_DECREF(pObContainer->pOb);
-    }
+    Ob_DECREF(pObContainer->pOb);
 }
 
 /*

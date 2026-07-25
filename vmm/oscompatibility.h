@@ -80,7 +80,7 @@ typedef uint8_t                             UCHAR, *PUCHAR;
 typedef char                                CHAR, *PCHAR, *PSTR, *LPSTR;
 typedef const char                          *LPCSTR;
 typedef int16_t                             SHORT, *PSHORT;
-typedef int32_t                             LONG;
+typedef int32_t                             LONG, *PLONG;
 typedef int64_t                             LONGLONG;
 typedef uint16_t                            WORD, *PWORD, USHORT, *PUSHORT;
 typedef uint16_t                            WCHAR, *PWCHAR, *LPWSTR;

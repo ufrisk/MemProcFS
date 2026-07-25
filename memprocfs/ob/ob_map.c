@@ -535,6 +535,7 @@ QWORD ObMap_PeekKey(_In_opt_ POB_MAP pm)
 
 /*
 * Filter map objects into a generic context by using a user-supplied filter function.
+* NB! The callback is invoked while the map lock is held and must not call back into the same ObMap.
 * -- pm
 * -- ctx = optional context to pass on to the filter function.
 * -- pfnFilterCB
@@ -549,6 +550,7 @@ BOOL ObMap_Filter(_In_opt_ POB_MAP pm, _In_opt_ PVOID ctx, _In_opt_ OB_MAP_FILTE
 
 /*
 * Filter map objects into a POB_SET by using a user-supplied filter function.
+* NB! The callback is invoked while the map lock is held and must not call back into the same ObMap.
 * CALLER DECREF: return
 * -- pm
 * -- ctx = optional context to pass on to the filter function.
@@ -763,8 +765,8 @@ int _ObMap_SortEntryIndexByKey_CmpSort(_In_ POB_MAP_ENTRY e1, _In_ POB_MAP_ENTRY
 
 /*
 * Sort the ObMap entry index by a sort compare function.
-* NB! The items sorted by the sort function are const OB_MAP_ENTRY* objects
-*     which points to the underlying map object key/value.
+* NB! The items sorted by the sort function are const OB_MAP_ENTRY* objects which points to the underlying map object key/value.
+* NB! The callback is invoked while the map lock is held and must not call back into the same ObMap.
 * -- pm
 * -- pfnSort = sort function callback. const void* == const OB_MAP_ENTRY*
 * -- return

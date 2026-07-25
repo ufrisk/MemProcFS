@@ -159,6 +159,26 @@ fail:
     return FALSE;
 }
 
+/*
+* Validate that an EAT array is fully contained in the local export directory.
+* -- oExpDir
+* -- cbExpDir
+* -- rvaArray
+* -- cEntry
+* -- cbEntry
+* -- poArray
+* -- return
+*/
+_Success_(return)
+static BOOL PE_ExportArrayValidate(_In_ DWORD oExpDir, _In_ DWORD cbExpDir, _In_ DWORD rvaArray, _In_ DWORD cEntry, _In_ DWORD cbEntry, _Out_ PDWORD poArray)
+{
+    *poArray = 0;
+    if(!cEntry) { return TRUE; }
+    if(!cbEntry || (rvaArray < oExpDir)) { return FALSE; }
+    *poArray = rvaArray - oExpDir;
+    return (*poArray <= cbExpDir) && (cEntry <= (cbExpDir - *poArray) / cbEntry);
+}
+
 _Success_(return)
 BOOL PE_GetThunkInfoEAT(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD vaModuleBase, _In_ LPCSTR szProcName, _Out_ PPE_THUNKINFO_EAT pThunkInfoEAT)
 {
@@ -168,11 +188,11 @@ BOOL PE_GetThunkInfoEAT(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWOR
     PDWORD pdwRVAAddrNames, pdwRVAAddrFunctions;
     PWORD pwNameOrdinals;
     DWORD i, cbProcName, cbExportDirectoryOffset, cbRead = 0;
+    DWORD oName, oNames, oNameOrdinals, oFunctions;
     LPSTR sz;
     QWORD vaExportDirectory;
     DWORD cbExportDirectory;
     PBYTE pbExportDirectory = NULL;
-    QWORD vaRVAAddrNames, vaNameOrdinals, vaRVAAddrFunctions;
     BOOL f32;
     if(!(ntHeader64 = (PIMAGE_NT_HEADERS64)PE_HeaderGetVerify(H, pProcess, vaModuleBase, pbModuleHeader, &f32))) { goto cleanup; }
     if(f32) { // 32-bit PE
@@ -188,28 +208,27 @@ BOOL PE_GetThunkInfoEAT(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWOR
     VmmReadEx(H, pProcess, vaExportDirectory, pbExportDirectory, cbExportDirectory, &cbRead, VMM_FLAG_ZEROPAD_ON_FAIL);
     if(!cbRead) { goto cleanup; }
     PIMAGE_EXPORT_DIRECTORY exp = (PIMAGE_EXPORT_DIRECTORY)pbExportDirectory;
-    if(!exp || !exp->NumberOfNames || (exp->NumberOfNames > 0x00100000) || !exp->AddressOfNames) { goto cleanup; }
-    vaRVAAddrNames = vaModuleBase + exp->AddressOfNames;
-    vaNameOrdinals = vaModuleBase + exp->AddressOfNameOrdinals;
-    vaRVAAddrFunctions = vaModuleBase + exp->AddressOfFunctions;
-    if((vaRVAAddrNames < vaExportDirectory) || (vaRVAAddrNames > vaExportDirectory + cbExportDirectory - exp->NumberOfNames * sizeof(DWORD))) { goto cleanup; }
-    if((vaNameOrdinals < vaExportDirectory) || (vaNameOrdinals > vaExportDirectory + cbExportDirectory - exp->NumberOfNames * sizeof(WORD))) { goto cleanup; }
-    if((vaRVAAddrFunctions < vaExportDirectory) || (vaRVAAddrFunctions > vaExportDirectory + cbExportDirectory - exp->NumberOfNames * sizeof(DWORD))) { goto cleanup; }
+    if(!exp->NumberOfFunctions || (exp->NumberOfFunctions > 0xffff) || !exp->NumberOfNames || (exp->NumberOfNames > exp->NumberOfFunctions)) { goto cleanup; }
     cbProcName = (DWORD)strnlen_s(szProcName, MAX_PATH) + 1;
     cbExportDirectoryOffset = (DWORD)(vaExportDirectory - vaModuleBase);
-    pdwRVAAddrNames = (PDWORD)(pbExportDirectory + exp->AddressOfNames - cbExportDirectoryOffset);
-    pwNameOrdinals = (PWORD)(pbExportDirectory + exp->AddressOfNameOrdinals - cbExportDirectoryOffset);
-    pdwRVAAddrFunctions = (PDWORD)(pbExportDirectory + exp->AddressOfFunctions - cbExportDirectoryOffset);
+    if(!PE_ExportArrayValidate(cbExportDirectoryOffset, cbExportDirectory, exp->AddressOfNames, exp->NumberOfNames, sizeof(DWORD), &oNames)) { goto cleanup; }
+    if(!PE_ExportArrayValidate(cbExportDirectoryOffset, cbExportDirectory, exp->AddressOfNameOrdinals, exp->NumberOfNames, sizeof(WORD), &oNameOrdinals)) { goto cleanup; }
+    if(!PE_ExportArrayValidate(cbExportDirectoryOffset, cbExportDirectory, exp->AddressOfFunctions, exp->NumberOfFunctions, sizeof(DWORD), &oFunctions)) { goto cleanup; }
+    pdwRVAAddrNames = (PDWORD)(pbExportDirectory + oNames);
+    pwNameOrdinals = (PWORD)(pbExportDirectory + oNameOrdinals);
+    pdwRVAAddrFunctions = (PDWORD)(pbExportDirectory + oFunctions);
     for(i = 0; i < exp->NumberOfNames; i++) {
-        if(pdwRVAAddrNames[i] - cbExportDirectoryOffset + cbProcName > cbExportDirectory) { continue; }
-        sz = (LPSTR)(pbExportDirectory + pdwRVAAddrNames[i] - cbExportDirectoryOffset);
+        if(pdwRVAAddrNames[i] < cbExportDirectoryOffset) { continue; }
+        oName = pdwRVAAddrNames[i] - cbExportDirectoryOffset;
+        if((oName >= cbExportDirectory) || (cbProcName > cbExportDirectory - oName)) { continue; }
+        sz = (LPSTR)(pbExportDirectory + oName);
         if(0 == memcmp(sz, szProcName, cbProcName)) {
             if(pwNameOrdinals[i] >= exp->NumberOfFunctions) { goto cleanup; }
             pThunkInfoEAT->fValid = TRUE;
             pThunkInfoEAT->vaFunction = (QWORD)(vaModuleBase + pdwRVAAddrFunctions[pwNameOrdinals[i]]);
             pThunkInfoEAT->valueThunk = pdwRVAAddrFunctions[pwNameOrdinals[i]];
-            pThunkInfoEAT->vaThunk = vaExportDirectory + exp->AddressOfFunctions - cbExportDirectoryOffset + sizeof(DWORD) * pwNameOrdinals[i];
-            pThunkInfoEAT->vaNameFunction = vaExportDirectory + pdwRVAAddrNames[i] - cbExportDirectoryOffset;
+            pThunkInfoEAT->vaThunk = vaExportDirectory + oFunctions + sizeof(DWORD) * pwNameOrdinals[i];
+            pThunkInfoEAT->vaNameFunction = vaExportDirectory + oName;
             LocalFree(pbExportDirectory);
             return TRUE;
         }

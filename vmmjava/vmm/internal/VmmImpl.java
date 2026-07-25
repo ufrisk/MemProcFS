@@ -246,7 +246,8 @@ public class VmmImpl implements IVmm
 		}
 
 		public void prepare(long va, int size) {
-		    if(jnative == null) {		    
+		    validateReadSize(size);
+		    if(jnative == null) {
     			if(this.hS == null) { throw new VmmException(); }
     			boolean f = VmmNative.INSTANCE.VMMDLL_Scatter_Prepare(hS, va, size);
     			if(!f) { throw new VmmException(); }
@@ -290,6 +291,7 @@ public class VmmImpl implements IVmm
 		}
 
 		public byte[] read(long va, int size) {
+		    validateReadSize(size);
 		    if(jnative == null) {
     			if(this.hS == null) { throw new VmmException(); }
     			IntByReference pcbRead = new IntByReference();
@@ -334,6 +336,7 @@ public class VmmImpl implements IVmm
 	
 	public byte[] _memRead(int pid, long va, int size, int flags)
 	{
+	    validateReadSize(size);
 	    if(jnative == null) {
 	        // JNA implementation:
 	        IntByReference pcbRead = new IntByReference();
@@ -345,6 +348,13 @@ public class VmmImpl implements IVmm
 	        // Native java.lang.foreign implementation:
 	        return jnative.memRead(pid, va, size, flags);
 	    }
+	}
+
+	private static void validateReadSize(int size)
+	{
+		if(size < 0) {
+			throw new IllegalArgumentException("Memory read size must not be negative.");
+		}
 	}
 	
 	public void _memWrite(int pid, long va, byte[] data)

@@ -10,7 +10,7 @@ LPCSTR szMHEAP_README =
 "Information about the heap process module                                    \n" \
 "=========================================                                    \n" \
 "The heap process module tries to parse user-mode heaps and display results.  \n" \
-"Some heap parsing is dependant on debug symbols. Parsing may be degraded if  \n" \
+"Some heap parsing is dependent on debug symbols. Parsing may be degraded if  \n" \
 "symbols are missing. The heap module is work in progress.                    \n" \
 "NT heap parsing is supported on Vista and above.                             \n" \
 "Segment heap parsing is supported on Windows 10 1709 and above.              \n" \

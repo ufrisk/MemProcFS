@@ -21,6 +21,8 @@
 #define VMM_STRLEN(s)   (sizeof(s)/sizeof(s[0])-1)
 #endif /* VMM_STRLEN */
 
+#define VMM_STR_NONULL(s)                       ((s) ? (s) : "")
+
 
 
 // ----------------------------------------------------------------------------
@@ -109,6 +111,8 @@
 #define VMM_UADDR_DUAL_4_8(f32, va)             (f32 ? VMM_UADDR32_4(va) : VMM_UADDR64_8(va))
 #define VMM_UADDR_DUAL_8_16(f32, va)            (f32 ? VMM_UADDR32_8(va) : VMM_UADDR64_16(va))
 #define VMM_UADDR_DUAL_PAGE(f32, va)            (f32 ? VMM_UADDR32_PAGE(va) : VMM_UADDR64_PAGE(va))
+
+#define VMM_DEC_NOZERO(v)                       ((v) ? ((v) - 1) : 0)
 
 #define VMM_ALIGN_PAGE(a)                       ((a) & ~0xfff)
 

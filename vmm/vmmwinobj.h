@@ -176,6 +176,22 @@ _Success_(return != 0)
 DWORD VmmWinObjFile_Read(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_FILE pFile, _In_ QWORD cbOffset, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb, _In_ QWORD fVmmRead, _In_ VMMWINOBJ_FILE_TP tp);
 
 /*
+ * Read a complete file into the newly allocated memory.
+ * -- CALLER LocalFree: *ppbFile
+ * -- H
+ * -- pFile
+ * -- cbFileMaxSize = max allowed file size in bytes, 0 = no limit.
+ * -- fVmmRead = flags as in VMM_FLAG_*
+ * -- tp = VMMWINOBJ_FILE_TP_*
+ * -- ppbFile = ptr to receive the allocated file contents.
+ * -- pcbFile = size of ppbFile.
+ * -- pcbRead = number of read bytes, may be less than the file size.
+ * -- return
+ */
+_Success_(return)
+BOOL VmmWinObjFile_ReadAlloc(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_FILE pFile, _In_ DWORD cbFileMaxSize, _In_ QWORD fVmmRead, _In_ VMMWINOBJ_FILE_TP tp, _Out_ PBYTE *ppbFile, _Out_opt_ PDWORD pcbFile, _Out_opt_ PDWORD pcbRead);
+
+/*
 * Scatter read file data.
 * Function is compatible with VmmScatter_ExecuteEx().
 * -- H

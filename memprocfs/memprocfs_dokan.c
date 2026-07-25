@@ -23,8 +23,7 @@
 #define VER_OSARCH                      "Windows"
 
 typedef struct tdVMMVFS_CONFIG {
-    FILETIME ftDefaultTime;
-    NTSTATUS(*DokanNtStatusFromWin32)(DWORD Error);
+    FILETIME ftDefaultTime;    
     BOOL fInitialized;
 } VMMVFS_CONFIG, *PVMMVFS_CONFIG;
 
@@ -40,6 +39,25 @@ CHAR g_VfsMountPoint = 'M';
 //-------------------------------------------------------------------------------
 
 NTSTATUS
+VfsDokanCallback_CreateFile_ExistingDisposition(_In_ ULONG CreateDisposition)
+{
+    // Dokan passes the native NtCreateFile FILE_* disposition values here,
+    // not the similarly numbered Win32 CreateFile CREATE_*/OPEN_* values.
+    switch(CreateDisposition) {
+        case FILE_OPEN:
+        case FILE_OVERWRITE:
+            return STATUS_SUCCESS;
+        case FILE_SUPERSEDE:
+        case FILE_CREATE:
+        case FILE_OPEN_IF:
+        case FILE_OVERWRITE_IF:
+            return STATUS_OBJECT_NAME_COLLISION;
+        default:
+            return STATUS_INVALID_PARAMETER;
+    }
+}
+
+NTSTATUS
 VfsDokanCallback_CreateFile_Impl(_In_ LPSTR uszFullPath, PDOKAN_IO_SECURITY_CONTEXT SecurityContext, ACCESS_MASK DesiredAccess, ULONG FileAttributes, ULONG ShareAccess, ULONG CreateDisposition, ULONG CreateOptions, PDOKAN_FILE_INFO DokanFileInfo)
 {
     VFS_ENTRY VfsEntry;
@@ -51,19 +69,25 @@ VfsDokanCallback_CreateFile_Impl(_In_ LPSTR uszFullPath, PDOKAN_IO_SECURITY_CONT
     if(!ctxVfs || !ctxVfs->fInitialized) { return STATUS_FILE_INVALID; }
     // root directory
     if(!strcmp(uszFullPath, "\\")) {
-        if(CreateDisposition == CREATE_ALWAYS) { return ctxVfs->DokanNtStatusFromWin32(ERROR_ACCESS_DENIED); }
         DokanFileInfo->IsDirectory = TRUE;
-        return STATUS_SUCCESS;
+        if(CreateOptions & FILE_NON_DIRECTORY_FILE) { return STATUS_FILE_IS_A_DIRECTORY; }
+        if((CreateDisposition == FILE_SUPERSEDE) || (CreateDisposition == FILE_OVERWRITE) || (CreateDisposition == FILE_OVERWRITE_IF)) { return STATUS_FILE_IS_A_DIRECTORY; }
+        return VfsDokanCallback_CreateFile_ExistingDisposition(CreateDisposition);
     }
     // other files
-    if(CreateDisposition == CREATE_ALWAYS) { return ctxVfs->DokanNtStatusFromWin32(ERROR_ACCESS_DENIED); }
     uszFile = CharUtil_PathSplitLastEx(uszFullPath, uszPath, sizeof(uszPath));
     if(!VfsList_GetSingle(uszPath[0] ? uszPath : "\\", uszFile, &VfsEntry, &fIsDirectoryExisting)) {
         return fIsDirectoryExisting ? STATUS_OBJECT_NAME_NOT_FOUND : STATUS_OBJECT_PATH_NOT_FOUND;
     }
     DokanFileInfo->Nocache = TRUE;
-    if(!DokanFileInfo->IsDirectory && (CreateOptions & FILE_DIRECTORY_FILE)) { return STATUS_NOT_A_DIRECTORY; }     // fail upon open normal file as directory
-    return (CreateDisposition == OPEN_ALWAYS) ? STATUS_OBJECT_NAME_COLLISION : STATUS_SUCCESS;
+    DokanFileInfo->IsDirectory = VfsEntry.fDirectory;
+    if(VfsEntry.fDirectory) {
+        if(CreateOptions & FILE_NON_DIRECTORY_FILE) { return STATUS_FILE_IS_A_DIRECTORY; }
+        if((CreateDisposition == FILE_SUPERSEDE) || (CreateDisposition == FILE_OVERWRITE) || (CreateDisposition == FILE_OVERWRITE_IF)) { return STATUS_FILE_IS_A_DIRECTORY; }
+    } else if(CreateOptions & FILE_DIRECTORY_FILE) {
+        return STATUS_NOT_A_DIRECTORY;
+    }
+    return VfsDokanCallback_CreateFile_ExistingDisposition(CreateDisposition);
 }
 
 NTSTATUS DOKAN_CALLBACK
@@ -170,6 +194,32 @@ VfsDokanCallback_WriteFile(LPCWSTR wcsFileName, LPCVOID Buffer, DWORD NumberOfBy
     nt = VMMDLL_VfsWriteW(g_hVMM, (LPWSTR)wcsFileName, (PBYTE)Buffer, NumberOfBytesToWrite, NumberOfBytesWritten, Offset);
     dbg_wprintf(L"DEBUG::%08x %8x VfsCallback_WriteFile:\t\t\t 0x%08x %s\t [ %016llx %08x %08x ]\n", (DWORD)(dbg_GetTickCount64() - tmStart), nt, wcsFileName, Offset, NumberOfBytesToWrite, *NumberOfBytesWritten);
     return nt;
+}
+
+NTSTATUS DOKAN_CALLBACK
+VfsDokanCallback_SetFileSize(LPCWSTR wcsFileName, LONGLONG ByteOffset, PDOKAN_FILE_INFO DokanFileInfo)
+{
+    if(!ctxVfs || !ctxVfs->fInitialized) { return STATUS_FILE_INVALID; }
+    if(ByteOffset < 0) { return STATUS_INVALID_PARAMETER; }
+    // MemProcFS files have a fixed virtual size. Acknowledge advisory allocation
+    // and end-of-file changes and let writes update the virtual file by path.
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS DOKAN_CALLBACK
+VfsDokanCallback_SetFileAttributes(LPCWSTR wcsFileName, DWORD FileAttributes, PDOKAN_FILE_INFO DokanFileInfo)
+{
+    if(!ctxVfs || !ctxVfs->fInitialized) { return STATUS_FILE_INVALID; }
+    // File attributes are synthesized by MemProcFS and cannot be persisted.
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS DOKAN_CALLBACK
+VfsDokanCallback_SetFileTime(LPCWSTR wcsFileName, CONST FILETIME *CreationTime, CONST FILETIME *LastAccessTime, CONST FILETIME *LastWriteTime, PDOKAN_FILE_INFO DokanFileInfo)
+{
+    if(!ctxVfs || !ctxVfs->fInitialized) { return STATUS_FILE_INVALID; }
+    // File timestamps are synthesized by MemProcFS and cannot be persisted.
+    return STATUS_SUCCESS;
 }
 
 //-------------------------------------------------------------------------------
@@ -303,7 +353,6 @@ VOID VfsDokan_InitializeAndMount(_In_ CHAR chMountPoint)
     // set vfs context
     GetSystemTime(&SystemTimeNow);
     SystemTimeToFileTime(&SystemTimeNow, &ctxVfs->ftDefaultTime);
-    ctxVfs->DokanNtStatusFromWin32 = (NTSTATUS(*)(DWORD))GetProcAddress(hModuleDokan, "DokanNtStatusFromWin32");
     ctxVfs->fInitialized = TRUE;
     // set options
     pDokanOptions->Version = DOKAN_VERSION;
@@ -319,6 +368,10 @@ VOID VfsDokan_InitializeAndMount(_In_ CHAR chMountPoint)
     pDokanOperations->FindFiles = VfsDokanCallback_FindFiles;
     pDokanOperations->ReadFile = VfsDokanCallback_ReadFile;
     pDokanOperations->WriteFile = VfsDokanCallback_WriteFile;
+    pDokanOperations->SetFileAttributes = VfsDokanCallback_SetFileAttributes;
+    pDokanOperations->SetFileTime = VfsDokanCallback_SetFileTime;
+    pDokanOperations->SetEndOfFile = VfsDokanCallback_SetFileSize;
+    pDokanOperations->SetAllocationSize = VfsDokanCallback_SetFileSize;
     // print system information to console
     VfsDokan_InitializeAndMount_DisplayInfo(wszMountPoint);
     // mount file system

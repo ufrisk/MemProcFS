@@ -2705,12 +2705,15 @@ BOOL VmmSearch_VirtPteVad(_In_ VMM_HANDLE H, _In_ PVMM_MEMORY_SEARCH_INTERNAL_CO
     PVMMOB_MAP_VAD pObVAD = NULL;
     PVMM_MAP_PTEENTRY pePTE;
     PVMM_MAP_VADENTRY peVAD;
+    VMM_VADMAP_TP tpVAD;
+    BOOL fPteExtendedText;
     ctxs->cResult = 0;
     ctxs->cbReadTotal = 0;
     ctxs->vaCurrent = ctxs->vaMin;
     if(ctxs->fForceVAD || (ctxi->pProcess->fUserOnly && !ctxs->fForcePTE)) {
         // VAD method:
-        if(!VmmMap_GetVad(H, ctxi->pProcess, &pObVAD, VMM_VADMAP_TP_CORE)) { goto fail; }
+        tpVAD = ctxs->pfnFilterOptCB ? VMM_VADMAP_TP_FULL : VMM_VADMAP_TP_CORE;
+        if(!VmmMap_GetVad(H, ctxi->pProcess, &pObVAD, tpVAD)) { goto fail; }
         for(ie = 0; ie < pObVAD->cMap; ie++) {
             peVAD = pObVAD->pMap + ie;
             if(peVAD->vaStart + peVAD->vaEnd < ctxs->vaMin) { continue; }   // skip entries below min address
@@ -2724,7 +2727,8 @@ BOOL VmmSearch_VirtPteVad(_In_ VMM_HANDLE H, _In_ PVMM_MEMORY_SEARCH_INTERNAL_CO
         }
     } else {
         // PTE method:
-        if(!VmmMap_GetPte(H, ctxi->pProcess, &pObPTE, FALSE)) { goto fail; }
+        fPteExtendedText = ctxs->pfnFilterOptCB ? TRUE : FALSE;
+        if(!VmmMap_GetPte(H, ctxi->pProcess, &pObPTE, fPteExtendedText)) { goto fail; }
         for(ie = 0; ie < pObPTE->cMap; ie++) {
             pePTE = pObPTE->pMap + ie;
             cbPTE = pePTE->cPages << 12;

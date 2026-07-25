@@ -27,6 +27,7 @@ OBJ = oscompatibility.o charutil.o util.o pe.o vmmdll.o vmmdll_core.o        \
 	  mm/mm_vad.o mm/mm_win.o                                                \
 	  pluginmanager.o pdb.o infodb.o                                         \
 	  ext/lz4.o ext/miniz.o ext/sha256.o ext/sqlite3.o                       \
+	  ext/sqlite_vfs_memprocfs.o                                             \
 	  ob/ob_bytequeue.o ob/ob_cachemap.o ob/ob_compressed.o                  \
 	  ob/ob_container.o ob/ob_core.o ob/ob_counter.o ob/ob_map.o             \
 	  ob/ob_memfile.o ob/ob_set.o ob/ob_strmap.o                             \
@@ -36,6 +37,7 @@ OBJ = oscompatibility.o charutil.o util.o pe.o vmmdll.o vmmdll_core.o        \
 	  vmmyarautil.o vmmyarawrap.o                                            \
 	  modules/m_vfsroot.o modules/m_vfsproc.o modules/m_vfsfc.o              \
 	  modules/m_conf.o modules/m_vm.o modules/m_winreg.o                     \
+	  modules/m_fc_amcache.o                                                 \
 	  modules/m_fc_csv.o modules/m_fc_file.o modules/m_fc_findevil.o         \
 	  modules/m_fc_handle.o modules/m_fc_json.o modules/m_fc_module.o        \
 	  modules/m_fc_ntfs.o modules/m_fc_prefetch.o modules/m_fc_proc.o        \
@@ -58,7 +60,7 @@ OBJ = oscompatibility.o charutil.o util.o pe.o vmmdll.o vmmdll_core.o        \
 	  modules/m_proc_heap.o modules/m_proc_ldrmodules.o                      \
 	  modules/m_proc_memmap.o modules/m_proc_minidump.o                      \
 	  modules/m_proc_thread.o modules/m_proc_token.o                         \
-	  modules/m_proc_virt2phys.o
+	  modules/m_proc_virt2phys.o modules/m_proc_winterm.o
 
 %.o: %.c $(DEPS)
 	$(CC) -c -o $@ $< $(CFLAGS)

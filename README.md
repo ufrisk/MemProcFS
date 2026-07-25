@@ -223,7 +223,6 @@ v5.8
 * Bug fixes.
 * updates (FindEvil, New signatures, etc.).
 * New APIs for Kernel Objects, Drivers and Devices.
-</details>
 
 [v5.13](https://github.com/ufrisk/MemProcFS/releases/tag/v5.13)
 * Bug fixes.
@@ -242,6 +241,7 @@ v5.8
 * Linux LeechAgent support using gRPC (LeechCore v2.21).
 * New FindEvil detection: High Entropy.
 * [DNS cache parsing](https://github.com/ufrisk/MemProcFS/wiki/FS_SysInfo_Network). Thanks [@MattCore71](https://github.com/MattCore71) for the contribution.
+</details>
 
 [v5.16](https://github.com/ufrisk/MemProcFS/releases/tag/v5.16)
 * Bug fixes.
@@ -254,6 +254,9 @@ v5.8
 * New optional logging callback in the API.
 * Support for non-ascii characters in file paths.
 
-Latest:
+[v5.18](https://github.com/ufrisk/MemProcFS/releases/tag/v5.18)
 * Bug fixes.
+* New module: Windows Terminal parser (Win11+).
+* New forensic module: amcache parser (Win10+).
 * PTE map upper limit adjusted from 65536 to 131072.
+* Fix: File writes in WSL mounted MemProcFS (drvfs) now works.

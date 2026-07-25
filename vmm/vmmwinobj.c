@@ -1254,16 +1254,54 @@ DWORD VmmWinObjFile_Read(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_FILE pFile, _In_ 
 }
 
 /*
-* Read a contigious amount of file data and report the number of bytes read.
-* -- H
-* -- vaFileObject
-* -- cbOffset
-* -- pb
-* -- cb
-* -- fVmmRead = flags as in VMM_FLAG_*
-* -- tp = VMMWINOBJ_FILE_TP_*
-* -- return = the number of bytes read.
-*/
+ * Read a complete file into the newly allocated memory.
+ * -- CALLER LocalFree: *ppbFile
+ * -- H
+ * -- pFile
+ * -- cbFileMaxSize = max allowed file size in bytes, 0 = no limit.
+ * -- fVmmRead = flags as in VMM_FLAG_*
+ * -- tp = VMMWINOBJ_FILE_TP_*
+ * -- ppbFile = ptr to receive the allocated file contents.
+ * -- pcbFile = size of ppbFile.
+ * -- pcbRead = number of read bytes, may be less than the file size.
+ * -- return
+ */
+_Success_(return)
+BOOL VmmWinObjFile_ReadAlloc(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_FILE pFile, _In_ DWORD cbFileMaxSize, _In_ QWORD fVmmRead, _In_ VMMWINOBJ_FILE_TP tp, _Out_ PBYTE *ppbFile, _Out_opt_ PDWORD pcbFile, _Out_opt_ PDWORD pcbRead)
+{
+    PBYTE pbFile = NULL;
+    DWORD cbRead = 0;
+    QWORD cbFile = 0;
+    *ppbFile = NULL;
+    if(pcbFile) { *pcbFile = 0; }
+    if(pcbRead) { *pcbRead = 0; }
+    // calculate and validate file size & buffer:
+    cbFile = VmmWinObjFile_Size(H, pFile, tp);
+    if(!cbFile || (cbFile > 0x80000000)) { return FALSE; }
+    if(cbFileMaxSize && (cbFile > cbFileMaxSize)) { return FALSE; }
+    if(!(pbFile = LocalAlloc(LMEM_ZEROINIT, cbFile))) { return FALSE; }
+    // read file:
+    if(!(cbRead = VmmWinObjFile_Read(H, pFile, 0, pbFile, (DWORD)cbFile, fVmmRead, tp))) {
+        LocalFree(pbFile);
+        return FALSE;
+    }
+    if(pcbFile) { *pcbFile = (DWORD)cbFile; }
+    if(pcbRead) { *pcbRead = cbRead; }
+    *ppbFile = pbFile;
+    return TRUE;
+}
+
+/*
+ * Read a contigious amount of file data and report the number of bytes read.
+ * -- H
+ * -- vaFileObject
+ * -- cbOffset
+ * -- pb
+ * -- cb
+ * -- fVmmRead = flags as in VMM_FLAG_*
+ * -- tp = VMMWINOBJ_FILE_TP_*
+ * -- return = the number of bytes read.
+ */
 _Success_(return != 0)
 DWORD VmmWinObjFile_ReadFromObjectAddress(_In_ VMM_HANDLE H, _In_ QWORD vaFileObject, _In_ QWORD cbOffset, _Out_writes_(cb) PBYTE pb, _In_ DWORD cb, _In_ QWORD fVmmRead, _In_ VMMWINOBJ_FILE_TP tp)
 {

@@ -70,7 +70,7 @@ BOOL _ObByteQueue_Peek(_In_ POB_BYTEQUEUE pq, _Out_opt_ QWORD *pqwTag, _In_ SIZE
         return FALSE;
     }
     *pcbRead = p->cb;
-    if(p->cb < cb) {
+    if(p->cb > cb) {
         return FALSE;
     }
     if(pqwTag) {
@@ -111,7 +111,7 @@ BOOL _ObByteQueue_Push(_In_ POB_BYTEQUEUE pq, _In_opt_ QWORD qwTag, _In_ SIZE_T 
 {
     PBYTEQUEUE_PACKET p;
     SIZE_T cboEoQ, cbEoQ, cbPkt = sizeof(BYTEQUEUE_PACKET) + cb;
-    if(pq->cb < cbPkt) {
+    if((pq->cb < cbPkt) || (cb >= 0x80000000)) {
         return FALSE;
     }
     if(!pq->cPackets) {
@@ -216,7 +216,8 @@ POB_BYTEQUEUE ObByteQueue_New(_In_opt_ VMM_HANDLE H, _In_ DWORD cbQueueSize)
 {
     POB_BYTEQUEUE pObQ;
     if(cbQueueSize < 0x1000) { return NULL; }
-    pObQ = Ob_AllocEx(H, OB_TAG_CORE_BYTEQUEUE, LMEM_ZEROINIT, sizeof(POB_BYTEQUEUE) + cbQueueSize, NULL, NULL);
+    if((sizeof(void*) == 4) && (cbQueueSize >= 0x40000000)) { return NULL; }
+    pObQ = Ob_AllocEx(H, OB_TAG_CORE_BYTEQUEUE, LMEM_ZEROINIT, sizeof(OB_BYTEQUEUE) + cbQueueSize, NULL, NULL);
     if(!pObQ) { return NULL; }
     InitializeSRWLock(&pObQ->LockSRW);
     pObQ->cb = cbQueueSize;

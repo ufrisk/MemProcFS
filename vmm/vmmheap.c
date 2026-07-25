@@ -520,6 +520,9 @@ VOID VmmHeapAlloc_SegLFH(_In_ VMM_HANDLE H, _In_ PVMMHEAPNT_CTX ctx, _In_ QWORD 
     DWORD iBlock, cBlock, oBlock;
     DWORD cbBlockSize, oFirstBlock, dwvaShift;
     PVMMHEAPALLOC_SEG_LFHENCODED_OFFSETS pEncoded;
+    if(ctx->po->seg.HEAP_LFH_SUBSEGMENT.BlockOffsets > cb) { return; }
+    if(sizeof(VMMHEAPALLOC_SEG_LFHENCODED_OFFSETS) > cb - ctx->po->seg.HEAP_LFH_SUBSEGMENT.BlockOffsets) { return; }
+    if(cb < ctx->po->seg.HEAP_LFH_SUBSEGMENT.BlockBitmap) { return; }
     VmmLog(H, MID_HEAP, LOGLEVEL_6_TRACE, "[SegLfhR  %llx +%x]", va, cb);
     pbBitmap = pb + ctx->po->seg.HEAP_LFH_SUBSEGMENT.BlockBitmap;
     pEncoded = (PVMMHEAPALLOC_SEG_LFHENCODED_OFFSETS)(pb + ctx->po->seg.HEAP_LFH_SUBSEGMENT.BlockOffsets);
@@ -527,11 +530,11 @@ VOID VmmHeapAlloc_SegLFH(_In_ VMM_HANDLE H, _In_ PVMMHEAPNT_CTX ctx, _In_ QWORD 
     pEncoded->EncodedData = (DWORD)(pEncoded->EncodedData ^ ctx->dwSegLfhKey ^ dwvaShift);
     oFirstBlock = pEncoded->FirstBlockOffset;
     cbBlockSize = pEncoded->BlockSize;
-    if((cbBlockSize >= 0xff8) || (oFirstBlock > cb)) { return; }
+    if(!cbBlockSize || (cbBlockSize >= 0xff8) || (oFirstBlock > cb)) { return; }
     cBlock = (cb - oFirstBlock) / cbBlockSize;
     for(iBlock = 0; iBlock < cBlock; iBlock++) {
         oBlock = oFirstBlock + iBlock * cbBlockSize;
-        if(oBlock + cbBlockSize > cb) { return; }
+        if((oBlock > cb) || (cbBlockSize > cb - oBlock)) { return; }
         if((oBlock & 0xfff) + cbBlockSize > 0x1000) { continue; }   // block do not cross page boundaries
         ucBits = pbBitmap[iBlock >> 2] >> ((iBlock & 0x3) << 1);
         if(((ucBits & 3) == 1)) {

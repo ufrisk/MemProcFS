@@ -331,6 +331,7 @@
     <ClInclude Include="ext\sha256.h" />
     <ClInclude Include="ext\sqlite3.h" />
     <ClInclude Include="ext\sqlite3ext.h" />
+    <ClInclude Include="ext\sqlite_vfs_memprocfs.h" />
     <ClInclude Include="fc.h" />
     <ClInclude Include="infodb.h" />
     <ClInclude Include="mm\mm.h" />
@@ -376,6 +377,7 @@
     <ClCompile Include="ext\miniz.c" />
     <ClCompile Include="ext\sha256.c" />
     <ClCompile Include="ext\sqlite3.c" />
+    <ClCompile Include="ext\sqlite_vfs_memprocfs.c" />
     <ClCompile Include="fc.c" />
     <ClCompile Include="infodb.c" />
     <ClCompile Include="mm\mm_arm64.c" />
@@ -395,6 +397,7 @@
     <ClCompile Include="modules\m_evil_proc2.c" />
     <ClCompile Include="modules\m_evil_proc3.c" />
     <ClCompile Include="modules\m_evil_thread1.c" />
+    <ClCompile Include="modules\m_fc_amcache.c" />
     <ClCompile Include="modules\m_fc_csv.c" />
     <ClCompile Include="modules\m_fc_file.c" />
     <ClCompile Include="modules\m_fc_findevil.c" />
@@ -426,6 +429,7 @@
     <ClCompile Include="modules\m_proc_thread.c" />
     <ClCompile Include="modules\m_proc_token.c" />
     <ClCompile Include="modules\m_proc_virt2phys.c" />
+    <ClCompile Include="modules\m_proc_winterm.c" />
     <ClCompile Include="modules\m_search.c" />
     <ClCompile Include="modules\m_searchyara.c" />
     <ClCompile Include="modules\m_sys.c" />

@@ -20,10 +20,15 @@ NTSTATUS M_FcTimeline_ReadInfo(_In_ VMM_HANDLE H, _In_ DWORD dwTimelineType, _Ou
     LPSTR szuBuffer = NULL;
     DWORD dwEntryType, dwEntryAction;
     CHAR szTime[24];
+    *pcbRead = 0;
     if(!FcTimeline_GetIdFromPosition(H, dwTimelineType, FC_FORMAT_TYPE_UTF8, cbOffset, &qwIdBase)) { goto fail; }
     if(!FcTimeline_GetIdFromPosition(H, dwTimelineType, FC_FORMAT_TYPE_UTF8, cbOffset + cb, &qwIdTop)) { goto fail; }
     cId = min(cb / FC_LINELENGTH_TIMELINE_UTF8, qwIdTop - qwIdBase) + 1;
-    if(!FcTimelineMap_GetFromIdRange(H, dwTimelineType, qwIdBase, cId, &pObMap) || !pObMap->cMap) { goto fail; }
+    if(!FcTimelineMap_GetFromIdRange(H, dwTimelineType, qwIdBase, cId, &pObMap)) { goto fail; }
+    if(!pObMap->cMap) {
+        nt = VMMDLL_STATUS_END_OF_FILE;
+        goto fail;
+    }
     cbOffsetBuffer = pObMap->pMap[0].cuszOffset;
     if((cbOffsetBuffer > cbOffset) || (cbOffset - cbOffsetBuffer > 0x10000)) { goto fail; }
     cszuBuffer = 0x01000000;

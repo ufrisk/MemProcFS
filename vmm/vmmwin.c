@@ -69,6 +69,26 @@ VOID VmmWinEAT_ObCloseCallback(_In_ PVMMOB_MAP_EAT pObEAT)
 }
 
 /*
+* Validate that an EAT array is fully contained in the local export directory.
+* -- oExpDir
+* -- cbExpDir
+* -- rvaArray
+* -- cEntry
+* -- cbEntry
+* -- poArray
+* -- return
+*/
+_Success_(return)
+static BOOL VmmWinEAT_ExportArrayValidate(_In_ DWORD oExpDir, _In_ DWORD cbExpDir, _In_ DWORD rvaArray, _In_ DWORD cEntry, _In_ DWORD cbEntry, _Out_ PDWORD poArray)
+{
+    *poArray = 0;
+    if(!cEntry) { return TRUE; }
+    if(!cbEntry || (rvaArray < oExpDir)) { return FALSE; }
+    *poArray = rvaArray - oExpDir;
+    return (*poArray <= cbExpDir) && (cEntry <= (cbExpDir - *poArray) / cbEntry);
+}
+
+/*
 * Helper function for EAT initialization.
 * CALLER DECREF: return
 * -- H
@@ -81,8 +101,9 @@ PVMMOB_MAP_EAT VmmWinEAT_Initialize_DoWork(_In_ VMM_HANDLE H,  _In_ PVMM_PROCESS
     BYTE pbModuleHeader[0x1000] = { 0 };
     PIMAGE_NT_HEADERS64 ntHeader64;
     PIMAGE_NT_HEADERS32 ntHeader32;
-    QWORD vaExpDir, vaExpDirTop, vaAddressOfNames, vaAddressOfNameOrdinals, vaAddressOfFunctions;
+    QWORD vaExpDir, vaExpDirTop, vaAddressOfNames, vaAddressOfFunctions;
     DWORD i, oExpDir, cbExpDir, cForwardedFunctions = 0;
+    DWORD oName, oNames, oNameOrdinals, oFunctions;
     PWORD pwNameOrdinals;
     PDWORD pdwRvaNames, pdwRvaFunctions;
     PBYTE pbExpDir = NULL;
@@ -101,9 +122,9 @@ PVMMOB_MAP_EAT VmmWinEAT_Initialize_DoWork(_In_ VMM_HANDLE H,  _In_ PVMM_PROCESS
     cbExpDir = fHdr32 ?
         ntHeader32->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].Size :
         ntHeader64->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].Size;
+    if(!oExpDir || (cbExpDir < sizeof(IMAGE_EXPORT_DIRECTORY)) || (cbExpDir > 0x01000000)) { goto fail; }
     vaExpDir = pModule->vaBase + oExpDir;
     vaExpDirTop = vaExpDir + cbExpDir - 1;
-    if(!oExpDir || !cbExpDir || cbExpDir > 0x01000000) { goto fail; }
     if(!(pbExpDir = LocalAlloc(0, cbExpDir + 1ULL))) { goto fail; }
     if(!VmmRead(H, pProcess, vaExpDir, pbExpDir, cbExpDir)) { goto fail; }
     pbExpDir[cbExpDir] = 0;
@@ -112,14 +133,13 @@ PVMMOB_MAP_EAT VmmWinEAT_Initialize_DoWork(_In_ VMM_HANDLE H,  _In_ PVMM_PROCESS
     if(!pExpDir->NumberOfFunctions || (pExpDir->NumberOfFunctions > 0xffff)) { goto fail; }
     if(pExpDir->NumberOfNames > pExpDir->NumberOfFunctions) { goto fail; }
     vaAddressOfNames = pModule->vaBase + pExpDir->AddressOfNames;
-    vaAddressOfNameOrdinals = pModule->vaBase + pExpDir->AddressOfNameOrdinals;
     vaAddressOfFunctions = pModule->vaBase + pExpDir->AddressOfFunctions;
-    if((vaAddressOfNames < vaExpDir) || (vaAddressOfNames >= vaExpDirTop - pExpDir->NumberOfNames * sizeof(DWORD))) { goto fail; }
-    if((vaAddressOfNameOrdinals < vaExpDir) || (vaAddressOfNameOrdinals >= vaExpDirTop - pExpDir->NumberOfNames * sizeof(WORD))) { goto fail; }
-    if((vaAddressOfFunctions < vaExpDir) || (vaAddressOfFunctions >= vaExpDirTop - pExpDir->NumberOfNames * sizeof(DWORD))) { goto fail; }
-    pdwRvaNames = (PDWORD)(pbExpDir + pExpDir->AddressOfNames - oExpDir);
-    pwNameOrdinals = (PWORD)(pbExpDir + pExpDir->AddressOfNameOrdinals - oExpDir);
-    pdwRvaFunctions = (PDWORD)(pbExpDir + pExpDir->AddressOfFunctions - oExpDir);
+    if(!VmmWinEAT_ExportArrayValidate(oExpDir, cbExpDir, pExpDir->AddressOfNames, pExpDir->NumberOfNames, sizeof(DWORD), &oNames)) { goto fail; }
+    if(!VmmWinEAT_ExportArrayValidate(oExpDir, cbExpDir, pExpDir->AddressOfNameOrdinals, pExpDir->NumberOfNames, sizeof(WORD), &oNameOrdinals)) { goto fail; }
+    if(!VmmWinEAT_ExportArrayValidate(oExpDir, cbExpDir, pExpDir->AddressOfFunctions, pExpDir->NumberOfFunctions, sizeof(DWORD), &oFunctions)) { goto fail; }
+    pdwRvaNames = (PDWORD)(pbExpDir + oNames);
+    pwNameOrdinals = (PWORD)(pbExpDir + oNameOrdinals);
+    pdwRvaFunctions = (PDWORD)(pbExpDir + oFunctions);
     // allocate EAT-MAP
     if(!(pObStrMap = ObStrMap_New(H, OB_STRMAP_FLAGS_CASE_SENSITIVE))) { goto fail; }
     if(!(pObEAT = Ob_AllocEx(H, OB_TAG_MAP_EAT, LMEM_ZEROINIT, sizeof(VMMOB_MAP_EAT) + pExpDir->NumberOfFunctions * (sizeof(VMM_MAP_EATENTRY) + sizeof(QWORD)), (OB_CLEANUP_CB)VmmWinEAT_ObCloseCallback, NULL))) { goto fail; }
@@ -134,13 +154,15 @@ PVMMOB_MAP_EAT VmmWinEAT_Initialize_DoWork(_In_ VMM_HANDLE H,  _In_ PVMM_PROCESS
     // walk exported function names
     for(i = 0; i < pExpDir->NumberOfNames && i < pObEAT->cMap; i++) {
         if(pwNameOrdinals[i] >= pExpDir->NumberOfFunctions) { continue; }                   // name ordinal >= number of functions -> "fail"
-        if(pdwRvaNames[i] < oExpDir || (pdwRvaNames[i] > vaExpDirTop)) { continue; }        // name outside export directory -> "fail"
+        if(pdwRvaNames[i] < oExpDir) { continue; }
+        oName = pdwRvaNames[i] - oExpDir;
+        if((oName >= cbExpDir) || !memchr(pbExpDir + oName, 0, cbExpDir - oName)) { continue; }
         pe = pObEAT->pMap + pwNameOrdinals[i];
         pe->vaFunction = pModule->vaBase + pdwRvaFunctions[pwNameOrdinals[i]];
         pe->dwOrdinal = pExpDir->Base + pwNameOrdinals[i];
         pe->oFunctionsArray = pwNameOrdinals[i];
         pe->oNamesArray = i;
-        ObStrMap_PushPtrAU(pObStrMap, (LPSTR)(pbExpDir - oExpDir + pdwRvaNames[i]), &pe->uszFunction, &pe->cbuFunction);
+        ObStrMap_PushPtrAU(pObStrMap, (LPSTR)(pbExpDir + oName), &pe->uszFunction, &pe->cbuFunction);
         if((pe->vaFunction > vaExpDir) && (pe->vaFunction < vaExpDirTop)) {
             // function pointer to export directory -> probably forwarded symbol
             if(PE_EatForwardedFunctionNameValidate((LPSTR)(pbExpDir + pe->vaFunction - vaExpDir), NULL, 0, NULL)) {
@@ -209,6 +231,22 @@ VOID VmmWinIAT_ObCloseCallback(_In_ PVMMOB_MAP_IAT pObIAT)
 }
 
 /*
+* Validate an IMAGE_IMPORT_BY_NAME thunk and ensure that both its WORD hint and
+* NULL-terminated function name are fully contained in the local module buffer.
+* -- pbModule
+* -- cbModule
+* -- qwThunk
+* -- return
+*/
+static BOOL VmmWinIAT_ImportByNameValidate(_In_reads_(cbModule) PBYTE pbModule, _In_ DWORD cbModule, _In_ QWORD qwThunk)
+{
+    DWORD oImportByName = (DWORD)qwThunk;
+    if(!qwThunk || (qwThunk >= cbModule)) { return FALSE; }
+    if(cbModule - oImportByName <= sizeof(WORD)) { return FALSE; }
+    return memchr(pbModule + oImportByName + sizeof(WORD), 0, cbModule - oImportByName - sizeof(WORD)) ? TRUE : FALSE;
+}
+
+/*
 * Helper function for IAT initialization.
 * CALLER DECREF: return
 * -- H
@@ -267,7 +305,7 @@ PVMMOB_MAP_IAT VmmWinIAT_Initialize_DoWork(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS 
                 if((QWORD)(pHNA32 + j) + sizeof(DWORD) - (QWORD)pbModule > cbModule) { break; }
                 if(!pIAT32[j]) { break; }
                 if(!pHNA32[j]) { break; }
-                fNameFn = (pHNA32[j] < cbModule);
+                fNameFn = VmmWinIAT_ImportByNameValidate(pbModule, cbModule, pHNA32[j]);
                 fNameMod = (pIID[i].Name < cbModule);
                 // store
                 pe = pObIAT->pMap + c;
@@ -294,7 +332,7 @@ PVMMOB_MAP_IAT VmmWinIAT_Initialize_DoWork(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS 
                 if((QWORD)(pHNA64 + j) + sizeof(QWORD) - (QWORD)pbModule > cbModule) { break; }
                 if(!pIAT64[j] || (!VMM_UADDR64(pIAT64[j]) && !VMM_KADDR64(pIAT64[j]))) { break; }
                 if(!pHNA64[j]) { break; }
-                fNameFn = (pHNA64[j] < cbModule);
+                fNameFn = VmmWinIAT_ImportByNameValidate(pbModule, cbModule, pHNA64[j]);
                 fNameMod = (pIID[i].Name < cbModule);
                 // store
                 pe = pObIAT->pMap + c;

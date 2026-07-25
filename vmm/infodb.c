@@ -518,8 +518,9 @@ BOOL InfoDB_TypeSize_Static(_In_ VMM_HANDLE H, _In_ LPCSTR szModule, _In_ LPCSTR
     *pdwTypeSize = 0;
     if(!(pObCtx = ObContainer_GetOb(H->vmm.pObCInfoDB))) { goto fail; }
     hSql = InfoDB_SqlReserve(H, pObCtx);
-    if(!H->vmm.f32 && (szModule[0] == 'w')) {
+    if(!H->vmm.f32 && (szModule[0] == 'w') && strcmp(szModule, "wt")) {
         // wow64 modules start with 'w' (wntdll == 32-bit ntdll on a 64-bit system) -> use the 32-bit offset instead.
+        // "wt" is the 64-bit Windows Terminal virtual module.
         szModule = szModule + 1;
         dwArch = 32;
     }
@@ -603,8 +604,9 @@ BOOL InfoDB_TypeChildOffset_Static(_In_ VMM_HANDLE H, _In_ LPCSTR szModule, _In_
     *pdwTypeOffset = 0;
     if(!(pObCtx = ObContainer_GetOb(H->vmm.pObCInfoDB))) { goto fail; }
     hSql = InfoDB_SqlReserve(H, pObCtx);
-    if(!H->vmm.f32 && (szModule[0] == 'w')) {
+    if(!H->vmm.f32 && (szModule[0] == 'w') && strcmp(szModule, "wt")) {
         // wow64 modules start with 'w' (wntdll == 32-bit ntdll on a 64-bit system) -> use the 32-bit offset instead.
+        // "wt" is the 64-bit Windows Terminal virtual module.
         szModule = szModule + 1;
         dwArch = 32;
     }
