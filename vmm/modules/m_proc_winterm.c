@@ -1576,7 +1576,7 @@ POB_MWTR_CONTEXT MWTR_Initialize(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_
             pTerminal->TextBuffer.vaTextBuffer,
             pTerminal->TextBuffer.cRows,
             pTerminal->TextBuffer.cColumns,
-            VMM_DEC_NOZERO(pTerminal->pObText->ObHdr.cbData)
+            VMM_DEC_IFNOZERO(pTerminal->pObText->ObHdr.cbData)
         );
     }
     if(!ctxUser->cTerminals) { goto fail; }
@@ -1586,7 +1586,7 @@ POB_MWTR_CONTEXT MWTR_Initialize(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_
     if(!ObMemFile_AppendString(ctxUser->pmfTerminals, MWTR_TERMINALS_HEADER)) { goto fail; }
     for(i = 0; i < ctxUser->cTerminals; i++) {
         pTerminal = ctxUser->Terminal + i;
-        cbText = VMM_DEC_NOZERO(pTerminal->pObText->ObHdr.cbData);
+        cbText = VMM_DEC_IFNOZERO(pTerminal->pObText->ObHdr.cbData);
         if(!ObMemFile_AppendStringEx(
             ctxUser->pmfTerminals,
             "%03i   %016llx %016llx %016llx %016llx %6i %6i %8i %7i %7i %i %8i\n",
@@ -1611,7 +1611,7 @@ POB_MWTR_CONTEXT MWTR_Initialize(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_
             if(!ObMemFile_AppendString(ctxUser->pmfTerminal, "\n\n")) { goto fail; }
         }
         if(pTerminal->pObCommandsHeuristic) {
-            cbCommands = VMM_DEC_NOZERO(pTerminal->pObCommandsHeuristic->ObHdr.cbData);
+            cbCommands = VMM_DEC_IFNOZERO(pTerminal->pObCommandsHeuristic->ObHdr.cbData);
             if(ObMemFile_Size(ctxUser->pmfCommandsHeuristic) && !ObMemFile_AppendString(ctxUser->pmfCommandsHeuristic, "\n")) { goto fail; }
             if(ctxUser->cTerminals > 1 && !ObMemFile_AppendStringEx(ctxUser->pmfCommandsHeuristic, "[terminal-%03i]\n", i)) { goto fail; }
             if(cbCommands && !ObMemFile_Append(ctxUser->pmfCommandsHeuristic, pTerminal->pObCommandsHeuristic->pb, cbCommands)) { goto fail; }
@@ -1672,7 +1672,7 @@ NTSTATUS MWTR_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_ PB
     for(i = 0; i < ctxOb->cTerminals; i++) {
         _snprintf_s(uszName, _countof(uszName), _TRUNCATE, "terminal-%03u.txt", i);
         if(CharUtil_StrEquals(ctxP->uszPath, uszName, TRUE)) {
-            nt = Util_VfsReadFile_FromPBYTE(ctxOb->Terminal[i].pObText->pb, VMM_DEC_NOZERO(ctxOb->Terminal[i].pObText->ObHdr.cbData), pb, cb, pcbRead, cbOffset);
+            nt = Util_VfsReadFile_FromPBYTE(ctxOb->Terminal[i].pObText->pb, VMM_DEC_IFNOZERO(ctxOb->Terminal[i].pObText->ObHdr.cbData), pb, cb, pcbRead, cbOffset);
             goto finish;
         }
     }
@@ -1692,7 +1692,7 @@ BOOL MWTR_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHAN
         VMMDLL_VfsList_AddFile(pFileList, "commands-heuristic.txt", ObMemFile_Size(ctxOb->pmfCommandsHeuristic), NULL);
         for(i = 0; i < ctxOb->cTerminals; i++) {
             _snprintf_s(uszName, _countof(uszName), _TRUNCATE, "terminal-%03i.txt", i);
-            cbText = VMM_DEC_NOZERO(ctxOb->Terminal[i].pObText->ObHdr.cbData);
+            cbText = VMM_DEC_IFNOZERO(ctxOb->Terminal[i].pObText->ObHdr.cbData);
             VMMDLL_VfsList_AddFile(pFileList, uszName, cbText, NULL);
         }
     }

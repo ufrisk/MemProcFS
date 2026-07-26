@@ -1158,6 +1158,20 @@ VOID MmVad_ExtendedInfoFetch(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess
     if((tp == VMM_VADMAP_TP_FULL) && (H->vmm.kernel.dwVersionBuild >= 10240)) {
         MmVad_ExtendedInfoFetch_FillSectionNames(H, pSystemProcess, pProcess, pVadMap, psmOb, fVmmRead);
     }
+    // _KUSER_SHARED_DATA
+    for(i = 0; i < pVadMap->cMap; i++) {
+        peVad = &pVadMap->pMap[i];
+        if(peVad->vaStart < 0x7ffe0000) { continue; }
+        if(peVad->vaStart > 0x7fff0000) { break; }
+        if((peVad->vaStart >= 0x7ffe0000) && (peVad->vaEnd <= 0x7ffeffff)) {
+            ObStrMap_PushPtrUU(
+                psmOb,
+                (peVad->vaStart == 0x7ffe0000) ? "[KUSER_SHARED_DATA]" : "[HV_REFERENCE_TSC_PAGE]",
+                &peVad->uszText,
+                &peVad->cbuText
+            );
+        }
+    }
     // cleanup
     pVadMap->tp = tp;
 cleanup:

@@ -186,7 +186,7 @@ VOID MBDE_Win10(_In_ VMM_HANDLE H, _In_ PMBDE_CONTEXT ctxBDE, _In_ PVMM_MAP_POOL
 {
     MBDE_KEY e = { 0 };
     MBDE_OFFSET o = { 0 };
-    DWORD i, dw, cbKey, dwMode;
+    DWORD i, dw, cbKey, dwMode, cbCandidate;
     BOOL fWin8 = (H->vmm.kernel.dwVersionBuild < 14393);
     if(pe->cb > 0x1000) { return; }
     if(H->vmm.f32) {
@@ -204,7 +204,10 @@ VOID MBDE_Win10(_In_ VMM_HANDLE H, _In_ PMBDE_CONTEXT ctxBDE, _In_ PVMM_MAP_POOL
     }
     e.va = pe->va;
     e.cbBlob = pe->cb;
-    for(i = 0; i < pe->cb - 0x80; i += 4) {
+    // Ensure all candidate reads fit, including the 32-byte comparison at o3.
+    cbCandidate = o.o3 + 0x20;
+    if(pe->cb < cbCandidate) { return; }
+    for(i = 0; i <= pe->cb - cbCandidate; i += 4) {
         if((*(PDWORD)(pb + i + 0x00) == 'UUUR') && (*(PDWORD)(pb + i + 0x20) == 'MSSK')) {
             if(!memcmp(e.pbKey1, pb + i + o.o1, 16)) { continue; }  // key already processed - continue!
             // length/signature:

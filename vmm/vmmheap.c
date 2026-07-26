@@ -24,7 +24,7 @@
 #include "pdb.h"
 #include "statistics.h"
 
-#define VMMHEAP_MAX_HEAPS       0x80
+#define VMMHEAP_MAX_HEAPS                   0x80
 
 
 
@@ -1140,6 +1140,99 @@ fail:
     LocalFree(avaBuffer);
 }
 
+typedef struct tdVMMHEAP_INIT_CONTEXT_FIND_26100 {
+    BOOL f32;
+    PDWORD pcHeaps;
+    PDWORD pvaHeaps32;
+    PQWORD pvaHeaps64;
+    PVMM_PROCESS pProcess;
+} VMMHEAP_INIT_CONTEXT_FIND_26100, *PVMMHEAP_INIT_CONTEXT_FIND_26100;
+
+VOID VmmHeap_InitializeInternal_LocateHeap26100_ListTraversePreCB(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVOID ctxIn, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb, _In_ QWORD vaFLink, _In_ QWORD vaBLink, _In_ POB_SET pVSetAddress, _Inout_ PBOOL pfValidEntry, _Inout_ PBOOL pfValidFLink, _Inout_ PBOOL pfValidBLink, _In_ WORD iInitialEntry)
+{
+    PVMMHEAP_INIT_CONTEXT_FIND_26100 ctx = (PVMMHEAP_INIT_CONTEXT_FIND_26100)ctxIn;
+    PRTLP_PROCESS_HEAP_DESCRIPTOR32 p32 = (PRTLP_PROCESS_HEAP_DESCRIPTOR32)pb;
+    PRTLP_PROCESS_HEAP_DESCRIPTOR64 p64 = (PRTLP_PROCESS_HEAP_DESCRIPTOR64)pb;
+    if(!VMM_UADDR_DUAL_8_16(ctx->f32, va)) { return; }
+    if(*(ctx->pcHeaps) >= VMMHEAP_MAX_HEAPS) { return; }
+    if(ctx->f32) {
+        if(!VMM_UADDR32_8(p32->DescriptorLink.Flink) || !VMM_UADDR32_8(p32->DescriptorLink.Blink)) { return; }
+        *pfValidFLink = TRUE;
+        *pfValidBLink = TRUE;
+        if(VMM_UADDR32_PAGE(p32->Heap) && (p32->Heap != ctx->pvaHeaps32[0])) {
+            ctx->pvaHeaps32[*(ctx->pcHeaps)] = p32->Heap;
+            *(ctx->pcHeaps) = *(ctx->pcHeaps) + 1;
+        }
+    } else {
+        if(!VMM_UADDR64_16(p64->DescriptorLink.Flink) || !VMM_UADDR64_16(p64->DescriptorLink.Blink)) { return; }
+        *pfValidFLink = TRUE;
+        *pfValidBLink = TRUE;
+        if(VMM_UADDR64_PAGE(p64->Heap) && (p64->Heap != ctx->pvaHeaps64[0])) {
+            ctx->pvaHeaps64[*(ctx->pcHeaps)] = p64->Heap;
+            *(ctx->pcHeaps) = *(ctx->pcHeaps) + 1;
+        }
+    }
+}
+
+/*
+* On Windows 11 26100 and going forward only the primary heap is located in the
+* PEB heap table. The other heaps can be recovered by walking a linked list of
+* 'RTLP_PROCESS_HEAP_DESCRIPTOR'. This list is pointed by the Heap UserContext
+* and may thus be recovered from the primary heap.
+* -- H
+* -- ctx
+*/
+VOID VmmHeap_InitializeInternal_LocateHeap26100(_In_ VMM_HANDLE H, _In_ PVMMHEAP_INIT_CONTEXT_FIND_26100 ctx)
+{
+    BOOL f32 = ctx->f32;
+    BYTE pb200[0x200];
+    DWORD dwHeapSignature;
+    QWORD vaHeap, vaUserPtr = 0;
+    // 1: validate.
+    vaHeap = f32 ? ctx->pvaHeaps32[0] : ctx->pvaHeaps64[0];
+    if(!VMM_UADDR_DUAL_PAGE(f32, vaHeap)) { return; }
+    if(*(ctx->pcHeaps) != 1) { return; }
+    // 2: verify and locate 1st _RTLP_PROCESS_HEAP_DESCRIPTOR.
+    if(!VmmRead(H, ctx->pProcess, vaHeap, pb200, sizeof(pb200))) { return; }
+    if(f32) {
+        dwHeapSignature = *(PDWORD)(pb200 + 0x8);
+        switch(dwHeapSignature) {
+            case 0xddeeddee:            // SEGMENT HEAP
+                vaUserPtr = *(PQWORD)(pb200 + 0x24);
+                break;
+            case 0xffeeffee:            // NT HEAP
+                vaUserPtr = *(PQWORD)(pb200 + 0xdc);
+                break;
+        }
+        if(!VMM_UADDR32_8(vaUserPtr)) { return; }
+    } else {
+        dwHeapSignature = *(PDWORD)(pb200 + 0x10);
+        switch(dwHeapSignature) {
+            case 0xddeeddee:            // SEGMENT HEAP
+                vaUserPtr = *(PQWORD)(pb200 + 0x38);
+                break;
+            case 0xffeeffee:            // NT HEAP
+                vaUserPtr = *(PQWORD)(pb200 + 0x188);
+                break;
+        }
+        if(!VMM_UADDR64_16(vaUserPtr)) { return; }
+    }
+    // 3: traverse linked list of _RTLP_PROCESS_HEAP_DESCRIPTOR.
+    VmmWin_ListTraversePrefetch(
+        H,
+        ctx->pProcess,
+        f32,
+        ctx,
+        1,
+        &vaUserPtr,
+        0,
+        f32 ? sizeof(RTLP_PROCESS_HEAP_DESCRIPTOR32) : sizeof(RTLP_PROCESS_HEAP_DESCRIPTOR64),
+        VmmHeap_InitializeInternal_LocateHeap26100_ListTraversePreCB,
+        NULL,
+        f32 ? NULL : ctx->pProcess->pObPersistent->pObCMapHeapPrefetch
+    );
+}
+
 /*
 * Initialize process heaps (NT and Segment) from either a 32-bit or 64-bit PEB.
 */
@@ -1156,6 +1249,7 @@ VOID VmmHeap_InitializeInternal(_In_ VMM_HANDLE H, _In_ PVMMHEAP_INIT_CONTEXT ct
     PPEB64 pPEB64 = (PPEB64)pbBuffer;
     VMM_MAP_HEAP_SEGMENTENTRY eR = { 0 };
     PQWORD avaBuffer = NULL, avaNtSegment, avaNtLargeAlloc;
+    VMMHEAP_INIT_CONTEXT_FIND_26100 ctxFind26100;
     if(f32) {
         // 1: read PEB
         f = (vaPEB = (DWORD)(ctx->pProcess->win.fWow64 ? ctx->pProcess->win.vaPEB32 : ctx->pProcess->win.vaPEB)) &&
@@ -1194,6 +1288,14 @@ VOID VmmHeap_InitializeInternal(_In_ VMM_HANDLE H, _In_ PVMMHEAP_INIT_CONTEXT ct
             VmmLog(H, MID_HEAP, LOGLEVEL_6_TRACE, "FAIL: HEAP BAD ARRAY: va=%llx #=%i #m=%i", pPEB64->ProcessHeaps, pPEB64->NumberOfHeaps, pPEB64->MaximumNumberOfHeaps);
             return;
         }
+    }
+    if(H->vmm.kernel.dwVersionBuild >= 26100) {
+        ctxFind26100.f32 = f32;
+        ctxFind26100.pcHeaps = &cMaxHeaps;
+        ctxFind26100.pvaHeaps32 = vaHeaps32;
+        ctxFind26100.pvaHeaps64 = vaHeaps64;
+        ctxFind26100.pProcess = ctx->pProcess;
+        VmmHeap_InitializeInternal_LocateHeap26100(H, &ctxFind26100);
     }
     // 3: initialize va buffers + verify & prefetch heaps
     if(!(avaBuffer = (PQWORD)LocalAlloc(LMEM_ZEROINIT, 3 * VMMHEAP_MAX_HEAPS * sizeof(QWORD)))) { return; }

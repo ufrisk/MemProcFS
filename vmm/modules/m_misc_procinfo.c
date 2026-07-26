@@ -12,43 +12,43 @@ typedef struct tdOB_MMISCINFO_CONTEXT {
     BOOL fCompleted;
     DWORD dwProgressPercent;
     VMMDLL_MODULE_ID MID;
-    POB_COMPRESSED pDTB;
+    POB_MEMFILE pmfDTB;
 } OB_MMISCINFO_CONTEXT, *POB_PMMISCINFO_CONTEXT;
 
 VOID MMiscProcInfo_Context_CallbackCleanup(POB_PMMISCINFO_CONTEXT pOb)
 {
-    Ob_DECREF(pOb->pDTB);
+    Ob_DECREF(pOb->pmfDTB);
 }
 
 VOID MMiscProcInfo_InitializeDTB(_In_ VMM_HANDLE H, _In_ POB_PMMISCINFO_CONTEXT ctx)
 {
-    SIZE_T oText = 0;
-    LPSTR uszText = NULL;
     DWORD iPfn, cEntries = 0;
     PMMPFN_MAP_ENTRY pPfn;
     PVMM_PROCESS pObProcess = NULL;
     PMMPFNOB_MAP pObPfnMap = NULL;
+    POB_MEMFILE pmfObDTB = NULL;
     if(!MmPfn_Map_GetPfnSystem(H, &pObPfnMap, TRUE, &ctx->dwProgressPercent)) { goto fail; }
-    if(!(uszText = LocalAlloc(LMEM_ZEROINIT, 0x00100000))) { goto fail; }
+    if(!(pmfObDTB = ObMemFile_New(H, H->vmm.pObCacheMapObCompressedShared))) { goto fail; }
     for(iPfn = 0; iPfn < pObPfnMap->cMap; iPfn++) {
         pPfn = pObPfnMap->pMap + iPfn;
         pObProcess = VmmProcessGet(H, pPfn->AddressInfo.dwPid);
-        oText += _snprintf_s(uszText + oText, MAX_PATH, _TRUNCATE, "%04x%7i %16llx %16llx %s\n",
+        if(!ObMemFile_AppendStringEx(pmfObDTB, "%04x%7i %16llx %16llx %s\n",
             cEntries++,
             pObProcess ? pObProcess->dwPID : 0,
             (QWORD)pPfn->dwPfn << 12,
             pObProcess ? pObProcess->win.EPROCESS.va : 0,
             pObProcess ? pObProcess->szName : "---"
-        );
+        )) { goto fail; }
         Ob_DECREF_NULL(&pObProcess);
     }
+    ctx->pmfDTB = pmfObDTB;
+    pmfObDTB = NULL;
     ctx->dwProgressPercent = 100;
     ctx->fCompleted = TRUE;
-    ctx->pDTB = ObCompress_NewFromStrA(H, H->vmm.pObCacheMapObCompressedShared, uszText);
 fail:
     Ob_DECREF(pObProcess);
     Ob_DECREF(pObPfnMap);
-    LocalFree(uszText);
+    Ob_DECREF(pmfObDTB);
 }
 
 /*
@@ -96,7 +96,7 @@ NTSTATUS MMiscProcInfo_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP,
             return Util_VfsReadFile_FromNumber(ctxOb->dwProgressPercent, pb, cb, pcbRead, cbOffset);
         }
         if(!_stricmp(ctxP->uszPath, "dtb.txt")) {
-            nt = Util_VfsReadFile_FromObCompressed(ctxOb->pDTB, pb, cb, pcbRead, cbOffset);
+            nt = ctxOb->pmfDTB ? ObMemFile_ReadFile(ctxOb->pmfDTB, pb, cb, pcbRead, cbOffset) : VMMDLL_STATUS_END_OF_FILE;
         }
     }
     Ob_DECREF(ctxOb);
@@ -110,7 +110,7 @@ BOOL MMiscProcInfo_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In
     if(ctxOb && !ctxP->uszPath[0]) {
         cbProgress = (ctxOb->dwProgressPercent == 100) ? 3 : ((ctxOb->dwProgressPercent >= 10) ? 2 : 1);
         VMMDLL_VfsList_AddFile(pFileList, "progress_percent.txt", cbProgress, NULL);
-        VMMDLL_VfsList_AddFile(pFileList, "dtb.txt", ObCompress_Size(ctxOb->pDTB), NULL);
+        VMMDLL_VfsList_AddFile(pFileList, "dtb.txt", ObMemFile_Size(ctxOb->pmfDTB), NULL);
     }
     Ob_DECREF(ctxOb);
     return TRUE;

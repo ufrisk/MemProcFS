@@ -759,6 +759,20 @@ typedef struct _PEB64 {
     // ...
 } PEB64, *PPEB64;
 
+typedef struct _RTLP_PROCESS_HEAP_DESCRIPTOR32 {
+    LIST_ENTRY32 DescriptorLink;
+    DWORD Heap;
+    DWORD Flags;
+    DWORD PseudoGlobalLock;
+} RTLP_PROCESS_HEAP_DESCRIPTOR32, *PRTLP_PROCESS_HEAP_DESCRIPTOR32;
+
+typedef struct _RTLP_PROCESS_HEAP_DESCRIPTOR64 {
+    LIST_ENTRY64 DescriptorLink;
+    QWORD Heap;
+    QWORD Flags;
+    QWORD PseudoGlobalLock;
+} RTLP_PROCESS_HEAP_DESCRIPTOR64, *PRTLP_PROCESS_HEAP_DESCRIPTOR64;
+
 typedef struct _RTL_BALANCED_NODE64 {
     union {
         QWORD Children[2];

@@ -112,7 +112,7 @@
 #define VMM_UADDR_DUAL_8_16(f32, va)            (f32 ? VMM_UADDR32_8(va) : VMM_UADDR64_16(va))
 #define VMM_UADDR_DUAL_PAGE(f32, va)            (f32 ? VMM_UADDR32_PAGE(va) : VMM_UADDR64_PAGE(va))
 
-#define VMM_DEC_NOZERO(v)                       ((v) ? ((v) - 1) : 0)
+#define VMM_DEC_IFNOZERO(v)                     ((v) ? ((v) - 1) : 0)
 
 #define VMM_ALIGN_PAGE(a)                       ((a) & ~0xfff)
 
@@ -1057,6 +1057,7 @@ typedef struct tdVMMOB_PROCESS_PERSISTENT {
     POB_CONTAINER pObCLdrModulesPrefetch64;
     POB_CONTAINER pObCLdrModulesInjected;
     POB_CONTAINER pObCMapThreadPrefetch;
+    POB_CONTAINER pObCMapHeapPrefetch;
     VMMWIN_USER_PROCESS_PARAMETERS UserProcessParams;
     // kernel path and long name (from EPROCESS.SeAuditProcessCreationInfo)
     WORD cuszNameLong;

@@ -956,6 +956,7 @@ VOID VmmProcessStatic_CloseObCallback(_In_ PVOID pVmmOb)
     Ob_DECREF_NULL(&pProcessStatic->pObCLdrModulesPrefetch64);
     Ob_DECREF_NULL(&pProcessStatic->pObCLdrModulesInjected);
     Ob_DECREF_NULL(&pProcessStatic->pObCMapThreadPrefetch);
+    Ob_DECREF_NULL(&pProcessStatic->pObCMapHeapPrefetch);
     LocalFree(pProcessStatic->uszPathKernel);
     LocalFree(pProcessStatic->UserProcessParams.uszCommandLine);
     LocalFree(pProcessStatic->UserProcessParams.uszImagePathName);
@@ -977,6 +978,7 @@ BOOL VmmProcessStatic_Initialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
     if(!(pProcess->pObPersistent->pObCLdrModulesPrefetch64 = ObContainer_New())) { goto fail; }
     if(!(pProcess->pObPersistent->pObCLdrModulesInjected = ObContainer_New())) { goto fail; }
     if(!(pProcess->pObPersistent->pObCMapThreadPrefetch = ObContainer_New())) { goto fail; }
+    if(!(pProcess->pObPersistent->pObCMapHeapPrefetch = ObContainer_New())) { goto fail; }
     return TRUE;
 fail:
     Ob_DECREF_NULL(&pProcess->pObPersistent);

@@ -1520,6 +1520,15 @@ VOID VmmWinPte_InitializeMapText_Drivers(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pP
     }
 }
 
+VOID VmmWinPte_InitializeMapText_Other(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ POB_STRMAP psm)
+{
+    VmmWinPte_InitializeMapText_MapTag(pProcess, psm, 0x7ffe0000, 0x7ffe0fff, "[KUSER_SHARED_DATA]", FALSE);
+    VmmWinPte_InitializeMapText_MapTag(pProcess, psm, 0x7ffe1000, 0x7ffeffff, "[HV_REFERENCE_TSC_PAGE]", FALSE);
+    if(!pProcess->fUserOnly) {
+        VmmWinPte_InitializeMapText_MapTag(pProcess, psm, 0xfffff78000000000, 0xfffff78000000fff, "[KUSER_SHARED_DATA]", FALSE);
+    }
+}
+
 VOID VmmWinPte_InitializeMapText_DoWork(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
 {
     DWORD i;
@@ -1529,6 +1538,7 @@ VOID VmmWinPte_InitializeMapText_DoWork(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pPr
     VmmWinPte_InitializeMapText_Drivers(H, pProcess, psmOb);
     VmmWinPte_InitializeMapText_Modules(H, pProcess, psmOb);
     VmmWinPte_InitializeMapText_ScanHeaderPE(H, pProcess, psmOb);
+    VmmWinPte_InitializeMapText_Other(H, pProcess, psmOb);
     ObStrMap_FinalizeAllocU_DECREF_NULL(&psmOb, &pMapPte->pbMultiText, &pMapPte->cbMultiText);
     // fixups not set values
     for(i = 0; i < pMapPte->cMap; i++) {

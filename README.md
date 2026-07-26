@@ -260,3 +260,7 @@ v5.8
 * New forensic module: amcache parser (Win10+).
 * PTE map upper limit adjusted from 65536 to 131072.
 * Fix: File writes in WSL mounted MemProcFS (drvfs) now works.
+
+Latest:
+* Bug fixes.
+* Fix: Heap recovery now works on Windows 11 24H2 and later.
