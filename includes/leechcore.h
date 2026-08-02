@@ -14,7 +14,7 @@
 // (c) Ulf Frisk, 2020-2026
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-// Header Version: 2.20.0
+// Header Version: 2.23
 //
 
 #ifndef __LEECHCORE_H__
@@ -284,6 +284,42 @@ BOOL LcRead(
     _In_ QWORD pa,
     _In_ DWORD cb,
     _Out_writes_(cb) PBYTE pb
+);
+
+/*
+* Per-page result returned by LcReadScatterEx(). Numeric values are ABI-stable.
+* NOT_ISSUED means the backend rejected the page locally and did not send a
+* request to the target.
+*/
+typedef DWORD LC_READ_PAGE_RESULT, *PLC_READ_PAGE_RESULT;
+#define LC_READ_PAGE_RESULT_NONE                    0
+#define LC_READ_PAGE_RESULT_SUCCESS                 1
+#define LC_READ_PAGE_RESULT_SUCCESS_AFTER_RETRY     2
+#define LC_READ_PAGE_RESULT_UNSUPPORTED_REQUEST     3
+#define LC_READ_PAGE_RESULT_COMPLETER_ABORT         4
+#define LC_READ_PAGE_RESULT_NO_COMPLETION           5
+#define LC_READ_PAGE_RESULT_PARTIAL_COMPLETION      6
+#define LC_READ_PAGE_RESULT_TRANSPORT_ERROR         7
+#define LC_READ_PAGE_RESULT_PROTOCOL_ERROR          8
+#define LC_READ_PAGE_RESULT_UNSPECIFIED_ERROR       9
+#define LC_READ_PAGE_RESULT_NOT_ISSUED              10
+
+/*
+* Read memory in a scattered non-contiguous way and return a typed result for
+* every page. The function-level result reports argument/setup/dispatch status;
+* individual page success remains in MEM_SCATTER.f and pResults.
+* -- hLC
+* -- cMEMs
+* -- ppMEMs
+* -- pResults
+* -- return
+*/
+EXPORTED_FUNCTION _Success_(return)
+BOOL LcReadScatterEx(
+    _In_ HANDLE hLC,
+    _In_ DWORD cMEMs,
+    _Inout_ PPMEM_SCATTER ppMEMs,
+    _Out_writes_(cMEMs) PLC_READ_PAGE_RESULT pResults
 );
 
 /*

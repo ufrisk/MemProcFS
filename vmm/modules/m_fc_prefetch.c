@@ -94,7 +94,7 @@ VOID MFcPrefetch_ParseSingle_V26_V30(_In_ VMM_HANDLE H, _In_ POB_MAP pmPf, _In_ 
     // 2: alloc
     oFileMetrics = *(PDWORD)(pbPf + 84 + 0);
     cFileMetrics = min(MFCPREFETCH_MAX_FILEMETRICS, *(PDWORD)(pbPf + 84 + 4));
-    if(oFileMetrics + cFileMetrics * 32 > cbPf) { return; }
+    if((oFileMetrics > cbPf) || (cFileMetrics > (cbPf - oFileMetrics) / 32)) { return; }
     if(!(pePf = LocalAlloc(LMEM_ZEROINIT, sizeof(VMM_MAP_PREFETCHENTRY) + cFileMetrics * sizeof(VMM_MAP_PREFETCH_FILEMETRICSENTRY)))) { return; }
     pePf->cFileMetrics = cFileMetrics;
     pePf->pFileMetrics = (PVMM_MAP_PREFETCH_FILEMETRICSENTRY)(pePf + 1);

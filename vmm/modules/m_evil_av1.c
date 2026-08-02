@@ -50,7 +50,7 @@ VOID MEvilAV1_DoWork_WinDefend_MPLog(_In_ VMM_HANDLE H, _In_ VMMDLL_MODULE_ID MI
             LocalFree(uszText);
             uszText = NULL;
         }
-        while((oFile < cbFile) && pbFile[oFile]) {
+        while((oFile < cbFile) && *(PWCHAR)(pbFile + oFile)) {
             oFile += 0x1000;
         }
     }

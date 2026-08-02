@@ -25,6 +25,8 @@
 #include "statistics.h"
 
 #define VMMHEAP_MAX_HEAPS                   0x80
+#define VMMHEAP_SEG_CONTEXT_COUNT           2
+#define VMMHEAP_SEG_CONTEXT_SEED_COUNT      (2 * VMMHEAP_SEG_CONTEXT_COUNT)
 
 
 
@@ -380,7 +382,16 @@ VOID VmmHeapAlloc_Refresh(_In_ VMM_HANDLE H)
 */
 PVMMOB_MAP_HEAPALLOC VmmHeapAlloc_Initialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaHeap)
 {
+    PVMMOB_MAP_HEAP pHeapMap = NULL;
+    PVMM_MAP_HEAPENTRY pHeapEntry = NULL;
     PVMMOB_MAP_HEAPALLOC pObHeapAlloc = NULL;
+    QWORD qwCacheKey;
+    // Resolve selectors to the actual heap VA. Validate cache hits against the
+    // process-owned heap map as the QWORD cache key is necessarily a hash.
+    if(VmmMap_GetHeap(H, pProcess, &pHeapMap)) {
+        pHeapEntry = VmmMap_GetHeapEntry(H, pHeapMap, vaHeap);
+    }
+    qwCacheKey = pProcess->dwPID ^ ((QWORD)pProcess->dwPID << 48) ^ (pHeapEntry ? pHeapEntry->va : vaHeap);
     // 1: ensure cache map exists (or init)
     if(!H->vmm.pObCacheMapHeapAlloc) {
         EnterCriticalSection(&H->vmm.LockPlugin);
@@ -390,19 +401,30 @@ PVMMOB_MAP_HEAPALLOC VmmHeapAlloc_Initialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCES
         LeaveCriticalSection(&H->vmm.LockPlugin);
     }
     // 2: try fetch from cache map
-    if(!(pObHeapAlloc = ObCacheMap_GetByKey(H->vmm.pObCacheMapHeapAlloc, vaHeap + pProcess->dwPID))) {
+    pObHeapAlloc = ObCacheMap_GetByKey(H->vmm.pObCacheMapHeapAlloc, qwCacheKey);
+    if(pObHeapAlloc && ((pObHeapAlloc->pHeapMap != pHeapMap) || (pObHeapAlloc->pHeapEntry != pHeapEntry))) {
+        Ob_DECREF_NULL(&pObHeapAlloc);
+    }
+    if(!pObHeapAlloc) {
         EnterCriticalSection(&pProcess->LockUpdate);
-        if(!(pObHeapAlloc = ObCacheMap_GetByKey(H->vmm.pObCacheMapHeapAlloc, vaHeap + pProcess->dwPID))) {
+        pObHeapAlloc = ObCacheMap_GetByKey(H->vmm.pObCacheMapHeapAlloc, qwCacheKey);
+        if(pObHeapAlloc && ((pObHeapAlloc->pHeapMap != pHeapMap) || (pObHeapAlloc->pHeapEntry != pHeapEntry))) {
+            Ob_DECREF_NULL(&pObHeapAlloc);
+        }
+        if(!pObHeapAlloc) {
             if((pObHeapAlloc = VmmHeapAlloc_Init_DoWork(H, pProcess, vaHeap))) {
-                ObCacheMap_Push(H->vmm.pObCacheMapHeapAlloc, vaHeap + pProcess->dwPID, pObHeapAlloc, 0);
+                ObCacheMap_Push(H->vmm.pObCacheMapHeapAlloc, qwCacheKey, pObHeapAlloc, 0);
             }
         }
         LeaveCriticalSection(&pProcess->LockUpdate);
     }
     // 3: on fail, create dummy map and push to cache
-    if(!pObHeapAlloc && (pObHeapAlloc = Ob_AllocEx(H, OB_TAG_MAP_HEAPALLOC, LMEM_ZEROINIT, sizeof(VMMOB_MAP_HEAPALLOC), NULL, NULL))) {
-        ObCacheMap_Push(H->vmm.pObCacheMapHeapAlloc, vaHeap + pProcess->dwPID, pObHeapAlloc, 0);
+    if(!pObHeapAlloc && (pObHeapAlloc = Ob_AllocEx(H, OB_TAG_MAP_HEAPALLOC, LMEM_ZEROINIT, sizeof(VMMOB_MAP_HEAPALLOC), VmmHeapAlloc_CloseObCallback, NULL))) {
+        pObHeapAlloc->pHeapMap = Ob_INCREF(pHeapMap);
+        pObHeapAlloc->pHeapEntry = pHeapEntry;
+        ObCacheMap_Push(H->vmm.pObCacheMapHeapAlloc, qwCacheKey, pObHeapAlloc, 0);
     }
+    Ob_DECREF(pHeapMap);
     return pObHeapAlloc;
 }
 
@@ -475,7 +497,7 @@ VOID VmmHeapAlloc_SegVS(_In_ VMM_HANDLE H, _In_ PVMMHEAPNT_CTX ctx, _In_ QWORD v
     // loop over pool entries
     while(oVsChunkHdr + 0x30 < cb) {
         vaChunkHeader = va + oVsChunkHdr;
-        if(H->vmm.f32) {
+        if(ctx->f32) {
             pChunkSize32 = (PVMMHEAPALLOC_SEG_HEAP_VS_CHUNK_HEADER_SIZE32)(pb + oVsChunkHdr);
             pChunkSize32->HeaderBits = (DWORD)(pChunkSize32->HeaderBits ^ vaChunkHeader ^ ctx->qwSegHeapGbl);
             fAlloc = (pChunkSize32->Allocated & 1) ? TRUE : FALSE;
@@ -515,9 +537,11 @@ VOID VmmHeapAlloc_SegVS(_In_ VMM_HANDLE H, _In_ PVMMHEAPNT_CTX ctx, _In_ QWORD v
 */
 VOID VmmHeapAlloc_SegLFH(_In_ VMM_HANDLE H, _In_ PVMMHEAPNT_CTX ctx, _In_ QWORD va, _In_ PBYTE pb, _In_ DWORD cb)
 {
+    BOOL fAlloc;
+    BOOL fBitmap1Bit = (H->vmm.kernel.dwVersionBuild >= 26100);
     UCHAR ucBits;
     PBYTE pbBitmap;
-    DWORD iBlock, cBlock, oBlock;
+    DWORD cbBitmap, iBlock, cBlock, oBlock;
     DWORD cbBlockSize, oFirstBlock, dwvaShift;
     PVMMHEAPALLOC_SEG_LFHENCODED_OFFSETS pEncoded;
     if(ctx->po->seg.HEAP_LFH_SUBSEGMENT.BlockOffsets > cb) { return; }
@@ -531,13 +555,26 @@ VOID VmmHeapAlloc_SegLFH(_In_ VMM_HANDLE H, _In_ PVMMHEAPNT_CTX ctx, _In_ QWORD 
     oFirstBlock = pEncoded->FirstBlockOffset;
     cbBlockSize = pEncoded->BlockSize;
     if(!cbBlockSize || (cbBlockSize >= 0xff8) || (oFirstBlock > cb)) { return; }
+    if(ctx->po->seg.HEAP_LFH_SUBSEGMENT.BlockBitmap > oFirstBlock) { return; }
+    cbBitmap = oFirstBlock - ctx->po->seg.HEAP_LFH_SUBSEGMENT.BlockBitmap;
     cBlock = (cb - oFirstBlock) / cbBlockSize;
+    if((QWORD)cBlock > ((QWORD)cbBitmap << (fBitmap1Bit ? 3 : 2))) {
+        cBlock = cbBitmap << (fBitmap1Bit ? 3 : 2);
+    }
     for(iBlock = 0; iBlock < cBlock; iBlock++) {
         oBlock = oFirstBlock + iBlock * cbBlockSize;
         if((oBlock > cb) || (cbBlockSize > cb - oBlock)) { return; }
         if((oBlock & 0xfff) + cbBlockSize > 0x1000) { continue; }   // block do not cross page boundaries
-        ucBits = pbBitmap[iBlock >> 2] >> ((iBlock & 0x3) << 1);
-        if(((ucBits & 3) == 1)) {
+        if(fBitmap1Bit) {
+            ucBits = pbBitmap[iBlock >> 3] >> (iBlock & 0x7);
+            fAlloc = (ucBits & 1);
+        } else {
+            ucBits = pbBitmap[iBlock >> 2] >> ((iBlock & 0x3) << 1);
+            // The low bit is the busy bit. The high bit may also be set for
+            // allocated blocks whose requested size does not fill the block.
+            fAlloc = (ucBits & 1);
+        }
+        if(fAlloc) {
             VmmHeapAlloc_PushItem(H, &ctx->pStore, VMM_HEAPALLOC_TP_SEG_LFH, va + oBlock, cbBlockSize);
         }
     }
@@ -549,7 +586,7 @@ VOID VmmHeapAlloc_SegLFH(_In_ VMM_HANDLE H, _In_ PVMMHEAPNT_CTX ctx, _In_ QWORD 
 DWORD VmmHeapAlloc_SegRangeDescriptor(_In_ VMM_HANDLE H, _In_ PVMMHEAPNT_CTX ctx, _In_ DWORD iCtx, _In_ QWORD vaPgSeg, _In_ PBYTE pbPgSeg, _In_ DWORD cbPgSeg, _In_ DWORD iRD)
 {
     UCHAR ucUnitSize, ucRangeFlags;
-    DWORD oRange, cbRange, oRD;
+    DWORD cbUnused, oRange, cbRange, oRD;
     oRD = ctx->po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.cb * iRD;
     ucUnitSize = *(PUCHAR)(pbPgSeg + oRD + ctx->po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.UnitSize);
     ucRangeFlags = *(PUCHAR)(pbPgSeg + oRD + ctx->po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.RangeFlags);
@@ -557,13 +594,24 @@ DWORD VmmHeapAlloc_SegRangeDescriptor(_In_ VMM_HANDLE H, _In_ PVMMHEAPNT_CTX ctx
     oRange = iRD * (1ULL << ctx->segctx[iCtx].ucUnitShift);
     cbRange = ucUnitSize * (1ULL << ctx->segctx[iCtx].ucUnitShift);
     if(ucUnitSize == 0) { return 1; }
-    if(cbRange > 0x00100000) { return ucUnitSize; }  // >1MB sanity check
-    if(oRange + cbRange > cbPgSeg) { return ucUnitSize; }
+    if((oRange > cbPgSeg) || (cbRange > cbPgSeg - oRange)) { return ucUnitSize; }
     if(ucRangeFlags == 3) {
-        // Large Pool - not yet supported!
+        // Direct backend allocation. UnusedBytes is the unused tail of the
+        // descriptor range; the allocation begins at the range base.
+        if(!ctx->po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.UnusedBytes ||
+            (ctx->po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.UnusedBytes > ctx->po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.cb) ||
+            (sizeof(DWORD) > ctx->po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.cb - ctx->po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.UnusedBytes)) {
+            return ucUnitSize;
+        }
+        cbUnused = *(PDWORD)(pbPgSeg + oRD + ctx->po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.UnusedBytes);
+        if(cbUnused < cbRange) {
+            VmmHeapAlloc_PushItem(H, &ctx->pStore, VMM_HEAPALLOC_TP_SEG_LARGE, vaPgSeg + oRange, cbRange - cbUnused);
+        }
     } else if(ucRangeFlags == 11) {
         // Lfh
-        VmmHeapAlloc_SegLFH(H, ctx, vaPgSeg + oRange, pbPgSeg + oRange, cbRange);
+        if(ctx->dwSegLfhKey) {
+            VmmHeapAlloc_SegLFH(H, ctx, vaPgSeg + oRange, pbPgSeg + oRange, cbRange);
+        }
     } else if(ucRangeFlags == 15) {
         // Vs
         VmmHeapAlloc_SegVS(H, ctx, vaPgSeg + oRange, pbPgSeg + oRange, cbRange);
@@ -590,9 +638,12 @@ VOID VmmHeapAlloc_SegInit(_In_ VMM_HANDLE H, _In_ PVMMHEAPNT_CTX ctx)
     }
     // 2: fetch keys
     VmmHeapAlloc_GetHeapKeys(H, ctx->pProcess, ctx->f32, NULL, &ctx->qwSegHeapGbl, &ctx->dwSegLfhKey, NULL);
-    if(!ctx->qwSegHeapGbl || !ctx->dwSegLfhKey) {
-        VmmLog(H, MID_HEAP, LOGLEVEL_6_TRACE, "FAIL: HEAP / LFH KEY");
+    if(!ctx->qwSegHeapGbl) {
+        VmmLog(H, MID_HEAP, LOGLEVEL_6_TRACE, "FAIL: HEAP KEY");
         goto fail;
+    }
+    if(!ctx->dwSegLfhKey) {
+        VmmLog(H, MID_HEAP, LOGLEVEL_6_TRACE, "FAIL: LFH KEY - LFH RANGES WILL BE SKIPPED");
     }
     // 3: fetch heap seg context info:
     if(!VmmRead(H, ctx->pProcess, ctx->pHeapEntry->va, pbSegHdr, sizeof(pbSegHdr))) {
@@ -659,7 +710,7 @@ BOOL VmmHeapAlloc_NtInitLfhUserData_VerifyEncoded(_In_ BOOL f32, _In_ PVMMHEAPAL
 VOID VmmHeapAlloc_NtInitLfhUserDataWin7(_In_ VMM_HANDLE H, _In_ PVMMHEAPNT_CTX ctx, _In_ QWORD vaLfhUD, _In_ PBYTE pbLfhUD, _In_ DWORD cbLfhUD)
 {
     BYTE pbSubSegment[0x20];
-    BOOL f32 = H->vmm.f32;
+    BOOL f32 = ctx->f32;
     QWORD vaSubSegment, vaChunk;
     DWORD cbChunk, cbUnitSize = ctx->f32 ? 8 : 16;
     DWORD cbHeaderSize = ctx->f32 ? 0x10 : 0x20;
@@ -667,7 +718,7 @@ VOID VmmHeapAlloc_NtInitLfhUserDataWin7(_In_ VMM_HANDLE H, _In_ PVMMHEAPNT_CTX c
     // 1: signature check
     if(0xf0e0d0c0 != *(PDWORD)(pbLfhUD + (f32 ? 0x0c : 0x18))) { return; }     // TODO: 32-bit
     // 2: fetch _HEAP_SUBSEGMENT with BlockSize, BlockCount and AggregateExchg (_INTERLOCK_SEQ)
-    vaSubSegment = VMM_PTR_OFFSET(vaLfhUD, pbLfhUD, 0);
+    vaSubSegment = VMM_PTR_OFFSET(f32, pbLfhUD, 0);
     if(!VMM_UADDR_DUAL_4_8(f32, vaSubSegment)) { return; }
     if(!VmmRead(H, ctx->pProcess, vaSubSegment, pbSubSegment, sizeof(pbSubSegment))) { return; }
     dwBlockSize = *(PWORD)(pbSubSegment + (f32 ? 0x10 : 0x18));
@@ -852,6 +903,7 @@ typedef struct tdVMMHEAP_INIT_CONTEXT {
     PVMM_OFFSET_HEAP po;
     PVMMOB_MAP_VAD pVadMap;
     BOOL f32;
+    BYTE aucSegmentUnitShift[VMMHEAP_MAX_HEAPS][VMMHEAP_SEG_CONTEXT_COUNT];
 } VMMHEAP_INIT_CONTEXT, *PVMMHEAP_INIT_CONTEXT;
 
 /*
@@ -872,30 +924,36 @@ VOID VmmHeap_InitializeSegment_SegLargeAllocCB(
     _Inout_ PBOOL pfValidBLink,
     _In_ WORD iInitialEntry
 ) {
-    QWORD cbVad;
+    QWORD cbAlloc, cbVad;
     PVMM_MAP_VADENTRY peV;
     _PHEAP_LARGE_ALLOC_DATA32 p32;
     _PHEAP_LARGE_ALLOC_DATA64 p64;
     VMM_MAP_HEAP_SEGMENTENTRY e = { 0 };
+    // Preserve traversal through a readable tree node even if its allocation
+    // payload is corrupt or no longer backed by a matching VAD.
+    *pfValidFLink = VMM_UADDR_DUAL_4_8(ctx->f32, vaFLink);
+    *pfValidBLink = VMM_UADDR_DUAL_4_8(ctx->f32, vaBLink);
     if(ctx->f32) {
         p32 = (_PHEAP_LARGE_ALLOC_DATA32)pb;
-        e.va = p32->VirtualAddress;
-        e.cb = min(0xffffffff, (DWORD)((p32->AllocatedPages << 12) - p32->UnusedBytes));
+        e.va = p32->VirtualAddress & ~0xffffULL;
+        cbAlloc = (QWORD)p32->AllocatedPages << 12;
+        if(!e.va || (cbAlloc <= p32->UnusedBytes)) { return; }
+        e.cb = (DWORD)min(0xffffffff, cbAlloc - p32->UnusedBytes);
     } else {
         p64 = (_PHEAP_LARGE_ALLOC_DATA64)pb;
-        e.va = p64->VirtualAddress;
-        e.cb = (DWORD)min(0xffffffff, (p64->AllocatedPages << 12) - p64->UnusedBytes);
+        e.va = p64->VirtualAddress & ~0xffffULL;
+        cbAlloc = p64->AllocatedPages << 12;
+        if(!e.va || (cbAlloc <= p64->UnusedBytes)) { return; }
+        e.cb = (DWORD)min(0xffffffff, cbAlloc - p64->UnusedBytes);
     }
-    if((peV = VmmMap_GetVadEntry(H, ctx->pVadMap, va)) && (cbVad = peV->vaEnd + 1 + peV->vaStart) && (cbVad >= e.cb)) {
+    if((peV = VmmMap_GetVadEntry(H, ctx->pVadMap, e.va)) && (cbVad = peV->vaEnd + 1 - e.va) && (cbVad >= e.cb)) {
         e.tp = VMM_HEAP_SEGMENT_TP_SEG_LARGE;
         e.iHeap = iInitialEntry;
-        ObMap_PushCopy(ctx->pmeHeapSegment, va, &e, sizeof(VMM_MAP_HEAP_SEGMENTENTRY));
+        ObMap_PushCopy(ctx->pmeHeapSegment, e.va, &e, sizeof(VMM_MAP_HEAP_SEGMENTENTRY));
         VmmLog(H, MID_HEAP, LOGLEVEL_6_TRACE, "SEG_LargeAlloc LOCATED: va=%llx iH=%i cb=%x", e.va, e.iHeap, e.cb);
     } else {
         VmmLog(H, MID_HEAP, LOGLEVEL_6_TRACE, "WARN: SEG_LargeAlloc NO MATCHING VAD: va=%llx", va);
     }
-    *pfValidFLink = VMM_UADDR_DUAL_4_8(ctx->f32, vaFLink);
-    *pfValidBLink = VMM_UADDR_DUAL_4_8(ctx->f32, vaBLink);
 }
 
 /*
@@ -916,16 +974,25 @@ VOID VmmHeap_InitializeSegment_SegPageSegmentCB(
     _Inout_ PBOOL pfValidBLink,
     _In_ WORD iInitialEntry
 ) {
+    BYTE ucUnitShift;
+    DWORD iHeap = iInitialEntry / VMMHEAP_SEG_CONTEXT_SEED_COUNT;
+    DWORD iSegmentContext = (iInitialEntry >> 1) & 1;
+    QWORD cbSegment, cbVad;
     PVMM_MAP_VADENTRY peV;
     VMM_MAP_HEAP_SEGMENTENTRY e = { 0 };
     if(va & 0xfff) { return; }
+    if(iHeap >= VMMHEAP_MAX_HEAPS) { return; }
+    ucUnitShift = ctx->aucSegmentUnitShift[iHeap][iSegmentContext];
+    if((ucUnitShift < 12) || (ucUnitShift > 16)) { return; }
     *pfValidFLink = VMM_UADDR_DUAL_PAGE(ctx->f32, vaFLink);
     *pfValidBLink = VMM_UADDR_DUAL_PAGE(ctx->f32, vaBLink);
     if((peV = VmmMap_GetVadEntry(H, ctx->pVadMap, va))) {
-        e.cb = (DWORD)min(0x00100000, peV->vaEnd + 1 - va);    // guesstimate segment size
+        cbVad = peV->vaEnd + 1 - va;
+        cbSegment = 256ULL << ucUnitShift;
+        e.cb = (DWORD)min(0xffffffff, min(cbVad, cbSegment));
         e.tp = VMM_HEAP_SEGMENT_TP_SEG_SEGMENT;
         e.va = va;
-        e.iHeap = iInitialEntry / 2;
+        e.iHeap = iHeap;
         ObMap_PushCopy(ctx->pmeHeapSegment, va, &e, sizeof(VMM_MAP_HEAP_SEGMENTENTRY));
         VmmLog(H, MID_HEAP, LOGLEVEL_6_TRACE, "SEG_PAGESEG LOCATED: va=%llx iH=%i", e.va, e.iHeap);
     } else {
@@ -962,7 +1029,7 @@ VOID VmmHeap_InitializeSegment_NtLargeAllocCB(
     }
     cbCommit = VMM_PTR_OFFSET_DUAL(f32, pb, 0x10, 0x20);
     cbReserved = VMM_PTR_OFFSET_DUAL(f32, pb, 0x14, 0x28);
-    if(!cbCommit || (cbCommit > cbReserved) || (cbReserved < 0x40)) {
+    if((cbCommit < (f32 ? 0x20 : 0x40)) || (cbCommit > cbReserved) || (cbReserved < 0x40)) {
         VmmLog(H, MID_HEAP, LOGLEVEL_6_TRACE, "WARN: NT_LargeAlloc BAD ENTRY #2: va=%llx", va);
         return;
     }
@@ -970,7 +1037,7 @@ VOID VmmHeap_InitializeSegment_NtLargeAllocCB(
         VmmLog(H, MID_HEAP, LOGLEVEL_6_TRACE, "WARN: NT_LargeAlloc NO MATCHING VAD: va=%llx", va);
         return;
     }
-    cbVad = peVad->vaEnd + 1 + max(va, peVad->vaStart);
+    cbVad = peVad->vaEnd + 1 - max(va, peVad->vaStart);
     *pfValidFLink = ((vaFLink & 0xfff) == 0);
     *pfValidBLink = ((vaBLink & 0xfff) == 0);
     e.tp = VMM_HEAP_SEGMENT_TP_NT_LARGE;
@@ -1040,7 +1107,7 @@ VOID VmmHeap_InitializeSegment_NtHeapSegmentCB(
         return;
     }
     *pfValidFLink = ((vaFLink & 0xfff) < 0x40);
-    *pfValidBLink = ((vaFLink & 0xfff) < 0x40);
+    *pfValidBLink = ((vaBLink & 0xfff) < 0x40);
     e.tp = VMM_HEAP_SEGMENT_TP_NT_SEGMENT;
     e.cb = (DWORD)min(0xffffffff, cNumberOfPages << 12);
     e.va = va;
@@ -1063,14 +1130,14 @@ VOID VmmHeap_Initialize3264_SegmentHeap(_In_ VMM_HANDLE H, _In_ PVMMHEAP_INIT_CO
     BOOL fPageSegment = FALSE, fLargeAlloc = FALSE;
     PQWORD avaBuffer = NULL, avaPageSegment, avaLargeAlloc;
     // 1: initialize and fetch vad map
-    if(!(avaBuffer = LocalAlloc(LMEM_ZEROINIT, 3 * VMMHEAP_MAX_HEAPS * sizeof(QWORD)))) { goto fail; }
+    if(!(avaBuffer = LocalAlloc(LMEM_ZEROINIT, 5 * VMMHEAP_MAX_HEAPS * sizeof(QWORD)))) { goto fail; }
     avaPageSegment = avaBuffer;
-    avaLargeAlloc = avaBuffer + 2 * VMMHEAP_MAX_HEAPS;
+    avaLargeAlloc = avaBuffer + 4 * VMMHEAP_MAX_HEAPS;
     // 2: process segment heaps
-    cHeap = ObMap_Size(ctx->pmeHeap);
+    cHeap = (DWORD)min(VMMHEAP_MAX_HEAPS, ObMap_Size(ctx->pmeHeap));
     for(iHeap = 0; iHeap < cHeap; iHeap++) {
         peH = ObMap_GetByIndex(ctx->pmeHeap, iHeap);
-        if((peH->tp != VMM_HEAP_TP_SEG) || (peH->f32 != f32)) { continue; }
+        if((peH->tp != VMM_HEAP_TP_SEG) || (peH->f32 != f32) || (peH->iHeap >= VMMHEAP_MAX_HEAPS)) { continue; }
         // 2.1: add the _SEGMENT_HEAP itself as a range:
         if((peV = VmmMap_GetVadEntry(H, ctx->pVadMap, peH->va))) {
             eR.tp = VMM_HEAP_SEGMENT_TP_SEG_HEAP;
@@ -1083,14 +1150,16 @@ VOID VmmHeap_Initialize3264_SegmentHeap(_In_ VMM_HANDLE H, _In_ PVMMHEAP_INIT_CO
         if(!VmmRead(H, ctx->pProcess, peH->va, pbBuffer, sizeof(pbBuffer))) { continue; }
         for(i = 0; i < 2; i++) {
             ova = ctx->po->seg.SEGMENT_HEAP.SegContexts + i * ctx->po->seg.HEAP_SEG_CONTEXT.cb + ctx->po->seg.HEAP_SEG_CONTEXT.SegmentListHead;
+            ctx->aucSegmentUnitShift[peH->iHeap][i] = *(PUCHAR)(pbBuffer + ctx->po->seg.SEGMENT_HEAP.SegContexts + i * ctx->po->seg.HEAP_SEG_CONTEXT.cb + ctx->po->seg.HEAP_SEG_CONTEXT.UnitShift);
             va = VMM_PTR_OFFSET(f32, pbBuffer, ova);
             if(VMM_UADDR_DUAL_PAGE(f32, va)) {
                 fPageSegment = TRUE;
-                avaPageSegment[2 * peH->iHeap + 0] = va;
-                va = VMM_PTR_OFFSET_DUAL(f32, pbBuffer, ova + 4, ova + 8);
-                if(VMM_UADDR_DUAL_PAGE(f32, va)) {
-                    avaPageSegment[2 * peH->iHeap + 1] = va;
-                }
+                avaPageSegment[VMMHEAP_SEG_CONTEXT_SEED_COUNT * peH->iHeap + 2 * i] = va;
+            }
+            va = VMM_PTR_OFFSET_DUAL(f32, pbBuffer, ova + 4, ova + 8);
+            if(VMM_UADDR_DUAL_PAGE(f32, va)) {
+                fPageSegment = TRUE;
+                avaPageSegment[VMMHEAP_SEG_CONTEXT_SEED_COUNT * peH->iHeap + 2 * i + 1] = va;
             }
         }
         // 2.3 prepare list walk of _HEAP_LARGE_ALLOC_DATA
@@ -1109,7 +1178,7 @@ VOID VmmHeap_Initialize3264_SegmentHeap(_In_ VMM_HANDLE H, _In_ PVMMHEAP_INIT_CO
             ctx->pProcess,
             f32,
             ctx,
-            2 * cHeap,
+            VMMHEAP_SEG_CONTEXT_SEED_COUNT * cHeap,
             avaPageSegment,
             0,
             0x20,
@@ -1198,10 +1267,10 @@ VOID VmmHeap_InitializeInternal_LocateHeap26100(_In_ VMM_HANDLE H, _In_ PVMMHEAP
         dwHeapSignature = *(PDWORD)(pb200 + 0x8);
         switch(dwHeapSignature) {
             case 0xddeeddee:            // SEGMENT HEAP
-                vaUserPtr = *(PQWORD)(pb200 + 0x24);
+                vaUserPtr = *(PDWORD)(pb200 + 0x24);
                 break;
             case 0xffeeffee:            // NT HEAP
-                vaUserPtr = *(PQWORD)(pb200 + 0xdc);
+                vaUserPtr = *(PDWORD)(pb200 + 0xdc);
                 break;
         }
         if(!VMM_UADDR32_8(vaUserPtr)) { return; }
@@ -1242,7 +1311,7 @@ VOID VmmHeap_InitializeInternal(_In_ VMM_HANDLE H, _In_ PVMMHEAP_INIT_CONTEXT ct
     QWORD va, vaPEB, vaHeap;
     DWORD vaHeaps32[VMMHEAP_MAX_HEAPS];
     QWORD vaHeaps64[VMMHEAP_MAX_HEAPS];
-    DWORD dwSignature, iHeap, cMaxHeaps, cNtSegment = 0, cNtAllocd = 0;
+    DWORD dwSignature, iHeap, cHeap, cMaxHeaps, cNtSegment = 0, cNtAllocd = 0;
     VMM_MAP_HEAPENTRY eH = { 0 };
     BYTE pbBuffer[0x200];
     PPEB32 pPEB32 = (PPEB32)pbBuffer;
@@ -1324,29 +1393,35 @@ VOID VmmHeap_InitializeInternal(_In_ VMM_HANDLE H, _In_ PVMMHEAP_INIT_CONTEXT ct
         if(!VmmRead2(H, ctx->pProcess, vaHeap, pbBuffer, sizeof(pbBuffer), VMM_FLAG_FORCECACHE_READ)) { continue; }
         dwSignature = *(PDWORD)(pbBuffer + (f32 ? 8 : 16));
         eH.iHeap = ObMap_Size(ctx->pmeHeap);
+        if(eH.iHeap >= VMMHEAP_MAX_HEAPS) { break; }
         eH.dwHeapNum = iHeap;
         eH.va = vaHeap;
         switch(dwSignature) {
             case 0xeeffeeff:    // NT HEAP XP
             case 0xffeeffee:    // NT HEAP
                 // NtVirtualAllocD (large allocations)
-                va = VMM_PTR_OFFSET(f32, pbBuffer, ctx->po->nt.HEAP.VirtualAllocdBlocks) & ~0xfff;
+                va = VMM_PTR_OFFSET(f32, pbBuffer, ctx->po->nt.HEAP.VirtualAllocdBlocks) & ~0xfffULL;
                 if(va && (va != vaHeap)) {
                     fNtAllocD = TRUE;
-                    avaNtLargeAlloc[2 * cNtSegment] = va;
-                    avaNtLargeAlloc[2 * cNtSegment] = (DWORD)VMM_PTR_OFFSET(f32, pbBuffer, (QWORD)ctx->po->nt.HEAP.VirtualAllocdBlocks + (f32 ? 4 : 8)) & ~0xfff;
+                    avaNtLargeAlloc[2 * eH.iHeap] = va;
+                }
+                va = VMM_PTR_OFFSET(f32, pbBuffer, (QWORD)ctx->po->nt.HEAP.VirtualAllocdBlocks + (f32 ? 4 : 8)) & ~0xfffULL;
+                if(va && (va != vaHeap)) {
+                    fNtAllocD = TRUE;
+                    avaNtLargeAlloc[2 * eH.iHeap + 1] = va;
                 }
                 // LFH (frontend) area
                 if((pbBuffer[ctx->po->nt.HEAP.FrontEndHeapType] == 2) && (va = VMM_PTR_OFFSET(f32, pbBuffer, ctx->po->nt.HEAP.FrontEndHeap)) && VMM_UADDR_PAGE(H->vmm.f32, va)) {
                     eR.tp = VMM_HEAP_SEGMENT_TP_NT_LFH;
                     eR.va = va;
                     eR.cb = 0x20000;
-                    eR.iHeap = cNtSegment;
+                    eR.iHeap = eH.iHeap;
                     ObMap_PushCopy(ctx->pmeHeapSegment, va, &eR, sizeof(VMM_MAP_HEAP_SEGMENTENTRY));
                     VmmLog(H, MID_HEAP, LOGLEVEL_6_TRACE, "NT_LFH LOCATED: va=%llx iH=%i vaH=%llx", eR.va, eR.iHeap, vaHeap);
                 }
                 // NtSegment
-                avaNtSegment[cNtSegment++] = vaHeap;
+                avaNtSegment[eH.iHeap] = vaHeap;
+                cNtSegment++;
                 eH.tp = VMM_HEAP_TP_NT;
                 break;
             case 0xddeeddee:    // SEGMENT HEAP
@@ -1361,6 +1436,7 @@ VOID VmmHeap_InitializeInternal(_In_ VMM_HANDLE H, _In_ PVMMHEAP_INIT_CONTEXT ct
         ObMap_PushCopy(ctx->pmeHeap, vaHeap, &eH, sizeof(VMM_MAP_HEAPENTRY));
         VmmLog(H, MID_HEAP, LOGLEVEL_6_TRACE, "%s_HEAP LOCATED: va=%llx iH=%i", VMM_HEAP_TP_STR[eH.tp], vaHeap, eH.iHeap);
     }
+    cHeap = (DWORD)min(VMMHEAP_MAX_HEAPS, ObMap_Size(ctx->pmeHeap));
     // 5: walk nt heap ranges (_HEAP_SEGMENT) in an efficient way:
     if(cNtSegment) {
         VmmWin_ListTraversePrefetch(
@@ -1368,7 +1444,7 @@ VOID VmmHeap_InitializeInternal(_In_ VMM_HANDLE H, _In_ PVMMHEAP_INIT_CONTEXT ct
             ctx->pProcess,
             f32,
             ctx,
-            cNtSegment,
+            cHeap,
             avaNtSegment,
             f32 ? 0x10 : 0x18,
             f32 ? sizeof(_HEAP_SEGMENT32) : sizeof(_HEAP_SEGMENT64),
@@ -1384,7 +1460,7 @@ VOID VmmHeap_InitializeInternal(_In_ VMM_HANDLE H, _In_ PVMMHEAP_INIT_CONTEXT ct
             ctx->pProcess,
             f32,
             ctx,
-            2 * cNtSegment,
+            2 * cHeap,
             avaNtLargeAlloc,
             0,
             0x40,

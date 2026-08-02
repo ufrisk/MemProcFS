@@ -133,7 +133,7 @@ static POB_VMMWINOBJ_CONTROL_AREA VmmWinObjFile_Initialize_ControlArea_Subsectio
     BOOL f = TRUE, fSoft, f32 = H->vmm.f32;
     PVMMWINOBJ_FILE_SUBSECTION pe;
     VMMWINOBJ_FILE_SUBSECTION pSS[VMMWINOBJ_FILE_OBJECT_SUBSECTION_MAX];
-    DWORD cSS = 0, dwStartingSectorNext = 0, iSS, iSSMaxSector = 8, cbSectorEstimate;
+    DWORD cSS = 0, cSSWalk = 0, dwStartingSectorNext = 0, iSS, iSSMaxSector = 8, cbSectorEstimate;
     QWORD va, vaSegment;
     BYTE pb[0x80] = { 0 };
     POB_VMMWINOBJ_CONTROL_AREA pObCA = NULL;
@@ -144,7 +144,8 @@ static POB_VMMWINOBJ_CONTROL_AREA VmmWinObjFile_Initialize_ControlArea_Subsectio
     if(!VMM_KADDR_4_8(f32, vaSegment)) { return NULL; }
     // 2: Fetch # _SUBSECTION    
     va = vaCA + po->_CONTROL_AREA.cb;
-    while(f && (cSS < VMMWINOBJ_FILE_OBJECT_SUBSECTION_MAX) && VMM_KADDR_4_8(f32, va) && ((VmmScatter_Read(hScatterCA, va, po->_SUBSECTION.cb, pb)) || VmmRead2(H, pSystemProcess, va, pb, po->_SUBSECTION.cb, 0))) {
+    while(f && (cSS < VMMWINOBJ_FILE_OBJECT_SUBSECTION_MAX) && (cSSWalk < VMMWINOBJ_FILE_OBJECT_SUBSECTION_MAX) && VMM_KADDR_4_8(f32, va) && ((VmmScatter_Read(hScatterCA, va, po->_SUBSECTION.cb, pb)) || VmmRead2(H, pSystemProcess, va, pb, po->_SUBSECTION.cb, 0))) {
+        cSSWalk++;
         pe = pSS + cSS;
         pe->dwStartingSector = *(PDWORD)(pb + po->_SUBSECTION.oStartingSector);
         pe->dwNumberOfFullSectors = *(PDWORD)(pb + po->_SUBSECTION.oNumberOfFullSectors);
@@ -1024,7 +1025,11 @@ VOID VmmWinObjFile_ReadSubsectionAndSharedCacheScatter_Data(_In_ VMM_HANDLE H, _
         if(pMEM->f) { continue; }
         // move to correct subsection:
         iSS = 0;
-        while((iPte >= pCA->pSUBSECTION[iSS].dwStartingSector + pCA->pSUBSECTION[iSS].dwPtesInSubsection) && (iSS < pCA->cSUBSECTION)) { iSS++; }
+        while((iSS < pCA->cSUBSECTION) && (iPte >= (QWORD)pCA->pSUBSECTION[iSS].dwStartingSector + pCA->pSUBSECTION[iSS].dwPtesInSubsection)) { iSS++; }
+        if(iSS >= pCA->cSUBSECTION) {
+            pMEM->qwA = 0;
+            continue;
+        }
         pSS = pCA->pSUBSECTION + iSS;
         if((iPte < pSS->dwStartingSector) || (iPte >= pSS->dwStartingSector + pSS->dwPtesInSubsection)) {
             pMEM->qwA = 0;
@@ -1279,7 +1284,7 @@ BOOL VmmWinObjFile_ReadAlloc(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_FILE pFile, _
     cbFile = VmmWinObjFile_Size(H, pFile, tp);
     if(!cbFile || (cbFile > 0x80000000)) { return FALSE; }
     if(cbFileMaxSize && (cbFile > cbFileMaxSize)) { return FALSE; }
-    if(!(pbFile = LocalAlloc(LMEM_ZEROINIT, (SIZE_T)cbFile))) { return FALSE; }
+    if(!(pbFile = LocalAlloc(LMEM_ZEROINIT, cbFile))) { return FALSE; }
     // read file:
     if(!(cbRead = VmmWinObjFile_Read(H, pFile, 0, pbFile, (DWORD)cbFile, fVmmRead, tp))) {
         LocalFree(pbFile);

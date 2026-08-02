@@ -15,6 +15,9 @@
 #include "../vmmwin.h"
 #include "../sysquery.h"
 
+#define MEVILAPC1_MAX_APCS_PER_THREAD          0x00000020
+#define MEVILAPC1_MAX_APCS_PER_PROCESS         0x00000100
+
 typedef struct tdMEVIL_APC1_CONTEXT {
     WORD oApcState;
     WORD oApcListHead;
@@ -54,9 +57,10 @@ VOID GetSymbolFromAddress(_In_ VMM_HANDLE H, PVMM_PROCESS pProcess, QWORD qwA, _
     Ob_DECREF(pObModuleMap);
 }
 
-VOID ProcessThreadAPCs(_In_ VMM_HANDLE H, PMEVIL_APC1_CONTEXT ctx, PVMM_PROCESS pProcess, PVMM_MAP_THREADENTRY pThreadEntry)
+VOID ProcessThreadAPCs(_In_ VMM_HANDLE H, PMEVIL_APC1_CONTEXT ctx, PVMM_PROCESS pProcess, PVMM_MAP_THREADENTRY pThreadEntry, _Inout_ PDWORD pcApcProcess)
 {
     BOOL f;
+    DWORD cApcThread = 0;
     QWORD vaApcListHead = 0;
     QWORD vaApcListHead_UserFLink = 0;
     QWORD vaCurrentFLink = 0;
@@ -69,6 +73,7 @@ VOID ProcessThreadAPCs(_In_ VMM_HANDLE H, PMEVIL_APC1_CONTEXT ctx, PVMM_PROCESS 
     CHAR szApcNormalContext[MAX_PATH] = { 0 };
     CHAR szApcSystemArgument1[MAX_PATH] = { 0 };
     CHAR szApcSystemArgument2[MAX_PATH] = { 0 };
+    POB_SET psObApcSeen = NULL;
 
     vaApcListHead = pThreadEntry->vaETHREAD + ctx->oApcState + ctx->oApcListHead;
     
@@ -76,10 +81,14 @@ VOID ProcessThreadAPCs(_In_ VMM_HANDLE H, PMEVIL_APC1_CONTEXT ctx, PVMM_PROCESS 
     vaApcListHead_UserFLink = vaApcListHead + ctx->cbListEntry;
     vaCurrentFLink = vaApcListHead_UserFLink;
 
-    while(vaCurrentFLink != 0 && VmmRead(H, ctx->pObSystemProcess, vaCurrentFLink, (PBYTE)&vaCurrentFLink, H->vmm.f32 ? 4 : 8))
+    while(vaCurrentFLink && VmmRead(H, ctx->pObSystemProcess, vaCurrentFLink, (PBYTE)&vaCurrentFLink, H->vmm.f32 ? 4 : 8))
     {
         if(H->fAbort) { break; }
         if(vaCurrentFLink == vaApcListHead_UserFLink) { break; }
+        if((cApcThread >= MEVILAPC1_MAX_APCS_PER_THREAD) || (*pcApcProcess >= MEVILAPC1_MAX_APCS_PER_PROCESS)) { break; }
+        if(!psObApcSeen && !(psObApcSeen = ObSet_New(H))) { break; }
+        if(!ObSet_Push(psObApcSeen, vaCurrentFLink)) { break; }
+        cApcThread++;
 
         vaApc = vaCurrentFLink - ctx->oApcListEntry;
 
@@ -103,7 +112,9 @@ VOID ProcessThreadAPCs(_In_ VMM_HANDLE H, PMEVIL_APC1_CONTEXT ctx, PVMM_PROCESS 
         FcEvilAdd(H, EVIL_UM_APC, pProcess, vaApcNormalRoutine, "%s %016llx %s %016llx %s %016llx %s TID:%i", 
             szApcNormalRoutine, vaApcNormalContext, szApcNormalContext, vaApcSystemArgument1, 
             szApcSystemArgument1, vaApcSystemArgument2, szApcSystemArgument2, pThreadEntry->dwTID);
+        (*pcApcProcess)++;
     }
+    Ob_DECREF(psObApcSeen);
 }
 
 //-----------------------------------------------------------------------------
@@ -113,7 +124,7 @@ VOID ProcessThreadAPCs(_In_ VMM_HANDLE H, PMEVIL_APC1_CONTEXT ctx, PVMM_PROCESS 
 VOID MEvilAPC1_DoWork(_In_ VMM_HANDLE H, _In_ VMMDLL_MODULE_ID MID, _In_opt_ PVOID ctxfc)
 {
     BOOL f;
-    DWORD i;
+    DWORD i, cApcProcess;
     PVMM_MAP_THREADENTRY pThreadEntry;
     PVMM_PROCESS pObProcess = NULL;
     PVMMOB_MAP_THREAD pObThreadMap = NULL;
@@ -134,11 +145,12 @@ VOID MEvilAPC1_DoWork(_In_ VMM_HANDLE H, _In_ VMMDLL_MODULE_ID MID, _In_opt_ PVO
     while((pObProcess = VmmProcessGetNext(H, pObProcess, 0))) {
         if(VmmProcess_IsKernelOnly(pObProcess)) { continue; }
         if(H->fAbort) { goto fail; }
+        cApcProcess = 0;
         if(VmmMap_GetThread(H, pObProcess, &pObThreadMap)) {
-            for(i = 0; i < pObThreadMap->cMap; i++) {
+            for(i = 0; (i < pObThreadMap->cMap) && (cApcProcess < MEVILAPC1_MAX_APCS_PER_PROCESS); i++) {
                 if(H->fAbort) { goto fail; }
                 pThreadEntry = pObThreadMap->pMap + i;
-                ProcessThreadAPCs(H, &ctx, pObProcess, pThreadEntry);
+                ProcessThreadAPCs(H, &ctx, pObProcess, pThreadEntry, &cApcProcess);
             }
         }
         Ob_DECREF_NULL(&pObThreadMap);

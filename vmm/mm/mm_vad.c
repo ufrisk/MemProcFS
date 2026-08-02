@@ -1197,42 +1197,67 @@ BOOL MmVad_PrototypePteArray_FetchNew_PoolHdrVerify(_In_ PBYTE pb, _In_ DWORD cb
 }
 
 /*
+* Helper function to retrieve the size of the prepended pool header for a MmSt entry.
+* -- H
+* -- pVad
+* -- pcbPH
+* -- pcbData
+* -- return
+*/
+_Success_(return)
+static BOOL MmVad_PrototypePteArray_FetchNew_PoolHdrOffset(_In_ VMM_HANDLE H, _In_ PVMM_MAP_VADENTRY pVad, _Out_ PDWORD pcbPH, _Out_ PDWORD pcbData)
+{
+    DWORD cbData, cbPH = 0;
+    // calculate pool header size
+    if(pVad->vaPrototypePte & 0xfff) {
+        if(H->vmm.kernel.dwVersionBuild >= 9200) {             // WIN8.0 and later
+            cbPH = H->vmm.f32 ? 0x04 : 0x0c;
+        } else {
+            // WinXP to Win7 - pool header seems to be varying between these zero and these offsets, check for them all...
+            cbPH = H->vmm.f32 ? 0x34 : 0x5c;
+            if((pVad->vaStart & 0xfff) < cbPH) { cbPH = 0; }
+        }
+    }
+    *pcbPH = cbPH;
+    // calculate & verify data length:
+    cbData = pVad->cbPrototypePte;
+    if(cbData > 0x00020000) {   // most probably an error, file > 64MB
+        cbData = MMVAD_PTESIZE * (DWORD)((0x1000 + pVad->vaEnd - pVad->vaStart) >> 12);
+        if(cbData > 0x00020000) {
+            *pcbData = 0;
+            return FALSE;
+        }
+    }
+    *pcbData = cbData;
+    return TRUE;
+}
+
+/*
 * Fetch an array of prototype pte's into the cache.
-* -- pSystemProcess
+* -- H
+* -- hScatter
 * -- pVad
 * -- fVmmRead
 */
-VOID MmVad_PrototypePteArray_FetchNew(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_ PVMM_MAP_VADENTRY pVad, _In_ QWORD fVmmRead)
+VOID MmVad_PrototypePteArray_FetchNew(_In_ VMM_HANDLE H, _In_opt_ PVMMOB_SCATTER hScatter, _In_ PVMM_MAP_VADENTRY pVad, _In_opt_ QWORD fVmmRead)
 {
-    PBYTE pbData;
+    PBYTE pbData = NULL;;
     POB_DATA e = NULL;
-    DWORD cbData, cbDataOffsetPoolHdr = 0;
-    cbData = pVad->cbPrototypePte;
-    // 1: santity check size
-    if(cbData > 0x00010000) {   // most probably an error, file > 32MB
-        cbData = MMVAD_PTESIZE * (DWORD)((0x1000 + pVad->vaEnd - pVad->vaStart) >> 12);
-        if(cbData > 0x00010000) { return; }
-    }
-    // 2: pool header offset (if any)
-    if(pVad->vaPrototypePte & 0xfff) {
-        if(H->vmm.kernel.dwVersionBuild >= 9200) {             // WIN8.0 and later
-            cbDataOffsetPoolHdr = H->vmm.f32 ? 0x04 : 0x0c;
+    DWORD cbPH, cbData, cbRead = 0;
+    if(MmVad_PrototypePteArray_FetchNew_PoolHdrOffset(H, pVad, &cbPH, &cbData)) {
+        if(!(pbData = LocalAlloc(LMEM_ZEROINIT, cbData + cbPH))) { goto fail; }
+        if(hScatter) {
+            VmmScatter_ReadEx(hScatter, pVad->vaPrototypePte - cbPH, cbData + cbPH, pbData, &cbRead);
         } else {
-            // WinXP to Win7 - pool header seems to be varying between these zero and these offsets, check for them all...
-            cbDataOffsetPoolHdr = H->vmm.f32 ? 0x34 : 0x5c;
-            if((pVad->vaStart & 0xfff) < cbDataOffsetPoolHdr) { cbDataOffsetPoolHdr = 0; }
+            VmmReadEx(H, PVMM_PROCESS_SYSTEM, pVad->vaPrototypePte - cbPH, pbData, cbData + cbPH, &cbRead, fVmmRead);
         }
-        cbData += cbDataOffsetPoolHdr;
-    }
-    // 3: fetch prototype page table entries
-    if(!(pbData = LocalAlloc(0, cbData))) { return; }
-    if(VmmRead2(H, pSystemProcess, pVad->vaPrototypePte - cbDataOffsetPoolHdr, pbData, cbData, fVmmRead)) {
-        if(MmVad_PrototypePteArray_FetchNew_PoolHdrVerify(pbData, cbDataOffsetPoolHdr)) {
-            if((e = Ob_AllocEx(H, OB_TAG_VAD_MEM, 0, sizeof(OB) + cbData - cbDataOffsetPoolHdr, NULL, NULL))) {
-                memcpy(e->pb, pbData + cbDataOffsetPoolHdr, cbData - cbDataOffsetPoolHdr);
+        if(cbRead && MmVad_PrototypePteArray_FetchNew_PoolHdrVerify(pbData, cbPH)) {
+            if((e = Ob_AllocEx(H, OB_TAG_VAD_MEM, 0, sizeof(OB) + cbData, NULL, NULL))) {
+                memcpy(e->pb, pbData + cbPH, cbData);
             }
         }
     }
+fail:
     if(!e) {
         e = Ob_AllocEx(H, OB_TAG_VAD_MEM, 0, sizeof(OB), NULL, NULL);
     }
@@ -1256,9 +1281,9 @@ POB_DATA MmVad_PrototypePteArray_Get(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProce
 {
     QWORD i, va;
     POB_DATA e = NULL;
-    POB_SET psObPrefetch = NULL;
-    PVMM_PROCESS pObSystemProcess = NULL;
+    PVMMOB_SCATTER hObScatter = NULL;
     PVMMOB_MAP_VAD pVadMap;
+    DWORD cbPH, cbData;
     if(!pVad->vaPrototypePte || !pVad->cbPrototypePte) { return NULL; }
     if((e = ObMap_GetByKey(H->vmm.Cache.pmPrototypePte, pVad->vaPrototypePte))) { return e; }
     EnterCriticalSection(&pProcess->LockUpdate);
@@ -1266,30 +1291,31 @@ POB_DATA MmVad_PrototypePteArray_Get(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProce
         LeaveCriticalSection(&pProcess->LockUpdate);
         return e;
     }
-    if((pObSystemProcess = VmmProcessGet(H, 4))) {
-        if(!pProcess->Map.pObVad->fSpiderPrototypePte && pVad->cbPrototypePte < 0x1000 && (psObPrefetch = ObSet_New(H))) {
+    if(!pProcess->Map.pObVad->fSpiderPrototypePte && (pVad->cbPrototypePte < 0x1000)) {
+        if((hObScatter = VmmScatter_Initialize(H, fVmmRead | VMM_FLAG_SCATTER_FORCE_PAGEREAD))) {
             pVadMap = pProcess->Map.pObVad;
             // spider all prototype pte's less than 0x1000 in size into the cache
             pVadMap->fSpiderPrototypePte = TRUE;
             for(i = 0; i < pVadMap->cMap; i++) {
                 va = pVadMap->pMap[i].vaPrototypePte;
                 if(va && (pVadMap->pMap[i].cbPrototypePte < 0x1000) && !ObMap_ExistsKey(H->vmm.Cache.pmPrototypePte, va)) {
-                    ObSet_Push(psObPrefetch, va);
+                    if(MmVad_PrototypePteArray_FetchNew_PoolHdrOffset(H, pVadMap->pMap + i, &cbPH, &cbData)) {
+                        VmmScatter_Prepare(hObScatter, va - cbPH, cbData + cbPH);
+                    }
                 }
             }
-            VmmCachePrefetchPages3(H, pObSystemProcess, psObPrefetch, 0x1000, fVmmRead);
+            VmmScatter_Execute(hObScatter, PVMM_PROCESS_SYSTEM);
             for(i = 0; i < pVadMap->cMap; i++) {
                 va = pVadMap->pMap[i].vaPrototypePte;
                 if(va && (pVadMap->pMap[i].cbPrototypePte < 0x1000) && !ObMap_ExistsKey(H->vmm.Cache.pmPrototypePte, va)) {
-                    MmVad_PrototypePteArray_FetchNew(H, pObSystemProcess, pVadMap->pMap + i, fVmmRead | VMM_FLAG_FORCECACHE_READ);
+                    MmVad_PrototypePteArray_FetchNew(H, hObScatter, pVadMap->pMap + i, fVmmRead);
                 }
             }
-            Ob_DECREF(psObPrefetch);
-        } else {
-            // fetch single vad prototypte pte array into the cache
-            MmVad_PrototypePteArray_FetchNew(H, pObSystemProcess, pVad, fVmmRead);
+            Ob_DECREF_NULL(&hObScatter);
         }
-        Ob_DECREF(pObSystemProcess);
+    } else {
+        // fetch single vad prototypte pte array into the cache
+        MmVad_PrototypePteArray_FetchNew(H, NULL, pVad, fVmmRead);
     }
     LeaveCriticalSection(&pProcess->LockUpdate);
     return ObMap_GetByKey(H->vmm.Cache.pmPrototypePte, pVad->vaPrototypePte);

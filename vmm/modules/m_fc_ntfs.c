@@ -427,14 +427,12 @@ VOID FcNtfs2_IngestIndexRecord(_In_ VMM_HANDLE H, _In_ POB_FCNTFS2_INIT_CONTEXT 
     DWORD oNextIndexEntry, cbTotalIndexEntry;
     PNTFS_INDEX_ENTRY pIE;
     if(pIR->Signature != 'XDNI') { return; }
-    if((0x18 + pIR->AllocatedSize > 0x1000) || (pIR->IndexEntryTotalSize > pIR->AllocatedSize)) {
+    // INDEX_HEADER offsets are relative to record offset 0x18.
+    if((pIR->AllocatedSize > 0x1000 - 0x18) || (pIR->IndexEntryTotalSize > pIR->AllocatedSize) || (pIR->IndexEntryFirstOffset > pIR->IndexEntryTotalSize)) {
         return;
     }
     oNextIndexEntry = 0x18 + pIR->IndexEntryFirstOffset;
-    if(oNextIndexEntry > pIR->AllocatedSize) {
-        return;
-    }
-    cbTotalIndexEntry = min(pIR->AllocatedSize - oNextIndexEntry, pIR->IndexEntryTotalSize);
+    cbTotalIndexEntry = pIR->IndexEntryTotalSize - pIR->IndexEntryFirstOffset;
     if(oNextIndexEntry < 0x2A) {
         return;
     }

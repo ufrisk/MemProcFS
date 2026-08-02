@@ -140,7 +140,7 @@ VOID MEvilProc1_Modules(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
 /*
 * Check a single VAD entry for: PRIVATE_EXECUTE and NOIMAGE_EXECUTE.
 */
-VOID MEvilProc1_VadNoImageExecuteEntry(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMMOB_MAP_VAD pVadMap, _In_ DWORD iVad, _Inout_ POB_SET psInjectedPE)
+VOID MEvilProc1_VadNoImageExecuteEntry(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMMOB_MAP_VAD pVadMap, _In_ DWORD iVad, _Inout_ POB_SET psInjectedPE, _In_ BOOL fSuppressRX, _In_ BOOL fSuppressRWX)
 {
     DWORD iVadEx, cEvilRX = 0, cEvilRWX = 0;
     QWORD cbPE;
@@ -156,6 +156,7 @@ VOID MEvilProc1_VadNoImageExecuteEntry(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pPro
         ObSet_Push(psInjectedPE, peVad->vaStart);
     }
     // 2: check executable pages
+    if(fSuppressRX && fSuppressRWX) { return; }
     if(!VmmMap_GetVadEx(H, pProcess, &pObVadExMap, VMM_VADMAP_TP_PARTIAL, peVad->cVadExPagesBase, peVad->cVadExPages)) { return; }
     for(iVadEx = 0; iVadEx < pObVadExMap->cMap; iVadEx++) {
         peVadEx = pObVadExMap->pMap + iVadEx;
@@ -164,10 +165,12 @@ VOID MEvilProc1_VadNoImageExecuteEntry(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pPro
         if(fPteA && (peVadEx->flags & VADEXENTRY_FLAG_NX)) { continue; }
         if(peVadEx->tp == VMM_PTE_TP_DEMANDZERO) { continue; }
         if((fPteA && (peVadEx->flags & VADEXENTRY_FLAG_W)) || (!fPteA && MMVAD_IS_FLAG_W(peVad))) {
+            if(fSuppressRWX) { continue; }
             if(cEvilRWX >= EVIL_MAXCOUNT_VAD_EXECUTE) { continue; }
             cEvilRWX++;
             tpEvil = peVad->fPrivateMemory ? EVIL_PRIVATE_RWX : EVIL_NOIMAGE_RWX;
         } else {
+            if(fSuppressRX) { continue; }
             if(!peVad->fPrivateMemory && peVad->fFile && (H->vmm.tpMemoryModel == VMM_MEMORYMODEL_ARM64) && CharUtil_StrStartsWith(peVad->uszText, "\\Windows\\XtaCache\\", TRUE)) {
                 continue;
             }
@@ -185,7 +188,7 @@ VOID MEvilProc1_VadNoImageExecuteEntry(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pPro
 * Helper function for VmmEvil_ProcessScan_VadNoImageExecute to reduce number of
 * false positives in known problematic processes.
 */
-VOID MEvilProc1_VadNoImageExecute_ProcWhitelist(_In_ PVMM_PROCESS pProcess, _Out_ PBOOL pfProcSuppressRX, _Out_ PBOOL fProcSuppressRWX)
+VOID MEvilProc1_VadNoImageExecute_ProcWhitelist(_In_ PVMM_PROCESS pProcess, _Out_ PBOOL pfProcSuppressRX, _Out_ PBOOL pfProcSuppressRWX)
 {
     DWORD i;
     LPSTR szLIST_RWX[] = {
@@ -197,19 +200,19 @@ VOID MEvilProc1_VadNoImageExecute_ProcWhitelist(_In_ PVMM_PROCESS pProcess, _Out
     for(i = 0; i < sizeof(szLIST_RWX) / sizeof(LPSTR); i++) {
         if(!strcmp(pProcess->szName, szLIST_RWX[i])) {
             *pfProcSuppressRX = TRUE;
-            *fProcSuppressRWX = TRUE;
+            *pfProcSuppressRWX = TRUE;
             return;
         }
     }
     for(i = 0; i < sizeof(szLIST_RX) / sizeof(LPSTR); i++) {
         if(!strcmp(pProcess->szName, szLIST_RX[i])) {
             *pfProcSuppressRX = TRUE;
-            *fProcSuppressRWX = FALSE;
+            *pfProcSuppressRWX = FALSE;
             return;
         }
     }
     *pfProcSuppressRX = FALSE;
-    *fProcSuppressRWX = FALSE;
+    *pfProcSuppressRWX = FALSE;
 }
 
 /*
@@ -219,7 +222,7 @@ VOID MEvilProc1_VadNoImageExecute_ProcWhitelist(_In_ PVMM_PROCESS pProcess, _Out
 */
 VOID MEvilProc1_VadNoImageExecute(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _Inout_ POB_SET psInjectedPE)
 {
-    BOOL fRX, fRWX, fProcSuppressRX, fProcSuppressRWX;
+    BOOL fRX, fProcSuppressRX, fProcSuppressRWX;
     DWORD iVad, iPte = 0;
     PVMMOB_MAP_PTE pObPteMap = NULL;
     PVMM_MAP_VADENTRY peVad;
@@ -239,17 +242,15 @@ VOID MEvilProc1_VadNoImageExecute(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess,
         fRX = FALSE;
         while(!fRX && (iPte < pObPteMap->cMap) && (pObPteMap->pMap[iPte].vaBase < peVad->vaEnd)) {
             fRX = pObPteMap->pMap[iPte].fPage && !(pObPteMap->pMap[iPte].fPage & VMM_MEMMAP_PAGE_NX);
-            fRWX = fRX && pObPteMap->pMap[iPte].fPage && (pObPteMap->pMap[iPte].fPage & VMM_MEMMAP_PAGE_W);
             iPte++;
         }
         // check if vad is p-rwx-
         if(MMVAD_IS_FLAG_P(peVad) && MMVAD_IS_FLAG_R(peVad) && MMVAD_IS_FLAG_W(peVad) && MMVAD_IS_FLAG_X(peVad)) {
-            fRX = TRUE,
-                fRWX = TRUE;
+            fRX = TRUE;
         }
         // vad has hw executable page -> investigate closer
-        if(fRX && !fProcSuppressRX && !(fRWX && fProcSuppressRWX)) {
-            MEvilProc1_VadNoImageExecuteEntry(H, pProcess, pObVadMap, iVad, psInjectedPE);
+        if(fRX) {
+            MEvilProc1_VadNoImageExecuteEntry(H, pProcess, pObVadMap, iVad, psInjectedPE, fProcSuppressRX, fProcSuppressRWX);
         }
     }
 fail:

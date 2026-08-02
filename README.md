@@ -264,3 +264,4 @@ v5.8
 Latest:
 * Bug fixes.
 * Fix: Heap recovery now works on Windows 11 24H2 and later.
+* Fix: Pool and Heap parsing improved.

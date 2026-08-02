@@ -22,6 +22,8 @@
 #include "statistics.h"
 
 #define VMMWINPOOL_PREFETCH_BUFFER_SIZE     0x00800000
+#define VMMWINPOOL_POOL_FLAG_NON_PAGED      0x00000040
+#define VMMWINPOOL_POOL_FLAG_PAGED          0x00000100
 
 //-----------------------------------------------------------------------------
 // General Pool Functionality:
@@ -29,14 +31,25 @@
 
 /*
 * Convert the Windows internal pool type to VMM_MAP_POOL_TP
-* -- dwPoolType
+* -- H
+* -- dwPoolTypeOrFlags
 * -- return
 */
-__forceinline VMM_MAP_POOL_TP VmmWinPool_PoolTypeConvert(_In_ DWORD dwPoolType)
+__forceinline VMM_MAP_POOL_TP VmmWinPool_PoolTypeConvert(_In_ VMM_HANDLE H, _In_ DWORD dwPoolTypeOrFlags)
 {
-    if(dwPoolType & 1) {
+    if(H->vmm.kernel.dwVersionBuild >= 26100) {
+        // _POOL_TRACKER_BIG_PAGES.PoolFlags replaced the legacy PoolType field.
+        if(dwPoolTypeOrFlags & VMMWINPOOL_POOL_FLAG_PAGED) {
+            return VMM_MAP_POOL_TP_PagedPool;
+        } else if(dwPoolTypeOrFlags & VMMWINPOOL_POOL_FLAG_NON_PAGED) {
+            return VMM_MAP_POOL_TP_NonPagedPoolNx;
+        } else {
+            return VMM_MAP_POOL_TP_NonPagedPool;
+        }
+    }
+    if(dwPoolTypeOrFlags & 1) {
         return VMM_MAP_POOL_TP_PagedPool;
-    } else if(dwPoolType & 0x200) {
+    } else if(dwPoolTypeOrFlags & 0x200) {
         return VMM_MAP_POOL_TP_NonPagedPoolNx;
     } else {
         return VMM_MAP_POOL_TP_NonPagedPool;
@@ -180,7 +193,7 @@ PVMMOB_MAP_POOL VmmWinPool_Initialize_BigPool_DoWork(_In_ VMM_HANDLE H, _In_ PVM
         peTag = pObPool->pTag + i;
         cTag2Map += peTag->cEntry;
         peTag->iTag2Map = cTag2Map;
-        ObMap_Push(pmObTag, 0x100000000 | peTag->dwTag, peTag);
+        if(!ObMap_Push(pmObTag, 0x100000000 | peTag->dwTag, peTag)) { goto fail; }
     }
     // 6: populate map entries (os dependent)
     if(f32) {
@@ -192,11 +205,11 @@ PVMMOB_MAP_POOL VmmWinPool_Initialize_BigPool_DoWork(_In_ VMM_HANDLE H, _In_ PVM
                 pePool->dwTag = *(PDWORD)(pb + o + 4);
                 if(dwVersionBuild >= 10240) {
                     pbp1032 = (P_BIGPOOL32_10)(pb + o);
-                    pePool->tpPool = VmmWinPool_PoolTypeConvert(pbp1032->PoolType);
+                    pePool->tpPool = VmmWinPool_PoolTypeConvert(H, pbp1032->PoolType);
                     pePool->cb = pbp1032->NumberOfBytes;
                 } else if(dwVersionBuild >= 6000) {
                     pbpVI32 = (P_BIGPOOL32_VISTA)(pb + o);
-                    pePool->tpPool = VmmWinPool_PoolTypeConvert(pbpVI32->PoolType);
+                    pePool->tpPool = VmmWinPool_PoolTypeConvert(H, pbpVI32->PoolType);
                     pePool->cb = pbpVI32->NumberOfBytes;
                 } else {
                     pbpXP32 = (P_BIGPOOL32_XP)(pb + o);
@@ -216,11 +229,11 @@ PVMMOB_MAP_POOL VmmWinPool_Initialize_BigPool_DoWork(_In_ VMM_HANDLE H, _In_ PVM
                 pePool->dwTag = *(PDWORD)(pb + o + 8);
                 if(dwVersionBuild >= 10240) {
                     pbp1064 = (P_BIGPOOL64_10)(pb + o);
-                    pePool->tpPool = VmmWinPool_PoolTypeConvert(pbp1064->PoolType);
+                    pePool->tpPool = VmmWinPool_PoolTypeConvert(H, pbp1064->PoolType);
                     pePool->cb = (DWORD)min(0xffffffff, pbp1064->NumberOfBytes);
                 } else {
                     pbpVI64 = (P_BIGPOOL64_VISTA)(pb + o);
-                    pePool->tpPool = VmmWinPool_PoolTypeConvert(pbpVI64->PoolType);
+                    pePool->tpPool = VmmWinPool_PoolTypeConvert(H, pbpVI64->PoolType);
                     pePool->cb = (DWORD)min(0xffffffff, pbpVI64->NumberOfBytes);
                 }
                 j++;
@@ -311,7 +324,7 @@ VOID VmmWinPool_AllPool_PushItem(
     if(pStore->c == VMMWINPOOL_CTX_POOLSTORE_MAX) {
         if(pStore->cPrevious > 0x40000000) { return; }
         pStoreNext = pStore;
-        if(!(pStore = LocalAlloc(0, sizeof(VMMWINPOOL_CTX_POOLSTORE)))) { return; }
+        if(!(pStore = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMWINPOOL_CTX_POOLSTORE)))) { return; }
         pStore->c = 0;
         pStore->cPrevious = pStoreNext->c + pStoreNext->cPrevious;
         pStore->pNext = pStoreNext;
@@ -383,7 +396,7 @@ PVMMOB_MAP_POOL VmmWinPool_AllPool_CreateMap(_In_ VMM_HANDLE H, _In_ PVMMOB_MAP_
         peTag = pObPool->pTag + i;
         cTag2Map += peTag->cEntry;
         peTag->iTag2Map = cTag2Map;
-        ObMap_Push(pmObTag, 0x100000000 | peTag->dwTag, peTag);
+        if(!ObMap_Push(pmObTag, 0x100000000 | peTag->dwTag, peTag)) { goto fail; }
     }
     // 4: populate map entries (os dependent)
     memcpy(pObPool->pMap, pPoolBig->pMap, pPoolBig->cMap * sizeof(VMM_MAP_POOLENTRY));
@@ -898,7 +911,13 @@ VOID VmmWinPool_AllPool1903_5_VS_DoWork(
             oBlock = oVsChunkHdr + ctx->po->_HEAP_VS_CHUNK_HEADER.cb;
             cbBlock = cbChunkSize - ctx->po->_HEAP_VS_CHUNK_HEADER.cb;
             vaBlock = va + oBlock;
-            if((cbBlock < 0xff0) && (((vaBlock & 0xfff) + cbBlock) > 0x1040)) {
+            if((cbBlock > cbPoolHdr) && (cbBlock < ctx->po->cbBigPoolThreshold) && ((vaBlock & 0xfff) == (0x1000 - cbPoolHdr))) {
+                // The pool header is moved to the next page when it would otherwise occupy the final header-sized slot of this page.
+                cbAdjust = cbPoolHdr;
+                oBlock += cbAdjust;
+                cbBlock -= cbAdjust;
+                vaBlock += cbAdjust;
+            } else if((cbBlock < 0xff0) && (((vaBlock & 0xfff) + cbBlock) > 0x1040)) {
                 // block crosses page boundary -> pool header will be found at
                 // start of new page - adjust block size and address!
                 cbAdjust = 0x1000 - (vaBlock & 0xfff);
@@ -929,6 +948,7 @@ VOID VmmWinPool_AllPool1903_5_LFH_DoWork(
     _In_ DWORD cb,
     _In_ PVMMWINPOOL_HEAP_PAGE_SEGMENT pPgSeg
 ) {
+    BOOL fAlloc, fBitmap1Bit = (H->vmm.kernel.dwVersionBuild >= 26100);
     UCHAR ucBits;
     PBYTE pbBitmap;
     DWORD cbBitmap, iBlock, cBlock, oBlock;
@@ -938,23 +958,31 @@ VOID VmmWinPool_AllPool1903_5_LFH_DoWork(
     if(sizeof(_HEAP_LFH_SUBSEGMENT_ENCODED_OFFSETS) > cb - ctx->po->_HEAP_LFH_SUBSEGMENT.oBlockOffsets) { return; }
     if(cb < ctx->po->_HEAP_LFH_SUBSEGMENT.oBlockBitmap) { return; }
     pbBitmap = pb + ctx->po->_HEAP_LFH_SUBSEGMENT.oBlockBitmap;
-    cbBitmap = cb - ctx->po->_HEAP_LFH_SUBSEGMENT.oBlockBitmap;
     pEncoded = (P_HEAP_LFH_SUBSEGMENT_ENCODED_OFFSETS)(pb + ctx->po->_HEAP_LFH_SUBSEGMENT.oBlockOffsets);
     dwvaShift = (H->vmm.kernel.dwVersionBuild >= 26100) ? ((DWORD)(va >> 12)) : ((DWORD)va >> 12);
     pEncoded->EncodedData = (DWORD)(pEncoded->EncodedData ^ ctx->qwKeyLfh ^ dwvaShift);
     oFirstBlock = pEncoded->FirstBlockOffset;
     cbBlockSize = pEncoded->BlockSize;
     if(!cbBlockSize || (cbBlockSize >= 0xff8) || (oFirstBlock > cb)) { return; }
+    if(ctx->po->_HEAP_LFH_SUBSEGMENT.oBlockBitmap > oFirstBlock) { return; }
+    cbBitmap = oFirstBlock - ctx->po->_HEAP_LFH_SUBSEGMENT.oBlockBitmap;
     cBlock = (cb - oFirstBlock) / cbBlockSize;
-    if(cbBitmap < (cBlock >> 2)) {
-        cBlock = cbBitmap << 2;
+    if((QWORD)cBlock > ((QWORD)cbBitmap << (fBitmap1Bit ? 3 : 2))) {
+        cBlock = cbBitmap << (fBitmap1Bit ? 3 : 2);
     }
     for(iBlock = 0; iBlock < cBlock; iBlock++) {
         oBlock = oFirstBlock + iBlock * cbBlockSize;
         if((oBlock > cb) || (cbBlockSize > cb - oBlock)) { return; }
         if((oBlock & 0xfff) + cbBlockSize > 0x1000) { continue; }   // block do not cross page boundaries
-        ucBits = pbBitmap[iBlock >> 2] >> ((iBlock & 0x3) << 1);
-        VmmWinPool_AllPool_PushItem(H, &ctx->pLfh, pPgSeg->pHeap->tpPool, VMM_MAP_POOL_TPSS_LFH, va + oBlock, pb + oBlock, cbBlockSize, ((ucBits & 3) == 1));
+        if(fBitmap1Bit) {
+            // Windows 11 24H2 changed the LFH allocation bitmap from two state bits per block to one busy bit per block.
+            ucBits = pbBitmap[iBlock >> 3] >> (iBlock & 0x7);
+            fAlloc = (ucBits & 1);
+        } else {
+            ucBits = pbBitmap[iBlock >> 2] >> ((iBlock & 0x3) << 1);
+            fAlloc = ((ucBits & 3) == 1);
+        }
+        VmmWinPool_AllPool_PushItem(H, &ctx->pLfh, pPgSeg->pHeap->tpPool, VMM_MAP_POOL_TPSS_LFH, va + oBlock, pb + oBlock, cbBlockSize, fAlloc);
     }
 }
 

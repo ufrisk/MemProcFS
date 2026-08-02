@@ -1501,6 +1501,7 @@ typedef struct tdVMM_OFFSET_HEAP {
         struct {
             WORD cb;
             WORD TreeSignature;
+            WORD UnusedBytes;
             WORD RangeFlags;
             WORD UnitSize;
         } HEAP_PAGE_RANGE_DESCRIPTOR;

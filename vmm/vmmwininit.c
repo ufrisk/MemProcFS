@@ -252,8 +252,8 @@ VOID VmmWinInit_InitializeOffsetStatic_Heap_Print(_In_ VMM_HANDLE H, _In_ BOOL f
         po->seg.SEGMENT_HEAP.LargeAllocMetadata, po->seg.SEGMENT_HEAP.LargeReservedPages, po->seg.SEGMENT_HEAP.SegContexts);
     VmmLog(H, MID_OFFSET, LOGLEVEL_6_TRACE, "  _HEAP_SEG_CONTEXT: SegmentListHead: %03x UnitShift: %03x FirstDescriptorIndex: %03x",
         po->seg.HEAP_SEG_CONTEXT.SegmentListHead, po->seg.HEAP_SEG_CONTEXT.UnitShift, po->seg.HEAP_SEG_CONTEXT.FirstDescriptorIndex);
-    VmmLog(H, MID_OFFSET, LOGLEVEL_6_TRACE, "  _HEAP_PAGE_RANGE_DESCRIPTOR: TreeSignature: %03x RangeFlags: %03x UnitSize: %03x",
-        po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.TreeSignature, po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.RangeFlags, po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.UnitSize);
+    VmmLog(H, MID_OFFSET, LOGLEVEL_6_TRACE, "  _HEAP_PAGE_RANGE_DESCRIPTOR: TreeSignature: %03x UnusedBytes: %03x RangeFlags: %03x UnitSize: %03x",
+        po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.TreeSignature, po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.UnusedBytes, po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.RangeFlags, po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.UnitSize);
     VmmLog(H, MID_OFFSET, LOGLEVEL_6_TRACE, "  _HEAP_LFH_SUBSEGMENT: BlockOffsets: %03x BlockBitmap: %03x",
         po->seg.HEAP_LFH_SUBSEGMENT.BlockOffsets, po->seg.HEAP_LFH_SUBSEGMENT.BlockBitmap);
     VmmLog(H, MID_OFFSET, LOGLEVEL_6_TRACE, "  _SEGMENT_HEAP %03x _HEAP_SEG_CONTEXT %03x _HEAP_PAGE_SEGMENT %03x _HEAP_PAGE_RANGE_DESCRIPTOR %03x _HEAP_VS_CHUNK_HEADER %03x ",
@@ -300,6 +300,7 @@ VOID VmmWinInit_InitializeOffsetStatic_Heap(_In_ VMM_HANDLE H)
         PDB_GetTypeChildOffsetShort(H, hPDB, "_HEAP_SEG_CONTEXT", "UnitShift", &po->seg.HEAP_SEG_CONTEXT.UnitShift);
         PDB_GetTypeChildOffsetShort(H, hPDB, "_HEAP_SEG_CONTEXT", "FirstDescriptorIndex", &po->seg.HEAP_SEG_CONTEXT.FirstDescriptorIndex);
         PDB_GetTypeChildOffsetShort(H, hPDB, "_HEAP_PAGE_RANGE_DESCRIPTOR", "TreeSignature", &po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.TreeSignature);
+        PDB_GetTypeChildOffsetShort(H, hPDB, "_HEAP_PAGE_RANGE_DESCRIPTOR", "UnusedBytes", &po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.UnusedBytes);
         PDB_GetTypeChildOffsetShort(H, hPDB, "_HEAP_PAGE_RANGE_DESCRIPTOR", "RangeFlags", &po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.RangeFlags);
         PDB_GetTypeChildOffsetShort(H, hPDB, "_HEAP_PAGE_RANGE_DESCRIPTOR", "UnitSize", &po->seg.HEAP_PAGE_RANGE_DESCRIPTOR.UnitSize);
         PDB_GetTypeChildOffsetShort(H, hPDB, "_HEAP_LFH_SUBSEGMENT", "BlockOffsets", &po->seg.HEAP_LFH_SUBSEGMENT.BlockOffsets);
