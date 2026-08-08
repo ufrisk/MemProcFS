@@ -377,7 +377,7 @@ next_check:
     peVadEx->pte = pte;
     peVadEx->iPML = iPML;
     *piVadEx = *piVadEx + 1;
-    if((iPML == 1) && (iPte < 0x3ff) && (iVadEx + 1 < pVadEx->cMap) && (peVadEx->va + 0x1000 == pVadEx->pMap[iVadEx + 1].va)) { goto next_entry; }
+    if((iPML == 1) && (iPte < 0x1ff) && (iVadEx + 1 < pVadEx->cMap) && (peVadEx->va + 0x1000 == pVadEx->pMap[iVadEx + 1].va)) { goto next_entry; }
     Ob_DECREF(pObPTEs);
 }
 

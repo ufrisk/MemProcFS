@@ -25,7 +25,7 @@
 #define MMWINX86PAE_PTE_TRANSITION(pte)             (((pte & 0x0c01) == 0x0800) ? ((pte & 0x0000003ffffff000) | 0x005) : 0)
 #define MMWINX86PAE_PTE_PROTOTYPE(pte)              (((pte & 0x8000000700000401) == 0x8000000000000400) ? (pte >> 32) : 0)
 #define MMWINX86PAE_PTE_PAGE_FILE_NUMBER(H, pte)    ((pte >> (((H->vmm.kernel.dwVersionBuild >= 17134) ? 12 : 1))) & 0x0f)
-#define MMWINX86PAE_PTE_PAGE_FILE_OFFSET(pte)       ((pte >> 32) ^ (!(pte & PTE_SWIZZLE_BIT) ? PTE_SWIZZLE_MASK : 0))
+#define MMWINX86PAE_PTE_PAGE_FILE_OFFSET(pte)       ((DWORD)(pte >> 32) & ~(((H->vmm.kernel.dwVersionBuild >= 17134) && !(pte & PTE_SWIZZLE_BIT)) ? PTE_SWIZZLE_MASK : 0))
 #define MMWINX86PAE_PTE_PAGE_KEY_COMPRESSED(H, pte) (DWORD)(((MMWINX86PAE_PTE_PAGE_FILE_NUMBER(H, pte) << 0x1c) | MMWINX86PAE_PTE_PAGE_FILE_OFFSET(pte)))
 
 #define MMWINX64_PTE_IS_HARDWARE(pte)               (pte & 0x01)
@@ -33,7 +33,7 @@
 #define MMWINX64_PTE_TRANSITION(pte)                (((pte & 0x0c01) == 0x0800) ? ((pte & 0xffffdffffffff000) | 0x005) : 0)
 #define MMWINX64_PTE_PROTOTYPE(pte)                 (((pte & 0x8000000000070401) == 0x8000000000000400) ? ((pte >> 16) | 0xffff000000000000) : 0)
 #define MMWINX64_PTE_PAGE_FILE_NUMBER(H, pte)       ((pte >> (((H->vmm.kernel.dwVersionBuild >= 17134) ? 12 : 1))) & 0x0f)
-#define MMWINX64_PTE_PAGE_FILE_OFFSET(pte)          ((pte >> 32) ^ (!(pte & PTE_SWIZZLE_BIT) ? PTE_SWIZZLE_MASK : 0))
+#define MMWINX64_PTE_PAGE_FILE_OFFSET(pte)          ((DWORD)(pte >> 32) & ~(((H->vmm.kernel.dwVersionBuild >= 17134) && !(pte & PTE_SWIZZLE_BIT)) ? PTE_SWIZZLE_MASK : 0))
 #define MMWINX64_PTE_PAGE_KEY_COMPRESSED(H, pte)    (DWORD)(((MMWINX64_PTE_PAGE_FILE_NUMBER(H, pte) << 0x1c) | MMWINX64_PTE_PAGE_FILE_OFFSET(pte)))
 
 typedef struct tdMMWIN_MEMCOMPRESS_OFFSET {
@@ -124,67 +124,39 @@ BOOL MmWin_BTree64_Search(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QW
 _Success_(return)
 BOOL MmWin_BTree32_SearchLeaf(_In_ PVMM_PROCESS pSystemProcess, _In_ P_BTREE32 pT, _In_ DWORD dwKey, _Out_ PDWORD pdwValue, _In_ QWORD fVmmRead)
 {
-    BOOL fSearchPreFail = FALSE;
-    DWORD i, dwSearchStep, dwSearchIndex = 1;
-    // 2: search tree for leaf
-    for(i = 1; (i < 12) && ((pT->cEntries - 1) >> i); i++);
-    dwSearchIndex = dwSearchStep = min(1 << (i - 1), pT->cEntries);
-    while(TRUE) {
-        dwSearchStep = dwSearchStep >> 1;
-        if(pT->LeafEntries[dwSearchIndex].k == dwKey) {
-            *pdwValue = pT->LeafEntries[dwSearchIndex].v;
+    DWORD i, iMin = 0, iMax = pT->cEntries;
+    while(iMin < iMax) {
+        i = iMin + ((iMax - iMin) >> 1);
+        if(pT->LeafEntries[i].k == dwKey) {
+            *pdwValue = pT->LeafEntries[i].v;
             return TRUE;
         }
-        if(dwSearchStep == 0) {
-            if(fSearchPreFail) {
-                return FALSE;
-            }
-            fSearchPreFail = TRUE;
-            dwSearchStep = 1;
-        }
-        if(pT->LeafEntries[dwSearchIndex].k < dwKey) {
-            if(dwSearchIndex + dwSearchStep < pT->cEntries) {
-                dwSearchIndex += dwSearchStep;
-            }
+        if(pT->LeafEntries[i].k < dwKey) {
+            iMin = i + 1;
         } else {
-            if(dwSearchStep <= dwSearchIndex) {
-                dwSearchIndex -= dwSearchStep;
-            }
+            iMax = i;
         }
     }
+    return FALSE;
 }
 
 _Success_(return)
 BOOL MmWin_BTree64_SearchLeaf(_In_ PVMM_PROCESS pSystemProcess, _In_ P_BTREE64 pT, _In_ DWORD dwKey, _Out_ PDWORD pdwValue, _In_ QWORD fVmmRead)
 {
-    BOOL fSearchPreFail = FALSE;
-    DWORD i, dwSearchStep, dwSearchIndex = 1;
-    // 2: search tree for leaf
-    for(i = 1; (i < 12) && ((pT->cEntries - 1) >> i); i++);
-    dwSearchIndex = dwSearchStep = min(1 << (i - 1), pT->cEntries);
-    while(TRUE) {
-        dwSearchStep = dwSearchStep >> 1;
-        if(pT->LeafEntries[dwSearchIndex].k == dwKey) {
-            *pdwValue = pT->LeafEntries[dwSearchIndex].v;
+    DWORD i, iMin = 0, iMax = pT->cEntries;
+    while(iMin < iMax) {
+        i = iMin + ((iMax - iMin) >> 1);
+        if(pT->LeafEntries[i].k == dwKey) {
+            *pdwValue = pT->LeafEntries[i].v;
             return TRUE;
         }
-        if(dwSearchStep == 0) {
-            if(fSearchPreFail) {
-                return FALSE;
-            }
-            fSearchPreFail = TRUE;
-            dwSearchStep = 1;
-        }
-        if(pT->LeafEntries[dwSearchIndex].k < dwKey) {
-            if(dwSearchIndex + dwSearchStep < pT->cEntries) {
-                dwSearchIndex += dwSearchStep;
-            }
+        if(pT->LeafEntries[i].k < dwKey) {
+            iMin = i + 1;
         } else {
-            if(dwSearchStep <= dwSearchIndex) {
-                dwSearchIndex -= dwSearchStep;
-            }
+            iMax = i;
         }
     }
+    return FALSE;
 }
 
 _Success_(return)
@@ -292,7 +264,7 @@ BOOL MmWin_BTree64_Search(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QW
     if(!f) { return FALSE; }
     if(pT->fLeaf) {
         // Leaf
-        if(pT->cEntries > 0x1ff) { return FALSE; }
+        if(pT->cEntries > 0x1fe) { return FALSE; }
         return MmWin_BTree64_SearchLeaf(pProcess, pT, dwKey, pdwValue, fVmmRead);
     } else {
         // Node
@@ -737,9 +709,15 @@ typedef struct td_SMHP_CHUNK_METADATA64 {
 
 typedef struct td_ST_PAGE_RECORD {
     DWORD Key;
-    DWORD CompressedSize;
-    DWORD NextKey;
+    // Normal records store a WORD size at +4; redirects store a DWORD key at +4.
+    union {
+        WORD CompressedSize;
+        DWORD NextKey;
+    } u;
+    DWORD Reserved;
 } _ST_PAGE_RECORD, *P_ST_PAGE_RECORD;
+
+#define MMWIN_MEMCOMPRESS_MAX_PAGE_RECORD_REDIRECTS     0x20
 
 /*
 * Log a memory compression error.
@@ -826,6 +804,60 @@ BOOL MmWin_MemCompress2_SmkmStoreMetadata64(_In_ VMM_HANDLE H, _In_ PMMWINX64_CO
 }
 
 /*
+* Retrieve the PageRecord address from the region key and the already loaded
+* SmkmStore. Page records with Key == 0xffffffff may redirect to another
+* region key, so this calculation is also used while following redirects.
+* -- H
+* -- ctx
+* -- return
+*/
+_Success_(return)
+BOOL MmWin_MemCompress3_PageRecordAddress32(_In_ VMM_HANDLE H, _In_ PMMWINX64_COMPRESS_CONTEXT ctx)
+{
+    QWORD cbChunkEntry;
+    DWORD vaPageRecordArray;
+    DWORD i, dwEncodedMetadata, iChunkPtr = 0, iChunkArray, dwPoolHdr = 0;
+    P_SMHP_CHUNK_METADATA32 pc;
+    PMMWIN_MEMCOMPRESS_OFFSET po = &H->vmm.pMmContext->MemCompress.O;
+    // Get page record and calculate:
+    //    - chunk "encoded metadata"
+    //    - index into chunk metadata array (= highest non-zero bit position of encoded_metadata)
+    //    - index into chunk array (pointed to by chunk metadata array)
+    pc = (P_SMHP_CHUNK_METADATA32)(ctx->e.pbSmkm + po->SMKM_STORE.ChunkMetaData);
+    if((pc->dwBitValue & 0xff) >= 32) {
+        return MmWin_MemCompress_LogError(H, ctx, "#35 InvalidChunkMetadata");
+    }
+    dwEncodedMetadata = ctx->e.dwRegionKey >> (pc->dwBitValue & 0xff);
+    if(!dwEncodedMetadata) {
+        return MmWin_MemCompress_LogError(H, ctx, "#35 InvalidChunkMetadata");
+    }
+    for(i = 0; i < 32; i++) {
+        if(!(dwEncodedMetadata >> i)) { break; }
+        iChunkPtr = i;
+    }
+    iChunkArray = (1U << iChunkPtr) ^ dwEncodedMetadata;
+    // Validate and fetch page record address
+    if(iChunkArray > 0x400) {
+        return MmWin_MemCompress_LogError(H, ctx, "#35 ChunkArrayTooLarge");
+    }
+    if(!VMM_KADDR32_8(pc->avaChunkPtr[iChunkPtr])) {
+        return MmWin_MemCompress_LogError(H, ctx, "#36 ChunkPtrNoKADDR");
+    }
+    if(pc->avaChunkPtr[iChunkPtr] & 0xfff) {
+        if(!VmmRead2(H, ctx->pSystemProcess, pc->avaChunkPtr[iChunkPtr] - 4, (PBYTE)&dwPoolHdr, 4, ctx->fVmmRead) || (dwPoolHdr != 'ABms')) {
+            return MmWin_MemCompress_LogError(H, ctx, "#37 ChunkBadPoolHdr");
+        }
+    }
+    // Windows 10 1607 uses two DWORDs per chunk entry; 1703+ uses three.
+    cbChunkEntry = (H->vmm.kernel.dwVersionBuild >= 15063) ? 0x0cULL : 0x08ULL;
+    if(!VmmRead2(H, ctx->pSystemProcess, pc->avaChunkPtr[iChunkPtr] + cbChunkEntry * iChunkArray, (PBYTE)&vaPageRecordArray, sizeof(DWORD), ctx->fVmmRead) || !VMM_KADDR32_PAGE(vaPageRecordArray)) {
+        return MmWin_MemCompress_LogError(H, ctx, "#38 PageRecordArray");
+    }
+    ctx->e.vaPageRecord = (DWORD)((QWORD)vaPageRecordArray + pc->dwChunkPageHeaderSize + ((QWORD)pc->dwPageRecordSize * (ctx->e.dwRegionKey & pc->dwPageRecordsPerChunkMask)));
+    return TRUE;
+}
+
+/*
 * Retrieve the SmkmStore and the PageRecord.
 * -- H
 * -- ctx
@@ -834,9 +866,6 @@ BOOL MmWin_MemCompress2_SmkmStoreMetadata64(_In_ VMM_HANDLE H, _In_ PMMWINX64_CO
 _Success_(return)
 BOOL MmWin_MemCompress3_SmkmStoreAndPageRecord32(_In_ VMM_HANDLE H, _In_ PMMWINX64_COMPRESS_CONTEXT ctx)
 {
-    DWORD vaPageRecordArray;
-    DWORD i, dwEncodedMetadata, iChunkPtr = 0, iChunkArray, dwPoolHdr = 0;
-    P_SMHP_CHUNK_METADATA32 pc;
     PMMWIN_MEMCOMPRESS_OFFSET po = &H->vmm.pMmContext->MemCompress.O;
     // 1: Load SmkmStore
     if(!VmmRead2(H, ctx->pSystemProcess, ctx->e.vaSmkmStore, ctx->e.pbSmkm, sizeof(ctx->e.pbSmkm), ctx->fVmmRead)) {
@@ -853,38 +882,62 @@ BOOL MmWin_MemCompress3_SmkmStoreAndPageRecord32(_In_ VMM_HANDLE H, _In_ PMMWINX
     if(!MmWin_BTree_Search(H, ctx->pSystemProcess, *(PDWORD)(ctx->e.pbSmkm + po->SMKM_STORE.PagesTree), ctx->e.dwPageKey, &ctx->e.dwRegionKey, ctx->fVmmRead)) {
         return MmWin_MemCompress_LogError(H, ctx, "#34 RegionKeyBTreeSearch");
     }
-    // 4: Get page record and calculate:
-    //    - chunk "encoded metadata"
-    //    - index into chunk metadata array (= highest non-zero bit position of encoded_metadata)
-    //    - index into chunk array (pointed to by chunk metadata array)
-    pc = (P_SMHP_CHUNK_METADATA32)(ctx->e.pbSmkm + po->SMKM_STORE.ChunkMetaData);
-    dwEncodedMetadata = ctx->e.dwRegionKey >> (pc->dwBitValue & 0xff);
-    for(i = 0; i < 32; i++) {
-        if(!(dwEncodedMetadata >> i)) { break; }
-        iChunkPtr = i;
-    }
-    iChunkArray = (1 << iChunkPtr) ^ dwEncodedMetadata;
-    // 5: Validate and fetch page record address
-    if(iChunkArray > 0x400) {
-        return MmWin_MemCompress_LogError(H, ctx, "#35 ChunkArrayTooLarge");
-    }
-    if(!VMM_KADDR32_8(pc->avaChunkPtr[iChunkPtr])) {
-        return MmWin_MemCompress_LogError(H, ctx, "#36 ChunkPtrNoKADDR");
-    }
-    if(pc->avaChunkPtr[iChunkPtr] & 0xfff) {
-        if(!VmmRead2(H, ctx->pSystemProcess, pc->avaChunkPtr[iChunkPtr] - 4, (PBYTE)&dwPoolHdr, 4, ctx->fVmmRead) || (dwPoolHdr != 'ABms')) {
-            return MmWin_MemCompress_LogError(H, ctx, "#37 ChunkBadPoolHdr");
-        }
-    }
-    if(!VmmRead2(H, ctx->pSystemProcess, pc->avaChunkPtr[iChunkPtr] + 0x0cULL * iChunkArray, (PBYTE)&vaPageRecordArray, sizeof(DWORD), ctx->fVmmRead) || !VMM_KADDR32_PAGE(vaPageRecordArray)) {
-        return MmWin_MemCompress_LogError(H, ctx, "#38 PageRecordArray");
-    }
-    ctx->e.vaPageRecord = (DWORD)((QWORD)vaPageRecordArray + pc->dwChunkPageHeaderSize + ((QWORD)pc->dwPageRecordSize * (ctx->e.dwRegionKey & pc->dwPageRecordsPerChunkMask)));
-    // 6: Get owner EPROCESS
+    // 4: Get page record address
+    if(!MmWin_MemCompress3_PageRecordAddress32(H, ctx)) { return FALSE; }
+    // 5: Get owner EPROCESS
     ctx->e.vaOwnerEPROCESS = *(PDWORD)(ctx->e.pbSmkm + po->SMKM_STORE.OwnerProcess);
     if(ctx->e.vaOwnerEPROCESS != H->vmm.pMmContext->MemCompress.vaEPROCESS) {
         return MmWin_MemCompress_LogError(H, ctx, "#39 OwnerEPROCESS");
     }
+    return TRUE;
+}
+
+/*
+* Retrieve the PageRecord address from the region key and the already loaded SmkmStore.
+* -- H
+* -- ctx
+* -- return
+*/
+_Success_(return)
+BOOL MmWin_MemCompress3_PageRecordAddress64(_In_ VMM_HANDLE H, _In_ PMMWINX64_COMPRESS_CONTEXT ctx)
+{
+    QWORD vaPageRecordArray;
+    DWORD i, dwEncodedMetadata, iChunkPtr = 0, iChunkArray, dwPoolHdr = 0;
+    P_SMHP_CHUNK_METADATA64 pc;
+    PMMWIN_MEMCOMPRESS_OFFSET po = &H->vmm.pMmContext->MemCompress.O;
+    // Get page record and calculate:
+    //    - chunk "encoded metadata"
+    //    - index into chunk metadata array (= highest non-zero bit position of encoded_metadata)
+    //    - index into chunk array (pointed to by chunk metadata array)
+    pc = (P_SMHP_CHUNK_METADATA64)(ctx->e.pbSmkm + po->SMKM_STORE.ChunkMetaData);
+    if((pc->dwBitValue & 0xff) >= 32) {
+        return MmWin_MemCompress_LogError(H, ctx, "#35 InvalidChunkMetadata");
+    }
+    dwEncodedMetadata = ctx->e.dwRegionKey >> (pc->dwBitValue & 0xff);
+    if(!dwEncodedMetadata) {
+        return MmWin_MemCompress_LogError(H, ctx, "#35 InvalidChunkMetadata");
+    }
+    for(i = 0; i < 32; i++) {
+        if(!(dwEncodedMetadata >> i)) { break; }
+        iChunkPtr = i;
+    }
+    iChunkArray = (1U << iChunkPtr) ^ dwEncodedMetadata;
+    // Validate and fetch page record address
+    if(iChunkArray > 0x400) {
+        return MmWin_MemCompress_LogError(H, ctx, "#35 ChunkArrayTooLarge");
+    }
+    if(!VMM_KADDR64_16(pc->avaChunkPtr[iChunkPtr])) {
+        return MmWin_MemCompress_LogError(H, ctx, "#36 ChunkPtrNoKADDR");
+    }
+    if(pc->avaChunkPtr[iChunkPtr] & 0xfff) {
+        if(!VmmRead2(H, ctx->pSystemProcess, pc->avaChunkPtr[iChunkPtr] - 12, (PBYTE)&dwPoolHdr, 4, ctx->fVmmRead) || (dwPoolHdr != 'ABms')) {
+            return MmWin_MemCompress_LogError(H, ctx, "#37 ChunkBadPoolHdr");
+        }
+    }
+    if(!VmmRead2(H, ctx->pSystemProcess, pc->avaChunkPtr[iChunkPtr] + 0x10ULL * iChunkArray, (PBYTE)&vaPageRecordArray, sizeof(QWORD), ctx->fVmmRead) || !VMM_KADDR64_PAGE(vaPageRecordArray)) {
+        return MmWin_MemCompress_LogError(H, ctx, "#38 PageRecordArray");
+    }
+    ctx->e.vaPageRecord = (QWORD)(vaPageRecordArray + pc->dwChunkPageHeaderSize + ((QWORD)pc->dwPageRecordSize * (ctx->e.dwRegionKey & pc->dwPageRecordsPerChunkMask)));
     return TRUE;
 }
 
@@ -897,9 +950,6 @@ BOOL MmWin_MemCompress3_SmkmStoreAndPageRecord32(_In_ VMM_HANDLE H, _In_ PMMWINX
 _Success_(return)
 BOOL MmWin_MemCompress3_SmkmStoreAndPageRecord64(_In_ VMM_HANDLE H, _In_ PMMWINX64_COMPRESS_CONTEXT ctx)
 {
-    QWORD vaPageRecordArray;
-    DWORD i, dwEncodedMetadata, iChunkPtr = 0, iChunkArray, dwPoolHdr = 0;
-    P_SMHP_CHUNK_METADATA64 pc;
     PMMWIN_MEMCOMPRESS_OFFSET po = &H->vmm.pMmContext->MemCompress.O;
     // 1: Load SmkmStore
     if(!VmmRead2(H, ctx->pSystemProcess, ctx->e.vaSmkmStore, ctx->e.pbSmkm, sizeof(ctx->e.pbSmkm), ctx->fVmmRead)) {
@@ -916,34 +966,9 @@ BOOL MmWin_MemCompress3_SmkmStoreAndPageRecord64(_In_ VMM_HANDLE H, _In_ PMMWINX
     if(!MmWin_BTree_Search(H, ctx->pSystemProcess, *(PQWORD)(ctx->e.pbSmkm + po->SMKM_STORE.PagesTree), ctx->e.dwPageKey, &ctx->e.dwRegionKey, ctx->fVmmRead)) {
         return MmWin_MemCompress_LogError(H, ctx, "#34 RegionKeyBTreeSearch");
     }
-    // 4: Get page record and calculate:
-    //    - chunk "encoded metadata"
-    //    - index into chunk metadata array (= highest non-zero bit position of encoded_metadata)
-    //    - index into chunk array (pointed to by chunk metadata array)
-    pc = (P_SMHP_CHUNK_METADATA64)(ctx->e.pbSmkm + po->SMKM_STORE.ChunkMetaData);
-    dwEncodedMetadata = ctx->e.dwRegionKey >> (pc->dwBitValue & 0xff);
-    for(i = 0; i < 32; i++) {
-        if(!(dwEncodedMetadata >> i)) { break; }
-        iChunkPtr = i;
-    }
-    iChunkArray = (1 << iChunkPtr) ^ dwEncodedMetadata;
-    // 5: Validate and fetch page record address
-    if(iChunkArray > 0x400) {
-        return MmWin_MemCompress_LogError(H, ctx, "#35 ChunkArrayTooLarge");
-    }
-    if(!VMM_KADDR64_16(pc->avaChunkPtr[iChunkPtr])) {
-        return MmWin_MemCompress_LogError(H, ctx, "#36 ChunkPtrNoKADDR");
-    }
-    if(pc->avaChunkPtr[iChunkPtr] & 0xfff) {
-        if(!VmmRead2(H, ctx->pSystemProcess, pc->avaChunkPtr[iChunkPtr] - 12, (PBYTE)&dwPoolHdr, 4, ctx->fVmmRead) || (dwPoolHdr != 'ABms')) {
-            return MmWin_MemCompress_LogError(H, ctx, "#37 ChunkBadPoolHdr");
-        }
-    }
-    if(!VmmRead2(H, ctx->pSystemProcess, pc->avaChunkPtr[iChunkPtr] + 0x10ULL * iChunkArray, (PBYTE)&vaPageRecordArray, sizeof(QWORD), ctx->fVmmRead) || !VMM_KADDR64_PAGE(vaPageRecordArray)) {
-        return MmWin_MemCompress_LogError(H, ctx, "#38 PageRecordArray");
-    }
-    ctx->e.vaPageRecord = (QWORD)(vaPageRecordArray + pc->dwChunkPageHeaderSize + ((QWORD)pc->dwPageRecordSize * (ctx->e.dwRegionKey & pc->dwPageRecordsPerChunkMask)));
-    // 6: Get owner EPROCESS
+    // 4: Get page record address
+    if(!MmWin_MemCompress3_PageRecordAddress64(H, ctx)) { return FALSE; }
+    // 5: Get owner EPROCESS
     ctx->e.vaOwnerEPROCESS = *(PQWORD)(ctx->e.pbSmkm + po->SMKM_STORE.OwnerProcess);
     if(ctx->e.vaOwnerEPROCESS != H->vmm.pMmContext->MemCompress.vaEPROCESS) {
         return MmWin_MemCompress_LogError(H, ctx, "#39 OwnerEPROCESS");
@@ -960,40 +985,54 @@ _Success_(return)
 BOOL MmWin_MemCompress4_CompressedRegionData(_In_ VMM_HANDLE H, _In_ PMMWINX64_COMPRESS_CONTEXT ctx)
 {
     QWORD vaRegionPtr = 0;
-    DWORD dwRegionIndexMask, dwRegionIndex;
+    DWORD i, dwRegionIndexMask, dwRegionIndex;
     _ST_PAGE_RECORD PageRecord;
     PMMWIN_MEMCOMPRESS_OFFSET po = &H->vmm.pMmContext->MemCompress.O;
-    // 1: Read page record
-    if(!VmmRead2(H, ctx->pSystemProcess, ctx->e.vaPageRecord, (PBYTE)&PageRecord, sizeof(PageRecord), ctx->fVmmRead)) {
-        return MmWin_MemCompress_LogError(H, ctx, "#41 ReadPageRecord");
+    // 1: Read page record and follow any redirect records.
+    for(i = 0; i <= MMWIN_MEMCOMPRESS_MAX_PAGE_RECORD_REDIRECTS; i++) {
+        if(!VmmRead2(H, ctx->pSystemProcess, ctx->e.vaPageRecord, (PBYTE)&PageRecord, sizeof(PageRecord), ctx->fVmmRead)) {
+            return MmWin_MemCompress_LogError(H, ctx, "#41 ReadPageRecord");
+        }
+        if(PageRecord.Key != 0xffffffff) { break; }
+        if((i == MMWIN_MEMCOMPRESS_MAX_PAGE_RECORD_REDIRECTS) || (PageRecord.u.NextKey == ctx->e.dwRegionKey)) {
+            return MmWin_MemCompress_LogError(H, ctx, "#42 InvalidPageRecordRedirect");
+        }
+        ctx->e.dwRegionKey = PageRecord.u.NextKey;
+        if(H->vmm.f32) {
+            if(!MmWin_MemCompress3_PageRecordAddress32(H, ctx)) { return FALSE; }
+        } else {
+            if(!MmWin_MemCompress3_PageRecordAddress64(H, ctx)) { return FALSE; }
+        }
     }
-    if(PageRecord.Key == 0xffffffff) {
-        // TODO: implement support
-        return MmWin_MemCompress_LogError(H, ctx, "#42 UnsupportedPageRecord");
+    ctx->e.cbCompressedData = (PageRecord.u.CompressedSize == 0x1000) ? 0x1000 : PageRecord.u.CompressedSize & 0xfff;
+    dwRegionIndexMask = *(PDWORD)(ctx->e.pbSmkm + po->SMKM_STORE.RegionIndexMask) & 0xff;
+    if(dwRegionIndexMask >= 32) {
+        return MmWin_MemCompress_LogError(H, ctx, "#47 InvalidRegionIndexMask");
     }
-    ctx->e.cbCompressedData = (PageRecord.CompressedSize == 0x1000) ? 0x1000 : PageRecord.CompressedSize & 0xfff;
     if(H->vmm.f32) {
         // 2: Get pointer to region (32-bit)
-        dwRegionIndexMask = *(PDWORD)(ctx->e.pbSmkm + po->SMKM_STORE.RegionIndexMask) & 0xff;
         dwRegionIndex = PageRecord.Key >> dwRegionIndexMask;
         vaRegionPtr = *(PDWORD)(ctx->e.pbSmkm + po->SMKM_STORE.CompressedRegionPtrArray) + dwRegionIndex * sizeof(DWORD);
         // 3: Get region and offset (32-bit)
         if(!VmmRead2(H, ctx->pSystemProcess, vaRegionPtr, (PBYTE)&ctx->e.vaRegion, sizeof(DWORD), ctx->fVmmRead)) {
             return MmWin_MemCompress_LogError(H, ctx, "#43 ReadRegionVA");
         }
-        if(!ctx->e.vaRegion || (ctx->e.vaRegion & 0x8000ffff)) {
+        // High bit and low 16 bits contain entry state; regions are 64KB aligned.
+        ctx->e.vaRegion &= 0x7fff0000;
+        if(!VMM_UADDR32(ctx->e.vaRegion)) {
             return MmWin_MemCompress_LogError(H, ctx, "#44 InvalidRegionVA");
         }
     } else {
         // 2: Get pointer to region (64-bit)
-        dwRegionIndexMask = *(PDWORD)(ctx->e.pbSmkm + po->SMKM_STORE.RegionIndexMask) & 0xff;
         dwRegionIndex = PageRecord.Key >> dwRegionIndexMask;
         vaRegionPtr = *(PQWORD)(ctx->e.pbSmkm + po->SMKM_STORE.CompressedRegionPtrArray) + dwRegionIndex * sizeof(QWORD);
         // 3: Get region and offset (64-bit)
         if(!VmmRead2(H, ctx->pSystemProcess, vaRegionPtr, (PBYTE)&ctx->e.vaRegion, sizeof(QWORD), ctx->fVmmRead)) {
             return MmWin_MemCompress_LogError(H, ctx, "#45 ReadRegionVA");
         }
-        if(!ctx->e.vaRegion || (ctx->e.vaRegion & 0xffff80000000ffff)) {
+        // High bit and low 16 bits contain entry state; regions are 64KB aligned.
+        ctx->e.vaRegion &= 0x7fffffffffff0000;
+        if(!VMM_UADDR64(ctx->e.vaRegion)) {
             return MmWin_MemCompress_LogError(H, ctx, "#46 InvalidRegionVA");
         }
     }

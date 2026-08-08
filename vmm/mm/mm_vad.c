@@ -1039,9 +1039,6 @@ VOID MmVad_ExtendedInfoFetch(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess
     PVMMOB_SCATTER hObScatter = NULL;
     DWORD cbRead, cb32 = f32 ? 4 : 8;
     pVadMap = pProcess->Map.pObVad;
-    if(tp == VMM_VADMAP_TP_FULL) {
-        if(!(psmOb = ObStrMap_New(H, 0))) { goto cleanup; }
-    }
     // count max potential vads and allocate.
     {
         for(i = 0, cMax = pVadMap->cMap; i < cMax; i++) {
@@ -1125,6 +1122,10 @@ VOID MmVad_ExtendedInfoFetch(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess
         pVadMap->tp = tp;
         goto cleanup;
     }
+    // [ alloc strmap for full VAD parse ]
+    if(!(psmOb = ObStrMap_New(H, 0))) {
+        goto cleanup;
+    }
     // [ heap map parse ]
     if(VmmMap_GetHeap(H, pProcess, &pObHeapMap)) {
         for(i = 0; i < pObHeapMap->cSegments; i++) {
@@ -1172,14 +1173,16 @@ VOID MmVad_ExtendedInfoFetch(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess
             );
         }
     }
-    // cleanup
+    // Finalize all strings before publishing the full map.
+    f = ObStrMap_FinalizeAllocU_DECREF_NULL(&psmOb, &pVadMap->pbMultiText, &pVadMap->cbMultiText);
+    if(!f) { goto cleanup; }
     pVadMap->tp = tp;
 cleanup:
-    ObStrMap_FinalizeAllocU_DECREF_NULL(&psmOb, &pVadMap->pbMultiText, &pVadMap->cbMultiText);
     Ob_DECREF(pObThreadMap);
     Ob_DECREF(pObHeapMap);
     Ob_DECREF(pObPteMap);
     Ob_DECREF(hObScatter);
+    Ob_DECREF(psmOb);
     LocalFree(pva);
 }
 

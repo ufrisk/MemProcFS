@@ -1284,7 +1284,7 @@ BOOL VmmWinObjFile_ReadAlloc(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_FILE pFile, _
     cbFile = VmmWinObjFile_Size(H, pFile, tp);
     if(!cbFile || (cbFile > 0x80000000)) { return FALSE; }
     if(cbFileMaxSize && (cbFile > cbFileMaxSize)) { return FALSE; }
-    if(!(pbFile = LocalAlloc(LMEM_ZEROINIT, cbFile))) { return FALSE; }
+    if(!(pbFile = LocalAlloc(LMEM_ZEROINIT, (SIZE_T)cbFile))) { return FALSE; }
     // read file:
     if(!(cbRead = VmmWinObjFile_Read(H, pFile, 0, pbFile, (DWORD)cbFile, fVmmRead, tp))) {
         LocalFree(pbFile);

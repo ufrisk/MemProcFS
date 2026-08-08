@@ -649,7 +649,7 @@ DWORD VmmWinInit_FindNtosScan32(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProc
         if(pNtHeader->Signature != IMAGE_NT_SIGNATURE) { continue; }        // NT header signature
         for(o = 0; o < 0x800; o += 8) {
             if(*(PQWORD)(pb + ova + o) == 0x45444F434C4F4F50) {             // POOLCODE
-                if(!PE_GetModuleNameEx(H, pSystemProcess, (QWORD)vaBase + ova, FALSE, pb + ova, szModuleName, _countof(szModuleName), NULL)) {
+                if(!PE_GetModuleNameEx(H, pSystemProcess, vaBase, FALSE, pb + ova, szModuleName, _countof(szModuleName), NULL)) {
                     vaNtosTry = vaBase;
                     continue;
                 }

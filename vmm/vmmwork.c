@@ -331,7 +331,7 @@ BOOL VmmWork_ProcessActionForeachParallel_Void(
     // 1: select processes to queue using criteria function
     if(!(pObProcessSelectedSet = ObSet_New(H))) { goto fail; }
     while((pObProcess = VmmProcessGetNext(H, pObProcess, VMM_FLAG_PROCESS_SHOW_TERMINATED))) {
-        if(!pfnCriteria || pfnCriteria(H, pObProcess, ctxOb)) {
+        if(!pfnCriteria || pfnCriteria(H, pObProcess, ctxAction)) {
             ObSet_Push(pObProcessSelectedSet, pObProcess->dwPID);
         }
     }

@@ -491,6 +491,7 @@ BOOL VmmWinThreadCs_RspUnwinder(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _
             //Restoring former stack allocation, (the number of bytes is given by new slot and carried by FrameOffset)
             case UWOP_ALLOC_LARGE:
                 if(pUnwindCodes[dwUnwdIter].OpInfo == 0x00) {
+                    if(dwNbslot - dwUnwdIter < 2) { goto end; }
                     offset = (PFRAME_OFFSET_SH)&pUnwindCodes[dwUnwdIter + 1];
                     FrameOffset = (offset->FrameOffset)*8;
                     qwCurrentRSP = qwCurrentRSP + FrameOffset;
@@ -499,6 +500,7 @@ BOOL VmmWinThreadCs_RspUnwinder(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _
                     break;
                 }
                 else if(pUnwindCodes[dwUnwdIter].OpInfo == 0x01) {
+                    if(dwNbslot - dwUnwdIter < 3) { goto end; }
                     offset_l = (PFRAME_OFFSET_L)&pUnwindCodes[dwUnwdIter + 1];
                     FrameOffset = (USHORT)offset_l->FrameOffset;
                     printf("Frame offset is %02x\n", FrameOffset);
@@ -517,18 +519,16 @@ BOOL VmmWinThreadCs_RspUnwinder(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _
             //  vaRSP is left untouched 
             case UWOP_SET_FPREG:
                 break;
-            // the save is only made on stack space already allocated, RSP is left untouched but next slot is used for this register so we go over it
+            // the save is only made on stack space already allocated, RSP is left untouched but the offset slots must be skipped
             case UWOP_SAVE_NONVOL:
+            case UWOP_SAVE_XMM128:
+                if(dwNbslot - dwUnwdIter < 2) { goto end; }
                 dwUnwdIter++;
                 break;
-            // the save is only made on stack already allocated, RSP is left untouched 
             case UWOP_SAVE_NONVOL_FAR:
-                break;
-            // the save is only made on stack already allocated, RSP is left untouched 
-            case UWOP_SAVE_XMM128:
-                break;
-            // the save is only made on stack already allocated, RSP is left untouched 
             case UWOP_SAVE_XMM128_FAR:
+                if(dwNbslot - dwUnwdIter < 3) { goto end; }
+                dwUnwdIter += 2;
                 break;
             case UWOP_PUSH_MACHFRAME:
                 if(pUnwindCodes[dwUnwdIter].OpInfo == 0x00) {

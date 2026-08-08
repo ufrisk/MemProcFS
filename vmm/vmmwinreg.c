@@ -15,7 +15,8 @@
 #include "vmmwin.h"
 #include "vmmwinobj.h"
 
-#define REG_SIGNATURE_HBIN      0x6e696268
+#define REG_SIGNATURE_HBIN             0x6e696268
+#define VMMWINREG_KEY_MAX_DEPTH        0x200
 
 typedef struct tdVMMWIN_REGISTRY_OFFSET {
     QWORD vaHintCMHIVE;
@@ -214,7 +215,7 @@ VOID VmmWinReg_ReadScatter(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcessRegistry
     for(i = 0; i < cpMEMsReg; i++) {
         pMEM = ppMEMsReg[i];
         MEM_SCATTER_STACK_PUSH(pMEM, pMEM->qwA);
-        if(pMEM->f || !VmmWinReg_Reg2Virt(H, pProcessRegistry, pRegistryHive, (DWORD)pMEM->qwA, &pMEM->qwA)) {
+        if(pMEM->f || (pMEM->qwA > 0xffffffff) || !VmmWinReg_Reg2Virt(H, pProcessRegistry, pRegistryHive, (DWORD)pMEM->qwA, &pMEM->qwA)) {
             pMEM->qwA = -1;
         }
     }
@@ -248,7 +249,7 @@ VOID VmmWinReg_ReadScatter(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcessRegistry
             }
             ctxHiveFileScatterRead.pFile = pObHiveFile;
             ctxHiveFileScatterRead.tp = VMMWINOBJ_FILE_TP_DATA | VMMWINOBJ_FILE_TP_CACHE;
-            VmmWinObjFile_ReadScatter(H, &ctxHiveFileScatterRead, ppMEMsReg, cpMEMsReg, flags);
+            VmmWinObjFile_ReadScatter(H, &ctxHiveFileScatterRead, ppMEMsFile, cMEMsFile, flags);
             for(i = 0; i < cMEMsFile; i++) {
                 pMEM = ppMEMsFile[i];
                 pMEM->qwA = MEM_SCATTER_STACK_POP(pMEM);
@@ -279,7 +280,7 @@ VOID VmmWinReg_HiveReadEx(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pRegistryHiv
     PMEM_SCATTER pMEMs, *ppMEMs;
     QWORD i, oVA;
     if(pcbReadOpt) { *pcbReadOpt = 0; }
-    if(!cb) { return; }
+    if(!cb || (cb >= 0x80000000) || ((QWORD)cb > 0x100000000ULL - ra)) { return; }
     cMEMs = (DWORD)(((ra & 0xfff) + cb + 0xfff) >> 12);
     pbBuffer = (PBYTE)LocalAlloc(LMEM_ZEROINIT, 0x2000 + cMEMs * (sizeof(MEM_SCATTER) + sizeof(PMEM_SCATTER)));
     if(!pbBuffer) {
@@ -365,7 +366,7 @@ BOOL VmmWinReg_HiveWrite(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pRegistryHive
     DWORD cbWrite;
     BOOL fSuccess = TRUE;
     PVMM_PROCESS pObProcessRegistry = NULL;
-    if(!cb || !(pObProcessRegistry = VmmWinReg_GetRegistryProcess(H))) { return FALSE; }
+    if(!cb || ((QWORD)cb > 0x100000000ULL - ra) || !(pObProcessRegistry = VmmWinReg_GetRegistryProcess(H))) { return FALSE; }
     while(cb) {
         cbWrite = min(cb, 0x1000 - (ra & 0xfff));
         if(VmmWinReg_Reg2Virt(H, pObProcessRegistry, pRegistryHive, ra, &vaWrite) && vaWrite) {
@@ -690,6 +691,8 @@ BOOL VmmWinReg_LocateRegistryHive(_In_ VMM_HANDLE H)
                     }
                 }
             }
+            LcMemFree(ppMEMs);
+            ppMEMs = NULL;
         }
     }
     // 2: As a fallback - try locate registry by scanning lower physical memory.
@@ -887,7 +890,7 @@ VOID VmmWinReg_EnumHive32_Post(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _I
         pHiveMap &&
         (*(PDWORD)(pbData + po->CM.Signature) == 0xBEE0BEE0) &&                 // Signature match
         !(*(PDWORD)(pbData + po->CM.BaseBlock) & 0xfff) &&                      // _CMHIVE.BaseBlock on page boundary
-        (*(PQWORD)(pbData + po->CM.StorageMap0)) &&                             // _CMHIVE.Hive.Storage.Map
+        (*(PDWORD)(pbData + po->CM.StorageMap0)) &&                             // _CMHIVE.Hive.Storage.Map
         (*(PDWORD)(pbData + po->CM.Length0)) &&                                  // Length > 0
         (*(PDWORD)(pbData + po->CM.Length0) <= 0x40000000);                      // Length < 1GB
     if(!f) { return; }
@@ -960,8 +963,9 @@ VOID VmmWinReg_EnumHive32_Post(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _I
         (szHiveFileNameShort[0] ? szHiveFileNameShort : "unknown"),
         (szHiveFileNameLong[0] ? szHiveFileNameLong : "unknown"));
     // 4: Attach and Return
-    ObMap_Push(pHiveMap, pObHive->vaCMHIVE, pObHive);                   // pRegistry->pmHive takes responsibility for pObHive reference
+    ObMap_Push(pHiveMap, pObHive->vaCMHIVE, pObHive);
     VmmLog(H, MID_REGISTRY, LOGLEVEL_DEBUG, "HIVE_ENUM: %04i: %s", ObMap_Size(pHiveMap), pObHive->uszName);
+    Ob_DECREF(pObHive);
 }
 
 /*
@@ -1071,6 +1075,8 @@ BOOL VmmWinReg_HiveSnapshotEnsure(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHiv
     if(!pHive) { return FALSE; }
     if(pHive->Snapshot.fInitialized) { return TRUE; }
     if(pHive->cbLength > 0x10000000) { return FALSE; }      // max 256MB hive
+    if((pHive->_DUAL[0].cb & 0xfff) || (pHive->_DUAL[0].cb > 0x10000000) || (pHive->_DUAL[0].cb < 0x1000)) { return FALSE; }
+    if((pHive->_DUAL[1].cb & 0xfff) || (pHive->_DUAL[1].cb > 0x10000000)) { return FALSE; }
     // 2: lock and retry retrieve cached
     EnterCriticalSection(&pHive->LockUpdate);
     if(pHive->Snapshot.fInitialized) {
@@ -1323,7 +1329,7 @@ DWORD VmmWinReg_KeyHashName(_In_ PREG_CM_KEY_NODE pnk, _In_ DWORD iSuffix)
         CharUtil_FixFsName(uszBuffer, sizeof(uszBuffer), NULL, NULL, pnk->wszName, pnk->NameLength, iSuffix, TRUE);
     if(c) { c--; }
     for(i = 0; i < c; i++) {
-        dwHash = ((dwHash >> 13) | (dwHash << 19)) + uszBuffer[i];
+        dwHash = ((dwHash >> 13) | (dwHash << 19)) + (UCHAR)uszBuffer[i];
     }
     return dwHash;
 }
@@ -1417,7 +1423,7 @@ POB_REGISTRY_KEY VmmWinReg_KeyInitializeCreateKey(_In_ VMM_HANDLE H, _In_ POB_RE
 	// 3: get parent key
 	pObKeyParent = ObMap_GetByKey(pHive->Snapshot.pmKeyOffset, pnk->Parent);
 	if(!pObKeyParent) {
-		if(iLevel < 0x10) {
+		if(iLevel < VMMWINREG_KEY_MAX_DEPTH - 1) {
 			pObKeyParent = VmmWinReg_KeyInitializeCreateKey(H, pHive, pnk->Parent, iLevel + 1);
 		}
         if(!pObKeyParent) {
@@ -1508,17 +1514,25 @@ POB_REGISTRY_KEY VmmWinReg_KeyInitializeRootKeyDummy(_In_ VMM_HANDLE H, _In_ POB
 _Success_(return)
 BOOL VmmWinReg_KeyInitializeRootKey(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive)
 {
+    BOOL f;
     PREG_CM_KEY_NODE pnk;
-    DWORD i, oRootKey = -1, cbCell, cbKey;
+    DWORD i, oRootKey = -1, cbCell, cbKey, cbSnapshot, cbFirstPage;
 	QWORD qwKeyRootHash = 0;
+    cbSnapshot = pHive->Snapshot._DUAL[0].cb;
+    cbFirstPage = min(cbSnapshot, 0x1000);
     // 1: get root key offset from regf-header (this is most often 0x20)
-    if(!VmmRead(H, PVMM_PROCESS_SYSTEM, pHive->vaHBASE_BLOCK + 0x24, (PBYTE)&oRootKey, sizeof(DWORD)) || !oRootKey || (oRootKey > pHive->Snapshot._DUAL[0].cb - REG_CM_KEY_NODE_SIZEOF)) {
+    f = !VmmRead(H, PVMM_PROCESS_SYSTEM, pHive->vaHBASE_BLOCK + 0x24, (PBYTE)&oRootKey, sizeof(DWORD)) ||
+        !oRootKey ||
+        (cbSnapshot < sizeof(DWORD) + REG_CM_KEY_NODE_SIZEOF) ||
+        (oRootKey > cbSnapshot - sizeof(DWORD) - REG_CM_KEY_NODE_SIZEOF);
+    if(f) {
         // regf base block unreadable or corrupt - try locate root key in 1st hive page
+        oRootKey = -1;
         i = 0x20;
-        while(TRUE) {
+        while((i <= cbFirstPage) && (sizeof(DWORD) <= cbFirstPage - i)) {
             cbCell = REG_CELL_SIZE_EX(pHive->Snapshot._DUAL[0].pb, i);
             cbKey = (cbCell > 4) ? cbCell - 4 : 0;
-			if((cbKey < sizeof(REG_CM_KEY_NODE)) || (i + cbCell > 0x1000)) { break; }
+			if((cbKey < sizeof(REG_CM_KEY_NODE)) || (cbCell > cbFirstPage - i)) { break; }
             pnk = (PREG_CM_KEY_NODE)(pHive->Snapshot._DUAL[0].pb + i + 4);
             if((pnk->Signature != REG_CM_KEY_SIGNATURE_KEYNODE) || !(pnk->Flags & REG_CM_KEY_NODE_FLAGS_HIVE_ENTRY) || !(pnk->Flags & REG_CM_KEY_NODE_FLAGS_COMP_NAME)) {
                 i += cbCell;
@@ -1562,7 +1576,7 @@ BOOL VmmWinReg_KeyInitialize(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive)
             }
             cbHbin = *(PDWORD)(pHive->Snapshot._DUAL[iSV].pb + iHbin + 8);
             cbHbin = min(cbHbin, pHive->Snapshot._DUAL[iSV].cb - iHbin);
-            if((cbHbin & 0xfff) || (cbHbin > 0x10000)) { cbHbin = 0x1000; }
+            if((cbHbin < 0x1000) || (cbHbin & 0xfff) || (cbHbin > 0x10000)) { cbHbin = 0x1000; }
             oCell = 0x20;
             while(oCell + 4 < cbHbin) {
                 cbCell = REG_CELL_SIZE_EX(pHive->Snapshot._DUAL[iSV].pb, (QWORD)iHbin + oCell);
@@ -1672,7 +1686,7 @@ VOID VmmWinReg_ValueQueryInternal_BigDataCell(_In_ POB_REGISTRY_HIVE pHive, _In_
     cbDataCell = REG_CELL_SIZE_EX(pbSnapshot, oDataCellRaw);
     f = (cbDataCell <= cbSnapshot - oDataCellRaw) &&
         (cbDataCell <= REG_CM_BIGDATA_SEGMENT_CELL_SIZE) &&
-        (cbDataCell > 8) &&
+        (cbDataCell >= 8) &&
         !(!fDataCellLast && (cbDataCell != REG_CM_BIGDATA_SEGMENT_CELL_SIZE));
     if(!f) { return; }
     cbDataCellPayload = cbDataCell - 4;
@@ -1734,7 +1748,7 @@ BOOL VmmWinReg_ValueQueryInternal_BigDataList(_In_ POB_REGISTRY_HIVE pHive, _In_
         );
         if(pbData) { pbData += cbReadDataCell; }
         cbData -= cbReadDataCell;
-        cbDataOffset -= min(cbReadDataCell, cbDataOffset);
+        cbDataOffset = 0;
     }
     return TRUE;
 }
@@ -1757,7 +1771,10 @@ BOOL VmmWinReg_ValueQueryInternal(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTR
         *pdwLength = cbDataLength;
     }
     if(!pbData) { goto success; }
-    if(!cbData || (cbDataOffset >= cbDataLength)) { return FALSE; }
+    if(!cbData || (cbDataOffset >= cbDataLength)) {
+        if(cbDataOffset == cbDataLength) { goto success; }
+        return FALSE;
+    }
     cbDataRead = min(cbData, cbDataLength - cbDataOffset);
     if(pKeyValue->pValue->DataLength & 0x80000000) {
         // "small data" stored within keyvalue
@@ -1772,11 +1789,13 @@ BOOL VmmWinReg_ValueQueryInternal(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTR
     if(cbCell < 8) { return FALSE; }
     // "big data" table
     if(*(PWORD)(pHive->Snapshot._DUAL[iCellSV].pb + oCellRaw + 4) == REG_CM_KEY_SIGNATURE_BIGDATA) {
-        return VmmWinReg_ValueQueryInternal_BigDataList(
-            pHive,
-            *(PWORD)(pHive->Snapshot._DUAL[iCellSV].pb + oCellRaw + 4 + 2),
-            *(PDWORD)(pHive->Snapshot._DUAL[iCellSV].pb + oCellRaw + 4 + 4),
-            pbData, cbDataRead, pcbDataRead, cbDataOffset);
+        if((cbDataLength > REG_CM_BIGDATA_SEGMENT_DATA_SIZE) && (cbCell >= 4 + sizeof(WORD) + sizeof(WORD) + sizeof(DWORD))) {
+                return VmmWinReg_ValueQueryInternal_BigDataList(
+                    pHive,
+                    *(PWORD)(pHive->Snapshot._DUAL[iCellSV].pb + oCellRaw + 4 + 2),
+                    *(PDWORD)(pHive->Snapshot._DUAL[iCellSV].pb + oCellRaw + 4 + 4),
+                    pbData, cbDataRead, pcbDataRead, cbDataOffset);
+        }
     }
     // "ordinary" data
     if(cbDataOffset > cbCell - 4) { return FALSE; }
@@ -1795,6 +1814,24 @@ success:
 //-----------------------------------------------------------------------------
 
 /*
+* Check whether a string contains an exact '-' delimited token.
+*/
+BOOL VmmWinReg_StrContainsDelimitedToken(_In_ LPCSTR usz, _In_ LPCSTR uszToken)
+{
+    LPCSTR uszStart = usz;
+    SIZE_T cchToken = strlen(uszToken);
+    while(*usz) {
+        if(((usz == uszStart) || (usz[-1] == '-')) &&
+            !_strnicmp(usz, uszToken, cchToken) &&
+            (!usz[cchToken] || (usz[cchToken] == '-'))) {
+            return TRUE;
+        }
+        usz++;
+    }
+    return FALSE;
+}
+
+/*
 * Retrieve registry hive and key/value path from a "full" path starting with:
 * '0x...', 'by-hive\0x...' or 'HKLM\'
 * CALLER DECREF: *ppObHive
@@ -1809,7 +1846,7 @@ BOOL VmmWinReg_PathHiveGetByFullPath(_In_ VMM_HANDLE H, _In_ LPCSTR uszPathFull,
 {
     BOOL fHKLM = FALSE, fUser = FALSE, fUserSystem = FALSE, fOrphan = FALSE;
     DWORD i;
-    LPCSTR usz, uszPath2;
+    LPCSTR usz, uszPath2, uszHiveNameLast;
     CHAR uszPath1[MAX_PATH];
     POB_REGISTRY_HIVE pObHive = NULL;
     POB_REGISTRY_KEY pObKey = NULL;
@@ -1849,13 +1886,15 @@ BOOL VmmWinReg_PathHiveGetByFullPath(_In_ VMM_HANDLE H, _In_ LPCSTR uszPathFull,
         }
         if(fHKLM) {
             while((pObHive = VmmWinReg_HiveGetNext(H, pObHive))) {
-                if(CharUtil_StrContains(pObHive->uszNameShort, uszPath1, TRUE)) {
+                uszHiveNameLast = CharUtil_PathSplitLast(pObHive->uszNameShort);
+                if(CharUtil_StrEquals(uszHiveNameLast, uszPath1, TRUE)) {
                     *ppHive = pObHive;
                     return TRUE;    // CALLER DECREF: *ppHive
                 }
             }
             while((pObHive = VmmWinReg_HiveGetNext(H, pObHive))) {
-                if(CharUtil_StrContains(pObHive->uszHiveRootPath, uszPath1, TRUE)) {
+                uszHiveNameLast = CharUtil_PathSplitLast(pObHive->uszHiveRootPath);
+                if(CharUtil_StrEquals(uszHiveNameLast, uszPath1, TRUE)) {
                     *ppHive = pObHive;
                     return TRUE;    // CALLER DECREF: *ppHive
                 }
@@ -2021,7 +2060,7 @@ VOID VmmWinReg_KeyInfo2(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_ PO
     int status;
     DWORD cuszPath = 0;
     CHAR szHiveShortName[33] = { 0 };
-    CHAR uszPath[MAX_PATH] = { 0 };
+    CHAR uszPath[MAX_PATH*2] = { 0 };
     VmmWinReg_KeyInfo(pHive, pKey, pKeyInfo);
     if(!(ps = ObSet_New(H))) { return; }
     ObSet_Push(ps, (QWORD)Ob_INCREF(pKey));
@@ -2045,6 +2084,9 @@ VOID VmmWinReg_KeyInfo2(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_ PO
         } else if(status > 0) {
             cuszPath += status;
         }
+    }
+    while((pObKey = (POB_REGISTRY_KEY)ObSet_Pop(ps))) {
+        Ob_DECREF(pObKey);
     }
     Ob_DECREF(ps);
     if(cuszPath) {
@@ -2158,6 +2200,7 @@ BOOL VmmWinReg_ValueQuery1(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_
     POB_REGISTRY_KEY pObKey = NULL;
     POB_REGISTRY_VALUE pObKeyValue = NULL;
     if(pcbRead) { *pcbRead = 0; }
+    if(pb && (cbOffset > 0xffffffff)) { return FALSE; }
     f = VmmWinReg_HiveSnapshotEnsure(H, pHive) &&
         (uszValueName = CharUtil_PathSplitLastEx(uszPathKeyValue, uszPathKey, sizeof(uszPathKey))) &&
         (pObKey = VmmWinReg_KeyGetByPath(H, pHive, uszPathKey)) &&
@@ -2222,7 +2265,9 @@ _Success_(return)
 BOOL VmmWinReg_ValueQuery4(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_VALUE pKeyValue, _Out_opt_ PDWORD pdwType, _Out_writes_opt_(cbData) PBYTE pbData, _In_ DWORD cbData, _Out_opt_ PDWORD pcbData)
 {
     if(VmmWinReg_HiveSnapshotEnsure(H, pHive)) {
-        return VmmWinReg_ValueQueryInternal(pHive, pKeyValue, pdwType, NULL, NULL, pbData, cbData, pcbData, 0);
+        return pbData
+            ? VmmWinReg_ValueQueryInternal(pHive, pKeyValue, pdwType, NULL, NULL, pbData, cbData, pcbData, 0)
+            : VmmWinReg_ValueQueryInternal(pHive, pKeyValue, pdwType, NULL, pcbData, NULL, 0, NULL, 0);
     }
     if(pdwType) { *pdwType = 0; }
     if(pcbData) { *pcbData = 0; }
@@ -2272,10 +2317,11 @@ BOOL VmmWinReg_ValueQueryString4(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive
     DWORD cbRegData = 0, cbRegDataRead = 0;
     if(!cbuData) { goto fail; }
     uszData[0] = 0;
-    if(sizeof(pbRegDataBuffer) < cbuData * 2) {
+    if(cbuData <= sizeof(pbRegDataBuffer) / 2) {
         cbRegData = sizeof(pbRegDataBuffer);
         pbRegData = pbRegDataBuffer;
     } else {
+        if(cbuData > 0x01000000) { goto fail; }
         cbRegData = cbuData * 2;
         pbRegData = LocalAlloc(0, cbRegData);
         if(!pbRegData) { goto fail; }
@@ -2305,10 +2351,11 @@ BOOL VmmWinReg_ValueQueryString2(_In_ VMM_HANDLE H, _In_ LPCSTR uszFullPathKeyVa
     DWORD cbRegData = 0, cbRegDataRead = 0;
     if(!cbuData) { goto fail; }
     uszData[0] = 0;
-    if(sizeof(pbRegDataBuffer) < cbuData * 2) {
+    if(cbuData <= sizeof(pbRegDataBuffer) / 2) {
         cbRegData = sizeof(pbRegDataBuffer);
         pbRegData = pbRegDataBuffer;
     } else {
+        if(cbuData > 0x01000000) { goto fail; }
         cbRegData = cbuData * 2;
         pbRegData = LocalAlloc(0, cbRegData);
         if(!pbRegData) { goto fail; }
@@ -2328,18 +2375,30 @@ fail:
 * -- uszHivePrefix
 * -- uszHiveName
 * -- uszFullPath
+* -- return
 */
-VOID VmmWinReg_KeyFullPath(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pKey, _In_ LPSTR uszHivePrefix, _In_ LPSTR uszHiveName, _Out_writes_(1024) LPSTR uszFullPath)
+_Success_(return)
+BOOL VmmWinReg_KeyFullPath(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY pKey, _In_ LPSTR uszHivePrefix, _In_ LPSTR uszHiveName, _Out_writes_(1024) LPSTR uszFullPath)
 {
     CONST BYTE pbTEXT_ROOT[] = { '\\', 0, 'R', 0, 'O', 0, 'O', 0, 'T', 0 };
     BOOL fResult = TRUE, fSkip = TRUE;
     SIZE_T cch;
     DWORD o = 0, iKey = 0, cbName;
-    POB_REGISTRY_KEY pk, ppObKey[0x40];
-    // fetch parents (max depth: 0x40)
+    POB_REGISTRY_KEY pk, pObKeyParent, ppObKey[VMMWINREG_KEY_MAX_DEPTH + 1];
+    // fetch parents (max registry depth + synthetic ROOT)
     ppObKey[iKey++] = Ob_INCREF(pKey);
-    while((iKey < 0x40) && (ppObKey[iKey] = ObMap_GetByKey(pHive->Snapshot.pmKeyHash, ppObKey[iKey - 1]->qwHashKeyParent))) {
-        iKey++;
+    while(iKey < _countof(ppObKey)) {
+        pObKeyParent = ObMap_GetByKey(pHive->Snapshot.pmKeyHash, ppObKey[iKey - 1]->qwHashKeyParent);
+        if(!pObKeyParent) { break; }
+        ppObKey[iKey++] = pObKeyParent;
+    }
+    // reject malformed paths deeper than the supported registry maximum
+    if(iKey == _countof(ppObKey)) {
+        pObKeyParent = ObMap_GetByKey(pHive->Snapshot.pmKeyHash, ppObKey[iKey - 1]->qwHashKeyParent);
+        if(pObKeyParent) {
+            Ob_DECREF(pObKeyParent);
+            fResult = FALSE;
+        }
     }
     // unwind, copy name
     cch = strlen(uszHivePrefix);
@@ -2368,6 +2427,7 @@ VOID VmmWinReg_KeyFullPath(_In_ POB_REGISTRY_HIVE pHive, _In_ POB_REGISTRY_KEY p
         fSkip = FALSE;
     }
     uszFullPath[fResult ? o : 0] = 0;
+    return fResult;
 }
 
 /*
@@ -2419,7 +2479,10 @@ VOID VmmWinReg_ForensicGetAllKeysAndValues(
         c = ObMap_Size(pHive->Snapshot.pmKeyOffset);
         for(i = 0; ((i < c) && !H->fAbort); i++) {
             if((pObKey = ObMap_GetByIndex(pHive->Snapshot.pmKeyOffset, i))) {
-                VmmWinReg_KeyFullPath(pHive, pObKey, uszHivePrefix, pHive->uszHiveRootPath + oHive, uszFullPath);
+                if(!VmmWinReg_KeyFullPath(pHive, pObKey, uszHivePrefix, pHive->uszHiveRootPath + oHive, uszFullPath)) {
+                    Ob_DECREF(pObKey);
+                    continue;
+                }
                 // registry timeline:
                 pfnKeyCB(H, hCallback1, hCallback2, uszFullPath, pHive->vaCMHIVE, pObKey->oCell, pObKey->pKey->Parent, pObKey->pKey->LastWriteTime);
                 // registry json data:
