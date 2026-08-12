@@ -53,8 +53,8 @@ QWORD Statistics_CallEnd(_In_ VMM_HANDLE H, _In_ DWORD fId, QWORD tmCallStart)
     if(fId >= STATISTICS_ID_MAX) { return 0; }
     if(tmCallStart == 0) { return 0; }
     pStat = H->statistics_call->e + fId;
-    InterlockedIncrement64(&pStat->c);
     QueryPerformanceCounter((PLARGE_INTEGER)&tmNow);
+    InterlockedIncrement64(&pStat->c);
     InterlockedAdd64(&pStat->tm, tmNow - tmCallStart);
     return tmNow - tmCallStart;
 }
@@ -76,7 +76,7 @@ BOOL Statistics_CallToString(_In_ VMM_HANDLE H, _Out_opt_ LPSTR *psz, _Out_ PDWO
 {
     LPSTR sz;
     BOOL result;
-    QWORD i, o = 0, qwFreq, qwCallCount, qwCallTimeAvg_uS, qwCallTimeTotal_uS;
+    QWORD i, o = 0, tm, qwFreq, qwFreqLC, qwCallCount, qwCallTimeAvg_uS, qwCallTimeTotal_uS;
     PVMMSTATISTICS_ENTRY pStat;
     PLC_STATISTICS pLcStatistics = NULL;
     *pcsz = STATISTICS_CALL_BUFFERSIZE - 1;
@@ -94,7 +94,8 @@ BOOL Statistics_CallToString(_In_ VMM_HANDLE H, _Out_opt_ LPSTR *psz, _Out_ PDWO
             qwCallCount = qwCallTimeAvg_uS = qwCallTimeTotal_uS = 0;
             if((pStat = H->statistics_call->e + i) && pStat->c) {
                 qwCallCount = pStat->c;
-                qwCallTimeTotal_uS = (pStat->tm * 1000000ULL) / qwFreq;
+                tm = pStat->tm;
+                qwCallTimeTotal_uS = (tm / qwFreq) * 1000000ULL + ((tm % qwFreq) * 1000000ULL) / qwFreq;
                 qwCallTimeAvg_uS = (qwCallTimeTotal_uS / qwCallCount);
             }
             o += Util_usnprintf_ln(
@@ -111,11 +112,13 @@ BOOL Statistics_CallToString(_In_ VMM_HANDLE H, _Out_opt_ LPSTR *psz, _Out_ PDWO
     // leechcore statistics
     result = LcCommand(H->hLC, LC_CMD_STATISTICS_GET, 0, NULL, (PBYTE*)&pLcStatistics, NULL);
     if(result && (pLcStatistics->dwVersion == LC_STATISTICS_VERSION) && pLcStatistics->qwFreq) {
+        qwFreqLC = pLcStatistics->qwFreq;
         for(i = 0; i <= LC_STATISTICS_ID_MAX; i++) {
             qwCallCount = qwCallTimeAvg_uS = qwCallTimeTotal_uS = 0;
             if(pLcStatistics->Call[i].c) {
                 qwCallCount = pLcStatistics->Call[i].c;
-                qwCallTimeTotal_uS = (pLcStatistics->Call[i].tm * 1000000ULL) / qwFreq;
+                tm = pLcStatistics->Call[i].tm;
+                qwCallTimeTotal_uS = (tm / qwFreqLC) * 1000000ULL + ((tm % qwFreqLC) * 1000000ULL) / qwFreqLC;
                 qwCallTimeAvg_uS = (qwCallTimeTotal_uS / qwCallCount);
             }
            o += Util_usnprintf_ln(
@@ -156,7 +159,6 @@ VOID VmmStatisticsLogStart(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_ VMMLO
     ps->dwPID = pProcess ? pProcess->dwPID : 0;
     ps->MID = MID;
     ps->dwLogLevel = dwLogLevel;
-    ps->v[0] = GetTickCount64();
     LcGetOption(H->hLC, LC_OPT_CORE_STATISTICS_CALL_COUNT | LC_STATISTICS_ID_READSCATTER, &ps->v[1]);
     ps->v[2] = H->vmm.stat.cPhysReadSuccess;
     if(ps->dwPID) {
@@ -164,6 +166,7 @@ VOID VmmStatisticsLogStart(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_ VMMLO
     } else {
         VmmLog(H, ps->MID, ps->dwLogLevel, "%s START:", uszText);
     }
+    ps->v[0] = GetTickCount64();
 }
 
 /*

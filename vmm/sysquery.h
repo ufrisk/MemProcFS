@@ -24,7 +24,7 @@ QWORD SysQuery_TimeCurrent(_In_ VMM_HANDLE H);
 * -- return
 */
 _Success_(return)
-BOOL SysQuery_TimeZone(_In_ VMM_HANDLE H, _Out_writes_opt_(32) LPSTR uszTimeZone, _Out_opt_ int *piActiveBias);
+BOOL SysQuery_TimeZone(_In_ VMM_HANDLE H, _Out_writes_opt_(128) LPSTR uszTimeZone, _Out_opt_ int *piActiveBias);
 
 /*
 * Query the time zone information into a formatted string.

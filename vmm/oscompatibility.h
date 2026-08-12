@@ -577,6 +577,12 @@ typedef LIST_ENTRY64 *PLIST_ENTRY64;
 #define IMAGE_SCN_MEM_READ                   0x40000000
 #define IMAGE_SCN_MEM_WRITE                  0x80000000
 
+#define SERVICE_BOOT_START             0x00000000
+#define SERVICE_SYSTEM_START           0x00000001
+#define SERVICE_AUTO_START             0x00000002
+#define SERVICE_DEMAND_START           0x00000003
+#define SERVICE_DISABLED               0x00000004
+
 #define SERVICE_KERNEL_DRIVER          0x00000001
 #define SERVICE_FILE_SYSTEM_DRIVER     0x00000002
 #define SERVICE_ADAPTER                0x00000004

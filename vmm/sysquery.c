@@ -24,6 +24,7 @@ QWORD SysQuery_TimeCurrent(_In_ VMM_HANDLE H)
     // #define SharedSystemTime (KI_USER_SHARED_DATA + 0x14)
     QWORD ft = 0;
     VmmRead(H, PVMM_PROCESS_SYSTEM, H->vmm.f32 ? 0xFFDF0014 : 0xFFFFF78000000014, (PBYTE)&ft, sizeof(QWORD));
+    if(!ft || (ft > 0x7FFF35F4F06C7FFFULL)) { return 0; }
     return ft;
 }
 
@@ -36,14 +37,14 @@ QWORD SysQuery_TimeCurrent(_In_ VMM_HANDLE H)
 * -- return
 */
 _Success_(return)
-BOOL SysQuery_TimeZone(_In_ VMM_HANDLE H, _Out_writes_opt_(32) LPSTR uszTimeZone, _Out_opt_ int *piActiveBias)
+BOOL SysQuery_TimeZone(_In_ VMM_HANDLE H, _Out_writes_opt_(128) LPSTR uszTimeZone, _Out_opt_ int *piActiveBias)
 {
     if(uszTimeZone) {
-        if(!VmmWinReg_ValueQueryString2(H, "HKLM\\SYSTEM\\ControlSet001\\Control\\TimeZoneInformation\\TimeZoneKeyName", NULL, uszTimeZone, 32)) { return FALSE; }
+        if(!VmmWinReg_ValueQueryString2(H, "HKLM\\SYSTEM\\ControlSet001\\Control\\TimeZoneInformation\\TimeZoneKeyName", NULL, uszTimeZone, 128)) { return FALSE; }
     }
     if(piActiveBias) {
         if(!VmmWinReg_ValueQuery2(H, "HKLM\\SYSTEM\\ControlSet001\\Control\\TimeZoneInformation\\ActiveTimeBias", NULL, (PBYTE)piActiveBias, sizeof(DWORD), NULL)) { return FALSE; }
-        if((*piActiveBias > 24 * 60) && (*piActiveBias < -(24 * 60))) { return FALSE; }
+        if((*piActiveBias > 24 * 60) || (*piActiveBias < -(24 * 60))) { return FALSE; }
     }
     return TRUE;
 }
@@ -57,21 +58,27 @@ BOOL SysQuery_TimeZone(_In_ VMM_HANDLE H, _Out_writes_opt_(32) LPSTR uszTimeZone
 VOID SysQuery_TimeZoneEx(_In_ VMM_HANDLE H, _Out_writes_(49) LPSTR uszTimeZone, _In_ BOOL fLine)
 {
     int iTimeZoneActiveBias = 0;
-    CHAR uszTimeZoneName[0x20] = { 0 };
+    int iTimeZoneUtcOffset;
+    int iTimeZoneUtcOffsetAbsolute;
+    CHAR chTimeZoneUtcOffsetSign;
+    CHAR uszTimeZoneName[128] = { 0 };
     uszTimeZone[0] = 0;
     if(SysQuery_TimeZone(H, uszTimeZoneName, &iTimeZoneActiveBias)) {
-        if(iTimeZoneActiveBias % 60) {
+        iTimeZoneUtcOffset = -iTimeZoneActiveBias;
+        iTimeZoneUtcOffsetAbsolute = (iTimeZoneUtcOffset < 0) ? -iTimeZoneUtcOffset : iTimeZoneUtcOffset;
+        chTimeZoneUtcOffsetSign = (iTimeZoneUtcOffset < 0) ? '-' : '+';
+        if(!(iTimeZoneUtcOffsetAbsolute % 60)) {
             if(fLine) {
-                Util_usnprintf_ln(uszTimeZone, 48, "%s [UTC%+i]", uszTimeZoneName, -iTimeZoneActiveBias);
+                Util_usnprintf_ln(uszTimeZone, 48, "%s [UTC%+i]", uszTimeZoneName, iTimeZoneUtcOffset / 60);
             } else {
-                snprintf(uszTimeZone, 48, "%s [UTC%+i]", uszTimeZoneName, -iTimeZoneActiveBias);
+                snprintf(uszTimeZone, 48, "%s [UTC%+i]", uszTimeZoneName, iTimeZoneUtcOffset / 60);
             }
 
         } else {
             if(fLine) {
-                Util_usnprintf_ln(uszTimeZone, 48, "%s : UTC%+i:%02i", uszTimeZoneName, -iTimeZoneActiveBias / 60, iTimeZoneActiveBias % 60);
+                Util_usnprintf_ln(uszTimeZone, 48, "%s : UTC%c%i:%02i", uszTimeZoneName, chTimeZoneUtcOffsetSign, iTimeZoneUtcOffsetAbsolute / 60, iTimeZoneUtcOffsetAbsolute % 60);
             } else {
-                snprintf(uszTimeZone, 48, "%s : UTC%+i:%02i", uszTimeZoneName, -iTimeZoneActiveBias / 60, iTimeZoneActiveBias % 60);
+                snprintf(uszTimeZone, 48, "%s : UTC%c%i:%02i", uszTimeZoneName, chTimeZoneUtcOffsetSign, iTimeZoneUtcOffsetAbsolute / 60, iTimeZoneUtcOffsetAbsolute % 60);
             }
         }
     } else if(fLine) {

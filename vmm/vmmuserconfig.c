@@ -116,13 +116,19 @@ VOID VmmUserConfig_Delete(_In_ LPCSTR szKey)
 _Success_(return)
 BOOL VmmUserConfig_GetString(_In_ LPCSTR szKey, _In_ DWORD cbValue, _Out_writes_opt_(cbValue) LPSTR szValue)
 {
+    size_t cchValue;
     char key[256], val[256];
     FILE *file = get_user_config_file_read();
     if(file) {
         while(fscanf(file, "%255[^=]=%255[^\n]%*c", key, val) == 2) {
             if(0 == strcmp(key, szKey)) {
                 if(szValue) {
-                    strncpy(szValue, val, min(cbValue, sizeof(val)));
+                    cchValue = strlen(val);
+                    if(cchValue >= cbValue) {
+                        fclose(file);
+                        return FALSE;
+                    }
+                    strcpy_s(szValue, cbValue, val);
                 }
                 fclose(file);
                 return TRUE;
@@ -143,7 +149,9 @@ _Success_(return)
 BOOL VmmUserConfig_EqualsString(_In_ LPCSTR szKey, _In_ LPCSTR szValue)
 {
     char key[256], val[256];
-    FILE *file = get_user_config_file_read();
+    FILE *file;
+    if(!szValue) { return FALSE; }
+    file = get_user_config_file_read();
     if(file) {
         while(fscanf(file, "%255[^=]=%255[^\n]%*c", key, val) == 2) {
             if((0 == strcmp(key, szKey)) && (0 == strcmp(val, szValue))) {
@@ -165,7 +173,9 @@ BOOL VmmUserConfig_EqualsString(_In_ LPCSTR szKey, _In_ LPCSTR szValue)
 _Success_(return)
 BOOL VmmUserConfig_SetString(_In_ LPCSTR szKey, _In_ LPCSTR szValue)
 {
+    int cch;
     int o = 0;
+    BOOL f_keyfound = FALSE;
     BOOL f_result = FALSE;
     char key[256], val[256];
     char *buf1M = NULL;
@@ -177,15 +187,19 @@ BOOL VmmUserConfig_SetString(_In_ LPCSTR szKey, _In_ LPCSTR szValue)
         while(fscanf(file_read, "%255[^=]=%255[^\n]%*c", key, val) == 2) {
             if(strcmp(key, szKey)) {
                 o += snprintf(buf1M + o, 0x00100000 - o, "%s=%s\n", key, val);
+            } else {
+                f_keyfound = TRUE;
             }
             if(o >= 0x00100000 - 0x1000) { goto fail; } // 1MB - 4kB
         }
         fclose(file_read); file_read = NULL;
     }
     if(szValue) {
-        o += snprintf(buf1M + o, 0x00100000 - o, "%s=%s\n", szKey, szValue);
+        cch = snprintf(buf1M + o, 0x00100000 - o, "%s=%s\n", szKey, szValue);
+        if((cch < 0) || (cch >= 0x00100000 - o)) { goto fail; }
+        o += cch;
     }
-    if(o && (file_write = get_user_config_file_write())) {
+    if((o || (!szValue && f_keyfound)) && (file_write = get_user_config_file_write())) {
         fwrite(buf1M, 1, o, file_write);
         f_result = TRUE;
     }

@@ -15,7 +15,7 @@
 #define MWTR_MAX_SEARCH_HEAP_SEGMENTS       0x00010000
 #define MWTR_MAX_SEARCH_HEAP_VAD_BYTES      0x0000000040000000ULL
 #define MWTR_MAX_SEARCH_HEAP_BYTES          0x0000000100000000ULL
-#define MWTR_MAX_ROWS                       0x00010000
+#define MWTR_MAX_ROWS                       0x00008000
 #define MWTR_MIN_COLUMNS                    1
 #define MWTR_MAX_COLUMNS                    1000
 #define MWTR_MAX_ROW_CHARS                  0x00010000

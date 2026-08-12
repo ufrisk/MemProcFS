@@ -105,6 +105,7 @@ int InfoDB_SqlQueryN(_In_ VMM_HANDLE H, _In_ POB_INFODB_CONTEXT ctx, _In_ LPSTR 
     DWORD i, iMax;
     sqlite3 *hSql = InfoDB_SqlReserve(H, ctx);
     sqlite3_stmt *hStmt = NULL;
+    if(pcResultValues) { *pcResultValues = 0; }
     if(hSql) {
         rc = sqlite3_prepare_v2(hSql, szSql, -1, &hStmt, 0);
         if(rc != SQLITE_OK) { goto fail; }
@@ -129,7 +130,6 @@ int InfoDB_SqlQueryN(_In_ VMM_HANDLE H, _In_ POB_INFODB_CONTEXT ctx, _In_ LPSTR 
 fail:
     sqlite3_finalize(hStmt);
     InfoDB_SqlReserveReturn(ctx, hSql);
-    if(pcResultValues) { *pcResultValues = 0; }
     return rc;
 }
 
@@ -742,7 +742,6 @@ BOOL InfoDB_SidToUser_Wellknown(
                 strncpy_s(szDomain, *pcbDomain, "DOMAIN", cbDomain);
             }
             if(szName) {
-                szQueryResult = (LPSTR)sqlite3_column_text(hStmt, 1);
                 strncpy_s(szName, *pcbName, szRID, cbName);
             }
             goto finish;

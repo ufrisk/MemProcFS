@@ -330,9 +330,11 @@ VOID VmmLogHexAsciiEx(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_ VMMLOG_LEV
     LPSTR usz;
     va_list arglist;
     DWORD cchHexAscii = 0;
-    SIZE_T i, cchTotal, cchFormat = strlen(uszFormat);
+    SIZE_T i, cchTotal, cchFormat;
+    if(!VmmLogIsActive(H, MID, dwLogLevel)) { return; }
+    cchFormat = strlen(uszFormat);
     // 1: cap at first 65k (if required)
-    if(cb > 0x10000) { cb = 0x10000 - cbInitialOffset; }
+    cb = (cbInitialOffset < 0x10000) ? min(cb, 0x10000 - cbInitialOffset) : 0;
     // 2: create extended format string with hexascii at the end
     Util_FillHexAscii(pb, cb, cbInitialOffset, NULL, &cchHexAscii);
     cchTotal = cchFormat + 1 + cchHexAscii;
@@ -434,7 +436,7 @@ VOID VmmLogEx2(_In_ VMM_HANDLE H, _In_ VMM_MODULE_ID MID, _In_ VMMLOG_LEVEL dwLo
         }
         AcquireSRWLockShared(&ctxLog->LockSRWCB);
         if(ctxLog->pfnCB) {
-            ctxLog->pfnCB(H, MID, szHead, dwLogLevel, uszBuffer);
+            ctxLog->pfnCB(H, MID, szHead, (VMMDLL_LOGLEVEL)dwLogLevel, uszBuffer);
         }
         ReleaseSRWLockShared(&ctxLog->LockSRWCB);
     }

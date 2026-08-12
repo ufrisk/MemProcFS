@@ -144,8 +144,6 @@ static BOOL NETDNS_TYPE_PTR[256] = {
     [0x08] = TRUE,
     [0x09] = TRUE,
     [0x0c] = TRUE,
-    [0x02] = TRUE,
-    [0x02] = TRUE,
     [0x21] = TRUE,
     [0x27] = TRUE,
 };
