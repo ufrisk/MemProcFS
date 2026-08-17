@@ -782,7 +782,7 @@ NTSTATUS Util_VfsLineVariable_Read(
     PVOID pvMapEntry;
     *pcbRead = 0;
     // header parse
-    if(uszHeader && H->cfg.fFileInfoHeader && (cbOffset < 0x400)) {
+    if(uszHeader && H->cfg.fFileInfoHeader) {
         cbHeaderLine = uszHeader ? ((DWORD)strlen(uszHeader) + 1) : 0;
         if(cbOffset < 2ULL * cbHeaderLine) {
             _snprintf_s(szu, sizeof(szu), _TRUNCATE, "%s\n%.*s\n", uszHeader, cbHeaderLine - 1, UTIL_VFSLINEFIXED_LINEPAD512);

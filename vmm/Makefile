@@ -47,13 +47,13 @@ OBJ = oscompatibility.o charutil.o util.o pe.o vmmdll.o vmmdll_core.o        \
 	  modules/m_evil_kern1.o modules/m_evil_kernproc1.o                      \
 	  modules/m_evil_proc1.o modules/m_evil_proc2.o modules/m_evil_proc3.o   \
 	  modules/m_evil_thread1.o                                               \
-	  modules/m_misc_bitlocker.o modules/m_misc_eventlog.o                   \
-	  modules/m_misc_procinfo.o modules/m_misc_view.o                        \
-	  modules/m_sys.o modules/m_sys_driver.o modules/m_sys_mem.o             \
-	  modules/m_sys_net.o modules/m_sys_netdns.o modules/m_sys_obj.o         \
-	  modules/m_sys_pool.o modules/m_sys_proc.o modules/m_sys_svc.o          \
-	  modules/m_sys_syscall.o modules/m_sys_sysinfo.o modules/m_sys_task.o   \
-	  modules/m_sys_user.o                                                   \
+	  modules/m_misc_bitlocker.o modules/m_misc_procinfo.o                   \
+	  modules/m_misc_view.o                                                  \
+	  modules/m_sys.o modules/m_sys_driver.o modules/m_sys_eventlog.o        \
+	  modules/m_sys_mem.o modules/m_sys_net.o modules/m_sys_netdns.o         \
+	  modules/m_sys_obj.o modules/m_sys_pool.o modules/m_sys_proc.o          \
+	  modules/m_sys_svc.o  modules/m_sys_syscall.o modules/m_sys_sysinfo.o   \
+	  modules/m_sys_task.o modules/m_sys_user.o                              \
 	  modules/m_phys2virt.o modules/m_search.o modules/m_searchyara.o        \
 	  modules/m_proc_console.o modules/m_proc_file_handles_vads.o            \
 	  modules/m_proc_file_modules.o modules/m_proc_handle.o                  \
