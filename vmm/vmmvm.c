@@ -188,8 +188,9 @@ BOOL VmmVm_DoWork_NewHvMemTranslateHvp_TreeWalk(_In_ VMM_HANDLE H, _In_ PVMM_PRO
     if(!VmmRead(H, pSystemProcess, vaTreeNode, (PBYTE)&T, sizeof(VID_HVP_TREENODE))) { return FALSE; }
     if(T.vaHndPrtn != pVM->va) { return FALSE; }
     if(!VMM_KADDR64_8(T.FLinkRangeVA)) { return FALSE; }
-    if(ctx->cValid && (ctx->pGpar[ctx->cValid - 1].GpaPfnTop > T.qwRangePfnBase)) { return FALSE; }
     if(!VmmVm_DoWork_NewHvMemTranslateHvp_TreeWalk(H, pSystemProcess, pVM, T.Tree.Left, ctx)) { return FALSE; }
+    if(ctx->cValid >= ctx->cAll) { return FALSE; }
+    if(ctx->cValid && (ctx->pGpar[ctx->cValid - 1].GpaPfnTop >= T.qwRangePfnBase)) { return FALSE; }
     peT = &ctx->pGpar[ctx->cValid];
     peT->va = vaTreeNode;
     peT->GpaPfnBase = T.qwRangePfnBase;
@@ -657,18 +658,23 @@ fail:
 */
 VOID VmmVm_DoWork_4_NewVMs(_In_ VMM_HANDLE H, _In_ PVMMOB_VMGLOBAL_CONTEXT pVMG)
 {
-    PVMMOB_VM_CONTEXT pVM = NULL;
+    PVMMOB_VM_CONTEXT pObVM = NULL;
     DWORD iPoolEntry, iTagPoolEntry;
     PVMM_MAP_POOLENTRYTAG pePoolTag;
     PVMM_MAP_POOLENTRY pePool;
+    BOOL fVmActive;
     // Fetch 'VdDr' big pool entries. Some of these may contain Hyper-V partitions.
     if(VmmMap_GetPoolTag(H, pVMG->init.pBigPoolMap, 'VdDr', &pePoolTag)) {
         for(iTagPoolEntry = 0; iTagPoolEntry < pePoolTag->cEntry; iTagPoolEntry++) {
             iPoolEntry = pVMG->init.pBigPoolMap->piTag2Map[pePoolTag->iTag2Map + iTagPoolEntry];
             pePool = pVMG->init.pBigPoolMap->pMap + iPoolEntry;
             if((pePool->cb >= pVMG->offset.prtn.cb) && (pePool->cb <= pVMG->offset.prtn.cb + 0x10)) {
-                pVM = ObMap_GetByKey(pVMG->pVmMap, pePool->va);
-                if(!pVM || !pVM->fActive) {
+                fVmActive = FALSE;
+                if((pObVM = ObMap_GetByKey(pVMG->pVmMap, pePool->va))) {
+                    fVmActive = pObVM->fActive;
+                    Ob_DECREF_NULL(&pObVM);
+                }
+                if(!fVmActive) {
                     VmmVm_DoWork_4_NewVM(H, pVMG, pePool->va);
                 }
             }
@@ -863,7 +869,7 @@ PVMMOB_VM_CONTEXT VmmVm_GetVmContext(_In_ VMM_HANDLE H, _In_ VMMVM_HANDLE HVM)
 int VmmVm_TranslateGPA_CmpFind(_In_ QWORD gpa, _In_ QWORD qwEntry)
 {
     PVMMVM_VMHVTRANSLATE_GPAR pGPAR = (PVMMVM_VMHVTRANSLATE_GPAR)qwEntry;
-    if(pGPAR->GpaPfnTop <= gpa) { return 1; }
+    if(pGPAR->GpaPfnTop < gpa) { return 1; }
     if(pGPAR->GpaPfnBase > gpa) { return -1; }
     return 0;
 }
@@ -951,18 +957,22 @@ VOID VmmVm_TranslateGPAEx(_In_ VMM_HANDLE H, _In_ PVMMOB_VM_CONTEXT pVM, _In_ DW
 }
 
 /*
-* Restore "stack" of MEMs set in GPA translation. Also update statistics.
+* Restore "stack" of MEMs set in GPA translation.
 */
-VOID VmmVm_ReadScatterGPA_FinishTranslate_RestoreMEMs(_In_ VMM_HANDLE H, _In_ DWORD cpMEMsGPA, _Inout_ PPMEM_SCATTER ppMEMsGPA)
+VOID VmmVm_ReadScatterGPA_FinishTranslate_RestoreMEMs(_In_ VMM_HANDLE H, _In_ DWORD cpMEMsGPA, _Inout_ PPMEM_SCATTER ppMEMsGPA, _In_ BOOL fIsRead)
 {
     DWORD iMEM;
     PMEM_SCATTER pMEM;
     for(iMEM = 0; iMEM < cpMEMsGPA; iMEM++) {
         pMEM = ppMEMsGPA[iMEM];
-        if(pMEM->f) {
-            InterlockedIncrement64(&H->vmm.stat.cGpaReadSuccess);
-        } else {
-            InterlockedIncrement64(&H->vmm.stat.cGpaReadFail);
+        if(fIsRead) {
+            if(pMEM->f) {
+                InterlockedIncrement64(&H->vmm.stat.cGpaReadSuccess);
+            } else {
+                InterlockedIncrement64(&H->vmm.stat.cGpaReadFail);
+            }
+        } else if(pMEM->f) {
+            InterlockedIncrement64(&H->vmm.stat.cGpaWrite);
         }
         pMEM->qwA = MEM_SCATTER_STACK_POP(pMEM);
     }
@@ -993,12 +1003,12 @@ VOID VmmVm_ReadScatterGPA_DoWork(_In_ VMM_HANDLE H, _In_ PVMMOB_VM_CONTEXT pVM, 
             VmmReadScatterVirtual(H, pObVmMemProcess, ppMEMsT + cpMEMsGPA - cVA, cVA, VMM_FLAG_NOCACHE);
             Ob_DECREF(pObVmMemProcess);
         }
-        VmmVm_ReadScatterGPA_FinishTranslate_RestoreMEMs(H, cVA, ppMEMsT + cpMEMsGPA - cVA);
+        VmmVm_ReadScatterGPA_FinishTranslate_RestoreMEMs(H, cVA, ppMEMsT + cpMEMsGPA - cVA, TRUE);
     }
     if(cPA) {
         // read physical memory from leechcore
         LcReadScatter(H->hLC, cPA, ppMEMsT);
-        VmmVm_ReadScatterGPA_FinishTranslate_RestoreMEMs(H, cPA, ppMEMsT);
+        VmmVm_ReadScatterGPA_FinishTranslate_RestoreMEMs(H, cPA, ppMEMsT, TRUE);
     }
     if(ppMEMsT != pMEM_Small) {
         LocalFree(ppMEMsT);
@@ -1030,12 +1040,12 @@ VOID VmmVm_WriteScatterGPA_DoWork(_In_ VMM_HANDLE H, _In_ PVMMOB_VM_CONTEXT pVM,
             VmmWriteScatterVirtual(H, pObVmMemProcess, ppMEMsT + cpMEMsGPA - cVA, cVA);
             Ob_DECREF(pObVmMemProcess);
         }
-        VmmVm_ReadScatterGPA_FinishTranslate_RestoreMEMs(H, cVA, ppMEMsT + cpMEMsGPA - cVA);
+        VmmVm_ReadScatterGPA_FinishTranslate_RestoreMEMs(H, cVA, ppMEMsT + cpMEMsGPA - cVA, FALSE);
     }
     if(cPA) {
         // write physical memory from leechcore
         LcWriteScatter(H->hLC, cPA, ppMEMsT);
-        VmmVm_ReadScatterGPA_FinishTranslate_RestoreMEMs(H, cPA, ppMEMsT);
+        VmmVm_ReadScatterGPA_FinishTranslate_RestoreMEMs(H, cPA, ppMEMsT, FALSE);
     }
     if(ppMEMsT != pMEM_Small) {
         LocalFree(ppMEMsT);

@@ -354,7 +354,7 @@ BOOL VMMDLL_Scatter_ReadInternal(_In_ PSCATTER_CONTEXT ctx, _In_ QWORD va, _In_ 
                 }
                 cbReadTotal += cbChunk;
                 fResultFirst = TRUE;
-            } else if((va >= pMEM->qwA) && (va + cb <= pMEM->qwA + pMEM->cb)) {
+            } else if((va >= pMEM->qwA) && ((va - pMEM->qwA) <= pMEM->cb) && (cbChunk <= pMEM->cb - (DWORD)(va - pMEM->qwA))) {
                 // tiny MEM with in-range read:
                 if(pb) {
                     memcpy(pb, pMEM->pb + (va - pMEM->qwA), cbChunk);
@@ -385,7 +385,7 @@ BOOL VMMDLL_Scatter_ReadInternal(_In_ PSCATTER_CONTEXT ctx, _In_ QWORD va, _In_ 
             }
         } else {
             if(pb) {
-                if(pMEM && (pb != pMEM->pb)) {
+                if(!pMEM || (pb != pMEM->pb)) {
                     ZeroMemory(pb, cbChunk);
                 }
                 pb += cbChunk;

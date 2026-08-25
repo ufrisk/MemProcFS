@@ -100,7 +100,7 @@ BOOL VmmProc_RefreshProcesses(_In_ VMM_HANDLE H, _In_ BOOL fRefreshTotal)
 #define VMMPROC_UPDATERTHREAD_REMOTE_TLB                (2 * 60 * 1000 / VMMPROC_UPDATERTHREAD_REMOTE_PERIOD)   // 2m
 #define VMMPROC_UPDATERTHREAD_REMOTE_FAST               (15 * 1000 / VMMPROC_UPDATERTHREAD_REMOTE_PERIOD)       // 15s
 #define VMMPROC_UPDATERTHREAD_REMOTE_MEDIUM             (3 * 60 * 1000 / VMMPROC_UPDATERTHREAD_REMOTE_PERIOD)   // 3m
-#define VMMPROC_UPDATERTHREAD_REMOTE_SLOW               (10 * 60 * 1000 / VMMPROC_UPDATERTHREAD_LOCAL_PERIOD)   // 10m
+#define VMMPROC_UPDATERTHREAD_REMOTE_SLOW               (10 * 60 * 1000 / VMMPROC_UPDATERTHREAD_REMOTE_PERIOD)  // 10m
 
 /*
 * Refresh functions refreshes aspects of MemProcFS at different intervals.
@@ -299,8 +299,8 @@ BOOL VmmProcPHYS_VerifyWindowsEPROCESS(_In_ PBYTE pb, _In_ QWORD cb, _In_ QWORD 
                                                                                 // 4 kernel addresses in a row and a potential PML4 after that and zero
                                                                                 // DWORD before that. (EPROCESS HDR).
     for(i = cbOffset; i > cbOffset - 0x500; i -= 8) {
+        if(!(*(PQWORD)(pb + i - 0x00) & ~0xfff)) { continue; };                                     // DirectoryTableBase
         if((*(PQWORD)(pb + i - 0x00) & 0xfffff00000000000)) { continue; };                          // DirectoryTableBase
-        if(!*(PQWORD)(pb + i - 0x00)) { continue; };                                                // DirectoryTableBase
         if((*(PQWORD)(pb + i - 0x08) & 0xffff800000000000) != 0xffff800000000000) { continue; };    // PTR
         if((*(PQWORD)(pb + i - 0x10) & 0xffff800000000000) != 0xffff800000000000) { continue; };    // PTR
         if((*(PQWORD)(pb + i - 0x18) & 0xffff800000000000) != 0xffff800000000000) { continue; };    // PTR

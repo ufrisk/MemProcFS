@@ -3103,11 +3103,21 @@ BOOL VmmMap_GetEAT(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_
 _Success_(return)
 BOOL VmmMap_GetEATEntryIndexU(_In_ VMM_HANDLE H, _In_ PVMMOB_MAP_EAT pEatMap, _In_ LPCSTR uszFunctionName, _Out_ PDWORD pdwEntryIndex)
 {
-    QWORD qwHash, *pqwHashIndex;
-    qwHash = (DWORD)CharUtil_Hash64U(uszFunctionName, TRUE);
-    pqwHashIndex = (PQWORD)Util_qfind(qwHash, pEatMap->cMap, pEatMap->pHashTableLookup, sizeof(QWORD), VmmMap_HashTableLookup_CmpFind);
-    *pdwEntryIndex = pqwHashIndex ? *pqwHashIndex >> 32 : 0;
-    return (pqwHashIndex != NULL) && (*pdwEntryIndex < pEatMap->cMap);
+    DWORD dwHash, iHash, iEntry;
+    *pdwEntryIndex = 0;
+    dwHash = (DWORD)CharUtil_Hash64U(uszFunctionName, TRUE);
+    if(!Util_qfind_ex((QWORD)dwHash, pEatMap->cMap, pEatMap->pHashTableLookup, sizeof(QWORD), VmmMap_HashTableLookup_CmpFind, &iHash)) { return FALSE; }
+    while(iHash && ((DWORD)pEatMap->pHashTableLookup[iHash - 1] == dwHash)) { iHash--; }
+    while((iHash < pEatMap->cMap) && ((DWORD)pEatMap->pHashTableLookup[iHash] == dwHash)) {
+        iEntry = pEatMap->pHashTableLookup[iHash] >> 32;
+        if(iEntry >= pEatMap->cMap) { break; }
+        if(CharUtil_StrEquals(pEatMap->pMap[iEntry].uszFunction, uszFunctionName, TRUE)) {
+            *pdwEntryIndex = iEntry;
+            return TRUE;
+        }
+        iHash++;
+    }
+    return FALSE;
 }
 
 /*

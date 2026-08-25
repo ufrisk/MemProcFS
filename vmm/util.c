@@ -296,7 +296,7 @@ NTSTATUS Util_VfsReadFile_FromNumber(_In_ QWORD qwValue, _Out_writes_to_(cb, *pc
 {
     BYTE pbBuffer[32];
     DWORD cbBuffer;
-    cbBuffer = snprintf(pbBuffer, 32, "%lli", qwValue);
+    cbBuffer = snprintf(pbBuffer, 32, "%llu", qwValue);
     return Util_VfsReadFile_FromPBYTE(pbBuffer, cbBuffer, pb, cb, pcbRead, cbOffset);
 }
 
@@ -427,19 +427,20 @@ NTSTATUS Util_VfsWriteFile_DWORD(_Inout_ PDWORD pdwTarget, _In_reads_(cb) PBYTE 
 {
     DWORD dw;
     BYTE pbBuffer[9];
-    if(cbOffset > 8) { return UTIL_NTSTATUS_END_OF_FILE; }
-    if(cbOffset < 8) {
-        snprintf(pbBuffer, 9, "%08x", *pdwTarget);
-        cb = (DWORD)min(8 - cbOffset, cb);
-        memcpy(pbBuffer + cbOffset, pb, cb);
-        pbBuffer[8] = 0;
-        dw = strtoul(pbBuffer, NULL, 16);
-        dw = max(dw, dwMinAllow);
-        if(dwMaxAllow) {
-            dw = min(dw, dwMaxAllow);
-        }
-        *pdwTarget = dw;
+    if(cbOffset >= 8) {
+        *pcbWrite = 0;
+        return UTIL_NTSTATUS_END_OF_FILE;
     }
+    snprintf(pbBuffer, 9, "%08x", *pdwTarget);
+    cb = (DWORD)min(8 - cbOffset, cb);
+    memcpy(pbBuffer + cbOffset, pb, cb);
+    pbBuffer[8] = 0;
+    dw = strtoul(pbBuffer, NULL, 16);
+    dw = max(dw, dwMinAllow);
+    if(dwMaxAllow) {
+        dw = min(dw, dwMaxAllow);
+    }
+    *pdwTarget = dw;
     *pcbWrite = cb;
     return UTIL_NTSTATUS_SUCCESS;
 }
@@ -448,19 +449,20 @@ NTSTATUS Util_VfsWriteFile_QWORD(_Inout_ PQWORD pqwTarget, _In_reads_(cb) PBYTE 
 {
     QWORD qw;
     BYTE pbBuffer[17];
-    if(cbOffset > 16) { return UTIL_NTSTATUS_END_OF_FILE; }
-    if(cbOffset < 16) {
-        snprintf(pbBuffer, 17, "%016llx", *pqwTarget);
-        cb = (DWORD)min(16 - cbOffset, cb);
-        memcpy(pbBuffer + cbOffset, pb, cb);
-        pbBuffer[16] = 0;
-        qw = strtoull(pbBuffer, NULL, 16);
-        qw = max(qw, qwMinAllow);
-        if(qwMaxAllow) {
-            qw = min(qw, qwMaxAllow);
-        }
-        *pqwTarget = qw;
+    if(cbOffset >= 16) {
+        *pcbWrite = 0;
+        return UTIL_NTSTATUS_END_OF_FILE;
     }
+    snprintf(pbBuffer, 17, "%016llx", *pqwTarget);
+    cb = (DWORD)min(16 - cbOffset, cb);
+    memcpy(pbBuffer + cbOffset, pb, cb);
+    pbBuffer[16] = 0;
+    qw = strtoull(pbBuffer, NULL, 16);
+    qw = max(qw, qwMinAllow);
+    if(qwMaxAllow) {
+        qw = min(qw, qwMaxAllow);
+    }
+    *pqwTarget = qw;
     *pcbWrite = cb;
     return UTIL_NTSTATUS_SUCCESS;
 }
@@ -510,7 +512,7 @@ QWORD Util_FileTimeNow()
 _Success_(return != 0)
 QWORD Util_FileTimeToEpoch(_In_ QWORD ft)
 {
-    if(!ft || (ft > 0x0200000000000000)) { return 0; }
+    if((ft < 116444736000000000ULL) || (ft > 0x0200000000000000)) { return 0; }
     return (ft / 10000000) - 11644473600ULL;
 }
 
@@ -1051,14 +1053,15 @@ BOOL Util_IsZeroBuffer(_In_ PBYTE pb, _In_ DWORD cb)
 _Success_(return)
 BOOL Util_DecompressGz(_In_ PBYTE pbCompressed, _In_ DWORD cbCompressed, _In_ DWORD cbDecompressed, _Out_writes_(cbDecompressed) PBYTE pbDecompressed)
 {
+    BOOL fResult;
     z_stream stream = { 0 };
     stream.next_in = pbCompressed;
     stream.avail_in = cbCompressed;
     stream.next_out = pbDecompressed;
     stream.avail_out = cbDecompressed;
     if(Z_OK != inflateInit(&stream)) { return FALSE; }
-    if(Z_STREAM_END != inflate(&stream, Z_FINISH)) { return FALSE; }
-    return (Z_OK == inflateEnd(&stream)) && (stream.avail_out == 0);
+    fResult = (Z_STREAM_END == inflate(&stream, Z_FINISH)) && (stream.avail_out == 0);
+    return (Z_OK == inflateEnd(&stream)) && fResult;
 }
 
 /*
@@ -1129,6 +1132,7 @@ NTSTATUS Util_VfsReadFile_FromResource(_In_ VMM_HANDLE H, _In_ LPWSTR wszResourc
     HGLOBAL hResGlobal;
     DWORD cbRes;
     PBYTE pbRes;
+    *pcbRead = 0;
     if(!(hRes = FindResource(H->vmm.hModuleVmmOpt, wszResourceName, RT_RCDATA))) { goto fail; }
     if(!(hResGlobal = LoadResource(H->vmm.hModuleVmmOpt, hRes))) { goto fail; }
     if(!(pbRes = (PBYTE)LockResource(hResGlobal))) { goto fail; }
@@ -1142,7 +1146,9 @@ NTSTATUS Util_VfsReadFile_FromResourceEncrypted(_In_ VMM_HANDLE H, _In_ LPWSTR w
 {
     DWORD i, cMax;
     NTSTATUS nt = Util_VfsReadFile_FromResource(H, wszResourceName, pb, cb, pcbRead, cbOffset);
-    for(i = 0, cMax = *pcbRead; i < cMax; i++) { pb[i] ^= 0xAB; }
+    if(nt == UTIL_NTSTATUS_SUCCESS) {
+        for(i = 0, cMax = *pcbRead; i < cMax; i++) { pb[i] ^= 0xAB; }
+    }
     return nt;
 }
 
