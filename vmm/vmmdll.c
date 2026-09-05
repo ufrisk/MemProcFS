@@ -2367,6 +2367,7 @@ BOOL VMMDLL_Map_GetPfn_Impl(_In_ VMM_HANDLE H, _In_reads_(cPfns) DWORD pPfns[], 
     POB_SET psObPfns = NULL;
     PMMPFNOB_MAP pObMapSrc = NULL;
     DWORD i, cbDst = 0, cbDstData;
+    if(cPfns > (0xffffffffULL - sizeof(VMMDLL_MAP_PFN)) / sizeof(VMMDLL_MAP_PFNENTRY)) { goto fail; }
     cbDstData = cPfns * sizeof(VMMDLL_MAP_PFNENTRY);
     cbDst = sizeof(VMMDLL_MAP_PFN) + cbDstData;
     if(pMapDst) {
@@ -2401,6 +2402,7 @@ BOOL VMMDLL_Map_GetPfnEx_Impl(_In_ VMM_HANDLE H, _In_reads_(cPfns) DWORD pPfns[]
     DWORD i, cbDst = 0, cbDstData;
     BOOL fExtended = flags & VMMDLL_PFN_FLAG_EXTENDED;
     *ppMapDst = NULL;
+    if(cPfns > (0xffffffffULL - sizeof(VMMDLL_MAP_PFN)) / sizeof(VMMDLL_MAP_PFNENTRY)) { goto fail; }
     cbDstData = cPfns * sizeof(VMMDLL_MAP_PFNENTRY);
     cbDst = sizeof(VMMDLL_MAP_PFN) + cbDstData;
     if(!(pMapDst = VmmDllCore_MemAllocExternal(H, OB_TAG_API_MAP_SERVICES, cbDst, sizeof(VMMDLL_MAP_PFN)))) { goto fail; }    // VMMDLL_MemFree()

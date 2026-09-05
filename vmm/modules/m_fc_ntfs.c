@@ -1547,6 +1547,7 @@ PBYTE FcNtfs2_ReadInfoSingle(_In_ VMM_HANDLE H, _In_ PFC_MAP_NTFSENTRY peNtfs, _
     LPSTR sz = NULL;
     LPCSTR uszTextName;
     DWORD cszHexAscii;
+    int cch;
     SIZE_T csz = 0;
     BYTE pbr[0x400];
     BYTE szHexAscii[0xC00];
@@ -1569,13 +1570,15 @@ PBYTE FcNtfs2_ReadInfoSingle(_In_ VMM_HANDLE H, _In_ PFC_MAP_NTFSENTRY peNtfs, _
     if(pR->FirstAttributeOffset > 0x300) { goto fail; }
     // file name+path:
     uszTextName = CharUtil_PathSplitLast(peNtfs->uszText);
-    csz += snprintf(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz,
+    cch = snprintf(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz,
         "INFORMATION\n======================\nName: %s\nPath: %s\n\n\n",
         uszTextName,
         peNtfs->uszText
     );
+    if((cch < 0) || ((SIZE_T)cch >= M_NTFS_READINFOSINGLE_BUFFER - csz)) { goto fail; }
+    csz += cch;
     // mft record:
-    csz += snprintf(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz,
+    cch = snprintf(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz,
         "$MFT_RECORD\n======================\nFlags:            %s, %s\nPhysical Address: 0x%llX\nRecord Number:    0x%X\nSequence Number:  0x%X\nHard Link Count:  %i\n\n\n",
         (pR->Flags & NTFS_FILE_RECORD_FLAG_ACTIVE ? "ACTIVE" : "INACTIVE"),
         (pR->Flags & NTFS_FILE_RECORD_FLAG_DIRECTORY ? "DIRECTORY" : "FILE"),
@@ -1584,12 +1587,14 @@ PBYTE FcNtfs2_ReadInfoSingle(_In_ VMM_HANDLE H, _In_ PFC_MAP_NTFSENTRY peNtfs, _
         pR->SequenceNumber,
         pR->HardLinkCount
     );
+    if((cch < 0) || ((SIZE_T)cch >= M_NTFS_READINFOSINGLE_BUFFER - csz)) { goto fail; }
+    csz += cch;
     // Attributes Loop:
     oA = pR->FirstAttributeOffset;
     while((oA + sizeof(NTFS_ATTR) < 0x400)) {
         pA = (PNTFS_ATTR)(pbr + oA);
         if((pA->Type == 0xffffffff) || (pA->Length < sizeof(NTFS_ATTR))) { break; }
-        if(oA + pA->Length > 0x400) { break; }
+        if(pA->Length > sizeof(pbr) - oA) { break; }
         if((oA + pA->AttrOffset + pA->AttrLength > 0x400) || (pA->AttrLength > 0x400)) { break; }
         // $ATTRIBUTE_HEADER NAME:
         uszAttributeName[0] = 0;
@@ -1600,7 +1605,7 @@ PBYTE FcNtfs2_ReadInfoSingle(_In_ VMM_HANDLE H, _In_ PFC_MAP_NTFSENTRY peNtfs, _
         }
         // $ATTRIBUTE_HEADER
         iStr = ((pA->Type <= NTFS_ATTR_TYPE_MAX) & !(pA->Type & 0xf)) ? pA->Type >> 4 : 0;
-        csz += snprintf(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz,
+        cch = snprintf(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz,
             "$%s\n======================\nO Offset:Length:  %03X:%03X\nA Offset:Length:  %03X:%03X\nType:             %s%s\n%sAttribute ID:     %i\n",
             NTFS_ATTR_TYPE_NAME_STR[iStr],
             oA, pA->Length,
@@ -1610,9 +1615,13 @@ PBYTE FcNtfs2_ReadInfoSingle(_In_ VMM_HANDLE H, _In_ PFC_MAP_NTFSENTRY peNtfs, _
             uszAttributeName,
             pA->AttrId
         );
+        if((cch < 0) || ((SIZE_T)cch >= M_NTFS_READINFOSINGLE_BUFFER - csz)) { goto fail; }
+        csz += cch;
         // only parse resident attributes below:
         if(pA->fNonResident || (pA->Length < pA->AttrOffset + pA->AttrLength)) {
-            csz += snprintf(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz, "\n\n");
+            cch = snprintf(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz, "\n\n");
+            if((cch < 0) || ((SIZE_T)cch >= M_NTFS_READINFOSINGLE_BUFFER - csz)) { goto fail; }
+            csz += cch;
             oA += pA->Length;
             continue;
         }
@@ -1623,7 +1632,7 @@ PBYTE FcNtfs2_ReadInfoSingle(_In_ VMM_HANDLE H, _In_ PFC_MAP_NTFSENTRY peNtfs, _
             Util_FileTime2String(pSI->TimeAlter, szTimeA);
             Util_FileTime2String(pSI->TimeModify, szTimeM);
             Util_FileTime2String(pSI->TimeRead, szTimeR);
-            csz += snprintf(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz,
+            cch = snprintf(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz,
                 "---\nTime File Create: %s\nTime File Alter:  %s\nTime File Read:   %s\nTime MFT Change:  %s\nFile Permissions: %s%s%s%s%s%s%s%s%s%s%s%s",
                 szTimeC, szTimeA, szTimeR, szTimeM,
                 (pSI->DosFilePermissions & NTFS_STDINFO_PERMISSION_READONLY ? "ReadOnly, " : ""),
@@ -1639,6 +1648,8 @@ PBYTE FcNtfs2_ReadInfoSingle(_In_ VMM_HANDLE H, _In_ PFC_MAP_NTFSENTRY peNtfs, _
                 (pSI->DosFilePermissions & NTFS_STDINFO_PERMISSION_NOINDEX ? "NoIndex, " : ""),
                 (pSI->DosFilePermissions & NTFS_STDINFO_PERMISSION_ENCRYPTED ? "Encrypted, " : "")
             );
+            if((cch < 0) || ((SIZE_T)cch >= M_NTFS_READINFOSINGLE_BUFFER - csz)) { goto fail; }
+            csz += cch;
         }
         // $FILE_NAME
         if(pA->Type == NTFS_ATTR_TYPE_FILE_NAME) {
@@ -1649,7 +1660,7 @@ PBYTE FcNtfs2_ReadInfoSingle(_In_ VMM_HANDLE H, _In_ PFC_MAP_NTFSENTRY peNtfs, _
                 Util_FileTime2String(pFN->TimeAlter, szTimeA);
                 Util_FileTime2String(pFN->TimeModify, szTimeM);
                 Util_FileTime2String(pFN->TimeRead, szTimeR);
-                csz += snprintf(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz,
+                cch = snprintf(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz,
                     "---\nName:             %s\nName Space:       %s\nParent Directory: %llX:%llX\nSize Real:        %lli\nSize Allocated:   %lli\nTime File Create: %s\nTime File Alter:  %s\nTime File Read:   %s\nTime MFT Change:  %s",
                     uszRecordFileName,
                     NTFS_FILENAME_NAMESPACE_NAME_STR[min(pFN->NameSpace, NTFS_FILENAME_NAMESPACE_MAX)],
@@ -1658,13 +1669,17 @@ PBYTE FcNtfs2_ReadInfoSingle(_In_ VMM_HANDLE H, _In_ PFC_MAP_NTFSENTRY peNtfs, _
                     pFN->SizeAllocated,
                     szTimeC, szTimeA, szTimeR, szTimeM
                 );
+                if((cch < 0) || ((SIZE_T)cch >= M_NTFS_READINFOSINGLE_BUFFER - csz)) { goto fail; }
+                csz += cch;
             }
         }
         // $DATA
         if(pA->Type == NTFS_ATTR_TYPE_DATA) {
             cszHexAscii = sizeof(szHexAscii) - 2;
             if(Util_FillHexAscii(pbr + oA + pA->AttrOffset, pA->AttrLength, 0, szHexAscii, &cszHexAscii)) {
-                csz += snprintf(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz, "---\n%s", szHexAscii);
+                cch = snprintf(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz, "---\n%s", szHexAscii);
+                if((cch < 0) || ((SIZE_T)cch >= M_NTFS_READINFOSINGLE_BUFFER - csz)) { goto fail; }
+                csz += cch;
             }
         }
         // $OBJECT_ID
@@ -1674,17 +1689,23 @@ PBYTE FcNtfs2_ReadInfoSingle(_In_ VMM_HANDLE H, _In_ PFC_MAP_NTFSENTRY peNtfs, _
             Util_GuidToString(pOID->BirthVolumeId, szGuid2);
             Util_GuidToString(pOID->BirthObjectId, szGuid3);
             Util_GuidToString(pOID->DomainId, szGuid4);
-            csz += snprintf(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz,
+            cch = snprintf(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz,
                 "---\nObject ID:        {%s}\nBirth Volume ID:  {%s}\nBirth Object ID:  {%s}\nDomain ID:        {%s}",
                 szGuid1, szGuid2, szGuid3, szGuid4
             );
+            if((cch < 0) || ((SIZE_T)cch >= M_NTFS_READINFOSINGLE_BUFFER - csz)) { goto fail; }
+            csz += cch;
         }
-        csz += snprintf(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz, "\n\n\n");
+        cch = snprintf(sz + csz, M_NTFS_READINFOSINGLE_BUFFER - csz, "\n\n\n");
+        if((cch < 0) || ((SIZE_T)cch >= M_NTFS_READINFOSINGLE_BUFFER - csz)) { goto fail; }
+        csz += cch;
         oA += pA->Length;
     }
-fail:
     *pcsz = (DWORD)csz;
     return sz;
+fail:
+    LocalFree(sz);
+    return NULL;
 }
 
 NTSTATUS FcNtfs2_ReadInfoAll(_In_ VMM_HANDLE H, _Out_ PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
@@ -1745,19 +1766,25 @@ fail:
 * -- pfMem = path ends with '\\mftdata.mem'
 * -- pfBin = path ends with '\\mftfile.bin'
 */
-VOID FcNtfs2_PathStripMftInfo(_In_ VMM_HANDLE H, _In_ LPSTR uszPath, _Out_writes_(MAX_PATH) LPSTR uszPathStripped, _Out_opt_ PBOOL pfMeta, _Out_opt_ PBOOL pfEnd, _Out_opt_ PBOOL pfTxt, _Out_opt_ PBOOL pfMem, _Out_opt_ PBOOL pfBin)
+_Success_(return)
+BOOL FcNtfs2_PathStripMftInfo(_In_ VMM_HANDLE H, _In_ LPSTR uszPath, _Out_writes_(MAX_PATH) LPSTR uszPathStripped, _Out_opt_ PBOOL pfMeta, _Out_opt_ PBOOL pfEnd, _Out_opt_ PBOOL pfTxt, _Out_opt_ PBOOL pfMem, _Out_opt_ PBOOL pfBin)
 {
-    QWORD cch;
+    SIZE_T cch;
     LPSTR usz;
     if(pfMeta) { *pfMeta = FALSE; }
     if(pfTxt) { *pfTxt = FALSE; }
     if(pfMem) { *pfMem = FALSE; }
     if(pfBin) { *pfBin = FALSE; }
     if(pfEnd) { *pfEnd = CharUtil_StrEndsWith(uszPath, "\\$_INFO", TRUE); }
-    strncpy_s(uszPathStripped, MAX_PATH, uszPath, _TRUNCATE);
-    if(!(usz = strstr(uszPath, "\\$_INFO"))) { return; }
-    cch = (QWORD)usz - (QWORD)uszPath;
-    strncpy_s(uszPathStripped + cch, MAX_PATH - (DWORD)cch, usz + 7, _TRUNCATE);
+    uszPathStripped[0] = 0;
+    if(!(usz = strstr(uszPath, "\\$_INFO"))) {
+        if(strlen(uszPath) >= MAX_PATH) { return FALSE; }
+        return !strncpy_s(uszPathStripped, MAX_PATH, uszPath, _TRUNCATE);
+    }
+    cch = (SIZE_T)(usz - uszPath);
+    if((cch >= MAX_PATH) || (strlen(usz + 7) >= MAX_PATH - cch)) { return FALSE; }
+    memcpy(uszPathStripped, uszPath, cch);
+    if(strncpy_s(uszPathStripped + cch, MAX_PATH - cch, usz + 7, _TRUNCATE)) { return FALSE; }
     if(CharUtil_StrEndsWith(uszPathStripped, "\\mftinfo.txt", TRUE)) {
         if(pfTxt) { *pfTxt = TRUE; }
         uszPathStripped[strlen(uszPathStripped) - 12] = 0;
@@ -1771,6 +1798,7 @@ VOID FcNtfs2_PathStripMftInfo(_In_ VMM_HANDLE H, _In_ LPSTR uszPath, _Out_writes
         uszPathStripped[strlen(uszPathStripped) - 12] = 0;
     }
     if(pfMeta) { *pfMeta = TRUE; }
+    return TRUE;
 }
 
 NTSTATUS FcNtfs2_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_writes_to_(cb, *pcbRead) PBYTE pb, _In_ DWORD cb, _Out_ PDWORD pcbRead, _In_ QWORD cbOffset)
@@ -1787,7 +1815,8 @@ NTSTATUS FcNtfs2_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_
     if(!strcmp(ctxP->uszPath, "ntfs_files.txt")) {
         return FcNtfs2_ReadInfoAll(H, pb, cb, pcbRead, cbOffset);
     }
-    FcNtfs2_PathStripMftInfo(H, ctxP->uszPath, uszPathStripped, &fMeta, NULL, &fMetaTxt, &fMetaMem, &fMetaBin);
+    *pcbRead = 0;
+    if(!FcNtfs2_PathStripMftInfo(H, ctxP->uszPath, uszPathStripped, &fMeta, NULL, &fMetaTxt, &fMetaMem, &fMetaBin)) { return nt; }
     qwHashPath = CharUtil_HashPathFsU(uszPathStripped);
     if(FcNtfs2_Map_GetFromHash(H, qwHashPath, &pObNtfsMap) && pObNtfsMap->cMap) {
         peNtfs = pObNtfsMap->pMap + 0;
@@ -1825,7 +1854,7 @@ VOID FcNtfs2_ListDirectory(_In_ VMM_HANDLE H, _In_ LPSTR uszPath, _Inout_ PHANDL
     LPCSTR uszTextName;
     QWORD qwHashPath;
     FileExInfo.dwVersion = VMMDLL_VFS_FILELIST_EXINFO_VERSION;
-    FcNtfs2_PathStripMftInfo(H, uszPath, uszNameFix, &fMeta, &fEnd, &fTxt, &fMem, &fBin);
+    if(!FcNtfs2_PathStripMftInfo(H, uszPath, uszNameFix, &fMeta, &fEnd, &fTxt, &fMem, &fBin)) { return; }
     if(fTxt || fMem || fBin) { return; }
     qwHashPath = CharUtil_HashPathFsU(uszNameFix);
     // single mft entry metadata files

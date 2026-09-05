@@ -716,6 +716,7 @@ VOID VmmHeapAlloc_NtInitLfhUserDataWin7(_In_ VMM_HANDLE H, _In_ PVMMHEAPNT_CTX c
     DWORD cbHeaderSize = ctx->f32 ? 0x10 : 0x20;
     DWORD dwBlockSize, cBlock, cFreeBlock, cbAll, oBlock, iBlock;
     // 1: signature check
+    if(cbLfhUD < cbHeaderSize) { return; }
     if(0xf0e0d0c0 != *(PDWORD)(pbLfhUD + (f32 ? 0x0c : 0x18))) { return; }     // TODO: 32-bit
     // 2: fetch _HEAP_SUBSEGMENT with BlockSize, BlockCount and AggregateExchg (_INTERLOCK_SEQ)
     vaSubSegment = VMM_PTR_OFFSET(f32, pbLfhUD, 0);
@@ -747,12 +748,18 @@ VOID VmmHeapAlloc_NtInitLfhUserDataWin7(_In_ VMM_HANDLE H, _In_ PVMMHEAPNT_CTX c
 */
 VOID VmmHeapAlloc_NtInitLfhUserData(_In_ VMM_HANDLE H, _In_ PVMMHEAPNT_CTX ctx, _In_ QWORD vaLfhUD, _In_ PBYTE pbLfhUD, _In_ DWORD cbLfhUD)
 {
+    BOOL f;
     PDWORD pdwBitmapData;
     DWORD cbUnitSize = ctx->f32 ? 8 : 16;
     DWORD cbHeaderSize = ctx->f32 ? 0x20 : 0x40;
     DWORD dw, i, iMax, iBit, cBit, oChunk, cbChunk;
     QWORD vaChunk;
     VMMHEAPALLOC_NTLFH_ENCODED Encoded;
+    f = (ctx->po->nt.HEAP_USERDATA_HEADER.Signature + sizeof(DWORD) > cbLfhUD);
+    f = f || (ctx->po->nt.HEAP_USERDATA_HEADER.EncodedOffsets + sizeof(DWORD) > cbLfhUD);
+    f = f || (ctx->po->nt.HEAP_USERDATA_HEADER.BusyBitmap + sizeof(DWORD) > cbLfhUD);
+    f = f || (ctx->po->nt.HEAP_USERDATA_HEADER.BitmapData > cbLfhUD);
+    if(f) { return; }
     if(0xf0e0d0c0 != *(PDWORD)(pbLfhUD + ctx->po->nt.HEAP_USERDATA_HEADER.Signature)) { return; }
     Encoded.dw = *(PDWORD)(pbLfhUD + ctx->po->nt.HEAP_USERDATA_HEADER.EncodedOffsets);
     if(!VmmHeapAlloc_NtInitLfhUserData_VerifyEncoded(ctx->f32, &Encoded) || (Encoded.FirstAllocationOffset != cbHeaderSize)) {
@@ -761,6 +768,7 @@ VOID VmmHeapAlloc_NtInitLfhUserData(_In_ VMM_HANDLE H, _In_ PVMMHEAPNT_CTX ctx, 
     if(!VmmHeapAlloc_NtInitLfhUserData_VerifyEncoded(ctx->f32, &Encoded)) { return; }
     cBit = *(PDWORD)(pbLfhUD + ctx->po->nt.HEAP_USERDATA_HEADER.BusyBitmap);
     if(!cBit || (cBit > cbLfhUD / Encoded.BlockStride)) { return; }
+    if(((QWORD)cBit + 31) / 32 > (cbLfhUD - ctx->po->nt.HEAP_USERDATA_HEADER.BitmapData) / sizeof(DWORD)) { return; }
     pdwBitmapData = (PDWORD)(pbLfhUD + ctx->po->nt.HEAP_USERDATA_HEADER.BitmapData);
     iBit = 0;
     while(iBit < cBit) {
@@ -791,12 +799,12 @@ VOID VmmHeapAlloc_NtInitSeg(_In_ VMM_HANDLE H, _In_ PVMMHEAPNT_CTX ctx, _In_ QWO
     DWORD cbUnitSize = ctx->f32 ? 8 : 16;
     QWORD vaChunk;
     _HEAPENTRY eH;
-    DWORD cbAlloc, dwPreviousSize = 0, oEntry = oFirst;
+    DWORD cbAlloc, cbEntry, dwPreviousSize = 0, oEntry = oFirst;
     VmmLog(H, MID_HEAP, LOGLEVEL_6_TRACE, "PARSE SEGMENT: %llx :: %x ", vaSegment, cbSegment);
-    while(oEntry < cbSegment - 0x10) {
+    while((oEntry < cbSegment) && (cbSegment - oEntry >= 0x10)) {
         vaChunk = vaSegment + oEntry;
         if(!VmmHeap_GetEntryDecoded(ctx->f32, ctx->qwHeapEncoding, pbSegment, oEntry, &eH)) {
-            if(!(vaChunk & 0xfff) && (oEntry + 0x1000 < cbSegment) && !memcmp(pbSegment + oEntry, H->ZERO_PAGE, 0x1000)) {
+            if(!(vaChunk & 0xfff) && (0x1000 < cbSegment - oEntry) && !memcmp(pbSegment + oEntry, H->ZERO_PAGE, 0x1000)) {
                 // pages may be zeroed out -> skip to next page.
                 dwPreviousSize = 0;
                 oEntry += 0x1000;
@@ -809,10 +817,13 @@ VOID VmmHeapAlloc_NtInitSeg(_In_ VMM_HANDLE H, _In_ PVMMHEAPNT_CTX ctx, _In_ QWO
             VmmLog(H, MID_HEAP, LOGLEVEL_6_TRACE, "FAIL: (PREVSIZE) AT: %llx %x", vaSegment, oEntry);
             break;
         }
-        cbAlloc = eH.Size * cbUnitSize - eH.UnusedBytes;
+        cbEntry = eH.Size * cbUnitSize;
+        if((cbEntry < cbUnitSize) || (cbEntry > cbSegment - oEntry)) { break; }
+        cbAlloc = (eH.UnusedBytes <= cbEntry) ? cbEntry - eH.UnusedBytes : 0;
         if((eH.Flags & 1) && cbAlloc && (cbAlloc < 0x01000000)) {
             if(eH.Flags & 8) {
                 // internal: potential lfh
+                cbAlloc = min(cbAlloc, cbEntry - cbUnitSize);
                 if(H->vmm.kernel.dwVersionBuild <= 7601) {
                     VmmHeapAlloc_NtInitLfhUserDataWin7(H, ctx, vaChunk + cbUnitSize, pbSegment + oEntry + cbUnitSize, cbAlloc);
                 } else {
@@ -824,7 +835,7 @@ VOID VmmHeapAlloc_NtInitSeg(_In_ VMM_HANDLE H, _In_ PVMMHEAPNT_CTX ctx, _In_ QWO
             }
         }
         dwPreviousSize = eH.Size;
-        oEntry += eH.Size * cbUnitSize;
+        oEntry += cbEntry;
     }
 }
 

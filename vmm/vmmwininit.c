@@ -983,7 +983,7 @@ BOOL VmmWinInit_FindPsLoadedModuleListKDBG(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS 
     //    simplicity rather than using a separate 32-bit method.
     if(!H->vmm.kernel.opt.KDBG.va && (H->vmm.f32 || H->vmm.kernel.dwVersionMajor < 10)) {
         if(!PE_SectionGetFromName(H, pSystemProcess, H->vmm.kernel.vaBase, ".data", &SectionHeader)) { goto fail; }
-        if((SectionHeader.Misc.VirtualSize > 0x00100000) || (SectionHeader.VirtualAddress > 0x01000000)) { goto fail; }
+        if((SectionHeader.Misc.VirtualSize < 0x290) || (SectionHeader.Misc.VirtualSize > 0x00100000) || (SectionHeader.VirtualAddress > 0x01000000)) { goto fail; }
         if(!(pbData = LocalAlloc(LMEM_ZEROINIT, SectionHeader.Misc.VirtualSize))) { goto fail; }
         VmmReadEx(H, pSystemProcess, H->vmm.kernel.vaBase + SectionHeader.VirtualAddress, pbData, SectionHeader.Misc.VirtualSize, NULL, 0);
         for(o = 16; o <= SectionHeader.Misc.VirtualSize - 0x290; o += 4) {

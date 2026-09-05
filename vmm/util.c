@@ -31,15 +31,18 @@ QWORD Util_GetNumericA(_In_ LPCSTR sz)
 _Success_(return)
 BOOL Util_FillHexAscii(_In_reads_opt_(cb) PBYTE pb, _In_ DWORD cb, _In_ DWORD cbInitialOffset, _Out_writes_opt_(*pcsz) LPSTR sz, _Inout_ PDWORD pcsz)
 {
-    DWORD i, j, o = 0, iMod, cRows;
+    DWORD i, j, o = 0, iMod;
+    QWORD cRows, cszRequired;
     // checks
     if((cbInitialOffset > cb) || (cbInitialOffset > 0x1000) || (cbInitialOffset & 0xf)) { return FALSE; }
-    cRows = (cb + 0xf) >> 4;
+    cRows = ((QWORD)cb + 0xf) >> 4;
+    cszRequired = 1 + cRows * 76;
+    if(cszRequired > 0x0fffffff) { return FALSE; }
     if(!sz) {
-        *pcsz = 1 + cRows * 76;
+        *pcsz = (DWORD)cszRequired;
         return TRUE;
     }
-    if(!pb || (*pcsz <= cRows * 76)) { return FALSE; }
+    if(!pb || (*pcsz < cszRequired)) { return FALSE; }
     // fill buffer with bytes
     for(i = cbInitialOffset; i < cb + ((cb % 16) ? (16 - cb % 16) : 0); i++)
     {

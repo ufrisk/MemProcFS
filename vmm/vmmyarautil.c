@@ -315,7 +315,8 @@ BOOL VmmYaraUtil_ParseSingleResultNext(
         o2 = o;
         cch = (DWORD)strlen(peMatch->RuleMatch.Meta[i].szIdentifier);
         cch = 13 - min(12, cch);
-        o += _snprintf_s(hEPC->uszMetaTXT + o, _countof(hEPC->uszMetaTXT) - o, _TRUNCATE, "%s:%*s%s\n", peMatch->RuleMatch.Meta[i].szIdentifier, cch, "", peMatch->RuleMatch.Meta[i].szString);
+        _snprintf_s(hEPC->uszMetaTXT + o, _countof(hEPC->uszMetaTXT) - o, _TRUNCATE, "%s:%*s%s\n", peMatch->RuleMatch.Meta[i].szIdentifier, cch, "", peMatch->RuleMatch.Meta[i].szString);
+        o += (DWORD)strlen(hEPC->uszMetaTXT + o);
         if(o2 < o) {
             hEPC->uszMetaTXT[o2] = toupper(hEPC->uszMetaTXT[o2]);
         }

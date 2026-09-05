@@ -179,16 +179,18 @@ VOID VmmVm_CallbackCleanup_ObVmGlobalContext(PVMMOB_VMGLOBAL_CONTEXT pOb)
 //-----------------------------------------------------------------------------
 
 _Success_(return)
-BOOL VmmVm_DoWork_NewHvMemTranslateHvp_TreeWalk(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_ PVMMOB_VM_CONTEXT pVM, _In_ QWORD vaTreeNode, _In_ PVMMVMOB_VMHVTRANSLATE_CONTEXT ctx)
+BOOL VmmVm_DoWork_NewHvMemTranslateHvp_TreeWalk(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _In_ PVMMOB_VM_CONTEXT pVM, _In_ QWORD vaTreeNode, _In_ PVMMVMOB_VMHVTRANSLATE_CONTEXT ctx, _In_ DWORD iDepth)
 {
     VID_HVP_TREENODE T;
     PVMMVM_VMHVTRANSLATE_GPAR peT;
     if(!vaTreeNode) { return TRUE; }
+    // Count descent before visiting children: cValid only counts completed nodes.
+    if(H->fAbort || (iDepth >= 32)) { return FALSE; }
     if(ctx->cValid >= ctx->cAll) { return FALSE; }
     if(!VmmRead(H, pSystemProcess, vaTreeNode, (PBYTE)&T, sizeof(VID_HVP_TREENODE))) { return FALSE; }
     if(T.vaHndPrtn != pVM->va) { return FALSE; }
     if(!VMM_KADDR64_8(T.FLinkRangeVA)) { return FALSE; }
-    if(!VmmVm_DoWork_NewHvMemTranslateHvp_TreeWalk(H, pSystemProcess, pVM, T.Tree.Left, ctx)) { return FALSE; }
+    if(!VmmVm_DoWork_NewHvMemTranslateHvp_TreeWalk(H, pSystemProcess, pVM, T.Tree.Left, ctx, iDepth + 1)) { return FALSE; }
     if(ctx->cValid >= ctx->cAll) { return FALSE; }
     if(ctx->cValid && (ctx->pGpar[ctx->cValid - 1].GpaPfnTop >= T.qwRangePfnBase)) { return FALSE; }
     peT = &ctx->pGpar[ctx->cValid];
@@ -197,7 +199,7 @@ BOOL VmmVm_DoWork_NewHvMemTranslateHvp_TreeWalk(_In_ VMM_HANDLE H, _In_ PVMM_PRO
     peT->GpaPfnTop = T.qwRangePfnTop;
     peT->vaMB = T.FLinkRangeVA - 0x10;
     ctx->cValid++;
-    return VmmVm_DoWork_NewHvMemTranslateHvp_TreeWalk(H, pSystemProcess, pVM, T.Tree.Right, ctx);
+    return VmmVm_DoWork_NewHvMemTranslateHvp_TreeWalk(H, pSystemProcess, pVM, T.Tree.Right, ctx, iDepth + 1);
 }
 
 /*
@@ -240,7 +242,7 @@ QWORD VmmVm_DoWork_NewHvMemTranslateHvp(_In_ VMM_HANDLE H, _In_ PVMMOB_VMGLOBAL_
     if(!ctxObT) { goto fail; }
     ctxObT->cAll = cRangeMax;
     // 4: Walk RB tree to retrieve ranges:
-    if(!VmmVm_DoWork_NewHvMemTranslateHvp_TreeWalk(H, pVMG->init.pSystemProcess, pVM, pVM->vaHvpTreeRoot, ctxObT)) {
+    if(!VmmVm_DoWork_NewHvMemTranslateHvp_TreeWalk(H, pVMG->init.pSystemProcess, pVM, pVM->vaHvpTreeRoot, ctxObT, 0)) {
         goto fail;
     }
     if(!ctxObT->cValid) {

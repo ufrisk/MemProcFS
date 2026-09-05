@@ -641,15 +641,15 @@ typedef struct tdPE_SECTION_FILEREGIONS_RAW {
 _Success_(return)
 BOOL PE_FileRaw_FileRegions(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ QWORD vaModuleBase, _In_reads_opt_(0x1000) PBYTE pbModuleHeaderOpt, _In_ DWORD cbFileRegionStart, _In_ DWORD cbFileRegionSize, _Out_ PPE_SECTION_FILEREGIONS_RAW pRegions)
 {
-    BOOL f32, fRegionInScope, fRegionInScopeAll;
+    BOOL f32;
     BYTE pbModuleHeader[0x1000] = { 0 };
     PIMAGE_NT_HEADERS ntHeader;
     PIMAGE_NT_HEADERS64 ntHeader64;
     PIMAGE_NT_HEADERS32 ntHeader32;
     DWORD cSections;
     DWORD iSection, dwMinSection = (DWORD)-1;
-    DWORD cbFileRegionEnd = cbFileRegionStart + cbFileRegionSize;
-    DWORD cbFileSectionStart, cbFileSectionEnd;
+    QWORD cbFileRegionEnd = (QWORD)cbFileRegionStart + cbFileRegionSize;
+    QWORD cbFileSectionStart, cbFileSectionEnd, cbSectionEnd;
     PIMAGE_SECTION_HEADER pSections, pSection;
     // 1: load nt header and section base
     ntHeader = pbModuleHeaderOpt ? PE_HeaderGetVerify(H, pProcess, 0, pbModuleHeaderOpt, &f32) : PE_HeaderGetVerify(H, pProcess, vaModuleBase, pbModuleHeader, &f32);
@@ -664,27 +664,24 @@ BOOL PE_FileRaw_FileRegions(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_o
         pSections = (PIMAGE_SECTION_HEADER)((QWORD)ntHeader64 + sizeof(IMAGE_NT_HEADERS64));
     }
     if(!cSections || (cSections > PE_SECTION_MEMREGIONS_MAX)) { return FALSE; }
+    if((SIZE_T)((PBYTE)pSections - (pbModuleHeaderOpt ? pbModuleHeaderOpt : pbModuleHeader)) + cSections * sizeof(IMAGE_SECTION_HEADER) > sizeof(pbModuleHeader)) { return FALSE; }
     ZeroMemory(pRegions, sizeof(PE_SECTION_FILEREGIONS_RAW));
     // 2: locate regions
-    fRegionInScopeAll = !cbFileRegionStart && !cbFileRegionSize;
+    if(!cbFileRegionStart && !cbFileRegionSize) { cbFileRegionEnd = PE_MAX_SUPPORTED_SIZE; }
     for(iSection = 0; iSection < cSections; iSection++) {
         pSection = &pSections[iSection];
         if(0 == pSection->SizeOfRawData) { continue; }
+        cbSectionEnd = (QWORD)pSection->PointerToRawData + pSection->SizeOfRawData;
+        if((cbSectionEnd > PE_MAX_SUPPORTED_SIZE) || ((QWORD)pSection->VirtualAddress + pSection->SizeOfRawData > 0x100000000ULL)) { return FALSE; }
         dwMinSection = min(dwMinSection, pSection->PointerToRawData);
-        fRegionInScope =
-            fRegionInScopeAll ||
-            ((cbFileRegionStart >= pSection->PointerToRawData) && (cbFileRegionStart < pSection->PointerToRawData + pSection->SizeOfRawData)) ||
-            ((cbFileRegionEnd > pSection->PointerToRawData) && (cbFileRegionEnd <= pSection->PointerToRawData + pSection->SizeOfRawData)) ||
-            ((cbFileRegionStart < pSection->PointerToRawData) && (cbFileRegionEnd > pSection->PointerToRawData + pSection->SizeOfRawData));
-        if(fRegionInScope) {
+        pRegions->cbTotalSize = max(pRegions->cbTotalSize, (DWORD)cbSectionEnd);
+        cbFileSectionStart = max((QWORD)cbFileRegionStart, (QWORD)pSection->PointerToRawData);
+        cbFileSectionEnd = min(cbFileRegionEnd, cbSectionEnd);
+        if(cbFileSectionStart < cbFileSectionEnd) {
             // 3.1: some part inside section
-            cbFileSectionStart = max(cbFileRegionStart, pSection->PointerToRawData);
-            cbFileSectionEnd = min(cbFileRegionEnd, pSection->PointerToRawData + pSection->SizeOfRawData);
-            pRegions->Region[pRegions->cRegions].cbOffsetVMem = pSection->VirtualAddress + cbFileSectionStart - pSection->PointerToRawData;
-            pRegions->Region[pRegions->cRegions].cbOffsetFile = cbFileSectionStart;
-            pRegions->Region[pRegions->cRegions].cb = cbFileSectionEnd - cbFileSectionStart;
-            pRegions->cbTotalSize = max(pRegions->cbTotalSize, pSection->PointerToRawData + pSection->SizeOfRawData);
-            if((pRegions->cbTotalSize > PE_MAX_SUPPORTED_SIZE) || (pRegions->Region[pRegions->cRegions].cb > PE_MAX_SUPPORTED_SIZE)) { return FALSE; }  // above max supported size (may be indication of corrupt data)
+            pRegions->Region[pRegions->cRegions].cbOffsetVMem = (DWORD)(pSection->VirtualAddress + cbFileSectionStart - pSection->PointerToRawData);
+            pRegions->Region[pRegions->cRegions].cbOffsetFile = (DWORD)cbFileSectionStart;
+            pRegions->Region[pRegions->cRegions].cb = (DWORD)(cbFileSectionEnd - cbFileSectionStart);
             pRegions->cRegions++;
         }
     }
@@ -693,7 +690,7 @@ BOOL PE_FileRaw_FileRegions(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_o
     if(cbFileRegionStart < dwMinSection) {
         pRegions->Region[pRegions->cRegions].cbOffsetVMem = cbFileRegionStart;
         pRegions->Region[pRegions->cRegions].cbOffsetFile = cbFileRegionStart;
-        pRegions->Region[pRegions->cRegions].cb = min(cbFileRegionSize, dwMinSection - cbFileRegionStart);
+        pRegions->Region[pRegions->cRegions].cb = (DWORD)min(cbFileRegionEnd - cbFileRegionStart, dwMinSection - cbFileRegionStart);
         pRegions->cbTotalSize = max(pRegions->cbTotalSize, dwMinSection);
         pRegions->cRegions++;
     }
@@ -707,7 +704,8 @@ DWORD PE_FileRaw_Size(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ QW
     PIMAGE_NT_HEADERS ntHeader;
     PIMAGE_NT_HEADERS64 ntHeader64;
     PIMAGE_NT_HEADERS32 ntHeader32;
-    DWORD cSections, cbModuleFile, iSection;
+    DWORD cSections, iSection;
+    QWORD cbModuleFile;
     PIMAGE_SECTION_HEADER pSections;
     // 1: load nt header and section base
     ntHeader = pbModuleHeaderOpt ? PE_HeaderGetVerify(H, pProcess, 0, pbModuleHeaderOpt, &f32) : PE_HeaderGetVerify(H, pProcess, vaModuleBase, pbModuleHeader, &f32);
@@ -723,11 +721,13 @@ DWORD PE_FileRaw_Size(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_opt_ QW
     }
     // 2: calculate resulting size and return
     if(!cSections || (cSections > PE_SECTION_MEMREGIONS_MAX)) { return FALSE; }
+    if((SIZE_T)((PBYTE)pSections - (pbModuleHeaderOpt ? pbModuleHeaderOpt : pbModuleHeader)) + cSections * sizeof(IMAGE_SECTION_HEADER) > sizeof(pbModuleHeader)) { return FALSE; }
     for(cbModuleFile = 0, iSection = 0; iSection < cSections; iSection++) {
-        cbModuleFile = max(cbModuleFile, pSections[iSection].PointerToRawData + pSections[iSection].SizeOfRawData);
+        if((QWORD)pSections[iSection].VirtualAddress + pSections[iSection].SizeOfRawData > 0x100000000ULL) { return 0; }
+        cbModuleFile = max(cbModuleFile, (QWORD)pSections[iSection].PointerToRawData + pSections[iSection].SizeOfRawData);
     }
     if(cbModuleFile > PE_MAX_SUPPORTED_SIZE) { return 0; }  // above max supported size (may be indication of corrupt data)
-    return cbModuleFile;
+    return (DWORD)cbModuleFile;
 }
 
 _Success_(return)
@@ -738,19 +738,15 @@ BOOL PE_FileRaw_Read(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD v
     PE_SECTION_FILEREGIONS_RAW PERegions;
     DWORD cbOffsetBuffer, cbRead;
     *pcbRead = 0;
+    if(!cb) { return TRUE; }
     result = PE_FileRaw_FileRegions(H, pProcess, vaModuleBase, NULL, cbOffset, cb, &PERegions);
     if(!result) { return FALSE; }
     ZeroMemory(pb, cb);
-    if(cbOffset + cb > PERegions.cbTotalSize) {
-        if(cbOffset >= PERegions.cbTotalSize) {
-            *pcbRead = 0;
-            return TRUE;
-        }
-        cb = PERegions.cbTotalSize - cbOffset;
-    }
+    if(cbOffset >= PERegions.cbTotalSize) { return TRUE; }
+    cb = min(cb, PERegions.cbTotalSize - cbOffset);
     for(iRegion = 0; iRegion < PERegions.cRegions; iRegion++) {
         cbOffsetBuffer = PERegions.Region[iRegion].cbOffsetFile - cbOffset;
-        if(cbOffsetBuffer + PERegions.Region[iRegion].cb > cb) {
+        if((PERegions.Region[iRegion].cbOffsetFile < cbOffset) || (cbOffsetBuffer > cb) || (PERegions.Region[iRegion].cb > cb - cbOffsetBuffer)) {
             VmmLog(H, MID_PE, LOGLEVEL_WARNING, "SHOULD NOT HAPPEN! potential buffer overflow avoided reading module at PID=%i BASE=%016llx", pProcess->dwPID, vaModuleBase);
             continue;
         }
@@ -774,18 +770,14 @@ BOOL PE_FileRaw_Write(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ QWORD 
     DWORD iRegion, cbOffsetBuffer;
     PE_SECTION_FILEREGIONS_RAW PERegions;
     *pcbWrite = 0;
+    if(!cb) { return TRUE; }
     result = PE_FileRaw_FileRegions(H, pProcess, vaModuleBase, NULL, cbOffset, cb, &PERegions);
     if(!result) { return FALSE; }
-    if(cbOffset + cb > PERegions.cbTotalSize) {
-        if(cbOffset >= PERegions.cbTotalSize) {
-            *pcbWrite = 0;
-            return TRUE;
-        }
-        cb = PERegions.cbTotalSize - cbOffset;
-    }
+    if(cbOffset >= PERegions.cbTotalSize) { return TRUE; }
+    cb = min(cb, PERegions.cbTotalSize - cbOffset);
     for(iRegion = 0; iRegion < PERegions.cRegions; iRegion++) {
         cbOffsetBuffer = PERegions.Region[iRegion].cbOffsetFile - cbOffset;
-        if(cbOffsetBuffer + PERegions.Region[iRegion].cb > cb) {
+        if((PERegions.Region[iRegion].cbOffsetFile < cbOffset) || (cbOffsetBuffer > cb) || (PERegions.Region[iRegion].cb > cb - cbOffsetBuffer)) {
             VmmLog(H, MID_PE, LOGLEVEL_WARNING, "SHOULD NOT HAPPEN! potential buffer overflow avoided writing module at PID=%i BASE=%016llx", pProcess->dwPID, vaModuleBase);
             continue;
         }

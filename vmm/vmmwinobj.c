@@ -844,6 +844,8 @@ PVMM_PROCESS VmmWinObj_GetProcessAssociated(_In_ VMM_HANDLE H, _In_ QWORD vaObje
 // _FILE_OBJECT READ:
 // ----------------------------------------------------------------------------
 
+#define VMMWINOBJ_FILE_CACHE_VIEW_SIZE 0x40000
+
 /*
 * Helper function to retrieve a Page Table Entry (PTE). Retrieval is done in a
 * fairly performance intensive (non-cached) way, but it's assumed this function
@@ -881,7 +883,7 @@ QWORD VmmWinObjFile_ReadSubsectionAndSharedCache_GetVaSharedCache(_In_ VMM_HANDL
     QWORD va, iVacb, vaVacbs, vaVacb;
     PVMM_OFFSET_FILE po = &H->vmm.offset.FILE;
     if(!pFile->pCache) { return 0; }
-    iVacb = (iPte << 12) / pFile->pCache->cbSectionSize;
+    iVacb = (iPte << 12) / VMMWINOBJ_FILE_CACHE_VIEW_SIZE;
     vaVacbs = pFile->pCache->vaVacbs + iVacb * (f32 ? 4 : 8);
     f = VmmRead2(H, pSystemProcess, vaVacbs, pbVacb, 8, fVmmRead) &&
         (vaVacb = VMM_PTR_OFFSET(f32, pbVacb, 0)) &&
@@ -889,7 +891,7 @@ QWORD VmmWinObjFile_ReadSubsectionAndSharedCache_GetVaSharedCache(_In_ VMM_HANDL
         VmmRead2(H, pSystemProcess, vaVacb, pbVacb, po->_VACB.cb, fVmmRead) &&
         (pFile->pCache->va == VMM_PTR_OFFSET(f32, pbVacb, po->_VACB.oSharedCacheMap)) &&
         (va = VMM_PTR_OFFSET(f32, pbVacb, po->_VACB.oBaseAddress));
-    return f ? (va + (iPte << 12)) : 0;
+    return f ? (va + ((iPte << 12) % VMMWINOBJ_FILE_CACHE_VIEW_SIZE)) : 0;
 }
 
 DWORD VmmWinObjFile_ReadSubsectionAndSharedCacheScatter_MemPush(_In_reads_(cpMEMs) PPMEM_SCATTER ppMEMsIn, _Inout_updates_(cpMEMs) PPMEM_SCATTER ppMEMsOut, _In_ DWORD cpMEMs)
@@ -1078,7 +1080,7 @@ VOID VmmWinObjFile_ReadSubsectionAndSharedCacheScatter_SCM(_In_ VMM_HANDLE H, _I
         pMEM = ppMEMs[i];
         ctx = ctxs + i;
         ctx->iPte = pMEM->qwA >> 12;
-        ctx->iVacb = (ctx->iPte << 12) / pFile->pCache->cbSectionSize;
+        ctx->iVacb = (ctx->iPte << 12) / VMMWINOBJ_FILE_CACHE_VIEW_SIZE;
         ctx->vaVacbs = pFile->pCache->vaVacbs + ctx->iVacb * cbPte;
         VmmScatter_PrepareEx(hObScatter, ctx->vaVacbs, cbPte, ctx->pbvaVacb, NULL);
         pMEM->qwA = 0;
@@ -1098,7 +1100,7 @@ VOID VmmWinObjFile_ReadSubsectionAndSharedCacheScatter_SCM(_In_ VMM_HANDLE H, _I
         ctx = ctxs + i;
         if(pFile->pCache->va == VMM_PTR_OFFSET(f32, ctx->pbVacb, po->_VACB.oSharedCacheMap)) {
             va = VMM_PTR_OFFSET(f32, ctx->pbVacb, po->_VACB.oBaseAddress);
-            pMEM->qwA = (va + (ctx->iPte << 12));
+            pMEM->qwA = (va + ((ctx->iPte << 12) % VMMWINOBJ_FILE_CACHE_VIEW_SIZE));
         }
     }
     VmmReadScatterVirtual(H, PVMM_PROCESS_SYSTEM, ppMEMs, cpMEMs, fVmmRead);

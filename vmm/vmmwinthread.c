@@ -409,7 +409,9 @@ BOOL VmmWinThreadCs_UnwindFrame(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _
             RUNTIME_FUNCTION_X64* pRuntimeChained;
             BYTE pbReadRtime[sizeof(RUNTIME_FUNCTION_X64)];
             QWORD qwUwdChainedAddr;
+            DWORD cChain = 0;
 chain:
+            if(H->fAbort || (cChain++ >= VMMWINTHREADCS_MAX_DEPTH)) { goto end; }
             pRuntimeChained = NULL;
             // RUNTIME struct for chained is after previous unwind structure + 4 + 2bytes for each UNWIND_CODES
             // we read RUNTIME_FUNCTION_X64 for chained steps

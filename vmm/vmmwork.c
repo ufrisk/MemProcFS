@@ -244,12 +244,16 @@ VOID VmmWorkWaitMultiple2_Void(_In_ VMM_HANDLE H, _In_ DWORD cWork, _In_count_(c
     if(H->fAbort || (cWork == 0) || (cWork > MAXIMUM_WAIT_OBJECTS)) { return; }
     for(i = 1; i < cWork; i++) {
         hEventFinish[i] = CreateEvent(NULL, TRUE, FALSE, NULL);
-        VmmWork_Void(H, pfns[i], ctxs[i], hEventFinish[i], VMMWORK_FLAG_PRIO_NORMAL);
+        if(hEventFinish[i]) {
+            VmmWork_Void(H, pfns[i], ctxs[i], hEventFinish[i], VMMWORK_FLAG_PRIO_NORMAL);
+        } else {
+            pfns[i](H, ctxs[i]);
+        }
     }
     pfns[0](H, ctxs[0]);
-    WaitForMultipleObjects(cWork - 1, hEventFinish + 1, TRUE, INFINITE);
     for(i = 1; i < cWork; i++) {
         if(hEventFinish[i]) {
+            WaitForSingleObject(hEventFinish[i], INFINITE);
             CloseHandle(hEventFinish[i]);
         }
     }

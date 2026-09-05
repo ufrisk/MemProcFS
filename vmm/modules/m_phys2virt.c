@@ -93,27 +93,27 @@ NTSTATUS Phys2Virt_ReadVirtRoot(_In_ VMM_HANDLE H, _Out_ PBYTE pb, _In_ DWORD cb
 {
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
     DWORD i, cbBuffer = 0, cbBufferMax;
+    int cch;
     PBYTE pbBuffer = NULL;
     PM_PHYS2VIRT_MULTIENTRY_CONTEXT ctx = NULL;
+    *pcbRead = 0;
     if(Phys2Virt_GetUpdateAll(H, &ctx, NULL)) {
-        cbBufferMax = 24 * ctx->c + 0x10;
+        if(ctx->c > (0xffffffff - 0x10) / 0x20) { goto fail; }
+        cbBufferMax = 0x20 * ctx->c + 0x10;
         pbBuffer = LocalAlloc(0, cbBufferMax);
         if(pbBuffer) {
             if(ctx->c > 1) {
                 qsort(ctx->e + 1, ctx->c - 1, sizeof(M_PHYS2VIRT_MULTIENTRY), (_CoreCrtNonSecureSearchSortCompareFunction)Phys2Virt_ReadVirtRoot_CmpSort);
             }
             for(i = 1; i <= ctx->c; i++) {
-                cbBuffer += snprintf(
-                    pbBuffer + cbBuffer,
-                    cbBufferMax - cbBuffer,
-                    H->vmm.f32 ? "%6i %08llx\n" : "%6i %016llx\n",
-                    ctx->e[i].dwPID,
-                    ctx->e[i].va
-                );
+                cch = snprintf(pbBuffer + cbBuffer, cbBufferMax - cbBuffer, H->vmm.f32 ? "%6i %08llx\n" : "%6i %016llx\n", ctx->e[i].dwPID, ctx->e[i].va);
+                if((cch < 0) || ((DWORD)cch >= cbBufferMax - cbBuffer)) { goto fail; }
+                cbBuffer += (DWORD)cch;
             }
             nt = Util_VfsReadFile_FromPBYTE(pbBuffer, cbBuffer, pb, cb, pcbRead, cbOffset);
         }
     }
+fail:
     LocalFree(ctx);
     LocalFree(pbBuffer);
     return nt;

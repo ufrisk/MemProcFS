@@ -204,7 +204,7 @@ _Success_(return)
 BOOL VmmNet_TcpE_GetAddressEPs(_In_ VMM_HANDLE H, _In_ PVMMNET_CONTEXT ctx, _In_ PVMM_PROCESS pSystemProcess, _In_opt_ PVMMOB_MAP_POOL pPoolMap, _Inout_ POB_SET psvaOb_TcpE, _Inout_ POB_SET psvaOb_TcTW)
 {
     BOOL f, f32 = H->vmm.f32, fResult = FALSE;
-    QWORD va, va2, va3;
+    QWORD va, va2, va3, qwStartHT, cbTcpHT64;
     DWORD i, j, o, oStartHT, oListPT = 0, cbTcpHT;
     BYTE pb[0x810] = { 0 };
     PBYTE pbPartitionTable = NULL, pbTcHT = NULL;
@@ -219,10 +219,12 @@ BOOL VmmNet_TcpE_GetAddressEPs(_In_ VMM_HANDLE H, _In_ PVMMNET_CONTEXT ctx, _In_
     if(!(pbPartitionTable = LocalAlloc(LMEM_ZEROINIT, 0x4000))) { goto fail; }
     // 1: enumerate possible TcHT by walking tcpip.sys!PartitionTable
     VmmReadEx(H, pSystemProcess, ctx->vaPartitionTable, pbPartitionTable, 0x4000, NULL, 0);
-    oStartHT = (DWORD)(*(PQWORD)(pbPartitionTable + 0x10) - *(PQWORD)(pbPartitionTable + 0x00));
-    if(oStartHT < 0x40) { goto fail; }
-    cbTcpHT = 0x10 + oStartHT + ctx->cPartition * sizeof(RTL_DYNAMIC_HASH_TABLE);
-    if(cbTcpHT > 0x10000) { goto fail; }
+    qwStartHT = *(PQWORD)(pbPartitionTable + 0x10) - *(PQWORD)(pbPartitionTable + 0x00);
+    if((qwStartHT < 0x40) || (qwStartHT > 0x10000)) { goto fail; }
+    cbTcpHT64 = 0x10 + qwStartHT + (QWORD)ctx->cPartition * sizeof(RTL_DYNAMIC_HASH_TABLE);
+    if(cbTcpHT64 > 0x10000) { goto fail; }
+    oStartHT = (DWORD)qwStartHT;
+    cbTcpHT = (DWORD)cbTcpHT64;
     if(!(pbTcHT = LocalAlloc(LMEM_ZEROINIT, cbTcpHT))) { goto fail; }
     oListPT = VMMNET_PARTITIONTABLE_OFFSET20(pbPartitionTable, ctx->vaPartitionTable) ? 0x20 : oListPT;
     oListPT = VMMNET_PARTITIONTABLE_OFFSET18(pbPartitionTable, ctx->vaPartitionTable) ? 0x18 : oListPT;
@@ -779,12 +781,14 @@ DWORD VmmNet_InPP_DoWork(_In_ VMM_HANDLE H, PVOID lpThreadParameter)
     QWORD i, j, va;
     BYTE pb[0x2000], pb2[0x20];
     POB_SET psObPA = NULL, psObPreEP = NULL, psObEP = NULL, psObEP_Next = NULL, psObEP_SWAP;
+    POB_SET psObEP_Visited = NULL;
     POB_MAP pmObNetEntriesPre = NULL;
     PVMM_MAP_POOLENTRYTAG pePoolTag;
     if(!(psObPA = ObSet_New(H))) { goto fail; }
     if(!(psObPreEP = ObSet_New(H))) { goto fail; }
     if(!(psObEP = ObSet_New(H))) { goto fail; }
     if(!(psObEP_Next = ObSet_New(H))) { goto fail; }
+    if(!(psObEP_Visited = ObSet_New(H))) { goto fail; }
     if(!(pmObNetEntriesPre = ObMap_New(H, OB_MAP_FLAGS_OBJECT_LOCALFREE))) { goto fail; }
     // set offsets
     if(dwVersionBuild <= 9200) {
@@ -860,11 +864,13 @@ DWORD VmmNet_InPP_DoWork(_In_ VMM_HANDLE H, PVOID lpThreadParameter)
     while(ObSet_Size(psObEP) || ObSet_Size(psObEP_Next)) {
         VmmCachePrefetchPages3(H, pSystemProcess, psObEP, VMMNET_EP_SIZE, 0);
         while((va = ObSet_Pop(psObEP))) {
+            if(H->fAbort) { goto fail; }
             oFLink = VMMNET_EP_OFFSET;
             if(va & 8) {
                 oFLink -= 8;
                 va += 8;
             }
+            if(!ObSet_Push(psObEP_Visited, va)) { continue; }
             VmmRead2(H, pSystemProcess, va, pb, VMMNET_EP_SIZE, VMM_FLAG_FORCECACHE_READ | VMM_FLAG_ZEROPAD_ON_FAIL);
             for(o = 0x10; o < 0x80; o += 0x10) {
                 tag = 0;
@@ -885,6 +891,7 @@ DWORD VmmNet_InPP_DoWork(_In_ VMM_HANDLE H, PVOID lpThreadParameter)
     // TODO: add post processing of InPP-TcpE
     VmmNet_InPP_PostTcpLUdpA(H, ctx, pSystemProcess, pmObNetEntriesPre, pmNetEntries);
 fail:
+    Ob_DECREF(psObEP_Visited);
     Ob_DECREF(psObEP_Next);
     Ob_DECREF(psObEP);
     Ob_DECREF(psObPreEP);

@@ -2661,8 +2661,9 @@ PVMMOB_MAP_PHYSMEM VmmWinPhysMemMap_InitializeFromRegistry_DoWork(_In_ VMM_HANDL
     if(!c1) { goto fail; }
     o = 0x10;
     cMap = *(PDWORD)(pbData + o); // this should be loop in case of c1 > 1, but works for now ...
-    if(f32 && (!cMap || (cbData < cMap * sizeof(VMMWIN_PHYSMEMMAP_REGISTRY_MEMORY_RANGE32) + 0x0c))) { goto fail; }
-    if(!f32 && (!cMap || (cbData < cMap * sizeof(VMMWIN_PHYSMEMMAP_REGISTRY_MEMORY_RANGE64) + 0x14))) { goto fail; }
+    if(f32 && (!cMap || (cbData < (QWORD)cMap * sizeof(VMMWIN_PHYSMEMMAP_REGISTRY_MEMORY_RANGE32) + 0x14))) { goto fail; }
+    if(!f32 && (!cMap || (cbData < (QWORD)cMap * sizeof(VMMWIN_PHYSMEMMAP_REGISTRY_MEMORY_RANGE64) + 0x14))) { goto fail; }
+    if(cMap > ((SIZE_T)-1 - sizeof(VMMOB_MAP_PHYSMEM)) / sizeof(VMM_MAP_PHYSMEMENTRY)) { goto fail; }
     if(!(pObPhysMemMap = Ob_AllocEx(H, OB_TAG_MAP_PHYSMEM, LMEM_ZEROINIT, sizeof(VMMOB_MAP_PHYSMEM) + cMap * sizeof(VMM_MAP_PHYSMEMENTRY), NULL, NULL))) { goto fail; }
     pObPhysMemMap->cMap = cMap;
     // 3: iterate over the memory regions.
