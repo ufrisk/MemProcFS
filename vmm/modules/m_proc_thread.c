@@ -163,8 +163,8 @@ NTSTATUS MThread_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_
             VmmMap_GetThreadCallstack(H, pProcess, pe, 0, &pObThreadCallstackMap);
             if(pObThreadCallstackMap && pObThreadCallstackMap->uszText) {
                 nt = Util_VfsReadFile_FromPBYTE(pObThreadCallstackMap->uszText, pObThreadCallstackMap->cbText, pb, cb, pcbRead, cbOffset);
-                Ob_DECREF_NULL(&pObThreadCallstackMap);
             }
+            Ob_DECREF_NULL(&pObThreadCallstackMap);
             goto finish;
         }
         // impersonation token:

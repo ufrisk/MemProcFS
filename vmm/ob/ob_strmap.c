@@ -119,7 +119,6 @@ POB_STRMAP_ENTRY _ObStrMap_PushStr(_In_ POB_STRMAP psm, _In_opt_ LPCSTR usz, _In
     }
     if((psm->cbu > 0x40000000) || !cbu || (cbu > 0x00100000)) { return NULL; }
     if(!(pStrEntry = LocalAlloc(LMEM_ZEROINIT, sizeof(OB_STRMAP_ENTRY) + cbu))) { return NULL; }
-    psm->cbu += cbu;
     pStrEntry->cbu = cbu;
     if(usz) {
         f = CharUtil_UtoU(usz, -1, pStrEntry->usz, cbu, NULL, NULL, CHARUTIL_FLAG_TRUNCATE | CHARUTIL_FLAG_STR_BUFONLY);
@@ -128,8 +127,8 @@ POB_STRMAP_ENTRY _ObStrMap_PushStr(_In_ POB_STRMAP psm, _In_opt_ LPCSTR usz, _In
     } else {
         f = CharUtil_AtoU(sz, -1, pStrEntry->usz, cbu, NULL, NULL, CHARUTIL_FLAG_TRUNCATE | CHARUTIL_FLAG_STR_BUFONLY);
     }
-    if(f) {
-        ObMap_Push(psm->pm, qwHash, pStrEntry);
+    if(f && ObMap_Push(psm->pm, qwHash, pStrEntry)) {
+        psm->cbu += cbu;
     } else {
         LocalFree(pStrEntry);
         pStrEntry = NULL;

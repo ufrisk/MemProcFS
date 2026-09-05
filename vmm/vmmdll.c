@@ -550,15 +550,18 @@ VOID VMMDLL_VfsListBlob_Impl_AddFile(_Inout_ HANDLE h, _In_ LPCSTR uszName, _In_
     PVMMDLL_VFS_FILELISTBLOB_CREATE_CONTEXT ctx = (PVMMDLL_VFS_FILELISTBLOB_CREATE_CONTEXT)h;
     PVMMDLL_VFS_FILELISTBLOB_ENTRY pe = NULL;
     if(!(pe = LocalAlloc(LMEM_ZEROINIT, sizeof(VMMDLL_VFS_FILELISTBLOB_ENTRY)))) { return; }
-    if(!ObStrMap_PushPtrUU(ctx->psm, uszName, (LPSTR*)&pe->ouszName, NULL)) {
+    if(!ObMap_Push(ctx->pme, (QWORD)pe, pe)) {
         LocalFree(pe);
+        return;
+    }
+    if(!ObStrMap_PushPtrUU(ctx->psm, uszName, (LPSTR*)&pe->ouszName, NULL)) {
+        LocalFree(ObMap_RemoveByKey(ctx->pme, (QWORD)pe));
         return;
     }
     if(pExInfo) {
         memcpy(&pe->ExInfo, pExInfo, sizeof(VMMDLL_VFS_FILELIST_EXINFO));
     }
     pe->cbFileSize = cb;
-    ObMap_Push(ctx->pme, (QWORD)pe, pe);    // reference to pe overtaken by ctx->pme
 }
 
 VOID VMMDLL_VfsListBlob_Impl_AddDirectory(_Inout_ HANDLE h, _In_ LPCSTR uszName, _In_opt_ PVMMDLL_VFS_FILELIST_EXINFO pExInfo)

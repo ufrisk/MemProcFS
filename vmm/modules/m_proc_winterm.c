@@ -1728,8 +1728,8 @@ VOID M_ProcWinTerm_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO 
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
     if((pRI->tpSystem != VMMDLL_SYSTEM_WINDOWS_64) || (pRI->tpMemoryModel != VMMDLL_MEMORYMODEL_X64)) { return; }
-    if(!(pRI->reg_info.ctxM = (PVMMDLL_PLUGIN_INTERNAL_CONTEXT)ObMap_New(H, OB_MAP_FLAGS_OBJECT_OB))) { return; }
     if(H->vmm.kernel.dwVersionBuild < 22000) { return; }    // WT parsing supported on win11+
+    if(!(pRI->reg_info.ctxM = (PVMMDLL_PLUGIN_INTERNAL_CONTEXT)ObMap_New(H, OB_MAP_FLAGS_OBJECT_OB))) { return; }
     strcpy_s(pRI->reg_info.uszPathName, 128, "\\winterm");
     pRI->reg_info.fRootModule = FALSE;
     pRI->reg_info.fProcessModule = TRUE;

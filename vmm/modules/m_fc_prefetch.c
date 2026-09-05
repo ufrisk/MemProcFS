@@ -264,6 +264,7 @@ fail:
         Ob_DECREF(ctx->psm);
         Ob_DECREF(ctx->pmPf);
         Ob_DECREF(ctx->psDuplicate);
+        LocalFree(ctx);
     }
     Ob_DECREF(pmObFiles);
     return pObMap;

@@ -56,7 +56,10 @@ BOOL MEvilThread1_InitContext(_In_ VMM_HANDLE H, _Inout_ PMEVIL_THREAD1_CONTEXT 
         }
     }
     if(!pObProcessSMSS) { return FALSE; }
-    if(!(ctx->pm = ObMap_New(H, OB_MAP_FLAGS_OBJECT_LOCALFREE))) { return FALSE; }
+    if(!(ctx->pm = ObMap_New(H, OB_MAP_FLAGS_OBJECT_LOCALFREE))) {
+        Ob_DECREF(pObProcessSMSS);
+        return FALSE;
+    }
     ctx->vaLoadLibrary = SysQuery_GetProcAddress(H, pObProcessSMSS, "kernel32.dll", "LoadLibrary");
     ctx->vaRtlUserThreadStart = SysQuery_GetProcAddress(H, pObProcessSMSS, "ntdll.dll", "RtlUserThreadStart");
     if(VmmMap_GetModuleEntryEx(H, pObProcessSMSS, 0, "ntdll.dll", 0, &pObModuleMap, &peModule)) {
@@ -224,6 +227,7 @@ VOID MEvilThread1_LogEntry(_In_ VMM_HANDLE H, _In_ PMEVIL_THREAD1_ENTRY pe)
     }
     pObProcess = VmmProcessGet(H, pe->dwPID);
     FcEvilAdd(H, EVIL_THREAD, pObProcess, pe->vaWin32StartAddress, "%s", usz);
+    Ob_DECREF(pObProcess);
 }
 
 
@@ -275,6 +279,7 @@ VOID MEvilThread1_DoWork(_In_ VMM_HANDLE H, _In_ VMMDLL_MODULE_ID MID, _In_opt_ 
 fail:
     Ob_DECREF_NULL(&ctx.pm);
     Ob_DECREF_NULL(&ctx.pModuleMap);
+    Ob_DECREF_NULL(&ctx.pVadMap);
     Ob_DECREF(pObThreadMap);
     Ob_DECREF(pObProcess);
 }

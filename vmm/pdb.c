@@ -1747,7 +1747,10 @@ BOOL PDB_DisplayTypeNt(
         return FALSE;
     }
     hPDB = PDB_GetHandleFromModuleName(H, "ntoskrnl");
-    if(!(pObPdbEntry = ObMap_GetByKey(ctxOb->pmPdbByHash, hPDB))) { return FALSE; }
+    if(!(pObPdbEntry = ObMap_GetByKey(ctxOb->pmPdbByHash, hPDB))) {
+        Ob_DECREF(ctxOb);
+        return FALSE;
+    }
     EnterCriticalSection(&ctxOb->Lock);
     if(!PDB_LoadEnsureEx(H, ctxOb, pObPdbEntry)) { goto fail; }
     // flag: object header -> type == _OBJECT_HEADER + adjust va type base.

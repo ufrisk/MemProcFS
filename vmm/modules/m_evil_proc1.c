@@ -129,6 +129,7 @@ VOID MEvilProc1_Modules(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
         }
         Ob_DECREF(pObModuleMap);
     }
+    Ob_DECREF(pObVadMap);
 }
 
 

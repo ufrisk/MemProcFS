@@ -231,7 +231,8 @@ NTSTATUS MSysSvc_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_
             if(!_strnicmp("registry", uszSvcSubPath, 8)) {
                 i = (uszSvcSubPath[8] == '\\') ? 9 : 8;
                 _snprintf_s(usz, MAX_PATH, _TRUNCATE, "registry\\HKLM\\SYSTEM\\ControlSet001\\Services\\%s\\%s", pe->uszServiceName, uszSvcSubPath + i);
-                return PluginManager_Read(H, NULL, usz, pb, cb, pcbRead, cbOffset);
+                nt = PluginManager_Read(H, NULL, usz, pb, cb, pcbRead, cbOffset);
+                goto finish;
             }
         }
     }
@@ -371,6 +372,7 @@ VOID MSysSvc_FcLogCSV(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ 
             );
         }
     }
+    Ob_DECREF(pObSvcMap);
 }
 
 VOID M_SysSvc_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pRI)

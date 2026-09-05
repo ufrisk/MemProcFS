@@ -11,6 +11,7 @@
 #include <vmmdll.h>
 #include "charutil.h"
 #include "vfslist.h"
+#include "vmmloader.h"
 #include "version.h"
 #pragma warning( push )  
 #pragma warning( disable : 4005 )   
@@ -31,6 +32,7 @@ PVMMVFS_CONFIG ctxVfs;
 VMM_HANDLE g_hVMM;
 
 CHAR g_VfsMountPoint = 'M';
+BOOL g_IsLinux = FALSE;
 
 
 
@@ -270,6 +272,9 @@ VOID VfsDokan_InitializeAndMount_DisplayInfo(LPWSTR wszMountPoint)
     ULONG64 qwVersionVmmMajor = 0, qwVersionVmmMinor = 0, qwVersionVmmRevision = 0;
     ULONG64 qwVersionWinMajor = 0, qwVersionWinMinor = 0, qwVersionWinBuild = 0;
     ULONG64 qwUniqueSystemId = 0, iMemoryModel;
+    DWORD cbRead = 0;
+    CHAR szLinuxBanner[96] = { 0 }, szTag[32] = { 0 };
+    LPSTR szLinuxRelease = NULL;
     LPSTR uszLicensedTo = NULL;
     BOOL fGPL;
     // get vmm.dll versions
@@ -282,6 +287,11 @@ VOID VfsDokan_InitializeAndMount_DisplayInfo(LPWSTR wszMountPoint)
     VMMDLL_ConfigGet(g_hVMM, VMMDLL_OPT_WIN_VERSION_MINOR, &qwVersionWinMinor);
     VMMDLL_ConfigGet(g_hVMM, VMMDLL_OPT_WIN_VERSION_BUILD, &qwVersionWinBuild);
     VMMDLL_ConfigGet(g_hVMM, VMMDLL_OPT_WIN_SYSTEM_UNIQUE_ID, &qwUniqueSystemId);
+    if(g_IsLinux) {
+        VMMDLL_VfsReadU(g_hVMM, "\\sys\\unique-tag.txt", (PBYTE)szTag, sizeof(szTag) - 1, &cbRead, 0);
+    } else {
+        snprintf(szTag, sizeof(szTag), "%i_%x", (DWORD)qwVersionWinBuild, (DWORD)qwUniqueSystemId);
+    }
     uszLicensedTo = VMMDLL_LicensedTo();
     if(!uszLicensedTo) {
         printf("[CRITICAL] A valid license could not be found. Terminating.\n");
@@ -297,13 +307,20 @@ VOID VfsDokan_InitializeAndMount_DisplayInfo(LPWSTR wszMountPoint)
     printf("\n"MEMPROCFS_SPLASH \
         " - Version:          %i.%i.%i (%s)\n" \
         " - Mount Point:      %S           \n" \
-        " - Tag:              %i_%x        \n",
+        " - Tag:              %s        \n",
         uszLicensedTo,
         (DWORD)qwVersionVmmMajor, (DWORD)qwVersionVmmMinor, (DWORD)qwVersionVmmRevision, VER_OSARCH,
-        wszMountPoint, (DWORD)qwVersionWinBuild, (DWORD)qwUniqueSystemId);
+        wszMountPoint, szTag);
     if(qwVersionWinMajor && (iMemoryModel < (sizeof(VMMDLL_MEMORYMODEL_TOSTRING) / sizeof(LPSTR)))) {
         printf(" - Operating System: Windows %i.%i.%i (%s)\n",
             (DWORD)qwVersionWinMajor, (DWORD)qwVersionWinMinor, (DWORD)qwVersionWinBuild, VMMDLL_MEMORYMODEL_TOSTRING[iMemoryModel]);
+    } else if(g_IsLinux) {
+        VMMDLL_VfsReadU(g_hVMM, "\\sys\\version.txt", (PBYTE)szLinuxBanner, sizeof(szLinuxBanner) - 1, &cbRead, 0);
+        if(!strncmp(szLinuxBanner, "Linux version ", 14)) {
+            szLinuxRelease = szLinuxBanner + 14;
+            szLinuxRelease[strcspn(szLinuxRelease, " ")] = 0;
+        }
+        printf(" - Operating System: Linux x64 %s\n", szLinuxRelease);
     } else {
         printf(" - Operating System: Unknown\n");
     }
@@ -437,6 +454,20 @@ CHAR GetMountPoint(_In_ DWORD argc, _In_ wchar_t* argv[], _Out_ PBOOL pfMountSpe
 }
 
 /*
+* 
+*/
+VOID MemProcFS_SetLinuxMode(_In_ DWORD argc, _In_ wchar_t* argv[])
+{
+    DWORD i;
+    for(i = 1; i < argc; i++) {
+        if(0 == _wcsicmp(argv[i], L"-linux")) {
+            g_IsLinux = TRUE;
+            return;
+        }
+    }
+}
+
+/*
 * Call the VMMDLL_Close() function in a separate newly create thread.
 * This will allow the main thread to exit even if the VMMDLL_Close()
 * function should happen to get stuck.
@@ -519,9 +550,16 @@ int wmain(_In_ int argc, _In_ wchar_t* argv[])
             printf("MemProcFS: Invalid argument!\n");
             return 1;
         }
+        if(!_stricmp(szArgs[i], "-linux")) {
+            g_IsLinux = TRUE;
+        }
     }
     if(argc > 2) {
         CharUtil_UtoU("-userinteract", (DWORD)-1, NULL, 0, &szArgs[argc++], NULL, CHARUTIL_FLAG_ALLOC);
+    }
+    if(g_IsLinux && !VmmlxLoader_Initialize()) {
+        printf("MemProcFS: Error: Unable to load required vmmlx.dll\n");
+        return 1;
     }
     g_hVMM = VMMDLL_Initialize(argc, szArgs);
     if(!g_hVMM) {
@@ -535,7 +573,7 @@ int wmain(_In_ int argc, _In_ wchar_t* argv[])
     VMMDLL_ConfigSet(g_hVMM, VMMDLL_OPT_CONFIG_STATISTICS_FUNCTIONCALL, 1);
     result = VMMDLL_InitializePlugins(g_hVMM);
     if(!result) {
-        printf("MemProcFS: Error file system plugins in vmm.dll!\n");
+        printf("MemProcFS: Error file system plugins in %s!\n", (g_IsLinux ? "vmmlx.dll" : "vmm.dll"));
         return 1;
     }
     SetConsoleCtrlHandler(MemProcFsCtrlHandler, TRUE);

@@ -15,8 +15,8 @@ LDFLAGS += -L/usr/local/lib -lfuse -pthread
 LDFLAGS += -Wl,-rpath,@loader_path
 LDFLAGS += -mmacosx-version-min=11.0
 
-DEPS = vfslist.h
-OBJ  = oscompatibility.o charutil.o vfslist.o memprocfs_fuse.o ob/ob_cachemap.o ob/ob_core.o ob/ob_map.o ob/ob_set.o
+DEPS = vfslist.h vmmloader.h
+OBJ  = oscompatibility.o charutil.o vfslist.o vmmloader.o memprocfs_fuse.o ob/ob_cachemap.o ob/ob_core.o ob/ob_map.o ob/ob_set.o
 
 # ARCH SPECIFIC FLAGS:
 CFLAGS_X86_64  = $(CFLAGS) -arch x86_64

@@ -209,12 +209,17 @@ fail:
 _Success_(return != NULL)
 PVMMOB_MAP_EAT VmmWinEAT_Initialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pModule)
 {
-    BOOL f;
+    static SRWLOCK InitLockSRW = { 0 };
     PVMMOB_MAP_EAT pObMap = NULL;
     QWORD qwKey = (pProcess->dwPID ^ ((QWORD)pProcess->dwPID << 48) ^ pModule->vaBase);
-    f = H->vmm.pObCacheMapEAT ||
-        (H->vmm.pObCacheMapEAT = ObCacheMap_New(H, 0x20, VmmWinEATIAT_Callback_ValidEntry, OB_CACHEMAP_FLAGS_OBJECT_OB));
-    if(!f) { return NULL; }
+    if(!H->vmm.pObCacheMapEAT) {
+        AcquireSRWLockExclusive(&InitLockSRW);
+        if(!H->vmm.pObCacheMapEAT) {
+            H->vmm.pObCacheMapEAT = ObCacheMap_New(H, 0x20, VmmWinEATIAT_Callback_ValidEntry, OB_CACHEMAP_FLAGS_OBJECT_OB);
+        }
+        ReleaseSRWLockExclusive(&InitLockSRW);
+        if(!H->vmm.pObCacheMapEAT) { return NULL; }
+    }
     if((pObMap = ObCacheMap_GetByKey(H->vmm.pObCacheMapEAT, qwKey))) { return pObMap; }
     EnterCriticalSection(&pProcess->LockUpdate);
     pObMap = ObCacheMap_GetByKey(H->vmm.pObCacheMapEAT, qwKey);
@@ -383,12 +388,17 @@ fail:
 _Success_(return != NULL)
 PVMMOB_MAP_IAT VmmWinIAT_Initialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _In_ PVMM_MAP_MODULEENTRY pModule)
 {
-    BOOL f;
+    static SRWLOCK InitLockSRW = { 0 };
     PVMMOB_MAP_IAT pObMap = NULL;
     QWORD qwKey = (pProcess->dwPID ^ ((QWORD)pProcess->dwPID << 48) ^ pModule->vaBase);
-    f = H->vmm.pObCacheMapIAT ||
-        (H->vmm.pObCacheMapIAT = ObCacheMap_New(H, 0x20, VmmWinEATIAT_Callback_ValidEntry, OB_CACHEMAP_FLAGS_OBJECT_OB));
-    if(!f) { return NULL; }
+    if(!H->vmm.pObCacheMapIAT) {
+        AcquireSRWLockExclusive(&InitLockSRW);
+        if(!H->vmm.pObCacheMapIAT) {
+            H->vmm.pObCacheMapIAT = ObCacheMap_New(H, 0x20, VmmWinEATIAT_Callback_ValidEntry, OB_CACHEMAP_FLAGS_OBJECT_OB);
+        }
+        ReleaseSRWLockExclusive(&InitLockSRW);
+        if(!H->vmm.pObCacheMapIAT) { return NULL; }
+    }
     if((pObMap = ObCacheMap_GetByKey(H->vmm.pObCacheMapIAT, qwKey))) { return pObMap; }
     EnterCriticalSection(&pProcess->LockUpdate);
     pObMap = ObCacheMap_GetByKey(H->vmm.pObCacheMapIAT, qwKey);
@@ -922,8 +932,7 @@ BOOL VmmWinLdrModule_Initialize(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _
 fail:
     if(!pProcess->Map.pObModule) {
         // try set up zero-sized module map on fail
-        pObMap = Ob_AllocEx(H, OB_TAG_MAP_MODULE, LMEM_ZEROINIT, sizeof(VMMOB_MAP_MODULE), NULL, NULL);
-        pProcess->Map.pObModule = pObMap;
+        pProcess->Map.pObModule = Ob_AllocEx(H, OB_TAG_MAP_MODULE, LMEM_ZEROINIT, sizeof(VMMOB_MAP_MODULE), NULL, NULL);
     }
     LeaveCriticalSection(&pProcess->LockUpdate);
     Ob_DECREF(pmObModules);

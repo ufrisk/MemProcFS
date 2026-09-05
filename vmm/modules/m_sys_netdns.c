@@ -771,6 +771,7 @@ static VOID MSysNetDns_FcLogCSV(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT c
             );
         }
     }
+    Ob_DECREF(pObDnsMap);
 }
 
 static VOID MSysNetDns_FcLogJSON(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ VOID(*pfnLogJSON)(_In_ VMM_HANDLE H, _In_ PVMMDLL_FORENSIC_JSONDATA pData))

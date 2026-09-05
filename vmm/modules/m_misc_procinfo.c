@@ -93,7 +93,7 @@ NTSTATUS MMiscProcInfo_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP,
     POB_PMMISCINFO_CONTEXT ctxOb = MMiscProcInfo_GetContext(H, ctxP);
     if(ctxOb) {
         if(!_stricmp(ctxP->uszPath, "progress_percent.txt")) {
-            return Util_VfsReadFile_FromNumber(ctxOb->dwProgressPercent, pb, cb, pcbRead, cbOffset);
+            nt = Util_VfsReadFile_FromNumber(ctxOb->dwProgressPercent, pb, cb, pcbRead, cbOffset);
         }
         if(!_stricmp(ctxP->uszPath, "dtb.txt")) {
             nt = ctxOb->pmfDTB ? ObMemFile_ReadFile(ctxOb->pmfDTB, pb, cb, pcbRead, cbOffset) : VMMDLL_STATUS_END_OF_FILE;

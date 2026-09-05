@@ -142,6 +142,10 @@ BOOL _ObCacheMap_Push(_In_ POB_CACHEMAP pcm, _In_ QWORD qwKey, _In_ PVOID pvObje
     }
     // 3: add new object
     if(!(pe = LocalAlloc(0, sizeof(OB_CACHEMAPENTRY)))) { return FALSE; }
+    if(!ObMap_Push(pcm->pm, qwKey, pe)) {
+        LocalFree(pe);
+        return FALSE;
+    }
     if(pcm->fObjectsOb) { Ob_INCREF(pvObject); }
     pe->pvObject = pvObject;
     pe->qwContext = qwContextInitial;
@@ -153,7 +157,6 @@ BOOL _ObCacheMap_Push(_In_ POB_CACHEMAP pcm, _In_ QWORD qwKey, _In_ PVOID pvObje
     } else {
         pe->BLink = pe->FLink = pe;
     }
-    ObMap_Push(pcm->pm, qwKey, pe);
     pcm->AgeListHead = pe;
     pcm->c++;
     return TRUE;

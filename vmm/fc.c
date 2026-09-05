@@ -1345,7 +1345,10 @@ VOID FcScanVirtmem_ScanRanges_ThreadProc(_In_ VMM_HANDLE H, _In_ PFCOB_SCAN_VIRT
     PBYTE pbBuffer = NULL;
     if(!(pbBuffer = LocalAlloc(LMEM_ZEROINIT, FC_SCAN_VIRTMEM_MAX_CHUNK_SIZE))) { goto fail; }
     while((pe = ObMap_Pop(ctx->pmScanItems))) {
-        if(H->fAbort) { goto fail; }
+        if(H->fAbort) {
+            Ob_DECREF(pe);
+            goto fail;
+        }
         if(pe->dwVersion == VMMDLL_FORENSIC_INGEST_VIRTMEM_VERSION) {
             pe->pb = pbBuffer;
             FcScanVirtmem_ScanRanges_Virtmem(H, ctx, pe);

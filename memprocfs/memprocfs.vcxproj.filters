@@ -51,6 +51,9 @@
     <ClCompile Include="oscompatibility.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="vmmloader.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="version.h">
@@ -81,6 +84,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="vfslist.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="vmmloader.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

@@ -113,6 +113,13 @@ BOOL VmmWork_Initialize(_In_ VMM_HANDLE H)
     }
     return TRUE;
 fail:
+    if(ctx) {
+        Ob_DECREF(ctx->pmUnit);
+        Ob_DECREF(ctx->pmUnitLow);
+        Ob_DECREF(ctx->psThreadAll);
+        Ob_DECREF(ctx->psThreadExit);
+        Ob_DECREF(ctx->psThreadAvail);
+    }
     LocalFree(ctx);
     return FALSE;
 }

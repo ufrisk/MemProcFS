@@ -121,6 +121,7 @@ static NTSTATUS MHeap_Write(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP,
         goto finish;
     }
 finish:
+    Ob_DECREF(pObHeapAllocMap);
     return VMM_STATUS_SUCCESS;
 }
 
@@ -149,7 +150,8 @@ static NTSTATUS MHeap_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, 
     ctx.pProcess = (PVMM_PROCESS)ctxP->pProcess;
     // module root - heap info files
     if(!_stricmp(ctxP->uszPath, "readme.txt")) {
-        return Util_VfsReadFile_FromStrA(szMHEAP_README, pb, cb, pcbRead, cbOffset);
+        nt = Util_VfsReadFile_FromStrA(szMHEAP_README, pb, cb, pcbRead, cbOffset);
+        goto finish;
     }
     if(!_stricmp(ctxP->uszPath, "heaps.txt")) {
         nt = Util_VfsLineFixed_Read(
@@ -196,6 +198,7 @@ static NTSTATUS MHeap_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, 
     }
 finish:
     Ob_DECREF(pObHeapMap);
+    Ob_DECREF(pObHeapAllocMap);
     return nt;
 }
 

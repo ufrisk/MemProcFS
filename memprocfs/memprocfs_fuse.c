@@ -8,6 +8,7 @@
 #include <vmmdll.h>
 #include "charutil.h"
 #include "vfslist.h"
+#include "vmmloader.h"
 #include "version.h"
 #define FUSE_USE_VERSION 30
 #include <fuse.h>
@@ -22,6 +23,8 @@ typedef struct tdFUSE_INFO {
 FUSE_INFO g_FuseInfo = { 0 };
 
 VMM_HANDLE g_hVMM = NULL;
+
+BOOL g_IsLinux = FALSE;
 
 //-----------------------------------------------------------------------------
 // FUSE FILE SYSTEM FUNCTIONALITY BELOW:
@@ -245,6 +248,9 @@ VOID Vfs_InitializeAndMount_DisplayInfo(_In_ LPSTR uszMountPoint)
     ULONG64 qwVersionVmmMajor = 0, qwVersionVmmMinor = 0, qwVersionVmmRevision = 0;
     ULONG64 qwVersionWinMajor = 0, qwVersionWinMinor = 0, qwVersionWinBuild = 0;
     ULONG64 qwUniqueSystemId = 0, iMemoryModel;
+    DWORD cbRead = 0;
+    CHAR szLinuxBanner[96] = { 0 }, szTag[32] = { 0 };
+    LPSTR szLinuxRelease = NULL;
     LPSTR uszLicensedTo = NULL;
     BOOL fGPL;
     // get vmm.dll versions
@@ -257,6 +263,11 @@ VOID Vfs_InitializeAndMount_DisplayInfo(_In_ LPSTR uszMountPoint)
     VMMDLL_ConfigGet(g_hVMM, VMMDLL_OPT_WIN_VERSION_MINOR, &qwVersionWinMinor);
     VMMDLL_ConfigGet(g_hVMM, VMMDLL_OPT_WIN_VERSION_BUILD, &qwVersionWinBuild);
     VMMDLL_ConfigGet(g_hVMM, VMMDLL_OPT_WIN_SYSTEM_UNIQUE_ID, &qwUniqueSystemId);
+    if(g_IsLinux) {
+        VMMDLL_VfsReadU(g_hVMM, "\\sys\\unique-tag.txt", (PBYTE)szTag, sizeof(szTag) - 1, &cbRead, 0);
+    } else {
+        snprintf(szTag, sizeof(szTag), "%i_%x", (DWORD)qwVersionWinBuild, (DWORD)qwUniqueSystemId);
+    }
     uszLicensedTo = VMMDLL_LicensedTo();
     if(!uszLicensedTo) {
         printf("[CRITICAL] A valid license could not be found. Terminating.\n");
@@ -272,13 +283,20 @@ VOID Vfs_InitializeAndMount_DisplayInfo(_In_ LPSTR uszMountPoint)
     printf("\n"MEMPROCFS_SPLASH \
         " - Version:          %i.%i.%i (%s)\n" \
         " - Mount Point:      %s           \n" \
-        " - Tag:              %i_%x        \n",
+        " - Tag:              %s        \n",
         uszLicensedTo,
         (DWORD)qwVersionVmmMajor, (DWORD)qwVersionVmmMinor, (DWORD)qwVersionVmmRevision, VER_OSARCH,
-        uszMountPoint, (DWORD)qwVersionWinBuild, (DWORD)qwUniqueSystemId);
+        uszMountPoint, szTag);
     if(qwVersionWinMajor && (iMemoryModel < (sizeof(VMMDLL_MEMORYMODEL_TOSTRING) / sizeof(LPSTR)))) {
         printf(" - Operating System: Windows %i.%i.%i (%s)\n",
             (DWORD)qwVersionWinMajor, (DWORD)qwVersionWinMinor, (DWORD)qwVersionWinBuild, VMMDLL_MEMORYMODEL_TOSTRING[iMemoryModel]);
+    } else if(g_IsLinux) {
+        VMMDLL_VfsReadU(g_hVMM, "\\sys\\version.txt", (PBYTE)szLinuxBanner, sizeof(szLinuxBanner) - 1, &cbRead, 0);
+        if(!strncmp(szLinuxBanner, "Linux version ", 14)) {
+            szLinuxRelease = szLinuxBanner + 14;
+            szLinuxRelease[strcspn(szLinuxRelease, " ")] = 0;
+        }
+        printf(" - Operating System: Linux x64 %s\n", szLinuxRelease);
     } else {
         printf(" - Operating System: Unknown\n");
     }
@@ -317,11 +335,18 @@ int main(_In_ int argc, _In_ char* argv[])
     }
     for(i = 1; i < argc; i++) {
         szArgs[i] = argv[i];
+        if(!_stricmp(szArgs[i], "-linux")) {
+            g_IsLinux = TRUE;
+        }
     }
     szArgs[0] = "-printf";
     // catch CTRL+C
     signal(SIGINT, signal_handler_execute);
     // Initialize MemProcFS
+    if(g_IsLinux && !VmmlxLoader_Initialize()) {
+        printf("MemProcFS: Error: Unable to load required vmmlx.so\n");
+        return 1;
+    }
     g_hVMM = VMMDLL_Initialize(argc, szArgs);
     if(!g_hVMM) {
         // any error message will already be shown by the InitializeReserved function.
@@ -333,7 +358,7 @@ int main(_In_ int argc, _In_ char* argv[])
     }
     VMMDLL_ConfigSet(g_hVMM, VMMDLL_OPT_CONFIG_STATISTICS_FUNCTIONCALL, 1);
     if(!VMMDLL_InitializePlugins(g_hVMM)) {
-        printf("MemProcFS: Error file system plugins in vmm.dll!\n");
+        printf("MemProcFS: Error file system plugins in %s!\n", (g_IsLinux ? "vmmlx.so" : "vmm.so"));
         return 1;
     }
     VfsList_Initialize(MemProcFS_VfsListU, 500, 128, FALSE);

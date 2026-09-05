@@ -714,6 +714,7 @@ VOID MSysTask_FcLogCSV(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_
             );
         }
     }
+    Ob_DECREF(pObTaskMap);
 }
 
 VOID MSysTask_Notify(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_ DWORD fEvent, _In_opt_ PVOID pvEvent, _In_opt_ DWORD cbEvent)

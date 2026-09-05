@@ -324,6 +324,7 @@
     <ClCompile Include="ob\ob_set.c" />
     <ClCompile Include="oscompatibility.c" />
     <ClCompile Include="vfslist.c" />
+    <ClCompile Include="vmmloader.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\includes\dokan.h" />
@@ -336,6 +337,7 @@
     <ClInclude Include="oscompatibility.h" />
     <ClInclude Include="version.h" />
     <ClInclude Include="vfslist.h" />
+    <ClInclude Include="vmmloader.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="MemProcFS.rc" />

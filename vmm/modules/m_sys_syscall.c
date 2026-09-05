@@ -110,14 +110,14 @@ VOID MSyscall_Initialize(_In_ VMM_HANDLE H, PMSYSCALL_CONTEXT ctxM)
                 (ctxM->ServiceDescriptorTable32[i].NumberOfServices < 0x800) &&
                 VMM_KADDR32(ctxM->ServiceDescriptorTable32[i].ParamTableBase) &&
                 (ctxM->ServiceDescriptorTable32[i].ServiceTableBase < ctxM->ServiceDescriptorTable32[i].ParamTableBase);
-            if(!f) { return; }
+            if(!f) { goto fail; }
         } else {
             f = VMM_KADDR64_8(ctxM->ServiceDescriptorTable64[i].ServiceTableBase) &&
                 (ctxM->ServiceDescriptorTable64[i].ServiceCounterTableBase == 0) &&
                 (ctxM->ServiceDescriptorTable64[i].NumberOfServices < 0x800) &&
                 VMM_KADDR64(ctxM->ServiceDescriptorTable64[i].ParamTableBase) &&
                 (ctxM->ServiceDescriptorTable64[i].ServiceTableBase < ctxM->ServiceDescriptorTable64[i].ParamTableBase);
-            if(!f) { return; }
+            if(!f) { goto fail; }
         }
     }
     // fetch win32k infos

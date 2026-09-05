@@ -2063,10 +2063,17 @@ VOID VmmWinReg_KeyInfo2(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_ PO
     CHAR uszPath[MAX_PATH*2] = { 0 };
     VmmWinReg_KeyInfo(pHive, pKey, pKeyInfo);
     if(!(ps = ObSet_New(H))) { return; }
-    ObSet_Push(ps, (QWORD)Ob_INCREF(pKey));
+    if(!ObSet_Push(ps, (QWORD)pKey)) {
+        Ob_DECREF(ps);
+        return;
+    }
+    Ob_INCREF(pKey);
     qwHashKeyParent = pKey->qwHashKeyParent;
     while((pObKey = ObMap_GetByKey(pHive->Snapshot.pmKeyHash, qwHashKeyParent))) {
-        ObSet_Push(ps, (QWORD)pObKey);
+        if(!ObSet_Push(ps, (QWORD)pObKey)) {
+            Ob_DECREF(pObKey);
+            goto finish;
+        }
         qwHashKeyParent = pObKey->qwHashKeyParent;
     }
     Ob_DECREF((POB_REGISTRY_KEY)ObSet_Pop(ps));  // skip "root"
@@ -2085,6 +2092,7 @@ VOID VmmWinReg_KeyInfo2(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _In_ PO
             cuszPath += status;
         }
     }
+finish:
     while((pObKey = (POB_REGISTRY_KEY)ObSet_Pop(ps))) {
         Ob_DECREF(pObKey);
     }

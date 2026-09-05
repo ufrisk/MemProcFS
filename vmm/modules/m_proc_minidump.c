@@ -1043,7 +1043,7 @@ POB_M_MINIDUMP_CONTEXT M_MiniDump_GetContext(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLU
             goto finish;
         }
         // ctx is aged out
-        ObMap_RemoveByKey(ctxM, qwKey);
+        Ob_DECREF(ObMap_RemoveByKey(ctxM, qwKey));
         Ob_DECREF_NULL(&pObCtx);
     }
     EnterCriticalSection(&pProcess->LockPlugin);

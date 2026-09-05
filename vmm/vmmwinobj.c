@@ -358,7 +358,6 @@ VOID VmmWinObjFile_Initialize_FileObjects(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_
     DWORD cbPath, dwIndex = 0;
     QWORD vaSectionObjectPointers, vaFileNameBuffer, cbFile, qwHashDuplicateCheck;
     POB_MAP pmObFiles = NULL;
-    POB_SET psvaObSectionObjectPointers = NULL;
     POB_VMMWINOBJ_FILE peObFile = NULL;
     WCHAR wszNameBuffer[MAX_PATH + 1] = { 0 };
     PVMM_OFFSET_FILE po = &H->vmm.offset.FILE;
@@ -486,7 +485,8 @@ VOID VmmWinObjFile_Initialize_FileObjects(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_
         Ob_DECREF(peObFile);
     }
 fail:
-    Ob_DECREF(psvaObSectionObjectPointers);
+    Ob_DECREF(psObCA);
+    Ob_DECREF(psObSCM);
     Ob_DECREF(pmObFiles);
     Ob_DECREF(hObScatter2);
     Ob_DECREF(hObScatterFO);
@@ -582,6 +582,7 @@ BOOL VmmWinObjFile_GetByProcess(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _
         for(i = 0, iMax = pObData->ObHdr.cbData / sizeof(QWORD); i < iMax; i++) {
             if((pObFile = (POB_VMMWINOBJ_FILE)VmmWinObj_CacheGet(H, ctxOb, VMMWINOBJ_TYPE_FILE, pObData->pqw[i]))) {
                 ObMap_Push(pmObFiles, pObFile->va, pObFile);
+                Ob_DECREF_NULL(&pObFile);
             }
         }
         Ob_DECREF_NULL(&pObData);

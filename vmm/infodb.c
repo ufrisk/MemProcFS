@@ -364,6 +364,11 @@ BOOL InfoDB_YaraRulesBuiltIn(_In_ VMM_HANDLE H, _Out_ PINFODB_YARA_RULES *ppObYa
     }
     *ppObYaraRules = pObResult;
 fail:
+    if(!pObResult) {
+        for(i = 0; i < cRules; i++) {
+            LocalFree(pszRules[i]);
+        }
+    }
     LocalFree(pszRules);
     sqlite3_finalize(hStmt);
     InfoDB_SqlReserveReturn(pObCtx, hSql);

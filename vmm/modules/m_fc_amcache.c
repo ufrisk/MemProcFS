@@ -513,42 +513,43 @@ static BOOL MFcAmcache_ParseApplicationValues(_In_ VMM_HANDLE H, _In_ POB_REGIST
     DWORD i, iMax;
     CHAR uszProgramId[MFCAMCACHE_MAX_VALUE_UTF8];
     POB_MAP pmValues = NULL;
-    POB_REGISTRY_VALUE pValue;
+    POB_REGISTRY_VALUE pObValue;
     VMM_REGISTRY_VALUE_INFO vi = { 0 };
     if(!(pmValues = VmmWinReg_KeyValueList(H, pHive, pKey))) { return FALSE; }
     iMax = min(ObMap_Size(pmValues), MFCAMCACHE_MAX_VALUES_PER_RECORD);
     for(i = 0; i < iMax; i++)
     {
-        if(!(pValue = ObMap_GetByIndex(pmValues, i))) { continue; }
+        if(!(pObValue = ObMap_GetByIndex(pmValues, i))) { continue; }
         ZeroMemory(&vi, sizeof(vi));
-        VmmWinReg_ValueInfo(pHive, pValue, &vi);
+        VmmWinReg_ValueInfo(pHive, pObValue, &vi);
         vi.uszName[_countof(vi.uszName) - 1] = 0;
-        if(!vi.uszName[0]) { continue; }
+        if(!vi.uszName[0]) { Ob_DECREF(pObValue); continue; }
         if(CharUtil_StrEquals(vi.uszName, "ProgramId", TRUE)) {
-            if(MFcAmcache_ReadString(H, pHive, pValue, uszProgramId, sizeof(uszProgramId))) {
+            if(MFcAmcache_ReadString(H, pHive, pObValue, uszProgramId, sizeof(uszProgramId))) {
                 fProgramId = ObStrMap_PushPtrUU(psm, uszProgramId, &pe->uszProgramId, NULL ) || fProgramId;
             }
         }
-        else if(CharUtil_StrEquals(vi.uszName, "ProgramInstanceId", TRUE))     { MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszProgramInstanceId);          }
-        else if(CharUtil_StrEquals(vi.uszName, "Name", TRUE))                  { MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszName);                       }
-        else if(CharUtil_StrEquals(vi.uszName, "Publisher", TRUE))             { MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszPublisher);                  }
-        else if(CharUtil_StrEquals(vi.uszName, "Version", TRUE))               { MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszVersion);                    }
-        else if(CharUtil_StrEquals(vi.uszName, "RootDirPath", TRUE))           { MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszRootDirPath);                }
-        else if(CharUtil_StrEquals(vi.uszName, "RegistryKeyPath", TRUE))       { MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszRegistryKeyPath);            }
-        else if(CharUtil_StrEquals(vi.uszName, "UninstallString", TRUE))       { MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszUninstallString);            }
-        else if(CharUtil_StrEquals(vi.uszName, "InstallDate", TRUE))           { MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszInstallDate);                }
-        else if(CharUtil_StrEquals(vi.uszName, "InstallDateMsi", TRUE))        { MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszInstallDateMsi);             }
-        else if(CharUtil_StrEquals(vi.uszName, "InstallDateFromLinkFile", TRUE)) { MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszInstallDateFromLinkFile);  }
-        else if(CharUtil_StrEquals(vi.uszName, "Source", TRUE))                { MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszSource);                     }
-        else if(CharUtil_StrEquals(vi.uszName, "Type", TRUE))                  { MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszType);                       }
-        else if(CharUtil_StrEquals(vi.uszName, "PackageFullName", TRUE))       { MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszPackageFullName);            }
-        else if(CharUtil_StrEquals(vi.uszName, "MsiProductCode", TRUE))        { MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszMsiProductCode);             }
-        else if(CharUtil_StrEquals(vi.uszName, "MsiPackageCode", TRUE))        { MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszMsiPackageCode);             }
-        else if(CharUtil_StrEquals(vi.uszName, "ManifestPath", TRUE))          { MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszManifestPath);               }
-        else if(CharUtil_StrEquals(vi.uszName, "BundleManifestPath", TRUE))    { MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszBundleManifestPath);         }
-        else if(CharUtil_StrEquals(vi.uszName, "Language", TRUE))              { MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszLanguage);                   }
-        else if(CharUtil_StrEquals(vi.uszName, "OSVersionAtInstallTime", TRUE)){ MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszOSVersionAtInstallTime);     }
-        else if(CharUtil_StrEquals(vi.uszName, "Manufacturer", TRUE))          { MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszManufacturer);               }
+        else if(CharUtil_StrEquals(vi.uszName, "ProgramInstanceId", TRUE))     { MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszProgramInstanceId);          }
+        else if(CharUtil_StrEquals(vi.uszName, "Name", TRUE))                  { MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszName);                       }
+        else if(CharUtil_StrEquals(vi.uszName, "Publisher", TRUE))             { MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszPublisher);                  }
+        else if(CharUtil_StrEquals(vi.uszName, "Version", TRUE))               { MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszVersion);                    }
+        else if(CharUtil_StrEquals(vi.uszName, "RootDirPath", TRUE))           { MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszRootDirPath);                }
+        else if(CharUtil_StrEquals(vi.uszName, "RegistryKeyPath", TRUE))       { MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszRegistryKeyPath);            }
+        else if(CharUtil_StrEquals(vi.uszName, "UninstallString", TRUE))       { MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszUninstallString);            }
+        else if(CharUtil_StrEquals(vi.uszName, "InstallDate", TRUE))           { MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszInstallDate);                }
+        else if(CharUtil_StrEquals(vi.uszName, "InstallDateMsi", TRUE))        { MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszInstallDateMsi);             }
+        else if(CharUtil_StrEquals(vi.uszName, "InstallDateFromLinkFile", TRUE)) { MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszInstallDateFromLinkFile);  }
+        else if(CharUtil_StrEquals(vi.uszName, "Source", TRUE))                { MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszSource);                     }
+        else if(CharUtil_StrEquals(vi.uszName, "Type", TRUE))                  { MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszType);                       }
+        else if(CharUtil_StrEquals(vi.uszName, "PackageFullName", TRUE))       { MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszPackageFullName);            }
+        else if(CharUtil_StrEquals(vi.uszName, "MsiProductCode", TRUE))        { MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszMsiProductCode);             }
+        else if(CharUtil_StrEquals(vi.uszName, "MsiPackageCode", TRUE))        { MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszMsiPackageCode);             }
+        else if(CharUtil_StrEquals(vi.uszName, "ManifestPath", TRUE))          { MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszManifestPath);               }
+        else if(CharUtil_StrEquals(vi.uszName, "BundleManifestPath", TRUE))    { MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszBundleManifestPath);         }
+        else if(CharUtil_StrEquals(vi.uszName, "Language", TRUE))              { MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszLanguage);                   }
+        else if(CharUtil_StrEquals(vi.uszName, "OSVersionAtInstallTime", TRUE)){ MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszOSVersionAtInstallTime);     }
+        else if(CharUtil_StrEquals(vi.uszName, "Manufacturer", TRUE))          { MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszManufacturer);               }
+        Ob_DECREF(pObValue);
     }
     Ob_DECREF(pmValues);
     return fProgramId;
@@ -558,29 +559,29 @@ static VOID MFcAmcache_ParseApplications(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HI
 {
     BOOL fProgramIdValue;
     DWORD i, iMax;
-    POB_REGISTRY_KEY pRoot = NULL;
-    POB_REGISTRY_KEY pKey;
+    POB_REGISTRY_KEY pObRoot = NULL;
+    POB_REGISTRY_KEY pObKey = NULL;
     POB_MAP pmKeys = NULL;
     PVMM_MAP_AMCACHE_APPLICATION pe = NULL;
     VMM_REGISTRY_KEY_INFO ki = { 0 };
-    pRoot = VmmWinReg_KeyGetByPath(H, pHive, "\\ROOT\\Root\\InventoryApplication");
-    if(!pRoot) { goto finish; }
+    pObRoot = VmmWinReg_KeyGetByPath(H, pHive, "\\ROOT\\Root\\InventoryApplication");
+    if(!pObRoot) { goto finish; }
     ctx->fInventoryApplicationFound = TRUE;
-    pmKeys = VmmWinReg_KeyList(H, pHive, pRoot);
+    pmKeys = VmmWinReg_KeyList(H, pHive, pObRoot);
     if(!pmKeys) { goto finish; }
     if(ObMap_Size(pmKeys) > MFCAMCACHE_MAX_APPLICATIONS) {
         ctx->fApplicationsTruncated = TRUE;
     }
     iMax = min(ObMap_Size(pmKeys), MFCAMCACHE_MAX_APPLICATIONS);
     for(i = 0; i < iMax; i++) {
-        pKey = ObMap_GetByIndex(pmKeys, i);
-        if(!pKey) { continue; }
+        pObKey = ObMap_GetByIndex(pmKeys, i);
+        if(!pObKey) { continue; }
         if(!(pe = LocalAlloc(LMEM_ZEROINIT, sizeof(VMM_MAP_AMCACHE_APPLICATION)))) {
             ctx->fApplicationsTruncated = TRUE;
             break;
         }
         ZeroMemory(&ki, sizeof(ki));
-        VmmWinReg_KeyInfo(pHive, pKey, &ki);
+        VmmWinReg_KeyInfo(pHive, pObKey, &ki);
         ki.uszName[_countof(ki.uszName) - 1] = 0;
         pe->dwIndex = ObMap_Size(ctx->pmApplications);
         pe->ftKeyLastWrite = ki.ftLastWrite;
@@ -594,17 +595,19 @@ static VOID MFcAmcache_ParseApplications(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HI
         if(ki.uszName[0]) {
             ObStrMap_PushPtrUU(ctx->psm, ki.uszName, &pe->uszRegistrySubKey, NULL);
         }
-        fProgramIdValue = MFcAmcache_ParseApplicationValues(H, pHive, pKey, ctx->psm, pe);
+        fProgramIdValue = MFcAmcache_ParseApplicationValues(H, pHive, pObKey, ctx->psm, pe);
         if(!fProgramIdValue && ki.uszName[0]) {
             ObStrMap_PushPtrUU(ctx->psm, ki.uszName, &pe->uszProgramId, NULL);
             pe->dwFlags |= MFCAMCACHE_APP_FLAG_PROGRAMID_FROM_KEY;
         }
+        Ob_DECREF_NULL(&pObKey);
         pe = NULL;
     }
 finish:
     LocalFree(pe);
+    Ob_DECREF(pObKey);
     Ob_DECREF(pmKeys);
-    Ob_DECREF(pRoot);
+    Ob_DECREF(pObRoot);
 }
 
 
@@ -617,49 +620,50 @@ static VOID MFcAmcache_ParseFileValues(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE
     DWORD i, iMax;
     QWORD qw;
     POB_MAP pmValues = NULL;
-    POB_REGISTRY_VALUE pValue;
+    POB_REGISTRY_VALUE pObValue;
     VMM_REGISTRY_VALUE_INFO vi = { 0 };
     if(!(pmValues = VmmWinReg_KeyValueList(H, pHive, pKey))) { return; }
     iMax = min(ObMap_Size(pmValues), MFCAMCACHE_MAX_VALUES_PER_RECORD);
     for(i = 0; i < iMax; i++) {
-        if(!(pValue = ObMap_GetByIndex(pmValues, i))) { continue; }
+        if(!(pObValue = ObMap_GetByIndex(pmValues, i))) { continue; }
         ZeroMemory(&vi, sizeof(vi));
-        VmmWinReg_ValueInfo(pHive, pValue, &vi);
+        VmmWinReg_ValueInfo(pHive, pObValue, &vi);
         vi.uszName[_countof(vi.uszName) - 1] = 0;
-        if(!vi.uszName[0]) { continue; }
+        if(!vi.uszName[0]) { Ob_DECREF(pObValue); continue; }
         if(CharUtil_StrEquals(vi.uszName, "Size", TRUE)) {
-            if(MFcAmcache_ReadQWORD(H, pHive, pValue, &qw)) {
+            if(MFcAmcache_ReadQWORD(H, pHive, pObValue, &qw)) {
                 pe->cbFile = qw;
             }
         } else if(CharUtil_StrEquals(vi.uszName, "Usn", TRUE)) {
-            if(MFcAmcache_ReadQWORD(H, pHive, pValue, &qw)) {
+            if(MFcAmcache_ReadQWORD(H, pHive, pObValue, &qw)) {
                 pe->usn = qw;
             }
         } else if(CharUtil_StrEquals(vi.uszName, "IsPeFile", TRUE)) {
-            if(MFcAmcache_ReadQWORD(H, pHive, pValue, &qw)) {
+            if(MFcAmcache_ReadQWORD(H, pHive, pObValue, &qw)) {
                 pe->fIsPeFile = qw ? TRUE : FALSE;
             }
         } else if(CharUtil_StrEquals(vi.uszName, "IsOsComponent", TRUE)) {
-            if(MFcAmcache_ReadQWORD(H, pHive, pValue, &qw)) {
+            if(MFcAmcache_ReadQWORD(H, pHive, pObValue, &qw)) {
                 pe->fIsOsComponent = qw ? TRUE : FALSE;
             }
         }
-        else if(CharUtil_StrEquals(vi.uszName, "FileId", TRUE))            { MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszFileId);             }
-        else if(CharUtil_StrEquals(vi.uszName, "ProgramId", TRUE))         { MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszProgramId);          }
-        else if(CharUtil_StrEquals(vi.uszName, "LowerCaseLongPath", TRUE)) { MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszLowerCaseLongPath);  }
-        else if(CharUtil_StrEquals(vi.uszName, "Name", TRUE))              { MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszName);               }
-        else if(CharUtil_StrEquals(vi.uszName, "Publisher", TRUE))         { MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszPublisher);          }
-        else if(CharUtil_StrEquals(vi.uszName, "ProductName", TRUE))       { MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszProductName);        }
-        else if(CharUtil_StrEquals(vi.uszName, "ProductVersion", TRUE))    { MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszProductVersion);     }
-        else if(CharUtil_StrEquals(vi.uszName, "Version", TRUE))           { MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszVersion);            }
-        else if(CharUtil_StrEquals(vi.uszName, "BinFileVersion", TRUE))    { MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszBinFileVersion);     }
-        else if(CharUtil_StrEquals(vi.uszName, "BinProductVersion", TRUE)) { MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszBinProductVersion);  }
-        else if(CharUtil_StrEquals(vi.uszName, "BinaryType", TRUE))        { MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszBinaryType);         }
-        else if(CharUtil_StrEquals(vi.uszName, "Language", TRUE))          { MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszLanguage);           }
-        else if(CharUtil_StrEquals(vi.uszName, "LinkDate", TRUE))          { MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszLinkDate);           }
-        else if(CharUtil_StrEquals(vi.uszName, "LongPathHash", TRUE))      { MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszLongPathHash);       }
-        else if(CharUtil_StrEquals(vi.uszName, "Description", TRUE))       { MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszDescription);        }
-        else if(CharUtil_StrEquals(vi.uszName, "OriginalFileName", TRUE))  { MFcAmcache_PushString(H, pHive, pValue, psm, &pe->uszOriginalFileName);   }
+        else if(CharUtil_StrEquals(vi.uszName, "FileId", TRUE))            { MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszFileId);             }
+        else if(CharUtil_StrEquals(vi.uszName, "ProgramId", TRUE))         { MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszProgramId);          }
+        else if(CharUtil_StrEquals(vi.uszName, "LowerCaseLongPath", TRUE)) { MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszLowerCaseLongPath);  }
+        else if(CharUtil_StrEquals(vi.uszName, "Name", TRUE))              { MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszName);               }
+        else if(CharUtil_StrEquals(vi.uszName, "Publisher", TRUE))         { MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszPublisher);          }
+        else if(CharUtil_StrEquals(vi.uszName, "ProductName", TRUE))       { MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszProductName);        }
+        else if(CharUtil_StrEquals(vi.uszName, "ProductVersion", TRUE))    { MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszProductVersion);     }
+        else if(CharUtil_StrEquals(vi.uszName, "Version", TRUE))           { MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszVersion);            }
+        else if(CharUtil_StrEquals(vi.uszName, "BinFileVersion", TRUE))    { MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszBinFileVersion);     }
+        else if(CharUtil_StrEquals(vi.uszName, "BinProductVersion", TRUE)) { MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszBinProductVersion);  }
+        else if(CharUtil_StrEquals(vi.uszName, "BinaryType", TRUE))        { MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszBinaryType);         }
+        else if(CharUtil_StrEquals(vi.uszName, "Language", TRUE))          { MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszLanguage);           }
+        else if(CharUtil_StrEquals(vi.uszName, "LinkDate", TRUE))          { MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszLinkDate);           }
+        else if(CharUtil_StrEquals(vi.uszName, "LongPathHash", TRUE))      { MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszLongPathHash);       }
+        else if(CharUtil_StrEquals(vi.uszName, "Description", TRUE))       { MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszDescription);        }
+        else if(CharUtil_StrEquals(vi.uszName, "OriginalFileName", TRUE))  { MFcAmcache_PushString(H, pHive, pObValue, psm, &pe->uszOriginalFileName);   }
+        Ob_DECREF(pObValue);
     }
     Ob_DECREF(pmValues);
 }
@@ -667,43 +671,45 @@ static VOID MFcAmcache_ParseFileValues(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE
 static VOID MFcAmcache_ParseFiles(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _Inout_ PMFCAMCACHE_INIT_CONTEXT ctx)
 {
     DWORD i, iMax;
-    POB_REGISTRY_KEY pRoot = NULL;
-    POB_REGISTRY_KEY pKey;
+    POB_REGISTRY_KEY pObRoot = NULL;
+    POB_REGISTRY_KEY pObKey = NULL;
     POB_MAP pmKeys = NULL;
     PVMM_MAP_AMCACHE_FILE pe = NULL;
     VMM_REGISTRY_KEY_INFO ki = { 0 };
-    pRoot = VmmWinReg_KeyGetByPath(H, pHive, "\\ROOT\\Root\\InventoryApplicationFile");
-    if(!pRoot) { goto finish; }
+    pObRoot = VmmWinReg_KeyGetByPath(H, pHive, "\\ROOT\\Root\\InventoryApplicationFile");
+    if(!pObRoot) { goto finish; }
     ctx->fInventoryApplicationFileFound = TRUE;
-    pmKeys = VmmWinReg_KeyList(H, pHive, pRoot);
+    pmKeys = VmmWinReg_KeyList(H, pHive, pObRoot);
     if(!pmKeys) { goto finish; }
     iMax = min(ObMap_Size(pmKeys), MFCAMCACHE_MAX_FILES);
     ctx->fFilesTruncated = (iMax == MFCAMCACHE_MAX_FILES);
     for(i = 0; i < iMax; i++) {
-        pKey = ObMap_GetByIndex(pmKeys, i);
-        if(!pKey) { continue; }
+        pObKey = ObMap_GetByIndex(pmKeys, i);
+        if(!pObKey) { continue; }
         if(!(pe = LocalAlloc(LMEM_ZEROINIT, sizeof(VMM_MAP_AMCACHE_FILE)))) {
             ctx->fFilesTruncated = TRUE;
             break;
         }
         ZeroMemory(&ki, sizeof(ki));
-        VmmWinReg_KeyInfo(pHive, pKey, &ki);
+        VmmWinReg_KeyInfo(pHive, pObKey, &ki);
         ki.uszName[_countof(ki.uszName) - 1] = 0;
         pe->dwIndex = ObMap_Size(ctx->pmFiles);
         pe->iApplication = MFCAMCACHE_APPLICATION_NONE;
         pe->ftKeyLastWrite = ki.ftLastWrite;
         if(ObMap_Push(ctx->pmFiles, pe->dwIndex + 1, pe)) {
-            MFcAmcache_ParseFileValues(H, pHive, pKey, ctx->psm, pe);
+            MFcAmcache_ParseFileValues(H, pHive, pObKey, ctx->psm, pe);
             ObStrMap_PushPtrUU(ctx->psm, ki.uszName, &pe->uszRegistrySubKey, NULL);
         } else {
             LocalFree(pe);
             ctx->fFilesTruncated = TRUE;
         }
+        Ob_DECREF_NULL(&pObKey);
         pe = NULL;
     }
 finish:
+    Ob_DECREF(pObKey);
     Ob_DECREF(pmKeys);
-    Ob_DECREF(pRoot);
+    Ob_DECREF(pObRoot);
 }
 
 typedef VOID(*PFN_MFCAMCACHE_LIST_ITEM)(_Inout_ PVOID pvContext, _In_ LPCSTR uszItem);
@@ -849,31 +855,33 @@ finish:
 static VOID MFcAmcache_ParseRootKeyList(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIVE pHive, _Inout_ PMFCAMCACHE_INIT_CONTEXT ctx, _In_ LPCSTR uszPath, _In_ DWORD cMax, _Out_ PBOOL pfFound, _Out_ PBOOL pfTruncated, _In_ PFN_MFCAMCACHE_PARSE_KEY pfnParse)
 {
     DWORD i, iMax;
-    POB_REGISTRY_KEY pRoot = NULL, pKey;
+    POB_REGISTRY_KEY pObRoot = NULL, pObKey = NULL;
     POB_MAP pmKeys = NULL;
     VMM_REGISTRY_KEY_INFO ki = { 0 };
     *pfFound = FALSE;
     *pfTruncated = FALSE;
-    pRoot = VmmWinReg_KeyGetByPath(H, pHive, uszPath);
-    if(!pRoot) { goto finish; }
+    pObRoot = VmmWinReg_KeyGetByPath(H, pHive, uszPath);
+    if(!pObRoot) { goto finish; }
     *pfFound = TRUE;
-    pmKeys = VmmWinReg_KeyList(H, pHive, pRoot);
+    pmKeys = VmmWinReg_KeyList(H, pHive, pObRoot);
     if(!pmKeys) { goto finish; }
     if(ObMap_Size(pmKeys) > cMax) { *pfTruncated = TRUE; }
     iMax = min(ObMap_Size(pmKeys), cMax);
     for(i = 0; i < iMax; i++) {
-        if(!(pKey = ObMap_GetByIndex(pmKeys, i))) { continue; }
+        if(!(pObKey = ObMap_GetByIndex(pmKeys, i))) { continue; }
         ZeroMemory(&ki, sizeof(ki));
-        VmmWinReg_KeyInfo(pHive, pKey, &ki);
+        VmmWinReg_KeyInfo(pHive, pObKey, &ki);
         ki.uszName[_countof(ki.uszName) - 1] = 0;
-        if(!pfnParse(H, pHive, pKey, &ki, ctx)) {
+        if(!pfnParse(H, pHive, pObKey, &ki, ctx)) {
             *pfTruncated = TRUE;
             break;
         }
+        Ob_DECREF_NULL(&pObKey);
     }
 finish:
+    Ob_DECREF(pObKey);
     Ob_DECREF(pmKeys);
-    Ob_DECREF(pRoot);
+    Ob_DECREF(pObRoot);
 }
 
 //------------------------------------------------------------------------------
@@ -885,7 +893,7 @@ static BOOL MFcAmcache_ParseShortcutKey(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIV
     BOOL fAnyKnown = FALSE, fProgramId = FALSE;
     CHAR uszProgramId[MFCAMCACHE_MAX_VALUE_UTF8];
     POB_MAP pmValues = NULL;
-    POB_REGISTRY_VALUE pValue;
+    POB_REGISTRY_VALUE pObValue;
     VMM_REGISTRY_VALUE_INFO vi = { 0 };
     PVMM_MAP_AMCACHE_SHORTCUT pe = LocalAlloc(LMEM_ZEROINIT, sizeof(VMM_MAP_AMCACHE_SHORTCUT));
     if(!pe) { return FALSE; }
@@ -896,28 +904,30 @@ static BOOL MFcAmcache_ParseShortcutKey(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HIV
     if((pmValues = VmmWinReg_KeyValueList(H, pHive, pKey))) {
         iMax = min(ObMap_Size(pmValues), MFCAMCACHE_MAX_VALUES_PER_RECORD);
         for(i = 0; i < iMax; i++) {
-            if(!(pValue = ObMap_GetByIndex(pmValues, i))) { continue; }
+            if(!(pObValue = ObMap_GetByIndex(pmValues, i))) { continue; }
             ZeroMemory(&vi, sizeof(vi));
-            VmmWinReg_ValueInfo(pHive, pValue, &vi);
+            VmmWinReg_ValueInfo(pHive, pObValue, &vi);
             vi.uszName[_countof(vi.uszName) - 1] = 0;
             if(CharUtil_StrEquals(vi.uszName, "ShortcutProgramId", TRUE)) {
-                if(MFcAmcache_ReadString(H, pHive, pValue, uszProgramId, sizeof(uszProgramId))) {
+                if(MFcAmcache_ReadString(H, pHive, pObValue, uszProgramId, sizeof(uszProgramId))) {
                     ObStrMap_PushPtrUU(ctx->psm, uszProgramId, &pe->uszShortcutProgramId, NULL);
                     fProgramId = TRUE;
                 }
                 fAnyKnown = TRUE;
             } else if(CharUtil_StrEquals(vi.uszName, "ShortcutPath", TRUE)) {
-                MFcAmcache_PushString(H, pHive, pValue, ctx->psm, &pe->uszShortcutPath);
+                MFcAmcache_PushString(H, pHive, pObValue, ctx->psm, &pe->uszShortcutPath);
                 fAnyKnown = TRUE;
             } else if(CharUtil_StrEquals(vi.uszName, "ShortcutTargetPath", TRUE) || CharUtil_StrEquals(vi.uszName, "TargetPath", TRUE)) {
-                MFcAmcache_PushString(H, pHive, pValue, ctx->psm, &pe->uszShortcutTargetPath);
+                MFcAmcache_PushString(H, pHive, pObValue, ctx->psm, &pe->uszShortcutTargetPath);
                 fAnyKnown = TRUE;
             }
+            Ob_DECREF(pObValue);
         }
         /* Older modern-schema variants expose only one unnamed/unknown value. */
         if(!fAnyKnown && ObMap_Size(pmValues)) {
-            pValue = ObMap_GetByIndex(pmValues, 0);
-            if(pValue) { MFcAmcache_PushString(H, pHive, pValue, ctx->psm, &pe->uszShortcutPath); }
+            pObValue = ObMap_GetByIndex(pmValues, 0);
+            if(pObValue) { MFcAmcache_PushString(H, pHive, pObValue, ctx->psm, &pe->uszShortcutPath); }
+            Ob_DECREF(pObValue);
         }
     }
     if(!fProgramId && pKeyInfo->uszName[0]) {
@@ -940,7 +950,7 @@ static BOOL MFcAmcache_ParseDriverBinaryKey(_In_ VMM_HANDLE H, _In_ POB_REGISTRY
     QWORD qw = 0;
     CHAR uszDriverId[MFCAMCACHE_MAX_VALUE_UTF8];
     POB_MAP pmValues = NULL;
-    POB_REGISTRY_VALUE pValue;
+    POB_REGISTRY_VALUE pObValue;
     VMM_REGISTRY_VALUE_INFO vi = { 0 };
     PVMM_MAP_AMCACHE_DRIVER_BINARY pe = LocalAlloc(LMEM_ZEROINIT, sizeof(VMM_MAP_AMCACHE_DRIVER_BINARY));
     if(!pe) { return FALSE; }
@@ -951,33 +961,34 @@ static BOOL MFcAmcache_ParseDriverBinaryKey(_In_ VMM_HANDLE H, _In_ POB_REGISTRY
     if((pmValues = VmmWinReg_KeyValueList(H, pHive, pKey))) {
         iMax = min(ObMap_Size(pmValues), MFCAMCACHE_MAX_VALUES_PER_RECORD);
         for(i = 0; i < iMax; i++) {
-            if(!(pValue = ObMap_GetByIndex(pmValues, i))) { continue; }
-            ZeroMemory(&vi, sizeof(vi)); VmmWinReg_ValueInfo(pHive, pValue, &vi); vi.uszName[_countof(vi.uszName)-1] = 0;
-            if(CharUtil_StrEquals(vi.uszName, "DriverCheckSum", TRUE)) { if(MFcAmcache_ReadQWORD(H,pHive,pValue,&qw)) pe->qwDriverCheckSum=qw; }
-            else if(CharUtil_StrEquals(vi.uszName, "DriverTimeStamp", TRUE)) { if(MFcAmcache_ReadQWORD(H,pHive,pValue,&qw)) pe->qwDriverTimeStamp=qw; }
-            else if(CharUtil_StrEquals(vi.uszName, "ImageSize", TRUE)) { if(MFcAmcache_ReadQWORD(H,pHive,pValue,&qw)) pe->cbImageSize=qw; }
-            else if(CharUtil_StrEquals(vi.uszName, "DriverInBox", TRUE)) { if(MFcAmcache_ReadQWORD(H,pHive,pValue,&qw)) pe->fDriverInBox=qw?TRUE:FALSE; }
-            else if(CharUtil_StrEquals(vi.uszName, "DriverIsKernelMode", TRUE)) { if(MFcAmcache_ReadQWORD(H,pHive,pValue,&qw)) pe->fDriverIsKernelMode=qw?TRUE:FALSE; }
-            else if(CharUtil_StrEquals(vi.uszName, "DriverSigned", TRUE)) { if(MFcAmcache_ReadQWORD(H,pHive,pValue,&qw)) pe->fDriverSigned=qw?TRUE:FALSE; }
-            else if(CharUtil_StrEquals(vi.uszName, "DriverName", TRUE)) { MFcAmcache_PushString(H,pHive,pValue,ctx->psm,&pe->uszDriverName); }
-            else if(CharUtil_StrEquals(vi.uszName, "DriverCompany", TRUE)) { MFcAmcache_PushString(H,pHive,pValue,ctx->psm,&pe->uszDriverCompany); }
-            else if(CharUtil_StrEquals(vi.uszName, "DriverPackageStrongName", TRUE)) { MFcAmcache_PushString(H,pHive,pValue,ctx->psm,&pe->uszDriverPackageStrongName); }
-            else if(CharUtil_StrEquals(vi.uszName, "Service", TRUE)) { MFcAmcache_PushString(H,pHive,pValue,ctx->psm,&pe->uszService); }
-            else if(CharUtil_StrEquals(vi.uszName, "Inf", TRUE)) { MFcAmcache_PushString(H,pHive,pValue,ctx->psm,&pe->uszInf); }
-            else if(CharUtil_StrEquals(vi.uszName, "Product", TRUE)) { MFcAmcache_PushString(H,pHive,pValue,ctx->psm,&pe->uszProduct); }
-            else if(CharUtil_StrEquals(vi.uszName, "ProductVersion", TRUE)) { MFcAmcache_PushString(H,pHive,pValue,ctx->psm,&pe->uszProductVersion); }
-            else if(CharUtil_StrEquals(vi.uszName, "DriverVersion", TRUE)) { MFcAmcache_PushString(H,pHive,pValue,ctx->psm,&pe->uszDriverVersion); }
-            else if(CharUtil_StrEquals(vi.uszName, "DriverLastWriteTime", TRUE)) { MFcAmcache_PushString(H,pHive,pValue,ctx->psm,&pe->uszDriverLastWriteTime); }
-            else if(CharUtil_StrEquals(vi.uszName, "DriverType", TRUE)) { MFcAmcache_PushString(H,pHive,pValue,ctx->psm,&pe->uszDriverType); }
-            else if(CharUtil_StrEquals(vi.uszName, "WdfVersion", TRUE)) { MFcAmcache_PushString(H,pHive,pValue,ctx->psm,&pe->uszWdfVersion); }
-            else if(CharUtil_StrEquals(vi.uszName, "COMPID", TRUE)) { MFcAmcache_PushString(H,pHive,pValue,ctx->psm,&pe->uszCOMPID); }
-            else if(CharUtil_StrEquals(vi.uszName, "HWID", TRUE)) { MFcAmcache_PushString(H,pHive,pValue,ctx->psm,&pe->uszHWID); }
+            if(!(pObValue = ObMap_GetByIndex(pmValues, i))) { continue; }
+            ZeroMemory(&vi, sizeof(vi)); VmmWinReg_ValueInfo(pHive, pObValue, &vi); vi.uszName[_countof(vi.uszName)-1] = 0;
+            if(CharUtil_StrEquals(vi.uszName, "DriverCheckSum", TRUE))          { if(MFcAmcache_ReadQWORD(H,pHive,pObValue,&qw)) pe->qwDriverCheckSum=qw; }
+            else if(CharUtil_StrEquals(vi.uszName, "DriverTimeStamp", TRUE))    { if(MFcAmcache_ReadQWORD(H,pHive,pObValue,&qw)) pe->qwDriverTimeStamp=qw; }
+            else if(CharUtil_StrEquals(vi.uszName, "ImageSize", TRUE))          { if(MFcAmcache_ReadQWORD(H,pHive,pObValue,&qw)) pe->cbImageSize=qw; }
+            else if(CharUtil_StrEquals(vi.uszName, "DriverInBox", TRUE))        { if(MFcAmcache_ReadQWORD(H,pHive,pObValue,&qw)) pe->fDriverInBox=qw?TRUE:FALSE; }
+            else if(CharUtil_StrEquals(vi.uszName, "DriverIsKernelMode", TRUE)) { if(MFcAmcache_ReadQWORD(H,pHive,pObValue,&qw)) pe->fDriverIsKernelMode=qw?TRUE:FALSE; }
+            else if(CharUtil_StrEquals(vi.uszName, "DriverSigned", TRUE))       { if(MFcAmcache_ReadQWORD(H,pHive,pObValue,&qw)) pe->fDriverSigned=qw?TRUE:FALSE; }
+            else if(CharUtil_StrEquals(vi.uszName, "DriverName", TRUE))         { MFcAmcache_PushString(H,pHive,pObValue,ctx->psm,&pe->uszDriverName); }
+            else if(CharUtil_StrEquals(vi.uszName, "DriverCompany", TRUE))      { MFcAmcache_PushString(H,pHive,pObValue,ctx->psm,&pe->uszDriverCompany); }
+            else if(CharUtil_StrEquals(vi.uszName, "DriverPackageStrongName", TRUE)) { MFcAmcache_PushString(H,pHive,pObValue,ctx->psm,&pe->uszDriverPackageStrongName); }
+            else if(CharUtil_StrEquals(vi.uszName, "Service", TRUE))            { MFcAmcache_PushString(H,pHive,pObValue,ctx->psm,&pe->uszService); }
+            else if(CharUtil_StrEquals(vi.uszName, "Inf", TRUE))                { MFcAmcache_PushString(H,pHive,pObValue,ctx->psm,&pe->uszInf); }
+            else if(CharUtil_StrEquals(vi.uszName, "Product", TRUE))            { MFcAmcache_PushString(H,pHive,pObValue,ctx->psm,&pe->uszProduct); }
+            else if(CharUtil_StrEquals(vi.uszName, "ProductVersion", TRUE))     { MFcAmcache_PushString(H,pHive,pObValue,ctx->psm,&pe->uszProductVersion); }
+            else if(CharUtil_StrEquals(vi.uszName, "DriverVersion", TRUE))      { MFcAmcache_PushString(H,pHive,pObValue,ctx->psm,&pe->uszDriverVersion); }
+            else if(CharUtil_StrEquals(vi.uszName, "DriverLastWriteTime", TRUE)) { MFcAmcache_PushString(H,pHive,pObValue,ctx->psm,&pe->uszDriverLastWriteTime); }
+            else if(CharUtil_StrEquals(vi.uszName, "DriverType", TRUE))         { MFcAmcache_PushString(H,pHive,pObValue,ctx->psm,&pe->uszDriverType); }
+            else if(CharUtil_StrEquals(vi.uszName, "WdfVersion", TRUE))         { MFcAmcache_PushString(H,pHive,pObValue,ctx->psm,&pe->uszWdfVersion); }
+            else if(CharUtil_StrEquals(vi.uszName, "COMPID", TRUE))             { MFcAmcache_PushString(H,pHive,pObValue,ctx->psm,&pe->uszCOMPID); }
+            else if(CharUtil_StrEquals(vi.uszName, "HWID", TRUE))               { MFcAmcache_PushString(H,pHive,pObValue,ctx->psm,&pe->uszHWID); }
             else if(CharUtil_StrEquals(vi.uszName, "DriverId", TRUE)) {
-                fDriverId = MFcAmcache_ReadString(H, pHive, pValue, uszDriverId, sizeof(uszDriverId));
+                fDriverId = MFcAmcache_ReadString(H, pHive, pObValue, uszDriverId, sizeof(uszDriverId));
                 if(fDriverId) {
                     ObStrMap_PushPtrUU(ctx->psm, uszDriverId, &pe->uszDriverId, NULL);
                 }
             }
+            Ob_DECREF(pObValue);
         }
     }
     if(!fDriverId && pKeyInfo->uszName[0]) {
@@ -997,7 +1008,7 @@ static BOOL MFcAmcache_ParseDriverPackageKey(_In_ VMM_HANDLE H, _In_ POB_REGISTR
     DWORD i, iMax;
     QWORD qw = 0;
     POB_MAP pmValues = NULL;
-    POB_REGISTRY_VALUE pValue;
+    POB_REGISTRY_VALUE pObValue;
     VMM_REGISTRY_VALUE_INFO vi = { 0 };
     PVMM_MAP_AMCACHE_DRIVER_PACKAGE pe = LocalAlloc(LMEM_ZEROINIT, sizeof(VMM_MAP_AMCACHE_DRIVER_PACKAGE));
     if(!pe) { return FALSE; }
@@ -1007,21 +1018,22 @@ static BOOL MFcAmcache_ParseDriverPackageKey(_In_ VMM_HANDLE H, _In_ POB_REGISTR
     if((pmValues = VmmWinReg_KeyValueList(H, pHive, pKey))) {
         iMax = min(ObMap_Size(pmValues), MFCAMCACHE_MAX_VALUES_PER_RECORD);
         for(i = 0; i < iMax; i++) {
-            if(!(pValue = ObMap_GetByIndex(pmValues, i))) { continue; }
-            ZeroMemory(&vi, sizeof(vi)); VmmWinReg_ValueInfo(pHive,pValue,&vi); vi.uszName[_countof(vi.uszName)-1]=0;
-            if(CharUtil_StrEquals(vi.uszName,"DriverInBox",TRUE)) { if(MFcAmcache_ReadQWORD(H,pHive,pValue,&qw)) pe->fDriverInBox=qw?TRUE:FALSE; }
-            else if(CharUtil_StrEquals(vi.uszName,"Class",TRUE)) { MFcAmcache_PushString(H,pHive,pValue,ctx->psm,&pe->uszClass); }
-            else if(CharUtil_StrEquals(vi.uszName,"ClassGuid",TRUE)) { MFcAmcache_PushString(H,pHive,pValue,ctx->psm,&pe->uszClassGuid); }
-            else if(CharUtil_StrEquals(vi.uszName,"Date",TRUE)) { MFcAmcache_PushString(H,pHive,pValue,ctx->psm,&pe->uszDate); }
-            else if(CharUtil_StrEquals(vi.uszName,"Directory",TRUE)) { MFcAmcache_PushString(H,pHive,pValue,ctx->psm,&pe->uszDirectory); }
-            else if(CharUtil_StrEquals(vi.uszName,"Inf",TRUE)) { MFcAmcache_PushString(H,pHive,pValue,ctx->psm,&pe->uszInf); }
-            else if(CharUtil_StrEquals(vi.uszName,"Provider",TRUE)) { MFcAmcache_PushString(H,pHive,pValue,ctx->psm,&pe->uszProvider); }
-            else if(CharUtil_StrEquals(vi.uszName,"Version",TRUE)) { MFcAmcache_PushString(H,pHive,pValue,ctx->psm,&pe->uszVersion); }
-            else if(CharUtil_StrEquals(vi.uszName,"FlightIds",TRUE)) { MFcAmcache_ReadListString(H,pHive,pValue,ctx->psm,&pe->uszFlightIds,NULL,NULL); }
-            else if(CharUtil_StrEquals(vi.uszName,"RecoveryIds",TRUE)) { MFcAmcache_ReadListString(H,pHive,pValue,ctx->psm,&pe->uszRecoveryIds,NULL,NULL); }
-            else if(CharUtil_StrEquals(vi.uszName,"SubmissionId",TRUE)) { MFcAmcache_PushString(H,pHive,pValue,ctx->psm,&pe->uszSubmissionId); }
-            else if(CharUtil_StrEquals(vi.uszName,"HWIDs",TRUE) || CharUtil_StrEquals(vi.uszName,"Hwids",TRUE)) { MFcAmcache_ReadListString(H,pHive,pValue,ctx->psm,&pe->uszHWIDs,NULL,NULL); }
-            else if(CharUtil_StrEquals(vi.uszName,"SYSFILE",TRUE)) { MFcAmcache_ReadListString(H,pHive,pValue,ctx->psm,&pe->uszSYSFILE,NULL,NULL); }
+            if(!(pObValue = ObMap_GetByIndex(pmValues, i))) { continue; }
+            ZeroMemory(&vi, sizeof(vi)); VmmWinReg_ValueInfo(pHive,pObValue,&vi); vi.uszName[_countof(vi.uszName)-1]=0;
+            if(CharUtil_StrEquals(vi.uszName,"DriverInBox",TRUE))       { if(MFcAmcache_ReadQWORD(H,pHive,pObValue,&qw)) pe->fDriverInBox=qw?TRUE:FALSE; }
+            else if(CharUtil_StrEquals(vi.uszName,"Class",TRUE))        { MFcAmcache_PushString(H,pHive,pObValue,ctx->psm,&pe->uszClass); }
+            else if(CharUtil_StrEquals(vi.uszName,"ClassGuid",TRUE))    { MFcAmcache_PushString(H,pHive,pObValue,ctx->psm,&pe->uszClassGuid); }
+            else if(CharUtil_StrEquals(vi.uszName,"Date",TRUE))         { MFcAmcache_PushString(H,pHive,pObValue,ctx->psm,&pe->uszDate); }
+            else if(CharUtil_StrEquals(vi.uszName,"Directory",TRUE))    { MFcAmcache_PushString(H,pHive,pObValue,ctx->psm,&pe->uszDirectory); }
+            else if(CharUtil_StrEquals(vi.uszName,"Inf",TRUE))          { MFcAmcache_PushString(H,pHive,pObValue,ctx->psm,&pe->uszInf); }
+            else if(CharUtil_StrEquals(vi.uszName,"Provider",TRUE))     { MFcAmcache_PushString(H,pHive,pObValue,ctx->psm,&pe->uszProvider); }
+            else if(CharUtil_StrEquals(vi.uszName,"Version",TRUE))      { MFcAmcache_PushString(H,pHive,pObValue,ctx->psm,&pe->uszVersion); }
+            else if(CharUtil_StrEquals(vi.uszName,"FlightIds",TRUE))    { MFcAmcache_ReadListString(H,pHive,pObValue,ctx->psm,&pe->uszFlightIds,NULL,NULL); }
+            else if(CharUtil_StrEquals(vi.uszName,"RecoveryIds",TRUE))  { MFcAmcache_ReadListString(H,pHive,pObValue,ctx->psm,&pe->uszRecoveryIds,NULL,NULL); }
+            else if(CharUtil_StrEquals(vi.uszName,"SubmissionId",TRUE)) { MFcAmcache_PushString(H,pHive,pObValue,ctx->psm,&pe->uszSubmissionId); }
+            else if(CharUtil_StrEquals(vi.uszName,"HWIDs",TRUE) || CharUtil_StrEquals(vi.uszName,"Hwids",TRUE)) { MFcAmcache_ReadListString(H,pHive,pObValue,ctx->psm,&pe->uszHWIDs,NULL,NULL); }
+            else if(CharUtil_StrEquals(vi.uszName,"SYSFILE",TRUE))      { MFcAmcache_ReadListString(H,pHive,pObValue,ctx->psm,&pe->uszSYSFILE,NULL,NULL); }
+            Ob_DECREF(pObValue);
         }
     }
     Ob_DECREF(pmValues);
@@ -1038,7 +1050,7 @@ static BOOL MFcAmcache_ParseDeviceContainerKey(_In_ VMM_HANDLE H, _In_ POB_REGIS
     DWORD i, iMax;
     QWORD qw = 0;
     POB_MAP pmValues = NULL;
-    POB_REGISTRY_VALUE pValue;
+    POB_REGISTRY_VALUE pObValue;
     VMM_REGISTRY_VALUE_INFO vi = { 0 };
     PVMM_MAP_AMCACHE_DEVICE_CONTAINER pe;
     pe = LocalAlloc(LMEM_ZEROINIT, sizeof(VMM_MAP_AMCACHE_DEVICE_CONTAINER));
@@ -1048,25 +1060,26 @@ static BOOL MFcAmcache_ParseDeviceContainerKey(_In_ VMM_HANDLE H, _In_ POB_REGIS
     if((pmValues = VmmWinReg_KeyValueList(H,pHive,pKey))) {
         iMax = min(ObMap_Size(pmValues), MFCAMCACHE_MAX_VALUES_PER_RECORD);
         for(i = 0; i < iMax; i++) {
-            if(!(pValue = ObMap_GetByIndex(pmValues, i))) { continue; }
+            if(!(pObValue = ObMap_GetByIndex(pmValues, i))) { continue; }
             ZeroMemory(&vi, sizeof(vi));
-            VmmWinReg_ValueInfo(pHive, pValue, &vi);
+            VmmWinReg_ValueInfo(pHive, pObValue, &vi);
             vi.uszName[_countof(vi.uszName) - 1] = 0;
-            if(CharUtil_StrEquals(vi.uszName,"IsActive",TRUE)) { if(MFcAmcache_ReadQWORD(H,pHive,pValue,&qw)) pe->fIsActive=qw?TRUE:FALSE; }
-            else if(CharUtil_StrEquals(vi.uszName,"IsConnected",TRUE)) { if(MFcAmcache_ReadQWORD(H,pHive,pValue,&qw)) pe->fIsConnected=qw?TRUE:FALSE; }
-            else if(CharUtil_StrEquals(vi.uszName,"IsMachineContainer",TRUE)) { if(MFcAmcache_ReadQWORD(H,pHive,pValue,&qw)) pe->fIsMachineContainer=qw?TRUE:FALSE; }
-            else if(CharUtil_StrEquals(vi.uszName,"IsNetworked",TRUE)) { if(MFcAmcache_ReadQWORD(H,pHive,pValue,&qw)) pe->fIsNetworked=qw?TRUE:FALSE; }
-            else if(CharUtil_StrEquals(vi.uszName,"IsPaired",TRUE)) { if(MFcAmcache_ReadQWORD(H,pHive,pValue,&qw)) pe->fIsPaired=qw?TRUE:FALSE; }
-            else if(CharUtil_StrEquals(vi.uszName,"Categories",TRUE)) { MFcAmcache_ReadListString(H,pHive,pValue,ctx->psm,&pe->uszCategories,NULL,NULL); }
-            else if(CharUtil_StrEquals(vi.uszName,"DiscoveryMethod",TRUE)) { MFcAmcache_PushString(H,pHive,pValue,ctx->psm,&pe->uszDiscoveryMethod); }
-            else if(CharUtil_StrEquals(vi.uszName,"FriendlyName",TRUE)) { MFcAmcache_PushString(H,pHive,pValue,ctx->psm,&pe->uszFriendlyName); }
-            else if(CharUtil_StrEquals(vi.uszName,"Icon",TRUE)) { MFcAmcache_PushString(H,pHive,pValue,ctx->psm,&pe->uszIcon); }
-            else if(CharUtil_StrEquals(vi.uszName,"Manufacturer",TRUE)) { MFcAmcache_PushString(H,pHive,pValue,ctx->psm,&pe->uszManufacturer); }
-            else if(CharUtil_StrEquals(vi.uszName,"ModelId",TRUE)) { MFcAmcache_PushString(H,pHive,pValue,ctx->psm,&pe->uszModelId); }
-            else if(CharUtil_StrEquals(vi.uszName,"ModelName",TRUE)) { MFcAmcache_PushString(H,pHive,pValue,ctx->psm,&pe->uszModelName); }
-            else if(CharUtil_StrEquals(vi.uszName,"ModelNumber",TRUE)) { MFcAmcache_PushString(H,pHive,pValue,ctx->psm,&pe->uszModelNumber); }
-            else if(CharUtil_StrEquals(vi.uszName,"PrimaryCategory",TRUE)) { MFcAmcache_PushString(H,pHive,pValue,ctx->psm,&pe->uszPrimaryCategory); }
-            else if(CharUtil_StrEquals(vi.uszName,"State",TRUE)) { MFcAmcache_PushString(H,pHive,pValue,ctx->psm,&pe->uszState); }
+            if(CharUtil_StrEquals(vi.uszName,"IsActive",TRUE))              { if(MFcAmcache_ReadQWORD(H,pHive,pObValue,&qw)) pe->fIsActive=qw?TRUE:FALSE; }
+            else if(CharUtil_StrEquals(vi.uszName,"IsConnected",TRUE))      { if(MFcAmcache_ReadQWORD(H,pHive,pObValue,&qw)) pe->fIsConnected=qw?TRUE:FALSE; }
+            else if(CharUtil_StrEquals(vi.uszName,"IsMachineContainer",TRUE)) { if(MFcAmcache_ReadQWORD(H,pHive,pObValue,&qw)) pe->fIsMachineContainer=qw?TRUE:FALSE; }
+            else if(CharUtil_StrEquals(vi.uszName,"IsNetworked",TRUE))      { if(MFcAmcache_ReadQWORD(H,pHive,pObValue,&qw)) pe->fIsNetworked=qw?TRUE:FALSE; }
+            else if(CharUtil_StrEquals(vi.uszName,"IsPaired",TRUE))         { if(MFcAmcache_ReadQWORD(H,pHive,pObValue,&qw)) pe->fIsPaired=qw?TRUE:FALSE; }
+            else if(CharUtil_StrEquals(vi.uszName,"Categories",TRUE))       { MFcAmcache_ReadListString(H,pHive,pObValue,ctx->psm,&pe->uszCategories,NULL,NULL); }
+            else if(CharUtil_StrEquals(vi.uszName,"DiscoveryMethod",TRUE))  { MFcAmcache_PushString(H,pHive,pObValue,ctx->psm,&pe->uszDiscoveryMethod); }
+            else if(CharUtil_StrEquals(vi.uszName,"FriendlyName",TRUE))     { MFcAmcache_PushString(H,pHive,pObValue,ctx->psm,&pe->uszFriendlyName); }
+            else if(CharUtil_StrEquals(vi.uszName,"Icon",TRUE))             { MFcAmcache_PushString(H,pHive,pObValue,ctx->psm,&pe->uszIcon); }
+            else if(CharUtil_StrEquals(vi.uszName,"Manufacturer",TRUE))     { MFcAmcache_PushString(H,pHive,pObValue,ctx->psm,&pe->uszManufacturer); }
+            else if(CharUtil_StrEquals(vi.uszName,"ModelId",TRUE))          { MFcAmcache_PushString(H,pHive,pObValue,ctx->psm,&pe->uszModelId); }
+            else if(CharUtil_StrEquals(vi.uszName,"ModelName",TRUE))        { MFcAmcache_PushString(H,pHive,pObValue,ctx->psm,&pe->uszModelName); }
+            else if(CharUtil_StrEquals(vi.uszName,"ModelNumber",TRUE))      { MFcAmcache_PushString(H,pHive,pObValue,ctx->psm,&pe->uszModelNumber); }
+            else if(CharUtil_StrEquals(vi.uszName,"PrimaryCategory",TRUE))  { MFcAmcache_PushString(H,pHive,pObValue,ctx->psm,&pe->uszPrimaryCategory); }
+            else if(CharUtil_StrEquals(vi.uszName,"State",TRUE))            { MFcAmcache_PushString(H,pHive,pObValue,ctx->psm,&pe->uszState); }
+            Ob_DECREF(pObValue);
         }
     }
     Ob_DECREF(pmValues);
@@ -1082,7 +1095,7 @@ static BOOL MFcAmcache_ParseDevicePnpKey(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HI
 {
     DWORD i, iMax;
     POB_MAP pmValues = NULL;
-    POB_REGISTRY_VALUE pValue;
+    POB_REGISTRY_VALUE pObValue;
     VMM_REGISTRY_VALUE_INFO vi = { 0 };
     PVMM_MAP_AMCACHE_DEVICE_PNP pe;
     pe = LocalAlloc(LMEM_ZEROINIT, sizeof(VMM_MAP_AMCACHE_DEVICE_PNP));
@@ -1096,34 +1109,35 @@ static BOOL MFcAmcache_ParseDevicePnpKey(_In_ VMM_HANDLE H, _In_ POB_REGISTRY_HI
     if((pmValues=VmmWinReg_KeyValueList(H,pHive,pKey))) {
         iMax=min(ObMap_Size(pmValues),MFCAMCACHE_MAX_VALUES_PER_RECORD);
         for(i = 0; i < iMax; i++) {
-            if(!(pValue = ObMap_GetByIndex(pmValues, i))) { continue; }
+            if(!(pObValue = ObMap_GetByIndex(pmValues, i))) { continue; }
             ZeroMemory(&vi, sizeof(vi));
-            VmmWinReg_ValueInfo(pHive, pValue, &vi);
+            VmmWinReg_ValueInfo(pHive, pObValue, &vi);
             vi.uszName[_countof(vi.uszName) - 1] = 0;
-            if(CharUtil_StrEquals(vi.uszName, "BusReportedDescription", TRUE)) { MFcAmcache_PushString(H, pHive, pValue, ctx->psm, &pe->uszBusReportedDescription); }
-            else if(CharUtil_StrEquals(vi.uszName, "Class", TRUE)) { MFcAmcache_PushString(H, pHive, pValue, ctx->psm, &pe->uszClass); }
-            else if(CharUtil_StrEquals(vi.uszName, "ClassGuid", TRUE)) { MFcAmcache_PushString(H, pHive, pValue, ctx->psm, &pe->uszClassGuid); }
-            else if(CharUtil_StrEquals(vi.uszName, "COMPID", TRUE)) { MFcAmcache_ReadListString(H, pHive, pValue, ctx->psm, &pe->uszCOMPID, NULL, NULL); }
-            else if(CharUtil_StrEquals(vi.uszName, "ContainerId", TRUE)) { MFcAmcache_PushString(H, pHive, pValue, ctx->psm, &pe->uszContainerId); }
-            else if(CharUtil_StrEquals(vi.uszName, "Description", TRUE)) { MFcAmcache_PushString(H, pHive, pValue, ctx->psm, &pe->uszDescription); }
-            else if(CharUtil_StrEquals(vi.uszName, "DeviceState", TRUE)) { MFcAmcache_PushString(H, pHive, pValue, ctx->psm, &pe->uszDeviceState); }
-            else if(CharUtil_StrEquals(vi.uszName, "DriverId", TRUE)) { MFcAmcache_PushString(H, pHive, pValue, ctx->psm, &pe->uszDriverId); }
-            else if(CharUtil_StrEquals(vi.uszName, "DriverName", TRUE)) { MFcAmcache_PushString(H, pHive, pValue, ctx->psm, &pe->uszDriverName); }
-            else if(CharUtil_StrEquals(vi.uszName, "DriverPackageStrongName", TRUE)) { MFcAmcache_PushString(H, pHive, pValue, ctx->psm, &pe->uszDriverPackageStrongName); }
-            else if(CharUtil_StrEquals(vi.uszName, "DriverVerDate", TRUE)) { MFcAmcache_PushString(H, pHive, pValue, ctx->psm, &pe->uszDriverVerDate); }
-            else if(CharUtil_StrEquals(vi.uszName, "DriverVerVersion", TRUE)) { MFcAmcache_PushString(H, pHive, pValue, ctx->psm, &pe->uszDriverVerVersion); }
-            else if(CharUtil_StrEquals(vi.uszName, "Enumerator", TRUE)) { MFcAmcache_PushString(H, pHive, pValue, ctx->psm, &pe->uszEnumerator); }
-            else if(CharUtil_StrEquals(vi.uszName, "HWID", TRUE)) { MFcAmcache_ReadListString(H, pHive, pValue, ctx->psm, &pe->uszHWID, NULL, NULL); }
-            else if(CharUtil_StrEquals(vi.uszName, "Inf", TRUE)) { MFcAmcache_PushString(H, pHive, pValue, ctx->psm, &pe->uszInf); }
-            else if(CharUtil_StrEquals(vi.uszName, "InstallState", TRUE)) { MFcAmcache_PushString(H, pHive, pValue, ctx->psm, &pe->uszInstallState); }
-            else if(CharUtil_StrEquals(vi.uszName, "Manufacturer", TRUE)) { MFcAmcache_PushString(H, pHive, pValue, ctx->psm, &pe->uszManufacturer); }
-            else if(CharUtil_StrEquals(vi.uszName, "MatchingID", TRUE)) { MFcAmcache_PushString(H, pHive, pValue, ctx->psm, &pe->uszMatchingID); }
-            else if(CharUtil_StrEquals(vi.uszName, "Model", TRUE)) { MFcAmcache_PushString(H, pHive, pValue, ctx->psm, &pe->uszModel); }
-            else if(CharUtil_StrEquals(vi.uszName, "ParentId", TRUE)) { MFcAmcache_PushString(H, pHive, pValue, ctx->psm, &pe->uszParentId); }
-            else if(CharUtil_StrEquals(vi.uszName, "ProblemCode", TRUE)) { MFcAmcache_PushString(H, pHive, pValue, ctx->psm, &pe->uszProblemCode); }
-            else if(CharUtil_StrEquals(vi.uszName, "Provider", TRUE)) { MFcAmcache_PushString(H, pHive, pValue, ctx->psm, &pe->uszProvider); }
-            else if(CharUtil_StrEquals(vi.uszName, "Service", TRUE)) { MFcAmcache_PushString(H, pHive, pValue, ctx->psm, &pe->uszService); }
-            else if(CharUtil_StrEquals(vi.uszName, "STACKID", TRUE)) { MFcAmcache_ReadListString(H, pHive, pValue, ctx->psm, &pe->uszSTACKID, NULL, NULL); }
+            if(CharUtil_StrEquals(vi.uszName, "BusReportedDescription", TRUE)) { MFcAmcache_PushString(H, pHive, pObValue, ctx->psm, &pe->uszBusReportedDescription); }
+            else if(CharUtil_StrEquals(vi.uszName, "Class", TRUE))          { MFcAmcache_PushString(H, pHive, pObValue, ctx->psm, &pe->uszClass); }
+            else if(CharUtil_StrEquals(vi.uszName, "ClassGuid", TRUE))      { MFcAmcache_PushString(H, pHive, pObValue, ctx->psm, &pe->uszClassGuid); }
+            else if(CharUtil_StrEquals(vi.uszName, "COMPID", TRUE))         { MFcAmcache_ReadListString(H, pHive, pObValue, ctx->psm, &pe->uszCOMPID, NULL, NULL); }
+            else if(CharUtil_StrEquals(vi.uszName, "ContainerId", TRUE))    { MFcAmcache_PushString(H, pHive, pObValue, ctx->psm, &pe->uszContainerId); }
+            else if(CharUtil_StrEquals(vi.uszName, "Description", TRUE))    { MFcAmcache_PushString(H, pHive, pObValue, ctx->psm, &pe->uszDescription); }
+            else if(CharUtil_StrEquals(vi.uszName, "DeviceState", TRUE))    { MFcAmcache_PushString(H, pHive, pObValue, ctx->psm, &pe->uszDeviceState); }
+            else if(CharUtil_StrEquals(vi.uszName, "DriverId", TRUE))       { MFcAmcache_PushString(H, pHive, pObValue, ctx->psm, &pe->uszDriverId); }
+            else if(CharUtil_StrEquals(vi.uszName, "DriverName", TRUE))     { MFcAmcache_PushString(H, pHive, pObValue, ctx->psm, &pe->uszDriverName); }
+            else if(CharUtil_StrEquals(vi.uszName, "DriverPackageStrongName", TRUE)) { MFcAmcache_PushString(H, pHive, pObValue, ctx->psm, &pe->uszDriverPackageStrongName); }
+            else if(CharUtil_StrEquals(vi.uszName, "DriverVerDate", TRUE))  { MFcAmcache_PushString(H, pHive, pObValue, ctx->psm, &pe->uszDriverVerDate); }
+            else if(CharUtil_StrEquals(vi.uszName, "DriverVerVersion", TRUE)) { MFcAmcache_PushString(H, pHive, pObValue, ctx->psm, &pe->uszDriverVerVersion); }
+            else if(CharUtil_StrEquals(vi.uszName, "Enumerator", TRUE))     { MFcAmcache_PushString(H, pHive, pObValue, ctx->psm, &pe->uszEnumerator); }
+            else if(CharUtil_StrEquals(vi.uszName, "HWID", TRUE))           { MFcAmcache_ReadListString(H, pHive, pObValue, ctx->psm, &pe->uszHWID, NULL, NULL); }
+            else if(CharUtil_StrEquals(vi.uszName, "Inf", TRUE))            { MFcAmcache_PushString(H, pHive, pObValue, ctx->psm, &pe->uszInf); }
+            else if(CharUtil_StrEquals(vi.uszName, "InstallState", TRUE))   { MFcAmcache_PushString(H, pHive, pObValue, ctx->psm, &pe->uszInstallState); }
+            else if(CharUtil_StrEquals(vi.uszName, "Manufacturer", TRUE))   { MFcAmcache_PushString(H, pHive, pObValue, ctx->psm, &pe->uszManufacturer); }
+            else if(CharUtil_StrEquals(vi.uszName, "MatchingID", TRUE))     { MFcAmcache_PushString(H, pHive, pObValue, ctx->psm, &pe->uszMatchingID); }
+            else if(CharUtil_StrEquals(vi.uszName, "Model", TRUE))          { MFcAmcache_PushString(H, pHive, pObValue, ctx->psm, &pe->uszModel); }
+            else if(CharUtil_StrEquals(vi.uszName, "ParentId", TRUE))       { MFcAmcache_PushString(H, pHive, pObValue, ctx->psm, &pe->uszParentId); }
+            else if(CharUtil_StrEquals(vi.uszName, "ProblemCode", TRUE))    { MFcAmcache_PushString(H, pHive, pObValue, ctx->psm, &pe->uszProblemCode); }
+            else if(CharUtil_StrEquals(vi.uszName, "Provider", TRUE))       { MFcAmcache_PushString(H, pHive, pObValue, ctx->psm, &pe->uszProvider); }
+            else if(CharUtil_StrEquals(vi.uszName, "Service", TRUE))        { MFcAmcache_PushString(H, pHive, pObValue, ctx->psm, &pe->uszService); }
+            else if(CharUtil_StrEquals(vi.uszName, "STACKID", TRUE))        { MFcAmcache_ReadListString(H, pHive, pObValue, ctx->psm, &pe->uszSTACKID, NULL, NULL); }
+            Ob_DECREF(pObValue);
         }
     }
     Ob_DECREF(pmValues);

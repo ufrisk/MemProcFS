@@ -13,8 +13,8 @@ ifeq ($(shell basename $(CC)),gcc)
 	#CFLAGS  += -g -O0 -Wextra
 endif
 LDFLAGS += -Wl,-rpath,'$$ORIGIN' -ldl -L. -l:vmm.so -Wl,-z,noexecstack `pkg-config fuse --libs`
-DEPS = vfs.h
-OBJ  = oscompatibility.o charutil.o vfslist.o memprocfs_fuse.o ob/ob_cachemap.o ob/ob_core.o ob/ob_map.o ob/ob_set.o
+DEPS = vfs.h vmmloader.h
+OBJ  = oscompatibility.o charutil.o vfslist.o vmmloader.o memprocfs_fuse.o ob/ob_cachemap.o ob/ob_core.o ob/ob_map.o ob/ob_set.o
 
 %.o: %.c $(DEPS)
 	$(CC) -c -o $@ $< $(CFLAGS)

@@ -406,7 +406,8 @@ NTSTATUS MWeb_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_wri
     PVMMOB_MAP_WEB pObWebMap = NULL;
     if(!(pObWebMap = MWeb_GetWebMap(H, ctxP))) { goto finish; }
     if(!_stricmp("readme.txt", ctxP->uszPath)) {
-        return VMMDLL_UtilVfsReadFile_FromPBYTE(szMWEB_README, strlen(szMWEB_README), pb, cb, pcbRead, cbOffset);
+        nt = VMMDLL_UtilVfsReadFile_FromPBYTE(szMWEB_README, strlen(szMWEB_README), pb, cb, pcbRead, cbOffset);
+        goto finish;
     }
     if(!_stricmp(ctxP->uszPath, "web.txt")) {
         nt = Util_VfsLineVariable_Read(

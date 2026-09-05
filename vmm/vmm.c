@@ -1014,6 +1014,14 @@ VOID VmmProcess_CloseObCallback(_In_ PVOID pVmmOb)
 VOID VmmProcessClone_CloseObCallback(_In_ PVOID pVmmOb)
 {
     PVMM_PROCESS pProcessClone = (PVMM_PROCESS)pVmmOb;
+    // release maps owned by the clone, including maps initialized after cloning
+    Ob_DECREF(pProcessClone->Map.pObPte);
+    Ob_DECREF(pProcessClone->Map.pObVad);
+    Ob_DECREF(pProcessClone->Map.pObModule);
+    Ob_DECREF(pProcessClone->Map.pObUnloadedModule);
+    Ob_DECREF(pProcessClone->Map.pObHeap);
+    Ob_DECREF(pProcessClone->Map.pObThread);
+    Ob_DECREF(pProcessClone->Map.pObHandle);
     // decref clone parent
     Ob_DECREF(pProcessClone->VmmInternal.pObProcessCloneParent);
     // delete lock
@@ -1048,8 +1056,17 @@ PVMM_PROCESS VmmProcessClone(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
     if(pProcess->VmmInternal.pObProcessCloneParent) { return NULL; }
     pObProcessClone = (PVMM_PROCESS)Ob_AllocEx(H, OB_TAG_VMM_PROCESS_CLONE, LMEM_ZEROINIT, sizeof(VMM_PROCESS), VmmProcessClone_CloseObCallback, NULL);
     if(!pObProcessClone) { return NULL; }
+    EnterCriticalSection(&pProcess->LockUpdate);
     memcpy((PBYTE)pObProcessClone + sizeof(OB), (PBYTE)pProcess + sizeof(OB), pProcess->ObHdr.cbData);
+    Ob_INCREF(pObProcessClone->Map.pObPte);
+    Ob_INCREF(pObProcessClone->Map.pObVad);
+    Ob_INCREF(pObProcessClone->Map.pObModule);
+    Ob_INCREF(pObProcessClone->Map.pObUnloadedModule);
+    Ob_INCREF(pObProcessClone->Map.pObHeap);
+    Ob_INCREF(pObProcessClone->Map.pObThread);
+    Ob_INCREF(pObProcessClone->Map.pObHandle);
     pObProcessClone->VmmInternal.pObProcessCloneParent = Ob_INCREF(pProcess);
+    LeaveCriticalSection(&pProcess->LockUpdate);
     InitializeCriticalSection(&pObProcessClone->LockUpdate);
     InitializeCriticalSection(&pObProcessClone->LockPlugin);
     return pObProcessClone;
@@ -1187,6 +1204,7 @@ fail:
 _Success_(return)
 BOOL VmmProcessCreateTerminatedFakeEntry(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ DWORD dwPPID, _In_ QWORD ftCreate, _In_ QWORD ftExit, _In_reads_(15) LPSTR szShortName, _In_ LPSTR uszLongName)
 {
+    BOOL fResult = FALSE;
     PVMM_PROCESS pTProc = NULL;
     PVMMOB_PROCESS_PERSISTENT pProcPers = NULL;
     PVMMOB_PROCESS_TABLE ptOld = NULL, ptNew = NULL;
@@ -1202,14 +1220,14 @@ BOOL VmmProcessCreateTerminatedFakeEntry(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _I
     memcpy(pbE + H->vmm.offset.EPROCESS.Name, szShortName, 15);
     // 2: Allocate new 'Process Table' (if not already existing) and copy over all existing processes:
     ptOld = (PVMMOB_PROCESS_TABLE)ObContainer_GetOb(H->vmm.pObCPROC);
-    if(!ptOld) { return FALSE; }
+    if(!ptOld) { goto fail; }
     ptNew = (PVMMOB_PROCESS_TABLE)ObContainer_GetOb(ptOld->pObCNewPROC);
     if(!ptNew) {
         ptNew = (PVMMOB_PROCESS_TABLE)Ob_AllocEx(H, OB_TAG_VMM_PROCESSTABLE, LMEM_ZEROINIT, sizeof(VMMOB_PROCESS_TABLE), (OB_CLEANUP_CB)VmmProcessTable_CloseObCallback, NULL);
-        if(!ptNew) { return FALSE; }
+        if(!ptNew) { goto fail; }
         ptNew->pObCNewPROC = ObContainer_New();
         ptNew->pObProcessMap = ObMap_New(H, OB_MAP_FLAGS_OBJECT_OB);
-        if(!ptNew->pObCNewPROC || !ptNew->pObProcessMap) { return FALSE; }
+        if(!ptNew->pObCNewPROC || !ptNew->pObProcessMap) { goto fail; }
         ObContainer_SetOb(ptOld->pObCNewPROC, ptNew);
         // move all old processes to new table:
         ObMap_PushAll(ptNew->pObProcessMap, ptOld->pObProcessMap);
@@ -1227,8 +1245,12 @@ BOOL VmmProcessCreateTerminatedFakeEntry(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _I
         pProcPers->uszNameLong = (LPSTR)CharUtil_PathSplitLast(pProcPers->uszPathKernel);
         pProcPers->cuszNameLong = (WORD)strlen(pProcPers->uszNameLong);
     }
+    fResult = TRUE;
+fail:
     Ob_DECREF(pTProc);
-    return TRUE;
+    Ob_DECREF(ptNew);
+    Ob_DECREF(ptOld);
+    return fResult;
 }
 
 /*
@@ -2124,7 +2146,13 @@ BOOL VmmInitialize(_In_ VMM_HANDLE H)
     ReleaseSRWLockExclusive(&LockSRW);
     return TRUE;
 fail:
-    VmmClose(H);
+    // Only process-table and cache initialization can fail before full setup.
+    Ob_DECREF_NULL(&H->vmm.pObCPROC);
+    VmmCacheClose(H, VMM_CACHE_TAG_TLB);
+    VmmCacheClose(H, VMM_CACHE_TAG_PHYS);
+    VmmCacheClose(H, VMM_CACHE_TAG_PAGING);
+    Ob_DECREF_NULL(&H->vmm.Cache.PAGING_FAILED);
+    Ob_DECREF_NULL(&H->vmm.Cache.pmPrototypePte);
     ReleaseSRWLockExclusive(&LockSRW);
     return FALSE;
 }

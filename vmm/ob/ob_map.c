@@ -805,9 +805,14 @@ BOOL _ObMap_Grow(_In_ POB_MAP pm)
 {
     DWORD iEntry;
     PDWORD pdwNewAllocHashMap;
+    PPOB_MAP_ENTRY ppNewAllocTable;
     if(!(pdwNewAllocHashMap = LocalAlloc(LMEM_ZEROINIT, 2 * sizeof(DWORD) * pm->cHashMax * (pm->fKey ? 2 : 1)))) { return FALSE; }
     if(!pm->fLargeMode) {
-        if(!(pm->Directory[0] = LocalAlloc(LMEM_ZEROINIT, sizeof(POB_MAP_ENTRY) * OB_MAP_ENTRIES_TABLE))) { return FALSE; }
+        if(!(ppNewAllocTable = LocalAlloc(LMEM_ZEROINIT, sizeof(POB_MAP_ENTRY) * OB_MAP_ENTRIES_TABLE))) {
+            LocalFree(pdwNewAllocHashMap);
+            return FALSE;
+        }
+        pm->Directory[0] = ppNewAllocTable;
         pm->Directory[0][0] = pm->Store00;
         ZeroMemory(pm->_SmallHashMap, sizeof(pm->_SmallHashMap));
         pm->pHashMapKey = NULL;

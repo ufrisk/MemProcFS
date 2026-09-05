@@ -952,10 +952,11 @@ VOID MmVad_Spider_DoWork(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _I
     ObContainer_SetOb(pProcess->pObPersistent->pObCMapVadPrefetch, psObAll);
     // 8: shrink oversized result object (if sufficiently too large)
     if(pmObVad->cMap + 0x10 < cMax) {
-        pmObVadTemp = pmObVad;
-        if(!(pmObVad = Ob_AllocEx(H, OB_TAG_MAP_VAD, 0, sizeof(VMMOB_MAP_VAD) + pmObVadTemp->cMap * sizeof(VMM_MAP_VADENTRY), MmVad_MemMapVad_CloseObCallback, NULL))) { goto fail; }
-        memcpy(((POB_DATA)pmObVad)->pb, ((POB_DATA)pmObVadTemp)->pb, pmObVad->ObHdr.cbData);
-        Ob_DECREF_NULL(&pmObVadTemp);
+        if((pmObVadTemp = Ob_AllocEx(H, OB_TAG_MAP_VAD, 0, sizeof(VMMOB_MAP_VAD) + pmObVad->cMap * sizeof(VMM_MAP_VADENTRY), MmVad_MemMapVad_CloseObCallback, NULL))) {
+            memcpy(((POB_DATA)pmObVadTemp)->pb, ((POB_DATA)pmObVad)->pb, pmObVadTemp->ObHdr.cbData);
+            Ob_DECREF(pmObVad);
+            pmObVad = pmObVadTemp;
+        }
     }
     pProcess->Map.pObVad = Ob_INCREF(pmObVad);
 fail:

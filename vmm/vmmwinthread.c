@@ -668,6 +668,7 @@ PVMMOB_MAP_THREADCALLSTACK VmmWinThreadCs_UnwindScanCallstack(_In_ VMM_HANDLE H,
         VmmLog(H, MID_THREADCS, LOGLEVEL_5_DEBUG, "\n%s", uszText);
     }
 end: 
+    Ob_DECREF(psmOb);
     LocalFree(pFullCallStack);
     LocalFree(uszText);
     return pObCS;
@@ -981,6 +982,7 @@ BOOL VmmWinThreadCs_GetCallstack(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, 
     QWORD qwKey = ((QWORD)pProcess->dwPID << 32) | pThread->dwTID;
     if(fNoCache || !(pObCS = ObMap_GetByKey(H->vmm.pmObThreadCallback, qwKey)) || fRequireCache) {
         AcquireSRWLockExclusive(&H->vmm.LockSRW.ThreadCallback);
+        Ob_DECREF(pObCS); pObCS = NULL;
         if(fNoCache || !(pObCS = ObMap_GetByKey(H->vmm.pmObThreadCallback, qwKey))) {
             pObCS = VmmWinThreadCs_UnwindScanCallstack(H, pProcess, pThread);       // fetch the callstack
             if(!pObCS && (pObCS = Ob_AllocEx(H, OB_TAG_THREAD_CALLSTACK, LMEM_ZEROINIT, sizeof(VMMOB_MAP_THREADCALLSTACK), NULL, NULL))) {

@@ -692,11 +692,13 @@ VOID FcNtfs2_Init1(_In_ VMM_HANDLE H, POB_FCNTFS2_INIT_CONTEXT ctx)
     while((pObFile = ObMap_Pop(pmObMft))) {
         VmmLog(H, ctx->MID, LOGLEVEL_5_DEBUG, "Ingesting $Mft file:[%s] size:[%llu] va:[0x%llx]", pObFile->uszPath, pObFile->cb, pObFile->va);
         FcNtfs2_InitMft(H, ctx, pObFile);
+        Ob_DECREF(pObFile);
     }
     // ingest $Directory files:
     while((pObFile = ObMap_Pop(pmObDirectory))) {
         VmmLog(H, ctx->MID, LOGLEVEL_5_DEBUG, "Ingesting $Directory file:[%s] size:[%llu] va:[0x%llx]", pObFile->uszPath, pObFile->cb, pObFile->va);
         FcNtfs2_InitDir(H, ctx, pObFile);
+        Ob_DECREF(pObFile);
     }
 fail:
     Ob_DECREF(psObDuplicates);
