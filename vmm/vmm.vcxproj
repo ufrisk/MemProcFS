@@ -441,6 +441,7 @@
     <ClCompile Include="modules\m_sys_obj.c" />
     <ClCompile Include="modules\m_sys_pool.c" />
     <ClCompile Include="modules\m_sys_proc.c" />
+    <ClCompile Include="modules\m_sys_proccpu.c" />
     <ClCompile Include="modules\m_sys_svc.c" />
     <ClCompile Include="modules\m_sys_syscall.c" />
     <ClCompile Include="modules\m_sys_sysinfo.c" />

@@ -267,3 +267,4 @@ Latest:
 * Fix: Pool and Heap parsing improved.
 * Fix: Compressed memory recovery rates improved.
 * New module: /sys/eventlog (Windows event log recovery).
+* New module: /sys/proc/cpu - process CPU usage, current and total.

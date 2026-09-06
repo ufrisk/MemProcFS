@@ -43,6 +43,7 @@
 #define OB_TAG_MAP_WEB                  'Mweb'
 #define OB_TAG_MAP_AMCACHE              'MAmC'
 #define OB_TAG_MOD_CERTIFICATES         'mCer'
+#define OB_TAG_MOD_CPU                  'mCpu'
 #define OB_TAG_MOD_FCNTFS_CTX           'mFnt'
 #define OB_TAG_MOD_FCTIMELINE           'mFtl'
 #define OB_TAG_MOD_MINIDUMP_CTX         'mMDx'
