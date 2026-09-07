@@ -11,7 +11,7 @@
 // (c) Ulf Frisk, 2018-2026
 // Author: Ulf Frisk, pcileech@frizk.net
 //
-// Header Version: 5.17
+// Header Version: 5.18.9
 //
 
 #include "leechcore.h"
@@ -62,6 +62,7 @@ typedef const uint16_t                      *LPCWSTR;
 #define _Out_
 #define _Out_opt_
 #define _Out_writes_(x)
+#define _Out_writes_bytes_(x)
 #define _Out_writes_bytes_opt_(x)
 #define _Out_writes_opt_(x)
 #define _Out_writes_to_(x,y)
@@ -927,6 +928,41 @@ BOOL VMMDLL_MemWrite(_In_ VMM_HANDLE hVMM, _In_ DWORD dwPID, _In_ ULONG64 qwA, _
 */
 EXPORTED_FUNCTION _Success_(return)
 BOOL VMMDLL_MemVirt2Phys(_In_ VMM_HANDLE hVMM, _In_ DWORD dwPID, _In_ ULONG64 qwVA, _Out_ PULONG64 pqwPA);
+
+/* ABI bitness stable re - implementation of the Win32 MEMORY_BASIC_INFORMATION structure. */
+typedef struct tdVMMDLL_MEMORY_BASIC_INFORMATION {
+    QWORD BaseAddress;
+    QWORD AllocationBase;
+    DWORD AllocationProtect;
+    WORD  PartitionId;
+    WORD  _Reserved1;
+    DWORD _Reserved2;
+    QWORD RegionSize;
+    DWORD State;
+    DWORD Protect;
+    DWORD Type;
+    DWORD _Reserved3;
+} VMMDLL_MEMORY_BASIC_INFORMATION, *PVMMDLL_MEMORY_BASIC_INFORMATION;
+
+/*
+* VirtualQuery(Ex) analogue to allow enumeration of memory ranges via the API
+* in a way that is similar to the Win32 API VirtualQuery(Ex). The parameters
+* are roughly equivalent to their Win32 counterparts.
+* -- hVMM
+* -- dwPID
+* -- lpAddress
+* -- lpBuffer
+* -- dwLength
+* -- return
+*/
+EXPORTED_FUNCTION _Success_(return != 0)
+SIZE_T VMMDLL_MemVirtualQuery(
+    _In_ VMM_HANDLE hVMM,
+    _In_ DWORD dwPID,
+    _In_ QWORD lpAddress,
+    _Out_writes_bytes_(dwLength) PVMMDLL_MEMORY_BASIC_INFORMATION lpBuffer,
+    _In_ SIZE_T dwLength
+);
 
 
 

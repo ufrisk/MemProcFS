@@ -175,8 +175,8 @@ typedef struct _tdMMVAD64_7 {
 
 // Win8.0 32-bit
 typedef struct _tdMMVAD32_80 {
+    DWORD _Dummy1;
     DWORD PoolTag;
-    QWORD _Dummy2;
     // _MMVAD_SHORT
     DWORD __u1;
     DWORD LeftChild;
@@ -646,10 +646,10 @@ PVMM_MAP_VADENTRY MmVad_Spider_MMVAD32_80(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS p
     }
     // short vad
     e = &pmVad->pMap[pmVad->cMap++];
-    if(VMM_KADDR64_16(v.LeftChild) && ObSet_Push(psAll, v.LeftChild - 8)) {
+    if(VMM_KADDR32_8(v.LeftChild) && ObSet_Push(psAll, v.LeftChild - 8)) {
         ObSet_Push(psTry1, v.LeftChild - 8);
     }
-    if(VMM_KADDR64_16(v.RightChild) && ObSet_Push(psAll, v.RightChild - 8)) {
+    if(VMM_KADDR32_8(v.RightChild) && ObSet_Push(psAll, v.RightChild - 8)) {
         ObSet_Push(psTry1, v.RightChild - 8);
     }
     e->vaStart = (QWORD)v.StartingVpn << 12;
@@ -836,7 +836,7 @@ VOID MmVad_Spider_DoWork(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _I
         cVads = (DWORD)VMM_EPROCESS_PTR(f32, pProcess, H->vmm.offset.EPROCESS.VadRoot + (f32 ? 8 : 0x10));
     } else if(dwVersionBuild >= 6000) {
         // WinVista::Win8.0 -> fetch # of AvlNode from EPROCESS.
-        i = (dwVersionBuild < 9200) ? (f32 ? 0x14 : 0x28) : (f32 ? 0x1c : 0x18);
+        i = (dwVersionBuild < 9200) ? (f32 ? 0x14 : 0x28) : (f32 ? 0x0c : 0x18);
         cVads = ((DWORD)VMM_EPROCESS_PTR(f32, pProcess, H->vmm.offset.EPROCESS.VadRoot + i) >> 8);
     } else {
         // WinXP
@@ -880,7 +880,9 @@ VOID MmVad_Spider_DoWork(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProcess, _I
             cbMmVad = sizeof(_MMVAD64_10);
             pfnMmVad_Spider = MmVad_Spider_MMVAD64_10;
         }
-        if(dwVersionBuild >= 20348) {    // bitmask offset for empty:PrivateMemory:Protection:VadType
+        if(dwVersionBuild >= 28000) {    // bitmask offset for empty:PrivateMemory:Protection:VadType
+            dwFlagsBitMask = 0x00130502;
+        } else if(dwVersionBuild >= 20348) {
             dwFlagsBitMask = 0x00150704;
         } else if(dwVersionBuild >= 18362) {
             dwFlagsBitMask = 0x00140704;

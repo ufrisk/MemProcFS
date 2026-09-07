@@ -336,6 +336,7 @@
     <ClInclude Include="infodb.h" />
     <ClInclude Include="mm\mm.h" />
     <ClInclude Include="mm\mm_pfn.h" />
+    <ClInclude Include="mm\mm_vq.h" />
     <ClInclude Include="modules\modules.h" />
     <ClInclude Include="modules\modules_init.h" />
     <ClInclude Include="ob\ob.h" />
@@ -383,6 +384,7 @@
     <ClCompile Include="mm\mm_arm64.c" />
     <ClCompile Include="mm\mm_pfn.c" />
     <ClCompile Include="mm\mm_vad.c" />
+    <ClCompile Include="mm\mm_vq.c" />
     <ClCompile Include="mm\mm_win.c" />
     <ClCompile Include="mm\mm_x64.c" />
     <ClCompile Include="mm\mm_x86.c" />

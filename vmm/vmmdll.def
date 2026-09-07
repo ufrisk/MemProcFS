@@ -39,6 +39,7 @@ EXPORTS
     VMMDLL_MemReadScatter
     VMMDLL_MemSearch
     VMMDLL_MemVirt2Phys
+    VMMDLL_MemVirtualQuery
     VMMDLL_MemWrite
     VMMDLL_MemWriteScatter
 

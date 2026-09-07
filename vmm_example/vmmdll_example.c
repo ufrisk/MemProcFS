@@ -210,6 +210,7 @@ int main(_In_ int argc, _In_ char* argv[])
     DWORD i, j, cbRead, dwPID;
     DWORD cch = 0, dw = 0;
     QWORD va;
+    VMMDLL_MEMORY_BASIC_INFORMATION mbi;
     BYTE pbPage1[0x1000], pbPage2[0x1000];
     CHAR usz[MAX_PATH];
 
@@ -502,6 +503,31 @@ int main(_In_ int argc, _In_ char* argv[])
             );
         }
         VMMDLL_MemFree(pVadMap); pVadMap = NULL;
+    }
+
+
+    // Query the first 16 VirtualQuery-style user regions. Use this API's fixed
+    // width structure, including for a 32-bit target. Zero means the query
+    // failed or reached the end of the supported user address space.
+    printf("------------------------------------------------------------\n");
+    printf("# VirtualQuery memory regions of 'explorer.exe'.            \n");
+    ShowKeyPress();
+    va = 0;
+    for(i = 0; i < 16; i++) {
+        if(VMMDLL_MemVirtualQuery(hVMM, dwPID, va, &mbi, sizeof(mbi)) != sizeof(mbi)) {
+            printf("STOP:    VMMDLL_MemVirtualQuery at %016llx\n", va);
+            break;
+        }
+        printf("%016llx size=%llx allocation=%016llx state=%x protect=%x type=%x\n",
+            mbi.BaseAddress,
+            mbi.RegionSize,
+            mbi.AllocationBase,
+            mbi.State,
+            mbi.Protect,
+            mbi.Type
+        );
+        if(!mbi.RegionSize || (mbi.BaseAddress + mbi.RegionSize <= va)) { break; }
+        va = mbi.BaseAddress + mbi.RegionSize;
     }
 
 

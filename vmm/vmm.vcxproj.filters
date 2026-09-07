@@ -189,6 +189,9 @@
     <ClInclude Include="ext\sqlite_vfs_memprocfs.h">
       <Filter>Source Files\ext</Filter>
     </ClInclude>
+    <ClInclude Include="mm\mm_vq.h">
+      <Filter>Header Files\mm</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="vmmdll.c">
@@ -547,6 +550,9 @@
     </ClCompile>
     <ClCompile Include="modules\m_sys_proccpu.c">
       <Filter>Source Files\modules</Filter>
+    </ClCompile>
+    <ClCompile Include="mm\mm_vq.c">
+      <Filter>Source Files\mm</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

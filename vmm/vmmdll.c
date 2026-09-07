@@ -30,6 +30,7 @@
 #include "vmmvm.h"
 #include "vmmyarautil.h"
 #include "mm/mm_pfn.h"
+#include "mm/mm_vq.h"
 
 #define VMM_HANDLE_IS_REMOTE(H)         (((SIZE_T)H) & 1)
 
@@ -898,6 +899,25 @@ BOOL VMMDLL_MemVirt2Phys(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ ULONG64 qwVA,
     CALL_IMPLEMENTATION_VMM(H,
         STATISTICS_ID_VMMDLL_MemVirt2Phys,
         VMMDLL_MemVirt2Phys_Impl(H, dwPID, qwVA, pqwPA))
+}
+
+_Success_(return != 0)
+SIZE_T VMMDLL_MemVirtualQuery_Impl(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ QWORD va, _Out_ PVMMDLL_MEMORY_BASIC_INFORMATION pInfo)
+{
+    BOOL f;
+    PVMM_PROCESS pProcess = VmmProcessGet(H, dwPID);
+    if(!pProcess) { return 0; }
+    f = MmVqQuery(H, pProcess, va, pInfo);
+    Ob_DECREF(pProcess);
+    return f ? sizeof(VMMDLL_MEMORY_BASIC_INFORMATION) : 0;
+}
+
+_Success_(return != 0)
+SIZE_T VMMDLL_MemVirtualQuery(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ QWORD lpAddress, _Out_writes_bytes_(dwLength) PVMMDLL_MEMORY_BASIC_INFORMATION lpBuffer, _In_ SIZE_T dwLength)
+{
+    if(!lpBuffer || (dwLength < sizeof(VMMDLL_MEMORY_BASIC_INFORMATION))) { return 0; }
+    ZeroMemory(lpBuffer, sizeof(VMMDLL_MEMORY_BASIC_INFORMATION));
+    CALL_IMPLEMENTATION_VMM_RETURN(H, STATISTICS_ID_VMMDLL_MemVirtualQuery, SIZE_T, 0, VMMDLL_MemVirtualQuery_Impl(H, dwPID, lpAddress, lpBuffer))
 }
 
 _Success_(return)
