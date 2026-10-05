@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFrameworks>net48;net5.0;net6.0;net7.0;net8.0;net9.0</TargetFrameworks>
+    <TargetFrameworks>net48;net5.0;net6.0;net7.0;net8.0;net9.0;net10.0</TargetFrameworks>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <OutputType>Library</OutputType>
     <RootNamespace>Vmmsharp</RootNamespace>
@@ -24,7 +24,7 @@
     <AssemblyTitle>MemProcFS : C# API</AssemblyTitle>
     <Company>Ulf Frisk</Company>
     <Product>vmmsharp</Product>
-    <Copyright>Copyright © Ulf Frisk 2024</Copyright>
+    <Copyright>Copyright © Ulf Frisk 2024-2026</Copyright>
     <AssemblyVersion>3.3.0.7</AssemblyVersion>
     <FileVersion>3.3.0.7</FileVersion>
     <Platforms>x64</Platforms>
@@ -109,7 +109,7 @@
 		<None Include="logo.png" Pack="true" Visible="true" PackagePath="" />
 	</ItemGroup>
     <PropertyGroup>
-        <Version>5.18.11</Version>
+        <Version>5.19.0</Version>
         <RepositoryUrl>https://github.com/ufrisk/MemProcFS</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageLicenseFile>LICENSE</PackageLicenseFile>
@@ -119,5 +119,17 @@
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
 		<PackageIcon>logo.png</PackageIcon>
 		<Description>Vmmsharp is a C# library for the MemProcFS memory analysis framework.</Description>		
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Debug|net9.0|x64'">
+      <DebugType>full</DebugType>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Release|net9.0|x64'">
+      <DebugType>full</DebugType>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Debug|net10.0|x64'">
+      <DebugType>full</DebugType>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Release|net10.0|x64'">
+      <DebugType>full</DebugType>
     </PropertyGroup>	
 </Project>

@@ -12,6 +12,31 @@ _Success_(return)
 BOOL VMMDLL_ConfigSet_Impl(_In_ VMM_HANDLE H, _In_ ULONG64 fOption, _In_ ULONG64 qwValue);
 
 /*
+* Cache the LeechCore memory map on first access for the module lifetime.
+* CALLER DECREF: return
+*/
+_Success_(return != NULL)
+static POB_DATA MConf_MemMapGet(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
+{
+    POB_DATA pObMemMap = ObContainer_GetOb((POB_CONTAINER)ctxP->ctxM);
+    DWORD cbMemMap = 0;
+    PBYTE pbMemMap = NULL;
+    if(!pObMemMap) {
+        EnterCriticalSection(&H->vmm.LockPlugin);
+        pObMemMap = ObContainer_GetOb((POB_CONTAINER)ctxP->ctxM);
+        if(!pObMemMap) {
+            if(LcCommand(H->hLC, LC_CMD_MEMMAP_GET, 0, NULL, &pbMemMap, &cbMemMap) && pbMemMap) {
+                pObMemMap = ObData_New(H, pbMemMap, (DWORD)strnlen((LPSTR)pbMemMap, cbMemMap));
+                ObContainer_SetOb((POB_CONTAINER)ctxP->ctxM, pObMemMap);
+            }
+            LcMemFree(pbMemMap);
+        }
+        LeaveCriticalSection(&H->vmm.LockPlugin);
+    }
+    return pObMemMap;
+}
+
+/*
 * Read : function as specified by the module manager. The module manager will
 * call into this callback function whenever a read shall occur from a "file".
 * -- H
@@ -28,8 +53,17 @@ NTSTATUS MConf_Read(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Out_wr
     CHAR szBuffer[0x800];
     DWORD cbCallStatistics = 0;
     LPSTR szCallStatistics = NULL;
+    POB_DATA pObMemMap = NULL;
     QWORD cPageReadTotal, cPageFailTotal;
     NTSTATUS nt = VMMDLL_STATUS_FILE_INVALID;
+    if(!_stricmp(ctxP->uszPath, "config_leechcore_memmap.txt")) {
+        *pcbRead = 0;
+        if((pObMemMap = MConf_MemMapGet(H, ctxP))) {
+            nt = Util_VfsReadFile_FromObData(pObMemMap, pb, cb, pcbRead, cbOffset);
+            Ob_DECREF(pObMemMap);
+        }
+        return nt;
+    }
     if(!_stricmp(ctxP->uszPath, "config_process_show_terminated.txt")) {
         return Util_VfsReadFile_FromBOOL(H->vmm.flags & VMM_FLAG_PROCESS_SHOW_TERMINATED, pb, cb, pcbRead, cbOffset);
     }
@@ -323,12 +357,17 @@ NTSTATUS MConf_Write(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _In_re
 */
 BOOL MConf_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHANDLE pFileList)
 {
+    POB_DATA pObMemMap = NULL;
     DWORD cbCallStatistics = 0;
     // not module root directory -> fail!
     if(ctxP->uszPath[0]) { return FALSE; }
     // "root" view
     if(!ctxP->pProcess) {
         Statistics_CallToString(H, NULL, &cbCallStatistics);
+        if((pObMemMap = MConf_MemMapGet(H, ctxP))) {
+            VMMDLL_VfsList_AddFile(pFileList, "config_leechcore_memmap.txt", pObMemMap->ObHdr.cbData, NULL);
+            Ob_DECREF(pObMemMap);
+        }
         VMMDLL_VfsList_AddFile(pFileList, "config_fileinfoheader_enable.txt", 1, NULL);
         VMMDLL_VfsList_AddFile(pFileList, "config_cache_enable.txt", 1, NULL);
         VMMDLL_VfsList_AddFile(pFileList, "config_paging_enable.txt", 1, NULL);
@@ -362,6 +401,11 @@ BOOL MConf_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHA
     return TRUE;
 }
 
+static VOID MConf_Close(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP)
+{
+    Ob_DECREF((POB_CONTAINER)ctxP->ctxM);
+}
+
 /*
 * Initialization function. The module manager shall call into this function
 * when the module shall be initialized. If the module wish to initialize it
@@ -374,11 +418,13 @@ BOOL MConf_List(_In_ VMM_HANDLE H, _In_ PVMMDLL_PLUGIN_CONTEXT ctxP, _Inout_ PHA
 VOID M_Conf_Initialize(_In_ VMM_HANDLE H, _Inout_ PVMMDLL_PLUGIN_REGINFO pRI)
 {
     if((pRI->magic != VMMDLL_PLUGIN_REGINFO_MAGIC) || (pRI->wVersion != VMMDLL_PLUGIN_REGINFO_VERSION)) { return; }
+    if(!(pRI->reg_info.ctxM = (PVMMDLL_PLUGIN_INTERNAL_CONTEXT)ObContainer_New())) { return; }
     // .status module is always valid - no check against pPluginRegInfo->tpMemoryModel, tpSystem
     strcpy_s(pRI->reg_info.uszPathName, 128, "\\conf");       // module name
     pRI->reg_info.fRootModule = TRUE;                         // module shows in root directory
     pRI->reg_fn.pfnList = MConf_List;                         // List function supported
     pRI->reg_fn.pfnRead = MConf_Read;                         // Read function supported
     pRI->reg_fn.pfnWrite = MConf_Write;                       // Write function supported
+    pRI->reg_fn.pfnClose = MConf_Close;
     pRI->pfnPluginManager_Register(H, pRI);
 }

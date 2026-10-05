@@ -545,7 +545,9 @@ VOID VmmWinObjFile_GetByProcess_DoWork(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_CON
     POB_SET psvaObFiles = NULL;
     PVMM_PROCESS pObSystemProcess = NULL;
     if(!(psvaObFiles = ObSet_New(H))) { return; }
+    LeaveCriticalSection(&ctx->LockUpdate);
     VmmWinObjFile_GetProcessAddressCandidates(H, ctx, pProcess, psvaObFiles, fHandles, TRUE);
+    EnterCriticalSection(&ctx->LockUpdate);
     // Fetch and initialize file objects
     if((pObSystemProcess = VmmProcessGet(H, 4))) {
         VmmWinObjFile_Initialize_FileObjects(H, ctx, pObSystemProcess, psvaObFiles, pmObFiles);
@@ -689,20 +691,31 @@ VOID VmmWinObjFile_GetAll_DoWork(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ_CONTEXT c
     if(!(pmObFiles = ObMap_New(H, OB_MAP_FLAGS_OBJECT_OB))) { goto fail; }
     if(!(pObSystemProcess = VmmProcessGet(H, 4))) { goto fail; }
     // fetch candicates from pool into cache:
+    if(ctx->fAll) { goto fail; }
     if(VmmMap_GetPool(H, &pObPoolMap, TRUE) && VmmMap_GetPoolTag(H, pObPoolMap, 'File', &pePoolTag)) {
         for(i = 0; i < pePoolTag->cEntry; i++) {
             pePool = pObPoolMap->pMap + pObPoolMap->piTag2Map[pePoolTag->iTag2Map + i];
             if((pePool->cb < cbFile) || (pePool->cb > cbFile + 0x100)) { continue; }
             ObSet_Push(psvaObFiles, pePool->va);
         }
-        VmmWinObjFile_GetAll_DoWork_Pool(H, ctx, pObSystemProcess, psvaObFiles, pmObFiles);
+        EnterCriticalSection(&ctx->LockUpdate);
+        if(!ctx->fAll) {
+            VmmWinObjFile_GetAll_DoWork_Pool(H, ctx, pObSystemProcess, psvaObFiles, pmObFiles);
+        }
+        LeaveCriticalSection(&ctx->LockUpdate);
     }
     // fetch candidates from process handles & vads into cache:
+    if(ctx->fAll) { goto fail; }
     while((pObProcess = VmmProcessGetNext(H, pObProcess, 0))) {
         VmmWinObjFile_GetProcessAddressCandidates(H, ctx, pObProcess, psvaObFiles, TRUE, FALSE);
         VmmWinObjFile_GetProcessAddressCandidates(H, ctx, pObProcess, psvaObFiles, FALSE, FALSE);
     }
-    VmmWinObjFile_Initialize_FileObjects(H, ctx, pObSystemProcess, psvaObFiles, pmObFiles);
+    EnterCriticalSection(&ctx->LockUpdate);
+    if(!ctx->fAll) {
+        VmmWinObjFile_Initialize_FileObjects(H, ctx, pObSystemProcess, psvaObFiles, pmObFiles);
+        ctx->fAll = TRUE;
+    }
+    LeaveCriticalSection(&ctx->LockUpdate);
 fail:
     Ob_DECREF(pObSystemProcess);
     Ob_DECREF(psvaObFiles);
@@ -739,16 +752,9 @@ BOOL VmmWinObjFile_GetAll(_In_ VMM_HANDLE H, _Out_ POB_MAP *ppmObFiles)
     *ppmObFiles = NULL;
     if(!(ctxOb = VmmWinObj_GetContext(H))) { goto finish; }
     if(ctxOb->fAll) { goto finish; }
-    EnterCriticalSection(&ctxOb->LockUpdate);
-    if(ctxOb->fAll) {
-        LeaveCriticalSection(&ctxOb->LockUpdate);
-        goto finish;
-    }
     VmmStatisticsLogStart(H, MID_OBJECT, LOGLEVEL_6_TRACE, NULL, &Statistics, "INIT FILE_OBJECT(ALL)");
     VmmWinObjFile_GetAll_DoWork(H, ctxOb);
     VmmStatisticsLogEnd(H, &Statistics, "INIT FILE_OBJECT(ALL)");
-    ctxOb->fAll = TRUE;
-    LeaveCriticalSection(&ctxOb->LockUpdate);
 finish:
     if(ctxOb && (*ppmObFiles = ObMap_New(H, OB_MAP_FLAGS_OBJECT_OB))) {
         ObMap_Filter(ctxOb->pmByObj, *ppmObFiles, (OB_MAP_FILTER_PFN_CB)VmmWinObjFile_GetAll_FilterFile);
@@ -764,8 +770,7 @@ finish:
 // ----------------------------------------------------------------------------
 
 /*
-* Single-threaded worker function creating the object va -> pid mapping
-* by walking all process handle tables/maps.
+* Worker function creating the object va -> pid mapping by walking all process handle tables/maps.
 * -- H
 * -- ctx
 */
@@ -774,16 +779,17 @@ VOID VmmWinObj_GetProcessAssociated_DoWork(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ
     DWORD i, dwPID;
     POB_VMMWINOBJ_FILE pObFile = NULL;
     POB_MAP pmObFile = NULL;
-    POB_COUNTER pcVaToPid = NULL;
+    POB_COUNTER pcObVaToPid = NULL;
     PVMM_PROCESS pObProcess = NULL;
     PVMMOB_MAP_HANDLE pObHandleMap = NULL;
     if(ctx->pcVaToPid || H->fAbort) { return; }
-    if(!(pcVaToPid = ObCounter_New(H, 0))) { return; }
+    if(!(pcObVaToPid = ObCounter_New(H, 0))) { return; }
     // 1: add process object handles to map:
     while((pObProcess = VmmProcessGetNext(H, pObProcess, 0))) {
         if(VmmMap_GetHandle(H, pObProcess, &pObHandleMap, VMM_HANDLE_FLAG_CORE)) {
+            if(ctx->pcVaToPid) { goto fail; }
             for(i = 0; i < pObHandleMap->cMap; i++) {
-                ObCounter_Set(pcVaToPid, pObHandleMap->pMap[i].vaObject, pObProcess->dwPID);
+                ObCounter_Set(pcObVaToPid, pObHandleMap->pMap[i].vaObject, pObProcess->dwPID);
             }
             Ob_DECREF_NULL(&pObHandleMap);
         }
@@ -793,22 +799,34 @@ VOID VmmWinObj_GetProcessAssociated_DoWork(_In_ VMM_HANDLE H, _In_ POB_VMMWINOBJ
     //    also missing file objects to map.
     if(VmmWinObjFile_GetAll(H, &pmObFile)) {
         while((pObFile = ObMap_GetNext(pmObFile, pObFile))) {
-            dwPID = (DWORD)ObCounter_Get(pcVaToPid, pObFile->va);
+            if(ctx->pcVaToPid) { goto fail; }
+            dwPID = (DWORD)ObCounter_Get(pcObVaToPid, pObFile->va);
             if(dwPID && pObFile->vaSectionObjectPointers) {
-                ObCounter_Set(pcVaToPid, pObFile->vaSectionObjectPointers, dwPID);
+                ObCounter_Set(pcObVaToPid, pObFile->vaSectionObjectPointers, dwPID);
             }
         }
         while((pObFile = ObMap_GetNext(pmObFile, pObFile))) {
-            if(!ObCounter_Exists(pcVaToPid, pObFile->va) && pObFile->vaSectionObjectPointers) {
-                dwPID = (DWORD)ObCounter_Get(pcVaToPid, pObFile->vaSectionObjectPointers);
+            if(ctx->pcVaToPid) { goto fail; }
+            if(!ObCounter_Exists(pcObVaToPid, pObFile->va) && pObFile->vaSectionObjectPointers) {
+                dwPID = (DWORD)ObCounter_Get(pcObVaToPid, pObFile->vaSectionObjectPointers);
                 if(dwPID) {
-                    ObCounter_Set(pcVaToPid, pObFile->va, dwPID);
+                    ObCounter_Set(pcObVaToPid, pObFile->va, dwPID);
                 }
             }
         }
     }
+    EnterCriticalSection(&ctx->LockUpdate);
+    if(!ctx->pcVaToPid) {
+        ctx->pcVaToPid = pcObVaToPid;
+        pcObVaToPid = NULL;
+    }
+    LeaveCriticalSection(&ctx->LockUpdate);
+fail:
+    Ob_DECREF(pObFile);
     Ob_DECREF(pmObFile);
-    ctx->pcVaToPid = pcVaToPid;
+    Ob_DECREF(pObProcess);
+    Ob_DECREF(pcObVaToPid);
+    Ob_DECREF(pObHandleMap);
 }
 
 /*
@@ -828,9 +846,7 @@ PVMM_PROCESS VmmWinObj_GetProcessAssociated(_In_ VMM_HANDLE H, _In_ QWORD vaObje
     if(!(ctxOb = VmmWinObj_GetContext(H))) { return NULL; }
     // create new va->pid mapping if not already created:
     if(!ctxOb->pcVaToPid) {
-        EnterCriticalSection(&ctxOb->LockUpdate);
         VmmWinObj_GetProcessAssociated_DoWork(H, ctxOb);
-        LeaveCriticalSection(&ctxOb->LockUpdate);
     }
     // finish up and return process (if found):
     dwPID = (DWORD)ObCounter_Get(ctxOb->pcVaToPid, vaObject);

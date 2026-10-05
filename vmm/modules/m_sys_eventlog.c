@@ -2632,7 +2632,7 @@ static NTSTATUS VmmEventLog_Repair_Read(_In_ VMM_HANDLE H, _In_ PVMM_MAP_EVENTLO
 // VFS PRESENTATION
 // ============================================================================
 #define MSYSEVENTLOG_LINELENGTH         256ULL
-#define MSYSEVENTLOG_LINEHEADER         "   #    PID   Handle      File Object         Size Name                                                             Path"
+#define MSYSEVENTLOG_LINEHEADER         "   #     PID   Handle      File Object         Size Name                                                             Path"
 #define MSYSEVENTLOG_FILE_EVENTLOGS     "eventlogs.txt"
 #define MSYSEVENTLOG_DIR_ORIGINAL       "eventlog_original"
 #define MSYSEVENTLOG_DIR_ORIGINAL_LEN   VMM_STRLEN(MSYSEVENTLOG_DIR_ORIGINAL)

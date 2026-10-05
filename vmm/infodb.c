@@ -394,7 +394,7 @@ BOOL InfoDB_CertIsWellKnown(_In_ VMM_HANDLE H, _In_ QWORD qwThumbprintEndSHA1)
     QWORD qwResult = 0;
     POB_INFODB_CONTEXT pObCtx = NULL;
     qwThumbprintEndSHA1 = qwThumbprintEndSHA1 & 0x7fffffffffffffff;
-    if(!(pObCtx = ObContainer_GetOb(H->vmm.pObCInfoDB)) || !pObCtx->dwPdbId_NT) { goto fail; }
+    if(!(pObCtx = ObContainer_GetOb(H->vmm.pObCInfoDB))) { goto fail; }
     InfoDB_SqlQueryN(H, pObCtx, "SELECT count(*) FROM cert WHERE hash = ?", 1, &qwThumbprintEndSHA1, 1, &qwResult, NULL);
 fail:
     Ob_DECREF(pObCtx);

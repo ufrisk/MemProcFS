@@ -241,11 +241,11 @@ v5.8
 * Linux LeechAgent support using gRPC (LeechCore v2.21).
 * New FindEvil detection: High Entropy.
 * [DNS cache parsing](https://github.com/ufrisk/MemProcFS/wiki/FS_SysInfo_Network). Thanks [@MattCore71](https://github.com/MattCore71) for the contribution.
-</details>
 
 [v5.16](https://github.com/ufrisk/MemProcFS/releases/tag/v5.16)
 * Bug fixes.
 * Support for Windows 11 25H2
+</details>
 
 [v5.17](https://github.com/ufrisk/MemProcFS/releases/tag/v5.17)
 * Support for Windows 11 26H1.
@@ -261,7 +261,8 @@ v5.8
 * PTE map upper limit adjusted from 65536 to 131072.
 * Fix: File writes in WSL mounted MemProcFS (drvfs) now works.
 
-Latest:
+[v5.19](https://github.com/ufrisk/MemProcFS/releases/tag/v5.19)
+* Support for Windows 11 26H2.
 * Bug fixes.
 * Fix: Heap recovery now works on Windows 11 24H2 and later.
 * Fix: Pool and Heap parsing improved.

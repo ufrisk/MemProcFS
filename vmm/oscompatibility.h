@@ -69,6 +69,7 @@ errno_t fopen_su(FILE **pFile, const char *filename, const char *mode);
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+enum { OSCOMPAT_AF_INET6 = AF_INET6 };
 #undef  AF_INET6
 #define AF_INET6 23
 
@@ -231,7 +232,7 @@ typedef int(*_CoreCrtNonSecureSearchSortCompareFunction)(void const *, void cons
 #define InterlockedIncrement(p)             (__sync_add_and_fetch_4(p, 1))
 #define InterlockedDecrement(p)             (__sync_sub_and_fetch_4(p, 1))
 #define GetCurrentProcess()					((HANDLE)-1)
-#define InetNtopA(af,a,pb,cb)               inet_ntop(((af)==23?10:(af)),a,pb,cb)
+#define InetNtopA(af,a,pb,cb)               inet_ntop(((af)==23?OSCOMPAT_AF_INET6:(af)),a,pb,cb)
 #define closesocket(s)                      close(s)
 #define HeapAlloc(hHeap, dwFlags, dwBytes)  malloc(dwBytes)
 
