@@ -731,6 +731,36 @@ EXPORTED_FUNCTION NTSTATUS VMMDLL_UtilVfsWriteFile_DWORD(_Inout_ PDWORD pdwTarge
 
 
 //-----------------------------------------------------------------------------
+// IOMMU-AWARE DMA RANGE FILTER:
+//-----------------------------------------------------------------------------
+
+VOID VMMDLL_IommuFilterSet(_In_ VMM_HANDLE H, _In_ BOOL fEnabled, _In_ DWORD cRanges, _In_reads_opt_(cRanges) PVMMDLL_IOMMU_RANGE pRanges)
+{
+    if(!H) { return; }
+    VmmIommuFilterSet(H, fEnabled, cRanges, (PVMM_IOMMU_RANGE)pRanges);
+}
+
+BOOL VMMDLL_IommuFilterAddRange(_In_ VMM_HANDLE H, _In_ ULONG64 pa, _In_ ULONG64 cb)
+{
+    if(!H) { return FALSE; }
+    return VmmIommuFilterAddRange(H, pa, cb);
+}
+
+BOOL VMMDLL_IommuFilterAutoDetect(_In_ VMM_HANDLE H)
+{
+    if(!H) { return FALSE; }
+    return VmmIommuFilterAutoDetect(H);
+}
+
+ULONG64 VMMDLL_IommuFilterGetDropCount(_In_ VMM_HANDLE H)
+{
+    if(!H) { return 0; }
+    return H->vmm.IommuFilter.cDropped;
+}
+
+
+
+//-----------------------------------------------------------------------------
 // VMM CORE FUNCTIONALITY BELOW:
 //-----------------------------------------------------------------------------
 

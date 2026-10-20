@@ -1407,6 +1407,120 @@ BOOL VmmProcessTableCreateInitial(_In_ VMM_HANDLE H)
 
 
 // ----------------------------------------------------------------------------
+// IOMMU-AWARE DMA RANGE FILTER
+// Constrains physical memory access to only IOMMU-assigned ranges.
+// Required for correct operation under IOMMU-constrained environments
+// where the DMA device may only access specific physical address windows.
+// ----------------------------------------------------------------------------
+
+VOID VmmIommuFilterSet(_In_ VMM_HANDLE H, _In_ BOOL fEnabled, _In_ DWORD cRanges, _In_reads_opt_(cRanges) PVMM_IOMMU_RANGE pRanges)
+{
+    AcquireSRWLockExclusive(&H->vmm.IommuFilter.LockSRW);
+    H->vmm.IommuFilter.fEnabled = fEnabled;
+    if(fEnabled && pRanges && cRanges) {
+        H->vmm.IommuFilter.cRanges = min(cRanges, 64);
+        for(DWORD i = 0; i < H->vmm.IommuFilter.cRanges; i++) {
+            H->vmm.IommuFilter.Ranges[i].pa = pRanges[i].pa & ~0xfffULL;
+            H->vmm.IommuFilter.Ranges[i].cb = (pRanges[i].cb + 0xfff) & ~0xfffULL;
+        }
+    } else if(!fEnabled) {
+        H->vmm.IommuFilter.cRanges = 0;
+    }
+    H->vmm.IommuFilter.cDropped = 0;
+    ReleaseSRWLockExclusive(&H->vmm.IommuFilter.LockSRW);
+}
+
+BOOL VmmIommuFilterAddRange(_In_ VMM_HANDLE H, _In_ QWORD pa, _In_ QWORD cb)
+{
+    BOOL fResult = FALSE;
+    AcquireSRWLockExclusive(&H->vmm.IommuFilter.LockSRW);
+    if(H->vmm.IommuFilter.cRanges < 64) {
+        DWORD i = H->vmm.IommuFilter.cRanges;
+        H->vmm.IommuFilter.Ranges[i].pa = pa & ~0xfffULL;
+        H->vmm.IommuFilter.Ranges[i].cb = (cb + 0xfff) & ~0xfffULL;
+        H->vmm.IommuFilter.cRanges++;
+        fResult = TRUE;
+    }
+    ReleaseSRWLockExclusive(&H->vmm.IommuFilter.LockSRW);
+    return fResult;
+}
+
+VOID VmmIommuFilterInitialize(_In_ VMM_HANDLE H)
+{
+    InitializeSRWLock(&H->vmm.IommuFilter.LockSRW);
+    H->vmm.IommuFilter.fEnabled = FALSE;
+    H->vmm.IommuFilter.cRanges = 0;
+    H->vmm.IommuFilter.cDropped = 0;
+}
+
+#define IOMMU_PROBE_STRIDE          0x200000        // 2MB probe stride
+#define IOMMU_PROBE_BATCH           64              // pages per scatter batch
+
+BOOL VmmIommuFilterAutoDetect(_In_ VMM_HANDLE H)
+{
+    QWORD paMax, pa, paRangeStart = 0;
+    DWORD cMEMs, i, cRanges = 0;
+    BOOL fInRange = FALSE;
+    PPMEM_SCATTER ppMEMs = NULL;
+    PLC_READ_PAGE_RESULT pResults = NULL;
+    VMM_IOMMU_RANGE ranges[64];
+    paMax = H->dev.paMax;
+    if(!paMax || paMax == (QWORD)-1) {
+        LcGetOption(H->hLC, LC_OPT_CORE_ADDR_MAX, &paMax);
+    }
+    if(!paMax || paMax == (QWORD)-1 || paMax < 0x100000) { return FALSE; }
+    pResults = (PLC_READ_PAGE_RESULT)LocalAlloc(LMEM_ZEROINIT, IOMMU_PROBE_BATCH * sizeof(LC_READ_PAGE_RESULT));
+    if(!pResults) { return FALSE; }
+    if(!LcAllocScatter1(IOMMU_PROBE_BATCH, &ppMEMs)) {
+        LocalFree(pResults);
+        return FALSE;
+    }
+    ZeroMemory(ranges, sizeof(ranges));
+    for(pa = 0; pa < paMax && cRanges < 63; pa += IOMMU_PROBE_BATCH * IOMMU_PROBE_STRIDE) {
+        cMEMs = 0;
+        for(i = 0; i < IOMMU_PROBE_BATCH && (pa + (QWORD)i * IOMMU_PROBE_STRIDE) < paMax; i++) {
+            ppMEMs[i]->qwA = pa + (QWORD)i * IOMMU_PROBE_STRIDE;
+            ppMEMs[i]->cb = 0x1000;
+            ppMEMs[i]->f = FALSE;
+            cMEMs++;
+        }
+        if(!cMEMs) { break; }
+        if(!LcReadScatterEx(H->hLC, cMEMs, ppMEMs, pResults)) {
+            // LcReadScatterEx not supported - fall back to regular read
+            LcReadScatter(H->hLC, cMEMs, ppMEMs);
+            for(i = 0; i < cMEMs; i++) {
+                pResults[i] = ppMEMs[i]->f ? LC_READ_PAGE_RESULT_SUCCESS : LC_READ_PAGE_RESULT_COMPLETER_ABORT;
+            }
+        }
+        for(i = 0; i < cMEMs && cRanges < 63; i++) {
+            QWORD probeAddr = pa + (QWORD)i * IOMMU_PROBE_STRIDE;
+            BOOL fOk = (pResults[i] == LC_READ_PAGE_RESULT_SUCCESS) ||
+                       (pResults[i] == LC_READ_PAGE_RESULT_SUCCESS_AFTER_RETRY);
+            if(fOk && !fInRange) {
+                paRangeStart = probeAddr;
+                fInRange = TRUE;
+            } else if(!fOk && fInRange) {
+                ranges[cRanges].pa = paRangeStart;
+                ranges[cRanges].cb = probeAddr - paRangeStart;
+                cRanges++;
+                fInRange = FALSE;
+            }
+        }
+    }
+    // close final open range
+    if(fInRange && cRanges < 64) {
+        ranges[cRanges].pa = paRangeStart;
+        ranges[cRanges].cb = (pa < paMax ? pa : paMax) - paRangeStart;
+        cRanges++;
+    }
+    LcMemFree(ppMEMs);
+    LocalFree(pResults);
+    if(cRanges == 0) { return FALSE; }
+    VmmIommuFilterSet(H, TRUE, cRanges, ranges);
+    return TRUE;
+}
+
+// ----------------------------------------------------------------------------
 // INTERNAL VMMU FUNCTIONALITY: VIRTUAL MEMORY ACCESS.
 // ----------------------------------------------------------------------------
 
@@ -1417,6 +1531,28 @@ VOID VmmWriteScatterPhysical(_In_ VMM_HANDLE H, _Inout_ PPMEM_SCATTER ppMEMsPhys
     // 1: pre-callback
     if(H->vmm.MemUserCB.pfnWritePhysicalPreCB) {
         H->vmm.MemUserCB.pfnWritePhysicalPreCB(H->vmm.MemUserCB.ctxWritePhysicalPre, (DWORD)-1, cpMEMsPhys, ppMEMsPhys);
+    }
+    // 1.5: IOMMU-aware range filter for writes
+    if(H->vmm.IommuFilter.fEnabled) {
+        AcquireSRWLockShared(&H->vmm.IommuFilter.LockSRW);
+        for(i = 0; i < cpMEMsPhys; i++) {
+            pMEM = ppMEMsPhys[i];
+            if(MEM_SCATTER_ADDR_ISINVALID(pMEM) || pMEM->f) { continue; }
+            BOOL fAllowed = FALSE;
+            for(DWORD iR = 0; iR < H->vmm.IommuFilter.cRanges; iR++) {
+                QWORD rPa = H->vmm.IommuFilter.Ranges[iR].pa;
+                QWORD rCb = H->vmm.IommuFilter.Ranges[iR].cb;
+                if((pMEM->qwA >= rPa) && (pMEM->qwA + pMEM->cb <= rPa + rCb)) {
+                    fAllowed = TRUE;
+                    break;
+                }
+            }
+            if(!fAllowed) {
+                pMEM->qwA = MEM_SCATTER_ADDR_INVALID;
+                InterlockedIncrement64(&H->vmm.IommuFilter.cDropped);
+            }
+        }
+        ReleaseSRWLockShared(&H->vmm.IommuFilter.LockSRW);
     }
     // 2: write:
     LcWriteScatter(H->hLC, cpMEMsPhys, ppMEMsPhys);
@@ -1521,6 +1657,28 @@ VOID VmmReadScatterPhysical(_In_ VMM_HANDLE H, _Inout_ PPMEM_SCATTER ppMEMsPhys,
             }
             return;
         }
+    }
+    // 2.5: IOMMU-aware range filter - drop scatter entries outside allowed ranges
+    if(H->vmm.IommuFilter.fEnabled) {
+        AcquireSRWLockShared(&H->vmm.IommuFilter.LockSRW);
+        for(i = 0; i < cpMEMsPhys; i++) {
+            pMEM = ppMEMsPhys[i];
+            if(MEM_SCATTER_ADDR_ISINVALID(pMEM) || pMEM->f) { continue; }
+            BOOL fAllowed = FALSE;
+            for(DWORD iR = 0; iR < H->vmm.IommuFilter.cRanges; iR++) {
+                QWORD rPa = H->vmm.IommuFilter.Ranges[iR].pa;
+                QWORD rCb = H->vmm.IommuFilter.Ranges[iR].cb;
+                if((pMEM->qwA >= rPa) && (pMEM->qwA + pMEM->cb <= rPa + rCb)) {
+                    fAllowed = TRUE;
+                    break;
+                }
+            }
+            if(!fAllowed) {
+                pMEM->qwA = MEM_SCATTER_ADDR_INVALID;
+                InterlockedIncrement64(&H->vmm.IommuFilter.cDropped);
+            }
+        }
+        ReleaseSRWLockShared(&H->vmm.IommuFilter.LockSRW);
     }
     // 3: read!
     LcReadScatter(H->hLC, cpMEMsPhys, ppMEMsPhys);
@@ -2142,6 +2300,7 @@ BOOL VmmInitialize(_In_ VMM_HANDLE H)
     InitializeCriticalSection(&H->vmm.LockUpdateMap);
     InitializeCriticalSection(&H->vmm.LockUpdateModule);
     VmmInitializeFunctions(H);
+    VmmIommuFilterInitialize(H);
     H->vmm.fInitializationStatus = TRUE;
     ReleaseSRWLockExclusive(&LockSRW);
     return TRUE;

@@ -638,6 +638,9 @@ BOOL VmmDllCore_InitializeConfig(_In_ VMM_HANDLE H, _In_ DWORD argc, _In_ const 
         } else if(0 == _stricmp(argv[i], "-memmap-str")) {
             strcpy_s(H->cfg.szMemMapStr, _countof(H->cfg.szMemMapStr), argv[i + 1]);
             i += 2; continue;
+        } else if(0 == _stricmp(argv[i], "-iommu-filter")) {
+            H->cfg.fIommuFilterAuto = TRUE;
+            i += 1; continue;
         } else if(0 == _stricmp(argv[i], "-mount")) {
             i += 2; continue;
         } else if(0 == _strnicmp(argv[i], "-pagefile", 9)) {
@@ -923,6 +926,21 @@ VMM_HANDLE VmmDllCore_Initialize(_In_ DWORD argc, _In_ LPCSTR argv[], _Out_opt_ 
         goto fail;
     }
     // 10: vmm context (H->vmm) is initialized from here onwards - vmm functionality is working!
+    // 10.5: auto-detect IOMMU-allowed ranges if requested
+    if(H->cfg.fIommuFilterAuto) {
+        if(VmmIommuFilterAutoDetect(H)) {
+            VmmLog(H, MID_CORE, LOGLEVEL_INFO, "IOMMU filter: auto-detected %u allowed physical address range(s).\n", H->vmm.IommuFilter.cRanges);
+            for(DWORD iR = 0; iR < H->vmm.IommuFilter.cRanges; iR++) {
+                VmmLog(H, MID_CORE, LOGLEVEL_INFO, "IOMMU filter: range[%u] = %016llx - %016llx (%llu MB)\n",
+                    iR,
+                    H->vmm.IommuFilter.Ranges[iR].pa,
+                    H->vmm.IommuFilter.Ranges[iR].pa + H->vmm.IommuFilter.Ranges[iR].cb - 1,
+                    H->vmm.IommuFilter.Ranges[iR].cb / (1024 * 1024));
+            }
+        } else {
+            VmmLog(H, MID_CORE, LOGLEVEL_WARNING, "IOMMU filter: auto-detection found no restricted ranges (IOMMU may not be active).\n");
+        }
+    }
     // 11: add this vmm instance to the parent vmm instance (if any)
     if(H->cfg.qwParentVmmHandle) {
         if(!VmmDllCore_Initialize_HandleAttachParent(H, (VMM_HANDLE)H->cfg.qwParentVmmHandle)) {

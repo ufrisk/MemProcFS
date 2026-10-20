@@ -301,6 +301,60 @@ BOOL VMMDLL_ConfigSet(_In_ VMM_HANDLE hVMM, _In_ ULONG64 fOption, _In_ ULONG64 q
 
 
 //-----------------------------------------------------------------------------
+// IOMMU-AWARE DMA RANGE FILTER:
+// Constrain physical memory access to IOMMU-assigned ranges. Required for
+// correct operation under IOMMU-constrained Windows environments where the
+// DMA acquisition device is restricted to specific physical address windows.
+//-----------------------------------------------------------------------------
+
+typedef struct tdVMMDLL_IOMMU_RANGE {
+    ULONG64 pa;         // start physical address (will be page-aligned)
+    ULONG64 cb;         // range size in bytes (will be page-aligned)
+} VMMDLL_IOMMU_RANGE, *PVMMDLL_IOMMU_RANGE;
+
+/*
+* Enable or reconfigure the IOMMU-aware DMA range filter.
+* When enabled, physical reads/writes to addresses outside the specified
+* ranges are silently dropped before reaching the DMA device.
+* -- hVMM
+* -- fEnabled
+* -- cRanges = number of allowed ranges (max 64)
+* -- pRanges = array of allowed physical address ranges
+*/
+EXPORTED_FUNCTION
+VOID VMMDLL_IommuFilterSet(_In_ VMM_HANDLE hVMM, _In_ BOOL fEnabled, _In_ DWORD cRanges, _In_reads_opt_(cRanges) PVMMDLL_IOMMU_RANGE pRanges);
+
+/*
+* Add a single allowed physical address range to the IOMMU filter.
+* -- hVMM
+* -- pa = start physical address
+* -- cb = range size in bytes
+* -- return
+*/
+EXPORTED_FUNCTION _Success_(return)
+BOOL VMMDLL_IommuFilterAddRange(_In_ VMM_HANDLE hVMM, _In_ ULONG64 pa, _In_ ULONG64 cb);
+
+/*
+* Auto-detect IOMMU-allowed physical address ranges by probing physical
+* memory via the DMA device. Regions that the device cannot reach are
+* excluded from future reads/writes. Call after VMMDLL_Initialize.
+* -- hVMM
+* -- return = TRUE if IOMMU constraints were detected and the filter enabled.
+*/
+EXPORTED_FUNCTION _Success_(return)
+BOOL VMMDLL_IommuFilterAutoDetect(_In_ VMM_HANDLE hVMM);
+
+/*
+* Retrieve the number of scatter entries dropped by the IOMMU filter.
+* -- hVMM
+* -- return = number of dropped entries since last reset
+*/
+EXPORTED_FUNCTION
+ULONG64 VMMDLL_IommuFilterGetDropCount(_In_ VMM_HANDLE hVMM);
+
+
+
+//-----------------------------------------------------------------------------
 // FORWARD DECLARATIONS:
 //-----------------------------------------------------------------------------
 
