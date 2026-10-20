@@ -1725,6 +1725,9 @@ typedef struct tdVMM_CONTEXT {
         VMM_IOMMU_RANGE Ranges[64];
         SRWLOCK LockSRW;
         QWORD cDropped;         // stats: scatter entries dropped
+        BOOL fLearning;
+        PBYTE pbBitmapAllowed;
+        PBYTE pbBitmapBlocked;
     } IommuFilter;
     // memory access callback functionality:
     struct {
@@ -2074,6 +2077,10 @@ VOID VmmIommuFilterInitialize(_In_ VMM_HANDLE H);
 */
 _Success_(return)
 BOOL VmmIommuFilterAutoDetect(_In_ VMM_HANDLE H);
+
+VOID VmmIommuFilterLearnSuccess(_In_ VMM_HANDLE H, _In_ QWORD pa);
+VOID VmmIommuFilterLearnFailure(_In_ VMM_HANDLE H, _In_ QWORD pa);
+VOID VmmIommuFilterLearnFinalize(_In_ VMM_HANDLE H);
 
 /*
 * Scatter write virtual memory. Non contiguous 4096-byte pages.

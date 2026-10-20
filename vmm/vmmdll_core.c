@@ -926,20 +926,9 @@ VMM_HANDLE VmmDllCore_Initialize(_In_ DWORD argc, _In_ LPCSTR argv[], _Out_opt_ 
         goto fail;
     }
     // 10: vmm context (H->vmm) is initialized from here onwards - vmm functionality is working!
-    // 10.5: auto-detect IOMMU-allowed ranges if requested
-    if(H->cfg.fIommuFilterAuto) {
-        if(VmmIommuFilterAutoDetect(H)) {
-            VmmLog(H, MID_CORE, LOGLEVEL_INFO, "IOMMU filter: auto-detected %u allowed physical address range(s).\n", H->vmm.IommuFilter.cRanges);
-            for(DWORD iR = 0; iR < H->vmm.IommuFilter.cRanges; iR++) {
-                VmmLog(H, MID_CORE, LOGLEVEL_INFO, "IOMMU filter: range[%u] = %016llx - %016llx (%llu MB)\n",
-                    iR,
-                    H->vmm.IommuFilter.Ranges[iR].pa,
-                    H->vmm.IommuFilter.Ranges[iR].pa + H->vmm.IommuFilter.Ranges[iR].cb - 1,
-                    H->vmm.IommuFilter.Ranges[iR].cb / (1024 * 1024));
-            }
-        } else {
-            VmmLog(H, MID_CORE, LOGLEVEL_WARNING, "IOMMU filter: auto-detection found no restricted ranges (IOMMU may not be active).\n");
-        }
+    // 10.5: finalize IOMMU passive learning after init has exercised read paths
+    if(H->cfg.fIommuFilterAuto && H->vmm.IommuFilter.fLearning) {
+        VmmIommuFilterLearnFinalize(H);
     }
     // 11: add this vmm instance to the parent vmm instance (if any)
     if(H->cfg.qwParentVmmHandle) {
