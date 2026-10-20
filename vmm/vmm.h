@@ -1267,6 +1267,7 @@ typedef struct tdVMMCONFIG {
     BOOL fVMPhysicalOnly;               // parse virtual machines as physical memory only (less resource intense)
     BOOL fMemMapAuto;
     BOOL fMemMapNone;
+    BOOL fIommuFilterAuto;              // auto-detect IOMMU-allowed ranges on init
     // values below:
     DWORD dwPteQualityThreshold;        // max number of allowed invalid PTE entries in a page table (default: 0x20)
     QWORD tcTimeStart;                  // start time GetTickCount64()
@@ -1603,6 +1604,12 @@ typedef struct tdVMM_DYNAMIC_LOAD_FUNCTIONS {
 // MEM callback function definition.
 typedef VOID(*VMM_MEM_CALLBACK_PFN)(_In_opt_ PVOID ctxUser, _In_ DWORD dwPID, _In_ DWORD cpMEMs, _In_ PPMEM_SCATTER ppMEMs);
 
+// IOMMU-safe DMA range filter type.
+typedef struct tdVMM_IOMMU_RANGE {
+    QWORD pa;           // start physical address (page-aligned)
+    QWORD cb;           // size in bytes (page-aligned)
+} VMM_IOMMU_RANGE, *PVMM_IOMMU_RANGE;
+
 // forward declarations of non-public types:
 typedef struct tdVMMWORK_CONTEXT            *PVMMWORK_CONTEXT;
 typedef struct tdFC_CONTEXT                 *PFC_CONTEXT;
@@ -1707,6 +1714,21 @@ typedef struct tdVMM_CONTEXT {
         POB_MAP pmPrototypePte;     // map with mm_vad.c managed data
     } Cache;
     VMMWIN_OBJECT_TYPE_TABLE ObjectTypeTable;
+    // IOMMU-aware DMA range filter:
+    // When enabled, scatter reads to physical addresses outside the allowed
+    // ranges are silently dropped before reaching the device. Required for
+    // correct operation under IOMMU-constrained Windows environments where
+    // the DMA device is restricted to specific physical address regions.
+    struct {
+        BOOL fEnabled;
+        DWORD cRanges;
+        VMM_IOMMU_RANGE Ranges[64];
+        SRWLOCK LockSRW;
+        QWORD cDropped;         // stats: scatter entries dropped
+        BOOL fLearning;
+        PBYTE pbBitmapAllowed;
+        PBYTE pbBitmapBlocked;
+    } IommuFilter;
     // memory access callback functionality:
     struct {
         PVOID ctxReadPhysicalPre;
@@ -2018,6 +2040,47 @@ VOID VmmReadScatterVirtual(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess, _Inout
 * -- flags = flags as in VMM_FLAG_*, [VMM_FLAG_NOCACHE for supression of caching]
 */
 VOID VmmReadScatterPhysical(_In_ VMM_HANDLE H, _Inout_ PPMEM_SCATTER ppMEMsPhys, _In_ DWORD cpMEMsPhys, _In_ QWORD flags);
+
+/*
+* Configure IOMMU-aware DMA range filter. When enabled, physical memory
+* reads/writes outside specified ranges are silently dropped before reaching
+* the DMA device. Required for environments where IOMMU restricts the
+* device to specific physical address windows.
+* -- H
+* -- fEnabled = enable/disable the filter
+* -- cRanges = number of allowed ranges (max 64)
+* -- pRanges = array of allowed physical address ranges
+*/
+VOID VmmIommuFilterSet(_In_ VMM_HANDLE H, _In_ BOOL fEnabled, _In_ DWORD cRanges, _In_reads_opt_(cRanges) PVMM_IOMMU_RANGE pRanges);
+
+/*
+* Add a single allowed physical address range to the IOMMU filter.
+* -- H
+* -- pa = start physical address
+* -- cb = range size in bytes
+* -- return
+*/
+_Success_(return)
+BOOL VmmIommuFilterAddRange(_In_ VMM_HANDLE H, _In_ QWORD pa, _In_ QWORD cb);
+
+/*
+* Initialize the IOMMU filter (called during VMM init).
+*/
+VOID VmmIommuFilterInitialize(_In_ VMM_HANDLE H);
+
+/*
+* Auto-detect IOMMU-allowed physical address ranges by probing memory at
+* 2MB strides via LcReadScatterEx and checking per-page result codes.
+* Ranges that return COMPLETER_ABORT or NO_COMPLETION are excluded.
+* -- H
+* -- return = TRUE if ranges were detected and filter was enabled.
+*/
+_Success_(return)
+BOOL VmmIommuFilterAutoDetect(_In_ VMM_HANDLE H);
+
+VOID VmmIommuFilterLearnSuccess(_In_ VMM_HANDLE H, _In_ QWORD pa);
+VOID VmmIommuFilterLearnFailure(_In_ VMM_HANDLE H, _In_ QWORD pa);
+VOID VmmIommuFilterLearnFinalize(_In_ VMM_HANDLE H);
 
 /*
 * Scatter write virtual memory. Non contiguous 4096-byte pages.

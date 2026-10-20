@@ -347,6 +347,9 @@ PVMMOB_CACHE_MEM VmmCacheGet_FromDeviceOnMiss(_In_ VMM_HANDLE H, _In_ DWORD dwTb
         }
         if(!pMEM->f) {
             LcReadScatter(H->hLC, 1, &pMEM);
+            if(H->vmm.IommuFilter.fLearning && !MEM_SCATTER_ADDR_ISINVALID(pMEM)) {
+                if(pMEM->f) { VmmIommuFilterLearnSuccess(H, pMEM->qwA); } else { VmmIommuFilterLearnFailure(H, pMEM->qwA); }
+            }
         }
         if(pMEM->f) {
             Ob_INCREF(pObReservedMEM);
@@ -380,6 +383,13 @@ VOID VmmTlbGetPageTableEx_RetrievePhysical(_In_ VMM_HANDLE H, _In_ PVMM_V2P_ENTR
         }
     }
     LcReadScatter(H->hLC, cV2Ps, ppMEMs);
+    if(H->vmm.IommuFilter.fLearning) {
+        for(i = 0; i < cV2Ps; i++) {
+            if(ppMEMs[i] && !MEM_SCATTER_ADDR_ISINVALID(ppMEMs[i])) {
+                if(ppMEMs[i]->f) { VmmIommuFilterLearnSuccess(H, ppMEMs[i]->qwA); } else { VmmIommuFilterLearnFailure(H, ppMEMs[i]->qwA); }
+            }
+        }
+    }
     for(i = 0; i < cV2Ps; i++) {
         pV2P = ppV2Ps[i];
         pMEM = ppMEMs[i];
@@ -581,6 +591,13 @@ VOID VmmTlbPrefetch(_In_ VMM_HANDLE H, _In_ POB_SET pTlbPrefetch)
             }
         }
         LcReadScatter(H->hLC, cTlbs, ppMEMs);
+        if(H->vmm.IommuFilter.fLearning) {
+            for(i = 0; i < cTlbs; i++) {
+                if(ppMEMs[i] && !MEM_SCATTER_ADDR_ISINVALID(ppMEMs[i])) {
+                    if(ppMEMs[i]->f) { VmmIommuFilterLearnSuccess(H, ppMEMs[i]->qwA); } else { VmmIommuFilterLearnFailure(H, ppMEMs[i]->qwA); }
+                }
+            }
+        }
         for(i = 0; i < cTlbs; i++) {
             if(ppMEMs[i]->f && !VmmTlbPageTableVerify(H, ppMEMs[i]->pb, ppMEMs[i]->qwA, FALSE)) {
                 ppMEMs[i]->f = FALSE;  // "fail" invalid page table read
@@ -1407,6 +1424,117 @@ BOOL VmmProcessTableCreateInitial(_In_ VMM_HANDLE H)
 
 
 // ----------------------------------------------------------------------------
+// IOMMU-AWARE DMA RANGE FILTER
+// Constrains physical memory access to only IOMMU-assigned ranges.
+// Required for correct operation under IOMMU-constrained environments
+// where the DMA device may only access specific physical address windows.
+// ----------------------------------------------------------------------------
+
+VOID VmmIommuFilterSet(_In_ VMM_HANDLE H, _In_ BOOL fEnabled, _In_ DWORD cRanges, _In_reads_opt_(cRanges) PVMM_IOMMU_RANGE pRanges)
+{
+    AcquireSRWLockExclusive(&H->vmm.IommuFilter.LockSRW);
+    H->vmm.IommuFilter.fEnabled = fEnabled;
+    if(fEnabled && pRanges && cRanges) {
+        H->vmm.IommuFilter.cRanges = min(cRanges, 64);
+        for(DWORD i = 0; i < H->vmm.IommuFilter.cRanges; i++) {
+            H->vmm.IommuFilter.Ranges[i].pa = pRanges[i].pa & ~0xfffULL;
+            H->vmm.IommuFilter.Ranges[i].cb = (pRanges[i].cb + 0xfff) & ~0xfffULL;
+        }
+    } else if(!fEnabled) {
+        H->vmm.IommuFilter.cRanges = 0;
+    }
+    H->vmm.IommuFilter.cDropped = 0;
+    ReleaseSRWLockExclusive(&H->vmm.IommuFilter.LockSRW);
+}
+
+BOOL VmmIommuFilterAddRange(_In_ VMM_HANDLE H, _In_ QWORD pa, _In_ QWORD cb)
+{
+    BOOL fResult = FALSE;
+    AcquireSRWLockExclusive(&H->vmm.IommuFilter.LockSRW);
+    if(H->vmm.IommuFilter.cRanges < 64) {
+        DWORD i = H->vmm.IommuFilter.cRanges;
+        H->vmm.IommuFilter.Ranges[i].pa = pa & ~0xfffULL;
+        H->vmm.IommuFilter.Ranges[i].cb = (cb + 0xfff) & ~0xfffULL;
+        H->vmm.IommuFilter.cRanges++;
+        fResult = TRUE;
+    }
+    ReleaseSRWLockExclusive(&H->vmm.IommuFilter.LockSRW);
+    return fResult;
+}
+
+VOID VmmIommuFilterInitialize(_In_ VMM_HANDLE H)
+{
+    InitializeSRWLock(&H->vmm.IommuFilter.LockSRW);
+    H->vmm.IommuFilter.fEnabled = FALSE;
+    H->vmm.IommuFilter.cRanges = 0;
+    H->vmm.IommuFilter.cDropped = 0;
+    H->vmm.IommuFilter.fLearning = FALSE;
+}
+
+// IOMMU passive learning: bitmap tracks 2MB regions (1 bit per 2MB)
+// 64GB coverage = 32768 bits = 4096 bytes
+#define IOMMU_LEARN_STRIDE_BITS     21          // 2MB per bit
+#define IOMMU_LEARN_MAX_PA          0x1000000000ULL  // 64GB coverage
+#define IOMMU_LEARN_BITMAP_SIZE     (IOMMU_LEARN_MAX_PA >> IOMMU_LEARN_STRIDE_BITS >> 3)
+
+/*
+* Record a successful read at a physical address into the learning bitmap.
+*/
+VOID VmmIommuFilterLearnSuccess(_In_ VMM_HANDLE H, _In_ QWORD pa)
+{
+    if(!H->vmm.IommuFilter.fLearning || !H->vmm.IommuFilter.pbBitmapAllowed) { return; }
+    if(pa >= IOMMU_LEARN_MAX_PA) { return; }
+    DWORD bit = (DWORD)(pa >> IOMMU_LEARN_STRIDE_BITS);
+    InterlockedOr8((volatile char *)&H->vmm.IommuFilter.pbBitmapAllowed[bit >> 3], (char)(1 << (bit & 7)));
+}
+
+/*
+* Record a failed read (completer abort) at a physical address.
+*/
+VOID VmmIommuFilterLearnFailure(_In_ VMM_HANDLE H, _In_ QWORD pa)
+{
+    if(!H->vmm.IommuFilter.fLearning || !H->vmm.IommuFilter.pbBitmapBlocked) { return; }
+    if(pa >= IOMMU_LEARN_MAX_PA) { return; }
+    DWORD bit = (DWORD)(pa >> IOMMU_LEARN_STRIDE_BITS);
+    InterlockedOr8((volatile char *)&H->vmm.IommuFilter.pbBitmapBlocked[bit >> 3], (char)(1 << (bit & 7)));
+}
+
+/*
+* Log stats after init. Learning continues — the blocked bitmap grows
+* over time as reads naturally encounter IOMMU-restricted regions.
+* Reads to known-blocked regions are silently dropped in the scatter paths.
+*/
+VOID VmmIommuFilterLearnFinalize(_In_ VMM_HANDLE H)
+{
+    DWORD bit, totalBits, cAllowed = 0, cBlocked = 0;
+    if(!H->vmm.IommuFilter.pbBitmapAllowed || !H->vmm.IommuFilter.pbBitmapBlocked) { return; }
+    totalBits = (DWORD)(IOMMU_LEARN_MAX_PA >> IOMMU_LEARN_STRIDE_BITS);
+    for(bit = 0; bit < totalBits; bit++) {
+        if((H->vmm.IommuFilter.pbBitmapAllowed[bit >> 3] >> (bit & 7)) & 1) { cAllowed++; }
+        if((H->vmm.IommuFilter.pbBitmapBlocked[bit >> 3] >> (bit & 7)) & 1) { cBlocked++; }
+    }
+    VmmLog(H, MID_CORE, LOGLEVEL_INFO, "IOMMU filter: init observed %u allowed and %u blocked 2MB regions. Continuous learning active.\n", cAllowed, cBlocked);
+    LocalFree(H->vmm.IommuFilter.pbBitmapAllowed);
+    LocalFree(H->vmm.IommuFilter.pbBitmapBlocked);
+    H->vmm.IommuFilter.pbBitmapAllowed = NULL;
+    H->vmm.IommuFilter.pbBitmapBlocked = NULL;
+}
+
+BOOL VmmIommuFilterAutoDetect(_In_ VMM_HANDLE H)
+{
+    H->vmm.IommuFilter.pbBitmapAllowed = (PBYTE)LocalAlloc(LMEM_ZEROINIT, IOMMU_LEARN_BITMAP_SIZE);
+    H->vmm.IommuFilter.pbBitmapBlocked = (PBYTE)LocalAlloc(LMEM_ZEROINIT, IOMMU_LEARN_BITMAP_SIZE);
+    if(!H->vmm.IommuFilter.pbBitmapAllowed || !H->vmm.IommuFilter.pbBitmapBlocked) {
+        if(H->vmm.IommuFilter.pbBitmapAllowed) { LocalFree(H->vmm.IommuFilter.pbBitmapAllowed); H->vmm.IommuFilter.pbBitmapAllowed = NULL; }
+        if(H->vmm.IommuFilter.pbBitmapBlocked) { LocalFree(H->vmm.IommuFilter.pbBitmapBlocked); H->vmm.IommuFilter.pbBitmapBlocked = NULL; }
+        return FALSE;
+    }
+    H->vmm.IommuFilter.fLearning = TRUE;
+    VmmLog(H, MID_CORE, LOGLEVEL_INFO, "IOMMU filter: passive learning started. Ranges will be learned from normal operation.\n");
+    return TRUE;
+}
+
+// ----------------------------------------------------------------------------
 // INTERNAL VMMU FUNCTIONALITY: VIRTUAL MEMORY ACCESS.
 // ----------------------------------------------------------------------------
 
@@ -1417,6 +1545,42 @@ VOID VmmWriteScatterPhysical(_In_ VMM_HANDLE H, _Inout_ PPMEM_SCATTER ppMEMsPhys
     // 1: pre-callback
     if(H->vmm.MemUserCB.pfnWritePhysicalPreCB) {
         H->vmm.MemUserCB.pfnWritePhysicalPreCB(H->vmm.MemUserCB.ctxWritePhysicalPre, (DWORD)-1, cpMEMsPhys, ppMEMsPhys);
+    }
+    // 1.5: IOMMU-aware range filter for writes
+    if(H->vmm.IommuFilter.fEnabled) {
+        AcquireSRWLockShared(&H->vmm.IommuFilter.LockSRW);
+        for(i = 0; i < cpMEMsPhys; i++) {
+            pMEM = ppMEMsPhys[i];
+            if(MEM_SCATTER_ADDR_ISINVALID(pMEM) || pMEM->f) { continue; }
+            BOOL fAllowed = FALSE;
+            for(DWORD iR = 0; iR < H->vmm.IommuFilter.cRanges; iR++) {
+                QWORD rPa = H->vmm.IommuFilter.Ranges[iR].pa;
+                QWORD rCb = H->vmm.IommuFilter.Ranges[iR].cb;
+                if((pMEM->qwA >= rPa) && (pMEM->qwA + pMEM->cb <= rPa + rCb)) {
+                    fAllowed = TRUE;
+                    break;
+                }
+            }
+            if(!fAllowed) {
+                pMEM->qwA = MEM_SCATTER_ADDR_INVALID;
+                InterlockedIncrement64(&H->vmm.IommuFilter.cDropped);
+            }
+        }
+        ReleaseSRWLockShared(&H->vmm.IommuFilter.LockSRW);
+    }
+    // 1.7: IOMMU continuous learning — drop writes to known-blocked regions
+    if(H->vmm.IommuFilter.fLearning && H->vmm.IommuFilter.pbBitmapBlocked) {
+        for(i = 0; i < cpMEMsPhys; i++) {
+            pMEM = ppMEMsPhys[i];
+            if(MEM_SCATTER_ADDR_ISINVALID(pMEM) || pMEM->f) { continue; }
+            if(pMEM->qwA < IOMMU_LEARN_MAX_PA) {
+                DWORD dwBit = (DWORD)(pMEM->qwA >> IOMMU_LEARN_STRIDE_BITS);
+                if((H->vmm.IommuFilter.pbBitmapBlocked[dwBit >> 3] >> (dwBit & 7)) & 1) {
+                    pMEM->qwA = MEM_SCATTER_ADDR_INVALID;
+                    InterlockedIncrement64(&H->vmm.IommuFilter.cDropped);
+                }
+            }
+        }
     }
     // 2: write:
     LcWriteScatter(H->hLC, cpMEMsPhys, ppMEMsPhys);
@@ -1522,8 +1686,56 @@ VOID VmmReadScatterPhysical(_In_ VMM_HANDLE H, _Inout_ PPMEM_SCATTER ppMEMsPhys,
             return;
         }
     }
+    // 2.5: IOMMU-aware range filter - drop scatter entries outside allowed ranges
+    if(H->vmm.IommuFilter.fEnabled) {
+        AcquireSRWLockShared(&H->vmm.IommuFilter.LockSRW);
+        for(i = 0; i < cpMEMsPhys; i++) {
+            pMEM = ppMEMsPhys[i];
+            if(MEM_SCATTER_ADDR_ISINVALID(pMEM) || pMEM->f) { continue; }
+            BOOL fAllowed = FALSE;
+            for(DWORD iR = 0; iR < H->vmm.IommuFilter.cRanges; iR++) {
+                QWORD rPa = H->vmm.IommuFilter.Ranges[iR].pa;
+                QWORD rCb = H->vmm.IommuFilter.Ranges[iR].cb;
+                if((pMEM->qwA >= rPa) && (pMEM->qwA + pMEM->cb <= rPa + rCb)) {
+                    fAllowed = TRUE;
+                    break;
+                }
+            }
+            if(!fAllowed) {
+                pMEM->qwA = MEM_SCATTER_ADDR_INVALID;
+                InterlockedIncrement64(&H->vmm.IommuFilter.cDropped);
+            }
+        }
+        ReleaseSRWLockShared(&H->vmm.IommuFilter.LockSRW);
+    }
+    // 2.5: IOMMU continuous learning — drop reads to known-blocked regions
+    if(H->vmm.IommuFilter.fLearning && H->vmm.IommuFilter.pbBitmapBlocked) {
+        for(i = 0; i < cpMEMsPhys; i++) {
+            pMEM = ppMEMsPhys[i];
+            if(MEM_SCATTER_ADDR_ISINVALID(pMEM) || pMEM->f) { continue; }
+            if(pMEM->qwA < IOMMU_LEARN_MAX_PA) {
+                DWORD dwBit = (DWORD)(pMEM->qwA >> IOMMU_LEARN_STRIDE_BITS);
+                if((H->vmm.IommuFilter.pbBitmapBlocked[dwBit >> 3] >> (dwBit & 7)) & 1) {
+                    pMEM->qwA = MEM_SCATTER_ADDR_INVALID;
+                    InterlockedIncrement64(&H->vmm.IommuFilter.cDropped);
+                }
+            }
+        }
+    }
     // 3: read!
     LcReadScatter(H->hLC, cpMEMsPhys, ppMEMsPhys);
+    // 3.5: IOMMU passive learning — observe read results
+    if(H->vmm.IommuFilter.fLearning) {
+        for(i = 0; i < cpMEMsPhys; i++) {
+            pMEM = ppMEMsPhys[i];
+            if(MEM_SCATTER_ADDR_ISINVALID(pMEM)) { continue; }
+            if(pMEM->f) {
+                VmmIommuFilterLearnSuccess(H, pMEM->qwA);
+            } else {
+                VmmIommuFilterLearnFailure(H, pMEM->qwA);
+            }
+        }
+    }
     // 4: post-callback
     if(H->vmm.MemUserCB.pfnReadPhysicalPostCB && !(flags & VMM_FLAG_NOMEMCALLBACK)) {
         H->vmm.MemUserCB.pfnReadPhysicalPostCB(H->vmm.MemUserCB.ctxReadPhysicalPost, (DWORD)-1, cpMEMsPhys, ppMEMsPhys);
@@ -2142,6 +2354,7 @@ BOOL VmmInitialize(_In_ VMM_HANDLE H)
     InitializeCriticalSection(&H->vmm.LockUpdateMap);
     InitializeCriticalSection(&H->vmm.LockUpdateModule);
     VmmInitializeFunctions(H);
+    VmmIommuFilterInitialize(H);
     H->vmm.fInitializationStatus = TRUE;
     ReleaseSRWLockExclusive(&LockSRW);
     return TRUE;

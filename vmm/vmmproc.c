@@ -256,6 +256,9 @@ BOOL VmmProcInitialize(_In_ VMM_HANDLE H)
 {
     BOOL result = FALSE;
     if(!VmmInitialize(H)) { return FALSE; }
+    if(H->cfg.fIommuFilterAuto) {
+        VmmIommuFilterAutoDetect(H);
+    }
     if(H->cfg.fPhysicalOnlyMemory) {
         return VmmProcUserTryInitializePhysical(H);
     }

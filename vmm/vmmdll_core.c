@@ -638,6 +638,9 @@ BOOL VmmDllCore_InitializeConfig(_In_ VMM_HANDLE H, _In_ DWORD argc, _In_ const 
         } else if(0 == _stricmp(argv[i], "-memmap-str")) {
             strcpy_s(H->cfg.szMemMapStr, _countof(H->cfg.szMemMapStr), argv[i + 1]);
             i += 2; continue;
+        } else if(0 == _stricmp(argv[i], "-iommu-filter")) {
+            H->cfg.fIommuFilterAuto = TRUE;
+            i += 1; continue;
         } else if(0 == _stricmp(argv[i], "-mount")) {
             i += 2; continue;
         } else if(0 == _strnicmp(argv[i], "-pagefile", 9)) {
@@ -923,6 +926,10 @@ VMM_HANDLE VmmDllCore_Initialize(_In_ DWORD argc, _In_ LPCSTR argv[], _Out_opt_ 
         goto fail;
     }
     // 10: vmm context (H->vmm) is initialized from here onwards - vmm functionality is working!
+    // 10.5: finalize IOMMU passive learning after init has exercised read paths
+    if(H->cfg.fIommuFilterAuto && H->vmm.IommuFilter.fLearning) {
+        VmmIommuFilterLearnFinalize(H);
+    }
     // 11: add this vmm instance to the parent vmm instance (if any)
     if(H->cfg.qwParentVmmHandle) {
         if(!VmmDllCore_Initialize_HandleAttachParent(H, (VMM_HANDLE)H->cfg.qwParentVmmHandle)) {
