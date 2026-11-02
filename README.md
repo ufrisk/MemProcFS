@@ -271,3 +271,6 @@ v5.8
 * New module: /sys/proc/cpu - process CPU usage, current and total.
 * New API function: VMMDLL_MemVirtualQuery.
 * New API function: VMMDLL_WinReg_QueryNameOriginalU.
+
+Latest:
+* Bug fixes.

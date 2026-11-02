@@ -1452,8 +1452,12 @@ BOOL FcIsProcessSkip(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
         }
         return TRUE;
     }
+    if(H->cfg.ForensicProcessSkipList.cusz == 0) {
+        return FALSE;
+    }
     return
-        (H->cfg.ForensicProcessSkipList.cusz && CharUtil_StrCmpAnyEx(CharUtil_StrEquals, pProcess->szName, TRUE, H->cfg.ForensicProcessSkipList.cusz, (LPCSTR*)H->cfg.ForensicProcessSkipList.pusz));
+        CharUtil_StrCmpAnyEx(CharUtil_StrEquals, pProcess->szName, TRUE, H->cfg.ForensicProcessSkipList.cusz, (LPCSTR *)H->cfg.ForensicProcessSkipList.pusz) ||
+        CharUtil_StrCmpAnyEx(CharUtil_StrEquals, pProcess->pObPersistent->uszNameLong, TRUE, H->cfg.ForensicProcessSkipList.cusz, (LPCSTR *)H->cfg.ForensicProcessSkipList.pusz);
 }
 
 
@@ -1464,7 +1468,7 @@ BOOL FcIsProcessSkip(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProcess)
 
 #define FCINITIALIZE_PROGRESS_UPDATE(dwProgressPercent)   {                                                                                 \
     if(H->fAbort) { goto fail; }                                                                                                            \
-    H->fc->cProgressPercent = dwProgressPercent;                                                                                                           \
+    H->fc->cProgressPercent = dwProgressPercent;                                                                                            \
     VmmLog(H, MID_FORENSIC, LOGLEVEL_5_DEBUG, "INIT %i%% time=%llis", H->fc->cProgressPercent, ((GetTickCount64() - tcStart) / 1000));      \
 }
 
