@@ -263,7 +263,7 @@ static BOOL VmmNetDns_LookupHashTable(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProc
     PVMM_MAP_MODULEENTRY peModule = NULL;
     PVMMOB_MAP_HEAP pObHeapMap = NULL;
     PVMM_MAP_HEAPENTRY peHeap = NULL;
-    DWORD i, c;
+    DWORD i, iHeap, iEntry, c;
     PVMMOB_MAP_HEAPALLOC pObHeapAllocMap = NULL;
     PVMM_MAP_HEAPALLOCENTRY peAlloc, peAllocPrev = NULL;
     DWORD cbPTR = (H->vmm.f32 ? 4 : 8);
@@ -289,7 +289,7 @@ static BOOL VmmNetDns_LookupHashTable(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProc
     }
     // 2: try lookup DNS hash table using heuristics:
     //    in XP->Win10 it's assumed the largest heap allocation in the topmost heap is the DNS hash table.
-    //    in Win11+ any allocation larger than 0x7000 bytes is a candidate and is read and "verified".
+    //    in Win11+ qualifying allocations in every heap are read and "verified".
     if(VmmMap_GetHeap(H, pProcess, &pObHeapMap) && pObHeapMap->cMap) {
         // 2.1 - locate the topmost heap:
         for(i = 0; i < pObHeapMap->cMap; i++) {
@@ -297,8 +297,10 @@ static BOOL VmmNetDns_LookupHashTable(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProc
                 peHeap = &pObHeapMap->pMap[i];
             }
         }
-        if(peHeap && VmmMap_GetHeapAlloc(H, pProcess, peHeap->va, &pObHeapAllocMap)) {
-            if(H->vmm.kernel.dwVersionBuild >= 22000) {
+        if(H->vmm.kernel.dwVersionBuild >= 22000) {
+            for(iHeap = pObHeapMap->cMap; iHeap && !fResult; iHeap--) {
+                peHeap = &pObHeapMap->pMap[iHeap - 1];
+                if(!VmmMap_GetHeapAlloc(H, pProcess, peHeap->va, &pObHeapAllocMap)) { continue; }
                 // Win11+ heuristics: read any allocation larger than 0x7000 and integrity check it.
                 for(i = 0; i < pObHeapAllocMap->cMap; i++) {
                     peAlloc = &pObHeapAllocMap->pMap[i];
@@ -306,8 +308,8 @@ static BOOL VmmNetDns_LookupHashTable(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProc
                     if(VmmReadAlloc(H, pProcess, peAlloc->va, (PBYTE*)&pvaT, peAlloc->cb, 0)) {
                         fResult = TRUE;
                         c = (peAlloc->cb / 16) - 2; // number of entries in the hash table.
-                        for(i = 0; i < c; i++) {
-                            if(!VMM_UADDR64_8(pvaT[i])) {
+                        for(iEntry = 0; iEntry < c; iEntry++) {
+                            if(!VMM_UADDR64_8(pvaT[iEntry])) {
                                 fResult = FALSE;
                                 break;
                             }
@@ -320,21 +322,22 @@ static BOOL VmmNetDns_LookupHashTable(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pProc
                         }
                     }
                 }
-            } else {
-                // XP->Win10 heuristics: try to find the DNS hash table in the heap allocations:
-                for(i = 0; i < pObHeapAllocMap->cMap; i++) {
-                    peAlloc = &pObHeapAllocMap->pMap[i];
-                    if(peAlloc->cb < cbMinSizeHashTable) { continue; }
-                    if(peAlloc->cb % cbPTR) { continue; }
-                    if(!peAllocPrev || (peAllocPrev->cb < peAlloc->cb)) {
-                        peAllocPrev = peAlloc;
-                    }
+                Ob_DECREF_NULL(&pObHeapAllocMap);
+            }
+        } else if(peHeap && VmmMap_GetHeapAlloc(H, pProcess, peHeap->va, &pObHeapAllocMap)) {
+            // XP->Win10 heuristics: try to find the DNS hash table in the heap allocations:
+            for(i = 0; i < pObHeapAllocMap->cMap; i++) {
+                peAlloc = &pObHeapAllocMap->pMap[i];
+                if(peAlloc->cb < cbMinSizeHashTable) { continue; }
+                if(peAlloc->cb % cbPTR) { continue; }
+                if(!peAllocPrev || (peAllocPrev->cb < peAlloc->cb)) {
+                    peAllocPrev = peAlloc;
                 }
-                if(peAllocPrev) {
-                    fResult = TRUE;
-                    *pvaHashTableBase = peAllocPrev->va;
-                    *pcHashTable = (peAllocPrev->cb / (H->vmm.f32 ? 4 : 8)) - 4;
-                }
+            }
+            if(peAllocPrev) {
+                fResult = TRUE;
+                *pvaHashTableBase = peAllocPrev->va;
+                *pcHashTable = (peAllocPrev->cb / (H->vmm.f32 ? 4 : 8)) - 4;
             }
         }
     }
