@@ -23,6 +23,7 @@ NTSTATUS M_FcJSON_TimelineReadInfo(_In_ VMM_HANDLE H, _Out_ PBYTE pb, _In_ DWORD
     LPSTR szj, szuBuffer = NULL;
     DWORD dwEntryType, dwEntryAction;
     CHAR szTime[21];
+    *pcbRead = 0;
     if(!FcTimeline_GetIdFromPosition(H, 0, FC_FORMAT_TYPE_JSON, cbOffset, &qwIdBase)) { goto fail; }
     if(!FcTimeline_GetIdFromPosition(H, 0, FC_FORMAT_TYPE_JSON, cbOffset + cb, &qwIdTop)) { goto fail; }
     cId = min(cb / FC_LINELENGTH_TIMELINE_JSON, qwIdTop - qwIdBase) + 1;
@@ -49,9 +50,11 @@ NTSTATUS M_FcJSON_TimelineReadInfo(_In_ VMM_HANDLE H, _Out_ PBYTE pb, _In_ DWORD
             pe->data32,
             pe->data64
         );
+        // Keep the fixed record overhead in sync with the database byte offsets.
+        if(cbln > FC_LINELENGTH_TIMELINE_JSON - 3) { goto fail; }
         CharUtil_UtoJ(pe->uszText, -1, szuBuffer + o, (DWORD)(cszuBuffer - o), &szj, NULL, CHARUTIL_FLAG_TRUNCATE_ONFAIL_NULLSTR);
         o += strlen(szuBuffer + o);
-        o += snprintf(szuBuffer + o, cszuBuffer - o, "\"}%*s\n", (DWORD)min(64, FC_LINELENGTH_TIMELINE_JSON - cbln - 3), "");
+        o += snprintf(szuBuffer + o, cszuBuffer - o, "\"}%*s\n", (DWORD)(FC_LINELENGTH_TIMELINE_JSON - cbln - 3), "");
     }
     nt = Util_VfsReadFile_FromPBYTE(szuBuffer, o, pb, cb, pcbRead, cbOffset - cbOffsetBuffer);
 fail:
