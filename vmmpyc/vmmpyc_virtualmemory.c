@@ -112,7 +112,7 @@ BOOL VmmPycVirtualMemory_InitializeType(PyObject *pModule)
     static PyMethodDef PyMethods[] = {
         {"virt2phys", (PyCFunction)VmmPycVirtualMemory_virt2phys, METH_VARARGS, "Translate virtual address to physical address."},
         {"read", (PyCFunction)VmmPycVirtualMemory_read, METH_VARARGS, "Read contigious virtual memory."},
-        {"read_scatter", (PyCFunction)VmmPycVirtualMemory_read_scatter, METH_VARARGS, "Read scatter virtual 4kB memory pages."},
+        {"read_scatter", (PyCFunction)VmmPycVirtualMemory_read_scatter, METH_VARARGS, "Read scatter virtual 4kB memory pages. 'f' is True if the page was read; otherwise 'data' is not valid."},
         {"read_type", (PyCFunction)VmmPycVirtualMemory_read_type, METH_VARARGS, "Read user-defined type(s)."},
         {"write", (PyCFunction)VmmPycVirtualMemory_write, METH_VARARGS, "Write contigious virtual memory."},
         {"scatter_initialize", (PyCFunction)VmmPycVirtualMemory_scatter_initialize, METH_VARARGS, "Initialize a Scatter memory object used for efficient reads."},

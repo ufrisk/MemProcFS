@@ -91,7 +91,7 @@ BOOL VmmPycPhysicalMemory_InitializeType(PyObject * pModule)
 {
     static PyMethodDef PyMethods[] = {
         {"read", (PyCFunction)VmmPycPhysicalMemory_read, METH_VARARGS, "Read contigious physical memory."},
-        {"read_scatter", (PyCFunction)VmmPycPhysicalMemory_read_scatter, METH_VARARGS, "Read scatter physical 4kB memory pages."},
+        {"read_scatter", (PyCFunction)VmmPycPhysicalMemory_read_scatter, METH_VARARGS, "Read scatter physical 4kB memory pages. 'f' is True if the page was read; otherwise 'data' is not valid."},
         {"read_type", (PyCFunction)VmmPycPhysicalMemory_read_type, METH_VARARGS, "Read user-defined type(s)."},
         {"write", (PyCFunction)VmmPycPhysicalMemory_write, METH_VARARGS, "Write contigious physical memory."},
         {"scatter_initialize", (PyCFunction)VmmPycPhysicalMemory_scatter_initialize, METH_VARARGS, "Initialize a Scatter memory object used for efficient reads."},
