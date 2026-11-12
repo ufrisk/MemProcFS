@@ -54,6 +54,7 @@ PyObject* VmmPyc_MemReadScatter(_In_ VMM_HANDLE H, _In_ DWORD dwPID, _In_ LPSTR 
             PyDict_SetItemString_DECREF(pyDict, ((dwPID == 0xffffffff) ? "pa" : "va"), PyLong_FromUnsignedLongLong(pMEM->qwA));
             PyDict_SetItemString_DECREF(pyDict, "data", PyBytes_FromStringAndSize((const char *)pMEM->pb, 0x1000));
             PyDict_SetItemString_DECREF(pyDict, "size", PyLong_FromUnsignedLong(pMEM->cb));
+            PyDict_SetItemString_DECREF(pyDict, "f", PyBool_FromLong(pMEM->f));
             PyList_Append_DECREF(pyListDst, pyDict);
         }
     }
