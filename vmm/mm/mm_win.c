@@ -441,6 +441,61 @@ finish:
 }
 
 /*
+* Estimate the top 32 bits of nt!MiState->Hardware.InvalidPteMask when it can't
+* be read (e.g. MiState is missing from the offline symbols). The kernel adds the
+* mask to software PTEs with SwizzleBit clear, so if the mask is 0x2000 that bit
+* is set in PageFileHigh of every such page file PTE. Page file PTEs in user page
+* tables are sampled, at most four per page table since page file slots are often
+* given out in runs. If the bit is missing in a quarter or more of them the mask
+* can't be 0x2000 and 0 is returned. Otherwise the default 0x2000 is kept.
+* -- H
+* -- return
+*/
+DWORD MmWin_MemCompress_EstimateInvalidPteMask64(_In_ VMM_HANDLE H)
+{
+    QWORD i4, i3, i2, i1, pte;
+    DWORD cPT = 0, cPte = 0, cPtePT, cPteMaskBit = 0;
+    PVMM_PROCESS pObProcess = NULL;
+    PVMMOB_CACHE_MEM pObPML4 = NULL, pObPDPT = NULL, pObPD = NULL, pObPT = NULL;
+    while((cPte < 0x1000) && (cPT < 0x2000) && (pObProcess = VmmProcessGetNext(H, pObProcess, 0))) {
+        if(!(pObPML4 = VmmTlbGetPageTable(H, pObProcess->paDTB, FALSE))) { continue; }
+        for(i4 = 0; (i4 < 256) && (cPte < 0x1000) && (cPT < 0x2000); i4++) {
+            pte = pObPML4->pqw[i4];
+            if(!(pte & 1) || !(pObPDPT = VmmTlbGetPageTable(H, pte & 0x0000fffffffff000, FALSE))) { continue; }
+            for(i3 = 0; (i3 < 512) && (cPte < 0x1000) && (cPT < 0x2000); i3++) {
+                pte = pObPDPT->pqw[i3];
+                if(!(pte & 1) || (pte & 0x80) || !(pObPD = VmmTlbGetPageTable(H, pte & 0x0000fffffffff000, FALSE))) { continue; }
+                for(i2 = 0; (i2 < 512) && (cPte < 0x1000) && (cPT < 0x2000); i2++) {
+                    pte = pObPD->pqw[i2];
+                    if(!(pte & 1) || (pte & 0x80) || !(pObPT = VmmTlbGetPageTable(H, pte & 0x0000fffffffff000, FALSE))) { continue; }
+                    cPT++;
+                    for(i1 = 0, cPtePT = 0; (i1 < 512) && (cPtePT < 4); i1++) {
+                        pte = pObPT->pqw[i1];
+                        // page file PTE: not valid, not prototype, not transition, SwizzleBit clear,
+                        // a protection set, PageFileHigh set
+                        if((pte & 0x0c11) || !((pte >> 5) & 0x1f) || !(pte >> 32) || ((pte >> 32) == 0xffffffff)) { continue; }
+                        cPtePT++;
+                        cPte++;
+                        if((pte >> 32) & 0x00002000) { cPteMaskBit++; }
+                    }
+                    Ob_DECREF_NULL(&pObPT);
+                }
+                Ob_DECREF_NULL(&pObPD);
+            }
+            Ob_DECREF_NULL(&pObPDPT);
+        }
+        Ob_DECREF_NULL(&pObPML4);
+    }
+    Ob_DECREF(pObProcess);
+    if((cPte >= 0x100) && ((QWORD)cPteMaskBit * 4 < (QWORD)cPte * 3)) {
+        VmmLog(H, MID_VMM, LOGLEVEL_INFO, "InvalidPteMask: estimated 0 (bit 0x2000 set in %i of %i page file PTEs)", cPteMaskBit, cPte);
+        return 0;
+    }
+    VmmLog(H, MID_VMM, LOGLEVEL_INFO, "InvalidPteMask: default 0x2000 (bit 0x2000 set in %i of %i page file PTEs)", cPteMaskBit, cPte);
+    return 0x00002000;
+}
+
+/*
 * Retrieve the page file number of the virtual store. This will be '2' on a
 * standard system, but if paging are configured in a non-standard way this
 * number may differ.
@@ -476,6 +531,9 @@ VOID MmWin_MemCompress_InitializeVirtualStorePageFileNumber(_In_ VMM_HANDLE H)
             PDB_GetTypeChildOffset(H, PDB_HANDLE_KERNEL, "_MI_HARDWARE_STATE", "InvalidPteMask", &oMiStateHardwareInvalidPteMask) &&
             VmmRead(H, pObSystemProcess, vaMiState + oMiStateHardware + oMiStateHardwareInvalidPteMask, (PBYTE)&qw, 8);
         ctx->MemCompress.dwInvalidPteMask = f ? (qw >> 32) : 0x00002000;     // if fail: [0x00002000 = most common on Intel]
+        if(!f && (H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X64) && (H->vmm.kernel.dwVersionBuild >= 17134)) {
+            ctx->MemCompress.dwInvalidPteMask = MmWin_MemCompress_EstimateInvalidPteMask64(H);
+        }
     }
     // 3: fetch virtual store # via pdb symbols
     f = PDB_GetSymbolAddress(H, PDB_HANDLE_KERNEL, "MiSystemPartition", &va) &&
