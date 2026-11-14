@@ -593,8 +593,8 @@ VOID MmWin_MemCompress_Initialize(_In_ VMM_HANDLE H)
             ctx->MemCompress.vaEPROCESS = pObProcess->win.EPROCESS.va;
         }
     }
-    // Retrieve SmGlobals address
-    if(!PDB_GetSymbolAddress(H, PDB_HANDLE_KERNEL, "SmGlobals", &ctx->MemCompress.vaSmGlobals)) {
+    // Retrieve SmGlobals address (public .pdb may only contain the decorated symbol name)
+    if(!PDB_GetSymbolAddress(H, PDB_HANDLE_KERNEL, "SmGlobals", &ctx->MemCompress.vaSmGlobals) && !PDB_GetSymbolAddress(H, PDB_HANDLE_KERNEL, "?SmGlobals@@3U_SM_GLOBALS@@A", &ctx->MemCompress.vaSmGlobals)) {
         if(H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X64) {
             MmWin_MemCompress_Initialize_NoPdb64(H);
         }
