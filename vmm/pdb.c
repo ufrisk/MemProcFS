@@ -604,7 +604,7 @@ BOOL PDB_LoadEnsureEx(_In_ VMM_HANDLE H, _In_ POB_PDB_CONTEXT ctx, _In_ PPDB_ENT
             pPdbEntry->pbGUID[12], pPdbEntry->pbGUID[13], pPdbEntry->pbGUID[14], pPdbEntry->pbGUID[15],
             pPdbEntry->dwAge
         );
-        fLoadResult = ctx->crust.fValid && ctx->crust.pfn.pdbcrust_pdb_download_ensure(H->pdb.szLocal, szPdbGuidAge, pPdbEntry->szName, TRUE, sizeof(szPdbPath), szPdbPath);
+        fLoadResult = ctx->crust.fValid && ctx->crust.pfn.pdbcrust_pdb_download_ensure(H->pdb.szLocal, szPdbGuidAge, pPdbEntry->szName, H->pdb.fServerEnable, sizeof(szPdbPath), szPdbPath);
     }
     if(!fLoadResult) {
         if(VmmLogIsActive(H, MID_SYMBOL, LOGLEVEL_4_VERBOSE)) {
