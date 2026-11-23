@@ -593,8 +593,8 @@ VOID MmWin_MemCompress_Initialize(_In_ VMM_HANDLE H)
             ctx->MemCompress.vaEPROCESS = pObProcess->win.EPROCESS.va;
         }
     }
-    // Retrieve SmGlobals address
-    if(!PDB_GetSymbolAddress(H, PDB_HANDLE_KERNEL, "SmGlobals", &ctx->MemCompress.vaSmGlobals)) {
+    // Retrieve SmGlobals address (public .pdb may only contain the decorated symbol name)
+    if(!PDB_GetSymbolAddress(H, PDB_HANDLE_KERNEL, "SmGlobals", &ctx->MemCompress.vaSmGlobals) && !PDB_GetSymbolAddress(H, PDB_HANDLE_KERNEL, "?SmGlobals@@3U_SM_GLOBALS@@A", &ctx->MemCompress.vaSmGlobals)) {
         if(H->vmm.tpMemoryModel == VMM_MEMORYMODEL_X64) {
             MmWin_MemCompress_Initialize_NoPdb64(H);
         }
@@ -971,7 +971,15 @@ BOOL MmWin_MemCompress3_SmkmStoreAndPageRecord64(_In_ VMM_HANDLE H, _In_ PMMWINX
     // 5: Get owner EPROCESS
     ctx->e.vaOwnerEPROCESS = *(PQWORD)(ctx->e.pbSmkm + po->SMKM_STORE.OwnerProcess);
     if(ctx->e.vaOwnerEPROCESS != H->vmm.pMmContext->MemCompress.vaEPROCESS) {
-        return MmWin_MemCompress_LogError(H, ctx, "#39 OwnerEPROCESS");
+        // WIN11 24H2+: some 26100 revisions have OwnerProcess/CompressedRegionPtrArray 8 bytes lower (0x1d00/0x1b68).
+        if((H->vmm.kernel.dwVersionBuild < 26100) || (po->SMKM_STORE.OwnerProcess != 0x1d08) || (*(PQWORD)(ctx->e.pbSmkm + 0x1d00) != H->vmm.pMmContext->MemCompress.vaEPROCESS)) {
+            return MmWin_MemCompress_LogError(H, ctx, "#39 OwnerEPROCESS");
+        }
+        po->SMKM_STORE.CompressedRegionPtrArray = 0x1b68;
+        po->SMKM_STORE.OwnerProcess = 0x1d00;
+        po->_Size = po->SMKM_STORE.OwnerProcess + 8;
+        ctx->e.vaOwnerEPROCESS = H->vmm.pMmContext->MemCompress.vaEPROCESS;
+        VmmLog(H, MID_VMM, LOGLEVEL_VERBOSE, "MemCompress: SMKM_STORE offsets adjusted: OwnerProcess=%x CompressedRegionPtrArray=%x", po->SMKM_STORE.OwnerProcess, po->SMKM_STORE.CompressedRegionPtrArray);
     }
     return TRUE;
 }
