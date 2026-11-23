@@ -125,6 +125,20 @@ BOOL InfoDB_TypeChildOffset_Dynamic(_In_ VMM_HANDLE H, _In_ LPCSTR szModule, _In
 VOID InfoDB_IsValidSymbols(_In_ VMM_HANDLE H, _Out_opt_ PBOOL pfNtos, _Out_opt_ PBOOL pfTcpIp);
 
 /*
+* Query the InfoDB for the file version information.
+* Support for nt/ntoskrnl/tcpip.
+* -- H
+* -- szModule
+* -- pdwVersionMajor
+* -- pdwVersionMinor
+* -- pdwVersionBuild
+* -- pdwVersionRevision
+* -- return
+*/
+_Success_(return)
+BOOL InfoDB_PdbVersionInfo(_In_ VMM_HANDLE H, _In_ LPCSTR szModule, _Out_opt_ PDWORD pdwVersionMajor, _Out_opt_ PDWORD pdwVersionMinor , _Out_opt_ PDWORD pdwVersionBuild, _Out_opt_ PDWORD pdwVersionRevision);
+
+/*
 * Lookup well known SIDs from the database.
 * This is preferred over system lookups due to english names.
 * -- H

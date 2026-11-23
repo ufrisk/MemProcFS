@@ -317,6 +317,23 @@ VOID VmmWinInit_InitializeOffsetStatic_Heap(_In_ VMM_HANDLE H)
     }
 }
 
+/*
+* Try to initialize the kernel revision number.
+* -- H
+*/
+VOID VmmWinInit_TryInitializeVersionRevision(_In_ VMM_HANDLE H)
+{
+    if(!H->vmm.kernel.dwVersionRevision) {
+        InfoDB_PdbVersionInfo(H, "nt", NULL, NULL, NULL, &H->vmm.kernel.dwVersionRevision);
+    }
+    if(!H->vmm.kernel.dwVersionRevision) {
+        PDB_GetSymbolDWORD(H, PDB_HANDLE_KERNEL, "NtBuildQfe", PVMM_PROCESS_SYSTEM, &H->vmm.kernel.dwVersionRevision);
+    }
+    if(!H->vmm.kernel.dwVersionRevision && H->vmm.f32) {
+        PDB_GetSymbolDWORD(H, PDB_HANDLE_KERNEL, "_NtBuildQfe", PVMM_PROCESS_SYSTEM, &H->vmm.kernel.dwVersionRevision);
+    }
+}
+
 // TODO: FIX THIS ARM64
 /*
 * Helper/Worker function for VmmWinInit_FindNtosScan64_SmallPageWalk().
@@ -1054,6 +1071,9 @@ BOOL VmmWinInit_VersionNumber(_In_ VMM_HANDLE H, _In_ PVMM_PROCESS pSystemProces
 {
     QWORD vaBuildNumber;
     PVMM_PROCESS pObProcess = NULL;
+    // 0: From NT kernel file information (infodb):
+    InfoDB_PdbVersionInfo(H, "nt", &H->vmm.kernel.dwVersionMajor, &H->vmm.kernel.dwVersionMinor, &H->vmm.kernel.dwVersionBuild, &H->vmm.kernel.dwVersionRevision);
+    if(H->vmm.kernel.dwVersionMajor && H->vmm.kernel.dwVersionBuild) { return TRUE; }
     // 1: From PEB SMSS:
     if(VmmWinInit_VersionNumberFromProcess(H, pProcessSMSS)) { return TRUE; }
     // 2: From Kernel:
@@ -1298,6 +1318,7 @@ VOID VmmWinInit_TryInitialize_Async(_In_ VMM_HANDLE H, _In_ QWORD qwNotUsed)
     PVMM_PROCESS pObSystemProcess = NULL;
     PVMMOB_MAP_VM pObVmMap = NULL;
     PDB_Initialize_WaitComplete(H);
+    VmmWinInit_TryInitializeVersionRevision(H);
     MmWin_PagingInitialize(H, TRUE);   // initialize full paging (memcompression)
     VmmWinInit_TryInitializeThreading(H);
     VmmWinInit_InitializeOffsetStatic_Heap(H);
@@ -1436,6 +1457,8 @@ BOOL VmmWinInit_TryInitialize(_In_ VMM_HANDLE H, _In_opt_ QWORD paDTBOpt)
         goto fail;
     }
     H->vmm.kernel.paDTB = pObSystemProcess->paDTB;
+    // Initialize infodb (if possible):
+    InfoDB_Initialize(H);
     // Retrieve operating system version information from 'smss.exe' process
     // Optionally retrieve PID of Registry process
     while((pObProcess = VmmProcessGetNext(H, pObProcess, 0))) {
@@ -1453,7 +1476,6 @@ BOOL VmmWinInit_TryInitialize(_In_ VMM_HANDLE H, _In_opt_ QWORD paDTBOpt)
     }
     // Initialization functionality:
     if(H->fAbort) { goto fail; }
-    InfoDB_Initialize(H);
     PDB_Initialize(H, NULL, !H->cfg.fWaitInitialize);           // Init of PDB subsystem (async/sync).
     VmmWinInit_FindPsLoadedModuleListKDBG(H, pObSystemProcess); // Find PsLoadedModuleList and possibly KDBG.
     VmmWinReg_Initialize(H);                                    // Registry.

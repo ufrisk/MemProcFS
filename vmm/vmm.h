@@ -1570,6 +1570,7 @@ typedef struct tdVMM_KERNELINFO {
     DWORD dwVersionMajor;
     DWORD dwVersionMinor;
     DWORD dwVersionBuild;
+    DWORD dwVersionRevision;
     QWORD vaPsLoadedModuleListPtr;
     VMMWIN_OPTIONAL_KERNEL_CONTEXT opt;
 } VMM_KERNELINFO;

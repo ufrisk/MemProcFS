@@ -322,6 +322,7 @@ VOID MmWin_MemCompress_InitializeOffsets32(_In_ VMM_HANDLE H)
 VOID MmWin_MemCompress_InitializeOffsets64(_In_ VMM_HANDLE H)
 {
     DWORD dwVersionBuild = H->vmm.kernel.dwVersionBuild;
+    DWORD dwVersionRevision = H->vmm.kernel.dwVersionRevision;
     PMMWIN_MEMCOMPRESS_OFFSET po = &H->vmm.pMmContext->MemCompress.O;
     po->SMKM_STORE.PagesTree = 0x50 + 0x0;                  // static = ok
     po->SMKM_STORE.ChunkMetaData = 0x50 + 0xC0;             // static = ok
@@ -331,6 +332,16 @@ VOID MmWin_MemCompress_InitializeOffsets64(_In_ VMM_HANDLE H)
     po->SMKM_STORE.CompressionAlgorithm = 0;                // 24H2+
     po->SMKM_STORE.CompressedRegionPtrArray = 0x1b70;       // 24H2+
     po->SMKM_STORE.OwnerProcess = 0x1d08;                   // 24H2+
+    // Windows builds 26100, 26200 and 26300 share the 26100 kernel.
+    if((dwVersionBuild == 26100) || (dwVersionBuild == 26200) || (dwVersionBuild == 26300)) {
+        if(dwVersionRevision >= 9818) {
+            po->SMKM_STORE.CompressedRegionPtrArray = 0x1b78;
+            po->SMKM_STORE.OwnerProcess = 0x1d10;
+        } else if(dwVersionRevision >= 9278) {
+            po->SMKM_STORE.CompressedRegionPtrArray = 0x1b68;
+            po->SMKM_STORE.OwnerProcess = 0x1d00;
+        }
+    }
     if(dwVersionBuild <= 22631) {
         po->SMKM_STORE.CompressionAlgorithm = 0x50 + 0x3E0; // 1709+
         po->SMKM_STORE.CompressedRegionPtrArray = 0x1848;   // 1709+
@@ -971,15 +982,7 @@ BOOL MmWin_MemCompress3_SmkmStoreAndPageRecord64(_In_ VMM_HANDLE H, _In_ PMMWINX
     // 5: Get owner EPROCESS
     ctx->e.vaOwnerEPROCESS = *(PQWORD)(ctx->e.pbSmkm + po->SMKM_STORE.OwnerProcess);
     if(ctx->e.vaOwnerEPROCESS != H->vmm.pMmContext->MemCompress.vaEPROCESS) {
-        // WIN11 24H2+: some 26100 revisions have OwnerProcess/CompressedRegionPtrArray 8 bytes lower (0x1d00/0x1b68).
-        if((H->vmm.kernel.dwVersionBuild < 26100) || (po->SMKM_STORE.OwnerProcess != 0x1d08) || (*(PQWORD)(ctx->e.pbSmkm + 0x1d00) != H->vmm.pMmContext->MemCompress.vaEPROCESS)) {
-            return MmWin_MemCompress_LogError(H, ctx, "#39 OwnerEPROCESS");
-        }
-        po->SMKM_STORE.CompressedRegionPtrArray = 0x1b68;
-        po->SMKM_STORE.OwnerProcess = 0x1d00;
-        po->_Size = po->SMKM_STORE.OwnerProcess + 8;
-        ctx->e.vaOwnerEPROCESS = H->vmm.pMmContext->MemCompress.vaEPROCESS;
-        VmmLog(H, MID_VMM, LOGLEVEL_VERBOSE, "MemCompress: SMKM_STORE offsets adjusted: OwnerProcess=%x CompressedRegionPtrArray=%x", po->SMKM_STORE.OwnerProcess, po->SMKM_STORE.CompressedRegionPtrArray);
+        return MmWin_MemCompress_LogError(H, ctx, "#39 OwnerEPROCESS");
     }
     return TRUE;
 }

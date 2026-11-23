@@ -11,10 +11,18 @@
 
 #define INFODB_SQL_POOL_CONNECTION_NUM          4
 
+typedef struct tdOB_INFODB_PDBINFO {
+    DWORD dwPdbId;
+    DWORD dwVersionMajor;
+    DWORD dwVersionMinor;
+    DWORD dwVersionBuild;
+    DWORD dwVersionRevision;
+} INFODB_PDBINFO, *PINFODB_PDBINFO;
+
 typedef struct tdOB_INFODB_CONTEXT {
     OB ObHdr;
-    DWORD dwPdbId_NT;
-    DWORD dwPdbId_TcpIp;
+    INFODB_PDBINFO PdbNT;
+    INFODB_PDBINFO PdbTcpIp;
     BOOL fPdbId_TcpIp_TryComplete;
     HANDLE hEventSqlPoolConnReserved[INFODB_SQL_POOL_CONNECTION_NUM];
     sqlite3 *hSql[INFODB_SQL_POOL_CONNECTION_NUM];
@@ -163,12 +171,13 @@ VOID InfoDB_CheckVersionAndAge(_In_ VMM_HANDLE H, _In_ POB_INFODB_CONTEXT ctx)
     }
 }
 
-DWORD InfoDB_GetPdbId(_In_ VMM_HANDLE H, _In_ POB_INFODB_CONTEXT ctx, _In_ QWORD vaModuleBase)
+_Success_(return)
+BOOL InfoDB_GetPdbId(_In_ VMM_HANDLE H, _In_ POB_INFODB_CONTEXT ctx, _In_ QWORD vaModuleBase, _Out_ PINFODB_PDBINFO pPdbInfo)
 {
+    BOOL fResult = FALSE;
     PVMM_PROCESS pObSystemProcess = NULL;
     PE_CODEVIEW_INFO CodeViewInfo = { 0 };
     QWORD qwEndGUID;
-    DWORD dwPdbId = 0;
     CHAR szAgeGUID[0x40] = { 0 };
     int rc;
     sqlite3_stmt *hStmt = NULL;
@@ -183,18 +192,23 @@ DWORD InfoDB_GetPdbId(_In_ VMM_HANDLE H, _In_ POB_INFODB_CONTEXT ctx, _In_ QWORD
         (QWORD)_byteswap_uint64(qwEndGUID),
         CodeViewInfo.CodeView.Age);
     VmmLog(H, MID_INFODB, LOGLEVEL_TRACE, "AGEGUID=%s va=0x%llx", szAgeGUID, vaModuleBase);
-    rc = sqlite3_prepare_v2(hSql, "SELECT id FROM pdb WHERE guidage = ?", -1, &hStmt, 0);
+    rc = sqlite3_prepare_v2(hSql, "SELECT id, ver_major, ver_minor, ver_build, ver_revision FROM pdb WHERE guidage = ?", -1, &hStmt, 0);
     if(rc != SQLITE_OK) { goto fail; }
     sqlite3_bind_text(hStmt, 1, szAgeGUID, -1, NULL);
     rc = sqlite3_step(hStmt);
     if(rc != SQLITE_ROW) { goto fail; }
-    dwPdbId = (DWORD)sqlite3_column_int(hStmt, 0);
+    pPdbInfo->dwPdbId = (DWORD)sqlite3_column_int(hStmt, 0);
+    pPdbInfo->dwVersionMajor = (DWORD)sqlite3_column_int(hStmt, 1);
+    pPdbInfo->dwVersionMinor = (DWORD)sqlite3_column_int(hStmt, 2);
+    pPdbInfo->dwVersionBuild = (DWORD)sqlite3_column_int(hStmt, 3);
+    pPdbInfo->dwVersionRevision = (DWORD)sqlite3_column_int(hStmt, 4);
+    fResult = TRUE;
 fail:
-    VmmLog(H, MID_INFODB, LOGLEVEL_VERBOSE, "INIT: %s: va=0x%llx", (dwPdbId ? "SUCCESS" : "FAIL"), vaModuleBase);
+    VmmLog(H, MID_INFODB, LOGLEVEL_VERBOSE, "INIT: %s: va=0x%llx", (pPdbInfo->dwPdbId ? "SUCCESS" : "FAIL"), vaModuleBase);
     sqlite3_finalize(hStmt);
     InfoDB_SqlReserveReturn(ctx, hSql);
     Ob_DECREF(pObSystemProcess);
-    return dwPdbId;
+    return fResult;
 }
 
 DWORD InfoDB_EnsureTcpIp(_In_ VMM_HANDLE H, _In_ POB_INFODB_CONTEXT ctx)
@@ -204,13 +218,13 @@ DWORD InfoDB_EnsureTcpIp(_In_ VMM_HANDLE H, _In_ POB_INFODB_CONTEXT ctx)
     if(!ctx->fPdbId_TcpIp_TryComplete) {
         EnterCriticalSection(&H->vmm.LockMaster);
         if(!ctx->fPdbId_TcpIp_TryComplete && VmmMap_GetModuleEntryEx(H, NULL, 4, "tcpip.sys", 0, &pObModuleMap, &peModuleTcpip)) {
-            ctx->dwPdbId_TcpIp = InfoDB_GetPdbId(H, ctx, peModuleTcpip->vaBase);
+            InfoDB_GetPdbId(H, ctx, peModuleTcpip->vaBase, &ctx->PdbTcpIp);
             ctx->fPdbId_TcpIp_TryComplete = TRUE;
             Ob_DECREF_NULL(&pObModuleMap);
         }
         LeaveCriticalSection(&H->vmm.LockMaster);
     }
-    return ctx->dwPdbId_TcpIp;
+    return ctx->PdbTcpIp.dwPdbId;
 }
 
 
@@ -419,7 +433,7 @@ BOOL InfoDB_SymbolOffset(_In_ VMM_HANDLE H, _In_ LPCSTR szModule, _In_ LPCSTR sz
     *pdwSymbolOffset = 0;
     if(!(pObCtx = ObContainer_GetOb(H->vmm.pObCInfoDB))) { goto fail; }
     if(!strcmp(szModule, "nt") || !strcmp(szModule, "ntoskrnl")) {
-        qwPdbId = pObCtx->dwPdbId_NT;
+        qwPdbId = pObCtx->PdbNT.dwPdbId;
     } else if(!strcmp(szModule, "tcpip")) {
         qwPdbId = InfoDB_EnsureTcpIp(H, pObCtx);
     }
@@ -571,7 +585,7 @@ BOOL InfoDB_TypeSize_Dynamic(_In_ VMM_HANDLE H, _In_ LPCSTR szModule, _In_ LPCST
     POB_INFODB_CONTEXT pObCtx = NULL;
     if(!(pObCtx = ObContainer_GetOb(H->vmm.pObCInfoDB))) { goto fail; }
     if(!strcmp(szModule, "nt") || !strcmp(szModule, "ntoskrnl")) {
-        dwPdbId = pObCtx->dwPdbId_NT;
+        dwPdbId = pObCtx->PdbNT.dwPdbId;
     } else if(!strcmp(szModule, "tcpip")) {
         dwPdbId = InfoDB_EnsureTcpIp(H, pObCtx);
     }
@@ -659,7 +673,7 @@ BOOL InfoDB_TypeChildOffset_Dynamic(_In_ VMM_HANDLE H, _In_ LPCSTR szModule, _In
     QWORD qwHash, qwHash1, qwHash2, qwResult = 0;
     if(!(pObCtx = ObContainer_GetOb(H->vmm.pObCInfoDB))) { goto fail; }
     if(!strcmp(szModule, "nt") || !strcmp(szModule, "ntoskrnl")) {
-        dwPdbId = pObCtx->dwPdbId_NT;
+        dwPdbId = pObCtx->PdbNT.dwPdbId;
     } else if(!strcmp(szModule, "tcpip")) {
         dwPdbId = InfoDB_EnsureTcpIp(H, pObCtx);
     }
@@ -679,6 +693,49 @@ fail:
 }
 
 /*
+* Query the InfoDB for the file version information.
+* Support for nt/ntoskrnl/tcpip.
+* -- H
+* -- szModule
+* -- pdwVersionMajor
+* -- pdwVersionMinor
+* -- pdwVersionBuild
+* -- pdwVersionRevision
+* -- return
+*/
+_Success_(return)
+BOOL InfoDB_PdbVersionInfo(_In_ VMM_HANDLE H, _In_ LPCSTR szModule, _Out_opt_ PDWORD pdwVersionMajor, _Out_opt_ PDWORD pdwVersionMinor, _Out_opt_ PDWORD pdwVersionBuild, _Out_opt_ PDWORD pdwVersionRevision)
+{
+    BOOL fResult = FALSE;
+    POB_INFODB_CONTEXT pObCtx = NULL;
+    PINFODB_PDBINFO pPdbInfo = NULL;
+    if(!(pObCtx = ObContainer_GetOb(H->vmm.pObCInfoDB))) { goto fail; }
+    if(!strcmp(szModule, "nt") || !strcmp(szModule, "ntoskrnl")) {
+        pPdbInfo = &pObCtx->PdbNT;
+    } else if(!strcmp(szModule, "tcpip")) {
+        InfoDB_EnsureTcpIp(H, pObCtx);
+        pPdbInfo = &pObCtx->PdbTcpIp;
+    }
+    if(!pPdbInfo || !pPdbInfo->dwPdbId) { goto fail; }
+    if(pdwVersionMajor) {
+        *pdwVersionMajor = pPdbInfo->dwVersionMajor;
+    }
+    if(pdwVersionMinor) {
+        *pdwVersionMinor = pPdbInfo->dwVersionMinor;
+    }
+    if(pdwVersionBuild) {
+        *pdwVersionBuild = pPdbInfo->dwVersionBuild;
+    }
+    if(pdwVersionRevision) {
+        *pdwVersionRevision = pPdbInfo->dwVersionRevision;
+    }
+    fResult = TRUE;
+fail:
+    Ob_DECREF(pObCtx);
+    return fResult;
+}
+
+/*
 * Return whether the InfoDB symbols are ok or not.
 * -- H
 * -- pfNtos
@@ -689,8 +746,8 @@ VOID InfoDB_IsValidSymbols(_In_ VMM_HANDLE H, _Out_opt_ PBOOL pfNtos, _Out_opt_ 
     BOOL fNtos = FALSE, fTcpIp = FALSE;
     POB_INFODB_CONTEXT pObCtx = NULL;
     if((pObCtx = ObContainer_GetOb(H->vmm.pObCInfoDB))) {
-        fNtos = pObCtx->dwPdbId_NT ? TRUE : FALSE;
-        fTcpIp = pObCtx->dwPdbId_TcpIp ? TRUE : FALSE;
+        fNtos = pObCtx->PdbNT.dwPdbId ? TRUE : FALSE;
+        fTcpIp = pObCtx->PdbTcpIp.dwPdbId ? TRUE : FALSE;
     }
     if(pfNtos) { *pfNtos = fNtos; }
     if(pfTcpIp) { *pfTcpIp = fTcpIp; }
@@ -840,7 +897,7 @@ VOID InfoDB_Initialize_DoWork(_In_ VMM_HANDLE H)
         }
     }
     // 3: QUERY CURRENT 'NTOSKRNL.EXE' IMAGE
-    pObCtx->dwPdbId_NT = InfoDB_GetPdbId(H, pObCtx, H->vmm.kernel.vaBase);
+    InfoDB_GetPdbId(H, pObCtx, H->vmm.kernel.vaBase, &pObCtx->PdbNT);
     ObContainer_SetOb(H->vmm.pObCInfoDB, pObCtx);
     // 4: CHECK 'info.db' VERSION AND AGE:
     InfoDB_CheckVersionAndAge(H, pObCtx);
